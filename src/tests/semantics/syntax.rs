@@ -1199,3 +1199,42 @@ END_FUNCTION
     ---'
     ");
 }
+
+/// A tree the generated AST has no place for is the compiler's fault, and it
+/// is reported as a syntax error rather than a crash: `REF_TO TIME` once hit
+/// an `unreachable!` here, because auto-lsp-codegen flattened nested
+/// supertypes one level only. The grammar no longer produces one, so the
+/// error is built by hand.
+#[rstest]
+fn a_node_the_ast_has_no_place_for_is_a_syntax_error(mut with_db: RootDatabase) {
+    use auto_lsp::core::errors::{AstError, ParseError, ParseErrorAccumulator};
+    use auto_lsp::default::db::BaseDatabase;
+    use auto_lsp::tree_sitter::{Point, Range};
+    use hir::check::errors::{ToIdeDiagnostic, e00_syntax::SyntaxError};
+
+    crate::tests::utils::add_sources(&mut with_db, &["FUNCTION f : INT\nEND_FUNCTION\n"]);
+    let file = *with_db.get_files().iter().next().expect("the file");
+    let range = Range {
+        start_byte: 0,
+        end_byte: 8,
+        start_point: Point { row: 0, column: 0 },
+        end_point: Point { row: 0, column: 8 },
+    };
+    let err = ParseErrorAccumulator(ParseError::AstError {
+        span: range,
+        error: AstError::UnexpectedSymbol {
+            range,
+            symbol: "ref_type_spec",
+            parent_name: "ArrayTypeSpec_DataTypeAccess",
+        },
+    });
+    let diagnostic = SyntaxError::from_parse_error(&with_db, file, &err)
+        .to_diagnostic(&with_db, file)
+        .inner();
+    assert!(format!("{:?}", diagnostic.code).contains("E0001"));
+    assert!(
+        diagnostic.message.contains("this is a compiler bug"),
+        "{}",
+        diagnostic.message
+    );
+}

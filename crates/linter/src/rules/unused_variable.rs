@@ -58,6 +58,21 @@ pub fn check<'db>(
         }
     }
 
+    // What an instance holds, the configuration may name: a function block a
+    // task runs, a member a VAR_CONFIG path goes through.
+    {
+        use hir::hir_def::pous::pou::Pou;
+        if matches!(
+            get_scope(db, scope).kind,
+            ScopeKind::Program(_) | ScopeKind::Pou(Pou::FunctionBlock(_) | Pou::Class(_))
+        ) {
+            for config in hir::hir_ty::index_graphs::declared_configs(db) {
+                let named = &infer_body(db, config.scope_id(db)).variables_used;
+                all_used.extend(named.iter().copied());
+            }
+        }
+    }
+
     for var in def_map.global_variables.values() {
         check_variable(db, scope, *var, &all_used, diagnostics);
     }

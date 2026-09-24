@@ -27,6 +27,7 @@ mod imports;
 mod initializers;
 mod inout;
 mod locals;
+mod located;
 mod instance_initializers;
 mod mir_smoke;
 mod namespaces;
@@ -39,6 +40,7 @@ mod strings;
 mod structs;
 mod traps;
 mod unary_ops;
+mod var_config;
 mod variadics;
 mod wasm_pragma;
 

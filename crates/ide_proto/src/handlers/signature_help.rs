@@ -21,7 +21,8 @@ use hir::{
 
 use crate::walk::WalkHir;
 
-/// Find signature help for the function call or TASK configuration enclosing the given offset.
+/// Find signature help for the function call, TASK configuration or program
+/// configuration enclosing the given offset.
 pub fn find_signature_help(
     db: &dyn WorkspaceDataBase,
     file: File,
@@ -30,8 +31,128 @@ pub fn find_signature_help(
     if let Some(help) = find_func_call_signature_help(db, file, offset) {
         return Some(help);
     }
+    if let Some(help) = find_task_signature_help(db, file, offset) {
+        return Some(help);
+    }
 
-    find_task_signature_help(db, file, offset)
+    find_prog_config_signature_help(db, file, offset)
+}
+
+/// Signature help inside a program configuration's list, `PROGRAM P1 WITH T
+/// : F(x1 := src, y1 => snk, fb1 WITH T2)`: the program's inputs and
+/// outputs, then the function blocks a task can run. The element the cursor
+/// is in is active.
+fn find_prog_config_signature_help(
+    db: &dyn WorkspaceDataBase,
+    file: File,
+    offset: usize,
+) -> Option<SignatureHelp> {
+    use hir::hir_def::config::ProgConfElement;
+    let prog = find_enclosing_prog_config(db, file, offset)?;
+
+    // Inside the parentheses that follow the program's type.
+    let source = file.document(db).as_str();
+    let after = prog.prog_type(db).get_span(db).end_byte;
+    let open = after + source.get(after..prog.get_span(db).end_byte)?.find('(')?;
+    if offset <= open {
+        return None;
+    }
+    let Type::Program(program) = prog.prog_type(db).infer(db) else {
+        return None;
+    };
+
+    let variables = program.variables(db);
+    let of_kind = |kind: VariableKind| variables.iter().filter(move |v| v.kind(db) == kind);
+    let function_blocks = variables.iter().filter(|v| {
+        v.kind(db) == VariableKind::Var
+            && matches!(v.spec(db).infer(db).normalize(db), Type::FunctionBlock(_))
+    });
+    let params: Vec<(hir::hir_def::pous::variable::VariableDecl, String)> =
+        of_kind(VariableKind::Input)
+            .map(|v| (*v, format!(" := {}", v.spec(db).infer(db).type_name(db))))
+            .chain(
+                of_kind(VariableKind::Output)
+                    .map(|v| (*v, format!(" => {}", v.spec(db).infer(db).type_name(db)))),
+            )
+            .chain(function_blocks.map(|v| (*v, " WITH task".to_string())))
+            .collect();
+
+    let mut label = format!("{}(", program.name(db).text(db));
+    let mut param_infos = Vec::with_capacity(params.len());
+    for (i, (var, suffix)) in params.iter().enumerate() {
+        if i > 0 {
+            label.push_str(", ");
+        }
+        let start = label.len() as u32;
+        label.push_str(var.name(db).text(db));
+        label.push_str(suffix);
+        param_infos.push(ParameterInformation {
+            label: ParameterLabel::LabelOffsets([start, label.len() as u32]),
+            documentation: None,
+        });
+    }
+    label.push(')');
+
+    // The element the cursor is in: the last one begun before it, with no
+    // comma between.
+    let element = prog
+        .conf_elements(db)
+        .iter()
+        .map(|element| match element {
+            ProgConfElement::FbTask(fb) => fb.path,
+            ProgConfElement::Connection(
+                hir::hir_def::config::ProgCnxn::Source { path, .. }
+                | hir::hir_def::config::ProgCnxn::Sink { path, .. },
+            ) => *path,
+        })
+        .filter(|path| path.get_span(db).start_byte <= offset)
+        .max_by_key(|path| path.get_span(db).start_byte)
+        .filter(|path| {
+            source
+                .get(path.get_span(db).start_byte..offset)
+                .is_some_and(|written| !written.contains(','))
+        });
+    let active_parameter = element.and_then(|path| {
+        let ScopeKind::Config(config) = get_scope(db, prog.scope_id(db)).kind else {
+            return None;
+        };
+        let var = hir::hir_ty::config::prog_elements(db, config)
+            .names
+            .get(&path)?;
+        params.iter().position(|(v, _)| v == var).map(|i| i as u32)
+    });
+
+    Some(SignatureHelp {
+        signatures: vec![SignatureInformation {
+            label,
+            documentation: None,
+            parameters: Some(param_infos),
+            active_parameter,
+        }],
+        active_signature: Some(0),
+        active_parameter,
+    })
+}
+
+/// Find the smallest program configuration containing the given offset.
+fn find_enclosing_prog_config<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    file: File,
+    offset: usize,
+) -> Option<hir::hir_def::config::ProgConfig<'db>> {
+    let sema = semantic_index(db, file);
+    let mut best = None;
+    let _ = sema.walk_hir(db, &mut |node: HirNode<'db>| {
+        if let HirNode::ProgConfig(p) = node {
+            let span = node.get_span(db);
+            if span.start_byte <= offset && offset <= span.end_byte {
+                best = Some(p);
+                return std::ops::ControlFlow::Break(());
+            }
+        }
+        std::ops::ControlFlow::Continue(())
+    });
+    best
 }
 
 /// Find signature help for a TASK configuration init at the given offset.

@@ -163,6 +163,32 @@ END_FUNCTION_BLOCK"#;
     ");
 }
 
+/// A CLASS instance cannot be assigned either (E0318). It has no body, so it
+/// is not callable, and the check that refuses a FUNCTION_BLOCK's assignment
+/// let it through as a copy.
+#[rstest]
+fn invalid_class_instance_assigned(mut with_db: RootDatabase) {
+    let source = r#"
+CLASS Sensor
+VAR n : INT; END_VAR
+END_CLASS
+
+FUNCTION_BLOCK Holder
+VAR a : Sensor; b : Sensor; END_VAR
+    b := a;
+END_FUNCTION_BLOCK
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0318] Error: semantic violation
+       ,-[ file:///test0.st:8:5 ]
+       |
+     8 |     b := a;
+       |     |
+       |     `-- 'Sensor' is a CLASS and can not be assigned
+    ---'
+    ");
+}
+
 #[rstest]
 fn assign_var_input(mut with_db: RootDatabase) {
     let source = r#"

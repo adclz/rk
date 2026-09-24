@@ -74,7 +74,11 @@ use crate::{
         config::ConfigDecl,
         interned::{identifier::Ident, namespace::NamespacePath},
         namespace::NamespaceDecl,
-        pous::{function::Function, pou::Pou, variable::VariableDecl},
+        pous::{
+            function::Function,
+            pou::Pou,
+            variable::{LocatedAddress, VariableDecl},
+        },
         program::ProgramDecl,
         semantic_index::semantic_index,
     },
@@ -116,6 +120,170 @@ pub fn file_programs<'db>(
 #[salsa::tracked(returns(ref))]
 pub fn file_configs<'db>(db: &'db dyn WorkspaceDataBase, file: File) -> Arc<Vec<ConfigDecl<'db>>> {
     Arc::clone(&semantic_index(db, file).configs)
+}
+
+/// The I/O addresses a file mentions, sorted, each with the declarations
+/// located at it: a CONFIGURATION's VAR_GLOBALs and a PROGRAM's VARs.
+///
+/// A declaration compares by identity, so an edit to one (its type, its
+/// initial value) leaves the map equal: it changes only when the file gains
+/// or loses an address, or a declaration of one.
+#[salsa::tracked(returns(ref))]
+pub fn file_located<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    file: File,
+) -> Arc<std::collections::BTreeMap<LocatedAddress, Vec<VariableDecl<'db>>>> {
+    Arc::clone(&semantic_index(db, file).located)
+}
+
+/// Each of the workspace's own files' [`file_located`], borrowed: nothing is
+/// collected or copied. A library's do not count, since a library describes
+/// no machine.
+pub fn located_by_file<'db>(
+    db: &'db dyn WorkspaceDataBase,
+) -> impl Iterator<Item = &'db std::collections::BTreeMap<LocatedAddress, Vec<VariableDecl<'db>>>> + 'db
+{
+    workspace_files(db).map(move |file| &**file_located(db, file))
+}
+
+/// The addresses VAR_CONFIG gives instance variables: each entry of the
+/// workspace's configurations that resolves and passes the checks that look
+/// at nothing but the entry. Each is a mention of its address, as a
+/// declaration's is. A refused one is not, so one mistake does not also make
+/// another address a part of it.
+pub fn config_located<'db>(
+    db: &'db dyn WorkspaceDataBase,
+) -> impl Iterator<Item = &'db LocatedAddress> + 'db {
+    workspace_files(db)
+        .flat_map(move |file| file_configs(db, file).iter())
+        .flat_map(move |config| {
+            crate::hir_ty::config::resolve_config_entries(db, *config)
+                .entries
+                .iter()
+        })
+        .filter_map(|entry| match &entry.location {
+            Some((_, crate::hir_ty::config::EntryLocation::Given(address))) => Some(address),
+            _ => None,
+        })
+}
+
+/// An address stored inside a wider one: the bits of `owner` it is.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LocatedView {
+    /// The widest address the workspace mentions that contains this one.
+    pub owner: LocatedAddress,
+    /// Where this address's low bit sits in the owner's value. The image is
+    /// little-endian, so byte 1 of `%IW0` is its high byte and `%IX0.3` is
+    /// bit 3 of it.
+    pub shift: u32,
+}
+
+/// The address an access of type `ty` names and the wider address it is part
+/// of, when it is one: a bare address, or a variable located at one, through
+/// a VAR_EXTERNAL too. What the uses that need an address of their own ask
+/// before refusing it (E1423).
+pub fn view_of_type<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    ty: crate::hir_ty::ty::Type<'db>,
+) -> Option<(LocatedAddress, LocatedView)> {
+    let dv = match ty {
+        crate::hir_ty::ty::Type::Variable((var, _)) => effective_location(db, var)?,
+        crate::hir_ty::ty::Type::DirectVariable((dv, _)) => dv,
+        _ => return None,
+    };
+    let address = LocatedAddress::of(db, dv)?;
+    let view = located_view(db, &address)?;
+    Some((address, view))
+}
+
+/// E1423 for `usage` when `ty` is part of a wider address — except on an
+/// input, where every one of these uses is already a write E1419 refuses.
+pub fn refuse_part_of_wider<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    site: crate::CallSite<'db>,
+    ty: crate::hir_ty::ty::Type<'db>,
+    usage: crate::check::errors::e14_config::WiderAddressUse,
+) -> Option<crate::check::errors::e14_config::ConfigError<'db>> {
+    let (address, view) = view_of_type(db, ty)?;
+    if address.area == crate::hir_def::pous::variable::LocationArea::Input {
+        return None;
+    }
+    // A part of a byte or more is whole bytes of its owner's cell, which
+    // have an address to pass or to reference; only a bit has none.
+    use crate::check::errors::e14_config::WiderAddressUse;
+    if matches!(usage, WiderAddressUse::InOut | WiderAddressUse::Reference) && address.width >= 8 {
+        return None;
+    }
+    Some(
+        crate::check::errors::e14_config::ConfigError::PartOfWiderAddress {
+            site,
+            address: address.text,
+            owner: view.owner.text,
+            usage,
+        },
+    )
+}
+
+/// The declaration located at `address`, when one is: a VAR_GLOBAL or a
+/// PROGRAM's VAR. What decides the type its cell holds, and so how a part of
+/// it is rebuilt. One probe per file.
+pub fn located_declaration<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    address: &LocatedAddress,
+) -> Option<VariableDecl<'db>> {
+    workspace_files(db).find_map(|file| file_located(db, file).get(address)?.first().copied())
+}
+
+/// Every declaration located at `address` across the workspace: more than
+/// one is E1421. One probe per file.
+pub fn located_declarations_at<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    address: &LocatedAddress,
+) -> Vec<VariableDecl<'db>> {
+    workspace_files(db)
+        .flat_map(|file| {
+            file_located(db, file)
+                .get(address)
+                .into_iter()
+                .flatten()
+                .copied()
+        })
+        .collect()
+}
+
+/// Whether `address` is stored inside a wider address, and where.
+///
+/// An address the workspace mentions a wider container of is not a cell of
+/// its own: it is that container's bits, as it would be in any PLC with a
+/// process image — `%IX0.3` is bit 3 of `%IW0` when both are used. The owner
+/// is the WIDEST container mentioned, so a whole nest shares one cell.
+/// `None` when nothing mentioned contains it, or it has no byte reading.
+pub fn located_view(db: &dyn WorkspaceDataBase, address: &LocatedAddress) -> Option<LocatedView> {
+    let bits = address.image_bits()?;
+    let mut owner: Option<(&LocatedAddress, std::ops::Range<u64>)> = None;
+    {
+        let mentioned = located_by_file(db).flat_map(|m| m.keys());
+        for other in mentioned.chain(config_located(db)) {
+            if other.area != address.area || other == address {
+                continue;
+            }
+            let Some(range) = other.image_bits() else {
+                continue;
+            };
+            let contains = range.start <= bits.start && bits.end <= range.end;
+            let wider = range.end - range.start > bits.end - bits.start;
+            let widest = owner
+                .as_ref()
+                .is_none_or(|(_, best)| range.end - range.start > best.end - best.start);
+            if contains && wider && widest {
+                owner = Some((other, range));
+            }
+        }
+    }
+    owner.map(|(owner, range)| LocatedView {
+        owner: owner.clone(),
+        shift: (bits.start - range.start) as u32,
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -351,6 +519,26 @@ pub fn external_var_lookup<'db>(
         }
     }
     None
+}
+
+/// The address a declaration is bound to, following a VAR_EXTERNAL to the
+/// VAR_GLOBAL it aliases.
+///
+/// The alias carries no `AT` clause of its own — IEC puts the location on the
+/// global — but it names the same storage, so a rule about the location holds
+/// through it. Checking `location` alone let every write to an input escape
+/// by going through the VAR_EXTERNAL a PROGRAM declares anyway.
+pub fn effective_location<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    var: VariableDecl<'db>,
+) -> Option<crate::hir_def::pous::variable::DirectVariable<'db>> {
+    if let Some(dv) = var.location(db) {
+        return Some(dv);
+    }
+    if var.kind(db) != crate::hir_def::pous::variable::VariableKind::External {
+        return None;
+    }
+    external_var_lookup(db, var.get_name_ident(db))?.location(db)
 }
 
 // ---------------------------------------------------------------------------

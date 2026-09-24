@@ -1,3 +1,5 @@
+
+
 (* A small conveyor: a ramp drives the belt, a counter tallies parts. *)
 
 FUNCTION_BLOCK Ramp522
@@ -41,11 +43,12 @@ PROGRAM Main
 		running: BOOL;
 		label: STRING[16] := 'conveyor-1';
 	END_VAR
+
 	belt(target := 1000, rate := 37);
 	parts := parts + 1; (* <- breakpoint here, then F10/F11 *)
-
 	scaled := scale(value := parts, factor := 3);
 	running := belt.at_top_changed;
+
 END_PROGRAM
 CONFIGURATION Cfg
 	RESOURCE Res ON CPU
@@ -55,14 +58,19 @@ CONFIGURATION Cfg
 END_CONFIGURATION
 
 
-NAMESPACE namespace.thing 
-{test}
-FUNCTION tets 
-	VAR 
-		test: INT := 0;
-	END_VAR
+NAMESPACE namespadce.thing
+	USING Std.Unit;
+	USING Std.Bistable;
 
 
-	
-END_FUNCTION
+	{test}
+	FUNCTION tets
+		VAR
+			test: INT := 0;
+			tesst :INT;
+		END_VAR
+
+		ASSERT_EQ(value := test, target := 0, message := "message");
+
+	END_FUNCTION
 END_NAMESPACE

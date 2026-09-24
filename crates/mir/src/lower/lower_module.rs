@@ -476,16 +476,73 @@ fn lower_module_from_pous<'db>(
         functions.push(mir_func);
     }
 
+    // A program instance with connections runs through a function of its
+    // own, which feeds its inputs and copies its outputs out around the body.
+    for c in config {
+        let schedule = &hir::hir_ty::config::infer_config_result(db, *c).schedule;
+        for p in schedule
+            .resources
+            .iter()
+            .flat_map(|r| r.tasks.iter())
+            .flat_map(|t| t.programs.iter())
+            .filter(|p| !p.connections.inputs.is_empty() || !p.connections.outputs.is_empty())
+        {
+            // `lower_schedule` refuses an instance with no lowered program.
+            let Some(info) = program_infos.get(&p.program.name(db)) else {
+                continue;
+            };
+            let func =
+                super::connections::lower_connections(db, p, info, next_fn_idx, &string_pool)?;
+            function_indices.insert(func.name, next_fn_idx);
+            next_fn_idx += 1;
+            functions.push(func);
+        }
+    }
+
     // Sort test entries by path for deterministic output
     test_entries.sort_by(|a, b| a.path.cmp(&b.path));
 
     // Allocate storage for every configuration VAR_GLOBAL. Bodies referenced
     // these as `Local(name)`; a post-pass below rewrites them to `Global`.
-    let mut global_table = build_global_table(db, config, &mut memory_layout)?;
+    let mut global_table = build_global_table(db, config, all_programs, &mut memory_layout)?;
+
+    // Bare addresses the bodies named get their cells before the bands are
+    // carved, so they are laid out with the declared ones, and so do the ones
+    // only VAR_CONFIG names: what a located instance variable points at.
+    let config_locations: Vec<&hir::hir_ty::config::ConfigLocation<'db>> = config
+        .iter()
+        .flat_map(|c| {
+            hir::hir_ty::config::infer_config_result(db, *c)
+                .locations
+                .iter()
+        })
+        .collect();
+    let config_cells: Vec<hir::hir_def::pous::variable::LocatedAddress> = config_locations
+        .iter()
+        .map(|loc| config_cell(db, &loc.address).0)
+        .collect();
+    synthesize_bare_addresses(
+        db,
+        &mut functions,
+        &config_cells,
+        &mut memory_layout,
+        &mut global_table,
+    )?;
 
     // Build the CONFIGURATION's schedule: allocate one instance per program
     // configuration (recording its RETAIN fields) and resolve task periods.
     let schedule = crate::schedule::lower_schedule(db, config, &mut memory_layout, &program_infos)?;
+    // The host calls the body of a function block a task runs.
+    if let Some(sched) = &schedule {
+        let run: FxHashSet<_> = sched
+            .tasks
+            .iter()
+            .flat_map(|t| t.function_blocks.iter().map(|f| f.body_fn))
+            .collect();
+        for func in functions.iter_mut().filter(|f| run.contains(&f.name)) {
+            func.linkage = crate::function::MirLinkage::Export;
+        }
+    }
 
     let mut module = MirModule {
         functions,
@@ -503,10 +560,17 @@ fn lower_module_from_pous<'db>(
         retain_size: 0,
         globals_base: 0,
         globals_size: 0,
+        input_base: 0,
+        input_size: 0,
+        output_base: 0,
+        output_size: 0,
+        marker_base: 0,
+        marker_size: 0,
         schedule,
         schedule_manifest: None,
         debug_symbols: crate::debug_symbols::DebugSymbols::new(),
         retain_map: debug_format::RetainMap::new(Vec::new()),
+        located_map: debug_format::LocatedMap::new(Vec::new()),
         source_files: Vec::new(),
     };
 
@@ -533,6 +597,11 @@ fn lower_module_from_pous<'db>(
                         inst.instance_addr = new_addr;
                     }
                 }
+                for fb in &mut task.function_blocks {
+                    if let Some(&new_addr) = bands.remap.get(&fb.program_addr) {
+                        fb.program_addr = new_addr;
+                    }
+                }
             }
         }
         // Every global is relocated into the globals band; patch its address so
@@ -547,6 +616,13 @@ fn lower_module_from_pous<'db>(
     module.retain_size = bands.retain_size;
     module.globals_base = bands.globals_base;
     module.globals_size = bands.globals_size;
+    module.input_base = bands.input_base;
+    module.input_size = bands.input_size;
+    module.output_base = bands.output_base;
+    module.output_size = bands.output_size;
+    module.marker_base = bands.marker_base;
+    module.marker_size = bands.marker_size;
+    module.located_map = build_located_map(db, &bands.located, &global_table, &config_locations);
 
     // The debug-symbol table, now that every address is final; sorted by
     // path.
@@ -594,7 +670,95 @@ fn lower_module_from_pous<'db>(
                         &mut containers,
                     );
                 }
+                // A PROGRAM's located VAR is one cell every instance shares,
+                // listed under the program's name (`P.count`). A debugger
+                // browsing an instance finds it under the instance's path
+                // too, at that same cell.
+                for var in info
+                    .decl
+                    .variables(db)
+                    .iter()
+                    .filter(|v| v.is_program_located(db))
+                {
+                    let path =
+                        crate::debug_symbols::join_path(db, inst.inst_name.text(db), var.name(db));
+                    let key = global_key(db, *var);
+                    if let Some((addr, ty)) = global_table.get(&key) {
+                        crate::debug_symbols::collect_root(
+                            db,
+                            &path,
+                            *addr,
+                            ty,
+                            false,
+                            &mut symbols,
+                            &mut array_syms,
+                            &mut type_table,
+                        );
+                    } else if let Some(address) = var
+                        .location(db)
+                        .and_then(|dv| hir::hir_def::pous::variable::LocatedAddress::of(db, dv))
+                        && let Some(part) = module
+                            .located_map
+                            .entries
+                            .iter()
+                            .find(|e| e.address == address.text.as_str())
+                        && let (Some(of), Some(ty)) = (&part.part_of, part.ty)
+                    {
+                        // A part of a wider address has no cell of its own:
+                        // it is the bits of its owner's.
+                        symbols.push(debug_format::Symbol {
+                            path,
+                            address: part.addr,
+                            size: part.size,
+                            ty,
+                            global: false,
+                            named_type: None,
+                            bits: Some(debug_format::SymBits {
+                                shift: of.shift,
+                                width: part.width,
+                            }),
+                        });
+                    }
+                }
             }
+        }
+    }
+    // A variable VAR_CONFIG locates is a pointer in its instance, which the
+    // walk above does not follow. Its symbol is the channel it points at,
+    // under the instance's path and typed as declared.
+    if let Some(sched) = &module.schedule {
+        for loc in &config_locations {
+            let Some(inst) = sched
+                .tasks
+                .iter()
+                .flat_map(|t| t.programs.iter())
+                .find(|p| p.inst_name.caseless(db) == loc.instance.caseless(db))
+            else {
+                continue;
+            };
+            let Some(var) = loc.members.last() else {
+                continue;
+            };
+            let (owner, offset) = config_cell(db, &loc.address);
+            let key = hir::hir_def::interned::identifier::Ident::new(db, owner.text.clone());
+            let Some((cell, _)) = global_table.get(&key) else {
+                continue;
+            };
+            let mut path = inst.inst_name.text(db).to_string();
+            for member in &loc.members {
+                path.push('.');
+                path.push_str(member.name(db).text(db));
+            }
+            crate::debug_symbols::collect_root(
+                db,
+                &path,
+                cell + offset,
+                &super::lower_type::lower_spec(db, var.spec(db))?,
+                false,
+                &mut symbols,
+                &mut array_syms,
+                &mut type_table,
+            );
         }
     }
     for (name, (addr, ty)) in &global_table {
@@ -616,6 +780,25 @@ fn lower_module_from_pous<'db>(
             true,
             &mut containers,
         );
+    }
+    // A part of a wider address has no cell to walk: it is the bits of its
+    // owner's, as the located map lists it.
+    for part in &module.located_map.entries {
+        let (Some(of), Some(ty)) = (&part.part_of, part.ty) else {
+            continue;
+        };
+        symbols.push(debug_format::Symbol {
+            path: part.name.clone(),
+            address: part.addr,
+            size: part.size,
+            ty,
+            global: true,
+            named_type: None,
+            bits: Some(debug_format::SymBits {
+                shift: of.shift,
+                width: part.width,
+            }),
+        });
     }
     symbols.sort_by(|a, b| a.path.cmp(&b.path));
     containers.sort_by(|a, b| a.path.cmp(&b.path));
@@ -659,6 +842,7 @@ fn lower_module_from_pous<'db>(
     let init_stmts = collect_const_inits(
         db,
         config,
+        all_programs,
         &global_table,
         &module.schedule,
         &program_infos,
@@ -915,12 +1099,110 @@ fn collect_source_files(
 type GlobalTable<'db> =
     FxHashMap<hir::hir_def::interned::identifier::Ident, (u32, crate::types::MirType)>;
 
+/// The address whose cell holds `address`, and where in it: the wider
+/// address it is part of and its byte offset there, or itself at 0. Only an
+/// address of a byte or more is given to a variable located by VAR_CONFIG
+/// (E1424), so the offset is whole bytes.
+fn config_cell(
+    db: &dyn WorkspaceDataBase,
+    address: &hir::hir_def::pous::variable::LocatedAddress,
+) -> (hir::hir_def::pous::variable::LocatedAddress, u32) {
+    match hir::hir_ty::index_graphs::located_view(db, address) {
+        Some(view) => (view.owner, view.shift / 8),
+        None => (address.clone(), 0),
+    }
+}
+
+/// Where a variable a VAR_CONFIG path names sits in memory: its PROGRAM
+/// instance's address plus each member's offset along the path. For a
+/// variable VAR_CONFIG locates, that is its pointer slot. `None` for an
+/// instance nothing schedules (E1412 has it).
+fn config_member<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    instance: hir::hir_def::interned::identifier::Ident,
+    members: &[hir::hir_def::pous::variable::VariableDecl<'db>],
+    schedule: &Option<crate::schedule::MirSchedule>,
+    program_infos: &FxHashMap<
+        hir::hir_def::interned::identifier::Ident,
+        crate::schedule::ProgramInfo<'db>,
+    >,
+) -> Option<u32> {
+    let inst = schedule
+        .as_ref()?
+        .tasks
+        .iter()
+        .flat_map(|t| t.programs.iter())
+        .find(|p| p.inst_name.caseless(db) == instance.caseless(db))?;
+    let mut fields = &program_infos.get(&inst.prog_name)?.struct_type.fields;
+    let mut address = inst.instance_addr;
+    let (last, walked) = members.split_last()?;
+    for member in walked {
+        let field = fields
+            .iter()
+            .find(|f| f.name.caseless(db) == member.name(db).caseless(db))?;
+        address += field.offset;
+        let MirType::Struct(inner) = &field.ty else {
+            return None;
+        };
+        fields = &inner.fields;
+    }
+    let field = fields
+        .iter()
+        .find(|f| f.name.caseless(db) == last.name(db).caseless(db))?;
+    Some(address + field.offset)
+}
+
+/// The name a static cell is known by in the global table, the located map
+/// and the debug symbols: a VAR_GLOBAL's own name, and `P.x` for a PROGRAM
+/// `P`'s located VAR `x`, which two programs or a VAR_GLOBAL may otherwise
+/// share.
+pub(crate) fn global_key<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    var: hir::hir_def::pous::variable::VariableDecl<'db>,
+) -> hir::hir_def::interned::identifier::Ident {
+    use hir::HirNodeInfo;
+    use hir::hir_def::scope::ScopeKind;
+    if var.is_program_located(db)
+        && let ScopeKind::Program(program) =
+            hir::hir_def::semantic_index::get_scope(db, var.get_scope_id(db)).kind
+    {
+        return hir::hir_def::interned::identifier::Ident::new(
+            db,
+            compact_str::CompactString::from(format!(
+                "{}.{}",
+                program.name(db).text(db),
+                var.name(db).text(db)
+            )),
+        );
+    }
+    var.name(db)
+}
+
+/// The located VARs of the programs being lowered: static cells like the
+/// located VAR_GLOBALs, whatever instances of the programs exist.
+fn program_located<'a, 'db>(
+    db: &'db dyn WorkspaceDataBase,
+    programs: &'a [(&'a hir::hir_def::program::ProgramDecl<'db>, Option<String>)],
+) -> impl Iterator<Item = hir::hir_def::pous::variable::VariableDecl<'db>> + 'a
+where
+    'db: 'a,
+{
+    programs.iter().flat_map(move |(program, _)| {
+        program
+            .variables(db)
+            .iter()
+            .copied()
+            .filter(move |v| v.is_program_located(db))
+    })
+}
+
 /// Allocate a slot for every configuration VAR_GLOBAL and build the
-/// symbol table; RETAIN globals go in the band. Located (`AT %…`)
-/// globals are plain storage for now.
+/// symbol table; RETAIN globals go in the band, located (`AT %…`) ones in
+/// the I/O band their area names.
 fn build_global_table<'db>(
     db: &'db dyn WorkspaceDataBase,
     config: &[hir::hir_def::config::ConfigDecl<'db>],
+    programs: &[(&hir::hir_def::program::ProgramDecl<'db>, Option<String>)],
     memory_layout: &mut MirMemoryLayout,
 ) -> Result<GlobalTable<'db>, LowerTypeError> {
     let mut table = GlobalTable::default();
@@ -928,8 +1210,11 @@ fn build_global_table<'db>(
     for config in config {
         // Application scope: a RESOURCE declares no variables of its own.
         for v in config.variables(db) {
-            add_global(db, v, memory_layout, &mut table)?;
+            add_global(db, v, v.name(db), memory_layout, &mut table)?;
         }
+    }
+    for v in program_located(db, programs) {
+        add_global(db, &v, global_key(db, v), memory_layout, &mut table)?;
     }
     Ok(table)
 }
@@ -937,24 +1222,169 @@ fn build_global_table<'db>(
 fn add_global<'db>(
     db: &'db dyn WorkspaceDataBase,
     v: &hir::hir_def::pous::variable::VariableDecl<'db>,
+    key: hir::hir_def::interned::identifier::Ident,
     memory_layout: &mut MirMemoryLayout,
     table: &mut GlobalTable<'db>,
 ) -> Result<(), LowerTypeError> {
+    // Located inside a wider address the workspace mentions, a global is no
+    // cell of its own: it is that address's bits, and every access to it is
+    // lowered as bits of the owner (`ExprLowerCtx::view`).
+    if let Some(dv) = v.location(db)
+        && let Some(address) = hir::hir_def::pous::variable::LocatedAddress::of(db, dv)
+        && hir::hir_ty::index_graphs::located_view(db, &address).is_some()
+    {
+        return Ok(());
+    }
     let ty = super::lower_type::lower_spec(db, v.spec(db))?;
     let size = ty.size_bytes();
     let align = ty.alignment();
-    let addr = memory_layout.allocate(
-        v.name(db),
+    let addr = memory_layout.allocate(key, size, align, crate::memory::MirAllocKind::Variable);
+    // A located global lives in its area's band instead of the globals band:
+    // the host copies a whole direction at once, and a variable that is not
+    // in that range would not travel with it.
+    match located_entry(db, v, key, addr, size, align) {
+        Some(entry) => memory_layout.record_located(entry),
+        None => {
+            // RETAIN globals are flagged so the globals band overlaps the
+            // retain band on them.
+            let retain = v.qualifier(db).contains(hir::Qualifier::RETAIN);
+            memory_layout.record_global(key, addr, size, align, retain);
+        }
+    }
+    table.insert(key, (addr, ty));
+    Ok(())
+}
+
+/// The band entry for a located VAR_GLOBAL, or `None` when the address names
+/// no band — an unknown area letter, a missing or unknown width letter, or
+/// the incomplete `%I*`, each of which `rk check` refuses (E1417) before
+/// lowering ever runs. MIR only has to not invent a band for them.
+fn located_entry<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    v: &hir::hir_def::pous::variable::VariableDecl<'db>,
+    name: hir::hir_def::interned::identifier::Ident,
+    address: u32,
+    size: u32,
+    align: u32,
+) -> Option<crate::memory::LocatedEntry> {
+    let dv = v.location(db)?;
+    Some(crate::memory::LocatedEntry {
+        name,
+        address_text: dv.to_address(db),
+        located: hir::hir_def::pous::variable::LocatedAddress::of(db, dv)?,
+        // Only `%M` reaches here with it set: E1420 refuses RETAIN on an
+        // input or output image.
+        retain: v.qualifier(db).contains(hir::Qualifier::RETAIN),
+        address,
         size,
         align,
-        crate::memory::MirAllocKind::Variable,
-    );
-    // RETAIN globals are flagged so the globals band overlaps the retain
-    // band on them.
-    let retain = v.qualifier(db).contains(hir::Qualifier::RETAIN);
-    memory_layout.record_global(v.name(db), addr, size, align, retain);
-    table.insert(v.name(db), (addr, ty));
-    Ok(())
+    })
+}
+
+/// The located map the module carries: every located variable at its FINAL
+/// address, paired with the address a host binds a channel to. The band
+/// exports say where the three areas are; this says which cell is which
+/// inside them.
+fn build_located_map<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    located: &[crate::memory::LocatedEntry],
+    globals: &GlobalTable<'db>,
+    config_locations: &[&hir::hir_ty::config::ConfigLocation<'db>],
+) -> debug_format::LocatedMap {
+    use hir::hir_def::pous::variable::LocationArea;
+    let area = |a: LocationArea| match a {
+        LocationArea::Input => debug_format::LocatedArea::Input,
+        LocationArea::Output => debug_format::LocatedArea::Output,
+        LocationArea::Marker => debug_format::LocatedArea::Marker,
+    };
+    // An address no declaration names but VAR_CONFIG gives a variable is
+    // typed as that variable is declared, not by its width.
+    let configured_type = |address: &hir::hir_def::pous::variable::LocatedAddress| {
+        config_locations
+            .iter()
+            .find(|loc| loc.address == *address)
+            .and_then(|loc| loc.members.last())
+            .and_then(|var| super::lower_type::lower_spec(db, var.spec(db)).ok())
+            .and_then(|ty| crate::debug_symbols::scalar_sym_ty(&ty))
+    };
+    let mut entries: Vec<debug_format::LocatedVar> = located
+        .iter()
+        .map(|e| debug_format::LocatedVar {
+            address: e.address_text.clone(),
+            name: e.name.text(db).to_string(),
+            area: area(e.located.area),
+            path: e.located.levels.clone(),
+            width: u16::from(e.located.width),
+            addr: e.address,
+            size: e.size,
+            ty: hir::hir_ty::index_graphs::located_declaration(db, &e.located)
+                .is_none()
+                .then(|| configured_type(&e.located))
+                .flatten()
+                .or_else(|| {
+                    globals
+                        .get(&e.name)
+                        .and_then(|(_, ty)| crate::debug_symbols::scalar_sym_ty(ty))
+                }),
+            part_of: None,
+        })
+        .collect();
+
+    // The parts: addresses stored inside a wider one, with no cell of their
+    // own. Each is listed at its owner's cell with the bits it is, so a host
+    // finds every address the program names, part or not, the same way; an
+    // address VAR_CONFIG gives an instance variable included.
+    let mut parts: Vec<debug_format::LocatedVar> = Vec::new();
+    {
+        let mentioned = hir::hir_ty::index_graphs::located_by_file(db).flat_map(|m| m.keys());
+        for address in mentioned.chain(config_locations.iter().map(|loc| &loc.address)) {
+            if parts.iter().any(|p| p.address == address.text.as_str()) {
+                continue;
+            }
+            let Some(view) = hir::hir_ty::index_graphs::located_view(db, address) else {
+                continue;
+            };
+            let Some(owner) = entries
+                .iter()
+                .find(|cell| cell.address.eq_ignore_ascii_case(&view.owner.text))
+            else {
+                continue;
+            };
+            // Under the name it was declared with, if it was; the address
+            // stands in for a bare one, as it does for a bare cell.
+            let declared = hir::hir_ty::index_graphs::located_declaration(db, address);
+            let (name, ty) = match declared {
+                Some(v) => (
+                    global_key(db, v).text(db).to_string(),
+                    super::lower_type::lower_spec(db, v.spec(db))
+                        .ok()
+                        .and_then(|ty| crate::debug_symbols::scalar_sym_ty(&ty)),
+                ),
+                None => (
+                    address.text.to_string(),
+                    configured_type(address).or(Some(crate::debug_symbols::sym_type_of(
+                        crate::located::width_elementary(address.width),
+                    ))),
+                ),
+            };
+            parts.push(debug_format::LocatedVar {
+                address: address.text.to_string(),
+                name,
+                area: area(address.area),
+                path: address.levels.clone(),
+                width: u16::from(address.width),
+                addr: owner.addr,
+                size: owner.size,
+                ty,
+                part_of: Some(debug_format::LocatedPart {
+                    owner: owner.address.clone(),
+                    shift: view.shift as u16,
+                }),
+            });
+        }
+    }
+    entries.append(&mut parts);
+    debug_format::LocatedMap::new(entries)
 }
 
 /// Fill in the address and type of each global a body referenced by
@@ -969,7 +1399,7 @@ fn resolve_global_places<'db>(
         rewrite_globals_stmt(stmt, globals, &mut missing);
     }
     match missing.first() {
-        Some(name) => Err(LowerTypeError::UnsupportedType(format!(
+        Some((name, _)) => Err(LowerTypeError::UnsupportedType(format!(
             "no storage was allocated for global '{}'",
             name.text(db)
         ))),
@@ -977,10 +1407,111 @@ fn resolve_global_places<'db>(
     }
 }
 
+/// Give every address a body wrote BARE (`%IW4`) a cell of its own.
+///
+/// Such an address declares nothing, so there is no VariableDecl to allocate
+/// against — lowering emits it as a global named by the address itself, and
+/// this is where that name gets storage. Two mentions of the same address, in
+/// any two bodies, are one cell; a VAR_GLOBAL declared `AT` the same address
+/// is that same cell too, rather than a second one the host would have to
+/// bind twice.
+///
+/// It runs before the bands are carved, and it reuses the global rewriter to
+/// find the names rather than walking the bodies a second way: a name the
+/// table does not hold comes back as missing, and one of the addresses the
+/// workspace's files mention is the only kind of missing name that is not an
+/// error. Each is taken as HIR decoded it, never read again from its text.
+fn synthesize_bare_addresses<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    functions: &mut [crate::function::MirFunction],
+    config_cells: &[hir::hir_def::pous::variable::LocatedAddress],
+    memory_layout: &mut MirMemoryLayout,
+    table: &mut GlobalTable<'db>,
+) -> Result<(), LowerTypeError> {
+    use hir::hir_def::pous::variable::LocatedAddress;
+    // Every address the workspace's files mention, by the text a bare one is
+    // lowered under.
+    let mentioned: FxHashMap<&str, &LocatedAddress> =
+        hir::hir_ty::index_graphs::located_by_file(db)
+            .flat_map(|m| m.keys())
+            .map(|a| (a.text.as_str(), a))
+            .collect();
+    // Keyed by the address text so the allocation order is the addresses'
+    // own and not the order the bodies happen to mention them in.
+    let mut wanted: std::collections::BTreeMap<
+        String,
+        (
+            hir::hir_def::interned::identifier::Ident,
+            crate::types::MirType,
+            LocatedAddress,
+        ),
+    > = std::collections::BTreeMap::new();
+    for func in functions.iter_mut() {
+        let mut missing = Vec::new();
+        for stmt in &mut func.body {
+            rewrite_globals_stmt(stmt, table, &mut missing);
+        }
+        for (name, ty) in missing {
+            if let Some(address) = mentioned.get(name.text(db).as_str()) {
+                wanted
+                    .entry(address.text.to_string())
+                    .or_insert((name, ty, (*address).clone()));
+            }
+            // Anything else is a global that really is missing; the pass that
+            // runs once the layout is final reports it.
+        }
+    }
+    for address in config_cells {
+        let name = hir::hir_def::interned::identifier::Ident::new(db, address.text.clone());
+        if table.contains_key(&name) {
+            continue;
+        }
+        wanted.entry(address.text.to_string()).or_insert((
+            name,
+            MirType::Elementary(crate::located::width_elementary(address.width)),
+            address.clone(),
+        ));
+    }
+
+    for (text, (name, ty, located)) in wanted {
+        // A declaration already bound this address, so the bare mention is
+        // the same storage under a second name.
+        if let Some(declared) = memory_layout
+            .located_allocations
+            .iter()
+            .find(|e| e.located == located)
+            && let Some((address, declared_ty)) = table.get(&declared.name).cloned()
+        {
+            table.insert(name, (address, declared_ty));
+            continue;
+        }
+        let size = ty.size_bytes();
+        let align = ty.alignment();
+        let address =
+            memory_layout.allocate(name, size, align, crate::memory::MirAllocKind::Variable);
+        memory_layout.record_located(crate::memory::LocatedEntry {
+            name,
+            address_text: text,
+            located,
+            // A bare address has no declaration, so nothing can have asked
+            // for it to persist.
+            retain: false,
+            address,
+            size,
+            align,
+        });
+        table.insert(name, (address, ty));
+    }
+    Ok(())
+}
+
 fn rewrite_globals_place(
     place: &mut crate::expr::MirPlace,
     globals: &GlobalTable<'_>,
-    missing: &mut Vec<hir::hir_def::interned::identifier::Ident>,
+    missing: &mut Vec<(
+        hir::hir_def::interned::identifier::Ident,
+        crate::types::MirType,
+    )>,
 ) {
     use crate::expr::MirPlace;
     match place {
@@ -993,7 +1524,7 @@ fn rewrite_globals_place(
                 *address = *addr;
                 *ty = global_ty.clone();
             }
-            None => missing.push(*name),
+            None => missing.push((*name, ty.clone())),
         },
         MirPlace::Local(_) => {}
         MirPlace::Field { base, .. } | MirPlace::Deref { base, .. } => {
@@ -1010,7 +1541,10 @@ fn rewrite_globals_place(
 fn rewrite_globals_expr(
     expr: &mut crate::expr::MirExpr,
     globals: &GlobalTable<'_>,
-    missing: &mut Vec<hir::hir_def::interned::identifier::Ident>,
+    missing: &mut Vec<(
+        hir::hir_def::interned::identifier::Ident,
+        crate::types::MirType,
+    )>,
 ) {
     use crate::expr::MirExpr;
     match expr {
@@ -1035,6 +1569,7 @@ fn rewrite_globals_expr(
             }
             for bind in &mut call.output_bindings {
                 rewrite_globals_place(&mut bind.target, globals, missing);
+                rewrite_globals_expr(&mut bind.value, globals, missing);
             }
             for bind in &mut call.extern_results {
                 if let Some(dest) = &mut bind.dest {
@@ -1049,7 +1584,10 @@ fn rewrite_globals_expr(
 fn rewrite_globals_stmt(
     stmt: &mut crate::stmt::MirStmt,
     globals: &GlobalTable<'_>,
-    missing: &mut Vec<hir::hir_def::interned::identifier::Ident>,
+    missing: &mut Vec<(
+        hir::hir_def::interned::identifier::Ident,
+        crate::types::MirType,
+    )>,
 ) {
     use crate::stmt::MirStmt;
     match stmt {
@@ -1063,6 +1601,7 @@ fn rewrite_globals_stmt(
             }
             for binding in &mut call.output_bindings {
                 rewrite_globals_place(&mut binding.target, globals, missing);
+                rewrite_globals_expr(&mut binding.value, globals, missing);
             }
         }
         MirStmt::FbCall {
@@ -1109,12 +1648,15 @@ fn rewrite_globals_stmt(
             }
         }
         MirStmt::For {
+            control,
             start,
             end,
             step,
             body,
             ..
         } => {
+            // The counter may be a global too, or bytes of a located cell.
+            rewrite_globals_place(control, globals, missing);
             rewrite_globals_expr(start, globals, missing);
             rewrite_globals_expr(end, globals, missing);
             rewrite_globals_expr(step, globals, missing);
@@ -1137,7 +1679,10 @@ fn rewrite_globals_stmt(
 fn rewrite_globals_body(
     body: &mut [crate::stmt::MirStmt],
     globals: &GlobalTable<'_>,
-    missing: &mut Vec<hir::hir_def::interned::identifier::Ident>,
+    missing: &mut Vec<(
+        hir::hir_def::interned::identifier::Ident,
+        crate::types::MirType,
+    )>,
 ) {
     for stmt in body {
         rewrite_globals_stmt(stmt, globals, missing);
@@ -1149,6 +1694,7 @@ fn rewrite_globals_body(
 fn collect_const_inits<'db>(
     db: &'db dyn WorkspaceDataBase,
     config: &[hir::hir_def::config::ConfigDecl<'db>],
+    programs: &[(&hir::hir_def::program::ProgramDecl<'db>, Option<String>)],
     global_table: &GlobalTable<'db>,
     schedule: &Option<crate::schedule::MirSchedule>,
     program_infos: &FxHashMap<
@@ -1159,14 +1705,39 @@ fn collect_const_inits<'db>(
 ) -> Result<Vec<crate::stmt::MirStmt>, LowerTypeError> {
     let mut stmts = Vec::new();
 
-    // Every fragment's VAR_GLOBALs.
-    for config in config {
-        for v in config.variables(db) {
-            let Some((addr, ty)) = global_table.get(&v.name(db)) else {
-                continue;
-            };
-            // TYPE defaults first; a declaration init overlays by store order.
-            super::lower_func::lower_type_default_inits(
+    // Every fragment's VAR_GLOBALs, then every PROGRAM's located VARs: both
+    // are static cells, initialized once whatever instances exist.
+    let statics: Vec<_> = config
+        .iter()
+        .flat_map(|c| c.variables(db).iter().map(|v| (*v, v.name(db))))
+        .chain(program_located(db, programs).map(|v| (v, global_key(db, v))))
+        .collect();
+    for (v, key) in statics {
+        let Some((addr, ty)) = global_table.get(&key) else {
+            continue;
+        };
+        // TYPE defaults first; a declaration init overlays by store order.
+        super::lower_func::lower_type_default_inits(
+            db,
+            super::lower_func::InitTarget::Static { base: *addr },
+            ty,
+            v.spec(db).infer(db),
+            string_pool,
+            &mut stmts,
+        )?;
+        if let Some(init) = v.init(db) {
+            super::lower_func::lower_resolved_init_into(
+                db,
+                *addr,
+                ty,
+                init,
+                &mut stmts,
+                string_pool,
+            )?;
+        } else {
+            // A global FB instance is initialized from its type's members;
+            // an array of them, once per element.
+            super::lower_func::lower_declared_instance_inits(
                 db,
                 super::lower_func::InitTarget::Static { base: *addr },
                 ty,
@@ -1174,27 +1745,6 @@ fn collect_const_inits<'db>(
                 string_pool,
                 &mut stmts,
             )?;
-            if let Some(init) = v.init(db) {
-                super::lower_func::lower_resolved_init_into(
-                    db,
-                    *addr,
-                    ty,
-                    init,
-                    &mut stmts,
-                    string_pool,
-                )?;
-            } else {
-                // A global FB instance is initialized from its type's members;
-                // an array of them, once per element.
-                super::lower_func::lower_declared_instance_inits(
-                    db,
-                    super::lower_func::InitTarget::Static { base: *addr },
-                    ty,
-                    v.spec(db).infer(db),
-                    string_pool,
-                    &mut stmts,
-                )?;
-            }
         }
     }
 
@@ -1211,6 +1761,11 @@ fn collect_const_inits<'db>(
                     )));
                 };
                 for field in &info.struct_type.fields {
+                    // A pointer VAR_CONFIG binds, below; its value goes to
+                    // the channel.
+                    if field.by_ref {
+                        continue;
+                    }
                     let Some(var) = info
                         .decl
                         .variables(db)
@@ -1255,5 +1810,90 @@ fn collect_const_inits<'db>(
         }
     }
 
+    // Each variable VAR_CONFIG locates: its instance's pointer slot is given
+    // the address of its channel, and its type's default, if it has one
+    // (`TYPE Speed : INT := 5`), goes to the channel. The grammar gives the
+    // variable no initial value of its own. A declaration at the channel, or
+    // at the cell the channel is part of, already gave the cell its initial
+    // value, and that one stands.
+    for c in config {
+        for loc in &hir::hir_ty::config::infer_config_result(db, *c).locations {
+            let Some(slot) = config_member(db, loc.instance, &loc.members, schedule, program_infos)
+            else {
+                continue;
+            };
+            let (owner, offset) = config_cell(db, &loc.address);
+            let key = hir::hir_def::interned::identifier::Ident::new(db, owner.text.clone());
+            let Some((cell, _)) = global_table.get(&key) else {
+                return Err(LowerTypeError::UnsupportedType(format!(
+                    "'{}' was given no cell for VAR_CONFIG to point at",
+                    owner.text
+                )));
+            };
+            let channel = cell + offset;
+            stmts.push(crate::stmt::MirStmt::MemStore {
+                offset: slot,
+                value: crate::expr::MirConstant::I32(channel as i32),
+            });
+            let declared = hir::hir_ty::index_graphs::located_declaration(db, &loc.address)
+                .or_else(|| hir::hir_ty::index_graphs::located_declaration(db, &owner));
+            if let Some(var) = loc.members.last()
+                && declared.is_none()
+            {
+                let ty = super::lower_type::lower_spec(db, var.spec(db))?;
+                super::lower_func::lower_type_default_inits(
+                    db,
+                    super::lower_func::InitTarget::Static { base: channel },
+                    &ty,
+                    var.spec(db).infer(db),
+                    string_pool,
+                    &mut stmts,
+                )?;
+            }
+        }
+    }
+
+    // Each VAR_CONFIG value: a variable's starting value in one instance,
+    // written after the instance's own initializers, which it overrides. A
+    // value for a variable VAR_CONFIG locates goes to its channel, over the
+    // type default the binding above wrote there.
+    for c in config {
+        for value in &hir::hir_ty::config::infer_config_result(db, *c).values {
+            let Some(var) = value.members.last() else {
+                continue;
+            };
+            let base = match &value.channel {
+                Some(address) => {
+                    let (owner, offset) = config_cell(db, address);
+                    let key =
+                        hir::hir_def::interned::identifier::Ident::new(db, owner.text.clone());
+                    let Some((cell, _)) = global_table.get(&key) else {
+                        return Err(LowerTypeError::UnsupportedType(format!(
+                            "'{}' was given no cell for a VAR_CONFIG value",
+                            owner.text
+                        )));
+                    };
+                    cell + offset
+                }
+                None => {
+                    let Some(address) =
+                        config_member(db, value.instance, &value.members, schedule, program_infos)
+                    else {
+                        continue;
+                    };
+                    address
+                }
+            };
+            let ty = super::lower_type::lower_spec(db, var.spec(db))?;
+            super::lower_func::lower_resolved_init_into(
+                db,
+                base,
+                &ty,
+                value.init,
+                &mut stmts,
+                string_pool,
+            )?;
+        }
+    }
     Ok(stmts)
 }

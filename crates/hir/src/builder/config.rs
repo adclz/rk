@@ -102,9 +102,34 @@ impl<'db> SemanticIndexBuilder<'db> {
         let mut config_init: Vec<ConfigInstInit<'db>> = vec![];
         for init_section in &config.config_init {
             for inst_id in &init_section.cast(self.ast).children {
-                let r = self.parse_config_inst_init(inst_id.cast(self.ast));
-                if let Some(i) = self.try_parse(r) {
-                    config_init.push(i);
+                match inst_id.cast(self.ast) {
+                    ast::generated::ERRConfigEntryWithNoSpec_ConfigInstInit::ConfigInstInit(
+                        inst,
+                    ) => {
+                        let r = self.parse_config_inst_init(inst);
+                        if let Some(i) = self.try_parse(r) {
+                            config_init.push(i);
+                        }
+                    }
+                    // Its path and location are still what the IDE reads.
+                    ast::generated::ERRConfigEntryWithNoSpec_ConfigInstInit::ERRConfigEntryWithNoSpec(
+                        err,
+                    ) => {
+                        self.errors.push(
+                            SyntaxError::MissingVarType(err.get_range().to_owned())
+                                .to_diagnostic(self.db, self.file),
+                        );
+                        let r = err.path.cast(self.ast).parse(self);
+                        let _ = self.try_parse(r);
+                        if let Some(located_at) = &err.children {
+                            let r = located_at
+                                .cast(self.ast)
+                                .children
+                                .cast(self.ast)
+                                .to_direct_variable(self);
+                            let _ = self.try_parse(r);
+                        }
+                    }
                 }
             }
         }
@@ -305,7 +330,7 @@ impl<'db> SemanticIndexBuilder<'db> {
         fb: &ast::generated::FbTask,
     ) -> anyhow::Result<FbTask<'db>, IdeDiagnostic> {
         let path = fb.children.cast(self.ast).parse(self)?;
-        let task = Ident::from_node(self.db, self.file, fb.task.cast(self.ast))?;
+        let task = SpanIdent::from_node(self.db, self, fb.task.cast(self.ast))?;
         Ok(FbTask { path, task })
     }
 
@@ -348,6 +373,18 @@ impl<'db> SemanticIndexBuilder<'db> {
         };
 
         let path = path.ok_or_else(|| missing("path expression"))?;
+
+        // An address a connection names is mentioned like one in a body, and
+        // gets a cell the same way.
+        let direct = match (&source, &sink) {
+            (Some(DataSource::Direct(dv)), _) | (_, Some(DataSink::Direct(dv))) => Some(*dv),
+            _ => None,
+        };
+        if let Some(address) =
+            direct.and_then(|dv| crate::hir_def::pous::variable::LocatedAddress::of(self.db, dv))
+        {
+            self.located.push((address, HirNode::PathExpr(path)));
+        }
 
         if let Some(source) = source {
             Ok(ProgCnxn::Source { path, source })
@@ -452,6 +489,7 @@ impl<'db> SemanticIndexBuilder<'db> {
 
         let mut located_at = None;
         let mut init_expr = None;
+        let mut spec = None;
 
         for child in &inst.children {
             match child.cast(self.ast) {
@@ -463,6 +501,7 @@ impl<'db> SemanticIndexBuilder<'db> {
                     let r = lvsi.to_spec_init(self);
                     if let Some(result) = self.try_parse(r) {
                         init_expr = result.init;
+                        spec = Some(result.spec);
                     }
                 }
             }
@@ -471,9 +510,7 @@ impl<'db> SemanticIndexBuilder<'db> {
         // Grammar normally guarantees an init expression on a config
         // inst declaration; partial/recovered parses may still leave
         // us short, so surface that as a syntax error (E0002).
-        // A location-only entry was refused here with a syntax code, before
-        // the E1416 that says VAR_CONFIG is not applied; only an entry with
-        // neither a location nor a value is malformed.
+        // Only an entry with neither a location nor a value is malformed.
         if located_at.is_none() && init_expr.is_none() {
             return Err(crate::check::errors::e00_syntax::SyntaxError::MissingNode {
                 file: self.file,
@@ -487,6 +524,7 @@ impl<'db> SemanticIndexBuilder<'db> {
         Ok(crate::hir_def::config::ConfigInstInit {
             path,
             located_at,
+            spec,
             init: init_expr,
         })
     }

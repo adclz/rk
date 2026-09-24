@@ -58,6 +58,11 @@ pub struct ExprLowerCtx<'db> {
     /// `VAR_OUTPUT`, `$argcopy$N` for an aggregate `VAR_INPUT` snapshot. Drained
     /// into the function's locals by the lowering caller (see `build_call_args`).
     pub call_scratch: std::rc::Rc<std::cell::RefCell<CallScratch>>,
+    /// Statements that must run right after the one being lowered: the store
+    /// of an FB output into the owner of a view it was bound to. Drained by
+    /// the statement loop after each statement, so a nested body keeps its
+    /// own in place.
+    pub after_stmt: std::cell::RefCell<Vec<crate::stmt::MirStmt>>,
     /// The POU this body is emitted for, which for an inherited method is the
     /// inheritor: `THIS.m()` inside it must reach the inheritor's `m`.
     pub this_pou: Option<hir::hir_def::pous::pou::Pou<'db>>,
@@ -129,6 +134,7 @@ impl<'db> ExprLowerCtx<'db> {
             iface_call_rewrites: None,
             variadic_expansion: None,
             call_scratch: Default::default(),
+            after_stmt: Default::default(),
             this_pou: None,
         }
     }
@@ -146,6 +152,7 @@ impl<'db> ExprLowerCtx<'db> {
             iface_call_rewrites: None,
             variadic_expansion: None,
             call_scratch: Default::default(),
+            after_stmt: Default::default(),
             this_pou: None,
         }
     }
@@ -575,6 +582,10 @@ impl<'db> ExprLowerCtx<'db> {
             PrimaryExpr::Literal(elem) => self.lower_literal(elem, parent_expr),
 
             PrimaryExpr::VariableAccess(var_access) => {
+                // `%IX0.3` beside a `%IW0` is bits of that word's cell.
+                if let Some(view) = self.view(*var_access, parent_expr.infer(self.db))? {
+                    return Ok(view.read());
+                }
                 let place = self.lower_variable_access(*var_access)?;
                 // `b.1` reads a slice of `b`, not `b` itself.
                 if var_access.multibits(self.db).is_some() {
@@ -638,6 +649,14 @@ impl<'db> ExprLowerCtx<'db> {
             PrimaryExpr::RefValue { value } => match value {
                 RefValue::Null => Ok(MirExpr::Constant(MirConstant::Null)),
                 RefValue::Address(path) => {
+                    // A part of a wider address has no cell of its own: the
+                    // reference is to its bytes in its owner's (a bit has
+                    // none, E1423).
+                    let ty = hir::hir_ty::body::infer_body(self.db, path.scope_id(self.db))
+                        .type_of_begin_expr_with_adjustments(self.db, *path);
+                    if let Some(super::multibit::View::Bytes(place)) = self.view_of_variable(ty)? {
+                        return Ok(MirExpr::AddrOf(place));
+                    }
                     let place = self.lower_begin_path_to_place(*path)?;
                     Ok(MirExpr::AddrOf(place))
                 }
@@ -654,11 +673,9 @@ impl<'db> ExprLowerCtx<'db> {
     ) -> Result<MirExpr, LowerTypeError> {
         let db = self.db;
         match elem {
-            Elementary::Bool(ident) => {
-                let text = ident.text(db);
-                let val = text.eq_ignore_ascii_case("TRUE") || text.as_str() == "1";
-                Ok(MirExpr::Constant(MirConstant::Bool(val)))
-            }
+            Elementary::Bool(_) => Ok(MirExpr::Constant(MirConstant::Bool(
+                elem.as_bool(db).unwrap_or_default(),
+            ))),
 
             // Signed integers
             Elementary::SInt(int) | Elementary::Int(int) | Elementary::DInt(int) => {
@@ -904,9 +921,38 @@ impl<'db> ExprLowerCtx<'db> {
     ) -> Result<MirPlace, LowerTypeError> {
         match var_access.kind(self.db) {
             VariableAccessKind::Symbolic(begin_path) => self.lower_begin_path_to_place(begin_path),
-            VariableAccessKind::Direct(_) => Err(LowerTypeError::UnsupportedType(
-                "Direct variable access not yet supported".to_string(),
-            )),
+            // An address written bare declares nothing, so there is no
+            // VariableDecl to allocate against. It lowers to a global named
+            // by the address itself, and `lower_module` gives every such name
+            // one cell in its area's band — which is what makes two mentions
+            // of `%IW0`, in any two bodies, the same storage. The name is the
+            // text HIR decoded it to, upper-cased, so `%iw0` is not a second
+            // cell.
+            VariableAccessKind::Direct(dv) => {
+                let address = hir::hir_def::pous::variable::LocatedAddress::of(self.db, dv)
+                    .ok_or_else(|| {
+                        LowerTypeError::UnsupportedType(format!(
+                            "'{}' names no I/O band; `rk check` refuses it (E1417)",
+                            dv.to_address(self.db)
+                        ))
+                    })?;
+                // The address's own type is its width's bit string, which is
+                // not the cell's when a VAR_GLOBAL declared it otherwise: a
+                // bare `%ID0` is the bits of a REAL there, so the cell is
+                // reached as a field of that type at offset 0.
+                let name = hir::hir_def::interned::identifier::Ident::new(self.db, address.text);
+                let ty = MirType::Elementary(crate::located::width_elementary(address.width));
+                Ok(MirPlace::Field {
+                    base: Box::new(MirPlace::Global {
+                        name: Some(name),
+                        address: 0,
+                        ty: ty.clone(),
+                    }),
+                    field_name: name,
+                    field_offset: 0,
+                    field_type: ty,
+                })
+            }
         }
     }
 
@@ -930,7 +976,7 @@ impl<'db> ExprLowerCtx<'db> {
                 // The address is filled in once the layout is final.
                 StorageClass::Global => {
                     return MirPlace::Global {
-                        name: Some(declared),
+                        name: Some(crate::lower::lower_module::global_key(self.db, decl)),
                         address: 0,
                         ty: MirType::Void,
                     };
@@ -1006,6 +1052,15 @@ impl<'db> ExprLowerCtx<'db> {
         // `flatten()[0]` is the innermost root step.
         let root_expr = path.flatten(self.db).first().map(|s| s.get_expr(self.db))?;
         infer_body(self.db, path.scope_id(self.db)).variable_for_path_expr(root_expr)
+    }
+
+    /// What a dereference `r^` reads and writes. HIR types the `^` step as
+    /// the reference itself and records the pointee as its adjustment; the
+    /// reference's own type made every store through it a four-byte one, and
+    /// every load of a 64-bit or real pointee an i32.
+    fn pointee_of(&self, deref: hir::hir_def::expressions::expression::PathExpr<'db>) -> Type<'db> {
+        hir::hir_ty::body::infer_body(self.db, deref.scope_id(self.db))
+            .type_of_path_expr_with_adjustments(deref)
     }
 
     /// Lower a BeginPathExpr to a MirPlace, handling nested field/index/deref chains.
@@ -1100,15 +1155,7 @@ impl<'db> ExprLowerCtx<'db> {
                 let field_name = match &field_expr.var {
                     VarAccess::Simple(span_ident) => span_ident.ident,
                 };
-                let base_type = field_expr.path.infer(self.db);
-                let (field_offset, field_type) = self.field_slot(base_type, field_name)?;
-
-                Ok(MirPlace::Field {
-                    base: Box::new(inner),
-                    field_name,
-                    field_offset,
-                    field_type,
-                })
+                self.member_place(inner, field_expr.path.infer(self.db), field_name)
             }
             PathExprKind::Index(index_expr) => {
                 let inner = self.lower_this_path(index_expr.path)?;
@@ -1117,7 +1164,7 @@ impl<'db> ExprLowerCtx<'db> {
             PathExprKind::Deref(deref_expr) => {
                 let inner = self.lower_this_path(deref_expr.path)?;
                 let pointee_type = self
-                    .lower_type_resolved(path_expr.infer(self.db))
+                    .lower_type_resolved(self.pointee_of(path_expr))
                     .unwrap_or(MirType::Void);
                 Ok(MirPlace::Deref {
                     base: Box::new(inner),
@@ -1215,17 +1262,8 @@ impl<'db> ExprLowerCtx<'db> {
                 let field_name = match &field_expr.var {
                     VarAccess::Simple(span_ident) => span_ident.ident,
                 };
-
                 // Offset and type come from the base type's layout in one lookup.
-                let base_hir_type = field_expr.path.infer(self.db);
-                let (field_offset, field_type) = self.field_slot(base_hir_type, field_name)?;
-
-                Ok(MirPlace::Field {
-                    base: Box::new(inner),
-                    field_name,
-                    field_offset,
-                    field_type,
-                })
+                self.member_place(inner, field_expr.path.infer(self.db), field_name)
             }
 
             PathExprKind::Index(index_expr) => {
@@ -1235,9 +1273,8 @@ impl<'db> ExprLowerCtx<'db> {
 
             PathExprKind::Deref(deref_expr) => {
                 let inner = self.lower_path_expr_chain(base, deref_expr.path)?;
-                let pointee_hir_type = path_expr.infer(self.db);
                 let pointee_type = self
-                    .lower_type_resolved(pointee_hir_type)
+                    .lower_type_resolved(self.pointee_of(path_expr))
                     .unwrap_or(MirType::Void);
                 Ok(MirPlace::Deref {
                     base: Box::new(inner),
@@ -1250,14 +1287,35 @@ impl<'db> ExprLowerCtx<'db> {
         }
     }
 
-    /// The byte offset and type of `field_name` within `base_type`, from one
-    /// layout lookup. The type must come from the layout: `Type::normalize`
+    /// The member `field_name` of `base`, reached through a path (`fb.x`,
+    /// `THIS.a.b`). A member held as a pointer to its storage, a VAR_IN_OUT's
+    /// argument or the channel VAR_CONFIG located an `AT %I*` at, is
+    /// dereferenced here as it is when the instance names it itself: reached
+    /// from outside, it was read, written and referenced as the pointer.
+    fn member_place(
+        &self,
+        base: MirPlace,
+        base_type: Type<'db>,
+        field_name: hir::hir_def::interned::identifier::Ident,
+    ) -> Result<MirPlace, LowerTypeError> {
+        let field = self.layout_field(base_type, field_name)?;
+        let place = MirPlace::Field {
+            base: Box::new(base),
+            field_name,
+            field_offset: field.offset,
+            field_type: field.ty.clone(),
+        };
+        Ok(Self::wrap_inout_deref(&field, place))
+    }
+
+    /// The layout's field `field_name` of `base_type`, offset, type and all,
+    /// from one lookup. The type must come from the layout: `Type::normalize`
     /// collapses `STRING[n]`, and the layout kept the capacity.
-    fn field_slot(
+    fn layout_field(
         &self,
         base_type: Type<'db>,
         field_name: hir::hir_def::interned::identifier::Ident,
-    ) -> Result<(u32, MirType), LowerTypeError> {
+    ) -> Result<crate::types::MirStructField, LowerTypeError> {
         let base_mir = self.lower_pointee(base_type).ok();
         // If the resolved type is an array, the field access is on the element type
         let effective_mir = match base_mir {
@@ -1269,7 +1327,7 @@ impl<'db> ExprLowerCtx<'db> {
         if let Some(MirType::Struct(s)) = &effective_mir {
             for field in &s.fields {
                 if field.name.caseless(self.db) == field_name.caseless(self.db) {
-                    return Ok((field.offset, field.ty.clone()));
+                    return Ok(field.clone());
                 }
             }
         }
@@ -1731,6 +1789,13 @@ impl<'db> ExprLowerCtx<'db> {
                         });
                     }
                     ParamAssignKind::FormalOutput { variable, .. } => {
+                        if self.view(variable, variable.infer(self.db))?.is_some() {
+                            return Err(LowerTypeError::UnsupportedType(
+                                "a call with no signature cannot write its output into part \
+                                 of a wider address"
+                                    .to_string(),
+                            ));
+                        }
                         let place = self.lower_variable_access(variable)?;
                         args.push(MirCallArg {
                             value: MirExpr::AddrOf(place),
@@ -1930,7 +1995,6 @@ impl<'db> ExprLowerCtx<'db> {
                     }
                 }
                 hir::hir_ty::body::ParamBinding::Output(variable) => {
-                    let place = self.lower_variable_access(*variable)?;
                     let ty = crate::lower::lower_func::lower_var_type(self.db, *var)?;
                     // A WIDER scalar destination converts after the call: the
                     // callee writes its own lane wherever it is pointed.
@@ -1949,6 +2013,60 @@ impl<'db> ExprLowerCtx<'db> {
                             _ => None,
                         }
                     });
+                    let place = match self.view(*variable, variable.infer(self.db))? {
+                        // Whole bytes of a wider address's cell have an
+                        // address the callee writes through.
+                        Some(super::multibit::View::Bytes(place)) => place,
+                        // Bits of it do not: the output is received in a
+                        // scratch, and the owner is rebuilt with it once the
+                        // call returns, inside the expression the call is.
+                        Some(view) => {
+                            let scratch = if is_extern {
+                                let scratch = self.extern_result_scratch(ty.clone());
+                                extern_results.push(crate::expr::ExternResultBind {
+                                    scratch,
+                                    dest: None,
+                                    ty: ty.clone(),
+                                    target_lane: None,
+                                });
+                                scratch
+                            } else {
+                                let scratch = hir::hir_def::interned::identifier::Ident::new(
+                                    self.db,
+                                    compact_str::CompactString::from(format!(
+                                        "$outcopy${}",
+                                        self.call_scratch.borrow().memory.len()
+                                    )),
+                                );
+                                self.call_scratch
+                                    .borrow_mut()
+                                    .memory
+                                    .push((scratch, ty.clone()));
+                                args.push(MirCallArg {
+                                    value: MirExpr::AddrOf(MirPlace::Local(scratch)),
+                                    kind: MirArgKind::ByRef,
+                                });
+                                scratch
+                            };
+                            let mut value = MirExpr::Load(MirPlace::Local(scratch), ty);
+                            if let (Some(from), Some(to)) = (out_lane, target_lane) {
+                                value = MirExpr::Cast {
+                                    expr: Box::new(value),
+                                    from,
+                                    to,
+                                };
+                            }
+                            let lane = view.store_lane();
+                            let (target, value) = view.write(value);
+                            output_bindings.push(crate::expr::MirOutputBinding {
+                                target,
+                                value,
+                                ty: lane,
+                            });
+                            continue;
+                        }
+                        None => self.lower_variable_access(*variable)?,
+                    };
                     if is_extern {
                         // The result pops off the stack into a scratch,
                         // then stores to the bound place — no pointer arg.
@@ -1968,16 +2086,22 @@ impl<'db> ExprLowerCtx<'db> {
                                 self.call_scratch.borrow().memory.len()
                             )),
                         );
-                        self.call_scratch.borrow_mut().memory.push((scratch, ty));
+                        self.call_scratch
+                            .borrow_mut()
+                            .memory
+                            .push((scratch, ty.clone()));
                         args.push(MirCallArg {
                             value: MirExpr::AddrOf(MirPlace::Local(scratch)),
                             kind: MirArgKind::ByRef,
                         });
                         output_bindings.push(crate::expr::MirOutputBinding {
-                            scratch,
                             target: place,
-                            from,
-                            to,
+                            value: MirExpr::Cast {
+                                expr: Box::new(MirExpr::Load(MirPlace::Local(scratch), ty)),
+                                from,
+                                to,
+                            },
+                            ty: to,
                         });
                     } else {
                         args.push(MirCallArg {
@@ -2198,7 +2322,35 @@ impl<'db> ExprLowerCtx<'db> {
                             var_name.text(self.db)
                         )));
                     };
-                    let place = self.lower_variable_access(*variable)?;
+                    // A view has no storage of its own: the output lands in a
+                    // scratch, and the statement after the call rewrites the
+                    // owner with those bits (`Q => %QX0.3` beside a `%QW0`).
+                    let place = match self.view(*variable, variable.infer(self.db))? {
+                        // Whole bytes of the cell are memory the copy can
+                        // store to like any other.
+                        Some(super::multibit::View::Bytes(place)) => place,
+                        Some(view) => {
+                            let scratch = hir::hir_def::interned::identifier::Ident::new(
+                                self.db,
+                                compact_str::CompactString::from(format!(
+                                    "$viewout${}",
+                                    self.call_scratch.borrow().memory.len()
+                                )),
+                            );
+                            let ty = MirType::Elementary(view.ty());
+                            self.call_scratch
+                                .borrow_mut()
+                                .memory
+                                .push((scratch, ty.clone()));
+                            let (target, value) =
+                                view.write(MirExpr::Load(MirPlace::Local(scratch), ty));
+                            self.after_stmt
+                                .borrow_mut()
+                                .push(crate::stmt::MirStmt::Assign { target, value });
+                            MirPlace::Local(scratch)
+                        }
+                        None => self.lower_variable_access(*variable)?,
+                    };
                     // A wider scalar destination converts in the copy.
                     let field_lane = match &field.ty {
                         MirType::Elementary(e) => Some(*e),

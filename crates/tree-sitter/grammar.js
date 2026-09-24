@@ -240,12 +240,6 @@ module.exports = grammar({
     $.ord,
 
     $._stmt,
-
-    // literals
-    $.any_time_type_name,
-    $.any_date_type_name,
-    $.any_tod_type_name,
-    $.any_dt_type_name,
   ],
 
   conflicts: ($) => [
@@ -301,6 +295,10 @@ module.exports = grammar({
 
     // Variable declaration errors
     ERR_variable_with_no_spec: ($) => prec(-1, $.identifier),
+    // A VAR_CONFIG entry repeats its variable's type: a path with nothing
+    // after it, or its location and nothing else, misses it.
+    ERR_config_entry_with_no_spec: ($) =>
+      prec(-1, seq(field("path", $.path_expression), optional($.located_at))),
     ERR_invalid_edge_qualifier: ($) => prec(-1, /[FR](_(E(D(G)?)?)?)?/),
 
     // Statements
@@ -690,14 +688,23 @@ module.exports = grammar({
     data_type_access: ($) =>
       choice($.namespace_access, $._elem_type_name),
 
+    // The date and time names are listed one by one rather than through
+    // `any_time_type_name` and its siblings. auto-lsp-codegen flattens nested
+    // supertypes one level only, so the union `REF_TO` takes (an array spec or
+    // a `data_type_access`) missed the third level and `REF_TO TIME` failed
+    // to build. The grouping can come back once it flattens recursively.
     _elem_type_name: ($) =>
       choice(
         $.numeric_type_name,
         $.bit_str_type_name,
-        $.any_date_type_name,
-        $.any_time_type_name,
-        $.any_tod_type_name,
-        $.any_dt_type_name,
+        $.date_type_name,
+        $.l_date_type_name,
+        $.time_type_name,
+        $.l_time_type_name,
+        $.tod_type_name,
+        $.ltod_type_name,
+        $.dt_type_name,
+        $.l_dt_type_name,
         $.string_type_name,
       ),
 
@@ -733,22 +740,14 @@ module.exports = grammar({
       seq(kw("STRING"), optional(seq("[", field("length", $.constant_expr), "]"))),
     char_name: ($) => kw("CHAR"),
 
-    any_time_type_name: ($) => choice($.time_type_name, $.l_time_type_name),
-
     time_type_name: ($) => ciChoice("TIME"),
     l_time_type_name: ($) => ciChoice("LTIME"),
-
-    any_date_type_name: ($) => choice($.date_type_name, $.l_date_type_name),
 
     date_type_name: ($) => ciChoice("DATE"),
     l_date_type_name: ($) => ciChoice("LDATE"),
 
-    any_tod_type_name: ($) => choice($.tod_type_name, $.ltod_type_name),
-
     tod_type_name: ($) => ciChoice("TIME_OF_DAY", "TOD"),
     ltod_type_name: ($) => ciChoice("LTIME_OF_DAY", "LTOD"),
-
-    any_dt_type_name: ($) => choice($.dt_type_name, $.l_dt_type_name),
 
     dt_type_name: ($) => ciChoice("DATE_AND_TIME", "DT"),
     l_dt_type_name: ($) => ciChoice("LDATE_AND_TIME", "LDT"),
@@ -912,11 +911,27 @@ module.exports = grammar({
         )($),
       ),
 
+    // Table 11 relative addressing, which is NOT Table 16's. Inside a STRUCT
+    // the located byte and a bit of it are written `%X3.0`, so the trailing
+    // part is a bit and the element rule keeps its own address for it.
     struct_elem_decl_attributes: ($) =>
       seq(
-        field("located", $.located_at),
+        field("located", $.relative_located_at),
         optional(field("multibits", $.multibit_part_access)),
       ),
+
+    relative_located_at: ($) => seq(kw("AT"), $.relative_direct_variable),
+
+    relative_direct_variable: ($) =>
+      seq(
+        "%",
+        field("adress", $.adress_identifier),
+        field("offset", choice(alias("*", $.partly), $.relative_offset)),
+      ),
+
+    // Stops at the first level so `multibit_part_access` can take the bit;
+    // see `offset` for why a Table 16 address does the opposite.
+    relative_offset: ($) => prec.left(dotSep1($.unsigned_int)),
 
     // Table 16 - Directly represented variables
 
@@ -928,7 +943,7 @@ module.exports = grammar({
         field("offset", choice(alias("*", $.partly), $.offset)),
       ),
 
-    offset: ($) => prec.left(dotSep1($.unsigned_int)),
+    offset: ($) => prec.right(dotSep1($.unsigned_int)),
 
     // Table 12 - Reference operations
 
@@ -1714,7 +1729,12 @@ module.exports = grammar({
     config_init: ($) =>
       seq(
         kw("VAR_CONFIG"),
-        repeat(seq($.config_inst_init, optional(";"))),
+        repeat(
+          seq(
+            choice($.config_inst_init, $.ERR_config_entry_with_no_spec),
+            optional(";"),
+          ),
+        ),
         kw("END_VAR"),
         optional(";"),
       ),

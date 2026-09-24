@@ -360,12 +360,13 @@ pub fn optimize_wasm(wasm_bytes: Vec<u8>, opt_level: Option<&str>, verbose: bool
 }
 
 /// wasm-opt strips custom sections, so re-attach the load-bearing ones:
-/// `retain-map` (per-field RETAIN persistence) and `rk.schedule` (what
-/// runs).
+/// `retain-map` (per-field RETAIN persistence), `located-map` (which address
+/// is which cell) and `rk.schedule` (what runs).
 fn preserve_load_bearing_sections(original: &[u8], optimized: Vec<u8>) -> Vec<u8> {
     let mut out = optimized;
     for section in [
         debug_format::RETAIN_MAP_SECTION,
+        debug_format::LOCATED_MAP_SECTION,
         debug_format::SCHEDULE_SECTION,
         // The monitoring tier survives optimization: symbols are addresses,
         // which wasm-opt does not relayout.
@@ -537,6 +538,7 @@ mod tests {
     fn load_bearing_sections_are_reattached_after_stripping() {
         for section in [
             debug_format::RETAIN_MAP_SECTION,
+            debug_format::LOCATED_MAP_SECTION,
             debug_format::SCHEDULE_SECTION,
         ] {
             let data = b"dummy-manifest-bytes";

@@ -83,6 +83,15 @@ const ALLOWED: &[Allowed] = &[
         line: "let Some(field) = struct_type.fields.iter().find(|f| f.name == var_name) else {",
         why: "the same match, the output-binding arm",
     },
+    Allowed {
+        line: ".find(|f| f.name == var.name(db))",
+        why: "HIR resolved the connected variable to its VariableDecl, and the \
+              program's layout names the field by that declaration",
+    },
+    Allowed {
+        line: ".find(|f| f.name == fb.member.name(db))",
+        why: "the same, for a function block a task runs",
+    },
 ];
 
 /// Lines that COMPARE two names. Deliberately broad: a false positive costs

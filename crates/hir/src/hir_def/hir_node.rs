@@ -8,7 +8,10 @@ use crate::{
             spec::{Spec, StructElement},
         },
         namespace::NamespaceDecl,
-        pous::{pou::Pou, variable::VariableDecl},
+        pous::{
+            pou::Pou,
+            variable::{DirectVariable, VariableDecl},
+        },
         program::ProgramDecl,
         scope::ScopeId,
         using::Using,
@@ -37,6 +40,9 @@ pub enum HirNode<'db> {
     Param(ParamAssign<'db>),
     InitExpr(InitExpr<'db>),
     PathExpr(PathExpr<'db>),
+    /// An address written where no access wraps it: an `AT` clause, a
+    /// VAR_CONFIG entry, a connection.
+    DirectVariable(DirectVariable<'db>),
 }
 
 impl<'db> HirNodeInfo<'db> for HirNode<'db> {
@@ -60,6 +66,7 @@ impl<'db> HirNodeInfo<'db> for HirNode<'db> {
             HirNode::Param(p) => p.get_scope_id(db),
             HirNode::InitExpr(i) => i.get_scope_id(db),
             HirNode::Invocation(i) => i.get_scope_id(db),
+            HirNode::DirectVariable(d) => d.get_scope_id(db),
         }
     }
 
@@ -83,6 +90,7 @@ impl<'db> HirNodeInfo<'db> for HirNode<'db> {
             HirNode::Param(p) => p.get_id(db),
             HirNode::InitExpr(i) => i.get_id(db),
             HirNode::Invocation(i) => i.get_id(db),
+            HirNode::DirectVariable(d) => d.get_id(db),
         }
     }
 }

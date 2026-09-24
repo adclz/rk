@@ -80,23 +80,31 @@
     "named": true,
     "subtypes": [
       {
-        "type": "any_date_type_name",
-        "named": true
-      },
-      {
-        "type": "any_dt_type_name",
-        "named": true
-      },
-      {
-        "type": "any_time_type_name",
-        "named": true
-      },
-      {
-        "type": "any_tod_type_name",
-        "named": true
-      },
-      {
         "type": "bit_str_type_name",
+        "named": true
+      },
+      {
+        "type": "date_type_name",
+        "named": true
+      },
+      {
+        "type": "dt_type_name",
+        "named": true
+      },
+      {
+        "type": "l_date_type_name",
+        "named": true
+      },
+      {
+        "type": "l_dt_type_name",
+        "named": true
+      },
+      {
+        "type": "l_time_type_name",
+        "named": true
+      },
+      {
+        "type": "ltod_type_name",
         "named": true
       },
       {
@@ -105,6 +113,14 @@
       },
       {
         "type": "string_type_name",
+        "named": true
+      },
+      {
+        "type": "time_type_name",
+        "named": true
+      },
+      {
+        "type": "tod_type_name",
         "named": true
       }
     ]
@@ -570,62 +586,6 @@
     ]
   },
   {
-    "type": "any_date_type_name",
-    "named": true,
-    "subtypes": [
-      {
-        "type": "date_type_name",
-        "named": true
-      },
-      {
-        "type": "l_date_type_name",
-        "named": true
-      }
-    ]
-  },
-  {
-    "type": "any_dt_type_name",
-    "named": true,
-    "subtypes": [
-      {
-        "type": "dt_type_name",
-        "named": true
-      },
-      {
-        "type": "l_dt_type_name",
-        "named": true
-      }
-    ]
-  },
-  {
-    "type": "any_time_type_name",
-    "named": true,
-    "subtypes": [
-      {
-        "type": "l_time_type_name",
-        "named": true
-      },
-      {
-        "type": "time_type_name",
-        "named": true
-      }
-    ]
-  },
-  {
-    "type": "any_tod_type_name",
-    "named": true,
-    "subtypes": [
-      {
-        "type": "ltod_type_name",
-        "named": true
-      },
-      {
-        "type": "tod_type_name",
-        "named": true
-      }
-    ]
-  },
-  {
     "type": "data_type_access",
     "named": true,
     "subtypes": [
@@ -766,6 +726,32 @@
       "types": [
         {
           "type": "_class_variables",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "ERR_config_entry_with_no_spec",
+    "named": true,
+    "fields": {
+      "path": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "path_expression",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": false,
+      "required": false,
+      "types": [
+        {
+          "type": "located_at",
           "named": true
         }
       ]
@@ -2235,6 +2221,10 @@
       "multiple": true,
       "required": false,
       "types": [
+        {
+          "type": "ERR_config_entry_with_no_spec",
+          "named": true
+        },
         {
           "type": "config_inst_init",
           "named": true
@@ -5476,6 +5466,66 @@
     }
   },
   {
+    "type": "relative_direct_variable",
+    "named": true,
+    "fields": {
+      "adress": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "adress_identifier",
+            "named": true
+          }
+        ]
+      },
+      "offset": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "partly",
+            "named": true
+          },
+          {
+            "type": "relative_offset",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "relative_located_at",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "relative_direct_variable",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "relative_offset",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "unsigned_int",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "repeat_stmt",
     "named": true,
     "fields": {
@@ -6039,7 +6089,7 @@
         "required": true,
         "types": [
           {
-            "type": "located_at",
+            "type": "relative_located_at",
             "named": true
           }
         ]

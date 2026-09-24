@@ -707,3 +707,81 @@ fn test_var_temp_reference(mut with_db: db::RootDatabase) {
     let result: i32 = super::execute_wasm(&wasm, "test", ());
     assert_eq!(result, 42, "the temp reference addresses the instance member");
 }
+
+/// A value as it comes back from wasm, by lane.
+#[derive(Debug, PartialEq)]
+enum Lane {
+    I32(i32),
+    I64(i64),
+    F32(f32),
+    F64(f64),
+}
+
+/// A dereference reads and writes the pointee's type, not the reference's.
+/// For every elementary type: `r^ := value` stores through a reference, a
+/// direct read gets it back, and `r^` reads it through a second reference;
+/// the function returns what that last read saw. A narrow value is written
+/// as its own bytes, so the direct copy and the read through `r^` have to
+/// agree on its width: -1 in a SINT comes back as -1.
+#[rstest]
+#[case::bool("BOOL", "TRUE", Lane::I32(1))]
+#[case::sint("SINT", "-1", Lane::I32(-1))]
+#[case::int("INT", "-300", Lane::I32(-300))]
+#[case::dint("DINT", "-70000", Lane::I32(-70_000))]
+#[case::lint("LINT", "-5000000000", Lane::I64(-5_000_000_000))]
+#[case::usint("USINT", "200", Lane::I32(200))]
+#[case::uint("UINT", "60000", Lane::I32(60_000))]
+#[case::udint("UDINT", "4000000000", Lane::I32(4_000_000_000u32 as i32))]
+#[case::ulint("ULINT", "10000000000", Lane::I64(10_000_000_000))]
+#[case::byte("BYTE", "16#AB", Lane::I32(0xAB))]
+#[case::word("WORD", "16#ABCD", Lane::I32(0xABCD))]
+#[case::dword("DWORD", "16#DEADBEEF", Lane::I32(0xDEAD_BEEFu32 as i32))]
+#[case::lword("LWORD", "16#0123456789ABCDEF", Lane::I64(0x0123_4567_89AB_CDEF))]
+#[case::real("REAL", "2.5", Lane::F32(2.5))]
+#[case::lreal("LREAL", "2.5", Lane::F64(2.5))]
+#[case::char("CHAR", "CHAR#'A'", Lane::I32(65))]
+#[case::time("TIME", "T#1s500ms", Lane::I32(1500))]
+#[case::ltime("LTIME", "LT#1s", Lane::I64(1_000_000_000))]
+#[case::date("DATE", "D#1970-01-02", Lane::I32(1))]
+#[case::ldate("LDATE", "LD#1973-01-01", Lane::I64(1096))]
+#[case::tod("TOD", "TOD#00:00:01.5", Lane::I32(1500))]
+#[case::ltod("LTOD", "LTOD#00:00:00.000000042", Lane::I64(42))]
+#[case::dt("DT", "DT#1970-01-01-00:01:00", Lane::I64(60))]
+#[case::ldt("LDT", "LDT#1970-01-01-00:00:01", Lane::I64(1_000_000_000))]
+fn test_deref_reads_and_writes_the_pointee_type(
+    mut with_db: db::RootDatabase,
+    #[case] ty: &str,
+    #[case] value: &str,
+    #[case] expected: Lane,
+) {
+    let source = format!(
+        r#"
+        FUNCTION through : {ty}
+        VAR x : {ty}; y : {ty}; r : REF_TO {ty}; END_VAR
+            r := REF(x);
+            r^ := {value};
+            y := x;
+            r := REF(y);
+            through := r^;
+        END_FUNCTION
+    "#
+    );
+    let wasm = super::compile_to_wasm(&mut with_db, &source);
+    validate_wasm(&wasm).expect("WASM validation failed");
+
+    let engine = crate::tests::codegen::test_engine();
+    let module = wasmtime::Module::new(&engine, &wasm).unwrap();
+    let mut store = wasmtime::Store::new(&engine, ());
+    let instance = super::instantiate_with_memory(&mut store, &module);
+    let func = instance.get_func(&mut store, "through").expect("through");
+    let mut results = [wasmtime::Val::I32(0)];
+    func.call(&mut store, &[], &mut results).expect("call");
+    let got = match results[0] {
+        wasmtime::Val::I32(v) => Lane::I32(v),
+        wasmtime::Val::I64(v) => Lane::I64(v),
+        wasmtime::Val::F32(bits) => Lane::F32(f32::from_bits(bits)),
+        wasmtime::Val::F64(bits) => Lane::F64(f64::from_bits(bits)),
+        ref other => panic!("unexpected result {other:?}"),
+    };
+    assert_eq!(got, expected);
+}

@@ -62,3 +62,45 @@ pub fn get_param_start_pos<'db>(
         ParamAssignKind::NonFormal { value } => Box::new(value) as _,
     }
 }
+
+/// The task a `fb WITH task` element of `prog` names, when `offset` is on
+/// the task's name.
+pub fn element_task_at<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    prog: hir::hir_def::config::ProgConfig<'db>,
+    offset: usize,
+) -> Option<hir::hir_def::config::TaskConfig<'db>> {
+    use hir::hir_def::{config::ProgConfElement, scope::ScopeKind, semantic_index::get_scope};
+    let ScopeKind::Config(config) = get_scope(db, prog.scope_id(db)).kind else {
+        return None;
+    };
+    let path = prog
+        .conf_elements(db)
+        .iter()
+        .find_map(|element| match element {
+            ProgConfElement::FbTask(fb) => {
+                let span = fb.task.get_span(db);
+                (span.start_byte <= offset && offset <= span.end_byte).then_some(fb.path)
+            }
+            ProgConfElement::Connection(_) => None,
+        })?;
+    hir::hir_ty::config::prog_elements(db, config)
+        .tasks
+        .get(&path)
+        .copied()
+}
+
+/// The resource or the program instance a step of a VAR_CONFIG path names.
+pub fn config_path_step<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    path: hir::hir_def::expressions::expression::PathExpr<'db>,
+) -> Option<hir::hir_ty::config::ConfigPathStep<'db>> {
+    use hir::hir_def::{scope::ScopeKind, semantic_index::get_scope};
+    let ScopeKind::Config(config) = get_scope(db, path.get_scope_id(db)).kind else {
+        return None;
+    };
+    hir::hir_ty::config::resolve_config_entries(db, config)
+        .steps
+        .get(&path)
+        .copied()
+}

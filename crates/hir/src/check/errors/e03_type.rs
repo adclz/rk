@@ -86,6 +86,12 @@ pub enum TypeError<'db> {
         typ: CallableType<'db>,
         access: CallSite<'db>,
     },
+    /// A CLASS instance as an assignment target. It has no body, so it is not
+    /// callable, and it used to be copied where a FUNCTION_BLOCK is refused.
+    AssignClassInstance {
+        class: Type<'db>,
+        access: CallSite<'db>,
+    },
 }
 
 #[allow(non_camel_case_types)]
@@ -171,6 +177,7 @@ impl<'db> ErrorCode for TypeError<'db> {
             Self::FunctionAsType { .. } => "E0316",
             Self::DirectType { .. } => "E0317",
             Self::AssignCallableType { .. } => "E0318",
+            Self::AssignClassInstance { .. } => "E0318",
         }
     }
 
@@ -186,6 +193,7 @@ impl<'db> ErrorCode for TypeError<'db> {
             Self::FunctionAsType { .. } => "invalid type",
             Self::DirectType { .. } => "semantic violation",
             Self::AssignCallableType { .. } => "semantic violation",
+            Self::AssignClassInstance { .. } => "semantic violation",
         }
     }
 }
@@ -394,6 +402,15 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                 .message(format!(
                     "'{}' is a callable type and can not be assigned",
                     typ.get_name_ident(db).text(db)
+                ))
+                .severity(DiagnosticSeverity::ERROR)
+                .desc(self)
+                .range(crate::denormalize(db, file, &access.get_span(db)).unwrap_or_default())
+                .call(),
+            Self::AssignClassInstance { class, access } => diag()
+                .message(format!(
+                    "'{}' is a CLASS and can not be assigned",
+                    class.type_name(db)
                 ))
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)

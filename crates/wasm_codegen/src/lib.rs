@@ -1533,6 +1533,46 @@ impl<'a> WasmGen<'a> {
             globals_size_idx,
         );
 
+        // The three located bands, on the same two-integer contract. Emitted
+        // only for an area the workspace actually declares something in: an
+        // export is a root the optimizer cannot remove, so a module with no
+        // I/O must not pay for six of them. A host looks a band up rather
+        // than assuming it is there, exactly as it does for `__init`.
+        for (base_name, size_name, base, size) in [
+            (
+                "input_base",
+                "input_size",
+                self.module.input_base,
+                self.module.input_size,
+            ),
+            (
+                "output_base",
+                "output_size",
+                self.module.output_base,
+                self.module.output_size,
+            ),
+            (
+                "marker_base",
+                "marker_size",
+                self.module.marker_base,
+                self.module.marker_size,
+            ),
+        ] {
+            if size == 0 {
+                continue;
+            }
+            let base_idx = self.global_section.len();
+            let (ty, init) = retain_global(base);
+            self.global_section.global(ty, &init);
+            let size_idx = self.global_section.len();
+            let (ty, init) = retain_global(size);
+            self.global_section.global(ty, &init);
+            self.export_section
+                .export(base_name, wasm_encoder::ExportKind::Global, base_idx);
+            self.export_section
+                .export(size_name, wasm_encoder::ExportKind::Global, size_idx);
+        }
+
         let mut module = wasm_encoder::Module::new();
         module.section(&self.type_section);
         module.section(&self.import_section);
@@ -1731,6 +1771,16 @@ impl<'a> WasmGen<'a> {
             module.section(&wasm_encoder::CustomSection {
                 name: std::borrow::Cow::Borrowed(debug_format::RETAIN_MAP_SECTION),
                 data: std::borrow::Cow::Owned(self.module.retain_map.to_msgpack()),
+            });
+        }
+
+        // Which located variable is which cell. Load-bearing: without it the
+        // band exports give a host three ranges and no way to bind a channel
+        // to one variable inside them.
+        if !self.module.located_map.entries.is_empty() {
+            module.section(&wasm_encoder::CustomSection {
+                name: std::borrow::Cow::Borrowed(debug_format::LOCATED_MAP_SECTION),
+                data: std::borrow::Cow::Owned(self.module.located_map.to_msgpack()),
             });
         }
 
@@ -1952,8 +2002,12 @@ pub(crate) fn build_local_map(
                     );
                 }
                 ty => {
+                    // An enum and a subrange load and store at their lane,
+                    // as `emit_typed_mem_load` has them.
                     let elem = match ty {
                         MirType::Elementary(e) => Some(*e),
+                        MirType::Enum(e) => Some(e.storage),
+                        MirType::Subrange(s) => Some(s.base),
                         _ => None,
                     };
                     map.insert(local.name, LocalInfo::Memory { address, elem });

@@ -21,93 +21,6 @@ use ide_diagnostic::IdeDiagnostic;
 use ide_diagnostic::Related;
 use ide_diagnostic::diag;
 
-/// Why a TASK cannot be scheduled. Only cyclic tasks with a literal, non-zero
-/// INTERVAL are; each other shape gets its own message rather than a shared
-/// "unsupported", because the fix differs in every case.
-/// Which parsed-but-inert CONFIGURATION construct was found.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, salsa::Update)]
-pub enum UnsupportedConfigKind {
-    /// `PROGRAM P WITH T : Type (in := src)` — the connection list is read and
-    /// then discarded: no copy is emitted around the scan, and the names are
-    /// never resolved, so a typo passes silently.
-    ProgramConnection,
-    /// `PROGRAM P WITH T : Type (fb WITH other_task)` — associating a nested
-    /// FB with its own task.
-    FbTaskAssociation,
-    /// `VAR_CONFIG PA.x : INT := 42;` — resolved and type-checked against the
-    /// instance's field, then thrown away, so the field keeps its declared
-    /// value. The validation makes this one especially misleading.
-    InstanceInit,
-}
-
-impl UnsupportedConfigKind {
-    fn message(self) -> &'static str {
-        match self {
-            Self::ProgramConnection => {
-                "program connection lists are parsed but not wired up yet, so this has no effect"
-            }
-            Self::FbTaskAssociation => {
-                "associating a function block with its own task is not supported yet"
-            }
-            Self::InstanceInit => {
-                "VAR_CONFIG is checked but not applied yet, so this value never reaches the instance"
-            }
-        }
-    }
-
-    fn note(self) -> &'static str {
-        match self {
-            Self::ProgramConnection => "assign it in the program body instead",
-            Self::FbTaskAssociation => "run the function block from its enclosing program's task",
-            Self::InstanceInit => "set the value in the program's own VAR declaration instead",
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, salsa::Update)]
-pub enum UnschedulableReason {
-    /// `SINGLE := <event>` — event-driven tasks are not implemented.
-    EventDriven,
-    /// Neither SINGLE nor INTERVAL. Nothing triggers the task, so a program
-    /// bound to it never runs.
-    NoTrigger,
-    /// INTERVAL names something whose value is not fixed at compile time — a
-    /// non-CONSTANT global, a directly represented variable, an unknown name.
-    /// A CONSTANT global IS accepted; the period just has to be knowable.
-    NonLiteralInterval,
-    /// INTERVAL is zero, which describes no cadence at all.
-    ZeroInterval,
-}
-
-impl UnschedulableReason {
-    fn message(self) -> &'static str {
-        match self {
-            Self::EventDriven => {
-                "event-driven tasks (SINGLE) are not supported yet; only cyclic tasks run"
-            }
-            Self::NoTrigger => "a TASK needs an INTERVAL to run its programs",
-            Self::NonLiteralInterval => {
-                "INTERVAL must be a TIME literal or a CONSTANT global holding one"
-            }
-            Self::ZeroInterval => "INTERVAL must be greater than zero",
-        }
-    }
-
-    /// The follow-up a user needs to actually fix it. The message says what is
-    /// wrong; this says what to write instead.
-    fn note(self) -> Option<&'static str> {
-        match self {
-            Self::EventDriven => Some("use a cyclic period, e.g. `INTERVAL := T#10ms`"),
-            Self::NoTrigger => Some("add `INTERVAL := T#10ms`"),
-            // The likeliest cause is a global that is simply not marked
-            // CONSTANT — the value looks fixed right there in the source, so
-            // without this the rejection reads as arbitrary.
-            Self::NonLiteralInterval => Some("declare the global `VAR_GLOBAL CONSTANT`"),
-            Self::ZeroInterval => None,
-        }
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum ConfigError<'db> {
     NoConfigFileFound {
@@ -176,13 +89,11 @@ pub enum ConfigError<'db> {
         expected: Type<'db>,
         actual: Type<'db>,
     },
-    /// A configuration construct that is parsed but does nothing. Reported so a
-    /// user is not left believing state they wrote is being applied — the
-    /// silent version is worse than a rejection, because the compiler accepts
-    /// the input and then ignores it.
-    UnsupportedConfigElement {
+    /// An element of a program configuration's list, `PROGRAM P1 WITH T :
+    /// F(x1 := src, y1 => snk, fb1 WITH T2)`, that cannot hold.
+    ProgElementRefused {
         expr: PathExpr<'db>,
-        kind: UnsupportedConfigKind,
+        why: ProgElementRefusal<'db>,
     },
     /// A direct variable used anywhere: read or written in a body, or named
     /// by a declaration's `AT` clause. The address is TYPED — `X/B/W/D/L`
@@ -191,6 +102,7 @@ pub enum ConfigError<'db> {
         site: CallSite<'db>,
         /// The address AS WRITTEN
         address: compact_str::CompactString,
+        why: UnlocatableAddress,
     },
     /// A partial access whose size character names no slice: `w.%Z1`. The
     /// grammar cannot catch it, because `adress_identifier` is shared with
@@ -202,6 +114,493 @@ pub enum ConfigError<'db> {
         /// The size character AS WRITTEN.
         access: compact_str::CompactString,
     },
+    /// A write to a variable declared `AT` an input address. The host owns
+    /// the input band: it copies the process image in before the scan, so a
+    /// store the program makes is overwritten before anyone can read it.
+    /// Silently accepting it produced a program whose assignments vanished.
+    WriteToInputLocation {
+        site: CallSite<'db>,
+        /// The address AS WRITTEN.
+        address: compact_str::CompactString,
+        via: InputWriteRoute,
+    },
+    /// `RETAIN` on a variable located in `%I` or `%Q`. The retain band is
+    /// restored at startup; restoring an input image means the first scan
+    /// runs on the values of the last power cycle, before the field bus has
+    /// refreshed them. `%M` is the area that may legitimately persist.
+    RetainOnIoLocation {
+        var: VariableDecl<'db>,
+        /// The address AS WRITTEN.
+        address: compact_str::CompactString,
+    },
+    /// Two declarations bound to the same address. Each gets a cell of its
+    /// own, so the program has two variables where the plant has one channel:
+    /// a host binding by address finds the same address twice and has to
+    /// write both, and a write through one is invisible through the other.
+    DuplicateLocation {
+        var: VariableDecl<'db>,
+        /// Another declaration at the address: each of them is reported,
+        /// since the files they are in have no order.
+        other: VariableDecl<'db>,
+        /// The address AS WRITTEN, by `var`.
+        address: compact_str::CompactString,
+    },
+    /// A located variable holds one value of the width its size letter
+    /// names, so it is declared as an elementary type of that width.
+    /// `AT %IX0.0 : INT` names one bit and declares sixteen; `AT %IW0 :
+    /// Colour` or `: ARRAY[..] OF ..` declares no single width at all — the
+    /// host binds a channel of the width the address says, and the program
+    /// would read something else.
+    LocationWidthMismatch {
+        var: VariableDecl<'db>,
+        /// The address AS WRITTEN.
+        address: compact_str::CompactString,
+        /// What the size letter names, in bits.
+        address_bits: usize,
+        /// The declared type's width in bits, or `None` when it is not an
+        /// elementary type with one: an aggregate, an enum, a subrange, a
+        /// STRING.
+        declared_bits: Option<usize>,
+        declared: Type<'db>,
+    },
+    /// An address used in a way only storage of its own allows, when it is
+    /// part of a wider address the workspace mentions — `%QX0.3` beside a
+    /// `%QW0` is that word's bit 3, with no address of its own to hand out.
+    PartOfWiderAddress {
+        site: CallSite<'db>,
+        /// The address, upper-cased.
+        address: compact_str::CompactString,
+        /// The address it is part of.
+        owner: compact_str::CompactString,
+        usage: WiderAddressUse,
+    },
+    /// A VAR_CONFIG entry's `AT`, which cannot locate the variable it names.
+    ConfigLocationRefused {
+        expr: PathExpr<'db>,
+        /// The variable the path names.
+        var: compact_str::CompactString,
+        /// The address as written in the entry.
+        address: compact_str::CompactString,
+        why: ConfigLocationRefusal,
+    },
+    /// A variable declared `AT %I*`, `%Q*` or `%M*` that VAR_CONFIG does not
+    /// locate, or cannot.
+    PartlyLocatedUnlocated(PartlyUnlocated<'db>),
+    /// A VAR_CONFIG entry that resolves but cannot be taken as written.
+    ConfigEntryRefused {
+        expr: PathExpr<'db>,
+        why: ConfigEntryRefusal,
+    },
+    /// `RETAIN` on an instance that holds a variable declared `AT %M*`. The
+    /// variable points at its marker and has no storage of its own, so
+    /// retaining the instance would silently leave its count behind.
+    RetainHoldsPartlyLocated {
+        var: VariableDecl<'db>,
+        /// The member declared with the partial address: `x`, or `fb.x`.
+        member: compact_str::CompactString,
+    },
+    /// A variable declared `AT %I*`, `%Q*` or `%M*` named in an instance's
+    /// initializer, `d : Drive := (out := 30)`. The variable points at the
+    /// channel VAR_CONFIG gives its instance, and the value would be written
+    /// over the pointer.
+    PartlyLocatedOverwritten {
+        site: CallSite<'db>,
+        /// The member declared with the partial address: `x`, or `fb.x`.
+        member: compact_str::CompactString,
+        address: compact_str::CompactString,
+    },
+}
+
+/// Why a VAR_CONFIG entry cannot be taken as written.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, salsa::Update)]
+pub enum ConfigEntryRefusal {
+    /// `Res.P1.arr[0]`, `Res.P1.p^.x`: a path names instances and variables.
+    PathStep,
+    /// The type the entry repeats is not the variable's.
+    TypeMismatch {
+        var: compact_str::CompactString,
+        written: compact_str::CompactString,
+        declared: compact_str::CompactString,
+    },
+    /// Another entry gives the same variable a value too, or the instance
+    /// holding it.
+    ValueTwice { var: compact_str::CompactString },
+    /// A value for a variable at an address a declaration names: the
+    /// declaration gives that channel its starting value.
+    ChannelDeclared {
+        var: compact_str::CompactString,
+        address: compact_str::CompactString,
+    },
+    /// A value for the PROGRAM instance itself rather than a variable of it.
+    ProgramValue,
+}
+
+/// Why a VAR_CONFIG entry cannot give the variable it names this address.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, salsa::Update)]
+pub enum ConfigLocationRefusal {
+    /// The variable's declaration has an address of its own, or none.
+    NotPartlyLocated,
+    /// Declared `AT %I*` and given a `%Q` address, for instance.
+    AreaMismatch {
+        declared: compact_str::CompactString,
+    },
+    /// `%I*` again, or no area or width letter.
+    Unlocatable { incomplete: bool },
+    /// The address is not as wide as the variable's type.
+    Width {
+        address_bits: usize,
+        declared_bits: Option<usize>,
+        declared: compact_str::CompactString,
+    },
+    /// A bit inside a wider address the workspace names, which has no address
+    /// of its own for the variable to point at.
+    BitOfWider { owner: compact_str::CompactString },
+    /// Another entry locates the same instance's variable.
+    LocatedTwice { other: compact_str::CompactString },
+}
+
+impl ConfigLocationRefusal {
+    fn message(&self, var: &str, address: &str) -> String {
+        match self {
+            Self::NotPartlyLocated => format!(
+                "'{var}' is not declared AT %I*, %Q* or %M*, so its address is not VAR_CONFIG's to give"
+            ),
+            Self::AreaMismatch { declared } => {
+                format!("'{var}' is declared AT {declared}, and '{address}' is not in that area")
+            }
+            Self::Unlocatable { incomplete: true } => {
+                format!("'{address}' is not a complete address")
+            }
+            Self::Unlocatable { incomplete: false } => {
+                format!("'{address}' does not name an area and a width")
+            }
+            Self::Width {
+                address_bits,
+                declared_bits,
+                declared,
+            } => {
+                let bits = |n: usize| {
+                    if n == 1 {
+                        "1 bit".to_string()
+                    } else {
+                        format!("{n} bits")
+                    }
+                };
+                match declared_bits {
+                    Some(n) => format!(
+                        "'{address}' is {}, but '{var}' is declared '{declared}', which is {n}",
+                        bits(*address_bits)
+                    ),
+                    None => format!(
+                        "'{address}' is {}, but '{var}' is declared '{declared}', which has no width of its own",
+                        bits(*address_bits)
+                    ),
+                }
+            }
+            Self::BitOfWider { owner } => format!(
+                "'{address}' is a bit of '{owner}', and a bit has no address to locate '{var}' at"
+            ),
+            Self::LocatedTwice { other } => {
+                format!("'{var}' is located at '{address}' here and at '{other}' by another entry")
+            }
+        }
+    }
+
+    fn note(&self) -> &'static str {
+        match self {
+            Self::NotPartlyLocated => {
+                "declare it AT %I*, %Q* or %M* in its POU to leave its address to the configuration"
+            }
+            Self::AreaMismatch { .. } => {
+                "the area is the declaration's: give an input an address in %I, an output one in %Q, a marker one in %M"
+            }
+            Self::Unlocatable { .. } => {
+                "VAR_CONFIG gives the complete address, such as '%IX0.0' or '%QW4'"
+            }
+            Self::Width { .. } => {
+                "the variable holds one value as wide as its address; give it an address of its type's width"
+            }
+            Self::BitOfWider { .. } => {
+                "the variable points at its channel, so give it a byte or wider, or a bit nothing wider around it is named"
+            }
+            Self::LocatedTwice { .. } => {
+                "an instance's variable has one address; keep one of the entries"
+            }
+        }
+    }
+}
+
+/// A variable declared `AT %I*`, `%Q*` or `%M*` that is left without an
+/// address.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, salsa::Update)]
+pub enum PartlyUnlocated<'db> {
+    /// An instance whose variable no VAR_CONFIG entry locates.
+    Missing {
+        /// The PROGRAM instance, where the CONFIGURATION declares it.
+        instance: SpanIdent<'db>,
+        /// The path from the instance: `P1.fb.x`.
+        path: compact_str::CompactString,
+        /// `%I*`, `%Q*` or `%M*`.
+        address: compact_str::CompactString,
+    },
+    /// A FUNCTION's or METHOD's result, made for each call.
+    Returned {
+        ret: crate::hir_def::expressions::spec::Spec<'db>,
+        /// `FUNCTION` or `METHOD`.
+        callable: &'static str,
+        /// The returned type, as written.
+        ty: compact_str::CompactString,
+        /// The member declared with the partial address: `x`, or `fb.x`.
+        member: compact_str::CompactString,
+        address: compact_str::CompactString,
+    },
+    /// Instances held where no VAR_CONFIG path reaches them.
+    Unreachable {
+        var: VariableDecl<'db>,
+        /// The member declared with the partial address: `x`, or `fb.x`.
+        member: compact_str::CompactString,
+        address: compact_str::CompactString,
+        place: UnreachablePlace,
+    },
+}
+
+/// Where an instance is held that VAR_CONFIG cannot name.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, salsa::Update)]
+pub enum UnreachablePlace {
+    /// An element of an array: a VAR_CONFIG path names instances, not
+    /// elements.
+    Array,
+    /// A VAR_GLOBAL: a VAR_CONFIG path starts at a PROGRAM instance.
+    Global,
+    /// A FUNCTION's, a METHOD's, or a VAR_TEMP: a new instance per call.
+    PerCall,
+    /// A field of a STRUCT: a VAR_CONFIG path names instances, not fields.
+    Struct,
+    /// A VAR_INPUT: each call copies its argument over it, pointers included.
+    Input,
+}
+
+/// What a part of a wider address was used for that it cannot be.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, salsa::Update)]
+pub enum WiderAddressUse {
+    /// Passed to a VAR_IN_OUT, which takes an address.
+    InOut,
+    /// Given to `REF()`, which takes an address.
+    Reference,
+    /// Declared RETAIN: persistence belongs to storage, and this has none.
+    Retain(OwnerDeclaration),
+    /// Given an initial value: `__init` writes storage, and this has none,
+    /// so the value was silently dropped.
+    Initializer(OwnerDeclaration),
+}
+
+/// What names the address a part belongs to, which decides where its
+/// RETAIN or initial value can go instead.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, salsa::Update)]
+pub enum OwnerDeclaration {
+    /// A VAR_GLOBAL or a PROGRAM's VAR is located at it.
+    Declared,
+    /// Only a VAR_CONFIG entry, which gives it to a variable declared
+    /// `AT %I*`, `%Q*` or `%M*`.
+    Configured,
+    /// Only a body, bare.
+    Bare,
+}
+
+impl WiderAddressUse {
+    fn message(&self, address: &str, owner: &str) -> String {
+        let is = format!("'{address}' is part of '{owner}'");
+        match self {
+            Self::InOut => format!("{is} and has no address of its own to pass to a VAR_IN_OUT"),
+            Self::Reference => format!("{is} and has no address of its own to take a reference to"),
+            Self::Retain(_) => format!("{is} and cannot be RETAIN on its own"),
+            Self::Initializer(_) => format!("{is} and cannot have an initial value of its own"),
+        }
+    }
+
+    fn note(&self, address: &str, owner: &str) -> String {
+        match self {
+            Self::InOut => "copy it into a variable, pass that, and assign it back".to_string(),
+            Self::Reference => format!("take the reference of '{owner}' as a whole"),
+            Self::Retain(OwnerDeclaration::Declared) => {
+                format!(
+                    "RETAIN belongs on the variable located at '{owner}', whose storage this is"
+                )
+            }
+            Self::Retain(OwnerDeclaration::Configured) => format!(
+                "'{owner}' is the channel VAR_CONFIG gives a variable declared AT %M*, which cannot be RETAIN; to persist this part, declare a VAR_GLOBAL located at '{owner}', RETAIN"
+            ),
+            Self::Retain(OwnerDeclaration::Bare) => format!(
+                "no variable is located at '{owner}', a body names it bare; to persist this part, declare a VAR_GLOBAL located at '{owner}', RETAIN"
+            ),
+            Self::Initializer(OwnerDeclaration::Declared) => format!(
+                "give the variable located at '{owner}' an initial value with this part set in it"
+            ),
+            Self::Initializer(OwnerDeclaration::Configured) => format!(
+                "'{owner}' is the channel VAR_CONFIG gives a variable, which takes no initial value; declare a VAR_GLOBAL located at '{owner}' with this part set in its initial value"
+            ),
+            Self::Initializer(OwnerDeclaration::Bare) => format!(
+                "no variable is located at '{owner}', a body names it bare; declare a VAR_GLOBAL located at '{owner}' with this part set in its initial value"
+            ),
+        }
+    }
+}
+
+/// Why an address has no storage to be given. Each has its own fix, so each
+/// says its own: one message covering all three said only that the address
+/// was unsupported, which was true of none of them once the bands landed.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, salsa::Update)]
+pub enum UnlocatableAddress {
+    /// An `AT` clause on a variable of a POU other than a PROGRAM.
+    InPou,
+    /// `%I*`: the address is deliberately incomplete.
+    Incomplete,
+    /// No area letter, or no width letter — `%I1` is Table 16 row 4b, where
+    /// the size character is omitted and means BOOL.
+    Malformed,
+    /// `%IW*`, `%Z*`: a partial address names an area, I, Q or M, and
+    /// nothing else.
+    NotAreaOnly,
+    /// An address in a library file. A library is code for any machine, and
+    /// its addresses were not the workspace's: a library's `%QD0` got a cell
+    /// of its own beside a workspace `%QW0`.
+    InLibrary,
+}
+
+impl UnlocatableAddress {
+    fn message(self, address: &str) -> String {
+        match self {
+            Self::InPou => format!("'{address}' cannot locate a variable of this POU"),
+            Self::Incomplete => format!("'{address}' is not a complete address"),
+            Self::Malformed => format!("'{address}' does not name an area and a width"),
+            Self::NotAreaOnly => {
+                format!("'{address}' is not a partial address: write '%I*', '%Q*' or '%M*'")
+            }
+            Self::InLibrary => format!("'{address}' cannot be named in a library"),
+        }
+    }
+
+    /// None for a library's address: whoever sees it uses the library and
+    /// cannot rewrite it.
+    fn note(self) -> Option<&'static str> {
+        Some(match self {
+            Self::InPou => {
+                "a function's, function block's or class's variables belong to each call or instance, so one address cannot be theirs; in a function block or class, declare it AT %I*, %Q* or %M* and give each instance its address in VAR_CONFIG, and elsewhere declare it in a PROGRAM, or as a VAR_GLOBAL of the CONFIGURATION, and name it from here"
+            }
+            Self::Incomplete => {
+                "VAR_CONFIG completes a partial address for a variable of a PROGRAM, FUNCTION_BLOCK or CLASS, instance by instance; anywhere else, write the address in full"
+            }
+            Self::Malformed => {
+                "an address names its area with I, Q or M and its width with X, B, W, D or L, as in '%IX0.0'; a bit may leave the width out, as in '%I0.0'"
+            }
+            Self::NotAreaOnly => {
+                "the variable's type gives the width, and VAR_CONFIG gives the rest of the address"
+            }
+            Self::InLibrary => return None,
+        })
+    }
+}
+
+/// How a program reached an input it may not write. Assignment covers every
+/// route that ends in a store — `:=`, a FOR control variable, an output
+/// binding (`o => sensor`), a partial write (`sensor.3 := TRUE`) and a
+/// VAR_IN_OUT or VAR_OUTPUT argument. A reference is the one route that does
+/// not store yet: it hands out the capability to.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, salsa::Update)]
+pub enum InputWriteRoute {
+    Assignment,
+    Reference,
+    /// An initial value: `__init` writes it, and the host's copy-in before
+    /// the first scan overwrites it before anything reads it.
+    Initializer,
+}
+
+/// Why an element of a program configuration's list cannot hold.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, salsa::Update)]
+pub enum ProgElementRefusal<'db> {
+    /// `name := source` on a variable that is not a VAR_INPUT.
+    NotAnInput { var: compact_str::CompactString },
+    /// `name => sink` on a variable that is not a VAR_OUTPUT.
+    NotAnOutput { var: compact_str::CompactString },
+    /// A VAR_GLOBAL whose type is not the variable's.
+    TypeMismatch {
+        var: compact_str::CompactString,
+        declared: compact_str::CompactString,
+        global: compact_str::CompactString,
+        ty: compact_str::CompactString,
+    },
+    /// An address whose width is not the variable's.
+    WidthMismatch {
+        var: compact_str::CompactString,
+        declared: compact_str::CompactString,
+        address: compact_str::CompactString,
+        bits: u8,
+    },
+    /// A source or sink that names no VAR_GLOBAL.
+    NoSuchGlobal { name: compact_str::CompactString },
+    /// An input connected twice.
+    ConnectedTwice { var: compact_str::CompactString },
+    /// An element that names more than a variable of the program.
+    NotAVariable,
+    /// `fb WITH task` on a variable that is not a FUNCTION_BLOCK instance.
+    NotAFunctionBlock { var: compact_str::CompactString },
+    /// A function block associated with a task twice.
+    AssociatedTwice { var: compact_str::CompactString },
+    /// `fb WITH task` naming no task of the resource.
+    UnknownTask { task: compact_str::CompactString },
+    /// A function block a task runs, which the program's body calls too.
+    CalledByProgram {
+        var: compact_str::CompactString,
+        program: compact_str::CompactString,
+        call: crate::CallSite<'db>,
+    },
+}
+
+/// Why a TASK cannot be scheduled. Only cyclic tasks with a literal, non-zero
+/// INTERVAL are; each other shape gets its own message rather than a shared
+/// "unsupported", because the fix differs in every case.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, salsa::Update)]
+pub enum UnschedulableReason {
+    /// `SINGLE := <event>` — event-driven tasks are not implemented.
+    EventDriven,
+    /// Neither SINGLE nor INTERVAL. Nothing triggers the task, so a program
+    /// bound to it never runs.
+    NoTrigger,
+    /// INTERVAL names something whose value is not fixed at compile time — a
+    /// non-CONSTANT global, a directly represented variable, an unknown name.
+    /// A CONSTANT global IS accepted; the period just has to be knowable.
+    NonLiteralInterval,
+    /// INTERVAL is zero, which describes no cadence at all.
+    ZeroInterval,
+}
+
+impl UnschedulableReason {
+    fn message(self) -> &'static str {
+        match self {
+            Self::EventDriven => {
+                "event-driven tasks (SINGLE) are not supported yet; only cyclic tasks run"
+            }
+            Self::NoTrigger => "a TASK needs an INTERVAL to run its programs",
+            Self::NonLiteralInterval => {
+                "INTERVAL must be a TIME literal or a CONSTANT global holding one"
+            }
+            Self::ZeroInterval => "INTERVAL must be greater than zero",
+        }
+    }
+
+    /// The follow-up a user needs to actually fix it. The message says what is
+    /// wrong; this says what to write instead.
+    fn note(self) -> Option<&'static str> {
+        match self {
+            Self::EventDriven => Some("use a cyclic period, e.g. `INTERVAL := T#10ms`"),
+            Self::NoTrigger => Some("add `INTERVAL := T#10ms`"),
+            // The likeliest cause is a global that is simply not marked
+            // CONSTANT — the value looks fixed right there in the source, so
+            // without this the rejection reads as arbitrary.
+            Self::NonLiteralInterval => Some("declare the global `VAR_GLOBAL CONSTANT`"),
+            Self::ZeroInterval => None,
+        }
+    }
 }
 
 impl<'db> ErrorCode for ConfigError<'db> {
@@ -222,9 +621,19 @@ impl<'db> ErrorCode for ConfigError<'db> {
             Self::ConfigInstInitUnknownInstance { .. } => "E1413",
             Self::ConfigInstInitFieldNotFound { .. } => "E1414",
             Self::AccessDeclTypeMismatch { .. } => "E1415",
-            Self::UnsupportedConfigElement { .. } => "E1416",
             Self::DirectVariableUnsupported { .. } => "E1417",
             Self::UnknownMultibitsAccess { .. } => "E1418",
+            Self::WriteToInputLocation { .. } => "E1419",
+            Self::RetainOnIoLocation { .. } => "E1420",
+            Self::DuplicateLocation { .. } => "E1421",
+            Self::LocationWidthMismatch { .. } => "E1422",
+            Self::PartOfWiderAddress { .. } => "E1423",
+            Self::ConfigLocationRefused { .. } => "E1424",
+            Self::PartlyLocatedUnlocated(_) => "E1425",
+            Self::ConfigEntryRefused { .. } => "E1426",
+            Self::RetainHoldsPartlyLocated { .. } => "E1420",
+            Self::PartlyLocatedOverwritten { .. } => "E1427",
+            Self::ProgElementRefused { .. } => "E1428",
         }
     }
 
@@ -245,9 +654,19 @@ impl<'db> ErrorCode for ConfigError<'db> {
             Self::ConfigInstInitUnknownInstance { .. } => "configuration error",
             Self::ConfigInstInitFieldNotFound { .. } => "configuration error",
             Self::AccessDeclTypeMismatch { .. } => "access declaration type mismatch",
-            Self::UnsupportedConfigElement { .. } => "unsupported configuration element",
-            Self::DirectVariableUnsupported { .. } => "direct variable access is not supported",
+            Self::DirectVariableUnsupported { .. } => "address cannot be located",
             Self::UnknownMultibitsAccess { .. } => "unknown multibit access size",
+            Self::WriteToInputLocation { .. } => "write to an input location",
+            Self::RetainOnIoLocation { .. } => "RETAIN on an I/O location",
+            Self::DuplicateLocation { .. } => "duplicate location",
+            Self::LocationWidthMismatch { .. } => "location type mismatch",
+            Self::PartOfWiderAddress { .. } => "part of a wider address",
+            Self::ConfigLocationRefused { .. } => "location refused",
+            Self::PartlyLocatedUnlocated(_) => "variable not located",
+            Self::ConfigEntryRefused { .. } => "configuration entry refused",
+            Self::RetainHoldsPartlyLocated { .. } => "RETAIN on an I/O location",
+            Self::PartlyLocatedOverwritten { .. } => "located variable overwritten",
+            Self::ProgElementRefused { .. } => "program configuration element refused",
         }
     }
 }
@@ -460,31 +879,96 @@ impl<'db> ToIdeDiagnostic<'db> for ConfigError<'db> {
 
                 diag
             }
-            Self::UnsupportedConfigElement { expr, kind } => {
+            Self::ProgElementRefused { expr, why } => {
+                let (message, note) = match why {
+                    ProgElementRefusal::NotAnInput { var } => (
+                        format!(
+                            "'{var}' is not a VAR_INPUT of the program, so ':=' cannot feed it"
+                        ),
+                        "':=' connects a source to an input, '=>' an output to a sink",
+                    ),
+                    ProgElementRefusal::NotAnOutput { var } => (
+                        format!(
+                            "'{var}' is not a VAR_OUTPUT of the program, so '=>' cannot read it"
+                        ),
+                        "':=' connects a source to an input, '=>' an output to a sink",
+                    ),
+                    ProgElementRefusal::TypeMismatch {
+                        var,
+                        declared,
+                        global,
+                        ty,
+                    } => (
+                        format!("'{var}' is '{declared}', and '{global}' is '{ty}'"),
+                        "a connection copies the value as it is; connect a variable of the same type",
+                    ),
+                    ProgElementRefusal::WidthMismatch {
+                        var,
+                        declared,
+                        address,
+                        bits,
+                    } => (
+                        format!(
+                            "'{var}' is '{declared}', and '{address}' is {bits} bit{}",
+                            if *bits == 1 { "" } else { "s" }
+                        ),
+                        "an address connects to a variable as wide as it is",
+                    ),
+                    ProgElementRefusal::NoSuchGlobal { name } => (
+                        format!("no VAR_GLOBAL is named '{name}'"),
+                        "a connection names a VAR_GLOBAL of the configuration, an address, or a constant",
+                    ),
+                    ProgElementRefusal::ConnectedTwice { var } => (
+                        format!("'{var}' is connected here and by another element"),
+                        "an input has one source; keep one of the elements",
+                    ),
+                    ProgElementRefusal::NotAVariable => (
+                        "an element names a variable by its name alone".to_string(),
+                        "connect the program's inputs and outputs to VAR_GLOBALs, addresses or constants, and associate the function blocks it holds",
+                    ),
+                    ProgElementRefusal::NotAFunctionBlock { var } => (
+                        format!("'{var}' is not a FUNCTION_BLOCK instance, so no task can run it"),
+                        "a task runs a function block's body; a CLASS has none",
+                    ),
+                    ProgElementRefusal::AssociatedTwice { var } => (
+                        format!("'{var}' is associated with a task here and by another element"),
+                        "a function block runs under one task; keep one of the elements",
+                    ),
+                    ProgElementRefusal::UnknownTask { task } => (
+                        format!("no TASK is named '{task}' in this resource"),
+                        "associate the function block with a TASK the resource declares",
+                    ),
+                    ProgElementRefusal::CalledByProgram { var, program, .. } => (
+                        format!("'{var}' runs under its task, and '{program}' calls it too"),
+                        "the task runs the instance on its own; remove the call from the program",
+                    ),
+                };
                 let mut diag = diag()
-                    .message(kind.message().to_string())
+                    .message(message)
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
                     .range(crate::denormalize(db, file, &expr.get_span(db)).unwrap_or_default())
                     .call();
-                diag.with_note(kind.note().to_string());
+                if let ProgElementRefusal::CalledByProgram { var, call, .. } = why {
+                    diag.with_related(ide_diagnostic::Related::new(
+                        format!("'{var}' is called here"),
+                        call.get_scope_id(db).file(db),
+                        call.get_span(db),
+                    ));
+                }
+                diag.with_note(note.to_string());
                 diag
             }
-            Self::DirectVariableUnsupported { site, address } => {
+            Self::DirectVariableUnsupported { site, address, why } => {
                 let mut diag = diag()
-                    .message(format!(
-                        "'{}' cannot be read or written: there is no I/O mapping",
-                        address
-                    ))
+                    .message(why.message(address))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
                     .range(crate::denormalize(db, file, &site.get_span(db)).unwrap_or_default())
                     .call();
-                diag.with_note(
-                    "the address is understood and X/B/W/D/L names the width, but nothing \
-                     connects it to a process image yet"
-                        .to_string(),
-                );
+                if let Some(note) = why.note() {
+                    diag.with_note(note.to_string());
+                }
                 diag
             }
             Self::UnknownMultibitsAccess { expr, access } => diag()
@@ -495,6 +979,311 @@ impl<'db> ToIdeDiagnostic<'db> for ConfigError<'db> {
                 .desc(self)
                 .range(crate::denormalize(db, file, &expr.get_span(db)).unwrap_or_default())
                 .call(),
+            Self::WriteToInputLocation { site, address, via } => {
+                let message = match via {
+                    InputWriteRoute::Assignment => format!(
+                        "'{address}' is an input: it is written by the host, not by the program"
+                    ),
+                    InputWriteRoute::Reference => format!(
+                        "'{address}' is an input, so a writable reference to it cannot be taken"
+                    ),
+                    InputWriteRoute::Initializer => format!(
+                        "'{address}' is an input, so an initial value is overwritten before anything reads it"
+                    ),
+                };
+                let mut diag = diag()
+                    .message(message)
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &site.get_span(db)).unwrap_or_default())
+                    .call();
+                diag.with_note(
+                    match via {
+                        InputWriteRoute::Assignment => {
+                            "the host copies the input image in before each scan, so this write is overwritten before anything can read it"
+                        }
+                        InputWriteRoute::Reference => {
+                            "a REF_TO is a writable pointer and nothing tracks what is stored through it, so the reference is refused where it is taken"
+                        }
+                        InputWriteRoute::Initializer => {
+                            "the host writes the input image before every scan, the first one included"
+                        }
+                    }
+                    .to_string(),
+                );
+                diag
+            }
+            Self::RetainOnIoLocation { var, address } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "'{}' is located at '{address}' and cannot be RETAIN",
+                        var.get_name_ident(db).text(db)
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(
+                        crate::denormalize(db, file, &var.as_call_site(db).get_span(db))
+                            .unwrap_or_default(),
+                    )
+                    .call();
+                diag.with_note(if address.ends_with('*') {
+                    "a variable VAR_CONFIG locates points at its channel and has no storage of its own to retain; to persist a marker, declare it located in full, RETAIN, in a PROGRAM or as a VAR_GLOBAL".to_string()
+                } else {
+                    "the retain band is restored at startup, so a retained I/O image would run the first scan on the values of the last power cycle; only '%M' may persist".to_string()
+                });
+                diag
+            }
+            Self::DuplicateLocation {
+                var,
+                other,
+                address,
+            } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "'{}' is located at '{address}', which '{}' also claims",
+                        var.get_name_ident(db).text(db),
+                        other.get_name_ident(db).text(db)
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(
+                        crate::denormalize(db, file, &var.as_call_site(db).get_span(db))
+                            .unwrap_or_default(),
+                    )
+                    .call();
+                diag.with_related(Related::new(
+                    format!("'{}' is located here", other.get_name_ident(db).text(db)),
+                    other.get_scope_id(db).file(db),
+                    other.as_call_site(db).get_span(db),
+                ));
+                diag.with_note(
+                    "an address is one channel, and each declaration is given storage of its own, so the two would never see each other's value; name the one variable from wherever it is needed".to_string(),
+                );
+                diag
+            }
+            Self::LocationWidthMismatch {
+                var,
+                address,
+                address_bits,
+                declared_bits,
+                declared,
+            } => {
+                let bits = format!(
+                    "{address_bits} bit{}",
+                    if *address_bits == 1 { "" } else { "s" }
+                );
+                let name = var.get_name_ident(db).text(db);
+                let message = match declared_bits {
+                    Some(declared_bits) => format!(
+                        "'{address}' is {bits}, but '{name}' is declared '{}', which is {declared_bits}",
+                        declared.type_name(db)
+                    ),
+                    None => format!(
+                        "'{address}' is {bits}, but '{name}' is declared '{}', which is not an elementary type of any width",
+                        declared.type_name(db)
+                    ),
+                };
+                let mut diag = diag()
+                    .message(message)
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(
+                        crate::denormalize(db, file, &var.as_call_site(db).get_span(db))
+                            .unwrap_or_default(),
+                    )
+                    .call();
+                diag.with_note(format!(
+                    "a located variable holds one value as wide as its address; declare it as an elementary type of {bits}, such as {}",
+                    match address_bits {
+                        1 => "BOOL",
+                        8 => "BYTE, SINT or USINT",
+                        16 => "WORD, INT or UINT",
+                        32 => "DWORD, DINT or REAL",
+                        _ => "LWORD, LINT or LREAL",
+                    }
+                ));
+                diag
+            }
+            Self::PartOfWiderAddress {
+                site,
+                address,
+                owner,
+                usage,
+            } => {
+                let mut diag = diag()
+                    .message(usage.message(address, owner))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &site.get_span(db)).unwrap_or_default())
+                    .call();
+                diag.with_note(usage.note(address, owner));
+                diag
+            }
+            Self::ConfigLocationRefused {
+                expr,
+                var,
+                address,
+                why,
+            } => {
+                let mut diag = diag()
+                    .message(why.message(var, address))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &expr.get_span(db)).unwrap_or_default())
+                    .call();
+                diag.with_note(why.note().to_string());
+                diag
+            }
+            Self::ConfigEntryRefused { expr, why } => {
+                let (message, note) = match why {
+                    ConfigEntryRefusal::PathStep => (
+                        "a VAR_CONFIG path names instances and variables, not an element or what a reference points at".to_string(),
+                        "name the variable itself; an element of an array or a referenced value cannot be configured",
+                    ),
+                    ConfigEntryRefusal::TypeMismatch { var, written, declared } => (
+                        format!("the entry says '{written}', but '{var}' is declared '{declared}'"),
+                        "the entry repeats the variable's type; write the declared one",
+                    ),
+                    ConfigEntryRefusal::ValueTwice { var } => (
+                        format!("'{var}' is given a value here and by another entry"),
+                        "an instance's variable has one starting value; keep one of the entries",
+                    ),
+                    ConfigEntryRefusal::ChannelDeclared { var, address } => (
+                        format!(
+                            "'{var}' is at '{address}', whose declaration gives its starting value"
+                        ),
+                        "give the value in that declaration instead",
+                    ),
+                    ConfigEntryRefusal::ProgramValue => (
+                        "a VAR_CONFIG value is given to a variable of an instance, not to the PROGRAM instance itself".to_string(),
+                        "give each variable its value in an entry of its own",
+                    ),
+                };
+                let mut diag = diag()
+                    .message(message)
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &expr.get_span(db)).unwrap_or_default())
+                    .call();
+                diag.with_note(note.to_string());
+                diag
+            }
+            Self::PartlyLocatedUnlocated(PartlyUnlocated::Missing {
+                instance,
+                path,
+                address,
+            }) => {
+                let mut diag = diag()
+                    .message(format!(
+                        "'{path}' is declared AT {address}, and no VAR_CONFIG entry locates it"
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &instance.get_span(db)).unwrap_or_default())
+                    .call();
+                diag.with_note(
+                    "each instance is given its address in the CONFIGURATION's VAR_CONFIG, as in 'Res.P1.fb.x AT %IX0.0 : BOOL;'".to_string(),
+                );
+                diag
+            }
+            Self::PartlyLocatedUnlocated(PartlyUnlocated::Returned {
+                ret,
+                callable,
+                ty,
+                member,
+                address,
+            }) => {
+                let mut diag = diag()
+                    .message(format!(
+                        "the {callable} returns a '{ty}', which holds '{member}', declared AT {address}, in a result made for each call, which VAR_CONFIG cannot name"
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &ret.get_span(db)).unwrap_or_default())
+                    .call();
+                diag.with_note(format!(
+                    "a VAR_CONFIG path names a PROGRAM instance and the instances it holds by name; hold the instance there and pass it to the {callable} as a VAR_IN_OUT"
+                ));
+                diag
+            }
+            Self::PartlyLocatedUnlocated(PartlyUnlocated::Unreachable {
+                var,
+                member,
+                address,
+                place,
+            }) => {
+                let whose = format!(
+                    "'{}' holds '{member}', declared AT {address}",
+                    var.get_name_ident(db).text(db)
+                );
+                let message = match place {
+                    UnreachablePlace::Array => format!(
+                        "{whose}, in the elements of an array, which VAR_CONFIG cannot name"
+                    ),
+                    UnreachablePlace::Global => {
+                        format!("{whose}, in a VAR_GLOBAL, which VAR_CONFIG cannot name")
+                    }
+                    UnreachablePlace::PerCall => format!(
+                        "{whose}, in an instance made for each call, which VAR_CONFIG cannot name"
+                    ),
+                    UnreachablePlace::Struct => {
+                        format!("{whose}, in a field of a STRUCT, which VAR_CONFIG cannot name")
+                    }
+                    UnreachablePlace::Input => format!(
+                        "{whose}, in a VAR_INPUT, which each call overwrites with a copy of its argument"
+                    ),
+                };
+                let mut diag = diag()
+                    .message(message)
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(
+                        crate::denormalize(db, file, &var.as_call_site(db).get_span(db))
+                            .unwrap_or_default(),
+                    )
+                    .call();
+                diag.with_note(match place {
+                    UnreachablePlace::Input => "pass the instance as a VAR_IN_OUT: the call then uses it where it is held, and located".to_string(),
+                    _ => "a VAR_CONFIG path names a PROGRAM instance and the instances it holds by name; hold this one there".to_string(),
+                });
+                diag
+            }
+            Self::RetainHoldsPartlyLocated { var, member } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "'{}' is RETAIN and holds '{member}', declared AT %M*, which cannot be retained",
+                        var.get_name_ident(db).text(db)
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(
+                        crate::denormalize(db, file, &var.as_call_site(db).get_span(db))
+                            .unwrap_or_default(),
+                    )
+                    .call();
+                diag.with_note(
+                    "a variable VAR_CONFIG locates points at its marker and has no storage of its own to retain; to persist a marker, declare it located in full, RETAIN, in a PROGRAM or as a VAR_GLOBAL".to_string(),
+                );
+                diag
+            }
+            Self::PartlyLocatedOverwritten {
+                site,
+                member,
+                address,
+            } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "'{member}' is declared AT {address}, so it points at the channel VAR_CONFIG gives it and has no value of its own to initialize"
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &site.get_span(db)).unwrap_or_default())
+                    .call();
+                diag.with_note(
+                    "give it its starting value in its VAR_CONFIG entry instead".to_string(),
+                );
+                diag
+            }
         }
     }
 }

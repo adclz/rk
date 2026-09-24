@@ -388,6 +388,37 @@ fn is_param_required<'db>(
 /// syntax check alone waved it through, and the argument then reached the
 /// callee as a bit VALUE standing where a pointer belongs — writes through
 /// it corrupted memory at address 0 or 1, from code `rk check` called clean.
+/// A VAR_IN_OUT or VAR_OUTPUT binding hands the callee a writable alias into
+/// the argument, so an argument located in `%I` is written just as surely as
+/// one on the left of a `:=` — and the next copy-in overwrites it either way
+/// (E1419). The plain assignment path is [`Type::check_assignable`].
+fn refuse_input_location_target<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    value: Expr<'db>,
+    ctx: &mut BodyInferenceResult<'db>,
+) {
+    let dv = match ctx.get_type_of_expr(value) {
+        Type::Variable((var, _)) => crate::hir_ty::index_graphs::effective_location(db, var),
+        // A bare address binds the same way a named one does.
+        Type::DirectVariable((dv, _)) => Some(dv),
+        _ => None,
+    };
+    let Some(dv) = dv else {
+        return;
+    };
+    if dv.area(db) != Some(crate::hir_def::pous::variable::LocationArea::Input) {
+        return;
+    }
+    ctx.errors.push(
+        crate::check::errors::e14_config::ConfigError::WriteToInputLocation {
+            site: CallSite::from_scoped(db, &value),
+            address: compact_str::CompactString::from(dv.to_address(db)),
+            via: crate::check::errors::e14_config::InputWriteRoute::Assignment,
+        }
+        .to_diagnostic(db, ctx.scope.file(db)),
+    );
+}
+
 fn check_in_out_lvalue<'db>(
     db: &'db dyn WorkspaceDataBase,
     callable: CallableType<'db>,
@@ -521,6 +552,19 @@ fn apply_param_coercion<'db>(
                     .to_diagnostic(db, ctx.scope.file(db)),
                 );
             }
+            if var.is_in_out(db) || var.is_output(db) {
+                refuse_input_location_target(db, value, ctx);
+            }
+            if var.is_in_out(db)
+                && let Some(err) = crate::hir_ty::index_graphs::refuse_part_of_wider(
+                    db,
+                    CallSite::from_scoped(db, &value),
+                    ctx.get_type_of_expr(value),
+                    crate::check::errors::e14_config::WiderAddressUse::InOut,
+                )
+            {
+                ctx.errors.push(err.to_diagnostic(db, ctx.scope.file(db)));
+            }
 
             check_in_out_lvalue(db, callable, var, value, ctx);
             if let Some(err) = ctx.ref_subrange_mismatch(db, Type::new_var(db, var), value) {
@@ -558,6 +602,19 @@ fn apply_param_coercion<'db>(
                     }
                     .to_diagnostic(db, ctx.scope.file(db)),
                 );
+            }
+            if var.is_in_out(db) || var.is_output(db) {
+                refuse_input_location_target(db, value, ctx);
+            }
+            if var.is_in_out(db)
+                && let Some(err) = crate::hir_ty::index_graphs::refuse_part_of_wider(
+                    db,
+                    CallSite::from_scoped(db, &value),
+                    ctx.get_type_of_expr(value),
+                    crate::check::errors::e14_config::WiderAddressUse::InOut,
+                )
+            {
+                ctx.errors.push(err.to_diagnostic(db, ctx.scope.file(db)));
             }
 
             check_in_out_lvalue(db, callable, var, value, ctx);

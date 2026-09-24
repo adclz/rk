@@ -146,6 +146,35 @@
         "name": "identifier"
       }
     },
+    "ERR_config_entry_with_no_spec": {
+      "type": "PREC",
+      "value": -1,
+      "content": {
+        "type": "SEQ",
+        "members": [
+          {
+            "type": "FIELD",
+            "name": "path",
+            "content": {
+              "type": "SYMBOL",
+              "name": "path_expression"
+            }
+          },
+          {
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "SYMBOL",
+                "name": "located_at"
+              },
+              {
+                "type": "BLANK"
+              }
+            ]
+          }
+        ]
+      }
+    },
     "ERR_invalid_edge_qualifier": {
       "type": "PREC",
       "value": -1,
@@ -2005,19 +2034,35 @@
         },
         {
           "type": "SYMBOL",
-          "name": "any_date_type_name"
+          "name": "date_type_name"
         },
         {
           "type": "SYMBOL",
-          "name": "any_time_type_name"
+          "name": "l_date_type_name"
         },
         {
           "type": "SYMBOL",
-          "name": "any_tod_type_name"
+          "name": "time_type_name"
         },
         {
           "type": "SYMBOL",
-          "name": "any_dt_type_name"
+          "name": "l_time_type_name"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "tod_type_name"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "ltod_type_name"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "dt_type_name"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "l_dt_type_name"
         },
         {
           "type": "SYMBOL",
@@ -2355,19 +2400,6 @@
       "named": false,
       "value": "CHAR"
     },
-    "any_time_type_name": {
-      "type": "CHOICE",
-      "members": [
-        {
-          "type": "SYMBOL",
-          "name": "time_type_name"
-        },
-        {
-          "type": "SYMBOL",
-          "name": "l_time_type_name"
-        }
-      ]
-    },
     "time_type_name": {
       "type": "PATTERN",
       "value": "[tT][iI][mM][eE]"
@@ -2375,19 +2407,6 @@
     "l_time_type_name": {
       "type": "PATTERN",
       "value": "[lL][tT][iI][mM][eE]"
-    },
-    "any_date_type_name": {
-      "type": "CHOICE",
-      "members": [
-        {
-          "type": "SYMBOL",
-          "name": "date_type_name"
-        },
-        {
-          "type": "SYMBOL",
-          "name": "l_date_type_name"
-        }
-      ]
     },
     "date_type_name": {
       "type": "PATTERN",
@@ -2397,19 +2416,6 @@
       "type": "PATTERN",
       "value": "[lL][dD][aA][tT][eE]"
     },
-    "any_tod_type_name": {
-      "type": "CHOICE",
-      "members": [
-        {
-          "type": "SYMBOL",
-          "name": "tod_type_name"
-        },
-        {
-          "type": "SYMBOL",
-          "name": "ltod_type_name"
-        }
-      ]
-    },
     "tod_type_name": {
       "type": "PATTERN",
       "value": "[tT][iI][mM][eE]_[oO][fF]_[dD][aA][yY]|[tT][oO][dD]"
@@ -2417,19 +2423,6 @@
     "ltod_type_name": {
       "type": "PATTERN",
       "value": "[lL][tT][iI][mM][eE]_[oO][fF]_[dD][aA][yY]|[lL][tT][oO][dD]"
-    },
-    "any_dt_type_name": {
-      "type": "CHOICE",
-      "members": [
-        {
-          "type": "SYMBOL",
-          "name": "dt_type_name"
-        },
-        {
-          "type": "SYMBOL",
-          "name": "l_dt_type_name"
-        }
-      ]
     },
     "dt_type_name": {
       "type": "PATTERN",
@@ -3495,7 +3488,7 @@
           "name": "located",
           "content": {
             "type": "SYMBOL",
-            "name": "located_at"
+            "name": "relative_located_at"
           }
         },
         {
@@ -3515,6 +3508,99 @@
           ]
         }
       ]
+    },
+    "relative_located_at": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "TOKEN",
+            "content": {
+              "type": "PREC",
+              "value": 0,
+              "content": {
+                "type": "PATTERN",
+                "value": "[aA][tT]"
+              }
+            }
+          },
+          "named": false,
+          "value": "AT"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "relative_direct_variable"
+        }
+      ]
+    },
+    "relative_direct_variable": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "%"
+        },
+        {
+          "type": "FIELD",
+          "name": "adress",
+          "content": {
+            "type": "SYMBOL",
+            "name": "adress_identifier"
+          }
+        },
+        {
+          "type": "FIELD",
+          "name": "offset",
+          "content": {
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "ALIAS",
+                "content": {
+                  "type": "STRING",
+                  "value": "*"
+                },
+                "named": true,
+                "value": "partly"
+              },
+              {
+                "type": "SYMBOL",
+                "name": "relative_offset"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "relative_offset": {
+      "type": "PREC_LEFT",
+      "value": 0,
+      "content": {
+        "type": "SEQ",
+        "members": [
+          {
+            "type": "SYMBOL",
+            "name": "unsigned_int"
+          },
+          {
+            "type": "REPEAT",
+            "content": {
+              "type": "SEQ",
+              "members": [
+                {
+                  "type": "STRING",
+                  "value": "."
+                },
+                {
+                  "type": "SYMBOL",
+                  "name": "unsigned_int"
+                }
+              ]
+            }
+          }
+        ]
+      }
     },
     "direct_variable": {
       "type": "SEQ",
@@ -3556,7 +3642,7 @@
       ]
     },
     "offset": {
-      "type": "PREC_LEFT",
+      "type": "PREC_RIGHT",
       "value": 0,
       "content": {
         "type": "SEQ",
@@ -9588,8 +9674,17 @@
             "type": "SEQ",
             "members": [
               {
-                "type": "SYMBOL",
-                "name": "config_inst_init"
+                "type": "CHOICE",
+                "members": [
+                  {
+                    "type": "SYMBOL",
+                    "name": "config_inst_init"
+                  },
+                  {
+                    "type": "SYMBOL",
+                    "name": "ERR_config_entry_with_no_spec"
+                  }
+                ]
               },
               {
                 "type": "CHOICE",
@@ -12370,11 +12465,7 @@
     "mult",
     "eq",
     "ord",
-    "_stmt",
-    "any_time_type_name",
-    "any_date_type_name",
-    "any_tod_type_name",
-    "any_dt_type_name"
+    "_stmt"
   ],
   "reserved": {
     "global": [

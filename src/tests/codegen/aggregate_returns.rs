@@ -12,7 +12,7 @@
 //! type the root of a multi-step self-reference as the RETURN type: recording
 //! it as the function type left MIR asking a Function for a struct field.
 
-use crate::tests::codegen::{run, with_db};
+use crate::tests::codegen::{compile_to_wasm, run, with_db};
 use rstest::*;
 
 /// The canonical shape: build the result component-wise on the function name.
@@ -346,4 +346,61 @@ fn array_call_result_passed_directly_to_aggregate_input(mut with_db: db::RootDat
     "#;
     let result: i32 = run(&mut with_db, source, "run", ());
     assert_eq!(result, 15);
+}
+
+/// A FUNCTION or METHOD may return a FUNCTION_BLOCK or CLASS instance, made
+/// afresh by each call, and calling it runs its body. A call to one returning
+/// a FUNCTION_BLOCK was lowered as a call of the FUNCTION_BLOCK on an
+/// instance named after the FUNCTION, because the callee was typed by its
+/// result: the body never ran.
+#[rstest]
+#[case::fb("FUNCTION_BLOCK", "END_FUNCTION_BLOCK")]
+#[case::class("CLASS", "END_CLASS")]
+fn a_call_returning_an_instance_runs_its_body(
+    mut with_db: db::RootDatabase,
+    #[case] kind: &str,
+    #[case] end: &str,
+) {
+    let source = format!(
+        r#"
+        {kind} Box
+        VAR PUBLIC n : INT; END_VAR
+        {end}
+
+        FUNCTION make : Box
+        VAR_INPUT k : INT; END_VAR
+        VAR_EXTERNAL hits : INT; END_VAR
+            hits := hits + k;
+            make.n := hits;
+        END_FUNCTION
+
+        FUNCTION_BLOCK Holder
+        VAR_EXTERNAL hits : INT; END_VAR
+        METHOD PUBLIC Get : Box
+            hits := hits + 10;
+        END_METHOD
+            Get();
+        END_FUNCTION_BLOCK
+
+        PROGRAM P
+        VAR h : Holder; END_VAR
+            make(k := 1);
+            h();
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+        VAR_GLOBAL hits : INT; END_VAR
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#
+    );
+    let wasm = compile_to_wasm(&mut with_db, &source);
+    let mut plc = crate::tests::codegen::TestPlc::load(&wasm).expect("load");
+    plc.run(3).expect("scan");
+    let globals = plc.read_globals();
+    let hits = i16::from_le_bytes([globals[0], globals[1]]);
+    assert_eq!(hits, 33, "`make` and `Get` each ran once per scan");
 }

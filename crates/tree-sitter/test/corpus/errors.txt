@@ -132,6 +132,79 @@ END_FUNCTION_BLOCK
         (identifier)))))
 
 ================================================================================
+VAR_CONFIG entry with no spec
+================================================================================
+
+CONFIGURATION Cfg
+VAR_CONFIG
+    Res.P1.k;
+    Res.P1.x AT %QW0;
+    Res.P1.y : INT := 1;
+END_VAR
+END_CONFIGURATION
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (config_decl
+    (identifier)
+    (config_init
+      (ERR_config_entry_with_no_spec
+        (path_expression
+          (field_expression
+            (path_expression
+              (field_expression
+                (path_expression
+                  (var_access
+                    (field)))
+                (var_access
+                  (field))))
+            (var_access
+              (field)))))
+      (ERR_config_entry_with_no_spec
+        (path_expression
+          (field_expression
+            (path_expression
+              (field_expression
+                (path_expression
+                  (var_access
+                    (field)))
+                (var_access
+                  (field))))
+            (var_access
+              (field))))
+        (located_at
+          (direct_variable
+            (adress_identifier)
+            (offset
+              (unsigned_int)))))
+      (config_inst_init
+        (path_expression
+          (field_expression
+            (path_expression
+              (field_expression
+                (path_expression
+                  (var_access
+                    (field)))
+                (var_access
+                  (field))))
+            (var_access
+              (field))))
+        (loc_var_spec_init
+          (simple_type_spec
+            (numeric_type_name
+              (int_type_name
+                (sign_int_type_name
+                  (int_name)))))
+          (simple_type_init
+            (constant_expr
+              (constant
+                (numeric_literal
+                  (int_literal
+                    (signed_int
+                      (unsigned_int))))))))))))
+
+================================================================================
 Invalid edge qualifier
 ================================================================================
 

@@ -17,11 +17,13 @@ use crate::tests::utils::{add_source, with_db};
 /// wins the location.
 #[rstest]
 fn codegen_error_points_at_the_offending_expression(mut with_db: RootDatabase) {
-    // Type-checks clean (WORD := WORD) and only fails at lowering.
+    // Parses and types, and only fails at lowering: `%I*` is an address
+    // whose binding would come from VAR_CONFIG, so there is no band to give
+    // it. (A COMPLETE address lowers fine now — it gets a cell of its own.)
     let source = r#"
 FUNCTION uses_direct : WORD
 VAR w : WORD; END_VAR
-    w := %IW4;
+    w := %I*;
     uses_direct := w;
 END_FUNCTION
 "#;
@@ -40,7 +42,7 @@ END_FUNCTION
         "location points at the `%IW4` expression (line 4), not the POU"
     );
     assert!(
-        format!("{err}").contains("Direct variable access"),
+        format!("{err}").contains("names no I/O band"),
         "the underlying cause survives the location wrapper: {err}"
     );
 }

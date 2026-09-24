@@ -457,8 +457,328 @@ END_PROGRAM
 // ── VAR_CONFIG tests ────────────────────────────────────────────────────
 
 /// A valid VAR_CONFIG overriding an INT variable in a program instance.
+/// A VAR_CONFIG value is refused where it cannot be the variable's starting
+/// value: a second one for the same variable, or for an instance holding it
+/// (E1426), a member with no value of its own (E0405), and, by the rules a
+/// declaration's initial value follows, an input the host overwrites (E1419),
+/// a part of a wider address (E1423) and a channel a declaration names, whose
+/// value stands (E1426).
 #[rstest]
-fn config_inst_init_resolves_but_is_unapplied(mut with_db: RootDatabase) {
+fn invalid_var_config_values(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK Drive
+VAR out AT %Q* : INT; level AT %I* : INT; b AT %Q* : BYTE; END_VAR
+VAR_IN_OUT io : INT; END_VAR
+VAR CONSTANT c : INT := 1; END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK Pump
+VAR k : INT; END_VAR
+END_FUNCTION_BLOCK
+
+PROGRAM P
+VAR d : Drive; pump : Pump; n : INT; lamp AT %QW8 : INT; END_VAR
+END_PROGRAM
+
+CONFIGURATION Cfg
+VAR_GLOBAL panel AT %QW4 : INT := 3; END_VAR
+VAR_CONFIG
+    Res.P1.n : INT := 1;
+    Res.P1.n : INT := 2;
+    Res.P1.d.io : INT := 3;
+    Res.P1.d.c : INT := 4;
+    Res.P1.d.level AT %IW0 : INT := 5;
+    Res.P1.d.out AT %QW4 : INT := 6;
+    Res.P1.lamp : INT := 7;
+    Res.P1.d.b AT %QB9 : BYTE := 8;
+    Res.P1.pump : Pump := (k := 9);
+    Res.P1.pump.k : INT := 10;
+END_VAR
+    RESOURCE Res ON CPU
+        TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM P1 WITH T : P;
+    END_RESOURCE
+END_CONFIGURATION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1426] Error: configuration entry refused
+        ,-[ file:///test0.st:19:12 ]
+        |
+     19 |     Res.P1.n : INT := 1;
+        |            |
+        |            `-- 'n' is given a value here and by another entry
+        |
+        | Note: an instance's variable has one starting value; keep one of the entries
+    ----'
+    [E1426] Error: configuration entry refused
+        ,-[ file:///test0.st:20:12 ]
+        |
+     20 |     Res.P1.n : INT := 2;
+        |            |
+        |            `-- 'n' is given a value here and by another entry
+        |
+        | Note: an instance's variable has one starting value; keep one of the entries
+    ----'
+    [E1419] Error: write to an input location
+        ,-[ file:///test0.st:23:14 ]
+        |
+     23 |     Res.P1.d.level AT %IW0 : INT := 5;
+        |              ^^|^^
+        |                `---- '%IW0' is an input, so an initial value is overwritten before anything reads it
+        |
+        | Note: the host writes the input image before every scan, the first one included
+    ----'
+    [E1426] Error: configuration entry refused
+        ,-[ file:///test0.st:24:14 ]
+        |
+     24 |     Res.P1.d.out AT %QW4 : INT := 6;
+        |              ^|^
+        |               `--- 'out' is at '%QW4', whose declaration gives its starting value
+        |
+        | Note: give the value in that declaration instead
+    ----'
+    [E1426] Error: configuration entry refused
+        ,-[ file:///test0.st:25:12 ]
+        |
+     25 |     Res.P1.lamp : INT := 7;
+        |            ^^|^
+        |              `--- 'lamp' is at '%QW8', whose declaration gives its starting value
+        |
+        | Note: give the value in that declaration instead
+    ----'
+    [E1423] Error: part of a wider address
+        ,-[ file:///test0.st:26:14 ]
+        |
+     26 |     Res.P1.d.b AT %QB9 : BYTE := 8;
+        |              |
+        |              `-- '%QB9' is part of '%QW4' and cannot have an initial value of its own
+        |
+        | Note: give the variable located at '%QW4' an initial value with this part set in it
+    ----'
+    [E1426] Error: configuration entry refused
+        ,-[ file:///test0.st:27:12 ]
+        |
+     27 |     Res.P1.pump : Pump := (k := 9);
+        |            ^^|^
+        |              `--- 'pump' is given a value here and by another entry
+        |
+        | Note: an instance's variable has one starting value; keep one of the entries
+    ----'
+    [E1426] Error: configuration entry refused
+        ,-[ file:///test0.st:28:17 ]
+        |
+     28 |     Res.P1.pump.k : INT := 10;
+        |                 |
+        |                 `-- 'k' is given a value here and by another entry
+        |
+        | Note: an instance's variable has one starting value; keep one of the entries
+    ----'
+    [E0405] Error: member cannot be initialized
+        ,-[ file:///test0.st:21:23 ]
+        |
+      4 | VAR_IN_OUT io : INT; END_VAR
+        |            ^|
+        |             `-- 'io' is declared here
+        |
+     21 |     Res.P1.d.io : INT := 3;
+        |                       ^^|^
+        |                         `--- 'io' is a VAR_IN_OUT, which each call binds to its argument, so an initializer cannot give it a value
+        |
+        | Note: pass the variable in the call instead, as 'io := x'
+    ----'
+    [E0405] Error: member cannot be initialized
+        ,-[ file:///test0.st:22:22 ]
+        |
+      5 | VAR CONSTANT c : INT := 1; END_VAR
+        |              |
+        |              `-- 'c' is declared here
+        |
+     22 |     Res.P1.d.c : INT := 4;
+        |                      ^^|^
+        |                        `--- 'c' is CONSTANT, whose value is its declaration's, so an initializer cannot give it a value
+        |
+        | Note: declare it without CONSTANT to let each instance start at its own value
+    ----'
+    ");
+}
+
+/// A task association names a TASK of the resource, and one that can run: a
+/// function block bound to one that cannot would never run, as a program
+/// would not (E1410).
+#[rstest]
+#[case::unknown_task("fb1 WITH Nope", "[E1428]")]
+#[case::task_that_cannot_run("fb1 WITH Ev", "[E1410]")]
+fn invalid_task_for_a_function_block(
+    mut with_db: RootDatabase,
+    #[case] element: &str,
+    #[case] code: &str,
+) {
+    let source = format!(
+        r#"
+FUNCTION_BLOCK Counter
+VAR n : INT; END_VAR
+    n := n + 1;
+END_FUNCTION_BLOCK
+
+PROGRAM F
+VAR fb1 : Counter; END_VAR
+END_PROGRAM
+
+CONFIGURATION Cfg
+VAR_GLOBAL go : BOOL; END_VAR
+    RESOURCE Res ON CPU
+        TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+        TASK Ev(SINGLE := go, PRIORITY := 2);
+        PROGRAM P1 WITH T : F({element});
+    END_RESOURCE
+END_CONFIGURATION
+"#
+    );
+    let diagnostics = test_diagnostics(&mut with_db, &[&source]);
+    assert!(diagnostics.contains(code), "{diagnostics}");
+}
+
+/// A program instance's connections and task associations are refused
+/// where they cannot hold (E1428): `:=` feeds an input and `=>` reads an
+/// output, the two sides are one type, an input or a task association is
+/// made once, a task association names a function block the program holds,
+/// and the program does not call that function block itself. An output
+/// cannot be copied into an input image (E1419).
+#[rstest]
+fn invalid_program_connections_and_task_associations(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK Counter
+VAR_OUTPUT n : INT; END_VAR
+    n := n + 1;
+END_FUNCTION_BLOCK
+
+CLASS Box
+VAR k : INT; END_VAR
+END_CLASS
+
+PROGRAM F
+VAR_INPUT x1 : BOOL; x2 : UINT; END_VAR
+VAR_OUTPUT y1 : UINT; END_VAR
+VAR fb1 : Counter; fb2 : Counter; b : Box; END_VAR
+    fb2();
+END_PROGRAM
+
+CONFIGURATION Cfg
+VAR_GLOBAL w : INT; END_VAR
+    RESOURCE Res ON CPU
+        TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM P1 WITH T : F(y1 := 1, x1 => w, x2 := w, x1 := TRUE, x1 := FALSE, y1 => %IW0);
+        PROGRAM P2 WITH T : F(b WITH T, fb2 WITH T, fb1 WITH T, fb1 WITH T, nosuch := 1);
+    END_RESOURCE
+END_CONFIGURATION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1428] Error: program configuration element refused
+        ,-[ file:///test0.st:22:31 ]
+        |
+     22 |         PROGRAM P1 WITH T : F(y1 := 1, x1 => w, x2 := w, x1 := TRUE, x1 := FALSE, y1 => %IW0);
+        |                               ^|
+        |                                `-- 'y1' is not a VAR_INPUT of the program, so ':=' cannot feed it
+        |
+        | Note: ':=' connects a source to an input, '=>' an output to a sink
+    ----'
+    [E1428] Error: program configuration element refused
+        ,-[ file:///test0.st:22:40 ]
+        |
+     22 |         PROGRAM P1 WITH T : F(y1 := 1, x1 => w, x2 := w, x1 := TRUE, x1 := FALSE, y1 => %IW0);
+        |                                        ^|
+        |                                         `-- 'x1' is not a VAR_OUTPUT of the program, so '=>' cannot read it
+        |
+        | Note: ':=' connects a source to an input, '=>' an output to a sink
+    ----'
+    [E1428] Error: program configuration element refused
+        ,-[ file:///test0.st:22:49 ]
+        |
+     22 |         PROGRAM P1 WITH T : F(y1 := 1, x1 => w, x2 := w, x1 := TRUE, x1 := FALSE, y1 => %IW0);
+        |                                                 ^|
+        |                                                  `-- 'x2' is 'UINT', and 'w' is 'INT'
+        |
+        | Note: a connection copies the value as it is; connect a variable of the same type
+    ----'
+    [E1419] Error: write to an input location
+        ,-[ file:///test0.st:22:83 ]
+        |
+     22 |         PROGRAM P1 WITH T : F(y1 := 1, x1 => w, x2 := w, x1 := TRUE, x1 := FALSE, y1 => %IW0);
+        |                                                                                   ^|
+        |                                                                                    `-- '%IW0' is an input: it is written by the host, not by the program
+        |
+        | Note: the host copies the input image in before each scan, so this write is overwritten before anything can read it
+    ----'
+    [E1428] Error: program configuration element refused
+        ,-[ file:///test0.st:22:58 ]
+        |
+     22 |         PROGRAM P1 WITH T : F(y1 := 1, x1 => w, x2 := w, x1 := TRUE, x1 := FALSE, y1 => %IW0);
+        |                                                          ^|
+        |                                                           `-- 'x1' is connected here and by another element
+        |
+        | Note: an input has one source; keep one of the elements
+    ----'
+    [E1428] Error: program configuration element refused
+        ,-[ file:///test0.st:22:70 ]
+        |
+     22 |         PROGRAM P1 WITH T : F(y1 := 1, x1 => w, x2 := w, x1 := TRUE, x1 := FALSE, y1 => %IW0);
+        |                                                                      ^|
+        |                                                                       `-- 'x1' is connected here and by another element
+        |
+        | Note: an input has one source; keep one of the elements
+    ----'
+    [E1428] Error: program configuration element refused
+        ,-[ file:///test0.st:23:31 ]
+        |
+     23 |         PROGRAM P2 WITH T : F(b WITH T, fb2 WITH T, fb1 WITH T, fb1 WITH T, nosuch := 1);
+        |                               |
+        |                               `-- 'b' is not a FUNCTION_BLOCK instance, so no task can run it
+        |
+        | Note: a task runs a function block's body; a CLASS has none
+    ----'
+    [E1414] Error: configuration error
+        ,-[ file:///test0.st:23:77 ]
+        |
+     23 |         PROGRAM P2 WITH T : F(b WITH T, fb2 WITH T, fb1 WITH T, fb1 WITH T, nosuch := 1);
+        |                                                                             ^^^|^^
+        |                                                                                `---- 'F' has no field named 'nosuch'
+    ----'
+    [E1428] Error: program configuration element refused
+        ,-[ file:///test0.st:23:53 ]
+        |
+     23 |         PROGRAM P2 WITH T : F(b WITH T, fb2 WITH T, fb1 WITH T, fb1 WITH T, nosuch := 1);
+        |                                                     ^|^
+        |                                                      `--- 'fb1' is associated with a task here and by another element
+        |
+        | Note: a function block runs under one task; keep one of the elements
+    ----'
+    [E1428] Error: program configuration element refused
+        ,-[ file:///test0.st:23:65 ]
+        |
+     23 |         PROGRAM P2 WITH T : F(b WITH T, fb2 WITH T, fb1 WITH T, fb1 WITH T, nosuch := 1);
+        |                                                                 ^|^
+        |                                                                  `--- 'fb1' is associated with a task here and by another element
+        |
+        | Note: a function block runs under one task; keep one of the elements
+    ----'
+    [E1428] Error: program configuration element refused
+        ,-[ file:///test0.st:23:41 ]
+        |
+     15 |     fb2();
+        |     ^|^
+        |      `--- 'fb2' is called here
+        |
+     23 |         PROGRAM P2 WITH T : F(b WITH T, fb2 WITH T, fb1 WITH T, fb1 WITH T, nosuch := 1);
+        |                                         ^|^
+        |                                          `--- 'fb2' runs under its task, and 'F' calls it too
+        |
+        | Note: the task runs the instance on its own; remove the call from the program
+    ----'
+    ");
+}
+
+#[rstest]
+fn config_inst_init_resolves(mut with_db: RootDatabase) {
     let source = r#"
 PROGRAM MyProg
     VAR
@@ -477,25 +797,16 @@ CONFIGURATION MyCfg
     END_VAR
 END_CONFIGURATION
 "#;
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1416] Error: unsupported configuration element
-        ,-[ file:///test0.st:15:15 ]
-        |
-     15 |         inst1.x : INT := 42;
-        |               |
-        |               `-- VAR_CONFIG is checked but not applied yet, so this value never reaches the instance
-        |
-        | Note: set the value in the program's own VAR declaration instead
-    ----'
-    ");
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
 
 /// A location-only entry is the standard's own form (`STATION_2.P4.FB1.C2 AT
-/// %QB25: BYTE;`), in our corpus. It was refused with a SYNTAX code before the
-/// E1416 that says VAR_CONFIG is not applied: a misleading error on valid
-/// syntax. Now only E1416, as for any other entry.
+/// %QB25: BYTE;`), in our corpus, and it locates a variable declared `AT %Q*`
+/// (see `config_inst_init_location_locates_a_partly_located_variable`). One
+/// whose variable has no partial address is refused as such (E1424), not
+/// with a syntax code.
 #[rstest]
-fn config_inst_init_location_only_is_unsupported_not_a_syntax_error(mut with_db: RootDatabase) {
+fn config_inst_init_location_of_an_unlocated_variable_is_refused(mut with_db: RootDatabase) {
     let source = r#"
 PROGRAM MyProg
     VAR
@@ -515,16 +826,41 @@ CONFIGURATION MyCfg
 END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1416] Error: unsupported configuration element
+    [E1424] Error: location refused
         ,-[ file:///test0.st:15:15 ]
         |
      15 |         inst1.x AT %QB25 : BYTE;
         |               |
-        |               `-- VAR_CONFIG is checked but not applied yet, so this value never reaches the instance
+        |               `-- 'x' is not declared AT %I*, %Q* or %M*, so its address is not VAR_CONFIG's to give
         |
-        | Note: set the value in the program's own VAR declaration instead
+        | Note: declare it AT %I*, %Q* or %M* in its POU to leave its address to the configuration
     ----'
     ");
+}
+
+/// The same entry, on a variable whose declaration leaves its address to the
+/// configuration: nothing to report.
+#[rstest]
+fn config_inst_init_location_locates_a_partly_located_variable(mut with_db: RootDatabase) {
+    let source = r#"
+PROGRAM MyProg
+    VAR
+        x AT %Q* : BYTE;
+    END_VAR
+END_PROGRAM
+
+CONFIGURATION MyCfg
+    RESOURCE Res ON CPU
+        TASK t1(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM inst1 WITH t1 : MyProg;
+    END_RESOURCE
+
+    VAR_CONFIG
+        inst1.x AT %QB25 : BYTE;
+    END_VAR
+END_CONFIGURATION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
 
 /// The standard writes the path RESOURCE.PROGRAM.VARIABLE (Table 62,
@@ -550,17 +886,7 @@ CONFIGURATION MyCfg
     END_VAR
 END_CONFIGURATION
 "#;
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1416] Error: unsupported configuration element
-        ,-[ file:///test0.st:15:19 ]
-        |
-     15 |         Res.inst1.x : INT := 42;
-        |                   |
-        |                   `-- VAR_CONFIG is checked but not applied yet, so this value never reaches the instance
-        |
-        | Note: set the value in the program's own VAR declaration instead
-    ----'
-    ");
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
 
 /// A leading segment that names neither a resource nor an instance is still
@@ -598,7 +924,7 @@ END_CONFIGURATION
 
 /// A valid VAR_CONFIG overriding a variable inside a nested function block.
 #[rstest]
-fn config_inst_init_nested_fb_resolves_but_is_unapplied(mut with_db: RootDatabase) {
+fn config_inst_init_nested_fb_resolves(mut with_db: RootDatabase) {
     let source = r#"
 FUNCTION_BLOCK InnerFB
     VAR
@@ -623,17 +949,7 @@ CONFIGURATION MyCfg
     END_VAR
 END_CONFIGURATION
 "#;
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1416] Error: unsupported configuration element
-        ,-[ file:///test0.st:21:19 ]
-        |
-     21 |         inst1.fb1.param : BOOL := TRUE;
-        |                   ^^|^^
-        |                     `---- VAR_CONFIG is checked but not applied yet, so this value never reaches the instance
-        |
-        | Note: set the value in the program's own VAR declaration instead
-    ----'
-    ");
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
 
 /// VAR_CONFIG with an unknown program instance should report E1413.
@@ -722,15 +1038,6 @@ CONFIGURATION MyCfg
 END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1416] Error: unsupported configuration element
-        ,-[ file:///test0.st:15:15 ]
-        |
-     15 |         inst1.x : INT := 'hello';
-        |               |
-        |               `-- VAR_CONFIG is checked but not applied yet, so this value never reaches the instance
-        |
-        | Note: set the value in the program's own VAR declaration instead
-    ----'
     [E0308] Error: invalid literal
         ,-[ file:///test0.st:15:26 ]
         |
@@ -775,7 +1082,7 @@ END_CONFIGURATION
 
 /// VAR_CONFIG inside a RESOURCE block with a nested FB path.
 #[rstest]
-fn config_inst_init_in_resource_resolves_but_is_unapplied(mut with_db: RootDatabase) {
+fn config_inst_init_in_resource_resolves(mut with_db: RootDatabase) {
     let source = r#"
 FUNCTION_BLOCK InnerFB
     VAR
@@ -800,17 +1107,7 @@ CONFIGURATION MyCfg
     END_VAR
 END_CONFIGURATION
 "#;
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1416] Error: unsupported configuration element
-        ,-[ file:///test0.st:21:19 ]
-        |
-     21 |         inst1.fb1.value : REAL := 3.14;
-        |                   ^^|^^
-        |                     `---- VAR_CONFIG is checked but not applied yet, so this value never reaches the instance
-        |
-        | Note: set the value in the program's own VAR declaration instead
-    ----'
-    ");
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
 
 /// Spec::infer() on a ProgConfig's prog_type should resolve to Type::Program.
@@ -1237,11 +1534,11 @@ fn a_schedulable_configuration_is_accepted(mut with_db: db::RootDatabase) {
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
 }
 
-/// A `PROGRAM ... (...)` connection list is parsed and then discarded: no copy
-/// is emitted around the scan and the names are never resolved, so `ghost` and
-/// `nosuch` — neither of which exists — used to compile clean.
+/// A connection list names the program's variables. It used to be parsed and
+/// then discarded, so `ghost`, which the program does not declare, compiled
+/// clean.
 #[rstest]
-fn program_connection_elements_are_reported(mut with_db: RootDatabase) {
+fn a_program_connection_names_a_variable_of_the_program(mut with_db: RootDatabase) {
     let source = r#"
         PROGRAM A
         VAR_INPUT inp : INT; END_VAR
@@ -1258,32 +1555,12 @@ fn program_connection_elements_are_reported(mut with_db: RootDatabase) {
         END_CONFIGURATION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1416] Error: unsupported configuration element
-        ,-[ file:///test0.st:12:40 ]
-        |
-     12 |                 PROGRAM PA WITH T : A (inp := src, outp => snk, ghost := nosuch);
-        |                                        ^|^
-        |                                         `--- program connection lists are parsed but not wired up yet, so this has no effect
-        |
-        | Note: assign it in the program body instead
-    ----'
-    [E1416] Error: unsupported configuration element
-        ,-[ file:///test0.st:12:52 ]
-        |
-     12 |                 PROGRAM PA WITH T : A (inp := src, outp => snk, ghost := nosuch);
-        |                                                    ^^|^
-        |                                                      `--- program connection lists are parsed but not wired up yet, so this has no effect
-        |
-        | Note: assign it in the program body instead
-    ----'
-    [E1416] Error: unsupported configuration element
+    [E1414] Error: configuration error
         ,-[ file:///test0.st:12:65 ]
         |
      12 |                 PROGRAM PA WITH T : A (inp := src, outp => snk, ghost := nosuch);
         |                                                                 ^^|^^
-        |                                                                   `---- program connection lists are parsed but not wired up yet, so this has no effect
-        |
-        | Note: assign it in the program body instead
+        |                                                                   `---- 'A' has no field named 'ghost'
     ----'
     ");
 }
@@ -1710,9 +1987,9 @@ END_CONFIGURATION
 }
 
 /// A located global is reachable by its own name — the `AT` clause is not
-/// part of it — and the location itself gets the SAME answer as a direct
-/// access: refused, because the hardware is not implemented. It used to
-/// compile silently into an ordinary variable that never sees its input.
+/// part of it — and the address binds it to the input band, so the whole
+/// declaration checks clean. The location itself is exercised in
+/// `semantics::direct_variables`.
 #[rstest]
 fn a_located_global_is_named_by_its_identifier(mut with_db: RootDatabase) {
     let source = r#"
@@ -1730,17 +2007,7 @@ VAR_GLOBAL sensor AT %IX0.0 : BOOL; END_VAR
     END_RESOURCE
 END_CONFIGURATION
 "#;
-    assert_snapshot!(crate::tests::utils::test_diagnostics(&mut with_db, &[source]), @r"
-    [E1417] Error: direct variable access is not supported
-       ,-[ file:///test0.st:9:12 ]
-       |
-     9 | VAR_GLOBAL sensor AT %IX0.0 : BOOL; END_VAR
-       |            ^^^^^^^^^^^|^^^^^^^^^^^
-       |                       `------------- '%IX0.0' cannot be read or written: there is no I/O mapping
-       |
-       | Note: the address is understood and X/B/W/D/L names the width, but nothing connects it to a process image yet
-    ---'
-    ");
+    assert_snapshot!(crate::tests::utils::test_diagnostics(&mut with_db, &[source]), @"");
 }
 
 // E1403: a deployment drives one RESOURCE, so a second one is refused where
@@ -1828,4 +2095,53 @@ CONFIGURATION Cfg
 END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
+
+/// A VAR_CONFIG entry repeats its variable's type, so a path with nothing
+/// after it, or with its location and nothing else, misses it (E0003). It was
+/// a bare syntax error over the whole entry.
+#[rstest]
+fn invalid_var_config_entry_without_a_type(mut with_db: RootDatabase) {
+    let source = r#"
+PROGRAM F
+VAR k : INT; END_VAR
+VAR x AT %Q* : INT; END_VAR
+END_PROGRAM
+
+CONFIGURATION Cfg
+VAR_CONFIG
+    Res.P1.k;
+    Res.P1.x AT %QW0;
+END_VAR
+    RESOURCE Res ON CPU
+        TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM P1 WITH T : F;
+    END_RESOURCE
+END_CONFIGURATION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0003] Error: syntax
+       ,-[ file:///test0.st:9:5 ]
+       |
+     9 |     Res.P1.k;
+       |     ^^^^|^^^
+       |         `----- variable type is missing
+    ---'
+    [E0003] Error: syntax
+        ,-[ file:///test0.st:10:5 ]
+        |
+     10 |     Res.P1.x AT %QW0;
+        |     ^^^^^^^^|^^^^^^^
+        |             `--------- variable type is missing
+    ----'
+    [E1425] Error: variable not located
+        ,-[ file:///test0.st:14:17 ]
+        |
+     14 |         PROGRAM P1 WITH T : F;
+        |                 ^|
+        |                  `-- 'P1.x' is declared AT %Q*, and no VAR_CONFIG entry locates it
+        |
+        | Note: each instance is given its address in the CONFIGURATION's VAR_CONFIG, as in 'Res.P1.fb.x AT %IX0.0 : BOOL;'
+    ----'
+    ");
 }

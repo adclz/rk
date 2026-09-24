@@ -3,7 +3,7 @@ use ide_proto::handlers::{CompletionHandler, CompletionRequest};
 use ide_proto::walk::completion_descendant_at;
 use rstest::rstest;
 
-use crate::tests::utils::{add_source, with_db};
+use crate::tests::utils::{add_marked_source, add_source, with_db};
 
 /// Test completion inside an empty CONFIGURATION body
 #[rstest]
@@ -239,4 +239,107 @@ END_CONFIGURATION
 
     let labels: Vec<&str> = completions.iter().map(|c| c.label.as_str()).collect();
     assert!(labels.is_empty(), "should have no completions: {labels:?}");
+}
+
+/// Inside a program configuration's list: the program's inputs, outputs and
+/// function blocks where an element is named, a VAR_GLOBAL of the element's
+/// type after `:=` or `=>`, and a task of the resource after `WITH`.
+#[rstest]
+#[case::an_empty_list("|", &["x1", "x2", "y1", "fb1"], &["n", "w"])]
+#[case::after_an_element("x1 := b, |", &["x2", "y1", "fb1"], &["n", "w"])]
+#[case::a_name_being_typed("x|", &["x1", "x2"], &["w"])]
+#[case::a_source("x2 := |", &["w", "total"], &["b", "x1"])]
+#[case::a_sink("y1 => |", &["w", "total"], &["b", "y1"])]
+#[case::a_task("fb1 WITH |", &["T", "FAST"], &["w", "x1"])]
+pub fn completion_in_a_program_configuration(
+    mut with_db: RootDatabase,
+    #[case] list: &str,
+    #[case] offered: &[&str],
+    #[case] not_offered: &[&str],
+) {
+    let source = format!(
+        r#"
+FUNCTION_BLOCK Counter
+VAR_OUTPUT c : INT; END_VAR
+END_FUNCTION_BLOCK
+
+PROGRAM F
+VAR_INPUT x1 : BOOL; x2 : UINT; END_VAR
+VAR_OUTPUT y1 : UINT; END_VAR
+VAR fb1 : Counter; n : INT; END_VAR
+END_PROGRAM
+
+CONFIGURATION Cfg
+VAR_GLOBAL w : UINT; b : BOOL; total : UINT; END_VAR
+    RESOURCE Res ON CPU
+        TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+        TASK FAST(INTERVAL := T#5ms, PRIORITY := 0);
+        PROGRAM P1 WITH T : F({list});
+    END_RESOURCE
+END_CONFIGURATION
+"#
+    );
+    let (file, offset) = add_marked_source(&mut with_db, &source);
+
+    let items = ide_proto::handlers::completions::complete(&with_db, file, offset, None);
+    let labels: Vec<&str> = items.iter().map(|c| c.label.as_str()).collect();
+    for label in offered {
+        assert!(labels.contains(label), "missing `{label}`: {labels:?}");
+    }
+    for label in not_offered {
+        assert!(!labels.contains(label), "offered `{label}`: {labels:?}");
+    }
+}
+
+/// Inside VAR_CONFIG, the entry being written: a resource or a program
+/// instance where a path starts, the instances of a resource after it, the
+/// members of whatever the path reached, and the variable's own type after
+/// the colon. It offered the CONFIGURATION's sections instead.
+#[rstest]
+#[case::an_empty_section("|", &["Res", "P1"], &["VAR_GLOBAL", "x"])]
+#[case::after_an_entry("Res.P1.x AT %QW0 : INT;\n    |", &["Res", "P1"], &["VAR_GLOBAL"])]
+#[case::after_a_resource("Res.|", &["P1"], &["Res", "x"])]
+#[case::after_an_instance("Res.P1.|", &["x", "d"], &["P1", "out"])]
+#[case::an_instance_without_its_resource("P1.|", &["x", "d"], &["P1"])]
+#[case::through_a_member("Res.P1.d.|", &["out"], &["x", "d"])]
+#[case::a_member_being_typed("Res.P1.o|", &["x", "d"], &["P1"])]
+#[case::the_type("Res.P1.x AT %QW0 : |", &["INT"], &["x", "VAR_GLOBAL"])]
+pub fn completion_in_var_config(
+    mut with_db: RootDatabase,
+    #[case] entry: &str,
+    #[case] offered: &[&str],
+    #[case] not_offered: &[&str],
+) {
+    let source = format!(
+        r#"
+FUNCTION_BLOCK Drive
+VAR out AT %Q* : INT; END_VAR
+END_FUNCTION_BLOCK
+
+PROGRAM F
+VAR x AT %Q* : INT; END_VAR
+VAR d : Drive; END_VAR
+END_PROGRAM
+
+CONFIGURATION Cfg
+VAR_CONFIG
+    {entry}
+END_VAR
+    RESOURCE Res ON CPU
+        TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM P1 WITH T : F;
+    END_RESOURCE
+END_CONFIGURATION
+"#
+    );
+    let (file, offset) = add_marked_source(&mut with_db, &source);
+
+    let items = ide_proto::handlers::completions::complete(&with_db, file, offset, None);
+    let labels: Vec<&str> = items.iter().map(|c| c.label.as_str()).collect();
+    for label in offered {
+        assert!(labels.contains(label), "missing `{label}`: {labels:?}");
+    }
+    for label in not_offered {
+        assert!(!labels.contains(label), "offered `{label}`: {labels:?}");
+    }
 }

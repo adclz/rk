@@ -95,6 +95,11 @@ pub fn lower_type<'db>(
             Ok(MirType::Elementary(mir_elem))
         }
 
+        // An opaque address: what it points at is typed where it is
+        // dereferenced, by HIR's deref adjustment (`pointee_of`). Typing it
+        // here lowers a type that references itself (`next : REF_TO Node`)
+        // without end, and a pointer to a struct or an array would read as a
+        // by-reference parameter, which a REF_TO is not.
         Type::RefTo(_) => Ok(MirType::Pointer(Box::new(MirType::Void))),
 
         Type::Struct(s) => lower_struct_type_named(db, s, type_name),
@@ -387,8 +392,11 @@ fn lower_instance_struct<'db>(
         let var = member.var;
         let mir_type = lower_spec(db, var.spec(db))?;
         // A VAR_IN_OUT field holds the address of the caller's l-value: a
-        // pointer the body auto-derefs and the call site writes once.
-        let is_inout = var.kind(db) == hir::hir_def::pous::variable::VariableKind::InOut;
+        // pointer the body auto-derefs and the call site writes once. A field
+        // declared `AT %I*` holds the address of its channel, which `__init`
+        // writes from VAR_CONFIG.
+        let is_inout = var.kind(db) == hir::hir_def::pous::variable::VariableKind::InOut
+            || var.is_partly_located(db);
         let mir_type = if is_inout {
             MirType::Pointer(Box::new(mir_type))
         } else {
@@ -438,7 +446,19 @@ pub fn lower_program_type<'db>(
         if var.kind(db) == hir::hir_def::pous::variable::VariableKind::Temp {
             continue;
         }
+        // A located VAR is its channel's cell, shared by every instance.
+        if var.is_program_located(db) {
+            continue;
+        }
         let mir_type = lower_spec(db, var.spec(db))?;
+        // One declared `AT %I*` holds the address of its channel, which
+        // `__init` writes from VAR_CONFIG.
+        let partly = var.is_partly_located(db);
+        let mir_type = if partly {
+            MirType::Pointer(Box::new(mir_type))
+        } else {
+            mir_type
+        };
         let field_align = mir_type.alignment();
         let field_size = mir_type.size_bytes();
 
@@ -450,7 +470,7 @@ pub fn lower_program_type<'db>(
             offset,
             // PROGRAM instances are driven by the scheduler, never through an
             // `FbCall`, so PROGRAM VAR_IN_OUT stays value-based.
-            by_ref: false,
+            by_ref: partly,
         });
         offset += field_size;
     }

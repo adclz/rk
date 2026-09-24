@@ -570,38 +570,6 @@ fn emit_call(
 
     func.instruction(&Instruction::Call(idx));
 
-    // A `=>` destination wider than the output received it in a memory
-    // scratch; convert into place now. The return value stays underneath.
-    for bind in &call.output_bindings {
-        let from_ty = mir::types::MirType::Elementary(bind.from);
-        let to_ty = mir::types::MirType::Elementary(bind.to);
-        let cast = crate::mir_cast::emit_cast_instructions(bind.from, bind.to);
-        let scratch = mir::expr::MirPlace::Local(bind.scratch);
-        match &bind.target {
-            mir::expr::MirPlace::Local(name)
-                if matches!(locals.get(name), Some(LocalInfo::Scalar { .. })) =>
-            {
-                emit_addr_of(func, &scratch, locals, fn_indices);
-                crate::emit_stmt::emit_typed_mem_load_pub(func, &from_ty);
-                for instr in &cast {
-                    func.instruction(instr);
-                }
-                let Some(LocalInfo::Scalar { index, .. }) = locals.get(name) else {
-                    unreachable!()
-                };
-                func.instruction(&Instruction::LocalSet(*index));
-            }
-            target => {
-                emit_addr_of(func, target, locals, fn_indices);
-                emit_addr_of(func, &scratch, locals, fn_indices);
-                crate::emit_stmt::emit_typed_mem_load_pub(func, &from_ty);
-                for instr in &cast {
-                    func.instruction(instr);
-                }
-                crate::emit_stmt::emit_typed_mem_store_pub(func, &to_ty);
-            }
-        }
-    }
     // Extern results pop in reverse wire order: the return value first (into
     // its scratch), then each output into its scratch, then the stores; the
     // return value ends on top.
@@ -653,6 +621,29 @@ fn emit_call(
         }
         if let Some(ret) = &call.extern_ret_scratch {
             func.instruction(&Instruction::LocalGet(local_idx(ret)));
+        }
+    }
+    // Outputs received in a scratch go to their destination now, the return
+    // value underneath.
+    for bind in &call.output_bindings {
+        match &bind.target {
+            mir::expr::MirPlace::Local(name)
+                if matches!(locals.get(name), Some(LocalInfo::Scalar { .. })) =>
+            {
+                emit_expr(func, &bind.value, locals, fn_indices);
+                let Some(LocalInfo::Scalar { index, .. }) = locals.get(name) else {
+                    unreachable!()
+                };
+                func.instruction(&Instruction::LocalSet(*index));
+            }
+            target => {
+                emit_addr_of(func, target, locals, fn_indices);
+                emit_expr(func, &bind.value, locals, fn_indices);
+                crate::emit_stmt::emit_typed_mem_store_pub(
+                    func,
+                    &mir::types::MirType::Elementary(bind.ty),
+                );
+            }
         }
     }
 }
@@ -985,11 +976,23 @@ pub(crate) fn emit_typed_mem_load(func: &mut wasm_encoder::Function, ty: &MirTyp
         MirType::Elementary(e) if e.is_64bit() => {
             func.instruction(&Instruction::I64Load(mem_arg(0, align_log2)));
         }
-        MirType::Elementary(e) if e.size_bytes() == 1 => {
-            func.instruction(&Instruction::I32Load8U(mem_arg(0, 0)));
+        // An 8- or 16-bit value has a four-byte slot, and only its own bytes
+        // are read: whatever the rest holds, the value is the same. A host
+        // or a debugger writing a part of a located INT replaces bits, and
+        // leaves the sign extension above them stale.
+        MirType::Elementary(e) if e.rk_bits() == 8 => {
+            func.instruction(&if e.is_signed() {
+                Instruction::I32Load8S(mem_arg(0, 0))
+            } else {
+                Instruction::I32Load8U(mem_arg(0, 0))
+            });
         }
-        MirType::Elementary(e) if e.size_bytes() == 2 => {
-            func.instruction(&Instruction::I32Load16U(mem_arg(0, align_log2.min(1))));
+        MirType::Elementary(e) if e.rk_bits() == 16 => {
+            func.instruction(&if e.is_signed() {
+                Instruction::I32Load16S(mem_arg(0, 1))
+            } else {
+                Instruction::I32Load16U(mem_arg(0, 1))
+            });
         }
         _ => {
             func.instruction(&Instruction::I32Load(mem_arg(0, align_log2.min(2))));

@@ -178,6 +178,21 @@ impl<'db> DefinitionHandler<'db> for PathExpr<'db> {
         offset: usize,
     ) -> Option<GotoDefinitionResponse> {
         let ty = self.infer(db);
+        // The resource or the instance a VAR_CONFIG path starts with.
+        if ty.is_never()
+            && let Some(step) = crate::hir_node::config_path_step(db, *self)
+        {
+            use hir::hir_ty::config::ConfigPathStep;
+            let (scope, name) = match step {
+                ConfigPathStep::Resource(r) => (r.get_scope_id(db), r.name(db).get_span(db)),
+                ConfigPathStep::Instance(p) => (p.get_scope_id(db), p.name(db).get_span(db)),
+            };
+            let file = scope.file(db);
+            return Some(GotoDefinitionResponse::Scalar(Location::new(
+                file.url(db).to_owned(),
+                hir::denormalize(db, file, &name).unwrap_or_default(),
+            )));
+        }
         if ty.is_never()
             && let Some(written) = try_build_namespace_path(db, self)
             && let Some(ns_path) = resolve_namespace_prefix(db, self.get_scope_id(db), written)
@@ -325,6 +340,10 @@ impl<'db> DefinitionHandler<'db> for ProgConfig<'db> {
                 }
                 return None;
             }
+        }
+        // On the task a function block runs under: `fb1 WITH FAST`.
+        if let Some(task) = crate::hir_node::element_task_at(db, *self, offset) {
+            return task.definition(db, task.name(db).get_span(db).start_byte);
         }
 
         self.prog_type(db).infer(db).definition(db, offset)

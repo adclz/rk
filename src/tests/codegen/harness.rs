@@ -359,6 +359,14 @@ pub struct TestPlc {
     driver: Driver,
     retain: Region,
     globals: Region,
+    /// The located bands, one per area. A module that declares nothing in an
+    /// area does not export it, and the band reads back zero-sized.
+    input: Region,
+    output: Region,
+    marker: Region,
+    /// Which address is which cell, from the `located-map` section. Empty
+    /// when the module declares no located variable.
+    located: debug_format::LocatedMap,
     tick: u64,
 }
 
@@ -415,6 +423,14 @@ impl TestPlc {
             base: global_i32_opt(&mut store, &instance, "globals_base").unwrap_or(0) as u32,
             size: global_i32_opt(&mut store, &instance, "globals_size").unwrap_or(0) as u32,
         };
+        let mut band = |base: &str, size: &str| Region {
+            base: global_i32_opt(&mut store, &instance, base).unwrap_or(0) as u32,
+            size: global_i32_opt(&mut store, &instance, size).unwrap_or(0) as u32,
+        };
+        let input = band("input_base", "input_size");
+        let output = band("output_base", "output_size");
+        let marker = band("marker_base", "marker_size");
+        let located = located_map(wasm)?;
 
         let driver = match schedule_manifest(wasm)? {
             Some(manifest) => Driver::Scheduled(resolve_tasks(&mut store, &instance, &manifest)?),
@@ -435,6 +451,10 @@ impl TestPlc {
             driver,
             retain,
             globals,
+            input,
+            output,
+            marker,
+            located,
             tick: 0,
         })
     }
@@ -513,6 +533,113 @@ impl TestPlc {
 
     pub fn globals_region(&self) -> Region {
         self.globals
+    }
+
+    /// The `%I` band the host writes before a scan.
+    #[allow(dead_code)]
+    pub fn input_region(&self) -> Region {
+        self.input
+    }
+
+    /// The `%Q` band the host reads after a scan.
+    #[allow(dead_code)]
+    pub fn output_region(&self) -> Region {
+        self.output
+    }
+
+    /// The `%M` band, which the program owns.
+    #[allow(dead_code)]
+    pub fn marker_region(&self) -> Region {
+        self.marker
+    }
+
+    /// Copy the output band out of linear memory, as a host does after a scan.
+    #[allow(dead_code)]
+    pub fn read_outputs(&self) -> Vec<u8> {
+        self.read_region(self.output)
+    }
+
+    /// The module's located map: every address it declares.
+    #[allow(dead_code)]
+    pub fn located_map(&self) -> &debug_format::LocatedMap {
+        &self.located
+    }
+
+    /// The map entry for one address AS WRITTEN (`%IW4`), which is how a host
+    /// binds a channel: by the address, never by a band offset it computed.
+    #[allow(dead_code)]
+    pub fn located(&self, address: &str) -> Result<&debug_format::LocatedVar> {
+        self.located
+            .entries
+            .iter()
+            .find(|e| e.address == address)
+            .with_context(|| {
+                format!(
+                    "no located variable at {address}; the module declares [{}]",
+                    self.located
+                        .entries
+                        .iter()
+                        .map(|e| e.address.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
+            })
+    }
+
+    /// Write one located cell by its address, as a bound host does.
+    #[allow(dead_code)]
+    pub fn write_located(&mut self, address: &str, bytes: &[u8]) -> Result<()> {
+        let entry = self.located(address)?.clone();
+        if bytes.len() > entry.size as usize {
+            bail!(
+                "{address} holds {} bytes, not {}",
+                entry.size,
+                bytes.len()
+            );
+        }
+        let Some(part) = &entry.part_of else {
+            return self.write_bytes(entry.addr, bytes);
+        };
+        // A part: replace its bits in the owner's cell, as a host must.
+        let mut value = [0u8; 8];
+        value[..bytes.len()].copy_from_slice(bytes);
+        let mask = low_mask(entry.width) << part.shift;
+        let cell = self.read_cell(entry.addr, entry.size)?;
+        let cell = (cell & !mask) | ((u64::from_le_bytes(value) << part.shift) & mask);
+        self.write_bytes(entry.addr, &cell.to_le_bytes()[..entry.size as usize])
+    }
+
+    /// Read one located cell by its address; for a part, just its bits,
+    /// shifted down.
+    #[allow(dead_code)]
+    pub fn read_located(&self, address: &str) -> Result<Vec<u8>> {
+        let entry = self.located(address)?;
+        let Some(part) = &entry.part_of else {
+            return self.read_bytes(entry.addr, entry.size as usize);
+        };
+        let bits = (self.read_cell(entry.addr, entry.size)? >> part.shift) & low_mask(entry.width);
+        Ok(bits.to_le_bytes()[..entry.size as usize].to_vec())
+    }
+
+    /// A cell's value, little-endian, zero-extended.
+    fn read_cell(&self, addr: u32, size: u32) -> Result<u64> {
+        let mut value = [0u8; 8];
+        value[..size as usize].copy_from_slice(&self.read_bytes(addr, size as usize)?);
+        Ok(u64::from_le_bytes(value))
+    }
+
+    /// Write the process image into the input band, as a host does before a
+    /// scan.
+    #[allow(dead_code)]
+    pub fn write_inputs(&mut self, offset: usize, bytes: &[u8]) -> Result<()> {
+        if offset + bytes.len() > self.input.size as usize {
+            bail!(
+                "write of {} bytes at offset {offset} leaves the input band ({} bytes)",
+                bytes.len(),
+                self.input.size
+            );
+        }
+        self.write_bytes(self.input.base + offset as u32, bytes)
     }
 
     /// Copy the retained band out of linear memory.
@@ -611,6 +738,11 @@ fn global_i32(store: &mut Store<()>, instance: &Instance, name: &str) -> Result<
         .with_context(|| format!("global `{name}` must be i32"))
 }
 
+/// All-ones for the low `width` bits.
+fn low_mask(width: u16) -> u64 {
+    if width >= 64 { u64::MAX } else { (1u64 << width) - 1 }
+}
+
 fn global_i32_opt(store: &mut Store<()>, instance: &Instance, name: &str) -> Option<i32> {
     instance
         .get_global(&mut *store, name)?
@@ -633,6 +765,23 @@ fn sole_function_export(module: &Module) -> Result<String> {
 }
 
 /// The `rk.schedule` section, decoded, when the module carries one.
+/// The `located-map` section, or an empty map when the module carries none.
+fn located_map(wasm: &[u8]) -> Result<debug_format::LocatedMap> {
+    let Some(data) = custom_section(wasm, debug_format::LOCATED_MAP_SECTION) else {
+        return Ok(debug_format::LocatedMap::new(Vec::new()));
+    };
+    let map = debug_format::LocatedMap::from_msgpack(data)
+        .context("decoding the `located-map` section")?;
+    if map.version != debug_format::LOCATED_MAP_VERSION {
+        bail!(
+            "`located-map` is version {}, this harness reads {}",
+            map.version,
+            debug_format::LOCATED_MAP_VERSION
+        );
+    }
+    Ok(map)
+}
+
 fn schedule_manifest(wasm: &[u8]) -> Result<Option<debug_format::ScheduleManifest>> {
     let Some(data) = custom_section(wasm, debug_format::SCHEDULE_SECTION) else {
         return Ok(None);

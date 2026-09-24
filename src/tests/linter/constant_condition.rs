@@ -205,3 +205,32 @@ END_FUNCTION
     ---'
     ");
 }
+
+/// `BOOL#1` and `BOOL#0` are TRUE and FALSE: the message said the condition
+/// was always `1`.
+#[rstest]
+#[case::one("IF BOOL#1 THEN n := 1; END_IF;", "IF condition is always TRUE")]
+#[case::zero(
+    "WHILE BOOL#0 DO n := 1; END_WHILE;",
+    "WHILE condition is always FALSE"
+)]
+fn a_bool_literal_condition_is_named_by_its_value(
+    mut with_db: RootDatabase,
+    #[case] statement: &str,
+    #[case] message: &str,
+) {
+    let source = format!(
+        r#"
+FUNCTION test : INT
+VAR n : INT; END_VAR
+    {statement}
+    test := n;
+END_FUNCTION
+"#
+    );
+    let rendered = test_single_lint(&mut with_db, &[&source], "constant-condition");
+    assert!(
+        rendered.contains(message),
+        "`{statement}` must say `{message}`, got:\n{rendered}"
+    );
+}

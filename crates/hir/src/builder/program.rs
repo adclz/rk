@@ -25,6 +25,13 @@ impl<'db> SemanticIndexBuilder<'db> {
         self.current_scope = scope_id;
 
         let (prog_access_decls, variables) = self.parse_prog_variables(program);
+        // A PROGRAM's located VAR is the channel itself, shared by every
+        // instance of the program, so it is storage like a VAR_GLOBAL's.
+        for var in &variables {
+            if var.kind(self.db) == crate::hir_def::pous::variable::VariableKind::Var {
+                self.record_located_decl(*var);
+            }
+        }
 
         let name = Ident::from_node(self.db, self.file, program.name.cast(self.ast))?;
 

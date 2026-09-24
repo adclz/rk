@@ -2,12 +2,14 @@ use db::WorkspaceDataBase;
 use ide_diagnostic::IdeDiagnostic;
 
 use crate::check::errors::e04_init::InitError;
+use crate::check::errors::e14_config::{ConfigError, InputWriteRoute};
 use crate::{
     CallSite, HirNodeInfo,
     check::errors::{ToIdeDiagnostic, e03_type::TypeError},
     hir_def::{
         expressions::expression::{AddOperatorKind, MultOperatorKind},
         pous::pou::Pou,
+        pous::variable::LocationArea,
     },
     hir_ty::{
         body::{Adjustment, AdjustmentInfo, BodyInferenceResult},
@@ -436,6 +438,18 @@ impl<'db> Type<'db> {
                     );
                     assignable = false;
                 }
+                // Nor a CLASS instance, which is not callable only because it
+                // has no body.
+                if let class @ Type::Class(_) = variable.spec(db).infer(db).normalize(db) {
+                    ctx.errors.push(
+                        TypeError::AssignClassInstance {
+                            class,
+                            access: call_site,
+                        }
+                        .to_diagnostic(db, ctx.scope.file(db)),
+                    );
+                    assignable = false;
+                }
                 // a CONSTANT variable cannot be assigned to
                 if variable.qualifier(db).contains(crate::Qualifier::CONSTANT) {
                     ctx.errors.push(
@@ -444,7 +458,40 @@ impl<'db> Type<'db> {
                     );
                     assignable = false;
                 }
+                // The host owns the input band: it copies the process image
+                // in before every scan, so a write the program makes is gone
+                // before anything can read it.
+                if let Some(dv) = crate::hir_ty::index_graphs::effective_location(db, *variable)
+                    && dv.area(db) == Some(LocationArea::Input)
+                {
+                    ctx.errors.push(
+                        ConfigError::WriteToInputLocation {
+                            site: call_site,
+                            address: compact_str::CompactString::from(dv.to_address(db)),
+                            via: InputWriteRoute::Assignment,
+                        }
+                        .to_diagnostic(db, ctx.scope.file(db)),
+                    );
+                    assignable = false;
+                }
                 assignable
+            }
+            // A bare address is storage too, and `%I` is the host's: the
+            // copy-in before the next scan overwrites whatever a program
+            // stored there (E1419).
+            Type::DirectVariable((dv, _)) => {
+                if dv.area(db) != Some(LocationArea::Input) {
+                    return true;
+                }
+                ctx.errors.push(
+                    ConfigError::WriteToInputLocation {
+                        site: call_site,
+                        address: compact_str::CompactString::from(dv.to_address(db)),
+                        via: InputWriteRoute::Assignment,
+                    }
+                    .to_diagnostic(db, ctx.scope.file(db)),
+                );
+                false
             }
             Type::StructElement(_) => true,
             _ => self.check_not_direct_type(db, call_site, ctx),

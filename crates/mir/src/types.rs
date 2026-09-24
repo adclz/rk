@@ -225,6 +225,26 @@ impl MirElementary {
         self.size_bytes() == 8
     }
 
+    /// Whether this type is an integer or a bit string, whose value is its
+    /// bits: the types shifts and masks apply to.
+    pub fn is_integer(self) -> bool {
+        matches!(
+            self,
+            MirElementary::SInt
+                | MirElementary::Int
+                | MirElementary::DInt
+                | MirElementary::LInt
+                | MirElementary::USInt
+                | MirElementary::UInt
+                | MirElementary::UDInt
+                | MirElementary::ULInt
+                | MirElementary::Byte
+                | MirElementary::Word
+                | MirElementary::DWord
+                | MirElementary::LWord
+        )
+    }
+
     /// Whether this type is a floating-point type.
     pub fn is_float(self) -> bool {
         matches!(self, MirElementary::Real | MirElementary::LReal)

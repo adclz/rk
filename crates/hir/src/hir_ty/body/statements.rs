@@ -584,6 +584,22 @@ impl<'db> StmtsResolverCtx<'db> {
                         CallSite::from_scoped(db, control_variable),
                         ctx,
                     );
+                    // IEC counts in ANY_INT; a subrange or an alias of an
+                    // integer normalizes to it. A bit of a wider address is a
+                    // BOOL, so this refuses it too.
+                    let counted = control_typ.normalize(db);
+                    if !control_typ.is_never()
+                        && !counted.is_never()
+                        && !(counted.is_signed_integer() || counted.is_unsigned_integer())
+                    {
+                        ctx.errors.push(
+                            crate::check::errors::e12_control_flow::ControlFlowError::ForControlNotInteger {
+                                access: CallSite::from_scoped(db, control_variable),
+                                ty: control_typ,
+                            }
+                            .to_diagnostic(db, ctx.scope.file(db)),
+                        );
+                    }
 
                     self.infer_and_check_expr(db, &mut infer, *start, ctx);
                     self.infer_and_check_expr(db, &mut infer, *end, ctx);

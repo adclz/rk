@@ -550,6 +550,18 @@ impl Elementary {
             Elementary::InferInteger(_) | Elementary::InferFloat(_) | Elementary::InferString(_)
         )
     }
+
+    /// The value of a BOOL literal, or `None` for any other literal. The
+    /// grammar admits `TRUE`, `FALSE`, `BOOL#1` and `BOOL#0`, in any case;
+    /// lowering and the lints read the literal here rather than each from
+    /// its text.
+    pub fn as_bool(&self, db: &dyn WorkspaceDataBase) -> Option<bool> {
+        let Elementary::Bool(ident) = self else {
+            return None;
+        };
+        let text = ident.text(db);
+        Some(text.eq_ignore_ascii_case("TRUE") || text.as_str() == "1")
+    }
 }
 
 #[salsa::interned(debug, no_lifetime)]

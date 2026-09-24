@@ -198,25 +198,41 @@ impl<'db> Resolver<'db> {
     ) {
         match var_access.kind(db) {
             VariableAccessKind::Direct(dv) => {
-                // The address still gets its type (the width letter decides
-                // it), so a mismatched assignment is reported as a mismatch.
-                // But nothing maps it to a process image, so refuse it HERE —
-                // MIR's refusal reaches the user as an internal compiler
-                // error, from code `rk check` called clean.
-                //
-                // TODO: drop the refusal once an I/O band exists; the typing
-                // above is already what a real mapping would need.
+                // The width letter gives the address its type, so a
+                // mismatched assignment is reported as a mismatch.
                 ctx.type_of_direct_variable
                     .insert(dv, Type::DirectVariable((dv, var_access.multibits(db))));
-                ctx.errors.push(
-                    ConfigError::DirectVariableUnsupported {
-                        site: CallSite::from_scoped(db, &var_access),
-                        // The access text, which includes any partial
-                        // selection (`%IX0.0` = address `%IX0` + bit `.0`).
-                        address: CallSite::from_scoped(db, &var_access).to_string(db),
-                    }
-                    .to_diagnostic(db, ctx.scope.file(db)),
-                );
+                // An address written bare declares nothing, but it is still
+                // storage: lowering gives each distinct one a cell in its
+                // area's band. Only an address with no band to be given —
+                // no area letter, no width letter, or the incomplete `%I*` —
+                // is refused, and it is refused HERE because MIR's refusal
+                // reaches the user as an internal compiler error, from code
+                // `rk check` called clean.
+                // A library names no address at all: it is code for any
+                // machine, and its addresses were not the workspace's.
+                use crate::check::errors::e14_config::UnlocatableAddress;
+                let why = if !crate::hir_ty::infer::normalize::names_a_band(db, dv) {
+                    Some(if dv.partly(db) {
+                        UnlocatableAddress::Incomplete
+                    } else {
+                        UnlocatableAddress::Malformed
+                    })
+                } else if crate::check::check_duplicates::is_library_file(db, ctx.scope.file(db)) {
+                    Some(UnlocatableAddress::InLibrary)
+                } else {
+                    None
+                };
+                if let Some(why) = why {
+                    ctx.errors.push(
+                        ConfigError::DirectVariableUnsupported {
+                            site: CallSite::from_scoped(db, &var_access),
+                            address: CallSite::from_scoped(db, &var_access).to_string(db),
+                            why,
+                        }
+                        .to_diagnostic(db, ctx.scope.file(db)),
+                    );
+                }
             }
             VariableAccessKind::Symbolic(s) => {
                 self.resolve_begin_path_expr(db, s, var_access.multibits(db), ctx);

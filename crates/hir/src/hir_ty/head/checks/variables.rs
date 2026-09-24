@@ -27,6 +27,160 @@ use crate::{
 };
 
 impl<'db> InitInference<'db> {
+    /// A variable declared `AT %I*`, `%Q*` or `%M*` in a PROGRAM, a
+    /// FUNCTION_BLOCK or a CLASS: VAR_CONFIG gives each instance its address
+    /// (E1424, E1425), so only what the declaration alone decides is checked
+    /// here, RETAIN (E1420); the grammar gives it no initial value. Returns
+    /// whether `var` was one; anywhere else a partial address has nothing to
+    /// complete it, and it stays E1417.
+    fn check_partly_located(
+        &mut self,
+        db: &'db dyn WorkspaceDataBase,
+        var: &VariableDecl<'db>,
+        dv: crate::hir_def::pous::variable::DirectVariable<'db>,
+    ) -> bool {
+        let in_instance = matches!(
+            get_scope(db, var.get_scope_id(db)).kind,
+            ScopeKind::Program(_) | ScopeKind::Pou(Pou::FunctionBlock(_) | Pou::Class(_))
+        );
+        if !dv.is_area_only(db) || !var.is_var(db) || !in_instance {
+            return false;
+        }
+        if var.qualifier(db).contains(crate::Qualifier::RETAIN) {
+            self.errors.push(
+                ConfigError::RetainOnIoLocation {
+                    var: *var,
+                    address: compact_str::CompactString::from(dv.to_address(db)),
+                }
+                .to_diagnostic(db, self.scope.file(db)),
+            );
+        }
+        true
+    }
+
+    /// E1425: an instance whose type holds a variable declared `AT %I*`,
+    /// held where no VAR_CONFIG path can name it, or where a call copies over
+    /// it: an array's element, a STRUCT's field, a VAR_GLOBAL, an instance
+    /// made for each call, a VAR_INPUT. Returns whether it reported.
+    fn check_unreachable_partly(
+        &mut self,
+        db: &'db dyn WorkspaceDataBase,
+        var: &VariableDecl<'db>,
+    ) -> bool {
+        use crate::check::errors::e14_config::{PartlyUnlocated, UnreachablePlace};
+        if var.is_external(db) || var.is_in_out(db) {
+            return false;
+        }
+        let mut ty = var.spec(db).infer(db).normalize(db);
+        let mut in_array = false;
+        while let Type::Array(array) = ty {
+            in_array = true;
+            ty = array.of_type(db).infer(db).normalize(db);
+        }
+        let (names, member, in_struct) = match crate::hir_ty::head::inheritance::pou_of_type(db, ty)
+        {
+            Some(pou) => {
+                let paths = crate::hir_ty::head::inheritance::partly_located_members(db, pou);
+                let Some(path) = paths.first() else {
+                    return false;
+                };
+                let Some(member) = path.last() else {
+                    return false;
+                };
+                (
+                    path.iter().map(|m| m.name(db)).collect::<Vec<_>>(),
+                    *member,
+                    false,
+                )
+            }
+            None => match crate::hir_ty::head::inheritance::partly_located_in_struct(
+                db,
+                ty,
+                &mut Vec::new(),
+            ) {
+                Some((names, member)) => (names, member, true),
+                None => return false,
+            },
+        };
+        let per_call = var.is_temp(db)
+            || matches!(
+                get_scope(db, var.get_scope_id(db)).kind,
+                ScopeKind::Pou(Pou::Function(_)) | ScopeKind::MethodDecl(_)
+            );
+        let place = if in_struct {
+            UnreachablePlace::Struct
+        } else if in_array {
+            UnreachablePlace::Array
+        } else if var.is_global(db) {
+            UnreachablePlace::Global
+        } else if per_call {
+            UnreachablePlace::PerCall
+        } else if var.is_input(db) {
+            UnreachablePlace::Input
+        } else {
+            return false;
+        };
+        let member_path = names
+            .iter()
+            .map(|n| n.text(db).to_string())
+            .collect::<Vec<_>>()
+            .join(".");
+        let address = member
+            .location(db)
+            .map(|dv| dv.to_address(db))
+            .unwrap_or_default();
+        self.errors.push(
+            ConfigError::PartlyLocatedUnlocated(PartlyUnlocated::Unreachable {
+                var: *var,
+                member: compact_str::CompactString::from(member_path),
+                address: compact_str::CompactString::from(address),
+                place,
+            })
+            .to_diagnostic(db, self.scope.file(db)),
+        );
+        true
+    }
+
+    /// E1420: a RETAIN instance holding a variable declared `AT %M*`, which
+    /// points at its marker and would silently not be retained with the rest.
+    /// An `%I*` or `%Q*` member is not refused: neither area persists anyway.
+    fn check_retain_holds_marker(
+        &mut self,
+        db: &'db dyn WorkspaceDataBase,
+        var: &VariableDecl<'db>,
+    ) {
+        if !var.qualifier(db).contains(crate::Qualifier::RETAIN) {
+            return;
+        }
+        let Some(pou) =
+            crate::hir_ty::head::inheritance::pou_of_type(db, var.spec(db).infer(db).normalize(db))
+        else {
+            return;
+        };
+        let marker = crate::hir_ty::head::inheritance::partly_located_members(db, pou)
+            .iter()
+            .find(|path| {
+                path.last()
+                    .and_then(|m| m.location(db))
+                    .and_then(|dv| dv.area(db))
+                    == Some(crate::hir_def::pous::variable::LocationArea::Marker)
+            });
+        if let Some(path) = marker {
+            let member = path
+                .iter()
+                .map(|m| m.name(db).text(db).to_string())
+                .collect::<Vec<_>>()
+                .join(".");
+            self.errors.push(
+                ConfigError::RetainHoldsPartlyLocated {
+                    var: *var,
+                    member: compact_str::CompactString::from(member),
+                }
+                .to_diagnostic(db, self.scope.file(db)),
+            );
+        }
+    }
+
     pub(crate) fn check_variables(&mut self, db: &'db dyn WorkspaceDataBase) {
         let variables = match self.scope.variables(db) {
             Some(vars) => vars,
@@ -125,6 +279,9 @@ impl<'db> InitInference<'db> {
         let mut first_variadic: Option<VariableDecl<'db>> = None;
 
         for var in variables {
+            if !self.check_unreachable_partly(db, var) {
+                self.check_retain_holds_marker(db, var);
+            }
             if let Some(pou_kind) = stateless_pou
                 && var
                     .qualifier(db)
@@ -163,21 +320,185 @@ impl<'db> InitInference<'db> {
                     );
                 }
             }
-            // A declared location gets the SAME answer as a direct access:
-            // the hardware is not implemented, so binding a variable to an
-            // address cannot be honoured. Silently dropping the `AT` clause
-            // handed the user an ordinary variable that never sees its input.
-            //
-            // TODO: lift this when an I/O band lands — `var.location` already
-            // carries what a mapping would bind.
-            if let Some(dv) = var.location(db) {
-                self.errors.push(
-                    ConfigError::DirectVariableUnsupported {
-                        site: var.as_call_site(db),
-                        address: compact_str::CompactString::from(dv.to_address(db)),
+            // A VAR_GLOBAL or a PROGRAM's VAR with an `AT` clause is storage
+            // in one of the three I/O bands. Any other POU's variables are
+            // fields of each of its instances, so a single address cannot be
+            // theirs. Same answer for an address with no area letter (`%Z0`),
+            // no width letter (`%I0`) or none at all (`%I*`, which needs the
+            // binding VAR_CONFIG supplies): nothing maps them (E1417).
+            if let Some(dv) = var.location(db)
+                && !self.check_partly_located(db, var, dv)
+            {
+                let address = compact_str::CompactString::from(dv.to_address(db));
+                // A library names no address: it is code for any machine.
+                let in_library =
+                    crate::check::check_duplicates::is_library_file(db, self.scope.file(db));
+                let banded = dv.area(db).filter(|_| {
+                    !in_library
+                        && ((var.kind(db) == crate::hir_def::pous::variable::VariableKind::Global
+                            && crate::hir_ty::infer::normalize::names_a_band(db, dv))
+                            || var.is_program_located(db))
+                });
+                match banded {
+                    // `%I` is copied in before every scan and `%Q` read back
+                    // after it, so neither can ALSO be restored from the
+                    // retain band at startup. `%M` is the area that may.
+                    Some(area)
+                        if area != crate::hir_def::pous::variable::LocationArea::Marker
+                            && var.qualifier(db).contains(crate::Qualifier::RETAIN) =>
+                    {
+                        self.errors.push(
+                            ConfigError::RetainOnIoLocation { var: *var, address }
+                                .to_diagnostic(db, self.scope.file(db)),
+                        );
                     }
-                    .to_diagnostic(db, self.scope.file(db)),
-                );
+                    Some(_) => {
+                        // An address is one channel. Two declarations bound
+                        // to it each get storage of their own, so a write
+                        // through one is invisible through the other and a
+                        // host binding by address finds it twice. They may be
+                        // a VAR_GLOBAL and a PROGRAM's VAR, in two files, which
+                        // have no order: each is reported, like E1402, and
+                        // points at the smallest of the others.
+                        let other = crate::hir_def::pous::variable::LocatedAddress::of(db, dv)
+                            .map(|a| crate::hir_ty::index_graphs::located_declarations_at(db, &a))
+                            .unwrap_or_default()
+                            .into_iter()
+                            .filter(|other| other != var)
+                            .min_by_key(|other| {
+                                (
+                                    other.get_scope_id(db).file(db).url(db).to_string(),
+                                    other.get_name_span(db).start_byte,
+                                )
+                            });
+                        if let Some(other) = other {
+                            self.errors.push(
+                                ConfigError::DuplicateLocation {
+                                    var: *var,
+                                    other,
+                                    address: address.clone(),
+                                }
+                                .to_diagnostic(db, self.scope.file(db)),
+                            );
+                        }
+                        // `__init` would write it, and the host's copy-in
+                        // before the first scan overwrites it unread.
+                        if var.init(db).is_some()
+                            && dv.area(db)
+                                == Some(crate::hir_def::pous::variable::LocationArea::Input)
+                        {
+                            self.errors.push(
+                                ConfigError::WriteToInputLocation {
+                                    site: var.as_call_site(db),
+                                    address: address.clone(),
+                                    via: crate::check::errors::e14_config::InputWriteRoute::Initializer,
+                                }
+                                .to_diagnostic(db, self.scope.file(db)),
+                            );
+                        }
+                        // One value as wide as the address: an elementary
+                        // type of that width, reached through any alias. An
+                        // enum, a subrange, an aggregate or a STRING has no
+                        // such width and is refused rather than guessed at.
+                        let declared = Type::resolve_spec(db, var.spec(db));
+                        let declared_bits = if declared.as_subrange(db).is_some() {
+                            None
+                        } else {
+                            located_width(declared.normalize(db))
+                        };
+                        if !declared.is_never()
+                            && let Some((_, address_bits)) = dv
+                                .size_letter(db)
+                                .and_then(crate::hir_ty::infer::normalize::access_size)
+                            && declared_bits != Some(address_bits)
+                        {
+                            self.errors.push(
+                                ConfigError::LocationWidthMismatch {
+                                    var: *var,
+                                    address,
+                                    address_bits,
+                                    declared_bits,
+                                    declared,
+                                }
+                                .to_diagnostic(db, self.scope.file(db)),
+                            );
+                        }
+                        // Located inside a wider address the workspace
+                        // mentions, the variable is that address's bits and
+                        // has no storage of its own (E1423), so persistence
+                        // and a startup value are the owner's to declare.
+                        if let Some(located) =
+                            crate::hir_def::pous::variable::LocatedAddress::of(db, dv)
+                            && let Some(view) =
+                                crate::hir_ty::index_graphs::located_view(db, &located)
+                        {
+                            use crate::check::errors::e14_config::{
+                                OwnerDeclaration, WiderAddressUse,
+                            };
+                            // Where the RETAIN or the value can go instead.
+                            let owner = if crate::hir_ty::index_graphs::located_declaration(
+                                db,
+                                &view.owner,
+                            )
+                            .is_some()
+                            {
+                                OwnerDeclaration::Declared
+                            } else if crate::hir_ty::index_graphs::config_located(db)
+                                .any(|a| *a == view.owner)
+                            {
+                                OwnerDeclaration::Configured
+                            } else {
+                                OwnerDeclaration::Bare
+                            };
+                            let mut refuse = |usage| {
+                                self.errors.push(
+                                    ConfigError::PartOfWiderAddress {
+                                        site: var.as_call_site(db),
+                                        address: located.text.clone(),
+                                        owner: view.owner.text.clone(),
+                                        usage,
+                                    }
+                                    .to_diagnostic(db, self.scope.file(db)),
+                                )
+                            };
+                            // Only `%M` gets here RETAIN: E1420 took `%I`/`%Q`.
+                            if var.qualifier(db).contains(crate::Qualifier::RETAIN) {
+                                refuse(WiderAddressUse::Retain(owner));
+                            }
+                            // On an input E1419 below says it.
+                            if var.init(db).is_some()
+                                && located.area
+                                    != crate::hir_def::pous::variable::LocationArea::Input
+                            {
+                                refuse(WiderAddressUse::Initializer(owner));
+                            }
+                        }
+                    }
+                    None => {
+                        use crate::check::errors::e14_config::UnlocatableAddress;
+                        // A well-formed address in a POU is the POU's fault;
+                        // anything else is the address's.
+                        let why = if in_library && !dv.partly(db) {
+                            UnlocatableAddress::InLibrary
+                        } else if dv.partly(db) && !dv.is_area_only(db) {
+                            UnlocatableAddress::NotAreaOnly
+                        } else if dv.partly(db) {
+                            UnlocatableAddress::Incomplete
+                        } else if crate::hir_ty::infer::normalize::names_a_band(db, dv) {
+                            UnlocatableAddress::InPou
+                        } else {
+                            UnlocatableAddress::Malformed
+                        };
+                        self.errors.push(
+                            ConfigError::DirectVariableUnsupported {
+                                site: var.as_call_site(db),
+                                address,
+                                why,
+                            }
+                            .to_diagnostic(db, self.scope.file(db)),
+                        )
+                    }
+                }
             }
             if extern_fn.is_some() {
                 use crate::hir_def::pous::variable::VariableKind;
@@ -461,7 +782,11 @@ fn extern_scalar<'db>(db: &'db dyn WorkspaceDataBase, ty: Type<'db>) -> bool {
 /// the declarations are spelled inline: two `ARRAY[0..2] OF INT` specs are
 /// distinct nodes but the same type. Subranges compare by base and bounds;
 /// named types (structs, enums, FBs) by the declaration they resolve to.
-fn same_storage_type<'db>(db: &'db dyn WorkspaceDataBase, a: Type<'db>, b: Type<'db>) -> bool {
+pub(crate) fn same_storage_type<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    a: Type<'db>,
+    b: Type<'db>,
+) -> bool {
     let bounds = |t: Type<'db>| {
         t.as_subrange(db)
             .map(|s| crate::hir_ty::infer::const_eval::subrange_bounds(db, s))
@@ -482,3 +807,17 @@ fn same_storage_type<'db>(db: &'db dyn WorkspaceDataBase, a: Type<'db>, b: Type<
         (x, y) => x == y,
     }
 }
+
+/// The width a located variable of type `ty` fills: every elementary type
+/// but STRING has one. `Type::get_size` leaves CHAR out, and it is 8 bits.
+pub(crate) fn located_width(ty: Type<'_>) -> Option<usize> {
+    match ty {
+        Type::Elementary(crate::hir_def::expressions::spec::ElementarySpec::Char) => Some(8),
+        Type::Elementary(_) => match ty.get_size() {
+            crate::hir_ty::ty::Size::Size(bits) => Some(bits),
+            crate::hir_ty::ty::Size::Null => None,
+        },
+        _ => None,
+    }
+}
+

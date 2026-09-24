@@ -310,3 +310,30 @@ END_FUNCTION
     let r: i64 = execute_wasm_with_imports(&wasm_bytes, "drive5", (), host);
     assert_eq!(r, 703, "value 7 and return 3 survive a discarded status");
 }
+
+#[rstest]
+fn extern_outputs_land_in_parts_of_a_wider_address(mut with_db: db::RootDatabase) {
+    // `%MX0.3` and `%MB1` are bits of `%MW0`, so they have no address to pop
+    // into: each result pops into its scratch, and the word is rebuilt from
+    // it once every result is off the stack.
+    let source = r#"
+{extern 'rt' 'probe'}
+FUNCTION probe : INT
+VAR_INPUT channel : INT; END_VAR
+VAR_OUTPUT seen : BOOL; level : BYTE; END_VAR
+END_FUNCTION
+FUNCTION drive6 : WORD
+VAR r : INT; END_VAR
+    %MW0 := 16#F000;
+    r := probe(channel := 1, seen => %MX0.3, level => %MB1);
+    drive6 := %MW0;
+END_FUNCTION
+    "#;
+    let wasm_bytes = compile_to_wasm(&mut with_db, source);
+    let r: i32 = execute_wasm_with_imports(&wasm_bytes, "drive6", (), |linker| {
+        linker
+            .func_wrap("rt", "probe", |_ch: i32| -> (i32, i32, i32) { (1, 0xFD, 9) })
+            .unwrap();
+    });
+    assert_eq!(r, 0xFD08, "bit 3 set, the high byte replaced");
+}

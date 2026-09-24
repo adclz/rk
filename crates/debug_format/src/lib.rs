@@ -16,7 +16,7 @@ pub const DEBUG_SYMBOLS_SECTION: &str = "debug-symbols";
 /// On-wire format version; bump on any breaking change. A new field goes
 /// at the TAIL of its struct: `rmp_serde` encodes positionally, so
 /// `#[serde(default)]` only backfills a field missing from the end.
-pub const DEBUG_SYMBOLS_VERSION: u16 = 7;
+pub const DEBUG_SYMBOLS_VERSION: u16 = 8;
 
 /// The complete debug-symbol table for a module.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -169,9 +169,56 @@ pub struct Symbol {
     /// field — lets a debugger group variables into Globals vs Locals.
     pub global: bool,
     /// The declared type when it has a name the value cannot carry (an
-    /// enumeration). Last on purpose.
+    /// enumeration).
     #[serde(default)]
     pub named_type: Option<TypeId>,
+    /// Set when the value is bits of the one at `address` rather than bytes
+    /// of its own (v8): a part of a wider located address. Last on purpose,
+    /// and left out when unset, so every other symbol encodes as in v7.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bits: Option<SymBits>,
+}
+
+/// Where a value that is part of a wider one sits in it: `width` bits from
+/// bit `shift` of the little-endian value at the symbol's `address`, which is
+/// `size` bytes. `%IX1.2` beside a `%IW0` is bit 10 of that word's cell. It
+/// is read by shifting and masking, and written by replacing those bits.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SymBits {
+    pub shift: u16,
+    pub width: u16,
+}
+
+impl SymBits {
+    fn mask(self) -> u64 {
+        if self.width >= 64 {
+            u64::MAX
+        } else {
+            (1 << self.width) - 1
+        }
+    }
+
+    /// The part, taken out of `whole`'s bytes: a value's own bytes,
+    /// zero-extended, which [`decode`](crate::decode) reads as any other.
+    pub fn extract(self, whole: &[u8]) -> [u8; 8] {
+        ((widen(whole) >> self.shift) & self.mask()).to_le_bytes()
+    }
+
+    /// `whole` with the part's bits replaced by the low bits of `part`, a
+    /// value's own bytes; the rest of `whole` is kept.
+    pub fn replace(self, whole: &[u8], part: &[u8]) -> Vec<u8> {
+        let mask = self.mask() << self.shift;
+        let value = (widen(whole) & !mask) | ((widen(part) << self.shift) & mask);
+        value.to_le_bytes()[..whole.len().min(8)].to_vec()
+    }
+}
+
+/// Up to eight little-endian bytes as one value.
+fn widen(bytes: &[u8]) -> u64 {
+    let mut buf = [0u8; 8];
+    let n = bytes.len().min(8);
+    buf[..n].copy_from_slice(&bytes[..n]);
+    u64::from_le_bytes(buf)
 }
 
 /// Elementary type tag. Mirrors the compiler's elementary types but stands on
@@ -611,9 +658,277 @@ impl RetainMap {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Located map — which address is which cell
+// ---------------------------------------------------------------------------
+
+/// Custom wasm section carrying the [`LocatedMap`]. Load-bearing: the band
+/// exports say where the three areas are, and this says which variable sits
+/// where inside them. Without it a host can copy an image in and out but
+/// cannot bind a single channel.
+pub const LOCATED_MAP_SECTION: &str = "located-map";
+
+/// On-wire format version for [`LocatedMap`].
+pub const LOCATED_MAP_VERSION: u16 = 2;
+
+/// The area an address names. Each is one contiguous band, exported as
+/// `input_base`/`input_size` and its two siblings.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub enum LocatedArea {
+    /// `%I` — the host writes it before a scan; the program only reads it.
+    Input,
+    /// `%Q` — the program writes it; the host reads it after a scan.
+    Output,
+    /// `%M` — the marker area, which the program owns outright.
+    Marker,
+}
+
+impl LocatedArea {
+    /// The prefix as written.
+    pub fn prefix(self) -> &'static str {
+        match self {
+            Self::Input => "%I",
+            Self::Output => "%Q",
+            Self::Marker => "%M",
+        }
+    }
+}
+
+/// Every located (`AT %…`) variable of a module, with the address it is bound
+/// to and where that lands in linear memory.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct LocatedMap {
+    pub version: u16,
+    /// Layout identity: FNV-1a over the sorted `(address, name, size)`
+    /// sequence, excluding linear-memory addresses so a band may re-base
+    /// between builds without invalidating a host's bindings. A host compares
+    /// it to know the set of addresses it bound is still this module's.
+    pub layout_hash: u64,
+    /// The located variables, sorted by `address` (deterministic; file
+    /// payload order).
+    pub entries: Vec<LocatedVar>,
+}
+
+/// One located variable.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct LocatedVar {
+    /// The address as written: `%IX0.0`, `%MW1.7.9`. This is the key a host
+    /// binds a channel to; rk gives its numeric levels no meaning of their
+    /// own, so two addresses name the same cell only if they are equal.
+    pub address: String,
+    /// The name the program calls it, which is what the debug symbols list
+    /// it under.
+    pub name: String,
+    pub area: LocatedArea,
+    /// The numeric levels of the address, in order — `%MW1.7.9` is
+    /// `[1, 7, 9]`. Carried decoded so a host need not parse `address`.
+    pub path: Vec<u32>,
+    /// What the size letter names, in bits: 1 (`X`), 8 (`B`), 16 (`W`),
+    /// 32 (`D`), 64 (`L`).
+    pub width: u16,
+    /// Absolute address in linear memory, inside this entry's band: where
+    /// the cell is, the owner's for a part.
+    pub addr: u32,
+    /// Bytes the cell occupies there. This is its DECLARED type's size, not
+    /// `width / 8`: `sensor AT %IX0.0 : BOOL` names one bit and occupies four
+    /// bytes. For a part it is the owner's cell.
+    pub size: u32,
+    /// The declared type, when it is a scalar the host can decode on its own;
+    /// `None` for an aggregate, which the debug symbols describe field by
+    /// field instead. For a part, the type its own bits read as.
+    pub ty: Option<SymType>,
+    /// Set when the address is part of a wider one the module also names:
+    /// `%IX0.3` beside a `%IW0` is bit 3 of that word's cell, not a cell of
+    /// its own. A host reads it as `(cell >> shift) & mask(width)` and writes
+    /// it by replacing those bits.
+    pub part_of: Option<LocatedPart>,
+}
+
+/// Where a part sits in the address that owns its storage.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct LocatedPart {
+    /// The owner's address, as its own entry lists it.
+    pub owner: String,
+    /// The part's low bit in the owner's value. Each size counts in its own
+    /// units and the image is little-endian, so `%IB1` is bits 8 to 15 of
+    /// `%IW0` and `%IX1.2` is bit 10.
+    pub shift: u16,
+}
+
+impl LocatedMap {
+    /// Build from entries: sorts by address and stamps the layout hash.
+    pub fn new(mut entries: Vec<LocatedVar>) -> Self {
+        entries.sort_by(|a, b| a.address.cmp(&b.address));
+        let layout_hash = Self::hash_layout(&entries);
+        LocatedMap {
+            version: LOCATED_MAP_VERSION,
+            layout_hash,
+            entries,
+        }
+    }
+
+    /// FNV-1a over the sorted `(address, name, size)` sequence.
+    fn hash_layout(entries: &[LocatedVar]) -> u64 {
+        const FNV_OFFSET: u64 = 0xcbf29ce484222325;
+        const FNV_PRIME: u64 = 0x100000001b3;
+        let mut h = FNV_OFFSET;
+        let mut eat = |bytes: &[u8]| {
+            for &b in bytes {
+                h ^= b as u64;
+                h = h.wrapping_mul(FNV_PRIME);
+            }
+        };
+        for e in entries {
+            eat(e.address.as_bytes());
+            eat(&[0]); // separator
+            eat(e.name.as_bytes());
+            eat(&[0]);
+            eat(&e.size.to_le_bytes());
+            // An address that becomes part of a wider one is read another
+            // way, so a binding made against the old layout is stale.
+            if let Some(part) = &e.part_of {
+                eat(part.owner.as_bytes());
+                eat(&[0]);
+                eat(&part.shift.to_le_bytes());
+            }
+        }
+        h
+    }
+
+    /// The entries of one area, in address order.
+    pub fn area(&self, area: LocatedArea) -> impl Iterator<Item = &LocatedVar> {
+        self.entries.iter().filter(move |e| e.area == area)
+    }
+
+    /// Serialize to MessagePack bytes.
+    pub fn to_msgpack(&self) -> Vec<u8> {
+        rmp_serde::to_vec(self).expect("LocatedMap serialization should not fail")
+    }
+
+    /// Deserialize from MessagePack bytes.
+    pub fn from_msgpack(bytes: &[u8]) -> Result<Self, rmp_serde::decode::Error> {
+        rmp_serde::from_slice(bytes)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The located map round-trips, and its hash covers the addresses rather
+    /// than where they landed: re-basing a band must not invalidate a host's
+    /// bindings, adding an address must.
+    #[test]
+    fn located_map_round_trips_and_hashes_its_addresses() {
+        let var = |address: &str, name: &str, area, addr| LocatedVar {
+            address: address.into(),
+            name: name.into(),
+            area,
+            path: vec![0, 0],
+            width: 1,
+            addr,
+            size: 4,
+            ty: Some(SymType::Bool),
+            part_of: None,
+        };
+        let map = LocatedMap::new(vec![
+            var("%QX0.0", "lamp", LocatedArea::Output, 128),
+            var("%IX0.0", "start", LocatedArea::Input, 64),
+        ]);
+        assert_eq!(
+            map.entries.iter().map(|e| &e.address).collect::<Vec<_>>(),
+            ["%IX0.0", "%QX0.0"],
+            "sorted by address, whatever order they arrived in"
+        );
+        assert_eq!(LocatedMap::from_msgpack(&map.to_msgpack()).unwrap(), map);
+
+        let rebased = LocatedMap::new(vec![
+            var("%IX0.0", "start", LocatedArea::Input, 4096),
+            var("%QX0.0", "lamp", LocatedArea::Output, 8192),
+        ]);
+        assert_eq!(map.layout_hash, rebased.layout_hash);
+
+        let mut grown = map.entries.clone();
+        grown.push(var("%IX0.1", "stop", LocatedArea::Input, 68));
+        assert_ne!(map.layout_hash, LocatedMap::new(grown).layout_hash);
+    }
+
+    /// An address that becomes part of a wider one is read another way, so
+    /// the same entry with an owner, or another shift in it, is another
+    /// layout.
+    #[test]
+    fn an_owner_is_part_of_the_layout() {
+        let word = |part_of| LocatedVar {
+            address: "%IW0".into(),
+            name: "dial".into(),
+            area: LocatedArea::Input,
+            path: vec![0],
+            width: 16,
+            addr: 64,
+            size: 4,
+            ty: Some(SymType::Int),
+            part_of,
+        };
+        let owned = |shift| {
+            Some(LocatedPart {
+                owner: "%ID0".into(),
+                shift,
+            })
+        };
+        let alone = LocatedMap::new(vec![word(None)]).layout_hash;
+        let low = LocatedMap::new(vec![word(owned(0))]).layout_hash;
+        let high = LocatedMap::new(vec![word(owned(16))]).layout_hash;
+        assert_ne!(alone, low, "an owner");
+        assert_ne!(low, high, "another place in it");
+    }
+
+    /// A symbol without bits encodes exactly as a v7 one did; a part's
+    /// round-trips, and reads and writes only its own bits.
+    #[test]
+    fn a_part_symbol_round_trips_and_others_encode_as_before() {
+        #[derive(Serialize)]
+        struct SymbolV7 {
+            path: String,
+            address: u32,
+            size: u32,
+            ty: SymType,
+            global: bool,
+            named_type: Option<TypeId>,
+        }
+        let plain = Symbol {
+            path: "status".into(),
+            address: 64,
+            size: 4,
+            ty: SymType::Word,
+            global: true,
+            named_type: None,
+            bits: None,
+        };
+        let v7 = SymbolV7 {
+            path: "status".into(),
+            address: 64,
+            size: 4,
+            ty: SymType::Word,
+            global: true,
+            named_type: None,
+        };
+        assert_eq!(rmp_serde::to_vec(&plain).unwrap(), rmp_serde::to_vec(&v7).unwrap());
+
+        let bits = SymBits { shift: 8, width: 8 };
+        let part = Symbol {
+            path: "level".into(),
+            ty: SymType::SInt,
+            bits: Some(bits),
+            ..plain
+        };
+        let back: Symbol = rmp_serde::from_slice(&rmp_serde::to_vec(&part).unwrap()).unwrap();
+        assert_eq!(back, part);
+
+        let cell = 0x0000_8001u32.to_le_bytes();
+        assert_eq!(decode(SymType::SInt, &bits.extract(&cell)), VarValue::I8(-128));
+        let forced = bits.replace(&cell, &encode(SymType::SInt, VarValue::I8(5)).unwrap());
+        assert_eq!(forced, 0x0000_0501u32.to_le_bytes(), "the low byte kept");
+    }
 
     /// The v5 additions round-trip.
     #[test]
@@ -681,6 +996,7 @@ mod tests {
                 ty: SymType::DInt,
                 global: false,
                 named_type: None,
+                bits: None,
             }],
             arrays: vec![],
             types: vec![],

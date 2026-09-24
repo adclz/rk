@@ -433,3 +433,122 @@ END_FUNCTION_BLOCK
     exceeds the capacity of 80 bytes, got 100; declare it STRING[100], or shorten the literal
     ");
 }
+
+/// A VAR_IN_OUT is bound to its argument by each call, so an instance's
+/// initializer cannot give it a value. The value used to be written into
+/// the pointer the binding lives in, and `__init` failed to validate.
+#[rstest]
+fn invalid_in_out_named_in_an_instance_initializer(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK Drive
+VAR_IN_OUT io : INT; END_VAR
+VAR k : INT; END_VAR
+    k := io;
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK Outer
+VAR inner : Drive := (io := 5); END_VAR
+END_FUNCTION_BLOCK
+
+PROGRAM P
+VAR d : Drive := (io := 30, k := 2); o : Outer; END_VAR
+END_PROGRAM
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0405] Error: member cannot be initialized
+       ,-[ file:///test0.st:9:23 ]
+       |
+     3 | VAR_IN_OUT io : INT; END_VAR
+       |            ^|
+       |             `-- 'io' is declared here
+       |
+     9 | VAR inner : Drive := (io := 5); END_VAR
+       |                       ^^^|^^^
+       |                          `----- 'io' is a VAR_IN_OUT, which each call binds to its argument, so an initializer cannot give it a value
+       |
+       | Note: pass the variable in the call instead, as 'io := x'
+    ---'
+    [E0405] Error: member cannot be initialized
+        ,-[ file:///test0.st:13:19 ]
+        |
+      3 | VAR_IN_OUT io : INT; END_VAR
+        |            ^|
+        |             `-- 'io' is declared here
+        |
+     13 | VAR d : Drive := (io := 30, k := 2); o : Outer; END_VAR
+        |                   ^^^^|^^^
+        |                       `----- 'io' is a VAR_IN_OUT, which each call binds to its argument, so an initializer cannot give it a value
+        |
+        | Note: pass the variable in the call instead, as 'io := x'
+    ----'
+    ");
+}
+
+/// No member without a value of its own can be named by an instance's
+/// initializer (E0405), and the error points at where the member is
+/// declared. A VAR_TEMP is made afresh by each call and a VAR_EXTERNAL names a
+/// VAR_GLOBAL, so their value was silently dropped; a CONSTANT's reads fold
+/// to its declared value while `__init` wrote the new one.
+#[rstest]
+#[case::in_out(
+    "VAR_IN_OUT m : INT; END_VAR",
+    "",
+    "a VAR_IN_OUT, which each call binds to its argument"
+)]
+#[case::temp(
+    "VAR_TEMP m : INT; END_VAR",
+    "",
+    "a VAR_TEMP, which each call makes afresh"
+)]
+#[case::external(
+    "VAR_EXTERNAL m : INT; END_VAR",
+    "VAR_GLOBAL m : INT; END_VAR",
+    "a VAR_EXTERNAL, which names a VAR_GLOBAL"
+)]
+#[case::constant(
+    "VAR CONSTANT m : INT := 1; END_VAR",
+    "",
+    "CONSTANT, whose value is its declaration's"
+)]
+fn invalid_member_an_instance_initializer_cannot_set(
+    mut with_db: RootDatabase,
+    #[case] decl: &str,
+    #[case] global: &str,
+    #[case] what: &str,
+) {
+    let source = format!(
+        r#"
+FUNCTION_BLOCK Drive
+{decl}
+VAR k : INT; END_VAR
+    k := m;
+END_FUNCTION_BLOCK
+
+PROGRAM P
+VAR d : Drive := (m := 30, k := 2); END_VAR
+END_PROGRAM
+
+CONFIGURATION Cfg
+{global}
+    RESOURCE Res ON CPU
+        TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM P1 WITH T : P;
+    END_RESOURCE
+END_CONFIGURATION
+"#
+    );
+    let rendered = test_diagnostics(&mut with_db, &[&source]);
+    assert_eq!(
+        rendered.matches("[E").count(),
+        1,
+        "only the member is refused, got:\n{rendered}"
+    );
+    assert!(
+        rendered.contains("[E0405] Error: member cannot be initialized")
+            && rendered.contains(&format!(
+                "'m' is {what}, so an initializer cannot give it a value"
+            ))
+            && rendered.contains("'m' is declared here"),
+        "`(m := 30)` on {decl} must be E0405 pointing at the declaration, got:\n{rendered}"
+    );
+}

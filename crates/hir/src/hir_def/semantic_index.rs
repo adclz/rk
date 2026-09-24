@@ -16,6 +16,7 @@ use crate::hir_def::config::ConfigDecl;
 use crate::hir_def::hir_node::HirNode;
 use crate::hir_def::namespace::NamespaceDecl;
 use crate::hir_def::pous::pou::Pou;
+use crate::hir_def::pous::variable::LocatedAddress;
 use crate::hir_def::program::ProgramDecl;
 use crate::hir_def::scope::{Scope, ScopeId};
 use index::{IndexVec, newtype_index};
@@ -33,6 +34,15 @@ pub fn semantic_index<'db>(db: &'db dyn WorkspaceDataBase, file: File) -> Semant
         Some(source) => source,
         None => return SemanticIndex::empty(db, file, ast.nodes.clone()),
     };
+    // A node the generated AST had no place for leaves ids pointing at the
+    // wrong nodes, and the first cast panicked. The file is analyzed as
+    // empty; its E0001 says why.
+    if get_ast::accumulated::<auto_lsp::core::errors::ParseErrorAccumulator>(db, file)
+        .iter()
+        .any(|e| matches!(e.0, auto_lsp::core::errors::ParseError::AstError { .. }))
+    {
+        return SemanticIndex::empty(db, file, ast.nodes.clone());
+    }
 
     SemanticIndexBuilder::new(db, file, get_ast(db, file), source).build()
 }
@@ -73,6 +83,16 @@ pub struct SemanticIndex<'db> {
     /// All *global* POU declarations in the file
     pub global_pous: Arc<Vec<Pou<'db>>>,
 
+    /// Every I/O address the file mentions, with the declarations located
+    /// at it: a CONFIGURATION's VAR_GLOBALs and a PROGRAM's VARs, in source
+    /// order. An address only written bare in a body has none.
+    pub located: Arc<
+        std::collections::BTreeMap<
+            LocatedAddress,
+            Vec<crate::hir_def::pous::variable::VariableDecl<'db>>,
+        >,
+    >,
+
     /// A list of errors encountered during semantic analysis
     pub(crate) errors: Vec<IdeDiagnostic>,
 }
@@ -108,6 +128,7 @@ impl<'db> SemanticIndex<'db> {
             namespaces: Arc::new(vec![]),
             namespace_map: Arc::new(FxHashMap::default()),
             global_pous: Arc::new(vec![]),
+            located: Arc::new(Default::default()),
             errors: vec![],
         }
     }

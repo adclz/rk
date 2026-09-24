@@ -147,3 +147,32 @@ END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "bool-comparison"), @r"");
 }
+
+/// `BOOL#1` and `BOOL#0` are TRUE and FALSE, in any case. The rule compared
+/// the literal's text with `TRUE`, so `x = BOOL#1` got the suggestion meant
+/// for FALSE.
+#[rstest]
+#[case::one("x = BOOL#1", "the variable itself")]
+#[case::zero("x = BOOL#0", "NOT variable")]
+#[case::lower_case("x <> bool#true", "NOT variable")]
+fn a_bool_literal_is_read_as_its_value(
+    mut with_db: RootDatabase,
+    #[case] comparison: &str,
+    #[case] suggestion: &str,
+) {
+    let source = format!(
+        r#"
+FUNCTION test : BOOL
+VAR
+    x : BOOL;
+END_VAR
+    test := {comparison};
+END_FUNCTION
+"#
+    );
+    let rendered = test_single_lint(&mut with_db, &[&source], "bool-comparison");
+    assert!(
+        rendered.contains(&format!("can be simplified to {suggestion}")),
+        "`{comparison}` must suggest {suggestion}, got:\n{rendered}"
+    );
+}

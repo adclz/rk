@@ -1,6 +1,7 @@
 pub mod debug_symbols;
 pub mod expr;
 pub mod function;
+pub mod located;
 pub mod memory;
 pub mod retain_map;
 pub mod schedule;
@@ -61,6 +62,17 @@ pub struct MirModule {
     pub globals_base: u32,
     pub globals_size: u32,
 
+    /// The three located (`AT %…`) bands: `%I` written by the host before a
+    /// scan, `%Q` read back after it, `%M` the program's own marker area.
+    /// Each is contiguous, so a host copies one range per direction; all
+    /// three are zero-sized when the workspace declares no located variable.
+    pub input_base: u32,
+    pub input_size: u32,
+    pub output_base: u32,
+    pub output_size: u32,
+    pub marker_base: u32,
+    pub marker_size: u32,
+
     /// Resolved task schedule of the module's CONFIGURATION; `None` without one.
     pub schedule: Option<schedule::MirSchedule>,
 
@@ -75,6 +87,11 @@ pub struct MirModule {
     /// Per-field RETAIN map: which byte ranges of the retain band persist
     /// (see `retain_map`), emitted as the `retain-map` section.
     pub retain_map: debug_format::RetainMap,
+
+    /// Which located (`AT %…`) variable sits where inside the three bands,
+    /// emitted as the `located-map` section. Empty when the workspace
+    /// declares none, and the section is then not emitted at all.
+    pub located_map: debug_format::LocatedMap,
 
     /// Source file URLs, indexed by `MirSourceLocation::file_id` and emitted
     /// as `DebugLines::files`.

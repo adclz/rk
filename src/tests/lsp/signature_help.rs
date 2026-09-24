@@ -767,3 +767,29 @@ END_PROGRAM
 
     assert_eq!(help.active_parameter, Some(active_parameter));
 }
+
+/// Inside a program configuration's list, the program's inputs and outputs
+/// and the function blocks a task can run, with the element under the cursor
+/// active.
+#[rstest]
+#[case::first("F(x1", 2, 0)]
+#[case::input("x2 := w", 1, 1)]
+#[case::output("y1 => total", 1, 2)]
+#[case::function_block("fb1 WITH", 1, 3)]
+fn signature_help_in_a_program_configuration(
+    mut with_db: RootDatabase,
+    #[case] at: &str,
+    #[case] into: usize,
+    #[case] active: u32,
+) {
+    use crate::tests::lsp::{CONNECTED, connected_at};
+    let file = add_source(&mut with_db, CONNECTED);
+
+    let offset = connected_at(at, true) + into;
+    let help = find_signature_help(&with_db, file, offset).expect("signature help");
+    assert_eq!(
+        help.signatures[0].label,
+        "F(x1 := BOOL, x2 := UINT, y1 => UINT, fb1 WITH task, d WITH task)"
+    );
+    assert_eq!(help.active_parameter, Some(active));
+}

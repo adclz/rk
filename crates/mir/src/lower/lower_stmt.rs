@@ -176,11 +176,17 @@ fn lower_stmt<'db>(
                 None => ctx.checked_range(value, var.infer(ctx.db)),
             };
             // `b.1 := x` names a slice of `b`; the store has to put back the
-            // whole of `b` with only those bits replaced.
-            let value = if var.multibits(ctx.db).is_some() {
-                ctx.lower_multibit_write(place.clone(), *var, var.infer(ctx.db), value)?
+            // whole of `b` with only those bits replaced. A view is the same
+            // store into its owner: `%QX0.3 := x` beside a `%QW0` rewrites the
+            // word with bit 3 replaced.
+            let (place, value) = if let Some(view) = ctx.view(*var, var.infer(ctx.db))? {
+                view.write(value)
+            } else if var.multibits(ctx.db).is_some() {
+                let value =
+                    ctx.lower_multibit_write(place.clone(), *var, var.infer(ctx.db), value)?;
+                (place, value)
             } else {
-                value
+                (place, value)
             };
             Ok(Some(MirStmt::Assign {
                 target: place,
@@ -189,16 +195,25 @@ fn lower_stmt<'db>(
         }
 
         StmtKind::FuncCall(func_call) => {
-            // Check if this is a FB invocation (callee is a variable of FB type)
+            // Check if this is a FB invocation (callee is a variable of FB type).
+            // A FUNCTION or METHOD normalizes to its result, which may be a
+            // FUNCTION_BLOCK: the callee is still the FUNCTION or METHOD.
             let path = func_call.path(ctx.db);
-            let callee_type = path.infer(ctx.db).normalize(ctx.db);
-
-            let fb = match callee_type {
-                hir::hir_ty::ty::Type::FunctionBlock(fb)
+            let callee = path.infer(ctx.db);
+            let fb = match callee {
+                hir::hir_ty::ty::Type::Function(_)
+                | hir::hir_ty::ty::Type::MethodDecl(_)
                 | hir::hir_ty::ty::Type::CallableType(
-                    hir::hir_ty::ty::CallableType::FunctionBlock(fb),
-                ) => Some(fb),
-                _ => None,
+                    hir::hir_ty::ty::CallableType::Function(_)
+                    | hir::hir_ty::ty::CallableType::MethodDecl(_),
+                ) => None,
+                _ => match callee.normalize(ctx.db) {
+                    hir::hir_ty::ty::Type::FunctionBlock(fb)
+                    | hir::hir_ty::ty::Type::CallableType(
+                        hir::hir_ty::ty::CallableType::FunctionBlock(fb),
+                    ) => Some(fb),
+                    _ => None,
+                },
             };
             if let Some(fb) = fb {
                 ctx.lower_fb_invocation(*func_call, fb)
@@ -281,8 +296,18 @@ fn lower_stmt<'db>(
             body,
         } => {
             // Any place can be a counter: a FUNCTION local or a PROGRAM/FB member
-            // (HIR rejected the shapes IEC forbids).
-            let control_place = ctx.lower_variable_access(*control_variable)?;
+            // (HIR rejected the shapes IEC forbids), or whole bytes of a wider
+            // address's cell. A bit of one has no place to count in.
+            let control_place = match ctx.view(*control_variable, control_variable.infer(ctx.db))? {
+                Some(super::multibit::View::Bytes(place)) => place,
+                Some(super::multibit::View::Slice { .. }) => {
+                    return Err(LowerTypeError::UnsupportedType(
+                            "a FOR counter cannot be a bit of a wider address; `rk check` refuses a BOOL counter (E1206)"
+                                .to_string(),
+                        ));
+                }
+                None => ctx.lower_variable_access(*control_variable)?,
+            };
 
             // Determine the control variable type
             let control_type = control_variable.infer(ctx.db);
@@ -433,6 +458,7 @@ fn lower_stmts_inner<'db>(
             });
             result.push(mir_stmt);
         }
+        result.append(&mut ctx.after_stmt.borrow_mut());
     }
     Ok(result)
 }
