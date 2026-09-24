@@ -18,7 +18,7 @@ use hir::{
         namespace::NamespaceDecl,
         pous::{
             pou::Pou,
-            variable::{VariableDecl, VariableKind},
+            variable::{DirectVariable, VariableDecl, VariableKind},
         },
         program::ProgramDecl,
         scope::ScopeKind,
@@ -105,6 +105,7 @@ impl<'db> HoverHandler<'db> for HirNode<'db> {
             HirNode::Resource(r) => r.hover(db, offset),
             HirNode::Task(t) => t.hover(db, offset),
             HirNode::ProgConfig(p) => p.hover(db, offset),
+            HirNode::DirectVariable(d) => d.hover(db, offset),
             _ => None,
         }
     }
@@ -453,6 +454,7 @@ impl<'db> HoverHandler<'db> for Type<'db> {
             Type::StructElement(st) => st.hover(db, offset),
             Type::MethodDecl(m) => m.hover(db, offset),
             Type::Variable((var, _multibits)) => var.hover(db, offset),
+            Type::DirectVariable((dv, _multibits)) => dv.hover(db, offset),
             _ => Some(Hover {
                 contents: HoverContents::Markup(MarkupContent {
                     kind: MarkupKind::Markdown,
@@ -469,6 +471,90 @@ impl<'db> HoverHandler<'db> for Type<'db> {
                 range: None,
             }),
         }
+    }
+}
+
+impl<'db> HoverHandler<'db> for DirectVariable<'db> {
+    /// What an address is: its area and width, the wider address it is part
+    /// of, and the declarations located at it.
+    fn hover(&'db self, db: &'db dyn WorkspaceDataBase, _offset: usize) -> Option<Hover> {
+        use hir::hir_def::pous::variable::{LocatedAddress, LocationArea};
+        use hir::hir_ty::index_graphs::{located_declarations_at, located_view};
+
+        let written = self.to_address(db);
+        let area = match self.area(db) {
+            Some(LocationArea::Input) => "Input",
+            Some(LocationArea::Output) => "Output",
+            Some(LocationArea::Marker) => "Memory",
+            None => return None,
+        };
+        let declared = |var: &VariableDecl<'db>| {
+            format!(
+                "`{} : {}`",
+                var.name(db).text(db),
+                var.spec(db).infer(db).type_name(db)
+            )
+        };
+
+        let mut code = written.clone();
+        let mut lines = vec![];
+        match LocatedAddress::of(db, *self) {
+            Some(address) => {
+                let bits = address.width as u32;
+                code = format!(
+                    "{written} : {}",
+                    match bits {
+                        1 => "BOOL",
+                        8 => "BYTE",
+                        16 => "WORD",
+                        32 => "DWORD",
+                        _ => "LWORD",
+                    }
+                );
+                lines.push(format!(
+                    "{area}, {bits} bit{}.",
+                    if bits == 1 { "" } else { "s" }
+                ));
+                if let Some(view) = located_view(db, &address) {
+                    let part = match bits {
+                        1 => format!("Bit {}", view.shift),
+                        _ => format!("Bits {} to {}", view.shift, view.shift + bits - 1),
+                    };
+                    let owner: Vec<String> = located_declarations_at(db, &view.owner)
+                        .iter()
+                        .map(declared)
+                        .collect();
+                    lines.push(match owner.is_empty() {
+                        true => format!("{part} of `{}`.", view.owner.text),
+                        false => format!("{part} of `{}` ({}).", view.owner.text, owner.join(", ")),
+                    });
+                }
+                let here: Vec<String> = located_declarations_at(db, &address)
+                    .iter()
+                    .map(declared)
+                    .collect();
+                if !here.is_empty() {
+                    lines.push(format!("Declared here: {}.", here.join(", ")));
+                }
+            }
+            None if self.is_area_only(db) => {
+                lines.push(format!("{area}, placed by VAR_CONFIG for each instance."));
+            }
+            None => {}
+        }
+
+        let mut value = format!("\n```iecst\n{code}\n```");
+        if !lines.is_empty() {
+            value.push_str("\n---\n");
+            value.push_str(&lines.join("\n\n"));
+        }
+        Some(Hover {
+            contents: HoverContents::Markup(MarkupContent {
+                kind: MarkupKind::Markdown,
+                value,
+            }),
+            range: hir::denormalize(db, self.get_scope_id(db).file(db), &self.get_span(db)),
+        })
     }
 }
 

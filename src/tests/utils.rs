@@ -533,6 +533,7 @@ pub fn hir_node_label(node: &HirNode) -> String {
         HirNode::Resource(_) => "Resource".into(),
         HirNode::Task(_) => "Task".into(),
         HirNode::ProgConfig(_) => "ProgConfig".into(),
+        HirNode::DirectVariable(_) => "DirectVariable".into(),
     }
 }
 

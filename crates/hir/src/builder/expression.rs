@@ -510,30 +510,53 @@ pub trait ParseDirectVariable<'db> {
 }
 
 impl<'db> ParseDirectVariable<'db> for ast::generated::DirectVariable {
+    /// An address written where no access wraps it: an `AT` clause, a
+    /// VAR_CONFIG entry, a connection, a task's `SINGLE`. It is a node of its
+    /// own, so the IDE finds it under the cursor.
     fn to_direct_variable(
         &self,
         sema: &mut SemanticIndexBuilder<'db>,
     ) -> anyhow::Result<DirectVariable<'db>, IdeDiagnostic> {
-        let adress = Ident::from_node(sema.db, sema.file, self.adress.cast(sema.ast))?;
-
-        let (offset, partly) = match self.offset.cast(sema.ast) {
-            ast::generated::Offset_Partly::Offset(offset) => {
-                let mut offsets = vec![];
-                for offset in offset.children.iter() {
-                    let integer = Integer::new(
-                        sema.db,
-                        Ident::from_node(sema.db, sema.file, offset.cast(sema.ast))?,
-                        IntegerKind::Signed,
-                    );
-                    offsets.push(integer);
-                }
-                (offsets, false)
-            }
-            ast::generated::Offset_Partly::Partly(partly) => (vec![], true),
-        };
-
-        Ok(DirectVariable::new(sema.db, adress, partly, offset))
+        let dv = direct_variable_of(self, sema)?;
+        sema.register_node(
+            self.into(),
+            crate::hir_def::hir_node::HirNode::DirectVariable(dv),
+        );
+        Ok(dv)
     }
+}
+
+/// The address `node` writes, not registered: an access registers itself.
+fn direct_variable_of<'db>(
+    node: &ast::generated::DirectVariable,
+    sema: &mut SemanticIndexBuilder<'db>,
+) -> anyhow::Result<DirectVariable<'db>, IdeDiagnostic> {
+    let adress = Ident::from_node(sema.db, sema.file, node.adress.cast(sema.ast))?;
+
+    let (offset, partly) = match node.offset.cast(sema.ast) {
+        ast::generated::Offset_Partly::Offset(offset) => {
+            let mut offsets = vec![];
+            for offset in offset.children.iter() {
+                let integer = Integer::new(
+                    sema.db,
+                    Ident::from_node(sema.db, sema.file, offset.cast(sema.ast))?,
+                    IntegerKind::Signed,
+                );
+                offsets.push(integer);
+            }
+            (offsets, false)
+        }
+        ast::generated::Offset_Partly::Partly(partly) => (vec![], true),
+    };
+
+    Ok(DirectVariable::new(
+        sema.db,
+        adress,
+        partly,
+        offset,
+        node.into(),
+        sema.current_scope,
+    ))
 }
 
 pub trait ParseVariableAccess<'db> {
@@ -596,7 +619,7 @@ impl<'db> ParseVariableAccess<'db> for ast::generated::DirectVariable {
         &self,
         sema: &mut SemanticIndexBuilder<'db>,
     ) -> anyhow::Result<VariableAccess<'db>, IdeDiagnostic> {
-        let kind = VariableAccessKind::Direct(self.to_direct_variable(sema)?);
+        let kind = VariableAccessKind::Direct(direct_variable_of(self, sema)?);
         Ok(sema.new_variable_access(kind, None, self.into(), sema.current_scope))
     }
 }
@@ -627,7 +650,14 @@ impl<'db> ParseVariableAccess<'db> for ast::generated::RelativeDirectVariable {
             }
             ast::generated::Partly_RelativeOffset::Partly(_) => (vec![], true),
         };
-        let kind = VariableAccessKind::Direct(DirectVariable::new(sema.db, adress, partly, offset));
+        let kind = VariableAccessKind::Direct(DirectVariable::new(
+            sema.db,
+            adress,
+            partly,
+            offset,
+            self.into(),
+            sema.current_scope,
+        ));
         Ok(sema.new_variable_access(kind, None, self.into(), sema.current_scope))
     }
 }

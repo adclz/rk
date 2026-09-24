@@ -200,6 +200,23 @@ pub struct DirectVariable<'db> {
     pub adress: Ident,
     pub partly: bool,
     pub offset: Vec<Integer>,
+
+    /// Where the address is written.
+    #[tracked]
+    #[no_eq]
+    pub id: AstId,
+
+    pub scope_id: ScopeId<'db>,
+}
+
+impl<'db> HirNodeInfo<'db> for DirectVariable<'db> {
+    fn get_id(&self, db: &'db dyn WorkspaceDataBase) -> AstId {
+        self.id(db)
+    }
+
+    fn get_scope_id(&self, db: &'db dyn WorkspaceDataBase) -> ScopeId<'db> {
+        self.scope_id(db)
+    }
 }
 
 impl<'db> DirectVariable<'db> {

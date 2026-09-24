@@ -996,3 +996,41 @@ pub fn hover_in_a_program_configuration(
     let markup = hover_markup(hover.contents).unwrap();
     assert!(markup.contains(shown), "{markup}");
 }
+
+/// A direct variable shows the whole address, the image it is in, the wider
+/// address it is part of, and the declarations located at it. It showed
+/// `%QB` alone.
+#[rstest]
+pub fn hover_on_a_direct_variable(mut with_db: RootDatabase) {
+    let source = r#"
+PROGRAM P
+VAR b : BYTE; END_VAR
+    b := %QB1;
+END_PROGRAM
+
+CONFIGURATION Cfg
+VAR_GLOBAL total AT %QW0 : UINT; high AT %QB1 : BYTE; END_VAR
+    RESOURCE Res ON CPU
+        TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM P1 WITH T : P;
+    END_RESOURCE
+END_CONFIGURATION
+"#;
+    add_sources(&mut with_db, &[source]);
+    let file = *with_db.get_files().iter().last().unwrap();
+
+    let offset = source.find("%QB1;").unwrap() + 1;
+    let node = ide_proto::walk::descendant_at(&with_db, file, offset).expect("a node");
+    let hover = node.hover(&with_db, offset).expect("a hover");
+    assert_snapshot!(hover_markup(hover.contents).unwrap(), @r"
+    ```iecst
+    %QB1 : BYTE
+    ```
+    ---
+    Output, 8 bits.
+
+    Bits 8 to 15 of `%QW0` (`total : UINT`).
+
+    Declared here: `high : BYTE`.
+    ");
+}
