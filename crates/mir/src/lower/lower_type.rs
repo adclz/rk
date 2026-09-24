@@ -95,6 +95,11 @@ pub fn lower_type<'db>(
             Ok(MirType::Elementary(mir_elem))
         }
 
+        // An opaque address: what it points at is typed where it is
+        // dereferenced, by HIR's deref adjustment (`pointee_of`). Typing it
+        // here lowers a type that references itself (`next : REF_TO Node`)
+        // without end, and a pointer to a struct or an array would read as a
+        // by-reference parameter, which a REF_TO is not.
         Type::RefTo(_) => Ok(MirType::Pointer(Box::new(MirType::Void))),
 
         Type::Struct(s) => lower_struct_type_named(db, s, type_name),
