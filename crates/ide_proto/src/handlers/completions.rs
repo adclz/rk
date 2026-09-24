@@ -160,9 +160,16 @@ impl<'db> CompletionHandler<'db> for HirNode<'db> {
         match self {
             HirNode::InitExpr(i) => i.completion(db, &req.with_query(i.to_string(db).to_owned())),
             // A path in a program configuration's list, such as the source
-            // being written after `x1 :=`, is completed by the list.
+            // being written after `x1 :=`, is completed by the list, and one
+            // in a VAR_CONFIG entry by the entry.
             HirNode::PathExpr(p) if let Some(prog) = prog_config_at(db, *p, req.offset) => {
                 prog.completion(db, req)
+            }
+            HirNode::PathExpr(p)
+                if let ScopeKind::Config(config) = get_scope(db, p.get_scope_id(db)).kind
+                    && let Some(items) = var_config_completion(db, config, req.offset) =>
+            {
+                Some(items)
             }
             HirNode::PathExpr(p) => {
                 // For is_last_before with trailing dot, try namespace completion
@@ -704,6 +711,9 @@ impl<'db> CompletionHandler<'db> for ConfigDecl<'db> {
         if self.get_name_span(db).end_byte >= req.offset {
             return None;
         }
+        if let Some(items) = var_config_completion(db, *self, req.offset) {
+            return Some(items);
+        }
 
         // A global being typed has no node of its own yet, so the
         // CONFIGURATION is the target for its own VAR_GLOBAL section.
@@ -772,6 +782,111 @@ impl<'db> CompletionHandler<'db> for TaskConfig<'db> {
 
         Some(items)
     }
+}
+
+/// Inside a VAR_CONFIG section, the entry being written: a resource or a
+/// program instance where its path starts, the next step of a path, or the
+/// variable's own type after the colon. `None` outside one.
+///
+/// A half-written entry is an error node with no HIR behind it, so what it
+/// has written is read from the source and resolved like a whole path.
+fn var_config_completion<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    config: ConfigDecl<'db>,
+    offset: usize,
+) -> Option<Vec<CompletionItem>> {
+    use auto_lsp::lsp_types::CompletionItemKind;
+    use hir::hir_ty::config::{ConfigPathPrefix, config_path_prefix, members_of};
+
+    let document = config.get_scope_id(db).file(db).document(db);
+    let source = document.as_str();
+    let mut section = document
+        .tree
+        .root_node()
+        .descendant_for_byte_range(offset, offset)?;
+    while section.kind() != "config_init" {
+        section = section.parent()?;
+    }
+    // Between the keyword and END_VAR.
+    let start = section.start_byte() + "VAR_CONFIG".len();
+    let end = section.start_byte()
+        + source[section.start_byte()..section.end_byte()]
+            .to_ascii_uppercase()
+            .rfind("END_VAR")?;
+    if offset < start || offset > end {
+        return None;
+    }
+    let written = &source[start..offset];
+    let written = written.rsplit(';').next().unwrap_or(written).trim_start();
+
+    let instance = |p: &ProgConfig<'db>| CompletionItem {
+        label: p.name(db).ident.text(db).to_string(),
+        kind: Some(CompletionItemKind::VARIABLE),
+        detail: Some(format!(
+            "PROGRAM {}",
+            p.prog_type(db).infer(db).type_name(db)
+        )),
+        ..Default::default()
+    };
+
+    if written.contains(":=") {
+        return Some(vec![]);
+    }
+    // The type, which the entry repeats: the variable's own.
+    if let Some((path, _)) = written.split_once(':') {
+        let path = path.split_whitespace().next().unwrap_or_default();
+        return Some(match config_path_prefix(db, config, &path_steps(path)) {
+            Some(ConfigPathPrefix::Holder {
+                member: Some(var), ..
+            }) => vec![CompletionItem {
+                label: var.spec(db).infer(db).type_name(db),
+                kind: Some(CompletionItemKind::TYPE_PARAMETER),
+                detail: Some(format!("the type of {}", var.name(db).text(db))),
+                ..Default::default()
+            }],
+            _ => static_snippets::var_section_items(false),
+        });
+    }
+    // A whole path: its location or its type comes next.
+    if written.contains(char::is_whitespace) {
+        return Some(vec![static_snippets::at()]);
+    }
+
+    // The step being typed follows the ones written.
+    let written = written.rsplit_once('.').map_or("", |(before, _)| before);
+    let reached = match written {
+        "" => ConfigPathPrefix::Start,
+        _ => config_path_prefix(db, config, &path_steps(written))?,
+    };
+    let builder =
+        crate::handlers::completions_utils::completion_item_builder::CompletionBuilder::default()
+            .with_mode(QueryMode::Head);
+    let fragments = hir::hir_ty::index_graphs::config_fragments(db, config.get_name_ident(db));
+    Some(match reached {
+        ConfigPathPrefix::Start => fragments
+            .iter()
+            .flat_map(|f| f.resources(db).iter())
+            .flat_map(|r| {
+                std::iter::once(CompletionItem {
+                    label: r.name(db).ident.text(db).to_string(),
+                    kind: Some(CompletionItemKind::MODULE),
+                    detail: Some("RESOURCE".to_string()),
+                    ..Default::default()
+                })
+                .chain(r.programs(db).iter().map(instance))
+            })
+            .collect(),
+        ConfigPathPrefix::Resource(r) => r.programs(db).iter().map(instance).collect(),
+        ConfigPathPrefix::Holder { ty, .. } => members_of(db, ty)
+            .iter()
+            .map(|var| builder.build_variable(db, var))
+            .collect(),
+    })
+}
+
+/// The steps of a path as written.
+fn path_steps(path: &str) -> Vec<&str> {
+    path.split('.').map(str::trim).collect()
 }
 
 /// The program configuration whose list holds `path`, a path of the

@@ -300,3 +300,59 @@ END_CONFIGURATION
         assert!(!labels.contains(label), "offered `{label}`: {labels:?}");
     }
 }
+
+/// Inside VAR_CONFIG, the entry being written: a resource or a program
+/// instance where a path starts, the instances of a resource after it, the
+/// members of whatever the path reached, and the variable's own type after
+/// the colon. It offered the CONFIGURATION's sections instead.
+#[rstest]
+#[case::an_empty_section("|", &["Res", "P1"], &["VAR_GLOBAL", "x"])]
+#[case::after_an_entry("Res.P1.x AT %QW0 : INT;\n    |", &["Res", "P1"], &["VAR_GLOBAL"])]
+#[case::after_a_resource("Res.|", &["P1"], &["Res", "x"])]
+#[case::after_an_instance("Res.P1.|", &["x", "d"], &["P1", "out"])]
+#[case::an_instance_without_its_resource("P1.|", &["x", "d"], &["P1"])]
+#[case::through_a_member("Res.P1.d.|", &["out"], &["x", "d"])]
+#[case::a_member_being_typed("Res.P1.o|", &["x", "d"], &["P1"])]
+#[case::the_type("Res.P1.x AT %QW0 : |", &["INT"], &["x", "VAR_GLOBAL"])]
+pub fn completion_in_var_config(
+    mut with_db: RootDatabase,
+    #[case] entry: &str,
+    #[case] offered: &[&str],
+    #[case] not_offered: &[&str],
+) {
+    let source = format!(
+        r#"
+FUNCTION_BLOCK Drive
+VAR out AT %Q* : INT; END_VAR
+END_FUNCTION_BLOCK
+
+PROGRAM F
+VAR x AT %Q* : INT; END_VAR
+VAR d : Drive; END_VAR
+END_PROGRAM
+
+CONFIGURATION Cfg
+VAR_CONFIG
+    {entry}
+END_VAR
+    RESOURCE Res ON CPU
+        TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM P1 WITH T : F;
+    END_RESOURCE
+END_CONFIGURATION
+"#
+    );
+    let offset = source.find('|').unwrap();
+    let source = source.replacen('|', "", 1);
+    add_sources(&mut with_db, &[&source]);
+    let file = *with_db.get_files().iter().last().unwrap();
+
+    let items = ide_proto::handlers::completions::complete(&with_db, file, offset, None);
+    let labels: Vec<&str> = items.iter().map(|c| c.label.as_str()).collect();
+    for label in offered {
+        assert!(labels.contains(label), "missing `{label}`: {labels:?}");
+    }
+    for label in not_offered {
+        assert!(!labels.contains(label), "offered `{label}`: {labels:?}");
+    }
+}

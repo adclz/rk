@@ -898,31 +898,104 @@ pub fn resolve_config_entries<'db>(
     out
 }
 
-/// The member `name` an instance of `ty` holds: a PROGRAM's instance state,
-/// or an FB's or CLASS's [`instance_members`], inherited ones included.
-///
-/// [`instance_members`]: crate::hir_ty::head::inheritance::instance_members
+/// The member `name` among [`members_of`] `ty`.
 fn instance_member<'db>(
     db: &'db dyn WorkspaceDataBase,
     ty: Type<'db>,
     name: Ident,
 ) -> Option<VariableDecl<'db>> {
     let fold = name.caseless(db);
+    members_of(db, ty)
+        .into_iter()
+        .find(|v| v.name(db).caseless(db) == fold)
+}
+
+/// Every member an instance of `ty` holds: a PROGRAM's instance state, or
+/// an FB's or CLASS's [`instance_members`], inherited ones included.
+///
+/// [`instance_members`]: crate::hir_ty::head::inheritance::instance_members
+pub fn members_of<'db>(db: &'db dyn WorkspaceDataBase, ty: Type<'db>) -> Vec<VariableDecl<'db>> {
     match ty {
         Type::Program(p) => p
             .variables(db)
             .iter()
             .copied()
             .filter(|v| !v.is_temp(db) && !v.is_external(db))
-            .find(|v| v.name(db).caseless(db) == fold),
-        _ => {
-            let pou = crate::hir_ty::head::inheritance::pou_of_type(db, ty)?;
-            crate::hir_ty::head::inheritance::instance_members(db, pou)
+            .collect(),
+        _ => match crate::hir_ty::head::inheritance::pou_of_type(db, ty) {
+            Some(pou) => crate::hir_ty::head::inheritance::instance_members(db, pou)
                 .iter()
                 .map(|m| m.var)
-                .find(|v| v.name(db).caseless(db) == fold)
-        }
+                .collect(),
+            None => Vec::new(),
+        },
     }
+}
+
+/// What the first steps of a VAR_CONFIG path reach, for the IDE to complete
+/// the next one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConfigPathPrefix<'db> {
+    /// Nothing yet: a resource or a program instance comes next.
+    Start,
+    /// A resource: one of its program instances comes next.
+    Resource(ResourceDecl<'db>),
+    /// A program instance, or a member of one: what an instance of `ty`
+    /// holds comes next. `member` is the last step when it is a member.
+    Holder {
+        ty: Type<'db>,
+        member: Option<VariableDecl<'db>>,
+    },
+}
+
+/// Resolve the steps of a VAR_CONFIG path written so far in `config`, as
+/// [`resolve_config_entries`] resolves a whole one: an optional resource, a
+/// program instance, then members. `None` when a step names nothing.
+pub fn config_path_prefix<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    config: ConfigDecl<'db>,
+    steps: &[&str],
+) -> Option<ConfigPathPrefix<'db>> {
+    let steps: Vec<Ident> = steps
+        .iter()
+        .map(|step| Ident::new(db, compact_str::CompactString::from(*step)))
+        .collect();
+    let fragments = crate::hir_ty::index_graphs::config_fragments(db, config.get_name_ident(db));
+    let resources: Vec<ResourceDecl<'db>> = fragments
+        .iter()
+        .flat_map(|f| f.resources(db).iter().copied())
+        .collect();
+    let mut steps = steps.iter();
+    let Some(first) = steps.next() else {
+        return Some(ConfigPathPrefix::Start);
+    };
+    let resource = resources
+        .iter()
+        .find(|r| r.name(db).ident.caseless(db) == first.caseless(db))
+        .copied();
+    let instance = match resource {
+        Some(r) => match steps.next() {
+            None => return Some(ConfigPathPrefix::Resource(r)),
+            Some(name) => r
+                .programs(db)
+                .iter()
+                .find(|p| p.name(db).ident.caseless(db) == name.caseless(db))
+                .copied(),
+        },
+        None => resources
+            .iter()
+            .flat_map(|r| r.programs(db).iter())
+            .find(|p| p.name(db).ident.caseless(db) == first.caseless(db))
+            .copied(),
+    }?;
+    let mut ty = instance.prog_type(db).infer(db);
+    let mut member = None;
+    for name in steps {
+        let var = instance_member(db, ty, *name)?;
+        ty = var.spec(db).infer(db).normalize(db);
+        member = Some(var);
+    }
+    Some(ConfigPathPrefix::Holder { ty, member })
 }
 
 /// Each program configuration's element list in `config`, resolved against
