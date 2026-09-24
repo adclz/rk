@@ -411,3 +411,120 @@ fn no_configuration_yields_no_schedule(mut with_db: db::RootDatabase) {
     let (mir, _wasm) = compile_to_mir_and_wasm(&mut with_db, source);
     assert!(mir.schedule.is_none(), "no CONFIGURATION => no schedule");
 }
+
+/// A program instance's connections: each input is copied from its source
+/// (a direct variable, a global or a constant) before the instance's body
+/// runs, and each output to its sink after, for that instance only.
+#[rstest]
+fn a_program_connection_copies_in_and_out(mut with_db: db::RootDatabase) {
+    use debug_format::{DebugInfo, VarValue};
+    let source = r#"
+        PROGRAM F
+        VAR_INPUT x1 : BOOL; x2 : UINT; END_VAR
+        VAR_OUTPUT y1 : UINT; END_VAR
+        VAR n : UINT; END_VAR
+            IF x1 THEN n := n + x2; END_IF;
+            y1 := n;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+        VAR_GLOBAL w : UINT := 5; total AT %QW0 : UINT; END_VAR
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : F(x1 := %IX0.0, x2 := w, y1 => total);
+                PROGRAM P2 WITH T : F(x1 := TRUE, x2 := 3);
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    let info = DebugInfo::from_wasm(&wasm);
+    let mut plc = crate::tests::codegen::TestPlc::load(&wasm).expect("load");
+    plc.write_located("%IX0.0", &1i32.to_le_bytes())
+        .expect("x1");
+    plc.run(2).expect("scans");
+    let total = u16::from_le_bytes(
+        plc.read_located("%QW0").expect("total")[..2]
+            .try_into()
+            .unwrap(),
+    );
+    assert_eq!(total, 10, "P1 added `w` twice and copied its output out");
+    let loc = info.resolve("P2.y1").expect("P2.y1");
+    assert_eq!(
+        loc.decode(&plc.read_bytes(loc.address, loc.size as usize).unwrap()),
+        VarValue::U16(6),
+        "P2's own connections: TRUE and 3"
+    );
+}
+
+/// A connection to part of a wider address reads and writes those bits or
+/// bytes of its cell, and leaves the rest of the cell as it was.
+#[rstest]
+fn a_connection_to_part_of_a_wider_address(mut with_db: db::RootDatabase) {
+    let source = r#"
+        PROGRAM F
+        VAR_INPUT b : BOOL; lo : BYTE; END_VAR
+        VAR_OUTPUT q : BOOL; hi : BYTE; END_VAR
+            q := b;
+            hi := lo;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+        VAR_GLOBAL inw AT %IW0 : WORD; outw AT %QW0 : WORD := 16#0001; END_VAR
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : F(b := %IX0.3, lo := %IB1, q => %QX0.1, hi => %QB1);
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    let mut plc = crate::tests::codegen::TestPlc::load(&wasm).expect("load");
+    plc.write_located("%IW0", &0x2A08u16.to_le_bytes())
+        .expect("inw");
+    plc.run(1).expect("scan");
+    let out = u16::from_le_bytes(
+        plc.read_located("%QW0").expect("outw")[..2]
+            .try_into()
+            .unwrap(),
+    );
+    assert_eq!(out, 0x2A03, "bit 1 and byte 1 written, bit 0 kept");
+}
+
+/// A function block associated with a task runs under that task alone: it
+/// counts every FAST tick, while the program holding it runs every other.
+#[rstest]
+fn a_function_block_runs_under_its_own_task(mut with_db: db::RootDatabase) {
+    use debug_format::{DebugInfo, VarValue};
+    let source = r#"
+        FUNCTION_BLOCK Counter
+        VAR_OUTPUT n : INT; END_VAR
+            n := n + 1;
+        END_FUNCTION_BLOCK
+
+        PROGRAM G
+        VAR fb1 : Counter; seen : INT; END_VAR
+            seen := fb1.n;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+            RESOURCE Res ON CPU
+                TASK FAST(INTERVAL := T#10ms, PRIORITY := 1);
+                TASK SLOW(INTERVAL := T#20ms, PRIORITY := 2);
+                PROGRAM P2 WITH SLOW : G(fb1 WITH FAST);
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    let info = DebugInfo::from_wasm(&wasm);
+    let mut plc = crate::tests::codegen::TestPlc::load(&wasm).expect("load");
+    plc.run(4).expect("ticks");
+    let read = |path: &str| {
+        let loc = info.resolve(path).expect(path);
+        loc.decode(&plc.read_bytes(loc.address, loc.size as usize).unwrap())
+    };
+    assert_eq!(read("P2.fb1.n"), VarValue::I16(4), "FAST ran it every tick");
+    assert_eq!(
+        read("P2.seen"),
+        VarValue::I16(3),
+        "SLOW ran P2 on ticks 0 and 2"
+    );
+}

@@ -89,13 +89,11 @@ pub enum ConfigError<'db> {
         expected: Type<'db>,
         actual: Type<'db>,
     },
-    /// A configuration construct that is parsed but does nothing. Reported so a
-    /// user is not left believing state they wrote is being applied — the
-    /// silent version is worse than a rejection, because the compiler accepts
-    /// the input and then ignores it.
-    UnsupportedConfigElement {
+    /// An element of a program configuration's list, `PROGRAM P1 WITH T :
+    /// F(x1 := src, y1 => snk, fb1 WITH T2)`, that cannot hold.
+    ProgElementRefused {
         expr: PathExpr<'db>,
-        kind: UnsupportedConfigKind,
+        why: ProgElementRefusal<'db>,
     },
     /// A direct variable used anywhere: read or written in a body, or named
     /// by a declaration's `AT` clause. The address is TYPED — `X/B/W/D/L`
@@ -517,36 +515,45 @@ pub enum InputWriteRoute {
     Initializer,
 }
 
-/// Which parsed-but-inert CONFIGURATION construct was found.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, salsa::Update)]
-pub enum UnsupportedConfigKind {
-    /// `PROGRAM P WITH T : Type (in := src)` — the connection list is read and
-    /// then discarded: no copy is emitted around the scan, and the names are
-    /// never resolved, so a typo passes silently.
-    ProgramConnection,
-    /// `PROGRAM P WITH T : Type (fb WITH other_task)` — associating a nested
-    /// FB with its own task.
-    FbTaskAssociation,
-}
-
-impl UnsupportedConfigKind {
-    fn message(self) -> &'static str {
-        match self {
-            Self::ProgramConnection => {
-                "program connection lists are parsed but not wired up yet, so this has no effect"
-            }
-            Self::FbTaskAssociation => {
-                "associating a function block with its own task is not supported yet"
-            }
-        }
-    }
-
-    fn note(self) -> &'static str {
-        match self {
-            Self::ProgramConnection => "assign it in the program body instead",
-            Self::FbTaskAssociation => "run the function block from its enclosing program's task",
-        }
-    }
+/// Why an element of a program configuration's list cannot hold.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, salsa::Update)]
+pub enum ProgElementRefusal<'db> {
+    /// `name := source` on a variable that is not a VAR_INPUT.
+    NotAnInput { var: compact_str::CompactString },
+    /// `name => sink` on a variable that is not a VAR_OUTPUT.
+    NotAnOutput { var: compact_str::CompactString },
+    /// A VAR_GLOBAL whose type is not the variable's.
+    TypeMismatch {
+        var: compact_str::CompactString,
+        declared: compact_str::CompactString,
+        global: compact_str::CompactString,
+        ty: compact_str::CompactString,
+    },
+    /// An address whose width is not the variable's.
+    WidthMismatch {
+        var: compact_str::CompactString,
+        declared: compact_str::CompactString,
+        address: compact_str::CompactString,
+        bits: u8,
+    },
+    /// A source or sink that names no VAR_GLOBAL.
+    NoSuchGlobal { name: compact_str::CompactString },
+    /// An input connected twice.
+    ConnectedTwice { var: compact_str::CompactString },
+    /// An element that names more than a variable of the program.
+    NotAVariable,
+    /// `fb WITH task` on a variable that is not a FUNCTION_BLOCK instance.
+    NotAFunctionBlock { var: compact_str::CompactString },
+    /// A function block associated with a task twice.
+    AssociatedTwice { var: compact_str::CompactString },
+    /// `fb WITH task` naming no task of the resource.
+    UnknownTask { task: compact_str::CompactString },
+    /// A function block a task runs, which the program's body calls too.
+    CalledByProgram {
+        var: compact_str::CompactString,
+        program: compact_str::CompactString,
+        call: crate::CallSite<'db>,
+    },
 }
 
 /// Why a TASK cannot be scheduled. Only cyclic tasks with a literal, non-zero
@@ -614,7 +621,6 @@ impl<'db> ErrorCode for ConfigError<'db> {
             Self::ConfigInstInitUnknownInstance { .. } => "E1413",
             Self::ConfigInstInitFieldNotFound { .. } => "E1414",
             Self::AccessDeclTypeMismatch { .. } => "E1415",
-            Self::UnsupportedConfigElement { .. } => "E1416",
             Self::DirectVariableUnsupported { .. } => "E1417",
             Self::UnknownMultibitsAccess { .. } => "E1418",
             Self::WriteToInputLocation { .. } => "E1419",
@@ -627,6 +633,7 @@ impl<'db> ErrorCode for ConfigError<'db> {
             Self::ConfigEntryRefused { .. } => "E1426",
             Self::RetainHoldsPartlyLocated { .. } => "E1420",
             Self::PartlyLocatedOverwritten { .. } => "E1427",
+            Self::ProgElementRefused { .. } => "E1428",
         }
     }
 
@@ -647,7 +654,6 @@ impl<'db> ErrorCode for ConfigError<'db> {
             Self::ConfigInstInitUnknownInstance { .. } => "configuration error",
             Self::ConfigInstInitFieldNotFound { .. } => "configuration error",
             Self::AccessDeclTypeMismatch { .. } => "access declaration type mismatch",
-            Self::UnsupportedConfigElement { .. } => "unsupported configuration element",
             Self::DirectVariableUnsupported { .. } => "address cannot be located",
             Self::UnknownMultibitsAccess { .. } => "unknown multibit access size",
             Self::WriteToInputLocation { .. } => "write to an input location",
@@ -660,6 +666,7 @@ impl<'db> ErrorCode for ConfigError<'db> {
             Self::ConfigEntryRefused { .. } => "configuration entry refused",
             Self::RetainHoldsPartlyLocated { .. } => "RETAIN on an I/O location",
             Self::PartlyLocatedOverwritten { .. } => "located variable overwritten",
+            Self::ProgElementRefused { .. } => "program configuration element refused",
         }
     }
 }
@@ -872,14 +879,84 @@ impl<'db> ToIdeDiagnostic<'db> for ConfigError<'db> {
 
                 diag
             }
-            Self::UnsupportedConfigElement { expr, kind } => {
+            Self::ProgElementRefused { expr, why } => {
+                let (message, note) = match why {
+                    ProgElementRefusal::NotAnInput { var } => (
+                        format!(
+                            "'{var}' is not a VAR_INPUT of the program, so ':=' cannot feed it"
+                        ),
+                        "':=' connects a source to an input, '=>' an output to a sink",
+                    ),
+                    ProgElementRefusal::NotAnOutput { var } => (
+                        format!(
+                            "'{var}' is not a VAR_OUTPUT of the program, so '=>' cannot read it"
+                        ),
+                        "':=' connects a source to an input, '=>' an output to a sink",
+                    ),
+                    ProgElementRefusal::TypeMismatch {
+                        var,
+                        declared,
+                        global,
+                        ty,
+                    } => (
+                        format!("'{var}' is '{declared}', and '{global}' is '{ty}'"),
+                        "a connection copies the value as it is; connect a variable of the same type",
+                    ),
+                    ProgElementRefusal::WidthMismatch {
+                        var,
+                        declared,
+                        address,
+                        bits,
+                    } => (
+                        format!(
+                            "'{var}' is '{declared}', and '{address}' is {bits} bit{}",
+                            if *bits == 1 { "" } else { "s" }
+                        ),
+                        "an address connects to a variable as wide as it is",
+                    ),
+                    ProgElementRefusal::NoSuchGlobal { name } => (
+                        format!("no VAR_GLOBAL is named '{name}'"),
+                        "a connection names a VAR_GLOBAL of the configuration, an address, or a constant",
+                    ),
+                    ProgElementRefusal::ConnectedTwice { var } => (
+                        format!("'{var}' is connected here and by another element"),
+                        "an input has one source; keep one of the elements",
+                    ),
+                    ProgElementRefusal::NotAVariable => (
+                        "an element names a variable by its name alone".to_string(),
+                        "connect the program's inputs and outputs to VAR_GLOBALs, addresses or constants, and associate the function blocks it holds",
+                    ),
+                    ProgElementRefusal::NotAFunctionBlock { var } => (
+                        format!("'{var}' is not a FUNCTION_BLOCK instance, so no task can run it"),
+                        "a task runs a function block's body; a CLASS has none",
+                    ),
+                    ProgElementRefusal::AssociatedTwice { var } => (
+                        format!("'{var}' is associated with a task here and by another element"),
+                        "a function block runs under one task; keep one of the elements",
+                    ),
+                    ProgElementRefusal::UnknownTask { task } => (
+                        format!("no TASK is named '{task}' in this resource"),
+                        "associate the function block with a TASK the resource declares",
+                    ),
+                    ProgElementRefusal::CalledByProgram { var, program, .. } => (
+                        format!("'{var}' runs under its task, and '{program}' calls it too"),
+                        "the task runs the instance on its own; remove the call from the program",
+                    ),
+                };
                 let mut diag = diag()
-                    .message(kind.message().to_string())
+                    .message(message)
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
                     .range(crate::denormalize(db, file, &expr.get_span(db)).unwrap_or_default())
                     .call();
-                diag.with_note(kind.note().to_string());
+                if let ProgElementRefusal::CalledByProgram { var, call, .. } = why {
+                    diag.with_related(ide_diagnostic::Related::new(
+                        format!("'{var}' is called here"),
+                        call.get_scope_id(db).file(db),
+                        call.get_span(db),
+                    ));
+                }
+                diag.with_note(note.to_string());
                 diag
             }
             Self::DirectVariableUnsupported { site, address, why } => {

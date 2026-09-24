@@ -349,6 +349,18 @@ impl<'db> SemanticIndexBuilder<'db> {
 
         let path = path.ok_or_else(|| missing("path expression"))?;
 
+        // An address a connection names is mentioned like one in a body, and
+        // gets a cell the same way.
+        let direct = match (&source, &sink) {
+            (Some(DataSource::Direct(dv)), _) | (_, Some(DataSink::Direct(dv))) => Some(*dv),
+            _ => None,
+        };
+        if let Some(address) =
+            direct.and_then(|dv| crate::hir_def::pous::variable::LocatedAddress::of(self.db, dv))
+        {
+            self.located.push((address, HirNode::PathExpr(path)));
+        }
+
         if let Some(source) = source {
             Ok(ProgCnxn::Source { path, source })
         } else if let Some(sink) = sink {
@@ -473,9 +485,7 @@ impl<'db> SemanticIndexBuilder<'db> {
         // Grammar normally guarantees an init expression on a config
         // inst declaration; partial/recovered parses may still leave
         // us short, so surface that as a syntax error (E0002).
-        // A location-only entry was refused here with a syntax code, before
-        // the E1416 that says VAR_CONFIG is not applied; only an entry with
-        // neither a location nor a value is malformed.
+        // Only an entry with neither a location nor a value is malformed.
         if located_at.is_none() && init_expr.is_none() {
             return Err(crate::check::errors::e00_syntax::SyntaxError::MissingNode {
                 file: self.file,

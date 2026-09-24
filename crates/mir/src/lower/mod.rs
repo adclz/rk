@@ -1,3 +1,4 @@
+pub mod connections;
 pub mod lower_expr;
 pub mod lower_func;
 pub mod lower_module;

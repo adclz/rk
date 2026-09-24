@@ -74,6 +74,7 @@ impl<'db> InitInference<'db> {
         self.check_function_specifier(db);
         self.check_return_type(db);
         self.check_config_values(db);
+        self.check_connection_constants(db);
 
         // Once-per-type initializers must be constant (user-ruled): a TYPE
         // default, an FB/CLASS member default, and anything static — a
@@ -157,6 +158,36 @@ impl<'db> InitInference<'db> {
                 &mut self.body_infer_result,
                 var.spec(db).infer(db),
             );
+        }
+    }
+
+    /// The constants a program configuration feeds its inputs, typed against
+    /// each input as an initializer is against its variable.
+    fn check_connection_constants(&mut self, db: &'db dyn WorkspaceDataBase) {
+        use crate::hir_ty::config::ConnectionEnd;
+        let ScopeKind::Config(config) = get_scope(db, self.scope).kind else {
+            return;
+        };
+        for (_, elements) in &crate::hir_ty::config::prog_elements(db, config).per_program {
+            for (var, source) in &elements.inputs {
+                let ConnectionEnd::Constant(value) = source else {
+                    continue;
+                };
+                let expected = var.spec(db).infer(db);
+                let body = &mut self.body_infer_result;
+                let mut infer_ctx = InferExprCtx::new(Resolver::for_scope(db, self.scope));
+                infer_ctx.resolve_expr_expecting(db, *value, body, Some(expected));
+                infer_ctx.check_expr(db, *value, body);
+                if let Err(err) = infer_ctx.coerce_type_with_expr(db, expected, *value, body) {
+                    self.errors.push(err.into_non_assignable_init(
+                        db,
+                        expected,
+                        CallSite::from_scoped(db, value),
+                    ));
+                } else if let Some(err) = expected.subrange_violation(db, *value) {
+                    self.errors.push(err.to_diagnostic(db, self.scope.file(db)));
+                }
+            }
         }
     }
 }

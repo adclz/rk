@@ -476,6 +476,29 @@ fn lower_module_from_pous<'db>(
         functions.push(mir_func);
     }
 
+    // A program instance with connections runs through a function of its
+    // own, which feeds its inputs and copies its outputs out around the body.
+    for c in config {
+        let schedule = &hir::hir_ty::config::infer_config_result(db, *c).schedule;
+        for p in schedule
+            .resources
+            .iter()
+            .flat_map(|r| r.tasks.iter())
+            .flat_map(|t| t.programs.iter())
+            .filter(|p| !p.connections.inputs.is_empty() || !p.connections.outputs.is_empty())
+        {
+            // `lower_schedule` refuses an instance with no lowered program.
+            let Some(info) = program_infos.get(&p.program.name(db)) else {
+                continue;
+            };
+            let func =
+                super::connections::lower_connections(db, p, info, next_fn_idx, &string_pool)?;
+            function_indices.insert(func.name, next_fn_idx);
+            next_fn_idx += 1;
+            functions.push(func);
+        }
+    }
+
     // Sort test entries by path for deterministic output
     test_entries.sort_by(|a, b| a.path.cmp(&b.path));
 
@@ -509,6 +532,17 @@ fn lower_module_from_pous<'db>(
     // Build the CONFIGURATION's schedule: allocate one instance per program
     // configuration (recording its RETAIN fields) and resolve task periods.
     let schedule = crate::schedule::lower_schedule(db, config, &mut memory_layout, &program_infos)?;
+    // The host calls the body of a function block a task runs.
+    if let Some(sched) = &schedule {
+        let run: FxHashSet<_> = sched
+            .tasks
+            .iter()
+            .flat_map(|t| t.function_blocks.iter().map(|f| f.body_fn))
+            .collect();
+        for func in functions.iter_mut().filter(|f| run.contains(&f.name)) {
+            func.linkage = crate::function::MirLinkage::Export;
+        }
+    }
 
     let mut module = MirModule {
         functions,
@@ -561,6 +595,11 @@ fn lower_module_from_pous<'db>(
                 for inst in &mut task.programs {
                     if let Some(&new_addr) = bands.remap.get(&inst.instance_addr) {
                         inst.instance_addr = new_addr;
+                    }
+                }
+                for fb in &mut task.function_blocks {
+                    if let Some(&new_addr) = bands.remap.get(&fb.program_addr) {
+                        fb.program_addr = new_addr;
                     }
                 }
             }

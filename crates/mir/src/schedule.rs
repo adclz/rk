@@ -2,7 +2,10 @@
 //! exist, how often each fires, which PROGRAM instances each runs; built
 //! from HIR's `ResolvedSchedule` and carried as the `rk.schedule` manifest.
 //! Each program configuration allocates its own instance and runs
-//! `Type$__body__(&inst)`. Only cyclic (INTERVAL) tasks are scheduled.
+//! `Type$__body__(&inst)`, or `Inst$__scan__(&inst)` when it has
+//! connections. A function block a task runs on its own is an entry of that
+//! task: `FB$__body__` on its place in the program instance. Only cyclic
+//! (INTERVAL) tasks are scheduled.
 
 use db::WorkspaceDataBase;
 use hir::{
@@ -39,7 +42,8 @@ pub struct MirProgInstance {
     /// The program TYPE's name (key into the module's program info — used to
     /// find the instance's field layout + initializers).
     pub prog_name: Ident,
-    /// The `Type$__body__` function to call.
+    /// The function to call: `Type$__body__`, or `Inst$__scan__` for an
+    /// instance with connections.
     pub body_fn: Ident,
     /// Base address of this instance's state in linear memory.
     pub instance_addr: u32,
@@ -63,6 +67,22 @@ pub struct MirTask {
     pub priority: Option<u32>,
     /// Program instances this task runs, in declaration order.
     pub programs: Vec<MirProgInstance>,
+    /// Function blocks this task runs on their own, after the programs.
+    pub function_blocks: Vec<MirFbInstance>,
+}
+
+/// A function block a task runs instead of the program instance holding it.
+#[derive(Debug, Clone)]
+pub struct MirFbInstance {
+    /// Its path from the program instance: `P2.fb1`.
+    pub path: String,
+    /// The block's `FB$__body__`.
+    pub body_fn: Ident,
+    /// The base of the program instance holding it, which a RETAIN
+    /// relocation moves.
+    pub program_addr: u32,
+    /// Where it sits in the program instance.
+    pub offset: u32,
 }
 
 /// The resolved schedule of the module's single CONFIGURATION.
@@ -97,6 +117,15 @@ impl MirSchedule {
                             export: p.body_fn.text(db).to_string(),
                             instance_addr: p.instance_addr,
                         })
+                        .chain(
+                            t.function_blocks
+                                .iter()
+                                .map(|f| debug_format::ProgramEntry {
+                                    instance: f.path.clone(),
+                                    export: f.body_fn.text(db).to_string(),
+                                    instance_addr: f.program_addr + f.offset,
+                                }),
+                        )
                         .collect(),
                 })
                 .collect(),
@@ -117,6 +146,9 @@ pub fn lower_schedule<'db>(
     // expresses periods against one tick counter.
     let mut pending: Vec<(Ident, &hir::hir_ty::config::ResolvedTask<'db>, Vec<MirProgInstance>)> =
         Vec::new();
+    // Each instance's base and program, for the function blocks a task runs
+    // inside it; that task may come before the instance's own.
+    let mut bases: FxHashMap<Ident, (u32, &ProgramInfo<'db>)> = FxHashMap::default();
     // Fragments contribute in file order; a RESOURCE cannot span two (E0115).
     for resource in config
         .iter()
@@ -169,15 +201,22 @@ pub fn lower_schedule<'db>(
                     );
                 }
 
+                let connected =
+                    !p.connections.inputs.is_empty() || !p.connections.outputs.is_empty();
                 instances.push(MirProgInstance {
                     inst_name: p.instance_name,
                     prog_name: p.program.name(db),
-                    body_fn: info.body_fn,
+                    body_fn: if connected {
+                        crate::lower::connections::scan_fn_name(db, p.instance_name)
+                    } else {
+                        info.body_fn
+                    },
                     instance_addr: base,
                     config_retain: p.retain,
                 });
+                bases.insert(p.instance_name, (base, info));
             }
-            if !instances.is_empty() {
+            if !instances.is_empty() || !task.function_blocks.is_empty() {
                 pending.push((resource.name, task, instances));
             }
         }
@@ -196,17 +235,61 @@ pub fn lower_schedule<'db>(
         return Ok(None);
     }
 
-    let tasks: Vec<MirTask> = pending
-        .into_iter()
-        .map(|(resource, task, programs)| MirTask {
+    let mut tasks: Vec<MirTask> = Vec::new();
+    for (resource, task, programs) in pending {
+        let mut function_blocks = Vec::new();
+        for fb in &task.function_blocks {
+            let (Some(&(base, info)), Type::FunctionBlock(block)) = (
+                bases.get(&fb.instance_name),
+                fb.member.spec(db).infer(db).normalize(db),
+            ) else {
+                return Err(crate::lower::lower_type::LowerTypeError::UnsupportedType(
+                    format!(
+                        "'{}.{}' is run by a task but is no function block of a scheduled instance",
+                        fb.instance_name.text(db),
+                        fb.member.name(db).text(db)
+                    ),
+                ));
+            };
+            let Some(field) = info
+                .struct_type
+                .fields
+                .iter()
+                .find(|f| f.name == fb.member.name(db))
+            else {
+                return Err(crate::lower::lower_type::LowerTypeError::UnsupportedType(
+                    format!(
+                        "'{}' has no field in the program's layout",
+                        fb.member.name(db).text(db)
+                    ),
+                ));
+            };
+            let qualified =
+                crate::lower::naming::qualified_pou_ident(db, Type::FunctionBlock(block));
+            function_blocks.push(MirFbInstance {
+                path: format!(
+                    "{}.{}",
+                    fb.instance_name.text(db),
+                    fb.member.name(db).text(db)
+                ),
+                body_fn: Ident::new(
+                    db,
+                    compact_str::CompactString::from(format!("{}$__body__", qualified.text(db))),
+                ),
+                program_addr: base,
+                offset: field.offset,
+            });
+        }
+        tasks.push(MirTask {
             resource,
             name: task.name,
             // As wide as the interval itself: a period never needs narrowing.
             period_ticks: task.interval_ns / common,
             priority: task.priority,
             programs,
-        })
-        .collect();
+            function_blocks,
+        });
+    }
 
     Ok(Some(MirSchedule {
         common_ticktime_ns: common,

@@ -602,6 +602,181 @@ END_CONFIGURATION
     ");
 }
 
+/// A task association names a TASK of the resource, and one that can run: a
+/// function block bound to one that cannot would never run, as a program
+/// would not (E1410).
+#[rstest]
+#[case::unknown_task("fb1 WITH Nope", "[E1428]")]
+#[case::task_that_cannot_run("fb1 WITH Ev", "[E1410]")]
+fn invalid_task_for_a_function_block(
+    mut with_db: RootDatabase,
+    #[case] element: &str,
+    #[case] code: &str,
+) {
+    let source = format!(
+        r#"
+FUNCTION_BLOCK Counter
+VAR n : INT; END_VAR
+    n := n + 1;
+END_FUNCTION_BLOCK
+
+PROGRAM F
+VAR fb1 : Counter; END_VAR
+END_PROGRAM
+
+CONFIGURATION Cfg
+VAR_GLOBAL go : BOOL; END_VAR
+    RESOURCE Res ON CPU
+        TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+        TASK Ev(SINGLE := go, PRIORITY := 2);
+        PROGRAM P1 WITH T : F({element});
+    END_RESOURCE
+END_CONFIGURATION
+"#
+    );
+    let diagnostics = test_diagnostics(&mut with_db, &[&source]);
+    assert!(diagnostics.contains(code), "{diagnostics}");
+}
+
+/// A program instance's connections and task associations are refused
+/// where they cannot hold (E1428): `:=` feeds an input and `=>` reads an
+/// output, the two sides are one type, an input or a task association is
+/// made once, a task association names a function block the program holds,
+/// and the program does not call that function block itself. An output
+/// cannot be copied into an input image (E1419).
+#[rstest]
+fn invalid_program_connections_and_task_associations(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK Counter
+VAR_OUTPUT n : INT; END_VAR
+    n := n + 1;
+END_FUNCTION_BLOCK
+
+CLASS Box
+VAR k : INT; END_VAR
+END_CLASS
+
+PROGRAM F
+VAR_INPUT x1 : BOOL; x2 : UINT; END_VAR
+VAR_OUTPUT y1 : UINT; END_VAR
+VAR fb1 : Counter; fb2 : Counter; b : Box; END_VAR
+    fb2();
+END_PROGRAM
+
+CONFIGURATION Cfg
+VAR_GLOBAL w : INT; END_VAR
+    RESOURCE Res ON CPU
+        TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM P1 WITH T : F(y1 := 1, x1 => w, x2 := w, x1 := TRUE, x1 := FALSE, y1 => %IW0);
+        PROGRAM P2 WITH T : F(b WITH T, fb2 WITH T, fb1 WITH T, fb1 WITH T, nosuch := 1);
+    END_RESOURCE
+END_CONFIGURATION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1428] Error: program configuration element refused
+        ,-[ file:///test0.st:22:31 ]
+        |
+     22 |         PROGRAM P1 WITH T : F(y1 := 1, x1 => w, x2 := w, x1 := TRUE, x1 := FALSE, y1 => %IW0);
+        |                               ^|
+        |                                `-- 'y1' is not a VAR_INPUT of the program, so ':=' cannot feed it
+        |
+        | Note: ':=' connects a source to an input, '=>' an output to a sink
+    ----'
+    [E1428] Error: program configuration element refused
+        ,-[ file:///test0.st:22:40 ]
+        |
+     22 |         PROGRAM P1 WITH T : F(y1 := 1, x1 => w, x2 := w, x1 := TRUE, x1 := FALSE, y1 => %IW0);
+        |                                        ^|
+        |                                         `-- 'x1' is not a VAR_OUTPUT of the program, so '=>' cannot read it
+        |
+        | Note: ':=' connects a source to an input, '=>' an output to a sink
+    ----'
+    [E1428] Error: program configuration element refused
+        ,-[ file:///test0.st:22:49 ]
+        |
+     22 |         PROGRAM P1 WITH T : F(y1 := 1, x1 => w, x2 := w, x1 := TRUE, x1 := FALSE, y1 => %IW0);
+        |                                                 ^|
+        |                                                  `-- 'x2' is 'UINT', and 'w' is 'INT'
+        |
+        | Note: a connection copies the value as it is; connect a variable of the same type
+    ----'
+    [E1419] Error: write to an input location
+        ,-[ file:///test0.st:22:83 ]
+        |
+     22 |         PROGRAM P1 WITH T : F(y1 := 1, x1 => w, x2 := w, x1 := TRUE, x1 := FALSE, y1 => %IW0);
+        |                                                                                   ^|
+        |                                                                                    `-- '%IW0' is an input: it is written by the host, not by the program
+        |
+        | Note: the host copies the input image in before each scan, so this write is overwritten before anything can read it
+    ----'
+    [E1428] Error: program configuration element refused
+        ,-[ file:///test0.st:22:58 ]
+        |
+     22 |         PROGRAM P1 WITH T : F(y1 := 1, x1 => w, x2 := w, x1 := TRUE, x1 := FALSE, y1 => %IW0);
+        |                                                          ^|
+        |                                                           `-- 'x1' is connected here and by another element
+        |
+        | Note: an input has one source; keep one of the elements
+    ----'
+    [E1428] Error: program configuration element refused
+        ,-[ file:///test0.st:22:70 ]
+        |
+     22 |         PROGRAM P1 WITH T : F(y1 := 1, x1 => w, x2 := w, x1 := TRUE, x1 := FALSE, y1 => %IW0);
+        |                                                                      ^|
+        |                                                                       `-- 'x1' is connected here and by another element
+        |
+        | Note: an input has one source; keep one of the elements
+    ----'
+    [E1428] Error: program configuration element refused
+        ,-[ file:///test0.st:23:31 ]
+        |
+     23 |         PROGRAM P2 WITH T : F(b WITH T, fb2 WITH T, fb1 WITH T, fb1 WITH T, nosuch := 1);
+        |                               |
+        |                               `-- 'b' is not a FUNCTION_BLOCK instance, so no task can run it
+        |
+        | Note: a task runs a function block's body; a CLASS has none
+    ----'
+    [E1414] Error: configuration error
+        ,-[ file:///test0.st:23:77 ]
+        |
+     23 |         PROGRAM P2 WITH T : F(b WITH T, fb2 WITH T, fb1 WITH T, fb1 WITH T, nosuch := 1);
+        |                                                                             ^^^|^^
+        |                                                                                `---- 'F' has no field named 'nosuch'
+    ----'
+    [E1428] Error: program configuration element refused
+        ,-[ file:///test0.st:23:53 ]
+        |
+     23 |         PROGRAM P2 WITH T : F(b WITH T, fb2 WITH T, fb1 WITH T, fb1 WITH T, nosuch := 1);
+        |                                                     ^|^
+        |                                                      `--- 'fb1' is associated with a task here and by another element
+        |
+        | Note: a function block runs under one task; keep one of the elements
+    ----'
+    [E1428] Error: program configuration element refused
+        ,-[ file:///test0.st:23:65 ]
+        |
+     23 |         PROGRAM P2 WITH T : F(b WITH T, fb2 WITH T, fb1 WITH T, fb1 WITH T, nosuch := 1);
+        |                                                                 ^|^
+        |                                                                  `--- 'fb1' is associated with a task here and by another element
+        |
+        | Note: a function block runs under one task; keep one of the elements
+    ----'
+    [E1428] Error: program configuration element refused
+        ,-[ file:///test0.st:23:41 ]
+        |
+     15 |     fb2();
+        |     ^|^
+        |      `--- 'fb2' is called here
+        |
+     23 |         PROGRAM P2 WITH T : F(b WITH T, fb2 WITH T, fb1 WITH T, fb1 WITH T, nosuch := 1);
+        |                                         ^|^
+        |                                          `--- 'fb2' runs under its task, and 'F' calls it too
+        |
+        | Note: the task runs the instance on its own; remove the call from the program
+    ----'
+    ");
+}
+
 #[rstest]
 fn config_inst_init_resolves(mut with_db: RootDatabase) {
     let source = r#"
@@ -1363,11 +1538,11 @@ fn a_schedulable_configuration_is_accepted(mut with_db: db::RootDatabase) {
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
 }
 
-/// A `PROGRAM ... (...)` connection list is parsed and then discarded: no copy
-/// is emitted around the scan and the names are never resolved, so `ghost` and
-/// `nosuch` — neither of which exists — used to compile clean.
+/// A connection list names the program's variables. It used to be parsed and
+/// then discarded, so `ghost`, which the program does not declare, compiled
+/// clean.
 #[rstest]
-fn program_connection_elements_are_reported(mut with_db: RootDatabase) {
+fn a_program_connection_names_a_variable_of_the_program(mut with_db: RootDatabase) {
     let source = r#"
         PROGRAM A
         VAR_INPUT inp : INT; END_VAR
@@ -1384,32 +1559,12 @@ fn program_connection_elements_are_reported(mut with_db: RootDatabase) {
         END_CONFIGURATION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1416] Error: unsupported configuration element
-        ,-[ file:///test0.st:12:40 ]
-        |
-     12 |                 PROGRAM PA WITH T : A (inp := src, outp => snk, ghost := nosuch);
-        |                                        ^|^
-        |                                         `--- program connection lists are parsed but not wired up yet, so this has no effect
-        |
-        | Note: assign it in the program body instead
-    ----'
-    [E1416] Error: unsupported configuration element
-        ,-[ file:///test0.st:12:52 ]
-        |
-     12 |                 PROGRAM PA WITH T : A (inp := src, outp => snk, ghost := nosuch);
-        |                                                    ^^|^
-        |                                                      `--- program connection lists are parsed but not wired up yet, so this has no effect
-        |
-        | Note: assign it in the program body instead
-    ----'
-    [E1416] Error: unsupported configuration element
+    [E1414] Error: configuration error
         ,-[ file:///test0.st:12:65 ]
         |
      12 |                 PROGRAM PA WITH T : A (inp := src, outp => snk, ghost := nosuch);
         |                                                                 ^^|^^
-        |                                                                   `---- program connection lists are parsed but not wired up yet, so this has no effect
-        |
-        | Note: assign it in the program body instead
+        |                                                                   `---- 'A' has no field named 'ghost'
     ----'
     ");
 }

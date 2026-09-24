@@ -164,6 +164,15 @@ impl<'db> ExprLowerCtx<'db> {
         self.view_at(self.declared_address(hir_ty), hir_ty, None)
     }
 
+    /// The view an address is when it is part of a wider one, read as its
+    /// width's own bit string.
+    pub(crate) fn view_of_address(
+        &self,
+        address: LocatedAddress,
+    ) -> Result<Option<View>, LowerTypeError> {
+        self.view_at(Some(address), Type::Never, None)
+    }
+
     /// The address a variable of type `hir_ty` is located at, if any.
     fn declared_address(&self, hir_ty: Type<'db>) -> Option<LocatedAddress> {
         match hir_ty {
