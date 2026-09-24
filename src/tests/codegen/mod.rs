@@ -40,6 +40,7 @@ mod strings;
 mod structs;
 mod traps;
 mod unary_ops;
+mod var_config;
 mod variadics;
 mod wasm_pragma;
 

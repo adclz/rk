@@ -457,8 +457,153 @@ END_PROGRAM
 // ── VAR_CONFIG tests ────────────────────────────────────────────────────
 
 /// A valid VAR_CONFIG overriding an INT variable in a program instance.
+/// A VAR_CONFIG value is refused where it cannot be the variable's starting
+/// value: a second one for the same variable, or for an instance holding it
+/// (E1426), a member with no value of its own (E0405), and, by the rules a
+/// declaration's initial value follows, an input the host overwrites (E1419),
+/// a part of a wider address (E1423) and a channel a declaration names, whose
+/// value stands (E1426).
 #[rstest]
-fn config_inst_init_resolves_but_is_unapplied(mut with_db: RootDatabase) {
+fn invalid_var_config_values(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK Drive
+VAR out AT %Q* : INT; level AT %I* : INT; b AT %Q* : BYTE; END_VAR
+VAR_IN_OUT io : INT; END_VAR
+VAR CONSTANT c : INT := 1; END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK Pump
+VAR k : INT; END_VAR
+END_FUNCTION_BLOCK
+
+PROGRAM P
+VAR d : Drive; pump : Pump; n : INT; lamp AT %QW8 : INT; END_VAR
+END_PROGRAM
+
+CONFIGURATION Cfg
+VAR_GLOBAL panel AT %QW4 : INT := 3; END_VAR
+VAR_CONFIG
+    Res.P1.n : INT := 1;
+    Res.P1.n : INT := 2;
+    Res.P1.d.io : INT := 3;
+    Res.P1.d.c : INT := 4;
+    Res.P1.d.level AT %IW0 : INT := 5;
+    Res.P1.d.out AT %QW4 : INT := 6;
+    Res.P1.lamp : INT := 7;
+    Res.P1.d.b AT %QB9 : BYTE := 8;
+    Res.P1.pump : Pump := (k := 9);
+    Res.P1.pump.k : INT := 10;
+END_VAR
+    RESOURCE Res ON CPU
+        TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM P1 WITH T : P;
+    END_RESOURCE
+END_CONFIGURATION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1426] Error: configuration entry refused
+        ,-[ file:///test0.st:19:12 ]
+        |
+     19 |     Res.P1.n : INT := 1;
+        |            |
+        |            `-- 'n' is given a value here and by another entry
+        |
+        | Note: an instance's variable has one starting value; keep one of the entries
+    ----'
+    [E1426] Error: configuration entry refused
+        ,-[ file:///test0.st:20:12 ]
+        |
+     20 |     Res.P1.n : INT := 2;
+        |            |
+        |            `-- 'n' is given a value here and by another entry
+        |
+        | Note: an instance's variable has one starting value; keep one of the entries
+    ----'
+    [E1419] Error: write to an input location
+        ,-[ file:///test0.st:23:14 ]
+        |
+     23 |     Res.P1.d.level AT %IW0 : INT := 5;
+        |              ^^|^^
+        |                `---- '%IW0' is an input, so an initial value is overwritten before anything reads it
+        |
+        | Note: the host writes the input image before every scan, the first one included
+    ----'
+    [E1426] Error: configuration entry refused
+        ,-[ file:///test0.st:24:14 ]
+        |
+     24 |     Res.P1.d.out AT %QW4 : INT := 6;
+        |              ^|^
+        |               `--- 'out' is at '%QW4', whose declaration gives its starting value
+        |
+        | Note: give the value in that declaration instead
+    ----'
+    [E1426] Error: configuration entry refused
+        ,-[ file:///test0.st:25:12 ]
+        |
+     25 |     Res.P1.lamp : INT := 7;
+        |            ^^|^
+        |              `--- 'lamp' is at '%QW8', whose declaration gives its starting value
+        |
+        | Note: give the value in that declaration instead
+    ----'
+    [E1423] Error: part of a wider address
+        ,-[ file:///test0.st:26:14 ]
+        |
+     26 |     Res.P1.d.b AT %QB9 : BYTE := 8;
+        |              |
+        |              `-- '%QB9' is part of '%QW4' and cannot have an initial value of its own
+        |
+        | Note: give the variable located at '%QW4' an initial value with this part set in it
+    ----'
+    [E1426] Error: configuration entry refused
+        ,-[ file:///test0.st:27:12 ]
+        |
+     27 |     Res.P1.pump : Pump := (k := 9);
+        |            ^^|^
+        |              `--- 'pump' is given a value here and by another entry
+        |
+        | Note: an instance's variable has one starting value; keep one of the entries
+    ----'
+    [E1426] Error: configuration entry refused
+        ,-[ file:///test0.st:28:17 ]
+        |
+     28 |     Res.P1.pump.k : INT := 10;
+        |                 |
+        |                 `-- 'k' is given a value here and by another entry
+        |
+        | Note: an instance's variable has one starting value; keep one of the entries
+    ----'
+    [E0405] Error: member cannot be initialized
+        ,-[ file:///test0.st:21:23 ]
+        |
+      4 | VAR_IN_OUT io : INT; END_VAR
+        |            ^|
+        |             `-- 'io' is declared here
+        |
+     21 |     Res.P1.d.io : INT := 3;
+        |                       ^^|^
+        |                         `--- 'io' is a VAR_IN_OUT, which each call binds to its argument, so an initializer cannot give it a value
+        |
+        | Note: pass the variable in the call instead, as 'io := x'
+    ----'
+    [E0405] Error: member cannot be initialized
+        ,-[ file:///test0.st:22:22 ]
+        |
+      5 | VAR CONSTANT c : INT := 1; END_VAR
+        |              |
+        |              `-- 'c' is declared here
+        |
+     22 |     Res.P1.d.c : INT := 4;
+        |                      ^^|^
+        |                        `--- 'c' is CONSTANT, whose value is its declaration's, so an initializer cannot give it a value
+        |
+        | Note: declare it without CONSTANT to let each instance start at its own value
+    ----'
+    ");
+}
+
+#[rstest]
+fn config_inst_init_resolves(mut with_db: RootDatabase) {
     let source = r#"
 PROGRAM MyProg
     VAR
@@ -477,17 +622,7 @@ CONFIGURATION MyCfg
     END_VAR
 END_CONFIGURATION
 "#;
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1416] Error: unsupported configuration element
-        ,-[ file:///test0.st:15:15 ]
-        |
-     15 |         inst1.x : INT := 42;
-        |               |
-        |               `-- a VAR_CONFIG value is checked but not applied yet, so it never reaches the instance
-        |
-        | Note: set the value in the variable's own declaration instead
-    ----'
-    ");
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
 
 /// A location-only entry is the standard's own form (`STATION_2.P4.FB1.C2 AT
@@ -576,17 +711,7 @@ CONFIGURATION MyCfg
     END_VAR
 END_CONFIGURATION
 "#;
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1416] Error: unsupported configuration element
-        ,-[ file:///test0.st:15:19 ]
-        |
-     15 |         Res.inst1.x : INT := 42;
-        |                   |
-        |                   `-- a VAR_CONFIG value is checked but not applied yet, so it never reaches the instance
-        |
-        | Note: set the value in the variable's own declaration instead
-    ----'
-    ");
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
 
 /// A leading segment that names neither a resource nor an instance is still
@@ -624,7 +749,7 @@ END_CONFIGURATION
 
 /// A valid VAR_CONFIG overriding a variable inside a nested function block.
 #[rstest]
-fn config_inst_init_nested_fb_resolves_but_is_unapplied(mut with_db: RootDatabase) {
+fn config_inst_init_nested_fb_resolves(mut with_db: RootDatabase) {
     let source = r#"
 FUNCTION_BLOCK InnerFB
     VAR
@@ -649,17 +774,7 @@ CONFIGURATION MyCfg
     END_VAR
 END_CONFIGURATION
 "#;
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1416] Error: unsupported configuration element
-        ,-[ file:///test0.st:21:19 ]
-        |
-     21 |         inst1.fb1.param : BOOL := TRUE;
-        |                   ^^|^^
-        |                     `---- a VAR_CONFIG value is checked but not applied yet, so it never reaches the instance
-        |
-        | Note: set the value in the variable's own declaration instead
-    ----'
-    ");
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
 
 /// VAR_CONFIG with an unknown program instance should report E1413.
@@ -748,15 +863,6 @@ CONFIGURATION MyCfg
 END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1416] Error: unsupported configuration element
-        ,-[ file:///test0.st:15:15 ]
-        |
-     15 |         inst1.x : INT := 'hello';
-        |               |
-        |               `-- a VAR_CONFIG value is checked but not applied yet, so it never reaches the instance
-        |
-        | Note: set the value in the variable's own declaration instead
-    ----'
     [E0308] Error: invalid literal
         ,-[ file:///test0.st:15:26 ]
         |
@@ -801,7 +907,7 @@ END_CONFIGURATION
 
 /// VAR_CONFIG inside a RESOURCE block with a nested FB path.
 #[rstest]
-fn config_inst_init_in_resource_resolves_but_is_unapplied(mut with_db: RootDatabase) {
+fn config_inst_init_in_resource_resolves(mut with_db: RootDatabase) {
     let source = r#"
 FUNCTION_BLOCK InnerFB
     VAR
@@ -826,17 +932,7 @@ CONFIGURATION MyCfg
     END_VAR
 END_CONFIGURATION
 "#;
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1416] Error: unsupported configuration element
-        ,-[ file:///test0.st:21:19 ]
-        |
-     21 |         inst1.fb1.value : REAL := 3.14;
-        |                   ^^|^^
-        |                     `---- a VAR_CONFIG value is checked but not applied yet, so it never reaches the instance
-        |
-        | Note: set the value in the variable's own declaration instead
-    ----'
-    ");
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
 
 /// Spec::infer() on a ProgConfig's prog_type should resolve to Type::Program.

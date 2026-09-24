@@ -15,11 +15,7 @@ use crate::{
         interned::identifier::{CaselessIdent, Ident, SpanIdent},
         program::ProgramDecl,
     },
-    hir_ty::{
-        body::BodyInferenceResult, expr_store::PathExprWalkStep,
-        head::init_inference::InitExprInferenceResult, index_graphs::program_index, infer::Infer,
-        ty::Type,
-    },
+    hir_ty::{expr_store::PathExprWalkStep, index_graphs::program_index, infer::Infer, ty::Type},
 };
 
 /// The resolved execution model of a CONFIGURATION.
@@ -87,6 +83,22 @@ pub struct ResolvedProgram<'db> {
 ///
 /// Built during `infer_config` and accessible via `infer_config_result` query.
 /// Stores resolved mappings for IDE features (go-to-definition, hover).
+/// A VAR_CONFIG entry that gives a variable its starting value in one
+/// instance: which instance's variable, the value, and the channel it goes to
+/// when the variable is one VAR_CONFIG locates.
+#[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
+pub struct ConfigValue<'db> {
+    /// The PROGRAM instance the path starts at.
+    pub instance: Ident,
+    /// The members walked from the instance, the valued one last.
+    pub members: Vec<VariableDecl<'db>>,
+    /// Resolved with the configuration's initializers.
+    pub init: crate::hir_def::expressions::expression::InitExpr<'db>,
+    /// The address the variable is located at, for one declared `AT %I*`,
+    /// `%Q*` or `%M*`: the value is its channel's.
+    pub channel: Option<LocatedAddress>,
+}
+
 #[derive(Debug, PartialEq, Eq, salsa::Update)]
 pub struct ConfigInferenceResult<'db> {
     /// Maps each ProgConfig to its resolved `WITH <task>` TaskConfig (if valid).
@@ -116,6 +128,10 @@ pub struct ConfigInferenceResult<'db> {
     /// what `__init` binds each instance's variable to.
     pub locations: Vec<ConfigLocation<'db>>,
 
+    /// The VAR_CONFIG entries that give a variable a value, each checked:
+    /// what `__init` starts each instance's variable at.
+    pub values: Vec<ConfigValue<'db>>,
+
     pub errors: Vec<IdeDiagnostic>,
 }
 
@@ -133,6 +149,7 @@ pub fn infer_config_result<'db>(
         task_of_prog: FxHashMap::default(),
         prog_instance: FxHashMap::default(),
         locations: Vec::new(),
+        values: Vec::new(),
         errors: Vec::new(),
     };
     infer_config(db, config, &mut result);
@@ -201,7 +218,13 @@ fn infer_config<'db>(
     report_unschedulable_bound_tasks(db, result);
 
     // Phase 3: validate VAR_CONFIG entries.
-    check_config_entries(db, config, &mut result.locations, &mut result.errors);
+    check_config_entries(
+        db,
+        config,
+        &mut result.locations,
+        &mut result.values,
+        &mut result.errors,
+    );
 
     // Phase 4: every instance's variable declared `AT %I*` is located.
     check_partly_located_coverage(db, config, result);
@@ -773,6 +796,7 @@ fn check_config_entries<'db>(
     db: &'db dyn WorkspaceDataBase,
     config: ConfigDecl<'db>,
     locations: &mut Vec<ConfigLocation<'db>>,
+    values: &mut Vec<ConfigValue<'db>>,
     errors: &mut Vec<IdeDiagnostic>,
 ) {
     use crate::check::errors::e14_config::ConfigLocationRefusal as Refusal;
@@ -844,33 +868,131 @@ fn check_config_entries<'db>(
             }
         }
 
-        // A value is checked but not applied yet.
-        if let Some(init) = entry.init {
-            let kind = if entry
-                .members
-                .last()
-                .is_some_and(|v| v.is_partly_located(db))
-            {
-                UnsupportedConfigKind::InstanceInitLocated
-            } else {
-                UnsupportedConfigKind::InstanceInit
-            };
-            errors.push(
-                ConfigError::UnsupportedConfigElement {
-                    expr: entry.path,
-                    kind,
-                }
-                .to_diagnostic(db, file),
-            );
-            if let Some(var) = entry.members.last() {
-                let mut init_result = InitExprInferenceResult::new(config.scope_id(db));
-                let mut body_ctx = BodyInferenceResult::new(config.scope_id(db));
-                init_result.resolve_init_expr(db, init, &mut body_ctx, var.spec(db).infer(db));
-                errors.extend(init_result.errors);
-                errors.extend(body_ctx.errors);
-            }
+        if let Some(init) = entry.init
+            && let Some(value) = check_config_value(db, entry, init, &all, file, errors)
+        {
+            values.push(value);
         }
     }
+}
+
+/// A VAR_CONFIG value is its variable's starting value in one instance;
+/// `__init` writes it after the instance's own initializers. It is refused
+/// for the PROGRAM instance itself, when another entry gives the variable or
+/// an instance holding it a value too, and when the variable's channel does
+/// not start at a value of its own, by the rules a declaration's initial
+/// value follows: an input the host writes (E1419), a part of a wider
+/// address, whose value is its owner's (E1423), or an address a declaration
+/// names, whose value is that declaration's (E1426).
+fn check_config_value<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    entry: &ConfigEntry<'db>,
+    init: crate::hir_def::expressions::expression::InitExpr<'db>,
+    all: &[&'db ConfigEntry<'db>],
+    file: auto_lsp::default::db::file::File,
+    errors: &mut Vec<IdeDiagnostic>,
+) -> Option<ConfigValue<'db>> {
+    use crate::check::errors::e14_config::ConfigEntryRefusal;
+    use crate::hir_ty::index_graphs::{located_declaration, located_view};
+    let refuse = |why| {
+        ConfigError::ConfigEntryRefused {
+            expr: entry.path,
+            why,
+        }
+        .to_diagnostic(db, file)
+    };
+    let Some(var) = entry.members.last() else {
+        errors.push(refuse(ConfigEntryRefusal::ProgramValue));
+        return None;
+    };
+    let var_name = var.name(db).text(db).clone();
+    let same_instance =
+        |o: &ConfigEntry<'db>| o.instance.caseless(db) == entry.instance.caseless(db);
+    // Every such entry is reported, since fragments have no order.
+    let twice = all.iter().any(|o| {
+        o.path != entry.path
+            && o.init.is_some()
+            && same_instance(o)
+            && (o.members.starts_with(&entry.members) || entry.members.starts_with(&o.members))
+    });
+    if twice {
+        errors.push(refuse(ConfigEntryRefusal::ValueTwice { var: var_name }));
+        return None;
+    }
+    // A PROGRAM's VAR located in full is its channel, and its declaration
+    // gives that channel its value.
+    if var.is_program_located(db) {
+        errors.push(refuse(ConfigEntryRefusal::ChannelDeclared {
+            var: var_name,
+            address: var
+                .location(db)
+                .map(|dv| compact_str::CompactString::from(dv.to_address(db)))
+                .unwrap_or_default(),
+        }));
+        return None;
+    }
+    if !var.is_partly_located(db) {
+        return Some(ConfigValue {
+            instance: entry.instance,
+            members: entry.members.clone(),
+            init,
+            channel: None,
+        });
+    }
+    // A variable VAR_CONFIG locates starts its channel: the address this
+    // entry gives it, or another entry's. With none, the variable is a
+    // pointer nothing binds, which E1424 or E1425 already reports.
+    let channel = all
+        .iter()
+        .filter(|o| same_instance(o) && o.members == entry.members)
+        .find_map(|o| match &o.location {
+            Some((_, EntryLocation::Given(address))) => Some(address.clone()),
+            _ => None,
+        })?;
+    if channel.area == crate::hir_def::pous::variable::LocationArea::Input {
+        errors.push(
+            ConfigError::WriteToInputLocation {
+                site: crate::CallSite::from_scoped(db, &entry.path),
+                address: channel.text.clone(),
+                via: crate::check::errors::e14_config::InputWriteRoute::Initializer,
+            }
+            .to_diagnostic(db, file),
+        );
+        return None;
+    }
+    if let Some(view) = located_view(db, &channel) {
+        use crate::check::errors::e14_config::{OwnerDeclaration, WiderAddressUse};
+        let owner = if located_declaration(db, &view.owner).is_some() {
+            OwnerDeclaration::Declared
+        } else if crate::hir_ty::index_graphs::config_located(db).any(|a| *a == view.owner) {
+            OwnerDeclaration::Configured
+        } else {
+            OwnerDeclaration::Bare
+        };
+        errors.push(
+            ConfigError::PartOfWiderAddress {
+                site: crate::CallSite::from_scoped(db, &entry.path),
+                address: channel.text.clone(),
+                owner: view.owner.text,
+                usage: WiderAddressUse::Initializer(owner),
+            }
+            .to_diagnostic(db, file),
+        );
+        return None;
+    }
+    if located_declaration(db, &channel).is_some() {
+        errors.push(refuse(ConfigEntryRefusal::ChannelDeclared {
+            var: var_name,
+            address: channel.text.clone(),
+        }));
+        return None;
+    }
+    Some(ConfigValue {
+        instance: entry.instance,
+        members: entry.members.clone(),
+        init,
+        channel: Some(channel),
+    })
 }
 
 /// Whether `dv` is an address VAR_CONFIG can give `var`, as far as the entry

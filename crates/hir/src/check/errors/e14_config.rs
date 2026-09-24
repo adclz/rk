@@ -224,6 +224,17 @@ pub enum ConfigEntryRefusal {
         written: compact_str::CompactString,
         declared: compact_str::CompactString,
     },
+    /// Another entry gives the same variable a value too, or the instance
+    /// holding it.
+    ValueTwice { var: compact_str::CompactString },
+    /// A value for a variable at an address a declaration names: the
+    /// declaration gives that channel its starting value.
+    ChannelDeclared {
+        var: compact_str::CompactString,
+        address: compact_str::CompactString,
+    },
+    /// A value for the PROGRAM instance itself rather than a variable of it.
+    ProgramValue,
 }
 
 /// Why a VAR_CONFIG entry cannot give the variable it names this address.
@@ -516,13 +527,6 @@ pub enum UnsupportedConfigKind {
     /// `PROGRAM P WITH T : Type (fb WITH other_task)` — associating a nested
     /// FB with its own task.
     FbTaskAssociation,
-    /// `VAR_CONFIG PA.x : INT := 42;` — resolved and type-checked against the
-    /// instance's field, then thrown away, so the field keeps its declared
-    /// value. The validation makes this one especially misleading.
-    InstanceInit,
-    /// The same, on a variable declared `AT %I*`, which the grammar gives no
-    /// initial value of its own to fall back on.
-    InstanceInitLocated,
 }
 
 impl UnsupportedConfigKind {
@@ -534,9 +538,6 @@ impl UnsupportedConfigKind {
             Self::FbTaskAssociation => {
                 "associating a function block with its own task is not supported yet"
             }
-            Self::InstanceInit | Self::InstanceInitLocated => {
-                "a VAR_CONFIG value is checked but not applied yet, so it never reaches the instance"
-            }
         }
     }
 
@@ -544,10 +545,6 @@ impl UnsupportedConfigKind {
         match self {
             Self::ProgramConnection => "assign it in the program body instead",
             Self::FbTaskAssociation => "run the function block from its enclosing program's task",
-            Self::InstanceInit => "set the value in the variable's own declaration instead",
-            Self::InstanceInitLocated => {
-                "a variable VAR_CONFIG locates starts at its type's default, or at the value its channel's own declaration gives it"
-            }
         }
     }
 }
@@ -1070,6 +1067,20 @@ impl<'db> ToIdeDiagnostic<'db> for ConfigError<'db> {
                         format!("the entry says '{written}', but '{var}' is declared '{declared}'"),
                         "the entry repeats the variable's type; write the declared one",
                     ),
+                    ConfigEntryRefusal::ValueTwice { var } => (
+                        format!("'{var}' is given a value here and by another entry"),
+                        "an instance's variable has one starting value; keep one of the entries",
+                    ),
+                    ConfigEntryRefusal::ChannelDeclared { var, address } => (
+                        format!(
+                            "'{var}' is at '{address}', whose declaration gives its starting value"
+                        ),
+                        "give the value in that declaration instead",
+                    ),
+                    ConfigEntryRefusal::ProgramValue => (
+                        "a VAR_CONFIG value is given to a variable of an instance, not to the PROGRAM instance itself".to_string(),
+                        "give each variable its value in an entry of its own",
+                    ),
                 };
                 let mut diag = diag()
                     .message(message)
@@ -1192,7 +1203,7 @@ impl<'db> ToIdeDiagnostic<'db> for ConfigError<'db> {
                     .range(crate::denormalize(db, file, &site.get_span(db)).unwrap_or_default())
                     .call();
                 diag.with_note(
-                    "a variable VAR_CONFIG locates starts at its type's default, or at the value its channel's own declaration gives it".to_string(),
+                    "give it its starting value in its VAR_CONFIG entry instead".to_string(),
                 );
                 diag
             }

@@ -1109,15 +1109,6 @@ END_CONFIGURATION
         |
         | Note: an instance's variable has one address; keep one of the entries
     ----'
-    [E1416] Error: unsupported configuration element
-        ,-[ file:///test0.st:21:14 ]
-        |
-     21 |     Res.P1.d.run   : BOOL := TRUE;
-        |              ^|^
-        |               `--- a VAR_CONFIG value is checked but not applied yet, so it never reaches the instance
-        |
-        | Note: a variable VAR_CONFIG locates starts at its type's default, or at the value its channel's own declaration gives it
-    ----'
     ");
 }
 
@@ -1243,7 +1234,7 @@ END_CONFIGURATION
         |                       ^^^^|^^^^
         |                           `------ 'cnt' is declared AT %M*, so it points at the channel VAR_CONFIG gives it and has no value of its own to initialize
         |
-        | Note: a variable VAR_CONFIG locates starts at its type's default, or at the value its channel's own declaration gives it
+        | Note: give it its starting value in its VAR_CONFIG entry instead
     ----'
     [E1425] Error: variable not located
         ,-[ file:///test0.st:17:11 ]
@@ -1288,7 +1279,7 @@ END_CONFIGURATION
         |                                                                ^^^^|^^^
         |                                                                    `----- 'cnt' is declared AT %M*, so it points at the channel VAR_CONFIG gives it and has no value of its own to initialize
         |
-        | Note: a variable VAR_CONFIG locates starts at its type's default, or at the value its channel's own declaration gives it
+        | Note: give it its starting value in its VAR_CONFIG entry instead
     ----'
     [E0318] Error: semantic violation
         ,-[ file:///test0.st:24:5 ]

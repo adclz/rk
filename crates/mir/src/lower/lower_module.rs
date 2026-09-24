@@ -1024,12 +1024,14 @@ fn config_cell(
     }
 }
 
-/// Where the pointer slot of a variable VAR_CONFIG locates sits in memory:
-/// its PROGRAM instance's address plus each member's offset along the path.
-/// `None` for an instance nothing schedules (E1412 has it).
-fn config_slot<'db>(
+/// Where a variable a VAR_CONFIG path names sits in memory: its PROGRAM
+/// instance's address plus each member's offset along the path. For a
+/// variable VAR_CONFIG locates, that is its pointer slot. `None` for an
+/// instance nothing schedules (E1412 has it).
+fn config_member<'db>(
     db: &'db dyn WorkspaceDataBase,
-    loc: &hir::hir_ty::config::ConfigLocation<'db>,
+    instance: hir::hir_def::interned::identifier::Ident,
+    members: &[hir::hir_def::pous::variable::VariableDecl<'db>],
     schedule: &Option<crate::schedule::MirSchedule>,
     program_infos: &FxHashMap<
         hir::hir_def::interned::identifier::Ident,
@@ -1041,10 +1043,10 @@ fn config_slot<'db>(
         .tasks
         .iter()
         .flat_map(|t| t.programs.iter())
-        .find(|p| p.inst_name.caseless(db) == loc.instance.caseless(db))?;
+        .find(|p| p.inst_name.caseless(db) == instance.caseless(db))?;
     let mut fields = &program_infos.get(&inst.prog_name)?.struct_type.fields;
     let mut address = inst.instance_addr;
-    let (last, walked) = loc.members.split_last()?;
+    let (last, walked) = members.split_last()?;
     for member in walked {
         let field = fields
             .iter()
@@ -1727,7 +1729,8 @@ fn collect_const_inits<'db>(
     // value, and that one stands.
     for c in config {
         for loc in &hir::hir_ty::config::infer_config_result(db, *c).locations {
-            let Some(slot) = config_slot(db, loc, schedule, program_infos) else {
+            let Some(slot) = config_member(db, loc.instance, &loc.members, schedule, program_infos)
+            else {
                 continue;
             };
             let (owner, offset) = config_cell(db, &loc.address);
@@ -1761,5 +1764,47 @@ fn collect_const_inits<'db>(
         }
     }
 
+    // Each VAR_CONFIG value: a variable's starting value in one instance,
+    // written after the instance's own initializers, which it overrides. A
+    // value for a variable VAR_CONFIG locates goes to its channel, over the
+    // type default the binding above wrote there.
+    for c in config {
+        for value in &hir::hir_ty::config::infer_config_result(db, *c).values {
+            let Some(var) = value.members.last() else {
+                continue;
+            };
+            let base = match &value.channel {
+                Some(address) => {
+                    let (owner, offset) = config_cell(db, address);
+                    let key =
+                        hir::hir_def::interned::identifier::Ident::new(db, owner.text.clone());
+                    let Some((cell, _)) = global_table.get(&key) else {
+                        return Err(LowerTypeError::UnsupportedType(format!(
+                            "'{}' was given no cell for a VAR_CONFIG value",
+                            owner.text
+                        )));
+                    };
+                    cell + offset
+                }
+                None => {
+                    let Some(address) =
+                        config_member(db, value.instance, &value.members, schedule, program_infos)
+                    else {
+                        continue;
+                    };
+                    address
+                }
+            };
+            let ty = super::lower_type::lower_spec(db, var.spec(db))?;
+            super::lower_func::lower_resolved_init_into(
+                db,
+                base,
+                &ty,
+                value.init,
+                &mut stmts,
+                string_pool,
+            )?;
+        }
+    }
     Ok(stmts)
 }

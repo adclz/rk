@@ -73,6 +73,7 @@ impl<'db> InitInference<'db> {
         self.check_methods(db);
         self.check_function_specifier(db);
         self.check_return_type(db);
+        self.check_config_values(db);
 
         // Once-per-type initializers must be constant (user-ruled): a TYPE
         // default, an FB/CLASS member default, and anything static — a
@@ -111,6 +112,52 @@ impl<'db> InitInference<'db> {
             self.errors.push(error.clone());
         }
         self
+    }
+}
+
+impl<'db> InitInference<'db> {
+    /// A CONFIGURATION's VAR_CONFIG values, resolved like any initializer
+    /// against the type of the variable each names, so lowering finds their
+    /// leaves where it finds every other's. A member with no value of its own
+    /// is refused as it is in an instance's initializer (E0405).
+    fn check_config_values(&mut self, db: &'db dyn WorkspaceDataBase) {
+        use crate::check::errors::e04_init::{InitError, UninitializableMember};
+        let ScopeKind::Config(config) = get_scope(db, self.scope).kind else {
+            return;
+        };
+        for entry in &crate::hir_ty::config::resolve_config_entries(db, config).entries {
+            let (Some(init), Some(var)) = (entry.init, entry.members.last()) else {
+                continue;
+            };
+            let uninitializable = if var.is_in_out(db) {
+                Some(UninitializableMember::InOut)
+            } else if var.is_temp(db) {
+                Some(UninitializableMember::Temp)
+            } else if var.is_external(db) {
+                Some(UninitializableMember::External)
+            } else if var.qualifier(db).contains(crate::Qualifier::CONSTANT) {
+                Some(UninitializableMember::Constant)
+            } else {
+                None
+            };
+            if let Some(kind) = uninitializable {
+                self.errors.push(
+                    InitError::UninitializableMember {
+                        expr: init,
+                        var: *var,
+                        kind,
+                    }
+                    .to_diagnostic(db, self.scope.file(db)),
+                );
+                continue;
+            }
+            self.init_expr_result.resolve_init_expr(
+                db,
+                init,
+                &mut self.body_infer_result,
+                var.spec(db).infer(db),
+            );
+        }
     }
 }
 
