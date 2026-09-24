@@ -565,6 +565,8 @@ END_FUNCTION_BLOCK
 #[case::function_block("fb1 WITH", "Counter\n")]
 #[case::task("FAST);", "FAST(INTERVAL")]
 #[case::var_config_member("out AT %QW0", "out AT %Q*")]
+#[case::var_config_resource("Res.P1", "Res ON CPU")]
+#[case::var_config_instance("P1.d.out", "P1 WITH T")]
 pub fn definition_in_a_program_configuration(
     mut with_db: RootDatabase,
     #[case] at: &str,

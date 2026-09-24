@@ -997,6 +997,36 @@ pub fn hover_in_a_program_configuration(
     assert!(markup.contains(shown), "{markup}");
 }
 
+/// A task's INTERVAL shows what it is: a TIME literal, or the CONSTANT
+/// global that holds one. The literal used to show `{unknown}`.
+#[rstest]
+#[case::literal("T#10ms", "TIME")]
+#[case::constant("period,", "period: TIME")]
+pub fn hover_on_a_task_interval(mut with_db: RootDatabase, #[case] at: &str, #[case] shown: &str) {
+    let source = r#"
+PROGRAM P
+END_PROGRAM
+
+CONFIGURATION Cfg
+VAR_GLOBAL CONSTANT period : TIME := T#20ms; END_VAR
+    RESOURCE Res ON CPU
+        TASK Fast(INTERVAL := T#10ms, PRIORITY := 1);
+        TASK Slow(INTERVAL := period, PRIORITY := 2);
+        PROGRAM P1 WITH Fast : P;
+        PROGRAM P2 WITH Slow : P;
+    END_RESOURCE
+END_CONFIGURATION
+"#;
+    add_sources(&mut with_db, &[source]);
+    let file = *with_db.get_files().iter().last().unwrap();
+
+    let offset = source.find(at).unwrap();
+    let node = ide_proto::walk::descendant_at(&with_db, file, offset).expect("a node");
+    let hover = node.hover(&with_db, offset).expect("a hover");
+    let markup = hover_markup(hover.contents).unwrap();
+    assert!(markup.contains(shown), "{markup}");
+}
+
 /// A direct variable shows the whole address, the image it is in, the wider
 /// address it is part of, and the declarations located at it. It showed
 /// `%QB` alone.
@@ -1033,4 +1063,48 @@ END_CONFIGURATION
 
     Declared here: `high : BYTE`.
     ");
+}
+
+/// Everything a VAR_CONFIG entry and a connection write shows what it is:
+/// the resource and the instance its path starts with, its type, and each
+/// address, wherever it is written.
+#[rstest]
+#[case::resource("Res.inst1", 0, "RESOURCE Res ON CPU")]
+#[case::instance("inst1.x", 0, "PROGRAM inst1 WITH T : Prog")]
+#[case::entry_type(": BYTE;", 2, "BYTE")]
+#[case::entry_address("%QB25", 1, "%QB25 : BYTE")]
+#[case::global_address("%QW0", 1, "%QW0 : WORD")]
+#[case::connection_address("%IX0.0", 1, "%IX0.0 : BOOL")]
+pub fn hover_in_var_config(
+    mut with_db: RootDatabase,
+    #[case] at: &str,
+    #[case] into: usize,
+    #[case] shown: &str,
+) {
+    let source = r#"
+PROGRAM Prog
+VAR_INPUT x1 : BOOL; END_VAR
+VAR x AT %Q* : BYTE; END_VAR
+END_PROGRAM
+
+CONFIGURATION Cfg
+VAR_GLOBAL total AT %QW0 : UINT; END_VAR
+VAR_CONFIG
+    Res.inst1.x AT %QB25 : BYTE;
+END_VAR
+    RESOURCE Res ON CPU
+        TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM inst1 WITH T : Prog(x1 := %IX0.0);
+    END_RESOURCE
+END_CONFIGURATION
+"#;
+    add_sources(&mut with_db, &[source]);
+    let file = *with_db.get_files().iter().last().unwrap();
+
+    let config = source.find("CONFIGURATION").unwrap();
+    let offset = config + source[config..].find(at).unwrap() + into;
+    let node = ide_proto::walk::descendant_at(&with_db, file, offset).expect("a node");
+    let hover = node.hover(&with_db, offset).expect("a hover");
+    let markup = hover_markup(hover.contents).unwrap();
+    assert!(markup.contains(shown), "{markup}");
 }

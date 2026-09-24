@@ -89,3 +89,18 @@ pub fn element_task_at<'db>(
         .get(&path)
         .copied()
 }
+
+/// The resource or the program instance a step of a VAR_CONFIG path names.
+pub fn config_path_step<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    path: hir::hir_def::expressions::expression::PathExpr<'db>,
+) -> Option<hir::hir_ty::config::ConfigPathStep<'db>> {
+    use hir::hir_def::{scope::ScopeKind, semantic_index::get_scope};
+    let ScopeKind::Config(config) = get_scope(db, path.get_scope_id(db)).kind else {
+        return None;
+    };
+    hir::hir_ty::config::resolve_config_entries(db, config)
+        .steps
+        .get(&path)
+        .copied()
+}

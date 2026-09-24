@@ -339,7 +339,7 @@ fn a_period_past_32_bits_is_carried_whole(mut with_db: db::RootDatabase) {
         CONFIGURATION Cfg
             RESOURCE Res ON CPU
                 TASK Fast(INTERVAL := T#1ms, PRIORITY := 1);
-                TASK Rare(INTERVAL := T#49d17h2m47s296ms, PRIORITY := 2);
+                TASK Rare(INTERVAL := LTIME#49d17h2m47s296ms, PRIORITY := 2);
                 PROGRAM PA WITH Fast : ProgA;
                 PROGRAM PB WITH Rare : ProgB;
             END_RESOURCE

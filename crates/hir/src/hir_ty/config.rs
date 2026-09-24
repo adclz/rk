@@ -702,7 +702,17 @@ pub struct ConfigEntry<'db> {
 #[derive(Debug, PartialEq, Eq, salsa::Update)]
 pub struct ConfigEntries<'db> {
     pub entries: Vec<ConfigEntry<'db>>,
+    /// What the first steps of each path name: the resource, then the
+    /// program instance.
+    pub steps: FxHashMap<PathExpr<'db>, ConfigPathStep<'db>>,
     pub errors: Vec<IdeDiagnostic>,
+}
+
+/// A step of a VAR_CONFIG path that names no variable.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, salsa::Update)]
+pub enum ConfigPathStep<'db> {
+    Resource(ResourceDecl<'db>),
+    Instance(ProgConfig<'db>),
 }
 
 /// Each VAR_CONFIG entry of `config`, resolved against the instances every
@@ -721,6 +731,7 @@ pub fn resolve_config_entries<'db>(
     use crate::check::errors::e14_config::ConfigEntryRefusal;
     let mut out = ConfigEntries {
         entries: Vec::new(),
+        steps: FxHashMap::default(),
         errors: Vec::new(),
     };
     let decls = config.config_init(db);
@@ -739,12 +750,22 @@ pub fn resolve_config_entries<'db>(
             }
         }
     }
-    let names_a_resource = |ident: &SpanIdent<'db>| {
+    let resource_named = |ident: &SpanIdent<'db>| {
         let name = ident.ident.caseless(db);
         fragments
             .iter()
             .flat_map(|f| f.resources(db).iter())
-            .any(|r| r.name(db).ident.caseless(db) == name)
+            .find(|r| r.name(db).ident.caseless(db) == name)
+            .copied()
+    };
+    let instance_named = |ident: &SpanIdent<'db>| {
+        let name = ident.ident.caseless(db);
+        fragments
+            .iter()
+            .flat_map(|f| f.resources(db).iter())
+            .flat_map(|r| r.programs(db).iter())
+            .find(|p| p.name(db).ident.caseless(db) == name)
+            .copied()
     };
 
     for decl in config.config_init(db) {
@@ -755,13 +776,24 @@ pub fn resolve_config_entries<'db>(
         // The standard writes the path RESOURCE.PROGRAM.VARIABLE; a leading
         // segment naming one of the configuration's resources is skipped.
         let instance_at = match &steps[0] {
-            PathExprWalkStep::Field { ident, .. } if names_a_resource(ident) && steps.len() > 1 => {
-                1
+            PathExprWalkStep::Field { ident, expr } if steps.len() > 1 => {
+                match resource_named(ident) {
+                    Some(resource) => {
+                        out.steps.insert(*expr, ConfigPathStep::Resource(resource));
+                        1
+                    }
+                    None => 0,
+                }
             }
             _ => 0,
         };
         let first_ident = match &steps[instance_at] {
-            PathExprWalkStep::Field { ident, .. } => *ident,
+            PathExprWalkStep::Field { ident, expr } => {
+                if let Some(instance) = instance_named(ident) {
+                    out.steps.insert(*expr, ConfigPathStep::Instance(instance));
+                }
+                *ident
+            }
             _ => {
                 out.errors.push(
                     ConfigError::ConfigEntryRefused {
@@ -1064,6 +1096,17 @@ pub(crate) fn record_config_paths<'db>(
                 .rev()
                 .zip(entry.members.iter().rev().copied()),
         );
+    }
+    // A task's INTERVAL or SINGLE may name a VAR_GLOBAL.
+    for task in config.resources(db).iter().flat_map(|r| r.tasks(db).iter()) {
+        for source in [task.interval(db), task.single(db)].into_iter().flatten() {
+            if let crate::hir_def::config::DataSource::Path(path) = source
+                && let Some(global) =
+                    crate::hir_ty::index_graphs::external_var_lookup(db, path.ident(db).ident)
+            {
+                named.push((path, global));
+            }
+        }
     }
     for (path, var) in named {
         result

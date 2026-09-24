@@ -75,6 +75,7 @@ impl<'db> InitInference<'db> {
         self.check_return_type(db);
         self.check_config_values(db);
         self.check_connection_constants(db);
+        self.check_task_constants(db);
 
         // Once-per-type initializers must be constant (user-ruled): a TYPE
         // default, an FB/CLASS member default, and anything static — a
@@ -158,6 +159,26 @@ impl<'db> InitInference<'db> {
                 &mut self.body_infer_result,
                 var.spec(db).infer(db),
             );
+        }
+    }
+
+    /// A task's INTERVAL and SINGLE written as constants, typed as they are
+    /// written.
+    fn check_task_constants(&mut self, db: &'db dyn WorkspaceDataBase) {
+        use crate::hir_def::config::DataSource;
+        let ScopeKind::Config(config) = get_scope(db, self.scope).kind else {
+            return;
+        };
+        for task in config.resources(db).iter().flat_map(|r| r.tasks(db).iter()) {
+            for source in [task.interval(db), task.single(db)].into_iter().flatten() {
+                let DataSource::Constant(value) = source else {
+                    continue;
+                };
+                let body = &mut self.body_infer_result;
+                let mut infer_ctx = InferExprCtx::new(Resolver::for_scope(db, self.scope));
+                infer_ctx.resolve_expr_expecting(db, value, body, None);
+                infer_ctx.check_expr(db, value, body);
+            }
         }
     }
 

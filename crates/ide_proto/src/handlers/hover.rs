@@ -325,6 +325,19 @@ impl<'db> HoverHandler<'db> for BeginPathExpr<'db> {
 impl<'db> HoverHandler<'db> for PathExpr<'db> {
     fn hover(&'db self, db: &'db dyn WorkspaceDataBase, offset: usize) -> Option<Hover> {
         let ty = self.infer(db);
+        // The resource or the instance a VAR_CONFIG path starts with.
+        if ty.is_never() {
+            use hir::hir_ty::config::ConfigPathStep;
+            match crate::hir_node::config_path_step(db, *self) {
+                Some(ConfigPathStep::Resource(r)) => {
+                    return r.hover(db, r.name(db).get_span(db).start_byte);
+                }
+                Some(ConfigPathStep::Instance(p)) => {
+                    return p.hover(db, p.name(db).get_span(db).start_byte);
+                }
+                None => {}
+            }
+        }
         if ty.is_never() {
             // Check if this PathExpr is part of a namespace path (e.g. "System" in System.Math.Sin)
             if let Some(written) = try_build_namespace_path(db, self)

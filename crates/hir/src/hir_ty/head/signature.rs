@@ -348,6 +348,12 @@ impl<'db> Signature<'db> {
                 self.infer_spec(db, p.prog_type(db));
             }
         }
+        // A VAR_CONFIG entry repeats its variable's type.
+        for decl in config.config_init(db) {
+            if let Some(spec) = decl.spec {
+                self.infer_spec(db, spec);
+            }
+        }
     }
 
     fn infer_access_decls(&mut self, db: &'db dyn WorkspaceDataBase) {
