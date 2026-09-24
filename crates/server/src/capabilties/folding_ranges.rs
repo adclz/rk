@@ -30,6 +30,10 @@ static FOLD: &str = r#"
   (retain_var_decls)
   (no_retain_var_decls)
   (global_var_decls)
+
+  (access_decls)
+  (prog_access_decls)
+  (config_init)
 ] @fold
 
 [ (c_style_comment) (pascal_style_comment) ] @comment
@@ -95,5 +99,50 @@ mod tests {
     fn load_fold_query() {
         tree_sitter::Query::new(&tree_sitter_rk::LANGUAGE.into(), FOLD)
             .expect("Failed to create fold query");
+    }
+
+    /// Every section a configuration holds folds, VAR_CONFIG and VAR_ACCESS
+    /// included, and a PROGRAM's VAR_ACCESS.
+    #[test]
+    fn configuration_sections_fold() {
+        let source = "PROGRAM P
+VAR x : INT; END_VAR
+VAR_ACCESS
+    ax : x : INT READ_ONLY;
+END_VAR
+END_PROGRAM
+CONFIGURATION Cfg
+VAR_GLOBAL g : INT; END_VAR
+VAR_ACCESS
+    acc : Res.P1.x : INT READ_ONLY;
+END_VAR
+VAR_CONFIG
+    Res.P1.x : INT := 3;
+END_VAR
+    RESOURCE Res ON CPU
+    END_RESOURCE
+END_CONFIGURATION
+";
+        let mut parser = tree_sitter::Parser::new();
+        parser
+            .set_language(&tree_sitter_rk::LANGUAGE.into())
+            .unwrap();
+        let tree = parser.parse(source, None).unwrap();
+        let mut cursor = tree_sitter::QueryCursor::new();
+        let mut captures = cursor.captures(&FOLD_QUERY, tree.root_node(), source.as_bytes());
+        let mut folded = vec![];
+        while let Some((m, index)) = captures.next() {
+            folded.push(m.captures[*index].node.kind());
+        }
+        for kind in [
+            "config_decl",
+            "global_var_decls",
+            "access_decls",
+            "config_init",
+            "resource_decl",
+            "prog_access_decls",
+        ] {
+            assert!(folded.contains(&kind), "{kind} does not fold: {folded:?}");
+        }
     }
 }

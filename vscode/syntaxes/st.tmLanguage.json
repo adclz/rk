@@ -266,7 +266,7 @@
       "patterns": [
         {
           "comment": "Rule for OF in var declaration",
-          "begin": "(?i)\\b(?:VAR(?:_(?:INPUT|OUTPUT|IN_OUT|TEMP|GLOBAL|ACCESS|EXTERNAL|INST|STAT))?|STRUCT|UNION)\\b",
+          "begin": "(?i)\\b(?:VAR(?:_(?:INPUT|OUTPUT|IN_OUT|TEMP|GLOBAL|ACCESS|CONFIG|EXTERNAL|INST|STAT))?|STRUCT|UNION)\\b",
           "beginCaptures": {
             "0": {
               "name": "entity.name.type.st"
