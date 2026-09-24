@@ -102,9 +102,34 @@ impl<'db> SemanticIndexBuilder<'db> {
         let mut config_init: Vec<ConfigInstInit<'db>> = vec![];
         for init_section in &config.config_init {
             for inst_id in &init_section.cast(self.ast).children {
-                let r = self.parse_config_inst_init(inst_id.cast(self.ast));
-                if let Some(i) = self.try_parse(r) {
-                    config_init.push(i);
+                match inst_id.cast(self.ast) {
+                    ast::generated::ERRConfigEntryWithNoSpec_ConfigInstInit::ConfigInstInit(
+                        inst,
+                    ) => {
+                        let r = self.parse_config_inst_init(inst);
+                        if let Some(i) = self.try_parse(r) {
+                            config_init.push(i);
+                        }
+                    }
+                    // Its path and location are still what the IDE reads.
+                    ast::generated::ERRConfigEntryWithNoSpec_ConfigInstInit::ERRConfigEntryWithNoSpec(
+                        err,
+                    ) => {
+                        self.errors.push(
+                            SyntaxError::MissingVarType(err.get_range().to_owned())
+                                .to_diagnostic(self.db, self.file),
+                        );
+                        let r = err.path.cast(self.ast).parse(self);
+                        let _ = self.try_parse(r);
+                        if let Some(located_at) = &err.children {
+                            let r = located_at
+                                .cast(self.ast)
+                                .children
+                                .cast(self.ast)
+                                .to_direct_variable(self);
+                            let _ = self.try_parse(r);
+                        }
+                    }
                 }
             }
         }

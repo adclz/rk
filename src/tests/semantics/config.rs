@@ -2100,3 +2100,52 @@ END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
 }
+
+/// A VAR_CONFIG entry repeats its variable's type, so a path with nothing
+/// after it, or with its location and nothing else, misses it (E0003). It was
+/// a bare syntax error over the whole entry.
+#[rstest]
+fn invalid_var_config_entry_without_a_type(mut with_db: RootDatabase) {
+    let source = r#"
+PROGRAM F
+VAR k : INT; END_VAR
+VAR x AT %Q* : INT; END_VAR
+END_PROGRAM
+
+CONFIGURATION Cfg
+VAR_CONFIG
+    Res.P1.k;
+    Res.P1.x AT %QW0;
+END_VAR
+    RESOURCE Res ON CPU
+        TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM P1 WITH T : F;
+    END_RESOURCE
+END_CONFIGURATION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0003] Error: syntax
+       ,-[ file:///test0.st:9:5 ]
+       |
+     9 |     Res.P1.k;
+       |     ^^^^|^^^
+       |         `----- variable type is missing
+    ---'
+    [E0003] Error: syntax
+        ,-[ file:///test0.st:10:5 ]
+        |
+     10 |     Res.P1.x AT %QW0;
+        |     ^^^^^^^^|^^^^^^^
+        |             `--------- variable type is missing
+    ----'
+    [E1425] Error: variable not located
+        ,-[ file:///test0.st:14:17 ]
+        |
+     14 |         PROGRAM P1 WITH T : F;
+        |                 ^|
+        |                  `-- 'P1.x' is declared AT %Q*, and no VAR_CONFIG entry locates it
+        |
+        | Note: each instance is given its address in the CONFIGURATION's VAR_CONFIG, as in 'Res.P1.fb.x AT %IX0.0 : BOOL;'
+    ----'
+    ");
+}

@@ -295,6 +295,10 @@ module.exports = grammar({
 
     // Variable declaration errors
     ERR_variable_with_no_spec: ($) => prec(-1, $.identifier),
+    // A VAR_CONFIG entry repeats its variable's type: a path with nothing
+    // after it, or its location and nothing else, misses it.
+    ERR_config_entry_with_no_spec: ($) =>
+      prec(-1, seq(field("path", $.path_expression), optional($.located_at))),
     ERR_invalid_edge_qualifier: ($) => prec(-1, /[FR](_(E(D(G)?)?)?)?/),
 
     // Statements
@@ -1725,7 +1729,12 @@ module.exports = grammar({
     config_init: ($) =>
       seq(
         kw("VAR_CONFIG"),
-        repeat(seq($.config_inst_init, optional(";"))),
+        repeat(
+          seq(
+            choice($.config_inst_init, $.ERR_config_entry_with_no_spec),
+            optional(";"),
+          ),
+        ),
         kw("END_VAR"),
         optional(";"),
       ),

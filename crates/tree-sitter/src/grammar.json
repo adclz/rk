@@ -146,6 +146,35 @@
         "name": "identifier"
       }
     },
+    "ERR_config_entry_with_no_spec": {
+      "type": "PREC",
+      "value": -1,
+      "content": {
+        "type": "SEQ",
+        "members": [
+          {
+            "type": "FIELD",
+            "name": "path",
+            "content": {
+              "type": "SYMBOL",
+              "name": "path_expression"
+            }
+          },
+          {
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "SYMBOL",
+                "name": "located_at"
+              },
+              {
+                "type": "BLANK"
+              }
+            ]
+          }
+        ]
+      }
+    },
     "ERR_invalid_edge_qualifier": {
       "type": "PREC",
       "value": -1,
@@ -9645,8 +9674,17 @@
             "type": "SEQ",
             "members": [
               {
-                "type": "SYMBOL",
-                "name": "config_inst_init"
+                "type": "CHOICE",
+                "members": [
+                  {
+                    "type": "SYMBOL",
+                    "name": "config_inst_init"
+                  },
+                  {
+                    "type": "SYMBOL",
+                    "name": "ERR_config_entry_with_no_spec"
+                  }
+                ]
               },
               {
                 "type": "CHOICE",

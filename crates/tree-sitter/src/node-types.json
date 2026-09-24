@@ -732,6 +732,32 @@
     }
   },
   {
+    "type": "ERR_config_entry_with_no_spec",
+    "named": true,
+    "fields": {
+      "path": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "path_expression",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": false,
+      "required": false,
+      "types": [
+        {
+          "type": "located_at",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "ERR_config_not_allowed_in_namespace",
     "named": true,
     "fields": {},
@@ -2195,6 +2221,10 @@
       "multiple": true,
       "required": false,
       "types": [
+        {
+          "type": "ERR_config_entry_with_no_spec",
+          "named": true
+        },
         {
           "type": "config_inst_init",
           "named": true
