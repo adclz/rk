@@ -20,6 +20,10 @@ search.addEventListener('input', () => {
 document.addEventListener('keydown', e => {
   if (e.key === '/' && document.activeElement !== search) { e.preventDefault(); search.focus(); }
 });
+// On a phone the categories are a panel over the page: a code picked in it
+// closes it, so the entry is what shows.
+const catsOpen = document.getElementById('cats-open');
+for (const a of links) a.addEventListener('click', () => { catsOpen.checked = false; });
 
 // Collapsed until the reader is on a section; the section they are in opens.
 for (const g of groups) g.open = false;
