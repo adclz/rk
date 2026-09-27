@@ -1,5 +1,6 @@
 # Nightly fuzzing of the compiler, the formatter, the editor's incremental
-# path and the values generated programs compute (crates/fuzz). Each target
+# path, the language server's requests and the values generated programs
+# compute (crates/fuzz). Each target
 # gets its own runner for 30 minutes, starting from the corpus the previous
 # nights grew, and every crash is replayed by `repro`, which groups them by
 # cause in the run summary. A crash fails the run; GitHub's notification is
@@ -31,7 +32,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: [fuzz_compiler, fuzz_formatter, fuzz_incremental, fuzz_semantics]
+        target: [fuzz_compiler, fuzz_formatter, fuzz_incremental, fuzz_semantics, fuzz_ide]
     env:
       CORPUS: crates/fuzz/corpus/${{ matrix.target }}
     steps:
@@ -57,6 +58,16 @@ jobs:
         uses: taiki-e/install-action@26e9283f268b880168bdbd2c545dfcd60ec2c6ab # v2
         with:
           tool: cargo-fuzz
+      # fuzz_semantics checks the optimized build too (RK_FUZZ_OPTIMIZE),
+      # with the Binaryen the stdlib job pins.
+      - name: Install Binaryen (for wasm-opt)
+        if: matrix.target == 'fuzz_semantics'
+        run: |
+          curl -sSfL -o "$RUNNER_TEMP/binaryen.tar.gz" \
+            https://github.com/WebAssembly/binaryen/releases/download/version_131/binaryen-version_131-x86_64-linux.tar.gz
+          tar xzf "$RUNNER_TEMP/binaryen.tar.gz" -C "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/binaryen-version_131/bin" >> "$GITHUB_PATH"
+          echo "RK_FUZZ_OPTIMIZE=1" >> "$GITHUB_ENV"
       # libFuzzer keeps only the inputs that reached new code, so the corpus
       # carried from night to night is where the coverage is.
       - name: Restore the corpus
@@ -74,14 +85,17 @@ jobs:
           cargo run --release -p rk-fuzz --bin corpus_gen -- \
             crates/tree-sitter/test/corpus stdlib crates/doc/examples docs skills src/tests \
             "$CORPUS"
+      # The target triple is explicit: the cargo-fuzz binary installed above
+      # is a static musl build, and would default to its own triple, where
+      # ASan cannot link.
       - name: Build the target
-        run: cargo +nightly fuzz build --fuzz-dir crates/fuzz --debug-assertions ${{ matrix.target }}
+        run: cargo +nightly fuzz build --fuzz-dir crates/fuzz --target x86_64-unknown-linux-gnu --debug-assertions ${{ matrix.target }}
       # Fork mode keeps going after a crash, so one bug does not end the
       # night; every crash lands in crates/fuzz/artifacts/<target>/. Wasm
       # execution is bounded by fuel, so a timeout is the compiler hanging.
       - name: Fuzz for 30 minutes
         run: |
-          cargo +nightly fuzz run --fuzz-dir crates/fuzz --debug-assertions ${{ matrix.target }} "$CORPUS" -- \
+          cargo +nightly fuzz run --fuzz-dir crates/fuzz --target x86_64-unknown-linux-gnu --debug-assertions ${{ matrix.target }} "$CORPUS" -- \
             -max_total_time=1800 -fork=3 \
             -ignore_crashes=1 -ignore_timeouts=1 -ignore_ooms=1 \
             -timeout=10 -rss_limit_mb=4096 -detect_leaks=0 \
@@ -128,30 +142,48 @@ jobs:
         with:
           shared-key: fuzz
           save-if: false
+      # A fuzz_semantics crash may be in the optimized build.
+      - name: Install Binaryen (for wasm-opt)
+        if: steps.found.outputs.count != '0'
+        run: |
+          curl -sSfL -o "$RUNNER_TEMP/binaryen.tar.gz" \
+            https://github.com/WebAssembly/binaryen/releases/download/version_131/binaryen-version_131-x86_64-linux.tar.gz
+          tar xzf "$RUNNER_TEMP/binaryen.tar.gz" -C "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/binaryen-version_131/bin" >> "$GITHUB_PATH"
       # Timeouts and OOMs are listed, not replayed: `repro` has no budget of
       # its own and would hang or exhaust this runner the same way.
       - name: Replay and group the crashes
         if: steps.found.outputs.count != '0'
+        env:
+          RK_FUZZ_OPTIMIZE: "1"
         run: |
           cargo build --release -p rk-fuzz --bin repro
           {
             echo '## Fuzzing crashes'
             # One replay per target: a fuzz_semantics crash file is the
             # generator's bytes, not ST, and `--generated` writes the
-            # program again. The full output, programs included, is in
-            # this step's log.
+            # program again. `--isolate` runs each input in a child, so a
+            # stack overflow is one crash in the list, not the end of it.
+            # The full output, programs included, is in this step's log.
             for dir in crashes/fuzz-crashes-*; do
               target=${dir#crashes/fuzz-crashes-}
               mkdir -p "replay/$target"
               find "$dir" -type f -name 'crash-*' -exec cp {} "replay/$target/" \;
               [ -n "$(ls -A "replay/$target")" ] || continue
-              flag=""
-              [ "$target" = fuzz_semantics ] && flag="--generated"
+              # Each target's own oracle, so a crash is filed under it.
+              case "$target" in
+                fuzz_compiler) flag="--only pipeline" ;;
+                fuzz_formatter) flag="--only format" ;;
+                fuzz_incremental) flag="--only incremental" ;;
+                fuzz_ide) flag="--only ide" ;;
+                fuzz_semantics) flag="--generated" ;;
+                *) flag="" ;;
+              esac
               echo
               echo "### $target"
               echo
               echo '```'
-              ./target/release/repro $flag "replay/$target" | tee /dev/stderr | sed -n '/^passed:\|input(s)/,$p' || true
+              ./target/release/repro --isolate $flag "replay/$target" | tee /dev/stderr | sed -n '/^passed:\|input(s)/,$p' || true
               echo '```'
             done
             others=$(find crashes -type f \( -name 'timeout-*' -o -name 'oom-*' -o -name 'slow-unit-*' \))
