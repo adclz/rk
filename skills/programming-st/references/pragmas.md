@@ -63,7 +63,7 @@ See `tool-linter`.
 `{export}` sits **above** the `FUNCTION`, like `{test}`, and takes no argument.
 The FUNCTION is exported under its name, qualified by its namespace (`Plant.Reset`), and the declaration is the signature: the `cli-compile` skill's ABI reference gives what each parameter becomes.
 
-Nothing else a workspace declares is exported, apart from `__init`, the PROGRAM bodies the schedule names and, in a debug build, the `{test}` functions.
+Nothing else a workspace declares is exported, apart from `__init`, the bodies the schedule runs (a PROGRAM's, a program instance's `Inst$__scan__`, a FUNCTION_BLOCK's a task runs on its own) and, in a debug build, the `{test}` functions.
 An export is a root for the optimizer, so a release build drops every FUNCTION that is neither exported nor called, the standard library's included.
 
 ```iecst

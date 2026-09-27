@@ -29,7 +29,32 @@ const CAPTURES: &[&str] = &[
     "punctuation.delimiter",
     "punctuation.bracket",
     "constant",
+    "address.input",
+    "address.output",
+    "address.marker",
 ];
+
+/// The operators, longest first so `:=` is not read as `:`, as the highlight
+/// query colors them in a block.
+const OPERATORS: &[&str] = &[
+    ":=", "=>", "<>", "<=", ">=", "**", ":", "=", "<", ">", "+", "-", "*", "/", "&", "^",
+];
+
+/// The operators that make a span of inline code read as code: a `/` or a
+/// `-` alone is as likely a path or a range in a sentence.
+const CODE_OPERATORS: &[&str] = &[":=", "=>", "<>", "<=", ">=", "**", ":"];
+
+/// The class of a directly represented variable, `%IX0.1`, by its area, as
+/// the highlight query colors it in a block.
+pub fn address_class(word: &str) -> Option<&'static str> {
+    let area = word.strip_prefix('%')?.chars().next()?;
+    match area.to_ascii_uppercase() {
+        'I' => Some("hl-address-input"),
+        'Q' => Some("hl-address-output"),
+        'M' => Some("hl-address-marker"),
+        _ => None,
+    }
+}
 
 pub struct StHighlighter {
     config: HighlightConfiguration,
@@ -37,6 +62,11 @@ pub struct StHighlighter {
     /// Word to CSS class for inline `code`, so `VAR_IN_OUT` in a sentence
     /// reads as it does in a block.
     inline_words: std::collections::HashMap<String, String>,
+    /// The codes the diagnostics page has an entry for, when the run links
+    /// codes to them. A code met without an entry goes to `unknown`, for the
+    /// run to refuse.
+    codes: Option<std::collections::BTreeSet<String>>,
+    unknown: std::sync::Mutex<std::collections::BTreeSet<String>>,
 }
 
 impl StHighlighter {
@@ -58,7 +88,34 @@ impl StHighlighter {
             inline_words: inline_words(&classes),
             config,
             classes,
+            codes: None,
+            unknown: Default::default(),
         }
+    }
+
+    /// Link every diagnostic code the pages name to its entry in `codes`.
+    pub fn with_codes(mut self, codes: std::collections::BTreeSet<String>) -> Self {
+        self.codes = Some(codes);
+        self
+    }
+
+    /// Where the diagnostics page describes `word`, if it is a code and the
+    /// run links codes. A code the page has no entry for is noted instead.
+    pub fn code_href(&self, word: &str) -> Option<String> {
+        let codes = self.codes.as_ref()?;
+        if !is_diagnostic_code(word) {
+            return None;
+        }
+        if !codes.contains(word) {
+            self.unknown.lock().unwrap().insert(word.to_string());
+            return None;
+        }
+        Some(format!("/diagnostics/#{word}"))
+    }
+
+    /// The codes a page named that the diagnostics page has no entry for.
+    pub fn unknown_codes(&self) -> Vec<String> {
+        self.unknown.lock().unwrap().iter().cloned().collect()
     }
 
     /// One inline `code` span, colored. A command line or a flag goes through
@@ -78,12 +135,79 @@ impl StHighlighter {
         if is_diagnostic_code(word) {
             return span("hl-number", src);
         }
+        if let Some(class) = address_class(word) {
+            return span(class, src);
+        }
         // `SUPER()` is the same word as `SUPER`.
         let word = word.strip_suffix("()").unwrap_or(word);
-        match self.inline_words.get(word) {
-            Some(class) => span(class, src),
-            None => escape(src),
+        if let Some(class) = self.inline_words.get(word) {
+            return span(class, src);
         }
+        if OPERATORS.contains(&word) {
+            return span("hl-operator", src);
+        }
+        self.inline_tokens(src).unwrap_or_else(|| escape(src))
+    }
+
+    /// Inline code of several tokens, `REF_TO REAL` or `x := 5`, colored one
+    /// token at a time: the query's words, numbers, strings, addresses and
+    /// operators. Nothing is parsed. A span with no word of the table, no
+    /// address and no operator like `:=` is not taken for code, and stays
+    /// plain: `rk_build/debug/core.wasm` is a path.
+    fn inline_tokens(&self, src: &str) -> Option<String> {
+        let mut out = String::with_capacity(src.len() * 2);
+        let mut code = false;
+        let mut rest = src;
+        while let Some(c) = rest.chars().next() {
+            let (len, class) = if c.is_ascii_alphabetic() || c == '_' {
+                let len = rest
+                    .find(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
+                    .unwrap_or(rest.len());
+                let word = &rest[..len];
+                if rest[len..].starts_with('#') {
+                    // A typed literal, `INT#5` or `T#10ms`, reads as a number
+                    // when its prefix is a type the table knows.
+                    let tail = rest[len + 1..]
+                        .find(|c: char| !(c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | '-')))
+                        .unwrap_or(rest.len() - len - 1);
+                    let typed = self.inline_words.contains_key(word)
+                        || matches!(word, "T" | "TIME" | "LT" | "LTIME" | "D" | "DATE" | "TOD" | "DT");
+                    code |= typed;
+                    (len + 1 + tail, typed.then_some("hl-number"))
+                } else {
+                    let class = self.inline_words.get(word).map(String::as_str);
+                    code |= class.is_some();
+                    (len, class)
+                }
+            } else if c.is_ascii_digit() {
+                let len = rest
+                    .find(|c: char| !(c.is_ascii_alphanumeric() || matches!(c, '.' | '_')))
+                    .unwrap_or(rest.len());
+                (len, Some("hl-number"))
+            } else if c == '\'' {
+                let len = rest[1..].find('\'').map_or(rest.len(), |i| i + 2);
+                (len, Some("hl-string"))
+            } else if c == '%' {
+                let len = rest[1..]
+                    .find(|c: char| !(c.is_ascii_alphanumeric() || matches!(c, '.' | '*')))
+                    .map_or(rest.len(), |i| i + 1);
+                let class = address_class(&rest[..len]);
+                code |= class.is_some();
+                (len, class)
+            } else if let Some(op) = OPERATORS.iter().find(|op| rest.starts_with(**op)) {
+                code |= CODE_OPERATORS.contains(op);
+                (op.len(), Some("hl-operator"))
+            } else {
+                (c.len_utf8(), None)
+            };
+            let token = &rest[..len];
+            match class {
+                Some(class) => out.push_str(&span(class, token)),
+                None => out.push_str(&escape(token)),
+            }
+            rest = &rest[len..];
+        }
+        code.then_some(out)
     }
 
     /// The source as escaped HTML with highlight spans. Falls back to plain

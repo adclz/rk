@@ -53,6 +53,17 @@ pub struct ErrorExample {
     pub lint_rule: Option<String>,
 }
 
+/// The codes with an entry on the diagnostics page: one file each in `dir`.
+/// The pages link a code they name to its entry, and cannot name another.
+pub fn codes(dir: &Path) -> std::collections::BTreeSet<String> {
+    std::fs::read_dir(dir)
+        .unwrap_or_else(|e| panic!("{}: {e}", dir.display()))
+        .filter_map(|e| e.ok().map(|e| e.path()))
+        .filter(|p| p.extension().is_some_and(|e| e == "md"))
+        .map(|p| p.file_stem().unwrap().to_string_lossy().into_owned())
+        .collect()
+}
+
 /// Every example in `dir`, sorted by code. A malformed file is a panic
 /// naming it: the reference cannot be published with a hole.
 pub fn load(dir: &Path) -> Vec<ErrorExample> {

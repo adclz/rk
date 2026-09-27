@@ -17,7 +17,19 @@ pub struct DiagCategory {
     pub count: usize,
 }
 
-pub fn llms_txt(base: &str, skills: &[Skill], categories: &[DiagCategory]) -> String {
+/// A page of the documentation as `llms.txt` lists it: by its Markdown twin.
+pub struct DocLink {
+    pub title: String,
+    pub md: String,
+    pub description: String,
+}
+
+pub fn llms_txt(
+    base: &str,
+    skills: &[Skill],
+    categories: &[DiagCategory],
+    documentation: &[DocLink],
+) -> String {
     let mut s = String::new();
     s.push_str("# rk\n\n");
     s.push_str("> rk is an agent-first compiler from IEC 61131-3 Structured Text to WebAssembly: check, test, compile, in one CLI. The documentation is a set of Agent Skills whose examples the compiler verifies before publishing.\n\n");
@@ -45,6 +57,15 @@ pub fn llms_txt(base: &str, skills: &[Skill], categories: &[DiagCategory]) -> St
         }
         s.push('\n');
     }
+    s.push_str("## Documentation\n\n");
+    for d in documentation {
+        s.push_str(&format!("- [{}]({base}{})", d.title, d.md));
+        if !d.description.is_empty() {
+            s.push_str(&format!(": {}", d.description));
+        }
+        s.push('\n');
+    }
+    s.push('\n');
     s.push_str("## Diagnostics\n\n");
     for c in categories {
         s.push_str(&format!(

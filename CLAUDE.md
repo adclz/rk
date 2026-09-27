@@ -43,7 +43,7 @@ cd site && npm run build
 # the inode wrangler holds and a reload just works. CI calls `zola build`
 # straight, where nothing is watching.
 #
-# Authoring loop for site/pages/*.md and README.md. Zola watches content/,
+# Authoring loop for site/pages/*.md, docs/*.md and README.md. Zola watches content/,
 # not pages/, so a page edit shows nothing until the generator runs again.
 # --pages-only re-renders only the pages, against the last full run's derived
 # values: about 1s instead of 14s. Their fences are still checked. It refuses
@@ -61,12 +61,45 @@ cd site && npm run pages
 # The front page IS README.md: the generator reads it, highlights its fences
 # and points its repo-relative links at GitHub. Its examples are shown, never
 # compiled, because several deliberately do not.
+# The site lays it out: the list of links before its first heading is left
+# out, and each `##` section with `###` items is a grid. `PICTURES` in
+# crates/doc/src/main.rs gives each item an icon (site/assets/icons/, a card)
+# or a drawing (site/assets/drawings/, a tile); an item without one, or a
+# section mixing the two, stops the generator.
 #
-# The README's cast tables, between `<!-- casts:begin -->` and `:end`, are
-# WRITTEN by the generator from `ElementarySpec::implicit_cast` and the
-# `X_TO_Y` functions in stdlib/Convert.st; edit those, not the table. It also
-# checks that every cast E0301 could suggest (`explicit_cast`) is a function
-# that exists. CI diffs README.md after a run, like diagnostics.json.
+# The documentation is docs/*.md, one page per file, plain Markdown so GitHub
+# renders it too; the H1 is the title, the first paragraph the description.
+# The site's sidebar is the list in docs/README.md, which is no page of its
+# own, and the generator refuses a list that names a missing page or leaves
+# one out. The front page has no "On this page" list. A link
+# to `docs/x.md` becomes `/docs/x/` on the site, a skill's SKILL.md its skill
+# page, one to README.md the front page, and any other repository path a link
+# to GitHub. Draw a diagram in a ```diagram fence: it is shown as written, in a
+# system monospace font, because the web font has no box-drawing glyphs.
+# A ```schema fence is a tree in the same characters that the site draws as
+# blocks within blocks, and GitHub shows as written; `◄` at the end of a line
+# puts that part in focus, a `──►` line between two parts joins them with an
+# arrow (`▼` for one pointing down), `▒` marks the physical world, and a
+# folder (`src/`) or a file (`axis.st`) is drawn as a file browser and an
+# editor show them. A block named by a part of a configuration (`TASK`) or an
+# area (`%I`) takes that part's color, and so does a heading that is only the
+# keyword (`## TASK`). The rules are in crates/doc/src/schema.rs.
+# The search field in the top bar reads search.json, which the generator
+# writes on every run (one entry per section of docs/ and the tool pages,
+# crates/doc/src/search.rs), and diagnostics.json.
+# The skills have no listing page (`render = false` in
+# site/pages/skills/_index.md): the menu downloads skills.tar.gz, and each
+# skill keeps a page of its own.
+# A diagnostic code in inline code, or opening a compiler report in a sh or
+# console fence (`[E0301]`), links to its entry on the diagnostics page; a
+# code with no file in crates/doc/examples/ stops the generator.
+#
+# The cast tables in docs/strict-casts.md, between `<!-- casts:begin -->` and
+# `:end`, are WRITTEN by the generator from `ElementarySpec::implicit_cast` and
+# the `X_TO_Y` functions in stdlib/Convert.st; edit those, not the table. It
+# also checks that every cast E0301 could suggest (`explicit_cast`) is a
+# function that exists. CI diffs docs/strict-casts.md after a run, like
+# diagnostics.json.
 
 # Regenerate THIRD-PARTY-NOTICES, the licenses of the crates compiled into
 # every generated module (run from crates/wasm_builtins/; needs
@@ -96,7 +129,7 @@ cargo run --bin rk -- check --workspace <workspace_path>
 # `-O4` alone aborts on every Binaryen up to and including 131 ("unexpected
 # expr type" in the Flatten pass, which does not handle try_table) — an
 # upstream limitation, not a stale version. rk therefore runs it as
-# `-O4 --skip-pass=flatten`, silently; the README carries the warning.
+# `-O4 --skip-pass=flatten`, silently; docs/profiles.md carries the warning.
 # Tracked as WebAssembly/binaryen#8372, where the maintainer has no near-term
 # plan for it. Flatten does handle the LEGACY `try`, which is why "Binaryen
 # supports exceptions" and "-O4 crashes" are both true. With the pass skipped
@@ -147,7 +180,7 @@ cli (binary `rk`) — check, compile, test, fmt, explain, env
 | `debug_format`            | `crates/debug_format`   | The custom-section formats (debug symbols, lines, schedule, retain map, test manifest) and their decoder.               |
 | `linter`                  | `crates/linter`         | Lint rules (L-codes) over HIR.                                                                                          |
 | `benchmark`               | `crates/benchmark`      | Divan benchmarks over the stdlib corpus, with diagnostic baselines.                                                     |
-| `doc`                     | `crates/doc`            | Site generator's front half: verifies `skills/`, `crates/doc/examples/` and `site/pages/` against the compiler, pre-renders their code, and writes what Zola (`site/`) renders. |
+| `doc`                     | `crates/doc`            | Site generator's front half: verifies `skills/`, `crates/doc/examples/`, `docs/` and `site/pages/` against the compiler, pre-renders their code, and writes what Zola (`site/`) renders. |
 | `fuzz`                    | `crates/fuzz`           | Fuzz testing targets for the compiler and formatter.                                                                    |
 | `vscode-lsp-server`       | `vscode/server`         | VSCode extension LSP server binary (thin wrapper over `server` crate).                                                  |
 

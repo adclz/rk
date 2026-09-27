@@ -105,8 +105,8 @@ The `programming-config` skill shows the three lines that do it.
 ## The module
 
 `rk compile` writes one core WebAssembly module.
-It imports its linear memory as `env.memory`, exports `__init`, one body per program and every FUNCTION marked `{export}`, and carries its task schedule, retained-state map and debug symbols as custom sections.
-Any WebAssembly host can instantiate it; the ABI is documented in the repository's README.
+It imports its linear memory as `env.memory`, exports what a host calls (`__init`, the bodies its tasks run and every FUNCTION marked `{export}`), and carries its task schedule, retained-state map and debug symbols as custom sections.
+Any WebAssembly host can instantiate it; the ABI is documented in the repository, in `docs/wasm-abi.md`.
 
 ## Environment
 

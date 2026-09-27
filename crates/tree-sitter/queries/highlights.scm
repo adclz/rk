@@ -20,12 +20,16 @@
 (private) @keyword
 (public) @keyword
 (protected) @keyword
+(internal) @keyword
 
 [
   "VAR" "END_VAR" "VAR_INPUT" "VAR_OUTPUT" "VAR_IN_OUT" "VAR_TEMP"
   "VAR_EXTERNAL" "VAR_GLOBAL" "RETAIN" "NON_RETAIN" "CONSTANT" "AT"
   "REF_TO" "REF" "R_EDGE" "F_EDGE"
 ] @keyword.storage
+; The grammar makes `REF_TO` a node of its own, which the string above
+; never reaches.
+(ref_to) @keyword.storage
 
 [
   "IF" "THEN" "ELSE" "ELSIF" "END_IF" "CASE" "OF" "END_CASE"
@@ -96,6 +100,16 @@
 (bool_literal) @constant.builtin
 (char_literal) @string
 
+; A directly represented variable, `%IX0.1`, reads as one token, colored by
+; its area: the inputs the host writes, the outputs it reads, the markers the
+; program owns.
+((direct_variable (adress_identifier) @_area) @address.input (#match? @_area "^[Ii]"))
+((direct_variable (adress_identifier) @_area) @address.output (#match? @_area "^[Qq]"))
+((direct_variable (adress_identifier) @_area) @address.marker (#match? @_area "^[Mm]"))
+((relative_direct_variable (adress_identifier) @_area) @address.input (#match? @_area "^[Ii]"))
+((relative_direct_variable (adress_identifier) @_area) @address.output (#match? @_area "^[Qq]"))
+((relative_direct_variable (adress_identifier) @_area) @address.marker (#match? @_area "^[Mm]"))
+
 (func_decl name: (identifier) @function)
 (fb_decl name: (identifier) @function)
 (method_decl name: (identifier) @function.method)
@@ -116,7 +130,7 @@
 (param_assign_input param: (identifier) @variable)
 (param_assign_output param: (identifier) @variable)
 
-[ ":=" "=>" "=" "<>" "<" "<=" ">" ">=" "+" "-" "*" "/" "**" "&" ] @operator
+[ ":=" "=>" ":" "=" "<>" "<" "<=" ">" ">=" "+" "-" "*" "/" "**" "&" ] @operator
 (deref_sign) @operator
-[ ";" "," "." ":" ".." ] @punctuation.delimiter
+[ ";" "," "." ".." ] @punctuation.delimiter
 [ "(" ")" "[" "]" "{" "}" ] @punctuation.bracket

@@ -11,6 +11,11 @@
 <div class="ref">
 <nav class="side" aria-label="Diagnostics">
 <input id="search" type="search" placeholder="E0301, duplicate, … (/)" autocomplete="off">
+{#- On a phone the categories fold under the search, behind a checkbox so
+    the panel opens without script. -#}
+<input type="checkbox" id="cats-open" class="cats-open">
+<label class="cats-toggle" for="cats-open">Categories</label>
+<div class="cats">
 {%- for c in data.categories %}
 <details open data-cat="{{ c.slug }}"><summary>{{ c.name }}</summary>
 {%- for e in c.entries %}
@@ -18,6 +23,7 @@
 {%- endfor %}
 </details>
 {%- endfor %}
+</div>
 </nav>
 <div>
 {%- for c in data.categories %}

@@ -302,7 +302,8 @@ pub fn optimize_wasm(wasm_bytes: Vec<u8>, opt_level: Option<&str>, verbose: bool
     // support `try_table`, the instruction that catches a raise: it aborts
     // (WebAssembly/binaryen#8372, no fix planned). Every module carries one,
     // the stdlib's test wrappers being compiled into all of them, so -O4
-    // always runs with that pass skipped. The README is where this is said.
+    // always runs with that pass skipped. docs/profiles.md is where this is
+    // said.
     if level == "4" {
         cmd.arg("--skip-pass=flatten");
     }

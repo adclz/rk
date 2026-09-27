@@ -154,6 +154,7 @@ L0206 collapses every unassigned output of one body into a single diagnostic lis
 | L0115 | `self-shadowing` | warning | a variable with the same name as the POU or method it is declared in |
 | L0116 | `method-shadows-member` | warning | a method local or parameter with the same name as a member of its FUNCTION_BLOCK or CLASS |
 | L0117 | `external-mutation` | warning | writing a field of a function block or class instance from outside it, `inst.x := 42` |
+| L0119 | `instance-in-function` | warning | a FUNCTION or METHOD holding or returning a FUNCTION_BLOCK or CLASS instance, which starts over at every call: a timer in it never expires |
 
 L0109 keys on the value the compiler computed, not on the text, so `7`, `INT#7` and a CONSTANT holding 7 are one label; enum variants and strings fall back to the written form.
 

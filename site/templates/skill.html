@@ -4,7 +4,7 @@
 {% block content %}
 <h1>{{ section.title }}</h1>
 <p class="lede">{{ section.description }}</p>
-<p><a class="pill" href="/skills/{{ section.title }}/SKILL.md">SKILL.md</a> <a class="pill" href="/skills.tar.gz">install</a></p>
+<p><a class="pill" href="/skills/{{ section.title }}/SKILL.md">SKILL.md</a> <a class="pill" href="/skills.tar.gz" download="rk-skills.tar.gz">install<svg class="dl" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5v8M4.5 7 8 10.5 11.5 7M3 13.5h10"/></svg></a></p>
 {{ section.content | safe }}
 {%- if section.extra.references %}
 <h2>References</h2>

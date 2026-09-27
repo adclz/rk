@@ -1,63 +1,95 @@
 :root {
   --paper: #fbfbf9; --ink: #111; --muted: #6f6f6a; --rule: #e6e5df; --panel: #f3f2ed;
-  --link: #0050bd; --code: #1a1a1a;
+  --link: #0050bd; --code: #1a1a1a; --current: #e7eefa;
   --hl-keyword: #0000ff; --hl-control: #af00db; --hl-type: #267f99; --hl-string: #a31515;
   --hl-number: #098658; --hl-comment: #008000; --hl-attr: #0451a5; --hl-fn: #795e26;
-  --hl-var: #001080;
+  --hl-var: #001080; --hl-op: #c7254e;
   --bracket-1: #0431fa; --bracket-2: #319331; --bracket-3: #7b3814;
   --hl-enum: #0070c1;
   --red: #e51400; --yellow: #bf8803; --blue: #1a85ff; --bright-blue: #0050bd; --green: #1c6b3a;
   --purple: #8250df;
   --pass: #007100; --fail: #a1260d;
+  --addr-in: #1a7f37; --addr-out: #bc4c00; --addr-mem: #8250df;
+  --wasm: #654ff0;
+  --sec-configuration: #2b5797; --sec-resource: #1f7268; --sec-task: #946312;
+  --sec-program: #a8403c; --sec-var-global: #9c3f72; --sec-var-config: #5a48a8;
   --serif: 'IBM Plex Serif', Georgia, 'Times New Roman', serif;
   --mono: 'JetBrains Mono', 'IBM Plex Mono', 'SF Mono', Consolas, monospace;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --paper: #131312; --ink: #e8e6df; --muted: #979489; --rule: #2b2a27; --panel: #1c1b19;
-    --link: #8ab4f8; --code: #e8e6df;
+    --link: #8ab4f8; --code: #e8e6df; --current: #1b2536;
     --hl-keyword: #569cd6; --hl-control: #c586c0; --hl-type: #4ec9b0; --hl-string: #ce9178;
     --hl-number: #b5cea8; --hl-comment: #6a9955; --hl-attr: #9cdcfe; --hl-fn: #dcdcaa;
-    --hl-var: #9cdcfe;
+    --hl-var: #9cdcfe; --hl-op: #f07178;
     --bracket-1: #ffd700; --bracket-2: #da70d6; --bracket-3: #179fff;
     --hl-enum: #4fc1ff;
     --red: #f14c4c; --yellow: #cca700; --blue: #3794ff; --bright-blue: #8ab4f8; --green: #a6d189;
     --purple: #a371f7;
     --pass: #73c991; --fail: #f14c4c;
+    --addr-in: #7ee787; --addr-out: #ffa657; --addr-mem: #d2a8ff;
+  --wasm: #8b7cf8;
+  --sec-configuration: #6b9bd8; --sec-resource: #4fae9f; --sec-task: #c99a3e;
+  --sec-program: #d9695f; --sec-var-global: #cc6a9f; --sec-var-config: #9387d8;
   }
 }
 :root[data-theme="dark"] {
   --paper: #131312; --ink: #e8e6df; --muted: #979489; --rule: #2b2a27; --panel: #1c1b19;
-  --link: #8ab4f8; --code: #e8e6df;
+  --link: #8ab4f8; --code: #e8e6df; --current: #1b2536;
     --hl-keyword: #569cd6; --hl-control: #c586c0; --hl-type: #4ec9b0; --hl-string: #ce9178;
   --hl-number: #b5cea8; --hl-comment: #6a9955; --hl-attr: #9cdcfe; --hl-fn: #dcdcaa;
-  --hl-var: #9cdcfe;
+  --hl-var: #9cdcfe; --hl-op: #f07178;
   --bracket-1: #ffd700; --bracket-2: #da70d6; --bracket-3: #179fff;
   --hl-enum: #4fc1ff;
   --red: #f14c4c; --yellow: #cca700; --blue: #3794ff; --bright-blue: #8ab4f8; --green: #a6d189;
   --purple: #a371f7;
   --pass: #73c991; --fail: #f14c4c;
+  --addr-in: #7ee787; --addr-out: #ffa657; --addr-mem: #d2a8ff;
+  --wasm: #8b7cf8;
+  --sec-configuration: #6b9bd8; --sec-resource: #4fae9f; --sec-task: #c99a3e;
+  --sec-program: #d9695f; --sec-var-global: #cc6a9f; --sec-var-config: #9387d8;
 }
 * { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; }
-body { margin: 0; background: var(--paper); color: var(--ink); font-family: var(--serif); font-size: 17px; line-height: 1.6; }
-/* One frame for the header on every page, so the brand never moves; the
-   pages' own widths are below, and match it once the screen is wide. */
-header.site { max-width: 1344px; margin: 0 auto; padding: 2.5rem 1.25rem 0; }
-main { max-width: 800px; margin: 0 auto; padding: 0 1.25rem 5rem; }
-nav.top { display: flex; flex-wrap: wrap; gap: 0.5rem 1.5rem; align-items: baseline; font-family: var(--mono); font-size: 0.8rem; margin-bottom: 3.5rem; }
+body { margin: 0; background: var(--paper); color: var(--ink); font-family: var(--serif); font-size: 19px; line-height: 1.65; }
+/* One bar for the header on every page, across the whole width, so the brand
+   never moves whatever layout the page below has. */
+header.site { border-bottom: 1px solid var(--rule); }
+main { max-width: 800px; margin: 0 auto; padding: 2.75rem 1.25rem 5rem; }
+nav.top { display: flex; flex-wrap: wrap; align-items: center; gap: 0 1.5rem; min-height: 3.75rem; padding: 0 1.5rem; font-family: var(--mono); font-size: 0.875rem; }
 nav.top a { color: var(--ink); text-decoration: none; }
 nav.top a:hover { text-decoration: underline; }
-nav.top .brand { font-weight: 600; margin-right: auto; }
-nav.top .repo { display: inline-flex; align-self: center; color: var(--muted); }
+nav.top a[aria-current="page"] { color: var(--link); font-weight: 600; }
+/* A link that downloads a file, not a page: an arrow into a tray. */
+.dl { width: 0.85em; height: 0.85em; margin-left: 0.3em; vertical-align: -0.08em; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+nav.top .brand { font-weight: 600; font-size: 1.05rem; }
+nav.top .repo { display: inline-flex; color: var(--muted); }
+/* The search field in the top bar, its results in a panel under it. */
+.site-search { position: relative; margin-left: auto; }
+.site-search-field { position: relative; display: flex; align-items: center; }
+.site-search input { width: 14rem; font: inherit; font-size: 0.8125rem; color: var(--ink); background: var(--panel); border: 1px solid var(--rule); border-radius: 6px; padding: 0.4rem 2.6rem 0.4rem 1.9rem; }
+.site-search input:focus { outline: none; border-color: var(--muted); background: var(--paper); }
+.site-search input::-webkit-search-cancel-button { display: none; }
+.site-search-icon { position: absolute; left: 0.6rem; width: 0.9rem; height: 0.9rem; fill: none; stroke: var(--muted); stroke-width: 1.5; stroke-linecap: round; pointer-events: none; }
+.site-search kbd { position: absolute; right: 0.5rem; font: inherit; font-size: 0.7rem; color: var(--muted); border: 1px solid var(--rule); border-radius: 3px; padding: 0 0.3rem; pointer-events: none; }
+.site-search input:focus ~ kbd, .site-search input:not(:placeholder-shown) ~ kbd { display: none; }
+.site-search-results { position: absolute; right: 0; top: calc(100% + 0.4rem); z-index: 20; width: min(32rem, calc(100vw - 2rem)); max-height: min(30rem, 70vh); overflow-y: auto; margin: 0; padding: 0.35rem; list-style: none; background: var(--paper); border: 1px solid var(--rule); border-radius: 6px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.16); }
+.site-search-results li { margin: 0; }
+.site-search-results a { display: block; padding: 0.5rem 0.7rem; border-radius: 4px; color: var(--ink); text-decoration: none; }
+.site-search-results [aria-selected="true"] a, .site-search-results a:hover { background: var(--panel); }
+.ss-title { display: block; font-weight: 600; font-size: 0.8125rem; }
+.ss-text { display: block; margin-top: 0.15rem; font-family: var(--serif); font-size: 0.875rem; line-height: 1.45; color: var(--muted); }
+.ss-text mark { background: none; color: var(--ink); font-weight: 600; }
+.ss-none { padding: 0.5rem 0.7rem; color: var(--muted); }
 nav.top .repo:hover { color: var(--ink); text-decoration: none; }
-nav.top .repo svg { width: 1.15rem; height: 1.15rem; }
-h1 { font-family: var(--serif); font-weight: 400; font-size: 2.3rem; line-height: 1.15; margin: 0 0 1rem; text-wrap: balance; }
-h2 { font-family: var(--serif); font-weight: 500; font-size: 1.8rem; margin: 3rem 0 0.9rem; border-bottom: 1px solid var(--rule); padding-bottom: 0.35rem; text-wrap: balance; }
-h3 { font-family: var(--serif); font-weight: 500; font-size: 1.5rem; margin: 2.25rem 0 0.6rem; text-wrap: balance; }
-h4 { font-family: var(--mono); font-weight: 600; font-size: 0.9rem; margin: 1.75rem 0 0.5rem; }
-p { margin: 0 0 1rem; }
-p.lede { font-size: 1.15rem; color: var(--ink); max-width: 38em; }
+nav.top .repo svg { width: 1.25rem; height: 1.25rem; }
+h1 { font-family: var(--serif); font-weight: 400; font-size: 2.75rem; line-height: 1.12; margin: 0 0 1.25rem; text-wrap: balance; }
+h2 { font-family: var(--serif); font-weight: 500; font-size: 1.875rem; line-height: 1.25; margin: 3.25rem 0 1rem; border-bottom: 1px solid var(--rule); padding-bottom: 0.4rem; text-wrap: balance; }
+h3 { font-family: var(--serif); font-weight: 500; font-size: 1.5625rem; line-height: 1.3; margin: 2.5rem 0 0.7rem; text-wrap: balance; }
+h4 { font-family: var(--mono); font-weight: 600; font-size: 0.95rem; margin: 1.75rem 0 0.5rem; }
+p { margin: 0 0 1.1rem; }
+p.lede { font-size: 1.3rem; color: var(--ink); max-width: 38em; }
 a { color: var(--link); text-decoration-thickness: 1px; text-underline-offset: 2px; }
 a:focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
 ul, ol { padding-left: 1.3rem; margin: 0 0 1rem; }
@@ -67,14 +99,110 @@ li p { margin: 0; }
    top-level one ends on. */
 li > ul, li > ol { margin: 0.5rem 0 0; }
 code { font-family: var(--mono); font-size: 0.85em; color: var(--code); background: var(--panel); padding: 0.05em 0.35em; border-radius: 3px; }
-pre { font-family: var(--mono); font-size: 0.82rem; line-height: 1.55; background: var(--panel); border: 1px solid var(--rule); padding: 0.9rem 1rem; overflow-x: auto; margin: 0.75rem 0 1.25rem; tab-size: 4; }
+pre { font-family: var(--mono); font-size: 0.9rem; line-height: 1.55; background: var(--panel); border: 1px solid var(--rule); padding: 0.9rem 1rem; overflow-x: auto; margin: 0.75rem 0 1.25rem; tab-size: 4; }
 pre code { background: none; padding: 0; color: inherit; font-size: inherit; }
-blockquote { margin: 1.25rem 0; padding: 0.75rem 1rem; border-left: 3px solid var(--link); background: var(--panel); color: var(--ink); font-size: 0.95rem; }
+/* A diagnostic code, which the generator links to its entry: it keeps its
+   color, and a dotted line says it leads somewhere. */
+a.code-link { color: inherit; text-decoration: none; }
+a.code-link code, pre a.code-link { text-decoration: underline dotted; text-underline-offset: 3px; }
+a.code-link:hover code, pre a.code-link:hover { text-decoration-style: solid; }
+/* A diagram, or any block the generator marks `box` for its box-drawing
+   characters, like a compiler diagnostic. The web font has no such glyphs,
+   and a fallback font of another width breaks every line, so the whole block
+   takes a system monospace font that has them all; tight lines let the
+   verticals join. The code is a block so its line height, not the pre's,
+   sets the lines. */
+pre code.language-diagram, pre code.box { display: block; font-family: ui-monospace, 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', 'Liberation Mono', monospace; line-height: 1.12; }
+/* A schema fence, drawn by crates/doc/src/schema.rs as blocks within blocks
+   in the front page's style: ink frames, the keyword small and bold, lines
+   of code as chips. The part in focus stays solid, a leaf filled like the
+   drawings' dark box; the blocks holding it turn to dashed frames, and the
+   rest fades. */
+.schema { margin: 1.25rem 0 1.75rem; font-family: var(--mono); font-size: 0.8rem; line-height: 1.4; font-variant-ligatures: none; }
+.sb-body { display: flex; flex-direction: column; gap: 0.75rem; }
+.sb-body.row { flex-direction: row; flex-wrap: wrap; }
+.sb-body.row > .sb { flex: 1 1 13rem; min-width: 0; }
+.sb { border: 1px solid var(--ink); background: var(--paper); padding: 0.85rem 1rem 1rem; }
+.sb > .sb-body { margin-top: 0.8rem; }
+.sb.leaf { background: var(--panel); border-color: var(--rule); padding: 0.55rem 0.75rem; }
+.sb-head, .sl { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.15rem 0.9rem; }
+.sb-title .kw, .sfile-line .kw { font-weight: 600; font-size: 0.72rem; letter-spacing: 0.08em; }
+.sb-note { color: var(--muted); }
+.schema code.chip { white-space: nowrap; font-size: inherit; color: var(--ink); background: var(--panel); border: 1px solid var(--rule); border-radius: 0; padding: 0.2rem 0.55rem; }
+.sb.ctx, .sb.more { border-style: dashed; border-color: var(--muted); background: transparent; }
+.sb.ctx > .sb-head, .sb.more { color: var(--muted); }
+.sb.off, .sl.off { opacity: 0.45; }
+.sb.on:not(.leaf) > .sb-head .sb-title { background: var(--ink); color: var(--paper); padding: 0.1rem 0.45rem; }
+.sb.leaf.on { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+/* A line of code in focus keeps its background, and its addresses their
+   colors: a ring of ink marks it instead. */
+.sl.on code.chip { border-color: var(--ink); box-shadow: 0 0 0 1px var(--ink); }
+.sb.leaf.on .sb-note { color: var(--paper); opacity: 0.75; }
+/* Each part of a configuration has its color, in the schemas and in the
+   heading of the section about it: the frame, the keyword and, in focus, the
+   tag or the fill. A block that names no such part takes none from the block
+   around it. */
+.sb { --sec: initial; }
+.k-configuration { --sec: var(--sec-configuration); }
+.k-resource { --sec: var(--sec-resource); }
+.k-task { --sec: var(--sec-task); }
+.k-program { --sec: var(--sec-program); }
+.k-var-global { --sec: var(--sec-var-global); }
+.k-var-config { --sec: var(--sec-var-config); }
+.k-input { --sec: var(--addr-in); }
+.k-output { --sec: var(--addr-out); }
+.k-marker { --sec: var(--addr-mem); }
+.sb:not(.leaf):not(.ctx):not(.more):not(.world) { border-color: var(--sec, var(--ink)); }
+.sb.ctx { border-color: var(--sec, var(--muted)); }
+.sb.leaf { box-shadow: inset 3px 0 0 var(--sec, transparent); }
+.sb.more { box-shadow: none; border-color: var(--sec, var(--muted)); }
+.sb-head > .sb-title > .kw:first-child { color: var(--sec, inherit); }
+.sb.on:not(.leaf) > .sb-head .sb-title { background: var(--sec, var(--ink)); }
+.sb.leaf.on { background: var(--sec, var(--ink)); border-color: var(--sec, var(--ink)); }
+.sb.on > .sb-head .sb-title .kw { color: inherit; }
+:is(h2, h3)[class^="k-"] { border-bottom-color: var(--sec, var(--rule)); }
+:is(h2, h3)[class^="k-"]::before { content: ""; display: inline-block; width: 0.55em; height: 0.55em; margin-right: 0.5em; vertical-align: 0.12em; background: var(--sec, transparent); }
+/* Parts an arrow joins, in a row: the arrow is the front page's, lying down,
+   its label above it. A `▼` flow is a column, and so is every flow on a
+   narrow screen: the arrow stands up again, its label beside it. */
+.sb-body.flow { flex-direction: row; align-items: center; gap: 0; }
+.sb-body.flow > :not(.sb-arrow) { flex: 1 1 auto; align-self: stretch; }
+.sb-arrow { position: relative; flex: 0 0 3.5rem; height: 1px; margin: 0 0.9rem 0 0.4rem; background: var(--ink); }
+.sb-arrow::after { content: ""; position: absolute; right: -6px; top: -5px; border: 5px solid transparent; border-left: 7px solid var(--ink); border-right: 0; }
+.sb-arrow span { position: absolute; left: 50%; bottom: 0.45rem; transform: translateX(-50%); white-space: nowrap; color: var(--muted); }
+.sb-body.flow.down { flex-direction: column; align-items: stretch; max-width: 32rem; }
+.sb-body.flow.down > .sb-arrow { flex: 0 0 2.75rem; width: 1px; height: auto; margin: 0 0 0.45rem 1.5rem; }
+.sb-body.flow.down > .sb-arrow::after { right: auto; left: -5px; top: auto; bottom: -6px; border: 5px solid transparent; border-top: 7px solid var(--ink); border-bottom: 0; }
+.sb-body.flow.down > .sb-arrow span { left: 0.9rem; bottom: auto; top: 50%; transform: translateY(-50%); }
+/* The physical world, outside the module: hatched like the ground in a
+   drawing, its name on a plain label. */
+.sb.world { padding: 1.1rem 1rem; border-color: var(--muted); background: repeating-linear-gradient(-45deg, transparent 0 6px, color-mix(in srgb, var(--muted) 45%, transparent) 6px 7px); }
+.sb.world > .sb-head { width: fit-content; background: var(--paper); padding: 0.2rem 0.55rem; border: 1px solid var(--muted); }
+.sb.world .sb-title { font-weight: 600; }
+/* Folders as a file browser shows them, a line down their contents; files
+   as an editor shows them, a tab over their code. No frame of ink. */
+.schema .ico { flex: none; width: 1rem; height: 1rem; fill: none; stroke: currentColor; stroke-width: 1.2; stroke-linejoin: round; }
+.sfolder-name, .sfile-tab { display: flex; flex-wrap: wrap; align-items: center; gap: 0.15rem 0.5rem; }
+.sfolder-name .sb-note, .sfile-tab .sb-note { margin-left: 0.4rem; }
+.sfolder > .sb-body { margin: 0.55rem 0 0 0.45rem; padding-left: 1.1rem; border-left: 1px solid var(--rule); gap: 0.6rem; }
+.sfile { border: 1px solid var(--rule); background: var(--paper); }
+.sfile-tab { padding: 0.35rem 0.7rem; background: var(--panel); border-bottom: 1px solid var(--rule); }
+.sfile-code { padding: 0.55rem 0.8rem 0.65rem; white-space: nowrap; }
+.sfile-line .kw { color: var(--hl-keyword); }
+@media (max-width: 40rem) {
+  .sb { padding: 0.7rem 0.7rem 0.75rem; }
+  .schema code.chip { white-space: normal; }
+  .sb-body.flow { flex-direction: column; align-items: stretch; }
+  .sb-body.flow > .sb-arrow { flex: 0 0 2.75rem; width: 1px; height: auto; margin: 0 0 0.45rem 1.5rem; }
+  .sb-body.flow > .sb-arrow::after { right: auto; left: -5px; top: auto; bottom: -6px; border: 5px solid transparent; border-top: 7px solid var(--ink); border-bottom: 0; }
+  .sb-body.flow > .sb-arrow span { left: 0.9rem; bottom: auto; top: 50%; transform: translateY(-50%); }
+}
+blockquote { margin: 1.25rem 0; padding: 0.75rem 1rem; border-left: 3px solid var(--link); background: var(--panel); color: var(--ink); font-size: 1.0625rem; }
 blockquote p { margin: 0; }
 blockquote p + p { margin-top: 0.5rem; }
 /* GitHub's alerts, `> [!NOTE]` through `> [!CAUTION]`, as the generator
    rewrites them: a quote with a title line in the kind's colour. */
-.alert { --alert: var(--link); margin: 1.25rem 0; padding: 0.7rem 1rem 0.8rem; border-left: 3px solid var(--alert); background: var(--panel); font-size: 0.95rem; }
+.alert { --alert: var(--link); margin: 1.25rem 0; padding: 0.75rem 1.1rem 0.85rem; border-left: 3px solid var(--alert); background: var(--panel); font-size: 1.0625rem; }
 .alert > * { margin: 0; }
 .alert > * + * { margin-top: 0.5rem; }
 .alert-title { display: flex; align-items: center; gap: 0.45rem; font-family: var(--mono); font-size: 0.72rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--alert); }
@@ -83,8 +211,8 @@ blockquote p + p { margin-top: 0.5rem; }
 .alert-important { --alert: var(--purple); }
 .alert-warning { --alert: var(--yellow); }
 .alert-caution { --alert: var(--red); }
-table { border-collapse: collapse; width: 100%; font-size: 0.92rem; margin: 0.75rem 0 1.25rem; }
-th { text-align: left; font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); font-weight: 500; border-bottom: 1px solid var(--ink); padding: 0.4rem 0.75rem 0.4rem 0; }
+table { border-collapse: collapse; width: 100%; font-size: 1rem; margin: 0.75rem 0 1.25rem; }
+th { text-align: left; font-family: var(--mono); font-size: 0.75rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); font-weight: 500; border-bottom: 1px solid var(--ink); padding: 0.4rem 0.75rem 0.4rem 0; }
 td { border-bottom: 1px solid var(--rule); padding: 0.45rem 0.75rem 0.45rem 0; vertical-align: top; }
 /* The page's own headings, from Zola's `toc`, so nothing in the sources
    maintains it. Narrow first: a folded one-line disclosure, because a long
@@ -92,7 +220,7 @@ td { border-bottom: 1px solid var(--rule); padding: 0.45rem 0.75rem 0.45rem 0; v
 main.hastoc { max-width: 800px; }
 .withtoc { display: grid; grid-template-columns: minmax(0, 1fr); }
 .prose { min-width: 0; }
-.toc { position: sticky; top: 0; z-index: 6; background: var(--paper); font-family: var(--mono); font-size: 0.75rem; padding: 0.7rem 0 0.6rem; margin: 0 0 1.5rem; }
+.toc { position: sticky; top: 0; z-index: 6; background: var(--paper); font-family: var(--mono); font-size: 0.8125rem; padding: 0.7rem 0 0.6rem; margin: 0 0 1.5rem; }
 /* Kept focusable, so the label works from the keyboard. */
 .toc-open { position: absolute; width: 1px; height: 1px; opacity: 0; }
 /* 0.72rem is the size the table headers use; below it this
@@ -121,6 +249,65 @@ main.hastoc { max-width: 800px; }
 .totop.auto.visible { opacity: 1; pointer-events: auto; }
 .totop:hover { color: var(--link); border-color: var(--link); }
 
+/* The documentation: the README's list as a sidebar on the left, the page
+   beside it, and previous and next under the text. */
+.docs { display: grid; grid-template-columns: 16.5rem minmax(0, 1fr); align-items: start; }
+/* Of the same weight as the rules that cap a plain page, so it holds at
+   every width. */
+.docs > main.hastoc { max-width: none; margin: 0; padding: 2.75rem 2.5rem 5rem; }
+.sidebar { position: sticky; top: 0; height: 100vh; overflow-y: auto; scrollbar-width: thin; border-right: 1px solid var(--rule); padding: 1.5rem 0.75rem 3rem; font-family: var(--mono); font-size: 0.875rem; line-height: 1.4; }
+.sidebar ul { list-style: none; margin: 0; padding: 0; }
+.sidebar li { margin: 0.1rem 0; }
+.sidebar details > ul { padding-left: 0.8rem; }
+.sidebar a, .sidebar summary { display: flex; justify-content: space-between; align-items: center; padding: 0.4rem 0.65rem; border-radius: 6px; color: var(--ink); text-decoration: none; }
+.sidebar a:hover, .sidebar summary:hover { background: var(--panel); }
+.sidebar a:focus-visible, .sidebar summary:focus-visible { outline: 2px solid var(--link); outline-offset: -2px; }
+/* A group's pages in the muted ink, as the toc draws its nested entries. */
+.sidebar details > ul a { color: var(--muted); }
+.sidebar details > ul a:hover { color: var(--ink); }
+.sidebar a[aria-current="page"] { background: var(--current); color: var(--link); font-weight: 600; }
+.sidebar summary { cursor: pointer; list-style: none; font-weight: 600; }
+.sidebar summary::-webkit-details-marker { display: none; }
+.sidebar summary::after { content: "\25be"; color: var(--muted); }
+.sidebar details:not([open]) > summary::after { content: "\25b8"; }
+/* The drawer's controls: kept focusable, drawn only on a narrow screen. */
+.nav-open { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.nav-button, .nav-close, .nav-scrim { display: none; }
+.pager { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; margin-top: 4rem; }
+.pager a { display: flex; flex-direction: column; gap: 0.2rem; padding: 0.9rem 1.2rem; border: 1px solid var(--rule); border-radius: 8px; text-decoration: none; }
+.pager a:hover { border-color: var(--link); }
+.pager span { font-family: var(--mono); font-size: 0.75rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.pager .next { grid-column: 2; align-items: flex-end; text-align: right; }
+@media (max-width: 600px) {
+  .pager { grid-template-columns: minmax(0, 1fr); }
+  .pager .next { grid-column: 1; }
+}
+/* Too narrow for a column of links beside the text: the sidebar becomes a
+   drawer the menu button opens, over a backdrop that closes it. */
+@media (max-width: 959px) {
+  .docs { display: block; }
+  .docs > main.hastoc { padding: 2rem 1.25rem 5rem; }
+  nav.top { padding-left: 0.5rem; gap: 0 0.9rem; }
+  .site-search input { width: 9rem; }
+  .site-search kbd { display: none; }
+  /* The results span the bar, not the field: the field is not at its edge. */
+  nav.top { position: relative; }
+  .site-search { position: static; }
+  .site-search-results { left: 0.75rem; right: 0.75rem; width: auto; top: calc(100% + 0.25rem); }
+  .nav-button { display: inline-flex; align-items: center; justify-content: center; width: 2.75rem; height: 2.75rem; margin-right: -0.5rem; cursor: pointer; color: var(--ink); }
+  .nav-button svg, .nav-close svg { width: 1.4rem; height: 1.4rem; }
+  .nav-open:focus-visible ~ header .nav-button { outline: 2px solid var(--link); outline-offset: -4px; border-radius: 8px; }
+  .sidebar { position: fixed; top: 0; bottom: 0; left: 0; z-index: 20; width: min(18rem, 85vw); height: auto; padding-top: 0.5rem; background: var(--paper); transform: translateX(-100%); visibility: hidden; transition: transform 0.2s, visibility 0.2s; }
+  .sidebar a, .sidebar summary { min-height: 2.75rem; }
+  .nav-close { display: flex; align-items: center; justify-content: center; width: 2.75rem; height: 2.75rem; margin: 0 0 0.5rem auto; cursor: pointer; color: var(--ink); }
+  .nav-open:checked ~ .docs .sidebar { transform: none; visibility: visible; }
+  .nav-open:checked ~ .docs .nav-scrim { display: block; position: fixed; inset: 0; z-index: 19; background: rgba(0, 0, 0, 0.4); }
+  body:has(.nav-open:checked) { overflow: hidden; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sidebar { transition: none; }
+}
+
 /* Wide enough for a column on either side: the text keeps its measure and
    stays centred, the sidebar takes the right margin, and the fold is gone. */
 @media (min-width: 1180px) {
@@ -136,6 +323,11 @@ main.hastoc { max-width: 800px; }
   .toc-title { cursor: default; }
   .toc-title::after, .toc-open:checked ~ .toc-title::after { content: none; }
   .toc > ul { display: block; }
+  /* Beside the documentation sidebar there is no left margin to centre in:
+     the text takes it, and the toc keeps the right. */
+  .docs .withtoc { grid-template-columns: minmax(0, 46rem) 12.5rem; gap: 0 3rem; justify-content: center; }
+  .docs .prose { grid-column: 1; }
+  .docs .toc { grid-column: 2; }
 }
 /* A folded block in the prose, as GitHub draws one. */
 .prose details { margin: 0.75rem 0 1.25rem; }
@@ -159,9 +351,10 @@ h2.group svg { flex: none; width: 1.05em; height: 1.05em; color: var(--muted); }
 .entry h2 { border: 0; padding: 0; margin: 0 0 0.35rem; font-family: var(--serif); font-weight: 500; font-size: 1.4rem; }
 .entry h2 a { font-family: var(--mono); font-size: 0.78em; color: var(--ink); text-decoration: none; }
 .entry h2 a:hover { text-decoration: underline; }
-.entry .description { margin: 0.25rem 0 0.75rem; }
+/* Smaller and softer than the title above it, so the two read apart. */
+.entry .description { margin: 0.25rem 0 0.75rem; font-size: 1rem; color: var(--muted); }
 .output { font-family: var(--mono); font-size: 0.78rem; }
-footer { margin-top: 4rem; padding-top: 1rem; border-top: 1px solid var(--rule); font-family: var(--mono); font-size: 0.75rem; color: var(--muted); display: flex; flex-wrap: wrap; gap: 0.5rem 1.5rem; }
+footer { margin-top: 4rem; padding-top: 1rem; border-top: 1px solid var(--rule); font-family: var(--mono); font-size: 0.8rem; color: var(--muted); display: flex; flex-wrap: wrap; gap: 0.5rem 1.5rem; }
 footer a { color: var(--muted); }
 /* What the VS Code extension shows for a .st file, scope for scope: an
    elementary type is `support.type.primitives` (teal), a storage word and a
@@ -177,6 +370,14 @@ footer a { color: var(--muted); }
 .hl-attribute { color: var(--hl-attr); }
 .hl-function, .hl-function-method, .hl-function-call { color: var(--hl-fn); }
 .hl-variable { color: var(--hl-var); }
+.hl-operator { color: var(--hl-op); }
+/* A directly represented variable, one color per area: the inputs the host
+   writes, the outputs it reads, the markers the program owns. Its digits and
+   dots take the color too: `%IX0.1` reads as one token. */
+.hl-address-input { color: var(--addr-in); }
+.hl-address-output { color: var(--addr-out); }
+.hl-address-marker { color: var(--addr-mem); }
+.hl-address-input *, .hl-address-output *, .hl-address-marker * { color: inherit; }
 .hl-bracket-1 { color: var(--bracket-1); }
 .hl-bracket-2 { color: var(--bracket-2); }
 .hl-bracket-3 { color: var(--bracket-3); }
@@ -192,24 +393,35 @@ main.wide { max-width: 1344px; }
 /* The frame is wider than a line of prose should be; the code is welcome to it. */
 .ref .entry .description { max-width: 46rem; }
 .ref { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 3rem; align-items: start; }
-/* On a phone a 242-code tree is not navigation, the search is: the tree is
-   dropped so the diagnostics start at the top, and the field stays in reach. */
+.cats-open { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.cats-toggle { display: none; }
+/* On a phone the tree folds into a panel under the search, which scrolls on
+   its own, so the diagnostics start at the top and the field stays in reach. */
 @media (max-width: 860px) {
-  .ref { grid-template-columns: 1fr; gap: 1rem; }
-  .ref nav.side { position: sticky; top: 0; z-index: 6; max-height: none; overflow: visible; background: var(--paper); padding: 0.6rem 0 0.4rem; }
-  .ref nav.side details { display: none; }
-  .ref nav.side input { margin-bottom: 0; }
+  /* minmax(0, …): a plain 1fr grows to its widest code line and takes the
+     whole page sideways with it. */
+  .ref { grid-template-columns: minmax(0, 1fr); gap: 1rem; }
+  .ref nav.side { position: sticky; top: 0; z-index: 6; max-height: none; overflow: visible; background: var(--paper); padding: 0.6rem 0 0.4rem; border-bottom: 1px solid var(--rule); }
+  .ref nav.side input[type="search"] { margin-bottom: 0.4rem; }
+  .cats-toggle { display: block; cursor: pointer; font-weight: 600; font-size: 0.8125rem; padding: 0.35rem 0; }
+  .cats-toggle::after { content: " \25be"; color: var(--muted); }
+  .cats-open:checked ~ .cats-toggle::after { content: " \25b4"; }
+  .cats-open:focus-visible ~ .cats-toggle { outline: 2px solid var(--link); outline-offset: 2px; }
+  .ref nav.side .cats { display: none; }
+  .ref nav.side .cats-open:checked ~ .cats { display: block; max-height: 60vh; overflow-y: auto; padding: 0.4rem 0 0.6rem; }
 }
 nav.side { position: sticky; top: 1rem; max-height: calc(100vh - 2rem); overflow-y: auto; font-family: var(--mono); font-size: 0.78rem; scrollbar-width: thin; }
-nav.side input { width: 100%; font: inherit; padding: 0.4rem 0.55rem; border: 1px solid var(--rule); border-radius: 4px; background: var(--paper); color: var(--ink); margin-bottom: 0.9rem; }
-nav.side input:focus-visible { outline: 2px solid var(--link); outline-offset: 1px; }
+nav.side input[type="search"] { width: 100%; font: inherit; padding: 0.4rem 0.55rem; border: 1px solid var(--rule); border-radius: 4px; background: var(--paper); color: var(--ink); margin-bottom: 0.9rem; }
+nav.side input[type="search"]:focus-visible { outline: 2px solid var(--link); outline-offset: 1px; }
 nav.side details { margin: 0 0 0.35rem; }
-nav.side summary { cursor: pointer; text-transform: uppercase; letter-spacing: 0.06em; font-size: 0.7rem; color: var(--muted); padding: 0.25rem 0; list-style: none; }
+nav.side summary { cursor: pointer; font-weight: 600; font-size: 0.8125rem; color: var(--ink); padding: 0.3rem 0.4rem; margin: 0 -0.4rem; border-radius: 4px; list-style: none; }
+nav.side summary:hover { background: var(--panel); }
+nav.side summary:focus-visible { outline: 2px solid var(--link); outline-offset: -2px; }
 nav.side summary::-webkit-details-marker { display: none; }
 nav.side summary::before { content: "▸ "; display: inline-block; width: 1em; }
 nav.side details[open] summary::before { content: "▾ "; }
-nav.side a { display: block; color: var(--ink); text-decoration: none; padding: 0.12rem 0 0.12rem 1em; border-left: 2px solid transparent; }
-nav.side a:hover { text-decoration: underline; }
+nav.side a { display: block; color: var(--muted); text-decoration: none; padding: 0.12rem 0 0.12rem 1em; border-left: 2px solid transparent; }
+nav.side a:hover { color: var(--ink); text-decoration: underline; }
 nav.side a.active { border-left-color: var(--link); color: var(--link); }
 nav.side .hidden, .ref .hidden { display: none; }
 .category-heading { font-family: var(--serif); font-weight: 500; font-size: 1.8rem; margin: 3rem 0 0.5rem; padding-bottom: 0.35rem; border-bottom: 1px solid var(--rule); }
@@ -226,3 +438,82 @@ mark.diag.info { text-decoration-color: var(--blue); }
 .diag-popup .code { color: var(--link); }
 .diag-popup .note, .diag-popup .related, .diag-popup .fix { display: block; margin-top: 0.4rem; }
 .diag-popup .loc { color: var(--link); }
+
+/* The front page: the README laid out, without the documentation sidebar.
+   A hero with the title and a drawing of what rk does, then each section
+   of the README as a grid of cards. */
+main.landing { max-width: 1180px; padding-top: 0; }
+.hero { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr); gap: 4.5rem; align-items: center; padding: 4.5rem 0 4rem; border-bottom: 1px solid var(--rule); }
+.hero h1 { font-size: 3.75rem; margin: 0 0 0.6rem; }
+.hero .epigraph { font-family: var(--mono); font-size: 0.85rem; color: var(--muted); margin: 0 0 1.75rem; }
+.hero .lede { font-size: 1.45rem; line-height: 1.5; margin: 0 0 2.25rem; }
+.actions { display: flex; flex-wrap: wrap; gap: 0.75rem; margin: 0; }
+.button { font-family: var(--mono); font-size: 0.875rem; font-weight: 600; color: var(--ink); text-decoration: none; border: 1px solid var(--ink); padding: 0.65rem 1.15rem; }
+.button:hover { background: var(--panel); }
+.button.primary { background: var(--ink); color: var(--paper); }
+.button.primary:hover { opacity: 0.85; }
+
+/* The drawing: three stages joined by arrows, in the page's own type so it
+   follows the theme. */
+.pipeline { margin: 0; font-family: var(--mono); font-size: 0.8rem; line-height: 1.4; }
+.stage { border: 1px solid var(--ink); background: var(--paper); padding: 0.9rem 1rem 1rem; }
+.stage-label { display: block; font-weight: 600; font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; margin: 0 0 0.7rem; }
+.file { display: inline-block; border: 1px solid var(--rule); background: var(--panel); padding: 0.2rem 0.55rem; margin: 0 0.4rem 0.3rem 0; }
+/* The module's frame takes the purple of the WebAssembly logo inside it. */
+.stage.module { border-color: var(--wasm); }
+.module .wasm-logo { display: block; width: 4.5rem; height: 4.5rem; margin: 0.3rem auto 0.2rem; }
+.host .note { color: var(--muted); }
+.arrow { position: relative; height: 3.25rem; margin-left: 1.5rem; border-left: 1px solid var(--ink); }
+.arrow::after { content: ""; position: absolute; left: -5px; bottom: 0; border: 5px solid transparent; border-top: 7px solid var(--ink); border-bottom: 0; }
+.arrow span { position: absolute; left: 0.9rem; top: 50%; transform: translateY(-50%); color: var(--muted); }
+
+.intro { max-width: 46rem; margin: 3.5rem auto 0; }
+.features { margin: 4.5rem 0 0; }
+.features h2 { border-bottom: 0; padding: 0; margin: 0 0 3rem; font-size: 2.25rem; text-align: center; }
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1.25rem; }
+.card { border: 1px solid var(--rule); background: var(--paper); padding: 1.35rem 1.4rem 1.2rem; }
+/* The picture sits in the title, as the skills page's groups have it. */
+.card h3 { display: flex; align-items: center; gap: 0.55rem; font-size: 1.25rem; margin: 0 0 0.6rem; }
+.card h3 svg { flex: none; width: 1.05em; height: 1.05em; color: var(--muted); }
+/* The card's own text; an alert inside keeps the sizes alerts have. */
+.card > p { font-size: 1.0625rem; margin: 0; }
+.card .alert { font-size: 0.95rem; margin: 1rem 0 0; }
+/* A card alone on the last row takes the row, instead of a third of it. */
+.card:last-child:nth-child(3n+1) { grid-column: 1 / -1; }
+/* A section whose items have drawings: tiles on a grid of hairlines, each
+   drawing above its title, with room around it. */
+.showcase { margin: 7rem 0 0; }
+.showcase h2 { border-bottom: 0; padding: 0; margin: 0 0 3rem; font-size: 2.5rem; }
+.tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border-top: 1px solid var(--rule); }
+.tile { padding: 3.5rem 3.25rem 3.75rem; border-bottom: 1px solid var(--rule); }
+.tile:nth-child(odd) { border-right: 1px solid var(--rule); }
+.tile-figure { display: flex; justify-content: center; margin: 0 0 2.75rem; }
+.tile h3 { font-size: 1.5rem; margin: 0 0 0.7rem; }
+.tile > p { font-size: 1.0625rem; color: var(--muted); margin: 0; }
+.tile .alert { font-size: 0.95rem; margin: 1.25rem 0 0; }
+/* The drawings: line art in the theme's colours, labelled in the mono. */
+.fig { width: 100%; max-width: 400px; height: auto; color: var(--ink); overflow: visible; }
+.fig text { font-family: var(--mono); font-size: 11px; fill: var(--muted); }
+.fig .t { fill: var(--ink); }
+.fig .p { fill: var(--paper); }
+.fig .rt { fill: var(--red); }
+.fig .g { fill: var(--green); font-weight: 600; }
+.fig .code { font-size: 13px; }
+.fig .l { fill: none; stroke: currentColor; stroke-width: 1.2; }
+.fig .m { fill: none; stroke: var(--muted); stroke-width: 1; }
+.fig .f { fill: var(--panel); }
+.fig .k { fill: var(--ink); stroke: var(--ink); }
+.fig .dash { stroke-dasharray: 4 3; }
+.fig .r { fill: none; stroke: var(--red); stroke-width: 1.4; }
+.fig .head { fill: currentColor; stroke: none; }
+.closing { max-width: 46rem; margin: 5rem auto 0; padding-top: 2rem; border-top: 1px solid var(--rule); font-size: 1rem; color: var(--muted); }
+.closing h2 { font-size: 1.25rem; border-bottom: 0; margin: 0 0 0.6rem; color: var(--ink); }
+@media (max-width: 900px) {
+  .tiles { grid-template-columns: minmax(0, 1fr); }
+  .tile { padding: 2.75rem 0 3rem; }
+  .tile:nth-child(odd) { border-right: 0; }
+  .showcase h2 { font-size: 1.875rem; }
+  .hero { grid-template-columns: 1fr; gap: 3rem; padding-top: 3rem; }
+  .hero h1 { font-size: 2.75rem; }
+  .features h2 { text-align: left; font-size: 1.875rem; }
+}

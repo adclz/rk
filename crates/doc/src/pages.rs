@@ -1,7 +1,7 @@
 //! The hand-written pages in `site/pages/`, mirrored into `site/content/`
 //! with their fences and inline code pre-rendered. Zola's `+++` frontmatter
-//! passes through untouched; the generator reads only the title, the lede
-//! and the Markdown twin's path from it.
+//! passes through untouched; the generator reads only the title, the
+//! description, the lede and the Markdown twin's path from it.
 
 use std::path::{Path, PathBuf};
 
@@ -19,6 +19,7 @@ pub struct Page {
     pub body: String,
     pub fences: Vec<Fence>,
     pub title: String,
+    pub description: String,
     pub lede: String,
     /// `extra.md`, the twin's site path, when the page declares one.
     pub md: Option<String>,
@@ -67,6 +68,7 @@ pub fn discover(dir: &Path, highlighter: &StHighlighter) -> Vec<Page> {
                 rel: path.strip_prefix(dir).unwrap().to_path_buf(),
                 title: toml_field(frontmatter, "title")
                     .unwrap_or_else(|| panic!("{}: no `title` in the frontmatter", path.display())),
+                description: toml_field(frontmatter, "description").unwrap_or_default(),
                 lede: toml_field(frontmatter, "lede").unwrap_or_default(),
                 md: toml_field(frontmatter, "md"),
                 frontmatter: frontmatter.to_string(),
@@ -79,7 +81,7 @@ pub fn discover(dir: &Path, highlighter: &StHighlighter) -> Vec<Page> {
 }
 
 /// A `key = "value"` line of the frontmatter, unescaped. Enough for the
-/// three fields the generator reads; Zola parses the rest.
+/// few fields the generator reads; Zola parses the rest.
 fn toml_field(frontmatter: &str, key: &str) -> Option<String> {
     frontmatter.lines().find_map(|line| {
         let (k, v) = line.split_once('=')?;
