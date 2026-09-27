@@ -1,5 +1,5 @@
 //! `MOD` executes with IEC's sign rule (the result takes the dividend's
-//! sign), across widths. The semantics suite pins what is REJECTED; this
+//! sign), across widths. The hir suite pins what is REJECTED; this
 //! pins what the accepted shapes compute.
 
 use rstest::rstest;

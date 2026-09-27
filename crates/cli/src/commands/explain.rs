@@ -78,7 +78,11 @@ mod tests {
         for spelled in ["E0301", "e0301", " E0301 ", "[E0301]", "[ e0301 ]"] {
             assert_eq!(normalize_code(spelled), "E0301", "{spelled:?}");
         }
-        assert_eq!(normalize_code("[E0301"), "[E0301", "an unmatched bracket is left alone");
+        assert_eq!(
+            normalize_code("[E0301"),
+            "[E0301",
+            "an unmatched bracket is left alone"
+        );
     }
 
     /// The embedded artifact must parse and cover the codes explain promises.

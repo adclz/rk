@@ -361,7 +361,10 @@ fn test_for_subwidth_counter_stays_in_domain(mut with_db: db::RootDatabase) {
         END_FUNCTION
     "#;
     let r: i32 = super::run(&mut with_db, source, "usint_counter", ());
-    assert_eq!(r, 255, "5 iterations and the counter exits in-domain at 255");
+    assert_eq!(
+        r, 255,
+        "5 iterations and the counter exits in-domain at 255"
+    );
 }
 
 /// A FOR counter that is a PROGRAM member — ordinary code. The counter
@@ -440,7 +443,10 @@ fn for_bound_is_fixed_at_entry(mut with_db: db::RootDatabase) {
         END_FUNCTION
     "#;
     let r: i32 = super::run(&mut with_db, source, "run", ());
-    assert_eq!(r, 3, "the bound is fixed at entry (IEC); re-evaluation would give 10");
+    assert_eq!(
+        r, 3,
+        "the bound is fixed at entry (IEC); re-evaluation would give 10"
+    );
 }
 
 /// Same question for a bound with a SIDE EFFECT: a function call in `TO`
@@ -537,7 +543,10 @@ fn nested_for_bounds_do_not_clobber_each_other(mut with_db: db::RootDatabase) {
         END_FUNCTION
     "#;
     let r: i32 = super::run(&mut with_db, source, "run", ());
-    assert_eq!(r, 202, "outer fixed at 3; inner re-snapshots at each entry: 2 + 100 + 100");
+    assert_eq!(
+        r, 202,
+        "outer fixed at 3; inner re-snapshots at each entry: 2 + 100 + 100"
+    );
 }
 
 /// EXIT under an IF must leave the LOOP, not the IF: the branch depth has
@@ -589,7 +598,10 @@ fn continue_under_if_still_increments_the_for_counter(mut with_db: db::RootDatab
         END_FUNCTION
     "#;
     let r: i32 = super::run(&mut with_db, source, "run", ());
-    assert_eq!(r, 4, "CONTINUE still increments the counter and re-checks the bound");
+    assert_eq!(
+        r, 4,
+        "CONTINUE still increments the counter and re-checks the bound"
+    );
 }
 
 /// CONTINUE in a REPEAT must jump to the UNTIL check, not restart the body,
@@ -628,7 +640,10 @@ fn exit_leaves_only_the_inner_loop(mut with_db: db::RootDatabase) {
         END_FUNCTION
     "#;
     let r: i32 = super::run(&mut with_db, source, "run", ());
-    assert_eq!(r, 3, "each outer iteration counts once before the inner EXIT");
+    assert_eq!(
+        r, 3,
+        "each outer iteration counts once before the inner EXIT"
+    );
 }
 
 /// The branch depth must survive DEEP nesting: an EXIT under an ELSIF arm
@@ -662,7 +677,10 @@ fn exit_survives_elsif_and_case_nesting(mut with_db: db::RootDatabase) {
         END_FUNCTION
     "#;
     let r: i32 = super::run(&mut with_db, source, "run", ());
-    assert_eq!(r, 4303, "first loop exits at i = 4 with a = 3; second at b = 3");
+    assert_eq!(
+        r, 4303,
+        "first loop exits at i = 4 with a = 3; second at b = 3"
+    );
 }
 
 /// EXIT in a REPEAT leaves it; the body still runs AT LEAST once even when
@@ -704,7 +722,10 @@ fn continue_targets_the_inner_loop(mut with_db: db::RootDatabase) {
         END_FUNCTION
     "#;
     let r: i32 = super::run(&mut with_db, source, "run", ());
-    assert_eq!(r, 409, "3 outer x 3 counted inner; the counter ends past the bound at 4");
+    assert_eq!(
+        r, 409,
+        "3 outer x 3 counted inner; the counter ends past the bound at 4"
+    );
 }
 
 /// CASE labels of every kind actually SELECT the right branch, and each
@@ -778,7 +799,10 @@ fn case_enum_labels_select_by_declared_value(mut with_db: db::RootDatabase) {
         END_FUNCTION
     "#;
     let result: i32 = super::run(&mut with_db, source, "run", ());
-    assert_eq!(result, 321, "Stop=5, Run=6, Halt=9 each reach their own arm");
+    assert_eq!(
+        result, 321,
+        "Stop=5, Run=6, Halt=9 each reach their own arm"
+    );
 }
 
 /// A STRING label compares as a STRING — the same byte comparison `=` uses.
@@ -834,7 +858,10 @@ fn case_multiple_labels_per_arm(mut with_db: db::RootDatabase) {
         END_FUNCTION
     "#;
     let result: i32 = super::run(&mut with_db, source, "run", ());
-    assert_eq!(result, 7977700, "1,3 and 10..12 share an arm; 2 is its own; 13 and 0 fall through");
+    assert_eq!(
+        result, 7977700,
+        "1,3 and 10..12 share an arm; 2 is its own; 13 and 0 fall through"
+    );
 }
 
 /// The control variable's value AFTER normal completion is implementation-

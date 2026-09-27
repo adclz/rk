@@ -54,9 +54,6 @@ fn type_mangle<'db>(db: &'db dyn WorkspaceDataBase, ty: &Type<'db>) -> String {
     }
 }
 
-
-
-
 /// The namespace-qualified name of a POU (bare for a top-level one): the
 /// canonical MIR identifier, so `NsA.foo` and `NsB.foo` stay distinct.
 pub fn qualified_pou_ident<'db>(

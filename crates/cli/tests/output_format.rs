@@ -32,13 +32,18 @@ fn records(bytes: &[u8]) -> Vec<serde_json::Value> {
 #[test]
 fn status_commands_speak_json_lines() {
     let ws = tempfile::tempdir().unwrap();
-    std::fs::write(ws.path().join("config.toml"), "[project]\nname = \"T\"\nversion = \"0.0\"\n").unwrap();
+    std::fs::write(
+        ws.path().join("config.toml"),
+        "[project]\nname = \"T\"\nversion = \"0.0\"\n",
+    )
+    .unwrap();
 
     // A table command.
     let out = rk(&["env"], ws.path());
     let rows = records(&out.stdout);
     assert!(
-        rows.iter().any(|r| r["type"] == "env" && r["key"] == "workspace"),
+        rows.iter()
+            .any(|r| r["type"] == "env" && r["key"] == "workspace"),
         "env rows are records: {rows:?}"
     );
     records(&out.stderr);

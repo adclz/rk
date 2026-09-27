@@ -1,9 +1,9 @@
 //! End-to-end tests for VAR_GLOBAL: shared state across programs, accessed both
 //! via VAR_EXTERNAL and directly by name.
 
+use crate::tests::codegen::TestPlc;
 use crate::tests::codegen::{compile_to_mir_and_wasm, with_db};
 use rstest::*;
-use crate::tests::codegen::TestPlc;
 
 /// Two programs share a config `VAR_GLOBAL`. `Inc` increments it (via
 /// `VAR_EXTERNAL`); `Mirror` copies it into a retained `seen` (direct access,

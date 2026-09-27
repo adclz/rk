@@ -89,7 +89,6 @@ END_FUNCTION
     );
 }
 
-
 /// A `__RAISE` message reaches the report intact.
 ///
 /// The message is written into the test's 12-byte result area as a pointer and
@@ -115,9 +114,6 @@ END_FUNCTION
         "the raised message is reported verbatim, got: {reason}"
     );
 }
-
-
-
 
 /// The runtime runs `{test}` functions off the core module directly — no
 /// component, no second engine, no WASI world. Pass, explicit failure and trap
@@ -151,7 +147,11 @@ END_FUNCTION
     let core = super::compile_to_wasm_as_built(&mut with_db, source);
 
     let found = crate::tests::codegen::discover_tests(&core);
-    assert_eq!(found.len(), 2, "both tests are in the core module's manifest");
+    assert_eq!(
+        found.len(),
+        2,
+        "both tests are in the core module's manifest"
+    );
 
     let results = crate::tests::codegen::run_tests(&core, None).expect("run tests");
     assert_eq!(results.len(), 2);

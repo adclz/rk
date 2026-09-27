@@ -80,7 +80,11 @@ fn test_execute_datetime_round_trip(mut with_db: db::RootDatabase) {
     assert_eq!(f.call(&mut store, 86_399).unwrap(), 0);
     assert_eq!(f.call(&mut store, 86_400).unwrap(), 1);
     assert_eq!(f.call(&mut store, 1_096 * 86_400).unwrap(), 1_096);
-    assert_eq!(f.call(&mut store, -1).unwrap(), -1, "floor: -1 s is 1969-12-31");
+    assert_eq!(
+        f.call(&mut store, -1).unwrap(),
+        -1,
+        "floor: -1 s is 1969-12-31"
+    );
 
     // DT 12:34:56 (= 12*3600 + 34*60 + 56 = 45_296 secs into the day)
     // -> TOD 45_296_000 ms-of-day.
@@ -95,7 +99,11 @@ fn test_execute_datetime_round_trip(mut with_db: db::RootDatabase) {
     // 1 day + 1 sec since epoch -> 1 sec-of-day -> 1000 ms-of-day.
     assert_eq!(f.call(&mut store, 86_400 + 1).unwrap(), 1_000);
     // floor-mod: -1 s is 23:59:59 of the previous day, in-domain.
-    assert_eq!(f.call(&mut store, -1).unwrap(), 86_399_000, "floor: -1 s is TOD#23:59:59");
+    assert_eq!(
+        f.call(&mut store, -1).unwrap(),
+        86_399_000,
+        "floor: -1 s is TOD#23:59:59"
+    );
 
     // LDT 1 day + 500 ns -> LTOD 500 ns.
     let f = instance
@@ -132,7 +140,10 @@ fn test_execute_dt_extremes_widen_to_exact_ldt(mut with_db: db::RootDatabase) {
         END_FUNCTION
     "#;
     let result: i32 = super::run(&mut with_db, source, "dt_widens", ());
-    assert_eq!(result, 1, "both DT extremes must widen to the exact LDT instant");
+    assert_eq!(
+        result, 1,
+        "both DT extremes must widen to the exact LDT instant"
+    );
 }
 
 /// Every date/time literal bakes to its documented integer encoding, observed
@@ -203,7 +214,11 @@ fn test_literals_encode_as_documented(mut with_db: db::RootDatabase) {
     assert_eq!(i32_of(&mut store, "enc_time"), 1_500);
     assert_eq!(i32_of(&mut store, "enc_time_max"), i32::MAX);
     assert_eq!(i32_of(&mut store, "enc_date"), 1);
-    assert_eq!(i32_of(&mut store, "enc_date_pre"), -1, "pre-epoch DATE is a plain negative day count");
+    assert_eq!(
+        i32_of(&mut store, "enc_date_pre"),
+        -1,
+        "pre-epoch DATE is a plain negative day count"
+    );
     assert_eq!(i32_of(&mut store, "enc_tod"), 1_500);
     assert_eq!(i64_of(&mut store, "enc_dt"), 60);
     assert_eq!(i64_of(&mut store, "enc_dt_max"), i64::MAX / 1_000_000_000);
@@ -312,7 +327,10 @@ fn dt_pre_epoch_decomposition_is_exact(mut with_db: db::RootDatabase) {
     "#;
     let wasm = compile_to_wasm(&mut with_db, source);
     let result: i32 = super::execute_wasm(&wasm, "exact", ());
-    assert_eq!(result, 1, "pre-epoch DT must floor to the correct DATE and an in-domain TOD");
+    assert_eq!(
+        result, 1,
+        "pre-epoch DT must floor to the correct DATE and an in-domain TOD"
+    );
 }
 
 /// Same exactness through the LDT arms, which use the scratch-local floor
@@ -344,5 +362,8 @@ fn ldt_pre_epoch_decomposition_is_exact(mut with_db: db::RootDatabase) {
     "#;
     let wasm = compile_to_wasm(&mut with_db, source);
     let result: i32 = super::execute_wasm(&wasm, "exact", ());
-    assert_eq!(result, 1, "pre-epoch LDT must floor to the correct DATE and an in-domain LTOD");
+    assert_eq!(
+        result, 1,
+        "pre-epoch LDT must floor to the correct DATE and an in-domain LTOD"
+    );
 }

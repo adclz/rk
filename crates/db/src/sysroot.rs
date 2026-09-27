@@ -195,7 +195,11 @@ mod tests {
     fn a_directory_without_a_declaration_is_not_a_library() {
         let t = tempfile::tempdir().unwrap();
         tree(t.path(), &["stdlib", "lib/rk/std"]);
-        fs::write(t.path().join("stdlib/Math.st"), "FUNCTION f : INT\nEND_FUNCTION\n").unwrap();
+        fs::write(
+            t.path().join("stdlib/Math.st"),
+            "FUNCTION f : INT\nEND_FUNCTION\n",
+        )
+        .unwrap();
         assert!(probe_from(&t.path().join("target/debug/rk")).is_none());
     }
 
@@ -236,7 +240,10 @@ mod tests {
     #[test]
     fn a_symlinked_executable_finds_the_real_tree() {
         let t = tempfile::tempdir().unwrap();
-        tree(t.path(), &["real/bin", "real/lib/rk/std/config.toml", "link"]);
+        tree(
+            t.path(),
+            &["real/bin", "real/lib/rk/std/config.toml", "link"],
+        );
         let real = t.path().join("real/bin/rk");
         fs::write(&real, "").unwrap();
         let link = t.path().join("link/rk");
@@ -265,9 +272,13 @@ mod tests {
     #[test]
     fn this_test_binary_finds_the_checkouts_stdlib() {
         let exe = std::env::current_exe().expect("a test binary has a path");
-        let (origin, dir) = probe_from(&exe)
-            .unwrap_or_else(|| panic!("no library found from {}", exe.display()));
+        let (origin, dir) =
+            probe_from(&exe).unwrap_or_else(|| panic!("no library found from {}", exe.display()));
         assert_eq!(origin, LibraryOrigin::DevTree);
-        assert!(dir.join("Math.st").is_file(), "{} holds the stdlib", dir.display());
+        assert!(
+            dir.join("Math.st").is_file(),
+            "{} holds the stdlib",
+            dir.display()
+        );
     }
 }

@@ -1,9 +1,9 @@
 //! Tests for constant variable initializers: program statics, globals, and the
 //! cold-vs-warm-start interaction with RETAIN. Run once at load via `__init`.
 
+use crate::tests::codegen::TestPlc;
 use crate::tests::codegen::{compile_to_mir_and_wasm, compile_to_wasm, with_db};
 use rstest::*;
-use crate::tests::codegen::TestPlc;
 
 fn read_first_i32(plc: &TestPlc) -> i32 {
     i32::from_le_bytes(plc.read_retain()[..4].try_into().unwrap())
@@ -686,8 +686,8 @@ fn widening_global_initializer_carries_the_value(mut with_db: db::RootDatabase) 
 // known_bug_* pins asserting silent zeros.
 // ---------------------------------------------------------------------------
 
-/// `:= a` (a non-CONSTANT global) is refused: E0401 lives in the semantics
-/// suite (`semantics::initializers`); here only the positive halves remain.
+/// `:= a` (a non-CONSTANT global) is refused: E0401 lives in the hir
+/// suite (`hir::initializers`); here only the positive halves remain.
 #[rstest]
 fn global_init_from_constant_folds(mut with_db: db::RootDatabase) {
     let source = r#"
@@ -833,7 +833,7 @@ fn type_default_with_const_arithmetic_applies(mut with_db: db::RootDatabase) {
 /// A TYPE default referencing a config CONSTANT is REFUSED (E0401): a TYPE
 /// has no view into a CONFIGURATION's scope, so the reference cannot fold
 /// once-per-type. (It used to read silent zeros at both hosts.) The refusal
-/// itself is pinned in `semantics::initializers`; this pins that the
+/// itself is pinned in `hir::initializers`; this pins that the
 /// FOLDABLE spelling works end to end.
 #[rstest]
 fn type_default_constant_arith_reaches_both_hosts(mut with_db: db::RootDatabase) {
@@ -871,7 +871,7 @@ fn type_default_constant_arith_reaches_both_hosts(mut with_db: db::RootDatabase)
 // Arrays: an initializer converts each LITERAL to the element type, a copy
 // between two arrays moves bytes and so is only allowed between the SAME
 // element type (the refusal is `an_array_does_not_widen_its_elements` in
-// semantics::initializers — five E0301, one per door), and a value READ
+// hir::initializers — five E0301, one per door), and a value READ
 // out of an element widens like any scalar. The last one was a MIR bug:
 // the assignment typed its source by the bare path — the ARRAY — so the
 // cast was skipped and `r := a[i]` stored an i32 where the f32 was expected.
@@ -919,7 +919,10 @@ fn array_copy_between_same_element_types(mut with_db: db::RootDatabase) {
         END_FUNCTION
     "#;
     let result: i32 = crate::tests::codegen::run(&mut with_db, source, "f", ());
-    assert_eq!(result, 33, "both copies hold 3 after the source element was cleared");
+    assert_eq!(
+        result, 33,
+        "both copies hold 3 after the source element was cleared"
+    );
 }
 
 /// An element READ widens into a wider scalar or element: REAL, LREAL, and
@@ -970,7 +973,10 @@ fn string_array_elements_compare_as_strings(mut with_db: db::RootDatabase) {
         END_FUNCTION
     "#;
     let result: i32 = crate::tests::codegen::run(&mut with_db, source, "f", ());
-    assert_eq!(result, 11, "literal match and ordering hold; distinct elements are not equal");
+    assert_eq!(
+        result, 11,
+        "literal match and ordering hold; distinct elements are not equal"
+    );
 }
 
 /// A named struct type with its own partial default overlays the base

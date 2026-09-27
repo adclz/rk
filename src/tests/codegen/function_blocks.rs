@@ -1180,7 +1180,10 @@ fn fb_var_state_still_persists_across_calls(mut with_db: db::RootDatabase) {
         END_FUNCTION
     "#;
     let r: i32 = super::run(&mut with_db, source, "entry", ());
-    assert_eq!(r, 3, "FB VAR is instance state and must survive invocations");
+    assert_eq!(
+        r, 3,
+        "FB VAR is instance state and must survive invocations"
+    );
 }
 
 /// `THIS.` paths that end at an ELEMENT rather than a bare member — an array
@@ -1344,7 +1347,10 @@ fn test_st_method_interface_forwards_to_function(mut with_db: db::RootDatabase) 
         END_FUNCTION
     "#;
     let result: i32 = super::run(&mut with_db, source, "test", ());
-    assert_eq!(result, 2, "Caller#Go$C -> leaf$C chain mutates the shared instance");
+    assert_eq!(
+        result, 2,
+        "Caller#Go$C -> leaf$C chain mutates the shared instance"
+    );
 }
 
 /// TRANSITIVE, function -> method: a specialized FUNCTION forwards its interface
@@ -1384,7 +1390,10 @@ fn test_st_function_interface_forwards_to_method(mut with_db: db::RootDatabase) 
         END_FUNCTION
     "#;
     let result: i32 = super::run(&mut with_db, source, "test", ());
-    assert_eq!(result, 2, "mid$C -> Holder#Bump$C chain mutates the shared instance");
+    assert_eq!(
+        result, 2,
+        "mid$C -> Holder#Bump$C chain mutates the shared instance"
+    );
 }
 
 /// An FB passes ITSELF to a collaborator taking an interface parameter:
@@ -1421,7 +1430,10 @@ fn test_fb_passes_this_to_interface_param(mut with_db: db::RootDatabase) {
         END_FUNCTION
     "#;
     let result: i32 = super::run(&mut with_db, source, "test", ());
-    assert_eq!(result, 12, "THIS reaches drive$Worker -> Worker#Run on the same instance");
+    assert_eq!(
+        result, 12,
+        "THIS reaches drive$Worker -> Worker#Run on the same instance"
+    );
 }
 
 /// An FB instance passed to a VAR_IN_OUT of its own type is handed over BY
@@ -1451,7 +1463,10 @@ fn test_fb_instance_passed_by_reference(mut with_db: db::RootDatabase) {
         END_FUNCTION
     "#;
     let result: i32 = super::run(&mut with_db, source, "test", ());
-    assert_eq!(result, 2, "both calls mutated the CALLER's instance, so no copy was made");
+    assert_eq!(
+        result, 2,
+        "both calls mutated the CALLER's instance, so no copy was made"
+    );
 }
 
 /// Two distinct instances passed to the same VAR_IN_OUT stay distinct: each
@@ -1541,7 +1556,10 @@ fn test_output_binding_widens_with_sign(mut with_db: db::RootDatabase) {
         END_FUNCTION
     "#;
     let result: i32 = super::run(&mut with_db, source, "test", ());
-    assert_eq!(result, -7, "the INT output sign-extends into the DINT destination");
+    assert_eq!(
+        result, -7,
+        "the INT output sign-extends into the DINT destination"
+    );
 }
 
 /// A `=>` destination in ANOTHER lane converts in the copy. The copy used
@@ -1569,7 +1587,10 @@ fn test_output_binding_converts_across_lanes(mut with_db: db::RootDatabase) {
     let f: f64 = super::execute_wasm(&wasm, "floats", ());
     assert_eq!(f, 2470.0, "2.5 into LREAL (2500) and -3 into LREAL (-30)");
     let i: i64 = super::execute_wasm(&wasm, "ints", ());
-    assert_eq!(i, -1_000_000_003, "-1 into LINT, -3 over a preset DINT slot (no stale bytes)");
+    assert_eq!(
+        i, -1_000_000_003,
+        "-1 into LINT, -3 over a preset DINT slot (no stale bytes)"
+    );
 }
 
 /// FB inputs evaluate in DECLARATION order too — the FUNCTION twin is
@@ -1623,5 +1644,8 @@ fn written_input_persists_when_the_next_call_omits_it(mut with_db: db::RootDatab
         END_FUNCTION
     "#;
     let result: i32 = super::run(&mut with_db, source, "test", ());
-    assert_eq!(result, 11, "supplied input overwrites; omitted input persists");
+    assert_eq!(
+        result, 11,
+        "supplied input overwrites; omitted input persists"
+    );
 }

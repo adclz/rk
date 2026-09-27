@@ -591,11 +591,7 @@ impl TestPlc {
     pub fn write_located(&mut self, address: &str, bytes: &[u8]) -> Result<()> {
         let entry = self.located(address)?.clone();
         if bytes.len() > entry.size as usize {
-            bail!(
-                "{address} holds {} bytes, not {}",
-                entry.size,
-                bytes.len()
-            );
+            bail!("{address} holds {} bytes, not {}", entry.size, bytes.len());
         }
         let Some(part) = &entry.part_of else {
             return self.write_bytes(entry.addr, bytes);
@@ -740,7 +736,11 @@ fn global_i32(store: &mut Store<()>, instance: &Instance, name: &str) -> Result<
 
 /// All-ones for the low `width` bits.
 fn low_mask(width: u16) -> u64 {
-    if width >= 64 { u64::MAX } else { (1u64 << width) - 1 }
+    if width >= 64 {
+        u64::MAX
+    } else {
+        (1u64 << width) - 1
+    }
 }
 
 fn global_i32_opt(store: &mut Store<()>, instance: &Instance, name: &str) -> Option<i32> {

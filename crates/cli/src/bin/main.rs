@@ -1,8 +1,8 @@
 use std::process::ExitCode;
 
+use clap::{CommandFactory, Parser};
 use rk::cli::Args;
 use rk::error::CliResult;
-use clap::{CommandFactory, Parser};
 
 fn main() -> ExitCode {
     rk::restore_sigpipe();

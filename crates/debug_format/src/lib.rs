@@ -912,7 +912,10 @@ mod tests {
             global: true,
             named_type: None,
         };
-        assert_eq!(rmp_serde::to_vec(&plain).unwrap(), rmp_serde::to_vec(&v7).unwrap());
+        assert_eq!(
+            rmp_serde::to_vec(&plain).unwrap(),
+            rmp_serde::to_vec(&v7).unwrap()
+        );
 
         let bits = SymBits { shift: 8, width: 8 };
         let part = Symbol {
@@ -925,7 +928,10 @@ mod tests {
         assert_eq!(back, part);
 
         let cell = 0x0000_8001u32.to_le_bytes();
-        assert_eq!(decode(SymType::SInt, &bits.extract(&cell)), VarValue::I8(-128));
+        assert_eq!(
+            decode(SymType::SInt, &bits.extract(&cell)),
+            VarValue::I8(-128)
+        );
         let forced = bits.replace(&cell, &encode(SymType::SInt, VarValue::I8(5)).unwrap());
         assert_eq!(forced, 0x0000_0501u32.to_le_bytes(), "the low byte kept");
     }

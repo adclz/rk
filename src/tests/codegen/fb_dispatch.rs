@@ -45,7 +45,11 @@ fn constant_subscript_calls_that_element(
     "#
     );
     let result: i32 = run(&mut with_db, &source, "run", ());
-    assert_eq!(result, e0 * 10000 + e1 * 100 + e2, "cells[{which}]() ran the wrong element");
+    assert_eq!(
+        result,
+        e0 * 10000 + e1 * 100 + e2,
+        "cells[{which}]() ran the wrong element"
+    );
 }
 
 /// A runtime subscript takes the dynamic path — the address is computed into a
@@ -112,7 +116,10 @@ fn call_on_a_function_block_member(mut with_db: db::RootDatabase) {
     "#
     );
     let result: i32 = run(&mut with_db, &source, "run", ());
-    assert_eq!(result, 201, "a ticked twice, b once — and they are distinct");
+    assert_eq!(
+        result, 201,
+        "a ticked twice, b once — and they are distinct"
+    );
 }
 
 /// Two levels of member access, and an array of FBs held as a member.
@@ -171,7 +178,10 @@ fn inputs_and_outputs_follow_the_subscript(mut with_db: db::RootDatabase) {
         END_FUNCTION
     "#;
     let result: i32 = run(&mut with_db, source, "run", ());
-    assert_eq!(result, 42, "the input and the output both landed on element 2");
+    assert_eq!(
+        result, 42,
+        "the input and the output both landed on element 2"
+    );
 }
 
 /// An FB instance held in a VAR_GLOBAL: the receiver is a `Global` place, which

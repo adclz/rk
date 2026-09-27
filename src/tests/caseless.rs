@@ -3,7 +3,7 @@
 //!
 //! The tests are here rather than beside each feature because the property is
 //! ONE property: a name written in another case is the same name, wherever it
-//! is written. Spread across `codegen/enums.rs`, `semantics/duplicates.rs` and
+//! is written. Spread across `codegen/enums.rs`, `hir/duplicates.rs` and
 //! the rest, that reads as a dozen unrelated quirks; together it reads as the
 //! rule, and a gap in it is visible.
 //!
@@ -34,7 +34,6 @@ use db::RootDatabase;
 use insta::assert_snapshot;
 use rstest::*;
 use std::path::{Path, PathBuf};
-
 
 // ---------------------------------------------------------------------------
 // Guards
@@ -105,9 +104,16 @@ fn compares_names(line: &str) -> bool {
     if trimmed.starts_with("//") || trimmed.starts_with("///") {
         return false;
     }
-    ["get_name_ident(db)", ".name(db)", ".ident", ".name", "name ==", "ident =="]
-        .iter()
-        .any(|needle| line.contains(needle))
+    [
+        "get_name_ident(db)",
+        ".name(db)",
+        ".ident",
+        ".name",
+        "name ==",
+        "ident ==",
+    ]
+    .iter()
+    .any(|needle| line.contains(needle))
 }
 
 fn rust_files(dir: &Path, out: &mut Vec<PathBuf>) {
@@ -182,7 +188,10 @@ fn no_stale_exemptions() {
 
     let stale: Vec<String> = ALLOWED
         .iter()
-        .filter(|a| !all.iter().any(|text| text.lines().any(|l| l.trim() == a.line)))
+        .filter(|a| {
+            !all.iter()
+                .any(|text| text.lines().any(|l| l.trim() == a.line))
+        })
         .map(|a| format!("{}\n      exempt because: {}", a.line, a.why))
         .collect();
 
@@ -192,7 +201,6 @@ fn no_stale_exemptions() {
         stale.join("\n  ")
     );
 }
-
 
 // ---------------------------------------------------------------------------
 // Resolution
@@ -348,7 +356,6 @@ fn slice_size_is_case_insensitive(mut with_db: db::RootDatabase) {
     ---'
     ");
 }
-
 
 // ---------------------------------------------------------------------------
 // Execution
@@ -530,7 +537,6 @@ fn a_monitoring_path_is_not_case_sensitive(mut with_db: db::RootDatabase) {
         );
     }
 }
-
 
 // ---------------------------------------------------------------------------
 // Formatting
@@ -761,8 +767,14 @@ END_FUNCTION
 
     // The formatter must have done something; identical-but-untouched would
     // satisfy the comparison below for the wrong reason.
-    assert_ne!(lower, LOWER, "the formatter left the lower case source untouched");
-    assert_ne!(upper, UPPER, "the formatter left the upper case source untouched");
+    assert_ne!(
+        lower, LOWER,
+        "the formatter left the lower case source untouched"
+    );
+    assert_ne!(
+        upper, UPPER,
+        "the formatter left the upper case source untouched"
+    );
 
     assert_eq!(
         lower.to_ascii_lowercase(),

@@ -11,9 +11,7 @@ use db::WorkspaceDataBase;
 use hir::{
     Qualifier,
     hir_def::{
-        config::ConfigDecl,
-        interned::identifier::Ident,
-        pous::variable::VariableKind,
+        config::ConfigDecl, interned::identifier::Ident, pous::variable::VariableKind,
         program::ProgramDecl,
     },
     hir_ty::{config::infer_config_result, infer::Infer, ty::Type},
@@ -144,8 +142,11 @@ pub fn lower_schedule<'db>(
 ) -> Result<Option<MirSchedule>, crate::lower::lower_type::LowerTypeError> {
     // HIR resolved what runs; lowering gives each instance memory and
     // expresses periods against one tick counter.
-    let mut pending: Vec<(Ident, &hir::hir_ty::config::ResolvedTask<'db>, Vec<MirProgInstance>)> =
-        Vec::new();
+    let mut pending: Vec<(
+        Ident,
+        &hir::hir_ty::config::ResolvedTask<'db>,
+        Vec<MirProgInstance>,
+    )> = Vec::new();
     // Each instance's base and program, for the function blocks a task runs
     // inside it; that task may come before the instance's own.
     let mut bases: FxHashMap<Ident, (u32, &ProgramInfo<'db>)> = FxHashMap::default();
@@ -352,7 +353,6 @@ fn type_has_retain<'db>(
                     || type_has_retain(db, v.spec(db).infer(db), visited))
         })
 }
-
 
 fn gcd(a: u64, b: u64) -> u64 {
     if b == 0 { a } else { gcd(b, a % b) }

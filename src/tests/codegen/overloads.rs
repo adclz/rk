@@ -103,7 +103,10 @@ fn indexed_argument_dispatches_to_the_right_overload(mut with_db: db::RootDataba
         END_FUNCTION
     "#;
     let result: i32 = super::run(&mut with_db, source, "test", ());
-    assert_eq!(result, 12, "INT element -> overload 1, DINT element -> overload 2");
+    assert_eq!(
+        result, 12,
+        "INT element -> overload 1, DINT element -> overload 2"
+    );
 }
 
 /// RETURN-directed overloads emit as DISTINCT wasm functions and each call

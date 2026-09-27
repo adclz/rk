@@ -130,5 +130,8 @@ fn a_relative_namespace_path_binds_to_the_nearest_match(mut with_db: db::RootDat
         END_FUNCTION
     "#;
     let result: i32 = super::run(&mut with_db, source, "test", ());
-    assert_eq!(result, 112, "1 (Lib.Impl) * 100 + 10 (still Lib.Impl two levels down) + 2 (top-level Impl)");
+    assert_eq!(
+        result, 112,
+        "1 (Lib.Impl) * 100 + 10 (still Lib.Impl two levels down) + 2 (top-level Impl)"
+    );
 }

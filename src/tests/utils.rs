@@ -206,10 +206,57 @@ pub fn test_library_diagnostics<'db>(
         .join("\n")
 }
 
+/// The diagnostics of `source`, rendered. When `rk check` would accept the
+/// workspace, it must also compile: an empty snapshot says the compiler
+/// takes the program, and `rk compile` goes on to lower it. Two of the
+/// fuzzer's first findings were empty snapshots here that nothing had
+/// ever compiled.
 pub fn test_diagnostics<'db>(db: &'db mut RootDatabase, source: &'db [&'db str]) -> String {
+    add_sources(db, source);
+    let db: &'db RootDatabase = db;
+    let mut out = vec![];
+    for file in workspace_files(db) {
+        write_reports(db, file, diagnostics_for_file(db, file), &mut out);
+    }
+    assert_accepted_workspace_compiles(db);
+    trimmed(out)
+}
+
+/// [`test_diagnostics`] without the compilation, for a source `rk check`
+/// accepts that does not compile yet. Each caller says what breaks; once it
+/// is fixed, the caller goes back to [`test_diagnostics`].
+pub fn test_diagnostics_not_compiled<'db>(
+    db: &'db mut RootDatabase,
+    source: &'db [&'db str],
+) -> String {
     test_snapshot(db, source, |db, file| {
         diagnostics_for_file(db, file).as_ref().clone()
     })
+}
+
+/// Lower, emit and validate the workspace, as `rk compile` does, unless a
+/// file (library ones included) has an error.
+fn assert_accepted_workspace_compiles(db: &RootDatabase) {
+    let files = rk::file_order::ordered_files_with_libraries(db);
+    let rejected = files.iter().any(|file| {
+        diagnostics_for_file(db, *file).iter().any(|d| {
+            matches!(
+                d.diagnostic.severity,
+                Some(DiagnosticSeverity::ERROR) | None
+            )
+        })
+    });
+    if rejected {
+        return;
+    }
+    let indices: Vec<_> = files.iter().map(|file| semantic_index(db, *file)).collect();
+    let module = mir::lower::lower_module::lower_modules(db, &indices).unwrap_or_else(|e| {
+        panic!("`rk check` accepts this workspace, but it does not lower: {e}")
+    });
+    let wasm = wasm_codegen::generate_wasm(db, &module).finish();
+    if let Err(e) = wasmparser::validate(&wasm) {
+        panic!("`rk check` accepts this workspace, but its module is invalid: {e}");
+    }
 }
 
 /// [`test_diagnostics`] over whatever `diag_fn` reports for each file, for the

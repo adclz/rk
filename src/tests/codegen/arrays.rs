@@ -247,7 +247,10 @@ fn array_subscript_containing_a_call(mut with_db: db::RootDatabase) {
         END_FUNCTION
     "#;
     let result: i32 = super::run(&mut with_db, source, "run", ());
-    assert_eq!(result, 7, "the subscript's call resolves on both load and store");
+    assert_eq!(
+        result, 7,
+        "the subscript's call resolves on both load and store"
+    );
 }
 
 /// An out-of-bounds subscript is DENIED at runtime: the access raises an IEC
@@ -311,7 +314,9 @@ fn an_out_of_bounds_read_faults_too(mut with_db: db::RootDatabase) {
     let f = instance
         .get_typed_func::<(), i32>(&mut store, "run")
         .unwrap();
-    let err = f.call(&mut store, ()).expect_err("a[5] on [0..2] must fault");
+    let err = f
+        .call(&mut store, ())
+        .expect_err("a[5] on [0..2] must fault");
     // A named fault, not a raw trap: if reads ever faulted through a
     // different path, `is_err()` alone would pass while the user got
     // "thrown Wasm exception".

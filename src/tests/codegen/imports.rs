@@ -157,7 +157,10 @@ END_FUNCTION
                 "host",
                 "send-pt",
                 |mut caller: wasmtime::Caller<'_, ()>, p: i32| -> i32 {
-                    let m = caller.get_export("memory").and_then(|e| e.into_memory()).unwrap();
+                    let m = caller
+                        .get_export("memory")
+                        .and_then(|e| e.into_memory())
+                        .unwrap();
                     let mut b = [0u8; 8];
                     m.read(&caller, p as usize, &mut b).unwrap();
                     let x = i32::from_le_bytes(b[0..4].try_into().unwrap());
@@ -194,7 +197,10 @@ END_FUNCTION
                 "host",
                 "pick",
                 |mut caller: wasmtime::Caller<'_, ()>, p: i32| -> i32 {
-                    let m = caller.get_export("memory").and_then(|e| e.into_memory()).unwrap();
+                    let m = caller
+                        .get_export("memory")
+                        .and_then(|e| e.into_memory())
+                        .unwrap();
                     let mut b = [0u8; 4];
                     m.read(&caller, p as usize + 4, &mut b).unwrap();
                     i32::from_le_bytes(b)
@@ -241,7 +247,11 @@ END_FUNCTION
             _ => {}
         }
     }
-    assert_eq!(recv_params, Some(2), "a STRING VAR_INPUT is (ptr, len) on the wire");
+    assert_eq!(
+        recv_params,
+        Some(2),
+        "a STRING VAR_INPUT is (ptr, len) on the wire"
+    );
 }
 
 #[rstest]
@@ -262,7 +272,9 @@ END_FUNCTION
     "#;
     let wasm_bytes = compile_to_wasm(&mut with_db, source);
     let r: i32 = execute_wasm_with_imports(&wasm_bytes, "drive3", (), |linker| {
-        linker.func_wrap("host", "shared", |x: i32| -> i32 { x * 2 }).unwrap();
+        linker
+            .func_wrap("host", "shared", |x: i32| -> i32 { x * 2 })
+            .unwrap();
     });
     assert_eq!(r, 24, "both callers reach the one host function");
 }
@@ -332,7 +344,9 @@ END_FUNCTION
     let wasm_bytes = compile_to_wasm(&mut with_db, source);
     let r: i32 = execute_wasm_with_imports(&wasm_bytes, "drive6", (), |linker| {
         linker
-            .func_wrap("rt", "probe", |_ch: i32| -> (i32, i32, i32) { (1, 0xFD, 9) })
+            .func_wrap("rt", "probe", |_ch: i32| -> (i32, i32, i32) {
+                (1, 0xFD, 9)
+            })
             .unwrap();
     });
     assert_eq!(r, 0xFD08, "bit 3 set, the high byte replaced");

@@ -19,7 +19,10 @@ use hir::{
         semantic_index::get_scope,
     },
     hir_ty::{
-        head::{inheritance::{MethodRef, instance_members}, signature::infer_signature},
+        head::{
+            inheritance::{MethodRef, instance_members},
+            signature::infer_signature,
+        },
         ty::Type,
     },
     query_string::query::Query,
@@ -300,7 +303,12 @@ pub fn build_call_signature<'db>(
             .filter(|m| m.var.is_input(db) || m.var.is_output(db) || m.var.is_in_out(db))
             .map(|m| m.var)
             .collect(),
-        _ => scope.def_map(db).local_variables.values().copied().collect(),
+        _ => scope
+            .def_map(db)
+            .local_variables
+            .values()
+            .copied()
+            .collect(),
     };
     let is_multiline = variables.len() >= 5;
     let (sep, tab, join_sep) = if is_multiline {

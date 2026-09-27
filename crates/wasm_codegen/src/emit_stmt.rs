@@ -238,28 +238,34 @@ fn emit_stmt(func: &mut wasm_encoder::Function, stmt: &MirStmt, ctx: &Ctx) {
                         MirCasePattern::Value(val) => {
                             emit_expr(func, selector, ctx.locals, ctx.fn_indices);
                             emit_constant_expr(func, val);
-                            func.instruction(&(if wide(val) {
-                                Instruction::I64Eq
-                            } else {
-                                Instruction::I32Eq
-                            }));
+                            func.instruction(
+                                &(if wide(val) {
+                                    Instruction::I64Eq
+                                } else {
+                                    Instruction::I32Eq
+                                }),
+                            );
                         }
                         MirCasePattern::Range { lower, upper } => {
                             let w = wide(lower) || wide(upper);
                             emit_expr(func, selector, ctx.locals, ctx.fn_indices);
                             emit_constant_expr(func, lower);
-                            func.instruction(&(if w {
-                                Instruction::I64GeS
-                            } else {
-                                Instruction::I32GeS
-                            }));
+                            func.instruction(
+                                &(if w {
+                                    Instruction::I64GeS
+                                } else {
+                                    Instruction::I32GeS
+                                }),
+                            );
                             emit_expr(func, selector, ctx.locals, ctx.fn_indices);
                             emit_constant_expr(func, upper);
-                            func.instruction(&(if w {
-                                Instruction::I64LeS
-                            } else {
-                                Instruction::I32LeS
-                            }));
+                            func.instruction(
+                                &(if w {
+                                    Instruction::I64LeS
+                                } else {
+                                    Instruction::I32LeS
+                                }),
+                            );
                             func.instruction(&Instruction::I32And);
                         }
                     }
@@ -304,16 +310,15 @@ fn emit_stmt(func: &mut wasm_encoder::Function, stmt: &MirStmt, ctx: &Ctx) {
             };
             let ctrl_ty = mir::types::MirType::Elementary(*control_type);
             // Load the counter onto the stack.
-            let ctrl_load =
-                |func: &mut wasm_encoder::Function, ctx: &Ctx| match ctrl_local {
-                    Some(idx) => {
-                        func.instruction(&Instruction::LocalGet(idx));
-                    }
-                    None => {
-                        emit_addr_of(func, control, ctx.locals, ctx.fn_indices);
-                        emit_typed_mem_load(func, &ctrl_ty);
-                    }
-                };
+            let ctrl_load = |func: &mut wasm_encoder::Function, ctx: &Ctx| match ctrl_local {
+                Some(idx) => {
+                    func.instruction(&Instruction::LocalGet(idx));
+                }
+                None => {
+                    emit_addr_of(func, control, ctx.locals, ctx.fn_indices);
+                    emit_typed_mem_load(func, &ctrl_ty);
+                }
+            };
 
             // A memory-resident counter needs its address below the value.
             match ctrl_local {

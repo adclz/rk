@@ -72,7 +72,10 @@ fn diagnostics_across_formatting(source: &str) -> (String, String) {
         let mut db = RootDatabase::default();
         test_diagnostics(&mut db, &[&formatted]).to_string()
     };
-    (diagnostic_identities(&before), diagnostic_identities(&after))
+    (
+        diagnostic_identities(&before),
+        diagnostic_identities(&after),
+    )
 }
 
 /// Assert that formatting `source` left its meaning alone, printing the

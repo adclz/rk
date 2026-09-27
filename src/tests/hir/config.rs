@@ -1756,11 +1756,7 @@ fn resolved_schedule(db: &RootDatabase) -> String {
 
     /// Nanoseconds back in the units the source wrote them in.
     fn duration(ns: u64) -> String {
-        for (unit, per) in [
-            ("s", 1_000_000_000u64),
-            ("ms", 1_000_000),
-            ("us", 1_000),
-        ] {
+        for (unit, per) in [("s", 1_000_000_000u64), ("ms", 1_000_000), ("us", 1_000)] {
             if ns.is_multiple_of(per) {
                 return format!("{}{unit}", ns / per);
             }
@@ -1989,7 +1985,7 @@ END_CONFIGURATION
 /// A located global is reachable by its own name — the `AT` clause is not
 /// part of it — and the address binds it to the input band, so the whole
 /// declaration checks clean. The location itself is exercised in
-/// `semantics::direct_variables`.
+/// `hir::direct_variables`.
 #[rstest]
 fn a_located_global_is_named_by_its_identifier(mut with_db: RootDatabase) {
     let source = r#"

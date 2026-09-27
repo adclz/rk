@@ -138,12 +138,17 @@ mod tests {
         let all = weight(&mut combined.iter().copied());
 
         for (name, bytes) in &sizes {
-            assert!(*bytes <= ONE, "{name} grafts {bytes} bytes, over {ONE}: {sizes:?}");
+            assert!(
+                *bytes <= ONE,
+                "{name} grafts {bytes} bytes, over {ONE}: {sizes:?}"
+            );
         }
-        assert!(all <= ALL, "the ten together graft {all} bytes, over {ALL}: {sizes:?}");
+        assert!(
+            all <= ALL,
+            "the ten together graft {all} bytes, over {ALL}: {sizes:?}"
+        );
     }
 }
-
 
 #[cfg(test)]
 mod parity {

@@ -4,8 +4,8 @@
 
 use divan::Bencher;
 use hir::hir_def::semantic_index::semantic_index;
-use rk_benchmark::{STDLIB_EXPECTED_DIAGNOSTICS, check_all, setup_db, stdlib_corpus};
 use mir::lower::lower_module::lower_modules;
+use rk_benchmark::{STDLIB_EXPECTED_DIAGNOSTICS, check_all, setup_db, stdlib_corpus};
 
 #[divan::bench(sample_count = 10, sample_size = 1)]
 fn mir_lower(bencher: Bencher) {

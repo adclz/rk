@@ -149,12 +149,20 @@ fn resolve_all(
 /// Reported via `window/showMessage`.
 #[derive(Clone, Debug)]
 pub enum ConfigurationNotice {
-    InvalidWorkspaceUri { uri: Url },
-    ConfigFileNotFound { path: PathBuf },
+    InvalidWorkspaceUri {
+        uri: Url,
+    },
+    ConfigFileNotFound {
+        path: PathBuf,
+    },
     /// Nothing named a library and none was found beside the executable.
-    LibraryNotFound { probed: Vec<PathBuf> },
+    LibraryNotFound {
+        probed: Vec<PathBuf>,
+    },
     /// `RK_STDLIB_PATH` is set to something that is not a readable directory.
-    LibraryPathInvalid { value: String },
+    LibraryPathInvalid {
+        value: String,
+    },
 }
 
 impl Display for ConfigurationNotice {

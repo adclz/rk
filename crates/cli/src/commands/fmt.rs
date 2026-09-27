@@ -86,7 +86,12 @@ fn first_diff_line(source: &str, output: &str) -> u32 {
     }
 }
 
-pub fn run_fmt(workspace: &Path, check: bool, verbose: bool, format: OutputFormat) -> CliResult<()> {
+pub fn run_fmt(
+    workspace: &Path,
+    check: bool,
+    verbose: bool,
+    format: OutputFormat,
+) -> CliResult<()> {
     let workspace = std::fs::canonicalize(workspace).map_err(CliError::msg)?;
 
     let st_files = collect_st_files(&workspace);
@@ -131,7 +136,13 @@ pub fn run_fmt(workspace: &Path, check: bool, verbose: bool, format: OutputForma
                     }
                 } else if check {
                     formatted += 1;
-                    emit_file(format, "unformatted", rel, None, Some(first_diff_line(&source, &output)));
+                    emit_file(
+                        format,
+                        "unformatted",
+                        rel,
+                        None,
+                        Some(first_diff_line(&source, &output)),
+                    );
                 } else if let Err(e) = std::fs::write(path, &output) {
                     emit_file(format, "error", rel, Some(e.to_string()), None);
                     errored += 1;
@@ -181,7 +192,11 @@ pub fn run_fmt(workspace: &Path, check: bool, verbose: bool, format: OutputForma
     } else {
         errored > 0
     };
-    if failed { Err(CliError::Failed) } else { Ok(()) }
+    if failed {
+        Err(CliError::Failed)
+    } else {
+        Ok(())
+    }
 }
 
 fn collect_st_files(dir: &Path) -> Vec<std::path::PathBuf> {

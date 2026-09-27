@@ -60,7 +60,10 @@ fn struct_return_assigned_whole(mut with_db: db::RootDatabase) {
         END_FUNCTION
     "#;
     let result: i32 = run(&mut with_db, source, "run", ());
-    assert_eq!(result, 304, "the WHOLE struct is copied, not its first field");
+    assert_eq!(
+        result, 304,
+        "the WHOLE struct is copied, not its first field"
+    );
 }
 
 /// Both fields must survive the copy — a 4-byte copy of an 8-byte struct
@@ -168,7 +171,10 @@ fn the_caller_owns_a_copy_not_a_view(mut with_db: db::RootDatabase) {
         END_FUNCTION
     "#;
     let result: i32 = run(&mut with_db, source, "run", ());
-    assert_eq!(result, 1289, "p keeps 1,2 after the second call writes the slot");
+    assert_eq!(
+        result, 1289,
+        "p keeps 1,2 after the second call writes the slot"
+    );
 }
 
 /// An FB METHOD returning a struct — a different lowering path from a free
@@ -289,7 +295,10 @@ fn call_result_passed_directly_to_aggregate_input(mut with_db: db::RootDatabase)
         END_FUNCTION
     "#;
     let result: i32 = run(&mut with_db, source, "run", ());
-    assert_eq!(result, 33, "each arg is its own snapshot of the shared return slot");
+    assert_eq!(
+        result, 33,
+        "each arg is its own snapshot of the shared return slot"
+    );
 }
 
 /// The FB twin: a call result as an aggregate FB input. This arm used to

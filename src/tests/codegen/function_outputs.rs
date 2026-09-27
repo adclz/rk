@@ -427,7 +427,10 @@ fn bound_output_converts_across_lanes(mut with_db: db::RootDatabase) {
     let f: f64 = super::execute_wasm(&wasm, "floats", ());
     assert_eq!(f, 25.0, "2.5 into an LREAL");
     let i: i64 = super::execute_wasm(&wasm, "ints", ());
-    assert_eq!(i, -9, "-1 into a LINT (-10) plus the return value 1, with the value still on the stack under the copies");
+    assert_eq!(
+        i, -9,
+        "-1 into a LINT (-10) plus the return value 1, with the value still on the stack under the copies"
+    );
 }
 
 /// The converted copy reaches MEMORY destinations too — an array element, a
@@ -462,4 +465,3 @@ fn bound_output_converts_into_memory_places_and_from_methods(mut with_db: db::Ro
     let result: f64 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 276.5, "250 + 25 + 1.5");
 }
-

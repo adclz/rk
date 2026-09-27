@@ -6,6 +6,12 @@ license = { workspace = true }
 edition = { workspace = true }
 publish = false
 
+# `cargo fuzz` refuses a manifest without this marker. It is what builds the
+# targets with coverage instrumentation: a plain `cargo build` links libFuzzer
+# but gives it nothing to steer by.
+[package.metadata]
+cargo-fuzz = true
+
 [lib]
 name = "rk_fuzz"
 path = "src/lib.rs"
@@ -15,24 +21,40 @@ anyhow = "1.0"
 ast = { workspace = true }
 hir = { workspace = true }
 db = { workspace = true }
+mir = { workspace = true }
+wasm_codegen = { workspace = true }
+debug_format = { workspace = true }
+linter = { workspace = true }
+ide_diagnostic = { workspace = true }
 auto-lsp = { workspace = true }
 tree-sitter-rk = { workspace = true }
 log = { workspace = true }
 topiary-core = { workspace = true }
 formatter = { workspace = true }
+wasmparser = { workspace = true }
+# The language server's request handlers, as the editor reaches them.
+server = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+# The CLI's own `-O` path: what `rk compile -O` runs, sections re-attached.
+rk = { path = "../cli" }
+# The same wasmtime as `rk test` and the codegen tests: the fuzzer runs what
+# the compiler emits on the host a user runs it on.
+wasmtime = "45.0.1"
 
 # Fuzzing
 libfuzzer-sys = "0.4"
-arbitrary = { version = "1.3", features = ["derive"] }
-
-[dev-dependencies]
-proptest = "1.4"
-thiserror = "1.0"
-tempfile = "3.8"
 
 [[bin]]
 name = "corpus_gen"
 path = "src/main.rs"
+
+# Runs every oracle on .st files and names the one that fails: the
+# reproducer, on the stable toolchain, for a crash file or a hand-written
+# hypothesis.
+[[bin]]
+name = "repro"
+path = "src/bin/repro.rs"
 
 [[bin]]
 name = "fuzz_compiler"
@@ -42,6 +64,24 @@ doc = false
 
 [[bin]]
 name = "fuzz_formatter"
-path = "fuzz_targets/fuzz_formatter_idempotency.rs"
+path = "fuzz_targets/fuzz_formatter.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fuzz_incremental"
+path = "fuzz_targets/fuzz_incremental.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fuzz_semantics"
+path = "fuzz_targets/fuzz_semantics.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fuzz_ide"
+path = "fuzz_targets/fuzz_ide.rs"
 test = false
 doc = false

@@ -1,5 +1,5 @@
 # The compiler's CI: the workspace suite on the three hosts a user installs
-# on, clippy with warnings denied, the standard library's own test suite
+# on, clippy with warnings denied, rustfmt, the standard library's own test suite
 # (plain and optimized), and the site's examples against the compiler.
 #
 # Every job runs on every push and pull request. The caches make an unchanged
@@ -65,6 +65,17 @@ jobs:
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
       - name: Run Clippy
         run: cargo clippy --all-targets --all-features
+
+  # Checked, never applied: run `cargo fmt --all` and commit the result. The
+  # two build.rs outputs are `#[rustfmt::skip]` on their `mod` line, so this
+  # needs no build and the gitignored one need not exist yet.
+  rustfmt:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/rust-toolchain
+      - name: Check formatting
+        run: cargo fmt --all --check
 
   stdlib:
     runs-on: ubuntu-latest

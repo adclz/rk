@@ -126,7 +126,7 @@ END_FUNCTION_BLOCK"#;
 // Both encodings have effectively unlimited range (i32 days covers
 // ±5.8M years), so no error tests are needed — value-correctness only.
 
-use crate::tests::semantics::literals::parse_literal;
+use crate::tests::hir::literals::parse_literal;
 
 #[rstest]
 #[case("D#1970-01-01", 0)]

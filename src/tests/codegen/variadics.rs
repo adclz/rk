@@ -1,7 +1,7 @@
 //! Variadic parameters end to end: a pack is specialized per argument count
 //! unrolls over the parameters that specialization expanded it into.
 //!
-//! The semantics tests next door assert only that HIR accepts a fold — they
+//! The hir tests next door assert only that HIR accepts a fold — they
 //! pass a `test_diagnostics` snapshot and never lower. These run the wasm, so
 //! they are what pins the VALUES a fold computes.
 
@@ -202,7 +202,10 @@ fn comparison_fold_of_one_argument_is_vacuously_true(mut with_db: db::RootDataba
         END_FUNCTION
     "#;
     let result: i32 = super::run(&mut with_db, source, "test", ());
-    assert_eq!(result, 11, "a single element is trivially all-equal and ordered");
+    assert_eq!(
+        result, 11,
+        "a single element is trivially all-equal and ordered"
+    );
 }
 
 /// A pack collects every POSITIONAL argument wherever it sits in the list; a

@@ -23,7 +23,7 @@ cargo nextest run --workspace
 cargo nextest run --workspace --no-fail-fast
 
 # Run a specific test
-cargo test --package rk-tests --lib -- tests::semantics::array::valid_array --exact --nocapture
+cargo test --package rk-tests --lib -- tests::hir::array::valid_array --exact --nocapture
 
 # Review insta snapshots after test changes
 cargo insta review
@@ -138,9 +138,11 @@ cargo run --bin rk -- check --workspace <workspace_path>
 # (what `rk test -O` optimizes) always has the test wrappers' `try_table`, and
 # a release one has it as soon as the program can raise.
 
-# Fuzz testing
-cargo +nightly build --release --manifest-path crates/fuzz/Cargo.toml --bin fuzz_compiler
-cargo +nightly build --release --manifest-path crates/fuzz/Cargo.toml --bin fuzz_formatter
+# Fuzz testing: CI runs it nightly. The ASan build of the whole workspace
+# needs more memory than a laptop has to spare; do not run it locally.
+# `repro` runs the same oracles on files, on the stable toolchain.
+cargo +nightly fuzz run --fuzz-dir crates/fuzz --debug-assertions fuzz_compiler crates/fuzz/corpus/fuzz_compiler
+cargo run -p rk-fuzz --bin repro -- <file.st or crash file>
 ```
 
 ## Workspace Structure
@@ -181,7 +183,7 @@ cli (binary `rk`) — check, compile, test, fmt, explain, env
 | `linter`                  | `crates/linter`         | Lint rules (L-codes) over HIR.                                                                                          |
 | `benchmark`               | `crates/benchmark`      | Divan benchmarks over the stdlib corpus, with diagnostic baselines.                                                     |
 | `doc`                     | `crates/doc`            | Site generator's front half: verifies `skills/`, `crates/doc/examples/`, `docs/` and `site/pages/` against the compiler, pre-renders their code, and writes what Zola (`site/`) renders. |
-| `fuzz`                    | `crates/fuzz`           | Fuzz testing targets for the compiler and formatter.                                                                    |
+| `fuzz`                    | `crates/fuzz`           | Fuzz targets (compiler, formatter, incremental edits, generated programs' values, LSP requests), their oracles, `repro`. |
 | `vscode-lsp-server`       | `vscode/server`         | VSCode extension LSP server binary (thin wrapper over `server` crate).                                                  |
 
 ### Root Package
@@ -295,7 +297,7 @@ The grammar (`crates/tree-sitter/grammar.js`, ~1900 lines) follows the IEC 61131
 ### Test Location
 
 All integration tests live in `src/tests/`:
-- `semantics/` — Type checking, diagnostics, error reporting (~30 test modules)
+- `hir/` — Type checking, diagnostics, error reporting (~40 test modules)
 - `lsp/` — LSP features: hover, document symbols, formatter, semantic tokens, inlay hints, implementations
 - `completions/` — Completion items: body, head, call signatures, fly imports, field, using, query scope
 - `codegen/` — WASM codegen + execution tests (compile IEC → MIR → wasm, run on the wasmtime harness): value passing, inout, retain bands, enums, strings, debug symbols, scheduling. Helpers (`compile_to_wasm`, `compile_to_mir_and_wasm`, `execute_wasm`, `TestPlc`, `run_tests`) live in `codegen/harness.rs`
@@ -333,7 +335,7 @@ Key helpers from `src/tests/utils.rs`:
 ### Snapshot Conventions
 
 - Always use **inline snapshots** (`@r"..."` or `@r#"..."#`)
-- Empty snapshot `@r""` means "no errors expected" (valid code test)
+- Empty snapshot `@r""` means "no errors expected" (valid code test). `test_diagnostics` then also lowers, emits and validates the workspace: an accepted program must compile
 - Diagnostic snapshots include ariadne-rendered output with error codes, source annotations, and carets
 - LSP feature tests use `assert_debug_snapshot!` for structured responses
 - After modifying tests, run `cargo insta review` to accept/reject snapshot changes
@@ -370,9 +372,9 @@ toolchain pinned by `rust-toolchain.toml` through the composite action in
 
 | Workflow      | Trigger                                              | What it does                                                                                                                                                                                                                                                                       |
 | ------------- | ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ci`          | Push to main, PR, manual                             | `test`: `cargo nextest run --workspace --profile ci` on Linux, macOS and Windows. `clippy`: `-Dwarnings`. `stdlib`: the stdlib's own suite, plain and `-O z` on Binaryen 131. `notices`: `THIRD-PARTY-NOTICES` matches a fresh `cargo about` run. `site`: examples vs compiler, `diagnostics.json` freshness, Worker bundle |
+| `ci`          | Push to main, PR, manual                             | `test`: `cargo nextest run --workspace --profile ci` on Linux, macOS and Windows. `clippy`: `-Dwarnings`. `rustfmt`: `cargo fmt --all --check`. `stdlib`: the stdlib's own suite, plain and `-O z` on Binaryen 131. `notices`: `THIRD-PARTY-NOTICES` matches a fresh `cargo about` run. `site`: examples vs compiler, `diagnostics.json` freshness, Worker bundle |
 | `tree-sitter` | Push/PR touching `crates/tree-sitter/**`             | `tree-sitter test` + `tree-sitter fuzz`                                                                                                                                                                                                                                            |
-| `fuzzing`     | Daily at 02:00 UTC, manual                           | Builds and runs the compiler and formatter fuzzers for 30 min each; crashes are uploaded as artifacts and fail the run                                                                                                                                                             |
+| `fuzzing`     | Daily at 02:00 UTC, manual                           | `cargo fuzz` runs the five targets for 30 min each on a corpus kept between nights; `triage` replays the crashes with `repro`, groups them in the run summary, and fails the run                                                                                                   |
 | `codspeed`    | Push to main, PR                                     | Benchmarks under CodSpeed                                                                                                                                                                                                                                                          |
 | `site`        | Push to main touching skills, crates, stdlib or site | Builds the website and deploys the Cloudflare Worker                                                                                                                                                                                                                               |
 

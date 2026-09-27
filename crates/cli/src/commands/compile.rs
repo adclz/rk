@@ -68,8 +68,7 @@ fn compile_once(
         .and_then(|s| s.opt_level.as_deref());
     let level = opts.opt_level.or(config_opt).unwrap_or("2");
 
-    let optimized =
-        optimize_wasm_release(core_bytes, level, verbose).map_err(CliError::msg)?;
+    let optimized = optimize_wasm_release(core_bytes, level, verbose).map_err(CliError::msg)?;
 
     let default_output = crate::compiler::artifact_path(workspace, profile);
     let output = opts.output.unwrap_or(&default_output);

@@ -7,7 +7,7 @@ use crate::tests::utils::{test_single_lint, with_db};
 // L0303 is a *lint* that fires only on FUNCTION_BLOCK / PROGRAM call sites
 // where one or more VAR_INPUT arguments are omitted. The corresponding case
 // on FUNCTION/METHOD callees is the hard error E0802 (covered by
-// `tests::semantics::func_call`), so this lint deliberately stays silent for
+// `tests::hir::func_call`), so this lint deliberately stays silent for
 // those to avoid duplicate diagnostics.
 
 #[rstest]

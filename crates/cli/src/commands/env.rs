@@ -90,12 +90,18 @@ pub fn noted(key: &'static str, value: String, note: impl Into<String>) -> Row {
 /// from printing so the resolution can be asserted.
 pub fn describe(workspace: &Path) -> (Vec<Row>, Vec<std::path::PathBuf>) {
     let mut rows = vec![
-        row("workspace", display_or(workspace.canonicalize().ok().as_deref())),
+        row(
+            "workspace",
+            display_or(workspace.canonicalize().ok().as_deref()),
+        ),
         row(
             "config",
             display_or(db::loader::resolve_config_file(workspace).as_deref()),
         ),
-        row("executable", display_or(std::env::current_exe().ok().as_deref())),
+        row(
+            "executable",
+            display_or(std::env::current_exe().ok().as_deref()),
+        ),
     ];
 
     let lsp = crate::spawn::lsp_binary();

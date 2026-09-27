@@ -608,7 +608,6 @@ END_FUNCTION
     assert_eq!(disc[0], 0, "test_ctu should pass (Ok discriminant)");
 }
 
-
 /// Sub-width arithmetic wraps at the IEC type width: results
 /// are re-normalized into the 8/16-bit domain after each op instead of
 /// escaping into the i32 lane. `USINT 255 + 1` used to evaluate to 256 — a
@@ -661,7 +660,10 @@ fn test_execute_subwidth_cast_normalizes(mut with_db: db::RootDatabase) {
     "#;
     let wasm = compile_to_wasm(&mut with_db, source);
     let r: i32 = super::execute_wasm(&wasm, "to_sint", (200i32,));
-    assert_eq!(r, -56, "INT_TO_SINT(200) truncates to the 8-bit two's-complement -56");
+    assert_eq!(
+        r, -56,
+        "INT_TO_SINT(200) truncates to the 8-bit two's-complement -56"
+    );
 }
 
 /// Binary operators compute in the common WIDER type of both operands
@@ -798,7 +800,10 @@ fn test_execute_subwidth_not_neg_and_more_wraps(mut with_db: db::RootDatabase) {
     let r: i32 = super::execute_wasm(&wasm, "word_not", (0x00FFi32,));
     assert_eq!(r, 0xFF00, "NOT WORD#00FF stays 16-bit");
     let r: i32 = super::execute_wasm(&wasm, "sint_neg", (-128i32,));
-    assert_eq!(r, -128, "-(SINT#-128) wraps to -128, the two's-complement edge");
+    assert_eq!(
+        r, -128,
+        "-(SINT#-128) wraps to -128, the two's-complement edge"
+    );
     let r: i32 = super::execute_wasm(&wasm, "usint_sub", (0i32, 1i32));
     assert_eq!(r, 255, "USINT 0 - 1 wraps to 255");
     let r: i32 = super::execute_wasm(&wasm, "usint_mul", (16i32, 16i32));
@@ -860,7 +865,10 @@ fn float_literals_with_underscores_execute(mut with_db: db::RootDatabase) {
         END_FUNCTION
     "#;
     let result: i32 = super::run(&mut with_db, source, "test", ());
-    assert_eq!(result, 111, "all three literal forms parse to the same values");
+    assert_eq!(
+        result, 111,
+        "all three literal forms parse to the same values"
+    );
 }
 
 /// Binary operands evaluate LEFT-TO-RIGHT — a declared choice, since IEC
@@ -906,7 +914,10 @@ fn test_args_evaluate_in_declaration_order(mut with_db: db::RootDatabase) {
         END_FUNCTION
     "#;
     let r: i32 = super::run(&mut with_db, source, "test", ());
-    assert_eq!(r, 12, "a evaluated first: declaration order, not written order");
+    assert_eq!(
+        r, 12,
+        "a evaluated first: declaration order, not written order"
+    );
 }
 
 /// An unsigned literal past the SIGNED maximum of its width is an ordinary
