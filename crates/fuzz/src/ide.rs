@@ -354,7 +354,8 @@ pub fn check(source: &str) -> Result<(), Finding> {
                 .flat_map(|c| c.into_values())
                 .flatten()
                 .collect();
-            doc.apart(&r, edits)?;
+            doc.apart(&r, &edits)?;
+            doc.renames_one_name(&r, &edits)?;
         }
 
         let r = name("prepareCallHierarchy");
@@ -620,9 +621,59 @@ impl<'a> Doc<'a> {
         Ok(())
     }
 
+    /// A rename replaces a name, and only it: every edit covers one
+    /// identifier, the same one each time, case aside as ST has it.
+    fn renames_one_name(&self, request: &str, edits: &[TextEdit]) -> Result<(), Finding> {
+        let mut names: Vec<String> = Vec::new();
+        for e in edits {
+            let text = self.slice(e.range).unwrap_or_default();
+            let is_name = !text.is_empty() && text.chars().all(|c| c.is_alphanumeric() || c == '_');
+            if !is_name {
+                return Err(Finding::new(
+                    "ide-edits",
+                    format!("{request}: an edit replaces {text:?}, which is not a name"),
+                ));
+            }
+            names.push(text.to_ascii_lowercase());
+        }
+        names.dedup();
+        match names.len() {
+            0 | 1 => Ok(()),
+            _ => Err(Finding::new(
+                "ide-edits",
+                format!("{request}: the edits replace different names: {names:?}"),
+            )),
+        }
+    }
+
+    /// The text a range covers.
+    fn slice(&self, r: Range) -> Option<&str> {
+        let (start, end) = (self.offset(r.start)?, self.offset(r.end)?);
+        self.text.get(start..end)
+    }
+
+    /// The byte offset of an LSP position, in UTF-16 code units.
+    fn offset(&self, p: Position) -> Option<usize> {
+        let line_start: usize = self
+            .text
+            .split_inclusive('\n')
+            .take(p.line as usize)
+            .map(str::len)
+            .sum();
+        let mut units = 0;
+        for (i, c) in self.text[line_start..].char_indices() {
+            if units >= p.character || c == '\n' {
+                return (units == p.character).then_some(line_start + i);
+            }
+            units += c.len_utf16() as u32;
+        }
+        (units == p.character).then_some(self.text.len())
+    }
+
     /// Edits to one document must not overlap, or the client refuses them
     /// all.
-    fn apart(&self, request: &str, mut edits: Vec<TextEdit>) -> Result<(), Finding> {
+    fn apart(&self, request: &str, edits: &[TextEdit]) -> Result<(), Finding> {
+        let mut edits = edits.to_vec();
         edits.sort_by_key(|e| (e.range.start.line, e.range.start.character));
         for pair in edits.windows(2) {
             if !le(pair[0].range.end, pair[1].range.start) {

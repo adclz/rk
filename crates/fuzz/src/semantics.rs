@@ -108,7 +108,7 @@ fn compare(module: &[u8], expected: &Expectation, build: &str) -> Result<(), Fin
         Err(unit) => {
             return Err(Finding::new(
                 "semantics-trapped",
-                format!("{unit} stopped the program{build}, which cannot trap"),
+                format!("the program{build} cannot stop, and stopped: {unit}"),
             ));
         }
     };

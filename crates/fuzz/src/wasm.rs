@@ -274,7 +274,7 @@ pub(crate) fn execute(wasm: &[u8], sections: &Sections) -> Result<(), Finding> {
             continue;
         };
         store.set_fuel(FUEL).expect("fuel is enabled");
-        if !survived(func.call(&mut store, &args, &mut results), &name)? {
+        if ended(func.call(&mut store, &args, &mut results), &name)?.is_some() {
             return Ok(());
         }
     }
@@ -367,16 +367,37 @@ impl Host {
         }))
     }
 
-    /// `__init`, then `scans` scans. `Some` names the call that ended the
-    /// run the way a program may end.
+    /// `why`, with the message of the IEC exception it left pending, if it
+    /// left one: its payload is the `(ptr, len)` of a STRING in memory.
+    fn message(&mut self, why: String) -> String {
+        let Some(exn) = self.store.take_pending_exception() else {
+            return why;
+        };
+        let (Ok(Val::I32(ptr)), Ok(Val::I32(len))) =
+            (exn.field(&mut self.store, 0), exn.field(&mut self.store, 1))
+        else {
+            return why;
+        };
+        let start = ptr as u32 as usize;
+        let text = self
+            .memory
+            .data(&self.store)
+            .get(start..start.saturating_add(len as u32 as usize))
+            .map(|b| String::from_utf8_lossy(b).into_owned())
+            .unwrap_or_default();
+        format!("{why}: {text}")
+    }
+
+    /// `__init`, then `scans` scans. `Some` says which call ended the run
+    /// the way a program may end, and how.
     fn run(&mut self, sections: &Sections, scans: u64) -> Result<Option<String>, Finding> {
         if let Ok(init) = self
             .instance
             .get_typed_func::<(), ()>(&mut self.store, "__init")
         {
             self.store.set_fuel(FUEL).expect("fuel is enabled");
-            if !survived(init.call(&mut self.store, ()), "__init")? {
-                return Ok(Some("__init".to_string()));
+            if let Some(why) = ended(init.call(&mut self.store, ()), "__init")? {
+                return Ok(Some(self.message(why)));
             }
         }
         let entries = scan_entries(&mut self.store, &self.instance, &self.module, sections)?;
@@ -387,8 +408,8 @@ impl Host {
                 }
                 self.store.set_fuel(FUEL).expect("fuel is enabled");
                 let args: Vec<Val> = this.iter().map(|a| Val::I32(*a)).collect();
-                if !survived(func.call(&mut self.store, &args, &mut []), name)? {
-                    return Ok(Some(name.clone()));
+                if let Some(why) = ended(func.call(&mut self.store, &args, &mut []), name)? {
+                    return Ok(Some(self.message(why)));
                 }
             }
         }
@@ -566,17 +587,17 @@ fn check_bands(
     Ok(())
 }
 
-/// `Ok(true)` when the call returned, `Ok(false)` when it ended the way a
-/// program may end (a trap it asked for, an IEC exception, no fuel left),
-/// and a finding when it ended in a way no accepted program can.
-fn survived(result: wasmtime::Result<()>, unit: &str) -> Result<bool, Finding> {
+/// `Ok(None)` when the call returned, `Ok(Some(why))` when it ended the
+/// way a program may end (a trap it asked for, an IEC exception, no fuel
+/// left), and a finding when it ended in a way no accepted program can.
+fn ended(result: wasmtime::Result<()>, unit: &str) -> Result<Option<String>, Finding> {
     let Err(err) = result else {
-        return Ok(true);
+        return Ok(None);
     };
     let Some(trap) = err.downcast_ref::<Trap>() else {
         // An uncaught `$rk_exception`: a RAISE, an assertion, a subscript
         // out of range. The program's own fault.
-        return Ok(false);
+        return Ok(Some(format!("{unit}: uncaught IEC exception")));
     };
     let broken = match trap {
         // IEC has no pointer arithmetic, and every subscript is checked
@@ -592,6 +613,6 @@ fn survived(result: wasmtime::Result<()>, unit: &str) -> Result<bool, Finding> {
     };
     match broken {
         Some(oracle) => Err(Finding::new(oracle, format!("{unit}: {trap}"))),
-        None => Ok(false),
+        None => Ok(Some(format!("{unit}: {trap}"))),
     }
 }

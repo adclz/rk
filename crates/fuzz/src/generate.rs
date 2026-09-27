@@ -24,6 +24,15 @@
 //! - FUNCTIONs; FUNCTION_BLOCKs with inputs, outputs, state, a VAR_IN_OUT
 //!   and METHODs that change their state; INTERFACEs, reached the way rk
 //!   allows them, as a FUNCTION's VAR_IN_OUT (E1121).
+//! - CLASSes with EXTENDS and OVERRIDE: `THIS.m()` reaches the instance's
+//!   own version, `SUPER.m()` the base's (docs/monomorphized-oop.md). A
+//!   method only calls methods declared before it, or its own base version,
+//!   so no call chain loops.
+//! - References: `REF()` of a variable, an array element or a field, and
+//!   reads and writes through `^`. The evaluator keeps where each points,
+//!   its index fixed when `REF()` was taken. A reference is set at the top
+//!   of the body, before any use; not in its declaration, where rk leaves a
+//!   PROGRAM variable NULL.
 //!
 //! Nothing may stop the module: an integer divisor is a literal other than
 //! 0 and -1 (`DINT#-2147483648 / -1` traps), an index is wrapped into its
@@ -202,6 +211,8 @@ enum Place {
     Member(usize, usize),
     /// A field of a STRUCT-typed place.
     Field(Box<Place>, usize),
+    /// What a program reference points to: `r^`.
+    Deref(usize),
 }
 
 #[derive(Clone, Debug)]
@@ -235,6 +246,13 @@ enum Stmt {
     /// `target := user(dev := instance, args)`: a FUNCTION that calls a
     /// method through its interface parameter.
     CallUser(Place, usize, usize, Vec<Expr>),
+    /// `target := object.m{j}(args)`.
+    CallObject(Place, usize, usize, Vec<Expr>),
+    /// `target := THIS.m{i}(args)`, or `SUPER.m{i}` when set, in a class
+    /// method.
+    CallThis(Place, usize, Vec<Expr>, bool),
+    /// `r := REF(place)`.
+    SetRef(usize, Place),
     If(Vec<(Expr, Vec<Stmt>)>, Option<Vec<Stmt>>),
     Case(Expr, Vec<(Vec<Label>, Vec<Stmt>)>, Option<Vec<Stmt>>),
     For(usize, i128, i128, i128, Vec<Stmt>),
@@ -340,6 +358,33 @@ struct Instance {
     block: usize,
 }
 
+struct Class {
+    name: String,
+    parent: Option<usize>,
+    /// Its own variables; the inherited ones come first in an instance.
+    vars: Vec<Var>,
+    /// Every method it has, `m{j}`: its parent's, then its own.
+    families: Vec<Signature>,
+    /// The ones it defines, a new method or an OVERRIDE.
+    defs: Vec<Option<ClassDef>>,
+}
+
+struct ClassDef {
+    overrides: bool,
+    body: Vec<Stmt>,
+    result: Expr,
+}
+
+struct Object {
+    name: String,
+    class: usize,
+}
+
+struct Reference {
+    name: String,
+    target: Ty,
+}
+
 /// A program's declarations, which the evaluator and the printer read.
 #[derive(Default)]
 struct Decls {
@@ -351,6 +396,31 @@ struct Decls {
     users: Vec<User>,
     arrays: Vec<Array>,
     instances: Vec<Instance>,
+    classes: Vec<Class>,
+    objects: Vec<Object>,
+    refs: Vec<Reference>,
+}
+
+impl Decls {
+    /// A class's variables, the inherited ones first.
+    fn class_vars(&self, c: usize) -> Vec<Var> {
+        let class = &self.classes[c];
+        let mut vars = class.parent.map(|p| self.class_vars(p)).unwrap_or_default();
+        vars.extend(class.vars.iter().cloned());
+        vars
+    }
+
+    /// The class whose definition of `m{j}` an instance of `c` runs.
+    fn resolve(&self, mut c: usize, j: usize) -> usize {
+        loop {
+            if self.classes[c].defs[j].is_some() {
+                return c;
+            }
+            c = self.classes[c]
+                .parent
+                .expect("a method is defined where it is declared");
+        }
+    }
 }
 
 /// The fuzzer's bytes as a stream of choices; past the end, every choice
@@ -397,6 +467,17 @@ struct Generator<'a> {
     /// How many indexes are being written, one inside the other: an index
     /// reads no array element past the first level.
     indexing: u32,
+    /// The class method being written, for its THIS and SUPER calls.
+    this: Option<ThisCtx>,
+}
+
+/// A class method being written: the class's methods, which one this is,
+/// and how many its parent has.
+#[derive(Clone)]
+struct ThisCtx {
+    families: Vec<Signature>,
+    family: usize,
+    parent_families: usize,
 }
 
 impl Generator<'_> {
@@ -529,6 +610,19 @@ impl Generator<'_> {
                 }
             }
         }
+        for (r, reference) in self.d.refs.iter().enumerate() {
+            match reference.target {
+                t if t == ty => out.push(Place::Deref(r)),
+                Ty::Struct(k) => {
+                    for (f, field) in self.d.structs[k].iter().enumerate() {
+                        if field.ty == ty {
+                            out.push(Place::Field(Box::new(Place::Deref(r)), f));
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
         if outputs {
             for (i, inst) in self.d.instances.iter().enumerate() {
                 let block = &self.d.blocks[inst.block];
@@ -540,6 +634,24 @@ impl Generator<'_> {
             }
         }
         out
+    }
+
+    /// What `REF()` may take, of exactly type `ty`: a program variable, an
+    /// array element or a field, not a dereference.
+    fn addressable(&mut self, ty: Ty) -> Vec<Place> {
+        let plain: Vec<usize> = (0..self.vars.len())
+            .filter(|&v| self.vars[v].role == Role::Plain)
+            .collect();
+        fn through_ref(p: &Place) -> bool {
+            match p {
+                Place::Deref(_) => true,
+                Place::Field(base, _) => through_ref(base),
+                _ => false,
+            }
+        }
+        let mut places = self.places(ty, &plain, false);
+        places.retain(|p| !through_ref(p));
+        places
     }
 
     fn pick(&mut self, mut places: Vec<Place>) -> Option<Place> {
@@ -688,7 +800,7 @@ impl Generator<'_> {
             }
             self.budget -= 1;
             let nested = |g: &mut Self| g.block(depth - 1, readable, free, in_loop, may_return);
-            let stmt = match self.choices.below(16) {
+            let stmt = match self.choices.below(19) {
                 0 | 1 if depth > 0 => {
                     let mut arms = Vec::new();
                     for _ in 0..1 + self.choices.below(3) {
@@ -738,6 +850,24 @@ impl Generator<'_> {
                         None => continue,
                     }
                 }
+                10 | 11 if self.in_program && !self.d.objects.is_empty() => {
+                    match self.object_call(readable) {
+                        Some(call) => call,
+                        None => continue,
+                    }
+                }
+                12 if self.in_program && !self.d.refs.is_empty() => {
+                    let r = self.choices.below(self.d.refs.len());
+                    let places = self.addressable(self.d.refs[r].target);
+                    match self.pick(places) {
+                        Some(place) => Stmt::SetRef(r, place),
+                        None => continue,
+                    }
+                }
+                13 | 14 if self.this.is_some() => match self.this_call(readable) {
+                    Some(call) => call,
+                    None => continue,
+                },
                 _ => match self.assign(readable) {
                     Some(assign) => assign,
                     None => continue,
@@ -887,6 +1017,41 @@ impl Generator<'_> {
         Some(Stmt::CallUser(target, u, inst, args))
     }
 
+    fn object_call(&mut self, readable: &[usize]) -> Option<Stmt> {
+        let o = self.choices.below(self.d.objects.len());
+        let class = &self.d.classes[self.d.objects[o].class];
+        let j = self.choices.below(class.families.len());
+        let sig = class.families[j].clone();
+        let target = self.target(sig.ty)?;
+        let args = sig
+            .params
+            .iter()
+            .map(|p| self.expr(p.ty, 3, readable))
+            .collect();
+        Some(Stmt::CallObject(target, o, j, args))
+    }
+
+    /// `THIS.m{i}` for a method declared before this one, or `SUPER.m{i}`
+    /// for one the parent has, this one's own base version included.
+    fn this_call(&mut self, readable: &[usize]) -> Option<Stmt> {
+        let ctx = self.this.clone()?;
+        let supers = ctx.parent_families.min(ctx.family + 1);
+        let via_super = supers > 0 && (ctx.family == 0 || self.choices.percent(50));
+        let i = match via_super {
+            true => self.choices.below(supers),
+            false if ctx.family > 0 => self.choices.below(ctx.family),
+            false => return None,
+        };
+        let sig = ctx.families[i].clone();
+        let target = self.target(sig.ty)?;
+        let args = sig
+            .params
+            .iter()
+            .map(|p| self.expr(p.ty, 2, readable))
+            .collect();
+        Some(Stmt::CallThis(target, i, args, via_super))
+    }
+
     fn place_ty(&self, place: &Place) -> Ty {
         let tys: Vec<Ty> = self.vars.iter().map(|v| v.ty).collect();
         place_ty(place, &tys, &self.d)
@@ -948,6 +1113,7 @@ pub fn program(bytes: &[u8]) -> String {
         d: Decls::default(),
         budget: 28,
         indexing: 0,
+        this: None,
     };
 
     for _ in 0..g.choices.below(3) {
@@ -1089,11 +1255,80 @@ pub fn program(bytes: &[u8]) -> String {
             role: Role::Plain,
         });
     }
+    for k in 0..g.choices.below(3) {
+        let parent = match k > 0 && g.choices.percent(60) {
+            true => Some(g.choices.below(k)),
+            false => None,
+        };
+        let mut families = parent
+            .map(|p| g.d.classes[p].families.clone())
+            .unwrap_or_default();
+        let inherited = families.len();
+        let n = g.choices.below(3);
+        let taken = g.d.classes.iter().map(|c| c.vars.len()).sum::<usize>();
+        let vars: Vec<Var> = g
+            .vars_named("z", n, Role::Plain)
+            .into_iter()
+            .enumerate()
+            .map(|(i, v)| Var {
+                name: format!("z{}", taken + i),
+                ..v
+            })
+            .collect();
+        let new = 1 + g.choices.below(2);
+        for j in inherited..inherited + new {
+            let mut sig = g.signatures(1).remove(0);
+            sig.name = format!("m{j}");
+            families.push(sig);
+        }
+        let mut frame: Vec<Var> = parent.map(|p| g.d.class_vars(p)).unwrap_or_default();
+        frame.extend(vars.iter().cloned());
+        let mut defs = Vec::new();
+        for j in 0..families.len() {
+            if j < inherited && !g.choices.percent(40) {
+                defs.push(None);
+                continue;
+            }
+            let mut method_frame = frame.clone();
+            method_frame.extend(families[j].params.iter().cloned());
+            let readable: Vec<usize> = (0..method_frame.len()).collect();
+            let ty = families[j].ty;
+            g.this = Some(ThisCtx {
+                families: families.clone(),
+                family: j,
+                parent_families: inherited,
+            });
+            g.budget = 6;
+            let (_, (body, result)) = g.with_frame(method_frame, |g| {
+                let body = g.block(1, &readable, &[], false, false);
+                (body, g.expr(ty, 3, &readable))
+            });
+            g.this = None;
+            defs.push(Some(ClassDef {
+                overrides: j < inherited,
+                body,
+                result,
+            }));
+        }
+        g.d.classes.push(Class {
+            name: format!("C{k}"),
+            parent,
+            vars,
+            families,
+            defs,
+        });
+    }
+
     // Somewhere to put what each method returns.
     let results: Vec<Ty> =
         g.d.blocks
             .iter()
             .flat_map(|b| b.methods.iter().map(|m| m.sig.ty))
+            .chain(
+                g.d.classes
+                    .iter()
+                    .flat_map(|c| c.families.iter().map(|s| s.ty)),
+            )
             .collect();
     for ty in results {
         let present = g.vars.iter().any(|v| match (v.ty, ty) {
@@ -1130,6 +1365,32 @@ pub fn program(bytes: &[u8]) -> String {
             });
         }
     }
+    if !g.d.classes.is_empty() {
+        for k in 0..1 + g.choices.below(3) {
+            let class = g.choices.below(g.d.classes.len());
+            g.d.objects.push(Object {
+                name: format!("o{k}"),
+                class,
+            });
+        }
+    }
+    for k in 0..g.choices.below(4) {
+        let target = g.var_type(true);
+        // Something it can point to.
+        if !g.vars.iter().any(|v| v.ty == target) {
+            let init = g.literal(target);
+            g.vars.push(Var {
+                name: format!("v{}", g.vars.len()),
+                ty: target,
+                init,
+                role: Role::Plain,
+            });
+        }
+        g.d.refs.push(Reference {
+            name: format!("r{k}"),
+            target,
+        });
+    }
     let readable: Vec<usize> = (0..g.vars.len()).collect();
     let counters: Vec<usize> = (0..2)
         .map(|k| {
@@ -1142,9 +1403,19 @@ pub fn program(bytes: &[u8]) -> String {
             g.vars.len() - 1
         })
         .collect();
+    // Every reference is set before anything can read it, and nothing in
+    // these first statements reads through one.
+    let mut body = Vec::new();
+    let refs = std::mem::take(&mut g.d.refs);
+    for (r, reference) in refs.iter().enumerate() {
+        let places = g.addressable(reference.target);
+        let place = g.pick(places).expect("a variable of the reference's type");
+        body.push(Stmt::SetRef(r, place));
+    }
+    g.d.refs = refs;
     // The program's own budget, whatever the blocks spent.
     g.budget = 28;
-    let body = g.block(3, &readable, &counters, false, true);
+    body.extend(g.block(3, &readable, &counters, false, true));
 
     // What the program must leave behind.
     let mut state = State {
@@ -1162,6 +1433,19 @@ pub fn program(bytes: &[u8]) -> String {
                     .collect()
             })
             .collect(),
+        objects: g
+            .d
+            .objects
+            .iter()
+            .map(|o| {
+                g.d.class_vars(o.class)
+                    .iter()
+                    .map(|v| v.init.clone())
+                    .collect()
+            })
+            .collect(),
+        refs: vec![Loc::Var(0); g.d.refs.len()],
+        this: None,
     };
     let tys: Vec<Ty> = g.vars.iter().map(|v| v.ty).collect();
     for _ in 0..SCANS {
@@ -1191,6 +1475,12 @@ fn write_program(vars: &[Var], d: &Decls, body: &[Stmt], state: &State) -> Strin
                 let path = format!("Run.{}.{}", inst.name, m.name);
                 expect(&mut out, d, &path, m.ty, value);
             }
+        }
+    }
+    for (o, values) in d.objects.iter().zip(&state.objects) {
+        for (v, value) in d.class_vars(o.class).iter().zip(values) {
+            let path = format!("Run.{}.{}", o.name, v.name);
+            expect(&mut out, d, &path, v.ty, value);
         }
     }
     out.push_str("*)\n\n");
@@ -1320,6 +1610,48 @@ fn write_program(vars: &[Var], d: &Decls, body: &[Stmt], state: &State) -> Strin
         names(&b.members).block(&mut out, &b.body, 1);
         out.push_str("END_FUNCTION_BLOCK\n\n");
     }
+    for (k, c) in d.classes.iter().enumerate() {
+        match c.parent {
+            Some(p) => {
+                let _ = writeln!(out, "CLASS {} EXTENDS {}", c.name, d.classes[p].name);
+            }
+            None => {
+                let _ = writeln!(out, "CLASS {}", c.name);
+            }
+        }
+        if !c.vars.is_empty() {
+            out.push_str("VAR\n");
+            for v in &c.vars {
+                decl(&mut out, v, true);
+            }
+            out.push_str("END_VAR\n");
+        }
+        let visible = d.class_vars(k);
+        for (sig, def) in c.families.iter().zip(&c.defs) {
+            let Some(def) = def else {
+                continue;
+            };
+            let head = match def.overrides {
+                true => Signature {
+                    name: format!("OVERRIDE {}", sig.name),
+                    ..sig.clone()
+                },
+                false => sig.clone(),
+            };
+            signature(&mut out, &head);
+            let mut frame = visible.clone();
+            frame.extend(sig.params.iter().cloned());
+            let n = names(&frame);
+            n.block(&mut out, &def.body, 2);
+            let _ = writeln!(
+                out,
+                "        {} := {};\n    END_METHOD",
+                sig.name,
+                n.expr(&def.result)
+            );
+        }
+        out.push_str("END_CLASS\n\n");
+    }
     out.push_str("PROGRAM P\nVAR\n");
     for v in vars {
         decl(&mut out, v, !matches!(v.ty, Ty::Struct(_)));
@@ -1345,6 +1677,13 @@ fn write_program(vars: &[Var], d: &Decls, body: &[Stmt], state: &State) -> Strin
     }
     for i in &d.instances {
         let _ = writeln!(out, "    {} : {};", i.name, d.blocks[i.block].name);
+    }
+    for o in &d.objects {
+        let _ = writeln!(out, "    {} : {};", o.name, d.classes[o.class].name);
+    }
+    // Declared unset: rk leaves a PROGRAM reference's REF() initializer NULL.
+    for r in &d.refs {
+        let _ = writeln!(out, "    {} : REF_TO {};", r.name, r.target.name());
     }
     out.push_str("END_VAR\n");
     names(vars).block(&mut out, body, 1);
@@ -1426,6 +1765,7 @@ impl Names<'_> {
                 )
             }
             Place::Field(base, f) => format!("{}.f{f}", self.place(base)),
+            Place::Deref(r) => format!("{}^", self.d.refs[*r].name),
         }
     }
 
@@ -1529,6 +1869,41 @@ impl Names<'_> {
                         user.name
                     );
                 }
+                Stmt::CallObject(target, o, j, args) => {
+                    let object = &self.d.objects[*o];
+                    let sig = &self.d.classes[object.class].families[*j];
+                    let _ = writeln!(
+                        out,
+                        "{pad}{} := {}.{}({});",
+                        self.place(target),
+                        object.name,
+                        sig.name,
+                        self.args(&sig.params, args)
+                    );
+                }
+                Stmt::CallThis(target, i, args, via_super) => {
+                    // Parameters are `p0`, `p1`… in every signature.
+                    let args: Vec<String> = args
+                        .iter()
+                        .enumerate()
+                        .map(|(k, a)| format!("p{k} := {}", self.expr(a)))
+                        .collect();
+                    let who = if *via_super { "SUPER" } else { "THIS" };
+                    let _ = writeln!(
+                        out,
+                        "{pad}{} := {who}.m{i}({});",
+                        self.place(target),
+                        args.join(", ")
+                    );
+                }
+                Stmt::SetRef(r, place) => {
+                    let _ = writeln!(
+                        out,
+                        "{pad}{} := REF({});",
+                        self.d.refs[*r].name,
+                        self.place(place)
+                    );
+                }
                 Stmt::If(arms, otherwise) => {
                     for (i, (cond, body)) in arms.iter().enumerate() {
                         let kw = if i == 0 { "IF" } else { "ELSIF" };
@@ -1590,6 +1965,12 @@ struct State {
     vars: Vec<Val>,
     arrays: Vec<Vec<Val>>,
     instances: Vec<Vec<Val>>,
+    /// Each class instance's variables, the inherited ones first.
+    objects: Vec<Vec<Val>>,
+    /// Where each program reference points.
+    refs: Vec<Loc>,
+    /// In a class method, the instance it runs on.
+    this: Option<This>,
 }
 
 impl State {
@@ -1598,7 +1979,62 @@ impl State {
             vars,
             arrays: Vec::new(),
             instances: Vec::new(),
+            objects: Vec::new(),
+            refs: Vec::new(),
+            this: None,
         }
+    }
+}
+
+/// A class method's instance. The frame holds the variables the defining
+/// class sees, first; `tail` the ones only a derived class declares, which
+/// a `THIS` call may reach.
+#[derive(Clone)]
+struct This {
+    dynamic: usize,
+    defining: usize,
+    tail: Vec<Val>,
+}
+
+/// Where a reference points, its indexes fixed.
+#[derive(Clone, Debug)]
+enum Loc {
+    Var(usize),
+    Elem(usize, usize),
+    Field(Box<Loc>, usize),
+}
+
+fn loc_of(p: &Place, st: &State, d: &Decls) -> Loc {
+    match p {
+        Place::Var(v) => Loc::Var(*v),
+        Place::Index(a, index) => {
+            Loc::Elem(*a, (eval(index, st, d).int() - d.arrays[*a].lo) as usize)
+        }
+        Place::Field(base, f) => Loc::Field(Box::new(loc_of(base, st, d)), *f),
+        Place::Deref(r) => st.refs[*r].clone(),
+        Place::Member(..) => unreachable!("REF() of an FB member is not generated"),
+    }
+}
+
+fn loc_slot<'s>(l: &Loc, st: &'s mut State) -> &'s mut Val {
+    match l {
+        Loc::Var(v) => &mut st.vars[*v],
+        Loc::Elem(a, k) => &mut st.arrays[*a][*k],
+        Loc::Field(base, f) => match loc_slot(base, st) {
+            Val::Struct(fields) => &mut fields[*f],
+            _ => unreachable!("a field of a non-STRUCT"),
+        },
+    }
+}
+
+fn loc_read(l: &Loc, st: &State) -> Val {
+    match l {
+        Loc::Var(v) => st.vars[*v].clone(),
+        Loc::Elem(a, k) => st.arrays[*a][*k].clone(),
+        Loc::Field(base, f) => match loc_read(base, st) {
+            Val::Struct(mut fields) => fields.swap_remove(*f),
+            _ => unreachable!("a field of a non-STRUCT"),
+        },
     }
 }
 
@@ -1632,6 +2068,7 @@ fn place_ty(p: &Place, tys: &[Ty], d: &Decls) -> Ty {
             Ty::Struct(k) => d.structs[k][*f].ty,
             _ => unreachable!("a field of a non-STRUCT"),
         },
+        Place::Deref(r) => d.refs[*r].target,
     }
 }
 
@@ -1647,6 +2084,7 @@ fn read(p: &Place, st: &State, d: &Decls) -> Val {
             Val::Struct(mut fields) => fields.swap_remove(*f),
             _ => unreachable!("a field of a non-STRUCT"),
         },
+        Place::Deref(r) => loc_read(&st.refs[*r], st),
     }
 }
 
@@ -1664,6 +2102,10 @@ fn slot<'s>(p: &Place, st: &'s mut State, d: &Decls) -> &'s mut Val {
             Val::Struct(fields) => &mut fields[*f],
             _ => unreachable!("a field of a non-STRUCT"),
         },
+        Place::Deref(r) => {
+            let loc = st.refs[*r].clone();
+            loc_slot(&loc, st)
+        }
     }
 }
 
@@ -1688,6 +2130,40 @@ fn run_method(i: usize, method: usize, args: Vec<Val>, st: &mut State, d: &Decls
     let result = store(m.sig.ty, eval(&m.result, &frame, d));
     frame.vars.truncate(members);
     st.instances[i] = frame.vars;
+    result
+}
+
+/// Run `m{j}` as class `defining` defines it, on an instance of class
+/// `dynamic` whose variables are `full`, with `args` already evaluated.
+fn call_class(
+    d: &Decls,
+    dynamic: usize,
+    defining: usize,
+    j: usize,
+    full: &mut [Val],
+    args: Vec<Val>,
+) -> Val {
+    let visible = d.class_vars(defining);
+    let n = visible.len();
+    let class = &d.classes[defining];
+    let def = class.defs[j].as_ref().expect("resolved to a definition");
+    let sig = &class.families[j];
+    let mut vars = full[..n].to_vec();
+    let mut tys: Vec<Ty> = visible.iter().map(|v| v.ty).collect();
+    for (p, a) in sig.params.iter().zip(args) {
+        vars.push(store(p.ty, a));
+        tys.push(p.ty);
+    }
+    let mut frame = State::frame(vars);
+    frame.this = Some(This {
+        dynamic,
+        defining,
+        tail: full[n..].to_vec(),
+    });
+    let _ = run_block(&def.body, &mut frame, &tys, d);
+    let result = store(sig.ty, eval(&def.result, &frame, d));
+    full[..n].clone_from_slice(&frame.vars[..n]);
+    full[n..].clone_from_slice(&frame.this.expect("set above").tail);
     result
 }
 
@@ -1739,6 +2215,41 @@ fn run_block(block: &[Stmt], st: &mut State, tys: &[Ty], d: &Decls) -> Flow {
                 let result = run_method(*i, user.method, method_args, st, d);
                 let ty = d.interfaces[user.interface].methods[user.method].ty;
                 write(target, store(ty, result), st, tys, d);
+                Flow::Next
+            }
+            Stmt::CallObject(target, o, j, args) => {
+                let values: Vec<Val> = args.iter().map(|a| eval(a, st, d)).collect();
+                let class = d.objects[*o].class;
+                let defining = d.resolve(class, *j);
+                let mut full = st.objects[*o].clone();
+                let result = call_class(d, class, defining, *j, &mut full, values);
+                st.objects[*o] = full;
+                write(target, result, st, tys, d);
+                Flow::Next
+            }
+            Stmt::CallThis(target, i, args, via_super) => {
+                let values: Vec<Val> = args.iter().map(|a| eval(a, st, d)).collect();
+                let this = st.this.clone().expect("THIS in a class method");
+                let n = d.class_vars(this.defining).len();
+                let defining = match via_super {
+                    true => d.resolve(
+                        d.classes[this.defining].parent.expect("SUPER has a parent"),
+                        *i,
+                    ),
+                    false => d.resolve(this.dynamic, *i),
+                };
+                let mut full = st.vars[..n].to_vec();
+                full.extend(this.tail.iter().cloned());
+                let result = call_class(d, this.dynamic, defining, *i, &mut full, values);
+                st.vars[..n].clone_from_slice(&full[..n]);
+                if let Some(this) = st.this.as_mut() {
+                    this.tail = full[n..].to_vec();
+                }
+                write(target, result, st, tys, d);
+                Flow::Next
+            }
+            Stmt::SetRef(r, place) => {
+                st.refs[*r] = loc_of(place, st, d);
                 Flow::Next
             }
             Stmt::If(arms, otherwise) => {
