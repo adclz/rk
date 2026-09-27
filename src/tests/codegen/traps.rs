@@ -366,7 +366,11 @@ fn a_for_init_outside_the_subrange_faults(mut with_db: db::RootDatabase) {
             run := 0;
         END_FUNCTION
     "#;
-    let msg = expect_fault(&mut with_db, source, "99 stored into the counter before any test");
+    let msg = expect_fault(
+        &mut with_db,
+        source,
+        "99 stored into the counter before any test",
+    );
     assert!(
         msg.contains("value out of subrange bounds"),
         "the init store names the check: {msg}"

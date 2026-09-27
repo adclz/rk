@@ -13,11 +13,11 @@ use crate::handlers::references::ReferenceLocation;
 
 pub mod call_hierarchy;
 pub mod code_lens;
-pub mod document_highlight;
 pub mod completions;
 pub mod completions_utils;
 pub mod declaration;
 pub mod definition;
+pub mod document_highlight;
 pub mod document_links;
 pub mod document_symbols;
 pub mod hover;

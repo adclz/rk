@@ -108,7 +108,9 @@ fn test_ref_to_assignment_var_in_out(mut with_db: db::RootDatabase) {
 
     // Read back the modified value
     let mut buffer = [0u8; 4];
-    memory.read(&store, CALLER_SLOT as usize, &mut buffer).unwrap();
+    memory
+        .read(&store, CALLER_SLOT as usize, &mut buffer)
+        .unwrap();
     let value = i32::from_le_bytes(buffer);
 
     assert_eq!(value, 99, "Should write through REF_TO pointer");
@@ -294,7 +296,10 @@ fn test_deref_array_element_round_trips(mut with_db: db::RootDatabase) {
         END_FUNCTION
     "#;
     let result: i32 = super::run(&mut with_db, source, "test", ());
-    assert_eq!(result, 42, "element writes through r^ must land at the right stride");
+    assert_eq!(
+        result, 42,
+        "element writes through r^ must land at the right stride"
+    );
 }
 
 #[rstest]
@@ -439,7 +444,10 @@ fn test_deref_struct_write_is_visible_to_the_caller(mut with_db: db::RootDatabas
         END_FUNCTION
     "#;
     let result: i32 = super::run(&mut with_db, source, "test", ());
-    assert_eq!(result, 72, "s.a became 7 in the caller's own storage; s.b untouched");
+    assert_eq!(
+        result, 72,
+        "s.a became 7 in the caller's own storage; s.b untouched"
+    );
 }
 
 // A `REF()` in a DECLARATION initializer marks its target address-taken just
@@ -610,7 +618,10 @@ fn test_function_returns_a_reference(mut with_db: db::RootDatabase) {
     let wasm = super::compile_to_wasm(&mut with_db, source);
     super::validate_wasm(&wasm).expect("WASM validation failed");
     let result: i32 = super::execute_wasm(&wasm, "test", ());
-    assert_eq!(result, 42, "the returned reference addresses the caller's x");
+    assert_eq!(
+        result, 42,
+        "the returned reference addresses the caller's x"
+    );
 }
 
 #[rstest]
@@ -643,7 +654,10 @@ fn test_method_returns_a_reference_to_instance_state(mut with_db: db::RootDataba
     let wasm = super::compile_to_wasm(&mut with_db, source);
     super::validate_wasm(&wasm).expect("WASM validation failed");
     let result: i32 = super::execute_wasm(&wasm, "test", ());
-    assert_eq!(result, 42, "the write through the returned reference reached c.total");
+    assert_eq!(
+        result, 42,
+        "the write through the returned reference reached c.total"
+    );
 }
 
 #[rstest]
@@ -705,7 +719,10 @@ fn test_var_temp_reference(mut with_db: db::RootDatabase) {
     let wasm = super::compile_to_wasm(&mut with_db, source);
     super::validate_wasm(&wasm).expect("WASM validation failed");
     let result: i32 = super::execute_wasm(&wasm, "test", ());
-    assert_eq!(result, 42, "the temp reference addresses the instance member");
+    assert_eq!(
+        result, 42,
+        "the temp reference addresses the instance member"
+    );
 }
 
 /// A value as it comes back from wasm, by lane.

@@ -3,9 +3,9 @@
 //! body), aliasing, aggregates, nesting/passthrough, STRING, and the E0806
 //! l-value requirement.
 
+use crate::tests::codegen::TestPlc;
 use crate::tests::codegen::{compile_to_mir_and_wasm, with_db};
 use rstest::*;
-use crate::tests::codegen::TestPlc;
 
 /// Decode the string at the start of the retain band: `[len:i32]` + bytes.
 fn read_retain_string(plc: &TestPlc) -> String {

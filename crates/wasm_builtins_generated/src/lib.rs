@@ -4,6 +4,8 @@
 //! produced by this crate's `build.rs` (and gitignored). Do not put any
 //! hand-written code into `src/generated.rs` — it gets overwritten.
 
+// Absent from a fresh checkout until build.rs runs, and rewritten by it.
+#[rustfmt::skip]
 mod generated;
 
 pub use generated::*;

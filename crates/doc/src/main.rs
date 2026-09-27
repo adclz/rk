@@ -946,7 +946,9 @@ fn without_readme_pictures(item: &str) -> String {
         let mut kept = String::new();
         let mut rest = line;
         while let Some(i) = rest.find("<img ") {
-            let Some(end) = rest[i..].find('>') else { break };
+            let Some(end) = rest[i..].find('>') else {
+                break;
+            };
             let tag = &rest[i..i + end + 1];
             kept.push_str(&rest[..i]);
             rest = &rest[i + end + 1..];

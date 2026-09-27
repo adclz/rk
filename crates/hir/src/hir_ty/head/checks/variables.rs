@@ -820,4 +820,3 @@ pub(crate) fn located_width(ty: Type<'_>) -> Option<usize> {
         _ => None,
     }
 }
-

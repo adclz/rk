@@ -62,15 +62,14 @@
 //! first field emitted a scalar store over the literal pool (invalid wasm), and
 //! an FB call writing a STRING input never armed the `rk.str_assign` graft.
 
-use rstest::rstest;
 use crate::tests::codegen::TestPlc;
+use rstest::rstest;
 
 use super::{add_source, compile_to_mir_and_wasm, run, with_db};
 
 // =========================================================================
 // The matrix: compile + validate
 // =========================================================================
-
 
 /// Compile a source string to core wasm and validate it. Returns Ok on
 /// successful validation. On failure, dumps the wasm to a per-test
@@ -623,7 +622,10 @@ END_FUNCTION
 "#,
     );
     let r: i32 = run(&mut with_db, &source, "check", ());
-    assert_eq!(r, 1, "the callee sees 'XX'; the caller's 'orig' is untouched");
+    assert_eq!(
+        r, 1,
+        "the callee sees 'XX'; the caller's 'orig' is untouched"
+    );
 }
 
 /// The literal-source half of the same ruling: `mutinp('orig')` hands the
@@ -654,7 +656,10 @@ END_FUNCTION
 "#,
     );
     let r: i32 = run(&mut with_db, &source, "check", ());
-    assert_eq!(r, 2, "'orig' survives being handed to a callee that writes its input");
+    assert_eq!(
+        r, 2,
+        "'orig' survives being handed to a callee that writes its input"
+    );
 }
 
 /// The FB half of the ruling, where the semantics genuinely differ from a
@@ -691,7 +696,10 @@ END_FUNCTION
 "#,
     );
     let r: i32 = run(&mut with_db, &source, "check", ());
-    assert_eq!(r, 11, "the omitted input keeps the body's own previous write");
+    assert_eq!(
+        r, 11,
+        "the omitted input keeps the body's own previous write"
+    );
 }
 
 // =============================================================================
@@ -955,7 +963,10 @@ fn string_comparison_of_producer_results_executes(mut with_db: db::RootDatabase)
         END_FUNCTION
     "#;
     let r: i32 = super::run(&mut with_db, source, "check", ());
-    assert_eq!(r, 11, "producer-vs-producer comparison uses snapshotted operands");
+    assert_eq!(
+        r, 11,
+        "producer-vs-producer comparison uses snapshotted operands"
+    );
 }
 
 /// A literal that exactly FILLS the destination still passes: the check is
@@ -1352,7 +1363,10 @@ fn array_of_sized_strings_truncates_at_the_declared_capacity(mut with_db: db::Ro
         END_FUNCTION
     "#;
     let result: i32 = super::run(&mut with_db, source, "run", ());
-    assert_eq!(result, 1, "an element of ARRAY OF STRING[4] holds 4 characters");
+    assert_eq!(
+        result, 1,
+        "an element of ARRAY OF STRING[4] holds 4 characters"
+    );
 }
 
 /// A `STRING[n]` reached through a `TYPE` alias keeps its length. The alias
@@ -1425,7 +1439,10 @@ fn a_sized_string_keeps_its_length_in_every_container(
     "#
     );
     let result: i32 = super::run(&mut with_db, &source, "run", ());
-    assert_eq!(result, 1, "`{target}` must hold exactly its declared 4 characters");
+    assert_eq!(
+        result, 1,
+        "`{target}` must hold exactly its declared 4 characters"
+    );
 }
 
 /// Escape sequences decode to the bytes they DENOTE, not the source text.
@@ -1477,7 +1494,10 @@ fn fb_string_input_written_at_the_call(mut with_db: db::RootDatabase) {
         END_FUNCTION
     "#;
     let result: i32 = super::run(&mut with_db, source, "test", ());
-    assert_eq!(result, 1, "the literal written at the call reaches the field");
+    assert_eq!(
+        result, 1,
+        "the literal written at the call reaches the field"
+    );
 }
 
 /// A STRING default on an instance's FIRST field. `lower_init_leaves`'s
@@ -1502,7 +1522,10 @@ fn fb_string_default_on_first_field(mut with_db: db::RootDatabase) {
         END_FUNCTION
     "#;
     let result: i32 = super::run(&mut with_db, source, "test", ());
-    assert_eq!(result, 1, "the default survives in the instance AND the pool");
+    assert_eq!(
+        result, 1,
+        "the default survives in the instance AND the pool"
+    );
 }
 
 /// The Modbus shape end to end: a default the first instance keeps and the
@@ -1549,7 +1572,10 @@ VAR s : STRING; END_VAR
 END_FUNCTION
 "#;
     let r: i32 = run(&mut with_db, src, "run", ());
-    assert_eq!(r, 2, "the literal holds every marker as a character, a URL included");
+    assert_eq!(
+        r, 2,
+        "the literal holds every marker as a character, a URL included"
+    );
 }
 
 /// A bare literal in a CHAR slot lowers to its CODE POINT, not to string

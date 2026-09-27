@@ -215,8 +215,8 @@ fn release_omits_the_stepping_tier_and_nothing_else(mut with_db: RootDatabase) {
     use crate::tests::codegen::compile_to_mir_and_wasm;
 
     let (mir, _wasm) = compile_to_mir_and_wasm(&mut with_db, SRC);
-    let debug = wasm_codegen::generate_wasm_profile(&with_db, &mir, wasm_codegen::Profile::Debug)
-        .finish();
+    let debug =
+        wasm_codegen::generate_wasm_profile(&with_db, &mir, wasm_codegen::Profile::Debug).finish();
     let release =
         wasm_codegen::generate_wasm_profile(&with_db, &mir, wasm_codegen::Profile::Release)
             .finish();

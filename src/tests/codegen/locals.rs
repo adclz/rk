@@ -37,7 +37,10 @@ fn a_functions_aggregate_local_is_fresh_on_every_call(
     "#
     );
     let r: i32 = super::run(&mut with_db, &source, "run", ());
-    assert_eq!(r, 111, "each call must start from zero; 123 means the local was static");
+    assert_eq!(
+        r, 111,
+        "each call must start from zero; 123 means the local was static"
+    );
 }
 
 /// The same for a METHOD's own local: its lifetime is the call, not the
@@ -81,5 +84,8 @@ fn an_instance_member_still_persists_between_invocations(mut with_db: db::RootDa
         END_FUNCTION
     "#;
     let r: i32 = super::run(&mut with_db, source, "run", ());
-    assert_eq!(r, 3, "instance state accumulates within the call that owns the instance");
+    assert_eq!(
+        r, 3,
+        "instance state accumulates within the call that owns the instance"
+    );
 }

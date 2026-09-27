@@ -323,18 +323,16 @@ fn lower_stmt<'db>(
             // A subrange counter is checked at the initial store and at the body's
             // top: the range may overshoot the subrange, the observed values may
             // not. `FOR i := 0 TO 12 BY 7` on a (0..10) counter is legal.
-            let control_sub = control_type
-                .as_subrange(ctx.db)
-                .and_then(|sr| {
-                    match hir::hir_ty::infer::const_eval::subrange_bounds(ctx.db, sr) {
-                        (Some(lower), Some(upper)) => Some(crate::types::MirSubrangeType {
-                            base: control_elem,
-                            lower,
-                            upper,
-                        }),
-                        _ => None,
-                    }
-                });
+            let control_sub = control_type.as_subrange(ctx.db).and_then(|sr| {
+                match hir::hir_ty::infer::const_eval::subrange_bounds(ctx.db, sr) {
+                    (Some(lower), Some(upper)) => Some(crate::types::MirSubrangeType {
+                        base: control_elem,
+                        lower,
+                        upper,
+                    }),
+                    _ => None,
+                }
+            });
 
             let start_mir = ctx.lower_expr(*start)?;
             let start_mir = match &control_sub {

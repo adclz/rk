@@ -154,7 +154,11 @@ fn alloc_for_scratch(
     crate::emit_stmt::for_scratch_requests(body)
         .into_iter()
         .map(|req| {
-            let vt = if req.is_64 { ValType::I64 } else { ValType::I32 };
+            let vt = if req.is_64 {
+                ValType::I64
+            } else {
+                ValType::I32
+            };
             let mut take = |need: bool| {
                 need.then(|| {
                     let idx = next;
@@ -495,8 +499,7 @@ struct WasmGen<'a> {
     /// Per function: leaf symbols and array descriptors for its memory-resident
     /// locals, whose addresses are static (IEC forbids recursion). Emitted
     /// into `debug-locals` v2.
-    func_memory_locals:
-        FxHashMap<u32, (Vec<debug_format::Symbol>, Vec<debug_format::ArraySym>)>,
+    func_memory_locals: FxHashMap<u32, (Vec<debug_format::Symbol>, Vec<debug_format::ArraySym>)>,
     /// Type table shared by every frame's array descriptors (aggregate
     /// element layouts) — becomes `DebugLocals::types` (v3).
     local_type_table: mir::debug_symbols::TypeTable,
@@ -728,9 +731,7 @@ impl<'a> WasmGen<'a> {
     /// Name → wasm index for `emit_call`: user functions remapped past imports
     /// and grafted builtins, plus the builtins themselves (expression lowering
     /// calls `str_byte_cmp` by name).
-    fn build_call_indices(
-        &self,
-    ) -> FxHashMap<hir::hir_def::interned::identifier::Ident, u32> {
+    fn build_call_indices(&self) -> FxHashMap<hir::hir_def::interned::identifier::Ident, u32> {
         let mut map: FxHashMap<_, _> = self
             .module
             .function_indices
@@ -1199,9 +1200,7 @@ impl<'a> WasmGen<'a> {
                     }
                     // A memory-resident return slot that is not a STRING is an
                     // aggregate; its address IS the return value.
-                    LocalInfo::Memory { address, .. } => {
-                        Some(ReturnValue::AggregateMem(*address))
-                    }
+                    LocalInfo::Memory { address, .. } => Some(ReturnValue::AggregateMem(*address)),
                     _ => None,
                 })
         } else {
@@ -1798,7 +1797,9 @@ impl<'a> WasmGen<'a> {
         // it exports none.
         if self.profile != Profile::Release && !self.module.test_manifest.tests.is_empty() {
             module.section(&wasm_encoder::CustomSection {
-                name: std::borrow::Cow::Borrowed(debug_format::test_manifest::TEST_MANIFEST_SECTION),
+                name: std::borrow::Cow::Borrowed(
+                    debug_format::test_manifest::TEST_MANIFEST_SECTION,
+                ),
                 data: std::borrow::Cow::Owned(self.module.test_manifest.to_msgpack()),
             });
         }

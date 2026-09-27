@@ -202,7 +202,10 @@ fn comparison_fold_of_one_argument_is_vacuously_true(mut with_db: db::RootDataba
         END_FUNCTION
     "#;
     let result: i32 = super::run(&mut with_db, source, "test", ());
-    assert_eq!(result, 11, "a single element is trivially all-equal and ordered");
+    assert_eq!(
+        result, 11,
+        "a single element is trivially all-equal and ordered"
+    );
 }
 
 /// A pack collects every POSITIONAL argument wherever it sits in the list; a

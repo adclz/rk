@@ -199,9 +199,15 @@ fn a_workspace_containing_its_library_does_not_load_it_twice() {
         db.get_files().len(),
         1,
         "only `main.st` is the workspace's: {:?}",
-        db.get_files().iter().map(|f| f.url(&db).to_string()).collect::<Vec<_>>()
+        db.get_files()
+            .iter()
+            .map(|f| f.url(&db).to_string())
+            .collect::<Vec<_>>()
     );
-    assert!(!counts.has_errors(), "nothing is a duplicate of itself:\n{out}");
+    assert!(
+        !counts.has_errors(),
+        "nothing is a duplicate of itself:\n{out}"
+    );
 }
 
 /// A broken library refuses to build, visibly; `rk check` stays

@@ -155,7 +155,7 @@ fn lane_of(e: MirElementary) -> hir::check::wasm_instructions::Lane {
 /// from `MirElementary`: pinned equal here for every scalar.
 #[cfg(test)]
 mod lane_parity {
-    use hir::check::wasm_instructions::{Lane, rk_bits_of, lane_of};
+    use hir::check::wasm_instructions::{Lane, lane_of, rk_bits_of};
     use hir::hir_def::expressions::spec::ElementarySpec;
 
     #[test]

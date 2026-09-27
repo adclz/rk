@@ -4,8 +4,8 @@
 //! function name (`debug-functions`) and source line (`debug-lines`).
 
 use crate::tests::codegen::{compile_to_mir_and_wasm, with_db};
-use rstest::*;
 use debug_format::DebugInfo;
+use rstest::*;
 
 /// 0-based source line of the first occurrence of `needle`.
 fn row_of(src: &str, needle: &str) -> u32 {

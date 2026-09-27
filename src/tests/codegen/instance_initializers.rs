@@ -318,7 +318,10 @@ fn two_members_of_the_same_instance_type_are_both_initialized(mut with_db: db::R
         END_FUNCTION
     "#;
     let result: i32 = run(&mut with_db, source, "run", ());
-    assert_eq!(result, 66, "both Inner members initialized, not just the first");
+    assert_eq!(
+        result, 66,
+        "both Inner members initialized, not just the first"
+    );
 }
 
 /// A three-deep chain, to show the path prefix keeps accumulating rather than

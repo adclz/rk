@@ -4,9 +4,9 @@
 //! `framehandle_spike::wasm_pc_is_absolute_operator_offset`).
 
 use crate::tests::codegen::{add_source, compile_to_mir_and_wasm, with_db};
+use debug_format::DebugInfo;
 use hir::hir_def::semantic_index::semantic_index;
 use rstest::*;
-use debug_format::DebugInfo;
 
 fn read_debug_lines(wasm: &[u8]) -> debug_format::DebugLines {
     let section = super::expect_section(wasm, debug_format::DEBUG_LINES_SECTION);

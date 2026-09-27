@@ -31,7 +31,11 @@ impl TypeTable {
     }
 
     /// Intern an enumeration's variant table, returning its id.
-    pub fn intern_enum(&mut self, db: &dyn WorkspaceDataBase, e: &crate::types::MirEnumType) -> u32 {
+    pub fn intern_enum(
+        &mut self,
+        db: &dyn WorkspaceDataBase,
+        e: &crate::types::MirEnumType,
+    ) -> u32 {
         let desc = TypeDesc::Enum {
             name: e.name.text(db).to_string(),
             storage: sym_type_of(e.storage),
@@ -48,7 +52,10 @@ impl TypeTable {
     /// descriptor only ever references earlier entries.
     pub fn intern(&mut self, db: &dyn WorkspaceDataBase, ty: &MirType) -> u32 {
         let desc = match ty {
-            MirType::Elementary(_) | MirType::Enum(_) | MirType::Subrange(_) | MirType::String { .. } => {
+            MirType::Elementary(_)
+            | MirType::Enum(_)
+            | MirType::Subrange(_)
+            | MirType::String { .. } => {
                 // Exactly the scalar set `scalar_sym_ty` covers.
                 TypeDesc::Scalar(scalar_sym_ty(ty).expect("scalar arm covers scalar types"))
             }
@@ -222,9 +229,7 @@ pub fn walk_type(
                 global,
                 // An aggregate element gets its layout interned so members resolve
                 // on demand.
-                elem_type: elem_ty
-                    .is_none()
-                    .then(|| types.intern(db, &a.element_type)),
+                elem_type: elem_ty.is_none().then(|| types.intern(db, &a.element_type)),
             });
             if arrays_eager {
                 for k in 0..a.total_elements {
@@ -294,7 +299,18 @@ pub fn collect_root(
     types: &mut TypeTable,
 ) {
     let mut budget = MAX_ROOT_LEAVES;
-    walk_type(db, root, base, ty, global, out, arrays, types, &mut budget, false);
+    walk_type(
+        db,
+        root,
+        base,
+        ty,
+        global,
+        out,
+        arrays,
+        types,
+        &mut budget,
+        false,
+    );
 }
 
 /// As [`collect_root`], but with eager array elements — for FRAME locals,
@@ -309,7 +325,18 @@ pub fn collect_frame_root(
     types: &mut TypeTable,
 ) {
     let mut budget = MAX_ROOT_LEAVES;
-    walk_type(db, root, base, ty, false, out, arrays, types, &mut budget, true);
+    walk_type(
+        db,
+        root,
+        base,
+        ty,
+        false,
+        out,
+        arrays,
+        types,
+        &mut budget,
+        true,
+    );
 }
 
 /// Name every aggregate under `root` by its base address: what a frame's

@@ -1,9 +1,7 @@
 use db::WorkspaceDataBase;
 use hir::{
     hir_def::{
-        expressions::{
-            spec::{Array, ElementarySpec, Struct, SubRange},
-        },
+        expressions::spec::{Array, ElementarySpec, Struct, SubRange},
         interned::identifier::Ident,
         pous::{class::Class, function_block::FunctionBlock},
     },
@@ -57,7 +55,12 @@ impl LowerTypeError {
     }
 
     /// The source location, if one was attached.
-    pub fn location(&self) -> Option<(auto_lsp::default::db::file::File, auto_lsp::tree_sitter::Range)> {
+    pub fn location(
+        &self,
+    ) -> Option<(
+        auto_lsp::default::db::file::File,
+        auto_lsp::tree_sitter::Range,
+    )> {
         match self {
             LowerTypeError::Located { file, span, .. } => Some((*file, *span)),
             _ => None,
@@ -172,7 +175,11 @@ pub(crate) fn lower_spec<'db>(
     db: &'db dyn WorkspaceDataBase,
     spec: hir::hir_def::expressions::spec::Spec<'db>,
 ) -> Result<MirType, LowerTypeError> {
-    Ok(apply_sized_string(db, spec, lower_type(db, spec.infer(db))?))
+    Ok(apply_sized_string(
+        db,
+        spec,
+        lower_type(db, spec.infer(db))?,
+    ))
 }
 
 fn apply_sized_string<'db>(
@@ -278,7 +285,6 @@ fn lower_array_type<'db>(
         align: element_align,
     }))
 }
-
 
 /// Each enumerator paired with its declared numeric value: an explicit
 /// `(Idle := 10, Run := 20)`, or continuing from the previous value from 0.
@@ -496,4 +502,3 @@ pub fn lower_class_type<'db>(
         super::naming::qualified_pou_ident(db, Type::Class(class)),
     )
 }
-

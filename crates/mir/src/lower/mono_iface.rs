@@ -235,9 +235,6 @@ fn is_this_arg<'db>(db: &'db dyn WorkspaceDataBase, arg: Expr<'db>) -> bool {
     false
 }
 
-
-
-
 #[allow(clippy::too_many_arguments)]
 fn process_call<'db>(
     db: &'db dyn WorkspaceDataBase,

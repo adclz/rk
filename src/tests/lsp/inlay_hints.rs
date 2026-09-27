@@ -196,10 +196,10 @@ END_FUNCTION"#;
     let sema = semantic_index(&with_db, file);
     let mut result = vec![];
     let _ = sema.walk_hir(&with_db, &mut |n| {
-        if let HirNode::InitExpr(curr) = n &&
-            let Some(inlay_hint) = curr.inlay_hint(&with_db) {
-                result.push(inlay_hint);
-            
+        if let HirNode::InitExpr(curr) = n
+            && let Some(inlay_hint) = curr.inlay_hint(&with_db)
+        {
+            result.push(inlay_hint);
         }
         ControlFlow::Continue(())
     });

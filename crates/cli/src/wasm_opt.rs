@@ -72,7 +72,11 @@ fn on_path() -> Option<PathBuf> {
 }
 
 fn exe_name() -> &'static str {
-    if cfg!(windows) { "wasm-opt.exe" } else { "wasm-opt" }
+    if cfg!(windows) {
+        "wasm-opt.exe"
+    } else {
+        "wasm-opt"
+    }
 }
 
 /// Where a downloaded Binaryen lives: the user's cache directory, so it
@@ -184,8 +188,7 @@ fn get(url: &str) -> Result<Vec<u8>, String> {
         .map_err(|e| format!("fetching {url}: {e}"))?
         .into_body();
     let mut bytes = Vec::new();
-    std::io::copy(&mut body.as_reader(), &mut bytes)
-        .map_err(|e| format!("reading {url}: {e}"))?;
+    std::io::copy(&mut body.as_reader(), &mut bytes).map_err(|e| format!("reading {url}: {e}"))?;
     Ok(bytes)
 }
 

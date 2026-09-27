@@ -32,10 +32,7 @@ pub enum LibraryPathResolution {
     /// string, or the workspace IS the library.
     Disabled,
     /// A directory that exists, and where it came from.
-    Found {
-        dir: PathBuf,
-        origin: LibraryOrigin,
-    },
+    Found { dir: PathBuf, origin: LibraryOrigin },
     /// Named as something that is not a readable directory; never silently
     /// ignored.
     Invalid(String),

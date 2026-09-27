@@ -126,7 +126,9 @@ pub fn build_core_profile(
                 Some(report) => {
                     let _ = std::io::stderr().write_all(report.as_bytes());
                     ui::failure("internal compiler error:", "cannot compile.");
-                    Err(format!("{report}\ninternal compiler error: cannot compile.\n"))
+                    Err(format!(
+                        "{report}\ninternal compiler error: cannot compile.\n"
+                    ))
                 }
                 None => {
                     ui::error(format!(
@@ -179,15 +181,14 @@ pub fn build_core_quiet(
         .into_iter()
         .map(|file| semantic_index(db, file))
         .collect();
-    let mir_module =
-        mir::lower::lower_module::lower_modules(db, &sem_indices).map_err(|e| {
-            // Same ICE rendering as `build_core`, returned rather than printed.
-            render_codegen_error(db, workspace, &e, crate::cli::OutputFormat::Full)
-                .map(|report| format!("{report}\ninternal compiler error: cannot compile.\n"))
-                .unwrap_or_else(|| {
-                    format!("internal compiler error: {e}; please report it at {ISSUES_URL}")
-                })
-        })?;
+    let mir_module = mir::lower::lower_module::lower_modules(db, &sem_indices).map_err(|e| {
+        // Same ICE rendering as `build_core`, returned rather than printed.
+        render_codegen_error(db, workspace, &e, crate::cli::OutputFormat::Full)
+            .map(|report| format!("{report}\ninternal compiler error: cannot compile.\n"))
+            .unwrap_or_else(|| {
+                format!("internal compiler error: {e}; please report it at {ISSUES_URL}")
+            })
+    })?;
     let wasm_module = wasm_codegen::generate_wasm(db, &mir_module);
     Ok((wasm_module.finish(), mir_module))
 }
@@ -267,12 +268,18 @@ pub fn optimize_wasm(wasm_bytes: Vec<u8>, opt_level: Option<&str>, verbose: bool
         return wasm_bytes;
     }
     let Some(wasm_opt) = crate::wasm_opt::find(verbose) else {
-        ui::warn("could not optimize: no wasm-opt available. The build is correct but NOT optimized.");
+        ui::warn(
+            "could not optimize: no wasm-opt available. The build is correct but NOT optimized.",
+        );
         return wasm_bytes;
     };
 
     if verbose {
-        let skipped = if level == "4" { " --skip-pass=flatten" } else { "" };
+        let skipped = if level == "4" {
+            " --skip-pass=flatten"
+        } else {
+            ""
+        };
         ui::detail(format!("    Optimizing wasm-opt -O{level}{skipped}"));
     }
     let original_size = wasm_bytes.len();

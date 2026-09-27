@@ -168,10 +168,15 @@ impl StHighlighter {
                     // A typed literal, `INT#5` or `T#10ms`, reads as a number
                     // when its prefix is a type the table knows.
                     let tail = rest[len + 1..]
-                        .find(|c: char| !(c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | '-')))
+                        .find(|c: char| {
+                            !(c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | '-'))
+                        })
                         .unwrap_or(rest.len() - len - 1);
                     let typed = self.inline_words.contains_key(word)
-                        || matches!(word, "T" | "TIME" | "LT" | "LTIME" | "D" | "DATE" | "TOD" | "DT");
+                        || matches!(
+                            word,
+                            "T" | "TIME" | "LT" | "LTIME" | "D" | "DATE" | "TOD" | "DT"
+                        );
                     code |= typed;
                     (len + 1 + tail, typed.then_some("hl-number"))
                 } else {

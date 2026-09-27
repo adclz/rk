@@ -291,9 +291,7 @@ impl<'db> Type<'db> {
                 | ElementarySpec::LInt
                 | ElementarySpec::ULInt
                 | ElementarySpec::LReal => Size::Size(64),
-                ElementarySpec::Time | ElementarySpec::Tod | ElementarySpec::Date => {
-                    Size::Size(32)
-                }
+                ElementarySpec::Time | ElementarySpec::Tod | ElementarySpec::Date => Size::Size(32),
                 // Seconds since the epoch, in 64 bits.
                 ElementarySpec::DateAndTime
                 | ElementarySpec::LTime

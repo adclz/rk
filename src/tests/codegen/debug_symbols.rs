@@ -4,9 +4,9 @@
 //! are instance-based, so a CONFIGURATION is needed to allocate an instance.
 
 use crate::tests::codegen::{compile_to_mir_and_wasm, with_db};
+use debug_format::{DebugInfo, VarValue};
 use mir::debug_symbols::{DEBUG_SYMBOLS_SECTION, DEBUG_SYMBOLS_VERSION, DebugSymbols, SymType};
 use rstest::*;
-use debug_format::{DebugInfo, VarValue};
 
 use crate::tests::codegen::TestPlc;
 
@@ -241,7 +241,10 @@ fn aggregate_symbols(mut with_db: db::RootDatabase) {
     let a1 = dbg.resolve("Run.arr[1]").expect("in range").address;
     assert_eq!(dbg.resolve("Run.arr[2]").unwrap().address, a1 + 4);
     assert_eq!(dbg.resolve("Run.arr[3]").unwrap().address, a1 + 8);
-    assert!(dbg.resolve("Run.arr[0]").is_none(), "lower bound is 1, not 0");
+    assert!(
+        dbg.resolve("Run.arr[0]").is_none(),
+        "lower bound is 1, not 0"
+    );
     assert!(dbg.resolve("Run.arr[4]").is_none(), "upper bound is 3");
 
     // 2-D: row-major, rightmost dimension varying fastest.
@@ -249,7 +252,12 @@ fn aggregate_symbols(mut with_db: db::RootDatabase) {
     assert_eq!(dbg.resolve("Run.grid[0][1]").unwrap().address, g00 + 4);
     assert_eq!(dbg.resolve("Run.grid[1][0]").unwrap().address, g00 + 8);
     assert_eq!(dbg.resolve("Run.grid[1][1]").unwrap().address, g00 + 12);
-    for p in ["Run.grid[0][0]", "Run.grid[0][1]", "Run.grid[1][0]", "Run.grid[1][1]"] {
+    for p in [
+        "Run.grid[0][0]",
+        "Run.grid[0][1]",
+        "Run.grid[1][0]",
+        "Run.grid[1][1]",
+    ] {
         assert_eq!(dbg.resolve(p).unwrap().ty, SymType::DInt, "{p} type");
     }
 
@@ -316,10 +324,7 @@ fn runtime_reads_writes_string_by_name(mut with_db: db::RootDatabase) {
     );
 
     // A type mismatch is still rejected.
-    assert!(
-        plc.write_var(&dbg, "Run.label", VarValue::I16(1))
-            .is_err()
-    );
+    assert!(plc.write_var(&dbg, "Run.label", VarValue::I16(1)).is_err());
 }
 
 /// `read_all` snapshots every monitorable variable's current value in one call —
@@ -405,7 +410,10 @@ fn a_large_array_is_described_and_addressable_not_invisible(mut with_db: db::Roo
         .iter()
         .filter(|s| s.path.starts_with("P1.big["))
         .count();
-    assert_eq!(leaves, 0, "elements are resolved on demand, never enumerated");
+    assert_eq!(
+        leaves, 0,
+        "elements are resolved on demand, never enumerated"
+    );
 
     // Any element resolves ON DEMAND through the descriptor: readable and
     // forceable, like adding `big[4321]` to a watch list.
@@ -459,7 +467,10 @@ fn an_aggregate_array_is_one_descriptor_not_ten_thousand_leaves(mut with_db: db:
         .iter()
         .filter(|s| s.path.starts_with("P1.wide["))
         .count();
-    assert_eq!(leaves, 0, "no per-element leaves for aggregate arrays either");
+    assert_eq!(
+        leaves, 0,
+        "no per-element leaves for aggregate arrays either"
+    );
     // The descriptor is present; its element is an aggregate, so it carries
     // no scalar decode type — that boundary needs a type table (a follow-up).
     let arr = table
@@ -467,7 +478,10 @@ fn an_aggregate_array_is_one_descriptor_not_ten_thousand_leaves(mut with_db: db:
         .iter()
         .find(|a| a.path == "P1.wide")
         .expect("descriptor for the struct array");
-    assert_eq!(arr.elem_ty, None, "aggregate elements have no scalar decode");
+    assert_eq!(
+        arr.elem_ty, None,
+        "aggregate elements have no scalar decode"
+    );
     assert_eq!(arr.elem_size, 40);
 }
 
@@ -499,7 +513,11 @@ fn multi_dimensional_paths_resolve_in_both_spellings(mut with_db: db::RootDataba
     // through the descriptor with per-dimension lower bounds honoured.
     assert_eq!(plc.read_var(&info, "P1.m[7][9]"), Some(VarValue::I16(79)));
     assert_eq!(plc.read_var(&info, "P1.m[7,9]"), Some(VarValue::I16(79)));
-    assert_eq!(plc.read_var(&info, "P1.m[0][9]"), None, "below the lower bound");
+    assert_eq!(
+        plc.read_var(&info, "P1.m[0][9]"),
+        None,
+        "below the lower bound"
+    );
 }
 
 /// A frame's MEMORY-resident locals — aggregates, strings — must appear in
@@ -652,11 +670,19 @@ fn aggregate_elements_resolve_through_the_type_table(mut with_db: db::RootDataba
         .find(|a| a.path == "P1.pts")
         .expect("descriptor for the array of structs");
     assert_eq!(arr.elem_ty, None, "an aggregate element has no scalar tag");
-    let elem_id = arr.elem_type.expect("v5: aggregate element carries a TypeId") as usize;
+    let elem_id = arr
+        .elem_type
+        .expect("v5: aggregate element carries a TypeId") as usize;
     let debug_format::TypeDesc::Struct { name, size, fields } = &table.types[elem_id] else {
-        panic!("Pt should be described as a struct, got {:?}", table.types[elem_id]);
+        panic!(
+            "Pt should be described as a struct, got {:?}",
+            table.types[elem_id]
+        );
     };
-    assert!(name.contains("Pt"), "type name is carried for display, got {name}");
+    assert!(
+        name.contains("Pt"),
+        "type name is carried for display, got {name}"
+    );
     assert_eq!(*size, 24, "x(4) + y(4) + history(4*4)");
     assert_eq!(
         fields.iter().map(|f| f.name.as_str()).collect::<Vec<_>>(),
@@ -665,7 +691,9 @@ fn aggregate_elements_resolve_through_the_type_table(mut with_db: db::RootDataba
     // …and the nested array field references a further descriptor whose
     // element is a scalar — the table is a graph, one hop per layer.
     let hist = &fields[2];
-    let debug_format::TypeDesc::Array { dimensions, elem, .. } = &table.types[hist.ty as usize]
+    let debug_format::TypeDesc::Array {
+        dimensions, elem, ..
+    } = &table.types[hist.ty as usize]
     else {
         panic!("history should be an Array desc");
     };
@@ -684,7 +712,10 @@ fn aggregate_elements_resolve_through_the_type_table(mut with_db: db::RootDataba
         info.symbol("P1.pts[1500].y").is_none(),
         "the probe element must be past the leaf budget for this test to prove anything"
     );
-    assert_eq!(plc.read_var(&info, "P1.pts[1500].y"), Some(VarValue::I32(15000)));
+    assert_eq!(
+        plc.read_var(&info, "P1.pts[1500].y"),
+        Some(VarValue::I32(15000))
+    );
     assert_eq!(
         plc.read_var(&info, "P1.pts[1500].history[2]"),
         Some(VarValue::I32(101500)),
@@ -692,7 +723,10 @@ fn aggregate_elements_resolve_through_the_type_table(mut with_db: db::RootDataba
     );
     plc.write_var(&info, "P1.pts[1500].x", VarValue::I32(-3))
         .expect("forcing a member of an un-enumerated element");
-    assert_eq!(plc.read_var(&info, "P1.pts[1500].x"), Some(VarValue::I32(-3)));
+    assert_eq!(
+        plc.read_var(&info, "P1.pts[1500].x"),
+        Some(VarValue::I32(-3))
+    );
 
     // In-budget elements still read through the eager leaf table and agree.
     assert_eq!(plc.read_var(&info, "P1.pts[0].y"), Some(VarValue::I32(0)));
@@ -754,7 +788,9 @@ fn a_frame_s_aggregate_array_elements_carry_their_layout(mut with_db: db::RootDa
         .find(|a| a.path == "recs")
         .expect("descriptor for the frame-local aggregate array");
     assert_eq!(arr.elem_ty, None);
-    let id = arr.elem_type.expect("frame descriptors reference the shared table") as usize;
+    let id = arr
+        .elem_type
+        .expect("frame descriptors reference the shared table") as usize;
     assert!(
         matches!(&locals.types[id], debug_format::TypeDesc::Struct { fields, .. } if fields.len() == 2),
         "DebugLocals carries the type table its frames reference"
@@ -1037,7 +1073,7 @@ fn nested_instances_can_share_a_base_address(mut with_db: db::RootDatabase) {
 /// older compiler wrote — so it must degrade, not vanish.
 #[rstest]
 fn a_container_table_without_types_degrades_and_says_so() {
-    use debug_format::{ContainerSym, DebugSymbols, Symbol, SymType};
+    use debug_format::{ContainerSym, DebugSymbols, SymType, Symbol};
 
     let table = DebugSymbols {
         version: debug_format::DEBUG_SYMBOLS_VERSION,
@@ -1078,7 +1114,9 @@ fn a_container_table_without_types_degrades_and_says_so() {
         "the outermost name, which is all such a table can answer"
     );
     assert!(
-        info.problems().iter().any(|p| p.contains("without their type")),
+        info.problems()
+            .iter()
+            .any(|p| p.contains("without their type")),
         "and it says the build is stale: {:?}",
         info.problems()
     );

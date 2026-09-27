@@ -13,12 +13,12 @@ use auto_lsp::lsp_server;
 use auto_lsp::lsp_server::Connection;
 use auto_lsp::lsp_server::Message;
 use auto_lsp::lsp_types;
+use auto_lsp::lsp_types::CallHierarchyServerCapability;
 use auto_lsp::lsp_types::CodeActionProviderCapability;
 use auto_lsp::lsp_types::CodeLensOptions;
 use auto_lsp::lsp_types::CompletionOptions;
 use auto_lsp::lsp_types::DeclarationCapability;
 use auto_lsp::lsp_types::DiagnosticOptions;
-use auto_lsp::lsp_types::CallHierarchyServerCapability;
 use auto_lsp::lsp_types::DiagnosticServerCapabilities;
 use auto_lsp::lsp_types::DidChangeWatchedFilesClientCapabilities;
 use auto_lsp::lsp_types::DidChangeWatchedFilesRegistrationOptions;
@@ -32,8 +32,8 @@ use auto_lsp::lsp_types::PublishDiagnosticsParams;
 use auto_lsp::lsp_types::Registration;
 use auto_lsp::lsp_types::RegistrationParams;
 use auto_lsp::lsp_types::ServerCapabilities;
-use auto_lsp::lsp_types::TypeDefinitionProviderCapability;
 use auto_lsp::lsp_types::SignatureHelpOptions;
+use auto_lsp::lsp_types::TypeDefinitionProviderCapability;
 use auto_lsp::lsp_types::Url;
 use auto_lsp::lsp_types::WatchKind;
 use auto_lsp::lsp_types::WorkDoneProgressOptions;
@@ -234,7 +234,13 @@ pub fn boot() -> Result<(), Box<dyn Error + Send + Sync>> {
     let workspace = params
         .root_uri
         .clone()
-        .or_else(|| params.workspace_folders.as_ref()?.first().map(|f| f.uri.clone()))
+        .or_else(|| {
+            params
+                .workspace_folders
+                .as_ref()?
+                .first()
+                .map(|f| f.uri.clone())
+        })
         .and_then(|uri| uri.to_file_path().ok());
     refresh_configuration(&mut session, workspace.as_deref())?;
 
@@ -323,8 +329,8 @@ fn on_notifications(
                 .is_some_and(|url| p.changes.iter().any(|e| e.uri == url));
 
             if config_changed {
-                let workspace = Workspace::try_get(&s.db)
-                    .and_then(|c| c.workspace_folder(&s.db).cloned());
+                let workspace =
+                    Workspace::try_get(&s.db).and_then(|c| c.workspace_folder(&s.db).cloned());
                 refresh_configuration(s, workspace.as_deref())?;
             } else {
                 changed_watched_files(s, p, |url| {

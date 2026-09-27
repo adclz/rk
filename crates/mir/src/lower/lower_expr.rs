@@ -89,7 +89,6 @@ pub struct StringPool {
     pub base_offset: u32,
 }
 
-
 impl StringPool {
     pub fn new(base_offset: u32) -> Self {
         Self {
@@ -1775,8 +1774,13 @@ impl<'db> ExprLowerCtx<'db> {
 
         let mut extern_results = Vec::new();
         if let Some(callable) = callable {
-            self.build_call_args(func_call, callable, &mut args, &mut extern_results,
-                &mut output_bindings)?;
+            self.build_call_args(
+                func_call,
+                callable,
+                &mut args,
+                &mut extern_results,
+                &mut output_bindings,
+            )?;
         } else {
             // Unresolved callee: no signature to order against, so call-site order.
             for param in call_params {

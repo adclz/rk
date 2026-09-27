@@ -276,7 +276,10 @@ fn method_inherited_from_a_grandparent(mut with_db: db::RootDatabase) {
         END_FUNCTION
     "#;
     let result: i32 = super::run(&mut with_db, source, "test", ());
-    assert_eq!(result, 10, "grandparent method runs against the derived instance");
+    assert_eq!(
+        result, 10,
+        "grandparent method runs against the derived instance"
+    );
 }
 
 /// A method calls a sibling with no receiver — `Helper()`, not
@@ -316,7 +319,10 @@ fn a_bare_sibling_method_call_receives_this(mut with_db: db::RootDatabase) {
         END_FUNCTION
     "#;
     let result: i32 = super::run(&mut with_db, source, "test", ());
-    assert_eq!(result, 12, "9 from the sibling pair, 3 from the inherited bare call");
+    assert_eq!(
+        result, 12,
+        "9 from the sibling pair, 3 from the inherited bare call"
+    );
 }
 
 /// Redeclaring a method further down the chain is an OVERRIDE, not a conflict:
@@ -355,7 +361,10 @@ fn nearest_override_wins_along_the_chain(mut with_db: db::RootDatabase) {
         END_FUNCTION
     "#;
     let result: i32 = super::run(&mut with_db, source, "test", ());
-    assert_eq!(result, 2004, "the override advances v (10,20) and w (2,4): 20*100+4");
+    assert_eq!(
+        result, 2004,
+        "the override advances v (10,20) and w (2,4): 20*100+4"
+    );
 }
 
 /// An override calling the method it overrides: `SUPER.Pick()` must SKIP the
@@ -384,7 +393,10 @@ fn super_reaches_the_overridden_method(mut with_db: db::RootDatabase) {
         END_FUNCTION
     "#;
     let result: i32 = super::run(&mut with_db, source, "test", ());
-    assert_eq!(result, 105, "SUPER runs S1's body (v -> 1), the override adds 5");
+    assert_eq!(
+        result, 105,
+        "SUPER runs S1's body (v -> 1), the override adds 5"
+    );
 }
 
 /// A FUNCTION_BLOCK may satisfy an interface with a method it INHERITS rather
@@ -506,7 +518,10 @@ fn a_self_method_call_output_binding_lands(mut with_db: db::RootDatabase) {
         END_FUNCTION
     "#;
     let result: i32 = super::run(&mut with_db, source, "run", ());
-    assert_eq!(result, 102, "bare and THIS. forms both land the output: 1*100 + 2");
+    assert_eq!(
+        result, 102,
+        "bare and THIS. forms both land the output: 1*100 + 2"
+    );
 }
 
 /// THREE declarations of one name in the resolution set: the interface
@@ -548,7 +563,10 @@ fn interface_prototype_base_method_and_override_coexist(mut with_db: db::RootDat
         END_FUNCTION
     "#;
     let result: i32 = super::run(&mut with_db, source, "test", ());
-    assert_eq!(result, 14, "the override implements the interface, not the base");
+    assert_eq!(
+        result, 14,
+        "the override implements the interface, not the base"
+    );
 }
 
 /// A BARE call to an INHERITED method with an OUTPUT BINDING: the name walks
@@ -580,7 +598,10 @@ fn a_bare_inherited_call_output_binding_lands(mut with_db: db::RootDatabase) {
         END_FUNCTION
     "#;
     let result: i32 = super::run(&mut with_db, source, "run", ());
-    assert_eq!(result, 102, "the inherited bare call lands 1 then 2 through &v");
+    assert_eq!(
+        result, 102,
+        "the inherited bare call lands 1 then 2 through &v"
+    );
 }
 
 /// A derived FB call binds inherited parameters — the base's VAR_IN_OUT and

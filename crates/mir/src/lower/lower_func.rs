@@ -19,8 +19,7 @@ use std::rc::Rc;
 
 use crate::{
     function::{
-        MirFunction, MirLinkage, MirLocal, MirParam, MirParamKind, MirStorage,
-        MirVariableStorage,
+        MirFunction, MirLinkage, MirLocal, MirParam, MirParamKind, MirStorage, MirVariableStorage,
     },
     lower::{
         lower_expr::ExprLowerCtx,
@@ -1040,9 +1039,7 @@ fn collect_address_taken_in_inits<'db>(
     db: &'db dyn WorkspaceDataBase,
     vars: &[hir::hir_def::pous::variable::VariableDecl<'db>],
 ) -> FxHashSet<CaselessIdent> {
-    use hir::hir_def::expressions::expression::{
-        ExprKind, InitExprKind, PrimaryExpr, RefValue,
-    };
+    use hir::hir_def::expressions::expression::{ExprKind, InitExprKind, PrimaryExpr, RefValue};
 
     fn walk_init<'db>(
         db: &'db dyn WorkspaceDataBase,

@@ -88,9 +88,7 @@ fn floor_tmp_in_stmt(stmt: &MirStmt) -> bool {
 
 fn floor_tmp_in_expr(expr: &MirExpr) -> bool {
     match expr {
-        MirExpr::Cast { expr, from, to } => {
-            needs_floor_tmp(*from, *to) || floor_tmp_in_expr(expr)
-        }
+        MirExpr::Cast { expr, from, to } => needs_floor_tmp(*from, *to) || floor_tmp_in_expr(expr),
         MirExpr::Call(call) => floor_tmp_in_call(call),
         MirExpr::BinOp { lhs, rhs, .. } => floor_tmp_in_expr(lhs) || floor_tmp_in_expr(rhs),
         MirExpr::UnaryOp { expr, .. } => floor_tmp_in_expr(expr),
@@ -321,10 +319,7 @@ fn emit_datetime_cast(from: MirElementary, to: MirElementary) -> Option<Vec<Inst
         (LDate, Date) => vec![Instruction::I32WrapI64],
         // DT (i64 secs) <-> LDT (i64 ns): a pure scale; hir bounds DT to LDT's
         // span.
-        (DateAndTime, LDateTime) => vec![
-            Instruction::I64Const(NS_PER_S),
-            Instruction::I64Mul,
-        ],
+        (DateAndTime, LDateTime) => vec![Instruction::I64Const(NS_PER_S), Instruction::I64Mul],
         (LDateTime, DateAndTime) => floordiv_i64(NS_PER_S),
 
         // DT (i64 secs since epoch) decompositions

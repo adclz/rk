@@ -263,7 +263,10 @@ fn report_codes(html: &str, highlighter: &StHighlighter) -> String {
         let code = rest.get(1..6).filter(|_| rest.get(6..7) == Some("]"));
         match code.and_then(|c| highlighter.code_href(c)) {
             Some(href) => {
-                out.push_str(&format!("<a class=\"code-link\" href=\"{href}\">{}</a>", &rest[..7]));
+                out.push_str(&format!(
+                    "<a class=\"code-link\" href=\"{href}\">{}</a>",
+                    &rest[..7]
+                ));
                 rest = &rest[7..];
             }
             None => {
@@ -411,7 +414,11 @@ Before.
     #[test]
     fn a_heading_that_is_a_keyword_takes_its_class() {
         let highlighter = StHighlighter::new();
-        let out = preprocess("# Page\n\n## VAR_CONFIG\n\nText.\n\n## Split a configuration\n", &highlighter).body;
+        let out = preprocess(
+            "# Page\n\n## VAR_CONFIG\n\nText.\n\n## Split a configuration\n",
+            &highlighter,
+        )
+        .body;
         assert!(out.contains("## VAR_CONFIG {.k-var-config}\n"), "{out}");
         assert!(out.contains("## Split a configuration\n"), "{out}");
     }
@@ -422,7 +429,10 @@ Before.
         let body = "```sh\n[E1412] Error\n   ╭─[ main.st:7:17 ]\n```\n\n```sh\nrk check\n```\n";
         let out = preprocess(body, &highlighter).body;
         let (diagnostic, command) = out.split_once("</pre>").unwrap();
-        assert!(diagnostic.contains("<code class=\"language-sh box\">"), "{out}");
+        assert!(
+            diagnostic.contains("<code class=\"language-sh box\">"),
+            "{out}"
+        );
         assert!(command.contains("<code class=\"language-sh\">"), "{out}");
     }
 

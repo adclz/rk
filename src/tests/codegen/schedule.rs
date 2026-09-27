@@ -293,9 +293,17 @@ END_CONFIGURATION
     let instances: Vec<String> = schedule
         .tasks
         .iter()
-        .flat_map(|t| t.programs.iter().map(|p| p.inst_name.text(&with_db).to_string()))
+        .flat_map(|t| {
+            t.programs
+                .iter()
+                .map(|p| p.inst_name.text(&with_db).to_string())
+        })
         .collect();
-    assert_eq!(instances.len(), 2, "one instance per fragment: {instances:?}");
+    assert_eq!(
+        instances.len(),
+        2,
+        "one instance per fragment: {instances:?}"
+    );
 }
 
 /// A period is as wide as the INTERVAL it comes from. The manifest carried it
@@ -332,7 +340,11 @@ fn a_period_past_32_bits_is_carried_whole(mut with_db: db::RootDatabase) {
     let schedule = mir.schedule.as_ref().expect("schedule");
     let rare = &schedule.tasks[1];
     assert_eq!(rare.name.text(&with_db).as_str(), "Rare");
-    assert_eq!(rare.period_ticks, 1 << 32, "49d17h2m47s296ms is exactly 2^32 ticks of 1ms");
+    assert_eq!(
+        rare.period_ticks,
+        1 << 32,
+        "49d17h2m47s296ms is exactly 2^32 ticks of 1ms"
+    );
 
     // Retain band holds [a, b] (declaration order), 4 bytes each. Eight ticks:
     // Fast fires on every one, Rare on tick 0 and not again for 49 days.
@@ -341,7 +353,11 @@ fn a_period_past_32_bits_is_carried_whole(mut with_db: db::RootDatabase) {
     let r = plc.read_retain();
     let a = i32::from_le_bytes(r[0..4].try_into().unwrap());
     let b = i32::from_le_bytes(r[4..8].try_into().unwrap());
-    assert_eq!((a, b), (8, 1), "(8, 8) means the period wrapped to every tick");
+    assert_eq!(
+        (a, b),
+        (8, 1),
+        "(8, 8) means the period wrapped to every tick"
+    );
 }
 
 /// The point of the instance model: two instances of the SAME program type have
