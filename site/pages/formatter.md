@@ -103,7 +103,7 @@ q: Pt := (
 
 ## Semicolons
 
-Semicolons `;` are not mandatory, see [Syntax](/#syntax).
+Semicolons `;` are not mandatory, see [Syntax](/docs/syntax/).
 
 The formatter writes the missing ones in: every declaration, statement and directive comes back terminated, and one already there is left alone.
 

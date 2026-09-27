@@ -1,0 +1,32 @@
+# Documentation
+
+- [Getting started](getting-started.md)
+- [Configuration](configuration.md)
+- [Direct variables](direct-variables.md)
+- Programming basics
+  - [Syntax](syntax.md)
+  - [Namespaces](namespaces.md)
+  - [Strict casts](strict-casts.md)
+  - [Overloading](overloading.md)
+  - [Monomorphized OOP](monomorphized-oop.md)
+  - [References](references.md)
+  - [Strings](strings.md)
+- Data types
+  - [Structs](structs.md)
+  - [Arrays](arrays.md)
+  - [Enums](enums.md)
+  - [Subranges](subranges.md)
+  - [Time and dates](time-and-dates.md)
+- Extras
+  - [Tests](tests.md)
+  - [Pragmas](pragmas.md)
+- Internal behavior
+  - [Bundled Traps](bundled-traps.md)
+  - [Math operations](math-operations.md)
+- [StdLib](stdlib.md)
+- Developer
+  - [WASM ABI](wasm-abi.md)
+  - [Memory bands](memory-bands.md)
+  - [Debug Symbols](debug-symbols.md)
+  - [Profiles](profiles.md)
+  - [Environment variables](environment-variables.md)
