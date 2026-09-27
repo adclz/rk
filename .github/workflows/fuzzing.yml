@@ -45,11 +45,13 @@ jobs:
           sudo docker image prune --all --force
           df -h
       # corpus_gen and repro build on the pinned toolchain; the fuzz targets
-      # need nightly for the sanitizer flags.
+      # need nightly for the sanitizer flags. Nightly needs wasm32 too:
+      # wasm_builtins_generated's build.rs compiles the builtins for it with
+      # the cargo that runs it.
       - uses: ./.github/actions/rust-toolchain
       - name: Install Rust nightly
-        run: rustup toolchain install nightly --profile minimal
-      # One cache for the three targets, which share every dependency.
+        run: rustup toolchain install nightly --profile minimal --target wasm32-unknown-unknown
+      # One cache for every target, which share every dependency.
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           shared-key: fuzz
