@@ -937,6 +937,34 @@ const PICTURES: &[(&str, Picture)] = &[
 ///
 /// Refuses an item with no picture in [`PICTURES`], and a section that mixes
 /// the two, so a new item of the README cannot reach the site without one.
+/// The README shows GitHub the site's own pictures, as `<img>` tags pointing
+/// into `site/assets/`. The front page inlines each item's picture itself,
+/// so the tags go, with the line they leave empty.
+fn without_readme_pictures(item: &str) -> String {
+    let mut out = String::with_capacity(item.len());
+    for line in item.split_inclusive('\n') {
+        let mut kept = String::new();
+        let mut rest = line;
+        while let Some(i) = rest.find("<img ") {
+            let Some(end) = rest[i..].find('>') else { break };
+            let tag = &rest[i..i + end + 1];
+            kept.push_str(&rest[..i]);
+            rest = &rest[i + end + 1..];
+            if tag.contains("src=\"site/assets/") {
+                rest = rest.trim_start_matches(' ');
+            } else {
+                kept.push_str(tag);
+            }
+        }
+        kept.push_str(rest);
+        if kept.trim().is_empty() && !line.trim().is_empty() {
+            continue;
+        }
+        out.push_str(&kept);
+    }
+    out
+}
+
 fn landing(readme: &str, assets: &Path) -> Result<String, Vec<String>> {
     let mut out = String::new();
     let mut problems = Vec::new();
@@ -965,6 +993,8 @@ fn landing(readme: &str, assets: &Path) -> Result<String, Vec<String>> {
         let mut cards = Vec::new();
         let mut tiles = Vec::new();
         for item in items.split("\n### ").map(|s| s.trim_start_matches("### ")) {
+            let item = without_readme_pictures(item);
+            let item = item.as_str();
             let title = item.lines().next().unwrap_or_default().replace("**", "");
             let title = title.trim();
             let (dir, name, tile) = match PICTURES.iter().find(|(t, _)| *t == title) {
@@ -1096,4 +1126,18 @@ fn group_icon(group: &str) -> String {
         }
     };
     site::icon(inner)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_readme_pictures_are_left_to_the_front_page() {
+        let item = "<img src=\"site/assets/icons/portable.svg\" width=\"20\" alt=\"\"> **Portable**\nOne binary.\n<img src=\"site/assets/drawings/strict.svg\" width=\"380\" alt=\"x\">\n\nText <img src=\"https://example.com/a.png\"> stays.\n";
+        assert_eq!(
+            without_readme_pictures(item),
+            "**Portable**\nOne binary.\n\nText <img src=\"https://example.com/a.png\"> stays.\n"
+        );
+    }
 }
