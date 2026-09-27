@@ -138,9 +138,11 @@ cargo run --bin rk -- check --workspace <workspace_path>
 # (what `rk test -O` optimizes) always has the test wrappers' `try_table`, and
 # a release one has it as soon as the program can raise.
 
-# Fuzz testing
-cargo +nightly build --release --manifest-path crates/fuzz/Cargo.toml --bin fuzz_compiler
-cargo +nightly build --release --manifest-path crates/fuzz/Cargo.toml --bin fuzz_formatter
+# Fuzz testing: CI runs it nightly. The ASan build of the whole workspace
+# needs more memory than a laptop has to spare; do not run it locally.
+# `repro` runs the same oracles on files, on the stable toolchain.
+cargo +nightly fuzz run --fuzz-dir crates/fuzz --debug-assertions fuzz_compiler crates/fuzz/corpus/fuzz_compiler
+cargo run -p rk-fuzz --bin repro -- <file.st or crash file>
 ```
 
 ## Workspace Structure
@@ -181,7 +183,7 @@ cli (binary `rk`) — check, compile, test, fmt, explain, env
 | `linter`                  | `crates/linter`         | Lint rules (L-codes) over HIR.                                                                                          |
 | `benchmark`               | `crates/benchmark`      | Divan benchmarks over the stdlib corpus, with diagnostic baselines.                                                     |
 | `doc`                     | `crates/doc`            | Site generator's front half: verifies `skills/`, `crates/doc/examples/`, `docs/` and `site/pages/` against the compiler, pre-renders their code, and writes what Zola (`site/`) renders. |
-| `fuzz`                    | `crates/fuzz`           | Fuzz testing targets for the compiler and formatter.                                                                    |
+| `fuzz`                    | `crates/fuzz`           | Fuzz targets (compiler, formatter, incremental edits), their oracles, `repro`, and the open findings (`findings/`).     |
 | `vscode-lsp-server`       | `vscode/server`         | VSCode extension LSP server binary (thin wrapper over `server` crate).                                                  |
 
 ### Root Package
@@ -372,7 +374,7 @@ toolchain pinned by `rust-toolchain.toml` through the composite action in
 | ------------- | ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `ci`          | Push to main, PR, manual                             | `test`: `cargo nextest run --workspace --profile ci` on Linux, macOS and Windows. `clippy`: `-Dwarnings`. `rustfmt`: `cargo fmt --all --check`. `stdlib`: the stdlib's own suite, plain and `-O z` on Binaryen 131. `notices`: `THIRD-PARTY-NOTICES` matches a fresh `cargo about` run. `site`: examples vs compiler, `diagnostics.json` freshness, Worker bundle |
 | `tree-sitter` | Push/PR touching `crates/tree-sitter/**`             | `tree-sitter test` + `tree-sitter fuzz`                                                                                                                                                                                                                                            |
-| `fuzzing`     | Daily at 02:00 UTC, manual                           | Builds and runs the compiler and formatter fuzzers for 30 min each; crashes are uploaded as artifacts and fail the run                                                                                                                                                             |
+| `fuzzing`     | Daily at 02:00 UTC, manual                           | `cargo fuzz` runs the three targets for 30 min each on a corpus kept between nights; `triage` replays the crashes with `repro`, groups them in the run summary, and fails the run                                                                                                   |
 | `codspeed`    | Push to main, PR                                     | Benchmarks under CodSpeed                                                                                                                                                                                                                                                          |
 | `site`        | Push to main touching skills, crates, stdlib or site | Builds the website and deploys the Cloudflare Worker                                                                                                                                                                                                                               |
 
