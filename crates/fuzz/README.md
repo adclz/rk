@@ -71,7 +71,7 @@ Add `--isolate` to run each input in its own process, so a stack overflow is rep
 - **`findings/`** holds the open bugs, one reproducer each, named `<oracle>--<what>.st`.
 - **`regressions/`** holds the fixed ones.
 
-`tests/findings.rs` checks that every open finding still fails the way its name says, and that every regression passes.
+`src/findings.rs` checks that every open finding still fails the way its name says, and that every regression passes.
 When you fix a bug, its test fails and tells you to move the file to `regressions/`.
 
 ## Corpus

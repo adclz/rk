@@ -1,5 +1,9 @@
 //! What the fuzzers found, kept where the suite runs it.
 //!
+//! A unit test, not an integration one: Cargo builds a package's binaries
+//! before its integration tests, and the `#![no_main]` fuzz targets only
+//! link where libFuzzer provides `main`, which is not Windows.
+//!
 //! `findings/` holds the open bugs, one reproducer each, named
 //! `<oracle>--<what>.st` (`panic` for a crash). Each must still fail the
 //! way its name says: when one passes, the bug is fixed, and the file moves
@@ -30,7 +34,7 @@ fn inputs(dir: &str) -> Vec<(String, String)> {
 
 /// The oracle an input breaks: `pass`, `panic`, or a finding's oracle.
 fn outcome(source: &str) -> String {
-    match panic::catch_unwind(AssertUnwindSafe(|| rk_fuzz::check_all(source))) {
+    match panic::catch_unwind(AssertUnwindSafe(|| crate::check_all(source))) {
         Ok(Ok(_)) => "pass".to_string(),
         Ok(Err(finding)) => finding.oracle.to_string(),
         Err(_) => "panic".to_string(),

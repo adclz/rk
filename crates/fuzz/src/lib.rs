@@ -19,9 +19,11 @@
 //!
 //! The libFuzzer targets in `fuzz_targets/` panic on a [`Finding`]; the
 //! `repro` binary runs the same checks on files and names the one that
-//! failed, and `tests/regressions.rs` keeps every past finding fixed.
+//! failed, and `src/findings.rs` keeps every past finding fixed.
 
 pub mod corpus;
+#[cfg(test)]
+mod findings;
 pub mod format;
 pub mod generate;
 pub mod ide;
