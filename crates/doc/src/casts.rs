@@ -1,8 +1,8 @@
-//! The cast tables in the README, derived so they cannot drift from the
-//! compiler: `ElementarySpec::implicit_cast` is what an assignment widens on
-//! its own, and the `X_TO_Y` functions of `Std.Convert` are what a program
-//! can call. The compiler's own `explicit_cast` — the table behind E0301's
-//! "consider explicitly casting with" hint — is checked against those
+//! The cast tables in docs/strict-casts.md, derived so they cannot drift
+//! from the compiler: `ElementarySpec::implicit_cast` is what an assignment
+//! widens on its own, and the `X_TO_Y` functions of `Std.Convert` are what a
+//! program can call. The compiler's own `explicit_cast` — the table behind
+//! E0301's "consider explicitly casting with" hint — is checked against those
 //! functions, so the hint can never name one that does not exist.
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -75,7 +75,7 @@ fn marked(text: &str) -> Option<(usize, usize)> {
 
 /// The same block with its markers lost, which an undo or a paste of an older
 /// copy does without anyone noticing. It is recognised by its two summaries,
-/// so the README heals itself instead of stopping the build: from the
+/// so the page heals itself instead of stopping the build: from the
 /// `<details>` that opens the Implicit table to the `</details>` that closes
 /// the Explicit one.
 fn hand_kept(text: &str) -> Option<(usize, usize)> {
@@ -189,7 +189,7 @@ mod tests {
     #[test]
     fn tables_follow_the_standard_and_the_stdlib() {
         let t = tables(CONVERT);
-        // The README's own examples: INT widens to REAL, DINT does not.
+        // The page's own examples: INT widens to REAL, DINT does not.
         assert!(
             t.contains("| `INT` | `DINT`, `LINT`, `REAL`, `LREAL` |"),
             "{t}"

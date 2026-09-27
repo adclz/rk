@@ -88,17 +88,23 @@ pub struct Preprocessed {
     pub fences: Vec<Fence>,
 }
 
+/// The Markdown GitHub renders. GFM is what parses `> [!NOTE]` as an alert
+/// rather than a quote.
+pub fn options() -> Options {
+    Options::ENABLE_TABLES | Options::ENABLE_STRIKETHROUGH | Options::ENABLE_GFM
+}
+
 /// Pre-render a Markdown body for Zola.
 pub fn preprocess(body: &str, highlighter: &StHighlighter) -> Preprocessed {
-    // GFM is what parses `> [!NOTE]` as an alert rather than a quote.
-    let options = Options::ENABLE_TABLES | Options::ENABLE_STRIKETHROUGH | Options::ENABLE_GFM;
-    let parser = Parser::new_ext(body, options).into_offset_iter();
+    let parser = Parser::new_ext(body, options()).into_offset_iter();
 
     let mut replacements: Vec<(Range<usize>, String)> = Vec::new();
     let mut fences = Vec::new();
     let mut title: Option<String> = None;
     let mut in_fence: Option<(String, usize, Range<usize>, String)> = None;
     let mut h1: Option<(Range<usize>, String)> = None;
+    let mut links = 0usize;
+    let mut heading: Option<(Range<usize>, String)> = None;
 
     for (event, range) in parser {
         match event {
@@ -131,8 +137,33 @@ pub fn preprocess(body: &str, highlighter: &StHighlighter) -> Preprocessed {
                 // The template prints the title; the body must not repeat it.
                 replacements.push((range, String::new()));
             }
+            Event::Start(Tag::Heading { level, .. }) if level != HeadingLevel::H1 => {
+                heading = Some((range, String::new()));
+            }
+            Event::Text(text) if heading.is_some() => heading.as_mut().unwrap().1.push_str(&text),
+            Event::End(TagEnd::Heading(_)) if heading.is_some() => {
+                // A heading that is a keyword, `## TASK`, takes the color that
+                // part has in the schemas. The class is in Zola's syntax, added
+                // to the site's copy: GitHub never sees it.
+                let (range, text) = heading.take().unwrap();
+                if let Some(kind) = crate::schema::kind_class(text.trim()) {
+                    let end = range.start + body[range].trim_end().len();
+                    replacements.push((end..end, format!(" {{.{kind}}}")));
+                }
+            }
+            Event::Start(Tag::Link { .. }) => links += 1,
+            Event::End(TagEnd::Link) => links -= 1,
             Event::Code(text) => {
-                replacements.push((range, format!("<code>{}</code>", highlighter.inline(&text))));
+                let code = format!("<code>{}</code>", highlighter.inline(&text));
+                // A diagnostic code links to its entry, unless the writer
+                // already put it in a link of their own.
+                let html = match highlighter.code_href(text.trim()) {
+                    Some(href) if links == 0 => {
+                        format!("<a class=\"code-link\" href=\"{href}\">{code}</a>")
+                    }
+                    _ => code,
+                };
+                replacements.push((range, html));
             }
             Event::Start(Tag::BlockQuote(Some(kind))) => {
                 alert(&mut replacements, body, range, kind)
@@ -167,10 +198,13 @@ pub fn preprocess(body: &str, highlighter: &StHighlighter) -> Preprocessed {
 fn fence_html(info: &str, code: &str, highlighter: &StHighlighter) -> String {
     let lang = info.split_whitespace().next().unwrap_or("");
     let code = code.trim_end_matches('\n');
+    if lang == "schema" {
+        return format!("\n{}\n", crate::schema::html(code));
+    }
     let inner = match lang {
-        // `st` and `pascal` are what the README marks Structured Text as, the
-        // second because that is what GitHub highlights it as; here they are
-        // the same grammar.
+        // `st` and `pascal` are what the README and docs/ mark Structured
+        // Text as, the second because that is what GitHub highlights it as;
+        // here they are the same grammar.
         "iecst" | "pascal" | "st" => {
             // A fragment is highlighted in the same POU the fence gate
             // checks it in, so the two never disagree.
@@ -195,18 +229,57 @@ fn fence_html(info: &str, code: &str, highlighter: &StHighlighter) -> String {
         "lua" => crate::highlight::script_html(code),
         _ => escape(code),
     };
-    let class = if lang.is_empty() {
+    let inner = match lang {
+        "sh" | "bash" | "shell" | "console" | "text" => report_codes(&inner, highlighter),
+        _ => inner,
+    };
+    // Box-drawing characters, a compiler diagnostic's frame or a drawn tree,
+    // only line up in a font that has them all: `box` gets the stylesheet to
+    // give the block one.
+    let mut classes = Vec::new();
+    if !lang.is_empty() {
+        classes.push(format!("language-{}", escape(lang)));
+    }
+    if code.chars().any(|c| ('\u{2500}'..='\u{257F}').contains(&c)) {
+        classes.push("box".to_string());
+    }
+    let class = if classes.is_empty() {
         String::new()
     } else {
-        format!(" class=\"language-{}\"", escape(lang))
+        format!(" class=\"{}\"", classes.join(" "))
     };
     format!("\n<pre><code{class}>{inner}\n</code></pre>\n")
 }
 
+/// A compiler report shown in a page opens on its code, `[E1412] Error: …`:
+/// the code, brackets included, links to its entry. The highlighted HTML
+/// has no `[` of its own, so every one is the text's.
+fn report_codes(html: &str, highlighter: &StHighlighter) -> String {
+    let mut out = String::with_capacity(html.len());
+    let mut rest = html;
+    while let Some(i) = rest.find('[') {
+        out.push_str(&rest[..i]);
+        rest = &rest[i..];
+        let code = rest.get(1..6).filter(|_| rest.get(6..7) == Some("]"));
+        match code.and_then(|c| highlighter.code_href(c)) {
+            Some(href) => {
+                out.push_str(&format!("<a class=\"code-link\" href=\"{href}\">{}</a>", &rest[..7]));
+                rest = &rest[7..];
+            }
+            None => {
+                out.push('[');
+                rest = &rest[1..];
+            }
+        }
+    }
+    out.push_str(rest);
+    out
+}
+
 /// One of GitHub's alerts, `> [!NOTE]` through `> [!CAUTION]`, which GitHub
-/// renders in the README. Zola does not know the syntax and would print the
-/// marker inside a quote, so the block is rewritten in place: the marker
-/// line becomes the opening tag and the title, the lines after it lose
+/// renders in the README and docs/. Zola does not know the syntax and would
+/// print the marker inside a quote, so the block is rewritten in place: the
+/// marker line becomes the opening tag and the title, the lines after it lose
 /// their `>` and stay Markdown for Zola, which is what keeps the inline code
 /// inside highlighted like any other, and a closing tag follows the quote.
 /// Blank lines around the tags make them HTML blocks of their own.
@@ -315,6 +388,42 @@ Before.
             !alert.contains("[!TIP]") && !alert.contains("\n> "),
             "{out}"
         );
+    }
+
+    #[test]
+    fn inline_code_of_several_tokens_is_colored_token_by_token() {
+        let highlighter = StHighlighter::new();
+        let html = |src: &str| highlighter.inline(src);
+        assert_eq!(html(":="), "<span class=\"hl-operator\">:=</span>");
+        assert_eq!(
+            html("REF_TO REAL"),
+            "<span class=\"hl-keyword-storage\">REF_TO</span> <span class=\"hl-type-builtin\">REAL</span>"
+        );
+        assert_eq!(
+            html("x : INT := 5"),
+            "x <span class=\"hl-operator\">:</span> <span class=\"hl-type-builtin\">INT</span> <span class=\"hl-operator\">:=</span> <span class=\"hl-number\">5</span>"
+        );
+        // Not code: no word of the table, no address, no `:=`.
+        assert_eq!(html("rk_build/debug/core.wasm"), "rk_build/debug/core.wasm");
+        assert_eq!(html("env.memory"), "env.memory");
+    }
+
+    #[test]
+    fn a_heading_that_is_a_keyword_takes_its_class() {
+        let highlighter = StHighlighter::new();
+        let out = preprocess("# Page\n\n## VAR_CONFIG\n\nText.\n\n## Split a configuration\n", &highlighter).body;
+        assert!(out.contains("## VAR_CONFIG {.k-var-config}\n"), "{out}");
+        assert!(out.contains("## Split a configuration\n"), "{out}");
+    }
+
+    #[test]
+    fn a_fence_drawn_in_box_characters_is_marked() {
+        let highlighter = StHighlighter::new();
+        let body = "```sh\n[E1412] Error\n   ╭─[ main.st:7:17 ]\n```\n\n```sh\nrk check\n```\n";
+        let out = preprocess(body, &highlighter).body;
+        let (diagnostic, command) = out.split_once("</pre>").unwrap();
+        assert!(diagnostic.contains("<code class=\"language-sh box\">"), "{out}");
+        assert!(command.contains("<code class=\"language-sh\">"), "{out}");
     }
 
     #[test]

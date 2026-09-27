@@ -12,11 +12,14 @@
 //! `rk explain` embeds at build time.
 
 mod casts;
+mod docs;
 mod examples;
 mod highlight;
 mod markdown;
 mod pages;
 mod render;
+mod schema;
+mod search;
 mod site;
 mod skills;
 mod verify;
@@ -71,6 +74,63 @@ fn toml_str(s: &str) -> String {
     )
 }
 
+/// The pages the sidebar lists after the README's own, under Tools. Their
+/// titles are the pages' own.
+const TOOLS: [&str; 3] = ["linter.md", "formatter.md", "lsp.md"];
+
+/// A diagnostic code a page names links to its entry, so it must have one.
+/// The pages are rendered before anything is written; the front page is
+/// rendered while writing, which `written` says.
+fn refuse_unknown_codes(highlighter: &StHighlighter, written: &str) {
+    let unknown = highlighter.unknown_codes();
+    if unknown.is_empty() {
+        return;
+    }
+    eprintln!(
+        "\nThe pages name {} code(s) the diagnostics page has no entry for; {written}.\n",
+        unknown.len()
+    );
+    for code in &unknown {
+        eprintln!("  {code}");
+    }
+    eprintln!("\nA code's entry is its file in crates/doc/examples/.");
+    std::process::exit(1);
+}
+
+/// The sidebar, or every reason it cannot be built, printed; nothing is
+/// written then, as with any other disagreement.
+fn sidebar_or_exit(
+    repo: &Path,
+    doc_pages: &[docs::DocPage],
+    pages: &[pages::Page],
+) -> docs::Sidebar {
+    let tools = TOOLS
+        .iter()
+        .map(|rel| {
+            let page = pages
+                .iter()
+                .find(|p| p.rel == Path::new(rel))
+                .unwrap_or_else(|| panic!("site/pages/{rel} is gone; it is listed in TOOLS"));
+            docs::Entry {
+                title: page.title.clone(),
+                url: format!("/{}/", rel.trim_end_matches(".md")),
+            }
+        })
+        .collect();
+    let index = fs::read_to_string(repo.join("docs").join(docs::INDEX)).unwrap();
+    docs::Sidebar::from_index(&index, doc_pages, tools).unwrap_or_else(|problems| {
+        eprintln!(
+            "\nThe list in docs/{} and docs/ disagree in {} place(s); nothing was written.\n",
+            docs::INDEX,
+            problems.len()
+        );
+        for p in &problems {
+            eprintln!("  {p}");
+        }
+        std::process::exit(1);
+    })
+}
+
 /// The skill groups the pages list, in reading order.
 const GROUPS: [(&str, &str, &str); 4] = [
     (
@@ -104,7 +164,7 @@ fn main() {
     }
     let base_url = base_url.trim_end_matches('/').to_string();
 
-    let highlighter = StHighlighter::new();
+    let highlighter = StHighlighter::new().with_codes(examples::codes(&crate_dir.join("examples")));
     let content = site_dir.join("content");
     let statics = site_dir.join("static");
 
@@ -113,11 +173,14 @@ fn main() {
     // editing prose does not mean recompiling every example. Their fences are
     // still checked — that guarantee is the point of the whole generator —
     // but the 225 diagnostics and the skills are left alone.
-    // The README's cast tables come from the compiler, not from anyone's
-    // memory of the standard, and are refreshed before the page is built
-    // from it. CI diffs the committed copy, as it does diagnostics.json.
+    // The cast tables come from the compiler, not from anyone's memory of
+    // the standard, and are refreshed before the page is built from them. CI
+    // diffs the committed copies, as it does diagnostics.json.
     let convert = fs::read_to_string(repo.join("stdlib/Convert.st")).unwrap();
-    for file in ["README.md", "skills/programming-st/references/types.md"] {
+    for file in [
+        "docs/strict-casts.md",
+        "skills/programming-st/references/types.md",
+    ] {
         if casts::refresh_readme(&repo.join(file), &convert) {
             eprintln!("{file}: cast tables refreshed");
         }
@@ -134,13 +197,18 @@ fn main() {
             }
         };
         let pages = pages::discover(&site_dir.join("pages"), &highlighter);
-        let docs: Vec<skills::Doc> = pages
+        let doc_pages = docs::discover(&repo, &highlighter);
+        let mut docs: Vec<skills::Doc> = pages
             .iter()
             .map(|p| skills::Doc {
                 shown: format!("site/pages/{}", p.rel.display()),
                 fences: &p.fences,
             })
             .collect();
+        docs.extend(doc_pages.iter().map(|d| skills::Doc {
+            shown: format!("docs/{}.md", d.stem),
+            fences: &d.fences,
+        }));
         let problems = skills::verify(&docs);
         if !problems.is_empty() {
             eprintln!(
@@ -152,7 +220,20 @@ fn main() {
             }
             std::process::exit(1);
         }
-        let n = write_pages(&pages, &subs, &content, &statics, &repo, &highlighter).len();
+        let sidebar = sidebar_or_exit(&repo, &doc_pages, &pages);
+        refuse_unknown_codes(&highlighter, "nothing was written");
+        let data = site_dir.join("data");
+        let n = write_pages(
+            &pages,
+            &doc_pages,
+            &sidebar,
+            &subs,
+            (&content, &data, &statics),
+            &repo,
+            &highlighter,
+        )
+        .len();
+        refuse_unknown_codes(&highlighter, "the front page was written without its link");
         eprintln!(
             "\nDone: {n} page(s) re-rendered. The rest of the site is from the last full run."
         );
@@ -209,11 +290,18 @@ fn main() {
     // ── Skills and pages: every fence must hold ────────────────────────
     let skills = skills::discover(&repo.join("skills"), &highlighter);
     let pages = pages::discover(&site_dir.join("pages"), &highlighter);
+    let doc_pages = docs::discover(&repo, &highlighter);
     let mut docs = skills::skill_docs(&skills, &repo);
     for p in &pages {
         docs.push(skills::Doc {
             shown: format!("site/pages/{}", p.rel.display()),
             fences: &p.fences,
+        });
+    }
+    for d in &doc_pages {
+        docs.push(skills::Doc {
+            shown: format!("docs/{}.md", d.stem),
+            fences: &d.fences,
         });
     }
     eprintln!("Skills and pages");
@@ -231,6 +319,8 @@ fn main() {
         );
         std::process::exit(1);
     }
+    let sidebar = sidebar_or_exit(&repo, &doc_pages, &pages);
+    refuse_unknown_codes(&highlighter, "nothing was written");
 
     // ── Everything agreed: write ──────────────────────────────────────
     let data = site_dir.join("data");
@@ -592,18 +682,44 @@ fn main() {
 
     twins.extend(write_pages(
         &pages,
+        &doc_pages,
+        &sidebar,
         &subs,
-        &content,
-        &statics,
+        (&content, &data, &statics),
         &repo,
         &highlighter,
     ));
 
-    // Agent-facing files.
+    // Agent-facing files. The documentation is listed in the sidebar's
+    // order, each page by its Markdown twin.
+    let readme = fs::read_to_string(repo.join("README.md")).unwrap();
+    let documentation: Vec<site::DocLink> = sidebar
+        .pages()
+        .into_iter()
+        .map(|e| {
+            let md = format!("{}index.md", e.url);
+            let description = if e.url == "/" {
+                one_line(&strip_tags(readme_tagline(&readme)))
+            } else if let Some(d) = doc_pages.iter().find(|d| d.url() == e.url) {
+                d.description.clone()
+            } else {
+                pages
+                    .iter()
+                    .find(|p| p.md.as_deref() == Some(md.as_str()))
+                    .map(|p| p.description.clone())
+                    .unwrap_or_default()
+            };
+            site::DocLink {
+                title: e.title.clone(),
+                md,
+                description,
+            }
+        })
+        .collect();
     write(
         &statics,
         "llms.txt",
-        &site::llms_txt(&base_url, &skills, &categories),
+        &site::llms_txt(&base_url, &skills, &categories, &documentation),
     );
     write(&statics, "llms-full.txt", &site::llms_full_txt(&skills));
     twins.sort();
@@ -628,6 +744,7 @@ fn main() {
         &site::ard_manifest(&base_url),
     );
 
+    refuse_unknown_codes(&highlighter, "the front page was written without its link");
     eprintln!(
         "\nDone: {} diagnostics, {} skills, {} pages → {} (now `zola build` in site/)",
         entries.len(),
@@ -637,18 +754,32 @@ fn main() {
     );
 }
 
-/// Write every hand-written page and the README front page, expanding the
-/// placeholders to HTML for the page and to Markdown for its twin. Returns
-/// the (page, twin) pairs for `_headers`.
+/// Write every hand-written page, the documentation, the README front page
+/// and the sidebar that joins them, expanding the placeholders to HTML for
+/// the page and to Markdown for its twin. `out` is the content, data and
+/// static directories. Returns the (page, twin) pairs for `_headers`.
 fn write_pages(
     pages: &[pages::Page],
+    doc_pages: &[docs::DocPage],
+    sidebar: &docs::Sidebar,
     subs: &Substitutions,
-    content: &Path,
-    statics: &Path,
+    (content, data, statics): (&Path, &Path, &Path),
     repo: &Path,
     highlighter: &StHighlighter,
 ) -> Vec<(String, String)> {
     let mut twins = Vec::new();
+    // The search field's index: every documentation page, then the tools.
+    let mut index = Vec::new();
+    for d in doc_pages {
+        index.extend(search::entries(&d.title, &d.url(), &d.source));
+    }
+    for rel in TOOLS {
+        if let Some(p) = pages.iter().find(|p| p.rel == Path::new(rel)) {
+            let url = format!("/{}/", rel.trim_end_matches(".md"));
+            index.extend(search::entries(&p.title, &url, &p.source));
+        }
+    }
+    write(statics, "search.json", &search::to_json(&index));
     let expand = |text: &str, skills: &str, linter: &str| -> String {
         text.replace("{{ skills() }}", skills)
             .replace("{{ diagnostics_count() }}", &subs.count)
@@ -694,11 +825,45 @@ fn write_pages(
         }
     }
 
+    // The documentation: each file in docs/ is a page, and its twin is the
+    // file as written, links pointed at the site. Its list is the sidebar, so
+    // /docs/ has no page of its own and goes to the first one.
+    let first = sidebar.pages().first().map_or("/", |e| e.url.as_str());
+    write(
+        content,
+        "docs/_index.md",
+        &format!(
+            "+++\ntitle = \"Documentation\"\nredirect_to = {}\n+++\n",
+            toml_str(first)
+        ),
+    );
+    for d in doc_pages {
+        let md = format!("{}index.md", d.url());
+        write(
+            content,
+            &format!("docs/{}.md", d.stem),
+            &format!(
+                "+++\ntitle = {title}\ndescription = {desc}\n\n[extra]\nmd = {md}\n+++\n{body}",
+                title = toml_str(&d.title),
+                desc = toml_str(&d.description),
+                md = toml_str(&md),
+                body = d.body,
+            ),
+        );
+        write(statics, &format!("docs/{}/index.md", d.stem), &d.source);
+        twins.push((d.url(), md));
+    }
+    write(
+        data,
+        "sidebar.json",
+        &serde_json::to_string(&sidebar.json()).unwrap(),
+    );
+
     // The front page IS the repository's README, so the project says one thing
     // in both places and neither can drift. Its fences are illustrative — a
     // few deliberately show code that does not compile — so they are
     // highlighted but never handed to the fence gate.
-    let readme = link_to_repo(&fs::read_to_string(repo.join("README.md")).unwrap());
+    let readme = docs::links_for_site(&fs::read_to_string(repo.join("README.md")).unwrap(), "");
     // The template prints the title and the lede above the body, so both come
     // out of it: `preprocess` lifts the H1, and the tagline is cut here.
     let tagline = readme_tagline(&readme);
@@ -706,6 +871,13 @@ fn write_pages(
     // well: left in the body it would land under the lede, out of order.
     let epigraph = readme_epigraph(&readme, tagline);
     let body_src = readme.replacen(tagline, "", 1).replacen(epigraph, "", 1);
+    let body_src = landing(&body_src, &repo.join("site/assets")).unwrap_or_else(|problems| {
+        eprintln!("\nThe front page cannot be laid out; nothing was written.\n");
+        for p in &problems {
+            eprintln!("  {p}");
+        }
+        std::process::exit(1);
+    });
     let pre = markdown::preprocess(&body_src, highlighter);
     let title = pre.title.as_deref().unwrap_or("rk");
     let lede = one_line(&strip_tags(tagline));
@@ -720,7 +892,7 @@ fn write_pages(
         content,
         "_index.md",
         &format!(
-            "+++\ntitle = {title}\ndescription = {lede}\n\n[extra]\nepigraph = {epigraph}\nlede = {lede}\nmd = \"/index.md\"\n+++\n{body}",
+            "+++\ntitle = {title}\ndescription = {lede}\n\n[extra]\nepigraph = {epigraph}\nlede = {lede}\nmd = \"/index.md\"\nlanding = true\n+++\n{body}",
             title = toml_str(title),
             epigraph = toml_str(&epigraph),
             lede = toml_str(&lede),
@@ -730,6 +902,120 @@ fn write_pages(
     write(statics, "index.md", &readme);
     twins.push(("/".into(), "/index.md".into()));
     twins
+}
+
+/// What an item of the front page shows.
+enum Picture {
+    /// An icon beside its title, from `site/assets/icons/`: the item is a card.
+    Icon(&'static str),
+    /// A drawing above its title, from `site/assets/drawings/`: the item is a
+    /// tile.
+    Drawing(&'static str),
+}
+
+/// The picture of each item of the front page, by its title as the README
+/// writes it.
+const PICTURES: &[(&str, Picture)] = &[
+    ("Portable", Picture::Icon("portable")),
+    ("Sandboxed", Picture::Icon("sandboxed")),
+    ("Agnostic host", Picture::Icon("host")),
+    ("Expressive", Picture::Drawing("expressive")),
+    ("Text only", Picture::Drawing("text")),
+    ("Highly strict", Picture::Drawing("strict")),
+    (
+        "One core module, with memory dedicated once",
+        Picture::Drawing("memory"),
+    ),
+    ("Bundled traps", Picture::Drawing("trap")),
+    ("Lightweight", Picture::Drawing("pipeline")),
+];
+
+/// The README laid out as the front page: its links for GitHub readers left
+/// out, since the page's buttons stand for them, and each `##` section with
+/// `###` items a grid, one item each: cards when the items have icons,
+/// larger tiles when they have drawings.
+///
+/// Refuses an item with no picture in [`PICTURES`], and a section that mixes
+/// the two, so a new item of the README cannot reach the site without one.
+fn landing(readme: &str, assets: &Path) -> Result<String, Vec<String>> {
+    let mut out = String::new();
+    let mut problems = Vec::new();
+    let (intro, sections) = readme.split_at(readme.find("\n## ").map_or(readme.len(), |i| i + 1));
+    let intro: Vec<&str> = intro
+        .lines()
+        .filter(|l| !l.trim_start().starts_with("- "))
+        .collect();
+    let intro = intro.join("\n");
+    if !intro.trim().is_empty() {
+        out.push_str(&format!(
+            "<div class=\"intro\">\n\n{}\n\n</div>\n\n",
+            intro.trim()
+        ));
+    }
+    for section in sections.split("\n## ").map(|s| s.trim_start_matches("## ")) {
+        let (head, items) =
+            section.split_at(section.find("\n### ").map_or(section.len(), |i| i + 1));
+        let head = head.trim();
+        if items.is_empty() {
+            out.push_str(&format!(
+                "<section class=\"closing\">\n\n## {head}\n\n</section>\n\n"
+            ));
+            continue;
+        }
+        let mut cards = Vec::new();
+        let mut tiles = Vec::new();
+        for item in items.split("\n### ").map(|s| s.trim_start_matches("### ")) {
+            let title = item.lines().next().unwrap_or_default().replace("**", "");
+            let title = title.trim();
+            let (dir, name, tile) = match PICTURES.iter().find(|(t, _)| *t == title) {
+                Some((_, Picture::Icon(name))) => ("icons", name, false),
+                Some((_, Picture::Drawing(name))) => ("drawings", name, true),
+                None => {
+                    problems.push(format!(
+                        "README.md: `{title}` has no picture; add one to PICTURES in crates/doc/src/main.rs"
+                    ));
+                    continue;
+                }
+            };
+            let path = assets.join(dir).join(format!("{name}.svg"));
+            let Ok(svg) = fs::read_to_string(&path) else {
+                problems.push(format!("{} is missing", path.display()));
+                continue;
+            };
+            // A blank line would end the HTML block the picture sits in.
+            let svg: String = svg.lines().filter(|l| !l.trim().is_empty()).collect();
+            if tile {
+                tiles.push(format!(
+                    "<div class=\"tile\">\n<div class=\"tile-figure\">{svg}</div>\n\n### {}\n\n</div>\n\n",
+                    item.trim()
+                ));
+            } else {
+                cards.push(format!(
+                    "<div class=\"card\">\n\n### {svg} {}\n\n</div>\n\n",
+                    item.trim()
+                ));
+            }
+        }
+        let (class, grid, items) = match (cards.is_empty(), tiles.is_empty()) {
+            (false, true) => ("features", "cards", cards),
+            (true, false) => ("showcase", "tiles", tiles),
+            _ => {
+                problems.push(format!(
+                    "README.md: `{head}` mixes items with icons and items with drawings"
+                ));
+                continue;
+            }
+        };
+        out.push_str(&format!(
+            "<section class=\"{class}\">\n\n## {head}\n\n<div class=\"{grid}\">\n\n{}</div>\n\n</section>\n\n",
+            items.concat()
+        ));
+    }
+    if problems.is_empty() {
+        Ok(out)
+    } else {
+        Err(problems)
+    }
 }
 
 /// The README's tagline, which becomes the page's lede: the first block that
@@ -764,28 +1050,6 @@ fn strip_tags(block: &str) -> String {
             _ => {}
         }
     }
-    out
-}
-
-/// A link target that is a path in the repository resolves on GitHub but not
-/// on the website. Point those at the repository; leave absolute, rooted and
-/// fragment links alone.
-fn link_to_repo(text: &str) -> String {
-    const BLOB: &str = "https://github.com/adclz/rk/blob/main/";
-    let mut out = String::with_capacity(text.len());
-    let mut rest = text;
-    while let Some(i) = rest.find("](") {
-        out.push_str(&rest[..i + 2]);
-        rest = &rest[i + 2..];
-        let end = rest.find(')').unwrap_or(rest.len());
-        let target = &rest[..end];
-        if !(target.starts_with("http") || target.starts_with('/') || target.starts_with('#')) {
-            out.push_str(BLOB);
-        }
-        out.push_str(target);
-        rest = &rest[end..];
-    }
-    out.push_str(rest);
     out
 }
 
