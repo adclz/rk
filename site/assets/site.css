@@ -273,6 +273,7 @@ main.hastoc { max-width: 800px; }
 /* The drawer's controls: kept focusable, drawn only on a narrow screen. */
 .nav-open { position: absolute; width: 1px; height: 1px; opacity: 0; }
 .nav-button, .nav-close, .nav-scrim { display: none; }
+.site-links, .site-drawer { display: none; }
 .pager { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; margin-top: 4rem; }
 .pager a { display: flex; flex-direction: column; gap: 0.2rem; padding: 0.9rem 1.2rem; border: 1px solid var(--rule); border-radius: 8px; text-decoration: none; }
 .pager a:hover { border-color: var(--link); }
@@ -288,21 +289,46 @@ main.hastoc { max-width: 800px; }
   .docs { display: block; }
   .docs > main.hastoc { padding: 2rem 1.25rem 5rem; }
   nav.top { padding-left: 0.5rem; gap: 0 0.9rem; }
+  /* No menu button to make room for before the phone layout: the brand keeps its margin. */
+  nav.top:has(.site-only) { padding-left: 1.25rem; }
   .site-search input { width: 9rem; }
   .site-search kbd { display: none; }
   /* The results span the bar, not the field: the field is not at its edge. */
   nav.top { position: relative; }
   .site-search { position: static; }
   .site-search-results { left: 0.75rem; right: 0.75rem; width: auto; top: calc(100% + 0.25rem); }
-  .nav-button { display: inline-flex; align-items: center; justify-content: center; width: 2.75rem; height: 2.75rem; margin-right: -0.5rem; cursor: pointer; color: var(--ink); }
+  .nav-button:not(.site-only) { display: inline-flex; align-items: center; justify-content: center; width: 2.75rem; height: 2.75rem; margin-right: -0.5rem; cursor: pointer; color: var(--ink); }
   .nav-button svg, .nav-close svg { width: 1.4rem; height: 1.4rem; }
   .nav-open:focus-visible ~ header .nav-button { outline: 2px solid var(--link); outline-offset: -4px; border-radius: 8px; }
   .sidebar { position: fixed; top: 0; bottom: 0; left: 0; z-index: 20; width: min(18rem, 85vw); height: auto; padding-top: 0.5rem; background: var(--paper); transform: translateX(-100%); visibility: hidden; transition: transform 0.2s, visibility 0.2s; }
   .sidebar a, .sidebar summary { min-height: 2.75rem; }
   .nav-close { display: flex; align-items: center; justify-content: center; width: 2.75rem; height: 2.75rem; margin: 0 0 0.5rem auto; cursor: pointer; color: var(--ink); }
-  .nav-open:checked ~ .docs .sidebar { transform: none; visibility: visible; }
-  .nav-open:checked ~ .docs .nav-scrim { display: block; position: fixed; inset: 0; z-index: 19; background: rgba(0, 0, 0, 0.4); }
+  .nav-open:checked ~ :is(.docs, .site-drawer) .sidebar { transform: none; visibility: visible; }
+  .nav-open:checked ~ :is(.docs, .site-drawer) .nav-scrim { display: block; position: fixed; inset: 0; z-index: 19; background: rgba(0, 0, 0, 0.4); }
   body:has(.nav-open:checked) { overflow: hidden; }
+}
+/* A phone: one row. The menu button and the brand on the left, the search
+   and GitHub on the right; the links move into the drawer, and the search
+   is its icon until it is tapped, then takes the whole bar. */
+@media (max-width: 45rem) {
+  nav.top, nav.top:has(.site-only) { flex-wrap: nowrap; gap: 0 0.35rem; min-height: 3.25rem; padding: 0 0.5rem 0 0.25rem; }
+  nav.top .site-link { display: none; }
+  nav.top .nav-button { display: inline-flex; align-items: center; justify-content: center; width: 2.75rem; height: 2.75rem; margin-right: 0; cursor: pointer; color: var(--ink); }
+  .site-drawer { display: block; }
+  .site-links { display: block; margin: 0 0 0.75rem; padding: 0 0 0.75rem; border-bottom: 1px solid var(--rule); }
+  .site-links a { font-weight: 600; }
+  .site-links .dl { margin-left: 0.4rem; }
+  .site-search { margin-left: auto; }
+  .site-search-field { width: 2.75rem; height: 2.75rem; justify-content: center; }
+  .site-search input { width: 2.75rem; height: 2.75rem; padding: 0; color: transparent; background: transparent; border-color: transparent; cursor: pointer; }
+  .site-search input::placeholder { color: transparent; }
+  .site-search-icon { left: 50%; transform: translateX(-50%); width: 1.15rem; height: 1.15rem; stroke: var(--ink); }
+  nav.top .repo { width: 2.75rem; height: 2.75rem; align-items: center; justify-content: center; }
+  nav.top:has(.site-search:focus-within) > :not(.site-search) { visibility: hidden; }
+  .site-search:focus-within .site-search-field { position: absolute; left: 0.75rem; right: 0.75rem; top: 50%; width: auto; height: auto; transform: translateY(-50%); z-index: 6; }
+  .site-search:focus-within input { width: 100%; height: 2.4rem; padding: 0 0.8rem 0 2.1rem; color: var(--ink); background: var(--paper); border-color: var(--muted); cursor: text; }
+  .site-search:focus-within input::placeholder { color: var(--muted); }
+  .site-search:focus-within .site-search-icon { left: 0.7rem; transform: none; stroke: var(--muted); }
 }
 @media (prefers-reduced-motion: reduce) {
   .sidebar { transition: none; }

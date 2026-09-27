@@ -34,25 +34,22 @@
 {%- set landing = p.extra.landing | default(value=false) %}
 {%- set wide = p.extra.wide | default(value=false) or landing %}
 {%- set show_toc = toc | length > 1 and not wide %}
-{%- if docs %}
 {#- On a narrow screen the sidebar is a drawer, and this checkbox opens it,
     so it works without script. It stays focusable, so the menu button works
     from the keyboard; the labels that draw the button, the backdrop and the
-    close mark are only its pictures. -#}
-<input type="checkbox" id="nav-open" class="nav-open" aria-label="Documentation menu">
-{%- endif %}
+    close mark are only its pictures. On a phone the drawer also holds the
+    links of the top bar, so a page without a sidebar gets one of its own. -#}
+<input type="checkbox" id="nav-open" class="nav-open" aria-label="Menu">
 {#- The header is its own frame, the same on every page. Inside `<main>` it
     took the width of whatever layout the page had, and the brand moved with
     it from one page to the next. -#}
 <header class="site">
 <nav class="top">
-  {%- if docs %}
-  <label class="nav-button" for="nav-open" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg></label>
-  {%- endif %}
+  <label class="nav-button{% if not docs %} site-only{% endif %}" for="nav-open" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg></label>
   <a class="brand" href="/">{{ config.title }}</a>
-  <a href="/docs/"{% if docs %} aria-current="page"{% endif %}>docs</a>
-  <a href="/skills.tar.gz" download="rk-skills.tar.gz" title="Download the skills, one archive">skills<svg class="dl" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5v8M4.5 7 8 10.5 11.5 7M3 13.5h10"/></svg></a>
-  <a href="/diagnostics/"{% if "/diagnostics/" in here %} aria-current="page"{% endif %}>diagnostics</a>
+  <a class="site-link" href="/docs/"{% if docs %} aria-current="page"{% endif %}>docs</a>
+  <a class="site-link" href="/skills.tar.gz" download="rk-skills.tar.gz" title="Download the skills, one archive">skills<svg class="dl" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5v8M4.5 7 8 10.5 11.5 7M3 13.5h10"/></svg></a>
+  <a class="site-link" href="/diagnostics/"{% if "/diagnostics/" in here %} aria-current="page"{% endif %}>diagnostics</a>
   <div class="site-search" role="search">
     <label class="site-search-field">
     <svg class="site-search-icon" viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="M10.4 10.4 14 14"/></svg>
@@ -69,6 +66,11 @@
 <label class="nav-scrim" for="nav-open" aria-hidden="true"></label>
 <nav class="sidebar" aria-label="Documentation">
 <label class="nav-close" for="nav-open" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></label>
+<ul class="site-links">
+  <li><a href="/docs/"{% if docs %} aria-current="page"{% endif %}>docs</a></li>
+  <li><a href="/skills.tar.gz" download="rk-skills.tar.gz">skills<svg class="dl" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5v8M4.5 7 8 10.5 11.5 7M3 13.5h10"/></svg></a></li>
+  <li><a href="/diagnostics/"{% if "/diagnostics/" in here %} aria-current="page"{% endif %}>diagnostics</a></li>
+</ul>
 <ul>
 {%- for item in sidebar.items %}
 {%- if item.children %}
@@ -85,6 +87,18 @@
 {%- endfor %}
 </ul>
 </nav>
+{%- else %}
+<div class="site-drawer">
+<label class="nav-scrim" for="nav-open" aria-hidden="true"></label>
+<nav class="sidebar" aria-label="Site">
+<label class="nav-close" for="nav-open" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></label>
+<ul class="site-links">
+  <li><a href="/docs/"{% if docs %} aria-current="page"{% endif %}>docs</a></li>
+  <li><a href="/skills.tar.gz" download="rk-skills.tar.gz">skills<svg class="dl" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5v8M4.5 7 8 10.5 11.5 7M3 13.5h10"/></svg></a></li>
+  <li><a href="/diagnostics/"{% if "/diagnostics/" in here %} aria-current="page"{% endif %}>diagnostics</a></li>
+</ul>
+</nav>
+</div>
 {%- endif %}
 {#- Every page but the reference shares one layout: the text column in the
     middle, a margin either side, and the sidebar in the right one when the
