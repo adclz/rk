@@ -52,12 +52,12 @@
   <a class="brand" href="/">{{ config.title }}</a>
   <a href="/docs/"{% if docs %} aria-current="page"{% endif %}>docs</a>
   <a href="/skills.tar.gz" download="rk-skills.tar.gz" title="Download the skills, one archive">skills<svg class="dl" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5v8M4.5 7 8 10.5 11.5 7M3 13.5h10"/></svg></a>
-  <a href="/diagnostics/"{% if here is starting_with("/diagnostics/") %} aria-current="page"{% endif %}>diagnostics</a>
+  <a href="/diagnostics/"{% if "/diagnostics/" in here %} aria-current="page"{% endif %}>diagnostics</a>
   <div class="site-search" role="search">
     <label class="site-search-field">
     <svg class="site-search-icon" viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="M10.4 10.4 14 14"/></svg>
     <input id="site-search" type="search" placeholder="Search" autocomplete="off" spellcheck="false" aria-label="Search the documentation and the diagnostics" role="combobox" aria-controls="site-search-results" aria-expanded="false">
-    <kbd aria-hidden="true">{% if here is starting_with("/diagnostics/") %}Ctrl K{% else %}/{% endif %}</kbd>
+    <kbd aria-hidden="true">{% if "/diagnostics/" in here %}Ctrl K{% else %}/{% endif %}</kbd>
     </label>
     <ul id="site-search-results" class="site-search-results" role="listbox" hidden></ul>
   </div>
