@@ -2,18 +2,23 @@
 //!
 //! Every other oracle checks that the compiler behaves; none checks that
 //! the program it emits computes the right values. This one builds a
-//! program from the fuzzer's bytes (integer arithmetic at every width,
-//! BOOL logic, IF, CASE, FOR with EXIT and CONTINUE, RETURN, and calls to
-//! small FUNCTIONs), evaluates it here with the semantics the docs give
-//! (docs/math-operations.md: every result wraps at its type's width,
-//! division truncates, MOD takes the dividend's sign), and writes the
-//! values each variable must hold after two scans into a header comment.
-//! [`crate::semantics`] compiles the text, runs it, reads the variables
-//! back through the debug symbols and compares.
+//! program from the fuzzer's bytes, evaluates it here with the semantics
+//! the docs give (docs/math-operations.md: every result wraps at its type's
+//! width, division truncates, MOD takes the dividend's sign), and writes
+//! the value of every variable, array element and FB member after two
+//! scans into a header comment. [`crate::semantics`] compiles the text,
+//! runs it, reads each one back through the debug symbols and compares.
 //!
-//! Division by zero is the one thing that stops a module, so a divisor is
-//! always a literal other than 0 and -1 (`DINT#-2147483648 / -1` traps
-//! too). Loops have literal bounds, so every program ends.
+//! A program has integers at every width and BOOLs; arrays indexed by
+//! computed expressions; IF, CASE, FOR with EXIT and CONTINUE, RETURN;
+//! FUNCTIONs; and FUNCTION_BLOCKs with inputs, outputs, state and a
+//! VAR_IN_OUT, called from the program and keeping their state between
+//! scans. A `VAR_IN_OUT` is modelled as copy-in, copy-out, which is the
+//! same thing here: nothing else runs while the block does.
+//!
+//! Nothing may stop the module: a divisor is a literal other than 0 and -1
+//! (`DINT#-2147483648 / -1` traps), an index is wrapped into its array's
+//! range by the expression itself, and loops have literal bounds.
 
 use std::fmt::Write as _;
 
@@ -79,8 +84,7 @@ impl Ty {
         if self == Ty::Bool {
             return (v != 0) as i128;
         }
-        let bits = self.bits();
-        let modulus = 1i128 << bits;
+        let modulus = 1i128 << self.bits();
         let low = v.rem_euclid(modulus);
         match self.signed() && low >= modulus / 2 {
             true => low - modulus,
@@ -132,8 +136,13 @@ enum Logic {
 #[derive(Clone, Debug)]
 enum Expr {
     Lit(Ty, i128),
-    /// A variable, or in a FUNCTION one of its inputs.
+    /// A variable of the current frame: the program's, a FUNCTION's input,
+    /// or a FUNCTION_BLOCK's member.
     Var(usize),
+    /// An element of a program array.
+    Index(usize, Box<Expr>),
+    /// A member of a program's FB instance.
+    Member(usize, usize),
     Arith(Arith, Ty, Box<Expr>, Box<Expr>),
     Neg(Ty, Box<Expr>),
     Cmp(Cmp, Box<Expr>, Box<Expr>),
@@ -151,6 +160,10 @@ enum Label {
 #[derive(Clone, Debug)]
 enum Stmt {
     Assign(usize, Expr),
+    AssignIndex(usize, Expr, Expr),
+    /// An FB instance called with its inputs, and the program variable
+    /// bound to its `VAR_IN_OUT` if it has one.
+    CallFb(usize, Vec<Expr>, Option<usize>),
     If(Vec<(Expr, Vec<Stmt>)>, Option<Vec<Stmt>>),
     Case(Expr, Vec<(Vec<Label>, Vec<Stmt>)>, Option<Vec<Stmt>>),
     For(usize, i128, i128, i128, Vec<Stmt>),
@@ -159,13 +172,32 @@ enum Stmt {
     Return,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Role {
+    /// A program variable, or an FB's state.
+    Plain,
+    /// A FOR counter: read only inside its loop, and not compared, since
+    /// its value after the loop is the implementation's.
+    Counter,
+    /// A FUNCTION's or an FB's input: read, never assigned.
+    Input,
+    Output,
+    InOut,
+}
+
+#[derive(Clone)]
 struct Var {
     name: String,
     ty: Ty,
     init: i128,
-    /// A FOR counter: read only inside its loop, and not compared, since
-    /// its value after the loop is the implementation's.
-    counter: bool,
+    role: Role,
+}
+
+struct Array {
+    name: String,
+    ty: Ty,
+    lo: i128,
+    init: Vec<i128>,
 }
 
 struct Function {
@@ -173,6 +205,34 @@ struct Function {
     ty: Ty,
     inputs: usize,
     body: Expr,
+}
+
+struct Block {
+    name: String,
+    /// Inputs first, then outputs, the in-out, and the state.
+    members: Vec<Var>,
+    body: Vec<Stmt>,
+}
+
+impl Block {
+    fn inputs(&self) -> Vec<usize> {
+        self.role(Role::Input)
+    }
+
+    fn inout(&self) -> Option<usize> {
+        self.role(Role::InOut).first().copied()
+    }
+
+    fn role(&self, role: Role) -> Vec<usize> {
+        (0..self.members.len())
+            .filter(|&m| self.members[m].role == role)
+            .collect()
+    }
+}
+
+struct Instance {
+    name: String,
+    block: usize,
 }
 
 /// The fuzzer's bytes as a stream of choices; past the end, every choice
@@ -207,8 +267,15 @@ impl Choices<'_> {
 
 struct Generator<'a> {
     choices: Choices<'a>,
+    /// The variables of the frame being written: the program's, or a
+    /// FUNCTION's or FB's while its body is.
     vars: Vec<Var>,
+    /// The program's arrays and FB instances; empty while a FUNCTION or
+    /// FB body is written, since neither can see them.
+    arrays: Vec<Array>,
+    instances: Vec<Instance>,
     functions: Vec<Function>,
+    blocks: Vec<Block>,
     /// Statements left to write, so a program stays small.
     budget: usize,
 }
@@ -216,6 +283,13 @@ struct Generator<'a> {
 impl Generator<'_> {
     fn integer(&mut self) -> Ty {
         INTEGERS[self.choices.below(INTEGERS.len())]
+    }
+
+    fn any_type(&mut self) -> Ty {
+        match self.choices.percent(20) {
+            true => Ty::Bool,
+            false => self.integer(),
+        }
     }
 
     fn literal(&mut self, ty: Ty) -> i128 {
@@ -235,26 +309,81 @@ impl Generator<'_> {
 
     /// A divisor: never 0, and never -1, which traps at the minimum.
     fn divisor(&mut self, ty: Ty) -> i128 {
-        let v = self.literal(ty);
-        match v {
+        match self.literal(ty) {
             0 | -1 => 3,
-            _ => v,
+            v => v,
         }
     }
 
-    /// An expression of type `ty` over the variables in `readable`.
-    fn expr(&mut self, ty: Ty, depth: u32, readable: &[usize], calls: bool) -> Expr {
-        let of_ty: Vec<usize> = readable
+    /// An index into `array`: any DINT expression, wrapped into the range
+    /// by `((e MOD n) + n) MOD n + lo`, which cannot leave it.
+    fn index(&mut self, array: usize, readable: &[usize]) -> Expr {
+        let (lo, n) = (self.arrays[array].lo, self.arrays[array].init.len() as i128);
+        let e = self.expr(Ty::Dint, 1, readable, true);
+        let lit = |v| Box::new(Expr::Lit(Ty::Dint, v));
+        let wrapped = Expr::Arith(
+            Arith::Mod,
+            Ty::Dint,
+            Box::new(Expr::Arith(
+                Arith::Add,
+                Ty::Dint,
+                Box::new(Expr::Arith(Arith::Mod, Ty::Dint, Box::new(e), lit(n))),
+                lit(n),
+            )),
+            lit(n),
+        );
+        Expr::Arith(Arith::Add, Ty::Dint, Box::new(wrapped), lit(lo))
+    }
+
+    /// Something of type `ty` to read: a variable, an array element or an
+    /// FB output. `None` when there is none.
+    fn place(&mut self, ty: Ty, readable: &[usize]) -> Option<Expr> {
+        let vars: Vec<usize> = readable
             .iter()
             .copied()
             .filter(|&v| self.vars[v].ty == ty)
             .collect();
-        let leaf = depth == 0 || self.choices.percent(30);
-        if leaf {
-            return match of_ty.is_empty() || self.choices.percent(35) {
-                true => Expr::Lit(ty, self.literal(ty)),
-                false => Expr::Var(of_ty[self.choices.below(of_ty.len())]),
-            };
+        let arrays: Vec<usize> = (0..self.arrays.len())
+            .filter(|&a| self.arrays[a].ty == ty)
+            .collect();
+        let members: Vec<(usize, usize)> = self
+            .instances
+            .iter()
+            .enumerate()
+            .flat_map(|(i, inst)| {
+                let block = &self.blocks[inst.block];
+                block
+                    .role(Role::Output)
+                    .into_iter()
+                    .filter(move |&m| block.members[m].ty == ty)
+                    .map(move |m| (i, m))
+            })
+            .collect();
+        let total = vars.len() + arrays.len() + members.len();
+        if total == 0 {
+            return None;
+        }
+        let pick = self.choices.below(total);
+        Some(if pick < vars.len() {
+            Expr::Var(vars[pick])
+        } else if pick < vars.len() + arrays.len() {
+            let a = arrays[pick - vars.len()];
+            Expr::Index(a, Box::new(self.index(a, readable)))
+        } else {
+            let (i, m) = members[pick - vars.len() - arrays.len()];
+            Expr::Member(i, m)
+        })
+    }
+
+    /// An expression of type `ty` over the variables in `readable`.
+    fn expr(&mut self, ty: Ty, depth: u32, readable: &[usize], calls: bool) -> Expr {
+        if depth == 0 || self.choices.percent(30) {
+            if !self.choices.percent(35)
+                && let Some(place) = self.place(ty, readable)
+            {
+                return place;
+            }
+            return Expr::Lit(ty, self.literal(ty));
         }
         let d = depth - 1;
         if ty == Ty::Bool {
@@ -327,16 +456,15 @@ impl Generator<'_> {
         in_loop: bool,
     ) -> Vec<Stmt> {
         let mut out = Vec::new();
-        let n = 1 + self.choices.below(4);
-        for _ in 0..n {
+        for _ in 0..1 + self.choices.below(4) {
             if self.budget == 0 {
                 break;
             }
             self.budget -= 1;
             let assignable: Vec<usize> = (0..self.vars.len())
-                .filter(|&v| !self.vars[v].counter)
+                .filter(|&v| matches!(self.vars[v].role, Role::Plain | Role::Output | Role::InOut))
                 .collect();
-            let stmt = match self.choices.below(12) {
+            let stmt = match self.choices.below(14) {
                 0 | 1 if depth > 0 => {
                     let mut arms = Vec::new();
                     for _ in 0..1 + self.choices.below(3) {
@@ -385,12 +513,7 @@ impl Generator<'_> {
                     let counter = free[0];
                     let from = self.choices.below(9) as i128 - 4;
                     let to = self.choices.below(9) as i128 - 4;
-                    let by = match self.choices.below(4) {
-                        0 => -1,
-                        1 => 2,
-                        2 => -2,
-                        _ => 1,
-                    };
+                    let by = [1, -1, 2, -2][self.choices.below(4)];
                     let mut inner = readable.to_vec();
                     inner.push(counter);
                     Stmt::For(
@@ -406,6 +529,42 @@ impl Generator<'_> {
                     false => Stmt::Continue,
                 },
                 5 if self.choices.percent(20) => Stmt::Return,
+                6 | 7 if !self.instances.is_empty() => {
+                    let inst = self.choices.below(self.instances.len());
+                    let block = &self.blocks[self.instances[inst].block];
+                    let inputs: Vec<Ty> = block
+                        .inputs()
+                        .into_iter()
+                        .map(|m| block.members[m].ty)
+                        .collect();
+                    let inout_ty = block.inout().map(|m| block.members[m].ty);
+                    let bound = match inout_ty {
+                        None => None,
+                        Some(ty) => {
+                            let fits: Vec<usize> = assignable
+                                .iter()
+                                .copied()
+                                .filter(|&v| self.vars[v].ty == ty)
+                                .collect();
+                            match fits.is_empty() {
+                                // Nothing to pass by reference.
+                                true => continue,
+                                false => Some(fits[self.choices.below(fits.len())]),
+                            }
+                        }
+                    };
+                    let args = inputs
+                        .into_iter()
+                        .map(|ty| self.expr(ty, 3, readable, true))
+                        .collect();
+                    Stmt::CallFb(inst, args, bound)
+                }
+                8 if !self.arrays.is_empty() => {
+                    let a = self.choices.below(self.arrays.len());
+                    let index = self.index(a, readable);
+                    let value = self.expr(self.arrays[a].ty, 4, readable, true);
+                    Stmt::AssignIndex(a, index, value)
+                }
                 _ if assignable.is_empty() => continue,
                 _ => {
                     let target = assignable[self.choices.below(assignable.len())];
@@ -419,29 +578,35 @@ impl Generator<'_> {
     }
 }
 
-/// A program from `bytes`: ST text whose header comment holds the value of
-/// every variable after [`SCANS`] scans.
+/// A program from `bytes`: ST text whose header comment holds, after
+/// [`SCANS`] scans, the value of every variable, array element and FB
+/// member.
 pub fn program(bytes: &[u8]) -> String {
     let mut g = Generator {
         choices: Choices { bytes, at: 0 },
         vars: Vec::new(),
+        arrays: Vec::new(),
+        instances: Vec::new(),
         functions: Vec::new(),
-        budget: 24,
+        blocks: Vec::new(),
+        budget: 28,
     };
 
     for k in 0..g.choices.below(4) {
         let ty = g.integer();
         let inputs = 1 + g.choices.below(3);
         // The inputs are the only variables a FUNCTION body reads.
-        let saved = std::mem::take(&mut g.vars);
-        g.vars = (0..inputs)
-            .map(|i| Var {
-                name: format!("a{i}"),
-                ty,
-                init: 0,
-                counter: false,
-            })
-            .collect();
+        let saved = std::mem::replace(
+            &mut g.vars,
+            (0..inputs)
+                .map(|i| Var {
+                    name: format!("a{i}"),
+                    ty,
+                    init: 0,
+                    role: Role::Input,
+                })
+                .collect(),
+        );
         let readable: Vec<usize> = (0..inputs).collect();
         let body = g.expr(ty, 3, &readable, false);
         g.vars = saved;
@@ -453,18 +618,70 @@ pub fn program(bytes: &[u8]) -> String {
         });
     }
 
+    for k in 0..g.choices.below(3) {
+        let mut members = Vec::new();
+        for (count, prefix, role) in [
+            (1 + g.choices.below(2), "x", Role::Input),
+            (1 + g.choices.below(2), "y", Role::Output),
+            (g.choices.below(2), "io", Role::InOut),
+            (g.choices.below(3), "s", Role::Plain),
+        ] {
+            for i in 0..count {
+                let ty = g.any_type();
+                let init = g.literal(ty);
+                let name = match role {
+                    Role::InOut => prefix.to_string(),
+                    _ => format!("{prefix}{i}"),
+                };
+                members.push(Var {
+                    name,
+                    ty,
+                    init,
+                    role,
+                });
+            }
+        }
+        // The body sees its members and nothing of the program's.
+        let saved = std::mem::replace(&mut g.vars, members);
+        let readable: Vec<usize> = (0..g.vars.len()).collect();
+        let body = g.block(2, &readable, &[], false);
+        let members = std::mem::replace(&mut g.vars, saved);
+        g.blocks.push(Block {
+            name: format!("fb{k}"),
+            members,
+            body,
+        });
+    }
+
     for k in 0..1 + g.choices.below(8) {
-        let ty = match g.choices.percent(20) {
-            true => Ty::Bool,
-            false => g.integer(),
-        };
+        let ty = g.any_type();
         let init = g.literal(ty);
         g.vars.push(Var {
             name: format!("v{k}"),
             ty,
             init,
-            counter: false,
+            role: Role::Plain,
         });
+    }
+    for k in 0..g.choices.below(3) {
+        let ty = g.any_type();
+        let lo = g.choices.below(6) as i128 - 3;
+        let init = (0..1 + g.choices.below(5)).map(|_| g.literal(ty)).collect();
+        g.arrays.push(Array {
+            name: format!("arr{k}"),
+            ty,
+            lo,
+            init,
+        });
+    }
+    if !g.blocks.is_empty() {
+        for k in 0..g.choices.below(4) {
+            let block = g.choices.below(g.blocks.len());
+            g.instances.push(Instance {
+                name: format!("f{k}"),
+                block,
+            });
+        }
     }
     let readable: Vec<usize> = (0..g.vars.len()).collect();
     let counters: Vec<usize> = (0..2)
@@ -473,7 +690,7 @@ pub fn program(bytes: &[u8]) -> String {
                 name: format!("i{k}"),
                 ty: Ty::Dint,
                 init: 0,
-                counter: true,
+                role: Role::Counter,
             });
             g.vars.len() - 1
         })
@@ -481,30 +698,121 @@ pub fn program(bytes: &[u8]) -> String {
     let body = g.block(3, &readable, &counters, false);
 
     // What the program must leave behind.
-    let mut state: Vec<i128> = g.vars.iter().map(|v| v.init).collect();
+    let world = World {
+        functions: &g.functions,
+        blocks: &g.blocks,
+        instances: &g.instances,
+        arrays: &g.arrays,
+    };
+    let mut state = State {
+        vars: g.vars.iter().map(|v| v.init).collect(),
+        arrays: g.arrays.iter().map(|a| a.init.clone()).collect(),
+        instances: g
+            .instances
+            .iter()
+            .map(|i| g.blocks[i.block].members.iter().map(|m| m.init).collect())
+            .collect(),
+    };
+    let tys: Vec<Ty> = g.vars.iter().map(|v| v.ty).collect();
     for _ in 0..SCANS {
-        let _ = run_block(&body, &mut state, &g.vars, &g.functions);
+        let _ = run_block(&body, &mut state, &tys, &world);
     }
 
     let mut out = format!("(* rk-fuzz expects, after {SCANS} scans:\n");
-    for (v, value) in g.vars.iter().zip(&state) {
-        if !v.counter {
+    for (v, value) in g.vars.iter().zip(&state.vars) {
+        if v.role != Role::Counter {
             let _ = writeln!(out, "Run.{} = {}", v.name, shown(v.ty, *value));
         }
     }
+    for (a, values) in g.arrays.iter().zip(&state.arrays) {
+        for (k, value) in values.iter().enumerate() {
+            let _ = writeln!(
+                out,
+                "Run.{}[{}] = {}",
+                a.name,
+                a.lo + k as i128,
+                shown(a.ty, *value)
+            );
+        }
+    }
+    for (inst, values) in g.instances.iter().zip(&state.instances) {
+        for (m, value) in g.blocks[inst.block].members.iter().zip(values) {
+            // An in-out is a reference into the caller, not a value.
+            if m.role != Role::InOut {
+                let _ = writeln!(
+                    out,
+                    "Run.{}.{} = {}",
+                    inst.name,
+                    m.name,
+                    shown(m.ty, *value)
+                );
+            }
+        }
+    }
     out.push_str("*)\n\n");
+
+    let program_names = Names {
+        vars: g.vars.iter().map(|v| v.name.clone()).collect(),
+        arrays: g.arrays.iter().map(|a| a.name.clone()).collect(),
+        instances: &g.instances,
+        blocks: &g.blocks,
+        functions: &g.functions,
+    };
     for f in &g.functions {
         let _ = writeln!(out, "FUNCTION {} : {}\nVAR_INPUT", f.name, f.ty.name());
         for i in 0..f.inputs {
             let _ = writeln!(out, "    a{i} : {};", f.ty.name());
         }
-        let names: Vec<String> = (0..f.inputs).map(|i| format!("a{i}")).collect();
+        let names = Names {
+            vars: (0..f.inputs).map(|i| format!("a{i}")).collect(),
+            ..program_names.empty()
+        };
         let _ = writeln!(
             out,
             "END_VAR\n    {} := {};\nEND_FUNCTION\n",
             f.name,
-            text(&f.body, &names, &g.functions)
+            names.expr(&f.body)
         );
+    }
+    for b in &g.blocks {
+        let _ = writeln!(out, "FUNCTION_BLOCK {}", b.name);
+        for (section, role) in [
+            ("VAR_INPUT", Role::Input),
+            ("VAR_OUTPUT", Role::Output),
+            ("VAR_IN_OUT", Role::InOut),
+            ("VAR", Role::Plain),
+        ] {
+            let members = b.role(role);
+            if members.is_empty() {
+                continue;
+            }
+            let _ = writeln!(out, "{section}");
+            for m in members {
+                let m = &b.members[m];
+                match role {
+                    // A reference has no initial value of its own.
+                    Role::InOut => {
+                        let _ = writeln!(out, "    {} : {};", m.name, m.ty.name());
+                    }
+                    _ => {
+                        let _ = writeln!(
+                            out,
+                            "    {} : {} := {};",
+                            m.name,
+                            m.ty.name(),
+                            literal(m.ty, m.init)
+                        );
+                    }
+                }
+            }
+            out.push_str("END_VAR\n");
+        }
+        let names = Names {
+            vars: b.members.iter().map(|m| m.name.clone()).collect(),
+            ..program_names.empty()
+        };
+        names.block(&mut out, &b.body, 1);
+        out.push_str("END_FUNCTION_BLOCK\n\n");
     }
     out.push_str("PROGRAM P\nVAR\n");
     for v in &g.vars {
@@ -516,9 +824,23 @@ pub fn program(bytes: &[u8]) -> String {
             literal(v.ty, v.init)
         );
     }
+    for a in &g.arrays {
+        let values: Vec<String> = a.init.iter().map(|v| literal(a.ty, *v)).collect();
+        let _ = writeln!(
+            out,
+            "    {} : ARRAY[{}..{}] OF {} := [{}];",
+            a.name,
+            a.lo,
+            a.lo + a.init.len() as i128 - 1,
+            a.ty.name(),
+            values.join(", ")
+        );
+    }
+    for i in &g.instances {
+        let _ = writeln!(out, "    {} : {};", i.name, g.blocks[i.block].name);
+    }
     out.push_str("END_VAR\n");
-    let names: Vec<String> = g.vars.iter().map(|v| v.name.clone()).collect();
-    write_block(&mut out, &body, 1, &names, &g.functions);
+    program_names.block(&mut out, &body, 1);
     out.push_str(
         "END_PROGRAM\n\nCONFIGURATION C\n    RESOURCE R ON CPU\n        TASK T(INTERVAL := T#10ms, PRIORITY := 1);\n        PROGRAM Run WITH T : P;\n    END_RESOURCE\nEND_CONFIGURATION\n",
     );
@@ -539,114 +861,177 @@ fn literal(ty: Ty, v: i128) -> String {
     }
 }
 
-fn text(e: &Expr, names: &[String], functions: &[Function]) -> String {
-    let t = |e: &Expr| text(e, names, functions);
-    match e {
-        Expr::Lit(ty, v) => literal(*ty, *v),
-        Expr::Var(v) => names[*v].clone(),
-        Expr::Arith(op, _, a, b) => {
-            let op = match op {
-                Arith::Add => "+",
-                Arith::Sub => "-",
-                Arith::Mul => "*",
-                Arith::Div => "/",
-                Arith::Mod => "MOD",
-            };
-            format!("({} {op} {})", t(a), t(b))
+/// What the names in a frame's code refer to.
+struct Names<'a> {
+    vars: Vec<String>,
+    arrays: Vec<String>,
+    instances: &'a [Instance],
+    blocks: &'a [Block],
+    functions: &'a [Function],
+}
+
+impl<'a> Names<'a> {
+    /// The program's view with no variables: what a FUNCTION or FB body
+    /// starts from, before its own.
+    fn empty(&self) -> Names<'a> {
+        Names {
+            vars: Vec::new(),
+            arrays: Vec::new(),
+            instances: &[],
+            blocks: self.blocks,
+            functions: self.functions,
         }
-        Expr::Neg(_, a) => format!("(-{})", t(a)),
-        Expr::Cmp(op, a, b) => {
-            let op = match op {
-                Cmp::Eq => "=",
-                Cmp::Ne => "<>",
-                Cmp::Lt => "<",
-                Cmp::Gt => ">",
-                Cmp::Le => "<=",
-                Cmp::Ge => ">=",
-            };
-            format!("({} {op} {})", t(a), t(b))
+    }
+
+    fn expr(&self, e: &Expr) -> String {
+        match e {
+            Expr::Lit(ty, v) => literal(*ty, *v),
+            Expr::Var(v) => self.vars[*v].clone(),
+            Expr::Index(a, index) => format!("{}[{}]", self.arrays[*a], self.expr(index)),
+            Expr::Member(i, m) => {
+                let inst = &self.instances[*i];
+                format!("{}.{}", inst.name, self.blocks[inst.block].members[*m].name)
+            }
+            Expr::Arith(op, _, a, b) => {
+                let op = match op {
+                    Arith::Add => "+",
+                    Arith::Sub => "-",
+                    Arith::Mul => "*",
+                    Arith::Div => "/",
+                    Arith::Mod => "MOD",
+                };
+                format!("({} {op} {})", self.expr(a), self.expr(b))
+            }
+            Expr::Neg(_, a) => format!("(-{})", self.expr(a)),
+            Expr::Cmp(op, a, b) => {
+                let op = match op {
+                    Cmp::Eq => "=",
+                    Cmp::Ne => "<>",
+                    Cmp::Lt => "<",
+                    Cmp::Gt => ">",
+                    Cmp::Le => "<=",
+                    Cmp::Ge => ">=",
+                };
+                format!("({} {op} {})", self.expr(a), self.expr(b))
+            }
+            Expr::Not(a) => format!("(NOT {})", self.expr(a)),
+            Expr::Logic(op, a, b) => {
+                let op = match op {
+                    Logic::And => "AND",
+                    Logic::Or => "OR",
+                    Logic::Xor => "XOR",
+                };
+                format!("({} {op} {})", self.expr(a), self.expr(b))
+            }
+            Expr::Call(f, args) => {
+                let args: Vec<String> = args
+                    .iter()
+                    .enumerate()
+                    .map(|(i, a)| format!("a{i} := {}", self.expr(a)))
+                    .collect();
+                format!("{}({})", self.functions[*f].name, args.join(", "))
+            }
         }
-        Expr::Not(a) => format!("(NOT {})", t(a)),
-        Expr::Logic(op, a, b) => {
-            let op = match op {
-                Logic::And => "AND",
-                Logic::Or => "OR",
-                Logic::Xor => "XOR",
-            };
-            format!("({} {op} {})", t(a), t(b))
-        }
-        Expr::Call(f, args) => {
-            let args: Vec<String> = args
-                .iter()
-                .enumerate()
-                .map(|(i, a)| format!("a{i} := {}", t(a)))
-                .collect();
-            format!("{}({})", functions[*f].name, args.join(", "))
+    }
+
+    fn block(&self, out: &mut String, block: &[Stmt], level: usize) {
+        let pad = "    ".repeat(level);
+        for stmt in block {
+            match stmt {
+                Stmt::Assign(v, e) => {
+                    let _ = writeln!(out, "{pad}{} := {};", self.vars[*v], self.expr(e));
+                }
+                Stmt::AssignIndex(a, index, e) => {
+                    let _ = writeln!(
+                        out,
+                        "{pad}{}[{}] := {};",
+                        self.arrays[*a],
+                        self.expr(index),
+                        self.expr(e)
+                    );
+                }
+                Stmt::CallFb(i, args, bound) => {
+                    let inst = &self.instances[*i];
+                    let block = &self.blocks[inst.block];
+                    let mut parts: Vec<String> = block
+                        .inputs()
+                        .into_iter()
+                        .zip(args)
+                        .map(|(m, a)| format!("{} := {}", block.members[m].name, self.expr(a)))
+                        .collect();
+                    if let (Some(m), Some(v)) = (block.inout(), bound) {
+                        parts.push(format!("{} := {}", block.members[m].name, self.vars[*v]));
+                    }
+                    let _ = writeln!(out, "{pad}{}({});", inst.name, parts.join(", "));
+                }
+                Stmt::If(arms, otherwise) => {
+                    for (i, (cond, body)) in arms.iter().enumerate() {
+                        let kw = if i == 0 { "IF" } else { "ELSIF" };
+                        let _ = writeln!(out, "{pad}{kw} {} THEN", self.expr(cond));
+                        self.block(out, body, level + 1);
+                    }
+                    if let Some(body) = otherwise {
+                        let _ = writeln!(out, "{pad}ELSE");
+                        self.block(out, body, level + 1);
+                    }
+                    let _ = writeln!(out, "{pad}END_IF;");
+                }
+                Stmt::Case(selector, arms, otherwise) => {
+                    let _ = writeln!(out, "{pad}CASE {} OF", self.expr(selector));
+                    for (labels, body) in arms {
+                        let labels: Vec<String> = labels
+                            .iter()
+                            .map(|l| match l {
+                                Label::One(v) => v.to_string(),
+                                Label::Range(a, b) => format!("{a}..{b}"),
+                            })
+                            .collect();
+                        let _ = writeln!(out, "{pad}{}:", labels.join(", "));
+                        self.block(out, body, level + 1);
+                    }
+                    if let Some(body) = otherwise {
+                        let _ = writeln!(out, "{pad}ELSE");
+                        self.block(out, body, level + 1);
+                    }
+                    let _ = writeln!(out, "{pad}END_CASE;");
+                }
+                Stmt::For(v, from, to, by, body) => {
+                    let _ = writeln!(
+                        out,
+                        "{pad}FOR {} := {from} TO {to} BY {by} DO",
+                        self.vars[*v]
+                    );
+                    self.block(out, body, level + 1);
+                    let _ = writeln!(out, "{pad}END_FOR;");
+                }
+                Stmt::Exit => {
+                    let _ = writeln!(out, "{pad}EXIT;");
+                }
+                Stmt::Continue => {
+                    let _ = writeln!(out, "{pad}CONTINUE;");
+                }
+                Stmt::Return => {
+                    let _ = writeln!(out, "{pad}RETURN;");
+                }
+            }
         }
     }
 }
 
-fn write_block(
-    out: &mut String,
-    block: &[Stmt],
-    level: usize,
-    names: &[String],
-    functions: &[Function],
-) {
-    let pad = "    ".repeat(level);
-    let t = |e: &Expr| text(e, names, functions);
-    for stmt in block {
-        match stmt {
-            Stmt::Assign(v, e) => {
-                let _ = writeln!(out, "{pad}{} := {};", names[*v], t(e));
-            }
-            Stmt::If(arms, otherwise) => {
-                for (i, (cond, body)) in arms.iter().enumerate() {
-                    let kw = if i == 0 { "IF" } else { "ELSIF" };
-                    let _ = writeln!(out, "{pad}{kw} {} THEN", t(cond));
-                    write_block(out, body, level + 1, names, functions);
-                }
-                if let Some(body) = otherwise {
-                    let _ = writeln!(out, "{pad}ELSE");
-                    write_block(out, body, level + 1, names, functions);
-                }
-                let _ = writeln!(out, "{pad}END_IF;");
-            }
-            Stmt::Case(selector, arms, otherwise) => {
-                let _ = writeln!(out, "{pad}CASE {} OF", t(selector));
-                for (labels, body) in arms {
-                    let labels: Vec<String> = labels
-                        .iter()
-                        .map(|l| match l {
-                            Label::One(v) => v.to_string(),
-                            Label::Range(a, b) => format!("{a}..{b}"),
-                        })
-                        .collect();
-                    let _ = writeln!(out, "{pad}{}:", labels.join(", "));
-                    write_block(out, body, level + 1, names, functions);
-                }
-                if let Some(body) = otherwise {
-                    let _ = writeln!(out, "{pad}ELSE");
-                    write_block(out, body, level + 1, names, functions);
-                }
-                let _ = writeln!(out, "{pad}END_CASE;");
-            }
-            Stmt::For(v, from, to, by, body) => {
-                let _ = writeln!(out, "{pad}FOR {} := {from} TO {to} BY {by} DO", names[*v]);
-                write_block(out, body, level + 1, names, functions);
-                let _ = writeln!(out, "{pad}END_FOR;");
-            }
-            Stmt::Exit => {
-                let _ = writeln!(out, "{pad}EXIT;");
-            }
-            Stmt::Continue => {
-                let _ = writeln!(out, "{pad}CONTINUE;");
-            }
-            Stmt::Return => {
-                let _ = writeln!(out, "{pad}RETURN;");
-            }
-        }
-    }
+/// What the evaluator needs besides the state: the declarations.
+struct World<'a> {
+    functions: &'a [Function],
+    blocks: &'a [Block],
+    instances: &'a [Instance],
+    arrays: &'a [Array],
+}
+
+/// A frame's values: its variables, and for the program its arrays and FB
+/// instances (one value per member).
+struct State {
+    vars: Vec<i128>,
+    arrays: Vec<Vec<i128>>,
+    instances: Vec<Vec<i128>>,
 }
 
 /// How a statement ended.
@@ -657,27 +1042,56 @@ enum Flow {
     Return,
 }
 
-fn run_block(block: &[Stmt], state: &mut [i128], vars: &[Var], functions: &[Function]) -> Flow {
+fn run_block(block: &[Stmt], st: &mut State, tys: &[Ty], w: &World) -> Flow {
     for stmt in block {
         let flow = match stmt {
             Stmt::Assign(v, e) => {
-                state[*v] = vars[*v].ty.wrap(eval(e, state, functions));
+                st.vars[*v] = tys[*v].wrap(eval(e, st, w));
+                Flow::Next
+            }
+            Stmt::AssignIndex(a, index, e) => {
+                // The index first, then the value, as the code evaluates
+                // them; neither has an effect on the other.
+                let array = &w.arrays[*a];
+                let k = (eval(index, st, w) - array.lo) as usize;
+                let value = eval(e, st, w);
+                st.arrays[*a][k] = array.ty.wrap(value);
+                Flow::Next
+            }
+            Stmt::CallFb(i, args, bound) => {
+                let block = &w.blocks[w.instances[*i].block];
+                let values: Vec<i128> = args.iter().map(|a| eval(a, st, w)).collect();
+                let mut frame = State {
+                    vars: st.instances[*i].clone(),
+                    arrays: Vec::new(),
+                    instances: Vec::new(),
+                };
+                let member_tys: Vec<Ty> = block.members.iter().map(|m| m.ty).collect();
+                for (m, v) in block.inputs().into_iter().zip(values) {
+                    frame.vars[m] = member_tys[m].wrap(v);
+                }
+                let inout = block.inout().zip(*bound);
+                if let Some((m, v)) = inout {
+                    frame.vars[m] = st.vars[v];
+                }
+                let _ = run_block(&block.body, &mut frame, &member_tys, w);
+                if let Some((m, v)) = inout {
+                    st.vars[v] = frame.vars[m];
+                }
+                st.instances[*i] = frame.vars;
                 Flow::Next
             }
             Stmt::If(arms, otherwise) => {
-                match arms
-                    .iter()
-                    .find(|(cond, _)| eval(cond, state, functions) != 0)
-                {
-                    Some((_, body)) => run_block(body, state, vars, functions),
+                match arms.iter().find(|(cond, _)| eval(cond, st, w) != 0) {
+                    Some((_, body)) => run_block(body, st, tys, w),
                     None => match otherwise {
-                        Some(body) => run_block(body, state, vars, functions),
+                        Some(body) => run_block(body, st, tys, w),
                         None => Flow::Next,
                     },
                 }
             }
             Stmt::Case(selector, arms, otherwise) => {
-                let s = eval(selector, state, functions);
+                let s = eval(selector, st, w);
                 let hit = arms.iter().find(|(labels, _)| {
                     labels.iter().any(|l| match l {
                         Label::One(v) => s == *v,
@@ -685,16 +1099,16 @@ fn run_block(block: &[Stmt], state: &mut [i128], vars: &[Var], functions: &[Func
                     })
                 });
                 match (hit, otherwise) {
-                    (Some((_, body)), _) => run_block(body, state, vars, functions),
-                    (None, Some(body)) => run_block(body, state, vars, functions),
+                    (Some((_, body)), _) => run_block(body, st, tys, w),
+                    (None, Some(body)) => run_block(body, st, tys, w),
                     (None, None) => Flow::Next,
                 }
             }
             Stmt::For(v, from, to, by, body) => {
-                state[*v] = *from;
+                st.vars[*v] = *from;
                 let mut flow = Flow::Next;
-                while (*by > 0 && state[*v] <= *to) || (*by < 0 && state[*v] >= *to) {
-                    match run_block(body, state, vars, functions) {
+                while (*by > 0 && st.vars[*v] <= *to) || (*by < 0 && st.vars[*v] >= *to) {
+                    match run_block(body, st, tys, w) {
                         Flow::Exit => break,
                         Flow::Return => {
                             flow = Flow::Return;
@@ -702,7 +1116,7 @@ fn run_block(block: &[Stmt], state: &mut [i128], vars: &[Var], functions: &[Func
                         }
                         Flow::Next | Flow::Continue => {}
                     }
-                    state[*v] += *by;
+                    st.vars[*v] += *by;
                 }
                 flow
             }
@@ -719,11 +1133,13 @@ fn run_block(block: &[Stmt], state: &mut [i128], vars: &[Var], functions: &[Func
 
 /// An expression's value, wrapped to its type. Every operation wraps, not
 /// only the assignment: `(a * b) / c` in SINT is SINT arithmetic throughout.
-fn eval(e: &Expr, env: &[i128], functions: &[Function]) -> i128 {
-    let ev = |e: &Expr| eval(e, env, functions);
+fn eval(e: &Expr, st: &State, w: &World) -> i128 {
+    let ev = |e: &Expr| eval(e, st, w);
     match e {
         Expr::Lit(_, v) => *v,
-        Expr::Var(v) => env[*v],
+        Expr::Var(v) => st.vars[*v],
+        Expr::Index(a, index) => st.arrays[*a][(ev(index) - w.arrays[*a].lo) as usize],
+        Expr::Member(i, m) => st.instances[*i][*m],
         Expr::Arith(op, ty, a, b) => {
             let (a, b) = (ev(a), ev(b));
             ty.wrap(match op {
@@ -757,9 +1173,13 @@ fn eval(e: &Expr, env: &[i128], functions: &[Function]) -> i128 {
             }) as i128
         }
         Expr::Call(f, args) => {
-            let inputs: Vec<i128> = args.iter().map(ev).collect();
-            let f = &functions[*f];
-            f.ty.wrap(eval(&f.body, &inputs, functions))
+            let frame = State {
+                vars: args.iter().map(ev).collect(),
+                arrays: Vec::new(),
+                instances: Vec::new(),
+            };
+            let f = &w.functions[*f];
+            f.ty.wrap(eval(&f.body, &frame, w))
         }
     }
 }
@@ -780,6 +1200,17 @@ mod tests {
 
     #[test]
     fn division_truncates_and_mod_takes_the_dividends_sign() {
+        let world = World {
+            functions: &[],
+            blocks: &[],
+            instances: &[],
+            arrays: &[],
+        };
+        let state = State {
+            vars: Vec::new(),
+            arrays: Vec::new(),
+            instances: Vec::new(),
+        };
         let e = |op, a, b| {
             eval(
                 &Expr::Arith(
@@ -788,8 +1219,8 @@ mod tests {
                     Box::new(Expr::Lit(Ty::Dint, a)),
                     Box::new(Expr::Lit(Ty::Dint, b)),
                 ),
-                &[],
-                &[],
+                &state,
+                &world,
             )
         };
         assert_eq!(e(Arith::Div, -7, 2), -3);

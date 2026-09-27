@@ -32,6 +32,12 @@ log = { workspace = true }
 topiary-core = { workspace = true }
 formatter = { workspace = true }
 wasmparser = { workspace = true }
+# The language server's request handlers, as the editor reaches them.
+server = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+# The CLI's own `-O` path: what `rk compile -O` runs, sections re-attached.
+rk = { path = "../cli" }
 # The same wasmtime as `rk test` and the codegen tests: the fuzzer runs what
 # the compiler emits on the host a user runs it on.
 wasmtime = "45.0.1"
@@ -71,5 +77,11 @@ doc = false
 [[bin]]
 name = "fuzz_semantics"
 path = "fuzz_targets/fuzz_semantics.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fuzz_ide"
+path = "fuzz_targets/fuzz_ide.rs"
 test = false
 doc = false

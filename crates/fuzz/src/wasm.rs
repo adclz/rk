@@ -190,13 +190,13 @@ pub(crate) fn decode_sections(wasm: &[u8]) -> Result<Sections, Finding> {
 }
 
 impl Sections {
-    /// Every variable the debug symbols name, read out of `memory`.
-    pub(crate) fn values(&self, memory: &[u8]) -> Vec<(String, debug_format::VarValue)> {
-        self.info
-            .read_all_bytes(memory)
-            .into_iter()
-            .map(|(path, value, ..)| (path, value))
-            .collect()
+    /// What the monitor reads at `path` (a variable, an array element, a
+    /// member) in `memory`; `None` when the symbols do not resolve it.
+    pub(crate) fn value(&self, path: &str, memory: &[u8]) -> Option<debug_format::VarValue> {
+        let loc = self.info.resolve(path)?;
+        let start = loc.address as usize;
+        let bytes = memory.get(start..start + loc.size as usize)?;
+        Some(loc.decode(bytes))
     }
 }
 
