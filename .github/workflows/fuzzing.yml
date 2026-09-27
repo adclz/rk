@@ -1,8 +1,9 @@
-# Nightly fuzzing of the compiler, the formatter and the editor's incremental
-# path (crates/fuzz). Each target gets its own runner for 30 minutes, starting
-# from the corpus the previous nights grew, and every crash is replayed by
-# `repro`, which groups them by cause in the run summary. A crash fails the
-# run; GitHub's notification is the alert.
+# Nightly fuzzing of the compiler, the formatter, the editor's incremental
+# path and the values generated programs compute (crates/fuzz). Each target
+# gets its own runner for 30 minutes, starting from the corpus the previous
+# nights grew, and every crash is replayed by `repro`, which groups them by
+# cause in the run summary. A crash fails the run; GitHub's notification is
+# the alert.
 #
 # The targets are built by `cargo fuzz`, which is what instruments them for
 # coverage: a plain `cargo build` links libFuzzer but gives it no feedback,
@@ -30,7 +31,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: [fuzz_compiler, fuzz_formatter, fuzz_incremental]
+        target: [fuzz_compiler, fuzz_formatter, fuzz_incremental, fuzz_semantics]
     env:
       CORPUS: crates/fuzz/corpus/${{ matrix.target }}
     steps:
@@ -133,14 +134,26 @@ jobs:
         if: steps.found.outputs.count != '0'
         run: |
           cargo build --release -p rk-fuzz --bin repro
-          mkdir -p replay
-          find crashes -type f -name 'crash-*' -exec cp {} replay/ \;
           {
             echo '## Fuzzing crashes'
-            echo
-            echo '```'
-            ./target/release/repro replay | sed -n '/^passed:\|input(s)/,$p' || true
-            echo '```'
+            # One replay per target: a fuzz_semantics crash file is the
+            # generator's bytes, not ST, and `--generated` writes the
+            # program again. The full output, programs included, is in
+            # this step's log.
+            for dir in crashes/fuzz-crashes-*; do
+              target=${dir#crashes/fuzz-crashes-}
+              mkdir -p "replay/$target"
+              find "$dir" -type f -name 'crash-*' -exec cp {} "replay/$target/" \;
+              [ -n "$(ls -A "replay/$target")" ] || continue
+              flag=""
+              [ "$target" = fuzz_semantics ] && flag="--generated"
+              echo
+              echo "### $target"
+              echo
+              echo '```'
+              ./target/release/repro $flag "replay/$target" | tee /dev/stderr | sed -n '/^passed:\|input(s)/,$p' || true
+              echo '```'
+            done
             others=$(find crashes -type f \( -name 'timeout-*' -o -name 'oom-*' -o -name 'slow-unit-*' \))
             if [ -n "$others" ]; then
               echo
@@ -149,7 +162,7 @@ jobs:
               echo "$others" | sed 's/^/- /'
             fi
             echo
-            echo 'Reproduce one with `cargo run -p rk-fuzz --bin repro -- <file>`.'
+            echo 'Reproduce one with `cargo run -p rk-fuzz --bin repro -- <file>` (add `--generated` for fuzz_semantics).'
           } >> "$GITHUB_STEP_SUMMARY"
           echo "::error::the fuzzers found ${{ steps.found.outputs.count }} failing input(s); see the run summary"
           exit 1

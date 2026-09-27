@@ -189,6 +189,17 @@ pub(crate) fn decode_sections(wasm: &[u8]) -> Result<Sections, Finding> {
     })
 }
 
+impl Sections {
+    /// Every variable the debug symbols name, read out of `memory`.
+    pub(crate) fn values(&self, memory: &[u8]) -> Vec<(String, debug_format::VarValue)> {
+        self.info
+            .read_all_bytes(memory)
+            .into_iter()
+            .map(|(path, value, ..)| (path, value))
+            .collect()
+    }
+}
+
 pub(crate) struct Sections {
     schedule: Option<ScheduleManifest>,
     retain: Option<RetainMap>,
@@ -226,82 +237,26 @@ const SCANS: u64 = 3;
 /// zero, a RAISE, running out of fuel) ends the run and is not a finding.
 /// One no well-typed program can cause is.
 pub(crate) fn execute(wasm: &[u8], sections: &Sections) -> Result<(), Finding> {
-    let engine = &*ENGINE;
-    let module = Module::new(engine, wasm)
-        .map_err(|e| Finding::new("wasmtime-compile", format!("{e:#}")))?;
-    let mut store = Store::new(engine, ());
-
-    let Some(min_pages) = module.imports().find_map(|i| match i.ty() {
-        ExternType::Memory(m) => Some(m.minimum()),
-        _ => None,
-    }) else {
-        return Err(Finding::new(
-            "module-shape",
-            "the module does not import its linear memory from `env`",
-        ));
-    };
-    if min_pages > MAX_PAGES {
+    let Some(mut host) = Host::new(wasm)? else {
         return Ok(());
-    }
-    let memory = Memory::new(&mut store, MemoryType::new(min_pages as u32, None))
-        .map_err(|e| Finding::new("module-shape", format!("allocating memory: {e:#}")))?;
-
-    let mut linker = Linker::new(engine);
-    linker
-        .define(&store, "env", "memory", memory)
-        .map_err(|e| Finding::new("module-shape", format!("{e:#}")))?;
-    // The clock moves a millisecond a call, so timers run and the run
-    // reproduces.
-    let clock = Arc::new(AtomicI64::new(0));
-    for import in module.imports() {
-        if import.name() == "now" && import.module().contains("monotonic-clock") {
-            let clock = clock.clone();
-            linker
-                .func_wrap(import.module(), import.name(), move || {
-                    clock.fetch_add(1_000_000, Ordering::Relaxed)
-                })
-                .map_err(|e| Finding::new("module-shape", format!("{e:#}")))?;
-        }
-    }
-    linker
-        .define_unknown_imports_as_traps(&module)
-        .map_err(|e| Finding::new("module-shape", format!("{e:#}")))?;
-
-    // Nothing runs during instantiation (there is no start function), so a
-    // failure here is the module's own shape: typically a data segment
-    // beyond the memory it asked for.
-    let instance = linker
-        .instantiate(&mut store, &module)
-        .map_err(|e| Finding::new("instantiate", format!("{e:#}")))?;
-
-    check_bands(&mut store, &instance, memory, sections)?;
-
-    if let Ok(init) = instance.get_typed_func::<(), ()>(&mut store, "__init") {
-        store.set_fuel(FUEL).expect("fuel is enabled");
-        if !survived(init.call(&mut store, ()), "__init")? {
-            return Ok(());
-        }
-    }
-
-    let scans = scan_entries(&mut store, &instance, &module, sections)?;
-    for tick in 0..SCANS {
-        for (name, func, this, period) in &scans {
-            if tick % period != 0 {
-                continue;
-            }
-            store.set_fuel(FUEL).expect("fuel is enabled");
-            let args: Vec<Val> = this.iter().map(|a| Val::I32(*a)).collect();
-            if !survived(func.call(&mut store, &args, &mut []), name)? {
-                return Ok(());
-            }
-        }
+    };
+    check_bands(&mut host.store, &host.instance, host.memory, sections)?;
+    if host.run(sections, SCANS)?.is_some() {
+        return Ok(());
     }
 
     // What the monitor does after a scan: read every symbol back.
-    let _ = sections.info.read_all_bytes(memory.data(&store));
+    let _ = sections.info.read_all_bytes(host.memory.data(&host.store));
 
     // The `{test}` functions and the `{export}` FUNCTIONs, with zero
     // arguments: the callers a module has besides its schedule.
+    let Host {
+        mut store,
+        instance,
+        module,
+        ..
+    } = host;
+    let scans = scan_entries(&mut store, &instance, &module, sections)?;
     let scanned: Vec<&str> = scans.iter().map(|(n, ..)| n.as_str()).collect();
     let others: Vec<(String, Func)> = module
         .exports()
@@ -324,6 +279,121 @@ pub(crate) fn execute(wasm: &[u8], sections: &Sections) -> Result<(), Finding> {
         }
     }
     Ok(())
+}
+
+/// The linear memory after `__init` and `scans` scans, for reading the
+/// program's variables back. The inner `Err` names the call that ended
+/// the run early, the way a program may end.
+pub(crate) fn memory_after(
+    wasm: &[u8],
+    sections: &Sections,
+    scans: u64,
+) -> Result<Result<Vec<u8>, String>, Finding> {
+    let Some(mut host) = Host::new(wasm)? else {
+        return Ok(Err(format!(
+            "the module asks for more than {MAX_PAGES} pages"
+        )));
+    };
+    Ok(match host.run(sections, scans)? {
+        Some(unit) => Err(unit),
+        None => Ok(host.memory.data(&host.store).to_vec()),
+    })
+}
+
+/// A module instantiated the way a host does it: its memory provided, its
+/// clock wired, its other imports trapping.
+struct Host {
+    store: Store<()>,
+    instance: Instance,
+    module: Module,
+    memory: Memory,
+}
+
+impl Host {
+    /// `None` when the module asks for more memory than [`MAX_PAGES`].
+    fn new(wasm: &[u8]) -> Result<Option<Self>, Finding> {
+        let engine = &*ENGINE;
+        let module = Module::new(engine, wasm)
+            .map_err(|e| Finding::new("wasmtime-compile", format!("{e:#}")))?;
+        let mut store = Store::new(engine, ());
+
+        let Some(min_pages) = module.imports().find_map(|i| match i.ty() {
+            ExternType::Memory(m) => Some(m.minimum()),
+            _ => None,
+        }) else {
+            return Err(Finding::new(
+                "module-shape",
+                "the module does not import its linear memory from `env`",
+            ));
+        };
+        if min_pages > MAX_PAGES {
+            return Ok(None);
+        }
+        let memory = Memory::new(&mut store, MemoryType::new(min_pages as u32, None))
+            .map_err(|e| Finding::new("module-shape", format!("allocating memory: {e:#}")))?;
+
+        let mut linker = Linker::new(engine);
+        linker
+            .define(&store, "env", "memory", memory)
+            .map_err(|e| Finding::new("module-shape", format!("{e:#}")))?;
+        // The clock moves a millisecond a call, so timers run and the run
+        // reproduces.
+        let clock = Arc::new(AtomicI64::new(0));
+        for import in module.imports() {
+            if import.name() == "now" && import.module().contains("monotonic-clock") {
+                let clock = clock.clone();
+                linker
+                    .func_wrap(import.module(), import.name(), move || {
+                        clock.fetch_add(1_000_000, Ordering::Relaxed)
+                    })
+                    .map_err(|e| Finding::new("module-shape", format!("{e:#}")))?;
+            }
+        }
+        linker
+            .define_unknown_imports_as_traps(&module)
+            .map_err(|e| Finding::new("module-shape", format!("{e:#}")))?;
+
+        // Nothing runs during instantiation (there is no start function), so
+        // a failure here is the module's own shape: typically a data segment
+        // beyond the memory it asked for.
+        let instance = linker
+            .instantiate(&mut store, &module)
+            .map_err(|e| Finding::new("instantiate", format!("{e:#}")))?;
+        Ok(Some(Self {
+            store,
+            instance,
+            module,
+            memory,
+        }))
+    }
+
+    /// `__init`, then `scans` scans. `Some` names the call that ended the
+    /// run the way a program may end.
+    fn run(&mut self, sections: &Sections, scans: u64) -> Result<Option<String>, Finding> {
+        if let Ok(init) = self
+            .instance
+            .get_typed_func::<(), ()>(&mut self.store, "__init")
+        {
+            self.store.set_fuel(FUEL).expect("fuel is enabled");
+            if !survived(init.call(&mut self.store, ()), "__init")? {
+                return Ok(Some("__init".to_string()));
+            }
+        }
+        let entries = scan_entries(&mut self.store, &self.instance, &self.module, sections)?;
+        for tick in 0..scans {
+            for (name, func, this, period) in &entries {
+                if tick % period != 0 {
+                    continue;
+                }
+                self.store.set_fuel(FUEL).expect("fuel is enabled");
+                let args: Vec<Val> = this.iter().map(|a| Val::I32(*a)).collect();
+                if !survived(func.call(&mut self.store, &args, &mut []), name)? {
+                    return Ok(Some(name.clone()));
+                }
+            }
+        }
+        Ok(None)
+    }
 }
 
 fn zero(ty: &ValType) -> Option<Val> {
@@ -366,7 +436,7 @@ fn scan_entries(
                     })?;
                 entries.push((
                     program.export.clone(),
-                    func.func().clone(),
+                    *func.func(),
                     Some(program.instance_addr as i32),
                     task.period_ticks,
                 ));
@@ -379,7 +449,7 @@ fn scan_entries(
             continue;
         }
         if let Ok(f) = instance.get_typed_func::<(), ()>(&mut *store, export.name()) {
-            entries.push((export.name().to_string(), f.func().clone(), None, 1));
+            entries.push((export.name().to_string(), *f.func(), None, 1));
         }
     }
     Ok(entries)

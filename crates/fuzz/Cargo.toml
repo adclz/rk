@@ -67,3 +67,9 @@ name = "fuzz_incremental"
 path = "fuzz_targets/fuzz_incremental.rs"
 test = false
 doc = false
+
+[[bin]]
+name = "fuzz_semantics"
+path = "fuzz_targets/fuzz_semantics.rs"
+test = false
+doc = false

@@ -183,7 +183,7 @@ cli (binary `rk`) — check, compile, test, fmt, explain, env
 | `linter`                  | `crates/linter`         | Lint rules (L-codes) over HIR.                                                                                          |
 | `benchmark`               | `crates/benchmark`      | Divan benchmarks over the stdlib corpus, with diagnostic baselines.                                                     |
 | `doc`                     | `crates/doc`            | Site generator's front half: verifies `skills/`, `crates/doc/examples/`, `docs/` and `site/pages/` against the compiler, pre-renders their code, and writes what Zola (`site/`) renders. |
-| `fuzz`                    | `crates/fuzz`           | Fuzz targets (compiler, formatter, incremental edits), their oracles, `repro`, and the open findings (`findings/`).     |
+| `fuzz`                    | `crates/fuzz`           | Fuzz targets (compiler, formatter, incremental edits, generated programs' values), their oracles, `repro`.              |
 | `vscode-lsp-server`       | `vscode/server`         | VSCode extension LSP server binary (thin wrapper over `server` crate).                                                  |
 
 ### Root Package
@@ -335,7 +335,7 @@ Key helpers from `src/tests/utils.rs`:
 ### Snapshot Conventions
 
 - Always use **inline snapshots** (`@r"..."` or `@r#"..."#`)
-- Empty snapshot `@r""` means "no errors expected" (valid code test)
+- Empty snapshot `@r""` means "no errors expected" (valid code test). `test_diagnostics` then also lowers, emits and validates the workspace: an accepted program must compile
 - Diagnostic snapshots include ariadne-rendered output with error codes, source annotations, and carets
 - LSP feature tests use `assert_debug_snapshot!` for structured responses
 - After modifying tests, run `cargo insta review` to accept/reject snapshot changes
@@ -374,7 +374,7 @@ toolchain pinned by `rust-toolchain.toml` through the composite action in
 | ------------- | ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `ci`          | Push to main, PR, manual                             | `test`: `cargo nextest run --workspace --profile ci` on Linux, macOS and Windows. `clippy`: `-Dwarnings`. `rustfmt`: `cargo fmt --all --check`. `stdlib`: the stdlib's own suite, plain and `-O z` on Binaryen 131. `notices`: `THIRD-PARTY-NOTICES` matches a fresh `cargo about` run. `site`: examples vs compiler, `diagnostics.json` freshness, Worker bundle |
 | `tree-sitter` | Push/PR touching `crates/tree-sitter/**`             | `tree-sitter test` + `tree-sitter fuzz`                                                                                                                                                                                                                                            |
-| `fuzzing`     | Daily at 02:00 UTC, manual                           | `cargo fuzz` runs the three targets for 30 min each on a corpus kept between nights; `triage` replays the crashes with `repro`, groups them in the run summary, and fails the run                                                                                                   |
+| `fuzzing`     | Daily at 02:00 UTC, manual                           | `cargo fuzz` runs the four targets for 30 min each on a corpus kept between nights; `triage` replays the crashes with `repro`, groups them in the run summary, and fails the run                                                                                                   |
 | `codspeed`    | Push to main, PR                                     | Benchmarks under CodSpeed                                                                                                                                                                                                                                                          |
 | `site`        | Push to main touching skills, crates, stdlib or site | Builds the website and deploys the Cloudflare Worker                                                                                                                                                                                                                               |
 

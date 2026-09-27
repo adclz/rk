@@ -7,6 +7,7 @@ Fuzzing infrastructure for testing the IEC ST compiler using [libfuzzer](https:/
 - **fuzz_compiler** runs the whole pipeline: check, lint, lower, emit both profiles, validate, run.
 - **fuzz_formatter** checks that the formatter's output parses, is stable, and means what the input meant.
 - **fuzz_incremental** replays an edit the way the editor sends it, and compares the result with a fresh build.
+- **fuzz_semantics** writes a well-typed program from the fuzzer's bytes, works out what it must compute, and checks that the compiled module computes it.
 
 > [!NOTE]  
 > The parser and lexer are fuzzed separately through the tree-sitter CLI (via `tree-sitter fuzz`[https://tree-sitter.github.io/tree-sitter/cli/fuzz.html]).
@@ -58,6 +59,9 @@ Use it to check a hypothesis: write the program that should break the compiler a
 - **Execution**: the module instantiates and runs `__init`, a few scans and its `{test}` and `{export}` functions under a fuel budget. An out-of-bounds access, an `unreachable` or a stack overflow is a bug; a RAISE or a division by zero is not.
 - **Formatter**: the output parses, formatting twice changes nothing, and an accepted program keeps its diagnostics.
 - **Incremental**: after the edit, the text, the syntax tree, the diagnostics (positions included) and the emitted module match a fresh build.
+- **Semantics**: after two scans, every variable holds the value the program's header gives, read back through the debug symbols. Integers wrap at their width after each operation, as [Math operations](../../docs/math-operations.md) says.
+
+For a `fuzz_semantics` crash file, add `--generated` to `repro`: it writes the program again and prints it.
 
 ## Findings
 

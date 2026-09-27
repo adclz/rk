@@ -2,6 +2,10 @@
 //!
 //! `cargo run -p rk-fuzz --bin repro -- [--only pipeline|format|incremental] <path>...`
 //!
+//! With `--generated`, each input is a `fuzz_semantics` crash file: the
+//! bytes the program generator ran on. The program is written again and
+//! checked, and printed when it fails.
+//!
 //! A path is a `.st` file, a libFuzzer crash file, or a directory of either.
 //! Each input gets one line, `ok`, `FAIL [oracle]` or `PANIC at <site>`,
 //! and the run ends with the failures grouped by cause, so a night's crash
@@ -27,20 +31,26 @@ static PANIC_SITE: Mutex<Option<String>> = Mutex::new(None);
 
 fn main() -> ExitCode {
     let mut only = None;
+    let mut generated = false;
     let mut paths = Vec::new();
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--only" => only = args.next(),
+            "--generated" => generated = true,
             "-h" | "--help" => {
-                eprintln!("usage: repro [--only pipeline|format|incremental] <file-or-dir>...");
+                eprintln!(
+                    "usage: repro [--only pipeline|format|incremental] [--generated] <file-or-dir>..."
+                );
                 return ExitCode::SUCCESS;
             }
             _ => paths.push(PathBuf::from(arg)),
         }
     }
     if paths.is_empty() {
-        eprintln!("usage: repro [--only pipeline|format|incremental] <file-or-dir>...");
+        eprintln!(
+            "usage: repro [--only pipeline|format|incremental] [--generated] <file-or-dir>..."
+        );
         return ExitCode::FAILURE;
     }
     // The pipeline's verdict, when it ran: whether an input reached the
@@ -81,10 +91,20 @@ fn main() -> ExitCode {
             println!("skip   {} (unreadable)", file.display());
             continue;
         };
-        let Ok(source) = std::str::from_utf8(&bytes) else {
-            // The fuzz targets reject these before any code runs.
-            println!("skip   {} (not UTF-8)", file.display());
-            continue;
+        let program;
+        let source = match generated {
+            true => {
+                program = rk_fuzz::generate::program(&bytes);
+                program.as_str()
+            }
+            false => match std::str::from_utf8(&bytes) {
+                Ok(source) => source,
+                Err(_) => {
+                    // The fuzz targets reject these before any code runs.
+                    println!("skip   {} (not UTF-8)", file.display());
+                    continue;
+                }
+            },
         };
         match panic::catch_unwind(AssertUnwindSafe(|| check(source))) {
             Ok(Ok(verdict)) => {
@@ -102,8 +122,17 @@ fn main() -> ExitCode {
                 for line in finding.detail.lines() {
                     println!("         {line}");
                 }
+                if generated {
+                    println!("         --- the program ---");
+                    for line in source.lines() {
+                        println!("         {line}");
+                    }
+                }
+                // The oracle and what it says first: two lowering errors
+                // are two bugs, one lowering error on two inputs is one.
+                let first = finding.detail.lines().next().unwrap_or_default();
                 failures
-                    .entry(format!("[{}]", finding.oracle))
+                    .entry(format!("[{}] {}", finding.oracle, masked(first)))
                     .or_default()
                     .push(file.clone());
             }
@@ -150,6 +179,30 @@ fn main() -> ExitCode {
         );
     }
     ExitCode::FAILURE
+}
+
+/// `text` with every number masked, decimal or hex (a salsa id, a line), so
+/// two inputs that trip the same bug share a group.
+fn masked(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut run = String::new();
+    let flush = |run: &mut String, out: &mut String| {
+        match run.chars().any(|c| c.is_ascii_digit()) {
+            true => out.push('#'),
+            false => out.push_str(run),
+        }
+        run.clear();
+    };
+    for c in text.chars() {
+        if c.is_ascii_hexdigit() {
+            run.push(c);
+        } else {
+            flush(&mut run, &mut out);
+            out.push(c);
+        }
+    }
+    flush(&mut run, &mut out);
+    out
 }
 
 fn collect(path: &Path, out: &mut Vec<PathBuf>) {

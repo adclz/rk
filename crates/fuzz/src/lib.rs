@@ -12,6 +12,8 @@
 //!   same text does.
 //! - [`format`]: the formatter's output parses, is a fixed point, and means
 //!   what its input meant.
+//! - [`semantics`]: a program computes the values its header says, which
+//!   [`generate`] works out for the programs it writes.
 //!
 //! The libFuzzer targets in `fuzz_targets/` panic on a [`Finding`]; the
 //! `repro` binary runs the same checks on files and names the one that
@@ -19,8 +21,10 @@
 
 pub mod corpus;
 pub mod format;
+pub mod generate;
 pub mod incremental;
 pub mod pipeline;
+pub mod semantics;
 mod session;
 mod wasm;
 
@@ -60,6 +64,7 @@ impl std::error::Error for Finding {}
 /// it, format it, edit it. The verdict says how far the compiler got.
 pub fn check_all(source: &str) -> Result<pipeline::Verdict, Finding> {
     let verdict = pipeline::check(source)?;
+    semantics::check(source)?;
     format::check(source)?;
     incremental::check(source)?;
     Ok(verdict)
