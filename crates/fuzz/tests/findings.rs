@@ -10,8 +10,11 @@ use std::path::Path;
 
 fn inputs(dir: &str) -> Vec<(String, String)> {
     let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join(dir);
-    let mut out: Vec<(String, String)> = std::fs::read_dir(&dir)
-        .unwrap_or_else(|e| panic!("reading {}: {e}", dir.display()))
+    // Git keeps no empty directory: a missing one records nothing.
+    let Ok(entries) = std::fs::read_dir(&dir) else {
+        return Vec::new();
+    };
+    let mut out: Vec<(String, String)> = entries
         .flatten()
         .map(|e| e.path())
         .filter(|p| p.extension().is_some_and(|x| x == "st"))
