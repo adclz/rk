@@ -1,5 +1,8 @@
 //! Corpus generator:
-//! `cargo run --release --bin corpus_gen -- <source_dir> <output_dir>`.
+//! `cargo run --release -p rk-fuzz --bin corpus_gen -- <source>... <output_dir>`.
+//!
+//! Each source is a file or a directory walked recursively; see
+//! `rk_fuzz::corpus` for what is taken from which kind of file.
 
 use rk_fuzz::create_seed_corpus;
 use std::path::PathBuf;
@@ -7,59 +10,48 @@ use std::path::PathBuf;
 fn main() {
     let args: Vec<String> = std::env::args().collect();
 
-    if args.len() != 3 {
+    if args.len() < 3 {
         eprintln!("IEC ST Corpus Generator");
         eprintln!();
-        eprintln!("Usage: {} <source_dir> <output_dir>", args[0]);
+        eprintln!("Usage: {} <source>... <output_dir>", args[0]);
         eprintln!();
         eprintln!("Arguments:");
-        eprintln!("  <source_dir>   Directory containing tree-sitter test files (.txt)");
+        eprintln!("  <source>       A file or directory: tree-sitter tests (.txt), ST (.st),");
+        eprintln!("                 Markdown with iecst fences (.md), Rust tests (.rs)");
         eprintln!("  <output_dir>   Directory where corpus files will be written");
         eprintln!();
         eprintln!("Example:");
         eprintln!(
-            "  {} crates/tree-sitter/test/corpus crates/fuzz/corpus",
+            "  {} crates/tree-sitter/test/corpus stdlib src/tests crates/fuzz/corpus",
             args[0]
         );
         std::process::exit(1);
     }
 
-    let source_dir = PathBuf::from(&args[1]);
-    let output_dir = PathBuf::from(&args[2]);
+    let (sources, output) = args[1..].split_at(args.len() - 2);
+    let output_dir = PathBuf::from(&output[0]);
 
-    if !source_dir.exists() {
-        eprintln!(
-            "Error: source directory does not exist: {}",
-            source_dir.display()
-        );
-        std::process::exit(1);
-    }
-
-    if !source_dir.is_dir() {
-        eprintln!(
-            "Error: source path is not a directory: {}",
-            source_dir.display()
-        );
-        std::process::exit(1);
-    }
-
-    eprintln!(
-        "Generating corpus from {} to {}",
-        source_dir.display(),
-        output_dir.display()
-    );
-
-    match create_seed_corpus(&source_dir, &output_dir) {
-        Ok(count) => {
-            eprintln!("✓ Successfully created {} corpus entries", count);
-            if count == 0 {
-                eprintln!("Warning: No corpus entries were extracted.");
-                eprintln!("Make sure the source directory contains .txt files from tree-sitter.");
-            }
-        }
-        Err(e) => {
-            eprintln!("✗ Error creating corpus: {}", e);
+    let mut total = 0;
+    for source in sources {
+        let source = PathBuf::from(source);
+        if !source.exists() {
+            eprintln!("Error: source does not exist: {}", source.display());
             std::process::exit(1);
         }
+        match create_seed_corpus(&source, &output_dir, total) {
+            Ok(count) => {
+                eprintln!("{count:>6} entries from {}", source.display());
+                total += count;
+            }
+            Err(e) => {
+                eprintln!("Error reading {}: {e}", source.display());
+                std::process::exit(1);
+            }
+        }
+    }
+    eprintln!("{total:>6} entries in {}", output_dir.display());
+    if total == 0 {
+        eprintln!("Warning: no corpus entries were extracted.");
+        std::process::exit(1);
     }
 }
