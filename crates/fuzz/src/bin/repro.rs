@@ -1,10 +1,10 @@
 //! Run the fuzzing oracles on files and say which one fails.
 //!
-//! `cargo run -p rk-fuzz --bin repro -- [--only pipeline|format|incremental|ide] <path>...`
+//! `cargo run -p rk-fuzz --bin repro -- [--only pipeline|semantics|format|incremental|ide] <path>...`
 //!
 //! With `--generated`, each input is a `fuzz_semantics` crash file: the
 //! bytes the program generator ran on. The program is written again and
-//! checked, and printed when it fails.
+//! checked, and printed when it fails; `--print` only prints it.
 //!
 //! With `--isolate`, each input runs in a child process, so an input that
 //! kills it (a stack overflow cannot be caught) is reported as a crash, and
@@ -37,6 +37,7 @@ fn main() -> ExitCode {
     let mut only = None;
     let mut generated = false;
     let mut isolate = false;
+    let mut print = false;
     let mut paths = Vec::new();
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
@@ -44,9 +45,10 @@ fn main() -> ExitCode {
             "--only" => only = args.next(),
             "--generated" => generated = true,
             "--isolate" => isolate = true,
+            "--print" => print = true,
             "-h" | "--help" => {
                 eprintln!(
-                    "usage: repro [--only pipeline|format|incremental|ide] [--generated] [--isolate] <file-or-dir>..."
+                    "usage: repro [--only pipeline|semantics|format|incremental|ide] [--generated [--print]] [--isolate] <file-or-dir>..."
                 );
                 return ExitCode::SUCCESS;
             }
@@ -55,7 +57,7 @@ fn main() -> ExitCode {
     }
     if paths.is_empty() {
         eprintln!(
-            "usage: repro [--only pipeline|format|incremental|ide] [--generated] [--isolate] <file-or-dir>..."
+            "usage: repro [--only pipeline|semantics|format|incremental|ide] [--generated [--print]] [--isolate] <file-or-dir>..."
         );
         return ExitCode::FAILURE;
     }
@@ -67,6 +69,7 @@ fn main() -> ExitCode {
         Some("format") => |s| rk_fuzz::format::check(s).map(|()| None),
         Some("incremental") => |s| rk_fuzz::incremental::check(s).map(|()| None),
         Some("ide") => |s| rk_fuzz::ide::check(s).map(|()| None),
+        Some("semantics") => |s| rk_fuzz::semantics::check(s).map(|()| None),
         Some(other) => {
             eprintln!("unknown oracle `{other}`");
             return ExitCode::FAILURE;
@@ -117,6 +120,10 @@ fn main() -> ExitCode {
         let source = match generated {
             true => {
                 program = rk_fuzz::generate::program(&bytes);
+                if print {
+                    println!("{program}");
+                    continue;
+                }
                 program.as_str()
             }
             false => match std::str::from_utf8(&bytes) {
@@ -171,6 +178,10 @@ fn main() -> ExitCode {
         }
     }
 
+    // The programs, and nothing else: the output is meant to be saved.
+    if print && generated {
+        return ExitCode::SUCCESS;
+    }
     let passed: Vec<String> = verdicts
         .iter()
         .filter(|(how, _)| !how.is_empty())

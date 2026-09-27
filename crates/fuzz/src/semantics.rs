@@ -65,13 +65,8 @@ pub fn check(source: &str) -> Result<(), Finding> {
             format!("`rk check` refuses a well-typed program: {errors:?}"),
         ));
     }
-    let mir =
-        mir::lower::lower_module::lower_module(&db, semantic_index(&db, file)).map_err(|e| {
-            Finding::new(
-                "lowering",
-                format!("an accepted source failed to lower: {e}"),
-            )
-        })?;
+    let mir = mir::lower::lower_module::lower_module(&db, semantic_index(&db, file))
+        .map_err(|e| crate::pipeline::lowering(&e))?;
     let module = wasm_codegen::generate_wasm(&db, &mir).finish();
     compare(&module, &expected, "")?;
 
@@ -152,6 +147,11 @@ fn shown(value: &VarValue) -> Option<String> {
         VarValue::U16(v) => v.to_string(),
         VarValue::U32(v) => v.to_string(),
         VarValue::U64(v) => v.to_string(),
+        // Rust's shortest round-trip form: the same text for the same bits,
+        // NaNs aside, which all read `NaN`.
+        VarValue::F32(v) => format!("{v:?}"),
+        VarValue::F64(v) => format!("{v:?}"),
+        VarValue::String(s) => format!("'{s}'"),
         _ => return None,
     })
 }

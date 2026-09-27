@@ -39,12 +39,7 @@ pub fn check(source: &str) -> Result<Verdict, Finding> {
 
     // `rk check` accepted it, so it must lower: a lowering error on a clean
     // source is what `rk compile` reports as an internal compiler error.
-    let mir = mir::lower::lower_module::lower_module(&db, index).map_err(|e| {
-        Finding::new(
-            "lowering",
-            format!("an accepted source failed to lower: {e}"),
-        )
-    })?;
+    let mir = mir::lower::lower_module::lower_module(&db, index).map_err(|e| lowering(&e))?;
 
     let debug = wasm_codegen::generate_wasm_profile(&db, &mir, Profile::Debug).finish();
     let release = wasm_codegen::generate_wasm_profile(&db, &mir, Profile::Release).finish();
@@ -55,6 +50,19 @@ pub fn check(source: &str) -> Result<Verdict, Finding> {
     let sections = wasm::decode_sections(&debug)?;
     wasm::execute(&debug, &sections)?;
     Ok(Verdict::Compiled)
+}
+
+/// A lowering error on an accepted source, with the line it names: the
+/// error text alone does not say which construct it was.
+pub(crate) fn lowering(e: &mir::lower::lower_type::LowerTypeError) -> Finding {
+    let at = e
+        .location()
+        .map(|(_, span)| format!(" at line {}", span.start_point.row + 1))
+        .unwrap_or_default();
+    Finding::new(
+        "lowering",
+        format!("an accepted source failed to lower{at}: {e}"),
+    )
 }
 
 fn every_lint() -> db::config_file::LinterConfig {
