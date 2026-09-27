@@ -1,10 +1,14 @@
 //! Run the fuzzing oracles on files and say which one fails.
 //!
-//! `cargo run -p rk-fuzz --bin repro -- [--only pipeline|format|incremental] <path>...`
+//! `cargo run -p rk-fuzz --bin repro -- [--only pipeline|format|incremental|ide] <path>...`
 //!
 //! With `--generated`, each input is a `fuzz_semantics` crash file: the
 //! bytes the program generator ran on. The program is written again and
 //! checked, and printed when it fails.
+//!
+//! With `--isolate`, each input runs in a child process, so an input that
+//! kills it (a stack overflow cannot be caught) is reported as a crash, and
+//! the other inputs still run. The nightly triage uses it.
 //!
 //! A path is a `.st` file, a libFuzzer crash file, or a directory of either.
 //! Each input gets one line, `ok`, `FAIL [oracle]` or `PANIC at <site>`,
@@ -32,15 +36,17 @@ static PANIC_SITE: Mutex<Option<String>> = Mutex::new(None);
 fn main() -> ExitCode {
     let mut only = None;
     let mut generated = false;
+    let mut isolate = false;
     let mut paths = Vec::new();
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--only" => only = args.next(),
             "--generated" => generated = true,
+            "--isolate" => isolate = true,
             "-h" | "--help" => {
                 eprintln!(
-                    "usage: repro [--only pipeline|format|incremental] [--generated] <file-or-dir>..."
+                    "usage: repro [--only pipeline|format|incremental|ide] [--generated] [--isolate] <file-or-dir>..."
                 );
                 return ExitCode::SUCCESS;
             }
@@ -49,7 +55,7 @@ fn main() -> ExitCode {
     }
     if paths.is_empty() {
         eprintln!(
-            "usage: repro [--only pipeline|format|incremental] [--generated] <file-or-dir>..."
+            "usage: repro [--only pipeline|format|incremental|ide] [--generated] [--isolate] <file-or-dir>..."
         );
         return ExitCode::FAILURE;
     }
@@ -60,6 +66,7 @@ fn main() -> ExitCode {
         Some("pipeline") => |s| rk_fuzz::pipeline::check(s).map(Some),
         Some("format") => |s| rk_fuzz::format::check(s).map(|()| None),
         Some("incremental") => |s| rk_fuzz::incremental::check(s).map(|()| None),
+        Some("ide") => |s| rk_fuzz::ide::check(s).map(|()| None),
         Some(other) => {
             eprintln!("unknown oracle `{other}`");
             return ExitCode::FAILURE;
@@ -86,7 +93,22 @@ fn main() -> ExitCode {
     }
     let mut failures: BTreeMap<String, Vec<PathBuf>> = BTreeMap::new();
     let mut verdicts: BTreeMap<String, usize> = BTreeMap::new();
+    // What a child gets: the same checks, one input.
+    let mut flags: Vec<String> = Vec::new();
+    if let Some(only) = &only {
+        flags.extend(["--only".to_string(), only.clone()]);
+    }
+    if generated {
+        flags.push("--generated".to_string());
+    }
     for file in &files {
+        if isolate {
+            match isolated(file, &flags) {
+                Ok(how) => *verdicts.entry(how).or_default() += 1,
+                Err(cause) => failures.entry(cause).or_default().push(file.clone()),
+            }
+            continue;
+        }
         let Ok(bytes) = std::fs::read(file) else {
             println!("skip   {} (unreadable)", file.display());
             continue;
@@ -179,6 +201,64 @@ fn main() -> ExitCode {
         );
     }
     ExitCode::FAILURE
+}
+
+/// Check `file` in a child process: `Ok` holds how it passed (`(compiled
+/// and ran)`), `Err` the cause it failed with. The child's lines about the
+/// input are passed through.
+fn isolated(file: &Path, flags: &[String]) -> Result<String, String> {
+    let child = std::env::current_exe().and_then(|exe| {
+        std::process::Command::new(exe)
+            .args(flags)
+            .arg(file)
+            .env("RK_FUZZ_TRACE", "1")
+            .output()
+    });
+    let out = match child {
+        Ok(out) => out,
+        Err(e) => return Err(format!("could not run a child: {e}")),
+    };
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    // Its summary starts with a blank line, `passed:` or the input count.
+    let about_input = stdout.lines().take_while(|l| {
+        !l.is_empty() && !l.starts_with("passed:") && !l.starts_with(|c: char| c.is_ascii_digit())
+    });
+    for line in about_input {
+        println!("{line}");
+    }
+    match out.status.code() {
+        Some(0) => Ok(stdout
+            .lines()
+            .next()
+            .and_then(|l| l.rsplit_once(" ("))
+            .map(|(_, how)| format!("({how}"))
+            .unwrap_or_default()),
+        Some(1) => Err(stdout
+            .lines()
+            .filter_map(|l| l.strip_prefix("  "))
+            .find_map(|l| l.split_once(" — ").map(|(cause, _)| cause.to_string()))
+            .unwrap_or_else(|| "a failure the child did not name".to_string())),
+        _ => {
+            // Killed: the runtime's last words, and the request it was on
+            // (the IDE oracle names each one under RK_FUZZ_TRACE).
+            let stderr = String::from_utf8_lossy(&out.stderr);
+            let why = stderr
+                .lines()
+                .rev()
+                .find(|l| l.contains("fatal") || l.contains("overflowed"))
+                .or_else(|| stderr.lines().rev().find(|l| !l.trim().is_empty()))
+                .unwrap_or("killed by a signal")
+                .trim();
+            let during = stderr
+                .lines()
+                .rev()
+                .find_map(|l| l.strip_prefix("request: "))
+                .map(|r| format!(", in {}", masked(r)))
+                .unwrap_or_default();
+            println!("CRASH  {} ({why}{during})", file.display());
+            Err(format!("crash: {}{during}", masked(why)))
+        }
+    }
 }
 
 /// `text` with every number masked, decimal or hex (a salsa id, a line), so

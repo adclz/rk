@@ -1,6 +1,8 @@
 #![allow(unused_variables)]
 #![recursion_limit = "256"]
-mod capabilties;
+// Public for the fuzzer (crates/fuzz), which sends each request the way
+// the server does.
+pub mod capabilties;
 
 use ast::RK_PARSER;
 use auto_lsp::anyhow;
