@@ -23,7 +23,7 @@ cargo nextest run --workspace
 cargo nextest run --workspace --no-fail-fast
 
 # Run a specific test
-cargo test --package rk-tests --lib -- tests::semantics::array::valid_array --exact --nocapture
+cargo test --package rk-tests --lib -- tests::hir::array::valid_array --exact --nocapture
 
 # Review insta snapshots after test changes
 cargo insta review
@@ -295,7 +295,7 @@ The grammar (`crates/tree-sitter/grammar.js`, ~1900 lines) follows the IEC 61131
 ### Test Location
 
 All integration tests live in `src/tests/`:
-- `semantics/` — Type checking, diagnostics, error reporting (~30 test modules)
+- `hir/` — Type checking, diagnostics, error reporting (~40 test modules)
 - `lsp/` — LSP features: hover, document symbols, formatter, semantic tokens, inlay hints, implementations
 - `completions/` — Completion items: body, head, call signatures, fly imports, field, using, query scope
 - `codegen/` — WASM codegen + execution tests (compile IEC → MIR → wasm, run on the wasmtime harness): value passing, inout, retain bands, enums, strings, debug symbols, scheduling. Helpers (`compile_to_wasm`, `compile_to_mir_and_wasm`, `execute_wasm`, `TestPlc`, `run_tests`) live in `codegen/harness.rs`

@@ -686,8 +686,8 @@ fn widening_global_initializer_carries_the_value(mut with_db: db::RootDatabase) 
 // known_bug_* pins asserting silent zeros.
 // ---------------------------------------------------------------------------
 
-/// `:= a` (a non-CONSTANT global) is refused: E0401 lives in the semantics
-/// suite (`semantics::initializers`); here only the positive halves remain.
+/// `:= a` (a non-CONSTANT global) is refused: E0401 lives in the hir
+/// suite (`hir::initializers`); here only the positive halves remain.
 #[rstest]
 fn global_init_from_constant_folds(mut with_db: db::RootDatabase) {
     let source = r#"
@@ -833,7 +833,7 @@ fn type_default_with_const_arithmetic_applies(mut with_db: db::RootDatabase) {
 /// A TYPE default referencing a config CONSTANT is REFUSED (E0401): a TYPE
 /// has no view into a CONFIGURATION's scope, so the reference cannot fold
 /// once-per-type. (It used to read silent zeros at both hosts.) The refusal
-/// itself is pinned in `semantics::initializers`; this pins that the
+/// itself is pinned in `hir::initializers`; this pins that the
 /// FOLDABLE spelling works end to end.
 #[rstest]
 fn type_default_constant_arith_reaches_both_hosts(mut with_db: db::RootDatabase) {
@@ -871,7 +871,7 @@ fn type_default_constant_arith_reaches_both_hosts(mut with_db: db::RootDatabase)
 // Arrays: an initializer converts each LITERAL to the element type, a copy
 // between two arrays moves bytes and so is only allowed between the SAME
 // element type (the refusal is `an_array_does_not_widen_its_elements` in
-// semantics::initializers — five E0301, one per door), and a value READ
+// hir::initializers — five E0301, one per door), and a value READ
 // out of an element widens like any scalar. The last one was a MIR bug:
 // the assignment typed its source by the bare path — the ARRAY — so the
 // cast was skipped and `r := a[i]` stored an i32 where the f32 was expected.

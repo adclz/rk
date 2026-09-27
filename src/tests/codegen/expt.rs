@@ -1,6 +1,6 @@
 //! `**` executes: it lowers to the grafted `libm` pow, so these run the
 //! whole path — graft, call resolution, operand casting — under wasmtime.
-//! The semantics suite pins what is REJECTED; this pins what the accepted
+//! The hir suite pins what is REJECTED; this pins what the accepted
 //! shapes compute.
 
 use rstest::rstest;

@@ -978,7 +978,7 @@ END_FUNCTION
 /// The capacity rule, both sides of it, in one place.
 ///
 /// A length is enforced where it CAN be: a literal is measured at check
-/// (E0306, `semantics::literals::strings`), because the compiler knows both
+/// (E0306, `hir::literals::strings`), because the compiler knows both
 /// the capacity and the length. A variable is not — `s5 := s100` says nothing,
 /// because the length is only known while running — so the store truncates to
 /// the destination's capacity instead.

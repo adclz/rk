@@ -3,7 +3,7 @@
 //!
 //! The tests are here rather than beside each feature because the property is
 //! ONE property: a name written in another case is the same name, wherever it
-//! is written. Spread across `codegen/enums.rs`, `semantics/duplicates.rs` and
+//! is written. Spread across `codegen/enums.rs`, `hir/duplicates.rs` and
 //! the rest, that reads as a dozen unrelated quirks; together it reads as the
 //! rule, and a gap in it is visible.
 //!

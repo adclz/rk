@@ -1,7 +1,7 @@
 //! Variadic parameters end to end: a pack is specialized per argument count
 //! unrolls over the parameters that specialization expanded it into.
 //!
-//! The semantics tests next door assert only that HIR accepts a fold — they
+//! The hir tests next door assert only that HIR accepts a fold — they
 //! pass a `test_diagnostics` snapshot and never lower. These run the wasm, so
 //! they are what pins the VALUES a fold computes.
 

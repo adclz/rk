@@ -129,7 +129,7 @@ END_FUNCTION_BLOCK"#;
 // 24h fits in both `i32` ms (max 86_400_000) and `i64` ns
 // (max 86.4×10¹²), so no error tests are needed.
 
-use crate::tests::semantics::literals::parse_literal;
+use crate::tests::hir::literals::parse_literal;
 
 #[rstest]
 #[case("TOD#00:00:00", 0)]

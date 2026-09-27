@@ -198,7 +198,7 @@ END_FUNCTION_BLOCK"#;
 // LTIME to `i64` nanoseconds (≈ ±292 years). Out-of-range literals
 // surface as E0306 with the supported bounds shown as IEC literals.
 
-use crate::tests::semantics::literals::parse_literal;
+use crate::tests::hir::literals::parse_literal;
 
 #[rstest]
 #[case("T#0ms", 0)]

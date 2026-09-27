@@ -1989,7 +1989,7 @@ END_CONFIGURATION
 /// A located global is reachable by its own name — the `AT` clause is not
 /// part of it — and the address binds it to the input band, so the whole
 /// declaration checks clean. The location itself is exercised in
-/// `semantics::direct_variables`.
+/// `hir::direct_variables`.
 #[rstest]
 fn a_located_global_is_named_by_its_identifier(mut with_db: RootDatabase) {
     let source = r#"

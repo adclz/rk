@@ -127,7 +127,7 @@ END_FUNCTION_BLOCK"#;
 // assertion in hir's literals.rs). Out-of-range literals on either type
 // surface as E0306 with the supported bounds shown as IEC literals.
 
-use crate::tests::semantics::literals::parse_literal;
+use crate::tests::hir::literals::parse_literal;
 
 #[rstest]
 #[case("DT#1970-01-01-00:00:00", 0)]
