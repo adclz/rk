@@ -53,7 +53,7 @@ That is what lets a host stop a release build, rebuild the same source as debug,
 Variables can still be read and written by name in a release build, because `debug-symbols` points to the memory and not to the code.
 
 About half of what a release build saves comes from the dropped tables.
-The other half is the stdlib: only PROGRAMs and `{export}` FUNCTIONs are exported, so Binaryen removes every function nothing calls.
+The other half is the stdlib: only what a host calls is exported (`__init`, the bodies the schedule runs and the `{export}` FUNCTIONs), so Binaryen removes every function nothing calls.
 A release build carries no test either: the `{test}` functions are compiled, so the layout does not move, but they are not exported and the `test-manifest` section is left out.
 `rk test` always builds the debug module, and `rk test -O` optimizes that one.
 

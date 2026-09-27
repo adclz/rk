@@ -1,6 +1,6 @@
 ---
 name: programming-config
-description: Declare how a program actually runs — CONFIGURATION, RESOURCE, TASK, intervals, priorities and VAR_GLOBAL. Use when wiring a PROGRAM to a task, setting a scan interval, or sharing globals between POUs.
+description: Declare how a program actually runs — CONFIGURATION, RESOURCE, TASK, intervals, priorities, VAR_GLOBAL, program connections, VAR_CONFIG and the direct variables (%I, %Q, %M). Use when wiring a PROGRAM to a task or to inputs and outputs, setting a scan interval, sharing globals between POUs, or giving one instance its own values or addresses.
 ---
 
 ## Summary
@@ -153,6 +153,120 @@ Declaring a task ahead of using it, including an unschedulable one, is clean —
 
 Duplicate names inside a resource: E0114 for a task, E0113 for a program instance, E0115 for a resource.
 
+## Connections
+
+A program instance can list connections after its type.
+`:=` feeds a `VAR_INPUT` before every run, `=>` copies a `VAR_OUTPUT` out after it:
+
+```iecst
+PROGRAM Counter
+VAR_INPUT
+    pulse : BOOL;
+END_VAR
+VAR_OUTPUT
+    count : UINT;
+END_VAR
+VAR
+    last : BOOL;
+END_VAR
+    IF pulse AND NOT last THEN
+        count := count + 1;
+    END_IF;
+    last := pulse;
+END_PROGRAM
+
+CONFIGURATION Plant
+    RESOURCE Main ON CPU
+        TASK Fast(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM C1 WITH Fast : Counter(pulse := %IX0.0, count => %QW0);
+        PROGRAM C2 WITH Fast : Counter(pulse := %IX0.1, count => %QW1);
+    END_RESOURCE
+END_CONFIGURATION
+```
+
+The other end is an address as wide as the variable, a global of the same type, or, for an input, a constant.
+Anything else in the list is E1428.
+
+The task then runs the instance through `C1$__scan__`: the inputs copied in, the body, the outputs copied out.
+The program's own code names no address, so the same program runs on two lines wired to different sensors.
+
+## A function block on its own task
+
+`fb WITH <task>` in the list gives one of the program's function block instances a task of its own:
+
+```iecst
+FUNCTION_BLOCK LowPass
+VAR_EXTERNAL
+    level : INT;
+END_VAR
+VAR_OUTPUT
+    smooth : INT;
+END_VAR
+    smooth := (smooth + level) / 2;
+END_FUNCTION_BLOCK
+
+PROGRAM Tank
+VAR
+    filter : LowPass;
+    alarm : BOOL;
+END_VAR
+    alarm := filter.smooth > 500;
+END_PROGRAM
+
+CONFIGURATION Plant
+    VAR_GLOBAL
+        level AT %IW0 : INT;
+    END_VAR
+    RESOURCE Main ON CPU
+        TASK Fast(INTERVAL := T#1ms, PRIORITY := 0);
+        TASK Slow(INTERVAL := T#100ms, PRIORITY := 1);
+        PROGRAM T1 WITH Slow : Tank(filter WITH Fast);
+    END_RESOURCE
+END_CONFIGURATION
+```
+
+`Fast` runs `T1.filter` every millisecond through the block's body, `LowPass$__body__`, and `Slow` runs the rest of `T1`.
+The program only reads the block's outputs: a program that also calls the block is E1428, since the task already runs it.
+
+## VAR_CONFIG
+
+`VAR_CONFIG` gives one instance its own starting values, by the variable's path from the resource, through the instances the program holds:
+
+```iecst
+FUNCTION_BLOCK Motor
+VAR PUBLIC
+    speed : INT := 2;
+END_VAR
+END_FUNCTION_BLOCK
+
+PROGRAM Line
+VAR
+    x : INT := 1;
+    drive : Motor;
+END_VAR
+END_PROGRAM
+
+CONFIGURATION Plant
+    VAR_CONFIG
+        Main.L1.x           : INT := 10;
+        Main.L1.drive.speed : INT := 20;
+    END_VAR
+    RESOURCE Main ON CPU
+        TASK Fast(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM L1 WITH Fast : Line;
+        PROGRAM L2 WITH Fast : Line;
+    END_RESOURCE
+END_CONFIGURATION
+```
+
+`L1` starts with `x = 10` and `drive.speed = 20`, `L2` with its declarations' `1` and `2`.
+Two instances of one program that differ in a setting need no second program and no input connected to a constant.
+
+An entry repeats the variable's type.
+E1426 when that type differs, when the path indexes an array or dereferences a reference, when another entry already sets the variable or an instance holding it, when the variable sits at an address a declaration names (it starts at that declaration's value), or when the entry targets the PROGRAM instance itself.
+
+`VAR_CONFIG` also gives each instance its address for a variable declared `AT %I*`, `%Q*` or `%M*`: see `references/direct-variables.md`.
+
 ## How the schedule reaches the runtime
 
 Context, not API.
@@ -210,3 +324,7 @@ See the `tool-linter` skill.
 Rules not listed default to enabled.
 
 The schema denies unknown fields: a typo in a key is a hard error with a caret on the offending line, not a warning.
+
+## Reference files
+
+- `references/direct-variables.md` — the addresses `%I`, `%Q` and `%M`: declaring one with `AT`, the parts of a wider address, locating a function block's variables per instance, and what the host sees

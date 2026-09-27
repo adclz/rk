@@ -11,9 +11,10 @@ They are stored as custom sections after the code, encoded with MessagePack; the
 | `debug-locals` | debug only | wasm local slot → variable name and type |
 | `rk.schedule` | every build | tasks, periods, priorities, instance addresses |
 | `retain-map` | every build | the byte ranges a power cycle must preserve |
+| `located-map` | every build | each address: its cell, its width, its type, and for a part of a wider address the address that owns it and its bit |
 | `test-manifest` | debug only, when there are tests | the exports `rk test` calls |
 
-The last three are not debug information.
+`rk.schedule`, `retain-map`, `located-map` and `test-manifest` are not debug information.
 If `retain-map` is dropped, every `RETAIN` variable silently becomes transient.
 
 Paths are resolved through arrays and struct fields without enumerating them, so `pts[7423].history[2].y` is a single lookup, and writes go back the same way.

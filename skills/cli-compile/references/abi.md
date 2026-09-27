@@ -5,11 +5,20 @@ It does not depend on the WASI Component model.
 
 It imports its linear memory as `env.memory`, and nothing else unless the program uses the timers or declares an `{extern}` FUNCTION.
 That holds for a release build. A debug build is not optimized, so it always imports the clock the stdlib timers read, `wasi:clocks/monotonic-clock@0.2.6` `now`.
-It exports `__init`, which sets the cold-start values, one body per PROGRAM, and every FUNCTION marked `{export}`, under its qualified name.
-A debug build also exports the workspace's `{test}` functions, for `rk test`.
-Nothing else is exported: not a plain FUNCTION, not a FUNCTION_BLOCK body or a METHOD, not an `{extern}` import, and nothing of the stdlib.
+It exports what a host calls:
+
+- `__init`, which sets the cold-start values.
+- One body per PROGRAM, `Type$__body__`.
+- `Inst$__scan__` for a program instance with connections: it copies the inputs in, runs the body and copies the outputs out.
+- The body of a FUNCTION_BLOCK a task runs on its own (`fb1 WITH Fast`), `FB$__body__`.
+- Every FUNCTION marked `{export}`, under its qualified name.
+- In a debug build, the workspace's `{test}` functions, for `rk test`.
+
+Nothing else is exported: not a plain FUNCTION, not another FUNCTION_BLOCK body or a METHOD, not an `{extern}` import, and nothing of the stdlib.
 A library's `{test}` functions are not compiled at all.
-The retained and global bands are exported as `retain_base` / `retain_size` and `globals_base` / `globals_size`.
+
+The memory is exported back as `memory`, and each band as a `_base` and a `_size` global: `retain`, `globals`, and `input`, `output` and `marker` for an area the program uses.
+The `programming-config` skill's `references/direct-variables.md` describes the areas.
 
 Nothing allocates and nothing calls `memory.grow`, so the footprint is settled at compile time.
 Everything lives in the memory the host provided; the first 16 KiB are reserved for the grafted builtins.
