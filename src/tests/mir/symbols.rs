@@ -162,6 +162,25 @@ fn interface_specializations_start_from_the_overload(mut with_db: RootDatabase) 
     ");
 }
 
+// The generated initializer is exported as `__init`, which hosts look for,
+// under a symbol no POU can have: a FUNCTION named `__init` stays the
+// user's, and calls to it reach it.
+#[rstest]
+fn a_function_named_init_keeps_its_symbol(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION __init : INT __init := 3; END_FUNCTION
+        CONFIGURATION Cfg
+        VAR_GLOBAL g : INT := 42; END_VAR
+            RESOURCE R ON PLC
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    assert_snapshot!(symbols(&mut with_db, source), @"
+    $__init
+    __init
+    ");
+}
+
 // What is still left to collide stops lowering rather than lets a call run
 // another body. A PROGRAM and a FUNCTION_BLOCK of one name are not refused at
 // check yet, and both bodies are `Main$__body__`.

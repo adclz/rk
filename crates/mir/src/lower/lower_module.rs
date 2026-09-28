@@ -888,13 +888,19 @@ fn lower_module_from_pous<'db>(
     )?;
     if !init_stmts.is_empty() {
         let idx = module.functions.len() as u32 + module.extern_functions.len() as u32;
+        // Hosts find it by its export name; the symbol is one no POU can
+        // have, so a FUNCTION the user calls `__init` stays their own.
         let name = hir::hir_def::interned::identifier::Ident::new(
+            db,
+            compact_str::CompactString::from("$__init"),
+        );
+        let origin_name = hir::hir_def::interned::identifier::Ident::new(
             db,
             compact_str::CompactString::from("__init"),
         );
         module.functions.push(crate::function::MirFunction {
             name,
-            origin_name: name,
+            origin_name,
             index: idx,
             params: Vec::new(),
             return_type: None,
