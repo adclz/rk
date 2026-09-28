@@ -240,6 +240,7 @@ fn infer_config<'db>(
         });
         check_resource_duplicates(db, r, errors);
     }
+    check_instance_global_names(db, config, errors);
 
     // Phase 2: resolve each resource's tasks and validate the programs bound
     // to them. Tasks and programs only exist inside a RESOURCE.
@@ -283,6 +284,66 @@ fn infer_config<'db>(
 
     // Phase 4: every instance's variable declared `AT %I*` is located.
     check_partly_located_coverage(db, config, result);
+}
+
+/// A program instance and a VAR_GLOBAL share the configuration's names: both
+/// root a path in the debug symbols (`Run.v0`), and a monitor asking for one
+/// found two. Fragments merge, so each side is compared with every
+/// fragment's, and each side reports, pointing at the smallest other by
+/// (file URL, span) so the message reads the same on every run.
+fn check_instance_global_names<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    config: ConfigDecl<'db>,
+    errors: &mut Vec<IdeDiagnostic>,
+) {
+    let fragments = crate::hir_ty::index_graphs::config_fragments(db, config.get_name_ident(db));
+    let at =
+        |file: auto_lsp::default::db::file::File, start: usize| (file.url(db).to_string(), start);
+    let mut globals: Vec<VariableDecl<'db>> = fragments
+        .iter()
+        .flat_map(|c| c.variables(db).iter().copied())
+        .collect();
+    globals.sort_by_key(|g| at(g.get_scope_id(db).file(db), g.get_name_span(db).start_byte));
+    let mut instances: Vec<SpanIdent<'db>> = fragments
+        .iter()
+        .flat_map(|c| c.resources(db).iter())
+        .flat_map(|r| r.programs(db).iter().map(|p| p.name(db)))
+        .collect();
+    instances.sort_by_key(|i| at(i.get_scope_id(db).file(db), i.get_span(db).start_byte));
+
+    let file = config.get_scope_id(db).file(db);
+    for r in config.resources(db) {
+        for p in r.programs(db) {
+            let instance = p.name(db);
+            let name = instance.ident.caseless(db);
+            if let Some(global) = globals
+                .iter()
+                .find(|g| g.get_name_ident(db).caseless(db) == name)
+            {
+                errors.push(
+                    DuplicateError::InstanceGlobal {
+                        instance,
+                        global: *global,
+                        at_instance: true,
+                    }
+                    .to_diagnostic(db, file),
+                );
+            }
+        }
+    }
+    for global in config.variables(db) {
+        let name = global.get_name_ident(db).caseless(db);
+        if let Some(instance) = instances.iter().find(|i| i.ident.caseless(db) == name) {
+            errors.push(
+                DuplicateError::InstanceGlobal {
+                    instance: *instance,
+                    global: *global,
+                    at_instance: false,
+                }
+                .to_diagnostic(db, file),
+            );
+        }
+    }
 }
 
 /// Checks for duplicate task and program instance names within a RESOURCE block.

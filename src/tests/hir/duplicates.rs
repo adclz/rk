@@ -703,3 +703,48 @@ END_CONFIGURATION
     ----'
     ");
 }
+
+// Both root a path in the debug symbols: `Run` was two entries.
+#[rstest]
+fn program_instance_named_like_a_global(mut with_db: RootDatabase) {
+    let source = r#"
+PROGRAM P
+VAR x : INT; END_VAR
+END_PROGRAM
+
+CONFIGURATION Cfg
+VAR_GLOBAL
+    Run : INT;
+END_VAR
+    RESOURCE R ON CPU
+        TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM Run WITH T : P;
+    END_RESOURCE
+END_CONFIGURATION
+"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0113] Error: duplicate definitions
+        ,-[ file:///test0.st:12:17 ]
+        |
+      8 |     Run : INT;
+        |     ^|^
+        |      `--- VAR_GLOBAL 'Run' is declared here
+        |
+     12 |         PROGRAM Run WITH T : P;
+        |                 ^|^
+        |                  `--- program instance 'Run' has the name of a VAR_GLOBAL
+    ----'
+    [E0113] Error: duplicate definitions
+        ,-[ file:///test0.st:8:5 ]
+        |
+      8 |     Run : INT;
+        |     ^|^
+        |      `--- VAR_GLOBAL 'Run' has the name of a program instance
+        |
+     12 |         PROGRAM Run WITH T : P;
+        |                 ^|^
+        |                  `--- program instance 'Run' is declared here
+    ----'
+    ");
+}
