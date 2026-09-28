@@ -450,19 +450,18 @@ impl<'db> Resolver<'db> {
                 && let PathResolutionRoot::Value { base } = self.root
                 && let Some(ret_ty) = base.with_return_type(db)
                 && self_reference_name(db, base).map(|n| n.caseless(db)) == Some(ident.ident.caseless(db))
-                // A DECLARED variable of the same name shadows the implicit
-                // return-value name (pinned by the missing-return lint's
-                // shadowing test), so the name is only taken as the return
-                // value when the ordinary walk would not find a variable —
-                // or would find the enclosing method ITSELF, which is the
-                // method-body case this branch exists for.
-                && match current.resolve_field(db, &ident.ident) {
-                    walk::FieldLookup::NotFound => true,
-                    walk::FieldLookup::Method(m) => {
-                        matches!(base, Type::MethodDecl(m2) if m == m2)
-                    }
-                    _ => false,
-                }
+                // The return value is one of the callable's own variables,
+                // so it comes before the owner's members and methods: a
+                // member `step` of the FB does not hide `STEP := ...` in
+                // METHOD STEP (`THIS.step` reaches the member). Only a
+                // variable the callable declares itself shadows it (E0107,
+                // pinned by the missing-return lint's shadowing test).
+                && !base.as_walkable_scope(db).is_some_and(|scope| {
+                    scope
+                        .def_map(db)
+                        .global_variables
+                        .contains_key(&ident.ident.caseless(db))
+                })
             {
                 if single_step {
                     // The whole path IS the return value, typed as the

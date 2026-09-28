@@ -147,7 +147,7 @@ impl<'db> Type<'db> {
 
     /// If this type can have variables/methods (Function / FunctionBlock / Class / Program / Method),
     /// return its scope id.
-    fn as_walkable_scope(&self, db: &'db dyn WorkspaceDataBase) -> Option<ScopeId<'db>> {
+    pub(crate) fn as_walkable_scope(&self, db: &'db dyn WorkspaceDataBase) -> Option<ScopeId<'db>> {
         match self {
             Type::Function(f) => Some(f.scope_id(db)),
             Type::FunctionBlock(fb) => Some(fb.scope_id(db)),
@@ -159,7 +159,11 @@ impl<'db> Type<'db> {
         }
     }
 
-    /// Resolve a named field on this (concrete) type.
+    /// Resolve a named field on this (concrete) type, as the POU's own code
+    /// sees it: its variables, its own then the inherited ones, before its
+    /// methods, its own then the inherited ones. A variable and a method may
+    /// share a name, as in CODESYS and TwinCAT, and inside the POU the
+    /// variable is the one found (`THIS` included).
     pub(crate) fn resolve_field(
         &self,
         db: &'db dyn WorkspaceDataBase,
@@ -173,27 +177,30 @@ impl<'db> Type<'db> {
             _ => {
                 if let Some(scope) = self.as_walkable_scope(db) {
                     let def_map = scope.def_map(db);
+                    // Inherited state and behaviour both come from the
+                    // EXTENDS chain. `instance_members` is HIR's own resolved
+                    // member list — the same one the MIR layout is built
+                    // from — so an inherited field is reachable through an
+                    // instance (`derived.base_field`) exactly where the layout
+                    // says it lives.
+                    let inherited_var = || {
+                        self.as_pou(db).and_then(|pou| {
+                            instance_members(db, pou)
+                                .iter()
+                                .find(|m| m.var.name(db).caseless(db) == name.caseless(db))
+                                .map(|m| m.var)
+                        })
+                    };
                     if let Some(var) = def_map.global_variables.get(&name.caseless(db)) {
                         FieldLookup::Variable(*var)
+                    } else if let Some(var) = inherited_var() {
+                        FieldLookup::Variable(var)
                     } else if let Some(m) = def_map.declared_methods.get(&name.caseless(db)) {
                         FieldLookup::Method(*m)
                     } else if let Some(pou) = self.as_pou(db) {
-                        // Inherited state and behaviour both come from the
-                        // EXTENDS chain. `instance_members` is HIR's own
-                        // resolved member list — the same one the MIR layout is
-                        // built from — so an inherited field is reachable
-                        // through an instance (`derived.base_field`) exactly
-                        // where the layout says it lives.
-                        if let Some(member) = instance_members(db, pou)
-                            .iter()
-                            .find(|m| m.var.name(db).caseless(db) == name.caseless(db))
-                        {
-                            FieldLookup::Variable(member.var)
-                        } else {
-                            match inherited_methods(db, pou).methods.get(&name.caseless(db)) {
-                                Some(inherited) => FieldLookup::Method(inherited.method),
-                                None => FieldLookup::NotFound,
-                            }
+                        match inherited_methods(db, pou).methods.get(&name.caseless(db)) {
+                            Some(inherited) => FieldLookup::Method(inherited.method),
+                            None => FieldLookup::NotFound,
                         }
                     } else if let Type::MethodDecl(m) = self {
                         // Inside a method body, a bare name that isn't one of the
@@ -213,6 +220,62 @@ impl<'db> Type<'db> {
                     FieldLookup::NotFound
                 }
             }
+        }
+    }
+
+    /// [`Self::resolve_field`] for a member named through an instance from
+    /// outside its POU (`o.STEP()`). A variable the POU keeps to itself
+    /// (VAR, VAR_TEMP, VAR_EXTERNAL) gives way to a method of the same name:
+    /// CODESYS and TwinCAT do not show such a variable outside the POU, so
+    /// there the name is the method. rk shows it (an unspecified member is
+    /// PUBLIC), and it stays reachable where no method takes its name.
+    pub(crate) fn resolve_member_from_outside(
+        &self,
+        db: &'db dyn WorkspaceDataBase,
+        name: &Ident,
+    ) -> FieldLookup<'db> {
+        use crate::hir_def::pous::variable::VariableKind;
+        let found = self.resolve_field(db, name);
+        let FieldLookup::Variable(var) = found else {
+            return found;
+        };
+        if !matches!(
+            var.kind(db),
+            VariableKind::Var | VariableKind::Temp | VariableKind::External
+        ) {
+            return found;
+        }
+        let Some(scope) = self.as_walkable_scope(db) else {
+            return found;
+        };
+        let key = name.caseless(db);
+        if let Some(m) = scope.def_map(db).declared_methods.get(&key) {
+            return FieldLookup::Method(*m);
+        }
+        match self
+            .as_pou(db)
+            .and_then(|pou| inherited_methods(db, pou).methods.get(&key).copied())
+        {
+            Some(inherited) => FieldLookup::Method(inherited.method),
+            None => found,
+        }
+    }
+
+    /// Whether code in `scope` sees this type from inside: it is the POU the
+    /// code belongs to (a method's owner included) or the method itself.
+    fn seen_from_inside(&self, db: &'db dyn WorkspaceDataBase, scope: ScopeId<'db>) -> bool {
+        if matches!(self, Type::MethodDecl(_)) {
+            return true;
+        }
+        let owner = match get_scope(db, scope).kind {
+            ScopeKind::MethodDecl(_) => get_scope(db, scope)
+                .parent
+                .map(|parent| get_scope(db, parent).kind),
+            kind => Some(kind),
+        };
+        match (owner, self.as_pou(db)) {
+            (Some(ScopeKind::Pou(owner)), Some(pou)) => owner == pou,
+            _ => true,
         }
     }
 }
@@ -405,7 +468,11 @@ impl<'db> Type<'db> {
         place: &mut PathPlaceBuilder<'db>,
         ctx: &mut BodyInferenceResult<'db>,
     ) {
-        match self.resolve_field(db, &ident.ident) {
+        let lookup = match self.seen_from_inside(db, ctx.scope) {
+            true => self.resolve_field(db, &ident.ident),
+            false => self.resolve_member_from_outside(db, &ident.ident),
+        };
+        match lookup {
             FieldLookup::StructElement(field) => {
                 let ty = Type::StructElement(field);
                 ctx.type_of_path_expr.insert(expr, ty);

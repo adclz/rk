@@ -1649,3 +1649,103 @@ fn written_input_persists_when_the_next_call_omits_it(mut with_db: db::RootDatab
         "supplied input overwrites; omitted input persists"
     );
 }
+
+/// Bug 2: a member and a METHOD share a name, as CODESYS and TwinCAT allow.
+/// Inside the POU the name is the member (`step()` calls the Inner
+/// instance); from outside the method, since a VAR is the POU's own there.
+#[rstest]
+fn a_member_and_a_method_may_share_a_name(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Inner
+        VAR_OUTPUT n : INT; END_VAR
+            n := n + 1;
+        END_FUNCTION_BLOCK
+
+        FUNCTION_BLOCK Outer
+        VAR_OUTPUT got : INT; END_VAR
+        VAR
+            step : Inner;
+        END_VAR
+            METHOD PUBLIC STEP
+                step();
+                got := step.n;
+            END_METHOD
+        END_FUNCTION_BLOCK
+
+        FUNCTION test : INT
+        VAR o : Outer; END_VAR
+            o.STEP();
+            o.STEP();
+            test := o.got;
+        END_FUNCTION
+    "#;
+    let r: i32 = super::run(&mut with_db, source, "test", ());
+    assert_eq!(
+        r, 2,
+        "o.STEP() ran the method, which called the Inner member"
+    );
+}
+
+/// A METHOD's result is one of its own variables: it comes before a member
+/// of its name, which `THIS` reaches.
+#[rstest]
+fn a_method_result_comes_before_a_member_of_its_name(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Inner
+        VAR_OUTPUT n : INT; END_VAR
+            n := n + 1;
+        END_FUNCTION_BLOCK
+
+        FUNCTION_BLOCK Outer
+        VAR
+            step : Inner;
+        END_VAR
+            METHOD PUBLIC STEP : INT
+                THIS.step();
+                STEP := THIS.step.n + 10;
+            END_METHOD
+        END_FUNCTION_BLOCK
+
+        FUNCTION test : INT
+        VAR o : Outer; END_VAR
+            test := o.STEP();
+            test := test * 100 + o.STEP();
+        END_FUNCTION
+    "#;
+    let r: i32 = super::run(&mut with_db, source, "test", ());
+    assert_eq!(r, 1112, "11, then 12");
+}
+
+/// Across EXTENDS: the derived POU's variable is the name inside it, the
+/// inherited method is the name from outside.
+#[rstest]
+fn an_inherited_method_and_a_variable_share_a_name(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Base
+            METHOD PUBLIC Run : INT
+                Run := 7;
+            END_METHOD
+        END_FUNCTION_BLOCK
+
+        FUNCTION_BLOCK Derived EXTENDS Base
+        VAR_OUTPUT seen : INT; END_VAR
+        VAR
+            run : INT;
+        END_VAR
+            run := run + 1;
+            seen := run;
+        END_FUNCTION_BLOCK
+
+        FUNCTION test : INT
+        VAR d : Derived; END_VAR
+            d();
+            d();
+            test := d.seen * 100 + d.Run();
+        END_FUNCTION
+    "#;
+    let r: i32 = super::run(&mut with_db, source, "test", ());
+    assert_eq!(
+        r, 207,
+        "the body counted `run` twice; d.Run() ran the method"
+    );
+}
