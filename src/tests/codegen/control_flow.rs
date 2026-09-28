@@ -864,6 +864,52 @@ fn case_multiple_labels_per_arm(mut with_db: db::RootDatabase) {
     );
 }
 
+/// The selector runs once, before any label is tested. It used to run once
+/// per label and twice per range, so a call in it picked the wrong arm. An
+/// element selector compares as the element.
+#[rstest]
+fn case_selector_runs_once(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION Next : INT
+        VAR_IN_OUT calls : INT; END_VAR
+            calls := calls + 1;
+            Next := calls;
+        END_FUNCTION
+
+        FUNCTION NextName : STRING
+        VAR_IN_OUT calls : INT; END_VAR
+            calls := calls + 1;
+            IF calls = 1 THEN NextName := 'one'; ELSE NextName := 'many'; END_IF;
+        END_FUNCTION
+
+        FUNCTION run : DINT
+        VAR a : INT; b : INT; c : INT; r : DINT; codes : ARRAY[0..2] OF INT := [7, 8, 9]; END_VAR
+            CASE Next(a) OF
+                5: r := 5;
+                6: r := 6;
+                1: r := 1;
+            ELSE
+                r := 9;
+            END_CASE;
+            CASE Next(b) OF
+                5..9: r := r + 50;
+                1..1: r := r + 10;
+            END_CASE;
+            CASE NextName(c) OF
+                'many': r := r + 900;
+                'one':  r := r + 100;
+            END_CASE;
+            CASE codes[a] OF
+                7: r := r + 9000;
+                8: r := r + 2000;
+            END_CASE;
+            run := r + (a + b + c) * 1000;
+        END_FUNCTION
+    "#;
+    let result: i32 = super::run(&mut with_db, source, "run", ());
+    assert_eq!(result, 5111, "arms 1, 1..1, 'one' and 8, one call each");
+}
+
 /// The control variable's value AFTER normal completion is implementation-
 /// dependent in IEC; ours is the first value past the bound - the one that
 /// failed the loop test (4 ascending, 0 descending BY -1).

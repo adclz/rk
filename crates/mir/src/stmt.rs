@@ -106,6 +106,82 @@ pub enum MirStmt {
     Raise { message: MirExpr },
 }
 
+impl MirStmt {
+    /// Whether this statement, or one nested in it, reaches a place whose
+    /// path runs a call ([`MirExpr::reaches_place_with_call`]).
+    pub fn reaches_place_with_call(&self) -> bool {
+        let body = |b: &[MirStmt]| b.iter().any(MirStmt::reaches_place_with_call);
+        match self {
+            MirStmt::Assign { target, value } => {
+                target.has_call() || value.reaches_place_with_call()
+            }
+            MirStmt::Call(call) => call.reaches_place_with_call(),
+            MirStmt::FbCall {
+                instance,
+                input_writes,
+                output_reads,
+                ..
+            } => {
+                instance.has_call()
+                    || input_writes
+                        .iter()
+                        .any(|(_, v, _)| v.reaches_place_with_call())
+                    || output_reads.iter().any(|(_, p, _, _)| p.has_call())
+            }
+            MirStmt::If {
+                condition,
+                then_body,
+                else_ifs,
+                else_body,
+            } => {
+                condition.reaches_place_with_call()
+                    || body(then_body)
+                    || else_ifs
+                        .iter()
+                        .any(|(c, b)| c.reaches_place_with_call() || body(b))
+                    || else_body.as_deref().is_some_and(body)
+            }
+            MirStmt::Case {
+                selector,
+                arms,
+                else_body,
+            } => {
+                selector.reaches_place_with_call()
+                    || arms.iter().any(|arm| {
+                        arm.patterns.iter().any(
+                            |p| matches!(p, MirCasePattern::Test(t) if t.reaches_place_with_call()),
+                        ) || body(&arm.body)
+                    })
+                    || else_body.as_deref().is_some_and(body)
+            }
+            MirStmt::For {
+                control,
+                start,
+                end,
+                step,
+                body: b,
+                ..
+            } => {
+                control.has_call()
+                    || start.reaches_place_with_call()
+                    || end.reaches_place_with_call()
+                    || step.reaches_place_with_call()
+                    || body(b)
+            }
+            MirStmt::While { condition, body: b } | MirStmt::Repeat { condition, body: b } => {
+                condition.reaches_place_with_call() || body(b)
+            }
+            MirStmt::Raise { message } => message.reaches_place_with_call(),
+            MirStmt::Return
+            | MirStmt::Exit
+            | MirStmt::Continue
+            | MirStmt::MemStore { .. }
+            | MirStmt::WasmIntrinsic { .. }
+            | MirStmt::DebugTrap { .. } => false,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct MirCaseArm {
     /// Match patterns: single values or ranges.

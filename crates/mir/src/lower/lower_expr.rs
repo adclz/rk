@@ -520,6 +520,11 @@ impl<'db> ExprLowerCtx<'db> {
         left: Expr<'db>,
         right: Expr<'db>,
     ) -> Result<MirExpr, LowerTypeError> {
+        Ok(self.string_comparison(op, self.lower_expr(left)?, self.lower_expr(right)?))
+    }
+
+    /// `left op right` on two lowered STRINGs, through `str.byte_cmp`.
+    fn string_comparison(&self, op: MirBinOp, left: MirExpr, right: MirExpr) -> MirExpr {
         let callee = hir::hir_def::interned::identifier::Ident::new(
             self.db,
             compact_str::CompactString::from("str.byte_cmp"),
@@ -531,11 +536,11 @@ impl<'db> ExprLowerCtx<'db> {
             callee_index: u32::MAX,
             args: vec![
                 crate::expr::MirCallArg {
-                    value: self.lower_expr(left)?,
+                    value: left,
                     kind: crate::expr::MirArgKind::ByValue,
                 },
                 crate::expr::MirCallArg {
-                    value: self.lower_expr(right)?,
+                    value: right,
                     kind: crate::expr::MirArgKind::ByValue,
                 },
             ],
@@ -544,12 +549,12 @@ impl<'db> ExprLowerCtx<'db> {
             extern_results: Vec::new(),
             extern_ret_scratch: None,
         });
-        Ok(MirExpr::BinOp {
+        MirExpr::BinOp {
             op,
             lhs: Box::new(cmp),
             rhs: Box::new(MirExpr::Constant(MirConstant::I32(0))),
             ty: MirElementary::DInt,
-        })
+        }
     }
 
     /// Lower an expression and insert a cast to the target type if needed.
@@ -2455,10 +2460,86 @@ impl<'db> ExprLowerCtx<'db> {
     }
 
     /// Lower a CaseKind to a MirCasePattern.
+    /// A CASE selector, evaluated once: the store of its value into a scratch
+    /// (`$case$N`) and the read every label compares with. A STRING without a
+    /// call reads the same at every label, and is read there rather than
+    /// copied.
+    pub fn case_selector(
+        &self,
+        selector: Expr<'db>,
+    ) -> Result<(Option<crate::stmt::MirStmt>, MirExpr), LowerTypeError> {
+        let value = self.lower_expr(selector)?;
+        // ADJUSTED: `a[i]` infers as the array, but the value read is the element.
+        let ty = match (
+            self.lower_type_resolved(selector.infer_adjusted(self.db))?,
+            &value,
+        ) {
+            (MirType::String { .. }, _) if !value.has_call() => return Ok((None, value)),
+            // A STRING's capacity is its declaration's, which the place read or
+            // the call carries and the selector's type does not.
+            (ty @ MirType::String { .. }, MirExpr::Load(place, _)) => {
+                place.ty().cloned().unwrap_or(ty)
+            }
+            (MirType::String { .. }, MirExpr::Call(call)) => call.return_type.clone(),
+            (ty, _) => ty,
+        };
+        let mut scratch = self.call_scratch.borrow_mut();
+        let name = hir::hir_def::interned::identifier::Ident::new(
+            self.db,
+            compact_str::CompactString::from(format!(
+                "$case${}",
+                scratch.scalar.len() + scratch.memory.len()
+            )),
+        );
+        if ty.is_scalar() {
+            scratch.scalar.push((name, ty.clone()));
+        } else {
+            scratch.memory.push((name, ty.clone()));
+        }
+        Ok((
+            Some(crate::stmt::MirStmt::Assign {
+                target: MirPlace::Local(name),
+                value,
+            }),
+            MirExpr::Load(MirPlace::Local(name), ty),
+        ))
+    }
+
+    /// `place` reached once by a statement that reads it and stores into it:
+    /// when a call in its path would run at each, the store of its address
+    /// into a scratch (`$pin$N`), and the place through that address.
+    pub fn pin_place(&self, place: MirPlace) -> (Option<crate::stmt::MirStmt>, MirPlace) {
+        let Some(ty) = place.ty().filter(|_| place.has_call()).cloned() else {
+            return (None, place);
+        };
+        let mut scratch = self.call_scratch.borrow_mut();
+        let name = hir::hir_def::interned::identifier::Ident::new(
+            self.db,
+            compact_str::CompactString::from(format!(
+                "$pin${}",
+                scratch.scalar.len() + scratch.memory.len()
+            )),
+        );
+        scratch
+            .scalar
+            .push((name, MirType::Pointer(Box::new(ty.clone()))));
+        (
+            Some(crate::stmt::MirStmt::Assign {
+                target: MirPlace::Local(name),
+                value: MirExpr::AddrOf(place),
+            }),
+            MirPlace::Deref {
+                base: Box::new(MirPlace::Local(name)),
+                pointee_type: ty,
+                checked: false,
+            },
+        )
+    }
+
     pub fn lower_case_kind(
         &self,
         case: &CaseKind<'db>,
-        selector: Expr<'db>,
+        selector: &MirExpr,
     ) -> Result<MirCasePattern, LowerTypeError> {
         match case {
             // A STRING label compares with `str.byte_cmp`, carried as the arm's own
@@ -2469,11 +2550,11 @@ impl<'db> ExprLowerCtx<'db> {
                     Type::Elementary(hir::hir_def::expressions::spec::ElementarySpec::String)
                 ) =>
             {
-                Ok(MirCasePattern::Test(self.lower_string_comparison(
+                Ok(MirCasePattern::Test(self.string_comparison(
                     MirBinOp::Eq,
-                    selector,
-                    *expr,
-                )?))
+                    selector.clone(),
+                    self.lower_expr(*expr)?,
+                )))
             }
             CaseKind::Expression(expr) => {
                 Ok(MirCasePattern::Value(self.case_label_constant(*expr)?))

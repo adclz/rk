@@ -177,6 +177,80 @@ pub enum MirPlace {
     },
 }
 
+impl MirExpr {
+    /// Whether evaluating this runs a call, which evaluating it twice would
+    /// run twice.
+    pub fn has_call(&self) -> bool {
+        match self {
+            MirExpr::Call(_) => true,
+            MirExpr::Constant(_) | MirExpr::StringLiteral { .. } => false,
+            MirExpr::Load(place, _) | MirExpr::AddrOf(place) => place.has_call(),
+            MirExpr::BinOp { lhs, rhs, .. } => lhs.has_call() || rhs.has_call(),
+            MirExpr::UnaryOp { expr, .. } | MirExpr::Cast { expr, .. } => expr.has_call(),
+            MirExpr::CopyIntoScratch { src, .. } => src.has_call(),
+        }
+    }
+}
+
+impl MirExpr {
+    /// Whether this reaches a place whose path runs a call, which addressing
+    /// the place twice would run twice.
+    pub fn reaches_place_with_call(&self) -> bool {
+        match self {
+            MirExpr::Load(place, _) | MirExpr::AddrOf(place) => place.has_call(),
+            MirExpr::Call(call) => call.reaches_place_with_call(),
+            MirExpr::BinOp { lhs, rhs, .. } => {
+                lhs.reaches_place_with_call() || rhs.reaches_place_with_call()
+            }
+            MirExpr::UnaryOp { expr, .. } | MirExpr::Cast { expr, .. } => {
+                expr.reaches_place_with_call()
+            }
+            MirExpr::CopyIntoScratch { src, .. } => src.reaches_place_with_call(),
+            MirExpr::Constant(_) | MirExpr::StringLiteral { .. } => false,
+        }
+    }
+}
+
+impl MirCall {
+    /// [`MirExpr::reaches_place_with_call`] for the call's arguments and the
+    /// places its outputs are stored in.
+    pub fn reaches_place_with_call(&self) -> bool {
+        self.args.iter().any(|a| a.value.reaches_place_with_call())
+            || self
+                .output_bindings
+                .iter()
+                .any(|b| b.target.has_call() || b.value.reaches_place_with_call())
+            || self
+                .extern_results
+                .iter()
+                .any(|r| r.dest.as_ref().is_some_and(MirPlace::has_call))
+    }
+}
+
+impl MirPlace {
+    /// Whether reaching this place runs a call: one in a subscript.
+    pub fn has_call(&self) -> bool {
+        match self {
+            MirPlace::Local(_) | MirPlace::ThisField { .. } | MirPlace::Global { .. } => false,
+            MirPlace::Field { base, .. } | MirPlace::Deref { base, .. } => base.has_call(),
+            MirPlace::Index { base, index, .. } => base.has_call() || index.has_call(),
+        }
+    }
+
+    /// The type of what the place holds, which a bare `Local` does not say.
+    pub fn ty(&self) -> Option<&MirType> {
+        match self {
+            MirPlace::Local(_) => None,
+            MirPlace::Field { field_type, .. } | MirPlace::ThisField { field_type, .. } => {
+                Some(field_type)
+            }
+            MirPlace::Index { element_type, .. } => Some(element_type),
+            MirPlace::Deref { pointee_type, .. } => Some(pointee_type),
+            MirPlace::Global { ty, .. } => Some(ty),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MirBinOp {
     // Arithmetic
