@@ -8,6 +8,7 @@
   - [Namespaces](namespaces.md)
   - [Strict casts](strict-casts.md)
   - [Overloading](overloading.md)
+  - [Variadics](variadics.md)
   - [Monomorphized OOP](monomorphized-oop.md)
   - [References](references.md)
   - [Strings](strings.md)

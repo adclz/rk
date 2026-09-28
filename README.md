@@ -26,7 +26,7 @@ In any language, on any [platform](https://withbighair.com/webassembly/2025/05/1
 
 <img src="site/assets/drawings/expressive.svg" width="380" alt="A namespace holding two overloads of Clamp, and a class implementing an interface">
 
-Namespaces, overloaded functions, classes and interfaces, references and unit tests.
+Namespaces, overloaded and variadic functions, classes and interfaces, references and unit tests.
 
 ### **Text only**
 

@@ -255,6 +255,25 @@ Keep an overload set inside one namespace.
 
 A workspace file that reopens a library namespace and redeclares one of its overloads silently WINS — see the `programming-namespaces` skill; the same silence applies here.
 
+## Variadics
+
+A `FUNCTION` input declared `name : T...` collects every positional argument of the call, and a fold is the only way to read it.
+
+```iecst
+FUNCTION Sum : INT
+	VAR_INPUT values : INT...; END_VAR
+	Sum := ...values+;
+END_FUNCTION
+
+FUNCTION Use : INT
+	Use := Sum(1, 2, 3) + Sum(7);   // one copy of Sum per argument count
+END_FUNCTION
+```
+
+The fold operators are `+ - * / % **` (left to right), `& | ^`, and `= <> < > <= >=`, which test each adjacent pair and give a `BOOL`.
+The variadic parameter must be elementary (E0811) and the only `VAR_INPUT` (E0812, E0815); pass anything else as `VAR_OUTPUT` or `VAR_IN_OUT`, by name.
+A call passes it at least one argument (E0813).
+
 ## Gotchas
 
 A `CHAR` does not widen to `STRING` implicitly, although IEC lists that conversion: `s := c` is E0301, which names `CHAR_TO_STRING(c)`.
