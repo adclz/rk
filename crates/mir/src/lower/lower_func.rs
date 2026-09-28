@@ -1290,10 +1290,11 @@ fn mark_inout_call_args<'db>(
     }
 }
 
-/// The statements that give a POU's own locals their declared starting
-/// values: the type's defaults first, then the declaration's own
-/// initializer or, failing that, the initializers its members declare. A
-/// VAR_EXTERNAL is the global's own storage, initialized once in `__init`.
+/// The statements that give a POU's own variables their starting values at
+/// entry: the type's defaults first (an FB's or CLASS's member defaults
+/// included), then the declaration's own initializer, which overlays them by
+/// store order. A VAR_EXTERNAL is the global's own storage, initialized once
+/// in `__init`.
 fn lower_local_init_stmts<'db>(
     db: &'db dyn WorkspaceDataBase,
     vars: &[hir::hir_def::pous::variable::VariableDecl<'db>],
@@ -1314,15 +1315,7 @@ fn lower_local_init_stmts<'db>(
             InitTarget::Local {
                 name: var.name(db),
                 base: 0,
-                // Every scalar-shaped local is the whole target, subrange and enum
-                // aliases included.
-                whole: matches!(
-                    var_ty,
-                    crate::types::MirType::Elementary(_)
-                        | crate::types::MirType::Subrange(_)
-                        | crate::types::MirType::Enum(_)
-                        | crate::types::MirType::Pointer(_)
-                ),
+                whole: scalar_shaped(&var_ty),
             },
             &var_ty,
             var.spec(db).infer(db),
@@ -1338,23 +1331,18 @@ fn lower_local_init_stmts<'db>(
                 string_pool,
                 &mut init_stmts,
             )?;
-        } else {
-            lower_declared_instance_inits(
-                db,
-                InitTarget::Local {
-                    name: var.name(db),
-                    base: 0,
-                    // members are reached THROUGH the local, never as it
-                    whole: false,
-                },
-                &var_ty,
-                var.spec(db).infer(db),
-                string_pool,
-                &mut init_stmts,
-            )?;
         }
     }
     Ok(init_stmts)
+}
+
+/// Every scalar-shaped variable is the whole target of its initializer,
+/// subrange and enum aliases included; an aggregate is reached through.
+fn scalar_shaped(ty: &MirType) -> bool {
+    matches!(
+        ty,
+        MirType::Elementary(_) | MirType::Subrange(_) | MirType::Enum(_) | MirType::Pointer(_)
+    )
 }
 
 fn lower_var_init<'db>(
@@ -1416,7 +1404,6 @@ fn lower_init_leaves<'db>(
     string_pool: &Rc<RefCell<super::lower_expr::StringPool>>,
     out: &mut Vec<MirStmt>,
 ) -> Result<(), LowerTypeError> {
-    use crate::expr::MirPlace;
     use hir::hir_ty::head::init_inference::infer_initialization;
 
     let inference = infer_initialization(db, init.scope_id(db));
@@ -1474,55 +1461,106 @@ fn lower_init_leaves<'db>(
                 to: *to,
             };
         }
-        let place = match target.offset_by(offset) {
-            InitTarget::Static { base } => {
-                if !is_const_value(&value) {
-                    // E0401 refuses every non-constant static leaf, so reaching this arm
-                    // means check and lowering disagree. REF defaults are the known
-                    // exception, skipped for now.
-                    if matches!(leaf_ty, crate::types::MirType::Pointer(_)) {
-                        continue;
-                    }
-                    return Err(LowerTypeError::UnsupportedType(format!(
-                        "a static initializer leaf survived E0401 without \
-                         being constant: {value:?}"
-                    )));
-                }
-                MirPlace::Global {
-                    name: None,
-                    address: base,
-                    ty: leaf_ty,
-                }
+        if let InitTarget::Static { .. } = target
+            && !is_const_value(&value)
+        {
+            // E0401 refuses every non-constant static leaf, so reaching this arm
+            // means check and lowering disagree. REF defaults are the known
+            // exception, skipped for now.
+            if matches!(leaf_ty, crate::types::MirType::Pointer(_)) {
+                continue;
             }
-            // Only a local that is the whole scalar-shaped target is addressed
-            // directly; everything else takes the Field arm, since a bare `Local`
-            // hides the leaf's type from codegen.
-            InitTarget::Local { name, base, whole }
-                if whole
-                    && base == 0
-                    && leaf.path.is_empty()
-                    && !matches!(
-                        leaf_ty,
-                        crate::types::MirType::String { .. }
-                            | crate::types::MirType::Struct(_)
-                            | crate::types::MirType::Array(_)
-                    ) =>
-            {
-                MirPlace::Local(name)
-            }
-            InitTarget::Local { name, base, .. } => MirPlace::Field {
-                base: Box::new(MirPlace::Local(name)),
-                // `field_name` is metadata only — addressing uses `field_offset`.
-                field_name: name,
-                field_offset: base,
-                field_type: leaf_ty,
-            },
-        };
+            return Err(LowerTypeError::UnsupportedType(format!(
+                "a static initializer leaf survived E0401 without \
+                 being constant: {value:?}"
+            )));
+        }
         out.push(MirStmt::Assign {
-            target: place,
+            target: init_place(target.offset_by(offset), leaf_ty, leaf.path.is_empty()),
             value,
         });
     }
+    Ok(())
+}
+
+/// Where a leaf initializer of type `leaf_ty` is stored. `whole_leaf` says the
+/// leaf is the target itself rather than a part of it.
+fn init_place(
+    target: InitTarget,
+    leaf_ty: crate::types::MirType,
+    whole_leaf: bool,
+) -> crate::expr::MirPlace {
+    use crate::expr::MirPlace;
+    match target {
+        InitTarget::Static { base } => MirPlace::Global {
+            name: None,
+            address: base,
+            ty: leaf_ty,
+        },
+        // Only a local that is the whole scalar-shaped target is addressed
+        // directly; everything else takes the Field arm, since a bare `Local`
+        // hides the leaf's type from codegen.
+        InitTarget::Local { name, base, whole }
+            if whole
+                && base == 0
+                && whole_leaf
+                && !matches!(
+                    leaf_ty,
+                    crate::types::MirType::String { .. }
+                        | crate::types::MirType::Struct(_)
+                        | crate::types::MirType::Array(_)
+                ) =>
+        {
+            MirPlace::Local(name)
+        }
+        InitTarget::Local { name, base, .. } => MirPlace::Field {
+            base: Box::new(MirPlace::Local(name)),
+            // `field_name` is metadata only — addressing uses `field_offset`.
+            field_name: name,
+            field_offset: base,
+            field_type: leaf_ty,
+        },
+    }
+}
+
+/// Lower one initial value at `target`: an initializer the source writes,
+/// or the value its type starts at (`InitValue::Implied`), a constant in the
+/// slot's lane.
+fn lower_init_value<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    target: InitTarget,
+    ty: &crate::types::MirType,
+    value: hir::hir_ty::head::inheritance::InitValue<'db>,
+    string_pool: &Rc<RefCell<super::lower_expr::StringPool>>,
+    out: &mut Vec<MirStmt>,
+) -> Result<(), LowerTypeError> {
+    use hir::hir_ty::head::inheritance::InitValue;
+    let implied = match value {
+        InitValue::Written(init) => {
+            return lower_init_leaves(db, target, ty, init, string_pool, out);
+        }
+        InitValue::Implied(v) => v,
+    };
+    let to = match ty {
+        crate::types::MirType::Elementary(e) => *e,
+        crate::types::MirType::Subrange(sub) => sub.base,
+        crate::types::MirType::Enum(en) => en.storage,
+        other => {
+            return Err(LowerTypeError::UnsupportedType(format!(
+                "a type's starting value landed on {other:?}"
+            )));
+        }
+    };
+    out.push(MirStmt::Assign {
+        target: init_place(target, ty.clone(), true),
+        value: crate::expr::MirExpr::Cast {
+            expr: Box::new(crate::expr::MirExpr::Constant(
+                crate::expr::MirConstant::I64(implied),
+            )),
+            from: crate::types::MirElementary::LInt,
+            to,
+        },
+    });
     Ok(())
 }
 
@@ -1560,80 +1598,10 @@ fn member_path_slots(
     }
 }
 
-/// Emit the member initializers of an instance-typed variable
-/// (`VAR f : Flags;`): the `:= 3` sits on the type's member declarations.
-/// Inheritance and composition are resolved by HIR's
-/// [`instance_initializers`]; MIR only turns each path into a byte offset.
-///
-/// [`instance_initializers`]: hir::hir_ty::head::inheritance::instance_initializers
-pub(crate) fn lower_instance_member_inits<'db>(
-    db: &'db dyn WorkspaceDataBase,
-    target: InitTarget,
-    struct_ty: &crate::types::MirStructType,
-    pou: hir::hir_def::pous::pou::Pou<'db>,
-    string_pool: &Rc<RefCell<super::lower_expr::StringPool>>,
-    out: &mut Vec<MirStmt>,
-) -> Result<(), LowerTypeError> {
-    use hir::hir_ty::head::inheritance::instance_initializers;
-
-    let root = crate::types::MirType::Struct(struct_ty.clone());
-    for entry in instance_initializers(db, pou) {
-        let mut slots = Vec::new();
-        member_path_slots(&root, &entry.path, 0, &mut slots);
-        for (offset, member_ty) in slots {
-            lower_init_leaves(
-                db,
-                target.offset_by(offset),
-                &member_ty,
-                entry.init,
-                string_pool,
-                out,
-            )?;
-        }
-    }
-    Ok(())
-}
-
-/// Emit the member initializers for a declared variable, descending
-/// through array layers: `ARRAY[0..2] OF Cell` initializes each element.
-pub(crate) fn lower_declared_instance_inits<'db>(
-    db: &'db dyn WorkspaceDataBase,
-    target: InitTarget,
-    mir_ty: &MirType,
-    hir_ty: hir::hir_ty::ty::Type<'db>,
-    string_pool: &Rc<RefCell<super::lower_expr::StringPool>>,
-    out: &mut Vec<MirStmt>,
-) -> Result<(), LowerTypeError> {
-    use hir::hir_ty::head::inheritance::pou_of_type;
-    match mir_ty {
-        MirType::Array(a) => {
-            let hir::hir_ty::ty::Type::Array(array) = hir_ty.normalize(db) else {
-                return Ok(());
-            };
-            let elem_hir = array.of_type(db).infer(db).normalize(db);
-            for i in 0..a.total_elements {
-                lower_declared_instance_inits(
-                    db,
-                    target.offset_by(i * a.element_size),
-                    &a.element_type,
-                    elem_hir,
-                    string_pool,
-                    out,
-                )?;
-            }
-            Ok(())
-        }
-        MirType::Struct(struct_ty) => match pou_of_type(db, hir_ty.normalize(db)) {
-            Some(pou) => lower_instance_member_inits(db, target, struct_ty, pou, string_pool, out),
-            None => Ok(()),
-        },
-        _ => Ok(()),
-    }
-}
-
-/// Emit the initializers a variable's TYPE contributes (an alias's `:= 5`,
-/// STRUCT field defaults) before the declaration's own; HIR's
-/// [`type_default_inits`] decides what applies.
+/// Emit the initial values a variable's TYPE contributes (an alias's `:= 5`,
+/// STRUCT field defaults, an FB's or CLASS's member defaults, an enum's first
+/// value) before the declaration's own; HIR's [`type_default_inits`] decides
+/// what applies, MIR turns each path into byte offsets.
 ///
 /// [`type_default_inits`]: hir::hir_ty::head::inheritance::type_default_inits
 pub(crate) fn lower_type_default_inits<'db>(
@@ -1648,7 +1616,7 @@ pub(crate) fn lower_type_default_inits<'db>(
         let mut slots = Vec::new();
         member_path_slots(mir_ty, &entry.path, 0, &mut slots);
         for (offset, slot_ty) in slots {
-            lower_init_leaves(
+            lower_init_value(
                 db,
                 target.offset_by(offset),
                 &slot_ty,
