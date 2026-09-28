@@ -293,8 +293,18 @@ fn lower_function_inner<'db>(
         });
     }
 
-    // 4. Generate initializer statements for variables with init expressions
-    let mut init_stmts = lower_local_init_stmts(db, func.variables(db), &string_pool)?;
+    // 4. Starting values: the result's type defaults, then every local's.
+    let mut init_stmts = match (func.return_type(db), &return_type) {
+        (Some(spec), Some(ret_ty)) => {
+            lower_result_init_stmts(db, func.name(db), ret_ty, spec, &string_pool)?
+        }
+        _ => Vec::new(),
+    };
+    init_stmts.extend(lower_local_init_stmts(
+        db,
+        func.variables(db),
+        &string_pool,
+    )?);
 
     // 5. Body statements. Interface specialization threads `iface_subs` and
     // `iface_call_rewrites` into the body.
@@ -507,9 +517,19 @@ fn lower_function_block_inner<'db>(
             memory_layout,
         );
 
-        // A method's locals are per call: their declared values are stores at
-        // entry.
-        let mut init_stmts = lower_local_init_stmts(db, method.variables(db), &string_pool)?;
+        // A method's result and locals are per call: their starting values
+        // are stores at entry.
+        let mut init_stmts = match (method.return_type(db), &return_type) {
+            (Some(spec), Some(ret_ty)) => {
+                lower_result_init_stmts(db, method.name(db), ret_ty, spec, &string_pool)?
+            }
+            _ => Vec::new(),
+        };
+        init_stmts.extend(lower_local_init_stmts(
+            db,
+            method.variables(db),
+            &string_pool,
+        )?);
         if !init_stmts.is_empty() {
             init_stmts.append(&mut body);
             body = init_stmts;
@@ -601,6 +621,8 @@ fn lower_function_block_inner<'db>(
         None,
         iface_call_rewrites,
     )?;
+    // VAR_TEMP starts over at every call, from its declared values.
+    let body_stmts = with_temp_inits(db, fb.variables(db), body_stmts, &string_pool)?;
     append_call_scratch_locals(
         call_scratch,
         &mut body_locals,
@@ -776,9 +798,19 @@ fn lower_class_inner<'db>(
             memory_layout,
         );
 
-        // A method's locals are per call: their declared values are stores at
-        // entry.
-        let mut init_stmts = lower_local_init_stmts(db, method.variables(db), &string_pool)?;
+        // A method's result and locals are per call: their starting values
+        // are stores at entry.
+        let mut init_stmts = match (method.return_type(db), &return_type) {
+            (Some(spec), Some(ret_ty)) => {
+                lower_result_init_stmts(db, method.name(db), ret_ty, spec, &string_pool)?
+            }
+            _ => Vec::new(),
+        };
+        init_stmts.extend(lower_local_init_stmts(
+            db,
+            method.variables(db),
+            &string_pool,
+        )?);
         if !init_stmts.is_empty() {
             init_stmts.append(&mut body);
             body = init_stmts;
@@ -881,6 +913,8 @@ fn lower_program_inner<'db>(
         None,
         iface_call_rewrites,
     )?;
+    // VAR_TEMP starts over at every scan, from its declared values.
+    let body = with_temp_inits(db, program.variables(db), body, &string_pool)?;
     append_call_scratch_locals(
         call_scratch,
         &mut locals,
@@ -1293,8 +1327,10 @@ fn mark_inout_call_args<'db>(
 /// The statements that give a POU's own variables their starting values at
 /// entry: the type's defaults first (an FB's or CLASS's member defaults
 /// included), then the declaration's own initializer, which overlays them by
-/// store order. A VAR_EXTERNAL is the global's own storage, initialized once
-/// in `__init`.
+/// store order. A FUNCTION's or METHOD's VAR_OUTPUT starts over too: it is
+/// written through its pointer into the caller's variable. A VAR_INPUT or
+/// VAR_IN_OUT holds what the caller passed, and a VAR_EXTERNAL is the
+/// global's own storage, initialized once in `__init`.
 fn lower_local_init_stmts<'db>(
     db: &'db dyn WorkspaceDataBase,
     vars: &[hir::hir_def::pous::variable::VariableDecl<'db>],
@@ -1303,10 +1339,7 @@ fn lower_local_init_stmts<'db>(
     let mut init_stmts = Vec::new();
     for var in vars {
         match var.kind(db) {
-            VariableKind::Input
-            | VariableKind::InOut
-            | VariableKind::Output
-            | VariableKind::External => continue,
+            VariableKind::Input | VariableKind::InOut | VariableKind::External => continue,
             _ => {}
         }
         let var_ty = lower_var_type(db, *var)?;
@@ -1334,6 +1367,49 @@ fn lower_local_init_stmts<'db>(
         }
     }
     Ok(init_stmts)
+}
+
+/// The starting value of a FUNCTION's or METHOD's result: its type's
+/// defaults, written at entry like a local's.
+fn lower_result_init_stmts<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    name: Ident,
+    ret_ty: &MirType,
+    spec: &hir::hir_def::expressions::spec::Spec<'db>,
+    string_pool: &Rc<RefCell<super::lower_expr::StringPool>>,
+) -> Result<Vec<MirStmt>, LowerTypeError> {
+    let mut stmts = Vec::new();
+    lower_type_default_inits(
+        db,
+        InitTarget::Local {
+            name,
+            base: 0,
+            whole: scalar_shaped(ret_ty),
+        },
+        ret_ty,
+        spec.infer(db),
+        string_pool,
+        &mut stmts,
+    )?;
+    Ok(stmts)
+}
+
+/// `body` preceded by the starting values of the VAR_TEMPs among `vars`: an
+/// FB's or PROGRAM's other variables are instance state, initialized once.
+fn with_temp_inits<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    vars: &[hir::hir_def::pous::variable::VariableDecl<'db>],
+    body: Vec<MirStmt>,
+    string_pool: &Rc<RefCell<super::lower_expr::StringPool>>,
+) -> Result<Vec<MirStmt>, LowerTypeError> {
+    let temps: Vec<_> = vars
+        .iter()
+        .filter(|v| v.kind(db) == VariableKind::Temp)
+        .copied()
+        .collect();
+    let mut stmts = lower_local_init_stmts(db, &temps, string_pool)?;
+    stmts.extend(body);
+    Ok(stmts)
 }
 
 /// Every scalar-shaped variable is the whole target of its initializer,

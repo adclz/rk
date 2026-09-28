@@ -1,8 +1,8 @@
 //! Where every variable starts: its type's defaults (an alias's, a STRUCT's
 //! fields', an instance's members', an enum's first value, a subrange's lower
 //! limit), then its declaration's own initializer, overlaid by store order.
-//! One rule, for a FUNCTION's and a METHOD's locals, and the statics `__init`
-//! writes.
+//! One rule, for a FUNCTION's locals and outputs and result, a METHOD's, an
+//! FB's or PROGRAM's VAR_TEMP, and the statics `__init` writes.
 
 use crate::tests::codegen::{TestPlc, compile_to_mir_and_wasm, with_db};
 use debug_format::{DebugInfo, VarValue};
@@ -166,6 +166,132 @@ fn a_var_external_or_in_out_writes_nothing_at_entry(mut with_db: db::RootDatabas
     assert_eq!(read("P1.written"), Some(VarValue::I32(7)));
 }
 
+/// A FUNCTION starts over at every call: its VAR_OUTPUT from its initializer,
+/// written into the caller's variable, and its result from its type's
+/// defaults. Each body below changes what it started with, and runs twice.
+#[rstest]
+fn outputs_and_results_start_over_at_every_call(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE
+            Step : (A := 5, B);
+            Pt : STRUCT x : INT := 3; y : INT; END_STRUCT;
+        END_TYPE
+
+        FUNCTION WithOutput : INT
+        VAR_OUTPUT o : INT := 7; END_VAR
+            o := o + 1;
+            WithOutput := 1;
+        END_FUNCTION
+
+        FUNCTION StepResult : Step
+        END_FUNCTION
+
+        FUNCTION PtResult : Pt
+            PtResult.x := PtResult.x + 1;
+            PtResult.y := PtResult.y + 4;
+        END_FUNCTION
+
+        FUNCTION_BLOCK Fb
+            METHOD PUBLIC Out : INT
+            VAR_OUTPUT o : INT := 8; END_VAR
+                o := o + 1;
+                Out := 1;
+            END_METHOD
+        END_FUNCTION_BLOCK
+
+        FUNCTION test : INT
+        VAR r : INT := 99; q : INT := 99; one : INT; p : Pt; f : Fb; END_VAR
+            one := WithOutput(o => r);
+            one := WithOutput(o => r);
+            one := f.Out(o => q);
+            one := f.Out(o => q);
+            p := PtResult();
+            p := PtResult();
+            IF StepResult() = Step#A THEN test := 1; END_IF;
+            IF p.y = 4 THEN test := test + 20000; END_IF;
+            test := test + r * 10 + q * 100 + p.x * 1000;
+        END_FUNCTION
+    "#;
+    let r: i32 = super::run(&mut with_db, source, "test", ());
+    assert_eq!(
+        r, 24981,
+        "Step#A, o = 7 + 1, METHOD o = 8 + 1, x = 3 + 1 from Pt, y = 4"
+    );
+}
+
+/// An output without an initializer starts over as well, from its type's
+/// defaults: 0, the first value, a STRUCT's fields, the empty STRING. It used
+/// to keep what the caller's variable held.
+#[rstest]
+fn an_output_without_initializer_starts_over_too(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE
+            Step : (A := 5, B);
+            Pt : STRUCT x : INT := 3; y : INT; END_STRUCT;
+        END_TYPE
+
+        FUNCTION Plain : INT
+        VAR_OUTPUT n : INT; s : Step; p : Pt; t : STRING; END_VAR
+            n := n + 1;
+            IF s = Step#A THEN n := n + 10; END_IF;
+            IF t = '' THEN n := n + 100; END_IF;
+            p.x := p.x + 1;
+            p.y := p.y + 1;
+            s := Step#B;
+            t := 'x';
+            Plain := 1;
+        END_FUNCTION
+
+        FUNCTION test : INT
+        VAR
+            n : INT := 99;
+            s : Step := Step#B;
+            p : Pt := (x := 50, y := 60);
+            t : STRING := 'abc';
+            one : INT;
+        END_VAR
+            one := Plain(n => n, s => s, p => p, t => t);
+            one := Plain(n => n, s => s, p => p, t => t);
+            test := n * 100 + p.x * 10 + p.y;
+        END_FUNCTION
+    "#;
+    let r: i32 = super::run(&mut with_db, source, "test", ());
+    assert_eq!(r, 11141, "n = 1 + 10 + 100, p = (3 + 1, 0 + 1), twice over");
+}
+
+/// An FB's VAR_TEMP starts over at every call from its type's defaults, as a
+/// FUNCTION's locals do (a VAR_TEMP takes no initializer of its own, E0004).
+#[rstest]
+fn var_temp_starts_over_at_every_call(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE
+            Pt : STRUCT x : INT := 3; END_STRUCT;
+            Step : (A := 5, B);
+        END_TYPE
+
+        FUNCTION_BLOCK Fb
+        VAR_OUTPUT seen : INT; END_VAR
+        VAR_TEMP
+            p : Pt;
+            s : Step;
+        END_VAR
+            p.x := p.x + 1;
+            seen := p.x;
+            IF s = Step#A THEN seen := seen + 10; END_IF;
+            s := Step#B;
+        END_FUNCTION_BLOCK
+
+        FUNCTION test : INT
+        VAR f : Fb; END_VAR
+            f();
+            f();
+            test := f.seen;
+        END_FUNCTION
+    "#;
+    let r: i32 = super::run(&mut with_db, source, "test", ());
+    assert_eq!(r, 14, "x at 3 and s at Step#A again on the second call");
+}
+
 /// An instance held by a STRUCT field starts from its members' defaults too.
 #[rstest]
 fn an_instance_in_a_struct_gets_its_member_defaults(mut with_db: db::RootDatabase) {
@@ -185,13 +311,15 @@ fn an_instance_in_a_struct_gets_its_member_defaults(mut with_db: db::RootDatabas
     assert_eq!(r, 4);
 }
 
-/// The same rule for the statics `__init` writes, once.
+/// The same rule for the statics `__init` writes, once, and a PROGRAM's
+/// VAR_TEMP at every scan.
 #[rstest]
 fn a_program_starts_the_same_way(mut with_db: db::RootDatabase) {
     let source = r#"
         TYPE
             Step : (A := 5, B);
             Pct : INT(5..10);
+            Pt : STRUCT x : INT := 3; END_STRUCT;
             Count : INT := 3;
         END_TYPE
 
@@ -207,11 +335,15 @@ fn a_program_starts_the_same_way(mut with_db: db::RootDatabase) {
             atA : INT;
             pv : INT;
             limit : INT;
+            tt : INT;
             c : Count;
         END_VAR
+        VAR_TEMP t : Pt; END_VAR
             IF s = Step#A THEN atA := 1; END_IF;
             pv := p;
             limit := m.limit;
+            t.x := t.x + 1;
+            tt := t.x;
             c := c + 1;
         END_PROGRAM
 
@@ -229,6 +361,11 @@ fn a_program_starts_the_same_way(mut with_db: db::RootDatabase) {
     assert_eq!(plc.read_var(&dbg, "Run.atA"), Some(VarValue::I16(1)));
     assert_eq!(plc.read_var(&dbg, "Run.pv"), Some(VarValue::I16(5)));
     assert_eq!(plc.read_var(&dbg, "Run.limit"), Some(VarValue::I16(6)));
+    assert_eq!(
+        plc.read_var(&dbg, "Run.tt"),
+        Some(VarValue::I16(4)),
+        "3 + 1, at every scan"
+    );
     assert_eq!(
         plc.read_var(&dbg, "Run.c"),
         Some(VarValue::I16(5)),
