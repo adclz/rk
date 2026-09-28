@@ -64,6 +64,7 @@ pub mod unnecessary_parens;
 pub mod unused_import;
 pub mod unused_return_type;
 pub mod unused_variable;
+pub mod variable_method_name;
 pub mod warn_pragma;
 pub mod yoda_condition;
 
@@ -93,6 +94,7 @@ pub const RECOMMENDED_RULE_NAMES: &[&str] = &[
     missing_return::NAME,
     external_mutation::NAME,
     method_shadows_member::NAME,
+    variable_method_name::NAME,
     global_without_external::NAME,
     instance_in_function::NAME,
 ];
@@ -159,6 +161,7 @@ pub const ALL_RULE_NAMES: &[&str] = &[
     unused_import::NAME,
     unused_return_type::NAME,
     unused_variable::NAME,
+    variable_method_name::NAME,
     warn_pragma::NAME,
     yoda_condition::NAME,
 ];
@@ -349,6 +352,13 @@ fn lint_scope<'db>(
         report_unknown,
         diagnostics,
     ));
+    // Declarations of a block, CLASSes included, which have no body.
+    if is_enabled(config, variable_method_name::NAME) {
+        run_lint(variable_method_name::NAME, diagnostics, |d| {
+            variable_method_name::check(db, scope, d)
+        });
+    }
+
     let has_body = matches!(
         get_scope(db, scope).kind,
         ScopeKind::Pou(Pou::Function(_))
@@ -523,6 +533,6 @@ mod select_tests {
                 "{name} is not a known rule name"
             );
         }
-        assert_eq!(RECOMMENDED_RULE_NAMES.len(), 23);
+        assert_eq!(RECOMMENDED_RULE_NAMES.len(), 24);
     }
 }

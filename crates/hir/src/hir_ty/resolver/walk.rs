@@ -163,7 +163,7 @@ impl<'db> Type<'db> {
     /// sees it: its variables, its own then the inherited ones, before its
     /// methods, its own then the inherited ones. A variable and a method may
     /// share a name, as in CODESYS and TwinCAT, and inside the POU the
-    /// variable is the one found (`THIS` included).
+    /// variable is the one found (`THIS` included); L0120 warns.
     pub(crate) fn resolve_field(
         &self,
         db: &'db dyn WorkspaceDataBase,
