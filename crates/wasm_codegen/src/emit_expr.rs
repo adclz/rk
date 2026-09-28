@@ -33,7 +33,15 @@ pub(crate) struct StringSnapshotCtx {
     pub str_assign_idx: u32,
 }
 
+/// The `(dividend, divisor)` scratch pairs of a wrapping division, i32 then
+/// i64, each allocated for a body with one ([`needs_wrapping_div`]).
+pub(crate) type DivScratch = (Option<(u32, u32)>, Option<(u32, u32)>);
+
 thread_local! {
+    /// The current body's [`DivScratch`].
+    pub(crate) static DIV_TMP: std::cell::Cell<DivScratch> =
+        const { std::cell::Cell::new((None, None)) };
+
     /// An i32 scratch holding a STRING's header address while its `(ptr,
     /// len)` is read, allocated for a body that reaches a place whose path
     /// runs a call ([`MirStmt::reaches_place_with_call`]).
@@ -114,7 +122,11 @@ pub(crate) fn emit_expr(
         MirExpr::BinOp { op, lhs, rhs, ty } => {
             emit_expr(func, lhs, locals, fn_indices);
             emit_expr(func, rhs, locals, fn_indices);
-            emit_binop(func, *op, *ty);
+            if needs_wrapping_div(expr) {
+                emit_wrapping_div(func, *ty);
+            } else {
+                emit_binop(func, *op, *ty);
+            }
         }
 
         MirExpr::UnaryOp {
@@ -668,6 +680,75 @@ fn emit_call(
             }
         }
     }
+}
+
+/// Whether `expr` is a signed division that can overflow: a DINT's or a
+/// LINT's minimum divided by -1, which `div_s` traps on. A narrower type is
+/// computed wider and cannot reach it; a constant divisor other than -1
+/// cannot either.
+pub(crate) fn needs_wrapping_div(expr: &MirExpr) -> bool {
+    let MirExpr::BinOp {
+        op: MirBinOp::Div,
+        rhs,
+        ty,
+        ..
+    } = expr
+    else {
+        return false;
+    };
+    let full_lane = ty.rk_bits() == if ty.is_64bit() { 64 } else { 32 };
+    let safe_divisor = matches!(
+        rhs.as_ref(),
+        MirExpr::Constant(MirConstant::I32(v)) if *v != -1
+    ) || matches!(
+        rhs.as_ref(),
+        MirExpr::Constant(MirConstant::I64(v)) if *v != -1
+    );
+    !ty.is_float() && ty.is_signed() && full_lane && !safe_divisor
+}
+
+/// Signed division that wraps like every other overflow: a divisor of -1
+/// negates, which `div_s` would trap on for the minimum; any other divisor,
+/// zero included, divides. Both operands are on the stack, and move to the
+/// scratch pair since each is read twice.
+fn emit_wrapping_div(func: &mut wasm_encoder::Function, ty: MirElementary) {
+    let is_64 = ty.is_64bit();
+    let (i32_tmp, i64_tmp) = DIV_TMP.with(|c| c.get());
+    let (dividend, divisor) = if is_64 { i64_tmp } else { i32_tmp }.expect(
+        "a wrapping division needs its scratch pair: \
+         the body scan and needs_wrapping_div disagree",
+    );
+    func.instruction(&Instruction::LocalSet(divisor));
+    func.instruction(&Instruction::LocalSet(dividend));
+    func.instruction(&Instruction::LocalGet(divisor));
+    if is_64 {
+        func.instruction(&Instruction::I64Const(-1));
+        func.instruction(&Instruction::I64Eq);
+        func.instruction(&Instruction::If(wasm_encoder::BlockType::Result(
+            wasm_encoder::ValType::I64,
+        )));
+        func.instruction(&Instruction::I64Const(0));
+        func.instruction(&Instruction::LocalGet(dividend));
+        func.instruction(&Instruction::I64Sub);
+        func.instruction(&Instruction::Else);
+        func.instruction(&Instruction::LocalGet(dividend));
+        func.instruction(&Instruction::LocalGet(divisor));
+        func.instruction(&Instruction::I64DivS);
+    } else {
+        func.instruction(&Instruction::I32Const(-1));
+        func.instruction(&Instruction::I32Eq);
+        func.instruction(&Instruction::If(wasm_encoder::BlockType::Result(
+            wasm_encoder::ValType::I32,
+        )));
+        func.instruction(&Instruction::I32Const(0));
+        func.instruction(&Instruction::LocalGet(dividend));
+        func.instruction(&Instruction::I32Sub);
+        func.instruction(&Instruction::Else);
+        func.instruction(&Instruction::LocalGet(dividend));
+        func.instruction(&Instruction::LocalGet(divisor));
+        func.instruction(&Instruction::I32DivS);
+    }
+    func.instruction(&Instruction::End);
 }
 
 fn emit_binop(func: &mut wasm_encoder::Function, op: MirBinOp, ty: MirElementary) {

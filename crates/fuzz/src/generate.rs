@@ -550,10 +550,11 @@ impl Generator<'_> {
         }
     }
 
-    /// A divisor: never 0, and never -1, which traps at the minimum.
+    /// A divisor: never 0, which traps. -1 is one: the minimum divided by it
+    /// wraps, as `eval` has it.
     fn divisor(&mut self, ty: Ty) -> Val {
         match self.literal(ty) {
-            Val::Int(0 | -1) => Val::Int(3),
+            Val::Int(0) => Val::Int(3),
             v => v,
         }
     }

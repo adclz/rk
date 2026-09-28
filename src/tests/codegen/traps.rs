@@ -465,6 +465,36 @@ fn integer_division_by_zero_faults(mut with_db: db::RootDatabase) {
     );
 }
 
+/// The one quotient that overflows, a lane's minimum divided by -1, wraps
+/// like every other overflow: it is the minimum again. WebAssembly traps on
+/// it for DINT and LINT; INT, computed wider, already wrapped.
+#[rstest]
+fn the_minimum_divided_by_minus_one_wraps(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION run : DINT
+        VAR
+            a : DINT := -2147483648;
+            b : DINT := -1;
+            l : LINT;
+            m : LINT := -1;
+            i : INT := -32768;
+            j : INT := -1;
+            r : DINT;
+        END_VAR
+            l := -9223372036854775807;
+            l := l - 1;
+            IF a / b = a THEN r := 1; END_IF;
+            IF l / m = l THEN r := r + 10; END_IF;
+            IF i / j = i THEN r := r + 100; END_IF;
+            IF a / 2 = -1073741824 THEN r := r + 1000; END_IF;
+            IF (a / b) / (b / b) = a THEN r := r + 10000; END_IF;
+            run := r;
+        END_FUNCTION
+    "#;
+    let result: i32 = super::run(&mut with_db, source, "run", ());
+    assert_eq!(result, 11111);
+}
+
 /// An unsigned subscript past 2^31 is not a negative one: `a[4294967295]`
 /// on `ARRAY[-1..2]` read `a[-1]`.
 #[rstest]
