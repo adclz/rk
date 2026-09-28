@@ -1,16 +1,16 @@
-//! FUNCTION `VAR_OUTPUT` at call sites: bound (`o => x`, a live pointer to the
-//! caller's l-value) and DISCARDED (omitted at the call — legal per E0802's
+//! FUNCTION `VAR_OUTPUT` at call sites: bound (`o => x`, a pointer to the
+//! caller's l-value, which the callee resets at entry) and DISCARDED (omitted at the call — legal per E0802's
 //! rules; the callee's pointer param is satisfied by a synthesized scratch
 //! local in the caller, see `build_call_args`).
 
 use crate::tests::codegen::{compile_to_wasm, with_db};
 use rstest::*;
 
-/// Bound output `o => x`: the callee writes through a live pointer to `x`.
-/// Under the by-reference model the callee's `o` IS the caller's `x`,
-/// so a read-before-write observes the caller's current value (41 -> 42).
+/// Bound output `o => x`: the callee writes through a pointer to `x`, but
+/// starts from `o`'s own initial value, as every vendor does: a function
+/// keeps nothing, so the caller's 41 is not seen and 0 + 1 lands in `x`.
 #[rstest]
-fn bound_output_live_pointer(mut with_db: db::RootDatabase) {
+fn bound_output_starts_over(mut with_db: db::RootDatabase) {
     let source = r#"
         FUNCTION g : INT
         VAR_OUTPUT o : INT; END_VAR
@@ -25,7 +25,7 @@ fn bound_output_live_pointer(mut with_db: db::RootDatabase) {
         END_FUNCTION
     "#;
     let result: i32 = super::run(&mut with_db, source, "test", ());
-    assert_eq!(result, 42, "output aliases the caller's x: 41 + 1");
+    assert_eq!(result, 1, "o starts at 0, not at the caller's 41");
 }
 
 /// Discarded output: the call omits `o` entirely. The module must still
@@ -324,10 +324,10 @@ fn discarded_method_output(mut with_db: db::RootDatabase) {
     assert_eq!(result, 10, "the discarded output landed in a scratch");
 }
 
-/// Each call site's discarded-output scratch is its own: the callee reads its
-/// output before writing (0 + 1 both times), so a shared scratch would give
-/// 12. The FIRST execution of a site reads 0; what a later execution of the
-/// SAME site reads is deliberately not pinned here.
+/// Each call site's discarded-output scratch is its own, and starts over at
+/// every execution: the callee reads its output before writing, 0 + 1 each
+/// time. A shared scratch would give 12, a scratch kept between executions
+/// 1122.
 #[rstest]
 fn discarded_scratch_is_per_call_site(mut with_db: db::RootDatabase) {
     let source = r#"
@@ -337,11 +337,14 @@ fn discarded_scratch_is_per_call_site(mut with_db: db::RootDatabase) {
             g := o;
         END_FUNCTION
         FUNCTION test : INT
-            test := g() * 10 + g();
+        VAR i : INT; END_VAR
+            FOR i := 1 TO 2 DO
+                test := test * 100 + g() * 10 + g();
+            END_FOR;
         END_FUNCTION
     "#;
     let result: i32 = super::run(&mut with_db, source, "test", ());
-    assert_eq!(result, 11, "two sites, two scratches, both initially zero");
+    assert_eq!(result, 1111, "two sites, each at 0 on both executions");
 }
 
 /// The `cap` half of a STRING output's (addr, cap) pair is what bounds the

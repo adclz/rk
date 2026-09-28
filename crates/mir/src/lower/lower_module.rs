@@ -1760,7 +1760,9 @@ fn collect_const_inits<'db>(
         let Some((addr, ty)) = global_table.get(&key) else {
             continue;
         };
-        // TYPE defaults first; a declaration init overlays by store order.
+        // TYPE defaults first (an instance's member defaults included, once
+        // per element of an array of them); a declaration init overlays by
+        // store order.
         super::lower_func::lower_type_default_inits(
             db,
             super::lower_func::InitTarget::Static { base: *addr },
@@ -1777,17 +1779,6 @@ fn collect_const_inits<'db>(
                 init,
                 &mut stmts,
                 string_pool,
-            )?;
-        } else {
-            // A global FB instance is initialized from its type's members;
-            // an array of them, once per element.
-            super::lower_func::lower_declared_instance_inits(
-                db,
-                super::lower_func::InitTarget::Static { base: *addr },
-                ty,
-                v.spec(db).infer(db),
-                string_pool,
-                &mut stmts,
             )?;
         }
     }
@@ -1836,17 +1827,6 @@ fn collect_const_inits<'db>(
                             init,
                             &mut stmts,
                             string_pool,
-                        )?;
-                    } else {
-                        // An FB instance held by a PROGRAM gets its type's
-                        // member initializers, same as one held by a FUNCTION.
-                        super::lower_func::lower_declared_instance_inits(
-                            db,
-                            super::lower_func::InitTarget::Static { base: addr },
-                            &field.ty,
-                            var.spec(db).infer(db),
-                            string_pool,
-                            &mut stmts,
                         )?;
                     }
                 }

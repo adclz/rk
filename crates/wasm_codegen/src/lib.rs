@@ -1246,6 +1246,32 @@ impl<'a> WasmGen<'a> {
                 wasm_func.instruction(&Instruction::MemoryFill(0));
             }
         }
+        // An output starts over too, though its storage is the caller's
+        // variable or a scratch: nothing of the value it held is visible.
+        for param in &func.params {
+            let (MirParamKind::Output, MirType::Pointer(pointee)) = (param.kind, &param.ty) else {
+                continue;
+            };
+            match local_map.get(&param.name) {
+                // The empty STRING: its length prefix at 0.
+                Some(LocalInfo::StringInOutParam { addr_index, .. }) => {
+                    wasm_func.instruction(&Instruction::LocalGet(*addr_index));
+                    wasm_func.instruction(&Instruction::I32Const(0));
+                    wasm_func.instruction(&Instruction::I32Store(wasm_encoder::MemArg {
+                        offset: 0,
+                        align: 2,
+                        memory_index: 0,
+                    }));
+                }
+                Some(LocalInfo::Pointer { index, .. }) if pointee.size_bytes() > 0 => {
+                    wasm_func.instruction(&Instruction::LocalGet(*index));
+                    wasm_func.instruction(&Instruction::I32Const(0));
+                    wasm_func.instruction(&Instruction::I32Const(pointee.size_bytes() as i32));
+                    wasm_func.instruction(&Instruction::MemoryFill(0));
+                }
+                _ => {}
+            }
+        }
 
         // Emit statements
         let lines = emit_stmts_with_return(

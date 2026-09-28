@@ -89,6 +89,7 @@ exports this:
 ```
 
 Write `total` and read `clamped` back at the addresses you passed.
+`clamped` starts over at every call, so what you left at its address is overwritten.
 Declaring `VAR_OUTPUT` before `VAR_INPUT` moves it up the parameter list.
 
 A host import declared with `{extern}` is the same convention in reverse: 

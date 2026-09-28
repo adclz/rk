@@ -9,7 +9,7 @@ use crate::{
         pous::{class::MethodDecl, interface::MethodPrototype, pou::Pou, variable::VariableDecl},
         scope::ScopeId,
     },
-    hir_ty::{infer::Infer, resolver::name::resolve_namespace_access, ty::Type},
+    hir_ty::{infer::Infer, resolver::name::resolve_namespace_access},
 };
 use db::WorkspaceDataBase;
 use rustc_hash::FxHashMap;
@@ -328,9 +328,19 @@ pub struct InstanceInit<'db> {
     /// `[Field(inner), Field(v)]` for an `Inner` instance's `v` held by an
     /// `Outer`. A direct member is a single step.
     pub path: Vec<InstanceInitStep>,
-    /// The initializer expression, to be resolved through
+    pub init: InitValue<'db>,
+}
+
+/// What an initializer writes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, salsa::Update)]
+pub enum InitValue<'db> {
+    /// An initializer the source writes, to be resolved through
     /// [`infer_initialization`](crate::hir_ty::head::init_inference::infer_initialization).
-    pub init: InitExpr<'db>,
+    Written(InitExpr<'db>),
+    /// The value a type starts at where the source writes none and it is not
+    /// 0, which storage already holds (IEC 61131-3): an enumerated type's
+    /// first value, a subrange's lower limit.
+    Implied(i64),
 }
 
 /// Every initializer that applies to a fresh instance of `pou`, flattened.
@@ -356,8 +366,7 @@ pub fn instance_initializers<'db>(
     pou: Pou<'db>,
 ) -> Vec<InstanceInit<'db>> {
     let mut out = Vec::new();
-    let mut visited = Vec::new();
-    collect_instance_initializers(db, pou, &mut Vec::new(), &mut out, &mut visited);
+    collect_instance_initializers(db, pou, &mut Vec::new(), &mut out, &mut Vec::new());
     out
 }
 
@@ -366,16 +375,16 @@ fn collect_instance_initializers<'db>(
     pou: Pou<'db>,
     prefix: &mut Vec<InstanceInitStep>,
     out: &mut Vec<InstanceInit<'db>>,
-    visited: &mut Vec<Pou<'db>>,
+    pous: &mut Vec<Pou<'db>>,
 ) {
-    // `visited` is the current *path*, not a global seen-set: a type reached
+    // `pous` is the current *path*, not a global seen-set: a type reached
     // twice through different members must contribute twice (`a : Inner;
     // b : Inner;` initializes both), while a type reached through itself is a
     // cycle and stops here.
-    if visited.contains(&pou) {
+    if pous.contains(&pou) {
         return;
     }
-    visited.push(pou);
+    pous.push(pou);
 
     for member in instance_members(db, pou) {
         // A member located by VAR_CONFIG is a pointer to its channel; its
@@ -385,46 +394,29 @@ fn collect_instance_initializers<'db>(
         }
         prefix.push(InstanceInitStep::Field(member.var.name(db)));
 
-        // The member TYPE's own defaults come first either way: an explicit
-        // member init overlays them by store order, and a partial one
-        // (`p : Pt := (y := 9)`) keeps the type's other fields.
+        // The member TYPE's own defaults first — an alias's, a STRUCT's
+        // fields', an FB's or CLASS's members', each array element's — and an
+        // explicit member init after, overlaying them by store order: a
+        // partial one (`m : Motor := (speed := 9)`) keeps the others.
         collect_type_defaults(
             db,
             member.var.spec(db).infer(db),
             prefix,
             out,
             &mut Vec::new(),
+            pous,
         );
         if let Some(init) = member.var.init(db) {
-            // An explicit initializer covers the member whole, arrays included
-            // (`sa : ARRAY[0..1] OF Cell := [(v := 7), (v := 7)]`), so it is
-            // taken as written and not descended into.
             out.push(InstanceInit {
                 path: prefix.clone(),
-                init,
+                init: InitValue::Written(init),
             });
-        } else {
-            // Otherwise peel any array layers: an array of instances carries
-            // its element type's initializers, once per element.
-            let mut ty = member.var.spec(db).infer(db).normalize(db);
-            let mut layers = 0;
-            while let Type::Array(array) = ty {
-                prefix.push(InstanceInitStep::AllElements);
-                layers += 1;
-                ty = array.of_type(db).infer(db).normalize(db);
-            }
-            if let Some(inner) = pou_of_type(db, ty) {
-                collect_instance_initializers(db, inner, prefix, out, visited);
-            }
-            for _ in 0..layers {
-                prefix.pop();
-            }
         }
 
         prefix.pop();
     }
 
-    visited.pop();
+    pous.pop();
 }
 
 /// Every member declared `AT %I*`, `%Q*` or `%M*` an instance of `pou`
@@ -638,7 +630,14 @@ pub fn type_default_inits<'db>(
     ty: crate::hir_ty::ty::Type<'db>,
 ) -> Vec<InstanceInit<'db>> {
     let mut out = Vec::new();
-    collect_type_defaults(db, ty, &mut Vec::new(), &mut out, &mut Vec::new());
+    collect_type_defaults(
+        db,
+        ty,
+        &mut Vec::new(),
+        &mut out,
+        &mut Vec::new(),
+        &mut Vec::new(),
+    );
     out
 }
 
@@ -648,7 +647,9 @@ fn collect_type_defaults<'db>(
     prefix: &mut Vec<InstanceInitStep>,
     out: &mut Vec<InstanceInit<'db>>,
     visited: &mut Vec<crate::hir_def::pous::data_type::DataType<'db>>,
+    pous: &mut Vec<Pou<'db>>,
 ) {
+    use crate::hir_ty::infer::const_eval::{enum_ordinals, subrange_bounds};
     use crate::hir_ty::ty::Type;
     match ty {
         Type::DataType(dt) => {
@@ -662,11 +663,11 @@ fn collect_type_defaults<'db>(
             // stores win, so `TYPE Origin : Point := (x := 7)` keeps Point's
             // `y := 1.5`. Taking the alias's init alone erased every member
             // it did not name.
-            collect_type_defaults(db, dt.spec(db).infer(db), prefix, out, visited);
+            collect_type_defaults(db, dt.spec(db).infer(db), prefix, out, visited, pous);
             if let Some(init) = dt.init(db) {
                 out.push(InstanceInit {
                     path: prefix.clone(),
-                    init,
+                    init: InitValue::Written(init),
                 });
             }
             visited.pop();
@@ -677,11 +678,11 @@ fn collect_type_defaults<'db>(
                 // The element type's own defaults first, the element's
                 // explicit default after — later stores win, so a partial
                 // struct-typed default overlays instead of erasing.
-                collect_type_defaults(db, element.spec(db).infer(db), prefix, out, visited);
+                collect_type_defaults(db, element.spec(db).infer(db), prefix, out, visited, pous);
                 if let Some(init) = element.init(db) {
                     out.push(InstanceInit {
                         path: prefix.clone(),
-                        init,
+                        init: InitValue::Written(init),
                     });
                 }
                 prefix.pop();
@@ -689,8 +690,37 @@ fn collect_type_defaults<'db>(
         }
         Type::Array(array) => {
             prefix.push(InstanceInitStep::AllElements);
-            collect_type_defaults(db, array.of_type(db).infer(db), prefix, out, visited);
+            collect_type_defaults(db, array.of_type(db).infer(db), prefix, out, visited, pous);
             prefix.pop();
+        }
+        // An instance starts from its members' defaults, wherever it is held:
+        // a variable, a member, an array element, a STRUCT field.
+        Type::FunctionBlock(_) | Type::Class(_) => {
+            if let Some(pou) = pou_of_type(db, ty) {
+                collect_instance_initializers(db, pou, prefix, out, pous);
+            }
+        }
+        // IEC 61131-3: an enumerated type starts at its first value...
+        Type::Enum(enm) => {
+            if let Some((_, Some(first))) = enum_ordinals(db, enm).first()
+                && *first != 0
+            {
+                out.push(InstanceInit {
+                    path: prefix.clone(),
+                    init: InitValue::Implied(*first),
+                });
+            }
+        }
+        // ...and a subrange at its lower limit, 0 being outside some.
+        Type::SubRange(subrange) => {
+            if let (Some(lower), _) = subrange_bounds(db, subrange)
+                && lower != 0
+            {
+                out.push(InstanceInit {
+                    path: prefix.clone(),
+                    init: InitValue::Implied(lower),
+                });
+            }
         }
         _ => {}
     }

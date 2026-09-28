@@ -9,6 +9,8 @@ TYPE
 END_TYPE
 ```
 
+Without a default, a variable starts at the first value: `Red` for a `Color`.
+
 A value is always written with its type: `Color#Green`.
 A bare `Green` is `E0201`, in expressions, initializers and `CASE` labels alike.
 
