@@ -57,6 +57,17 @@ pub fn check_duplicate_pous<'db>(
 ) {
     let own_file = pou.get_scope_id(db).file(db);
     let own_is_library = is_library_file(db, own_file);
+    // A PROGRAM is a POU too; its side reports in `check_duplicate_programs`.
+    if !own_is_library && let Some(program) = program_index(db, pou.get_name_ident(db)) {
+        errors.push(
+            DuplicateError::ProgramPou {
+                program,
+                pou,
+                at_program: false,
+            }
+            .to_diagnostic(db, own_file),
+        );
+    }
     let mut canonical = false;
     for other in pou_candidates(db, pou.get_name_ident(db)) {
         if other == pou {
@@ -115,6 +126,28 @@ pub fn check_duplicate_programs<'db>(
             .to_diagnostic(db, program.get_scope_id(db).file(db)),
         )
     };
+
+    // Another POU of its name: a FUNCTION the configuration would resolve
+    // instead, or an FB whose body shares the program body's symbol. Both
+    // sides report; this one points at the smallest other by (file URL,
+    // span), so the message reads the same on every run.
+    let mut pous = pou_candidates(db, program.get_name_ident(db));
+    pous.sort_by_key(|p| {
+        (
+            p.get_scope_id(db).file(db).url(db).to_string(),
+            p.get_name_span(db).start_byte,
+        )
+    });
+    if let Some(pou) = pous.first() {
+        errors.push(
+            DuplicateError::ProgramPou {
+                program,
+                pou: *pou,
+                at_program: true,
+            }
+            .to_diagnostic(db, program.get_scope_id(db).file(db)),
+        );
+    }
 }
 
 /// A workspace declares one CONFIGURATION (E1402 otherwise).

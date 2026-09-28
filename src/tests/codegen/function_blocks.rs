@@ -276,9 +276,9 @@ fn test_st_super_method_call(mut with_db: db::RootDatabase) {
 }
 
 /// Phase B: an interface `VAR_IN_OUT` parameter is monomorphized per concrete
-/// implementer. `drive(dev := w)` specializes `drive` to `drive$Worker` and
+/// implementer. `drive(dev := w)` specializes `drive` to `drive$@Worker` and
 /// lowers `dev.Run()` to a direct `Worker#Run`; `drive(dev := h)` specializes to
-/// `drive$Heater` → `Heater#Run`. Distinct results (10 vs 20) prove genuine
+/// `drive$@Heater` → `Heater#Run`. Distinct results (10 vs 20) prove genuine
 /// per-concrete dispatch — a shared/wrong `this` or a single collapsed
 /// specialization could not yield both.
 #[rstest]
@@ -1402,7 +1402,7 @@ fn test_st_function_interface_forwards_to_method(mut with_db: db::RootDatabase) 
 /// a value used to refuse this — a self-reference is a value, and the coercion
 /// at the call site is what decides it fits.
 ///
-/// Each `Go` specializes `drive` to `drive$Worker` and reaches `Worker#Run` on
+/// Each `Go` specializes `drive` to `drive$@Worker` and reaches `Worker#Run` on
 /// the SAME instance, so `n` advances across both calls: 1 then 2.
 #[rstest]
 fn test_fb_passes_this_to_interface_param(mut with_db: db::RootDatabase) {
@@ -1432,7 +1432,7 @@ fn test_fb_passes_this_to_interface_param(mut with_db: db::RootDatabase) {
     let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(
         result, 12,
-        "THIS reaches drive$Worker -> Worker#Run on the same instance"
+        "THIS reaches drive$@Worker -> Worker#Run on the same instance"
     );
 }
 
@@ -1647,5 +1647,105 @@ fn written_input_persists_when_the_next_call_omits_it(mut with_db: db::RootDatab
     assert_eq!(
         result, 11,
         "supplied input overwrites; omitted input persists"
+    );
+}
+
+/// Bug 2: a member and a METHOD share a name, as CODESYS and TwinCAT allow.
+/// Inside the POU the name is the member (`step()` calls the Inner
+/// instance); from outside the method, since a VAR is the POU's own there.
+#[rstest]
+fn a_member_and_a_method_may_share_a_name(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Inner
+        VAR_OUTPUT n : INT; END_VAR
+            n := n + 1;
+        END_FUNCTION_BLOCK
+
+        FUNCTION_BLOCK Outer
+        VAR_OUTPUT got : INT; END_VAR
+        VAR
+            step : Inner;
+        END_VAR
+            METHOD PUBLIC STEP
+                step();
+                got := step.n;
+            END_METHOD
+        END_FUNCTION_BLOCK
+
+        FUNCTION test : INT
+        VAR o : Outer; END_VAR
+            o.STEP();
+            o.STEP();
+            test := o.got;
+        END_FUNCTION
+    "#;
+    let r: i32 = super::run(&mut with_db, source, "test", ());
+    assert_eq!(
+        r, 2,
+        "o.STEP() ran the method, which called the Inner member"
+    );
+}
+
+/// A METHOD's result is one of its own variables: it comes before a member
+/// of its name, which `THIS` reaches.
+#[rstest]
+fn a_method_result_comes_before_a_member_of_its_name(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Inner
+        VAR_OUTPUT n : INT; END_VAR
+            n := n + 1;
+        END_FUNCTION_BLOCK
+
+        FUNCTION_BLOCK Outer
+        VAR
+            step : Inner;
+        END_VAR
+            METHOD PUBLIC STEP : INT
+                THIS.step();
+                STEP := THIS.step.n + 10;
+            END_METHOD
+        END_FUNCTION_BLOCK
+
+        FUNCTION test : INT
+        VAR o : Outer; END_VAR
+            test := o.STEP();
+            test := test * 100 + o.STEP();
+        END_FUNCTION
+    "#;
+    let r: i32 = super::run(&mut with_db, source, "test", ());
+    assert_eq!(r, 1112, "11, then 12");
+}
+
+/// Across EXTENDS: the derived POU's variable is the name inside it, the
+/// inherited method is the name from outside.
+#[rstest]
+fn an_inherited_method_and_a_variable_share_a_name(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Base
+            METHOD PUBLIC Run : INT
+                Run := 7;
+            END_METHOD
+        END_FUNCTION_BLOCK
+
+        FUNCTION_BLOCK Derived EXTENDS Base
+        VAR_OUTPUT seen : INT; END_VAR
+        VAR
+            run : INT;
+        END_VAR
+            run := run + 1;
+            seen := run;
+        END_FUNCTION_BLOCK
+
+        FUNCTION test : INT
+        VAR d : Derived; END_VAR
+            d();
+            d();
+            test := d.seen * 100 + d.Run();
+        END_FUNCTION
+    "#;
+    let r: i32 = super::run(&mut with_db, source, "test", ());
+    assert_eq!(
+        r, 207,
+        "the body counted `run` twice; d.Run() ran the method"
     );
 }

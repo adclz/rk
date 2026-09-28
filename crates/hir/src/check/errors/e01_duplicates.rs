@@ -76,10 +76,26 @@ pub enum DuplicateError<'db> {
         prog1: ProgramDecl<'db>,
         prog2: ProgramDecl<'db>,
     },
+    /// A PROGRAM and another POU of the same name: a configuration naming it
+    /// could reach either, and an FB's body would share the program body's
+    /// symbol. Reported at both, at the PROGRAM when `at_program`.
+    ProgramPou {
+        program: ProgramDecl<'db>,
+        pou: Pou<'db>,
+        at_program: bool,
+    },
     /// Duplicate PROGRAM instance name within the same configuration or resource scope.
     ProgInstance {
         prog1: SpanIdent<'db>,
         prog2: SpanIdent<'db>,
+    },
+    /// A program instance and a VAR_GLOBAL of the configuration share a
+    /// name, which both root a path in the debug symbols. Reported at both,
+    /// at the instance when `at_instance`.
+    InstanceGlobal {
+        instance: SpanIdent<'db>,
+        global: VariableDecl<'db>,
+        at_instance: bool,
     },
     /// Duplicate TASK name within the same configuration or resource scope.
     Task {
@@ -98,6 +114,7 @@ impl<'db> ErrorCode for DuplicateError<'db> {
         match self {
             Self::Variable { .. } => "E0101",
             Self::Pou { .. } => "E0102",
+            Self::ProgramPou { .. } => "E0102",
             Self::Parameter { .. } => "E0103",
             Self::StructField { .. } => "E0104",
             Self::EnumVariant { .. } => "E0105",
@@ -109,6 +126,7 @@ impl<'db> ErrorCode for DuplicateError<'db> {
             Self::Using { .. } => "E0111",
             Self::Program { .. } => "E0112",
             Self::ProgInstance { .. } => "E0113",
+            Self::InstanceGlobal { .. } => "E0113",
             Self::Task { .. } => "E0114",
             Self::Resource { .. } => "E0115",
         }
@@ -118,6 +136,7 @@ impl<'db> ErrorCode for DuplicateError<'db> {
         match self {
             Self::Variable { .. } => "duplicate definitions",
             Self::Pou { .. } => "duplicate definitions",
+            Self::ProgramPou { .. } => "duplicate definitions",
             Self::Parameter { .. } => "duplicate definitions",
             Self::StructField { .. } => "duplicate definitions",
             Self::EnumVariant { .. } => "duplicate definitions",
@@ -129,6 +148,7 @@ impl<'db> ErrorCode for DuplicateError<'db> {
             Self::Using { .. } => "duplicate definitions",
             Self::Program { .. } => "duplicate definitions",
             Self::ProgInstance { .. } => "duplicate definitions",
+            Self::InstanceGlobal { .. } => "duplicate definitions",
             Self::Task { .. } => "duplicate definitions",
             Self::Resource { .. } => "duplicate definitions",
         }
@@ -188,6 +208,37 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
                     pou2.get_name_span(db),
                 ));
 
+                diag
+            }
+            Self::ProgramPou {
+                program,
+                pou,
+                at_program,
+            } => {
+                let name = program.get_name_ident(db).text(db);
+                let (span, other_file, other_span) = match at_program {
+                    true => (
+                        program.get_name_span(db),
+                        pou.get_scope_id(db).file(db),
+                        pou.get_name_span(db),
+                    ),
+                    false => (
+                        pou.get_name_span(db),
+                        program.get_scope_id(db).file(db),
+                        program.get_name_span(db),
+                    ),
+                };
+                let mut diag = diag()
+                    .message(format!("duplicate POU '{name}'"))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &span).unwrap_or_default())
+                    .call();
+                diag.with_related(Related::new(
+                    format!("POU '{name}' is also defined here"),
+                    other_file,
+                    other_span,
+                ));
                 diag
             }
             Self::Parameter {
@@ -436,6 +487,47 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
                     prog2.get_span(db),
                 ));
 
+                diag
+            }
+            Self::InstanceGlobal {
+                instance,
+                global,
+                at_instance,
+            } => {
+                let name = instance.ident.text(db);
+                let (message, span, related) = match at_instance {
+                    true => (
+                        format!("program instance '{name}' has the name of a VAR_GLOBAL"),
+                        instance.get_span(db),
+                        Related::new(
+                            format!(
+                                "VAR_GLOBAL '{}' is declared here",
+                                global.get_name_ident(db).text(db)
+                            ),
+                            global.get_scope_id(db).file(db),
+                            global.get_name_span(db),
+                        ),
+                    ),
+                    false => (
+                        format!(
+                            "VAR_GLOBAL '{}' has the name of a program instance",
+                            global.get_name_ident(db).text(db)
+                        ),
+                        global.get_name_span(db),
+                        Related::new(
+                            format!("program instance '{name}' is declared here"),
+                            instance.get_scope_id(db).file(db),
+                            instance.get_span(db),
+                        ),
+                    ),
+                };
+                let mut diag = diag()
+                    .message(message)
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &span).unwrap_or_default())
+                    .call();
+                diag.with_related(related);
                 diag
             }
             Self::Task { task1, task2 } => {

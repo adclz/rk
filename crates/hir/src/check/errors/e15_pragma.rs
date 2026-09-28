@@ -59,13 +59,18 @@ pub enum ExportForbiddenKind {
     /// A `{test}` FUNCTION is exported for the runner, and only in a debug
     /// build. A second export under the same name is an invalid module.
     Test,
-    /// One copy per implementation it is called with (`drive$Worker`).
+    /// One copy per implementation it is called with (`drive$@Worker`).
     InterfaceParam,
     /// One copy per arity it is called with (`sum_all$3`).
     Variadic,
-    /// The symbol carries the signature (`SHL$Byte`), and a host finds an
+    /// The symbol carries the signature (`SHL$BYTE`), and a host finds an
     /// export by its name.
     Overloaded,
+    /// Named like an export the module makes for the host
+    /// ([`MODULE_EXPORTS`]): the module would export the name twice.
+    ///
+    /// [`MODULE_EXPORTS`]: crate::hir_def::pous::pragma::MODULE_EXPORTS
+    Reserved,
 }
 
 impl ExportForbiddenKind {
@@ -76,6 +81,7 @@ impl ExportForbiddenKind {
             Self::InterfaceParam => "takes an interface",
             Self::Variadic => "is variadic",
             Self::Overloaded => "is overloaded",
+            Self::Reserved => "has the name of an export the module makes",
         }
     }
 
@@ -93,6 +99,9 @@ impl ExportForbiddenKind {
             }
             Self::Overloaded => {
                 "an export is found by its name, and this name belongs to several FUNCTIONs"
+            }
+            Self::Reserved => {
+                "the module exports `__init`, `memory`, and the base and size of each memory band under these names, for the host"
             }
         }
     }

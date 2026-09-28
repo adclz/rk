@@ -94,7 +94,7 @@ fn test_st_array_of_class_instances(mut with_db: db::RootDatabase) {
 
 /// A CLASS as an interface implementer, monomorphized exactly like an FB:
 /// `drive(dev := w)` (w : Worker, a class implementing IWork) specializes `drive`
-/// to `drive$Worker` and lowers `dev.Run()` to a direct `Worker#Run`. The shared
+/// to `drive$@Worker` and lowers `dev.Run()` to a direct `Worker#Run`. The shared
 /// instance's `n` advances across the two specialized calls, so the second call
 /// returns 2.
 #[rstest]
@@ -123,7 +123,7 @@ fn test_st_class_interface_param(mut with_db: db::RootDatabase) {
     let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(
         result, 2,
-        "class interface implementer specializes to drive$Worker -> Worker#Run"
+        "class interface implementer specializes to drive$@Worker -> Worker#Run"
     );
 }
 

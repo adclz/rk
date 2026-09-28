@@ -696,7 +696,7 @@ END_FUNCTION
 }
 
 /// One declaration the lowering turns into several functions has no single
-/// export to give: `drive$Worker`, `sum_all$3`.
+/// export to give: `drive$@Worker`, `sum_all$3`.
 #[rstest]
 fn invalid_export_on_a_function_lowered_more_than_once(mut with_db: RootDatabase) {
     let source = r#"
@@ -738,7 +738,7 @@ END_FUNCTION
     ");
 }
 
-/// An overloaded FUNCTION's symbol carries its signature (`Twice$Int`), and a
+/// An overloaded FUNCTION's symbol carries its signature (`Twice$INT`), and a
 /// host finds an export by its name. Only the marked overload is refused.
 #[rstest]
 fn invalid_export_on_an_overloaded_function(mut with_db: RootDatabase) {
@@ -765,4 +765,62 @@ END_FUNCTION
        | Note: an export is found by its name, and this name belongs to several FUNCTIONs
     ---'
     ");
+}
+
+/// A FUNCTION exported under a name the module exports itself would make a
+/// module with two exports of that name, which does not load.
+#[rstest]
+fn export_named_like_a_module_export_is_refused(mut with_db: RootDatabase) {
+    let source = r#"
+{export}
+FUNCTION memory : INT
+    memory := 1;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1509] Error: this FUNCTION cannot be exported
+       ,-[ file:///test0.st:2:1 ]
+       |
+     2 | {export}
+       | ^^^^|^^^
+       |     `----- 'memory' cannot be exported: it has the name of an export the module makes
+       |
+       | Note: the module exports `__init`, `memory`, and the base and size of each memory band under these names, for the host
+    ---'
+    ");
+}
+
+/// A `{test}` is exported under its name in a debug build.
+#[rstest]
+fn test_named_like_a_module_export_is_refused(mut with_db: RootDatabase) {
+    let source = r#"
+{test}
+FUNCTION __init
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1509] Error: this FUNCTION cannot be exported
+       ,-[ file:///test0.st:2:1 ]
+       |
+     2 | {test}
+       | ^^^|^^
+       |    `---- '__init' cannot be exported: it has the name of an export the module makes
+       |
+       | Note: the module exports `__init`, `memory`, and the base and size of each memory band under these names, for the host
+    ---'
+    ");
+}
+
+/// In a namespace the export is `Io.memory`, which the module does not use.
+#[rstest]
+fn export_in_a_namespace_may_take_a_module_export_name(mut with_db: RootDatabase) {
+    let source = r#"
+NAMESPACE Io
+    {export}
+    FUNCTION memory : INT
+        memory := 1;
+    END_FUNCTION
+END_NAMESPACE
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }

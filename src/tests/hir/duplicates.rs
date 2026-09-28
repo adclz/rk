@@ -609,3 +609,142 @@ END_CONFIGURATION
     ---'
     ");
 }
+
+// A PROGRAM is a POU: an FB of its name would share its body's symbol. Both
+// declarations report.
+#[rstest]
+fn program_named_like_a_function_block(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK Main
+VAR x : INT; END_VAR
+END_FUNCTION_BLOCK
+
+PROGRAM Main
+VAR n : INT; END_VAR
+END_PROGRAM
+"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0102] Error: duplicate definitions
+       ,-[ file:///test0.st:2:16 ]
+       |
+     2 | FUNCTION_BLOCK Main
+       |                ^^|^
+       |                  `--- duplicate POU 'Main'
+       |
+     6 | PROGRAM Main
+       |         ^^|^
+       |           `--- POU 'Main' is also defined here
+    ---'
+    [E0102] Error: duplicate definitions
+       ,-[ file:///test0.st:6:9 ]
+       |
+     2 | FUNCTION_BLOCK Main
+       |                ^^|^
+       |                  `--- POU 'Main' is also defined here
+       |
+     6 | PROGRAM Main
+       |         ^^|^
+       |           `--- duplicate POU 'Main'
+    ---'
+    ");
+}
+
+// The configuration naming `Main` resolved to the FUNCTION.
+#[rstest]
+fn program_named_like_a_function(mut with_db: RootDatabase) {
+    let source = r#"
+PROGRAM Main
+VAR n : INT; END_VAR
+    n := n + 1;
+END_PROGRAM
+
+FUNCTION Main : INT
+    Main := 5;
+END_FUNCTION
+
+CONFIGURATION Plant
+    RESOURCE R ON CPU
+        TASK Fast(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM P1 WITH Fast : Main;
+    END_RESOURCE
+END_CONFIGURATION
+"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0102] Error: duplicate definitions
+       ,-[ file:///test0.st:7:10 ]
+       |
+     2 | PROGRAM Main
+       |         ^^|^
+       |           `--- POU 'Main' is also defined here
+       |
+     7 | FUNCTION Main : INT
+       |          ^^|^
+       |            `--- duplicate POU 'Main'
+    ---'
+    [E0102] Error: duplicate definitions
+       ,-[ file:///test0.st:2:9 ]
+       |
+     2 | PROGRAM Main
+       |         ^^|^
+       |           `--- duplicate POU 'Main'
+       |
+     7 | FUNCTION Main : INT
+       |          ^^|^
+       |            `--- POU 'Main' is also defined here
+    ---'
+    [E0316] Error: invalid type
+        ,-[ file:///test0.st:14:32 ]
+        |
+     14 |         PROGRAM P1 WITH Fast : Main;
+        |                                ^^|^
+        |                                  `--- 'Main' is a function and cannot be used as a variable or data type
+    ----'
+    ");
+}
+
+// Both root a path in the debug symbols: `Run` was two entries.
+#[rstest]
+fn program_instance_named_like_a_global(mut with_db: RootDatabase) {
+    let source = r#"
+PROGRAM P
+VAR x : INT; END_VAR
+END_PROGRAM
+
+CONFIGURATION Cfg
+VAR_GLOBAL
+    Run : INT;
+END_VAR
+    RESOURCE R ON CPU
+        TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM Run WITH T : P;
+    END_RESOURCE
+END_CONFIGURATION
+"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0113] Error: duplicate definitions
+        ,-[ file:///test0.st:12:17 ]
+        |
+      8 |     Run : INT;
+        |     ^|^
+        |      `--- VAR_GLOBAL 'Run' is declared here
+        |
+     12 |         PROGRAM Run WITH T : P;
+        |                 ^|^
+        |                  `--- program instance 'Run' has the name of a VAR_GLOBAL
+    ----'
+    [E0113] Error: duplicate definitions
+        ,-[ file:///test0.st:8:5 ]
+        |
+      8 |     Run : INT;
+        |     ^|^
+        |      `--- VAR_GLOBAL 'Run' has the name of a program instance
+        |
+     12 |         PROGRAM Run WITH T : P;
+        |                 ^|^
+        |                  `--- program instance 'Run' is declared here
+    ----'
+    ");
+}

@@ -2066,3 +2066,41 @@ fn an_address_without_a_width_letter_is_a_bit(mut with_db: db::RootDatabase) {
     );
     assert_eq!(lamps, 0b1001);
 }
+
+/// The names the module exports for the host are the ones HIR reserves
+/// (`MODULE_EXPORTS`, E1509): with every band in use, every export that is
+/// not a body (`P$__body__`) is on the list, and the list has nothing else.
+#[rstest]
+fn the_module_exports_what_hir_reserves(mut with_db: db::RootDatabase) {
+    let source = r#"
+        PROGRAM P
+        VAR_EXTERNAL i1 : INT; q1 : INT; m1 : INT; g : INT; END_VAR
+        VAR RETAIN n : INT; END_VAR
+            q1 := i1 + m1 + g + n;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+        VAR_GLOBAL
+            i1 AT %IW0 : INT;
+            q1 AT %QW0 : INT;
+            m1 AT %MW0 : INT;
+            g : INT := 1;
+        END_VAR
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let wasm = crate::tests::codegen::compile_to_wasm_as_built(&mut with_db, source);
+    let module = wasmtime::Module::new(&crate::tests::codegen::test_engine(), &wasm).unwrap();
+    let mut exported: Vec<&str> = module
+        .exports()
+        .map(|e| e.name())
+        .filter(|n| !n.contains('$'))
+        .collect();
+    exported.sort();
+    let mut reserved = hir::hir_def::pous::pragma::MODULE_EXPORTS.to_vec();
+    reserved.sort();
+    assert_eq!(exported, reserved);
+}

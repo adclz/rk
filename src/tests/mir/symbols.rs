@@ -3,6 +3,7 @@
 //! would still meet on one.
 
 use db::RootDatabase;
+use hir::check::diagnostics_for_file;
 use hir::hir_def::semantic_index::semantic_index;
 use insta::assert_snapshot;
 use rstest::rstest;
@@ -182,17 +183,22 @@ fn a_function_named_init_keeps_its_symbol(mut with_db: RootDatabase) {
 }
 
 // What is still left to collide stops lowering rather than lets a call run
-// another body. A PROGRAM and a FUNCTION_BLOCK of one name are not refused at
-// check yet, and both bodies are `Main$__body__`.
+// another body. Two overloads declaring the same inline type are not refused
+// at check yet (their types differ by declaration), and both are
+// `Which$ARRAY[0..4](INT)`.
 #[rstest]
 fn two_functions_under_one_symbol_stop_lowering(mut with_db: RootDatabase) {
     let source = r#"
-        FUNCTION_BLOCK Main VAR x : INT; END_VAR x := x + 1; END_FUNCTION_BLOCK
-        PROGRAM Main VAR n : INT; END_VAR n := n + 1; END_PROGRAM
+        FUNCTION Which : INT VAR_INPUT v : ARRAY[0..4] OF INT; END_VAR Which := 1; END_FUNCTION
+        FUNCTION Which : INT VAR_INPUT v : ARRAY[0..4] OF INT; END_VAR Which := 2; END_FUNCTION
     "#;
     let file = add_source(&mut with_db, source);
+    assert!(
+        diagnostics_for_file(&with_db, file).is_empty(),
+        "rk check accepts it"
+    );
     let error = mir::lower::lower_module::lower_module(&with_db, semantic_index(&with_db, file))
         .map(|_| ())
         .expect_err("two bodies under one symbol");
-    assert_snapshot!(error, @"two functions lower to the symbol `Main$__body__`");
+    assert_snapshot!(error, @"two functions lower to the symbol `Which$ARRAY[0..4](INT)`");
 }

@@ -86,6 +86,8 @@ END_FUNCTION_BLOCK
 - `THIS` reaches the instance's variables and methods, and `THIS.Method()` calls the instance's version.
 - `SUPER.Method()` calls the base's version, even when the instance overrides it.
 - An inherited variable needs no prefix: `SUPER.someVar` is `E0202`.
+- A variable and a method may share a name, as in CODESYS and TwinCAT, and `L0120` warns. Inside the block the name is the variable, `THIS` included; from outside, a `VAR` of that name gives way to the method.
+- Inside a method, its own name is its result, before any member of that name.
 
 ## SUPER()
 

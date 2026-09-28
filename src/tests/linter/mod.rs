@@ -46,5 +46,6 @@ mod unnecessary_parens;
 mod unused_import;
 mod unused_return_type;
 mod unused_variable;
+mod variable_method_name;
 mod warn_pragma;
 mod yoda_condition;
