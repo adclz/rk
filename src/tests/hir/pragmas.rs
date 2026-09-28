@@ -696,7 +696,7 @@ END_FUNCTION
 }
 
 /// One declaration the lowering turns into several functions has no single
-/// export to give: `drive$Worker`, `sum_all$3`.
+/// export to give: `drive$@Worker`, `sum_all$3`.
 #[rstest]
 fn invalid_export_on_a_function_lowered_more_than_once(mut with_db: RootDatabase) {
     let source = r#"
@@ -738,7 +738,7 @@ END_FUNCTION
     ");
 }
 
-/// An overloaded FUNCTION's symbol carries its signature (`Twice$Int`), and a
+/// An overloaded FUNCTION's symbol carries its signature (`Twice$INT`), and a
 /// host finds an export by its name. Only the marked overload is refused.
 #[rstest]
 fn invalid_export_on_an_overloaded_function(mut with_db: RootDatabase) {
