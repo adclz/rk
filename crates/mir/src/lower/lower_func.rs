@@ -1292,7 +1292,8 @@ fn mark_inout_call_args<'db>(
 
 /// The statements that give a POU's own locals their declared starting
 /// values: the type's defaults first, then the declaration's own
-/// initializer or, failing that, the initializers its members declare.
+/// initializer or, failing that, the initializers its members declare. A
+/// VAR_EXTERNAL is the global's own storage, initialized once in `__init`.
 fn lower_local_init_stmts<'db>(
     db: &'db dyn WorkspaceDataBase,
     vars: &[hir::hir_def::pous::variable::VariableDecl<'db>],
@@ -1301,7 +1302,10 @@ fn lower_local_init_stmts<'db>(
     let mut init_stmts = Vec::new();
     for var in vars {
         match var.kind(db) {
-            VariableKind::Input | VariableKind::InOut | VariableKind::Output => continue,
+            VariableKind::Input
+            | VariableKind::InOut
+            | VariableKind::Output
+            | VariableKind::External => continue,
             _ => {}
         }
         let var_ty = lower_var_type(db, *var)?;
