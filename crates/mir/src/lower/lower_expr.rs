@@ -558,7 +558,7 @@ impl<'db> ExprLowerCtx<'db> {
     }
 
     /// Lower an expression and insert a cast to the target type if needed.
-    fn lower_expr_with_cast(
+    pub(crate) fn lower_expr_with_cast(
         &self,
         expr: Expr<'db>,
         target: MirElementary,
@@ -1360,7 +1360,8 @@ impl<'db> ExprLowerCtx<'db> {
             let index = self.lower_expr(*sub)?;
             let (element_type, element_size, lower_bound, dim_size) =
                 self.resolve_array_dim_info(array_hir_type, base_dim + k)?;
-            let index = self.checked_index(index, lower_bound, dim_size);
+            let lane = self.expr_to_mir_elementary(*sub).ok();
+            let index = self.checked_index(index, lane, lower_bound, dim_size);
             place = MirPlace::Index {
                 base: Box::new(place),
                 index: Box::new(index),
@@ -1411,20 +1412,43 @@ impl<'db> ExprLowerCtx<'db> {
     }
 
     /// Wrap a runtime subscript in `rk.idx_check`, which raises "array index
-    /// out of bounds" when it leaves `[lower, lower + size)`. A constant in
-    /// bounds stays bare (a literal subscript on a function-block receiver
-    /// must stay foldable); a constant out of bounds is wrapped like a
-    /// runtime value.
-    fn checked_index(&self, index: MirExpr, lower_bound: i64, dim_size: u32) -> MirExpr {
+    /// out of bounds" when it leaves `[lower, lower + size)`, and yields it
+    /// as the i32 an address is computed from. A constant in bounds stays
+    /// bare (a literal subscript on a function-block receiver must stay
+    /// foldable); a constant out of bounds is wrapped like a runtime value.
+    ///
+    /// A subscript whose `lane` an i32 does not hold, 64-bit or an unsigned
+    /// 32-bit one past 2^31, is checked at 64 bits by `rk.idx_check_i64`.
+    fn checked_index(
+        &self,
+        index: MirExpr,
+        lane: Option<MirElementary>,
+        lower_bound: i64,
+        dim_size: u32,
+    ) -> MirExpr {
         if let MirExpr::Constant(MirConstant::I32(k)) = &index {
             let u = (*k as i64).wrapping_sub(lower_bound);
             if u >= 0 && (u as u64) < dim_size as u64 {
                 return index;
             }
         }
+        let wide = lane.filter(|l| l.is_64bit() || (!l.is_signed() && l.rk_bits() == 32));
+        let (callee, index, lower) = match wide {
+            Some(MirElementary::LInt) => ("rk.idx_check_i64", index, MirConstant::I64(lower_bound)),
+            Some(lane) => (
+                "rk.idx_check_i64",
+                MirExpr::Cast {
+                    expr: Box::new(index),
+                    from: lane,
+                    to: MirElementary::LInt,
+                },
+                MirConstant::I64(lower_bound),
+            ),
+            None => ("rk.idx_check", index, MirConstant::I32(lower_bound as i32)),
+        };
         let callee = hir::hir_def::interned::identifier::Ident::new(
             self.db,
-            compact_str::CompactString::from("rk.idx_check"),
+            compact_str::CompactString::from(callee),
         );
         MirExpr::Call(crate::expr::MirCall {
             callee,
@@ -1437,7 +1461,7 @@ impl<'db> ExprLowerCtx<'db> {
                     kind: crate::expr::MirArgKind::ByValue,
                 },
                 crate::expr::MirCallArg {
-                    value: MirExpr::Constant(MirConstant::I32(lower_bound as i32)),
+                    value: MirExpr::Constant(lower),
                     kind: crate::expr::MirArgKind::ByValue,
                 },
                 crate::expr::MirCallArg {
@@ -2536,10 +2560,13 @@ impl<'db> ExprLowerCtx<'db> {
         )
     }
 
+    /// One CASE label as a pattern on `selector`, whose type is `lane` (none
+    /// for a STRING).
     pub fn lower_case_kind(
         &self,
         case: &CaseKind<'db>,
         selector: &MirExpr,
+        lane: Option<MirElementary>,
     ) -> Result<MirCasePattern, LowerTypeError> {
         match case {
             // A STRING label compares with `str.byte_cmp`, carried as the arm's own
@@ -2556,12 +2583,13 @@ impl<'db> ExprLowerCtx<'db> {
                     self.lower_expr(*expr)?,
                 )))
             }
-            CaseKind::Expression(expr) => {
-                Ok(MirCasePattern::Value(self.case_label_constant(*expr)?))
-            }
+            CaseKind::Expression(expr) => Ok(MirCasePattern::Value(
+                self.case_label_constant(*expr, lane)?,
+            )),
             CaseKind::Subrange { lower, upper } => Ok(MirCasePattern::Range {
-                lower: self.case_label_constant(*lower)?,
-                upper: self.case_label_constant(*upper)?,
+                lower: self.case_label_constant(*lower, lane)?,
+                upper: self.case_label_constant(*upper, lane)?,
+                signed: lane.is_none_or(MirElementary::is_signed),
             }),
         }
     }
@@ -2572,25 +2600,38 @@ impl<'db> ExprLowerCtx<'db> {
     }
 
     /// One CASE label's value, as HIR evaluated it (`case_label_value`; E1205
-    /// refused labels without one). An enum label's value is its variant's
-    /// ordinal.
+    /// refused labels without one), at the width of the selector's `lane`: an
+    /// INT constant on a LINT selector is a 64-bit label. An enum label's
+    /// value is its variant's ordinal.
     fn case_label_constant(
         &self,
         label: hir::hir_def::expressions::expression::Expr<'db>,
+        lane: Option<MirElementary>,
     ) -> Result<MirConstant, LowerTypeError> {
+        let wide = match lane {
+            Some(lane) => lane.is_64bit(),
+            None => self
+                .expr_to_mir_elementary(label)
+                .is_ok_and(MirElementary::is_64bit),
+        };
         let body = hir::hir_ty::body::infer_body(self.db, label.scope_id(self.db));
         // Only the integer domain becomes a scalar constant; a string label
         // lowers to its own test.
         if let Some(hir::hir_ty::body::CaseLabelValue::Int(value)) =
             body.case_label_value.get(&label)
         {
-            return Ok(match self.expr_to_mir_elementary(label) {
-                Ok(elem) if elem.size_bytes() == 8 => MirConstant::I64(*value),
-                _ => MirConstant::I32(*value as i32),
+            return Ok(if wide {
+                MirConstant::I64(*value)
+            } else {
+                MirConstant::I32(*value as i32)
             });
         }
         // No recorded value: an enum label.
-        expr_to_constant(&self.lower_expr(label)?)
+        Ok(match (expr_to_constant(&self.lower_expr(label)?)?, wide) {
+            (MirConstant::I32(v), true) => MirConstant::I64(v as i64),
+            (MirConstant::I64(v), false) => MirConstant::I32(v as i32),
+            (c, _) => c,
+        })
     }
 
     /// Public accessor for type_to_mir_elementary (used by lower_stmt).

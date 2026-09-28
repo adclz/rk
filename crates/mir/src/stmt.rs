@@ -182,6 +182,74 @@ impl MirStmt {
     }
 }
 
+impl MirStmt {
+    /// Whether `f` holds for an expression of this statement or of one nested
+    /// in it: every expression, those in subscripts and call arguments
+    /// included ([`MirExpr::any`]).
+    pub fn any_expr<F: FnMut(&MirExpr) -> bool>(&self, f: &mut F) -> bool {
+        fn body<F: FnMut(&MirExpr) -> bool>(b: &[MirStmt], f: &mut F) -> bool {
+            b.iter().any(|s| s.any_expr(f))
+        }
+        match self {
+            MirStmt::Assign { target, value } => target.any_expr(f) || value.any(f),
+            MirStmt::Call(call) => call.any_expr(f),
+            MirStmt::FbCall {
+                instance,
+                input_writes,
+                output_reads,
+                ..
+            } => {
+                instance.any_expr(f)
+                    || input_writes.iter().any(|(_, v, _)| v.any(f))
+                    || output_reads.iter().any(|(_, p, _, _)| p.any_expr(f))
+            }
+            MirStmt::If {
+                condition,
+                then_body,
+                else_ifs,
+                else_body,
+            } => {
+                condition.any(f)
+                    || body(then_body, f)
+                    || else_ifs.iter().any(|(c, b)| c.any(f) || body(b, f))
+                    || else_body.as_deref().is_some_and(|b| body(b, f))
+            }
+            MirStmt::Case {
+                selector,
+                arms,
+                else_body,
+            } => {
+                selector.any(f)
+                    || arms.iter().any(|arm| {
+                        arm.patterns
+                            .iter()
+                            .any(|p| matches!(p, MirCasePattern::Test(t) if t.any(f)))
+                            || body(&arm.body, f)
+                    })
+                    || else_body.as_deref().is_some_and(|b| body(b, f))
+            }
+            MirStmt::For {
+                control,
+                start,
+                end,
+                step,
+                body: b,
+                ..
+            } => control.any_expr(f) || start.any(f) || end.any(f) || step.any(f) || body(b, f),
+            MirStmt::While { condition, body: b } | MirStmt::Repeat { condition, body: b } => {
+                condition.any(f) || body(b, f)
+            }
+            MirStmt::Raise { message } => message.any(f),
+            MirStmt::Return
+            | MirStmt::Exit
+            | MirStmt::Continue
+            | MirStmt::MemStore { .. }
+            | MirStmt::WasmIntrinsic { .. }
+            | MirStmt::DebugTrap { .. } => false,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct MirCaseArm {
     /// Match patterns: single values or ranges.
@@ -193,10 +261,12 @@ pub struct MirCaseArm {
 pub enum MirCasePattern {
     /// Single constant value.
     Value(MirConstant),
-    /// Range: lower..=upper.
+    /// Range: lower..=upper, compared signed or unsigned as the selector's
+    /// type is.
     Range {
         lower: MirConstant,
         upper: MirConstant,
+        signed: bool,
     },
     /// A label whose test is an expression deciding the arm on its own: a
     /// STRING label, whose test is the `str.byte_cmp` an `=` lowers to.

@@ -135,6 +135,11 @@ pub const BUILTINS: &[(&str, &[Lane], &[Lane])] = &[
         &[Lane::I32, Lane::I32, Lane::I32],
         &[Lane::I32],
     ),
+    (
+        "rk.idx_check_i64",
+        &[Lane::I64, Lane::I64, Lane::I32],
+        &[Lane::I32],
+    ),
     ("rk.null_check", &[Lane::I32], &[Lane::I32]),
     ("rk.raise_str", &[Lane::I32, Lane::I32], &[]),
     (

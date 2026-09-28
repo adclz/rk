@@ -223,8 +223,9 @@ fn emit_stmt(func: &mut wasm_encoder::Function, stmt: &MirStmt, ctx: &Ctx) {
             func.instruction(&Instruction::Block(BlockType::Empty));
             open_label(ctx);
 
-            // The comparison lane follows the pattern constant: a 64-bit selector
-            // arrives with I64 constants.
+            // The comparison lane follows the pattern constant, which lowering
+            // gave the selector's width: a 64-bit selector arrives with I64
+            // constants.
             let wide = |c: &mir::expr::MirConstant| matches!(c, mir::expr::MirConstant::I64(_));
             for arm in arms {
                 // Evaluate all patterns and OR them together
@@ -246,26 +247,28 @@ fn emit_stmt(func: &mut wasm_encoder::Function, stmt: &MirStmt, ctx: &Ctx) {
                                 }),
                             );
                         }
-                        MirCasePattern::Range { lower, upper } => {
+                        MirCasePattern::Range {
+                            lower,
+                            upper,
+                            signed,
+                        } => {
                             let w = wide(lower) || wide(upper);
                             emit_expr(func, selector, ctx.locals, ctx.fn_indices);
                             emit_constant_expr(func, lower);
-                            func.instruction(
-                                &(if w {
-                                    Instruction::I64GeS
-                                } else {
-                                    Instruction::I32GeS
-                                }),
-                            );
+                            func.instruction(&match (w, signed) {
+                                (true, true) => Instruction::I64GeS,
+                                (true, false) => Instruction::I64GeU,
+                                (false, true) => Instruction::I32GeS,
+                                (false, false) => Instruction::I32GeU,
+                            });
                             emit_expr(func, selector, ctx.locals, ctx.fn_indices);
                             emit_constant_expr(func, upper);
-                            func.instruction(
-                                &(if w {
-                                    Instruction::I64LeS
-                                } else {
-                                    Instruction::I32LeS
-                                }),
-                            );
+                            func.instruction(&match (w, signed) {
+                                (true, true) => Instruction::I64LeS,
+                                (true, false) => Instruction::I64LeU,
+                                (false, true) => Instruction::I32LeS,
+                                (false, false) => Instruction::I32LeU,
+                            });
                             func.instruction(&Instruction::I32And);
                         }
                     }

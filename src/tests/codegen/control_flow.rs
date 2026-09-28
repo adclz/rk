@@ -1046,3 +1046,79 @@ fn for_step_folding_expression_runs(mut with_db: db::RootDatabase) {
     let r: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(r, 3, "1, 3, 5");
 }
+
+/// A label compares at the selector's width: an INT constant on a LINT
+/// selector is a 64-bit label. It was a 32-bit one, and the module failed
+/// validation.
+#[rstest]
+fn case_labels_compare_at_the_selector_width(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION run : DINT
+        VAR CONSTANT K : INT := 5; N : INT := -5; END_VAR
+        VAR l : LINT := 5; m : LINT := -3; r : DINT; END_VAR
+            CASE l OF
+                K: r := 1;
+            ELSE
+                r := 9;
+            END_CASE;
+            CASE m OF
+                N..K: r := r + 10;
+            END_CASE;
+            run := r;
+        END_FUNCTION
+    "#;
+    let result: i32 = super::run(&mut with_db, source, "run", ());
+    assert_eq!(result, 11, "5 is K, -3 is in N..K");
+}
+
+/// A range on an unsigned selector compares unsigned: 3000000000 is past
+/// 2^31, and a signed comparison read it as negative, so no value was in
+/// 10..3000000000.
+#[rstest]
+fn case_ranges_on_unsigned_selectors_compare_unsigned(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION classify : DINT
+        VAR_INPUT v : UDINT; END_VAR
+            CASE v OF
+                0..9: classify := 1;
+                10..3000000000: classify := 2;
+            ELSE
+                classify := 3;
+            END_CASE;
+        END_FUNCTION
+
+        FUNCTION run : DINT
+        VAR w : DWORD := 2147483648; r : DINT; END_VAR
+            CASE w OF
+                1..4294967295: r := 10000;
+            END_CASE;
+            run := r + classify(UDINT#5) + classify(UDINT#100) * 10
+                 + classify(UDINT#2500000000) * 100 + classify(UDINT#3500000000) * 1000;
+        END_FUNCTION
+    "#;
+    let result: i32 = super::run(&mut with_db, source, "run", ());
+    assert_eq!(
+        result, 13221,
+        "5, 100 and 2500000000 in their ranges, 3500000000 past them"
+    );
+}
+
+/// FOR's bounds convert to the counter's width, as an assignment's value
+/// does: INT and DINT bounds on a LINT counter made an invalid module.
+#[rstest]
+fn for_bounds_convert_to_the_counter_width(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION run : DINT
+        VAR l : LINT; n : INT := 3; s : DINT := -2; c : DINT; END_VAR
+            FOR l := s TO n DO
+                c := c + 1;
+            END_FOR;
+            FOR l := n TO 1 BY -1 DO
+                c := c + 10;
+            END_FOR;
+            run := c;
+        END_FUNCTION
+    "#;
+    let result: i32 = super::run(&mut with_db, source, "run", ());
+    assert_eq!(result, 36, "-2..3 is six turns, 3 down to 1 three");
+}

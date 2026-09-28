@@ -172,6 +172,35 @@ fn alloc_for_scratch(
         .collect()
 }
 
+/// The scratch pairs of the wrapping divisions in `body`
+/// ([`crate::emit_expr::needs_wrapping_div`]).
+fn alloc_div_scratch(
+    body: &[MirStmt],
+    params_len: u32,
+    extra_locals: &mut Vec<(u32, ValType)>,
+) -> crate::emit_expr::DivScratch {
+    let (mut narrow, mut wide) = (false, false);
+    for stmt in body {
+        stmt.any_expr(&mut |e| {
+            if crate::emit_expr::needs_wrapping_div(e) {
+                match e {
+                    MirExpr::BinOp { ty, .. } if ty.is_64bit() => wide = true,
+                    _ => narrow = true,
+                }
+            }
+            narrow && wide
+        });
+    }
+    let mut take = |need: bool, vt: ValType| {
+        need.then(|| {
+            let idx = params_len + extra_locals.iter().map(|(c, _)| *c).sum::<u32>();
+            extra_locals.push((2, vt));
+            (idx, idx + 1)
+        })
+    };
+    (take(narrow, ValType::I32), take(wide, ValType::I64))
+}
+
 fn count_nested_string_calls_stmts(stmts: &[MirStmt]) -> u32 {
     let mut total = 0;
     for stmt in stmts {
@@ -1188,6 +1217,9 @@ impl<'a> WasmGen<'a> {
             None
         };
 
+        // The scratch pairs of a wrapping division (`DIV_TMP`).
+        let div_tmp = alloc_div_scratch(&func.body, params.len() as u32, &mut extra_locals);
+
         // One scratch slot per nested STRING call, past the MIR static layout.
         let scratch_slots: Vec<u32> = (0..nested_str_count)
             .map(|_| self.alloc_scratch_slot())
@@ -1241,6 +1273,7 @@ impl<'a> WasmGen<'a> {
         let prev_floor_tmp =
             crate::mir_cast::DATETIME_FLOOR_TMP.with(|cell| cell.replace(datetime_floor_tmp));
         let prev_addr_tmp = crate::emit_expr::STR_ADDR_TMP.with(|cell| cell.replace(str_addr_tmp));
+        let prev_div_tmp = crate::emit_expr::DIV_TMP.with(|cell| cell.replace(div_tmp));
 
         // Automatic storage is fresh at every invocation: wasm locals are zeroed
         // by the engine, but an aggregate at a fixed address must be reset
@@ -1303,6 +1336,7 @@ impl<'a> WasmGen<'a> {
         SNAPSHOT_CTX.with(|cell| cell.replace(prev_ctx));
         crate::mir_cast::DATETIME_FLOOR_TMP.with(|cell| cell.replace(prev_floor_tmp));
         crate::emit_expr::STR_ADDR_TMP.with(|cell| cell.replace(prev_addr_tmp));
+        crate::emit_expr::DIV_TMP.with(|cell| cell.replace(prev_div_tmp));
 
         // Push return value at function end — the same shapes a mid-body
         // RETURN pushes, from one implementation.
@@ -1405,6 +1439,9 @@ impl<'a> WasmGen<'a> {
             None
         };
 
+        // Wrapping division scratch, as in `emit_function` (no params).
+        let div_tmp = alloc_div_scratch(&func.body, 0, &mut extra_locals);
+
         // Per-call-site STRING snapshot slots for nested STRING-returning
         // calls inside the test body. Same as `emit_function`.
         let nested_str_count = count_nested_string_calls_stmts(&func.body);
@@ -1438,6 +1475,7 @@ impl<'a> WasmGen<'a> {
         let prev_floor_tmp =
             crate::mir_cast::DATETIME_FLOOR_TMP.with(|cell| cell.replace(datetime_floor_tmp));
         let prev_addr_tmp = crate::emit_expr::STR_ADDR_TMP.with(|cell| cell.replace(str_addr_tmp));
+        let prev_div_tmp = crate::emit_expr::DIV_TMP.with(|cell| cell.replace(div_tmp));
 
         let tag_idx = self.rk_exception_tag_idx.expect(
             "rk_exception_tag_idx must be set whenever any function (including tests) is emitted: \
@@ -1479,6 +1517,7 @@ impl<'a> WasmGen<'a> {
         SNAPSHOT_CTX.with(|cell| cell.replace(prev_ctx));
         crate::mir_cast::DATETIME_FLOOR_TMP.with(|cell| cell.replace(prev_floor_tmp));
         crate::emit_expr::STR_ADDR_TMP.with(|cell| cell.replace(prev_addr_tmp));
+        crate::emit_expr::DIV_TMP.with(|cell| cell.replace(prev_div_tmp));
 
         // end try_table — only reached on the success (no-throw) path.
         wasm_func.instruction(&Instruction::End);

@@ -465,6 +465,63 @@ fn integer_division_by_zero_faults(mut with_db: db::RootDatabase) {
     );
 }
 
+/// The one quotient that overflows, a lane's minimum divided by -1, wraps
+/// like every other overflow: it is the minimum again. WebAssembly traps on
+/// it for DINT and LINT; INT, computed wider, already wrapped.
+#[rstest]
+fn the_minimum_divided_by_minus_one_wraps(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION run : DINT
+        VAR
+            a : DINT := -2147483648;
+            b : DINT := -1;
+            l : LINT;
+            m : LINT := -1;
+            i : INT := -32768;
+            j : INT := -1;
+            r : DINT;
+        END_VAR
+            l := -9223372036854775807;
+            l := l - 1;
+            IF a / b = a THEN r := 1; END_IF;
+            IF l / m = l THEN r := r + 10; END_IF;
+            IF i / j = i THEN r := r + 100; END_IF;
+            IF a / 2 = -1073741824 THEN r := r + 1000; END_IF;
+            IF (a / b) / (b / b) = a THEN r := r + 10000; END_IF;
+            run := r;
+        END_FUNCTION
+    "#;
+    let result: i32 = super::run(&mut with_db, source, "run", ());
+    assert_eq!(result, 11111);
+}
+
+/// An unsigned subscript past 2^31 is not a negative one: `a[4294967295]`
+/// on `ARRAY[-1..2]` read `a[-1]`.
+#[rstest]
+fn an_unsigned_subscript_past_2_pow_31_faults(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION run : DINT
+        VAR a : ARRAY[-1..2] OF INT; d : UDINT := 4294967295; END_VAR
+            run := a[d];
+        END_FUNCTION
+    "#;
+    let msg = expect_fault(&mut with_db, source, "4294967295 is out of -1..2");
+    assert!(msg.contains("array index out of bounds"), "{msg}");
+}
+
+/// A 64-bit subscript is checked at 64 bits: 2^32 + 2 is not 2.
+#[rstest]
+fn a_64bit_subscript_is_checked_at_64_bits(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION run : DINT
+        VAR a : ARRAY[0..3] OF INT; l : LINT := 4294967298; END_VAR
+            run := a[l];
+        END_FUNCTION
+    "#;
+    let msg = expect_fault(&mut with_db, source, "4294967298 is out of 0..3");
+    assert!(msg.contains("array index out of bounds"), "{msg}");
+}
+
 /// MOD by zero traps the same way.
 #[rstest]
 fn integer_modulo_by_zero_faults(mut with_db: db::RootDatabase) {

@@ -211,7 +211,39 @@ impl MirExpr {
     }
 }
 
+impl MirExpr {
+    /// Whether `f` holds for this expression or one inside it, the subscripts
+    /// of its places included.
+    pub fn any<F: FnMut(&MirExpr) -> bool>(&self, f: &mut F) -> bool {
+        if f(self) {
+            return true;
+        }
+        match self {
+            MirExpr::Load(place, _) | MirExpr::AddrOf(place) => place.any_expr(f),
+            MirExpr::Call(call) => call.any_expr(f),
+            MirExpr::BinOp { lhs, rhs, .. } => lhs.any(f) || rhs.any(f),
+            MirExpr::UnaryOp { expr, .. } | MirExpr::Cast { expr, .. } => expr.any(f),
+            MirExpr::CopyIntoScratch { src, .. } => src.any(f),
+            MirExpr::Constant(_) | MirExpr::StringLiteral { .. } => false,
+        }
+    }
+}
+
 impl MirCall {
+    /// [`MirExpr::any`] over the call's arguments and the stores of its
+    /// outputs.
+    pub fn any_expr<F: FnMut(&MirExpr) -> bool>(&self, f: &mut F) -> bool {
+        self.args.iter().any(|a| a.value.any(f))
+            || self
+                .output_bindings
+                .iter()
+                .any(|b| b.target.any_expr(f) || b.value.any(f))
+            || self
+                .extern_results
+                .iter()
+                .any(|r| r.dest.as_ref().is_some_and(|p| p.any_expr(f)))
+    }
+
     /// [`MirExpr::reaches_place_with_call`] for the call's arguments and the
     /// places its outputs are stored in.
     pub fn reaches_place_with_call(&self) -> bool {
@@ -234,6 +266,16 @@ impl MirPlace {
             MirPlace::Local(_) | MirPlace::ThisField { .. } | MirPlace::Global { .. } => false,
             MirPlace::Field { base, .. } | MirPlace::Deref { base, .. } => base.has_call(),
             MirPlace::Index { base, index, .. } => base.has_call() || index.has_call(),
+        }
+    }
+
+    /// [`MirExpr::any`] over the expressions in this place's path: its
+    /// subscripts.
+    pub fn any_expr<F: FnMut(&MirExpr) -> bool>(&self, f: &mut F) -> bool {
+        match self {
+            MirPlace::Local(_) | MirPlace::ThisField { .. } | MirPlace::Global { .. } => false,
+            MirPlace::Field { base, .. } | MirPlace::Deref { base, .. } => base.any_expr(f),
+            MirPlace::Index { base, index, .. } => base.any_expr(f) || index.any(f),
         }
     }
 
