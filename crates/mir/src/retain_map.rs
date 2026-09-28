@@ -274,8 +274,9 @@ pub(crate) fn type_key(db: &dyn WorkspaceDataBase, ty: &MirType) -> u32 {
             MirType::Struct(s) => {
                 eat(h, b"T");
                 for f in &s.fields {
-                    // Field names are part of the shape: the file is scattered back by path.
-                    eat(h, f.name.text(db).as_bytes());
+                    // Field names are part of the shape: the file is scattered back by
+                    // path, which folds case.
+                    eat(h, f.name.caseless(db).text(db).as_bytes());
                     eat(h, &f.offset.to_le_bytes());
                     walk(db, h, &f.ty, depth + 1);
                 }

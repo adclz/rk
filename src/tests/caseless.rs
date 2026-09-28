@@ -531,6 +531,304 @@ fn a_monitoring_path_is_not_case_sensitive(mut with_db: db::RootDatabase) {
     }
 }
 
+/// An initializer names a member in any case, whatever holds it: an FB
+/// instance, an FB member of an FB, a STRUCT inside an array. Only a plain
+/// STRUCT's names were resolved; the others matched the declared names as
+/// written and were dropped.
+#[rstest]
+fn an_initializer_names_members_in_any_case(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE
+            P2 : STRUCT x : INT; y : INT; END_STRUCT;
+            Box : STRUCT inner : P2; END_STRUCT;
+        END_TYPE
+
+        FUNCTION_BLOCK Fb
+        VAR_INPUT limit : INT; END_VAR
+        END_FUNCTION_BLOCK
+
+        FUNCTION_BLOCK Holder
+        VAR_OUTPUT m : Fb := (LIMIT := 5); END_VAR
+        END_FUNCTION_BLOCK
+
+        FUNCTION get : INT
+        VAR
+            f : Fb := (LIMIT := 9);
+            arr : ARRAY[0..1] OF P2 := [(X := 3, Y := 4), (X := 5, Y := 6)];
+            boxes : ARRAY[0..0] OF Box := [(INNER := (Y := 7))];
+            h : Holder;
+        END_VAR
+            get := f.limit * 1000 + arr[1].y * 100 + boxes[0].inner.y * 10 + h.m.limit;
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let result: i32 = execute_wasm(&wasm, "get", ());
+    assert_eq!(result, 9675, "every initializer landed");
+}
+
+/// A VAR_EXTERNAL is the VAR_GLOBAL it names, however it spells it. The
+/// global table is keyed by the global's declared name, and the external's
+/// own spelling missed it: "no storage was allocated for global".
+#[rstest]
+fn a_var_external_names_its_global_in_any_case(mut with_db: db::RootDatabase) {
+    let source = r#"
+        CONFIGURATION Cfg
+        VAR_GLOBAL Counter : INT; END_VAR
+        END_CONFIGURATION
+
+        FUNCTION Bump
+        VAR_EXTERNAL counter : INT; END_VAR
+            counter := counter + 1;
+        END_FUNCTION
+
+        FUNCTION ReadIt : INT
+        VAR_EXTERNAL COUNTER : INT; END_VAR
+            ReadIt := COUNTER;
+        END_FUNCTION
+
+        FUNCTION get : INT
+            Bump();
+            Bump();
+            get := ReadIt();
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let result: i32 = execute_wasm(&wasm, "get", ());
+    assert_eq!(result, 2, "both externals are the one Counter");
+}
+
+/// An override named in another case than its base method is still the
+/// override, through `THIS.m()` and a bare `m()` too. The dispatch named the
+/// method with the base's spelling, which no function had.
+#[rstest]
+fn an_override_answers_in_any_case(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Base
+            METHOD PUBLIC Hook : INT
+                Hook := 1;
+            END_METHOD
+            METHOD PUBLIC Call : INT
+                Call := THIS.Hook();
+            END_METHOD
+            METHOD PUBLIC CallBare : INT
+                CallBare := Hook();
+            END_METHOD
+        END_FUNCTION_BLOCK
+
+        FUNCTION_BLOCK Derived EXTENDS Base
+            METHOD PUBLIC OVERRIDE HOOK : INT
+                HOOK := 2;
+            END_METHOD
+        END_FUNCTION_BLOCK
+
+        FUNCTION get : INT
+        VAR d : Derived; b : Base; END_VAR
+            get := d.hook() * 1000 + d.Call() * 100 + d.CallBare() * 10 + b.Call();
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let result: i32 = execute_wasm(&wasm, "get", ());
+    assert_eq!(result, 2221, "Derived's HOOK wherever Hook is called on it");
+}
+
+/// An interface parameter is its declaration: `DEV` is the parameter `dev`,
+/// and a member `h.dev` is not. The specialization was keyed by the
+/// parameter's spelling, so the first missed it and the second matched it.
+#[rstest]
+fn an_interface_parameter_is_its_declaration(mut with_db: db::RootDatabase) {
+    let source = r#"
+        INTERFACE IShow
+            METHOD Show : INT END_METHOD
+        END_INTERFACE
+
+        FUNCTION_BLOCK Pump IMPLEMENTS IShow
+            METHOD PUBLIC Show : INT
+                Show := 1;
+            END_METHOD
+        END_FUNCTION_BLOCK
+
+        FUNCTION_BLOCK Fan IMPLEMENTS IShow
+            METHOD PUBLIC Show : INT
+                Show := 2;
+            END_METHOD
+        END_FUNCTION_BLOCK
+
+        FUNCTION_BLOCK Holder
+        VAR_OUTPUT dev : Fan; END_VAR
+        END_FUNCTION_BLOCK
+
+        FUNCTION Ask : INT
+        VAR_IN_OUT s : IShow; END_VAR
+            Ask := s.Show();
+        END_FUNCTION
+
+        FUNCTION Both : INT
+        VAR_IN_OUT dev : IShow; h : Holder; END_VAR
+            Both := DEV.Show() * 10 + Ask(s := h.dev);
+        END_FUNCTION
+
+        FUNCTION get : INT
+        VAR p : Pump; hh : Holder; END_VAR
+            get := Both(dev := p, h := hh);
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let result: i32 = execute_wasm(&wasm, "get", ());
+    assert_eq!(result, 12, "DEV is the Pump, h.dev the Fan");
+}
+
+/// A fold names its pack in any case.
+#[rstest]
+fn a_fold_names_its_pack_in_any_case(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION sum_all : INT
+        VAR_INPUT args : INT...; END_VAR
+            sum_all := ...ARGS+;
+        END_FUNCTION
+
+        FUNCTION get : INT
+            get := sum_all(1, 2, 3);
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let result: i32 = execute_wasm(&wasm, "get", ());
+    assert_eq!(result, 6);
+}
+
+/// A result written through a field or an element, its callable's name in
+/// another case, is the result. It was read as a local of the written name,
+/// which no function had, and the store went to address 0.
+#[rstest]
+fn a_result_written_through_a_field_in_any_case(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE
+            Pt : STRUCT X : INT; Y : INT; END_STRUCT;
+            Arr3 : ARRAY[0..2] OF INT;
+        END_TYPE
+
+        FUNCTION MakePt : Pt
+            makept.X := 3;
+            MAKEPT.y := 4;
+        END_FUNCTION
+
+        FUNCTION MakeArr : Arr3
+            makearr[1] := 9;
+        END_FUNCTION
+
+        FUNCTION_BLOCK Fb
+            METHOD PUBLIC Mk : Pt
+                mk.X := 7;
+            END_METHOD
+        END_FUNCTION_BLOCK
+
+        FUNCTION get : INT
+        VAR p : Pt; a : Arr3; f : Fb; q : Pt; END_VAR
+            p := MakePt();
+            a := MakeArr();
+            q := f.Mk();
+            get := p.X * 1000 + p.Y * 100 + a[1] * 10 + q.X;
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let result: i32 = execute_wasm(&wasm, "get", ());
+    assert_eq!(result, 3497, "every store reached its result");
+}
+
+/// A declared address is published as the compiler knows it, upper-cased:
+/// `%qw4` is the cell a bare `%QW4` names, so a host binds it as `%QW4`.
+#[rstest]
+fn a_located_address_is_published_upper_cased(#[allow(unused)] with_db: RootDatabase) {
+    let program = |declared: &str| {
+        format!(
+            r#"
+        PROGRAM Prog
+        VAR n : WORD; END_VAR
+            %QX8.3 := TRUE;
+            n := %QW4;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+        VAR_GLOBAL w AT {declared} : WORD; END_VAR
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : Prog;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#
+        )
+    };
+    let compile = |declared: &str| {
+        let mut db = RootDatabase::default();
+        compile_to_mir_and_wasm(&mut db, &program(declared)).0
+    };
+    let lower = compile("%qw4");
+    let upper = compile("%QW4");
+    let addresses = |mir: &mir::MirModule| {
+        mir.located_map
+            .entries
+            .iter()
+            .map(|e| e.address.clone())
+            .collect::<Vec<_>>()
+    };
+    assert!(
+        addresses(&lower).contains(&"%QW4".to_string()),
+        "{:?}",
+        addresses(&lower)
+    );
+    assert_eq!(addresses(&lower), addresses(&upper));
+    assert_eq!(lower.located_map.layout_hash, upper.located_map.layout_hash);
+}
+
+/// A case-only rename is the same program, so its retained state is kept:
+/// the retain map's identity is its folded paths and field names. It was the
+/// spelled ones, and the runtime refused the file as another program's.
+#[rstest]
+fn a_case_only_rename_keeps_the_retain_layout(#[allow(unused)] with_db: RootDatabase) {
+    let program = |count: &str, x: &str, instance: &str| {
+        format!(
+            r#"
+        TYPE Pt : STRUCT {x} : INT; y : INT; END_STRUCT; END_TYPE
+
+        PROGRAM Prog
+        VAR RETAIN {count} : INT; pos : Pt; alpha : INT; END_VAR
+            count := count + 1;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM {instance} WITH T : Prog;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#
+        )
+    };
+    let compile = |count: &str, x: &str, instance: &str| {
+        let mut db = RootDatabase::default();
+        compile_to_mir_and_wasm(&mut db, &program(count, x, instance)).0
+    };
+    let base = compile("count", "x", "p1");
+    for (count, x, instance) in [
+        ("Count", "x", "p1"),
+        ("count", "X", "p1"),
+        ("COUNT", "X", "P1"),
+    ] {
+        let renamed = compile(count, x, instance);
+        assert_eq!(
+            base.retain_map.layout_hash, renamed.retain_map.layout_hash,
+            "{count}, {x}, {instance}"
+        );
+        let sizes = |m: &mir::MirModule| {
+            m.retain_map
+                .ranges
+                .iter()
+                .map(|r| r.size)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(sizes(&base), sizes(&renamed), "the same payload order");
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Formatting
 // ---------------------------------------------------------------------------

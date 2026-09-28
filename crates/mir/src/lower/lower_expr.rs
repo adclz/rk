@@ -33,14 +33,7 @@ pub struct ExprLowerCtx<'db> {
     pub string_pool: std::rc::Rc<std::cell::RefCell<StringPool>>,
     /// Phase B: in a specialized body (`drive$@Worker`), each interface param's
     /// concrete POU.
-    pub iface_subs: Option<
-        std::rc::Rc<
-            rustc_hash::FxHashMap<
-                hir::hir_def::interned::identifier::Ident,
-                hir::hir_def::pous::pou::Pou<'db>,
-            >,
-        >,
-    >,
+    pub iface_subs: Option<std::rc::Rc<crate::lower::mono_iface::IfaceSubs<'db>>>,
     /// Phase B: call site → mangled specialization (`drive` -> `drive$@Worker`),
     /// module-global.
     pub iface_call_rewrites: Option<
@@ -288,7 +281,7 @@ impl<'db> ExprLowerCtx<'db> {
                 "a fold expression outside an arity specialization".to_string(),
             )
         })?;
-        if expansion.pack != param {
+        if expansion.pack.caseless(self.db) != param.caseless(self.db) {
             return Err(LowerTypeError::UnsupportedType(format!(
                 "fold over '{}' but the pack in scope is '{}'",
                 param.text(self.db),
@@ -1008,6 +1001,16 @@ impl<'db> ExprLowerCtx<'db> {
             }
         }
 
+        // The callable's result in a longer path, `MakePt.x`, however it is
+        // spelled: held under the declared name, and before any member.
+        if let Some(root_expr) = root.flatten(self.db).first().map(|s| s.get_expr(self.db))
+            && let Some(declared) = hir::hir_ty::body::infer_body(self.db, root.scope_id(self.db))
+                .result_roots
+                .get(&root_expr)
+        {
+            return MirPlace::Local(*declared);
+        }
+
         // No `this` pointer: the root is a local.
         let Some(this_struct) = self.this_struct.as_ref() else {
             return MirPlace::Local(ident);
@@ -1620,7 +1623,6 @@ impl<'db> ExprLowerCtx<'db> {
             }
         };
         let receiver_path = field.path;
-        let root_ident = self.find_root_var_ident(receiver_path);
 
         let method_decl = match method {
             MethodRef::Declared(md) => md,
@@ -1628,9 +1630,8 @@ impl<'db> ExprLowerCtx<'db> {
             // is known via `iface_subs`.
             MethodRef::Prototype(proto) => {
                 let concrete = self
-                    .iface_subs
-                    .as_ref()
-                    .and_then(|m| m.get(&root_ident).copied())
+                    .root_binding(receiver_path)
+                    .and_then(|param| self.iface_subs.as_ref()?.get(&param).copied())
                     .ok_or_else(|| {
                         LowerTypeError::UnsupportedType(
                             "interface method call not monomorphized (receiver is not a specialized interface param)"
@@ -2451,7 +2452,14 @@ impl<'db> ExprLowerCtx<'db> {
         // `THIS.m()` and bare `m()` dispatch against the POU this body is emitted
         // for; `SUPER.m()` is static (IEC 9b/10b) and keeps the base.
         let callee = match (virtual_dispatch, self.this_pou) {
-            (true, Some(owner)) => self.method_symbol(owner, method_decl.name(self.db)),
+            // The owner's own method for the name, its override or the one it
+            // inherits, under the spelling its body is emitted with: `HOOK`
+            // overrides `Hook`.
+            (true, Some(owner)) => {
+                let name = method_decl.name(self.db);
+                let own = hir::hir_ty::head::inheritance::implementing_method(self.db, owner, name);
+                self.method_symbol(owner, own.map_or(name, |m| m.name(self.db)))
+            }
             _ => self.method_callee_symbol(method_decl)?,
         };
         let receiver = MirPlace::ThisField {

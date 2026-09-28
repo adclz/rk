@@ -77,9 +77,7 @@ pub fn lower_function<'db>(
     index: u32,
     memory_layout: &mut MirMemoryLayout,
     string_pool: Rc<RefCell<super::lower_expr::StringPool>>,
-    iface_subs: Option<
-        &FxHashMap<hir::hir_def::interned::identifier::Ident, hir::hir_def::pous::pou::Pou<'db>>,
-    >,
+    iface_subs: Option<&super::mono_iface::IfaceSubs<'db>>,
     iface_call_rewrites: &super::mono_iface::IfaceCallRewrites<'db>,
     // Phase C: `Some(n)` when this is the arity specialization `f$n` of a
     // variadic function; `None` for every ordinary function.
@@ -168,9 +166,7 @@ fn lower_function_inner<'db>(
     string_pool: Rc<RefCell<super::lower_expr::StringPool>>,
     // Phase B: for a specialized copy, each interface param's concrete
     // implementer.
-    iface_subs: Option<
-        &FxHashMap<hir::hir_def::interned::identifier::Ident, hir::hir_def::pous::pou::Pou<'db>>,
-    >,
+    iface_subs: Option<&super::mono_iface::IfaceSubs<'db>>,
     // Phase B: module-global call-site -> mangled specialization rewrites, so
     // calls in this body route to the right specialization.
     iface_call_rewrites: &FxHashMap<
@@ -950,11 +946,9 @@ fn lower_program_inner<'db>(
 fn param_for_var<'db>(
     db: &'db dyn WorkspaceDataBase,
     var: &hir::hir_def::pous::variable::VariableDecl<'db>,
-    iface_subs: Option<
-        &FxHashMap<hir::hir_def::interned::identifier::Ident, hir::hir_def::pous::pou::Pou<'db>>,
-    >,
+    iface_subs: Option<&super::mono_iface::IfaceSubs<'db>>,
 ) -> Result<Option<MirParam>, LowerTypeError> {
-    if let Some(concrete) = iface_subs.and_then(|m| m.get(&var.name(db))) {
+    if let Some(concrete) = iface_subs.and_then(|m| m.get(var)) {
         let ty = lower_type(db, hir::hir_ty::ty::Type::new_pou(db, *concrete))?;
         return Ok(Some(MirParam {
             name: var.name(db),

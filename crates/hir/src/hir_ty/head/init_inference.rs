@@ -687,18 +687,18 @@ fn resolve_leaves<'db>(
         }
         InitExprKind::StructInit { values } => {
             // The step carries the name as DECLARED, not as written. A
-            // field may be initialized in any case (`(fld := 7)` for `Fld`),
-            // and MIR matches these against the declared field names — so
-            // resolving here is what keeps the two from diverging, rather
-            // than teaching MIR to fold a name HIR has already resolved.
-            let struct_ty = types.get(&init).copied().map(|t| t.normalize(db));
+            // member may be initialized in any case (`(fld := 7)` for `Fld`,
+            // `(LIMIT := 9)` for an instance's `limit`), and MIR matches these
+            // against the declared names — so resolving here is what keeps the
+            // two from diverging, rather than teaching MIR to fold a name HIR
+            // has already resolved. The walk recorded, for each element, the
+            // field or member it named, whatever holds it: a STRUCT, an FB or
+            // CLASS instance, an array's element.
             for v in &values {
                 if let InitExprKind::StructElement { name, value } = v.kind(db) {
-                    let declared = match struct_ty {
-                        Some(Type::Struct(st)) => st
-                            .struct_elements(db)
-                            .get(&name.ident.caseless(db))
-                            .map(|field| field.name(db)),
+                    let declared = match types.get(v) {
+                        Some(Type::StructElement(field)) => Some(field.name(db)),
+                        Some(Type::Variable((var, _))) => Some(var.name(db)),
                         _ => None,
                     };
                     path.push(InitPathStep::Field(declared.unwrap_or(name.ident)));

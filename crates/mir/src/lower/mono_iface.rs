@@ -58,12 +58,18 @@ impl<'db> IfaceTarget<'db> {
     }
 }
 
+/// Each interface parameter of a specialization, by its declaration, and the
+/// concrete implementer bound to it. By declaration, not by name: a use of
+/// the parameter in another case is the parameter, and another variable
+/// named like it is not.
+pub type IfaceSubs<'db> = FxHashMap<VariableDecl<'db>, Pou<'db>>;
+
 /// One specialization of a function or method on the concrete implementers
 /// bound to its interface parameters.
 pub struct IfaceInstance<'db> {
     pub target: IfaceTarget<'db>,
-    /// interface param name -> concrete implementer POU
-    pub iface_subs: FxHashMap<Ident, Pou<'db>>,
+    /// interface param -> concrete implementer POU
+    pub iface_subs: IfaceSubs<'db>,
     pub mangled_name: Ident,
     /// Rewrites for calls inside this specialization's body: a forwarded
     /// interface param resolves to a different transitive specialization per
@@ -84,7 +90,7 @@ pub fn collect_iface_instantiations<'db>(
     let mut instances: Vec<IfaceInstance<'db>> = Vec::new();
     // Rewrites for the generic bodies; specializations own theirs.
     let mut global_rewrites: FxHashMap<FuncCall<'db>, Ident> = FxHashMap::default();
-    let no_subs: FxHashMap<Ident, Pou<'db>> = FxHashMap::default();
+    let no_subs: IfaceSubs<'db> = FxHashMap::default();
 
     // --- Seed ---
     for (pou, _) in all_pous {
@@ -203,7 +209,7 @@ fn process_body<'db>(
     // The POU whose instance `THIS` refers to in this body, supplied by the
     // caller.
     self_pou: Option<Pou<'db>>,
-    subs: &FxHashMap<Ident, Pou<'db>>,
+    subs: &IfaceSubs<'db>,
     by_canonical: &mut CanonicalInstanceMap,
     instances: &mut Vec<IfaceInstance<'db>>,
     out_rewrites: &mut FxHashMap<FuncCall<'db>, Ident>,
@@ -241,7 +247,7 @@ fn process_call<'db>(
     fc: FuncCall<'db>,
     body: &hir::hir_ty::body::BodyInferenceResult<'db>,
     self_pou: Option<Pou<'db>>,
-    subs: &FxHashMap<Ident, Pou<'db>>,
+    subs: &IfaceSubs<'db>,
     by_canonical: &mut CanonicalInstanceMap,
     instances: &mut Vec<IfaceInstance<'db>>,
     out_rewrites: &mut FxHashMap<FuncCall<'db>, Ident>,
@@ -279,7 +285,7 @@ fn process_call<'db>(
     }
 
     // Bind each interface param to the concrete POU of its argument.
-    let mut iface_subs: FxHashMap<Ident, Pou<'db>> = FxHashMap::default();
+    let mut iface_subs: IfaceSubs<'db> = FxHashMap::default();
     for pa in fc.params(db) {
         let Some(param) = body.variable_of_param.get(pa).copied() else {
             continue;
@@ -306,7 +312,7 @@ fn process_call<'db>(
             resolve_concrete(db, arg_ty, subs)
         };
         if let Some(concrete) = concrete {
-            iface_subs.insert(param.name(db), concrete);
+            iface_subs.insert(param, concrete);
         }
     }
     if iface_subs.is_empty() {
@@ -330,7 +336,8 @@ fn process_call<'db>(
             )
         }
     };
-    let mut sorted: Vec<(Ident, Pou<'db>)> = iface_subs.iter().map(|(k, v)| (*k, *v)).collect();
+    let mut sorted: Vec<(Ident, Pou<'db>)> =
+        iface_subs.iter().map(|(k, v)| (k.name(db), *v)).collect();
     sorted.sort_by(|a, b| a.0.text(db).cmp(b.0.text(db)));
     let key_concretes: Vec<(Ident, Ident)> = sorted
         .iter()
@@ -379,15 +386,15 @@ fn is_iface_param<'db>(
 }
 
 /// An argument's concrete implementer under the active substitution: a
-/// forwarded interface param is fixed by `subs` (matched by name, unique
-/// in a scope); otherwise the static concrete type.
+/// forwarded interface param is fixed by `subs`; otherwise the static
+/// concrete type.
 fn resolve_concrete<'db>(
     db: &'db dyn WorkspaceDataBase,
     ty: Type<'db>,
-    subs: &FxHashMap<Ident, Pou<'db>>,
+    subs: &IfaceSubs<'db>,
 ) -> Option<Pou<'db>> {
     if let Type::Variable((var_decl, _)) = ty
-        && let Some(pou) = subs.get(&var_decl.name(db))
+        && let Some(pou) = subs.get(&var_decl)
     {
         return Some(*pou);
     }

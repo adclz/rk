@@ -1199,13 +1199,18 @@ fn config_member<'db>(
 /// The name a static cell is known by in the global table, the located map
 /// and the debug symbols: a VAR_GLOBAL's own name, and `P.x` for a PROGRAM
 /// `P`'s located VAR `x`, which two programs or a VAR_GLOBAL may otherwise
-/// share.
+/// share. A VAR_EXTERNAL is the VAR_GLOBAL it names, however it spells it.
 pub(crate) fn global_key<'db>(
     db: &'db dyn WorkspaceDataBase,
     var: hir::hir_def::pous::variable::VariableDecl<'db>,
 ) -> hir::hir_def::interned::identifier::Ident {
     use hir::HirNodeInfo;
     use hir::hir_def::scope::ScopeKind;
+    if var.is_external(db)
+        && let Some(global) = hir::hir_ty::index_graphs::external_var_lookup(db, var.name(db))
+    {
+        return global_key(db, global);
+    }
     if var.is_program_located(db)
         && let ScopeKind::Program(program) =
             hir::hir_def::semantic_index::get_scope(db, var.get_scope_id(db)).kind
@@ -1311,11 +1316,13 @@ fn located_entry<'db>(
     size: u32,
     align: u32,
 ) -> Option<crate::memory::LocatedEntry> {
-    let dv = v.location(db)?;
+    let located = hir::hir_def::pous::variable::LocatedAddress::of(db, v.location(db)?)?;
     Some(crate::memory::LocatedEntry {
         name,
-        address_text: dv.to_address(db),
-        located: hir::hir_def::pous::variable::LocatedAddress::of(db, dv)?,
+        // Upper-cased, as the address is known by everywhere else: `%qw4` is
+        // the cell a bare `%QW4` names, and a host binds it as that.
+        address_text: located.text.to_string(),
+        located,
         // Only `%M` reaches here with it set: E1420 refuses RETAIN on an
         // input or output image.
         retain: v.qualifier(db).contains(hir::Qualifier::RETAIN),
@@ -1390,7 +1397,7 @@ fn build_located_map<'db>(
             };
             let Some(owner) = entries
                 .iter()
-                .find(|cell| cell.address.eq_ignore_ascii_case(&view.owner.text))
+                .find(|cell| cell.address == view.owner.text.as_str())
             else {
                 continue;
             };

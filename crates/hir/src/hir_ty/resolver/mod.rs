@@ -449,7 +449,8 @@ impl<'db> Resolver<'db> {
                 && let PathExprWalkStep::Field { ident, .. } = step
                 && let PathResolutionRoot::Value { base } = self.root
                 && let Some(ret_ty) = base.with_return_type(db)
-                && self_reference_name(db, base).map(|n| n.caseless(db)) == Some(ident.ident.caseless(db))
+                && let Some(declared) = self_reference_name(db, base)
+                && declared.caseless(db) == ident.ident.caseless(db)
                 // The return value is one of the callable's own variables,
                 // so it comes before the owner's members and methods: a
                 // member `step` of the FB does not hide `STEP := ...` in
@@ -472,9 +473,11 @@ impl<'db> Resolver<'db> {
                     return;
                 }
                 // Multi-step: the root is the return VALUE and the next steps
-                // walk its fields, so the root is recorded as the return type.
+                // walk its fields, so the root is recorded as the return type,
+                // and as the result of the callable it names.
                 let normalized = ret_ty.normalize(db);
                 ctx.type_of_path_expr.insert(step.get_expr(db), normalized);
+                ctx.result_roots.insert(step.get_expr(db), declared);
                 current = normalized;
                 place.current_typ = normalized;
                 place.current_path = step.get_expr(db);
