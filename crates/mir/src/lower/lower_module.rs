@@ -71,6 +71,22 @@ fn at_pou<'db, T>(
     result.map_err(|e| e.with_location(node.get_scope_id(db).file(db), node.get_span(db)))
 }
 
+/// Record `name` as the symbol of function `index`. Calls find their callee
+/// by symbol, so a second function under one would silently take the first
+/// one's calls: an internal error instead, since every spelling in `naming`
+/// is meant to keep functions apart.
+fn register_symbol(
+    db: &dyn WorkspaceDataBase,
+    function_indices: &mut FxHashMap<hir::hir_def::interned::identifier::Ident, u32>,
+    name: hir::hir_def::interned::identifier::Ident,
+    index: u32,
+) -> Result<(), LowerTypeError> {
+    match function_indices.insert(name, index) {
+        None => Ok(()),
+        Some(_) => Err(LowerTypeError::DuplicateSymbol(name.text(db).to_string())),
+    }
+}
+
 /// Lower multiple HIR semantic indices (from multiple files) into a single MirModule.
 pub fn lower_modules<'db>(
     db: &'db dyn WorkspaceDataBase,
@@ -195,7 +211,11 @@ fn lower_module_from_pous<'db>(
             };
 
             let mir_ext = lower_extern_function(db, *func, extern_decl, next_fn_idx)?;
-            function_indices.insert(mir_ext.name, next_fn_idx);
+            at_pou(
+                db,
+                *func,
+                register_symbol(db, &mut function_indices, mir_ext.name, next_fn_idx),
+            )?;
             next_fn_idx += 1;
             extern_functions.push(mir_ext);
         }
@@ -205,12 +225,6 @@ fn lower_module_from_pous<'db>(
     for (pou, _ns_prefix) in all_pous.iter() {
         match pou {
             Pou::Function(func) => {
-                let func_id = super::naming::mir_function_symbol(db, *func);
-                // Skip already-processed externs
-                if function_indices.contains_key(&func_id) {
-                    continue;
-                }
-
                 // Externs were handled in phase 1.
                 {
                     use hir::HasPragmas;
@@ -247,7 +261,11 @@ fn lower_module_from_pous<'db>(
                             None,
                         )?;
                         mir_func.name = inst.mangled_name;
-                        function_indices.insert(mir_func.name, next_fn_idx);
+                        at_pou(
+                            db,
+                            *func,
+                            register_symbol(db, &mut function_indices, mir_func.name, next_fn_idx),
+                        )?;
                         next_fn_idx += 1;
                         functions.push(mir_func);
                     }
@@ -269,7 +287,11 @@ fn lower_module_from_pous<'db>(
                             Some(inst.arity),
                         )?;
                         mir_func.name = inst.mangled_name;
-                        function_indices.insert(mir_func.name, next_fn_idx);
+                        at_pou(
+                            db,
+                            *func,
+                            register_symbol(db, &mut function_indices, mir_func.name, next_fn_idx),
+                        )?;
                         next_fn_idx += 1;
                         functions.push(mir_func);
                     }
@@ -290,7 +312,11 @@ fn lower_module_from_pous<'db>(
                 )?;
                 // Export under the qualified MIR symbol, so overloads do not collide.
                 mir_func.export_name = Some(mir_func.name.text(db).to_string().into());
-                function_indices.insert(mir_func.name, next_fn_idx);
+                at_pou(
+                    db,
+                    *func,
+                    register_symbol(db, &mut function_indices, mir_func.name, next_fn_idx),
+                )?;
                 next_fn_idx += 1;
 
                 // Collect test entry if marked with {test}
@@ -363,7 +389,11 @@ fn lower_module_from_pous<'db>(
                         .unwrap_or(&[]),
                 )?;
                 for mf in method_funcs {
-                    function_indices.insert(mf.name, mf.index);
+                    at_pou(
+                        db,
+                        *fb,
+                        register_symbol(db, &mut function_indices, mf.name, mf.index),
+                    )?;
                     next_fn_idx += 1;
                     functions.push(mf);
                 }
@@ -420,7 +450,11 @@ fn lower_module_from_pous<'db>(
                         .unwrap_or(&[]),
                 )?;
                 for mf in method_funcs {
-                    function_indices.insert(mf.name, mf.index);
+                    at_pou(
+                        db,
+                        *class,
+                        register_symbol(db, &mut function_indices, mf.name, mf.index),
+                    )?;
                     next_fn_idx += 1;
                     functions.push(mf);
                 }
@@ -471,7 +505,11 @@ fn lower_module_from_pous<'db>(
                 program.name(db).text(db)
             )));
         }
-        function_indices.insert(body_fn, next_fn_idx);
+        at_pou(
+            db,
+            **program,
+            register_symbol(db, &mut function_indices, body_fn, next_fn_idx),
+        )?;
         next_fn_idx += 1;
         functions.push(mir_func);
     }
@@ -493,7 +531,7 @@ fn lower_module_from_pous<'db>(
             };
             let func =
                 super::connections::lower_connections(db, p, info, next_fn_idx, &string_pool)?;
-            function_indices.insert(func.name, next_fn_idx);
+            register_symbol(db, &mut function_indices, func.name, next_fn_idx)?;
             next_fn_idx += 1;
             functions.push(func);
         }
@@ -866,7 +904,7 @@ fn lower_module_from_pous<'db>(
             is_test: false,
             export_name: Some(compact_str::CompactString::from("__init")),
         });
-        module.function_indices.insert(name, idx);
+        register_symbol(db, &mut module.function_indices, name, idx)?;
     }
 
     // End of all static memory, captured after phases 4/4.5 so the string
