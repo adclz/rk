@@ -68,11 +68,20 @@ impl std::error::Error for Finding {}
 /// Every oracle over one source, in the order a user meets them: compile
 /// it, format it, edit it. The verdict says how far the compiler got.
 pub fn check_all(source: &str) -> Result<pipeline::Verdict, Finding> {
+    let verdict = check_generated(source)?;
+    ide::check(source)?;
+    Ok(verdict)
+}
+
+/// What `fuzz_semantics` runs on a generated program: every oracle but the
+/// language server's. Almost every generated program trips a known
+/// language server bug, which `fuzz_ide` already reports; checking it here
+/// would spend the target's night on those.
+pub fn check_generated(source: &str) -> Result<pipeline::Verdict, Finding> {
     let verdict = pipeline::check(source)?;
     semantics::check(source)?;
     format::check(source)?;
     incremental::check(source)?;
-    ide::check(source)?;
     Ok(verdict)
 }
 
