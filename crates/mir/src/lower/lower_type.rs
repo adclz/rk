@@ -26,6 +26,11 @@ pub enum LowerTypeError {
     #[error("Type could not be resolved (Type::Never encountered)")]
     UnresolvedType,
 
+    /// Two functions lowered to one symbol, so calls to one would reach the
+    /// other. `naming` is meant to make this impossible.
+    #[error("two functions lower to the symbol `{0}`")]
+    DuplicateSymbol(String),
+
     /// An error carrying the source location it originated at, attached by
     /// [`LowerTypeError::with_location`].
     #[error("{inner}")]

@@ -31,7 +31,7 @@ pub struct ExprLowerCtx<'db> {
     pub this_struct: Option<crate::types::MirStructType>,
     /// String literal pool - shared across all functions in the module.
     pub string_pool: std::rc::Rc<std::cell::RefCell<StringPool>>,
-    /// Phase B: in a specialized body (`drive$Worker`), each interface param's
+    /// Phase B: in a specialized body (`drive$@Worker`), each interface param's
     /// concrete POU.
     pub iface_subs: Option<
         std::rc::Rc<
@@ -41,7 +41,7 @@ pub struct ExprLowerCtx<'db> {
             >,
         >,
     >,
-    /// Phase B: call site → mangled specialization (`drive` -> `drive$Worker`),
+    /// Phase B: call site → mangled specialization (`drive` -> `drive$@Worker`),
     /// module-global.
     pub iface_call_rewrites: Option<
         std::rc::Rc<

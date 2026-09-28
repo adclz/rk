@@ -257,6 +257,19 @@ pub enum OverloadPick<'db> {
     None(Vec<Function<'db>>),
 }
 
+/// What tells an overloaded FUNCTION's symbol apart from its siblings'.
+/// The types are as DECLARED, so an alias keeps the name that distinguishes
+/// it; the tie that decides `ret` is judged on normalized ones, as
+/// resolution judges it.
+pub struct OverloadDiscriminant<'db> {
+    /// The `VAR_INPUT` and `VAR_IN_OUT` types, in order.
+    pub params: Vec<Type<'db>>,
+    /// The return type, only when a sibling ties on parameters (a
+    /// RETURN-directed set): kept apart from `params`, since `f(INT) : INT`
+    /// and `f(INT, INT)` would otherwise read the same.
+    pub ret: Option<Type<'db>>,
+}
+
 /// The types that DISCRIMINATE this function's symbol among its overloads:
 /// its parameter signature, plus its return type when a same-name sibling
 /// ties on parameters (a RETURN-directed set — params alone would give two
@@ -272,7 +285,7 @@ pub enum OverloadPick<'db> {
 pub fn overload_discriminant<'db>(
     db: &'db dyn WorkspaceDataBase,
     f: Function<'db>,
-) -> Option<Vec<Type<'db>>> {
+) -> Option<OverloadDiscriminant<'db>> {
     let name = f.name(db);
     let candidates = match function_namespace_path(db, f) {
         Some(path) => namespace_pou_candidates(db, path, name),
@@ -292,11 +305,11 @@ pub fn overload_discriminant<'db>(
     let params_tied = siblings
         .iter()
         .any(|other| *other != f && function_signature(db, *other).params == sig.params);
-    let mut discriminant = sig.params;
-    if params_tied && let Some(ret) = sig.ret {
-        discriminant.push(ret);
-    }
-    Some(discriminant)
+    let (params, ret) = crate::hir_ty::head::signature::declared_types(db, f);
+    Some(OverloadDiscriminant {
+        params,
+        ret: ret.filter(|_| params_tied),
+    })
 }
 
 /// Select the FUNCTION overload whose signature matches `arg_types`.

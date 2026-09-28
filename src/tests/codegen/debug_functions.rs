@@ -79,8 +79,8 @@ fn functions_named_by_defined_index(mut with_db: db::RootDatabase) {
     assert!(dbg.function_name(u32::MAX).is_none());
 }
 
-/// Phase B: monomorphized interface specializations (`drive$Worker`,
-/// `drive$Heater`) are real defined functions, so they appear by name in the
+/// Phase B: monomorphized interface specializations (`drive$@Worker`,
+/// `drive$@Heater`) are real defined functions, so they appear by name in the
 /// debug-functions table — a debugger can name a stack frame inside one. The
 /// un-specialized `drive` (which has no MIR type) is never emitted. Also
 /// exercises interface-param calls from a PROGRAM body.
@@ -119,11 +119,11 @@ fn interface_specializations_named(mut with_db: db::RootDatabase) {
     let df = read_debug_functions(&wasm);
     let names: Vec<&str> = df.functions.iter().map(|f| f.name.as_str()).collect();
     assert!(
-        names.contains(&"drive$Worker"),
+        names.contains(&"drive$@Worker"),
         "specialization named: {names:?}"
     );
     assert!(
-        names.contains(&"drive$Heater"),
+        names.contains(&"drive$@Heater"),
         "specialization named: {names:?}"
     );
     assert!(
@@ -134,7 +134,7 @@ fn interface_specializations_named(mut with_db: db::RootDatabase) {
 
 /// Phase B: two arguments of the SAME concrete type share ONE specialization —
 /// `drive(dev := w1) + drive(dev := w2)` (both Worker) yields a single
-/// `drive$Worker`, not two (canonical dedup on (function, concrete bindings)).
+/// `drive$@Worker`, not two (canonical dedup on (function, concrete bindings)).
 #[rstest]
 fn interface_specialization_deduped(mut with_db: db::RootDatabase) {
     let source = r#"
@@ -166,18 +166,18 @@ fn interface_specialization_deduped(mut with_db: db::RootDatabase) {
     let n = df
         .functions
         .iter()
-        .filter(|f| f.name.as_str() == "drive$Worker")
+        .filter(|f| f.name.as_str() == "drive$@Worker")
         .count();
     assert_eq!(
         n, 1,
-        "two Worker args share a single drive$Worker specialization"
+        "two Worker args share a single drive$@Worker specialization"
     );
 }
 
 /// Transitive: `outer` forwards its interface param to `inner(dev := dev)`. Both
 /// levels must be specialized per concrete implementer, so ALL FOUR of
-/// `outer$Worker`, `outer$Heater`, `inner$Worker`, `inner$Heater` are emitted (the
-/// `inner$*` pair proves the forwarded param was resolved through the enclosing
+/// `outer$@Worker`, `outer$@Heater`, `inner$@Worker`, `inner$@Heater` are emitted (the
+/// `inner$@*` pair proves the forwarded param was resolved through the enclosing
 /// specialization's binding), and neither bare `outer` nor bare `inner` survives.
 #[rstest]
 fn interface_transitive_specializations_named(mut with_db: db::RootDatabase) {
@@ -212,10 +212,10 @@ fn interface_transitive_specializations_named(mut with_db: db::RootDatabase) {
     let df = read_debug_functions(&wasm);
     let names: Vec<&str> = df.functions.iter().map(|f| f.name.as_str()).collect();
     for expected in [
-        "outer$Worker",
-        "outer$Heater",
-        "inner$Worker",
-        "inner$Heater",
+        "outer$@Worker",
+        "outer$@Heater",
+        "inner$@Worker",
+        "inner$@Heater",
     ] {
         assert!(names.contains(&expected), "missing {expected}: {names:?}");
     }

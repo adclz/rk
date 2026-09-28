@@ -241,3 +241,135 @@ fn overloaded_call_in_initializer_runs(mut with_db: db::RootDatabase) {
     let r: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(r, 3, "the initializer called the resolved 2-arg overload");
 }
+
+/// Overloads on named arrays all lowered to `Which2$T`, and every
+/// call ran the first one declared.
+#[rstest]
+fn overloads_on_named_arrays_reach_their_own_body(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE Real5 : ARRAY[0..4] OF REAL; Int5 : ARRAY[0..4] OF INT; Int7 : ARRAY[0..6] OF INT; END_TYPE
+        FUNCTION Which2 : INT VAR_INPUT IN : Real5; END_VAR Which2 := 2; END_FUNCTION
+        FUNCTION Which2 : INT VAR_INPUT IN : Int5;  END_VAR Which2 := 1; END_FUNCTION
+        FUNCTION Which2 : INT VAR_INPUT IN : Int7;  END_VAR Which2 := 7; END_FUNCTION
+        FUNCTION test : INT
+        VAR i : Int5; j : Int7; r : Real5; END_VAR
+            test := Which2(IN := i) * 100 + Which2(IN := j) * 10 + Which2(IN := r);
+        END_FUNCTION
+    "#;
+    let r: i32 = super::run(&mut with_db, source, "test", ());
+    assert_eq!(r, 172, "Int5 ran 1, Int7 ran 7, Real5 ran 2");
+}
+
+/// Named enums and structs lost their names the same way.
+#[rstest]
+fn overloads_on_named_enums_and_structs_reach_their_own_body(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE
+            Color : (Red, Green);
+            Shape : (Circle, Square);
+            Point : STRUCT x : INT; END_STRUCT;
+            Size : STRUCT w : INT; END_STRUCT;
+        END_TYPE
+        FUNCTION ByEnum : INT VAR_INPUT c : Color; END_VAR ByEnum := 1; END_FUNCTION
+        FUNCTION ByEnum : INT VAR_INPUT s : Shape; END_VAR ByEnum := 2; END_FUNCTION
+        FUNCTION ByStruct : INT VAR_INPUT p : Point; END_VAR ByStruct := 1; END_FUNCTION
+        FUNCTION ByStruct : INT VAR_INPUT s : Size; END_VAR ByStruct := 2; END_FUNCTION
+        FUNCTION test : INT
+        VAR c : Color; s : Shape; p : Point; z : Size; END_VAR
+            test := ByEnum(c) * 1000 + ByEnum(s) * 100 + ByStruct(p) * 10 + ByStruct(z);
+        END_FUNCTION
+    "#;
+    let r: i32 = super::run(&mut with_db, source, "test", ());
+    assert_eq!(r, 1212, "each argument type ran its own overload");
+}
+
+/// `Motion.Axis` and a top-level `Motion_Axis` mangled to one fragment.
+#[rstest]
+fn namespaced_parameter_types_reach_their_own_body(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Motion_Axis VAR x : INT; END_VAR END_FUNCTION_BLOCK
+        NAMESPACE Motion
+            FUNCTION_BLOCK Axis VAR x : INT; END_VAR END_FUNCTION_BLOCK
+        END_NAMESPACE
+        FUNCTION Which : INT VAR_IN_OUT v : Motion_Axis; END_VAR Which := 1; END_FUNCTION
+        FUNCTION Which : INT VAR_IN_OUT v : Motion.Axis; END_VAR Which := 2; END_FUNCTION
+        FUNCTION test : INT
+        VAR a : Motion_Axis; b : Motion.Axis; END_VAR
+            test := Which(a) * 10 + Which(b);
+        END_FUNCTION
+    "#;
+    let r: i32 = super::run(&mut with_db, source, "test", ());
+    assert_eq!(r, 12, "Motion_Axis ran 1, Motion.Axis ran 2");
+}
+
+/// `f(INT) : INT`, tied with `f(INT) : REAL`, was spelled like
+/// `f(INT, INT)`; the two-argument call ran the one-parameter body.
+#[rstest]
+fn a_return_directed_pair_beside_a_longer_sibling(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION f : INT VAR_INPUT a : INT; END_VAR f := 1; END_FUNCTION
+        FUNCTION f : REAL VAR_INPUT a : INT; END_VAR f := 2.0; END_FUNCTION
+        FUNCTION f : INT VAR_INPUT a : INT; b : INT; END_VAR f := 3; END_FUNCTION
+        FUNCTION test : INT
+        VAR one : INT; two : INT; END_VAR
+            one := f(INT#0);
+            two := f(INT#0, INT#0);
+            test := one * 10 + two;
+        END_FUNCTION
+    "#;
+    let r: i32 = super::run(&mut with_db, source, "test", ());
+    assert_eq!(r, 13, "f(INT) : INT ran 1, f(INT, INT) ran 3");
+}
+
+/// Two overloads with an interface parameter, specialized at one
+/// implementer, shared one specialization.
+#[rstest]
+fn interface_overloads_specialize_separately(mut with_db: db::RootDatabase) {
+    let source = r#"
+        INTERFACE IDev METHOD Id : INT END_METHOD END_INTERFACE
+        FUNCTION_BLOCK Pump IMPLEMENTS IDev
+            METHOD PUBLIC Id : INT Id := 7; END_METHOD
+        END_FUNCTION_BLOCK
+        FUNCTION drive : INT VAR_IN_OUT d : IDev; END_VAR VAR_INPUT n : INT; END_VAR drive := 100 + d.Id(); END_FUNCTION
+        FUNCTION drive : INT VAR_IN_OUT d : IDev; END_VAR VAR_INPUT n : DINT; END_VAR drive := 200 + d.Id(); END_FUNCTION
+        // Through an interface parameter: an overloaded callee does not take
+        // an implementer yet (E0810).
+        FUNCTION viaInt : INT VAR_IN_OUT d : IDev; END_VAR viaInt := drive(d, INT#1); END_FUNCTION
+        FUNCTION viaDint : INT VAR_IN_OUT d : IDev; END_VAR viaDint := drive(d, DINT#1); END_FUNCTION
+        FUNCTION runInt : INT VAR p : Pump; END_VAR runInt := viaInt(p); END_FUNCTION
+        FUNCTION runDint : INT VAR p : Pump; END_VAR runDint := viaDint(p); END_FUNCTION
+    "#;
+    let wasm = super::compile_to_wasm(&mut with_db, source);
+    let int: i32 = super::execute_wasm(&wasm, "runInt", ());
+    let dint: i32 = super::execute_wasm(&wasm, "runDint", ());
+    assert_eq!(
+        (int, dint),
+        (107, 207),
+        "each overload ran its own specialization"
+    );
+}
+
+/// The specialization of `drive(d : IDev)` at Pump was `drive$Pump`, the
+/// symbol of the overload `drive(p : Pump)`.
+#[rstest]
+fn an_fb_overload_beside_an_interface_overload(mut with_db: db::RootDatabase) {
+    let source = r#"
+        INTERFACE IDev METHOD Id : INT END_METHOD END_INTERFACE
+        FUNCTION_BLOCK Pump IMPLEMENTS IDev
+            METHOD PUBLIC Id : INT Id := 7; END_METHOD
+        END_FUNCTION_BLOCK
+        FUNCTION drive : INT VAR_IN_OUT d : IDev; END_VAR drive := 100 + d.Id(); END_FUNCTION
+        FUNCTION drive : INT VAR_IN_OUT p : Pump; END_VAR drive := 1; END_FUNCTION
+        FUNCTION via : INT VAR_IN_OUT d : IDev; END_VAR via := drive(d); END_FUNCTION
+        FUNCTION viaIface : INT VAR p : Pump; END_VAR viaIface := via(p); END_FUNCTION
+        FUNCTION viaFb : INT VAR p : Pump; END_VAR viaFb := drive(p); END_FUNCTION
+    "#;
+    let wasm = super::compile_to_wasm(&mut with_db, source);
+    let iface: i32 = super::execute_wasm(&wasm, "viaIface", ());
+    let fb: i32 = super::execute_wasm(&wasm, "viaFb", ());
+    assert_eq!(
+        (iface, fb),
+        (107, 1),
+        "drive(IDev) and drive(Pump) are two bodies"
+    );
+}

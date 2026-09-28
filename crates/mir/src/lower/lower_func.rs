@@ -373,7 +373,7 @@ fn lower_function_block_inner<'db>(
     let fb_qualified = super::naming::qualified_pou_ident(db, Type::FunctionBlock(fb));
 
     // Each method is emitted once, except interface-param methods, emitted
-    // once per specialization (`Owner#Use$Worker`).
+    // once per specialization (`Owner#Use$@Worker`).
     let method_jobs: Vec<(
         hir::hir_def::pous::class::MethodDecl<'db>,
         Option<&super::mono_iface::IfaceInstance<'db>>,

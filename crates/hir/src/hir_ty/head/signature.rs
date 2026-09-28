@@ -94,6 +94,22 @@ pub fn function_signature<'db>(
     db: &'db dyn WorkspaceDataBase,
     f: Function<'db>,
 ) -> FunctionSignature<'db> {
+    let (params, ret) = declared_types(db, f);
+    FunctionSignature {
+        params: params.iter().map(|t| t.normalize(db)).collect(),
+        ret: ret.map(|t| t.normalize(db)),
+    }
+}
+
+/// The types [`function_signature`] normalizes, as the declaration names
+/// them: `IN : Int5` is the DataType `Int5`, not the array it stands for.
+/// A function's symbol is spelled from these, since two aliases of
+/// different arrays normalize to two unnamed ARRAYs. The same cycle hazard
+/// applies.
+pub(crate) fn declared_types<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    f: Function<'db>,
+) -> (Vec<Type<'db>>, Option<Type<'db>>) {
     use crate::hir_ty::infer::Infer;
     let sig = infer_signature(db, f.scope_id(db));
     let params = f
@@ -105,11 +121,10 @@ pub fn function_signature<'db>(
                 .get(&v.spec(db))
                 .copied()
                 .unwrap_or(Type::Never)
-                .normalize(db)
         })
         .collect();
-    let ret = f.return_type(db).map(|spec| spec.infer(db).normalize(db));
-    FunctionSignature { params, ret }
+    let ret = f.return_type(db).map(|spec| spec.infer(db));
+    (params, ret)
 }
 
 /// The minimum number of positional arguments a call to `f` must supply: the
