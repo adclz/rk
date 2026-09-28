@@ -455,3 +455,31 @@ fn a_partial_write_keeps_a_signed_value_signed(
     let result: i32 = execute_wasm(&wasm, "get", ());
     assert_eq!(result, 1, "{ty} {start} with bit 0 set is {expected}");
 }
+
+/// A bit write reads the word it rewrites: both go through one address, so a
+/// call in the subscript runs once. It ran twice, and the word read from
+/// `a[1]` landed in `a[0]`.
+#[rstest]
+fn a_bit_write_runs_its_subscript_once(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Seq
+        VAR_OUTPUT calls : INT; END_VAR
+            METHOD Next : INT
+                Next := calls;
+                calls := calls + 1;
+            END_METHOD
+        END_FUNCTION_BLOCK
+
+        FUNCTION run : DINT
+        VAR a : ARRAY[0..3] OF WORD; q : Seq; r : DINT; END_VAR
+            a[1] := 16#FF00;
+            a[q.Next()].0 := TRUE;
+            IF a[0] = 16#0001 THEN r := 1; END_IF;
+            IF a[1] = 16#FF00 THEN r := r + 10; END_IF;
+            run := r + q.calls * 100;
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let result: i32 = execute_wasm(&wasm, "run", ());
+    assert_eq!(result, 111, "a[0] got the bit, a[1] untouched, one call");
+}

@@ -138,7 +138,7 @@ fn place_subrange(place: &crate::expr::MirPlace) -> Option<crate::types::MirSubr
 
 /// The MIR a statement lowers to: none for one that has no MIR equivalent
 /// (e.g., ExternPragma), and a scratch's store before one that must evaluate
-/// something once (a CASE selector).
+/// something once (a CASE selector, a place both read and stored).
 fn lower_stmt<'db>(
     ctx: &ExprLowerCtx<'db>,
     stmt: Stmt<'db>,
@@ -181,19 +181,26 @@ fn lower_stmt<'db>(
             // whole of `b` with only those bits replaced. A view is the same
             // store into its owner: `%QX0.3 := x` beside a `%QW0` rewrites the
             // word with bit 3 replaced.
+            let mut pin = None;
             let (place, value) = if let Some(view) = ctx.view(*var, var.infer(ctx.db))? {
                 view.write(value)
             } else if var.multibits(ctx.db).is_some() {
+                // The store reads the cell it rewrites: a call in its subscript
+                // runs once, for both.
+                let (store, place) = ctx.pin_place(place);
+                pin = store;
                 let value =
                     ctx.lower_multibit_write(place.clone(), *var, var.infer(ctx.db), value)?;
                 (place, value)
             } else {
                 (place, value)
             };
-            Ok(vec![MirStmt::Assign {
+            let mut stmts: Vec<MirStmt> = pin.into_iter().collect();
+            stmts.push(MirStmt::Assign {
                 target: place,
                 value,
-            }])
+            });
+            Ok(stmts)
         }
 
         StmtKind::FuncCall(func_call) => {

@@ -1629,3 +1629,34 @@ END_FUNCTION
     let r: i32 = run(&mut with_db, src, "run", ());
     assert_eq!(r, 2, "each slot decided what its literal became");
 }
+
+/// A STRING element is addressed once to read its bytes and its length, so a
+/// call in the subscript runs once, and both come from one element. A CASE on
+/// one reads it once too.
+#[rstest]
+fn a_string_element_read_runs_its_subscript_once(mut with_db: db::RootDatabase) {
+    let src = r#"
+FUNCTION_BLOCK Seq
+VAR_OUTPUT calls : INT; END_VAR
+    METHOD Next : INT
+        Next := calls;
+        calls := calls + 1;
+    END_METHOD
+END_FUNCTION_BLOCK
+
+FUNCTION run : DINT
+VAR names : ARRAY[0..3] OF STRING[8]; q : Seq; s : STRING; r : DINT; END_VAR
+    names[0] := 'zero';
+    names[1] := 'one-one!';
+    s := names[q.Next()];
+    IF s = 'zero' THEN r := 1; END_IF;
+    CASE names[q.Next()] OF
+        'zero':     r := r + 1000;
+        'one-one!': r := r + 10;
+    END_CASE;
+    run := r + q.calls * 100;
+END_FUNCTION
+"#;
+    let r: i32 = run(&mut with_db, src, "run", ());
+    assert_eq!(r, 211, "names[0], then names[1], one call each");
+}

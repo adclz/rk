@@ -46,6 +46,10 @@ fn place_elementary(place: &MirPlace) -> Option<MirElementary> {
         | MirPlace::Index {
             element_type: MirType::Elementary(e),
             ..
+        }
+        | MirPlace::Deref {
+            pointee_type: MirType::Elementary(e),
+            ..
         } => Some(*e),
         _ => None,
     }

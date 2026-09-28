@@ -34,6 +34,14 @@ pub(crate) struct StringSnapshotCtx {
 }
 
 thread_local! {
+    /// An i32 scratch holding a STRING's header address while its `(ptr,
+    /// len)` is read, allocated for a body that reaches a place whose path
+    /// runs a call ([`MirStmt::reaches_place_with_call`]).
+    ///
+    /// [`MirStmt::reaches_place_with_call`]: mir::stmt::MirStmt::reaches_place_with_call
+    pub(crate) static STR_ADDR_TMP: std::cell::Cell<Option<u32>> =
+        const { std::cell::Cell::new(None) };
+
     /// Active snapshot context for the current function being emitted.
     /// Set by `emit_function` before walking the body, torn down after.
     pub(crate) static SNAPSHOT_CTX: RefCell<Option<StringSnapshotCtx>> =
@@ -215,7 +223,21 @@ pub(crate) fn emit_str_place_value(
         func.instruction(&Instruction::LocalGet(*len_index));
         return;
     }
-    // Owned inline buffer: ptr = header + 4, len = *header.
+    // Owned inline buffer: ptr = header + 4, len = *header. The header is
+    // addressed once when a call in the place's path would run twice.
+    if place.has_call() {
+        let tmp = STR_ADDR_TMP.with(|c| c.get()).expect(
+            "a STRING place with a call in its path needs the address scratch: \
+             reaches_place_with_call and has_call disagree",
+        );
+        emit_addr_of(func, place, locals, fn_indices);
+        func.instruction(&Instruction::LocalTee(tmp));
+        func.instruction(&Instruction::I32Const(4));
+        func.instruction(&Instruction::I32Add);
+        func.instruction(&Instruction::LocalGet(tmp));
+        func.instruction(&Instruction::I32Load(mem_arg(0, 2)));
+        return;
+    }
     emit_addr_of(func, place, locals, fn_indices);
     func.instruction(&Instruction::I32Const(4));
     func.instruction(&Instruction::I32Add);

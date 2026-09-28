@@ -2505,6 +2505,37 @@ impl<'db> ExprLowerCtx<'db> {
         ))
     }
 
+    /// `place` reached once by a statement that reads it and stores into it:
+    /// when a call in its path would run at each, the store of its address
+    /// into a scratch (`$pin$N`), and the place through that address.
+    pub fn pin_place(&self, place: MirPlace) -> (Option<crate::stmt::MirStmt>, MirPlace) {
+        let Some(ty) = place.ty().filter(|_| place.has_call()).cloned() else {
+            return (None, place);
+        };
+        let mut scratch = self.call_scratch.borrow_mut();
+        let name = hir::hir_def::interned::identifier::Ident::new(
+            self.db,
+            compact_str::CompactString::from(format!(
+                "$pin${}",
+                scratch.scalar.len() + scratch.memory.len()
+            )),
+        );
+        scratch
+            .scalar
+            .push((name, MirType::Pointer(Box::new(ty.clone()))));
+        (
+            Some(crate::stmt::MirStmt::Assign {
+                target: MirPlace::Local(name),
+                value: MirExpr::AddrOf(place),
+            }),
+            MirPlace::Deref {
+                base: Box::new(MirPlace::Local(name)),
+                pointee_type: ty,
+                checked: false,
+            },
+        )
+    }
+
     pub fn lower_case_kind(
         &self,
         case: &CaseKind<'db>,

@@ -192,6 +192,41 @@ impl MirExpr {
     }
 }
 
+impl MirExpr {
+    /// Whether this reaches a place whose path runs a call, which addressing
+    /// the place twice would run twice.
+    pub fn reaches_place_with_call(&self) -> bool {
+        match self {
+            MirExpr::Load(place, _) | MirExpr::AddrOf(place) => place.has_call(),
+            MirExpr::Call(call) => call.reaches_place_with_call(),
+            MirExpr::BinOp { lhs, rhs, .. } => {
+                lhs.reaches_place_with_call() || rhs.reaches_place_with_call()
+            }
+            MirExpr::UnaryOp { expr, .. } | MirExpr::Cast { expr, .. } => {
+                expr.reaches_place_with_call()
+            }
+            MirExpr::CopyIntoScratch { src, .. } => src.reaches_place_with_call(),
+            MirExpr::Constant(_) | MirExpr::StringLiteral { .. } => false,
+        }
+    }
+}
+
+impl MirCall {
+    /// [`MirExpr::reaches_place_with_call`] for the call's arguments and the
+    /// places its outputs are stored in.
+    pub fn reaches_place_with_call(&self) -> bool {
+        self.args.iter().any(|a| a.value.reaches_place_with_call())
+            || self
+                .output_bindings
+                .iter()
+                .any(|b| b.target.has_call() || b.value.reaches_place_with_call())
+            || self
+                .extern_results
+                .iter()
+                .any(|r| r.dest.as_ref().is_some_and(MirPlace::has_call))
+    }
+}
+
 impl MirPlace {
     /// Whether reaching this place runs a call: one in a subscript.
     pub fn has_call(&self) -> bool {

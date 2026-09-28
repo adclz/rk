@@ -1179,6 +1179,15 @@ impl<'a> WasmGen<'a> {
             None
         };
 
+        // One i32 scratch for a STRING header's address (`STR_ADDR_TMP`).
+        let str_addr_tmp = if func.body.iter().any(MirStmt::reaches_place_with_call) {
+            let idx = (params.len() as u32) + extra_locals.iter().map(|(c, _)| *c).sum::<u32>();
+            extra_locals.push((1, ValType::I32));
+            Some(idx)
+        } else {
+            None
+        };
+
         // One scratch slot per nested STRING call, past the MIR static layout.
         let scratch_slots: Vec<u32> = (0..nested_str_count)
             .map(|_| self.alloc_scratch_slot())
@@ -1231,6 +1240,7 @@ impl<'a> WasmGen<'a> {
         };
         let prev_floor_tmp =
             crate::mir_cast::DATETIME_FLOOR_TMP.with(|cell| cell.replace(datetime_floor_tmp));
+        let prev_addr_tmp = crate::emit_expr::STR_ADDR_TMP.with(|cell| cell.replace(str_addr_tmp));
 
         // Automatic storage is fresh at every invocation: wasm locals are zeroed
         // by the engine, but an aggregate at a fixed address must be reset
@@ -1292,6 +1302,7 @@ impl<'a> WasmGen<'a> {
         // Restore the prior context.
         SNAPSHOT_CTX.with(|cell| cell.replace(prev_ctx));
         crate::mir_cast::DATETIME_FLOOR_TMP.with(|cell| cell.replace(prev_floor_tmp));
+        crate::emit_expr::STR_ADDR_TMP.with(|cell| cell.replace(prev_addr_tmp));
 
         // Push return value at function end — the same shapes a mid-body
         // RETURN pushes, from one implementation.
@@ -1385,6 +1396,15 @@ impl<'a> WasmGen<'a> {
             None
         };
 
+        // STRING header address scratch, as in `emit_function` (no params).
+        let str_addr_tmp = if func.body.iter().any(MirStmt::reaches_place_with_call) {
+            let idx = extra_locals.iter().map(|(c, _)| *c).sum::<u32>();
+            extra_locals.push((1, ValType::I32));
+            Some(idx)
+        } else {
+            None
+        };
+
         // Per-call-site STRING snapshot slots for nested STRING-returning
         // calls inside the test body. Same as `emit_function`.
         let nested_str_count = count_nested_string_calls_stmts(&func.body);
@@ -1417,6 +1437,7 @@ impl<'a> WasmGen<'a> {
         };
         let prev_floor_tmp =
             crate::mir_cast::DATETIME_FLOOR_TMP.with(|cell| cell.replace(datetime_floor_tmp));
+        let prev_addr_tmp = crate::emit_expr::STR_ADDR_TMP.with(|cell| cell.replace(str_addr_tmp));
 
         let tag_idx = self.rk_exception_tag_idx.expect(
             "rk_exception_tag_idx must be set whenever any function (including tests) is emitted: \
@@ -1457,6 +1478,7 @@ impl<'a> WasmGen<'a> {
 
         SNAPSHOT_CTX.with(|cell| cell.replace(prev_ctx));
         crate::mir_cast::DATETIME_FLOOR_TMP.with(|cell| cell.replace(prev_floor_tmp));
+        crate::emit_expr::STR_ADDR_TMP.with(|cell| cell.replace(prev_addr_tmp));
 
         // end try_table — only reached on the success (no-throw) path.
         wasm_func.instruction(&Instruction::End);
