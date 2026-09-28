@@ -11,7 +11,7 @@ use crate::{
     hir_def::{
         config::{ConfigDecl, ProgConfig, ResourceDecl, TaskConfig},
         expressions::{expression::PathExpr, spec::SpecKind},
-        interned::identifier::{CaselessIdent, Ident, SpanIdent},
+        interned::identifier::{Ident, SpanIdent},
         program::ProgramDecl,
     },
     hir_ty::{expr_store::PathExprWalkStep, index_graphs::program_index, infer::Infer, ty::Type},
@@ -37,6 +37,7 @@ pub struct ResolvedSchedule<'db> {
 #[derive(Debug, PartialEq, Eq, salsa::Update)]
 pub struct ResolvedResource<'db> {
     pub decl: ResourceDecl<'db>,
+    /// As written, for what is shown; `decl` is its identity.
     pub name: Ident,
     /// The `ON <type>` token: names the execution unit this group runs on.
     pub cpu_type: Ident,
@@ -48,6 +49,7 @@ pub struct ResolvedResource<'db> {
 #[derive(Debug, PartialEq, Eq, salsa::Update)]
 pub struct ResolvedTask<'db> {
     pub decl: TaskConfig<'db>,
+    /// As written, for what is shown; `decl` is its identity.
     pub name: Ident,
     /// Scan period in nanoseconds. A task that cannot run is absent from this
     /// model entirely — see `unschedulable` for why.
@@ -74,6 +76,7 @@ pub struct ConfigLocation<'db> {
 #[derive(Debug, PartialEq, Eq, salsa::Update)]
 pub struct ResolvedProgram<'db> {
     pub decl: ProgConfig<'db>,
+    /// As written, for what is shown; `decl` is its identity.
     pub instance_name: Ident,
     pub program: ProgramDecl<'db>,
     /// Config-level RETAIN/NON_RETAIN qualifier, when written.
@@ -154,7 +157,7 @@ pub struct ConfigInferenceResult<'db> {
     pub task_of_prog: FxHashMap<ProgConfig<'db>, TaskConfig<'db>>,
 
     /// Maps each program instance name to the resolved PROGRAM declaration.
-    pub prog_instance: FxHashMap<CaselessIdent, ProgramDecl<'db>>,
+    pub prog_instance: FxHashMap<Ident, ProgramDecl<'db>>,
 
     /// What actually runs — see [`ResolvedSchedule`].
     pub schedule: ResolvedSchedule<'db>,
@@ -226,7 +229,7 @@ fn infer_config<'db>(
 ) {
     let errors = &mut result.errors;
 
-    let mut seen_resources: FxHashMap<CaselessIdent, SpanIdent<'db>> = FxHashMap::default();
+    let mut seen_resources: FxHashMap<Ident, SpanIdent<'db>> = FxHashMap::default();
 
     for r in config.resources(db).iter() {
         check_or_insert(db, &mut seen_resources, r.name(db), |first, second| {
@@ -246,10 +249,10 @@ fn infer_config<'db>(
     // to them. Tasks and programs only exist inside a RESOURCE.
     for r in config.resources(db).iter() {
         // Tasks are scoped to the RESOURCE that declares them.
-        let resource_tasks: FxHashMap<CaselessIdent, TaskConfig<'db>> = r
+        let resource_tasks: FxHashMap<Ident, TaskConfig<'db>> = r
             .tasks(db)
             .iter()
-            .map(|t| (t.name(db).ident.caseless(db), *t))
+            .map(|t| (t.name(db).ident(db), *t))
             .collect();
         resolve_task_intervals(db, &resource_tasks, result);
         for p in r.programs(db).iter() {
@@ -315,11 +318,8 @@ fn check_instance_global_names<'db>(
     for r in config.resources(db) {
         for p in r.programs(db) {
             let instance = p.name(db);
-            let name = instance.ident.caseless(db);
-            if let Some(global) = globals
-                .iter()
-                .find(|g| g.get_name_ident(db).caseless(db) == name)
-            {
+            let name = instance.ident(db);
+            if let Some(global) = globals.iter().find(|g| g.get_name_ident(db) == name) {
                 errors.push(
                     DuplicateError::InstanceGlobal {
                         instance,
@@ -332,8 +332,8 @@ fn check_instance_global_names<'db>(
         }
     }
     for global in config.variables(db) {
-        let name = global.get_name_ident(db).caseless(db);
-        if let Some(instance) = instances.iter().find(|i| i.ident.caseless(db) == name) {
+        let name = global.get_name_ident(db);
+        if let Some(instance) = instances.iter().find(|i| i.ident(db) == name) {
             errors.push(
                 DuplicateError::InstanceGlobal {
                     instance: *instance,
@@ -352,7 +352,7 @@ fn check_resource_duplicates<'db>(
     r: &ResourceDecl<'db>,
     errors: &mut Vec<IdeDiagnostic>,
 ) {
-    let mut seen_tasks: FxHashMap<CaselessIdent, SpanIdent<'db>> = FxHashMap::default();
+    let mut seen_tasks: FxHashMap<Ident, SpanIdent<'db>> = FxHashMap::default();
     for t in r.tasks(db).iter() {
         check_or_insert(db, &mut seen_tasks, t.name(db), |first, second| {
             errors.push(
@@ -365,7 +365,7 @@ fn check_resource_duplicates<'db>(
         });
     }
 
-    let mut seen_progs: FxHashMap<CaselessIdent, SpanIdent<'db>> = FxHashMap::default();
+    let mut seen_progs: FxHashMap<Ident, SpanIdent<'db>> = FxHashMap::default();
     for p in r.programs(db).iter() {
         check_or_insert(db, &mut seen_progs, p.name(db), |first, second| {
             errors.push(
@@ -383,11 +383,11 @@ fn check_resource_duplicates<'db>(
 /// where `first` is the previously-seen entry and `second` is the new duplicate.
 fn check_or_insert<'db>(
     db: &'db dyn WorkspaceDataBase,
-    seen: &mut FxHashMap<CaselessIdent, SpanIdent<'db>>,
+    seen: &mut FxHashMap<Ident, SpanIdent<'db>>,
     name: SpanIdent<'db>,
     mut on_duplicate: impl FnMut(SpanIdent<'db>, SpanIdent<'db>),
 ) {
-    let key = name.ident.caseless(db);
+    let key = name.ident(db);
     if let Some(first) = seen.get(&key) {
         on_duplicate(*first, name);
     } else {
@@ -399,20 +399,20 @@ fn check_or_insert<'db>(
 fn resolve_prog_instance<'db>(
     db: &'db dyn WorkspaceDataBase,
     p: &ProgConfig<'db>,
-    instances: &mut FxHashMap<CaselessIdent, ProgramDecl<'db>>,
+    instances: &mut FxHashMap<Ident, ProgramDecl<'db>>,
 ) {
     if let SpecKind::Target(target) = p.prog_type(db).kind(db)
         && target.path.namespace.is_none()
-        && let Some(prog) = program_index(db, target.path.target.ident)
+        && let Some(prog) = program_index(db, target.path.target.ident(db))
     {
-        instances.insert(p.name(db).ident.caseless(db), prog);
+        instances.insert(p.name(db).ident(db), prog);
     }
 }
 
 fn validate_prog_config<'db>(
     db: &'db dyn WorkspaceDataBase,
     p: &ProgConfig<'db>,
-    known_tasks: &FxHashMap<CaselessIdent, TaskConfig<'db>>,
+    known_tasks: &FxHashMap<Ident, TaskConfig<'db>>,
     result: &mut ConfigInferenceResult<'db>,
 ) {
     // Program type resolution is now handled by infer_config_resources in signature inference.
@@ -420,7 +420,7 @@ fn validate_prog_config<'db>(
 
     // Resolve the WITH <task> reference if present.
     match p.task(db) {
-        Some(task_ref) => match known_tasks.get(&task_ref.ident.caseless(db)) {
+        Some(task_ref) => match known_tasks.get(&task_ref.ident(db)) {
             Some(task) => {
                 result.task_of_prog.insert(*p, *task);
             }
@@ -456,11 +456,7 @@ fn report_called_by_program<'db>(
         if elements.function_blocks.is_empty() {
             continue;
         }
-        let Some(program) = result
-            .prog_instance
-            .get(&p.name(db).ident.caseless(db))
-            .copied()
-        else {
+        let Some(program) = result.prog_instance.get(&p.name(db).ident(db)).copied() else {
             continue;
         };
         let body = crate::hir_ty::body::infer_body(db, program.scope_id(db));
@@ -477,8 +473,8 @@ fn report_called_by_program<'db>(
                     ConfigError::ProgElementRefused {
                         expr: *path,
                         why: ProgElementRefusal::CalledByProgram {
-                            var: member.name(db).text(db).clone(),
-                            program: program.name(db).text(db).clone(),
+                            var: member.name_with_case(db).text(db).clone(),
+                            program: program.name_with_case(db).text(db).clone(),
                             call: crate::CallSite::from_scoped(db, &call),
                         },
                     }
@@ -566,7 +562,7 @@ fn build_resolved_schedule<'db>(
                     .unwrap_or_else(|| {
                         tasks.push(ResolvedTask {
                             decl: task,
-                            name: task.name(db).ident,
+                            name: task.name(db).with_case,
                             interval_ns,
                             priority: result.task_priority.get(&task).copied(),
                             programs: Vec::new(),
@@ -579,11 +575,7 @@ fn build_resolved_schedule<'db>(
             let Some(task) = result.task_of_prog.get(p).copied() else {
                 continue; // no resolvable WITH <task> — already diagnosed
             };
-            let Some(program) = result
-                .prog_instance
-                .get(&p.name(db).ident.caseless(db))
-                .copied()
-            else {
+            let Some(program) = result.prog_instance.get(&p.name(db).ident(db)).copied() else {
                 continue; // program type did not resolve — already diagnosed
             };
             // A task that cannot run contributes nothing to run.
@@ -607,7 +599,7 @@ fn build_resolved_schedule<'db>(
                 .collect();
             let resolved = ResolvedProgram {
                 decl: *p,
-                instance_name: p.name(db).ident,
+                instance_name: p.name(db).with_case,
                 program,
                 retain: p.retain(db),
                 connections,
@@ -617,7 +609,7 @@ fn build_resolved_schedule<'db>(
             for (member, fb_task, interval_ns) in function_blocks {
                 let at = task_entry(&mut tasks, fb_task, interval_ns);
                 tasks[at].function_blocks.push(ResolvedTaskFb {
-                    instance_name: p.name(db).ident,
+                    instance_name: p.name(db).with_case,
                     member,
                 });
             }
@@ -629,7 +621,7 @@ fn build_resolved_schedule<'db>(
         if !tasks.is_empty() {
             resources.push(ResolvedResource {
                 decl: *r,
-                name: r.name(db).ident,
+                name: r.name(db).with_case,
                 cpu_type: r.resource_type_name(db),
                 tasks,
             });
@@ -640,7 +632,7 @@ fn build_resolved_schedule<'db>(
 
 fn resolve_task_intervals<'db>(
     db: &'db dyn WorkspaceDataBase,
-    tasks: &FxHashMap<CaselessIdent, TaskConfig<'db>>,
+    tasks: &FxHashMap<Ident, TaskConfig<'db>>,
     result: &mut ConfigInferenceResult<'db>,
 ) {
     for task in tasks.values() {
@@ -704,7 +696,8 @@ fn interval_nanos<'db>(
             // written at runtime, and the schedule cannot follow it. Which
             // declaration is fixed, and where its value lives, is the same
             // question a CASE label asks — so it is asked in one place.
-            let var = crate::hir_ty::index_graphs::external_var_lookup(db, path.ident(db).ident)?;
+            let var =
+                crate::hir_ty::index_graphs::external_var_lookup(db, path.ident(db).ident(db))?;
             let init = crate::hir_ty::infer::const_eval::constant_init(db, var)?;
             time_literal_nanos(db, init)
         }
@@ -812,20 +805,20 @@ pub fn resolve_config_entries<'db>(
         }
     }
     let resource_named = |ident: &SpanIdent<'db>| {
-        let name = ident.ident.caseless(db);
+        let name = ident.ident(db);
         fragments
             .iter()
             .flat_map(|f| f.resources(db).iter())
-            .find(|r| r.name(db).ident.caseless(db) == name)
+            .find(|r| r.name(db).ident(db) == name)
             .copied()
     };
     let instance_named = |ident: &SpanIdent<'db>| {
-        let name = ident.ident.caseless(db);
+        let name = ident.ident(db);
         fragments
             .iter()
             .flat_map(|f| f.resources(db).iter())
             .flat_map(|r| r.programs(db).iter())
-            .find(|p| p.name(db).ident.caseless(db) == name)
+            .find(|p| p.name(db).ident(db) == name)
             .copied()
     };
 
@@ -866,7 +859,7 @@ pub fn resolve_config_entries<'db>(
                 continue;
             }
         };
-        let Some(prog) = instances.get(&first_ident.ident.caseless(db)).copied() else {
+        let Some(prog) = instances.get(&first_ident.ident(db)).copied() else {
             out.errors.push(
                 ConfigError::ConfigInstInitUnknownInstance {
                     instance_name: first_ident,
@@ -893,7 +886,7 @@ pub fn resolve_config_entries<'db>(
                 resolved = false;
                 break;
             };
-            match instance_member(db, current_type, ident.ident) {
+            match instance_member(db, current_type, ident.ident(db)) {
                 Some(var) => {
                     current_type = var.spec(db).infer(db).normalize(db);
                     members.push(var);
@@ -928,7 +921,7 @@ pub fn resolve_config_entries<'db>(
                     ConfigError::ConfigEntryRefused {
                         expr: decl.path,
                         why: ConfigEntryRefusal::TypeMismatch {
-                            var: var.name(db).text(db).clone(),
+                            var: var.name_with_case(db).text(db).clone(),
                             written: compact_str::CompactString::from(written.type_name(db)),
                             declared: compact_str::CompactString::from(declared.type_name(db)),
                         },
@@ -950,7 +943,7 @@ pub fn resolve_config_entries<'db>(
         };
         out.entries.push(ConfigEntry {
             path: decl.path,
-            instance: first_ident.ident,
+            instance: first_ident.ident(db),
             members,
             location,
             init: decl.init,
@@ -965,10 +958,8 @@ fn instance_member<'db>(
     ty: Type<'db>,
     name: Ident,
 ) -> Option<VariableDecl<'db>> {
-    let fold = name.caseless(db);
-    members_of(db, ty)
-        .into_iter()
-        .find(|v| v.name(db).caseless(db) == fold)
+    let fold = name;
+    members_of(db, ty).into_iter().find(|v| v.name(db) == fold)
 }
 
 /// Every member an instance of `ty` holds: a PROGRAM's instance state, or
@@ -1019,7 +1010,7 @@ pub fn config_path_prefix<'db>(
 ) -> Option<ConfigPathPrefix<'db>> {
     let steps: Vec<Ident> = steps
         .iter()
-        .map(|step| Ident::new(db, compact_str::CompactString::from(*step)))
+        .map(|step| Ident::new(db, compact_str::CompactString::from(*step)).folded(db))
         .collect();
     let fragments = crate::hir_ty::index_graphs::config_fragments(db, config.get_name_ident(db));
     let resources: Vec<ResourceDecl<'db>> = fragments
@@ -1032,7 +1023,7 @@ pub fn config_path_prefix<'db>(
     };
     let resource = resources
         .iter()
-        .find(|r| r.name(db).ident.caseless(db) == first.caseless(db))
+        .find(|r| r.name(db).ident(db) == *first)
         .copied();
     let instance = match resource {
         Some(r) => match steps.next() {
@@ -1040,13 +1031,13 @@ pub fn config_path_prefix<'db>(
             Some(name) => r
                 .programs(db)
                 .iter()
-                .find(|p| p.name(db).ident.caseless(db) == name.caseless(db))
+                .find(|p| p.name(db).ident(db) == *name)
                 .copied(),
         },
         None => resources
             .iter()
             .flat_map(|r| r.programs(db).iter())
-            .find(|p| p.name(db).ident.caseless(db) == first.caseless(db))
+            .find(|p| p.name(db).ident(db) == *first)
             .copied(),
     }?;
     let mut ty = instance.prog_type(db).infer(db);
@@ -1105,7 +1096,7 @@ pub fn prog_elements<'db>(
                     continue;
                 };
                 out.names.insert(path, var);
-                let name = var.name(db).text(db).clone();
+                let name = var.name_with_case(db).text(db).clone();
                 let refusal = match element {
                     ProgConfElement::Connection(ProgCnxn::Source { source, .. }) => {
                         if !var.is_input(db) {
@@ -1144,7 +1135,7 @@ pub fn prog_elements<'db>(
                         let task = r
                             .tasks(db)
                             .iter()
-                            .find(|t| t.name(db).ident.caseless(db) == fb.task.ident.caseless(db));
+                            .find(|t| t.name(db).ident(db) == fb.task.ident(db));
                         if let Some(task) = task {
                             out.tasks.insert(path, *task);
                         }
@@ -1156,7 +1147,7 @@ pub fn prog_elements<'db>(
                             None
                         } else {
                             Some(ProgElementRefusal::UnknownTask {
-                                task: fb.task.ident.text(db).clone(),
+                                task: fb.task.with_case.text(db).clone(),
                             })
                         }
                     }
@@ -1177,7 +1168,7 @@ pub fn prog_elements<'db>(
             };
             for (var, path, fb) in &named {
                 if twice(var, *fb) {
-                    let var = var.name(db).text(db).clone();
+                    let var = var.name_with_case(db).text(db).clone();
                     let why = if *fb {
                         ProgElementRefusal::AssociatedTwice { var }
                     } else {
@@ -1236,7 +1227,7 @@ pub(crate) fn record_config_paths<'db>(
         for source in [task.interval(db), task.single(db)].into_iter().flatten() {
             if let crate::hir_def::config::DataSource::Path(path) = source
                 && let Some(global) =
-                    crate::hir_ty::index_graphs::external_var_lookup(db, path.ident(db).ident)
+                    crate::hir_ty::index_graphs::external_var_lookup(db, path.ident(db).ident(db))
             {
                 named.push((path, global));
             }
@@ -1270,7 +1261,7 @@ fn program_member<'db>(
         );
         return None;
     };
-    let var = instance_member(db, Type::Program(program), ident.ident);
+    let var = instance_member(db, Type::Program(program), ident.ident(db));
     if var.is_none() {
         errors.push(
             ConfigError::ConfigInstInitFieldNotFound {
@@ -1294,9 +1285,9 @@ fn connected_global<'db>(
         return Err(ProgElementRefusal::NotAVariable);
     };
     let var =
-        crate::hir_ty::index_graphs::external_var_lookup(db, ident.ident).ok_or_else(|| {
+        crate::hir_ty::index_graphs::external_var_lookup(db, ident.ident(db)).ok_or_else(|| {
             ProgElementRefusal::NoSuchGlobal {
-                name: ident.ident.text(db).clone(),
+                name: ident.with_case.text(db).clone(),
             }
         })?;
     names.insert(global, var);
@@ -1315,7 +1306,7 @@ fn check_connected<'db>(
     if declared.is_never() {
         return Ok(()); // already diagnosed
     }
-    let name = var.name(db).text(db).clone();
+    let name = var.name_with_case(db).text(db).clone();
     let declared_name = compact_str::CompactString::from(declared.type_name(db));
     match end {
         ConnectionEnd::Constant(_) => Ok(()),
@@ -1327,7 +1318,7 @@ fn check_connected<'db>(
             Err(ProgElementRefusal::TypeMismatch {
                 var: name,
                 declared: declared_name,
-                global: global.name(db).text(db).clone(),
+                global: global.name_with_case(db).text(db).clone(),
                 ty: compact_str::CompactString::from(ty.type_name(db)),
             })
         }
@@ -1496,7 +1487,7 @@ fn check_config_entries<'db>(
                         .filter(|o| {
                             o.path != entry.path
                                 && o.location.is_some()
-                                && o.instance.caseless(db) == entry.instance.caseless(db)
+                                && o.instance == entry.instance
                                 && o.members == entry.members
                         })
                         .min_by_key(|o| {
@@ -1530,7 +1521,7 @@ fn check_config_entries<'db>(
                 (Some(why), _) => errors.push(
                     ConfigError::ConfigLocationRefused {
                         expr: entry.path,
-                        var: var.name(db).text(db).clone(),
+                        var: var.name_with_case(db).text(db).clone(),
                         address: compact_str::CompactString::from(dv.to_address(db)),
                         why,
                     }
@@ -1582,9 +1573,8 @@ fn check_config_value<'db>(
         errors.push(refuse(ConfigEntryRefusal::ProgramValue));
         return None;
     };
-    let var_name = var.name(db).text(db).clone();
-    let same_instance =
-        |o: &ConfigEntry<'db>| o.instance.caseless(db) == entry.instance.caseless(db);
+    let var_name = var.name_with_case(db).text(db).clone();
+    let same_instance = |o: &ConfigEntry<'db>| o.instance == entry.instance;
     // Every such entry is reported, since fragments have no order.
     let twice = all.iter().any(|o| {
         o.path != entry.path
@@ -1728,7 +1718,7 @@ fn check_partly_located_coverage<'db>(
     for resource in config.resources(db).iter() {
         for p in resource.programs(db).iter() {
             let instance = p.name(db);
-            let Some(program) = result.prog_instance.get(&instance.ident.caseless(db)) else {
+            let Some(program) = result.prog_instance.get(&instance.ident(db)) else {
                 continue;
             };
             let mut paths = Vec::new();
@@ -1748,17 +1738,15 @@ fn check_partly_located_coverage<'db>(
             );
             for path in paths {
                 let located = all.iter().any(|e| {
-                    e.location.is_some()
-                        && e.instance.caseless(db) == instance.ident.caseless(db)
-                        && e.members == path
+                    e.location.is_some() && e.instance == instance.ident(db) && e.members == path
                 });
                 if located {
                     continue;
                 }
-                let mut text = instance.ident.text(db).to_string();
+                let mut text = instance.with_case.text(db).to_string();
                 for member in &path {
                     text.push('.');
-                    text.push_str(member.name(db).text(db));
+                    text.push_str(member.name_with_case(db).text(db));
                 }
                 let address = path
                     .last()

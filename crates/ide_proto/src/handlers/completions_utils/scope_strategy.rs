@@ -84,8 +84,10 @@ impl CompletionCtx {
             // Show the next fragment after the current path depth
             if let Some(frag) = ns_fragments.get(path_fragments.len()) {
                 // One namespace in any case, labelled as first found.
-                let label = frag.text(db).to_string();
-                if seen.insert(frag.caseless(db)) {
+                let label = ns_decl.path_with_case(db).fragments(db)[path_fragments.len()]
+                    .text(db)
+                    .to_string();
+                if seen.insert(frag) {
                     self.items.push(CompletionItem {
                         label,
                         detail: Some("(NAMESPACE)".into()),
@@ -197,8 +199,10 @@ impl<'db> ScopeCompletionCtx<'db> {
             let ns_fragments = ns_decl.path(db).fragments(db);
             if let Some(frag) = ns_fragments.first() {
                 // One namespace in any case, labelled as first found.
-                let label = frag.text(db).to_string();
-                if seen.insert(frag.caseless(db)) {
+                let label = ns_decl.path_with_case(db).fragments(db)[0]
+                    .text(db)
+                    .to_string();
+                if seen.insert(frag) {
                     self.items.push(CompletionItem {
                         label,
                         detail: Some("(NAMESPACE)".into()),

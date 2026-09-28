@@ -9,13 +9,13 @@
 //!
 //! What each section is for:
 //!
-//! - **Guards** — the half no type can enforce. A lookup cannot forget to fold
-//!   (resolution maps are keyed by `CaselessIdent`, and an `Ident` will not
-//!   open one), but a bare `a == b` between two `Ident`s compiles and stays
-//!   case-SENSITIVE. It cannot be made to fold either: folding needs the
-//!   database and `PartialEq::eq` has none. So those comparisons are listed,
-//!   each with the reason it is sound, and a new one fails until it is folded
-//!   or explained.
+//! - **Guards** — the half no type can enforce. A name's accessors hand it
+//!   out case folded (`name(db)`, `get_name_ident(db)`, `SpanIdent::ident(db)`),
+//!   so every comparison and every key is caseless without anyone asking;
+//!   the author's spelling is `*_with_case`, for what is shown. Both kinds
+//!   are an `Ident`, so no type tells them apart: the guards check that a
+//!   spelling is never matched and that nothing folds by hand, and each
+//!   exception is listed with its reason.
 //! - **Resolution** — names that differ only in case are one name, so
 //!   declaring both is declaring it twice.
 //! - **Execution** — the value, not the diagnostic. Every bug this arc found
@@ -39,7 +39,7 @@ use std::path::{Path, PathBuf};
 // Guards
 // ---------------------------------------------------------------------------
 
-/// A comparison that is allowed to skip the fold, and why.
+/// A line the guards let through, and why.
 struct Allowed {
     /// The trimmed source line, matched exactly — editing it re-opens the
     /// review rather than silently keeping the exemption.
@@ -47,73 +47,93 @@ struct Allowed {
     why: &'static str,
 }
 
-const ALLOWED: &[Allowed] = &[
+/// Lines that match a spelling, each with the reason it is sound.
+const SPELLING_MATCHED: &[Allowed] = &[
     Allowed {
-        line: "self.ident == other.ident",
-        why: "SpanIdent equality IS its name's: two occurrences of one name are equal",
+        line: "self.with_case == other.with_case",
+        why: "a SpanIdent's own change detection: an occurrence that only moved \
+              is not a change, and a respelled one is",
     },
     Allowed {
-        line: "self.ident == *other",
-        why: "the same, against a bare Ident",
-    },
-    Allowed {
-        line: "self.instance_types.iter().find(|it| it.name == name)",
-        why: "MIR instance types, named and queried by MIR itself",
-    },
-    Allowed {
-        line: "if let Some(field) = s.fields.iter().find(|f| f.name == *name) {",
-        why: "init path steps carry the DECLARED field name (ResolvedInit), \
-              so both sides are declarations",
-    },
-    Allowed {
-        line: "let f = s.fields.iter().find(|f| f.name == *name)?;",
-        why: "the same walk, one level down",
-    },
-    Allowed {
-        line: "v.name(db) == name",
-        why: "a PROGRAM's declared variable against a declared retain name",
-    },
-    Allowed {
-        line: "let Some(field) = struct_type.fields.iter().find(|f| f.name == var_name)",
-        why: "HIR already matched the param to a VariableDecl; var_name is that \
-              declaration's own name",
-    },
-    Allowed {
-        line: "let Some(field) = struct_type.fields.iter().find(|f| f.name == var_name) else {",
-        why: "the same match, the output-binding arm",
-    },
-    Allowed {
-        line: ".find(|f| f.name == var.name(db))",
-        why: "HIR resolved the connected variable to its VariableDecl, and the \
-              program's layout names the field by that declaration",
-    },
-    Allowed {
-        line: ".find(|f| f.name == fb.member.name(db))",
-        why: "the same, for a function block a task runs",
+        line: "self.path_with_case == other.path_with_case",
+        why: "the same, for a written namespace path",
     },
 ];
 
-/// Lines that COMPARE two names. Deliberately broad: a false positive costs
-/// one line in `ALLOWED` and a sentence saying why, which is the point.
-fn compares_names(line: &str) -> bool {
-    let has_eq = line.contains("==") || line.contains("!=");
-    if !has_eq || line.contains("caseless(") {
-        return false;
-    }
-    let trimmed = line.trim_start();
-    if trimmed.starts_with("//") || trimmed.starts_with("///") {
-        return false;
-    }
-    [
-        "get_name_ident(db)",
-        ".name(db)",
-        ".ident",
-        ".name",
-        "name ==",
-        "ident ==",
-    ]
-    .iter()
-    .any(|needle| line.contains(needle))
+/// Folds outside an accessor, each with the reason it is sound: the places a
+/// name arrives as text, not as an identifier the source declared.
+const FOLDED_OUTSIDE_AN_ACCESSOR: &[Allowed] = &[
+    Allowed {
+        line: "if fragments.iter().all(|f| f.folded(db) == *f) {",
+        why: "the fold of a namespace path itself, fragment by fragment",
+    },
+    Allowed {
+        line: "fragments.iter().map(|f| f.folded(db)).collect::<Vec<_>>(),",
+        why: "the same fold, building the folded path",
+    },
+    Allowed {
+        line: "let ident = Ident::from_slice(db, content).folded(db);",
+        why: "a `[Name]` link in a comment is text the reader typed",
+    },
+    Allowed {
+        line: ".map(|p| Ident::from_slice(db, p).folded(db))",
+        why: "the same link's namespace fragments",
+    },
+    Allowed {
+        line: "let target_ident = Ident::from_slice(db, target_name).folded(db);",
+        why: "the same link's last fragment",
+    },
+    Allowed {
+        line: "let name = Ident::from_slice(db, parts[0]).folded(db);",
+        why: "a test's qualified name, as `rk test` is given it",
+    },
+    Allowed {
+        line: ".map(|s| Ident::from_slice(db, s).folded(db))",
+        why: "the same name's namespace fragments",
+    },
+    Allowed {
+        line: "let name = Ident::from_slice(db, item_name).folded(db);",
+        why: "the same name's last fragment",
+    },
+    Allowed {
+        line: ".map(|step| Ident::new(db, compact_str::CompactString::from(*step)).folded(db))",
+        why: "a VAR_CONFIG path's steps, split out of the path as text",
+    },
+];
+
+/// The crates that hold names: where a spelling could be matched, or a
+/// name folded by hand.
+const NAME_CRATES: &[&str] = &[
+    "crates/hir/src",
+    "crates/mir/src",
+    "crates/linter/src",
+    "crates/ide_proto/src",
+    "crates/wasm_codegen/src",
+    "crates/debug_format/src",
+    "crates/cli/src",
+];
+
+/// Lines that MATCH a written spelling: compare it or use it as a key.
+fn matches_a_spelling(line: &str) -> bool {
+    line.contains("with_case")
+        && [
+            "==",
+            "!=",
+            ".get(",
+            ".insert(",
+            ".contains(",
+            ".entry(",
+            "contains_key",
+        ]
+        .iter()
+        .any(|needle| line.contains(needle))
+}
+
+/// Lines that fold by hand. An accessor over a stored spelling is where a
+/// fold belongs: `self.name_with_case(db).folded(db)`.
+fn folds_outside_an_accessor(line: &str) -> bool {
+    line.contains(".folded(")
+        && !(line.trim_start().starts_with("self.") && line.contains("with_case"))
 }
 
 fn rust_files(dir: &Path, out: &mut Vec<PathBuf>) {
@@ -130,71 +150,100 @@ fn rust_files(dir: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
-/// Every name comparison that skips the fold is accounted for.
-#[test]
-fn name_comparisons_are_folded_or_explained() {
+/// Every source line of the name crates, with where it is, comments and the
+/// fold's own definition left out.
+fn name_crate_lines() -> Vec<(String, String)> {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let mut files = Vec::new();
-    for crate_dir in ["crates/hir/src", "crates/mir/src"] {
+    for crate_dir in NAME_CRATES {
         rust_files(&root.join(crate_dir), &mut files);
     }
     assert!(!files.is_empty(), "found no sources to scan");
-
-    let mut unexplained = Vec::new();
+    let mut lines = Vec::new();
     for file in &files {
         let Ok(text) = std::fs::read_to_string(file) else {
             continue;
         };
+        let rel = file
+            .strip_prefix(root)
+            .unwrap_or(file)
+            .display()
+            .to_string();
         for (n, line) in text.lines().enumerate() {
-            if !compares_names(line) {
-                continue;
-            }
             let trimmed = line.trim();
-            if ALLOWED.iter().any(|a| a.line == trimmed) {
+            if trimmed.starts_with("//") {
                 continue;
             }
-            let rel = file.strip_prefix(root).unwrap_or(file);
-            unexplained.push(format!("{}:{}\n    {trimmed}", rel.display(), n + 1));
+            lines.push((format!("{rel}:{}", n + 1), trimmed.to_string()));
         }
     }
+    lines
+}
 
+fn unexplained(
+    lines: &[(String, String)],
+    flagged: fn(&str) -> bool,
+    allowed: &[Allowed],
+) -> Vec<String> {
+    lines
+        .iter()
+        .filter(|(_, line)| flagged(line) && !allowed.iter().any(|a| a.line == line))
+        .map(|(at, line)| format!("{at}\n    {line}"))
+        .collect()
+}
+
+/// A written spelling is shown, never matched: names compare as their
+/// accessors hand them out, case folded, and a spelling in a comparison or a
+/// key is `Motor` and `motor` coming apart again.
+#[test]
+fn a_spelling_is_never_matched() {
+    let found = unexplained(&name_crate_lines(), matches_a_spelling, SPELLING_MATCHED);
     assert!(
-        unexplained.is_empty(),
-        "a name is compared without folding, at {} site(s):\n\n{}\n\n\
-         Names match with case out of the way (§6.1.2). Either fold both sides \
-         with `.caseless(db)`, or — if BOTH sides come from a declaration and a \
-         fold would be a no-op — add the line to `ALLOWED` in this file with the \
-         reason.",
-        unexplained.len(),
-        unexplained.join("\n")
+        found.is_empty(),
+        "a written spelling is matched, at {} site(s):\n\n{}\n\n\
+         Names match as their accessors give them — `name(db)`, \
+         `get_name_ident(db)`, `SpanIdent::ident(db)` — case folded (§6.1.2). \
+         `*_with_case` is for what is shown. If this match is sound, add the \
+         line to `SPELLING_MATCHED` in this file with the reason.",
+        found.len(),
+        found.join("\n")
+    );
+}
+
+/// Names fold in their accessors, once, and nowhere else: a fold by hand is
+/// a name that reached matching raw, and the next one like it will not be
+/// folded.
+#[test]
+fn names_fold_only_in_their_accessors() {
+    let found = unexplained(
+        &name_crate_lines(),
+        folds_outside_an_accessor,
+        FOLDED_OUTSIDE_AN_ACCESSOR,
+    );
+    assert!(
+        found.is_empty(),
+        "a name is folded by hand, at {} site(s):\n\n{}\n\n\
+         Read it through its accessor instead, which folds. If it arrives as \
+         text rather than as a declared identifier, add the line to \
+         `FOLDED_OUTSIDE_AN_ACCESSOR` in this file with the reason.",
+        found.len(),
+        found.join("\n")
     );
 }
 
 /// The exemptions describe something that still exists.
 ///
-/// Without this, a comparison that gets folded or deleted leaves its entry
-/// behind, and the list slowly stops meaning anything.
+/// Without this, a line that gets rewritten or deleted leaves its entry
+/// behind, and the lists slowly stop meaning anything.
 #[test]
 fn no_stale_exemptions() {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let mut files = Vec::new();
-    for crate_dir in ["crates/hir/src", "crates/mir/src"] {
-        rust_files(&root.join(crate_dir), &mut files);
-    }
-    let all: Vec<String> = files
+    let lines = name_crate_lines();
+    let stale: Vec<String> = SPELLING_MATCHED
         .iter()
-        .filter_map(|f| std::fs::read_to_string(f).ok())
-        .collect();
-
-    let stale: Vec<String> = ALLOWED
-        .iter()
-        .filter(|a| {
-            !all.iter()
-                .any(|text| text.lines().any(|l| l.trim() == a.line))
-        })
+        .chain(FOLDED_OUTSIDE_AN_ACCESSOR)
+        .filter(|a| !lines.iter().any(|(_, l)| l == a.line))
         .map(|a| format!("{}\n      exempt because: {}", a.line, a.why))
         .collect();
-
     assert!(
         stale.is_empty(),
         "exemption(s) for code that is gone — delete them:\n  {}",

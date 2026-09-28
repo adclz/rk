@@ -36,7 +36,7 @@ pub fn check<'db>(
 
     let mut seen: FxHashMap<_, Vec<ConfigDecl<'db>>> = FxHashMap::default();
     for config in sema.configs.iter() {
-        seen.entry(config.get_name_ident(db).caseless(db))
+        seen.entry(config.get_name_ident(db))
             .or_default()
             .push(*config);
     }
@@ -46,7 +46,7 @@ pub fn check<'db>(
             continue;
         }
         // Grouped folded, named as the first declaration spelled it.
-        let name = decls[0].get_name_ident(db).text(db);
+        let name = decls[0].get_name_with_case(db).text(db);
 
         // Report the reopenings, pointing back at the first.
         for config in &decls[1..] {

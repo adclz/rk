@@ -331,7 +331,7 @@ fn process_call<'db>(
                 compact_str::CompactString::from(format!(
                     "{}#{}",
                     owner_q.text(db),
-                    method.name(db).text(db)
+                    method.name_with_case(db).text(db)
                 )),
             )
         }

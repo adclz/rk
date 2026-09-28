@@ -10,19 +10,26 @@ use auto_lsp::core::ast::AstNode;
 use auto_lsp::default::db::tracked::get_ast;
 use db::WorkspaceDataBase;
 use std::hash::Hash;
-use std::ops::Deref;
 
 // Namespace path with span information
 #[derive(Debug, Clone, salsa::Update)]
 pub struct SpanNamespacePath<'db> {
     pub scope_id: ScopeId<'db>,
     pub spans: Vec<AstId>,
-    pub path: NamespacePath,
+    /// The path as the author wrote it. Matching reads [`Self::path`].
+    pub path_with_case: NamespacePath,
+}
+
+impl SpanNamespacePath<'_> {
+    /// The path, as paths are matched: every fragment case folded.
+    pub fn path(&self, db: &dyn WorkspaceDataBase) -> NamespacePath {
+        self.path_with_case.folded(db)
+    }
 }
 
 impl PartialEq for SpanNamespacePath<'_> {
     fn eq(&self, other: &Self) -> bool {
-        self.path == other.path
+        self.path_with_case == other.path_with_case
     }
 }
 
@@ -30,15 +37,7 @@ impl Eq for SpanNamespacePath<'_> {}
 
 impl Hash for SpanNamespacePath<'_> {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.path.hash(state);
-    }
-}
-
-impl Deref for SpanNamespacePath<'_> {
-    type Target = NamespacePath;
-
-    fn deref(&self) -> &Self::Target {
-        &self.path
+        self.path_with_case.hash(state);
     }
 }
 
@@ -49,13 +48,13 @@ impl<'db> SpanNamespacePath<'db> {
         other: &'db SpanNamespacePath,
         scope_id: ScopeId<'db>,
     ) -> SpanNamespacePath<'db> {
-        let mut fragments = self.path.fragments(db).to_owned();
+        let mut fragments = self.path(db).fragments(db).to_owned();
         let mut spans = self.spans.clone();
-        fragments.extend_from_slice(other.path.fragments(db));
+        fragments.extend_from_slice(other.path(db).fragments(db));
         spans.extend_from_slice(&other.spans);
         SpanNamespacePath {
             scope_id,
-            path: NamespacePath::new(db, fragments),
+            path_with_case: NamespacePath::new(db, fragments),
             spans,
         }
     }
@@ -66,19 +65,19 @@ impl<'db> SpanNamespacePath<'db> {
         ident: SpanIdent<'db>,
         scope_id: ScopeId<'db>,
     ) -> SpanNamespacePath<'db> {
-        let mut path = self.path.fragments(db).to_owned();
+        let mut path = self.path(db).fragments(db).to_owned();
         let mut spans = self.spans.clone();
         spans.push(ident.id);
-        path.push(ident.ident);
+        path.push(ident.ident(db));
         SpanNamespacePath {
             scope_id,
-            path: NamespacePath::new(db, path),
+            path_with_case: NamespacePath::new(db, path),
             spans: self.spans.clone(),
         }
     }
 
     pub fn to_string(&self, db: &dyn WorkspaceDataBase) -> String {
-        self.path
+        self.path(db)
             .fragments(db)
             .iter()
             .map(|i| i.text(db).to_string())
@@ -100,7 +99,7 @@ impl<'db> From<(&dyn WorkspaceDataBase, &SpanIdent<'db>)> for SpanNamespacePath<
         SpanNamespacePath {
             scope_id: from.1.scope_id,
             spans: vec![from.1.id],
-            path: NamespacePath::new(from.0, vec![from.1.ident]),
+            path_with_case: NamespacePath::new(from.0, vec![from.1.with_case]),
         }
     }
 }
@@ -113,13 +112,13 @@ impl<'db> From<(&dyn WorkspaceDataBase, &[SpanIdent<'db>], ScopeId<'db>)>
         let mut idents = vec![];
         for ident in from.1.iter() {
             spans.push(ident.id);
-            idents.push(ident.ident);
+            idents.push(ident.with_case);
         }
 
         SpanNamespacePath {
             scope_id: from.2,
             spans,
-            path: NamespacePath::new(from.0, idents),
+            path_with_case: NamespacePath::new(from.0, idents),
         }
     }
 }
@@ -132,13 +131,13 @@ impl<'db> From<(&dyn WorkspaceDataBase, Vec<SpanIdent<'db>>, ScopeId<'db>)>
         let mut idents = vec![];
         for ident in from.1.iter() {
             spans.push(ident.id);
-            idents.push(ident.ident);
+            idents.push(ident.with_case);
         }
 
         SpanNamespacePath {
             scope_id: from.2,
             spans,
-            path: NamespacePath::new(from.0, idents),
+            path_with_case: NamespacePath::new(from.0, idents),
         }
     }
 }
@@ -151,13 +150,13 @@ impl<'db> From<(&dyn WorkspaceDataBase, &Vec<SpanIdent<'db>>, ScopeId<'db>)>
         let mut idents = vec![];
         for ident in from.1.iter() {
             spans.push(ident.id);
-            idents.push(ident.ident);
+            idents.push(ident.with_case);
         }
 
         SpanNamespacePath {
             scope_id: from.2,
             spans,
-            path: NamespacePath::new(from.0, idents),
+            path_with_case: NamespacePath::new(from.0, idents),
         }
     }
 }
@@ -171,20 +170,18 @@ pub struct NamespacePath {
 
 #[salsa::tracked]
 impl NamespacePath {
-    /// The path as names are compared: every fragment folded, per §6.1.2.
-    /// Memoized so path equality stays a single interned-id compare.
+    /// The path as names are matched: every fragment folded, as
+    /// [`Ident::folded`]. Memoized so path equality stays a single interned-id
+    /// compare.
     #[salsa::tracked]
-    pub fn caseless(self, db: &dyn WorkspaceDataBase) -> NamespacePath {
+    pub fn folded(self, db: &dyn WorkspaceDataBase) -> NamespacePath {
         let fragments = self.fragments(db);
-        if fragments.iter().all(|f| f.caseless(db).as_ident() == *f) {
+        if fragments.iter().all(|f| f.folded(db) == *f) {
             return self;
         }
         NamespacePath::new(
             db,
-            fragments
-                .iter()
-                .map(|f| f.caseless(db).as_ident())
-                .collect::<Vec<_>>(),
+            fragments.iter().map(|f| f.folded(db)).collect::<Vec<_>>(),
         )
     }
 }
@@ -356,7 +353,7 @@ impl<'db> NamespaceAccess<'db> {
         if !path.is_empty() {
             path.push('.');
         }
-        path.push_str(self.target.ident.text(db).as_str());
+        path.push_str(self.target.with_case.text(db).as_str());
         path
     }
 }

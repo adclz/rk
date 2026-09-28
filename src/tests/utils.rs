@@ -373,14 +373,14 @@ pub fn find_pou_with_name<'db>(
     let sema = semantic_index(db, file);
 
     for pou in sema.global_pous.iter().copied() {
-        if pou.get_name_ident(db).text(db).as_str() == name {
+        if pou.get_name_with_case(db).text(db).as_str() == name {
             return Some(pou);
         }
     }
 
     for ns in sema.namespaces.iter() {
         for pou in ns.pous(db) {
-            if pou.get_name_ident(db).text(db).as_str() == name {
+            if pou.get_name_with_case(db).text(db).as_str() == name {
                 return Some(*pou);
             }
         }
@@ -397,7 +397,7 @@ pub fn find_namespace_with_name<'db>(
     let sema = semantic_index(db, file);
 
     for ns in sema.namespaces.iter() {
-        if ns.path(db).to_string(db) == name {
+        if ns.path_with_case(db).to_string(db) == name {
             return Some(*ns);
         }
     }

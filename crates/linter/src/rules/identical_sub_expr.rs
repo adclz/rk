@@ -152,7 +152,7 @@ fn same_path<'db>(
             ) => {
                 // One name in any case; the resolved type then separates two
                 // declarations of one name.
-                l.ident.caseless(db) == r.ident.caseless(db)
+                l.ident(db) == r.ident(db)
                     && body.type_of_path_expr.get(&step.get_expr(db))
                         == body.type_of_path_expr.get(&other.get_expr(db))
             }

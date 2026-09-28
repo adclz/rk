@@ -120,7 +120,7 @@ impl<'db> HoverHandler<'db> for NamespaceDecl<'db> {
             return None;
         }
 
-        let ns = self.path(db).to_string(db);
+        let ns = self.path_with_case(db).to_string(db);
         Some(Hover {
             contents: HoverContents::Scalar(MarkedString::from_markdown(
                 format!(
@@ -147,7 +147,7 @@ impl<'db> HoverHandler<'db> for ProgramDecl<'db> {
         }
 
         let comment = self.get_comment(db).unwrap_or_default();
-        let name = self.get_name_ident(db).text(db);
+        let name = self.get_name_with_case(db).text(db);
 
         let path = Type::Program(*self).path_name(db);
 
@@ -182,7 +182,7 @@ impl<'db> HoverHandler<'db> for Pou<'db> {
             Pou::DataType(dt) => "TYPE",
         };
 
-        let name = self.get_name_ident(db).text(db);
+        let name = self.get_name_with_case(db).text(db);
         let return_type = match self {
             Pou::Function(f) => f
                 .return_type(db)
@@ -223,7 +223,7 @@ impl<'db> HoverHandler<'db> for VariableDecl<'db> {
         };
 
         let infer = self.spec(db).infer(db);
-        let name = self.name(db).text(db);
+        let name = self.name_with_case(db).text(db);
         let type_name = infer.type_name(db);
 
         Some(Hover {
@@ -246,7 +246,7 @@ impl<'db> HoverHandler<'db> for MethodRef<'db> {
             MethodRef::Prototype(_) => "METHOD PROTOTYPE",
         };
 
-        let name = self.get_name_ident(db).text(db);
+        let name = self.get_name_with_case(db).text(db);
         let return_type = match self {
             MethodRef::Declared(decl) => match decl.return_type(db) {
                 Some(ret_ty) => format!(": {}", ret_ty.infer(db).type_name(db)),
@@ -276,7 +276,7 @@ impl<'db> HoverHandler<'db> for MethodRef<'db> {
 impl<'db> HoverHandler<'db> for StructElement<'db> {
     fn hover(&'db self, db: &'db dyn WorkspaceDataBase, offset: usize) -> Option<Hover> {
         let comment = self.get_comment(db).unwrap_or_default();
-        let name = self.name(db).text(db);
+        let name = self.name_with_case(db).text(db);
         let type_name = self.spec(db).infer(db).type_name(db);
         let path = Type::StructElement(*self).path_name(db);
 
@@ -346,7 +346,7 @@ impl<'db> HoverHandler<'db> for PathExpr<'db> {
                 return Some(Hover {
                     contents: HoverContents::Scalar(MarkedString::from_markdown(format!(
                         "\n```iecst\nNAMESPACE {}\n```\n",
-                        ns_path.to_string(db)
+                        hir::hir_ty::index_graphs::namespace_spelling(db, ns_path)
                     ))),
                     range: None,
                 });
@@ -389,7 +389,13 @@ impl<'db> HoverHandler<'db> for Using<'db> {
     fn hover(&'db self, db: &'db dyn WorkspaceDataBase, offset: usize) -> Option<Hover> {
         let mut accumulated_path = vec![];
 
-        for (index, fragment) in self.path(db).fragments(db).iter().enumerate() {
+        for (index, fragment) in self
+            .path(db)
+            .path_with_case
+            .fragments(db)
+            .iter()
+            .enumerate()
+        {
             let span = self
                 .path(db)
                 .get_fragment_ast_node(db, index)
@@ -424,7 +430,7 @@ impl<'db> HoverHandler<'db> for Spec<'db> {
         {
             let mut accumulated_path = vec![];
 
-            for (index, fragment) in path.fragments(db).iter().enumerate() {
+            for (index, fragment) in path.path_with_case.fragments(db).iter().enumerate() {
                 let span = path.get_fragment_ast_node(db, index).get_range().to_owned();
                 accumulated_path.push(fragment.text(db).to_string());
 
@@ -504,7 +510,7 @@ impl<'db> HoverHandler<'db> for DirectVariable<'db> {
         let declared = |var: &VariableDecl<'db>| {
             format!(
                 "`{} : {}`",
-                var.name(db).text(db),
+                var.name_with_case(db).text(db),
                 var.spec(db).infer(db).type_name(db)
             )
         };
@@ -588,7 +594,7 @@ impl<'db> HoverHandler<'db> for ConfigDecl<'db> {
             return None;
         }
 
-        let name = self.name(db).text(db);
+        let name = self.name_with_case(db).text(db);
         Some(Hover {
             contents: HoverContents::Scalar(MarkedString::from_markdown(format!(
                 "\n```iecst\nCONFIGURATION {name}\n```\n"
@@ -608,7 +614,7 @@ impl<'db> HoverHandler<'db> for ResourceDecl<'db> {
             return None;
         }
 
-        let name = self.name(db).ident.text(db);
+        let name = self.name(db).with_case.text(db);
         let resource_type = self.resource_type_name(db).text(db);
         Some(Hover {
             contents: HoverContents::Scalar(MarkedString::from_markdown(format!(
@@ -629,7 +635,7 @@ impl<'db> HoverHandler<'db> for TaskConfig<'db> {
             return None;
         }
 
-        let name = self.name(db).ident.text(db);
+        let name = self.name(db).with_case.text(db);
         let priority = self
             .priority(db)
             .map(|p| p.text(db).to_string())
@@ -670,13 +676,13 @@ impl<'db> HoverHandler<'db> for ProgConfig<'db> {
             return None;
         }
 
-        let name = self.name(db).ident.text(db);
+        let name = self.name(db).with_case.text(db);
         let prog_type = match self.prog_type(db).kind(db) {
-            SpecKind::Target(t) => t.path.target.ident.text(db).to_string(),
+            SpecKind::Target(t) => t.path.target.with_case.text(db).to_string(),
             _ => "?".to_string(),
         };
         let task_part = match self.task(db) {
-            Some(task) => format!(" WITH {}", task.ident.text(db)),
+            Some(task) => format!(" WITH {}", task.with_case.text(db)),
             None => String::new(),
         };
         Some(Hover {

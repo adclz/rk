@@ -197,7 +197,7 @@ impl<'db> ToIdeDiagnostic<'db> for CallError<'db> {
                 let mut diag = diag()
                     .message(format!(
                         "variadic parameter '{}' must be the only VAR_INPUT parameter",
-                        variadic_var.name(db).text(db),
+                        variadic_var.name_with_case(db).text(db),
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
@@ -209,7 +209,7 @@ impl<'db> ToIdeDiagnostic<'db> for CallError<'db> {
                 diag.with_related(Related::new(
                     format!(
                         "variadic parameter '{}' declared here",
-                        variadic_var.name(db).text(db)
+                        variadic_var.name_with_case(db).text(db)
                     ),
                     variadic_var.scope_id(db).file(db),
                     variadic_var.get_span(db),
@@ -229,7 +229,7 @@ impl<'db> ToIdeDiagnostic<'db> for CallError<'db> {
                 .message(if *overloads > 1 {
                     format!(
                         "no overload of '{}' takes {} parameter{}",
-                        callable.get_name_ident(db).text(db),
+                        callable.get_name_with_case(db).text(db),
                         actual,
                         match actual {
                             1 => "",
@@ -239,7 +239,7 @@ impl<'db> ToIdeDiagnostic<'db> for CallError<'db> {
                 } else {
                     format!(
                         "'{}' expects {} parameter{}, but got {}",
-                        callable.get_name_ident(db).text(db),
+                        callable.get_name_with_case(db).text(db),
                         expected,
                         match expected {
                             1 => "",
@@ -262,14 +262,14 @@ impl<'db> ToIdeDiagnostic<'db> for CallError<'db> {
             } => {
                 let names: Vec<String> = vars
                     .iter()
-                    .map(|v| format!("'{}'", v.name(db).text(db)))
+                    .map(|v| format!("'{}'", v.name_with_case(db).text(db)))
                     .collect();
                 let names_joined = names.join(", ");
 
                 let mut diag = diag()
                     .message(format!(
                         "call to '{}' is missing {} required parameter{}: {}",
-                        func.get_name_ident(db).text(db),
+                        func.get_name_with_case(db).text(db),
                         vars.len(),
                         if vars.len() > 1 { "s" } else { "" },
                         names_joined,
@@ -300,7 +300,10 @@ impl<'db> ToIdeDiagnostic<'db> for CallError<'db> {
 
                 for var in vars {
                     diag.with_related(Related::new(
-                        format!("parameter '{}' declared here", var.name(db).text(db)),
+                        format!(
+                            "parameter '{}' declared here",
+                            var.name_with_case(db).text(db)
+                        ),
                         var.scope_id(db).file(db),
                         var.get_span(db),
                     ));
@@ -310,25 +313,35 @@ impl<'db> ToIdeDiagnostic<'db> for CallError<'db> {
             }
             Self::UnknownInputParameter { func, param } => {
                 let mut diag = diag()
-                    .message(format!("unknown input parameter '{}'", param.text(db)))
+                    .message(format!("unknown input parameter '{}'", param.as_str(db)))
                     .range(crate::denormalize(db, file, &param.get_span(db)).unwrap_or_default())
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
                     .call();
 
-                fuzzy_callable_type_parameters(db, *func, &mut diag, param.text(db).as_str());
+                fuzzy_callable_type_parameters(
+                    db,
+                    *func,
+                    &mut diag,
+                    param.ident(db).text(db).as_str(),
+                );
 
                 diag
             }
             Self::UnknownOutputParameter { func, param } => {
                 let mut diag = diag()
-                    .message(format!("unknown output parameter '{}'", param.text(db)))
+                    .message(format!("unknown output parameter '{}'", param.as_str(db)))
                     .range(crate::denormalize(db, file, &param.get_span(db)).unwrap_or_default())
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
                     .call();
 
-                fuzzy_callable_type_parameters(db, *func, &mut diag, param.text(db).as_str());
+                fuzzy_callable_type_parameters(
+                    db,
+                    *func,
+                    &mut diag,
+                    param.ident(db).text(db).as_str(),
+                );
 
                 diag
             }
@@ -349,7 +362,7 @@ impl<'db> ToIdeDiagnostic<'db> for CallError<'db> {
                     .call();
                 diag.with_note(format!(
                     "use formal syntax instead: {} => <variable>",
-                    var.get_name_ident(db).text(db)
+                    var.get_name_with_case(db).text(db)
                 ));
 
                 diag
@@ -358,8 +371,8 @@ impl<'db> ToIdeDiagnostic<'db> for CallError<'db> {
                 let mut diag = diag()
                     .message(format!(
                         "VAR_IN_OUT parameter '{}' of '{}' requires a variable, not a value",
-                        var.name(db).text(db),
-                        func.get_name_ident(db).text(db),
+                        var.name_with_case(db).text(db),
+                        func.get_name_with_case(db).text(db),
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
@@ -370,7 +383,10 @@ impl<'db> ToIdeDiagnostic<'db> for CallError<'db> {
                         .to_string(),
                 );
                 diag.with_related(Related::new(
-                    format!("parameter '{}' declared here", var.name(db).text(db)),
+                    format!(
+                        "parameter '{}' declared here",
+                        var.name_with_case(db).text(db)
+                    ),
                     var.scope_id(db).file(db),
                     var.get_span(db),
                 ));
@@ -381,8 +397,8 @@ impl<'db> ToIdeDiagnostic<'db> for CallError<'db> {
                 let mut diag = diag()
                     .message(format!(
                         "VAR_IN_OUT parameter '{}' of '{}' cannot be bound with '=>'",
-                        var.name(db).text(db),
-                        func.get_name_ident(db).text(db),
+                        var.name_with_case(db).text(db),
+                        func.get_name_with_case(db).text(db),
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
@@ -390,10 +406,13 @@ impl<'db> ToIdeDiagnostic<'db> for CallError<'db> {
                     .call();
                 diag.with_note(format!(
                     "VAR_IN_OUT is bound by reference at call entry: use {} := <variable>",
-                    var.name(db).text(db),
+                    var.name_with_case(db).text(db),
                 ));
                 diag.with_related(Related::new(
-                    format!("parameter '{}' declared here", var.name(db).text(db)),
+                    format!(
+                        "parameter '{}' declared here",
+                        var.name_with_case(db).text(db)
+                    ),
                     var.scope_id(db).file(db),
                     var.get_span(db),
                 ));
@@ -430,7 +449,7 @@ impl<'db> ToIdeDiagnostic<'db> for CallError<'db> {
 
                 if let Some(var) = var {
                     diag.with_related(Related::new(
-                        format!("'{}' is declared here", var.name(db).text(db)),
+                        format!("'{}' is declared here", var.name_with_case(db).text(db)),
                         var.scope_id(db).file(db),
                         var.get_span(db),
                     ));
@@ -465,7 +484,12 @@ impl<'db> ToIdeDiagnostic<'db> for CallError<'db> {
                 let mut diag = diag()
                     .message(format!(
                         "call to '{}' is ambiguous: {} overloads accept these arguments: disambiguate with an explicit cast",
-                        name.text(db),
+                        // As an overload writes it: they all name it, in some case.
+                        candidates
+                            .first()
+                            .map(|f| f.name_with_case(db))
+                            .unwrap_or(*name)
+                            .text(db),
                         candidates.len()
                     ))
                     .severity(DiagnosticSeverity::ERROR)
@@ -532,7 +556,7 @@ impl<'db> ToIdeDiagnostic<'db> for CallError<'db> {
                 let mut diag = diag()
                     .message(format!(
                         "variable '{}' is declared as variadic but has non-variadic type '{}'",
-                        var.name(db).text(db),
+                        var.name_with_case(db).text(db),
                         typ.type_name(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
@@ -554,7 +578,7 @@ impl<'db> ToIdeDiagnostic<'db> for CallError<'db> {
                 diag.with_related(Related::new(
                     format!(
                         "first variadic variable '{}' declared here",
-                        first.name(db).text(db)
+                        first.name_with_case(db).text(db)
                     ),
                     first.scope_id(db).file(db),
                     first.get_span(db),
@@ -569,8 +593,8 @@ impl<'db> ToIdeDiagnostic<'db> for CallError<'db> {
                 let mut diag = diag()
                     .message(format!(
                         "call to '{}' must pass at least one argument to variadic parameter '{}'",
-                        func.get_name_ident(db).text(db),
-                        var.name(db).text(db),
+                        func.get_name_with_case(db).text(db),
+                        var.name_with_case(db).text(db),
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
@@ -583,7 +607,7 @@ impl<'db> ToIdeDiagnostic<'db> for CallError<'db> {
                 diag.with_related(Related::new(
                     format!(
                         "variadic parameter '{}' declared here",
-                        var.name(db).text(db)
+                        var.name_with_case(db).text(db)
                     ),
                     var.scope_id(db).file(db),
                     var.get_span(db),
@@ -595,7 +619,7 @@ impl<'db> ToIdeDiagnostic<'db> for CallError<'db> {
                 let mut diag = diag()
                     .message(format!(
                         "variable '{}' is not variadic",
-                        var.get_name_ident(db).text(db)
+                        var.get_name_with_case(db).text(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)

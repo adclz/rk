@@ -1571,7 +1571,7 @@ fn a_programs_located_variable_is_one_cell_for_every_instance(mut with_db: db::R
             .tasks
             .iter()
             .flat_map(|t| t.programs.iter())
-            .find(|p| p.inst_name.text(&with_db) == name)
+            .find(|p| p.inst_name_with_case.text(&with_db) == name)
             .map(|p| p.instance_addr)
             .expect(name)
     };

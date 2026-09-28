@@ -24,9 +24,9 @@ pub fn check<'db>(
     diagnostics: &mut Vec<IdeDiagnostic>,
 ) {
     for (var, pou) in &body.variables_shadowing {
-        let var_name = var.get_name_ident(db).text(db);
+        let var_name = var.get_name_with_case(db).text(db);
         // Each as it is declared: the two may differ in case.
-        let pou_name = pou.get_name_ident(db).text(db);
+        let pou_name = pou.get_name_with_case(db).text(db);
 
         let mut diag = diag()
             .message(format!(

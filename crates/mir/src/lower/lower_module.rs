@@ -114,7 +114,7 @@ pub fn lower_modules<'db>(
         // The index's namespace list is flat, so each namespace's POUs are
         // collected exactly once.
         for ns in index.namespaces.iter() {
-            let ns_prefix = ns.path(db).to_string(db);
+            let ns_prefix = ns.path_with_case(db).to_string(db);
             for pou in ns.pous(db).iter() {
                 all_pous.push((pou, Some(ns_prefix.clone())));
             }
@@ -132,7 +132,7 @@ pub fn lower_module<'db>(
     let mut all_pous: Vec<(&Pou<'db>, Option<String>)> =
         index.global_pous.iter().map(|p| (p, None)).collect();
     for ns in index.namespaces.iter() {
-        let ns_prefix = ns.path(db).to_string(db);
+        let ns_prefix = ns.path_with_case(db).to_string(db);
         for pou in ns.pous(db).iter() {
             all_pous.push((pou, Some(ns_prefix.clone())));
         }
@@ -358,7 +358,7 @@ fn lower_module_from_pous<'db>(
                                 _ => None,
                             };
                             MirInstanceField {
-                                name: f.name,
+                                name: f.name_with_case,
                                 ty: f.ty.clone(),
                                 offset: f.offset,
                                 nested_instance: nested,
@@ -416,7 +416,7 @@ fn lower_module_from_pous<'db>(
                                 _ => None,
                             };
                             MirInstanceField {
-                                name: f.name,
+                                name: f.name_with_case,
                                 ty: f.ty.clone(),
                                 offset: f.offset,
                                 nested_instance: nested,
@@ -485,7 +485,7 @@ fn lower_module_from_pous<'db>(
             // every schedule.
             return Err(LowerTypeError::UnsupportedType(format!(
                 "PROGRAM '{}' lowered to a non-struct instance type",
-                program.name(db).text(db)
+                program.name_with_case(db).text(db)
             )));
         };
         // E0102 refuses duplicate PROGRAMs at check; lowering refuses them too.
@@ -502,7 +502,7 @@ fn lower_module_from_pous<'db>(
         {
             return Err(LowerTypeError::UnsupportedType(format!(
                 "two PROGRAMs named '{}' reached lowering",
-                program.name(db).text(db)
+                program.name_with_case(db).text(db)
             )));
         }
         at_pou(
@@ -672,22 +672,26 @@ fn lower_module_from_pous<'db>(
         for task in &sched.tasks {
             for inst in &task.programs {
                 // `lower_schedule` refused any instance without a lowered program.
-                let Some(info) = program_infos.get(&inst.prog_name) else {
+                let Some(info) = program_infos.get(&inst.prog_name(db)) else {
                     return Err(LowerTypeError::UnsupportedType(format!(
                         "scheduled instance '{}' names program '{}' with no lowered info",
-                        inst.inst_name.text(db),
-                        inst.prog_name.text(db)
+                        inst.inst_name_with_case.text(db),
+                        inst.prog_name_with_case.text(db)
                     )));
                 };
                 // The instance itself: whose state a stopped frame is running on.
                 containers.push(debug_format::ContainerSym {
-                    path: inst.inst_name.text(db).to_string(),
+                    path: inst.inst_name_with_case.text(db).to_string(),
                     address: inst.instance_addr,
                     global: false,
-                    type_name: inst.prog_name.text(db).to_string(),
+                    type_name: inst.prog_name_with_case.text(db).to_string(),
                 });
                 for f in &info.struct_type.fields {
-                    let path = crate::debug_symbols::join_path(db, inst.inst_name.text(db), f.name);
+                    let path = crate::debug_symbols::join_path(
+                        db,
+                        inst.inst_name_with_case.text(db),
+                        f.name_with_case,
+                    );
                     // Per-field leaf budget, matching `collect_root`'s per-root budget.
                     crate::debug_symbols::collect_root(
                         db,
@@ -718,8 +722,11 @@ fn lower_module_from_pous<'db>(
                     .iter()
                     .filter(|v| v.is_program_located(db))
                 {
-                    let path =
-                        crate::debug_symbols::join_path(db, inst.inst_name.text(db), var.name(db));
+                    let path = crate::debug_symbols::join_path(
+                        db,
+                        inst.inst_name_with_case.text(db),
+                        var.name_with_case(db),
+                    );
                     let key = global_key(db, *var);
                     if let Some((addr, ty)) = global_table.get(&key) {
                         crate::debug_symbols::collect_root(
@@ -770,7 +777,7 @@ fn lower_module_from_pous<'db>(
                 .tasks
                 .iter()
                 .flat_map(|t| t.programs.iter())
-                .find(|p| p.inst_name.caseless(db) == loc.instance.caseless(db))
+                .find(|p| p.inst_name(db) == loc.instance)
             else {
                 continue;
             };
@@ -782,10 +789,10 @@ fn lower_module_from_pous<'db>(
             let Some((cell, _)) = global_table.get(&key) else {
                 continue;
             };
-            let mut path = inst.inst_name.text(db).to_string();
+            let mut path = inst.inst_name_with_case.text(db).to_string();
             for member in &loc.members {
                 path.push('.');
-                path.push_str(member.name(db).text(db));
+                path.push_str(member.name_with_case(db).text(db));
             }
             crate::debug_symbols::collect_root(
                 db,
@@ -1176,23 +1183,19 @@ fn config_member<'db>(
         .tasks
         .iter()
         .flat_map(|t| t.programs.iter())
-        .find(|p| p.inst_name.caseless(db) == instance.caseless(db))?;
-    let mut fields = &program_infos.get(&inst.prog_name)?.struct_type.fields;
+        .find(|p| p.inst_name(db) == instance)?;
+    let mut fields = &program_infos.get(&inst.prog_name(db))?.struct_type.fields;
     let mut address = inst.instance_addr;
     let (last, walked) = members.split_last()?;
     for member in walked {
-        let field = fields
-            .iter()
-            .find(|f| f.name.caseless(db) == member.name(db).caseless(db))?;
+        let field = fields.iter().find(|f| f.name(db) == member.name(db))?;
         address += field.offset;
         let MirType::Struct(inner) = &field.ty else {
             return None;
         };
         fields = &inner.fields;
     }
-    let field = fields
-        .iter()
-        .find(|f| f.name.caseless(db) == last.name(db).caseless(db))?;
+    let field = fields.iter().find(|f| f.name(db) == last.name(db))?;
     Some(address + field.offset)
 }
 
@@ -1219,8 +1222,8 @@ pub(crate) fn global_key<'db>(
             db,
             compact_str::CompactString::from(format!(
                 "{}.{}",
-                program.name(db).text(db),
-                var.name(db).text(db)
+                program.name_with_case(db).text(db),
+                var.name_with_case(db).text(db)
             )),
         );
     }
@@ -1795,11 +1798,11 @@ fn collect_const_inits<'db>(
         for task in &sched.tasks {
             for inst in &task.programs {
                 // Same invariant as the schedule and debug-symbol walks.
-                let Some(info) = program_infos.get(&inst.prog_name) else {
+                let Some(info) = program_infos.get(&inst.prog_name(db)) else {
                     return Err(LowerTypeError::UnsupportedType(format!(
                         "scheduled instance '{}' names program '{}' with no lowered info",
-                        inst.inst_name.text(db),
-                        inst.prog_name.text(db)
+                        inst.inst_name_with_case.text(db),
+                        inst.prog_name_with_case.text(db)
                     )));
                 };
                 for field in &info.struct_type.fields {
@@ -1812,7 +1815,7 @@ fn collect_const_inits<'db>(
                         .decl
                         .variables(db)
                         .iter()
-                        .find(|v| v.name(db).caseless(db) == field.name.caseless(db))
+                        .find(|v| v.name(db) == field.name(db))
                     else {
                         continue;
                     };

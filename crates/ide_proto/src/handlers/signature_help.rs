@@ -77,14 +77,14 @@ fn find_prog_config_signature_help(
             .chain(function_blocks.map(|v| (*v, " WITH task".to_string())))
             .collect();
 
-    let mut label = format!("{}(", program.name(db).text(db));
+    let mut label = format!("{}(", program.name_with_case(db).text(db));
     let mut param_infos = Vec::with_capacity(params.len());
     for (i, (var, suffix)) in params.iter().enumerate() {
         if i > 0 {
             label.push_str(", ");
         }
         let start = label.len() as u32;
-        label.push_str(var.name(db).text(db));
+        label.push_str(var.name_with_case(db).text(db));
         label.push_str(suffix);
         param_infos.push(ParameterInformation {
             label: ParameterLabel::LabelOffsets([start, label.len() as u32]),
@@ -221,7 +221,7 @@ fn param_info<'db>(
     let kind = var.kind(db);
     match kind {
         VariableKind::Input | VariableKind::Output | VariableKind::InOut => {
-            let name = var.name(db).text(db).to_string();
+            let name = var.name_with_case(db).text(db).to_string();
             let kind_str = match kind {
                 VariableKind::Output => " =>",
                 _ => " :=",
@@ -283,7 +283,7 @@ fn signature_of<'db>(
     callable: hir::hir_ty::ty::CallableType<'db>,
     active_parameter: u32,
 ) -> SignatureInformation {
-    let callable_name = callable.get_name_ident(db).text(db).to_string();
+    let callable_name = callable.get_name_with_case(db).text(db).to_string();
     let scope = callable.get_scope_id(db);
     let signature = infer_signature(db, scope);
 

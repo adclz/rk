@@ -62,14 +62,16 @@ pub fn check_assignment<'db>(
             let sig = infer_signature(db, decl.get_scope_id(db));
             let var_type = sig.type_of_specs.get(&decl.spec(db));
             match var_type {
-                Some(Type::FunctionBlock(_) | Type::Class(_)) => decl.get_name_ident(db).text(db),
+                Some(Type::FunctionBlock(_) | Type::Class(_)) => {
+                    decl.get_name_with_case(db).text(db)
+                }
                 _ => return,
             }
         }
         _ => return,
     };
 
-    let field_name = outer_path.ident(db).ident.text(db);
+    let field_name = outer_path.ident(db).ident(db).text(db);
     diagnostics.push(
         diag()
             .message(format!(

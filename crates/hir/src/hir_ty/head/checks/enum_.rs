@@ -45,7 +45,7 @@ impl<'db> InitInference<'db> {
         let mut seen = FxHashMap::default();
         for variant in &enm.variants(db) {
             // Check duplicate variant names
-            match seen.get(&variant.name.ident.caseless(db)) {
+            match seen.get(&variant.name.ident(db)) {
                 Some(prev) => self.errors.push(
                     DuplicateError::EnumVariant {
                         variant1: *prev,
@@ -54,7 +54,7 @@ impl<'db> InitInference<'db> {
                     .to_diagnostic(db, self.scope.file(db)),
                 ),
                 None => {
-                    seen.insert(variant.name.ident.caseless(db), variant.name);
+                    seen.insert(variant.name.ident(db), variant.name);
                 }
             }
 

@@ -73,11 +73,9 @@ impl<'db> ImplementationHandler<'db> for hir::hir_ty::head::inheritance::MethodR
         use hir::HasName;
 
         let owner = owner_of(db, *self)?;
-        let name = self.get_name_ident(db);
-
         // Each implementer's own method of that name, in whatever case it
         // declares it: `START` implements `Start`.
-        let name = name.caseless(db);
+        let name = self.get_name_ident(db);
         let links: Vec<LocationLink> = find_all_implementations(db, owner)
             .iter()
             .filter_map(|pou| {

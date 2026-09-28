@@ -9,8 +9,8 @@ use crate::{AstId, HirNodeInfo};
 
 #[salsa::tracked(debug)]
 pub struct NamespaceDecl<'db> {
-    #[returns(ref)]
-    pub path: NamespacePath,
+    /// The path as the author wrote it. Matching reads [`Self::path`].
+    pub path_with_case: NamespacePath,
 
     /// `NAMESPACE INTERNAL`: reachable only from inside the enclosing
     /// namespace (nested ones included) on its own side of the library line.
@@ -59,5 +59,12 @@ impl<'db> HirNodeInfo<'db> for NamespaceDecl<'db> {
 
     fn get_scope_id(&self, db: &'db dyn WorkspaceDataBase) -> ScopeId<'db> {
         self.scope_id(db)
+    }
+}
+
+impl<'db> NamespaceDecl<'db> {
+    /// The path, as paths are matched: every fragment case folded.
+    pub fn path(self, db: &'db dyn db::WorkspaceDataBase) -> NamespacePath {
+        self.path_with_case(db).folded(db)
     }
 }

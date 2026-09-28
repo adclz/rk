@@ -76,7 +76,9 @@ pub struct MirStructType {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct MirStructField {
-    pub name: Ident,
+    /// The member's name as the author wrote it, for the debug symbols.
+    /// Lowering matches [`Self::name`].
+    pub name_with_case: Ident,
     pub ty: MirType,
     pub offset: u32,
     /// A `Pointer` that is transparently dereferenced on access: a
@@ -266,5 +268,12 @@ impl MirElementary {
             | MirElementary::DateAndTime
             | MirElementary::LDateTime
         )
+    }
+}
+
+impl MirStructField {
+    /// The member's name, as names are matched: case folded.
+    pub fn name(&self, db: &dyn db::WorkspaceDataBase) -> Ident {
+        self.name_with_case.folded(db)
     }
 }

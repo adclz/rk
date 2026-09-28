@@ -894,28 +894,29 @@ impl<'db> StmtsResolverCtx<'db> {
                     let def_map = self.scope.def_map(db);
                     let mut all_known = true;
                     let mut operand = |ident: &SpanIdent<'db>| -> Option<(Ident, Type<'db>)> {
-                        let key = ident.ident.caseless(db);
+                        let key = ident.ident(db);
                         if let Some(var) = def_map
                             .local_variables
                             .get(&key)
                             .or_else(|| def_map.global_variables.get(&key))
                         {
                             ctx.variables_used.insert(*var);
-                            return Some((var.name(db), var.spec(db).infer(db)));
+                            // Named as written: only the refusal below shows them.
+                            return Some((var.name_with_case(db), var.spec(db).infer(db)));
                         }
                         let Some(f) = function else {
                             all_known = false;
                             return None;
                         };
-                        if f.name(db).caseless(db) == key
+                        if f.name(db) == key
                             && let Some(ret) = f.return_type(db)
                         {
-                            return Some((f.name(db), ret.infer(db)));
+                            return Some((f.name_with_case(db), ret.infer(db)));
                         }
                         all_known = false;
                         ctx.errors.push(
                             crate::check::errors::e15_pragma::PragmaError::UnknownWasmOperand {
-                                name: ident.ident.text(db).clone(),
+                                name: ident.with_case.text(db).clone(),
                                 span: ident.get_span(db),
                             }
                             .to_diagnostic(db, ctx.scope.file(db)),

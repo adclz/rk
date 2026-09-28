@@ -112,7 +112,7 @@ fn check_variable<'db>(
         return;
     }
 
-    let name = var.get_name_ident(db).text(db);
+    let name = var.get_name_with_case(db).text(db);
 
     // Skip conventional "don't care" names
     if name.as_str().starts_with("_") {

@@ -64,7 +64,7 @@ impl<'db> InlayHintHandler<'db> for Pou<'db> {
                     Pou::Interface(_) => "INTERFACE",
                     Pou::DataType(_) => None?,
                 },
-                self.get_name_ident(db).text(db).to_string(),
+                self.get_name_with_case(db).text(db).to_string(),
                 located(db, self.get_scope_id(db), &self.get_name_span(db)),
             ),
             position: hir::denormalize(db, self.get_scope_id(db).file(db), &self.get_span(db))
@@ -99,7 +99,7 @@ impl<'db> InlayHintHandler<'db> for ParamAssign<'db> {
                 InlayHintLabel::String(format!("({pos}):"))
             } else {
                 InlayHintLabel::LabelParts(vec![part(
-                    format!("{}:", var.name(db).text(db)),
+                    format!("{}:", var.name_with_case(db).text(db)),
                     located(db, var.get_scope_id(db), &var.get_name_span(db)),
                 )])
             };
@@ -159,7 +159,7 @@ impl<'db> InlayHintHandler<'db> for ConfigDecl<'db> {
         Some(InlayHint {
             label: marker_label(
                 "CONFIGURATION",
-                self.name(db).text(db).to_string(),
+                self.name_with_case(db).text(db).to_string(),
                 located(db, self.get_scope_id(db), &self.get_name_span(db)),
             ),
             position: hir::denormalize(db, self.get_scope_id(db).file(db), &self.get_span(db))

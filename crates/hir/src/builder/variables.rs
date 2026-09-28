@@ -905,7 +905,7 @@ impl<'db> ParseProgDecl<'db> for ast::generated::ProgAccessDecls {
 
             section.push(ProgAccessDecl {
                 spec,
-                name,
+                name_with_case: name,
                 variable,
                 direct_variable,
                 direction,

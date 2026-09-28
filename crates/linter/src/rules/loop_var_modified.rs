@@ -45,7 +45,7 @@ pub fn check_assignment<'db>(
 
     for (control_decl, control_access) in active_loop_vars {
         if assigned_decl == *control_decl {
-            let name = control_decl.get_name_ident(db).text(db);
+            let name = control_decl.get_name_with_case(db).text(db);
             let mut d = diag()
                 .message(format!(
                     "loop variable '{name}' is modified inside the loop body"

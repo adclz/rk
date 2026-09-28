@@ -27,7 +27,7 @@ pub fn check<'db>(
     diagnostics: &mut Vec<IdeDiagnostic>,
 ) {
     for (access, global) in &body.globals_without_external {
-        let name = global.get_name_ident(db).text(db);
+        let name = global.get_name_with_case(db).text(db);
         let access_file = access.get_scope_id(db).file(db);
 
         let mut d = diag()

@@ -5,7 +5,7 @@ use crate::{
             expression::InitExpr,
             spec::{Spec, SpecKind},
         },
-        interned::identifier::{CaselessIdent, Ident},
+        interned::identifier::Ident,
         pous::{class::MethodDecl, interface::MethodPrototype, pou::Pou, variable::VariableDecl},
         scope::ScopeId,
     },
@@ -93,6 +93,16 @@ impl<'db> HirNodeInfo<'db> for MethodRef<'db> {
 }
 
 impl<'db> HasName<'db> for MethodRef<'db> {
+    fn get_name_with_case(
+        &self,
+        db: &'db dyn WorkspaceDataBase,
+    ) -> crate::hir_def::interned::identifier::Ident {
+        match self {
+            MethodRef::Prototype(p) => p.get_name_with_case(db),
+            MethodRef::Declared(d) => d.get_name_with_case(db),
+        }
+    }
+
     fn get_name_ident(&self, db: &'db dyn WorkspaceDataBase) -> Ident {
         match self {
             MethodRef::Prototype(p) => p.get_name_ident(db),
@@ -134,7 +144,7 @@ impl<'db> From<&MethodDecl<'db>> for MethodRef<'db> {
 
 #[derive(Default, Debug, Clone, PartialEq, Eq, salsa::Update)]
 pub struct InheritedMethodSet<'db> {
-    pub methods: FxHashMap<CaselessIdent, InheritedMethod<'db>>,
+    pub methods: FxHashMap<Ident, InheritedMethod<'db>>,
 
     pub duplicates: Vec<(InheritedMethod<'db>, InheritedMethod<'db>)>,
 }
@@ -209,7 +219,7 @@ fn chain_methods<'db>(
     db: &'db dyn WorkspaceDataBase,
     pou: Pou<'db>,
     visited: &mut Vec<Pou<'db>>,
-) -> FxHashMap<CaselessIdent, InheritedMethod<'db>> {
+) -> FxHashMap<Ident, InheritedMethod<'db>> {
     let mut out = FxHashMap::default();
     // Cyclic inheritance is reported separately (E05xx); stop so this
     // terminates regardless.
@@ -239,7 +249,7 @@ pub fn inherited_methods<'db>(
     db: &'db dyn WorkspaceDataBase,
     pou: Pou<'db>,
 ) -> InheritedMethodSet<'db> {
-    let mut methods: FxHashMap<CaselessIdent, InheritedMethod<'db>> = FxHashMap::default();
+    let mut methods: FxHashMap<Ident, InheritedMethod<'db>> = FxHashMap::default();
     let mut duplicates = vec![];
 
     for base in direct_bases(db, pou) {
@@ -603,12 +613,12 @@ pub fn implementing_method<'db>(
         .get_scope_id(db)
         .def_map(db)
         .declared_methods
-        .get(&name.caseless(db))
+        .get(&name)
         .copied();
     let resolved = own.or_else(|| {
         inherited_methods(db, implementer)
             .methods
-            .get(&name.caseless(db))
+            .get(&name)
             .map(|m| m.method)
     })?;
     match resolved {

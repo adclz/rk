@@ -41,8 +41,12 @@ impl<'db> ReferencesHandler<'db> for HirNode<'db> {
     fn locations(&self, db: &'db dyn WorkspaceDataBase) -> Option<Vec<ReferenceLocation>> {
         // Namespace references: declarations via namespace_index + USING statements via walk
         let ns_path = match self {
-            HirNode::Namespace(ns) => Some(*ns.path(db)),
-            HirNode::Using(u) => Some(absolute_namespace_path(db, u.scope_id(db), u.path(db).path)),
+            HirNode::Namespace(ns) => Some(ns.path(db)),
+            HirNode::Using(u) => Some(absolute_namespace_path(
+                db,
+                u.scope_id(db),
+                u.path(db).path(db),
+            )),
             _ => None,
         };
         if let Some(path) = ns_path {
@@ -184,7 +188,7 @@ fn node_reference_ident<'db>(
         HirNode::VariableDecl(var) => var.get_name_ident(db).text(db),
         HirNode::MethodRef(m) => m.get_name_ident(db).text(db),
         HirNode::StructElement(st) => st.get_name_ident(db).text(db),
-        HirNode::PathExpr(p) => p.ident(db).text(db),
+        HirNode::PathExpr(p) => p.ident(db).ident(db).text(db),
         _ => return None,
     })
 }
@@ -256,8 +260,7 @@ fn find_namespace_references<'db>(
         let _ = sema.walk_hir(db, &mut |node: HirNode<'db>| {
             // A USING's path is relative to where it is written.
             if let HirNode::Using(u) = &node
-                && absolute_namespace_path(db, u.scope_id(db), u.path(db).path).caseless(db)
-                    == path.caseless(db)
+                && absolute_namespace_path(db, u.scope_id(db), u.path(db).path(db)) == path
             {
                 locations.push(ReferenceLocation {
                     file: u.scope_id(db).file(db),

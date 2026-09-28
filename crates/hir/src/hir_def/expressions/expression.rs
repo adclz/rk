@@ -250,8 +250,7 @@ pub enum ExprKind<'db> {
     },
     // Fold expression: ...param<op> (variadic parameter fold)
     FoldExpr {
-        param: Ident,
-        #[allow(dead_code)]
+        /// The pack, as written; matched by its `ident(db)`.
         param_id: SpanIdent<'db>,
         operator: FoldOperatorKind,
     },

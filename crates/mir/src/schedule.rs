@@ -36,10 +36,12 @@ pub struct ProgramInfo<'db> {
 pub struct MirProgInstance {
     /// The configuration instance name (e.g. `Main` in `PROGRAM Main WITH …`).
     /// The root segment of this instance's variables' debug-symbol paths.
-    pub inst_name: Ident,
+    /// As written; matching reads `inst_name(db)`.
+    pub inst_name_with_case: Ident,
     /// The program TYPE's name (key into the module's program info — used to
-    /// find the instance's field layout + initializers).
-    pub prog_name: Ident,
+    /// find the instance's field layout + initializers). As written;
+    /// matching reads `prog_name(db)`.
+    pub prog_name_with_case: Ident,
     /// The function to call: `Type$__body__`, or `Inst$__scan__` for an
     /// instance with connections.
     pub body_fn: Ident,
@@ -48,6 +50,18 @@ pub struct MirProgInstance {
     /// Config-level retain qualifier (`PROGRAM RETAIN p` = `Some(true)`,
     /// `NON_RETAIN` = `Some(false)`).
     pub config_retain: Option<bool>,
+}
+
+impl MirProgInstance {
+    /// The instance's name, as names are matched: case folded.
+    pub fn inst_name(&self, db: &dyn db::WorkspaceDataBase) -> Ident {
+        self.inst_name_with_case.folded(db)
+    }
+
+    /// The program type's name, as names are matched: case folded.
+    pub fn prog_name(&self, db: &dyn db::WorkspaceDataBase) -> Ident {
+        self.prog_name_with_case.folded(db)
+    }
 }
 
 /// One cyclic TASK and the program instances it runs each time it fires.
@@ -111,7 +125,7 @@ impl MirSchedule {
                         .programs
                         .iter()
                         .map(|p| debug_format::ProgramEntry {
-                            instance: p.inst_name.text(db).to_string(),
+                            instance: p.inst_name_with_case.text(db).to_string(),
                             export: p.body_fn.text(db).to_string(),
                             instance_addr: p.instance_addr,
                         })
@@ -164,7 +178,7 @@ pub fn lower_schedule<'db>(
                     return Err(crate::lower::lower_type::LowerTypeError::UnsupportedType(
                         format!(
                             "configured program '{}' has no lowered body",
-                            p.program.name(db).text(db)
+                            p.program.name_with_case(db).text(db)
                         ),
                     ));
                 };
@@ -191,7 +205,7 @@ pub fn lower_schedule<'db>(
                         .struct_type
                         .fields
                         .iter()
-                        .any(|f| is_retain_field(db, &info.decl, f.name)),
+                        .any(|f| is_retain_field(db, &info.decl, f.name(db))),
                 };
                 if has_retain {
                     memory_layout.record_retain(
@@ -205,8 +219,8 @@ pub fn lower_schedule<'db>(
                 let connected =
                     !p.connections.inputs.is_empty() || !p.connections.outputs.is_empty();
                 instances.push(MirProgInstance {
-                    inst_name: p.instance_name,
-                    prog_name: p.program.name(db),
+                    inst_name_with_case: p.instance_name,
+                    prog_name_with_case: p.program.name_with_case(db),
                     body_fn: if connected {
                         crate::lower::connections::scan_fn_name(db, p.instance_name)
                     } else {
@@ -248,7 +262,7 @@ pub fn lower_schedule<'db>(
                     format!(
                         "'{}.{}' is run by a task but is no function block of a scheduled instance",
                         fb.instance_name.text(db),
-                        fb.member.name(db).text(db)
+                        fb.member.name_with_case(db).text(db)
                     ),
                 ));
             };
@@ -256,12 +270,12 @@ pub fn lower_schedule<'db>(
                 .struct_type
                 .fields
                 .iter()
-                .find(|f| f.name == fb.member.name(db))
+                .find(|f| f.name(db) == fb.member.name(db))
             else {
                 return Err(crate::lower::lower_type::LowerTypeError::UnsupportedType(
                     format!(
                         "'{}' has no field in the program's layout",
-                        fb.member.name(db).text(db)
+                        fb.member.name_with_case(db).text(db)
                     ),
                 ));
             };
@@ -271,7 +285,7 @@ pub fn lower_schedule<'db>(
                 path: format!(
                     "{}.{}",
                     fb.instance_name.text(db),
-                    fb.member.name(db).text(db)
+                    fb.member.name_with_case(db).text(db)
                 ),
                 body_fn: Ident::new(
                     db,

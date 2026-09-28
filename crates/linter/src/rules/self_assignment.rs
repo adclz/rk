@@ -136,7 +136,7 @@ pub fn check_assignment<'db>(
         return;
     }
 
-    let name = lhs_var.name(db).text(db);
+    let name = lhs_var.name_with_case(db).text(db);
     diagnostics.push(
         diag()
             .message(format!("variable '{name}' is assigned to itself"))

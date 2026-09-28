@@ -186,7 +186,6 @@ impl<'db> Parse<'db> for ast::generated::Expression {
                 ))
             }
             ast::generated::Expression::FoldExpression(fold) => {
-                let param = Ident::from_node(sema.db, sema.file, fold.param.cast(sema.ast))?;
                 let param_id = SpanIdent::from_node(sema.db, sema, fold.param.cast(sema.ast))?;
 
                 use ast::generated::FoldAnd_FoldDiv_FoldEq_FoldGe_FoldGt_FoldLe_FoldLt_FoldMinus_FoldMod_FoldMul_FoldNe_FoldOr_FoldPlus_FoldPower_FoldXor as FoldOp;
@@ -209,11 +208,7 @@ impl<'db> Parse<'db> for ast::generated::Expression {
                 };
 
                 Ok(sema.new_expr(
-                    ExprKind::FoldExpr {
-                        param,
-                        param_id,
-                        operator,
-                    },
+                    ExprKind::FoldExpr { param_id, operator },
                     fold.into(),
                     sema.current_scope,
                 ))

@@ -82,7 +82,7 @@ impl<'db> ToIdeDiagnostic<'db> for EnumError<'db> {
             } => diag()
                 .message(format!(
                     "ENUM has no variant named '{}'",
-                    variant_name.text(db)
+                    variant_name.as_str(db)
                 ))
                 .desc(self)
                 .range(crate::denormalize(db, file, &variant_name.get_span(db)).unwrap_or_default())

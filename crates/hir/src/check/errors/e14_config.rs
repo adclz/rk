@@ -715,7 +715,7 @@ impl<'db> ToIdeDiagnostic<'db> for ConfigError<'db> {
 
                 for other in others {
                     diag.with_related(Related::new(
-                        format!("'{}' is declared here", other.name(db).text(db)),
+                        format!("'{}' is declared here", other.name_with_case(db).text(db)),
                         other.get_scope_id(db).file(db),
                         other.get_name_span(db),
                     ));
@@ -766,7 +766,7 @@ impl<'db> ToIdeDiagnostic<'db> for ConfigError<'db> {
                 let mut diag = diag()
                     .message(format!(
                         "task '{}' has an unusable PRIORITY '{}'",
-                        task.ident.text(db),
+                        task.with_case.text(db),
                         value.text(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
@@ -800,7 +800,7 @@ impl<'db> ToIdeDiagnostic<'db> for ConfigError<'db> {
                 let mut diag = diag()
                     .message(format!(
                         "task '{}' cannot be scheduled: {}",
-                        task.ident.text(db),
+                        task.with_case.text(db),
                         reason.message()
                     ))
                     .severity(DiagnosticSeverity::ERROR)
@@ -815,7 +815,7 @@ impl<'db> ToIdeDiagnostic<'db> for ConfigError<'db> {
             Self::UnknownTaskRef { task } => diag()
                 .message(format!(
                     "task '{}' not found in this configuration",
-                    task.ident.text(db)
+                    task.with_case.text(db)
                 ))
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
@@ -824,7 +824,7 @@ impl<'db> ToIdeDiagnostic<'db> for ConfigError<'db> {
             Self::ProgramWithoutTask { instance } => diag()
                 .message(format!(
                     "program instance '{}' has no WITH <task>, so it will never run",
-                    instance.ident.text(db)
+                    instance.with_case.text(db)
                 ))
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
@@ -833,7 +833,7 @@ impl<'db> ToIdeDiagnostic<'db> for ConfigError<'db> {
             Self::ConfigInstInitUnknownInstance { instance_name } => diag()
                 .message(format!(
                     "no program instance '{}' found in this configuration",
-                    instance_name.text(db)
+                    instance_name.as_str(db)
                 ))
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
@@ -845,7 +845,7 @@ impl<'db> ToIdeDiagnostic<'db> for ConfigError<'db> {
                 .message(format!(
                     "'{}' has no field named '{}'",
                     parent_type.type_name(db),
-                    field.text(db)
+                    field.as_str(db)
                 ))
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
@@ -871,7 +871,7 @@ impl<'db> ToIdeDiagnostic<'db> for ConfigError<'db> {
                 diag.with_related(Related::new(
                     format!(
                         "variable '{}' is declared here",
-                        var_origin.name(db).text(db),
+                        var_origin.name_with_case(db).text(db),
                     ),
                     var_origin.get_scope_id(db).file(db),
                     var_origin.get_name_span(db),
@@ -1017,7 +1017,7 @@ impl<'db> ToIdeDiagnostic<'db> for ConfigError<'db> {
                 let mut diag = diag()
                     .message(format!(
                         "'{}' is located at '{address}' and cannot be RETAIN",
-                        var.get_name_ident(db).text(db)
+                        var.get_name_with_case(db).text(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
@@ -1041,8 +1041,8 @@ impl<'db> ToIdeDiagnostic<'db> for ConfigError<'db> {
                 let mut diag = diag()
                     .message(format!(
                         "'{}' is located at '{address}', which '{}' also claims",
-                        var.get_name_ident(db).text(db),
-                        other.get_name_ident(db).text(db)
+                        var.get_name_with_case(db).text(db),
+                        other.get_name_with_case(db).text(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
@@ -1052,7 +1052,10 @@ impl<'db> ToIdeDiagnostic<'db> for ConfigError<'db> {
                     )
                     .call();
                 diag.with_related(Related::new(
-                    format!("'{}' is located here", other.get_name_ident(db).text(db)),
+                    format!(
+                        "'{}' is located here",
+                        other.get_name_with_case(db).text(db)
+                    ),
                     other.get_scope_id(db).file(db),
                     other.as_call_site(db).get_span(db),
                 ));
@@ -1072,7 +1075,7 @@ impl<'db> ToIdeDiagnostic<'db> for ConfigError<'db> {
                     "{address_bits} bit{}",
                     if *address_bits == 1 { "" } else { "s" }
                 );
-                let name = var.get_name_ident(db).text(db);
+                let name = var.get_name_with_case(db).text(db);
                 let message = match declared_bits {
                     Some(declared_bits) => format!(
                         "'{address}' is {bits}, but '{name}' is declared '{}', which is {declared_bits}",
@@ -1214,7 +1217,7 @@ impl<'db> ToIdeDiagnostic<'db> for ConfigError<'db> {
             }) => {
                 let whose = format!(
                     "'{}' holds '{member}', declared AT {address}",
-                    var.get_name_ident(db).text(db)
+                    var.get_name_with_case(db).text(db)
                 );
                 let message = match place {
                     UnreachablePlace::Array => format!(
@@ -1252,7 +1255,7 @@ impl<'db> ToIdeDiagnostic<'db> for ConfigError<'db> {
                 let mut diag = diag()
                     .message(format!(
                         "'{}' is RETAIN and holds '{member}', declared AT %M*, which cannot be retained",
-                        var.get_name_ident(db).text(db)
+                        var.get_name_with_case(db).text(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)

@@ -66,7 +66,7 @@ impl<'db> DefinitionHandler<'db> for NamespaceDecl<'db> {
         db: &'db dyn WorkspaceDataBase,
         _offset: usize,
     ) -> Option<GotoDefinitionResponse> {
-        namespace_definitions(db, *self.path(db))
+        namespace_definitions(db, self.path(db))
     }
 }
 
@@ -79,7 +79,7 @@ impl<'db> DefinitionHandler<'db> for Using<'db> {
         // A USING inside a namespace may name a sibling by its relative path.
         namespace_definitions(
             db,
-            absolute_namespace_path(db, self.scope_id(db), self.path(db).path),
+            absolute_namespace_path(db, self.scope_id(db), self.path(db).path(db)),
         )
     }
 }
@@ -133,7 +133,7 @@ impl<'db> DefinitionHandler<'db> for Spec<'db> {
         {
             let mut accumulated = vec![];
 
-            for (index, fragment) in path.fragments(db).iter().enumerate() {
+            for (index, fragment) in path.path(db).fragments(db).iter().enumerate() {
                 let span = path.get_fragment_ast_node(db, index).get_range().to_owned();
                 accumulated.push(*fragment);
 
@@ -259,7 +259,7 @@ impl<'db> DefinitionHandler<'db> for Type<'db> {
                 let SpecKind::Enum(enm) = data_type.spec(db).kind(db) else {
                     None?
                 };
-                let declared = enm.enum_variants(db).get(&variant.caseless(db)).copied()?;
+                let declared = enm.enum_variants(db).get(variant).copied()?;
                 let file = data_type.get_scope_id(db).file(db);
                 return Some(GotoDefinitionResponse::Scalar(Location::new(
                     file.url(db).to_owned(),

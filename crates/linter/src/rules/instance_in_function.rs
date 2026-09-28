@@ -56,7 +56,7 @@ pub fn check<'db>(
         let mut d = diag()
             .message(format!(
                 "'{}' holds a {kind} instance, which starts over at every call of the {callable}",
-                var.get_name_ident(db).text(db)
+                var.get_name_with_case(db).text(db)
             ))
             .desc(&InstanceInFunction)
             .range(hir::denormalize(db, file, &var.get_name_span(db)).unwrap_or_default())

@@ -64,7 +64,7 @@ impl TypeTable {
                     .fields
                     .iter()
                     .map(|f| debug_format::FieldDesc {
-                        name: f.name.text(db).to_string(),
+                        name: f.name_with_case.text(db).to_string(),
                         offset: f.offset,
                         ty: self.intern(db, &f.ty),
                     })
@@ -199,7 +199,7 @@ pub fn walk_type(
         }
         MirType::Struct(s) => {
             for f in &s.fields {
-                let child = format!("{path}.{}", f.name.text(db));
+                let child = format!("{path}.{}", f.name_with_case.text(db));
                 walk_type(
                     db,
                     &child,
@@ -364,7 +364,7 @@ pub fn collect_containers(
             for f in &s.fields {
                 collect_containers(
                     db,
-                    &format!("{path}.{}", f.name.text(db)),
+                    &format!("{path}.{}", f.name_with_case.text(db)),
                     addr + f.offset,
                     &f.ty,
                     global,

@@ -286,7 +286,13 @@ impl<'db> SemanticTokensHandler<'db> for Expr<'db> {
 
 impl<'db> SemanticTokensHandler<'db> for Using<'db> {
     fn semantic_tokens(&'db self, db: &'db dyn WorkspaceDataBase, builder: &mut TokenSink) {
-        for (index, _fragment) in self.path(db).fragments(db).iter().enumerate() {
+        for (index, _fragment) in self
+            .path(db)
+            .path_with_case
+            .fragments(db)
+            .iter()
+            .enumerate()
+        {
             let span = self
                 .path(db)
                 .get_fragment_ast_node(db, index)

@@ -411,10 +411,7 @@ impl<'db> SemanticIndexBuilder<'db> {
 
         let mut namespace_map: rustc_hash::FxHashMap<_, Vec<_>> = Default::default();
         for ns in &self.namespaces {
-            namespace_map
-                .entry(ns.path(self.db).caseless(self.db))
-                .or_default()
-                .push(*ns);
+            namespace_map.entry(ns.path(self.db)).or_default().push(*ns);
         }
 
         // Each address the file mentions, with the declarations located at

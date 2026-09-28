@@ -48,10 +48,12 @@ impl<'db> CallTarget<'db> {
 
     fn name(&self, db: &'db dyn WorkspaceDataBase) -> String {
         match self {
-            CallTarget::Callable(CallableType::Function(f)) => f.get_name_ident(db).text(db),
-            CallTarget::Callable(CallableType::FunctionBlock(fb)) => fb.get_name_ident(db).text(db),
-            CallTarget::Callable(CallableType::MethodDecl(m)) => m.get_name_ident(db).text(db),
-            CallTarget::Program(p) => p.get_name_ident(db).text(db),
+            CallTarget::Callable(CallableType::Function(f)) => f.get_name_with_case(db).text(db),
+            CallTarget::Callable(CallableType::FunctionBlock(fb)) => {
+                fb.get_name_with_case(db).text(db)
+            }
+            CallTarget::Callable(CallableType::MethodDecl(m)) => m.get_name_with_case(db).text(db),
+            CallTarget::Program(p) => p.get_name_with_case(db).text(db),
         }
         .to_string()
     }

@@ -170,20 +170,17 @@ pub fn check_single_configuration<'db>(
     errors: &mut Vec<IdeDiagnostic>,
 ) {
     let all = crate::hir_ty::index_graphs::declared_configs(db);
-    let names: rustc_hash::FxHashSet<_> = all
-        .iter()
-        .map(|c| c.get_name_ident(db).caseless(db))
-        .collect();
+    let names: rustc_hash::FxHashSet<_> = all.iter().map(|c| c.get_name_ident(db)).collect();
     if names.len() > 1 {
         // Carry the others so they can be reached from here: deciding which to
         // keep means looking at all of them.
         let mut others: Vec<_> = all
             .iter()
-            .filter(|c| c.get_name_ident(db).caseless(db) != config.get_name_ident(db).caseless(db))
+            .filter(|c| c.get_name_ident(db) != config.get_name_ident(db))
             .copied()
             .collect();
         // The file maps have no order, so sort for a stable list.
-        others.sort_by_key(|c| c.get_name_ident(db).text(db).to_string());
+        others.sort_by_key(|c| c.get_name_with_case(db).text(db).to_string());
         errors.push(
             ConfigError::MultipleConfigurations { config, others }
                 .to_diagnostic(db, config.get_scope_id(db).file(db)),
@@ -218,8 +215,8 @@ pub fn check_single_resource<'db>(
     let mut names: Vec<compact_str::CompactString> = fragments
         .iter()
         .flat_map(|c| c.resources(db).iter())
-        .filter(|r| seen_folded.insert(r.name(db).ident.caseless(db)))
-        .map(|r| r.name(db).ident.text(db).clone())
+        .filter(|r| seen_folded.insert(r.name(db).ident(db)))
+        .map(|r| r.name(db).with_case.text(db).clone())
         .collect();
     names.sort();
     if names.len() <= 1 {
@@ -281,7 +278,7 @@ pub fn check_config_fragment_collisions<'db>(
         if let Some(other) = siblings.iter().find_map(|sib| {
             sib.variables(db)
                 .iter()
-                .find(|v| v.get_name_ident(db).caseless(db) == var.get_name_ident(db).caseless(db))
+                .find(|v| v.get_name_ident(db) == var.get_name_ident(db))
         }) {
             errors.push(
                 DuplicateError::Variable {
@@ -296,7 +293,7 @@ pub fn check_config_fragment_collisions<'db>(
         if let Some(other) = siblings.iter().find_map(|sib| {
             sib.resources(db)
                 .iter()
-                .find(|r| r.name(db).ident.caseless(db) == res.name(db).ident.caseless(db))
+                .find(|r| r.name(db).ident(db) == res.name(db).ident(db))
         }) {
             errors.push(
                 DuplicateError::Resource {
@@ -320,7 +317,7 @@ pub fn check_duplicate_namespaces<'db>(
         let own_file = pou.get_scope_id(db).file(db);
         let own_is_library = is_library_file(db, own_file);
         let mut canonical = false;
-        for other in namespace_pou_candidates(db, *namespace.path(db), pou.get_name_ident(db)) {
+        for other in namespace_pou_candidates(db, namespace.path(db), pou.get_name_ident(db)) {
             if other == *pou {
                 canonical = true;
                 continue;

@@ -7,7 +7,7 @@ use crate::check::errors::e03_type::TypeError;
 use crate::check::errors::e04_init::InitError;
 use crate::check::errors::e08_call::CallError;
 use crate::hir_def::expressions::expression::{Expr, ExprKind, ParamAssign, PrimaryExpr};
-use crate::hir_def::interned::identifier::CaselessIdent;
+use crate::hir_def::interned::identifier::Ident;
 use crate::hir_def::pous::variable::VariableDecl;
 use crate::hir_ty::def_map::FxIndexMap;
 use crate::hir_ty::head::inheritance::instance_members;
@@ -213,12 +213,10 @@ pub fn resolve_func_call<'db>(
     }
 
     // Flag any expected param that is required-at-call-site but not supplied.
-    let matched_idents: FxHashSet<CaselessIdent> = matches
+    let matched_idents: FxHashSet<Ident> = matches
         .iter()
         .filter_map(|m| match m {
-            ParamMatch::Matched(_, var) | ParamMatch::Variadic(_, var, _) => {
-                Some(var.name(db).caseless(db))
-            }
+            ParamMatch::Matched(_, var) | ParamMatch::Variadic(_, var, _) => Some(var.name(db)),
             ParamMatch::Error => None,
         })
         .collect();
@@ -748,12 +746,12 @@ pub enum ParamMatch<'db> {
 pub fn call_site_params<'db>(
     db: &'db dyn WorkspaceDataBase,
     callable: CallableType<'db>,
-) -> FxIndexMap<CaselessIdent, VariableDecl<'db>> {
+) -> FxIndexMap<Ident, VariableDecl<'db>> {
     match callable {
         CallableType::FunctionBlock(fb) => instance_members(db, Pou::FunctionBlock(fb))
             .iter()
             .filter(|m| m.var.is_input(db) || m.var.is_output(db) || m.var.is_in_out(db))
-            .map(|m| (m.var.name(db).caseless(db), m.var))
+            .map(|m| (m.var.name(db), m.var))
             .collect(),
         _ => callable.def_map(db).local_variables.clone(),
     }
@@ -767,11 +765,11 @@ pub fn resolve_params<'db>(
     db: &'db dyn WorkspaceDataBase,
     params: &[ParamAssign<'db>],
     callable: CallableType<'db>,
-    formals: &FxIndexMap<CaselessIdent, VariableDecl<'db>>,
+    formals: &FxIndexMap<Ident, VariableDecl<'db>>,
     errors: &mut Vec<IdeDiagnostic>,
 ) -> Vec<ParamMatch<'db>> {
     let mut results = vec![];
-    let mut seen: FxHashMap<CaselessIdent, ParamAssign<'db>> = FxHashMap::default();
+    let mut seen: FxHashMap<Ident, ParamAssign<'db>> = FxHashMap::default();
     let mut formal_idx = 0;
     let mut variadic_count = 0;
 
@@ -781,8 +779,8 @@ pub fn resolve_params<'db>(
     let named_params: FxHashSet<_> = params
         .iter()
         .filter_map(|p| match p.kind(db) {
-            ParamAssignKind::FormalInput { param, .. } => Some(param.ident.caseless(db)),
-            ParamAssignKind::FormalOutput { param, .. } => Some(param.ident.caseless(db)),
+            ParamAssignKind::FormalInput { param, .. } => Some(param.ident(db)),
+            ParamAssignKind::FormalOutput { param, .. } => Some(param.ident(db)),
             _ => None,
         })
         .collect();
@@ -829,12 +827,12 @@ pub fn resolve_params<'db>(
                 }
             }
             ParamAssignKind::FormalInput { param, .. } => {
-                if let Some(prev) = seen.insert(param.ident.caseless(db), *parameter) {
+                if let Some(prev) = seen.insert(param.ident(db), *parameter) {
                     errors.push(
                         DuplicateError::Parameter {
                             param_1: prev,
                             param_2: *parameter,
-                            name: param.ident,
+                            name: param.ident(db),
                         }
                         .to_diagnostic(db, callable.get_scope_id(db).file(db)),
                     );
@@ -842,7 +840,7 @@ pub fn resolve_params<'db>(
                     continue;
                 }
 
-                if let Some(var) = formals.get(&param.ident.caseless(db)) {
+                if let Some(var) = formals.get(&param.ident(db)) {
                     results.push(ParamMatch::Matched(*parameter, *var));
                 } else {
                     errors.push(
@@ -856,12 +854,12 @@ pub fn resolve_params<'db>(
                 }
             }
             ParamAssignKind::FormalOutput { param, .. } => {
-                if let Some(prev) = seen.insert(param.ident.caseless(db), *parameter) {
+                if let Some(prev) = seen.insert(param.ident(db), *parameter) {
                     errors.push(
                         DuplicateError::Parameter {
                             param_1: prev,
                             param_2: *parameter,
-                            name: param.ident,
+                            name: param.ident(db),
                         }
                         .to_diagnostic(db, callable.get_scope_id(db).file(db)),
                     );
@@ -869,7 +867,7 @@ pub fn resolve_params<'db>(
                     continue;
                 }
 
-                if let Some(var) = formals.get(&param.ident.caseless(db)) {
+                if let Some(var) = formals.get(&param.ident(db)) {
                     results.push(ParamMatch::Matched(*parameter, *var));
                 } else {
                     errors.push(

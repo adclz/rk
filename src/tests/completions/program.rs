@@ -127,7 +127,7 @@ END_PROGRAM
     let prog = sema
         .programs
         .iter()
-        .find(|p| p.get_name_ident(&with_db).text(&with_db).as_str() == "MyProg")
+        .find(|p| p.get_name_with_case(&with_db).text(&with_db).as_str() == "MyProg")
         .unwrap();
 
     let offset = source.find("END_PROGRAM").unwrap();

@@ -401,7 +401,7 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
             Self::AssignCallableType { typ, access } => diag()
                 .message(format!(
                     "'{}' is a callable type and can not be assigned",
-                    typ.get_name_ident(db).text(db)
+                    typ.get_name_with_case(db).text(db)
                 ))
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)

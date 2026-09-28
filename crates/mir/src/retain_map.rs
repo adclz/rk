@@ -58,18 +58,18 @@ pub fn build_retain_map<'db>(
                 }
                 // `lower_schedule` refused the miss, so this firing means the invariant
                 // broke.
-                let Some(info) = program_infos.get(&inst.prog_name) else {
+                let Some(info) = program_infos.get(&inst.prog_name(db)) else {
                     return Err(crate::lower::lower_type::LowerTypeError::UnsupportedType(
                         format!(
                             "scheduled instance '{}' names program '{}' with no lowered info",
-                            inst.inst_name.text(db),
-                            inst.prog_name.text(db)
+                            inst.inst_name_with_case.text(db),
+                            inst.prog_name_with_case.text(db)
                         ),
                     ));
                 };
                 walk_members(
                     db,
-                    inst.inst_name.text(db),
+                    inst.inst_name_with_case.text(db),
                     inst.instance_addr,
                     &info.struct_type.fields,
                     info.decl.variables(db),
@@ -97,7 +97,7 @@ fn walk_members<'db>(
     let var_by_name: FxHashMap<Ident, VariableDecl<'db>> =
         vars.iter().map(|v| (v.name(db), *v)).collect();
     for f in fields {
-        let Some(v) = var_by_name.get(&f.name) else {
+        let Some(v) = var_by_name.get(&f.name(db)) else {
             continue;
         };
         let q = v.qualifier(db);
@@ -111,7 +111,7 @@ fn walk_members<'db>(
             continue; // by-ref VAR_IN_OUT pointer — transient, re-bound per call
         }
         let retained = inherited_retain || q.contains(Qualifier::RETAIN);
-        let path = crate::debug_symbols::join_path(db, root, f.name);
+        let path = crate::debug_symbols::join_path(db, root, f.name_with_case);
         walk_value(
             db,
             &path,
@@ -188,7 +188,7 @@ fn walk_value<'db>(
             // POU elements: recurse each element so member qualifiers and
             // pointer holes apply per element.
             let elem_field = MirStructField {
-                name: field.name,
+                name_with_case: field.name_with_case,
                 ty: (*a.element_type).clone(),
                 offset: 0,
                 by_ref: false,
@@ -276,7 +276,7 @@ pub(crate) fn type_key(db: &dyn WorkspaceDataBase, ty: &MirType) -> u32 {
                 for f in &s.fields {
                     // Field names are part of the shape: the file is scattered back by
                     // path, which folds case.
-                    eat(h, f.name.caseless(db).text(db).as_bytes());
+                    eat(h, f.name(db).text(db).as_bytes());
                     eat(h, &f.offset.to_le_bytes());
                     walk(db, h, &f.ty, depth + 1);
                 }

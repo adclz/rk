@@ -20,7 +20,7 @@ pub fn library_symbol_index<'db>(db: &'db dyn WorkspaceDataBase) -> SymbolIndex<
         // Global POUs
         for pou in sema.global_pous.iter() {
             items.push(NamedSymbol {
-                name: pou.get_name_ident(db).text(db).to_string(),
+                name: pou.get_name_with_case(db).text(db).to_string(),
                 namespace: None,
                 kind: SymbolKind::Pou(*pou),
             });
@@ -30,18 +30,18 @@ pub fn library_symbol_index<'db>(db: &'db dyn WorkspaceDataBase) -> SymbolIndex<
         // Namespaces and their POUs
         for ns in sema.namespaces.iter() {
             items.push(NamedSymbol {
-                name: ns.path(db).to_string(db),
+                name: ns.path_with_case(db).to_string(db),
                 namespace: None,
                 kind: SymbolKind::Namespace(*ns),
             });
 
             for pou in ns.pous(db).iter() {
                 items.push(NamedSymbol {
-                    name: pou.get_name_ident(db).text(db).to_string(),
-                    namespace: Some(*ns.path(db)),
+                    name: pou.get_name_with_case(db).text(db).to_string(),
+                    namespace: Some(ns.path(db)),
                     kind: SymbolKind::Pou(*pou),
                 });
-                methods_of(db, *pou, Some(*ns.path(db)), &mut items);
+                methods_of(db, *pou, Some(ns.path(db)), &mut items);
             }
         }
     }
@@ -59,7 +59,7 @@ pub fn file_symbol_index<'db>(db: &'db dyn WorkspaceDataBase, file: File) -> Sym
     // Global POUs
     for pou in sema.global_pous.iter() {
         items.push(NamedSymbol {
-            name: pou.get_name_ident(db).text(db).to_string(),
+            name: pou.get_name_with_case(db).text(db).to_string(),
             namespace: None,
             kind: SymbolKind::Pou(*pou),
         });
@@ -69,18 +69,18 @@ pub fn file_symbol_index<'db>(db: &'db dyn WorkspaceDataBase, file: File) -> Sym
     // Namespaces and their POUs
     for ns in sema.namespaces.iter() {
         items.push(NamedSymbol {
-            name: ns.path(db).to_string(db),
+            name: ns.path_with_case(db).to_string(db),
             namespace: None,
             kind: SymbolKind::Namespace(*ns),
         });
 
         for pou in ns.pous(db).iter() {
             items.push(NamedSymbol {
-                name: pou.get_name_ident(db).text(db).to_string(),
-                namespace: Some(*ns.path(db)),
+                name: pou.get_name_with_case(db).text(db).to_string(),
+                namespace: Some(ns.path(db)),
                 kind: SymbolKind::Pou(*pou),
             });
-            methods_of(db, *pou, Some(*ns.path(db)), &mut items);
+            methods_of(db, *pou, Some(ns.path(db)), &mut items);
         }
     }
 
@@ -124,7 +124,7 @@ fn methods_of<'db>(
 
     for method in declared {
         items.push(NamedSymbol {
-            name: method.get_name_ident(db).text(db).to_string(),
+            name: method.get_name_with_case(db).text(db).to_string(),
             namespace,
             kind: SymbolKind::Method(method),
         });

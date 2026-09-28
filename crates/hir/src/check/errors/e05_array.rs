@@ -129,7 +129,7 @@ impl<'db> ToIdeDiagnostic<'db> for ArrayError<'db> {
                 .range(crate::denormalize(db, file, &expr.get_span(db)).unwrap_or_default())
                 .call(),
             Self::InvalidIndex { size, err } => diag()
-                .message(format!("invalid index value '{}': {err}", size.text(db)))
+                .message(format!("invalid index value '{}': {err}", size.as_str(db)))
                 .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
                 .desc(self)
                 .range(crate::denormalize(db, file, &size.get_span(db)).unwrap_or_default())

@@ -15,7 +15,8 @@ use crate::{
 
 #[salsa::tracked(debug)]
 pub struct VariableDecl<'db> {
-    pub name: Ident,
+    /// The name as the author wrote it. Matching reads `name(db)`.
+    pub name_with_case: Ident,
 
     #[tracked]
     #[no_eq]
@@ -58,6 +59,13 @@ impl<'db> HirNodeInfo<'db> for VariableDecl<'db> {
 }
 
 impl<'db> HasName<'db> for VariableDecl<'db> {
+    fn get_name_with_case(
+        &self,
+        db: &'db dyn WorkspaceDataBase,
+    ) -> crate::hir_def::interned::identifier::Ident {
+        self.name_with_case(db)
+    }
+
     fn get_name_ident(&self, db: &'db dyn WorkspaceDataBase) -> Ident {
         self.name(db)
     }
@@ -377,4 +385,12 @@ pub struct LocatedVariable<'db> {
     pub spec: Spec<'db>,
 
     pub init: Option<InitExpr<'db>>,
+}
+
+impl<'db> VariableDecl<'db> {
+    /// The name, as names are matched: case folded. As written:
+    /// [`Self::name_with_case`].
+    pub fn name(self, db: &'db dyn WorkspaceDataBase) -> Ident {
+        self.name_with_case(db).folded(db)
+    }
 }

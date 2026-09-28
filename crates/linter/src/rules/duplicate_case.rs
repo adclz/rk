@@ -74,7 +74,7 @@ pub fn check_case<'db>(
                         Some(CaseLabelValue::Str(bytes)) => format!("${bytes:?}"),
                         None => match body.type_of_expr.get(expr) {
                             Some(hir::hir_ty::ty::Type::EnumVariant(dt, variant)) => {
-                                format!("%{dt:?}#{}", variant.caseless(db).text(db))
+                                format!("%{dt:?}#{}", variant.text(db))
                             }
                             _ => written.clone(),
                         },

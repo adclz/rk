@@ -13,7 +13,8 @@ use crate::{AstId, HasName, HirNodeInfo};
 
 #[salsa::tracked(debug)]
 pub struct ConfigDecl<'db> {
-    pub name: Ident,
+    /// The name as the author wrote it. Matching reads `name(db)`.
+    pub name_with_case: Ident,
 
     #[tracked]
     #[no_eq]
@@ -199,7 +200,8 @@ pub struct FbTask<'db> {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub struct AccessDecl<'db> {
-    pub name: Ident,
+    /// The name as the author wrote it. Matching reads `name(db)`.
+    pub name_with_case: Ident,
 
     pub path: AccessPath<'db>,
 
@@ -248,11 +250,33 @@ impl<'db> HirNodeInfo<'db> for ConfigDecl<'db> {
 }
 
 impl<'db> HasName<'db> for ConfigDecl<'db> {
+    fn get_name_with_case(
+        &self,
+        db: &'db dyn WorkspaceDataBase,
+    ) -> crate::hir_def::interned::identifier::Ident {
+        self.name_with_case(db)
+    }
+
     fn get_name_ident(&self, db: &'db dyn WorkspaceDataBase) -> Ident {
         self.name(db)
     }
 
     fn get_name_id(&self, db: &'db dyn WorkspaceDataBase) -> AstId {
         self.name_span(db)
+    }
+}
+
+impl<'db> ConfigDecl<'db> {
+    /// The name, as names are matched: case folded. As written:
+    /// [`Self::name_with_case`].
+    pub fn name(self, db: &'db dyn WorkspaceDataBase) -> Ident {
+        self.name_with_case(db).folded(db)
+    }
+}
+
+impl<'db> AccessDecl<'db> {
+    /// The name, as names are matched: case folded.
+    pub fn name(&self, db: &'db dyn WorkspaceDataBase) -> Ident {
+        self.name_with_case.folded(db)
     }
 }

@@ -70,7 +70,7 @@ fn same_variable<'db>(
     if lv.spec(db).infer(db).is_float() {
         return None;
     }
-    Some(lv.name(db).text(db).to_string())
+    Some(lv.name_with_case(db).text(db).to_string())
 }
 
 fn resolve_var<'db>(

@@ -104,7 +104,7 @@ fn type_fragment<'db>(db: &'db dyn WorkspaceDataBase, ty: Type<'db>) -> String {
             let variants: Vec<String> = enum_ordinals(db, enm)
                 .iter()
                 .map(|(variant, value)| {
-                    format!("{}={}", variant.name.ident.text(db), bound(*value))
+                    format!("{}={}", variant.name.with_case.text(db), bound(*value))
                 })
                 .collect();
             format!("{base}({})", variants.join(","))
@@ -116,7 +116,7 @@ fn type_fragment<'db>(db: &'db dyn WorkspaceDataBase, ty: Type<'db>) -> String {
                 .map(|e| {
                     format!(
                         "{}:{}",
-                        e.name(db).text(db),
+                        e.name_with_case(db).text(db),
                         type_fragment(db, e.spec(db).infer(db))
                     )
                 })
@@ -140,20 +140,26 @@ pub fn qualified_pou_ident<'db>(
 ) -> Ident {
     use hir::HirNodeInfo;
 
+    // Spelled as declared: a symbol is what exports, test reports and
+    // backtraces show, and definition and call both name the declaration.
     let (scope_id, bare) = match ty {
-        hir::hir_ty::ty::Type::Function(f) => (f.get_scope_id(db), f.name(db)),
-        hir::hir_ty::ty::Type::FunctionBlock(fb) => (fb.get_scope_id(db), fb.name(db)),
-        hir::hir_ty::ty::Type::Class(c) => (c.get_scope_id(db), c.name(db)),
-        hir::hir_ty::ty::Type::Interface(i) => (i.get_scope_id(db), i.name(db)),
-        hir::hir_ty::ty::Type::DataType(dt) => (dt.get_scope_id(db), dt.name(db)),
-        hir::hir_ty::ty::Type::Program(p) => (p.get_scope_id(db), p.name(db)),
+        hir::hir_ty::ty::Type::Function(f) => (f.get_scope_id(db), f.name_with_case(db)),
+        hir::hir_ty::ty::Type::FunctionBlock(fb) => (fb.get_scope_id(db), fb.name_with_case(db)),
+        hir::hir_ty::ty::Type::Class(c) => (c.get_scope_id(db), c.name_with_case(db)),
+        hir::hir_ty::ty::Type::Interface(i) => (i.get_scope_id(db), i.name_with_case(db)),
+        hir::hir_ty::ty::Type::DataType(dt) => (dt.get_scope_id(db), dt.name_with_case(db)),
+        hir::hir_ty::ty::Type::Program(p) => (p.get_scope_id(db), p.name_with_case(db)),
         _ => return Ident::new(db, CompactString::from("")),
     };
 
-    match hir::hir_ty::resolver::name::enclosing_namespace_path(db, scope_id) {
-        Some(path) => Ident::new(
+    match hir::hir_ty::resolver::name::enclosing_namespace(db, scope_id) {
+        Some(ns) => Ident::new(
             db,
-            CompactString::from(format!("{}.{}", path.to_string(db), bare.text(db))),
+            CompactString::from(format!(
+                "{}.{}",
+                ns.path_with_case(db).to_string(db),
+                bare.text(db)
+            )),
         ),
         None => bare,
     }

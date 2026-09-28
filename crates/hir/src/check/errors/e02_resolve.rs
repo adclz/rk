@@ -121,14 +121,14 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                 let mut diag = diag()
                     .message(format!(
                         "no item {:?} found in scope",
-                        expr.ident(db).text(db)
+                        expr.ident(db).as_str(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
                     .range(crate::denormalize(db, file, &expr.get_span(db)).unwrap_or_default())
                     .call();
 
-                let mut query = Query::new(expr.ident(db).text(db).to_string());
+                let mut query = Query::new(expr.ident(db).ident(db).text(db).to_string());
                 query.similar();
                 let items = SymbolSearch::new(|pou, db| {
                     match pou {
@@ -146,7 +146,7 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
 
                 list_candidates(
                     db,
-                    expr.ident(db).text(db).as_str(),
+                    expr.ident(db).ident(db).text(db).as_str(),
                     &mut diag,
                     &items,
                     Some(*scope),
@@ -198,7 +198,7 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                 // we can try to find POUs with that name and suggest importing them
                 match &path.path.namespace {
                     None => {
-                        let mut query = Query::new(path.path.target.ident.text(db).to_string());
+                        let mut query = Query::new(path.path.target.with_case.text(db).to_string());
                         query.exact();
                         let items = SymbolSearch::new(|pou, db| !matches!(pou, Pou::Function(_)))
                             .with_scope(path.scope_id)
@@ -208,13 +208,13 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
 
                         list_candidates(
                             db,
-                            path.path.target.ident.text(db).as_str(),
+                            path.path.target.with_case.text(db).as_str(),
                             &mut diag,
                             &items,
                             Some(path.scope_id),
                         );
 
-                        let ns_kw = NamespacePath::from((db, &path.path.target.ident));
+                        let ns_kw = NamespacePath::from((db, &path.path.target.ident(db)));
 
                         let ns_kw = crate::hir_ty::index_graphs::absolute_namespace_path(
                             db,
@@ -235,8 +235,8 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                     Some(namespace) => {
                         // Build the full path (namespace prefix + target) to check
                         // if it's a known namespace (e.g. ["Std"] + "Counters" = ["Std", "Counters"])
-                        let mut full_fragments = namespace.fragments(db).to_vec();
-                        full_fragments.push(path.path.target.ident);
+                        let mut full_fragments = namespace.path(db).fragments(db).to_vec();
+                        full_fragments.push(path.path.target.ident(db));
                         let full_path = NamespacePath::new(db, full_fragments);
 
                         let full_path = crate::hir_ty::index_graphs::absolute_namespace_path(
@@ -293,7 +293,14 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                 span,
                 candidates,
             } => {
-                let name = name.text(db);
+                // As a candidate writes it: they all name it, in some case.
+                let name = candidates
+                    .first()
+                    .map(|(pou, _)| pou.get_name_with_case(db).text(db))
+                    .unwrap_or(name.text(db));
+                let spelled = |ns: &crate::hir_def::interned::namespace::NamespacePath| {
+                    crate::hir_ty::index_graphs::namespace_spelling(db, *ns)
+                };
 
                 // Count how many times each namespace appears
                 let mut counts = rustc_hash::FxHashMap::default();
@@ -310,11 +317,11 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                     .filter(|(_, count)| **count > 1)
                     .map(|(ns, _)| ns)
                     .collect();
-                duplicated.sort_by_key(|ns| ns.to_string(db));
+                duplicated.sort_by_key(|ns| spelled(ns));
                 let mut distinct: Vec<_> = counts
                     .iter()
                     .filter(|(_, count)| **count == 1)
-                    .map(|(ns, _)| ns.to_string(db))
+                    .map(|(ns, _)| spelled(ns))
                     .collect();
                 distinct.sort();
 
@@ -332,7 +339,7 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                     diag.with_note(format!(
                         "'{}' is declared multiple times in namespace '{}'",
                         name,
-                        ns.to_string(db),
+                        spelled(ns),
                     ));
 
                     // Same reason, one level down: the declarations inside a
@@ -372,7 +379,7 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
             Self::ExternalVarNotFound { var } => diag()
                 .message(format!(
                     "external variable '{}' not found in any accessible VAR_GLOBAL",
-                    var.name(db).text(db)
+                    var.name_with_case(db).text(db)
                 ))
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
@@ -385,7 +392,7 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
             } => diag()
                 .message(format!(
                     "'{}' is declared '{}' here but its VAR_GLOBAL is '{}': an external must repeat the global's type exactly",
-                    var.name(db).text(db),
+                    var.name_with_case(db).text(db),
                     crate::check::errors::e07_subrange::with_bounds(db, *external),
                     crate::check::errors::e07_subrange::with_bounds(db, *global),
                 ))
@@ -402,7 +409,7 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                 let mut diag = diag()
                     .message(format!(
                         "'{}' cannot be {}: a {} is stateless",
-                        var.name(db).text(db),
+                        var.name_with_case(db).text(db),
                         qualifier,
                         pou_kind,
                     ))
@@ -431,13 +438,13 @@ fn list_candidates<'db>(
     // Suggest variables with similar names (scoped to their POU)
     let var_names: Vec<_> = results
         .variables()
-        .map(|v| v.name(db).text(db).to_string())
+        .map(|v| v.name_with_case(db).text(db).to_string())
         .collect();
     if !var_names.is_empty() {
         let owner = scope
             .map(|s| get_scope(db, s).kind)
             .and_then(|k| match k {
-                ScopeKind::Pou(pou) => Some(pou.get_name_ident(db).text(db).to_string()),
+                ScopeKind::Pou(pou) => Some(pou.get_name_with_case(db).text(db).to_string()),
                 _ => None,
             })
             .unwrap_or_else(|| name.to_string());
@@ -447,7 +454,7 @@ fn list_candidates<'db>(
     // Suggest THIS.variable for variables in the parent FB/class scope (method context only)
     let this_names: Vec<_> = results
         .this_variables()
-        .map(|v| v.name(db).text(db).to_string())
+        .map(|v| v.name_with_case(db).text(db).to_string())
         .collect();
     if !this_names.is_empty() {
         let count = this_names.len().min(5);
@@ -470,7 +477,7 @@ fn list_candidates<'db>(
     // Suggest local POUs with similar names
     let local_names: Vec<_> = results
         .local_pous()
-        .map(|p| p.get_name_ident(db).text(db).to_string())
+        .map(|p| p.get_name_with_case(db).text(db).to_string())
         .collect();
     if !local_names.is_empty() {
         let count = local_names.len().min(5);
@@ -498,7 +505,7 @@ fn list_candidates<'db>(
         .filter(|(ns, pou)| {
             seen.insert((
                 ns.to_string(db),
-                pou.get_name_ident(db).text(db).to_string(),
+                pou.get_name_with_case(db).text(db).to_string(),
             ))
         })
         .take(6)
@@ -520,8 +527,8 @@ fn list_candidates<'db>(
             }
             note.push_str(&format!(
                 "- '{}' via USING {}",
-                pou.get_name_ident(db).text(db),
-                namespace.to_string(db)
+                pou.get_name_with_case(db).text(db),
+                crate::hir_ty::index_graphs::namespace_spelling(db, *namespace)
             ));
         }
 
@@ -548,7 +555,7 @@ fn list_candidates<'db>(
             if i > 0 {
                 note.push('\n');
             }
-            note.push_str(&format!("- {}", candidate.path(db).to_string(db)));
+            note.push_str(&format!("- {}", candidate.path_with_case(db).to_string(db)));
         }
 
         if count > 5 {

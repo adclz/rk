@@ -127,7 +127,7 @@ impl<'db> Resolver<'db> {
             name::NameResolution::Ambiguous(candidates) => {
                 ctx.errors.push(
                     ResolveError::MultipleItemsInScope {
-                        name: path_expr.ident(db).ident,
+                        name: path_expr.ident(db).ident(db),
                         span: path_expr.get_span(db),
                         candidates,
                     }
@@ -146,7 +146,7 @@ impl<'db> Resolver<'db> {
                         crate::hir_ty::index_graphs::absolute_namespace_path(
                             db,
                             path_expr.scope_id(db),
-                            **ns_path,
+                            ns_path.path(db),
                         ),
                     )
                     .is_empty()
@@ -450,7 +450,7 @@ impl<'db> Resolver<'db> {
                 && let PathResolutionRoot::Value { base } = self.root
                 && let Some(ret_ty) = base.with_return_type(db)
                 && let Some(declared) = self_reference_name(db, base)
-                && declared.caseless(db) == ident.ident.caseless(db)
+                && declared == ident.ident(db)
                 // The return value is one of the callable's own variables,
                 // so it comes before the owner's members and methods: a
                 // member `step` of the FB does not hide `STEP := ...` in
@@ -461,7 +461,7 @@ impl<'db> Resolver<'db> {
                     scope
                         .def_map(db)
                         .global_variables
-                        .contains_key(&ident.ident.caseless(db))
+                        .contains_key(&ident.ident(db))
                 })
             {
                 if single_step {
@@ -506,7 +506,7 @@ impl<'db> Resolver<'db> {
                     // can warn — strict IEC wants an explicit VAR_EXTERNAL.
                     if let PathExprWalkStep::Field { ident, .. } = step
                         && let Some(global) =
-                            crate::hir_ty::index_graphs::external_var_lookup(db, ident.ident)
+                            crate::hir_ty::index_graphs::external_var_lookup(db, ident.ident(db))
                     {
                         // try_resolve_as_fq pushed a "not found" error; this access is
                         // actually valid, so drop it.

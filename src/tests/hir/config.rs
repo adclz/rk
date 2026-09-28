@@ -1171,8 +1171,8 @@ END_CONFIGURATION
     );
 
     let (prog, task) = result.task_of_prog.iter().next().unwrap();
-    assert_eq!(task.name(&with_db).ident.text(&with_db), "t1");
-    assert_eq!(prog.name(&with_db).ident.text(&with_db), "inst1");
+    assert_eq!(task.name(&with_db).with_case.text(&with_db), "t1");
+    assert_eq!(prog.name(&with_db).with_case.text(&with_db), "inst1");
 }
 
 /// infer_config_result should populate prog_instance for valid program references.
@@ -1202,7 +1202,7 @@ END_CONFIGURATION
     );
 
     let (_, prog_decl) = result.prog_instance.iter().next().unwrap();
-    assert_eq!(prog_decl.name(&with_db).text(&with_db), "MyProg");
+    assert_eq!(prog_decl.name_with_case(&with_db).text(&with_db), "MyProg");
 }
 
 /// infer_config_result should resolve tasks scoped within a RESOURCE block.
@@ -1796,7 +1796,7 @@ fn resolved_schedule(db: &RootDatabase) -> String {
                     out,
                     "    PROGRAM {} : {}",
                     p.instance_name.text(db),
-                    p.program.name(db).text(db)
+                    p.program.name_with_case(db).text(db)
                 );
             }
         }

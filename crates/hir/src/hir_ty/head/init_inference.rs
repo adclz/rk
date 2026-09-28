@@ -7,7 +7,7 @@ use crate::{
     check::errors::{ToIdeDiagnostic, e01_duplicates::DuplicateError, e05_array::ArrayError},
     hir_def::{
         expressions::expression::{Expr, InitExpr, InitExprKind},
-        interned::identifier::{CaselessIdent, Ident},
+        interned::identifier::Ident,
         pous::pou::Pou,
         scope::{ScopeId, ScopeKind},
         semantic_index::get_scope,
@@ -388,7 +388,7 @@ impl<'db> InitExprInferenceResult<'db> {
                 }
             }
             InitExprWalkStep::SizedIndex { expr, size, values } => {
-                let repeat_count = size.as_u64(db).unwrap_or_else(|err| {
+                let repeat_count = size.with_case.as_u64(db).unwrap_or_else(|err| {
                     self.errors.push(
                         ArrayError::InvalidIndex {
                             size: *size,
@@ -459,10 +459,10 @@ impl<'db> InitExprInferenceResult<'db> {
                     .unwrap_or_default()
                     .normalize(db);
 
-                if let Some(prev) = ctx.seen_fields.insert(name.ident.caseless(db), *expr) {
+                if let Some(prev) = ctx.seen_fields.insert(name.ident(db), *expr) {
                     self.errors.push(
                         DuplicateError::InitExprField {
-                            name: name.ident,
+                            name: name.ident(db),
                             field1: *expr,
                             field2: prev,
                         }
@@ -583,7 +583,7 @@ fn init_cells(db: &dyn WorkspaceDataBase, values: &[InitExprWalkStep]) -> usize 
         .iter()
         .map(|step| match step {
             InitExprWalkStep::SizedIndex { size, values, .. } => {
-                size.as_u64(db).unwrap_or(1) as usize * init_cells(db, values).max(1)
+                size.with_case.as_u64(db).unwrap_or(1) as usize * init_cells(db, values).max(1)
             }
             InitExprWalkStep::ArrayInit { values, .. } => init_cells(db, values).max(1),
             _ => 1,
@@ -600,7 +600,7 @@ struct InitContext<'db> {
     /// Whether overflow has been reported per dimension
     overflow_reported: Vec<bool>,
     /// Seen fields in current struct (for duplicate detection)
-    seen_fields: FxHashMap<CaselessIdent, InitExpr<'db>>,
+    seen_fields: FxHashMap<Ident, InitExpr<'db>>,
 }
 
 impl<'db> InitContext<'db> {
@@ -701,7 +701,7 @@ fn resolve_leaves<'db>(
                         Some(Type::Variable((var, _))) => Some(var.name(db)),
                         _ => None,
                     };
-                    path.push(InitPathStep::Field(declared.unwrap_or(name.ident)));
+                    path.push(InitPathStep::Field(declared.unwrap_or(name.ident(db))));
                     resolve_leaves(db, *value, types, path, out);
                     path.pop();
                 }
@@ -748,7 +748,7 @@ fn array_element<'db>(
     match elem.kind(db) {
         InitExprKind::ArrayInit { .. } => resolve_array_into(db, elem, types, path, flat, out),
         InitExprKind::ArrayIndexedElement { size, values } => {
-            let n = size.as_u64(db).unwrap_or(0);
+            let n = size.with_case.as_u64(db).unwrap_or(0);
             for _ in 0..n {
                 for v in &values {
                     array_element(db, *v, types, path, flat, out);

@@ -22,8 +22,8 @@ impl<'db> InitInference<'db> {
 
             // Folded: `USING Tools` and `USING tools` name one namespace, so
             // importing both is importing it twice.
-            using.path(db).fragments(db).iter().for_each(|f| {
-                f.caseless(db).hash(&mut hasher);
+            using.path(db).path(db).fragments(db).iter().for_each(|f| {
+                f.hash(&mut hasher);
             });
 
             let frag_hash = hasher.finish();
@@ -43,13 +43,13 @@ impl<'db> InitInference<'db> {
             let path = crate::hir_ty::index_graphs::absolute_namespace_path(
                 db,
                 self.scope,
-                using.path(db).path,
+                using.path(db).path(db),
             );
             let decls = namespace_index(db, path);
             if decls.is_empty() {
                 self.errors.push(
                     ResolveError::UsingNamespaceNotFound {
-                        path: using.path(db).path,
+                        path: using.path(db).path(db),
                         call_site: CallSite::from_scoped(db, using),
                     }
                     .to_diagnostic(db, self.scope.file(db)),

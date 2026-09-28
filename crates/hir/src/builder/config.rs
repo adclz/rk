@@ -472,7 +472,7 @@ impl<'db> SemanticIndexBuilder<'db> {
         };
 
         Ok(AccessDecl {
-            name,
+            name_with_case: name,
             path,
             access,
             direction,
