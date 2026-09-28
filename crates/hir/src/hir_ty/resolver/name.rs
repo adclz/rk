@@ -261,6 +261,8 @@ pub enum OverloadPick<'db> {
 /// its parameter signature, plus its return type when a same-name sibling
 /// ties on parameters (a RETURN-directed set — params alone would give two
 /// functions one symbol). `None` when the name is not overloaded at all.
+/// The types are as declared, so an alias keeps the name that tells it
+/// apart; the tie is judged on normalized ones, as resolution judges it.
 ///
 /// This is resolution's knowledge — which declarations share a name and how
 /// they differ — exposed so the code generator renders symbols without
@@ -292,8 +294,8 @@ pub fn overload_discriminant<'db>(
     let params_tied = siblings
         .iter()
         .any(|other| *other != f && function_signature(db, *other).params == sig.params);
-    let mut discriminant = sig.params;
-    if params_tied && let Some(ret) = sig.ret {
+    let (mut discriminant, ret) = crate::hir_ty::head::signature::declared_types(db, f);
+    if params_tied && let Some(ret) = ret {
         discriminant.push(ret);
     }
     Some(discriminant)

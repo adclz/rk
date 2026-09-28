@@ -241,3 +241,63 @@ fn overloaded_call_in_initializer_runs(mut with_db: db::RootDatabase) {
     let r: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(r, 3, "the initializer called the resolved 2-arg overload");
 }
+
+/// Overloads on named arrays all lowered to `Which2$T`, and every
+/// call ran the first one declared.
+#[rstest]
+fn overloads_on_named_arrays_reach_their_own_body(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE Real5 : ARRAY[0..4] OF REAL; Int5 : ARRAY[0..4] OF INT; Int7 : ARRAY[0..6] OF INT; END_TYPE
+        FUNCTION Which2 : INT VAR_INPUT IN : Real5; END_VAR Which2 := 2; END_FUNCTION
+        FUNCTION Which2 : INT VAR_INPUT IN : Int5;  END_VAR Which2 := 1; END_FUNCTION
+        FUNCTION Which2 : INT VAR_INPUT IN : Int7;  END_VAR Which2 := 7; END_FUNCTION
+        FUNCTION test : INT
+        VAR i : Int5; j : Int7; r : Real5; END_VAR
+            test := Which2(IN := i) * 100 + Which2(IN := j) * 10 + Which2(IN := r);
+        END_FUNCTION
+    "#;
+    let r: i32 = super::run(&mut with_db, source, "test", ());
+    assert_eq!(r, 172, "Int5 ran 1, Int7 ran 7, Real5 ran 2");
+}
+
+/// Named enums and structs lost their names the same way.
+#[rstest]
+fn overloads_on_named_enums_and_structs_reach_their_own_body(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE
+            Color : (Red, Green);
+            Shape : (Circle, Square);
+            Point : STRUCT x : INT; END_STRUCT;
+            Size : STRUCT w : INT; END_STRUCT;
+        END_TYPE
+        FUNCTION ByEnum : INT VAR_INPUT c : Color; END_VAR ByEnum := 1; END_FUNCTION
+        FUNCTION ByEnum : INT VAR_INPUT s : Shape; END_VAR ByEnum := 2; END_FUNCTION
+        FUNCTION ByStruct : INT VAR_INPUT p : Point; END_VAR ByStruct := 1; END_FUNCTION
+        FUNCTION ByStruct : INT VAR_INPUT s : Size; END_VAR ByStruct := 2; END_FUNCTION
+        FUNCTION test : INT
+        VAR c : Color; s : Shape; p : Point; z : Size; END_VAR
+            test := ByEnum(c) * 1000 + ByEnum(s) * 100 + ByStruct(p) * 10 + ByStruct(z);
+        END_FUNCTION
+    "#;
+    let r: i32 = super::run(&mut with_db, source, "test", ());
+    assert_eq!(r, 1212, "each argument type ran its own overload");
+}
+
+/// `Motion.Axis` and a top-level `Motion_Axis` mangled to one fragment.
+#[rstest]
+fn namespaced_parameter_types_reach_their_own_body(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Motion_Axis VAR x : INT; END_VAR END_FUNCTION_BLOCK
+        NAMESPACE Motion
+            FUNCTION_BLOCK Axis VAR x : INT; END_VAR END_FUNCTION_BLOCK
+        END_NAMESPACE
+        FUNCTION Which : INT VAR_IN_OUT v : Motion_Axis; END_VAR Which := 1; END_FUNCTION
+        FUNCTION Which : INT VAR_IN_OUT v : Motion.Axis; END_VAR Which := 2; END_FUNCTION
+        FUNCTION test : INT
+        VAR a : Motion_Axis; b : Motion.Axis; END_VAR
+            test := Which(a) * 10 + Which(b);
+        END_FUNCTION
+    "#;
+    let r: i32 = super::run(&mut with_db, source, "test", ());
+    assert_eq!(r, 12, "Motion_Axis ran 1, Motion.Axis ran 2");
+}

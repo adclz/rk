@@ -1,10 +1,31 @@
 //! Symbol naming: namespace-qualified POU names and the `$`-suffix
 //! mangling.
+//!
+//! Every function in a module has one symbol, and two functions never share
+//! one: `lower_module` refuses a second (`LowerTypeError::DuplicateSymbol`)
+//! rather than let a call reach the wrong body. The spellings:
+//!
+//! - a FUNCTION: its qualified name (`NsA.Scale`); when the name is
+//!   overloaded, one `$<type>` per `VAR_INPUT`/`VAR_IN_OUT`, then one for
+//!   the return of a RETURN-directed set;
+//! - its specializations: `$<implementer>` per interface parameter, by
+//!   parameter name, and `$<count>` per variadic arity;
+//! - a METHOD: `<owner>#<name>`, specialized the same way;
+//! - bodies: `<owner>$__body__`, and `<instance>$__scan__`.
+//!
+//! A `<type>` fragment is the IEC name of an elementary type, the qualified
+//! name of a named one (`Motion.Axis`, never folded to `Motion_Axis`, which
+//! is another type's name), or for an unnamed one its structure in brackets
+//! no identifier can contain (`ARRAY[0..4](INT)`, `REF_TO(Int5)`). Everything
+//! before the first `$` or `#` is the POU, which rk-runtime's debugger reads
+//! back.
 
 use compact_str::CompactString;
 use db::WorkspaceDataBase;
 use hir::hir_def::interned::identifier::Ident;
 use hir::hir_def::pous::function::Function;
+use hir::hir_ty::infer::Infer;
+use hir::hir_ty::infer::const_eval::{array_dimensions, enum_ordinals, subrange_bounds};
 use hir::hir_ty::ty::Type;
 
 /// `base$Part1$Part2…` from sorted concrete part names, or `base` when
@@ -22,14 +43,14 @@ pub fn mangle_generic_name(db: &dyn WorkspaceDataBase, base: Ident, parts: &[&st
 }
 
 /// The MIR symbol of a FUNCTION: its qualified name, with the signature
-/// appended as discriminant when it is overloaded (`SHL$Byte`). Definition
+/// appended as discriminant when it is overloaded (`SHL$BYTE`). Definition
 /// and call compute it the same way.
 pub fn mir_function_symbol<'db>(db: &'db dyn WorkspaceDataBase, f: Function<'db>) -> Ident {
     let base = qualified_pou_ident(db, Type::Function(f));
     // What discriminates the symbol is resolution's decision.
     match hir::hir_ty::resolver::name::overload_discriminant(db, f) {
         Some(types) => {
-            let parts: Vec<String> = types.iter().map(|t| type_mangle(db, t)).collect();
+            let parts: Vec<String> = types.iter().map(|t| type_fragment(db, *t)).collect();
             let refs: Vec<&str> = parts.iter().map(|s| s.as_str()).collect();
             mangle_generic_name(db, base, &refs)
         }
@@ -37,21 +58,64 @@ pub fn mir_function_symbol<'db>(db: &'db dyn WorkspaceDataBase, f: Function<'db>
     }
 }
 
-/// A parameter type as a short symbol fragment: elementary types by IEC
-/// name, named types by qualified name, unnamed composites `T`.
-fn type_mangle<'db>(db: &'db dyn WorkspaceDataBase, ty: &Type<'db>) -> String {
+/// A type as a symbol fragment. Distinct types give distinct fragments,
+/// except two unnamed types of the same structure, which resolution cannot
+/// tell apart either.
+fn type_fragment<'db>(db: &'db dyn WorkspaceDataBase, ty: Type<'db>) -> String {
     match ty {
         Type::Elementary(e) => e.type_name().to_string(),
-        other => {
-            let q = qualified_pou_ident(db, *other);
-            let s = q.text(db);
-            if s.is_empty() {
-                "T".to_string()
-            } else {
-                s.replace('.', "_")
-            }
+        Type::DataType(_) | Type::FunctionBlock(_) | Type::Class(_) | Type::Interface(_) => {
+            qualified_pou_ident(db, ty).text(db).to_string()
         }
+        Type::RefTo(target) => format!("REF_TO({})", type_fragment(db, target.infer(db))),
+        Type::Array(array) => {
+            let dims: Vec<String> = array_dimensions(db, array)
+                .iter()
+                .map(|(lo, hi)| format!("{}..{}", bound(*lo), bound(*hi)))
+                .collect();
+            let of = type_fragment(db, array.of_type(db).infer(db));
+            format!("ARRAY[{}]({of})", dims.join(","))
+        }
+        Type::ArrayConformand(of) => format!("ARRAY[*]({})", type_fragment(db, of.infer(db))),
+        Type::SubRange(subrange) => {
+            let (lo, hi) = subrange_bounds(db, subrange);
+            let base = type_fragment(db, subrange._type(db).infer(db));
+            format!("{base}({}..{})", bound(lo), bound(hi))
+        }
+        Type::Enum(enm) => {
+            let base = enm
+                .typ(db)
+                .map(|spec| type_fragment(db, spec.infer(db)))
+                .unwrap_or_default();
+            let variants: Vec<String> = enum_ordinals(db, enm)
+                .iter()
+                .map(|(variant, value)| {
+                    format!("{}={}", variant.name.ident.text(db), bound(*value))
+                })
+                .collect();
+            format!("{base}({})", variants.join(","))
+        }
+        Type::Struct(s) => {
+            let fields: Vec<String> = s
+                .elements(db)
+                .iter()
+                .map(|e| {
+                    format!(
+                        "{}:{}",
+                        e.name(db).text(db),
+                        type_fragment(db, e.spec(db).infer(db))
+                    )
+                })
+                .collect();
+            format!("STRUCT({})", fields.join(","))
+        }
+        // Nothing else types a parameter of a function that passed rk check.
+        other => other.kind().to_string(),
     }
+}
+
+fn bound(value: Option<i64>) -> String {
+    value.map(|v| v.to_string()).unwrap_or_default()
 }
 
 /// The namespace-qualified name of a POU (bare for a top-level one): the
