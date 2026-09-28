@@ -515,6 +515,34 @@ END_FUNCTION_BLOCK
     assert_eq!(links[0].target_range.start.line, 7);
 }
 
+/// The same, for an implementation written in another case: `HALT`
+/// implements `Halt`, and the compiler dispatches to it.
+#[rstest]
+pub fn an_interface_method_finds_its_implementations_in_any_case(mut with_db: RootDatabase) {
+    let source = r#"
+INTERFACE Drivable
+METHOD Halt : INT
+END_METHOD
+END_INTERFACE
+
+FUNCTION_BLOCK fb IMPLEMENTS Drivable
+METHOD HALT : INT
+END_METHOD
+END_FUNCTION_BLOCK
+"#;
+    let file = add_source(&mut with_db, source);
+    let offset = source.find("Halt : INT").expect("the prototype");
+    let node = descendant_at(&with_db, file, offset).expect("a node");
+
+    let found = ide_proto::handlers::ImplementationHandler::implementation(&node, &with_db)
+        .expect("an implementation");
+    let auto_lsp::lsp_types::request::GotoImplementationResponse::Link(links) = found else {
+        panic!("expected links")
+    };
+    assert_eq!(links.len(), 1);
+    assert_eq!(links[0].target_range.start.line, 7);
+}
+
 /// A qualified value names the VARIANT, so it goes to where that variant is
 /// written. Only the type half of `Mode#Running` resolved; the half the
 /// reader clicked answered nothing.

@@ -27,7 +27,9 @@ pub fn check<'db>(
     let start_text = start.as_call_site(db).to_string(db);
     let end_text = end.as_call_site(db).to_string(db);
 
-    if start_text == end_text {
+    // With case out of the way: `n` and `N` are one bound, `16#ff` and
+    // `16#FF` one value.
+    if start_text.to_lowercase() == end_text.to_lowercase() {
         diagnostics.push(
             diag()
                 .message(format!(

@@ -974,3 +974,23 @@ END_FUNCTION
         linter::rules::ALL_RULE_NAMES
     );
 }
+
+/// A section keyword starts a section in any case (IEC 61131-3 §6.1.1): an
+/// empty body where `var_in` is being typed is where the `VAR` sections go.
+/// Only upper case was recognized.
+#[rstest]
+#[case::upper("VAR_IN")]
+#[case::lower("var_in")]
+#[case::mixed("Var_In")]
+#[case::closing("end_")]
+pub fn a_section_keyword_is_recognized_in_any_case(
+    mut with_db: RootDatabase,
+    #[case] keyword: &str,
+) {
+    let marked = format!("\nFUNCTION_BLOCK fb\n{keyword}|\nEND_FUNCTION_BLOCK\n");
+    let labels = complete_at(&mut with_db, &marked);
+    assert!(
+        labels.iter().any(|l| l == "VAR_INPUT"),
+        "no section keywords after `{keyword}` in {labels:?}"
+    );
+}

@@ -75,14 +75,16 @@ impl<'db> ImplementationHandler<'db> for hir::hir_ty::head::inheritance::MethodR
         let owner = owner_of(db, *self)?;
         let name = self.get_name_ident(db);
 
+        // Each implementer's own method of that name, in whatever case it
+        // declares it: `START` implements `Start`.
+        let name = name.caseless(db);
         let links: Vec<LocationLink> = find_all_implementations(db, owner)
             .iter()
             .filter_map(|pou| {
-                let scope = pou.get_scope_id(db);
-                scope
-                    .method_declarations(db)?
-                    .iter()
-                    .find(|declared| declared.get_name_ident(db) == name)
+                pou.get_scope_id(db)
+                    .def_map(db)
+                    .declared_methods
+                    .get(&name)
                     .copied()
             })
             .map(|declared| {

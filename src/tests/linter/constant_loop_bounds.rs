@@ -111,3 +111,27 @@ END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "constant-loop-bounds"), @r"");
 }
+
+/// `n` and `N` are one bound.
+#[rstest]
+fn equal_bounds_in_another_case(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION test : INT
+VAR i : INT; n : INT := 3; END_VAR
+    FOR i := n TO N DO
+        test := test + 1;
+    END_FOR;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "constant-loop-bounds"), @r"
+    [L0111] Warning: constant FOR loop bounds
+       ,-[ file:///test0.st:4:14 ]
+       |
+     4 |     FOR i := n TO N DO
+       |              |
+       |              `-- FOR loop bounds are equal (both n), loop body executes exactly once
+       |
+       | Note: lint rule: constant-loop-bounds
+    ---'
+    ");
+}

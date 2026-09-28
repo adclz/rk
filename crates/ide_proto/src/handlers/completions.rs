@@ -1060,8 +1060,9 @@ impl<'db> CompletionHandler<'db> for Using<'db> {
         for item in items {
             let ns_fragments = item.path(db).fragments(db);
             if let Some(frag) = ns_fragments.get(show_index) {
+                // One namespace in any case, labelled as first found.
                 let label = frag.text(db).to_string();
-                if seen.insert(label.clone()) {
+                if seen.insert(frag.caseless(db)) {
                     results.push(CompletionItem::new_simple(label, "NAMESPACE".to_string()));
                 }
             }

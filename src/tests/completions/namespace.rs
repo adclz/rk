@@ -709,3 +709,40 @@ END_NAMESPACE
         "expected 'hidden' from Lib.Impl: {completions:?}"
     );
 }
+
+/// A namespace reopened in another case is one namespace, and one item,
+/// labelled as its first declaration writes it.
+#[rstest]
+pub fn a_namespace_reopened_in_another_case_is_one_item(mut with_db: RootDatabase) {
+    let source = r#"
+NAMESPACE Lib
+    FUNCTION one : INT
+    END_FUNCTION
+END_NAMESPACE
+
+NAMESPACE LIB
+    FUNCTION two : INT
+    END_FUNCTION
+END_NAMESPACE
+
+FUNCTION fn1
+VAR
+    x : REAL;
+END_VAR
+END_FUNCTION
+"#;
+
+    let file = add_source(&mut with_db, source);
+    let pou = find_pou_with_name(&with_db, file, "fn1").unwrap();
+
+    let offset = source.find("x : REAL;\nEND_VAR").unwrap() + "x : REAL;\nEND_VAR\n".len();
+    let mut ctx = CompletionCtx::new(offset, QueryMode::Body);
+    ctx.scope_completion(pou.get_scope_id(&with_db), "", &with_db);
+    let namespaces: Vec<String> = ctx
+        .take_items()
+        .into_iter()
+        .filter(|item| item.detail.as_deref() == Some("(NAMESPACE)"))
+        .map(|item| item.label)
+        .collect();
+    assert_eq!(namespaces, ["Lib"]);
+}
