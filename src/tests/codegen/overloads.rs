@@ -301,3 +301,22 @@ fn namespaced_parameter_types_reach_their_own_body(mut with_db: db::RootDatabase
     let r: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(r, 12, "Motion_Axis ran 1, Motion.Axis ran 2");
 }
+
+/// `f(INT) : INT`, tied with `f(INT) : REAL`, was spelled like
+/// `f(INT, INT)`; the two-argument call ran the one-parameter body.
+#[rstest]
+fn a_return_directed_pair_beside_a_longer_sibling(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION f : INT VAR_INPUT a : INT; END_VAR f := 1; END_FUNCTION
+        FUNCTION f : REAL VAR_INPUT a : INT; END_VAR f := 2.0; END_FUNCTION
+        FUNCTION f : INT VAR_INPUT a : INT; b : INT; END_VAR f := 3; END_FUNCTION
+        FUNCTION test : INT
+        VAR one : INT; two : INT; END_VAR
+            one := f(INT#0);
+            two := f(INT#0, INT#0);
+            test := one * 10 + two;
+        END_FUNCTION
+    "#;
+    let r: i32 = super::run(&mut with_db, source, "test", ());
+    assert_eq!(r, 13, "f(INT) : INT ran 1, f(INT, INT) ran 3");
+}

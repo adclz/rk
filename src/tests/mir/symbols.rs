@@ -117,6 +117,22 @@ fn namespaced_parameter_types_keep_their_dot(mut with_db: RootDatabase) {
     ");
 }
 
+// The return of a RETURN-directed pair is marked, so `f(INT) : INT` does
+// not read like `f(INT, INT)`.
+#[rstest]
+fn a_return_directed_pair_marks_its_return(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION f : INT VAR_INPUT a : INT; END_VAR f := 1; END_FUNCTION
+        FUNCTION f : REAL VAR_INPUT a : INT; END_VAR f := 2.0; END_FUNCTION
+        FUNCTION f : INT VAR_INPUT a : INT; b : INT; END_VAR f := 3; END_FUNCTION
+    "#;
+    assert_snapshot!(symbols(&mut with_db, source), @"
+    f$INT$:INT
+    f$INT$:REAL
+    f$INT$INT
+    ");
+}
+
 // What is still left to collide stops lowering rather than lets a call run
 // another body. A PROGRAM and a FUNCTION_BLOCK of one name are not refused at
 // check yet, and both bodies are `Main$__body__`.

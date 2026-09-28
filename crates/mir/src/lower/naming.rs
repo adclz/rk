@@ -6,8 +6,9 @@
 //! rather than let a call reach the wrong body. The spellings:
 //!
 //! - a FUNCTION: its qualified name (`NsA.Scale`); when the name is
-//!   overloaded, one `$<type>` per `VAR_INPUT`/`VAR_IN_OUT`, then one for
-//!   the return of a RETURN-directed set;
+//!   overloaded, one `$<type>` per `VAR_INPUT`/`VAR_IN_OUT`, then `$:<type>`
+//!   for the return of a RETURN-directed set (`F$INT$:REAL`, which
+//!   `F(INT, REAL)` cannot spell);
 //! - its specializations: `$<implementer>` per interface parameter, by
 //!   parameter name, and `$<count>` per variadic arity;
 //! - a METHOD: `<owner>#<name>`, specialized the same way;
@@ -49,8 +50,15 @@ pub fn mir_function_symbol<'db>(db: &'db dyn WorkspaceDataBase, f: Function<'db>
     let base = qualified_pou_ident(db, Type::Function(f));
     // What discriminates the symbol is resolution's decision.
     match hir::hir_ty::resolver::name::overload_discriminant(db, f) {
-        Some(types) => {
-            let parts: Vec<String> = types.iter().map(|t| type_fragment(db, *t)).collect();
+        Some(discriminant) => {
+            let mut parts: Vec<String> = discriminant
+                .params
+                .iter()
+                .map(|t| type_fragment(db, *t))
+                .collect();
+            if let Some(ret) = discriminant.ret {
+                parts.push(format!(":{}", type_fragment(db, ret)));
+            }
             let refs: Vec<&str> = parts.iter().map(|s| s.as_str()).collect();
             mangle_generic_name(db, base, &refs)
         }
