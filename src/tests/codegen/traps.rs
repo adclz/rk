@@ -465,6 +465,33 @@ fn integer_division_by_zero_faults(mut with_db: db::RootDatabase) {
     );
 }
 
+/// An unsigned subscript past 2^31 is not a negative one: `a[4294967295]`
+/// on `ARRAY[-1..2]` read `a[-1]`.
+#[rstest]
+fn an_unsigned_subscript_past_2_pow_31_faults(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION run : DINT
+        VAR a : ARRAY[-1..2] OF INT; d : UDINT := 4294967295; END_VAR
+            run := a[d];
+        END_FUNCTION
+    "#;
+    let msg = expect_fault(&mut with_db, source, "4294967295 is out of -1..2");
+    assert!(msg.contains("array index out of bounds"), "{msg}");
+}
+
+/// A 64-bit subscript is checked at 64 bits: 2^32 + 2 is not 2.
+#[rstest]
+fn a_64bit_subscript_is_checked_at_64_bits(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION run : DINT
+        VAR a : ARRAY[0..3] OF INT; l : LINT := 4294967298; END_VAR
+            run := a[l];
+        END_FUNCTION
+    "#;
+    let msg = expect_fault(&mut with_db, source, "4294967298 is out of 0..3");
+    assert!(msg.contains("array index out of bounds"), "{msg}");
+}
+
 /// MOD by zero traps the same way.
 #[rstest]
 fn integer_modulo_by_zero_faults(mut with_db: db::RootDatabase) {

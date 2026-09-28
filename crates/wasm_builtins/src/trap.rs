@@ -50,6 +50,18 @@ pub extern "C" fn rk_idx_check(index: i32, lower: i32, size: u32) -> i32 {
     index
 }
 
+/// [`rk_idx_check`] for a subscript an i32 does not hold, a 64-bit one or
+/// an unsigned one past 2^31: checked at 64 bits, then returned at 32,
+/// which in bounds it fits.
+#[unsafe(no_mangle)]
+pub extern "C" fn rk_idx_check_i64(index: i64, lower: i64, size: u32) -> i32 {
+    if (index.wrapping_sub(lower) as u64) >= size as u64 {
+        const MSG: &str = "array index out of bounds";
+        unsafe { __iec_raise(MSG.as_ptr(), MSG.len() as u32) }
+    }
+    index as i32
+}
+
 /// Null check for a runtime dereference: raises when the pointer is 0,
 /// else returns it. Lowering wraps every user-written `^`; `rk.idx_check`
 /// validates the index and never sees the base.

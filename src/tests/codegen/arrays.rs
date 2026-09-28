@@ -523,3 +523,20 @@ fn a_chain_after_a_comma_group_consumes_the_next_dimension(mut with_db: db::Root
     let result: i32 = super::run(&mut with_db, source, "run", ());
     assert_eq!(result, 77, "all three spellings hit the same corner cell");
 }
+
+/// A 64-bit or unsigned subscript addresses its element: a LINT or ULINT one
+/// made an invalid module, the index check taking 32 bits.
+#[rstest]
+fn a_64bit_or_unsigned_subscript_addresses_its_element(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION run : DINT
+        VAR a : ARRAY[0..3] OF INT; l : LINT := 2; u : ULINT := 3; d : UDINT := 1; END_VAR
+            a[l] := 7;
+            a[u] := 8;
+            a[d] := 9;
+            run := a[2] * 100 + a[3] * 10 + a[d];
+        END_FUNCTION
+    "#;
+    let result: i32 = super::run(&mut with_db, source, "run", ());
+    assert_eq!(result, 789);
+}

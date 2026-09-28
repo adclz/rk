@@ -1360,7 +1360,8 @@ impl<'db> ExprLowerCtx<'db> {
             let index = self.lower_expr(*sub)?;
             let (element_type, element_size, lower_bound, dim_size) =
                 self.resolve_array_dim_info(array_hir_type, base_dim + k)?;
-            let index = self.checked_index(index, lower_bound, dim_size);
+            let lane = self.expr_to_mir_elementary(*sub).ok();
+            let index = self.checked_index(index, lane, lower_bound, dim_size);
             place = MirPlace::Index {
                 base: Box::new(place),
                 index: Box::new(index),
@@ -1411,20 +1412,43 @@ impl<'db> ExprLowerCtx<'db> {
     }
 
     /// Wrap a runtime subscript in `rk.idx_check`, which raises "array index
-    /// out of bounds" when it leaves `[lower, lower + size)`. A constant in
-    /// bounds stays bare (a literal subscript on a function-block receiver
-    /// must stay foldable); a constant out of bounds is wrapped like a
-    /// runtime value.
-    fn checked_index(&self, index: MirExpr, lower_bound: i64, dim_size: u32) -> MirExpr {
+    /// out of bounds" when it leaves `[lower, lower + size)`, and yields it
+    /// as the i32 an address is computed from. A constant in bounds stays
+    /// bare (a literal subscript on a function-block receiver must stay
+    /// foldable); a constant out of bounds is wrapped like a runtime value.
+    ///
+    /// A subscript whose `lane` an i32 does not hold, 64-bit or an unsigned
+    /// 32-bit one past 2^31, is checked at 64 bits by `rk.idx_check_i64`.
+    fn checked_index(
+        &self,
+        index: MirExpr,
+        lane: Option<MirElementary>,
+        lower_bound: i64,
+        dim_size: u32,
+    ) -> MirExpr {
         if let MirExpr::Constant(MirConstant::I32(k)) = &index {
             let u = (*k as i64).wrapping_sub(lower_bound);
             if u >= 0 && (u as u64) < dim_size as u64 {
                 return index;
             }
         }
+        let wide = lane.filter(|l| l.is_64bit() || (!l.is_signed() && l.rk_bits() == 32));
+        let (callee, index, lower) = match wide {
+            Some(MirElementary::LInt) => ("rk.idx_check_i64", index, MirConstant::I64(lower_bound)),
+            Some(lane) => (
+                "rk.idx_check_i64",
+                MirExpr::Cast {
+                    expr: Box::new(index),
+                    from: lane,
+                    to: MirElementary::LInt,
+                },
+                MirConstant::I64(lower_bound),
+            ),
+            None => ("rk.idx_check", index, MirConstant::I32(lower_bound as i32)),
+        };
         let callee = hir::hir_def::interned::identifier::Ident::new(
             self.db,
-            compact_str::CompactString::from("rk.idx_check"),
+            compact_str::CompactString::from(callee),
         );
         MirExpr::Call(crate::expr::MirCall {
             callee,
@@ -1437,7 +1461,7 @@ impl<'db> ExprLowerCtx<'db> {
                     kind: crate::expr::MirArgKind::ByValue,
                 },
                 crate::expr::MirCallArg {
-                    value: MirExpr::Constant(MirConstant::I32(lower_bound as i32)),
+                    value: MirExpr::Constant(lower),
                     kind: crate::expr::MirArgKind::ByValue,
                 },
                 crate::expr::MirCallArg {
