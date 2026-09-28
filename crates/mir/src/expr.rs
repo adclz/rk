@@ -177,6 +177,45 @@ pub enum MirPlace {
     },
 }
 
+impl MirExpr {
+    /// Whether evaluating this runs a call, which evaluating it twice would
+    /// run twice.
+    pub fn has_call(&self) -> bool {
+        match self {
+            MirExpr::Call(_) => true,
+            MirExpr::Constant(_) | MirExpr::StringLiteral { .. } => false,
+            MirExpr::Load(place, _) | MirExpr::AddrOf(place) => place.has_call(),
+            MirExpr::BinOp { lhs, rhs, .. } => lhs.has_call() || rhs.has_call(),
+            MirExpr::UnaryOp { expr, .. } | MirExpr::Cast { expr, .. } => expr.has_call(),
+            MirExpr::CopyIntoScratch { src, .. } => src.has_call(),
+        }
+    }
+}
+
+impl MirPlace {
+    /// Whether reaching this place runs a call: one in a subscript.
+    pub fn has_call(&self) -> bool {
+        match self {
+            MirPlace::Local(_) | MirPlace::ThisField { .. } | MirPlace::Global { .. } => false,
+            MirPlace::Field { base, .. } | MirPlace::Deref { base, .. } => base.has_call(),
+            MirPlace::Index { base, index, .. } => base.has_call() || index.has_call(),
+        }
+    }
+
+    /// The type of what the place holds, which a bare `Local` does not say.
+    pub fn ty(&self) -> Option<&MirType> {
+        match self {
+            MirPlace::Local(_) => None,
+            MirPlace::Field { field_type, .. } | MirPlace::ThisField { field_type, .. } => {
+                Some(field_type)
+            }
+            MirPlace::Index { element_type, .. } => Some(element_type),
+            MirPlace::Deref { pointee_type, .. } => Some(pointee_type),
+            MirPlace::Global { ty, .. } => Some(ty),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MirBinOp {
     // Arithmetic

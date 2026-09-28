@@ -136,11 +136,13 @@ fn place_subrange(place: &crate::expr::MirPlace) -> Option<crate::types::MirSubr
     }
 }
 
-/// Returns None for statements that have no MIR equivalent (e.g., ExternPragma).
+/// The MIR a statement lowers to: none for one that has no MIR equivalent
+/// (e.g., ExternPragma), and a scratch's store before one that must evaluate
+/// something once (a CASE selector).
 fn lower_stmt<'db>(
     ctx: &ExprLowerCtx<'db>,
     stmt: Stmt<'db>,
-) -> Result<Option<MirStmt>, LowerTypeError> {
+) -> Result<Vec<MirStmt>, LowerTypeError> {
     match stmt.stmt(ctx.db) {
         StmtKind::Assignment { var, target } => {
             let place = ctx.lower_variable_access(*var)?;
@@ -188,10 +190,10 @@ fn lower_stmt<'db>(
             } else {
                 (place, value)
             };
-            Ok(Some(MirStmt::Assign {
+            Ok(vec![MirStmt::Assign {
                 target: place,
                 value,
-            }))
+            }])
         }
 
         StmtKind::FuncCall(func_call) => {
@@ -216,11 +218,14 @@ fn lower_stmt<'db>(
                 },
             };
             if let Some(fb) = fb {
-                ctx.lower_fb_invocation(*func_call, fb)
+                Ok(ctx
+                    .lower_fb_invocation(*func_call, fb)?
+                    .into_iter()
+                    .collect())
             } else {
                 let call_expr = ctx.lower_func_call(*func_call, None)?;
                 match call_expr {
-                    crate::expr::MirExpr::Call(call) => Ok(Some(MirStmt::Call(call))),
+                    crate::expr::MirExpr::Call(call) => Ok(vec![MirStmt::Call(call)]),
                     // A call statement that lowered to anything else must not vanish.
                     other => Err(LowerTypeError::UnsupportedType(format!(
                         "a call statement lowered to a non-call expression: {other:?}"
@@ -229,7 +234,7 @@ fn lower_stmt<'db>(
             }
         }
 
-        StmtKind::Return => Ok(Some(MirStmt::Return)),
+        StmtKind::Return => Ok(vec![MirStmt::Return]),
 
         StmtKind::If {
             condition,
@@ -253,12 +258,12 @@ fn lower_stmt<'db>(
                 None => None,
             };
 
-            Ok(Some(MirStmt::If {
+            Ok(vec![MirStmt::If {
                 condition: cond,
                 then_body,
                 else_ifs,
                 else_body,
-            }))
+            }])
         }
 
         StmtKind::Case {
@@ -266,12 +271,13 @@ fn lower_stmt<'db>(
             cases,
             else_,
         } => {
-            let selector = ctx.lower_expr(*condition)?;
+            // The selector runs once, before any label is tested.
+            let (store, selector) = ctx.case_selector(*condition)?;
             let mut arms = Vec::new();
             for (case_kinds, body) in cases {
                 let mut patterns = Vec::new();
                 for ck in case_kinds {
-                    patterns.push(ctx.lower_case_kind(ck, *condition)?);
+                    patterns.push(ctx.lower_case_kind(ck, &selector)?);
                 }
                 let body = lower_stmts_inner(ctx, body)?;
                 arms.push(crate::stmt::MirCaseArm { patterns, body });
@@ -281,11 +287,13 @@ fn lower_stmt<'db>(
                 None => None,
             };
 
-            Ok(Some(MirStmt::Case {
+            let mut stmts: Vec<MirStmt> = store.into_iter().collect();
+            stmts.push(MirStmt::Case {
                 selector,
                 arms,
                 else_body,
-            }))
+            });
+            Ok(stmts)
         }
 
         StmtKind::For {
@@ -386,47 +394,49 @@ fn lower_stmt<'db>(
                 );
             }
 
-            Ok(Some(MirStmt::For {
+            Ok(vec![MirStmt::For {
                 control: control_place,
                 control_type: control_elem,
                 start: start_mir,
                 end: end_mir,
                 step: Box::new(step_mir),
                 body,
-            }))
+            }])
         }
 
         StmtKind::While { condition, body } => {
             let cond = ctx.lower_expr(*condition)?;
             let body = lower_stmts_inner(ctx, body)?;
-            Ok(Some(MirStmt::While {
+            Ok(vec![MirStmt::While {
                 condition: cond,
                 body,
-            }))
+            }])
         }
 
         StmtKind::Repeat { condition, body } => {
             let cond = ctx.lower_expr(*condition)?;
             let body = lower_stmts_inner(ctx, body)?;
-            Ok(Some(MirStmt::Repeat {
+            Ok(vec![MirStmt::Repeat {
                 condition: cond,
                 body,
-            }))
+            }])
         }
 
-        StmtKind::Exit => Ok(Some(MirStmt::Exit)),
+        StmtKind::Exit => Ok(vec![MirStmt::Exit]),
 
-        StmtKind::Continue => Ok(Some(MirStmt::Continue)),
+        StmtKind::Continue => Ok(vec![MirStmt::Continue]),
 
         StmtKind::Raise { message } => {
             let mir_msg = ctx.lower_expr(*message)?;
-            Ok(Some(MirStmt::Raise { message: mir_msg }))
+            Ok(vec![MirStmt::Raise { message: mir_msg }])
         }
 
-        StmtKind::WasmPragma(decl) => super::lower_wasm::lower_wasm_pragma(ctx, stmt, decl),
+        StmtKind::WasmPragma(decl) => Ok(super::lower_wasm::lower_wasm_pragma(ctx, stmt, decl)?
+            .into_iter()
+            .collect()),
 
         // Linter-only marker: no code.
-        StmtKind::AllowPragma(_) => Ok(None),
+        StmtKind::AllowPragma(_) => Ok(Vec::new()),
 
         StmtKind::EmptyPathExpression(begin_path) => {
             // `SUPER()` parses as a bare begin-path statement, so it lands here; HIR
@@ -434,9 +444,12 @@ fn lower_stmt<'db>(
             if begin_path.invocation(ctx.db).map(|i| i.kind(ctx.db))
                 == Some(hir::hir_def::expressions::invocation::InvocationKind::SuperBody)
             {
-                return ctx.lower_super_body_call(*begin_path);
+                return Ok(ctx
+                    .lower_super_body_call(*begin_path)?
+                    .into_iter()
+                    .collect());
             }
-            Ok(None)
+            Ok(Vec::new())
         }
     }
 }
@@ -450,11 +463,12 @@ fn lower_stmts_inner<'db>(
 ) -> Result<Vec<MirStmt>, LowerTypeError> {
     let mut result = Vec::new();
     for stmt in stmts {
-        if let Some(mir_stmt) = lower_stmt(ctx, *stmt)? {
+        let mut lowered = lower_stmt(ctx, *stmt)?;
+        if !lowered.is_empty() {
             result.push(MirStmt::DebugTrap {
                 location: stmt_location(ctx.db, *stmt),
             });
-            result.push(mir_stmt);
+            result.append(&mut lowered);
         }
         result.append(&mut ctx.after_stmt.borrow_mut());
     }
