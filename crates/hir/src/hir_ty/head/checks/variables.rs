@@ -707,13 +707,31 @@ impl<'db> InitInference<'db> {
 
     /// Push E1509 when an `{export}` FUNCTION has no single export to give:
     /// it is an import, a test, or one declaration the lowering turns into
-    /// several functions. The first reason that applies is the one reported.
+    /// several functions, or its name is one the module exports itself. The
+    /// first reason that applies is the one reported. A `{test}` is exported
+    /// too, in a debug build, so it may not take such a name either.
     fn check_export(
         &mut self,
         db: &'db dyn WorkspaceDataBase,
         func: crate::hir_def::pous::function::Function<'db>,
     ) {
+        // Exported under its bare name: top level, and not overloaded.
+        let reserved = crate::hir_def::pous::pragma::MODULE_EXPORTS
+            .contains(&func.name(db).text(db).as_str())
+            && crate::hir_ty::resolver::name::enclosing_namespace_path(db, func.scope_id(db))
+                .is_none()
+            && crate::hir_ty::resolver::name::overload_discriminant(db, func).is_none();
         let Some(anchor) = func.export_pragma(db) else {
+            if reserved && let Some(anchor) = func.test_pragma(db) {
+                self.errors.push(
+                    PragmaError::ExportForbidden {
+                        anchor: *anchor,
+                        func,
+                        kind: ExportForbiddenKind::Reserved,
+                    }
+                    .to_diagnostic(db, self.scope.file(db)),
+                );
+            }
             return;
         };
         let kind = if func.extern_pragma(db).is_some() {
@@ -732,6 +750,8 @@ impl<'db> InitInference<'db> {
             ExportForbiddenKind::Variadic
         } else if crate::hir_ty::resolver::name::overload_discriminant(db, func).is_some() {
             ExportForbiddenKind::Overloaded
+        } else if reserved {
+            ExportForbiddenKind::Reserved
         } else {
             return;
         };

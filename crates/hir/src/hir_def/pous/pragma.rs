@@ -68,6 +68,26 @@ pub struct WarnPragma {
     pub message: CompactString,
 }
 
+/// What the module itself exports for the host: `__init`, the memory, and
+/// the base and size of each band. An exported FUNCTION, `{export}` or
+/// `{test}`, may not have one of these names (E1509): a module with two
+/// exports of one name does not load. `wasm_codegen` writes them; a codegen
+/// test checks it writes these and no others.
+pub const MODULE_EXPORTS: &[&str] = &[
+    "__init",
+    "memory",
+    "retain_base",
+    "retain_size",
+    "globals_base",
+    "globals_size",
+    "input_base",
+    "input_size",
+    "output_base",
+    "output_size",
+    "marker_base",
+    "marker_size",
+];
+
 /// Helper methods for querying a pragma list.
 pub fn is_test(_db: &dyn WorkspaceDataBase, pragmas: &[Pragma<'_>]) -> bool {
     pragmas.iter().any(|p| matches!(p, Pragma::Test(_)))

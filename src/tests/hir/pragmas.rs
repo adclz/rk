@@ -766,3 +766,61 @@ END_FUNCTION
     ---'
     ");
 }
+
+/// A FUNCTION exported under a name the module exports itself would make a
+/// module with two exports of that name, which does not load.
+#[rstest]
+fn export_named_like_a_module_export_is_refused(mut with_db: RootDatabase) {
+    let source = r#"
+{export}
+FUNCTION memory : INT
+    memory := 1;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1509] Error: this FUNCTION cannot be exported
+       ,-[ file:///test0.st:2:1 ]
+       |
+     2 | {export}
+       | ^^^^|^^^
+       |     `----- 'memory' cannot be exported: it has the name of an export the module makes
+       |
+       | Note: the module exports `__init`, `memory`, and the base and size of each memory band under these names, for the host
+    ---'
+    ");
+}
+
+/// A `{test}` is exported under its name in a debug build.
+#[rstest]
+fn test_named_like_a_module_export_is_refused(mut with_db: RootDatabase) {
+    let source = r#"
+{test}
+FUNCTION __init
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1509] Error: this FUNCTION cannot be exported
+       ,-[ file:///test0.st:2:1 ]
+       |
+     2 | {test}
+       | ^^^|^^
+       |    `---- '__init' cannot be exported: it has the name of an export the module makes
+       |
+       | Note: the module exports `__init`, `memory`, and the base and size of each memory band under these names, for the host
+    ---'
+    ");
+}
+
+/// In a namespace the export is `Io.memory`, which the module does not use.
+#[rstest]
+fn export_in_a_namespace_may_take_a_module_export_name(mut with_db: RootDatabase) {
+    let source = r#"
+NAMESPACE Io
+    {export}
+    FUNCTION memory : INT
+        memory := 1;
+    END_FUNCTION
+END_NAMESPACE
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
