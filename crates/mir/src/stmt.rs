@@ -193,10 +193,12 @@ pub struct MirCaseArm {
 pub enum MirCasePattern {
     /// Single constant value.
     Value(MirConstant),
-    /// Range: lower..=upper.
+    /// Range: lower..=upper, compared signed or unsigned as the selector's
+    /// type is.
     Range {
         lower: MirConstant,
         upper: MirConstant,
+        signed: bool,
     },
     /// A label whose test is an expression deciding the arm on its own: a
     /// STRING label, whose test is the `str.byte_cmp` an `=` lowers to.

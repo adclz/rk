@@ -558,7 +558,7 @@ impl<'db> ExprLowerCtx<'db> {
     }
 
     /// Lower an expression and insert a cast to the target type if needed.
-    fn lower_expr_with_cast(
+    pub(crate) fn lower_expr_with_cast(
         &self,
         expr: Expr<'db>,
         target: MirElementary,
@@ -2536,10 +2536,13 @@ impl<'db> ExprLowerCtx<'db> {
         )
     }
 
+    /// One CASE label as a pattern on `selector`, whose type is `lane` (none
+    /// for a STRING).
     pub fn lower_case_kind(
         &self,
         case: &CaseKind<'db>,
         selector: &MirExpr,
+        lane: Option<MirElementary>,
     ) -> Result<MirCasePattern, LowerTypeError> {
         match case {
             // A STRING label compares with `str.byte_cmp`, carried as the arm's own
@@ -2556,12 +2559,13 @@ impl<'db> ExprLowerCtx<'db> {
                     self.lower_expr(*expr)?,
                 )))
             }
-            CaseKind::Expression(expr) => {
-                Ok(MirCasePattern::Value(self.case_label_constant(*expr)?))
-            }
+            CaseKind::Expression(expr) => Ok(MirCasePattern::Value(
+                self.case_label_constant(*expr, lane)?,
+            )),
             CaseKind::Subrange { lower, upper } => Ok(MirCasePattern::Range {
-                lower: self.case_label_constant(*lower)?,
-                upper: self.case_label_constant(*upper)?,
+                lower: self.case_label_constant(*lower, lane)?,
+                upper: self.case_label_constant(*upper, lane)?,
+                signed: lane.is_none_or(MirElementary::is_signed),
             }),
         }
     }
@@ -2572,25 +2576,38 @@ impl<'db> ExprLowerCtx<'db> {
     }
 
     /// One CASE label's value, as HIR evaluated it (`case_label_value`; E1205
-    /// refused labels without one). An enum label's value is its variant's
-    /// ordinal.
+    /// refused labels without one), at the width of the selector's `lane`: an
+    /// INT constant on a LINT selector is a 64-bit label. An enum label's
+    /// value is its variant's ordinal.
     fn case_label_constant(
         &self,
         label: hir::hir_def::expressions::expression::Expr<'db>,
+        lane: Option<MirElementary>,
     ) -> Result<MirConstant, LowerTypeError> {
+        let wide = match lane {
+            Some(lane) => lane.is_64bit(),
+            None => self
+                .expr_to_mir_elementary(label)
+                .is_ok_and(MirElementary::is_64bit),
+        };
         let body = hir::hir_ty::body::infer_body(self.db, label.scope_id(self.db));
         // Only the integer domain becomes a scalar constant; a string label
         // lowers to its own test.
         if let Some(hir::hir_ty::body::CaseLabelValue::Int(value)) =
             body.case_label_value.get(&label)
         {
-            return Ok(match self.expr_to_mir_elementary(label) {
-                Ok(elem) if elem.size_bytes() == 8 => MirConstant::I64(*value),
-                _ => MirConstant::I32(*value as i32),
+            return Ok(if wide {
+                MirConstant::I64(*value)
+            } else {
+                MirConstant::I32(*value as i32)
             });
         }
         // No recorded value: an enum label.
-        expr_to_constant(&self.lower_expr(label)?)
+        Ok(match (expr_to_constant(&self.lower_expr(label)?)?, wide) {
+            (MirConstant::I32(v), true) => MirConstant::I64(v as i64),
+            (MirConstant::I64(v), false) => MirConstant::I32(v as i32),
+            (c, _) => c,
+        })
     }
 
     /// Public accessor for type_to_mir_elementary (used by lower_stmt).

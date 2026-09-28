@@ -280,11 +280,13 @@ fn lower_stmt<'db>(
         } => {
             // The selector runs once, before any label is tested.
             let (store, selector) = ctx.case_selector(*condition)?;
+            // Labels compare at the selector's width and signedness.
+            let lane = ctx.expr_to_mir_elementary(*condition).ok();
             let mut arms = Vec::new();
             for (case_kinds, body) in cases {
                 let mut patterns = Vec::new();
                 for ck in case_kinds {
-                    patterns.push(ctx.lower_case_kind(ck, &selector)?);
+                    patterns.push(ctx.lower_case_kind(ck, &selector, lane)?);
                 }
                 let body = lower_stmts_inner(ctx, body)?;
                 arms.push(crate::stmt::MirCaseArm { patterns, body });
@@ -349,12 +351,14 @@ fn lower_stmt<'db>(
                 }
             });
 
-            let start_mir = ctx.lower_expr(*start)?;
+            // The bounds convert to the counter's width, as an assignment's
+            // value does.
+            let start_mir = ctx.lower_expr_with_cast(*start, control_elem)?;
             let start_mir = match &control_sub {
                 Some(sub) => ctx.checked_range_mir(start_mir, sub),
                 None => start_mir,
             };
-            let end_mir = ctx.lower_expr(*end)?;
+            let end_mir = ctx.lower_expr_with_cast(*end, control_elem)?;
             // The step is the folded value inference recorded (E1204), emitted as a
             // constant at the counter's width: its sign picks the exit comparison.
             let step_mir = match step {
