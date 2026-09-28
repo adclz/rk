@@ -320,3 +320,56 @@ fn a_return_directed_pair_beside_a_longer_sibling(mut with_db: db::RootDatabase)
     let r: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(r, 13, "f(INT) : INT ran 1, f(INT, INT) ran 3");
 }
+
+/// Two overloads with an interface parameter, specialized at one
+/// implementer, shared one specialization.
+#[rstest]
+fn interface_overloads_specialize_separately(mut with_db: db::RootDatabase) {
+    let source = r#"
+        INTERFACE IDev METHOD Id : INT END_METHOD END_INTERFACE
+        FUNCTION_BLOCK Pump IMPLEMENTS IDev
+            METHOD PUBLIC Id : INT Id := 7; END_METHOD
+        END_FUNCTION_BLOCK
+        FUNCTION drive : INT VAR_IN_OUT d : IDev; END_VAR VAR_INPUT n : INT; END_VAR drive := 100 + d.Id(); END_FUNCTION
+        FUNCTION drive : INT VAR_IN_OUT d : IDev; END_VAR VAR_INPUT n : DINT; END_VAR drive := 200 + d.Id(); END_FUNCTION
+        // Through an interface parameter: an overloaded callee does not take
+        // an implementer yet (E0810).
+        FUNCTION viaInt : INT VAR_IN_OUT d : IDev; END_VAR viaInt := drive(d, INT#1); END_FUNCTION
+        FUNCTION viaDint : INT VAR_IN_OUT d : IDev; END_VAR viaDint := drive(d, DINT#1); END_FUNCTION
+        FUNCTION runInt : INT VAR p : Pump; END_VAR runInt := viaInt(p); END_FUNCTION
+        FUNCTION runDint : INT VAR p : Pump; END_VAR runDint := viaDint(p); END_FUNCTION
+    "#;
+    let wasm = super::compile_to_wasm(&mut with_db, source);
+    let int: i32 = super::execute_wasm(&wasm, "runInt", ());
+    let dint: i32 = super::execute_wasm(&wasm, "runDint", ());
+    assert_eq!(
+        (int, dint),
+        (107, 207),
+        "each overload ran its own specialization"
+    );
+}
+
+/// The specialization of `drive(d : IDev)` at Pump was `drive$Pump`, the
+/// symbol of the overload `drive(p : Pump)`.
+#[rstest]
+fn an_fb_overload_beside_an_interface_overload(mut with_db: db::RootDatabase) {
+    let source = r#"
+        INTERFACE IDev METHOD Id : INT END_METHOD END_INTERFACE
+        FUNCTION_BLOCK Pump IMPLEMENTS IDev
+            METHOD PUBLIC Id : INT Id := 7; END_METHOD
+        END_FUNCTION_BLOCK
+        FUNCTION drive : INT VAR_IN_OUT d : IDev; END_VAR drive := 100 + d.Id(); END_FUNCTION
+        FUNCTION drive : INT VAR_IN_OUT p : Pump; END_VAR drive := 1; END_FUNCTION
+        FUNCTION via : INT VAR_IN_OUT d : IDev; END_VAR via := drive(d); END_FUNCTION
+        FUNCTION viaIface : INT VAR p : Pump; END_VAR viaIface := via(p); END_FUNCTION
+        FUNCTION viaFb : INT VAR p : Pump; END_VAR viaFb := drive(p); END_FUNCTION
+    "#;
+    let wasm = super::compile_to_wasm(&mut with_db, source);
+    let iface: i32 = super::execute_wasm(&wasm, "viaIface", ());
+    let fb: i32 = super::execute_wasm(&wasm, "viaFb", ());
+    assert_eq!(
+        (iface, fb),
+        (107, 1),
+        "drive(IDev) and drive(Pump) are two bodies"
+    );
+}

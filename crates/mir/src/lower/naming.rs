@@ -9,7 +9,7 @@
 //!   overloaded, one `$<type>` per `VAR_INPUT`/`VAR_IN_OUT`, then `$:<type>`
 //!   for the return of a RETURN-directed set (`F$INT$:REAL`, which
 //!   `F(INT, REAL)` cannot spell);
-//! - its specializations: `$<implementer>` per interface parameter, by
+//! - its specializations: `$@<implementer>` per interface parameter, by
 //!   parameter name, and `$<count>` per variadic arity;
 //! - a METHOD: `<owner>#<name>`, specialized the same way;
 //! - bodies: `<owner>$__body__`, and `<instance>$__scan__`.
@@ -64,6 +64,12 @@ pub fn mir_function_symbol<'db>(db: &'db dyn WorkspaceDataBase, f: Function<'db>
         }
         None => base,
     }
+}
+
+/// The fragment for an interface specialization's implementer: `@` and its
+/// qualified name, which no parameter fragment starts with.
+pub fn implementer_fragment(db: &dyn WorkspaceDataBase, implementer: Ident) -> String {
+    format!("@{}", implementer.text(db))
 }
 
 /// A type as a symbol fragment. Distinct types give distinct fragments,

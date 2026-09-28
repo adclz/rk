@@ -242,7 +242,7 @@ fn lower_module_from_pous<'db>(
                 }
 
                 // Phase B: a function with an interface param has no generic form; one
-                // copy per concrete instantiation (`drive$Worker`).
+                // copy per concrete instantiation (`drive$@Worker`).
                 let has_iface_param = func
                     .variables(db)
                     .iter()

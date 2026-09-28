@@ -133,6 +133,35 @@ fn a_return_directed_pair_marks_its_return(mut with_db: RootDatabase) {
     ");
 }
 
+// A specialization starts from its overload's own symbol, and marks the
+// implementer so it cannot read like one more parameter.
+#[rstest]
+fn interface_specializations_start_from_the_overload(mut with_db: RootDatabase) {
+    let source = r#"
+        INTERFACE IDev METHOD Id : INT END_METHOD END_INTERFACE
+        FUNCTION_BLOCK Pump IMPLEMENTS IDev
+            METHOD PUBLIC Id : INT Id := 7; END_METHOD
+        END_FUNCTION_BLOCK
+        FUNCTION drive : INT VAR_IN_OUT d : IDev; END_VAR VAR_INPUT n : INT; END_VAR drive := 100 + d.Id(); END_FUNCTION
+        FUNCTION drive : INT VAR_IN_OUT d : IDev; END_VAR VAR_INPUT n : DINT; END_VAR drive := 200 + d.Id(); END_FUNCTION
+        // Through an interface parameter: an overloaded callee does not take
+        // an implementer yet (E0810).
+        FUNCTION via : INT VAR_IN_OUT d : IDev; END_VAR via := drive(d, INT#1) + drive(d, DINT#1); END_FUNCTION
+        FUNCTION run : INT
+        VAR p : Pump; END_VAR
+            run := via(p);
+        END_FUNCTION
+    "#;
+    assert_snapshot!(symbols(&mut with_db, source), @"
+    Pump#Id
+    Pump$__body__
+    drive$IDev$DINT$@Pump
+    drive$IDev$INT$@Pump
+    run
+    via$@Pump
+    ");
+}
+
 // What is still left to collide stops lowering rather than lets a call run
 // another body. A PROGRAM and a FUNCTION_BLOCK of one name are not refused at
 // check yet, and both bodies are `Main$__body__`.

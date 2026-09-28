@@ -1,7 +1,7 @@
 //! Phase B: interface-parameter monomorphization. An interface only appears
 //! as a direct `VAR_INPUT` / `VAR_IN_OUT` parameter, so at every call site
 //! the concrete implementer is statically known: the callee is specialized
-//! per binding (`drive$Worker`, `Caller#Use$Worker`) and the call rewritten.
+//! per binding (`drive$@Worker`, `Caller#Use$@Worker`) and the call rewritten.
 
 use db::WorkspaceDataBase;
 use rustc_hash::FxHashMap;
@@ -313,10 +313,11 @@ fn process_call<'db>(
         return;
     }
 
-    // The un-specialized callee's symbol, then `$<concrete>` per interface
-    // param, sorted by name.
+    // The un-specialized callee's symbol, then `$@<concrete>` per interface
+    // param, sorted by name. An overloaded callee starts from its own
+    // symbol: two overloads specialized at one implementer are two bodies.
     let base = match &target {
-        IfaceTarget::Function(f) => qualified_pou_ident(db, Type::Function(*f)),
+        IfaceTarget::Function(f) => super::naming::mir_function_symbol(db, *f),
         IfaceTarget::Method { owner, method } => {
             let owner_q = qualified_pou_ident(db, Type::new_pou(db, *owner));
             Ident::new(
@@ -340,10 +341,11 @@ fn process_call<'db>(
     let mangled = match by_canonical.get(&key) {
         Some(m) => *m,
         None => {
-            let parts: Vec<&str> = key_concretes
+            let parts: Vec<String> = key_concretes
                 .iter()
-                .map(|(_, q)| q.text(db).as_str())
+                .map(|(_, q)| super::naming::implementer_fragment(db, *q))
                 .collect();
+            let parts: Vec<&str> = parts.iter().map(|s| s.as_str()).collect();
             let m = super::naming::mangle_generic_name(db, base, &parts);
             by_canonical.insert(key, m);
             instances.push(IfaceInstance {
