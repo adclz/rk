@@ -21,9 +21,13 @@
 //!   comparison is byte-lexicographic (docs/strings.md).
 //! - BOOL, arrays, and STRUCTs with defaults in their TYPE.
 //! - IF, CASE (integers and strings), FOR with EXIT and CONTINUE, RETURN.
-//! - FUNCTIONs; FUNCTION_BLOCKs with inputs, outputs, state, a VAR_IN_OUT
-//!   and METHODs that change their state; INTERFACEs, reached the way rk
-//!   allows them, as a FUNCTION's VAR_IN_OUT (E1121).
+//! - FUNCTIONs, some taking STRUCTs, some overloaded: an overload takes an
+//!   earlier FUNCTION's name and parameters, with one retyped (a STRUCT for
+//!   another STRUCT), added or dropped. Each argument has its parameter's
+//!   exact type, which picks that overload (docs/overloading.md).
+//! - FUNCTION_BLOCKs with inputs, outputs, state, a VAR_IN_OUT and METHODs
+//!   that change their state; INTERFACEs, reached the way rk allows them,
+//!   as a FUNCTION's VAR_IN_OUT (E1121).
 //! - CLASSes with EXTENDS and OVERRIDE: `THIS.m()` reaches the instance's
 //!   own version, `SUPER.m()` the base's (docs/monomorphized-oop.md). A
 //!   method only calls methods declared before it, or its own base version,
@@ -775,12 +779,92 @@ impl Generator<'_> {
             return None;
         }
         let f = callable[self.choices.below(callable.len())];
-        let inputs: Vec<Ty> = self.d.functions[f].inputs.iter().map(|v| v.ty).collect();
-        let args = inputs
-            .into_iter()
-            .map(|t| self.expr(t, depth - 1, readable))
-            .collect();
+        let args = self.args(f, depth - 1, readable)?;
         Some(Expr::Call(f, args))
+    }
+
+    /// The arguments of a call to FUNCTION `f`, each of its parameter's
+    /// exact type, if there is a STRUCT for each STRUCT parameter.
+    fn args(&mut self, f: usize, depth: u32, readable: &[usize]) -> Option<Vec<Expr>> {
+        let inputs: Vec<Ty> = self.d.functions[f].inputs.iter().map(|v| v.ty).collect();
+        let mut args = Vec::new();
+        for t in inputs {
+            args.push(match t {
+                // No expression makes a STRUCT: one is read from a place.
+                Ty::Struct(_) => {
+                    let places = self.places(t, readable, true);
+                    Expr::Read(self.pick(places)?)
+                }
+                t => self.expr(t, depth, readable),
+            });
+        }
+        Some(args)
+    }
+
+    /// `target := f(args)`: a FUNCTION called for its value, so the
+    /// overloads of a name meet at call sites and not only deep inside an
+    /// expression.
+    fn function_call(&mut self, readable: &[usize]) -> Option<Stmt> {
+        let overloaded: Vec<usize> = (0..self.d.functions.len())
+            .filter(|&f| {
+                let name = &self.d.functions[f].name;
+                self.d.functions.iter().filter(|g| &g.name == name).count() > 1
+            })
+            .collect();
+        let f = match overloaded.is_empty() || self.choices.percent(30) {
+            true => self.choices.below(self.d.functions.len()),
+            false => overloaded[self.choices.below(overloaded.len())],
+        };
+        let target = self.target(self.d.functions[f].ty)?;
+        let args = self.args(f, 2, readable)?;
+        Some(Stmt::Assign(target, Expr::Call(f, args)))
+    }
+
+    /// An overload of an earlier FUNCTION: its name and return type, and its
+    /// parameters with one retyped, one added or one dropped, the way
+    /// siblings are written. `None` when the name already has that
+    /// parameter list.
+    ///
+    /// Each argument is written with its parameter's exact type, so the
+    /// overload rk picks is the one exact on every argument, the one the
+    /// evaluator runs (docs/overloading.md).
+    fn overload(&mut self) -> Option<(String, Ty, Vec<Var>)> {
+        let sibling = self.choices.below(self.d.functions.len());
+        let name = self.d.functions[sibling].name.clone();
+        let ty = self.d.functions[sibling].ty;
+        let mut inputs = self.d.functions[sibling].inputs.clone();
+        match self.choices.below(5) {
+            0 if inputs.len() > 1 => {
+                inputs.pop();
+            }
+            1 if inputs.len() < 3 => {
+                let ty = self.param_type(None);
+                inputs.push(input(inputs.len(), ty));
+            }
+            _ => {
+                let i = self.choices.below(inputs.len());
+                inputs[i].ty = self.param_type(Some(inputs[i].ty));
+            }
+        }
+        let taken = self
+            .d
+            .functions
+            .iter()
+            .any(|f| f.name == name && param_key(&f.inputs) == param_key(&inputs));
+        (!taken).then_some((name, ty, inputs))
+    }
+
+    /// A parameter type for an overload: for a STRUCT another STRUCT when
+    /// there is one, so two named types meet in one overload set.
+    fn param_type(&mut self, instead_of: Option<Ty>) -> Ty {
+        let structs = self.d.structs.len();
+        match instead_of {
+            Some(Ty::Struct(k)) if structs > 1 => {
+                Ty::Struct((k + 1 + self.choices.below(structs - 1)) % structs)
+            }
+            _ if structs > 0 && self.choices.percent(30) => Ty::Struct(self.choices.below(structs)),
+            _ => self.scalar_type(),
+        }
     }
 
     /// Up to four statements. `readable` holds the variables and the
@@ -868,6 +952,12 @@ impl Generator<'_> {
                     Some(call) => call,
                     None => continue,
                 },
+                15 | 16 if self.in_program && !self.d.functions.is_empty() => {
+                    match self.function_call(readable) {
+                        Some(call) => call,
+                        None => continue,
+                    }
+                }
                 _ => match self.assign(readable) {
                     Some(assign) => assign,
                     None => continue,
@@ -1102,6 +1192,28 @@ impl Generator<'_> {
     }
 }
 
+/// A FUNCTION's input `a{i}`.
+fn input(i: usize, ty: Ty) -> Var {
+    Var {
+        name: format!("a{i}"),
+        ty,
+        init: Val::Int(0),
+        role: Role::Input,
+    }
+}
+
+/// What tells two parameter lists apart: their types, a STRING's length
+/// aside, which is no part of its type.
+fn param_key(inputs: &[Var]) -> Vec<Ty> {
+    inputs
+        .iter()
+        .map(|v| match v.ty {
+            Ty::Str(_) => Ty::Str(0),
+            t => t,
+        })
+        .collect()
+}
+
 /// A program from `bytes`: ST text whose header comment holds, after
 /// [`SCANS`] scans, the value of every variable, array element, STRUCT
 /// field and FB member.
@@ -1122,25 +1234,36 @@ pub fn program(bytes: &[u8]) -> String {
         g.d.structs.push(fields);
     }
 
-    for k in 0..g.choices.below(4) {
-        let ty = g.scalar_type();
-        let n = 1 + g.choices.below(3);
-        // A string FUNCTION takes strings; any other, its own type.
-        let inputs: Vec<Var> = (0..n)
-            .map(|i| Var {
-                name: format!("a{i}"),
-                ty: match ty {
-                    Ty::Str(_) => Ty::Str(1 + g.choices.below(8) as u8),
-                    t => t,
-                },
-                init: Val::Int(0),
-                role: Role::Input,
-            })
-            .collect();
-        let readable: Vec<usize> = (0..n).collect();
+    for k in 0..g.choices.below(5) {
+        let overload = match g.d.functions.is_empty() || !g.choices.percent(40) {
+            true => None,
+            false => g.overload(),
+        };
+        let (name, ty, inputs) = match overload {
+            Some(overload) => overload,
+            None => {
+                let ty = g.scalar_type();
+                let n = 1 + g.choices.below(3);
+                // Some take STRUCTs and compute from their fields; a string
+                // FUNCTION takes strings; any other, its own type.
+                let structs = !g.d.structs.is_empty() && g.choices.percent(25);
+                let inputs = (0..n)
+                    .map(|i| {
+                        let ty = match ty {
+                            _ if structs => Ty::Struct(g.choices.below(g.d.structs.len())),
+                            Ty::Str(_) => Ty::Str(1 + g.choices.below(8) as u8),
+                            t => t,
+                        };
+                        input(i, ty)
+                    })
+                    .collect();
+                (format!("g{k}"), ty, inputs)
+            }
+        };
+        let readable: Vec<usize> = (0..inputs.len()).collect();
         let (inputs, body) = g.with_frame(inputs, |g| g.expr(ty, 3, &readable));
         g.d.functions.push(Function {
-            name: format!("g{k}"),
+            name,
             ty,
             inputs,
             body,
@@ -2455,5 +2578,31 @@ mod tests {
             assert!(p.contains("PROGRAM Run WITH T : P;"), "{p}");
         }
         assert!(program(&[]).contains("END_PROGRAM"));
+    }
+
+    /// Some inputs give a FUNCTION name two declarations, and call it.
+    #[test]
+    fn some_inputs_overload_a_function() {
+        let overloaded = (0u8..=255)
+            .filter(|&seed| {
+                let bytes: Vec<u8> = (0..4096u32)
+                    .map(|i| (i as u8).wrapping_mul(seed ^ 0x5b).wrapping_add(seed))
+                    .collect();
+                let p = program(&bytes);
+                let mut names: Vec<&str> = p
+                    .lines()
+                    .filter_map(|l| l.strip_prefix("FUNCTION "))
+                    .filter_map(|l| l.split(' ').next())
+                    .collect();
+                names.sort();
+                names.windows(2).any(|w| {
+                    w[0] == w[1]
+                        && p.split("\nPROGRAM P")
+                            .nth(1)
+                            .is_some_and(|body| body.contains(&format!("{}(", w[0])))
+                })
+            })
+            .count();
+        assert!(overloaded > 0, "no input made a called overload set");
     }
 }
