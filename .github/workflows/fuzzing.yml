@@ -45,11 +45,13 @@ jobs:
           sudo docker image prune --all --force
           df -h
       # corpus_gen and repro build on the pinned toolchain; the fuzz targets
-      # need nightly for the sanitizer flags.
+      # need nightly for the sanitizer flags. Nightly needs wasm32 too:
+      # wasm_builtins_generated's build.rs compiles the builtins for it with
+      # the cargo that runs it.
       - uses: ./.github/actions/rust-toolchain
       - name: Install Rust nightly
-        run: rustup toolchain install nightly --profile minimal
-      # One cache for the three targets, which share every dependency.
+        run: rustup toolchain install nightly --profile minimal --target wasm32-unknown-unknown
+      # One cache for every target, which share every dependency.
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           shared-key: fuzz
@@ -93,13 +95,26 @@ jobs:
       # Fork mode keeps going after a crash, so one bug does not end the
       # night; every crash lands in crates/fuzz/artifacts/<target>/. Wasm
       # execution is bounded by fuel, so a timeout is the compiler hanging.
+      #
+      # The binary runs directly, not through `cargo fuzz run`: in fork mode
+      # libFuzzer exits with its last job's status, 77 for a crash and 70
+      # for a timeout. Those are findings, for the triage job to report;
+      # cargo-fuzz would turn them into a failure of this one.
       - name: Fuzz for 30 minutes
         run: |
-          cargo +nightly fuzz run --fuzz-dir crates/fuzz --target x86_64-unknown-linux-gnu --debug-assertions ${{ matrix.target }} "$CORPUS" -- \
+          artifacts="crates/fuzz/artifacts/${{ matrix.target }}"
+          mkdir -p "$artifacts"
+          status=0
+          ./target/x86_64-unknown-linux-gnu/release/${{ matrix.target }} "$CORPUS" \
+            -artifact_prefix="$artifacts/" \
             -max_total_time=1800 -fork=3 \
             -ignore_crashes=1 -ignore_timeouts=1 -ignore_ooms=1 \
             -timeout=10 -rss_limit_mb=4096 -detect_leaks=0 \
-            -dict=crates/fuzz/st.dict
+            -dict=crates/fuzz/st.dict || status=$?
+          case "$status" in
+            0|70|77) echo "libFuzzer exited $status; $(ls "$artifacts" | wc -l) file(s) in $artifacts" ;;
+            *) echo "::error::the fuzzer itself failed (exit $status)"; exit "$status" ;;
+          esac
       - name: Save the corpus
         if: always()
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -168,7 +183,12 @@ jobs:
             for dir in crashes/fuzz-crashes-*; do
               target=${dir#crashes/fuzz-crashes-}
               mkdir -p "replay/$target"
-              find "$dir" -type f -name 'crash-*' -exec cp {} "replay/$target/" \;
+              # The smallest crashes, which read best: a night re-finds the
+              # same bugs thousands of times, and each replay is a process.
+              total=$(find "$dir" -type f -name 'crash-*' | wc -l)
+              find "$dir" -type f -name 'crash-*' -printf '%s %p\n' | sort -n | head -n 200 \
+                | cut -d' ' -f2- | while read -r f; do cp "$f" "replay/$target/"; done \
+                || true # `head` closing early makes `sort` exit on SIGPIPE, under pipefail
               [ -n "$(ls -A "replay/$target")" ] || continue
               # Each target's own oracle, so a crash is filed under it.
               case "$target" in
@@ -181,6 +201,8 @@ jobs:
               esac
               echo
               echo "### $target"
+              echo
+              echo "Replayed the $(ls "replay/$target" | wc -l) smallest of $total crash file(s)."
               echo
               echo '```'
               ./target/release/repro --isolate $flag "replay/$target" | tee /dev/stderr | sed -n '/^passed:\|input(s)/,$p' || true

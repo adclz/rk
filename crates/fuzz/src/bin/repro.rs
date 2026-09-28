@@ -64,6 +64,8 @@ fn main() -> ExitCode {
     // The pipeline's verdict, when it ran: whether an input reached the
     // code generator is the first thing to know about a hypothesis.
     let check: fn(&str) -> Result<Option<Verdict>, Finding> = match only.as_deref() {
+        // A generated program gets what `fuzz_semantics` gives it.
+        None if generated => |s| rk_fuzz::check_generated(s).map(Some),
         None => |s| rk_fuzz::check_all(s).map(Some),
         Some("pipeline") => |s| rk_fuzz::pipeline::check(s).map(Some),
         Some("format") => |s| rk_fuzz::format::check(s).map(|()| None),
