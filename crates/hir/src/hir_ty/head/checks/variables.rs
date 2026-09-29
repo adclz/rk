@@ -1,3 +1,4 @@
+use crate::hir_ty::infer::normalize::string_capacity;
 use db::WorkspaceDataBase;
 use rustc_hash::FxHashMap;
 
@@ -308,12 +309,15 @@ impl<'db> InitInference<'db> {
                 let glob_ty = Type::resolve_spec(db, global.spec(db));
                 if !ext_ty.is_never()
                     && !glob_ty.is_never()
-                    && !same_storage_type(db, ext_ty, glob_ty)
+                    && (!same_storage_type(db, ext_ty, glob_ty)
+                        || string_capacity(db, var.spec(db))
+                            != string_capacity(db, global.spec(db)))
                 {
                     self.errors.push(
                         ResolveError::ExternalVarTypeMismatch {
                             var: *var,
                             external: ext_ty,
+                            global_var: global,
                             global: glob_ty,
                         }
                         .to_diagnostic(db, self.scope.file(db)),
@@ -823,6 +827,7 @@ pub(crate) fn same_storage_type<'db>(
                     Type::resolve_spec(db, x.of_type(db)),
                     Type::resolve_spec(db, y.of_type(db)),
                 )
+                && string_capacity(db, x.of_type(db)) == string_capacity(db, y.of_type(db))
         }
         (x, y) => x == y,
     }

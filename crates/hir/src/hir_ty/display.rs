@@ -35,9 +35,9 @@ pub fn namespace_spelling(db: &dyn WorkspaceDataBase, path: NamespacePath) -> St
 /// Returns the display name for a spec, handling sized strings specially.
 fn spec_type_name<'db>(db: &'db dyn WorkspaceDataBase, spec: Spec<'db>) -> String {
     match spec.kind(db) {
-        SpecKind::SizedString(length) => {
-            let len = length
-                .as_range(db)
+        // Folded, so a CONSTANT length shows its number.
+        SpecKind::SizedString(_) => {
+            let len = crate::hir_ty::infer::normalize::declared_string_capacity(db, spec)
                 .map(|n| n.to_string())
                 .unwrap_or_default();
             format!("STRING[{}]", len)
@@ -169,8 +169,10 @@ impl<'db> Type<'db> {
             },
             Self::Struct(_) => "STRUCT".into(),
             Self::Enum(_) => "ENUM".into(),
+            // Through the element's spec, which keeps a `STRING[n]`: two
+            // arrays that differ only there are two types.
             Self::Array(array) => {
-                let elem_type = array.of_type(db).infer(db).type_name(db);
+                let elem_type = spec_type_name(db, array.of_type(db));
                 // Folded values, so a CONSTANT bound shows its number — and a
                 // negative one shows at all (`as_range` dropped it, rendering
                 // `ARRAY [-1..5]` as `ARRAY [..5]`).
@@ -197,7 +199,7 @@ impl<'db> Type<'db> {
                 let upper = upper.map(|n| n.to_string()).unwrap_or_default();
                 format!("{base_type} ({lower}..{upper})")
             }
-            Self::RefTo(spec) => format!("REF_TO {}", spec.infer(db).type_name(db)),
+            Self::RefTo(spec) => format!("REF_TO {}", spec_type_name(db, *spec)),
             Self::Null => "NULL".into(),
             Self::Infer(infer) => match infer {
                 InferType::Integer(i) => format!("{{integer}} {}", i.ident(db).text(db)),

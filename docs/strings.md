@@ -55,12 +55,14 @@ Write operations:
 - `CHAR_DELETE` removes n characters starting at a 1-indexed character position.
 - `CHAR_REPLACE` replaces n characters at a 1-indexed character position with a STRING.
 
-Their result holds up to 255 bytes, as in CODESYS and TwinCAT. A longer one is cut there, and again where it is stored when the destination is smaller.
+Their result holds up to 255 bytes. 
+A longer one is cut there, and again where it is stored when the destination is smaller.
 
 
 - A **literal** too long for its destination is a compile error.
 - A **variable** too long truncates silently, and truncating bytes can split a character.
   `IS_UTF8` exists for exactly that.
+- Where two STRINGs share storage, the capacity is part of the type: an `ARRAY OF STRING[4]` is not an `ARRAY OF STRING`, and a `REF_TO STRING` does not take a `STRING[4]` (`E0301`). A `VAR_EXTERNAL` repeats its global's capacity (`E0207`).
 
 - No indexing - `s[1]` is `E0508`, use `CHAR_AT`. 
 

@@ -1079,6 +1079,34 @@ impl<'db> ExprLowerCtx<'db> {
             .type_of_path_expr_with_adjustments(deref)
     }
 
+    /// The MIR type `reference^` reaches: its pointee, with the capacity of
+    /// a `REF_TO STRING[n]` read from the reference's target spec, since the
+    /// inferred pointee has dropped it and a write through it clamped at 80,
+    /// past a shorter target.
+    fn deref_pointee_type(
+        &self,
+        deref: hir::hir_def::expressions::expression::PathExpr<'db>,
+        reference: hir::hir_def::expressions::expression::PathExpr<'db>,
+    ) -> MirType {
+        let pointee = self
+            .lower_type_resolved(self.pointee_of(deref))
+            .unwrap_or(MirType::Void);
+        if !matches!(pointee, MirType::String { .. }) {
+            return pointee;
+        }
+        // The raw type: the adjusted one has already dereferenced it.
+        match hir::hir_ty::body::infer_body(self.db, reference.scope_id(self.db))
+            .type_of_path_expr
+            .get(&reference)
+            .map(|ty| ty.normalize(self.db))
+        {
+            Some(Type::RefTo(target)) => {
+                crate::lower::lower_type::lower_spec(self.db, target).unwrap_or(pointee)
+            }
+            _ => pointee,
+        }
+    }
+
     /// Lower a BeginPathExpr to a MirPlace, handling nested field/index/deref chains.
     fn lower_begin_path_to_place(
         &self,
@@ -1176,9 +1204,7 @@ impl<'db> ExprLowerCtx<'db> {
             }
             PathExprKind::Deref(deref_expr) => {
                 let inner = self.lower_this_path(deref_expr.path)?;
-                let pointee_type = self
-                    .lower_type_resolved(self.pointee_of(path_expr))
-                    .unwrap_or(MirType::Void);
+                let pointee_type = self.deref_pointee_type(path_expr, deref_expr.path);
                 Ok(MirPlace::Deref {
                     base: Box::new(inner),
                     pointee_type,
@@ -1287,9 +1313,7 @@ impl<'db> ExprLowerCtx<'db> {
 
             PathExprKind::Deref(deref_expr) => {
                 let inner = self.lower_path_expr_chain(base, deref_expr.path)?;
-                let pointee_type = self
-                    .lower_type_resolved(self.pointee_of(path_expr))
-                    .unwrap_or(MirType::Void);
+                let pointee_type = self.deref_pointee_type(path_expr, deref_expr.path);
                 Ok(MirPlace::Deref {
                     base: Box::new(inner),
                     pointee_type,

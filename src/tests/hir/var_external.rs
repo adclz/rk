@@ -228,3 +228,34 @@ END_CONFIGURATION
     ---'
     ");
 }
+
+/// An external aliases its global's storage, so a STRING's capacity must
+/// agree too: a `STRING` external over a `STRING[4]` global writes 80 bytes.
+#[rstest]
+fn an_external_string_repeats_its_capacity(mut with_db: RootDatabase) {
+    let source = r#"
+CONFIGURATION Cfg
+VAR_GLOBAL g4 : STRING[4]; ga : ARRAY[0..1] OF STRING[4]; g : STRING; END_VAR
+END_CONFIGURATION
+FUNCTION f : INT
+VAR_EXTERNAL g4 : STRING; ga : ARRAY[0..1] OF STRING; g : STRING[80]; END_VAR
+    f := 0;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0207] Error: external variable type mismatch
+       ,-[ file:///test0.st:6:14 ]
+       |
+     6 | VAR_EXTERNAL g4 : STRING; ga : ARRAY[0..1] OF STRING; g : STRING[80]; END_VAR
+       |              ^^^^^|^^^^^
+       |                   `------- 'g4' is declared 'STRING[80]' here but its VAR_GLOBAL is 'STRING[4]': an external must repeat the global's type exactly
+    ---'
+    [E0207] Error: external variable type mismatch
+       ,-[ file:///test0.st:6:27 ]
+       |
+     6 | VAR_EXTERNAL g4 : STRING; ga : ARRAY[0..1] OF STRING; g : STRING[80]; END_VAR
+       |                           ^^^^^^^^^^^^^|^^^^^^^^^^^^
+       |                                        `-------------- 'ga' is declared 'ARRAY [0..1] OF STRING' here but its VAR_GLOBAL is 'ARRAY [0..1] OF STRING[4]': an external must repeat the global's type exactly
+    ---'
+    ");
+}

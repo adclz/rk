@@ -1411,6 +1411,7 @@ fn aliased_sized_string_truncates_at_the_declared_capacity(mut with_db: db::Root
 #[case::array_element("a[1]", "VAR a : ARRAY[0..1] OF STRING[4]; END_VAR")]
 #[case::array_of_alias("b[1]", "VAR b : ARRAY[0..1] OF Small; END_VAR")]
 #[case::struct_in_array("c[1].f", "VAR c : ARRAY[0..1] OF Rec; END_VAR")]
+#[case::dereference("r^", "VAR p : STRING[4]; r : REF_TO STRING[4] := REF(p); END_VAR")]
 fn a_sized_string_keeps_its_length_in_every_container(
     mut with_db: db::RootDatabase,
     #[case] target: &str,

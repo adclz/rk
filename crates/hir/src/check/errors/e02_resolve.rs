@@ -71,6 +71,7 @@ pub enum ResolveError<'db> {
     ExternalVarTypeMismatch {
         var: VariableDecl<'db>,
         external: Type<'db>,
+        global_var: VariableDecl<'db>,
         global: Type<'db>,
     },
     /// A RETAIN/NON_RETAIN qualifier on a variable of a stateless POU
@@ -348,8 +349,10 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                     // Same reason, one level down: the declarations inside a
                     // namespace are pointed at in source order, not discovery
                     // order.
-                    let mut in_ns: Vec<_> =
-                        candidates.iter().filter(|(_, pou_ns)| pou_ns == *ns).collect();
+                    let mut in_ns: Vec<_> = candidates
+                        .iter()
+                        .filter(|(_, pou_ns)| pou_ns == *ns)
+                        .collect();
                     in_ns.sort_by_key(|(pou, _)| {
                         (
                             pou.get_scope_id(db).file(db).url(db).to_string(),
@@ -391,18 +394,29 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
             Self::ExternalVarTypeMismatch {
                 var,
                 external,
+                global_var,
                 global,
-            } => diag()
+            } => {
+                // A STRING shows the capacity it was declared with, which is
+                // what two otherwise equal STRINGs disagree about.
+                let shown = |decl: &VariableDecl<'db>, ty: Type<'db>| {
+                    match crate::hir_ty::infer::normalize::string_capacity(db, decl.spec(db)) {
+                        Some(capacity) => format!("STRING[{capacity}]"),
+                        None => crate::check::errors::e07_subrange::with_bounds(db, ty),
+                    }
+                };
+                diag()
                 .message(format!(
                     "'{}' is declared '{}' here but its VAR_GLOBAL is '{}': an external must repeat the global's type exactly",
                     var.name_with_case(db).text(db),
-                    crate::check::errors::e07_subrange::with_bounds(db, *external),
-                    crate::check::errors::e07_subrange::with_bounds(db, *global),
+                    shown(var, *external),
+                    shown(global_var, *global),
                 ))
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
                 .range(crate::denormalize(db, file, &var.get_span(db)).unwrap_or_default())
-                .call(),
+                .call()
+            }
             Self::RetainInStatelessPou { var, pou_kind } => {
                 let qualifier = if var.qualifier(db).contains(crate::Qualifier::RETAIN) {
                     "RETAIN"

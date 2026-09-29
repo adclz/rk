@@ -857,3 +857,42 @@ END_FUNCTION
     ----'
     ");
 }
+
+/// A reference points at a STRING of one capacity: a write through a
+/// `REF_TO STRING` reaching a `STRING[4]` clamped at 80, past it. Binding
+/// one to the other is refused, like any other pointee type.
+#[rstest]
+fn a_string_reference_keeps_its_capacity(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION f : INT
+VAR s4 : STRING[4]; r : REF_TO STRING; r4 : REF_TO STRING[4]; END_VAR
+    r := REF(s4);
+    r := r4;
+    r4 := REF(s4);
+    f := 0;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0301] Error: type mismatch
+       ,-[ file:///test0.st:4:10 ]
+       |
+     3 | VAR s4 : STRING[4]; r : REF_TO STRING; r4 : REF_TO STRING[4]; END_VAR
+       |                     |
+       |                     `-- type is declared by variable 'r' here
+     4 |     r := REF(s4);
+       |          ^^^|^^^
+       |             `----- expected 'REF_TO STRING', got 'REF_TO STRING[4]'
+    ---'
+    [E0301] Error: type mismatch
+       ,-[ file:///test0.st:5:10 ]
+       |
+     3 | VAR s4 : STRING[4]; r : REF_TO STRING; r4 : REF_TO STRING[4]; END_VAR
+       |                     |
+       |                     `-- type is declared by variable 'r' here
+       |
+     5 |     r := r4;
+       |          ^|
+       |           `-- expected 'REF_TO STRING', got 'REF_TO STRING[4]'
+    ---'
+    ");
+}
