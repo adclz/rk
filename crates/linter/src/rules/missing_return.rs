@@ -7,7 +7,7 @@ use hir::{
         scope::{ScopeId, ScopeKind},
         semantic_index::get_scope,
     },
-    hir_ty::body::BodyInferenceResult,
+    hir_ty::{body::BodyInferenceResult, head::init_inference::infer_initialization},
 };
 use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
 
@@ -36,6 +36,20 @@ pub fn check_assignment<'db>(
     body.writes_result(db, var)
 }
 
+/// Whether the result is written all the same without an assignment: bound
+/// to an output, passed to a VAR_IN_OUT or referenced with `REF()`, in a
+/// statement or in a declaration's initializer.
+fn handed_out<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    body: &BodyInferenceResult<'db>,
+    scope: ScopeId<'db>,
+) -> bool {
+    body.hands_out_result(db)
+        || infer_initialization(db, scope)
+            .body_infer_result
+            .hands_out_result(db)
+}
+
 /// A `{wasm}` statement assigns the return when its `(result NAME)` is the
 /// FUNCTION's own name.
 pub fn check_pragma<'db>(
@@ -54,6 +68,7 @@ pub fn check_pragma<'db>(
 /// Post-walk check: if no return assignment was found, emit the diagnostic.
 pub fn check_result<'db>(
     db: &'db dyn WorkspaceDataBase,
+    body: &BodyInferenceResult<'db>,
     scope: ScopeId<'db>,
     return_assigned: bool,
     diagnostics: &mut Vec<IdeDiagnostic>,
@@ -85,13 +100,18 @@ pub fn check_result<'db>(
             )
         }
         ScopeKind::MethodDecl(m) => {
-            if m.return_type(db).is_none() {
+            // An ABSTRACT method has no body to assign in: an implementation
+            // does.
+            if m.return_type(db).is_none() || m.modifier(db).contains(hir::Modifier::ABSTRACT) {
                 return;
             }
             (m.name_with_case(db).text(db), "METHOD", m.get_name_span(db))
         }
         _ => return,
     };
+    if handed_out(db, body, scope) {
+        return;
+    }
 
     diagnostics.push(
         diag()

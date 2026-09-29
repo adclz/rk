@@ -103,7 +103,7 @@ pub fn check<'db>(
     // Post-walk: missing return
     if ctx.missing_return {
         run_lint(missing_return::NAME, diagnostics, |d| {
-            missing_return::check_result(db, scope, return_assigned, d)
+            missing_return::check_result(db, body, scope, return_assigned, d)
         });
     }
 

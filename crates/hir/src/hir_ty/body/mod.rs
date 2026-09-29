@@ -659,13 +659,55 @@ impl<'db> BodyInferenceResult<'db> {
         let VariableAccessKind::Symbolic(begin) = var.kind(db) else {
             return false;
         };
-        begin
-            .expr(db)
+        self.names_result(db, begin)
+    }
+
+    /// Whether `path` starts at the enclosing FUNCTION's or METHOD's return
+    /// value.
+    pub fn names_result(
+        &self,
+        db: &'db dyn WorkspaceDataBase,
+        path: crate::hir_def::expressions::expression::BeginPathExpr<'db>,
+    ) -> bool {
+        path.expr(db)
             .and_then(|path| path.flatten(db).first().map(|step| step.get_expr(db)))
             .is_some_and(|root| {
                 matches!(
                     self.type_of_path_expr.get(&root),
                     Some(Type::ReturnValue(_))
+                )
+            })
+    }
+
+    /// Whether the return value is handed to something that can write it:
+    /// bound to an output (`o => F`), passed to a VAR_IN_OUT, or referenced
+    /// with `REF(F)`.
+    pub fn hands_out_result(&self, db: &'db dyn WorkspaceDataBase) -> bool {
+        use crate::hir_def::expressions::expression::{
+            ExprKind, ParamAssignKind, PrimaryExpr, RefValue,
+        };
+        let bound = self
+            .variable_of_param
+            .iter()
+            .any(|(param, var)| match param.kind(db) {
+                ParamAssignKind::FormalOutput { variable, .. } => self.writes_result(db, variable),
+                ParamAssignKind::NonFormal { value }
+                | ParamAssignKind::FormalInput { value, .. } => {
+                    var.is_in_out(db)
+                        && matches!(
+                            value.expr(db),
+                            ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess(access))
+                                if self.writes_result(db, *access)
+                        )
+                }
+            });
+        bound
+            || self.type_of_expr.keys().any(|expr| {
+                matches!(
+                    expr.expr(db),
+                    ExprKind::PrimaryExpr(PrimaryExpr::RefValue {
+                        value: RefValue::Address(path),
+                    }) if self.names_result(db, *path)
                 )
             })
     }
