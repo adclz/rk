@@ -95,6 +95,7 @@ pub enum CallError<'db> {
     /// explicit cast. `candidates` are the conflicting overloads.
     AmbiguousOverload {
         func_call: FuncCall<'db>,
+        /// As the overloads write it.
         name: Ident,
         candidates: Vec<Function<'db>>,
     },
@@ -104,6 +105,7 @@ pub enum CallError<'db> {
     /// a date assertion.
     NoMatchingOverload {
         func_call: FuncCall<'db>,
+        /// As the overloads write it.
         name: Ident,
         arg_types: Vec<Type<'db>>,
         candidates: Vec<Function<'db>>,
@@ -484,12 +486,7 @@ impl<'db> ToIdeDiagnostic<'db> for CallError<'db> {
                 let mut diag = diag()
                     .message(format!(
                         "call to '{}' is ambiguous: {} overloads accept these arguments: disambiguate with an explicit cast",
-                        // As an overload writes it: they all name it, in some case.
-                        candidates
-                            .first()
-                            .map(|f| f.name_with_case(db))
-                            .unwrap_or(*name)
-                            .text(db),
+                        name.text(db),
                         candidates.len()
                     ))
                     .severity(DiagnosticSeverity::ERROR)

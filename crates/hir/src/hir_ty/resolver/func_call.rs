@@ -97,8 +97,9 @@ pub fn resolve_func_call<'db>(
     let callable = match select_overload(db, callable, &arg_types, expected) {
         OverloadPick::One(c) => c,
         OverloadPick::Ambiguous(candidates) => {
+            // As the overloads write it, for the message.
             let name = match candidates.first() {
-                Some(f) => f.name(db),
+                Some(f) => f.name_with_case(db),
                 None => return,
             };
             ctx.errors.push(
@@ -116,8 +117,9 @@ pub fn resolve_func_call<'db>(
             return;
         }
         OverloadPick::None(candidates) => {
+            // As the overloads write it, for the message.
             let name = match candidates.first() {
-                Some(f) => f.name(db),
+                Some(f) => f.name_with_case(db),
                 None => return,
             };
             ctx.errors.push(
@@ -832,7 +834,7 @@ pub fn resolve_params<'db>(
                         DuplicateError::Parameter {
                             param_1: prev,
                             param_2: *parameter,
-                            name: param.ident(db),
+                            name: param.with_case,
                         }
                         .to_diagnostic(db, callable.get_scope_id(db).file(db)),
                     );
@@ -859,7 +861,7 @@ pub fn resolve_params<'db>(
                         DuplicateError::Parameter {
                             param_1: prev,
                             param_2: *parameter,
-                            name: param.ident(db),
+                            name: param.with_case,
                         }
                         .to_diagnostic(db, callable.get_scope_id(db).file(db)),
                     );

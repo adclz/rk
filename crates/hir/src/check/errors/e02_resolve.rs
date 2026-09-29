@@ -36,11 +36,13 @@ pub enum ResolveError<'db> {
     },
     NoSuchFieldInitExpr {
         expr: InitExpr<'db>,
+        /// As written.
         ident: Ident,
         ty: Type<'db>,
     },
     NoSuchFieldPathExpr {
         expr: PathExpr<'db>,
+        /// As written.
         ident: Ident,
         ty: Type<'db>,
     },
@@ -49,6 +51,7 @@ pub enum ResolveError<'db> {
     },
     UsingNamespaceNotFound {
         call_site: CallSite<'db>,
+        /// As written: no declaration exists to spell it.
         path: NamespacePath,
     },
     /// Two or more items with the same name are available in scope.
@@ -146,7 +149,7 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
 
                 list_candidates(
                     db,
-                    expr.ident(db).ident(db).text(db).as_str(),
+                    expr.ident(db).as_str(db),
                     &mut diag,
                     &items,
                     Some(*scope),
@@ -299,7 +302,7 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                     .map(|(pou, _)| pou.get_name_with_case(db).text(db))
                     .unwrap_or(name.text(db));
                 let spelled = |ns: &crate::hir_def::interned::namespace::NamespacePath| {
-                    crate::hir_ty::index_graphs::namespace_spelling(db, *ns)
+                    crate::hir_ty::display::namespace_spelling(db, *ns)
                 };
 
                 // Count how many times each namespace appears
@@ -528,7 +531,7 @@ fn list_candidates<'db>(
             note.push_str(&format!(
                 "- '{}' via USING {}",
                 pou.get_name_with_case(db).text(db),
-                crate::hir_ty::index_graphs::namespace_spelling(db, *namespace)
+                crate::hir_ty::display::namespace_spelling(db, *namespace)
             ));
         }
 

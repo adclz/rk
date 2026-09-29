@@ -49,7 +49,7 @@ impl<'db> InitInference<'db> {
             if decls.is_empty() {
                 self.errors.push(
                     ResolveError::UsingNamespaceNotFound {
-                        path: using.path(db).path(db),
+                        path: using.path(db).path_with_case,
                         call_site: CallSite::from_scoped(db, using),
                     }
                     .to_diagnostic(db, self.scope.file(db)),

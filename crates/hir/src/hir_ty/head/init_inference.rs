@@ -462,7 +462,7 @@ impl<'db> InitExprInferenceResult<'db> {
                 if let Some(prev) = ctx.seen_fields.insert(name.ident(db), *expr) {
                     self.errors.push(
                         DuplicateError::InitExprField {
-                            name: name.ident(db),
+                            name: name.with_case,
                             field1: *expr,
                             field2: prev,
                         }

@@ -143,7 +143,10 @@ impl<'db> CompletionBuilder {
             label: name.clone(),
             detail: Some(detail.into()),
             label_details: namespace.map(|ns| CompletionItemLabelDetails {
-                detail: Some(format!("(USING {})", ns.to_string(db))),
+                detail: Some(format!(
+                    "(USING {})",
+                    hir::hir_ty::display::namespace_spelling(db, *ns)
+                )),
                 description: None,
             }),
             kind: Some(kind),
@@ -212,7 +215,7 @@ impl<'db> CompletionBuilder {
         if let Some((range, indent)) = &self.import
             && let Some(ns) = namespace
         {
-            let namespace_str = ns.to_string(db);
+            let namespace_str = hir::hir_ty::display::namespace_spelling(db, *ns);
             Some(TextEdit {
                 range: *range,
                 new_text: format!("{}USING {namespace_str};\n\n", indent),

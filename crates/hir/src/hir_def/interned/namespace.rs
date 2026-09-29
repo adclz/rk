@@ -76,8 +76,9 @@ impl<'db> SpanNamespacePath<'db> {
         }
     }
 
+    /// The path as written here, for what is shown.
     pub fn to_string(&self, db: &dyn WorkspaceDataBase) -> String {
-        self.path(db)
+        self.path_with_case
             .fragments(db)
             .iter()
             .map(|i| i.text(db).to_string())

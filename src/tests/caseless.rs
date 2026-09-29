@@ -22,6 +22,10 @@
 //!   passed `check` and went wrong later: an initializer dropped, an
 //!   assignment that landed nowhere, a slice measured against the wrong width.
 //!   Asserting the runtime answer is what would have caught them.
+//! - **Display** — the other half of the accessor rule: what is shown is the
+//!   author's spelling. A message, a suggestion or a completion that reads a
+//!   name through its folding accessor shows `motor` for `Motor`, and a
+//!   completion that writes into the file writes it there.
 //! - **Formatting** — the formatter matches ~150 canonical node names and never
 //!   reads source text, so it is immune by construction; nothing says so in
 //!   the formatter, which is why it is said here.
@@ -29,8 +33,15 @@
 use crate::tests::codegen::{compile_to_mir_and_wasm, compile_to_wasm, execute_wasm};
 use crate::tests::lsp::formatter::fmt;
 use crate::tests::lsp::formatter_preserves_meaning::assert_meaning_preserved;
-use crate::tests::utils::{add_source, test_diagnostics, with_db};
+use crate::tests::utils::{
+    add_source, find_pou_with_name, test_diagnostics, test_single_lint, with_db,
+};
+use auto_lsp::core::document_symbols_builder::DocumentSymbolsBuilder;
 use db::RootDatabase;
+use hir::HirNodeInfo;
+use hir::hir_def::semantic_index::semantic_index;
+use ide_proto::handlers::completions_utils::{CompletionCtx, QueryMode};
+use ide_proto::handlers::{DocumentSymbolsHandler, InlayHintHandler};
 use insta::assert_snapshot;
 use rstest::*;
 use std::path::{Path, PathBuf};
@@ -876,6 +887,135 @@ fn a_case_only_rename_keeps_the_retain_layout(#[allow(unused)] with_db: RootData
         };
         assert_eq!(sizes(&base), sizes(&renamed), "the same payload order");
     }
+}
+
+// ---------------------------------------------------------------------------
+// Display
+// ---------------------------------------------------------------------------
+
+/// Each name is quoted as written, and wherever it is quoted in any case, it
+/// is in that one: `'MainDrive.setpoint'` is a folded name too.
+fn assert_shown_as_written(shown: &str, names: &[&str]) {
+    let lower = shown.to_lowercase();
+    for name in names {
+        let quoted = format!("'{name}'");
+        assert!(shown.contains(&quoted), "{quoted} is not shown:\n{shown}");
+        for (at, _) in lower.match_indices(&quoted.to_lowercase()) {
+            assert_eq!(
+                &shown[at..at + quoted.len()],
+                quoted,
+                "a name is shown in another case:\n{shown}"
+            );
+        }
+    }
+}
+
+/// The messages that name a declaration or a written name: the overload
+/// set, a missing field (in a path and in an initializer), a missing
+/// namespace, a parameter or a field given twice.
+#[rstest]
+fn diagnostics_show_names_as_written(mut with_db: RootDatabase) {
+    let source = r#"
+USING NoSuchNs.SubNs;
+
+TYPE PoinT : STRUCT OfFset : INT; END_STRUCT; END_TYPE
+
+FUNCTION PiCkOne : INT VAR_INPUT a : INT; END_VAR PiCkOne := 1; END_FUNCTION
+FUNCTION PiCkOne : INT VAR_INPUT a : DATE; END_VAR PiCkOne := 2; END_FUNCTION
+
+FUNCTION AmBoth : INT VAR_INPUT a : DINT; END_VAR AmBoth := 1; END_FUNCTION
+FUNCTION AmBoth : INT VAR_INPUT a : LINT; END_VAR AmBoth := 2; END_FUNCTION
+
+FUNCTION TakeS : INT VAR_INPUT SetPoint : INT; END_VAR TakeS := SetPoint; END_FUNCTION
+
+FUNCTION Caller : INT
+VAR
+    p : PoinT;
+    q : PoinT := (OfFset := 1, OFFSET := 2);
+    r : PoinT := (NoFieLd := 1);
+    i : INT;
+END_VAR
+    Caller := PiCkOne(TRUE);
+    Caller := AmBoth(i);
+    i := p.MissingFieLd;
+    i := TakeS(SetPoint := 1, SETPOINT := 2);
+END_FUNCTION
+"#;
+    assert_shown_as_written(
+        &test_diagnostics(&mut with_db, &[source]),
+        &[
+            "NoSuchNs.SubNs",
+            "PiCkOne",
+            "AmBoth",
+            "MissingFieLd",
+            "NoFieLd",
+            "SETPOINT",
+            "OFFSET",
+        ],
+    );
+}
+
+#[rstest]
+fn a_lint_shows_names_as_written(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK Drive
+VAR SetPoint : INT; END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION Caller : INT
+VAR MainDrive : Drive; END_VAR
+    MainDrive.SetPoint := 42;
+END_FUNCTION
+"#;
+    assert_shown_as_written(
+        &test_single_lint(&mut with_db, &[source], "external-mutation"),
+        &["MainDrive.SetPoint"],
+    );
+}
+
+/// An item from another namespace offers the USING it needs, and inserts
+/// it: written into the file, a folded name would be a spelling nobody wrote.
+#[rstest]
+fn a_completion_imports_the_namespace_as_written(mut with_db: RootDatabase) {
+    let source = "NAMESPACE MyNs\n\tFUNCTION fn1\n\n\tEND_FUNCTION\nEND_NAMESPACE\n\nFUNCTION fn2\n\nEND_FUNCTION\n";
+    let file = add_source(&mut with_db, source);
+    let pou = find_pou_with_name(&with_db, file, "fn2").unwrap();
+    let offset = source.find("FUNCTION fn2").unwrap() + "FUNCTION fn2\n".len();
+
+    let mut ctx = CompletionCtx::new(offset, QueryMode::Body);
+    ctx.scope_completion(pou.get_scope_id(&with_db), "", &with_db);
+    let shown = format!("{:?}", ctx.take_items());
+
+    assert!(shown.contains("(USING MyNs)"), "the label:\n{shown}");
+    assert!(shown.contains("USING MyNs;"), "the edit:\n{shown}");
+    assert!(!shown.contains("myns"), "folded:\n{shown}");
+}
+
+/// A NAMESPACE in the outline and in its closing inlay hint.
+#[rstest]
+fn a_namespace_is_outlined_as_written(mut with_db: RootDatabase) {
+    let source = "NAMESPACE MyNs\nEND_NAMESPACE\n";
+    let file = add_source(&mut with_db, source);
+    let sema = semantic_index(&with_db, file);
+
+    let mut builder = DocumentSymbolsBuilder::default();
+    let mut hints = Vec::new();
+    for ns in sema.namespaces.iter() {
+        ns.document_symbols(&with_db, &mut builder);
+        hints.extend(ns.inlay_hint(&with_db));
+    }
+    let outline = format!("{:?}", builder.finalize());
+    let hint = format!("{hints:?}");
+
+    assert!(
+        outline.contains(r#"name: "MyNs""#),
+        "the outline:\n{outline}"
+    );
+    assert!(hint.contains(r#"value: "MyNs""#), "the inlay hint:\n{hint}");
+    assert!(
+        !outline.contains("myns") && !hint.contains("myns"),
+        "folded"
+    );
 }
 
 // ---------------------------------------------------------------------------
