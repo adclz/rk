@@ -10,30 +10,14 @@ use crate::{
     stmt::{MirSourceLocation, MirStmt},
 };
 
-/// Resolve a HIR type for cast checks: `normalize`, plus the extra hop
-/// from a bare `Type::Function`/`Type::MethodDecl` (a function name used
-/// as its own return slot) to its return type.
-fn resolve_for_cast<'db>(
-    db: &'db dyn WorkspaceDataBase,
-    ty: hir::hir_ty::ty::Type<'db>,
-) -> hir::hir_ty::ty::Type<'db> {
-    let ty = ty.normalize(db);
-    match ty {
-        hir::hir_ty::ty::Type::Function(_) | hir::hir_ty::ty::Type::MethodDecl(_) => {
-            ty.with_return_type(db).map_or(ty, |rt| rt.normalize(db))
-        }
-        _ => ty,
-    }
-}
-
 /// Check if we need an implicit cast between two HIR types.
 fn needs_cast<'db>(
     db: &'db dyn WorkspaceDataBase,
     from: hir::hir_ty::ty::Type<'db>,
     to: hir::hir_ty::ty::Type<'db>,
 ) -> bool {
-    let from = resolve_for_cast(db, from);
-    let to = resolve_for_cast(db, to);
+    let from = from.normalize(db);
+    let to = to.normalize(db);
     match (&from, &to) {
         (hir::hir_ty::ty::Type::Elementary(f), hir::hir_ty::ty::Type::Elementary(t)) => f != t,
         _ => false,
@@ -143,11 +127,11 @@ fn lower_stmt<'db>(
                 .get(target)
             {
                 Some(ty) => *ty,
-                None => resolve_for_cast(ctx.db, var.infer(ctx.db)),
+                None => var.infer(ctx.db).normalize(ctx.db),
             };
             // ADJUSTED: `a[i]` infers as the array, but the value read is the
             // element.
-            let target_type = resolve_for_cast(ctx.db, target.infer_adjusted(ctx.db));
+            let target_type = target.infer_adjusted(ctx.db).normalize(ctx.db);
             let value = if needs_cast(ctx.db, target_type, var_type) {
                 // Insert cast from expression type to variable type
                 let from = ctx.type_to_mir_elementary_pub(target_type)?;

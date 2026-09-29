@@ -141,13 +141,6 @@ impl<'db> Type<'db> {
                         }),
                     };
                 }
-                // A function or method NAME on the left is its return slot,
-                // which `normalize` leaves alone. Falling through lets the
-                // arms below forward to the declared return type, carrying
-                // these adjustments — without it `f := REF(x)` was refused
-                // for every reference-returning POU, naming the SLOT where
-                // the message wanted a type ("expected 'mk'").
-                Type::Function(_) | Type::MethodDecl(_) => {}
                 _ => {
                     return Err(CoerceError {
                         expected: *self,
@@ -281,45 +274,6 @@ impl<'db> Type<'db> {
                     }),
                 }
             }
-            // Function/Method used as a value — coerce through the return type.
-            // LHS (target is the function return variable)
-            (Type::Function(f), rhs) => match f.return_type(db) {
-                Some(ret) => ret
-                    .infer(db)
-                    .coerce_with_type(db, *rhs, adjustments, resolver),
-                None => Err(CoerceError {
-                    expected: Type::Void,
-                    actual: to,
-                    adjustment: None,
-                }),
-            },
-            (Type::MethodDecl(f), rhs) => match f.return_type(db) {
-                Some(ret) => ret
-                    .infer(db)
-                    .coerce_with_type(db, *rhs, adjustments, resolver),
-                None => Err(CoerceError {
-                    expected: Type::Void,
-                    actual: to,
-                    adjustment: None,
-                }),
-            },
-            // RHS (function/method name read as a value)
-            (lhs, Type::Function(f)) => match f.return_type(db) {
-                Some(ret) => self.coerce_with_type(db, ret.infer(db), adjustments, resolver),
-                None => Err(CoerceError {
-                    expected: *self,
-                    actual: Type::Void,
-                    adjustment: None,
-                }),
-            },
-            (lhs, Type::MethodDecl(f)) => match f.return_type(db) {
-                Some(ret) => self.coerce_with_type(db, ret.infer(db), adjustments, resolver),
-                None => Err(CoerceError {
-                    expected: *self,
-                    actual: Type::Void,
-                    adjustment: None,
-                }),
-            },
             // An instance passed where its own POU is expected. VAR_IN_OUT binds
             // by reference, so this hands over the instance rather than copying
             // it — the way to share one. Assigning an instance is a different
@@ -385,16 +339,6 @@ impl<'db> Type<'db> {
         }
 
         if !self.is_direct_type() {
-            return true;
-        }
-
-        // function and methods can be used IF they are in the same scope (self-assignment)
-        let self_assign = match self {
-            Type::Function(f) => f.get_scope_id(db) == call_site.get_scope_id(db),
-            Type::MethodDecl(m) => m.get_scope_id(db) == call_site.get_scope_id(db),
-            _ => false,
-        };
-        if self_assign {
             return true;
         }
 
@@ -494,6 +438,24 @@ impl<'db> Type<'db> {
                 false
             }
             Type::StructElement(_) => true,
+            // The callable's own variable.
+            Type::ReturnValue(_) => true,
+            // The own name of a callable with no return type, which has no
+            // variable of that name to store into.
+            Type::Function(_) | Type::MethodDecl(_)
+                if let Some(callable) = self.as_callable(db)
+                    && callable.return_type(db).is_none()
+                    && callable.get_scope_id(db) == call_site.get_scope_id(db) =>
+            {
+                ctx.errors.push(
+                    TypeError::AssignVoidResult {
+                        callable,
+                        access: call_site,
+                    }
+                    .to_diagnostic(db, ctx.scope.file(db)),
+                );
+                false
+            }
             _ => self.check_not_direct_type(db, call_site, ctx),
         }
     }

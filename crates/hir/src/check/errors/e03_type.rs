@@ -92,6 +92,12 @@ pub enum TypeError<'db> {
         class: Type<'db>,
         access: CallSite<'db>,
     },
+    /// The own name of a FUNCTION or METHOD declared without a return type,
+    /// as an assignment target: there is no return value to store into.
+    AssignVoidResult {
+        callable: CallableType<'db>,
+        access: CallSite<'db>,
+    },
 }
 
 #[allow(non_camel_case_types)]
@@ -178,6 +184,7 @@ impl<'db> ErrorCode for TypeError<'db> {
             Self::DirectType { .. } => "E0317",
             Self::AssignCallableType { .. } => "E0318",
             Self::AssignClassInstance { .. } => "E0318",
+            Self::AssignVoidResult { .. } => "E0319",
         }
     }
 
@@ -194,6 +201,7 @@ impl<'db> ErrorCode for TypeError<'db> {
             Self::DirectType { .. } => "semantic violation",
             Self::AssignCallableType { .. } => "semantic violation",
             Self::AssignClassInstance { .. } => "semantic violation",
+            Self::AssignVoidResult { .. } => "semantic violation",
         }
     }
 }
@@ -213,20 +221,12 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                 expr,
                 suggest_cast,
             } => {
-                let message = if target.is_void() {
-                    format!(
-                        "'{}' is void and can not be assigned",
-                        base_target.type_name(db)
-                    )
-                } else {
-                    format!(
+                let mut diag = diag()
+                    .message(format!(
                         "expected '{}', got '{}'",
                         target.type_name(db),
                         adjustment_to_string(db, *value, adjustment),
-                    )
-                };
-                let mut diag = diag()
-                    .message(message)
+                    ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
                     .range(crate::denormalize(db, file, &expr.get_span(db)).unwrap_or_default())
@@ -416,6 +416,19 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                 .desc(self)
                 .range(crate::denormalize(db, file, &access.get_span(db)).unwrap_or_default())
                 .call(),
+            Self::AssignVoidResult { callable, access } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "'{}' is void and can not be assigned",
+                        callable.get_name_with_case(db).text(db)
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &access.get_span(db)).unwrap_or_default())
+                    .call();
+                callable.inner_callable().with_location(db, &mut diag);
+                diag
+            }
         }
     }
 }

@@ -981,32 +981,15 @@ impl<'db> ExprLowerCtx<'db> {
                 StorageClass::InstanceMember => {}
             }
         } else if let Some(root_expr) = root.flatten(self.db).first().map(|s| s.get_expr(self.db))
-            && let Some(ty) = hir::hir_ty::body::infer_body(self.db, root.scope_id(self.db))
-                .type_of_path_expr
-                .get(&root_expr)
+            && let Some(Type::ReturnValue(callable)) =
+                hir::hir_ty::body::infer_body(self.db, root.scope_id(self.db))
+                    .type_of_path_expr
+                    .get(&root_expr)
         {
-            // The callable's own name is its return slot, held under the declared
-            // name.
+            // The callable's return value, however it is spelled: held under
+            // the declared name, and before any member of that name.
             use hir::HasName;
-            match ty {
-                Type::Function(f) => {
-                    return MirPlace::Local(f.name(self.db));
-                }
-                Type::MethodDecl(m) => {
-                    return MirPlace::Local(m.get_name_ident(self.db));
-                }
-                _ => {}
-            }
-        }
-
-        // The callable's result in a longer path, `MakePt.x`, however it is
-        // spelled: held under the declared name, and before any member.
-        if let Some(root_expr) = root.flatten(self.db).first().map(|s| s.get_expr(self.db))
-            && let Some(declared) = hir::hir_ty::body::infer_body(self.db, root.scope_id(self.db))
-                .result_roots
-                .get(&root_expr)
-        {
-            return MirPlace::Local(*declared);
+            return MirPlace::Local(callable.get_name_ident(self.db));
         }
 
         // No `this` pointer: the root is a local.
@@ -2746,14 +2729,6 @@ impl<'db> ExprLowerCtx<'db> {
                 "a STRUCT has no scalar representation (used where a single value is expected)"
                     .to_string(),
             )),
-            // Function/FunctionBlock used as return value - resolve via return type
-            Type::Function(f) => {
-                if let Some(ret) = f.return_type(self.db) {
-                    self.type_to_mir_elementary(ret.infer(self.db))
-                } else {
-                    Ok(MirElementary::Int)
-                }
-            }
             Type::CallableType(_ct) => {
                 // Already normalized by normalize() but just in case
                 self.type_to_mir_elementary(normalized)

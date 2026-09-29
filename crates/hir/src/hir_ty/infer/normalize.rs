@@ -64,7 +64,7 @@ impl<'db> Type<'db> {
                 infer_signature(db, var.get_scope_id(db)).type_of_specs[&var.spec(db)]
                     .normalize_keep_subrange(db)
             }
-            Type::CallableType(typ) => match typ {
+            Type::CallableType(typ) | Type::ReturnValue(typ) => match typ {
                 CallableType::Function(f) => match f.return_type(db) {
                     Some(ret_ty) => infer_signature(db, f.get_scope_id(db)).type_of_specs[ret_ty]
                         .normalize_keep_subrange(db),

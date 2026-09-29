@@ -34,6 +34,7 @@ mod overloads;
 mod profile_swap;
 mod ref_to;
 mod references;
+mod return_value;
 mod schedule;
 mod starting_values;
 mod strings;

@@ -98,16 +98,16 @@ FUNCTION fn1
 END_FUNCTION"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0301] Error: type mismatch
-       ,-[ file:///test0.st:4:12 ]
+    [E0319] Error: semantic violation
+       ,-[ file:///test0.st:4:5 ]
        |
      2 | FUNCTION fn1
        |          ^|^
        |           `--- FUNCTION 'fn1' is defined here
        |
      4 |     fn1 := ULINT#5;
-       |            ^^^|^^^
-       |               `----- 'fn1' is void and can not be assigned
+       |     ^|^
+       |      `--- 'fn1' is void and can not be assigned
     ---'
     ");
 }

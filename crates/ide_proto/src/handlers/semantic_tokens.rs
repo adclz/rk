@@ -335,8 +335,9 @@ pub(crate) fn semantic_tokens_for_type<'db>(
     }
     // A CALL is typed by what it RETURNS, and `normalize` peels it to that:
     // every `f()` and `o.m()` came out the colour of an INT, which is no
-    // colour at all. The name at a call site is the callee.
-    if let Type::CallableType(callable) = typ {
+    // colour at all. The name at a call site is the callee, and the name a
+    // body gives its return value is the callable's.
+    if let Type::CallableType(callable) | Type::ReturnValue(callable) = typ {
         builder.push(
             range,
             token(match callable {

@@ -32,7 +32,7 @@ use crate::{
             visibility::{check_namespace_visibility, check_test_visibility},
             walk::PathPlaceBuilder,
         },
-        ty::Type,
+        ty::{CallableType, Type},
     },
 };
 
@@ -247,9 +247,31 @@ impl<'db> Resolver<'db> {
         multibits: Option<MultibitsPart>,
         ctx: &mut BodyInferenceResult<'db>,
     ) {
+        self.resolve_begin_path(db, path_expr, multibits, ctx, false);
+    }
+
+    /// A call's callee: inside a FUNCTION or METHOD, its own name called is
+    /// the callable (`F(n - 1)`), where read or written it is the result.
+    pub fn resolve_callee(
+        &self,
+        db: &'db dyn WorkspaceDataBase,
+        path_expr: BeginPathExpr<'db>,
+        ctx: &mut BodyInferenceResult<'db>,
+    ) {
+        self.resolve_begin_path(db, path_expr, None, ctx, true);
+    }
+
+    fn resolve_begin_path(
+        &self,
+        db: &'db dyn WorkspaceDataBase,
+        path_expr: BeginPathExpr<'db>,
+        multibits: Option<MultibitsPart>,
+        ctx: &mut BodyInferenceResult<'db>,
+        callee: bool,
+    ) {
         match self.root {
             PathResolutionRoot::Value { base } => {
-                base.walk_begin_path_expr(db, path_expr, multibits, ctx);
+                base.walk_begin_path_expr(db, path_expr, multibits, ctx, callee);
                 if let Some(path) = path_expr.expr(db) {
                     self.resolve_index_subscripts(db, path, ctx);
                 }
@@ -295,7 +317,7 @@ impl<'db> Resolver<'db> {
     ) {
         match self.root {
             PathResolutionRoot::Value { base } => {
-                self.resolve_path_steps(base, db, path_expr, multibits, ctx);
+                self.resolve_path_steps(base, db, path_expr, multibits, ctx, false);
                 self.resolve_index_subscripts(db, path_expr, ctx);
             }
             PathResolutionRoot::Namespace { .. } => {
@@ -419,6 +441,7 @@ impl<'db> Resolver<'db> {
         path_expr: PathExpr<'db>,
         multibits: Option<MultibitsPart>,
         ctx: &mut BodyInferenceResult<'db>,
+        callee: bool,
     ) {
         let steps = path_expr.flatten(db);
         let Some(first_step) = steps.first() else {
@@ -444,13 +467,15 @@ impl<'db> Resolver<'db> {
             // not fail uniformly: a function's name is not a member and falls
             // through to the fallback below, but a METHOD's name resolves via
             // the implicit THIS to the method itself — and then `.x` dies on
-            // a MethodDecl ("'GetPt' has no field named 'x'").
+            // a MethodDecl ("'GetPt' has no field named 'x'"). Called, the
+            // name alone is the callable again (`F(n - 1)`), which the walk
+            // below resolves.
             if is_first_step
+                && !(callee && single_step)
                 && let PathExprWalkStep::Field { ident, .. } = step
                 && let PathResolutionRoot::Value { base } = self.root
-                && let Some(ret_ty) = base.with_return_type(db)
-                && let Some(declared) = self_reference_name(db, base)
-                && declared == ident.ident(db)
+                && let Some(callable) = own_result(db, base)
+                && callable.get_name_ident(db) == ident.ident(db)
                 // The return value is one of the callable's own variables,
                 // so it comes before the owner's members and methods: a
                 // member `step` of the FB does not hide `STEP := ...` in
@@ -464,22 +489,15 @@ impl<'db> Resolver<'db> {
                         .contains_key(&ident.ident(db))
                 })
             {
+                let result = Type::ReturnValue(callable);
+                ctx.type_of_path_expr.insert(step.get_expr(db), result);
                 if single_step {
-                    // The whole path IS the return value, typed as the
-                    // callable so assignment to it hits the return-slot
-                    // handling.
-                    ctx.type_of_path_expr.insert(step.get_expr(db), base);
-                    ctx.type_of_path_expr.insert(path_expr, base);
+                    ctx.type_of_path_expr.insert(path_expr, result);
                     return;
                 }
-                // Multi-step: the root is the return VALUE and the next steps
-                // walk its fields, so the root is recorded as the return type,
-                // and as the result of the callable it names.
-                let normalized = ret_ty.normalize(db);
-                ctx.type_of_path_expr.insert(step.get_expr(db), normalized);
-                ctx.result_roots.insert(step.get_expr(db), declared);
-                current = normalized;
-                place.current_typ = normalized;
+                // Multi-step: the next steps walk its fields.
+                current = result.normalize(db);
+                place.current_typ = current;
                 place.current_path = step.get_expr(db);
                 continue;
             }
@@ -600,16 +618,15 @@ impl<'db> Resolver<'db> {
     }
 }
 
-/// The name a callable's return value is addressed by from inside its own
-/// body — the callable's own name. `None` for anything that is not a callable
-/// with a return value.
-fn self_reference_name<'db>(
-    db: &'db dyn WorkspaceDataBase,
-    base: Type<'db>,
-) -> Option<crate::hir_def::interned::identifier::Ident> {
-    match base {
-        Type::Function(f) => Some(f.get_name_ident(db)),
-        Type::MethodDecl(m) => Some(m.get_name_ident(db)),
-        _ => None,
-    }
+/// The callable whose body `base` is, when it has a return value, which that
+/// body names by the callable's name: a FUNCTION or a METHOD with a return
+/// type. Without one the name is the callable's (E0318 when assigned), and a
+/// member of that name stays reachable.
+fn own_result<'db>(db: &'db dyn WorkspaceDataBase, base: Type<'db>) -> Option<CallableType<'db>> {
+    let callable = match base {
+        Type::Function(f) => CallableType::Function(f),
+        Type::MethodDecl(m) => CallableType::MethodDecl(m),
+        _ => return None,
+    };
+    callable.return_type(db).map(|_| callable)
 }

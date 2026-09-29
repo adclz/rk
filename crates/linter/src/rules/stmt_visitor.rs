@@ -308,7 +308,7 @@ fn visit_statements<'db>(
                 }
                 if ctx.missing_return
                     && !*return_assigned
-                    && missing_return::check_assignment(db, body, *var, scope)
+                    && missing_return::check_assignment(db, body, *var)
                 {
                     *return_assigned = true;
                 }

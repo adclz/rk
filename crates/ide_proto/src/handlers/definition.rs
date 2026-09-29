@@ -240,7 +240,7 @@ impl<'db> DefinitionHandler<'db> for Type<'db> {
         _offset: usize,
     ) -> Option<GotoDefinitionResponse> {
         let loc: &'db dyn HasName<'db> = match self {
-            Type::CallableType(c) => return c.definition(db, _offset),
+            Type::CallableType(c) | Type::ReturnValue(c) => return c.definition(db, _offset),
             Type::Program(p) => p as _,
             Type::Function(f) => f as _,
             Type::FunctionBlock(f) => f as _,

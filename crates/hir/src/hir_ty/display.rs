@@ -93,6 +93,7 @@ impl<'db> Type<'db> {
             Self::Enum(e) => "ENUM",
             Self::EnumVariant(..) => "ENUM_VARIANT",
             Self::CallableType(_) => "CALLABLE",
+            Self::ReturnValue(_) => "RETURN_VALUE",
             Self::RefTo(_) => "REF_TO",
             Self::Null => "NULL",
             Self::Infer(_) => "INFER",
@@ -148,6 +149,12 @@ impl<'db> Type<'db> {
                 CallableType::Function(f) => f.get_name_with_case(db).text(db).to_string(),
                 CallableType::FunctionBlock(fb) => fb.get_name_with_case(db).text(db).to_string(),
                 CallableType::MethodDecl(m) => m.get_name_with_case(db).text(db).to_string(),
+            },
+            // Named by its declared type, as a variable is: `PInt`, not the
+            // `REF_TO INT` behind it.
+            Self::ReturnValue(callable) => match callable.return_type(db) {
+                Some(spec) => spec_type_name(db, *spec),
+                None => Type::Void.type_name(db),
             },
             Self::Struct(_) => "STRUCT".into(),
             Self::Enum(_) => "ENUM".into(),
@@ -324,7 +331,7 @@ impl<'db> Type<'db> {
 
     pub fn with_location(&self, db: &'db dyn WorkspaceDataBase, diag: &mut IdeDiagnostic) {
         match self {
-            Self::CallableType(typ) => {
+            Self::CallableType(typ) | Self::ReturnValue(typ) => {
                 typ.inner_callable().with_location(db, diag);
             }
             Self::Variable((v, multibits)) => match v.spec(db).kind(db) {

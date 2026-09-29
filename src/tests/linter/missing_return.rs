@@ -180,3 +180,28 @@ fn a_pragma_into_a_local_does_not_assign_the_return(mut with_db: RootDatabase) {
     ---'
     ");
 }
+
+/// A result built field by field, or element by element, is assigned.
+#[rstest]
+fn a_result_built_part_by_part_is_assigned(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE Pt : STRUCT x : INT; y : INT; END_STRUCT; END_TYPE
+TYPE A2 : ARRAY [0..1] OF INT; END_TYPE
+
+FUNCTION MakePt : Pt
+    MakePt.x := 1;
+    MakePt.y := 2;
+END_FUNCTION
+
+FUNCTION MakeArr : A2
+    MakeArr[0] := 1;
+END_FUNCTION
+
+FUNCTION_BLOCK Shape
+    METHOD PUBLIC Corner : Pt
+        Corner.x := 1;
+    END_METHOD
+END_FUNCTION_BLOCK
+"#;
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "missing-return"), @r"");
+}

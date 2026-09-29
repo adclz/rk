@@ -287,6 +287,7 @@ impl<'db> Type<'db> {
         expr: BeginPathExpr<'db>,
         multibits: Option<MultibitsPart>,
         ctx: &mut BodyInferenceResult<'db>,
+        callee: bool,
     ) {
         // A begin path expr can either have:
         // - an invocation
@@ -306,7 +307,7 @@ impl<'db> Type<'db> {
 
         if let Some(path) = expr.expr(db) {
             Resolver::for_scope(db, path.scope_id(db))
-                .resolve_path_steps(*self, db, path, multibits, ctx)
+                .resolve_path_steps(*self, db, path, multibits, ctx, callee)
         }
     }
 
