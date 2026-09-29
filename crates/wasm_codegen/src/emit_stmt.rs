@@ -1386,7 +1386,7 @@ fn emit_fb_field_read(
                 .copied()
                 .expect("rk.str_assign must be grafted for STRING FB outputs");
             emit_addr_of(func, target, ctx.locals, ctx.fn_indices); // dest header addr
-            emit_string_capacity(func, target, ctx.locals); // dest cap
+            emit_string_capacity(func, target, ctx.locals, ctx.fn_indices); // dest cap
             // src ptr = field header + 4
             push_fb_field_addr(func, base, field_offset);
             func.instruction(&Instruction::I32Const(4));
@@ -1429,7 +1429,7 @@ fn emit_string_assign(
         .copied()
         .expect("rk.str_assign must be grafted for STRING assignment");
     emit_addr_of(func, target, ctx.locals, ctx.fn_indices);
-    emit_string_capacity(func, target, ctx.locals);
+    emit_string_capacity(func, target, ctx.locals, ctx.fn_indices);
     emit_str_value(func, value, ctx.locals, ctx.fn_indices);
     func.instruction(&Instruction::Call(assign_idx));
 }

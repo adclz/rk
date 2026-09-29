@@ -376,6 +376,16 @@ fn lower_subrange_type<'db>(
 /// Lower a FunctionBlock to a `MirType::Struct` named with its
 /// namespace-qualified identifier, which nested-FB instance fields
 /// resolve against.
+/// The hidden member holding the capacity of the buffer an FB's STRING
+/// VAR_IN_OUT `name` is bound to, laid out right after its pointer. `$`
+/// cannot appear in an identifier, so no member of the source collides.
+pub(crate) fn string_capacity_field(db: &dyn WorkspaceDataBase, name: Ident) -> Ident {
+    Ident::new(
+        db,
+        compact_str::CompactString::from(format!("{}$cap", name.text(db))),
+    )
+}
+
 pub fn lower_fb_type<'db>(
     db: &'db dyn WorkspaceDataBase,
     fb: FunctionBlock<'db>,
@@ -419,6 +429,9 @@ fn lower_instance_struct<'db>(
         max_align = max_align.max(field_align);
         offset = align_to(offset, field_align);
 
+        let string_in_out = is_inout
+            && var.kind(db) == hir::hir_def::pous::variable::VariableKind::InOut
+            && matches!(&mir_type, MirType::Pointer(p) if matches!(**p, MirType::String { .. }));
         fields.push(MirStructField {
             name_with_case: var.name_with_case(db),
             ty: mir_type,
@@ -427,6 +440,20 @@ fn lower_instance_struct<'db>(
         });
 
         offset += field_size;
+
+        // A STRING VAR_IN_OUT also keeps the bound buffer's capacity, which
+        // the body writes at: an FB declaring `s : STRING` wrote 80 bytes
+        // into a caller's `STRING[4]`. It sits right after the pointer, at
+        // `offset + 4` (see `string_capacity_field`).
+        if string_in_out {
+            fields.push(MirStructField {
+                name_with_case: string_capacity_field(db, var.name_with_case(db)),
+                ty: MirType::Elementary(crate::types::MirElementary::UDInt),
+                offset,
+                by_ref: false,
+            });
+            offset += 4;
+        }
     }
 
     offset = align_to(offset, max_align);

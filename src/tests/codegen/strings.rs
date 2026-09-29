@@ -1717,3 +1717,54 @@ fn a_long_nested_result_is_snapshotted_whole(mut with_db: db::RootDatabase) {
     let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 1, "100 bytes through the snapshot");
 }
+
+/// An FB's STRING VAR_IN_OUT writes at the capacity of the buffer it is
+/// bound to, as a FUNCTION's does: the FB kept only the address and wrote at
+/// its own 80, past a `STRING[4]` into its neighbour. The capacity travels
+/// from a FUNCTION's in-out and from another FB's, and a METHOD writes at it.
+#[rstest]
+fn an_fb_string_in_out_writes_at_the_bound_capacity(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Writer
+        VAR_IN_OUT s : STRING; END_VAR
+            METHOD PUBLIC Put
+                s := 'zyxwvutsrqponmlk';
+            END_METHOD
+            s := 'abcdefghijklmnop';
+        END_FUNCTION_BLOCK
+        FUNCTION_BLOCK Relay
+        VAR_IN_OUT s : STRING; END_VAR
+        VAR inner : Writer; END_VAR
+            inner(s := s);
+        END_FUNCTION_BLOCK
+        FUNCTION ViaFunction
+        VAR_IN_OUT s : STRING; END_VAR
+        VAR w : Writer; END_VAR
+            w(s := s);
+        END_FUNCTION
+
+        FUNCTION test : INT
+        VAR
+            t : STRING[4];
+            guard : ARRAY[0..3] OF INT := [7, 7, 7, 7];
+            w : Writer;
+            r : Relay;
+            ok : INT;
+        END_VAR
+            w(s := t);
+            IF t = 'abcd' THEN ok := ok + 1; END_IF;
+            w.Put();
+            IF t = 'zyxw' THEN ok := ok + 1; END_IF;
+            r(s := t);
+            IF t = 'abcd' THEN ok := ok + 1; END_IF;
+            ViaFunction(s := t);
+            IF t = 'abcd' THEN ok := ok + 1; END_IF;
+            test := ok * 100 + guard[0] + guard[1] + guard[2] + guard[3];
+        END_FUNCTION
+    "#;
+    let result: i32 = super::run(&mut with_db, source, "test", ());
+    assert_eq!(
+        result, 428,
+        "four writes cut at 4, the guard untouched (28)"
+    );
+}

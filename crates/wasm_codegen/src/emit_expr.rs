@@ -153,6 +153,8 @@ pub(crate) fn emit_expr(
 
         MirExpr::AddrOf(place) => emit_addr_of(func, place, locals, fn_indices),
 
+        MirExpr::StringCapacity(place) => emit_string_capacity(func, place, locals, fn_indices),
+
         // Aggregate VAR_INPUT arg: copy into the scratch and yield its address.
         MirExpr::CopyIntoScratch { scratch, src, size } => {
             let dst = mir::expr::MirPlace::Local(*scratch);
@@ -292,8 +294,17 @@ pub(crate) fn emit_string_capacity(
     func: &mut wasm_encoder::Function,
     place: &MirPlace,
     locals: &FxHashMap<Ident, LocalInfo>,
+    fn_indices: &FxHashMap<Ident, u32>,
 ) {
     let cap = match place {
+        // The caller's, kept in the instance: an FB's STRING VAR_IN_OUT.
+        MirPlace::Deref {
+            capacity: Some(capacity),
+            ..
+        } => {
+            emit_load(func, capacity, locals, fn_indices);
+            return;
+        }
         MirPlace::Local(id) => match locals.get(id) {
             Some(LocalInfo::StringMemory { capacity, .. }) => *capacity,
             Some(LocalInfo::StringInOutParam { cap_index, .. }) => {
@@ -407,6 +418,7 @@ fn emit_load(
             base,
             pointee_type,
             checked,
+            ..
         } => {
             emit_load(func, base, locals, fn_indices);
             if *checked {
@@ -550,7 +562,7 @@ fn emit_call(
                     && is_buffer_string(place, locals)
                 {
                     emit_addr_of(func, place, locals, fn_indices);
-                    emit_string_capacity(func, place, locals);
+                    emit_string_capacity(func, place, locals, fn_indices);
                     continue;
                 }
                 if let MirExpr::AddrOf(place) = &arg.value {

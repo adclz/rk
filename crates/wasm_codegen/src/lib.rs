@@ -867,7 +867,9 @@ impl<'a> WasmGen<'a> {
                 MirExpr::UnaryOp { expr, .. } | MirExpr::Cast { expr, .. } => {
                     walk_expr(db, expr, found)
                 }
-                MirExpr::Load(place, _) | MirExpr::AddrOf(place) => walk_place(db, place, found),
+                MirExpr::Load(place, _)
+                | MirExpr::AddrOf(place)
+                | MirExpr::StringCapacity(place) => walk_place(db, place, found),
                 // `src` may be an aggregate-returning Call, whose args can
                 // reach builtins — recurse rather than walk a place.
                 MirExpr::CopyIntoScratch { src, .. } => walk_expr(db, src, found),

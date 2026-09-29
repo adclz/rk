@@ -198,7 +198,7 @@ pub fn walk_type(
             *budget = budget.saturating_sub(1);
         }
         MirType::Struct(s) => {
-            for f in &s.fields {
+            for f in s.fields.iter().filter(|f| !f.is_hidden(db)) {
                 let child = format!("{path}.{}", f.name_with_case.text(db));
                 walk_type(
                     db,
@@ -361,7 +361,7 @@ pub fn collect_containers(
                 global,
                 type_name: s.name.text(db).to_string(),
             });
-            for f in &s.fields {
+            for f in s.fields.iter().filter(|f| !f.is_hidden(db)) {
                 collect_containers(
                     db,
                     &format!("{path}.{}", f.name_with_case.text(db)),

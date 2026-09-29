@@ -1753,6 +1753,7 @@ fn is_const_value(e: &crate::expr::MirExpr) -> bool {
         MirExpr::Load(..)
         | MirExpr::Call(_)
         | MirExpr::AddrOf(_)
+        | MirExpr::StringCapacity(_)
         | MirExpr::CopyIntoScratch { .. } => false,
     }
 }
