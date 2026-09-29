@@ -50,7 +50,7 @@ impl<'db> ToIdeDiagnostic<'db> for RecursionError<'db> {
                 let mut diag = diag()
                     .message(format!(
                         "type '{}' is recursive (contains itself)",
-                        pou.get_name_ident(db).text(db)
+                        pou.get_name_with_case(db).text(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
@@ -61,7 +61,7 @@ impl<'db> ToIdeDiagnostic<'db> for RecursionError<'db> {
                     diag.with_related(Related::new(
                         format!(
                             "'{}' references itself here",
-                            pou.get_name_ident(db).text(db)
+                            pou.get_name_with_case(db).text(db)
                         ),
                         cs.get_scope_id(db).file(db),
                         cs.get_span(db),
@@ -78,7 +78,7 @@ impl<'db> ToIdeDiagnostic<'db> for RecursionError<'db> {
                 let mut diag = diag()
                     .message(format!(
                         "type '{}' is recursive",
-                        pou.get_name_ident(db).text(db),
+                        pou.get_name_with_case(db).text(db),
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
@@ -96,13 +96,13 @@ impl<'db> ToIdeDiagnostic<'db> for RecursionError<'db> {
                 if !pous.is_empty() {
                     let stack = pous
                         .iter()
-                        .map(|p| format!("-> {}\n", p.get_name_ident(db).text(db)))
+                        .map(|p| format!("-> {}\n", p.get_name_with_case(db).text(db)))
                         .collect::<Vec<_>>()
                         .join("");
 
                     diag.with_note(format!(
                         "cycle goes\n{stack}... and back to {}",
-                        pou.get_name_ident(db).text(db)
+                        pou.get_name_with_case(db).text(db)
                     ));
                 }
 

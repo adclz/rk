@@ -49,11 +49,11 @@ pub(crate) fn lower_connections<'db>(
         info.struct_type
             .fields
             .iter()
-            .find(|f| f.name == var.name(db))
+            .find(|f| f.name(db) == var.name(db))
             .ok_or_else(|| {
                 LowerTypeError::UnsupportedType(format!(
                     "'{}' has no field in the program's layout",
-                    var.name(db).text(db)
+                    var.name_with_case(db).text(db)
                 ))
             })
     };
@@ -95,7 +95,7 @@ pub(crate) fn lower_connections<'db>(
             Storage::Slice(view) => {
                 let (target, value) = view.write(MirExpr::Load(
                     MirPlace::ThisField {
-                        field_name: field.name,
+                        field_name: field.name_with_case,
                         field_offset: field.offset,
                         field_type: field.ty.clone(),
                     },

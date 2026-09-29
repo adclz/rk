@@ -55,6 +55,19 @@ impl<'db> HirNodeInfo<'db> for Pou<'db> {
 }
 
 impl<'db> HasName<'db> for Pou<'db> {
+    fn get_name_with_case(
+        &self,
+        db: &'db dyn WorkspaceDataBase,
+    ) -> crate::hir_def::interned::identifier::Ident {
+        match self {
+            Pou::Function(f) => f.get_name_with_case(db),
+            Pou::FunctionBlock(fb) => fb.get_name_with_case(db),
+            Pou::Class(c) => c.get_name_with_case(db),
+            Pou::Interface(i) => i.get_name_with_case(db),
+            Pou::DataType(dt) => dt.get_name_with_case(db),
+        }
+    }
+
     fn get_name_ident(&self, db: &'db dyn WorkspaceDataBase) -> Ident {
         match self {
             Pou::Function(f) => f.get_name_ident(db),

@@ -227,3 +227,25 @@ END_FUNCTION
     ---'
     ");
 }
+
+/// `flag AND FLAG` is one operand twice: the path steps are one name.
+#[rstest]
+fn and_same_var_in_another_case(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION test : BOOL
+VAR flag : BOOL; END_VAR
+    test := flag AND FLAG;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "identical-sub-expr"), @r"
+    [L0108] Warning: identical subexpressions
+       ,-[ file:///test0.st:4:13 ]
+       |
+     4 |     test := flag AND FLAG;
+       |             ^^^^^^|^^^^^^
+       |                   `-------- identical expressions on both sides of 'AND', result is always the same as either operand
+       |
+       | Note: lint rule: identical-sub-expr
+    ---'
+    ");
+}

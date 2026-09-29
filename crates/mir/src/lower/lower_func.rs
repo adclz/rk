@@ -1,7 +1,7 @@
 use db::WorkspaceDataBase;
 use hir::{
     hir_def::{
-        interned::identifier::{CaselessIdent, Ident},
+        interned::identifier::Ident,
         pous::{
             class::Class,
             function::Function,
@@ -53,7 +53,7 @@ fn emittable_methods<'db>(
 ) -> Vec<hir::hir_def::pous::class::MethodDecl<'db>> {
     use hir::hir_ty::head::inheritance::MethodRef;
 
-    let own_names: FxHashSet<CaselessIdent> = own.iter().map(|m| m.name(db).caseless(db)).collect();
+    let own_names: FxHashSet<Ident> = own.iter().map(|m| m.name(db)).collect();
     let mut inherited: Vec<_> = hir::hir_ty::head::inheritance::inherited_methods(db, pou)
         .methods
         .iter()
@@ -77,9 +77,7 @@ pub fn lower_function<'db>(
     index: u32,
     memory_layout: &mut MirMemoryLayout,
     string_pool: Rc<RefCell<super::lower_expr::StringPool>>,
-    iface_subs: Option<
-        &FxHashMap<hir::hir_def::interned::identifier::Ident, hir::hir_def::pous::pou::Pou<'db>>,
-    >,
+    iface_subs: Option<&super::mono_iface::IfaceSubs<'db>>,
     iface_call_rewrites: &super::mono_iface::IfaceCallRewrites<'db>,
     // Phase C: `Some(n)` when this is the arity specialization `f$n` of a
     // variadic function; `None` for every ordinary function.
@@ -168,9 +166,7 @@ fn lower_function_inner<'db>(
     string_pool: Rc<RefCell<super::lower_expr::StringPool>>,
     // Phase B: for a specialized copy, each interface param's concrete
     // implementer.
-    iface_subs: Option<
-        &FxHashMap<hir::hir_def::interned::identifier::Ident, hir::hir_def::pous::pou::Pou<'db>>,
-    >,
+    iface_subs: Option<&super::mono_iface::IfaceSubs<'db>>,
     // Phase B: module-global call-site -> mangled specialization rewrites, so
     // calls in this body route to the right specialization.
     iface_call_rewrites: &FxHashMap<
@@ -278,7 +274,7 @@ fn lower_function_inner<'db>(
         let storage = allocate_local_storage(
             var.name(db),
             &ty,
-            address_taken.contains(&var.name(db).caseless(db)),
+            address_taken.contains(&var.name(db)),
             &mut next_local_idx,
             memory_layout,
         );
@@ -453,7 +449,7 @@ fn lower_function_block_inner<'db>(
                 let storage = allocate_local_storage(
                     var.name(db),
                     &ty,
-                    address_taken.contains(&var.name(db).caseless(db)),
+                    address_taken.contains(&var.name(db)),
                     &mut next_local_idx,
                     memory_layout,
                 );
@@ -545,7 +541,7 @@ fn lower_function_block_inner<'db>(
                 compact_str::CompactString::from(format!(
                     "{}#{}",
                     fb_qualified.text(db),
-                    method.name(db).text(db)
+                    method.name_with_case(db).text(db)
                 )),
             ),
         };
@@ -587,7 +583,7 @@ fn lower_function_block_inner<'db>(
             let storage = allocate_local_storage(
                 var.name(db),
                 &ty,
-                address_taken.contains(&var.name(db).caseless(db)),
+                address_taken.contains(&var.name(db)),
                 &mut next_local_idx,
                 memory_layout,
             );
@@ -734,7 +730,7 @@ fn lower_class_inner<'db>(
                 let storage = allocate_local_storage(
                     var.name(db),
                     &ty,
-                    address_taken.contains(&var.name(db).caseless(db)),
+                    address_taken.contains(&var.name(db)),
                     &mut next_local_idx,
                     memory_layout,
                 );
@@ -826,7 +822,7 @@ fn lower_class_inner<'db>(
                 compact_str::CompactString::from(format!(
                     "{}#{}",
                     class_qualified.text(db),
-                    method.name(db).text(db)
+                    method.name_with_case(db).text(db)
                 )),
             ),
         };
@@ -889,7 +885,7 @@ fn lower_program_inner<'db>(
             let storage = allocate_local_storage(
                 var.name(db),
                 &ty,
-                address_taken.contains(&var.name(db).caseless(db)),
+                address_taken.contains(&var.name(db)),
                 &mut next_local_idx,
                 memory_layout,
             );
@@ -924,7 +920,10 @@ fn lower_program_inner<'db>(
 
     let body_name = Ident::new(
         db,
-        compact_str::CompactString::from(format!("{}$__body__", program.name(db).text(db))),
+        compact_str::CompactString::from(format!(
+            "{}$__body__",
+            program.name_with_case(db).text(db)
+        )),
     );
 
     let func = MirFunction {
@@ -950,11 +949,9 @@ fn lower_program_inner<'db>(
 fn param_for_var<'db>(
     db: &'db dyn WorkspaceDataBase,
     var: &hir::hir_def::pous::variable::VariableDecl<'db>,
-    iface_subs: Option<
-        &FxHashMap<hir::hir_def::interned::identifier::Ident, hir::hir_def::pous::pou::Pou<'db>>,
-    >,
+    iface_subs: Option<&super::mono_iface::IfaceSubs<'db>>,
 ) -> Result<Option<MirParam>, LowerTypeError> {
-    if let Some(concrete) = iface_subs.and_then(|m| m.get(&var.name(db))) {
+    if let Some(concrete) = iface_subs.and_then(|m| m.get(var)) {
         let ty = lower_type(db, hir::hir_ty::ty::Type::new_pou(db, *concrete))?;
         return Ok(Some(MirParam {
             name: var.name(db),
@@ -1072,13 +1069,13 @@ pub(crate) fn lower_var_type<'db>(
 fn collect_address_taken_in_inits<'db>(
     db: &'db dyn WorkspaceDataBase,
     vars: &[hir::hir_def::pous::variable::VariableDecl<'db>],
-) -> FxHashSet<CaselessIdent> {
+) -> FxHashSet<Ident> {
     use hir::hir_def::expressions::expression::{ExprKind, InitExprKind, PrimaryExpr, RefValue};
 
     fn walk_init<'db>(
         db: &'db dyn WorkspaceDataBase,
         init: &hir::hir_def::expressions::expression::InitExpr<'db>,
-        result: &mut FxHashSet<CaselessIdent>,
+        result: &mut FxHashSet<Ident>,
     ) {
         match init.kind(db) {
             InitExprKind::ConstantExpr(expr) => {
@@ -1087,7 +1084,7 @@ fn collect_address_taken_in_inits<'db>(
                 }) = expr.expr(db)
                     && let Some(path_expr) = begin_path.expr(db)
                 {
-                    result.insert(path_expr.ident(db).ident.caseless(db));
+                    result.insert(path_expr.ident(db).ident(db));
                 }
             }
             InitExprKind::ArrayInit { values }
@@ -1115,7 +1112,7 @@ fn collect_address_taken_in_inits<'db>(
 fn collect_address_taken_vars<'db>(
     db: &'db dyn WorkspaceDataBase,
     stmts: &[hir::hir_def::expressions::statement::Stmt<'db>],
-) -> FxHashSet<CaselessIdent> {
+) -> FxHashSet<Ident> {
     use hir::hir_def::expressions::expression::{ExprKind, PrimaryExpr, RefValue};
 
     let mut result = FxHashSet::default();
@@ -1123,7 +1120,7 @@ fn collect_address_taken_vars<'db>(
     fn walk_expr<'db>(
         db: &'db dyn WorkspaceDataBase,
         expr: hir::hir_def::expressions::expression::Expr<'db>,
-        result: &mut FxHashSet<CaselessIdent>,
+        result: &mut FxHashSet<Ident>,
     ) {
         match expr.expr(db) {
             ExprKind::PrimaryExpr(PrimaryExpr::RefValue {
@@ -1132,8 +1129,8 @@ fn collect_address_taken_vars<'db>(
                 // REF(var) - extract the variable name
                 if let Some(path_expr) = begin_path.expr(db) {
                     // Probed with the declared name: `REF(myvar)` must mark `MyVar`.
-                    let ident = path_expr.ident(db).ident;
-                    result.insert(ident.caseless(db));
+                    let ident = path_expr.ident(db).ident(db);
+                    result.insert(ident);
                 }
             }
             ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess(_)) => {}
@@ -1156,7 +1153,7 @@ fn collect_address_taken_vars<'db>(
                             // OUT => x takes the address of x
                             if let hir::hir_def::expressions::expression::VariableAccessKind::Symbolic(begin_path) = &variable.kind(db)
                                 && let Some(path_expr) = begin_path.expr(db) {
-                                    result.insert(path_expr.ident(db).ident.caseless(db));
+                                    result.insert(path_expr.ident(db).ident(db));
                                 }
                         }
                     }
@@ -1186,7 +1183,7 @@ fn collect_address_taken_vars<'db>(
     fn walk_stmts<'db>(
         db: &'db dyn WorkspaceDataBase,
         stmts: &[hir::hir_def::expressions::statement::Stmt<'db>],
-        result: &mut FxHashSet<CaselessIdent>,
+        result: &mut FxHashSet<Ident>,
     ) {
         use hir::hir_def::expressions::statement::StmtKind;
         for stmt in stmts {
@@ -1202,7 +1199,7 @@ fn collect_address_taken_vars<'db>(
     fn walk_stmt_exprs<'db>(
         db: &'db dyn WorkspaceDataBase,
         stmt: hir::hir_def::expressions::statement::Stmt<'db>,
-        result: &mut FxHashSet<CaselessIdent>,
+        result: &mut FxHashSet<Ident>,
     ) {
         use hir::hir_def::expressions::statement::StmtKind;
         match stmt.stmt(db) {
@@ -1272,7 +1269,7 @@ fn collect_address_taken_vars<'db>(
                         hir::hir_def::expressions::expression::ParamAssignKind::FormalOutput { variable, .. } => {
                             if let hir::hir_def::expressions::expression::VariableAccessKind::Symbolic(begin_path) = &variable.kind(db)
                                 && let Some(path_expr) = begin_path.expr(db) {
-                                    result.insert(path_expr.ident(db).ident.caseless(db));
+                                    result.insert(path_expr.ident(db).ident(db));
                                 }
                         }
                     }
@@ -1294,7 +1291,7 @@ fn collect_address_taken_vars<'db>(
 fn mark_inout_call_args<'db>(
     db: &'db dyn WorkspaceDataBase,
     fc: hir::hir_def::expressions::expression::FuncCall<'db>,
-    result: &mut FxHashSet<CaselessIdent>,
+    result: &mut FxHashSet<Ident>,
 ) {
     use hir::hir_def::expressions::expression::{
         ExprKind, ParamAssignKind, PrimaryExpr, VariableAccessKind,
@@ -1319,7 +1316,7 @@ fn mark_inout_call_args<'db>(
             && let VariableAccessKind::Symbolic(begin_path) = va.kind(db)
             && let Some(path_expr) = begin_path.expr(db)
         {
-            result.insert(path_expr.ident(db).ident.caseless(db));
+            result.insert(path_expr.ident(db).ident(db));
         }
     }
 }
@@ -1491,7 +1488,7 @@ fn lower_init_leaves<'db>(
         let (offset, leaf_ty) = if leaf.path.is_empty() {
             (0, ty.clone())
         } else {
-            let Some(found) = walk_init_path(ty, &leaf.path) else {
+            let Some(found) = walk_init_path(db, ty, &leaf.path) else {
                 continue;
             };
             found
@@ -1648,6 +1645,7 @@ use hir::hir_ty::head::inheritance::InstanceInitStep;
 ///
 /// [`instance_initializers`]: hir::hir_ty::head::inheritance::instance_initializers
 fn member_path_slots(
+    db: &dyn WorkspaceDataBase,
     ty: &crate::types::MirType,
     path: &[InstanceInitStep],
     base: u32,
@@ -1659,13 +1657,13 @@ fn member_path_slots(
     };
     match (step, ty) {
         (InstanceInitStep::Field(name), crate::types::MirType::Struct(s)) => {
-            if let Some(field) = s.fields.iter().find(|f| f.name == *name) {
-                member_path_slots(&field.ty, rest, base + field.offset, out);
+            if let Some(field) = s.fields.iter().find(|f| f.name(db) == *name) {
+                member_path_slots(db, &field.ty, rest, base + field.offset, out);
             }
         }
         (InstanceInitStep::AllElements, crate::types::MirType::Array(a)) => {
             for i in 0..a.total_elements {
-                member_path_slots(&a.element_type, rest, base + i * a.element_size, out);
+                member_path_slots(db, &a.element_type, rest, base + i * a.element_size, out);
             }
         }
         // HIR and the layout disagree about this member's shape; the caller
@@ -1690,7 +1688,7 @@ pub(crate) fn lower_type_default_inits<'db>(
 ) -> Result<(), LowerTypeError> {
     for entry in hir::hir_ty::head::inheritance::type_default_inits(db, hir_ty) {
         let mut slots = Vec::new();
-        member_path_slots(mir_ty, &entry.path, 0, &mut slots);
+        member_path_slots(db, mir_ty, &entry.path, 0, &mut slots);
         for (offset, slot_ty) in slots {
             lower_init_value(
                 db,
@@ -1722,6 +1720,7 @@ pub(crate) fn lower_resolved_init_into<'db>(
 /// Walk a resolved leaf's path over the layout to its byte offset and
 /// type.
 fn walk_init_path(
+    db: &dyn WorkspaceDataBase,
     root: &crate::types::MirType,
     path: &[hir::hir_ty::head::init_inference::InitPathStep],
 ) -> Option<(u32, crate::types::MirType)> {
@@ -1732,7 +1731,7 @@ fn walk_init_path(
     for step in path {
         match (cur, step) {
             (MirType::Struct(s), InitPathStep::Field(name)) => {
-                let f = s.fields.iter().find(|f| f.name == *name)?;
+                let f = s.fields.iter().find(|f| f.name(db) == *name)?;
                 offset += f.offset;
                 cur = &f.ty;
             }

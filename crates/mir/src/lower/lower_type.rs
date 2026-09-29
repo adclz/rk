@@ -83,7 +83,7 @@ pub fn lower_type<'db>(
     // Capture a wrapping `TYPE Pt : STRUCT` name before normalize peels it,
     // so the struct carries "Pt" rather than "<anon_struct>". Display-only.
     let type_name = match ty {
-        Type::DataType(dt) => Some(dt.name(db)),
+        Type::DataType(dt) => Some(dt.name_with_case(db)),
         _ => None,
     };
     // `normalize` resolves a subrange to its base, and the debug type table
@@ -221,7 +221,7 @@ pub fn lower_struct_type_named<'db>(
         offset = align_to(offset, field_align);
 
         fields.push(MirStructField {
-            name: element.name(db),
+            name_with_case: element.name_with_case(db),
             ty: mir_type,
             offset,
             by_ref: false,
@@ -335,7 +335,7 @@ pub fn lower_enum_type_named<'db>(
 ) -> Result<MirType, LowerTypeError> {
     let mut variants = Vec::new();
     for (variant, value) in enum_variant_values(db, enum_type)? {
-        variants.push((variant.name.ident.text(db).clone(), value));
+        variants.push((variant.name.with_case.text(db).clone(), value));
     }
 
     let enum_name = name.unwrap_or_else(|| Ident::new(db, CompactString::from("<anon_enum>")));
@@ -420,7 +420,7 @@ fn lower_instance_struct<'db>(
         offset = align_to(offset, field_align);
 
         fields.push(MirStructField {
-            name: var.name(db),
+            name_with_case: var.name_with_case(db),
             ty: mir_type,
             offset,
             by_ref: is_inout,
@@ -476,7 +476,7 @@ pub fn lower_program_type<'db>(
         max_align = max_align.max(field_align);
         offset = align_to(offset, field_align);
         fields.push(MirStructField {
-            name: var.name(db),
+            name_with_case: var.name_with_case(db),
             ty: mir_type,
             offset,
             // PROGRAM instances are driven by the scheduler, never through an
@@ -489,7 +489,7 @@ pub fn lower_program_type<'db>(
     offset = align_to(offset, max_align);
 
     Ok(MirType::Struct(MirStructType {
-        name: program.name(db),
+        name: program.name_with_case(db),
         fields,
         size: offset,
         align: max_align,

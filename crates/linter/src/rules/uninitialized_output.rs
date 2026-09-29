@@ -76,7 +76,7 @@ pub fn check_outputs<'db>(
 
     let names: Vec<_> = missing
         .iter()
-        .map(|v| format!("'{}'", v.name(db).text(db)))
+        .map(|v| format!("'{}'", v.name_with_case(db).text(db)))
         .collect();
 
     // Anchor the diagnostic on the first uninitialized output's name span.
@@ -99,7 +99,7 @@ pub fn check_outputs<'db>(
 
     for var in &missing {
         d.with_related(Related::new(
-            format!("'{}' declared here", var.name(db).text(db)),
+            format!("'{}' declared here", var.name_with_case(db).text(db)),
             var.scope_id(db).file(db),
             var.get_name_span(db),
         ));

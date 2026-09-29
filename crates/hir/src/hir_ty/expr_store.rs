@@ -118,7 +118,7 @@ impl<'db> PathExpr<'db> {
             target,
         );
 
-        Some((access, *target))
+        Some((access, target.ident(db)))
     }
 }
 

@@ -83,7 +83,7 @@ fn same_variable<'db>(
         return None;
     }
 
-    Some(lhs_var.name(db).text(db).to_string())
+    Some(lhs_var.name_with_case(db).text(db).to_string())
 }
 
 fn resolve_variable<'db>(

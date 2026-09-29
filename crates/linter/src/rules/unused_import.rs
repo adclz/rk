@@ -51,8 +51,10 @@ pub fn check<'db>(
             continue;
         }
 
+        // As written, for the message.
         let path = using.path(db);
         let name = path
+            .path_with_case
             .fragments(db)
             .iter()
             .map(|f| f.text(db).as_str().to_owned())

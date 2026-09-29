@@ -11,7 +11,8 @@ use crate::{
 
 #[salsa::tracked(debug)]
 pub struct DataType<'db> {
-    pub name: Ident,
+    /// The name as the author wrote it. Matching reads `name(db)`.
+    pub name_with_case: Ident,
 
     #[tracked]
     #[no_eq]
@@ -42,11 +43,26 @@ impl<'db> HirNodeInfo<'db> for DataType<'db> {
 }
 
 impl<'db> HasName<'db> for DataType<'db> {
+    fn get_name_with_case(
+        &self,
+        db: &'db dyn WorkspaceDataBase,
+    ) -> crate::hir_def::interned::identifier::Ident {
+        self.name_with_case(db)
+    }
+
     fn get_name_ident(&self, db: &'db dyn WorkspaceDataBase) -> Ident {
         self.name(db)
     }
 
     fn get_name_id(&self, db: &'db dyn WorkspaceDataBase) -> AstId {
         self.name_id(db)
+    }
+}
+
+impl<'db> DataType<'db> {
+    /// The name, as names are matched: case folded. As written:
+    /// [`Self::name_with_case`].
+    pub fn name(self, db: &'db dyn WorkspaceDataBase) -> Ident {
+        self.name_with_case(db).folded(db)
     }
 }

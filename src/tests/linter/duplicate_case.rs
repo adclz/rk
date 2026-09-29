@@ -318,3 +318,34 @@ END_FUNCTION
     ---'
     ");
 }
+
+/// An enum label is its variant, in whatever case it is written: `Mode#IDLE`
+/// repeats `Mode#Idle`. The labels were compared as written.
+#[rstest]
+fn duplicate_enum_label_in_another_case(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE Mode : (Idle, Run); END_TYPE
+
+FUNCTION test : INT
+VAR m : Mode; END_VAR
+    CASE m OF
+        Mode#Idle: test := 1;
+        Mode#IDLE: test := 2;
+    END_CASE;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "duplicate-case"), @r"
+    [L0109] Warning: duplicate CASE selector
+       ,-[ file:///test0.st:8:9 ]
+       |
+     7 |         Mode#Idle: test := 1;
+       |         ^^^^|^^^^
+       |             `------ CASE selector is already defined here
+     8 |         Mode#IDLE: test := 2;
+       |         ^^^^|^^^^
+       |             `------ CASE selector 'Mode#IDLE' is duplicated, second branch is unreachable
+       |
+       | Note: lint rule: duplicate-case
+    ---'
+    ");
+}

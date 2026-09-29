@@ -263,8 +263,7 @@ impl HeadResult {
                     && offset <= body_node.end_byte()
                 {
                     let body_text = &source[body_node.start_byte()..body_node.end_byte()];
-                    let first_char = body_text.trim_start().chars().next();
-                    if matches!(first_char, Some('V') | Some('E') | Some('M')) {
+                    if starts_a_section(body_text) {
                         return HeadLocation::InBodyAfterVars;
                     }
                     return HeadLocation::InBody;
@@ -284,8 +283,7 @@ impl HeadResult {
                     // Check if body is empty or starts with head keywords (V, E, M)
                     if let Some(body_node) = body {
                         let body_text = &source[body_node.start_byte()..body_node.end_byte()];
-                        let first_char = body_text.trim_start().chars().next();
-                        if matches!(first_char, Some('V') | Some('E') | Some('M')) {
+                        if starts_a_section(body_text) {
                             return HeadLocation::InBodyAfterMethods;
                         }
                     }
@@ -304,8 +302,7 @@ impl HeadResult {
                     // Check if body is empty or starts with head keywords (V, E, M)
                     if let Some(body_node) = body {
                         let body_text = &source[body_node.start_byte()..body_node.end_byte()];
-                        let first_char = body_text.trim_start().chars().next();
-                        if matches!(first_char, Some('V') | Some('E') | Some('M')) {
+                        if starts_a_section(body_text) {
                             return HeadLocation::InBodyAfterVars;
                         }
                     }
@@ -331,8 +328,7 @@ impl HeadResult {
                     // Check if body is empty or starts with head keywords (V, E, M)
                     if let Some(body_node) = body {
                         let body_text = &source[body_node.start_byte()..body_node.end_byte()];
-                        let first_char = body_text.trim_start().chars().next();
-                        if matches!(first_char, Some('V') | Some('E') | Some('M')) {
+                        if starts_a_section(body_text) {
                             return HeadLocation::InBodyAfterMethods;
                         }
                     }
@@ -345,6 +341,19 @@ impl HeadResult {
             _ => HeadLocation::BeforeVars,
         }
     }
+}
+
+/// Whether a body starts like a new `VAR`, `END_` or `METHOD` section,
+/// keywords being case-insensitive (IEC 61131-3 §6.1.1).
+fn starts_a_section(body_text: &str) -> bool {
+    matches!(
+        body_text
+            .trim_start()
+            .chars()
+            .next()
+            .map(|c| c.to_ascii_uppercase()),
+        Some('V' | 'E' | 'M')
+    )
 }
 
 #[cfg(test)]

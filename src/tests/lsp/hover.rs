@@ -682,7 +682,7 @@ END_CONFIGURATION
         .iter()
         .find(|s| {
             let kind = s.kind(&with_db);
-            matches!(kind, hir::hir_def::expressions::spec::SpecKind::Target(t) if t.path.target.ident.text(&with_db) == "MyProg")
+            matches!(kind, hir::hir_def::expressions::spec::SpecKind::Target(t) if t.path.target.with_case.text(&with_db) == "MyProg")
         })
         .expect("should find MyProg Spec");
 

@@ -2,7 +2,7 @@ use auto_lsp::lsp_types::DiagnosticSeverity;
 use db::WorkspaceDataBase;
 use hir::{
     HasPragmas, HirNodeInfo,
-    hir_def::expressions::expression::PathExpr,
+    hir_def::{expressions::expression::PathExpr, pous::variable::VariableDecl},
     hir_ty::{
         body::BodyInferenceResult,
         head::inheritance::MethodRef,
@@ -37,7 +37,11 @@ pub fn check<'db>(
     body: &BodyInferenceResult<'db>,
     diagnostics: &mut Vec<IdeDiagnostic>,
 ) {
-    let mut once_calls: FxHashMap<String, OnceCallInfo<'db>> = FxHashMap::default();
+    // A call is grouped by what it runs, not by how it is written: the
+    // callable and the variable each step of its path names, so `inst()` and
+    // `INST()` are one instance, `a1.fb()` and `a2.fb()` two.
+    let mut once_calls: FxHashMap<(CallableType<'db>, Vec<VariableDecl<'db>>), OnceCallInfo<'db>> =
+        FxHashMap::default();
 
     for (path_expr, typ) in &body.type_of_path_expr {
         let callable = match typ {
@@ -58,9 +62,13 @@ pub fn check<'db>(
             continue;
         }
 
-        let key = path_expr.as_call_site(db).to_string(db).to_string();
+        let instance = path_expr
+            .flatten(db)
+            .iter()
+            .filter_map(|step| body.variable_for_path_expr(step.get_expr(db)))
+            .collect();
         once_calls
-            .entry(key)
+            .entry((callable, instance))
             .or_insert_with(|| OnceCallInfo {
                 calls: vec![],
                 callable,
@@ -69,7 +77,7 @@ pub fn check<'db>(
             .push(*path_expr);
     }
 
-    for (name, info) in &once_calls {
+    for info in once_calls.values() {
         if info.calls.len() < 2 {
             continue;
         }
@@ -77,6 +85,8 @@ pub fn check<'db>(
         // Sort calls by source position so first/second is deterministic
         let mut sorted_calls = info.calls.clone();
         sorted_calls.sort_by_key(|c| c.get_span(db).start_byte);
+        // Named as the first call writes it.
+        let name = sorted_calls[0].as_call_site(db).to_string(db);
 
         // Get the {once} pragma span from the callable
         let once_span = match &info.callable {

@@ -326,13 +326,22 @@ pub fn file_namespace_map<'db>(
     Arc::clone(&semantic_index(db, file).namespace_map)
 }
 
+/// A namespace path as its declaration writes it, for what is shown; the path
+/// itself when no namespace declares it.
+pub fn namespace_spelling(db: &dyn WorkspaceDataBase, path: NamespacePath) -> String {
+    namespace_index(db, path)
+        .first()
+        .map(|ns| ns.path_with_case(db).to_string(db))
+        .unwrap_or_else(|| path.to_string(db))
+}
+
 /// Returns all namespace declarations matching a given path across all files.
 pub fn namespace_index<'db>(
     db: &'db dyn WorkspaceDataBase,
     path: NamespacePath,
 ) -> Vec<NamespaceDecl<'db>> {
     // Folded once; every file is then a hash probe.
-    let key = path.caseless(db);
+    let key = path;
     let mut result = vec![];
     for file in all_files(db) {
         if let Some(found) = file_namespace_map(db, file).get(&key) {
@@ -388,12 +397,7 @@ pub fn namespace_pou_index<'db>(
     name: Ident,
 ) -> Option<Pou<'db>> {
     for ns in namespace_index(db, path) {
-        if let Some(pou) = ns
-            .scope_id(db)
-            .def_map(db)
-            .local_pous
-            .get(&name.caseless(db))
-        {
+        if let Some(pou) = ns.scope_id(db).def_map(db).local_pous.get(&name) {
             return Some(*pou);
         }
     }
@@ -405,7 +409,7 @@ pub fn namespace_pou_index<'db>(
 pub fn pou_index<'db>(db: &'db dyn WorkspaceDataBase, name: Ident) -> Option<Pou<'db>> {
     for file in all_files(db) {
         for p in file_global_pous(db, file).iter() {
-            if p.get_name_ident(db).caseless(db) == name.caseless(db) {
+            if p.get_name_ident(db) == name {
                 return Some(*p);
             }
         }
@@ -423,7 +427,7 @@ pub fn pou_candidates<'db>(db: &'db dyn WorkspaceDataBase, name: Ident) -> Vec<P
     let mut result = Vec::new();
     for file in all_files(db) {
         for p in file_global_pous(db, file).iter() {
-            if p.get_name_ident(db).caseless(db) == name.caseless(db) {
+            if p.get_name_ident(db) == name {
                 result.push(*p);
             }
         }
@@ -442,7 +446,7 @@ pub fn namespace_pou_candidates<'db>(
     let mut result = Vec::new();
     for ns in namespace_index(db, path) {
         for p in ns.pous(db).iter() {
-            if p.get_name_ident(db).caseless(db) == name.caseless(db) {
+            if p.get_name_ident(db) == name {
                 result.push(*p);
             }
         }
@@ -455,7 +459,7 @@ pub fn namespace_pou_candidates<'db>(
 pub fn program_index<'db>(db: &'db dyn WorkspaceDataBase, name: Ident) -> Option<ProgramDecl<'db>> {
     for file in all_files(db) {
         for p in file_programs(db, file).iter() {
-            if p.get_name_ident(db).caseless(db) == name.caseless(db) {
+            if p.get_name_ident(db) == name {
                 return Some(*p);
             }
         }
@@ -494,7 +498,7 @@ pub fn config_fragments<'db>(db: &'db dyn WorkspaceDataBase, name: Ident) -> Vec
         out.extend(
             file_configs(db, file)
                 .iter()
-                .filter(|c| c.get_name_ident(db).caseless(db) == name.caseless(db))
+                .filter(|c| c.get_name_ident(db) == name)
                 .copied(),
         );
     }
@@ -512,7 +516,7 @@ pub fn external_var_lookup<'db>(
     for file in all_files(db) {
         for config in file_configs(db, file).iter() {
             for v in config.variables(db).iter() {
-                if v.get_name_ident(db).caseless(db) == var_name.caseless(db) {
+                if v.get_name_ident(db) == var_name {
                     return Some(*v);
                 }
             }
@@ -572,7 +576,10 @@ pub fn discover_all_tests<'db>(db: &'db dyn WorkspaceDataBase) -> Vec<TestItem<'
             if let Pou::Function(f) = pou
                 && crate::hir_def::pous::pragma::is_test(db, f.pragmas(db))
             {
-                tests.push(TestItem::Function(*f, f.name(db).text(db).to_string()));
+                tests.push(TestItem::Function(
+                    *f,
+                    f.name_with_case(db).text(db).to_string(),
+                ));
             }
         }
 
@@ -581,14 +588,15 @@ pub fn discover_all_tests<'db>(db: &'db dyn WorkspaceDataBase) -> Vec<TestItem<'
         // once; recursing into children here discovered every nested test
         // twice.
         for ns in file_namespaces(db, file).iter() {
-            let ns_prefix = ns.path(db).to_string(db);
+            // A test is named as it is written: its export and its report say so.
+            let ns_prefix = ns.path_with_case(db).to_string(db);
             for pou in ns.pous(db).iter() {
                 if let Pou::Function(f) = pou
                     && crate::hir_def::pous::pragma::is_test(db, f.pragmas(db))
                 {
                     tests.push(TestItem::Function(
                         *f,
-                        format!("{}.{}", ns_prefix, f.name(db).text(db)),
+                        format!("{}.{}", ns_prefix, f.name_with_case(db).text(db)),
                     ));
                 }
             }
@@ -610,7 +618,7 @@ pub fn find_test<'db>(
     if parts.len() == 1 {
         // Global scope: a test is a FUNCTION (E1503 refuses the pragma
         // anywhere else).
-        let name = Ident::from_slice(db, parts[0]);
+        let name = Ident::from_slice(db, parts[0]).folded(db);
         if let Some(Pou::Function(f)) = pou_index(db, name)
             && crate::hir_def::pous::pragma::is_test(db, f.pragmas(db))
         {
@@ -622,9 +630,12 @@ pub fn find_test<'db>(
         let ns_parts = &parts[..parts.len() - 1];
         let item_name = parts[parts.len() - 1];
 
-        let ns_idents: Vec<Ident> = ns_parts.iter().map(|s| Ident::from_slice(db, s)).collect();
+        let ns_idents: Vec<Ident> = ns_parts
+            .iter()
+            .map(|s| Ident::from_slice(db, s).folded(db))
+            .collect();
         let ns_path = NamespacePath::new(db, ns_idents);
-        let name = Ident::from_slice(db, item_name);
+        let name = Ident::from_slice(db, item_name).folded(db);
 
         if let Some(Pou::Function(f)) = namespace_pou_index(db, ns_path, name)
             && crate::hir_def::pous::pragma::is_test(db, f.pragmas(db))

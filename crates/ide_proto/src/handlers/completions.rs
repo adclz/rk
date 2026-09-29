@@ -190,7 +190,7 @@ impl<'db> CompletionHandler<'db> for HirNode<'db> {
 
                 // For non-leaf path expressions (field/index/deref), derive the parent
                 // on-demand and use its completions (the current node is likely incomplete)
-                let child_req = req.with_query(p.ident(db).text(db).to_string());
+                let child_req = req.with_query(p.ident(db).ident(db).text(db).to_string());
                 match p.expr(db) {
                     PathExprKind::Field(f) => {
                         // Check if the parent path is a namespace before delegating.
@@ -467,10 +467,10 @@ impl<'db> CompletionHandler<'db> for Spec<'db> {
                     .path
                     .namespace
                     .as_ref()
-                    .map(|ns| ns.fragments(db).to_vec())
+                    .map(|ns| ns.path(db).fragments(db).to_vec())
                     .unwrap_or_default();
-                if !target.path.target.ident.text(db).is_empty() {
-                    fragments.push(target.path.target.ident);
+                if !target.path.target.with_case.text(db).is_empty() {
+                    fragments.push(target.path.target.ident(db));
                 }
                 let written = NamespacePath::new(db, fragments);
 
@@ -484,7 +484,7 @@ impl<'db> CompletionHandler<'db> for Spec<'db> {
             } else if let Some(namespace) = &target.path.namespace {
                 // Editing a fragment in a namespace path (e.g., Std.C|.Timers or Std.C|)
                 // Determine which fragment the cursor is in and use the prefix before it.
-                let ns_fragments = namespace.fragments(db);
+                let ns_fragments = namespace.path(db).fragments(db);
 
                 // Find how many namespace fragments precede the cursor
                 let mut prefix_len = ns_fragments.len();
@@ -820,7 +820,7 @@ fn var_config_completion<'db>(
     let written = written.rsplit(';').next().unwrap_or(written).trim_start();
 
     let instance = |p: &ProgConfig<'db>| CompletionItem {
-        label: p.name(db).ident.text(db).to_string(),
+        label: p.name(db).with_case.text(db).to_string(),
         kind: Some(CompletionItemKind::VARIABLE),
         detail: Some(format!(
             "PROGRAM {}",
@@ -841,7 +841,7 @@ fn var_config_completion<'db>(
             }) => vec![CompletionItem {
                 label: var.spec(db).infer(db).type_name(db),
                 kind: Some(CompletionItemKind::TYPE_PARAMETER),
-                detail: Some(format!("the type of {}", var.name(db).text(db))),
+                detail: Some(format!("the type of {}", var.name_with_case(db).text(db))),
                 ..Default::default()
             }],
             _ => static_snippets::var_section_items(false),
@@ -868,7 +868,7 @@ fn var_config_completion<'db>(
             .flat_map(|f| f.resources(db).iter())
             .flat_map(|r| {
                 std::iter::once(CompletionItem {
-                    label: r.name(db).ident.text(db).to_string(),
+                    label: r.name(db).with_case.text(db).to_string(),
                     kind: Some(CompletionItemKind::MODULE),
                     detail: Some("RESOURCE".to_string()),
                     ..Default::default()
@@ -958,7 +958,7 @@ impl<'db> CompletionHandler<'db> for ProgConfig<'db> {
                     .tasks(db)
                     .iter()
                     .map(|task| CompletionItem {
-                        label: task.name(db).ident.text(db).to_string(),
+                        label: task.name(db).with_case.text(db).to_string(),
                         kind: Some(CompletionItemKind::EVENT),
                         detail: Some("TASK".to_string()),
                         ..Default::default()
@@ -1023,7 +1023,8 @@ impl<'db> CompletionHandler<'db> for ProgConfig<'db> {
                         _ => return None,
                     };
                     let mut item = builder.build_variable(db, var);
-                    item.insert_text = Some(format!("{}{follows}", var.name(db).text(db)));
+                    item.insert_text =
+                        Some(format!("{}{follows}", var.name_with_case(db).text(db)));
                     Some(item)
                 })
                 .collect(),
@@ -1038,9 +1039,9 @@ impl<'db> CompletionHandler<'db> for Using<'db> {
         req: &CompletionRequest,
     ) -> Option<Vec<CompletionItem>> {
         let mut results = vec![];
-        let mut ns_query = Query::new(self.path(db).path.to_string(db));
+        let mut ns_query = Query::new(self.path(db).path(db).to_string(db));
         ns_query.prefix();
-        let current_fragments = self.path(db).path.fragments(db);
+        let current_fragments = self.path(db).path(db).fragments(db);
 
         let search_result = SymbolSearch::new(|_, _| true)
             .with_query(ns_query)
@@ -1060,8 +1061,11 @@ impl<'db> CompletionHandler<'db> for Using<'db> {
         for item in items {
             let ns_fragments = item.path(db).fragments(db);
             if let Some(frag) = ns_fragments.get(show_index) {
-                let label = frag.text(db).to_string();
-                if seen.insert(label.clone()) {
+                // One namespace in any case, labelled as first found.
+                let label = item.path_with_case(db).fragments(db)[show_index]
+                    .text(db)
+                    .to_string();
+                if seen.insert(frag) {
                     results.push(CompletionItem::new_simple(label, "NAMESPACE".to_string()));
                 }
             }
@@ -1098,13 +1102,19 @@ fn maybe_add_self_return(
         ScopeKind::Pou(Pou::Function(f)) => {
             if let Some(ret_spec) = f.return_type(db) {
                 let ret_type = ret_spec.infer(db).type_name(db);
-                items.push(self_return_completion(f.name(db).text(db), &ret_type));
+                items.push(self_return_completion(
+                    f.name_with_case(db).text(db),
+                    &ret_type,
+                ));
             }
         }
         ScopeKind::MethodDecl(m) => {
             if let Some(ret_spec) = m.return_type(db) {
                 let ret_type = ret_spec.infer(db).type_name(db);
-                items.push(self_return_completion(m.name(db).text(db), &ret_type));
+                items.push(self_return_completion(
+                    m.name_with_case(db).text(db),
+                    &ret_type,
+                ));
             }
         }
         _ => {}
@@ -1133,12 +1143,12 @@ pub(crate) fn try_build_namespace_path<'db>(
     db: &'db dyn WorkspaceDataBase,
     path: &PathExpr<'db>,
 ) -> Option<NamespacePath> {
-    let mut fragments = vec![path.ident(db).ident];
+    let mut fragments = vec![path.ident(db).ident(db)];
     let mut current = path.expr(db);
     loop {
         match current {
             PathExprKind::Field(f) => {
-                fragments.push(f.path.ident(db).ident);
+                fragments.push(f.path.ident(db).ident(db));
                 current = f.path.expr(db);
             }
             PathExprKind::VarAccess(_) => break,

@@ -182,6 +182,17 @@ impl<'db> HirNodeInfo<'db> for CallableType<'db> {
 }
 
 impl<'db> HasName<'db> for CallableType<'db> {
+    fn get_name_with_case(
+        &self,
+        db: &'db dyn WorkspaceDataBase,
+    ) -> crate::hir_def::interned::identifier::Ident {
+        match self {
+            CallableType::Function(f) => f.get_name_with_case(db),
+            CallableType::FunctionBlock(f) => f.get_name_with_case(db),
+            CallableType::MethodDecl(m) => m.get_name_with_case(db),
+        }
+    }
+
     fn get_name_id(&self, db: &'db dyn WorkspaceDataBase) -> AstId {
         match self {
             CallableType::Function(f) => f.get_name_id(db),

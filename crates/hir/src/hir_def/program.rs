@@ -33,7 +33,8 @@ pub fn get_programs<'db>(db: &'db dyn WorkspaceDataBase) -> Option<Arc<Vec<Progr
 
 #[salsa::tracked(debug)]
 pub struct ProgramDecl<'db> {
-    pub name: Ident,
+    /// The name as the author wrote it. Matching reads `name(db)`.
+    pub name_with_case: Ident,
 
     #[tracked]
     #[returns(ref)]
@@ -51,8 +52,6 @@ pub struct ProgramDecl<'db> {
     #[returns(ref)]
     pub variables: Vec<VariableDecl<'db>>,
 
-    #[tracked]
-    #[returns(ref)]
     #[tracked]
     #[no_eq]
     #[returns(ref)]
@@ -83,6 +82,13 @@ impl<'db> HasPragmas<'db> for ProgramDecl<'db> {
 }
 
 impl<'db> HasName<'db> for ProgramDecl<'db> {
+    fn get_name_with_case(
+        &self,
+        db: &'db dyn WorkspaceDataBase,
+    ) -> crate::hir_def::interned::identifier::Ident {
+        self.name_with_case(db)
+    }
+
     fn get_name_ident(&self, db: &'db dyn WorkspaceDataBase) -> Ident {
         self.name(db)
     }
@@ -94,7 +100,8 @@ impl<'db> HasName<'db> for ProgramDecl<'db> {
 
 #[derive(Debug, Clone, Hash, salsa::Update)]
 pub struct ProgAccessDecl<'db> {
-    pub name: Ident,
+    /// The name as the author wrote it. Matching reads `name(db)`.
+    pub name_with_case: Ident,
 
     pub variable: PathExpr<'db>,
 
@@ -103,4 +110,19 @@ pub struct ProgAccessDecl<'db> {
     pub spec: Spec<'db>,
 
     pub direction: Option<AccessDirection>,
+}
+
+impl<'db> ProgramDecl<'db> {
+    /// The name, as names are matched: case folded. As written:
+    /// [`Self::name_with_case`].
+    pub fn name(self, db: &'db dyn WorkspaceDataBase) -> Ident {
+        self.name_with_case(db).folded(db)
+    }
+}
+
+impl<'db> ProgAccessDecl<'db> {
+    /// The name, as names are matched: case folded.
+    pub fn name(&self, db: &'db dyn WorkspaceDataBase) -> Ident {
+        self.name_with_case.folded(db)
+    }
 }

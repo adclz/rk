@@ -410,8 +410,8 @@ impl<'db> ToIdeDiagnostic<'db> for OopError<'db> {
                 let mut diag = diag()
                     .message(format!(
                         "'{}' cannot extend FINAL {kind} '{}'",
-                        derived.get_name_ident(db).text(db),
-                        base.get_name_ident(db).text(db),
+                        derived.get_name_with_case(db).text(db),
+                        base.get_name_with_case(db).text(db),
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
@@ -420,7 +420,7 @@ impl<'db> ToIdeDiagnostic<'db> for OopError<'db> {
                 diag.with_related(Related::new(
                     format!(
                         "{kind} '{}' is declared FINAL here",
-                        base.get_name_ident(db).text(db),
+                        base.get_name_with_case(db).text(db),
                     ),
                     base.get_scope_id(db).file(db),
                     base.get_name_span(db),
@@ -445,7 +445,7 @@ impl<'db> ToIdeDiagnostic<'db> for OopError<'db> {
             Self::SuperButNoExtends { call_site, pou } => diag()
                 .message(format!(
                     "'SUPER' used but no EXTENDS clause found on '{}'",
-                    pou.get_name_ident(db).text(db)
+                    pou.get_name_with_case(db).text(db)
                 ))
                 .range(crate::denormalize(db, file, &call_site.get_span(db)).unwrap_or_default())
                 .severity(DiagnosticSeverity::ERROR)
@@ -504,7 +504,7 @@ impl<'db> ToIdeDiagnostic<'db> for OopError<'db> {
                 let mut diag = diag()
                     .message(format!(
                         "missing OVERRIDE keyword for method '{}'",
-                        derived_method.get_name_ident(db).text(db)
+                        derived_method.get_name_with_case(db).text(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
@@ -517,7 +517,7 @@ impl<'db> ToIdeDiagnostic<'db> for OopError<'db> {
                 diag.with_related(Related::new(
                     format!(
                         "base method '{}' is declared here",
-                        base_method.get_name_ident(db).text(db),
+                        base_method.get_name_with_case(db).text(db),
                     ),
                     base_method.get_scope_id(db).file(db),
                     base_method.get_name_span(db),
@@ -529,7 +529,7 @@ impl<'db> ToIdeDiagnostic<'db> for OopError<'db> {
                 let mut diag = diag()
                     .message(format!(
                         "invalid usage of OVERRIDE for method '{}'",
-                        base_method.get_name_ident(db).text(db)
+                        base_method.get_name_with_case(db).text(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
@@ -550,7 +550,7 @@ impl<'db> ToIdeDiagnostic<'db> for OopError<'db> {
                 let mut diag = diag()
                     .message(format!(
                         "cannot override FINAL method '{}'",
-                        base_method.get_name_ident(db).text(db)
+                        base_method.get_name_with_case(db).text(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
@@ -563,7 +563,7 @@ impl<'db> ToIdeDiagnostic<'db> for OopError<'db> {
                 diag.with_related(Related::new(
                     format!(
                         "FINAL method '{}' is declared here",
-                        base_method.get_name_ident(db).text(db),
+                        base_method.get_name_with_case(db).text(db),
                     ),
                     base_method.get_scope_id(db).file(db),
                     base_method.get_name_span(db),
@@ -573,7 +573,7 @@ impl<'db> ToIdeDiagnostic<'db> for OopError<'db> {
                 diag
             }
             Self::InheritedMemberShadowed { derived, base } => {
-                let name = derived.get_name_ident(db).text(db);
+                let name = derived.get_name_with_case(db).text(db);
                 let mut diag = diag()
                     .message(format!(
                         "variable '{name}' is already declared in a base POU"
@@ -600,7 +600,7 @@ impl<'db> ToIdeDiagnostic<'db> for OopError<'db> {
                 let mut diag = diag()
                     .message(format!(
                         "missing implementation for ABSTRACT method '{}'",
-                        base_method.get_name_ident(db).text(db)
+                        base_method.get_name_with_case(db).text(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
@@ -613,7 +613,7 @@ impl<'db> ToIdeDiagnostic<'db> for OopError<'db> {
                 diag.with_related(Related::new(
                     format!(
                         "ABSTRACT method '{}' is declared here",
-                        base_method.get_name_ident(db).text(db),
+                        base_method.get_name_with_case(db).text(db),
                     ),
                     base_method.get_scope_id(db).file(db),
                     base_method.get_name_span(db),
@@ -629,7 +629,7 @@ impl<'db> ToIdeDiagnostic<'db> for OopError<'db> {
                 let mut diag = diag()
                     .message(format!(
                         "{kind} '{}' declares an ABSTRACT method, so it must be ABSTRACT itself",
-                        pou.get_name_ident(db).text(db)
+                        pou.get_name_with_case(db).text(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
@@ -638,7 +638,7 @@ impl<'db> ToIdeDiagnostic<'db> for OopError<'db> {
                 diag.with_related(Related::new(
                     format!(
                         "ABSTRACT method '{}' is declared here",
-                        method.get_name_ident(db).text(db),
+                        method.get_name_with_case(db).text(db),
                     ),
                     method.get_scope_id(db).file(db),
                     method.get_name_span(db),
@@ -657,7 +657,7 @@ impl<'db> ToIdeDiagnostic<'db> for OopError<'db> {
                 let mut diag = diag()
                     .message(format!(
                         "cannot instantiate ABSTRACT {kind} '{}'",
-                        pou.get_name_ident(db).text(db)
+                        pou.get_name_with_case(db).text(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
@@ -669,7 +669,7 @@ impl<'db> ToIdeDiagnostic<'db> for OopError<'db> {
                 diag.with_related(Related::new(
                     format!(
                         "{kind} '{}' is declared ABSTRACT here",
-                        pou.get_name_ident(db).text(db),
+                        pou.get_name_with_case(db).text(db),
                     ),
                     pou.get_scope_id(db).file(db),
                     pou.get_name_span(db),
@@ -685,7 +685,7 @@ impl<'db> ToIdeDiagnostic<'db> for OopError<'db> {
                 let mut diag = diag()
                     .message(format!(
                         "missing implementation for interface method '{}'",
-                        method.get_name_ident(db).text(db)
+                        method.get_name_with_case(db).text(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
@@ -698,8 +698,8 @@ impl<'db> ToIdeDiagnostic<'db> for OopError<'db> {
                 diag.with_related(Related::new(
                     format!(
                         "method '{}' is declared by interface '{}' here",
-                        method.get_name_ident(db).text(db),
-                        declared_by.get_name_ident(db).text(db),
+                        method.get_name_with_case(db).text(db),
+                        declared_by.get_name_with_case(db).text(db),
                     ),
                     method.get_scope_id(db).file(db),
                     method.get_name_span(db),
@@ -734,7 +734,7 @@ impl<'db> ToIdeDiagnostic<'db> for OopError<'db> {
                 let mut diag = diag()
                     .message(format!(
                         "interface type '{}' is not allowed in {section}",
-                        interface.get_name_ident(db).text(db)
+                        interface.get_name_with_case(db).text(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
@@ -744,7 +744,7 @@ impl<'db> ToIdeDiagnostic<'db> for OopError<'db> {
                 diag.with_related(Related::new(
                     format!(
                         "interface '{}' is defined here",
-                        interface.get_name_ident(db).text(db)
+                        interface.get_name_with_case(db).text(db)
                     ),
                     interface.get_scope_id(db).file(db),
                     interface.get_name_span(db),
@@ -766,7 +766,7 @@ impl<'db> ToIdeDiagnostic<'db> for OopError<'db> {
                 diag()
                     .message(format!(
                         "interface '{}' cannot be a {pou_kind} {section}: the instance would store it across calls; interface parameters exist on FUNCTION and METHOD only",
-                        interface.get_name_ident(db).text(db)
+                        interface.get_name_with_case(db).text(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
@@ -777,7 +777,7 @@ impl<'db> ToIdeDiagnostic<'db> for OopError<'db> {
                 let mut diag = diag()
                     .message(format!(
                         "interface type '{}' is not allowed as a return type",
-                        interface.get_name_ident(db).text(db)
+                        interface.get_name_with_case(db).text(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
@@ -787,7 +787,7 @@ impl<'db> ToIdeDiagnostic<'db> for OopError<'db> {
                 diag.with_related(Related::new(
                     format!(
                         "interface '{}' is defined here",
-                        interface.get_name_ident(db).text(db)
+                        interface.get_name_with_case(db).text(db)
                     ),
                     interface.get_scope_id(db).file(db),
                     interface.get_name_span(db),
@@ -801,7 +801,7 @@ impl<'db> ToIdeDiagnostic<'db> for OopError<'db> {
                 let mut diag = diag()
                     .message(format!(
                         "interface type '{}' cannot be nested inside another type (array, reference, or struct)",
-                        interface.get_name_ident(db).text(db)
+                        interface.get_name_with_case(db).text(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
@@ -811,7 +811,7 @@ impl<'db> ToIdeDiagnostic<'db> for OopError<'db> {
                 diag.with_related(Related::new(
                     format!(
                         "interface '{}' is defined here",
-                        interface.get_name_ident(db).text(db)
+                        interface.get_name_with_case(db).text(db)
                     ),
                     interface.get_scope_id(db).file(db),
                     interface.get_name_span(db),
@@ -823,7 +823,7 @@ impl<'db> ToIdeDiagnostic<'db> for OopError<'db> {
                 diag
             }
             Self::InterfaceParamNotAssignable { var, access } => {
-                let name = var.get_name_ident(db).text(db);
+                let name = var.get_name_with_case(db).text(db);
                 let mut diag = diag()
                     .message(format!("cannot assign to interface parameter '{name}'"))
                     .severity(DiagnosticSeverity::ERROR)
@@ -848,7 +848,7 @@ impl<'db> ToIdeDiagnostic<'db> for OopError<'db> {
                 let mut diag = diag()
                     .message(format!(
                         "invalid number of parameters for method '{}': expected {}, got {}",
-                        m1.get_name_ident(db).text(db),
+                        m1.get_name_with_case(db).text(db),
                         expected,
                         got
                     ))
@@ -860,7 +860,7 @@ impl<'db> ToIdeDiagnostic<'db> for OopError<'db> {
                 diag.with_related(Related::new(
                     format!(
                         "base method '{}' is declared here",
-                        m1.get_name_ident(db).text(db)
+                        m1.get_name_with_case(db).text(db)
                     ),
                     m1.get_scope_id(db).file(db),
                     m1.get_name_span(db),
@@ -877,8 +877,8 @@ impl<'db> ToIdeDiagnostic<'db> for OopError<'db> {
                 let mut diag = diag()
                     .message(format!(
                         "parameter '{}' of method '{}' has an incompatible type: expected '{}', got '{}'",
-                        param.name(db).text(db),
-                        method.get_name_ident(db).text(db),
+                        param.name_with_case(db).text(db),
+                        method.get_name_with_case(db).text(db),
                         expected.type_name(db),
                         got.type_name(db),
                     ))
@@ -892,7 +892,7 @@ impl<'db> ToIdeDiagnostic<'db> for OopError<'db> {
                 diag.with_related(Related::new(
                     format!(
                         "the base method declares '{}' as '{}' here",
-                        base_param.name(db).text(db),
+                        base_param.name_with_case(db).text(db),
                         expected.type_name(db),
                     ),
                     base_param.get_scope_id(db).file(db),
@@ -918,7 +918,7 @@ impl<'db> ToIdeDiagnostic<'db> for OopError<'db> {
                 let mut diag = diag()
                     .message(format!(
                         "method '{}' has an incompatible return type: expected '{}', got '{}'",
-                        method.get_name_ident(db).text(db),
+                        method.get_name_with_case(db).text(db),
                         name(expected),
                         name(got),
                     ))
@@ -929,7 +929,7 @@ impl<'db> ToIdeDiagnostic<'db> for OopError<'db> {
                 diag.with_related(Related::new(
                     format!(
                         "base method '{}' declares its return type here",
-                        base.get_name_ident(db).text(db),
+                        base.get_name_with_case(db).text(db),
                     ),
                     base.get_scope_id(db).file(db),
                     ret_span(base),
@@ -945,9 +945,9 @@ impl<'db> ToIdeDiagnostic<'db> for OopError<'db> {
                 let mut diag = diag()
                     .message(format!(
                         "parameter '{}' of method '{}' is named '{}' in the base method",
-                        param.name(db).text(db),
-                        method.get_name_ident(db).text(db),
-                        base_param.name(db).text(db),
+                        param.name_with_case(db).text(db),
+                        method.get_name_with_case(db).text(db),
+                        base_param.name_with_case(db).text(db),
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
@@ -958,7 +958,7 @@ impl<'db> ToIdeDiagnostic<'db> for OopError<'db> {
                 diag.with_related(Related::new(
                     format!(
                         "the base method declares '{}' at this position",
-                        base_param.name(db).text(db),
+                        base_param.name_with_case(db).text(db),
                     ),
                     base_param.get_scope_id(db).file(db),
                     base_param.get_name_span(db),
@@ -973,8 +973,8 @@ impl<'db> ToIdeDiagnostic<'db> for OopError<'db> {
                 let mut diag = diag()
                     .message(format!(
                         "parameter '{}' of method '{}' is {} here but {} in the base method",
-                        param.name(db).text(db),
-                        method.get_name_ident(db).text(db),
+                        param.name_with_case(db).text(db),
+                        method.get_name_with_case(db).text(db),
                         section_keyword(param.kind(db)),
                         section_keyword(base_param.kind(db)),
                     ))
@@ -987,7 +987,7 @@ impl<'db> ToIdeDiagnostic<'db> for OopError<'db> {
                 diag.with_related(Related::new(
                     format!(
                         "the base method declares '{}' as {} here",
-                        base_param.name(db).text(db),
+                        base_param.name_with_case(db).text(db),
                         section_keyword(base_param.kind(db)),
                     ),
                     base_param.get_scope_id(db).file(db),

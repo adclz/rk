@@ -147,7 +147,7 @@ impl<'db> ToIdeDiagnostic<'db> for ControlFlowError<'db> {
                     diag.with_related(Related::new(
                         format!(
                             "declaring '{}' CONSTANT would let the step fold",
-                            var.get_name_ident(db).text(db)
+                            var.get_name_with_case(db).text(db)
                         ),
                         site.scope.file(db),
                         site.get_span(db),

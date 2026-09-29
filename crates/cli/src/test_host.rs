@@ -56,9 +56,16 @@ pub fn run_each(
     let engine = engine()?;
     // Compiled once: instantiation is per test, compilation is not.
     let module = Module::new(&engine, wasm).ctx("compiling the module")?;
+    // A test's name is an identifier: `T_ADD` finds `t_add` (IEC 61131-3
+    // §6.1.2), with the same Unicode fold the compiler matches names in.
+    let filter = filter.map(str::to_lowercase);
     let tests: Vec<TestEntry> = discover(wasm)
         .into_iter()
-        .filter(|t| filter.is_none_or(|f| t.path.contains(f)))
+        .filter(|t| {
+            filter
+                .as_deref()
+                .is_none_or(|f| t.path.to_lowercase().contains(f))
+        })
         .collect();
 
     let mut results = Vec::with_capacity(tests.len());

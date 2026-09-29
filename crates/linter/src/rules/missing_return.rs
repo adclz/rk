@@ -65,7 +65,7 @@ pub fn check_pragma<'db>(
     };
     decl.result
         .as_ref()
-        .is_some_and(|r| r.ident.caseless(db) == f.name(db).caseless(db))
+        .is_some_and(|r| r.ident(db) == f.name(db))
 }
 
 /// Post-walk check: if no return assignment was found, emit the diagnostic.
@@ -95,13 +95,17 @@ pub fn check_result<'db>(
                     return;
                 }
             }
-            (f.name(db).text(db), "FUNCTION", f.get_name_span(db))
+            (
+                f.name_with_case(db).text(db),
+                "FUNCTION",
+                f.get_name_span(db),
+            )
         }
         ScopeKind::MethodDecl(m) => {
             if m.return_type(db).is_none() {
                 return;
             }
-            (m.name(db).text(db), "METHOD", m.get_name_span(db))
+            (m.name_with_case(db).text(db), "METHOD", m.get_name_span(db))
         }
         _ => return,
     };

@@ -138,20 +138,20 @@ impl<'db> ToIdeDiagnostic<'db> for VisibilityError<'db> {
                     SameNamespaceResult::DifferentNamespaces((ns1, ns2)) => {
                         diag.with_note(format!(
                             "calling scope is in NAMESPACE '{}', item is only available in NAMESPACE '{}'",
-                            ns1.path(db).to_string(db),
-                            ns2.path(db).to_string(db)
+                            ns1.path_with_case(db).to_string(db),
+                            ns2.path_with_case(db).to_string(db)
                         ));
                     }
                     SameNamespaceResult::GlobalAndNamespace(ns) => {
                         diag.with_note(format!(
                             "calling scope is in the GLOBAL scope, item is only available in NAMESPACE '{}'",
-                            ns.path(db).to_string(db),
+                            ns.path_with_case(db).to_string(db),
                         ));
                     }
                     SameNamespaceResult::NamespaceAndGlobal(ns) => {
                         diag.with_note(format!(
                             "calling scope is in NAMESPACE '{}', item scope is only available the GLOBAL scope",
-                            ns.path(db).to_string(db),
+                            ns.path_with_case(db).to_string(db),
                         ));
                     }
                     SameNamespaceResult::Same => {} // Should not happen
@@ -165,7 +165,7 @@ impl<'db> ToIdeDiagnostic<'db> for VisibilityError<'db> {
                 let mut diag = diag()
                     .message(format!(
                         "can not access '{}' from INTERNAL namespace",
-                        namespace.path(db).to_string(db)
+                        namespace.path_with_case(db).to_string(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)

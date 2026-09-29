@@ -33,14 +33,7 @@ pub struct ExprLowerCtx<'db> {
     pub string_pool: std::rc::Rc<std::cell::RefCell<StringPool>>,
     /// Phase B: in a specialized body (`drive$@Worker`), each interface param's
     /// concrete POU.
-    pub iface_subs: Option<
-        std::rc::Rc<
-            rustc_hash::FxHashMap<
-                hir::hir_def::interned::identifier::Ident,
-                hir::hir_def::pous::pou::Pou<'db>,
-            >,
-        >,
-    >,
+    pub iface_subs: Option<std::rc::Rc<crate::lower::mono_iface::IfaceSubs<'db>>>,
     /// Phase B: call site → mangled specialization (`drive` -> `drive$@Worker`),
     /// module-global.
     pub iface_call_rewrites: Option<
@@ -265,9 +258,9 @@ impl<'db> ExprLowerCtx<'db> {
                 })
             }
 
-            ExprKind::FoldExpr {
-                param, operator, ..
-            } => self.lower_fold_expr(*param, *operator),
+            ExprKind::FoldExpr { param_id, operator } => {
+                self.lower_fold_expr(param_id.ident(self.db), *operator)
+            }
         }
     }
 
@@ -631,14 +624,12 @@ impl<'db> ExprLowerCtx<'db> {
                     .into_iter()
                     // The variant arrives as written and HIR's resolved one is folded:
                     // reconcile the spellings here.
-                    .find(|(v, _)| {
-                        v.name.ident.caseless(self.db) == variant.ident.caseless(self.db)
-                    })
+                    .find(|(v, _)| v.name.ident(self.db) == variant.ident(self.db))
                     .map(|(_, value)| value)
                     .ok_or_else(|| {
                         LowerTypeError::UnsupportedType(format!(
                             "Unknown enum variant '{}'",
-                            variant.ident.text(self.db)
+                            variant.with_case.text(self.db)
                         ))
                     })?;
                 // The constant's lane is the enum's declared storage (an LINT-based
@@ -1008,16 +999,22 @@ impl<'db> ExprLowerCtx<'db> {
             }
         }
 
+        // The callable's result in a longer path, `MakePt.x`, however it is
+        // spelled: held under the declared name, and before any member.
+        if let Some(root_expr) = root.flatten(self.db).first().map(|s| s.get_expr(self.db))
+            && let Some(declared) = hir::hir_ty::body::infer_body(self.db, root.scope_id(self.db))
+                .result_roots
+                .get(&root_expr)
+        {
+            return MirPlace::Local(*declared);
+        }
+
         // No `this` pointer: the root is a local.
         let Some(this_struct) = self.this_struct.as_ref() else {
             return MirPlace::Local(ident);
         };
 
-        match this_struct
-            .fields
-            .iter()
-            .find(|f| f.name.caseless(self.db) == ident.caseless(self.db))
-        {
+        match this_struct.fields.iter().find(|f| f.name(self.db) == ident) {
             Some(field) => {
                 let this_field = MirPlace::ThisField {
                     field_name: ident,
@@ -1121,7 +1118,7 @@ impl<'db> ExprLowerCtx<'db> {
         match path_expr.expr(self.db) {
             PathExprKind::VarAccess(var) => {
                 let field_name = match &var {
-                    VarAccess::Simple(span_ident) => span_ident.ident,
+                    VarAccess::Simple(span_ident) => span_ident.ident(self.db),
                 };
 
                 // The layout of the instance this body runs on, as the lowering caller
@@ -1131,10 +1128,7 @@ impl<'db> ExprLowerCtx<'db> {
                 // The resolved this-struct field carries the pointer type and `by_ref`
                 // flag; the inferred type is the error-recovery fallback.
                 if let Some(MirType::Struct(s)) = &this_type
-                    && let Some(field) = s
-                        .fields
-                        .iter()
-                        .find(|f| f.name.caseless(self.db) == field_name.caseless(self.db))
+                    && let Some(field) = s.fields.iter().find(|f| f.name(self.db) == field_name)
                 {
                     let this_field = MirPlace::ThisField {
                         field_name,
@@ -1157,7 +1151,7 @@ impl<'db> ExprLowerCtx<'db> {
                 // Nested field: THIS.a.b - lower the inner path first
                 let inner = self.lower_this_path(field_expr.path)?;
                 let field_name = match &field_expr.var {
-                    VarAccess::Simple(span_ident) => span_ident.ident,
+                    VarAccess::Simple(span_ident) => span_ident.ident(self.db),
                 };
                 self.member_place(inner, field_expr.path.infer(self.db), field_name)
             }
@@ -1243,7 +1237,7 @@ impl<'db> ExprLowerCtx<'db> {
     ) -> Result<(u32, MirType), LowerTypeError> {
         if let Some(MirType::Struct(s)) = this_type {
             for field in &s.fields {
-                if field.name.caseless(self.db) == field_name.caseless(self.db) {
+                if field.name(self.db) == field_name {
                     return Ok((field.offset, field.ty.clone()));
                 }
             }
@@ -1264,7 +1258,7 @@ impl<'db> ExprLowerCtx<'db> {
             PathExprKind::Field(field_expr) => {
                 let inner = self.lower_path_expr_chain(base, field_expr.path)?;
                 let field_name = match &field_expr.var {
-                    VarAccess::Simple(span_ident) => span_ident.ident,
+                    VarAccess::Simple(span_ident) => span_ident.ident(self.db),
                 };
                 // Offset and type come from the base type's layout in one lookup.
                 self.member_place(inner, field_expr.path.infer(self.db), field_name)
@@ -1330,7 +1324,7 @@ impl<'db> ExprLowerCtx<'db> {
         // on both sides.
         if let Some(MirType::Struct(s)) = &effective_mir {
             for field in &s.fields {
-                if field.name.caseless(self.db) == field_name.caseless(self.db) {
+                if field.name(self.db) == field_name {
                     return Ok(field.clone());
                 }
             }
@@ -1620,7 +1614,6 @@ impl<'db> ExprLowerCtx<'db> {
             }
         };
         let receiver_path = field.path;
-        let root_ident = self.find_root_var_ident(receiver_path);
 
         let method_decl = match method {
             MethodRef::Declared(md) => md,
@@ -1628,9 +1621,8 @@ impl<'db> ExprLowerCtx<'db> {
             // is known via `iface_subs`.
             MethodRef::Prototype(proto) => {
                 let concrete = self
-                    .iface_subs
-                    .as_ref()
-                    .and_then(|m| m.get(&root_ident).copied())
+                    .root_binding(receiver_path)
+                    .and_then(|param| self.iface_subs.as_ref()?.get(&param).copied())
                     .ok_or_else(|| {
                         LowerTypeError::UnsupportedType(
                             "interface method call not monomorphized (receiver is not a specialized interface param)"
@@ -1657,11 +1649,11 @@ impl<'db> ExprLowerCtx<'db> {
         let callee = match receiver_path.infer(self.db).normalize(self.db) {
             Type::FunctionBlock(fb) => self.method_symbol(
                 hir::hir_def::pous::pou::Pou::FunctionBlock(fb),
-                method_decl.name(self.db),
+                method_decl.name_with_case(self.db),
             ),
             Type::Class(c) => self.method_symbol(
                 hir::hir_def::pous::pou::Pou::Class(c),
-                method_decl.name(self.db),
+                method_decl.name_with_case(self.db),
             ),
             // Not an instance type: fall back to where the method was declared.
             _ => self.method_callee_symbol(method_decl)?,
@@ -1699,7 +1691,7 @@ impl<'db> ExprLowerCtx<'db> {
             }
         };
 
-        Ok(self.method_symbol(owner_pou, method_decl.name(self.db)))
+        Ok(self.method_symbol(owner_pou, method_decl.name_with_case(self.db)))
     }
 
     /// `<Owner>#<method>`, where the owner is the POU the body is emitted
@@ -1768,7 +1760,7 @@ impl<'db> ExprLowerCtx<'db> {
                 }
                 _ => path
                     .expr(self.db)
-                    .map(|pe| pe.ident(self.db).ident)
+                    .map(|pe| pe.ident(self.db).ident(self.db))
                     .ok_or_else(|| {
                         LowerTypeError::UnsupportedType("Function call without name".to_string())
                     })?,
@@ -2194,7 +2186,7 @@ impl<'db> ExprLowerCtx<'db> {
                             // the arguments after it.
                             return Err(LowerTypeError::UnsupportedType(format!(
                                 "input '{}' was omitted with nothing to pass",
-                                var.name(self.db).text(self.db)
+                                var.name_with_case(self.db).text(self.db)
                             )));
                         }
                         _ => {}
@@ -2274,7 +2266,10 @@ impl<'db> ExprLowerCtx<'db> {
                         let value = *value;
                         // HIR matched the param to a declared variable, so the field must exist
                         // in the layout; a miss is HIR and MIR disagreeing.
-                        let Some(field) = struct_type.fields.iter().find(|f| f.name == var_name)
+                        let Some(field) = struct_type
+                            .fields
+                            .iter()
+                            .find(|f| f.name(self.db) == var_name)
                         else {
                             return Err(LowerTypeError::UnsupportedType(format!(
                                 "input '{}' has no field in the emitted FB layout",
@@ -2349,7 +2344,11 @@ impl<'db> ExprLowerCtx<'db> {
                 }
                 hir::hir_ty::body::ParamBinding::Output(variable) => {
                     // Same contract as inputs: a layout miss is a divergence.
-                    let Some(field) = struct_type.fields.iter().find(|f| f.name == var_name) else {
+                    let Some(field) = struct_type
+                        .fields
+                        .iter()
+                        .find(|f| f.name(self.db) == var_name)
+                    else {
                         return Err(LowerTypeError::UnsupportedType(format!(
                             "output '{}' has no field in the emitted FB layout",
                             var_name.text(self.db)
@@ -2451,7 +2450,14 @@ impl<'db> ExprLowerCtx<'db> {
         // `THIS.m()` and bare `m()` dispatch against the POU this body is emitted
         // for; `SUPER.m()` is static (IEC 9b/10b) and keeps the base.
         let callee = match (virtual_dispatch, self.this_pou) {
-            (true, Some(owner)) => self.method_symbol(owner, method_decl.name(self.db)),
+            // The owner's own method for the name, its override or the one it
+            // inherits, under the spelling its body is emitted with: `HOOK`
+            // overrides `Hook`.
+            (true, Some(owner)) => {
+                let name = method_decl.name(self.db);
+                let own = hir::hir_ty::head::inheritance::implementing_method(self.db, owner, name);
+                self.method_symbol(owner, own.unwrap_or(method_decl).name_with_case(self.db))
+            }
             _ => self.method_callee_symbol(method_decl)?,
         };
         let receiver = MirPlace::ThisField {
@@ -2475,7 +2481,7 @@ impl<'db> ExprLowerCtx<'db> {
     ) -> hir::hir_def::interned::identifier::Ident {
         match path_expr.expr(self.db) {
             PathExprKind::VarAccess(var) => match var {
-                VarAccess::Simple(span_ident) => span_ident.ident,
+                VarAccess::Simple(span_ident) => span_ident.ident(self.db),
             },
             PathExprKind::Field(field_expr) => self.find_root_var_ident(field_expr.path),
             PathExprKind::Index(index_expr) => self.find_root_var_ident(index_expr.path),

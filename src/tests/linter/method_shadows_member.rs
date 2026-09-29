@@ -118,3 +118,37 @@ END_FUNCTION_BLOCK
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "method-shadows-member"), @r"");
 }
+
+/// Each is named as it is declared: the member is `Speed`, the method's
+/// variable `speed`.
+#[rstest]
+fn the_member_is_named_as_declared(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK Motor
+VAR
+    Speed : INT;
+END_VAR
+    METHOD Set : INT
+    VAR
+        speed : INT;
+    END_VAR
+        Set := speed;
+    END_METHOD
+END_FUNCTION_BLOCK
+"#;
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "method-shadows-member"), @r"
+    [L0116] Warning: method variable shadows an owner member
+       ,-[ file:///test0.st:8:9 ]
+       |
+     4 |     Speed : INT;
+       |     ^^|^^
+       |       `---- member 'Speed' is declared here
+       |
+     8 |         speed : INT;
+       |         ^^|^^
+       |           `---- method variable 'speed' shadows the member 'Speed' of its FB/class
+       |
+       | Note: lint rule: method-shadows-member
+    ---'
+    ");
+}

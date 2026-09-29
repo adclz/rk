@@ -84,7 +84,7 @@ impl std::error::Error for TypeMismatch {}
 
 /// A symbol path as it is looked up: case-folded (IEC 61131-3 6.1.2),
 /// matching the front end's fold.
-fn fold_path(path: &str) -> String {
+pub(crate) fn fold_path(path: &str) -> String {
     path.to_lowercase()
 }
 

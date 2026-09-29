@@ -18,7 +18,7 @@ fn struct_symbol_index<'db>(
     let mut struct_fields = vec![];
     strukt.elements(db).iter().for_each(|e| {
         struct_fields.push(NamedSymbol {
-            name: e.name(db).text(db).to_string(),
+            name: e.name_with_case(db).text(db).to_string(),
             namespace: None,
             kind: SymbolKind::StructField(*e),
         });
@@ -51,7 +51,7 @@ pub fn fuzzy_type_fields<'db>(
             let index = method_symbol_index(db, CallableType::FunctionBlock(fb));
             fuzzy_suggest_from_index(
                 db,
-                fb.get_name_ident(db).text(db).as_str(),
+                fb.get_name_with_case(db).text(db).as_str(),
                 "field",
                 index,
                 diag,
@@ -64,7 +64,7 @@ pub fn fuzzy_type_fields<'db>(
             let mut symbols = vec![];
             for v in def_map.global_variables.values() {
                 symbols.push(NamedSymbol {
-                    name: v.name(db).text(db).to_string(),
+                    name: v.name_with_case(db).text(db).to_string(),
                     namespace: None,
                     kind: SymbolKind::Variable(*v),
                 });
@@ -72,7 +72,7 @@ pub fn fuzzy_type_fields<'db>(
             let index = vec![SymbolIndex::create(db, symbols.into_boxed_slice())];
             fuzzy_suggest_from_index(
                 db,
-                c.get_name_ident(db).text(db).as_str(),
+                c.get_name_with_case(db).text(db).as_str(),
                 "field",
                 &index,
                 diag,

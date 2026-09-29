@@ -34,7 +34,7 @@ pub fn check<'db>(
     > = FxHashMap::default();
 
     for ns in sema.namespaces.iter() {
-        seen.entry(ns.path(db).caseless(db)).or_default().push(*ns);
+        seen.entry(ns.path(db)).or_default().push(*ns);
     }
 
     for decls in seen.values() {
@@ -45,7 +45,7 @@ pub fn check<'db>(
         // Grouped by the FOLDED path, since a namespace reopened in another
         // case is the same namespace — but named by the spelling the first
         // declaration used, which is what the reader wrote.
-        let path_str = decls[0].path(db).to_string(db);
+        let path_str = decls[0].path_with_case(db).to_string(db);
 
         // Emit on every duplicate (skip the first)
         for ns in &decls[1..] {

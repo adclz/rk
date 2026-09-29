@@ -61,12 +61,7 @@ pub fn lower_stmts<'db>(
 pub fn lower_stmts_with_ctx<'db>(
     db: &'db dyn WorkspaceDataBase,
     stmts: &[Stmt<'db>],
-    iface_subs: Option<
-        &rustc_hash::FxHashMap<
-            hir::hir_def::interned::identifier::Ident,
-            hir::hir_def::pous::pou::Pou<'db>,
-        >,
-    >,
+    iface_subs: Option<&super::mono_iface::IfaceSubs<'db>>,
     iface_call_rewrites: &super::mono_iface::IfaceCallRewrites<'db>,
     string_pool: std::rc::Rc<std::cell::RefCell<super::lower_expr::StringPool>>,
     // Phase C: inside an arity specialization, how this body's pack expanded.
@@ -95,12 +90,7 @@ pub fn lower_stmts_fb_body<'db>(
     // method.
     this_pou: Option<hir::hir_def::pous::pou::Pou<'db>>,
     string_pool: std::rc::Rc<std::cell::RefCell<super::lower_expr::StringPool>>,
-    iface_subs: Option<
-        &rustc_hash::FxHashMap<
-            hir::hir_def::interned::identifier::Ident,
-            hir::hir_def::pous::pou::Pou<'db>,
-        >,
-    >,
+    iface_subs: Option<&super::mono_iface::IfaceSubs<'db>>,
     iface_call_rewrites: &super::mono_iface::IfaceCallRewrites<'db>,
 ) -> Result<(Vec<MirStmt>, super::lower_expr::CallScratch), LowerTypeError> {
     let mut ctx = ExprLowerCtx::with_this_struct(db, this_struct, string_pool);

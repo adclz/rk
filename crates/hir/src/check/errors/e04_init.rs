@@ -111,13 +111,13 @@ impl<'db> ToIdeDiagnostic<'db> for InitError<'db> {
                                 d.with_note(format!(
                                     "'{}' is CONSTANT but declares no initial value, \
                                      so there is nothing to fold",
-                                    decl.name(db).text(db)
+                                    decl.name_with_case(db).text(db)
                                 ));
                             } else {
                                 d.with_note(format!(
                                     "'{}' is CONSTANT, but its own value does not fold \
                                      (a reference cycle, or a non-constant initializer)",
-                                    decl.name(db).text(db)
+                                    decl.name_with_case(db).text(db)
                                 ));
                             }
                         }
@@ -125,7 +125,7 @@ impl<'db> ToIdeDiagnostic<'db> for InitError<'db> {
                             d.with_note(format!(
                                 "'{}' is an ordinary variable; declare it CONSTANT \
                                  if its value never changes",
-                                decl.name(db).text(db)
+                                decl.name_with_case(db).text(db)
                             ));
                         }
                         None => {
@@ -137,7 +137,7 @@ impl<'db> ToIdeDiagnostic<'db> for InitError<'db> {
                                     d.with_note(format!(
                                         "'{}' is an ordinary variable; declare it CONSTANT \
                                          if its value never changes",
-                                        ident.text(db)
+                                        global.name_with_case(db).text(db)
                                     ));
                                     return d;
                                 }
@@ -150,13 +150,13 @@ impl<'db> ToIdeDiagnostic<'db> for InitError<'db> {
                                         "'{}' IS a CONSTANT, but a TYPE declaration cannot \
                                          see it: a TYPE default folds only literals, \
                                          arithmetic, and constants in its own scope",
-                                        ident.text(db)
+                                        global.name_with_case(db).text(db)
                                     ));
                                 } else {
                                     d.with_note(format!(
                                         "'{}' IS a CONSTANT: declare it in this POU as \
                                          `VAR_EXTERNAL CONSTANT` and the reference folds",
-                                        ident.text(db)
+                                        global.name_with_case(db).text(db)
                                     ));
                                 }
                             }
@@ -188,7 +188,7 @@ impl<'db> ToIdeDiagnostic<'db> for InitError<'db> {
                 .call(),
             Self::UninitializableMember { expr, var, kind } => {
                 use crate::HasName;
-                let name = var.get_name_ident(db).text(db);
+                let name = var.get_name_with_case(db).text(db);
                 let (what, note) = match kind {
                     UninitializableMember::InOut => (
                         "a VAR_IN_OUT, which each call binds to its argument",

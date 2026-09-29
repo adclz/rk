@@ -215,7 +215,7 @@ fn collect_usings(db: &dyn WorkspaceDataBase, sema: &SemanticIndex) -> String {
             format!(
                 "USING {}:  {}\n",
                 r.path(db).to_string(db),
-                namespace_index(db, *r.path(db))
+                namespace_index(db, r.path(db).path(db))
                     .iter()
                     .flat_map(|ns| ns
                         .pous(db)
@@ -761,9 +761,7 @@ END_FUNCTION_BLOCK
 
     let fb = find_pou_with_name(&with_db, *file1, "fb").unwrap();
     let variables = &fb.get_scope_id(&with_db).def_map(&with_db).global_variables;
-    let var_i1 = variables
-        .get(&Ident::from_slice(&with_db, "i1").caseless(&with_db))
-        .unwrap();
+    let var_i1 = variables.get(&Ident::from_slice(&with_db, "i1")).unwrap();
     let infer = infer_signature(&with_db, var_i1.scope_id(&with_db));
     let ty = infer.type_of_specs[&var_i1.spec(&with_db)];
 

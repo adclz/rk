@@ -41,7 +41,7 @@ pub fn check<'db>(
         ScopeKind::Pou(Pou::FunctionBlock(fb)) => {
             check_variables(
                 db,
-                fb.name(db).text(db),
+                &fb,
                 "FUNCTION_BLOCK",
                 fb.get_name_span(db),
                 fb.variables(db),
@@ -52,7 +52,7 @@ pub fn check<'db>(
         ScopeKind::Pou(Pou::Class(cl)) => {
             check_variables(
                 db,
-                cl.name(db).text(db),
+                &cl,
                 "CLASS",
                 cl.get_name_span(db),
                 cl.variables(db),
@@ -63,7 +63,7 @@ pub fn check<'db>(
         ScopeKind::MethodDecl(m) => {
             check_variables(
                 db,
-                m.name(db).text(db),
+                &m,
                 "METHOD",
                 m.get_name_span(db),
                 m.variables(db),
@@ -74,7 +74,7 @@ pub fn check<'db>(
         ScopeKind::Program(p) => {
             check_variables(
                 db,
-                p.name(db).text(db),
+                &p,
                 "PROGRAM",
                 p.get_name_span(db),
                 p.variables(db),
@@ -88,18 +88,20 @@ pub fn check<'db>(
 
 fn check_variables<'db>(
     db: &'db dyn WorkspaceDataBase,
-    pou_name: &str,
+    pou: &dyn HasName<'db>,
     pou_kind: &str,
     pou_name_span: tree_sitter::Range,
     variables: &[VariableDecl<'db>],
     file: File,
     diagnostics: &mut Vec<IdeDiagnostic>,
 ) {
+    let pou_ident = pou.get_name_ident(db);
     for var in variables {
-        if var.name(db).text(db).to_lowercase() == pou_name.to_lowercase() {
+        if var.name(db) == pou_ident {
             let mut d = diag()
                 .message(format!(
-                    "variable '{pou_name}' has the same name as its declaring {pou_kind}"
+                    "variable '{}' has the same name as its declaring {pou_kind}",
+                    var.name_with_case(db).text(db)
                 ))
                 .desc(&SelfShadowing)
                 .range(
@@ -110,7 +112,10 @@ fn check_variables<'db>(
                 .call();
 
             d.with_related(Related::new(
-                format!("{pou_kind} '{pou_name}' is declared here"),
+                format!(
+                    "{pou_kind} '{}' is declared here",
+                    pou.get_name_with_case(db).text(db)
+                ),
                 file,
                 pou_name_span,
             ));

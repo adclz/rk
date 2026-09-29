@@ -237,7 +237,7 @@ impl<'db> ToIdeDiagnostic<'db> for PragmaError<'db> {
                     .message(format!(
                         "{} '{}' {}",
                         kind.section(),
-                        var.name(db).text(db),
+                        var.name_with_case(db).text(db),
                         kind.message(),
                     ))
                     .severity(DiagnosticSeverity::ERROR)
@@ -250,7 +250,7 @@ impl<'db> ToIdeDiagnostic<'db> for PragmaError<'db> {
             Self::ExternNonScalarReturn { func, ret } => diag()
                 .message(format!(
                     "the return type of '{}' can only be a scalar",
-                    func.get_name_ident(db).text(db),
+                    func.get_name_with_case(db).text(db),
                 ))
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
@@ -289,7 +289,7 @@ impl<'db> ToIdeDiagnostic<'db> for PragmaError<'db> {
                 let mut diag = diag()
                     .message(format!(
                         "'{}' cannot be exported: it {}",
-                        func.get_name_ident(db).text(db),
+                        func.get_name_with_case(db).text(db),
                         kind.message(),
                     ))
                     .severity(DiagnosticSeverity::ERROR)

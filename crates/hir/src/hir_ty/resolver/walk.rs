@@ -170,7 +170,7 @@ impl<'db> Type<'db> {
         name: &Ident,
     ) -> FieldLookup<'db> {
         match self {
-            Type::Struct(st) => match st.struct_elements(db).get(&name.caseless(db)) {
+            Type::Struct(st) => match st.struct_elements(db).get(name) {
                 Some(field) => FieldLookup::StructElement(*field),
                 None => FieldLookup::NotFound,
             },
@@ -187,18 +187,18 @@ impl<'db> Type<'db> {
                         self.as_pou(db).and_then(|pou| {
                             instance_members(db, pou)
                                 .iter()
-                                .find(|m| m.var.name(db).caseless(db) == name.caseless(db))
+                                .find(|m| m.var.name(db) == *name)
                                 .map(|m| m.var)
                         })
                     };
-                    if let Some(var) = def_map.global_variables.get(&name.caseless(db)) {
+                    if let Some(var) = def_map.global_variables.get(name) {
                         FieldLookup::Variable(*var)
                     } else if let Some(var) = inherited_var() {
                         FieldLookup::Variable(var)
-                    } else if let Some(m) = def_map.declared_methods.get(&name.caseless(db)) {
+                    } else if let Some(m) = def_map.declared_methods.get(name) {
                         FieldLookup::Method(*m)
                     } else if let Some(pou) = self.as_pou(db) {
-                        match inherited_methods(db, pou).methods.get(&name.caseless(db)) {
+                        match inherited_methods(db, pou).methods.get(name) {
                             Some(inherited) => FieldLookup::Method(inherited.method),
                             None => FieldLookup::NotFound,
                         }
@@ -248,13 +248,13 @@ impl<'db> Type<'db> {
         let Some(scope) = self.as_walkable_scope(db) else {
             return found;
         };
-        let key = name.caseless(db);
-        if let Some(m) = scope.def_map(db).declared_methods.get(&key) {
+        let key = name;
+        if let Some(m) = scope.def_map(db).declared_methods.get(key) {
             return FieldLookup::Method(*m);
         }
         match self
             .as_pou(db)
-            .and_then(|pou| inherited_methods(db, pou).methods.get(&key).copied())
+            .and_then(|pou| inherited_methods(db, pou).methods.get(key).copied())
         {
             Some(inherited) => FieldLookup::Method(inherited.method),
             None => found,
@@ -401,7 +401,7 @@ impl<'db> Type<'db> {
         let steps = path_expr.flatten(db);
 
         if let Some(PathExprWalkStep::Field { ident, expr }) = steps.first() {
-            if let Some(method) = inherited.methods.get(&ident.ident.caseless(db)) {
+            if let Some(method) = inherited.methods.get(&ident.ident(db)) {
                 check_visibility(db, &ident.as_call_site(db), method.method, &mut ctx.errors);
                 ctx.type_of_path_expr
                     .insert(*expr, Type::MethodDecl(method.method));
@@ -411,7 +411,7 @@ impl<'db> Type<'db> {
                 ctx.errors.push(
                     ResolveError::NoSuchFieldPathExpr {
                         expr: path_expr,
-                        ident: **ident,
+                        ident: ident.ident(db),
                         ty: current,
                     }
                     .to_diagnostic(db, ctx.scope.file(db)),
@@ -469,8 +469,8 @@ impl<'db> Type<'db> {
         ctx: &mut BodyInferenceResult<'db>,
     ) {
         let lookup = match self.seen_from_inside(db, ctx.scope) {
-            true => self.resolve_field(db, &ident.ident),
-            false => self.resolve_member_from_outside(db, &ident.ident),
+            true => self.resolve_field(db, &ident.ident(db)),
+            false => self.resolve_member_from_outside(db, &ident.ident(db)),
         };
         match lookup {
             FieldLookup::StructElement(field) => {
@@ -502,7 +502,7 @@ impl<'db> Type<'db> {
                     ctx.errors.push(
                         ResolveError::NoSuchFieldPathExpr {
                             expr,
-                            ident: **ident,
+                            ident: ident.ident(db),
                             ty: place.current_typ,
                         }
                         .to_diagnostic(db, ctx.scope.file(db)),
@@ -718,7 +718,7 @@ impl<'db> Type<'db> {
         place: &mut InitPlaceBuilder<'db>,
         ctx: &mut InitExprInferenceResult<'db>,
     ) {
-        match self.resolve_field(db, &name.ident) {
+        match self.resolve_field(db, &name.ident(db)) {
             FieldLookup::StructElement(field) => {
                 place.current_init_typ = Type::StructElement(field);
                 ctx.type_of_init_expr.insert(expr, place.current_init_typ);
@@ -754,7 +754,7 @@ impl<'db> Type<'db> {
                     ctx.errors.push(
                         ConfigError::PartlyLocatedOverwritten {
                             site: crate::CallSite::from_scoped(db, &expr),
-                            member: var.name(db).text(db).clone(),
+                            member: var.name_with_case(db).text(db).clone(),
                             address: var
                                 .location(db)
                                 .map(|dv| compact_str::CompactString::from(dv.to_address(db)))
@@ -768,7 +768,7 @@ impl<'db> Type<'db> {
                 ctx.errors.push(
                     ResolveError::NoSuchFieldInitExpr {
                         expr,
-                        ident: **name,
+                        ident: name.ident(db),
                         ty: place.current_init_typ,
                     }
                     .to_diagnostic(db, ctx.scope.file(db)),

@@ -69,13 +69,13 @@ impl<'db> ToIdeDiagnostic<'db> for ReferenceError<'db> {
                 .range(crate::denormalize(db, file, &expr.get_span(db)).unwrap_or_default())
                 .call(),
             Self::DerefPossiblyNull { var, expr, state } => {
-                let name = var.get_name_ident(db).text(db);
+                let name = var.get_name_with_case(db).text(db);
                 // The related span may belong to ANOTHER variable: a state
                 // propagates through `ptr := ptr_2`, so name whichever
                 // variable the span actually declares or assigns.
                 let (message, related_msg, site) = match state {
                     NullState::Uninitialized(origin) => {
-                        let from = origin.var.get_name_ident(db).text(db);
+                        let from = origin.var.get_name_with_case(db).text(db);
                         (
                             format!("dereference of reference '{name}' which is never initialized"),
                             format!("'{from}' declared without initializer here"),
@@ -83,7 +83,7 @@ impl<'db> ToIdeDiagnostic<'db> for ReferenceError<'db> {
                         )
                     }
                     NullState::Null(origin) => {
-                        let from = origin.var.get_name_ident(db).text(db);
+                        let from = origin.var.get_name_with_case(db).text(db);
                         (
                             format!("dereference of reference '{name}' which is null"),
                             format!("'{from}' set to NULL here"),
@@ -109,7 +109,7 @@ impl<'db> ToIdeDiagnostic<'db> for ReferenceError<'db> {
                 let mut diag = diag()
                     .message(format!(
                         "reference to '{}' outlives the call that owns it",
-                        var.name(db).text(db)
+                        var.name_with_case(db).text(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
@@ -118,7 +118,7 @@ impl<'db> ToIdeDiagnostic<'db> for ReferenceError<'db> {
                 diag.with_related(Related::new(
                     format!(
                         "'{}' is per-call storage, declared here",
-                        var.name(db).text(db),
+                        var.name_with_case(db).text(db),
                     ),
                     var.get_scope_id(db).file(db),
                     var.get_span(db),

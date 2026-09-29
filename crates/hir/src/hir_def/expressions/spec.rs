@@ -107,7 +107,8 @@ pub struct Struct<'db> {
 
 #[salsa::tracked(debug)]
 pub struct StructElement<'db> {
-    pub name: Ident,
+    /// The name as the author wrote it. Matching reads `name(db)`.
+    pub name_with_case: Ident,
 
     #[tracked]
     #[no_eq]
@@ -136,6 +137,13 @@ impl<'db> HirNodeInfo<'db> for StructElement<'db> {
 }
 
 impl<'db> HasName<'db> for StructElement<'db> {
+    fn get_name_with_case(
+        &self,
+        db: &'db dyn WorkspaceDataBase,
+    ) -> crate::hir_def::interned::identifier::Ident {
+        self.name_with_case(db)
+    }
+
     fn get_name_ident(&self, db: &'db dyn WorkspaceDataBase) -> Ident {
         self.name(db)
     }
@@ -170,4 +178,12 @@ pub struct SubRange<'db> {
     pub _type: Spec<'db>,
     pub lower: Expr<'db>,
     pub upper: Expr<'db>,
+}
+
+impl<'db> StructElement<'db> {
+    /// The name, as names are matched: case folded. As written:
+    /// [`Self::name_with_case`].
+    pub fn name(self, db: &'db dyn WorkspaceDataBase) -> Ident {
+        self.name_with_case(db).folded(db)
+    }
 }

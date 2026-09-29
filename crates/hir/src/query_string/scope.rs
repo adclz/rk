@@ -7,7 +7,7 @@ use crate::hir_ty::resolver::visibility::{first_closed_internal, pou_visible_fro
 use crate::{
     HasName,
     hir_def::{
-        interned::{identifier::CaselessIdent, namespace::NamespacePath},
+        interned::{identifier::Ident, namespace::NamespacePath},
         namespace::NamespaceDecl,
         pous::{pou::Pou, variable::VariableDecl},
         scope::{ScopeId, ScopeKind},
@@ -280,9 +280,7 @@ fn search_file_indexes<'db>(
             SymbolKind::Pou(pou) if include_pous => {
                 // Skip if already defined locally in this scope
                 if let Some(local) = local
-                    && local
-                        .pous
-                        .contains_key(&pou.get_name_ident(db).caseless(db))
+                    && local.pous.contains_key(&pou.get_name_ident(db))
                 {
                     return ControlFlow::Continue::<()>(());
                 }
@@ -348,7 +346,7 @@ fn search_file_indexes<'db>(
 #[derive(Default)]
 pub struct LocalSearchResult<'db> {
     pub seen_namespaces: FxHashSet<NamespacePath>,
-    pub pous: FxHashMap<CaselessIdent, Pou<'db>>,
+    pub pous: FxHashMap<Ident, Pou<'db>>,
 }
 
 // Iterate through the local scopes and collect local POUs and seen namespaces
@@ -367,15 +365,15 @@ pub fn discover_in_scope<'db>(
     for scope in it {
         // Find POUs in all shared namespaces
         if let ScopeKind::Namespace(ns) = scope.kind {
-            for ns in namespace_index(db, *ns.path(db)).iter() {
-                result.seen_namespaces.insert(*ns.path(db));
+            for ns in namespace_index(db, ns.path(db)).iter() {
+                result.seen_namespaces.insert(ns.path(db));
             }
         }
 
         // Find POUs in all USING directives
         for using in &scope.usings {
-            for ns in namespace_index(db, *using.path(db)).iter() {
-                result.seen_namespaces.insert(*ns.path(db));
+            for ns in namespace_index(db, using.path(db).path(db)).iter() {
+                result.seen_namespaces.insert(ns.path(db));
             }
         }
     }

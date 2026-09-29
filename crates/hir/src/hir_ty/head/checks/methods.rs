@@ -184,11 +184,11 @@ impl<'db> InitInference<'db> {
             let mut inherited: FxHashMap<_, VariableDecl<'db>> = FxHashMap::default();
             for m in instance_members(db, implementer) {
                 if m.owner != implementer {
-                    inherited.insert(m.var.get_name_ident(db).caseless(db), m.var);
+                    inherited.insert(m.var.get_name_ident(db), m.var);
                 }
             }
             for v in own {
-                if let Some(base_decl) = inherited.get(&v.get_name_ident(db).caseless(db)) {
+                if let Some(base_decl) = inherited.get(&v.get_name_ident(db)) {
                     // Two VAR_EXTERNALs name the same global; neither owns
                     // storage, so nothing is shadowed — and redeclaring is
                     // the only way the derived body reaches the global.
@@ -211,7 +211,7 @@ impl<'db> InitInference<'db> {
         if let Some(methods) = self.scope.method_declarations(db) {
             let mut seen = FxHashMap::default();
             for method in methods.iter() {
-                match seen.get(&method.name(db).caseless(db)) {
+                match seen.get(&method.name(db)) {
                     Some(prev) => {
                         self.errors.push(
                             DuplicateError::MethodDecl {
@@ -222,7 +222,7 @@ impl<'db> InitInference<'db> {
                         );
                     }
                     None => {
-                        seen.insert(method.name(db).caseless(db), *method);
+                        seen.insert(method.name(db), *method);
                     }
                 }
             }
@@ -231,7 +231,7 @@ impl<'db> InitInference<'db> {
         if let Some(prototypes) = self.scope.method_prototypes(db) {
             let mut seen_prots = FxHashMap::default();
             for method in prototypes.iter() {
-                match seen_prots.get(&method.name(db).caseless(db)) {
+                match seen_prots.get(&method.name(db)) {
                     Some(prev) => self.errors.push(
                         DuplicateError::MethodProt {
                             method1: *method,
@@ -240,7 +240,7 @@ impl<'db> InitInference<'db> {
                         .to_diagnostic(db, self.scope.file(db)),
                     ),
                     None => {
-                        seen_prots.insert(method.name(db).caseless(db), *method);
+                        seen_prots.insert(method.name(db), *method);
                     }
                 }
             }
@@ -298,7 +298,7 @@ fn check_signature<'db>(
 
         // One complaint per position: a different NAME means the type is
         // being compared against the wrong counterpart, so stop there.
-        if var1.get_name_ident(db).caseless(db) != var2.get_name_ident(db).caseless(db) {
+        if var1.get_name_ident(db) != var2.get_name_ident(db) {
             errors.push(
                 OopError::SignatureNameMismatch {
                     method: m2,

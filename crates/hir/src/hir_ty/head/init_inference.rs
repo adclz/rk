@@ -7,7 +7,7 @@ use crate::{
     check::errors::{ToIdeDiagnostic, e01_duplicates::DuplicateError, e05_array::ArrayError},
     hir_def::{
         expressions::expression::{Expr, InitExpr, InitExprKind},
-        interned::identifier::{CaselessIdent, Ident},
+        interned::identifier::Ident,
         pous::pou::Pou,
         scope::{ScopeId, ScopeKind},
         semantic_index::get_scope,
@@ -388,7 +388,7 @@ impl<'db> InitExprInferenceResult<'db> {
                 }
             }
             InitExprWalkStep::SizedIndex { expr, size, values } => {
-                let repeat_count = size.as_u64(db).unwrap_or_else(|err| {
+                let repeat_count = size.with_case.as_u64(db).unwrap_or_else(|err| {
                     self.errors.push(
                         ArrayError::InvalidIndex {
                             size: *size,
@@ -459,10 +459,10 @@ impl<'db> InitExprInferenceResult<'db> {
                     .unwrap_or_default()
                     .normalize(db);
 
-                if let Some(prev) = ctx.seen_fields.insert(name.ident.caseless(db), *expr) {
+                if let Some(prev) = ctx.seen_fields.insert(name.ident(db), *expr) {
                     self.errors.push(
                         DuplicateError::InitExprField {
-                            name: name.ident,
+                            name: name.ident(db),
                             field1: *expr,
                             field2: prev,
                         }
@@ -583,7 +583,7 @@ fn init_cells(db: &dyn WorkspaceDataBase, values: &[InitExprWalkStep]) -> usize 
         .iter()
         .map(|step| match step {
             InitExprWalkStep::SizedIndex { size, values, .. } => {
-                size.as_u64(db).unwrap_or(1) as usize * init_cells(db, values).max(1)
+                size.with_case.as_u64(db).unwrap_or(1) as usize * init_cells(db, values).max(1)
             }
             InitExprWalkStep::ArrayInit { values, .. } => init_cells(db, values).max(1),
             _ => 1,
@@ -600,7 +600,7 @@ struct InitContext<'db> {
     /// Whether overflow has been reported per dimension
     overflow_reported: Vec<bool>,
     /// Seen fields in current struct (for duplicate detection)
-    seen_fields: FxHashMap<CaselessIdent, InitExpr<'db>>,
+    seen_fields: FxHashMap<Ident, InitExpr<'db>>,
 }
 
 impl<'db> InitContext<'db> {
@@ -687,21 +687,21 @@ fn resolve_leaves<'db>(
         }
         InitExprKind::StructInit { values } => {
             // The step carries the name as DECLARED, not as written. A
-            // field may be initialized in any case (`(fld := 7)` for `Fld`),
-            // and MIR matches these against the declared field names — so
-            // resolving here is what keeps the two from diverging, rather
-            // than teaching MIR to fold a name HIR has already resolved.
-            let struct_ty = types.get(&init).copied().map(|t| t.normalize(db));
+            // member may be initialized in any case (`(fld := 7)` for `Fld`,
+            // `(LIMIT := 9)` for an instance's `limit`), and MIR matches these
+            // against the declared names — so resolving here is what keeps the
+            // two from diverging, rather than teaching MIR to fold a name HIR
+            // has already resolved. The walk recorded, for each element, the
+            // field or member it named, whatever holds it: a STRUCT, an FB or
+            // CLASS instance, an array's element.
             for v in &values {
                 if let InitExprKind::StructElement { name, value } = v.kind(db) {
-                    let declared = match struct_ty {
-                        Some(Type::Struct(st)) => st
-                            .struct_elements(db)
-                            .get(&name.ident.caseless(db))
-                            .map(|field| field.name(db)),
+                    let declared = match types.get(v) {
+                        Some(Type::StructElement(field)) => Some(field.name(db)),
+                        Some(Type::Variable((var, _))) => Some(var.name(db)),
                         _ => None,
                     };
-                    path.push(InitPathStep::Field(declared.unwrap_or(name.ident)));
+                    path.push(InitPathStep::Field(declared.unwrap_or(name.ident(db))));
                     resolve_leaves(db, *value, types, path, out);
                     path.pop();
                 }
@@ -748,7 +748,7 @@ fn array_element<'db>(
     match elem.kind(db) {
         InitExprKind::ArrayInit { .. } => resolve_array_into(db, elem, types, path, flat, out),
         InitExprKind::ArrayIndexedElement { size, values } => {
-            let n = size.as_u64(db).unwrap_or(0);
+            let n = size.with_case.as_u64(db).unwrap_or(0);
             for _ in 0..n {
                 for v in &values {
                     array_element(db, *v, types, path, flat, out);

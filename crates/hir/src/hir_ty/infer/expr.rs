@@ -237,13 +237,11 @@ impl<'db> InferExprCtx<'db> {
                 inference_results.type_of_expr.insert(curr_expr, primary);
                 inference_results.type_of_expr[&curr_expr]
             }
-            ExprKind::FoldExpr {
-                param, operator, ..
-            } => {
+            ExprKind::FoldExpr { param_id, operator } => {
                 // Look up the variadic parameter in the current scope
                 let scope = curr_expr.scope_id(db);
                 let def_map = scope.def_map(db);
-                let ty = match def_map.local_variables.get(&param.caseless(db)) {
+                let ty = match def_map.local_variables.get(&param_id.ident(db)) {
                     Some(var) => {
                         // A fold is the ONLY way to consume a pack, so without
                         // this every variadic parameter reads as unused (L0201).
@@ -350,9 +348,9 @@ impl<'db> InferExprCtx<'db> {
                 match find_enm.normalize(db) {
                     Type::Enum(enm) => enm
                         .enum_variants(db)
-                        .get(&variant.caseless(db))
+                        .get(&variant.ident(db))
                         .map(|v| match find_enm {
-                            Type::DataType(dt) => Type::EnumVariant(dt, *v.name),
+                            Type::DataType(dt) => Type::EnumVariant(dt, v.name.ident(db)),
                             _ => find_enm,
                         })
                         .unwrap_or_else(|| {

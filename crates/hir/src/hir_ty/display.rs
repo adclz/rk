@@ -104,22 +104,35 @@ impl<'db> Type<'db> {
     pub fn type_name(&self, db: &'db dyn WorkspaceDataBase) -> String {
         match self {
             Self::Elementary(elem) => elem.type_name().into(),
-            Self::Program(program) => program.get_name_ident(db).text(db).to_string(),
-            Self::Config(c) => c.get_name_ident(db).text(db).to_string(),
-            Self::Resource(r) => r.name(db).ident.text(db).to_string(),
-            Self::Task(t) => t.name(db).ident.text(db).to_string(),
-            Self::Function(f) => f.get_name_ident(db).text(db).to_string(),
-            Self::FunctionBlock(fb) => fb.get_name_ident(db).text(db).to_string(),
-            Self::MethodDecl(m) => m.get_name_ident(db).text(db).to_string(),
-            Self::Class(c) => c.get_name_ident(db).text(db).to_string(),
-            Self::Interface(i) => i.get_name_ident(db).text(db).to_string(),
-            Self::DataType(typ) => typ.get_name_ident(db).text(db).to_string(),
+            Self::Program(program) => program.get_name_with_case(db).text(db).to_string(),
+            Self::Config(c) => c.get_name_with_case(db).text(db).to_string(),
+            Self::Resource(r) => r.name(db).with_case.text(db).to_string(),
+            Self::Task(t) => t.name(db).with_case.text(db).to_string(),
+            Self::Function(f) => f.get_name_with_case(db).text(db).to_string(),
+            Self::FunctionBlock(fb) => fb.get_name_with_case(db).text(db).to_string(),
+            Self::MethodDecl(m) => m.get_name_with_case(db).text(db).to_string(),
+            Self::Class(c) => c.get_name_with_case(db).text(db).to_string(),
+            Self::Interface(i) => i.get_name_with_case(db).text(db).to_string(),
+            Self::DataType(typ) => typ.get_name_with_case(db).text(db).to_string(),
             // `Mode#Run`, the form the user writes — a bare `Run` reads as a
             // variable name in a message like "can't compare 'Mode' with
             // 'Run'". The type carries the DataType the path named, so the
             // name is at hand.
             Self::EnumVariant(dt, v) => {
-                format!("{}#{}", dt.get_name_ident(db).text(db), v.text(db))
+                // The variant as its enum declares it: the type carries the
+                // name it was matched by.
+                let variant = match Type::DataType(*dt).normalize(db) {
+                    Type::Enum(e) => e
+                        .enum_variants(db)
+                        .get(v)
+                        .map(|variant| variant.name.with_case.text(db).to_string()),
+                    _ => None,
+                };
+                format!(
+                    "{}#{}",
+                    dt.get_name_with_case(db).text(db),
+                    variant.unwrap_or_else(|| v.text(db).to_string())
+                )
             }
             Self::StructElement(st) => spec_type_name(db, st.spec(db)),
             // A partial access (`b.0`, `d.%B1`) is named by the *slice*, not by
@@ -132,9 +145,9 @@ impl<'db> Type<'db> {
             }
             Self::DirectVariable((dv, None)) => dv.adress(db).text(db).to_string(),
             Self::CallableType(typ) => match typ {
-                CallableType::Function(f) => f.get_name_ident(db).text(db).to_string(),
-                CallableType::FunctionBlock(fb) => fb.get_name_ident(db).text(db).to_string(),
-                CallableType::MethodDecl(m) => m.get_name_ident(db).text(db).to_string(),
+                CallableType::Function(f) => f.get_name_with_case(db).text(db).to_string(),
+                CallableType::FunctionBlock(fb) => fb.get_name_with_case(db).text(db).to_string(),
+                CallableType::MethodDecl(m) => m.get_name_with_case(db).text(db).to_string(),
             },
             Self::Struct(_) => "STRUCT".into(),
             Self::Enum(_) => "ENUM".into(),
@@ -198,7 +211,7 @@ impl<'db> Type<'db> {
         let mut result = String::new();
         for scope in sema.scope_iterator(db, scope_id) {
             if let ScopeKind::Namespace(ns) = scope.kind {
-                result = format!("{}\n", ns.path(db).to_string(db));
+                result = format!("{}\n", ns.path_with_case(db).to_string(db));
                 break;
             }
         }
@@ -212,31 +225,31 @@ impl<'db> Type<'db> {
         let (scope_id, name) = match self {
             Self::Program(p) => (
                 p.get_scope_id(db),
-                p.get_name_ident(db).text(db).to_string(),
+                p.get_name_with_case(db).text(db).to_string(),
             ),
             Self::Function(f) => (
                 f.get_scope_id(db),
-                f.get_name_ident(db).text(db).to_string(),
+                f.get_name_with_case(db).text(db).to_string(),
             ),
             Self::FunctionBlock(fb) => (
                 fb.get_scope_id(db),
-                fb.get_name_ident(db).text(db).to_string(),
+                fb.get_name_with_case(db).text(db).to_string(),
             ),
             Self::MethodDecl(m) => (
                 m.get_scope_id(db),
-                m.get_name_ident(db).text(db).to_string(),
+                m.get_name_with_case(db).text(db).to_string(),
             ),
             Self::Class(c) => (
                 c.get_scope_id(db),
-                c.get_name_ident(db).text(db).to_string(),
+                c.get_name_with_case(db).text(db).to_string(),
             ),
             Self::Interface(i) => (
                 i.get_scope_id(db),
-                i.get_name_ident(db).text(db).to_string(),
+                i.get_name_with_case(db).text(db).to_string(),
             ),
             Self::DataType(dt) => (
                 dt.get_scope_id(db),
-                dt.get_name_ident(db).text(db).to_string(),
+                dt.get_name_with_case(db).text(db).to_string(),
             ),
             _ => return Default::default(),
         };
@@ -262,7 +275,7 @@ impl<'db> Type<'db> {
                     .iter()
                     .take(10)
                     .map(|elem| {
-                        let name = elem.name(db).text(db);
+                        let name = elem.name_with_case(db).text(db);
                         let ty = elem.spec(db).infer(db).type_name(db);
                         format!("    {name}: {ty}")
                     })
@@ -286,7 +299,7 @@ impl<'db> Type<'db> {
                 let names: Vec<String> = all_variants
                     .iter()
                     .take(10)
-                    .map(|v| v.name.text(db).to_string())
+                    .map(|v| v.name.as_str(db).to_string())
                     .collect();
                 let suffix = if all_variants.len() > 10 {
                     format!(", ... ({} more)", all_variants.len() - 10)
@@ -296,7 +309,7 @@ impl<'db> Type<'db> {
                 format!("ENUM{base} {}{suffix} ", names.join(", "))
             }
             Self::DataType(typ) => {
-                let name = typ.get_name_ident(db).text(db);
+                let name = typ.get_name_with_case(db).text(db);
                 let inner = typ.spec(db).infer(db);
                 match &inner {
                     Type::Struct(_) | Type::Enum(_) => {
@@ -321,7 +334,7 @@ impl<'db> Type<'db> {
                 _ => diag.with_related(Related::new(
                     format!(
                         "type is declared by variable '{}' here",
-                        v.name(db).text(db)
+                        v.name_with_case(db).text(db)
                     ),
                     v.get_scope_id(db).file(db),
                     v.get_name_span(db),
@@ -331,7 +344,7 @@ impl<'db> Type<'db> {
                 diag.with_related(Related::new(
                     format!(
                         "type is defined by '{}' here",
-                        typ.get_name_ident(db).text(db)
+                        typ.get_name_with_case(db).text(db)
                     ),
                     typ.scope_id(db).file(db),
                     typ.spec(db).get_span(db),
@@ -344,7 +357,7 @@ impl<'db> Type<'db> {
                 _ => diag.with_related(Related::new(
                     format!(
                         "type is defined by struct field '{}' here",
-                        elem.name(db).text(db)
+                        elem.name_with_case(db).text(db)
                     ),
                     elem.get_scope_id(db).file(db),
                     elem.get_name_span(db),
@@ -354,7 +367,7 @@ impl<'db> Type<'db> {
                 diag.with_related(Related::new(
                     format!(
                         "FUNCTION '{}' is defined here{}",
-                        f.get_name_ident(db).text(db),
+                        f.get_name_with_case(db).text(db),
                         match f.return_type(db) {
                             Some(ret) =>
                                 format!(", with return type '{}'", ret.infer(db).type_name(db)),
@@ -369,7 +382,7 @@ impl<'db> Type<'db> {
                 diag.with_related(Related::new(
                     format!(
                         "METHOD '{}' is defined here{}",
-                        f.get_name_ident(db).text(db),
+                        f.get_name_with_case(db).text(db),
                         match f.return_type(db) {
                             Some(ret) =>
                                 format!(", with return type '{}'", ret.infer(db).type_name(db)),
@@ -384,7 +397,7 @@ impl<'db> Type<'db> {
                 diag.with_related(Related::new(
                     format!(
                         "FUNCTION_BLOCK '{}' is defined here",
-                        f.get_name_ident(db).text(db),
+                        f.get_name_with_case(db).text(db),
                     ),
                     f.get_scope_id(db).file(db),
                     f.get_name_span(db),
@@ -392,7 +405,10 @@ impl<'db> Type<'db> {
             }
             Self::Class(f) => {
                 diag.with_related(Related::new(
-                    format!("CLASS '{}' is defined here", f.get_name_ident(db).text(db),),
+                    format!(
+                        "CLASS '{}' is defined here",
+                        f.get_name_with_case(db).text(db),
+                    ),
                     f.get_scope_id(db).file(db),
                     f.get_name_span(db),
                 ));
@@ -401,7 +417,7 @@ impl<'db> Type<'db> {
                 diag.with_related(Related::new(
                     format!(
                         "INTERFACE '{}' is defined here",
-                        f.get_name_ident(db).text(db),
+                        f.get_name_with_case(db).text(db),
                     ),
                     f.get_scope_id(db).file(db),
                     f.get_name_span(db),
@@ -433,7 +449,7 @@ impl<'db> BeginPathExpr<'db> {
                 InvocationKind::SuperBody => "SUPER()",
             },
             None => match self.expr(db) {
-                Some(path_expr) => path_expr.ident(db).text(db).as_str(),
+                Some(path_expr) => path_expr.ident(db).with_case.text(db).as_str(),
                 None => "<invalid path>",
             },
         }
@@ -506,7 +522,7 @@ impl<'db> PrimaryExpr<'db> {
             },
             PrimaryExpr::VariableAccess(v) => "<variable access>",
             PrimaryExpr::FuncCall(func_call) => func_call.path(db).to_string(db),
-            PrimaryExpr::EnumValue { name, variant } => variant.text(db),
+            PrimaryExpr::EnumValue { name, variant } => variant.with_case.text(db),
             PrimaryExpr::RefValue { value } => match value {
                 RefValue::Address(addr) => "<DEREF>",
                 RefValue::Null => "NULL",

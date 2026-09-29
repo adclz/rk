@@ -296,7 +296,7 @@ END_CONFIGURATION
         .flat_map(|t| {
             t.programs
                 .iter()
-                .map(|p| p.inst_name.text(&with_db).to_string())
+                .map(|p| p.inst_name_with_case.text(&with_db).to_string())
         })
         .collect();
     assert_eq!(

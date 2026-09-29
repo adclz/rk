@@ -44,21 +44,26 @@ pub fn check<'db>(
             }
             (
                 f.statements(db),
-                f.name(db).text(db),
+                f.name_with_case(db).text(db),
                 "FUNCTION",
                 f.get_span(db),
             )
         }
         ScopeKind::Pou(Pou::FunctionBlock(fb)) => (
             fb.statements(db),
-            fb.name(db).text(db),
+            fb.name_with_case(db).text(db),
             "FUNCTION_BLOCK",
             fb.get_span(db),
         ),
-        ScopeKind::MethodDecl(m) => (m.stmts(db), m.name(db).text(db), "METHOD", m.get_span(db)),
+        ScopeKind::MethodDecl(m) => (
+            m.stmts(db),
+            m.name_with_case(db).text(db),
+            "METHOD",
+            m.get_span(db),
+        ),
         ScopeKind::Program(p) => (
             p.statements(db),
-            p.name(db).text(db),
+            p.name_with_case(db).text(db),
             "PROGRAM",
             p.get_span(db),
         ),

@@ -233,6 +233,7 @@ Type checking proceeds in three memoized salsa queries:
 
 - **Salsa everywhere**: `#[salsa::tracked]` structs, `#[salsa::interned]` identifiers, `#[salsa::input]` for DB. The `'db` lifetime is threaded through all signatures.
 - **`Type::Never` contract**: When resolution fails, `Type::Never` is returned AND a diagnostic MUST be emitted at that point. Consumers of `Never` skip further error reporting to avoid cascading errors.
+- **Names are caseless through their accessors** (IEC 61131-3 §6.1.2): a declaration stores its name as written (`name_with_case`), and `name(db)`, `get_name_ident(db)` and `SpanIdent::ident(db)` hand it out case folded, so every comparison and map key is caseless without folding at the call site. `*_with_case` is only for what is shown. `src/tests/caseless.rs` guards both halves.
 - **`#[return_ref]`** on salsa queries for zero-copy access.
 - **`#[no_eq]`** on span-only fields so editing positions don't trigger recomputation.
 - **`compact_str::CompactString`** instead of `String` for memory efficiency.

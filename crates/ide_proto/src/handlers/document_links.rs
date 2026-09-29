@@ -72,17 +72,20 @@ pub(crate) fn resolve_bracket_ref_to_pou<'db>(
 
     match parts.len() {
         1 => {
-            let ident = Ident::from_slice(db, content);
+            let ident = Ident::from_slice(db, content).folded(db);
             pou_index(db, ident)
         }
         _ => {
             let ns_parts = &parts[..parts.len() - 1];
             let target_name = parts[parts.len() - 1];
 
-            let ns_idents: Vec<Ident> = ns_parts.iter().map(|p| Ident::from_slice(db, p)).collect();
+            let ns_idents: Vec<Ident> = ns_parts
+                .iter()
+                .map(|p| Ident::from_slice(db, p).folded(db))
+                .collect();
             let ns_path = NamespacePath::new(db, ns_idents);
 
-            let target_ident = Ident::from_slice(db, target_name);
+            let target_ident = Ident::from_slice(db, target_name).folded(db);
             namespace_pou_index(db, ns_path, target_ident)
         }
     }

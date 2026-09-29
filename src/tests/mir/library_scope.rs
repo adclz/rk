@@ -80,9 +80,13 @@ fn a_librarys_programs_are_not_scheduled(mut with_db: RootDatabase) {
         .tasks
         .iter()
         .flat_map(|t| {
-            t.programs
-                .iter()
-                .map(|p| format!("{}:{}", t.name.text(&with_db), p.prog_name.text(&with_db)))
+            t.programs.iter().map(|p| {
+                format!(
+                    "{}:{}",
+                    t.name.text(&with_db),
+                    p.prog_name_with_case.text(&with_db)
+                )
+            })
         })
         .collect();
     assert_eq!(

@@ -76,10 +76,10 @@ pub fn check_func_call<'db>(
         return;
     }
 
-    let callable_name = callable.get_name_ident(db).text(db);
+    let callable_name = callable.get_name_with_case(db).text(db);
     let names: Vec<_> = missing
         .iter()
-        .map(|v| format!("'{}'", v.name(db).text(db)))
+        .map(|v| format!("'{}'", v.name_with_case(db).text(db)))
         .collect();
 
     let mut d = diag()
@@ -101,7 +101,7 @@ pub fn check_func_call<'db>(
     let file = callable.get_scope_id(db).file(db);
     for var in &missing {
         d.with_related(Related::new(
-            format!("'{}' declared here", var.name(db).text(db)),
+            format!("'{}' declared here", var.name_with_case(db).text(db)),
             file,
             var.get_span(db),
         ));

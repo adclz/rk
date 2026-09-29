@@ -45,13 +45,13 @@ impl<'db> CompletionCtx {
             }
             Type::Struct(st) => st.elements(db).iter().for_each(|el| {
                 self.items.push(CompletionItem::new_simple(
-                    el.name(db).text(db).to_string(),
+                    el.name_with_case(db).text(db).to_string(),
                     "".to_string(),
                 ))
             }),
             Type::Enum(enm) => enm.variants(db).iter().for_each(|var| {
                 self.items.push(CompletionItem::new_simple(
-                    var.name.text(db).to_string(),
+                    var.name.as_str(db).to_string(),
                     "".to_string(),
                 ))
             }),

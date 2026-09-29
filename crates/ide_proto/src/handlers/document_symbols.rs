@@ -43,7 +43,7 @@ impl<'db> DocumentSymbolsHandler<'db> for ProgramDecl<'db> {
     ) {
         let mut nested_builder = DocumentSymbolsBuilder::default();
 
-        let name = self.name(db).text(db).to_string();
+        let name = self.name_with_case(db).text(db).to_string();
         let name = match name.len() {
             0 => "?".into(),
             _ => name,
@@ -149,7 +149,7 @@ impl<'db> DocumentSymbolsHandler<'db> for Pou<'db> {
             _ => {}
         }
 
-        let name = self.get_name_ident(db).text(db).to_string();
+        let name = self.get_name_with_case(db).text(db).to_string();
         let name = match name.len() {
             0 => "?".into(),
             _ => name,
@@ -230,7 +230,7 @@ impl<'db> DocumentSymbolsHandler<'db> for VariableDecl<'db> {
         db: &'db dyn WorkspaceDataBase,
         builder: &mut DocumentSymbolsBuilder,
     ) {
-        let name = self.name(db).text(db).to_string();
+        let name = self.name_with_case(db).text(db).to_string();
         let name = match name.len() {
             0 => "?".into(),
             _ => name,
@@ -263,7 +263,7 @@ impl<'db> DocumentSymbolsHandler<'db> for MethodRef<'db> {
         db: &'db dyn WorkspaceDataBase,
         builder: &mut DocumentSymbolsBuilder,
     ) {
-        let name = self.get_name_ident(db).text(db).to_string();
+        let name = self.get_name_with_case(db).text(db).to_string();
         let name = match name.len() {
             0 => "?".into(),
             _ => name,
@@ -317,7 +317,7 @@ impl<'db> DocumentSymbolsHandler<'db> for ConfigDecl<'db> {
             res.document_symbols(db, &mut nested_builder);
         }
 
-        let name = self.name(db).text(db).to_string();
+        let name = self.name_with_case(db).text(db).to_string();
 
         builder.push_symbol(auto_lsp::lsp_types::DocumentSymbol {
             name,
@@ -350,7 +350,7 @@ impl<'db> DocumentSymbolsHandler<'db> for ResourceDecl<'db> {
             .iter()
             .for_each(|p| p.document_symbols(db, &mut nested_builder));
 
-        let name = self.name(db).ident.text(db).to_string();
+        let name = self.name(db).with_case.text(db).to_string();
 
         builder.push_symbol(auto_lsp::lsp_types::DocumentSymbol {
             name,
@@ -380,7 +380,7 @@ impl<'db> DocumentSymbolsHandler<'db> for ProgConfig<'db> {
         db: &'db dyn WorkspaceDataBase,
         builder: &mut DocumentSymbolsBuilder,
     ) {
-        let name = self.name(db).ident.text(db).to_string();
+        let name = self.name(db).with_case.text(db).to_string();
 
         builder.push_symbol(auto_lsp::lsp_types::DocumentSymbol {
             name,

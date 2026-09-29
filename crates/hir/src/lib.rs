@@ -210,7 +210,12 @@ pub trait HasPragmas<'db>: HirNodeInfo<'db> {
 }
 
 pub trait HasName<'db>: HirNodeInfo<'db> {
+    /// The name, as names are matched: case folded (IEC 61131-3 §6.1.2).
     fn get_name_ident(&self, db: &'db dyn WorkspaceDataBase) -> Ident;
+
+    /// The name as the author wrote it: what a diagnostic, hover or
+    /// completion shows. Nothing is matched by it.
+    fn get_name_with_case(&self, db: &'db dyn WorkspaceDataBase) -> Ident;
 
     fn get_name_id(&self, db: &'db dyn WorkspaceDataBase) -> AstId;
 

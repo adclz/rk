@@ -383,8 +383,8 @@ impl<'db> Signature<'db> {
             let declared_ty = self.infer_spec(db, decl.spec);
 
             // Look up the referenced variable in the program's scope
-            let var_name = decl.variable.ident(db).ident;
-            match def_map.global_variables.get(&var_name.caseless(db)) {
+            let var_name = decl.variable.ident(db).ident(db);
+            match def_map.global_variables.get(&var_name) {
                 Some(var) => {
                     // Variable found - compare declared spec type with actual variable type
                     let var_ty = self
@@ -491,7 +491,7 @@ impl<'db> Signature<'db> {
                         NameResolution::Ambiguous(candidates) => {
                             self.errors.push(
                                 ResolveError::MultipleItemsInScope {
-                                    name: target.path.target.ident,
+                                    name: target.path.target.ident(db),
                                     span: spec.get_span(db),
                                     candidates,
                                 }

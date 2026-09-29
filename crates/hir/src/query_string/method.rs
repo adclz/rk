@@ -23,7 +23,7 @@ pub fn method_symbol_index<'db>(
         .iter()
         .for_each(|(i, v)| {
             variables.push(NamedSymbol {
-                name: v.name(db).text(db).to_string(),
+                name: v.name_with_case(db).text(db).to_string(),
                 namespace: None,
                 kind: SymbolKind::Variable(*v),
             });
@@ -41,7 +41,7 @@ pub fn fuzzy_callable_type_parameters<'db>(
     let index = method_symbol_index(db, callable);
     fuzzy_suggest_from_index(
         db,
-        callable.get_name_ident(db).text(db).as_str(),
+        callable.get_name_with_case(db).text(db).as_str(),
         "parameter",
         index,
         diag,

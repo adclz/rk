@@ -58,7 +58,7 @@ impl<'db> CompletionBuilder {
         variable: &VariableDecl<'db>,
     ) -> CompletionItem {
         let infer = infer_signature(db, variable.get_scope_id(db));
-        let variable_name = variable.name(db).text(db);
+        let variable_name = variable.name_with_case(db).text(db);
         let typ = infer
             .type_of_specs
             .get(&variable.spec(db))
@@ -113,7 +113,7 @@ impl<'db> CompletionBuilder {
         if let Pou::DataType(data_type) = pou
             && let SpecKind::Enum(enm) = data_type.spec(db).kind(db)
         {
-            let name = pou.get_name_ident(db).text(db).to_string();
+            let name = pou.get_name_with_case(db).text(db).to_string();
             let additional_edit = self.build_import_edit(db, namespace);
             self.expand_enum_variants(db, &name, *enm, additional_edit, items);
             return;
@@ -122,7 +122,7 @@ impl<'db> CompletionBuilder {
         // Regular POu handling
         let additional_edit = self.build_import_edit(db, namespace);
 
-        let name = pou.get_name_ident(db).text(db).to_string();
+        let name = pou.get_name_with_case(db).text(db).to_string();
         let (detail, kind) = match pou {
             Pou::FunctionBlock(_) => ("(FUNCTION BLOCK)", CompletionItemKind::CLASS),
             Pou::Class(_) => ("(CLASS)", CompletionItemKind::CLASS),
@@ -170,7 +170,7 @@ impl<'db> CompletionBuilder {
     ) {
         enm.enum_variants(db).iter().for_each(|(_, var)| {
             items.push(CompletionItem {
-                label: format!("{}#{}", name, var.name.text(db)),
+                label: format!("{}#{}", name, var.name.as_str(db)),
                 detail: Some("(ENUM VARIANT)".into()),
                 kind: Some(CompletionItemKind::ENUM_MEMBER),
                 additional_text_edits: additional_edit.as_ref().map(|edit| vec![edit.clone()]),
@@ -184,7 +184,7 @@ impl<'db> CompletionBuilder {
         db: &'db dyn WorkspaceDataBase,
         method: &MethodRef<'db>,
     ) -> CompletionItem {
-        let name = method.get_name_ident(db).text(db).to_string();
+        let name = method.get_name_with_case(db).text(db).to_string();
 
         CompletionItem {
             label: name.clone(),
@@ -322,7 +322,7 @@ pub fn build_call_signature<'db>(
         .enumerate()
         .filter_map(|(i, v)| {
             let placeholder_num = i + 1;
-            let var_name = v.name(db).text(db);
+            let var_name = v.name_with_case(db).text(db);
 
             match v.kind(db) {
                 VariableKind::Input | VariableKind::InOut => Some(format!(

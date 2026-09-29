@@ -29,7 +29,7 @@ pub fn check<'db>(
     match dt.spec(db).kind(db) {
         SpecKind::Struct(s) => {
             if s.elements(db).is_empty() {
-                let name = dt.get_name_ident(db).text(db);
+                let name = dt.get_name_with_case(db).text(db);
                 diagnostics.push(
                     diag()
                         .message(format!("STRUCT '{name}' has no fields"))
@@ -48,7 +48,7 @@ pub fn check<'db>(
             }
         }
         SpecKind::Enum(e) if e.variants(db).is_empty() => {
-            let name = dt.get_name_ident(db).text(db);
+            let name = dt.get_name_with_case(db).text(db);
             diagnostics.push(
                 diag()
                     .message(format!("ENUM '{name}' has no variants"))

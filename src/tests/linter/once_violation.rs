@@ -139,3 +139,38 @@ END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "once-violation"), @r"");
 }
+
+/// `setup(); SETUP();` calls one {once} function twice: calls are grouped by
+/// what they run, not by how they are written.
+#[rstest]
+fn once_called_twice_in_another_case(mut with_db: RootDatabase) {
+    let source = r#"
+{once}
+FUNCTION setup : INT
+    setup := 1;
+END_FUNCTION
+
+FUNCTION main : INT
+    setup();
+    SETUP();
+END_FUNCTION
+"#;
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "once-violation"), @r"
+    [L0004] Info: calling a {once} function more than once
+       ,-[ file:///test0.st:9:5 ]
+       |
+     2 | {once}
+       | ^^^|^^
+       |    `---- {once} pragma declared here
+       |
+     8 |     setup();
+       |     ^^|^^
+       |       `---- first call here
+     9 |     SETUP();
+       |     ^^|^^
+       |       `---- 'setup' is marked {once} but is called more than once in this body
+       |
+       | Note: lint rule: once-violation
+    ---'
+    ");
+}

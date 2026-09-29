@@ -166,7 +166,7 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
                 let mut diag = diag()
                     .message(format!(
                         "duplicate variable '{}'",
-                        var1.get_name_ident(db).text(db)
+                        var1.get_name_with_case(db).text(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
@@ -178,7 +178,7 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
                 diag.with_related(Related::new(
                     format!(
                         "variable '{}' is already defined here",
-                        var2.get_name_ident(db).text(db)
+                        var2.get_name_with_case(db).text(db)
                     ),
                     var2.get_scope_id(db).file(db),
                     var2.get_name_span(db),
@@ -190,7 +190,7 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
                 let mut diag = diag()
                     .message(format!(
                         "duplicate POU '{}'",
-                        pou1.get_name_ident(db).text(db)
+                        pou1.get_name_with_case(db).text(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
@@ -202,7 +202,7 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
                 diag.with_related(Related::new(
                     format!(
                         "POU '{}' is already defined here",
-                        pou2.get_name_ident(db).text(db)
+                        pou2.get_name_with_case(db).text(db)
                     ),
                     pou2.get_scope_id(db).file(db),
                     pou2.get_name_span(db),
@@ -215,7 +215,7 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
                 pou,
                 at_program,
             } => {
-                let name = program.get_name_ident(db).text(db);
+                let name = program.get_name_with_case(db).text(db);
                 let (span, other_file, other_span) = match at_program {
                     true => (
                         program.get_name_span(db),
@@ -265,7 +265,7 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
                 let mut diag = diag()
                     .message(format!(
                         "duplicate field '{}'",
-                        field1.get_name_ident(db).text(db)
+                        field1.get_name_with_case(db).text(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
@@ -277,7 +277,7 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
                 diag.with_related(Related::new(
                     format!(
                         "field '{}' is already defined here",
-                        field2.get_name_ident(db).text(db)
+                        field2.get_name_with_case(db).text(db)
                     ),
                     field2.get_scope_id(db).file(db),
                     field2.get_name_span(db),
@@ -289,7 +289,7 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
                 let mut diag = diag()
                     .message(format!(
                         "duplicate enum variant '{}'",
-                        variant1.ident.text(db)
+                        variant1.with_case.text(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
@@ -299,7 +299,7 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
                 diag.with_related(Related::new(
                     format!(
                         "enum variant '{}' is already defined here",
-                        variant2.ident.text(db)
+                        variant2.with_case.text(db)
                     ),
                     variant2.get_scope_id(db).file(db),
                     variant2.get_span(db),
@@ -333,7 +333,7 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
             Self::VariableIsReturnValue { var, pou_kind } => diag()
                 .message(format!(
                     "variable '{}' is the {pou_kind}'s return value",
-                    var.get_name_ident(db).text(db)
+                    var.get_name_with_case(db).text(db)
                 ))
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
@@ -343,7 +343,7 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
                 let mut diag = diag()
                     .message(format!(
                         "duplicate method '{}'",
-                        method1.get_name_ident(db).text(db)
+                        method1.get_name_with_case(db).text(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
@@ -356,7 +356,7 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
                 diag.with_related(Related::new(
                     format!(
                         "method '{}' is already defined here",
-                        method2.get_name_ident(db).text(db)
+                        method2.get_name_with_case(db).text(db)
                     ),
                     method2.get_scope_id(db).file(db),
                     method2.get_name_span(db),
@@ -368,7 +368,7 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
                 let mut diag = diag()
                     .message(format!(
                         "duplicate method '{}'",
-                        method1.get_name_ident(db).text(db)
+                        method1.get_name_with_case(db).text(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
@@ -381,7 +381,7 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
                 diag.with_related(Related::new(
                     format!(
                         "method '{}' is already defined here",
-                        method2.get_name_ident(db).text(db)
+                        method2.get_name_with_case(db).text(db)
                     ),
                     method2.get_scope_id(db).file(db),
                     method2.get_name_span(db),
@@ -393,7 +393,7 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
                 let mut diag = diag()
                     .message(format!(
                         "duplicate method '{}'",
-                        method1.method.get_name_ident(db).text(db)
+                        method1.method.get_name_with_case(db).text(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
@@ -406,7 +406,7 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
                 diag.with_related(Related::new(
                     format!(
                         "method '{}' is already defined here",
-                        method2.method.get_name_ident(db).text(db)
+                        method2.method.get_name_with_case(db).text(db)
                     ),
                     method2.method.get_scope_id(db).file(db),
                     method2.method.get_name_span(db),
@@ -414,9 +414,9 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
 
                 diag.with_note(format!(
                     "this error happens because both interfaces '{}' and '{}' define a method '{}'",
-                    method1.source.get_name_ident(db).text(db),
-                    method2.source.get_name_ident(db).text(db),
-                    method1.method.get_name_ident(db).text(db)
+                    method1.source.get_name_with_case(db).text(db),
+                    method2.source.get_name_with_case(db).text(db),
+                    method1.method.get_name_with_case(db).text(db)
                 ));
 
                 diag
@@ -425,7 +425,7 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
                 let mut diag = diag()
                     .message(format!(
                         "duplicate `USING` for namespace '{}'",
-                        using.path(db).to_string(db)
+                        using.path(db).path_with_case.to_string(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
@@ -435,7 +435,7 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
                 diag.with_related(Related::new(
                     format!(
                         "namespace '{}' is already imported here",
-                        other.path(db).to_string(db)
+                        other.path(db).path_with_case.to_string(db)
                     ),
                     other.scope_id(db).file(db),
                     other.get_span(db),
@@ -447,7 +447,7 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
                 let mut diag = diag()
                     .message(format!(
                         "duplicate program '{}'",
-                        prog1.get_name_ident(db).text(db)
+                        prog1.get_name_with_case(db).text(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
@@ -459,7 +459,7 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
                 diag.with_related(Related::new(
                     format!(
                         "program '{}' is already defined here",
-                        prog2.get_name_ident(db).text(db)
+                        prog2.get_name_with_case(db).text(db)
                     ),
                     prog2.get_scope_id(db).file(db),
                     prog2.get_name_span(db),
@@ -471,7 +471,7 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
                 let mut diag = diag()
                     .message(format!(
                         "duplicate program instance '{}'",
-                        prog1.ident.text(db)
+                        prog1.with_case.text(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
@@ -481,7 +481,7 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
                 diag.with_related(Related::new(
                     format!(
                         "program instance '{}' is already defined here",
-                        prog2.ident.text(db)
+                        prog2.with_case.text(db)
                     ),
                     prog2.get_scope_id(db).file(db),
                     prog2.get_span(db),
@@ -494,7 +494,7 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
                 global,
                 at_instance,
             } => {
-                let name = instance.ident.text(db);
+                let name = instance.with_case.text(db);
                 let (message, span, related) = match at_instance {
                     true => (
                         format!("program instance '{name}' has the name of a VAR_GLOBAL"),
@@ -502,7 +502,7 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
                         Related::new(
                             format!(
                                 "VAR_GLOBAL '{}' is declared here",
-                                global.get_name_ident(db).text(db)
+                                global.get_name_with_case(db).text(db)
                             ),
                             global.get_scope_id(db).file(db),
                             global.get_name_span(db),
@@ -511,7 +511,7 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
                     false => (
                         format!(
                             "VAR_GLOBAL '{}' has the name of a program instance",
-                            global.get_name_ident(db).text(db)
+                            global.get_name_with_case(db).text(db)
                         ),
                         global.get_name_span(db),
                         Related::new(
@@ -532,14 +532,17 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
             }
             Self::Task { task1, task2 } => {
                 let mut diag = diag()
-                    .message(format!("duplicate task '{}'", task1.ident.text(db)))
+                    .message(format!("duplicate task '{}'", task1.with_case.text(db)))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
                     .range(crate::denormalize(db, file, &task1.get_span(db)).unwrap_or_default())
                     .call();
 
                 diag.with_related(Related::new(
-                    format!("task '{}' is already defined here", task2.ident.text(db)),
+                    format!(
+                        "task '{}' is already defined here",
+                        task2.with_case.text(db)
+                    ),
                     task2.get_scope_id(db).file(db),
                     task2.get_span(db),
                 ));
@@ -548,14 +551,17 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
             }
             Self::Resource { res1, res2 } => {
                 let mut diag = diag()
-                    .message(format!("duplicate resource '{}'", res1.ident.text(db)))
+                    .message(format!("duplicate resource '{}'", res1.with_case.text(db)))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
                     .range(crate::denormalize(db, file, &res1.get_span(db)).unwrap_or_default())
                     .call();
 
                 diag.with_related(Related::new(
-                    format!("resource '{}' is already defined here", res2.ident.text(db)),
+                    format!(
+                        "resource '{}' is already defined here",
+                        res2.with_case.text(db)
+                    ),
                     res2.get_scope_id(db).file(db),
                     res2.get_span(db),
                 ));

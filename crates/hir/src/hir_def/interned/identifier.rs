@@ -6,7 +6,7 @@ use auto_lsp::{
 use compact_str::CompactString;
 use db::WorkspaceDataBase;
 use ide_diagnostic::IdeDiagnostic;
-use std::{hash::Hash, ops::Deref};
+use std::hash::Hash;
 
 use crate::{
     builder::semantic_index::SemanticIndexBuilder,
@@ -15,36 +15,26 @@ use crate::{
     {AstId, HirNodeInfo},
 };
 
+/// One occurrence of a name in the source.
 #[derive(Clone, Copy, Eq, salsa::Update, Debug)]
 pub struct SpanIdent<'db> {
     pub id: AstId,
     pub scope_id: ScopeId<'db>,
-    pub ident: Ident,
+    /// The name as the author wrote it here. Matching reads [`Self::ident`].
+    pub with_case: Ident,
 }
 
-impl Deref for SpanIdent<'_> {
-    type Target = Ident;
-
-    fn deref(&self) -> &Self::Target {
-        &self.ident
-    }
-}
-
+// Equal when the name is written the same, wherever: an occurrence that only
+// moved is not a change.
 impl PartialEq for SpanIdent<'_> {
     fn eq(&self, other: &Self) -> bool {
-        self.ident == other.ident
-    }
-}
-
-impl PartialEq<Ident> for SpanIdent<'_> {
-    fn eq(&self, other: &Ident) -> bool {
-        self.ident == *other
+        self.with_case == other.with_case
     }
 }
 
 impl Hash for SpanIdent<'_> {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.ident.hash(state);
+        self.with_case.hash(state);
     }
 }
 
@@ -67,12 +57,18 @@ impl<'db> SpanIdent<'db> {
         Ok(SpanIdent {
             id: node.into(),
             scope_id: sema.current_scope,
-            ident: Ident::from_node(db, sema.file, node)?,
+            with_case: Ident::from_node(db, sema.file, node)?,
         })
     }
 
+    /// The name, as names are matched: case folded.
+    pub fn ident(&self, db: &dyn WorkspaceDataBase) -> Ident {
+        self.with_case.folded(db)
+    }
+
+    /// The name as written here, for what is shown.
     pub fn as_str(&'db self, db: &'db dyn WorkspaceDataBase) -> &'db str {
-        self.ident.text(db)
+        self.with_case.text(db)
     }
 }
 
@@ -94,54 +90,26 @@ pub struct Ident {
     pub text: CompactString,
 }
 
-/// An identifier as it is MATCHED, with case out of the way.
-///
-/// IEC 61131-3 §6.1.2: case is not significant in identifiers, so `Motor` and
-/// `motor` are one name. Unicode calls this caseless matching (§3.13), and
-/// this is its result — the form two names are the same name IN.
-///
-/// It lives in the KEY, not in the comparison: every lookup map is keyed by
-/// this, so resolution stays a single interned-id compare rather than a string
-/// walk. And it is a distinct TYPE on purpose — a map keyed by `CaselessIdent`
-/// cannot be opened with an `Ident`, so the compiler names every lookup that
-/// has to convert. The sites it cannot reach are bare `==` between two
-/// `Ident`s, which no type can catch.
-///
-/// It is not the spelling the author wrote. That stays on the [`Ident`], which
-/// is what diagnostics, hover, completion and the wasm export names read.
-#[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Debug, salsa::Update)]
-pub struct CaselessIdent(Ident);
-
 #[salsa::tracked]
 impl Ident {
-    /// This identifier with case out of the way — its [`CaselessIdent`].
+    /// This identifier with case out of the way: how names are matched
+    /// (IEC 61131-3 §6.1.2, Unicode caseless matching, §3.13). The accessors
+    /// that hand out a name — `name(db)`, `get_name_ident`, `SpanIdent::ident`
+    /// — return it through here, so code that compares or looks up names
+    /// never folds; the spelling stays reachable as `*_with_case`.
     ///
     /// `to_lowercase`, not `to_ascii_lowercase`: identifiers are Unicode here
     /// (the grammar admits `XID_Start`/`XID_Continue`), so an ASCII fold would
     /// leave `MÄX` and `mäx` as two names.
     #[salsa::tracked]
-    pub fn caseless(self, db: &dyn WorkspaceDataBase) -> CaselessIdent {
+    pub fn folded(self, db: &dyn WorkspaceDataBase) -> Ident {
         let text = self.text(db);
         // The overwhelmingly common case is already folded, and interning the
         // same bytes back is cheaper than allocating a copy of them.
         if text.chars().all(|c| !c.is_uppercase()) {
-            return CaselessIdent(self);
+            return self;
         }
-        CaselessIdent(Ident::new(db, text.to_lowercase()))
-    }
-}
-
-impl CaselessIdent {
-    /// The folded text itself, for the byte-oriented indexes (`fst`) that
-    /// cannot hold an interned id.
-    pub fn text(self, db: &dyn WorkspaceDataBase) -> &CompactString {
-        self.0.text(db)
-    }
-
-    /// The folded spelling as a plain [`Ident`], for composite interned keys
-    /// (namespace paths) whose element type has to stay `Ident`.
-    pub fn as_ident(self) -> Ident {
-        self.0
+        Ident::new(db, text.to_lowercase())
     }
 }
 

@@ -28,11 +28,13 @@ pub fn check<'db>(
     diagnostics: &mut Vec<IdeDiagnostic>,
 ) {
     for (mvar, member) in &body.method_shadowed_members {
-        let name = mvar.get_name_ident(db).text(db);
+        let name = mvar.get_name_with_case(db).text(db);
+        // Each as it is declared: the two may differ in case.
+        let member_name = member.get_name_with_case(db).text(db);
 
         let mut d = diag()
             .message(format!(
-                "method variable '{name}' shadows the member '{name}' of its FB/class"
+                "method variable '{name}' shadows the member '{member_name}' of its FB/class"
             ))
             .desc(&MethodShadowsMember)
             .range(
@@ -43,7 +45,7 @@ pub fn check<'db>(
             .call();
 
         d.with_related(Related::new(
-            format!("member '{name}' is declared here"),
+            format!("member '{member_name}' is declared here"),
             member.get_scope_id(db).file(db),
             member.get_name_span(db),
         ));

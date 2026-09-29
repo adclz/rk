@@ -67,11 +67,17 @@ pub fn check_case<'db>(
                     // when they denote the same thing, whether that is an
                     // integer (`1` and `INT#1`) or a string (`'a'` and
                     // `STRING#'a'`). A label with no recorded value — an enum
-                    // variant — falls back to what was written.
+                    // variant — is the variant it names, in any case:
+                    // `Mode#Idle` and `Mode#IDLE` are one label.
                     let key = match body.case_label_value.get(expr) {
                         Some(CaseLabelValue::Int(v)) => format!("#{v}"),
                         Some(CaseLabelValue::Str(bytes)) => format!("${bytes:?}"),
-                        None => written.clone(),
+                        None => match body.type_of_expr.get(expr) {
+                            Some(hir::hir_ty::ty::Type::EnumVariant(dt, variant)) => {
+                                format!("%{dt:?}#{}", variant.text(db))
+                            }
+                            _ => written.clone(),
+                        },
                     };
 
                     // Check exact duplicate

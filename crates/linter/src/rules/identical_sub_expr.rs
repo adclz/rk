@@ -150,9 +150,9 @@ fn same_path<'db>(
                 PathExprWalkStep::Field { ident: l, .. },
                 PathExprWalkStep::Field { ident: r, .. },
             ) => {
-                // Interned, so this is an integer comparison; the resolved
-                // type then separates two declarations of one name.
-                l.ident == r.ident
+                // One name in any case; the resolved type then separates two
+                // declarations of one name.
+                l.ident(db) == r.ident(db)
                     && body.type_of_path_expr.get(&step.get_expr(db))
                         == body.type_of_path_expr.get(&other.get_expr(db))
             }

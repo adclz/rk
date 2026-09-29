@@ -187,10 +187,7 @@ pub fn function_visible_from<'db>(
     ) {
         // Declared at global scope: the root holds everything.
         (None, _) => true,
-        (Some(target), Some(caller)) => caller
-            .caseless(db)
-            .fragments(db)
-            .starts_with(target.caseless(db).fragments(db)),
+        (Some(target), Some(caller)) => caller.fragments(db).starts_with(target.fragments(db)),
         (Some(_), None) => false,
     };
     let is_library =
@@ -269,10 +266,10 @@ pub fn internal_namespace_violated<'db>(
     calling_scope: ScopeId<'db>,
     ns: NamespaceDecl<'db>,
 ) -> Option<NamespaceDecl<'db>> {
-    let fragments = ns.path(db).caseless(db).fragments(db).clone();
+    let fragments = ns.path(db).fragments(db).clone();
     let enclosing = &fragments[..fragments.len().saturating_sub(1)];
     let inside = match crate::hir_ty::resolver::name::enclosing_namespace_path(db, calling_scope) {
-        Some(caller) => caller.caseless(db).fragments(db).starts_with(enclosing),
+        Some(caller) => caller.fragments(db).starts_with(enclosing),
         None => enclosing.is_empty(),
     };
     let is_library =

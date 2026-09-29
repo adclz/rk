@@ -168,7 +168,7 @@ impl<'db> InitInference<'db> {
         if let Some(path) = marker {
             let member = path
                 .iter()
-                .map(|m| m.name(db).text(db).to_string())
+                .map(|m| m.name_with_case(db).text(db).to_string())
                 .collect::<Vec<_>>()
                 .join(".");
             self.errors.push(
@@ -267,11 +267,11 @@ impl<'db> InitInference<'db> {
             ScopeKind::Pou(Pou::Function(f)) => f
                 .return_type(db)
                 .is_some()
-                .then(|| (f.get_name_ident(db).caseless(db), "FUNCTION")),
+                .then(|| (f.get_name_ident(db), "FUNCTION")),
             ScopeKind::MethodDecl(m) => m
                 .return_type(db)
                 .is_some()
-                .then(|| (m.get_name_ident(db).caseless(db), "METHOD")),
+                .then(|| (m.get_name_ident(db), "METHOD")),
             _ => None,
         };
 
@@ -519,7 +519,7 @@ impl<'db> InitInference<'db> {
             // Folded: `Count` and `count` are one identifier, so declaring
             // both is declaring the same variable twice.
             if let Some((ret_name, pou_kind)) = return_value_name
-                && var.get_name_ident(db).caseless(db) == ret_name
+                && var.get_name_ident(db) == ret_name
             {
                 self.errors.push(
                     DuplicateError::VariableIsReturnValue {
@@ -529,7 +529,7 @@ impl<'db> InitInference<'db> {
                     .to_diagnostic(db, self.scope.file(db)),
                 );
             }
-            match seen.get(&var.get_name_ident(db).caseless(db)) {
+            match seen.get(&var.get_name_ident(db)) {
                 Some(prev) => {
                     self.errors.push(
                         DuplicateError::Variable {
@@ -540,7 +540,7 @@ impl<'db> InitInference<'db> {
                     );
                 }
                 None => {
-                    seen.insert(var.get_name_ident(db).caseless(db), *var);
+                    seen.insert(var.get_name_ident(db), *var);
                 }
             }
 

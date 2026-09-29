@@ -117,7 +117,7 @@ pub fn check_assignment<'db>(
         return;
     }
 
-    let name = var_decl.get_name_ident(db).text(db);
+    let name = var_decl.get_name_with_case(db).text(db);
     let mut diag = diag()
         .message(format!("assignment to VAR_INPUT '{name}'"))
         .desc(&InputAssignment)

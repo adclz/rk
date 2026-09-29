@@ -9,13 +9,13 @@
 //!
 //! What each section is for:
 //!
-//! - **Guards** — the half no type can enforce. A lookup cannot forget to fold
-//!   (resolution maps are keyed by `CaselessIdent`, and an `Ident` will not
-//!   open one), but a bare `a == b` between two `Ident`s compiles and stays
-//!   case-SENSITIVE. It cannot be made to fold either: folding needs the
-//!   database and `PartialEq::eq` has none. So those comparisons are listed,
-//!   each with the reason it is sound, and a new one fails until it is folded
-//!   or explained.
+//! - **Guards** — the half no type can enforce. A name's accessors hand it
+//!   out case folded (`name(db)`, `get_name_ident(db)`, `SpanIdent::ident(db)`),
+//!   so every comparison and every key is caseless without anyone asking;
+//!   the author's spelling is `*_with_case`, for what is shown. Both kinds
+//!   are an `Ident`, so no type tells them apart: the guards check that a
+//!   spelling is never matched and that nothing folds by hand, and each
+//!   exception is listed with its reason.
 //! - **Resolution** — names that differ only in case are one name, so
 //!   declaring both is declaring it twice.
 //! - **Execution** — the value, not the diagnostic. Every bug this arc found
@@ -39,7 +39,7 @@ use std::path::{Path, PathBuf};
 // Guards
 // ---------------------------------------------------------------------------
 
-/// A comparison that is allowed to skip the fold, and why.
+/// A line the guards let through, and why.
 struct Allowed {
     /// The trimmed source line, matched exactly — editing it re-opens the
     /// review rather than silently keeping the exemption.
@@ -47,73 +47,93 @@ struct Allowed {
     why: &'static str,
 }
 
-const ALLOWED: &[Allowed] = &[
+/// Lines that match a spelling, each with the reason it is sound.
+const SPELLING_MATCHED: &[Allowed] = &[
     Allowed {
-        line: "self.ident == other.ident",
-        why: "SpanIdent equality IS its name's: two occurrences of one name are equal",
+        line: "self.with_case == other.with_case",
+        why: "a SpanIdent's own change detection: an occurrence that only moved \
+              is not a change, and a respelled one is",
     },
     Allowed {
-        line: "self.ident == *other",
-        why: "the same, against a bare Ident",
-    },
-    Allowed {
-        line: "self.instance_types.iter().find(|it| it.name == name)",
-        why: "MIR instance types, named and queried by MIR itself",
-    },
-    Allowed {
-        line: "if let Some(field) = s.fields.iter().find(|f| f.name == *name) {",
-        why: "init path steps carry the DECLARED field name (ResolvedInit), \
-              so both sides are declarations",
-    },
-    Allowed {
-        line: "let f = s.fields.iter().find(|f| f.name == *name)?;",
-        why: "the same walk, one level down",
-    },
-    Allowed {
-        line: "v.name(db) == name",
-        why: "a PROGRAM's declared variable against a declared retain name",
-    },
-    Allowed {
-        line: "let Some(field) = struct_type.fields.iter().find(|f| f.name == var_name)",
-        why: "HIR already matched the param to a VariableDecl; var_name is that \
-              declaration's own name",
-    },
-    Allowed {
-        line: "let Some(field) = struct_type.fields.iter().find(|f| f.name == var_name) else {",
-        why: "the same match, the output-binding arm",
-    },
-    Allowed {
-        line: ".find(|f| f.name == var.name(db))",
-        why: "HIR resolved the connected variable to its VariableDecl, and the \
-              program's layout names the field by that declaration",
-    },
-    Allowed {
-        line: ".find(|f| f.name == fb.member.name(db))",
-        why: "the same, for a function block a task runs",
+        line: "self.path_with_case == other.path_with_case",
+        why: "the same, for a written namespace path",
     },
 ];
 
-/// Lines that COMPARE two names. Deliberately broad: a false positive costs
-/// one line in `ALLOWED` and a sentence saying why, which is the point.
-fn compares_names(line: &str) -> bool {
-    let has_eq = line.contains("==") || line.contains("!=");
-    if !has_eq || line.contains("caseless(") {
-        return false;
-    }
-    let trimmed = line.trim_start();
-    if trimmed.starts_with("//") || trimmed.starts_with("///") {
-        return false;
-    }
-    [
-        "get_name_ident(db)",
-        ".name(db)",
-        ".ident",
-        ".name",
-        "name ==",
-        "ident ==",
-    ]
-    .iter()
-    .any(|needle| line.contains(needle))
+/// Folds outside an accessor, each with the reason it is sound: the places a
+/// name arrives as text, not as an identifier the source declared.
+const FOLDED_OUTSIDE_AN_ACCESSOR: &[Allowed] = &[
+    Allowed {
+        line: "if fragments.iter().all(|f| f.folded(db) == *f) {",
+        why: "the fold of a namespace path itself, fragment by fragment",
+    },
+    Allowed {
+        line: "fragments.iter().map(|f| f.folded(db)).collect::<Vec<_>>(),",
+        why: "the same fold, building the folded path",
+    },
+    Allowed {
+        line: "let ident = Ident::from_slice(db, content).folded(db);",
+        why: "a `[Name]` link in a comment is text the reader typed",
+    },
+    Allowed {
+        line: ".map(|p| Ident::from_slice(db, p).folded(db))",
+        why: "the same link's namespace fragments",
+    },
+    Allowed {
+        line: "let target_ident = Ident::from_slice(db, target_name).folded(db);",
+        why: "the same link's last fragment",
+    },
+    Allowed {
+        line: "let name = Ident::from_slice(db, parts[0]).folded(db);",
+        why: "a test's qualified name, as `rk test` is given it",
+    },
+    Allowed {
+        line: ".map(|s| Ident::from_slice(db, s).folded(db))",
+        why: "the same name's namespace fragments",
+    },
+    Allowed {
+        line: "let name = Ident::from_slice(db, item_name).folded(db);",
+        why: "the same name's last fragment",
+    },
+    Allowed {
+        line: ".map(|step| Ident::new(db, compact_str::CompactString::from(*step)).folded(db))",
+        why: "a VAR_CONFIG path's steps, split out of the path as text",
+    },
+];
+
+/// The crates that hold names: where a spelling could be matched, or a
+/// name folded by hand.
+const NAME_CRATES: &[&str] = &[
+    "crates/hir/src",
+    "crates/mir/src",
+    "crates/linter/src",
+    "crates/ide_proto/src",
+    "crates/wasm_codegen/src",
+    "crates/debug_format/src",
+    "crates/cli/src",
+];
+
+/// Lines that MATCH a written spelling: compare it or use it as a key.
+fn matches_a_spelling(line: &str) -> bool {
+    line.contains("with_case")
+        && [
+            "==",
+            "!=",
+            ".get(",
+            ".insert(",
+            ".contains(",
+            ".entry(",
+            "contains_key",
+        ]
+        .iter()
+        .any(|needle| line.contains(needle))
+}
+
+/// Lines that fold by hand. An accessor over a stored spelling is where a
+/// fold belongs: `self.name_with_case(db).folded(db)`.
+fn folds_outside_an_accessor(line: &str) -> bool {
+    line.contains(".folded(")
+        && !(line.trim_start().starts_with("self.") && line.contains("with_case"))
 }
 
 fn rust_files(dir: &Path, out: &mut Vec<PathBuf>) {
@@ -130,71 +150,100 @@ fn rust_files(dir: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
-/// Every name comparison that skips the fold is accounted for.
-#[test]
-fn name_comparisons_are_folded_or_explained() {
+/// Every source line of the name crates, with where it is, comments and the
+/// fold's own definition left out.
+fn name_crate_lines() -> Vec<(String, String)> {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let mut files = Vec::new();
-    for crate_dir in ["crates/hir/src", "crates/mir/src"] {
+    for crate_dir in NAME_CRATES {
         rust_files(&root.join(crate_dir), &mut files);
     }
     assert!(!files.is_empty(), "found no sources to scan");
-
-    let mut unexplained = Vec::new();
+    let mut lines = Vec::new();
     for file in &files {
         let Ok(text) = std::fs::read_to_string(file) else {
             continue;
         };
+        let rel = file
+            .strip_prefix(root)
+            .unwrap_or(file)
+            .display()
+            .to_string();
         for (n, line) in text.lines().enumerate() {
-            if !compares_names(line) {
-                continue;
-            }
             let trimmed = line.trim();
-            if ALLOWED.iter().any(|a| a.line == trimmed) {
+            if trimmed.starts_with("//") {
                 continue;
             }
-            let rel = file.strip_prefix(root).unwrap_or(file);
-            unexplained.push(format!("{}:{}\n    {trimmed}", rel.display(), n + 1));
+            lines.push((format!("{rel}:{}", n + 1), trimmed.to_string()));
         }
     }
+    lines
+}
 
+fn unexplained(
+    lines: &[(String, String)],
+    flagged: fn(&str) -> bool,
+    allowed: &[Allowed],
+) -> Vec<String> {
+    lines
+        .iter()
+        .filter(|(_, line)| flagged(line) && !allowed.iter().any(|a| a.line == line))
+        .map(|(at, line)| format!("{at}\n    {line}"))
+        .collect()
+}
+
+/// A written spelling is shown, never matched: names compare as their
+/// accessors hand them out, case folded, and a spelling in a comparison or a
+/// key is `Motor` and `motor` coming apart again.
+#[test]
+fn a_spelling_is_never_matched() {
+    let found = unexplained(&name_crate_lines(), matches_a_spelling, SPELLING_MATCHED);
     assert!(
-        unexplained.is_empty(),
-        "a name is compared without folding, at {} site(s):\n\n{}\n\n\
-         Names match with case out of the way (§6.1.2). Either fold both sides \
-         with `.caseless(db)`, or — if BOTH sides come from a declaration and a \
-         fold would be a no-op — add the line to `ALLOWED` in this file with the \
-         reason.",
-        unexplained.len(),
-        unexplained.join("\n")
+        found.is_empty(),
+        "a written spelling is matched, at {} site(s):\n\n{}\n\n\
+         Names match as their accessors give them — `name(db)`, \
+         `get_name_ident(db)`, `SpanIdent::ident(db)` — case folded (§6.1.2). \
+         `*_with_case` is for what is shown. If this match is sound, add the \
+         line to `SPELLING_MATCHED` in this file with the reason.",
+        found.len(),
+        found.join("\n")
+    );
+}
+
+/// Names fold in their accessors, once, and nowhere else: a fold by hand is
+/// a name that reached matching raw, and the next one like it will not be
+/// folded.
+#[test]
+fn names_fold_only_in_their_accessors() {
+    let found = unexplained(
+        &name_crate_lines(),
+        folds_outside_an_accessor,
+        FOLDED_OUTSIDE_AN_ACCESSOR,
+    );
+    assert!(
+        found.is_empty(),
+        "a name is folded by hand, at {} site(s):\n\n{}\n\n\
+         Read it through its accessor instead, which folds. If it arrives as \
+         text rather than as a declared identifier, add the line to \
+         `FOLDED_OUTSIDE_AN_ACCESSOR` in this file with the reason.",
+        found.len(),
+        found.join("\n")
     );
 }
 
 /// The exemptions describe something that still exists.
 ///
-/// Without this, a comparison that gets folded or deleted leaves its entry
-/// behind, and the list slowly stops meaning anything.
+/// Without this, a line that gets rewritten or deleted leaves its entry
+/// behind, and the lists slowly stop meaning anything.
 #[test]
 fn no_stale_exemptions() {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let mut files = Vec::new();
-    for crate_dir in ["crates/hir/src", "crates/mir/src"] {
-        rust_files(&root.join(crate_dir), &mut files);
-    }
-    let all: Vec<String> = files
+    let lines = name_crate_lines();
+    let stale: Vec<String> = SPELLING_MATCHED
         .iter()
-        .filter_map(|f| std::fs::read_to_string(f).ok())
-        .collect();
-
-    let stale: Vec<String> = ALLOWED
-        .iter()
-        .filter(|a| {
-            !all.iter()
-                .any(|text| text.lines().any(|l| l.trim() == a.line))
-        })
+        .chain(FOLDED_OUTSIDE_AN_ACCESSOR)
+        .filter(|a| !lines.iter().any(|(_, l)| l == a.line))
         .map(|a| format!("{}\n      exempt because: {}", a.line, a.why))
         .collect();
-
     assert!(
         stale.is_empty(),
         "exemption(s) for code that is gone — delete them:\n  {}",
@@ -528,6 +577,304 @@ fn a_monitoring_path_is_not_case_sensitive(mut with_db: db::RootDatabase) {
             info.symbol(spelling).is_some(),
             "`{spelling}` names the same variable"
         );
+    }
+}
+
+/// An initializer names a member in any case, whatever holds it: an FB
+/// instance, an FB member of an FB, a STRUCT inside an array. Only a plain
+/// STRUCT's names were resolved; the others matched the declared names as
+/// written and were dropped.
+#[rstest]
+fn an_initializer_names_members_in_any_case(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE
+            P2 : STRUCT x : INT; y : INT; END_STRUCT;
+            Box : STRUCT inner : P2; END_STRUCT;
+        END_TYPE
+
+        FUNCTION_BLOCK Fb
+        VAR_INPUT limit : INT; END_VAR
+        END_FUNCTION_BLOCK
+
+        FUNCTION_BLOCK Holder
+        VAR_OUTPUT m : Fb := (LIMIT := 5); END_VAR
+        END_FUNCTION_BLOCK
+
+        FUNCTION get : INT
+        VAR
+            f : Fb := (LIMIT := 9);
+            arr : ARRAY[0..1] OF P2 := [(X := 3, Y := 4), (X := 5, Y := 6)];
+            boxes : ARRAY[0..0] OF Box := [(INNER := (Y := 7))];
+            h : Holder;
+        END_VAR
+            get := f.limit * 1000 + arr[1].y * 100 + boxes[0].inner.y * 10 + h.m.limit;
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let result: i32 = execute_wasm(&wasm, "get", ());
+    assert_eq!(result, 9675, "every initializer landed");
+}
+
+/// A VAR_EXTERNAL is the VAR_GLOBAL it names, however it spells it. The
+/// global table is keyed by the global's declared name, and the external's
+/// own spelling missed it: "no storage was allocated for global".
+#[rstest]
+fn a_var_external_names_its_global_in_any_case(mut with_db: db::RootDatabase) {
+    let source = r#"
+        CONFIGURATION Cfg
+        VAR_GLOBAL Counter : INT; END_VAR
+        END_CONFIGURATION
+
+        FUNCTION Bump
+        VAR_EXTERNAL counter : INT; END_VAR
+            counter := counter + 1;
+        END_FUNCTION
+
+        FUNCTION ReadIt : INT
+        VAR_EXTERNAL COUNTER : INT; END_VAR
+            ReadIt := COUNTER;
+        END_FUNCTION
+
+        FUNCTION get : INT
+            Bump();
+            Bump();
+            get := ReadIt();
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let result: i32 = execute_wasm(&wasm, "get", ());
+    assert_eq!(result, 2, "both externals are the one Counter");
+}
+
+/// An override named in another case than its base method is still the
+/// override, through `THIS.m()` and a bare `m()` too. The dispatch named the
+/// method with the base's spelling, which no function had.
+#[rstest]
+fn an_override_answers_in_any_case(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Base
+            METHOD PUBLIC Hook : INT
+                Hook := 1;
+            END_METHOD
+            METHOD PUBLIC Call : INT
+                Call := THIS.Hook();
+            END_METHOD
+            METHOD PUBLIC CallBare : INT
+                CallBare := Hook();
+            END_METHOD
+        END_FUNCTION_BLOCK
+
+        FUNCTION_BLOCK Derived EXTENDS Base
+            METHOD PUBLIC OVERRIDE HOOK : INT
+                HOOK := 2;
+            END_METHOD
+        END_FUNCTION_BLOCK
+
+        FUNCTION get : INT
+        VAR d : Derived; b : Base; END_VAR
+            get := d.hook() * 1000 + d.Call() * 100 + d.CallBare() * 10 + b.Call();
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let result: i32 = execute_wasm(&wasm, "get", ());
+    assert_eq!(result, 2221, "Derived's HOOK wherever Hook is called on it");
+}
+
+/// An interface parameter is its declaration: `DEV` is the parameter `dev`,
+/// and a member `h.dev` is not. The specialization was keyed by the
+/// parameter's spelling, so the first missed it and the second matched it.
+#[rstest]
+fn an_interface_parameter_is_its_declaration(mut with_db: db::RootDatabase) {
+    let source = r#"
+        INTERFACE IShow
+            METHOD Show : INT END_METHOD
+        END_INTERFACE
+
+        FUNCTION_BLOCK Pump IMPLEMENTS IShow
+            METHOD PUBLIC Show : INT
+                Show := 1;
+            END_METHOD
+        END_FUNCTION_BLOCK
+
+        FUNCTION_BLOCK Fan IMPLEMENTS IShow
+            METHOD PUBLIC Show : INT
+                Show := 2;
+            END_METHOD
+        END_FUNCTION_BLOCK
+
+        FUNCTION_BLOCK Holder
+        VAR_OUTPUT dev : Fan; END_VAR
+        END_FUNCTION_BLOCK
+
+        FUNCTION Ask : INT
+        VAR_IN_OUT s : IShow; END_VAR
+            Ask := s.Show();
+        END_FUNCTION
+
+        FUNCTION Both : INT
+        VAR_IN_OUT dev : IShow; h : Holder; END_VAR
+            Both := DEV.Show() * 10 + Ask(s := h.dev);
+        END_FUNCTION
+
+        FUNCTION get : INT
+        VAR p : Pump; hh : Holder; END_VAR
+            get := Both(dev := p, h := hh);
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let result: i32 = execute_wasm(&wasm, "get", ());
+    assert_eq!(result, 12, "DEV is the Pump, h.dev the Fan");
+}
+
+/// A fold names its pack in any case.
+#[rstest]
+fn a_fold_names_its_pack_in_any_case(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION sum_all : INT
+        VAR_INPUT args : INT...; END_VAR
+            sum_all := ...ARGS+;
+        END_FUNCTION
+
+        FUNCTION get : INT
+            get := sum_all(1, 2, 3);
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let result: i32 = execute_wasm(&wasm, "get", ());
+    assert_eq!(result, 6);
+}
+
+/// A result written through a field or an element, its callable's name in
+/// another case, is the result. It was read as a local of the written name,
+/// which no function had, and the store went to address 0.
+#[rstest]
+fn a_result_written_through_a_field_in_any_case(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE
+            Pt : STRUCT X : INT; Y : INT; END_STRUCT;
+            Arr3 : ARRAY[0..2] OF INT;
+        END_TYPE
+
+        FUNCTION MakePt : Pt
+            makept.X := 3;
+            MAKEPT.y := 4;
+        END_FUNCTION
+
+        FUNCTION MakeArr : Arr3
+            makearr[1] := 9;
+        END_FUNCTION
+
+        FUNCTION_BLOCK Fb
+            METHOD PUBLIC Mk : Pt
+                mk.X := 7;
+            END_METHOD
+        END_FUNCTION_BLOCK
+
+        FUNCTION get : INT
+        VAR p : Pt; a : Arr3; f : Fb; q : Pt; END_VAR
+            p := MakePt();
+            a := MakeArr();
+            q := f.Mk();
+            get := p.X * 1000 + p.Y * 100 + a[1] * 10 + q.X;
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let result: i32 = execute_wasm(&wasm, "get", ());
+    assert_eq!(result, 3497, "every store reached its result");
+}
+
+/// A declared address is published as the compiler knows it, upper-cased:
+/// `%qw4` is the cell a bare `%QW4` names, so a host binds it as `%QW4`.
+#[rstest]
+fn a_located_address_is_published_upper_cased(#[allow(unused)] with_db: RootDatabase) {
+    let program = |declared: &str| {
+        format!(
+            r#"
+        PROGRAM Prog
+        VAR n : WORD; END_VAR
+            %QX8.3 := TRUE;
+            n := %QW4;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+        VAR_GLOBAL w AT {declared} : WORD; END_VAR
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : Prog;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#
+        )
+    };
+    let compile = |declared: &str| {
+        let mut db = RootDatabase::default();
+        compile_to_mir_and_wasm(&mut db, &program(declared)).0
+    };
+    let lower = compile("%qw4");
+    let upper = compile("%QW4");
+    let addresses = |mir: &mir::MirModule| {
+        mir.located_map
+            .entries
+            .iter()
+            .map(|e| e.address.clone())
+            .collect::<Vec<_>>()
+    };
+    assert!(
+        addresses(&lower).contains(&"%QW4".to_string()),
+        "{:?}",
+        addresses(&lower)
+    );
+    assert_eq!(addresses(&lower), addresses(&upper));
+    assert_eq!(lower.located_map.layout_hash, upper.located_map.layout_hash);
+}
+
+/// A case-only rename is the same program, so its retained state is kept:
+/// the retain map's identity is its folded paths and field names. It was the
+/// spelled ones, and the runtime refused the file as another program's.
+#[rstest]
+fn a_case_only_rename_keeps_the_retain_layout(#[allow(unused)] with_db: RootDatabase) {
+    let program = |count: &str, x: &str, instance: &str| {
+        format!(
+            r#"
+        TYPE Pt : STRUCT {x} : INT; y : INT; END_STRUCT; END_TYPE
+
+        PROGRAM Prog
+        VAR RETAIN {count} : INT; pos : Pt; alpha : INT; END_VAR
+            count := count + 1;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM {instance} WITH T : Prog;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#
+        )
+    };
+    let compile = |count: &str, x: &str, instance: &str| {
+        let mut db = RootDatabase::default();
+        compile_to_mir_and_wasm(&mut db, &program(count, x, instance)).0
+    };
+    let base = compile("count", "x", "p1");
+    for (count, x, instance) in [
+        ("Count", "x", "p1"),
+        ("count", "X", "p1"),
+        ("COUNT", "X", "P1"),
+    ] {
+        let renamed = compile(count, x, instance);
+        assert_eq!(
+            base.retain_map.layout_hash, renamed.retain_map.layout_hash,
+            "{count}, {x}, {instance}"
+        );
+        let sizes = |m: &mir::MirModule| {
+            m.retain_map
+                .ranges
+                .iter()
+                .map(|r| r.size)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(sizes(&base), sizes(&renamed), "the same payload order");
     }
 }
 

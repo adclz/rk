@@ -51,9 +51,8 @@ pub fn check<'db>(
         .map(|m| m.var)
         .collect();
     let file = scope.file(db);
-    let same =
-        |a: hir::hir_def::interned::identifier::Ident,
-         b: hir::hir_def::interned::identifier::Ident| { a.caseless(db) == b.caseless(db) };
+    let same = |a: hir::hir_def::interned::identifier::Ident,
+                b: hir::hir_def::interned::identifier::Ident| { a == b };
 
     for var in own {
         let name = var.get_name_ident(db);
@@ -67,7 +66,7 @@ pub fn check<'db>(
                 false,
                 "",
             ));
-        } else if let Some(method) = inherited.methods.get(&name.caseless(db)) {
+        } else if let Some(method) = inherited.methods.get(&name) {
             diagnostics.push(report(db, file, method.method, *var, true, " it inherits"));
         }
     }
@@ -101,8 +100,8 @@ fn report<'db>(
     at_var: bool,
     inherits: &str,
 ) -> IdeDiagnostic {
-    let var_name = var.get_name_ident(db).text(db);
-    let method_name = method.get_name_ident(db).text(db);
+    let var_name = var.get_name_with_case(db).text(db);
+    let method_name = method.get_name_with_case(db).text(db);
     let (message, span, related) = match at_var {
         true => (
             format!("variable '{var_name}' has the name of the method '{method_name}'{inherits}"),

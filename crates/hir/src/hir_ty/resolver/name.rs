@@ -82,15 +82,15 @@ pub fn resolve_name<'db>(
         };
     }
 
-    let name = access.target.ident;
+    let name = access.target.ident(db);
 
     // 1. Self-reference: a POU or method referencing its own name takes priority
     //    over parent scope lookups (which may return a different duplicate).
     match get_scope(db, scope).kind {
-        ScopeKind::MethodDecl(method) if name.caseless(db) == method.name(db).caseless(db) => {
+        ScopeKind::MethodDecl(method) if name == method.name(db) => {
             return NameResolution::MethodSelf(method);
         }
-        ScopeKind::Pou(pou) if name.caseless(db) == pou.get_name_ident(db).caseless(db) => {
+        ScopeKind::Pou(pou) if name == pou.get_name_ident(db) => {
             if let Pou::Function(f) = pou {
                 return NameResolution::Pou(pou, None);
             }
@@ -127,11 +127,14 @@ pub(crate) fn resolve_namespace_access<'db>(
         // No ambiguity is possible here — the user specified which namespace.
         Some(path) => {
             // Relative to where it was written, then absolute.
-            let path =
-                crate::hir_ty::index_graphs::absolute_namespace_path(db, target.scope_id, **path);
+            let path = crate::hir_ty::index_graphs::absolute_namespace_path(
+                db,
+                target.scope_id,
+                path.path(db),
+            );
             for ns in namespace_index(db, path).iter() {
                 if let PouResolution::Found(pou, using) =
-                    pou_names_res(db, target.ident, ns.scope_id(db))
+                    pou_names_res(db, target.ident(db), ns.scope_id(db))
                 {
                     return PouResolution::Found(pou, using);
                 }
@@ -139,7 +142,7 @@ pub(crate) fn resolve_namespace_access<'db>(
             PouResolution::NotFound
         }
         // Unqualified: resolve via scope chain, USING can be ambiguous
-        None => pou_names_res(db, target.ident, target.scope_id),
+        None => pou_names_res(db, target.ident(db), target.scope_id),
     }
 }
 
@@ -149,7 +152,7 @@ pub fn pou_names_res<'db>(
     scope: ScopeId<'db>,
 ) -> PouResolution<'db> {
     // Checks for POUs declared in the current scope
-    if let Some(pou) = scope.def_map(db).local_pous.get(&name.caseless(db)) {
+    if let Some(pou) = scope.def_map(db).local_pous.get(&name) {
         return PouResolution::Found(*pou, None);
     }
 
@@ -173,13 +176,8 @@ pub fn find_in_parent_pous<'db>(
     for scope in it {
         // Namespace siblings take priority over USING — no ambiguity
         if let ScopeKind::Namespace(ns) = scope.kind {
-            for ns in namespace_index(db, *ns.path(db)).iter() {
-                if let Some(p) = ns
-                    .scope_id(db)
-                    .def_map(db)
-                    .local_pous
-                    .get(&name.caseless(db))
-                {
+            for ns in namespace_index(db, ns.path(db)).iter() {
+                if let Some(p) = ns.scope_id(db).def_map(db).local_pous.get(&name) {
                     return PouResolution::Found(*p, None);
                 }
             }
@@ -200,15 +198,13 @@ pub fn find_in_parent_pous<'db>(
         // Collect ALL USING matches at this scope level
         let mut matches: Vec<(Pou<'db>, NamespacePath, Using<'db>)> = vec![];
         for using in &scope.usings {
-            let ns_path: NamespacePath =
-                crate::hir_ty::index_graphs::absolute_namespace_path(db, scope.id, *using.path(db));
+            let ns_path: NamespacePath = crate::hir_ty::index_graphs::absolute_namespace_path(
+                db,
+                scope.id,
+                using.path(db).path(db),
+            );
             for ns in namespace_index(db, ns_path).iter() {
-                if let Some(pou) = ns
-                    .scope_id(db)
-                    .def_map(db)
-                    .local_pous
-                    .get(&name.caseless(db))
-                {
+                if let Some(pou) = ns.scope_id(db).def_map(db).local_pous.get(&name) {
                     // Deduplicate by POU identity (shared namespaces across files)
                     if !matches.iter().any(|(p, _, _)| p == pou) {
                         matches.push((*pou, ns_path, *using));
@@ -229,9 +225,10 @@ pub fn find_in_parent_pous<'db>(
                 // calls E0809. Matches from DIFFERENT paths, or involving
                 // non-overloadable POUs, stay genuinely ambiguous.
                 let first_path = matches[0].1;
-                if matches.iter().all(|(p, path, _)| {
-                    path.caseless(db) == first_path.caseless(db) && matches!(p, Pou::Function(_))
-                }) {
+                if matches
+                    .iter()
+                    .all(|(p, path, _)| *path == first_path && matches!(p, Pou::Function(_)))
+                {
                     return PouResolution::Found(matches[0].0, Some(matches[0].2));
                 }
                 return PouResolution::Ambiguous(
@@ -548,12 +545,21 @@ pub fn enclosing_namespace_path<'db>(
     db: &'db dyn WorkspaceDataBase,
     scope_id: crate::hir_def::scope::ScopeId<'db>,
 ) -> Option<NamespacePath> {
+    enclosing_namespace(db, scope_id).map(|ns| ns.path(db))
+}
+
+/// The namespace enclosing `scope_id`, or `None` at top level: its path as
+/// written is what a symbol shows.
+pub fn enclosing_namespace<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    scope_id: crate::hir_def::scope::ScopeId<'db>,
+) -> Option<crate::hir_def::namespace::NamespaceDecl<'db>> {
     if scope_id.is_global(db) {
         return None;
     }
     for scope in semantic_index(db, scope_id.file(db)).scope_iterator(db, scope_id) {
         if let ScopeKind::Namespace(ns) = scope.kind {
-            return Some(*ns.path(db));
+            return Some(ns);
         }
     }
     None

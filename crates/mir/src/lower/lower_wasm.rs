@@ -32,7 +32,7 @@ pub(crate) fn lower_wasm_pragma<'db>(
     // locals are keyed by that spelling, and the pragma may use another case.
     let operand = |ident: Ident| -> Result<(Ident, MirType), LowerTypeError> {
         if let Some(f) = function
-            && f.name(db).caseless(db) == ident.caseless(db)
+            && f.name(db) == ident
         {
             let ty = f
                 .return_type(db)
@@ -47,7 +47,7 @@ pub(crate) fn lower_wasm_pragma<'db>(
             return Ok((f.name(db), ty));
         }
         let def_map = scope.def_map(db);
-        let key = ident.caseless(db);
+        let key = ident;
         let var = def_map
             .local_variables
             .get(&key)
@@ -68,7 +68,7 @@ pub(crate) fn lower_wasm_pragma<'db>(
     // `{wasm IN 'op'}`: the basis variable's lane and width name the
     // instruction, by the same function the check resolved it with.
     let instruction: CompactString = match &decl.type_ref {
-        Some(basis) => match elem_of(&operand(basis.ident)?.1) {
+        Some(basis) => match elem_of(&operand(basis.ident(db))?.1) {
             Some(e) => hir::check::wasm_instructions::resolve_type_basis(
                 &decl.instruction,
                 lane_of(e),
@@ -98,8 +98,8 @@ pub(crate) fn lower_wasm_pragma<'db>(
         && let [param] = decl.params.as_slice()
         && let Some(result) = &decl.result
     {
-        let (p_name, p_ty) = operand(param.ident)?;
-        let (r_name, r_ty) = operand(result.ident)?;
+        let (p_name, p_ty) = operand(param.ident(db))?;
+        let (r_name, r_ty) = operand(result.ident(db))?;
         if let (Some(from), Some(to)) = (elem_of(&p_ty), elem_of(&r_ty)) {
             let load = MirExpr::Load(MirPlace::Local(p_name), MirType::Elementary(from));
             let value = if from == to {
@@ -126,12 +126,12 @@ pub(crate) fn lower_wasm_pragma<'db>(
     let params = decl
         .params
         .iter()
-        .map(|p| operand(p.ident).map(|(name, _)| name))
+        .map(|p| operand(p.ident(db)).map(|(name, _)| name))
         .collect::<Result<Vec<_>, _>>()?;
     let result = decl
         .result
         .as_ref()
-        .map(|r| operand(r.ident).map(|(name, _)| name))
+        .map(|r| operand(r.ident(db)).map(|(name, _)| name))
         .transpose()?;
     Ok(Some(MirStmt::WasmIntrinsic {
         instruction,

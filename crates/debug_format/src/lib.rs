@@ -578,8 +578,10 @@ impl ScheduleManifest {
 /// semantics: it must survive release optimization.
 pub const RETAIN_MAP_SECTION: &str = "retain-map";
 
-/// On-wire format version for [`RetainMap`].
-pub const RETAIN_MAP_VERSION: u16 = 2;
+/// On-wire format version for [`RetainMap`]. 3: the ranges are sorted and
+/// hashed by their case-folded path, so a case-only rename is the same
+/// layout.
+pub const RETAIN_MAP_VERSION: u16 = 3;
 
 /// The retained byte ranges of a module, inside the retain band;
 /// everything in the band not covered is transient and keeps its
@@ -588,10 +590,12 @@ pub const RETAIN_MAP_VERSION: u16 = 2;
 pub struct RetainMap {
     pub version: u16,
     /// Layout identity: FNV-1a over the sorted `(path, size, type_key)`
-    /// sequence, excluding addresses so the band may re-base between builds.
+    /// sequence, the path case-folded as IEC 61131-3 §6.1.2 matches names,
+    /// excluding addresses so the band may re-base between builds.
     /// `type_key` is included because size alone does not identify a value.
     pub layout_hash: u64,
-    /// Retained ranges, sorted by `path` (deterministic; file payload order).
+    /// Retained ranges, sorted by case-folded `path` (deterministic; file
+    /// payload order).
     pub ranges: Vec<RetainRange>,
 }
 
@@ -611,9 +615,9 @@ pub struct RetainRange {
 }
 
 impl RetainMap {
-    /// Build from ranges: sorts by path and stamps the layout hash.
+    /// Build from ranges: sorts by folded path and stamps the layout hash.
     pub fn new(mut ranges: Vec<RetainRange>) -> Self {
-        ranges.sort_by(|a, b| a.path.cmp(&b.path));
+        ranges.sort_by_cached_key(|r| info::fold_path(&r.path));
         let layout_hash = Self::hash_layout(&ranges);
         RetainMap {
             version: RETAIN_MAP_VERSION,
@@ -622,7 +626,7 @@ impl RetainMap {
         }
     }
 
-    /// FNV-1a over the sorted `(path, size, type_key)` sequence.
+    /// FNV-1a over the sorted `(folded path, size, type_key)` sequence.
     fn hash_layout(ranges: &[RetainRange]) -> u64 {
         const FNV_OFFSET: u64 = 0xcbf29ce484222325;
         const FNV_PRIME: u64 = 0x100000001b3;
@@ -634,7 +638,7 @@ impl RetainMap {
             }
         };
         for r in ranges {
-            eat(r.path.as_bytes());
+            eat(info::fold_path(&r.path).as_bytes());
             eat(&[0]); // separator
             eat(&r.size.to_le_bytes());
             eat(&r.type_key.to_le_bytes());
@@ -767,7 +771,7 @@ impl LocatedMap {
         }
     }
 
-    /// FNV-1a over the sorted `(address, name, size)` sequence.
+    /// FNV-1a over the sorted `(address, folded name, size)` sequence.
     fn hash_layout(entries: &[LocatedVar]) -> u64 {
         const FNV_OFFSET: u64 = 0xcbf29ce484222325;
         const FNV_PRIME: u64 = 0x100000001b3;
@@ -781,7 +785,7 @@ impl LocatedMap {
         for e in entries {
             eat(e.address.as_bytes());
             eat(&[0]); // separator
-            eat(e.name.as_bytes());
+            eat(info::fold_path(&e.name).as_bytes());
             eat(&[0]);
             eat(&e.size.to_le_bytes());
             // An address that becomes part of a wider one is read another
