@@ -70,6 +70,78 @@ fn emittable_methods<'db>(
     out
 }
 
+/// What is emitted for the instance type `pou`: every method it answers to
+/// ([`emittable_methods`]), then each method and FB body of a base its code
+/// reaches through `SUPER.m()` and `SUPER()`, followed transitively. Each is
+/// emitted on `pou`, so `THIS` inside it is `pou` and an override wins there,
+/// as it does in an inherited method. Base-most bodies last.
+pub(crate) struct InstanceCopies<'db> {
+    pub methods: Vec<hir::hir_def::pous::class::MethodDecl<'db>>,
+    pub bodies: Vec<FunctionBlock<'db>>,
+}
+
+pub(crate) fn instance_copies<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    pou: hir::hir_def::pous::pou::Pou<'db>,
+) -> InstanceCopies<'db> {
+    use hir::hir_def::expressions::expression::PathExprKind;
+    use hir::hir_def::expressions::invocation::InvocationKind;
+    use hir::hir_def::pous::pou::Pou;
+    use hir::hir_def::scope::ScopeKind;
+    use hir::hir_ty::head::inheritance::MethodRef;
+    use hir::hir_ty::ty::CallableType;
+
+    let own: &[hir::hir_def::pous::class::MethodDecl<'db>] = match pou {
+        Pou::FunctionBlock(fb) => fb.methods(db),
+        Pou::Class(c) => c.methods(db),
+        _ => &[],
+    };
+    let mut methods = emittable_methods(db, pou, own);
+    let mut bodies: Vec<FunctionBlock<'db>> = Vec::new();
+
+    let mut work: Vec<hir::hir_def::scope::ScopeId<'db>> =
+        methods.iter().map(|m| m.scope_id(db)).collect();
+    if let Pou::FunctionBlock(fb) = pou {
+        work.push(fb.scope_id(db));
+    }
+    while let Some(scope) = work.pop() {
+        let body = hir::hir_ty::body::infer_body(db, scope);
+        for fc in &body.calls {
+            let path = fc.path(db);
+            if path.invocation(db).map(|i| i.kind(db)) != Some(InvocationKind::Super) {
+                continue;
+            }
+            // `SUPER.inner.m()` is the member's method, not a base's.
+            if matches!(
+                path.expr(db).map(|pe| pe.expr(db)),
+                Some(PathExprKind::Field(_))
+            ) {
+                continue;
+            }
+            let method = match path.infer(db) {
+                Type::MethodDecl(MethodRef::Declared(m))
+                | Type::CallableType(CallableType::MethodDecl(MethodRef::Declared(m))) => m,
+                _ => continue,
+            };
+            if !methods.contains(&method) {
+                methods.push(method);
+                work.push(method.scope_id(db));
+            }
+        }
+        // `SUPER()` runs the base of the block whose body holds it.
+        if body.first_super_body.is_some()
+            && let ScopeKind::Pou(holder) = hir::hir_def::semantic_index::get_scope(db, scope).kind
+            && let Some(Pou::FunctionBlock(base)) =
+                hir::hir_ty::head::inheritance::base_pou(db, holder)
+            && !bodies.contains(&base)
+        {
+            bodies.push(base);
+            work.push(base.scope_id(db));
+        }
+    }
+    InstanceCopies { methods, bodies }
+}
+
 #[allow(clippy::too_many_arguments)]
 pub fn lower_function<'db>(
     db: &'db dyn WorkspaceDataBase,
@@ -374,42 +446,37 @@ fn lower_function_block_inner<'db>(
     let mut functions = Vec::new();
     let mut idx = start_index;
 
-    // The FB's qualified symbol: the instance struct name and every method
-    // symbol derive from it.
-    let fb_qualified = super::naming::qualified_pou_ident(db, Type::FunctionBlock(fb));
-
     // Each method is emitted once, except interface-param methods, emitted
-    // once per specialization (`Owner#Use$@Worker`).
+    // once per specialization (`Owner#Use$@Worker`). A base's method or body
+    // reached through SUPER is emitted here too, on this instance type.
+    let copies = instance_copies(db, hir::hir_def::pous::pou::Pou::FunctionBlock(fb));
     let method_jobs: Vec<(
         hir::hir_def::pous::class::MethodDecl<'db>,
         Option<&super::mono_iface::IfaceInstance<'db>>,
-    )> = emittable_methods(
-        db,
-        hir::hir_def::pous::pou::Pou::FunctionBlock(fb),
-        fb.methods(db),
-    )
-    .iter()
-    .flat_map(|method| -> Vec<_> {
-        if method
-            .variables(db)
-            .iter()
-            .any(|v| super::mono_iface::is_interface_param(db, v))
-        {
-            iface_method_instances
+    )> = copies
+        .methods
+        .iter()
+        .flat_map(|method| -> Vec<_> {
+            if method
+                .variables(db)
                 .iter()
-                .filter(|inst| {
-                    matches!(
-                        inst.target,
-                        super::mono_iface::IfaceTarget::Method { method: m, .. } if m == *method
-                    )
-                })
-                .map(|inst| (*method, Some(*inst)))
-                .collect()
-        } else {
-            vec![(*method, None)]
-        }
-    })
-    .collect();
+                .any(|v| super::mono_iface::is_interface_param(db, v))
+            {
+                iface_method_instances
+                    .iter()
+                    .filter(|inst| {
+                        matches!(
+                            inst.target,
+                            super::mono_iface::IfaceTarget::Method { method: m, .. } if m == *method
+                        )
+                    })
+                    .map(|inst| (*method, Some(*inst)))
+                    .collect()
+            } else {
+                vec![(*method, None)]
+            }
+        })
+        .collect();
 
     // Lower each method as a separate function with 'this' parameter
     for (method, spec) in method_jobs {
@@ -530,17 +597,15 @@ fn lower_function_block_inner<'db>(
         }
         let body = body;
 
-        // Method symbol: `<FB>#<method>` (`NsA.Counter#inc`); a specialization
-        // uses its pre-mangled name.
+        // Method symbol: `<FB>#<method>` (`NsA.Counter#inc`), a base's reached
+        // through SUPER `<FB>#<Base>.<method>`; a specialization uses its
+        // pre-mangled name.
         let qualified_name = match spec {
             Some(inst) => inst.mangled_name,
-            None => Ident::new(
+            None => super::naming::method_copy_symbol(
                 db,
-                compact_str::CompactString::from(format!(
-                    "{}#{}",
-                    fb_qualified.text(db),
-                    method.name_with_case(db).text(db)
-                )),
+                hir::hir_def::pous::pou::Pou::FunctionBlock(fb),
+                method,
             ),
         };
 
@@ -561,8 +626,39 @@ fn lower_function_block_inner<'db>(
     }
 
     // The FB body as `__body__`, every variable through `this`. Lowered even
-    // when empty: call sites emit `call FB$__body__` regardless.
-    let fb_type = super::lower_type::lower_fb_type(db, fb)?;
+    // when empty: call sites emit `call FB$__body__` regardless. Then each
+    // base's body its `SUPER()` reaches, on this instance.
+    for body_of in std::iter::once(fb).chain(copies.bodies.iter().copied()) {
+        functions.push(lower_fb_body(
+            db,
+            fb,
+            body_of,
+            idx,
+            memory_layout,
+            string_pool.clone(),
+            iface_call_rewrites,
+        )?);
+        idx += 1;
+    }
+
+    Ok(functions)
+}
+
+/// The body of `body_of` emitted for the instance type `instance`: its own,
+/// or a base's that `SUPER()` reaches, where `THIS` is still `instance`. A
+/// derived instance is layout-compatible with its base, so the base's
+/// statements address the same members.
+#[allow(clippy::too_many_arguments)]
+fn lower_fb_body<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    instance: FunctionBlock<'db>,
+    body_of: FunctionBlock<'db>,
+    index: u32,
+    memory_layout: &mut MirMemoryLayout,
+    string_pool: Rc<RefCell<super::lower_expr::StringPool>>,
+    iface_call_rewrites: &super::mono_iface::IfaceCallRewrites<'db>,
+) -> Result<MirFunction, LowerTypeError> {
+    let fb_type = super::lower_type::lower_fb_type(db, instance)?;
     let body_params = vec![MirParam {
         name: Ident::new(db, compact_str::CompactString::from("this")),
         ty: MirType::Pointer(Box::new(fb_type.clone())),
@@ -572,10 +668,10 @@ fn lower_function_block_inner<'db>(
     let mut body_locals = Vec::new();
     let mut next_local_idx: u32 = 1; // 0 is 'this'
 
-    let mut address_taken = collect_address_taken_vars(db, fb.statements(db));
-    address_taken.extend(collect_address_taken_in_inits(db, fb.variables(db)));
+    let mut address_taken = collect_address_taken_vars(db, body_of.statements(db));
+    address_taken.extend(collect_address_taken_in_inits(db, body_of.variables(db)));
 
-    for var in fb.variables(db) {
+    for var in body_of.variables(db) {
         if var.kind(db) == VariableKind::Temp {
             let ty = lower_var_type(db, *var)?;
             let storage = allocate_local_storage(
@@ -608,15 +704,15 @@ fn lower_function_block_inner<'db>(
     };
     let (body_stmts, call_scratch) = crate::lower::lower_stmt::lower_stmts_fb_body(
         db,
-        fb.statements(db),
+        body_of.statements(db),
         this_struct,
-        Some(hir::hir_def::pous::pou::Pou::FunctionBlock(fb)),
+        Some(hir::hir_def::pous::pou::Pou::FunctionBlock(instance)),
         string_pool.clone(),
         None,
         iface_call_rewrites,
     )?;
     // VAR_TEMP starts over at every call, from its declared values.
-    let body_stmts = with_temp_inits(db, fb.variables(db), body_stmts, &string_pool)?;
+    let body_stmts = with_temp_inits(db, body_of.variables(db), body_stmts, &string_pool)?;
     append_call_scratch_locals(
         call_scratch,
         &mut body_locals,
@@ -624,15 +720,14 @@ fn lower_function_block_inner<'db>(
         memory_layout,
     );
 
-    let body_name = Ident::new(
-        db,
-        compact_str::CompactString::from(format!("{}$__body__", fb_qualified.text(db))),
-    );
-
-    functions.push(MirFunction {
-        name: body_name,
-        origin_name: fb.name(db),
-        index: idx,
+    Ok(MirFunction {
+        name: super::naming::body_symbol(
+            db,
+            hir::hir_def::pous::pou::Pou::FunctionBlock(instance),
+            hir::hir_def::pous::pou::Pou::FunctionBlock(body_of),
+        ),
+        origin_name: body_of.name(db),
+        index,
         params: body_params,
         return_type: None,
         locals: body_locals,
@@ -641,9 +736,7 @@ fn lower_function_block_inner<'db>(
         linkage: MirLinkage::Internal,
         is_test: false,
         export_name: None,
-    });
-
-    Ok(functions)
+    })
 }
 
 /// Lower a CLASS to MirFunctions (one per method + instance type).
@@ -659,37 +752,34 @@ fn lower_class_inner<'db>(
     let mut functions = Vec::new();
 
     // Interface-param methods are emitted once per specialization (see the
-    // FB-method site).
+    // FB-method site), and a base's method reached through SUPER too.
     let method_jobs: Vec<(
         hir::hir_def::pous::class::MethodDecl<'db>,
         Option<&super::mono_iface::IfaceInstance<'db>>,
-    )> = emittable_methods(
-        db,
-        hir::hir_def::pous::pou::Pou::Class(class),
-        class.methods(db),
-    )
-    .iter()
-    .flat_map(|method| -> Vec<_> {
-        if method
-            .variables(db)
-            .iter()
-            .any(|v| super::mono_iface::is_interface_param(db, v))
-        {
-            iface_method_instances
+    )> = instance_copies(db, hir::hir_def::pous::pou::Pou::Class(class))
+        .methods
+        .iter()
+        .flat_map(|method| -> Vec<_> {
+            if method
+                .variables(db)
                 .iter()
-                .filter(|inst| {
-                    matches!(
-                        inst.target,
-                        super::mono_iface::IfaceTarget::Method { method: m, .. } if m == *method
-                    )
-                })
-                .map(|inst| (*method, Some(*inst)))
-                .collect()
-        } else {
-            vec![(*method, None)]
-        }
-    })
-    .collect();
+                .any(|v| super::mono_iface::is_interface_param(db, v))
+            {
+                iface_method_instances
+                    .iter()
+                    .filter(|inst| {
+                        matches!(
+                            inst.target,
+                            super::mono_iface::IfaceTarget::Method { method: m, .. } if m == *method
+                        )
+                    })
+                    .map(|inst| (*method, Some(*inst)))
+                    .collect()
+            } else {
+                vec![(*method, None)]
+            }
+        })
+        .collect();
 
     for (idx, (method, spec)) in (start_index..).zip(method_jobs) {
         let mut params = Vec::new();
@@ -810,16 +900,12 @@ fn lower_class_inner<'db>(
         let body = body;
 
         // Method symbol: `<NsPath.>Class#Method` (see the FB-method site).
-        let class_qualified = super::naming::qualified_pou_ident(db, Type::Class(class));
         let qualified_name = match spec {
             Some(inst) => inst.mangled_name,
-            None => Ident::new(
+            None => super::naming::method_copy_symbol(
                 db,
-                compact_str::CompactString::from(format!(
-                    "{}#{}",
-                    class_qualified.text(db),
-                    method.name_with_case(db).text(db)
-                )),
+                hir::hir_def::pous::pou::Pou::Class(class),
+                method,
             ),
         };
 

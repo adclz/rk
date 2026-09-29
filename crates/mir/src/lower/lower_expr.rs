@@ -1219,18 +1219,28 @@ impl<'db> ExprLowerCtx<'db> {
     /// HIR validated the invocation (E1108/E1107).
     pub fn lower_super_body_call(
         &self,
-        // The base is the POU's own EXTENDS; the receiver is the current
-        // instance.
-        _begin_path: hir::hir_def::expressions::expression::BeginPathExpr<'db>,
+        // The base is the EXTENDS of the block whose body holds the call; the
+        // receiver is the current instance.
+        begin_path: hir::hir_def::expressions::expression::BeginPathExpr<'db>,
     ) -> Result<Option<crate::stmt::MirStmt>, LowerTypeError> {
         use hir::hir_def::pous::pou::Pou;
+        use hir::hir_def::scope::ScopeKind;
 
-        // The POU this body belongs to, as the lowering caller named it.
-        let current = self.this_pou.ok_or_else(|| {
+        // The instance this body runs on, as the lowering caller named it.
+        let instance = self.this_pou.ok_or_else(|| {
             LowerTypeError::UnsupportedType("SUPER() outside a function block".to_string())
         })?;
+        // The block the statement is written in: a base's body emitted on a
+        // derived instance calls ITS base, not the instance's.
+        let holder =
+            match hir::hir_def::semantic_index::get_scope(self.db, begin_path.scope_id(self.db))
+                .kind
+            {
+                ScopeKind::Pou(pou) => pou,
+                _ => instance,
+            };
         // The base as HIR resolved it (`base_pou`): MIR does not walk `EXTENDS`.
-        let base = hir::hir_ty::head::inheritance::base_pou(self.db, current);
+        let base = hir::hir_ty::head::inheritance::base_pou(self.db, holder);
         let base_pou = match base {
             Some(p @ Pou::FunctionBlock(_)) => p,
             _ => {
@@ -1240,13 +1250,9 @@ impl<'db> ExprLowerCtx<'db> {
             }
         };
 
-        // Body function `Base$__body__`, called with the current instance pointer.
-        let base_q =
-            crate::lower::naming::qualified_pou_ident(self.db, Type::new_pou(self.db, base_pou));
-        let body_name = hir::hir_def::interned::identifier::Ident::new(
-            self.db,
-            compact_str::CompactString::from(format!("{}$__body__", base_q.text(self.db))),
-        );
+        // The base's body emitted on this instance (`Derived$Base.__body__`),
+        // called with the current instance pointer.
+        let body_name = crate::lower::naming::body_symbol(self.db, instance, base_pou);
         let this_arg = MirCallArg {
             value: MirExpr::AddrOf(MirPlace::ThisField {
                 field_name: hir::hir_def::interned::identifier::Ident::new(
@@ -2552,8 +2558,12 @@ impl<'db> ExprLowerCtx<'db> {
             }
         };
         // `THIS.m()` and bare `m()` dispatch against the POU this body is emitted
-        // for; `SUPER.m()` is static (IEC 9b/10b) and keeps the base.
+        // for; `SUPER.m()` is static (IEC 9b/10b) and keeps the base's method,
+        // in its copy for that POU, where `THIS` is still the instance.
         let callee = match (virtual_dispatch, self.this_pou) {
+            (false, Some(owner)) => {
+                crate::lower::naming::method_copy_symbol(self.db, owner, method_decl)
+            }
             // The owner's own method for the name, its override or the one it
             // inherits, under the spelling its body is emitted with: `HOOK`
             // overrides `Hook`.

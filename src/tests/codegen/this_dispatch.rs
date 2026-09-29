@@ -10,6 +10,76 @@
 use crate::tests::codegen::{run, with_db};
 use rstest::*;
 
+/// `SUPER()` runs the base's body on this instance, so `THIS.Hook()` in it
+/// is the override, through two levels.
+#[rstest]
+fn super_body_runs_on_the_instance(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Base
+        VAR_OUTPUT got : INT; END_VAR
+            METHOD PUBLIC Hook : INT Hook := 1; END_METHOD
+            got := THIS.Hook();
+        END_FUNCTION_BLOCK
+        FUNCTION_BLOCK Derived EXTENDS Base
+            METHOD PUBLIC OVERRIDE Hook : INT Hook := 2; END_METHOD
+            SUPER();
+        END_FUNCTION_BLOCK
+        FUNCTION_BLOCK Derived2 EXTENDS Derived
+            METHOD PUBLIC OVERRIDE Hook : INT Hook := 3; END_METHOD
+            SUPER();
+        END_FUNCTION_BLOCK
+
+        FUNCTION test : INT
+        VAR b : Base; d : Derived; d2 : Derived2; END_VAR
+            b();
+            d();
+            d2();
+            test := b.got * 100 + d.got * 10 + d2.got;
+        END_FUNCTION
+    "#;
+    let result: i32 = run(&mut with_db, source, "test", ());
+    assert_eq!(result, 123, "each instance's own Hook");
+}
+
+/// `SUPER.Run()` runs the base's `Run` on this instance, through two levels,
+/// in a FUNCTION_BLOCK and in a CLASS.
+#[rstest]
+fn super_method_runs_on_the_instance(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Base
+            METHOD PUBLIC Hook : INT Hook := 1; END_METHOD
+            METHOD PUBLIC Run : INT Run := 10 + THIS.Hook(); END_METHOD
+        END_FUNCTION_BLOCK
+        FUNCTION_BLOCK Derived EXTENDS Base
+            METHOD PUBLIC OVERRIDE Hook : INT Hook := 2; END_METHOD
+            METHOD PUBLIC OVERRIDE Run : INT Run := 100 + SUPER.Run(); END_METHOD
+        END_FUNCTION_BLOCK
+        FUNCTION_BLOCK Derived2 EXTENDS Derived
+            METHOD PUBLIC OVERRIDE Hook : INT Hook := 3; END_METHOD
+            METHOD PUBLIC OVERRIDE Run : INT Run := 1000 + SUPER.Run(); END_METHOD
+        END_FUNCTION_BLOCK
+
+        CLASS CBase
+            METHOD PUBLIC Hook : INT Hook := 1; END_METHOD
+            METHOD PUBLIC Run : INT Run := 10 + THIS.Hook(); END_METHOD
+        END_CLASS
+        CLASS CDerived EXTENDS CBase
+            METHOD PUBLIC OVERRIDE Hook : INT Hook := 5; END_METHOD
+            METHOD PUBLIC OVERRIDE Run : INT Run := 100 + SUPER.Run(); END_METHOD
+        END_CLASS
+
+        FUNCTION test : BOOL
+        VAR d : Derived; d2 : Derived2; c : CDerived; END_VAR
+            test := d.Run() = 112 AND d2.Run() = 1113 AND c.Run() = 115;
+        END_FUNCTION
+    "#;
+    let result: i32 = run(&mut with_db, source, "test", ());
+    assert_eq!(
+        result, 1,
+        "112, 1113 and 115: every THIS.Hook() the override"
+    );
+}
+
 /// Through an interface, an inherited method runs as the implementer's copy:
 /// the override wins there, as in a direct call, and an ABSTRACT base's
 /// template method reaches the implementation.
