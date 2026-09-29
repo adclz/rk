@@ -967,3 +967,27 @@ END_FUNCTION
     ----'
     ");
 }
+
+/// An argument that fails to resolve is reported once: the overloads are
+/// not tried, so the other arguments are not checked against the first one.
+#[rstest]
+fn an_unresolved_argument_selects_nothing(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION Which : INT VAR_INPUT a : INT; b : INT; END_VAR Which := 1; END_FUNCTION
+FUNCTION Which : INT VAR_INPUT a : REAL; b : REAL; END_VAR Which := 2; END_FUNCTION
+
+FUNCTION caller : INT
+VAR r : REAL; END_VAR
+    caller := Which(nope, r);
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r#"
+    [E0201] Error: no item found in scope
+       ,-[ file:///test0.st:7:21 ]
+       |
+     7 |     caller := Which(nope, r);
+       |                     ^^|^
+       |                       `--- no item "nope" found in scope
+    ---'
+    "#);
+}
