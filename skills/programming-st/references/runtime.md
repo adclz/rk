@@ -28,6 +28,7 @@ A slot is a 4-byte length followed by its capacity in bytes, so a plain `STRING`
 
 - A literal too long for its destination is a compile error (`E0314`).
 - A variable too long truncates silently, and truncating bytes can split a character. `IS_UTF8` exists for exactly that.
+- `$hh` in a literal is one byte, not a character: `'caf$E9'` is not `'café'`, whose `é` is `$C3$A9`. Latin-1 code uses `$E9` for `é`.
 - There is no indexing: `s[1]` is `E0508`, use `CHAR_AT`.
 - There is no `+` on strings, use `CONCAT`.
 - `LEN` is the byte length.
