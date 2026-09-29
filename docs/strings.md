@@ -55,6 +55,8 @@ Write operations:
 - `CHAR_DELETE` removes n characters starting at a 1-indexed character position.
 - `CHAR_REPLACE` replaces n characters at a 1-indexed character position with a STRING.
 
+Their result holds up to 255 bytes, as in CODESYS and TwinCAT. A longer one is cut there, and again where it is stored when the destination is smaller.
+
 
 - A **literal** too long for its destination is a compile error.
 - A **variable** too long truncates silently, and truncating bytes can split a character.

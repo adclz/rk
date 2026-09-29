@@ -988,7 +988,7 @@ fn lower_extern_function<'db>(
 
     let return_type = func
         .return_type(db)
-        .map(|spec| lower_type(db, spec.infer(db)))
+        .map(|spec| super::lower_type::lower_spec(db, *spec))
         .transpose()?;
 
     Ok(MirExternFunction {

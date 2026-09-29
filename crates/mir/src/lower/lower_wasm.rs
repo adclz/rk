@@ -7,11 +7,10 @@ use hir::hir_def::{
     expressions::statement::Stmt, extern_decl::WasmDecl, interned::identifier::Ident,
     pous::pou::Pou, scope::ScopeKind, semantic_index::get_scope,
 };
-use hir::hir_ty::infer::Infer;
 
 use super::lower_expr::ExprLowerCtx;
 use super::lower_func::lower_var_type;
-use super::lower_type::{LowerTypeError, lower_type};
+use super::lower_type::{LowerTypeError, lower_spec};
 use crate::expr::{MirExpr, MirPlace};
 use crate::stmt::MirStmt;
 use crate::types::{MirElementary, MirType};
@@ -36,7 +35,7 @@ pub(crate) fn lower_wasm_pragma<'db>(
         {
             let ty = f
                 .return_type(db)
-                .map(|spec| lower_type(db, spec.infer(db)))
+                .map(|spec| lower_spec(db, *spec))
                 .transpose()?
                 .ok_or_else(|| {
                     LowerTypeError::UnsupportedType(format!(

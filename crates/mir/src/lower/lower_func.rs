@@ -233,10 +233,9 @@ fn lower_function_inner<'db>(
     // 2. Return type
     let return_type = func
         .return_type(db)
-        .map(|spec| {
-            let ty = spec.infer(db);
-            lower_type(db, ty)
-        })
+        // The declared spec, not the inferred type: a `STRING[n]` result keeps
+        // its capacity, which `Type::normalize` drops.
+        .map(|spec| super::lower_type::lower_spec(db, *spec))
         .transpose()?;
 
     // The return slot, named after the function: scalars in a wasm local,
@@ -467,10 +466,7 @@ fn lower_function_block_inner<'db>(
 
         let return_type = method
             .return_type(db)
-            .map(|spec| {
-                let ty = spec.infer(db);
-                lower_type(db, ty)
-            })
+            .map(|spec| super::lower_type::lower_spec(db, *spec))
             .transpose()?;
 
         // The return slot (scalar → wasm local, else linear memory, as when
@@ -749,10 +745,7 @@ fn lower_class_inner<'db>(
 
         let return_type = method
             .return_type(db)
-            .map(|spec| {
-                let ty = spec.infer(db);
-                lower_type(db, ty)
-            })
+            .map(|spec| super::lower_type::lower_spec(db, *spec))
             .transpose()?;
 
         // Return local: scalar → WASM local, non-scalar or address-taken →

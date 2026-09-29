@@ -1660,3 +1660,60 @@ END_FUNCTION
     let r: i32 = run(&mut with_db, src, "run", ());
     assert_eq!(r, 211, "names[0], then names[1], one call each");
 }
+
+/// A result declared `STRING[n]` is laid out at `n`, in the callee and in
+/// the caller's copy: a `STRING[100]` result came back cut at the default
+/// 80, and a `STRING[3]` one was not cut at all.
+#[rstest]
+fn a_string_result_keeps_its_declared_capacity(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE S3 : STRING[3]; END_TYPE
+
+        FUNCTION Long : STRING[100] Long := '0123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789'; END_FUNCTION
+        FUNCTION Short : STRING[3]
+        VAR s : STRING := 'abcdef'; END_VAR
+            Short := s;
+        END_FUNCTION
+        FUNCTION ShortAlias : S3
+        VAR s : STRING := 'abcdef'; END_VAR
+            ShortAlias := s;
+        END_FUNCTION
+
+        FUNCTION_BLOCK Holder
+            METHOD PUBLIC Get : STRING[100] Get := '0123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789'; END_METHOD
+        END_FUNCTION_BLOCK
+        CLASS Box
+            METHOD PUBLIC Get : STRING[100] Get := '0123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789'; END_METHOD
+        END_CLASS
+
+        FUNCTION test : BOOL
+        VAR h : Holder; b : Box; END_VAR
+            test := Long() = '0123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789'
+                AND Short() = 'abc'
+                AND ShortAlias() = 'abc'
+                AND h.Get() = '0123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789'
+                AND b.Get() = '0123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789';
+        END_FUNCTION
+    "#;
+    let result: i32 = super::run(&mut with_db, source, "test", ());
+    assert_eq!(result, 1, "each result at its declared capacity");
+}
+
+/// A STRING result passed on as an argument is snapshotted whole: the
+/// snapshot slots were 80 bytes whatever the result's capacity.
+#[rstest]
+fn a_long_nested_result_is_snapshotted_whole(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION Long : STRING[100] Long := '0123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789'; END_FUNCTION
+        FUNCTION Second : STRING[100]
+        VAR_INPUT a : STRING[100]; b : STRING[100]; END_VAR
+            Second := b;
+        END_FUNCTION
+
+        FUNCTION test : BOOL
+            test := Second(Long(), Long()) = '0123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789';
+        END_FUNCTION
+    "#;
+    let result: i32 = super::run(&mut with_db, source, "test", ());
+    assert_eq!(result, 1, "100 bytes through the snapshot");
+}

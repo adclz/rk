@@ -1837,6 +1837,18 @@ impl<'db> ExprLowerCtx<'db> {
             Type::Void | Type::Never => MirType::Void,
             ty => self.lower_type_resolved(ty).unwrap_or(MirType::Void),
         };
+        // A STRING result is as large as the callee declares it, which the
+        // inferred type does not say: a `STRING[200]` result read back as 80.
+        let mir_return_type = match (
+            &mir_return_type,
+            self.resolved_call_of(func_call)
+                .and_then(|call| call.callable.return_type(self.db).copied()),
+        ) {
+            (MirType::String { .. }, Some(spec)) => {
+                crate::lower::lower_type::lower_spec(self.db, spec)?
+            }
+            _ => mir_return_type,
+        };
 
         // With outputs popping after the call, a declared return value needs
         // somewhere to wait: it is LAST on the stack, so it pops FIRST.
