@@ -178,7 +178,13 @@ fn emit_stmt(func: &mut wasm_encoder::Function, stmt: &MirStmt, ctx: &Ctx) {
                 ctx.locals,
                 ctx.fn_indices,
             );
-            if call.return_type != mir::types::MirType::Void {
+            // A STRING result is two values, (ptr, len).
+            let results = match call.return_type {
+                mir::types::MirType::Void => 0,
+                mir::types::MirType::String { .. } => 2,
+                _ => 1,
+            };
+            for _ in 0..results {
                 func.instruction(&Instruction::Drop);
             }
         }

@@ -1850,3 +1850,30 @@ fn an_fb_string_in_out_writes_at_the_bound_capacity(mut with_db: db::RootDatabas
         "four writes cut at 4, the guard untouched (28)"
     );
 }
+
+/// A STRING result used as a statement is two values, both dropped: one was,
+/// and the module failed validation.
+#[rstest]
+fn string_result_discarded(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION label : STRING
+        VAR_INPUT n : INT; END_VAR
+            label := 'x';
+        END_FUNCTION
+
+        FUNCTION_BLOCK F
+            METHOD PUBLIC name : STRING
+                name := 'f';
+            END_METHOD
+        END_FUNCTION_BLOCK
+
+        FUNCTION test : INT
+        VAR f : F; END_VAR
+            label(1);
+            f.name();
+            test := 1;
+        END_FUNCTION
+    "#;
+    let result: i32 = run(&mut with_db, source, "test", ());
+    assert_eq!(result, 1);
+}
