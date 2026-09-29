@@ -245,3 +245,37 @@ fn fn_class_instance_input(mut with_db: db::RootDatabase) {
     let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 44, "read w = 4; the caller's w is untouched");
 }
+
+/// A METHOD's inputs are laid out before its locals, whatever order the
+/// sections are declared in: a VAR written first used to take the index of
+/// the first input.
+#[rstest]
+fn method_locals_declared_before_inputs(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK F
+            METHOD PUBLIC m : INT
+            VAR l : INT; END_VAR
+            VAR_INPUT x : INT; END_VAR
+                l := 100;
+                m := x + l;
+            END_METHOD
+        END_FUNCTION_BLOCK
+
+        CLASS C
+            METHOD PUBLIC m : INT
+            VAR l : INT; END_VAR
+            VAR_INPUT x : INT; END_VAR
+                l := 100;
+                m := x + l;
+            END_METHOD
+        END_CLASS
+
+        FUNCTION test : INT
+        VAR f : F; c : C; END_VAR
+            IF f.m(5) <> 105 THEN test := test + 1; END_IF;
+            IF c.m(7) <> 107 THEN test := test + 2; END_IF;
+        END_FUNCTION
+    "#;
+    let result: i32 = super::run(&mut with_db, source, "test", ());
+    assert_eq!(result, 0);
+}

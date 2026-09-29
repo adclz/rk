@@ -506,29 +506,36 @@ fn lower_function_block_inner<'db>(
             kind: MirParamKind::This,
         });
 
-        // Method parameters
+        // Method parameters, then its locals: every wasm parameter's index
+        // comes before the first local's, whatever order the sections are
+        // declared in.
+        let mut local_vars = Vec::new();
         for var in method.variables(db) {
-            if let Some(param) = param_for_var(db, var, spec.map(|i| &i.iface_subs))? {
-                next_local_idx += param_wasm_width(&param.ty, param.kind);
-                params.push(param);
-            } else {
-                let ty = lower_var_type(db, *var)?;
-                let storage = allocate_local_storage(
-                    var.name(db),
-                    &ty,
-                    address_taken.contains(&var.name(db)),
-                    &mut next_local_idx,
-                    memory_layout,
-                );
-                locals.push(MirLocal {
-                    name: var.name(db),
-                    ty,
-                    init: None,
-                    storage,
-                    // FB/class method local — stateless per call.
-                    var_storage: MirVariableStorage::Automatic,
-                });
+            match param_for_var(db, var, spec.map(|i| &i.iface_subs))? {
+                Some(param) => {
+                    next_local_idx += param_wasm_width(&param.ty, param.kind);
+                    params.push(param);
+                }
+                None => local_vars.push(var),
             }
+        }
+        for var in local_vars {
+            let ty = lower_var_type(db, *var)?;
+            let storage = allocate_local_storage(
+                var.name(db),
+                &ty,
+                address_taken.contains(&var.name(db)),
+                &mut next_local_idx,
+                memory_layout,
+            );
+            locals.push(MirLocal {
+                name: var.name(db),
+                ty,
+                init: None,
+                storage,
+                // FB/class method local — stateless per call.
+                var_storage: MirVariableStorage::Automatic,
+            });
         }
 
         let return_type = method
@@ -808,29 +815,36 @@ fn lower_class_inner<'db>(
         let mut address_taken = collect_address_taken_vars(db, method.stmts(db));
         address_taken.extend(collect_address_taken_in_inits(db, method.variables(db)));
 
-        // Method parameters
+        // Method parameters, then its locals: every wasm parameter's index
+        // comes before the first local's, whatever order the sections are
+        // declared in.
+        let mut local_vars = Vec::new();
         for var in method.variables(db) {
-            if let Some(param) = param_for_var(db, var, spec.map(|i| &i.iface_subs))? {
-                next_local_idx += param_wasm_width(&param.ty, param.kind);
-                params.push(param);
-            } else {
-                let ty = lower_var_type(db, *var)?;
-                let storage = allocate_local_storage(
-                    var.name(db),
-                    &ty,
-                    address_taken.contains(&var.name(db)),
-                    &mut next_local_idx,
-                    memory_layout,
-                );
-                locals.push(MirLocal {
-                    name: var.name(db),
-                    ty,
-                    init: None,
-                    storage,
-                    // FB/class method local — stateless per call.
-                    var_storage: MirVariableStorage::Automatic,
-                });
+            match param_for_var(db, var, spec.map(|i| &i.iface_subs))? {
+                Some(param) => {
+                    next_local_idx += param_wasm_width(&param.ty, param.kind);
+                    params.push(param);
+                }
+                None => local_vars.push(var),
             }
+        }
+        for var in local_vars {
+            let ty = lower_var_type(db, *var)?;
+            let storage = allocate_local_storage(
+                var.name(db),
+                &ty,
+                address_taken.contains(&var.name(db)),
+                &mut next_local_idx,
+                memory_layout,
+            );
+            locals.push(MirLocal {
+                name: var.name(db),
+                ty,
+                init: None,
+                storage,
+                // FB/class method local — stateless per call.
+                var_storage: MirVariableStorage::Automatic,
+            });
         }
 
         let return_type = method
