@@ -650,7 +650,8 @@ END_PROGRAM
     ");
 }
 
-// The configuration naming `Main` resolved to the FUNCTION.
+// The configuration naming `Main` resolved to the FUNCTION. It reaches the
+// PROGRAM, so the pair is the only error.
 #[rstest]
 fn program_named_like_a_function(mut with_db: RootDatabase) {
     let source = r#"
@@ -694,13 +695,6 @@ END_CONFIGURATION
        |          ^^|^
        |            `--- POU 'Main' is also defined here
     ---'
-    [E0316] Error: invalid type
-        ,-[ file:///test0.st:14:32 ]
-        |
-     14 |         PROGRAM P1 WITH Fast : Main;
-        |                                ^^|^
-        |                                  `--- 'Main' is a function and cannot be used as a variable or data type
-    ----'
     ");
 }
 
