@@ -1798,6 +1798,7 @@ fn collect_const_inits<'db>(
                 *addr,
                 ty,
                 init,
+                None,
                 &mut stmts,
                 string_pool,
             )?;
@@ -1841,11 +1842,19 @@ fn collect_const_inits<'db>(
                         &mut stmts,
                     )?;
                     if let Some(init) = var.init(db) {
+                        // A REF() in it names a member of this instance.
+                        let owner = super::lower_func::InitOwner {
+                            target: super::lower_func::InitTarget::Static {
+                                base: inst.instance_addr,
+                            },
+                            layout: info.struct_type.clone(),
+                        };
                         super::lower_func::lower_resolved_init_into(
                             db,
                             addr,
                             &field.ty,
                             init,
+                            Some(&owner),
                             &mut stmts,
                             string_pool,
                         )?;
@@ -1935,6 +1944,7 @@ fn collect_const_inits<'db>(
                 base,
                 &ty,
                 value.init,
+                None,
                 &mut stmts,
                 string_pool,
             )?;

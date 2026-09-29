@@ -457,3 +457,53 @@ fn initialized_array_elements_then_a_call(mut with_db: db::RootDatabase) {
     let result: i32 = run(&mut with_db, source, "run", ());
     assert_eq!(result, 565, "element 1 went 5 -> 6; the others stayed 5");
 }
+
+/// A member's `REF()` default points into the instance it is part of, where
+/// that instance sits: a local, a member of another instance, an element of
+/// an array of them, a derived FB's inherited member, a CLASS. It used to be
+/// read in the frame the instance was declared in: NULL, the caller's
+/// variable of that name, or a codegen panic.
+#[rstest]
+fn member_ref_default_points_into_its_instance(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK H
+        VAR x : INT := 5; arr : ARRAY[0..2] OF INT := [1, 2, 3]; END_VAR
+        VAR_OUTPUT p : REF_TO INT := REF(x); q : REF_TO INT := REF(arr[1]); END_VAR
+            METHOD PUBLIC get : INT
+                get := p^ * 10 + q^;
+            END_METHOD
+        END_FUNCTION_BLOCK
+
+        FUNCTION_BLOCK Derived EXTENDS H
+        VAR_OUTPUT py : REF_TO INT := REF(x); END_VAR
+        END_FUNCTION_BLOCK
+
+        CLASS K
+        VAR x : INT := 6; END_VAR
+        VAR PUBLIC p : REF_TO INT := REF(x); END_VAR
+        END_CLASS
+
+        FUNCTION_BLOCK Outer
+        VAR inner : H; many : ARRAY[0..1] OF H; END_VAR
+        VAR_OUTPUT a : INT; b : INT; END_VAR
+            inner.x := 1;
+            many[1].x := 2;
+            a := inner.get();
+            b := many[1].get();
+        END_FUNCTION_BLOCK
+
+        // One bit per instance whose reference went elsewhere.
+        FUNCTION test : INT
+        VAR x : INT := 99; r : REF_TO INT; l : H; o : Outer; d : Derived; k : K; END_VAR
+            r := REF(x);
+            IF l.get() <> 52 THEN test := test + 1; END_IF;
+            o();
+            IF o.a <> 12 THEN test := test + 2; END_IF;
+            IF o.b <> 22 THEN test := test + 4; END_IF;
+            IF d.py^ <> 5 OR d.get() <> 52 THEN test := test + 8; END_IF;
+            IF k.p^ <> 6 THEN test := test + 16; END_IF;
+        END_FUNCTION
+    "#;
+    let result: i32 = run(&mut with_db, source, "test", ());
+    assert_eq!(result, 0);
+}

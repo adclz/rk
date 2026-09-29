@@ -1451,6 +1451,7 @@ fn lower_var_init<'db>(
         },
         var_ty,
         init_expr,
+        None,
         string_pool,
         out,
     )
@@ -1470,6 +1471,109 @@ pub(crate) enum InitTarget {
     Local { name: Ident, base: u32, whole: bool },
 }
 
+/// The instance a member's initializer is part of: a `REF()` in it names
+/// that instance's members (`p : REF_TO INT := REF(x)` points at the `x`
+/// beside this `p`).
+pub(crate) struct InitOwner {
+    pub target: InitTarget,
+    pub layout: crate::types::MirStructType,
+}
+
+impl InitOwner {
+    fn place(&self) -> crate::expr::MirPlace {
+        use crate::expr::MirPlace;
+        let ty = crate::types::MirType::Struct(self.layout.clone());
+        match self.target {
+            InitTarget::Static { base } => MirPlace::Global {
+                name: None,
+                address: base,
+                ty,
+            },
+            InitTarget::Local { name, base, .. } => MirPlace::Field {
+                base: Box::new(MirPlace::Local(name)),
+                field_name: name,
+                field_offset: base,
+                field_type: ty,
+            },
+        }
+    }
+}
+
+/// `place` with its `this` root replaced by `instance`: a member's `REF()`
+/// default is lowered as a method of the instance would lower it, then
+/// pointed at the instance being initialized.
+fn rebase_this_place(
+    place: crate::expr::MirPlace,
+    instance: &crate::expr::MirPlace,
+) -> crate::expr::MirPlace {
+    use crate::expr::MirPlace;
+    match place {
+        MirPlace::ThisField {
+            field_name,
+            field_offset,
+            field_type,
+        } => MirPlace::Field {
+            base: Box::new(instance.clone()),
+            field_name,
+            field_offset,
+            field_type,
+        },
+        MirPlace::Field {
+            base,
+            field_name,
+            field_offset,
+            field_type,
+        } => MirPlace::Field {
+            base: Box::new(rebase_this_place(*base, instance)),
+            field_name,
+            field_offset,
+            field_type,
+        },
+        MirPlace::Index {
+            base,
+            index,
+            element_size,
+            element_type,
+            lower_bound,
+        } => MirPlace::Index {
+            base: Box::new(rebase_this_place(*base, instance)),
+            index: Box::new(rebase_this(*index, instance)),
+            element_size,
+            element_type,
+            lower_bound,
+        },
+        MirPlace::Deref {
+            base,
+            pointee_type,
+            checked,
+            capacity,
+        } => MirPlace::Deref {
+            base: Box::new(rebase_this_place(*base, instance)),
+            pointee_type,
+            checked,
+            capacity: capacity.map(|c| Box::new(rebase_this_place(*c, instance))),
+        },
+        other => other,
+    }
+}
+
+fn rebase_this(
+    expr: crate::expr::MirExpr,
+    instance: &crate::expr::MirPlace,
+) -> crate::expr::MirExpr {
+    use crate::expr::MirExpr;
+    match expr {
+        MirExpr::AddrOf(place) => MirExpr::AddrOf(rebase_this_place(place, instance)),
+        MirExpr::Load(place, ty) => MirExpr::Load(rebase_this_place(place, instance), ty),
+        MirExpr::Cast { expr, from, to } => MirExpr::Cast {
+            expr: Box::new(rebase_this(*expr, instance)),
+            from,
+            to,
+        },
+        other => other,
+    }
+}
+
 impl InitTarget {
     fn offset_by(self, delta: u32) -> Self {
         match self {
@@ -1484,12 +1588,14 @@ impl InitTarget {
 }
 
 /// Lower one initializer's resolved leaves into `out` at `target`;
-/// `infer_initialization` already flattened and validated them.
+/// `infer_initialization` already flattened and validated them. `owner` is
+/// the instance a member's initializer is part of.
 fn lower_init_leaves<'db>(
     db: &'db dyn WorkspaceDataBase,
     target: InitTarget,
     ty: &crate::types::MirType,
     init: hir::hir_def::expressions::expression::InitExpr<'db>,
+    owner: Option<&InitOwner>,
     string_pool: &Rc<RefCell<super::lower_expr::StringPool>>,
     out: &mut Vec<MirStmt>,
 ) -> Result<(), LowerTypeError> {
@@ -1509,19 +1615,29 @@ fn lower_init_leaves<'db>(
             };
             found
         };
-        let value = ctx.lower_leaf_value(leaf.value, &leaf_ty)?;
+        let value = match owner {
+            // A member named in a REF() is the owner's.
+            Some(owner)
+                if matches!(
+                    leaf.value.expr(db),
+                    hir::hir_def::expressions::expression::ExprKind::PrimaryExpr(
+                        hir::hir_def::expressions::expression::PrimaryExpr::RefValue { .. }
+                    )
+                ) =>
+            {
+                let ctx =
+                    ExprLowerCtx::with_this_struct(db, owner.layout.clone(), string_pool.clone());
+                rebase_this(ctx.lower_leaf_value(leaf.value, &leaf_ty)?, &owner.place())
+            }
+            _ => ctx.lower_leaf_value(leaf.value, &leaf_ty)?,
+        };
         // E0401 refuses every non-constant static leaf, so reaching this arm
         // means check and lowering disagree. A REF() is an address, which
         // `__init` stores once the layout has placed what it names.
         if let InitTarget::Static { .. } = target
             && !is_const_value(&value)
+            && !matches!(value, crate::expr::MirExpr::AddrOf(_))
         {
-            // E0401 refuses every non-constant static leaf, so reaching this arm
-            // means check and lowering disagree. REF defaults are the known
-            // exception, skipped for now.
-            if matches!(leaf_ty, crate::types::MirType::Pointer(_)) {
-                continue;
-            }
             return Err(LowerTypeError::UnsupportedType(format!(
                 "a static initializer leaf survived E0401 without \
                  being constant: {value:?}"
@@ -1583,13 +1699,14 @@ fn lower_init_value<'db>(
     target: InitTarget,
     ty: &crate::types::MirType,
     value: hir::hir_ty::head::inheritance::InitValue<'db>,
+    owner: Option<&InitOwner>,
     string_pool: &Rc<RefCell<super::lower_expr::StringPool>>,
     out: &mut Vec<MirStmt>,
 ) -> Result<(), LowerTypeError> {
     use hir::hir_ty::head::inheritance::InitValue;
     let implied = match value {
         InitValue::Written(init) => {
-            return lower_init_leaves(db, target, ty, init, string_pool, out);
+            return lower_init_leaves(db, target, ty, init, owner, string_pool, out);
         }
         InitValue::Implied(v) => v,
     };
@@ -1666,14 +1783,38 @@ pub(crate) fn lower_type_default_inits<'db>(
     out: &mut Vec<MirStmt>,
 ) -> Result<(), LowerTypeError> {
     for entry in hir::hir_ty::head::inheritance::type_default_inits(db, hir_ty) {
-        let mut slots = Vec::new();
-        member_path_slots(db, mir_ty, &entry.path, 0, &mut slots);
-        for (offset, slot_ty) in slots {
+        // The slots of the instances the member is part of, then the member
+        // in each: the instance is the owner a REF() in its default names.
+        let (owner_path, member) = match entry.path.split_last() {
+            Some((InstanceInitStep::Field(name), owner_path)) => (owner_path, Some(*name)),
+            _ => (&entry.path[..], None),
+        };
+        let mut owners = Vec::new();
+        member_path_slots(db, mir_ty, owner_path, 0, &mut owners);
+        for (owner_offset, owner_ty) in owners {
+            let (offset, slot_ty, owner) = match (member, owner_ty) {
+                (None, slot_ty) => (owner_offset, slot_ty, None),
+                (Some(name), crate::types::MirType::Struct(layout)) => {
+                    // HIR and the layout disagree about this member; the
+                    // slot walk skipped it too.
+                    let Some(field) = layout.fields.iter().find(|f| f.name(db) == name) else {
+                        continue;
+                    };
+                    let slot = (owner_offset + field.offset, field.ty.clone());
+                    let owner = InitOwner {
+                        target: target.offset_by(owner_offset),
+                        layout,
+                    };
+                    (slot.0, slot.1, Some(owner))
+                }
+                (Some(_), _) => continue,
+            };
             lower_init_value(
                 db,
                 target.offset_by(offset),
                 &slot_ty,
                 entry.init,
+                owner.as_ref(),
                 string_pool,
                 out,
             )?;
@@ -1690,10 +1831,19 @@ pub(crate) fn lower_resolved_init_into<'db>(
     base: u32,
     ty: &crate::types::MirType,
     init: hir::hir_def::expressions::expression::InitExpr<'db>,
+    owner: Option<&InitOwner>,
     out: &mut Vec<crate::stmt::MirStmt>,
     string_pool: &Rc<RefCell<super::lower_expr::StringPool>>,
 ) -> Result<(), LowerTypeError> {
-    lower_init_leaves(db, InitTarget::Static { base }, ty, init, string_pool, out)
+    lower_init_leaves(
+        db,
+        InitTarget::Static { base },
+        ty,
+        init,
+        owner,
+        string_pool,
+        out,
+    )
 }
 
 /// Walk a resolved leaf's path over the layout to its byte offset and
