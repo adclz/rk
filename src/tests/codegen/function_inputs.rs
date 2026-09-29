@@ -246,6 +246,103 @@ fn fn_class_instance_input(mut with_db: db::RootDatabase) {
     assert_eq!(result, 44, "read w = 4; the caller's w is untouched");
 }
 
+/// An input whose address the body takes is a wasm parameter, which has
+/// none: it is copied into memory at entry. Each form used to panic codegen.
+#[rstest]
+fn fn_input_whose_address_is_taken(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION inc
+        VAR_IN_OUT io : INT; END_VAR
+            io := io + 1;
+        END_FUNCTION
+
+        FUNCTION put
+        VAR_OUTPUT o : INT; END_VAR
+            o := 9;
+        END_FUNCTION
+
+        FUNCTION_BLOCK Bumper
+        VAR_IN_OUT io : INT; END_VAR
+            io := io + 1;
+        END_FUNCTION_BLOCK
+
+        FUNCTION_BLOCK M
+            METHOD PUBLIC twice : INT
+            VAR_INPUT x : INT; END_VAR
+                inc(io := x);
+                inc(io := x);
+                twice := x;
+            END_METHOD
+        END_FUNCTION_BLOCK
+
+        FUNCTION as_in_out : INT
+        VAR_INPUT x : INT; END_VAR
+            inc(io := x);
+            as_in_out := x;
+        END_FUNCTION
+
+        FUNCTION via_ref : INT
+        VAR_INPUT x : INT; END_VAR
+        VAR r : REF_TO INT; END_VAR
+            r := REF(x);
+            r^ := x + 2;
+            via_ref := x;
+        END_FUNCTION
+
+        FUNCTION as_output : INT
+        VAR_INPUT x : INT; END_VAR
+            put(o => x);
+            as_output := x;
+        END_FUNCTION
+
+        FUNCTION as_fb_in_out : INT
+        VAR_INPUT x : INT; END_VAR
+        VAR b : Bumper; END_VAR
+            b(io := x);
+            as_fb_in_out := x;
+        END_FUNCTION
+
+        // One bit per form that went wrong.
+        FUNCTION test : INT
+        VAR v : INT := 5; m : M; END_VAR
+            IF as_in_out(v) <> 6 THEN test := test + 1; END_IF;
+            IF v <> 5 THEN test := test + 2; END_IF;
+            IF via_ref(5) <> 7 THEN test := test + 4; END_IF;
+            IF as_output(5) <> 9 THEN test := test + 8; END_IF;
+            IF as_fb_in_out(5) <> 6 THEN test := test + 16; END_IF;
+            IF m.twice(5) <> 7 THEN test := test + 32; END_IF;
+        END_FUNCTION
+    "#;
+    let result: i32 = super::run(&mut with_db, source, "test", ());
+    assert_eq!(result, 0, "each form wrote the callee's copy only");
+}
+
+/// A STRING input passed on as a VAR_IN_OUT is the callee's copy too.
+#[rstest]
+fn fn_string_input_as_in_out(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION shout
+        VAR_IN_OUT s : STRING; END_VAR
+            s := 'bye';
+        END_FUNCTION
+
+        FUNCTION louder : STRING
+        VAR_INPUT s : STRING; END_VAR
+            shout(s := s);
+            louder := s;
+        END_FUNCTION
+
+        FUNCTION test : INT
+        VAR v : STRING := 'hi'; w : STRING; END_VAR
+            w := louder(v);
+            IF w <> 'bye' THEN test := test + 1; END_IF;
+            IF v <> 'hi' THEN test := test + 2; END_IF;
+        END_FUNCTION
+    "#;
+    let result: i32 = super::run(&mut with_db, source, "test", ());
+    assert_eq!(result, 0, "'bye' in the callee, 'hi' in the caller");
+}
+
 /// A METHOD's inputs are laid out before its locals, whatever order the
 /// sections are declared in: a VAR written first used to take the index of
 /// the first input.

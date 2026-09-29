@@ -301,6 +301,14 @@ fn lower_function_inner<'db>(
             params.push(param);
         }
     }
+    let entry_copies = shadow_address_taken_inputs(
+        db,
+        &mut params,
+        &address_taken,
+        &mut locals,
+        &mut next_local_idx,
+        memory_layout,
+    );
 
     // 2. Return type
     let return_type = func
@@ -361,13 +369,18 @@ fn lower_function_inner<'db>(
         });
     }
 
-    // 4. Starting values: the result's type defaults, then every local's.
-    let mut init_stmts = match (func.return_type(db), &return_type) {
-        (Some(spec), Some(ret_ty)) => {
-            lower_result_init_stmts(db, func.name(db), ret_ty, spec, &string_pool)?
-        }
-        _ => Vec::new(),
-    };
+    // 4. Starting values: the shadowed inputs, the result's type defaults,
+    // then every local's.
+    let mut init_stmts = entry_copies;
+    if let (Some(spec), Some(ret_ty)) = (func.return_type(db), &return_type) {
+        init_stmts.extend(lower_result_init_stmts(
+            db,
+            func.name(db),
+            ret_ty,
+            spec,
+            &string_pool,
+        )?);
+    }
     init_stmts.extend(lower_local_init_stmts(
         db,
         func.variables(db),
@@ -519,6 +532,14 @@ fn lower_function_block_inner<'db>(
                 None => local_vars.push(var),
             }
         }
+        let entry_copies = shadow_address_taken_inputs(
+            db,
+            &mut params,
+            &address_taken,
+            &mut locals,
+            &mut next_local_idx,
+            memory_layout,
+        );
         for var in local_vars {
             let ty = lower_var_type(db, *var)?;
             let storage = allocate_local_storage(
@@ -587,12 +608,16 @@ fn lower_function_block_inner<'db>(
 
         // A method's result and locals are per call: their starting values
         // are stores at entry.
-        let mut init_stmts = match (method.return_type(db), &return_type) {
-            (Some(spec), Some(ret_ty)) => {
-                lower_result_init_stmts(db, method.name(db), ret_ty, spec, &string_pool)?
-            }
-            _ => Vec::new(),
-        };
+        let mut init_stmts = entry_copies;
+        if let (Some(spec), Some(ret_ty)) = (method.return_type(db), &return_type) {
+            init_stmts.extend(lower_result_init_stmts(
+                db,
+                method.name(db),
+                ret_ty,
+                spec,
+                &string_pool,
+            )?);
+        }
         init_stmts.extend(lower_local_init_stmts(
             db,
             method.variables(db),
@@ -828,6 +853,14 @@ fn lower_class_inner<'db>(
                 None => local_vars.push(var),
             }
         }
+        let entry_copies = shadow_address_taken_inputs(
+            db,
+            &mut params,
+            &address_taken,
+            &mut locals,
+            &mut next_local_idx,
+            memory_layout,
+        );
         for var in local_vars {
             let ty = lower_var_type(db, *var)?;
             let storage = allocate_local_storage(
@@ -896,12 +929,16 @@ fn lower_class_inner<'db>(
 
         // A method's result and locals are per call: their starting values
         // are stores at entry.
-        let mut init_stmts = match (method.return_type(db), &return_type) {
-            (Some(spec), Some(ret_ty)) => {
-                lower_result_init_stmts(db, method.name(db), ret_ty, spec, &string_pool)?
-            }
-            _ => Vec::new(),
-        };
+        let mut init_stmts = entry_copies;
+        if let (Some(spec), Some(ret_ty)) = (method.return_type(db), &return_type) {
+            init_stmts.extend(lower_result_init_stmts(
+                db,
+                method.name(db),
+                ret_ty,
+                spec,
+                &string_pool,
+            )?);
+        }
         init_stmts.extend(lower_local_init_stmts(
             db,
             method.variables(db),
@@ -1148,6 +1185,51 @@ pub fn allocate_local_storage(
             align,
         }
     }
+}
+
+/// A VAR_INPUT whose address the body takes (`REF(x)`, `x` as a VAR_IN_OUT
+/// argument or an output's destination) has none as a wasm parameter: the
+/// parameter becomes `x$arg`, and `x` a local in linear memory, which the
+/// returned statements fill from it at entry. An aggregate input already
+/// arrives as the address of the caller's snapshot.
+fn shadow_address_taken_inputs(
+    db: &dyn WorkspaceDataBase,
+    params: &mut [MirParam],
+    address_taken: &FxHashSet<Ident>,
+    locals: &mut Vec<MirLocal>,
+    next_local_idx: &mut u32,
+    memory_layout: &mut MirMemoryLayout,
+) -> Vec<MirStmt> {
+    let mut copies = Vec::new();
+    for param in params {
+        if !matches!(param.kind, MirParamKind::Input)
+            || matches!(param.ty, MirType::Pointer(_))
+            || !address_taken.contains(&param.name)
+        {
+            continue;
+        }
+        let name = param.name;
+        param.name = Ident::new(
+            db,
+            compact_str::CompactString::from(format!("{}$arg", name.text(db))),
+        );
+        let storage = allocate_local_storage(name, &param.ty, true, next_local_idx, memory_layout);
+        locals.push(MirLocal {
+            name,
+            ty: param.ty.clone(),
+            init: None,
+            storage,
+            var_storage: MirVariableStorage::Automatic,
+        });
+        copies.push(MirStmt::Assign {
+            target: crate::expr::MirPlace::Local(name),
+            value: crate::expr::MirExpr::Load(
+                crate::expr::MirPlace::Local(param.name),
+                param.ty.clone(),
+            ),
+        });
+    }
+    copies
 }
 
 /// Lower a variable's type spec, recovering a declared `STRING[N]`
