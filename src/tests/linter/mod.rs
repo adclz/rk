@@ -25,6 +25,7 @@ mod identity_operation;
 mod input_assignment;
 mod instance_in_function;
 mod invalid_pragma;
+mod latin1_escape;
 mod loop_var_modified;
 mod method_shadows_member;
 mod missing_input_param;

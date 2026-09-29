@@ -43,6 +43,7 @@ pub mod identity_operation;
 pub mod input_assignment;
 pub mod instance_in_function;
 pub mod invalid_pragma;
+pub mod latin1_escape;
 pub mod loop_var_modified;
 pub mod method_shadows_member;
 pub mod missing_input_param;
@@ -97,6 +98,7 @@ pub const RECOMMENDED_RULE_NAMES: &[&str] = &[
     variable_method_name::NAME,
     global_without_external::NAME,
     instance_in_function::NAME,
+    latin1_escape::NAME,
 ];
 
 /// Whether `name` runs under `config`: an explicit entry in `[linter.rules]`
@@ -141,6 +143,7 @@ pub const ALL_RULE_NAMES: &[&str] = &[
     input_assignment::NAME,
     instance_in_function::NAME,
     invalid_pragma::NAME,
+    latin1_escape::NAME,
     loop_var_modified::NAME,
     method_shadows_member::NAME,
     missing_input_param::NAME,
@@ -366,6 +369,12 @@ fn lint_scope<'db>(
             | ScopeKind::MethodDecl(_)
             | ScopeKind::Program(_)
     );
+    // Initializers too, so a TYPE's or a CLASS's default is read as well.
+    if is_enabled(config, latin1_escape::NAME) {
+        run_lint(latin1_escape::NAME, diagnostics, |d| {
+            latin1_escape::check(db, scope, has_body, d)
+        });
+    }
     if !has_body {
         return;
     }
@@ -533,6 +542,6 @@ mod select_tests {
                 "{name} is not a known rule name"
             );
         }
-        assert_eq!(RECOMMENDED_RULE_NAMES.len(), 24);
+        assert_eq!(RECOMMENDED_RULE_NAMES.len(), 25);
     }
 }

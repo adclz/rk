@@ -423,6 +423,7 @@ NAMESPACE Std.Strings
 		FUNCTION test_len_counts_utf8_bytes
 			ASSERT(LEN('café') = 5 AND LEN('€') = 3 AND LEN('中文') = 6);
 			ASSERT(IS_UTF8('café') AND IS_UTF8('中文'));
+			{allow 'latin1-escape'}
 			ASSERT(LEN('$E9') = 1 AND NOT IS_UTF8('$E9'));
 		END_FUNCTION
 
@@ -847,6 +848,7 @@ NAMESPACE Std.Strings
 		FUNCTION test_char_count_counts_characters_not_bytes
 			ASSERT(CHAR_COUNT('café') = 4 AND LEN('café') = 5);
 			ASSERT(CHAR_COUNT('日本語') = 3 AND LEN('日本語') = 9);
+			{allow 'latin1-escape'}
 			ASSERT(CHAR_COUNT('$E9$E9') = 2, 'a stray byte is one character');
 		END_FUNCTION
 
@@ -854,6 +856,7 @@ NAMESPACE Std.Strings
 		FUNCTION test_char_at_returns_the_character
 			ASSERT(CHAR_AT('café', 4) = CHAR#'é' AND CHAR_AT('café', 1) = CHAR#'c');
 			ASSERT(CHAR_AT('日本語', 2) = CHAR#'本');
+			{allow 'latin1-escape'}
 			ASSERT(CHAR_AT('$E9', 1) = CHAR#'é', 'a stray byte reads as its Latin-1 character');
 			ASSERT(CHAR_AT('abc', 0) = CHAR#'$00' AND CHAR_AT('abc', 4) = CHAR#'$00');
 		END_FUNCTION
