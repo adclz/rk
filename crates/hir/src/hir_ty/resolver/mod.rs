@@ -305,17 +305,34 @@ impl<'db> Resolver<'db> {
                     ctx.type_of_path_expr.insert(path, Type::new_pou(db, pou));
                 } else if path_expr.invocation(db).is_none()
                     && let Some(path) = path_expr.expr(db)
-                    && let [PathExprWalkStep::Field { ident, .. }] = path.flatten(db).as_slice()
-                    && let Some(global) =
-                        crate::hir_ty::index_graphs::external_var_lookup(db, ident.ident(db))
+                    && let steps = path.flatten(db)
+                    && let Some((first, rest)) = steps.split_first()
+                    && let PathExprWalkStep::Field { ident, .. } = first
+                    && let Some(root) = namespace_value(db, ident.ident(db), path.get_scope_id(db))
                 {
-                    // A VAR_GLOBAL, which a `REF()` in another's initial value
-                    // names (`r : REF_TO INT := REF(g)`): its address is known
-                    // before the program runs.
-                    let ty = Type::Variable((global, None));
-                    ctx.type_of_path_expr.insert(path, ty);
-                    ctx.variable_of_path_expr.insert(path, global);
-                    ctx.variables_used.insert(global);
+                    // A value whose address a `REF()` in an initial value
+                    // takes: a VAR_GLOBAL (`r : PInt := REF(g)`), or in a
+                    // STRUCT field's default the field beside it (`p : PInt
+                    // := REF(a)`). The steps after it walk as anywhere else.
+                    let first = first.get_expr(db);
+                    ctx.type_of_path_expr.insert(first, root);
+                    if let Type::Variable((global, _)) = root {
+                        ctx.variable_of_path_expr.insert(first, global);
+                        ctx.variables_used.insert(global);
+                    }
+                    let mut current = ctx.type_of_path_expr_with_adjustments(first);
+                    let mut place = PathPlaceBuilder {
+                        current_typ: current,
+                        current_path: first,
+                    };
+                    for step in rest {
+                        current.walk_path_expr(db, true, step, None, &mut place, ctx);
+                        if !ctx.type_of_path_expr.contains_key(&step.get_expr(db)) {
+                            break;
+                        }
+                        current = ctx.type_of_path_expr_with_adjustments(step.get_expr(db));
+                    }
+                    self.resolve_index_subscripts(db, path, ctx);
                 }
             }
         };
@@ -629,6 +646,27 @@ impl<'db> Resolver<'db> {
             }
         }
     }
+}
+
+/// What a name means as a value where no POU is walked, in a TYPE's or a
+/// CONFIGURATION's initial values: in a STRUCT field's default, the field
+/// beside it, which shadows anything else; otherwise a VAR_GLOBAL.
+fn namespace_value<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    ident: crate::hir_def::interned::identifier::Ident,
+    scope: ScopeId<'db>,
+) -> Option<Type<'db>> {
+    if let ScopeKind::Pou(pou @ Pou::DataType(_)) = get_scope(db, scope).kind
+        && let Type::Struct(strukt) = Type::new_pou(db, pou).normalize(db)
+        && let Some(element) = strukt
+            .elements(db)
+            .into_iter()
+            .find(|element| element.name(db) == ident)
+    {
+        return Some(Type::StructElement(element));
+    }
+    crate::hir_ty::index_graphs::external_var_lookup(db, ident)
+        .map(|global| Type::Variable((global, None)))
 }
 
 /// The callable whose body `base` is, when it has a return value, which that

@@ -378,6 +378,27 @@ impl<'db> InferExprCtx<'db> {
                     self.resolver
                         .resolve_begin_path_expr(db, *adress, None, inference_result);
 
+                    // In a TYPE's or a CONFIGURATION's initial value, an
+                    // unknown name is left to the constant rule, which a
+                    // REF() passes: it is reported here, or it reads NULL.
+                    if matches!(
+                        self.resolver.root,
+                        crate::hir_ty::resolver::PathResolutionRoot::Namespace { .. }
+                    ) && adress.invocation(db).is_none()
+                        && let Some(root) = adress
+                            .expr(db)
+                            .and_then(|path| path.flatten(db).first().map(|step| step.get_expr(db)))
+                        && !inference_result.type_of_path_expr.contains_key(&root)
+                    {
+                        inference_result.errors.push(
+                            crate::check::errors::e02_resolve::ResolveError::NoItemInScope {
+                                expr: root,
+                                scope: root.scope_id(db),
+                            }
+                            .to_diagnostic(db, inference_result.scope.file(db)),
+                        );
+                    }
+
                     let typ = inference_result.type_of_begin_expr_with_adjustments(db, *adress);
 
                     // A REF_TO is a writable pointer and nothing tracks what

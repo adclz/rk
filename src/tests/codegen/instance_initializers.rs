@@ -606,6 +606,29 @@ fn member_ref_default_with_a_runtime_subscript(mut with_db: db::RootDatabase) {
     assert_eq!(result, 0);
 }
 
+/// A STRUCT field's `REF()` default names a field beside it.
+#[rstest]
+fn struct_field_ref_default_points_at_its_sibling(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE Inner : STRUCT v : INT := 3; END_STRUCT; END_TYPE
+        TYPE S : STRUCT
+            a : INT := 5;
+            arr : ARRAY[0..2] OF INT := [1, 2, 7];
+            inn : Inner;
+            pa : REF_TO INT := REF(a);
+            parr : REF_TO INT := REF(arr[2]);
+            pinn : REF_TO INT := REF(inn.v);
+        END_STRUCT; END_TYPE
+
+        FUNCTION test : INT
+        VAR s : S; END_VAR
+            test := s.pa^ * 100 + s.parr^ * 10 + s.pinn^;
+        END_FUNCTION
+    "#;
+    let result: i32 = run(&mut with_db, source, "test", ());
+    assert_eq!(result, 573);
+}
+
 /// Member `REF()` defaults in static storage, which `__init` writes: in a
 /// composed instance, an element of an array of them and a derived FB, held
 /// by a PROGRAM and by a VAR_GLOBAL.

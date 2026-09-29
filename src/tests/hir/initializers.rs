@@ -650,3 +650,56 @@ END_FUNCTION
     ----'
     ");
 }
+
+/// In a TYPE's or a CONFIGURATION's initial value, a `REF()` names a field
+/// beside it or a VAR_GLOBAL, through fields and subscripts, and is typed
+/// like any other; a name that is nothing is E0201, where it read NULL.
+#[rstest]
+fn a_reference_in_a_type_or_configuration_default(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE PInt : REF_TO INT; END_TYPE
+TYPE Inner : STRUCT v : INT := 3; END_STRUCT; END_TYPE
+TYPE S : STRUCT
+    a : INT;
+    arr : ARRAY[0..2] OF INT;
+    inn : Inner;
+    pa : PInt := REF(a);
+    parr : PInt := REF(arr[2]);
+    pinn : PInt := REF(inn.v);
+    bad : PInt := REF(nothing);
+END_STRUCT; END_TYPE
+
+CONFIGURATION Cfg
+VAR_GLOBAL
+    g : INT;
+    garr : ARRAY[0..1] OF INT;
+    s : S;
+    r : PInt := REF(g);
+    rarr : PInt := REF(garr[1]);
+    rs : PInt := REF(s.inn.v);
+    greal : REAL;
+    wrong : PInt := REF(greal);
+END_VAR
+END_CONFIGURATION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r#"
+    [E0201] Error: no item found in scope
+        ,-[ file:///test0.st:11:23 ]
+        |
+     11 |     bad : PInt := REF(nothing);
+        |                       ^^^|^^^
+        |                          `----- no item "nothing" found in scope
+    ----'
+    [E0301] Error: type mismatch
+        ,-[ file:///test0.st:23:18 ]
+        |
+      2 | TYPE PInt : REF_TO INT; END_TYPE
+        |             ^^^^^|^^^^
+        |                  `------ type is defined by 'PInt' here
+        |
+     23 |     wrong : PInt := REF(greal);
+        |                  ^^^^^^|^^^^^^
+        |                        `-------- expected 'PInt', got 'REF_TO REAL'
+    ----'
+    "#);
+}
