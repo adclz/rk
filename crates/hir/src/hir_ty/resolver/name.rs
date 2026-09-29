@@ -64,7 +64,8 @@ pub enum NameResolution<'db> {
 ///
 /// Resolution order (first match wins):
 /// 1. Self-reference (method or POU referencing its own name)
-/// 2. POU via namespace access (local scope → parent/USING → global)
+/// 2. In a configuration, a PROGRAM (programs are not visible to other POUs)
+/// 3. POU via namespace access (local scope → parent/USING → global)
 ///
 /// This function is used by both head-level (spec) and body-level (path expr) resolution.
 pub fn resolve_name<'db>(
@@ -98,19 +99,20 @@ pub fn resolve_name<'db>(
         _ => {}
     }
 
-    // 2. POU resolution (local → parent/USING → global)
+    // 2. In a configuration, a PROGRAM before a POU of its name. The two
+    //    are refused together (E0102), and a program instance still names
+    //    the program.
+    if let Some(prog) = program_index(db, name)
+        && is_config_scope(db, scope)
+    {
+        return NameResolution::Program(prog);
+    }
+
+    // 3. POU resolution (local → parent/USING → global)
     match resolve_namespace_access(db, access) {
         PouResolution::Found(pou, using) => NameResolution::Pou(pou, using),
         PouResolution::Ambiguous(candidates) => NameResolution::Ambiguous(candidates),
-        PouResolution::NotFound => {
-            // 4. Program resolution (config scopes only — programs are not visible to other POUs)
-            if is_config_scope(db, scope)
-                && let Some(prog) = program_index(db, name)
-            {
-                return NameResolution::Program(prog);
-            }
-            NameResolution::NotFound
-        }
+        PouResolution::NotFound => NameResolution::NotFound,
     }
 }
 
