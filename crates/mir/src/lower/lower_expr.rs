@@ -1219,18 +1219,28 @@ impl<'db> ExprLowerCtx<'db> {
     /// HIR validated the invocation (E1108/E1107).
     pub fn lower_super_body_call(
         &self,
-        // The base is the POU's own EXTENDS; the receiver is the current
-        // instance.
-        _begin_path: hir::hir_def::expressions::expression::BeginPathExpr<'db>,
+        // The base is the EXTENDS of the block whose body holds the call; the
+        // receiver is the current instance.
+        begin_path: hir::hir_def::expressions::expression::BeginPathExpr<'db>,
     ) -> Result<Option<crate::stmt::MirStmt>, LowerTypeError> {
         use hir::hir_def::pous::pou::Pou;
+        use hir::hir_def::scope::ScopeKind;
 
-        // The POU this body belongs to, as the lowering caller named it.
-        let current = self.this_pou.ok_or_else(|| {
+        // The instance this body runs on, as the lowering caller named it.
+        let instance = self.this_pou.ok_or_else(|| {
             LowerTypeError::UnsupportedType("SUPER() outside a function block".to_string())
         })?;
+        // The block the statement is written in: a base's body emitted on a
+        // derived instance calls ITS base, not the instance's.
+        let holder =
+            match hir::hir_def::semantic_index::get_scope(self.db, begin_path.scope_id(self.db))
+                .kind
+            {
+                ScopeKind::Pou(pou) => pou,
+                _ => instance,
+            };
         // The base as HIR resolved it (`base_pou`): MIR does not walk `EXTENDS`.
-        let base = hir::hir_ty::head::inheritance::base_pou(self.db, current);
+        let base = hir::hir_ty::head::inheritance::base_pou(self.db, holder);
         let base_pou = match base {
             Some(p @ Pou::FunctionBlock(_)) => p,
             _ => {
@@ -1240,13 +1250,9 @@ impl<'db> ExprLowerCtx<'db> {
             }
         };
 
-        // Body function `Base$__body__`, called with the current instance pointer.
-        let base_q =
-            crate::lower::naming::qualified_pou_ident(self.db, Type::new_pou(self.db, base_pou));
-        let body_name = hir::hir_def::interned::identifier::Ident::new(
-            self.db,
-            compact_str::CompactString::from(format!("{}$__body__", base_q.text(self.db))),
-        );
+        // The base's body emitted on this instance (`Derived$Base.__body__`),
+        // called with the current instance pointer.
+        let body_name = crate::lower::naming::body_symbol(self.db, instance, base_pou);
         let this_arg = MirCallArg {
             value: MirExpr::AddrOf(MirPlace::ThisField {
                 field_name: hir::hir_def::interned::identifier::Ident::new(
@@ -1612,9 +1618,7 @@ impl<'db> ExprLowerCtx<'db> {
         )>,
         LowerTypeError,
     > {
-        use hir::HasName;
         use hir::hir_def::expressions::expression::PathExprKind;
-        use hir::hir_ty::head::inheritance::MethodRef;
         use hir::hir_ty::ty::CallableType;
 
         // HIR resolved the callee, walking `EXTENDS` for inherited methods.
@@ -1628,6 +1632,14 @@ impl<'db> ExprLowerCtx<'db> {
         // `THIS`, the base method for `SUPER`, IEC tables 9b/10b). The receiver
         // is the current `this` pointer.
         if let Some(kind) = path.invocation(self.db).map(|i| i.kind(self.db)) {
+            // `THIS.inner.m()`: the method of the member `inner`, called on
+            // it. Only `THIS.m()` itself runs on the current instance.
+            if matches!(kind, InvocationKind::This | InvocationKind::Super)
+                && let Some(PathExprKind::Field(fe)) = path.expr(self.db).map(|pe| pe.expr(self.db))
+            {
+                let receiver = self.lower_this_path(fe.path)?;
+                return Ok(Some(self.receiver_method_call(method, fe.path, receiver)?));
+            }
             match kind {
                 InvocationKind::This => {
                     return Ok(Some(self.this_receiver_call(method, "THIS", true)?));
@@ -1655,9 +1667,38 @@ impl<'db> ExprLowerCtx<'db> {
             }
         };
         let receiver_path = field.path;
+        let receiver = self.lower_receiver_place(receiver_path)?;
+        Ok(Some(self.receiver_method_call(
+            method,
+            receiver_path,
+            receiver,
+        )?))
+    }
 
-        let method_decl = match method {
-            MethodRef::Declared(md) => md,
+    /// The callee, receiver and return type of `receiver.method(...)`. The
+    /// callee is the method set of the instance the call runs on, so an
+    /// inherited method runs as that instance's copy, where `THIS` is the
+    /// instance: the receiver's type after indexing and dereferencing
+    /// (`arr[i].m()`, `r^.m()`), or the implementer bound to an interface
+    /// parameter.
+    fn receiver_method_call(
+        &self,
+        method: hir::hir_ty::head::inheritance::MethodRef<'db>,
+        receiver_path: hir::hir_def::expressions::expression::PathExpr<'db>,
+        receiver: MirPlace,
+    ) -> Result<
+        (
+            hir::hir_def::interned::identifier::Ident,
+            MirPlace,
+            Type<'db>,
+        ),
+        LowerTypeError,
+    > {
+        use hir::HasName;
+        use hir::hir_ty::head::inheritance::MethodRef;
+
+        let (method_decl, instance) = match method {
+            MethodRef::Declared(md) => (md, self.instance_pou_of(receiver_path)),
             // Phase B: a call through an interface param; the concrete implementer
             // is known via `iface_subs`.
             MethodRef::Prototype(proto) => {
@@ -1674,7 +1715,7 @@ impl<'db> ExprLowerCtx<'db> {
                 // Which method implements a prototype is HIR's conformance answer;
                 // devirtualizing to it is MIR's.
                 match hir::hir_ty::head::inheritance::implementing_method(self.db, concrete, name) {
-                    Some(d) => d,
+                    Some(d) => (d, Some(concrete)),
                     None => {
                         return Err(LowerTypeError::UnsupportedType(format!(
                             "no concrete implementation of interface method '{}'",
@@ -1685,27 +1726,33 @@ impl<'db> ExprLowerCtx<'db> {
             }
         };
 
-        // `inst.m()` targets the method set of the receiver's static type, so
-        // a `Derived` receiver reaches `Derived#m`.
-        let callee = match receiver_path.infer(self.db).normalize(self.db) {
-            Type::FunctionBlock(fb) => self.method_symbol(
-                hir::hir_def::pous::pou::Pou::FunctionBlock(fb),
-                method_decl.name_with_case(self.db),
-            ),
-            Type::Class(c) => self.method_symbol(
-                hir::hir_def::pous::pou::Pou::Class(c),
-                method_decl.name_with_case(self.db),
-            ),
+        let callee = match instance {
+            Some(owner) => self.method_symbol(owner, method_decl.name_with_case(self.db)),
             // Not an instance type: fall back to where the method was declared.
-            _ => self.method_callee_symbol(method_decl)?,
+            None => self.method_callee_symbol(method_decl)?,
         };
-
-        let receiver = self.lower_receiver_place(receiver_path)?;
         let ret = method
             .return_type(self.db)
             .map(|spec| spec.infer(self.db))
             .unwrap_or(Type::Void);
-        Ok(Some((callee, receiver, ret)))
+        Ok((callee, receiver, ret))
+    }
+
+    /// The FB or CLASS an instance path denotes, after its indexing and
+    /// dereferencing: `arr[i]` is the element, `r^` the target.
+    fn instance_pou_of(
+        &self,
+        path: hir::hir_def::expressions::expression::PathExpr<'db>,
+    ) -> Option<hir::hir_def::pous::pou::Pou<'db>> {
+        use hir::hir_def::pous::pou::Pou;
+        match hir::hir_ty::body::infer_body(self.db, path.scope_id(self.db))
+            .type_of_path_expr_with_adjustments(path)
+            .normalize(self.db)
+        {
+            Type::FunctionBlock(fb) => Some(Pou::FunctionBlock(fb)),
+            Type::Class(c) => Some(Pou::Class(c)),
+            _ => None,
+        }
     }
 
     /// The `#`-mangled symbol of a method: its declaring POU's qualified
@@ -2511,8 +2558,12 @@ impl<'db> ExprLowerCtx<'db> {
             }
         };
         // `THIS.m()` and bare `m()` dispatch against the POU this body is emitted
-        // for; `SUPER.m()` is static (IEC 9b/10b) and keeps the base.
+        // for; `SUPER.m()` is static (IEC 9b/10b) and keeps the base's method,
+        // in its copy for that POU, where `THIS` is still the instance.
         let callee = match (virtual_dispatch, self.this_pou) {
+            (false, Some(owner)) => {
+                crate::lower::naming::method_copy_symbol(self.db, owner, method_decl)
+            }
             // The owner's own method for the name, its override or the one it
             // inherits, under the spelling its body is emitted with: `HOOK`
             // overrides `Hook`.

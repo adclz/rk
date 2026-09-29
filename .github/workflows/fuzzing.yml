@@ -95,6 +95,9 @@ jobs:
       # Fork mode keeps going after a crash, so one bug does not end the
       # night; every crash lands in crates/fuzz/artifacts/<target>/. Wasm
       # execution is bounded by fuel, so a timeout is the compiler hanging.
+      # The limit is generous: ASan, coverage and debug assertions make the
+      # build many times slower, and a 22 KB stdlib file that takes 0.9 s
+      # natively went past 10 s here, as a timeout that was no hang.
       #
       # The binary runs directly, not through `cargo fuzz run`: in fork mode
       # libFuzzer exits with its last job's status, 77 for a crash and 70
@@ -109,7 +112,7 @@ jobs:
             -artifact_prefix="$artifacts/" \
             -max_total_time=1800 -fork=3 \
             -ignore_crashes=1 -ignore_timeouts=1 -ignore_ooms=1 \
-            -timeout=10 -rss_limit_mb=4096 -detect_leaks=0 \
+            -timeout=60 -report_slow_units=60 -rss_limit_mb=4096 -detect_leaks=0 \
             -dict=crates/fuzz/st.dict || status=$?
           case "$status" in
             0|70|77) echo "libFuzzer exited $status; $(ls "$artifacts" | wc -l) file(s) in $artifacts" ;;
@@ -147,7 +150,9 @@ jobs:
       - name: Anything to triage?
         id: found
         run: |
-          count=$(find crashes -type f 2>/dev/null | wc -l)
+          # A slow-unit file is libFuzzer's note that an input was slow, not
+          # a failure.
+          count=$(find crashes -type f \( -name 'crash-*' -o -name 'timeout-*' -o -name 'oom-*' \) 2>/dev/null | wc -l)
           echo "count=$count" >> "$GITHUB_OUTPUT"
           [ "$count" -gt 0 ] || echo "No crash tonight." >> "$GITHUB_STEP_SUMMARY"
       - if: steps.found.outputs.count != '0'
@@ -208,7 +213,7 @@ jobs:
               ./target/release/repro --isolate $flag "replay/$target" | tee /dev/stderr | sed -n '/^passed:\|input(s)/,$p' || true
               echo '```'
             done
-            others=$(find crashes -type f \( -name 'timeout-*' -o -name 'oom-*' -o -name 'slow-unit-*' \))
+            others=$(find crashes -type f \( -name 'timeout-*' -o -name 'oom-*' \))
             if [ -n "$others" ]; then
               echo
               echo 'Not replayed (timeouts, OOMs):'

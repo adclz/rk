@@ -731,7 +731,10 @@ END_CLASS
 
 #[rstest]
 fn a_reference_to_an_abstract_type_is_allowed(mut with_db: RootDatabase) {
-    // A reference names some derived instance; it is not an instance.
+    // A reference is not an instance, so declaring one is not refused. It can
+    // hold only NULL: no instance of an ABSTRACT type exists, and a derived
+    // one does not bind a base reference (E0301,
+    // `a_derived_instance_binds_no_base_reference_or_parameter`).
     let source = r#"
 CLASS ABSTRACT B
     METHOD ABSTRACT m : INT END_METHOD
@@ -744,6 +747,71 @@ VAR p : PB; END_VAR
 END_PROGRAM
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
+
+/// A derived instance binds no base-typed reference or parameter, so a
+/// method called through one always runs on a base instance: the base's copy
+/// of the method, where THIS is the base, is the right one. Nothing is looked
+/// up at run time, and nothing has to be.
+#[rstest]
+fn a_derived_instance_binds_no_base_reference_or_parameter(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK ABSTRACT Shape
+    METHOD PUBLIC ABSTRACT Area : INT END_METHOD
+    METHOD PUBLIC Describe : INT Describe := 1000 + THIS.Area(); END_METHOD
+END_FUNCTION_BLOCK
+FUNCTION_BLOCK Square EXTENDS Shape
+    METHOD PUBLIC OVERRIDE Area : INT Area := 16; END_METHOD
+END_FUNCTION_BLOCK
+FUNCTION_BLOCK Base
+    METHOD PUBLIC Hook : INT Hook := 1; END_METHOD
+END_FUNCTION_BLOCK
+FUNCTION_BLOCK Derived EXTENDS Base
+    METHOD PUBLIC OVERRIDE Hook : INT Hook := 2; END_METHOD
+END_FUNCTION_BLOCK
+FUNCTION TakeBase : INT VAR_IN_OUT b : Base; END_VAR TakeBase := b.Hook(); END_FUNCTION
+
+FUNCTION_BLOCK User
+VAR q : Square; rs : REF_TO Shape; d : Derived; rb : REF_TO Base; x : INT; END_VAR
+    rs := REF(q);
+    rb := REF(d);
+    x := TakeBase(b := d);
+END_FUNCTION_BLOCK
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0301] Error: type mismatch
+        ,-[ file:///test0.st:19:11 ]
+        |
+     18 | VAR q : Square; rs : REF_TO Shape; d : Derived; rb : REF_TO Base; x : INT; END_VAR
+        |                 ^|
+        |                  `-- type is declared by variable 'rs' here
+     19 |     rs := REF(q);
+        |           ^^^|^^
+        |              `---- expected 'REF_TO Shape', got 'REF_TO Square'
+    ----'
+    [E0301] Error: type mismatch
+        ,-[ file:///test0.st:20:11 ]
+        |
+     18 | VAR q : Square; rs : REF_TO Shape; d : Derived; rb : REF_TO Base; x : INT; END_VAR
+        |                                                 ^|
+        |                                                  `-- type is declared by variable 'rb' here
+        |
+     20 |     rb := REF(d);
+        |           ^^^|^^
+        |              `---- expected 'REF_TO Base', got 'REF_TO Derived'
+    ----'
+    [E0301] Error: type mismatch
+        ,-[ file:///test0.st:21:24 ]
+        |
+      9 | FUNCTION_BLOCK Base
+        |                ^^|^
+        |                  `--- FUNCTION_BLOCK 'Base' is defined here
+        |
+     21 |     x := TakeBase(b := d);
+        |                        |
+        |                        `-- expected 'Base', got 'Derived'
+    ----'
+    ");
 }
 
 #[rstest]

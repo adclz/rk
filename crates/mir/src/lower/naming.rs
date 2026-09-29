@@ -11,8 +11,13 @@
 //!   `F(INT, REAL)` cannot spell);
 //! - its specializations: `$@<implementer>` per interface parameter, by
 //!   parameter name, and `$<count>` per variadic arity;
-//! - a METHOD: `<owner>#<name>`, specialized the same way;
-//! - bodies: `<owner>$__body__`, and `<instance>$__scan__`.
+//! - a METHOD: `<owner>#<name>`, specialized the same way. The owner is the
+//!   instance type the body is emitted for: an inherited method is emitted
+//!   on each inheritor, so `THIS` inside it is that inheritor. A base's
+//!   method it overrides, reached through `SUPER.m()`, is
+//!   `<owner>#<base>.<name>`;
+//! - bodies: `<owner>$__body__`, a base's reached through `SUPER()`
+//!   `<owner>$<base>.__body__`, and `<instance>$__scan__`.
 //!
 //! A `<type>` fragment is the IEC name of an elementary type, the qualified
 //! name of a named one (`Motion.Axis`, never folded to `Motion_Axis`, which
@@ -63,6 +68,65 @@ pub fn mir_function_symbol<'db>(db: &'db dyn WorkspaceDataBase, f: Function<'db>
             mangle_generic_name(db, base, &refs)
         }
         None => base,
+    }
+}
+
+/// The symbol of `method` emitted for the instance type `owner`: `Owner#m`
+/// when it is the method `owner` answers to by that name (its own, or the one
+/// it inherits), `Owner#Base.m` for a base's method it overrides, which only
+/// `SUPER.m()` reaches.
+pub fn method_copy_symbol<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    owner: hir::hir_def::pous::pou::Pou<'db>,
+    method: hir::hir_def::pous::class::MethodDecl<'db>,
+) -> Ident {
+    let owner_q = qualified_pou_ident(db, Type::new_pou(db, owner));
+    let name = method.name_with_case(db);
+    let answers = hir::hir_ty::head::inheritance::implementing_method(db, owner, method.name(db))
+        == Some(method);
+    let text = match declaring_owner(db, method) {
+        Some(declared) if !answers => format!(
+            "{}#{}.{}",
+            owner_q.text(db),
+            qualified_pou_ident(db, Type::new_pou(db, declared)).text(db),
+            name.text(db)
+        ),
+        _ => format!("{}#{}", owner_q.text(db), name.text(db)),
+    };
+    Ident::new(db, CompactString::from(text))
+}
+
+/// The symbol of `body_of`'s body emitted for the instance type `owner`:
+/// `Owner$__body__` for its own, `Owner$Base.__body__` for a base's that
+/// `SUPER()` reaches.
+pub fn body_symbol<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    owner: hir::hir_def::pous::pou::Pou<'db>,
+    body_of: hir::hir_def::pous::pou::Pou<'db>,
+) -> Ident {
+    let owner_q = qualified_pou_ident(db, Type::new_pou(db, owner));
+    let text = match owner == body_of {
+        true => format!("{}$__body__", owner_q.text(db)),
+        false => format!(
+            "{}${}.__body__",
+            owner_q.text(db),
+            qualified_pou_ident(db, Type::new_pou(db, body_of)).text(db)
+        ),
+    };
+    Ident::new(db, CompactString::from(text))
+}
+
+/// The FUNCTION_BLOCK or CLASS that declares `method`.
+pub fn declaring_owner<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    method: hir::hir_def::pous::class::MethodDecl<'db>,
+) -> Option<hir::hir_def::pous::pou::Pou<'db>> {
+    use hir::hir_def::scope::ScopeKind;
+    use hir::hir_def::semantic_index::get_scope;
+    let parent = get_scope(db, method.scope_id(db)).parent?;
+    match get_scope(db, parent).kind {
+        ScopeKind::Pou(pou) => Some(pou),
+        _ => None,
     }
 }
 
