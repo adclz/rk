@@ -895,6 +895,37 @@ fn runtime_reads_a_char_as_its_code_point(mut with_db: db::RootDatabase) {
     assert_eq!(plc.read_var(&dbg, "Run.c"), Some(VarValue::U32(0xE9)));
 }
 
+/// A STRING cut through a character still reads back: the debugger decodes
+/// lossily, so the stray byte shows as U+FFFD rather than hiding the value
+/// the program is using.
+#[rstest]
+fn runtime_reads_a_split_character_lossily(mut with_db: db::RootDatabase) {
+    let source = r#"
+        PROGRAM Main
+        VAR
+            v : STRING := 'abé';
+            s : STRING[3];
+        END_VAR
+            s := v;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM Run WITH T : Main;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    let mut plc = TestPlc::load(&wasm).expect("load PLC");
+    let dbg = DebugInfo::from_wasm(&wasm);
+    plc.run(1).expect("scan");
+    assert_eq!(
+        plc.read_var(&dbg, "Run.s"),
+        Some(VarValue::String("ab\u{FFFD}".into()))
+    );
+}
+
 /// An aliased type's default reaches a memory-resident host, the static
 /// store path and not the wasm-local one: a RETAIN field of a PROGRAM and a
 /// struct member of an aliased type both start at their type's default.

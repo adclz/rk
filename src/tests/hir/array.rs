@@ -444,3 +444,42 @@ fn valid_negative_bounds_are_assignable(mut with_db: RootDatabase) {
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
 }
+
+/// A STRING element's capacity is its size, so arrays of `STRING[4]` and of
+/// `STRING` are two types: copied one into the other, the elements moved at
+/// the wrong stride.
+#[rstest]
+fn arrays_of_strings_of_two_capacities_differ(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION TakeWide : INT VAR_INPUT a : ARRAY[0..1] OF STRING; END_VAR TakeWide := 0; END_FUNCTION
+FUNCTION f : INT
+VAR a4 : ARRAY[0..1] OF STRING[4]; a80 : ARRAY[0..1] OF STRING; b4 : ARRAY[0..1] OF STRING[4]; END_VAR
+    a80 := a4;
+    a4 := b4;
+    f := TakeWide(a4);
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0301] Error: type mismatch
+       ,-[ file:///test0.st:5:12 ]
+       |
+     4 | VAR a4 : ARRAY[0..1] OF STRING[4]; a80 : ARRAY[0..1] OF STRING; b4 : ARRAY[0..1] OF STRING[4]; END_VAR
+       |                                    ^|^
+       |                                     `--- type is declared by variable 'a80' here
+     5 |     a80 := a4;
+       |            ^|
+       |             `-- expected 'ARRAY [0..1] OF STRING', got 'ARRAY [0..1] OF STRING[4]'
+    ---'
+    [E0301] Error: type mismatch
+       ,-[ file:///test0.st:7:19 ]
+       |
+     2 | FUNCTION TakeWide : INT VAR_INPUT a : ARRAY[0..1] OF STRING; END_VAR TakeWide := 0; END_FUNCTION
+       |                                   |
+       |                                   `-- type is declared by variable 'a' here
+       |
+     7 |     f := TakeWide(a4);
+       |                   ^|
+       |                    `-- expected 'ARRAY [0..1] OF STRING', got 'ARRAY [0..1] OF STRING[4]'
+    ---'
+    ");
+}

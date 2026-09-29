@@ -26,10 +26,26 @@ use self::emit_expr::{SNAPSHOT_CTX, StringSnapshotCtx};
 use self::emit_stmt::emit_stmts_with_return;
 
 /// Capacity of the per-call-site scratch slots that snapshot nested
-/// STRING-returning call results: the default, so any plain-`STRING`
-/// producer's output fits.
-const STRING_SCRATCH_CAPACITY: u32 = mir::types::DEFAULT_STRING_CAPACITY;
-const STRING_SCRATCH_SLOT_SIZE: u32 = (4 + STRING_SCRATCH_CAPACITY + 3) & !3;
+/// STRING-returning call results: the largest STRING a function of the
+/// module returns, so every result a call can snapshot fits. A `STRING[200]`
+/// result snapshotted into an 80-byte slot was cut there.
+fn scratch_capacity(module: &MirModule) -> u32 {
+    module
+        .functions
+        .iter()
+        .map(|f| &f.return_type)
+        .chain(module.extern_functions.iter().map(|f| &f.return_type))
+        .filter_map(|ty| match ty {
+            Some(MirType::String { capacity }) => Some(*capacity),
+            _ => None,
+        })
+        .fold(mir::types::DEFAULT_STRING_CAPACITY, u32::max)
+}
+
+/// A scratch slot: the 4-byte length, the bytes, rounded to 4.
+fn scratch_slot_size(capacity: u32) -> u32 {
+    (4 + capacity + 3) & !3
+}
 
 /// Collect every `Call` callee's Ident → text, for the unresolved-callee
 /// panic.
@@ -505,6 +521,8 @@ struct WasmGen<'a> {
     /// Next free address for STRING snapshot scratch slots, past the MIR
     /// static layout.
     string_scratch_floor: Cell<u32>,
+    /// Capacity of each of those slots ([`scratch_capacity`]).
+    scratch_capacity: u32,
     /// Tag index of `$rk_exception` (`(i32, i32) -> ()`, the raised STRING's
     /// `(ptr, len)`), `Some` when any function contains `Raise`.
     rk_exception_tag_idx: Option<u32>,
@@ -571,7 +589,8 @@ fn static_data_end(module: &MirModule) -> u32 {
 
 pub(crate) fn core_memory_pages(module: &MirModule) -> u64 {
     let static_total = static_data_end(module);
-    let scratch_total = module_total_scratch_slots(module) * STRING_SCRATCH_SLOT_SIZE;
+    let scratch_total =
+        module_total_scratch_slots(module) * scratch_slot_size(scratch_capacity(module));
     let test_results_total = module_test_count(module) * TEST_RESULT_AREA_SIZE;
     let total = static_total + scratch_total + test_results_total;
     if total == 0 {
@@ -604,7 +623,9 @@ impl<'a> WasmGen<'a> {
         // STRING scratch slots start past the MIR static layout; test result
         // areas past those.
         let static_total = static_data_end(module);
-        let scratch_total = module_total_scratch_slots(module) * STRING_SCRATCH_SLOT_SIZE;
+        let scratch_capacity = scratch_capacity(module);
+        let scratch_total =
+            module_total_scratch_slots(module) * scratch_slot_size(scratch_capacity);
         let scratch_floor = Cell::new(static_total);
         let test_result_floor = Cell::new(static_total + scratch_total);
 
@@ -623,6 +644,7 @@ impl<'a> WasmGen<'a> {
             index_remap: FxHashMap::default(),
             builtin_indices: FxHashMap::default(),
             string_scratch_floor: scratch_floor,
+            scratch_capacity,
             rk_exception_tag_idx: None,
             rk_exception_tag_type_idx: None,
             test_catch_block_type_idx: None,
@@ -640,7 +662,7 @@ impl<'a> WasmGen<'a> {
     fn alloc_scratch_slot(&self) -> u32 {
         let addr = self.string_scratch_floor.get();
         self.string_scratch_floor
-            .set(addr + STRING_SCRATCH_SLOT_SIZE);
+            .set(addr + scratch_slot_size(self.scratch_capacity));
         addr
     }
 
@@ -845,7 +867,9 @@ impl<'a> WasmGen<'a> {
                 MirExpr::UnaryOp { expr, .. } | MirExpr::Cast { expr, .. } => {
                     walk_expr(db, expr, found)
                 }
-                MirExpr::Load(place, _) | MirExpr::AddrOf(place) => walk_place(db, place, found),
+                MirExpr::Load(place, _)
+                | MirExpr::AddrOf(place)
+                | MirExpr::StringCapacity(place) => walk_place(db, place, found),
                 // `src` may be an aggregate-returning Call, whose args can
                 // reach builtins — recurse rather than walk a place.
                 MirExpr::CopyIntoScratch { src, .. } => walk_expr(db, src, found),
@@ -1265,7 +1289,7 @@ impl<'a> WasmGen<'a> {
             );
             let ctx = StringSnapshotCtx {
                 slots: scratch_slots,
-                slot_capacity: STRING_SCRATCH_CAPACITY,
+                slot_capacity: self.scratch_capacity,
                 next_slot: 0,
                 ptr_tmp,
                 len_tmp,
@@ -1467,7 +1491,7 @@ impl<'a> WasmGen<'a> {
             );
             let ctx = StringSnapshotCtx {
                 slots: scratch_slots,
-                slot_capacity: STRING_SCRATCH_CAPACITY,
+                slot_capacity: self.scratch_capacity,
                 next_slot: 0,
                 ptr_tmp,
                 len_tmp,

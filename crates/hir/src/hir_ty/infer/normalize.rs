@@ -221,6 +221,37 @@ pub fn declared_string_capacity<'db>(
     declared_string_capacity_inner(db, spec, 0)
 }
 
+/// The capacity a STRING spec lays out: its `N`, or
+/// [`DEFAULT_STRING_CAPACITY`] for a plain `STRING`. `None` for a spec that
+/// is no STRING. Where two layouts must be one — the elements of two arrays,
+/// the target of a reference, a VAR_EXTERNAL and its global — two capacities
+/// are two types.
+pub fn string_capacity<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    spec: crate::hir_def::expressions::spec::Spec<'db>,
+) -> Option<u32> {
+    use crate::hir_ty::infer::Infer;
+    matches!(
+        spec.infer(db).normalize(db),
+        Type::Elementary(ElementarySpec::String)
+    )
+    .then(|| declared_string_capacity(db, spec).unwrap_or(DEFAULT_STRING_CAPACITY))
+}
+
+/// [`string_capacity`] of the declaration a value's type still names: a
+/// variable, a field, a type, a result. `None` once the type no longer says
+/// where it was declared.
+pub fn declared_capacity_of<'db>(db: &'db dyn WorkspaceDataBase, ty: Type<'db>) -> Option<u32> {
+    let spec = match ty {
+        Type::Variable((var, None)) => var.spec(db),
+        Type::StructElement(element) => element.spec(db),
+        Type::DataType(dt) => dt.spec(db),
+        Type::ReturnValue(callable) => *callable.return_type(db)?,
+        _ => return None,
+    };
+    string_capacity(db, spec)
+}
+
 fn declared_string_capacity_inner<'db>(
     db: &'db dyn WorkspaceDataBase,
     spec: crate::hir_def::expressions::spec::Spec<'db>,

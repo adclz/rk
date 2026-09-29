@@ -77,7 +77,8 @@ pub struct MirStructType {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct MirStructField {
     /// The member's name as the author wrote it, for the debug symbols.
-    /// Lowering matches [`Self::name`].
+    /// Lowering matches [`Self::name`]. A member the compiler adds has a `$`
+    /// in it, which no identifier can ([`Self::is_hidden`]).
     pub name_with_case: Ident,
     pub ty: MirType,
     pub offset: u32,
@@ -272,6 +273,12 @@ impl MirElementary {
 }
 
 impl MirStructField {
+    /// A member the compiler adds, with no name in the source: an FB's
+    /// STRING `VAR_IN_OUT` capacity. It is laid out, but not a symbol.
+    pub fn is_hidden(&self, db: &dyn db::WorkspaceDataBase) -> bool {
+        self.name(db).text(db).contains('$')
+    }
+
     /// The member's name, as names are matched: case folded.
     pub fn name(&self, db: &dyn db::WorkspaceDataBase) -> Ident {
         self.name_with_case.folded(db)

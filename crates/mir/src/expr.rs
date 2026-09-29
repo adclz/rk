@@ -41,6 +41,11 @@ pub enum MirExpr {
     /// Take the address of a place (REF operator).
     AddrOf(MirPlace),
 
+    /// The capacity of the STRING at a place, as a UDINT: the one it was
+    /// declared with, or the caller's for a STRING `VAR_IN_OUT`. What an FB
+    /// call stores beside the address of a STRING it binds by reference.
+    StringCapacity(MirPlace),
+
     /// Copy `size` bytes from the address `src` yields into the scratch local
     /// `scratch`, then yield the scratch's address: the call-entry snapshot an
     /// aggregate `VAR_INPUT` argument is passed as (see `ExprLowerCtx::call_scratch`).
@@ -158,6 +163,11 @@ pub enum MirPlace {
         /// the user wrote, false for the transparent `VAR_IN_OUT` dereference,
         /// which always addresses real storage.
         checked: bool,
+        /// Where a STRING pointee's capacity is read at run time, when it is
+        /// the caller's rather than `pointee_type`'s: an FB's STRING
+        /// `VAR_IN_OUT`, whose instance keeps the bound buffer's capacity
+        /// beside the pointer. `None`: the capacity `pointee_type` declares.
+        capacity: Option<Box<MirPlace>>,
     },
 
     /// Instance variable access through 'this' pointer (for methods).
@@ -184,7 +194,9 @@ impl MirExpr {
         match self {
             MirExpr::Call(_) => true,
             MirExpr::Constant(_) | MirExpr::StringLiteral { .. } => false,
-            MirExpr::Load(place, _) | MirExpr::AddrOf(place) => place.has_call(),
+            MirExpr::Load(place, _) | MirExpr::AddrOf(place) | MirExpr::StringCapacity(place) => {
+                place.has_call()
+            }
             MirExpr::BinOp { lhs, rhs, .. } => lhs.has_call() || rhs.has_call(),
             MirExpr::UnaryOp { expr, .. } | MirExpr::Cast { expr, .. } => expr.has_call(),
             MirExpr::CopyIntoScratch { src, .. } => src.has_call(),
@@ -197,7 +209,9 @@ impl MirExpr {
     /// the place twice would run twice.
     pub fn reaches_place_with_call(&self) -> bool {
         match self {
-            MirExpr::Load(place, _) | MirExpr::AddrOf(place) => place.has_call(),
+            MirExpr::Load(place, _) | MirExpr::AddrOf(place) | MirExpr::StringCapacity(place) => {
+                place.has_call()
+            }
             MirExpr::Call(call) => call.reaches_place_with_call(),
             MirExpr::BinOp { lhs, rhs, .. } => {
                 lhs.reaches_place_with_call() || rhs.reaches_place_with_call()
@@ -219,7 +233,9 @@ impl MirExpr {
             return true;
         }
         match self {
-            MirExpr::Load(place, _) | MirExpr::AddrOf(place) => place.any_expr(f),
+            MirExpr::Load(place, _) | MirExpr::AddrOf(place) | MirExpr::StringCapacity(place) => {
+                place.any_expr(f)
+            }
             MirExpr::Call(call) => call.any_expr(f),
             MirExpr::BinOp { lhs, rhs, .. } => lhs.any(f) || rhs.any(f),
             MirExpr::UnaryOp { expr, .. } | MirExpr::Cast { expr, .. } => expr.any(f),

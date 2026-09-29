@@ -988,7 +988,7 @@ fn lower_extern_function<'db>(
 
     let return_type = func
         .return_type(db)
-        .map(|spec| lower_type(db, spec.infer(db)))
+        .map(|spec| super::lower_type::lower_spec(db, *spec))
         .transpose()?;
 
     Ok(MirExternFunction {
@@ -1581,8 +1581,14 @@ fn rewrite_globals_place(
             None => missing.push((*name, ty.clone())),
         },
         MirPlace::Local(_) => {}
-        MirPlace::Field { base, .. } | MirPlace::Deref { base, .. } => {
+        MirPlace::Field { base, .. } => {
             rewrite_globals_place(base, globals, missing);
+        }
+        MirPlace::Deref { base, capacity, .. } => {
+            rewrite_globals_place(base, globals, missing);
+            if let Some(capacity) = capacity {
+                rewrite_globals_place(capacity, globals, missing);
+            }
         }
         MirPlace::Index { base, index, .. } => {
             rewrite_globals_place(base, globals, missing);
@@ -1602,7 +1608,7 @@ fn rewrite_globals_expr(
 ) {
     use crate::expr::MirExpr;
     match expr {
-        MirExpr::Load(place, _) | MirExpr::AddrOf(place) => {
+        MirExpr::Load(place, _) | MirExpr::AddrOf(place) | MirExpr::StringCapacity(place) => {
             rewrite_globals_place(place, globals, missing);
         }
         MirExpr::CopyIntoScratch { src, .. } => {

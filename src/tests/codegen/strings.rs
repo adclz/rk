@@ -1394,26 +1394,41 @@ fn aliased_sized_string_truncates_at_the_declared_capacity(mut with_db: db::Root
 
 /// A declared `STRING[n]` keeps its length in EVERY container it can appear in.
 ///
-/// The length is not part of type identity — `STRING[4] := STRING[80]` is legal
-/// and truncates, and two lengths must not read as different overloads — so it
-/// survives only on the spec, and every container has to lower through the
-/// spec-aware path. Three separate bugs came from one container forgetting:
-/// an `ARRAY OF STRING[4]` with 84-byte elements, a `TYPE` alias silently
-/// widened to 80, and a struct field overrunning its slot.
+/// The length is not part of a scalar STRING's type identity — `STRING[4] :=
+/// STRING[80]` is legal and truncates, and two lengths must not read as
+/// different overloads — so it survives only on the spec, and every container
+/// has to lower through the spec-aware path. Each case here was once a
+/// container that forgot: an `ARRAY OF STRING[4]` with 84-byte elements, a
+/// `TYPE` alias silently widened to 80, a struct field overrunning its slot, a
+/// dereference writing at 80, a result laid out at 80, a result passed on
+/// through an 80-byte snapshot slot, and an FB's VAR_IN_OUT writing at its
+/// own 80 instead of the bound buffer's.
 ///
-/// One test over all of them, so a container that regresses is visible next to
-/// the ones that do not.
+/// One list over all of them, so a container that regresses is visible next
+/// to the ones that do not, and the next one found joins it. Each case stores
+/// `src` (16 bytes) and reads back what must be its first 4.
 #[rstest]
-#[case::direct("s", "VAR s : STRING[4]; END_VAR")]
-#[case::alias("s", "VAR s : Small; END_VAR")]
-#[case::struct_field("r.f", "VAR r : Rec; END_VAR")]
-#[case::fb_member("h.s", "VAR h : Holder; END_VAR")]
-#[case::array_element("a[1]", "VAR a : ARRAY[0..1] OF STRING[4]; END_VAR")]
-#[case::array_of_alias("b[1]", "VAR b : ARRAY[0..1] OF Small; END_VAR")]
-#[case::struct_in_array("c[1].f", "VAR c : ARRAY[0..1] OF Rec; END_VAR")]
+#[case::direct("s := src;", "s", "VAR s : STRING[4]; END_VAR")]
+#[case::alias("s := src;", "s", "VAR s : Small; END_VAR")]
+#[case::struct_field("r.f := src;", "r.f", "VAR r : Rec; END_VAR")]
+#[case::fb_member("h.s := src;", "h.s", "VAR h : Holder; END_VAR")]
+#[case::array_element("a[1] := src;", "a[1]", "VAR a : ARRAY[0..1] OF STRING[4]; END_VAR")]
+#[case::array_of_alias("b[1] := src;", "b[1]", "VAR b : ARRAY[0..1] OF Small; END_VAR")]
+#[case::struct_in_array("c[1].f := src;", "c[1].f", "VAR c : ARRAY[0..1] OF Rec; END_VAR")]
+#[case::dereference(
+    "r^ := src;",
+    "r^",
+    "VAR p : STRING[4]; r : REF_TO STRING[4] := REF(p); END_VAR"
+)]
+#[case::fb_in_out("f(s := x, v := src);", "x", "VAR x : STRING[4]; f : Fill; END_VAR")]
+#[case::result("", "Cut(src)", "")]
+// Both arguments are the same function's result: the first is snapshotted
+// before the second call reuses its slot, and `Pair` checks each.
+#[case::argument("", "Pair(Cut(src), Cut(src))", "")]
 fn a_sized_string_keeps_its_length_in_every_container(
     mut with_db: db::RootDatabase,
-    #[case] target: &str,
+    #[case] store: &str,
+    #[case] read: &str,
     #[case] decl: &str,
 ) {
     let source = format!(
@@ -1427,22 +1442,76 @@ fn a_sized_string_keeps_its_length_in_every_container(
         END_VAR
         END_FUNCTION_BLOCK
 
+        FUNCTION_BLOCK Fill
+        VAR_IN_OUT s : STRING; END_VAR
+        VAR_INPUT v : STRING[16]; END_VAR
+            s := v;
+        END_FUNCTION_BLOCK
+
+        FUNCTION Cut : STRING[4]
+        VAR_INPUT v : STRING[16]; END_VAR
+            Cut := v;
+        END_FUNCTION
+
+        FUNCTION Pair : STRING[16]
+        VAR_INPUT a : STRING[16]; b : STRING[16]; END_VAR
+            IF a = b THEN Pair := a; ELSE Pair := ''; END_IF;
+        END_FUNCTION
+
         FUNCTION run : DINT
         {decl}
         VAR src : STRING[16]; END_VAR
             (* From a VARIABLE: an over-long LITERAL is refused at the
                assignment (E0306), and truncating is what a variable does. *)
             src := 'ABCDEFGHIJKLMNOP';
-            {target} := src;
-            IF {target} = 'ABCD' THEN run := 1; ELSE run := 0; END_IF;
+            {store}
+            IF {read} = 'ABCD' THEN run := 1; ELSE run := 0; END_IF;
         END_FUNCTION
     "#
     );
     let result: i32 = super::run(&mut with_db, &source, "run", ());
     assert_eq!(
         result, 1,
-        "`{target}` must hold exactly its declared 4 characters"
+        "`{read}` must hold exactly its declared 4 characters"
     );
+}
+
+/// Capacity is bytes, and a cut falls on a byte: `'abé'` (4 bytes) in a
+/// `STRING[3]` keeps `a`, `b` and the first byte of `é`, which the `CHAR_`
+/// functions then read as a character of its own. docs/strings.md says so;
+/// this pins it, for an assignment and for a result.
+#[rstest]
+fn a_cut_can_split_a_character(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION Short : STRING[3]
+        VAR v : STRING := 'abé'; END_VAR
+            Short := v;
+        END_FUNCTION
+
+        FUNCTION test : BOOL
+        VAR v : STRING := 'abé'; s : STRING[3]; END_VAR
+            s := v;
+            test := s = 'ab$C3' AND Short() = 'ab$C3';
+        END_FUNCTION
+    "#;
+    let result: i32 = super::run(&mut with_db, source, "test", ());
+    assert_eq!(result, 1, "a, b and the first byte of é");
+}
+
+/// `$hh` is one byte, not a character: in a UTF-8 STRING, `$E9` is a lone
+/// byte 0xE9, which is not `é` (0xC3 0xA9), though Latin-1 code ported from
+/// the 3rd edition wrote it for `é`. docs/strings.md says so.
+#[rstest]
+fn a_hex_escape_is_a_byte_not_a_latin1_character(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION test : INT
+            test := 0;
+            IF 'caf$E9' = 'café' THEN test := test + 1; END_IF;
+            IF 'caf$C3$A9' = 'café' THEN test := test + 10; END_IF;
+        END_FUNCTION
+    "#;
+    let result: i32 = super::run(&mut with_db, source, "test", ());
+    assert_eq!(result, 10, "$E9 is no é; its UTF-8 bytes are");
 }
 
 /// Escape sequences decode to the bytes they DENOTE, not the source text.
@@ -1659,4 +1728,125 @@ END_FUNCTION
 "#;
     let r: i32 = run(&mut with_db, src, "run", ());
     assert_eq!(r, 211, "names[0], then names[1], one call each");
+}
+
+/// A result declared `STRING[n]` is laid out at `n`, in the callee and in
+/// the caller's copy: a `STRING[100]` result came back cut at the default
+/// 80, and a `STRING[3]` one was not cut at all.
+#[rstest]
+fn a_string_result_keeps_its_declared_capacity(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE S3 : STRING[3]; END_TYPE
+
+        FUNCTION Long : STRING[100] Long := '0123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789'; END_FUNCTION
+        FUNCTION Short : STRING[3]
+        VAR s : STRING := 'abcdef'; END_VAR
+            Short := s;
+        END_FUNCTION
+        FUNCTION ShortAlias : S3
+        VAR s : STRING := 'abcdef'; END_VAR
+            ShortAlias := s;
+        END_FUNCTION
+
+        FUNCTION_BLOCK Holder
+            METHOD PUBLIC Get : STRING[100] Get := '0123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789'; END_METHOD
+        END_FUNCTION_BLOCK
+        CLASS Box
+            METHOD PUBLIC Get : STRING[100] Get := '0123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789'; END_METHOD
+        END_CLASS
+
+        FUNCTION test : BOOL
+        VAR h : Holder; b : Box; END_VAR
+            test := Long() = '0123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789'
+                AND Short() = 'abc'
+                AND ShortAlias() = 'abc'
+                AND h.Get() = '0123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789'
+                AND b.Get() = '0123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789';
+        END_FUNCTION
+    "#;
+    let result: i32 = super::run(&mut with_db, source, "test", ());
+    assert_eq!(result, 1, "each result at its declared capacity");
+}
+
+/// A STRING result passed on as an argument is snapshotted whole: the
+/// snapshot slots were 80 bytes whatever the result's capacity. Two calls of
+/// one function share its result slot, so the first argument lives only in
+/// its snapshot once the second call has run; each argument is checked.
+#[rstest]
+fn a_long_nested_result_is_snapshotted_whole(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION Nth : STRING[100]
+        VAR_INPUT i : INT; END_VAR
+            IF i = 1 THEN
+                Nth := '0123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789';
+            ELSE
+                Nth := 'abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij';
+            END_IF;
+        END_FUNCTION
+        FUNCTION Both : BOOL
+        VAR_INPUT a : STRING[100]; b : STRING[100]; END_VAR
+            Both := a = '0123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789'
+                AND b = 'abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij';
+        END_FUNCTION
+
+        FUNCTION test : BOOL
+            test := Both(Nth(1), Nth(2));
+        END_FUNCTION
+    "#;
+    let result: i32 = super::run(&mut with_db, source, "test", ());
+    assert_eq!(
+        result, 1,
+        "both 100-byte arguments, the first one from its snapshot"
+    );
+}
+
+/// An FB's STRING VAR_IN_OUT writes at the capacity of the buffer it is
+/// bound to, as a FUNCTION's does: the FB kept only the address and wrote at
+/// its own 80, past a `STRING[4]` into its neighbour. The capacity travels
+/// from a FUNCTION's in-out and from another FB's, and a METHOD writes at it.
+#[rstest]
+fn an_fb_string_in_out_writes_at_the_bound_capacity(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Writer
+        VAR_IN_OUT s : STRING; END_VAR
+            METHOD PUBLIC Put
+                s := 'zyxwvutsrqponmlk';
+            END_METHOD
+            s := 'abcdefghijklmnop';
+        END_FUNCTION_BLOCK
+        FUNCTION_BLOCK Relay
+        VAR_IN_OUT s : STRING; END_VAR
+        VAR inner : Writer; END_VAR
+            inner(s := s);
+        END_FUNCTION_BLOCK
+        FUNCTION ViaFunction
+        VAR_IN_OUT s : STRING; END_VAR
+        VAR w : Writer; END_VAR
+            w(s := s);
+        END_FUNCTION
+
+        FUNCTION test : INT
+        VAR
+            t : STRING[4];
+            guard : ARRAY[0..3] OF INT := [7, 7, 7, 7];
+            w : Writer;
+            r : Relay;
+            ok : INT;
+        END_VAR
+            w(s := t);
+            IF t = 'abcd' THEN ok := ok + 1; END_IF;
+            w.Put();
+            IF t = 'zyxw' THEN ok := ok + 1; END_IF;
+            r(s := t);
+            IF t = 'abcd' THEN ok := ok + 1; END_IF;
+            ViaFunction(s := t);
+            IF t = 'abcd' THEN ok := ok + 1; END_IF;
+            test := ok * 100 + guard[0] + guard[1] + guard[2] + guard[3];
+        END_FUNCTION
+    "#;
+    let result: i32 = super::run(&mut with_db, source, "test", ());
+    assert_eq!(
+        result, 428,
+        "four writes cut at 4, the guard untouched (28)"
+    );
 }

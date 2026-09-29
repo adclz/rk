@@ -1004,7 +1004,7 @@ impl<'db> ExprLowerCtx<'db> {
                     field_offset: field.offset,
                     field_type: field.ty.clone(),
                 };
-                Self::wrap_inout_deref(field, this_field)
+                self.wrap_inout_deref(field, this_field)
             }
             None => MirPlace::Local(ident),
         }
@@ -1013,15 +1013,47 @@ impl<'db> ExprLowerCtx<'db> {
     /// A `VAR_IN_OUT` member holds a pointer to the caller's l-value, so its
     /// place is wrapped in a `Deref`; a `REF_TO` member is dereferenced only
     /// where the user writes `^`.
-    fn wrap_inout_deref(field: &crate::types::MirStructField, place: MirPlace) -> MirPlace {
+    fn wrap_inout_deref(&self, field: &crate::types::MirStructField, place: MirPlace) -> MirPlace {
         match (&field.by_ref, &field.ty) {
             (true, MirType::Pointer(pointee)) => MirPlace::Deref {
+                capacity: match **pointee {
+                    MirType::String { .. } => self.in_out_capacity_place(field, &place),
+                    _ => None,
+                },
                 base: Box::new(place),
                 pointee_type: (**pointee).clone(),
                 checked: false,
             },
             _ => place,
         }
+    }
+
+    /// Where an FB's STRING VAR_IN_OUT keeps its bound buffer's capacity: the
+    /// member laid out right after the pointer `place` names.
+    fn in_out_capacity_place(
+        &self,
+        field: &crate::types::MirStructField,
+        place: &MirPlace,
+    ) -> Option<Box<MirPlace>> {
+        let field_name =
+            crate::lower::lower_type::string_capacity_field(self.db, field.name_with_case);
+        let field_type = MirType::Elementary(MirElementary::UDInt);
+        Some(Box::new(match place {
+            MirPlace::ThisField { field_offset, .. } => MirPlace::ThisField {
+                field_name,
+                field_offset: field_offset + 4,
+                field_type,
+            },
+            MirPlace::Field {
+                base, field_offset, ..
+            } => MirPlace::Field {
+                base: base.clone(),
+                field_name,
+                field_offset: field_offset + 4,
+                field_type,
+            },
+            _ => return None,
+        }))
     }
 
     /// The declaration this path's root binds to, as HIR resolved it while
@@ -1045,6 +1077,34 @@ impl<'db> ExprLowerCtx<'db> {
     fn pointee_of(&self, deref: hir::hir_def::expressions::expression::PathExpr<'db>) -> Type<'db> {
         hir::hir_ty::body::infer_body(self.db, deref.scope_id(self.db))
             .type_of_path_expr_with_adjustments(deref)
+    }
+
+    /// The MIR type `reference^` reaches: its pointee, with the capacity of
+    /// a `REF_TO STRING[n]` read from the reference's target spec, since the
+    /// inferred pointee has dropped it and a write through it clamped at 80,
+    /// past a shorter target.
+    fn deref_pointee_type(
+        &self,
+        deref: hir::hir_def::expressions::expression::PathExpr<'db>,
+        reference: hir::hir_def::expressions::expression::PathExpr<'db>,
+    ) -> MirType {
+        let pointee = self
+            .lower_type_resolved(self.pointee_of(deref))
+            .unwrap_or(MirType::Void);
+        if !matches!(pointee, MirType::String { .. }) {
+            return pointee;
+        }
+        // The raw type: the adjusted one has already dereferenced it.
+        match hir::hir_ty::body::infer_body(self.db, reference.scope_id(self.db))
+            .type_of_path_expr
+            .get(&reference)
+            .map(|ty| ty.normalize(self.db))
+        {
+            Some(Type::RefTo(target)) => {
+                crate::lower::lower_type::lower_spec(self.db, target).unwrap_or(pointee)
+            }
+            _ => pointee,
+        }
     }
 
     /// Lower a BeginPathExpr to a MirPlace, handling nested field/index/deref chains.
@@ -1118,7 +1178,7 @@ impl<'db> ExprLowerCtx<'db> {
                         field_offset: field.offset,
                         field_type: field.ty.clone(),
                     };
-                    return Ok(Self::wrap_inout_deref(field, this_field));
+                    return Ok(self.wrap_inout_deref(field, this_field));
                 }
 
                 let (field_offset, field_type) =
@@ -1144,13 +1204,12 @@ impl<'db> ExprLowerCtx<'db> {
             }
             PathExprKind::Deref(deref_expr) => {
                 let inner = self.lower_this_path(deref_expr.path)?;
-                let pointee_type = self
-                    .lower_type_resolved(self.pointee_of(path_expr))
-                    .unwrap_or(MirType::Void);
+                let pointee_type = self.deref_pointee_type(path_expr, deref_expr.path);
                 Ok(MirPlace::Deref {
                     base: Box::new(inner),
                     pointee_type,
                     checked: true,
+                    capacity: None,
                 })
             }
         }
@@ -1254,13 +1313,12 @@ impl<'db> ExprLowerCtx<'db> {
 
             PathExprKind::Deref(deref_expr) => {
                 let inner = self.lower_path_expr_chain(base, deref_expr.path)?;
-                let pointee_type = self
-                    .lower_type_resolved(self.pointee_of(path_expr))
-                    .unwrap_or(MirType::Void);
+                let pointee_type = self.deref_pointee_type(path_expr, deref_expr.path);
                 Ok(MirPlace::Deref {
                     base: Box::new(inner),
                     pointee_type,
                     checked: true,
+                    capacity: None,
                 })
             }
 
@@ -1286,7 +1344,7 @@ impl<'db> ExprLowerCtx<'db> {
             field_offset: field.offset,
             field_type: field.ty.clone(),
         };
-        Ok(Self::wrap_inout_deref(&field, place))
+        Ok(self.wrap_inout_deref(&field, place))
     }
 
     /// The layout's field `field_name` of `base_type`, offset, type and all,
@@ -1837,6 +1895,18 @@ impl<'db> ExprLowerCtx<'db> {
             Type::Void | Type::Never => MirType::Void,
             ty => self.lower_type_resolved(ty).unwrap_or(MirType::Void),
         };
+        // A STRING result is as large as the callee declares it, which the
+        // inferred type does not say: a `STRING[200]` result read back as 80.
+        let mir_return_type = match (
+            &mir_return_type,
+            self.resolved_call_of(func_call)
+                .and_then(|call| call.callable.return_type(self.db).copied()),
+        ) {
+            (MirType::String { .. }, Some(spec)) => {
+                crate::lower::lower_type::lower_spec(self.db, spec)?
+            }
+            _ => mir_return_type,
+        };
 
         // With outputs popping after the call, a declared return value needs
         // somewhere to wait: it is LAST on the stack, so it pops FIRST.
@@ -2266,6 +2336,16 @@ impl<'db> ExprLowerCtx<'db> {
                             // else upstream.
                             match self.lower_expr(value)? {
                                 MirExpr::Load(place, _) => {
+                                    // A STRING's capacity goes beside its address,
+                                    // for the body to write at.
+                                    if matches!(&field.ty, MirType::Pointer(p) if matches!(**p, MirType::String { .. }))
+                                    {
+                                        input_writes.push((
+                                            field.offset + 4,
+                                            MirExpr::StringCapacity(place.clone()),
+                                            MirType::Elementary(MirElementary::UDInt),
+                                        ));
+                                    }
                                     input_writes.push((
                                         field.offset,
                                         MirExpr::AddrOf(place),
@@ -2525,6 +2605,10 @@ impl<'db> ExprLowerCtx<'db> {
         let Some(ty) = place.ty().filter(|_| place.has_call()).cloned() else {
             return (None, place);
         };
+        let capacity = match &place {
+            MirPlace::Deref { capacity, .. } => capacity.clone(),
+            _ => None,
+        };
         let mut scratch = self.call_scratch.borrow_mut();
         let name = hir::hir_def::interned::identifier::Ident::new(
             self.db,
@@ -2545,6 +2629,7 @@ impl<'db> ExprLowerCtx<'db> {
                 base: Box::new(MirPlace::Local(name)),
                 pointee_type: ty,
                 checked: false,
+                capacity,
             },
         )
     }

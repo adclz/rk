@@ -14,7 +14,9 @@ one well-formed UTF-8 sequence. A byte that belongs to none counts as a
 character on its own, its Latin-1 code point, like `CHAR#'$E9'`.
 
 Positions start at 1 in both families. A function that returns a `STRING`
-truncates it without an error when it does not fit where it is stored.
+returns up to 255 bytes, as in CODESYS and TwinCAT, and cuts a longer result
+there. It is also cut, without an error, when it does not fit where it is
+stored.
 */
 NAMESPACE Std.Strings
 
@@ -90,7 +92,7 @@ NAMESPACE Std.Strings
 	   s := CONCAT('hello ', 'world');  // 'hello world'
 	   ```
 	*/
-	FUNCTION CONCAT: STRING
+	FUNCTION CONCAT: STRING[255]
 		VAR_INPUT
 			A: STRING;
 			B: STRING;
@@ -109,7 +111,7 @@ NAMESPACE Std.Strings
 	   s := LEFT('hi', 10);          // 'hi'
 	   ```
 	*/
-	FUNCTION LEFT: STRING
+	FUNCTION LEFT: STRING[255]
 		VAR_INPUT
 			S: STRING;
 			N: UDINT;
@@ -128,7 +130,7 @@ NAMESPACE Std.Strings
 	   s := RIGHT('hi', 10);          // 'hi'
 	   ```
 	*/
-	FUNCTION RIGHT: STRING
+	FUNCTION RIGHT: STRING[255]
 		VAR_INPUT
 			S: STRING;
 			N: UDINT;
@@ -149,7 +151,7 @@ NAMESPACE Std.Strings
 	   s := MID('hello', 3, 10);       // ''
 	   ```
 	*/
-	FUNCTION MID: STRING
+	FUNCTION MID: STRING[255]
 		VAR_INPUT
 			S: STRING;
 			N: UDINT;
@@ -171,7 +173,7 @@ NAMESPACE Std.Strings
 	   s := INSERT('world', 'hello ', 0);   // 'hello world'
 	   ```
 	*/
-	FUNCTION INSERT: STRING
+	FUNCTION INSERT: STRING[255]
 		VAR_INPUT
 			S: STRING;
 			INS: STRING;
@@ -192,7 +194,7 @@ NAMESPACE Std.Strings
 	   s := DELETE('hello', 3, 10);       // 'hello'
 	   ```
 	*/
-	FUNCTION DELETE: STRING
+	FUNCTION DELETE: STRING[255]
 		VAR_INPUT
 			S: STRING;
 			N: UDINT;
@@ -215,7 +217,7 @@ NAMESPACE Std.Strings
 	   s := REPLACE('hello world', '!', 5, 7);      // 'hello !'
 	   ```
 	*/
-	FUNCTION REPLACE: STRING
+	FUNCTION REPLACE: STRING[255]
 		VAR_INPUT
 			S: STRING;
 			INS: STRING;
@@ -291,7 +293,7 @@ NAMESPACE Std.Strings
 	   s := CHAR_LEFT('café', 10);  // 'café'
 	   ```
 	*/
-	FUNCTION CHAR_LEFT: STRING
+	FUNCTION CHAR_LEFT: STRING[255]
 		VAR_INPUT
 			S: STRING;
 			N: UDINT;
@@ -310,7 +312,7 @@ NAMESPACE Std.Strings
 	   s := CHAR_RIGHT('café', 1);    // 'é'
 	   ```
 	*/
-	FUNCTION CHAR_RIGHT: STRING
+	FUNCTION CHAR_RIGHT: STRING[255]
 		VAR_INPUT
 			S: STRING;
 			N: UDINT;
@@ -330,7 +332,7 @@ NAMESPACE Std.Strings
 	   s := CHAR_MID('日本語', 1, 2);  // '本'
 	   ```
 	*/
-	FUNCTION CHAR_MID: STRING
+	FUNCTION CHAR_MID: STRING[255]
 		VAR_INPUT
 			S: STRING;
 			N: UDINT;
@@ -351,7 +353,7 @@ NAMESPACE Std.Strings
 	   s := CHAR_INSERT('café', 'X', 99);  // 'caféX'
 	   ```
 	*/
-	FUNCTION CHAR_INSERT: STRING
+	FUNCTION CHAR_INSERT: STRING[255]
 		VAR_INPUT
 			S: STRING;
 			INS: STRING;
@@ -372,7 +374,7 @@ NAMESPACE Std.Strings
 	   s := CHAR_DELETE('café', 1, 5);    // 'café'
 	   ```
 	*/
-	FUNCTION CHAR_DELETE: STRING
+	FUNCTION CHAR_DELETE: STRING[255]
 		VAR_INPUT
 			S: STRING;
 			N: UDINT;
@@ -393,7 +395,7 @@ NAMESPACE Std.Strings
 	   s := CHAR_REPLACE('日本語', 'X', 2, 1);  // 'X語'
 	   ```
 	*/
-	FUNCTION CHAR_REPLACE: STRING
+	FUNCTION CHAR_REPLACE: STRING[255]
 		VAR_INPUT
 			S: STRING;
 			INS: STRING;
@@ -421,6 +423,7 @@ NAMESPACE Std.Strings
 		FUNCTION test_len_counts_utf8_bytes
 			ASSERT(LEN('café') = 5 AND LEN('€') = 3 AND LEN('中文') = 6);
 			ASSERT(IS_UTF8('café') AND IS_UTF8('中文'));
+			{allow 'latin1-escape'}
 			ASSERT(LEN('$E9') = 1 AND NOT IS_UTF8('$E9'));
 		END_FUNCTION
 
@@ -479,6 +482,35 @@ NAMESPACE Std.Strings
 			VAR result: STRING; END_VAR
 			result := CONCAT('hello', '');
 			ASSERT(LEN(result) = 5);
+		END_FUNCTION
+
+		// A result holds up to 255 bytes, not the default 80: what does not
+		// fit is cut where it is stored.
+		{test}
+		FUNCTION test_concat_keeps_more_than_80_bytes
+			VAR
+				a: STRING[100] := '0123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789';
+				result: STRING[200];
+			END_VAR
+			result := CONCAT(a, a);
+			ASSERT(LEN(result) = 200);
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_a_result_is_cut_at_255_bytes
+			VAR
+				a: STRING[200] := '01234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789';
+				result: STRING[300];
+			END_VAR
+			result := CONCAT(a, a);
+			ASSERT(LEN(result) = 255);
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_delete_one_byte_of_a_100_byte_string
+			VAR s: STRING[200] := '0123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789'; END_VAR
+			s := DELETE(s, 1, 1);
+			ASSERT(LEN(s) = 99);
 		END_FUNCTION
 
 		{test}
@@ -816,6 +848,7 @@ NAMESPACE Std.Strings
 		FUNCTION test_char_count_counts_characters_not_bytes
 			ASSERT(CHAR_COUNT('café') = 4 AND LEN('café') = 5);
 			ASSERT(CHAR_COUNT('日本語') = 3 AND LEN('日本語') = 9);
+			{allow 'latin1-escape'}
 			ASSERT(CHAR_COUNT('$E9$E9') = 2, 'a stray byte is one character');
 		END_FUNCTION
 
@@ -823,6 +856,7 @@ NAMESPACE Std.Strings
 		FUNCTION test_char_at_returns_the_character
 			ASSERT(CHAR_AT('café', 4) = CHAR#'é' AND CHAR_AT('café', 1) = CHAR#'c');
 			ASSERT(CHAR_AT('日本語', 2) = CHAR#'本');
+			{allow 'latin1-escape'}
 			ASSERT(CHAR_AT('$E9', 1) = CHAR#'é', 'a stray byte reads as its Latin-1 character');
 			ASSERT(CHAR_AT('abc', 0) = CHAR#'$00' AND CHAR_AT('abc', 4) = CHAR#'$00');
 		END_FUNCTION

@@ -55,10 +55,16 @@ Write operations:
 - `CHAR_DELETE` removes n characters starting at a 1-indexed character position.
 - `CHAR_REPLACE` replaces n characters at a 1-indexed character position with a STRING.
 
+Their result holds up to 255 bytes. 
+A longer one is cut there, and again where it is stored when the destination is smaller.
+
 
 - A **literal** too long for its destination is a compile error.
 - A **variable** too long truncates silently, and truncating bytes can split a character.
   `IS_UTF8` exists for exactly that.
+- `$hh` in a literal is one byte, not a character. `'caf$E9'` ends in the lone byte 0xE9, which is not the UTF-8 `é`, so `'caf$E9' = 'café'` is FALSE.
+  Code written for Latin-1 uses `$E9` for `é`; write `é` itself, or its UTF-8 bytes `$C3$A9`. `L0121` warns about it.
+- Where two STRINGs share storage, the capacity is part of the type: an `ARRAY OF STRING[4]` is not an `ARRAY OF STRING`, and a `REF_TO STRING` does not take a `STRING[4]` (`E0301`). A `VAR_EXTERNAL` repeats its global's capacity (`E0207`).
 
 - No indexing - `s[1]` is `E0508`, use `CHAR_AT`. 
 

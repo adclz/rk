@@ -6,7 +6,7 @@ description: The lint rules `rk` applies, what each L-code means and how to conf
 ## Summary
 
 The linter runs on top of the compiler diagnostics and reports style, clarity and suspicious-code findings.
-It is ON by default: a workspace that never mentions the linter still gets the **recommended** set — the 24 rules that report a probable bug rather than a matter of taste.
+It is ON by default: a workspace that never mentions the linter still gets the **recommended** set — the 25 rules that report a probable bug rather than a matter of taste.
 `[linter]` tunes that set; it does not switch the linter on.
 
 `rk check` and the language server both run it, on the same set, so an editor and the CLI agree about a workspace.
@@ -38,7 +38,7 @@ Two layers.
 
 | `select` | rules that run |
 | -------- | -------------- |
-| absent, or no `[linter]` at all | the 24 recommended rules |
+| absent, or no `[linter]` at all | the 25 recommended rules |
 | `"recommended"` | the same 24, stated explicitly |
 | `"all"` | all 48 |
 | `"none"` | none, unless `[linter.rules]` names one |
@@ -156,6 +156,7 @@ L0206 collapses every unassigned output of one body into a single diagnostic lis
 | L0117 | `external-mutation` | warning | writing a field of a function block or class instance from outside it, `inst.x := 42` |
 | L0119 | `instance-in-function` | warning | a FUNCTION or METHOD holding or returning a FUNCTION_BLOCK or CLASS instance, which starts over at every call: a timer in it never expires |
 | L0120 | `variable-method-name` | warning | a variable and a method of a FUNCTION_BLOCK or CLASS, or of one it extends, with the same name: legal, the variable wins inside the block |
+| L0121 | `latin1-escape` | warning | a STRING literal whose `$hh` escapes are not UTF-8 text, such as `'caf$E9'` written for `'café'`: `$E9` is one byte, and `é` is `$C3$A9`; not a CHAR, where `$E9` is `é` |
 
 L0109 keys on the value the compiler computed, not on the text, so `7`, `INT#7` and a CONSTANT holding 7 are one label; enum variants and strings fall back to the written form.
 

@@ -4,6 +4,8 @@
 
 There is no `WSTRING`.
 A bare `STRING` has a capacity of 80 bytes.
+The `Std.Strings` functions return up to 255 bytes.
+The capacity is part of the type where storage is shared: arrays of `STRING[4]` and of `STRING` differ, and so do `REF_TO STRING[4]` and `REF_TO STRING`.
 
 Widening is implicit exactly where the standard's table allows it, which is not "within a family": `INT` → `REAL` is implicit and `DINT` → `REAL` is not, and an unsigned type widens to a larger signed one (`USINT` → `INT`).
 The two tables below are written by the site generator from the compiler's own rules.

@@ -1,3 +1,4 @@
+use crate::hir_ty::infer::normalize::{declared_capacity_of, string_capacity};
 use db::WorkspaceDataBase;
 use ide_diagnostic::IdeDiagnostic;
 
@@ -108,7 +109,9 @@ impl<'db> Type<'db> {
         resolver: Resolver<'db>,
     ) -> CoerceResult<'db> {
         // normalizing first to peel Variable/DataType/StructElement wrappers
+        // (what they declared, a STRING's capacity, is read off `written`)
         let lhs = self.normalize(db);
+        let written = to;
         let to = to.normalize(db);
 
         // We return Ok if the lhs or rhs is of type Never.
@@ -131,8 +134,13 @@ impl<'db> Type<'db> {
                 // declared type exactly. The value table has no say here —
                 // widening a REF(int) into a REF_TO REAL reads a 2-byte slot
                 // as 4 and typed the load wrong (invalid wasm at exit 0).
+                // A STRING's capacity is part of that: a write through a
+                // `REF_TO STRING` reaching a `STRING[4]` ran 76 bytes past it.
                 Type::RefTo(spec) => {
-                    return match same_type(db, spec.infer(db).normalize(db), to) {
+                    let capacity_matches = declared_capacity_of(db, written)
+                        .is_none_or(|c| string_capacity(db, spec) == Some(c));
+                    return match same_type(db, spec.infer(db).normalize(db), to) && capacity_matches
+                    {
                         true => Ok(()),
                         false => Err(CoerceError {
                             expected: *self,
@@ -224,12 +232,15 @@ impl<'db> Type<'db> {
                 // The element type must be the SAME, not merely coercible: an
                 // array copy moves bytes, it does not convert them, so an
                 // `ARRAY OF INT` into an `ARRAY OF REAL` checked clean and
-                // read back garbage (b[1] was not 2.0).
+                // read back garbage (b[1] was not 2.0). A STRING element's
+                // capacity is its size, so `STRING[4]` and `STRING` differ.
                 match same_type(
                     db,
                     a1.of_type(db).infer(db).normalize(db),
                     a2.of_type(db).infer(db).normalize(db),
-                ) {
+                ) && string_capacity(db, a1.of_type(db))
+                    == string_capacity(db, a2.of_type(db))
+                {
                     true => Ok(()),
                     false => Err(CoerceError {
                         expected: *self,
@@ -265,7 +276,7 @@ impl<'db> Type<'db> {
             (Type::RefTo(_), Type::Null) => Ok(()),
             // Same invariance for a reference bound from a reference.
             (Type::RefTo(lhs), Type::RefTo(rhs)) => {
-                match same_type(db, lhs.infer(db).normalize(db), rhs.infer(db).normalize(db)) {
+                match same_type(db, Type::RefTo(lhs), Type::RefTo(*rhs)) {
                     true => Ok(()),
                     false => Err(CoerceError {
                         expected: *self,
@@ -555,12 +566,15 @@ impl<'db> CoerceError<'db> {
 /// Structural "is exactly this type" for reference pointees, on NORMALIZED
 /// types. Identity for nominal types (structs, enums, POUs); shape for
 /// arrays and references, whose specs are distinct salsa values even when
-/// spelled identically. Never consults the value-coercion table.
+/// spelled identically. Never consults the value-coercion table. A STRING
+/// target or element keeps its capacity here: it is the size of what a
+/// reference points at, and of each element.
 pub(crate) fn same_type<'db>(db: &'db dyn WorkspaceDataBase, a: Type<'db>, b: Type<'db>) -> bool {
     match (a, b) {
         (Type::Elementary(x), Type::Elementary(y)) => x == y,
         (Type::RefTo(x), Type::RefTo(y)) => {
             same_type(db, x.infer(db).normalize(db), y.infer(db).normalize(db))
+                && string_capacity(db, x) == string_capacity(db, y)
         }
         (Type::Array(x), Type::Array(y)) => {
             if x.eq(&y) {
@@ -578,6 +592,7 @@ pub(crate) fn same_type<'db>(db: &'db dyn WorkspaceDataBase, a: Type<'db>, b: Ty
                     x.of_type(db).infer(db).normalize(db),
                     y.of_type(db).infer(db).normalize(db),
                 )
+                && string_capacity(db, x.of_type(db)) == string_capacity(db, y.of_type(db))
         }
         _ => a.eq(&b),
     }
