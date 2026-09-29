@@ -240,12 +240,13 @@ fn lower_function_inner<'db>(
         .transpose()?;
 
     // The return slot, named after the function: scalars in a wasm local,
-    // STRING and aggregates in linear memory.
+    // STRING, aggregates and a slot `REF()` or a VAR_IN_OUT takes in linear
+    // memory.
     if let Some(ref ret_ty) = return_type {
         let storage = allocate_local_storage(
             func.name(db),
             ret_ty,
-            false,
+            address_taken.contains(&func.name(db)),
             &mut next_local_idx,
             memory_layout,
         );
@@ -472,12 +473,13 @@ fn lower_function_block_inner<'db>(
             })
             .transpose()?;
 
-        // The return slot (scalar → wasm local, else linear memory).
+        // The return slot (scalar → wasm local, else linear memory, as when
+        // its address is taken).
         if let Some(ref ret_ty) = return_type {
             let storage = allocate_local_storage(
                 method.name(db),
                 ret_ty,
-                false,
+                address_taken.contains(&method.name(db)),
                 &mut next_local_idx,
                 memory_layout,
             );
@@ -753,12 +755,13 @@ fn lower_class_inner<'db>(
             })
             .transpose()?;
 
-        // Return local: scalar → WASM local, non-scalar → linear memory.
+        // Return local: scalar → WASM local, non-scalar or address-taken →
+        // linear memory.
         if let Some(ref ret_ty) = return_type {
             let storage = allocate_local_storage(
                 method.name(db),
                 ret_ty,
-                false,
+                address_taken.contains(&method.name(db)),
                 &mut next_local_idx,
                 memory_layout,
             );
