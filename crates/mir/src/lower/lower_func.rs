@@ -253,7 +253,7 @@ fn lower_function_inner<'db>(
     let mut next_local_idx: u32 = 0;
 
     // Collect address-taken variables for storage decisions
-    let mut address_taken = collect_address_taken_vars(db, func.statements(db));
+    let mut address_taken = collect_address_taken_vars(db, func.scope_id(db));
     address_taken.extend(collect_address_taken_in_inits(db, func.variables(db)));
 
     // 1. Parameters (Input, InOut, Output). VAR_OUTPUT is a pointer at the
@@ -485,7 +485,7 @@ fn lower_function_block_inner<'db>(
         let mut next_local_idx: u32 = 1; // 0 is 'this'
         // A method local whose address is taken must live in memory. Same scan
         // as the other bodies.
-        let mut address_taken = collect_address_taken_vars(db, method.stmts(db));
+        let mut address_taken = collect_address_taken_vars(db, method.scope_id(db));
         address_taken.extend(collect_address_taken_in_inits(db, method.variables(db)));
 
         // 'this' pointer parameter — the FB's instance struct.
@@ -675,7 +675,7 @@ fn lower_fb_body<'db>(
     let mut body_locals = Vec::new();
     let mut next_local_idx: u32 = 1; // 0 is 'this'
 
-    let mut address_taken = collect_address_taken_vars(db, body_of.statements(db));
+    let mut address_taken = collect_address_taken_vars(db, body_of.scope_id(db));
     address_taken.extend(collect_address_taken_in_inits(db, body_of.variables(db)));
 
     for var in body_of.variables(db) {
@@ -812,7 +812,7 @@ fn lower_class_inner<'db>(
         });
 
         // Same address-taken rule as the FB method loop above.
-        let mut address_taken = collect_address_taken_vars(db, method.stmts(db));
+        let mut address_taken = collect_address_taken_vars(db, method.scope_id(db));
         address_taken.extend(collect_address_taken_in_inits(db, method.variables(db)));
 
         // Method parameters, then its locals: every wasm parameter's index
@@ -973,7 +973,7 @@ fn lower_program_inner<'db>(
     // fields accessed through `this`.
     let mut locals = Vec::new();
     let mut next_local_idx: u32 = 1; // 0 is 'this'
-    let mut address_taken = collect_address_taken_vars(db, program.statements(db));
+    let mut address_taken = collect_address_taken_vars(db, program.scope_id(db));
     address_taken.extend(collect_address_taken_in_inits(db, program.variables(db)));
     for var in program.variables(db) {
         if var.kind(db) == VariableKind::Temp {
@@ -1203,218 +1203,56 @@ fn collect_address_taken_in_inits<'db>(
     result
 }
 
-/// Collect identifiers of variables whose address is taken (via REF()).
-/// These must be allocated in linear memory even if they're scalars.
+/// The variables whose address the body of `scope` takes, which linear
+/// memory holds even when they are scalars: the root of every `REF()`,
+/// VAR_IN_OUT argument and output destination, wherever it stands (a
+/// subscript, an assignment target, a nested call). Read off the body's
+/// inference, which visited every expression and bound every call.
 fn collect_address_taken_vars<'db>(
     db: &'db dyn WorkspaceDataBase,
-    stmts: &[hir::hir_def::expressions::statement::Stmt<'db>],
+    scope: hir::hir_def::scope::ScopeId<'db>,
 ) -> FxHashSet<Ident> {
-    use hir::hir_def::expressions::expression::{ExprKind, PrimaryExpr, RefValue};
-
-    let mut result = FxHashSet::default();
-
-    fn walk_expr<'db>(
-        db: &'db dyn WorkspaceDataBase,
-        expr: hir::hir_def::expressions::expression::Expr<'db>,
-        result: &mut FxHashSet<Ident>,
-    ) {
-        match expr.expr(db) {
-            ExprKind::PrimaryExpr(PrimaryExpr::RefValue {
-                value: RefValue::Address(begin_path),
-            }) => {
-                // REF(var) - extract the variable name
-                if let Some(path_expr) = begin_path.expr(db) {
-                    // Probed with the declared name: `REF(myvar)` must mark `MyVar`.
-                    let ident = path_expr.ident(db).ident(db);
-                    result.insert(ident);
-                }
-            }
-            ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess(_)) => {}
-            ExprKind::PrimaryExpr(PrimaryExpr::FuncCall(fc)) => {
-                for param in fc.params(db) {
-                    match param.kind(db) {
-                        hir::hir_def::expressions::expression::ParamAssignKind::NonFormal {
-                            value,
-                        }
-                        | hir::hir_def::expressions::expression::ParamAssignKind::FormalInput {
-                            value,
-                            ..
-                        } => {
-                            walk_expr(db, value, result);
-                        }
-                        hir::hir_def::expressions::expression::ParamAssignKind::FormalOutput {
-                            variable,
-                            ..
-                        } => {
-                            // OUT => x takes the address of x
-                            if let hir::hir_def::expressions::expression::VariableAccessKind::Symbolic(begin_path) = &variable.kind(db)
-                                && let Some(path_expr) = begin_path.expr(db) {
-                                    result.insert(path_expr.ident(db).ident(db));
-                                }
-                        }
-                    }
-                }
-                // Inout args take the variable's address too (see the
-                // statement-position FuncCall arm).
-                mark_inout_call_args(db, *fc, result);
-            }
-            ExprKind::PrimaryExpr(PrimaryExpr::ParenthesizedExpr { expr: inner }) => {
-                walk_expr(db, *inner, result);
-            }
-            ExprKind::AddOperator { left, right, .. }
-            | ExprKind::MultOperator { left, right, .. }
-            | ExprKind::ComparisonOperator { left, right, .. }
-            | ExprKind::BooleanOperator { left, right, .. }
-            | ExprKind::PowerOperator { left, right } => {
-                walk_expr(db, *left, result);
-                walk_expr(db, *right, result);
-            }
-            ExprKind::UnaryOperator { expr: inner, .. } => {
-                walk_expr(db, *inner, result);
-            }
-            _ => {}
-        }
-    }
-
-    fn walk_stmts<'db>(
-        db: &'db dyn WorkspaceDataBase,
-        stmts: &[hir::hir_def::expressions::statement::Stmt<'db>],
-        result: &mut FxHashSet<Ident>,
-    ) {
-        use hir::hir_def::expressions::statement::StmtKind;
-        for stmt in stmts {
-            if let StmtKind::Assignment { target: _, var: _ } = stmt.stmt(db) {
-                // `var` is the target and `target` the value expression, as HIR
-                // names them.
-            }
-            // Walk all expressions in the statement
-            walk_stmt_exprs(db, *stmt, result);
-        }
-    }
-
-    fn walk_stmt_exprs<'db>(
-        db: &'db dyn WorkspaceDataBase,
-        stmt: hir::hir_def::expressions::statement::Stmt<'db>,
-        result: &mut FxHashSet<Ident>,
-    ) {
-        use hir::hir_def::expressions::statement::StmtKind;
-        match stmt.stmt(db) {
-            StmtKind::Assignment { var: _, target } => {
-                walk_expr(db, *target, result);
-            }
-            StmtKind::If {
-                condition,
-                then,
-                else_if,
-                else_,
-            } => {
-                walk_expr(db, *condition, result);
-                if let Some(stmts) = then {
-                    walk_stmts(db, stmts, result);
-                }
-                for (cond, body) in else_if {
-                    walk_expr(db, *cond, result);
-                    walk_stmts(db, body, result);
-                }
-                if let Some(stmts) = else_ {
-                    walk_stmts(db, stmts, result);
-                }
-            }
-            StmtKind::For {
-                start,
-                end,
-                step,
-                body,
-                ..
-            } => {
-                walk_expr(db, *start, result);
-                walk_expr(db, *end, result);
-                if let Some(s) = step {
-                    walk_expr(db, *s, result);
-                }
-                walk_stmts(db, body, result);
-            }
-            StmtKind::While { condition, body } => {
-                walk_expr(db, *condition, result);
-                walk_stmts(db, body, result);
-            }
-            StmtKind::Repeat { condition, body } => {
-                walk_expr(db, *condition, result);
-                walk_stmts(db, body, result);
-            }
-            StmtKind::Case {
-                condition,
-                cases,
-                else_,
-            } => {
-                walk_expr(db, *condition, result);
-                for (_, body) in cases {
-                    walk_stmts(db, body, result);
-                }
-                if let Some(stmts) = else_ {
-                    walk_stmts(db, stmts, result);
-                }
-            }
-            StmtKind::FuncCall(fc) => {
-                for param in fc.params(db) {
-                    match param.kind(db) {
-                        hir::hir_def::expressions::expression::ParamAssignKind::NonFormal { value }
-                        | hir::hir_def::expressions::expression::ParamAssignKind::FormalInput { value, .. } => {
-                            walk_expr(db, value, result);
-                        }
-                        hir::hir_def::expressions::expression::ParamAssignKind::FormalOutput { variable, .. } => {
-                            if let hir::hir_def::expressions::expression::VariableAccessKind::Symbolic(begin_path) = &variable.kind(db)
-                                && let Some(path_expr) = begin_path.expr(db) {
-                                    result.insert(path_expr.ident(db).ident(db));
-                                }
-                        }
-                    }
-                }
-                // A VAR_IN_OUT arg is passed by reference on every callable, so a
-                // scalar arg must live in linear memory.
-                mark_inout_call_args(db, *fc, result);
-            }
-            _ => {}
-        }
-    }
-
-    walk_stmts(db, stmts, &mut result);
-    result
-}
-
-/// Mark the root variable of every VAR_IN_OUT argument as address-taken,
-/// so `&arg` has a target; matters for scalar locals.
-fn mark_inout_call_args<'db>(
-    db: &'db dyn WorkspaceDataBase,
-    fc: hir::hir_def::expressions::expression::FuncCall<'db>,
-    result: &mut FxHashSet<Ident>,
-) {
     use hir::hir_def::expressions::expression::{
-        ExprKind, ParamAssignKind, PrimaryExpr, VariableAccessKind,
+        BeginPathExpr, ExprKind, PrimaryExpr, RefValue, VariableAccessKind,
     };
+    use hir::hir_ty::body::ParamBinding;
 
-    let path = fc.path(db);
-    let body = hir::hir_ty::body::infer_body(db, path.scope_id(db));
-    for param in fc.params(db) {
-        let Some(var) = body.variable_of_param.get(param) else {
-            continue;
-        };
-        if !var.is_in_out(db) {
-            continue;
-        }
-        let value = match param.kind(db) {
-            ParamAssignKind::NonFormal { value } | ParamAssignKind::FormalInput { value, .. } => {
-                value
-            }
-            ParamAssignKind::FormalOutput { .. } => continue,
-        };
-        if let ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess(va)) = value.expr(db)
-            && let VariableAccessKind::Symbolic(begin_path) = va.kind(db)
-            && let Some(path_expr) = begin_path.expr(db)
+    fn root<'db>(db: &'db dyn WorkspaceDataBase, path: &BeginPathExpr<'db>) -> Option<Ident> {
+        let root = path.expr(db)?.flatten(db).first()?.get_expr(db);
+        Some(root.ident(db).ident(db))
+    }
+
+    let body = hir::hir_ty::body::infer_body(db, scope);
+    let mut result = FxHashSet::default();
+    for expr in body.type_of_expr.keys() {
+        if let ExprKind::PrimaryExpr(PrimaryExpr::RefValue {
+            value: RefValue::Address(path),
+        }) = expr.expr(db)
         {
-            result.insert(path_expr.ident(db).ident(db));
+            result.extend(root(db, path));
         }
     }
+    for call in body.resolved_calls.values() {
+        for (var, binding) in &call.params {
+            let access = match binding {
+                ParamBinding::Values(values) if var.is_in_out(db) => values
+                    .iter()
+                    .filter_map(|value| match value.expr(db) {
+                        ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess(access)) => Some(*access),
+                        _ => None,
+                    })
+                    .collect(),
+                ParamBinding::Output(access) => vec![*access],
+                _ => continue,
+            };
+            for access in access {
+                if let VariableAccessKind::Symbolic(path) = access.kind(db) {
+                    result.extend(root(db, &path));
+                }
+            }
+        }
+    }
+    result
 }
 
 /// The statements that give a POU's own variables their starting values at

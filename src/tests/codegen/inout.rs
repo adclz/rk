@@ -419,3 +419,27 @@ fn fb_ref_to_member_not_auto_dereffed(mut with_db: db::RootDatabase) {
         "io auto-deref: a=2; REF explicit deref: b=102"
     );
 }
+
+/// A VAR_IN_OUT argument inside a subscript, read or written, makes its
+/// variable addressable like one anywhere else: the address-taken scan
+/// skipped subscripts and assignment targets, and codegen panicked.
+#[rstest]
+fn in_out_argument_in_a_subscript(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION next : INT
+        VAR_IN_OUT calls : INT; END_VAR
+            next := calls;
+            calls := calls + 1;
+        END_FUNCTION
+
+        FUNCTION test : INT
+        VAR a : ARRAY[0..3] OF INT; n : INT; x : INT; END_VAR
+            a[1] := 7;
+            x := a[next(calls := n) + 1];
+            a[next(calls := n)] := 5;
+            test := x * 100 + a[1] * 10 + n;
+        END_FUNCTION
+    "#;
+    let result: i32 = crate::tests::codegen::run(&mut with_db, source, "test", ());
+    assert_eq!(result, 752, "read a[1] = 7, wrote a[1] := 5, two calls");
+}
