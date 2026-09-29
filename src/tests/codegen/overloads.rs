@@ -373,3 +373,233 @@ fn an_fb_overload_beside_an_interface_overload(mut with_db: db::RootDatabase) {
         "drive(IDev) and drive(Pump) are two bodies"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Selection binds the call as a plain call binds it: by name, with defaults
+// and variadics, each argument against the parameter it lands on.
+// ---------------------------------------------------------------------------
+
+/// Named arguments bind by name: written out of order they still pick the
+/// overload whose parameters they name; one may skip a defaulted input, and
+/// a name only one overload declares chooses it.
+#[rstest]
+fn named_arguments_select_by_name(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION f : INT VAR_INPUT a : DINT; b : LINT; END_VAR f := 1; END_FUNCTION
+        FUNCTION f : INT VAR_INPUT a : LINT; b : DINT; END_VAR f := 2; END_FUNCTION
+
+        FUNCTION g : INT VAR_INPUT a : INT; b : INT := 5; c : REAL; END_VAR g := b; END_FUNCTION
+        FUNCTION g : INT VAR_INPUT a : DATE; END_VAR g := 2; END_FUNCTION
+
+        FUNCTION h : INT VAR_INPUT a : INT; END_VAR h := 1; END_FUNCTION
+        FUNCTION h : INT VAR_INPUT b : INT; c : INT := 0; END_VAR h := 2; END_FUNCTION
+
+        FUNCTION test : INT
+        VAR i : INT := 1; d : DINT := 2; END_VAR
+            test := f(b := i, a := d) * 100 + g(a := 1, c := 2.5) * 10 + h(b := 1);
+        END_FUNCTION
+    "#;
+    let result: i32 = super::run(&mut with_db, source, "test", ());
+    assert_eq!(
+        result, 152,
+        "f(a: DINT) is exact for `a := d`, g takes b's default 5, h is the one with a `b`"
+    );
+}
+
+/// An output binding goes with the overload its inputs pick, in any order.
+#[rstest]
+fn an_output_binding_goes_with_the_overload(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION Get : INT VAR_INPUT i : INT; END_VAR VAR_OUTPUT o : INT; END_VAR
+            o := i * 2; Get := 1;
+        END_FUNCTION
+        FUNCTION Get : INT VAR_INPUT i : REAL; END_VAR VAR_OUTPUT o : REAL; END_VAR
+            o := i * 2.0; Get := 2;
+        END_FUNCTION
+
+        FUNCTION test : BOOL
+        VAR x : INT; y : REAL; a : INT; b : INT; END_VAR
+            a := Get(i := 3, o => x);
+            b := Get(o => y, i := REAL#1.5);
+            test := a = 1 AND x = 6 AND b = 2 AND y = 3.0;
+        END_FUNCTION
+    "#;
+    let result: i32 = super::run(&mut with_db, source, "test", ());
+    assert_eq!(result, 1, "INT then REAL, each writing its own output");
+}
+
+/// An untyped literal matches its default type exactly only when its value
+/// fits it: 70000 is no INT, so the DINT overload takes it.
+#[rstest]
+fn a_literal_picks_an_overload_it_fits(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION Which : DINT VAR_INPUT v : INT; END_VAR Which := 1; END_FUNCTION
+        FUNCTION Which : DINT VAR_INPUT v : DINT; END_VAR Which := v; END_FUNCTION
+
+        FUNCTION test : DINT
+            test := Which(70000) + Which(5);
+        END_FUNCTION
+    "#;
+    let result: i32 = super::run(&mut with_db, source, "test", ());
+    assert_eq!(result, 70001, "70000 through DINT, 5 through INT");
+}
+
+/// An inline `REF_TO` or `ARRAY` parameter is its structure, as the call's
+/// coercion compares it: an exact argument used to match no overload.
+#[rstest]
+fn inline_composite_parameters_select_by_structure(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION Pointee : INT VAR_INPUT r : REF_TO INT; END_VAR Pointee := 1; END_FUNCTION
+        FUNCTION Pointee : INT VAR_INPUT r : REF_TO REAL; END_VAR Pointee := 2; END_FUNCTION
+        FUNCTION Arr : INT VAR_INPUT a : ARRAY[0..2] OF INT; END_VAR Arr := 10; END_FUNCTION
+        FUNCTION Arr : INT VAR_INPUT a : ARRAY[0..2] OF REAL; END_VAR Arr := 20; END_FUNCTION
+
+        FUNCTION test : INT
+        VAR
+            x : INT; y : REAL;
+            ri : REF_TO INT; rr : REF_TO REAL;
+            ai : ARRAY[0..2] OF INT; ar : ARRAY[0..2] OF REAL;
+        END_VAR
+            ri := REF(x);
+            rr := REF(y);
+            test := Pointee(ri) + Pointee(rr) * 100 + Arr(ai) + Arr(ar) * 100;
+        END_FUNCTION
+    "#;
+    let result: i32 = super::run(&mut with_db, source, "test", ());
+    assert_eq!(result, 2211, "each argument reaches its own overload");
+}
+
+/// An enum literal, an implementer and NULL select the overload a single
+/// function would take them into.
+#[rstest]
+fn an_enum_an_implementer_and_null_select(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE Color : (Red, Green); RInt : REF_TO INT; END_TYPE
+        INTERFACE IDev METHOD Id : INT END_METHOD END_INTERFACE
+        FUNCTION_BLOCK Pump IMPLEMENTS IDev METHOD PUBLIC Id : INT Id := 7; END_METHOD END_FUNCTION_BLOCK
+
+        FUNCTION TwoC : INT VAR_INPUT c : Color; END_VAR TwoC := 1; END_FUNCTION
+        FUNCTION TwoC : INT VAR_INPUT s : STRING; END_VAR TwoC := -1; END_FUNCTION
+        FUNCTION TwoD : INT VAR_IN_OUT d : IDev; END_VAR TwoD := d.Id(); END_FUNCTION
+        FUNCTION TwoD : INT VAR_INPUT s : STRING; END_VAR TwoD := -1; END_FUNCTION
+        FUNCTION TwoR : INT VAR_INPUT r : RInt; END_VAR TwoR := 3; END_FUNCTION
+        FUNCTION TwoR : INT VAR_INPUT s : STRING; END_VAR TwoR := -1; END_FUNCTION
+
+        FUNCTION test : INT
+        VAR p : Pump; END_VAR
+            test := TwoC(Color#Green) * 100 + TwoD(p) * 10 + TwoR(NULL);
+        END_FUNCTION
+    "#;
+    let result: i32 = super::run(&mut with_db, source, "test", ());
+    assert_eq!(result, 173, "Color, IDev and RInt, not STRING");
+}
+
+/// Variadic overloads bind their packs: a call with more arguments than
+/// declared parameters matched none and fell back to the first declared.
+#[rstest]
+fn variadic_overloads_select_by_element_type(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION total : DINT VAR_INPUT args : DINT...; END_VAR total := ...args+; END_FUNCTION
+        FUNCTION total : LREAL VAR_INPUT args : LREAL...; END_VAR total := ...args+; END_FUNCTION
+
+        FUNCTION test : BOOL
+            test := total(DINT#1, DINT#2) = 3 AND total(LREAL#1.5, LREAL#2.5, LREAL#1.0) = 5.0;
+        END_FUNCTION
+    "#;
+    let result: i32 = super::run(&mut with_db, source, "test", ());
+    assert_eq!(result, 1, "the DINT pack and the LREAL pack");
+}
+
+/// A VAR_IN_OUT candidate takes a variable of its own type only: a wider
+/// variable or a literal leaves the input overload, which made both calls
+/// ambiguous or refused.
+#[rstest]
+fn an_in_out_candidate_takes_its_own_type_only(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION Which : INT VAR_IN_OUT x : DINT; END_VAR Which := 1; END_FUNCTION
+        FUNCTION Which : INT VAR_INPUT x : REAL; END_VAR Which := 2; END_FUNCTION
+
+        FUNCTION test : INT
+        VAR i : INT; d : DINT; END_VAR
+            test := Which(i) * 100 + Which(5) * 10 + Which(d);
+        END_FUNCTION
+    "#;
+    let result: i32 = super::run(&mut with_db, source, "test", ());
+    assert_eq!(
+        result, 221,
+        "INT and a literal go to REAL, a DINT binds the in-out"
+    );
+}
+
+/// `REF(x)` is a reference to `x`, not `x`.
+#[rstest]
+fn a_reference_argument_selects_the_reference_overload(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE RInt : REF_TO INT; END_TYPE
+        FUNCTION Which : INT VAR_INPUT r : RInt; END_VAR Which := 1; END_FUNCTION
+        FUNCTION Which : INT VAR_INPUT i : INT; END_VAR Which := 2; END_FUNCTION
+
+        FUNCTION test : INT
+        VAR x : INT := 4; END_VAR
+            test := Which(REF(x)) * 10 + Which(x);
+        END_FUNCTION
+    "#;
+    let result: i32 = super::run(&mut with_db, source, "test", ());
+    assert_eq!(result, 12, "REF(x) to RInt, x to INT");
+}
+
+/// A function that is not overloaded knows its parameter's type, which picks
+/// a RETURN-directed overload passed to it, as an assignment's target does.
+#[rstest]
+fn a_parameter_picks_a_return_overload(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION G : INT G := 1; END_FUNCTION
+        FUNCTION G : REAL G := 2.5; END_FUNCTION
+        FUNCTION twice : INT VAR_INPUT x : INT; END_VAR twice := x * 2; END_FUNCTION
+
+        FUNCTION test : INT
+            test := twice(G());
+        END_FUNCTION
+    "#;
+    let result: i32 = super::run(&mut with_db, source, "test", ());
+    assert_eq!(result, 2, "G : INT, doubled");
+}
+
+/// A pack takes each argument by the same rule: the DINT one refuses an
+/// LREAL, so the LREAL one, which widens the DINT, is the one that fits.
+#[rstest]
+fn a_mixed_pack_takes_the_overload_every_argument_fits(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION total : DINT VAR_INPUT args : DINT...; END_VAR total := ...args+; END_FUNCTION
+        FUNCTION total : LREAL VAR_INPUT args : LREAL...; END_VAR total := ...args+; END_FUNCTION
+
+        FUNCTION test : BOOL
+            test := total(DINT#1, LREAL#2.5) = 3.5;
+        END_FUNCTION
+    "#;
+    let result: i32 = super::run(&mut with_db, source, "test", ());
+    assert_eq!(result, 1, "the LREAL pack");
+}
+
+/// An instance of two interfaces fits both overloads; naming the parameter,
+/// when they name it differently, picks one.
+#[rstest]
+fn naming_the_parameter_picks_among_interfaces(mut with_db: db::RootDatabase) {
+    let source = r#"
+        INTERFACE IA METHOD A : INT END_METHOD END_INTERFACE
+        INTERFACE IB METHOD B : INT END_METHOD END_INTERFACE
+        FUNCTION_BLOCK Both IMPLEMENTS IA, IB
+            METHOD PUBLIC A : INT A := 1; END_METHOD
+            METHOD PUBLIC B : INT B := 2; END_METHOD
+        END_FUNCTION_BLOCK
+        FUNCTION Dev : INT VAR_IN_OUT da : IA; END_VAR Dev := 10 + da.A(); END_FUNCTION
+        FUNCTION Dev : INT VAR_IN_OUT db : IB; END_VAR Dev := 20 + db.B(); END_FUNCTION
+
+        FUNCTION test : INT
+        VAR b : Both; END_VAR
+            test := Dev(da := b) * 100 + Dev(db := b);
+        END_FUNCTION
+    "#;
+    let result: i32 = super::run(&mut with_db, source, "test", ());
+    assert_eq!(result, 1122, "Dev(IA) then Dev(IB)");
+}

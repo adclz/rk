@@ -45,6 +45,29 @@ pub struct FunctionSignature<'db> {
     pub ret: Option<Type<'db>>,
 }
 
+impl<'db> FunctionSignature<'db> {
+    /// Each parameter the same type, as the coercion compares them: two
+    /// `REF_TO INT` or `ARRAY [0..3] OF INT` written in two declarations are
+    /// one type, though not one `Type`.
+    pub fn same_params(&self, db: &'db dyn WorkspaceDataBase, other: &Self) -> bool {
+        self.params.len() == other.params.len()
+            && self
+                .params
+                .iter()
+                .zip(&other.params)
+                .all(|(a, b)| crate::hir_ty::infer::coerce::same_type(db, *a, *b))
+    }
+
+    /// The same signature: the same parameters and the same return.
+    pub fn same_as(&self, db: &'db dyn WorkspaceDataBase, other: &Self) -> bool {
+        self.same_params(db, other)
+            && match (self.ret, other.ret) {
+                (Some(a), Some(b)) => crate::hir_ty::infer::coerce::same_type(db, a, b),
+                (a, b) => a == b,
+            }
+    }
+}
+
 /// Every FUNCTION the call could name: the declarations `name` resolves to,
 /// in the namespace the callee was found in. What overload resolution picks
 /// from, and what signature help lists so an overloaded name shows every
@@ -71,7 +94,7 @@ pub fn overload_set<'db>(
     let mut seen: Vec<FunctionSignature<'db>> = Vec::new();
     functions.retain(|f| {
         let key = function_signature(db, *f);
-        if seen.contains(&key) {
+        if seen.iter().any(|s| s.same_as(db, &key)) {
             false
         } else {
             seen.push(key);

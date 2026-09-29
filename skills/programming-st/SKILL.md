@@ -210,6 +210,9 @@ Differing only by a parameter NAME, or only by a `VAR_OUTPUT`, is a duplicate (E
 
 A default value does not blur an arity overload: given a 1-parameter and a 2-parameter version, `f(a := 1)` takes the 1-parameter one and `f(a := 1, b := 2)` the other, even when the longer one could have defaulted its second input.
 
+The arguments are bound to each overload as to any call: named ones by name, in any order, so `f(b := x, a := y)` is judged by what `a` and `b` receive.
+A `VAR_IN_OUT` parameter takes only a variable of its own type, so a literal or a wider variable leaves that overload out.
+
 **An overload set does not span namespaces.** Two same-named FUNCTIONs in different namespaces are not an overload set — they are an ambiguity (E0205) the moment both are imported, even when only one of them could possibly match the arguments:
 
 ```iecst expect=E0205

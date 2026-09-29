@@ -5,13 +5,16 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use crate::check::errors::e01_duplicates::DuplicateError;
 use crate::check::errors::e03_type::TypeError;
 use crate::check::errors::e04_init::InitError;
-use crate::check::errors::e08_call::CallError;
+use crate::check::errors::e08_call::{Ambiguity, CallError};
 use crate::hir_def::expressions::expression::{Expr, ExprKind, ParamAssign, PrimaryExpr};
 use crate::hir_def::interned::identifier::Ident;
+use crate::hir_def::pous::function::Function;
 use crate::hir_def::pous::variable::VariableDecl;
 use crate::hir_ty::def_map::FxIndexMap;
 use crate::hir_ty::head::inheritance::instance_members;
-use crate::hir_ty::resolver::name::{OverloadPick, select_overload};
+use crate::hir_ty::resolver::name::{
+    ArgMatch, CandidateFit, OverloadPick, classify_arg, select_overload,
+};
 use crate::{
     CallSite, HirNodeInfo,
     check::errors::ToIdeDiagnostic,
@@ -90,23 +93,37 @@ pub fn resolve_func_call<'db>(
 
     // Overload selection: name resolution binds a bare function name to the
     // first same-name FUNCTION in scope; if it's an overload set, re-select the
-    // one whose signature matches this call's argument types. The picking lives
-    // in the resolver (`select_overload`); this call stays overload-unaware —
-    // it just supplies the arg types and handles an ambiguous result.
-    let arg_types = call_input_arg_types(db, resolver, func_call, ctx);
-    let callable = match select_overload(db, callable, &arg_types, expected) {
+    // one this call's arguments fit. The ranking lives in the resolver
+    // (`select_overload`); this call says how its arguments fit a candidate,
+    // bound as it binds them itself, and handles an ambiguous result.
+    let arg_types = call_input_arg_types(db, resolver, func_call, callable, ctx);
+    let unresolved_argument = arg_types.iter().any(|t| t.is_never());
+    let pick = select_overload(db, callable, expected, unresolved_argument, |f| {
+        candidate_fit(db, resolver, func_call, f, ctx)
+    });
+    let callable = match pick {
         OverloadPick::One(c) => c,
+        // Reported where the argument failed; no overload is named here.
+        OverloadPick::Unresolved => {
+            if let Some(expr) = func_call.path(db).expr(db) {
+                ctx.type_of_path_expr.insert(expr, Type::Never);
+            }
+            return;
+        }
         OverloadPick::Ambiguous(candidates) => {
             // As the overloads write it, for the message.
             let name = match candidates.first() {
                 Some(f) => f.name_with_case(db),
                 None => return,
             };
+            let (why, by_name) = ambiguity(db, func_call, &candidates, ctx);
             ctx.errors.push(
                 CallError::AmbiguousOverload {
                     func_call,
                     name,
                     candidates,
+                    why,
+                    by_name,
                 }
                 .to_diagnostic(db, ctx.scope.file(db)),
             );
@@ -308,17 +325,45 @@ pub fn resolve_func_call<'db>(
     }
 }
 
-/// The types of a call's positional value arguments (VAR_INPUT / VAR_IN_OUT),
-/// in order — the arguments that drive overload selection. Pure `=>` output
+/// The types of a call's value arguments (VAR_INPUT / VAR_IN_OUT), in call
+/// order — the arguments that drive overload selection. Pure `=>` output
 /// bindings are skipped (they don't participate). Each argument is inferred here
 /// and cached in `ctx.type_of_expr`, so the later coercion pass reuses it rather
 /// than re-resolving (see the guard in `coerce_with_var_target`).
+///
+/// A callee that is not overloaded knows each argument's parameter before the
+/// argument is typed, and expects that type of it: `twice(G())` picks the
+/// `G` whose return `twice` takes, as `r := G()` picks by `r`. An overloaded
+/// callee is itself picked BY its arguments' types, so it has none to offer.
 fn call_input_arg_types<'db>(
     db: &'db dyn WorkspaceDataBase,
     resolver: Resolver<'db>,
     func_call: FuncCall<'db>,
+    callable: CallableType<'db>,
     ctx: &mut BodyInferenceResult<'db>,
 ) -> Vec<Type<'db>> {
+    let overloaded = matches!(
+        callable,
+        CallableType::Function(f) if crate::hir_ty::head::signature::overload_set(db, f).len() > 1
+    );
+    let expected_of: FxHashMap<ParamAssign<'db>, Type<'db>> = match overloaded {
+        true => FxHashMap::default(),
+        false => resolve_params(
+            db,
+            func_call.params(db),
+            callable,
+            &call_site_params(db, callable),
+            &mut Vec::new(),
+        )
+        .into_iter()
+        .filter_map(|m| match m {
+            ParamMatch::Matched(pa, var) | ParamMatch::Variadic(pa, var, _) => {
+                Some((pa, Type::new_var(db, var)))
+            }
+            ParamMatch::Error => None,
+        })
+        .collect(),
+    };
     let mut types = Vec::new();
     for p in func_call.params(db) {
         let value = match p.kind(db) {
@@ -329,7 +374,7 @@ fn call_input_arg_types<'db>(
         };
         let mut ictx = InferExprCtx::new(resolver);
         if !ctx.type_of_expr.contains_key(&value) {
-            ictx.resolve_expr(db, value, ctx);
+            ictx.resolve_expr_expecting(db, value, ctx, expected_of.get(p).copied());
         }
         // Adjusted, not raw: indexing and dereference are recorded as
         // ADJUSTMENTS over the base type, so the raw type of `arr[0]` is the
@@ -339,6 +384,202 @@ fn call_input_arg_types<'db>(
         types.push(ctx.type_of_expr_with_adjustments(db, value));
     }
     types
+}
+
+/// How this call's arguments fit the overload `f`, bound as the call binds
+/// them (by name, with defaults and variadics) and matched against the
+/// parameter each lands on, by that parameter's rules: a VAR_IN_OUT takes a
+/// variable of its own type, an input what the plain call's coercion takes.
+/// The binder's own diagnostics are dropped: they belong to the overload
+/// finally picked, which is bound again for real.
+fn candidate_fit<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    resolver: Resolver<'db>,
+    func_call: FuncCall<'db>,
+    f: Function<'db>,
+    ctx: &BodyInferenceResult<'db>,
+) -> CandidateFit {
+    let callable = CallableType::Function(f);
+    let formals = call_site_params(db, callable);
+    let mut errors = Vec::new();
+    let matches = resolve_params(db, func_call.params(db), callable, &formals, &mut errors);
+    if !errors.is_empty() || matches.iter().any(|m| matches!(m, ParamMatch::Error)) {
+        return CandidateFit::Unbound;
+    }
+
+    let bound: FxHashSet<VariableDecl<'db>> = matches
+        .iter()
+        .filter_map(|m| match m {
+            ParamMatch::Matched(_, var) | ParamMatch::Variadic(_, var, _) => Some(*var),
+            ParamMatch::Error => None,
+        })
+        .collect();
+    let mut padded = false;
+    for var in formals.values().filter(|v| !bound.contains(v)) {
+        // A pack with no value has no arity to specialize (E0813).
+        if var.variadic(db) || is_param_required(db, callable, *var) {
+            return CandidateFit::Unbound;
+        }
+        padded |= var.is_input(db);
+    }
+
+    let mut args = Vec::new();
+    for m in &matches {
+        let (pa, var) = match m {
+            ParamMatch::Matched(pa, var) | ParamMatch::Variadic(pa, var, _) => (*pa, *var),
+            ParamMatch::Error => return CandidateFit::Unbound,
+        };
+        let value = match pa.kind(db) {
+            ParamAssignKind::NonFormal { value } | ParamAssignKind::FormalInput { value, .. } => {
+                value
+            }
+            ParamAssignKind::FormalOutput { .. } if var.is_output(db) => continue,
+            ParamAssignKind::FormalOutput { .. } => return CandidateFit::Unbound,
+        };
+        let fit = if var.is_in_out(db) {
+            in_out_fit(db, resolver, var, value, ctx)
+        } else if var.is_input(db) {
+            classify_arg(
+                db,
+                resolver,
+                ctx.type_of_expr_with_adjustments(db, value),
+                ctx.adjustments_of_expr(db, value),
+                Type::new_var(db, var),
+            )
+        } else {
+            // A value handed to an output or a local is no argument.
+            return CandidateFit::Unbound;
+        };
+        match fit {
+            ArgMatch::No => return CandidateFit::Mismatch,
+            fit => args.push(fit),
+        }
+    }
+    CandidateFit::Fits { args, padded }
+}
+
+/// Why the call fits the tied overloads alike, and the names they give the
+/// argument that tells them apart when they differ: what E0809 suggests
+/// depends on it. A cast is no help for a call with nothing to cast, for
+/// NULL, or for an instance of both interfaces.
+fn ambiguity<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    func_call: FuncCall<'db>,
+    candidates: &[Function<'db>],
+    ctx: &BodyInferenceResult<'db>,
+) -> (Ambiguity<'db>, Vec<Ident>) {
+    use crate::hir_ty::head::signature::function_signature;
+    let Some((first, rest)) = candidates.split_first() else {
+        return (Ambiguity::Defaults, Vec::new());
+    };
+    let first = function_signature(db, *first);
+    if rest
+        .iter()
+        .all(|f| function_signature(db, *f).same_params(db, &first))
+    {
+        return (Ambiguity::Return, Vec::new());
+    }
+
+    // The parameter each overload binds each argument to.
+    let bindings: Vec<FxHashMap<ParamAssign<'db>, VariableDecl<'db>>> = candidates
+        .iter()
+        .map(|f| {
+            let callable = CallableType::Function(*f);
+            resolve_params(
+                db,
+                func_call.params(db),
+                callable,
+                &call_site_params(db, callable),
+                &mut Vec::new(),
+            )
+            .into_iter()
+            .filter_map(|m| match m {
+                ParamMatch::Matched(pa, var) | ParamMatch::Variadic(pa, var, _) => Some((pa, var)),
+                ParamMatch::Error => None,
+            })
+            .collect()
+        })
+        .collect();
+
+    for pa in func_call.params(db) {
+        let (value, positional) = match pa.kind(db) {
+            ParamAssignKind::NonFormal { value } => (value, true),
+            ParamAssignKind::FormalInput { value, .. } => (value, false),
+            ParamAssignKind::FormalOutput { .. } => continue,
+        };
+        let vars: Vec<VariableDecl<'db>> =
+            bindings.iter().filter_map(|b| b.get(pa).copied()).collect();
+        let types: Vec<Type<'db>> = vars
+            .iter()
+            .map(|v| Type::new_var(db, *v).normalize(db))
+            .collect();
+        // Every overload takes this one alike: it is not where they differ.
+        if types
+            .windows(2)
+            .all(|w| crate::hir_ty::infer::coerce::same_type(db, w[0], w[1]))
+        {
+            continue;
+        }
+
+        let mut names: Vec<(Ident, Ident)> = Vec::new();
+        for v in &vars {
+            if positional && !names.iter().any(|(folded, _)| *folded == v.name(db)) {
+                names.push((v.name(db), v.name_with_case(db)));
+            }
+        }
+        let by_name = match names.len() {
+            0 | 1 => Vec::new(),
+            _ => names.into_iter().map(|(_, written)| written).collect(),
+        };
+
+        let arg = ctx.type_of_expr_with_adjustments(db, value).normalize(db);
+        let why = match value.expr(db) {
+            ExprKind::PrimaryExpr(PrimaryExpr::RefValue {
+                value: crate::hir_def::expressions::expression::RefValue::Null,
+            }) => Ambiguity::Null,
+            _ if matches!(arg, Type::FunctionBlock(_) | Type::Class(_))
+                && types.iter().all(|t| matches!(t, Type::Interface(_))) =>
+            {
+                Ambiguity::Implementer { instance: arg }
+            }
+            _ => Ambiguity::Widening,
+        };
+        return (why, by_name);
+    }
+    (Ambiguity::Defaults, Vec::new())
+}
+
+/// A VAR_IN_OUT binds the caller's own storage: a variable (not a slice of
+/// one) of the parameter's own type, or, for an interface, any implementer.
+/// A literal or a wider variable is no match, though a VAR_INPUT of the same
+/// type would take it.
+fn in_out_fit<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    resolver: Resolver<'db>,
+    var: VariableDecl<'db>,
+    value: Expr<'db>,
+    ctx: &BodyInferenceResult<'db>,
+) -> ArgMatch {
+    let ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess(va)) = value.expr(db) else {
+        return ArgMatch::No;
+    };
+    if matches!(
+        ctx.get_type_of_expr(value),
+        Type::Variable((_, Some(_))) | Type::DirectVariable((_, Some(_)))
+    ) {
+        return ArgMatch::No;
+    }
+    let param = Type::new_var(db, var);
+    let arg = ctx.type_of_variable_access_with_adjustments(db, *va);
+    if crate::hir_ty::infer::coerce::same_type(db, param.normalize(db), arg.normalize(db)) {
+        return ArgMatch::Exact;
+    }
+    if matches!(param.normalize(db), Type::Interface(_))
+        && param.coerce_with_type(db, arg, None, resolver).is_ok()
+    {
+        return ArgMatch::Widen;
+    }
+    ArgMatch::No
 }
 
 /// The expression a call site passes for `var` when it omits it: the input's

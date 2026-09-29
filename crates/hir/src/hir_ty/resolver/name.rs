@@ -15,7 +15,7 @@ use crate::{
         using::Using,
     },
     hir_ty::{
-        head::signature::{function_required_arity, function_signature},
+        head::signature::function_signature,
         index_graphs::{
             namespace_index, namespace_pou_candidates, pou_candidates, pou_index, program_index,
         },
@@ -248,12 +248,27 @@ pub enum OverloadPick<'db> {
     /// A unique callable to use — either the resolved overload, or the input
     /// unchanged when the name isn't an overload set or nothing better matched.
     One(CallableType<'db>),
-    /// Several overloads are equally viable for the given argument types; the
-    /// caller must disambiguate with an explicit cast.
+    /// Several overloads fit the arguments alike (E0809); the call site says
+    /// why, since what would pick one depends on it.
     Ambiguous(Vec<Function<'db>>),
     /// An overload set in which no overload accepts the argument types, though
-    /// at least one takes the argument count: the whole set, for the error.
+    /// at least one binds the arguments: the whole set, for the error.
     None(Vec<Function<'db>>),
+    /// An argument failed to resolve, which was reported where it failed: an
+    /// overload set picks nothing on it, and reports nothing more.
+    Unresolved,
+}
+
+/// How a call's arguments fit one overload, as the call site binds them.
+pub enum CandidateFit {
+    /// The arguments do not bind: a name it does not declare, too many or too
+    /// few of them.
+    Unbound,
+    /// They bind, and an argument's type does not fit its parameter.
+    Mismatch,
+    /// Each argument's match, in call order, and whether an omitted input was
+    /// filled with its default.
+    Fits { args: Vec<ArgMatch>, padded: bool },
 }
 
 /// What tells an overloaded FUNCTION's symbol apart from its siblings'.
@@ -303,7 +318,7 @@ pub fn overload_discriminant<'db>(
     let sig = function_signature(db, f);
     let params_tied = siblings
         .iter()
-        .any(|other| *other != f && function_signature(db, *other).params == sig.params);
+        .any(|other| *other != f && function_signature(db, *other).same_params(db, &sig));
     let (params, ret) = crate::hir_ty::head::signature::declared_types(db, f);
     Some(OverloadDiscriminant {
         params,
@@ -311,16 +326,17 @@ pub fn overload_discriminant<'db>(
     })
 }
 
-/// Select the FUNCTION overload whose signature matches `arg_types`.
+/// Select the FUNCTION overload a call's arguments fit.
 ///
 /// Ordinary name resolution binds a bare function name to the *first* same-name
-/// FUNCTION in scope. When that name is an overload set, this re-selects by
-/// matching the call's argument types against each overload's params
-/// ([`function_signature`]). The selection lives here — in the POU-finding
-/// module — so call resolution only supplies the arg types and stays unaware
-/// that overloading exists.
+/// FUNCTION in scope. When that name is an overload set, this re-selects among
+/// its members. How the arguments fit each one is the call site's to say
+/// (`fit`): it binds them as it would bind a plain call, by name, with
+/// defaults and variadics, and matches each against the parameter it lands
+/// on. The ranking lives here — in the POU-finding module — so call
+/// resolution stays unaware of how overloads compete.
 ///
-/// Ranking (never guesses): an argument matches a parameter *exactly* (same
+/// Ranking (never guesses): an argument matches its parameter *exactly* (same
 /// type / literal-of-default-type) or by *widening* (implicit cast). An
 /// overload that's exact on every argument wins outright. Among the rest, a
 /// candidate that is at least as good on EVERY argument and strictly better on
@@ -329,20 +345,22 @@ pub fn overload_discriminant<'db>(
 /// second. Incomparable candidates — each better somewhere, as with
 /// `f(INT, REAL)` vs `f(REAL, INT)` on two widening arguments — stay
 /// [`OverloadPick::Ambiguous`]: dominance never picks by majority. None
-/// viable ⇒ [`OverloadPick::None`] when some candidate took the argument
-/// count, since the TYPES are what failed; the first-match used to stand in
-/// and report its own parameter mismatch, naming a type nobody wrote. When
-/// no candidate takes the count either, the first-match stays so the arity
-/// error surfaces.
+/// viable ⇒ [`OverloadPick::None`] when some candidate binds the arguments,
+/// since the TYPES are what failed; the first-match used to stand in and
+/// report its own parameter mismatch, naming a type nobody wrote. When no
+/// candidate binds them either, the first-match stays so the binding error
+/// surfaces.
 pub fn select_overload<'db>(
     db: &'db dyn WorkspaceDataBase,
     callable: CallableType<'db>,
-    arg_types: &[Type<'db>],
     // The type the call's VALUE lands in, when the consuming site knows it —
     // an assignment's target, an initializer's declared type. What a
     // RETURN-directed overload set (same params, different returns) is
     // picked by; `None` leaves such a set ambiguous (E0809).
     expected: Option<Type<'db>>,
+    // An argument that already failed to type (`Type::Never`).
+    unresolved_argument: bool,
+    mut fit: impl FnMut(Function<'db>) -> CandidateFit,
 ) -> OverloadPick<'db> {
     let CallableType::Function(first) = callable else {
         return OverloadPick::One(callable);
@@ -353,35 +371,26 @@ pub fn select_overload<'db>(
         // Not an overload set — nothing to pick.
         return OverloadPick::One(callable);
     }
+    // It matches every parameter, so it would pick whichever one the other
+    // arguments leave; it was reported where it failed.
+    if unresolved_argument {
+        return OverloadPick::Unresolved;
+    }
 
-    let mut exact: Vec<Function<'db>> = Vec::new();
-    let mut viable: Vec<(Function<'db>, Vec<ArgMatch>)> = Vec::new();
-    let mut takes_the_count = false;
-    let set = functions.clone();
-    for f in functions {
-        let sig = function_signature(db, f);
-        // Viable arg counts: at least the required params, at most all of them
-        // (trailing defaulted params may be omitted).
-        if arg_types.len() < function_required_arity(db, f) || arg_types.len() > sig.params.len() {
-            continue;
-        }
-        takes_the_count = true;
-        let mut matches = Vec::with_capacity(arg_types.len());
-        let mut ok = true;
-        for (arg, param) in arg_types.iter().zip(sig.params.iter()) {
-            match classify_arg(db, *arg, *param) {
-                ArgMatch::No => {
-                    ok = false;
-                    break;
+    let mut exact: Vec<(Function<'db>, bool)> = Vec::new();
+    let mut viable: Vec<(Function<'db>, Vec<ArgMatch>, bool)> = Vec::new();
+    let mut binds = false;
+    for f in functions.iter().copied() {
+        match fit(f) {
+            CandidateFit::Unbound => {}
+            CandidateFit::Mismatch => binds = true,
+            CandidateFit::Fits { args, padded } => {
+                binds = true;
+                if args.iter().all(|m| matches!(m, ArgMatch::Exact)) {
+                    exact.push((f, padded));
                 }
-                m => matches.push(m),
+                viable.push((f, args, padded));
             }
-        }
-        if ok {
-            if matches.iter().all(|m| matches!(m, ArgMatch::Exact)) {
-                exact.push(f);
-            }
-            viable.push((f, matches));
         }
     }
 
@@ -391,67 +400,59 @@ pub fn select_overload<'db>(
     // to be a single `Option` slot each candidate overwrote, so the last one
     // in discovery order silently won a zero-arg call.
     match exact.len() {
-        1 => return OverloadPick::One(CallableType::Function(exact[0])),
+        1 => return OverloadPick::One(CallableType::Function(exact[0].0)),
         0 => {}
-        _ => return pick_by_arity_then_return(db, exact, arg_types.len(), expected),
+        _ => return pick_by_defaults_then_return(db, exact, expected),
     }
 
     // Dominance: drop every candidate that another candidate beats — at least
     // as good on every argument, strictly better on one. What survives is the
     // set of candidates no one is uniformly better than; only a singleton is
-    // an answer, anything else is genuinely incomparable.
+    // an answer, anything else is genuinely incomparable. The arguments are
+    // the call's own, in its order, so each position compares one argument.
     let dominated = |a: &[ArgMatch], b: &[ArgMatch]| -> bool {
         // `b` dominates `a`
         a.len() == b.len()
             && a.iter().zip(b).all(|(x, y)| y.at_least(x))
             && a.iter().zip(b).any(|(x, y)| y.better(x))
     };
-    let undominated: Vec<&(Function<'db>, Vec<ArgMatch>)> = viable
+    let undominated: Vec<(Function<'db>, bool)> = viable
         .iter()
-        .filter(|(_, m)| !viable.iter().any(|(_, other)| dominated(m, other)))
+        .filter(|(_, m, _)| !viable.iter().any(|(_, other, _)| dominated(m, other)))
+        .map(|(f, _, padded)| (*f, *padded))
         .collect();
 
-    // An argument that already failed to type (`Type::Never`) has been
-    // reported where it failed; naming it `{unknown}` in a second error
-    // would be the cascade the contract forbids.
-    let all_typed = !arg_types.iter().any(|t| t.is_never());
     match undominated.len() {
-        0 if takes_the_count && all_typed => OverloadPick::None(set),
+        0 if binds => OverloadPick::None(functions),
         0 => OverloadPick::One(callable),
         1 => OverloadPick::One(CallableType::Function(undominated[0].0)),
-        _ => pick_by_arity_then_return(
-            db,
-            undominated.into_iter().map(|(f, _)| *f).collect(),
-            arg_types.len(),
-            expected,
-        ),
+        _ => pick_by_defaults_then_return(db, undominated, expected),
     }
 }
 
-/// Break a tie by ARITY, then by RETURN. The whole preference rule, in one
+/// Break a tie by DEFAULTS, then by RETURN. The whole preference rule, in one
 /// place:
 ///
-/// a candidate requiring NO defaults dominates one that pads with them —
-/// `add(10)` picks `add(a)` over `add(a, b := 5)`; among candidates that all
-/// pad, nothing breaks the tie (two one-default candidates stay ambiguous,
-/// like the zero-argument set). What arity cannot settle, the RETURN type
-/// does, when the consuming site expects exactly one candidate's return.
-/// What neither settles is E0809, never a silent pick.
-fn pick_by_arity_then_return<'db>(
+/// a candidate the call fills without defaults dominates one that pads with
+/// them — `add(10)` picks `add(a)` over `add(a, b := 5)`; among candidates
+/// that all pad, nothing breaks the tie (two one-default candidates stay
+/// ambiguous, like the zero-argument set). What defaults cannot settle, the
+/// RETURN type does, when the consuming site expects exactly one candidate's
+/// return. What neither settles is E0809, never a silent pick.
+fn pick_by_defaults_then_return<'db>(
     db: &'db dyn WorkspaceDataBase,
-    tie: Vec<Function<'db>>,
-    arg_count: usize,
+    tie: Vec<(Function<'db>, bool)>,
     expected: Option<Type<'db>>,
 ) -> OverloadPick<'db> {
-    let full_arity: Vec<Function<'db>> = tie
+    let unpadded: Vec<Function<'db>> = tie
         .iter()
-        .filter(|f| function_signature(db, **f).params.len() == arg_count)
-        .copied()
+        .filter(|(_, padded)| !padded)
+        .map(|(f, _)| *f)
         .collect();
-    match full_arity.len() {
-        1 => OverloadPick::One(CallableType::Function(full_arity[0])),
-        0 => pick_by_return(db, tie, expected),
-        _ => pick_by_return(db, full_arity, expected),
+    match unpadded.len() {
+        1 => OverloadPick::One(CallableType::Function(unpadded[0])),
+        0 => pick_by_return(db, tie.into_iter().map(|(f, _)| f).collect(), expected),
+        _ => pick_by_return(db, unpadded, expected),
     }
 }
 
@@ -480,7 +481,8 @@ fn pick_by_return<'db>(
     OverloadPick::Ambiguous(tie)
 }
 
-enum ArgMatch {
+/// How one argument matches the parameter it is bound to.
+pub enum ArgMatch {
     Exact,
     Widen,
     No,
@@ -498,38 +500,56 @@ impl ArgMatch {
     }
 }
 
-/// Classify how argument type `arg` matches parameter type `param`.
-fn classify_arg<'db>(db: &'db dyn WorkspaceDataBase, arg: Type<'db>, param: Type<'db>) -> ArgMatch {
-    let arg = arg.normalize(db);
-    let param = param.normalize(db);
-    if arg == param {
-        return ArgMatch::Exact;
-    }
+/// How a value of type `arg` matches an input parameter of type `param`, by
+/// the rule a plain call checks it with: the coercion, with the argument's
+/// adjustments (`REF(x)` is a reference to `x`), so what selection accepts
+/// is what the call then accepts. The same type, compared structurally (two
+/// `REF_TO INT` written apart are one type), is exact; anything else the
+/// coercion takes is a widening.
+pub fn classify_arg<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    resolver: crate::hir_ty::resolver::Resolver<'db>,
+    arg: Type<'db>,
+    adjustments: Option<&[crate::hir_ty::body::Adjustment<'db>]>,
+    param: Type<'db>,
+) -> ArgMatch {
+    use crate::hir_ty::body::AdjustmentInfo;
+    let arg_n = arg.normalize(db);
+    let param_n = param.normalize(db);
     // An untyped literal matches its default type (INT / REAL / STRING)
-    // exactly, and ADOPTS any other type its value fits. That second question
-    // is `check_as`, the one the inference table asks once the slot is known,
-    // so the overload picked and the coercion that follows cannot disagree.
-    // The cast table has no say: it grades conversions between types, and a
-    // literal has none yet - `5` is a valid BYTE and `'a'` a valid CHAR, which
-    // no INT->BYTE or STRING->CHAR entry says (nor should).
-    if let Type::Infer(it) = arg {
-        let default = it.to_spec(db);
-        if let Type::Elementary(p) = param {
-            if default == p {
-                return ArgMatch::Exact;
-            }
-            if it.check_as(db, p).is_ok() {
-                return ArgMatch::Widen;
-            }
-        }
+    // exactly when its value fits it, and ADOPTS any other type its value
+    // fits. That is `check_as`, the one the inference table asks once the
+    // slot is known, so the overload picked and the coercion that follows
+    // cannot disagree. The cast table has no say: it grades conversions
+    // between types, and a literal has none yet - `5` is a valid BYTE and
+    // `'a'` a valid CHAR, which no INT->BYTE or STRING->CHAR entry says (nor
+    // should). `70000` is no INT, so the INT overload is not its exact match.
+    if let Type::Infer(it) = arg_n {
+        return match param_n {
+            Type::Elementary(p) if it.check_as(db, p).is_ok() => match it.to_spec(db) == p {
+                true => ArgMatch::Exact,
+                false => ArgMatch::Widen,
+            },
+            _ => ArgMatch::No,
+        };
+    }
+    // The coercion takes resolved types only; a value still partly untyped
+    // has no type to compare yet.
+    if arg_n.has_infer()
+        || param
+            .coerce_with_type(db, arg, adjustments, resolver)
+            .is_err()
+    {
         return ArgMatch::No;
     }
-    if let (Type::Elementary(a), Type::Elementary(p)) = (arg, param)
-        && p.implicit_cast(a).is_some()
+    // A reference binds invariantly: the coercion took it only if the
+    // pointee is the parameter's own.
+    if adjustments.and_then(|a| a.as_reference()).is_some()
+        || crate::hir_ty::infer::coerce::same_type(db, param_n, arg_n)
     {
-        return ArgMatch::Widen;
+        return ArgMatch::Exact;
     }
-    ArgMatch::No
+    ArgMatch::Widen
 }
 
 /// The namespace path enclosing `scope_id`, or `None` at top level. The one
