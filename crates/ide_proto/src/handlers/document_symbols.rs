@@ -87,7 +87,7 @@ impl<'db> DocumentSymbolsHandler<'db> for NamespaceDecl<'db> {
             .iter()
             .for_each(|pou| pou.document_symbols(db, &mut nested_builder));
 
-        let name = self.path(db).to_string(db);
+        let name = self.path_with_case(db).to_string(db);
         let name = match name.len() {
             0 => "?".into(),
             _ => name,

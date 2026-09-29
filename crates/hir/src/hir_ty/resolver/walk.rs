@@ -412,7 +412,7 @@ impl<'db> Type<'db> {
                 ctx.errors.push(
                     ResolveError::NoSuchFieldPathExpr {
                         expr: path_expr,
-                        ident: ident.ident(db),
+                        ident: ident.with_case,
                         ty: current,
                     }
                     .to_diagnostic(db, ctx.scope.file(db)),
@@ -503,7 +503,7 @@ impl<'db> Type<'db> {
                     ctx.errors.push(
                         ResolveError::NoSuchFieldPathExpr {
                             expr,
-                            ident: ident.ident(db),
+                            ident: ident.with_case,
                             ty: place.current_typ,
                         }
                         .to_diagnostic(db, ctx.scope.file(db)),
@@ -769,7 +769,7 @@ impl<'db> Type<'db> {
                 ctx.errors.push(
                     ResolveError::NoSuchFieldInitExpr {
                         expr,
-                        ident: name.ident(db),
+                        ident: name.with_case,
                         ty: place.current_init_typ,
                     }
                     .to_diagnostic(db, ctx.scope.file(db)),

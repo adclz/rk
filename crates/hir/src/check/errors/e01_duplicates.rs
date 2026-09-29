@@ -33,6 +33,7 @@ pub enum DuplicateError<'db> {
     Parameter {
         param_1: ParamAssign<'db>,
         param_2: ParamAssign<'db>,
+        /// As the second one writes it.
         name: Ident,
     },
     StructField {
@@ -44,9 +45,10 @@ pub enum DuplicateError<'db> {
         variant2: SpanIdent<'db>,
     },
     InitExprField {
-        name: Ident,
         field1: InitExpr<'db>,
         field2: InitExpr<'db>,
+        /// As the second one writes it.
+        name: Ident,
     },
     /// A variable named like the enclosing callable. Inside a FUNCTION or
     /// METHOD that name IS the return value, so the local is a second

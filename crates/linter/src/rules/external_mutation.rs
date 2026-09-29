@@ -71,7 +71,7 @@ pub fn check_assignment<'db>(
         _ => return,
     };
 
-    let field_name = outer_path.ident(db).ident(db).text(db);
+    let field_name = outer_path.ident(db).with_case.text(db);
     diagnostics.push(
         diag()
             .message(format!(

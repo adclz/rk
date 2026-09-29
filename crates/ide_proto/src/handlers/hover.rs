@@ -346,7 +346,7 @@ impl<'db> HoverHandler<'db> for PathExpr<'db> {
                 return Some(Hover {
                     contents: HoverContents::Scalar(MarkedString::from_markdown(format!(
                         "\n```iecst\nNAMESPACE {}\n```\n",
-                        hir::hir_ty::index_graphs::namespace_spelling(db, ns_path)
+                        hir::hir_ty::display::namespace_spelling(db, ns_path)
                     ))),
                     range: None,
                 });

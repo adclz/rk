@@ -78,7 +78,7 @@ pub fn workspace_symbols(db: &dyn WorkspaceDataBase, query_str: &str) -> Vec<Wor
 
         let container_name = symbol
             .namespace
-            .map(|ns| hir::hir_ty::index_graphs::namespace_spelling(db, ns));
+            .map(|ns| hir::hir_ty::display::namespace_spelling(db, ns));
 
         results.push(WorkspaceSymbol {
             name: symbol.name.clone(),

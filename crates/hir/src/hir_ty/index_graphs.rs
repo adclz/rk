@@ -326,15 +326,6 @@ pub fn file_namespace_map<'db>(
     Arc::clone(&semantic_index(db, file).namespace_map)
 }
 
-/// A namespace path as its declaration writes it, for what is shown; the path
-/// itself when no namespace declares it.
-pub fn namespace_spelling(db: &dyn WorkspaceDataBase, path: NamespacePath) -> String {
-    namespace_index(db, path)
-        .first()
-        .map(|ns| ns.path_with_case(db).to_string(db))
-        .unwrap_or_else(|| path.to_string(db))
-}
-
 /// Returns all namespace declarations matching a given path across all files.
 pub fn namespace_index<'db>(
     db: &'db dyn WorkspaceDataBase,

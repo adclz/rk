@@ -12,14 +12,25 @@ use crate::{
             invocation::InvocationKind,
             spec::{ElementarySpec, Spec, SpecKind},
         },
+        interned::namespace::NamespacePath,
         scope::ScopeKind,
         semantic_index::semantic_index,
     },
     hir_ty::{
+        index_graphs::namespace_index,
         infer::{Infer, normalize::multibits_to_type},
         ty::{CallableType, InferType, Type},
     },
 };
+
+/// A namespace path as its declaration writes it, for what is shown; the path
+/// itself when no namespace declares it.
+pub fn namespace_spelling(db: &dyn WorkspaceDataBase, path: NamespacePath) -> String {
+    namespace_index(db, path)
+        .first()
+        .map(|ns| ns.path_with_case(db).to_string(db))
+        .unwrap_or_else(|| path.to_string(db))
+}
 
 /// Returns the display name for a spec, handling sized strings specially.
 fn spec_type_name<'db>(db: &'db dyn WorkspaceDataBase, spec: Spec<'db>) -> String {

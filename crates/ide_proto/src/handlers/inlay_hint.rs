@@ -37,7 +37,7 @@ impl<'db> InlayHintHandler<'db> for NamespaceDecl<'db> {
         Some(InlayHint {
             label: marker_label(
                 "NAMESPACE",
-                self.path(db).to_string(db),
+                self.path_with_case(db).to_string(db),
                 located(db, self.get_scope_id(db), &self.name_span(db)),
             ),
             position: hir::denormalize(db, self.get_scope_id(db).file(db), &self.get_span(db))
