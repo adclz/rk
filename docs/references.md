@@ -62,3 +62,5 @@ A guard narrows only the reference it tests, only inside its branch, and `ptr :=
 > Use a nested `IF` instead.
 
 A reference is also **invariant**: a `REF_TO REAL` cannot point to an `INT`, even though an `INT` widens to a `REAL` when it is assigned.
+
+A reference cannot be `RETAIN` (`E0904`): a new build may move what it points at.

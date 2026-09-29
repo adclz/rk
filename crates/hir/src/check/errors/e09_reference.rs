@@ -32,6 +32,19 @@ pub enum ReferenceError<'db> {
         var: VariableDecl<'db>,
         site: CallSite<'db>,
     },
+    /// A reference a warm start would restore: a RETAIN variable, or one a
+    /// `PROGRAM RETAIN` instance keeps, holding a REF_TO or an interface
+    /// value, itself or in a field or member. What it restores is where its
+    /// target was in the build that saved it, and a new build may have moved
+    /// that target.
+    RetainedReference {
+        var: VariableDecl<'db>,
+        /// The fields and members from `var` to the reference, as written.
+        route: Vec<crate::hir_def::interned::identifier::Ident>,
+        /// The `PROGRAM RETAIN` instance keeping `var`, when its own
+        /// declaration is not RETAIN.
+        instance: Option<crate::hir_def::interned::identifier::SpanIdent<'db>>,
+    },
 }
 
 impl<'db> ErrorCode for ReferenceError<'db> {
@@ -40,6 +53,7 @@ impl<'db> ErrorCode for ReferenceError<'db> {
             Self::DerefNonRefType { .. } => "E0901",
             Self::DerefPossiblyNull { .. } => "E0902",
             Self::ReturnsReferenceToLocal { .. } => "E0903",
+            Self::RetainedReference { .. } => "E0904",
         }
     }
 
@@ -48,6 +62,7 @@ impl<'db> ErrorCode for ReferenceError<'db> {
             Self::DerefNonRefType { .. } => "invalid operation",
             Self::DerefPossiblyNull { .. } => "possibly null dereference",
             Self::ReturnsReferenceToLocal { .. } => "reference outlives its storage",
+            Self::RetainedReference { .. } => "reference in RETAIN storage",
         }
     }
 }
@@ -125,6 +140,51 @@ impl<'db> ToIdeDiagnostic<'db> for ReferenceError<'db> {
                 ));
                 diag.with_note(
                     "return a reference to instance state, or to storage the caller owns (a VAR_IN_OUT)"
+                        .into(),
+                );
+                diag
+            }
+            Self::RetainedReference {
+                var,
+                route,
+                instance,
+            } => {
+                let held = std::iter::once(var.name_with_case(db))
+                    .chain(route.iter().copied())
+                    .map(|name| name.text(db).to_string())
+                    .collect::<Vec<_>>()
+                    .join(".");
+                let (message, range) = match instance {
+                    Some(instance) => (
+                        format!(
+                            "PROGRAM RETAIN '{}' keeps '{held}', a reference, whose address does not survive a new build",
+                            instance.with_case.text(db)
+                        ),
+                        instance.get_span(db),
+                    ),
+                    None => (
+                        format!(
+                            "'{held}' is a reference in RETAIN storage: its address does not survive a new build"
+                        ),
+                        var.get_span(db),
+                    ),
+                };
+                let mut diag = diag()
+                    .message(message)
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &range).unwrap_or_default())
+                    .call();
+                if instance.is_some() {
+                    diag.with_related(Related::new(
+                        format!("'{}' is declared here", var.name_with_case(db).text(db)),
+                        var.get_scope_id(db).file(db),
+                        var.get_span(db),
+                    ));
+                }
+                diag.with_note(
+                    "a warm start restores the address even where a new build moved its target; \
+                     keep references out of RETAIN (NON_RETAIN on a member) and set them in the first scan"
                         .into(),
                 );
                 diag

@@ -497,6 +497,58 @@ pub fn partly_located_in_struct<'db>(
     found
 }
 
+/// Whether a member of a retained instance is kept with it, as the retain
+/// map decides: `NON_RETAIN` prunes it, a VAR_TEMP is per call and a
+/// VAR_IN_OUT pointer is bound again by every call.
+pub fn retained_with_instance<'db>(db: &'db dyn WorkspaceDataBase, var: VariableDecl<'db>) -> bool {
+    use crate::hir_def::pous::variable::VariableKind;
+    !var.qualifier(db).contains(crate::Qualifier::NON_RETAIN)
+        && !matches!(
+            var.kind(db),
+            VariableKind::Temp | VariableKind::InOut | VariableKind::External
+        )
+}
+
+/// The reference a retained value of type `ty` holds, as the route to it:
+/// empty when the value is one (a REF_TO or an interface), else the STRUCT
+/// fields and instance members, as written, down to the first one found.
+/// Array elements add no name.
+pub fn retained_reference<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    ty: crate::hir_ty::ty::Type<'db>,
+    visited: &mut Vec<crate::hir_ty::ty::Type<'db>>,
+) -> Option<Vec<Ident>> {
+    use crate::hir_ty::ty::Type;
+    let ty = ty.normalize(db);
+    let fields: Vec<(Ident, Type<'db>)> = match ty {
+        Type::RefTo(_) | Type::Interface(_) => return Some(Vec::new()),
+        Type::Array(array) => return retained_reference(db, array.of_type(db).infer(db), visited),
+        Type::Struct(strukt) => strukt
+            .elements(db)
+            .iter()
+            .map(|element| (element.name_with_case(db), element.spec(db).infer(db)))
+            .collect(),
+        Type::FunctionBlock(_) | Type::Class(_) => instance_members(db, pou_of_type(db, ty)?)
+            .iter()
+            .map(|member| member.var)
+            .filter(|var| retained_with_instance(db, *var))
+            .map(|var| (var.name_with_case(db), var.spec(db).infer(db)))
+            .collect(),
+        _ => return None,
+    };
+    if visited.contains(&ty) {
+        return None;
+    }
+    visited.push(ty);
+    let found = fields.into_iter().find_map(|(name, field)| {
+        let mut route = retained_reference(db, field, visited)?;
+        route.insert(0, name);
+        Some(route)
+    });
+    visited.pop();
+    found
+}
+
 /// [`partly_located_members`] from a list of members: a PROGRAM's variables
 /// start it as a POU's members do.
 pub fn collect_partly_located<'db>(
