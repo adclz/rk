@@ -318,7 +318,7 @@ pub fn overload_discriminant<'db>(
     let sig = function_signature(db, f);
     let params_tied = siblings
         .iter()
-        .any(|other| *other != f && function_signature(db, *other).params == sig.params);
+        .any(|other| *other != f && function_signature(db, *other).same_params(db, &sig));
     let (params, ret) = crate::hir_ty::head::signature::declared_types(db, f);
     Some(OverloadDiscriminant {
         params,

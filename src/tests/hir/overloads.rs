@@ -991,3 +991,104 @@ END_FUNCTION
     ---'
     "#);
 }
+
+/// Two overloads declaring the same inline type have one signature: the
+/// types are compared as the coercion compares them, by structure.
+#[rstest]
+fn identical_inline_parameters_are_one_signature(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION Dup : INT VAR_INPUT r : REF_TO INT; END_VAR Dup := 1; END_FUNCTION
+FUNCTION Dup : INT VAR_INPUT r : REF_TO INT; END_VAR Dup := 2; END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0102] Error: duplicate definitions
+       ,-[ file:///test0.st:3:10 ]
+       |
+     2 | FUNCTION Dup : INT VAR_INPUT r : REF_TO INT; END_VAR Dup := 1; END_FUNCTION
+       |          ^|^
+       |           `--- POU 'Dup' is already defined here
+     3 | FUNCTION Dup : INT VAR_INPUT r : REF_TO INT; END_VAR Dup := 2; END_FUNCTION
+       |          ^|^
+       |           `--- duplicate POU 'Dup'
+    ---'
+    ");
+}
+
+/// What the overload set is keyed on is the input and in-out TYPES as the
+/// coercion sees them, their count and the return: a STRING capacity, a
+/// subrange's bounds, the parameter's section or its name alone do not make
+/// another overload, and a second declaration so is a duplicate. A METHOD
+/// has no overloads at all.
+#[rstest]
+fn what_does_not_make_an_overload(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION Cap : INT VAR_INPUT s : STRING[8]; END_VAR Cap := 1; END_FUNCTION
+FUNCTION Cap : INT VAR_INPUT s : STRING[80]; END_VAR Cap := 2; END_FUNCTION
+
+FUNCTION Sub : INT VAR_INPUT x : INT (0..10); END_VAR Sub := 1; END_FUNCTION
+FUNCTION Sub : INT VAR_INPUT x : INT; END_VAR Sub := 2; END_FUNCTION
+
+FUNCTION Kind : INT VAR_INPUT x : INT; END_VAR Kind := 1; END_FUNCTION
+FUNCTION Kind : INT VAR_IN_OUT x : INT; END_VAR Kind := 2; END_FUNCTION
+
+FUNCTION Named : INT VAR_INPUT a : INT; b : REAL; END_VAR Named := 1; END_FUNCTION
+FUNCTION Named : INT VAR_INPUT b : INT; a : REAL; END_VAR Named := 2; END_FUNCTION
+
+FUNCTION_BLOCK Fb
+    METHOD PUBLIC M : INT VAR_INPUT x : INT; END_VAR M := 1; END_METHOD
+    METHOD PUBLIC M : INT VAR_INPUT x : REAL; END_VAR M := 2; END_METHOD
+END_FUNCTION_BLOCK
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0102] Error: duplicate definitions
+       ,-[ file:///test0.st:3:10 ]
+       |
+     2 | FUNCTION Cap : INT VAR_INPUT s : STRING[8]; END_VAR Cap := 1; END_FUNCTION
+       |          ^|^
+       |           `--- POU 'Cap' is already defined here
+     3 | FUNCTION Cap : INT VAR_INPUT s : STRING[80]; END_VAR Cap := 2; END_FUNCTION
+       |          ^|^
+       |           `--- duplicate POU 'Cap'
+    ---'
+    [E0102] Error: duplicate definitions
+       ,-[ file:///test0.st:6:10 ]
+       |
+     5 | FUNCTION Sub : INT VAR_INPUT x : INT (0..10); END_VAR Sub := 1; END_FUNCTION
+       |          ^|^
+       |           `--- POU 'Sub' is already defined here
+     6 | FUNCTION Sub : INT VAR_INPUT x : INT; END_VAR Sub := 2; END_FUNCTION
+       |          ^|^
+       |           `--- duplicate POU 'Sub'
+    ---'
+    [E0102] Error: duplicate definitions
+       ,-[ file:///test0.st:9:10 ]
+       |
+     8 | FUNCTION Kind : INT VAR_INPUT x : INT; END_VAR Kind := 1; END_FUNCTION
+       |          ^^|^
+       |            `--- POU 'Kind' is already defined here
+     9 | FUNCTION Kind : INT VAR_IN_OUT x : INT; END_VAR Kind := 2; END_FUNCTION
+       |          ^^|^
+       |            `--- duplicate POU 'Kind'
+    ---'
+    [E0102] Error: duplicate definitions
+        ,-[ file:///test0.st:12:10 ]
+        |
+     11 | FUNCTION Named : INT VAR_INPUT a : INT; b : REAL; END_VAR Named := 1; END_FUNCTION
+        |          ^^|^^
+        |            `---- POU 'Named' is already defined here
+     12 | FUNCTION Named : INT VAR_INPUT b : INT; a : REAL; END_VAR Named := 2; END_FUNCTION
+        |          ^^|^^
+        |            `---- duplicate POU 'Named'
+    ----'
+    [E0108] Error: duplicate definitions
+        ,-[ file:///test0.st:16:19 ]
+        |
+     15 |     METHOD PUBLIC M : INT VAR_INPUT x : INT; END_VAR M := 1; END_METHOD
+        |                   |
+        |                   `-- method 'M' is already defined here
+     16 |     METHOD PUBLIC M : INT VAR_INPUT x : REAL; END_VAR M := 2; END_METHOD
+        |                   |
+        |                   `-- duplicate method 'M'
+    ----'
+    ");
+}

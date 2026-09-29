@@ -9,7 +9,7 @@ use insta::assert_snapshot;
 use rstest::rstest;
 
 use crate::tests::utils::{
-    add_source, add_sources, assert_workspace_is_clean, lower_workspace, with_db,
+    add_source, add_sources, assert_workspace_is_clean, diagnostic_code, lower_workspace, with_db,
 };
 
 /// Every function's MIR symbol, sorted: what calls find their callee by,
@@ -182,10 +182,9 @@ fn a_function_named_init_keeps_its_symbol(mut with_db: RootDatabase) {
     ");
 }
 
-// What is still left to collide stops lowering rather than lets a call run
-// another body. Two overloads declaring the same inline type are not refused
-// at check yet (their types differ by declaration), and both are
-// `Which$ARRAY[0..4](INT)`.
+// Two bodies under one symbol stop lowering rather than let a call run the
+// other one. Two overloads declaring the same inline type are one signature,
+// refused at check (E0102), and both would be `Which$ARRAY[0..4](INT)`.
 #[rstest]
 fn two_functions_under_one_symbol_stop_lowering(mut with_db: RootDatabase) {
     let source = r#"
@@ -193,12 +192,16 @@ fn two_functions_under_one_symbol_stop_lowering(mut with_db: RootDatabase) {
         FUNCTION Which : INT VAR_INPUT v : ARRAY[0..4] OF INT; END_VAR Which := 2; END_FUNCTION
     "#;
     let file = add_source(&mut with_db, source);
+    let codes: Vec<String> = diagnostics_for_file(&with_db, file)
+        .iter()
+        .map(diagnostic_code)
+        .collect();
     assert!(
-        diagnostics_for_file(&with_db, file).is_empty(),
-        "rk check accepts it"
+        !codes.is_empty() && codes.iter().all(|c| c == "E0102"),
+        "rk check refuses the pair as duplicates: {codes:?}"
     );
     let error = mir::lower::lower_module::lower_module(&with_db, semantic_index(&with_db, file))
         .map(|_| ())
         .expect_err("two bodies under one symbol");
-    assert_snapshot!(error, @"two functions lower to the symbol `Which$ARRAY[0..4](INT)`");
+    assert_snapshot!(error, @"two functions lower to the symbol `Which$ARRAY[0..4](INT)$:INT`");
 }

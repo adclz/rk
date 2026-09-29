@@ -26,7 +26,7 @@ use crate::{
 fn pous_collide<'db>(db: &'db dyn WorkspaceDataBase, a: Pou<'db>, b: Pou<'db>) -> bool {
     match (a, b) {
         (Pou::Function(fa), Pou::Function(fb)) => {
-            function_signature(db, fa) == function_signature(db, fb)
+            function_signature(db, fa).same_as(db, &function_signature(db, fb))
         }
         _ => true,
     }
