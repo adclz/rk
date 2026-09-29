@@ -1612,9 +1612,7 @@ impl<'db> ExprLowerCtx<'db> {
         )>,
         LowerTypeError,
     > {
-        use hir::HasName;
         use hir::hir_def::expressions::expression::PathExprKind;
-        use hir::hir_ty::head::inheritance::MethodRef;
         use hir::hir_ty::ty::CallableType;
 
         // HIR resolved the callee, walking `EXTENDS` for inherited methods.
@@ -1628,6 +1626,14 @@ impl<'db> ExprLowerCtx<'db> {
         // `THIS`, the base method for `SUPER`, IEC tables 9b/10b). The receiver
         // is the current `this` pointer.
         if let Some(kind) = path.invocation(self.db).map(|i| i.kind(self.db)) {
+            // `THIS.inner.m()`: the method of the member `inner`, called on
+            // it. Only `THIS.m()` itself runs on the current instance.
+            if matches!(kind, InvocationKind::This | InvocationKind::Super)
+                && let Some(PathExprKind::Field(fe)) = path.expr(self.db).map(|pe| pe.expr(self.db))
+            {
+                let receiver = self.lower_this_path(fe.path)?;
+                return Ok(Some(self.receiver_method_call(method, fe.path, receiver)?));
+            }
             match kind {
                 InvocationKind::This => {
                     return Ok(Some(self.this_receiver_call(method, "THIS", true)?));
@@ -1655,9 +1661,38 @@ impl<'db> ExprLowerCtx<'db> {
             }
         };
         let receiver_path = field.path;
+        let receiver = self.lower_receiver_place(receiver_path)?;
+        Ok(Some(self.receiver_method_call(
+            method,
+            receiver_path,
+            receiver,
+        )?))
+    }
 
-        let method_decl = match method {
-            MethodRef::Declared(md) => md,
+    /// The callee, receiver and return type of `receiver.method(...)`. The
+    /// callee is the method set of the instance the call runs on, so an
+    /// inherited method runs as that instance's copy, where `THIS` is the
+    /// instance: the receiver's type after indexing and dereferencing
+    /// (`arr[i].m()`, `r^.m()`), or the implementer bound to an interface
+    /// parameter.
+    fn receiver_method_call(
+        &self,
+        method: hir::hir_ty::head::inheritance::MethodRef<'db>,
+        receiver_path: hir::hir_def::expressions::expression::PathExpr<'db>,
+        receiver: MirPlace,
+    ) -> Result<
+        (
+            hir::hir_def::interned::identifier::Ident,
+            MirPlace,
+            Type<'db>,
+        ),
+        LowerTypeError,
+    > {
+        use hir::HasName;
+        use hir::hir_ty::head::inheritance::MethodRef;
+
+        let (method_decl, instance) = match method {
+            MethodRef::Declared(md) => (md, self.instance_pou_of(receiver_path)),
             // Phase B: a call through an interface param; the concrete implementer
             // is known via `iface_subs`.
             MethodRef::Prototype(proto) => {
@@ -1674,7 +1709,7 @@ impl<'db> ExprLowerCtx<'db> {
                 // Which method implements a prototype is HIR's conformance answer;
                 // devirtualizing to it is MIR's.
                 match hir::hir_ty::head::inheritance::implementing_method(self.db, concrete, name) {
-                    Some(d) => d,
+                    Some(d) => (d, Some(concrete)),
                     None => {
                         return Err(LowerTypeError::UnsupportedType(format!(
                             "no concrete implementation of interface method '{}'",
@@ -1685,27 +1720,33 @@ impl<'db> ExprLowerCtx<'db> {
             }
         };
 
-        // `inst.m()` targets the method set of the receiver's static type, so
-        // a `Derived` receiver reaches `Derived#m`.
-        let callee = match receiver_path.infer(self.db).normalize(self.db) {
-            Type::FunctionBlock(fb) => self.method_symbol(
-                hir::hir_def::pous::pou::Pou::FunctionBlock(fb),
-                method_decl.name_with_case(self.db),
-            ),
-            Type::Class(c) => self.method_symbol(
-                hir::hir_def::pous::pou::Pou::Class(c),
-                method_decl.name_with_case(self.db),
-            ),
+        let callee = match instance {
+            Some(owner) => self.method_symbol(owner, method_decl.name_with_case(self.db)),
             // Not an instance type: fall back to where the method was declared.
-            _ => self.method_callee_symbol(method_decl)?,
+            None => self.method_callee_symbol(method_decl)?,
         };
-
-        let receiver = self.lower_receiver_place(receiver_path)?;
         let ret = method
             .return_type(self.db)
             .map(|spec| spec.infer(self.db))
             .unwrap_or(Type::Void);
-        Ok(Some((callee, receiver, ret)))
+        Ok((callee, receiver, ret))
+    }
+
+    /// The FB or CLASS an instance path denotes, after its indexing and
+    /// dereferencing: `arr[i]` is the element, `r^` the target.
+    fn instance_pou_of(
+        &self,
+        path: hir::hir_def::expressions::expression::PathExpr<'db>,
+    ) -> Option<hir::hir_def::pous::pou::Pou<'db>> {
+        use hir::hir_def::pous::pou::Pou;
+        match hir::hir_ty::body::infer_body(self.db, path.scope_id(self.db))
+            .type_of_path_expr_with_adjustments(path)
+            .normalize(self.db)
+        {
+            Type::FunctionBlock(fb) => Some(Pou::FunctionBlock(fb)),
+            Type::Class(c) => Some(Pou::Class(c)),
+            _ => None,
+        }
     }
 
     /// The `#`-mangled symbol of a method: its declaring POU's qualified

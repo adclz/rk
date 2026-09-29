@@ -304,11 +304,11 @@ fn process_call<'db>(
         let concrete = if is_this_arg(db, arg) {
             self_pou
         } else {
-            let arg_ty = body
-                .type_of_expr
-                .get(&arg)
-                .copied()
-                .unwrap_or_else(|| arg.infer(db));
+            // Adjusted: `arr[i]` and `r^` bind the element and the target.
+            let arg_ty = match body.type_of_expr.contains_key(&arg) {
+                true => body.type_of_expr_with_adjustments(db, arg),
+                false => arg.infer(db),
+            };
             resolve_concrete(db, arg_ty, subs)
         };
         if let Some(concrete) = concrete {
