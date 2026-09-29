@@ -2249,9 +2249,12 @@ impl<'db> ExprLowerCtx<'db> {
                     }
                 }
                 hir::hir_ty::body::ParamBinding::Default(expr) => {
+                    // A constant (E0401): folded, not read in the caller's
+                    // frame, where a name of the callee's means something else.
                     if fills_defaults {
+                        let ty = crate::lower::lower_func::lower_var_type(self.db, *var)?;
                         args.push(MirCallArg {
-                            value: self.lower_expr(*expr)?,
+                            value: self.lower_leaf_value(*expr, &ty)?,
                             kind: MirArgKind::ByValue,
                         });
                     }
@@ -2798,6 +2801,58 @@ impl<'db> ExprLowerCtx<'db> {
                     _ => None,
                 }
             })
+    }
+
+    /// An initial value, stored in a slot of type `ty`. Folded in the
+    /// acceptance order of `init_leaf_is_constant`: integer arithmetic over
+    /// literals and CONSTANTs (an I64 under a Cast to the slot's lane), then
+    /// a pure CONSTANT chain, whose end is lowered. A constant names nothing
+    /// in a frame, so it lowers the same in the caller as in the callee:
+    /// this is also what an omitted input's default becomes.
+    pub(crate) fn lower_leaf_value(
+        &self,
+        value: Expr<'db>,
+        ty: &MirType,
+    ) -> Result<MirExpr, LowerTypeError> {
+        use hir::hir_ty::infer::const_eval;
+        let mut lowered = if let Some(v) = const_eval::spec_bound(self.db, value) {
+            let folded = MirExpr::Constant(crate::expr::MirConstant::I64(v));
+            // Every integer-shaped MirType has a scalar lane; subranges and enums
+            // store as their base.
+            let to = match ty {
+                MirType::Elementary(e) => Some(*e),
+                MirType::Subrange(sub) => Some(sub.base),
+                MirType::Enum(en) => Some(en.storage),
+                _ => None,
+            };
+            match to {
+                Some(to) => MirExpr::Cast {
+                    expr: Box::new(folded),
+                    from: MirElementary::LInt,
+                    to,
+                },
+                None => folded,
+            }
+        } else if let Some(end) = const_eval::resolve_constant_ref(self.db, value) {
+            self.lower_expr(end)?
+        } else {
+            self.lower_expr(value)?
+        };
+        // The declared type wins: HIR accepts an implicitly widening
+        // initializer, so the value is cast to the declared lane.
+        // `is_const_value` sees through Cast.
+        if !matches!(lowered, MirExpr::Cast { .. })
+            && let MirType::Elementary(to) = ty
+            && let Ok(from) = self.expr_to_mir_elementary(value)
+            && from != *to
+        {
+            lowered = MirExpr::Cast {
+                expr: Box::new(lowered),
+                from,
+                to: *to,
+            };
+        }
+        Ok(lowered)
     }
 
     /// The plan resolution assembled for this call: from body inference, or

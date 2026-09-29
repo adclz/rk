@@ -556,3 +556,97 @@ END_CONFIGURATION
         "`(m := 30)` on {decl} must be E0405 pointing at the declaration, got:\n{rendered}"
     );
 }
+
+/// An input's default is what the caller passes when the argument is
+/// omitted, before the callee's own variables exist: a constant, which the
+/// call site folds.
+#[rstest]
+fn an_input_default_is_a_constant(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE Color : (Red, Green, Blue); END_TYPE
+
+CONFIGURATION Cfg
+VAR_GLOBAL CONSTANT K : INT := 7; END_VAR
+VAR_GLOBAL G : INT; END_VAR
+END_CONFIGURATION
+
+FUNCTION f : INT
+VAR_INPUT
+    a : INT := 1;
+    b : INT := L * 2;
+    c : INT := K;
+    d : Color := Color#Blue;
+    e : REF_TO INT := REF(G);
+END_VAR
+VAR CONSTANT L : INT := 3; END_VAR
+VAR_EXTERNAL CONSTANT K : INT; END_VAR
+VAR_EXTERNAL G : INT; END_VAR
+    f := a + b + c;
+END_FUNCTION
+
+FUNCTION g : INT
+    g := f();
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
+
+#[rstest]
+fn an_input_default_from_a_variable_is_refused(mut with_db: RootDatabase) {
+    let source = r#"
+CONFIGURATION Cfg
+VAR_GLOBAL G : INT; END_VAR
+END_CONFIGURATION
+
+FUNCTION one : INT
+    one := 1;
+END_FUNCTION
+
+FUNCTION f : INT
+VAR_INPUT
+    a : INT := G;
+    b : INT := a;
+    c : INT := one();
+    d : REF_TO INT := REF(a);
+END_VAR
+VAR_EXTERNAL G : INT; END_VAR
+    f := a + b + c;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0401] Error: initial value is not constant
+        ,-[ file:///test0.st:12:16 ]
+        |
+     12 |     a : INT := G;
+        |                |
+        |                `-- this initial value must be a constant: it is fixed before the program runs
+        |
+        | Note: 'G' is an ordinary variable; declare it CONSTANT if its value never changes
+    ----'
+    [E0401] Error: initial value is not constant
+        ,-[ file:///test0.st:13:16 ]
+        |
+     13 |     b : INT := a;
+        |                |
+        |                `-- this initial value must be a constant: it is fixed before the program runs
+        |
+        | Note: 'a' is an ordinary variable; declare it CONSTANT if its value never changes
+    ----'
+    [E0401] Error: initial value is not constant
+        ,-[ file:///test0.st:14:16 ]
+        |
+     14 |     c : INT := one();
+        |                ^^|^^
+        |                  `---- this initial value must be a constant: it is fixed before the program runs
+    ----'
+    [E0401] Error: initial value is not constant
+        ,-[ file:///test0.st:15:23 ]
+        |
+     15 |     d : REF_TO INT := REF(a);
+        |                       ^^^|^^
+        |                          `---- this initial value must be a constant: it is fixed before the program runs
+        |
+        | Note: an input's default is passed by the caller, before the callee's own variables exist: a REF() in it names a global
+    ----'
+    ");
+}

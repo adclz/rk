@@ -98,9 +98,18 @@ impl<'db> ToIdeDiagnostic<'db> for InitError<'db> {
                     .desc(self)
                     .range(crate::denormalize(db, file, &value.get_span(db)).unwrap_or_default())
                     .call();
+                // A REF() is refused only as an input's default, for naming
+                // the callee's own variable.
+                if let ExprKind::PrimaryExpr(PrimaryExpr::RefValue { .. }) = value.expr(db) {
+                    d.with_note(
+                        "an input's default is passed by the caller, before the callee's \
+                         own variables exist: a REF() in it names a global"
+                            .to_string(),
+                    );
+                    return d;
+                }
                 // Say WHY when the refused thing is a bare name — especially
                 // when it IS a constant, just not one this scope can fold.
-
                 if let ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess(va)) = value.expr(db) {
                     use crate::Qualifier;
                     match const_eval::spec_name_binding(db, *va) {

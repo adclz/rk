@@ -113,6 +113,7 @@ A POU reaches a global by declaring the same name in `VAR_EXTERNAL`; if no `CONF
 `VAR_IN_OUT` passes by reference in both `FUNCTION` and `FUNCTION_BLOCK` — the callee writes through to the caller's variable.
 
 Input defaults (`a: INT := 3;`) apply when the argument is omitted, in `FUNCTION`, `FUNCTION_BLOCK` and `PROGRAM` alike.
+In a `FUNCTION` or `METHOD` the default is a constant (E0401): the caller passes it, before the callee's own variables exist.
 
 ```iecst continues
 CONFIGURATION Plant

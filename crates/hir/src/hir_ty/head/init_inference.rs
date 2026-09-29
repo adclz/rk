@@ -106,6 +106,8 @@ impl<'db> InitInference<'db> {
             }
         }
 
+        self.check_input_defaults(db);
+
         for error in &self.init_expr_result.errors {
             self.errors.push(error.clone());
         }
@@ -118,6 +120,51 @@ impl<'db> InitInference<'db> {
 }
 
 impl<'db> InitInference<'db> {
+    /// A FUNCTION's or METHOD's input default is what the CALLER passes for
+    /// an omitted argument, before the callee's own variables exist. It is
+    /// a constant, by the test member defaults pass, and a `REF()` in it
+    /// names a global.
+    fn check_input_defaults(&mut self, db: &'db dyn WorkspaceDataBase) {
+        use crate::hir_def::expressions::expression::{
+            ExprKind, InitExprKind, PrimaryExpr, RefValue,
+        };
+        if !matches!(
+            get_scope(db, self.scope).kind,
+            ScopeKind::Pou(Pou::Function(_)) | ScopeKind::MethodDecl(_) | ScopeKind::MethodProt(_)
+        ) {
+            return;
+        }
+        let Some(vars) = self.scope.variables(db) else {
+            return;
+        };
+        for var in vars.iter().filter(|var| var.is_input(db)) {
+            let Some(InitExprKind::ConstantExpr(value)) = var.init(db).map(|init| init.kind(db))
+            else {
+                continue;
+            };
+            let refs_the_frame = match value.expr(db) {
+                ExprKind::PrimaryExpr(PrimaryExpr::RefValue {
+                    value: RefValue::Address(path),
+                }) => path
+                    .expr(db)
+                    .and_then(|path| path.flatten(db).first().map(|step| step.get_expr(db)))
+                    .and_then(|root| self.body_infer_result.variable_for_path_expr(root))
+                    .is_some_and(|decl| {
+                        decl.storage_class(db)
+                            != crate::hir_def::pous::variable::StorageClass::Global
+                    }),
+                _ => false,
+            };
+            if refs_the_frame || !crate::hir_ty::infer::const_eval::init_leaf_is_constant(db, value)
+            {
+                self.errors.push(
+                    crate::check::errors::e04_init::InitError::InitNotConstant { value }
+                        .to_diagnostic(db, self.scope.file(db)),
+                );
+            }
+        }
+    }
+
     /// A CONFIGURATION's VAR_CONFIG values, resolved like any initializer
     /// against the type of the variable each names, so lowering finds their
     /// leaves where it finds every other's. A member with no value of its own

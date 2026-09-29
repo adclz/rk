@@ -1509,47 +1509,10 @@ fn lower_init_leaves<'db>(
             };
             found
         };
-        // Fold once per type, in the acceptance order of `init_leaf_is_constant`:
-        // integer arithmetic over literals and CONSTANTs, then a pure CONSTANT
-        // chain. Folded values ride an I64/F64 constant under a Cast to the lane.
-        use hir::hir_ty::infer::const_eval;
-        let mut value = if let Some(v) = const_eval::spec_bound(db, leaf.value) {
-            let folded = crate::expr::MirExpr::Constant(crate::expr::MirConstant::I64(v));
-            // Every integer-shaped MirType has a scalar lane; subranges and enums
-            // store as their base.
-            let to = match &leaf_ty {
-                crate::types::MirType::Elementary(e) => Some(*e),
-                crate::types::MirType::Subrange(sub) => Some(sub.base),
-                crate::types::MirType::Enum(en) => Some(en.storage),
-                _ => None,
-            };
-            match to {
-                Some(to) => crate::expr::MirExpr::Cast {
-                    expr: Box::new(folded),
-                    from: crate::types::MirElementary::LInt,
-                    to,
-                },
-                None => folded,
-            }
-        } else if let Some(end) = const_eval::resolve_constant_ref(db, leaf.value) {
-            ctx.lower_expr(end)?
-        } else {
-            ctx.lower_expr(leaf.value)?
-        };
-        // The declared type wins: HIR accepts an implicitly widening
-        // initializer, so the value is cast to the declared lane.
-        // `is_const_value` sees through Cast.
-        if !matches!(value, crate::expr::MirExpr::Cast { .. })
-            && let crate::types::MirType::Elementary(to) = &leaf_ty
-            && let Ok(from) = ctx.expr_to_mir_elementary(leaf.value)
-            && from != *to
-        {
-            value = crate::expr::MirExpr::Cast {
-                expr: Box::new(value),
-                from,
-                to: *to,
-            };
-        }
+        let value = ctx.lower_leaf_value(leaf.value, &leaf_ty)?;
+        // E0401 refuses every non-constant static leaf, so reaching this arm
+        // means check and lowering disagree. A REF() is an address, which
+        // `__init` stores once the layout has placed what it names.
         if let InitTarget::Static { .. } = target
             && !is_const_value(&value)
         {

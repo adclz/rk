@@ -376,3 +376,81 @@ fn method_locals_declared_before_inputs(mut with_db: db::RootDatabase) {
     let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 0);
 }
+
+/// An omitted input takes the callee's default, folded: a name in it is the
+/// callee's, never a caller variable of that name. It used to be read in the
+/// caller, where a local `K` or `L` hid the constant, or codegen panicked.
+#[rstest]
+fn fn_default_is_the_callee_constant(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE Color : (Red, Green, Blue); END_TYPE
+
+        CONFIGURATION Cfg
+        VAR_GLOBAL CONSTANT K : INT := 7; KL : LREAL := 2.5; END_VAR
+        VAR_GLOBAL G : INT := 3; END_VAR
+        END_CONFIGURATION
+
+        FUNCTION with_k : INT
+        VAR_INPUT x : INT := K; END_VAR
+        VAR_EXTERNAL CONSTANT K : INT; END_VAR
+            with_k := x;
+        END_FUNCTION
+
+        FUNCTION with_l : INT
+        VAR_INPUT x : INT := L * 2 + 1; END_VAR
+        VAR CONSTANT L : INT := 9; END_VAR
+            with_l := x;
+        END_FUNCTION
+
+        FUNCTION wide : LINT
+        VAR_INPUT x : LINT := 5000000000; END_VAR
+            wide := x;
+        END_FUNCTION
+
+        FUNCTION real_k : LREAL
+        VAR_INPUT r : LREAL := KL; END_VAR
+        VAR_EXTERNAL CONSTANT KL : LREAL; END_VAR
+            real_k := r;
+        END_FUNCTION
+
+        FUNCTION pick : Color
+        VAR_INPUT c : Color := Color#Blue; END_VAR
+            pick := c;
+        END_FUNCTION
+
+        FUNCTION through : INT
+        VAR_INPUT r : REF_TO INT := REF(G); END_VAR
+        VAR_EXTERNAL G : INT; END_VAR
+            through := r^;
+        END_FUNCTION
+
+        FUNCTION set_g
+        VAR_EXTERNAL G : INT; END_VAR
+            G := 3;
+        END_FUNCTION
+
+        FUNCTION_BLOCK Fb
+            METHOD PUBLIC get : INT
+            VAR_INPUT x : INT := L; END_VAR
+            VAR CONSTANT L : INT := 4; END_VAR
+                get := x;
+            END_METHOD
+        END_FUNCTION_BLOCK
+
+        // The caller's K, L and G are someone else's: one bit per default
+        // that read one.
+        FUNCTION test : INT
+        VAR K : INT := 100; L : INT := 1000; G : INT := 50; fb : Fb; END_VAR
+            set_g();
+            IF with_k() <> 7 THEN test := test + 1; END_IF;
+            IF with_l() <> 19 THEN test := test + 2; END_IF;
+            IF wide() <> 5000000000 THEN test := test + 4; END_IF;
+            IF real_k() <> 2.5 THEN test := test + 8; END_IF;
+            IF pick() <> Color#Blue THEN test := test + 16; END_IF;
+            IF through() <> 3 THEN test := test + 32; END_IF;
+            IF fb.get() <> 4 THEN test := test + 64; END_IF;
+        END_FUNCTION
+    "#;
+    let result: i32 = super::run(&mut with_db, source, "test", ());
+    assert_eq!(result, 0);
+}
