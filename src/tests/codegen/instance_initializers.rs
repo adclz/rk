@@ -629,6 +629,38 @@ fn struct_field_ref_default_points_at_its_sibling(mut with_db: db::RootDatabase)
     assert_eq!(result, 573);
 }
 
+/// A reference is an address, and a copy keeps it: a copied STRUCT's
+/// `p := REF(a)` still points at the original's `a`, and so does the copy
+/// of an instance passed to a VAR_INPUT, whose write reaches the caller.
+/// This is how a reference is copied, not a bug.
+#[rstest]
+fn a_copy_keeps_the_address(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE S : STRUCT a : INT := 5; p : REF_TO INT := REF(a); END_STRUCT; END_TYPE
+
+        FUNCTION_BLOCK H
+        VAR_OUTPUT x : INT := 5; p : REF_TO INT := REF(x); END_VAR
+        END_FUNCTION_BLOCK
+
+        FUNCTION poke
+        VAR_INPUT h : H; END_VAR
+            h.p^ := 9;
+        END_FUNCTION
+
+        // One bit per copy whose reference went to its own storage.
+        FUNCTION test : INT
+        VAR s : S; s2 : S; l : H; END_VAR
+            s2 := s;
+            s2.a := 7;
+            IF s2.p^ <> 5 THEN test := test + 1; END_IF;
+            poke(l);
+            IF l.x <> 9 THEN test := test + 2; END_IF;
+        END_FUNCTION
+    "#;
+    let result: i32 = run(&mut with_db, source, "test", ());
+    assert_eq!(result, 0);
+}
+
 /// Member `REF()` defaults in static storage, which `__init` writes: in a
 /// composed instance, an element of an array of them and a derived FB, held
 /// by a PROGRAM and by a VAR_GLOBAL.
