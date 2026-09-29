@@ -441,17 +441,6 @@ END_PROGRAM
         |          ^^|^
         |            `--- cannot use direct type 'ITF1' here
     ----'
-    [E0301] Error: type mismatch
-        ,-[ file:///test0.st:11:10 ]
-        |
-      8 |         x: INT;
-        |         |
-        |         `-- type is declared by variable 'x' here
-        |
-     11 |     x := ITF1;
-        |          ^^|^
-        |            `--- expected 'INT', got 'ITF1'
-    ----'
     ");
 }
 

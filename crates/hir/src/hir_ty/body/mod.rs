@@ -450,6 +450,13 @@ impl<'db> BodyInferenceResult<'db> {
         expr: Expr<'db>,
     ) -> Type<'db> {
         match expr.expr(db) {
+            // A name read where a value belongs but naming none, a type or a
+            // FUNCTION, was reported there (E0317) and typed Never.
+            ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess(_))
+                if self.type_of_expr.get(&expr).is_some_and(Type::is_never) =>
+            {
+                Type::Never
+            }
             ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess(var)) => {
                 self.type_of_variable_access_with_adjustments(db, *var)
             }

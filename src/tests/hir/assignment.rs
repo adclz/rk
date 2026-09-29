@@ -395,17 +395,6 @@ END_PROGRAM"#;
         |          ^^|^^
         |            `---- cannot use direct type 'Motor' here
     ----'
-    [E0301] Error: type mismatch
-        ,-[ file:///test0.st:10:10 ]
-        |
-      7 |         x: INT;
-        |         |
-        |         `-- type is declared by variable 'x' here
-        |
-     10 |     x := Motor;
-        |          ^^|^^
-        |            `---- expected 'INT', got 'Motor'
-    ----'
     ");
 }
 
@@ -431,17 +420,6 @@ END_PROGRAM"#;
         |          ^^^|^^
         |             `---- cannot use direct type 'ClBase' here
     ----'
-    [E0301] Error: type mismatch
-        ,-[ file:///test0.st:10:10 ]
-        |
-      7 |         x: INT;
-        |         |
-        |         `-- type is declared by variable 'x' here
-        |
-     10 |     x := ClBase;
-        |          ^^^|^^
-        |             `---- expected 'INT', got 'ClBase'
-    ----'
     ");
 }
 
@@ -463,13 +441,6 @@ END_PROGRAM"#;
      6 |     IF Motor THEN
        |        ^^|^^
        |          `---- cannot use direct type 'Motor' here
-    ---'
-    [E0301] Error: type mismatch
-       ,-[ file:///test0.st:6:8 ]
-       |
-     6 |     IF Motor THEN
-       |        ^^|^^
-       |          `---- expected 'BOOL', got 'Motor'
     ---'
     ");
 }
@@ -495,24 +466,6 @@ END_PROGRAM"#;
      10 |     x := 5 + Motor;
         |              ^^|^^
         |                `---- cannot use direct type 'Motor' here
-    ----'
-    [E0305] Error: type mismatch
-        ,-[ file:///test0.st:10:10 ]
-        |
-      2 | FUNCTION_BLOCK Motor
-        |                ^^|^^
-        |                  `---- FUNCTION_BLOCK 'Motor' is defined here
-        |
-     10 |     x := 5 + Motor;
-        |          ^^^^|^^^^
-        |              `------ operator '+' cannot be applied to type 'Motor'
-    ----'
-    [E0303] Error: type mismatch
-        ,-[ file:///test0.st:10:14 ]
-        |
-     10 |     x := 5 + Motor;
-        |              ^^|^^
-        |                `---- can not add 'INT' with 'Motor'
     ----'
     ");
 }

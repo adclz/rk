@@ -316,8 +316,12 @@ impl<'db> InferExprCtx<'db> {
                 // written is for the coercion at that site to say, which is
                 // what accepts `f(dev := THIS)` for an interface parameter and
                 // still refuses it everywhere no arm accepts an FB.
-                if !v.is_bare_this(db) {
-                    ty.check_not_direct_type(db, CallSite::from_scoped(db, v), inference_result);
+                // A name that is no value (E0317) types as Never, so the
+                // operator or assignment around it does not report it again.
+                if !v.is_bare_this(db)
+                    && !ty.check_not_direct_type(db, CallSite::from_scoped(db, v), inference_result)
+                {
+                    return Type::Never;
                 }
                 ty
             }

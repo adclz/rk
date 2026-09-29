@@ -96,6 +96,46 @@ END_FUNCTION"#;
     ");
 }
 
+/// Outside its own body, a FUNCTION's or METHOD's name is no value, and is
+/// reported once: the expression around it does not report it again.
+#[rstest]
+fn another_callables_name_is_not_a_value(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION Other : INT
+    Other := 1;
+END_FUNCTION
+
+FUNCTION UsesOther : INT
+    UsesOther := Other + 1;
+END_FUNCTION
+
+FUNCTION_BLOCK Fb
+    METHOD PUBLIC A : INT
+        A := B;
+    END_METHOD
+
+    METHOD PUBLIC B : INT
+        B := 1;
+    END_METHOD
+END_FUNCTION_BLOCK"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0317] Error: semantic violation
+       ,-[ file:///test0.st:7:18 ]
+       |
+     7 |     UsesOther := Other + 1;
+       |                  ^^|^^
+       |                    `---- cannot use direct type 'Other' here
+    ---'
+    [E0317] Error: semantic violation
+        ,-[ file:///test0.st:12:14 ]
+        |
+     12 |         A := B;
+        |              |
+        |              `-- cannot use direct type 'B' here
+    ----'
+    ");
+}
+
 /// A METHOD without a return type has no result to assign.
 #[rstest]
 fn a_void_methods_name_is_not_assignable(mut with_db: RootDatabase) {
