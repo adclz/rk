@@ -619,7 +619,7 @@ END_FUNCTION
         |
      12 |     a : INT := G;
         |                |
-        |                `-- this initial value must be a constant: it is fixed before the program runs
+        |                `-- this initial value must be a constant: the caller passes it
         |
         | Note: 'G' is an ordinary variable; declare it CONSTANT if its value never changes
     ----'
@@ -628,25 +628,156 @@ END_FUNCTION
         |
      13 |     b : INT := a;
         |                |
-        |                `-- this initial value must be a constant: it is fixed before the program runs
+        |                `-- this initial value must be a constant: the caller passes it
         |
-        | Note: 'a' is an ordinary variable; declare it CONSTANT if its value never changes
+        | Note: 'a' is another input of this call: it has no value before the call binds it
     ----'
     [E0401] Error: initial value is not constant
         ,-[ file:///test0.st:14:16 ]
         |
      14 |     c : INT := one();
         |                ^^|^^
-        |                  `---- this initial value must be a constant: it is fixed before the program runs
+        |                  `---- this initial value must be a constant: the caller passes it
+        |
+        | Note: a call is not a constant
     ----'
     [E0401] Error: initial value is not constant
         ,-[ file:///test0.st:15:23 ]
         |
      15 |     d : REF_TO INT := REF(a);
         |                       ^^^|^^
-        |                          `---- this initial value must be a constant: it is fixed before the program runs
+        |                          `---- this initial value must be a constant: the caller passes it
         |
-        | Note: an input's default is passed by the caller, before the callee's own variables exist: a REF() in it names a global
+        | Note: 'a' is another input of this call: it has no value before the call binds it
+    ----'
+    ");
+}
+
+/// A default computed from a sibling input or from the callee's own local is
+/// refused too: neither exists when the caller fills in the argument, and the
+/// caller's `a` and `y` are someone else's.
+#[rstest]
+fn an_input_default_from_a_sibling_or_a_local_is_refused(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION f : INT
+VAR_INPUT
+    a : INT;
+    b : INT := a * 2;
+    c : INT := y;
+END_VAR
+VAR y : INT := 4; END_VAR
+    f := b + c;
+END_FUNCTION
+
+FUNCTION caller : INT
+VAR a : INT := 100; y : INT := 100; END_VAR
+    caller := f(a := 3);
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0401] Error: initial value is not constant
+       ,-[ file:///test0.st:5:16 ]
+       |
+     5 |     b : INT := a * 2;
+       |                ^^|^^
+       |                  `---- this initial value must be a constant: the caller passes it
+       |
+       | Note: 'a' is another input of this call: it has no value before the call binds it
+    ---'
+    [E0401] Error: initial value is not constant
+       ,-[ file:///test0.st:6:16 ]
+       |
+     6 |     c : INT := y;
+       |                |
+       |                `-- this initial value must be a constant: the caller passes it
+       |
+       | Note: 'y' belongs to the call, which has not started when the caller passes the default
+    ---'
+    ");
+}
+
+/// A `REF()` default the caller cannot compute before the call is refused,
+/// written out or as a CONSTANT's value: a subscript naming another input,
+/// the callee's own local, the instance's member.
+#[rstest]
+fn an_input_default_reference_the_caller_cannot_compute_is_refused(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE PInt : REF_TO INT; END_TYPE
+
+CONFIGURATION Cfg
+VAR_GLOBAL G : ARRAY[1..3] OF INT; END_VAR
+END_CONFIGURATION
+
+FUNCTION by_index : INT
+VAR_INPUT
+    i : INT;
+    p : PInt := REF(G[i]);
+END_VAR
+VAR_EXTERNAL G : ARRAY[1..3] OF INT; END_VAR
+    by_index := p^;
+END_FUNCTION
+
+FUNCTION by_constant : INT
+VAR_INPUT p : PInt := PK; END_VAR
+VAR loc : INT; END_VAR
+VAR CONSTANT PK : PInt := REF(loc); END_VAR
+    by_constant := p^;
+END_FUNCTION
+
+FUNCTION_BLOCK Motor
+VAR speed : INT; END_VAR
+VAR CONSTANT PS : PInt := REF(speed); END_VAR
+    METHOD PUBLIC get : INT
+    VAR_INPUT p : PInt := PS; END_VAR
+        get := p^;
+    END_METHOD
+END_FUNCTION_BLOCK
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0401] Error: initial value is not constant
+        ,-[ file:///test0.st:11:17 ]
+        |
+     11 |     p : PInt := REF(G[i]);
+        |                 ^^^^|^^^^
+        |                     `------ this initial value must be a constant: the caller passes it
+        |
+        | Note: 'i' is another input of this call: it has no value before the call binds it
+    ----'
+    [E0401] Error: initial value is not constant
+        ,-[ file:///test0.st:18:23 ]
+        |
+     18 | VAR_INPUT p : PInt := PK; END_VAR
+        |                       ^|
+        |                        `-- this initial value must be a constant: the caller passes it
+        |
+        | Note: 'loc' belongs to the call, which has not started when the caller passes the default
+    ----'
+    [E0401] Error: initial value is not constant
+        ,-[ file:///test0.st:20:27 ]
+        |
+     20 | VAR CONSTANT PK : PInt := REF(loc); END_VAR
+        |                           ^^^^|^^^
+        |                               `----- a CONSTANT is one value for every instance and every call: a REF() in it names a global
+        |
+        | Note: 'loc' belongs to the call: each call has its own
+    ----'
+    [E0401] Error: initial value is not constant
+        ,-[ file:///test0.st:26:27 ]
+        |
+     26 | VAR CONSTANT PS : PInt := REF(speed); END_VAR
+        |                           ^^^^^|^^^^
+        |                                `------ a CONSTANT is one value for every instance and every call: a REF() in it names a global
+        |
+        | Note: 'speed' is a member: each instance has its own
+    ----'
+    [E0401] Error: initial value is not constant
+        ,-[ file:///test0.st:28:27 ]
+        |
+     28 |     VAR_INPUT p : PInt := PS; END_VAR
+        |                           ^|
+        |                            `-- this initial value must be a constant: the caller passes it
+        |
+        | Note: 'speed' is a member: each instance has its own
     ----'
     ");
 }
@@ -702,4 +833,52 @@ END_CONFIGURATION
         |                        `-------- expected 'PInt', got 'REF_TO REAL'
     ----'
     "#);
+}
+
+/// A CONSTANT is one value for every instance and every call, so a `REF()`
+/// in it is a global's address. `REF(speed)` was a different address in each
+/// Motor, re-lowered wherever the CONSTANT was read, and `REF(loc)` in each
+/// call.
+#[rstest]
+fn a_constant_reference_names_a_global(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE PInt : REF_TO INT; END_TYPE
+
+CONFIGURATION Cfg
+VAR_GLOBAL j : INT; END_VAR
+VAR_GLOBAL CONSTANT KG : PInt := REF(j); END_VAR
+END_CONFIGURATION
+
+FUNCTION_BLOCK Motor
+VAR speed : INT; END_VAR
+VAR CONSTANT PS : PInt := REF(speed); END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION f : INT
+VAR loc : INT; END_VAR
+VAR CONSTANT PK : PInt := REF(loc); END_VAR
+VAR_EXTERNAL CONSTANT KG : PInt; END_VAR
+    f := KG^;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0401] Error: initial value is not constant
+        ,-[ file:///test0.st:11:27 ]
+        |
+     11 | VAR CONSTANT PS : PInt := REF(speed); END_VAR
+        |                           ^^^^^|^^^^
+        |                                `------ a CONSTANT is one value for every instance and every call: a REF() in it names a global
+        |
+        | Note: 'speed' is a member: each instance has its own
+    ----'
+    [E0401] Error: initial value is not constant
+        ,-[ file:///test0.st:16:27 ]
+        |
+     16 | VAR CONSTANT PK : PInt := REF(loc); END_VAR
+        |                           ^^^^|^^^
+        |                               `----- a CONSTANT is one value for every instance and every call: a REF() in it names a global
+        |
+        | Note: 'loc' belongs to the call: each call has its own
+    ----'
+    ");
 }

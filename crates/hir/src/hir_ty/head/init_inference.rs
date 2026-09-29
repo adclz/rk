@@ -98,6 +98,7 @@ impl<'db> InitInference<'db> {
                         self.errors.push(
                             crate::check::errors::e04_init::InitError::InitNotConstant {
                                 value: leaf.value,
+                                input_default: false,
                             }
                             .to_diagnostic(db, self.scope.file(db)),
                         );
@@ -107,6 +108,7 @@ impl<'db> InitInference<'db> {
         }
 
         self.check_input_defaults(db);
+        self.check_constant_references(db);
 
         for error in &self.init_expr_result.errors {
             self.errors.push(error.clone());
@@ -122,12 +124,12 @@ impl<'db> InitInference<'db> {
 impl<'db> InitInference<'db> {
     /// A FUNCTION's or METHOD's input default is what the CALLER passes for
     /// an omitted argument, before the callee's own variables exist. It is
-    /// a constant, by the test member defaults pass, and a `REF()` in it
-    /// names a global.
+    /// a constant, by the test member defaults pass, and a `REF()` in it,
+    /// or at the end of the CONSTANT chain it names, is a global's address.
     fn check_input_defaults(&mut self, db: &'db dyn WorkspaceDataBase) {
-        use crate::hir_def::expressions::expression::{
-            ExprKind, InitExprKind, PrimaryExpr, RefValue,
-        };
+        use crate::check::errors::e04_init::InitError;
+        use crate::hir_def::expressions::expression::InitExprKind;
+        use crate::hir_ty::infer::const_eval;
         if !matches!(
             get_scope(db, self.scope).kind,
             ScopeKind::Pou(Pou::Function(_)) | ScopeKind::MethodDecl(_) | ScopeKind::MethodProt(_)
@@ -142,27 +144,133 @@ impl<'db> InitInference<'db> {
             else {
                 continue;
             };
-            let refs_the_frame = match value.expr(db) {
-                ExprKind::PrimaryExpr(PrimaryExpr::RefValue {
-                    value: RefValue::Address(path),
-                }) => path
-                    .expr(db)
-                    .and_then(|path| path.flatten(db).first().map(|step| step.get_expr(db)))
-                    .and_then(|root| self.body_infer_result.variable_for_path_expr(root))
-                    .is_some_and(|decl| {
-                        decl.storage_class(db)
-                            != crate::hir_def::pous::variable::StorageClass::Global
-                    }),
-                _ => false,
+            let error = if !const_eval::init_leaf_is_constant(db, value) {
+                InitError::InitNotConstant {
+                    value,
+                    input_default: true,
+                }
+            } else if let Some(origin) = self.reference_origin(
+                db,
+                const_eval::resolve_constant_ref(db, value).unwrap_or(value),
+            ) {
+                InitError::ReferenceNotConstant {
+                    value,
+                    origin,
+                    input_default: true,
+                }
+            } else {
+                continue;
             };
-            if refs_the_frame || !crate::hir_ty::infer::const_eval::init_leaf_is_constant(db, value)
-            {
-                self.errors.push(
-                    crate::check::errors::e04_init::InitError::InitNotConstant { value }
-                        .to_diagnostic(db, self.scope.file(db)),
-                );
+            self.errors
+                .push(error.to_diagnostic(db, self.scope.file(db)));
+        }
+    }
+
+    /// A CONSTANT is one value for every instance and every call, so a
+    /// `REF()` in it is a global's address: one of a member or of a call's
+    /// own variable is a different address in each.
+    fn check_constant_references(&mut self, db: &'db dyn WorkspaceDataBase) {
+        use crate::check::errors::e04_init::InitError;
+        let Some(vars) = self.scope.variables(db) else {
+            return;
+        };
+        for var in vars {
+            if !var.qualifier(db).contains(crate::Qualifier::CONSTANT) {
+                continue;
+            }
+            let Some(init) = var.init(db) else {
+                continue;
+            };
+            let Some(leaves) = self.init_expr_result.resolved.get(&init) else {
+                continue;
+            };
+            let refused: Vec<_> = leaves
+                .iter()
+                .filter_map(|leaf| {
+                    let origin = self.reference_origin(db, leaf.value)?;
+                    Some(InitError::ReferenceNotConstant {
+                        value: leaf.value,
+                        origin,
+                        input_default: false,
+                    })
+                })
+                .collect();
+            for error in refused {
+                self.errors
+                    .push(error.to_diagnostic(db, self.scope.file(db)));
             }
         }
+    }
+
+    /// What keeps `value`, when it is a `REF()`, from being one address
+    /// everywhere: a global's, reached through fields and subscripts that
+    /// fold, is. `None` for that, and for what is not a `REF()`.
+    fn reference_origin(
+        &self,
+        db: &'db dyn WorkspaceDataBase,
+        value: crate::hir_def::expressions::expression::Expr<'db>,
+    ) -> Option<crate::check::errors::e04_init::RefOrigin<'db>> {
+        use crate::check::errors::e04_init::RefOrigin;
+        use crate::hir_def::expressions::expression::{
+            ExprKind, PathExprKind, PrimaryExpr, RefValue,
+        };
+        use crate::hir_def::pous::variable::StorageClass;
+        use crate::hir_ty::expr_store::PathExprWalkStep;
+        let ExprKind::PrimaryExpr(PrimaryExpr::RefValue {
+            value: RefValue::Address(path),
+        }) = value.expr(db)
+        else {
+            return None;
+        };
+        let Some(path) = path.expr(db) else {
+            return Some(RefOrigin::Unknown);
+        };
+        let steps = path.flatten(db);
+        let root = steps.first()?.get_expr(db);
+        // A CONSTANT's value was resolved where it is declared.
+        let scope = root.scope_id(db);
+        let decl = if scope == self.scope {
+            self.body_infer_result.variable_for_path_expr(root)
+        } else {
+            infer_initialization(db, scope)
+                .body_infer_result
+                .variable_for_path_expr(root)
+        };
+        match decl {
+            None => return Some(RefOrigin::Unknown),
+            Some(decl) if decl.storage_class(db) != StorageClass::Global => {
+                return Some(RefOrigin::Variable(decl));
+            }
+            Some(_) => {}
+        }
+        for step in steps {
+            let subscripts = match step {
+                PathExprWalkStep::Field { .. } => continue,
+                PathExprWalkStep::Deref { .. } => return Some(RefOrigin::Deref),
+                PathExprWalkStep::Index { expr } => match expr.expr(db) {
+                    PathExprKind::Index(index) => index.index,
+                    _ => return Some(RefOrigin::Unknown),
+                },
+            };
+            for sub in subscripts {
+                if crate::hir_ty::infer::const_eval::spec_bound(db, sub).is_some() {
+                    continue;
+                }
+                let part =
+                    crate::hir_ty::infer::const_eval::non_constant_part(db, sub).unwrap_or(sub);
+                return Some(match part.expr(db) {
+                    ExprKind::PrimaryExpr(PrimaryExpr::FuncCall(_)) => RefOrigin::Call,
+                    ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess(va)) => {
+                        match crate::hir_ty::infer::const_eval::spec_name_binding(db, *va) {
+                            Some(var) => RefOrigin::Variable(var),
+                            None => RefOrigin::Unknown,
+                        }
+                    }
+                    _ => RefOrigin::Unknown,
+                });
+            }
+        }
+        None
     }
 
     /// A CONFIGURATION's VAR_CONFIG values, resolved like any initializer

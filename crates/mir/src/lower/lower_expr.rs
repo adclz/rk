@@ -1408,10 +1408,20 @@ impl<'db> ExprLowerCtx<'db> {
         let array_hir_type = index_expr.path.infer(self.db);
         let base_dim = self.index_dimension(index_expr.path);
         for (k, sub) in index_expr.index.iter().enumerate() {
-            let index = self.lower_expr(*sub)?;
+            let lane = self.expr_to_mir_elementary(*sub).ok();
+            // A constant subscript folds, a named CONSTANT's as a literal's:
+            // it means the same wherever it is lowered, in the caller too for
+            // an omitted input's `REF(g[K])` default.
+            let index = match (
+                hir::hir_ty::infer::const_eval::spec_bound(self.db, *sub),
+                lane,
+            ) {
+                (Some(k), Some(lane)) if lane.is_64bit() => MirExpr::Constant(MirConstant::I64(k)),
+                (Some(k), Some(_)) => MirExpr::Constant(MirConstant::I32(k as i32)),
+                _ => self.lower_expr(*sub)?,
+            };
             let (element_type, element_size, lower_bound, dim_size) =
                 self.resolve_array_dim_info(array_hir_type, base_dim + k)?;
-            let lane = self.expr_to_mir_elementary(*sub).ok();
             let index = self.checked_index(index, lane, lower_bound, dim_size);
             place = MirPlace::Index {
                 base: Box::new(place),

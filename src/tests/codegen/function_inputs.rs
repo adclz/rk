@@ -454,3 +454,34 @@ fn fn_default_is_the_callee_constant(mut with_db: db::RootDatabase) {
     let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 0);
 }
+
+/// A `REF()` default's subscript naming a callee CONSTANT folds to it, so a
+/// caller's variable of that name does not capture it.
+#[rstest]
+fn fn_ref_default_subscript_is_the_callee_constant(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE PInt : REF_TO INT; END_TYPE
+
+        CONFIGURATION Cfg
+        VAR_GLOBAL G : ARRAY[1..3] OF INT; END_VAR
+        END_CONFIGURATION
+
+        FUNCTION pick : INT
+        VAR_INPUT p : PInt := REF(G[K + 1]); END_VAR
+        VAR CONSTANT K : INT := 1; END_VAR
+        VAR_EXTERNAL G : ARRAY[1..3] OF INT; END_VAR
+            pick := p^;
+        END_FUNCTION
+
+        FUNCTION test : INT
+        VAR K : INT := 2; END_VAR
+        VAR_EXTERNAL G : ARRAY[1..3] OF INT; END_VAR
+            G[1] := 10;
+            G[2] := 20;
+            G[3] := 30;
+            test := pick();
+        END_FUNCTION
+    "#;
+    let result: i32 = super::run(&mut with_db, source, "test", ());
+    assert_eq!(result, 20, "G[K + 1] with the callee's K = 1");
+}

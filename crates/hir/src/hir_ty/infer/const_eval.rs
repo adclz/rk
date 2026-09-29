@@ -377,6 +377,30 @@ fn is_literal_shaped<'db>(db: &'db dyn WorkspaceDataBase, expr: Expr<'db>) -> bo
     }
 }
 
+/// The first part of `expr` that keeps it from being a constant: a name
+/// that does not fold, or a call. `None` when every name and call in it is
+/// constant, or it has none.
+pub fn non_constant_part<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    expr: Expr<'db>,
+) -> Option<Expr<'db>> {
+    match expr.expr(db) {
+        ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess(_) | PrimaryExpr::FuncCall(_)) => {
+            (!init_leaf_is_constant(db, expr)).then_some(expr)
+        }
+        ExprKind::PrimaryExpr(PrimaryExpr::ParenthesizedExpr { expr })
+        | ExprKind::UnaryOperator { expr, .. } => non_constant_part(db, *expr),
+        ExprKind::AddOperator { left, right, .. }
+        | ExprKind::MultOperator { left, right, .. }
+        | ExprKind::ComparisonOperator { left, right, .. }
+        | ExprKind::BooleanOperator { left, right, .. }
+        | ExprKind::PowerOperator { left, right } => {
+            non_constant_part(db, *left).or_else(|| non_constant_part(db, *right))
+        }
+        _ => None,
+    }
+}
+
 /// The ONE acceptance test for a once-per-type initializer leaf (TYPE
 /// defaults, FB/CLASS member defaults, static-host initializers): the check
 /// refuses what this rejects, and MIR folds what it accepts — the two agree

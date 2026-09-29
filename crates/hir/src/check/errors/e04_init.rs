@@ -26,6 +26,19 @@ pub enum InitError<'db> {
     /// DROPPED: the slot read zero from source the check called clean.
     InitNotConstant {
         value: Expr<'db>,
+        /// A FUNCTION's or METHOD's input default, which the caller passes.
+        input_default: bool,
+    },
+    /// A `REF()` that is not one address everywhere, where a constant is
+    /// needed: in a FUNCTION's or METHOD's input default, directly or as a
+    /// CONSTANT's value, which the caller passes before the callee's own
+    /// variables exist; or as a CONSTANT's value, which is one for every
+    /// instance and every call. A global's, through subscripts that fold, is.
+    ReferenceNotConstant {
+        value: Expr<'db>,
+        origin: RefOrigin<'db>,
+        /// An input default, rather than a CONSTANT's value.
+        input_default: bool,
     },
     FunctionCallInInitExpression(Range),
     NoFieldOnElementaryType {
@@ -45,6 +58,19 @@ pub enum InitError<'db> {
     },
 }
 
+/// What keeps a `REF()` from being one address everywhere.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, salsa::Update)]
+pub enum RefOrigin<'db> {
+    /// It names a variable that is not a global, or a subscript does.
+    Variable(crate::hir_def::pous::variable::VariableDecl<'db>),
+    /// A subscript calls something.
+    Call,
+    /// It dereferences a reference, known only when the program runs.
+    Deref,
+    /// A name that did not resolve, reported where it stands.
+    Unknown,
+}
+
 /// A member an instance's initializer names but cannot set.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, salsa::Update)]
 pub enum UninitializableMember {
@@ -62,7 +88,7 @@ pub enum UninitializableMember {
 impl<'db> ErrorCode for InitError<'db> {
     fn code(&self) -> &'static str {
         match self {
-            Self::InitNotConstant { .. } => "E0401",
+            Self::InitNotConstant { .. } | Self::ReferenceNotConstant { .. } => "E0401",
             Self::FunctionCallInInitExpression(_) => "E0402",
             Self::NoFieldOnElementaryType { .. } => "E0403",
             Self::AssignToConstant { .. } => "E0404",
@@ -72,7 +98,9 @@ impl<'db> ErrorCode for InitError<'db> {
 
     fn description(&self) -> &'static str {
         match self {
-            Self::InitNotConstant { .. } => "initial value is not constant",
+            Self::InitNotConstant { .. } | Self::ReferenceNotConstant { .. } => {
+                "initial value is not constant"
+            }
             Self::FunctionCallInInitExpression(_) => "syntax",
             Self::NoFieldOnElementaryType { .. } => "invalid operation",
             Self::AssignToConstant { .. } => "semantic violation",
@@ -88,31 +116,53 @@ impl<'db> ToIdeDiagnostic<'db> for InitError<'db> {
         file: auto_lsp::default::db::file::File,
     ) -> IdeDiagnostic {
         match self {
-            Self::InitNotConstant { value } => {
+            Self::InitNotConstant {
+                value,
+                input_default,
+            } => {
                 let mut d = diag()
-                    .message(
+                    .message(if *input_default {
+                        "this initial value must be a constant: the caller passes it".to_string()
+                    } else {
                         "this initial value must be a constant: it is fixed before the program runs"
-                            .to_string(),
-                    )
+                            .to_string()
+                    })
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
                     .range(crate::denormalize(db, file, &value.get_span(db)).unwrap_or_default())
                     .call();
-                // A REF() is refused only as an input's default, for naming
-                // the callee's own variable.
-                if let ExprKind::PrimaryExpr(PrimaryExpr::RefValue { .. }) = value.expr(db) {
-                    d.with_note(
-                        "an input's default is passed by the caller, before the callee's \
-                         own variables exist: a REF() in it names a global"
-                            .to_string(),
-                    );
-                    return d;
+                // Say WHY, naming the part that is not constant (`a` in
+                // `a * 2`), especially when it IS a constant, just not one
+                // this scope can fold.
+                let part = const_eval::non_constant_part(db, *value).unwrap_or(*value);
+                if let ExprKind::PrimaryExpr(PrimaryExpr::FuncCall(_)) = part.expr(db) {
+                    d.with_note("a call is not a constant".to_string());
                 }
-                // Say WHY when the refused thing is a bare name — especially
-                // when it IS a constant, just not one this scope can fold.
-                if let ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess(va)) = value.expr(db) {
+                if let ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess(va)) = part.expr(db) {
                     use crate::Qualifier;
                     match const_eval::spec_name_binding(db, *va) {
+                        // The callee's own variable: nothing the caller can
+                        // read, before the call binds or creates it.
+                        Some(decl)
+                            if *input_default
+                                && decl.get_scope_id(db) == value.get_scope_id(db)
+                                && decl.storage_class(db)
+                                    != crate::hir_def::pous::variable::StorageClass::Global
+                                && !decl.qualifier(db).contains(Qualifier::CONSTANT) =>
+                        {
+                            let name = decl.name_with_case(db);
+                            d.with_note(if decl.is_input(db) {
+                                format!(
+                                    "'{}' is another input of this call: it has no value before the call binds it",
+                                    name.text(db)
+                                )
+                            } else {
+                                format!(
+                                    "'{}' belongs to the call, which has not started when the caller passes the default",
+                                    name.text(db)
+                                )
+                            });
+                        }
                         Some(decl) if decl.qualifier(db).contains(Qualifier::CONSTANT) => {
                             // Three reasons a CONSTANT still refuses, told apart
                             // so the advice is not a catch-all.
@@ -172,6 +222,57 @@ impl<'db> ToIdeDiagnostic<'db> for InitError<'db> {
                         }
                     }
                 }
+                d
+            }
+            Self::ReferenceNotConstant {
+                value,
+                origin,
+                input_default,
+            } => {
+                let mut d = diag()
+                    .message(if *input_default {
+                        "this initial value must be a constant: the caller passes it".to_string()
+                    } else {
+                        "a CONSTANT is one value for every instance and every call: \
+                         a REF() in it names a global"
+                            .to_string()
+                    })
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &value.get_span(db)).unwrap_or_default())
+                    .call();
+                let note = match origin {
+                    RefOrigin::Variable(var) => {
+                        use crate::hir_def::pous::variable::StorageClass;
+                        let name = var.name_with_case(db).text(db).to_string();
+                        match var.storage_class(db) {
+                            StorageClass::Global => format!(
+                                "'{name}' is an ordinary variable; declare it CONSTANT if its value never changes"
+                            ),
+                            StorageClass::InstanceMember => {
+                                format!("'{name}' is a member: each instance has its own")
+                            }
+                            StorageClass::Local if *input_default && var.is_input(db) => format!(
+                                "'{name}' is another input of this call: it has no value before the call binds it"
+                            ),
+                            StorageClass::Local if *input_default => format!(
+                                "'{name}' belongs to the call, which has not started when the caller passes the default"
+                            ),
+                            StorageClass::Local => {
+                                format!("'{name}' belongs to the call: each call has its own")
+                            }
+                        }
+                    }
+                    RefOrigin::Call => "a call is not a constant".to_string(),
+                    RefOrigin::Deref => {
+                        "a dereference reads what a reference holds when the program runs"
+                            .to_string()
+                    }
+                    RefOrigin::Unknown => {
+                        "a REF() in it names a global, through constant subscripts".to_string()
+                    }
+                };
+                d.with_note(note);
                 d
             }
             Self::FunctionCallInInitExpression(span) => diag()
