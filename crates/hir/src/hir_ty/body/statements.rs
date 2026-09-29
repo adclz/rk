@@ -1069,6 +1069,7 @@ fn check_string_literal_fits<'db>(
         let err = InferLiteralError::Invalid_STRING_Length {
             max: capacity,
             got: bytes.len(),
+            alias: crate::hir_ty::head::checks::variables::string_alias(db, spec),
         };
         ctx.errors.push(
             crate::check::errors::e03_type::TypeError::InferLiteralError {

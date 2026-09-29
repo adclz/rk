@@ -132,6 +132,9 @@ pub enum InferLiteralError {
     Invalid_STRING_Length {
         max: u64,
         got: usize,
+        /// The named type the capacity comes from, as written: the fix is
+        /// there, not at the variable.
+        alias: Option<String>,
     },
 
     // Inner
@@ -531,6 +534,13 @@ impl InferLiteralError {
             Invalid_DT_Format(_) => "DT is written DT#2025-01-31-12:30:00".to_string(),
             Invalid_LDT_Format(_) => "LDT is written LDT#2025-01-31-12:30:00".to_string(),
             Invalid_CHAR_Length(_) => "CHAR is one character, written 'a'".to_string(),
+            Invalid_STRING_Length {
+                got,
+                alias: Some(alias),
+                ..
+            } => format!(
+                "change '{alias}' to STRING[{got}] or use another type, or shorten the literal"
+            ),
             Invalid_STRING_Length { got, .. } => {
                 format!("declare it STRING[{got}], or shorten the literal")
             }
@@ -592,7 +602,7 @@ impl std::fmt::Display for InferLiteralError {
             InferLiteralError::Invalid_CHAR_Length(len) => {
                 return write!(f, "CHAR literal must be exactly 1 character, got {len}");
             }
-            InferLiteralError::Invalid_STRING_Length { max, got } => {
+            InferLiteralError::Invalid_STRING_Length { max, got, .. } => {
                 return write!(
                     f,
                     "STRING literal exceeds the capacity of {max} bytes, got {got}"

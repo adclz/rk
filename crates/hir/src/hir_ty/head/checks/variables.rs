@@ -683,6 +683,7 @@ impl<'db> InitInference<'db> {
             let err = InferLiteralError::Invalid_STRING_Length {
                 max: max_len,
                 got: actual_len,
+                alias: string_alias(db, spec),
             };
             let target =
                 Type::Elementary(crate::hir_def::expressions::spec::ElementarySpec::String);
@@ -696,6 +697,17 @@ impl<'db> InitInference<'db> {
                 .to_diagnostic(db, self.scope.file(db)),
             );
         }
+    }
+}
+
+/// The named type a STRING variable takes its capacity from (`s : Alias5`),
+/// as written.
+pub(crate) fn string_alias<'db>(db: &'db dyn WorkspaceDataBase, spec: Spec<'db>) -> Option<String> {
+    match (spec.kind(db), spec.infer(db)) {
+        (crate::hir_def::expressions::spec::SpecKind::Target(_), Type::DataType(dt)) => {
+            Some(dt.name_with_case(db).text(db).to_string())
+        }
+        _ => None,
     }
 }
 
