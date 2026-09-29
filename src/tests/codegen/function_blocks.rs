@@ -1749,3 +1749,34 @@ fn an_inherited_method_and_a_variable_share_a_name(mut with_db: db::RootDatabase
         "the body counted `run` twice; d.Run() ran the method"
     );
 }
+
+/// An FB instance held in a STRUCT field is called like any other instance,
+/// directly or through an array element. `h.c()` was E0808, as if `c` named
+/// the FB type.
+#[rstest]
+fn fb_in_a_struct_field_is_called(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Counter
+        VAR_OUTPUT n : INT := 10; END_VAR
+            METHOD get : INT
+                get := n;
+            END_METHOD
+            n := n + 1;
+        END_FUNCTION_BLOCK
+
+        TYPE Holder : STRUCT c : Counter; END_STRUCT; END_TYPE
+
+        FUNCTION test : INT
+        VAR h : Holder; arr : ARRAY[0..1] OF Holder; END_VAR
+            h.c();
+            h.c();
+            arr[1].c();
+            test := h.c.n * 100 + arr[1].c.get();
+        END_FUNCTION
+    "#;
+    let result: i32 = crate::tests::codegen::run(&mut with_db, source, "test", ());
+    assert_eq!(
+        result, 1211,
+        "two calls on h.c, one on arr[1].c, from n = 10"
+    );
+}

@@ -65,8 +65,9 @@ pub fn resolve_func_call<'db>(
         return;
     }
 
-    // FUNCTION_BLOCKs can only be called if they are variables
-    if !access_typ.is_variable() && target_typ.is_fb() {
+    // A FUNCTION_BLOCK is called through an instance: a variable, or a
+    // STRUCT field holding one (`h.c()`), not through its type's name.
+    if !matches!(access_typ, Type::Variable(_) | Type::StructElement(_)) && target_typ.is_fb() {
         ctx.errors.push(
             CallError::CallNonCallableType {
                 typ: target_typ,
