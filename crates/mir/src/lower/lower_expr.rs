@@ -1069,7 +1069,15 @@ impl<'db> ExprLowerCtx<'db> {
 
         // `flatten()[0]` is the innermost root step.
         let root_expr = path.flatten(self.db).first().map(|s| s.get_expr(self.db))?;
-        infer_body(self.db, path.scope_id(self.db)).variable_for_path_expr(root_expr)
+        let scope = path.scope_id(self.db);
+        infer_body(self.db, scope)
+            .variable_for_path_expr(root_expr)
+            // A path in an initializer is bound by init inference.
+            .or_else(|| {
+                hir::hir_ty::head::init_inference::infer_initialization(self.db, scope)
+                    .body_infer_result
+                    .variable_for_path_expr(root_expr)
+            })
     }
 
     /// What a dereference `r^` reads and writes. HIR types the `^` step as

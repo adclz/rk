@@ -1122,3 +1122,40 @@ END_FUNCTION
     let r: i32 = crate::tests::codegen::run(&mut with_db, source, "run", ());
     assert_eq!(r, 150, "three elements of 50");
 }
+
+/// A FUNCTION local's initializer naming a VAR_GLOBAL reads the global: the
+/// name was looked up in the body's inference only, missed, and became a
+/// local of that name, which codegen could not find.
+#[rstest]
+fn function_local_initializer_names_a_global(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION read_k : INT
+        VAR y : INT := K; END_VAR
+            read_k := y;
+        END_FUNCTION
+
+        FUNCTION read_g : INT
+        VAR y : INT := G; END_VAR
+            read_g := y;
+        END_FUNCTION
+
+        PROGRAM P
+        VAR RETAIN seen : INT; END_VAR
+            seen := read_k() * 10 + read_g();
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+        VAR_GLOBAL CONSTANT K : INT := 7; END_VAR
+        VAR_GLOBAL G : INT := 3; END_VAR
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    let mut plc = TestPlc::load(&wasm).expect("load");
+    plc.run(1).expect("scan");
+    let seen = i32::from_le_bytes(plc.read_retain()[..4].try_into().unwrap());
+    assert_eq!(seen, 73);
+}
