@@ -192,3 +192,56 @@ fn fn_struct_input_from_fb_body(mut with_db: db::RootDatabase) {
     let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 17, "struct input from an FB body: 8 + 9");
 }
+
+/// An FB instance passed as a VAR_INPUT is copied like a STRUCT: the callee
+/// reads the caller's members and its writes stay its own. It used to arrive
+/// as a garbage value, read as an address.
+#[rstest]
+fn fn_fb_instance_input(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Counter
+        VAR_OUTPUT n : INT; m : INT; END_VAR
+            n := n + 1;
+            m := m + 10;
+        END_FUNCTION_BLOCK
+
+        FUNCTION read_m : INT
+        VAR_INPUT c : Counter; END_VAR
+            read_m := c.m;
+        END_FUNCTION
+
+        FUNCTION test : INT
+        VAR k : Counter; END_VAR
+            k();
+            k();
+            test := read_m(k) * 100 + k.n;
+        END_FUNCTION
+    "#;
+    let result: i32 = super::run(&mut with_db, source, "test", ());
+    assert_eq!(result, 2002, "the callee read m = 20");
+}
+
+/// A CLASS instance, the same way.
+#[rstest]
+fn fn_class_instance_input(mut with_db: db::RootDatabase) {
+    let source = r#"
+        CLASS Box
+        VAR PUBLIC v : INT; w : INT; END_VAR
+        END_CLASS
+
+        FUNCTION read_w : INT
+        VAR_INPUT b : Box; END_VAR
+            read_w := b.w;
+            b.w := 0;
+        END_FUNCTION
+
+        FUNCTION test : INT
+        VAR b : Box; END_VAR
+            b.v := 3;
+            b.w := 4;
+            test := read_w(b) * 10 + b.w;
+        END_FUNCTION
+    "#;
+    let result: i32 = super::run(&mut with_db, source, "test", ());
+    assert_eq!(result, 44, "read w = 4; the caller's w is untouched");
+}

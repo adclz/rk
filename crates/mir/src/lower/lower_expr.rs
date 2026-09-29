@@ -2059,7 +2059,10 @@ impl<'db> ExprLowerCtx<'db> {
                         // are never aggregates.
                         let is_aggregate = matches!(
                             var.spec(self.db).infer(self.db).normalize(self.db),
-                            Type::Struct(_) | Type::Array(_)
+                            Type::Struct(_)
+                                | Type::Array(_)
+                                | Type::FunctionBlock(_)
+                                | Type::Class(_)
                         );
                         if fills_defaults && is_aggregate {
                             let var_ty = crate::lower::lower_func::lower_var_type(self.db, *var)?;
