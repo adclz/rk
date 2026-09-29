@@ -1485,78 +1485,67 @@ impl InitOwner {
     }
 }
 
-/// `place` with its `this` root replaced by `instance`: a member's `REF()`
-/// default is lowered as a method of the instance would lower it, then
-/// pointed at the instance being initialized.
-fn rebase_this_place(
-    place: crate::expr::MirPlace,
-    instance: &crate::expr::MirPlace,
-) -> crate::expr::MirPlace {
+/// `expr` with every `this` root replaced by `instance`, subscripts and
+/// call arguments included: a member's `REF()` default is lowered as a
+/// method of the instance would lower it, then pointed at the instance
+/// being initialized.
+fn rebase_this(expr: &mut crate::expr::MirExpr, instance: &crate::expr::MirPlace) {
+    use crate::expr::MirExpr;
+    match expr {
+        MirExpr::Constant(_) | MirExpr::StringLiteral { .. } => {}
+        MirExpr::Load(place, _) | MirExpr::AddrOf(place) | MirExpr::StringCapacity(place) => {
+            rebase_this_place(place, instance)
+        }
+        MirExpr::BinOp { lhs, rhs, .. } => {
+            rebase_this(lhs, instance);
+            rebase_this(rhs, instance);
+        }
+        MirExpr::UnaryOp { expr, .. } | MirExpr::Cast { expr, .. } => rebase_this(expr, instance),
+        MirExpr::CopyIntoScratch { src, .. } => rebase_this(src, instance),
+        MirExpr::Call(call) => {
+            for arg in &mut call.args {
+                rebase_this(&mut arg.value, instance);
+            }
+            for binding in &mut call.output_bindings {
+                rebase_this_place(&mut binding.target, instance);
+                rebase_this(&mut binding.value, instance);
+            }
+            for result in &mut call.extern_results {
+                if let Some(dest) = &mut result.dest {
+                    rebase_this_place(dest, instance);
+                }
+            }
+        }
+    }
+}
+
+fn rebase_this_place(place: &mut crate::expr::MirPlace, instance: &crate::expr::MirPlace) {
     use crate::expr::MirPlace;
     match place {
         MirPlace::ThisField {
             field_name,
             field_offset,
             field_type,
-        } => MirPlace::Field {
-            base: Box::new(instance.clone()),
-            field_name,
-            field_offset,
-            field_type,
-        },
-        MirPlace::Field {
-            base,
-            field_name,
-            field_offset,
-            field_type,
-        } => MirPlace::Field {
-            base: Box::new(rebase_this_place(*base, instance)),
-            field_name,
-            field_offset,
-            field_type,
-        },
-        MirPlace::Index {
-            base,
-            index,
-            element_size,
-            element_type,
-            lower_bound,
-        } => MirPlace::Index {
-            base: Box::new(rebase_this_place(*base, instance)),
-            index: Box::new(rebase_this(*index, instance)),
-            element_size,
-            element_type,
-            lower_bound,
-        },
-        MirPlace::Deref {
-            base,
-            pointee_type,
-            checked,
-            capacity,
-        } => MirPlace::Deref {
-            base: Box::new(rebase_this_place(*base, instance)),
-            pointee_type,
-            checked,
-            capacity: capacity.map(|c| Box::new(rebase_this_place(*c, instance))),
-        },
-        other => other,
-    }
-}
-
-fn rebase_this(
-    expr: crate::expr::MirExpr,
-    instance: &crate::expr::MirPlace,
-) -> crate::expr::MirExpr {
-    use crate::expr::MirExpr;
-    match expr {
-        MirExpr::AddrOf(place) => MirExpr::AddrOf(rebase_this_place(place, instance)),
-        MirExpr::Load(place, ty) => MirExpr::Load(rebase_this_place(place, instance), ty),
-        MirExpr::Cast { expr, from, to } => MirExpr::Cast {
-            expr: Box::new(rebase_this(*expr, instance)),
-            from,
-            to,
-        },
-        other => other,
+        } => {
+            *place = MirPlace::Field {
+                base: Box::new(instance.clone()),
+                field_name: *field_name,
+                field_offset: *field_offset,
+                field_type: field_type.clone(),
+            }
+        }
+        MirPlace::Field { base, .. } => rebase_this_place(base, instance),
+        MirPlace::Index { base, index, .. } => {
+            rebase_this_place(base, instance);
+            rebase_this(index, instance);
+        }
+        MirPlace::Deref { base, capacity, .. } => {
+            rebase_this_place(base, instance);
+            if let Some(capacity) = capacity {
+                rebase_this_place(capacity, instance);
+            }
+        }
+        MirPlace::Local(_) | MirPlace::Global { .. } => {}
     }
 }
 
@@ -1612,11 +1601,14 @@ fn lower_init_leaves<'db>(
             };
             found
         };
+        // The value itself, or the end of the CONSTANT chain it names.
+        let end = hir::hir_ty::infer::const_eval::resolve_constant_ref(db, leaf.value)
+            .unwrap_or(leaf.value);
         let value = match owner {
             // A member named in a REF() is the owner's.
             Some(owner)
                 if matches!(
-                    leaf.value.expr(db),
+                    end.expr(db),
                     hir::hir_def::expressions::expression::ExprKind::PrimaryExpr(
                         hir::hir_def::expressions::expression::PrimaryExpr::RefValue { .. }
                     )
@@ -1624,7 +1616,9 @@ fn lower_init_leaves<'db>(
             {
                 let ctx =
                     ExprLowerCtx::with_this_struct(db, owner.layout.clone(), string_pool.clone());
-                rebase_this(ctx.lower_leaf_value(leaf.value, &leaf_ty)?, &owner.place())
+                let mut value = ctx.lower_leaf_value(leaf.value, &leaf_ty)?;
+                rebase_this(&mut value, &owner.place());
+                value
             }
             _ => ctx.lower_leaf_value(leaf.value, &leaf_ty)?,
         };

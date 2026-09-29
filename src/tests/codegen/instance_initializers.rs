@@ -542,3 +542,130 @@ fn static_ref_defaults_are_initialized(mut with_db: db::RootDatabase) {
     let seen = i32::from_le_bytes(plc.read_retain()[..4].try_into().unwrap());
     assert_eq!(seen, 5574);
 }
+
+/// An FB input's default is the FB's constant wherever the instance is
+/// declared: it is applied once, where the instance is initialized, and not
+/// by a call, so a declarer with its own `K` or `L` does not capture it.
+#[rstest]
+fn fb_input_default_is_the_fb_constant(mut with_db: db::RootDatabase) {
+    let source = r#"
+        CONFIGURATION Cfg
+        VAR_GLOBAL CONSTANT K : INT := 7; KR : REAL := 2.5; END_VAR
+        END_CONFIGURATION
+
+        FUNCTION_BLOCK F
+        VAR_INPUT x : INT := K; y : INT := L; r : REAL := KR; END_VAR
+        VAR CONSTANT L : INT := 9; END_VAR
+        VAR_EXTERNAL CONSTANT K : INT; KR : REAL; END_VAR
+        VAR_OUTPUT ox : INT; oy : INT; orr : REAL; END_VAR
+            ox := x;
+            oy := y;
+            orr := r;
+        END_FUNCTION_BLOCK
+
+        // One bit per default that read the declarer's variable.
+        FUNCTION test : INT
+        VAR K : INT := 100; L : INT := 1000; KR : REAL := 9.0; f : F; END_VAR
+            f();
+            IF f.ox <> 7 THEN test := test + 1; END_IF;
+            IF f.oy <> 9 THEN test := test + 2; END_IF;
+            IF f.orr <> 2.5 THEN test := test + 4; END_IF;
+        END_FUNCTION
+    "#;
+    let result: i32 = run(&mut with_db, source, "test", ());
+    assert_eq!(result, 0);
+}
+
+/// A member's `REF()` default with a runtime subscript reads the subscript
+/// from its own instance too, wherever the instance is: the check wrapped
+/// around the index kept reading the host's `this`.
+#[rstest]
+fn member_ref_default_with_a_runtime_subscript(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Cell
+        VAR i : INT := 1; arr : ARRAY[0..2] OF INT := [10, 20, 30]; END_VAR
+        VAR_OUTPUT q : REF_TO INT := REF(arr[i]); END_VAR
+        END_FUNCTION_BLOCK
+
+        FUNCTION_BLOCK Host
+        VAR k : INT := 2; END_VAR
+            METHOD PUBLIC read : INT
+            VAR c : Cell; END_VAR
+                read := c.q^;
+            END_METHOD
+        END_FUNCTION_BLOCK
+
+        // One bit per host whose instance gave the wrong element.
+        FUNCTION test : INT
+        VAR i : INT := 2; c : Cell; h : Host; END_VAR
+            IF c.q^ <> 20 THEN test := test + 1; END_IF;
+            IF h.read() <> 20 THEN test := test + 2; END_IF;
+        END_FUNCTION
+    "#;
+    let result: i32 = run(&mut with_db, source, "test", ());
+    assert_eq!(result, 0);
+}
+
+/// Member `REF()` defaults in static storage, which `__init` writes: in a
+/// composed instance, an element of an array of them and a derived FB, held
+/// by a PROGRAM and by a VAR_GLOBAL.
+#[rstest]
+fn static_ref_defaults_in_composed_instances(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE PInt : REF_TO INT; END_TYPE
+
+        FUNCTION_BLOCK H
+        VAR x : INT := 5; arr : ARRAY[0..2] OF INT := [1, 2, 3]; END_VAR
+        VAR_OUTPUT p : PInt := REF(x); q : PInt := REF(arr[1]); END_VAR
+            METHOD PUBLIC get : INT
+                get := p^ * 10 + q^;
+            END_METHOD
+        END_FUNCTION_BLOCK
+
+        FUNCTION_BLOCK Derived EXTENDS H
+        VAR_OUTPUT py : PInt := REF(x); END_VAR
+        END_FUNCTION_BLOCK
+
+        FUNCTION_BLOCK Outer
+        VAR inner : H; many : ARRAY[0..1] OF H; END_VAR
+            METHOD PUBLIC set
+                inner.x := 1;
+                many[1].x := 2;
+            END_METHOD
+            METHOD PUBLIC a : INT
+                a := inner.get();
+            END_METHOD
+            METHOD PUBLIC b : INT
+                b := many[1].get();
+            END_METHOD
+        END_FUNCTION_BLOCK
+
+        // One bit per instance whose reference went elsewhere.
+        PROGRAM P
+        VAR RETAIN mask : DINT; END_VAR
+        VAR o : Outer; d : Derived; END_VAR
+        VAR_EXTERNAL go : Outer; END_VAR
+            mask := 0;
+            o.set();
+            go.set();
+            IF o.a() <> 12 THEN mask := mask + 1; END_IF;
+            IF o.b() <> 22 THEN mask := mask + 2; END_IF;
+            IF d.py^ <> 5 OR d.get() <> 52 THEN mask := mask + 4; END_IF;
+            IF go.a() <> 12 THEN mask := mask + 8; END_IF;
+            IF go.b() <> 22 THEN mask := mask + 16; END_IF;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+        VAR_GLOBAL go : Outer; END_VAR
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = crate::tests::codegen::compile_to_mir_and_wasm(&mut with_db, source);
+    let mut plc = crate::tests::codegen::TestPlc::load(&wasm).expect("load");
+    plc.run(1).expect("scan");
+    let mask = i32::from_le_bytes(plc.read_retain()[..4].try_into().unwrap());
+    assert_eq!(mask, 0);
+}
