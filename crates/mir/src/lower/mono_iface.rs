@@ -15,8 +15,7 @@ use hir::hir_def::pous::class::MethodDecl;
 use hir::hir_def::pous::function::Function;
 use hir::hir_def::pous::pou::Pou;
 use hir::hir_def::pous::variable::{VariableDecl, VariableKind};
-use hir::hir_def::scope::{ScopeId, ScopeKind};
-use hir::hir_def::semantic_index::get_scope;
+use hir::hir_def::scope::ScopeId;
 use hir::hir_ty::body::infer_body;
 use hir::hir_ty::head::inheritance::MethodRef;
 use hir::hir_ty::infer::Infer;
@@ -41,8 +40,9 @@ type CanonicalInstanceMap = FxHashMap<CanonicalKey, Ident>;
 pub enum IfaceTarget<'db> {
     Function(Function<'db>),
     Method {
-        /// The DECLARING owner (FB or Class) — for an inherited method this is
-        /// the base, matching the `Owner#method` symbol convention.
+        /// The instance type (FB or Class) the call runs on, whose copy of
+        /// the method is specialized: for an inherited method the inheritor,
+        /// where `THIS` is the inheritor, not the declaring base.
         owner: Pou<'db>,
         method: MethodDecl<'db>,
     },
@@ -77,19 +77,31 @@ pub struct IfaceInstance<'db> {
     pub call_rewrites: FxHashMap<FuncCall<'db>, Ident>,
 }
 
+/// The call rewrites of the bodies emitted on each FB or CLASS: an
+/// inherited method or a base's body is one body emitted on several
+/// instance types, and `THIS` in it, passed or called, is each of them.
+pub type OwnerRewrites<'db> = FxHashMap<Pou<'db>, IfaceCallRewrites<'db>>;
+
 /// Walk every POU body; for each call to a function with interface
 /// parameters, record the specialization it needs and the call rewrite.
 /// Seed from the generically emitted bodies, then process each
-/// specialization with its own substitution active, to fixpoint.
+/// specialization with its own substitution active, to fixpoint. Returns
+/// the specializations, the rewrites of FUNCTION and PROGRAM bodies, and
+/// those of the bodies each FB or CLASS is emitted with.
 pub fn collect_iface_instantiations<'db>(
     db: &'db dyn WorkspaceDataBase,
     all_pous: &[(&Pou<'db>, Option<String>)],
     all_programs: &[(&hir::hir_def::program::ProgramDecl<'db>, Option<String>)],
-) -> (Vec<IfaceInstance<'db>>, FxHashMap<FuncCall<'db>, Ident>) {
+) -> (
+    Vec<IfaceInstance<'db>>,
+    FxHashMap<FuncCall<'db>, Ident>,
+    OwnerRewrites<'db>,
+) {
     let mut by_canonical: CanonicalInstanceMap = FxHashMap::default();
     let mut instances: Vec<IfaceInstance<'db>> = Vec::new();
     // Rewrites for the generic bodies; specializations own theirs.
     let mut global_rewrites: FxHashMap<FuncCall<'db>, Ident> = FxHashMap::default();
+    let mut owner_rewrites: OwnerRewrites<'db> = FxHashMap::default();
     let no_subs: IfaceSubs<'db> = FxHashMap::default();
 
     // --- Seed ---
@@ -113,45 +125,33 @@ pub fn collect_iface_instantiations<'db>(
                     &mut global_rewrites,
                 );
             }
-            Pou::FunctionBlock(fb) => {
-                process_body(
-                    db,
-                    fb.scope_id(db),
-                    Some(**pou),
-                    &no_subs,
-                    &mut by_canonical,
-                    &mut instances,
-                    &mut global_rewrites,
-                );
-                for m in fb.methods(db) {
-                    // Same for interface-param methods.
-                    if m.variables(db).iter().any(is_iface_param(db)) {
-                        continue;
-                    }
-                    process_body(
-                        db,
-                        m.scope_id(db),
-                        Some(**pou),
-                        &no_subs,
-                        &mut by_canonical,
-                        &mut instances,
-                        &mut global_rewrites,
-                    );
+            // Every body the block is emitted with, `THIS` being the block:
+            // its methods, the ones it inherits, the base methods and bodies
+            // its SUPER calls reach, and its own body.
+            Pou::FunctionBlock(_) | Pou::Class(_) => {
+                let copies = super::lower_func::instance_copies(db, **pou);
+                let mut scopes: Vec<ScopeId<'db>> = copies
+                    .methods
+                    .iter()
+                    // Interface-param methods are emitted only as
+                    // specializations; the worklist walks them.
+                    .filter(|m| !m.variables(db).iter().any(is_iface_param(db)))
+                    .map(|m| m.scope_id(db))
+                    .collect();
+                if let Pou::FunctionBlock(fb) = pou {
+                    scopes.push(fb.scope_id(db));
                 }
-            }
-            Pou::Class(c) => {
-                for m in c.methods(db) {
-                    if m.variables(db).iter().any(is_iface_param(db)) {
-                        continue;
-                    }
+                scopes.extend(copies.bodies.iter().map(|b| b.scope_id(db)));
+                let rewrites = owner_rewrites.entry(**pou).or_default();
+                for scope in scopes {
                     process_body(
                         db,
-                        m.scope_id(db),
+                        scope,
                         Some(**pou),
                         &no_subs,
                         &mut by_canonical,
                         &mut instances,
-                        &mut global_rewrites,
+                        rewrites,
                     );
                 }
             }
@@ -197,7 +197,7 @@ pub fn collect_iface_instantiations<'db>(
         i += 1;
     }
 
-    (instances, global_rewrites)
+    (instances, global_rewrites, owner_rewrites)
 }
 
 /// Collect and process every call in one body under the active
@@ -259,17 +259,9 @@ fn process_call<'db>(
         Type::CallableType(CallableType::Function(f)) => IfaceTarget::Function(f),
         Type::MethodDecl(MethodRef::Declared(md))
         | Type::CallableType(CallableType::MethodDecl(MethodRef::Declared(md))) => {
-            // The declaring owner, the POU the `Owner#method` symbol is registered
-            // under.
-            let parent = match get_scope(db, md.scope_id(db)).parent {
-                Some(p) => p,
+            match method_target(db, fc, md, body, self_pou) {
+                Some(target) => target,
                 None => return,
-            };
-            match get_scope(db, parent).kind {
-                ScopeKind::Pou(owner @ (Pou::FunctionBlock(_) | Pou::Class(_))) => {
-                    IfaceTarget::Method { owner, method: md }
-                }
-                _ => return,
             }
         }
         _ => return,
@@ -290,6 +282,14 @@ fn process_call<'db>(
         let Some(param) = body.variable_of_param.get(pa).copied() else {
             continue;
         };
+        // The parameter of the method that runs: HIR bound the argument to the
+        // method it checked the call against, and an override running in its
+        // place declares its own, of the same name.
+        let param = callee_vars
+            .iter()
+            .find(|v| v.name(db) == param.name(db))
+            .copied()
+            .unwrap_or(param);
         if !is_iface_param(db)(&param) {
             continue;
         }
@@ -325,15 +325,7 @@ fn process_call<'db>(
     let base = match &target {
         IfaceTarget::Function(f) => super::naming::mir_function_symbol(db, *f),
         IfaceTarget::Method { owner, method } => {
-            let owner_q = qualified_pou_ident(db, Type::new_pou(db, *owner));
-            Ident::new(
-                db,
-                compact_str::CompactString::from(format!(
-                    "{}#{}",
-                    owner_q.text(db),
-                    method.name_with_case(db).text(db)
-                )),
-            )
+            super::naming::method_copy_symbol(db, *owner, *method)
         }
     };
     let mut sorted: Vec<(Ident, Pou<'db>)> =
@@ -366,6 +358,51 @@ fn process_call<'db>(
         }
     };
     out_rewrites.insert(fc, mangled);
+}
+
+/// The method a call runs, and the instance type whose copy of it runs:
+/// `THIS.m()` and a bare `m()` the one this body's instance answers to,
+/// `SUPER.m()` the base's copy on this instance, `inst.m()` and
+/// `THIS.inner.m()` the method of the member's type, after indexing and
+/// dereferencing.
+fn method_target<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    fc: FuncCall<'db>,
+    resolved: MethodDecl<'db>,
+    body: &hir::hir_ty::body::BodyInferenceResult<'db>,
+    self_pou: Option<Pou<'db>>,
+) -> Option<IfaceTarget<'db>> {
+    use hir::hir_def::expressions::expression::PathExprKind;
+    let path = fc.path(db);
+    let member = match path.expr(db).map(|pe| pe.expr(db)) {
+        Some(PathExprKind::Field(fe)) => Some(fe.path),
+        _ => None,
+    };
+    let invocation = path.invocation(db).map(|i| i.kind(db));
+    match (member, invocation) {
+        // `inst.m()`, `THIS.inner.m()`: HIR resolved the member type's method.
+        (Some(receiver), _) => {
+            let owner = concrete_pou_of(db, body.type_of_path_expr_with_adjustments(receiver))?;
+            Some(IfaceTarget::Method {
+                owner,
+                method: resolved,
+            })
+        }
+        // `SUPER.m()`: the base's method, on this instance.
+        (None, Some(InvocationKind::Super)) => Some(IfaceTarget::Method {
+            owner: self_pou?,
+            method: resolved,
+        }),
+        // `THIS.m()` and a bare `m()`: the method this instance answers to,
+        // an override where the body is inherited code.
+        _ => {
+            let owner = self_pou?;
+            let method =
+                hir::hir_ty::head::inheritance::implementing_method(db, owner, resolved.name(db))
+                    .unwrap_or(resolved);
+            Some(IfaceTarget::Method { owner, method })
+        }
+    }
 }
 
 /// A `VAR_INPUT` / `VAR_IN_OUT` param whose direct type is an interface

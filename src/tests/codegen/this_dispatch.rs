@@ -119,6 +119,52 @@ fn an_interface_call_runs_the_implementers_copy(mut with_db: db::RootDatabase) {
     );
 }
 
+/// A method with an interface parameter is specialized on the instance it
+/// runs on: inherited, it binds `THIS` to the inheritor (a), passes the
+/// inheritor as `THIS` (b), and `THIS.Use()` from inherited code reaches an
+/// inheritor's override (c).
+#[rstest]
+fn an_interface_param_method_is_specialized_per_inheritor(mut with_db: db::RootDatabase) {
+    let source = r#"
+        INTERFACE IShow METHOD Show : INT END_METHOD END_INTERFACE
+        FUNCTION_BLOCK Pump IMPLEMENTS IShow
+            METHOD PUBLIC Show : INT Show := 7; END_METHOD
+        END_FUNCTION_BLOCK
+        FUNCTION Ask : INT VAR_IN_OUT s : IShow; END_VAR Ask := s.Show(); END_FUNCTION
+
+        FUNCTION_BLOCK Base IMPLEMENTS IShow
+            METHOD PUBLIC Hook : INT Hook := 1; END_METHOD
+            METHOD PUBLIC Show : INT Show := 1; END_METHOD
+            METHOD PUBLIC Use : INT
+            VAR_IN_OUT dev : IShow; END_VAR
+                Use := dev.Show() * 10 + THIS.Hook();
+            END_METHOD
+            METHOD PUBLIC Report : INT Report := Ask(s := THIS); END_METHOD
+            METHOD PUBLIC Run : INT
+            VAR p : Pump; END_VAR
+                Run := THIS.Use(dev := p);
+            END_METHOD
+        END_FUNCTION_BLOCK
+        FUNCTION_BLOCK Derived EXTENDS Base IMPLEMENTS IShow
+            METHOD PUBLIC OVERRIDE Hook : INT Hook := 2; END_METHOD
+            METHOD PUBLIC OVERRIDE Show : INT Show := 2; END_METHOD
+        END_FUNCTION_BLOCK
+        FUNCTION_BLOCK Derived2 EXTENDS Base
+            METHOD PUBLIC OVERRIDE Use : INT
+            VAR_IN_OUT dev : IShow; END_VAR
+                Use := dev.Show() + 1000;
+            END_METHOD
+        END_FUNCTION_BLOCK
+
+        FUNCTION test : BOOL
+        VAR p : Pump; d : Derived; d2 : Derived2; END_VAR
+            test := d.Use(dev := p) = 72 AND d.Report() = 2 AND d2.Run() = 1007;
+        END_FUNCTION
+    "#;
+    let result: i32 = run(&mut with_db, source, "test", ());
+    assert_eq!(result, 1, "(a) 72, (b) 2, (c) 1007");
+}
+
 /// `THIS.inner.m()` calls the member's method on the member; only
 /// `THIS.m()` runs on the current instance.
 #[rstest]

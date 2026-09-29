@@ -166,8 +166,9 @@ fn lower_module_from_pous<'db>(
     // Phase B: interface-parameter monomorphization. Function specializations
     // emit at module level, method specializations with their declaring
     // owner's method set.
-    let (iface_instances, iface_call_rewrites) =
+    let (iface_instances, iface_call_rewrites, owner_rewrites) =
         super::mono_iface::collect_iface_instantiations(db, all_pous, all_programs);
+    let no_rewrites = super::mono_iface::IfaceCallRewrites::default();
 
     // Phase C: one specialization per (variadic function, argument count)
     // called; call sites re-read the resolution in `variadic_arity_of`.
@@ -382,7 +383,9 @@ fn lower_module_from_pous<'db>(
                     next_fn_idx,
                     &mut memory_layout,
                     string_pool.clone(),
-                    &iface_call_rewrites,
+                    owner_rewrites
+                        .get(&Pou::FunctionBlock(*fb))
+                        .unwrap_or(&no_rewrites),
                     iface_methods_by_owner
                         .get(&Pou::FunctionBlock(*fb))
                         .map(Vec::as_slice)
@@ -443,7 +446,9 @@ fn lower_module_from_pous<'db>(
                     next_fn_idx,
                     &mut memory_layout,
                     string_pool.clone(),
-                    &iface_call_rewrites,
+                    owner_rewrites
+                        .get(&Pou::Class(*class))
+                        .unwrap_or(&no_rewrites),
                     iface_methods_by_owner
                         .get(&Pou::Class(*class))
                         .map(Vec::as_slice)
