@@ -882,3 +882,40 @@ END_FUNCTION
     ----'
     ");
 }
+
+/// REAL arithmetic over literals and CONSTANTs is a constant wherever one is
+/// needed; over an ordinary variable it is not.
+#[rstest]
+fn real_arithmetic_is_a_constant(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE R6 : REAL := 2.0 * 3.0; END_TYPE
+
+CONFIGURATION Cfg
+VAR_GLOBAL CONSTANT GK : LREAL := 1.0; END_VAR
+VAR_GLOBAL third : LREAL := GK / 3.0; G : REAL; END_VAR
+END_CONFIGURATION
+
+FUNCTION_BLOCK B
+VAR CONSTANT KR : REAL := 2.5; END_VAR
+VAR r : REAL := -(KR + 0.5) * 2.0; bad : REAL := G * 2.0; END_VAR
+VAR_EXTERNAL G : REAL; END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION f : REAL
+VAR_INPUT x : REAL := KR / 4.0; END_VAR
+VAR CONSTANT KR : REAL := 1.0; END_VAR
+    f := x;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0401] Error: initial value is not constant
+        ,-[ file:///test0.st:11:50 ]
+        |
+     11 | VAR r : REAL := -(KR + 0.5) * 2.0; bad : REAL := G * 2.0; END_VAR
+        |                                                  ^^^|^^^
+        |                                                     `----- this initial value must be a constant: it is fixed before the program runs
+        |
+        | Note: 'G' is an ordinary variable; declare it CONSTANT if its value never changes
+    ----'
+    ");
+}

@@ -692,3 +692,53 @@ fn static_ref_defaults_in_composed_instances(mut with_db: db::RootDatabase) {
     let mask = i32::from_le_bytes(plc.read_retain()[..4].try_into().unwrap());
     assert_eq!(mask, 0);
 }
+
+/// REAL arithmetic over literals and CONSTANTs is a constant, lowered as the
+/// program computes it: a REAL sum rounds in 32 bits and an LREAL one in 64,
+/// the same as at run time, and a CONSTANT is its own value, so a caller's
+/// variable of that name does not capture an input's default.
+#[rstest]
+fn real_constant_arithmetic_folds(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE R6 : REAL := 2.0 * 3.0; END_TYPE
+
+        FUNCTION_BLOCK B
+        VAR CONSTANT KR : REAL := 2.5; K2 : REAL := KR * 2.0; KL : LREAL := 0.1; END_VAR
+        VAR_OUTPUT
+            r1 : REAL := 1.5 * 2.0;
+            r2 : REAL := 0.1 + 0.2;
+            l2 : LREAL := LREAL#0.1 + LREAL#0.2;
+            r3 : REAL := K2 + 1.0;
+            r4 : REAL := KR * 2;
+            r5 : REAL := -(KR + 0.5);
+            l3 : LREAL := KL * 3.0;
+        END_VAR
+        END_FUNCTION_BLOCK
+
+        FUNCTION f : REAL
+        VAR_INPUT x : REAL := KR * 2.0; END_VAR
+        VAR CONSTANT KR : REAL := 1.25; END_VAR
+            f := x;
+        END_FUNCTION
+
+        // One bit per value that differs from what the program computes.
+        FUNCTION test : INT
+        VAR
+            b : B; t : R6; KR : REAL := 100.0;
+            x : REAL := 0.1; y : REAL := 0.2;
+            lx : LREAL := 0.1; ly : LREAL := 0.2;
+        END_VAR
+            IF b.r1 <> 3.0 THEN test := test + 1; END_IF;
+            IF b.r2 <> x + y THEN test := test + 2; END_IF;
+            IF b.l2 <> lx + ly THEN test := test + 4; END_IF;
+            IF b.r3 <> 6.0 THEN test := test + 8; END_IF;
+            IF b.r4 <> 5.0 THEN test := test + 16; END_IF;
+            IF b.r5 <> -3.0 THEN test := test + 32; END_IF;
+            IF b.l3 <> lx * 3.0 THEN test := test + 64; END_IF;
+            IF f() <> 2.5 THEN test := test + 128; END_IF;
+            IF t <> 6.0 THEN test := test + 256; END_IF;
+        END_FUNCTION
+    "#;
+    let result: i32 = run(&mut with_db, source, "test", ());
+    assert_eq!(result, 0);
+}

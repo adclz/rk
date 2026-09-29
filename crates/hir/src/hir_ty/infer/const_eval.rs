@@ -203,7 +203,7 @@ fn const_int_in_spec<'db>(
 /// callable from anywhere, a diagnostic message being rendered inside
 /// `infer_initialization` included. A namespaced or otherwise non-bare name
 /// yields `None` and the bound is refused as non-constant.
-pub(crate) fn spec_name_binding<'db>(
+pub fn spec_name_binding<'db>(
     db: &'db dyn WorkspaceDataBase,
     va: crate::hir_def::expressions::expression::VariableAccess<'db>,
 ) -> Option<crate::hir_def::pous::variable::VariableDecl<'db>> {
@@ -377,6 +377,72 @@ fn is_literal_shaped<'db>(db: &'db dyn WorkspaceDataBase, expr: Expr<'db>) -> bo
     }
 }
 
+/// Whether `expr` is REAL arithmetic that folds: `+ - * / MOD **`, a sign
+/// and parentheses over number literals and CONSTANTs that fold, with a REAL
+/// or LREAL literal or CONSTANT in it (`1.5 * 2.0`, `KR / 4`). Integer
+/// arithmetic is [`spec_bound`]'s. The compiler lowers it as the program
+/// would compute it, at the expression's own type, each CONSTANT replaced
+/// by its value.
+pub fn real_folds<'db>(db: &'db dyn WorkspaceDataBase, expr: Expr<'db>) -> bool {
+    let mut real = false;
+    real_folds_guarded(db, expr, &mut Vec::new(), &mut real) && real
+}
+
+fn real_folds_guarded<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    expr: Expr<'db>,
+    visited: &mut Vec<VariableDecl<'db>>,
+    real: &mut bool,
+) -> bool {
+    use crate::hir_def::expressions::expression::{Elementary, UnaryOperatorKind};
+    use crate::hir_def::expressions::spec::ElementarySpec;
+    use crate::hir_ty::infer::Infer;
+    match expr.expr(db) {
+        ExprKind::PrimaryExpr(PrimaryExpr::Literal(literal)) => match literal {
+            Elementary::Real(_) | Elementary::LReal(_) | Elementary::InferFloat(_) => {
+                *real = true;
+                true
+            }
+            _ => expr.as_const_int(db).is_some(),
+        },
+        ExprKind::PrimaryExpr(PrimaryExpr::ParenthesizedExpr { expr }) => {
+            real_folds_guarded(db, *expr, visited, real)
+        }
+        ExprKind::UnaryOperator {
+            expr,
+            operator: UnaryOperatorKind::Minus | UnaryOperatorKind::Plus,
+        } => real_folds_guarded(db, *expr, visited, real),
+        ExprKind::AddOperator { left, right, .. }
+        | ExprKind::MultOperator { left, right, .. }
+        | ExprKind::PowerOperator { left, right } => {
+            real_folds_guarded(db, *left, visited, real)
+                && real_folds_guarded(db, *right, visited, real)
+        }
+        ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess(va)) => {
+            let Some(decl) = spec_name_binding(db, *va) else {
+                return false;
+            };
+            if visited.contains(&decl) {
+                return false;
+            }
+            let Some(init) = constant_init(db, decl) else {
+                return false;
+            };
+            if matches!(
+                decl.spec(db).infer(db).normalize(db),
+                Type::Elementary(ElementarySpec::Real | ElementarySpec::LReal)
+            ) {
+                *real = true;
+            }
+            visited.push(decl);
+            let folds = real_folds_guarded(db, init, visited, real);
+            visited.pop();
+            folds
+        }
+        _ => false,
+    }
+}
+
 /// The first part of `expr` that keeps it from being a constant: a name
 /// that does not fold, or a call. `None` when every name and call in it is
 /// constant, or it has none.
@@ -407,10 +473,10 @@ pub fn non_constant_part<'db>(
 /// BY CONSTRUCTION because they both call this.
 ///
 /// Accepted: anything [`spec_bound`] folds (integer arithmetic over literals
-/// and CONSTANTs), any literal-shaped value, and a pure CONSTANT-reference
-/// chain ending in one.
+/// and CONSTANTs), REAL arithmetic [`real_folds`] accepts, any
+/// literal-shaped value, and a pure CONSTANT-reference chain ending in one.
 pub fn init_leaf_is_constant<'db>(db: &'db dyn WorkspaceDataBase, expr: Expr<'db>) -> bool {
-    if spec_bound(db, expr).is_some() || is_literal_shaped(db, expr) {
+    if spec_bound(db, expr).is_some() || is_literal_shaped(db, expr) || real_folds(db, expr) {
         return true;
     }
     matches!(resolve_constant_ref(db, expr), Some(end) if is_literal_shaped(db, end))

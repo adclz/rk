@@ -56,6 +56,10 @@ pub struct ExprLowerCtx<'db> {
     /// the statement loop after each statement, so a nested body keeps its
     /// own in place.
     pub after_stmt: std::cell::RefCell<Vec<crate::stmt::MirStmt>>,
+    /// Set while a constant is lowered (`lower_leaf_value`): a CONSTANT it
+    /// names is its value, lowered where it is declared, which means the same
+    /// in any frame, the caller's for an omitted input's default.
+    pub fold_constants: std::cell::Cell<bool>,
     /// The POU this body is emitted for, which for an inherited method is the
     /// inheritor: `THIS.m()` inside it must reach the inheritor's `m`.
     pub this_pou: Option<hir::hir_def::pous::pou::Pou<'db>>,
@@ -128,6 +132,7 @@ impl<'db> ExprLowerCtx<'db> {
             call_scratch: Default::default(),
             after_stmt: Default::default(),
             this_pou: None,
+            fold_constants: Default::default(),
         }
     }
 
@@ -146,6 +151,7 @@ impl<'db> ExprLowerCtx<'db> {
             call_scratch: Default::default(),
             after_stmt: Default::default(),
             this_pou: None,
+            fold_constants: Default::default(),
         }
     }
 
@@ -579,6 +585,14 @@ impl<'db> ExprLowerCtx<'db> {
             PrimaryExpr::Literal(elem) => self.lower_literal(elem, parent_expr),
 
             PrimaryExpr::VariableAccess(var_access) => {
+                if self.fold_constants.get()
+                    && let Some(decl) =
+                        hir::hir_ty::infer::const_eval::spec_name_binding(self.db, *var_access)
+                    && let Some(init) = hir::hir_ty::infer::const_eval::constant_init(self.db, decl)
+                {
+                    let ty = crate::lower::lower_func::lower_var_type(self.db, decl)?;
+                    return self.lower_leaf_value(init, &ty);
+                }
                 // `%IX0.3` beside a `%IW0` is bits of that word's cell.
                 if let Some(view) = self.view(*var_access, parent_expr.infer(self.db))? {
                     return Ok(view.read());
@@ -2845,6 +2859,11 @@ impl<'db> ExprLowerCtx<'db> {
             }
         } else if let Some(end) = const_eval::resolve_constant_ref(self.db, value) {
             self.lower_expr(end)?
+        } else if const_eval::real_folds(self.db, value) {
+            let folding = self.fold_constants.replace(true);
+            let lowered = self.lower_expr(value);
+            self.fold_constants.set(folding);
+            lowered?
         } else {
             self.lower_expr(value)?
         };
