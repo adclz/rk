@@ -910,7 +910,7 @@ fn lower_module_from_pous<'db>(
             db,
             compact_str::CompactString::from("__init"),
         );
-        module.functions.push(crate::function::MirFunction {
+        let mut init = crate::function::MirFunction {
             name,
             origin_name,
             index: idx,
@@ -921,7 +921,10 @@ fn lower_module_from_pous<'db>(
             linkage: crate::function::MirLinkage::Export,
             is_test: false,
             export_name: Some(compact_str::CompactString::from("__init")),
-        });
+        };
+        // A REF() initializer names a global by name, like a body does.
+        resolve_global_places(db, &mut init, &global_table)?;
+        module.functions.push(init);
         register_symbol(db, &mut module.function_indices, name, idx)?;
     }
 

@@ -507,3 +507,38 @@ fn member_ref_default_points_into_its_instance(mut with_db: db::RootDatabase) {
     let result: i32 = run(&mut with_db, source, "test", ());
     assert_eq!(result, 0);
 }
+
+/// The same in static storage, which `__init` initializes: an instance held
+/// by a PROGRAM and one that is a VAR_GLOBAL; and a VAR_GLOBAL's own `REF()`
+/// initial value, which `__init` dropped.
+#[rstest]
+fn static_ref_defaults_are_initialized(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE PInt : REF_TO INT; END_TYPE
+
+        FUNCTION_BLOCK H
+        VAR x : INT := 5; END_VAR
+        VAR_OUTPUT p : PInt := REF(x); END_VAR
+        END_FUNCTION_BLOCK
+
+        PROGRAM P
+        VAR RETAIN seen : INT; END_VAR
+        VAR h : H; n : INT := 4; pn : PInt := REF(n); END_VAR
+        VAR_EXTERNAL gh : H; r : PInt; END_VAR
+            seen := h.p^ * 1000 + gh.p^ * 100 + r^ * 10 + pn^;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+        VAR_GLOBAL gh : H; g : INT := 7; r : PInt := REF(g); END_VAR
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = crate::tests::codegen::compile_to_mir_and_wasm(&mut with_db, source);
+    let mut plc = crate::tests::codegen::TestPlc::load(&wasm).expect("load");
+    plc.run(1).expect("scan");
+    let seen = i32::from_le_bytes(plc.read_retain()[..4].try_into().unwrap());
+    assert_eq!(seen, 5574);
+}

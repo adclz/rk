@@ -303,6 +303,19 @@ impl<'db> Resolver<'db> {
                         ),
                     }
                     ctx.type_of_path_expr.insert(path, Type::new_pou(db, pou));
+                } else if path_expr.invocation(db).is_none()
+                    && let Some(path) = path_expr.expr(db)
+                    && let [PathExprWalkStep::Field { ident, .. }] = path.flatten(db).as_slice()
+                    && let Some(global) =
+                        crate::hir_ty::index_graphs::external_var_lookup(db, ident.ident(db))
+                {
+                    // A VAR_GLOBAL, which a `REF()` in another's initial value
+                    // names (`r : REF_TO INT := REF(g)`): its address is known
+                    // before the program runs.
+                    let ty = Type::Variable((global, None));
+                    ctx.type_of_path_expr.insert(path, ty);
+                    ctx.variable_of_path_expr.insert(path, global);
+                    ctx.variables_used.insert(global);
                 }
             }
         };
