@@ -80,7 +80,15 @@ impl<'db> Infer<'db> for VariableAccess<'db> {
 
 impl<'db> Infer<'db> for BeginPathExpr<'db> {
     fn infer(&self, db: &'db dyn WorkspaceDataBase) -> Type<'db> {
-        infer_body(db, self.get_scope_id(db)).get_type_of_begin_path_expr(db, *self)
+        let body = infer_body(db, self.get_scope_id(db)).get_type_of_begin_path_expr(db, *self);
+        if body.is_never() {
+            // A path in an initializer (`y : INT := THIS.m()`).
+            infer_initialization(db, self.get_scope_id(db))
+                .body_infer_result
+                .get_type_of_begin_path_expr(db, *self)
+        } else {
+            body
+        }
     }
 }
 

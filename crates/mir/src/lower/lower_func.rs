@@ -23,7 +23,6 @@ use crate::{
     },
     lower::{
         lower_expr::ExprLowerCtx,
-        lower_stmt::lower_stmts,
         lower_type::{LowerTypeError, lower_type},
     },
     memory::{MirAllocKind, MirMemoryLayout},
@@ -369,6 +368,19 @@ fn lower_function_inner<'db>(
         });
     }
 
+    // The context the body lowers in; a local's own initializer, written in
+    // the same declarations, lowers in it too. Interface specialization
+    // threads `iface_subs` and `iface_call_rewrites` into it.
+    let ctx = crate::lower::lower_stmt::body_ctx(
+        db,
+        None,
+        None,
+        string_pool.clone(),
+        iface_subs,
+        iface_call_rewrites,
+        variadic_expansion.clone(),
+    );
+
     // 4. Starting values: the shadowed inputs, the result's type defaults,
     // then every local's.
     let mut init_stmts = entry_copies;
@@ -381,31 +393,12 @@ fn lower_function_inner<'db>(
             &string_pool,
         )?);
     }
-    init_stmts.extend(lower_local_init_stmts(
-        db,
-        func.variables(db),
-        &string_pool,
-    )?);
+    init_stmts.extend(lower_local_init_stmts(db, func.variables(db), &ctx)?);
 
-    // 5. Body statements. Interface specialization threads `iface_subs` and
-    // `iface_call_rewrites` into the body.
-    let needs_full_ctx = iface_subs.is_some_and(|m| !m.is_empty())
-        || !iface_call_rewrites.is_empty()
-        || variadic_expansion.is_some();
-    let (mut body, call_scratch) = if !needs_full_ctx {
-        lower_stmts(db, func.statements(db), string_pool.clone())?
-    } else {
-        crate::lower::lower_stmt::lower_stmts_with_ctx(
-            db,
-            func.statements(db),
-            iface_subs,
-            iface_call_rewrites,
-            string_pool.clone(),
-            variadic_expansion.clone(),
-        )?
-    };
+    // 5. Body statements.
+    let mut body = crate::lower::lower_stmt::lower_body(&ctx, func.statements(db))?;
     append_call_scratch_locals(
-        call_scratch,
+        ctx.call_scratch.take(),
         &mut locals,
         &mut next_local_idx,
         memory_layout,
@@ -590,21 +583,16 @@ fn lower_function_block_inner<'db>(
             Some(inst) => (Some(&inst.iface_subs), &inst.call_rewrites),
             None => (None, iface_call_rewrites),
         };
-        let (mut body, call_scratch) = crate::lower::lower_stmt::lower_stmts_fb_body(
+        let ctx = crate::lower::lower_stmt::body_ctx(
             db,
-            method.stmts(db),
-            this_struct,
+            Some(this_struct),
             Some(hir::hir_def::pous::pou::Pou::FunctionBlock(fb)),
             string_pool.clone(),
             body_subs,
             body_rewrites,
-        )?;
-        append_call_scratch_locals(
-            call_scratch,
-            &mut locals,
-            &mut next_local_idx,
-            memory_layout,
+            None,
         );
+        let mut body = crate::lower::lower_stmt::lower_body(&ctx, method.stmts(db))?;
 
         // A method's result and locals are per call: their starting values
         // are stores at entry.
@@ -618,11 +606,13 @@ fn lower_function_block_inner<'db>(
                 &string_pool,
             )?);
         }
-        init_stmts.extend(lower_local_init_stmts(
-            db,
-            method.variables(db),
-            &string_pool,
-        )?);
+        init_stmts.extend(lower_local_init_stmts(db, method.variables(db), &ctx)?);
+        append_call_scratch_locals(
+            ctx.call_scratch.take(),
+            &mut locals,
+            &mut next_local_idx,
+            memory_layout,
+        );
         if !init_stmts.is_empty() {
             init_stmts.append(&mut body);
             body = init_stmts;
@@ -911,21 +901,16 @@ fn lower_class_inner<'db>(
             Some(inst) => (Some(&inst.iface_subs), &inst.call_rewrites),
             None => (None, iface_call_rewrites),
         };
-        let (mut body, call_scratch) = crate::lower::lower_stmt::lower_stmts_fb_body(
+        let ctx = crate::lower::lower_stmt::body_ctx(
             db,
-            method.stmts(db),
-            this_struct,
+            Some(this_struct),
             Some(hir::hir_def::pous::pou::Pou::Class(class)),
             string_pool.clone(),
             body_subs,
             body_rewrites,
-        )?;
-        append_call_scratch_locals(
-            call_scratch,
-            &mut locals,
-            &mut next_local_idx,
-            memory_layout,
+            None,
         );
+        let mut body = crate::lower::lower_stmt::lower_body(&ctx, method.stmts(db))?;
 
         // A method's result and locals are per call: their starting values
         // are stores at entry.
@@ -939,11 +924,13 @@ fn lower_class_inner<'db>(
                 &string_pool,
             )?);
         }
-        init_stmts.extend(lower_local_init_stmts(
-            db,
-            method.variables(db),
-            &string_pool,
-        )?);
+        init_stmts.extend(lower_local_init_stmts(db, method.variables(db), &ctx)?);
+        append_call_scratch_locals(
+            ctx.call_scratch.take(),
+            &mut locals,
+            &mut next_local_idx,
+            memory_layout,
+        );
         if !init_stmts.is_empty() {
             init_stmts.append(&mut body);
             body = init_stmts;
@@ -1347,8 +1334,11 @@ fn collect_address_taken_vars<'db>(
 fn lower_local_init_stmts<'db>(
     db: &'db dyn WorkspaceDataBase,
     vars: &[hir::hir_def::pous::variable::VariableDecl<'db>],
-    string_pool: &Rc<RefCell<super::lower_expr::StringPool>>,
+    // The context the body lowers in, where a declaration's own initializer
+    // lowers too.
+    body: &ExprLowerCtx<'db>,
 ) -> Result<Vec<MirStmt>, LowerTypeError> {
+    let string_pool = &body.string_pool;
     let mut init_stmts = Vec::new();
     for var in vars {
         match var.kind(db) {
@@ -1369,14 +1359,7 @@ fn lower_local_init_stmts<'db>(
             &mut init_stmts,
         )?;
         if let Some(init_expr) = var.init(db) {
-            lower_var_init(
-                db,
-                var.name(db),
-                &var_ty,
-                init_expr,
-                string_pool,
-                &mut init_stmts,
-            )?;
+            lower_var_init(db, var.name(db), &var_ty, init_expr, body, &mut init_stmts)?;
         }
     }
     Ok(init_stmts)
@@ -1420,7 +1403,9 @@ fn with_temp_inits<'db>(
         .filter(|v| v.kind(db) == VariableKind::Temp)
         .copied()
         .collect();
-    let mut stmts = lower_local_init_stmts(db, &temps, string_pool)?;
+    // A VAR_TEMP has no initializer of its own (E0004), only its type's.
+    let mut stmts =
+        lower_local_init_stmts(db, &temps, &ExprLowerCtx::new(db, string_pool.clone()))?;
     stmts.extend(body);
     Ok(stmts)
 }
@@ -1439,7 +1424,7 @@ fn lower_var_init<'db>(
     var_name: Ident,
     var_ty: &crate::types::MirType,
     init_expr: hir::hir_def::expressions::expression::InitExpr<'db>,
-    string_pool: &Rc<RefCell<super::lower_expr::StringPool>>,
+    body: &ExprLowerCtx<'db>,
     out: &mut Vec<MirStmt>,
 ) -> Result<(), LowerTypeError> {
     lower_init_leaves(
@@ -1452,7 +1437,8 @@ fn lower_var_init<'db>(
         var_ty,
         init_expr,
         None,
-        string_pool,
+        Some(body),
+        &body.string_pool,
         out,
     )
 }
@@ -1590,12 +1576,16 @@ impl InitTarget {
 /// Lower one initializer's resolved leaves into `out` at `target`;
 /// `infer_initialization` already flattened and validated them. `owner` is
 /// the instance a member's initializer is part of.
+#[allow(clippy::too_many_arguments)]
 fn lower_init_leaves<'db>(
     db: &'db dyn WorkspaceDataBase,
     target: InitTarget,
     ty: &crate::types::MirType,
     init: hir::hir_def::expressions::expression::InitExpr<'db>,
     owner: Option<&InitOwner>,
+    // The body's context, for a local's own initializer; a type's or a
+    // static host's leaves are constants, which need none.
+    body: Option<&ExprLowerCtx<'db>>,
     string_pool: &Rc<RefCell<super::lower_expr::StringPool>>,
     out: &mut Vec<MirStmt>,
 ) -> Result<(), LowerTypeError> {
@@ -1605,8 +1595,15 @@ fn lower_init_leaves<'db>(
     let Some(leaves) = inference.init_expr_result.resolved.get(&init) else {
         return Ok(()); // HIR produced no resolved leaves (non-flattenable init)
     };
+    let fresh;
+    let ctx = match body {
+        Some(body) => body,
+        None => {
+            fresh = ExprLowerCtx::new(db, string_pool.clone());
+            &fresh
+        }
+    };
     for leaf in leaves {
-        let ctx = ExprLowerCtx::new(db, string_pool.clone());
         let (offset, leaf_ty) = if leaf.path.is_empty() {
             (0, ty.clone())
         } else {
@@ -1706,7 +1703,7 @@ fn lower_init_value<'db>(
     use hir::hir_ty::head::inheritance::InitValue;
     let implied = match value {
         InitValue::Written(init) => {
-            return lower_init_leaves(db, target, ty, init, owner, string_pool, out);
+            return lower_init_leaves(db, target, ty, init, owner, None, string_pool, out);
         }
         InitValue::Implied(v) => v,
     };
@@ -1841,6 +1838,7 @@ pub(crate) fn lower_resolved_init_into<'db>(
         ty,
         init,
         owner,
+        None,
         string_pool,
         out,
     )

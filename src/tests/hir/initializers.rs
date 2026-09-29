@@ -2,7 +2,7 @@ use db::RootDatabase;
 use insta::assert_snapshot;
 use rstest::rstest;
 
-use crate::tests::utils::{test_diagnostics, test_diagnostics_not_compiled, with_db};
+use crate::tests::utils::{test_diagnostics, with_db};
 
 // E0401: a once-per-type initializer (TYPE default, FB/CLASS member default,
 // static PROGRAM field or config global) must be constant. CONSTANT
@@ -131,9 +131,9 @@ PROGRAM Dummy
     t := 0;
 END_PROGRAM
 "#;
-    // Does not compile yet: codegen panics on the local initialized from
-    // the global, "emit_load: no local named ...".
-    assert_snapshot!(test_diagnostics_not_compiled(&mut with_db, &[source]), @r"");
+    // `g2` is reached without a VAR_EXTERNAL, which rk allows and the linter
+    // warns about.
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
 }
 
 #[rstest]
@@ -259,9 +259,9 @@ PROGRAM Dummy
     t := 0;
 END_PROGRAM
 "#;
-    // Does not compile yet: codegen panics on the local initialized from
-    // the global, "emit_load: no local named ...".
-    assert_snapshot!(test_diagnostics_not_compiled(&mut with_db, &[source]), @r"");
+    // `g2` is reached without a VAR_EXTERNAL, which rk allows and the linter
+    // warns about.
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
 }
 
 // An array copy moves bytes, so the element type must be the SAME: an
