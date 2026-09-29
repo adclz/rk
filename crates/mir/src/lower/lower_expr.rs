@@ -1022,7 +1022,9 @@ impl<'db> ExprLowerCtx<'db> {
                 },
                 base: Box::new(place),
                 pointee_type: (**pointee).clone(),
-                checked: false,
+                // Null until a call binds it: a method, or a read of the
+                // member from outside, can reach it before any.
+                checked: true,
             },
             _ => place,
         }
