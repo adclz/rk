@@ -19,6 +19,23 @@ use ide_diagnostic::IdeDiagnostic;
 use ide_diagnostic::Related;
 use ide_diagnostic::diag;
 
+/// Why a call fits several overloads alike (E0809).
+#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
+pub enum Ambiguity<'db> {
+    /// They take the same parameters and differ by return type, and the
+    /// call's site expects none of them.
+    Return,
+    /// NULL, which is a reference of any type.
+    Null,
+    /// An instance implementing each interface they take.
+    Implementer { instance: Type<'db> },
+    /// An argument widens to each of them.
+    Widening,
+    /// No argument the call passes tells them apart: they differ in inputs
+    /// it leaves to their defaults.
+    Defaults,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum CallError<'db> {
     IncorrectNumberOfParameters {
@@ -98,6 +115,11 @@ pub enum CallError<'db> {
         /// As the overloads write it.
         name: Ident,
         candidates: Vec<Function<'db>>,
+        /// Why the call cannot tell them apart, which decides what would.
+        why: Ambiguity<'db>,
+        /// The names the overloads give the first positional argument that
+        /// tells them apart, as written, when they differ: naming it picks one.
+        by_name: Vec<Ident>,
     },
     /// No overload of the set accepts the call's argument types. The first
     /// overload used to stand in and report ITS parameter mismatch, so the
@@ -482,10 +504,12 @@ impl<'db> ToIdeDiagnostic<'db> for CallError<'db> {
                 func_call,
                 name,
                 candidates,
+                why,
+                by_name,
             } => {
                 let mut diag = diag()
                     .message(format!(
-                        "call to '{}' is ambiguous: {} overloads accept these arguments: disambiguate with an explicit cast",
+                        "call to '{}' is ambiguous: {} overloads accept these arguments",
                         name.text(db),
                         candidates.len()
                     ))
@@ -503,6 +527,45 @@ impl<'db> ToIdeDiagnostic<'db> for CallError<'db> {
                         c.get_scope_id(db).file(db),
                         c.get_span(db),
                     ));
+                }
+                diag.with_note(match why {
+                    Ambiguity::Return => "they differ only in their return type, and nothing here \
+                        expects one: assign the call to a variable of the type you want"
+                        .to_string(),
+                    Ambiguity::Null => "NULL is a reference of any type: pass a variable of the \
+                        reference type you want"
+                        .to_string(),
+                    Ambiguity::Implementer { instance } => format!(
+                        "'{}' implements the interface each one takes, and nothing converts it \
+                         to one of them",
+                        instance.type_name(db)
+                    ),
+                    Ambiguity::Widening => "an argument widens to each of them: a typed literal \
+                        or a conversion picks one, such as `DINT#5` or `INT_TO_DINT(x)`"
+                        .to_string(),
+                    Ambiguity::Defaults => "they differ only in inputs this call leaves to their \
+                        defaults: passing one of those picks an overload"
+                        .to_string(),
+                });
+                match by_name.as_slice() {
+                    [] if matches!(why, Ambiguity::Implementer { .. }) => {
+                        diag.with_note(
+                            "they name that parameter alike, so no call can pick one of them \
+                             with this argument"
+                                .to_string(),
+                        );
+                    }
+                    [] => {}
+                    names => {
+                        let named: Vec<String> = names
+                            .iter()
+                            .map(|n| format!("'{} := ...'", n.text(db)))
+                            .collect();
+                        diag.with_note(format!(
+                            "they name that parameter differently: naming it picks one, as {}",
+                            named.join(" or ")
+                        ));
+                    }
                 }
                 diag
             }

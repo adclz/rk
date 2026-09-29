@@ -248,8 +248,8 @@ pub enum OverloadPick<'db> {
     /// A unique callable to use — either the resolved overload, or the input
     /// unchanged when the name isn't an overload set or nothing better matched.
     One(CallableType<'db>),
-    /// Several overloads are equally viable for the given argument types; the
-    /// caller must disambiguate with an explicit cast.
+    /// Several overloads fit the arguments alike (E0809); the call site says
+    /// why, since what would pick one depends on it.
     Ambiguous(Vec<Function<'db>>),
     /// An overload set in which no overload accepts the argument types, though
     /// at least one binds the arguments: the whole set, for the error.

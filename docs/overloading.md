@@ -72,6 +72,8 @@ END_FUNCTION
     │ 
  14 │           caller := pick(y);
     │                     ──┬─  
-    │                       ╰─── call to 'pick' is ambiguous: 2 overloads accept these arguments: disambiguate with an explicit cast
+    │                       ╰─── call to 'pick' is ambiguous: 2 overloads accept these arguments
+    │       
+    │       Note: an argument widens to each of them: a typed literal or a conversion picks one, such as `DINT#5` or `INT_TO_DINT(x)`
 ────╯
 ```

@@ -5,7 +5,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use crate::check::errors::e01_duplicates::DuplicateError;
 use crate::check::errors::e03_type::TypeError;
 use crate::check::errors::e04_init::InitError;
-use crate::check::errors::e08_call::CallError;
+use crate::check::errors::e08_call::{Ambiguity, CallError};
 use crate::hir_def::expressions::expression::{Expr, ExprKind, ParamAssign, PrimaryExpr};
 use crate::hir_def::interned::identifier::Ident;
 use crate::hir_def::pous::function::Function;
@@ -116,11 +116,14 @@ pub fn resolve_func_call<'db>(
                 Some(f) => f.name_with_case(db),
                 None => return,
             };
+            let (why, by_name) = ambiguity(db, func_call, &candidates, ctx);
             ctx.errors.push(
                 CallError::AmbiguousOverload {
                     func_call,
                     name,
                     candidates,
+                    why,
+                    by_name,
                 }
                 .to_diagnostic(db, ctx.scope.file(db)),
             );
@@ -453,6 +456,97 @@ fn candidate_fit<'db>(
         }
     }
     CandidateFit::Fits { args, padded }
+}
+
+/// Why the call fits the tied overloads alike, and the names they give the
+/// argument that tells them apart when they differ: what E0809 suggests
+/// depends on it. A cast is no help for a call with nothing to cast, for
+/// NULL, or for an instance of both interfaces.
+fn ambiguity<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    func_call: FuncCall<'db>,
+    candidates: &[Function<'db>],
+    ctx: &BodyInferenceResult<'db>,
+) -> (Ambiguity<'db>, Vec<Ident>) {
+    use crate::hir_ty::head::signature::function_signature;
+    let Some((first, rest)) = candidates.split_first() else {
+        return (Ambiguity::Defaults, Vec::new());
+    };
+    let first = function_signature(db, *first);
+    if rest
+        .iter()
+        .all(|f| function_signature(db, *f).same_params(db, &first))
+    {
+        return (Ambiguity::Return, Vec::new());
+    }
+
+    // The parameter each overload binds each argument to.
+    let bindings: Vec<FxHashMap<ParamAssign<'db>, VariableDecl<'db>>> = candidates
+        .iter()
+        .map(|f| {
+            let callable = CallableType::Function(*f);
+            resolve_params(
+                db,
+                func_call.params(db),
+                callable,
+                &call_site_params(db, callable),
+                &mut Vec::new(),
+            )
+            .into_iter()
+            .filter_map(|m| match m {
+                ParamMatch::Matched(pa, var) | ParamMatch::Variadic(pa, var, _) => Some((pa, var)),
+                ParamMatch::Error => None,
+            })
+            .collect()
+        })
+        .collect();
+
+    for pa in func_call.params(db) {
+        let (value, positional) = match pa.kind(db) {
+            ParamAssignKind::NonFormal { value } => (value, true),
+            ParamAssignKind::FormalInput { value, .. } => (value, false),
+            ParamAssignKind::FormalOutput { .. } => continue,
+        };
+        let vars: Vec<VariableDecl<'db>> =
+            bindings.iter().filter_map(|b| b.get(pa).copied()).collect();
+        let types: Vec<Type<'db>> = vars
+            .iter()
+            .map(|v| Type::new_var(db, *v).normalize(db))
+            .collect();
+        // Every overload takes this one alike: it is not where they differ.
+        if types
+            .windows(2)
+            .all(|w| crate::hir_ty::infer::coerce::same_type(db, w[0], w[1]))
+        {
+            continue;
+        }
+
+        let mut names: Vec<(Ident, Ident)> = Vec::new();
+        for v in &vars {
+            if positional && !names.iter().any(|(folded, _)| *folded == v.name(db)) {
+                names.push((v.name(db), v.name_with_case(db)));
+            }
+        }
+        let by_name = match names.len() {
+            0 | 1 => Vec::new(),
+            _ => names.into_iter().map(|(_, written)| written).collect(),
+        };
+
+        let arg = ctx.type_of_expr_with_adjustments(db, value).normalize(db);
+        let why = match value.expr(db) {
+            ExprKind::PrimaryExpr(PrimaryExpr::RefValue {
+                value: crate::hir_def::expressions::expression::RefValue::Null,
+            }) => Ambiguity::Null,
+            _ if matches!(arg, Type::FunctionBlock(_) | Type::Class(_))
+                && types.iter().all(|t| matches!(t, Type::Interface(_))) =>
+            {
+                Ambiguity::Implementer { instance: arg }
+            }
+            _ => Ambiguity::Widening,
+        };
+        return (why, by_name);
+    }
+    (Ambiguity::Defaults, Vec::new())
 }
 
 /// A VAR_IN_OUT binds the caller's own storage: a variable (not a slice of

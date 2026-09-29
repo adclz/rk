@@ -143,7 +143,9 @@ END_FUNCTION
         |
      13 |           test := pick(1);
         |                   ^^|^
-        |                     `--- call to 'pick' is ambiguous: 2 overloads accept these arguments: disambiguate with an explicit cast
+        |                     `--- call to 'pick' is ambiguous: 2 overloads accept these arguments
+        | |
+        | |     Note: an argument widens to each of them: a typed literal or a conversion picks one, such as `DINT#5` or `INT_TO_DINT(x)`
     ----'
     ");
 }
@@ -388,7 +390,9 @@ END_FUNCTION
         |
      14 |           caller := mix(i, r);
         |                     ^|^
-        |                      `--- call to 'mix' is ambiguous: 2 overloads accept these arguments: disambiguate with an explicit cast
+        |                      `--- call to 'mix' is ambiguous: 2 overloads accept these arguments
+        | |
+        | |     Note: an argument widens to each of them: a typed literal or a conversion picks one, such as `DINT#5` or `INT_TO_DINT(x)`
     ----'
     ");
 }
@@ -431,7 +435,9 @@ END_FUNCTION
         |
      14 |           caller := up(s);
         |                     ^|
-        |                      `-- call to 'up' is ambiguous: 2 overloads accept these arguments: disambiguate with an explicit cast
+        |                      `-- call to 'up' is ambiguous: 2 overloads accept these arguments
+        |   |
+        |   |   Note: an argument widens to each of them: a typed literal or a conversion picks one, such as `DINT#5` or `INT_TO_DINT(x)`
     ----'
     ");
 }
@@ -525,7 +531,9 @@ fn invalid_return_overload_without_context(mut with_db: RootDatabase) {
         |
      10 |                   t := G() + T#1ms;
         |                        |
-        |                        `-- call to 'G' is ambiguous: 2 overloads accept these arguments: disambiguate with an explicit cast
+        |                        `-- call to 'G' is ambiguous: 2 overloads accept these arguments
+        |
+        |       Note: they differ only in their return type, and nothing here expects one: assign the call to a variable of the type you want
     ----'
     ");
 }
@@ -565,7 +573,9 @@ fn invalid_zero_arg_defaulted_overloads_ambiguous(mut with_db: RootDatabase) {
         |
      11 |                   fn1 := H();
         |                          |
-        |                          `-- call to 'H' is ambiguous: 2 overloads accept these arguments: disambiguate with an explicit cast
+        |                          `-- call to 'H' is ambiguous: 2 overloads accept these arguments
+        |
+        |       Note: they differ only in inputs this call leaves to their defaults: passing one of those picks an overload
     ----'
     ");
 }
@@ -603,7 +613,9 @@ fn invalid_return_overload_in_while_condition(mut with_db: RootDatabase) {
         |
      10 |                   WHILE G() - t < T#60ms DO
         |                         |
-        |                         `-- call to 'G' is ambiguous: 2 overloads accept these arguments: disambiguate with an explicit cast
+        |                         `-- call to 'G' is ambiguous: 2 overloads accept these arguments
+        |
+        |       Note: they differ only in their return type, and nothing here expects one: assign the call to a variable of the type you want
     ----'
     ");
 }
@@ -639,7 +651,9 @@ fn invalid_return_overload_as_statement(mut with_db: RootDatabase) {
        |
      9 |                   G();
        |                   |
-       |                   `-- call to 'G' is ambiguous: 2 overloads accept these arguments: disambiguate with an explicit cast
+       |                   `-- call to 'G' is ambiguous: 2 overloads accept these arguments
+       |
+       |       Note: they differ only in their return type, and nothing here expects one: assign the call to a variable of the type you want
     ---'
     ");
 }
@@ -684,7 +698,9 @@ fn invalid_return_overload_as_overloaded_argument(mut with_db: RootDatabase) {
         |
      17 |                   fn1 := f(x := G());
         |                                 |
-        |                                 `-- call to 'G' is ambiguous: 2 overloads accept these arguments: disambiguate with an explicit cast
+        |                                 `-- call to 'G' is ambiguous: 2 overloads accept these arguments
+        |
+        |       Note: they differ only in their return type, and nothing here expects one: assign the call to a variable of the type you want
     ----'
     ");
 }
@@ -744,7 +760,9 @@ fn invalid_equal_default_padding_stays_ambiguous(mut with_db: RootDatabase) {
         |
      11 |                   fn1 := add(10);
         |                          ^|^
-        |                           `--- call to 'add' is ambiguous: 2 overloads accept these arguments: disambiguate with an explicit cast
+        |                           `--- call to 'add' is ambiguous: 2 overloads accept these arguments
+        |
+        |       Note: they differ only in inputs this call leaves to their defaults: passing one of those picks an overload
     ----'
     ");
 }
@@ -785,7 +803,9 @@ fn invalid_literal_with_only_promoted_candidates(mut with_db: RootDatabase) {
         |
      11 |                   fn1 := conv(5);
         |                          ^^|^
-        |                            `--- call to 'conv' is ambiguous: 2 overloads accept these arguments: disambiguate with an explicit cast
+        |                            `--- call to 'conv' is ambiguous: 2 overloads accept these arguments
+        |
+        |       Note: an argument widens to each of them: a typed literal or a conversion picks one, such as `DINT#5` or `INT_TO_DINT(x)`
     ----'
     ");
 }
@@ -862,7 +882,9 @@ fn invalid_three_way_incomparable_names_all(mut with_db: RootDatabase) {
         |
      16 |                     fn1 := mix(i, j, k);
         |                            ^|^
-        |                             `--- call to 'mix' is ambiguous: 3 overloads accept these arguments: disambiguate with an explicit cast
+        |                             `--- call to 'mix' is ambiguous: 3 overloads accept these arguments
+        |
+        |         Note: an argument widens to each of them: a typed literal or a conversion picks one, such as `DINT#5` or `INT_TO_DINT(x)`
     ----'
     ");
 }
@@ -968,6 +990,28 @@ END_FUNCTION
     ");
 }
 
+/// Two overloads declaring the same inline type have one signature: the
+/// types are compared as the coercion compares them, by structure.
+#[rstest]
+fn identical_inline_parameters_are_one_signature(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION Dup : INT VAR_INPUT r : REF_TO INT; END_VAR Dup := 1; END_FUNCTION
+FUNCTION Dup : INT VAR_INPUT r : REF_TO INT; END_VAR Dup := 2; END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0102] Error: duplicate definitions
+       ,-[ file:///test0.st:3:10 ]
+       |
+     2 | FUNCTION Dup : INT VAR_INPUT r : REF_TO INT; END_VAR Dup := 1; END_FUNCTION
+       |          ^|^
+       |           `--- POU 'Dup' is already defined here
+     3 | FUNCTION Dup : INT VAR_INPUT r : REF_TO INT; END_VAR Dup := 2; END_FUNCTION
+       |          ^|^
+       |           `--- duplicate POU 'Dup'
+    ---'
+    ");
+}
+
 /// An argument that fails to resolve is reported once: the overloads are
 /// not tried, so the other arguments are not checked against the first one.
 #[rstest]
@@ -992,24 +1036,120 @@ END_FUNCTION
     "#);
 }
 
-/// Two overloads declaring the same inline type have one signature: the
-/// types are compared as the coercion compares them, by structure.
+/// What fits two overloads equally is still ambiguous: an instance of both
+/// interfaces, and NULL for two references. No cast helps either, and the
+/// note says what does: naming the parameter, when the overloads name it
+/// differently, or a variable of the reference type.
 #[rstest]
-fn identical_inline_parameters_are_one_signature(mut with_db: RootDatabase) {
+fn an_implementer_of_both_or_null_stays_ambiguous(mut with_db: RootDatabase) {
     let source = r#"
-FUNCTION Dup : INT VAR_INPUT r : REF_TO INT; END_VAR Dup := 1; END_FUNCTION
-FUNCTION Dup : INT VAR_INPUT r : REF_TO INT; END_VAR Dup := 2; END_FUNCTION
+INTERFACE IA METHOD A : INT END_METHOD END_INTERFACE
+INTERFACE IB METHOD B : INT END_METHOD END_INTERFACE
+FUNCTION_BLOCK Both IMPLEMENTS IA, IB
+    METHOD PUBLIC A : INT A := 1; END_METHOD
+    METHOD PUBLIC B : INT B := 2; END_METHOD
+END_FUNCTION_BLOCK
+TYPE RI : REF_TO INT; RR : REF_TO REAL; END_TYPE
+
+FUNCTION Dev : INT VAR_IN_OUT d : IA; END_VAR Dev := 1; END_FUNCTION
+FUNCTION Dev : INT VAR_IN_OUT d : IB; END_VAR Dev := 2; END_FUNCTION
+FUNCTION Dev2 : INT VAR_IN_OUT da : IA; END_VAR Dev2 := 1; END_FUNCTION
+FUNCTION Dev2 : INT VAR_IN_OUT db : IB; END_VAR Dev2 := 2; END_FUNCTION
+FUNCTION Nul : INT VAR_INPUT r : RI; END_VAR Nul := 1; END_FUNCTION
+FUNCTION Nul : INT VAR_INPUT r : RR; END_VAR Nul := 2; END_FUNCTION
+
+FUNCTION_BLOCK Caller
+VAR b : Both; x : INT; END_VAR
+    x := Dev(b);
+    x := Dev2(b);
+    x := Nul(NULL);
+END_FUNCTION_BLOCK
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0102] Error: duplicate definitions
-       ,-[ file:///test0.st:3:10 ]
+    [E0809] Error: ambiguous overloaded call
+        ,-[ file:///test0.st:19:10 ]
+        |
+     10 | FUNCTION Dev : INT VAR_IN_OUT d : IA; END_VAR Dev := 1; END_FUNCTION
+        | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^|^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        |                                   `----------------------------------- candidate overload declared here
+     11 | FUNCTION Dev : INT VAR_IN_OUT d : IB; END_VAR Dev := 2; END_FUNCTION
+        | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^|^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        |                                   `----------------------------------- candidate overload declared here
+        |
+     19 |     x := Dev(b);
+        |          ^|^
+        |           `--- call to 'Dev' is ambiguous: 2 overloads accept these arguments
+        |
+        | Note 1: 'Both' implements the interface each one takes, and nothing converts it to one of them
+        |
+        | Note 2: they name that parameter alike, so no call can pick one of them with this argument
+    ----'
+    [E0809] Error: ambiguous overloaded call
+        ,-[ file:///test0.st:20:10 ]
+        |
+     12 | FUNCTION Dev2 : INT VAR_IN_OUT da : IA; END_VAR Dev2 := 1; END_FUNCTION
+        | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^|^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        |                                    `------------------------------------- candidate overload declared here
+     13 | FUNCTION Dev2 : INT VAR_IN_OUT db : IB; END_VAR Dev2 := 2; END_FUNCTION
+        | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^|^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        |                                    `------------------------------------- candidate overload declared here
+        |
+     20 |     x := Dev2(b);
+        |          ^^|^
+        |            `--- call to 'Dev2' is ambiguous: 2 overloads accept these arguments
+        |
+        | Note 1: 'Both' implements the interface each one takes, and nothing converts it to one of them
+        |
+        | Note 2: they name that parameter differently: naming it picks one, as 'da := ...' or 'db := ...'
+    ----'
+    [E0809] Error: ambiguous overloaded call
+        ,-[ file:///test0.st:21:10 ]
+        |
+     14 | FUNCTION Nul : INT VAR_INPUT r : RI; END_VAR Nul := 1; END_FUNCTION
+        | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^|^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        |                                  `----------------------------------- candidate overload declared here
+     15 | FUNCTION Nul : INT VAR_INPUT r : RR; END_VAR Nul := 2; END_FUNCTION
+        | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^|^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        |                                  `----------------------------------- candidate overload declared here
+        |
+     21 |     x := Nul(NULL);
+        |          ^|^
+        |           `--- call to 'Nul' is ambiguous: 2 overloads accept these arguments
+        |
+        | Note: NULL is a reference of any type: pass a variable of the reference type you want
+    ----'
+    ");
+}
+
+/// A literal between a type it adopts (SINT, which holds 5) and one its
+/// default type widens to (DINT) ranks them alike: neither is its default,
+/// so the call is ambiguous rather than picking the narrower or the wider.
+#[rstest]
+fn a_literal_between_an_adoption_and_a_widening_is_ambiguous(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION Lit : INT VAR_INPUT v : SINT; END_VAR Lit := 1; END_FUNCTION
+FUNCTION Lit : INT VAR_INPUT v : DINT; END_VAR Lit := 2; END_FUNCTION
+
+FUNCTION caller : INT
+    caller := Lit(5);
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0809] Error: ambiguous overloaded call
+       ,-[ file:///test0.st:6:15 ]
        |
-     2 | FUNCTION Dup : INT VAR_INPUT r : REF_TO INT; END_VAR Dup := 1; END_FUNCTION
-       |          ^|^
-       |           `--- POU 'Dup' is already defined here
-     3 | FUNCTION Dup : INT VAR_INPUT r : REF_TO INT; END_VAR Dup := 2; END_FUNCTION
-       |          ^|^
-       |           `--- duplicate POU 'Dup'
+     2 | FUNCTION Lit : INT VAR_INPUT v : SINT; END_VAR Lit := 1; END_FUNCTION
+       | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^|^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+       |                                   `------------------------------------ candidate overload declared here
+     3 | FUNCTION Lit : INT VAR_INPUT v : DINT; END_VAR Lit := 2; END_FUNCTION
+       | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^|^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+       |                                   `------------------------------------ candidate overload declared here
+       |
+     6 |     caller := Lit(5);
+       |               ^|^
+       |                `--- call to 'Lit' is ambiguous: 2 overloads accept these arguments
+       |
+       | Note: an argument widens to each of them: a typed literal or a conversion picks one, such as `DINT#5` or `INT_TO_DINT(x)`
     ---'
     ");
 }
