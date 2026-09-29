@@ -361,7 +361,7 @@ impl<'db> StmtsResolverCtx<'db> {
                     // the caller. It does not fault: an address-taken local
                     // sits at a fixed address, so the reference quietly reads
                     // whatever the NEXT call leaves in that slot.
-                    if matches!(base_typ, Type::Function(_) | Type::MethodDecl(_))
+                    if ctx.writes_result(db, *var)
                         && let ExprKind::PrimaryExpr(PrimaryExpr::RefValue {
                             value: RefValue::Address(path),
                         }) = target.expr(db)

@@ -59,6 +59,10 @@ pub enum Type<'db> {
     Task(TaskConfig<'db>),
     // Func call - same as methods, functions, function blocks but we know it's being called
     CallableType(CallableType<'db>),
+    // The enclosing FUNCTION's or METHOD's return value, which its body names
+    // by the callable's own name: a value of the return type, as a local is a
+    // value of its declared type.
+    ReturnValue(CallableType<'db>),
     // Void type, usually the result of a call that does not return anything
     Void,
     // Never type, represents an unresolvable type
@@ -137,6 +141,16 @@ impl<'db> CallableType<'db> {
             CallableType::Function(f) => f.scope_id(db).def_map(db),
             CallableType::FunctionBlock(fb) => fb.scope_id(db).def_map(db),
             CallableType::MethodDecl(m) => m.get_scope_id(db).def_map(db),
+        }
+    }
+
+    /// The declared return type; `None` for a FUNCTION_BLOCK, and for a
+    /// FUNCTION or METHOD declared without one.
+    pub fn return_type(&self, db: &'db dyn WorkspaceDataBase) -> Option<&'db Spec<'db>> {
+        match self {
+            CallableType::Function(f) => f.return_type(db),
+            CallableType::FunctionBlock(_) => None,
+            CallableType::MethodDecl(m) => m.return_type(db),
         }
     }
 
@@ -421,8 +435,8 @@ impl<'db> Type<'db> {
     /// can appear as typed literals like `INT#5`), POUs are declarations
     /// and have no runtime value.
     ///
-    /// Exceptions: Function and MethodDecl can appear in self-assignment
-    /// (assigning to own return value) - handled by `check_not_direct_type`.
+    /// A FUNCTION's or METHOD's own name inside its body is not one of
+    /// these: it names the return value, [`Type::ReturnValue`].
     pub fn is_direct_type(&self) -> bool {
         matches!(
             self,

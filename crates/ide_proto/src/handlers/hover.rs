@@ -45,7 +45,7 @@ use crate::{
 /// site. Used to keep hover ranges same-file (see [`guard_same_file`]).
 fn type_def_file<'db>(db: &'db dyn WorkspaceDataBase, ty: Type<'db>) -> Option<File> {
     let node: &dyn HirNodeInfo<'db> = match &ty {
-        Type::CallableType(c) => return callable_def_file(db, c),
+        Type::CallableType(c) | Type::ReturnValue(c) => return callable_def_file(db, c),
         Type::Program(p) => p as _,
         Type::Function(f) => f as _,
         Type::FunctionBlock(f) => f as _,
@@ -461,7 +461,9 @@ NAMESPACE {}
 impl<'db> HoverHandler<'db> for Type<'db> {
     fn hover(&'db self, db: &'db dyn WorkspaceDataBase, offset: usize) -> Option<Hover> {
         match self {
-            Type::CallableType(cl) => cl.hover(db, cl.get_name_span(db).start_byte),
+            Type::CallableType(cl) | Type::ReturnValue(cl) => {
+                cl.hover(db, cl.get_name_span(db).start_byte)
+            }
             Type::Program(p) => p.hover(db, p.get_name_span(db).start_byte),
             Type::Function(f) => Pou::Function(*f).hover(db, f.get_name_span(db).start_byte),
             Type::FunctionBlock(f) => {

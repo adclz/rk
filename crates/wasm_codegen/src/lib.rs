@@ -1239,8 +1239,13 @@ impl<'a> WasmGen<'a> {
                     LocalInfo::StringMemory { address, .. } => {
                         Some(ReturnValue::StringMem(*address))
                     }
-                    // A memory-resident return slot that is not a STRING is an
-                    // aggregate; its address IS the return value.
+                    // A scalar is in memory because its address is taken.
+                    LocalInfo::Memory {
+                        address,
+                        elem: Some(elem),
+                    } => Some(ReturnValue::ScalarMem(*address, *elem)),
+                    // Otherwise it is an aggregate; its address IS the return
+                    // value.
                     LocalInfo::Memory { address, .. } => Some(ReturnValue::AggregateMem(*address)),
                     _ => None,
                 })

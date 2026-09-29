@@ -94,14 +94,9 @@ impl<'db> InferExprCtx<'db> {
                     },
                 };
 
-                // When a function/method name is used in an operator expression,
-                // resolve to its return type for operator support checks.
                 // Operator support is decided on the base type: a subrange
                 // supports whatever its base supports.
-                let normalized_ty = match ty.with_return_type(db) {
-                    Some(ret) => ret.normalize(db),
-                    None => ty.normalize(db),
-                };
+                let normalized_ty = ty.normalize(db);
                 let (supported, operator) = match curr_expr.expr(db) {
                     ExprKind::AddOperator { operator, .. } => {
                         (normalized_ty.supports_add(db), operator.as_str())
@@ -162,10 +157,7 @@ impl<'db> InferExprCtx<'db> {
                 let lhs = inference_results.type_of_expr_with_adjustments(db, *left);
 
                 // The result is IN1's type.
-                let base = match lhs.with_return_type(db) {
-                    Some(ret) => ret.normalize(db),
-                    None => lhs.normalize(db),
-                };
+                let base = lhs.normalize(db);
                 let mut ty = lhs;
                 if !base.is_never() && !base.supports_power(db) {
                     inference_results.errors.push(
@@ -324,8 +316,12 @@ impl<'db> InferExprCtx<'db> {
                 // written is for the coercion at that site to say, which is
                 // what accepts `f(dev := THIS)` for an interface parameter and
                 // still refuses it everywhere no arm accepts an FB.
-                if !v.is_bare_this(db) {
-                    ty.check_not_direct_type(db, CallSite::from_scoped(db, v), inference_result);
+                // A name that is no value (E0317) types as Never, so the
+                // operator or assignment around it does not report it again.
+                if !v.is_bare_this(db)
+                    && !ty.check_not_direct_type(db, CallSite::from_scoped(db, v), inference_result)
+                {
+                    return Type::Never;
                 }
                 ty
             }
@@ -781,14 +777,6 @@ fn record_coercion_target<'db>(
     inference_results: &mut BodyInferenceResult<'db>,
 ) {
     let target = target.normalize(db);
-    // Assigning to a function's own NAME targets its return slot, so the type
-    // being converted to is the declared return type.
-    let target = match target {
-        Type::Function(_) | Type::MethodDecl(_) => target
-            .with_return_type(db)
-            .map_or(target, |rt| rt.normalize(db)),
-        _ => target,
-    };
     if let Type::Elementary(_) = target {
         inference_results.coercion_target.insert(rhs, target);
     }

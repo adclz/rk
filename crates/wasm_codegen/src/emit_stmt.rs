@@ -44,6 +44,9 @@ pub(crate) enum ReturnValue {
     /// Aggregate in a static slot: push its address; the caller copies out
     /// of it.
     AggregateMem(u32),
+    /// Scalar kept in memory because `REF()` or a VAR_IN_OUT takes its
+    /// address: load it.
+    ScalarMem(u32, mir::types::MirElementary),
 }
 
 /// Push a function's return value, matching its wasm signature.
@@ -63,6 +66,10 @@ pub(crate) fn emit_return_value(func: &mut wasm_encoder::Function, ret: ReturnVa
         }
         ReturnValue::AggregateMem(addr) => {
             func.instruction(&Instruction::I32Const(addr as i32));
+        }
+        ReturnValue::ScalarMem(addr, elem) => {
+            func.instruction(&Instruction::I32Const(addr as i32));
+            emit_typed_mem_load(func, &mir::types::MirType::Elementary(elem));
         }
     }
 }

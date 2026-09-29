@@ -39,7 +39,7 @@ pub fn resolve_func_call<'db>(
         ctx.calls.push(func_call);
     }
 
-    resolver.resolve_begin_path_expr(db, func_call.path(db), None, ctx);
+    resolver.resolve_callee(db, func_call.path(db), ctx);
 
     // If a prior resolution already marked this path
     // as CallableType, unwrap it back to the original function/fb/method type.

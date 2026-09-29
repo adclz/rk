@@ -246,13 +246,6 @@ pub struct BodyInferenceResult<'db> {
     /// the name a second time.
     pub variable_of_path_expr: FxHashMap<PathExpr<'db>, VariableDecl<'db>>,
 
-    /// The path roots that are the enclosing FUNCTION's or METHOD's result in
-    /// a longer path (`MakePt.x := 3`), with the callable's declared name, the
-    /// one its result slot is held under. The step itself is typed as the
-    /// result's type, which no longer says whose result it is, nor that it is
-    /// not a member of the same name.
-    pub result_roots: FxHashMap<PathExpr<'db>, crate::hir_def::interned::identifier::Ident>,
-
     /// The path steps that named a NAMESPACE on the way to a fully-qualified
     /// item. A namespace is not a value, so it has no type to record, and
     /// without this the `Std` in `Std.Convert.X` is indistinguishable from a
@@ -379,7 +372,6 @@ impl<'db> BodyInferenceResult<'db> {
             case_label_value: FxHashMap::default(),
             type_of_path_expr: FxHashMap::default(),
             variable_of_path_expr: FxHashMap::default(),
-            result_roots: FxHashMap::default(),
             namespace_of_path_expr: FxHashSet::default(),
             path_expr_adjustments: FxHashMap::default(),
             errors: Vec::new(),
@@ -458,6 +450,13 @@ impl<'db> BodyInferenceResult<'db> {
         expr: Expr<'db>,
     ) -> Type<'db> {
         match expr.expr(db) {
+            // A name read where a value belongs but naming none, a type or a
+            // FUNCTION, was reported there (E0317) and typed Never.
+            ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess(_))
+                if self.type_of_expr.get(&expr).is_some_and(Type::is_never) =>
+            {
+                Type::Never
+            }
             ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess(var)) => {
                 self.type_of_variable_access_with_adjustments(db, *var)
             }
@@ -647,6 +646,70 @@ impl<'db> BodyInferenceResult<'db> {
 
     pub fn variable_for_param(&self, param: ParamAssign<'db>) -> Option<VariableDecl<'db>> {
         self.variable_of_param.get(&param).copied()
+    }
+
+    /// Whether `var` is the enclosing FUNCTION's or METHOD's return value, or
+    /// a part of it: `Compute := 1`, `MakePt.x := 3`.
+    pub fn writes_result(
+        &self,
+        db: &'db dyn WorkspaceDataBase,
+        var: crate::hir_def::expressions::expression::VariableAccess<'db>,
+    ) -> bool {
+        use crate::hir_def::expressions::expression::VariableAccessKind;
+        let VariableAccessKind::Symbolic(begin) = var.kind(db) else {
+            return false;
+        };
+        self.names_result(db, begin)
+    }
+
+    /// Whether `path` starts at the enclosing FUNCTION's or METHOD's return
+    /// value.
+    pub fn names_result(
+        &self,
+        db: &'db dyn WorkspaceDataBase,
+        path: crate::hir_def::expressions::expression::BeginPathExpr<'db>,
+    ) -> bool {
+        path.expr(db)
+            .and_then(|path| path.flatten(db).first().map(|step| step.get_expr(db)))
+            .is_some_and(|root| {
+                matches!(
+                    self.type_of_path_expr.get(&root),
+                    Some(Type::ReturnValue(_))
+                )
+            })
+    }
+
+    /// Whether the return value is handed to something that can write it:
+    /// bound to an output (`o => F`), passed to a VAR_IN_OUT, or referenced
+    /// with `REF(F)`.
+    pub fn hands_out_result(&self, db: &'db dyn WorkspaceDataBase) -> bool {
+        use crate::hir_def::expressions::expression::{
+            ExprKind, ParamAssignKind, PrimaryExpr, RefValue,
+        };
+        let bound = self
+            .variable_of_param
+            .iter()
+            .any(|(param, var)| match param.kind(db) {
+                ParamAssignKind::FormalOutput { variable, .. } => self.writes_result(db, variable),
+                ParamAssignKind::NonFormal { value }
+                | ParamAssignKind::FormalInput { value, .. } => {
+                    var.is_in_out(db)
+                        && matches!(
+                            value.expr(db),
+                            ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess(access))
+                                if self.writes_result(db, *access)
+                        )
+                }
+            });
+        bound
+            || self.type_of_expr.keys().any(|expr| {
+                matches!(
+                    expr.expr(db),
+                    ExprKind::PrimaryExpr(PrimaryExpr::RefValue {
+                        value: RefValue::Address(path),
+                    }) if self.names_result(db, *path)
+                )
+            })
     }
 
     /// The declaration this path step names, when it names a variable.

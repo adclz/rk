@@ -1,14 +1,13 @@
 use auto_lsp::lsp_types::DiagnosticSeverity;
 use db::WorkspaceDataBase;
 use hir::{
-    HasName, HirNodeInfo,
+    HasName,
     hir_def::{
-        expressions::expression::VariableAccessKind,
         pous::pou::Pou,
         scope::{ScopeId, ScopeKind},
         semantic_index::get_scope,
     },
-    hir_ty::{body::BodyInferenceResult, ty::Type},
+    hir_ty::{body::BodyInferenceResult, head::init_inference::infer_initialization},
 };
 use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
 
@@ -27,30 +26,28 @@ impl ErrorCode for MissingReturn {
     }
 }
 
-/// Called by the stmt_visitor for each assignment — check if LHS is the return
-/// variable by verifying the inferred type is the function/method itself.
+/// Called by the stmt_visitor for each assignment: whether it writes the
+/// result, whole (`Compute := 1`) or a part of it (`MakePt.x := 1`).
 pub fn check_assignment<'db>(
     db: &'db dyn WorkspaceDataBase,
     body: &BodyInferenceResult<'db>,
     var: hir::hir_def::expressions::expression::VariableAccess<'db>,
+) -> bool {
+    body.writes_result(db, var)
+}
+
+/// Whether the result is written all the same without an assignment: bound
+/// to an output, passed to a VAR_IN_OUT or referenced with `REF()`, in a
+/// statement or in a declaration's initializer.
+fn handed_out<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    body: &BodyInferenceResult<'db>,
     scope: ScopeId<'db>,
 ) -> bool {
-    let VariableAccessKind::Symbolic(begin) = var.kind(db) else {
-        return false;
-    };
-    let Some(path_expr) = begin.expr(db) else {
-        return false;
-    };
-    let Some(ty) = body.type_of_path_expr.get(&path_expr) else {
-        return false;
-    };
-
-    // Check if the inferred type is the function/method that owns this scope
-    match ty {
-        Type::Function(f) => f.get_scope_id(db) == scope,
-        Type::MethodDecl(m) => m.get_scope_id(db) == scope,
-        _ => false,
-    }
+    body.hands_out_result(db)
+        || infer_initialization(db, scope)
+            .body_infer_result
+            .hands_out_result(db)
 }
 
 /// A `{wasm}` statement assigns the return when its `(result NAME)` is the
@@ -71,6 +68,7 @@ pub fn check_pragma<'db>(
 /// Post-walk check: if no return assignment was found, emit the diagnostic.
 pub fn check_result<'db>(
     db: &'db dyn WorkspaceDataBase,
+    body: &BodyInferenceResult<'db>,
     scope: ScopeId<'db>,
     return_assigned: bool,
     diagnostics: &mut Vec<IdeDiagnostic>,
@@ -102,13 +100,18 @@ pub fn check_result<'db>(
             )
         }
         ScopeKind::MethodDecl(m) => {
-            if m.return_type(db).is_none() {
+            // An ABSTRACT method has no body to assign in: an implementation
+            // does.
+            if m.return_type(db).is_none() || m.modifier(db).contains(hir::Modifier::ABSTRACT) {
                 return;
             }
             (m.name_with_case(db).text(db), "METHOD", m.get_name_span(db))
         }
         _ => return,
     };
+    if handed_out(db, body, scope) {
+        return;
+    }
 
     diagnostics.push(
         diag()

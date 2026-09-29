@@ -180,3 +180,83 @@ fn a_pragma_into_a_local_does_not_assign_the_return(mut with_db: RootDatabase) {
     ---'
     ");
 }
+
+/// A result built field by field, or element by element, is assigned.
+#[rstest]
+fn a_result_built_part_by_part_is_assigned(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE Pt : STRUCT x : INT; y : INT; END_STRUCT; END_TYPE
+TYPE A2 : ARRAY [0..1] OF INT; END_TYPE
+
+FUNCTION MakePt : Pt
+    MakePt.x := 1;
+    MakePt.y := 2;
+END_FUNCTION
+
+FUNCTION MakeArr : A2
+    MakeArr[0] := 1;
+END_FUNCTION
+
+FUNCTION_BLOCK Shape
+    METHOD PUBLIC Corner : Pt
+        Corner.x := 1;
+    END_METHOD
+END_FUNCTION_BLOCK
+"#;
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "missing-return"), @r"");
+}
+
+/// A result bound to an output, passed to a VAR_IN_OUT or referenced, in a
+/// statement or in an initializer, is written by what it is handed to.
+#[rstest]
+fn a_result_handed_out_is_assigned(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION Get
+VAR_OUTPUT o : INT; END_VAR
+    o := 9;
+END_FUNCTION
+
+FUNCTION Inc
+VAR_IN_OUT io : INT; END_VAR
+    io := io + 1;
+END_FUNCTION
+
+FUNCTION ViaOutput : INT
+    Get(o => ViaOutput);
+END_FUNCTION
+
+FUNCTION ViaInOut : INT
+    Inc(io := ViaInOut);
+END_FUNCTION
+
+FUNCTION ViaRef : INT
+VAR r : REF_TO INT; END_VAR
+    r := REF(ViaRef);
+    r^ := 1;
+END_FUNCTION
+
+FUNCTION ViaInit : INT
+VAR r : REF_TO INT := REF(ViaInit); END_VAR
+    r^ := 1;
+END_FUNCTION
+
+FUNCTION_BLOCK Fb
+    METHOD PUBLIC ViaOut : INT
+        Get(o => ViaOut);
+    END_METHOD
+END_FUNCTION_BLOCK
+"#;
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "missing-return"), @r"");
+}
+
+/// An ABSTRACT method has no body to assign in: its implementations do.
+#[rstest]
+fn an_abstract_method_is_exempt(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK ABSTRACT Shape
+    METHOD PUBLIC ABSTRACT Area : INT
+    END_METHOD
+END_FUNCTION_BLOCK
+"#;
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "missing-return"), @r"");
+}

@@ -461,14 +461,6 @@ fn pick_by_return<'db>(
     expected: Option<Type<'db>>,
 ) -> OverloadPick<'db> {
     if let Some(expected) = expected {
-        // Assigning to a function's own NAME targets its return slot — the
-        // same peel `set_target_type` and the coercion record apply.
-        let expected = match expected {
-            Type::Function(_) | Type::MethodDecl(_) => {
-                expected.with_return_type(db).unwrap_or(expected)
-            }
-            other => other,
-        };
         let expected = expected.normalize(db);
         let by_return: Vec<Function<'db>> = tie
             .iter()
