@@ -51,6 +51,7 @@ pub mod missing_return;
 pub mod negated_comparison;
 pub mod negated_condition;
 pub mod once_violation;
+pub mod recursion;
 pub mod redundant_not;
 pub mod self_assignment;
 pub mod self_comparison;
@@ -99,6 +100,7 @@ pub const RECOMMENDED_RULE_NAMES: &[&str] = &[
     global_without_external::NAME,
     instance_in_function::NAME,
     latin1_escape::NAME,
+    recursion::NAME,
 ];
 
 /// Whether `name` runs under `config`: an explicit entry in `[linter.rules]`
@@ -151,6 +153,7 @@ pub const ALL_RULE_NAMES: &[&str] = &[
     negated_comparison::NAME,
     negated_condition::NAME,
     once_violation::NAME,
+    recursion::NAME,
     redundant_not::NAME,
     self_assignment::NAME,
     self_comparison::NAME,
@@ -401,6 +404,11 @@ fn lint_scope<'db>(
             instance_in_function::check(db, scope, d)
         });
     }
+    if is_enabled(config, recursion::NAME) {
+        run_lint(recursion::NAME, diagnostics, |d| {
+            recursion::check(db, scope, d)
+        });
+    }
     if is_enabled(config, single_element_array::NAME) {
         let variables: &[hir::hir_def::pous::variable::VariableDecl] =
             match get_scope(db, scope).kind {
@@ -542,6 +550,6 @@ mod select_tests {
                 "{name} is not a known rule name"
             );
         }
-        assert_eq!(RECOMMENDED_RULE_NAMES.len(), 25);
+        assert_eq!(RECOMMENDED_RULE_NAMES.len(), 26);
     }
 }
