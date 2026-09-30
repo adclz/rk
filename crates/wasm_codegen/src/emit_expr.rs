@@ -20,7 +20,7 @@ use crate::{LocalInfo, mir_cast::emit_cast_instructions};
 pub(crate) struct StringSnapshotCtx {
     /// Pre-allocated scratch slot addresses for each nested STRING-returning
     /// call in this function (in encounter order).
-    pub slots: Vec<u32>,
+    pub slots: Vec<crate::MemAddr>,
     /// Capacity each slot was sized to (uniform for now).
     pub slot_capacity: u32,
     /// Index into `slots` for the next nested STRING call.
@@ -95,14 +95,14 @@ fn emit_string_snapshot(func: &mut wasm_encoder::Function) {
         func.instruction(&Instruction::LocalSet(len_tmp));
         func.instruction(&Instruction::LocalSet(ptr_tmp));
         // rk_str_assign(slot_addr, slot_cap, ptr_tmp, len_tmp)
-        func.instruction(&Instruction::I32Const(slot_addr as i32));
+        slot_addr.emit(func);
         func.instruction(&Instruction::I32Const(slot_cap as i32));
         func.instruction(&Instruction::LocalGet(ptr_tmp));
         func.instruction(&Instruction::LocalGet(len_tmp));
         func.instruction(&Instruction::Call(str_assign));
         // `rk_str_assign` clamps to the slot capacity, which matches the
         // producers' maximum output.
-        func.instruction(&Instruction::I32Const(slot_addr as i32 + 4));
+        slot_addr.add(4).emit(func);
         func.instruction(&Instruction::LocalGet(len_tmp));
     });
 }
@@ -349,7 +349,7 @@ fn emit_load(
                         func.instruction(&Instruction::LocalGet(*index));
                     }
                     LocalInfo::Memory { address, elem, .. } => {
-                        func.instruction(&Instruction::I32Const(*address as i32));
+                        address.emit(func);
                         if let Some(e) = elem {
                             emit_typed_mem_load(func, &MirType::Elementary(*e));
                         } else {
@@ -460,7 +460,7 @@ pub(crate) fn emit_addr_of(
             if let Some(info) = locals.get(ident) {
                 match info {
                     LocalInfo::Memory { address, .. } => {
-                        func.instruction(&Instruction::I32Const(*address as i32));
+                        address.emit(func);
                     }
                     LocalInfo::Pointer { index, .. } => {
                         func.instruction(&Instruction::LocalGet(*index));
@@ -477,7 +477,7 @@ pub(crate) fn emit_addr_of(
                         // String params are on the stack, not addressable
                     }
                     LocalInfo::StringMemory { address, .. } => {
-                        func.instruction(&Instruction::I32Const(*address as i32));
+                        address.emit(func);
                     }
                     LocalInfo::StringInOutParam { addr_index, .. } => {
                         func.instruction(&Instruction::LocalGet(*addr_index));

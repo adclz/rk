@@ -40,6 +40,17 @@ pub fn check(source: &str) -> Result<Verdict, Finding> {
     // `rk check` accepted it, so it must lower: a lowering error on a clean
     // source is what `rk compile` reports as an internal compiler error.
     let mir = mir::lower::lower_module::lower_module(&db, index).map_err(|e| lowering(&e))?;
+    // HIR's call graph decides which functions get a stack frame, and a call
+    // it missed shares a recursive function's storage between its calls.
+    if let Some(func) = mir.unframed_recursion() {
+        return Err(Finding::new(
+            "unframed-recursion",
+            format!(
+                "`{}` can call itself again but has no frame",
+                func.name.text(&db)
+            ),
+        ));
+    }
 
     let debug = wasm_codegen::generate_wasm_profile(&db, &mir, Profile::Debug).finish();
     let release = wasm_codegen::generate_wasm_profile(&db, &mir, Profile::Release).finish();

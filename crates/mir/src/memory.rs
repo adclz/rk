@@ -22,6 +22,9 @@ pub struct MirMemoryLayout {
     /// Every located (`AT %…`) VAR_GLOBAL as allocated, for the three I/O
     /// bands.
     pub located_allocations: Vec<LocatedEntry>,
+    /// The bytes of the frame being laid out, while a recursive function is
+    /// lowered: its locals go there instead of at static addresses.
+    frame: Option<u32>,
 }
 
 impl Default for MirMemoryLayout {
@@ -32,6 +35,7 @@ impl Default for MirMemoryLayout {
             retain_allocations: Vec::new(),
             global_allocations: Vec::new(),
             located_allocations: Vec::new(),
+            frame: None,
         }
     }
 }
@@ -144,6 +148,30 @@ impl MirMemoryLayout {
         });
         self.offset = address + size;
         address
+    }
+
+    /// Lay out the locals that follow in a frame, for a function that may
+    /// call itself; [`Self::end_frame`] goes back to static addresses.
+    pub fn begin_frame(&mut self) {
+        self.frame = Some(0);
+    }
+
+    /// The frame begun by [`Self::begin_frame`], closed; `None` when none was.
+    pub fn end_frame(&mut self) -> Option<crate::function::MirFrame> {
+        use crate::function::{FRAME_ALIGN, MirFrame};
+        self.frame.take().map(|size| MirFrame {
+            size: align_to(size, FRAME_ALIGN),
+        })
+    }
+
+    /// `size` bytes at `align` in the frame being laid out; `None` outside
+    /// one.
+    pub fn allocate_in_frame(&mut self, size: u32, align: u32) -> Option<u32> {
+        let used = self.frame.as_mut()?;
+        debug_assert!(align <= crate::function::FRAME_ALIGN);
+        let offset = align_to(*used, align);
+        *used = offset + size;
+        Some(offset)
     }
 
     /// Register an allocated variable as RETAIN for the band; pure

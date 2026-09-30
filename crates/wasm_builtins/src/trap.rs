@@ -74,6 +74,18 @@ pub extern "C" fn rk_null_check(ptr: i32) -> i32 {
     ptr
 }
 
+/// Stack check at the start of a recursive function's call: raises when the
+/// frame the call pushed ends past the stack's `end`, else returns the new
+/// top of the stack.
+#[unsafe(no_mangle)]
+pub extern "C" fn rk_stack_check(top: u32, end: u32) -> u32 {
+    if top > end {
+        const MSG: &str = "stack overflow: recursion too deep";
+        unsafe { __iec_raise(MSG.as_ptr(), MSG.len() as u32) }
+    }
+    top
+}
+
 /// Range check for a runtime value entering a subrange slot: raises when
 /// `value` leaves `[lower, upper]`; the compile-time half is E0702. Four
 /// variants by lane and signedness, since a UDINT bound like

@@ -163,6 +163,7 @@ pub const BUILTINS: &[(&str, &[Lane], &[Lane])] = &[
         &[Lane::I64],
     ),
     ("rk.rem_i32_checked", &[Lane::I32, Lane::I32], &[Lane::I32]),
+    ("rk.stack_check", &[Lane::I32, Lane::I32], &[Lane::I32]),
     (
         "rk.str_assign",
         &[Lane::I32, Lane::I32, Lane::I32, Lane::I32],

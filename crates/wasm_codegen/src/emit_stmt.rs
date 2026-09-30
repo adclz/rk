@@ -38,15 +38,29 @@ fn aggregate_value_size(value: &MirExpr) -> Option<u32> {
 pub(crate) enum ReturnValue {
     /// Scalar in a wasm local: push it.
     ScalarLocal(u32),
-    /// STRING in a static slot: push `(ptr, len)` per the canonical ABI —
+    /// STRING in a memory slot: push `(ptr, len)` per the canonical ABI —
     /// buffer base at `addr + 4`, length loaded from `addr`.
-    StringMem(u32),
-    /// Aggregate in a static slot: push its address; the caller copies out
+    StringMem(crate::MemAddr),
+    /// Aggregate in a memory slot: push its address; the caller copies out
     /// of it.
-    AggregateMem(u32),
+    AggregateMem(crate::MemAddr),
     /// Scalar kept in memory because `REF()` or a VAR_IN_OUT takes its
     /// address: load it.
-    ScalarMem(u32, mir::types::MirElementary),
+    ScalarMem(crate::MemAddr, mir::types::MirElementary),
+}
+
+thread_local! {
+    /// In a recursive function: the wasm local holding the start of its
+    /// frame, and the stack pointer's global, for a `RETURN` to pop it.
+    pub(crate) static FRAME: std::cell::Cell<Option<(u32, u32)>> =
+        const { std::cell::Cell::new(None) };
+}
+
+/// Pop the current call's frame: the stack pointer goes back to its start.
+/// A result in the frame is read before the next call pushes one over it.
+pub(crate) fn emit_frame_pop(func: &mut wasm_encoder::Function, base: u32, sp_global: u32) {
+    func.instruction(&Instruction::LocalGet(base));
+    func.instruction(&Instruction::GlobalSet(sp_global));
 }
 
 /// Push a function's return value, matching its wasm signature.
@@ -56,8 +70,8 @@ pub(crate) fn emit_return_value(func: &mut wasm_encoder::Function, ret: ReturnVa
             func.instruction(&Instruction::LocalGet(idx));
         }
         ReturnValue::StringMem(addr) => {
-            func.instruction(&Instruction::I32Const(addr as i32 + 4));
-            func.instruction(&Instruction::I32Const(addr as i32));
+            addr.add(4).emit(func);
+            addr.emit(func);
             func.instruction(&Instruction::I32Load(wasm_encoder::MemArg {
                 offset: 0,
                 align: 2,
@@ -65,10 +79,10 @@ pub(crate) fn emit_return_value(func: &mut wasm_encoder::Function, ret: ReturnVa
             }));
         }
         ReturnValue::AggregateMem(addr) => {
-            func.instruction(&Instruction::I32Const(addr as i32));
+            addr.emit(func);
         }
         ReturnValue::ScalarMem(addr, elem) => {
-            func.instruction(&Instruction::I32Const(addr as i32));
+            addr.emit(func);
             emit_typed_mem_load(func, &mir::types::MirType::Elementary(elem));
         }
     }
@@ -192,6 +206,9 @@ fn emit_stmt(func: &mut wasm_encoder::Function, stmt: &MirStmt, ctx: &Ctx) {
         MirStmt::Return => {
             if let Some(ret) = ctx.return_value {
                 emit_return_value(func, ret);
+            }
+            if let Some((base, sp_global)) = FRAME.get() {
+                emit_frame_pop(func, base, sp_global);
             }
             func.instruction(&Instruction::Return);
         }
@@ -645,13 +662,13 @@ fn emit_stmt(func: &mut wasm_encoder::Function, stmt: &MirStmt, ctx: &Ctx) {
                 // A string producer (result declared STRING) takes
                 // `(...args, out_addr, out_cap)` and writes the destination
                 // directly; nothing is returned.
-                let producer_out: Option<(u32, u32)> =
-                    result.and_then(|name| match ctx.locals.get(&name)? {
-                        LocalInfo::StringMemory { address, capacity } => {
-                            Some((*address, *capacity))
-                        }
-                        _ => None,
-                    });
+                let producer_out: Option<(crate::MemAddr, u32)> = result.and_then(|name| match ctx
+                    .locals
+                    .get(&name)?
+                {
+                    LocalInfo::StringMemory { address, capacity } => Some((*address, *capacity)),
+                    _ => None,
+                });
 
                 // Push regular params first.
                 for param_name in params {
@@ -677,8 +694,8 @@ fn emit_stmt(func: &mut wasm_encoder::Function, stmt: &MirStmt, ctx: &Ctx) {
                         }
                         Some(LocalInfo::StringMemory { address, .. }) => {
                             // STRING var passed by value: push (ptr, len).
-                            func.instruction(&Instruction::I32Const(*address as i32 + 4));
-                            func.instruction(&Instruction::I32Const(*address as i32));
+                            address.add(4).emit(func);
+                            address.emit(func);
                             func.instruction(&Instruction::I32Load(mem_arg(0, 2)));
                         }
                         _ => {}
@@ -688,7 +705,7 @@ fn emit_stmt(func: &mut wasm_encoder::Function, stmt: &MirStmt, ctx: &Ctx) {
                 // The producer's (out_addr, out_cap): a static slot or the
                 // function's own out-buffer params.
                 if let Some((addr, cap)) = producer_out {
-                    func.instruction(&Instruction::I32Const(addr as i32));
+                    addr.emit(func);
                     func.instruction(&Instruction::I32Const(cap as i32));
                 }
 
@@ -1075,8 +1092,12 @@ enum FbBase {
 fn static_fb_base(place: &MirPlace, locals: &FxHashMap<Ident, LocalInfo>) -> Option<FbBase> {
     match place {
         MirPlace::Local(ident) => match locals.get(ident) {
-            Some(LocalInfo::Memory { address, .. }) => Some(FbBase::Static(*address)),
-            // A pointer parameter carries its address at runtime.
+            Some(LocalInfo::Memory {
+                address: crate::MemAddr::Static(address),
+                ..
+            }) => Some(FbBase::Static(*address)),
+            // A pointer parameter, or a local in a recursive call's frame,
+            // has its address at runtime.
             _ => None,
         },
         // A VAR_GLOBAL instance sits at a fixed address, like a memory local.
@@ -1491,7 +1512,7 @@ fn emit_assignment(
                         func.instruction(&Instruction::LocalSet(*index));
                     }
                     LocalInfo::Memory { address, elem, .. } => {
-                        func.instruction(&Instruction::I32Const(*address as i32));
+                        address.emit(func);
                         emit_expr(func, value, ctx.locals, ctx.fn_indices);
                         if let Some(e) = elem {
                             emit_typed_mem_store(func, &mir::types::MirType::Elementary(*e));
