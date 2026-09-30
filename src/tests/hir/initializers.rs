@@ -2,7 +2,7 @@ use db::RootDatabase;
 use insta::assert_snapshot;
 use rstest::rstest;
 
-use crate::tests::utils::{test_diagnostics, test_diagnostics_not_compiled, with_db};
+use crate::tests::utils::{test_diagnostics, with_db};
 
 // E0401: a once-per-type initializer (TYPE default, FB/CLASS member default,
 // static PROGRAM field or config global) must be constant. CONSTANT
@@ -131,9 +131,9 @@ PROGRAM Dummy
     t := 0;
 END_PROGRAM
 "#;
-    // Does not compile yet: codegen panics on the local initialized from
-    // the global, "emit_load: no local named ...".
-    assert_snapshot!(test_diagnostics_not_compiled(&mut with_db, &[source]), @r"");
+    // `g2` is reached without a VAR_EXTERNAL, which rk allows and the linter
+    // warns about.
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
 }
 
 #[rstest]
@@ -259,9 +259,9 @@ PROGRAM Dummy
     t := 0;
 END_PROGRAM
 "#;
-    // Does not compile yet: codegen panics on the local initialized from
-    // the global, "emit_load: no local named ...".
-    assert_snapshot!(test_diagnostics_not_compiled(&mut with_db, &[source]), @r"");
+    // `g2` is reached without a VAR_EXTERNAL, which rk allows and the linter
+    // warns about.
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
 }
 
 // An array copy moves bytes, so the element type must be the SAME: an
@@ -433,7 +433,7 @@ END_FUNCTION_BLOCK
     assert_snapshot!(over.join("\n"), @r"
     exceeds the capacity of 5 bytes, got 12; declare it STRING[12], or shorten the literal
     exceeds the capacity of 5 bytes, got 12; declare it STRING[12], or shorten the literal
-    exceeds the capacity of 5 bytes, got 12; declare it STRING[12], or shorten the literal
+    exceeds the capacity of 5 bytes, got 12; change 'Alias5' to STRING[12] or use another type, or shorten the literal
     exceeds the capacity of 80 bytes, got 100; declare it STRING[100], or shorten the literal
     ");
 }
@@ -555,4 +555,367 @@ END_CONFIGURATION
             && rendered.contains("'m' is declared here"),
         "`(m := 30)` on {decl} must be E0405 pointing at the declaration, got:\n{rendered}"
     );
+}
+
+/// An input's default is what the caller passes when the argument is
+/// omitted, before the callee's own variables exist: a constant, which the
+/// call site folds.
+#[rstest]
+fn an_input_default_is_a_constant(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE Color : (Red, Green, Blue); END_TYPE
+
+CONFIGURATION Cfg
+VAR_GLOBAL CONSTANT K : INT := 7; END_VAR
+VAR_GLOBAL G : INT; END_VAR
+END_CONFIGURATION
+
+FUNCTION f : INT
+VAR_INPUT
+    a : INT := 1;
+    b : INT := L * 2;
+    c : INT := K;
+    d : Color := Color#Blue;
+    e : REF_TO INT := REF(G);
+END_VAR
+VAR CONSTANT L : INT := 3; END_VAR
+VAR_EXTERNAL CONSTANT K : INT; END_VAR
+VAR_EXTERNAL G : INT; END_VAR
+    f := a + b + c;
+END_FUNCTION
+
+FUNCTION g : INT
+    g := f();
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
+
+#[rstest]
+fn an_input_default_from_a_variable_is_refused(mut with_db: RootDatabase) {
+    let source = r#"
+CONFIGURATION Cfg
+VAR_GLOBAL G : INT; END_VAR
+END_CONFIGURATION
+
+FUNCTION one : INT
+    one := 1;
+END_FUNCTION
+
+FUNCTION f : INT
+VAR_INPUT
+    a : INT := G;
+    b : INT := a;
+    c : INT := one();
+    d : REF_TO INT := REF(a);
+END_VAR
+VAR_EXTERNAL G : INT; END_VAR
+    f := a + b + c;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0401] Error: initial value is not constant
+        ,-[ file:///test0.st:12:16 ]
+        |
+     12 |     a : INT := G;
+        |                |
+        |                `-- this initial value must be a constant: the caller passes it
+        |
+        | Note: 'G' is an ordinary variable; declare it CONSTANT if its value never changes
+    ----'
+    [E0401] Error: initial value is not constant
+        ,-[ file:///test0.st:13:16 ]
+        |
+     13 |     b : INT := a;
+        |                |
+        |                `-- this initial value must be a constant: the caller passes it
+        |
+        | Note: 'a' is another input of this call: it has no value before the call binds it
+    ----'
+    [E0401] Error: initial value is not constant
+        ,-[ file:///test0.st:14:16 ]
+        |
+     14 |     c : INT := one();
+        |                ^^|^^
+        |                  `---- this initial value must be a constant: the caller passes it
+        |
+        | Note: a call is not a constant
+    ----'
+    [E0401] Error: initial value is not constant
+        ,-[ file:///test0.st:15:23 ]
+        |
+     15 |     d : REF_TO INT := REF(a);
+        |                       ^^^|^^
+        |                          `---- this initial value must be a constant: the caller passes it
+        |
+        | Note: 'a' is another input of this call: it has no value before the call binds it
+    ----'
+    ");
+}
+
+/// A default computed from a sibling input or from the callee's own local is
+/// refused too: neither exists when the caller fills in the argument, and the
+/// caller's `a` and `y` are someone else's.
+#[rstest]
+fn an_input_default_from_a_sibling_or_a_local_is_refused(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION f : INT
+VAR_INPUT
+    a : INT;
+    b : INT := a * 2;
+    c : INT := y;
+END_VAR
+VAR y : INT := 4; END_VAR
+    f := b + c;
+END_FUNCTION
+
+FUNCTION caller : INT
+VAR a : INT := 100; y : INT := 100; END_VAR
+    caller := f(a := 3);
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0401] Error: initial value is not constant
+       ,-[ file:///test0.st:5:16 ]
+       |
+     5 |     b : INT := a * 2;
+       |                ^^|^^
+       |                  `---- this initial value must be a constant: the caller passes it
+       |
+       | Note: 'a' is another input of this call: it has no value before the call binds it
+    ---'
+    [E0401] Error: initial value is not constant
+       ,-[ file:///test0.st:6:16 ]
+       |
+     6 |     c : INT := y;
+       |                |
+       |                `-- this initial value must be a constant: the caller passes it
+       |
+       | Note: 'y' belongs to the call, which has not started when the caller passes the default
+    ---'
+    ");
+}
+
+/// A `REF()` default the caller cannot compute before the call is refused,
+/// written out or as a CONSTANT's value: a subscript naming another input,
+/// the callee's own local, the instance's member.
+#[rstest]
+fn an_input_default_reference_the_caller_cannot_compute_is_refused(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE PInt : REF_TO INT; END_TYPE
+
+CONFIGURATION Cfg
+VAR_GLOBAL G : ARRAY[1..3] OF INT; END_VAR
+END_CONFIGURATION
+
+FUNCTION by_index : INT
+VAR_INPUT
+    i : INT;
+    p : PInt := REF(G[i]);
+END_VAR
+VAR_EXTERNAL G : ARRAY[1..3] OF INT; END_VAR
+    by_index := p^;
+END_FUNCTION
+
+FUNCTION by_constant : INT
+VAR_INPUT p : PInt := PK; END_VAR
+VAR loc : INT; END_VAR
+VAR CONSTANT PK : PInt := REF(loc); END_VAR
+    by_constant := p^;
+END_FUNCTION
+
+FUNCTION_BLOCK Motor
+VAR speed : INT; END_VAR
+VAR CONSTANT PS : PInt := REF(speed); END_VAR
+    METHOD PUBLIC get : INT
+    VAR_INPUT p : PInt := PS; END_VAR
+        get := p^;
+    END_METHOD
+END_FUNCTION_BLOCK
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0401] Error: initial value is not constant
+        ,-[ file:///test0.st:11:17 ]
+        |
+     11 |     p : PInt := REF(G[i]);
+        |                 ^^^^|^^^^
+        |                     `------ this initial value must be a constant: the caller passes it
+        |
+        | Note: 'i' is another input of this call: it has no value before the call binds it
+    ----'
+    [E0401] Error: initial value is not constant
+        ,-[ file:///test0.st:18:23 ]
+        |
+     18 | VAR_INPUT p : PInt := PK; END_VAR
+        |                       ^|
+        |                        `-- this initial value must be a constant: the caller passes it
+        |
+        | Note: 'loc' belongs to the call, which has not started when the caller passes the default
+    ----'
+    [E0401] Error: initial value is not constant
+        ,-[ file:///test0.st:20:27 ]
+        |
+     20 | VAR CONSTANT PK : PInt := REF(loc); END_VAR
+        |                           ^^^^|^^^
+        |                               `----- a CONSTANT is one value for every instance and every call: a REF() in it names a global
+        |
+        | Note: 'loc' belongs to the call: each call has its own
+    ----'
+    [E0401] Error: initial value is not constant
+        ,-[ file:///test0.st:26:27 ]
+        |
+     26 | VAR CONSTANT PS : PInt := REF(speed); END_VAR
+        |                           ^^^^^|^^^^
+        |                                `------ a CONSTANT is one value for every instance and every call: a REF() in it names a global
+        |
+        | Note: 'speed' is a member: each instance has its own
+    ----'
+    [E0401] Error: initial value is not constant
+        ,-[ file:///test0.st:28:27 ]
+        |
+     28 |     VAR_INPUT p : PInt := PS; END_VAR
+        |                           ^|
+        |                            `-- this initial value must be a constant: the caller passes it
+        |
+        | Note: 'speed' is a member: each instance has its own
+    ----'
+    ");
+}
+
+/// In a TYPE's or a CONFIGURATION's initial value, a `REF()` names a field
+/// beside it or a VAR_GLOBAL, through fields and subscripts, and is typed
+/// like any other; a name that is nothing is E0201, where it read NULL.
+#[rstest]
+fn a_reference_in_a_type_or_configuration_default(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE PInt : REF_TO INT; END_TYPE
+TYPE Inner : STRUCT v : INT := 3; END_STRUCT; END_TYPE
+TYPE S : STRUCT
+    a : INT;
+    arr : ARRAY[0..2] OF INT;
+    inn : Inner;
+    pa : PInt := REF(a);
+    parr : PInt := REF(arr[2]);
+    pinn : PInt := REF(inn.v);
+    bad : PInt := REF(nothing);
+END_STRUCT; END_TYPE
+
+CONFIGURATION Cfg
+VAR_GLOBAL
+    g : INT;
+    garr : ARRAY[0..1] OF INT;
+    s : S;
+    r : PInt := REF(g);
+    rarr : PInt := REF(garr[1]);
+    rs : PInt := REF(s.inn.v);
+    greal : REAL;
+    wrong : PInt := REF(greal);
+END_VAR
+END_CONFIGURATION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r#"
+    [E0201] Error: no item found in scope
+        ,-[ file:///test0.st:11:23 ]
+        |
+     11 |     bad : PInt := REF(nothing);
+        |                       ^^^|^^^
+        |                          `----- no item "nothing" found in scope
+    ----'
+    [E0301] Error: type mismatch
+        ,-[ file:///test0.st:23:18 ]
+        |
+      2 | TYPE PInt : REF_TO INT; END_TYPE
+        |             ^^^^^|^^^^
+        |                  `------ type is defined by 'PInt' here
+        |
+     23 |     wrong : PInt := REF(greal);
+        |                  ^^^^^^|^^^^^^
+        |                        `-------- expected 'PInt', got 'REF_TO REAL'
+    ----'
+    "#);
+}
+
+/// A CONSTANT is one value for every instance and every call, so a `REF()`
+/// in it is a global's address. `REF(speed)` was a different address in each
+/// Motor, re-lowered wherever the CONSTANT was read, and `REF(loc)` in each
+/// call.
+#[rstest]
+fn a_constant_reference_names_a_global(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE PInt : REF_TO INT; END_TYPE
+
+CONFIGURATION Cfg
+VAR_GLOBAL j : INT; END_VAR
+VAR_GLOBAL CONSTANT KG : PInt := REF(j); END_VAR
+END_CONFIGURATION
+
+FUNCTION_BLOCK Motor
+VAR speed : INT; END_VAR
+VAR CONSTANT PS : PInt := REF(speed); END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION f : INT
+VAR loc : INT; END_VAR
+VAR CONSTANT PK : PInt := REF(loc); END_VAR
+VAR_EXTERNAL CONSTANT KG : PInt; END_VAR
+    f := KG^;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0401] Error: initial value is not constant
+        ,-[ file:///test0.st:11:27 ]
+        |
+     11 | VAR CONSTANT PS : PInt := REF(speed); END_VAR
+        |                           ^^^^^|^^^^
+        |                                `------ a CONSTANT is one value for every instance and every call: a REF() in it names a global
+        |
+        | Note: 'speed' is a member: each instance has its own
+    ----'
+    [E0401] Error: initial value is not constant
+        ,-[ file:///test0.st:16:27 ]
+        |
+     16 | VAR CONSTANT PK : PInt := REF(loc); END_VAR
+        |                           ^^^^|^^^
+        |                               `----- a CONSTANT is one value for every instance and every call: a REF() in it names a global
+        |
+        | Note: 'loc' belongs to the call: each call has its own
+    ----'
+    ");
+}
+
+/// REAL arithmetic over literals and CONSTANTs is a constant wherever one is
+/// needed; over an ordinary variable it is not.
+#[rstest]
+fn real_arithmetic_is_a_constant(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE R6 : REAL := 2.0 * 3.0; END_TYPE
+
+CONFIGURATION Cfg
+VAR_GLOBAL CONSTANT GK : LREAL := 1.0; END_VAR
+VAR_GLOBAL third : LREAL := GK / 3.0; G : REAL; END_VAR
+END_CONFIGURATION
+
+FUNCTION_BLOCK B
+VAR CONSTANT KR : REAL := 2.5; END_VAR
+VAR r : REAL := -(KR + 0.5) * 2.0; bad : REAL := G * 2.0; END_VAR
+VAR_EXTERNAL G : REAL; END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION f : REAL
+VAR_INPUT x : REAL := KR / 4.0; END_VAR
+VAR CONSTANT KR : REAL := 1.0; END_VAR
+    f := x;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0401] Error: initial value is not constant
+        ,-[ file:///test0.st:11:50 ]
+        |
+     11 | VAR r : REAL := -(KR + 0.5) * 2.0; bad : REAL := G * 2.0; END_VAR
+        |                                                  ^^^|^^^
+        |                                                     `----- this initial value must be a constant: it is fixed before the program runs
+        |
+        | Note: 'G' is an ordinary variable; declare it CONSTANT if its value never changes
+    ----'
+    ");
 }

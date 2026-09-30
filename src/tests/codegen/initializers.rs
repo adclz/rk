@@ -1122,3 +1122,127 @@ END_FUNCTION
     let r: i32 = crate::tests::codegen::run(&mut with_db, source, "run", ());
     assert_eq!(r, 150, "three elements of 50");
 }
+
+/// A FUNCTION local's initializer naming a VAR_GLOBAL reads the global: the
+/// name was looked up in the body's inference only, missed, and became a
+/// local of that name, which codegen could not find.
+#[rstest]
+fn function_local_initializer_names_a_global(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION read_k : INT
+        VAR y : INT := K; END_VAR
+            read_k := y;
+        END_FUNCTION
+
+        FUNCTION read_g : INT
+        VAR y : INT := G; END_VAR
+            read_g := y;
+        END_FUNCTION
+
+        PROGRAM P
+        VAR RETAIN seen : INT; END_VAR
+            seen := read_k() * 10 + read_g();
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+        VAR_GLOBAL CONSTANT K : INT := 7; END_VAR
+        VAR_GLOBAL G : INT := 3; END_VAR
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    let mut plc = TestPlc::load(&wasm).expect("load");
+    plc.run(1).expect("scan");
+    let seen = i32::from_le_bytes(plc.read_retain()[..4].try_into().unwrap());
+    assert_eq!(seen, 73);
+}
+
+/// A METHOD local's initializer is written in the method's declarations and
+/// lowers where its body does: a member it names, `REF()` of one and a
+/// `THIS` call are the instance's, in the base method and in its copy for
+/// an inheritor. It lowered without the instance: a panic, or NULL.
+#[rstest]
+fn method_local_initializer_reads_the_instance(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Base
+        VAR gain : INT := 3; END_VAR
+            METHOD PUBLIC hook : INT
+                hook := 1;
+            END_METHOD
+            METHOD PUBLIC apply : INT
+            VAR_INPUT x : INT; END_VAR
+            VAR
+                g : INT := gain;
+                p : REF_TO INT := REF(gain);
+                h : INT := THIS.hook();
+            END_VAR
+                apply := x * g * 100 + p^ * 10 + h;
+            END_METHOD
+        END_FUNCTION_BLOCK
+
+        FUNCTION_BLOCK Derived EXTENDS Base
+            METHOD PUBLIC OVERRIDE hook : INT
+                hook := 2;
+            END_METHOD
+        END_FUNCTION_BLOCK
+
+        // One bit per instance whose initializers read something else.
+        FUNCTION test : INT
+        VAR gain : INT := 50; b : Base; d : Derived; END_VAR
+            IF b.apply(x := 4) <> 1231 THEN test := test + 1; END_IF;
+            IF d.apply(x := 4) <> 1232 THEN test := test + 2; END_IF;
+        END_FUNCTION
+    "#;
+    let result: i32 = crate::tests::codegen::run(&mut with_db, source, "test", ());
+    assert_eq!(result, 0);
+}
+
+/// A local initializer in a specialized FUNCTION lowers in the
+/// specialization, as its body does: a variadic pack's fold, and a call on
+/// an interface parameter's implementer.
+#[rstest]
+fn local_initializer_in_a_specialization(mut with_db: db::RootDatabase) {
+    let source = r#"
+        INTERFACE IShow
+            METHOD show : INT END_METHOD
+        END_INTERFACE
+
+        FUNCTION_BLOCK Pump IMPLEMENTS IShow
+            METHOD PUBLIC show : INT
+                show := 7;
+            END_METHOD
+        END_FUNCTION_BLOCK
+
+        FUNCTION_BLOCK Fan IMPLEMENTS IShow
+            METHOD PUBLIC show : INT
+                show := 9;
+            END_METHOD
+        END_FUNCTION_BLOCK
+
+        FUNCTION ask : INT
+        VAR_INPUT dev : IShow; END_VAR
+        VAR v : INT := dev.show(); END_VAR
+            ask := v;
+        END_FUNCTION
+
+        FUNCTION sum_all : INT
+        VAR_INPUT args : INT...; END_VAR
+        VAR total : INT := ...args+; END_VAR
+            sum_all := total;
+        END_FUNCTION
+
+        // One bit per specialization whose initializer went wrong.
+        FUNCTION test : INT
+        VAR p : Pump; f : Fan; END_VAR
+            IF ask(dev := p) <> 7 THEN test := test + 1; END_IF;
+            IF ask(dev := f) <> 9 THEN test := test + 2; END_IF;
+            IF sum_all(1, 2, 3) <> 6 THEN test := test + 4; END_IF;
+            IF sum_all(10, 20) <> 30 THEN test := test + 8; END_IF;
+        END_FUNCTION
+    "#;
+    let result: i32 = crate::tests::codegen::run(&mut with_db, source, "test", ());
+    assert_eq!(result, 0);
+}

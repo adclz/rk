@@ -634,3 +634,29 @@ fn a_valid_dereference_does_not_fault(mut with_db: db::RootDatabase) {
     let result: i32 = crate::tests::codegen::run(&mut with_db, source, "run", ());
     assert_eq!(result, 7);
 }
+
+/// An FB's VAR_IN_OUT is null until a call binds it; a method reaching it
+/// first faults instead of writing address 0.
+#[rstest]
+fn an_unbound_fb_in_out_faults(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Acc
+        VAR_IN_OUT x : DINT; END_VAR
+            METHOD poke
+                x := 123456;
+            END_METHOD
+            x := x + 1;
+        END_FUNCTION_BLOCK
+
+        FUNCTION run : DINT
+        VAR f : Acc; END_VAR
+            f.poke();
+            run := 0;
+        END_FUNCTION
+    "#;
+    let msg = expect_fault(&mut with_db, source, "an unbound in-out must fault");
+    assert!(
+        msg.contains("dereference of a null reference"),
+        "unexpected fault message: {msg}"
+    );
+}

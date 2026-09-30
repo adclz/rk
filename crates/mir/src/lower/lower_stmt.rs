@@ -24,45 +24,45 @@ fn needs_cast<'db>(
     }
 }
 
-/// Lower a slice of HIR statements to MIR statements.
-pub fn lower_stmts<'db>(
+/// The context a POU's statements lower in: the instance a METHOD runs on,
+/// an interface specialization's bindings, an arity specialization's pack.
+/// A local's own initializer lowers in it too, since it is written in the
+/// same declarations as the body.
+#[allow(clippy::too_many_arguments)]
+pub fn body_ctx<'db>(
     db: &'db dyn WorkspaceDataBase,
-    stmts: &[Stmt<'db>],
+    this_struct: Option<crate::types::MirStructType>,
+    // The POU the body belongs to: the inheritor for a copied inherited
+    // method.
+    this_pou: Option<hir::hir_def::pous::pou::Pou<'db>>,
     string_pool: std::rc::Rc<std::cell::RefCell<super::lower_expr::StringPool>>,
-) -> Result<(Vec<MirStmt>, super::lower_expr::CallScratch), LowerTypeError> {
-    lower_stmts_with_ctx(
-        db,
-        stmts,
-        None,
-        &super::mono_iface::IfaceCallRewrites::default(),
-        string_pool,
-        None,
-    )
-}
-
-/// Lower a free-function body carrying interface-specialization context
-/// (empty for ordinary functions).
-pub fn lower_stmts_with_ctx<'db>(
-    db: &'db dyn WorkspaceDataBase,
-    stmts: &[Stmt<'db>],
     iface_subs: Option<&super::mono_iface::IfaceSubs<'db>>,
     iface_call_rewrites: &super::mono_iface::IfaceCallRewrites<'db>,
-    string_pool: std::rc::Rc<std::cell::RefCell<super::lower_expr::StringPool>>,
-    // Phase C: inside an arity specialization, how this body's pack expanded.
     variadic_expansion: Option<std::rc::Rc<super::lower_expr::VariadicExpansion>>,
-) -> Result<(Vec<MirStmt>, super::lower_expr::CallScratch), LowerTypeError> {
-    let mut ctx = ExprLowerCtx::new(db, string_pool);
+) -> ExprLowerCtx<'db> {
+    let mut ctx = match this_struct {
+        Some(this_struct) => ExprLowerCtx::with_this_struct(db, this_struct, string_pool),
+        None => ExprLowerCtx::new(db, string_pool),
+    };
+    ctx.this_pou = this_pou;
     ctx.variadic_expansion = variadic_expansion;
-    if let Some(is) = iface_subs
-        && !is.is_empty()
+    if let Some(subs) = iface_subs
+        && !subs.is_empty()
     {
-        ctx.iface_subs = Some(std::rc::Rc::new(is.clone()));
+        ctx.iface_subs = Some(std::rc::Rc::new(subs.clone()));
     }
     if !iface_call_rewrites.is_empty() {
         ctx.iface_call_rewrites = Some(std::rc::Rc::new(iface_call_rewrites.clone()));
     }
-    let stmts = lower_stmts_inner(&ctx, stmts)?;
-    Ok((stmts, ctx.call_scratch.take()))
+    ctx
+}
+
+/// Lower a body in the context [`body_ctx`] built.
+pub fn lower_body<'db>(
+    ctx: &ExprLowerCtx<'db>,
+    stmts: &[Stmt<'db>],
+) -> Result<Vec<MirStmt>, LowerTypeError> {
+    lower_stmts_inner(ctx, stmts)
 }
 
 /// Lower a slice of HIR statements in a FB body context where variables are struct fields.
@@ -77,18 +77,17 @@ pub fn lower_stmts_fb_body<'db>(
     iface_subs: Option<&super::mono_iface::IfaceSubs<'db>>,
     iface_call_rewrites: &super::mono_iface::IfaceCallRewrites<'db>,
 ) -> Result<(Vec<MirStmt>, super::lower_expr::CallScratch), LowerTypeError> {
-    let mut ctx = ExprLowerCtx::with_this_struct(db, this_struct, string_pool);
-    ctx.this_pou = this_pou;
     // A specialized METHOD body carries its interface-param bindings, like
     // a specialized function body.
-    if let Some(subs) = iface_subs
-        && !subs.is_empty()
-    {
-        ctx.iface_subs = Some(std::rc::Rc::new(subs.clone()));
-    }
-    if !iface_call_rewrites.is_empty() {
-        ctx.iface_call_rewrites = Some(std::rc::Rc::new(iface_call_rewrites.clone()));
-    }
+    let ctx = body_ctx(
+        db,
+        Some(this_struct),
+        this_pou,
+        string_pool,
+        iface_subs,
+        iface_call_rewrites,
+        None,
+    );
     let stmts = lower_stmts_inner(&ctx, stmts)?;
     Ok((stmts, ctx.call_scratch.take()))
 }

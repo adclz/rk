@@ -23,7 +23,6 @@ use crate::{
     },
     lower::{
         lower_expr::ExprLowerCtx,
-        lower_stmt::lower_stmts,
         lower_type::{LowerTypeError, lower_type},
     },
     memory::{MirAllocKind, MirMemoryLayout},
@@ -253,7 +252,7 @@ fn lower_function_inner<'db>(
     let mut next_local_idx: u32 = 0;
 
     // Collect address-taken variables for storage decisions
-    let mut address_taken = collect_address_taken_vars(db, func.statements(db));
+    let mut address_taken = collect_address_taken_vars(db, func.scope_id(db));
     address_taken.extend(collect_address_taken_in_inits(db, func.variables(db)));
 
     // 1. Parameters (Input, InOut, Output). VAR_OUTPUT is a pointer at the
@@ -301,6 +300,14 @@ fn lower_function_inner<'db>(
             params.push(param);
         }
     }
+    let entry_copies = shadow_address_taken_inputs(
+        db,
+        &mut params,
+        &address_taken,
+        &mut locals,
+        &mut next_local_idx,
+        memory_layout,
+    );
 
     // 2. Return type
     let return_type = func
@@ -361,38 +368,37 @@ fn lower_function_inner<'db>(
         });
     }
 
-    // 4. Starting values: the result's type defaults, then every local's.
-    let mut init_stmts = match (func.return_type(db), &return_type) {
-        (Some(spec), Some(ret_ty)) => {
-            lower_result_init_stmts(db, func.name(db), ret_ty, spec, &string_pool)?
-        }
-        _ => Vec::new(),
-    };
-    init_stmts.extend(lower_local_init_stmts(
+    // The context the body lowers in; a local's own initializer, written in
+    // the same declarations, lowers in it too. Interface specialization
+    // threads `iface_subs` and `iface_call_rewrites` into it.
+    let ctx = crate::lower::lower_stmt::body_ctx(
         db,
-        func.variables(db),
-        &string_pool,
-    )?);
+        None,
+        None,
+        string_pool.clone(),
+        iface_subs,
+        iface_call_rewrites,
+        variadic_expansion.clone(),
+    );
 
-    // 5. Body statements. Interface specialization threads `iface_subs` and
-    // `iface_call_rewrites` into the body.
-    let needs_full_ctx = iface_subs.is_some_and(|m| !m.is_empty())
-        || !iface_call_rewrites.is_empty()
-        || variadic_expansion.is_some();
-    let (mut body, call_scratch) = if !needs_full_ctx {
-        lower_stmts(db, func.statements(db), string_pool.clone())?
-    } else {
-        crate::lower::lower_stmt::lower_stmts_with_ctx(
+    // 4. Starting values: the shadowed inputs, the result's type defaults,
+    // then every local's.
+    let mut init_stmts = entry_copies;
+    if let (Some(spec), Some(ret_ty)) = (func.return_type(db), &return_type) {
+        init_stmts.extend(lower_result_init_stmts(
             db,
-            func.statements(db),
-            iface_subs,
-            iface_call_rewrites,
-            string_pool.clone(),
-            variadic_expansion.clone(),
-        )?
-    };
+            func.name(db),
+            ret_ty,
+            spec,
+            &string_pool,
+        )?);
+    }
+    init_stmts.extend(lower_local_init_stmts(db, func.variables(db), &ctx)?);
+
+    // 5. Body statements.
+    let mut body = crate::lower::lower_stmt::lower_body(&ctx, func.statements(db))?;
     append_call_scratch_locals(
-        call_scratch,
+        ctx.call_scratch.take(),
         &mut locals,
         &mut next_local_idx,
         memory_layout,
@@ -485,7 +491,7 @@ fn lower_function_block_inner<'db>(
         let mut next_local_idx: u32 = 1; // 0 is 'this'
         // A method local whose address is taken must live in memory. Same scan
         // as the other bodies.
-        let mut address_taken = collect_address_taken_vars(db, method.stmts(db));
+        let mut address_taken = collect_address_taken_vars(db, method.scope_id(db));
         address_taken.extend(collect_address_taken_in_inits(db, method.variables(db)));
 
         // 'this' pointer parameter — the FB's instance struct.
@@ -506,29 +512,44 @@ fn lower_function_block_inner<'db>(
             kind: MirParamKind::This,
         });
 
-        // Method parameters
+        // Method parameters, then its locals: every wasm parameter's index
+        // comes before the first local's, whatever order the sections are
+        // declared in.
+        let mut local_vars = Vec::new();
         for var in method.variables(db) {
-            if let Some(param) = param_for_var(db, var, spec.map(|i| &i.iface_subs))? {
-                next_local_idx += param_wasm_width(&param.ty, param.kind);
-                params.push(param);
-            } else {
-                let ty = lower_var_type(db, *var)?;
-                let storage = allocate_local_storage(
-                    var.name(db),
-                    &ty,
-                    address_taken.contains(&var.name(db)),
-                    &mut next_local_idx,
-                    memory_layout,
-                );
-                locals.push(MirLocal {
-                    name: var.name(db),
-                    ty,
-                    init: None,
-                    storage,
-                    // FB/class method local — stateless per call.
-                    var_storage: MirVariableStorage::Automatic,
-                });
+            match param_for_var(db, var, spec.map(|i| &i.iface_subs))? {
+                Some(param) => {
+                    next_local_idx += param_wasm_width(&param.ty, param.kind);
+                    params.push(param);
+                }
+                None => local_vars.push(var),
             }
+        }
+        let entry_copies = shadow_address_taken_inputs(
+            db,
+            &mut params,
+            &address_taken,
+            &mut locals,
+            &mut next_local_idx,
+            memory_layout,
+        );
+        for var in local_vars {
+            let ty = lower_var_type(db, *var)?;
+            let storage = allocate_local_storage(
+                var.name(db),
+                &ty,
+                address_taken.contains(&var.name(db)),
+                &mut next_local_idx,
+                memory_layout,
+            );
+            locals.push(MirLocal {
+                name: var.name(db),
+                ty,
+                init: None,
+                storage,
+                // FB/class method local — stateless per call.
+                var_storage: MirVariableStorage::Automatic,
+            });
         }
 
         let return_type = method
@@ -562,35 +583,36 @@ fn lower_function_block_inner<'db>(
             Some(inst) => (Some(&inst.iface_subs), &inst.call_rewrites),
             None => (None, iface_call_rewrites),
         };
-        let (mut body, call_scratch) = crate::lower::lower_stmt::lower_stmts_fb_body(
+        let ctx = crate::lower::lower_stmt::body_ctx(
             db,
-            method.stmts(db),
-            this_struct,
+            Some(this_struct),
             Some(hir::hir_def::pous::pou::Pou::FunctionBlock(fb)),
             string_pool.clone(),
             body_subs,
             body_rewrites,
-        )?;
+            None,
+        );
+        let mut body = crate::lower::lower_stmt::lower_body(&ctx, method.stmts(db))?;
+
+        // A method's result and locals are per call: their starting values
+        // are stores at entry.
+        let mut init_stmts = entry_copies;
+        if let (Some(spec), Some(ret_ty)) = (method.return_type(db), &return_type) {
+            init_stmts.extend(lower_result_init_stmts(
+                db,
+                method.name(db),
+                ret_ty,
+                spec,
+                &string_pool,
+            )?);
+        }
+        init_stmts.extend(lower_local_init_stmts(db, method.variables(db), &ctx)?);
         append_call_scratch_locals(
-            call_scratch,
+            ctx.call_scratch.take(),
             &mut locals,
             &mut next_local_idx,
             memory_layout,
         );
-
-        // A method's result and locals are per call: their starting values
-        // are stores at entry.
-        let mut init_stmts = match (method.return_type(db), &return_type) {
-            (Some(spec), Some(ret_ty)) => {
-                lower_result_init_stmts(db, method.name(db), ret_ty, spec, &string_pool)?
-            }
-            _ => Vec::new(),
-        };
-        init_stmts.extend(lower_local_init_stmts(
-            db,
-            method.variables(db),
-            &string_pool,
-        )?);
         if !init_stmts.is_empty() {
             init_stmts.append(&mut body);
             body = init_stmts;
@@ -668,7 +690,7 @@ fn lower_fb_body<'db>(
     let mut body_locals = Vec::new();
     let mut next_local_idx: u32 = 1; // 0 is 'this'
 
-    let mut address_taken = collect_address_taken_vars(db, body_of.statements(db));
+    let mut address_taken = collect_address_taken_vars(db, body_of.scope_id(db));
     address_taken.extend(collect_address_taken_in_inits(db, body_of.variables(db)));
 
     for var in body_of.variables(db) {
@@ -805,32 +827,47 @@ fn lower_class_inner<'db>(
         });
 
         // Same address-taken rule as the FB method loop above.
-        let mut address_taken = collect_address_taken_vars(db, method.stmts(db));
+        let mut address_taken = collect_address_taken_vars(db, method.scope_id(db));
         address_taken.extend(collect_address_taken_in_inits(db, method.variables(db)));
 
-        // Method parameters
+        // Method parameters, then its locals: every wasm parameter's index
+        // comes before the first local's, whatever order the sections are
+        // declared in.
+        let mut local_vars = Vec::new();
         for var in method.variables(db) {
-            if let Some(param) = param_for_var(db, var, spec.map(|i| &i.iface_subs))? {
-                next_local_idx += param_wasm_width(&param.ty, param.kind);
-                params.push(param);
-            } else {
-                let ty = lower_var_type(db, *var)?;
-                let storage = allocate_local_storage(
-                    var.name(db),
-                    &ty,
-                    address_taken.contains(&var.name(db)),
-                    &mut next_local_idx,
-                    memory_layout,
-                );
-                locals.push(MirLocal {
-                    name: var.name(db),
-                    ty,
-                    init: None,
-                    storage,
-                    // FB/class method local — stateless per call.
-                    var_storage: MirVariableStorage::Automatic,
-                });
+            match param_for_var(db, var, spec.map(|i| &i.iface_subs))? {
+                Some(param) => {
+                    next_local_idx += param_wasm_width(&param.ty, param.kind);
+                    params.push(param);
+                }
+                None => local_vars.push(var),
             }
+        }
+        let entry_copies = shadow_address_taken_inputs(
+            db,
+            &mut params,
+            &address_taken,
+            &mut locals,
+            &mut next_local_idx,
+            memory_layout,
+        );
+        for var in local_vars {
+            let ty = lower_var_type(db, *var)?;
+            let storage = allocate_local_storage(
+                var.name(db),
+                &ty,
+                address_taken.contains(&var.name(db)),
+                &mut next_local_idx,
+                memory_layout,
+            );
+            locals.push(MirLocal {
+                name: var.name(db),
+                ty,
+                init: None,
+                storage,
+                // FB/class method local — stateless per call.
+                var_storage: MirVariableStorage::Automatic,
+            });
         }
 
         let return_type = method
@@ -864,35 +901,36 @@ fn lower_class_inner<'db>(
             Some(inst) => (Some(&inst.iface_subs), &inst.call_rewrites),
             None => (None, iface_call_rewrites),
         };
-        let (mut body, call_scratch) = crate::lower::lower_stmt::lower_stmts_fb_body(
+        let ctx = crate::lower::lower_stmt::body_ctx(
             db,
-            method.stmts(db),
-            this_struct,
+            Some(this_struct),
             Some(hir::hir_def::pous::pou::Pou::Class(class)),
             string_pool.clone(),
             body_subs,
             body_rewrites,
-        )?;
+            None,
+        );
+        let mut body = crate::lower::lower_stmt::lower_body(&ctx, method.stmts(db))?;
+
+        // A method's result and locals are per call: their starting values
+        // are stores at entry.
+        let mut init_stmts = entry_copies;
+        if let (Some(spec), Some(ret_ty)) = (method.return_type(db), &return_type) {
+            init_stmts.extend(lower_result_init_stmts(
+                db,
+                method.name(db),
+                ret_ty,
+                spec,
+                &string_pool,
+            )?);
+        }
+        init_stmts.extend(lower_local_init_stmts(db, method.variables(db), &ctx)?);
         append_call_scratch_locals(
-            call_scratch,
+            ctx.call_scratch.take(),
             &mut locals,
             &mut next_local_idx,
             memory_layout,
         );
-
-        // A method's result and locals are per call: their starting values
-        // are stores at entry.
-        let mut init_stmts = match (method.return_type(db), &return_type) {
-            (Some(spec), Some(ret_ty)) => {
-                lower_result_init_stmts(db, method.name(db), ret_ty, spec, &string_pool)?
-            }
-            _ => Vec::new(),
-        };
-        init_stmts.extend(lower_local_init_stmts(
-            db,
-            method.variables(db),
-            &string_pool,
-        )?);
         if !init_stmts.is_empty() {
             init_stmts.append(&mut body);
             body = init_stmts;
@@ -959,7 +997,7 @@ fn lower_program_inner<'db>(
     // fields accessed through `this`.
     let mut locals = Vec::new();
     let mut next_local_idx: u32 = 1; // 0 is 'this'
-    let mut address_taken = collect_address_taken_vars(db, program.statements(db));
+    let mut address_taken = collect_address_taken_vars(db, program.scope_id(db));
     address_taken.extend(collect_address_taken_in_inits(db, program.variables(db)));
     for var in program.variables(db) {
         if var.kind(db) == VariableKind::Temp {
@@ -1136,6 +1174,51 @@ pub fn allocate_local_storage(
     }
 }
 
+/// A VAR_INPUT whose address the body takes (`REF(x)`, `x` as a VAR_IN_OUT
+/// argument or an output's destination) has none as a wasm parameter: the
+/// parameter becomes `x$arg`, and `x` a local in linear memory, which the
+/// returned statements fill from it at entry. An aggregate input already
+/// arrives as the address of the caller's snapshot.
+fn shadow_address_taken_inputs(
+    db: &dyn WorkspaceDataBase,
+    params: &mut [MirParam],
+    address_taken: &FxHashSet<Ident>,
+    locals: &mut Vec<MirLocal>,
+    next_local_idx: &mut u32,
+    memory_layout: &mut MirMemoryLayout,
+) -> Vec<MirStmt> {
+    let mut copies = Vec::new();
+    for param in params {
+        if !matches!(param.kind, MirParamKind::Input)
+            || matches!(param.ty, MirType::Pointer(_))
+            || !address_taken.contains(&param.name)
+        {
+            continue;
+        }
+        let name = param.name;
+        param.name = Ident::new(
+            db,
+            compact_str::CompactString::from(format!("{}$arg", name.text(db))),
+        );
+        let storage = allocate_local_storage(name, &param.ty, true, next_local_idx, memory_layout);
+        locals.push(MirLocal {
+            name,
+            ty: param.ty.clone(),
+            init: None,
+            storage,
+            var_storage: MirVariableStorage::Automatic,
+        });
+        copies.push(MirStmt::Assign {
+            target: crate::expr::MirPlace::Local(name),
+            value: crate::expr::MirExpr::Load(
+                crate::expr::MirPlace::Local(param.name),
+                param.ty.clone(),
+            ),
+        });
+    }
+    copies
+}
+
 /// Lower a variable's type spec, recovering a declared `STRING[N]`
 /// capacity that `Type::normalize` collapses.
 pub(crate) fn lower_var_type<'db>(
@@ -1189,218 +1272,56 @@ fn collect_address_taken_in_inits<'db>(
     result
 }
 
-/// Collect identifiers of variables whose address is taken (via REF()).
-/// These must be allocated in linear memory even if they're scalars.
+/// The variables whose address the body of `scope` takes, which linear
+/// memory holds even when they are scalars: the root of every `REF()`,
+/// VAR_IN_OUT argument and output destination, wherever it stands (a
+/// subscript, an assignment target, a nested call). Read off the body's
+/// inference, which visited every expression and bound every call.
 fn collect_address_taken_vars<'db>(
     db: &'db dyn WorkspaceDataBase,
-    stmts: &[hir::hir_def::expressions::statement::Stmt<'db>],
+    scope: hir::hir_def::scope::ScopeId<'db>,
 ) -> FxHashSet<Ident> {
-    use hir::hir_def::expressions::expression::{ExprKind, PrimaryExpr, RefValue};
-
-    let mut result = FxHashSet::default();
-
-    fn walk_expr<'db>(
-        db: &'db dyn WorkspaceDataBase,
-        expr: hir::hir_def::expressions::expression::Expr<'db>,
-        result: &mut FxHashSet<Ident>,
-    ) {
-        match expr.expr(db) {
-            ExprKind::PrimaryExpr(PrimaryExpr::RefValue {
-                value: RefValue::Address(begin_path),
-            }) => {
-                // REF(var) - extract the variable name
-                if let Some(path_expr) = begin_path.expr(db) {
-                    // Probed with the declared name: `REF(myvar)` must mark `MyVar`.
-                    let ident = path_expr.ident(db).ident(db);
-                    result.insert(ident);
-                }
-            }
-            ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess(_)) => {}
-            ExprKind::PrimaryExpr(PrimaryExpr::FuncCall(fc)) => {
-                for param in fc.params(db) {
-                    match param.kind(db) {
-                        hir::hir_def::expressions::expression::ParamAssignKind::NonFormal {
-                            value,
-                        }
-                        | hir::hir_def::expressions::expression::ParamAssignKind::FormalInput {
-                            value,
-                            ..
-                        } => {
-                            walk_expr(db, value, result);
-                        }
-                        hir::hir_def::expressions::expression::ParamAssignKind::FormalOutput {
-                            variable,
-                            ..
-                        } => {
-                            // OUT => x takes the address of x
-                            if let hir::hir_def::expressions::expression::VariableAccessKind::Symbolic(begin_path) = &variable.kind(db)
-                                && let Some(path_expr) = begin_path.expr(db) {
-                                    result.insert(path_expr.ident(db).ident(db));
-                                }
-                        }
-                    }
-                }
-                // Inout args take the variable's address too (see the
-                // statement-position FuncCall arm).
-                mark_inout_call_args(db, *fc, result);
-            }
-            ExprKind::PrimaryExpr(PrimaryExpr::ParenthesizedExpr { expr: inner }) => {
-                walk_expr(db, *inner, result);
-            }
-            ExprKind::AddOperator { left, right, .. }
-            | ExprKind::MultOperator { left, right, .. }
-            | ExprKind::ComparisonOperator { left, right, .. }
-            | ExprKind::BooleanOperator { left, right, .. }
-            | ExprKind::PowerOperator { left, right } => {
-                walk_expr(db, *left, result);
-                walk_expr(db, *right, result);
-            }
-            ExprKind::UnaryOperator { expr: inner, .. } => {
-                walk_expr(db, *inner, result);
-            }
-            _ => {}
-        }
-    }
-
-    fn walk_stmts<'db>(
-        db: &'db dyn WorkspaceDataBase,
-        stmts: &[hir::hir_def::expressions::statement::Stmt<'db>],
-        result: &mut FxHashSet<Ident>,
-    ) {
-        use hir::hir_def::expressions::statement::StmtKind;
-        for stmt in stmts {
-            if let StmtKind::Assignment { target: _, var: _ } = stmt.stmt(db) {
-                // `var` is the target and `target` the value expression, as HIR
-                // names them.
-            }
-            // Walk all expressions in the statement
-            walk_stmt_exprs(db, *stmt, result);
-        }
-    }
-
-    fn walk_stmt_exprs<'db>(
-        db: &'db dyn WorkspaceDataBase,
-        stmt: hir::hir_def::expressions::statement::Stmt<'db>,
-        result: &mut FxHashSet<Ident>,
-    ) {
-        use hir::hir_def::expressions::statement::StmtKind;
-        match stmt.stmt(db) {
-            StmtKind::Assignment { var: _, target } => {
-                walk_expr(db, *target, result);
-            }
-            StmtKind::If {
-                condition,
-                then,
-                else_if,
-                else_,
-            } => {
-                walk_expr(db, *condition, result);
-                if let Some(stmts) = then {
-                    walk_stmts(db, stmts, result);
-                }
-                for (cond, body) in else_if {
-                    walk_expr(db, *cond, result);
-                    walk_stmts(db, body, result);
-                }
-                if let Some(stmts) = else_ {
-                    walk_stmts(db, stmts, result);
-                }
-            }
-            StmtKind::For {
-                start,
-                end,
-                step,
-                body,
-                ..
-            } => {
-                walk_expr(db, *start, result);
-                walk_expr(db, *end, result);
-                if let Some(s) = step {
-                    walk_expr(db, *s, result);
-                }
-                walk_stmts(db, body, result);
-            }
-            StmtKind::While { condition, body } => {
-                walk_expr(db, *condition, result);
-                walk_stmts(db, body, result);
-            }
-            StmtKind::Repeat { condition, body } => {
-                walk_expr(db, *condition, result);
-                walk_stmts(db, body, result);
-            }
-            StmtKind::Case {
-                condition,
-                cases,
-                else_,
-            } => {
-                walk_expr(db, *condition, result);
-                for (_, body) in cases {
-                    walk_stmts(db, body, result);
-                }
-                if let Some(stmts) = else_ {
-                    walk_stmts(db, stmts, result);
-                }
-            }
-            StmtKind::FuncCall(fc) => {
-                for param in fc.params(db) {
-                    match param.kind(db) {
-                        hir::hir_def::expressions::expression::ParamAssignKind::NonFormal { value }
-                        | hir::hir_def::expressions::expression::ParamAssignKind::FormalInput { value, .. } => {
-                            walk_expr(db, value, result);
-                        }
-                        hir::hir_def::expressions::expression::ParamAssignKind::FormalOutput { variable, .. } => {
-                            if let hir::hir_def::expressions::expression::VariableAccessKind::Symbolic(begin_path) = &variable.kind(db)
-                                && let Some(path_expr) = begin_path.expr(db) {
-                                    result.insert(path_expr.ident(db).ident(db));
-                                }
-                        }
-                    }
-                }
-                // A VAR_IN_OUT arg is passed by reference on every callable, so a
-                // scalar arg must live in linear memory.
-                mark_inout_call_args(db, *fc, result);
-            }
-            _ => {}
-        }
-    }
-
-    walk_stmts(db, stmts, &mut result);
-    result
-}
-
-/// Mark the root variable of every VAR_IN_OUT argument as address-taken,
-/// so `&arg` has a target; matters for scalar locals.
-fn mark_inout_call_args<'db>(
-    db: &'db dyn WorkspaceDataBase,
-    fc: hir::hir_def::expressions::expression::FuncCall<'db>,
-    result: &mut FxHashSet<Ident>,
-) {
     use hir::hir_def::expressions::expression::{
-        ExprKind, ParamAssignKind, PrimaryExpr, VariableAccessKind,
+        BeginPathExpr, ExprKind, PrimaryExpr, RefValue, VariableAccessKind,
     };
+    use hir::hir_ty::body::ParamBinding;
 
-    let path = fc.path(db);
-    let body = hir::hir_ty::body::infer_body(db, path.scope_id(db));
-    for param in fc.params(db) {
-        let Some(var) = body.variable_of_param.get(param) else {
-            continue;
-        };
-        if !var.is_in_out(db) {
-            continue;
-        }
-        let value = match param.kind(db) {
-            ParamAssignKind::NonFormal { value } | ParamAssignKind::FormalInput { value, .. } => {
-                value
-            }
-            ParamAssignKind::FormalOutput { .. } => continue,
-        };
-        if let ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess(va)) = value.expr(db)
-            && let VariableAccessKind::Symbolic(begin_path) = va.kind(db)
-            && let Some(path_expr) = begin_path.expr(db)
+    fn root<'db>(db: &'db dyn WorkspaceDataBase, path: &BeginPathExpr<'db>) -> Option<Ident> {
+        let root = path.expr(db)?.flatten(db).first()?.get_expr(db);
+        Some(root.ident(db).ident(db))
+    }
+
+    let body = hir::hir_ty::body::infer_body(db, scope);
+    let mut result = FxHashSet::default();
+    for expr in body.type_of_expr.keys() {
+        if let ExprKind::PrimaryExpr(PrimaryExpr::RefValue {
+            value: RefValue::Address(path),
+        }) = expr.expr(db)
         {
-            result.insert(path_expr.ident(db).ident(db));
+            result.extend(root(db, path));
         }
     }
+    for call in body.resolved_calls.values() {
+        for (var, binding) in &call.params {
+            let access = match binding {
+                ParamBinding::Values(values) if var.is_in_out(db) => values
+                    .iter()
+                    .filter_map(|value| match value.expr(db) {
+                        ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess(access)) => Some(*access),
+                        _ => None,
+                    })
+                    .collect(),
+                ParamBinding::Output(access) => vec![*access],
+                _ => continue,
+            };
+            for access in access {
+                if let VariableAccessKind::Symbolic(path) = access.kind(db) {
+                    result.extend(root(db, &path));
+                }
+            }
+        }
+    }
+    result
 }
 
 /// The statements that give a POU's own variables their starting values at
@@ -1413,8 +1334,11 @@ fn mark_inout_call_args<'db>(
 fn lower_local_init_stmts<'db>(
     db: &'db dyn WorkspaceDataBase,
     vars: &[hir::hir_def::pous::variable::VariableDecl<'db>],
-    string_pool: &Rc<RefCell<super::lower_expr::StringPool>>,
+    // The context the body lowers in, where a declaration's own initializer
+    // lowers too.
+    body: &ExprLowerCtx<'db>,
 ) -> Result<Vec<MirStmt>, LowerTypeError> {
+    let string_pool = &body.string_pool;
     let mut init_stmts = Vec::new();
     for var in vars {
         match var.kind(db) {
@@ -1435,14 +1359,7 @@ fn lower_local_init_stmts<'db>(
             &mut init_stmts,
         )?;
         if let Some(init_expr) = var.init(db) {
-            lower_var_init(
-                db,
-                var.name(db),
-                &var_ty,
-                init_expr,
-                string_pool,
-                &mut init_stmts,
-            )?;
+            lower_var_init(db, var.name(db), &var_ty, init_expr, body, &mut init_stmts)?;
         }
     }
     Ok(init_stmts)
@@ -1486,7 +1403,9 @@ fn with_temp_inits<'db>(
         .filter(|v| v.kind(db) == VariableKind::Temp)
         .copied()
         .collect();
-    let mut stmts = lower_local_init_stmts(db, &temps, string_pool)?;
+    // A VAR_TEMP has no initializer of its own (E0004), only its type's.
+    let mut stmts =
+        lower_local_init_stmts(db, &temps, &ExprLowerCtx::new(db, string_pool.clone()))?;
     stmts.extend(body);
     Ok(stmts)
 }
@@ -1505,7 +1424,7 @@ fn lower_var_init<'db>(
     var_name: Ident,
     var_ty: &crate::types::MirType,
     init_expr: hir::hir_def::expressions::expression::InitExpr<'db>,
-    string_pool: &Rc<RefCell<super::lower_expr::StringPool>>,
+    body: &ExprLowerCtx<'db>,
     out: &mut Vec<MirStmt>,
 ) -> Result<(), LowerTypeError> {
     lower_init_leaves(
@@ -1517,7 +1436,9 @@ fn lower_var_init<'db>(
         },
         var_ty,
         init_expr,
-        string_pool,
+        None,
+        Some(body),
+        &body.string_pool,
         out,
     )
 }
@@ -1536,6 +1457,98 @@ pub(crate) enum InitTarget {
     Local { name: Ident, base: u32, whole: bool },
 }
 
+/// The instance a member's initializer is part of: a `REF()` in it names
+/// that instance's members (`p : REF_TO INT := REF(x)` points at the `x`
+/// beside this `p`).
+pub(crate) struct InitOwner {
+    pub target: InitTarget,
+    pub layout: crate::types::MirStructType,
+}
+
+impl InitOwner {
+    fn place(&self) -> crate::expr::MirPlace {
+        use crate::expr::MirPlace;
+        let ty = crate::types::MirType::Struct(self.layout.clone());
+        match self.target {
+            InitTarget::Static { base } => MirPlace::Global {
+                name: None,
+                address: base,
+                ty,
+            },
+            InitTarget::Local { name, base, .. } => MirPlace::Field {
+                base: Box::new(MirPlace::Local(name)),
+                field_name: name,
+                field_offset: base,
+                field_type: ty,
+            },
+        }
+    }
+}
+
+/// `expr` with every `this` root replaced by `instance`, subscripts and
+/// call arguments included: a member's `REF()` default is lowered as a
+/// method of the instance would lower it, then pointed at the instance
+/// being initialized.
+fn rebase_this(expr: &mut crate::expr::MirExpr, instance: &crate::expr::MirPlace) {
+    use crate::expr::MirExpr;
+    match expr {
+        MirExpr::Constant(_) | MirExpr::StringLiteral { .. } => {}
+        MirExpr::Load(place, _) | MirExpr::AddrOf(place) | MirExpr::StringCapacity(place) => {
+            rebase_this_place(place, instance)
+        }
+        MirExpr::BinOp { lhs, rhs, .. } => {
+            rebase_this(lhs, instance);
+            rebase_this(rhs, instance);
+        }
+        MirExpr::UnaryOp { expr, .. } | MirExpr::Cast { expr, .. } => rebase_this(expr, instance),
+        MirExpr::CopyIntoScratch { src, .. } => rebase_this(src, instance),
+        MirExpr::Call(call) => {
+            for arg in &mut call.args {
+                rebase_this(&mut arg.value, instance);
+            }
+            for binding in &mut call.output_bindings {
+                rebase_this_place(&mut binding.target, instance);
+                rebase_this(&mut binding.value, instance);
+            }
+            for result in &mut call.extern_results {
+                if let Some(dest) = &mut result.dest {
+                    rebase_this_place(dest, instance);
+                }
+            }
+        }
+    }
+}
+
+fn rebase_this_place(place: &mut crate::expr::MirPlace, instance: &crate::expr::MirPlace) {
+    use crate::expr::MirPlace;
+    match place {
+        MirPlace::ThisField {
+            field_name,
+            field_offset,
+            field_type,
+        } => {
+            *place = MirPlace::Field {
+                base: Box::new(instance.clone()),
+                field_name: *field_name,
+                field_offset: *field_offset,
+                field_type: field_type.clone(),
+            }
+        }
+        MirPlace::Field { base, .. } => rebase_this_place(base, instance),
+        MirPlace::Index { base, index, .. } => {
+            rebase_this_place(base, instance);
+            rebase_this(index, instance);
+        }
+        MirPlace::Deref { base, capacity, .. } => {
+            rebase_this_place(base, instance);
+            if let Some(capacity) = capacity {
+                rebase_this_place(capacity, instance);
+            }
+        }
+        MirPlace::Local(_) | MirPlace::Global { .. } => {}
+    }
+}
+
 impl InitTarget {
     fn offset_by(self, delta: u32) -> Self {
         match self {
@@ -1550,12 +1563,18 @@ impl InitTarget {
 }
 
 /// Lower one initializer's resolved leaves into `out` at `target`;
-/// `infer_initialization` already flattened and validated them.
+/// `infer_initialization` already flattened and validated them. `owner` is
+/// the instance a member's initializer is part of.
+#[allow(clippy::too_many_arguments)]
 fn lower_init_leaves<'db>(
     db: &'db dyn WorkspaceDataBase,
     target: InitTarget,
     ty: &crate::types::MirType,
     init: hir::hir_def::expressions::expression::InitExpr<'db>,
+    owner: Option<&InitOwner>,
+    // The body's context, for a local's own initializer; a type's or a
+    // static host's leaves are constants, which need none.
+    body: Option<&ExprLowerCtx<'db>>,
     string_pool: &Rc<RefCell<super::lower_expr::StringPool>>,
     out: &mut Vec<MirStmt>,
 ) -> Result<(), LowerTypeError> {
@@ -1565,8 +1584,15 @@ fn lower_init_leaves<'db>(
     let Some(leaves) = inference.init_expr_result.resolved.get(&init) else {
         return Ok(()); // HIR produced no resolved leaves (non-flattenable init)
     };
+    let fresh;
+    let ctx = match body {
+        Some(body) => body,
+        None => {
+            fresh = ExprLowerCtx::new(db, string_pool.clone());
+            &fresh
+        }
+    };
     for leaf in leaves {
-        let ctx = ExprLowerCtx::new(db, string_pool.clone());
         let (offset, leaf_ty) = if leaf.path.is_empty() {
             (0, ty.clone())
         } else {
@@ -1575,56 +1601,34 @@ fn lower_init_leaves<'db>(
             };
             found
         };
-        // Fold once per type, in the acceptance order of `init_leaf_is_constant`:
-        // integer arithmetic over literals and CONSTANTs, then a pure CONSTANT
-        // chain. Folded values ride an I64/F64 constant under a Cast to the lane.
-        use hir::hir_ty::infer::const_eval;
-        let mut value = if let Some(v) = const_eval::spec_bound(db, leaf.value) {
-            let folded = crate::expr::MirExpr::Constant(crate::expr::MirConstant::I64(v));
-            // Every integer-shaped MirType has a scalar lane; subranges and enums
-            // store as their base.
-            let to = match &leaf_ty {
-                crate::types::MirType::Elementary(e) => Some(*e),
-                crate::types::MirType::Subrange(sub) => Some(sub.base),
-                crate::types::MirType::Enum(en) => Some(en.storage),
-                _ => None,
-            };
-            match to {
-                Some(to) => crate::expr::MirExpr::Cast {
-                    expr: Box::new(folded),
-                    from: crate::types::MirElementary::LInt,
-                    to,
-                },
-                None => folded,
+        // The value itself, or the end of the CONSTANT chain it names.
+        let end = hir::hir_ty::infer::const_eval::resolve_constant_ref(db, leaf.value)
+            .unwrap_or(leaf.value);
+        let value = match owner {
+            // A member named in a REF() is the owner's.
+            Some(owner)
+                if matches!(
+                    end.expr(db),
+                    hir::hir_def::expressions::expression::ExprKind::PrimaryExpr(
+                        hir::hir_def::expressions::expression::PrimaryExpr::RefValue { .. }
+                    )
+                ) =>
+            {
+                let ctx =
+                    ExprLowerCtx::with_this_struct(db, owner.layout.clone(), string_pool.clone());
+                let mut value = ctx.lower_leaf_value(leaf.value, &leaf_ty)?;
+                rebase_this(&mut value, &owner.place());
+                value
             }
-        } else if let Some(end) = const_eval::resolve_constant_ref(db, leaf.value) {
-            ctx.lower_expr(end)?
-        } else {
-            ctx.lower_expr(leaf.value)?
+            _ => ctx.lower_leaf_value(leaf.value, &leaf_ty)?,
         };
-        // The declared type wins: HIR accepts an implicitly widening
-        // initializer, so the value is cast to the declared lane.
-        // `is_const_value` sees through Cast.
-        if !matches!(value, crate::expr::MirExpr::Cast { .. })
-            && let crate::types::MirType::Elementary(to) = &leaf_ty
-            && let Ok(from) = ctx.expr_to_mir_elementary(leaf.value)
-            && from != *to
-        {
-            value = crate::expr::MirExpr::Cast {
-                expr: Box::new(value),
-                from,
-                to: *to,
-            };
-        }
+        // E0401 refuses every non-constant static leaf, so reaching this arm
+        // means check and lowering disagree. A REF() is an address, which
+        // `__init` stores once the layout has placed what it names.
         if let InitTarget::Static { .. } = target
             && !is_const_value(&value)
+            && !matches!(value, crate::expr::MirExpr::AddrOf(_))
         {
-            // E0401 refuses every non-constant static leaf, so reaching this arm
-            // means check and lowering disagree. REF defaults are the known
-            // exception, skipped for now.
-            if matches!(leaf_ty, crate::types::MirType::Pointer(_)) {
-                continue;
-            }
             return Err(LowerTypeError::UnsupportedType(format!(
                 "a static initializer leaf survived E0401 without \
                  being constant: {value:?}"
@@ -1686,13 +1690,14 @@ fn lower_init_value<'db>(
     target: InitTarget,
     ty: &crate::types::MirType,
     value: hir::hir_ty::head::inheritance::InitValue<'db>,
+    owner: Option<&InitOwner>,
     string_pool: &Rc<RefCell<super::lower_expr::StringPool>>,
     out: &mut Vec<MirStmt>,
 ) -> Result<(), LowerTypeError> {
     use hir::hir_ty::head::inheritance::InitValue;
     let implied = match value {
         InitValue::Written(init) => {
-            return lower_init_leaves(db, target, ty, init, string_pool, out);
+            return lower_init_leaves(db, target, ty, init, owner, None, string_pool, out);
         }
         InitValue::Implied(v) => v,
     };
@@ -1769,14 +1774,38 @@ pub(crate) fn lower_type_default_inits<'db>(
     out: &mut Vec<MirStmt>,
 ) -> Result<(), LowerTypeError> {
     for entry in hir::hir_ty::head::inheritance::type_default_inits(db, hir_ty) {
-        let mut slots = Vec::new();
-        member_path_slots(db, mir_ty, &entry.path, 0, &mut slots);
-        for (offset, slot_ty) in slots {
+        // The slots of the instances the member is part of, then the member
+        // in each: the instance is the owner a REF() in its default names.
+        let (owner_path, member) = match entry.path.split_last() {
+            Some((InstanceInitStep::Field(name), owner_path)) => (owner_path, Some(*name)),
+            _ => (&entry.path[..], None),
+        };
+        let mut owners = Vec::new();
+        member_path_slots(db, mir_ty, owner_path, 0, &mut owners);
+        for (owner_offset, owner_ty) in owners {
+            let (offset, slot_ty, owner) = match (member, owner_ty) {
+                (None, slot_ty) => (owner_offset, slot_ty, None),
+                (Some(name), crate::types::MirType::Struct(layout)) => {
+                    // HIR and the layout disagree about this member; the
+                    // slot walk skipped it too.
+                    let Some(field) = layout.fields.iter().find(|f| f.name(db) == name) else {
+                        continue;
+                    };
+                    let slot = (owner_offset + field.offset, field.ty.clone());
+                    let owner = InitOwner {
+                        target: target.offset_by(owner_offset),
+                        layout,
+                    };
+                    (slot.0, slot.1, Some(owner))
+                }
+                (Some(_), _) => continue,
+            };
             lower_init_value(
                 db,
                 target.offset_by(offset),
                 &slot_ty,
                 entry.init,
+                owner.as_ref(),
                 string_pool,
                 out,
             )?;
@@ -1793,10 +1822,20 @@ pub(crate) fn lower_resolved_init_into<'db>(
     base: u32,
     ty: &crate::types::MirType,
     init: hir::hir_def::expressions::expression::InitExpr<'db>,
+    owner: Option<&InitOwner>,
     out: &mut Vec<crate::stmt::MirStmt>,
     string_pool: &Rc<RefCell<super::lower_expr::StringPool>>,
 ) -> Result<(), LowerTypeError> {
-    lower_init_leaves(db, InitTarget::Static { base }, ty, init, string_pool, out)
+    lower_init_leaves(
+        db,
+        InitTarget::Static { base },
+        ty,
+        init,
+        owner,
+        None,
+        string_pool,
+        out,
+    )
 }
 
 /// Walk a resolved leaf's path over the layout to its byte offset and

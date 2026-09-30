@@ -56,6 +56,10 @@ pub struct ExprLowerCtx<'db> {
     /// the statement loop after each statement, so a nested body keeps its
     /// own in place.
     pub after_stmt: std::cell::RefCell<Vec<crate::stmt::MirStmt>>,
+    /// Set while a constant is lowered (`lower_leaf_value`): a CONSTANT it
+    /// names is its value, lowered where it is declared, which means the same
+    /// in any frame, the caller's for an omitted input's default.
+    pub fold_constants: std::cell::Cell<bool>,
     /// The POU this body is emitted for, which for an inherited method is the
     /// inheritor: `THIS.m()` inside it must reach the inheritor's `m`.
     pub this_pou: Option<hir::hir_def::pous::pou::Pou<'db>>,
@@ -128,6 +132,7 @@ impl<'db> ExprLowerCtx<'db> {
             call_scratch: Default::default(),
             after_stmt: Default::default(),
             this_pou: None,
+            fold_constants: Default::default(),
         }
     }
 
@@ -146,6 +151,7 @@ impl<'db> ExprLowerCtx<'db> {
             call_scratch: Default::default(),
             after_stmt: Default::default(),
             this_pou: None,
+            fold_constants: Default::default(),
         }
     }
 
@@ -579,6 +585,14 @@ impl<'db> ExprLowerCtx<'db> {
             PrimaryExpr::Literal(elem) => self.lower_literal(elem, parent_expr),
 
             PrimaryExpr::VariableAccess(var_access) => {
+                if self.fold_constants.get()
+                    && let Some(decl) =
+                        hir::hir_ty::infer::const_eval::spec_name_binding(self.db, *var_access)
+                    && let Some(init) = hir::hir_ty::infer::const_eval::constant_init(self.db, decl)
+                {
+                    let ty = crate::lower::lower_func::lower_var_type(self.db, decl)?;
+                    return self.lower_leaf_value(init, &ty);
+                }
                 // `%IX0.3` beside a `%IW0` is bits of that word's cell.
                 if let Some(view) = self.view(*var_access, parent_expr.infer(self.db))? {
                     return Ok(view.read());
@@ -1022,7 +1036,9 @@ impl<'db> ExprLowerCtx<'db> {
                 },
                 base: Box::new(place),
                 pointee_type: (**pointee).clone(),
-                checked: false,
+                // Null until a call binds it: a method, or a read of the
+                // member from outside, can reach it before any.
+                checked: true,
             },
             _ => place,
         }
@@ -1067,7 +1083,15 @@ impl<'db> ExprLowerCtx<'db> {
 
         // `flatten()[0]` is the innermost root step.
         let root_expr = path.flatten(self.db).first().map(|s| s.get_expr(self.db))?;
-        infer_body(self.db, path.scope_id(self.db)).variable_for_path_expr(root_expr)
+        let scope = path.scope_id(self.db);
+        infer_body(self.db, scope)
+            .variable_for_path_expr(root_expr)
+            // A path in an initializer is bound by init inference.
+            .or_else(|| {
+                hir::hir_ty::head::init_inference::infer_initialization(self.db, scope)
+                    .body_infer_result
+                    .variable_for_path_expr(root_expr)
+            })
     }
 
     /// What a dereference `r^` reads and writes. HIR types the `^` step as
@@ -1398,10 +1422,20 @@ impl<'db> ExprLowerCtx<'db> {
         let array_hir_type = index_expr.path.infer(self.db);
         let base_dim = self.index_dimension(index_expr.path);
         for (k, sub) in index_expr.index.iter().enumerate() {
-            let index = self.lower_expr(*sub)?;
+            let lane = self.expr_to_mir_elementary(*sub).ok();
+            // A constant subscript folds, a named CONSTANT's as a literal's:
+            // it means the same wherever it is lowered, in the caller too for
+            // an omitted input's `REF(g[K])` default.
+            let index = match (
+                hir::hir_ty::infer::const_eval::spec_bound(self.db, *sub),
+                lane,
+            ) {
+                (Some(k), Some(lane)) if lane.is_64bit() => MirExpr::Constant(MirConstant::I64(k)),
+                (Some(k), Some(_)) => MirExpr::Constant(MirConstant::I32(k as i32)),
+                _ => self.lower_expr(*sub)?,
+            };
             let (element_type, element_size, lower_bound, dim_size) =
                 self.resolve_array_dim_info(array_hir_type, base_dim + k)?;
-            let lane = self.expr_to_mir_elementary(*sub).ok();
             let index = self.checked_index(index, lane, lower_bound, dim_size);
             place = MirPlace::Index {
                 base: Box::new(place),
@@ -2059,7 +2093,10 @@ impl<'db> ExprLowerCtx<'db> {
                         // are never aggregates.
                         let is_aggregate = matches!(
                             var.spec(self.db).infer(self.db).normalize(self.db),
-                            Type::Struct(_) | Type::Array(_)
+                            Type::Struct(_)
+                                | Type::Array(_)
+                                | Type::FunctionBlock(_)
+                                | Type::Class(_)
                         );
                         if fills_defaults && is_aggregate {
                             let var_ty = crate::lower::lower_func::lower_var_type(self.db, *var)?;
@@ -2236,9 +2273,12 @@ impl<'db> ExprLowerCtx<'db> {
                     }
                 }
                 hir::hir_ty::body::ParamBinding::Default(expr) => {
+                    // A constant (E0401): folded, not read in the caller's
+                    // frame, where a name of the callee's means something else.
                     if fills_defaults {
+                        let ty = crate::lower::lower_func::lower_var_type(self.db, *var)?;
                         args.push(MirCallArg {
-                            value: self.lower_expr(*expr)?,
+                            value: self.lower_leaf_value(*expr, &ty)?,
                             kind: MirArgKind::ByValue,
                         });
                     }
@@ -2785,6 +2825,63 @@ impl<'db> ExprLowerCtx<'db> {
                     _ => None,
                 }
             })
+    }
+
+    /// An initial value, stored in a slot of type `ty`. Folded in the
+    /// acceptance order of `init_leaf_is_constant`: integer arithmetic over
+    /// literals and CONSTANTs (an I64 under a Cast to the slot's lane), then
+    /// a pure CONSTANT chain, whose end is lowered. A constant names nothing
+    /// in a frame, so it lowers the same in the caller as in the callee:
+    /// this is also what an omitted input's default becomes.
+    pub(crate) fn lower_leaf_value(
+        &self,
+        value: Expr<'db>,
+        ty: &MirType,
+    ) -> Result<MirExpr, LowerTypeError> {
+        use hir::hir_ty::infer::const_eval;
+        let mut lowered = if let Some(v) = const_eval::spec_bound(self.db, value) {
+            let folded = MirExpr::Constant(crate::expr::MirConstant::I64(v));
+            // Every integer-shaped MirType has a scalar lane; subranges and enums
+            // store as their base.
+            let to = match ty {
+                MirType::Elementary(e) => Some(*e),
+                MirType::Subrange(sub) => Some(sub.base),
+                MirType::Enum(en) => Some(en.storage),
+                _ => None,
+            };
+            match to {
+                Some(to) => MirExpr::Cast {
+                    expr: Box::new(folded),
+                    from: MirElementary::LInt,
+                    to,
+                },
+                None => folded,
+            }
+        } else if let Some(end) = const_eval::resolve_constant_ref(self.db, value) {
+            self.lower_expr(end)?
+        } else if const_eval::real_folds(self.db, value) {
+            let folding = self.fold_constants.replace(true);
+            let lowered = self.lower_expr(value);
+            self.fold_constants.set(folding);
+            lowered?
+        } else {
+            self.lower_expr(value)?
+        };
+        // The declared type wins: HIR accepts an implicitly widening
+        // initializer, so the value is cast to the declared lane.
+        // `is_const_value` sees through Cast.
+        if !matches!(lowered, MirExpr::Cast { .. })
+            && let MirType::Elementary(to) = ty
+            && let Ok(from) = self.expr_to_mir_elementary(value)
+            && from != *to
+        {
+            lowered = MirExpr::Cast {
+                expr: Box::new(lowered),
+                from,
+                to: *to,
+            };
+        }
+        Ok(lowered)
     }
 
     /// The plan resolution assembled for this call: from body inference, or

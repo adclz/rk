@@ -910,7 +910,7 @@ fn lower_module_from_pous<'db>(
             db,
             compact_str::CompactString::from("__init"),
         );
-        module.functions.push(crate::function::MirFunction {
+        let mut init = crate::function::MirFunction {
             name,
             origin_name,
             index: idx,
@@ -921,7 +921,10 @@ fn lower_module_from_pous<'db>(
             linkage: crate::function::MirLinkage::Export,
             is_test: false,
             export_name: Some(compact_str::CompactString::from("__init")),
-        });
+        };
+        // A REF() initializer names a global by name, like a body does.
+        resolve_global_places(db, &mut init, &global_table)?;
+        module.functions.push(init);
         register_symbol(db, &mut module.function_indices, name, idx)?;
     }
 
@@ -1798,6 +1801,7 @@ fn collect_const_inits<'db>(
                 *addr,
                 ty,
                 init,
+                None,
                 &mut stmts,
                 string_pool,
             )?;
@@ -1841,11 +1845,19 @@ fn collect_const_inits<'db>(
                         &mut stmts,
                     )?;
                     if let Some(init) = var.init(db) {
+                        // A REF() in it names a member of this instance.
+                        let owner = super::lower_func::InitOwner {
+                            target: super::lower_func::InitTarget::Static {
+                                base: inst.instance_addr,
+                            },
+                            layout: info.struct_type.clone(),
+                        };
                         super::lower_func::lower_resolved_init_into(
                             db,
                             addr,
                             &field.ty,
                             init,
+                            Some(&owner),
                             &mut stmts,
                             string_pool,
                         )?;
@@ -1935,6 +1947,7 @@ fn collect_const_inits<'db>(
                 base,
                 &ty,
                 value.init,
+                None,
                 &mut stmts,
                 string_pool,
             )?;

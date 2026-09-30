@@ -287,6 +287,43 @@ fn infer_config<'db>(
 
     // Phase 4: every instance's variable declared `AT %I*` is located.
     check_partly_located_coverage(db, config, result);
+
+    // A PROGRAM RETAIN instance keeps its program's variables, none of which
+    // may hold a reference (E0904). One declared RETAIN is refused where it
+    // is declared.
+    for p in config
+        .resources(db)
+        .iter()
+        .flat_map(|r| r.programs(db).iter())
+    {
+        if p.retain(db) != Some(true) {
+            continue;
+        }
+        let Some(program) = result.prog_instance.get(&p.name(db).ident(db)).copied() else {
+            continue;
+        };
+        for var in program.variables(db) {
+            if var.qualifier(db).contains(crate::Qualifier::RETAIN)
+                || !crate::hir_ty::head::inheritance::retained_with_instance(db, *var)
+            {
+                continue;
+            }
+            if let Some(route) = crate::hir_ty::head::inheritance::retained_reference(
+                db,
+                var.spec(db).infer(db),
+                &mut Vec::new(),
+            ) {
+                result.errors.push(
+                    crate::check::errors::e09_reference::ReferenceError::RetainedReference {
+                        var: *var,
+                        route,
+                        instance: Some(p.name(db)),
+                    }
+                    .to_diagnostic(db, config.scope_id(db).file(db)),
+                );
+            }
+        }
+    }
 }
 
 /// A program instance and a VAR_GLOBAL share the configuration's names: both

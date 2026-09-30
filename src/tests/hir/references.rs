@@ -896,3 +896,112 @@ END_FUNCTION
     ---'
     ");
 }
+
+/// A reference in RETAIN storage is refused: a warm start restores its
+/// address, and a new build may have moved what it pointed at. Whether a
+/// member is kept follows the retain map: NON_RETAIN, VAR_TEMP and
+/// VAR_IN_OUT are not.
+#[rstest]
+fn a_reference_in_retain_storage_is_refused(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE PInt : REF_TO INT; END_TYPE
+TYPE S : STRUCT a : INT; p : PInt; END_STRUCT; END_TYPE
+
+FUNCTION_BLOCK H
+VAR x : INT; p : PInt; END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK Kept
+VAR RETAIN q : PInt; END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK Pruned
+VAR x : INT; END_VAR
+VAR NON_RETAIN p : PInt; END_VAR
+VAR_IN_OUT io : INT; END_VAR
+END_FUNCTION_BLOCK
+
+PROGRAM P
+VAR RETAIN
+    r : PInt;
+    s : S;
+    arr : ARRAY[0..1] OF H;
+    pruned : Pruned;
+    n : INT;
+END_VAR
+END_PROGRAM
+
+PROGRAM Q
+VAR h : H; n : INT; END_VAR
+END_PROGRAM
+
+CONFIGURATION Cfg
+VAR_GLOBAL RETAIN g : PInt; END_VAR
+    RESOURCE Res ON CPU
+        TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM P1 WITH T : P;
+        PROGRAM RETAIN Q1 WITH T : Q;
+    END_RESOURCE
+END_CONFIGURATION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0904] Error: reference in RETAIN storage
+        ,-[ file:///test0.st:10:12 ]
+        |
+     10 | VAR RETAIN q : PInt; END_VAR
+        |            ^^^^|^^^
+        |                `----- 'q' is a reference in RETAIN storage: its address does not survive a new build
+        |
+        | Note: a warm start restores the address even where a new build moved its target; keep references out of RETAIN (NON_RETAIN on a member) and set them in the first scan
+    ----'
+    [E0904] Error: reference in RETAIN storage
+        ,-[ file:///test0.st:21:5 ]
+        |
+     21 |     r : PInt;
+        |     ^^^^|^^^
+        |         `----- 'r' is a reference in RETAIN storage: its address does not survive a new build
+        |
+        | Note: a warm start restores the address even where a new build moved its target; keep references out of RETAIN (NON_RETAIN on a member) and set them in the first scan
+    ----'
+    [E0904] Error: reference in RETAIN storage
+        ,-[ file:///test0.st:22:5 ]
+        |
+     22 |     s : S;
+        |     ^^|^^
+        |       `---- 's.p' is a reference in RETAIN storage: its address does not survive a new build
+        |
+        | Note: a warm start restores the address even where a new build moved its target; keep references out of RETAIN (NON_RETAIN on a member) and set them in the first scan
+    ----'
+    [E0904] Error: reference in RETAIN storage
+        ,-[ file:///test0.st:23:5 ]
+        |
+     23 |     arr : ARRAY[0..1] OF H;
+        |     ^^^^^^^^^^^|^^^^^^^^^^
+        |                `------------ 'arr.p' is a reference in RETAIN storage: its address does not survive a new build
+        |
+        | Note: a warm start restores the address even where a new build moved its target; keep references out of RETAIN (NON_RETAIN on a member) and set them in the first scan
+    ----'
+    [E0904] Error: reference in RETAIN storage
+        ,-[ file:///test0.st:38:24 ]
+        |
+     30 | VAR h : H; n : INT; END_VAR
+        |     ^^|^^
+        |       `---- 'h' is declared here
+        |
+     38 |         PROGRAM RETAIN Q1 WITH T : Q;
+        |                        ^|
+        |                         `-- PROGRAM RETAIN 'Q1' keeps 'h.p', a reference, whose address does not survive a new build
+        |
+        | Note: a warm start restores the address even where a new build moved its target; keep references out of RETAIN (NON_RETAIN on a member) and set them in the first scan
+    ----'
+    [E0904] Error: reference in RETAIN storage
+        ,-[ file:///test0.st:34:19 ]
+        |
+     34 | VAR_GLOBAL RETAIN g : PInt; END_VAR
+        |                   ^^^^|^^^
+        |                       `----- 'g' is a reference in RETAIN storage: its address does not survive a new build
+        |
+        | Note: a warm start restores the address even where a new build moved its target; keep references out of RETAIN (NON_RETAIN on a member) and set them in the first scan
+    ----'
+    ");
+}

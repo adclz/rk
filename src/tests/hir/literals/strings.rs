@@ -521,7 +521,7 @@ fn assigned_literal_must_fit_a_nested_array_element(mut with_db: RootDatabase) {
        |
      9 |             a[1] := 'ABCDEFGHIJKLMNOP';
        |                     ^^^^^^^^^|^^^^^^^^
-       |                              `---------- cannot infer '<string>' to 'STRING': STRING literal exceeds the capacity of 4 bytes, got 16; declare it STRING[16], or shorten the literal
+       |                              `---------- cannot infer '<string>' to 'STRING': STRING literal exceeds the capacity of 4 bytes, got 16; change 'Small' to STRING[16] or use another type, or shorten the literal
     ---'
     [E0314] Error: invalid literal
         ,-[ file:///test0.st:10:24 ]

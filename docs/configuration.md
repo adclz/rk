@@ -259,6 +259,8 @@ To decide for the whole instance, write the qualifier in the configuration:
 - **`PROGRAM RETAIN C1 WITH Fast : Counter;`** keeps every variable of `C1`.
 - **`PROGRAM NON_RETAIN C1 WITH Fast : Counter;`** keeps none of them.
 
+A variable that holds a reference is not kept (`E0904`): a new build may move what it points at.
+
 ### Run one of its function blocks at another rate
 
 ```schema

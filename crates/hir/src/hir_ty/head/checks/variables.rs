@@ -182,6 +182,34 @@ impl<'db> InitInference<'db> {
         }
     }
 
+    /// E0904: a RETAIN variable holding a reference, whose address a warm
+    /// start would restore after a new build may have moved its target.
+    fn check_retained_reference(
+        &mut self,
+        db: &'db dyn WorkspaceDataBase,
+        var: &VariableDecl<'db>,
+    ) {
+        if !var.qualifier(db).contains(crate::Qualifier::RETAIN)
+            || var.kind(db) == crate::hir_def::pous::variable::VariableKind::External
+        {
+            return;
+        }
+        if let Some(route) = crate::hir_ty::head::inheritance::retained_reference(
+            db,
+            var.spec(db).infer(db),
+            &mut Vec::new(),
+        ) {
+            self.errors.push(
+                crate::check::errors::e09_reference::ReferenceError::RetainedReference {
+                    var: *var,
+                    route,
+                    instance: None,
+                }
+                .to_diagnostic(db, self.scope.file(db)),
+            );
+        }
+    }
+
     pub(crate) fn check_variables(&mut self, db: &'db dyn WorkspaceDataBase) {
         let variables = match self.scope.variables(db) {
             Some(vars) => vars,
@@ -282,6 +310,10 @@ impl<'db> InitInference<'db> {
         for var in variables {
             if !self.check_unreachable_partly(db, var) {
                 self.check_retain_holds_marker(db, var);
+            }
+            // E0208 already refuses RETAIN where nothing is retained.
+            if stateless_pou.is_none() {
+                self.check_retained_reference(db, var);
             }
             if let Some(pou_kind) = stateless_pou
                 && var
@@ -651,6 +683,7 @@ impl<'db> InitInference<'db> {
             let err = InferLiteralError::Invalid_STRING_Length {
                 max: max_len,
                 got: actual_len,
+                alias: string_alias(db, spec),
             };
             let target =
                 Type::Elementary(crate::hir_def::expressions::spec::ElementarySpec::String);
@@ -664,6 +697,17 @@ impl<'db> InitInference<'db> {
                 .to_diagnostic(db, self.scope.file(db)),
             );
         }
+    }
+}
+
+/// The named type a STRING variable takes its capacity from (`s : Alias5`),
+/// as written.
+pub(crate) fn string_alias<'db>(db: &'db dyn WorkspaceDataBase, spec: Spec<'db>) -> Option<String> {
+    match (spec.kind(db), spec.infer(db)) {
+        (crate::hir_def::expressions::spec::SpecKind::Target(_), Type::DataType(dt)) => {
+            Some(dt.name_with_case(db).text(db).to_string())
+        }
+        _ => None,
     }
 }
 
