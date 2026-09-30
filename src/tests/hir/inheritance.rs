@@ -1159,3 +1159,117 @@ END_FUNCTION_BLOCK
     ----'
     ");
 }
+
+/// An FB implements what its bases implement, and PROTECTED reaches a base
+/// at any depth: both only looked at the POU's own header.
+#[rstest]
+fn inherited_interfaces_and_protected_reach_every_derived_pou(mut with_db: RootDatabase) {
+    let source = r#"
+INTERFACE IShow
+    METHOD show : INT END_METHOD
+END_INTERFACE
+
+FUNCTION_BLOCK Base IMPLEMENTS IShow
+    METHOD PUBLIC show : INT
+        show := 1;
+    END_METHOD
+    METHOD PROTECTED hidden : INT
+        hidden := 2;
+    END_METHOD
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK Middle EXTENDS Base
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK Leaf EXTENDS Middle
+    METHOD PUBLIC reach : INT
+        reach := THIS.hidden();
+    END_METHOD
+END_FUNCTION_BLOCK
+
+FUNCTION ask : INT
+VAR_INPUT dev : IShow; END_VAR
+    ask := dev.show();
+END_FUNCTION
+
+FUNCTION run : INT
+VAR l : Leaf; END_VAR
+    run := ask(dev := l);
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
+
+/// A cycle of EXTENDS is reported once and nothing follows from it: the
+/// members and methods of every POU in it still resolve. Cyclic interfaces
+/// overflowed the compiler's stack when one was converted to another.
+#[rstest]
+fn a_cycle_of_bases_is_reported_once(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK A EXTENDS B
+VAR x : INT; END_VAR
+    METHOD PUBLIC ma : INT
+        ma := x + y;
+    END_METHOD
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK B EXTENDS A
+VAR y : INT; END_VAR
+    METHOD PUBLIC mb : INT
+        mb := THIS.ma();
+    END_METHOD
+END_FUNCTION_BLOCK
+
+INTERFACE IA EXTENDS IB
+    METHOD m : INT END_METHOD
+END_INTERFACE
+
+INTERFACE IB EXTENDS IA
+    METHOD n : INT END_METHOD
+END_INTERFACE
+
+FUNCTION take_b : INT
+VAR_INPUT i : IB; END_VAR
+    take_b := i.m() + i.n();
+END_FUNCTION
+
+FUNCTION pass_a : INT
+VAR_INPUT i : IA; END_VAR
+    pass_a := take_b(i := i);
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1302] Error: recursion detected
+       ,-[ file:///test0.st:2:16 ]
+       |
+     2 | FUNCTION_BLOCK A EXTENDS B
+       |                |
+       |                `-- type 'A' is recursive
+       |
+     9 | FUNCTION_BLOCK B EXTENDS A
+       |                          |
+       |                          `-- recurses at this location
+       |
+       | Note: cycle goes
+       |       -> A
+       |       -> B
+       |       ... and back to A
+    ---'
+    [E1302] Error: recursion detected
+        ,-[ file:///test0.st:16:11 ]
+        |
+     16 | INTERFACE IA EXTENDS IB
+        |           ^|
+        |            `-- type 'IA' is recursive
+        |
+     20 | INTERFACE IB EXTENDS IA
+        |                      ^|
+        |                       `-- recurses at this location
+        |
+        | Note: cycle goes
+        |       -> IA
+        |       -> IB
+        |       ... and back to IA
+    ----'
+    ");
+}

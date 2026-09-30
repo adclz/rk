@@ -219,3 +219,35 @@ fn indexed_and_dereferenced_receivers_run_the_instances_copy(mut with_db: db::Ro
     let result: i32 = run(&mut with_db, source, "test", ());
     assert_eq!(result, 2222, "Derived.Hook every time");
 }
+
+/// An FB passed where an interface its base implements is expected runs the
+/// base's implementation.
+#[rstest]
+fn an_inherited_implements_dispatches(mut with_db: db::RootDatabase) {
+    let source = r#"
+        INTERFACE IShow
+            METHOD show : INT END_METHOD
+        END_INTERFACE
+
+        FUNCTION_BLOCK Base IMPLEMENTS IShow
+            METHOD PUBLIC show : INT
+                show := 7;
+            END_METHOD
+        END_FUNCTION_BLOCK
+
+        FUNCTION_BLOCK Derived EXTENDS Base
+        END_FUNCTION_BLOCK
+
+        FUNCTION ask : INT
+        VAR_INPUT dev : IShow; END_VAR
+            ask := dev.show();
+        END_FUNCTION
+
+        FUNCTION test : INT
+        VAR d : Derived; END_VAR
+            test := ask(dev := d);
+        END_FUNCTION
+    "#;
+    let result: i32 = crate::tests::codegen::run(&mut with_db, source, "test", ());
+    assert_eq!(result, 7);
+}

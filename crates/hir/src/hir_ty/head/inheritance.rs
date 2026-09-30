@@ -270,10 +270,25 @@ pub fn instance_members<'db>(
     db: &'db dyn WorkspaceDataBase,
     pou: Pou<'db>,
 ) -> Vec<InstanceMember<'db>> {
-    let mut out = Vec::new();
-    let mut visited = Vec::new();
-    collect_instance_members(db, pou, &mut out, &mut visited);
-    out
+    use crate::hir_def::pous::variable::StorageClass;
+    crate::hir_ty::oop::ancestry(db, pou)
+        .chain
+        .iter()
+        .rev()
+        .flat_map(|owner| {
+            let vars: &[VariableDecl<'db>] = match owner {
+                Pou::FunctionBlock(fb) => fb.variables(db),
+                Pou::Class(class) => class.variables(db),
+                _ => &[],
+            };
+            vars.iter()
+                .filter(|var| var.storage_class(db) == StorageClass::InstanceMember)
+                .map(|var| InstanceMember {
+                    owner: *owner,
+                    var: *var,
+                })
+        })
+        .collect()
 }
 
 /// One step from an instance root toward an initialized member.
@@ -565,40 +580,6 @@ pub fn instance_pou_of<'db>(
     var: VariableDecl<'db>,
 ) -> Option<Pou<'db>> {
     pou_of_type(db, var.spec(db).infer(db).normalize(db))
-}
-
-fn collect_instance_members<'db>(
-    db: &'db dyn WorkspaceDataBase,
-    pou: Pou<'db>,
-    out: &mut Vec<InstanceMember<'db>>,
-    visited: &mut Vec<Pou<'db>>,
-) {
-    // Cyclic EXTENDS is reported separately (E05xx); stop here so resolution
-    // terminates regardless.
-    if visited.contains(&pou) {
-        return;
-    }
-    visited.push(pou);
-
-    if let Some(base) = crate::hir_ty::oop::explicit_bases(db, pou).extends {
-        collect_instance_members(db, base, out, visited);
-    }
-
-    let vars = match pou {
-        Pou::FunctionBlock(fb) => fb.variables(db),
-        Pou::Class(class) => class.variables(db),
-        _ => return,
-    };
-    for var in vars {
-        use crate::hir_def::pous::variable::StorageClass;
-        if var.storage_class(db) != StorageClass::InstanceMember {
-            continue;
-        }
-        out.push(InstanceMember {
-            owner: pou,
-            var: *var,
-        });
-    }
 }
 
 /// The concrete method an implementer provides for an inherited method NAME —
