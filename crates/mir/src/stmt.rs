@@ -106,45 +106,68 @@ pub enum MirStmt {
     Raise { message: MirExpr },
 }
 
-/// Every function `stmts` call, statements nested in them included: a call
-/// statement, an FB body invoked, a call in any expression.
-pub(crate) fn callees(stmts: &[MirStmt], out: &mut Vec<Ident>) {
+/// Every statement of `stmts`, those nested in another included.
+pub fn for_each_stmt(stmts: &[MirStmt], f: &mut impl FnMut(&MirStmt)) {
     for stmt in stmts {
-        stmt.any_expr(&mut |expr| {
-            if let MirExpr::Call(call) = expr {
-                out.push(call.callee);
-            }
-            false
-        });
+        f(stmt);
         match stmt {
-            MirStmt::Call(call) => out.push(call.callee),
-            MirStmt::FbCall { body_func, .. } => out.push(*body_func),
             MirStmt::If {
                 then_body,
                 else_ifs,
                 else_body,
                 ..
             } => {
-                callees(then_body, out);
+                for_each_stmt(then_body, f);
                 for (_, body) in else_ifs {
-                    callees(body, out);
+                    for_each_stmt(body, f);
                 }
-                callees(else_body.as_deref().unwrap_or_default(), out);
+                for_each_stmt(else_body.as_deref().unwrap_or_default(), f);
             }
             MirStmt::Case {
                 arms, else_body, ..
             } => {
                 for arm in arms {
-                    callees(&arm.body, out);
+                    for_each_stmt(&arm.body, f);
                 }
-                callees(else_body.as_deref().unwrap_or_default(), out);
+                for_each_stmt(else_body.as_deref().unwrap_or_default(), f);
             }
             MirStmt::For { body, .. }
             | MirStmt::While { body, .. }
-            | MirStmt::Repeat { body, .. } => callees(body, out),
+            | MirStmt::Repeat { body, .. } => for_each_stmt(body, f),
             _ => {}
         }
     }
+}
+
+/// Every call `stmts` make, each once: a call statement, and a call in any
+/// expression, those in subscripts, assignment targets, arguments and
+/// aggregate snapshots included.
+pub fn for_each_call(stmts: &[MirStmt], f: &mut impl FnMut(&MirCall)) {
+    // `any_expr` reaches the expressions of the statements nested in each.
+    for stmt in stmts {
+        stmt.any_expr(&mut |expr| {
+            if let MirExpr::Call(call) = expr {
+                f(call);
+            }
+            false
+        });
+    }
+    // A call statement is no expression.
+    for_each_stmt(stmts, &mut |stmt| {
+        if let MirStmt::Call(call) = stmt {
+            f(call);
+        }
+    });
+}
+
+/// Every function `stmts` call: a call, and an FB body invoked.
+pub(crate) fn callees(stmts: &[MirStmt], out: &mut Vec<Ident>) {
+    for_each_call(stmts, &mut |call| out.push(call.callee));
+    for_each_stmt(stmts, &mut |stmt| {
+        if let MirStmt::FbCall { body_func, .. } = stmt {
+            out.push(*body_func);
+        }
+    });
 }
 
 impl MirStmt {

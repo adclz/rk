@@ -217,81 +217,25 @@ fn alloc_div_scratch(
     (take(narrow, ValType::I32), take(wide, ValType::I64))
 }
 
+/// How many STRING snapshots the emitter takes in `stmts`: one per argument
+/// passed by value that is itself a STRING-returning call, in every call,
+/// wherever it sits. It counts the calls `emit_call` snapshots in, which is
+/// every call: one under a subscript, an assignment target or an aggregate
+/// argument went uncounted, and its snapshot reused another's slot.
 fn count_nested_string_calls_stmts(stmts: &[MirStmt]) -> u32 {
-    let mut total = 0;
-    for stmt in stmts {
-        total += count_nested_string_calls_stmt(stmt);
-    }
-    total
-}
-
-fn count_nested_string_calls_stmt(stmt: &MirStmt) -> u32 {
-    match stmt {
-        MirStmt::Assign { value, .. } => count_nested_string_calls_expr(value),
-        MirStmt::Return => 0,
-        MirStmt::If {
-            condition,
-            then_body,
-            else_ifs,
-            else_body,
-        } => {
-            let mut n = count_nested_string_calls_expr(condition);
-            n += count_nested_string_calls_stmts(then_body);
-            for (cond, body) in else_ifs {
-                n += count_nested_string_calls_expr(cond);
-                n += count_nested_string_calls_stmts(body);
-            }
-            if let Some(eb) = else_body {
-                n += count_nested_string_calls_stmts(eb);
-            }
-            n
-        }
-        MirStmt::Case {
-            selector,
-            arms,
-            else_body,
-        } => {
-            let mut n = count_nested_string_calls_expr(selector);
-            for arm in arms {
-                n += count_nested_string_calls_stmts(&arm.body);
-            }
-            if let Some(eb) = else_body {
-                n += count_nested_string_calls_stmts(eb);
-            }
-            n
-        }
-        MirStmt::For {
-            start,
-            end,
-            step,
-            body,
-            ..
-        } => {
-            let mut n = count_nested_string_calls_expr(start);
-            n += count_nested_string_calls_expr(end);
-            n += count_nested_string_calls_expr(step);
-            n += count_nested_string_calls_stmts(body);
-            n
-        }
-        MirStmt::While { condition, body } | MirStmt::Repeat { condition, body } => {
-            count_nested_string_calls_expr(condition) + count_nested_string_calls_stmts(body)
-        }
-        MirStmt::Call(call) => count_nested_in_call(call),
-        MirStmt::FbCall { input_writes, .. } => {
-            // Input value expressions may contain nested STRING calls.
-            let mut n = 0;
-            for (_, value, _) in input_writes {
-                n += count_nested_string_calls_expr(value);
-            }
-            n
-        }
-        MirStmt::Raise { message } => count_nested_string_calls_expr(message),
-        MirStmt::MemStore { .. }
-        | MirStmt::WasmIntrinsic { .. }
-        | MirStmt::Exit
-        | MirStmt::Continue
-        | MirStmt::DebugTrap { .. } => 0,
-    }
+    let mut count = 0;
+    mir::stmt::for_each_call(stmts, &mut |call| {
+        count += call
+            .args
+            .iter()
+            .filter(|arg| {
+                matches!(arg.kind, MirArgKind::ByValue)
+                    && matches!(&arg.value, MirExpr::Call(inner)
+                        if matches!(inner.return_type, MirType::String { .. }))
+            })
+            .count() as u32;
+    });
+    count
 }
 
 /// Whether any function assigns to a buffer-backed STRING field or global;
@@ -411,37 +355,6 @@ fn stmt_uses_raise(stmt: &MirStmt) -> bool {
         }
         _ => false,
     }
-}
-
-fn count_nested_string_calls_expr(expr: &MirExpr) -> u32 {
-    match expr {
-        MirExpr::Call(call) => count_nested_in_call(call),
-        MirExpr::BinOp { lhs, rhs, .. } => {
-            count_nested_string_calls_expr(lhs) + count_nested_string_calls_expr(rhs)
-        }
-        MirExpr::UnaryOp { expr, .. } | MirExpr::Cast { expr, .. } => {
-            count_nested_string_calls_expr(expr)
-        }
-        _ => 0,
-    }
-}
-
-fn count_nested_in_call(call: &MirCall) -> u32 {
-    let mut n = 0;
-    for arg in &call.args {
-        if matches!(arg.kind, MirArgKind::ByValue) {
-            // This arg position needs a snapshot if the value is itself a
-            // STRING-returning Call.
-            if let MirExpr::Call(inner) = &arg.value
-                && matches!(inner.return_type, MirType::String { .. })
-            {
-                n += 1;
-            }
-        }
-        // An arg's expression tree may contain its own nested STRING calls.
-        n += count_nested_string_calls_expr(&arg.value);
-    }
-    n
 }
 
 /// Which artifact this build is. One loader, two profiles: only the

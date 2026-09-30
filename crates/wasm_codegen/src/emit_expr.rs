@@ -82,10 +82,19 @@ fn emit_null_check(func: &mut wasm_encoder::Function) {
 fn emit_string_snapshot(func: &mut wasm_encoder::Function) {
     SNAPSHOT_CTX.with(|cell| {
         let mut borrow = cell.borrow_mut();
-        let Some(ctx) = borrow.as_mut() else {
-            return;
-        };
-        let slot_addr = ctx.slots[ctx.next_slot];
+        // `count_nested_string_calls_stmts` sized the slots from the same
+        // calls: a snapshot past them is a call it did not count, and
+        // skipping it would let the next argument overwrite this one.
+        let slot_addr = borrow
+            .as_ref()
+            .and_then(|ctx| ctx.slots.get(ctx.next_slot).copied())
+            .unwrap_or_else(|| {
+                panic!(
+                    "`{}` takes a STRING snapshot its slot count did not count",
+                    CURRENT_EMIT_FN.with(|c| c.borrow().clone().unwrap_or_default())
+                )
+            });
+        let ctx = borrow.as_mut().expect("a slot came from it");
         let slot_cap = ctx.slot_capacity;
         ctx.next_slot += 1;
         let ptr_tmp = ctx.ptr_tmp;

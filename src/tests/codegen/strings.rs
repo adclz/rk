@@ -1877,3 +1877,121 @@ fn string_result_discarded(mut with_db: db::RootDatabase) {
     let result: i32 = run(&mut with_db, source, "test", ());
     assert_eq!(result, 1);
 }
+
+/// Nested STRING calls are snapshotted wherever the call sits: under a
+/// subscript read or written, under an output's destination, and under an
+/// argument passed as an aggregate snapshot. None of those were counted, so
+/// both arguments read the second call's result, or a function with one
+/// counted site as well ran out of slots and the compiler panicked.
+#[rstest]
+fn nested_string_calls_anywhere(mut with_db: db::RootDatabase) {
+    let source = format!(
+        "{PRELUDE}{}",
+        r#"
+        TYPE Verdict : STRUCT same : INT; END_STRUCT; END_TYPE
+
+        FUNCTION Tag : STRING
+        VAR_INPUT n : INT; END_VAR
+            IF n = 1 THEN Tag := 'aa'; ELSE Tag := 'bb'; END_IF;
+        END_FUNCTION
+
+        FUNCTION Same : INT
+        VAR_INPUT a : STRING; b : STRING; END_VAR
+            IF a = b THEN Same := 1; ELSE Same := 0; END_IF;
+        END_FUNCTION
+
+        FUNCTION Compare : Verdict
+        VAR_INPUT a : STRING; b : STRING; END_VAR
+            Compare.same := Same(a, b);
+        END_FUNCTION
+
+        FUNCTION Pick : INT
+        VAR_INPUT v : Verdict; END_VAR
+            Pick := v.same;
+        END_FUNCTION
+
+        FUNCTION Out
+        VAR_INPUT n : INT; END_VAR
+        VAR_OUTPUT o : INT; END_VAR
+            o := n;
+        END_FUNCTION
+
+        FUNCTION test : INT
+        VAR
+            read : ARRAY[0..1] OF INT := [10, 20];
+            write : ARRAY[0..1] OF INT;
+            r : INT;
+        END_VAR
+            r := Same(Tag(1), Tag(2));
+            write[Same(Tag(1), Tag(2))] := 5;
+            Out(n := 7, o => write[1 - Same(Tag(1), Tag(2))]);
+            test := read[Same(Tag(1), Tag(2))] + write[0] + write[1] * 100
+                + Pick(Compare(Tag(1), Tag(2))) * 1000 + r * 10000;
+        END_FUNCTION
+    "#
+    );
+    let result: i32 = run(&mut with_db, &source, "test", ());
+    assert_eq!(result, 715, "'aa' and 'bb' compared unequal everywhere");
+}
+
+/// The other places a nested STRING call can sit: an initializer, a CASE
+/// selector, FOR bounds, WHILE and REPEAT conditions, a subscript under a
+/// VAR_IN_OUT argument and one under REF(). Sharing a snapshot, `Same`
+/// answers 1 in each, and the total is 12369.
+#[rstest]
+fn nested_string_calls_in_every_position(mut with_db: db::RootDatabase) {
+    let source = format!(
+        "{PRELUDE}{}",
+        r#"
+        FUNCTION Tag : STRING
+        VAR_INPUT n : INT; END_VAR
+            IF n = 1 THEN Tag := 'aa'; ELSE Tag := 'bb'; END_IF;
+        END_FUNCTION
+
+        FUNCTION Same : INT
+        VAR_INPUT a : STRING; b : STRING; END_VAR
+            IF a = b THEN Same := 1; ELSE Same := 0; END_IF;
+        END_FUNCTION
+
+        FUNCTION Bump
+        VAR_IN_OUT io : INT; END_VAR
+            io := io + 1;
+        END_FUNCTION
+
+        FUNCTION test : INT
+        VAR
+            init : INT := Same(Tag(1), Tag(2));
+            arr : ARRAY[0..1] OF INT;
+            sel : INT;
+            loops : INT;
+            w : INT;
+            r : REF_TO INT;
+        END_VAR
+            CASE Same(Tag(1), Tag(2)) OF
+                0: sel := 1;
+                1: sel := 2;
+            END_CASE;
+            FOR w := Same(Tag(1), Tag(2)) TO Same(Tag(1), Tag(2)) + 2 DO
+                loops := loops + 1;
+            END_FOR;
+            w := 0;
+            WHILE w < 3 + Same(Tag(1), Tag(2)) DO
+                w := w + 1;
+            END_WHILE;
+            REPEAT
+                w := w + 1;
+            UNTIL w >= 5 + Same(Tag(1), Tag(2))
+            END_REPEAT;
+            Bump(io := arr[Same(Tag(1), Tag(2))]);
+            r := REF(arr[1 - Same(Tag(1), Tag(2))]);
+            r^ := 7;
+            test := init * 10000 + sel * 1000 + loops * 100 + w * 10 + arr[0] + arr[1] * 2;
+        END_FUNCTION
+    "#
+    );
+    let result: i32 = run(&mut with_db, &source, "test", ());
+    assert_eq!(
+        result, 1365,
+        "'aa' and 'bb' compared unequal in every position"
+    );
+}
