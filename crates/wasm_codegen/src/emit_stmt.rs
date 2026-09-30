@@ -1467,8 +1467,7 @@ fn emit_assignment(
     value: &MirExpr,
     ctx: &Ctx,
 ) {
-    // Any buffer-backed STRING target copies through `rk.str_assign`; a
-    // borrowed VAR_INPUT view rebinds its (ptr, len) locals below.
+    // Any buffer-backed STRING target copies through `rk.str_assign`.
     if is_buffer_string(target, ctx.locals) {
         emit_string_assign(func, target, value, ctx);
         return;
@@ -1532,14 +1531,11 @@ fn emit_assignment(
                             emit_mem_store(func, 4, 4);
                         }
                     }
-                    LocalInfo::StringParam {
-                        ptr_index,
-                        len_index,
-                    } => {
-                        // Value pushes (ptr, len) pair on stack
-                        emit_expr(func, value, ctx.locals, ctx.fn_indices);
-                        func.instruction(&Instruction::LocalSet(*len_index));
-                        func.instruction(&Instruction::LocalSet(*ptr_index));
+                    // A STRING input is copied into a local at entry, and that
+                    // local is what the body writes: rebinding the parameter's
+                    // `(ptr, len)` pointed it at whatever produced the value.
+                    LocalInfo::StringParam { .. } => {
+                        unreachable!("a STRING input's parameter reached emit_assignment")
                     }
                     LocalInfo::StringMemory { .. } | LocalInfo::StringInOutParam { .. } => {
                         // Buffer-backed strings are handled above by

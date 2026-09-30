@@ -55,7 +55,7 @@ Write operations:
 - `CHAR_DELETE` removes n characters starting at a 1-indexed character position.
 - `CHAR_REPLACE` replaces n characters at a 1-indexed character position with a STRING.
 
-Their result holds up to 255 bytes. 
+Their inputs and result hold up to 255 bytes.
 A longer one is cut there, and again where it is stored when the destination is smaller.
 
 
@@ -91,6 +91,8 @@ END_FUNCTION
 `CHAR` is a code point in 4 bytes. It does **not** widen to `STRING`; `CHAR_TO_STRING` does that.
 
 > [!IMPORTANT]
-> At a call boundary a `STRING` input or return is a borrowed `(ptr, len)`, never a copy.
+> At a call boundary a `STRING` input or return is a `(ptr, len)`.
+> The callee copies an input into a buffer of its own, of the input's capacity: like any input it keeps the value passed, whatever the call changes.
+> That is a copy of its bytes at every call.
 >
 > A `VAR_IN_OUT` or `VAR_OUTPUT` is instead `(addr, capacity)`, so the callee's writes clamp.

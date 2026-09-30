@@ -13,26 +13,6 @@ use wasm_encoder::{Instruction, MemArg};
 
 use crate::{LocalInfo, mir_cast::emit_cast_instructions};
 
-/// Per-function context for snapshotting nested STRING-returning call
-/// results: producers write into one static return slot per callee, so a
-/// nested call's result is copied into a unique scratch slot before the
-/// next argument is evaluated.
-pub(crate) struct StringSnapshotCtx {
-    /// Pre-allocated scratch slot addresses for each nested STRING-returning
-    /// call in this function (in encounter order).
-    pub slots: Vec<crate::MemAddr>,
-    /// Capacity each slot was sized to (uniform for now).
-    pub slot_capacity: u32,
-    /// Index into `slots` for the next nested STRING call.
-    pub next_slot: usize,
-    /// i32 temp holding the source ptr during a snapshot.
-    pub ptr_tmp: u32,
-    /// i32 temp holding the source len during a snapshot.
-    pub len_tmp: u32,
-    /// WASM index of the grafted `rk.str_assign` helper.
-    pub str_assign_idx: u32,
-}
-
 /// The `(dividend, divisor)` scratch pairs of a wrapping division, i32 then
 /// i64, each allocated for a body with one ([`needs_wrapping_div`]).
 pub(crate) type DivScratch = (Option<(u32, u32)>, Option<(u32, u32)>);
@@ -50,11 +30,6 @@ thread_local! {
     pub(crate) static STR_ADDR_TMP: std::cell::Cell<Option<u32>> =
         const { std::cell::Cell::new(None) };
 
-    /// Active snapshot context for the current function being emitted.
-    /// Set by `emit_function` before walking the body, torn down after.
-    pub(crate) static SNAPSHOT_CTX: RefCell<Option<StringSnapshotCtx>> =
-        const { RefCell::new(None) };
-
     /// `Ident → text` for every function in the module, so the `emit_call`
     /// panic can name a missing callee without threading the db through.
     pub(crate) static FN_NAMES_FOR_DIAGNOSTIC: RefCell<FxHashMap<Ident, String>> =
@@ -68,6 +43,33 @@ thread_local! {
     /// dereferences.
     pub(crate) static NULL_CHECK_IDX: RefCell<Option<u32>> =
         const { RefCell::new(None) };
+
+    /// Index of `rk.str_assign` for the module, `None` when no STRING is
+    /// stored.
+    pub(crate) static STR_ASSIGN_IDX: std::cell::Cell<Option<u32>> =
+        const { std::cell::Cell::new(None) };
+
+    /// The address of each string pool entry of the module, by the `id` a
+    /// literal names.
+    pub(crate) static STRING_ADDRESSES: RefCell<Vec<u32>> = const { RefCell::new(Vec::new()) };
+}
+
+/// Push a literal's `(ptr, len)`: the address of the pool entry it names,
+/// which the module's layout fixed, and its length.
+fn emit_string_literal(func: &mut wasm_encoder::Function, id: u32, len: u32) {
+    let address = STRING_ADDRESSES
+        .with(|addresses| addresses.borrow().get(id as usize).copied())
+        .unwrap_or_else(|| {
+            let caller = CURRENT_EMIT_FN
+                .with(|c| c.borrow().clone())
+                .unwrap_or_else(|| "<unknown>".to_string());
+            panic!(
+                "internal compiler error: while emitting `{caller}`, a string literal names \
+                 pool entry {id}, which the module does not have"
+            )
+        });
+    func.instruction(&Instruction::I32Const(address as i32));
+    func.instruction(&Instruction::I32Const(len as i32));
 }
 
 /// Fault the pointer on the stack if it is null, leaving it in place.
@@ -75,36 +77,6 @@ fn emit_null_check(func: &mut wasm_encoder::Function) {
     if let Some(idx) = NULL_CHECK_IDX.with(|c| *c.borrow()) {
         func.instruction(&Instruction::Call(idx));
     }
-}
-
-/// Snapshot the STRING result `(ptr, len)` on the stack into a fresh
-/// per-call-site slot via `rk_str_assign`, leaving `(scratch+4, len)`.
-fn emit_string_snapshot(func: &mut wasm_encoder::Function) {
-    SNAPSHOT_CTX.with(|cell| {
-        let mut borrow = cell.borrow_mut();
-        let Some(ctx) = borrow.as_mut() else {
-            return;
-        };
-        let slot_addr = ctx.slots[ctx.next_slot];
-        let slot_cap = ctx.slot_capacity;
-        ctx.next_slot += 1;
-        let ptr_tmp = ctx.ptr_tmp;
-        let len_tmp = ctx.len_tmp;
-        let str_assign = ctx.str_assign_idx;
-        // Stack: [ptr, len]
-        func.instruction(&Instruction::LocalSet(len_tmp));
-        func.instruction(&Instruction::LocalSet(ptr_tmp));
-        // rk_str_assign(slot_addr, slot_cap, ptr_tmp, len_tmp)
-        slot_addr.emit(func);
-        func.instruction(&Instruction::I32Const(slot_cap as i32));
-        func.instruction(&Instruction::LocalGet(ptr_tmp));
-        func.instruction(&Instruction::LocalGet(len_tmp));
-        func.instruction(&Instruction::Call(str_assign));
-        // `rk_str_assign` clamps to the slot capacity, which matches the
-        // producers' maximum output.
-        slot_addr.add(4).emit(func);
-        func.instruction(&Instruction::LocalGet(len_tmp));
-    });
 }
 
 /// Emit instructions for a MIR expression (pushes result onto stack).
@@ -168,10 +140,21 @@ pub(crate) fn emit_expr(
             emit_addr_of(func, &dst, locals, fn_indices); // the arg value
         }
 
-        MirExpr::StringLiteral { offset, len, .. } => {
-            func.instruction(&Instruction::I32Const(*offset as i32));
-            func.instruction(&Instruction::I32Const(*len as i32));
+        // A STRING call result copied into the caller's local, then read
+        // from there: `rk.str_assign(scratch, cap, ptr, len)`.
+        MirExpr::StringSnapshot { scratch, src } => {
+            let dst = mir::expr::MirPlace::Local(*scratch);
+            let assign = STR_ASSIGN_IDX
+                .with(|c| c.get())
+                .expect("rk.str_assign is grafted for a STRING local");
+            emit_addr_of(func, &dst, locals, fn_indices);
+            emit_string_capacity(func, &dst, locals, fn_indices);
+            emit_expr(func, src, locals, fn_indices);
+            func.instruction(&Instruction::Call(assign));
+            emit_str_place_value(func, &dst, locals, fn_indices);
         }
+
+        MirExpr::StringLiteral { id, len } => emit_string_literal(func, *id, *len),
     }
 }
 
@@ -279,10 +262,7 @@ pub(crate) fn emit_str_value(
     fn_indices: &FxHashMap<Ident, u32>,
 ) {
     match value {
-        MirExpr::StringLiteral { offset, len, .. } => {
-            func.instruction(&Instruction::I32Const(*offset as i32));
-            func.instruction(&Instruction::I32Const(*len as i32));
-        }
+        MirExpr::StringLiteral { id, len } => emit_string_literal(func, *id, *len),
         MirExpr::Load(place, _) => emit_str_place_value(func, place, locals, fn_indices),
         _ => emit_expr(func, value, locals, fn_indices),
     }
@@ -545,15 +525,20 @@ fn emit_call(
     for arg in &call.args {
         match arg.kind {
             MirArgKind::ByValue => {
-                emit_expr(func, &arg.value, locals, fn_indices);
-                // A STRING-returning call as a `ByValue` arg points into the
-                // callee's static return slot; snapshot it so the next arg
-                // cannot clobber it.
+                // It would point into the callee's slot, which the next
+                // argument may overwrite: MIR copies it first.
                 if let MirExpr::Call(inner) = &arg.value
                     && matches!(inner.return_type, MirType::String { .. })
                 {
-                    emit_string_snapshot(func);
+                    let caller = CURRENT_EMIT_FN
+                        .with(|c| c.borrow().clone())
+                        .unwrap_or_else(|| "<unknown>".to_string());
+                    panic!(
+                        "internal compiler error: while emitting `{caller}`, a STRING call \
+                         result is passed by value without a StringSnapshot"
+                    );
                 }
+                emit_expr(func, &arg.value, locals, fn_indices);
             }
             MirArgKind::ByRef => {
                 // STRING `VAR_IN_OUT` flattens to (header_addr, cap), for any

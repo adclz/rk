@@ -60,7 +60,8 @@ const SAMPLES: &[(&str, &str, &str)] = &[
 ];
 
 /// The type each overload of `function` compares, read from `Unit.st` itself,
-/// so an overload added there without samples here fails this test.
+/// so an overload added there without samples here fails this test. A
+/// STRING overload's capacity is left out: `STRING[255]` is the STRING one.
 fn overload_types(unit: &str, function: &str) -> BTreeSet<String> {
     let mut types = BTreeSet::new();
     let mut lines = unit.lines().map(str::trim);
@@ -72,7 +73,8 @@ fn overload_types(unit: &str, function: &str) -> BTreeSet<String> {
             .by_ref()
             .find_map(|l| l.strip_prefix("value:"))
             .unwrap_or_else(|| panic!("an overload of {function} has no `value`"));
-        types.insert(value.trim().trim_end_matches(';').to_string());
+        let ty = value.trim().trim_end_matches(';');
+        types.insert(ty.split('[').next().unwrap_or(ty).trim().to_string());
     }
     types
 }

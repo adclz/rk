@@ -1,7 +1,7 @@
 //! Emit WASM cast instructions from MIR Cast expressions.
 //! Pure mechanical mapping — no type inference needed.
 
-use mir::expr::{MirCall, MirExpr};
+use mir::expr::MirExpr;
 use mir::stmt::MirStmt;
 use mir::types::MirElementary;
 use wasm_encoder::Instruction;
@@ -25,79 +25,11 @@ fn needs_floor_tmp(from: MirElementary, to: MirElementary) -> bool {
 }
 
 pub(crate) fn body_needs_datetime_floor_tmp(stmts: &[MirStmt]) -> bool {
-    stmts.iter().any(floor_tmp_in_stmt)
-}
-
-fn floor_tmp_in_stmt(stmt: &MirStmt) -> bool {
-    match stmt {
-        MirStmt::Assign { value, .. } => floor_tmp_in_expr(value),
-        MirStmt::If {
-            condition,
-            then_body,
-            else_ifs,
-            else_body,
-        } => {
-            floor_tmp_in_expr(condition)
-                || body_needs_datetime_floor_tmp(then_body)
-                || else_ifs
-                    .iter()
-                    .any(|(c, b)| floor_tmp_in_expr(c) || body_needs_datetime_floor_tmp(b))
-                || else_body
-                    .as_ref()
-                    .is_some_and(|b| body_needs_datetime_floor_tmp(b))
-        }
-        MirStmt::Case {
-            selector,
-            arms,
-            else_body,
-        } => {
-            floor_tmp_in_expr(selector)
-                || arms.iter().any(|a| body_needs_datetime_floor_tmp(&a.body))
-                || else_body
-                    .as_ref()
-                    .is_some_and(|b| body_needs_datetime_floor_tmp(b))
-        }
-        MirStmt::For {
-            start,
-            end,
-            step,
-            body,
-            ..
-        } => {
-            floor_tmp_in_expr(start)
-                || floor_tmp_in_expr(end)
-                || floor_tmp_in_expr(step)
-                || body_needs_datetime_floor_tmp(body)
-        }
-        MirStmt::While { condition, body } | MirStmt::Repeat { condition, body } => {
-            floor_tmp_in_expr(condition) || body_needs_datetime_floor_tmp(body)
-        }
-        MirStmt::Call(call) => floor_tmp_in_call(call),
-        MirStmt::FbCall { input_writes, .. } => {
-            input_writes.iter().any(|(_, v, _)| floor_tmp_in_expr(v))
-        }
-        MirStmt::Raise { message } => floor_tmp_in_expr(message),
-        MirStmt::Return
-        | MirStmt::MemStore { .. }
-        | MirStmt::WasmIntrinsic { .. }
-        | MirStmt::Exit
-        | MirStmt::Continue
-        | MirStmt::DebugTrap { .. } => false,
-    }
-}
-
-fn floor_tmp_in_expr(expr: &MirExpr) -> bool {
-    match expr {
-        MirExpr::Cast { expr, from, to } => needs_floor_tmp(*from, *to) || floor_tmp_in_expr(expr),
-        MirExpr::Call(call) => floor_tmp_in_call(call),
-        MirExpr::BinOp { lhs, rhs, .. } => floor_tmp_in_expr(lhs) || floor_tmp_in_expr(rhs),
-        MirExpr::UnaryOp { expr, .. } => floor_tmp_in_expr(expr),
-        _ => false,
-    }
-}
-
-fn floor_tmp_in_call(call: &MirCall) -> bool {
-    call.args.iter().any(|a| floor_tmp_in_expr(&a.value))
+    stmts.iter().any(|stmt| {
+        stmt.any_expr(
+            &mut |expr| matches!(expr, MirExpr::Cast { from, to, .. } if needs_floor_tmp(*from, *to)),
+        )
+    })
 }
 
 /// Floor division of the i64 on the stack by `n`: `q - (r < 0)`, total

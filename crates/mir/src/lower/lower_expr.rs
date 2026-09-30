@@ -96,12 +96,12 @@ impl StringPool {
     }
 
     /// Intern a literal's decoded bytes (a `$FF` escape is a byte no `&str` can
-    /// carry). Returns (id, offset, len).
-    pub fn intern(&mut self, bytes: &[u8]) -> (u32, u32, u32) {
+    /// carry). Returns (id, len), the id its index in `entries`.
+    pub fn intern(&mut self, bytes: &[u8]) -> (u32, u32) {
         // Check for existing identical string
-        for (i, (offset, existing)) in self.entries.iter().enumerate() {
+        for (i, (_, existing)) in self.entries.iter().enumerate() {
             if existing == bytes {
-                return (i as u32, *offset, bytes.len() as u32);
+                return (i as u32, bytes.len() as u32);
             }
         }
         let id = self.entries.len() as u32;
@@ -111,7 +111,7 @@ impl StringPool {
         self.next_offset += len;
         // Align to 4 bytes
         self.next_offset = (self.next_offset + 3) & !3;
-        (id, offset, len)
+        (id, len)
     }
 
     /// Consume the pool and return the data entries for the WASM data section.
@@ -840,8 +840,8 @@ impl<'db> ExprLowerCtx<'db> {
                         Ok(MirExpr::Constant(MirConstant::I32(codepoint as i32)))
                     }
                     _ => {
-                        let (id, offset, len) = self.string_pool.borrow_mut().intern(&bytes);
-                        Ok(MirExpr::StringLiteral { id, offset, len })
+                        let (id, len) = self.string_pool.borrow_mut().intern(&bytes);
+                        Ok(MirExpr::StringLiteral { id, len })
                     }
                 }
             }
@@ -852,8 +852,8 @@ impl<'db> ExprLowerCtx<'db> {
                 let bytes = ident.as_single_string(self.db).map_err(|e| {
                     LowerTypeError::UnsupportedType(format!("Invalid STRING literal: {e:?}"))
                 })?;
-                let (id, offset, len) = self.string_pool.borrow_mut().intern(&bytes);
-                Ok(MirExpr::StringLiteral { id, offset, len })
+                let (id, len) = self.string_pool.borrow_mut().intern(&bytes);
+                Ok(MirExpr::StringLiteral { id, len })
             }
 
             // A CHAR is its code point (i32, UTF-32 at the ABI).

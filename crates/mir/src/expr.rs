@@ -55,12 +55,19 @@ pub enum MirExpr {
         size: u32,
     },
 
+    /// Copy the STRING a call returned into `scratch`, a STRING local of the
+    /// caller, and yield it as `(ptr, len)`. The result is in the callee's
+    /// slot, which a later call to the same callee overwrites before the call
+    /// this is an argument of reads it.
+    StringSnapshot { scratch: Ident, src: Box<MirExpr> },
+
     /// String literal reference.
     StringLiteral {
-        /// Index into MirModule::string_literals.
+        /// Its entry in [`MirModule::string_data`], whose address codegen
+        /// reads once the module is laid out.
+        ///
+        /// [`MirModule::string_data`]: crate::MirModule::string_data
         id: u32,
-        /// Pre-computed offset in the data section.
-        offset: u32,
         /// Length in bytes.
         len: u32,
     },
@@ -199,7 +206,9 @@ impl MirExpr {
             }
             MirExpr::BinOp { lhs, rhs, .. } => lhs.has_call() || rhs.has_call(),
             MirExpr::UnaryOp { expr, .. } | MirExpr::Cast { expr, .. } => expr.has_call(),
-            MirExpr::CopyIntoScratch { src, .. } => src.has_call(),
+            MirExpr::CopyIntoScratch { src, .. } | MirExpr::StringSnapshot { src, .. } => {
+                src.has_call()
+            }
         }
     }
 }
@@ -219,7 +228,9 @@ impl MirExpr {
             MirExpr::UnaryOp { expr, .. } | MirExpr::Cast { expr, .. } => {
                 expr.reaches_place_with_call()
             }
-            MirExpr::CopyIntoScratch { src, .. } => src.reaches_place_with_call(),
+            MirExpr::CopyIntoScratch { src, .. } | MirExpr::StringSnapshot { src, .. } => {
+                src.reaches_place_with_call()
+            }
             MirExpr::Constant(_) | MirExpr::StringLiteral { .. } => false,
         }
     }
@@ -239,13 +250,56 @@ impl MirExpr {
             MirExpr::Call(call) => call.any_expr(f),
             MirExpr::BinOp { lhs, rhs, .. } => lhs.any(f) || rhs.any(f),
             MirExpr::UnaryOp { expr, .. } | MirExpr::Cast { expr, .. } => expr.any(f),
-            MirExpr::CopyIntoScratch { src, .. } => src.any(f),
+            MirExpr::CopyIntoScratch { src, .. } | MirExpr::StringSnapshot { src, .. } => {
+                src.any(f)
+            }
             MirExpr::Constant(_) | MirExpr::StringLiteral { .. } => false,
         }
     }
 }
 
+impl MirExpr {
+    /// `f` on this expression and every one inside it, the subscripts of its
+    /// places included, each after those inside it: [`MirExpr::any`],
+    /// mutably.
+    pub fn exprs_mut(&mut self, f: &mut impl FnMut(&mut MirExpr)) {
+        match self {
+            MirExpr::Load(place, _) | MirExpr::AddrOf(place) | MirExpr::StringCapacity(place) => {
+                place.exprs_mut(f)
+            }
+            MirExpr::Call(call) => call.exprs_mut(f),
+            MirExpr::BinOp { lhs, rhs, .. } => {
+                lhs.exprs_mut(f);
+                rhs.exprs_mut(f);
+            }
+            MirExpr::UnaryOp { expr, .. } | MirExpr::Cast { expr, .. } => expr.exprs_mut(f),
+            MirExpr::CopyIntoScratch { src, .. } | MirExpr::StringSnapshot { src, .. } => {
+                src.exprs_mut(f)
+            }
+            MirExpr::Constant(_) | MirExpr::StringLiteral { .. } => {}
+        }
+        f(self);
+    }
+}
+
 impl MirCall {
+    /// [`MirExpr::exprs_mut`] over the call's arguments and the stores of its
+    /// outputs.
+    pub fn exprs_mut(&mut self, f: &mut impl FnMut(&mut MirExpr)) {
+        for arg in &mut self.args {
+            arg.value.exprs_mut(f);
+        }
+        for binding in &mut self.output_bindings {
+            binding.target.exprs_mut(f);
+            binding.value.exprs_mut(f);
+        }
+        for result in &mut self.extern_results {
+            if let Some(dest) = &mut result.dest {
+                dest.exprs_mut(f);
+            }
+        }
+    }
+
     /// [`MirExpr::any`] over the call's arguments and the stores of its
     /// outputs.
     pub fn any_expr<F: FnMut(&MirExpr) -> bool>(&self, f: &mut F) -> bool {
@@ -282,6 +336,18 @@ impl MirPlace {
             MirPlace::Local(_) | MirPlace::ThisField { .. } | MirPlace::Global { .. } => false,
             MirPlace::Field { base, .. } | MirPlace::Deref { base, .. } => base.has_call(),
             MirPlace::Index { base, index, .. } => base.has_call() || index.has_call(),
+        }
+    }
+
+    /// [`MirExpr::exprs_mut`] over the expressions in this place's path.
+    pub fn exprs_mut(&mut self, f: &mut impl FnMut(&mut MirExpr)) {
+        match self {
+            MirPlace::Local(_) | MirPlace::ThisField { .. } | MirPlace::Global { .. } => {}
+            MirPlace::Field { base, .. } | MirPlace::Deref { base, .. } => base.exprs_mut(f),
+            MirPlace::Index { base, index, .. } => {
+                base.exprs_mut(f);
+                index.exprs_mut(f);
+            }
         }
     }
 

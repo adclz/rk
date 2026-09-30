@@ -590,7 +590,6 @@ fn lower_module_from_pous<'db>(
     let mut module = MirModule {
         functions,
         extern_functions,
-        string_literals: Vec::new(),
         instance_types,
         function_indices,
         type_indices,
@@ -935,7 +934,8 @@ fn lower_module_from_pous<'db>(
     let static_mem_end = module.memory_layout.total_size();
 
     // Phase 5: Rebase string pool to start AFTER all static memory allocations,
-    // then extract interned string data into the module.
+    // then extract interned string data into the module. A literal names its
+    // entry, whose address codegen reads there: no body holds an offset.
     {
         let mut pool = string_pool.borrow_mut();
         // Shift all string entry offsets by the static memory size
@@ -946,12 +946,6 @@ fn lower_module_from_pous<'db>(
     module.string_data = std::mem::take(&mut string_pool.borrow_mut().entries)
         .into_iter()
         .collect();
-
-    // Also rebase string literal offsets in all function bodies
-    let string_base = static_mem_end;
-    for func in &mut module.functions {
-        rebase_string_offsets(&mut func.body, string_base);
-    }
 
     // The distinct source files, in body order, as `DebugLines::files`;
     // codegen resolves each statement's `file_url` against it.
@@ -1011,98 +1005,6 @@ fn lower_extern_function<'db>(
         return_type,
         linkage: crate::function::MirLinkage::Internal,
     })
-}
-
-/// Rebase all StringLiteral offsets in MIR statements by adding `base` to each offset.
-fn rebase_string_offsets(stmts: &mut [crate::stmt::MirStmt], base: u32) {
-    use crate::stmt::MirStmt;
-
-    for stmt in stmts {
-        match stmt {
-            MirStmt::Assign { value, .. } => rebase_expr(value, base),
-            MirStmt::Call(call) => {
-                for arg in &mut call.args {
-                    rebase_expr(&mut arg.value, base);
-                }
-            }
-            MirStmt::FbCall { input_writes, .. } => {
-                for (_, value, _) in input_writes {
-                    rebase_expr(value, base);
-                }
-            }
-            MirStmt::If {
-                condition,
-                then_body,
-                else_body,
-                ..
-            } => {
-                rebase_expr(condition, base);
-                rebase_string_offsets(then_body, base);
-                if let Some(else_body) = else_body {
-                    rebase_string_offsets(else_body, base);
-                }
-            }
-            MirStmt::While {
-                condition, body, ..
-            } => {
-                rebase_expr(condition, base);
-                rebase_string_offsets(body, base);
-            }
-            MirStmt::For { body, .. } => {
-                rebase_string_offsets(body, base);
-            }
-            MirStmt::Repeat {
-                condition, body, ..
-            } => {
-                rebase_expr(condition, base);
-                rebase_string_offsets(body, base);
-            }
-            MirStmt::Case {
-                selector,
-                arms,
-                else_body,
-            } => {
-                // The selector and a STRING label's test both hold pooled string
-                // references.
-                rebase_expr(selector, base);
-                for arm in arms {
-                    for pattern in &mut arm.patterns {
-                        if let crate::stmt::MirCasePattern::Test(test) = pattern {
-                            rebase_expr(test, base);
-                        }
-                    }
-                    rebase_string_offsets(&mut arm.body, base);
-                }
-                if let Some(else_body) = else_body {
-                    rebase_string_offsets(else_body, base);
-                }
-            }
-            MirStmt::Raise { message } => rebase_expr(message, base),
-            _ => {}
-        }
-    }
-}
-
-fn rebase_expr(expr: &mut crate::expr::MirExpr, base: u32) {
-    use crate::expr::MirExpr;
-    match expr {
-        MirExpr::StringLiteral { offset, .. } => {
-            *offset += base;
-        }
-        MirExpr::BinOp { lhs, rhs, .. } => {
-            rebase_expr(lhs, base);
-            rebase_expr(rhs, base);
-        }
-        MirExpr::UnaryOp { expr: operand, .. } => {
-            rebase_expr(operand, base);
-        }
-        MirExpr::Call(call) => {
-            for arg in &mut call.args {
-                rebase_expr(&mut arg.value, base);
-            }
-        }
-        _ => {}
-    }
 }
 
 /// Collect the distinct source-file URLs referenced by `DebugTrap`
@@ -1621,7 +1523,7 @@ fn rewrite_globals_expr(
         MirExpr::Load(place, _) | MirExpr::AddrOf(place) | MirExpr::StringCapacity(place) => {
             rewrite_globals_place(place, globals, missing);
         }
-        MirExpr::CopyIntoScratch { src, .. } => {
+        MirExpr::CopyIntoScratch { src, .. } | MirExpr::StringSnapshot { src, .. } => {
             // The scratch is always a true local; only the source expression may
             // name a global.
             rewrite_globals_expr(src, globals, missing);

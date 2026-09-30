@@ -7,7 +7,7 @@
 //!
 //! | Tag  | LocalInfo / shape                                 | Notes |
 //! |------|---------------------------------------------------|-------|
-//! | `L`  | `MirExpr::StringLiteral { offset, len }`          | `'lit'` or `"lit"` |
+//! | `L`  | `MirExpr::StringLiteral { id, len }`              | `'lit'` or `"lit"` |
 //! | `IP` | `LocalInfo::StringParam { ptr_idx, len_idx }`     | `VAR_INPUT s : STRING` — 2 wasm i32 params |
 //! | `IO` | `LocalInfo::StringInOutParam { addr_idx, cap_idx }` | `VAR_IN_OUT s : STRING` — 2 wasm i32 params |
 //! | `MM` | `LocalInfo::StringMemory { address, capacity }`   | `VAR s : STRING` or function return slot |
@@ -27,7 +27,7 @@
 //! | `->VAL`  | pass as `VAR_INPUT STRING` arg                         |
 //! | `->REF`  | pass as `VAR_IN_OUT STRING` arg                        |
 //! | `->RAISE`| use as `__RAISE` payload                               |
-//! | `->NEST` | pass as a STRING arg where the source is itself a STRING-returning call (triggers snapshot dance) |
+//! | `->NEST` | pass as a STRING arg where the source is itself a STRING-returning call (copied first) |
 //!
 //! |        | `=MM` | `=IP` | `=IO` | `->VAL` | `->REF` | `->RAISE` | `->NEST` |
 //! |--------|-------|-------|-------|---------|---------|-----------|----------|
@@ -45,13 +45,14 @@
 //! which IEC forbids inside the POU — RULED (2026-08-28): legal, warned by
 //! L0113 `input-assignment`. The semantics that make the
 //! deviation safe are pinned executed below: a FUNCTION input write mutates
-//! the callee's copy (a STRING one REBINDS the view, never writing through),
-//! and an FB input write lands in instance storage. If the language ever
+//! the callee's copy (a STRING input is copied at entry, so a write lands in
+//! that copy, never in the caller's buffer), and an FB input write lands in
+//! instance storage. If the language ever
 //! rejects the construct instead, five cells flip together. And a matrix
 //! cell only proves the module VALIDATES — a slot-aliasing or snapshot bug
 //! validates fine (i32 == i32) and returns the wrong value, which is how
 //! `regression_string_param_not_clobbered_by_return_write` was born. The
-//! NEST cells, where the snapshot dance is the whole point, are therefore
+//! NEST cells, where that copy is the whole point, are therefore
 //! also EXECUTED (`*_nest_executes`).
 //!
 //! A combination that regresses to invalid wasm gets `#[ignore = "BROKEN: ..."]`
@@ -77,6 +78,15 @@ use super::{add_source, compile_to_mir_and_wasm, run, with_db};
 /// the malformed module — passing tests don't dump anything.
 fn validate(db: &mut db::RootDatabase, source: &str, dump_name: &str) -> Result<(), String> {
     let file = add_source(db, source);
+    // A cell the compiler refuses would measure code no user can build.
+    let diagnostics = hir::check::diagnostics_for_file(db, file);
+    if !diagnostics.is_empty() {
+        let lines: Vec<String> = diagnostics
+            .iter()
+            .map(crate::tests::utils::diagnostic_line)
+            .collect();
+        return Err(format!("the compiler refuses it:\n{}", lines.join("\n")));
+    }
     let sem_idx = hir::hir_def::semantic_index::semantic_index(db, file);
     let mir_module = match mir::lower::lower_module::lower_module(db, sem_idx) {
         Ok(m) => m,
@@ -426,8 +436,8 @@ END_FUNCTION
 }
 
 /// `RT → →NEST`: a STRING-returning call inside another STRING-arg call
-/// position. Triggers the snapshot-dance path so the inner call's result
-/// survives the outer call's argument evaluation.
+/// position. The inner call's result is copied first, so it survives the
+/// outer call's argument evaluation.
 #[rstest]
 fn rt_nest(mut with_db: db::RootDatabase) {
     let src = full_source(
@@ -599,12 +609,12 @@ END_FUNCTION
 // The =IP ruling, executed: legal but warned (L0113), and safe BECAUSE of these
 // =============================================================================
 
-/// Writing a VAR_INPUT STRING rebinds the callee's (ptr, len) view — it never
-/// writes through to the caller's buffer. This is what makes the =IP column a
-/// safe deviation: a regression to write-through would mutate the caller's
-/// string (or the literal pool) while still validating.
+/// Writing a VAR_INPUT STRING writes the callee's own copy, made at entry: it
+/// never writes through to the caller's buffer. This is what makes the =IP
+/// column a safe deviation: a regression to write-through would mutate the
+/// caller's string (or the literal pool) while still validating.
 #[rstest]
-fn ip_assign_rebinds_the_view_not_the_callers_buffer(mut with_db: db::RootDatabase) {
+fn ip_assign_writes_the_callees_copy_not_the_callers_buffer(mut with_db: db::RootDatabase) {
     let source = full_source(
         r#"
 FUNCTION mutinp : STRING
@@ -628,10 +638,11 @@ END_FUNCTION
     );
 }
 
-/// The literal-source half of the same ruling: `mutinp('orig')` hands the
-/// callee a view INTO THE POOL, and the pool deduplicates (`StringPool::
+/// The literal-source half of the same ruling: `grab('orig')` passes a
+/// `(ptr, len)` INTO THE POOL, and the pool deduplicates (`StringPool::
 /// intern`), so a write-through would poison every `'orig'` in the module —
-/// there is no second variable to observe it through. The observable is the
+/// there is no second variable to observe it through. The callee writes the
+/// copy it made at entry. The observable is the
 /// literal itself: copy it out BEFORE the write, then compare. Two rounds so
 /// the second re-reads the slot the first would have corrupted.
 #[rstest]
@@ -662,9 +673,97 @@ END_FUNCTION
     );
 }
 
+/// The other ways to write through a literal are refused: a VAR_IN_OUT
+/// argument must be a variable, `REF` takes no literal, and an output's
+/// destination is a variable too. The pool shares one entry between
+/// identical literals, so a write that reached it would change every
+/// `'ab'` in the module.
+#[rstest]
+fn a_literal_cannot_be_written_through(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION Fill
+        VAR_IN_OUT io : STRING; END_VAR
+            io := 'changed';
+        END_FUNCTION
+
+        FUNCTION Give
+        VAR_OUTPUT o : STRING; END_VAR
+            o := 'changed';
+        END_FUNCTION
+
+        FUNCTION InOut : INT
+            Fill(io := 'ab');
+        END_FUNCTION
+
+        FUNCTION Reference : INT
+        VAR r : REF_TO STRING; END_VAR
+            r := REF('ab');
+        END_FUNCTION
+
+        FUNCTION Output : INT
+            Give(o => 'ab');
+        END_FUNCTION
+    "#;
+    insta::assert_snapshot!(
+        crate::tests::utils::test_diagnostics(&mut with_db, &[source]),
+        @r#"
+    [E0005] Error: syntax
+        ,-[ file:///test0.st:18:15 ]
+        |
+     18 |             r := REF('ab');
+        |               ^|
+        |                `-- right-hand side of assignment cannot be empty
+    ----'
+    [E0806] Error: VAR_IN_OUT argument must be a variable
+        ,-[ file:///test0.st:13:24 ]
+        |
+      3 |         VAR_IN_OUT io : STRING; END_VAR
+        |                    ^^^^^|^^^^^
+        |                         `------- parameter 'io' declared here
+        |
+     13 |             Fill(io := 'ab');
+        |                        ^^|^
+        |                          `--- VAR_IN_OUT parameter 'io' of 'Fill' requires a variable, not a value
+        |
+        | Note: VAR_IN_OUT binds the callee to the caller's storage by reference; a literal, expression, or call result has no address to bind
+    ----'
+    [E0201] Error: no item found in scope
+        ,-[ file:///test0.st:22:18 ]
+        |
+     22 |             Give(o => 'ab');
+        |                  |
+        |                  `-- no item "o" found in scope
+    ----'
+    [E0805] Error: function call parameter mismatch
+        ,-[ file:///test0.st:22:18 ]
+        |
+     22 |             Give(o => 'ab');
+        |                  |
+        |                  `-- output parameter at index '0' cannot be used as input
+        |
+        | Note: use formal syntax instead: o => <variable>
+    ----'
+    [E0001] Error: syntax
+        ,-[ file:///test0.st:18:18 ]
+        |
+     18 |             r := REF('ab');
+        |                  ^^^^|^^^^
+        |                      `------ Unexpected token(s): 'REF ( 'ab' )'
+    ----'
+    [E0001] Error: syntax
+        ,-[ file:///test0.st:22:20 ]
+        |
+     22 |             Give(o => 'ab');
+        |                    ^^^|^^^
+        |                       `----- Unexpected token(s): '=> 'ab''
+    ----'
+    "#
+    );
+}
+
 /// The FB half of the ruling, where the semantics genuinely differ from a
 /// FUNCTION: the body writing its own STRING input lands in INSTANCE storage
-/// (ThisField, not a rebound view), so a call that omits the input sees the
+/// (ThisField, not a per-call copy), so a call that omits the input sees the
 /// previous call's write. In a FUNCTION the same two statements would yield
 /// 'a!' twice; only instance storage accumulates.
 ///
@@ -707,8 +806,8 @@ END_FUNCTION
 // =============================================================================
 
 /// `RT -> NEST`, executed. Two DIFFERENT producers share one return slot, so
-/// if the snapshot dance fails to copy the first result before the second
-/// producer runs, the concat yields 'twotwo' — and the module still validates.
+/// if the first result is not copied before the second producer runs, the
+/// concat yields 'twotwo' — and the module still validates.
 #[rstest]
 fn rt_nest_executes(mut with_db: db::RootDatabase) {
     let source = full_source(
@@ -887,10 +986,7 @@ VAR_INPUT s : STRING; END_VAR
 END_FUNCTION
 "#,
     );
-    let file = add_source(&mut with_db, &src);
-    let sem_idx = hir::hir_def::semantic_index::semantic_index(&with_db, file);
-    let mir_module = mir::lower::lower_module::lower_module(&with_db, sem_idx).unwrap();
-    let bytes = wasm_codegen::generate_wasm(&with_db, &mir_module).finish();
+    let bytes = super::compile_to_wasm(&mut with_db, &src);
 
     // Pass a "STRING" with ptr=0, len=4. Whatever bytes live at 0..4
     // don't matter; len_of just returns the second arg.
@@ -1771,10 +1867,14 @@ fn a_string_result_keeps_its_declared_capacity(mut with_db: db::RootDatabase) {
 /// A STRING result passed on as an argument is snapshotted whole: the
 /// snapshot slots were 80 bytes whatever the result's capacity. Two calls of
 /// one function share its result slot, so the first argument lives only in
-/// its snapshot once the second call has run; each argument is checked.
+/// its snapshot once the second call has run; each argument is checked. A
+/// snapshot is as large as the result its callee declares, a method's too.
 #[rstest]
-fn a_long_nested_result_is_snapshotted_whole(mut with_db: db::RootDatabase) {
-    let source = r#"
+#[case::function("Both(Nth(1), Nth(2))")]
+#[case::method("Both(src.Get(1), src.Get(2))")]
+fn a_long_nested_result_is_snapshotted_whole(mut with_db: db::RootDatabase, #[case] call: &str) {
+    let source = format!(
+        r#"
         FUNCTION Nth : STRING[100]
         VAR_INPUT i : INT; END_VAR
             IF i = 1 THEN
@@ -1789,11 +1889,20 @@ fn a_long_nested_result_is_snapshotted_whole(mut with_db: db::RootDatabase) {
                 AND b = 'abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij';
         END_FUNCTION
 
+        CLASS Source
+            METHOD PUBLIC Get : STRING[100]
+            VAR_INPUT i : INT; END_VAR
+                Get := Nth(i);
+            END_METHOD
+        END_CLASS
+
         FUNCTION test : BOOL
-            test := Both(Nth(1), Nth(2));
+        VAR src : Source; END_VAR
+            test := {call};
         END_FUNCTION
-    "#;
-    let result: i32 = super::run(&mut with_db, source, "test", ());
+    "#
+    );
+    let result: i32 = super::run(&mut with_db, &source, "test", ());
     assert_eq!(
         result, 1,
         "both 100-byte arguments, the first one from its snapshot"
@@ -1875,5 +1984,265 @@ fn string_result_discarded(mut with_db: db::RootDatabase) {
         END_FUNCTION
     "#;
     let result: i32 = run(&mut with_db, source, "test", ());
+    assert_eq!(result, 1);
+}
+
+/// Nested STRING calls are snapshotted wherever the call sits: under a
+/// subscript read or written, under an output's destination, and under an
+/// argument passed as an aggregate snapshot. None of those were counted, so
+/// both arguments read the second call's result, or a function with one
+/// counted site as well ran out of slots and the compiler panicked.
+#[rstest]
+fn nested_string_calls_anywhere(mut with_db: db::RootDatabase) {
+    let source = format!(
+        "{PRELUDE}{}",
+        r#"
+        TYPE Verdict : STRUCT same : INT; END_STRUCT; END_TYPE
+
+        FUNCTION Tag : STRING
+        VAR_INPUT n : INT; END_VAR
+            IF n = 1 THEN Tag := 'aa'; ELSE Tag := 'bb'; END_IF;
+        END_FUNCTION
+
+        FUNCTION Same : INT
+        VAR_INPUT a : STRING; b : STRING; END_VAR
+            IF a = b THEN Same := 1; ELSE Same := 0; END_IF;
+        END_FUNCTION
+
+        FUNCTION Compare : Verdict
+        VAR_INPUT a : STRING; b : STRING; END_VAR
+            Compare.same := Same(a, b);
+        END_FUNCTION
+
+        FUNCTION Pick : INT
+        VAR_INPUT v : Verdict; END_VAR
+            Pick := v.same;
+        END_FUNCTION
+
+        FUNCTION Out
+        VAR_INPUT n : INT; END_VAR
+        VAR_OUTPUT o : INT; END_VAR
+            o := n;
+        END_FUNCTION
+
+        FUNCTION test : INT
+        VAR
+            read : ARRAY[0..1] OF INT := [10, 20];
+            write : ARRAY[0..1] OF INT;
+            r : INT;
+        END_VAR
+            r := Same(Tag(1), Tag(2));
+            write[Same(Tag(1), Tag(2))] := 5;
+            Out(n := 7, o => write[1 - Same(Tag(1), Tag(2))]);
+            test := read[Same(Tag(1), Tag(2))] + write[0] + write[1] * 100
+                + Pick(Compare(Tag(1), Tag(2))) * 1000 + r * 10000;
+        END_FUNCTION
+    "#
+    );
+    let result: i32 = run(&mut with_db, &source, "test", ());
+    assert_eq!(result, 715, "'aa' and 'bb' compared unequal everywhere");
+}
+
+/// Assigning to a STRING input copies into a buffer of its own, of the
+/// input's capacity. It rebound the input's `(ptr, len)` to the producer's
+/// result slot, and the next call of the producer changed the input.
+#[rstest]
+fn an_assigned_string_input_keeps_its_value(mut with_db: db::RootDatabase) {
+    let source = format!(
+        "{PRELUDE}{}",
+        r#"
+        FUNCTION Twice : STRING
+        VAR_INPUT s : STRING; END_VAR
+        VAR t : STRING; END_VAR
+            s := str_concat(s, '1');
+            t := str_concat('A', 'B');
+            Twice := s;
+        END_FUNCTION
+
+        FUNCTION Short : STRING
+        VAR_INPUT s : STRING[3]; END_VAR
+            s := str_concat(s, 'defg');
+            Short := s;
+        END_FUNCTION
+
+        FUNCTION_BLOCK Holder
+            METHOD PUBLIC Twice : STRING
+            VAR_INPUT s : STRING; END_VAR
+                s := str_concat(s, '2');
+                str_concat('C', 'D');
+                Twice := s;
+            END_METHOD
+        END_FUNCTION_BLOCK
+
+        FUNCTION test : BOOL
+        VAR h : Holder; x : STRING := 'x'; END_VAR
+            test := Twice(s := x) = 'x1' AND x = 'x' AND Short(s := 'abc') = 'abc'
+                AND h.Twice(s := 'y') = 'y2';
+        END_FUNCTION
+    "#
+    );
+    let result: i32 = run(&mut with_db, &source, "test", ());
+    assert_eq!(result, 1);
+}
+
+/// A STRING input is a copy, as every input is: a change to the caller's
+/// variable during the call, through a VAR_IN_OUT bound to the same
+/// variable or through a reference to it, does not reach the input. It
+/// read the caller's buffer.
+#[rstest]
+fn a_string_input_is_a_copy(mut with_db: db::RootDatabase) {
+    let source = format!(
+        "{PRELUDE}{}",
+        r#"
+        FUNCTION Swap : STRING
+        VAR_INPUT a : STRING; END_VAR
+        VAR_IN_OUT b : STRING; END_VAR
+            b := 'changed';
+            Swap := a;
+        END_FUNCTION
+
+        FUNCTION ViaRef : STRING
+        VAR_INPUT a : STRING; r : REF_TO STRING; END_VAR
+            r^ := 'changed';
+            ViaRef := a;
+        END_FUNCTION
+
+        FUNCTION test : BOOL
+        VAR s : STRING := 'original'; t : STRING := 'original'; END_VAR
+            test := Swap(a := s, b := s) = 'original' AND s = 'changed'
+                AND ViaRef(a := t, r := REF(t)) = 'original' AND t = 'changed';
+        END_FUNCTION
+    "#
+    );
+    let result: i32 = run(&mut with_db, &source, "test", ());
+    assert_eq!(result, 1);
+}
+
+/// The other places a nested STRING call can sit: an initializer, a CASE
+/// selector, FOR bounds, WHILE and REPEAT conditions, a subscript under a
+/// VAR_IN_OUT argument and one under REF(). Sharing a snapshot, `Same`
+/// answers 1 in each, and the total is 12369.
+#[rstest]
+fn nested_string_calls_in_every_position(mut with_db: db::RootDatabase) {
+    let source = format!(
+        "{PRELUDE}{}",
+        r#"
+        FUNCTION Tag : STRING
+        VAR_INPUT n : INT; END_VAR
+            IF n = 1 THEN Tag := 'aa'; ELSE Tag := 'bb'; END_IF;
+        END_FUNCTION
+
+        FUNCTION Same : INT
+        VAR_INPUT a : STRING; b : STRING; END_VAR
+            IF a = b THEN Same := 1; ELSE Same := 0; END_IF;
+        END_FUNCTION
+
+        FUNCTION Bump
+        VAR_IN_OUT io : INT; END_VAR
+            io := io + 1;
+        END_FUNCTION
+
+        FUNCTION test : INT
+        VAR
+            init : INT := Same(Tag(1), Tag(2));
+            arr : ARRAY[0..1] OF INT;
+            sel : INT;
+            loops : INT;
+            w : INT;
+            r : REF_TO INT;
+        END_VAR
+            CASE Same(Tag(1), Tag(2)) OF
+                0: sel := 1;
+                1: sel := 2;
+            END_CASE;
+            FOR w := Same(Tag(1), Tag(2)) TO Same(Tag(1), Tag(2)) + 2 DO
+                loops := loops + 1;
+            END_FOR;
+            w := 0;
+            WHILE w < 3 + Same(Tag(1), Tag(2)) DO
+                w := w + 1;
+            END_WHILE;
+            REPEAT
+                w := w + 1;
+            UNTIL w >= 5 + Same(Tag(1), Tag(2))
+            END_REPEAT;
+            Bump(io := arr[Same(Tag(1), Tag(2))]);
+            r := REF(arr[1 - Same(Tag(1), Tag(2))]);
+            r^ := 7;
+            test := init * 10000 + sel * 1000 + loops * 100 + w * 10 + arr[0] + arr[1] * 2;
+        END_FUNCTION
+    "#
+    );
+    let result: i32 = run(&mut with_db, &source, "test", ());
+    assert_eq!(
+        result, 1365,
+        "'aa' and 'bb' compared unequal in every position"
+    );
+}
+
+/// A string literal's bytes sit in a pool laid out past static memory once
+/// the module is lowered. Its offset was fixed at lowering and moved with the
+/// pool by a walk that missed an ELSIF branch, FOR bounds, a cast's operand, a
+/// subscript and an output's destination, whose literals read the bytes at
+/// their old offset. A literal names its pool entry now, and codegen reads the
+/// entry's address: every position reads its own bytes. Identical literals
+/// share an entry, so the input default is compared with one spelled apart.
+#[rstest]
+#[case::elsif_body(
+    "IF FALSE THEN s := 'no'; ELSIF TRUE THEN s := 'ab'; END_IF; test := Eq(s, 'ab');"
+)]
+#[case::for_bound("s := 'ab'; FOR i := 1 TO Eq(s, 'ab') DO test := test + 1; END_FOR;")]
+#[case::while_condition(
+    "s := 'ab'; WHILE i = 0 AND Eq(s, 'ab') = 1 DO i := 1; test := 1; END_WHILE;"
+)]
+#[case::case_label("s := 'ab'; CASE s OF 'ab': test := 1; END_CASE;")]
+#[case::target_subscript("s := 'ab'; arr[Eq(s, 'ab')] := 1; test := arr[1];")]
+#[case::in_out_subscript("s := 'ab'; Bump(io := arr[Eq(s, 'ab')]); test := arr[1];")]
+#[case::output_destination("s := 'ab'; Out(n := 1, o => arr[Eq(s, 'ab')]); test := arr[1];")]
+#[case::cast_operand("s := 'ab'; d := Eq(s, 'ab'); IF d = 1 THEN test := 1; END_IF;")]
+#[case::initializer("test := Eq(t, 'ab');")]
+#[case::type_default("test := Eq(named, 'ab');")]
+#[case::input_default("test := Host();")]
+#[case::nested_call("s := 'abcd'; test := Eq(str_concat(str_concat('a', 'b'), 'cd'), s);")]
+fn a_string_literal_is_read_where_it_sits(mut with_db: db::RootDatabase, #[case] body: &str) {
+    let source = format!(
+        r#"{PRELUDE}
+        TYPE Named : STRING := 'ab'; END_TYPE
+
+        FUNCTION Eq : INT
+        VAR_INPUT a : STRING; b : STRING; END_VAR
+            IF a = b THEN Eq := 1; ELSE Eq := 0; END_IF;
+        END_FUNCTION
+
+        FUNCTION Host : INT
+        VAR_INPUT h : STRING := '10.0.0.7'; END_VAR
+            Host := Eq(h, str_concat('10.0.', '0.7'));
+        END_FUNCTION
+
+        FUNCTION Bump
+        VAR_IN_OUT io : INT; END_VAR
+            io := io + 1;
+        END_FUNCTION
+
+        FUNCTION Out
+        VAR_INPUT n : INT; END_VAR
+        VAR_OUTPUT o : INT; END_VAR
+            o := n;
+        END_FUNCTION
+
+        FUNCTION test : INT
+        VAR
+            s : STRING;
+            t : STRING := 'ab';
+            named : Named;
+            i : INT;
+            arr : ARRAY[0..1] OF INT;
+            d : DINT;
+        END_VAR
+            {body}
+        END_FUNCTION
+    "#
+    );
+    let result: i32 = run(&mut with_db, &source, "test", ());
     assert_eq!(result, 1);
 }

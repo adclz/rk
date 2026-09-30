@@ -625,6 +625,64 @@ fn a_frame_s_aggregate_locals_are_described(mut with_db: db::RootDatabase) {
     );
 }
 
+/// A recursive FUNCTION's aggregate locals are in the frame of each call,
+/// at an address the section cannot give: they are left out, where a static
+/// address would show every frame the innermost call's values. Its scalars
+/// are wasm locals, one set per frame, and stay described.
+#[rstest]
+fn a_recursive_function_s_frame_locals_are_left_out(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION FDepth : INT
+        VAR_INPUT n : INT; END_VAR
+        VAR a : ARRAY[0..1] OF INT; END_VAR
+            a[0] := n;
+            IF n > 0 THEN
+                FDepth(n := n - 1);
+            END_IF;
+            FDepth := a[0];
+        END_FUNCTION
+
+        PROGRAM P
+        VAR r : INT; END_VAR
+            r := FDepth(3);
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    let funcs =
+        debug_format::DebugFunctions::from_msgpack(super::expect_section(&wasm, "debug-functions"))
+            .unwrap();
+    let locals =
+        debug_format::DebugLocals::from_msgpack(super::expect_section(&wasm, "debug-locals"))
+            .unwrap();
+    let idx = funcs
+        .functions
+        .iter()
+        .find(|f| f.name == "FDepth")
+        .expect("FDepth")
+        .defined_index;
+    let frame = locals
+        .functions
+        .iter()
+        .find(|f| f.defined_index == idx)
+        .expect("a locals table for FDepth");
+    assert!(
+        frame.memory.is_empty() && frame.arrays.is_empty(),
+        "no static address for a frame's array: {:?}",
+        frame.memory.iter().map(|s| &s.path).collect::<Vec<_>>()
+    );
+    assert!(
+        frame.locals.iter().any(|l| l.name == "n"),
+        "the scalar input, per frame"
+    );
+}
+
 /// The v5 type table: an AGGREGATE array element far past the leaf budget is
 /// addressable member by member — `pts[1500].y`, `pts[1500].history[2]` —
 /// by indexing through the descriptor and walking the element's `TypeDesc`,

@@ -30,9 +30,6 @@ pub struct MirModule {
     /// Extern function declarations (imports).
     pub extern_functions: Vec<MirExternFunction>,
 
-    /// String literals interned during lowering.
-    pub string_literals: Vec<MirStringLiteral>,
-
     /// Instance type layouts (FB and Class types used in the module).
     pub instance_types: Vec<MirInstanceType>,
 
@@ -45,7 +42,8 @@ pub struct MirModule {
     /// Memory layout — fully resolved.
     pub memory_layout: MirMemoryLayout,
 
-    /// String data section entries: (offset, bytes).
+    /// String data section entries: (offset, bytes), a literal's `id` its
+    /// index.
     pub string_data: Vec<(u32, Vec<u8>)>,
 
     /// Test manifest: metadata about test functions.
@@ -96,13 +94,6 @@ pub struct MirModule {
     /// Source file URLs, indexed by `MirSourceLocation::file_id` and emitted
     /// as `DebugLines::files`.
     pub source_files: Vec<String>,
-}
-
-/// An interned string literal.
-#[derive(Debug, Clone)]
-pub struct MirStringLiteral {
-    pub id: u32,
-    pub bytes: Vec<u8>,
 }
 
 /// Instance type layout for a FUNCTION_BLOCK or CLASS.

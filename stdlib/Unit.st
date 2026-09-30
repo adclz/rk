@@ -243,8 +243,8 @@ NAMESPACE Std.Unit
 
 	FUNCTION ASSERT_EQ
 		VAR_INPUT
-			value: STRING;
-			target: STRING;
+			value: STRING[255];
+			target: STRING[255];
 			message: STRING := '';
 		END_VAR
 
@@ -475,8 +475,8 @@ NAMESPACE Std.Unit
 
 	FUNCTION ASSERT_NEQ
 		VAR_INPUT
-			value: STRING;
-			target: STRING;
+			value: STRING[255];
+			target: STRING[255];
 			message: STRING := '';
 		END_VAR
 

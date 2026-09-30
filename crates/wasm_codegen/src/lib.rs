@@ -14,7 +14,7 @@ use std::cell::Cell;
 use db::WorkspaceDataBase;
 use mir::{
     MirModule,
-    expr::{MirArgKind, MirCall, MirExpr},
+    expr::MirExpr,
     function::{MirExternFunction, MirFunction, MirLinkage, MirParam, MirParamKind, MirStorage},
     stmt::MirStmt,
     types::{MirElementary, MirType},
@@ -22,30 +22,7 @@ use mir::{
 use rustc_hash::FxHashMap;
 use wasm_encoder::{Instruction, ValType};
 
-use self::emit_expr::{SNAPSHOT_CTX, StringSnapshotCtx};
 use self::emit_stmt::emit_stmts_with_return;
-
-/// Capacity of the per-call-site scratch slots that snapshot nested
-/// STRING-returning call results: the largest STRING a function of the
-/// module returns, so every result a call can snapshot fits. A `STRING[200]`
-/// result snapshotted into an 80-byte slot was cut there.
-fn scratch_capacity(module: &MirModule) -> u32 {
-    module
-        .functions
-        .iter()
-        .map(|f| &f.return_type)
-        .chain(module.extern_functions.iter().map(|f| &f.return_type))
-        .filter_map(|ty| match ty {
-            Some(MirType::String { capacity }) => Some(*capacity),
-            _ => None,
-        })
-        .fold(mir::types::DEFAULT_STRING_CAPACITY, u32::max)
-}
-
-/// A scratch slot: the 4-byte length, the bytes, rounded to 4.
-fn scratch_slot_size(capacity: u32) -> u32 {
-    (4 + capacity + 3) & !3
-}
 
 /// Collect every `Call` callee's Ident → text, for the unresolved-callee
 /// panic.
@@ -54,108 +31,11 @@ fn walk_stmts_for_callees(
     db: &dyn WorkspaceDataBase,
     names: &mut FxHashMap<hir::hir_def::interned::identifier::Ident, String>,
 ) {
-    fn add(
-        call: &MirCall,
-        db: &dyn WorkspaceDataBase,
-        names: &mut FxHashMap<hir::hir_def::interned::identifier::Ident, String>,
-    ) {
+    mir::stmt::for_each_call(stmts, &mut |call| {
         names
             .entry(call.callee)
             .or_insert_with(|| call.callee.text(db).to_string());
-        for arg in &call.args {
-            walk_expr_for_callees(&arg.value, db, names);
-        }
-    }
-    for stmt in stmts {
-        match stmt {
-            MirStmt::Call(call) => add(call, db, names),
-            MirStmt::Assign { value, .. } => walk_expr_for_callees(value, db, names),
-            MirStmt::If {
-                condition,
-                then_body,
-                else_ifs,
-                else_body,
-            } => {
-                walk_expr_for_callees(condition, db, names);
-                walk_stmts_for_callees(then_body, db, names);
-                for (c, b) in else_ifs {
-                    walk_expr_for_callees(c, db, names);
-                    walk_stmts_for_callees(b, db, names);
-                }
-                if let Some(eb) = else_body {
-                    walk_stmts_for_callees(eb, db, names);
-                }
-            }
-            MirStmt::Case {
-                selector,
-                arms,
-                else_body,
-            } => {
-                walk_expr_for_callees(selector, db, names);
-                for arm in arms {
-                    // A STRING label's test is a call (`str.byte_cmp`), so patterns
-                    // are scanned too.
-                    for pattern in &arm.patterns {
-                        if let mir::stmt::MirCasePattern::Test(test) = pattern {
-                            walk_expr_for_callees(test, db, names);
-                        }
-                    }
-                    walk_stmts_for_callees(&arm.body, db, names);
-                }
-                if let Some(eb) = else_body {
-                    walk_stmts_for_callees(eb, db, names);
-                }
-            }
-            MirStmt::For {
-                start,
-                end,
-                step,
-                body,
-                ..
-            } => {
-                walk_expr_for_callees(start, db, names);
-                walk_expr_for_callees(end, db, names);
-                walk_expr_for_callees(step, db, names);
-                walk_stmts_for_callees(body, db, names);
-            }
-            MirStmt::While { condition, body } | MirStmt::Repeat { condition, body } => {
-                walk_expr_for_callees(condition, db, names);
-                walk_stmts_for_callees(body, db, names);
-            }
-            MirStmt::FbCall { input_writes, .. } => {
-                for (_, v, _) in input_writes {
-                    walk_expr_for_callees(v, db, names);
-                }
-            }
-            MirStmt::Raise { message } => walk_expr_for_callees(message, db, names),
-            _ => {}
-        }
-    }
-}
-
-fn walk_expr_for_callees(
-    expr: &MirExpr,
-    db: &dyn WorkspaceDataBase,
-    names: &mut FxHashMap<hir::hir_def::interned::identifier::Ident, String>,
-) {
-    match expr {
-        MirExpr::Call(call) => {
-            names
-                .entry(call.callee)
-                .or_insert_with(|| call.callee.text(db).to_string());
-            for arg in &call.args {
-                walk_expr_for_callees(&arg.value, db, names);
-            }
-        }
-        MirExpr::BinOp { lhs, rhs, .. } => {
-            walk_expr_for_callees(lhs, db, names);
-            walk_expr_for_callees(rhs, db, names);
-        }
-        MirExpr::UnaryOp { expr, .. } | MirExpr::Cast { expr, .. } => {
-            walk_expr_for_callees(expr, db, names);
-        }
-        _ => {}
-    }
+    });
 }
 
 /// Allocate the per-`For` end/step snapshot locals a body needs (IEC:
@@ -215,83 +95,6 @@ fn alloc_div_scratch(
         })
     };
     (take(narrow, ValType::I32), take(wide, ValType::I64))
-}
-
-fn count_nested_string_calls_stmts(stmts: &[MirStmt]) -> u32 {
-    let mut total = 0;
-    for stmt in stmts {
-        total += count_nested_string_calls_stmt(stmt);
-    }
-    total
-}
-
-fn count_nested_string_calls_stmt(stmt: &MirStmt) -> u32 {
-    match stmt {
-        MirStmt::Assign { value, .. } => count_nested_string_calls_expr(value),
-        MirStmt::Return => 0,
-        MirStmt::If {
-            condition,
-            then_body,
-            else_ifs,
-            else_body,
-        } => {
-            let mut n = count_nested_string_calls_expr(condition);
-            n += count_nested_string_calls_stmts(then_body);
-            for (cond, body) in else_ifs {
-                n += count_nested_string_calls_expr(cond);
-                n += count_nested_string_calls_stmts(body);
-            }
-            if let Some(eb) = else_body {
-                n += count_nested_string_calls_stmts(eb);
-            }
-            n
-        }
-        MirStmt::Case {
-            selector,
-            arms,
-            else_body,
-        } => {
-            let mut n = count_nested_string_calls_expr(selector);
-            for arm in arms {
-                n += count_nested_string_calls_stmts(&arm.body);
-            }
-            if let Some(eb) = else_body {
-                n += count_nested_string_calls_stmts(eb);
-            }
-            n
-        }
-        MirStmt::For {
-            start,
-            end,
-            step,
-            body,
-            ..
-        } => {
-            let mut n = count_nested_string_calls_expr(start);
-            n += count_nested_string_calls_expr(end);
-            n += count_nested_string_calls_expr(step);
-            n += count_nested_string_calls_stmts(body);
-            n
-        }
-        MirStmt::While { condition, body } | MirStmt::Repeat { condition, body } => {
-            count_nested_string_calls_expr(condition) + count_nested_string_calls_stmts(body)
-        }
-        MirStmt::Call(call) => count_nested_in_call(call),
-        MirStmt::FbCall { input_writes, .. } => {
-            // Input value expressions may contain nested STRING calls.
-            let mut n = 0;
-            for (_, value, _) in input_writes {
-                n += count_nested_string_calls_expr(value);
-            }
-            n
-        }
-        MirStmt::Raise { message } => count_nested_string_calls_expr(message),
-        MirStmt::MemStore { .. }
-        | MirStmt::WasmIntrinsic { .. }
-        | MirStmt::Exit
-        | MirStmt::Continue
-        | MirStmt::DebugTrap { .. } => 0,
-    }
 }
 
 /// Whether any function assigns to a buffer-backed STRING field or global;
@@ -411,37 +214,6 @@ fn stmt_uses_raise(stmt: &MirStmt) -> bool {
         }
         _ => false,
     }
-}
-
-fn count_nested_string_calls_expr(expr: &MirExpr) -> u32 {
-    match expr {
-        MirExpr::Call(call) => count_nested_in_call(call),
-        MirExpr::BinOp { lhs, rhs, .. } => {
-            count_nested_string_calls_expr(lhs) + count_nested_string_calls_expr(rhs)
-        }
-        MirExpr::UnaryOp { expr, .. } | MirExpr::Cast { expr, .. } => {
-            count_nested_string_calls_expr(expr)
-        }
-        _ => 0,
-    }
-}
-
-fn count_nested_in_call(call: &MirCall) -> u32 {
-    let mut n = 0;
-    for arg in &call.args {
-        if matches!(arg.kind, MirArgKind::ByValue) {
-            // This arg position needs a snapshot if the value is itself a
-            // STRING-returning Call.
-            if let MirExpr::Call(inner) = &arg.value
-                && matches!(inner.return_type, MirType::String { .. })
-            {
-                n += 1;
-            }
-        }
-        // An arg's expression tree may contain its own nested STRING calls.
-        n += count_nested_string_calls_expr(&arg.value);
-    }
-    n
 }
 
 /// Which artifact this build is. One loader, two profiles: only the
@@ -569,11 +341,6 @@ struct WasmGen<'a> {
     index_remap: FxHashMap<u32, u32>,
     /// Builtin name (`f32.sin`) → wasm index of the grafted implementation.
     builtin_indices: FxHashMap<String, u32>,
-    /// Next free address for STRING snapshot scratch slots, past the MIR
-    /// static layout.
-    string_scratch_floor: Cell<u32>,
-    /// Capacity of each of those slots ([`scratch_capacity`]).
-    scratch_capacity: u32,
     /// Tag index of `$rk_exception` (`(i32, i32) -> ()`, the raised STRING's
     /// `(ptr, len)`), `Some` when any function contains `Raise`.
     rk_exception_tag_idx: Option<u32>,
@@ -584,7 +351,7 @@ struct WasmGen<'a> {
     /// result.
     test_catch_block_type_idx: Option<u32>,
     /// Bump allocator for `{test}` functions' 12-byte result areas, past the
-    /// STRING-scratch region.
+    /// MIR static layout.
     test_result_floor: Cell<u32>,
     /// Per-function `DebugTrap` records, for the `debug-lines` section.
     func_lines: FxHashMap<u32, Vec<(u32, mir::stmt::MirSourceLocation)>>,
@@ -611,29 +378,11 @@ struct WasmGen<'a> {
 /// i8 discriminant at 0, the string ptr at 4 and len at 8.
 const TEST_RESULT_AREA_SIZE: u32 = 12;
 
-/// Sum the static snapshot scratch needs across the module; a recursive
-/// function keeps its own in its frame.
-fn module_total_scratch_slots(module: &MirModule) -> u32 {
-    let mut total = 0;
-    for func in module.functions.iter().filter(|f| f.frame.is_none()) {
-        total += count_nested_string_calls_stmts(&func.body);
-    }
-    total
-}
-
-/// Bytes a call of `func` pushes: MIR's storage for it and, past that, its
-/// STRING snapshot slots. 0 without a frame, or for a recursive function
-/// whose storage is all in wasm locals, which then pushes nothing.
-fn frame_bytes(func: &MirFunction, slot_size: u32) -> u32 {
-    use mir::function::FRAME_ALIGN;
-    use mir::memory::align_to;
-    let Some(frame) = func.frame else {
-        return 0;
-    };
-    align_to(
-        frame.size + count_nested_string_calls_stmts(&func.body) * slot_size,
-        FRAME_ALIGN,
-    )
+/// Bytes a call of `func` pushes: MIR's storage for it. 0 without a frame,
+/// or for a recursive function whose storage is all in wasm locals, which
+/// then pushes nothing.
+fn frame_bytes(func: &MirFunction) -> u32 {
+    func.frame.map_or(0, |frame| frame.size)
 }
 
 /// `[base, end)` of the stack for the frames of recursive calls, past the
@@ -641,19 +390,12 @@ fn frame_bytes(func: &MirFunction, slot_size: u32) -> u32 {
 fn stack_bounds(module: &MirModule) -> Option<(u32, u32)> {
     use mir::function::FRAME_ALIGN;
     use mir::memory::align_to;
-    let slot_size = scratch_slot_size(scratch_capacity(module));
-    if module
-        .functions
-        .iter()
-        .all(|f| frame_bytes(f, slot_size) == 0)
-    {
+    if module.functions.iter().all(|f| frame_bytes(f) == 0) {
         return None;
     }
-    let scratch_total =
-        module_total_scratch_slots(module) * scratch_slot_size(scratch_capacity(module));
     // Each result area is 4-aligned, from the first on.
-    let results_end = align_to(static_data_end(module) + scratch_total, 4)
-        + module_test_count(module) * TEST_RESULT_AREA_SIZE;
+    let results_end =
+        align_to(static_data_end(module), 4) + module_test_count(module) * TEST_RESULT_AREA_SIZE;
     let base = align_to(results_end, FRAME_ALIGN);
     Some((base, base + STACK_SIZE))
 }
@@ -668,7 +410,7 @@ fn module_test_count(module: &MirModule) -> u32 {
 }
 
 /// First byte past all MIR static memory: the layout plus the string-pool
-/// data rebased past it. Scratch slots and test result areas go past this.
+/// data rebased past it. Test result areas go past this.
 fn static_data_end(module: &MirModule) -> u32 {
     let layout_end = module.memory_layout.total_size();
     let strings_end = module
@@ -682,11 +424,9 @@ fn static_data_end(module: &MirModule) -> u32 {
 
 pub(crate) fn core_memory_pages(module: &MirModule) -> u64 {
     let static_total = static_data_end(module);
-    let scratch_total =
-        module_total_scratch_slots(module) * scratch_slot_size(scratch_capacity(module));
     let test_results_total = module_test_count(module) * TEST_RESULT_AREA_SIZE;
-    let total = (static_total + scratch_total + test_results_total)
-        .max(stack_bounds(module).map_or(0, |(_, end)| end));
+    let total =
+        (static_total + test_results_total).max(stack_bounds(module).map_or(0, |(_, end)| end));
     if total == 0 {
         1
     } else {
@@ -714,14 +454,8 @@ impl<'a> WasmGen<'a> {
             }),
         );
 
-        // STRING scratch slots start past the MIR static layout; test result
-        // areas past those.
-        let static_total = static_data_end(module);
-        let scratch_capacity = scratch_capacity(module);
-        let scratch_total =
-            module_total_scratch_slots(module) * scratch_slot_size(scratch_capacity);
-        let scratch_floor = Cell::new(static_total);
-        let test_result_floor = Cell::new(static_total + scratch_total);
+        // Test result areas start past the MIR static layout.
+        let test_result_floor = Cell::new(static_data_end(module));
 
         Self {
             db,
@@ -737,8 +471,6 @@ impl<'a> WasmGen<'a> {
             next_type_idx: 0,
             index_remap: FxHashMap::default(),
             builtin_indices: FxHashMap::default(),
-            string_scratch_floor: scratch_floor,
-            scratch_capacity,
             rk_exception_tag_idx: None,
             rk_exception_tag_type_idx: None,
             test_catch_block_type_idx: None,
@@ -753,15 +485,6 @@ impl<'a> WasmGen<'a> {
         }
     }
 
-    /// Allocate a fresh per-call-site STRING snapshot scratch slot.
-    /// Returns the base address (where the 4-byte length prefix lives).
-    fn alloc_scratch_slot(&self) -> u32 {
-        let addr = self.string_scratch_floor.get();
-        self.string_scratch_floor
-            .set(addr + scratch_slot_size(self.scratch_capacity));
-        addr
-    }
-
     /// Allocate a 12-byte `{test}` result area, 4-aligned; the function
     /// returns its address.
     fn alloc_test_result_area(&self) -> u32 {
@@ -771,6 +494,16 @@ impl<'a> WasmGen<'a> {
         aligned
     }
     fn emit_all(&mut self) {
+        // Where each string literal is, by the pool entry it names.
+        crate::emit_expr::STRING_ADDRESSES.with(|cell| {
+            *cell.borrow_mut() = self
+                .module
+                .string_data
+                .iter()
+                .map(|(address, _)| *address)
+                .collect();
+        });
+
         // The diagnostic reverse-lookup: every function Ident, call-site
         // callees included, to its text.
         crate::emit_expr::FN_NAMES_FOR_DIAGNOSTIC.with(|cell| {
@@ -917,8 +650,9 @@ impl<'a> WasmGen<'a> {
         map
     }
 
-    /// Hand the emit layer the null-check builtin's index, or `None`.
-    fn publish_null_check_index(
+    /// Hand the emit layer the null-check and STRING-copy builtins'
+    /// indices, or `None`.
+    fn publish_builtin_indices(
         &self,
         fn_indices: &rustc_hash::FxHashMap<hir::hir_def::interned::identifier::Ident, u32>,
     ) {
@@ -928,6 +662,8 @@ impl<'a> WasmGen<'a> {
         );
         let idx = fn_indices.get(&ident).copied();
         crate::emit_expr::NULL_CHECK_IDX.with(|cell| *cell.borrow_mut() = idx);
+        let str_assign = self.builtin_indices.get("rk.str_assign").copied();
+        crate::emit_expr::STR_ASSIGN_IDX.with(|cell| cell.set(str_assign));
     }
 
     fn collect_builtin_names(&self) -> Vec<String> {
@@ -987,7 +723,9 @@ impl<'a> WasmGen<'a> {
                 | MirExpr::StringCapacity(place) => walk_place(db, place, found),
                 // `src` may be an aggregate-returning Call, whose args can
                 // reach builtins — recurse rather than walk a place.
-                MirExpr::CopyIntoScratch { src, .. } => walk_expr(db, src, found),
+                MirExpr::CopyIntoScratch { src, .. } | MirExpr::StringSnapshot { src, .. } => {
+                    walk_expr(db, src, found)
+                }
                 MirExpr::Constant(_) | MirExpr::StringLiteral { .. } => {}
             }
         }
@@ -1092,8 +830,8 @@ impl<'a> WasmGen<'a> {
             walk(db, &func.body, &mut found);
         }
 
-        // `rk.str_assign` is grafted whenever a function has a STRING local or
-        // nests STRING-returning calls.
+        // `rk.str_assign` is grafted whenever a function has a STRING local,
+        // the copy of a nested STRING call's result included.
         let any_string_local = self.module.functions.iter().any(|f| {
             f.locals
                 .iter()
@@ -1102,15 +840,10 @@ impl<'a> WasmGen<'a> {
                 // to `Pointer(String)`) is assigned via rk.str_assign.
                 || f.params.iter().any(|p| param_is_stringish(&p.ty))
         });
-        let any_nested_string_call = self
-            .module
-            .functions
-            .iter()
-            .any(|f| count_nested_string_calls_stmts(&f.body) > 0);
         // Also force-include when a STRING field/global is assigned: those route
         // through rk.str_assign too, but live outside `f.locals`.
         let any_static_string = module_assigns_static_string(self.module);
-        if (any_string_local || any_nested_string_call || any_static_string)
+        if (any_string_local || any_static_string)
             && crate::builtins::lookup("rk.str_assign").is_some()
         {
             found.insert("rk.str_assign".to_string());
@@ -1206,35 +939,6 @@ impl<'a> WasmGen<'a> {
             .export(&export_name, wasm_encoder::ExportKind::Func, wasm_idx);
     }
 
-    /// The STRING snapshot slots of `func`'s nested calls, and the size of
-    /// its frame: a recursive function keeps them in its frame, past its
-    /// locals; any other at static addresses.
-    fn snapshot_slots(
-        &self,
-        func: &MirFunction,
-        frame_base: Option<u32>,
-        count: u32,
-    ) -> (Vec<MemAddr>, Option<u32>) {
-        let slot_size = scratch_slot_size(self.scratch_capacity);
-        match (func.frame, frame_base) {
-            (Some(frame), Some(base)) => (
-                (0..count)
-                    .map(|k| MemAddr::Frame {
-                        base,
-                        offset: frame.size + k * slot_size,
-                    })
-                    .collect(),
-                Some(frame_bytes(func, slot_size)),
-            ),
-            _ => (
-                (0..count)
-                    .map(|_| MemAddr::Static(self.alloc_scratch_slot()))
-                    .collect(),
-                None,
-            ),
-        }
-    }
-
     /// What a function does before its body with frames in the module: a
     /// host entry starts the stack over, since an exception may have left
     /// frames behind; a recursive function pushes its frame, checked against
@@ -1315,11 +1019,7 @@ impl<'a> WasmGen<'a> {
         }
 
         // Build local map from params + locals.
-        let frame_base = frame_base_local(
-            func,
-            params.len() as u32,
-            scratch_slot_size(self.scratch_capacity),
-        );
+        let frame_base = frame_base_local(func, params.len() as u32);
         let local_map = build_local_map(func, frame_base);
 
         // Collect scalar locals (params + VARs held in wasm locals) for the
@@ -1396,18 +1096,6 @@ impl<'a> WasmGen<'a> {
             extra_locals.push((1, ValType::I32));
         }
 
-        // STRING snapshot dance temps (ptr_tmp, len_tmp) - only allocated
-        // when the function actually contains nested STRING-returning calls.
-        let nested_str_count = count_nested_string_calls_stmts(&func.body);
-        let snapshot_local_indices = if nested_str_count > 0 {
-            let next_idx =
-                (params.len() as u32) + extra_locals.iter().map(|(c, _)| *c).sum::<u32>();
-            extra_locals.push((2, ValType::I32));
-            Some((next_idx, next_idx + 1))
-        } else {
-            None
-        };
-
         // One i32 scratch for a runtime-computed `FbCall` receiver address,
         // appended after the existing locals.
         let fb_recv_tmp = if crate::emit_stmt::stmts_need_dynamic_fb_base(&func.body, &local_map) {
@@ -1444,11 +1132,7 @@ impl<'a> WasmGen<'a> {
         // The scratch pairs of a wrapping division (`DIV_TMP`).
         let div_tmp = alloc_div_scratch(&func.body, params.len() as u32, &mut extra_locals);
 
-        // One scratch slot per nested STRING call, past the MIR static layout,
-        // or in a recursive function's frame past its locals: a call of it
-        // from inside the snapshot's own expression would overwrite a static
-        // one.
-        let (scratch_slots, frame_size) = self.snapshot_slots(func, frame_base, nested_str_count);
+        let frame_size = frame_base.map(|_| frame_bytes(func));
 
         // Emit function body
         let mut wasm_func = wasm_encoder::Function::new(extra_locals);
@@ -1481,26 +1165,8 @@ impl<'a> WasmGen<'a> {
 
         // Build remapped function indices for call instructions
         let remapped_fn_indices = self.build_call_indices();
-        self.publish_null_check_index(&remapped_fn_indices);
+        self.publish_builtin_indices(&remapped_fn_indices);
 
-        // The per-function snapshot context `emit_call` consults for nested
-        // STRING-returning calls.
-        let prev_ctx = if let Some((ptr_tmp, len_tmp)) = snapshot_local_indices {
-            let str_assign_idx = self.builtin_indices.get("rk.str_assign").copied().expect(
-                "rk.str_assign must be grafted whenever a function nests STRING-returning calls",
-            );
-            let ctx = StringSnapshotCtx {
-                slots: scratch_slots,
-                slot_capacity: self.scratch_capacity,
-                next_slot: 0,
-                ptr_tmp,
-                len_tmp,
-                str_assign_idx,
-            };
-            SNAPSHOT_CTX.with(|cell| cell.replace(Some(ctx)))
-        } else {
-            SNAPSHOT_CTX.with(|cell| cell.replace(None))
-        };
         let prev_floor_tmp =
             crate::mir_cast::DATETIME_FLOOR_TMP.with(|cell| cell.replace(datetime_floor_tmp));
         let prev_addr_tmp = crate::emit_expr::STR_ADDR_TMP.with(|cell| cell.replace(str_addr_tmp));
@@ -1566,7 +1232,6 @@ impl<'a> WasmGen<'a> {
         }
 
         // Restore the prior context.
-        SNAPSHOT_CTX.with(|cell| cell.replace(prev_ctx));
         crate::mir_cast::DATETIME_FLOOR_TMP.with(|cell| cell.replace(prev_floor_tmp));
         crate::emit_expr::STR_ADDR_TMP.with(|cell| cell.replace(prev_addr_tmp));
         crate::emit_expr::DIV_TMP.with(|cell| cell.replace(prev_div_tmp));
@@ -1629,7 +1294,7 @@ impl<'a> WasmGen<'a> {
 
         // Build local map + extra locals (mirrors `emit_function`); the
         // wrapper takes no params.
-        let frame_base = frame_base_local(func, 0, scratch_slot_size(self.scratch_capacity));
+        let frame_base = frame_base_local(func, 0);
         let local_map = build_local_map(func, frame_base);
         let mut extra_locals: Vec<(u32, ValType)> = Vec::new();
         for local in &func.locals {
@@ -1684,35 +1349,14 @@ impl<'a> WasmGen<'a> {
         // Wrapping division scratch, as in `emit_function` (no params).
         let div_tmp = alloc_div_scratch(&func.body, 0, &mut extra_locals);
 
-        // Per-call-site STRING snapshot slots for nested STRING-returning
-        // calls inside the test body. Same as `emit_function`.
-        let nested_str_count = count_nested_string_calls_stmts(&func.body);
-        let (scratch_slots, frame_size) = self.snapshot_slots(func, frame_base, nested_str_count);
+        let frame_size = frame_base.map(|_| frame_bytes(func));
 
         let mut wasm_func = wasm_encoder::Function::new(extra_locals);
         self.emit_entry(&mut wasm_func, func, frame_base, frame_size);
 
         let remapped_fn_indices = self.build_call_indices();
-        self.publish_null_check_index(&remapped_fn_indices);
+        self.publish_builtin_indices(&remapped_fn_indices);
 
-        // SNAPSHOT_CTX reuses the two scratch locals; snapshots and the catch
-        // shuffle never run concurrently.
-        let prev_ctx = if nested_str_count > 0 {
-            let str_assign_idx = self.builtin_indices.get("rk.str_assign").copied().expect(
-                "rk.str_assign must be grafted whenever a function nests STRING-returning calls",
-            );
-            let ctx = StringSnapshotCtx {
-                slots: scratch_slots,
-                slot_capacity: self.scratch_capacity,
-                next_slot: 0,
-                ptr_tmp,
-                len_tmp,
-                str_assign_idx,
-            };
-            SNAPSHOT_CTX.with(|cell| cell.replace(Some(ctx)))
-        } else {
-            SNAPSHOT_CTX.with(|cell| cell.replace(None))
-        };
         let prev_floor_tmp =
             crate::mir_cast::DATETIME_FLOOR_TMP.with(|cell| cell.replace(datetime_floor_tmp));
         let prev_addr_tmp = crate::emit_expr::STR_ADDR_TMP.with(|cell| cell.replace(str_addr_tmp));
@@ -1758,7 +1402,6 @@ impl<'a> WasmGen<'a> {
             self.func_lines.insert(func.index, lines);
         }
 
-        SNAPSHOT_CTX.with(|cell| cell.replace(prev_ctx));
         crate::mir_cast::DATETIME_FLOOR_TMP.with(|cell| cell.replace(prev_floor_tmp));
         crate::emit_expr::STR_ADDR_TMP.with(|cell| cell.replace(prev_addr_tmp));
         crate::emit_expr::DIV_TMP.with(|cell| cell.replace(prev_div_tmp));
@@ -2199,8 +1842,8 @@ fn build_signature(
 /// The wasm local holding the start of a recursive function's frame, when
 /// it pushes one: the first after its `param_count` parameters and MIR's
 /// scalar locals, which the emitter declares first.
-fn frame_base_local(func: &MirFunction, param_count: u32, slot_size: u32) -> Option<u32> {
-    if frame_bytes(func, slot_size) == 0 {
+fn frame_base_local(func: &MirFunction, param_count: u32) -> Option<u32> {
+    if frame_bytes(func) == 0 {
         return None;
     }
     let scalars = func

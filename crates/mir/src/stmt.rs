@@ -106,48 +106,219 @@ pub enum MirStmt {
     Raise { message: MirExpr },
 }
 
-/// Every function `stmts` call, statements nested in them included: a call
-/// statement, an FB body invoked, a call in any expression.
-pub(crate) fn callees(stmts: &[MirStmt], out: &mut Vec<Ident>) {
+/// Every statement of `stmts`, those nested in another included.
+pub fn for_each_stmt(stmts: &[MirStmt], f: &mut impl FnMut(&MirStmt)) {
     for stmt in stmts {
-        stmt.any_expr(&mut |expr| {
-            if let MirExpr::Call(call) = expr {
-                out.push(call.callee);
-            }
-            false
-        });
+        f(stmt);
         match stmt {
-            MirStmt::Call(call) => out.push(call.callee),
-            MirStmt::FbCall { body_func, .. } => out.push(*body_func),
             MirStmt::If {
                 then_body,
                 else_ifs,
                 else_body,
                 ..
             } => {
-                callees(then_body, out);
+                for_each_stmt(then_body, f);
                 for (_, body) in else_ifs {
-                    callees(body, out);
+                    for_each_stmt(body, f);
                 }
-                callees(else_body.as_deref().unwrap_or_default(), out);
+                for_each_stmt(else_body.as_deref().unwrap_or_default(), f);
             }
             MirStmt::Case {
                 arms, else_body, ..
             } => {
                 for arm in arms {
-                    callees(&arm.body, out);
+                    for_each_stmt(&arm.body, f);
                 }
-                callees(else_body.as_deref().unwrap_or_default(), out);
+                for_each_stmt(else_body.as_deref().unwrap_or_default(), f);
             }
             MirStmt::For { body, .. }
             | MirStmt::While { body, .. }
-            | MirStmt::Repeat { body, .. } => callees(body, out),
+            | MirStmt::Repeat { body, .. } => for_each_stmt(body, f),
             _ => {}
         }
     }
 }
 
+/// Every call `stmts` make, each once: a call statement, and a call in any
+/// expression, those in subscripts, assignment targets, arguments and
+/// aggregate snapshots included.
+pub fn for_each_call(stmts: &[MirStmt], f: &mut impl FnMut(&MirCall)) {
+    // `any_expr` reaches the expressions of the statements nested in each.
+    for stmt in stmts {
+        stmt.any_expr(&mut |expr| {
+            if let MirExpr::Call(call) = expr {
+                f(call);
+            }
+            false
+        });
+    }
+    // A call statement is no expression.
+    for_each_stmt(stmts, &mut |stmt| {
+        if let MirStmt::Call(call) = stmt {
+            f(call);
+        }
+    });
+}
+
+/// [`for_each_stmt`], mutably.
+pub fn for_each_stmt_mut(stmts: &mut [MirStmt], f: &mut impl FnMut(&mut MirStmt)) {
+    for stmt in stmts {
+        f(stmt);
+        match stmt {
+            MirStmt::If {
+                then_body,
+                else_ifs,
+                else_body,
+                ..
+            } => {
+                for_each_stmt_mut(then_body, f);
+                for (_, body) in else_ifs {
+                    for_each_stmt_mut(body, f);
+                }
+                if let Some(body) = else_body {
+                    for_each_stmt_mut(body, f);
+                }
+            }
+            MirStmt::Case {
+                arms, else_body, ..
+            } => {
+                for arm in arms {
+                    for_each_stmt_mut(&mut arm.body, f);
+                }
+                if let Some(body) = else_body {
+                    for_each_stmt_mut(body, f);
+                }
+            }
+            MirStmt::For { body, .. }
+            | MirStmt::While { body, .. }
+            | MirStmt::Repeat { body, .. } => for_each_stmt_mut(body, f),
+            _ => {}
+        }
+    }
+}
+
+/// [`for_each_call`], mutably.
+pub fn for_each_call_mut(stmts: &mut [MirStmt], f: &mut impl FnMut(&mut MirCall)) {
+    for stmt in stmts.iter_mut() {
+        stmt.exprs_mut(&mut |expr| {
+            if let MirExpr::Call(call) = expr {
+                f(call);
+            }
+        });
+    }
+    for_each_stmt_mut(stmts, &mut |stmt| {
+        if let MirStmt::Call(call) = stmt {
+            f(call);
+        }
+    });
+}
+
+/// Every function `stmts` call: a call, and an FB body invoked.
+pub(crate) fn callees(stmts: &[MirStmt], out: &mut Vec<Ident>) {
+    for_each_call(stmts, &mut |call| out.push(call.callee));
+    for_each_stmt(stmts, &mut |stmt| {
+        if let MirStmt::FbCall { body_func, .. } = stmt {
+            out.push(*body_func);
+        }
+    });
+}
+
 impl MirStmt {
+    /// [`MirExpr::exprs_mut`] over every expression of this statement and of
+    /// those nested in it: [`MirStmt::any_expr`], mutably.
+    pub fn exprs_mut(&mut self, f: &mut impl FnMut(&mut MirExpr)) {
+        match self {
+            MirStmt::Assign { target, value } => {
+                target.exprs_mut(f);
+                value.exprs_mut(f);
+            }
+            MirStmt::Call(call) => call.exprs_mut(f),
+            MirStmt::FbCall {
+                instance,
+                input_writes,
+                output_reads,
+                ..
+            } => {
+                instance.exprs_mut(f);
+                for (_, value, _) in input_writes {
+                    value.exprs_mut(f);
+                }
+                for (_, place, _, _) in output_reads {
+                    place.exprs_mut(f);
+                }
+            }
+            MirStmt::If {
+                condition,
+                then_body,
+                else_ifs,
+                else_body,
+            } => {
+                condition.exprs_mut(f);
+                for stmt in then_body {
+                    stmt.exprs_mut(f);
+                }
+                for (cond, body) in else_ifs {
+                    cond.exprs_mut(f);
+                    for stmt in body {
+                        stmt.exprs_mut(f);
+                    }
+                }
+                for stmt in else_body.iter_mut().flatten() {
+                    stmt.exprs_mut(f);
+                }
+            }
+            MirStmt::Case {
+                selector,
+                arms,
+                else_body,
+            } => {
+                selector.exprs_mut(f);
+                for arm in arms {
+                    for pattern in &mut arm.patterns {
+                        if let MirCasePattern::Test(test) = pattern {
+                            test.exprs_mut(f);
+                        }
+                    }
+                    for stmt in &mut arm.body {
+                        stmt.exprs_mut(f);
+                    }
+                }
+                for stmt in else_body.iter_mut().flatten() {
+                    stmt.exprs_mut(f);
+                }
+            }
+            MirStmt::For {
+                control,
+                start,
+                end,
+                step,
+                body,
+                ..
+            } => {
+                control.exprs_mut(f);
+                start.exprs_mut(f);
+                end.exprs_mut(f);
+                step.exprs_mut(f);
+                for stmt in body {
+                    stmt.exprs_mut(f);
+                }
+            }
+            MirStmt::While { condition, body } | MirStmt::Repeat { condition, body } => {
+                condition.exprs_mut(f);
+                for stmt in body {
+                    stmt.exprs_mut(f);
+                }
+            }
+            MirStmt::Raise { message } => message.exprs_mut(f),
+            MirStmt::Return
+            | MirStmt::Exit
+            | MirStmt::Continue
+            | MirStmt::MemStore { .. }
+            | MirStmt::WasmIntrinsic { .. }
+            | MirStmt::DebugTrap { .. } => {}
+        }
+    }
+
     /// Whether this statement, or one nested in it, reaches a place whose
     /// path runs a call ([`MirExpr::reaches_place_with_call`]).
     pub fn reaches_place_with_call(&self) -> bool {
