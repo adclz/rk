@@ -1,7 +1,7 @@
 use auto_lsp::{
     anyhow,
     core::ast::{AstNode, AstNodeId},
-    default::db::{file::File, tracked::get_ast},
+    default::db::file::File,
 };
 use compact_str::CompactString;
 use db::WorkspaceDataBase;
@@ -44,7 +44,7 @@ impl<'db> SpanIdent<'db> {
         sema: &SemanticIndexBuilder<'db>,
         ident: &AstNodeId<T>,
     ) -> anyhow::Result<Self, IdeDiagnostic> {
-        let ast = get_ast(db, sema.file);
+        let ast = &db::syntax::parse(db, sema.file).ast;
         let ident = ident.cast(ast);
         Self::from_node(db, sema, ident)
     }

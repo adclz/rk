@@ -1,8 +1,5 @@
 use ast::generated::DataTypeDecl;
-use auto_lsp::{
-    default::db::{file::File, tracked::get_ast},
-    lsp_types::CompletionItem,
-};
+use auto_lsp::{default::db::file::File, lsp_types::CompletionItem};
 use db::WorkspaceDataBase;
 use hir::{
     CallSite, HasName, HasVisibility, HirNodeInfo,
@@ -80,7 +77,7 @@ pub fn complete(
             // When the TYPE body is incomplete (no spec yet), no HIR node covers
             // the cursor, but we should still offer type-level completions
             // instead of POU-level snippets.
-            let ast = get_ast(db, file);
+            let ast = &db::syntax::parse(db, file).ast;
             let in_type_decl = ast.iter().any(|node| {
                 let range = node.get_range();
                 range.start_byte <= offset

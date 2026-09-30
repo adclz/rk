@@ -1200,6 +1200,46 @@ END_FUNCTION
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
 }
 
+/// A cycle of bases beside a syntax error: salsa refused the cycle of
+/// `ancestry` once the file's parse errors were accumulated, and panicked.
+#[rstest]
+fn a_cycle_of_bases_beside_a_syntax_error(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK A EXTENDS B
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK B EXTENDS A
+END_FUNCTION_BLOCK
+
+@@@ garbage ###
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1302] Error: recursion detected
+       ,-[ file:///test0.st:2:16 ]
+       |
+     2 | FUNCTION_BLOCK A EXTENDS B
+       |                |
+       |                `-- type 'A' is recursive
+       |
+     5 | FUNCTION_BLOCK B EXTENDS A
+       |                          |
+       |                          `-- recurses at this location
+       |
+       | Note: cycle goes
+       |       -> A
+       |       -> B
+       |       ... and back to A
+    ---'
+    [E0001] Error: syntax
+       ,-[ file:///test0.st:8:1 ]
+       |
+     8 | @@@ garbage ###
+       | ^^^^^^^|^^^^^^^
+       |        `--------- Unexpected token(s): '@@@ garbage # # #'
+    ---'
+    ");
+}
+
 /// A cycle of EXTENDS is reported once and nothing follows from it: the
 /// members and methods of every POU in it still resolve. Cyclic interfaces
 /// overflowed the compiler's stack when one was converted to another.

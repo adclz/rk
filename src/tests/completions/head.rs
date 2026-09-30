@@ -1,5 +1,4 @@
 use ast::generated::DataTypeDecl;
-use auto_lsp::default::db::tracked::get_ast;
 use db::RootDatabase;
 use hir::HirNodeInfo;
 use ide_proto::handlers::completions_utils::{CompletionCtx, QueryMode, static_snippets};
@@ -244,7 +243,7 @@ pub fn type_decl_incomplete_no_pou_completions(mut with_db: RootDatabase) {
     );
 
     // Verify the AST-level check: cursor is inside a DataTypeDecl
-    let ast = get_ast(&with_db, file);
+    let ast = &db::syntax::parse(&with_db, file).ast;
     let in_type_decl = ast.iter().any(|node| {
         let range = node.get_range();
         range.start_byte <= offset
