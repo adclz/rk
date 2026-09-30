@@ -34,6 +34,7 @@ mod namespace_nesting;
 mod negated_comparison;
 mod negated_condition;
 mod once_violation;
+mod recursion;
 mod redundant_not;
 mod self_assignment;
 mod self_comparison;

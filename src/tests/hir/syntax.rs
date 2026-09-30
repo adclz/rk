@@ -1207,7 +1207,7 @@ END_FUNCTION
 /// error is built by hand.
 #[rstest]
 fn a_node_the_ast_has_no_place_for_is_a_syntax_error(mut with_db: RootDatabase) {
-    use auto_lsp::core::errors::{AstError, ParseError, ParseErrorAccumulator};
+    use auto_lsp::core::errors::{AstError, ParseError};
     use auto_lsp::default::db::BaseDatabase;
     use auto_lsp::tree_sitter::{Point, Range};
     use hir::check::errors::{ToIdeDiagnostic, e00_syntax::SyntaxError};
@@ -1220,14 +1220,14 @@ fn a_node_the_ast_has_no_place_for_is_a_syntax_error(mut with_db: RootDatabase) 
         start_point: Point { row: 0, column: 0 },
         end_point: Point { row: 0, column: 8 },
     };
-    let err = ParseErrorAccumulator(ParseError::AstError {
+    let err = ParseError::AstError {
         span: range,
         error: AstError::UnexpectedSymbol {
             range,
             symbol: "ref_type_spec",
             parent_name: "ArrayTypeSpec_DataTypeAccess",
         },
-    });
+    };
     let diagnostic = SyntaxError::from_parse_error(&with_db, file, &err)
         .to_diagnostic(&with_db, file)
         .inner();

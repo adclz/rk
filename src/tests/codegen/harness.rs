@@ -89,6 +89,14 @@ fn compile(
     check_diagnostics(db, file, expectation);
     let mir_module =
         mir::lower::lower_module::lower_module(db, sem_idx).expect("MIR lowering failed");
+    // HIR's call graph decides which functions get a frame; one it missed
+    // would share a recursive function's storage between its calls.
+    if let Some(func) = mir_module.unframed_recursion() {
+        panic!(
+            "`{}` can call itself again but has no frame",
+            func.name.text(db)
+        );
+    }
     let wasm = match exports {
         Exports::Everything => wasm_codegen::generate_wasm(db, &export_everything(&mir_module)),
         Exports::AsBuilt => wasm_codegen::generate_wasm(db, &mir_module),
@@ -214,14 +222,26 @@ pub fn instantiate_with_memory(
     instantiate_returning_memory(store, module).0
 }
 
+/// The `env.memory` a host gives `module`: as many pages as it asks for, the
+/// stack of recursive calls included.
+fn env_memory(store: &mut wasmtime::Store<()>, module: &wasmtime::Module) -> wasmtime::Memory {
+    let pages = module
+        .imports()
+        .find_map(|import| match import.ty() {
+            wasmtime::ExternType::Memory(memory) => Some(memory.minimum()),
+            _ => None,
+        })
+        .unwrap_or(1);
+    wasmtime::Memory::new(store, wasmtime::MemoryType::new(pages as u32, None)).expect("memory")
+}
+
 /// As [`instantiate_with_memory`], keeping the memory handle — a fault test
 /// needs it to read the `$rk_exception` payload out of linear memory.
 pub fn instantiate_returning_memory(
     store: &mut wasmtime::Store<()>,
     module: &wasmtime::Module,
 ) -> (wasmtime::Instance, wasmtime::Memory) {
-    let memory =
-        wasmtime::Memory::new(&mut *store, wasmtime::MemoryType::new(1, None)).expect("memory");
+    let memory = env_memory(store, module);
     let instance = wasmtime::Instance::new(store, module, &[memory.into()])
         .expect("Failed to instantiate with memory");
     (instance, memory)
@@ -300,8 +320,7 @@ where
 
     // The core module imports its memory from `env`. Provide a host-owned memory
     // that the module can load/store into during the test.
-    let memory =
-        wasmtime::Memory::new(&mut store, wasmtime::MemoryType::new(1, None)).expect("memory");
+    let memory = env_memory(&mut store, &module);
     linker
         .define(&store, "env", "memory", memory)
         .expect("define env.memory");

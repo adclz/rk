@@ -149,4 +149,44 @@ impl MirModule {
     pub fn find_instance_type(&self, name: Ident) -> Option<&MirInstanceType> {
         self.instance_types.iter().find(|it| it.name == name)
     }
+
+    /// A function that can call itself again, following the calls lowering
+    /// emitted, but has no frame. HIR's call graph decides which functions
+    /// get one, and a call it missed would leave a recursive function's
+    /// storage shared between its calls: the tests and the fuzzer ask this,
+    /// lowering does not.
+    pub fn unframed_recursion(&self) -> Option<&MirFunction> {
+        let index: FxHashMap<Ident, usize> = self
+            .functions
+            .iter()
+            .enumerate()
+            .map(|(i, func)| (func.name, i))
+            .collect();
+        let edges: Vec<Vec<usize>> = self
+            .functions
+            .iter()
+            .map(|func| {
+                let mut names = Vec::new();
+                stmt::callees(&func.body, &mut names);
+                names
+                    .iter()
+                    .filter_map(|name| index.get(name).copied())
+                    .collect()
+            })
+            .collect();
+        self.functions
+            .iter()
+            .enumerate()
+            .find(|(start, func)| {
+                let mut seen = vec![false; edges.len()];
+                let mut pending = edges[*start].clone();
+                while let Some(at) = pending.pop() {
+                    if !std::mem::replace(&mut seen[at], true) {
+                        pending.extend(&edges[at]);
+                    }
+                }
+                seen[*start] && func.frame.is_none()
+            })
+            .map(|(_, func)| func)
+    }
 }

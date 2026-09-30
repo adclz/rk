@@ -7,7 +7,6 @@ use crate::hir_def::scope::ScopeId;
 use crate::{HirNodeInfo, hir_def::interned::identifier::SpanIdent};
 use auto_lsp::anyhow;
 use auto_lsp::core::ast::AstNode;
-use auto_lsp::default::db::tracked::get_ast;
 use db::WorkspaceDataBase;
 use std::hash::Hash;
 
@@ -91,7 +90,7 @@ impl<'db> SpanNamespacePath<'db> {
         db: &'db dyn WorkspaceDataBase,
         index: usize,
     ) -> &'db dyn AstNode {
-        &*get_ast(db, self.scope_id.file(db))[self.spans[index].0]
+        &*db::syntax::parse(db, self.scope_id.file(db)).ast[self.spans[index].0]
     }
 }
 
@@ -303,7 +302,7 @@ impl<'db> NamespaceAccess<'db> {
         sema: &SemanticIndexBuilder<'db>,
         fq_name: &ast::generated::NamespaceAccess,
     ) -> anyhow::Result<Self, IdeDiagnostic> {
-        let ast = get_ast(db, sema.file);
+        let ast = &db::syntax::parse(db, sema.file).ast;
         let mut fragments = Vec::new();
 
         // Walk the tree from root down `.path` fields

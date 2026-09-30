@@ -7,6 +7,7 @@ use salsa::{Database, Event};
 
 pub mod config_file;
 pub mod loader;
+pub mod syntax;
 pub mod sysroot;
 pub mod workspace;
 

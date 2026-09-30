@@ -39,7 +39,30 @@ pub struct MirFunction {
     /// Optional qualified export name (e.g. "Std.Bits.Test.test_shl_byte").
     /// When set, WASM codegen uses this instead of `name` for the export.
     pub export_name: Option<CompactString>,
+
+    /// The frame each call pushes on the stack for a function that may call
+    /// itself, directly or through others: its memory-resident storage is
+    /// [`MirStorage::Frame`]. `None` for every other function, whose storage
+    /// has static addresses.
+    pub frame: Option<MirFrame>,
+
+    /// Only the host calls it: a PROGRAM body, a connection wrapper,
+    /// `__init`, a `{test}`. Nothing of the program runs when it starts, so
+    /// the stack it gives recursive calls starts empty there, even after an
+    /// exception left frames behind.
+    pub host_entry: bool,
 }
+
+/// The stack frame of a recursive function.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MirFrame {
+    /// Bytes, a multiple of [`FRAME_ALIGN`], so the next frame starts
+    /// aligned as well.
+    pub size: u32,
+}
+
+/// The alignment of every frame, the largest a MIR type asks for.
+pub const FRAME_ALIGN: u32 = 8;
 
 /// An imported (extern) function declaration.
 #[derive(Debug, Clone)]
@@ -127,6 +150,14 @@ pub enum MirStorage {
     Memory {
         /// Absolute address in linear memory.
         address: u32,
+        size: u32,
+        align: u32,
+    },
+    /// In linear memory, in the frame of the current call: the storage of a
+    /// function with a [`MirFunction::frame`].
+    Frame {
+        /// Bytes from the start of the frame.
+        offset: u32,
         size: u32,
         align: u32,
     },

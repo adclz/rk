@@ -479,9 +479,9 @@ pub fn generate_wasm_profile(
 pub(crate) enum LocalInfo {
     /// Scalar held in a WASM local.
     Scalar { index: u32, elem: MirElementary },
-    /// Memory-resident variable at a fixed address.
+    /// Memory-resident variable.
     Memory {
-        address: u32,
+        address: MemAddr,
         elem: Option<MirElementary>,
     },
     /// Pointer (VAR_IN_OUT) - i32 local holding an address.
@@ -497,7 +497,58 @@ pub(crate) enum LocalInfo {
     StringInOutParam { addr_index: u32, cap_index: u32 },
     /// String in memory at `address`: `len` (i32) then `capacity` bytes of
     /// buffer at `addr + 4`; assignment is a bounded copy via `rk.str_assign`.
-    StringMemory { address: u32, capacity: u32 },
+    StringMemory { address: MemAddr, capacity: u32 },
+}
+
+/// Where a memory-resident local lives: at a static address, or, in a
+/// recursive function, at an offset in the frame of the current call, whose
+/// start a wasm local holds.
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum MemAddr {
+    Static(u32),
+    Frame { base: u32, offset: u32 },
+}
+
+impl MemAddr {
+    /// Push the address.
+    pub(crate) fn emit(self, func: &mut wasm_encoder::Function) {
+        match self {
+            MemAddr::Static(address) => {
+                func.instruction(&Instruction::I32Const(address as i32));
+            }
+            MemAddr::Frame { base, offset } => {
+                func.instruction(&Instruction::LocalGet(base));
+                if offset > 0 {
+                    func.instruction(&Instruction::I32Const(offset as i32));
+                    func.instruction(&Instruction::I32Add);
+                }
+            }
+        }
+    }
+
+    /// The address `delta` bytes further.
+    pub(crate) fn add(self, delta: u32) -> Self {
+        match self {
+            MemAddr::Static(address) => MemAddr::Static(address + delta),
+            MemAddr::Frame { base, offset } => MemAddr::Frame {
+                base,
+                offset: offset + delta,
+            },
+        }
+    }
+}
+
+/// Bytes of linear memory for the frames of recursive calls, past every
+/// static allocation. A call deeper than it raises `stack overflow`.
+pub const STACK_SIZE: u32 = 64 * 1024;
+
+/// The stack recursive calls push their frames on, when any function has
+/// one: `[base, end)`, and the global holding its top.
+#[derive(Clone, Copy)]
+struct Stack {
+    sp_global: u32,
+    base: u32,
+    end: u32,
 }
 
 struct WasmGen<'a> {
@@ -544,25 +595,67 @@ struct WasmGen<'a> {
     /// bodies that take one.
     func_this_slot: FxHashMap<u32, u32>,
     /// Per function: leaf symbols and array descriptors for its memory-resident
-    /// locals, whose addresses are static (IEC forbids recursion). Emitted
-    /// into `debug-locals` v2.
+    /// locals at static addresses. Emitted into `debug-locals` v2; the locals
+    /// of a recursive function, in the frame of each call, are not described.
     func_memory_locals: FxHashMap<u32, (Vec<debug_format::Symbol>, Vec<debug_format::ArraySym>)>,
     /// Type table shared by every frame's array descriptors (aggregate
     /// element layouts) — becomes `DebugLocals::types` (v3).
     local_type_table: mir::debug_symbols::TypeTable,
+    /// `[base, end)` of the stack, when a function has a frame; its global
+    /// is added once the graft has placed the bundle's.
+    stack_bounds: Option<(u32, u32)>,
+    stack: Option<Stack>,
 }
 
 /// Size of the per-`{test}` canonical-ABI `result<unit, string>` area: an
 /// i8 discriminant at 0, the string ptr at 4 and len at 8.
 const TEST_RESULT_AREA_SIZE: u32 = 12;
 
-/// Sum the snapshot scratch needs across every function in the module.
+/// Sum the static snapshot scratch needs across the module; a recursive
+/// function keeps its own in its frame.
 fn module_total_scratch_slots(module: &MirModule) -> u32 {
     let mut total = 0;
-    for func in &module.functions {
+    for func in module.functions.iter().filter(|f| f.frame.is_none()) {
         total += count_nested_string_calls_stmts(&func.body);
     }
     total
+}
+
+/// Bytes a call of `func` pushes: MIR's storage for it and, past that, its
+/// STRING snapshot slots. 0 without a frame, or for a recursive function
+/// whose storage is all in wasm locals, which then pushes nothing.
+fn frame_bytes(func: &MirFunction, slot_size: u32) -> u32 {
+    use mir::function::FRAME_ALIGN;
+    use mir::memory::align_to;
+    let Some(frame) = func.frame else {
+        return 0;
+    };
+    align_to(
+        frame.size + count_nested_string_calls_stmts(&func.body) * slot_size,
+        FRAME_ALIGN,
+    )
+}
+
+/// `[base, end)` of the stack for the frames of recursive calls, past the
+/// `{test}` result areas; `None` when no call pushes one.
+fn stack_bounds(module: &MirModule) -> Option<(u32, u32)> {
+    use mir::function::FRAME_ALIGN;
+    use mir::memory::align_to;
+    let slot_size = scratch_slot_size(scratch_capacity(module));
+    if module
+        .functions
+        .iter()
+        .all(|f| frame_bytes(f, slot_size) == 0)
+    {
+        return None;
+    }
+    let scratch_total =
+        module_total_scratch_slots(module) * scratch_slot_size(scratch_capacity(module));
+    // Each result area is 4-aligned, from the first on.
+    let results_end = align_to(static_data_end(module) + scratch_total, 4)
+        + module_test_count(module) * TEST_RESULT_AREA_SIZE;
+    let base = align_to(results_end, FRAME_ALIGN);
+    Some((base, base + STACK_SIZE))
 }
 
 /// WASM page size.
@@ -592,7 +685,8 @@ pub(crate) fn core_memory_pages(module: &MirModule) -> u64 {
     let scratch_total =
         module_total_scratch_slots(module) * scratch_slot_size(scratch_capacity(module));
     let test_results_total = module_test_count(module) * TEST_RESULT_AREA_SIZE;
-    let total = static_total + scratch_total + test_results_total;
+    let total = (static_total + scratch_total + test_results_total)
+        .max(stack_bounds(module).map_or(0, |(_, end)| end));
     if total == 0 {
         1
     } else {
@@ -654,6 +748,8 @@ impl<'a> WasmGen<'a> {
             func_this_slot: FxHashMap::default(),
             func_memory_locals: FxHashMap::default(),
             local_type_table: mir::debug_symbols::TypeTable::new(),
+            stack_bounds: stack_bounds(module),
+            stack: None,
         }
     }
 
@@ -771,6 +867,25 @@ impl<'a> WasmGen<'a> {
             );
             self.next_type_idx += 1;
             self.test_catch_block_type_idx = Some(test_catch_ty);
+        }
+
+        // 7.5. The stack pointer of recursive calls, after the bundle's
+        //      globals, which the graft places at the indices it compiled.
+        if let Some((base, end)) = self.stack_bounds {
+            let sp_global = self.global_section.len();
+            self.global_section.global(
+                wasm_encoder::GlobalType {
+                    val_type: ValType::I32,
+                    mutable: true,
+                    shared: false,
+                },
+                &wasm_encoder::ConstExpr::i32_const(base as i32),
+            );
+            self.stack = Some(Stack {
+                sp_global,
+                base,
+                end,
+            });
         }
 
         // 8. Emit user functions.
@@ -1000,6 +1115,10 @@ impl<'a> WasmGen<'a> {
         {
             found.insert("rk.str_assign".to_string());
         }
+        // A recursive function checks its frame against the stack's end.
+        if self.stack_bounds.is_some() && crate::builtins::lookup("rk.stack_check").is_some() {
+            found.insert("rk.stack_check".to_string());
+        }
 
         let mut v: Vec<String> = found.into_iter().collect();
         v.sort();
@@ -1087,6 +1206,74 @@ impl<'a> WasmGen<'a> {
             .export(&export_name, wasm_encoder::ExportKind::Func, wasm_idx);
     }
 
+    /// The STRING snapshot slots of `func`'s nested calls, and the size of
+    /// its frame: a recursive function keeps them in its frame, past its
+    /// locals; any other at static addresses.
+    fn snapshot_slots(
+        &self,
+        func: &MirFunction,
+        frame_base: Option<u32>,
+        count: u32,
+    ) -> (Vec<MemAddr>, Option<u32>) {
+        let slot_size = scratch_slot_size(self.scratch_capacity);
+        match (func.frame, frame_base) {
+            (Some(frame), Some(base)) => (
+                (0..count)
+                    .map(|k| MemAddr::Frame {
+                        base,
+                        offset: frame.size + k * slot_size,
+                    })
+                    .collect(),
+                Some(frame_bytes(func, slot_size)),
+            ),
+            _ => (
+                (0..count)
+                    .map(|_| MemAddr::Static(self.alloc_scratch_slot()))
+                    .collect(),
+                None,
+            ),
+        }
+    }
+
+    /// What a function does before its body with frames in the module: a
+    /// host entry starts the stack over, since an exception may have left
+    /// frames behind; a recursive function pushes its frame, checked against
+    /// the stack's end, zeroed like any automatic storage.
+    fn emit_entry(
+        &self,
+        wasm_func: &mut wasm_encoder::Function,
+        func: &MirFunction,
+        frame_base: Option<u32>,
+        frame_size: Option<u32>,
+    ) {
+        let Some(stack) = self.stack else {
+            return;
+        };
+        if func.host_entry {
+            wasm_func.instruction(&Instruction::I32Const(stack.base as i32));
+            wasm_func.instruction(&Instruction::GlobalSet(stack.sp_global));
+        }
+        let (Some(base), Some(size)) = (frame_base, frame_size) else {
+            return;
+        };
+        let check = self
+            .builtin_indices
+            .get("rk.stack_check")
+            .copied()
+            .expect("rk.stack_check is grafted whenever a function has a frame");
+        wasm_func.instruction(&Instruction::GlobalGet(stack.sp_global));
+        wasm_func.instruction(&Instruction::LocalTee(base));
+        wasm_func.instruction(&Instruction::I32Const(size as i32));
+        wasm_func.instruction(&Instruction::I32Add);
+        wasm_func.instruction(&Instruction::I32Const(stack.end as i32));
+        wasm_func.instruction(&Instruction::Call(check));
+        wasm_func.instruction(&Instruction::GlobalSet(stack.sp_global));
+        wasm_func.instruction(&Instruction::LocalGet(base));
+        wasm_func.instruction(&Instruction::I32Const(0));
+        wasm_func.instruction(&Instruction::I32Const(size as i32));
+        wasm_func.instruction(&Instruction::MemoryFill(0));
+    }
+
     fn emit_function(&mut self, func: &MirFunction) {
         if func.is_test {
             self.emit_test_function(func);
@@ -1128,7 +1315,12 @@ impl<'a> WasmGen<'a> {
         }
 
         // Build local map from params + locals.
-        let local_map = build_local_map(func);
+        let frame_base = frame_base_local(
+            func,
+            params.len() as u32,
+            scratch_slot_size(self.scratch_capacity),
+        );
+        let local_map = build_local_map(func, frame_base);
 
         // Collect scalar locals (params + VARs held in wasm locals) for the
         // `debug-locals` table, so a debugger can label `FrameHandle::local(i)`.
@@ -1195,6 +1387,14 @@ impl<'a> WasmGen<'a> {
                 extra_locals.push((1, vt));
             }
         }
+        // Then the start of a recursive function's frame.
+        if let Some(base) = frame_base {
+            debug_assert_eq!(
+                base,
+                params.len() as u32 + extra_locals.iter().map(|(c, _)| *c).sum::<u32>()
+            );
+            extra_locals.push((1, ValType::I32));
+        }
 
         // STRING snapshot dance temps (ptr_tmp, len_tmp) - only allocated
         // when the function actually contains nested STRING-returning calls.
@@ -1244,13 +1444,15 @@ impl<'a> WasmGen<'a> {
         // The scratch pairs of a wrapping division (`DIV_TMP`).
         let div_tmp = alloc_div_scratch(&func.body, params.len() as u32, &mut extra_locals);
 
-        // One scratch slot per nested STRING call, past the MIR static layout.
-        let scratch_slots: Vec<u32> = (0..nested_str_count)
-            .map(|_| self.alloc_scratch_slot())
-            .collect();
+        // One scratch slot per nested STRING call, past the MIR static layout,
+        // or in a recursive function's frame past its locals: a call of it
+        // from inside the snapshot's own expression would overwrite a static
+        // one.
+        let (scratch_slots, frame_size) = self.snapshot_slots(func, frame_base, nested_str_count);
 
         // Emit function body
         let mut wasm_func = wasm_encoder::Function::new(extra_locals);
+        self.emit_entry(&mut wasm_func, func, frame_base, frame_size);
 
         // The return slot, by `origin_name`: methods store it under the bare
         // method name.
@@ -1303,6 +1505,8 @@ impl<'a> WasmGen<'a> {
             crate::mir_cast::DATETIME_FLOOR_TMP.with(|cell| cell.replace(datetime_floor_tmp));
         let prev_addr_tmp = crate::emit_expr::STR_ADDR_TMP.with(|cell| cell.replace(str_addr_tmp));
         let prev_div_tmp = crate::emit_expr::DIV_TMP.with(|cell| cell.replace(div_tmp));
+        let frame = frame_base.zip(self.stack.map(|stack| stack.sp_global));
+        let prev_frame = crate::emit_stmt::FRAME.with(|cell| cell.replace(frame));
 
         // Automatic storage is fresh at every invocation: wasm locals are zeroed
         // by the engine, but an aggregate at a fixed address must be reset
@@ -1366,11 +1570,15 @@ impl<'a> WasmGen<'a> {
         crate::mir_cast::DATETIME_FLOOR_TMP.with(|cell| cell.replace(prev_floor_tmp));
         crate::emit_expr::STR_ADDR_TMP.with(|cell| cell.replace(prev_addr_tmp));
         crate::emit_expr::DIV_TMP.with(|cell| cell.replace(prev_div_tmp));
+        crate::emit_stmt::FRAME.with(|cell| cell.replace(prev_frame));
 
         // Push return value at function end — the same shapes a mid-body
-        // RETURN pushes, from one implementation.
+        // RETURN pushes, from one implementation — then pop the frame.
         if let Some(ret) = return_value {
             crate::emit_stmt::emit_return_value(&mut wasm_func, ret);
+        }
+        if let Some((base, sp_global)) = frame {
+            crate::emit_stmt::emit_frame_pop(&mut wasm_func, base, sp_global);
         }
 
         // End function
@@ -1419,8 +1627,10 @@ impl<'a> WasmGen<'a> {
         // Per-test 12-byte canonical-ABI result area.
         let result_area = self.alloc_test_result_area();
 
-        // Build local map + extra locals (mirrors `emit_function`).
-        let local_map = build_local_map(func);
+        // Build local map + extra locals (mirrors `emit_function`); the
+        // wrapper takes no params.
+        let frame_base = frame_base_local(func, 0, scratch_slot_size(self.scratch_capacity));
+        let local_map = build_local_map(func, frame_base);
         let mut extra_locals: Vec<(u32, ValType)> = Vec::new();
         for local in &func.locals {
             if let MirStorage::Scalar { .. } = local.storage
@@ -1428,6 +1638,9 @@ impl<'a> WasmGen<'a> {
             {
                 extra_locals.push((1, vt));
             }
+        }
+        if frame_base.is_some() {
+            extra_locals.push((1, ValType::I32));
         }
 
         // Two i32 scratch locals for the catch handler to stash `(ptr, len)`.
@@ -1474,11 +1687,10 @@ impl<'a> WasmGen<'a> {
         // Per-call-site STRING snapshot slots for nested STRING-returning
         // calls inside the test body. Same as `emit_function`.
         let nested_str_count = count_nested_string_calls_stmts(&func.body);
-        let scratch_slots: Vec<u32> = (0..nested_str_count)
-            .map(|_| self.alloc_scratch_slot())
-            .collect();
+        let (scratch_slots, frame_size) = self.snapshot_slots(func, frame_base, nested_str_count);
 
         let mut wasm_func = wasm_encoder::Function::new(extra_locals);
+        self.emit_entry(&mut wasm_func, func, frame_base, frame_size);
 
         let remapped_fn_indices = self.build_call_indices();
         self.publish_null_check_index(&remapped_fn_indices);
@@ -1505,6 +1717,9 @@ impl<'a> WasmGen<'a> {
             crate::mir_cast::DATETIME_FLOOR_TMP.with(|cell| cell.replace(datetime_floor_tmp));
         let prev_addr_tmp = crate::emit_expr::STR_ADDR_TMP.with(|cell| cell.replace(str_addr_tmp));
         let prev_div_tmp = crate::emit_expr::DIV_TMP.with(|cell| cell.replace(div_tmp));
+        // A RETURN in a test leaves the wrapper, whose next call starts the
+        // stack over: no frame to pop.
+        let prev_frame = crate::emit_stmt::FRAME.with(|cell| cell.replace(None));
 
         let tag_idx = self.rk_exception_tag_idx.expect(
             "rk_exception_tag_idx must be set whenever any function (including tests) is emitted: \
@@ -1547,6 +1762,7 @@ impl<'a> WasmGen<'a> {
         crate::mir_cast::DATETIME_FLOOR_TMP.with(|cell| cell.replace(prev_floor_tmp));
         crate::emit_expr::STR_ADDR_TMP.with(|cell| cell.replace(prev_addr_tmp));
         crate::emit_expr::DIV_TMP.with(|cell| cell.replace(prev_div_tmp));
+        crate::emit_stmt::FRAME.with(|cell| cell.replace(prev_frame));
 
         // end try_table — only reached on the success (no-throw) path.
         wasm_func.instruction(&Instruction::End);
@@ -1980,8 +2196,27 @@ fn build_signature(
 }
 
 /// Build LocalInfo map from a MirFunction's params and locals.
+/// The wasm local holding the start of a recursive function's frame, when
+/// it pushes one: the first after its `param_count` parameters and MIR's
+/// scalar locals, which the emitter declares first.
+fn frame_base_local(func: &MirFunction, param_count: u32, slot_size: u32) -> Option<u32> {
+    if frame_bytes(func, slot_size) == 0 {
+        return None;
+    }
+    let scalars = func
+        .locals
+        .iter()
+        .filter(|local| {
+            matches!(local.storage, MirStorage::Scalar { .. })
+                && mir_type_to_val_type(&local.ty).is_some()
+        })
+        .count() as u32;
+    Some(param_count + scalars)
+}
+
 pub(crate) fn build_local_map(
     func: &MirFunction,
+    frame_base: Option<u32>,
 ) -> FxHashMap<hir::hir_def::interned::identifier::Ident, LocalInfo> {
     let mut map = FxHashMap::default();
     let mut param_idx: u32 = 0;
@@ -2108,28 +2343,38 @@ pub(crate) fn build_local_map(
                     },
                 );
             }
-            MirStorage::Memory { address, .. } => match &local.ty {
-                MirType::String { capacity } => {
-                    map.insert(
-                        local.name,
-                        LocalInfo::StringMemory {
-                            address,
-                            capacity: *capacity,
-                        },
-                    );
+            MirStorage::Memory { .. } | MirStorage::Frame { .. } => {
+                let address = match local.storage {
+                    MirStorage::Frame { offset, .. } => MemAddr::Frame {
+                        base: frame_base.expect("a frame local in a function without a frame"),
+                        offset,
+                    },
+                    MirStorage::Memory { address, .. } => MemAddr::Static(address),
+                    MirStorage::Scalar { .. } => unreachable!(),
+                };
+                match &local.ty {
+                    MirType::String { capacity } => {
+                        map.insert(
+                            local.name,
+                            LocalInfo::StringMemory {
+                                address,
+                                capacity: *capacity,
+                            },
+                        );
+                    }
+                    ty => {
+                        // An enum and a subrange load and store at their lane,
+                        // as `emit_typed_mem_load` has them.
+                        let elem = match ty {
+                            MirType::Elementary(e) => Some(*e),
+                            MirType::Enum(e) => Some(e.storage),
+                            MirType::Subrange(s) => Some(s.base),
+                            _ => None,
+                        };
+                        map.insert(local.name, LocalInfo::Memory { address, elem });
+                    }
                 }
-                ty => {
-                    // An enum and a subrange load and store at their lane,
-                    // as `emit_typed_mem_load` has them.
-                    let elem = match ty {
-                        MirType::Elementary(e) => Some(*e),
-                        MirType::Enum(e) => Some(e.storage),
-                        MirType::Subrange(s) => Some(s.base),
-                        _ => None,
-                    };
-                    map.insert(local.name, LocalInfo::Memory { address, elem });
-                }
-            },
+            }
         }
     }
 

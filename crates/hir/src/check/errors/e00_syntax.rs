@@ -1,7 +1,6 @@
 use crate::check::errors::ToIdeDiagnostic;
 use auto_lsp::core::errors::LexerError;
 use auto_lsp::core::errors::ParseError;
-use auto_lsp::core::errors::ParseErrorAccumulator;
 use auto_lsp::default::db::file::File;
 use auto_lsp::lsp_types::DiagnosticSeverity;
 use auto_lsp::lsp_types::WorkspaceEdit;
@@ -162,12 +161,8 @@ impl ErrorCode for SyntaxError {
 }
 
 impl SyntaxError {
-    pub fn from_parse_error(
-        db: &dyn WorkspaceDataBase,
-        file: File,
-        err: &ParseErrorAccumulator,
-    ) -> Self {
-        match &err.0 {
+    pub fn from_parse_error(db: &dyn WorkspaceDataBase, file: File, err: &ParseError) -> Self {
+        match err {
             ParseError::LexerError { error, .. } => match error {
                 LexerError::Missing {
                     range,

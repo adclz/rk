@@ -3,7 +3,6 @@ use std::sync::Arc;
 
 use auto_lsp::core::ast::AstNode;
 use auto_lsp::default::db::file::File;
-use auto_lsp::default::db::tracked::get_ast;
 use db::WorkspaceDataBase;
 use ide_diagnostic::IdeDiagnostic;
 use rustc_hash::FxHashMap;
@@ -25,7 +24,8 @@ use index::{IndexVec, newtype_index};
 #[tracing::instrument(level = "debug", skip_all, name = "query_semantic_index")]
 #[salsa::tracked(returns(ref), no_eq)]
 pub fn semantic_index<'db>(db: &'db dyn WorkspaceDataBase, file: File) -> SemanticIndex<'db> {
-    let ast = info_span!("build AST").in_scope(|| get_ast(db, file));
+    let parsed = info_span!("build AST").in_scope(|| db::syntax::parse(db, file));
+    let ast = &parsed.ast;
     let root = match ast.get_root() {
         Some(root) => root,
         None => return SemanticIndex::empty(db, file, ast.nodes.clone()),
@@ -36,15 +36,15 @@ pub fn semantic_index<'db>(db: &'db dyn WorkspaceDataBase, file: File) -> Semant
     };
     // A node the generated AST had no place for leaves ids pointing at the
     // wrong nodes, and the first cast panicked. The file is analyzed as
-    // empty; its E0001 says why.
-    if get_ast::accumulated::<auto_lsp::core::errors::ParseErrorAccumulator>(db, file)
+    // empty; its E0001 says why. The builder accumulates these on `parse`.
+    if db::syntax::parse::accumulated::<auto_lsp::core::errors::ParseErrorAccumulator>(db, file)
         .iter()
         .any(|e| matches!(e.0, auto_lsp::core::errors::ParseError::AstError { .. }))
     {
         return SemanticIndex::empty(db, file, ast.nodes.clone());
     }
 
-    SemanticIndexBuilder::new(db, file, get_ast(db, file), source).build()
+    SemanticIndexBuilder::new(db, file, ast, source).build()
 }
 
 #[newtype_index]

@@ -18,8 +18,12 @@ env.memory                          the host's, from address 0
 ├─ PROGRAM RETAIN                   retain band
 ├─ VAR_GLOBAL RETAIN                retain band and globals band
 ├─ VAR_GLOBAL                       globals band
-└─ strings                          the string literals
+├─ strings                          the string literals
+└─ stack                            the frames of recursive calls
 ```
+
+A POU that calls itself, directly or through others, gets a frame on the stack at each call for its arrays, strings, structures and instances, where any other POU has them at a fixed address (`L0122`).
+The stack takes 64 KiB, only in a module with such a POU; a deeper recursion stops the program with `stack overflow`.
 
 | Band | Exports | Holds | The host |
 |---|---|---|---|

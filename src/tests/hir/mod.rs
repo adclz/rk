@@ -3,6 +3,7 @@ pub mod array;
 pub mod array_init_multi_dim;
 pub mod assignment;
 pub mod bit_access;
+pub mod call_graph;
 pub mod case;
 pub mod config;
 pub mod direct_variables;

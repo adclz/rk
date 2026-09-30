@@ -470,7 +470,8 @@ pub struct FuncLocals {
     pub locals: Vec<LocalVar>,
     /// Memory-resident locals expanded to leaves like
     /// [`DebugSymbols::symbols`], with frame-relative paths and absolute
-    /// static addresses (IEC forbids recursion).
+    /// static addresses. A recursive function's are in the frame of each
+    /// call, and not listed.
     #[serde(default)]
     pub memory: Vec<Symbol>,
     /// Array descriptors for the frame's memory locals — same on-demand

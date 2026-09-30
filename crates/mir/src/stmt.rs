@@ -106,6 +106,47 @@ pub enum MirStmt {
     Raise { message: MirExpr },
 }
 
+/// Every function `stmts` call, statements nested in them included: a call
+/// statement, an FB body invoked, a call in any expression.
+pub(crate) fn callees(stmts: &[MirStmt], out: &mut Vec<Ident>) {
+    for stmt in stmts {
+        stmt.any_expr(&mut |expr| {
+            if let MirExpr::Call(call) = expr {
+                out.push(call.callee);
+            }
+            false
+        });
+        match stmt {
+            MirStmt::Call(call) => out.push(call.callee),
+            MirStmt::FbCall { body_func, .. } => out.push(*body_func),
+            MirStmt::If {
+                then_body,
+                else_ifs,
+                else_body,
+                ..
+            } => {
+                callees(then_body, out);
+                for (_, body) in else_ifs {
+                    callees(body, out);
+                }
+                callees(else_body.as_deref().unwrap_or_default(), out);
+            }
+            MirStmt::Case {
+                arms, else_body, ..
+            } => {
+                for arm in arms {
+                    callees(&arm.body, out);
+                }
+                callees(else_body.as_deref().unwrap_or_default(), out);
+            }
+            MirStmt::For { body, .. }
+            | MirStmt::While { body, .. }
+            | MirStmt::Repeat { body, .. } => callees(body, out),
+            _ => {}
+        }
+    }
+}
+
 impl MirStmt {
     /// Whether this statement, or one nested in it, reaches a place whose
     /// path runs a call ([`MirExpr::reaches_place_with_call`]).

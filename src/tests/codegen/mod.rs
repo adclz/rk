@@ -32,6 +32,7 @@ mod modulo;
 mod namespaces;
 mod overloads;
 mod profile_swap;
+mod recursion;
 mod ref_to;
 mod references;
 mod return_value;

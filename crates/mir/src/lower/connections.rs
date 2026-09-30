@@ -137,6 +137,8 @@ pub(crate) fn lower_connections<'db>(
         linkage: MirLinkage::Export,
         is_test: false,
         export_name: None,
+        frame: None,
+        host_entry: true,
     })
 }
 

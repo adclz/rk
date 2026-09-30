@@ -68,6 +68,27 @@ fn recursive_function_blocks(mut with_db: RootDatabase) {
     ");
 }
 
+/// A VAR_IN_OUT member holds the address of the caller's instance, like a
+/// REF_TO: two FBs that refer to each other through one contain no copy of
+/// each other. It was E1302.
+#[rstest]
+fn function_blocks_referring_to_each_other_through_in_outs(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Motor
+        VAR_IN_OUT drive : Drive; END_VAR
+        VAR_OUTPUT seen : INT; END_VAR
+            seen := drive.speed;
+        END_FUNCTION_BLOCK
+
+        FUNCTION_BLOCK Drive
+        VAR_IN_OUT motor : Motor; END_VAR
+        VAR_OUTPUT speed : INT := 7; END_VAR
+        END_FUNCTION_BLOCK
+        "#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
+
 #[rstest]
 fn self_referential_struct(mut with_db: RootDatabase) {
     let source = r#"
