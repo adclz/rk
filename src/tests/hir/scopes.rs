@@ -793,12 +793,11 @@ END_FUNCTION_BLOCK
 
     let fb = find_pou_with_name(&with_db, *file1, "fb").unwrap();
 
-    let inehrited = fb.get_scope_id(&with_db).inheritors(&with_db);
-    assert_eq!(inehrited.len(), 1);
+    let bases = hir::hir_ty::oop::explicit_bases(&with_db, fb);
+    assert!(bases.interfaces.is_empty());
     assert_eq!(
-        inehrited
-            .values()
-            .next()
+        bases
+            .extends
             .unwrap()
             .get_name_ident(&with_db)
             .text(&with_db),
@@ -831,15 +830,11 @@ END_FUNCTION_BLOCK
 
     let fb = find_pou_with_name(&with_db, *file1, "fb").unwrap();
 
-    let inehrited = fb.get_scope_id(&with_db).inheritors(&with_db);
-    assert_eq!(inehrited.len(), 1);
+    let bases = hir::hir_ty::oop::explicit_bases(&with_db, fb);
+    assert!(bases.extends.is_none());
+    assert_eq!(bases.interfaces.len(), 1);
     assert_eq!(
-        inehrited
-            .values()
-            .next()
-            .unwrap()
-            .get_name_ident(&with_db)
-            .text(&with_db),
+        bases.interfaces[0].get_name_ident(&with_db).text(&with_db),
         "in1"
     );
 }

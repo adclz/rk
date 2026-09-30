@@ -4,6 +4,8 @@
 
 `E1103` IMPLEMENTS declared before EXTENDS.
 
+`E1130` A base of the wrong kind: a class extending a function block, an interface after `EXTENDS` on a function block or a class, a class or a function block after `IMPLEMENTS`.
+
 `E0018` VAR_IN_OUT not allowed in this context (a CLASS).
 
 `E0019` VAR_TEMP not allowed in this context (a CLASS, an interface prototype).

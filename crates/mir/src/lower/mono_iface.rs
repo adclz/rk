@@ -17,8 +17,8 @@ use hir::hir_def::pous::pou::Pou;
 use hir::hir_def::pous::variable::{VariableDecl, VariableKind};
 use hir::hir_def::scope::ScopeId;
 use hir::hir_ty::body::infer_body;
-use hir::hir_ty::head::inheritance::MethodRef;
 use hir::hir_ty::infer::Infer;
+use hir::hir_ty::oop::MethodRef;
 use hir::hir_ty::ty::{CallableType, Type};
 
 use super::naming::qualified_pou_ident;
@@ -397,9 +397,9 @@ fn method_target<'db>(
         // an override where the body is inherited code.
         _ => {
             let owner = self_pou?;
-            let method =
-                hir::hir_ty::head::inheritance::implementing_method(db, owner, resolved.name(db))
-                    .unwrap_or(resolved);
+            let method = hir::hir_ty::oop::class_members(db, owner)
+                .implementation(&resolved.name(db))
+                .unwrap_or(resolved);
             Some(IfaceTarget::Method { owner, method })
         }
     }

@@ -291,7 +291,7 @@ pub fn located_view(db: &dyn WorkspaceDataBase, address: &LocatedAddress) -> Opt
 // ---------------------------------------------------------------------------
 
 /// Helper to iterate over all workspace + library files.
-fn all_files<'db>(db: &'db dyn WorkspaceDataBase) -> impl Iterator<Item = File> + 'db {
+pub(crate) fn all_files<'db>(db: &'db dyn WorkspaceDataBase) -> impl Iterator<Item = File> + 'db {
     db.get_files()
         .iter()
         .map(|e| *e)

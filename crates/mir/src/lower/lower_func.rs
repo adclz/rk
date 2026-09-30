@@ -43,21 +43,18 @@ fn at_node<'db, T>(
 /// Every method an instance of `pou` responds to: its own, plus the
 /// inherited ones it does not override. An inherited method is emitted as
 /// a copy on each inheritor, so `THIS.m()` inside it resolves against the
-/// inheritor. Which override wins is HIR's answer (`inherited_methods`).
+/// inheritor. Which override wins is HIR's answer (`class_members`).
 /// Sorted by name for a reproducible artifact.
 fn emittable_methods<'db>(
     db: &'db dyn WorkspaceDataBase,
     pou: hir::hir_def::pous::pou::Pou<'db>,
     own: &[hir::hir_def::pous::class::MethodDecl<'db>],
 ) -> Vec<hir::hir_def::pous::class::MethodDecl<'db>> {
-    use hir::hir_ty::head::inheritance::MethodRef;
+    use hir::hir_ty::oop::MethodRef;
 
-    let own_names: FxHashSet<Ident> = own.iter().map(|m| m.name(db)).collect();
-    let mut inherited: Vec<_> = hir::hir_ty::head::inheritance::inherited_methods(db, pou)
-        .methods
-        .iter()
-        .filter(|(name, _)| !own_names.contains(*name))
-        .filter_map(|(_, im)| match im.method {
+    let mut inherited: Vec<_> = hir::hir_ty::oop::class_members(db, pou)
+        .inherited(pou)
+        .filter_map(|(_, member)| match member.method {
             MethodRef::Declared(d) => Some(d),
             MethodRef::Prototype(_) => None,
         })
@@ -87,7 +84,7 @@ pub(crate) fn instance_copies<'db>(
     use hir::hir_def::expressions::invocation::InvocationKind;
     use hir::hir_def::pous::pou::Pou;
     use hir::hir_def::scope::ScopeKind;
-    use hir::hir_ty::head::inheritance::MethodRef;
+    use hir::hir_ty::oop::MethodRef;
     use hir::hir_ty::ty::CallableType;
 
     let own: &[hir::hir_def::pous::class::MethodDecl<'db>] = match pou {
@@ -131,7 +128,7 @@ pub(crate) fn instance_copies<'db>(
         if body.first_super_body.is_some()
             && let ScopeKind::Pou(holder) = hir::hir_def::semantic_index::get_scope(db, scope).kind
             && let Some(Pou::FunctionBlock(base)) =
-                hir::hir_ty::head::inheritance::base_pou(db, holder)
+                hir::hir_ty::oop::explicit_bases(db, holder).extends
             && !bodies.contains(&base)
         {
             bodies.push(base);
@@ -1689,12 +1686,12 @@ fn lower_init_value<'db>(
     db: &'db dyn WorkspaceDataBase,
     target: InitTarget,
     ty: &crate::types::MirType,
-    value: hir::hir_ty::head::inheritance::InitValue<'db>,
+    value: hir::hir_ty::head::instances::InitValue<'db>,
     owner: Option<&InitOwner>,
     string_pool: &Rc<RefCell<super::lower_expr::StringPool>>,
     out: &mut Vec<MirStmt>,
 ) -> Result<(), LowerTypeError> {
-    use hir::hir_ty::head::inheritance::InitValue;
+    use hir::hir_ty::head::instances::InitValue;
     let implied = match value {
         InitValue::Written(init) => {
             return lower_init_leaves(db, target, ty, init, owner, None, string_pool, out);
@@ -1724,13 +1721,13 @@ fn lower_init_value<'db>(
     Ok(())
 }
 
-use hir::hir_ty::head::inheritance::InstanceInitStep;
+use hir::hir_ty::head::instances::InstanceInitStep;
 
 /// Map an initializer's member path (from [`instance_initializers`]) onto
 /// the layout, one `(byte offset, type)` per slot; an `AllElements` step
 /// fans out over an array.
 ///
-/// [`instance_initializers`]: hir::hir_ty::head::inheritance::instance_initializers
+/// [`instance_initializers`]: hir::hir_ty::head::instances::instance_initializers
 fn member_path_slots(
     db: &dyn WorkspaceDataBase,
     ty: &crate::types::MirType,
@@ -1764,7 +1761,7 @@ fn member_path_slots(
 /// value) before the declaration's own; HIR's [`type_default_inits`] decides
 /// what applies, MIR turns each path into byte offsets.
 ///
-/// [`type_default_inits`]: hir::hir_ty::head::inheritance::type_default_inits
+/// [`type_default_inits`]: hir::hir_ty::head::instances::type_default_inits
 pub(crate) fn lower_type_default_inits<'db>(
     db: &'db dyn WorkspaceDataBase,
     target: InitTarget,
@@ -1773,7 +1770,7 @@ pub(crate) fn lower_type_default_inits<'db>(
     string_pool: &Rc<RefCell<super::lower_expr::StringPool>>,
     out: &mut Vec<MirStmt>,
 ) -> Result<(), LowerTypeError> {
-    for entry in hir::hir_ty::head::inheritance::type_default_inits(db, hir_ty) {
+    for entry in hir::hir_ty::head::instances::type_default_inits(db, hir_ty) {
         // The slots of the instances the member is part of, then the member
         // in each: the instance is the owner a REF() in its default names.
         let (owner_path, member) = match entry.path.split_last() {

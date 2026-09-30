@@ -7,7 +7,7 @@ use hir::{
         scope::{ScopeId, ScopeKind},
         semantic_index::get_scope,
     },
-    hir_ty::head::inheritance::{MethodRef, inherited_methods, instance_members},
+    hir_ty::oop::{MethodRef, instance_members},
 };
 use ide_diagnostic::{ErrorCode, IdeDiagnostic, Related, diag};
 
@@ -44,7 +44,7 @@ pub fn check<'db>(
         .method_declarations(db)
         .map(Vec::as_slice)
         .unwrap_or(&[]);
-    let inherited = inherited_methods(db, pou);
+    let members = hir::hir_ty::oop::class_members(db, pou);
     let inherited_vars: Vec<VariableDecl<'db>> = instance_members(db, pou)
         .iter()
         .filter(|m| m.owner != pou)
@@ -66,7 +66,7 @@ pub fn check<'db>(
                 false,
                 "",
             ));
-        } else if let Some(method) = inherited.methods.get(&name) {
+        } else if let Some(method) = members.methods.get(&name).filter(|m| m.owner != pou) {
             diagnostics.push(report(db, file, method.method, *var, true, " it inherits"));
         }
     }

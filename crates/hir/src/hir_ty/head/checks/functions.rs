@@ -51,8 +51,8 @@ impl<'db> InitInference<'db> {
         while let Type::Array(array) = element {
             element = array.of_type(db).infer(db).normalize(db);
         }
-        let held = match crate::hir_ty::head::inheritance::pou_of_type(db, element) {
-            Some(pou) => crate::hir_ty::head::inheritance::partly_located_members(db, pou)
+        let held = match crate::hir_ty::head::instances::pou_of_type(db, element) {
+            Some(pou) => crate::hir_ty::head::instances::partly_located_members(db, pou)
                 .first()
                 .and_then(|path| {
                     Some((
@@ -60,7 +60,7 @@ impl<'db> InitInference<'db> {
                         *path.last()?,
                     ))
                 }),
-            None => crate::hir_ty::head::inheritance::partly_located_in_struct(
+            None => crate::hir_ty::head::instances::partly_located_in_struct(
                 db,
                 element,
                 &mut Vec::new(),

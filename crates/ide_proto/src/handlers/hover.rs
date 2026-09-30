@@ -27,8 +27,9 @@ use hir::{
     },
     hir_ty::{
         config::infer_config_result,
-        head::{inheritance::MethodRef, signature::infer_signature},
+        head::signature::infer_signature,
         infer::Infer,
+        oop::MethodRef,
         ty::{CallableType, Type},
     },
 };

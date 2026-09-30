@@ -8,7 +8,7 @@ use crate::hir_def::pous::interface::Interface;
 use crate::hir_def::pous::pou::Pou;
 use crate::hir_def::pous::variable::VariableDecl;
 use crate::hir_def::pous::variable::VariableKind;
-use crate::hir_ty::head::inheritance::MethodRef;
+use crate::hir_ty::oop::MethodRef;
 use crate::hir_ty::ty::Type;
 use auto_lsp::default::db::file::File;
 use auto_lsp::lsp_types::DiagnosticSeverity;
@@ -223,6 +223,16 @@ pub enum OopError<'db> {
         base_param: VariableDecl<'db>,
         param: VariableDecl<'db>,
     },
+    /// A base of the wrong kind: an FB's `EXTENDS` names no FB or CLASS, a
+    /// CLASS's no CLASS, `IMPLEMENTS` or an INTERFACE's `EXTENDS` no INTERFACE.
+    /// It was taken as a base of the kind it is: an FB extending an
+    /// INTERFACE had to implement its methods.
+    WrongBaseKind {
+        pou: Pou<'db>,
+        base: Pou<'db>,
+        role: crate::hir_ty::oop::BaseRole,
+        site: CallSite<'db>,
+    },
 }
 
 impl<'db> ErrorCode for OopError<'db> {
@@ -258,6 +268,7 @@ impl<'db> ErrorCode for OopError<'db> {
             Self::SignatureReturnMismatch { .. } => "E1127",
             Self::SignatureNameMismatch { .. } => "E1128",
             Self::SignatureSectionMismatch { .. } => "E1129",
+            Self::WrongBaseKind { .. } => "E1130",
         }
     }
 
@@ -293,6 +304,7 @@ impl<'db> ErrorCode for OopError<'db> {
             Self::SignatureReturnMismatch { .. } => "method return type mismatch",
             Self::SignatureNameMismatch { .. } => "method parameter name mismatch",
             Self::SignatureSectionMismatch { .. } => "method parameter section mismatch",
+            Self::WrongBaseKind { .. } => "base of the wrong kind",
         }
     }
 }
@@ -995,6 +1007,67 @@ impl<'db> ToIdeDiagnostic<'db> for OopError<'db> {
                 ));
                 diag
             }
+            Self::WrongBaseKind {
+                pou,
+                base,
+                role,
+                site,
+            } => {
+                use crate::hir_ty::oop::{BaseRole, can_extend};
+                let name = pou.get_name_with_case(db).text(db).to_string();
+                let kind = pou_keyword(*pou);
+                let base_name = base.get_name_with_case(db).text(db).to_string();
+                let base_kind = pou_keyword(*base);
+                let rule = match (role, pou) {
+                    (BaseRole::Interface, Pou::Interface(_)) => "an INTERFACE extends INTERFACEs",
+                    (BaseRole::Interface, _) => "IMPLEMENTS names an INTERFACE",
+                    (BaseRole::Extends, Pou::Class(_)) => "a CLASS extends CLASSes",
+                    (BaseRole::Extends, _) => {
+                        "a FUNCTION_BLOCK extends FUNCTION_BLOCKs and CLASSes"
+                    }
+                };
+                let verb = match (role, pou) {
+                    (BaseRole::Interface, Pou::Interface(_)) | (BaseRole::Extends, _) => "extend",
+                    (BaseRole::Interface, _) => "implement",
+                };
+                let message =
+                    format!("{kind} '{name}' cannot {verb} {base_kind} '{base_name}': {rule}");
+                let note = match (role, base) {
+                    (BaseRole::Interface, _) if can_extend(*pou, *base) => Some(format!(
+                        "{base_kind} '{base_name}' is extended, with EXTENDS"
+                    )),
+                    (BaseRole::Extends, Pou::Interface(_)) => {
+                        Some("an INTERFACE is implemented, with IMPLEMENTS".to_string())
+                    }
+                    _ => None,
+                };
+                let mut diag = diag()
+                    .message(message)
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &site.get_span(db)).unwrap_or_default())
+                    .call();
+                diag.with_related(Related::new(
+                    format!("{base_kind} '{base_name}' is declared here"),
+                    base.get_scope_id(db).file(db),
+                    base.get_name_span(db),
+                ));
+                if let Some(note) = note {
+                    diag.with_note(note);
+                }
+                diag
+            }
         }
+    }
+}
+
+/// The keyword that declares `pou`.
+fn pou_keyword(pou: Pou) -> &'static str {
+    match pou {
+        Pou::Function(_) => "FUNCTION",
+        Pou::FunctionBlock(_) => "FUNCTION_BLOCK",
+        Pou::Class(_) => "CLASS",
+        Pou::Interface(_) => "INTERFACE",
+        Pou::DataType(_) => "TYPE",
     }
 }

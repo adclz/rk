@@ -1,12 +1,9 @@
-use auto_lsp::{
-    default::db::file::File,
-    lsp_types::{LocationLink, request::GotoImplementationResponse},
-    salsa,
-};
+use auto_lsp::lsp_types::{LocationLink, request::GotoImplementationResponse};
 use db::WorkspaceDataBase;
 use hir::{
     HirNodeInfo,
     hir_def::{hir_node::HirNode, pous::pou::Pou, semantic_index::semantic_index},
+    hir_ty::oop::descendants,
 };
 
 use crate::handlers::ImplementationHandler;
@@ -30,8 +27,8 @@ impl<'db> ImplementationHandler<'db> for Pou<'db> {
         db: &'db dyn WorkspaceDataBase,
     ) -> Option<GotoImplementationResponse> {
         match self {
-            Pou::Class(_) | Pou::Interface(_) => {
-                let links = find_all_implementations(db, *self)
+            Pou::FunctionBlock(_) | Pou::Class(_) | Pou::Interface(_) => {
+                let links = descendants(db, *self)
                     .iter()
                     .map(|pou| LocationLink {
                         target_uri: pou.get_scope_id(db).file(db).url(db).clone(),
@@ -65,7 +62,7 @@ impl<'db> ImplementationHandler<'db> for Pou<'db> {
     }
 }
 
-impl<'db> ImplementationHandler<'db> for hir::hir_ty::head::inheritance::MethodRef<'db> {
+impl<'db> ImplementationHandler<'db> for hir::hir_ty::oop::MethodRef<'db> {
     fn implementation(
         &'db self,
         db: &'db dyn WorkspaceDataBase,
@@ -76,7 +73,7 @@ impl<'db> ImplementationHandler<'db> for hir::hir_ty::head::inheritance::MethodR
         // Each implementer's own method of that name, in whatever case it
         // declares it: `START` implements `Start`.
         let name = self.get_name_ident(db);
-        let links: Vec<LocationLink> = find_all_implementations(db, owner)
+        let links: Vec<LocationLink> = descendants(db, owner)
             .iter()
             .filter_map(|pou| {
                 pou.get_scope_id(db)
@@ -111,9 +108,9 @@ impl<'db> ImplementationHandler<'db> for hir::hir_ty::head::inheritance::MethodR
 /// each POU in the file whether the method is one of its own.
 fn owner_of<'db>(
     db: &'db dyn WorkspaceDataBase,
-    method: hir::hir_ty::head::inheritance::MethodRef<'db>,
+    method: hir::hir_ty::oop::MethodRef<'db>,
 ) -> Option<Pou<'db>> {
-    use hir::hir_ty::head::inheritance::MethodRef;
+    use hir::hir_ty::oop::MethodRef;
 
     let sema = semantic_index(db, method.get_scope_id(db).file(db));
     let owns = |pou: &Pou<'db>| {
@@ -133,55 +130,4 @@ fn owner_of<'db>(
         .chain(sema.namespaces.iter().flat_map(|ns| ns.pous(db).iter()))
         .find(|pou| owns(pou))
         .copied()
-}
-
-// todo
-// this could be optimized by filtering out files that do not contains the pou's name
-// a custom symbol index could also be created for this purpose where only the references are stored
-// this would be a lot more efficient for large workspaces
-pub fn find_all_implementations<'db>(
-    db: &'db dyn WorkspaceDataBase,
-    pou: Pou<'db>,
-) -> Vec<Pou<'db>> {
-    let mut results = vec![];
-    db.get_files().iter().for_each(|file| {
-        results.extend(find_implementations(db, *file, pou));
-    });
-    results
-}
-
-#[salsa::tracked(returns(ref), no_eq)]
-fn find_implementations<'db>(
-    db: &'db dyn WorkspaceDataBase,
-    file: File,
-    implemented: Pou<'db>,
-) -> Vec<Pou<'db>> {
-    let mut pous = vec![];
-    let sema = semantic_index(db, file);
-
-    sema.global_pous.iter().for_each(|pou| {
-        check_implementations(db, *pou, implemented, &mut pous);
-    });
-
-    sema.namespaces.iter().for_each(|ns| {
-        ns.pous(db).iter().for_each(|pou| {
-            check_implementations(db, *pou, implemented, &mut pous);
-        });
-    });
-
-    pous
-}
-
-fn check_implementations<'db>(
-    db: &'db dyn WorkspaceDataBase,
-    pou: Pou<'db>,
-    implemented: Pou<'db>,
-    pous: &mut Vec<Pou<'db>>,
-) {
-    for candidate in pou.get_scope_id(db).inheritors(db).values() {
-        if *candidate == implemented {
-            pous.push(pou);
-            return;
-        }
-    }
 }

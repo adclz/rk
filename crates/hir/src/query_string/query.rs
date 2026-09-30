@@ -13,7 +13,7 @@ use crate::hir_def::namespace::NamespaceDecl;
 use crate::hir_def::pous::pou::Pou;
 use crate::hir_def::pous::variable::VariableDecl;
 use crate::hir_def::scope::ScopeId;
-use crate::hir_ty::head::inheritance::MethodRef;
+use crate::hir_ty::oop::MethodRef;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum SearchMode {

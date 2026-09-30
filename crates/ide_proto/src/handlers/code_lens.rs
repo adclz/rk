@@ -1,10 +1,10 @@
 use auto_lsp::lsp_types::{CodeLens, Command};
 use db::WorkspaceDataBase;
-use hir::hir_ty::ty::Type;
+use hir::hir_ty::{oop::descendants, ty::Type};
 use hir::{HasName, HasPragmas, HirNodeInfo, hir_def::hir_node::HirNode, hir_def::pous::pou::Pou};
 use serde_json::to_value;
 
-use crate::handlers::{CodeLensHandler, implementation::find_all_implementations};
+use crate::handlers::CodeLensHandler;
 
 impl<'db> CodeLensHandler<'db> for HirNode<'db> {
     fn code_lens(&self, db: &'db dyn WorkspaceDataBase) -> Option<CodeLens> {
@@ -32,8 +32,8 @@ impl<'db> CodeLensHandler<'db> for HirNode<'db> {
 impl<'db> CodeLensHandler<'db> for Pou<'db> {
     fn code_lens(&'db self, db: &'db dyn WorkspaceDataBase) -> Option<CodeLens> {
         match self {
-            Pou::Class(_) | Pou::Interface(_) => {
-                let implementations = find_all_implementations(db, *self);
+            Pou::FunctionBlock(_) | Pou::Class(_) | Pou::Interface(_) => {
+                let implementations = descendants(db, *self);
                 if implementations.is_empty() {
                     None
                 } else {

@@ -113,7 +113,7 @@ impl<'db> VariableDecl<'db> {
     /// wasm local, a field of the enclosing instance, or a fixed address. They
     /// disagreeing is how a VAR_TEMP once persisted across scans.
     ///
-    /// [`instance_members`]: crate::hir_ty::head::inheritance::instance_members
+    /// [`instance_members`]: crate::hir_ty::oop::instance_members
     pub fn storage_class(&self, db: &'db dyn WorkspaceDataBase) -> StorageClass {
         // VAR_EXTERNAL holds no storage of its own; it names a configuration
         // VAR_GLOBAL, which is where the value actually lives. A PROGRAM's

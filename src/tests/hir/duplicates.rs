@@ -742,3 +742,27 @@ END_CONFIGURATION
     ----'
     ");
 }
+
+/// A prototype reached through two interfaces that both extend its own is
+/// one method, not two: a diamond is no duplicate.
+#[rstest]
+fn an_interface_diamond_is_no_duplicate(mut with_db: RootDatabase) {
+    let source = r#"
+INTERFACE IBase
+    METHOD m : INT END_METHOD
+END_INTERFACE
+
+INTERFACE ILeft EXTENDS IBase
+END_INTERFACE
+
+INTERFACE IRight EXTENDS IBase
+END_INTERFACE
+
+CLASS Both IMPLEMENTS ILeft, IRight
+    METHOD PUBLIC m : INT
+        m := 1;
+    END_METHOD
+END_CLASS
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}

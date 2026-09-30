@@ -11,7 +11,7 @@ use crate::hir_def::interned::identifier::Ident;
 use crate::hir_def::pous::function::Function;
 use crate::hir_def::pous::variable::VariableDecl;
 use crate::hir_ty::def_map::FxIndexMap;
-use crate::hir_ty::head::inheritance::instance_members;
+use crate::hir_ty::oop::instance_members;
 use crate::hir_ty::resolver::name::{
     ArgMatch, CandidateFit, OverloadPick, classify_arg, select_overload,
 };

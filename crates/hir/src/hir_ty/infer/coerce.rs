@@ -9,13 +9,11 @@ use crate::{
     check::errors::{ToIdeDiagnostic, e03_type::TypeError},
     hir_def::{
         expressions::expression::{AddOperatorKind, MultOperatorKind},
-        pous::pou::Pou,
         pous::variable::LocationArea,
     },
     hir_ty::{
         body::{Adjustment, AdjustmentInfo, BodyInferenceResult},
         infer::Infer,
-        polymorphism::{interface_extends, pou_implements_interface},
         resolver::Resolver,
         ty::Type,
     },
@@ -294,39 +292,16 @@ impl<'db> Type<'db> {
                 Ok(())
             }
             (Type::Class(expected), Type::Class(actual)) if expected == *actual => Ok(()),
-            // Interface coercion: class/FB that implements the interface, or sub-interface
-            (Type::Interface(target_itf), Type::Class(cls)) => {
-                if pou_implements_interface(db, Pou::Class(*cls), target_itf) {
-                    Ok(())
-                } else {
-                    Err(CoerceError {
-                        expected: *self,
-                        actual: to,
-                        adjustment: None,
-                    })
-                }
-            }
-            (Type::Interface(target_itf), Type::FunctionBlock(fb)) => {
-                if pou_implements_interface(db, Pou::FunctionBlock(*fb), target_itf) {
-                    Ok(())
-                } else {
-                    Err(CoerceError {
-                        expected: *self,
-                        actual: to,
-                        adjustment: None,
-                    })
-                }
-            }
-            (Type::Interface(target_itf), Type::Interface(src_itf)) => {
-                if interface_extends(db, *src_itf, target_itf) {
-                    Ok(())
-                } else {
-                    Err(CoerceError {
-                        expected: *self,
-                        actual: to,
-                        adjustment: None,
-                    })
-                }
+            // An FB or CLASS that implements the interface, itself or through
+            // a base, or an interface that extends it.
+            (
+                Type::Interface(target),
+                Type::Class(_) | Type::FunctionBlock(_) | Type::Interface(_),
+            ) if to
+                .as_pou(db)
+                .is_some_and(|pou| crate::hir_ty::oop::ancestry(db, pou).implements(target)) =>
+            {
+                Ok(())
             }
             _ => Err(CoerceError {
                 expected: *self,

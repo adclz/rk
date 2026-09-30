@@ -3,9 +3,9 @@ use indexmap::IndexMap;
 use rustc_hash::FxHashMap;
 
 use crate::{
-    CallSite, HasName,
+    HasName,
     hir_def::{
-        expressions::spec::{Enum, EnumVariant, SpecKind, Struct, StructElement},
+        expressions::spec::{Enum, EnumVariant, Struct, StructElement},
         interned::identifier::Ident,
         pous::{
             pou::Pou,
@@ -14,7 +14,7 @@ use crate::{
         scope::{ScopeId, ScopeKind},
         semantic_index::get_scope,
     },
-    hir_ty::{head::inheritance::MethodRef, resolver::name::resolve_namespace_access},
+    hir_ty::oop::MethodRef,
 };
 
 pub type FxIndexMap<K, V> = IndexMap<K, V, rustc_hash::FxBuildHasher>;
@@ -137,65 +137,6 @@ impl<'db> ScopeId<'db> {
                     .map(|m| (m.get_name_ident(db), m.into()))
                     .collect(),
                 _ => Default::default(),
-            },
-            _ => FxHashMap::default(),
-        }
-    }
-
-    #[salsa::tracked(returns(ref))]
-    pub fn inheritors(self, db: &'db dyn WorkspaceDataBase) -> FxHashMap<CallSite<'db>, Pou<'db>> {
-        let resolve_spec =
-            |spec: &crate::hir_def::expressions::spec::Spec<'db>| -> Option<Pou<'db>> {
-                if let SpecKind::Target(target) = spec.kind(db) {
-                    resolve_namespace_access(db, &target.path).found()
-                } else {
-                    None
-                }
-            };
-
-        match get_scope(db, self).kind {
-            ScopeKind::Pou(pou) => match pou {
-                Pou::Interface(interface) => {
-                    let mut inheritors = FxHashMap::default();
-                    if let Some(extends) = interface.extends(db) {
-                        for base in extends {
-                            if let Some(iface) = resolve_spec(base) {
-                                inheritors.insert(CallSite::from_scoped(db, base), iface);
-                            }
-                        }
-                    }
-                    inheritors
-                }
-                Pou::Class(class) => {
-                    let mut inheritors = FxHashMap::default();
-                    if let Some(base) = class.extends(db)
-                        && let Some(pou) = resolve_spec(base)
-                    {
-                        inheritors.insert(CallSite::from_scoped(db, base), pou);
-                    }
-                    for base in class.implements(db) {
-                        if let Some(iface) = resolve_spec(base) {
-                            inheritors.insert(CallSite::from_scoped(db, base), iface);
-                        }
-                    }
-                    inheritors
-                }
-                Pou::FunctionBlock(fb) => {
-                    let mut inheritors = FxHashMap::default();
-                    if let Some(base) = fb.extends(db)
-                        && let Some(pou) = resolve_spec(base)
-                    {
-                        inheritors.insert(CallSite::from_scoped(db, base), pou);
-                    }
-
-                    for base in fb.implements(db) {
-                        if let Some(iface) = resolve_spec(base) {
-                            inheritors.insert(CallSite::from_scoped(db, base), iface);
-                        }
-                    }
-                    inheritors
-                }
-                _ => FxHashMap::default(),
             },
             _ => FxHashMap::default(),
         }

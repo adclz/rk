@@ -16,7 +16,7 @@ use crate::{
         scope::ScopeId,
         using::Using,
     },
-    hir_ty::head::inheritance::MethodRef,
+    hir_ty::oop::MethodRef,
 };
 use db::WorkspaceDataBase;
 

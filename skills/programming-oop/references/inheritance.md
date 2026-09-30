@@ -2,6 +2,7 @@
 
 `EXTENDS` names one base, `IMPLEMENTS` a comma-separated list of interfaces, and `IMPLEMENTS` must come after `EXTENDS` (`E1103`).
 A second `EXTENDS` is `E1101`.
+A function block extends a function block or a class, a class only a class, and an interface only interfaces (`E1130`).
 A derived POU inherits the base's variables and methods; both are reachable unqualified, through `THIS`, and from outside through the instance.
 
 ```iecst

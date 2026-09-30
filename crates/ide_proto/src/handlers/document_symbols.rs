@@ -10,7 +10,7 @@ use hir::{
         pous::{pou::Pou, variable::VariableDecl},
         program::ProgramDecl,
     },
-    hir_ty::head::{inheritance::MethodRef, signature::infer_signature},
+    hir_ty::{head::signature::infer_signature, oop::MethodRef},
 };
 
 use crate::handlers::DocumentSymbolsHandler;

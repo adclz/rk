@@ -20,8 +20,8 @@ use hir::{
     },
     hir_ty::{
         body::infer_body,
-        head::inheritance::MethodRef,
         infer::Infer,
+        oop::MethodRef,
         ty::{CallableType, Type},
     },
 };

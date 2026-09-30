@@ -82,8 +82,8 @@ pub fn method_copy_symbol<'db>(
 ) -> Ident {
     let owner_q = qualified_pou_ident(db, Type::new_pou(db, owner));
     let name = method.name_with_case(db);
-    let answers = hir::hir_ty::head::inheritance::implementing_method(db, owner, method.name(db))
-        == Some(method);
+    let answers =
+        hir::hir_ty::oop::class_members(db, owner).implementation(&method.name(db)) == Some(method);
     let text = match declaring_owner(db, method) {
         Some(declared) if !answers => format!(
             "{}#{}.{}",

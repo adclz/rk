@@ -322,12 +322,8 @@ fn is_derived_pou<'db>(
             if child == parent {
                 return true;
             }
-            // In case of SUPER
-            child
-                .get_scope_id(db)
-                .inheritors(db)
-                .values()
-                .any(|p| *p == parent)
+            // A base at any depth: PROTECTED reaches every derived POU.
+            crate::hir_ty::oop::ancestry(db, child).is_or_extends(parent)
         }
         _ => false, // One or both are not POUs
     }

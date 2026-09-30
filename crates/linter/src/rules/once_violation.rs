@@ -5,7 +5,7 @@ use hir::{
     hir_def::{expressions::expression::PathExpr, pous::variable::VariableDecl},
     hir_ty::{
         body::BodyInferenceResult,
-        head::inheritance::MethodRef,
+        oop::MethodRef,
         ty::{CallableType, Type},
     },
 };

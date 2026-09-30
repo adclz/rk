@@ -83,9 +83,12 @@ impl<'db> TypeDependencyGraph<'db> {
         }
 
         // check inheritance
-        for (callsite, p) in pou.get_scope_id(db).inheritors(db) {
-            let typ = Type::new_pou(db, *p);
-            Self::extract_pou_from_type(db, pou, typ, deps, callsites, *callsite);
+        for base in crate::hir_ty::oop::written_bases(db, pou) {
+            if let Some(target) = base.target {
+                let typ = Type::new_pou(db, target);
+                let callsite = CallSite::from_scoped(db, &base.spec);
+                Self::extract_pou_from_type(db, pou, typ, deps, callsites, callsite);
+            }
         }
 
         if let Pou::DataType(dt) = pou {

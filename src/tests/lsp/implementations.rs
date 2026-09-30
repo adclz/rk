@@ -141,3 +141,57 @@ pub fn class_implements_multiple_interfaces(mut with_db: RootDatabase) {
     ]
     "#);
 }
+
+/// A POU deriving from an implementer implements the interface too, and is
+/// listed with it.
+#[rstest]
+pub fn an_interface_lists_the_pous_deriving_from_its_implementers(mut with_db: RootDatabase) {
+    let source = r#"
+        INTERFACE I1
+        END_INTERFACE
+
+        CLASS Mid IMPLEMENTS I1
+        END_CLASS
+
+        CLASS Leaf EXTENDS Mid
+        END_CLASS
+"#;
+
+    let file = add_source(&mut with_db, source);
+    let i1 = find_pou_with_name(&with_db, file, "I1").unwrap();
+
+    let GotoImplementationResponse::Link(links) = i1.implementation(&with_db).unwrap() else {
+        panic!("Unexpected implementation content")
+    };
+    let mut lines: Vec<u32> = links
+        .iter()
+        .map(|link| link.target_range.start.line)
+        .collect();
+    lines.sort();
+    assert_eq!(lines, [4, 7]);
+}
+
+/// A cycle of bases ends the walk, and does not list a POU as its own
+/// implementation.
+#[rstest]
+pub fn a_cycle_of_bases_lists_each_pou_once(mut with_db: RootDatabase) {
+    let source = r#"
+        CLASS A EXTENDS B
+        END_CLASS
+
+        CLASS B EXTENDS A
+        END_CLASS
+"#;
+
+    let file = add_source(&mut with_db, source);
+    let a = find_pou_with_name(&with_db, file, "A").unwrap();
+
+    let GotoImplementationResponse::Link(links) = a.implementation(&with_db).unwrap() else {
+        panic!("Unexpected implementation content")
+    };
+    let lines: Vec<u32> = links
+        .iter()
+        .map(|link| link.target_range.start.line)
+        .collect();
+    assert_eq!(lines, [4]);
+}

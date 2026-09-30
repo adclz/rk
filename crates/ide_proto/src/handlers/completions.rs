@@ -5,7 +5,7 @@ use auto_lsp::{
 };
 use db::WorkspaceDataBase;
 use hir::{
-    CallSite, HasName, HirNodeInfo,
+    CallSite, HasName, HasVisibility, HirNodeInfo,
     hir_def::{
         config::{ConfigDecl, ProgConfig, ResourceDecl, TaskConfig},
         expressions::{
@@ -23,9 +23,9 @@ use hir::{
         using::Using,
     },
     hir_ty::{
-        head::inheritance::MethodRef,
         index_graphs::{namespace_index, namespace_path_candidates},
         infer::Infer,
+        oop::MethodRef,
     },
     query_string::{query::Query, scope::SymbolSearch},
 };
@@ -366,7 +366,7 @@ impl<'db> CompletionHandler<'db> for MethodRef<'db> {
 
         // Same as a FUNCTION: `METHOD PUB|` parses PUB as the name.
         if self.get_name_span(db).end_byte >= req.offset {
-            if self.visibility(db).is_empty() {
+            if self.get_visibility(db).is_empty() {
                 return Some(static_snippets::visibility_names());
             }
             return None;

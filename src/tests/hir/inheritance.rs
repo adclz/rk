@@ -1062,3 +1062,214 @@ END_CLASS
     ----'
     ");
 }
+
+/// A base of the wrong kind is refused where it is written, and is no base:
+/// an FB extending an INTERFACE no longer owes its methods (the E1119 it
+/// used to get). An FB may extend a CLASS; a CLASS may not extend an FB.
+#[rstest]
+fn a_base_of_the_wrong_kind_is_refused(mut with_db: RootDatabase) {
+    let source = r#"
+INTERFACE I
+    METHOD m : INT END_METHOD
+END_INTERFACE
+
+CLASS C
+END_CLASS
+
+FUNCTION_BLOCK F
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK ExtendsInterface EXTENDS I
+END_FUNCTION_BLOCK
+
+CLASS ImplementsClass IMPLEMENTS C
+END_CLASS
+
+INTERFACE ExtendsBlock EXTENDS F
+END_INTERFACE
+
+CLASS ClassExtendsBlock EXTENDS F
+END_CLASS
+
+CLASS ClassImplementsBlock IMPLEMENTS F
+END_CLASS
+
+FUNCTION_BLOCK BlockExtendsClass EXTENDS C
+END_FUNCTION_BLOCK
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1130] Error: base of the wrong kind
+        ,-[ file:///test0.st:12:41 ]
+        |
+      2 | INTERFACE I
+        |           |
+        |           `-- INTERFACE 'I' is declared here
+        |
+     12 | FUNCTION_BLOCK ExtendsInterface EXTENDS I
+        |                                         |
+        |                                         `-- FUNCTION_BLOCK 'ExtendsInterface' cannot extend INTERFACE 'I': a FUNCTION_BLOCK extends FUNCTION_BLOCKs and CLASSes
+        |
+        | Note: an INTERFACE is implemented, with IMPLEMENTS
+    ----'
+    [E1130] Error: base of the wrong kind
+        ,-[ file:///test0.st:15:34 ]
+        |
+      6 | CLASS C
+        |       |
+        |       `-- CLASS 'C' is declared here
+        |
+     15 | CLASS ImplementsClass IMPLEMENTS C
+        |                                  |
+        |                                  `-- CLASS 'ImplementsClass' cannot implement CLASS 'C': IMPLEMENTS names an INTERFACE
+        |
+        | Note: CLASS 'C' is extended, with EXTENDS
+    ----'
+    [E1130] Error: base of the wrong kind
+        ,-[ file:///test0.st:18:32 ]
+        |
+      9 | FUNCTION_BLOCK F
+        |                |
+        |                `-- FUNCTION_BLOCK 'F' is declared here
+        |
+     18 | INTERFACE ExtendsBlock EXTENDS F
+        |                                |
+        |                                `-- INTERFACE 'ExtendsBlock' cannot extend FUNCTION_BLOCK 'F': an INTERFACE extends INTERFACEs
+    ----'
+    [E1130] Error: base of the wrong kind
+        ,-[ file:///test0.st:21:33 ]
+        |
+      9 | FUNCTION_BLOCK F
+        |                |
+        |                `-- FUNCTION_BLOCK 'F' is declared here
+        |
+     21 | CLASS ClassExtendsBlock EXTENDS F
+        |                                 |
+        |                                 `-- CLASS 'ClassExtendsBlock' cannot extend FUNCTION_BLOCK 'F': a CLASS extends CLASSes
+    ----'
+    [E1130] Error: base of the wrong kind
+        ,-[ file:///test0.st:24:39 ]
+        |
+      9 | FUNCTION_BLOCK F
+        |                |
+        |                `-- FUNCTION_BLOCK 'F' is declared here
+        |
+     24 | CLASS ClassImplementsBlock IMPLEMENTS F
+        |                                       |
+        |                                       `-- CLASS 'ClassImplementsBlock' cannot implement FUNCTION_BLOCK 'F': IMPLEMENTS names an INTERFACE
+    ----'
+    ");
+}
+
+/// An FB implements what its bases implement, and PROTECTED reaches a base
+/// at any depth: both only looked at the POU's own header.
+#[rstest]
+fn inherited_interfaces_and_protected_reach_every_derived_pou(mut with_db: RootDatabase) {
+    let source = r#"
+INTERFACE IShow
+    METHOD show : INT END_METHOD
+END_INTERFACE
+
+FUNCTION_BLOCK Base IMPLEMENTS IShow
+    METHOD PUBLIC show : INT
+        show := 1;
+    END_METHOD
+    METHOD PROTECTED hidden : INT
+        hidden := 2;
+    END_METHOD
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK Middle EXTENDS Base
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK Leaf EXTENDS Middle
+    METHOD PUBLIC reach : INT
+        reach := THIS.hidden();
+    END_METHOD
+END_FUNCTION_BLOCK
+
+FUNCTION ask : INT
+VAR_INPUT dev : IShow; END_VAR
+    ask := dev.show();
+END_FUNCTION
+
+FUNCTION run : INT
+VAR l : Leaf; END_VAR
+    run := ask(dev := l);
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
+
+/// A cycle of EXTENDS is reported once and nothing follows from it: the
+/// members and methods of every POU in it still resolve. Cyclic interfaces
+/// overflowed the compiler's stack when one was converted to another.
+#[rstest]
+fn a_cycle_of_bases_is_reported_once(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK A EXTENDS B
+VAR x : INT; END_VAR
+    METHOD PUBLIC ma : INT
+        ma := x + y;
+    END_METHOD
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK B EXTENDS A
+VAR y : INT; END_VAR
+    METHOD PUBLIC mb : INT
+        mb := THIS.ma();
+    END_METHOD
+END_FUNCTION_BLOCK
+
+INTERFACE IA EXTENDS IB
+    METHOD m : INT END_METHOD
+END_INTERFACE
+
+INTERFACE IB EXTENDS IA
+    METHOD n : INT END_METHOD
+END_INTERFACE
+
+FUNCTION take_b : INT
+VAR_INPUT i : IB; END_VAR
+    take_b := i.m() + i.n();
+END_FUNCTION
+
+FUNCTION pass_a : INT
+VAR_INPUT i : IA; END_VAR
+    pass_a := take_b(i := i);
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1302] Error: recursion detected
+       ,-[ file:///test0.st:2:16 ]
+       |
+     2 | FUNCTION_BLOCK A EXTENDS B
+       |                |
+       |                `-- type 'A' is recursive
+       |
+     9 | FUNCTION_BLOCK B EXTENDS A
+       |                          |
+       |                          `-- recurses at this location
+       |
+       | Note: cycle goes
+       |       -> A
+       |       -> B
+       |       ... and back to A
+    ---'
+    [E1302] Error: recursion detected
+        ,-[ file:///test0.st:16:11 ]
+        |
+     16 | INTERFACE IA EXTENDS IB
+        |           ^|
+        |            `-- type 'IA' is recursive
+        |
+     20 | INTERFACE IB EXTENDS IA
+        |                      ^|
+        |                       `-- recurses at this location
+        |
+        | Note: cycle goes
+        |       -> IA
+        |       -> IB
+        |       ... and back to IA
+    ----'
+    ");
+}

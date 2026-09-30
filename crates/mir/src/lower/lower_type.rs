@@ -409,7 +409,7 @@ fn lower_instance_struct<'db>(
     let mut max_align = 1u32;
     let mut fields = Vec::new();
 
-    for member in hir::hir_ty::head::inheritance::instance_members(db, pou) {
+    for member in hir::hir_ty::oop::instance_members(db, pou) {
         let var = member.var;
         let mir_type = lower_spec(db, var.spec(db))?;
         // A VAR_IN_OUT field holds the address of the caller's l-value: a

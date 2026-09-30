@@ -78,10 +78,9 @@ impl<'db> InitInference<'db> {
             in_array = true;
             ty = array.of_type(db).infer(db).normalize(db);
         }
-        let (names, member, in_struct) = match crate::hir_ty::head::inheritance::pou_of_type(db, ty)
-        {
+        let (names, member, in_struct) = match crate::hir_ty::head::instances::pou_of_type(db, ty) {
             Some(pou) => {
-                let paths = crate::hir_ty::head::inheritance::partly_located_members(db, pou);
+                let paths = crate::hir_ty::head::instances::partly_located_members(db, pou);
                 let Some(path) = paths.first() else {
                     return false;
                 };
@@ -94,7 +93,7 @@ impl<'db> InitInference<'db> {
                     false,
                 )
             }
-            None => match crate::hir_ty::head::inheritance::partly_located_in_struct(
+            None => match crate::hir_ty::head::instances::partly_located_in_struct(
                 db,
                 ty,
                 &mut Vec::new(),
@@ -154,11 +153,11 @@ impl<'db> InitInference<'db> {
             return;
         }
         let Some(pou) =
-            crate::hir_ty::head::inheritance::pou_of_type(db, var.spec(db).infer(db).normalize(db))
+            crate::hir_ty::head::instances::pou_of_type(db, var.spec(db).infer(db).normalize(db))
         else {
             return;
         };
-        let marker = crate::hir_ty::head::inheritance::partly_located_members(db, pou)
+        let marker = crate::hir_ty::head::instances::partly_located_members(db, pou)
             .iter()
             .find(|path| {
                 path.last()
@@ -194,7 +193,7 @@ impl<'db> InitInference<'db> {
         {
             return;
         }
-        if let Some(route) = crate::hir_ty::head::inheritance::retained_reference(
+        if let Some(route) = crate::hir_ty::head::instances::retained_reference(
             db,
             var.spec(db).infer(db),
             &mut Vec::new(),

@@ -8,7 +8,7 @@ use crate::hir_def::interned::identifier::Ident;
 use crate::hir_def::pous::class::{Class, MethodDecl};
 use crate::hir_def::pous::pou::Pou;
 use crate::hir_def::scope::{ScopeId, ScopeKind};
-use crate::hir_ty::head::inheritance::MethodRef;
+use crate::hir_ty::oop::MethodRef;
 use crate::{Modifier, Visibility};
 use ast::generated::{ClassDecl, ClassVariables};
 use auto_lsp::anyhow;

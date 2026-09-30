@@ -21,7 +21,7 @@ use hir::hir_def::interned::identifier::Ident;
 use hir::hir_def::namespace::NamespaceDecl;
 use hir::hir_def::pous::pou::Pou;
 use hir::hir_def::semantic_index::semantic_index;
-use hir::hir_ty::head::inheritance::MethodRef;
+use hir::hir_ty::oop::MethodRef;
 use hir::hir_ty::resolver::name::{PouResolution, pou_names_res};
 use ide_diagnostic::{IdeDiagnostic, Related};
 use ide_proto::handlers::references::ReferenceLocation;
