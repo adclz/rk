@@ -6,8 +6,10 @@
 
 mod ancestors;
 mod bases;
+mod inheritors;
 mod members;
 
 pub use ancestors::{Ancestry, ancestry};
 pub use bases::{BaseRole, ExplicitBases, WrittenBase, can_extend, explicit_bases, written_bases};
+pub use inheritors::{descendants, file_inheritors, inheritors};
 pub use members::{ClassMember, ClassMembers, class_members};

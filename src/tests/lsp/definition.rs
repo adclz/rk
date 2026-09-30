@@ -543,6 +543,44 @@ END_FUNCTION_BLOCK
     assert_eq!(links[0].target_range.start.line, 7);
 }
 
+/// An override further down is an implementation too: a POU deriving from
+/// the implementer answers with its own method. Only the POUs naming the
+/// interface in their header answered.
+#[rstest]
+pub fn an_interface_method_finds_the_overrides_below_its_implementer(mut with_db: RootDatabase) {
+    let source = r#"
+INTERFACE Drivable
+METHOD Halt : INT
+END_METHOD
+END_INTERFACE
+
+FUNCTION_BLOCK fb IMPLEMENTS Drivable
+METHOD PUBLIC Halt : INT
+END_METHOD
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK derived EXTENDS fb
+METHOD PUBLIC OVERRIDE Halt : INT
+END_METHOD
+END_FUNCTION_BLOCK
+"#;
+    let file = add_source(&mut with_db, source);
+    let offset = source.find("Halt : INT").expect("the prototype");
+    let node = descendant_at(&with_db, file, offset).expect("a node");
+
+    let found = ide_proto::handlers::ImplementationHandler::implementation(&node, &with_db)
+        .expect("an implementation");
+    let auto_lsp::lsp_types::request::GotoImplementationResponse::Link(links) = found else {
+        panic!("expected links")
+    };
+    let mut lines: Vec<u32> = links
+        .iter()
+        .map(|link| link.target_range.start.line)
+        .collect();
+    lines.sort();
+    assert_eq!(lines, [7, 12]);
+}
+
 /// A qualified value names the VARIANT, so it goes to where that variant is
 /// written. Only the type half of `Mode#Running` resolved; the half the
 /// reader clicked answered nothing.
