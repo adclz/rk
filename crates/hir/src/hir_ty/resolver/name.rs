@@ -125,8 +125,11 @@ pub(crate) fn resolve_namespace_access<'db>(
     let target = &access.target;
 
     match &access.namespace {
-        // Namespace-qualified: look up directly in the namespace's local_pous.
-        // No ambiguity is possible here — the user specified which namespace.
+        // Namespace-qualified: what that namespace declares, in any of its
+        // blocks, and nothing else. No ambiguity is possible here — the user
+        // specified which namespace. Resolved from the namespace's scope, the
+        // name fell back to the scopes around it: `NsA.F` reached a global
+        // `F`, and `NsB.G` an import of `NsB`'s, as if a namespace re-exported.
         Some(path) => {
             // Relative to where it was written, then absolute.
             let path = crate::hir_ty::index_graphs::absolute_namespace_path(
@@ -135,10 +138,13 @@ pub(crate) fn resolve_namespace_access<'db>(
                 path.path(db),
             );
             for ns in namespace_index(db, path).iter() {
-                if let PouResolution::Found(pou, using) =
-                    pou_names_res(db, target.ident(db), ns.scope_id(db))
+                if let Some(pou) = ns
+                    .scope_id(db)
+                    .def_map(db)
+                    .local_pous
+                    .get(&target.ident(db))
                 {
-                    return PouResolution::Found(pou, using);
+                    return PouResolution::Found(*pou, None);
                 }
             }
             PouResolution::NotFound

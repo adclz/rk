@@ -78,6 +78,8 @@ FUNCTION MyFn
 END_FUNCTION
 ```
 
+A qualified name only reaches what that namespace declares, not what it imports.
+
 A POU declared in an enclosing namespace or at the top level comes before one a `USING` imports, wherever the `USING` is written.
 Two imports of the same name are ambiguous, and the compiler says so:
 

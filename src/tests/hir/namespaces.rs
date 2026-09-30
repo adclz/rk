@@ -44,6 +44,48 @@ END_NAMESPACE
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
 }
 
+/// A qualified name names what that namespace declares: `NsA.Helper` is not
+/// the top-level `Helper`, and `NsB.Api` not the `Api` that `NsB` imports.
+/// Both resolved, and ran an unrelated function.
+#[rstest]
+fn a_qualified_name_stays_inside_its_namespace(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION Helper : INT Helper := 1; END_FUNCTION
+NAMESPACE NsA
+    FUNCTION Api : INT Api := 2; END_FUNCTION
+END_NAMESPACE
+NAMESPACE NsB
+    USING NsA;
+END_NAMESPACE
+
+FUNCTION caller : INT
+    caller := NsA.Helper() + NsB.Api();
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r#"
+    [E0201] Error: no item found in scope
+        ,-[ file:///test0.st:11:19 ]
+        |
+     11 |     caller := NsA.Helper() + NsB.Api();
+        |                   ^^^|^^
+        |                      `---- no item "Helper" found in scope
+        |
+        | Note: an item with similar name available in scope:
+        |       - Helper
+    ----'
+    [E0201] Error: no item found in scope
+        ,-[ file:///test0.st:11:34 ]
+        |
+     11 |     caller := NsA.Helper() + NsB.Api();
+        |                                  ^|^
+        |                                   `--- no item "Api" found in scope
+        |
+        | Note: an item with a similar name is available, but needs to be imported:
+        |       - 'Api' via USING NsA
+    ----'
+    "#);
+}
+
 #[rstest]
 fn an_unknown_relative_path_is_still_reported(mut with_db: RootDatabase) {
     let source = r#"
