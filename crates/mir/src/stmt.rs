@@ -171,6 +171,101 @@ pub(crate) fn callees(stmts: &[MirStmt], out: &mut Vec<Ident>) {
 }
 
 impl MirStmt {
+    /// [`MirExpr::exprs_mut`] over every expression of this statement and of
+    /// those nested in it: [`MirStmt::any_expr`], mutably.
+    pub fn exprs_mut(&mut self, f: &mut impl FnMut(&mut MirExpr)) {
+        match self {
+            MirStmt::Assign { target, value } => {
+                target.exprs_mut(f);
+                value.exprs_mut(f);
+            }
+            MirStmt::Call(call) => call.exprs_mut(f),
+            MirStmt::FbCall {
+                instance,
+                input_writes,
+                output_reads,
+                ..
+            } => {
+                instance.exprs_mut(f);
+                for (_, value, _) in input_writes {
+                    value.exprs_mut(f);
+                }
+                for (_, place, _, _) in output_reads {
+                    place.exprs_mut(f);
+                }
+            }
+            MirStmt::If {
+                condition,
+                then_body,
+                else_ifs,
+                else_body,
+            } => {
+                condition.exprs_mut(f);
+                for stmt in then_body {
+                    stmt.exprs_mut(f);
+                }
+                for (cond, body) in else_ifs {
+                    cond.exprs_mut(f);
+                    for stmt in body {
+                        stmt.exprs_mut(f);
+                    }
+                }
+                for stmt in else_body.iter_mut().flatten() {
+                    stmt.exprs_mut(f);
+                }
+            }
+            MirStmt::Case {
+                selector,
+                arms,
+                else_body,
+            } => {
+                selector.exprs_mut(f);
+                for arm in arms {
+                    for pattern in &mut arm.patterns {
+                        if let MirCasePattern::Test(test) = pattern {
+                            test.exprs_mut(f);
+                        }
+                    }
+                    for stmt in &mut arm.body {
+                        stmt.exprs_mut(f);
+                    }
+                }
+                for stmt in else_body.iter_mut().flatten() {
+                    stmt.exprs_mut(f);
+                }
+            }
+            MirStmt::For {
+                control,
+                start,
+                end,
+                step,
+                body,
+                ..
+            } => {
+                control.exprs_mut(f);
+                start.exprs_mut(f);
+                end.exprs_mut(f);
+                step.exprs_mut(f);
+                for stmt in body {
+                    stmt.exprs_mut(f);
+                }
+            }
+            MirStmt::While { condition, body } | MirStmt::Repeat { condition, body } => {
+                condition.exprs_mut(f);
+                for stmt in body {
+                    stmt.exprs_mut(f);
+                }
+            }
+            MirStmt::Raise { message } => message.exprs_mut(f),
+            MirStmt::Return
+            | MirStmt::Exit
+            | MirStmt::Continue
+            | MirStmt::MemStore { .. }
+            | MirStmt::WasmIntrinsic { .. }
+            | MirStmt::DebugTrap { .. } => {}
+        }
+    }
+
     /// Whether this statement, or one nested in it, reaches a place whose
     /// path runs a call ([`MirExpr::reaches_place_with_call`]).
     pub fn reaches_place_with_call(&self) -> bool {

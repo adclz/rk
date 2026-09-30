@@ -2072,3 +2072,33 @@ fn nested_string_calls_in_every_position(mut with_db: db::RootDatabase) {
         "'aa' and 'bb' compared unequal in every position"
     );
 }
+
+/// A string literal's bytes sit in a pool laid out past static memory once
+/// the module is lowered, and every literal's offset moves with it. The walk
+/// that moved them missed an ELSIF branch, FOR bounds, an assignment's
+/// subscript and a cast's operand, whose literals read the bytes at their old
+/// offset.
+#[rstest]
+#[case::elsif_body(
+    "IF FALSE THEN s := 'no'; ELSIF TRUE THEN s := 'ab'; END_IF; test := Eq(s, 'ab');"
+)]
+#[case::for_bound("s := 'ab'; FOR i := 1 TO Eq(s, 'ab') DO test := test + 1; END_FOR;")]
+#[case::target_subscript("s := 'ab'; arr[Eq(s, 'ab')] := 1; test := arr[1];")]
+#[case::cast_operand("s := 'ab'; d := Eq(s, 'ab'); IF d = 1 THEN test := 1; END_IF;")]
+fn a_string_literal_is_read_where_it_sits(mut with_db: db::RootDatabase, #[case] body: &str) {
+    let source = format!(
+        r#"{PRELUDE}
+        FUNCTION Eq : INT
+        VAR_INPUT a : STRING; b : STRING; END_VAR
+            IF a = b THEN Eq := 1; ELSE Eq := 0; END_IF;
+        END_FUNCTION
+
+        FUNCTION test : INT
+        VAR s : STRING; i : INT; arr : ARRAY[0..1] OF INT; d : DINT; END_VAR
+            {body}
+        END_FUNCTION
+    "#
+    );
+    let result: i32 = run(&mut with_db, &source, "test", ());
+    assert_eq!(result, 1);
+}
