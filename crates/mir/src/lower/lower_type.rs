@@ -9,6 +9,7 @@ use hir::{
 };
 
 use compact_str::CompactString;
+use std::cell::RefCell;
 
 use crate::{
     memory::align_to,
@@ -30,6 +31,13 @@ pub enum LowerTypeError {
     /// other. `naming` is meant to make this impossible.
     #[error("two functions lower to the symbol `{0}`")]
     DuplicateSymbol(String),
+
+    /// An instance's layout reached back to itself. Only a VAR_IN_OUT
+    /// member closes such a cycle, a by-value one being E1302, and the
+    /// nearest one catches this: it holds an address whose pointee is typed
+    /// where it is dereferenced.
+    #[error("the layout of '{0}' contains itself")]
+    InstanceCycle(String),
 
     /// An error carrying the source location it originated at, attached by
     /// [`LowerTypeError::with_location`].
@@ -397,6 +405,11 @@ pub fn lower_fb_type<'db>(
     )
 }
 
+thread_local! {
+    /// The instances whose layout is being built, innermost last.
+    static LAYING_OUT: RefCell<Vec<Ident>> = const { RefCell::new(Vec::new()) };
+}
+
 /// Lay out an FB/CLASS instance from HIR's [`instance_members`] (base-most
 /// first, so a derived instance is layout-compatible with its base); MIR
 /// only turns the list into offsets.
@@ -405,19 +418,36 @@ fn lower_instance_struct<'db>(
     pou: hir::hir_def::pous::pou::Pou<'db>,
     name: Ident,
 ) -> Result<MirType, LowerTypeError> {
+    // Two FBs holding each other through VAR_IN_OUT members come back here
+    // while the first is still being laid out.
+    struct Leave;
+    impl Drop for Leave {
+        fn drop(&mut self) {
+            LAYING_OUT.with(|stack| stack.borrow_mut().pop());
+        }
+    }
+    if LAYING_OUT.with(|stack| stack.borrow().contains(&name)) {
+        return Err(LowerTypeError::InstanceCycle(name.text(db).to_string()));
+    }
+    LAYING_OUT.with(|stack| stack.borrow_mut().push(name));
+    let _leave = Leave;
+
     let mut offset = 0u32;
     let mut max_align = 1u32;
     let mut fields = Vec::new();
 
     for member in hir::hir_ty::oop::instance_members(db, pou) {
         let var = member.var;
-        let mir_type = lower_spec(db, var.spec(db))?;
         // A VAR_IN_OUT field holds the address of the caller's l-value: a
         // pointer the body auto-derefs and the call site writes once. A field
         // declared `AT %I*` holds the address of its channel, which `__init`
         // writes from VAR_CONFIG.
         let is_inout = var.kind(db) == hir::hir_def::pous::variable::VariableKind::InOut
             || var.is_partly_located(db);
+        let mir_type = match lower_spec(db, var.spec(db)) {
+            Err(LowerTypeError::InstanceCycle(_)) if is_inout => MirType::Void,
+            other => other?,
+        };
         let mir_type = if is_inout {
             MirType::Pointer(Box::new(mir_type))
         } else {

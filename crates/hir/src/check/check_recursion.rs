@@ -4,7 +4,14 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use crate::{
     CallSite, HirNodeInfo,
     check::errors::{ToIdeDiagnostic, e13_recursion::RecursionError},
-    hir_def::{namespace::NamespaceDecl, pous::pou::Pou, semantic_index::SemanticIndex},
+    hir_def::{
+        namespace::NamespaceDecl,
+        pous::{
+            pou::Pou,
+            variable::{StorageClass, VariableKind},
+        },
+        semantic_index::SemanticIndex,
+    },
     hir_ty::{infer::Infer, ty::Type},
 };
 
@@ -75,8 +82,14 @@ impl<'db> TypeDependencyGraph<'db> {
     ) {
         let def_map = pou.get_scope_id(db).def_map(db);
 
-        // check variables
-        for var in def_map.global_variables.values() {
+        // The members an instance holds by value. A VAR_IN_OUT member is the
+        // address of the caller's instance, like a REF_TO, and VAR_TEMP and
+        // VAR_EXTERNAL are no part of the instance at all.
+        let contained = def_map.global_variables.values().filter(|var| {
+            var.storage_class(db) == StorageClass::InstanceMember
+                && var.kind(db) != VariableKind::InOut
+        });
+        for var in contained {
             let typ = var.spec(db).infer(db);
             let callsite = CallSite::from_scoped(db, &var.spec(db));
             Self::extract_pou_from_type(db, pou, typ, deps, callsites, callsite);

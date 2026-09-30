@@ -1780,3 +1780,32 @@ fn fb_in_a_struct_field_is_called(mut with_db: db::RootDatabase) {
         "two calls on h.c, one on arr[1].c, from n = 10"
     );
 }
+
+/// Two FBs holding each other through VAR_IN_OUT members: each holds the
+/// other's address, so neither contains the other (it was E1302, and then a
+/// layout that never ended). A member is reached through both levels.
+#[rstest]
+fn function_blocks_holding_each_other_through_in_outs(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Motor
+        VAR_IN_OUT drive : Drive; END_VAR
+        VAR_OUTPUT seen : INT; END_VAR
+            seen := drive.speed;
+        END_FUNCTION_BLOCK
+
+        FUNCTION_BLOCK Drive
+        VAR_IN_OUT motor : Motor; END_VAR
+        VAR_OUTPUT speed : INT := 7; echo : INT; END_VAR
+            echo := motor.drive.speed + motor.seen;
+        END_FUNCTION_BLOCK
+
+        FUNCTION test : INT
+        VAR m : Motor; d : Drive; END_VAR
+            m(drive := d);
+            d(motor := m);
+            test := d.echo;
+        END_FUNCTION
+    "#;
+    let result: i32 = crate::tests::codegen::run(&mut with_db, source, "test", ());
+    assert_eq!(result, 14, "7 through motor.drive, 7 through motor.seen");
+}

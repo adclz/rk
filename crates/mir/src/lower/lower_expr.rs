@@ -1018,7 +1018,7 @@ impl<'db> ExprLowerCtx<'db> {
                     field_offset: field.offset,
                     field_type: field.ty.clone(),
                 };
-                self.wrap_inout_deref(field, this_field)
+                self.wrap_inout_deref(field, this_field, root.infer(self.db))
             }
             None => MirPlace::Local(ident),
         }
@@ -1026,9 +1026,22 @@ impl<'db> ExprLowerCtx<'db> {
 
     /// A `VAR_IN_OUT` member holds a pointer to the caller's l-value, so its
     /// place is wrapped in a `Deref`; a `REF_TO` member is dereferenced only
-    /// where the user writes `^`.
-    fn wrap_inout_deref(&self, field: &crate::types::MirStructField, place: MirPlace) -> MirPlace {
+    /// where the user writes `^`. A member closing a cycle of layouts points
+    /// at no layout (`InstanceCycle`), so its pointee is `member_type`, the
+    /// type HIR gave the member.
+    fn wrap_inout_deref(
+        &self,
+        field: &crate::types::MirStructField,
+        place: MirPlace,
+        member_type: Type<'db>,
+    ) -> MirPlace {
         match (&field.by_ref, &field.ty) {
+            (true, MirType::Pointer(pointee)) if **pointee == MirType::Void => MirPlace::Deref {
+                capacity: None,
+                base: Box::new(place),
+                pointee_type: self.lower_pointee(member_type).unwrap_or(MirType::Void),
+                checked: true,
+            },
             (true, MirType::Pointer(pointee)) => MirPlace::Deref {
                 capacity: match **pointee {
                     MirType::String { .. } => self.in_out_capacity_place(field, &place),
@@ -1202,7 +1215,7 @@ impl<'db> ExprLowerCtx<'db> {
                         field_offset: field.offset,
                         field_type: field.ty.clone(),
                     };
-                    return Ok(self.wrap_inout_deref(field, this_field));
+                    return Ok(self.wrap_inout_deref(field, this_field, path_expr.infer(self.db)));
                 }
 
                 let (field_offset, field_type) =
@@ -1220,7 +1233,7 @@ impl<'db> ExprLowerCtx<'db> {
                 let field_name = match &field_expr.var {
                     VarAccess::Simple(span_ident) => span_ident.ident(self.db),
                 };
-                self.member_place(inner, field_expr.path.infer(self.db), field_name)
+                self.member_place(inner, field_expr.path.infer(self.db), path_expr, field_name)
             }
             PathExprKind::Index(index_expr) => {
                 let inner = self.lower_this_path(index_expr.path)?;
@@ -1333,7 +1346,7 @@ impl<'db> ExprLowerCtx<'db> {
                     VarAccess::Simple(span_ident) => span_ident.ident(self.db),
                 };
                 // Offset and type come from the base type's layout in one lookup.
-                self.member_place(inner, field_expr.path.infer(self.db), field_name)
+                self.member_place(inner, field_expr.path.infer(self.db), path_expr, field_name)
             }
 
             PathExprKind::Index(index_expr) => {
@@ -1365,6 +1378,7 @@ impl<'db> ExprLowerCtx<'db> {
         &self,
         base: MirPlace,
         base_type: Type<'db>,
+        member: hir::hir_def::expressions::expression::PathExpr<'db>,
         field_name: hir::hir_def::interned::identifier::Ident,
     ) -> Result<MirPlace, LowerTypeError> {
         let field = self.layout_field(base_type, field_name)?;
@@ -1374,7 +1388,7 @@ impl<'db> ExprLowerCtx<'db> {
             field_offset: field.offset,
             field_type: field.ty.clone(),
         };
-        Ok(self.wrap_inout_deref(&field, place))
+        Ok(self.wrap_inout_deref(&field, place, member.infer(self.db)))
     }
 
     /// The layout's field `field_name` of `base_type`, offset, type and all,
