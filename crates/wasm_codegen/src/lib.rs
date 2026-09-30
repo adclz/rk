@@ -494,6 +494,16 @@ impl<'a> WasmGen<'a> {
         aligned
     }
     fn emit_all(&mut self) {
+        // Where each string literal is, by the pool entry it names.
+        crate::emit_expr::STRING_ADDRESSES.with(|cell| {
+            *cell.borrow_mut() = self
+                .module
+                .string_data
+                .iter()
+                .map(|(address, _)| *address)
+                .collect();
+        });
+
         // The diagnostic reverse-lookup: every function Ident, call-site
         // callees included, to its text.
         crate::emit_expr::FN_NAMES_FOR_DIAGNOSTIC.with(|cell| {

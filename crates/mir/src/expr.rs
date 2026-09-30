@@ -63,10 +63,11 @@ pub enum MirExpr {
 
     /// String literal reference.
     StringLiteral {
-        /// Index into MirModule::string_literals.
+        /// Its entry in [`MirModule::string_data`], whose address codegen
+        /// reads once the module is laid out.
+        ///
+        /// [`MirModule::string_data`]: crate::MirModule::string_data
         id: u32,
-        /// Pre-computed offset in the data section.
-        offset: u32,
         /// Length in bytes.
         len: u32,
     },

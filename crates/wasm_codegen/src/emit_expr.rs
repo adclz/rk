@@ -48,6 +48,28 @@ thread_local! {
     /// stored.
     pub(crate) static STR_ASSIGN_IDX: std::cell::Cell<Option<u32>> =
         const { std::cell::Cell::new(None) };
+
+    /// The address of each string pool entry of the module, by the `id` a
+    /// literal names.
+    pub(crate) static STRING_ADDRESSES: RefCell<Vec<u32>> = const { RefCell::new(Vec::new()) };
+}
+
+/// Push a literal's `(ptr, len)`: the address of the pool entry it names,
+/// which the module's layout fixed, and its length.
+fn emit_string_literal(func: &mut wasm_encoder::Function, id: u32, len: u32) {
+    let address = STRING_ADDRESSES
+        .with(|addresses| addresses.borrow().get(id as usize).copied())
+        .unwrap_or_else(|| {
+            let caller = CURRENT_EMIT_FN
+                .with(|c| c.borrow().clone())
+                .unwrap_or_else(|| "<unknown>".to_string());
+            panic!(
+                "internal compiler error: while emitting `{caller}`, a string literal names \
+                 pool entry {id}, which the module does not have"
+            )
+        });
+    func.instruction(&Instruction::I32Const(address as i32));
+    func.instruction(&Instruction::I32Const(len as i32));
 }
 
 /// Fault the pointer on the stack if it is null, leaving it in place.
@@ -132,10 +154,7 @@ pub(crate) fn emit_expr(
             emit_str_place_value(func, &dst, locals, fn_indices);
         }
 
-        MirExpr::StringLiteral { offset, len, .. } => {
-            func.instruction(&Instruction::I32Const(*offset as i32));
-            func.instruction(&Instruction::I32Const(*len as i32));
-        }
+        MirExpr::StringLiteral { id, len } => emit_string_literal(func, *id, *len),
     }
 }
 
@@ -243,10 +262,7 @@ pub(crate) fn emit_str_value(
     fn_indices: &FxHashMap<Ident, u32>,
 ) {
     match value {
-        MirExpr::StringLiteral { offset, len, .. } => {
-            func.instruction(&Instruction::I32Const(*offset as i32));
-            func.instruction(&Instruction::I32Const(*len as i32));
-        }
+        MirExpr::StringLiteral { id, len } => emit_string_literal(func, *id, *len),
         MirExpr::Load(place, _) => emit_str_place_value(func, place, locals, fn_indices),
         _ => emit_expr(func, value, locals, fn_indices),
     }

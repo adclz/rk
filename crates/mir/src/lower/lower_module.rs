@@ -590,7 +590,6 @@ fn lower_module_from_pous<'db>(
     let mut module = MirModule {
         functions,
         extern_functions,
-        string_literals: Vec::new(),
         instance_types,
         function_indices,
         type_indices,
@@ -935,7 +934,8 @@ fn lower_module_from_pous<'db>(
     let static_mem_end = module.memory_layout.total_size();
 
     // Phase 5: Rebase string pool to start AFTER all static memory allocations,
-    // then extract interned string data into the module.
+    // then extract interned string data into the module. A literal names its
+    // entry, whose address codegen reads there: no body holds an offset.
     {
         let mut pool = string_pool.borrow_mut();
         // Shift all string entry offsets by the static memory size
@@ -946,12 +946,6 @@ fn lower_module_from_pous<'db>(
     module.string_data = std::mem::take(&mut string_pool.borrow_mut().entries)
         .into_iter()
         .collect();
-
-    // Also rebase string literal offsets in all function bodies
-    let string_base = static_mem_end;
-    for func in &mut module.functions {
-        rebase_string_offsets(&mut func.body, string_base);
-    }
 
     // The distinct source files, in body order, as `DebugLines::files`;
     // codegen resolves each statement's `file_url` against it.
@@ -1011,17 +1005,6 @@ fn lower_extern_function<'db>(
         return_type,
         linkage: crate::function::MirLinkage::Internal,
     })
-}
-
-/// Rebase all StringLiteral offsets in MIR statements by adding `base` to each offset.
-fn rebase_string_offsets(stmts: &mut [crate::stmt::MirStmt], base: u32) {
-    for stmt in stmts {
-        stmt.exprs_mut(&mut |expr| {
-            if let crate::expr::MirExpr::StringLiteral { offset, .. } = expr {
-                *offset += base;
-            }
-        });
-    }
 }
 
 /// Collect the distinct source-file URLs referenced by `DebugTrap`
