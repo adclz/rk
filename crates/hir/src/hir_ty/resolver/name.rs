@@ -168,41 +168,53 @@ pub fn pou_names_res<'db>(
     }
 }
 
+/// A name the scope itself does not declare, from the scopes around it: a
+/// declaration first, the nearest first — a POU of an enclosing namespace,
+/// in any of its blocks, then one at the top level — and only then an
+/// import, the nearest level's USINGs first. Where a USING is written does
+/// not rank it above a declaration: tried level by level, a POU's own USING
+/// outranked its namespace and the top level, where the same USING written
+/// one level out did not. The top level outranks an import as a namespace
+/// does, so `USING Std.Timers` does not take the workspace's own TON.
 #[tracing::instrument(level = "trace", skip_all)]
 pub fn find_in_parent_pous<'db>(
     db: &'db dyn WorkspaceDataBase,
     name: Ident,
     scope: ScopeId<'db>,
 ) -> PouResolution<'db> {
-    let it = semantic_index(db, scope.file(db)).scope_iterator(db, scope);
-    for scope in it {
-        // Namespace siblings take priority over USING — no ambiguity
-        if let ScopeKind::Namespace(ns) = scope.kind {
+    let index = semantic_index(db, scope.file(db));
+    for around in index.scope_iterator(db, scope) {
+        if let ScopeKind::Namespace(ns) = around.kind {
             for ns in namespace_index(db, ns.path(db)).iter() {
                 if let Some(p) = ns.scope_id(db).def_map(db).local_pous.get(&name) {
                     return PouResolution::Found(*p, None);
                 }
             }
         }
-
-        // The global namespace outranks its USINGs the same way: a top-level
-        // declaration (this file's or any other's) shadows an import — the
-        // rule every USING-like construct converges on. Before this arm the
-        // walk fell through to the USING matches and `pou_index` was only
-        // the post-walk fallback, so `USING Std.Timers` silently WON over
-        // the workspace's own top-level TON.
-        if matches!(scope.kind, ScopeKind::Global)
+        if matches!(around.kind, ScopeKind::Global)
             && let Some(pou) = pou_index(db, name)
         {
             return PouResolution::Found(pou, None);
         }
+    }
 
+    imported(db, name, scope)
+}
+
+/// `name` through the USINGs around `scope`, the nearest level first.
+fn imported<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    name: Ident,
+    scope: ScopeId<'db>,
+) -> PouResolution<'db> {
+    let index = semantic_index(db, scope.file(db));
+    for around in index.scope_iterator(db, scope) {
         // Collect ALL USING matches at this scope level
         let mut matches: Vec<(Pou<'db>, NamespacePath, Using<'db>)> = vec![];
-        for using in &scope.usings {
+        for using in &around.usings {
             let ns_path: NamespacePath = crate::hir_ty::index_graphs::absolute_namespace_path(
                 db,
-                scope.id,
+                around.id,
                 using.path(db).path(db),
             );
             for ns in namespace_index(db, ns_path).iter() {

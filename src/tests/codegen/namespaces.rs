@@ -96,6 +96,50 @@ fn a_file_scope_declaration_shadows_a_using_import(mut with_db: db::RootDatabase
     );
 }
 
+/// A declaration outranks an import wherever the USING is written. A POU's
+/// own `USING Lib` took over from its namespace's sibling, from a top-level
+/// FUNCTION and from a top-level FB, where the same USING written one level
+/// out did not.
+#[rstest]
+fn a_declaration_outranks_an_import_wherever_the_using_is_written(mut with_db: db::RootDatabase) {
+    let source = r#"
+        NAMESPACE Lib
+            FUNCTION Shared : INT Shared := 1; END_FUNCTION
+            FUNCTION Top : INT Top := 1; END_FUNCTION
+            FUNCTION_BLOCK X
+                VAR_OUTPUT Q : INT; END_VAR
+                Q := 1;
+            END_FUNCTION_BLOCK
+        END_NAMESPACE
+
+        FUNCTION Top : INT Top := 20; END_FUNCTION
+        FUNCTION_BLOCK X
+            VAR_OUTPUT Q : INT; END_VAR
+            Q := 300;
+        END_FUNCTION_BLOCK
+
+        NAMESPACE App
+            FUNCTION Shared : INT Shared := 4000; END_FUNCTION
+
+            FUNCTION sum : INT
+                USING Lib;
+                VAR x : X; END_VAR
+                x();
+                sum := Shared() + Top() + x.Q;
+            END_FUNCTION
+        END_NAMESPACE
+
+        FUNCTION total : INT
+            total := App.sum();
+        END_FUNCTION
+    "#;
+    let v: i32 = crate::tests::codegen::run(&mut with_db, source, "total", ());
+    assert_eq!(
+        v, 4320,
+        "the sibling, the top-level FUNCTION and the top-level FB"
+    );
+}
+
 /// A relative namespace path binds to the NEAREST enclosing match: `Impl`
 /// inside `Lib` (at any depth) is `Lib.Impl`; at global scope it is the
 /// top-level `Impl`. Pinned by value, since both candidates resolve.
