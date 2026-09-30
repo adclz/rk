@@ -374,7 +374,7 @@ impl<'db> Resolver<'db> {
         ctx: &mut BodyInferenceResult<'db>,
     ) {
         let steps = path_expr.flatten(db);
-        for step in steps.iter() {
+        for (position, step) in steps.iter().enumerate() {
             let PathExprWalkStep::Index { expr } = step else {
                 continue;
             };
@@ -384,6 +384,35 @@ impl<'db> Resolver<'db> {
             // The array this bracket indexes and its first dimension, for
             // the compile-time bounds check below: the walk recorded them.
             let indexed = ctx.indexed_arrays.get(expr).copied();
+
+            // A path that ends in a bracket leaving dimensions of a
+            // multi-dimensional array names a part of it, which is no
+            // value: `m[1]` of an `ARRAY[0..1, 0..2]` is not a row, the way
+            // an element of an array of rows is. Only a further bracket
+            // indexes it. Once, on the pass that types the subscripts.
+            if position + 1 == steps.len()
+                && let Some(indexed) = indexed
+                && indexed.is_partial(db)
+                && let Some(last) = index_expr.index.last()
+                && !ctx.type_of_expr.contains_key(last)
+            {
+                ctx.errors.push(
+                    ArrayError::IncompleteSubscript {
+                        expr: *last,
+                        rank: indexed.array.subranges(db).len(),
+                        named: indexed.through,
+                    }
+                    .to_diagnostic(db, ctx.scope.file(db)),
+                );
+                // Reported: what uses it reports nothing more.
+                if let Some(adjustment) = ctx
+                    .path_expr_adjustments
+                    .get_mut(expr)
+                    .and_then(|adjustments| adjustments.last_mut())
+                {
+                    adjustment.target = Type::Never;
+                }
+            }
 
             for (i, sub) in index_expr.index.iter().enumerate() {
                 // A path expression can be resolved through more than one

@@ -56,6 +56,7 @@ A subscript is an integer.
 A `BOOL`, a `REAL` or a `STRING` cannot index an array (`E0504`).
 
 `grid[2, 3]` and `grid[2][3]` are the same element.
+`grid[2]` alone names a part of `grid`, and is refused (`E0510`).
 
 A constant subscript outside the bounds is refused at compile time:
 
