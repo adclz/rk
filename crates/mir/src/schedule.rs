@@ -358,14 +358,12 @@ fn type_has_retain<'db>(
     };
     // `instance_members` already excludes VAR_TEMP and VAR_EXTERNAL — the
     // sections that are not instance state.
-    hir::hir_ty::head::inheritance::instance_members(db, pou)
-        .iter()
-        .any(|m| {
-            let v = m.var;
-            !v.qualifier(db).contains(Qualifier::NON_RETAIN)
-                && (v.qualifier(db).contains(Qualifier::RETAIN)
-                    || type_has_retain(db, v.spec(db).infer(db), visited))
-        })
+    hir::hir_ty::oop::instance_members(db, pou).iter().any(|m| {
+        let v = m.var;
+        !v.qualifier(db).contains(Qualifier::NON_RETAIN)
+            && (v.qualifier(db).contains(Qualifier::RETAIN)
+                || type_has_retain(db, v.spec(db).infer(db), visited))
+    })
 }
 
 fn gcd(a: u64, b: u64) -> u64 {

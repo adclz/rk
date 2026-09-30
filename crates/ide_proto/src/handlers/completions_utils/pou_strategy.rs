@@ -6,7 +6,7 @@ use hir::{
         pous::{class::Class, function::Function, function_block::FunctionBlock, pou::Pou},
         program::ProgramDecl,
     },
-    hir_ty::head::inheritance::MethodRef,
+    hir_ty::oop::MethodRef,
 };
 
 use crate::handlers::completions_utils::{

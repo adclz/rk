@@ -4,11 +4,10 @@ use rustc_hash::FxHashMap;
 use crate::HirNodeInfo;
 use crate::hir_def::{
     interned::identifier::Ident,
-    pous::{class::MethodDecl, pou::Pou},
+    pous::{class::MethodDecl, pou::Pou, variable::VariableDecl},
 };
-use crate::hir_ty::head::inheritance::MethodRef;
 
-use super::ancestry;
+use super::{MethodRef, ancestry};
 
 /// A method as a POU sees it, and the POU that declares it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, salsa::Update)]
@@ -116,4 +115,55 @@ pub fn class_members<'db>(db: &'db dyn WorkspaceDataBase, pou: Pou<'db>) -> Clas
         }
     }
     members
+}
+
+/// One instance member (a field of an FB/CLASS instance), paired with the POU
+/// that DECLARES it — which may be a base of the POU being queried.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, salsa::Update)]
+pub struct InstanceMember<'db> {
+    /// The POU this member is declared on. For an inherited member this is a
+    /// base, not the queried POU.
+    pub owner: Pou<'db>,
+    pub var: VariableDecl<'db>,
+}
+
+/// Every instance member of a POU, in **layout order**: the base-most POU's
+/// members first (the whole `EXTENDS` chain, recursively), each level in
+/// declaration order.
+///
+/// This is the authoritative answer to "what state does an instance of this POU
+/// hold?", so consumers never walk `EXTENDS` themselves. MIR in particular must
+/// only compute offsets from this list: a derived instance has to be
+/// layout-compatible with its base, because an inherited method is compiled
+/// once against the base's offsets and then invoked with a derived instance
+/// pointer — which the base-first ordering guarantees.
+///
+/// Sections that are not instance state are excluded here, once, rather than in
+/// each consumer:
+/// - `VAR_EXTERNAL` references a global; it resolves to the global's address.
+/// - `VAR_TEMP` is per-invocation scratch and lives as a body local.
+#[salsa::tracked(returns(ref))]
+pub fn instance_members<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    pou: Pou<'db>,
+) -> Vec<InstanceMember<'db>> {
+    use crate::hir_def::pous::variable::StorageClass;
+    ancestry(db, pou)
+        .chain
+        .iter()
+        .rev()
+        .flat_map(|owner| {
+            let vars: &[VariableDecl<'db>] = match owner {
+                Pou::FunctionBlock(fb) => fb.variables(db),
+                Pou::Class(class) => class.variables(db),
+                _ => &[],
+            };
+            vars.iter()
+                .filter(|var| var.storage_class(db) == StorageClass::InstanceMember)
+                .map(|var| InstanceMember {
+                    owner: *owner,
+                    var: *var,
+                })
+        })
+        .collect()
 }

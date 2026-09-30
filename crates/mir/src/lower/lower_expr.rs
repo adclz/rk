@@ -1717,7 +1717,7 @@ impl<'db> ExprLowerCtx<'db> {
     /// parameter.
     fn receiver_method_call(
         &self,
-        method: hir::hir_ty::head::inheritance::MethodRef<'db>,
+        method: hir::hir_ty::oop::MethodRef<'db>,
         receiver_path: hir::hir_def::expressions::expression::PathExpr<'db>,
         receiver: MirPlace,
     ) -> Result<
@@ -1729,7 +1729,7 @@ impl<'db> ExprLowerCtx<'db> {
         LowerTypeError,
     > {
         use hir::HasName;
-        use hir::hir_ty::head::inheritance::MethodRef;
+        use hir::hir_ty::oop::MethodRef;
 
         let (method_decl, instance) = match method {
             MethodRef::Declared(md) => (md, self.instance_pou_of(receiver_path)),
@@ -1748,7 +1748,7 @@ impl<'db> ExprLowerCtx<'db> {
                 let name = proto.get_name_ident(self.db);
                 // Which method implements a prototype is HIR's conformance answer;
                 // devirtualizing to it is MIR's.
-                match hir::hir_ty::head::inheritance::implementing_method(self.db, concrete, name) {
+                match hir::hir_ty::oop::class_members(self.db, concrete).implementation(&name) {
                     Some(d) => (d, Some(concrete)),
                     None => {
                         return Err(LowerTypeError::UnsupportedType(format!(
@@ -2577,7 +2577,7 @@ impl<'db> ExprLowerCtx<'db> {
     /// the current instance: `THIS.m()`, `SUPER.m()`, or a bare sibling `m()`.
     fn this_receiver_call(
         &self,
-        method: hir::hir_ty::head::inheritance::MethodRef<'db>,
+        method: hir::hir_ty::oop::MethodRef<'db>,
         form: &str,
         virtual_dispatch: bool,
     ) -> Result<
@@ -2588,7 +2588,7 @@ impl<'db> ExprLowerCtx<'db> {
         ),
         LowerTypeError,
     > {
-        use hir::hir_ty::head::inheritance::MethodRef;
+        use hir::hir_ty::oop::MethodRef;
         let method_decl = match method {
             MethodRef::Declared(md) => md,
             MethodRef::Prototype(_) => {
@@ -2609,7 +2609,7 @@ impl<'db> ExprLowerCtx<'db> {
             // overrides `Hook`.
             (true, Some(owner)) => {
                 let name = method_decl.name(self.db);
-                let own = hir::hir_ty::head::inheritance::implementing_method(self.db, owner, name);
+                let own = hir::hir_ty::oop::class_members(self.db, owner).implementation(&name);
                 self.method_symbol(owner, own.unwrap_or(method_decl).name_with_case(self.db))
             }
             _ => self.method_callee_symbol(method_decl)?,

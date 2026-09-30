@@ -3,7 +3,7 @@ use ide_diagnostic::IdeDiagnostic;
 use rustc_hash::FxHashMap;
 
 use crate::{
-    HasName, HirNodeInfo, Modifier,
+    HasModifiers, HasName, HirNodeInfo, Modifier,
     check::errors::{ToIdeDiagnostic, e01_duplicates::DuplicateError, e11_oop::OopError},
     hir_def::{
         pous::{pou::Pou, variable::VariableDecl},
@@ -11,11 +11,9 @@ use crate::{
         semantic_index::get_scope,
     },
     hir_ty::{
-        head::{
-            inheritance::{MethodRef, instance_members},
-            init_inference::InitInference,
-        },
+        head::init_inference::InitInference,
         infer::Infer,
+        oop::{MethodRef, instance_members},
         ty::Type,
     },
 };
@@ -69,7 +67,7 @@ impl<'db> InitInference<'db> {
             && !implementer.modifier(db).contains(Modifier::ABSTRACT)
         {
             for method in declared_methods.values() {
-                if method.modifier(db).contains(Modifier::ABSTRACT) {
+                if method.get_modifiers(db).contains(Modifier::ABSTRACT) {
                     self.errors.push(
                         OopError::AbstractMethodInConcretePou {
                             pou: implementer,
@@ -98,7 +96,7 @@ impl<'db> InitInference<'db> {
                 continue;
             };
             check_signature(db, base_method, *own, &mut self.errors);
-            match (base_method.modifier(db), own.modifier(db)) {
+            match (base_method.get_modifiers(db), own.get_modifiers(db)) {
                 (Modifier::FINAL, Modifier::OVERRIDE) => {
                     self.errors.push(
                         OopError::OverrideFinalMethod {
@@ -114,7 +112,7 @@ impl<'db> InitInference<'db> {
                 // provide a body regardless.
                 (_, Modifier::EMPTY)
                     if !base_method.is_prototype()
-                        && base_method.modifier(db) != Modifier::ABSTRACT =>
+                        && base_method.get_modifiers(db) != Modifier::ABSTRACT =>
                 {
                     self.errors.push(
                         OopError::MissingOverride {
@@ -143,7 +141,7 @@ impl<'db> InitInference<'db> {
                     .to_diagnostic(db, self.scope.file(db)),
                 );
             }
-            if let Modifier::ABSTRACT = method.modifier(db)
+            if let Modifier::ABSTRACT = method.get_modifiers(db)
                 && !implementer.modifier(db).contains(Modifier::ABSTRACT)
             {
                 self.errors.push(
@@ -158,7 +156,8 @@ impl<'db> InitInference<'db> {
 
         // OVERRIDE with nothing to override.
         for (name, own) in declared_methods {
-            if own.modifier(db) == Modifier::OVERRIDE && !members.overridden.contains_key(name) {
+            if own.get_modifiers(db) == Modifier::OVERRIDE && !members.overridden.contains_key(name)
+            {
                 self.errors.push(
                     OopError::EmptyOverride { base_method: *own }
                         .to_diagnostic(db, self.scope.file(db)),

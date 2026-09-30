@@ -98,7 +98,7 @@ fn methods_of<'db>(
     items: &mut Vec<NamedSymbol<'db>>,
 ) {
     use crate::hir_def::pous::pou::Pou;
-    use crate::hir_ty::head::inheritance::MethodRef;
+    use crate::hir_ty::oop::MethodRef;
 
     let declared: Vec<MethodRef<'db>> = match pou {
         Pou::FunctionBlock(fb) => fb

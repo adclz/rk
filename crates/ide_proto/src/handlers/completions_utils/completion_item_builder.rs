@@ -19,10 +19,8 @@ use hir::{
         semantic_index::get_scope,
     },
     hir_ty::{
-        head::{
-            inheritance::{MethodRef, instance_members},
-            signature::infer_signature,
-        },
+        head::signature::infer_signature,
+        oop::{MethodRef, instance_members},
         ty::Type,
     },
     query_string::query::Query,

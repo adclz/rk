@@ -8,7 +8,7 @@ use crate::hir_def::pous::interface::Interface;
 use crate::hir_def::pous::pou::Pou;
 use crate::hir_def::pous::variable::VariableDecl;
 use crate::hir_def::pous::variable::VariableKind;
-use crate::hir_ty::head::inheritance::MethodRef;
+use crate::hir_ty::oop::MethodRef;
 use crate::hir_ty::ty::Type;
 use auto_lsp::default::db::file::File;
 use auto_lsp::lsp_types::DiagnosticSeverity;

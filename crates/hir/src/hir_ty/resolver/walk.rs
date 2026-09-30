@@ -24,12 +24,9 @@ use crate::{
     hir_ty::{
         body::{Adjust, Adjustment, AdjustmentInfo, BodyInferenceResult, NullState},
         expr_store::{InitExprWalkStep, PathExprWalkStep},
-        head::{
-            inheritance::{MethodRef, instance_members},
-            init_inference::InitExprInferenceResult,
-        },
+        head::init_inference::InitExprInferenceResult,
         infer::Infer,
-        oop::class_members,
+        oop::{MethodRef, class_members, instance_members},
         resolver::{Resolver, invocation::resolve_invocation, visibility::check_visibility},
         ty::{Size, Type},
     },

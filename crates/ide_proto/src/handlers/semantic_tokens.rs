@@ -15,8 +15,8 @@ use hir::{
         using::Using,
     },
     hir_ty::{
-        head::inheritance::MethodRef,
         infer::Infer,
+        oop::MethodRef,
         ty::{CallableType, Type},
     },
 };

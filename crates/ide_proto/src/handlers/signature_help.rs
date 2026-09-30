@@ -292,16 +292,13 @@ fn signature_of<'db>(
     // inherited member's type lives in its OWNER's signature, not this one.
     let params: Vec<(String, &str, String)> = match callable {
         hir::hir_ty::ty::CallableType::FunctionBlock(fb) => {
-            hir::hir_ty::head::inheritance::instance_members(
-                db,
-                hir::hir_def::pous::pou::Pou::FunctionBlock(fb),
-            )
-            .iter()
-            .filter_map(|m| {
-                let owner_sig = infer_signature(db, m.owner.get_scope_id(db));
-                param_info(db, &m.var, owner_sig)
-            })
-            .collect()
+            hir::hir_ty::oop::instance_members(db, hir::hir_def::pous::pou::Pou::FunctionBlock(fb))
+                .iter()
+                .filter_map(|m| {
+                    let owner_sig = infer_signature(db, m.owner.get_scope_id(db));
+                    param_info(db, &m.var, owner_sig)
+                })
+                .collect()
         }
         _ => scope
             .def_map(db)

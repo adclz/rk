@@ -20,7 +20,7 @@ use crate::{
         program::ProgramDecl,
         scope::ScopeId,
     },
-    hir_ty::{def_map::LocalDefMap, head::inheritance::MethodRef, infer::Infer},
+    hir_ty::{def_map::LocalDefMap, infer::Infer, oop::MethodRef},
 };
 use db::WorkspaceDataBase;
 

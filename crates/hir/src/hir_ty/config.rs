@@ -304,11 +304,11 @@ fn infer_config<'db>(
         };
         for var in program.variables(db) {
             if var.qualifier(db).contains(crate::Qualifier::RETAIN)
-                || !crate::hir_ty::head::inheritance::retained_with_instance(db, *var)
+                || !crate::hir_ty::head::instances::retained_with_instance(db, *var)
             {
                 continue;
             }
-            if let Some(route) = crate::hir_ty::head::inheritance::retained_reference(
+            if let Some(route) = crate::hir_ty::head::instances::retained_reference(
                 db,
                 var.spec(db).infer(db),
                 &mut Vec::new(),
@@ -1002,7 +1002,7 @@ fn instance_member<'db>(
 /// Every member an instance of `ty` holds: a PROGRAM's instance state, or
 /// an FB's or CLASS's [`instance_members`], inherited ones included.
 ///
-/// [`instance_members`]: crate::hir_ty::head::inheritance::instance_members
+/// [`instance_members`]: crate::hir_ty::oop::instance_members
 pub fn members_of<'db>(db: &'db dyn WorkspaceDataBase, ty: Type<'db>) -> Vec<VariableDecl<'db>> {
     match ty {
         Type::Program(p) => p
@@ -1011,8 +1011,8 @@ pub fn members_of<'db>(db: &'db dyn WorkspaceDataBase, ty: Type<'db>) -> Vec<Var
             .copied()
             .filter(|v| !v.is_temp(db) && !v.is_external(db))
             .collect(),
-        _ => match crate::hir_ty::head::inheritance::pou_of_type(db, ty) {
-            Some(pou) => crate::hir_ty::head::inheritance::instance_members(db, pou)
+        _ => match crate::hir_ty::head::instances::pou_of_type(db, ty) {
+            Some(pou) => crate::hir_ty::oop::instance_members(db, pou)
                 .iter()
                 .map(|m| m.var)
                 .collect(),
@@ -1762,7 +1762,7 @@ fn check_partly_located_coverage<'db>(
             // Instance state only, as `instance_members` has it for a
             // function block: a VAR_TEMP is made per call (E1425 says so where
             // it is declared) and a VAR_EXTERNAL is a global's.
-            crate::hir_ty::head::inheritance::collect_partly_located(
+            crate::hir_ty::head::instances::collect_partly_located(
                 db,
                 &mut program
                     .variables(db)

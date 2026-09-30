@@ -62,7 +62,7 @@ impl<'db> ImplementationHandler<'db> for Pou<'db> {
     }
 }
 
-impl<'db> ImplementationHandler<'db> for hir::hir_ty::head::inheritance::MethodRef<'db> {
+impl<'db> ImplementationHandler<'db> for hir::hir_ty::oop::MethodRef<'db> {
     fn implementation(
         &'db self,
         db: &'db dyn WorkspaceDataBase,
@@ -108,9 +108,9 @@ impl<'db> ImplementationHandler<'db> for hir::hir_ty::head::inheritance::MethodR
 /// each POU in the file whether the method is one of its own.
 fn owner_of<'db>(
     db: &'db dyn WorkspaceDataBase,
-    method: hir::hir_ty::head::inheritance::MethodRef<'db>,
+    method: hir::hir_ty::oop::MethodRef<'db>,
 ) -> Option<Pou<'db>> {
-    use hir::hir_ty::head::inheritance::MethodRef;
+    use hir::hir_ty::oop::MethodRef;
 
     let sema = semantic_index(db, method.get_scope_id(db).file(db));
     let owns = |pou: &Pou<'db>| {

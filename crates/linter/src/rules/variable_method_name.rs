@@ -7,7 +7,7 @@ use hir::{
         scope::{ScopeId, ScopeKind},
         semantic_index::get_scope,
     },
-    hir_ty::head::inheritance::{MethodRef, instance_members},
+    hir_ty::oop::{MethodRef, instance_members},
 };
 use ide_diagnostic::{ErrorCode, IdeDiagnostic, Related, diag};
 
