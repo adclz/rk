@@ -36,7 +36,7 @@ NAMESPACE Std.Strings
 	*/
 	FUNCTION LEN: UDINT
 		VAR_INPUT
-			IN: STRING;
+			IN: STRING[255];
 		END_VAR
 		{wasm 'str.byte_len' (params IN) (result LEN)}
 	END_FUNCTION
@@ -55,7 +55,7 @@ NAMESPACE Std.Strings
 	*/
 	FUNCTION IS_UTF8: BOOL
 		VAR_INPUT
-			IN: STRING;
+			IN: STRING[255];
 		END_VAR
 		{wasm 'str.is_utf8' (params IN) (result IS_UTF8)}
 	END_FUNCTION
@@ -76,8 +76,8 @@ NAMESPACE Std.Strings
 	*/
 	FUNCTION FIND: UDINT
 		VAR_INPUT
-			HAYSTACK: STRING;
-			NEEDLE: STRING;
+			HAYSTACK: STRING[255];
+			NEEDLE: STRING[255];
 		END_VAR
 		{wasm 'str.byte_find' (params HAYSTACK NEEDLE) (result FIND)}
 	END_FUNCTION
@@ -94,8 +94,8 @@ NAMESPACE Std.Strings
 	*/
 	FUNCTION CONCAT: STRING[255]
 		VAR_INPUT
-			A: STRING;
-			B: STRING;
+			A: STRING[255];
+			B: STRING[255];
 		END_VAR
 		{wasm 'str.concat' (params A B) (result CONCAT)}
 	END_FUNCTION
@@ -113,7 +113,7 @@ NAMESPACE Std.Strings
 	*/
 	FUNCTION LEFT: STRING[255]
 		VAR_INPUT
-			S: STRING;
+			S: STRING[255];
 			N: UDINT;
 		END_VAR
 		{wasm 'str.byte_left' (params S N) (result LEFT)}
@@ -132,7 +132,7 @@ NAMESPACE Std.Strings
 	*/
 	FUNCTION RIGHT: STRING[255]
 		VAR_INPUT
-			S: STRING;
+			S: STRING[255];
 			N: UDINT;
 		END_VAR
 		{wasm 'str.byte_right' (params S N) (result RIGHT)}
@@ -153,7 +153,7 @@ NAMESPACE Std.Strings
 	*/
 	FUNCTION MID: STRING[255]
 		VAR_INPUT
-			S: STRING;
+			S: STRING[255];
 			N: UDINT;
 			P: UDINT;
 		END_VAR
@@ -175,8 +175,8 @@ NAMESPACE Std.Strings
 	*/
 	FUNCTION INSERT: STRING[255]
 		VAR_INPUT
-			S: STRING;
-			INS: STRING;
+			S: STRING[255];
+			INS: STRING[255];
 			P: UDINT;
 		END_VAR
 		{wasm 'str.byte_insert' (params S INS P) (result INSERT)}
@@ -196,7 +196,7 @@ NAMESPACE Std.Strings
 	*/
 	FUNCTION DELETE: STRING[255]
 		VAR_INPUT
-			S: STRING;
+			S: STRING[255];
 			N: UDINT;
 			P: UDINT;
 		END_VAR
@@ -219,8 +219,8 @@ NAMESPACE Std.Strings
 	*/
 	FUNCTION REPLACE: STRING[255]
 		VAR_INPUT
-			S: STRING;
-			INS: STRING;
+			S: STRING[255];
+			INS: STRING[255];
 			N: UDINT;
 			P: UDINT;
 		END_VAR
@@ -238,7 +238,7 @@ NAMESPACE Std.Strings
 	*/
 	FUNCTION CHAR_COUNT: UDINT
 		VAR_INPUT
-			IN: STRING;
+			IN: STRING[255];
 		END_VAR
 		{wasm 'str.char_count' (params IN) (result CHAR_COUNT)}
 	END_FUNCTION
@@ -256,7 +256,7 @@ NAMESPACE Std.Strings
 	*/
 	FUNCTION CHAR_AT: CHAR
 		VAR_INPUT
-			IN: STRING;
+			IN: STRING[255];
 			P: UDINT;
 		END_VAR
 		{wasm 'str.char_at' (params IN P) (result CHAR_AT)}
@@ -276,8 +276,8 @@ NAMESPACE Std.Strings
 	*/
 	FUNCTION CHAR_FIND: UDINT
 		VAR_INPUT
-			HAYSTACK: STRING;
-			NEEDLE: STRING;
+			HAYSTACK: STRING[255];
+			NEEDLE: STRING[255];
 		END_VAR
 		{wasm 'str.char_find' (params HAYSTACK NEEDLE) (result CHAR_FIND)}
 	END_FUNCTION
@@ -295,7 +295,7 @@ NAMESPACE Std.Strings
 	*/
 	FUNCTION CHAR_LEFT: STRING[255]
 		VAR_INPUT
-			S: STRING;
+			S: STRING[255];
 			N: UDINT;
 		END_VAR
 		{wasm 'str.char_left' (params S N) (result CHAR_LEFT)}
@@ -314,7 +314,7 @@ NAMESPACE Std.Strings
 	*/
 	FUNCTION CHAR_RIGHT: STRING[255]
 		VAR_INPUT
-			S: STRING;
+			S: STRING[255];
 			N: UDINT;
 		END_VAR
 		{wasm 'str.char_right' (params S N) (result CHAR_RIGHT)}
@@ -334,7 +334,7 @@ NAMESPACE Std.Strings
 	*/
 	FUNCTION CHAR_MID: STRING[255]
 		VAR_INPUT
-			S: STRING;
+			S: STRING[255];
 			N: UDINT;
 			P: UDINT;
 		END_VAR
@@ -355,8 +355,8 @@ NAMESPACE Std.Strings
 	*/
 	FUNCTION CHAR_INSERT: STRING[255]
 		VAR_INPUT
-			S: STRING;
-			INS: STRING;
+			S: STRING[255];
+			INS: STRING[255];
 			P: UDINT;
 		END_VAR
 		{wasm 'str.char_insert' (params S INS P) (result CHAR_INSERT)}
@@ -376,7 +376,7 @@ NAMESPACE Std.Strings
 	*/
 	FUNCTION CHAR_DELETE: STRING[255]
 		VAR_INPUT
-			S: STRING;
+			S: STRING[255];
 			N: UDINT;
 			P: UDINT;
 		END_VAR
@@ -397,8 +397,8 @@ NAMESPACE Std.Strings
 	*/
 	FUNCTION CHAR_REPLACE: STRING[255]
 		VAR_INPUT
-			S: STRING;
-			INS: STRING;
+			S: STRING[255];
+			INS: STRING[255];
 			N: UDINT;
 			P: UDINT;
 		END_VAR
