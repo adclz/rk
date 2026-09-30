@@ -9,7 +9,6 @@ use crate::{
     hir_ty::infer::Infer,
 };
 use db::WorkspaceDataBase;
-use rustc_hash::FxHashMap;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, salsa::Update, salsa::Supertype)]
 pub enum MethodRef<'db> {
@@ -136,107 +135,6 @@ impl<'db> From<&MethodPrototype<'db>> for MethodRef<'db> {
 impl<'db> From<&MethodDecl<'db>> for MethodRef<'db> {
     fn from(value: &MethodDecl<'db>) -> Self {
         MethodRef::Declared(*value)
-    }
-}
-
-#[derive(Default, Debug, Clone, PartialEq, Eq, salsa::Update)]
-pub struct InheritedMethodSet<'db> {
-    pub methods: FxHashMap<Ident, InheritedMethod<'db>>,
-
-    pub duplicates: Vec<(InheritedMethod<'db>, InheritedMethod<'db>)>,
-}
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, salsa::Update)]
-pub struct InheritedMethod<'db> {
-    pub source: Pou<'db>,
-    pub method: MethodRef<'db>,
-}
-
-impl<'db> InheritedMethod<'db> {
-    fn new(source: Pou<'db>, method: MethodRef<'db>) -> Self {
-        Self { source, method }
-    }
-}
-
-/// Every POU a POU inherits from DIRECTLY: its `EXTENDS` base plus every
-/// interface it implements (an INTERFACE: every interface it extends).
-fn direct_bases<'db>(db: &'db dyn WorkspaceDataBase, pou: Pou<'db>) -> Vec<Pou<'db>> {
-    let bases = crate::hir_ty::oop::explicit_bases(db, pou);
-    bases
-        .extends
-        .into_iter()
-        .chain(bases.interfaces.iter().map(|iface| Pou::Interface(*iface)))
-        .collect()
-}
-
-/// Every method visible ON `pou` — its own declarations plus everything it
-/// inherits, with a NEARER declaration overriding a farther one.
-///
-/// Ancestors are collected first so a redeclaration closer to `pou` overwrites
-/// it: that is method overriding, not a conflict, and must not be reported as a
-/// duplicate.
-fn chain_methods<'db>(
-    db: &'db dyn WorkspaceDataBase,
-    pou: Pou<'db>,
-    visited: &mut Vec<Pou<'db>>,
-) -> FxHashMap<Ident, InheritedMethod<'db>> {
-    let mut out = FxHashMap::default();
-    // Cyclic inheritance is reported separately (E05xx); stop so this
-    // terminates regardless.
-    if visited.contains(&pou) {
-        return out;
-    }
-    visited.push(pou);
-
-    for base in direct_bases(db, pou) {
-        out.extend(chain_methods(db, base, visited));
-    }
-    for (name, method) in pou.get_scope_id(db).def_map(db).declared_methods.iter() {
-        out.insert(*name, InheritedMethod::new(pou, *method));
-    }
-    out
-}
-
-/// Every method `pou` INHERITS (its own declarations excluded), resolved through
-/// the whole inheritance graph.
-///
-/// A name declared at several depths of one chain is an override — the nearest
-/// wins, silently. A name arriving from two INDEPENDENT bases (two interfaces,
-/// or a base class and an interface) is a genuine conflict and is recorded in
-/// `duplicates` for the E01xx diagnostic.
-#[salsa::tracked(returns(ref))]
-pub fn inherited_methods<'db>(
-    db: &'db dyn WorkspaceDataBase,
-    pou: Pou<'db>,
-) -> InheritedMethodSet<'db> {
-    let mut methods: FxHashMap<Ident, InheritedMethod<'db>> = FxHashMap::default();
-    let mut duplicates = vec![];
-
-    for base in direct_bases(db, pou) {
-        let mut visited = vec![pou];
-        for (name, m) in chain_methods(db, base, &mut visited) {
-            match methods.insert(name, m) {
-                None => {}
-                // A prototype and a concrete method for the same name are not a
-                // conflict: the concrete one IMPLEMENTS the prototype. This is
-                // the ordinary `FB EXTENDS Base IMPLEMENTS Iface` shape, where
-                // the inherited method satisfies the interface. Keep the
-                // implementation, so conformance sees the name as implemented
-                // rather than reporting it unimplemented.
-                Some(prev) if prev.method.is_prototype() != m.method.is_prototype() => {
-                    let concrete = if m.method.is_prototype() { prev } else { m };
-                    methods.insert(name, concrete);
-                }
-                // Two declarations of the same kind from INDEPENDENT bases —
-                // a genuine ambiguity.
-                Some(prev) => duplicates.push((prev, m)),
-            }
-        }
-    }
-
-    InheritedMethodSet {
-        methods,
-        duplicates,
     }
 }
 
@@ -582,30 +480,14 @@ pub fn instance_pou_of<'db>(
     pou_of_type(db, var.spec(db).infer(db).normalize(db))
 }
 
-/// The concrete method an implementer provides for an inherited method NAME —
-/// in particular, for an interface prototype it declares via `IMPLEMENTS`.
+/// The concrete method an implementer provides for an inherited method NAME
+/// — in particular, for an interface prototype it declares via `IMPLEMENTS`.
 pub fn implementing_method<'db>(
     db: &'db dyn WorkspaceDataBase,
     implementer: Pou<'db>,
     name: Ident,
 ) -> Option<MethodDecl<'db>> {
-    let own = implementer
-        .get_scope_id(db)
-        .def_map(db)
-        .declared_methods
-        .get(&name)
-        .copied();
-    let resolved = own.or_else(|| {
-        inherited_methods(db, implementer)
-            .methods
-            .get(&name)
-            .map(|m| m.method)
-    })?;
-    match resolved {
-        // A prototype is a signature, not an implementation.
-        MethodRef::Declared(decl) => Some(decl),
-        MethodRef::Prototype(_) => None,
-    }
+    crate::hir_ty::oop::class_members(db, implementer).implementation(&name)
 }
 
 /// Every initializer a TYPE contributes to a fresh value of it, flattened:

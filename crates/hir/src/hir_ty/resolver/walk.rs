@@ -25,10 +25,11 @@ use crate::{
         body::{Adjust, Adjustment, AdjustmentInfo, BodyInferenceResult, NullState},
         expr_store::{InitExprWalkStep, PathExprWalkStep},
         head::{
-            inheritance::{MethodRef, inherited_methods, instance_members},
+            inheritance::{MethodRef, instance_members},
             init_inference::InitExprInferenceResult,
         },
         infer::Infer,
+        oop::class_members,
         resolver::{Resolver, invocation::resolve_invocation, visibility::check_visibility},
         ty::{Size, Type},
     },
@@ -198,8 +199,8 @@ impl<'db> Type<'db> {
                     } else if let Some(m) = def_map.declared_methods.get(name) {
                         FieldLookup::Method(*m)
                     } else if let Some(pou) = self.as_pou(db) {
-                        match inherited_methods(db, pou).methods.get(name) {
-                            Some(inherited) => FieldLookup::Method(inherited.method),
+                        match class_members(db, pou).methods.get(name) {
+                            Some(member) => FieldLookup::Method(member.method),
                             None => FieldLookup::NotFound,
                         }
                     } else if let Type::MethodDecl(m) = self {
@@ -254,9 +255,9 @@ impl<'db> Type<'db> {
         }
         match self
             .as_pou(db)
-            .and_then(|pou| inherited_methods(db, pou).methods.get(key).copied())
+            .and_then(|pou| class_members(db, pou).methods.get(key).copied())
         {
-            Some(inherited) => FieldLookup::Method(inherited.method),
+            Some(member) => FieldLookup::Method(member.method),
             None => found,
         }
     }
@@ -397,12 +398,15 @@ impl<'db> Type<'db> {
         path_expr: PathExpr<'db>,
         ctx: &mut BodyInferenceResult<'db>,
     ) {
-        let inherited = inherited_methods(db, pou);
+        // SUPER is the base: `SUPER.m` is the method `m` the base answers to.
+        let base = crate::hir_ty::oop::ancestry(db, pou).base();
         let current = Type::new_pou(db, pou);
         let steps = path_expr.flatten(db);
 
         if let Some(PathExprWalkStep::Field { ident, expr }) = steps.first() {
-            if let Some(method) = inherited.methods.get(&ident.ident(db)) {
+            if let Some(method) =
+                base.and_then(|base| class_members(db, base).methods.get(&ident.ident(db)))
+            {
                 check_visibility(db, &ident.as_call_site(db), method.method, &mut ctx.errors);
                 ctx.type_of_path_expr
                     .insert(*expr, Type::MethodDecl(method.method));

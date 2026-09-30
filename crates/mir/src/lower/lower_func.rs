@@ -43,7 +43,7 @@ fn at_node<'db, T>(
 /// Every method an instance of `pou` responds to: its own, plus the
 /// inherited ones it does not override. An inherited method is emitted as
 /// a copy on each inheritor, so `THIS.m()` inside it resolves against the
-/// inheritor. Which override wins is HIR's answer (`inherited_methods`).
+/// inheritor. Which override wins is HIR's answer (`class_members`).
 /// Sorted by name for a reproducible artifact.
 fn emittable_methods<'db>(
     db: &'db dyn WorkspaceDataBase,
@@ -52,12 +52,9 @@ fn emittable_methods<'db>(
 ) -> Vec<hir::hir_def::pous::class::MethodDecl<'db>> {
     use hir::hir_ty::head::inheritance::MethodRef;
 
-    let own_names: FxHashSet<Ident> = own.iter().map(|m| m.name(db)).collect();
-    let mut inherited: Vec<_> = hir::hir_ty::head::inheritance::inherited_methods(db, pou)
-        .methods
-        .iter()
-        .filter(|(name, _)| !own_names.contains(*name))
-        .filter_map(|(_, im)| match im.method {
+    let mut inherited: Vec<_> = hir::hir_ty::oop::class_members(db, pou)
+        .inherited(pou)
+        .filter_map(|(_, member)| match member.method {
             MethodRef::Declared(d) => Some(d),
             MethodRef::Prototype(_) => None,
         })

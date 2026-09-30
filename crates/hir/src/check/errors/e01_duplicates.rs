@@ -12,7 +12,7 @@ use crate::hir_def::pous::pou::Pou;
 use crate::hir_def::pous::variable::VariableDecl;
 use crate::hir_def::program::ProgramDecl;
 use crate::hir_def::using::Using;
-use crate::hir_ty::head::inheritance::InheritedMethod;
+use crate::hir_ty::oop::ClassMember;
 use auto_lsp::lsp_types::DiagnosticSeverity;
 use db::WorkspaceDataBase;
 use ide_diagnostic::ErrorCode;
@@ -67,8 +67,8 @@ pub enum DuplicateError<'db> {
         method2: MethodPrototype<'db>,
     },
     InheritedMethod {
-        method1: InheritedMethod<'db>,
-        method2: InheritedMethod<'db>,
+        method1: ClassMember<'db>,
+        method2: ClassMember<'db>,
     },
     Using {
         using: Using<'db>,
@@ -416,8 +416,8 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
 
                 diag.with_note(format!(
                     "this error happens because both interfaces '{}' and '{}' define a method '{}'",
-                    method1.source.get_name_with_case(db).text(db),
-                    method2.source.get_name_with_case(db).text(db),
+                    method1.owner.get_name_with_case(db).text(db),
+                    method2.owner.get_name_with_case(db).text(db),
                     method1.method.get_name_with_case(db).text(db)
                 ));
 

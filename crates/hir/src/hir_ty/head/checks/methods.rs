@@ -12,7 +12,7 @@ use crate::{
     },
     hir_ty::{
         head::{
-            inheritance::{MethodRef, inherited_methods, instance_members},
+            inheritance::{MethodRef, instance_members},
             init_inference::InitInference,
         },
         infer::Infer,
@@ -28,7 +28,7 @@ impl<'db> InitInference<'db> {
         };
 
         let declared_methods = &implementer.get_scope_id(db).def_map(db).declared_methods;
-        let inherited_methods = inherited_methods(db, implementer);
+        let members = crate::hir_ty::oop::class_members(db, implementer);
 
         for base in crate::hir_ty::oop::written_bases(db, implementer) {
             let Some(target) = base.target else {
@@ -81,8 +81,7 @@ impl<'db> InitInference<'db> {
             }
         }
 
-        // check dups in inherited methods
-        for (m1, m2) in &inherited_methods.duplicates {
+        for (m1, m2) in &members.duplicates {
             self.errors.push(
                 DuplicateError::InheritedMethod {
                     method1: *m1,
@@ -92,87 +91,77 @@ impl<'db> InitInference<'db> {
             );
         }
 
-        // look at the inherited methods first
-        for (inherited_name, inherited_method) in inherited_methods.methods.iter() {
-            let declared_by = inherited_method.source;
-            let inherited_method = inherited_method.method;
-            // method is inherited from a base interface/class
-            if let Some(declared_method) = declared_methods.get(inherited_name) {
-                check_signature(db, inherited_method, *declared_method, &mut self.errors);
-
-                match (inherited_method.modifier(db), declared_method.modifier(db)) {
-                    // Override of a final method
-                    (Modifier::FINAL, Modifier::OVERRIDE) => {
-                        self.errors.push(
-                            OopError::OverrideFinalMethod {
-                                base_method: inherited_method,
-                                derived_method: *declared_method,
-                            }
-                            .to_diagnostic(db, self.scope.file(db)),
-                        );
-                    }
-                    // Override of a concrete method without OVERRIDE keyword.
-                    // OVERRIDE is only required when the base method is a concrete
-                    // (non-abstract) declared method. For interface prototypes and
-                    // abstract methods, OVERRIDE is optional - the implementer
-                    // must provide a body regardless.
-                    (_, Modifier::EMPTY)
-                        if !inherited_method.is_prototype()
-                            && inherited_method.modifier(db) != Modifier::ABSTRACT =>
-                    {
-                        self.errors.push(
-                            OopError::MissingOverride {
-                                base_method: inherited_method,
-                                derived_method: *declared_method,
-                            }
-                            .to_diagnostic(db, self.scope.file(db)),
-                        );
-                    }
-                    _ => {}
-                }
-            } else {
-                // inherited method is not present
-
-                // method is from an interface — only require implementation
-                // for concrete POUs (classes, function blocks), not interfaces
-                if inherited_method.is_prototype() && !matches!(implementer, Pou::Interface(_)) {
+        // Each method it declares against the one of a base it redeclares.
+        for (name, base) in &members.overridden {
+            let base_method = base.method;
+            let Some(own) = declared_methods.get(name) else {
+                continue;
+            };
+            check_signature(db, base_method, *own, &mut self.errors);
+            match (base_method.modifier(db), own.modifier(db)) {
+                (Modifier::FINAL, Modifier::OVERRIDE) => {
                     self.errors.push(
-                        OopError::UnimplementedInterfaceMethod {
-                            implementer,
-                            method: inherited_method,
-                            declared_by,
+                        OopError::OverrideFinalMethod {
+                            base_method,
+                            derived_method: *own,
                         }
                         .to_diagnostic(db, self.scope.file(db)),
                     );
                 }
-
-                // An ABSTRACT POU is allowed to leave inherited ABSTRACT
-                // methods unimplemented — passing the obligation down is what
-                // an abstract intermediate class is FOR. Only a concrete POU
-                // owes an implementation.
-                if let Modifier::ABSTRACT = inherited_method.modifier(db)
-                    && !implementer.modifier(db).contains(Modifier::ABSTRACT)
+                // OVERRIDE is required when the base method is a concrete
+                // (non-abstract) declared method. For interface prototypes and
+                // abstract methods it is optional: the implementer must
+                // provide a body regardless.
+                (_, Modifier::EMPTY)
+                    if !base_method.is_prototype()
+                        && base_method.modifier(db) != Modifier::ABSTRACT =>
                 {
                     self.errors.push(
-                        OopError::MissingAbstractMethod {
-                            implementer,
-                            base_method: inherited_method,
+                        OopError::MissingOverride {
+                            base_method,
+                            derived_method: *own,
                         }
                         .to_diagnostic(db, self.scope.file(db)),
                     );
                 }
+                _ => {}
             }
         }
-        // Look at the declared methods
 
-        for (base_name, base_method) in declared_methods {
-            if inherited_methods.methods.contains_key(base_name) {
-            } else if base_method.modifier(db) == Modifier::OVERRIDE {
+        // What it inherits without declaring: a concrete POU owes a body for
+        // every prototype, and for every ABSTRACT method unless it is
+        // ABSTRACT itself, passing the obligation down.
+        for (_, inherited) in members.inherited(implementer) {
+            let method = inherited.method;
+            if method.is_prototype() && !matches!(implementer, Pou::Interface(_)) {
                 self.errors.push(
-                    OopError::EmptyOverride {
-                        base_method: *base_method,
+                    OopError::UnimplementedInterfaceMethod {
+                        implementer,
+                        method,
+                        declared_by: inherited.owner,
                     }
                     .to_diagnostic(db, self.scope.file(db)),
+                );
+            }
+            if let Modifier::ABSTRACT = method.modifier(db)
+                && !implementer.modifier(db).contains(Modifier::ABSTRACT)
+            {
+                self.errors.push(
+                    OopError::MissingAbstractMethod {
+                        implementer,
+                        base_method: method,
+                    }
+                    .to_diagnostic(db, self.scope.file(db)),
+                );
+            }
+        }
+
+        // OVERRIDE with nothing to override.
+        for (name, own) in declared_methods {
+            if own.modifier(db) == Modifier::OVERRIDE && !members.overridden.contains_key(name) {
+                self.errors.push(
+                    OopError::EmptyOverride { base_method: *own }
+                        .to_diagnostic(db, self.scope.file(db)),
                 );
             }
         }
