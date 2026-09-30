@@ -7,7 +7,7 @@
 //!
 //! | Tag  | LocalInfo / shape                                 | Notes |
 //! |------|---------------------------------------------------|-------|
-//! | `L`  | `MirExpr::StringLiteral { offset, len }`          | `'lit'` or `"lit"` |
+//! | `L`  | `MirExpr::StringLiteral { id, len }`              | `'lit'` or `"lit"` |
 //! | `IP` | `LocalInfo::StringParam { ptr_idx, len_idx }`     | `VAR_INPUT s : STRING` — 2 wasm i32 params |
 //! | `IO` | `LocalInfo::StringInOutParam { addr_idx, cap_idx }` | `VAR_IN_OUT s : STRING` — 2 wasm i32 params |
 //! | `MM` | `LocalInfo::StringMemory { address, capacity }`   | `VAR s : STRING` or function return slot |
@@ -78,6 +78,15 @@ use super::{add_source, compile_to_mir_and_wasm, run, with_db};
 /// the malformed module — passing tests don't dump anything.
 fn validate(db: &mut db::RootDatabase, source: &str, dump_name: &str) -> Result<(), String> {
     let file = add_source(db, source);
+    // A cell the compiler refuses would measure code no user can build.
+    let diagnostics = hir::check::diagnostics_for_file(db, file);
+    if !diagnostics.is_empty() {
+        let lines: Vec<String> = diagnostics
+            .iter()
+            .map(crate::tests::utils::diagnostic_line)
+            .collect();
+        return Err(format!("the compiler refuses it:\n{}", lines.join("\n")));
+    }
     let sem_idx = hir::hir_def::semantic_index::semantic_index(db, file);
     let mir_module = match mir::lower::lower_module::lower_module(db, sem_idx) {
         Ok(m) => m,
@@ -664,6 +673,94 @@ END_FUNCTION
     );
 }
 
+/// The other ways to write through a literal are refused: a VAR_IN_OUT
+/// argument must be a variable, `REF` takes no literal, and an output's
+/// destination is a variable too. The pool shares one entry between
+/// identical literals, so a write that reached it would change every
+/// `'ab'` in the module.
+#[rstest]
+fn a_literal_cannot_be_written_through(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION Fill
+        VAR_IN_OUT io : STRING; END_VAR
+            io := 'changed';
+        END_FUNCTION
+
+        FUNCTION Give
+        VAR_OUTPUT o : STRING; END_VAR
+            o := 'changed';
+        END_FUNCTION
+
+        FUNCTION InOut : INT
+            Fill(io := 'ab');
+        END_FUNCTION
+
+        FUNCTION Reference : INT
+        VAR r : REF_TO STRING; END_VAR
+            r := REF('ab');
+        END_FUNCTION
+
+        FUNCTION Output : INT
+            Give(o => 'ab');
+        END_FUNCTION
+    "#;
+    insta::assert_snapshot!(
+        crate::tests::utils::test_diagnostics(&mut with_db, &[source]),
+        @r#"
+    [E0005] Error: syntax
+        ,-[ file:///test0.st:18:15 ]
+        |
+     18 |             r := REF('ab');
+        |               ^|
+        |                `-- right-hand side of assignment cannot be empty
+    ----'
+    [E0806] Error: VAR_IN_OUT argument must be a variable
+        ,-[ file:///test0.st:13:24 ]
+        |
+      3 |         VAR_IN_OUT io : STRING; END_VAR
+        |                    ^^^^^|^^^^^
+        |                         `------- parameter 'io' declared here
+        |
+     13 |             Fill(io := 'ab');
+        |                        ^^|^
+        |                          `--- VAR_IN_OUT parameter 'io' of 'Fill' requires a variable, not a value
+        |
+        | Note: VAR_IN_OUT binds the callee to the caller's storage by reference; a literal, expression, or call result has no address to bind
+    ----'
+    [E0201] Error: no item found in scope
+        ,-[ file:///test0.st:22:18 ]
+        |
+     22 |             Give(o => 'ab');
+        |                  |
+        |                  `-- no item "o" found in scope
+    ----'
+    [E0805] Error: function call parameter mismatch
+        ,-[ file:///test0.st:22:18 ]
+        |
+     22 |             Give(o => 'ab');
+        |                  |
+        |                  `-- output parameter at index '0' cannot be used as input
+        |
+        | Note: use formal syntax instead: o => <variable>
+    ----'
+    [E0001] Error: syntax
+        ,-[ file:///test0.st:18:18 ]
+        |
+     18 |             r := REF('ab');
+        |                  ^^^^|^^^^
+        |                      `------ Unexpected token(s): 'REF ( 'ab' )'
+    ----'
+    [E0001] Error: syntax
+        ,-[ file:///test0.st:22:20 ]
+        |
+     22 |             Give(o => 'ab');
+        |                    ^^^|^^^
+        |                       `----- Unexpected token(s): '=> 'ab''
+    ----'
+    "#
+    );
+}
+
 /// The FB half of the ruling, where the semantics genuinely differ from a
 /// FUNCTION: the body writing its own STRING input lands in INSTANCE storage
 /// (ThisField, not a per-call copy), so a call that omits the input sees the
@@ -889,10 +986,7 @@ VAR_INPUT s : STRING; END_VAR
 END_FUNCTION
 "#,
     );
-    let file = add_source(&mut with_db, &src);
-    let sem_idx = hir::hir_def::semantic_index::semantic_index(&with_db, file);
-    let mir_module = mir::lower::lower_module::lower_module(&with_db, sem_idx).unwrap();
-    let bytes = wasm_codegen::generate_wasm(&with_db, &mir_module).finish();
+    let bytes = super::compile_to_wasm(&mut with_db, &src);
 
     // Pass a "STRING" with ptr=0, len=4. Whatever bytes live at 0..4
     // don't matter; len_of just returns the second arg.
@@ -2087,28 +2181,64 @@ fn nested_string_calls_in_every_position(mut with_db: db::RootDatabase) {
 }
 
 /// A string literal's bytes sit in a pool laid out past static memory once
-/// the module is lowered, and every literal's offset moves with it. The walk
-/// that moved them missed an ELSIF branch, FOR bounds, an assignment's
-/// subscript and a cast's operand, whose literals read the bytes at their old
-/// offset; the copy of a nested STRING call's result is a position too.
+/// the module is lowered. Its offset was fixed at lowering and moved with the
+/// pool by a walk that missed an ELSIF branch, FOR bounds, a cast's operand, a
+/// subscript and an output's destination, whose literals read the bytes at
+/// their old offset. A literal names its pool entry now, and codegen reads the
+/// entry's address: every position reads its own bytes. Identical literals
+/// share an entry, so the input default is compared with one spelled apart.
 #[rstest]
 #[case::elsif_body(
     "IF FALSE THEN s := 'no'; ELSIF TRUE THEN s := 'ab'; END_IF; test := Eq(s, 'ab');"
 )]
 #[case::for_bound("s := 'ab'; FOR i := 1 TO Eq(s, 'ab') DO test := test + 1; END_FOR;")]
+#[case::while_condition(
+    "s := 'ab'; WHILE i = 0 AND Eq(s, 'ab') = 1 DO i := 1; test := 1; END_WHILE;"
+)]
+#[case::case_label("s := 'ab'; CASE s OF 'ab': test := 1; END_CASE;")]
 #[case::target_subscript("s := 'ab'; arr[Eq(s, 'ab')] := 1; test := arr[1];")]
+#[case::in_out_subscript("s := 'ab'; Bump(io := arr[Eq(s, 'ab')]); test := arr[1];")]
+#[case::output_destination("s := 'ab'; Out(n := 1, o => arr[Eq(s, 'ab')]); test := arr[1];")]
 #[case::cast_operand("s := 'ab'; d := Eq(s, 'ab'); IF d = 1 THEN test := 1; END_IF;")]
+#[case::initializer("test := Eq(t, 'ab');")]
+#[case::type_default("test := Eq(named, 'ab');")]
+#[case::input_default("test := Host();")]
 #[case::nested_call("s := 'abcd'; test := Eq(str_concat(str_concat('a', 'b'), 'cd'), s);")]
 fn a_string_literal_is_read_where_it_sits(mut with_db: db::RootDatabase, #[case] body: &str) {
     let source = format!(
         r#"{PRELUDE}
+        TYPE Named : STRING := 'ab'; END_TYPE
+
         FUNCTION Eq : INT
         VAR_INPUT a : STRING; b : STRING; END_VAR
             IF a = b THEN Eq := 1; ELSE Eq := 0; END_IF;
         END_FUNCTION
 
+        FUNCTION Host : INT
+        VAR_INPUT h : STRING := '10.0.0.7'; END_VAR
+            Host := Eq(h, str_concat('10.0.', '0.7'));
+        END_FUNCTION
+
+        FUNCTION Bump
+        VAR_IN_OUT io : INT; END_VAR
+            io := io + 1;
+        END_FUNCTION
+
+        FUNCTION Out
+        VAR_INPUT n : INT; END_VAR
+        VAR_OUTPUT o : INT; END_VAR
+            o := n;
+        END_FUNCTION
+
         FUNCTION test : INT
-        VAR s : STRING; i : INT; arr : ARRAY[0..1] OF INT; d : DINT; END_VAR
+        VAR
+            s : STRING;
+            t : STRING := 'ab';
+            named : Named;
+            i : INT;
+            arr : ARRAY[0..1] OF INT;
+            d : DINT;
+        END_VAR
             {body}
         END_FUNCTION
     "#
