@@ -45,8 +45,9 @@
 //! which IEC forbids inside the POU — RULED (2026-08-28): legal, warned by
 //! L0113 `input-assignment`. The semantics that make the
 //! deviation safe are pinned executed below: a FUNCTION input write mutates
-//! the callee's copy (a STRING one REBINDS the view, never writing through),
-//! and an FB input write lands in instance storage. If the language ever
+//! the callee's copy (a STRING input is copied at entry, so a write lands in
+//! that copy, never in the caller's buffer), and an FB input write lands in
+//! instance storage. If the language ever
 //! rejects the construct instead, five cells flip together. And a matrix
 //! cell only proves the module VALIDATES — a slot-aliasing or snapshot bug
 //! validates fine (i32 == i32) and returns the wrong value, which is how
@@ -599,12 +600,12 @@ END_FUNCTION
 // The =IP ruling, executed: legal but warned (L0113), and safe BECAUSE of these
 // =============================================================================
 
-/// Writing a VAR_INPUT STRING rebinds the callee's (ptr, len) view — it never
-/// writes through to the caller's buffer. This is what makes the =IP column a
-/// safe deviation: a regression to write-through would mutate the caller's
-/// string (or the literal pool) while still validating.
+/// Writing a VAR_INPUT STRING writes the callee's own copy, made at entry: it
+/// never writes through to the caller's buffer. This is what makes the =IP
+/// column a safe deviation: a regression to write-through would mutate the
+/// caller's string (or the literal pool) while still validating.
 #[rstest]
-fn ip_assign_rebinds_the_view_not_the_callers_buffer(mut with_db: db::RootDatabase) {
+fn ip_assign_writes_the_callees_copy_not_the_callers_buffer(mut with_db: db::RootDatabase) {
     let source = full_source(
         r#"
 FUNCTION mutinp : STRING
@@ -628,10 +629,11 @@ END_FUNCTION
     );
 }
 
-/// The literal-source half of the same ruling: `mutinp('orig')` hands the
-/// callee a view INTO THE POOL, and the pool deduplicates (`StringPool::
+/// The literal-source half of the same ruling: `grab('orig')` passes a
+/// `(ptr, len)` INTO THE POOL, and the pool deduplicates (`StringPool::
 /// intern`), so a write-through would poison every `'orig'` in the module —
-/// there is no second variable to observe it through. The observable is the
+/// there is no second variable to observe it through. The callee writes the
+/// copy it made at entry. The observable is the
 /// literal itself: copy it out BEFORE the write, then compare. Two rounds so
 /// the second re-reads the slot the first would have corrupted.
 #[rstest]
@@ -664,7 +666,7 @@ END_FUNCTION
 
 /// The FB half of the ruling, where the semantics genuinely differ from a
 /// FUNCTION: the body writing its own STRING input lands in INSTANCE storage
-/// (ThisField, not a rebound view), so a call that omits the input sees the
+/// (ThisField, not a per-call copy), so a call that omits the input sees the
 /// previous call's write. In a FUNCTION the same two statements would yield
 /// 'a!' twice; only instance storage accumulates.
 ///
@@ -1932,6 +1934,81 @@ fn nested_string_calls_anywhere(mut with_db: db::RootDatabase) {
     );
     let result: i32 = run(&mut with_db, &source, "test", ());
     assert_eq!(result, 715, "'aa' and 'bb' compared unequal everywhere");
+}
+
+/// Assigning to a STRING input copies into a buffer of its own, of the
+/// input's capacity. It rebound the input's `(ptr, len)` to the producer's
+/// result slot, and the next call of the producer changed the input.
+#[rstest]
+fn an_assigned_string_input_keeps_its_value(mut with_db: db::RootDatabase) {
+    let source = format!(
+        "{PRELUDE}{}",
+        r#"
+        FUNCTION Twice : STRING
+        VAR_INPUT s : STRING; END_VAR
+        VAR t : STRING; END_VAR
+            s := str_concat(s, '1');
+            t := str_concat('A', 'B');
+            Twice := s;
+        END_FUNCTION
+
+        FUNCTION Short : STRING
+        VAR_INPUT s : STRING[3]; END_VAR
+            s := str_concat(s, 'defg');
+            Short := s;
+        END_FUNCTION
+
+        FUNCTION_BLOCK Holder
+            METHOD PUBLIC Twice : STRING
+            VAR_INPUT s : STRING; END_VAR
+                s := str_concat(s, '2');
+                str_concat('C', 'D');
+                Twice := s;
+            END_METHOD
+        END_FUNCTION_BLOCK
+
+        FUNCTION test : BOOL
+        VAR h : Holder; x : STRING := 'x'; END_VAR
+            test := Twice(s := x) = 'x1' AND x = 'x' AND Short(s := 'abc') = 'abc'
+                AND h.Twice(s := 'y') = 'y2';
+        END_FUNCTION
+    "#
+    );
+    let result: i32 = run(&mut with_db, &source, "test", ());
+    assert_eq!(result, 1);
+}
+
+/// A STRING input is a copy, as every input is: a change to the caller's
+/// variable during the call, through a VAR_IN_OUT bound to the same
+/// variable or through a reference to it, does not reach the input. It
+/// read the caller's buffer.
+#[rstest]
+fn a_string_input_is_a_copy(mut with_db: db::RootDatabase) {
+    let source = format!(
+        "{PRELUDE}{}",
+        r#"
+        FUNCTION Swap : STRING
+        VAR_INPUT a : STRING; END_VAR
+        VAR_IN_OUT b : STRING; END_VAR
+            b := 'changed';
+            Swap := a;
+        END_FUNCTION
+
+        FUNCTION ViaRef : STRING
+        VAR_INPUT a : STRING; r : REF_TO STRING; END_VAR
+            r^ := 'changed';
+            ViaRef := a;
+        END_FUNCTION
+
+        FUNCTION test : BOOL
+        VAR s : STRING := 'original'; t : STRING := 'original'; END_VAR
+            test := Swap(a := s, b := s) = 'original' AND s = 'changed'
+                AND ViaRef(a := t, r := REF(t)) = 'original' AND t = 'changed';
+        END_FUNCTION
+    "#
+    );
+    let result: i32 = run(&mut with_db, &source, "test", ());
+    assert_eq!(result, 1);
 }
 
 /// The other places a nested STRING call can sit: an initializer, a CASE

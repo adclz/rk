@@ -302,7 +302,7 @@ fn lower_function_inner<'db>(
             params.push(param);
         }
     }
-    let entry_copies = shadow_address_taken_inputs(
+    let entry_copies = shadow_inputs(
         db,
         &mut params,
         &address_taken,
@@ -534,7 +534,7 @@ fn lower_function_block_inner<'db>(
                 None => local_vars.push(var),
             }
         }
-        let entry_copies = shadow_address_taken_inputs(
+        let entry_copies = shadow_inputs(
             db,
             &mut params,
             &address_taken,
@@ -867,7 +867,7 @@ fn lower_class_inner<'db>(
                 None => local_vars.push(var),
             }
         }
-        let entry_copies = shadow_address_taken_inputs(
+        let entry_copies = shadow_inputs(
             db,
             &mut params,
             &address_taken,
@@ -1223,12 +1223,16 @@ fn open_frame<'db>(
     }
 }
 
-/// A VAR_INPUT whose address the body takes (`REF(x)`, `x` as a VAR_IN_OUT
-/// argument or an output's destination) has none as a wasm parameter: the
-/// parameter becomes `x$arg`, and `x` a local in linear memory, which the
-/// returned statements fill from it at entry. An aggregate input already
-/// arrives as the address of the caller's snapshot.
-fn shadow_address_taken_inputs(
+/// A VAR_INPUT that needs storage of its own has none as a wasm parameter:
+/// the parameter becomes `x$arg`, and `x` a local in linear memory, which
+/// the returned statements fill from it at entry. That is an input whose
+/// address the body takes (`REF(x)`, `x` as a VAR_IN_OUT argument or an
+/// output's destination), and every STRING input: it arrives as the
+/// caller's `(ptr, len)`, and an input is a copy, which a change to the
+/// caller's variable during the call, or an assignment to the input, must
+/// not reach. An aggregate input already arrives as the address of the
+/// caller's snapshot.
+fn shadow_inputs(
     db: &dyn WorkspaceDataBase,
     params: &mut [MirParam],
     address_taken: &FxHashSet<Ident>,
@@ -1238,9 +1242,11 @@ fn shadow_address_taken_inputs(
 ) -> Vec<MirStmt> {
     let mut copies = Vec::new();
     for param in params {
+        let own_storage =
+            matches!(param.ty, MirType::String { .. }) || address_taken.contains(&param.name);
         if !matches!(param.kind, MirParamKind::Input)
             || matches!(param.ty, MirType::Pointer(_))
-            || !address_taken.contains(&param.name)
+            || !own_storage
         {
             continue;
         }
