@@ -373,32 +373,47 @@ impl<'db> Resolver<'db> {
         path_expr: PathExpr<'db>,
         ctx: &mut BodyInferenceResult<'db>,
     ) {
-        for step in path_expr.flatten(db) {
+        let steps = path_expr.flatten(db);
+        for (position, step) in steps.iter().enumerate() {
             let PathExprWalkStep::Index { expr } = step else {
                 continue;
             };
             let PathExprKind::Index(index_expr) = expr.expr(db) else {
                 continue;
             };
-            // The array this bracket indexes, for the compile-time bounds
-            // check below. From the INNER path's recorded type — the walk
-            // typed the steps; subscripts are ours. Chained brackets
-            // (`a[1][0]`) consume dimensions across steps, and the walk
-            // recorded that consumption as Index adjustments.
-            let indexed_array = ctx
-                .type_of_path_expr
-                .get(&index_expr.path)
-                .map(|t| t.normalize(db));
-            let base_dim = match (
-                ctx.adjustments_of_path_expr(index_expr.path),
-                &indexed_array,
-            ) {
-                (Some(adjs), Some(arr_ty)) => {
-                    use crate::hir_ty::body::AdjustmentInfo;
-                    adjs.array_dimensions(arr_ty)
+            // The array this bracket indexes and its first dimension, for
+            // the compile-time bounds check below: the walk recorded them.
+            let indexed = ctx.indexed_arrays.get(expr).copied();
+
+            // A path that ends in a bracket leaving dimensions of a
+            // multi-dimensional array names a part of it, which is no
+            // value: `m[1]` of an `ARRAY[0..1, 0..2]` is not a row, the way
+            // an element of an array of rows is. Only a further bracket
+            // indexes it. Once, on the pass that types the subscripts.
+            if position + 1 == steps.len()
+                && let Some(indexed) = indexed
+                && indexed.is_partial(db)
+                && let Some(last) = index_expr.index.last()
+                && !ctx.type_of_expr.contains_key(last)
+            {
+                ctx.errors.push(
+                    ArrayError::IncompleteSubscript {
+                        expr: *last,
+                        rank: indexed.array.subranges(db).len(),
+                        named: indexed.through,
+                    }
+                    .to_diagnostic(db, ctx.scope.file(db)),
+                );
+                // Reported: what uses it reports nothing more.
+                if let Some(adjustment) = ctx
+                    .path_expr_adjustments
+                    .get_mut(expr)
+                    .and_then(|adjustments| adjustments.last_mut())
+                {
+                    adjustment.target = Type::Never;
                 }
-                _ => 0,
-            };
+            }
+
             for (i, sub) in index_expr.index.iter().enumerate() {
                 // A path expression can be resolved through more than one
                 // entry; the first pass already did the work.
@@ -435,11 +450,12 @@ impl<'db> Resolver<'db> {
                 // deferring to the runtime guard. AFTER the subscript
                 // resolved, so a named CONSTANT folds too; the walk-side
                 // check ran first and could fold only literals.
-                if let Some(Type::Array(arr)) = indexed_array
+                if let Some(indexed) = indexed
                     && let Some(val) = crate::hir_ty::infer::const_eval::const_int(db, *sub, ctx)
                     && let Some((lo, hi)) = {
-                        let dims = crate::hir_ty::infer::const_eval::array_dimensions(db, arr);
-                        dims.get(base_dim + i)
+                        let dims =
+                            crate::hir_ty::infer::const_eval::array_dimensions(db, indexed.array);
+                        dims.get(indexed.first + i)
                             .and_then(|(l, u)| Some(((*l)?, (*u)?)))
                     }
                     && (val < lo || val > hi)
@@ -447,7 +463,7 @@ impl<'db> Resolver<'db> {
                     ctx.errors.push(
                         ArrayError::IndexOutOfBounds {
                             expr: *sub,
-                            dimension: base_dim + i,
+                            dimension: indexed.first + i,
                             index: val,
                             min: lo,
                             max: hi,

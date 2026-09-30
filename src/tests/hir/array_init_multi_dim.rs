@@ -589,6 +589,65 @@ fn partial_rows_accepted(mut with_db: RootDatabase) {
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
 
+/// CORRECT: a bracket of an array whose element is itself an array is one
+/// element, measured against the element's dimensions. Counted as values of
+/// the outer array, `[[1, 2, 3], [4, 5, 6]]` was six elements for two (E0507).
+#[rstest]
+fn nested_brackets_of_an_array_of_rows_accepted(mut with_db: RootDatabase) {
+    let source = r#"
+        TYPE RowT : ARRAY[0..2] OF INT; END_TYPE
+        FUNCTION Test
+            VAR
+                full : ARRAY[0..1] OF RowT := [[1, 2, 3], [4, 5, 6]];
+                short : ARRAY[0..1] OF RowT := [[1], [4]];
+                repeated : ARRAY[0..1] OF RowT := [2([1, 2, 3])];
+                grid : ARRAY[0..1, 0..1] OF RowT := [[[1, 2, 3], [4]], [[7, 8, 9]]];
+            END_VAR
+        END_FUNCTION
+        "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+/// INVALID: an element bracket longer than the element, more elements than
+/// the array has, and more rows repeated than there are. A repetition counted
+/// its values, so `[3([1])]` passed as three cells of six.
+#[rstest]
+fn nested_brackets_overflow_their_own_bounds(mut with_db: RootDatabase) {
+    let source = r#"
+        TYPE RowT : ARRAY[0..2] OF INT; END_TYPE
+        FUNCTION Test
+            VAR
+                long : ARRAY[0..1] OF RowT := [[1, 2, 3, 4], [5]];
+                many : ARRAY[0..1] OF RowT := [[1], [2], [3]];
+                rows : ARRAY[1..2, 1..3] OF INT := [3([1])];
+            END_VAR
+        END_FUNCTION
+        "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0507] Error: invalid array access
+       ,-[ file:///test0.st:5:58 ]
+       |
+     5 |                 long : ARRAY[0..1] OF RowT := [[1, 2, 3, 4], [5]];
+       |                                                          |
+       |                                                          `-- too many elements in array initializer (expected at most 3)
+    ---'
+    [E0507] Error: invalid array access
+       ,-[ file:///test0.st:6:58 ]
+       |
+     6 |                 many : ARRAY[0..1] OF RowT := [[1], [2], [3]];
+       |                                                          ^|^
+       |                                                           `--- too many elements in array initializer (expected at most 2)
+    ---'
+    [E0507] Error: invalid array access
+       ,-[ file:///test0.st:7:53 ]
+       |
+     7 |                 rows : ARRAY[1..2, 1..3] OF INT := [3([1])];
+       |                                                     ^^^|^^
+       |                                                        `---- too many elements in array initializer (expected at most 6)
+    ---'
+    ");
+}
+
 /// CORRECT (fixed): `[2([1, 2, 3])]` is 2 copies of the bracketed row `[1,2,3]` —
 /// valid for a 2x3. Previously it spuriously errored (and was sibling-
 /// dependent) because bracket detection didn't see through the repetition; the

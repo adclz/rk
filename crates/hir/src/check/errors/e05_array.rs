@@ -56,6 +56,13 @@ pub enum ArrayError<'db> {
         ty: Type<'db>,
     },
     ArrayConformandNotSupported(Range),
+    /// A path ending in a subscript that leaves dimensions of a
+    /// multi-dimensional array: `named` of its `rank`, the last one `expr`.
+    IncompleteSubscript {
+        expr: Expr<'db>,
+        rank: usize,
+        named: usize,
+    },
 }
 
 impl<'db> ErrorCode for ArrayError<'db> {
@@ -71,6 +78,7 @@ impl<'db> ErrorCode for ArrayError<'db> {
             Self::IndexNonArrayTypeInitExpr { .. } => "E0508",
             Self::IndexNonArrayTypePathExpr { .. } => "E0508",
             Self::ArrayConformandNotSupported(_) => "E0509",
+            Self::IncompleteSubscript { .. } => "E0510",
         }
     }
 
@@ -86,6 +94,7 @@ impl<'db> ErrorCode for ArrayError<'db> {
             Self::IndexNonArrayTypeInitExpr { .. } => "invalid operation",
             Self::IndexNonArrayTypePathExpr { .. } => "invalid operation",
             Self::ArrayConformandNotSupported(_) => "syntax",
+            Self::IncompleteSubscript { .. } => "invalid array access",
         }
     }
 }
@@ -201,6 +210,22 @@ impl<'db> ToIdeDiagnostic<'db> for ArrayError<'db> {
                 .desc(self)
                 .range(crate::denormalize(db, file, span).unwrap_or_default())
                 .call(),
+            Self::IncompleteSubscript { expr, rank, named } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "this subscript names {named} of the array's {rank} dimensions"
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &expr.get_span(db)).unwrap_or_default())
+                    .call();
+                diag.with_note(
+                    "a multi-dimensional array is indexed in all its dimensions, `m[i, j]` or \
+                     `m[i][j]`; an array of an array type has rows"
+                        .to_string(),
+                );
+                diag
+            }
         }
     }
 }

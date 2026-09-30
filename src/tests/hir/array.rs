@@ -325,6 +325,97 @@ fn invalid_constant_subscript_out_of_bounds(mut with_db: RootDatabase) {
 
 /// In-bounds constants — including both boundaries and negative lower
 /// bounds — are silent, and a non-constant subscript is never judged here.
+/// A constant subscript is checked against the dimension it indexes: a
+/// chained bracket continues a multi-dimensional array, `t[1][2][3]`, or
+/// indexes the element it reached from its first dimension, `r[1][2]` of an
+/// array of rows. Each was checked against another dimension than its own.
+#[rstest]
+fn valid_constant_subscripts_down_a_chain(mut with_db: RootDatabase) {
+    let source = r#"
+        TYPE RowT : ARRAY[0..2] OF INT; END_TYPE
+        TYPE Mat : ARRAY[0..1, 0..2] OF INT; END_TYPE
+        FUNCTION f : INT
+        VAR
+            t : ARRAY[0..1, 0..2, 0..3] OF INT;
+            r : ARRAY[0..1] OF RowT;
+            x : ARRAY[0..1] OF Mat;
+        END_VAR
+            t[1][2][3] := 1;
+            r[1][2] := 2;
+            x[1][0][2] := 3;
+            f := t[1, 2][3] + r[1][2] + x[1][1][2];
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+/// Past a row's own bounds, a constant subscript of the row is refused with
+/// them, the dimension named the row's.
+#[rstest]
+fn invalid_constant_subscript_out_of_a_rows_bounds(mut with_db: RootDatabase) {
+    let source = r#"
+        TYPE RowT : ARRAY[0..2] OF INT; END_TYPE
+        FUNCTION f : INT
+        VAR r : ARRAY[0..1] OF RowT; END_VAR
+            r[1][3] := 2;
+            f := 1;
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0506] Error: invalid array access
+       ,-[ file:///test0.st:5:18 ]
+       |
+     5 |             r[1][3] := 2;
+       |                  |
+       |                  `-- index 3 is out of bounds (the dimension is declared 0..2)
+    ---'
+    ");
+}
+
+/// A path ending in a subscript that leaves dimensions of a multi-dimensional
+/// array is refused (E0510): `m[1]` of an `ARRAY[0..1, 0..2]` was typed as the
+/// whole array, so `h.m[1] := m2` copied a whole matrix from row 1 on, over
+/// what follows it. A further bracket still indexes it.
+#[rstest]
+fn invalid_incomplete_subscript(mut with_db: RootDatabase) {
+    let source = r#"
+        TYPE Holder : STRUCT
+            m : ARRAY[0..1, 0..2] OF INT;
+            guard : ARRAY[0..2] OF INT;
+        END_STRUCT; END_TYPE
+        FUNCTION f : INT
+        VAR
+            h : Holder;
+            m2 : ARRAY[0..1, 0..2] OF INT;
+            row : ARRAY[0..2] OF INT;
+        END_VAR
+            h.m[1] := m2;
+            row := h.m[1];
+            f := h.m[1][2];
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0510] Error: invalid array access
+        ,-[ file:///test0.st:12:17 ]
+        |
+     12 |             h.m[1] := m2;
+        |                 |
+        |                 `-- this subscript names 1 of the array's 2 dimensions
+        |
+        | Note: a multi-dimensional array is indexed in all its dimensions, `m[i, j]` or `m[i][j]`; an array of an array type has rows
+    ----'
+    [E0510] Error: invalid array access
+        ,-[ file:///test0.st:13:24 ]
+        |
+     13 |             row := h.m[1];
+        |                        |
+        |                        `-- this subscript names 1 of the array's 2 dimensions
+        |
+        | Note: a multi-dimensional array is indexed in all its dimensions, `m[i, j]` or `m[i][j]`; an array of an array type has rows
+    ----'
+    ");
+}
+
 #[rstest]
 fn valid_boundary_subscripts_are_silent(mut with_db: RootDatabase) {
     let source = r#"

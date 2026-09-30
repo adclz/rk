@@ -106,6 +106,30 @@ impl<'db> Infer<'db> for PathExpr<'db> {
     }
 }
 
+impl<'db> PathExpr<'db> {
+    /// The array this bracket indexes and the dimensions of it consumed
+    /// ([`IndexedArray`]), as the walk recorded them: in a body, or in an
+    /// initializer (`REF(arr[1])`).
+    ///
+    /// [`IndexedArray`]: crate::hir_ty::body::IndexedArray
+    pub fn indexed_array(
+        &self,
+        db: &'db dyn WorkspaceDataBase,
+    ) -> Option<crate::hir_ty::body::IndexedArray<'db>> {
+        let scope = self.get_scope_id(db);
+        infer_body(db, scope)
+            .indexed_arrays
+            .get(self)
+            .or_else(|| {
+                infer_initialization(db, scope)
+                    .body_infer_result
+                    .indexed_arrays
+                    .get(self)
+            })
+            .copied()
+    }
+}
+
 impl<'db> Infer<'db> for Expr<'db> {
     fn infer(&self, db: &'db dyn WorkspaceDataBase) -> Type<'db> {
         let head = infer_initialization(db, self.get_scope_id(db))
