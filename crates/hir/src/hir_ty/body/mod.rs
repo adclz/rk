@@ -298,6 +298,10 @@ pub struct BodyInferenceResult<'db> {
     // Mapping from path expressions to their adjustment sequences.
     pub path_expr_adjustments: FxHashMap<PathExpr<'db>, Vec<Adjustment<'db>>>,
 
+    /// What each bracket (`a[i]`) indexes, as the walk decided it: the
+    /// bounds check and MIR read it here rather than work it out again.
+    pub indexed_arrays: FxHashMap<PathExpr<'db>, IndexedArray<'db>>,
+
     // Errors encountered during inference
     pub errors: Vec<IdeDiagnostic>,
 
@@ -374,6 +378,7 @@ impl<'db> BodyInferenceResult<'db> {
             variable_of_path_expr: FxHashMap::default(),
             namespace_of_path_expr: FxHashSet::default(),
             path_expr_adjustments: FxHashMap::default(),
+            indexed_arrays: FxHashMap::default(),
             errors: Vec::new(),
             variables_used: FxHashSet::default(),
             usings_used: FxHashSet::default(),
@@ -730,6 +735,28 @@ pub enum Adjust {
     Index,
 }
 
+/// The array a bracket indexes, and the dimensions of it the brackets before
+/// consumed and this one does. A bracket after one that left dimensions of a
+/// multi-dimensional array continues that array, `m[i][j]`; any other
+/// indexes the element it reached from its first dimension, `r[i][j]` of an
+/// array of rows.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, salsa::Update)]
+pub struct IndexedArray<'db> {
+    pub array: crate::hir_def::expressions::spec::Array<'db>,
+    /// The dimensions consumed before this bracket's subscripts.
+    pub first: usize,
+    /// The dimensions consumed once they are.
+    pub through: usize,
+}
+
+impl<'db> IndexedArray<'db> {
+    /// Whether the bracket leaves dimensions of the array to a further one:
+    /// `m[i]` of a 2-D `m` names a part of it, and is no value.
+    pub fn is_partial(&self, db: &'db dyn WorkspaceDataBase) -> bool {
+        self.through < self.array.subranges(db).len()
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Hash, salsa::Update)]
 pub struct Adjustment<'db> {
     pub kind: Adjust,
@@ -763,7 +790,6 @@ pub trait AdjustmentInfo<'db> {
     fn as_reference(&self) -> Option<Type<'db>>;
     fn as_dereference(&self) -> Option<Type<'db>>;
     fn as_index(&self) -> Option<Type<'db>>;
-    fn array_dimensions(&self, array_type: &Type<'db>) -> usize;
 }
 
 impl<'db> AdjustmentInfo<'db> for [Adjustment<'db>] {
@@ -792,13 +818,6 @@ impl<'db> AdjustmentInfo<'db> for [Adjustment<'db>] {
             return Some(adj.target);
         }
         None
-    }
-
-    fn array_dimensions(&self, array_type: &Type<'db>) -> usize {
-        self.iter()
-            .rev()
-            .take_while(|adj| matches!(adj.kind, Adjust::Index) && adj.target.eq(array_type))
-            .count()
     }
 }
 

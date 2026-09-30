@@ -524,6 +524,40 @@ fn a_chain_after_a_comma_group_consumes_the_next_dimension(mut with_db: db::Root
     assert_eq!(result, 77, "all three spellings hit the same corner cell");
 }
 
+/// A bracket after one that reached an element that is itself an array
+/// indexes that element from its first dimension: `r[i][j]` is element `j` of
+/// the row `r[i]`. Counted from the root, such an access asked the row for a
+/// dimension it does not have and always trapped.
+#[rstest]
+fn a_chain_indexes_the_row_an_array_of_rows_holds(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE RowT : ARRAY[0..2] OF DINT; END_TYPE
+        TYPE Row : ARRAY[1..4] OF DINT; END_TYPE
+        TYPE Mat : ARRAY[0..1, 0..2] OF DINT; END_TYPE
+
+        FUNCTION run : DINT
+        VAR
+            r : ARRAY[0..1] OF RowT;
+            g : ARRAY[0..2] OF Row;
+            x : ARRAY[0..1] OF Mat;
+            copy : RowT;
+            i : DINT := 2;
+            j : DINT := 3;
+        END_VAR
+            r[1][2] := 7;
+            copy := r[1];
+            g[i][j] := 5;
+            g[1][4] := 3;
+            x[1][0][2] := 4;
+            x[1][1, 2] := 6;
+            run := copy[2] * 10000 + g[2][3] * 1000 + g[1][4] * 100
+                + x[1][0, 2] * 10 + x[1][1][2];
+        END_FUNCTION
+    "#;
+    let result: i32 = super::run(&mut with_db, source, "run", ());
+    assert_eq!(result, 75346);
+}
+
 /// A 64-bit or unsigned subscript addresses its element: a LINT or ULINT one
 /// made an invalid module, the index check taking 32 bits.
 #[rstest]

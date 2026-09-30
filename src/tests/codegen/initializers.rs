@@ -178,7 +178,7 @@ fn multidim_element_access(mut with_db: db::RootDatabase) {
     assert_eq!(read_first_i32(&plc), 123456, "m[i][j] reads row-major");
 }
 
-/// 3-D access `c[i][j][k]` — verifies `index_dimension` counts arbitrary chain
+/// 3-D access `c[i][j][k]` — verifies a chain continues its array to any
 /// depth and the stride product generalizes past 2-D (2×2×2, flat 1..8).
 #[rstest]
 fn three_dim_element_access(mut with_db: db::RootDatabase) {

@@ -22,7 +22,7 @@ use crate::{
         semantic_index::get_scope,
     },
     hir_ty::{
-        body::{Adjust, Adjustment, AdjustmentInfo, BodyInferenceResult, NullState},
+        body::{Adjust, Adjustment, BodyInferenceResult, IndexedArray, NullState},
         expr_store::{InitExprWalkStep, PathExprWalkStep},
         head::init_inference::InitExprInferenceResult,
         infer::Infer,
@@ -610,16 +610,24 @@ impl<'db> Type<'db> {
             _ => 1,
         };
 
-        for i in 0..index_count {
-            let curr_dimension = ctx
-                .adjustments_of_path_expr(place.current_path)
-                .map(|adjs| adjs.array_dimensions(self))
-                .unwrap_or(0);
+        // Where this bracket starts: where the bracket before it left this
+        // array, `m[i][j]`, or at the first dimension of the array it
+        // reached, `r[i][j]` of an array of rows. Counting the brackets
+        // from the root indexed a row by its container's dimensions.
+        let first = match expr.expr(db) {
+            PathExprKind::Index(index_expr) => ctx
+                .indexed_arrays
+                .get(&index_expr.path)
+                .filter(|inner| inner.is_partial(db))
+                .map_or(0, |inner| inner.through),
+            _ => 0,
+        };
 
-            let dimensions = arr.subranges(db).len() - 1;
-            let array_type = match curr_dimension.cmp(&dimensions) {
-                Ordering::Less if arr.subranges(db).len() > 1 => *self,
-                Ordering::Less | Ordering::Equal => arr.of_type(db).infer(db),
+        let rank = arr.subranges(db).len();
+        for i in 0..index_count {
+            let array_type = match (first + i + 1).cmp(&rank) {
+                Ordering::Less => *self,
+                Ordering::Equal => arr.of_type(db).infer(db),
                 Ordering::Greater => {
                     if report_errors {
                         ctx.errors.push(
@@ -639,6 +647,14 @@ impl<'db> Type<'db> {
                 .or_default()
                 .push(Adjustment::new_index(db, array_type));
         }
+        ctx.indexed_arrays.insert(
+            expr,
+            IndexedArray {
+                array: *arr,
+                first,
+                through: first + index_count,
+            },
+        );
 
         // Use the final adjustment target for the index expression.
         let final_type = ctx

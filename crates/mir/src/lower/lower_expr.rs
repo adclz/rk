@@ -1237,7 +1237,7 @@ impl<'db> ExprLowerCtx<'db> {
             }
             PathExprKind::Index(index_expr) => {
                 let inner = self.lower_this_path(index_expr.path)?;
-                self.lower_index_places(inner, &index_expr)
+                self.lower_index_places(inner, path_expr, &index_expr)
             }
             PathExprKind::Deref(deref_expr) => {
                 let inner = self.lower_this_path(deref_expr.path)?;
@@ -1351,7 +1351,7 @@ impl<'db> ExprLowerCtx<'db> {
 
             PathExprKind::Index(index_expr) => {
                 let inner = self.lower_path_expr_chain(base, index_expr.path)?;
-                self.lower_index_places(inner, &index_expr)
+                self.lower_index_places(inner, path_expr, &index_expr)
             }
 
             PathExprKind::Deref(deref_expr) => {
@@ -1420,12 +1420,14 @@ impl<'db> ExprLowerCtx<'db> {
         )))
     }
 
-    /// Each chained `Index` addresses one dimension: `m[i]` is dimension 0,
-    /// `m[i][j]` dimension 1. Every subscript of one node folds into nested
-    /// places, one bounds check and one stride per dimension.
+    /// A bracket indexes the array HIR recorded for it, from the dimension it
+    /// recorded: `m[i][j]` continues `m` at dimension 1, `r[i][j]` indexes
+    /// the row `r[i]` from its first. Every subscript of one bracket folds
+    /// into nested places, one bounds check and one stride per dimension.
     fn lower_index_places(
         &self,
         mut place: MirPlace,
+        path_expr: hir::hir_def::expressions::expression::PathExpr<'db>,
         index_expr: &hir::hir_def::expressions::expression::IndexExpr<'db>,
     ) -> Result<MirPlace, LowerTypeError> {
         if index_expr.index.is_empty() {
@@ -1433,8 +1435,12 @@ impl<'db> ExprLowerCtx<'db> {
                 "Array index without expression".to_string(),
             ));
         }
-        let array_hir_type = index_expr.path.infer(self.db);
-        let base_dim = self.index_dimension(index_expr.path);
+        let indexed = path_expr.indexed_array(self.db).ok_or_else(|| {
+            LowerTypeError::UnsupportedType(
+                "a subscript HIR did not type reached lowering".to_string(),
+            )
+        })?;
+        let array_hir_type = Type::Array(indexed.array);
         for (k, sub) in index_expr.index.iter().enumerate() {
             let lane = self.expr_to_mir_elementary(*sub).ok();
             // A constant subscript folds, a named CONSTANT's as a literal's:
@@ -1449,7 +1455,7 @@ impl<'db> ExprLowerCtx<'db> {
                 _ => self.lower_expr(*sub)?,
             };
             let (element_type, element_size, lower_bound, dim_size) =
-                self.resolve_array_dim_info(array_hir_type, base_dim + k)?;
+                self.resolve_array_dim_info(array_hir_type, indexed.first + k)?;
             let index = self.checked_index(index, lane, lower_bound, dim_size);
             place = MirPlace::Index {
                 base: Box::new(place),
@@ -1460,14 +1466,6 @@ impl<'db> ExprLowerCtx<'db> {
             };
         }
         Ok(place)
-    }
-
-    fn index_dimension(&self, path: hir::hir_def::expressions::expression::PathExpr<'db>) -> usize {
-        match path.expr(self.db) {
-            // A comma group (`a[i, j]`) consumes one dimension per subscript.
-            PathExprKind::Index(inner) => inner.index.len() + self.index_dimension(inner.path),
-            _ => 0,
-        }
     }
 
     /// `(element_type, byte_stride, lower_bound)` for dimension `dim`,
