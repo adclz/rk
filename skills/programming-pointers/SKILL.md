@@ -92,7 +92,7 @@ p^ := p^ + 1;                // reaches c's own storage
 ```
 
 Returning a reference to the POU's own per-call storage — a `VAR`, `VAR_TEMP` or `VAR_INPUT` of the FUNCTION or METHOD itself — is `E0903`.
-It would not fault: a local whose address is taken lives at a fixed address, so the reference stays readable and quietly observes whatever the next call leaves in that slot.
+It would not fault: a local whose address is taken lives at a fixed address, or in its call's frame when the POU is recursive, so the reference stays readable and quietly observes whatever the next call leaves there.
 Hand out a reference to instance state, or to a `VAR_IN_OUT`, which names storage the caller owns.
 
 ## REF_TO versus VAR_IN_OUT
