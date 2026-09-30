@@ -140,6 +140,31 @@ fn a_declaration_outranks_an_import_wherever_the_using_is_written(mut with_db: d
     );
 }
 
+/// A PRIVATE function of an imported namespace takes no part in the import
+/// when another answers: `F` is `B.F`, the only one callable here, and `H`
+/// the top-level one. The private `A.F` made the call ambiguous (E0205).
+#[rstest]
+fn a_private_function_gives_way_in_an_import(mut with_db: db::RootDatabase) {
+    let source = r#"
+        NAMESPACE A
+            FUNCTION PRIVATE F : INT F := 1; END_FUNCTION
+            FUNCTION PRIVATE H : INT H := 1; END_FUNCTION
+        END_NAMESPACE
+        NAMESPACE B
+            FUNCTION F : INT F := 20; END_FUNCTION
+        END_NAMESPACE
+        FUNCTION H : INT H := 300; END_FUNCTION
+
+        FUNCTION total : INT
+            USING A;
+            USING B;
+            total := F() + H();
+        END_FUNCTION
+    "#;
+    let v: i32 = crate::tests::codegen::run(&mut with_db, source, "total", ());
+    assert_eq!(v, 320);
+}
+
 /// A relative namespace path binds to the NEAREST enclosing match: `Impl`
 /// inside `Lib` (at any depth) is `Lib.Impl`; at global scope it is the
 /// top-level `Impl`. Pinned by value, since both candidates resolve.

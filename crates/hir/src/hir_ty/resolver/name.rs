@@ -182,6 +182,10 @@ pub fn pou_names_res<'db>(
 /// outranked its namespace and the top level, where the same USING written
 /// one level out did not. The top level outranks an import as a namespace
 /// does, so `USING Std.Timers` does not take the workspace's own TON.
+///
+/// An import the caller may call comes before one it may not: a PRIVATE
+/// function of an imported namespace made a visible one ambiguous. Only
+/// when nothing else answers is it the name, for E1005 to refuse.
 #[tracing::instrument(level = "trace", skip_all)]
 pub fn find_in_parent_pous<'db>(
     db: &'db dyn WorkspaceDataBase,
@@ -204,14 +208,19 @@ pub fn find_in_parent_pous<'db>(
         }
     }
 
-    imported(db, name, scope)
+    match imported(db, name, scope, true) {
+        PouResolution::NotFound => imported(db, name, scope, false),
+        found => found,
+    }
 }
 
-/// `name` through the USINGs around `scope`, the nearest level first.
+/// `name` through the USINGs around `scope`, the nearest level first; with
+/// `callable_only`, only a POU `scope` may call.
 fn imported<'db>(
     db: &'db dyn WorkspaceDataBase,
     name: Ident,
     scope: ScopeId<'db>,
+    callable_only: bool,
 ) -> PouResolution<'db> {
     let index = semantic_index(db, scope.file(db));
     for around in index.scope_iterator(db, scope) {
@@ -224,7 +233,11 @@ fn imported<'db>(
                 using.path(db).path(db),
             );
             for ns in namespace_index(db, ns_path).iter() {
-                if let Some(pou) = ns.scope_id(db).def_map(db).local_pous.get(&name) {
+                if let Some(pou) = ns.scope_id(db).def_map(db).local_pous.get(&name)
+                    && !(callable_only
+                        && matches!(pou, Pou::Function(f)
+                            if !crate::hir_ty::resolver::visibility::function_visible_from(db, scope, *f)))
+                {
                     // Deduplicate by POU identity (shared namespaces across files)
                     if !matches.iter().any(|(p, _, _)| p == pou) {
                         matches.push((*pou, ns_path, *using));
