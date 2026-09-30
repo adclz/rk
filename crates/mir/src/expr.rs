@@ -55,6 +55,12 @@ pub enum MirExpr {
         size: u32,
     },
 
+    /// Copy the STRING a call returned into `scratch`, a STRING local of the
+    /// caller, and yield it as `(ptr, len)`. The result is in the callee's
+    /// slot, which a later call to the same callee overwrites before the call
+    /// this is an argument of reads it.
+    StringSnapshot { scratch: Ident, src: Box<MirExpr> },
+
     /// String literal reference.
     StringLiteral {
         /// Index into MirModule::string_literals.
@@ -199,7 +205,9 @@ impl MirExpr {
             }
             MirExpr::BinOp { lhs, rhs, .. } => lhs.has_call() || rhs.has_call(),
             MirExpr::UnaryOp { expr, .. } | MirExpr::Cast { expr, .. } => expr.has_call(),
-            MirExpr::CopyIntoScratch { src, .. } => src.has_call(),
+            MirExpr::CopyIntoScratch { src, .. } | MirExpr::StringSnapshot { src, .. } => {
+                src.has_call()
+            }
         }
     }
 }
@@ -219,7 +227,9 @@ impl MirExpr {
             MirExpr::UnaryOp { expr, .. } | MirExpr::Cast { expr, .. } => {
                 expr.reaches_place_with_call()
             }
-            MirExpr::CopyIntoScratch { src, .. } => src.reaches_place_with_call(),
+            MirExpr::CopyIntoScratch { src, .. } | MirExpr::StringSnapshot { src, .. } => {
+                src.reaches_place_with_call()
+            }
             MirExpr::Constant(_) | MirExpr::StringLiteral { .. } => false,
         }
     }
@@ -239,7 +249,9 @@ impl MirExpr {
             MirExpr::Call(call) => call.any_expr(f),
             MirExpr::BinOp { lhs, rhs, .. } => lhs.any(f) || rhs.any(f),
             MirExpr::UnaryOp { expr, .. } | MirExpr::Cast { expr, .. } => expr.any(f),
-            MirExpr::CopyIntoScratch { src, .. } => src.any(f),
+            MirExpr::CopyIntoScratch { src, .. } | MirExpr::StringSnapshot { src, .. } => {
+                src.any(f)
+            }
             MirExpr::Constant(_) | MirExpr::StringLiteral { .. } => false,
         }
     }
@@ -260,7 +272,9 @@ impl MirExpr {
                 rhs.exprs_mut(f);
             }
             MirExpr::UnaryOp { expr, .. } | MirExpr::Cast { expr, .. } => expr.exprs_mut(f),
-            MirExpr::CopyIntoScratch { src, .. } => src.exprs_mut(f),
+            MirExpr::CopyIntoScratch { src, .. } | MirExpr::StringSnapshot { src, .. } => {
+                src.exprs_mut(f)
+            }
             MirExpr::Constant(_) | MirExpr::StringLiteral { .. } => {}
         }
         f(self);

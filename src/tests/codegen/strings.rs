@@ -27,7 +27,7 @@
 //! | `->VAL`  | pass as `VAR_INPUT STRING` arg                         |
 //! | `->REF`  | pass as `VAR_IN_OUT STRING` arg                        |
 //! | `->RAISE`| use as `__RAISE` payload                               |
-//! | `->NEST` | pass as a STRING arg where the source is itself a STRING-returning call (triggers snapshot dance) |
+//! | `->NEST` | pass as a STRING arg where the source is itself a STRING-returning call (copied first) |
 //!
 //! |        | `=MM` | `=IP` | `=IO` | `->VAL` | `->REF` | `->RAISE` | `->NEST` |
 //! |--------|-------|-------|-------|---------|---------|-----------|----------|
@@ -52,7 +52,7 @@
 //! cell only proves the module VALIDATES — a slot-aliasing or snapshot bug
 //! validates fine (i32 == i32) and returns the wrong value, which is how
 //! `regression_string_param_not_clobbered_by_return_write` was born. The
-//! NEST cells, where the snapshot dance is the whole point, are therefore
+//! NEST cells, where that copy is the whole point, are therefore
 //! also EXECUTED (`*_nest_executes`).
 //!
 //! A combination that regresses to invalid wasm gets `#[ignore = "BROKEN: ..."]`
@@ -427,8 +427,8 @@ END_FUNCTION
 }
 
 /// `RT → →NEST`: a STRING-returning call inside another STRING-arg call
-/// position. Triggers the snapshot-dance path so the inner call's result
-/// survives the outer call's argument evaluation.
+/// position. The inner call's result is copied first, so it survives the
+/// outer call's argument evaluation.
 #[rstest]
 fn rt_nest(mut with_db: db::RootDatabase) {
     let src = full_source(
@@ -709,8 +709,8 @@ END_FUNCTION
 // =============================================================================
 
 /// `RT -> NEST`, executed. Two DIFFERENT producers share one return slot, so
-/// if the snapshot dance fails to copy the first result before the second
-/// producer runs, the concat yields 'twotwo' — and the module still validates.
+/// if the first result is not copied before the second producer runs, the
+/// concat yields 'twotwo' — and the module still validates.
 #[rstest]
 fn rt_nest_executes(mut with_db: db::RootDatabase) {
     let source = full_source(
@@ -1773,10 +1773,14 @@ fn a_string_result_keeps_its_declared_capacity(mut with_db: db::RootDatabase) {
 /// A STRING result passed on as an argument is snapshotted whole: the
 /// snapshot slots were 80 bytes whatever the result's capacity. Two calls of
 /// one function share its result slot, so the first argument lives only in
-/// its snapshot once the second call has run; each argument is checked.
+/// its snapshot once the second call has run; each argument is checked. A
+/// snapshot is as large as the result its callee declares, a method's too.
 #[rstest]
-fn a_long_nested_result_is_snapshotted_whole(mut with_db: db::RootDatabase) {
-    let source = r#"
+#[case::function("Both(Nth(1), Nth(2))")]
+#[case::method("Both(src.Get(1), src.Get(2))")]
+fn a_long_nested_result_is_snapshotted_whole(mut with_db: db::RootDatabase, #[case] call: &str) {
+    let source = format!(
+        r#"
         FUNCTION Nth : STRING[100]
         VAR_INPUT i : INT; END_VAR
             IF i = 1 THEN
@@ -1791,11 +1795,20 @@ fn a_long_nested_result_is_snapshotted_whole(mut with_db: db::RootDatabase) {
                 AND b = 'abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij';
         END_FUNCTION
 
+        CLASS Source
+            METHOD PUBLIC Get : STRING[100]
+            VAR_INPUT i : INT; END_VAR
+                Get := Nth(i);
+            END_METHOD
+        END_CLASS
+
         FUNCTION test : BOOL
-            test := Both(Nth(1), Nth(2));
+        VAR src : Source; END_VAR
+            test := {call};
         END_FUNCTION
-    "#;
-    let result: i32 = super::run(&mut with_db, source, "test", ());
+    "#
+    );
+    let result: i32 = super::run(&mut with_db, &source, "test", ());
     assert_eq!(
         result, 1,
         "both 100-byte arguments, the first one from its snapshot"
@@ -2077,7 +2090,7 @@ fn nested_string_calls_in_every_position(mut with_db: db::RootDatabase) {
 /// the module is lowered, and every literal's offset moves with it. The walk
 /// that moved them missed an ELSIF branch, FOR bounds, an assignment's
 /// subscript and a cast's operand, whose literals read the bytes at their old
-/// offset.
+/// offset; the copy of a nested STRING call's result is a position too.
 #[rstest]
 #[case::elsif_body(
     "IF FALSE THEN s := 'no'; ELSIF TRUE THEN s := 'ab'; END_IF; test := Eq(s, 'ab');"
@@ -2085,6 +2098,7 @@ fn nested_string_calls_in_every_position(mut with_db: db::RootDatabase) {
 #[case::for_bound("s := 'ab'; FOR i := 1 TO Eq(s, 'ab') DO test := test + 1; END_FOR;")]
 #[case::target_subscript("s := 'ab'; arr[Eq(s, 'ab')] := 1; test := arr[1];")]
 #[case::cast_operand("s := 'ab'; d := Eq(s, 'ab'); IF d = 1 THEN test := 1; END_IF;")]
+#[case::nested_call("s := 'abcd'; test := Eq(str_concat(str_concat('a', 'b'), 'cd'), s);")]
 fn a_string_literal_is_read_where_it_sits(mut with_db: db::RootDatabase, #[case] body: &str) {
     let source = format!(
         r#"{PRELUDE}

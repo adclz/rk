@@ -1540,7 +1540,7 @@ fn rewrite_globals_expr(
         MirExpr::Load(place, _) | MirExpr::AddrOf(place) | MirExpr::StringCapacity(place) => {
             rewrite_globals_place(place, globals, missing);
         }
-        MirExpr::CopyIntoScratch { src, .. } => {
+        MirExpr::CopyIntoScratch { src, .. } | MirExpr::StringSnapshot { src, .. } => {
             // The scratch is always a true local; only the source expression may
             // name a global.
             rewrite_globals_expr(src, globals, missing);

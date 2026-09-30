@@ -160,6 +160,59 @@ pub fn for_each_call(stmts: &[MirStmt], f: &mut impl FnMut(&MirCall)) {
     });
 }
 
+/// [`for_each_stmt`], mutably.
+pub fn for_each_stmt_mut(stmts: &mut [MirStmt], f: &mut impl FnMut(&mut MirStmt)) {
+    for stmt in stmts {
+        f(stmt);
+        match stmt {
+            MirStmt::If {
+                then_body,
+                else_ifs,
+                else_body,
+                ..
+            } => {
+                for_each_stmt_mut(then_body, f);
+                for (_, body) in else_ifs {
+                    for_each_stmt_mut(body, f);
+                }
+                if let Some(body) = else_body {
+                    for_each_stmt_mut(body, f);
+                }
+            }
+            MirStmt::Case {
+                arms, else_body, ..
+            } => {
+                for arm in arms {
+                    for_each_stmt_mut(&mut arm.body, f);
+                }
+                if let Some(body) = else_body {
+                    for_each_stmt_mut(body, f);
+                }
+            }
+            MirStmt::For { body, .. }
+            | MirStmt::While { body, .. }
+            | MirStmt::Repeat { body, .. } => for_each_stmt_mut(body, f),
+            _ => {}
+        }
+    }
+}
+
+/// [`for_each_call`], mutably.
+pub fn for_each_call_mut(stmts: &mut [MirStmt], f: &mut impl FnMut(&mut MirCall)) {
+    for stmt in stmts.iter_mut() {
+        stmt.exprs_mut(&mut |expr| {
+            if let MirExpr::Call(call) = expr {
+                f(call);
+            }
+        });
+    }
+    for_each_stmt_mut(stmts, &mut |stmt| {
+        if let MirStmt::Call(call) = stmt {
+            f(call);
+        }
+    });
+}
+
 /// Every function `stmts` call: a call, and an FB body invoked.
 pub(crate) fn callees(stmts: &[MirStmt], out: &mut Vec<Ident>) {
     for_each_call(stmts, &mut |call| out.push(call.callee));

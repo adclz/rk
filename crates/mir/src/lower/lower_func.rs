@@ -18,6 +18,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use crate::{
+    expr::{MirArgKind, MirConstant, MirExpr},
     function::{
         MirFunction, MirLinkage, MirLocal, MirParam, MirParamKind, MirStorage, MirVariableStorage,
     },
@@ -410,6 +411,13 @@ fn lower_function_inner<'db>(
         init_stmts.append(&mut body);
         body = init_stmts;
     }
+    snapshot_string_arguments(
+        db,
+        &mut body,
+        &mut locals,
+        &mut next_local_idx,
+        memory_layout,
+    );
     let body = body;
 
     // Exported when the declaration says so, with `{export}`. A `{test}` is
@@ -626,6 +634,13 @@ fn lower_function_block_inner<'db>(
             init_stmts.append(&mut body);
             body = init_stmts;
         }
+        snapshot_string_arguments(
+            db,
+            &mut body,
+            &mut locals,
+            &mut next_local_idx,
+            memory_layout,
+        );
         let body = body;
 
         // Method symbol: `<FB>#<method>` (`NsA.Counter#inc`), a base's reached
@@ -750,9 +765,16 @@ fn lower_fb_body<'db>(
         iface_call_rewrites,
     )?;
     // VAR_TEMP starts over at every call, from its declared values.
-    let body_stmts = with_temp_inits(db, body_of.variables(db), body_stmts, &string_pool)?;
+    let mut body_stmts = with_temp_inits(db, body_of.variables(db), body_stmts, &string_pool)?;
     append_call_scratch_locals(
         call_scratch,
+        &mut body_locals,
+        &mut next_local_idx,
+        memory_layout,
+    );
+    snapshot_string_arguments(
+        db,
+        &mut body_stmts,
         &mut body_locals,
         &mut next_local_idx,
         memory_layout,
@@ -959,6 +981,13 @@ fn lower_class_inner<'db>(
             init_stmts.append(&mut body);
             body = init_stmts;
         }
+        snapshot_string_arguments(
+            db,
+            &mut body,
+            &mut locals,
+            &mut next_local_idx,
+            memory_layout,
+        );
         let body = body;
 
         // Method symbol: `<NsPath.>Class#Method` (see the FB-method site).
@@ -1056,9 +1085,16 @@ fn lower_program_inner<'db>(
         iface_call_rewrites,
     )?;
     // VAR_TEMP starts over at every scan, from its declared values.
-    let body = with_temp_inits(db, program.variables(db), body, &string_pool)?;
+    let mut body = with_temp_inits(db, program.variables(db), body, &string_pool)?;
     append_call_scratch_locals(
         call_scratch,
+        &mut locals,
+        &mut next_local_idx,
+        memory_layout,
+    );
+    snapshot_string_arguments(
+        db,
+        &mut body,
         &mut locals,
         &mut next_local_idx,
         memory_layout,
@@ -1178,6 +1214,43 @@ pub(crate) fn append_call_scratch_locals(
             });
         }
     }
+}
+
+/// Copy each STRING a call returns and passes by value to another call into
+/// a local of its own ([`MirExpr::StringSnapshot`]). The result sits in its
+/// callee's slot until the call it is passed to copies it at entry, and
+/// before that a later argument may call the callee again, or the call be
+/// the callee's own and zero the slot, `F(F(x))`. One local per such
+/// argument, in the frame when the function has one.
+fn snapshot_string_arguments(
+    db: &dyn WorkspaceDataBase,
+    body: &mut [MirStmt],
+    locals: &mut Vec<MirLocal>,
+    next_local_idx: &mut u32,
+    memory_layout: &mut MirMemoryLayout,
+) {
+    let mut copies = crate::lower::lower_expr::CallScratch::default();
+    crate::stmt::for_each_call_mut(body, &mut |call| {
+        for arg in &mut call.args {
+            let (MirArgKind::ByValue, MirExpr::Call(inner)) = (arg.kind, &arg.value) else {
+                continue;
+            };
+            let MirType::String { capacity } = inner.return_type else {
+                continue;
+            };
+            let scratch = Ident::new(
+                db,
+                compact_str::CompactString::from(format!("$strcopy${}", copies.memory.len())),
+            );
+            copies.memory.push((scratch, MirType::String { capacity }));
+            let src = std::mem::replace(&mut arg.value, MirExpr::Constant(MirConstant::Null));
+            arg.value = MirExpr::StringSnapshot {
+                scratch,
+                src: Box::new(src),
+            };
+        }
+    });
+    append_call_scratch_locals(copies, locals, next_local_idx, memory_layout);
 }
 
 pub fn allocate_local_storage(
@@ -1556,7 +1629,9 @@ fn rebase_this(expr: &mut crate::expr::MirExpr, instance: &crate::expr::MirPlace
             rebase_this(rhs, instance);
         }
         MirExpr::UnaryOp { expr, .. } | MirExpr::Cast { expr, .. } => rebase_this(expr, instance),
-        MirExpr::CopyIntoScratch { src, .. } => rebase_this(src, instance),
+        MirExpr::CopyIntoScratch { src, .. } | MirExpr::StringSnapshot { src, .. } => {
+            rebase_this(src, instance)
+        }
         MirExpr::Call(call) => {
             for arg in &mut call.args {
                 rebase_this(&mut arg.value, instance);
@@ -1934,6 +2009,7 @@ fn is_const_value(e: &crate::expr::MirExpr) -> bool {
         | MirExpr::Call(_)
         | MirExpr::AddrOf(_)
         | MirExpr::StringCapacity(_)
-        | MirExpr::CopyIntoScratch { .. } => false,
+        | MirExpr::CopyIntoScratch { .. }
+        | MirExpr::StringSnapshot { .. } => false,
     }
 }
