@@ -145,6 +145,54 @@ fn nested_multidim_array_initializer(mut with_db: db::RootDatabase) {
     );
 }
 
+/// A short row fills its own row and the next bracket starts the next one:
+/// `[[1, 2], [3, 4, 5]]` into a 2x3 is `1, 2, 0` and `3, 4, 5`. Numbered as one
+/// flat run, every row after a short one shifted back. The same in a
+/// repetition, and a dimension deeper; each padded cell adds 1000000.
+#[rstest]
+fn a_short_row_leaves_the_rest_of_its_row_at_the_default(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION run : DINT
+        VAR
+            m : ARRAY[1..2, 1..3] OF DINT := [[1, 2], [3, 4, 5]];
+            p : ARRAY[1..2, 1..3] OF DINT := [2([1, 2])];
+            t : ARRAY[0..1, 0..1, 0..2] OF DINT := [[[1], [2, 3]], [[4]]];
+        END_VAR
+            run := (m[1, 3] + p[1, 3] + t[0, 0, 1] + t[1, 1, 2]) * 1000000
+                + m[2, 1] * 100000 + m[2, 3] * 10000 + p[2, 1] * 1000
+                + p[2, 2] * 100 + t[0, 1, 0] * 10 + t[1, 0, 0];
+        END_FUNCTION
+    "#;
+    let result: i32 = crate::tests::codegen::run(&mut with_db, source, "run", ());
+    assert_eq!(result, 351224);
+}
+
+/// A bracket of an array whose element is itself an array initializes one
+/// element: `[[1, 2, 3], [4, 5, 6]]` is two rows. Flattened into the outer
+/// array, full rows were refused (E0507) and short ones stored a DINT over a
+/// whole row, an invalid module. Each cell left at its default adds 10000000.
+#[rstest]
+fn a_bracket_initializes_one_row_of_an_array_of_rows(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE RowT : ARRAY[0..2] OF DINT; END_TYPE
+
+        FUNCTION run : DINT
+        VAR
+            full : ARRAY[0..1] OF RowT := [[1, 2, 3], [4, 5, 6]];
+            short : ARRAY[0..1] OF RowT := [[7], [8, 9]];
+            repeated : ARRAY[0..1] OF RowT := [2([1, 2])];
+            grid : ARRAY[0..1, 0..1] OF RowT := [[[1, 2, 3], [4]], [[7, 8, 9]]];
+        END_VAR
+            run := (short[0][1] + repeated[1][2] + grid[1, 1][0] + grid[0, 1][1]) * 10000000
+                + full[1][0] * 1000000 + full[1][2] * 100000 + short[0][0] * 10000
+                + short[1][1] * 1000 + repeated[1][1] * 100 + grid[0, 1][0] * 10
+                + grid[1, 0][1];
+        END_FUNCTION
+    "#;
+    let result: i32 = crate::tests::codegen::run(&mut with_db, source, "run", ());
+    assert_eq!(result, 4679248);
+}
+
 /// Multi-dimensional element ACCESS via chained brackets `m[i][j]`. Both forms
 /// are accepted since the conformance arc: `m[i, j]` is the standard's own
 /// spelling (one subscript list — see

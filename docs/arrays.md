@@ -48,6 +48,9 @@ index         ├─────┼─────┼─────┤
               └─────┴─────┴─────┘
 ```
 
+A bracket inside the brackets is one row, and a short row leaves the rest of it at the default: `[[1, 2], [3, 4, 5]]` fills the rows of `m` with 1, 2, 0 and 3, 4, 5.
+When the element is itself an array, declared through a `TYPE`, a bracket is one element.
+
 More elements than the array holds is `E0507`.
 
 ## Indexing
@@ -57,6 +60,21 @@ A `BOOL`, a `REAL` or a `STRING` cannot index an array (`E0504`).
 
 `grid[2, 3]` and `grid[2][3]` are the same element.
 `grid[2]` alone names a part of `grid`, and is refused (`E0510`).
+
+An array of an array type has rows: each element is a whole array, and a second subscript indexes it.
+
+```iecst
+TYPE Row : ARRAY[1..4] OF DINT; END_TYPE
+
+FUNCTION Demo : DINT
+VAR
+    rows : ARRAY[1..3] OF Row := [[1, 2, 3, 4], [5, 6]];   // one bracket per Row
+    second : Row;
+END_VAR
+    second := rows[2];                  // 5, 6, 0, 0
+    Demo := rows[2][2] + second[1];     // 6 + 5
+END_FUNCTION
+```
 
 A constant subscript outside the bounds is refused at compile time:
 

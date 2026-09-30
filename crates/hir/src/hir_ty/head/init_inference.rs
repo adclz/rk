@@ -427,13 +427,15 @@ impl<'db> InitExprInferenceResult<'db> {
 
         // Produce the authoritative, flattened resolved leaves. This is a pure,
         // type-DIRECTED-by-structure pass (brackets = nesting): it flattens the
-        // initializer into row-major (path, value) leaves for MIR to consume.
-        // Validation lives in the walk above; this never re-validates.
+        // initializer into row-major (path, value) leaves for MIR to consume,
+        // placing each nested bracket as the walk above decided, a row or an
+        // element. Validation lives in the walk; this never re-validates.
         let mut leaves = Vec::new();
         resolve_leaves(
             db,
             expr,
             &self.type_of_init_expr,
+            &ctx.roles,
             &mut Vec::new(),
             &mut leaves,
         );
@@ -454,6 +456,44 @@ impl<'db> InitExprInferenceResult<'db> {
         for step in map {
             let mut child_place = *place;
             self.resolve_step(db, expected, &mut child_place, body_ctx, ctx, step);
+        }
+    }
+
+    /// The values of an array's last dimension, of its element type. When
+    /// the element is itself an array, a bracket is one element: measured
+    /// against the element's own dimensions, in a context of its own, and one
+    /// cell of this array, where a row of it would be all its values.
+    fn resolve_elements(
+        &mut self,
+        db: &'db dyn WorkspaceDataBase,
+        element: Type<'db>,
+        place: &mut InitPlaceBuilder<'db>,
+        body_ctx: &mut BodyInferenceResult<'db>,
+        ctx: &mut InitContext<'db>,
+        values: &'db [InitExprWalkStep],
+    ) {
+        let element_is_array = matches!(element.normalize(db), Type::Array(_));
+        for step in values {
+            let mut child_place = *place;
+            match step {
+                InitExprWalkStep::ArrayInit { expr, .. } if element_is_array => {
+                    let saved_root = ctx.array_root;
+                    let saved_positions = ctx.positions.clone();
+                    let saved_overflow = ctx.overflow_reported.clone();
+                    ctx.reset_for_new_array(Some(element));
+                    child_place.current_init_typ = element;
+
+                    self.resolve_step(db, element, &mut child_place, body_ctx, ctx, step);
+
+                    ctx.array_root = saved_root;
+                    ctx.positions = saved_positions;
+                    ctx.overflow_reported = saved_overflow;
+                    ctx.roles.insert(*expr, BracketRole::Element);
+                    ctx.advance(1);
+                    self.check_bounds(db, *expr, ctx, ctx.current_pos());
+                }
+                _ => self.resolve_step(db, element, &mut child_place, body_ctx, ctx, step),
+            }
         }
     }
 
@@ -483,6 +523,14 @@ impl<'db> InitExprInferenceResult<'db> {
                         if ctx.array_root.is_none() {
                             ctx.array_root = Some(resolved);
                         };
+                        // Where this bracket's values go, for the leaves: a
+                        // row of the array from this dimension down. An
+                        // element's own bracket is recorded by the array
+                        // holding it instead.
+                        if let Some(cells) = Self::cells_from(db, ctx.array_root, ctx.current_dim())
+                        {
+                            ctx.roles.insert(*expr, BracketRole::Row { cells });
+                        }
 
                         let num_dims = array.subranges(db).len();
                         // Multi-dimensional bracket init: an inner bracket opens the next
@@ -534,7 +582,7 @@ impl<'db> InitExprInferenceResult<'db> {
                         } else {
                             // Single-dimensional, innermost dimension, or SizedIndex children.
                             let inner = array.of_type(db).infer(db);
-                            self.resolve_steps(db, inner, place, body_ctx, ctx, values);
+                            self.resolve_elements(db, inner, place, body_ctx, ctx, values);
                         }
                     }
                     _ => {
@@ -557,7 +605,11 @@ impl<'db> InitExprInferenceResult<'db> {
                 // A repetition spends what it repeats, not one slot per count:
                 // `[5(7(1))]` is 35 values, and `ARRAY[1..2, 3..4] :=
                 // [2(10), 2(20)]` is the short form of four.
-                let cells = repeat_count * init_cells(db, values).max(1);
+                let cells = repeat_count
+                    * spent_cells(db, values, ctx.array_root, ctx.current_dim()).max(1);
+                // Whether a bracket it repeats is a row of this array, or an
+                // element that is itself an array.
+                let rows = Self::cells_from(db, ctx.array_root, ctx.current_dim() + 1).is_some();
 
                 // Check bounds before advancing
                 let end_pos = ctx.current_pos() + cells;
@@ -566,7 +618,11 @@ impl<'db> InitExprInferenceResult<'db> {
 
                 // Process nested values at next dimension
                 ctx.push_dimension();
-                self.resolve_steps(db, expected, place, body_ctx, ctx, values);
+                if rows {
+                    self.resolve_steps(db, expected, place, body_ctx, ctx, values);
+                } else {
+                    self.resolve_elements(db, expected, place, body_ctx, ctx, values);
+                }
                 ctx.pop_dimension();
             }
             InitExprWalkStep::FieldInit { expr, values } => {
@@ -731,19 +787,41 @@ impl<'db> InitExprInferenceResult<'db> {
     }
 }
 
-/// How many cells a written-out list of initializer elements fills, following
-/// repetitions and brackets down. `[5(7(1))]` is 35, not 5.
-fn init_cells(db: &dyn WorkspaceDataBase, values: &[InitExprWalkStep]) -> usize {
+/// How many cells of the array being filled a written-out list of values
+/// spends at dimension `dim`, following repetitions down: a value one, a
+/// bracket a whole row while dimensions remain below `dim`, and one element
+/// of an array of arrays otherwise. `[5(7(1))]` is 35, not 5, and `2([1])`
+/// into a 2x3 is two rows, 6: counting its values let `[3([1])]` pass.
+fn spent_cells<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    values: &[InitExprWalkStep],
+    root: Option<Type<'db>>,
+    dim: usize,
+) -> usize {
     values
         .iter()
         .map(|step| match step {
             InitExprWalkStep::SizedIndex { size, values, .. } => {
-                size.with_case.as_u64(db).unwrap_or(1) as usize * init_cells(db, values).max(1)
+                size.with_case.as_u64(db).unwrap_or(1) as usize
+                    * spent_cells(db, values, root, dim).max(1)
             }
-            InitExprWalkStep::ArrayInit { values, .. } => init_cells(db, values).max(1),
+            InitExprWalkStep::ArrayInit { .. } => {
+                InitExprInferenceResult::cells_from(db, root, dim + 1).unwrap_or(1)
+            }
             _ => 1,
         })
         .sum()
+}
+
+/// How the walk placed a nested bracket, which the leaves follow.
+#[derive(Clone, Copy, Debug)]
+enum BracketRole {
+    /// A row of a multi-dimensional array, `cells` long: its values from
+    /// where it starts, and what follows it a whole row later.
+    Row { cells: usize },
+    /// An element that is itself an array: one element of the array holding
+    /// it, its values from its own first cell.
+    Element,
 }
 
 /// Mutable context for tracking position during array init traversal
@@ -756,6 +834,8 @@ struct InitContext<'db> {
     overflow_reported: Vec<bool>,
     /// Seen fields in current struct (for duplicate detection)
     seen_fields: FxHashMap<Ident, InitExpr<'db>>,
+    /// How each nested bracket is placed ([`BracketRole`]).
+    roles: FxHashMap<InitExpr<'db>, BracketRole>,
 }
 
 impl<'db> InitContext<'db> {
@@ -765,6 +845,7 @@ impl<'db> InitContext<'db> {
             array_root,
             overflow_reported: vec![false],
             seen_fields: FxHashMap::default(),
+            roles: FxHashMap::default(),
         }
     }
 
@@ -819,9 +900,10 @@ impl<'db> InitContext<'db> {
     }
 }
 
-// The authoritative, flattened output of an initializer, derived PURELY from
-// the init's bracket structure (brackets = nesting levels). It does no
-// validation — that is the diagnostic walk's job — so it never grows arms for
+// The authoritative, flattened output of an initializer, derived from the
+// init's bracket structure (brackets = nesting levels) and the place the
+// diagnostic walk gave each nested bracket ([`BracketRole`]). It does no
+// validation — that is the walk's job — so it never grows arms for
 // type-mismatch handling. MIR consumes `ResolvedInit` leaves directly instead
 // of re-walking the InitExpr tree.
 
@@ -830,6 +912,7 @@ fn resolve_leaves<'db>(
     db: &'db dyn WorkspaceDataBase,
     init: InitExpr<'db>,
     types: &FxHashMap<InitExpr<'db>, Type<'db>>,
+    roles: &FxHashMap<InitExpr<'db>, BracketRole>,
     path: &mut Vec<InitPathStep>,
     out: &mut Vec<ResolvedInit<'db>>,
 ) {
@@ -857,7 +940,7 @@ fn resolve_leaves<'db>(
                         _ => None,
                     };
                     path.push(InitPathStep::Field(declared.unwrap_or(name.ident(db))));
-                    resolve_leaves(db, *value, types, path, out);
+                    resolve_leaves(db, *value, types, roles, path, out);
                     path.pop();
                 }
             }
@@ -866,7 +949,7 @@ fn resolve_leaves<'db>(
             // A fresh row-major flat index for each array (nested/sub-arrays
             // restart at 0 — MIR offsets each by its own element_size).
             let mut flat = 0u32;
-            resolve_array_into(db, init, types, path, &mut flat, out);
+            resolve_array_into(db, init, types, roles, path, &mut flat, out);
         }
         // StructElement / ArrayIndexedElement only ever appear nested above.
         _ => {}
@@ -878,42 +961,59 @@ fn resolve_array_into<'db>(
     db: &'db dyn WorkspaceDataBase,
     bracket: InitExpr<'db>,
     types: &FxHashMap<InitExpr<'db>, Type<'db>>,
+    roles: &FxHashMap<InitExpr<'db>, BracketRole>,
     path: &mut Vec<InitPathStep>,
     flat: &mut u32,
     out: &mut Vec<ResolvedInit<'db>>,
 ) {
     if let InitExprKind::ArrayInit { values } = bracket.kind(db) {
         for child in &values {
-            array_element(db, *child, types, path, flat, out);
+            array_element(db, *child, types, roles, path, flat, out);
         }
     }
 }
 
-/// One slot of an array at the current flat index: a nested bracket continues
-/// the same flat counter (next dimension), a repetition `x(y)` expands in place,
-/// and a scalar/struct element claims one flat slot.
+/// One slot of an array at the current flat index, as the walk placed it: a
+/// nested bracket is a row, from here and a whole row long however short it
+/// is, or an element that is itself an array, one slot with its own index; a
+/// repetition `x(y)` expands in place, and a scalar/struct element claims one
+/// flat slot.
 fn array_element<'db>(
     db: &'db dyn WorkspaceDataBase,
     elem: InitExpr<'db>,
     types: &FxHashMap<InitExpr<'db>, Type<'db>>,
+    roles: &FxHashMap<InitExpr<'db>, BracketRole>,
     path: &mut Vec<InitPathStep>,
     flat: &mut u32,
     out: &mut Vec<ResolvedInit<'db>>,
 ) {
-    match elem.kind(db) {
-        InitExprKind::ArrayInit { .. } => resolve_array_into(db, elem, types, path, flat, out),
-        InitExprKind::ArrayIndexedElement { size, values } => {
+    match (elem.kind(db), roles.get(&elem)) {
+        (InitExprKind::ArrayInit { .. }, Some(BracketRole::Element)) => {
+            path.push(InitPathStep::ArrayElem(*flat));
+            *flat += 1;
+            resolve_leaves(db, elem, types, roles, path, out);
+            path.pop();
+        }
+        (InitExprKind::ArrayInit { .. }, Some(BracketRole::Row { cells })) => {
+            let start = *flat;
+            resolve_array_into(db, elem, types, roles, path, flat, out);
+            *flat = start + *cells as u32;
+        }
+        (InitExprKind::ArrayInit { .. }, None) => {
+            resolve_array_into(db, elem, types, roles, path, flat, out)
+        }
+        (InitExprKind::ArrayIndexedElement { size, values }, _) => {
             let n = size.with_case.as_u64(db).unwrap_or(0);
             for _ in 0..n {
                 for v in &values {
-                    array_element(db, *v, types, path, flat, out);
+                    array_element(db, *v, types, roles, path, flat, out);
                 }
             }
         }
         _ => {
             path.push(InitPathStep::ArrayElem(*flat));
             *flat += 1;
-            resolve_leaves(db, elem, types, path, out);
+            resolve_leaves(db, elem, types, roles, path, out);
             path.pop();
         }
     }
