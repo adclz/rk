@@ -30,24 +30,36 @@ impl<'db> InitInference<'db> {
         let declared_methods = &implementer.get_scope_id(db).def_map(db).declared_methods;
         let inherited_methods = inherited_methods(db, implementer);
 
-        // FINAL closes a type to extension. The method-level rule was
-        // enforced (E1114) while this one was not, so FINAL on a CLASS or
-        // FUNCTION_BLOCK header meant nothing at all.
-        if let Some(extends) = match implementer {
-            Pou::FunctionBlock(fb) => fb.extends(db),
-            Pou::Class(cl) => cl.extends(db),
-            _ => None,
-        } && let Some(base) = crate::hir_ty::head::inheritance::base_pou(db, implementer)
-            && base.modifier(db).contains(Modifier::FINAL)
-        {
-            self.errors.push(
+        for base in crate::hir_ty::oop::written_bases(db, implementer) {
+            let Some(target) = base.target else {
+                continue;
+            };
+            let site = crate::CallSite::from_scoped(db, &base.spec);
+            // A FUNCTION named as a base is already E0316.
+            let error = if !base.fits() && !matches!(target, Pou::Function(_)) {
+                OopError::WrongBaseKind {
+                    pou: implementer,
+                    base: target,
+                    role: base.role,
+                    site,
+                }
+            // FINAL closes a type to extension. The method-level rule was
+            // enforced (E1114) while this one was not, so FINAL on a CLASS or
+            // FUNCTION_BLOCK header meant nothing at all.
+            } else if base.fits()
+                && base.role == crate::hir_ty::oop::BaseRole::Extends
+                && target.modifier(db).contains(Modifier::FINAL)
+            {
                 OopError::ExtendsFinalPou {
                     derived: implementer,
-                    base,
-                    extends: crate::CallSite::from_scoped(db, extends),
+                    base: target,
+                    extends: site,
                 }
-                .to_diagnostic(db, self.scope.file(db)),
-            );
+            } else {
+                continue;
+            };
+            self.errors
+                .push(error.to_diagnostic(db, self.scope.file(db)));
         }
 
         // IEC 6.6.7: an ABSTRACT method makes its POU incomplete, so the POU

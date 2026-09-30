@@ -178,10 +178,13 @@ fn check_implementations<'db>(
     implemented: Pou<'db>,
     pous: &mut Vec<Pou<'db>>,
 ) {
-    for candidate in pou.get_scope_id(db).inheritors(db).values() {
-        if *candidate == implemented {
-            pous.push(pou);
-            return;
-        }
+    let bases = hir::hir_ty::oop::explicit_bases(db, pou);
+    let implements = bases.extends == Some(implemented)
+        || bases
+            .interfaces
+            .iter()
+            .any(|iface| Pou::Interface(*iface) == implemented);
+    if implements {
+        pous.push(pou);
     }
 }

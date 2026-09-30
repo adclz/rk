@@ -323,11 +323,12 @@ fn is_derived_pou<'db>(
                 return true;
             }
             // In case of SUPER
-            child
-                .get_scope_id(db)
-                .inheritors(db)
-                .values()
-                .any(|p| *p == parent)
+            let bases = crate::hir_ty::oop::explicit_bases(db, child);
+            bases.extends == Some(parent)
+                || bases
+                    .interfaces
+                    .iter()
+                    .any(|iface| crate::hir_def::pous::pou::Pou::Interface(*iface) == parent)
         }
         _ => false, // One or both are not POUs
     }

@@ -6,6 +6,7 @@ pub mod expr_store;
 pub mod head;
 pub mod index_graphs;
 pub mod infer;
+pub mod oop;
 pub mod polymorphism;
 pub mod resolver;
 pub mod ty;

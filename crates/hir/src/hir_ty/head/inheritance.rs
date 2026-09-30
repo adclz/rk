@@ -1,15 +1,12 @@
 use crate::{
     AstId, HasModifiers, HasName, HasVisibility, HirNodeInfo, Modifier, Visibility,
     hir_def::{
-        expressions::{
-            expression::InitExpr,
-            spec::{Spec, SpecKind},
-        },
+        expressions::{expression::InitExpr, spec::Spec},
         interned::identifier::Ident,
         pous::{class::MethodDecl, interface::MethodPrototype, pou::Pou, variable::VariableDecl},
         scope::ScopeId,
     },
-    hir_ty::{infer::Infer, resolver::name::resolve_namespace_access},
+    hir_ty::infer::Infer,
 };
 use db::WorkspaceDataBase;
 use rustc_hash::FxHashMap;
@@ -161,52 +158,15 @@ impl<'db> InheritedMethod<'db> {
     }
 }
 
-/// Try to resolve a Spec to a Pou via SpecKind::Target.
-fn resolve_spec_to_pou<'db>(db: &'db dyn WorkspaceDataBase, spec: &Spec<'db>) -> Option<Pou<'db>> {
-    if let SpecKind::Target(target) = spec.kind(db) {
-        resolve_namespace_access(db, &target.path).found()
-    } else {
-        None
-    }
-}
-
-/// Every POU a POU inherits from DIRECTLY: its `EXTENDS` base (one for an
-/// FB/CLASS, possibly several for an INTERFACE) plus every `IMPLEMENTS`
-/// interface.
+/// Every POU a POU inherits from DIRECTLY: its `EXTENDS` base plus every
+/// interface it implements (an INTERFACE: every interface it extends).
 fn direct_bases<'db>(db: &'db dyn WorkspaceDataBase, pou: Pou<'db>) -> Vec<Pou<'db>> {
-    let mut bases = Vec::new();
-    let mut push = |spec: &Spec<'db>| {
-        if let Some(p) = resolve_spec_to_pou(db, spec) {
-            bases.push(p);
-        }
-    };
-    match pou {
-        Pou::Class(class) => {
-            if let Some(base) = class.extends(db) {
-                push(base);
-            }
-            for iface in class.implements(db) {
-                push(iface);
-            }
-        }
-        Pou::FunctionBlock(fb) => {
-            if let Some(base) = fb.extends(db) {
-                push(base);
-            }
-            for iface in fb.implements(db) {
-                push(iface);
-            }
-        }
-        Pou::Interface(iface) => {
-            if let Some(extends) = iface.extends(db) {
-                for spec in extends {
-                    push(spec);
-                }
-            }
-        }
-        _ => {}
-    }
+    let bases = crate::hir_ty::oop::explicit_bases(db, pou);
     bases
+        .extends
+        .into_iter()
+        .chain(bases.interfaces.iter().map(|iface| Pou::Interface(*iface)))
+        .collect()
 }
 
 /// Every method visible ON `pou` — its own declarations plus everything it
@@ -620,7 +580,7 @@ fn collect_instance_members<'db>(
     }
     visited.push(pou);
 
-    if let Some(base) = base_pou(db, pou) {
+    if let Some(base) = crate::hir_ty::oop::explicit_bases(db, pou).extends {
         collect_instance_members(db, base, out, visited);
     }
 
@@ -639,19 +599,6 @@ fn collect_instance_members<'db>(
             var: *var,
         });
     }
-}
-
-/// The POU a FUNCTION_BLOCK or CLASS directly `EXTENDS`, if any.
-///
-/// The single place `EXTENDS` is followed for base resolution — used by
-/// [`instance_members`] and by consumers that need the base itself (`SUPER()`).
-pub fn base_pou<'db>(db: &'db dyn WorkspaceDataBase, pou: Pou<'db>) -> Option<Pou<'db>> {
-    let spec = match pou {
-        Pou::FunctionBlock(fb) => fb.extends(db)?,
-        Pou::Class(class) => class.extends(db)?,
-        _ => return None,
-    };
-    resolve_spec_to_pou(db, spec)
 }
 
 /// The concrete method an implementer provides for an inherited method NAME —

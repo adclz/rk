@@ -131,7 +131,7 @@ pub(crate) fn instance_copies<'db>(
         if body.first_super_body.is_some()
             && let ScopeKind::Pou(holder) = hir::hir_def::semantic_index::get_scope(db, scope).kind
             && let Some(Pou::FunctionBlock(base)) =
-                hir::hir_ty::head::inheritance::base_pou(db, holder)
+                hir::hir_ty::oop::explicit_bases(db, holder).extends
             && !bodies.contains(&base)
         {
             bodies.push(base);

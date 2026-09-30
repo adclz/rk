@@ -1062,3 +1062,100 @@ END_CLASS
     ----'
     ");
 }
+
+/// A base of the wrong kind is refused where it is written, and is no base:
+/// an FB extending an INTERFACE no longer owes its methods (the E1119 it
+/// used to get). An FB may extend a CLASS; a CLASS may not extend an FB.
+#[rstest]
+fn a_base_of_the_wrong_kind_is_refused(mut with_db: RootDatabase) {
+    let source = r#"
+INTERFACE I
+    METHOD m : INT END_METHOD
+END_INTERFACE
+
+CLASS C
+END_CLASS
+
+FUNCTION_BLOCK F
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK ExtendsInterface EXTENDS I
+END_FUNCTION_BLOCK
+
+CLASS ImplementsClass IMPLEMENTS C
+END_CLASS
+
+INTERFACE ExtendsBlock EXTENDS F
+END_INTERFACE
+
+CLASS ClassExtendsBlock EXTENDS F
+END_CLASS
+
+CLASS ClassImplementsBlock IMPLEMENTS F
+END_CLASS
+
+FUNCTION_BLOCK BlockExtendsClass EXTENDS C
+END_FUNCTION_BLOCK
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1130] Error: base of the wrong kind
+        ,-[ file:///test0.st:12:41 ]
+        |
+      2 | INTERFACE I
+        |           |
+        |           `-- INTERFACE 'I' is declared here
+        |
+     12 | FUNCTION_BLOCK ExtendsInterface EXTENDS I
+        |                                         |
+        |                                         `-- FUNCTION_BLOCK 'ExtendsInterface' cannot extend INTERFACE 'I': a FUNCTION_BLOCK extends FUNCTION_BLOCKs and CLASSes
+        |
+        | Note: an INTERFACE is implemented, with IMPLEMENTS
+    ----'
+    [E1130] Error: base of the wrong kind
+        ,-[ file:///test0.st:15:34 ]
+        |
+      6 | CLASS C
+        |       |
+        |       `-- CLASS 'C' is declared here
+        |
+     15 | CLASS ImplementsClass IMPLEMENTS C
+        |                                  |
+        |                                  `-- CLASS 'ImplementsClass' cannot implement CLASS 'C': IMPLEMENTS names an INTERFACE
+        |
+        | Note: CLASS 'C' is extended, with EXTENDS
+    ----'
+    [E1130] Error: base of the wrong kind
+        ,-[ file:///test0.st:18:32 ]
+        |
+      9 | FUNCTION_BLOCK F
+        |                |
+        |                `-- FUNCTION_BLOCK 'F' is declared here
+        |
+     18 | INTERFACE ExtendsBlock EXTENDS F
+        |                                |
+        |                                `-- INTERFACE 'ExtendsBlock' cannot extend FUNCTION_BLOCK 'F': an INTERFACE extends INTERFACEs
+    ----'
+    [E1130] Error: base of the wrong kind
+        ,-[ file:///test0.st:21:33 ]
+        |
+      9 | FUNCTION_BLOCK F
+        |                |
+        |                `-- FUNCTION_BLOCK 'F' is declared here
+        |
+     21 | CLASS ClassExtendsBlock EXTENDS F
+        |                                 |
+        |                                 `-- CLASS 'ClassExtendsBlock' cannot extend FUNCTION_BLOCK 'F': a CLASS extends CLASSes
+    ----'
+    [E1130] Error: base of the wrong kind
+        ,-[ file:///test0.st:24:39 ]
+        |
+      9 | FUNCTION_BLOCK F
+        |                |
+        |                `-- FUNCTION_BLOCK 'F' is declared here
+        |
+     24 | CLASS ClassImplementsBlock IMPLEMENTS F
+        |                                       |
+        |                                       `-- CLASS 'ClassImplementsBlock' cannot implement FUNCTION_BLOCK 'F': IMPLEMENTS names an INTERFACE
+    ----'
+    ");
+}
