@@ -255,6 +255,12 @@ pub enum OopError<'db> {
         role: crate::hir_ty::oop::BaseRole,
         site: CallSite<'db>,
     },
+    /// `SUPER()` runs the base's body, which a CLASS base does not have: an
+    /// FB may extend one, and reach its methods with `SUPER.m()`.
+    SuperBodyWithoutBaseBody {
+        base: Pou<'db>,
+        call_site: CallSite<'db>,
+    },
     /// `SUPER.m()` names a method with no body to run: an ABSTRACT one, or
     /// a prototype the base takes from an INTERFACE without implementing it.
     SuperCallsAbstract {
@@ -302,6 +308,7 @@ impl<'db> ErrorCode for OopError<'db> {
             Self::SignatureNameMismatch { .. } => "E1128",
             Self::SignatureSectionMismatch { .. } => "E1129",
             Self::WrongBaseKind { .. } => "E1130",
+            Self::SuperBodyWithoutBaseBody { .. } => "E1132",
             Self::SuperCallsAbstract { .. } => "E1133",
             Self::AbstractMethodWithBody { .. } => "E1134",
         }
@@ -340,6 +347,7 @@ impl<'db> ErrorCode for OopError<'db> {
             Self::SignatureNameMismatch { .. } => "method parameter name mismatch",
             Self::SignatureSectionMismatch { .. } => "method parameter section mismatch",
             Self::WrongBaseKind { .. } => "base of the wrong kind",
+            Self::SuperBodyWithoutBaseBody { .. } => "invalid use of SUPER or THIS",
             Self::SuperCallsAbstract { .. } => "invalid use of SUPER or THIS",
             Self::AbstractMethodWithBody { .. } => "inheritance violation",
         }
@@ -1097,6 +1105,26 @@ impl<'db> ToIdeDiagnostic<'db> for OopError<'db> {
                 if let Some(note) = note {
                     diag.with_note(note);
                 }
+                diag
+            }
+            Self::SuperBodyWithoutBaseBody { base, call_site } => {
+                let base_name = base.get_name_with_case(db).text(db).to_string();
+                let mut diag = diag()
+                    .message(format!(
+                        "SUPER() runs the base's body, and CLASS '{base_name}' has none"
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(
+                        crate::denormalize(db, file, &call_site.get_span(db)).unwrap_or_default(),
+                    )
+                    .call();
+                diag.with_related(Related::new(
+                    format!("CLASS '{base_name}' is declared here"),
+                    base.get_scope_id(db).file(db),
+                    base.get_name_span(db),
+                ));
+                diag.with_note("its methods are reached with SUPER.Method()".into());
                 diag
             }
             Self::SuperCallsAbstract { method, call_site } => {

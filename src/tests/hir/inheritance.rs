@@ -1524,6 +1524,38 @@ END_PROGRAM
     ");
 }
 
+/// `SUPER()` runs the base's body, and a CLASS base has none. It used to
+/// pass the check, then stop the build with an internal error.
+#[rstest]
+fn super_body_with_a_class_base_is_refused(mut with_db: RootDatabase) {
+    let source = r#"
+CLASS K
+VAR v : INT := 4; END_VAR
+END_CLASS
+
+FUNCTION_BLOCK Fb EXTENDS K
+VAR_OUTPUT o : INT; END_VAR
+    SUPER();
+    o := v;
+END_FUNCTION_BLOCK
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1132] Error: invalid use of SUPER or THIS
+       ,-[ file:///test0.st:8:5 ]
+       |
+     2 | CLASS K
+       |       |
+       |       `-- CLASS 'K' is declared here
+       |
+     8 |     SUPER();
+       |     ^^|^^
+       |       `---- SUPER() runs the base's body, and CLASS 'K' has none
+       |
+       | Note: its methods are reached with SUPER.Method()
+    ---'
+    ");
+}
+
 /// `SUPER.m()` on an ABSTRACT method has no body to run: it returned 0. An
 /// ABSTRACT method with statements is refused too, since none would run.
 #[rstest]

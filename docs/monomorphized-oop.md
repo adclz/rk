@@ -119,3 +119,5 @@ It goes in a function block body, once, outside any loop:
 - `E1109` in a `METHOD`
 - `E1110` for a second one
 - `E1111` inside a loop
+
+A `CLASS` base has no body, so `SUPER()` in a function block that extends one is `E1132`.

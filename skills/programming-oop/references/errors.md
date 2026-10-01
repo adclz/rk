@@ -24,6 +24,8 @@
 
 `E1108` `SUPER()` not valid in this context.
 
+`E1132` `SUPER()` in a function block that extends a CLASS, which has no body to run.
+
 `E1133` `SUPER.Method()` on an ABSTRACT method, or on one the base takes from an interface without implementing it.
 
 `E1106` `SUPER` not valid in this context.

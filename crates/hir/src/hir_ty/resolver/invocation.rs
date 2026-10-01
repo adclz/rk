@@ -66,7 +66,19 @@ pub fn resolve_invocation<'db>(
                     Pou::FunctionBlock(fb) => {
                         // `SUPER()` executes the BASE FB's body, so the FB must
                         // EXTEND one (mirror the `SUPER.<method>` check, E1107).
-                        if fb.extends(db).is_some() {
+                        // It may extend a CLASS instead, which has methods for
+                        // `SUPER.m()` and no body.
+                        if let Some(base @ Pou::Class(_)) =
+                            crate::hir_ty::oop::explicit_bases(db, pou).extends
+                        {
+                            ctx.errors.push(
+                                OopError::SuperBodyWithoutBaseBody {
+                                    base,
+                                    call_site: CallSite::new(scope, invocation.keyword_id(db)),
+                                }
+                                .to_diagnostic(db, ctx.scope.file(db)),
+                            );
+                        } else if fb.extends(db).is_some() {
                             ctx.type_of_invocation
                                 .insert(invocation, Type::new_pou(db, pou));
                             return Some(pou);
