@@ -55,6 +55,7 @@
 `E1127` Method return type mismatch: a different return type, or one where the base has none.
 `E1128` Method parameter name mismatch: parameters are matched by position, and the name at each position is part of the signature.
 `E1129` Method parameter section mismatch: `VAR_INPUT` in the prototype, `VAR_IN_OUT` or `VAR_OUTPUT` in the implementation; the section decides how the argument is passed.
+`E1131` Method parameter default mismatch: an input defaults differently than in the prototype or base method; a call passes the default of the method it names.
 
 `E1107` `SUPER` used with no EXTENDS clause.
 

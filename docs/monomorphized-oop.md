@@ -88,6 +88,7 @@ END_FUNCTION_BLOCK
 - Base code is compiled again for each derived block that runs it, so the call is known at compile time: an inherited method, and a base method or body reached through `SUPER`, is a copy per derived block.
 - An inherited variable needs no prefix: `SUPER.someVar` is `E0202`.
 - `SUPER.Method()` on an `ABSTRACT` method has no body to run, and is `E1133`.
+- An override or an implementation gives each input the default the base method or the interface gives it (`E1131`): a call passes the default of the method it names.
 - A variable and a method may share a name, as in CODESYS and TwinCAT, and `L0120` warns. Inside the block the name is the variable, `THIS` included; from outside, a `VAR` of that name gives way to the method.
 - Inside a method, its own name is its result, before any member of that name. A method without a return type has no result, and there its name reaches the member.
 

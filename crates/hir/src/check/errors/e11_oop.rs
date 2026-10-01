@@ -255,6 +255,14 @@ pub enum OopError<'db> {
         role: crate::hir_ty::oop::BaseRole,
         site: CallSite<'db>,
     },
+    /// An input's default differs from the base method's. A call passes the
+    /// default of the method it names, so through the base or an INTERFACE
+    /// the implementation's own default never applied.
+    SignatureDefaultMismatch {
+        method: MethodRef<'db>,
+        base_param: VariableDecl<'db>,
+        param: VariableDecl<'db>,
+    },
     /// `SUPER()` runs the base's body, which a CLASS base does not have: an
     /// FB may extend one, and reach its methods with `SUPER.m()`.
     SuperBodyWithoutBaseBody {
@@ -308,6 +316,7 @@ impl<'db> ErrorCode for OopError<'db> {
             Self::SignatureNameMismatch { .. } => "E1128",
             Self::SignatureSectionMismatch { .. } => "E1129",
             Self::WrongBaseKind { .. } => "E1130",
+            Self::SignatureDefaultMismatch { .. } => "E1131",
             Self::SuperBodyWithoutBaseBody { .. } => "E1132",
             Self::SuperCallsAbstract { .. } => "E1133",
             Self::AbstractMethodWithBody { .. } => "E1134",
@@ -347,6 +356,7 @@ impl<'db> ErrorCode for OopError<'db> {
             Self::SignatureNameMismatch { .. } => "method parameter name mismatch",
             Self::SignatureSectionMismatch { .. } => "method parameter section mismatch",
             Self::WrongBaseKind { .. } => "base of the wrong kind",
+            Self::SignatureDefaultMismatch { .. } => "method parameter default mismatch",
             Self::SuperBodyWithoutBaseBody { .. } => "invalid use of SUPER or THIS",
             Self::SuperCallsAbstract { .. } => "invalid use of SUPER or THIS",
             Self::AbstractMethodWithBody { .. } => "inheritance violation",
@@ -1105,6 +1115,39 @@ impl<'db> ToIdeDiagnostic<'db> for OopError<'db> {
                 if let Some(note) = note {
                     diag.with_note(note);
                 }
+                diag
+            }
+            Self::SignatureDefaultMismatch {
+                method,
+                base_param,
+                param,
+            } => {
+                let base = param_counterpart(db, *base_param);
+                let mut diag = diag()
+                    .message(format!(
+                        "input '{}' of method '{}' has a different default than in the {base}",
+                        param.name_with_case(db).text(db),
+                        method.get_name_with_case(db).text(db),
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(
+                        crate::denormalize(db, file, &param.get_name_span(db)).unwrap_or_default(),
+                    )
+                    .call();
+                diag.with_related(Related::new(
+                    format!(
+                        "the {base} declares '{}' here",
+                        base_param.name_with_case(db).text(db),
+                    ),
+                    base_param.get_scope_id(db).file(db),
+                    base_param.get_name_span(db),
+                ));
+                diag.with_note(
+                    "a call passes the default of the method it names, so through the base or \
+                     an INTERFACE this one would not apply"
+                        .into(),
+                );
                 diag
             }
             Self::SuperBodyWithoutBaseBody { base, call_site } => {

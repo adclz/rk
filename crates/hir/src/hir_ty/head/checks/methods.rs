@@ -404,6 +404,33 @@ fn check_signature<'db>(
                 }
                 .to_diagnostic(db, file),
             )
+        } else if var1.is_input(db) && !same_default(db, *var1, *var2) {
+            errors.push(
+                OopError::SignatureDefaultMismatch {
+                    method: m2,
+                    base_param: *var1,
+                    param: *var2,
+                }
+                .to_diagnostic(db, file),
+            )
         }
+    }
+}
+
+/// Whether two inputs default alike: neither has a default, or both fold
+/// to the same integer, or are written the same.
+fn same_default<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    a: VariableDecl<'db>,
+    b: VariableDecl<'db>,
+) -> bool {
+    use crate::hir_ty::{infer::const_eval::spec_value, resolver::func_call::input_default};
+    match (input_default(db, a), input_default(db, b)) {
+        (None, None) => true,
+        (Some(a), Some(b)) => match (spec_value(db, a), spec_value(db, b)) {
+            (Some(a), Some(b)) => a == b,
+            _ => a.as_call_site(db).to_string(db) == b.as_call_site(db).to_string(db),
+        },
+        _ => false,
     }
 }

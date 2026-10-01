@@ -1524,6 +1524,97 @@ END_PROGRAM
     ");
 }
 
+/// A call passes the default of the method it names, so an implementation
+/// or an override keeps the default it is given, none included. Equal
+/// values written differently are the same default.
+#[rstest]
+fn an_input_default_differing_from_the_base_is_refused(mut with_db: RootDatabase) {
+    let source = r#"
+INTERFACE IScale
+    METHOD Scale : INT
+    VAR_INPUT k : INT := 1; END_VAR
+    END_METHOD
+END_INTERFACE
+
+FUNCTION_BLOCK Doubler IMPLEMENTS IScale
+    METHOD PUBLIC Scale : INT
+    VAR_INPUT k : INT := 2; END_VAR
+        Scale := k * 10;
+    END_METHOD
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK Same IMPLEMENTS IScale
+    METHOD PUBLIC Scale : INT
+    VAR_INPUT k : INT := INT#1; END_VAR
+        Scale := k;
+    END_METHOD
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK Base
+    METHOD PUBLIC Hook : INT
+    VAR_INPUT a : INT := 5; END_VAR
+        Hook := a;
+    END_METHOD
+    METHOD PUBLIC Plain : INT
+    VAR_INPUT b : INT; END_VAR
+        Plain := b;
+    END_METHOD
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK Derived EXTENDS Base
+    METHOD PUBLIC OVERRIDE Hook : INT
+    VAR_INPUT a : INT; END_VAR
+        Hook := a;
+    END_METHOD
+    METHOD PUBLIC OVERRIDE Plain : INT
+    VAR_INPUT b : INT := 5; END_VAR
+        Plain := b;
+    END_METHOD
+END_FUNCTION_BLOCK
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1131] Error: method parameter default mismatch
+        ,-[ file:///test0.st:10:15 ]
+        |
+      4 |     VAR_INPUT k : INT := 1; END_VAR
+        |               |
+        |               `-- the interface method declares 'k' here
+        |
+     10 |     VAR_INPUT k : INT := 2; END_VAR
+        |               |
+        |               `-- input 'k' of method 'Scale' has a different default than in the interface method
+        |
+        | Note: a call passes the default of the method it names, so through the base or an INTERFACE this one would not apply
+    ----'
+    [E1131] Error: method parameter default mismatch
+        ,-[ file:///test0.st:35:15 ]
+        |
+     24 |     VAR_INPUT a : INT := 5; END_VAR
+        |               |
+        |               `-- the base method declares 'a' here
+        |
+     35 |     VAR_INPUT a : INT; END_VAR
+        |               |
+        |               `-- input 'a' of method 'Hook' has a different default than in the base method
+        |
+        | Note: a call passes the default of the method it names, so through the base or an INTERFACE this one would not apply
+    ----'
+    [E1131] Error: method parameter default mismatch
+        ,-[ file:///test0.st:39:15 ]
+        |
+     28 |     VAR_INPUT b : INT; END_VAR
+        |               |
+        |               `-- the base method declares 'b' here
+        |
+     39 |     VAR_INPUT b : INT := 5; END_VAR
+        |               |
+        |               `-- input 'b' of method 'Plain' has a different default than in the base method
+        |
+        | Note: a call passes the default of the method it names, so through the base or an INTERFACE this one would not apply
+    ----'
+    ");
+}
+
 /// `SUPER()` runs the base's body, and a CLASS base has none. It used to
 /// pass the check, then stop the build with an internal error.
 #[rstest]
