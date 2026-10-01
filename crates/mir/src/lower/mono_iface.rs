@@ -214,19 +214,25 @@ fn process_body<'db>(
     instances: &mut Vec<IfaceInstance<'db>>,
     out_rewrites: &mut FxHashMap<FuncCall<'db>, Ident>,
 ) {
+    // The body's calls and its local initializers': `x : INT := ident(p)`
+    // reached codegen with no `ident$@Pump`.
     let body = infer_body(db, scope);
-    // Every call resolution recorded, instead of a second walk over the tree.
-    for fc in body.calls.clone() {
-        process_call(
-            db,
-            fc,
-            body,
-            self_pou,
-            subs,
-            by_canonical,
-            instances,
-            out_rewrites,
-        );
+    let inits =
+        &hir::hir_ty::head::init_inference::infer_initialization(db, scope).body_infer_result;
+    for result in [body, inits] {
+        // Every call resolution recorded, instead of a second walk over the tree.
+        for fc in result.calls.clone() {
+            process_call(
+                db,
+                fc,
+                result,
+                self_pou,
+                subs,
+                by_canonical,
+                instances,
+                out_rewrites,
+            );
+        }
     }
 }
 

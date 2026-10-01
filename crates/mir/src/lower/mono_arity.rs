@@ -2,7 +2,8 @@
 //! supplies, so `sum_all` is specialized per arity called (`sum_all$3`) and
 //! the call rewritten to it; inside, the pack is that many ordinary
 //! parameters and `...args+` folds over them. No worklist: a pack can only
-//! be consumed by a fold, so one pass over every body finds every arity.
+//! be consumed by a fold, so one pass over every body and every local
+//! initializer finds every arity.
 //! The arity is HIR's `ParamBinding::Values` on the variadic parameter.
 
 use db::WorkspaceDataBase;
@@ -14,6 +15,7 @@ use hir::hir_def::pous::function::Function;
 use hir::hir_def::pous::pou::Pou;
 use hir::hir_def::scope::ScopeId;
 use hir::hir_ty::body::{ParamBinding, infer_body};
+use hir::hir_ty::head::init_inference::infer_initialization;
 use hir::hir_ty::ty::CallableType;
 
 use super::naming::{mangle_generic_name, mir_function_symbol};
@@ -115,40 +117,45 @@ fn process_body<'db>(
     instances: &mut Vec<ArityInstance<'db>>,
     rewrites: &mut ArityCallRewrites<'db>,
 ) {
+    // The body's calls and its local initializers': `x : INT :=
+    // sum_all(1, 2, 3)` reached codegen with no `sum_all$3`.
     let body = infer_body(db, scope);
-    // Every call resolution recorded, instead of a second walk over the tree.
-    for fc in body.calls.clone() {
-        let Some(record) = body.resolved_calls.get(&fc) else {
-            continue;
-        };
-        let CallableType::Function(f) = record.callable else {
-            continue;
-        };
-        // The pack's own binding is the argument count: resolution put every
-        // value it collected there, in call order.
-        let Some(arity) = record.params.iter().find_map(|(var, binding)| {
-            if !var.variadic(db) {
-                return None;
-            }
-            match binding {
-                ParamBinding::Values(vs) => Some(vs.len()),
-                // An empty pack is E0813; nothing to specialize.
-                _ => None,
-            }
-        }) else {
-            continue;
-        };
+    let inits = &infer_initialization(db, scope).body_infer_result;
+    for result in [body, inits] {
+        // Every call resolution recorded, instead of a second walk over the tree.
+        for fc in result.calls.clone() {
+            let Some(record) = result.resolved_calls.get(&fc) else {
+                continue;
+            };
+            let CallableType::Function(f) = record.callable else {
+                continue;
+            };
+            // The pack's own binding is the argument count: resolution put
+            // every value it collected there, in call order.
+            let Some(arity) = record.params.iter().find_map(|(var, binding)| {
+                if !var.variadic(db) {
+                    return None;
+                }
+                match binding {
+                    ParamBinding::Values(vs) => Some(vs.len()),
+                    // An empty pack is E0813; nothing to specialize.
+                    _ => None,
+                }
+            }) else {
+                continue;
+            };
 
-        let base = mir_function_symbol(db, f);
-        by_canonical.entry((base, arity)).or_insert_with(|| {
-            let name = mangle_generic_name(db, base, &[&arity.to_string()]);
-            instances.push(ArityInstance {
-                func: f,
-                arity,
-                mangled_name: name,
+            let base = mir_function_symbol(db, f);
+            by_canonical.entry((base, arity)).or_insert_with(|| {
+                let name = mangle_generic_name(db, base, &[&arity.to_string()]);
+                instances.push(ArityInstance {
+                    func: f,
+                    arity,
+                    mangled_name: name,
+                });
+                name
             });
-            name
-        });
-        rewrites.insert(fc, arity);
+            rewrites.insert(fc, arity);
+        }
     }
 }

@@ -145,6 +145,55 @@ fn nested_multidim_array_initializer(mut with_db: db::RootDatabase) {
     );
 }
 
+/// A call in a local initializer is specialized like one in a body: a
+/// variadic one at its argument count, in a FUNCTION and in a METHOD, and one
+/// taking an interface at its implementer. Only bodies were scanned, and the
+/// call reached codegen naming a function no specialization had made.
+#[rstest]
+fn a_specialized_call_in_a_local_initializer_runs(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION sum_all : DINT
+        VAR_INPUT args : DINT...; END_VAR
+            sum_all := ...args+;
+        END_FUNCTION
+
+        INTERFACE IDev
+            METHOD Id : DINT END_METHOD
+        END_INTERFACE
+
+        FUNCTION_BLOCK Pump IMPLEMENTS IDev
+            METHOD PUBLIC Id : DINT
+                Id := 7;
+            END_METHOD
+        END_FUNCTION_BLOCK
+
+        FUNCTION ident : DINT
+        VAR_IN_OUT d : IDev; END_VAR
+            ident := d.Id();
+        END_FUNCTION
+
+        FUNCTION_BLOCK Holder
+            METHOD PUBLIC Get : DINT
+            VAR x : DINT := sum_all(2, 3); END_VAR
+                Get := x;
+            END_METHOD
+        END_FUNCTION_BLOCK
+
+        FUNCTION through : DINT
+        VAR_IN_OUT p : Pump; END_VAR
+        VAR x : DINT := ident(p); END_VAR
+            through := x;
+        END_FUNCTION
+
+        FUNCTION run : DINT
+        VAR x : DINT := sum_all(1, 2, 3); h : Holder; p : Pump; END_VAR
+            run := x + h.Get() * 10 + through(p) * 100;
+        END_FUNCTION
+    "#;
+    let result: i32 = crate::tests::codegen::run(&mut with_db, source, "run", ());
+    assert_eq!(result, 756, "6 + 5 * 10 + 7 * 100");
+}
+
 /// A short row fills its own row and the next bracket starts the next one:
 /// `[[1, 2], [3, 4, 5]]` into a 2x3 is `1, 2, 0` and `3, 4, 5`. Numbered as one
 /// flat run, every row after a short one shifted back. The same in a
