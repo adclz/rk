@@ -2802,7 +2802,7 @@ impl<'db> ExprLowerCtx<'db> {
             body.case_label_value.get(&label)
         {
             return Ok(if wide {
-                MirConstant::I64(*value)
+                MirConstant::I64(*value as i64)
             } else {
                 MirConstant::I32(*value as i32)
             });
@@ -2855,8 +2855,9 @@ impl<'db> ExprLowerCtx<'db> {
         ty: &MirType,
     ) -> Result<MirExpr, LowerTypeError> {
         use hir::hir_ty::infer::const_eval;
-        let mut lowered = if let Some(v) = const_eval::spec_bound(self.db, value) {
-            let folded = MirExpr::Constant(crate::expr::MirConstant::I64(v));
+        let mut lowered = if let Some(v) = const_eval::spec_value(self.db, value) {
+            // A ULINT above `i64::MAX` as its bit pattern.
+            let folded = MirExpr::Constant(crate::expr::MirConstant::I64(v as i64));
             // Every integer-shaped MirType has a scalar lane; subranges and enums
             // store as their base.
             let to = match ty {

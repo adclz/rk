@@ -38,7 +38,7 @@ pub enum ArrayError<'db> {
     IndexOutOfBounds {
         expr: Expr<'db>,
         dimension: usize,
-        index: i64,
+        index: i128,
         min: i64,
         max: i64,
     },
@@ -123,7 +123,9 @@ impl<'db> ToIdeDiagnostic<'db> for ArrayError<'db> {
                 upper,
                 upper_expr,
             } => diag()
-                .message("upper bound value must be greater than lower bound value".to_string())
+                .message(format!(
+                    "the upper bound {upper} is below the lower bound {lower}"
+                ))
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
                 .range(crate::denormalize(db, file, &upper_expr.get_span(db)).unwrap_or_default())

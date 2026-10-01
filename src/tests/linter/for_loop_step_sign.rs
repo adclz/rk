@@ -172,3 +172,31 @@ fn constant_bounds_are_folded(mut with_db: RootDatabase) {
     ---'
     ");
 }
+
+// The step folds at its type, as the counter adds it: `K + 1` on a SINT
+// K = 127 is -128, so this ascending range never runs.
+#[rstest]
+fn step_folds_at_its_type(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION test : INT
+        VAR CONSTANT K : SINT := 127; END_VAR
+        VAR i : DINT; END_VAR
+            FOR i := 0 TO 1000 BY K + 1 DO
+                test := 1;
+            END_FOR;
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "for-loop-step-sign"), @r"
+    [L0110] Warning: FOR loop step sign mismatch
+       ,-[ file:///test0.st:5:13 ]
+       |
+     5 | ,->             FOR i := 0 TO 1000 BY K + 1 DO
+       : :
+     7 | |->             END_FOR;
+       | |
+       | `-------------------------- FOR loop step direction mismatches bounds direction
+       |
+       |     Note: lint rule: for-loop-step-sign
+    ---'
+    ");
+}

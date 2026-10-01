@@ -909,6 +909,27 @@ impl Integer {
             IntegerKind::Signed => text.parse(),
         }
     }
+
+    /// The number written, exactly: a decimal literal with its sign, a radix
+    /// literal as the unsigned number its digits spell. Every integer type's
+    /// values fit, a ULINT's above `i64::MAX` too, which [`Self::as_i64`]
+    /// refuses.
+    #[salsa::tracked]
+    pub fn as_i128(self, db: &dyn WorkspaceDataBase) -> Result<i128, std::num::ParseIntError> {
+        let text = strip_underscores(self.ident(db).text(db));
+        match self.kind(db) {
+            IntegerKind::Binary => {
+                u64::from_str_radix(text.trim_start_matches("2#"), 2).map(i128::from)
+            }
+            IntegerKind::Octal => {
+                u64::from_str_radix(text.trim_start_matches("8#"), 8).map(i128::from)
+            }
+            IntegerKind::Hex => {
+                u64::from_str_radix(text.trim_start_matches("16#"), 16).map(i128::from)
+            }
+            IntegerKind::Signed => text.parse(),
+        }
+    }
 }
 
 /// Decode a STRING literal to the bytes it denotes.

@@ -29,6 +29,9 @@ i := 32767;  // an INT
 i := i + 1;  // <-- i is now -32768
 ```
 
+Arithmetic on constants wraps the same way wherever it is written: in an initializer, a `CASE` label or an array bound.
+`x : DINT := 200 * 200` multiplies two `INT`s and gives -25536; write `DINT#200 * 200` to compute in `DINT`.
+
 A float never fails: an impossible result is a value you can test.
 
 - The square root of a negative number is NaN, and `IS_NAN` tells you.

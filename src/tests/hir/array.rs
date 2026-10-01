@@ -77,7 +77,7 @@ fn upper_bound_below_lower_bound_is_rejected(mut with_db: RootDatabase) {
        |
      3 |             List: ARRAY[0..-10] OF INT;
        |                            ^|^
-       |                             `--- upper bound value must be greater than lower bound value
+       |                             `--- the upper bound -10 is below the lower bound 0
     ---'
     ");
 }
@@ -96,7 +96,7 @@ fn inferior_upper_bound_in_array(mut with_db: RootDatabase) {
        |
      3 |             List: ARRAY[10..1] OF INT;
        |                             |
-       |                             `-- upper bound value must be greater than lower bound value
+       |                             `-- the upper bound 1 is below the lower bound 10
     ---'
     ");
 }

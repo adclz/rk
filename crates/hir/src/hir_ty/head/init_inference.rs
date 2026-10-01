@@ -253,7 +253,7 @@ impl<'db> InitInference<'db> {
                 },
             };
             for sub in subscripts {
-                if crate::hir_ty::infer::const_eval::spec_bound(db, sub).is_some() {
+                if crate::hir_ty::infer::const_eval::spec_value(db, sub).is_some() {
                     continue;
                 }
                 let part =

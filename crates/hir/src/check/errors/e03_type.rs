@@ -74,6 +74,10 @@ pub enum TypeError<'db> {
     StringLengthNotConstant {
         length: Expr<'db>,
     },
+    StringLengthNegative {
+        length: Expr<'db>,
+        value: i64,
+    },
     FunctionAsType {
         expr: Spec<'db>,
         ty: Type<'db>,
@@ -183,6 +187,7 @@ impl<'db> ErrorCode for TypeError<'db> {
             Self::UnsupportedOperator { .. } => "E0305",
             Self::InferLiteralError { err, .. } => err.code(),
             Self::StringLengthNotConstant { .. } => "E0315",
+            Self::StringLengthNegative { .. } => "E0320",
             Self::FunctionAsType { .. } => "E0316",
             Self::DirectType { .. } => "E0317",
             Self::AssignCallableType { .. } => "E0318",
@@ -200,6 +205,7 @@ impl<'db> ErrorCode for TypeError<'db> {
             Self::UnsupportedOperator { .. } => "type mismatch",
             Self::InferLiteralError { .. } => "invalid literal",
             Self::StringLengthNotConstant { .. } => "length is not constant",
+            Self::StringLengthNegative { .. } => "length is negative",
             Self::FunctionAsType { .. } => "invalid type",
             Self::DirectType { .. } => "semantic violation",
             Self::AssignCallableType { .. } => "semantic violation",
@@ -379,6 +385,14 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
             }
             Self::StringLengthNotConstant { length } => diag()
                 .message("a STRING length must be known at compile time".to_string())
+                .severity(DiagnosticSeverity::ERROR)
+                .desc(self)
+                .range(crate::denormalize(db, file, &length.get_span(db)).unwrap_or_default())
+                .call(),
+            Self::StringLengthNegative { length, value } => diag()
+                .message(format!(
+                    "a STRING length cannot be negative, and this one is {value}"
+                ))
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
                 .range(crate::denormalize(db, file, &length.get_span(db)).unwrap_or_default())

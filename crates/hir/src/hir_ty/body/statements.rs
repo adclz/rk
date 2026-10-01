@@ -61,6 +61,8 @@ fn check_case_label_constant<'db>(
     // denotes a lexicographic set the compiler has no representation for, and
     // ordering is the whole point of a range.
     allow_non_integer: bool,
+    // The selector's type: the value is recorded as the selector holds it.
+    selector: Type<'db>,
     ctx: &mut BodyInferenceResult<'db>,
 ) {
     // An enum label's value is its variant's ordinal, which lowering reads
@@ -91,6 +93,7 @@ fn check_case_label_constant<'db>(
     }
     match crate::hir_ty::infer::const_eval::const_int(db, label, ctx) {
         Some(value) => {
+            let value = crate::hir_ty::infer::const_eval::held_as(db, value, selector);
             ctx.case_label_value
                 .insert(label, CaseLabelValue::Int(value));
         }
@@ -642,8 +645,11 @@ impl<'db> StmtsResolverCtx<'db> {
 
                         // The step's SIGN picks the exit comparison at compile
                         // time, so the step must fold — and to a nonzero
-                        // value, since BY 0 never advances the counter.
-                        match crate::hir_ty::infer::const_eval::const_int(db, *step, ctx) {
+                        // value, since BY 0 never advances the counter. It is
+                        // the value the counter adds.
+                        match crate::hir_ty::infer::const_eval::const_int(db, *step, ctx)
+                            .map(|v| crate::hir_ty::infer::const_eval::held_as(db, v, control_typ))
+                        {
                             Some(0) => ctx.errors.push(
                                 crate::check::errors::e12_control_flow::ControlFlowError::ForStepInvalid {
                                     step: CallSite::from_scoped(db, step),
@@ -652,8 +658,9 @@ impl<'db> StmtsResolverCtx<'db> {
                                 }
                                 .to_diagnostic(db, ctx.scope.file(db)),
                             ),
+                            // The counter's 64 bits, as lowering emits them.
                             Some(v) => {
-                                ctx.for_step_value.insert(*step, v);
+                                ctx.for_step_value.insert(*step, v as i64);
                             }
                             None => {
                                 // Point the fix at the declaration only when
@@ -694,10 +701,12 @@ impl<'db> StmtsResolverCtx<'db> {
                     // Check for mismatched step sign. `const_int`, not a
                     // literal match: a CONSTANT bound or a folding expression
                     // walks the wrong way just as surely.
-                    if let (Some(start_val), Some(end_val)) = (
-                        crate::hir_ty::infer::const_eval::const_int(db, *start, ctx),
-                        crate::hir_ty::infer::const_eval::const_int(db, *end, ctx),
-                    ) {
+                    let bound = |bound: Expr<'db>, ctx: &BodyInferenceResult<'db>| {
+                        crate::hir_ty::infer::const_eval::const_int(db, bound, ctx)
+                            .map(|v| crate::hir_ty::infer::const_eval::held_as(db, v, control_typ))
+                    };
+                    if let (Some(start_val), Some(end_val)) = (bound(*start, ctx), bound(*end, ctx))
+                    {
                         let step_val = step
                             .as_ref()
                             .and_then(|s| ctx.for_step_value.get(s).copied())
@@ -763,7 +772,7 @@ impl<'db> StmtsResolverCtx<'db> {
                             match case {
                                 CaseKind::Expression(expr) => {
                                     self.infer_and_check_expr(db, &mut infer, *expr, ctx);
-                                    check_case_label_constant(db, *expr, true, ctx);
+                                    check_case_label_constant(db, *expr, true, condition_typ, ctx);
 
                                     if let Err(err) =
                                         infer.coerce_type_with_expr(db, condition_typ, *expr, ctx)
@@ -778,8 +787,20 @@ impl<'db> StmtsResolverCtx<'db> {
                                 CaseKind::Subrange { lower, upper } => {
                                     self.infer_and_check_expr(db, &mut infer, *lower, ctx);
                                     self.infer_and_check_expr(db, &mut infer, *upper, ctx);
-                                    check_case_label_constant(db, *lower, false, ctx);
-                                    check_case_label_constant(db, *upper, false, ctx);
+                                    check_case_label_constant(
+                                        db,
+                                        *lower,
+                                        false,
+                                        condition_typ,
+                                        ctx,
+                                    );
+                                    check_case_label_constant(
+                                        db,
+                                        *upper,
+                                        false,
+                                        condition_typ,
+                                        ctx,
+                                    );
 
                                     if let Err(err) =
                                         infer.coerce_type_with_expr(db, condition_typ, *lower, ctx)

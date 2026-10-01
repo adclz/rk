@@ -458,7 +458,7 @@ impl<'db> Resolver<'db> {
                         dims.get(indexed.first + i)
                             .and_then(|(l, u)| Some(((*l)?, (*u)?)))
                     }
-                    && (val < lo || val > hi)
+                    && (val < i128::from(lo) || val > i128::from(hi))
                 {
                     ctx.errors.push(
                         ArrayError::IndexOutOfBounds {

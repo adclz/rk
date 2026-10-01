@@ -6,6 +6,7 @@ pub mod bit_access;
 pub mod call_graph;
 pub mod case;
 pub mod config;
+pub mod constant_folding;
 pub mod direct_variables;
 pub mod duplicates;
 pub mod enums;

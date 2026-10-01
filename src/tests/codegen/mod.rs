@@ -5,6 +5,7 @@ mod aggregate_returns;
 mod arrays;
 mod bit_access;
 mod classes;
+mod constant_folding;
 mod control_flow;
 mod debug_functions;
 mod debug_lines;
