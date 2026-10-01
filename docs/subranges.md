@@ -9,6 +9,7 @@ END_TYPE
 ```
 
 The base must be an integer type (`E0701`), and both bounds must be constants (`E0703`).
+The upper bound is not below the lower one (`E0705`).
 A variable can also be declared with one directly: `level : UINT(0..10);`.
 Without an initializer, it starts at the lower bound.
 
