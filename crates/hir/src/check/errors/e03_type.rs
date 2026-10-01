@@ -117,6 +117,11 @@ pub enum InferLiteralError {
     NegativeUnsigned {
         type_name: &'static str,
     },
+    /// A REAL or LREAL literal past the type's largest magnitude: it parsed
+    /// to infinity, which no literal means.
+    FloatOutOfRange {
+        type_name: &'static str,
+    },
 
     Invalid_BOOL_Literal,
     Invalid_UNSIGNED_8_BITS_Literal,
@@ -475,7 +480,10 @@ impl InferLiteralError {
     pub fn code(&self) -> &'static str {
         use InferLiteralError::*;
         match self {
-            OutOfRange { .. } | DurationOverflow | DurationOutOfRange { .. } => "E0306",
+            OutOfRange { .. }
+            | FloatOutOfRange { .. }
+            | DurationOverflow
+            | DurationOutOfRange { .. } => "E0306",
             NegativeUnsigned { .. } => "E0307",
             TypeMismatch(_)
             | Invalid_BOOL_Literal
@@ -518,6 +526,10 @@ impl InferLiteralError {
                 format!("{type_name} holds {min} to {max}")
             }
             DurationOverflow => return None,
+            FloatOutOfRange { type_name } => match *type_name {
+                "REAL" => "REAL holds magnitudes up to about 3.4E38".to_string(),
+                _ => format!("{type_name} holds magnitudes up to about 1.8E308"),
+            },
             NegativeUnsigned { type_name } => match signed_twin(type_name) {
                 Some(t) => format!("{type_name} is unsigned; use {t}, or drop the sign"),
                 None => format!("{type_name} is unsigned; drop the sign"),
@@ -592,7 +604,8 @@ impl std::fmt::Display for InferLiteralError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let msg = match self {
             InferLiteralError::TypeMismatch(st) => return f.write_str(st),
-            InferLiteralError::OutOfRange { type_name } => {
+            InferLiteralError::OutOfRange { type_name }
+            | InferLiteralError::FloatOutOfRange { type_name } => {
                 return write!(f, "the value does not fit in {type_name}");
             }
             InferLiteralError::NegativeUnsigned { type_name } => {

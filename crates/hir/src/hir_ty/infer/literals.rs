@@ -38,9 +38,33 @@ impl<'db> Elementary {
                     .map(|_| ())
                     .map_err(InferLiteralError::Invalid_CHAR_Length)
             }
+            // A typed number is checked against its own type, as an untyped
+            // one is against its target: `SINT#300` is no SINT.
+            Elementary::SInt(i) => typed_integer(db, *i, ElementarySpec::SInt),
+            Elementary::Int(i) => typed_integer(db, *i, ElementarySpec::Int),
+            Elementary::DInt(i) => typed_integer(db, *i, ElementarySpec::DInt),
+            Elementary::LInt(i) => typed_integer(db, *i, ElementarySpec::LInt),
+            Elementary::USInt(i) => typed_integer(db, *i, ElementarySpec::USInt),
+            Elementary::UInt(i) => typed_integer(db, *i, ElementarySpec::UInt),
+            Elementary::UDInt(i) => typed_integer(db, *i, ElementarySpec::UDInt),
+            Elementary::ULInt(i) => typed_integer(db, *i, ElementarySpec::ULInt),
+            Elementary::Byte(i) => typed_integer(db, *i, ElementarySpec::Byte),
+            Elementary::Word(i) => typed_integer(db, *i, ElementarySpec::Word),
+            Elementary::DWord(i) => typed_integer(db, *i, ElementarySpec::DWord),
+            Elementary::LWord(i) => typed_integer(db, *i, ElementarySpec::LWord),
+            Elementary::Real(r) => check_f32(db, &InferType::Float(*r)).map(|_| ()),
+            Elementary::LReal(r) => check_f64(db, &InferType::Float(*r)).map(|_| ()),
             _ => Ok(()),
         }
     }
+}
+
+fn typed_integer(
+    db: &dyn WorkspaceDataBase,
+    integer: Integer,
+    typ: ElementarySpec,
+) -> Result<(), InferLiteralError> {
+    InferType::Integer(integer).check_as(db, typ).map(|_| ())
 }
 
 impl<'db> InferType {
@@ -56,10 +80,10 @@ impl<'db> InferType {
             ElementarySpec::Bool | ElementarySpec::REDGEBool | ElementarySpec::FEDGEBool => {
                 check_bool(db, self)
             }
-            ElementarySpec::Byte => check_u8(db, self),
-            ElementarySpec::Word => check_u16(db, self),
-            ElementarySpec::DWord => check_u32(db, self),
-            ElementarySpec::LWord => check_u64(db, self),
+            ElementarySpec::Byte => bit_string(check_u8(db, self), "BYTE"),
+            ElementarySpec::Word => bit_string(check_u16(db, self), "WORD"),
+            ElementarySpec::DWord => bit_string(check_u32(db, self), "DWORD"),
+            ElementarySpec::LWord => bit_string(check_u64(db, self), "LWORD"),
             ElementarySpec::USInt => check_u8(db, self),
             ElementarySpec::UInt => check_u16(db, self),
             ElementarySpec::UDInt => check_u32(db, self),
@@ -76,6 +100,21 @@ impl<'db> InferType {
             ))),
         }
     }
+}
+
+/// A bit string is checked as the unsigned integer of its width, and named
+/// as itself in what is wrong with the literal.
+fn bit_string<'db>(
+    checked: Result<Type<'db>, InferLiteralError>,
+    type_name: &'static str,
+) -> Result<Type<'db>, InferLiteralError> {
+    checked.map_err(|err| match err {
+        InferLiteralError::OutOfRange { .. } => InferLiteralError::OutOfRange { type_name },
+        InferLiteralError::NegativeUnsigned { .. } => {
+            InferLiteralError::NegativeUnsigned { type_name }
+        }
+        err => err,
+    })
 }
 
 /// A bare string literal is a STRING, and a CHAR wherever the slot holding it
@@ -226,10 +265,12 @@ fn check_f32<'db>(
     value: &InferType,
 ) -> Result<Type<'db>, InferLiteralError> {
     match value {
-        InferType::Float(real) => real
-            .as_f32(db)
-            .map(|_| Type::Elementary(ElementarySpec::Real))
-            .map_err(|err| InferLiteralError::TypeMismatch(err.to_string())),
+        // Too large a value parses to infinity, which no literal means.
+        InferType::Float(real) => match real.as_f32(db) {
+            Ok(value) if value.is_finite() => Ok(Type::Elementary(ElementarySpec::Real)),
+            Ok(_) => Err(InferLiteralError::FloatOutOfRange { type_name: "REAL" }),
+            Err(err) => Err(InferLiteralError::TypeMismatch(err.to_string())),
+        },
         InferType::Integer(integer) => {
             let int_val = integer
                 .as_i32(db)
@@ -246,10 +287,11 @@ fn check_f64<'db>(
     value: &InferType,
 ) -> Result<Type<'db>, InferLiteralError> {
     match value {
-        InferType::Float(real) => real
-            .as_f64(db)
-            .map(|_| Type::Elementary(ElementarySpec::LReal))
-            .map_err(|err| InferLiteralError::TypeMismatch(err.to_string())),
+        InferType::Float(real) => match real.as_f64(db) {
+            Ok(value) if value.is_finite() => Ok(Type::Elementary(ElementarySpec::LReal)),
+            Ok(_) => Err(InferLiteralError::FloatOutOfRange { type_name: "LREAL" }),
+            Err(err) => Err(InferLiteralError::TypeMismatch(err.to_string())),
+        },
         InferType::Integer(integer) => {
             let int_val = integer
                 .as_i64(db)

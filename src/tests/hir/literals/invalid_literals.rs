@@ -54,7 +54,7 @@ END_FUNCTION_BLOCK"#;
        |
      5 |         test2: BYTE := 256;
        |                        ^|^
-       |                         `--- cannot infer '<integer>' to 'BYTE': the value does not fit in USINT; USINT holds 0 to 255
+       |                         `--- cannot infer '<integer>' to 'BYTE': the value does not fit in BYTE; BYTE holds 0 to 255
     ---'
     [E0306] Error: invalid literal
        ,-[ file:///test0.st:6:25 ]
@@ -90,7 +90,7 @@ END_FUNCTION_BLOCK"#;
        |
      5 |         test2: WORD := 65536;
        |                        ^^|^^
-       |                          `---- cannot infer '<integer>' to 'WORD': the value does not fit in UINT; UINT holds 0 to 65535
+       |                          `---- cannot infer '<integer>' to 'WORD': the value does not fit in WORD; WORD holds 0 to 65535
     ---'
     [E0306] Error: invalid literal
        ,-[ file:///test0.st:6:24 ]
@@ -126,7 +126,7 @@ END_FUNCTION_BLOCK"#;
        |
      5 |         test2: DWORD := 4294967296;
        |                         ^^^^^|^^^^
-       |                              `------ cannot infer '<integer>' to 'DWORD': the value does not fit in UDINT; UDINT holds 0 to 4294967295
+       |                              `------ cannot infer '<integer>' to 'DWORD': the value does not fit in DWORD; DWORD holds 0 to 4294967295
     ---'
     [E0306] Error: invalid literal
        ,-[ file:///test0.st:6:25 ]
@@ -162,7 +162,7 @@ END_FUNCTION_BLOCK"#;
        |
      5 |         test2: LWORD := 18446744073709551616;
        |                         ^^^^^^^^^^|^^^^^^^^^
-       |                                   `----------- cannot infer '<integer>' to 'LWORD': the value does not fit in ULINT; ULINT holds 0 to 18446744073709551615
+       |                                   `----------- cannot infer '<integer>' to 'LWORD': the value does not fit in LWORD; LWORD holds 0 to 18446744073709551615
     ---'
     [E0306] Error: invalid literal
        ,-[ file:///test0.st:6:25 ]
@@ -307,6 +307,95 @@ END_FUNCTION_BLOCK"#;
      6 |         test3: LINT := 16#FFFFFFFFFFFFFFFFFF;
        |                        ^^^^^^^^^^|^^^^^^^^^^
        |                                  `------------ cannot infer '<integer>' to 'LINT': the value does not fit in LINT; LINT holds -9223372036854775808 to 9223372036854775807
+    ---'
+    ");
+}
+
+// A typed literal is checked against its own type, as an untyped one is
+// against its target. These passed, or stopped the build with an internal
+// error.
+#[rstest]
+fn invalid_typed_integer_literals(mut with_db: RootDatabase) {
+    let source = r#"
+        PROGRAM P
+        VAR s : SINT; b : BYTE; u : USINT; d : DINT; END_VAR
+            s := SINT#300;
+            b := BYTE#16#1FF;
+            u := USINT#-1;
+            d := DINT#3000000000;
+        END_PROGRAM
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0306] Error: invalid literal
+       ,-[ file:///test0.st:4:18 ]
+       |
+     4 |             s := SINT#300;
+       |                  ^^^^|^^^
+       |                      `----- cannot infer 'SINT literal' to 'SINT': the value does not fit in SINT; SINT holds -128 to 127
+    ---'
+    [E0306] Error: invalid literal
+       ,-[ file:///test0.st:5:18 ]
+       |
+     5 |             b := BYTE#16#1FF;
+       |                  ^^^^^|^^^^^
+       |                       `------- cannot infer 'BYTE literal' to 'BYTE': the value does not fit in BYTE; BYTE holds 0 to 255
+    ---'
+    [E0307] Error: invalid literal
+       ,-[ file:///test0.st:6:18 ]
+       |
+     6 |             u := USINT#-1;
+       |                  ^^^^|^^^
+       |                      `----- cannot infer 'USINT literal' to 'USINT': USINT cannot be negative; USINT is unsigned; use SINT, or drop the sign
+    ---'
+    [E0306] Error: invalid literal
+       ,-[ file:///test0.st:7:18 ]
+       |
+     7 |             d := DINT#3000000000;
+       |                  ^^^^^^^|^^^^^^^
+       |                         `--------- cannot infer 'DINT literal' to 'DINT': the value does not fit in DINT; DINT holds -2147483648 to 2147483647
+    ---'
+    ");
+}
+
+// A REAL or an LREAL too large for its type parsed to infinity.
+#[rstest]
+fn invalid_real_literal_past_its_range(mut with_db: RootDatabase) {
+    let source = r#"
+        PROGRAM P
+        VAR r : REAL; l : LREAL; END_VAR
+            r := 1.0E300;
+            l := 1.0E400;
+            r := REAL#1.0E39;
+        END_PROGRAM
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0306] Error: invalid literal
+       ,-[ file:///test0.st:4:18 ]
+       |
+     3 |         VAR r : REAL; l : LREAL; END_VAR
+       |             |
+       |             `-- type is declared by variable 'r' here
+     4 |             r := 1.0E300;
+       |                  ^^^|^^^
+       |                     `----- cannot infer '<float>' to 'REAL': the value does not fit in REAL; REAL holds magnitudes up to about 3.4E38
+    ---'
+    [E0306] Error: invalid literal
+       ,-[ file:///test0.st:5:18 ]
+       |
+     3 |         VAR r : REAL; l : LREAL; END_VAR
+       |                       |
+       |                       `-- type is declared by variable 'l' here
+       |
+     5 |             l := 1.0E400;
+       |                  ^^^|^^^
+       |                     `----- cannot infer '<float>' to 'LREAL': the value does not fit in LREAL; LREAL holds magnitudes up to about 1.8E308
+    ---'
+    [E0306] Error: invalid literal
+       ,-[ file:///test0.st:6:18 ]
+       |
+     6 |             r := REAL#1.0E39;
+       |                  ^^^^^|^^^^^
+       |                       `------- cannot infer 'REAL literal' to 'REAL': the value does not fit in REAL; REAL holds magnitudes up to about 3.4E38
     ---'
     ");
 }
