@@ -36,21 +36,18 @@ pub(crate) struct Sliced {
 
 /// The elementary type a lowered place holds, when the place records it:
 /// a slice reached through a field or an index arrives with its HIR type
-/// collapsed to the slice's, and the place keeps the base width.
+/// collapsed to the slice's, and the place keeps the base width. A
+/// subrange slot has its base's.
 fn place_elementary(place: &MirPlace) -> Option<MirElementary> {
-    match place {
-        MirPlace::Field {
-            field_type: MirType::Elementary(e),
-            ..
-        }
-        | MirPlace::Index {
-            element_type: MirType::Elementary(e),
-            ..
-        }
-        | MirPlace::Deref {
-            pointee_type: MirType::Elementary(e),
-            ..
-        } => Some(*e),
+    let ty = match place {
+        MirPlace::Field { field_type, .. } => field_type,
+        MirPlace::Index { element_type, .. } => element_type,
+        MirPlace::Deref { pointee_type, .. } => pointee_type,
+        _ => return None,
+    };
+    match ty {
+        MirType::Elementary(e) => Some(*e),
+        MirType::Subrange(sub) => Some(sub.base),
         _ => None,
     }
 }

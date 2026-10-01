@@ -62,6 +62,9 @@ pub enum MirStmt {
         /// Boxed to keep the variant small (`clippy::large_enum_variant`).
         step: Box<MirExpr>,
         body: Vec<MirStmt>,
+        /// A subrange counter's `(lower, upper)`: a loop that is ending does
+        /// not step the counter out of them. Boxed like `step`.
+        control_range: Option<Box<(i64, i64)>>,
     },
 
     /// While loop.

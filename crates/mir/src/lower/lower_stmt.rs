@@ -145,10 +145,15 @@ fn lower_stmt<'db>(
                 ctx.lower_expr(*target)?
             };
             // A subrange target checks the value at the door; the place knows the
-            // slot's type where the access is an adjustment.
-            let value = match place_subrange(&place) {
-                Some(sub) => ctx.checked_range_mir(value, &sub),
-                None => ctx.checked_range(value, var.infer(ctx.db)),
+            // slot's type where the access is an adjustment. A partial access
+            // stores bits: the word they go back into is checked below.
+            let value = if var.multibits(ctx.db).is_some() {
+                value
+            } else {
+                match place_subrange(&place) {
+                    Some(sub) => ctx.checked_range_mir(value, &sub),
+                    None => ctx.checked_range(value, var.infer(ctx.db)),
+                }
             };
             // `b.1 := x` names a slice of `b`; the store has to put back the
             // whole of `b` with only those bits replaced. A view is the same
@@ -164,6 +169,17 @@ fn lower_stmt<'db>(
                 pin = store;
                 let value =
                     ctx.lower_multibit_write(place.clone(), *var, var.infer(ctx.db), value)?;
+                // The word the bits go back into is a store of its owner, which
+                // a subrange checks: `p.7 := TRUE` made 228 of a (0..100).
+                let value = match place_subrange(&place) {
+                    Some(sub) => ctx.checked_range_mir(value, &sub),
+                    None => match var.infer(ctx.db) {
+                        hir::hir_ty::ty::Type::Variable((owner, _)) => {
+                            ctx.checked_range(value, owner.spec(ctx.db).infer(ctx.db))
+                        }
+                        _ => value,
+                    },
+                };
                 (place, value)
             } else {
                 (place, value)
@@ -312,7 +328,9 @@ fn lower_stmt<'db>(
 
             // A subrange counter is checked at the initial store and at the body's
             // top: the range may overshoot the subrange, the observed values may
-            // not. `FOR i := 0 TO 12 BY 7` on a (0..10) counter is legal.
+            // not. `FOR i := 0 TO 12 BY 7` on a (0..10) counter is legal. The
+            // increment that ends the loop does not leave the subrange either:
+            // the counter keeps its last value (`control_range`).
             let control_sub = control_type.as_subrange(ctx.db).and_then(|sr| {
                 match hir::hir_ty::infer::const_eval::subrange_bounds(ctx.db, sr) {
                     (Some(lower), Some(upper)) => Some(crate::types::MirSubrangeType {
@@ -385,6 +403,7 @@ fn lower_stmt<'db>(
                 end: end_mir,
                 step: Box::new(step_mir),
                 body,
+                control_range: control_sub.map(|sub| Box::new((sub.lower, sub.upper))),
             }])
         }
 

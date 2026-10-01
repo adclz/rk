@@ -1116,10 +1116,11 @@ impl<'db> ExprLowerCtx<'db> {
             .type_of_path_expr_with_adjustments(deref)
     }
 
-    /// The MIR type `reference^` reaches: its pointee, with the capacity of
-    /// a `REF_TO STRING[n]` read from the reference's target spec, since the
-    /// inferred pointee has dropped it and a write through it clamped at 80,
-    /// past a shorter target.
+    /// The MIR type `reference^` reaches: its pointee, with what the
+    /// reference's target spec says and the inferred pointee has dropped:
+    /// the capacity of a `REF_TO STRING[n]`, where a write through it
+    /// clamped at 80, past a shorter target, and the bounds of a `REF_TO` a
+    /// subrange, where a store through it went unchecked.
     fn deref_pointee_type(
         &self,
         deref: hir::hir_def::expressions::expression::PathExpr<'db>,
@@ -1128,7 +1129,7 @@ impl<'db> ExprLowerCtx<'db> {
         let pointee = self
             .lower_type_resolved(self.pointee_of(deref))
             .unwrap_or(MirType::Void);
-        if !matches!(pointee, MirType::String { .. }) {
+        if !matches!(pointee, MirType::String { .. } | MirType::Elementary(_)) {
             return pointee;
         }
         // The raw type: the adjusted one has already dereferenced it.
@@ -1138,7 +1139,10 @@ impl<'db> ExprLowerCtx<'db> {
             .map(|ty| ty.normalize(self.db))
         {
             Some(Type::RefTo(target)) => {
-                crate::lower::lower_type::lower_spec(self.db, target).unwrap_or(pointee)
+                match crate::lower::lower_type::lower_spec(self.db, target) {
+                    Ok(declared @ (MirType::String { .. } | MirType::Subrange(_))) => declared,
+                    _ => pointee,
+                }
             }
             _ => pointee,
         }

@@ -952,6 +952,53 @@ fn for_to_type_max_terminates(mut with_db: db::RootDatabase) {
     assert_eq!(r, 108, "8 iterations, counter left AT the bound");
 }
 
+/// A subrange counter ends the same way at its subrange's edge: where the
+/// next value would leave the subrange, it keeps its last one. On a
+/// (0..10): 10 after `0 TO 10`, 0 after `10 TO 0 BY -1`, 9 after
+/// `0 TO 10 BY 3`, 7 after `0 TO 12 BY 7`.
+#[rstest]
+fn for_subrange_counter_stays_in_its_subrange(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE Small : INT (0..10); END_TYPE
+
+        FUNCTION test : DINT
+        VAR i : Small; up : DINT; down : DINT; by3 : DINT; END_VAR
+            FOR i := 0 TO 10 DO
+            END_FOR;
+            up := i;
+            FOR i := 10 TO 0 BY -1 DO
+            END_FOR;
+            down := i;
+            FOR i := 0 TO 10 BY 3 DO
+            END_FOR;
+            by3 := i;
+            FOR i := 0 TO 12 BY 7 DO
+            END_FOR;
+            test := ((up * 100 + down) * 100 + by3) * 100 + i;
+        END_FUNCTION
+    "#;
+    let r: i32 = super::run(&mut with_db, source, "test", ());
+    assert_eq!(r, 10_00_09_07, "10, 0, 9 and 7, two digits each");
+}
+
+/// Where the next value is still in the subrange, the counter ends past the
+/// bound like an INT's: 6 after `0 TO 5` on a (0..10).
+#[rstest]
+fn for_subrange_counter_inside_its_subrange_ends_past_the_bound(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE Small : INT (0..10); END_TYPE
+
+        FUNCTION test : DINT
+        VAR i : Small; END_VAR
+            FOR i := 0 TO 5 DO
+            END_FOR;
+            test := i;
+        END_FUNCTION
+    "#;
+    let r: i32 = super::run(&mut with_db, source, "test", ());
+    assert_eq!(r, 6, "the first value past 5");
+}
+
 /// The full range of an unsigned type: 0 TO 255 over USINT runs 256 times.
 #[rstest]
 fn for_full_unsigned_range_terminates(mut with_db: db::RootDatabase) {

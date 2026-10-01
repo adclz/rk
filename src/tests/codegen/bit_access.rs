@@ -393,6 +393,36 @@ fn sized_slice_of_a_struct_field(mut with_db: db::RootDatabase) {
     assert_eq!(result, 0x12, "byte 1 of 16#1234");
 }
 
+/// A slice of a subrange element, field or referenced value, read and
+/// written: the slot's width is its base's, lost the same way as above.
+#[rstest]
+fn slice_of_a_subrange_slot(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE Small : INT (0..200); END_TYPE
+        TYPE S : STRUCT
+            fld : Small;
+        END_STRUCT; END_TYPE
+
+        FUNCTION get : DINT
+        VAR
+            arr : ARRAY[0..2] OF Small := [0, 128, 0];
+            s : S := (fld := 128);
+            v : Small := 128;
+            r : REF_TO Small;
+        END_VAR
+            r := REF(v);
+            IF arr[1].7 THEN arr[1].0 := TRUE; END_IF;
+            IF s.fld.7 THEN s.fld.1 := TRUE; END_IF;
+            IF r^.7 THEN r^.2 := TRUE; END_IF;
+            get := arr[1];
+            get := get * 1000 + s.fld;
+            get := get * 1000 + v;
+        END_FUNCTION
+    "#;
+    let result: i32 = run(&mut with_db, source, "get", ());
+    assert_eq!(result, 129_130_132, "bit 7 of 128 is set, so bits 0, 1, 2");
+}
+
 /// Exact byte and word values of an LWORD's slices.
 ///
 /// `read_high_slices_of_lword` compares against zero so that one body shape

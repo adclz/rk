@@ -231,6 +231,135 @@ fn a_subrange_fb_input_is_checked(mut with_db: db::RootDatabase) {
     expect_fault(&mut with_db, source, "99 into a Small FB input");
 }
 
+/// A subrange RESULT checks its store like a plain variable.
+#[rstest]
+fn a_subrange_function_result_is_checked(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE Small : INT (0..10); END_TYPE
+
+        FUNCTION gives : Small
+        VAR_INPUT
+            n : INT;
+        END_VAR
+            gives := n;
+        END_FUNCTION
+
+        FUNCTION run : DINT
+            run := gives(99);
+        END_FUNCTION
+    "#;
+    expect_fault(&mut with_db, source, "99 into a Small result");
+}
+
+/// A store through a REF_TO a subrange is checked: the reference keeps its
+/// target's bounds.
+#[rstest]
+fn a_store_through_a_reference_to_a_subrange_is_checked(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE Small : INT (0..10); END_TYPE
+
+        FUNCTION run : DINT
+        VAR
+            s : Small;
+            r : REF_TO Small;
+            n : INT;
+        END_VAR
+            n := 99;
+            r := REF(s);
+            r^ := n;
+            run := s;
+        END_FUNCTION
+    "#;
+    expect_fault(&mut with_db, source, "99 through a REF_TO Small");
+}
+
+/// A local's initializer is a store: one only the running program knows is
+/// checked.
+#[rstest]
+fn a_subrange_initializer_is_checked(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE Small : INT (0..10); END_TYPE
+
+        FUNCTION takes : DINT
+        VAR_INPUT
+            n : INT;
+        END_VAR
+        VAR
+            s : Small := n;
+        END_VAR
+            takes := s;
+        END_FUNCTION
+
+        FUNCTION run : DINT
+            run := takes(99);
+        END_FUNCTION
+    "#;
+    expect_fault(&mut with_db, source, "99 initializes a Small local");
+}
+
+/// A bit write stores the whole word back: bit 7 set on a (0..10) holding
+/// 10 makes 138.
+#[rstest]
+fn a_bit_write_into_a_subrange_is_checked(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE Small : INT (0..10); END_TYPE
+
+        FUNCTION run : DINT
+        VAR
+            s : Small := 10;
+        END_VAR
+            s.7 := TRUE;
+            run := s;
+        END_FUNCTION
+    "#;
+    expect_fault(&mut with_db, source, "bit 7 makes 138");
+}
+
+/// The same through an element, whose slot carries the bounds.
+#[rstest]
+fn a_bit_write_into_a_subrange_element_is_checked(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE Small : INT (0..10); END_TYPE
+
+        FUNCTION run : DINT
+        VAR
+            a : ARRAY[0..2] OF Small := [10, 10, 10];
+        END_VAR
+            a[1].7 := TRUE;
+            run := a[1];
+        END_FUNCTION
+    "#;
+    expect_fault(&mut with_db, source, "bit 7 makes 138");
+}
+
+/// The check is on the word, not the bit: TRUE is 1, outside (5..10), and
+/// setting bit 1 of 5 makes 7, inside it. The same through an element and a
+/// reference, whose slots carry the bounds.
+#[rstest]
+fn a_bit_write_that_stays_in_the_subrange_is_clean(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE Band : INT (5..10); END_TYPE
+
+        FUNCTION run : DINT
+        VAR
+            s : Band := 5;
+            a : ARRAY[0..2] OF Band := [5, 5, 5];
+            t : Band := 5;
+            r : REF_TO Band;
+        END_VAR
+            r := REF(t);
+            s.1 := TRUE;
+            a[1].1 := TRUE;
+            r^.1 := TRUE;
+            run := s;
+            run := run * 100 + a[1];
+            run := run * 100 + t;
+        END_FUNCTION
+    "#;
+    let result: i32 = super::run(&mut with_db, source, "run", ());
+    assert_eq!(result, 70707, "5 with bit 1 set, three times");
+}
+
 /// A 64-bit base rides the i64 lane: the check has its own builtin there.
 #[rstest]
 fn a_64bit_subrange_is_checked(mut with_db: db::RootDatabase) {
@@ -394,6 +523,29 @@ fn a_for_iterate_leaving_the_subrange_faults(mut with_db: db::RootDatabase) {
         END_FUNCTION
     "#;
     let msg = expect_fault(&mut with_db, source, "the third iterate is 14");
+    assert!(
+        msg.contains("value out of subrange bounds"),
+        "the iterate names the check: {msg}"
+    );
+}
+
+/// The last iterate is observed too: stepping 0,3,6,9 on `TO 12` reaches
+/// 12, the end, and faults there instead of stopping at 9.
+#[rstest]
+fn a_last_iterate_leaving_the_subrange_faults(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE Small : INT (0..10); END_TYPE
+
+        FUNCTION run : DINT
+        VAR
+            i : Small;
+        END_VAR
+            FOR i := 0 TO 12 BY 3 DO
+                run := run + i;
+            END_FOR;
+        END_FUNCTION
+    "#;
+    let msg = expect_fault(&mut with_db, source, "the last iterate is 12");
     assert!(
         msg.contains("value out of subrange bounds"),
         "the iterate names the check: {msg}"
