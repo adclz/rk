@@ -145,10 +145,15 @@ fn lower_stmt<'db>(
                 ctx.lower_expr(*target)?
             };
             // A subrange target checks the value at the door; the place knows the
-            // slot's type where the access is an adjustment.
-            let value = match place_subrange(&place) {
-                Some(sub) => ctx.checked_range_mir(value, &sub),
-                None => ctx.checked_range(value, var.infer(ctx.db)),
+            // slot's type where the access is an adjustment. A partial access
+            // stores bits: the word they go back into is checked below.
+            let value = if var.multibits(ctx.db).is_some() {
+                value
+            } else {
+                match place_subrange(&place) {
+                    Some(sub) => ctx.checked_range_mir(value, &sub),
+                    None => ctx.checked_range(value, var.infer(ctx.db)),
+                }
             };
             // `b.1 := x` names a slice of `b`; the store has to put back the
             // whole of `b` with only those bits replaced. A view is the same
@@ -164,6 +169,17 @@ fn lower_stmt<'db>(
                 pin = store;
                 let value =
                     ctx.lower_multibit_write(place.clone(), *var, var.infer(ctx.db), value)?;
+                // The word the bits go back into is a store of its owner, which
+                // a subrange checks: `p.7 := TRUE` made 228 of a (0..100).
+                let value = match place_subrange(&place) {
+                    Some(sub) => ctx.checked_range_mir(value, &sub),
+                    None => match var.infer(ctx.db) {
+                        hir::hir_ty::ty::Type::Variable((owner, _)) => {
+                            ctx.checked_range(value, owner.spec(ctx.db).infer(ctx.db))
+                        }
+                        _ => value,
+                    },
+                };
                 (place, value)
             } else {
                 (place, value)

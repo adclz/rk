@@ -231,6 +231,69 @@ fn a_subrange_fb_input_is_checked(mut with_db: db::RootDatabase) {
     expect_fault(&mut with_db, source, "99 into a Small FB input");
 }
 
+/// A bit write stores the whole word back: bit 7 set on a (0..10) holding
+/// 10 makes 138.
+#[rstest]
+fn a_bit_write_into_a_subrange_is_checked(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE Small : INT (0..10); END_TYPE
+
+        FUNCTION run : DINT
+        VAR
+            s : Small := 10;
+        END_VAR
+            s.7 := TRUE;
+            run := s;
+        END_FUNCTION
+    "#;
+    expect_fault(&mut with_db, source, "bit 7 makes 138");
+}
+
+/// The same through an element, whose slot carries the bounds.
+#[rstest]
+fn a_bit_write_into_a_subrange_element_is_checked(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE Small : INT (0..10); END_TYPE
+
+        FUNCTION run : DINT
+        VAR
+            a : ARRAY[0..2] OF Small := [10, 10, 10];
+        END_VAR
+            a[1].7 := TRUE;
+            run := a[1];
+        END_FUNCTION
+    "#;
+    expect_fault(&mut with_db, source, "bit 7 makes 138");
+}
+
+/// The check is on the word, not the bit: TRUE is 1, outside (5..10), and
+/// setting bit 1 of 5 makes 7, inside it. The same through an element and a
+/// reference, whose slots carry the bounds.
+#[rstest]
+fn a_bit_write_that_stays_in_the_subrange_is_clean(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE Band : INT (5..10); END_TYPE
+
+        FUNCTION run : DINT
+        VAR
+            s : Band := 5;
+            a : ARRAY[0..2] OF Band := [5, 5, 5];
+            t : Band := 5;
+            r : REF_TO Band;
+        END_VAR
+            r := REF(t);
+            s.1 := TRUE;
+            a[1].1 := TRUE;
+            r^.1 := TRUE;
+            run := s;
+            run := run * 100 + a[1];
+            run := run * 100 + t;
+        END_FUNCTION
+    "#;
+    let result: i32 = super::run(&mut with_db, source, "run", ());
+    assert_eq!(result, 70707, "5 with bit 1 set, three times");
+}
+
 /// A 64-bit base rides the i64 lane: the check has its own builtin there.
 #[rstest]
 fn a_64bit_subrange_is_checked(mut with_db: db::RootDatabase) {
