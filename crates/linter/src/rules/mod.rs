@@ -50,6 +50,7 @@ pub mod missing_input_param;
 pub mod missing_return;
 pub mod negated_comparison;
 pub mod negated_condition;
+pub mod negative_radix_literal;
 pub mod once_violation;
 pub mod recursion;
 pub mod redundant_not;
@@ -100,6 +101,7 @@ pub const RECOMMENDED_RULE_NAMES: &[&str] = &[
     global_without_external::NAME,
     instance_in_function::NAME,
     latin1_escape::NAME,
+    negative_radix_literal::NAME,
     recursion::NAME,
 ];
 
@@ -152,6 +154,7 @@ pub const ALL_RULE_NAMES: &[&str] = &[
     missing_return::NAME,
     negated_comparison::NAME,
     negated_condition::NAME,
+    negative_radix_literal::NAME,
     once_violation::NAME,
     recursion::NAME,
     redundant_not::NAME,
@@ -378,6 +381,11 @@ fn lint_scope<'db>(
             latin1_escape::check(db, scope, has_body, d)
         });
     }
+    if is_enabled(config, negative_radix_literal::NAME) {
+        run_lint(negative_radix_literal::NAME, diagnostics, |d| {
+            negative_radix_literal::check(db, scope, has_body, d)
+        });
+    }
     if !has_body {
         return;
     }
@@ -550,6 +558,6 @@ mod select_tests {
                 "{name} is not a known rule name"
             );
         }
-        assert_eq!(RECOMMENDED_RULE_NAMES.len(), 26);
+        assert_eq!(RECOMMENDED_RULE_NAMES.len(), 27);
     }
 }
