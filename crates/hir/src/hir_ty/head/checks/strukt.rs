@@ -68,6 +68,7 @@ impl<'db> InitInference<'db> {
                     &mut self.body_infer_result,
                     element_type,
                 );
+                self.check_string_init(db, field.spec(db), init_expr);
             }
         }
     }

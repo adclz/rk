@@ -65,6 +65,7 @@ impl<'db> InitInference<'db> {
             if let Some(expr) = dt.init(db) {
                 self.init_expr_result
                     .resolve_init_expr(db, expr, &mut self.body_infer_result, typ);
+                self.check_string_init(db, dt.spec(db), expr);
             };
         }
 

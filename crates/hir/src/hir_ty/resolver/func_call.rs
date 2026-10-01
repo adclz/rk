@@ -774,6 +774,30 @@ fn check_by_ref_subrange<'db>(
     }
 }
 
+/// A STRING literal passed to an input it does not fit (E0314): the copy
+/// into the parameter cuts it, as an assignment's would.
+fn check_string_argument<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    var: VariableDecl<'db>,
+    value: Expr<'db>,
+    ctx: &mut BodyInferenceResult<'db>,
+) {
+    if var.is_input(db)
+        && let Some(err) =
+            crate::hir_ty::head::checks::variables::string_literal_overflow(db, var.spec(db), value)
+    {
+        ctx.errors.push(
+            crate::check::errors::e03_type::TypeError::InferLiteralError {
+                expr: value,
+                source: None,
+                target: Type::Elementary(crate::hir_def::expressions::spec::ElementarySpec::String),
+                err,
+            }
+            .to_diagnostic(db, ctx.scope.file(db)),
+        );
+    }
+}
+
 fn apply_param_coercion<'db>(
     db: &'db dyn WorkspaceDataBase,
     resolver: Resolver<'db>,
@@ -785,6 +809,7 @@ fn apply_param_coercion<'db>(
     match param.kind(db) {
         ParamAssignKind::NonFormal { value } => {
             coerce_with_var_target(db, resolver, value, var, ctx);
+            check_string_argument(db, var, value, ctx);
 
             if (var.is_in_out(db) || var.is_output(db)) && ctx.is_constant_type(db, value) {
                 ctx.errors.push(
@@ -836,6 +861,7 @@ fn apply_param_coercion<'db>(
         }
         ParamAssignKind::FormalInput { value, .. } => {
             coerce_with_var_target(db, resolver, value, var, ctx);
+            check_string_argument(db, var, value, ctx);
 
             if (var.is_in_out(db) || var.is_output(db)) && ctx.is_constant_type(db, value) {
                 ctx.errors.push(
