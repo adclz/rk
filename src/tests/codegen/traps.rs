@@ -231,6 +231,28 @@ fn a_subrange_fb_input_is_checked(mut with_db: db::RootDatabase) {
     expect_fault(&mut with_db, source, "99 into a Small FB input");
 }
 
+/// A store through a REF_TO a subrange is checked: the reference keeps its
+/// target's bounds.
+#[rstest]
+fn a_store_through_a_reference_to_a_subrange_is_checked(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE Small : INT (0..10); END_TYPE
+
+        FUNCTION run : DINT
+        VAR
+            s : Small;
+            r : REF_TO Small;
+            n : INT;
+        END_VAR
+            n := 99;
+            r := REF(s);
+            r^ := n;
+            run := s;
+        END_FUNCTION
+    "#;
+    expect_fault(&mut with_db, source, "99 through a REF_TO Small");
+}
+
 /// A bit write stores the whole word back: bit 7 set on a (0..10) holding
 /// 10 makes 138.
 #[rstest]
