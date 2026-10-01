@@ -252,15 +252,10 @@ impl<'db> InitExpr<'db> {
 }
 
 impl<'db> Expr<'db> {
-    /// Evaluate this expression as a compile-time integer.
-    ///
-    /// The single const-integer evaluator: array and subrange bounds, enum
-    /// values and STRING capacities are all folded through here, so what
-    /// validation accepts and what lowering reads can never diverge. Accepts an
-    /// integer literal of any typed or untyped form (`10`, `INT#10`, `16#F`,
-    /// `2#1010`, `-5`).
-    ///
-    /// Named constants are not folded yet; a non-literal simply yields `None`.
+    /// The value of an integer literal of any typed or untyped form (`10`,
+    /// `INT#10`, `16#F`, `2#1010`, `-5`); `None` for anything else.
+    /// [`const_eval`](crate::hir_ty::infer::const_eval) folds names and
+    /// arithmetic.
     pub fn as_const_int(self, db: &'db dyn WorkspaceDataBase) -> Option<i64> {
         let ExprKind::PrimaryExpr(PrimaryExpr::Literal(lit)) = self.expr(db) else {
             return None;
@@ -289,26 +284,5 @@ impl<'db> Expr<'db> {
     /// or capacity can take.
     pub fn as_range(self, db: &'db dyn WorkspaceDataBase) -> Option<u64> {
         self.as_const_int(db).filter(|v| *v >= 0).map(|v| v as u64)
-    }
-
-    /// [`Self::as_const_int`] extended over a unary sign and parentheses —
-    /// the shapes a written-out constant takes (`-1`, `+(2)`), which the bare
-    /// literal evaluator does not see. Named constants still yield `None`.
-    pub fn as_const_int_folded(self, db: &'db dyn WorkspaceDataBase) -> Option<i64> {
-        match self.expr(db) {
-            ExprKind::UnaryOperator { expr, operator } => match operator {
-                crate::hir_def::expressions::expression::UnaryOperatorKind::Minus => {
-                    expr.as_const_int_folded(db).and_then(i64::checked_neg)
-                }
-                crate::hir_def::expressions::expression::UnaryOperatorKind::Plus => {
-                    expr.as_const_int_folded(db)
-                }
-                _ => None,
-            },
-            ExprKind::PrimaryExpr(PrimaryExpr::ParenthesizedExpr { expr }) => {
-                expr.as_const_int_folded(db)
-            }
-            _ => self.as_const_int(db),
-        }
     }
 }

@@ -7,24 +7,32 @@
 //! what counts — which is how they came to disagree, a label MIR could not
 //! fold aborting codegen on source `rk check` had called clean.
 //!
-//! Two layers, because not every caller has a body:
+//! One evaluator computes the value as the program would: each operation at
+//! the type inference gives it, wrapping at that type's width, so
+//! `200 * 200` is the INT -25536 wherever it is written. Its two entry
+//! points differ in how a name binds:
 //!
-//! - [`Expr::as_const_int_folded`](crate::hir_def::expressions::expression::Expr::as_const_int_folded)
-//!   folds what is written out — literals, a leading sign, parentheses.
-//! - [`const_int`] extends that over resolved NAMES, so a `CONSTANT` and
-//!   arithmetic over one evaluate too. It needs the body's inference result
-//!   to know what a name bound to, which is why it lives here and not on
-//!   `Expr`.
+//! - [`const_int`] reads the binding the body's inference recorded, for an
+//!   expression in a body: a CASE label, a FOR step, a subscript.
+//! - [`spec_value`] binds a name through the scope chain's declarations, for
+//!   an expression no body infers: a bound, a length, an initializer.
+//!
+//! A `CONSTANT`'s own initializer always folds the second way, in the scope
+//! that declares it.
 
 use db::WorkspaceDataBase;
 
 use crate::{
     Qualifier,
     hir_def::{
-        expressions::expression::{
-            AddOperatorKind, Expr, ExprKind, InitExprKind, MultOperatorKind, PrimaryExpr,
+        expressions::{
+            expression::{
+                AddOperatorKind, Elementary, Expr, ExprKind, InitExprKind, MultOperatorKind,
+                PrimaryExpr, UnaryOperatorKind, VariableAccess,
+            },
+            spec::{ElementarySpec, Spec, SpecKind},
         },
-        pous::variable::VariableDecl,
+        pous::{pou::Pou, variable::VariableDecl},
     },
     hir_ty::{body::BodyInferenceResult, ty::Type},
 };
@@ -53,48 +61,174 @@ pub fn constant_init<'db>(
     }
 }
 
-/// The compile-time integer value of `expr`, or `None` if it has none.
-///
-/// Overflow yields `None` rather than a wrapped value: a number the compiler
-/// cannot represent is not a number it knows.
+/// The compile-time integer value of `expr` in a body, or `None` if it has
+/// none. A name in it is the declaration the body bound it to.
 pub fn const_int<'db>(
     db: &'db dyn WorkspaceDataBase,
     expr: Expr<'db>,
     body: &BodyInferenceResult<'db>,
-) -> Option<i64> {
-    const_int_guarded(db, expr, body, &mut Vec::new())
+) -> Option<i128> {
+    // The binding HIR resolved for the access. NOT normalized: normalize peels
+    // the `Variable` wrapper down to the underlying type, and the binding is
+    // exactly what is needed.
+    let bind = |va| match body.type_of_variable_access_with_adjustments(db, va) {
+        Type::Variable((decl, None)) => Some(decl),
+        _ => None,
+    };
+    fold(db, expr, &bind, &mut Vec::new()).map(|folded| folded.value)
 }
 
-fn const_int_guarded<'db>(
-    db: &'db dyn WorkspaceDataBase,
-    expr: Expr<'db>,
-    body: &BodyInferenceResult<'db>,
-    // Same overflow-not-diagnostic hazard as the spec flavor: a CONSTANT
-    // cycle must answer None, not recurse forever.
-    visited: &mut Vec<VariableDecl<'db>>,
-) -> Option<i64> {
-    // Literals, a leading sign and parentheses.
-    if let Some(v) = expr.as_const_int_folded(db) {
-        return Some(v);
+/// The compile-time integer value of a SPEC-context expression — an array or
+/// subrange bound, an enum value, a STRING length, an initializer. These are
+/// typed by INIT inference, not body inference, so a name binds through the
+/// scope chain's declarations ([`spec_name_binding`]). It asks no inference
+/// query, so this is callable from anywhere — a diagnostic message rendered
+/// inside `infer_initialization` included.
+pub fn spec_value<'db>(db: &'db dyn WorkspaceDataBase, expr: Expr<'db>) -> Option<i128> {
+    fold(db, expr, &|va| spec_name_binding(db, va), &mut Vec::new()).map(|folded| folded.value)
+}
+
+/// [`spec_value`] in the 64 bits a bound is counted in. A ULINT above
+/// `i64::MAX` is its bit pattern, as an unsigned subrange compares it and as
+/// a radix literal always read; a value wider than 64 bits does not fold.
+pub fn spec_bound<'db>(db: &'db dyn WorkspaceDataBase, expr: Expr<'db>) -> Option<i64> {
+    let value = spec_value(db, expr)?;
+    (i128::from(i64::MIN)..=i128::from(u64::MAX))
+        .contains(&value)
+        .then_some(value as i64)
+}
+
+/// `value` as a slot of type `ty` holds it, when `ty` is an integer type: a
+/// CASE label as the selector compares it, a FOR step as the counter adds it
+/// (`16#FFFF` on an INT is -1). Any other type keeps the value.
+pub fn held_as<'db>(db: &'db dyn WorkspaceDataBase, value: i128, ty: Type<'db>) -> i128 {
+    match ty.normalize(db) {
+        Type::Elementary(spec) => Folded::at(value, spec).map_or(value, |folded| folded.value),
+        _ => value,
+    }
+}
+
+/// A folded integer and the type it is computed at.
+#[derive(Clone, Copy)]
+struct Folded {
+    /// Exact: every integer type's values fit in 128 bits.
+    value: i128,
+    /// `None` for an untyped literal, which takes the type of what it meets.
+    ty: Option<ElementarySpec>,
+}
+
+impl Folded {
+    /// `value` computed at `ty`: wrapped to its width and read signed or
+    /// unsigned, as the program holds it. `None` when `ty` is not an integer
+    /// type.
+    fn at(value: i128, ty: ElementarySpec) -> Option<Folded> {
+        let (bits, signed) = integer_layout(ty)?;
+        let low = value & ((1 << bits) - 1);
+        let value = if signed && low >> (bits - 1) == 1 {
+            low - (1 << bits)
+        } else {
+            low
+        };
+        Some(Folded {
+            value,
+            ty: Some(ty),
+        })
     }
 
+    /// Another value of the same type.
+    fn with(self, value: i128) -> Option<Folded> {
+        match self.ty {
+            Some(ty) => Folded::at(value, ty),
+            None => Some(Folded { value, ty: None }),
+        }
+    }
+
+    /// The type an operation on two operands runs at, by the rule inference
+    /// types it with (`resolve_expr_expecting`): two untyped literals make an
+    /// INT, an untyped literal takes the other operand's type, and two types
+    /// meet at the wider, the left one when neither widens to the other.
+    fn join(self, other: Folded) -> ElementarySpec {
+        match (self.ty, other.ty) {
+            (None, None) => ElementarySpec::Int,
+            (Some(ty), None) | (None, Some(ty)) => ty,
+            (Some(l), Some(r)) => l.wider(r).unwrap_or(l),
+        }
+    }
+}
+
+/// Width and signedness of an integer type; a bit string reads unsigned.
+fn integer_layout(ty: ElementarySpec) -> Option<(u32, bool)> {
+    use ElementarySpec::*;
+    Some(match ty {
+        SInt => (8, true),
+        Int => (16, true),
+        DInt => (32, true),
+        LInt => (64, true),
+        USInt | Byte => (8, false),
+        UInt | Word => (16, false),
+        UDInt | DWord => (32, false),
+        ULInt | LWord => (64, false),
+        _ => return None,
+    })
+}
+
+fn fold<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    expr: Expr<'db>,
+    bind: &dyn Fn(VariableAccess<'db>) -> Option<VariableDecl<'db>>,
+    // The chain of CONSTANTs already being evaluated: `k1 := k2; k2 := k1`
+    // used to recurse to a stack overflow (SIGABRT, no diagnostic) — a cycle
+    // simply does not fold.
+    visited: &mut Vec<VariableDecl<'db>>,
+) -> Option<Folded> {
     match expr.expr(db) {
-        ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess(va)) => {
-            // The binding HIR resolved for this access. NOT normalized:
-            // normalize peels the `Variable` wrapper down to the underlying
-            // type, and the binding is exactly what is needed.
-            let Type::Variable((decl, None)) =
-                body.type_of_variable_access_with_adjustments(db, *va)
-            else {
-                return None;
+        ExprKind::PrimaryExpr(PrimaryExpr::Literal(literal)) => {
+            let (integer, ty) = match literal {
+                Elementary::InferInteger(i) => (i, None),
+                Elementary::SInt(i) => (i, Some(ElementarySpec::SInt)),
+                Elementary::Int(i) => (i, Some(ElementarySpec::Int)),
+                Elementary::DInt(i) => (i, Some(ElementarySpec::DInt)),
+                Elementary::LInt(i) => (i, Some(ElementarySpec::LInt)),
+                Elementary::USInt(i) => (i, Some(ElementarySpec::USInt)),
+                Elementary::UInt(i) => (i, Some(ElementarySpec::UInt)),
+                Elementary::UDInt(i) => (i, Some(ElementarySpec::UDInt)),
+                Elementary::ULInt(i) => (i, Some(ElementarySpec::ULInt)),
+                Elementary::Byte(i) => (i, Some(ElementarySpec::Byte)),
+                Elementary::Word(i) => (i, Some(ElementarySpec::Word)),
+                Elementary::DWord(i) => (i, Some(ElementarySpec::DWord)),
+                Elementary::LWord(i) => (i, Some(ElementarySpec::LWord)),
+                _ => return None,
             };
+            let value = integer.as_i128(db).ok()?;
+            match ty {
+                Some(ty) => Folded::at(value, ty),
+                None => Some(Folded { value, ty: None }),
+            }
+        }
+        ExprKind::PrimaryExpr(PrimaryExpr::ParenthesizedExpr { expr }) => {
+            fold(db, *expr, bind, visited)
+        }
+        ExprKind::UnaryOperator { expr, operator } => {
+            let operand = fold(db, *expr, bind, visited)?;
+            match operator {
+                UnaryOperatorKind::Plus => Some(operand),
+                UnaryOperatorKind::Minus => operand.with(operand.value.wrapping_neg()),
+                _ => None,
+            }
+        }
+        ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess(va)) => {
+            let decl = bind(*va)?;
+            let init = constant_init(db, decl)?;
             if visited.contains(&decl) {
                 return None;
             }
             visited.push(decl);
-            let v = const_int_guarded(db, constant_init(db, decl)?, body, visited);
+            // The initializer is written where the CONSTANT is declared, and
+            // its names bind there, wherever the CONSTANT is used.
+            let value = fold(db, init, &|va| spec_name_binding(db, va), visited);
             visited.pop();
-            v
+            // At its declared type, as the program stores it.
+            Folded::at(value?.value, declared_integer(db, decl.spec(db), 0)?)
         }
         ExprKind::AddOperator {
             left,
@@ -102,13 +236,14 @@ fn const_int_guarded<'db>(
             right,
         } => {
             let (l, r) = (
-                const_int_guarded(db, *left, body, visited)?,
-                const_int_guarded(db, *right, body, visited)?,
+                fold(db, *left, bind, visited)?,
+                fold(db, *right, bind, visited)?,
             );
-            match operator {
-                AddOperatorKind::Plus => l.checked_add(r),
-                AddOperatorKind::Minus => l.checked_sub(r),
-            }
+            let value = match operator {
+                AddOperatorKind::Plus => l.value.wrapping_add(r.value),
+                AddOperatorKind::Minus => l.value.wrapping_sub(r.value),
+            };
+            Folded::at(value, l.join(r))
         }
         ExprKind::MultOperator {
             left,
@@ -116,84 +251,42 @@ fn const_int_guarded<'db>(
             right,
         } => {
             let (l, r) = (
-                const_int_guarded(db, *left, body, visited)?,
-                const_int_guarded(db, *right, body, visited)?,
+                fold(db, *left, bind, visited)?,
+                fold(db, *right, bind, visited)?,
             );
-            match operator {
-                MultOperatorKind::Mul => l.checked_mul(r),
-                MultOperatorKind::Div => l.checked_div(r),
-                MultOperatorKind::Mod => l.checked_rem(r),
-            }
+            let value = match operator {
+                MultOperatorKind::Mul => l.value.wrapping_mul(r.value),
+                MultOperatorKind::Div => l.value.checked_div(r.value)?,
+                MultOperatorKind::Mod => l.value.checked_rem(r.value)?,
+            };
+            Folded::at(value, l.join(r))
         }
         _ => None,
     }
 }
 
-/// [`const_int`] for a SPEC-context expression — an enum variant value, an
-/// array or subrange bound. These are typed by INIT inference, not body
-/// inference, so looking in `infer_body` alone found no binding and a
-/// CONSTANT-referencing bound failed to fold after the check accepted it.
-/// [`const_int`] for a SPEC-context expression — an enum variant value, an
-/// array or subrange bound. Query-free: names resolve through the scope
-/// chain's declaration maps alone, so this is callable from anywhere — a
-/// diagnostic message rendered inside `infer_initialization` included.
-pub fn spec_bound<'db>(db: &'db dyn WorkspaceDataBase, expr: Expr<'db>) -> Option<i64> {
-    const_int_in_spec(db, expr, &mut Vec::new())
-}
-
-fn const_int_in_spec<'db>(
+/// The integer type a declaration holds: a subrange's base, a named type's
+/// own spec. The name resolves as the signature resolves it, without asking
+/// inference, so a fold stays callable while a signature is inferred.
+fn declared_integer<'db>(
     db: &'db dyn WorkspaceDataBase,
-    expr: Expr<'db>,
-    // The chain of CONSTANTs already being evaluated: `k1 := k2; k2 := k1`
-    // used to recurse to a stack overflow (SIGABRT, no diagnostic) — a cycle
-    // simply does not fold.
-    visited: &mut Vec<VariableDecl<'db>>,
-) -> Option<i64> {
-    // Literals, a leading sign and parentheses.
-    if let Some(v) = expr.as_const_int_folded(db) {
-        return Some(v);
+    spec: Spec<'db>,
+    depth: u32,
+) -> Option<ElementarySpec> {
+    use crate::hir_ty::resolver::name::{NameResolution, resolve_name};
+    // A cyclic alias is refused elsewhere; stop regardless.
+    if depth > 16 {
+        return None;
     }
-
-    match expr.expr(db) {
-        ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess(va)) => {
-            let decl = spec_name_binding(db, *va)?;
-            if visited.contains(&decl) {
-                return None;
+    match spec.kind(db) {
+        SpecKind::Simple(ty) => integer_layout(*ty).map(|_| *ty),
+        SpecKind::Subrange(sub) => declared_integer(db, sub._type(db), depth + 1),
+        SpecKind::Target(target) => match resolve_name(db, &target.path, spec.scope_id(db)) {
+            NameResolution::Pou(Pou::DataType(dt), _) => {
+                declared_integer(db, dt.spec(db), depth + 1)
             }
-            visited.push(decl);
-            let v = const_int_in_spec(db, constant_init(db, decl)?, visited);
-            visited.pop();
-            v
-        }
-        ExprKind::AddOperator {
-            left,
-            operator,
-            right,
-        } => {
-            let (l, r) = (
-                const_int_in_spec(db, *left, visited)?,
-                const_int_in_spec(db, *right, visited)?,
-            );
-            match operator {
-                AddOperatorKind::Plus => l.checked_add(r),
-                AddOperatorKind::Minus => l.checked_sub(r),
-            }
-        }
-        ExprKind::MultOperator {
-            left,
-            operator,
-            right,
-        } => {
-            let (l, r) = (
-                const_int_in_spec(db, *left, visited)?,
-                const_int_in_spec(db, *right, visited)?,
-            );
-            match operator {
-                MultOperatorKind::Mul => l.checked_mul(r),
-                MultOperatorKind::Div => l.checked_div(r),
-                MultOperatorKind::Mod => l.checked_rem(r),
-            }
-        }
+            _ => None,
+        },
         _ => None,
     }
 }
@@ -272,7 +365,7 @@ pub fn enum_ordinals<'db>(
     crate::hir_def::expressions::spec::EnumVariant<'db>,
     Option<i64>,
 )> {
-    enum_ordinals_by(db, enm, |e| const_int_in_spec(db, e, &mut Vec::new()))
+    enum_ordinals_by(db, enm, |e| spec_bound(db, e))
 }
 
 fn enum_ordinals_by<'db>(
@@ -306,8 +399,8 @@ pub fn subrange_bounds<'db>(
     subrange: crate::hir_def::expressions::spec::SubRange<'db>,
 ) -> (Option<i64>, Option<i64>) {
     (
-        const_int_in_spec(db, subrange.lower(db), &mut Vec::new()),
-        const_int_in_spec(db, subrange.upper(db), &mut Vec::new()),
+        spec_bound(db, subrange.lower(db)),
+        spec_bound(db, subrange.upper(db)),
     )
 }
 
@@ -318,11 +411,10 @@ pub fn array_dimensions<'db>(
     db: &'db dyn WorkspaceDataBase,
     array: crate::hir_def::expressions::spec::Array<'db>,
 ) -> Vec<(Option<i64>, Option<i64>)> {
-    let fold = |e: Expr<'db>| const_int_in_spec(db, e, &mut Vec::new());
     array
         .subranges(db)
         .iter()
-        .map(|(lo, hi)| (fold(*lo), fold(*hi)))
+        .map(|(lo, hi)| (spec_bound(db, *lo), spec_bound(db, *hi)))
         .collect()
 }
 
@@ -332,7 +424,7 @@ pub fn array_dimensions<'db>(
 /// CONSTANT` links followed — so a constant visible only through app-level
 /// linkage must be declared external where it is used, the ordinary ST
 /// idiom. Only BARE accesses substitute (arithmetic over a reference is
-/// [`spec_bound`]'s job), and a cycle answers `None` rather than looping.
+/// [`spec_value`]'s job), and a cycle answers `None` rather than looping.
 pub fn resolve_constant_ref<'db>(
     db: &'db dyn WorkspaceDataBase,
     expr: Expr<'db>,
@@ -380,7 +472,7 @@ fn is_literal_shaped<'db>(db: &'db dyn WorkspaceDataBase, expr: Expr<'db>) -> bo
 /// Whether `expr` is REAL arithmetic that folds: `+ - * / MOD **`, a sign
 /// and parentheses over number literals and CONSTANTs that fold, with a REAL
 /// or LREAL literal or CONSTANT in it (`1.5 * 2.0`, `KR / 4`). Integer
-/// arithmetic is [`spec_bound`]'s. The compiler lowers it as the program
+/// arithmetic is [`spec_value`]'s. The compiler lowers it as the program
 /// would compute it, at the expression's own type, each CONSTANT replaced
 /// by its value.
 pub fn real_folds<'db>(db: &'db dyn WorkspaceDataBase, expr: Expr<'db>) -> bool {
@@ -472,11 +564,11 @@ pub fn non_constant_part<'db>(
 /// refuses what this rejects, and MIR folds what it accepts — the two agree
 /// BY CONSTRUCTION because they both call this.
 ///
-/// Accepted: anything [`spec_bound`] folds (integer arithmetic over literals
+/// Accepted: anything [`spec_value`] folds (integer arithmetic over literals
 /// and CONSTANTs), REAL arithmetic [`real_folds`] accepts, any
 /// literal-shaped value, and a pure CONSTANT-reference chain ending in one.
 pub fn init_leaf_is_constant<'db>(db: &'db dyn WorkspaceDataBase, expr: Expr<'db>) -> bool {
-    if spec_bound(db, expr).is_some() || is_literal_shaped(db, expr) || real_folds(db, expr) {
+    if spec_value(db, expr).is_some() || is_literal_shaped(db, expr) || real_folds(db, expr) {
         return true;
     }
     matches!(resolve_constant_ref(db, expr), Some(end) if is_literal_shaped(db, end))

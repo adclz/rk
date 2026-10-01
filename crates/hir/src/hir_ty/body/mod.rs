@@ -855,7 +855,7 @@ pub enum ParamBinding<'db> {
 /// question and get an answer it cannot misread as the other kind.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum CaseLabelValue {
-    Int(i64),
+    Int(i128),
     /// The decoded bytes, so `STRING#'a'` and `'a'` are one label.
     Str(Vec<u8>),
 }
