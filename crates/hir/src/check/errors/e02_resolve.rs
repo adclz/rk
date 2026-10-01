@@ -82,6 +82,35 @@ pub enum ResolveError<'db> {
         var: VariableDecl<'db>,
         pou_kind: &'static str,
     },
+    /// A variable named where its storage is not: it passed the check, then
+    /// codegen found no such local or no such field of the instance.
+    OutOfReach {
+        expr: PathExpr<'db>,
+        var: VariableDecl<'db>,
+        why: Unreachable,
+    },
+}
+
+/// Why a variable found by name cannot be used where it is named.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, salsa::Update)]
+pub enum Unreachable {
+    /// A VAR_TEMP lives while its own body runs.
+    Temp { route: TempRoute },
+    /// A VAR_EXTERNAL names a global, so no instance holds it.
+    External,
+    /// A METHOD's variables live while it runs: `inst.M.x`.
+    CallVariable,
+}
+
+/// How a VAR_TEMP was named from outside its own body.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, salsa::Update)]
+pub enum TempRoute {
+    /// By name, in a METHOD of its block.
+    Method,
+    /// By name, in another body: a derived block's, or one of its methods.
+    OtherBody,
+    /// Through an instance or `THIS^`.
+    Path,
 }
 
 impl<'db> ErrorCode for ResolveError<'db> {
@@ -96,6 +125,7 @@ impl<'db> ErrorCode for ResolveError<'db> {
             Self::ExternalVarNotFound { .. } => "E0206",
             Self::ExternalVarTypeMismatch { .. } => "E0207",
             Self::RetainInStatelessPou { .. } => "E0208",
+            Self::OutOfReach { .. } => "E0209",
         }
     }
 
@@ -110,6 +140,7 @@ impl<'db> ErrorCode for ResolveError<'db> {
             Self::ExternalVarNotFound { .. } => "external variable not found",
             Self::ExternalVarTypeMismatch { .. } => "external variable type mismatch",
             Self::RetainInStatelessPou { .. } => "invalid retentive qualifier",
+            Self::OutOfReach { .. } => "variable out of reach",
         }
     }
 }
@@ -439,6 +470,65 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                         .to_string(),
                 );
 
+                diag
+            }
+            Self::OutOfReach { expr, var, why } => {
+                let name = var.name_with_case(db).text(db).to_string();
+                let owner = match get_scope(db, var.get_scope_id(db)).kind {
+                    ScopeKind::Pou(pou) => Type::new_pou(db, pou).type_name(db),
+                    ScopeKind::MethodDecl(m) => Type::MethodDecl(m.into()).type_name(db),
+                    _ => String::new(),
+                };
+                let (message, note) = match why {
+                    Unreachable::Temp {
+                        route: TempRoute::Method,
+                    } => (
+                        format!("VAR_TEMP '{name}' of '{owner}' cannot be used in a METHOD"),
+                        "a VAR_TEMP belongs to the body that declares it; declare one in the METHOD"
+                            .to_string(),
+                    ),
+                    Unreachable::Temp {
+                        route: TempRoute::OtherBody,
+                    } => (
+                        format!("VAR_TEMP '{name}' of '{owner}' cannot be used in a derived block"),
+                        format!(
+                            "a VAR_TEMP belongs to the body that declares it; declare one in the derived block, as SUPER() runs the body of '{owner}' with its own"
+                        ),
+                    ),
+                    Unreachable::Temp {
+                        route: TempRoute::Path,
+                    } => (
+                        format!(
+                            "VAR_TEMP '{name}' of '{owner}' cannot be reached through an instance"
+                        ),
+                        "a VAR_TEMP exists only while the body runs".to_string(),
+                    ),
+                    Unreachable::External => (
+                        format!(
+                            "VAR_EXTERNAL '{name}' of '{owner}' cannot be reached through an instance"
+                        ),
+                        format!(
+                            "it names the VAR_GLOBAL '{name}'; declare that global VAR_EXTERNAL where it is used"
+                        ),
+                    ),
+                    Unreachable::CallVariable => (
+                        format!("'{name}' of METHOD '{owner}' cannot be reached from outside it"),
+                        "a METHOD's variables exist only while it runs; it hands out its result, and its outputs through '=>' in the call"
+                            .to_string(),
+                    ),
+                };
+                let mut diag = diag()
+                    .message(message)
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &expr.get_span(db)).unwrap_or_default())
+                    .call();
+                diag.with_related(Related::new(
+                    format!("'{name}' is declared here"),
+                    var.get_scope_id(db).file(db),
+                    var.get_name_span(db),
+                ));
+                diag.with_note(note);
                 diag
             }
         }

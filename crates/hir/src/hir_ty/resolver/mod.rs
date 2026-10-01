@@ -326,7 +326,7 @@ impl<'db> Resolver<'db> {
                         current_path: first,
                     };
                     for step in rest {
-                        current.walk_path_expr(db, true, step, None, &mut place, ctx);
+                        current.walk_path_expr(db, true, false, step, None, &mut place, ctx);
                         if !ctx.type_of_path_expr.contains_key(&step.get_expr(db)) {
                             break;
                         }
@@ -551,7 +551,15 @@ impl<'db> Resolver<'db> {
             let step_multibits = if single_step { multibits } else { None };
 
             // Suppress errors on the first step: if it fails we may fall back to FQ resolution.
-            current.walk_path_expr(db, !is_first_step, step, step_multibits, &mut place, ctx);
+            current.walk_path_expr(
+                db,
+                !is_first_step,
+                is_first_step,
+                step,
+                step_multibits,
+                &mut place,
+                ctx,
+            );
 
             // Check whether walk_path_expr actually resolved this step.
             let resolved = ctx.type_of_path_expr.contains_key(&step.get_expr(db));

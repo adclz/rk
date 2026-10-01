@@ -819,3 +819,239 @@ fn invalid_this_path_bad_final_field(mut with_db: RootDatabase) {
     ---'
     ");
 }
+
+// A VAR_TEMP lives while its own body runs. A METHOD of its block naming it,
+// and a path to it through an instance or THIS^, passed the check and then
+// stopped the build.
+#[rstest]
+fn invalid_var_temp_out_of_its_body(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK Fb
+VAR_TEMP scratch : INT; END_VAR
+VAR o : INT; END_VAR
+    METHOD Peek : INT
+        scratch := 3;
+        Peek := THIS^.scratch;
+    END_METHOD
+    scratch := 1;
+    o := scratch;
+END_FUNCTION_BLOCK
+
+PROGRAM P
+VAR f : Fb; r : INT; END_VAR
+    r := f.scratch;
+END_PROGRAM
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0209] Error: variable out of reach
+       ,-[ file:///test0.st:6:9 ]
+       |
+     3 | VAR_TEMP scratch : INT; END_VAR
+       |          ^^^|^^^
+       |             `----- 'scratch' is declared here
+       |
+     6 |         scratch := 3;
+       |         ^^^|^^^
+       |            `----- VAR_TEMP 'scratch' of 'Fb' cannot be used in a METHOD
+       |
+       | Note: a VAR_TEMP belongs to the body that declares it; declare one in the METHOD
+    ---'
+    [E0209] Error: variable out of reach
+       ,-[ file:///test0.st:7:23 ]
+       |
+     3 | VAR_TEMP scratch : INT; END_VAR
+       |          ^^^|^^^
+       |             `----- 'scratch' is declared here
+       |
+     7 |         Peek := THIS^.scratch;
+       |                       ^^^|^^^
+       |                          `----- VAR_TEMP 'scratch' of 'Fb' cannot be reached through an instance
+       |
+       | Note: a VAR_TEMP exists only while the body runs
+    ---'
+    [E0209] Error: variable out of reach
+        ,-[ file:///test0.st:15:12 ]
+        |
+      3 | VAR_TEMP scratch : INT; END_VAR
+        |          ^^^|^^^
+        |             `----- 'scratch' is declared here
+        |
+     15 |     r := f.scratch;
+        |            ^^^|^^^
+        |               `----- VAR_TEMP 'scratch' of 'Fb' cannot be reached through an instance
+        |
+        | Note: a VAR_TEMP exists only while the body runs
+    ----'
+    ");
+}
+
+// A VAR_EXTERNAL names a global that no instance holds, and a METHOD's
+// variables live while it runs: neither is reached through an instance.
+#[rstest]
+fn invalid_external_or_method_variable_through_an_instance(mut with_db: RootDatabase) {
+    let source = r#"
+CONFIGURATION Cfg
+VAR_GLOBAL g : INT := 5; END_VAR
+END_CONFIGURATION
+
+FUNCTION_BLOCK Fb
+VAR_EXTERNAL g : INT; END_VAR
+    METHOD M : INT
+    VAR loc : INT; END_VAR
+        loc := 4;
+        M := loc;
+    END_METHOD
+END_FUNCTION_BLOCK
+
+PROGRAM P
+VAR f : Fb; r : INT; END_VAR
+    r := f.g;
+    r := f.M.loc;
+END_PROGRAM
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0209] Error: variable out of reach
+        ,-[ file:///test0.st:17:12 ]
+        |
+      7 | VAR_EXTERNAL g : INT; END_VAR
+        |              |
+        |              `-- 'g' is declared here
+        |
+     17 |     r := f.g;
+        |            |
+        |            `-- VAR_EXTERNAL 'g' of 'Fb' cannot be reached through an instance
+        |
+        | Note: it names the VAR_GLOBAL 'g'; declare that global VAR_EXTERNAL where it is used
+    ----'
+    [E0209] Error: variable out of reach
+        ,-[ file:///test0.st:18:14 ]
+        |
+      9 |     VAR loc : INT; END_VAR
+        |         ^|^
+        |          `--- 'loc' is declared here
+        |
+     18 |     r := f.M.loc;
+        |              ^|^
+        |               `--- 'loc' of METHOD 'M' cannot be reached from outside it
+        |
+        | Note: a METHOD's variables exist only while it runs; it hands out its result, and its outputs through '=>' in the call
+    ----'
+    ");
+}
+
+// Each is reached where it lives: a VAR_TEMP by its body, a VAR_EXTERNAL by
+// the body and its methods, a METHOD's variable by the method.
+#[rstest]
+fn valid_variables_reached_where_they_live(mut with_db: RootDatabase) {
+    let source = r#"
+CONFIGURATION Cfg
+VAR_GLOBAL g : INT := 5; END_VAR
+END_CONFIGURATION
+
+FUNCTION_BLOCK Fb
+VAR_TEMP t : INT; END_VAR
+VAR_EXTERNAL g : INT; END_VAR
+VAR v : INT; END_VAR
+    METHOD Bump : INT
+    VAR loc : INT; END_VAR
+        loc := g + 1;
+        g := loc;
+        Bump := loc + THIS^.v;
+    END_METHOD
+    t := g;
+    v := t;
+END_FUNCTION_BLOCK
+
+PROGRAM P
+VAR f : Fb; r : INT; END_VAR
+    f();
+    r := f.v + f.Bump();
+END_PROGRAM
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+// A base's VAR_TEMP belongs to the base's own body: a derived block's body
+// and methods cannot name it, nor can an instance. It read as unknown.
+#[rstest]
+fn invalid_base_var_temp_in_a_derived_block(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK Fb
+VAR_TEMP scratch : INT; END_VAR
+    scratch := 1;
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK Derived EXTENDS Fb
+VAR o : INT; END_VAR
+    METHOD M : INT
+        M := scratch;
+    END_METHOD
+    o := scratch;
+END_FUNCTION_BLOCK
+
+PROGRAM P
+VAR d : Derived; r : INT; END_VAR
+    r := d.scratch;
+END_PROGRAM
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0209] Error: variable out of reach
+        ,-[ file:///test0.st:12:10 ]
+        |
+      3 | VAR_TEMP scratch : INT; END_VAR
+        |          ^^^|^^^
+        |             `----- 'scratch' is declared here
+        |
+     12 |     o := scratch;
+        |          ^^^|^^^
+        |             `----- VAR_TEMP 'scratch' of 'Fb' cannot be used in a derived block
+        |
+        | Note: a VAR_TEMP belongs to the body that declares it; declare one in the derived block, as SUPER() runs the body of 'Fb' with its own
+    ----'
+    [E0209] Error: variable out of reach
+        ,-[ file:///test0.st:10:14 ]
+        |
+      3 | VAR_TEMP scratch : INT; END_VAR
+        |          ^^^|^^^
+        |             `----- 'scratch' is declared here
+        |
+     10 |         M := scratch;
+        |              ^^^|^^^
+        |                 `----- VAR_TEMP 'scratch' of 'Fb' cannot be used in a derived block
+        |
+        | Note: a VAR_TEMP belongs to the body that declares it; declare one in the derived block, as SUPER() runs the body of 'Fb' with its own
+    ----'
+    [E0209] Error: variable out of reach
+        ,-[ file:///test0.st:17:12 ]
+        |
+      3 | VAR_TEMP scratch : INT; END_VAR
+        |          ^^^|^^^
+        |             `----- 'scratch' is declared here
+        |
+     17 |     r := d.scratch;
+        |            ^^^|^^^
+        |               `----- VAR_TEMP 'scratch' of 'Fb' cannot be reached through an instance
+        |
+        | Note: a VAR_TEMP exists only while the body runs
+    ----'
+    ");
+}
+
+// An access specifier on a VAR section is accepted and not enforced, as the
+// OOP skill states: a member is read from outside whatever its section says.
+#[rstest]
+fn valid_member_read_whatever_its_section_specifier(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK Fb
+VAR v : INT; END_VAR
+VAR PRIVATE priv : INT; END_VAR
+VAR PROTECTED prot : INT; END_VAR
+END_FUNCTION_BLOCK
+
+PROGRAM P
+VAR f : Fb; r : INT; END_VAR
+    r := f.v + f.priv + f.prot;
+END_PROGRAM
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}

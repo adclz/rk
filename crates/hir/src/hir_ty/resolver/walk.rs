@@ -51,6 +51,67 @@ pub struct InitPlaceBuilder<'db> {
     pub current_init_typ: Type<'db>,
 }
 
+/// Why `var`, found by name from `scope`, cannot be used there: its storage
+/// is not where the name reaches. A VAR_TEMP lives while its own body runs,
+/// a VAR_EXTERNAL names a global that no instance holds, and a METHOD's
+/// variables live while it runs. `bare` is a name its body says by itself;
+/// anything else is a step through an instance or `THIS^`.
+fn out_of_reach<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    var: VariableDecl<'db>,
+    bare: bool,
+    scope: ScopeId<'db>,
+) -> Option<crate::check::errors::e02_resolve::Unreachable> {
+    use crate::check::errors::e02_resolve::{TempRoute, Unreachable};
+    use crate::hir_def::pous::variable::VariableKind;
+    let owner = var.get_scope_id(db);
+    let own_body = bare && owner == scope;
+    if matches!(
+        get_scope(db, owner).kind,
+        ScopeKind::MethodDecl(_) | ScopeKind::MethodProt(_)
+    ) {
+        return (!own_body).then_some(Unreachable::CallVariable);
+    }
+    match var.kind(db) {
+        VariableKind::Temp if !own_body => {
+            let route = if !bare {
+                TempRoute::Path
+            } else if matches!(get_scope(db, scope).kind, ScopeKind::MethodDecl(_))
+                && get_scope(db, scope).parent == Some(owner)
+            {
+                TempRoute::Method
+            } else {
+                TempRoute::OtherBody
+            };
+            Some(Unreachable::Temp { route })
+        }
+        VariableKind::External if !bare => Some(Unreachable::External),
+        _ => None,
+    }
+}
+
+/// A VAR_TEMP one of `pou`'s bases declares under `name`, nearest first.
+fn inherited_temp<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    pou: Pou<'db>,
+    name: &Ident,
+) -> Option<VariableDecl<'db>> {
+    use crate::hir_def::pous::variable::VariableKind;
+    crate::hir_ty::oop::ancestry(db, pou)
+        .chain
+        .iter()
+        .skip(1)
+        .find_map(|base| {
+            Type::new_pou(db, *base)
+                .as_walkable_scope(db)?
+                .def_map(db)
+                .global_variables
+                .get(name)
+                .copied()
+                .filter(|var| var.kind(db) == VariableKind::Temp)
+        })
+}
+
 /// Result of looking up a field by name on a type.
 pub(crate) enum FieldLookup<'db> {
     StructElement(StructElement<'db>),
@@ -198,7 +259,11 @@ impl<'db> Type<'db> {
                     } else if let Some(pou) = self.as_pou(db) {
                         match class_members(db, pou).methods.get(name) {
                             Some(member) => FieldLookup::Method(member.method),
-                            None => FieldLookup::NotFound,
+                            // A base's VAR_TEMP belongs to the base's own
+                            // body: found, for the reach check to say so
+                            // (E0209) rather than call the name unknown.
+                            None => inherited_temp(db, pou, name)
+                                .map_or(FieldLookup::NotFound, FieldLookup::Variable),
                         }
                     } else if let Type::MethodDecl(m) = self {
                         // Inside a method body, a bare name that isn't one of the
@@ -357,7 +422,7 @@ impl<'db> Type<'db> {
         };
 
         for step in steps {
-            current.walk_path_expr(db, true, step, multibits, &mut place, ctx);
+            current.walk_path_expr(db, true, false, step, multibits, &mut place, ctx);
             // it is necessary to apply adjustments at each step
             current = ctx.type_of_path_expr_with_adjustments(step.get_expr(db));
         }
@@ -440,10 +505,14 @@ impl<'db> Type<'db> {
 }
 
 impl<'db> Type<'db> {
+    /// `bare` is a name a body says by itself, the first step of its path,
+    /// rather than a step through an instance or `THIS^`.
+    #[allow(clippy::too_many_arguments)]
     pub fn walk_path_expr(
         &self,
         db: &'db dyn WorkspaceDataBase,
         report_errors: bool,
+        bare: bool,
         step: &'db PathExprWalkStep<'db>,
         multibits: Option<MultibitsPart>,
         place: &mut PathPlaceBuilder<'db>,
@@ -451,7 +520,15 @@ impl<'db> Type<'db> {
     ) {
         // Peel through Variable / DataType / StructElement wrappers first.
         if let Some((inner, mb)) = self.peel_to_spec(db) {
-            return inner.walk_path_expr(db, report_errors, step, mb.or(multibits), place, ctx);
+            return inner.walk_path_expr(
+                db,
+                report_errors,
+                bare,
+                step,
+                mb.or(multibits),
+                place,
+                ctx,
+            );
         }
 
         match step {
@@ -459,6 +536,7 @@ impl<'db> Type<'db> {
                 self.walk_field(
                     db,
                     report_errors,
+                    bare,
                     step.get_expr(db),
                     ident,
                     multibits,
@@ -480,6 +558,7 @@ impl<'db> Type<'db> {
         &self,
         db: &'db dyn WorkspaceDataBase,
         report_errors: bool,
+        bare: bool,
         expr: PathExpr<'db>,
         ident: &SpanIdent<'db>,
         multibits: Option<MultibitsPart>,
@@ -498,6 +577,14 @@ impl<'db> Type<'db> {
                 place.current_path = expr;
             }
             FieldLookup::Variable(var) => {
+                if let Some(why) = out_of_reach(db, var, bare, ctx.scope) {
+                    ctx.errors.push(
+                        ResolveError::OutOfReach { expr, var, why }
+                            .to_diagnostic(db, ctx.scope.file(db)),
+                    );
+                    ctx.type_of_path_expr.insert(expr, Type::Never);
+                    return;
+                }
                 if let Some(mb) = multibits {
                     let base = var.spec(db).infer(db);
                     check_multibits_bounds(db, expr, base, Some(var), mb, ctx);
