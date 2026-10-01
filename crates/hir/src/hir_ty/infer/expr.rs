@@ -476,6 +476,8 @@ impl<'db> InferExprCtx<'db> {
             ExprKind::PrimaryExpr(_) | ExprKind::FoldExpr { .. } => {}
         }
 
+        // The node itself: an arm below binds its operand as `expr`.
+        let node = expr;
         match expr.expr(db) {
             ExprKind::AddOperator {
                 left,
@@ -547,6 +549,25 @@ impl<'db> InferExprCtx<'db> {
                         inference_results.type_of_expr[left],
                         CallSite::from_scoped(db, right),
                     ));
+                } else {
+                    // A comparison reads one value on each side: a STRUCT, an
+                    // ARRAY or an instance has no single value to compare.
+                    let operand = inference_results
+                        .type_of_expr_with_adjustments(db, *left)
+                        .normalize(db);
+                    if matches!(
+                        operand,
+                        Type::Struct(_) | Type::Array(_) | Type::FunctionBlock(_) | Type::Class(_)
+                    ) {
+                        inference_results.errors.push(
+                            TypeError::UnsupportedOperator {
+                                call_site: expr.as_call_site(db),
+                                typ: operand,
+                                operator: operator.as_str(),
+                            }
+                            .to_diagnostic(db, inference_results.scope.file(db)),
+                        );
+                    }
                 }
                 // the return type of a comparison expression is bool
                 inference_results
@@ -595,8 +616,28 @@ impl<'db> InferExprCtx<'db> {
                             ));
                         }
                     }
-                    _ => {
-                        // numeric-only, reuse existing coercion rules
+                    UnaryOperatorKind::Minus | UnaryOperatorKind::Plus => {
+                        // A sign takes what binary `-` takes: numbers, bit
+                        // strings and durations. An untyped literal is
+                        // checked once its context types it.
+                        let operand = inference_results
+                            .type_of_expr_with_adjustments(db, *expr)
+                            .normalize(db);
+                        if !operand.has_infer() && !operand.is_never() && !operand.supports_add(db)
+                        {
+                            inference_results.errors.push(
+                                TypeError::UnsupportedOperator {
+                                    call_site: node.as_call_site(db),
+                                    typ: operand,
+                                    operator: match operator {
+                                        UnaryOperatorKind::Minus => "-",
+                                        _ => "+",
+                                    },
+                                }
+                                .to_diagnostic(db, inference_results.scope.file(db)),
+                            );
+                            inference_results.type_of_expr.insert(node, Type::Never);
+                        }
                     }
                 }
             }

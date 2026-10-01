@@ -83,8 +83,10 @@ impl<'db> Type<'db> {
         self.is_float()
     }
 
+    /// AND, OR and XOR: logic on BOOL, bitwise on integers. A float has no
+    /// bits to combine.
     pub fn supports_bool_op(&self, _db: &'db dyn WorkspaceDataBase) -> bool {
-        self.is_boolean() || self.is_numeric()
+        self.is_boolean() || (self.is_numeric() && !self.is_float())
     }
 
     pub fn supports_comparison(&self, db: &'db dyn WorkspaceDataBase) -> bool {
