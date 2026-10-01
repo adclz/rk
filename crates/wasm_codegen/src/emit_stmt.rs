@@ -331,6 +331,7 @@ fn emit_stmt(func: &mut wasm_encoder::Function, stmt: &MirStmt, ctx: &Ctx) {
             end,
             step,
             body,
+            control_range,
         } => {
             // The counter is read and written through its place: a wasm local or
             // linear memory.
@@ -425,6 +426,74 @@ fn emit_stmt(func: &mut wasm_encoder::Function, stmt: &MirStmt, ctx: &Ctx) {
             ctx.loop_stack.borrow_mut().pop();
             func.instruction(&Instruction::End); // continue target: the increment
             close_label(ctx);
+
+            // A subrange counter keeps its last value when the loop is ending:
+            // exit before incrementing when both the end and the subrange's edge
+            // are nearer than the step. A range overshooting the subrange still
+            // steps into the next value, which the body's check refuses.
+            if let Some(&(lower, upper)) = control_range.as_deref() {
+                let lane_const = |func: &mut wasm_encoder::Function, v: i64| {
+                    func.instruction(&if is_64 {
+                        Instruction::I64Const(v)
+                    } else {
+                        Instruction::I32Const(v as i32)
+                    });
+                };
+                let lane_sub = if is_64 {
+                    Instruction::I64Sub
+                } else {
+                    Instruction::I32Sub
+                };
+                let lane_lt_u = if is_64 {
+                    Instruction::I64LtU
+                } else {
+                    Instruction::I32LtU
+                };
+                let step_magnitude = |func: &mut wasm_encoder::Function, ctx: &Ctx| {
+                    if descending {
+                        lane_const(func, 0);
+                    }
+                    match step_tmp {
+                        Some(idx) => {
+                            func.instruction(&Instruction::LocalGet(idx));
+                        }
+                        None => emit_expr(func, step, ctx.locals, ctx.fn_indices),
+                    }
+                    if descending {
+                        func.instruction(&lane_sub);
+                    }
+                };
+                let end_value = |func: &mut wasm_encoder::Function, ctx: &Ctx| match end_tmp {
+                    Some(idx) => {
+                        func.instruction(&Instruction::LocalGet(idx));
+                    }
+                    None => emit_expr(func, end, ctx.locals, ctx.fn_indices),
+                };
+                // The end is nearer than the step: this is the last iteration.
+                if descending {
+                    ctrl_load(func, ctx);
+                    end_value(func, ctx);
+                } else {
+                    end_value(func, ctx);
+                    ctrl_load(func, ctx);
+                }
+                func.instruction(&lane_sub);
+                step_magnitude(func, ctx);
+                func.instruction(&lane_lt_u);
+                // And so is the subrange's edge: the next value would leave it.
+                if descending {
+                    ctrl_load(func, ctx);
+                    lane_const(func, lower);
+                } else {
+                    lane_const(func, upper);
+                    ctrl_load(func, ctx);
+                }
+                func.instruction(&lane_sub);
+                step_magnitude(func, ctx);
+                func.instruction(&lane_lt_u);
+                func.instruction(&Instruction::I32And);
+                func.instruction(&Instruction::BrIf(1));
+            }
 
             // A bound at the type's maximum must terminate the loop, not wrap: exit
             // before incrementing when the headroom to the type's edge is smaller

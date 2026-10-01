@@ -529,6 +529,29 @@ fn a_for_iterate_leaving_the_subrange_faults(mut with_db: db::RootDatabase) {
     );
 }
 
+/// The last iterate is observed too: stepping 0,3,6,9 on `TO 12` reaches
+/// 12, the end, and faults there instead of stopping at 9.
+#[rstest]
+fn a_last_iterate_leaving_the_subrange_faults(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE Small : INT (0..10); END_TYPE
+
+        FUNCTION run : DINT
+        VAR
+            i : Small;
+        END_VAR
+            FOR i := 0 TO 12 BY 3 DO
+                run := run + i;
+            END_FOR;
+        END_FUNCTION
+    "#;
+    let msg = expect_fault(&mut with_db, source, "the last iterate is 12");
+    assert!(
+        msg.contains("value out of subrange bounds"),
+        "the iterate names the check: {msg}"
+    );
+}
+
 /// The DECLARED choice: the RANGE may overshoot the subrange as long as the
 /// observed values do not. Stepping 0,7 on `TO 12` never reaches 14 — the
 /// loop is legal and completes; faulting it would reject a correct program

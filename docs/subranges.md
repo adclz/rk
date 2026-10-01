@@ -29,6 +29,8 @@ END_FUNCTION
 Any other value is checked when it is stored, and raises `value out of subrange bounds`.
 See [Bundled Traps](bundled-traps.md).
 
+A subrange `FOR` counter is checked on each pass, and stays in range when the loop ends: after `FOR p := 0 TO 100 DO`, `p` is 100.
+
 A subrange reads as its base type, so `n := p;` needs no conversion when `n` is an `INT`.
 
 ## By reference
