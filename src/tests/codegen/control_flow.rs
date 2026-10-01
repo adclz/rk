@@ -836,6 +836,32 @@ fn case_string_labels_compare_by_content(mut with_db: db::RootDatabase) {
     );
 }
 
+/// A CHAR label is its code point: a range of letters is a range of code
+/// points, and a character past one byte is one label.
+#[rstest]
+fn case_char_labels_compare_code_points(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION kind : DINT
+        VAR_INPUT c : CHAR; END_VAR
+            CASE c OF
+                'a'..'z', 'A'..'Z': kind := 1;
+                '0'..'9':           kind := 20;
+                ' ', CHAR#'_':      kind := 300;
+                'é':                kind := 4000;
+            ELSE
+                kind := 50000;
+            END_CASE;
+        END_FUNCTION
+
+        FUNCTION run : DINT
+            run := kind(c := 'q') + kind(c := 'Q') + kind(c := '5')
+                 + kind(c := '_') + kind(c := 'é') + kind(c := '#');
+        END_FUNCTION
+    "#;
+    let result: i32 = super::run(&mut with_db, source, "run", ());
+    assert_eq!(result, 54322, "1 + 1 + 20 + 300 + 4000 + 50000");
+}
+
 /// Several labels on one arm, mixing forms, and a subrange that must not
 /// swallow neighbouring values.
 #[rstest]

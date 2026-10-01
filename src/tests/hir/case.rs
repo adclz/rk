@@ -356,9 +356,10 @@ END_FUNCTION_BLOCK"#;
     ");
 }
 
-// CASE branches on an integer, a bit string, an enum or a STRING. A REAL
-// selector built an invalid module, and a BOOL or TIME one was refused
-// label by label, as if the labels were not constant.
+// CASE branches on an integer, a bit string, a CHAR, an enum or a STRING.
+// A REAL selector built an invalid module, and a BOOL or TIME one was
+// refused label by label, as if the labels were not constant. A BOOL's two
+// values are an IF.
 #[rstest]
 fn invalid_case_selector_type(mut with_db: RootDatabase) {
     let source = r#"
@@ -377,7 +378,7 @@ END_FUNCTION"#;
        |
      5 |     CASE r OF 1: F := 1; END_CASE;
        |          |
-       |          `-- 'r' is 'REAL', and CASE branches on an integer, an enum or a STRING
+       |          `-- 'r' is 'REAL', and CASE branches on an integer, a bit string, a CHAR, an enum or a STRING
        |
        | Note: branch with IF on anything else
     ---'
@@ -386,16 +387,16 @@ END_FUNCTION"#;
        |
      6 |     CASE b OF TRUE: F := 2; END_CASE;
        |          |
-       |          `-- 'b' is 'BOOL', and CASE branches on an integer, an enum or a STRING
+       |          `-- 'b' is 'BOOL', and CASE branches on an integer, a bit string, a CHAR, an enum or a STRING
        |
-       | Note: branch with IF on anything else
+       | Note: a BOOL has two values: branch with IF
     ---'
     [E1207] Error: CASE selector of the wrong type
        ,-[ file:///test0.st:7:10 ]
        |
      7 |     CASE t OF T#1s: F := 3; END_CASE;
        |          |
-       |          `-- 't' is 'TIME', and CASE branches on an integer, an enum or a STRING
+       |          `-- 't' is 'TIME', and CASE branches on an integer, a bit string, a CHAR, an enum or a STRING
        |
        | Note: branch with IF on anything else
     ---'
@@ -404,7 +405,7 @@ END_FUNCTION"#;
        |
      8 |     CASE p OF 1: F := 4; END_CASE;
        |          |
-       |          `-- 'p' is 'Pt', and CASE branches on an integer, an enum or a STRING
+       |          `-- 'p' is 'Pt', and CASE branches on an integer, a bit string, a CHAR, an enum or a STRING
        |
        | Note: branch with IF on anything else
     ---'
@@ -430,6 +431,47 @@ END_FUNCTION"#;
      6 |         9..6: F := 2;
        |         |
        |         `-- this range is empty: 9 is above 6, so its arm never runs
+    ---'
+    ");
+}
+
+// A CHAR is a code point, so a range of letters is a range of code points.
+// It was refused as a selector of the wrong type.
+#[rstest]
+fn valid_case_on_char(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION Kind : INT
+VAR_INPUT c : CHAR; END_VAR
+    CASE c OF
+        'a'..'z', 'A'..'Z': Kind := 1;
+        '0'..'9': Kind := 2;
+        ' ', CHAR#'_': Kind := 3;
+    ELSE
+        Kind := 0;
+    END_CASE;
+END_FUNCTION"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
+
+// A reversed CHAR range is empty, and named by its characters.
+#[rstest]
+fn invalid_empty_char_range(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION Kind : INT
+VAR_INPUT c : CHAR; END_VAR
+    CASE c OF
+        'z'..'a': Kind := 1;
+    END_CASE;
+END_FUNCTION"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1208] Error: empty CASE range
+       ,-[ file:///test0.st:5:9 ]
+       |
+     5 |         'z'..'a': Kind := 1;
+       |         ^|^
+       |          `--- this range is empty: 'z' is above 'a', so its arm never runs
     ---'
     ");
 }
