@@ -862,6 +862,32 @@ fn case_char_labels_compare_code_points(mut with_db: db::RootDatabase) {
     assert_eq!(result, 54322, "1 + 1 + 20 + 300 + 4000 + 50000");
 }
 
+/// Radix labels select their arms, written right against the colon.
+#[rstest]
+fn case_radix_labels_select_their_arms(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION kind : DINT
+        VAR_INPUT v : BYTE; END_VAR
+            CASE v OF
+                16#FF: kind := 1;
+                2#0001: kind := 20;
+                8#17: kind := 300;
+                16#20..16#2F: kind := 4000;
+                BYTE#16#30: kind := 50000;
+            ELSE
+                kind := 600000;
+            END_CASE;
+        END_FUNCTION
+
+        FUNCTION run : DINT
+            run := kind(v := 255) + kind(v := 1) + kind(v := 15) + kind(v := 37)
+                 + kind(v := 48) + kind(v := 2);
+        END_FUNCTION
+    "#;
+    let result: i32 = super::run(&mut with_db, source, "run", ());
+    assert_eq!(result, 654_321, "1 + 20 + 300 + 4000 + 50000 + 600000");
+}
+
 /// Several labels on one arm, mixing forms, and a subrange that must not
 /// swallow neighbouring values.
 #[rstest]

@@ -501,11 +501,14 @@ module.exports = grammar({
     _explicit_signed_int: (_) =>
       token(seq(choice("+", "-"), /[0-9][0-9_]*/)),
 
-    binary_int: (_) => token(seq("2#", /[?:_01]*/)),
+    // At least one digit, each one or the first after an optional '_'. A
+    // class written `[?:...]` took '?' and ':' as digits, so `16#FF:` as a
+    // CASE label swallowed its colon.
+    binary_int: (_) => token(seq("2#", /_?[01][_01]*/)),
 
-    octal_int: (_) => token(seq("8#", /[?:_0-7]*/)),
+    octal_int: (_) => token(seq("8#", /_?[0-7][_0-7]*/)),
 
-    hex_int: (_) => token(seq("16#", /[?:_0-9a-fA-F]*/)),
+    hex_int: (_) => token(seq("16#", /_?[0-9a-fA-F][_0-9a-fA-F]*/)),
 
     real_literal: ($) =>
       seq(
@@ -877,11 +880,12 @@ module.exports = grammar({
 
     array_init: ($) => seq("[", field("values", $.array_values), "]"),
 
+    // `n()` repeats no value: n elements keep their default.
     array_index_elem: ($) =>
       seq(
         field("index", $.unsigned_int),
         "(",
-        field("values", $.array_values),
+        optional(field("values", $.array_values)),
         ")",
       ),
 
@@ -2189,7 +2193,6 @@ module.exports = grammar({
     // Table 1 - Character sets
     // Table 2 - Identifiers
 
-    _hex_digit: ($) => /[?:_0-9a-fA-F]/,
     identifier: (_) => /[_\p{XID_Start}][_\p{XID_Continue}]*/,
     adress_identifier: (_) => /[A-Za-z]*/,
   },

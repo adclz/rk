@@ -414,3 +414,27 @@ fn named_constant_repeat_count_rejected(mut with_db: RootDatabase) {
     ---'
     ");
 }
+
+/// `n()` repeats no value: n elements keep their default. The grammar wanted
+/// a value inside, and said `no item ""`. The empty repetition still counts
+/// its elements against the array's bounds.
+#[rstest]
+fn empty_repetition_counts_its_elements(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION Test
+            VAR
+                a : ARRAY[0..3] OF INT := [1, 2(), 4];
+                b : ARRAY[0..3] OF INT := [1, 4()];
+            END_VAR
+        END_FUNCTION
+        "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0507] Error: invalid array access
+       ,-[ file:///test0.st:5:47 ]
+       |
+     5 |                 b : ARRAY[0..3] OF INT := [1, 4()];
+       |                                               ^|^
+       |                                                `--- too many elements in array initializer (expected at most 4)
+    ---'
+    ");
+}

@@ -759,3 +759,56 @@ END_TYPE
                 (real_literal
                   (signed_real_value
                     (real_value)))))))))))
+
+================================================================================
+Empty repetition in an array initializer
+================================================================================
+
+TYPE
+    Row : ARRAY[0..3] OF INT := [1, 2(), 4];
+END_TYPE
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (data_type_decl
+    (type_decl
+      (identifier)
+      (array_type_spec
+        (ranges
+          (subrange
+            (constant_expr
+              (constant
+                (numeric_literal
+                  (int_literal
+                    (signed_int
+                      (unsigned_int))))))
+            (constant_expr
+              (constant
+                (numeric_literal
+                  (int_literal
+                    (signed_int
+                      (unsigned_int))))))))
+        (simple_type_spec
+          (numeric_type_name
+            (int_type_name
+              (sign_int_type_name
+                (int_name))))))
+      (array_type_init
+        (init_elem
+          (constant_expr
+            (constant
+              (numeric_literal
+                (int_literal
+                  (signed_int
+                    (unsigned_int)))))))
+        (init_elem
+          (array_index_elem
+            (unsigned_int)))
+        (init_elem
+          (constant_expr
+            (constant
+              (numeric_literal
+                (int_literal
+                  (signed_int
+                    (unsigned_int)))))))))))

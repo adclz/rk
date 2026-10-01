@@ -447,3 +447,165 @@ END_FUNCTION
             (constant
               (bool_literal
                 (bool_literal_with_string)))))))))
+
+================================================================================
+Based literals before a colon
+================================================================================
+
+FUNCTION fn : INT
+VAR_INPUT v : BYTE; END_VAR
+    CASE v OF
+        16#FF: fn := 1;
+        2#0001: fn := 2;
+        8#17: fn := 3;
+        16#20..16#2F: fn := 4;
+        BYTE#16#30: fn := 5;
+    END_CASE;
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (func_decl
+    (identifier)
+    (numeric_type_name
+      (int_type_name
+        (sign_int_type_name
+          (int_name))))
+    (input_decls
+      (input_var
+        (variable_list
+          (identifier))
+        (var_decl_init
+          (simple_type_spec
+            (bit_str_type_name
+              (multibits_type_name
+                (byte_name)))))))
+    (func_body
+      (stmt_list
+        (case_stmt
+          (variable_access
+            (variable
+              (begin_path_expression
+                (path_expression
+                  (var_access
+                    (field))))))
+          (case_selection
+            (case_list
+              (case_list_elem
+                (constant_expr
+                  (constant
+                    (numeric_literal
+                      (int_literal
+                        (hex_int)))))))
+            (stmt_list
+              (assign
+                (variable_access
+                  (variable
+                    (begin_path_expression
+                      (path_expression
+                        (var_access
+                          (field))))))
+                (assignment
+                  (constant
+                    (numeric_literal
+                      (int_literal
+                        (signed_int
+                          (unsigned_int)))))))))
+          (case_selection
+            (case_list
+              (case_list_elem
+                (constant_expr
+                  (constant
+                    (numeric_literal
+                      (int_literal
+                        (binary_int)))))))
+            (stmt_list
+              (assign
+                (variable_access
+                  (variable
+                    (begin_path_expression
+                      (path_expression
+                        (var_access
+                          (field))))))
+                (assignment
+                  (constant
+                    (numeric_literal
+                      (int_literal
+                        (signed_int
+                          (unsigned_int)))))))))
+          (case_selection
+            (case_list
+              (case_list_elem
+                (constant_expr
+                  (constant
+                    (numeric_literal
+                      (int_literal
+                        (octal_int)))))))
+            (stmt_list
+              (assign
+                (variable_access
+                  (variable
+                    (begin_path_expression
+                      (path_expression
+                        (var_access
+                          (field))))))
+                (assignment
+                  (constant
+                    (numeric_literal
+                      (int_literal
+                        (signed_int
+                          (unsigned_int)))))))))
+          (case_selection
+            (case_list
+              (case_list_elem
+                (subrange
+                  (constant_expr
+                    (constant
+                      (numeric_literal
+                        (int_literal
+                          (hex_int)))))
+                  (constant_expr
+                    (constant
+                      (numeric_literal
+                        (int_literal
+                          (hex_int))))))))
+            (stmt_list
+              (assign
+                (variable_access
+                  (variable
+                    (begin_path_expression
+                      (path_expression
+                        (var_access
+                          (field))))))
+                (assignment
+                  (constant
+                    (numeric_literal
+                      (int_literal
+                        (signed_int
+                          (unsigned_int)))))))))
+          (case_selection
+            (case_list
+              (case_list_elem
+                (constant_expr
+                  (constant
+                    (numeric_literal
+                      (int_literal
+                        (int_kind
+                          (multibits_type_name
+                            (byte_name)))
+                        (hex_int)))))))
+            (stmt_list
+              (assign
+                (variable_access
+                  (variable
+                    (begin_path_expression
+                      (path_expression
+                        (var_access
+                          (field))))))
+                (assignment
+                  (constant
+                    (numeric_literal
+                      (int_literal
+                        (signed_int
+                          (unsigned_int))))))))))))))

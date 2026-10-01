@@ -21,13 +21,14 @@ Elements can be of any type: structs, strings and function block instances inclu
 ## Initializers
 
 The elements go in brackets.
-`N(x)` repeats `x` N times, and `N(a, b)` repeats the whole group.
+`N(x)` repeats `x` N times, `N(a, b)` repeats the whole group, and `N()` leaves N elements at their default.
 
 ```iecst
 FUNCTION Demo
 VAR
     a : ARRAY[0..9] OF INT := [1, 2, 3, 7(0)];          // 1, 2, 3, then seven 0
     b : ARRAY[0..5] OF INT := [2(1, 2, 3)];             // 1, 2, 3, 1, 2, 3
+    c : ARRAY[0..3] OF INT := [1, 2(), 4];              // 1, 0, 0, 4
     m : ARRAY[0..1, 0..2] OF INT := [1, 2, 3, 4, 5, 6];
     n : ARRAY[0..1, 0..1] OF INT := [[1, 2], [3, 4]];
 END_VAR
