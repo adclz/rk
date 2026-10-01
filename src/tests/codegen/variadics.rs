@@ -336,3 +336,42 @@ fn a_variadic_call_through_an_interface_runs_the_implementers_copy(mut with_db: 
     let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 3033, "3 + 3 * 10 + 3 * 1000");
 }
+
+/// A FUNCTION or METHOD both variadic and taking an interface gets a copy
+/// per implementer and argument count (`f$@Pump$2`). The interface copy was
+/// lowered without a count, an internal error at its fold.
+#[rstest]
+fn a_variadic_function_or_method_on_an_interface(mut with_db: db::RootDatabase) {
+    let source = r#"
+        INTERFACE IDev
+            METHOD Id : DINT END_METHOD
+        END_INTERFACE
+
+        FUNCTION_BLOCK Pump IMPLEMENTS IDev
+            METHOD PUBLIC Id : DINT
+                Id := 7;
+            END_METHOD
+        END_FUNCTION_BLOCK
+
+        FUNCTION f : DINT
+        VAR_IN_OUT d : IDev; END_VAR
+        VAR_INPUT args : DINT...; END_VAR
+            f := d.Id() + ...args+;
+        END_FUNCTION
+
+        FUNCTION_BLOCK Calc
+            METHOD PUBLIC M : DINT
+            VAR_IN_OUT d : IDev; END_VAR
+            VAR_INPUT args : DINT...; END_VAR
+                M := d.Id() + ...args+;
+            END_METHOD
+        END_FUNCTION_BLOCK
+
+        FUNCTION test : DINT
+        VAR p : Pump; c : Calc; END_VAR
+            test := f(p, 1, 2) * 100 + c.M(p, 1, 2, 3);
+        END_FUNCTION
+    "#;
+    let result: i32 = super::run(&mut with_db, source, "test", ());
+    assert_eq!(result, 1013, "(7 + 3) * 100 + 7 + 6");
+}

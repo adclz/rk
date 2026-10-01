@@ -260,26 +260,53 @@ fn lower_module_from_pous<'db>(
                     .iter()
                     .any(|v| super::mono_iface::is_interface_param(db, v));
                 if has_iface_param {
+                    // Variadic as well: one copy per instance and argument
+                    // count, `f$@Pump$2`, the instance's symbol with the
+                    // count the call site appends.
+                    let arities: Vec<Option<usize>> =
+                        match super::mono_arity::variadic_param(db, *func) {
+                            Some(_) => arity_by_func
+                                .get(func)
+                                .into_iter()
+                                .flatten()
+                                .map(|a| Some(a.arity))
+                                .collect(),
+                            None => vec![None],
+                        };
                     for inst in iface_by_func.get(func).into_iter().flatten() {
-                        let mut mir_func = lower_function(
-                            db,
-                            *func,
-                            next_fn_idx,
-                            &mut memory_layout,
-                            string_pool.clone(),
-                            Some(&inst.iface_subs),
-                            // A specialization's body uses its own rewrites.
-                            &inst.call_rewrites,
-                            None,
-                        )?;
-                        mir_func.name = inst.mangled_name;
-                        at_pou(
-                            db,
-                            *func,
-                            register_symbol(db, &mut function_indices, mir_func.name, next_fn_idx),
-                        )?;
-                        next_fn_idx += 1;
-                        functions.push(mir_func);
+                        for &arity in &arities {
+                            let mut mir_func = lower_function(
+                                db,
+                                *func,
+                                next_fn_idx,
+                                &mut memory_layout,
+                                string_pool.clone(),
+                                Some(&inst.iface_subs),
+                                // A specialization's body uses its own rewrites.
+                                &inst.call_rewrites,
+                                arity,
+                            )?;
+                            mir_func.name = match arity {
+                                Some(arity) => super::naming::mangle_generic_name(
+                                    db,
+                                    inst.mangled_name,
+                                    &[&arity.to_string()],
+                                ),
+                                None => inst.mangled_name,
+                            };
+                            at_pou(
+                                db,
+                                *func,
+                                register_symbol(
+                                    db,
+                                    &mut function_indices,
+                                    mir_func.name,
+                                    next_fn_idx,
+                                ),
+                            )?;
+                            next_fn_idx += 1;
+                            functions.push(mir_func);
+                        }
                     }
                     continue;
                 }
