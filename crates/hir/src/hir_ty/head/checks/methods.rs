@@ -126,6 +126,51 @@ impl<'db> InitInference<'db> {
             }
         }
 
+        // An INTERFACE it names may be implemented by a method it inherits.
+        // That method is checked here, at the IMPLEMENTS that asks for it:
+        // its own POU may implement no INTERFACE at all, and one that
+        // implements this one was checked there.
+        let mut checked = rustc_hash::FxHashSet::default();
+        for base in crate::hir_ty::oop::written_bases(db, implementer) {
+            let Some(named @ Pou::Interface(_)) = base.target else {
+                continue;
+            };
+            let site = crate::CallSite::from_scoped(db, &base.spec);
+            for (name, prototype) in &crate::hir_ty::oop::class_members(db, named).methods {
+                let (Some(inherited), Pou::Interface(declaring)) =
+                    (members.methods.get(name), prototype.owner)
+                else {
+                    continue;
+                };
+                if inherited.owner == implementer
+                    || !inherited.method.is_declared()
+                    || crate::hir_ty::oop::ancestry(db, inherited.owner).implements(declaring)
+                    || !checked.insert((prototype.method, inherited.method))
+                {
+                    continue;
+                }
+                let mut found = Vec::new();
+                check_signature(db, prototype.method, inherited.method, &mut found);
+                // The method is fine in its own POU: what is wrong is this one
+                // taking it as an implementation, so that is where it shows.
+                for mut diagnostic in found {
+                    diagnostic.diagnostic.range =
+                        crate::denormalize(db, self.scope.file(db), &site.get_span(db))
+                            .unwrap_or_default();
+                    diagnostic.with_related(ide_diagnostic::Related::new(
+                        format!(
+                            "'{}' is inherited from '{}', declared here",
+                            inherited.method.get_name_with_case(db).text(db),
+                            inherited.owner.get_name_with_case(db).text(db),
+                        ),
+                        inherited.method.get_scope_id(db).file(db),
+                        inherited.method.get_name_span(db),
+                    ));
+                    self.errors.push(diagnostic);
+                }
+            }
+        }
+
         // What it inherits without declaring: a concrete POU owes a body for
         // every prototype, and for every ABSTRACT method unless it is
         // ABSTRACT itself, passing the obligation down.
@@ -256,8 +301,19 @@ fn check_signature<'db>(
     m2: MethodRef<'db>,
     errors: &mut Vec<IdeDiagnostic>,
 ) {
-    let sig1 = m1.variables(db);
-    let sig2 = m2.variables(db);
+    // The parameters are the signature: a method's own VAR and VAR_TEMP
+    // are not, and a prototype has none.
+    let parameters = |method: MethodRef<'db>| -> Vec<VariableDecl<'db>> {
+        method
+            .variables(db)
+            .iter()
+            .copied()
+            .filter(|var| var.is_input(db) || var.is_output(db) || var.is_in_out(db))
+            .collect()
+    };
+    let (sig1, sig2) = (parameters(m1), parameters(m2));
+    // Each error points at `m2`, whose span is read in its own file.
+    let file = m2.get_scope_id(db).file(db);
     if sig1.len() != sig2.len() {
         errors.push(
             OopError::SignatureParametersCountMismatch {
@@ -266,7 +322,7 @@ fn check_signature<'db>(
                 m2,
                 got: sig2.len(),
             }
-            .to_diagnostic(db, m1.get_scope_id(db).file(db)),
+            .to_diagnostic(db, file),
         );
     }
 
@@ -284,7 +340,7 @@ fn check_signature<'db>(
                 method: m2,
                 base: m1,
             }
-            .to_diagnostic(db, m1.get_scope_id(db).file(db)),
+            .to_diagnostic(db, file),
         );
     }
 
@@ -305,7 +361,7 @@ fn check_signature<'db>(
                     base_param: *var1,
                     param: *var2,
                 }
-                .to_diagnostic(db, m1.get_scope_id(db).file(db)),
+                .to_diagnostic(db, file),
             );
             continue;
         }
@@ -316,7 +372,7 @@ fn check_signature<'db>(
                     base_param: *var1,
                     param: *var2,
                 }
-                .to_diagnostic(db, m1.get_scope_id(db).file(db)),
+                .to_diagnostic(db, file),
             );
             continue;
         }
@@ -329,7 +385,7 @@ fn check_signature<'db>(
                     base_param: *var1,
                     param: *var2,
                 }
-                .to_diagnostic(db, m1.get_scope_id(db).file(db)),
+                .to_diagnostic(db, file),
             )
         }
     }

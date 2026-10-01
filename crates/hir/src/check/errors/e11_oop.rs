@@ -19,6 +19,27 @@ use ide_diagnostic::IdeDiagnostic;
 use ide_diagnostic::Related;
 use ide_diagnostic::diag;
 
+/// What a message calls the method a signature is matched against: an
+/// INTERFACE's prototype is no base.
+fn counterpart(method: MethodRef) -> &'static str {
+    if method.is_prototype() {
+        "interface method"
+    } else {
+        "base method"
+    }
+}
+
+/// [`counterpart`] for the method a parameter belongs to.
+fn param_counterpart<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    param: VariableDecl<'db>,
+) -> &'static str {
+    match crate::hir_def::semantic_index::get_scope(db, param.scope_id(db)).kind {
+        crate::hir_def::scope::ScopeKind::MethodProt(_) => "interface method",
+        _ => "base method",
+    }
+}
+
 /// The declaring keyword of a variable section, for messages.
 fn section_keyword(kind: VariableKind) -> &'static str {
     match kind {
@@ -871,7 +892,8 @@ impl<'db> ToIdeDiagnostic<'db> for OopError<'db> {
 
                 diag.with_related(Related::new(
                     format!(
-                        "base method '{}' is declared here",
+                        "{} '{}' is declared here",
+                        counterpart(*m1),
                         m1.get_name_with_case(db).text(db)
                     ),
                     m1.get_scope_id(db).file(db),
@@ -901,16 +923,17 @@ impl<'db> ToIdeDiagnostic<'db> for OopError<'db> {
                             .unwrap_or_default(),
                     )
                     .call();
+                let base = param_counterpart(db, *base_param);
                 diag.with_related(Related::new(
                     format!(
-                        "the base method declares '{}' as '{}' here",
+                        "the {base} declares '{}' as '{}' here",
                         base_param.name_with_case(db).text(db),
                         expected.type_name(db),
                     ),
                     base_param.get_scope_id(db).file(db),
                     base_param.spec(db).get_span(db),
                 ));
-                diag.with_note("parameter types must match those of the base method".into());
+                diag.with_note(format!("parameter types must match those of the {base}"));
                 diag
             }
             Self::SignatureReturnMismatch {
@@ -940,13 +963,17 @@ impl<'db> ToIdeDiagnostic<'db> for OopError<'db> {
                     .call();
                 diag.with_related(Related::new(
                     format!(
-                        "base method '{}' declares its return type here",
+                        "{} '{}' declares its return type here",
+                        counterpart(*base),
                         base.get_name_with_case(db).text(db),
                     ),
                     base.get_scope_id(db).file(db),
                     ret_span(base),
                 ));
-                diag.with_note("the return type must match the base method's".into());
+                diag.with_note(format!(
+                    "the return type must match the {}'s",
+                    counterpart(*base)
+                ));
                 diag
             }
             Self::SignatureNameMismatch {
@@ -954,9 +981,10 @@ impl<'db> ToIdeDiagnostic<'db> for OopError<'db> {
                 base_param,
                 param,
             } => {
+                let base = param_counterpart(db, *base_param);
                 let mut diag = diag()
                     .message(format!(
-                        "parameter '{}' of method '{}' is named '{}' in the base method",
+                        "parameter '{}' of method '{}' is named '{}' in the {base}",
                         param.name_with_case(db).text(db),
                         method.get_name_with_case(db).text(db),
                         base_param.name_with_case(db).text(db),
@@ -969,7 +997,7 @@ impl<'db> ToIdeDiagnostic<'db> for OopError<'db> {
                     .call();
                 diag.with_related(Related::new(
                     format!(
-                        "the base method declares '{}' at this position",
+                        "the {base} declares '{}' at this position",
                         base_param.name_with_case(db).text(db),
                     ),
                     base_param.get_scope_id(db).file(db),
@@ -982,9 +1010,10 @@ impl<'db> ToIdeDiagnostic<'db> for OopError<'db> {
                 base_param,
                 param,
             } => {
+                let base = param_counterpart(db, *base_param);
                 let mut diag = diag()
                     .message(format!(
-                        "parameter '{}' of method '{}' is {} here but {} in the base method",
+                        "parameter '{}' of method '{}' is {} here but {} in the {base}",
                         param.name_with_case(db).text(db),
                         method.get_name_with_case(db).text(db),
                         section_keyword(param.kind(db)),
@@ -998,7 +1027,7 @@ impl<'db> ToIdeDiagnostic<'db> for OopError<'db> {
                     .call();
                 diag.with_related(Related::new(
                     format!(
-                        "the base method declares '{}' as {} here",
+                        "the {base} declares '{}' as {} here",
                         base_param.name_with_case(db).text(db),
                         section_keyword(base_param.kind(db)),
                     ),

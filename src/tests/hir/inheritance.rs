@@ -175,7 +175,7 @@ fn method_signature_count_mismatch_in_implementer(mut with_db: RootDatabase) {
         |
       3 |             METHOD DAYTIME
         |                    ^^^|^^^
-        |                       `----- base method 'DAYTIME' is declared here
+        |                       `----- interface method 'DAYTIME' is declared here
         |
      11 |             METHOD OVERRIDE DAYTIME
         |                             ^^^|^^^
@@ -207,7 +207,7 @@ fn method_signature_count_mismatch_in_base(mut with_db: RootDatabase) {
        |
      3 |             METHOD DAYTIME
        |                    ^^^|^^^
-       |                       `----- base method 'DAYTIME' is declared here
+       |                       `----- interface method 'DAYTIME' is declared here
        |
      8 |             METHOD OVERRIDE DAYTIME
        |                             ^^^|^^^
@@ -244,13 +244,13 @@ fn method_signature_type_mismatch(mut with_db: RootDatabase) {
         |
       6 |                     value2: INT;
         |                             ^|^
-        |                              `--- the base method declares 'value2' as 'INT' here
+        |                              `--- the interface method declares 'value2' as 'INT' here
         |
      15 |                     value2: REAL; // should be INT
         |                             ^^|^
         |                               `--- parameter 'value2' of method 'DAYTIME' has an incompatible type: expected 'INT', got 'REAL'
         |
-        | Note: parameter types must match those of the base method
+        | Note: parameter types must match those of the interface method
     ----'
     ");
 }
@@ -432,13 +432,13 @@ END_FUNCTION_BLOCK
        |
      3 |     METHOD M : INT
        |                ^|^
-       |                 `--- base method 'M' declares its return type here
+       |                 `--- interface method 'M' declares its return type here
        |
      8 |     METHOD M : REAL
        |                ^^|^
        |                  `--- method 'M' has an incompatible return type: expected 'INT', got 'REAL'
        |
-       | Note: the return type must match the base method's
+       | Note: the return type must match the interface method's
     ---'
     ");
 }
@@ -465,13 +465,13 @@ END_FUNCTION_BLOCK
        |
      3 |     METHOD M : INT
        |                ^|^
-       |                 `--- base method 'M' declares its return type here
+       |                 `--- interface method 'M' declares its return type here
        |
      8 |     METHOD M : DINT
        |                ^^|^
        |                  `--- method 'M' has an incompatible return type: expected 'INT', got 'DINT'
        |
-       | Note: the return type must match the base method's
+       | Note: the return type must match the interface method's
     ---'
     ");
 }
@@ -947,11 +947,11 @@ END_CLASS
         |
       4 |         VAR_INPUT a : INT; END_VAR
         |                   |
-        |                   `-- the base method declares 'a' as VAR_INPUT here
+        |                   `-- the interface method declares 'a' as VAR_INPUT here
         |
      10 |         VAR_IN_OUT a : INT; END_VAR
         |                    |
-        |                    `-- parameter 'a' of method 'M' is VAR_IN_OUT here but VAR_INPUT in the base method
+        |                    `-- parameter 'a' of method 'M' is VAR_IN_OUT here but VAR_INPUT in the interface method
     ----'
     ");
 }
@@ -978,11 +978,11 @@ END_CLASS
         |
       4 |         VAR_INPUT a : INT; END_VAR
         |                   |
-        |                   `-- the base method declares 'a' at this position
+        |                   `-- the interface method declares 'a' at this position
         |
      10 |         VAR_INPUT b : INT; END_VAR
         |                   |
-        |                   `-- parameter 'b' of method 'M' is named 'a' in the base method
+        |                   `-- parameter 'b' of method 'M' is named 'a' in the interface method
     ----'
     ");
 }
@@ -1043,22 +1043,22 @@ END_CLASS
         |
       4 |         VAR_INPUT a : INT; b : REAL; END_VAR
         |                   |
-        |                   `-- the base method declares 'a' at this position
+        |                   `-- the interface method declares 'a' at this position
         |
      10 |         VAR_INPUT b : REAL; a : INT; END_VAR
         |                   |
-        |                   `-- parameter 'b' of method 'M' is named 'a' in the base method
+        |                   `-- parameter 'b' of method 'M' is named 'a' in the interface method
     ----'
     [E1128] Error: method parameter name mismatch
         ,-[ file:///test0.st:10:29 ]
         |
       4 |         VAR_INPUT a : INT; b : REAL; END_VAR
         |                            |
-        |                            `-- the base method declares 'b' at this position
+        |                            `-- the interface method declares 'b' at this position
         |
      10 |         VAR_INPUT b : REAL; a : INT; END_VAR
         |                             |
-        |                             `-- parameter 'a' of method 'M' is named 'b' in the base method
+        |                             `-- parameter 'a' of method 'M' is named 'b' in the interface method
     ----'
     ");
 }
@@ -1312,4 +1312,115 @@ END_FUNCTION
         |       ... and back to IA
     ----'
     ");
+}
+
+/// An INTERFACE met by an inherited method is checked against it too, at
+/// the IMPLEMENTS that asks for it. It used to pass, and the call through
+/// the interface read an INT where it promised an LREAL: an invalid module.
+#[rstest]
+fn an_inherited_implementation_is_checked_against_the_interface(mut with_db: RootDatabase) {
+    let source = r#"
+INTERFACE IMeasure
+    METHOD Value : LREAL END_METHOD
+END_INTERFACE
+
+FUNCTION_BLOCK Base
+    METHOD PUBLIC Value : INT
+        Value := 3;
+    END_METHOD
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK Sensor EXTENDS Base IMPLEMENTS IMeasure
+END_FUNCTION_BLOCK
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1127] Error: method return type mismatch
+        ,-[ file:///test0.st:12:47 ]
+        |
+      3 |     METHOD Value : LREAL END_METHOD
+        |                    ^^|^^
+        |                      `---- interface method 'Value' declares its return type here
+        |
+      7 |     METHOD PUBLIC Value : INT
+        |                   ^^|^^
+        |                     `---- 'Value' is inherited from 'Base', declared here
+        |
+     12 | FUNCTION_BLOCK Sensor EXTENDS Base IMPLEMENTS IMeasure
+        |                                               ^^^^|^^^
+        |                                                   `----- method 'Value' has an incompatible return type: expected 'LREAL', got 'INT'
+        |
+        | Note: the return type must match the interface method's
+    ----'
+    ");
+}
+
+/// The signature is the parameters: an override's or an implementation's
+/// own VAR and VAR_TEMP are not part of it.
+#[rstest]
+fn locals_are_no_part_of_a_signature(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK Base
+    METHOD PUBLIC Calc : INT
+    VAR_INPUT x : INT; END_VAR
+        Calc := x;
+    END_METHOD
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK Derived EXTENDS Base
+    METHOD PUBLIC OVERRIDE Calc : INT
+    VAR_INPUT x : INT; END_VAR
+    VAR tmp : INT; END_VAR
+        tmp := x * 2;
+        Calc := tmp;
+    END_METHOD
+END_FUNCTION_BLOCK
+
+INTERFACE ICalc
+    METHOD Calc : INT
+    VAR_INPUT x : INT; END_VAR
+    END_METHOD
+END_INTERFACE
+
+FUNCTION_BLOCK Impl IMPLEMENTS ICalc
+    METHOD PUBLIC Calc : INT
+    VAR_INPUT x : INT; END_VAR
+    VAR_TEMP t : INT; END_VAR
+        t := x + 1;
+        Calc := t;
+    END_METHOD
+END_FUNCTION_BLOCK
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
+
+/// One prototype reached by two paths is one method: through two
+/// interfaces extending the same one, or named directly and again through
+/// an interface that extends it.
+#[rstest]
+fn an_interface_reached_twice_is_one_method(mut with_db: RootDatabase) {
+    let source = r#"
+INTERFACE IBase
+    METHOD Id : INT END_METHOD
+END_INTERFACE
+
+INTERFACE IRead EXTENDS IBase
+    METHOD Read : INT END_METHOD
+END_INTERFACE
+
+INTERFACE IWrite EXTENDS IBase
+    METHOD Write : INT END_METHOD
+END_INTERFACE
+
+FUNCTION_BLOCK Diamond IMPLEMENTS IRead, IWrite
+    METHOD PUBLIC Id : INT Id := 5; END_METHOD
+    METHOD PUBLIC Read : INT Read := 9; END_METHOD
+    METHOD PUBLIC Write : INT Write := 8; END_METHOD
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK Twice IMPLEMENTS IRead, IBase
+    METHOD PUBLIC Id : INT Id := 5; END_METHOD
+    METHOD PUBLIC Read : INT Read := 9; END_METHOD
+END_FUNCTION_BLOCK
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
 }
