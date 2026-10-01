@@ -687,8 +687,15 @@ impl<'db> ExprLowerCtx<'db> {
             ))),
 
             // Signed integers
+            // Each read at its own width, as the check read it: a radix
+            // literal is a bit pattern, so `SINT#16#FF` is -1.
             Elementary::SInt(int) | Elementary::Int(int) | Elementary::DInt(int) => {
-                let val = int.as_i32(db).map_err(|e| {
+                let val = match elem {
+                    Elementary::SInt(_) => int.as_i8(db).map(i32::from),
+                    Elementary::Int(_) => int.as_i16(db).map(i32::from),
+                    _ => int.as_i32(db),
+                }
+                .map_err(|e| {
                     LowerTypeError::UnsupportedType(format!("Integer parse error: {}", e))
                 })?;
                 Ok(MirExpr::Constant(MirConstant::I32(val)))
@@ -785,6 +792,11 @@ impl<'db> ExprLowerCtx<'db> {
                         Ok(MirExpr::Constant(MirConstant::I64(val)))
                     }
                     _ => {
+                        // A radix literal is a pattern of the lane's own
+                        // width: `16#FF` on a SINT is -1. A decimal one reads
+                        // as written, `128` under a minus included.
+                        let radix = int.kind(db)
+                            != hir::hir_def::expressions::expression::IntegerKind::Signed;
                         let val = match resolved {
                             Some(e) if !e.is_signed() => int.as_u32(db).map_err(|e| {
                                 LowerTypeError::UnsupportedType(format!(
@@ -792,6 +804,22 @@ impl<'db> ExprLowerCtx<'db> {
                                     e
                                 ))
                             })? as i32,
+                            Some(MirElementary::SInt) if radix => {
+                                int.as_i8(db).map(i32::from).map_err(|e| {
+                                    LowerTypeError::UnsupportedType(format!(
+                                        "InferInteger i8 error: {}",
+                                        e
+                                    ))
+                                })?
+                            }
+                            Some(MirElementary::Int) if radix => {
+                                int.as_i16(db).map(i32::from).map_err(|e| {
+                                    LowerTypeError::UnsupportedType(format!(
+                                        "InferInteger i16 error: {}",
+                                        e
+                                    ))
+                                })?
+                            }
                             _ => int.as_i32(db).map_err(|e| {
                                 LowerTypeError::UnsupportedType(format!(
                                     "InferInteger i32 error: {}",

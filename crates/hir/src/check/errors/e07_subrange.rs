@@ -57,6 +57,13 @@ pub enum SubRangeError<'db> {
         param: Type<'db>,
         arg: Type<'db>,
     },
+    /// An upper bound below the lower one: the subrange holds no value, and
+    /// every store into it was E0702. `ARRAY[5..1]` is E0503 likewise.
+    ReversedBounds {
+        upper_bound: Expr<'db>,
+        lower: i128,
+        upper: i128,
+    },
 }
 
 impl<'db> ErrorCode for SubRangeError<'db> {
@@ -66,6 +73,7 @@ impl<'db> ErrorCode for SubRangeError<'db> {
             Self::ValueOutOfRange { .. } => "E0702",
             Self::BoundNotConstant { .. } => "E0703",
             Self::ByRefSubrangeMismatch { .. } => "E0704",
+            Self::ReversedBounds { .. } => "E0705",
         }
     }
 
@@ -75,6 +83,7 @@ impl<'db> ErrorCode for SubRangeError<'db> {
             Self::ValueOutOfRange { .. } => "value outside subrange",
             Self::BoundNotConstant { .. } => "invalid subrange bound",
             Self::ByRefSubrangeMismatch { .. } => "subrange mismatch across a reference",
+            Self::ReversedBounds { .. } => "empty subrange",
         }
     }
 }
@@ -124,6 +133,18 @@ impl<'db> ToIdeDiagnostic<'db> for SubRangeError<'db> {
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
                 .range(crate::denormalize(db, file, &value.get_span(db)).unwrap_or_default())
+                .call(),
+            SubRangeError::ReversedBounds {
+                upper_bound,
+                lower,
+                upper,
+            } => diag()
+                .message(format!(
+                    "the upper bound {upper} is below the lower bound {lower}"
+                ))
+                .severity(DiagnosticSeverity::ERROR)
+                .desc(self)
+                .range(crate::denormalize(db, file, &upper_bound.get_span(db)).unwrap_or_default())
                 .call(),
             SubRangeError::ByRefSubrangeMismatch { span, param, arg } => diag()
                 .message(format!(

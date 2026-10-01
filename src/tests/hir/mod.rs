@@ -24,6 +24,7 @@ pub mod loops;
 pub mod modulo;
 pub mod namespaces;
 pub mod nullability;
+pub mod operators;
 pub mod overloads;
 pub mod path_expr;
 pub mod polymorphism;

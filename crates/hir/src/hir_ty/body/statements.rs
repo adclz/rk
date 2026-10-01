@@ -58,13 +58,28 @@ fn check_case_label_constant<'db>(
     label: Expr<'db>,
     // Whether a non-integer constant is acceptable here. A single label may
     // be a string or an enum variant; a SUBRANGE bound may not — `'a'..'z'`
-    // denotes a lexicographic set the compiler has no representation for, and
-    // ordering is the whole point of a range.
+    // on a STRING denotes a lexicographic set the compiler has no
+    // representation for, and ordering is the whole point of a range.
     allow_non_integer: bool,
     // The selector's type: the value is recorded as the selector holds it.
     selector: Type<'db>,
     ctx: &mut BodyInferenceResult<'db>,
 ) {
+    // On a CHAR, a label is its code point, which orders `'a'..'z'` as the
+    // selector compares.
+    if matches!(
+        selector.normalize(db),
+        Type::Elementary(ElementarySpec::Char)
+    ) && let ExprKind::PrimaryExpr(PrimaryExpr::Literal(
+        Elementary::InferString(ident) | Elementary::Char(ident),
+    )) = label.expr(db)
+        && let Ok(bytes) = ident.as_single_string(db)
+        && let Ok(code) = crate::hir_ty::infer::literals::char_literal_code_point(&bytes)
+    {
+        ctx.case_label_value
+            .insert(label, CaseLabelValue::Int(i128::from(code)));
+        return;
+    }
     // An enum label's value is its variant's ordinal, which lowering reads
     // from the variant table; there is nothing to record here.
     match ctx.get_type_of_expr(label).normalize(db) {
@@ -766,10 +781,43 @@ impl<'db> StmtsResolverCtx<'db> {
 
                     let condition_typ = ctx.get_type_of_expr(*condition);
 
+                    // CASE branches on an integer, a bit string, a CHAR, an
+                    // enum or a STRING. Another selector is refused once, and
+                    // its labels are not checked against it.
+                    let declared = ctx.type_of_expr_with_adjustments(db, *condition);
+                    let selector = declared.normalize(db);
+                    let selectable = selector.is_never()
+                        || selector.is_signed_integer()
+                        || selector.is_unsigned_integer()
+                        || selector.is_binary_integer()
+                        || matches!(
+                            selector,
+                            Type::Enum(_)
+                                | Type::EnumVariant(..)
+                                | Type::Elementary(ElementarySpec::Char | ElementarySpec::String)
+                                | Type::Infer(InferType::Integer(_) | InferType::String(_))
+                        );
+                    if !selectable {
+                        ctx.errors.push(
+                            crate::check::errors::e12_control_flow::ControlFlowError::CaseSelectorNotSupported {
+                                selector: CallSite::from_scoped(db, condition),
+                                ty: declared,
+                            }
+                            .to_diagnostic(db, ctx.scope.file(db)),
+                        );
+                    }
+
                     // check cases
                     for (case_kind, stmts) in cases {
                         for case in case_kind {
                             match case {
+                                CaseKind::Expression(expr) if !selectable => {
+                                    self.infer_and_check_expr(db, &mut infer, *expr, ctx);
+                                }
+                                CaseKind::Subrange { lower, upper } if !selectable => {
+                                    self.infer_and_check_expr(db, &mut infer, *lower, ctx);
+                                    self.infer_and_check_expr(db, &mut infer, *upper, ctx);
+                                }
                                 CaseKind::Expression(expr) => {
                                     self.infer_and_check_expr(db, &mut infer, *expr, ctx);
                                     check_case_label_constant(db, *expr, true, condition_typ, ctx);
@@ -801,6 +849,30 @@ impl<'db> StmtsResolverCtx<'db> {
                                         condition_typ,
                                         ctx,
                                     );
+                                    // Both bounds as the selector holds them: a
+                                    // reversed range holds no value.
+                                    if let (
+                                        Some(CaseLabelValue::Int(low)),
+                                        Some(CaseLabelValue::Int(high)),
+                                    ) = (
+                                        ctx.case_label_value.get(lower),
+                                        ctx.case_label_value.get(upper),
+                                    ) && low > high
+                                    {
+                                        let (lower_value, upper_value) = (*low, *high);
+                                        ctx.errors.push(
+                                            crate::check::errors::e12_control_flow::ControlFlowError::CaseRangeEmpty {
+                                                range: CallSite::from_scoped(db, lower),
+                                                lower: lower_value,
+                                                upper: upper_value,
+                                                chars: matches!(
+                                                    selector,
+                                                    Type::Elementary(ElementarySpec::Char)
+                                                ),
+                                            }
+                                            .to_diagnostic(db, ctx.scope.file(db)),
+                                        );
+                                    }
 
                                     if let Err(err) =
                                         infer.coerce_type_with_expr(db, condition_typ, *lower, ctx)

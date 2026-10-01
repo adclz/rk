@@ -53,6 +53,22 @@ pub enum ControlFlowError<'db> {
         /// wording for what is otherwise the same rule.
         as_range_bound: bool,
     },
+    /// A CASE selector of a type CASE does not branch on: it takes an
+    /// integer, a bit string, a CHAR, an enum or a STRING. A REAL one built
+    /// an invalid module, and a BOOL or TIME one was refused label by label.
+    CaseSelectorNotSupported {
+        selector: CallSite<'db>,
+        ty: crate::hir_ty::ty::Type<'db>,
+    },
+    /// A CASE range whose lower bound is above its upper: no value is in
+    /// it, so its arm never runs.
+    CaseRangeEmpty {
+        range: CallSite<'db>,
+        lower: i128,
+        upper: i128,
+        /// The bounds are code points, shown as the characters written.
+        chars: bool,
+    },
 }
 
 impl<'db> ErrorCode for ControlFlowError<'db> {
@@ -64,6 +80,8 @@ impl<'db> ErrorCode for ControlFlowError<'db> {
             Self::ForControlNotInteger { .. } => "E1206",
             Self::ForStepInvalid { .. } => "E1204",
             Self::CaseLabelNotConstant { .. } => "E1205",
+            Self::CaseSelectorNotSupported { .. } => "E1207",
+            Self::CaseRangeEmpty { .. } => "E1208",
         }
     }
 
@@ -75,6 +93,8 @@ impl<'db> ErrorCode for ControlFlowError<'db> {
             Self::ForControlNotInteger { .. } => "FOR counter is not an integer",
             Self::ForStepInvalid { .. } => "control flow violation",
             Self::CaseLabelNotConstant { .. } => "control flow violation",
+            Self::CaseSelectorNotSupported { .. } => "CASE selector of the wrong type",
+            Self::CaseRangeEmpty { .. } => "empty CASE range",
         }
     }
 }
@@ -171,6 +191,46 @@ impl<'db> ToIdeDiagnostic<'db> for ControlFlowError<'db> {
                 .desc(self)
                 .range(crate::denormalize(db, file, &label.get_span(db)).unwrap_or_default())
                 .call(),
+            Self::CaseSelectorNotSupported { selector, ty } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "'{}' is '{}', and CASE branches on an integer, a bit string, a CHAR, an enum or a STRING",
+                        selector.to_string(db),
+                        ty.type_name(db)
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &selector.get_span(db)).unwrap_or_default())
+                    .call();
+                // A BOOL is a bit, not a bit string: its two values are an IF.
+                diag.with_note(if ty.normalize(db).is_boolean() {
+                    "a BOOL has two values: branch with IF".to_string()
+                } else {
+                    "branch with IF on anything else".to_string()
+                });
+                diag
+            }
+            Self::CaseRangeEmpty {
+                range,
+                lower,
+                upper,
+                chars,
+            } => {
+                let shown = |bound: i128| match u32::try_from(bound).ok().and_then(char::from_u32) {
+                    Some(c) if *chars => format!("'{c}'"),
+                    _ => bound.to_string(),
+                };
+                diag()
+                    .message(format!(
+                        "this range is empty: {} is above {}, so its arm never runs",
+                        shown(*lower),
+                        shown(*upper)
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &range.get_span(db)).unwrap_or_default())
+                    .call()
+            }
         }
     }
 }

@@ -494,3 +494,29 @@ fn a_for_loop_counts_in_an_integer_rendering(mut with_db: RootDatabase) {
     ---'
     ");
 }
+
+// `BY -(1)` is `BY -1`: an unsigned counter does not count down.
+#[rstest]
+fn invalid_negative_step_through_a_sign(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION F : INT
+        VAR i : UDINT; END_VAR
+            FOR i := 5 TO 1 BY -(1) DO
+                F := F + 1;
+            END_FOR;
+        END_FUNCTION
+    "#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0307] Error: invalid literal
+       ,-[ file:///test0.st:4:32 ]
+       |
+     3 |         VAR i : UDINT; END_VAR
+       |             |
+       |             `-- type is declared by variable 'i' here
+     4 |             FOR i := 5 TO 1 BY -(1) DO
+       |                                ^^|^
+       |                                  `--- cannot infer '<unary expression>' to 'UDINT': UDINT cannot be negative; UDINT is unsigned; use DINT, or drop the sign
+    ---'
+    ");
+}

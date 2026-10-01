@@ -6,7 +6,7 @@ description: The lint rules `rk` applies, what each L-code means and how to conf
 ## Summary
 
 The linter runs on top of the compiler diagnostics and reports style, clarity and suspicious-code findings.
-It is ON by default: a workspace that never mentions the linter still gets the **recommended** set — the 25 rules that report a probable bug rather than a matter of taste.
+It is ON by default: a workspace that never mentions the linter still gets the **recommended** set — the 27 rules that report a probable bug rather than a matter of taste.
 `[linter]` tunes that set; it does not switch the linter on.
 
 `rk check` and the language server both run it, on the same set, so an editor and the CLI agree about a workspace.
@@ -38,9 +38,9 @@ Two layers.
 
 | `select` | rules that run |
 | -------- | -------------- |
-| absent, or no `[linter]` at all | the 25 recommended rules |
-| `"recommended"` | the same 24, stated explicitly |
-| `"all"` | all 48 |
+| absent, or no `[linter]` at all | the 27 recommended rules |
+| `"recommended"` | the same 27, stated explicitly |
+| `"all"` | all 53 |
 | `"none"` | none, unless `[linter.rules]` names one |
 
 ```toml
@@ -55,7 +55,7 @@ select = "all"           # default is "recommended"
 yoda-condition = false   # opt OUT of one `select` turned on
 ```
 
-To run the style rules on top of the default instead of taking all 48:
+To run the style rules on top of the default instead of taking all 53:
 
 ```toml
 [linter]
@@ -158,6 +158,7 @@ L0206 collapses every unassigned output of one body into a single diagnostic lis
 | L0120 | `variable-method-name` | warning | a variable and a method of a FUNCTION_BLOCK or CLASS, or of one it extends, with the same name: legal, the variable wins inside the block |
 | L0121 | `latin1-escape` | warning | a STRING literal whose `$hh` escapes are not UTF-8 text, such as `'caf$E9'` written for `'café'`: `$E9` is one byte, and `é` is `$C3$A9`; not a CHAR, where `$E9` is `é` |
 | L0122 | `recursion` | warning | a call that leads back to the POU making it, directly or through others; each call gets its own frame on a 64 KiB stack, and too deep a recursion stops the program with `stack overflow` |
+| L0123 | `negative-radix-literal` | warning | an untyped radix literal with its top bit set where a signed integer is expected: `16#80` is -128 in a SINT and 128 in an INT; not a typed `SINT#16#80`, nor one under a minus, `-(16#80)`, nor an operand of AND, OR or XOR |
 
 L0109 keys on the value the compiler computed, not on the text, so `7`, `INT#7` and a CONSTANT holding 7 are one label; enum variants and strings fall back to the written form.
 

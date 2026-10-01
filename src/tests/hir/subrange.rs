@@ -696,3 +696,24 @@ fn invalid_subrange_type_default_out_of_bounds(mut with_db: RootDatabase) {
     ---'
     ");
 }
+
+// Reversed bounds hold no value, as `ARRAY[5..1]` holds no element: every
+// store into one was E0702.
+#[rstest]
+fn invalid_reversed_bounds(mut with_db: RootDatabase) {
+    let source = r#"
+        TYPE
+            Level : INT (10..1);
+        END_TYPE
+        "#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0705] Error: empty subrange
+       ,-[ file:///test0.st:3:30 ]
+       |
+     3 |             Level : INT (10..1);
+       |                              |
+       |                              `-- the upper bound 1 is below the lower bound 10
+    ---'
+    ");
+}

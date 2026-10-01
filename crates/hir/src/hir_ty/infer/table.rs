@@ -3,9 +3,20 @@ use rustc_hash::FxHashMap;
 
 use crate::{
     CallSite,
-    check::errors::{ToIdeDiagnostic, e03_type::TypeError},
-    hir_def::expressions::{expression::Expr, spec::ElementarySpec},
-    hir_ty::{body::BodyInferenceResult, infer::Infer, resolver::Resolver, ty::Type},
+    check::errors::{
+        ToIdeDiagnostic,
+        e03_type::{InferLiteralError, TypeError},
+    },
+    hir_def::expressions::{
+        expression::{Expr, ExprKind, PrimaryExpr, UnaryOperatorKind},
+        spec::ElementarySpec,
+    },
+    hir_ty::{
+        body::BodyInferenceResult,
+        infer::{Infer, const_eval},
+        resolver::Resolver,
+        ty::{InferType, Type},
+    },
 };
 
 /*
@@ -222,9 +233,10 @@ impl<'db> InferenceTable<'db> {
                 // Check the literal value against the target type directly:
                 // bare literals adapt to the target, `check_as` validates
                 // the value range.
-                match infer.check_as(db, elem) {
-                    Ok(typ) => {
+                match check_literal(db, *expr, infer, elem) {
+                    Ok(()) => {
                         results.type_of_expr.insert(*expr, Type::Elementary(elem));
+                        pin_operands(db, *expr, elem, results);
                     }
                     Err(err) => {
                         results.errors.push(
@@ -244,4 +256,100 @@ impl<'db> InferenceTable<'db> {
             }
         }
     }
+}
+
+/// [`InferType::check_as`], with a minus written apart from the literal read
+/// as part of its value: `-(1)` does not fit a UDINT and `-(128)` fits a
+/// SINT, where the literal alone reads 1 and 128.
+fn check_literal<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    expr: Expr<'db>,
+    infer: &InferType,
+    elem: ElementarySpec,
+) -> Result<(), InferLiteralError> {
+    if negated_apart(db, expr)
+        && let InferType::Integer(_) = infer
+        && let Some(value) = const_eval::spec_value(db, expr)
+        && let Some(holds) = const_eval::integer_holds(value, elem)
+    {
+        let type_name = elem.type_name();
+        return if holds {
+            Ok(())
+        } else if value < 0 && const_eval::integer_holds(-1, elem) == Some(false) {
+            Err(InferLiteralError::NegativeUnsigned { type_name })
+        } else {
+            Err(InferLiteralError::OutOfRange { type_name })
+        };
+    }
+    infer.check_as(db, elem).map(|_| ())
+}
+
+/// Whether a minus stands between `expr` and its literal, through
+/// parentheses and a plus. Without one the literal reads as written, a radix
+/// one as its bit pattern.
+fn negated_apart<'db>(db: &'db dyn WorkspaceDataBase, expr: Expr<'db>) -> bool {
+    match expr.expr(db) {
+        ExprKind::UnaryOperator {
+            operator: UnaryOperatorKind::Minus,
+            ..
+        } => true,
+        ExprKind::UnaryOperator {
+            expr: inner,
+            operator: UnaryOperatorKind::Plus,
+        }
+        | ExprKind::PrimaryExpr(PrimaryExpr::ParenthesizedExpr { expr: inner }) => {
+            negated_apart(db, *inner)
+        }
+        _ => false,
+    }
+}
+
+/// What wraps a literal takes the type the literal is given, so `-(1)` is
+/// an INT all the way down, which lowering reads node by node. A sign on a
+/// type with no arithmetic, or NOT on one with no bits, is refused here,
+/// where that type is first known.
+fn pin_operands<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    expr: Expr<'db>,
+    elem: ElementarySpec,
+    results: &mut BodyInferenceResult<'db>,
+) {
+    let (inner, operator) = match expr.expr(db) {
+        ExprKind::UnaryOperator {
+            expr: inner,
+            operator,
+        } => (*inner, Some(*operator)),
+        ExprKind::PrimaryExpr(PrimaryExpr::ParenthesizedExpr { expr: inner }) => (*inner, None),
+        _ => return,
+    };
+    if !results
+        .type_of_expr
+        .get(&inner)
+        .is_some_and(|ty| ty.has_infer())
+    {
+        return;
+    }
+    let ty = Type::Elementary(elem);
+    let refused = match operator {
+        Some(UnaryOperatorKind::Not) => {
+            (!ty.is_boolean() && !ty.is_binary_integer()).then_some("NOT")
+        }
+        Some(UnaryOperatorKind::Minus) => (!ty.supports_add(db)).then_some("-"),
+        Some(UnaryOperatorKind::Plus) => (!ty.supports_add(db)).then_some("+"),
+        None => None,
+    };
+    if let Some(operator) = refused {
+        results.errors.push(
+            TypeError::UnsupportedOperator {
+                call_site: CallSite::from_scoped(db, &expr),
+                typ: ty,
+                operator,
+            }
+            .to_diagnostic(db, results.scope.file(db)),
+        );
+        results.type_of_expr.insert(expr, Type::Never);
+        return;
+    }
+    results.type_of_expr.insert(inner, ty);
+    pin_operands(db, inner, elem, results);
 }

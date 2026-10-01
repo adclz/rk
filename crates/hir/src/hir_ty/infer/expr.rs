@@ -476,6 +476,8 @@ impl<'db> InferExprCtx<'db> {
             ExprKind::PrimaryExpr(_) | ExprKind::FoldExpr { .. } => {}
         }
 
+        // The node itself: an arm below binds its operand as `expr`.
+        let node = expr;
         match expr.expr(db) {
             ExprKind::AddOperator {
                 left,
@@ -547,6 +549,33 @@ impl<'db> InferExprCtx<'db> {
                         inference_results.type_of_expr[left],
                         CallSite::from_scoped(db, right),
                     ));
+                } else {
+                    // A comparison reads one value on each side: an elementary
+                    // value, an enum, a reference. A STRUCT, an ARRAY, an
+                    // instance or an interface has no single value to compare.
+                    // Named as declared: `Pt`, not the STRUCT behind it.
+                    let declared = inference_results.type_of_expr_with_adjustments(db, *left);
+                    let operand = declared.normalize(db);
+                    let comparable = operand.is_never()
+                        || operand.has_infer()
+                        || matches!(
+                            operand,
+                            Type::Elementary(_)
+                                | Type::Enum(_)
+                                | Type::EnumVariant(..)
+                                | Type::RefTo(_)
+                                | Type::Null
+                        );
+                    if !comparable {
+                        inference_results.errors.push(
+                            TypeError::UnsupportedOperator {
+                                call_site: expr.as_call_site(db),
+                                typ: declared,
+                                operator: operator.as_str(),
+                            }
+                            .to_diagnostic(db, inference_results.scope.file(db)),
+                        );
+                    }
                 }
                 // the return type of a comparison expression is bool
                 inference_results
@@ -576,7 +605,11 @@ impl<'db> InferExprCtx<'db> {
                                     | ElementarySpec::LWord
                             ))
                         );
+                        // An untyped literal takes the type its context gives
+                        // the whole NOT: `w AND NOT 16#0F0F` is a WORD mask.
+                        let untyped = operand_ty.is_some_and(|t| t.has_infer());
                         if !is_bit_string
+                            && !untyped
                             && let Err(err) = self.coerce_type_with_expr(
                                 db,
                                 Type::new_bool(),
@@ -591,8 +624,27 @@ impl<'db> InferExprCtx<'db> {
                             ));
                         }
                     }
-                    _ => {
-                        // numeric-only, reuse existing coercion rules
+                    UnaryOperatorKind::Minus | UnaryOperatorKind::Plus => {
+                        // A sign takes what binary `-` takes: numbers, bit
+                        // strings and durations. An untyped literal is
+                        // checked once its context types it.
+                        let declared = inference_results.type_of_expr_with_adjustments(db, *expr);
+                        let operand = declared.normalize(db);
+                        if !operand.has_infer() && !operand.is_never() && !operand.supports_add(db)
+                        {
+                            inference_results.errors.push(
+                                TypeError::UnsupportedOperator {
+                                    call_site: node.as_call_site(db),
+                                    typ: declared,
+                                    operator: match operator {
+                                        UnaryOperatorKind::Minus => "-",
+                                        _ => "+",
+                                    },
+                                }
+                                .to_diagnostic(db, inference_results.scope.file(db)),
+                            );
+                            inference_results.type_of_expr.insert(node, Type::Never);
+                        }
                     }
                 }
             }

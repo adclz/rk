@@ -38,9 +38,33 @@ impl<'db> Elementary {
                     .map(|_| ())
                     .map_err(InferLiteralError::Invalid_CHAR_Length)
             }
+            // A typed number is checked against its own type, as an untyped
+            // one is against its target: `SINT#300` is no SINT.
+            Elementary::SInt(i) => typed_integer(db, *i, ElementarySpec::SInt),
+            Elementary::Int(i) => typed_integer(db, *i, ElementarySpec::Int),
+            Elementary::DInt(i) => typed_integer(db, *i, ElementarySpec::DInt),
+            Elementary::LInt(i) => typed_integer(db, *i, ElementarySpec::LInt),
+            Elementary::USInt(i) => typed_integer(db, *i, ElementarySpec::USInt),
+            Elementary::UInt(i) => typed_integer(db, *i, ElementarySpec::UInt),
+            Elementary::UDInt(i) => typed_integer(db, *i, ElementarySpec::UDInt),
+            Elementary::ULInt(i) => typed_integer(db, *i, ElementarySpec::ULInt),
+            Elementary::Byte(i) => typed_integer(db, *i, ElementarySpec::Byte),
+            Elementary::Word(i) => typed_integer(db, *i, ElementarySpec::Word),
+            Elementary::DWord(i) => typed_integer(db, *i, ElementarySpec::DWord),
+            Elementary::LWord(i) => typed_integer(db, *i, ElementarySpec::LWord),
+            Elementary::Real(r) => check_f32(db, &InferType::Float(*r)).map(|_| ()),
+            Elementary::LReal(r) => check_f64(db, &InferType::Float(*r)).map(|_| ()),
             _ => Ok(()),
         }
     }
+}
+
+fn typed_integer(
+    db: &dyn WorkspaceDataBase,
+    integer: Integer,
+    typ: ElementarySpec,
+) -> Result<(), InferLiteralError> {
+    InferType::Integer(integer).check_as(db, typ).map(|_| ())
 }
 
 impl<'db> InferType {
@@ -56,10 +80,10 @@ impl<'db> InferType {
             ElementarySpec::Bool | ElementarySpec::REDGEBool | ElementarySpec::FEDGEBool => {
                 check_bool(db, self)
             }
-            ElementarySpec::Byte => check_u8(db, self),
-            ElementarySpec::Word => check_u16(db, self),
-            ElementarySpec::DWord => check_u32(db, self),
-            ElementarySpec::LWord => check_u64(db, self),
+            ElementarySpec::Byte => bit_string(check_u8(db, self), "BYTE"),
+            ElementarySpec::Word => bit_string(check_u16(db, self), "WORD"),
+            ElementarySpec::DWord => bit_string(check_u32(db, self), "DWORD"),
+            ElementarySpec::LWord => bit_string(check_u64(db, self), "LWORD"),
             ElementarySpec::USInt => check_u8(db, self),
             ElementarySpec::UInt => check_u16(db, self),
             ElementarySpec::UDInt => check_u32(db, self),
@@ -76,6 +100,21 @@ impl<'db> InferType {
             ))),
         }
     }
+}
+
+/// A bit string is checked as the unsigned integer of its width, and named
+/// as itself in what is wrong with the literal.
+fn bit_string<'db>(
+    checked: Result<Type<'db>, InferLiteralError>,
+    type_name: &'static str,
+) -> Result<Type<'db>, InferLiteralError> {
+    checked.map_err(|err| match err {
+        InferLiteralError::OutOfRange { .. } => InferLiteralError::OutOfRange { type_name },
+        InferLiteralError::NegativeUnsigned { .. } => {
+            InferLiteralError::NegativeUnsigned { type_name }
+        }
+        err => err,
+    })
 }
 
 /// A bare string literal is a STRING, and a CHAR wherever the slot holding it
@@ -177,7 +216,7 @@ fn check_i8<'db>(
         InferType::Integer(n) => n
             .as_i8(db)
             .map(|_| Type::Elementary(ElementarySpec::SInt))
-            .map_err(|err| signed_error(err, "SINT")),
+            .map_err(|err| signed_radix_error(db, *n, err, "SINT", 8)),
         _ => Err(InferLiteralError::Invalid_SIGNED_8_BITS_Literal),
     }
 }
@@ -190,7 +229,7 @@ fn check_i16<'db>(
         InferType::Integer(n) => n
             .as_i16(db)
             .map(|_| Type::Elementary(ElementarySpec::Int))
-            .map_err(|err| signed_error(err, "INT")),
+            .map_err(|err| signed_radix_error(db, *n, err, "INT", 16)),
         _ => Err(InferLiteralError::Invalid_SIGNED_16_BITS_Literal),
     }
 }
@@ -203,7 +242,7 @@ fn check_i32<'db>(
         InferType::Integer(n) => n
             .as_i32(db)
             .map(|_| Type::Elementary(ElementarySpec::DInt))
-            .map_err(|err| signed_error(err, "DINT")),
+            .map_err(|err| signed_radix_error(db, *n, err, "DINT", 32)),
         _ => Err(InferLiteralError::Invalid_SIGNED_32_BITS_Literal),
     }
 }
@@ -216,7 +255,7 @@ fn check_i64<'db>(
         InferType::Integer(n) => n
             .as_i64(db)
             .map(|_| Type::Elementary(ElementarySpec::LInt))
-            .map_err(|err| signed_error(err, "LINT")),
+            .map_err(|err| signed_radix_error(db, *n, err, "LINT", 64)),
         _ => Err(InferLiteralError::Invalid_SIGNED_64_BITS_Literal),
     }
 }
@@ -226,10 +265,12 @@ fn check_f32<'db>(
     value: &InferType,
 ) -> Result<Type<'db>, InferLiteralError> {
     match value {
-        InferType::Float(real) => real
-            .as_f32(db)
-            .map(|_| Type::Elementary(ElementarySpec::Real))
-            .map_err(|err| InferLiteralError::TypeMismatch(err.to_string())),
+        // Too large a value parses to infinity, which no literal means.
+        InferType::Float(real) => match real.as_f32(db) {
+            Ok(value) if value.is_finite() => Ok(Type::Elementary(ElementarySpec::Real)),
+            Ok(_) => Err(InferLiteralError::FloatOutOfRange { type_name: "REAL" }),
+            Err(err) => Err(InferLiteralError::TypeMismatch(err.to_string())),
+        },
         InferType::Integer(integer) => {
             let int_val = integer
                 .as_i32(db)
@@ -246,10 +287,11 @@ fn check_f64<'db>(
     value: &InferType,
 ) -> Result<Type<'db>, InferLiteralError> {
     match value {
-        InferType::Float(real) => real
-            .as_f64(db)
-            .map(|_| Type::Elementary(ElementarySpec::LReal))
-            .map_err(|err| InferLiteralError::TypeMismatch(err.to_string())),
+        InferType::Float(real) => match real.as_f64(db) {
+            Ok(value) if value.is_finite() => Ok(Type::Elementary(ElementarySpec::LReal)),
+            Ok(_) => Err(InferLiteralError::FloatOutOfRange { type_name: "LREAL" }),
+            Err(err) => Err(InferLiteralError::TypeMismatch(err.to_string())),
+        },
         InferType::Integer(integer) => {
             let int_val = integer
                 .as_i64(db)
@@ -750,6 +792,24 @@ fn signed_error(err: ParseIntError, type_name: &'static str) -> InferLiteralErro
     }
 }
 
+/// [`signed_error`], where a radix literal is too wide for its type rather
+/// than out of its range: `SINT#16#FF` is -1, so -128 to 127 would not
+/// explain why `SINT#16#1FF` is refused.
+fn signed_radix_error(
+    db: &dyn WorkspaceDataBase,
+    n: Integer,
+    err: ParseIntError,
+    type_name: &'static str,
+    bits: u32,
+) -> InferLiteralError {
+    match signed_error(err, type_name) {
+        InferLiteralError::OutOfRange { type_name } if n.kind(db) != IntegerKind::Signed => {
+            InferLiteralError::PatternTooWide { type_name, bits }
+        }
+        err => err,
+    }
+}
+
 fn unsigned_error(err: UnsignedIntError, type_name: &'static str) -> InferLiteralError {
     match err {
         UnsignedIntError::NegativeSign => InferLiteralError::NegativeUnsigned { type_name },
@@ -849,24 +909,40 @@ impl Integer {
         .map_err(|err| err.into())
     }
 
+    /// See [`as_i32`](Self::as_i32): a radix literal is an 8-bit pattern, so
+    /// `SINT#16#FF` is -1 and `SINT#16#1FF` does not fit.
     #[salsa::tracked]
     pub fn as_i8(self, db: &dyn WorkspaceDataBase) -> Result<i8, std::num::ParseIntError> {
         let text = strip_underscores(self.ident(db).text(db));
         match self.kind(db) {
-            IntegerKind::Binary => i8::from_str_radix(text.trim_start_matches("2#"), 2),
-            IntegerKind::Octal => i8::from_str_radix(text.trim_start_matches("8#"), 8),
-            IntegerKind::Hex => i8::from_str_radix(text.trim_start_matches("16#"), 16),
+            IntegerKind::Binary => {
+                u8::from_str_radix(text.trim_start_matches("2#"), 2).map(|v| v as i8)
+            }
+            IntegerKind::Octal => {
+                u8::from_str_radix(text.trim_start_matches("8#"), 8).map(|v| v as i8)
+            }
+            IntegerKind::Hex => {
+                u8::from_str_radix(text.trim_start_matches("16#"), 16).map(|v| v as i8)
+            }
             IntegerKind::Signed => text.parse(),
         }
     }
 
+    /// See [`as_i32`](Self::as_i32): a radix literal is a 16-bit pattern, so
+    /// `INT#16#FFFF` is -1.
     #[salsa::tracked]
     pub fn as_i16(self, db: &dyn WorkspaceDataBase) -> Result<i16, std::num::ParseIntError> {
         let text = strip_underscores(self.ident(db).text(db));
         match self.kind(db) {
-            IntegerKind::Binary => i16::from_str_radix(text.trim_start_matches("2#"), 2),
-            IntegerKind::Octal => i16::from_str_radix(text.trim_start_matches("8#"), 8),
-            IntegerKind::Hex => i16::from_str_radix(text.trim_start_matches("16#"), 16),
+            IntegerKind::Binary => {
+                u16::from_str_radix(text.trim_start_matches("2#"), 2).map(|v| v as i16)
+            }
+            IntegerKind::Octal => {
+                u16::from_str_radix(text.trim_start_matches("8#"), 8).map(|v| v as i16)
+            }
+            IntegerKind::Hex => {
+                u16::from_str_radix(text.trim_start_matches("16#"), 16).map(|v| v as i16)
+            }
             IntegerKind::Signed => text.parse(),
         }
     }

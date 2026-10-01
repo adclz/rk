@@ -68,6 +68,30 @@ impl<'db> InitInference<'db> {
                 );
             }
         }
+        // Reversed bounds hold no value, as `ARRAY[5..1]` holds no element.
+        // A bound the base cannot hold is refused as a literal already.
+        let fits = |value: i128| match typ.normalize(db) {
+            Type::Elementary(base) => {
+                crate::hir_ty::infer::const_eval::integer_holds(value, base) != Some(false)
+            }
+            _ => true,
+        };
+        if let (Some(lower), Some(upper)) = (
+            crate::hir_ty::infer::const_eval::spec_value(db, min),
+            crate::hir_ty::infer::const_eval::spec_value(db, max),
+        ) && lower > upper
+            && fits(lower)
+            && fits(upper)
+        {
+            self.errors.push(
+                SubRangeError::ReversedBounds {
+                    upper_bound: max,
+                    lower,
+                    upper,
+                }
+                .to_diagnostic(db, self.scope.file(db)),
+            );
+        }
 
         if let Err(err) = infer.coerce_type_with_expr(db, typ, min, &mut self.body_infer_result) {
             self.errors.push(

@@ -177,3 +177,80 @@ fn byte_or_xor_not(mut with_db: db::RootDatabase) {
     let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 1, "OR NOT / XOR NOT byte compositions");
 }
+
+/// A literal under a sign or parentheses takes the type of its context, all
+/// the way down: `- 1` and `-(1)` stopped the build with an internal error.
+/// `-(128)` is a SINT, though 128 alone is not.
+#[rstest]
+fn neg_untyped_literals(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION test : INT
+        VAR i : INT; j : INT; k : INT; l : INT; m : INT; s : SINT; x : INT := 3; END_VAR
+            i := - 1;
+            j := -(1);
+            k := -(-1);
+            l := 2 * -(1);
+            m := x - -(1);
+            s := -(128);
+            IF i = -1 AND j = -1 AND k = 1 AND l = -2 AND m = 4 AND s = -128 THEN
+                test := 1;
+            END_IF;
+        END_FUNCTION
+    "#;
+    let result: i32 = super::run(&mut with_db, source, "test", ());
+    assert_eq!(result, 1, "-1, -1, 1, -2, 4 and -128");
+}
+
+/// A parenthesized literal is read at the width of its context: it was read
+/// as an i32, and `(3000000000)` stopped the build.
+#[rstest]
+fn paren_literal_takes_the_width_of_its_context(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION test : LINT
+            test := (3000000000);
+        END_FUNCTION
+    "#;
+    let result: i64 = super::run(&mut with_db, source, "test", ());
+    assert_eq!(result, 3_000_000_000);
+}
+
+/// NOT on an untyped literal is a mask of its context's width: it was
+/// forced to BOOL and refused.
+#[rstest]
+fn not_untyped_literal_mask(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION test : INT
+        VAR w : WORD := 16#FFFF; b : BYTE; END_VAR
+            w := w AND NOT 16#0F0F;
+            b := NOT 16#0F;
+            IF w = WORD#16#F0F0 AND b = BYTE#16#F0 THEN
+                test := 1;
+            END_IF;
+        END_FUNCTION
+    "#;
+    let result: i32 = super::run(&mut with_db, source, "test", ());
+    assert_eq!(result, 1, "16#F0F0 and 16#F0");
+}
+
+/// NOT on an untyped literal takes the width of the operand beside it, not
+/// the target's: `w OR NOT 16#0F0F` is a WORD mask widened to the DWORD.
+/// AND could not tell the two apart.
+#[rstest]
+fn not_untyped_literal_takes_its_operand_width(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION test : INT
+        VAR w : WORD := 0; d : DWORD := 0; a : DWORD; b : DWORD; c : DWORD; END_VAR
+            a := w OR NOT 16#0F0F;
+            b := d OR NOT 16#0F0F;
+            c := NOT 16#0F0F;
+            IF a = DWORD#16#0000_F0F0 AND b = DWORD#16#FFFF_F0F0 AND c = DWORD#16#FFFF_F0F0 THEN
+                test := 1;
+            END_IF;
+        END_FUNCTION
+    "#;
+    let result: i32 = super::run(&mut with_db, source, "test", ());
+    assert_eq!(
+        result, 1,
+        "16#0000F0F0 beside a WORD, 16#FFFFF0F0 beside a DWORD or alone"
+    );
+}

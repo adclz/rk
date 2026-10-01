@@ -156,6 +156,17 @@ impl Folded {
     }
 }
 
+/// Whether `ty` holds `value`, when `ty` is an integer type.
+pub fn integer_holds(value: i128, ty: ElementarySpec) -> Option<bool> {
+    let (bits, signed) = integer_layout(ty)?;
+    let (min, max) = if signed {
+        (-(1i128 << (bits - 1)), (1i128 << (bits - 1)) - 1)
+    } else {
+        (0, (1i128 << bits) - 1)
+    };
+    Some((min..=max).contains(&value))
+}
+
 /// Width and signedness of an integer type; a bit string reads unsigned.
 fn integer_layout(ty: ElementarySpec) -> Option<(u32, bool)> {
     use ElementarySpec::*;
@@ -375,7 +386,18 @@ pub fn enum_ordinals<'db>(
     crate::hir_def::expressions::spec::EnumVariant<'db>,
     Option<i64>,
 )> {
-    enum_ordinals_by(db, enm, |e| spec_bound(db, e))
+    use crate::hir_ty::infer::Infer;
+    // A declared value as a declared storage holds it: `16#FF` on a SINT is
+    // -1, the bit pattern its check accepted. Under the default DINT a value
+    // stays as written, so E0605 sees one past the storage.
+    let storage = enm.typ(db).map(|spec| spec.infer(db));
+    enum_ordinals_by(db, enm, |e| {
+        let value = spec_value(db, e)?;
+        let value = storage.map_or(value, |ty| held_as(db, value, ty));
+        (i128::from(i64::MIN)..=i128::from(u64::MAX))
+            .contains(&value)
+            .then_some(value as i64)
+    })
 }
 
 fn enum_ordinals_by<'db>(

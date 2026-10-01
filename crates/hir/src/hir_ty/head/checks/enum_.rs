@@ -89,6 +89,15 @@ impl<'db> InitInference<'db> {
         // to is read from this evaluation, so a value only the runtime knows
         // has no ordinal to give. AFTER the loop above — folding needs the
         // resolutions it recorded.
+        // The storage holds every value: an implicit one, and an explicit
+        // one under the default DINT, which the coercion above does not see.
+        let storage = match enm.typ(db).map(|spec| spec.infer(db).normalize(db)) {
+            Some(Type::Elementary(storage)) => Some(storage),
+            Some(_) => None,
+            None => Some(ElementarySpec::DInt),
+        };
+        // An implicit value past a refused one is that one's cascade.
+        let mut previous_fits = true;
         for (variant, ordinal) in crate::hir_ty::infer::const_eval::enum_ordinals(db, enm) {
             if ordinal.is_none()
                 && let Some(value) = variant.value
@@ -96,6 +105,31 @@ impl<'db> InitInference<'db> {
                 self.body_infer_result.errors.push(
                     crate::check::errors::e06_enum::EnumError::EnumValueNotConstant { value }
                         .to_diagnostic(db, self.body_infer_result.scope.file(db)),
+                );
+            }
+            let (Some(ordinal), Some(storage)) = (ordinal, storage) else {
+                previous_fits = false;
+                continue;
+            };
+            // An ordinal is i64; a ULINT one past i64::MAX is its bit pattern.
+            let value = match storage {
+                ElementarySpec::ULInt | ElementarySpec::LWord => i128::from(ordinal as u64),
+                _ => i128::from(ordinal),
+            };
+            let fits =
+                crate::hir_ty::infer::const_eval::integer_holds(value, storage) != Some(false);
+            let checked_above = variant.value.is_some() && enm.typ(db).is_some();
+            let cascade = variant.value.is_none() && !previous_fits;
+            previous_fits = fits;
+            if !fits && !checked_above && !cascade {
+                self.body_infer_result.errors.push(
+                    crate::check::errors::e06_enum::EnumError::ValueOutOfStorage {
+                        variant: variant.name,
+                        value,
+                        storage,
+                        implicit: variant.value.is_none(),
+                    }
+                    .to_diagnostic(db, self.body_infer_result.scope.file(db)),
                 );
             }
         }

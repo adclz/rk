@@ -33,6 +33,7 @@ mod missing_return;
 mod namespace_nesting;
 mod negated_comparison;
 mod negated_condition;
+mod negative_radix_literal;
 mod once_violation;
 mod recursion;
 mod redundant_not;

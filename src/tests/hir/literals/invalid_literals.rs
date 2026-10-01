@@ -54,7 +54,7 @@ END_FUNCTION_BLOCK"#;
        |
      5 |         test2: BYTE := 256;
        |                        ^|^
-       |                         `--- cannot infer '<integer>' to 'BYTE': the value does not fit in USINT; USINT holds 0 to 255
+       |                         `--- cannot infer '<integer>' to 'BYTE': the value does not fit in BYTE; BYTE holds 0 to 255
     ---'
     [E0306] Error: invalid literal
        ,-[ file:///test0.st:6:25 ]
@@ -90,7 +90,7 @@ END_FUNCTION_BLOCK"#;
        |
      5 |         test2: WORD := 65536;
        |                        ^^|^^
-       |                          `---- cannot infer '<integer>' to 'WORD': the value does not fit in UINT; UINT holds 0 to 65535
+       |                          `---- cannot infer '<integer>' to 'WORD': the value does not fit in WORD; WORD holds 0 to 65535
     ---'
     [E0306] Error: invalid literal
        ,-[ file:///test0.st:6:24 ]
@@ -126,7 +126,7 @@ END_FUNCTION_BLOCK"#;
        |
      5 |         test2: DWORD := 4294967296;
        |                         ^^^^^|^^^^
-       |                              `------ cannot infer '<integer>' to 'DWORD': the value does not fit in UDINT; UDINT holds 0 to 4294967295
+       |                              `------ cannot infer '<integer>' to 'DWORD': the value does not fit in DWORD; DWORD holds 0 to 4294967295
     ---'
     [E0306] Error: invalid literal
        ,-[ file:///test0.st:6:25 ]
@@ -162,7 +162,7 @@ END_FUNCTION_BLOCK"#;
        |
      5 |         test2: LWORD := 18446744073709551616;
        |                         ^^^^^^^^^^|^^^^^^^^^
-       |                                   `----------- cannot infer '<integer>' to 'LWORD': the value does not fit in ULINT; ULINT holds 0 to 18446744073709551615
+       |                                   `----------- cannot infer '<integer>' to 'LWORD': the value does not fit in LWORD; LWORD holds 0 to 18446744073709551615
     ---'
     [E0306] Error: invalid literal
        ,-[ file:///test0.st:6:25 ]
@@ -205,7 +205,7 @@ END_FUNCTION_BLOCK"#;
        |
      6 |         test3: SINT := 16#FFFF;
        |                        ^^^|^^^
-       |                           `----- cannot infer '<integer>' to 'SINT': the value does not fit in SINT; SINT holds -128 to 127
+       |                           `----- cannot infer '<integer>' to 'SINT': the value does not fit in SINT; a radix literal is a bit pattern, and SINT has 8 bits
     ---'
     ");
 }
@@ -241,7 +241,7 @@ END_FUNCTION_BLOCK"#;
        |
      6 |         test3: INT := 16#FFFFFFFF;
        |                       ^^^^^|^^^^^
-       |                            `------- cannot infer '<integer>' to 'INT': the value does not fit in INT; INT holds -32768 to 32767
+       |                            `------- cannot infer '<integer>' to 'INT': the value does not fit in INT; a radix literal is a bit pattern, and INT has 16 bits
     ---'
     ");
 }
@@ -306,7 +306,192 @@ END_FUNCTION_BLOCK"#;
        |
      6 |         test3: LINT := 16#FFFFFFFFFFFFFFFFFF;
        |                        ^^^^^^^^^^|^^^^^^^^^^
-       |                                  `------------ cannot infer '<integer>' to 'LINT': the value does not fit in LINT; LINT holds -9223372036854775808 to 9223372036854775807
+       |                                  `------------ cannot infer '<integer>' to 'LINT': the value does not fit in LINT; a radix literal is a bit pattern, and LINT has 64 bits
+    ---'
+    ");
+}
+
+// A typed literal is checked against its own type, as an untyped one is
+// against its target. These passed, or stopped the build with an internal
+// error.
+#[rstest]
+fn invalid_typed_integer_literals(mut with_db: RootDatabase) {
+    let source = r#"
+        PROGRAM P
+        VAR s : SINT; b : BYTE; u : USINT; d : DINT; END_VAR
+            s := SINT#300;
+            b := BYTE#16#1FF;
+            u := USINT#-1;
+            d := DINT#3000000000;
+        END_PROGRAM
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0306] Error: invalid literal
+       ,-[ file:///test0.st:4:18 ]
+       |
+     4 |             s := SINT#300;
+       |                  ^^^^|^^^
+       |                      `----- cannot infer 'SINT literal' to 'SINT': the value does not fit in SINT; SINT holds -128 to 127
+    ---'
+    [E0306] Error: invalid literal
+       ,-[ file:///test0.st:5:18 ]
+       |
+     5 |             b := BYTE#16#1FF;
+       |                  ^^^^^|^^^^^
+       |                       `------- cannot infer 'BYTE literal' to 'BYTE': the value does not fit in BYTE; BYTE holds 0 to 255
+    ---'
+    [E0307] Error: invalid literal
+       ,-[ file:///test0.st:6:18 ]
+       |
+     6 |             u := USINT#-1;
+       |                  ^^^^|^^^
+       |                      `----- cannot infer 'USINT literal' to 'USINT': USINT cannot be negative; USINT is unsigned; use SINT, or drop the sign
+    ---'
+    [E0306] Error: invalid literal
+       ,-[ file:///test0.st:7:18 ]
+       |
+     7 |             d := DINT#3000000000;
+       |                  ^^^^^^^|^^^^^^^
+       |                         `--------- cannot infer 'DINT literal' to 'DINT': the value does not fit in DINT; DINT holds -2147483648 to 2147483647
+    ---'
+    ");
+}
+
+// A radix literal is a bit pattern, so nine bits do not fit a SINT, where
+// eight do. A sign makes it a value again: -(16#FF) is -255.
+#[rstest]
+fn invalid_radix_literal_wider_than_its_signed_type(mut with_db: RootDatabase) {
+    let source = r#"
+        PROGRAM P
+        VAR s : SINT; i : INT; END_VAR
+            s := SINT#16#1FF;
+            i := 16#1_0000;
+            s := -(16#FF);
+        END_PROGRAM
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0306] Error: invalid literal
+       ,-[ file:///test0.st:4:18 ]
+       |
+     4 |             s := SINT#16#1FF;
+       |                  ^^^^^|^^^^^
+       |                       `------- cannot infer 'SINT literal' to 'SINT': the value does not fit in SINT; a radix literal is a bit pattern, and SINT has 8 bits
+    ---'
+    [E0306] Error: invalid literal
+       ,-[ file:///test0.st:5:18 ]
+       |
+     3 |         VAR s : SINT; i : INT; END_VAR
+       |                       |
+       |                       `-- type is declared by variable 'i' here
+       |
+     5 |             i := 16#1_0000;
+       |                  ^^^^|^^^^
+       |                      `------ cannot infer '<integer>' to 'INT': the value does not fit in INT; a radix literal is a bit pattern, and INT has 16 bits
+    ---'
+    [E0306] Error: invalid literal
+       ,-[ file:///test0.st:6:18 ]
+       |
+     3 |         VAR s : SINT; i : INT; END_VAR
+       |             |
+       |             `-- type is declared by variable 's' here
+       |
+     6 |             s := -(16#FF);
+       |                  ^^^^|^^^
+       |                      `----- cannot infer '<unary expression>' to 'SINT': the value does not fit in SINT; SINT holds -128 to 127
+    ---'
+    ");
+}
+
+// A REAL or an LREAL too large for its type parsed to infinity.
+#[rstest]
+fn invalid_real_literal_past_its_range(mut with_db: RootDatabase) {
+    let source = r#"
+        PROGRAM P
+        VAR r : REAL; l : LREAL; END_VAR
+            r := 1.0E300;
+            l := 1.0E400;
+            r := REAL#1.0E39;
+        END_PROGRAM
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0306] Error: invalid literal
+       ,-[ file:///test0.st:4:18 ]
+       |
+     3 |         VAR r : REAL; l : LREAL; END_VAR
+       |             |
+       |             `-- type is declared by variable 'r' here
+     4 |             r := 1.0E300;
+       |                  ^^^|^^^
+       |                     `----- cannot infer '<float>' to 'REAL': the value does not fit in REAL; REAL holds magnitudes up to about 3.4E38
+    ---'
+    [E0306] Error: invalid literal
+       ,-[ file:///test0.st:5:18 ]
+       |
+     3 |         VAR r : REAL; l : LREAL; END_VAR
+       |                       |
+       |                       `-- type is declared by variable 'l' here
+       |
+     5 |             l := 1.0E400;
+       |                  ^^^|^^^
+       |                     `----- cannot infer '<float>' to 'LREAL': the value does not fit in LREAL; LREAL holds magnitudes up to about 1.8E308
+    ---'
+    [E0306] Error: invalid literal
+       ,-[ file:///test0.st:6:18 ]
+       |
+     6 |             r := REAL#1.0E39;
+       |                  ^^^^^|^^^^^
+       |                       `------- cannot infer 'REAL literal' to 'REAL': the value does not fit in REAL; REAL holds magnitudes up to about 3.4E38
+    ---'
+    ");
+}
+
+// A sign written apart from its literal is part of its value: `-(1)` and
+// `- 1` are no UDINT, and `-(128)` is a SINT, where `128` alone is not.
+// Parentheses alone leave the literal as written, a radix one a bit pattern.
+#[rstest]
+fn a_sign_apart_is_part_of_the_value(mut with_db: RootDatabase) {
+    let source = r#"
+        PROGRAM P
+        VAR u : UDINT; v : USINT; s : SINT; ok : SINT; d : DINT; END_VAR
+            u := -(1);
+            v := - 1;
+            s := -(129);
+            ok := -(128);
+            d := (16#FFFFFFFF);
+        END_PROGRAM
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0307] Error: invalid literal
+       ,-[ file:///test0.st:4:18 ]
+       |
+     3 |         VAR u : UDINT; v : USINT; s : SINT; ok : SINT; d : DINT; END_VAR
+       |             |
+       |             `-- type is declared by variable 'u' here
+     4 |             u := -(1);
+       |                  ^^|^
+       |                    `--- cannot infer '<unary expression>' to 'UDINT': UDINT cannot be negative; UDINT is unsigned; use DINT, or drop the sign
+    ---'
+    [E0307] Error: invalid literal
+       ,-[ file:///test0.st:5:18 ]
+       |
+     3 |         VAR u : UDINT; v : USINT; s : SINT; ok : SINT; d : DINT; END_VAR
+       |                        |
+       |                        `-- type is declared by variable 'v' here
+       |
+     5 |             v := - 1;
+       |                  ^|^
+       |                   `--- cannot infer '<unary expression>' to 'USINT': USINT cannot be negative; USINT is unsigned; use SINT, or drop the sign
+    ---'
+    [E0306] Error: invalid literal
+       ,-[ file:///test0.st:6:18 ]
+       |
+     3 |         VAR u : UDINT; v : USINT; s : SINT; ok : SINT; d : DINT; END_VAR
+       |                                   |
+       |                                   `-- type is declared by variable 's' here
+       |
+     6 |             s := -(129);
+       |                  ^^^|^^
+       |                     `---- cannot infer '<unary expression>' to 'SINT': the value does not fit in SINT; SINT holds -128 to 127
     ---'
     ");
 }

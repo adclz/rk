@@ -88,3 +88,25 @@ END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
+
+// A radix literal is a bit pattern of its type's width, signed types
+// included: `SINT#16#FF` is -1, as `DINT#16#FFFF_FFFF` is. Eight and
+// sixteen bits refused what thirty-two and sixty-four took.
+#[rstest]
+fn valid_radix_literal_fills_a_signed_type(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK fb1
+    VAR
+        a: SINT := SINT#16#FF;
+        b: SINT := 16#80;
+        c: SINT := SINT#2#1111_1111;
+        d: INT := INT#16#FFFF;
+        e: INT := 8#177777;
+        f: DINT := DINT#16#FFFF_FFFF;
+        g: LINT := 16#FFFF_FFFF_FFFF_FFFF;
+        h: SINT (-10..10) := 16#FF;
+    END_VAR
+END_FUNCTION_BLOCK"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
