@@ -306,3 +306,24 @@ fn enum_value_folding_expression_runs(mut with_db: db::RootDatabase) {
     let r: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(r, 3, "Run's ordinal follows the folded 2");
 }
+
+/// A variant at the edge of its storage survives a store: `B` is 127, the
+/// last SINT. One past it is refused (E0605); it wrapped and read back as
+/// another variant.
+#[rstest]
+fn a_variant_at_the_storage_edge_survives_a_store(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE Code : SINT (A := 126, B); END_TYPE
+        TYPE Holder : STRUCT c : Code; END_STRUCT END_TYPE
+
+        FUNCTION test : INT
+        VAR h : Holder; END_VAR
+            h.c := Code#B;
+            IF h.c = Code#B THEN
+                test := 1;
+            END_IF;
+        END_FUNCTION
+    "#;
+    let result: i32 = super::run(&mut with_db, source, "test", ());
+    assert_eq!(result, 1, "Code#B reads back as Code#B");
+}

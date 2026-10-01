@@ -41,6 +41,7 @@ END_TYPE
 
 A value without one continues from the value before it.
 An explicit value must be a constant, and arithmetic over constants is fine (`E0604`).
+Every value fits the base type, a continued one too: in `SINT (A := 127, B)`, `B` would be 128 (`E0605`).
 
 ## CASE
 

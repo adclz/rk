@@ -260,3 +260,35 @@ fn invalid_enum_type_default_of_another_enum(mut with_db: RootDatabase) {
     ---'
     ");
 }
+
+// Every value fits the storage, a continued one too, and DINT when none is
+// written. `B` wrapped to -128 and read back as another variant. Only the
+// first value past the edge is reported.
+#[rstest]
+fn invalid_value_past_the_storage(mut with_db: RootDatabase) {
+    let source = r#"
+        TYPE
+            Code : SINT (A := 127, B, C);
+            Wide : (P := 3000000000);
+        END_TYPE
+        "#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0605] Error: invalid enum value
+       ,-[ file:///test0.st:3:36 ]
+       |
+     3 |             Code : SINT (A := 127, B, C);
+       |                                    |
+       |                                    `-- 'B' is 128, which SINT does not hold
+       |
+       | Note: a variant without a value is one more than the one before
+    ---'
+    [E0605] Error: invalid enum value
+       ,-[ file:///test0.st:4:21 ]
+       |
+     4 |             Wide : (P := 3000000000);
+       |                     |
+       |                     `-- 'P' is 3000000000, which DINT does not hold
+    ---'
+    ");
+}

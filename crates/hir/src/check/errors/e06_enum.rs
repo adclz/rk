@@ -30,6 +30,15 @@ pub enum EnumError<'db> {
     EnumValueNotConstant {
         value: Expr<'db>,
     },
+    /// A variant's value its storage type does not hold: an implicit one
+    /// past the last that fits, or an explicit one where no type is written
+    /// (DINT). It wrapped, and the variant read back as another.
+    ValueOutOfStorage {
+        variant: SpanIdent<'db>,
+        value: i128,
+        storage: crate::hir_def::expressions::spec::ElementarySpec,
+        implicit: bool,
+    },
 }
 
 impl<'db> ErrorCode for EnumError<'db> {
@@ -39,6 +48,7 @@ impl<'db> ErrorCode for EnumError<'db> {
             Self::NotAnEnum { .. } => "E0602",
             Self::EnumVariantNotFound { .. } => "E0603",
             Self::EnumValueNotConstant { .. } => "E0604",
+            Self::ValueOutOfStorage { .. } => "E0605",
         }
     }
 
@@ -48,6 +58,7 @@ impl<'db> ErrorCode for EnumError<'db> {
             Self::NotAnEnum { .. } => "invalid enum access",
             Self::EnumVariantNotFound { .. } => "invalid enum access",
             Self::EnumValueNotConstant { .. } => "invalid enum value",
+            Self::ValueOutOfStorage { .. } => "invalid enum value",
         }
     }
 }
@@ -95,6 +106,29 @@ impl<'db> ToIdeDiagnostic<'db> for EnumError<'db> {
                 .desc(self)
                 .range(crate::denormalize(db, file, &value.get_span(db)).unwrap_or_default())
                 .call(),
+            Self::ValueOutOfStorage {
+                variant,
+                value,
+                storage,
+                implicit,
+            } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "'{}' is {value}, which {} does not hold",
+                        variant.with_case.text(db),
+                        storage.type_name()
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &variant.get_span(db)).unwrap_or_default())
+                    .call();
+                if *implicit {
+                    diag.with_note(
+                        "a variant without a value is one more than the one before".into(),
+                    );
+                }
+                diag
+            }
         }
     }
 }
