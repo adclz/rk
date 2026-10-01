@@ -53,6 +53,20 @@ pub enum ControlFlowError<'db> {
         /// wording for what is otherwise the same rule.
         as_range_bound: bool,
     },
+    /// A CASE selector of a type CASE does not branch on: IEC 61131-3 takes
+    /// an integer or an enum, and rk a STRING too. A REAL one built an
+    /// invalid module, and a BOOL or TIME one was refused label by label.
+    CaseSelectorNotSupported {
+        selector: CallSite<'db>,
+        ty: crate::hir_ty::ty::Type<'db>,
+    },
+    /// A CASE range whose lower bound is above its upper: no value is in
+    /// it, so its arm never runs.
+    CaseRangeEmpty {
+        range: CallSite<'db>,
+        lower: i128,
+        upper: i128,
+    },
 }
 
 impl<'db> ErrorCode for ControlFlowError<'db> {
@@ -64,6 +78,8 @@ impl<'db> ErrorCode for ControlFlowError<'db> {
             Self::ForControlNotInteger { .. } => "E1206",
             Self::ForStepInvalid { .. } => "E1204",
             Self::CaseLabelNotConstant { .. } => "E1205",
+            Self::CaseSelectorNotSupported { .. } => "E1207",
+            Self::CaseRangeEmpty { .. } => "E1208",
         }
     }
 
@@ -75,6 +91,8 @@ impl<'db> ErrorCode for ControlFlowError<'db> {
             Self::ForControlNotInteger { .. } => "FOR counter is not an integer",
             Self::ForStepInvalid { .. } => "control flow violation",
             Self::CaseLabelNotConstant { .. } => "control flow violation",
+            Self::CaseSelectorNotSupported { .. } => "CASE selector of the wrong type",
+            Self::CaseRangeEmpty { .. } => "empty CASE range",
         }
     }
 }
@@ -170,6 +188,32 @@ impl<'db> ToIdeDiagnostic<'db> for ControlFlowError<'db> {
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
                 .range(crate::denormalize(db, file, &label.get_span(db)).unwrap_or_default())
+                .call(),
+            Self::CaseSelectorNotSupported { selector, ty } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "'{}' is '{}', and CASE branches on an integer, an enum or a STRING",
+                        selector.to_string(db),
+                        ty.type_name(db)
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &selector.get_span(db)).unwrap_or_default())
+                    .call();
+                diag.with_note("branch with IF on anything else".to_string());
+                diag
+            }
+            Self::CaseRangeEmpty {
+                range,
+                lower,
+                upper,
+            } => diag()
+                .message(format!(
+                    "this range is empty: {lower} is above {upper}, so its arm never runs"
+                ))
+                .severity(DiagnosticSeverity::ERROR)
+                .desc(self)
+                .range(crate::denormalize(db, file, &range.get_span(db)).unwrap_or_default())
                 .call(),
         }
     }

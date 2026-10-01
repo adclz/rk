@@ -766,10 +766,44 @@ impl<'db> StmtsResolverCtx<'db> {
 
                     let condition_typ = ctx.get_type_of_expr(*condition);
 
+                    // CASE branches on an integer, a bit string, an enum or a
+                    // STRING. Another selector is refused once, and its labels
+                    // are not checked against it.
+                    let selector = ctx
+                        .type_of_expr_with_adjustments(db, *condition)
+                        .normalize(db);
+                    let selectable = selector.is_never()
+                        || selector.is_signed_integer()
+                        || selector.is_unsigned_integer()
+                        || selector.is_binary_integer()
+                        || matches!(
+                            selector,
+                            Type::Enum(_)
+                                | Type::EnumVariant(..)
+                                | Type::Elementary(ElementarySpec::String)
+                                | Type::Infer(InferType::Integer(_) | InferType::String(_))
+                        );
+                    if !selectable {
+                        ctx.errors.push(
+                            crate::check::errors::e12_control_flow::ControlFlowError::CaseSelectorNotSupported {
+                                selector: CallSite::from_scoped(db, condition),
+                                ty: selector,
+                            }
+                            .to_diagnostic(db, ctx.scope.file(db)),
+                        );
+                    }
+
                     // check cases
                     for (case_kind, stmts) in cases {
                         for case in case_kind {
                             match case {
+                                CaseKind::Expression(expr) if !selectable => {
+                                    self.infer_and_check_expr(db, &mut infer, *expr, ctx);
+                                }
+                                CaseKind::Subrange { lower, upper } if !selectable => {
+                                    self.infer_and_check_expr(db, &mut infer, *lower, ctx);
+                                    self.infer_and_check_expr(db, &mut infer, *upper, ctx);
+                                }
                                 CaseKind::Expression(expr) => {
                                     self.infer_and_check_expr(db, &mut infer, *expr, ctx);
                                     check_case_label_constant(db, *expr, true, condition_typ, ctx);
@@ -801,6 +835,26 @@ impl<'db> StmtsResolverCtx<'db> {
                                         condition_typ,
                                         ctx,
                                     );
+                                    // Both bounds as the selector holds them: a
+                                    // reversed range holds no value.
+                                    if let (
+                                        Some(CaseLabelValue::Int(low)),
+                                        Some(CaseLabelValue::Int(high)),
+                                    ) = (
+                                        ctx.case_label_value.get(lower),
+                                        ctx.case_label_value.get(upper),
+                                    ) && low > high
+                                    {
+                                        let (lower_value, upper_value) = (*low, *high);
+                                        ctx.errors.push(
+                                            crate::check::errors::e12_control_flow::ControlFlowError::CaseRangeEmpty {
+                                                range: CallSite::from_scoped(db, lower),
+                                                lower: lower_value,
+                                                upper: upper_value,
+                                            }
+                                            .to_diagnostic(db, ctx.scope.file(db)),
+                                        );
+                                    }
 
                                     if let Err(err) =
                                         infer.coerce_type_with_expr(db, condition_typ, *lower, ctx)
