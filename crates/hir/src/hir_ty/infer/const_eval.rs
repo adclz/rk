@@ -156,6 +156,17 @@ impl Folded {
     }
 }
 
+/// Whether `ty` holds `value`, when `ty` is an integer type.
+pub fn integer_holds(value: i128, ty: ElementarySpec) -> Option<bool> {
+    let (bits, signed) = integer_layout(ty)?;
+    let (min, max) = if signed {
+        (-(1i128 << (bits - 1)), (1i128 << (bits - 1)) - 1)
+    } else {
+        (0, (1i128 << bits) - 1)
+    };
+    Some((min..=max).contains(&value))
+}
+
 /// Width and signedness of an integer type; a bit string reads unsigned.
 fn integer_layout(ty: ElementarySpec) -> Option<(u32, bool)> {
     use ElementarySpec::*;

@@ -576,7 +576,11 @@ impl<'db> InferExprCtx<'db> {
                                     | ElementarySpec::LWord
                             ))
                         );
+                        // An untyped literal takes the type its context gives
+                        // the whole NOT: `w AND NOT 16#0F0F` is a WORD mask.
+                        let untyped = operand_ty.is_some_and(|t| t.has_infer());
                         if !is_bit_string
+                            && !untyped
                             && let Err(err) = self.coerce_type_with_expr(
                                 db,
                                 Type::new_bool(),

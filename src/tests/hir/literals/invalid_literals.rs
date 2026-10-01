@@ -310,3 +310,54 @@ END_FUNCTION_BLOCK"#;
     ---'
     ");
 }
+
+// A sign written apart from its literal is part of its value: `-(1)` and
+// `- 1` are no UDINT, and `-(128)` is a SINT, where `128` alone is not.
+// Parentheses alone leave the literal as written, a radix one a bit pattern.
+#[rstest]
+fn a_sign_apart_is_part_of_the_value(mut with_db: RootDatabase) {
+    let source = r#"
+        PROGRAM P
+        VAR u : UDINT; v : USINT; s : SINT; ok : SINT; d : DINT; END_VAR
+            u := -(1);
+            v := - 1;
+            s := -(129);
+            ok := -(128);
+            d := (16#FFFFFFFF);
+        END_PROGRAM
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0307] Error: invalid literal
+       ,-[ file:///test0.st:4:18 ]
+       |
+     3 |         VAR u : UDINT; v : USINT; s : SINT; ok : SINT; d : DINT; END_VAR
+       |             |
+       |             `-- type is declared by variable 'u' here
+     4 |             u := -(1);
+       |                  ^^|^
+       |                    `--- cannot infer '<unary expression>' to 'UDINT': UDINT cannot be negative; UDINT is unsigned; use DINT, or drop the sign
+    ---'
+    [E0307] Error: invalid literal
+       ,-[ file:///test0.st:5:18 ]
+       |
+     3 |         VAR u : UDINT; v : USINT; s : SINT; ok : SINT; d : DINT; END_VAR
+       |                        |
+       |                        `-- type is declared by variable 'v' here
+       |
+     5 |             v := - 1;
+       |                  ^|^
+       |                   `--- cannot infer '<unary expression>' to 'USINT': USINT cannot be negative; USINT is unsigned; use SINT, or drop the sign
+    ---'
+    [E0306] Error: invalid literal
+       ,-[ file:///test0.st:6:18 ]
+       |
+     3 |         VAR u : UDINT; v : USINT; s : SINT; ok : SINT; d : DINT; END_VAR
+       |                                   |
+       |                                   `-- type is declared by variable 's' here
+       |
+     6 |             s := -(129);
+       |                  ^^^|^^
+       |                     `---- cannot infer '<unary expression>' to 'SINT': the value does not fit in SINT; SINT holds -128 to 127
+    ---'
+    ");
+}
