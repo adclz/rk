@@ -465,6 +465,14 @@ pub enum UnlocatableAddress {
     /// its addresses were not the workspace's: a library's `%QD0` got a cell
     /// of its own beside a workspace `%QW0`.
     InLibrary,
+    /// A complete address on a STRUCT field, which was accepted and
+    /// ignored: a field is part of every variable of its type. rk has no
+    /// relative addresses either, which IEC 61131-3 allows there.
+    InStruct,
+    /// An incomplete address on a STRUCT field (`AT %Q*`), also accepted and
+    /// ignored. IEC 61131-3 lets VAR_CONFIG complete it per variable; rk
+    /// does that for a FUNCTION_BLOCK's or CLASS's variables only.
+    InStructPartly,
 }
 
 impl UnlocatableAddress {
@@ -477,6 +485,9 @@ impl UnlocatableAddress {
                 format!("'{address}' is not a partial address: write '%I*', '%Q*' or '%M*'")
             }
             Self::InLibrary => format!("'{address}' cannot be named in a library"),
+            Self::InStruct | Self::InStructPartly => {
+                format!("'{address}' cannot locate a STRUCT field")
+            }
         }
     }
 
@@ -497,6 +508,12 @@ impl UnlocatableAddress {
                 "the variable's type gives the width, and VAR_CONFIG gives the rest of the address"
             }
             Self::InLibrary => return None,
+            Self::InStruct => {
+                "a field is part of every variable of its type, so one address cannot be its; declare the address on a variable of a PROGRAM or a VAR_GLOBAL, and copy between it and the field"
+            }
+            Self::InStructPartly => {
+                "an incomplete address on a STRUCT field is not supported; declare the channel in a FUNCTION_BLOCK, where VAR_CONFIG locates it per instance"
+            }
         })
     }
 }
