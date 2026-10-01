@@ -26,8 +26,7 @@ use crate::{
         semantic_index::get_scope,
     },
     hir_ty::{
-        body::{BodyInferenceResult, infer_body},
-        head::init_inference::infer_initialization,
+        body::ScopeInference,
         oop::{MethodRef, class_members, descendants, explicit_bases},
         ty::CallableType,
     },
@@ -103,30 +102,15 @@ pub struct Call<'db> {
 /// initializers, which run at each call too. A POU member's initializer
 /// cannot call (E0401), so an instance local brings no call of its own.
 pub fn calls<'db>(db: &'db dyn WorkspaceDataBase, node: CallNode<'db>) -> Vec<Call<'db>> {
-    let scope = node.scope(db);
+    let inference = node.scope(db).inference(db);
     let this = node.this_pou(db);
     let mut calls = Vec::new();
-    for results in [
-        infer_body(db, scope),
-        &infer_initialization(db, scope).body_infer_result,
-    ] {
-        calls_in(db, results, this, &mut calls);
-    }
-    calls
-}
-
-fn calls_in<'db>(
-    db: &'db dyn WorkspaceDataBase,
-    results: &BodyInferenceResult<'db>,
-    this: Option<Pou<'db>>,
-    calls: &mut Vec<Call<'db>>,
-) {
-    for (call, resolved) in &results.resolved_calls {
+    for (call, resolved) in inference.resolved_calls() {
         let path = call.path(db);
         let targets = match resolved.callable {
             CallableType::Function(f) => vec![CallNode::Function(f)],
             CallableType::FunctionBlock(fb) => vec![CallNode::Body(fb)],
-            CallableType::MethodDecl(method) => method_targets(db, results, path, method, this),
+            CallableType::MethodDecl(method) => method_targets(db, inference, path, method, this),
         };
         calls.push(Call {
             site: CallSite::from_scoped(db, &path),
@@ -134,7 +118,7 @@ fn calls_in<'db>(
         });
     }
     // `SUPER()` runs the base FB's body, which a CLASS has none of.
-    for invocation in results.type_of_invocation.keys() {
+    for invocation in inference.invocations() {
         if invocation.kind(db) == InvocationKind::SuperBody
             && let Some(pou) = this
             && let Some(Pou::FunctionBlock(base)) = explicit_bases(db, pou).extends
@@ -145,6 +129,7 @@ fn calls_in<'db>(
             });
         }
     }
+    calls
 }
 
 /// The METHODs a call of `method` may run, sorted as lowering sorts the
@@ -153,17 +138,17 @@ fn calls_in<'db>(
 /// instance's.
 fn method_targets<'db>(
     db: &'db dyn WorkspaceDataBase,
-    results: &BodyInferenceResult<'db>,
+    inference: ScopeInference<'db>,
     path: BeginPathExpr<'db>,
     method: MethodRef<'db>,
     this: Option<Pou<'db>>,
 ) -> Vec<CallNode<'db>> {
     let invocation = path.invocation(db).map(|i| i.kind(db));
     let dispatch_on = match (invocation, path.expr(db).map(|pe| pe.expr(db))) {
-        (_, Some(PathExprKind::Field(field))) => results
-            .type_of_path_expr
-            .get(&field.path)
-            .and_then(|ty| ty.normalize(db).as_pou(db))
+        (_, Some(PathExprKind::Field(field))) => inference
+            .type_of_path_expr(field.path)
+            .normalize(db)
+            .as_pou(db)
             .filter(|receiver| matches!(receiver, Pou::Interface(_)) || method.is_prototype()),
         (Some(InvocationKind::Super), _) => None,
         (Some(InvocationKind::This), _) | (None, Some(PathExprKind::VarAccess(_))) => this,

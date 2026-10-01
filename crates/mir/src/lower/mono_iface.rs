@@ -16,7 +16,6 @@ use hir::hir_def::pous::function::Function;
 use hir::hir_def::pous::pou::Pou;
 use hir::hir_def::pous::variable::{VariableDecl, VariableKind};
 use hir::hir_def::scope::ScopeId;
-use hir::hir_ty::body::infer_body;
 use hir::hir_ty::infer::Infer;
 use hir::hir_ty::oop::MethodRef;
 use hir::hir_ty::ty::{CallableType, Type};
@@ -214,25 +213,21 @@ fn process_body<'db>(
     instances: &mut Vec<IfaceInstance<'db>>,
     out_rewrites: &mut FxHashMap<FuncCall<'db>, Ident>,
 ) {
-    // The body's calls and its local initializers': `x : INT := ident(p)`
-    // reached codegen with no `ident$@Pump`.
-    let body = infer_body(db, scope);
-    let inits =
-        &hir::hir_ty::head::init_inference::infer_initialization(db, scope).body_infer_result;
-    for result in [body, inits] {
-        // Every call resolution recorded, instead of a second walk over the tree.
-        for fc in result.calls.clone() {
-            process_call(
-                db,
-                fc,
-                result,
-                self_pou,
-                subs,
-                by_canonical,
-                instances,
-                out_rewrites,
-            );
-        }
+    // Every call resolution recorded, in the statements and the local
+    // initializers (`x : INT := ident(p)` reached codegen with no
+    // `ident$@Pump`), instead of a second walk over the tree.
+    let inference = scope.inference(db);
+    for fc in inference.calls() {
+        process_call(
+            db,
+            fc,
+            inference,
+            self_pou,
+            subs,
+            by_canonical,
+            instances,
+            out_rewrites,
+        );
     }
 }
 
@@ -251,7 +246,7 @@ fn is_this_arg<'db>(db: &'db dyn WorkspaceDataBase, arg: Expr<'db>) -> bool {
 fn process_call<'db>(
     db: &'db dyn WorkspaceDataBase,
     fc: FuncCall<'db>,
-    body: &hir::hir_ty::body::BodyInferenceResult<'db>,
+    inference: hir::hir_ty::body::ScopeInference<'db>,
     self_pou: Option<Pou<'db>>,
     subs: &IfaceSubs<'db>,
     by_canonical: &mut CanonicalInstanceMap,
@@ -265,7 +260,7 @@ fn process_call<'db>(
         Type::CallableType(CallableType::Function(f)) => IfaceTarget::Function(f),
         Type::MethodDecl(MethodRef::Declared(md))
         | Type::CallableType(CallableType::MethodDecl(MethodRef::Declared(md))) => {
-            match method_target(db, fc, md, body, self_pou) {
+            match method_target(db, fc, md, inference, self_pou) {
                 Some(target) => target,
                 None => return,
             }
@@ -285,7 +280,7 @@ fn process_call<'db>(
     // Bind each interface param to the concrete POU of its argument.
     let mut iface_subs: IfaceSubs<'db> = FxHashMap::default();
     for pa in fc.params(db) {
-        let Some(param) = body.variable_of_param.get(pa).copied() else {
+        let Some(param) = inference.variable_for_param(*pa) else {
             continue;
         };
         // The parameter of the method that runs: HIR bound the argument to the
@@ -311,11 +306,7 @@ fn process_call<'db>(
             self_pou
         } else {
             // Adjusted: `arr[i]` and `r^` bind the element and the target.
-            let arg_ty = match body.type_of_expr.contains_key(&arg) {
-                true => body.type_of_expr_with_adjustments(db, arg),
-                false => arg.infer(db),
-            };
-            resolve_concrete(db, arg_ty, subs)
+            resolve_concrete(db, inference.type_of_expr_adjusted(arg), subs)
         };
         if let Some(concrete) = concrete {
             iface_subs.insert(param, concrete);
@@ -375,7 +366,7 @@ pub(crate) fn method_target<'db>(
     db: &'db dyn WorkspaceDataBase,
     fc: FuncCall<'db>,
     resolved: MethodDecl<'db>,
-    body: &hir::hir_ty::body::BodyInferenceResult<'db>,
+    inference: hir::hir_ty::body::ScopeInference<'db>,
     self_pou: Option<Pou<'db>>,
 ) -> Option<IfaceTarget<'db>> {
     use hir::hir_def::expressions::expression::PathExprKind;
@@ -388,7 +379,7 @@ pub(crate) fn method_target<'db>(
     match (member, invocation) {
         // `inst.m()`, `THIS.inner.m()`: HIR resolved the member type's method.
         (Some(receiver), _) => {
-            let owner = concrete_pou_of(db, body.type_of_path_expr_with_adjustments(receiver))?;
+            let owner = concrete_pou_of(db, inference.type_of_path_expr_adjusted(receiver))?;
             Some(IfaceTarget::Method {
                 owner,
                 method: resolved,

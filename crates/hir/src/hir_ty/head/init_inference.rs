@@ -38,8 +38,9 @@ pub struct InitInference<'db> {
     /// Initializer expression inference results
     pub init_expr_result: InitExprInferenceResult<'db>,
 
-    /// BodyInference results (Inference of constant expressions)
-    pub body_infer_result: BodyInferenceResult<'db>,
+    /// What the initializers' expressions resolved to, read through
+    /// [`ScopeInference`](crate::hir_ty::body::ScopeInference).
+    pub(crate) body_infer_result: BodyInferenceResult<'db>,
 
     /// Errors encountered during inference
     pub errors: Vec<IdeDiagnostic>,

@@ -1,6 +1,6 @@
 use auto_lsp::lsp_types::DiagnosticSeverity;
 use db::WorkspaceDataBase;
-use hir::{HirNodeInfo, hir_ty::body::BodyInferenceResult};
+use hir::{HirNodeInfo, hir_ty::body::ScopeInference};
 use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
 
 pub const NAME: &str = "unused-return-type";
@@ -20,10 +20,10 @@ impl ErrorCode for UnusedReturnType {
 
 pub fn check<'db>(
     db: &'db dyn WorkspaceDataBase,
-    body: &BodyInferenceResult<'db>,
+    body: ScopeInference<'db>,
     diagnostics: &mut Vec<IdeDiagnostic>,
 ) {
-    for (stmt, typ) in &body.unused_return_types {
+    for (stmt, typ) in body.unused_return_types() {
         let mut diag = diag()
             .message(format!("unused return value of '{}'", typ.type_name(db)))
             .desc(&UnusedReturnType)

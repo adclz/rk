@@ -1,9 +1,10 @@
 //! Call hierarchy: what calls this, and what does this call.
 //!
-//! Both directions read [`BodyInferenceResult::resolved_calls`], the plan
-//! inference assembled when it checked each call. Re-walking the statement
-//! tree to find calls would re-decide which overload a site picked, and the
-//! hierarchy would then disagree with the diagnostics about the same call.
+//! Both directions read the resolved calls (`ScopeInference::resolved_calls`),
+//! the plan inference assembled when it checked each call. Re-walking the
+//! statement tree to find calls would re-decide which overload a site picked,
+//! and the hierarchy would then disagree with the diagnostics about the same
+//! call.
 
 use auto_lsp::{
     default::db::file::File,
@@ -19,7 +20,6 @@ use hir::{
         semantic_index::semantic_index,
     },
     hir_ty::{
-        body::infer_body,
         infer::Infer,
         oop::MethodRef,
         ty::{CallableType, Type},
@@ -183,10 +183,10 @@ fn calls_from<'db>(
 ) -> FxHashMap<CallableType<'db>, Vec<Range>> {
     let scope = caller.scope(db);
     let file = scope.file(db);
-    let results = infer_body(db, scope);
+    let inference = scope.inference(db);
     let mut by_callee: FxHashMap<CallableType<'db>, Vec<Range>> = FxHashMap::default();
 
-    for (call, resolved) in results.resolved_calls.iter() {
+    for (call, resolved) in inference.resolved_calls() {
         let span = call.path(db).get_span(db);
         if let Some(range) = hir::denormalize(db, file, &span) {
             by_callee.entry(resolved.callable).or_default().push(range);

@@ -243,7 +243,7 @@ impl<'db> SemanticTokensHandler<'db> for PathExpr<'db> {
     fn semantic_tokens(&'db self, db: &'db dyn WorkspaceDataBase, builder: &mut TokenSink) {
         let file = self.get_scope_id(db).file(db);
         let span = self.get_span(db);
-        let results = hir::hir_ty::body::infer_body(db, self.get_scope_id(db));
+        let results = self.get_scope_id(db).inference(db);
 
         // A namespace has no type, so ask what the step NAMED before asking
         // what it is worth.

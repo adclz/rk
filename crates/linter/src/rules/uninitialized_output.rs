@@ -7,7 +7,7 @@ use hir::{
         pous::variable::{VariableDecl, VariableKind},
         scope::ScopeId,
     },
-    hir_ty::{body::BodyInferenceResult, ty::Type},
+    hir_ty::{body::ScopeInference, ty::Type},
 };
 use ide_diagnostic::{ErrorCode, IdeDiagnostic, Related, diag};
 use rustc_hash::FxHashSet;
@@ -37,7 +37,7 @@ impl ErrorCode for UninitializedOutput {
 /// Called by the unified visitor for each assignment statement.
 pub fn collect_assigned<'db>(
     db: &'db dyn WorkspaceDataBase,
-    body: &BodyInferenceResult<'db>,
+    body: ScopeInference<'db>,
     var: hir::hir_def::expressions::expression::VariableAccess<'db>,
     assigned: &mut FxHashSet<VariableDecl<'db>>,
 ) {
@@ -47,7 +47,7 @@ pub fn collect_assigned<'db>(
     let Some(path_expr) = begin.expr(db) else {
         return;
     };
-    if let Some(&Type::Variable((var_decl, _))) = body.type_of_path_expr.get(&path_expr) {
+    if let Type::Variable((var_decl, _)) = body.type_of_path_expr(path_expr) {
         assigned.insert(var_decl);
     }
 }

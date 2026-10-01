@@ -21,10 +21,7 @@ use hir::{
     HirNodeInfo,
     check::diagnostics_for_file,
     hir_def::{namespace::NamespaceDecl, scope::ScopeId, semantic_index::semantic_index},
-    hir_ty::{
-        body::infer_body,
-        head::{init_inference::infer_initialization, signature::infer_signature},
-    },
+    hir_ty::head::{init_inference::infer_initialization, signature::infer_signature},
 };
 
 // ---------------------------------------------------------------------------
@@ -250,7 +247,7 @@ pub fn initializations_all(db: &dyn db::WorkspaceDataBase, files: &[File]) {
 pub fn bodies_all(db: &dyn db::WorkspaceDataBase, files: &[File]) {
     for file in files {
         for scope in all_pou_scopes(db, *file) {
-            let _ = infer_body(db, scope);
+            let _ = scope.inference(db);
         }
     }
 }

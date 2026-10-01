@@ -7,7 +7,7 @@ use hir::{
         scope::{ScopeId, ScopeKind},
         semantic_index::get_scope,
     },
-    hir_ty::{body::BodyInferenceResult, head::init_inference::infer_initialization},
+    hir_ty::body::ScopeInference,
 };
 use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
 
@@ -29,25 +29,10 @@ impl ErrorCode for MissingReturn {
 /// Called by the stmt_visitor for each assignment: whether it writes the
 /// result, whole (`Compute := 1`) or a part of it (`MakePt.x := 1`).
 pub fn check_assignment<'db>(
-    db: &'db dyn WorkspaceDataBase,
-    body: &BodyInferenceResult<'db>,
+    body: ScopeInference<'db>,
     var: hir::hir_def::expressions::expression::VariableAccess<'db>,
 ) -> bool {
-    body.writes_result(db, var)
-}
-
-/// Whether the result is written all the same without an assignment: bound
-/// to an output, passed to a VAR_IN_OUT or referenced with `REF()`, in a
-/// statement or in a declaration's initializer.
-fn handed_out<'db>(
-    db: &'db dyn WorkspaceDataBase,
-    body: &BodyInferenceResult<'db>,
-    scope: ScopeId<'db>,
-) -> bool {
-    body.hands_out_result(db)
-        || infer_initialization(db, scope)
-            .body_infer_result
-            .hands_out_result(db)
+    body.writes_result(var)
 }
 
 /// A `{wasm}` statement assigns the return when its `(result NAME)` is the
@@ -68,7 +53,7 @@ pub fn check_pragma<'db>(
 /// Post-walk check: if no return assignment was found, emit the diagnostic.
 pub fn check_result<'db>(
     db: &'db dyn WorkspaceDataBase,
-    body: &BodyInferenceResult<'db>,
+    body: ScopeInference<'db>,
     scope: ScopeId<'db>,
     return_assigned: bool,
     diagnostics: &mut Vec<IdeDiagnostic>,
@@ -109,7 +94,10 @@ pub fn check_result<'db>(
         }
         _ => return,
     };
-    if handed_out(db, body, scope) {
+    // Written all the same without an assignment: bound to an output, passed
+    // to a VAR_IN_OUT or referenced with `REF()`, in a statement or in a
+    // declaration's initializer.
+    if body.hands_out_result() {
         return;
     }
 

@@ -1,6 +1,6 @@
 use auto_lsp::lsp_types::DiagnosticSeverity;
 use db::WorkspaceDataBase;
-use hir::{HirNodeInfo, hir_ty::body::BodyInferenceResult};
+use hir::{HirNodeInfo, hir_ty::body::ScopeInference};
 use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
 
 pub const NAME: &str = "for-loop-step-sign";
@@ -20,10 +20,10 @@ impl ErrorCode for ForLoopStepSign {
 
 pub fn check<'db>(
     db: &'db dyn WorkspaceDataBase,
-    body: &BodyInferenceResult<'db>,
+    body: ScopeInference<'db>,
     diagnostics: &mut Vec<IdeDiagnostic>,
 ) {
-    for stmt in &body.mismatched_for_step {
+    for stmt in body.mismatched_for_step() {
         diagnostics.push(
             diag()
                 .message("FOR loop step direction mismatches bounds direction".to_string())

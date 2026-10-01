@@ -23,6 +23,7 @@ use crate::{
     },
     hir_ty::{
         body::statements::{NestedScope, StmtsResolverCtx},
+        head::init_inference::infer_initialization,
         infer::Infer,
         resolver::Resolver,
         ty::Type,
@@ -31,9 +32,282 @@ use crate::{
 
 pub mod statements;
 
+/// What inference knows about a scope: its statements' result and its
+/// initializers'. A FUNCTION's locals start over at each call, before its
+/// first statement, so an initializer's `p^`, `REF(v)`, `o => wide` or
+/// `SUPER.m()` is the scope's as much as a statement's; read from the
+/// statements' result alone, each of those compiled wrong or not at all.
+/// The two stay separate queries, so an edit to a body leaves its
+/// declarations alone, and this is the one way out of the crate to read
+/// either: a lookup answers from whichever recorded the node, a scan walks
+/// both.
+///
+/// A node is recorded by one of the two. The statements' result is asked
+/// first; the initializers', memoized, is fetched on a miss.
+#[derive(Clone, Copy)]
+pub struct ScopeInference<'db> {
+    db: &'db dyn WorkspaceDataBase,
+    scope: ScopeId<'db>,
+    statements: &'db BodyInferenceResult<'db>,
+}
+
+impl<'db> ScopeId<'db> {
+    /// What inference knows about this scope's statements and initializers.
+    pub fn inference(self, db: &'db dyn WorkspaceDataBase) -> ScopeInference<'db> {
+        ScopeInference {
+            db,
+            scope: self,
+            statements: infer_body(db, self),
+        }
+    }
+}
+
+impl<'db> ScopeInference<'db> {
+    fn initializers(self) -> &'db BodyInferenceResult<'db> {
+        &infer_initialization(self.db, self.scope).body_infer_result
+    }
+
+    /// Both results, the statements' first.
+    fn both(self) -> [&'db BodyInferenceResult<'db>; 2] {
+        [self.statements, self.initializers()]
+    }
+
+    /// The answer of the result that recorded the node.
+    fn recorded<T>(self, get: impl Fn(&'db BodyInferenceResult<'db>) -> Option<T>) -> Option<T> {
+        get(self.statements).or_else(|| get(self.initializers()))
+    }
+
+    /// A recorded type, `Never` being the miss.
+    fn typed(self, get: impl Fn(&'db BodyInferenceResult<'db>) -> Type<'db>) -> Type<'db> {
+        let ty = get(self.statements);
+        if ty.is_never() {
+            get(self.initializers())
+        } else {
+            ty
+        }
+    }
+
+    // One node.
+
+    /// The type of an expression, before its adjustments.
+    pub fn type_of_expr(self, expr: Expr<'db>) -> Type<'db> {
+        self.typed(|r| r.get_type_of_expr(expr))
+    }
+
+    /// The type an expression evaluates to: `arr[0]` is the element, `r^`
+    /// the target.
+    pub fn type_of_expr_adjusted(self, expr: Expr<'db>) -> Type<'db> {
+        self.typed(|r| r.type_of_expr_with_adjustments(self.db, expr))
+    }
+
+    pub fn type_of_path_expr(self, path: PathExpr<'db>) -> Type<'db> {
+        self.typed(|r| r.get_type_of_path_expr(self.db, path))
+    }
+
+    pub fn type_of_path_expr_adjusted(self, path: PathExpr<'db>) -> Type<'db> {
+        self.typed(|r| r.type_of_path_expr_with_adjustments(path))
+    }
+
+    pub fn type_of_begin_path_expr(self, begin: BeginPathExpr<'db>) -> Type<'db> {
+        self.typed(|r| r.get_type_of_begin_path_expr(self.db, begin))
+    }
+
+    pub fn type_of_begin_path_expr_adjusted(self, begin: BeginPathExpr<'db>) -> Type<'db> {
+        self.typed(|r| r.type_of_begin_expr_with_adjustments(self.db, begin))
+    }
+
+    pub fn type_of_variable_access(self, access: VariableAccess<'db>) -> Type<'db> {
+        self.typed(|r| r.get_type_of_variable_access(self.db, access))
+    }
+
+    pub fn type_of_variable_access_adjusted(self, access: VariableAccess<'db>) -> Type<'db> {
+        self.typed(|r| r.type_of_variable_access_with_adjustments(self.db, access))
+    }
+
+    pub fn type_of_invocation(self, invocation: Invocation<'db>) -> Type<'db> {
+        self.typed(|r| r.get_type_of_invocation(self.db, invocation))
+    }
+
+    pub fn adjustments_of_path_expr(self, path: PathExpr<'db>) -> Option<&'db [Adjustment<'db>]> {
+        self.recorded(|r| r.adjustments_of_path_expr(path))
+    }
+
+    /// What a bracket indexes, as the walk decided it.
+    pub fn indexed_array(self, path: PathExpr<'db>) -> Option<IndexedArray<'db>> {
+        self.recorded(|r| r.indexed_arrays.get(&path).copied())
+    }
+
+    /// The declaration a path step names, when it names a variable.
+    pub fn variable_for_path_expr(self, path: PathExpr<'db>) -> Option<VariableDecl<'db>> {
+        self.recorded(|r| r.variable_for_path_expr(path))
+    }
+
+    /// Whether a path step named a namespace rather than a value.
+    pub fn path_expr_is_namespace(self, path: PathExpr<'db>) -> bool {
+        self.both().iter().any(|r| r.path_expr_is_namespace(path))
+    }
+
+    /// The parameter an argument binds.
+    pub fn variable_for_param(self, param: ParamAssign<'db>) -> Option<VariableDecl<'db>> {
+        self.recorded(|r| r.variable_for_param(param))
+    }
+
+    /// An argument's 1-based position in the variadic pack it binds.
+    pub fn variadic_position(self, param: ParamAssign<'db>) -> Option<usize> {
+        self.recorded(|r| r.variadic_position.get(&param).copied())
+    }
+
+    /// The plan assembled for a call: its callee and what it binds to each
+    /// parameter.
+    pub fn resolved_call(self, call: FuncCall<'db>) -> Option<&'db ResolvedCall<'db>> {
+        self.recorded(|r| r.resolved_calls.get(&call))
+    }
+
+    /// The type the site consuming a value converts it to.
+    pub fn coercion_target(self, expr: Expr<'db>) -> Option<Type<'db>> {
+        self.recorded(|r| r.coercion_target.get(&expr).copied())
+    }
+
+    /// The type a comparison's operands are compared at.
+    pub fn comparison_operand_type(self, expr: Expr<'db>) -> Option<Type<'db>> {
+        self.recorded(|r| r.comparison_operand_type.get(&expr).copied())
+    }
+
+    // Every node, of the statements and then of the initializers.
+
+    /// Every call, in resolution order.
+    pub fn calls(self) -> impl Iterator<Item = FuncCall<'db>> {
+        let [a, b] = self.both();
+        a.calls.iter().chain(&b.calls).copied()
+    }
+
+    pub fn resolved_calls(self) -> impl Iterator<Item = (FuncCall<'db>, &'db ResolvedCall<'db>)> {
+        let [a, b] = self.both();
+        a.resolved_calls
+            .iter()
+            .chain(&b.resolved_calls)
+            .map(|(call, resolved)| (*call, resolved))
+    }
+
+    pub fn invocations(self) -> impl Iterator<Item = Invocation<'db>> {
+        let [a, b] = self.both();
+        a.type_of_invocation
+            .keys()
+            .chain(b.type_of_invocation.keys())
+            .copied()
+    }
+
+    /// Every expression with its type, before adjustments.
+    pub fn typed_exprs(self) -> impl Iterator<Item = (Expr<'db>, Type<'db>)> {
+        let [a, b] = self.both();
+        a.type_of_expr
+            .iter()
+            .chain(&b.type_of_expr)
+            .map(|(expr, ty)| (*expr, *ty))
+    }
+
+    pub fn typed_path_exprs(self) -> impl Iterator<Item = (PathExpr<'db>, Type<'db>)> {
+        let [a, b] = self.both();
+        a.type_of_path_expr
+            .iter()
+            .chain(&b.type_of_path_expr)
+            .map(|(path, ty)| (*path, *ty))
+    }
+
+    pub fn variables_used(self) -> impl Iterator<Item = VariableDecl<'db>> {
+        let [a, b] = self.both();
+        a.variables_used.iter().chain(&b.variables_used).copied()
+    }
+
+    pub fn usings_used(self) -> impl Iterator<Item = Using<'db>> {
+        let [a, b] = self.both();
+        a.usings_used.iter().chain(&b.usings_used).copied()
+    }
+
+    /// Each variable that shadows a POU of its name, with the POU.
+    pub fn variables_shadowing(self) -> impl Iterator<Item = (VariableDecl<'db>, Pou<'db>)> {
+        let [a, b] = self.both();
+        a.variables_shadowing
+            .iter()
+            .chain(&b.variables_shadowing)
+            .map(|(var, pou)| (*var, *pou))
+    }
+
+    /// Each method variable that shadows a member of the owner, with the
+    /// member.
+    pub fn method_shadowed_members(
+        self,
+    ) -> impl Iterator<Item = (VariableDecl<'db>, VariableDecl<'db>)> {
+        let [a, b] = self.both();
+        a.method_shadowed_members
+            .iter()
+            .chain(&b.method_shadowed_members)
+            .map(|(var, member)| (*var, *member))
+    }
+
+    /// Each access to a global with no VAR_EXTERNAL for it, with the global.
+    pub fn globals_without_external(
+        self,
+    ) -> impl Iterator<Item = (PathExpr<'db>, VariableDecl<'db>)> {
+        let [a, b] = self.both();
+        a.globals_without_external
+            .iter()
+            .chain(&b.globals_without_external)
+            .copied()
+    }
+
+    /// Whether `var` is the FUNCTION's or METHOD's result, or a part of it.
+    pub fn writes_result(self, var: VariableAccess<'db>) -> bool {
+        self.both().iter().any(|r| r.writes_result(self.db, var))
+    }
+
+    /// Whether the result is handed to something that can write it: an
+    /// output, a VAR_IN_OUT or a `REF()`.
+    pub fn hands_out_result(self) -> bool {
+        self.both().iter().any(|r| r.hands_out_result(self.db))
+    }
+
+    // Statements only: an initializer has none.
+
+    /// The value of a CASE label, as inference evaluated it.
+    pub fn case_label_value(self, label: Expr<'db>) -> Option<&'db CaseLabelValue> {
+        self.statements.case_label_value.get(&label)
+    }
+
+    /// The folded value of a FOR step.
+    pub fn for_step_value(self, step: Expr<'db>) -> Option<i64> {
+        self.statements.for_step_value.get(&step).copied()
+    }
+
+    /// The first `SUPER()` of a function block body.
+    pub fn first_super_body(self) -> Option<Stmt<'db>> {
+        self.statements.first_super_body
+    }
+
+    pub fn unused_return_types(self) -> &'db [(Stmt<'db>, Type<'db>)] {
+        &self.statements.unused_return_types
+    }
+
+    pub fn effectless_statements(self) -> &'db [Stmt<'db>] {
+        &self.statements.effectless_statements
+    }
+
+    pub fn case_without_else(self) -> &'db [Stmt<'db>] {
+        &self.statements.case_without_else
+    }
+
+    pub fn dead_code_statements(self) -> &'db [Stmt<'db>] {
+        &self.statements.dead_code_statements
+    }
+
+    pub fn mismatched_for_step(self) -> &'db [Stmt<'db>] {
+        &self.statements.mismatched_for_step
+    }
+}
+
 #[tracing::instrument(level = "trace", skip(db))]
 #[salsa::tracked(returns(ref))]
-pub fn infer_body<'db>(
+pub(crate) fn infer_body<'db>(
     db: &'db dyn WorkspaceDataBase,
     scope: ScopeId<'db>,
 ) -> BodyInferenceResult<'db> {
@@ -213,29 +487,29 @@ impl<'db> NullState<'db> {
 #[derive(Debug, PartialEq, Eq, salsa::Update)]
 pub struct BodyInferenceResult<'db> {
     // Scope where this InferenceResult was emitted
-    pub scope: ScopeId<'db>,
+    pub(crate) scope: ScopeId<'db>,
 
     // Mapping from parameter assignments to variables
-    pub variable_of_param: FxHashMap<ParamAssign<'db>, VariableDecl<'db>>,
+    pub(crate) variable_of_param: FxHashMap<ParamAssign<'db>, VariableDecl<'db>>,
 
     /// The assembled plan for each call: the resolved callee and, per
     /// declared parameter IN DECLARATION ORDER, what the call binds to it.
     /// A consumer that assembles the call again from the raw assigns
     /// re-decides matching, ordering and defaults — a mismatch is a
     /// positional-argument shift in the emitted call.
-    pub resolved_calls: FxHashMap<FuncCall<'db>, ResolvedCall<'db>>,
+    pub(crate) resolved_calls: FxHashMap<FuncCall<'db>, ResolvedCall<'db>>,
 
     // For variadic parameters, stores the 1-based position index
-    pub variadic_position: FxHashMap<ParamAssign<'db>, usize>,
+    pub(crate) variadic_position: FxHashMap<ParamAssign<'db>, usize>,
 
     // Mapping of direct variables to their types
-    pub type_of_direct_variable: FxHashMap<DirectVariable<'db>, Type<'db>>,
+    pub(crate) type_of_direct_variable: FxHashMap<DirectVariable<'db>, Type<'db>>,
 
     // Mapping from invocations to their resolved types.
-    pub type_of_invocation: FxHashMap<Invocation<'db>, Type<'db>>,
+    pub(crate) type_of_invocation: FxHashMap<Invocation<'db>, Type<'db>>,
 
     // Mapping from path expressions to their resolved types.
-    pub type_of_path_expr: FxHashMap<PathExpr<'db>, Type<'db>>,
+    pub(crate) type_of_path_expr: FxHashMap<PathExpr<'db>, Type<'db>>,
 
     /// The declaration each path step resolved to, for the steps that name a
     /// variable. Kept beside the type because the type does not survive: a
@@ -244,16 +518,16 @@ pub struct BodyInferenceResult<'db> {
     /// need the DECLARATION — the instance a call runs on, the identity
     /// rename and references work from — read it here instead of resolving
     /// the name a second time.
-    pub variable_of_path_expr: FxHashMap<PathExpr<'db>, VariableDecl<'db>>,
+    pub(crate) variable_of_path_expr: FxHashMap<PathExpr<'db>, VariableDecl<'db>>,
 
     /// The path steps that named a NAMESPACE on the way to a fully-qualified
     /// item. A namespace is not a value, so it has no type to record, and
     /// without this the `Std` in `Std.Convert.X` is indistinguishable from a
     /// name that did not resolve at all.
-    pub namespace_of_path_expr: FxHashSet<PathExpr<'db>>,
+    pub(crate) namespace_of_path_expr: FxHashSet<PathExpr<'db>>,
 
     // Mapping from expressions to their resolved types.
-    pub type_of_expr: FxHashMap<Expr<'db>, Type<'db>>,
+    pub(crate) type_of_expr: FxHashMap<Expr<'db>, Type<'db>>,
 
     // For a comparison expression, the common type its OPERANDS are compared
     // at — their join in the implicit-widening lattice.
@@ -263,18 +537,18 @@ pub struct BodyInferenceResult<'db> {
     // and to insert operand casts. Recording it here keeps that decision in
     // inference, where the widening lattice lives, instead of leaving each
     // consumer to re-derive it.
-    pub comparison_operand_type: FxHashMap<Expr<'db>, Type<'db>>,
+    pub(crate) comparison_operand_type: FxHashMap<Expr<'db>, Type<'db>>,
 
     /// The folded value of each FOR step expression the check accepted. The
     /// step's SIGN picks the loop's exit comparison at compile time, so a
     /// step that does not fold is refused (E1204) — silently treating it as
     /// ascending ran a `BY n` loop with `n = -1` zero times.
-    pub for_step_value: FxHashMap<Expr<'db>, i64>,
+    pub(crate) for_step_value: FxHashMap<Expr<'db>, i64>,
 
     /// Every call resolution visited, in resolution order. A consumer that
     /// needs "all calls in this body" reads this instead of re-walking the
     /// statement tree for the shapes a call can hide in.
-    pub calls: Vec<FuncCall<'db>>,
+    pub(crate) calls: Vec<FuncCall<'db>>,
 
     /// The type a value is converted to by the site that consumes it — an
     /// assignment target, a parameter, an FB input. Inference decides this
@@ -282,7 +556,7 @@ pub struct BodyInferenceResult<'db> {
     /// emit the conversion from deciding a second time, which is how an
     /// assignment and a call argument came to disagree about the same pair of
     /// types.
-    pub coercion_target: FxHashMap<Expr<'db>, Type<'db>>,
+    pub(crate) coercion_target: FxHashMap<Expr<'db>, Type<'db>>,
 
     // The value of each CASE label, evaluated here.
     //
@@ -293,74 +567,74 @@ pub struct BodyInferenceResult<'db> {
     // for the consumer to work out again: lowering reads THIS instead of
     // lowering the label and inspecting what came out, which is how a label
     // it could not fold became an internal compiler error.
-    pub case_label_value: FxHashMap<Expr<'db>, CaseLabelValue>,
+    pub(crate) case_label_value: FxHashMap<Expr<'db>, CaseLabelValue>,
 
     // Mapping from path expressions to their adjustment sequences.
-    pub path_expr_adjustments: FxHashMap<PathExpr<'db>, Vec<Adjustment<'db>>>,
+    pub(crate) path_expr_adjustments: FxHashMap<PathExpr<'db>, Vec<Adjustment<'db>>>,
 
     /// What each bracket (`a[i]`) indexes, as the walk decided it: the
     /// bounds check and MIR read it here rather than work it out again.
-    pub indexed_arrays: FxHashMap<PathExpr<'db>, IndexedArray<'db>>,
+    pub(crate) indexed_arrays: FxHashMap<PathExpr<'db>, IndexedArray<'db>>,
 
     // Errors encountered during inference
-    pub errors: Vec<IdeDiagnostic>,
+    pub(crate) errors: Vec<IdeDiagnostic>,
 
     // Set of variables that were referenced in the body.
     // Populated during statement resolution for use by the linter.
-    pub variables_used: FxHashSet<VariableDecl<'db>>,
+    pub(crate) variables_used: FxHashSet<VariableDecl<'db>>,
 
     // Set of USING directives that were actually used to resolve a name.
     // Populated during name resolution for use by the linter.
-    pub usings_used: FxHashSet<Using<'db>>,
+    pub(crate) usings_used: FxHashSet<Using<'db>>,
 
     // Variables that shadow a POU with the same name.
     // Populated during statement resolution for use by the linter.
-    pub variables_shadowing: FxHashMap<VariableDecl<'db>, Pou<'db>>,
+    pub(crate) variables_shadowing: FxHashMap<VariableDecl<'db>, Pou<'db>>,
 
     // Method locals/params that shadow a member of the owner FB/Class (same
     // name). Maps the method variable → the shadowed member. Populated for
     // method bodies for use by the linter.
-    pub method_shadowed_members: FxHashMap<VariableDecl<'db>, VariableDecl<'db>>,
+    pub(crate) method_shadowed_members: FxHashMap<VariableDecl<'db>, VariableDecl<'db>>,
 
     // Config/resource VAR_GLOBALs accessed directly by name without a matching
     // VAR_EXTERNAL declaration (direct access). Resolution still
     // succeeds; the linter warns, since strict IEC wants an explicit
     // VAR_EXTERNAL. Records (access path expr, resolved global decl).
-    pub globals_without_external: Vec<(PathExpr<'db>, VariableDecl<'db>)>,
+    pub(crate) globals_without_external: Vec<(PathExpr<'db>, VariableDecl<'db>)>,
 
     // Function calls whose return value is discarded.
     // Populated during statement resolution for use by the linter.
-    pub unused_return_types: Vec<(Stmt<'db>, Type<'db>)>,
+    pub(crate) unused_return_types: Vec<(Stmt<'db>, Type<'db>)>,
 
     // Statements that are just expressions with no side effects.
     // Populated during statement resolution for use by the linter.
-    pub effectless_statements: Vec<Stmt<'db>>,
+    pub(crate) effectless_statements: Vec<Stmt<'db>>,
 
     // CASE statements without an ELSE clause.
     // Populated during statement resolution for use by the linter.
-    pub case_without_else: Vec<Stmt<'db>>,
+    pub(crate) case_without_else: Vec<Stmt<'db>>,
 
     // Statements that are unreachable (after RETURN/EXIT/CONTINUE).
     // Populated during statement resolution for use by the linter.
-    pub dead_code_statements: Vec<Stmt<'db>>,
+    pub(crate) dead_code_statements: Vec<Stmt<'db>>,
 
     // FOR loops where step sign mismatches bounds direction.
     // Populated during statement resolution for use by the linter.
-    pub mismatched_for_step: Vec<Stmt<'db>>,
+    pub(crate) mismatched_for_step: Vec<Stmt<'db>>,
 
     // Null state tracking for REF_TO variables.
     // Tracks whether a reference variable is initialized / null / non-null
     // through linear statement flow.
-    pub ref_null_state: FxHashMap<VariableDecl<'db>, NullState<'db>>,
+    pub(crate) ref_null_state: FxHashMap<VariableDecl<'db>, NullState<'db>>,
 
     // The first `SUPER()` (base-body call) statement seen in a function block
     // body. Per IEC 6.6.7.2.9 rule 2, `SUPER()` shall occur once — a second
     // occurrence is reported (E1110), pointing back to this first one.
-    pub first_super_body: Option<Stmt<'db>>,
+    pub(crate) first_super_body: Option<Stmt<'db>>,
 }
 
 impl<'db> BodyInferenceResult<'db> {
-    pub fn new(scope: ScopeId<'db>) -> Self {
+    pub(crate) fn new(scope: ScopeId<'db>) -> Self {
         Self {
             scope,
             variable_of_param: FxHashMap::default(),

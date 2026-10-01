@@ -1,6 +1,6 @@
 use auto_lsp::lsp_types::DiagnosticSeverity;
 use db::WorkspaceDataBase;
-use hir::{HasName, HirNodeInfo, hir_ty::body::BodyInferenceResult};
+use hir::{HasName, HirNodeInfo, hir_ty::body::ScopeInference};
 use ide_diagnostic::{ErrorCode, IdeDiagnostic, Related, diag};
 
 pub const NAME: &str = "method-shadows-member";
@@ -9,7 +9,7 @@ pub const NAME: &str = "method-shadows-member";
 /// class it belongs to. This is legal — the method variable shadows the member,
 /// and bare-name access inside the method resolves to the local (per IEC
 /// and HIR name resolution) — but it is easy to misread, so warn. The shadow set
-/// is computed in HIR (`BodyInferenceResult::method_shadowed_members`).
+/// is computed in HIR (`ScopeInference::method_shadowed_members`).
 struct MethodShadowsMember;
 
 impl ErrorCode for MethodShadowsMember {
@@ -24,10 +24,10 @@ impl ErrorCode for MethodShadowsMember {
 
 pub fn check<'db>(
     db: &'db dyn WorkspaceDataBase,
-    body: &BodyInferenceResult<'db>,
+    body: ScopeInference<'db>,
     diagnostics: &mut Vec<IdeDiagnostic>,
 ) {
-    for (mvar, member) in &body.method_shadowed_members {
+    for (mvar, member) in body.method_shadowed_members() {
         let name = mvar.get_name_with_case(db).text(db);
         // Each as it is declared: the two may differ in case.
         let member_name = member.get_name_with_case(db).text(db);

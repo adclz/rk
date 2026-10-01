@@ -12,7 +12,6 @@ use hir::{
     hir_def::{
         expressions::expression::PathExprKind, hir_node::HirNode, semantic_index::semantic_index,
     },
-    hir_ty::body::infer_body,
 };
 
 use crate::walk::WalkHir;
@@ -39,7 +38,9 @@ pub fn inline_values(
             // and the path that would resolve it is the runtime's shape, not
             // the source's.
             HirNode::PathExpr(p) => match p.expr(db) {
-                PathExprKind::VarAccess(_) => infer_body(db, p.get_scope_id(db))
+                PathExprKind::VarAccess(_) => p
+                    .get_scope_id(db)
+                    .inference(db)
                     .variable_for_path_expr(*p)
                     .map(|var| (p.get_span(db), var.get_name_ident(db))),
                 _ => None,

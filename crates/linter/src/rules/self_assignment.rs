@@ -11,7 +11,7 @@ use hir::{
         scope::{ScopeId, ScopeKind},
         semantic_index::get_scope,
     },
-    hir_ty::{body::BodyInferenceResult, ty::Type},
+    hir_ty::{body::ScopeInference, ty::Type},
 };
 use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
 
@@ -33,7 +33,7 @@ impl ErrorCode for SelfAssignment {
 pub fn check<'db>(
     db: &'db dyn WorkspaceDataBase,
     scope: ScopeId<'db>,
-    body: &BodyInferenceResult<'db>,
+    body: ScopeInference<'db>,
     diagnostics: &mut Vec<IdeDiagnostic>,
 ) {
     let statements = match get_scope(db, scope).kind {
@@ -52,7 +52,7 @@ pub fn check<'db>(
 
 fn check_statements<'db>(
     db: &'db dyn WorkspaceDataBase,
-    body: &BodyInferenceResult<'db>,
+    body: ScopeInference<'db>,
     stmts: &[Stmt<'db>],
     diagnostics: &mut Vec<IdeDiagnostic>,
 ) {
@@ -97,7 +97,7 @@ fn check_statements<'db>(
 
 pub fn check_assignment<'db>(
     db: &'db dyn WorkspaceDataBase,
-    body: &BodyInferenceResult<'db>,
+    body: ScopeInference<'db>,
     stmt: Stmt<'db>,
     lhs: VariableAccess<'db>,
     rhs: hir::hir_def::expressions::expression::Expr<'db>,
@@ -125,10 +125,10 @@ pub fn check_assignment<'db>(
     };
 
     // Compare resolved types — both must resolve to the same variable
-    let Some(&Type::Variable((lhs_var, _))) = body.type_of_path_expr.get(&lhs_path) else {
+    let Type::Variable((lhs_var, _)) = body.type_of_path_expr(lhs_path) else {
         return;
     };
-    let Some(&Type::Variable((rhs_var, _))) = body.type_of_path_expr.get(&rhs_path) else {
+    let Type::Variable((rhs_var, _)) = body.type_of_path_expr(rhs_path) else {
         return;
     };
 

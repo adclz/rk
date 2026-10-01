@@ -4,7 +4,7 @@ use hir::{
     HasPragmas, HirNodeInfo,
     hir_def::{expressions::expression::PathExpr, pous::variable::VariableDecl},
     hir_ty::{
-        body::BodyInferenceResult,
+        body::ScopeInference,
         oop::MethodRef,
         ty::{CallableType, Type},
     },
@@ -34,7 +34,7 @@ struct OnceCallInfo<'db> {
 /// Check body for multiple calls to the same `{once}` function.
 pub fn check<'db>(
     db: &'db dyn WorkspaceDataBase,
-    body: &BodyInferenceResult<'db>,
+    body: ScopeInference<'db>,
     diagnostics: &mut Vec<IdeDiagnostic>,
 ) {
     // A call is grouped by what it runs, not by how it is written: the
@@ -43,9 +43,9 @@ pub fn check<'db>(
     let mut once_calls: FxHashMap<(CallableType<'db>, Vec<VariableDecl<'db>>), OnceCallInfo<'db>> =
         FxHashMap::default();
 
-    for (path_expr, typ) in &body.type_of_path_expr {
+    for (path_expr, typ) in body.typed_path_exprs() {
         let callable = match typ {
-            Type::CallableType(ct) => *ct,
+            Type::CallableType(ct) => ct,
             _ => continue,
         };
 
@@ -74,7 +74,7 @@ pub fn check<'db>(
                 callable,
             })
             .calls
-            .push(*path_expr);
+            .push(path_expr);
     }
 
     for info in once_calls.values() {

@@ -1,6 +1,6 @@
 use auto_lsp::lsp_types::DiagnosticSeverity;
 use db::WorkspaceDataBase;
-use hir::{HirNodeInfo, hir_ty::body::BodyInferenceResult};
+use hir::{HirNodeInfo, hir_ty::body::ScopeInference};
 use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
 
 pub const NAME: &str = "effectless-statement";
@@ -20,10 +20,10 @@ impl ErrorCode for EffectlessStatement {
 
 pub fn check<'db>(
     db: &'db dyn WorkspaceDataBase,
-    body: &BodyInferenceResult<'db>,
+    body: ScopeInference<'db>,
     diagnostics: &mut Vec<IdeDiagnostic>,
 ) {
-    for stmt in &body.effectless_statements {
+    for stmt in body.effectless_statements() {
         diagnostics.push(
             diag()
                 .message("statement has no effect".to_string())

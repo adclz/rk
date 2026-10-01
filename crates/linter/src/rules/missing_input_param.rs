@@ -4,7 +4,7 @@ use hir::{
     HasName, HirNodeInfo,
     hir_def::{expressions::expression::FuncCall, pous::variable::VariableKind},
     hir_ty::{
-        body::BodyInferenceResult,
+        body::ScopeInference,
         ty::{CallableType, Type},
     },
 };
@@ -32,12 +32,12 @@ impl ErrorCode for MissingInputParam {
 
 pub fn check_func_call<'db>(
     db: &'db dyn WorkspaceDataBase,
-    body: &BodyInferenceResult<'db>,
+    body: ScopeInference<'db>,
     stmt: hir::hir_def::expressions::statement::Stmt<'db>,
     func_call: FuncCall<'db>,
     diagnostics: &mut Vec<IdeDiagnostic>,
 ) {
-    let typ = body.type_of_begin_expr_with_adjustments(db, func_call.path(db));
+    let typ = body.type_of_begin_path_expr_adjusted(func_call.path(db));
     let callable = match typ {
         Type::CallableType(ct) => ct,
         _ => match typ.as_callable(db) {
@@ -63,7 +63,7 @@ pub fn check_func_call<'db>(
     let matched_vars: rustc_hash::FxHashSet<_> = func_call
         .params(db)
         .iter()
-        .filter_map(|param| body.variable_of_param.get(param).copied())
+        .filter_map(|param| body.variable_for_param(*param))
         .collect();
 
     let missing: Vec<_> = formals
