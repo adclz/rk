@@ -2615,7 +2615,12 @@ impl<'db> ExprLowerCtx<'db> {
         };
         // `THIS.m()` and bare `m()` dispatch against the POU this body is emitted
         // for; `SUPER.m()` is static (IEC 9b/10b) and keeps the base's method,
-        // in its copy for that POU, where `THIS` is still the instance.
+        // in its copy for that POU, where `THIS` is still the instance. So is a
+        // PRIVATE method, which no override reaches.
+        let virtual_dispatch = virtual_dispatch
+            && !method_decl
+                .visibility(self.db)
+                .contains(hir::Visibility::PRIVATE);
         let callee = match (virtual_dispatch, self.this_pou) {
             (false, Some(owner)) => {
                 crate::lower::naming::method_copy_symbol(self.db, owner, method_decl)

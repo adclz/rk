@@ -1354,6 +1354,71 @@ END_FUNCTION_BLOCK
     ");
 }
 
+/// A PRIVATE method is its POU's own: a derived POU does not inherit it.
+/// It implements none of the derived POU's INTERFACEs, which can declare
+/// their method itself, and a method of the same name is a method of its
+/// own, which OVERRIDE does not fit (E1113).
+#[rstest]
+fn a_private_method_is_not_inherited(mut with_db: RootDatabase) {
+    let source = r#"
+INTERFACE IMeasure
+    METHOD Value : LREAL END_METHOD
+END_INTERFACE
+
+FUNCTION_BLOCK Base
+    METHOD PRIVATE Value : INT
+        Value := 3;
+    END_METHOD
+    METHOD PRIVATE Step : INT
+        Step := 1;
+    END_METHOD
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK Sensor EXTENDS Base IMPLEMENTS IMeasure
+    METHOD PUBLIC Value : LREAL
+        Value := 1.5;
+    END_METHOD
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK Unmet EXTENDS Base IMPLEMENTS IMeasure
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK Stepper EXTENDS Base
+    METHOD PUBLIC Step : INT
+        Step := 2;
+    END_METHOD
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK Overrider EXTENDS Base
+    METHOD PUBLIC OVERRIDE Step : INT
+        Step := 3;
+    END_METHOD
+END_FUNCTION_BLOCK
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1119] Error: inheritance violation
+        ,-[ file:///test0.st:21:16 ]
+        |
+      3 |     METHOD Value : LREAL END_METHOD
+        |            ^^|^^
+        |              `---- method 'Value' is declared by interface 'IMeasure' here
+        |
+     21 | FUNCTION_BLOCK Unmet EXTENDS Base IMPLEMENTS IMeasure
+        |                ^^|^^
+        |                  `---- missing implementation for interface method 'Value'
+    ----'
+    [E1113] Error: inheritance violation
+        ,-[ file:///test0.st:31:28 ]
+        |
+     31 |     METHOD PUBLIC OVERRIDE Step : INT
+        |                            ^^|^
+        |                              `--- invalid usage of OVERRIDE for method 'Step'
+        |
+        | Note: OVERRIDE is only valid when the method is inherited
+    ----'
+    ");
+}
+
 /// The signature is the parameters: an override's or an implementation's
 /// own VAR and VAR_TEMP are not part of it.
 #[rstest]

@@ -169,7 +169,10 @@ fn method_targets<'db>(
         (Some(InvocationKind::This), _) | (None, Some(PathExprKind::VarAccess(_))) => this,
         _ => None,
     };
-    let Some(pou) = dispatch_on else {
+    // A PRIVATE method is its POU's own, which no override reaches.
+    let private = matches!(method, MethodRef::Declared(decl)
+        if decl.visibility(db).contains(crate::Visibility::PRIVATE));
+    let Some(pou) = dispatch_on.filter(|_| !private) else {
         return match method {
             MethodRef::Declared(decl) => vec![CallNode::Method(decl)],
             MethodRef::Prototype(_) => Vec::new(),

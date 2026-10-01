@@ -118,6 +118,7 @@ A method with no specifier is `PUBLIC`.
 
 `PRIVATE` means the declaring POU only, reached through `THIS` or unqualified.
 Reaching it from a derived POU via `SUPER`, or from outside through an instance, is `E1001`.
+A derived POU does not inherit it: a method it declares under that name is its own, and the base's code still calls the base's.
 `PROTECTED` adds derived POUs; a call from an unrelated POU is `E1002`.
 `INTERNAL` means the same namespace; a call from another namespace, or from the global scope, is `E1003`, and so is a call from a namespace to an `INTERNAL` item declared at the global scope.
 
