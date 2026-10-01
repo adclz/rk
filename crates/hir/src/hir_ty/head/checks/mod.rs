@@ -40,7 +40,8 @@ impl<'db> InitInference<'db> {
     /// The length is part of the type — it decides how many bytes the
     /// variable takes — so one the compiler cannot work out leaves the layout
     /// unknowable. Refused here rather than defaulted, which would size the
-    /// storage wrongly and say nothing.
+    /// storage wrongly and say nothing. A negative one sizes nothing, and is
+    /// refused too (E0320).
     ///
     /// Resolving it is what records its type, the way an array's bounds are
     /// resolved: without that the number in `STRING[20]` hovered as unknown.
@@ -54,11 +55,14 @@ impl<'db> InitInference<'db> {
         infer.resolve_expr(db, length, &mut self.body_infer_result);
         infer.check_expr(db, length, &mut self.body_infer_result);
 
-        if crate::hir_ty::infer::const_eval::spec_bound(db, length).is_none() {
-            self.errors.push(
-                crate::check::errors::e03_type::TypeError::StringLengthNotConstant { length }
-                    .to_diagnostic(db, self.scope.file(db)),
-            );
-        }
+        let error = match crate::hir_ty::infer::const_eval::spec_bound(db, length) {
+            None => crate::check::errors::e03_type::TypeError::StringLengthNotConstant { length },
+            Some(value) if value < 0 => {
+                crate::check::errors::e03_type::TypeError::StringLengthNegative { length, value }
+            }
+            Some(_) => return,
+        };
+        self.errors
+            .push(error.to_diagnostic(db, self.scope.file(db)));
     }
 }

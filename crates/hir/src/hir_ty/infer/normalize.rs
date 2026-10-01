@@ -271,7 +271,8 @@ fn declared_string_capacity_inner<'db>(
         // is refused by the check (E0812), so None here means the program was
         // already rejected.
         SpecKind::SizedString(length_expr) => {
-            crate::hir_ty::infer::const_eval::spec_bound(db, *length_expr).map(|n| n as u32)
+            crate::hir_ty::infer::const_eval::spec_bound(db, *length_expr)
+                .and_then(|n| u32::try_from(n).ok())
         }
         SpecKind::Ref(inner) => declared_string_capacity_inner(db, *inner, depth + 1),
         // Named: ask the data type it resolves to for its own spec. Using the

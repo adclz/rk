@@ -60,3 +60,34 @@ fn invalid_subscript_wraps_at_its_type(mut with_db: RootDatabase) {
     ---'
     ");
 }
+
+// A STRING length counts bytes: a negative one, written or wrapped, sizes
+// nothing. It used to be accepted.
+#[rstest]
+fn invalid_negative_string_length(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION fn1 : INT
+        VAR
+            s : STRING[-5];
+            t : STRING[200 * 200];
+        END_VAR
+            fn1 := 1;
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0320] Error: length is negative
+       ,-[ file:///test0.st:4:24 ]
+       |
+     4 |             s : STRING[-5];
+       |                        ^|
+       |                         `-- a STRING length cannot be negative, and this one is -5
+    ---'
+    [E0320] Error: length is negative
+       ,-[ file:///test0.st:5:24 ]
+       |
+     5 |             t : STRING[200 * 200];
+       |                        ^^^^|^^^^
+       |                            `------ a STRING length cannot be negative, and this one is -25536
+    ---'
+    ");
+}
