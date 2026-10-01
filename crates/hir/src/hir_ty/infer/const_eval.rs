@@ -292,17 +292,19 @@ fn declared_integer<'db>(
 }
 
 /// The declaration a bare name in a SPEC bound refers to, resolved through
-/// the scope chain's declaration maps alone — no inference query, so this is
-/// callable from anywhere, a diagnostic message being rendered inside
-/// `infer_initialization` included. A namespaced or otherwise non-bare name
-/// yields `None` and the bound is refused as non-constant.
+/// the scope chain's declaration maps, and an FB's or a CLASS's inherited
+/// members after its own, as body resolution finds them — no inference
+/// query, so this is callable from anywhere, a diagnostic message being
+/// rendered inside `infer_initialization` included. A namespaced or
+/// otherwise non-bare name yields `None` and the bound is refused as
+/// non-constant.
 pub fn spec_name_binding<'db>(
     db: &'db dyn WorkspaceDataBase,
     va: crate::hir_def::expressions::expression::VariableAccess<'db>,
 ) -> Option<crate::hir_def::pous::variable::VariableDecl<'db>> {
     use crate::HirNodeInfo;
     use crate::hir_def::expressions::expression::{PathExprKind, VarAccess, VariableAccessKind};
-    use crate::hir_def::semantic_index::get_scope;
+    use crate::hir_def::{scope::ScopeKind, semantic_index::get_scope};
 
     if va.multibits(db).is_some() {
         return None;
@@ -324,7 +326,15 @@ pub fn spec_name_binding<'db>(
         if let Some(decl) = sc.def_map(db).global_variables.get(&ident) {
             return Some(*decl);
         }
-        scope = get_scope(db, sc).parent;
+        let scope_data = get_scope(db, sc);
+        if let ScopeKind::Pou(pou @ (Pou::FunctionBlock(_) | Pou::Class(_))) = scope_data.kind
+            && let Some(member) = crate::hir_ty::oop::instance_members(db, pou)
+                .iter()
+                .find(|member| member.var.name(db) == ident)
+        {
+            return Some(member.var);
+        }
+        scope = scope_data.parent;
     }
     None
 }

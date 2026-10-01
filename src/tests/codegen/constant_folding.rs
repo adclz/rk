@@ -144,3 +144,39 @@ fn a_constant_from_constants_is_a_label_and_a_step(mut with_db: db::RootDatabase
     let result: i32 = super::run(&mut with_db, source, "run", ());
     assert_eq!(result, 212, "B is 4, and the step 2 sums 0 + 2 + 4 + 6");
 }
+
+/// A derived block's inherited CONSTANT is constant there too: in a bound, a
+/// member's initializer, and another CONSTANT used as a label.
+#[rstest]
+fn an_inherited_constant_folds_in_the_derived_block(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Base
+        VAR CONSTANT N : INT := 3; END_VAR
+        END_FUNCTION_BLOCK
+
+        FUNCTION_BLOCK Derived EXTENDS Base
+        VAR CONSTANT K : INT := N + 1; END_VAR
+        VAR
+            arr : ARRAY[0..N] OF INT;
+            x : INT := N;
+            y : INT := N + 1;
+        END_VAR
+        VAR_INPUT sel : INT; END_VAR
+        VAR_OUTPUT out : DINT; END_VAR
+            arr[N] := 40;
+            CASE sel OF
+                K: out := arr[3] + x + y;
+            ELSE
+                out := 0;
+            END_CASE;
+        END_FUNCTION_BLOCK
+
+        FUNCTION run : DINT
+        VAR d : Derived; END_VAR
+            d(sel := 4);
+            run := d.out;
+        END_FUNCTION
+    "#;
+    let result: i32 = super::run(&mut with_db, source, "run", ());
+    assert_eq!(result, 47, "K is 4, and arr[3] + x + y is 40 + 3 + 4");
+}
