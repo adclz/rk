@@ -78,7 +78,10 @@ FUNCTION MyFn
 END_FUNCTION
 ```
 
-__The compiler will kindly tell you if an imported POU has the same name as a local one__
+A qualified name only reaches what that namespace declares, not what it imports.
+
+A POU declared in an enclosing namespace or at the top level comes before one a `USING` imports, wherever the `USING` is written.
+Two imports of the same name are ambiguous, and the compiler says so:
 
 ```st
 NAMESPACE ns1

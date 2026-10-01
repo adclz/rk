@@ -125,8 +125,11 @@ pub(crate) fn resolve_namespace_access<'db>(
     let target = &access.target;
 
     match &access.namespace {
-        // Namespace-qualified: look up directly in the namespace's local_pous.
-        // No ambiguity is possible here — the user specified which namespace.
+        // Namespace-qualified: what that namespace declares, in any of its
+        // blocks, and nothing else. No ambiguity is possible here — the user
+        // specified which namespace. Resolved from the namespace's scope, the
+        // name fell back to the scopes around it: `NsA.F` reached a global
+        // `F`, and `NsB.G` an import of `NsB`'s, as if a namespace re-exported.
         Some(path) => {
             // Relative to where it was written, then absolute.
             let path = crate::hir_ty::index_graphs::absolute_namespace_path(
@@ -135,10 +138,13 @@ pub(crate) fn resolve_namespace_access<'db>(
                 path.path(db),
             );
             for ns in namespace_index(db, path).iter() {
-                if let PouResolution::Found(pou, using) =
-                    pou_names_res(db, target.ident(db), ns.scope_id(db))
+                if let Some(pou) = ns
+                    .scope_id(db)
+                    .def_map(db)
+                    .local_pous
+                    .get(&target.ident(db))
                 {
-                    return PouResolution::Found(pou, using);
+                    return PouResolution::Found(*pou, None);
                 }
             }
             PouResolution::NotFound
@@ -168,79 +174,108 @@ pub fn pou_names_res<'db>(
     }
 }
 
+/// A name the scope itself does not declare, from the scopes around it: a
+/// declaration first, the nearest first — a POU of an enclosing namespace,
+/// in any of its blocks, then one at the top level — and only then an
+/// import, the nearest level's USINGs first. Where a USING is written does
+/// not rank it above a declaration: tried level by level, a POU's own USING
+/// outranked its namespace and the top level, where the same USING written
+/// one level out did not. The top level outranks an import as a namespace
+/// does, so `USING Std.Timers` does not take the workspace's own TON.
+///
+/// An import the caller may call comes before one it may not: a PRIVATE
+/// function of an imported namespace made a visible one ambiguous. Only
+/// when nothing else answers is it the name, for E1005 to refuse.
 #[tracing::instrument(level = "trace", skip_all)]
 pub fn find_in_parent_pous<'db>(
     db: &'db dyn WorkspaceDataBase,
     name: Ident,
     scope: ScopeId<'db>,
 ) -> PouResolution<'db> {
-    let it = semantic_index(db, scope.file(db)).scope_iterator(db, scope);
-    for scope in it {
-        // Namespace siblings take priority over USING — no ambiguity
-        if let ScopeKind::Namespace(ns) = scope.kind {
+    let index = semantic_index(db, scope.file(db));
+    for around in index.scope_iterator(db, scope) {
+        if let ScopeKind::Namespace(ns) = around.kind {
             for ns in namespace_index(db, ns.path(db)).iter() {
                 if let Some(p) = ns.scope_id(db).def_map(db).local_pous.get(&name) {
                     return PouResolution::Found(*p, None);
                 }
             }
         }
-
-        // The global namespace outranks its USINGs the same way: a top-level
-        // declaration (this file's or any other's) shadows an import — the
-        // rule every USING-like construct converges on. Before this arm the
-        // walk fell through to the USING matches and `pou_index` was only
-        // the post-walk fallback, so `USING Std.Timers` silently WON over
-        // the workspace's own top-level TON.
-        if matches!(scope.kind, ScopeKind::Global)
+        if matches!(around.kind, ScopeKind::Global)
             && let Some(pou) = pou_index(db, name)
         {
             return PouResolution::Found(pou, None);
         }
+    }
 
+    imported(db, name, scope)
+}
+
+/// `name` through the USINGs around `scope`, the nearest level first, in one
+/// walk: the nearest level with a POU `scope` may call answers, and failing
+/// any, the nearest level with one it may not.
+fn imported<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    name: Ident,
+    scope: ScopeId<'db>,
+) -> PouResolution<'db> {
+    let index = semantic_index(db, scope.file(db));
+    let mut uncallable: Option<Vec<(Pou<'db>, NamespacePath, Using<'db>)>> = None;
+    for around in index.scope_iterator(db, scope) {
         // Collect ALL USING matches at this scope level
         let mut matches: Vec<(Pou<'db>, NamespacePath, Using<'db>)> = vec![];
-        for using in &scope.usings {
+        let mut others: Vec<(Pou<'db>, NamespacePath, Using<'db>)> = vec![];
+        for using in &around.usings {
             let ns_path: NamespacePath = crate::hir_ty::index_graphs::absolute_namespace_path(
                 db,
-                scope.id,
+                around.id,
                 using.path(db).path(db),
             );
             for ns in namespace_index(db, ns_path).iter() {
                 if let Some(pou) = ns.scope_id(db).def_map(db).local_pous.get(&name) {
+                    let list = if matches!(pou, Pou::Function(f)
+                        if !crate::hir_ty::resolver::visibility::function_visible_from(db, scope, *f))
+                    {
+                        &mut others
+                    } else {
+                        &mut matches
+                    };
                     // Deduplicate by POU identity (shared namespaces across files)
-                    if !matches.iter().any(|(p, _, _)| p == pou) {
-                        matches.push((*pou, ns_path, *using));
+                    if !list.iter().any(|(p, _, _)| p == pou) {
+                        list.push((*pou, ns_path, *using));
                     }
                 }
             }
         }
 
-        match matches.len() {
-            0 => continue,
-            1 => return PouResolution::Found(matches[0].0, Some(matches[0].2)),
-            _ => {
-                // Same-name FUNCTIONs reachable through ONE namespace path are
-                // an overload set, not an ambiguity — files reopening a
-                // namespace (a library's included) overload each other, and
-                // the call site picks by signature (`select_overload`).
-                // Identical signatures are E0102 duplicates, equally-viable
-                // calls E0809. Matches from DIFFERENT paths, or involving
-                // non-overloadable POUs, stay genuinely ambiguous.
-                let first_path = matches[0].1;
-                if matches
-                    .iter()
-                    .all(|(p, path, _)| *path == first_path && matches!(p, Pou::Function(_)))
-                {
-                    return PouResolution::Found(matches[0].0, Some(matches[0].2));
-                }
-                return PouResolution::Ambiguous(
-                    matches.into_iter().map(|(p, ns, _)| (p, ns)).collect(),
-                );
+        if matches.is_empty() {
+            if uncallable.is_none() && !others.is_empty() {
+                uncallable = Some(others);
             }
+            continue;
         }
+        return pick(matches);
     }
+    uncallable.map_or(PouResolution::NotFound, pick)
+}
 
-    PouResolution::NotFound
+/// One level's USING matches: one, an overload set, or an ambiguity.
+fn pick<'db>(matches: Vec<(Pou<'db>, NamespacePath, Using<'db>)>) -> PouResolution<'db> {
+    // Same-name FUNCTIONs reachable through ONE namespace path are an
+    // overload set, not an ambiguity — files reopening a namespace (a
+    // library's included) overload each other, and the call site picks by
+    // signature (`select_overload`). Identical signatures are E0102
+    // duplicates, equally-viable calls E0809. Matches from DIFFERENT paths,
+    // or involving non-overloadable POUs, stay genuinely ambiguous.
+    let first_path = matches[0].1;
+    if matches.len() == 1
+        || matches
+            .iter()
+            .all(|(p, path, _)| *path == first_path && matches!(p, Pou::Function(_)))
+    {
+        return PouResolution::Found(matches[0].0, Some(matches[0].2));
+    }
+    PouResolution::Ambiguous(matches.into_iter().map(|(p, ns, _)| (p, ns)).collect())
 }
 
 /// Outcome of overload selection.

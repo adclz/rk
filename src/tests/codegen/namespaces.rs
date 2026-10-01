@@ -96,6 +96,75 @@ fn a_file_scope_declaration_shadows_a_using_import(mut with_db: db::RootDatabase
     );
 }
 
+/// A declaration outranks an import wherever the USING is written. A POU's
+/// own `USING Lib` took over from its namespace's sibling, from a top-level
+/// FUNCTION and from a top-level FB, where the same USING written one level
+/// out did not.
+#[rstest]
+fn a_declaration_outranks_an_import_wherever_the_using_is_written(mut with_db: db::RootDatabase) {
+    let source = r#"
+        NAMESPACE Lib
+            FUNCTION Shared : INT Shared := 1; END_FUNCTION
+            FUNCTION Top : INT Top := 1; END_FUNCTION
+            FUNCTION_BLOCK X
+                VAR_OUTPUT Q : INT; END_VAR
+                Q := 1;
+            END_FUNCTION_BLOCK
+        END_NAMESPACE
+
+        FUNCTION Top : INT Top := 20; END_FUNCTION
+        FUNCTION_BLOCK X
+            VAR_OUTPUT Q : INT; END_VAR
+            Q := 300;
+        END_FUNCTION_BLOCK
+
+        NAMESPACE App
+            FUNCTION Shared : INT Shared := 4000; END_FUNCTION
+
+            FUNCTION sum : INT
+                USING Lib;
+                VAR x : X; END_VAR
+                x();
+                sum := Shared() + Top() + x.Q;
+            END_FUNCTION
+        END_NAMESPACE
+
+        FUNCTION total : INT
+            total := App.sum();
+        END_FUNCTION
+    "#;
+    let v: i32 = crate::tests::codegen::run(&mut with_db, source, "total", ());
+    assert_eq!(
+        v, 4320,
+        "the sibling, the top-level FUNCTION and the top-level FB"
+    );
+}
+
+/// A PRIVATE function of an imported namespace takes no part in the import
+/// when another answers: `F` is `B.F`, the only one callable here, and `H`
+/// the top-level one. The private `A.F` made the call ambiguous (E0205).
+#[rstest]
+fn a_private_function_gives_way_in_an_import(mut with_db: db::RootDatabase) {
+    let source = r#"
+        NAMESPACE A
+            FUNCTION PRIVATE F : INT F := 1; END_FUNCTION
+            FUNCTION PRIVATE H : INT H := 1; END_FUNCTION
+        END_NAMESPACE
+        NAMESPACE B
+            FUNCTION F : INT F := 20; END_FUNCTION
+        END_NAMESPACE
+        FUNCTION H : INT H := 300; END_FUNCTION
+
+        FUNCTION total : INT
+            USING A;
+            USING B;
+            total := F() + H();
+        END_FUNCTION
+    "#;
+    let v: i32 = crate::tests::codegen::run(&mut with_db, source, "total", ());
+    assert_eq!(v, 320);
+}
+
 /// A relative namespace path binds to the NEAREST enclosing match: `Impl`
 /// inside `Lib` (at any depth) is `Lib.Impl`; at global scope it is the
 /// top-level `Impl`. Pinned by value, since both candidates resolve.
