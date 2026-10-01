@@ -152,7 +152,8 @@ pub enum OopError<'db> {
     /// An ABSTRACT type describes what derived POUs must provide; it has no
     /// implementation of its own, so it cannot be instantiated.
     InstantiatedAbstractPou {
-        var: VariableDecl<'db>,
+        /// The type as written: a variable's, a STRUCT field's.
+        spec: Spec<'db>,
         pou: Pou<'db>,
     },
     UnimplementedInterfaceMethod {
@@ -254,6 +255,17 @@ pub enum OopError<'db> {
         role: crate::hir_ty::oop::BaseRole,
         site: CallSite<'db>,
     },
+    /// `SUPER.m()` names a method with no body to run: an ABSTRACT one, or
+    /// a prototype the base takes from an INTERFACE without implementing it.
+    SuperCallsAbstract {
+        method: MethodRef<'db>,
+        call_site: CallSite<'db>,
+    },
+    /// An ABSTRACT method with statements: a derived block implements it,
+    /// so they never run.
+    AbstractMethodWithBody {
+        method: MethodRef<'db>,
+    },
 }
 
 impl<'db> ErrorCode for OopError<'db> {
@@ -290,6 +302,8 @@ impl<'db> ErrorCode for OopError<'db> {
             Self::SignatureNameMismatch { .. } => "E1128",
             Self::SignatureSectionMismatch { .. } => "E1129",
             Self::WrongBaseKind { .. } => "E1130",
+            Self::SuperCallsAbstract { .. } => "E1133",
+            Self::AbstractMethodWithBody { .. } => "E1134",
         }
     }
 
@@ -326,6 +340,8 @@ impl<'db> ErrorCode for OopError<'db> {
             Self::SignatureNameMismatch { .. } => "method parameter name mismatch",
             Self::SignatureSectionMismatch { .. } => "method parameter section mismatch",
             Self::WrongBaseKind { .. } => "base of the wrong kind",
+            Self::SuperCallsAbstract { .. } => "invalid use of SUPER or THIS",
+            Self::AbstractMethodWithBody { .. } => "inheritance violation",
         }
     }
 }
@@ -682,7 +698,7 @@ impl<'db> ToIdeDiagnostic<'db> for OopError<'db> {
                 );
                 diag
             }
-            Self::InstantiatedAbstractPou { var, pou } => {
+            Self::InstantiatedAbstractPou { spec, pou } => {
                 let kind = match pou {
                     Pou::Class(_) => "CLASS",
                     _ => "FUNCTION_BLOCK",
@@ -694,10 +710,7 @@ impl<'db> ToIdeDiagnostic<'db> for OopError<'db> {
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(
-                        crate::denormalize(db, file, &var.spec(db).get_span(db))
-                            .unwrap_or_default(),
-                    )
+                    .range(crate::denormalize(db, file, &spec.get_span(db)).unwrap_or_default())
                     .call();
                 diag.with_related(Related::new(
                     format!(
@@ -707,7 +720,7 @@ impl<'db> ToIdeDiagnostic<'db> for OopError<'db> {
                     pou.get_scope_id(db).file(db),
                     pou.get_name_span(db),
                 ));
-                diag.with_note("declare a variable of a derived type that implements it".into());
+                diag.with_note("use a derived type that implements it".into());
                 diag
             }
             Self::UnimplementedInterfaceMethod {
@@ -1084,6 +1097,48 @@ impl<'db> ToIdeDiagnostic<'db> for OopError<'db> {
                 if let Some(note) = note {
                     diag.with_note(note);
                 }
+                diag
+            }
+            Self::SuperCallsAbstract { method, call_site } => {
+                let name = method.get_name_with_case(db).text(db).to_string();
+                let why = if method.is_prototype() {
+                    "which the base takes from an INTERFACE without implementing it"
+                } else {
+                    "which is ABSTRACT"
+                };
+                let mut diag = diag()
+                    .message(format!(
+                        "SUPER.{name}() calls the base's '{name}', {why}: it has no body to run"
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(
+                        crate::denormalize(db, file, &call_site.get_span(db)).unwrap_or_default(),
+                    )
+                    .call();
+                diag.with_related(Related::new(
+                    format!("'{name}' is declared here"),
+                    method.get_scope_id(db).file(db),
+                    method.get_name_span(db),
+                ));
+                diag
+            }
+            Self::AbstractMethodWithBody { method } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "ABSTRACT method '{}' cannot have a body",
+                        method.get_name_with_case(db).text(db),
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(
+                        crate::denormalize(db, file, &method.get_name_span(db)).unwrap_or_default(),
+                    )
+                    .call();
+                diag.with_note(
+                    "a derived block implements it; without ABSTRACT, this body is the method's"
+                        .into(),
+                );
                 diag
             }
         }

@@ -8,7 +8,7 @@ use crate::check::errors::e08_call::CallError;
 use crate::check::errors::e09_reference::ReferenceError;
 use crate::check::errors::e14_config::ConfigError;
 use crate::{
-    HirNodeInfo,
+    HasModifiers, HirNodeInfo,
     check::errors::{ToIdeDiagnostic, e02_resolve::ResolveError},
     hir_def::{
         expressions::{
@@ -405,6 +405,22 @@ impl<'db> Type<'db> {
                 base.and_then(|base| class_members(db, base).methods.get(&ident.ident(db)))
             {
                 check_visibility(db, &ident.as_call_site(db), method.method, &mut ctx.errors);
+                // SUPER.m() runs the base's own `m`: an ABSTRACT one, or a
+                // prototype the base never implemented, has no body to run.
+                if method.method.is_prototype()
+                    || method
+                        .method
+                        .get_modifiers(db)
+                        .contains(crate::Modifier::ABSTRACT)
+                {
+                    ctx.errors.push(
+                        crate::check::errors::e11_oop::OopError::SuperCallsAbstract {
+                            method: method.method,
+                            call_site: ident.as_call_site(db),
+                        }
+                        .to_diagnostic(db, ctx.scope.file(db)),
+                    );
+                }
                 ctx.type_of_path_expr
                     .insert(*expr, Type::MethodDecl(method.method));
             }

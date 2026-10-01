@@ -709,7 +709,7 @@ END_PROGRAM
        |         |
        |         `-- cannot instantiate ABSTRACT CLASS 'B'
        |
-       | Note: declare a variable of a derived type that implements it
+       | Note: use a derived type that implements it
     ---'
     ");
 }
@@ -1423,4 +1423,149 @@ FUNCTION_BLOCK Twice IMPLEMENTS IRead, IBase
 END_FUNCTION_BLOCK
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
+
+/// Every instance of an ABSTRACT type is refused: an array's elements at
+/// any depth, a FUNCTION's or a METHOD's result, and a named type or a
+/// STRUCT field that holds one, at its declaration, where the fix goes.
+/// A variable of such a type is not refused again.
+#[rstest]
+fn every_instance_of_an_abstract_type_is_refused(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK ABSTRACT Shape
+    METHOD PUBLIC ABSTRACT Area : INT
+    END_METHOD
+END_FUNCTION_BLOCK
+
+TYPE Shapes : ARRAY[0..1] OF Shape; END_TYPE
+TYPE Holder : STRUCT s : Shape; END_STRUCT END_TYPE
+
+FUNCTION MakeShape : Shape
+END_FUNCTION
+
+FUNCTION_BLOCK Factory
+    METHOD PUBLIC Make : Shape
+    END_METHOD
+END_FUNCTION_BLOCK
+
+PROGRAM P
+VAR
+    grid : ARRAY[0..1, 0..1] OF Shape;
+    named : Shapes;
+END_VAR
+END_PROGRAM
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1118] Error: inheritance violation
+       ,-[ file:///test0.st:7:15 ]
+       |
+     2 | FUNCTION_BLOCK ABSTRACT Shape
+       |                         ^^|^^
+       |                           `---- FUNCTION_BLOCK 'Shape' is declared ABSTRACT here
+       |
+     7 | TYPE Shapes : ARRAY[0..1] OF Shape; END_TYPE
+       |               ^^^^^^^^^^|^^^^^^^^^
+       |                         `----------- cannot instantiate ABSTRACT FUNCTION_BLOCK 'Shape'
+       |
+       | Note: use a derived type that implements it
+    ---'
+    [E1118] Error: inheritance violation
+       ,-[ file:///test0.st:8:26 ]
+       |
+     2 | FUNCTION_BLOCK ABSTRACT Shape
+       |                         ^^|^^
+       |                           `---- FUNCTION_BLOCK 'Shape' is declared ABSTRACT here
+       |
+     8 | TYPE Holder : STRUCT s : Shape; END_STRUCT END_TYPE
+       |                          ^^|^^
+       |                            `---- cannot instantiate ABSTRACT FUNCTION_BLOCK 'Shape'
+       |
+       | Note: use a derived type that implements it
+    ---'
+    [E1118] Error: inheritance violation
+        ,-[ file:///test0.st:10:22 ]
+        |
+      2 | FUNCTION_BLOCK ABSTRACT Shape
+        |                         ^^|^^
+        |                           `---- FUNCTION_BLOCK 'Shape' is declared ABSTRACT here
+        |
+     10 | FUNCTION MakeShape : Shape
+        |                      ^^|^^
+        |                        `---- cannot instantiate ABSTRACT FUNCTION_BLOCK 'Shape'
+        |
+        | Note: use a derived type that implements it
+    ----'
+    [E1118] Error: inheritance violation
+        ,-[ file:///test0.st:14:26 ]
+        |
+      2 | FUNCTION_BLOCK ABSTRACT Shape
+        |                         ^^|^^
+        |                           `---- FUNCTION_BLOCK 'Shape' is declared ABSTRACT here
+        |
+     14 |     METHOD PUBLIC Make : Shape
+        |                          ^^|^^
+        |                            `---- cannot instantiate ABSTRACT FUNCTION_BLOCK 'Shape'
+        |
+        | Note: use a derived type that implements it
+    ----'
+    [E1118] Error: inheritance violation
+        ,-[ file:///test0.st:20:12 ]
+        |
+      2 | FUNCTION_BLOCK ABSTRACT Shape
+        |                         ^^|^^
+        |                           `---- FUNCTION_BLOCK 'Shape' is declared ABSTRACT here
+        |
+     20 |     grid : ARRAY[0..1, 0..1] OF Shape;
+        |            ^^^^^^^^^^^^^|^^^^^^^^^^^^
+        |                         `-------------- cannot instantiate ABSTRACT FUNCTION_BLOCK 'Shape'
+        |
+        | Note: use a derived type that implements it
+    ----'
+    ");
+}
+
+/// `SUPER.m()` on an ABSTRACT method has no body to run: it returned 0. An
+/// ABSTRACT method with statements is refused too, since none would run.
+#[rstest]
+fn an_abstract_method_has_no_body_to_call(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK ABSTRACT Shape
+    METHOD PUBLIC ABSTRACT Area : INT
+    END_METHOD
+    METHOD PUBLIC ABSTRACT Perimeter : INT
+        Perimeter := 5;
+    END_METHOD
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK Square EXTENDS Shape
+    METHOD PUBLIC OVERRIDE Area : INT
+        Area := SUPER.Area() + 4;
+    END_METHOD
+    METHOD PUBLIC OVERRIDE Perimeter : INT
+        Perimeter := 16;
+    END_METHOD
+END_FUNCTION_BLOCK
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1134] Error: inheritance violation
+       ,-[ file:///test0.st:5:28 ]
+       |
+     5 |     METHOD PUBLIC ABSTRACT Perimeter : INT
+       |                            ^^^^|^^^^
+       |                                `------ ABSTRACT method 'Perimeter' cannot have a body
+       |
+       | Note: a derived block implements it; without ABSTRACT, this body is the method's
+    ---'
+    [E1133] Error: invalid use of SUPER or THIS
+        ,-[ file:///test0.st:12:23 ]
+        |
+      3 |     METHOD PUBLIC ABSTRACT Area : INT
+        |                            ^^|^
+        |                              `--- 'Area' is declared here
+        |
+     12 |         Area := SUPER.Area() + 4;
+        |                       ^^|^
+        |                         `--- SUPER.Area() calls the base's 'Area', which is ABSTRACT: it has no body to run
+    ----'
+    ");
 }

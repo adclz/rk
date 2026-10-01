@@ -79,6 +79,20 @@ impl<'db> InitInference<'db> {
             }
         }
 
+        // An ABSTRACT method declares what a derived block implements: its
+        // statements would never run, and nothing could call them.
+        for method in declared_methods.values() {
+            if let MethodRef::Declared(decl) = method
+                && method.get_modifiers(db).contains(Modifier::ABSTRACT)
+                && !decl.stmts(db).is_empty()
+            {
+                self.errors.push(
+                    OopError::AbstractMethodWithBody { method: *method }
+                        .to_diagnostic(db, self.scope.file(db)),
+                );
+            }
+        }
+
         for (m1, m2) in &members.duplicates {
             self.errors.push(
                 DuplicateError::InheritedMethod {

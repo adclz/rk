@@ -184,6 +184,25 @@ fn spec_interface<'db>(db: &'db dyn WorkspaceDataBase, spec: Spec<'db>) -> Optio
     }
 }
 
+/// The ABSTRACT FUNCTION_BLOCK or CLASS a slot of type `spec` holds an
+/// instance of: the type itself, or an array's elements at any depth. A
+/// REF_TO holds none, and a named type that holds one, a STRUCT included,
+/// is refused where it is declared, which is where the fix goes.
+fn abstract_instance<'db>(db: &'db dyn WorkspaceDataBase, spec: Spec<'db>) -> Option<Pou<'db>> {
+    match spec.kind(db) {
+        SpecKind::Array(arr) => abstract_instance(db, arr.of_type(db)),
+        _ => match Type::resolve_spec(db, spec) {
+            Type::FunctionBlock(fb) if fb.modifier(db).contains(crate::Modifier::ABSTRACT) => {
+                Some(Pou::FunctionBlock(fb))
+            }
+            Type::Class(cl) if cl.modifier(db).contains(crate::Modifier::ABSTRACT) => {
+                Some(Pou::Class(cl))
+            }
+            _ => None,
+        },
+    }
+}
+
 #[derive(Debug, PartialEq, Eq, salsa::Update)]
 pub struct Signature<'db> {
     // Scope where this InferenceResult was emitted
@@ -214,6 +233,7 @@ impl<'db> Signature<'db> {
             && let Pou::DataType(dt) = pou
         {
             self.infer_spec(db, dt.spec(db));
+            self.refuse_abstract_instance(db, dt.spec(db));
         }
 
         self.infer_extends_implements(db);
@@ -230,6 +250,8 @@ impl<'db> Signature<'db> {
 
         if let Some(ret_type) = return_typ {
             let _ = self.infer_spec(db, *ret_type);
+            // A result is an instance, made by each call.
+            self.refuse_abstract_instance(db, *ret_type);
 
             // Design 1: an interface may not be a return type — that would flow
             // the concrete type callee→caller, which can't be monomorphized.
@@ -279,6 +301,17 @@ impl<'db> Signature<'db> {
         }
     }
 
+    /// E1118 when a slot of type `spec` holds an instance of an ABSTRACT
+    /// type ([`abstract_instance`]).
+    fn refuse_abstract_instance(&mut self, db: &'db dyn WorkspaceDataBase, spec: Spec<'db>) {
+        if let Some(pou) = abstract_instance(db, spec) {
+            self.errors.push(
+                OopError::InstantiatedAbstractPou { spec, pou }
+                    .to_diagnostic(db, self.scope.file(db)),
+            );
+        }
+    }
+
     fn infer_variables(&mut self, db: &'db dyn WorkspaceDataBase) {
         let variables = match self.scope.variables(db) {
             Some(vars) => vars,
@@ -290,30 +323,10 @@ impl<'db> Signature<'db> {
 
             // An ABSTRACT type has no implementation of its own, so a
             // variable of it is an instance that cannot answer its own
-            // methods. A REF_TO one is fine — that is a reference to some
-            // derived instance, not an instance.
-            if let Type::FunctionBlock(fb) = Type::resolve_spec(db, var.spec(db))
-                && fb.modifier(db).contains(crate::Modifier::ABSTRACT)
-            {
-                self.errors.push(
-                    OopError::InstantiatedAbstractPou {
-                        var: *var,
-                        pou: Pou::FunctionBlock(fb),
-                    }
-                    .to_diagnostic(db, self.scope.file(db)),
-                );
-            }
-            if let Type::Class(cl) = Type::resolve_spec(db, var.spec(db))
-                && cl.modifier(db).contains(crate::Modifier::ABSTRACT)
-            {
-                self.errors.push(
-                    OopError::InstantiatedAbstractPou {
-                        var: *var,
-                        pou: Pou::Class(cl),
-                    }
-                    .to_diagnostic(db, self.scope.file(db)),
-                );
-            }
+            // methods, and so is each element of an array of it. A REF_TO
+            // one is fine — that is a reference to some derived instance,
+            // not an instance.
+            self.refuse_abstract_instance(db, var.spec(db));
 
             // Design 1 (params-only): a DIRECT interface is allowed only as a
             // VAR_INPUT / VAR_IN_OUT parameter (it monomorphizes to a concrete
@@ -486,6 +499,10 @@ impl<'db> Signature<'db> {
             SpecKind::Struct(strukt) => {
                 for field in &strukt.elements(db) {
                     self.infer_spec(db, field.spec(db));
+
+                    // A field of an ABSTRACT type is an instance, as a
+                    // variable of one is.
+                    self.refuse_abstract_instance(db, field.spec(db));
 
                     // Design 1: an interface as a struct field is stored state —
                     // reject it (incl. nested, e.g. a field of `ARRAY OF ITF1`).

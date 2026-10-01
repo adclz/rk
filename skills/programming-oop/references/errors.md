@@ -24,6 +24,8 @@
 
 `E1108` `SUPER()` not valid in this context.
 
+`E1133` `SUPER.Method()` on an ABSTRACT method, or on one the base takes from an interface without implementing it.
+
 `E1106` `SUPER` not valid in this context.
 
 `E1105` `THIS` not valid in this context.
@@ -37,6 +39,8 @@
 `E1113` OVERRIDE on a method that exists in no base.
 
 `E1117` ABSTRACT method declared in a POU that is not itself ABSTRACT.
+
+`E1134` ABSTRACT method with statements: the derived POUs implement it.
 
 `E1118` Instantiation of an ABSTRACT CLASS or FUNCTION_BLOCK.
 
