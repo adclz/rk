@@ -90,6 +90,7 @@ Its return value is assigned by name, like a function.
 A method without a return type is called as a statement.
 
 Inside a method, the enclosing POU's variables and sibling methods are visible unqualified.
+The block's `VAR_TEMP` is not: it lives while the body runs, so a method declares its own (`E0209`).
 `THIS.` is accepted and equivalent; it is not required.
 
 ```iecst

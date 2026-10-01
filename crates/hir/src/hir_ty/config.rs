@@ -1455,6 +1455,7 @@ fn check_sink<'db>(
             if global.qualifier(db).contains(crate::Qualifier::CONSTANT) {
                 return Err(InitError::AssignToConstant {
                     access: crate::CallSite::from_scoped(db, &path),
+                    constant: Some(global),
                 }
                 .to_diagnostic(db, file));
             }

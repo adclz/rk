@@ -19,8 +19,8 @@ use crate::{
     },
     hir_def::{
         expressions::{
-            expression::{Elementary, ExprKind, InitExpr, InitExprKind, PrimaryExpr},
-            spec::Spec,
+            expression::{Elementary, ExprKind, InitExpr, InitExprKind, PathExprKind, PrimaryExpr},
+            spec::{Spec, SpecKind},
         },
         pous::variable::VariableDecl,
     },
@@ -323,6 +323,26 @@ impl<'db> InitInference<'db> {
                     ResolveError::RetainInStatelessPou {
                         var: *var,
                         pou_kind,
+                    }
+                    .to_diagnostic(db, self.scope.file(db)),
+                );
+            }
+            // An instance changes when it runs: its body and its methods
+            // write its variables. Declared CONSTANT, it changed anyway. Its
+            // VAR_EXTERNAL is the global's, refused where that is declared.
+            if var.qualifier(db).contains(crate::Qualifier::CONSTANT)
+                && var.kind(db) != crate::hir_def::pous::variable::VariableKind::External
+                && let block @ (Type::FunctionBlock(_) | Type::Class(_)) =
+                    innermost_element(db, var.spec(db)).infer(db).normalize(db)
+            {
+                self.errors.push(
+                    crate::check::errors::e04_init::InitError::ConstantInstance {
+                        var: *var,
+                        block: block.type_name(db),
+                        many: matches!(
+                            through_aliases(db, var.spec(db)).kind(db),
+                            SpecKind::Array(_)
+                        ),
                     }
                     .to_diagnostic(db, self.scope.file(db)),
                 );
@@ -636,67 +656,257 @@ impl<'db> InitInference<'db> {
         }
     }
 
-    /// A STRING initializer that does not fit its capacity, which the
-    /// assignment check already refuses in a body. Reading only a written
-    /// `STRING[N]` let a literal past the DEFAULT capacity through, and the
-    /// codegen then truncated it with nothing said.
-    fn check_string_init(
+    /// Each STRING literal of an initializer against the capacity of the
+    /// slot it fills (E0314): the declaration's own, an element's within
+    /// `[...]`, a member's within `(...)`, wherever the declaration sits. The
+    /// codegen truncates an over-long one with nothing said, and only a
+    /// variable's own bare literal was measured.
+    pub(crate) fn check_string_init(
         &mut self,
         db: &'db dyn WorkspaceDataBase,
         spec: Spec<'db>,
         init: InitExpr<'db>,
     ) {
-        if !matches!(
-            spec.infer(db).normalize(db),
-            Type::Elementary(crate::hir_def::expressions::spec::ElementarySpec::String)
-        ) {
-            return;
-        }
-
-        let max_len = u64::from(
-            crate::hir_ty::infer::normalize::declared_string_capacity(db, spec)
-                .unwrap_or(crate::hir_ty::infer::normalize::DEFAULT_STRING_CAPACITY),
-        );
-
-        // Only check simple constant expression initializers
-        let InitExprKind::ConstantExpr(expr) = init.kind(db) else {
-            return;
-        };
-
-        let ExprKind::PrimaryExpr(PrimaryExpr::Literal(elem)) = expr.expr(db) else {
-            return;
-        };
-
-        // Both single-quoted and (legacy) double-quoted forms now resolve
-        // to STRING; single-byte payload measurement covers both.
-        let actual_len = match elem {
-            Elementary::String(s) | Elementary::InferString(s) => {
-                s.as_single_string(db).ok().map(|v| v.len())
-            }
-            _ => None,
-        };
-
-        if let Some(actual_len) = actual_len
-            && actual_len as u64 > max_len
-        {
-            let err = InferLiteralError::Invalid_STRING_Length {
-                max: max_len,
-                got: actual_len,
-                alias: string_alias(db, spec),
-            };
-            let target =
-                Type::Elementary(crate::hir_def::expressions::spec::ElementarySpec::String);
-            self.errors.push(
-                TypeError::InferLiteralError {
-                    expr,
-                    source: None,
-                    target,
-                    err,
+        match init.kind(db) {
+            InitExprKind::ConstantExpr(expr) => {
+                if let Some(err) = string_literal_overflow(db, innermost_element(db, spec), expr) {
+                    self.errors.push(
+                        TypeError::InferLiteralError {
+                            expr,
+                            source: None,
+                            target: Type::Elementary(
+                                crate::hir_def::expressions::spec::ElementarySpec::String,
+                            ),
+                            err,
+                        }
+                        .to_diagnostic(db, self.scope.file(db)),
+                    );
                 }
-                .to_diagnostic(db, self.scope.file(db)),
-            );
+            }
+            InitExprKind::ArrayInit { values }
+            | InitExprKind::ArrayIndexedElement { values, .. } => {
+                for value in values {
+                    self.check_string_init(db, spec, value);
+                }
+            }
+            InitExprKind::StructInit { values } => {
+                let holder = innermost_element(db, spec);
+                for value in values {
+                    if let InitExprKind::StructElement { name, value } = value.kind(db)
+                        && let Some(member) = member_spec(db, holder, name.ident(db))
+                    {
+                        self.check_string_init(db, member, *value);
+                    }
+                }
+            }
+            InitExprKind::StructElement { .. } => {}
         }
     }
+}
+
+impl<'db> InitInference<'db> {
+    /// A FUNCTION's or METHOD's variables take their values at each call, in
+    /// the order they are declared: an initializer that reads one declared
+    /// at or after it read 0 (E0406). An input, an in-out and an external
+    /// hold their values before the first initializer runs, a CONSTANT's
+    /// value is put in its place, and a `REF()` takes an address, not a
+    /// value. A `^` on a reference set to `REF(x)` reads x.
+    pub(crate) fn check_initialization_order(&mut self, db: &'db dyn WorkspaceDataBase) {
+        use crate::hir_def::pous::variable::VariableKind;
+        let variables: &[VariableDecl<'db>] = match get_scope(db, self.scope).kind {
+            ScopeKind::Pou(Pou::Function(f)) => f.variables(db),
+            ScopeKind::MethodDecl(m) => m.variables(db),
+            _ => return,
+        };
+        let starts_at_entry = |var: &VariableDecl<'db>| {
+            !matches!(
+                var.kind(db),
+                VariableKind::Input | VariableKind::InOut | VariableKind::External
+            )
+        };
+        let position: FxHashMap<VariableDecl<'db>, usize> = variables
+            .iter()
+            .enumerate()
+            .map(|(index, var)| (*var, index))
+            .collect();
+        let contains = |outer: auto_lsp::tree_sitter::Range,
+                        inner: auto_lsp::tree_sitter::Range| {
+            outer.start_byte <= inner.start_byte && inner.end_byte <= outer.end_byte
+        };
+        let references: Vec<auto_lsp::tree_sitter::Range> = self
+            .body_infer_result
+            .type_of_expr
+            .keys()
+            .filter(|expr| {
+                matches!(
+                    expr.expr(db),
+                    ExprKind::PrimaryExpr(PrimaryExpr::RefValue {
+                        value: crate::hir_def::expressions::expression::RefValue::Address(_)
+                    })
+                )
+            })
+            .map(|expr| expr.get_span(db))
+            .collect();
+        let mut reads: Vec<_> = self
+            .body_infer_result
+            .variable_of_path_expr
+            .iter()
+            .map(|(path, source)| (*path, *source, None))
+            .collect();
+        // `q := p^` with `p := REF(c)` reads c, through p.
+        reads.extend(
+            self.body_infer_result
+                .type_of_path_expr
+                .keys()
+                .filter_map(|path| {
+                    let PathExprKind::Deref(deref) = path.expr(db) else {
+                        return None;
+                    };
+                    let reference = *self
+                        .body_infer_result
+                        .variable_of_path_expr
+                        .get(&deref.path)?;
+                    let pointee = referenced_root(db, &self.body_infer_result, reference)?;
+                    Some((*path, pointee, Some(reference)))
+                }),
+        );
+        reads.sort_by_key(|(path, _, _)| path.get_span(db).start_byte);
+
+        let mut reported = rustc_hash::FxHashSet::default();
+        for (path, source, through) in reads {
+            let Some(&from) = position.get(&source) else {
+                continue;
+            };
+            if !starts_at_entry(&source)
+                || source.qualifier(db).contains(crate::Qualifier::CONSTANT)
+            {
+                continue;
+            }
+            let span = path.get_span(db);
+            if references
+                .iter()
+                .any(|reference| contains(*reference, span))
+            {
+                continue;
+            }
+            let Some((index, var)) = variables.iter().enumerate().find(|(_, var)| {
+                starts_at_entry(var)
+                    && var
+                        .init(db)
+                        .is_some_and(|init| contains(init.get_span(db), span))
+            }) else {
+                continue;
+            };
+            // A reference read before its own value is reported as itself.
+            let reference_ready = through
+                .and_then(|reference| position.get(&reference))
+                .is_none_or(|at| *at < index);
+            if from >= index && reference_ready && reported.insert((*var, source)) {
+                self.errors.push(
+                    crate::check::errors::e04_init::InitError::ReadBeforeInitialized {
+                        read: crate::CallSite::from_scoped(db, &path),
+                        var: *var,
+                        source,
+                        through,
+                    }
+                    .to_diagnostic(db, self.scope.file(db)),
+                );
+            }
+        }
+    }
+}
+
+/// The variable a reference's initializer `REF(x...)` points into: x.
+fn referenced_root<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    result: &crate::hir_ty::body::BodyInferenceResult<'db>,
+    reference: VariableDecl<'db>,
+) -> Option<VariableDecl<'db>> {
+    let InitExprKind::ConstantExpr(init) = reference.init(db)?.kind(db) else {
+        return None;
+    };
+    let ExprKind::PrimaryExpr(PrimaryExpr::RefValue {
+        value: crate::hir_def::expressions::expression::RefValue::Address(address),
+    }) = init.expr(db)
+    else {
+        return None;
+    };
+    let root = address.expr(db)?.flatten(db).first()?.get_expr(db);
+    result.variable_of_path_expr.get(&root).copied()
+}
+
+/// `spec` through the names it goes by: a named type is its data type's own
+/// spec.
+fn through_aliases<'db>(db: &'db dyn WorkspaceDataBase, mut spec: Spec<'db>) -> Spec<'db> {
+    // A cyclic alias is refused elsewhere; stop regardless.
+    for _ in 0..16 {
+        match (spec.kind(db), spec.infer(db)) {
+            (SpecKind::Target(_), Type::DataType(dt)) => spec = dt.spec(db),
+            _ => break,
+        }
+    }
+    spec
+}
+
+/// What an ARRAY spec holds past all its dimensions, as written: an
+/// element's alias stays, for the message to name.
+pub(crate) fn innermost_element<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    mut spec: Spec<'db>,
+) -> Spec<'db> {
+    for _ in 0..16 {
+        match through_aliases(db, spec).kind(db) {
+            SpecKind::Array(array) => spec = array.of_type(db),
+            _ => break,
+        }
+    }
+    spec
+}
+
+/// The spec of member `name` of what `holder` declares: a STRUCT's field,
+/// or a variable of the FUNCTION_BLOCK or CLASS an instance initializer
+/// fills.
+fn member_spec<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    holder: Spec<'db>,
+    name: crate::hir_def::interned::identifier::Ident,
+) -> Option<Spec<'db>> {
+    use crate::hir_ty::resolver::walk::FieldLookup;
+    if let SpecKind::Struct(strukt) = through_aliases(db, holder).kind(db) {
+        return strukt
+            .elements(db)
+            .iter()
+            .find(|field| field.name(db) == name)
+            .map(|field| field.spec(db));
+    }
+    match holder.infer(db).normalize(db).resolve_field(db, &name) {
+        FieldLookup::Variable(var) => Some(var.spec(db)),
+        FieldLookup::StructElement(field) => Some(field.spec(db)),
+        _ => None,
+    }
+}
+
+/// E0314's error for a STRING literal longer than a `spec` slot holds.
+/// `None` for a slot that is no STRING, or for anything but a literal: a
+/// runtime string is cut by the copy, which cannot be seen from here.
+pub(crate) fn string_literal_overflow<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    spec: Spec<'db>,
+    literal: crate::hir_def::expressions::expression::Expr<'db>,
+) -> Option<InferLiteralError> {
+    let capacity = string_capacity(db, spec)?;
+    let ExprKind::PrimaryExpr(PrimaryExpr::Literal(
+        Elementary::String(text) | Elementary::InferString(text),
+    )) = literal.expr(db)
+    else {
+        return None;
+    };
+    let bytes = text.as_single_string(db).ok()?;
+    (bytes.len() as u64 > u64::from(capacity)).then(|| InferLiteralError::Invalid_STRING_Length {
+        max: capacity.into(),
+        got: bytes.len(),
+        alias: string_alias(db, spec),
+    })
 }
 
 /// The named type a STRING variable takes its capacity from (`s : Alias5`),

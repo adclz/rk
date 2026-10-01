@@ -194,7 +194,7 @@ impl<'db> ToIdeDiagnostic<'db> for ControlFlowError<'db> {
             Self::CaseSelectorNotSupported { selector, ty } => {
                 let mut diag = diag()
                     .message(format!(
-                        "'{}' is '{}', and CASE branches on an integer, a bit string, a CHAR, an enum or a STRING",
+                        "CASE cannot branch on '{}' of type '{}'",
                         selector.to_string(db),
                         ty.type_name(db)
                     ))
@@ -204,9 +204,10 @@ impl<'db> ToIdeDiagnostic<'db> for ControlFlowError<'db> {
                     .call();
                 // A BOOL is a bit, not a bit string: its two values are an IF.
                 diag.with_note(if ty.normalize(db).is_boolean() {
-                    "a BOOL has two values: branch with IF".to_string()
+                    "a BOOL has two values; branch with IF".to_string()
                 } else {
-                    "branch with IF on anything else".to_string()
+                    "CASE branches on an integer, a bit string, a CHAR, an enum or a STRING; branch with IF on anything else"
+                        .to_string()
                 });
                 diag
             }
@@ -220,16 +221,21 @@ impl<'db> ToIdeDiagnostic<'db> for ControlFlowError<'db> {
                     Some(c) if *chars => format!("'{c}'"),
                     _ => bound.to_string(),
                 };
-                diag()
+                let mut diag = diag()
                     .message(format!(
-                        "this range is empty: {} is above {}, so its arm never runs",
+                        "CASE range {}..{} is empty",
                         shown(*lower),
                         shown(*upper)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
                     .range(crate::denormalize(db, file, &range.get_span(db)).unwrap_or_default())
-                    .call()
+                    .call();
+                diag.with_note(
+                    "the lower bound is above the upper, so the arm never runs; swap the bounds"
+                        .to_string(),
+                );
+                diag
             }
         }
     }

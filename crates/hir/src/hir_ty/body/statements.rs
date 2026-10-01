@@ -317,10 +317,14 @@ impl<'db> StmtsResolverCtx<'db> {
                     resolver.resolve_variable_access(db, *var, ctx);
                     let base_typ = ctx.get_type_of_variable_access(db, *var);
 
-                    if ctx.is_constant_access(db, *var) {
+                    // A field or an element of a constant is the constant.
+                    // A CONSTANT variable itself is refused by
+                    // `check_assignable`, below.
+                    if ctx.is_constant_place(db, *var) && !is_constant_variable(db, base_typ) {
                         ctx.errors.push(
                             InitError::AssignToConstant {
                                 access: CallSite::from_scoped(db, var),
+                                constant: ctx.constant_root(db, *var),
                             }
                             .to_diagnostic(db, ctx.scope.file(db)),
                         );
@@ -370,7 +374,7 @@ impl<'db> StmtsResolverCtx<'db> {
                     // bytes, from a compile that said nothing. The
                     // initializer door has always refused this; the
                     // assignment door now matches it.
-                    check_string_literal_fits(db, base_typ, *target, ctx);
+                    check_string_literal_fits(db, base_typ, *var, *target, ctx);
                     if let Some(err) = ctx.ref_subrange_mismatch(db, base_typ, *target) {
                         ctx.errors.push(err.to_diagnostic(db, ctx.scope.file(db)));
                     }
@@ -1104,74 +1108,78 @@ fn for_control_is_bare_identifier<'db>(
     matches!(path.expr(db), PathExprKind::VarAccess(_))
 }
 
+/// Whether `ty` is a CONSTANT variable written whole, which
+/// `check_assignable` refuses.
+pub(crate) fn is_constant_variable<'db>(db: &'db dyn WorkspaceDataBase, ty: Type<'db>) -> bool {
+    matches!(ty, Type::Variable((var, _)) if var.qualifier(db).contains(crate::Qualifier::CONSTANT))
+}
+
 /// Refuse a string literal wider than the destination it is assigned to.
 ///
-/// The capacity comes from the destination's SPEC ([`declared_string_capacity`]
-/// follows alias hops), falling back to the default every plain `STRING`
-/// stores at. Only literal right-hand sides are measured: a runtime string is
-/// clamped by the runtime's copy, which cannot be seen from here.
-///
-/// [`declared_string_capacity`]: crate::hir_ty::infer::normalize::declared_string_capacity
+/// The capacity comes from the spec the store writes to: the destination's
+/// declaration, then an element's for each `[i]` and the referenced one's for
+/// each `^`, with aliases followed. Only literal right-hand sides are
+/// measured: a runtime string is clamped by the runtime's copy, which cannot
+/// be seen from here.
 fn check_string_literal_fits<'db>(
     db: &'db dyn WorkspaceDataBase,
     base_typ: Type<'db>,
+    access: crate::hir_def::expressions::expression::VariableAccess<'db>,
     target: Expr<'db>,
     ctx: &mut BodyInferenceResult<'db>,
 ) {
-    use crate::check::errors::e03_type::InferLiteralError;
-    use crate::hir_def::expressions::expression::{ExprKind, PrimaryExpr};
-
-    let mut spec = match base_typ {
-        Type::Variable((var, None)) => var.spec(db),
-        Type::StructElement(el) => el.spec(db),
-        _ => return,
-    };
-    // A subscripted destination still resolves to the ARRAY variable, so the
-    // element is where the capacity lives: `a[1] := <literal>` for an
-    // `ARRAY OF STRING[4]` measured nothing and cut the value at 4 silently,
-    // while the same literal into a plain `STRING[4]` was refused.
-    let mut depth = 0;
-    while let Type::Array(array) = spec.infer(db).normalize(db) {
-        spec = array.of_type(db);
-        depth += 1;
-        if depth > 16 {
-            return;
-        }
-    }
-    if !matches!(
-        spec.infer(db).normalize(db),
-        Type::Elementary(crate::hir_def::expressions::spec::ElementarySpec::String)
-    ) {
-        return;
-    }
-    let capacity = crate::hir_ty::infer::normalize::declared_string_capacity(db, spec)
-        .unwrap_or(crate::hir_ty::infer::normalize::DEFAULT_STRING_CAPACITY)
-        .into();
-
-    let ExprKind::PrimaryExpr(PrimaryExpr::Literal(
-        crate::hir_def::expressions::expression::Elementary::String(lit)
-        | crate::hir_def::expressions::expression::Elementary::InferString(lit),
-    )) = target.expr(db)
-    else {
+    let Some(spec) = stored_spec(
+        db,
+        base_typ,
+        ctx.adjustments_of_var_access(db, access)
+            .unwrap_or_default(),
+    ) else {
         return;
     };
-    let Ok(bytes) = lit.as_single_string(db) else {
-        return;
-    };
-    if bytes.len() as u64 > capacity {
-        let err = InferLiteralError::Invalid_STRING_Length {
-            max: capacity,
-            got: bytes.len(),
-            alias: crate::hir_ty::head::checks::variables::string_alias(db, spec),
-        };
+    if let Some(err) =
+        crate::hir_ty::head::checks::variables::string_literal_overflow(db, spec, target)
+    {
         ctx.errors.push(
             crate::check::errors::e03_type::TypeError::InferLiteralError {
                 expr: target,
                 source: None,
-                target: Type::Elementary(crate::hir_def::expressions::spec::ElementarySpec::String),
+                target: Type::Elementary(ElementarySpec::String),
                 err,
             }
             .to_diagnostic(db, ctx.scope.file(db)),
         );
     }
+}
+
+/// The spec a store through an access of type `base_typ` writes to: the
+/// declaration's, then for each adjustment an element's or a referenced
+/// one's. A subscripted destination still resolves to the ARRAY variable,
+/// so past the adjustments the element is where the capacity lives.
+fn stored_spec<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    base_typ: Type<'db>,
+    adjustments: &[crate::hir_ty::body::Adjustment<'db>],
+) -> Option<crate::hir_def::expressions::spec::Spec<'db>> {
+    use crate::hir_def::expressions::spec::SpecKind;
+    use crate::hir_ty::body::Adjust;
+    let mut spec = match base_typ {
+        Type::Variable((var, None)) => var.spec(db),
+        Type::StructElement(el) => el.spec(db),
+        Type::ReturnValue(callable) => *callable.return_type(db)?,
+        _ => return None,
+    };
+    for adjustment in adjustments {
+        let named = match (spec.kind(db), spec.infer(db)) {
+            (SpecKind::Target(_), Type::DataType(dt)) => dt.spec(db),
+            _ => spec,
+        };
+        spec = match (&adjustment.kind, named.kind(db)) {
+            (Adjust::Index, SpecKind::Array(array)) => array.of_type(db),
+            (Adjust::Deref, SpecKind::Ref(inner)) => *inner,
+            _ => return None,
+        };
+    }
+    Some(crate::hir_ty::head::checks::variables::innermost_element(
+        db, spec,
+    ))
 }

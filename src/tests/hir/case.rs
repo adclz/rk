@@ -378,36 +378,36 @@ END_FUNCTION"#;
        |
      5 |     CASE r OF 1: F := 1; END_CASE;
        |          |
-       |          `-- 'r' is 'REAL', and CASE branches on an integer, a bit string, a CHAR, an enum or a STRING
+       |          `-- CASE cannot branch on 'r' of type 'REAL'
        |
-       | Note: branch with IF on anything else
+       | Note: CASE branches on an integer, a bit string, a CHAR, an enum or a STRING; branch with IF on anything else
     ---'
     [E1207] Error: CASE selector of the wrong type
        ,-[ file:///test0.st:6:10 ]
        |
      6 |     CASE b OF TRUE: F := 2; END_CASE;
        |          |
-       |          `-- 'b' is 'BOOL', and CASE branches on an integer, a bit string, a CHAR, an enum or a STRING
+       |          `-- CASE cannot branch on 'b' of type 'BOOL'
        |
-       | Note: a BOOL has two values: branch with IF
+       | Note: a BOOL has two values; branch with IF
     ---'
     [E1207] Error: CASE selector of the wrong type
        ,-[ file:///test0.st:7:10 ]
        |
      7 |     CASE t OF T#1s: F := 3; END_CASE;
        |          |
-       |          `-- 't' is 'TIME', and CASE branches on an integer, a bit string, a CHAR, an enum or a STRING
+       |          `-- CASE cannot branch on 't' of type 'TIME'
        |
-       | Note: branch with IF on anything else
+       | Note: CASE branches on an integer, a bit string, a CHAR, an enum or a STRING; branch with IF on anything else
     ---'
     [E1207] Error: CASE selector of the wrong type
        ,-[ file:///test0.st:8:10 ]
        |
      8 |     CASE p OF 1: F := 4; END_CASE;
        |          |
-       |          `-- 'p' is 'Pt', and CASE branches on an integer, a bit string, a CHAR, an enum or a STRING
+       |          `-- CASE cannot branch on 'p' of type 'Pt'
        |
-       | Note: branch with IF on anything else
+       | Note: CASE branches on an integer, a bit string, a CHAR, an enum or a STRING; branch with IF on anything else
     ---'
     ");
 }
@@ -430,7 +430,9 @@ END_FUNCTION"#;
        |
      6 |         9..6: F := 2;
        |         |
-       |         `-- this range is empty: 9 is above 6, so its arm never runs
+       |         `-- CASE range 9..6 is empty
+       |
+       | Note: the lower bound is above the upper, so the arm never runs; swap the bounds
     ---'
     ");
 }
@@ -471,7 +473,9 @@ END_FUNCTION"#;
        |
      5 |         'z'..'a': Kind := 1;
        |         ^|^
-       |          `--- this range is empty: 'z' is above 'a', so its arm never runs
+       |          `--- CASE range 'z'..'a' is empty
+       |
+       | Note: the lower bound is above the upper, so the arm never runs; swap the bounds
     ---'
     ");
 }

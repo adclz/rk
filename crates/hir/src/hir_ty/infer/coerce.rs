@@ -389,8 +389,11 @@ impl<'db> Type<'db> {
                 // a CONSTANT variable cannot be assigned to
                 if variable.qualifier(db).contains(crate::Qualifier::CONSTANT) {
                     ctx.errors.push(
-                        InitError::AssignToConstant { access: call_site }
-                            .to_diagnostic(db, ctx.scope.file(db)),
+                        InitError::AssignToConstant {
+                            access: call_site,
+                            constant: Some(*variable),
+                        }
+                        .to_diagnostic(db, ctx.scope.file(db)),
                     );
                     assignable = false;
                 }

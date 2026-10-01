@@ -522,9 +522,15 @@ END_FUNCTION
     [E0404] Error: semantic violation
         ,-[ file:///test0.st:11:5 ]
         |
+      4 |         A: REAL := 3.90802E-3;
+        |         |
+        |         `-- 'A' is declared CONSTANT here
+        |
      11 |     A := 1.0;
         |     |
-        |     `-- cannot assign to constant type
+        |     `-- cannot write to constant 'A'
+        |
+        | Note: a CONSTANT keeps the value it is declared with; copy it into a variable to change the copy
     ----'
     ");
 }
@@ -545,4 +551,426 @@ END_FUNCTION
 "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+// An element or a field of a constant is the constant. A field write and an
+// output bound to a part passed, and the constant changed.
+#[rstest]
+fn invalid_write_into_part_of_a_constant(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE Pt : STRUCT x : INT; END_STRUCT; END_TYPE
+
+CONFIGURATION Cfg
+VAR_GLOBAL CONSTANT G : Pt := (x := 3); END_VAR
+END_CONFIGURATION
+
+FUNCTION Put
+VAR_OUTPUT o : INT; END_VAR
+    o := 1;
+END_FUNCTION
+
+FUNCTION F : INT
+VAR_EXTERNAL CONSTANT G : Pt; END_VAR
+VAR CONSTANT
+    p : Pt := (x := 1);
+    arr : ARRAY[0..1] OF INT := [1, 2];
+END_VAR
+    p.x := 5;
+    G.x := 7;
+    arr[0] := 5;
+    Put(o => p.x);
+    Put(o => arr[1]);
+    F := p.x;
+END_FUNCTION
+"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0404] Error: semantic violation
+        ,-[ file:///test0.st:19:5 ]
+        |
+     16 |     p : Pt := (x := 1);
+        |     |
+        |     `-- 'p' is declared CONSTANT here
+        |
+     19 |     p.x := 5;
+        |     ^|^
+        |      `--- cannot write to 'p.x' in constant 'p'
+        |
+        | Note: a CONSTANT keeps the value it is declared with; copy it into a variable to change the copy
+    ----'
+    [E0404] Error: semantic violation
+        ,-[ file:///test0.st:20:5 ]
+        |
+     14 | VAR_EXTERNAL CONSTANT G : Pt; END_VAR
+        |                       |
+        |                       `-- 'G' is declared CONSTANT here
+        |
+     20 |     G.x := 7;
+        |     ^|^
+        |      `--- cannot write to 'G.x' in constant 'G'
+        |
+        | Note: a CONSTANT keeps the value it is declared with; copy it into a variable to change the copy
+    ----'
+    [E0404] Error: semantic violation
+        ,-[ file:///test0.st:21:5 ]
+        |
+     17 |     arr : ARRAY[0..1] OF INT := [1, 2];
+        |     ^|^
+        |      `--- 'arr' is declared CONSTANT here
+        |
+     21 |     arr[0] := 5;
+        |     ^^^|^^
+        |        `---- cannot write to 'arr[0]' in constant 'arr'
+        |
+        | Note: a CONSTANT keeps the value it is declared with; copy it into a variable to change the copy
+    ----'
+    [E0404] Error: semantic violation
+        ,-[ file:///test0.st:22:14 ]
+        |
+     16 |     p : Pt := (x := 1);
+        |     |
+        |     `-- 'p' is declared CONSTANT here
+        |
+     22 |     Put(o => p.x);
+        |              ^|^
+        |               `--- cannot write to 'p.x' in constant 'p'
+        |
+        | Note: a CONSTANT keeps the value it is declared with; copy it into a variable to change the copy
+    ----'
+    [E0404] Error: semantic violation
+        ,-[ file:///test0.st:23:14 ]
+        |
+     17 |     arr : ARRAY[0..1] OF INT := [1, 2];
+        |     ^|^
+        |      `--- 'arr' is declared CONSTANT here
+        |
+     23 |     Put(o => arr[1]);
+        |              ^^^|^^
+        |                 `---- cannot write to 'arr[1]' in constant 'arr'
+        |
+        | Note: a CONSTANT keeps the value it is declared with; copy it into a variable to change the copy
+    ----'
+    ");
+}
+
+// A constant handed to a VAR_IN_OUT or to REF() changed through the
+// parameter or the pointer: only a store into it was refused.
+#[rstest]
+fn invalid_constant_handed_to_in_out_or_ref(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE Pt : STRUCT x : INT; END_STRUCT; END_TYPE
+
+CONFIGURATION Cfg
+VAR_GLOBAL CONSTANT LIMIT : INT := 10; END_VAR
+END_CONFIGURATION
+
+FUNCTION Bump
+VAR_IN_OUT x : INT; END_VAR
+    x := x + 1;
+END_FUNCTION
+
+FUNCTION_BLOCK FbBump
+VAR_IN_OUT x : INT; END_VAR
+    x := x + 1;
+END_FUNCTION_BLOCK
+
+PROGRAM P
+VAR_EXTERNAL CONSTANT LIMIT : INT; END_VAR
+VAR CONSTANT
+    k : INT := 1;
+    arr : ARRAY[0..1] OF INT := [1, 2];
+    p : Pt := (x := 1);
+END_VAR
+VAR f : FbBump; r : REF_TO INT; END_VAR
+    Bump(x := k);
+    Bump(LIMIT);
+    f(x := arr[0]);
+    Bump(x := p.x);
+    r := REF(k);
+    r := REF(p.x);
+END_PROGRAM
+"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0404] Error: semantic violation
+        ,-[ file:///test0.st:26:15 ]
+        |
+     21 |     k : INT := 1;
+        |     |
+        |     `-- 'k' is declared CONSTANT here
+        |
+     26 |     Bump(x := k);
+        |               |
+        |               `-- cannot pass constant 'k' to a VAR_IN_OUT
+        |
+        | Note: a VAR_IN_OUT could change it; pass it to a VAR_INPUT, or copy it into a variable and pass that
+    ----'
+    [E0404] Error: semantic violation
+        ,-[ file:///test0.st:27:10 ]
+        |
+     19 | VAR_EXTERNAL CONSTANT LIMIT : INT; END_VAR
+        |                       ^^|^^
+        |                         `---- 'LIMIT' is declared CONSTANT here
+        |
+     27 |     Bump(LIMIT);
+        |          ^^|^^
+        |            `---- cannot pass constant 'LIMIT' to a VAR_IN_OUT
+        |
+        | Note: a VAR_IN_OUT could change it; pass it to a VAR_INPUT, or copy it into a variable and pass that
+    ----'
+    [E0404] Error: semantic violation
+        ,-[ file:///test0.st:28:12 ]
+        |
+     22 |     arr : ARRAY[0..1] OF INT := [1, 2];
+        |     ^|^
+        |      `--- 'arr' is declared CONSTANT here
+        |
+     28 |     f(x := arr[0]);
+        |            ^^^|^^
+        |               `---- cannot pass 'arr[0]' in constant 'arr' to a VAR_IN_OUT
+        |
+        | Note: a VAR_IN_OUT could change it; pass it to a VAR_INPUT, or copy it into a variable and pass that
+    ----'
+    [E0404] Error: semantic violation
+        ,-[ file:///test0.st:29:15 ]
+        |
+     23 |     p : Pt := (x := 1);
+        |     |
+        |     `-- 'p' is declared CONSTANT here
+        |
+     29 |     Bump(x := p.x);
+        |               ^|^
+        |                `--- cannot pass 'p.x' in constant 'p' to a VAR_IN_OUT
+        |
+        | Note: a VAR_IN_OUT could change it; pass it to a VAR_INPUT, or copy it into a variable and pass that
+    ----'
+    [E0404] Error: semantic violation
+        ,-[ file:///test0.st:30:14 ]
+        |
+     21 |     k : INT := 1;
+        |     |
+        |     `-- 'k' is declared CONSTANT here
+        |
+     30 |     r := REF(k);
+        |              |
+        |              `-- cannot take a reference to constant 'k'
+        |
+        | Note: a reference could change it; copy it into a variable and take the reference of that
+    ----'
+    [E0404] Error: semantic violation
+        ,-[ file:///test0.st:31:14 ]
+        |
+     23 |     p : Pt := (x := 1);
+        |     |
+        |     `-- 'p' is declared CONSTANT here
+        |
+     31 |     r := REF(p.x);
+        |              ^|^
+        |               `--- cannot take a reference to 'p.x' in constant 'p'
+        |
+        | Note: a reference could change it; copy it into a variable and take the reference of that
+    ----'
+    ");
+}
+
+// A constant is read freely, and a VAR_INPUT takes a copy of it.
+#[rstest]
+fn valid_constant_read_or_copied(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION Twice : INT
+VAR_INPUT x : INT; END_VAR
+    Twice := x * 2;
+END_FUNCTION
+
+PROGRAM P
+VAR CONSTANT k : INT := 3; END_VAR
+VAR copy : INT; r : REF_TO INT; END_VAR
+    copy := k + Twice(x := k) + Twice(k);
+    r := REF(copy);
+END_PROGRAM
+"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+// A FOR counter and a bit write store into the constant too.
+#[rstest]
+fn invalid_constant_as_for_counter_or_bit(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION F : INT
+VAR CONSTANT
+    k : INT := 1;
+    MASK : WORD := 16#00FF;
+END_VAR
+    FOR k := 1 TO 3 DO
+        F := F + 1;
+    END_FOR;
+    MASK.3 := TRUE;
+END_FUNCTION
+"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0404] Error: semantic violation
+       ,-[ file:///test0.st:7:9 ]
+       |
+     4 |     k : INT := 1;
+       |     |
+       |     `-- 'k' is declared CONSTANT here
+       |
+     7 |     FOR k := 1 TO 3 DO
+       |         |
+       |         `-- cannot write to constant 'k'
+       |
+       | Note: a CONSTANT keeps the value it is declared with; copy it into a variable to change the copy
+    ---'
+    [E0404] Error: semantic violation
+        ,-[ file:///test0.st:10:5 ]
+        |
+      5 |     MASK : WORD := 16#00FF;
+        |     ^^|^
+        |       `--- 'MASK' is declared CONSTANT here
+        |
+     10 |     MASK.3 := TRUE;
+        |     ^^^|^^
+        |        `---- cannot write to 'MASK.3' in constant 'MASK'
+        |
+        | Note: a CONSTANT keeps the value it is declared with; copy it into a variable to change the copy
+    ----'
+    ");
+}
+
+// An instance changes when it runs, so it cannot be CONSTANT: its body and
+// its methods ran, and changed it.
+#[rstest]
+fn invalid_constant_instance(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK Fb
+VAR n : INT; END_VAR
+    n := n + 1;
+END_FUNCTION_BLOCK
+
+CLASS Counter
+VAR n : INT; END_VAR
+    METHOD Bump : INT
+        n := n + 1;
+        Bump := n;
+    END_METHOD
+END_CLASS
+
+CONFIGURATION Cfg
+VAR_GLOBAL CONSTANT shared : Fb; END_VAR
+END_CONFIGURATION
+
+PROGRAM P
+VAR CONSTANT
+    f : Fb;
+    c : Counter;
+    many : ARRAY[0..1] OF Fb;
+END_VAR
+    f();
+END_PROGRAM
+"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0404] Error: semantic violation
+        ,-[ file:///test0.st:21:5 ]
+        |
+     21 |     f : Fb;
+        |     |
+        |     `-- instance 'f' of 'Fb' cannot be CONSTANT
+        |
+        | Note: an instance changes when it runs; declare it in a VAR section without CONSTANT
+    ----'
+    [E0404] Error: semantic violation
+        ,-[ file:///test0.st:22:5 ]
+        |
+     22 |     c : Counter;
+        |     |
+        |     `-- instance 'c' of 'Counter' cannot be CONSTANT
+        |
+        | Note: an instance changes when it runs; declare it in a VAR section without CONSTANT
+    ----'
+    [E0404] Error: semantic violation
+        ,-[ file:///test0.st:23:5 ]
+        |
+     23 |     many : ARRAY[0..1] OF Fb;
+        |     ^^|^
+        |       `--- array 'many' of 'Fb' instances cannot be CONSTANT
+        |
+        | Note: an instance changes when it runs; declare it in a VAR section without CONSTANT
+    ----'
+    [E0404] Error: semantic violation
+        ,-[ file:///test0.st:16:21 ]
+        |
+     16 | VAR_GLOBAL CONSTANT shared : Fb; END_VAR
+        |                     ^^^|^^
+        |                        `---- instance 'shared' of 'Fb' cannot be CONSTANT
+        |
+        | Note: an instance changes when it runs; declare it in a VAR section without CONSTANT
+    ----'
+    ");
+}
+
+// A reference to a constant is refused wherever it is taken: an input's
+// default, a configuration global, a CONSTANT's own value.
+#[rstest]
+fn invalid_reference_to_a_constant_in_an_initial_value(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE PInt : REF_TO INT; END_TYPE
+
+CONFIGURATION Cfg
+VAR_GLOBAL CONSTANT LIMIT : INT := 10; END_VAR
+VAR_GLOBAL gp : PInt := REF(LIMIT); END_VAR
+END_CONFIGURATION
+
+FUNCTION Takes : INT
+VAR_EXTERNAL CONSTANT LIMIT : INT; END_VAR
+VAR_INPUT r : REF_TO INT := REF(LIMIT); END_VAR
+    Takes := r^;
+END_FUNCTION
+
+PROGRAM P
+VAR_EXTERNAL CONSTANT LIMIT : INT; END_VAR
+VAR CONSTANT PK : PInt := REF(LIMIT); END_VAR
+END_PROGRAM
+"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0404] Error: semantic violation
+        ,-[ file:///test0.st:11:33 ]
+        |
+     10 | VAR_EXTERNAL CONSTANT LIMIT : INT; END_VAR
+        |                       ^^|^^
+        |                         `---- 'LIMIT' is declared CONSTANT here
+     11 | VAR_INPUT r : REF_TO INT := REF(LIMIT); END_VAR
+        |                                 ^^|^^
+        |                                   `---- cannot take a reference to constant 'LIMIT'
+        |
+        | Note: a reference could change it; copy it into a variable and take the reference of that
+    ----'
+    [E0404] Error: semantic violation
+        ,-[ file:///test0.st:17:31 ]
+        |
+     16 | VAR_EXTERNAL CONSTANT LIMIT : INT; END_VAR
+        |                       ^^|^^
+        |                         `---- 'LIMIT' is declared CONSTANT here
+     17 | VAR CONSTANT PK : PInt := REF(LIMIT); END_VAR
+        |                               ^^|^^
+        |                                 `---- cannot take a reference to constant 'LIMIT'
+        |
+        | Note: a reference could change it; copy it into a variable and take the reference of that
+    ----'
+    [E0404] Error: semantic violation
+       ,-[ file:///test0.st:6:29 ]
+       |
+     5 | VAR_GLOBAL CONSTANT LIMIT : INT := 10; END_VAR
+       |                     ^^|^^
+       |                       `---- 'LIMIT' is declared CONSTANT here
+     6 | VAR_GLOBAL gp : PInt := REF(LIMIT); END_VAR
+       |                             ^^|^^
+       |                               `---- cannot take a reference to constant 'LIMIT'
+       |
+       | Note: a reference could change it; copy it into a variable and take the reference of that
+    ---'
+    ");
 }

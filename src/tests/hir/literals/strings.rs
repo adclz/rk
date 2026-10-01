@@ -590,3 +590,139 @@ fn invalid_string_literal_capacity_counts_bytes(mut with_db: RootDatabase) {
     ---'
     ");
 }
+
+// A STRING literal is measured wherever it fills a STRING[N]: a field's
+// default, a STRING type's own default, the elements of `[...]` and
+// `(...)`, an input argument, the result and a store through `^`. Each was
+// cut to fit with nothing said.
+#[rstest]
+fn invalid_string_literal_past_its_capacity_anywhere(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE
+    Rec : STRUCT name : STRING[3] := 'abcdef'; END_STRUCT;
+    Str3 : STRING[3] := 'wxyz';
+END_TYPE
+
+FUNCTION_BLOCK Fb
+VAR_INPUT s : STRING[3]; END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION Take : INT
+VAR_INPUT s : STRING[3]; END_VAR
+    Take := 0;
+END_FUNCTION
+
+FUNCTION R3 : STRING[3]
+    R3 := 'abcdef';
+END_FUNCTION
+
+PROGRAM P
+VAR
+    a : ARRAY[0..1] OF STRING[2] := ['abc', 'd'];
+    r : Rec := (name := 'wxyz');
+    fb : Fb;
+    s2 : STRING[2];
+    p : REF_TO STRING[2];
+    x : INT;
+END_VAR
+    fb(s := 'abcd');
+    x := Take('abcd');
+    p := REF(s2);
+    p^ := 'abcdef';
+END_PROGRAM
+"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0314] Error: invalid literal
+       ,-[ file:///test0.st:3:38 ]
+       |
+     3 |     Rec : STRUCT name : STRING[3] := 'abcdef'; END_STRUCT;
+       |                                      ^^^^|^^^
+       |                                          `----- cannot infer '<string>' to 'STRING': STRING literal exceeds the capacity of 3 bytes, got 6; declare it STRING[6], or shorten the literal
+    ---'
+    [E0314] Error: invalid literal
+       ,-[ file:///test0.st:4:25 ]
+       |
+     4 |     Str3 : STRING[3] := 'wxyz';
+       |                         ^^^|^^
+       |                            `---- cannot infer '<string>' to 'STRING': STRING literal exceeds the capacity of 3 bytes, got 4; declare it STRING[4], or shorten the literal
+    ---'
+    [E0314] Error: invalid literal
+        ,-[ file:///test0.st:17:11 ]
+        |
+     17 |     R3 := 'abcdef';
+        |           ^^^^|^^^
+        |               `----- cannot infer '<string>' to 'STRING': STRING literal exceeds the capacity of 3 bytes, got 6; declare it STRING[6], or shorten the literal
+    ----'
+    [E0314] Error: invalid literal
+        ,-[ file:///test0.st:22:38 ]
+        |
+     22 |     a : ARRAY[0..1] OF STRING[2] := ['abc', 'd'];
+        |                                      ^^|^^
+        |                                        `---- cannot infer '<string>' to 'STRING': STRING literal exceeds the capacity of 2 bytes, got 3; declare it STRING[3], or shorten the literal
+    ----'
+    [E0314] Error: invalid literal
+        ,-[ file:///test0.st:23:25 ]
+        |
+     23 |     r : Rec := (name := 'wxyz');
+        |                         ^^^|^^
+        |                            `---- cannot infer '<string>' to 'STRING': STRING literal exceeds the capacity of 3 bytes, got 4; declare it STRING[4], or shorten the literal
+    ----'
+    [E0314] Error: invalid literal
+        ,-[ file:///test0.st:29:13 ]
+        |
+     29 |     fb(s := 'abcd');
+        |             ^^^|^^
+        |                `---- cannot infer '<string>' to 'STRING': STRING literal exceeds the capacity of 3 bytes, got 4; declare it STRING[4], or shorten the literal
+    ----'
+    [E0314] Error: invalid literal
+        ,-[ file:///test0.st:30:15 ]
+        |
+     30 |     x := Take('abcd');
+        |               ^^^|^^
+        |                  `---- cannot infer '<string>' to 'STRING': STRING literal exceeds the capacity of 3 bytes, got 4; declare it STRING[4], or shorten the literal
+    ----'
+    [E0314] Error: invalid literal
+        ,-[ file:///test0.st:32:11 ]
+        |
+     32 |     p^ := 'abcdef';
+        |           ^^^^|^^^
+        |               `----- cannot infer '<string>' to 'STRING': STRING literal exceeds the capacity of 2 bytes, got 6; declare it STRING[6], or shorten the literal
+    ----'
+    ");
+}
+
+// Literals that fit are taken in each of those places.
+#[rstest]
+fn valid_string_literals_that_fit_anywhere(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE
+    Rec : STRUCT name : STRING[3] := 'abc'; END_STRUCT;
+    Str3 : STRING[3] := 'xyz';
+END_TYPE
+
+FUNCTION Take : INT
+VAR_INPUT s : STRING[3]; END_VAR
+    Take := 0;
+END_FUNCTION
+
+FUNCTION R3 : STRING[3]
+    R3 := 'abc';
+END_FUNCTION
+
+PROGRAM P
+VAR
+    a : ARRAY[0..1] OF STRING[2] := ['ab', 'c'];
+    r : Rec := (name := 'xy');
+    s2 : STRING[2];
+    p : REF_TO STRING[2];
+    x : INT;
+END_VAR
+    x := Take(s := 'abc');
+    p := REF(s2);
+    p^ := 'ab';
+END_PROGRAM
+"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}

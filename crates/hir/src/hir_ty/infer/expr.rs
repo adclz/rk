@@ -401,6 +401,24 @@ impl<'db> InferExprCtx<'db> {
 
                     let typ = inference_result.type_of_begin_expr_with_adjustments(db, *adress);
 
+                    // A REF_TO is a writable pointer, so one to a constant
+                    // would change it.
+                    if adress
+                        .expr(db)
+                        .is_some_and(|path| inference_result.is_constant_place_path(db, path))
+                    {
+                        inference_result.errors.push(
+                            crate::check::errors::e04_init::InitError::ConstantHandedOut {
+                                access: CallSite::from_scoped(db, adress),
+                                route: crate::check::errors::e04_init::ConstantRoute::Reference,
+                                constant: adress
+                                    .expr(db)
+                                    .and_then(|path| inference_result.constant_root_path(db, path)),
+                            }
+                            .to_diagnostic(db, inference_result.scope.file(db)),
+                        );
+                    }
+
                     // A REF_TO is a writable pointer and nothing tracks what
                     // is stored through it, so an input is refused where the
                     // reference is taken rather than where it is used

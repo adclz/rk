@@ -789,6 +789,48 @@ END_FUNCTION"#;
     ");
 }
 
+/// A STRUCT field is part of every variable of its type, so an address on
+/// it cannot be its: complete or partial, it was accepted and ignored.
+#[rstest]
+fn invalid_located_struct_field(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE Frame : STRUCT
+    head AT %MW8 : INT;
+    ready AT %IX0.0 : BOOL;
+    out AT %Q* : INT;
+    len : INT;
+END_STRUCT; END_TYPE"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1417] Error: address cannot be located
+       ,-[ file:///test0.st:3:5 ]
+       |
+     3 |     head AT %MW8 : INT;
+       |     ^^^^^^^^^|^^^^^^^^
+       |              `---------- '%MW8' cannot locate a STRUCT field
+       |
+       | Note: a field is part of every variable of its type, so one address cannot be its; declare the address on a variable of a PROGRAM or a VAR_GLOBAL, and copy between it and the field
+    ---'
+    [E1417] Error: address cannot be located
+       ,-[ file:///test0.st:4:5 ]
+       |
+     4 |     ready AT %IX0.0 : BOOL;
+       |     ^^^^^^^^^^^|^^^^^^^^^^
+       |                `------------ '%IX0.0' cannot locate a STRUCT field
+       |
+       | Note: a field is part of every variable of its type, so one address cannot be its; declare the address on a variable of a PROGRAM or a VAR_GLOBAL, and copy between it and the field
+    ---'
+    [E1417] Error: address cannot be located
+       ,-[ file:///test0.st:5:5 ]
+       |
+     5 |     out AT %Q* : INT;
+       |     ^^^^^^^^|^^^^^^^
+       |             `--------- '%Q*' cannot locate a STRUCT field
+       |
+       | Note: an incomplete address on a STRUCT field is not supported; declare the channel in a FUNCTION_BLOCK, where VAR_CONFIG locates it per instance
+    ---'
+    ");
+}
+
 /// A PROGRAM's VAR may be located (Table 16, `Loc_Var_Decls`), named or
 /// not, RETAIN in `%M`, and as a part of a wider address: it is the channel,
 /// shared by every instance of the program.

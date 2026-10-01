@@ -919,3 +919,199 @@ END_FUNCTION
     ----'
     ");
 }
+
+// A FUNCTION's or METHOD's variables take their values at each call, in the
+// order they are declared: one initialized from a later one, or from
+// itself, read 0.
+#[rstest]
+fn invalid_initializer_reads_a_variable_declared_after_it(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION F : INT
+VAR_INPUT n : INT; END_VAR
+VAR
+    a : INT := b;
+    b : INT := n + 1;
+    c : INT := c + 1;
+    d : ARRAY[0..1] OF INT := [e, e];
+    e : INT := 2;
+END_VAR
+    F := a + b + c + d[0] + e;
+END_FUNCTION
+
+FUNCTION_BLOCK Fb
+    METHOD M : INT
+    VAR x : INT := y; y : INT := 4; END_VAR
+        M := x + y;
+    END_METHOD
+END_FUNCTION_BLOCK
+"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0406] Error: read before it has its value
+       ,-[ file:///test0.st:5:16 ]
+       |
+     5 |     a : INT := b;
+       |                |
+       |                `-- the initial value of 'a' reads 'b', declared after it
+     6 |     b : INT := n + 1;
+       |     |
+       |     `-- 'b' is declared here
+       |
+       | Note: variables get their initial values in the order they are declared; declare 'b' before 'a'
+    ---'
+    [E0406] Error: read before it has its value
+       ,-[ file:///test0.st:7:16 ]
+       |
+     7 |     c : INT := c + 1;
+       |                |
+       |                `-- the initial value of 'c' reads 'c' itself
+       |
+       | Note: an initial value cannot read the variable it initializes
+    ---'
+    [E0406] Error: read before it has its value
+       ,-[ file:///test0.st:8:32 ]
+       |
+     8 |     d : ARRAY[0..1] OF INT := [e, e];
+       |                                |
+       |                                `-- the initial value of 'd' reads 'e', declared after it
+     9 |     e : INT := 2;
+       |     |
+       |     `-- 'e' is declared here
+       |
+       | Note: variables get their initial values in the order they are declared; declare 'e' before 'd'
+    ---'
+    [E0406] Error: read before it has its value
+        ,-[ file:///test0.st:16:20 ]
+        |
+     16 |     VAR x : INT := y; y : INT := 4; END_VAR
+        |                    |  |
+        |                    `----- the initial value of 'x' reads 'y', declared after it
+        |                       |
+        |                       `-- 'y' is declared here
+        |
+        | Note: variables get their initial values in the order they are declared; declare 'y' before 'x'
+    ----'
+    ");
+}
+
+// An initializer reads what has its value already: an input, a variable
+// declared before it, and a CONSTANT, whose value is put in its place
+// wherever it is declared. A REF() takes an address, not a value.
+#[rstest]
+fn valid_initializer_reads_what_has_its_value(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION G : INT
+VAR_INPUT n : INT; END_VAR
+VAR
+    a : INT := n + K;
+    b : INT := a * 2;
+    p : REF_TO INT := REF(c);
+    c : INT := b;
+END_VAR
+VAR CONSTANT K : INT := 3; END_VAR
+    G := c + p^;
+END_FUNCTION
+"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+// Only what gets its value at entry is ordered. An input, an in-out and an
+// external hold theirs before the first initializer runs, wherever their
+// section is written; an output with an initial value takes it in its turn.
+#[rstest]
+fn invalid_initializer_reads_an_output_declared_after_it(mut with_db: RootDatabase) {
+    let source = r#"
+CONFIGURATION Cfg
+VAR_GLOBAL g : INT := 7; END_VAR
+END_CONFIGURATION
+
+FUNCTION Sections : INT
+VAR
+    a : INT := n;
+    b : INT := io;
+    c : INT := g;
+    d : INT := o;
+END_VAR
+VAR_INPUT n : INT; END_VAR
+VAR_IN_OUT io : INT; END_VAR
+VAR_EXTERNAL g : INT; END_VAR
+VAR_OUTPUT o : INT := 5; END_VAR
+    Sections := a + b + c + d;
+END_FUNCTION
+"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0406] Error: read before it has its value
+        ,-[ file:///test0.st:11:16 ]
+        |
+     11 |     d : INT := o;
+        |                |
+        |                `-- the initial value of 'd' reads 'o', declared after it
+        |
+     16 | VAR_OUTPUT o : INT := 5; END_VAR
+        |            |
+        |            `-- 'o' is declared here
+        |
+        | Note: variables get their initial values in the order they are declared; declare 'o' before 'd'
+    ----'
+    ");
+}
+
+// A `^` on a reference set to REF(c) reads c, and a call on an instance
+// reads the instance: each before it has its value.
+#[rstest]
+fn invalid_initializer_reads_through_a_reference_or_a_call(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK Fb
+VAR v : INT := 9; END_VAR
+    METHOD Get : INT
+        Get := v;
+    END_METHOD
+END_FUNCTION_BLOCK
+
+FUNCTION ThroughRef : INT
+VAR
+    p : REF_TO INT := REF(c);
+    q : INT := p^;
+    c : INT := 5;
+END_VAR
+    ThroughRef := q;
+END_FUNCTION
+
+FUNCTION LaterInstance : INT
+VAR
+    a : INT := inst.Get();
+    inst : Fb;
+END_VAR
+    LaterInstance := a;
+END_FUNCTION
+"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0406] Error: read before it has its value
+        ,-[ file:///test0.st:12:16 ]
+        |
+     12 |     q : INT := p^;
+        |                |
+        |                `-- the initial value of 'q' reads 'c', declared after it, through 'p'
+     13 |     c : INT := 5;
+        |     |
+        |     `-- 'c' is declared here
+        |
+        | Note: variables get their initial values in the order they are declared; declare 'c' before 'q'
+    ----'
+    [E0406] Error: read before it has its value
+        ,-[ file:///test0.st:20:16 ]
+        |
+     20 |     a : INT := inst.Get();
+        |                ^^|^
+        |                  `--- the initial value of 'a' reads 'inst', declared after it
+     21 |     inst : Fb;
+        |     ^^|^
+        |       `--- 'inst' is declared here
+        |
+        | Note: variables get their initial values in the order they are declared; declare 'inst' before 'a'
+    ----'
+    ");
+}

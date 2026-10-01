@@ -557,34 +557,94 @@ impl<'db> BodyInferenceResult<'db> {
         }
     }
 
-    /// Check whether a variable access is rooted in a DataType (constant).
-    /// The first resolved step in the path determines constness.
-    /// Only applies to multi-step paths (e.g., TYPE_NAME.field) - bare type
-    /// names are handled by check_not_direct_type.
-    pub fn is_constant_access(
-        &self,
-        db: &'db dyn WorkspaceDataBase,
-        var_access: VariableAccess<'db>,
-    ) -> bool {
-        let VariableAccessKind::Symbolic(sym) = var_access.kind(db) else {
-            return false;
-        };
-        let Some(path) = sym.expr(db) else {
-            return false;
-        };
-        self.is_constant_path(db, path)
-    }
-
-    /// Check whether an expression is a DataType constant access.
-    /// Returns true if the expr is a variable access rooted in a DataType.
-    pub fn is_constant_type(&self, db: &'db dyn WorkspaceDataBase, expr: Expr<'db>) -> bool {
-        if let ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess(va)) = expr.expr(db) {
-            self.is_constant_access(db, *va)
-        } else {
-            false
+    /// Whether an argument names a place inside a constant: see
+    /// [`Self::is_constant_place_path`].
+    pub fn is_constant_value(&self, db: &'db dyn WorkspaceDataBase, expr: Expr<'db>) -> bool {
+        match expr.expr(db) {
+            ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess(va)) => {
+                self.is_constant_place(db, *va)
+            }
+            ExprKind::PrimaryExpr(PrimaryExpr::ParenthesizedExpr { expr }) => {
+                self.is_constant_value(db, *expr)
+            }
+            _ => false,
         }
     }
 
+    /// Whether a store into the place `access` names changes a constant:
+    /// see [`Self::is_constant_place_path`].
+    pub fn is_constant_place(
+        &self,
+        db: &'db dyn WorkspaceDataBase,
+        access: VariableAccess<'db>,
+    ) -> bool {
+        let VariableAccessKind::Symbolic(sym) = access.kind(db) else {
+            return false;
+        };
+        sym.expr(db)
+            .is_some_and(|path| self.is_constant_place_path(db, path))
+    }
+
+    /// Whether a store into the place `path` names changes a constant: the
+    /// path is rooted in a TYPE, or passes through a CONSTANT variable. An
+    /// element or a field of a constant is the constant, and so is what a
+    /// constant reference points to, as an assignment through one is refused.
+    pub fn is_constant_place_path(
+        &self,
+        db: &'db dyn WorkspaceDataBase,
+        path: PathExpr<'db>,
+    ) -> bool {
+        self.is_constant_path(db, path) || self.constant_root_path(db, path).is_some()
+    }
+
+    /// The CONSTANT variable a place passes through: `p` for `p.x`.
+    pub fn constant_root_path(
+        &self,
+        db: &'db dyn WorkspaceDataBase,
+        path: PathExpr<'db>,
+    ) -> Option<VariableDecl<'db>> {
+        use crate::hir_ty::expr_store::PathExprWalkStep;
+        path.flatten(db).iter().find_map(|step| {
+            match (step, self.type_of_path_expr.get(&step.get_expr(db))) {
+                (PathExprWalkStep::Field { .. }, Some(Type::Variable((var, _))))
+                    if var.qualifier(db).contains(crate::Qualifier::CONSTANT) =>
+                {
+                    Some(*var)
+                }
+                _ => None,
+            }
+        })
+    }
+
+    /// [`Self::constant_root_path`] of an access.
+    pub fn constant_root(
+        &self,
+        db: &'db dyn WorkspaceDataBase,
+        access: VariableAccess<'db>,
+    ) -> Option<VariableDecl<'db>> {
+        let VariableAccessKind::Symbolic(sym) = access.kind(db) else {
+            return None;
+        };
+        self.constant_root_path(db, sym.expr(db)?)
+    }
+
+    /// [`Self::constant_root_path`] of an argument.
+    pub fn constant_root_value(
+        &self,
+        db: &'db dyn WorkspaceDataBase,
+        expr: Expr<'db>,
+    ) -> Option<VariableDecl<'db>> {
+        match expr.expr(db) {
+            ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess(va)) => self.constant_root(db, *va),
+            ExprKind::PrimaryExpr(PrimaryExpr::ParenthesizedExpr { expr }) => {
+                self.constant_root_value(db, *expr)
+            }
+            _ => None,
+        }
+    }
+
+    /// A multi-step path rooted in a DataType (`TYPE_NAME.field`): a bare
+    /// type name is handled by `check_not_direct_type`.
     fn is_constant_path(&self, db: &'db dyn WorkspaceDataBase, path: PathExpr<'db>) -> bool {
         let steps = path.flatten(db);
         if steps.len() < 2 {

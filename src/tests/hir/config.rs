@@ -2141,3 +2141,49 @@ END_CONFIGURATION
     ----'
     ");
 }
+
+/// VAR_CONFIG reaches an instance's members, and a VAR_TEMP or a
+/// VAR_EXTERNAL is none: neither takes an address or a value there.
+#[rstest]
+fn invalid_config_entry_on_a_temp_or_external(mut with_db: RootDatabase) {
+    let source = r#"
+CONFIGURATION Cfg
+VAR_GLOBAL g : INT := 5; END_VAR
+    RESOURCE Res ON CPU
+        TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM P1 WITH T : Main;
+    END_RESOURCE
+    VAR_CONFIG
+        Res.P1.f.g AT %QW0 : INT;
+        Res.P1.f.scratch : INT := 5;
+    END_VAR
+END_CONFIGURATION
+
+FUNCTION_BLOCK Fb
+VAR_TEMP scratch : INT; END_VAR
+VAR_EXTERNAL g : INT; END_VAR
+    scratch := g;
+END_FUNCTION_BLOCK
+
+PROGRAM Main
+VAR f : Fb; END_VAR
+    f();
+END_PROGRAM
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1414] Error: configuration error
+       ,-[ file:///test0.st:9:18 ]
+       |
+     9 |         Res.P1.f.g AT %QW0 : INT;
+       |                  |
+       |                  `-- 'Fb' has no field named 'g'
+    ---'
+    [E1414] Error: configuration error
+        ,-[ file:///test0.st:10:18 ]
+        |
+     10 |         Res.P1.f.scratch : INT := 5;
+        |                  ^^^|^^^
+        |                     `----- 'Fb' has no field named 'scratch'
+    ----'
+    ");
+}
