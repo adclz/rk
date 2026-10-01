@@ -177,7 +177,7 @@ Initializers:
 
 ```iecst decl
 p: Point := (x := 1, y := 2);             // struct: parentheses, named fields
-v: Vec := [1, 2, 3, 4, 5, 5(0)];          // array: brackets; N(x) repeats x N times
+v: Vec := [1, 2, 3, 4, 5, 5(0)];          // array: brackets; N(x) repeats x N times, N() skips N
 m: ARRAY[0..1, 0..1] OF INT := [[1, 2], [3, 4]];
 o: Outer := (i := (a := 1, b := [1, 2]), name := 'hi');   // nested
 ```

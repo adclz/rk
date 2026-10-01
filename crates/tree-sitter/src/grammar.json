@@ -3271,12 +3271,20 @@
           "value": "("
         },
         {
-          "type": "FIELD",
-          "name": "values",
-          "content": {
-            "type": "SYMBOL",
-            "name": "array_values"
-          }
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "FIELD",
+              "name": "values",
+              "content": {
+                "type": "SYMBOL",
+                "name": "array_values"
+              }
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
         },
         {
           "type": "STRING",

@@ -880,11 +880,12 @@ module.exports = grammar({
 
     array_init: ($) => seq("[", field("values", $.array_values), "]"),
 
+    // `n()` repeats no value: n elements keep their default.
     array_index_elem: ($) =>
       seq(
         field("index", $.unsigned_int),
         "(",
-        field("values", $.array_values),
+        optional(field("values", $.array_values)),
         ")",
       ),
 

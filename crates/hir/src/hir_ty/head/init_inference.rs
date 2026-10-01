@@ -1006,6 +1006,11 @@ fn array_element<'db>(
         }
         (InitExprKind::ArrayIndexedElement { size, values }, _) => {
             let n = size.with_case.as_u64(db).unwrap_or(0);
+            // `n()` repeats no value: n elements keep their default, and
+            // what follows starts after them.
+            if values.is_empty() {
+                *flat += n as u32;
+            }
             for _ in 0..n {
                 for v in &values {
                     array_element(db, *v, types, roles, path, flat, out);

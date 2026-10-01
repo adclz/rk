@@ -1343,3 +1343,27 @@ fn local_initializer_in_a_specialization(mut with_db: db::RootDatabase) {
     let result: i32 = crate::tests::codegen::run(&mut with_db, source, "test", ());
     assert_eq!(result, 0);
 }
+
+/// `n()` repeats no value: those elements keep their default, and the values
+/// after it land where they belong. Its elements were not counted, so the `4`
+/// would have landed in `a[1]`.
+#[rstest]
+fn empty_repetition_keeps_the_defaults(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE Pt : STRUCT x : INT := 7; END_STRUCT; END_TYPE
+
+        FUNCTION run : DINT
+        VAR
+            a : ARRAY[0..3] OF INT := [1, 2(), 4];
+            p : ARRAY[0..2] OF Pt := [2(), (x := 5)];
+        END_VAR
+            run := a[0] * 1000 + a[1] * 100 + a[2] * 10 + a[3];
+            run := run * 1000 + p[0].x * 100 + p[1].x * 10 + p[2].x;
+        END_FUNCTION
+    "#;
+    let result: i32 = super::run(&mut with_db, source, "run", ());
+    assert_eq!(
+        result, 1_004_775,
+        "a is 1, 0, 0, 4 and p is 7, 7, 5: the defaults stay"
+    );
+}

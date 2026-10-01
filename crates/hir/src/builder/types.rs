@@ -457,16 +457,19 @@ impl<'db> Parse<'db> for ast::generated::ArrayIndexElem {
     ) -> anyhow::Result<Self::Output, IdeDiagnostic> {
         let index = SpanIdent::from_node(sema.db, sema, self.index.cast(sema.ast))?;
 
-        let values = self
-            .values
-            .cast(sema.ast)
-            .children
-            .iter()
-            .filter_map(|elem| {
-                let r = elem.cast(sema.ast).parse(sema);
-                sema.try_parse(r)
-            })
-            .collect();
+        // `n()` repeats no value.
+        let values = match &self.values {
+            Some(values) => values
+                .cast(sema.ast)
+                .children
+                .iter()
+                .filter_map(|elem| {
+                    let r = elem.cast(sema.ast).parse(sema);
+                    sema.try_parse(r)
+                })
+                .collect(),
+            None => Vec::new(),
+        };
 
         let kind = InitExprKind::ArrayIndexedElement {
             size: index,
