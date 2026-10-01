@@ -52,7 +52,11 @@ impl<'db> Type<'db> {
             (Some(lower), Some(upper)) => (lower, upper),
             _ => return None,
         };
-        let value = rhs.as_const_int(db)?;
+        // As the base holds it: `16#FF` on a SINT subrange is -1.
+        let base = sub._type(db).infer(db);
+        let value =
+            crate::hir_ty::infer::const_eval::held_as(db, i128::from(rhs.as_const_int(db)?), base)
+                as i64;
         (value < lower || value > upper).then_some(
             crate::check::errors::e07_subrange::SubRangeError::ValueOutOfRange {
                 expr: rhs,

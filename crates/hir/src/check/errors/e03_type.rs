@@ -113,6 +113,12 @@ pub enum InferLiteralError {
     OutOfRange {
         type_name: &'static str,
     },
+    /// A radix literal with more bits than its signed type: the digits are
+    /// a bit pattern, so `SINT#16#FF` is -1 and `SINT#16#1FF` is too wide.
+    PatternTooWide {
+        type_name: &'static str,
+        bits: u32,
+    },
     /// A minus sign on a literal for an unsigned type.
     NegativeUnsigned {
         type_name: &'static str,
@@ -481,6 +487,7 @@ impl InferLiteralError {
         use InferLiteralError::*;
         match self {
             OutOfRange { .. }
+            | PatternTooWide { .. }
             | FloatOutOfRange { .. }
             | DurationOverflow
             | DurationOutOfRange { .. } => "E0306",
@@ -516,6 +523,9 @@ impl InferLiteralError {
             OutOfRange { type_name } => {
                 let b = int_bounds(type_name)?;
                 format!("{type_name} holds {b}")
+            }
+            PatternTooWide { type_name, bits } => {
+                format!("a radix literal is a bit pattern, and {type_name} has {bits} bits")
             }
             DurationOutOfRange {
                 type_name,
@@ -605,6 +615,7 @@ impl std::fmt::Display for InferLiteralError {
         let msg = match self {
             InferLiteralError::TypeMismatch(st) => return f.write_str(st),
             InferLiteralError::OutOfRange { type_name }
+            | InferLiteralError::PatternTooWide { type_name, .. }
             | InferLiteralError::FloatOutOfRange { type_name } => {
                 return write!(f, "the value does not fit in {type_name}");
             }

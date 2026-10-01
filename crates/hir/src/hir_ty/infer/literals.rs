@@ -216,7 +216,7 @@ fn check_i8<'db>(
         InferType::Integer(n) => n
             .as_i8(db)
             .map(|_| Type::Elementary(ElementarySpec::SInt))
-            .map_err(|err| signed_error(err, "SINT")),
+            .map_err(|err| signed_radix_error(db, *n, err, "SINT", 8)),
         _ => Err(InferLiteralError::Invalid_SIGNED_8_BITS_Literal),
     }
 }
@@ -229,7 +229,7 @@ fn check_i16<'db>(
         InferType::Integer(n) => n
             .as_i16(db)
             .map(|_| Type::Elementary(ElementarySpec::Int))
-            .map_err(|err| signed_error(err, "INT")),
+            .map_err(|err| signed_radix_error(db, *n, err, "INT", 16)),
         _ => Err(InferLiteralError::Invalid_SIGNED_16_BITS_Literal),
     }
 }
@@ -242,7 +242,7 @@ fn check_i32<'db>(
         InferType::Integer(n) => n
             .as_i32(db)
             .map(|_| Type::Elementary(ElementarySpec::DInt))
-            .map_err(|err| signed_error(err, "DINT")),
+            .map_err(|err| signed_radix_error(db, *n, err, "DINT", 32)),
         _ => Err(InferLiteralError::Invalid_SIGNED_32_BITS_Literal),
     }
 }
@@ -255,7 +255,7 @@ fn check_i64<'db>(
         InferType::Integer(n) => n
             .as_i64(db)
             .map(|_| Type::Elementary(ElementarySpec::LInt))
-            .map_err(|err| signed_error(err, "LINT")),
+            .map_err(|err| signed_radix_error(db, *n, err, "LINT", 64)),
         _ => Err(InferLiteralError::Invalid_SIGNED_64_BITS_Literal),
     }
 }
@@ -792,6 +792,24 @@ fn signed_error(err: ParseIntError, type_name: &'static str) -> InferLiteralErro
     }
 }
 
+/// [`signed_error`], where a radix literal is too wide for its type rather
+/// than out of its range: `SINT#16#FF` is -1, so -128 to 127 would not
+/// explain why `SINT#16#1FF` is refused.
+fn signed_radix_error(
+    db: &dyn WorkspaceDataBase,
+    n: Integer,
+    err: ParseIntError,
+    type_name: &'static str,
+    bits: u32,
+) -> InferLiteralError {
+    match signed_error(err, type_name) {
+        InferLiteralError::OutOfRange { type_name } if n.kind(db) != IntegerKind::Signed => {
+            InferLiteralError::PatternTooWide { type_name, bits }
+        }
+        err => err,
+    }
+}
+
 fn unsigned_error(err: UnsignedIntError, type_name: &'static str) -> InferLiteralError {
     match err {
         UnsignedIntError::NegativeSign => InferLiteralError::NegativeUnsigned { type_name },
@@ -891,24 +909,40 @@ impl Integer {
         .map_err(|err| err.into())
     }
 
+    /// See [`as_i32`](Self::as_i32): a radix literal is an 8-bit pattern, so
+    /// `SINT#16#FF` is -1 and `SINT#16#1FF` does not fit.
     #[salsa::tracked]
     pub fn as_i8(self, db: &dyn WorkspaceDataBase) -> Result<i8, std::num::ParseIntError> {
         let text = strip_underscores(self.ident(db).text(db));
         match self.kind(db) {
-            IntegerKind::Binary => i8::from_str_radix(text.trim_start_matches("2#"), 2),
-            IntegerKind::Octal => i8::from_str_radix(text.trim_start_matches("8#"), 8),
-            IntegerKind::Hex => i8::from_str_radix(text.trim_start_matches("16#"), 16),
+            IntegerKind::Binary => {
+                u8::from_str_radix(text.trim_start_matches("2#"), 2).map(|v| v as i8)
+            }
+            IntegerKind::Octal => {
+                u8::from_str_radix(text.trim_start_matches("8#"), 8).map(|v| v as i8)
+            }
+            IntegerKind::Hex => {
+                u8::from_str_radix(text.trim_start_matches("16#"), 16).map(|v| v as i8)
+            }
             IntegerKind::Signed => text.parse(),
         }
     }
 
+    /// See [`as_i32`](Self::as_i32): a radix literal is a 16-bit pattern, so
+    /// `INT#16#FFFF` is -1.
     #[salsa::tracked]
     pub fn as_i16(self, db: &dyn WorkspaceDataBase) -> Result<i16, std::num::ParseIntError> {
         let text = strip_underscores(self.ident(db).text(db));
         match self.kind(db) {
-            IntegerKind::Binary => i16::from_str_radix(text.trim_start_matches("2#"), 2),
-            IntegerKind::Octal => i16::from_str_radix(text.trim_start_matches("8#"), 8),
-            IntegerKind::Hex => i16::from_str_radix(text.trim_start_matches("16#"), 16),
+            IntegerKind::Binary => {
+                u16::from_str_radix(text.trim_start_matches("2#"), 2).map(|v| v as i16)
+            }
+            IntegerKind::Octal => {
+                u16::from_str_radix(text.trim_start_matches("8#"), 8).map(|v| v as i16)
+            }
+            IntegerKind::Hex => {
+                u16::from_str_radix(text.trim_start_matches("16#"), 16).map(|v| v as i16)
+            }
             IntegerKind::Signed => text.parse(),
         }
     }

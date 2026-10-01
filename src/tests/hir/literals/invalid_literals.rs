@@ -205,7 +205,7 @@ END_FUNCTION_BLOCK"#;
        |
      6 |         test3: SINT := 16#FFFF;
        |                        ^^^|^^^
-       |                           `----- cannot infer '<integer>' to 'SINT': the value does not fit in SINT; SINT holds -128 to 127
+       |                           `----- cannot infer '<integer>' to 'SINT': the value does not fit in SINT; a radix literal is a bit pattern, and SINT has 8 bits
     ---'
     ");
 }
@@ -241,7 +241,7 @@ END_FUNCTION_BLOCK"#;
        |
      6 |         test3: INT := 16#FFFFFFFF;
        |                       ^^^^^|^^^^^
-       |                            `------- cannot infer '<integer>' to 'INT': the value does not fit in INT; INT holds -32768 to 32767
+       |                            `------- cannot infer '<integer>' to 'INT': the value does not fit in INT; a radix literal is a bit pattern, and INT has 16 bits
     ---'
     ");
 }
@@ -306,7 +306,7 @@ END_FUNCTION_BLOCK"#;
        |
      6 |         test3: LINT := 16#FFFFFFFFFFFFFFFFFF;
        |                        ^^^^^^^^^^|^^^^^^^^^^
-       |                                  `------------ cannot infer '<integer>' to 'LINT': the value does not fit in LINT; LINT holds -9223372036854775808 to 9223372036854775807
+       |                                  `------------ cannot infer '<integer>' to 'LINT': the value does not fit in LINT; a radix literal is a bit pattern, and LINT has 64 bits
     ---'
     ");
 }
@@ -353,6 +353,51 @@ fn invalid_typed_integer_literals(mut with_db: RootDatabase) {
      7 |             d := DINT#3000000000;
        |                  ^^^^^^^|^^^^^^^
        |                         `--------- cannot infer 'DINT literal' to 'DINT': the value does not fit in DINT; DINT holds -2147483648 to 2147483647
+    ---'
+    ");
+}
+
+// A radix literal is a bit pattern, so nine bits do not fit a SINT, where
+// eight do. A sign makes it a value again: -(16#FF) is -255.
+#[rstest]
+fn invalid_radix_literal_wider_than_its_signed_type(mut with_db: RootDatabase) {
+    let source = r#"
+        PROGRAM P
+        VAR s : SINT; i : INT; END_VAR
+            s := SINT#16#1FF;
+            i := 16#1_0000;
+            s := -(16#FF);
+        END_PROGRAM
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0306] Error: invalid literal
+       ,-[ file:///test0.st:4:18 ]
+       |
+     4 |             s := SINT#16#1FF;
+       |                  ^^^^^|^^^^^
+       |                       `------- cannot infer 'SINT literal' to 'SINT': the value does not fit in SINT; a radix literal is a bit pattern, and SINT has 8 bits
+    ---'
+    [E0306] Error: invalid literal
+       ,-[ file:///test0.st:5:18 ]
+       |
+     3 |         VAR s : SINT; i : INT; END_VAR
+       |                       |
+       |                       `-- type is declared by variable 'i' here
+       |
+     5 |             i := 16#1_0000;
+       |                  ^^^^|^^^^
+       |                      `------ cannot infer '<integer>' to 'INT': the value does not fit in INT; a radix literal is a bit pattern, and INT has 16 bits
+    ---'
+    [E0306] Error: invalid literal
+       ,-[ file:///test0.st:6:18 ]
+       |
+     3 |         VAR s : SINT; i : INT; END_VAR
+       |             |
+       |             `-- type is declared by variable 's' here
+       |
+     6 |             s := -(16#FF);
+       |                  ^^^^|^^^
+       |                      `----- cannot infer '<unary expression>' to 'SINT': the value does not fit in SINT; SINT holds -128 to 127
     ---'
     ");
 }

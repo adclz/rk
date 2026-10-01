@@ -73,6 +73,42 @@ fn test_execute_integer_literal_in_float_context(mut with_db: db::RootDatabase) 
     assert_eq!(result, 5.0, "((3.0+2) + 3.0*2 - 1) / 2 = 5.0");
 }
 
+/// A radix literal is a bit pattern of its type's width: `SINT#16#FF` is -1
+/// and below zero, in a subrange's bounds and as an enum's storage too.
+/// Lowering read every SINT and INT literal as 32 bits, which would have
+/// stored 255.
+#[rstest]
+fn test_execute_radix_literal_is_a_bit_pattern(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE Code : SINT (Bad := 16#FF, Ok); END_TYPE
+
+        FUNCTION test : INT
+        VAR
+            s : SINT := SINT#16#FF;
+            t : SINT := 16#80;
+            i : INT := INT#16#FFFF;
+            n : SINT (-10..10) := 16#FF;
+            m : SINT;
+            c : Code := Code#Bad;
+        END_VAR
+            m := -(16#80);
+            IF s = -1 AND s < 0 AND s = 16#FF AND t = -128 AND i = -1 AND n = -1 AND m = -128 THEN
+                test := 1;
+            END_IF;
+            CASE c OF
+                Code#Bad: test := test + 10;
+                Code#Ok:  test := test + 100;
+            END_CASE;
+        END_FUNCTION
+    "#;
+
+    let result: i32 = super::run(&mut with_db, source, "test", ());
+    assert_eq!(
+        result, 11,
+        "every value is -1 or -128, and Code#Bad is its own arm"
+    );
+}
+
 #[rstest]
 /// A subrange-typed FOR control variable executes: `Small : INT (0..10)`
 /// normalizes to INT everywhere the loop machinery looks. This was an ICE —
