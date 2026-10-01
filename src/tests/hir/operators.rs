@@ -30,12 +30,20 @@ fn invalid_comparison_of_aggregates(mut with_db: RootDatabase) {
     [E0305] Error: type mismatch
         ,-[ file:///test0.st:12:18 ]
         |
+      2 |         TYPE Pt : STRUCT x : INT; END_STRUCT; END_TYPE
+        |                   ^^^^^^^^^^^^^|^^^^^^^^^^^^
+        |                                `-------------- type is defined by 'Pt' here
+        |
      12 |             r := p = q;
         |                  ^^|^^
-        |                    `---- operator '=' cannot be applied to type 'STRUCT'
+        |                    `---- operator '=' cannot be applied to type 'Pt'
     ----'
     [E0305] Error: type mismatch
         ,-[ file:///test0.st:13:18 ]
+        |
+      8 |             a : ARRAY[0..1] OF INT; b : ARRAY[0..1] OF INT;
+        |             |
+        |             `-- type is declared by variable 'a' here
         |
      13 |             r := a <> b;
         |                  ^^^|^^
@@ -137,6 +145,10 @@ fn invalid_sign_on_a_type_without_arithmetic(mut with_db: RootDatabase) {
     [E0305] Error: type mismatch
        ,-[ file:///test0.st:9:18 ]
        |
+     6 |             b : BOOL; e : Color; s : STRING; c : CHAR; d : DATE;
+       |             |
+       |             `-- type is declared by variable 'b' here
+       |
      9 |             b := -b;
        |                  ^|
        |                   `-- operator '-' cannot be applied to type 'BOOL'
@@ -144,12 +156,20 @@ fn invalid_sign_on_a_type_without_arithmetic(mut with_db: RootDatabase) {
     [E0305] Error: type mismatch
         ,-[ file:///test0.st:10:18 ]
         |
+      2 |         TYPE Color : (Red, Green); END_TYPE
+        |                      ^^^^^^|^^^^^
+        |                            `------- type is defined by 'Color' here
+        |
      10 |             e := -e;
         |                  ^|
-        |                   `-- operator '-' cannot be applied to type 'ENUM'
+        |                   `-- operator '-' cannot be applied to type 'Color'
     ----'
     [E0305] Error: type mismatch
         ,-[ file:///test0.st:11:18 ]
+        |
+      6 |             b : BOOL; e : Color; s : STRING; c : CHAR; d : DATE;
+        |                                  |
+        |                                  `-- type is declared by variable 's' here
         |
      11 |             s := -s;
         |                  ^|
@@ -158,6 +178,10 @@ fn invalid_sign_on_a_type_without_arithmetic(mut with_db: RootDatabase) {
     [E0305] Error: type mismatch
         ,-[ file:///test0.st:12:18 ]
         |
+      6 |             b : BOOL; e : Color; s : STRING; c : CHAR; d : DATE;
+        |                                              |
+        |                                              `-- type is declared by variable 'c' here
+        |
      12 |             c := -c;
         |                  ^|
         |                   `-- operator '-' cannot be applied to type 'CHAR'
@@ -165,12 +189,20 @@ fn invalid_sign_on_a_type_without_arithmetic(mut with_db: RootDatabase) {
     [E0305] Error: type mismatch
         ,-[ file:///test0.st:13:18 ]
         |
+      6 |             b : BOOL; e : Color; s : STRING; c : CHAR; d : DATE;
+        |                                                        |
+        |                                                        `-- type is declared by variable 'd' here
+        |
      13 |             d := -d;
         |                  ^|
         |                   `-- operator '-' cannot be applied to type 'DATE'
     ----'
     [E0305] Error: type mismatch
         ,-[ file:///test0.st:14:18 ]
+        |
+      7 |             a : ARRAY[0..1] OF INT;
+        |             |
+        |             `-- type is declared by variable 'a' here
         |
      14 |             a := -a;
         |                  ^|

@@ -362,38 +362,49 @@ END_FUNCTION_BLOCK"#;
 #[rstest]
 fn invalid_case_selector_type(mut with_db: RootDatabase) {
     let source = r#"
+TYPE Pt : STRUCT x : INT; END_STRUCT; END_TYPE
 FUNCTION F : INT
-VAR r : REAL; b : BOOL; t : TIME; END_VAR
+VAR r : REAL; b : BOOL; t : TIME; p : Pt; END_VAR
     CASE r OF 1: F := 1; END_CASE;
     CASE b OF TRUE: F := 2; END_CASE;
     CASE t OF T#1s: F := 3; END_CASE;
+    CASE p OF 1: F := 4; END_CASE;
 END_FUNCTION"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     [E1207] Error: CASE selector of the wrong type
-       ,-[ file:///test0.st:4:10 ]
+       ,-[ file:///test0.st:5:10 ]
        |
-     4 |     CASE r OF 1: F := 1; END_CASE;
+     5 |     CASE r OF 1: F := 1; END_CASE;
        |          |
        |          `-- 'r' is 'REAL', and CASE branches on an integer, an enum or a STRING
        |
        | Note: branch with IF on anything else
     ---'
     [E1207] Error: CASE selector of the wrong type
-       ,-[ file:///test0.st:5:10 ]
+       ,-[ file:///test0.st:6:10 ]
        |
-     5 |     CASE b OF TRUE: F := 2; END_CASE;
+     6 |     CASE b OF TRUE: F := 2; END_CASE;
        |          |
        |          `-- 'b' is 'BOOL', and CASE branches on an integer, an enum or a STRING
        |
        | Note: branch with IF on anything else
     ---'
     [E1207] Error: CASE selector of the wrong type
-       ,-[ file:///test0.st:6:10 ]
+       ,-[ file:///test0.st:7:10 ]
        |
-     6 |     CASE t OF T#1s: F := 3; END_CASE;
+     7 |     CASE t OF T#1s: F := 3; END_CASE;
        |          |
        |          `-- 't' is 'TIME', and CASE branches on an integer, an enum or a STRING
+       |
+       | Note: branch with IF on anything else
+    ---'
+    [E1207] Error: CASE selector of the wrong type
+       ,-[ file:///test0.st:8:10 ]
+       |
+     8 |     CASE p OF 1: F := 4; END_CASE;
+       |          |
+       |          `-- 'p' is 'Pt', and CASE branches on an integer, an enum or a STRING
        |
        | Note: branch with IF on anything else
     ---'

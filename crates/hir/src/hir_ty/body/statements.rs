@@ -769,9 +769,8 @@ impl<'db> StmtsResolverCtx<'db> {
                     // CASE branches on an integer, a bit string, an enum or a
                     // STRING. Another selector is refused once, and its labels
                     // are not checked against it.
-                    let selector = ctx
-                        .type_of_expr_with_adjustments(db, *condition)
-                        .normalize(db);
+                    let declared = ctx.type_of_expr_with_adjustments(db, *condition);
+                    let selector = declared.normalize(db);
                     let selectable = selector.is_never()
                         || selector.is_signed_integer()
                         || selector.is_unsigned_integer()
@@ -787,7 +786,7 @@ impl<'db> StmtsResolverCtx<'db> {
                         ctx.errors.push(
                             crate::check::errors::e12_control_flow::ControlFlowError::CaseSelectorNotSupported {
                                 selector: CallSite::from_scoped(db, condition),
-                                ty: selector,
+                                ty: declared,
                             }
                             .to_diagnostic(db, ctx.scope.file(db)),
                         );

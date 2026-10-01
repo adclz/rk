@@ -553,9 +553,9 @@ impl<'db> InferExprCtx<'db> {
                     // A comparison reads one value on each side: an elementary
                     // value, an enum, a reference. A STRUCT, an ARRAY, an
                     // instance or an interface has no single value to compare.
-                    let operand = inference_results
-                        .type_of_expr_with_adjustments(db, *left)
-                        .normalize(db);
+                    // Named as declared: `Pt`, not the STRUCT behind it.
+                    let declared = inference_results.type_of_expr_with_adjustments(db, *left);
+                    let operand = declared.normalize(db);
                     let comparable = operand.is_never()
                         || operand.has_infer()
                         || matches!(
@@ -570,7 +570,7 @@ impl<'db> InferExprCtx<'db> {
                         inference_results.errors.push(
                             TypeError::UnsupportedOperator {
                                 call_site: expr.as_call_site(db),
-                                typ: operand,
+                                typ: declared,
                                 operator: operator.as_str(),
                             }
                             .to_diagnostic(db, inference_results.scope.file(db)),
@@ -628,15 +628,14 @@ impl<'db> InferExprCtx<'db> {
                         // A sign takes what binary `-` takes: numbers, bit
                         // strings and durations. An untyped literal is
                         // checked once its context types it.
-                        let operand = inference_results
-                            .type_of_expr_with_adjustments(db, *expr)
-                            .normalize(db);
+                        let declared = inference_results.type_of_expr_with_adjustments(db, *expr);
+                        let operand = declared.normalize(db);
                         if !operand.has_infer() && !operand.is_never() && !operand.supports_add(db)
                         {
                             inference_results.errors.push(
                                 TypeError::UnsupportedOperator {
                                     call_site: node.as_call_site(db),
-                                    typ: operand,
+                                    typ: declared,
                                     operator: match operator {
                                         UnaryOperatorKind::Minus => "-",
                                         _ => "+",
