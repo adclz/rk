@@ -1601,3 +1601,88 @@ END_FUNCTION_BLOCK
     ----'
     ");
 }
+
+/// FINAL and OVERRIDE are read as flags: a method carrying both is FINAL,
+/// and is an OVERRIDE. The rules compared the whole set and missed it.
+#[rstest]
+fn final_and_override_together_are_both(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK A
+    METHOD PUBLIC M : INT M := 1; END_METHOD
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK B EXTENDS A
+    METHOD PUBLIC FINAL OVERRIDE M : INT M := 2; END_METHOD
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK C EXTENDS B
+    METHOD PUBLIC OVERRIDE M : INT M := 3; END_METHOD
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK X
+    METHOD PUBLIC FINAL N : INT N := 1; END_METHOD
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK Y EXTENDS X
+    METHOD PUBLIC FINAL OVERRIDE N : INT N := 2; END_METHOD
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK Z EXTENDS A
+    METHOD PUBLIC FINAL M : INT M := 3; END_METHOD
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK Lone
+    METHOD PUBLIC FINAL OVERRIDE L : INT L := 1; END_METHOD
+END_FUNCTION_BLOCK
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1114] Error: override violation
+        ,-[ file:///test0.st:11:28 ]
+        |
+      7 |     METHOD PUBLIC FINAL OVERRIDE M : INT M := 2; END_METHOD
+        |                                  |
+        |                                  `-- FINAL method 'M' is declared here
+        |
+     11 |     METHOD PUBLIC OVERRIDE M : INT M := 3; END_METHOD
+        |                            |
+        |                            `-- cannot override FINAL method 'M'
+        |
+        | Note: methods marked as FINAL cannot be overridden
+    ----'
+    [E1114] Error: override violation
+        ,-[ file:///test0.st:19:34 ]
+        |
+     15 |     METHOD PUBLIC FINAL N : INT N := 1; END_METHOD
+        |                         |
+        |                         `-- FINAL method 'N' is declared here
+        |
+     19 |     METHOD PUBLIC FINAL OVERRIDE N : INT N := 2; END_METHOD
+        |                                  |
+        |                                  `-- cannot override FINAL method 'N'
+        |
+        | Note: methods marked as FINAL cannot be overridden
+    ----'
+    [E1112] Error: override violation
+        ,-[ file:///test0.st:23:25 ]
+        |
+      3 |     METHOD PUBLIC M : INT M := 1; END_METHOD
+        |                   |
+        |                   `-- base method 'M' is declared here
+        |
+     23 |     METHOD PUBLIC FINAL M : INT M := 3; END_METHOD
+        |                         |
+        |                         `-- missing OVERRIDE keyword for method 'M'
+        |
+        | Note: OVERRIDE is required when redefining a method with the same signature from a base class or function block
+    ----'
+    [E1113] Error: inheritance violation
+        ,-[ file:///test0.st:27:34 ]
+        |
+     27 |     METHOD PUBLIC FINAL OVERRIDE L : INT L := 1; END_METHOD
+        |                                  |
+        |                                  `-- invalid usage of OVERRIDE for method 'L'
+        |
+        | Note: OVERRIDE is only valid when the method is inherited
+    ----'
+    ");
+}

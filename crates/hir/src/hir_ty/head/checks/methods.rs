@@ -110,33 +110,35 @@ impl<'db> InitInference<'db> {
                 continue;
             };
             check_signature(db, base_method, *own, &mut self.errors);
-            match (base_method.get_modifiers(db), own.get_modifiers(db)) {
-                (Modifier::FINAL, Modifier::OVERRIDE) => {
-                    self.errors.push(
-                        OopError::OverrideFinalMethod {
-                            base_method,
-                            derived_method: *own,
-                        }
-                        .to_diagnostic(db, self.scope.file(db)),
-                    );
-                }
-                // OVERRIDE is required when the base method is a concrete
-                // (non-abstract) declared method. For interface prototypes and
-                // abstract methods it is optional: the implementer must
-                // provide a body regardless.
-                (_, Modifier::EMPTY)
-                    if !base_method.is_prototype()
-                        && base_method.get_modifiers(db) != Modifier::ABSTRACT =>
-                {
-                    self.errors.push(
-                        OopError::MissingOverride {
-                            base_method,
-                            derived_method: *own,
-                        }
-                        .to_diagnostic(db, self.scope.file(db)),
-                    );
-                }
-                _ => {}
+            // Each rule reads the flag it is about: `FINAL OVERRIDE` is both,
+            // and a set compared whole missed it on either side.
+            let (base_modifiers, own_modifiers) =
+                (base_method.get_modifiers(db), own.get_modifiers(db));
+            // A FINAL method closes its name, OVERRIDE or not.
+            if base_modifiers.contains(Modifier::FINAL) {
+                self.errors.push(
+                    OopError::OverrideFinalMethod {
+                        base_method,
+                        derived_method: *own,
+                    }
+                    .to_diagnostic(db, self.scope.file(db)),
+                );
+            }
+            // OVERRIDE is required when the base method is a concrete
+            // (non-abstract) declared method. For interface prototypes and
+            // abstract methods it is optional: the implementer must
+            // provide a body regardless.
+            if !own_modifiers.contains(Modifier::OVERRIDE)
+                && !base_method.is_prototype()
+                && !base_modifiers.contains(Modifier::ABSTRACT)
+            {
+                self.errors.push(
+                    OopError::MissingOverride {
+                        base_method,
+                        derived_method: *own,
+                    }
+                    .to_diagnostic(db, self.scope.file(db)),
+                );
             }
         }
 
@@ -200,7 +202,7 @@ impl<'db> InitInference<'db> {
                     .to_diagnostic(db, self.scope.file(db)),
                 );
             }
-            if let Modifier::ABSTRACT = method.get_modifiers(db)
+            if method.get_modifiers(db).contains(Modifier::ABSTRACT)
                 && !implementer.modifier(db).contains(Modifier::ABSTRACT)
             {
                 self.errors.push(
@@ -215,7 +217,8 @@ impl<'db> InitInference<'db> {
 
         // OVERRIDE with nothing to override.
         for (name, own) in declared_methods {
-            if own.get_modifiers(db) == Modifier::OVERRIDE && !members.overridden.contains_key(name)
+            if own.get_modifiers(db).contains(Modifier::OVERRIDE)
+                && !members.overridden.contains_key(name)
             {
                 self.errors.push(
                     OopError::EmptyOverride { base_method: *own }
