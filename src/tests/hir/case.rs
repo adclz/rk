@@ -479,3 +479,24 @@ END_FUNCTION"#;
     ---'
     ");
 }
+
+// A radix literal right before a label's colon took the colon in: `16#FF:`
+// was a syntax error, where `16#FF :` was not.
+#[rstest]
+fn valid_case_on_radix_labels(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION Kind : INT
+VAR_INPUT v : BYTE; END_VAR
+    CASE v OF
+        16#FF: Kind := 1;
+        2#0001: Kind := 2;
+        8#17: Kind := 3;
+        16#20..16#2F: Kind := 4;
+        BYTE#16#30: Kind := 5;
+    ELSE
+        Kind := 0;
+    END_CASE;
+END_FUNCTION"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}

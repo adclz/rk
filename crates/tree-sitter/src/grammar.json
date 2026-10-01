@@ -1233,7 +1233,7 @@
           },
           {
             "type": "PATTERN",
-            "value": "[?:_01]*"
+            "value": "_?[01][_01]*"
           }
         ]
       }
@@ -1249,7 +1249,7 @@
           },
           {
             "type": "PATTERN",
-            "value": "[?:_0-7]*"
+            "value": "_?[0-7][_0-7]*"
           }
         ]
       }
@@ -1265,7 +1265,7 @@
           },
           {
             "type": "PATTERN",
-            "value": "[?:_0-9a-fA-F]*"
+            "value": "_?[0-9a-fA-F][_0-9a-fA-F]*"
           }
         ]
       }
@@ -12364,10 +12364,6 @@
     "fbd_network": {
       "type": "STRING",
       "value": "todo_fbd"
-    },
-    "_hex_digit": {
-      "type": "PATTERN",
-      "value": "[?:_0-9a-fA-F]"
     },
     "identifier": {
       "type": "PATTERN",

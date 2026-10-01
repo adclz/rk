@@ -402,6 +402,34 @@ fn invalid_radix_literal_wider_than_its_signed_type(mut with_db: RootDatabase) {
     ");
 }
 
+// A radix literal has at least one digit. `16#` and `16#1?2` were lexed
+// whole and refused as numbers that did not parse.
+#[rstest]
+fn invalid_radix_literal_without_digits(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION F : WORD
+            F := 16#;
+            F := 16#1?2;
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0001] Error: syntax
+       ,-[ file:///test0.st:3:20 ]
+       |
+     3 |             F := 16#;
+       |                    |
+       |                    `-- Unexpected token(s): '#'
+    ---'
+    [E0001] Error: syntax
+       ,-[ file:///test0.st:4:22 ]
+       |
+     4 |             F := 16#1?2;
+       |                      ^|
+       |                       `-- Unexpected token(s): '?2'
+    ---'
+    ");
+}
+
 // A REAL or an LREAL too large for its type parsed to infinity.
 #[rstest]
 fn invalid_real_literal_past_its_range(mut with_db: RootDatabase) {
