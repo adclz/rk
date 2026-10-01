@@ -371,7 +371,7 @@ fn process_call<'db>(
 /// `SUPER.m()` the base's copy on this instance, `inst.m()` and
 /// `THIS.inner.m()` the method of the member's type, after indexing and
 /// dereferencing.
-fn method_target<'db>(
+pub(crate) fn method_target<'db>(
     db: &'db dyn WorkspaceDataBase,
     fc: FuncCall<'db>,
     resolved: MethodDecl<'db>,

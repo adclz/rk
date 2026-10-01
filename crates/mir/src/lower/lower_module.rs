@@ -170,16 +170,27 @@ fn lower_module_from_pous<'db>(
         super::mono_iface::collect_iface_instantiations(db, all_pous, all_programs);
     let no_rewrites = super::mono_iface::IfaceCallRewrites::default();
 
-    // Phase C: one specialization per (variadic function, argument count)
-    // called; call sites re-read the resolution in `variadic_arity_of`.
+    // Phase C: one specialization per (variadic function or method, argument
+    // count) called; call sites re-read the resolution in `variadic_arity_of`.
     let (arity_instances, _arity_call_rewrites) =
         super::mono_arity::collect_arity_instantiations(db, all_pous, all_programs);
     let mut arity_by_func: FxHashMap<
         hir::hir_def::pous::function::Function<'db>,
         Vec<&super::mono_arity::ArityInstance<'db>>,
     > = FxHashMap::default();
+    let mut arity_methods_by_owner: FxHashMap<
+        Pou<'db>,
+        Vec<&super::mono_arity::ArityInstance<'db>>,
+    > = FxHashMap::default();
     for inst in &arity_instances {
-        arity_by_func.entry(inst.func).or_default().push(inst);
+        match inst.target {
+            super::mono_arity::ArityTarget::Function(f) => {
+                arity_by_func.entry(f).or_default().push(inst);
+            }
+            super::mono_arity::ArityTarget::Method { owner, .. } => {
+                arity_methods_by_owner.entry(owner).or_default().push(inst);
+            }
+        }
     }
     let mut iface_by_func: FxHashMap<
         hir::hir_def::pous::function::Function<'db>,
@@ -390,6 +401,10 @@ fn lower_module_from_pous<'db>(
                         .get(&Pou::FunctionBlock(*fb))
                         .map(Vec::as_slice)
                         .unwrap_or(&[]),
+                    arity_methods_by_owner
+                        .get(&Pou::FunctionBlock(*fb))
+                        .map(Vec::as_slice)
+                        .unwrap_or(&[]),
                 )?;
                 for mf in method_funcs {
                     at_pou(
@@ -450,6 +465,10 @@ fn lower_module_from_pous<'db>(
                         .get(&Pou::Class(*class))
                         .unwrap_or(&no_rewrites),
                     iface_methods_by_owner
+                        .get(&Pou::Class(*class))
+                        .map(Vec::as_slice)
+                        .unwrap_or(&[]),
+                    arity_methods_by_owner
                         .get(&Pou::Class(*class))
                         .map(Vec::as_slice)
                         .unwrap_or(&[]),

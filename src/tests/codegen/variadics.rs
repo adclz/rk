@@ -230,3 +230,109 @@ fn positional_arguments_reach_the_pack_whatever_the_order(mut with_db: db::RootD
     let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 606, "both spellings fold (1,2,3) = 6");
 }
+
+/// A variadic METHOD is specialized per argument count like a FUNCTION:
+/// called at two counts, bare inside its class and on an instance, it folds
+/// over each pack. One never called is emitted at none; lowered once,
+/// generically, it stopped the build with an internal error even uncalled.
+#[rstest]
+fn a_variadic_method_is_specialized_per_argument_count(mut with_db: db::RootDatabase) {
+    let source = r#"
+        CLASS Acc
+            METHOD PUBLIC Sum : DINT VAR_INPUT args : DINT...; END_VAR
+                Sum := ...args+;
+            END_METHOD
+            METHOD PUBLIC Both : DINT
+                Both := Sum(1) + Sum(10, 20);
+            END_METHOD
+        END_CLASS
+
+        FUNCTION_BLOCK Spare
+            METHOD PUBLIC Unused : DINT VAR_INPUT args : DINT...; END_VAR
+                Unused := ...args*;
+            END_METHOD
+        END_FUNCTION_BLOCK
+
+        FUNCTION test : DINT
+        VAR a : Acc; s : Spare; END_VAR
+            test := a.Sum(1, 2, 3) * 100 + a.Both();
+        END_FUNCTION
+    "#;
+    let result: i32 = super::run(&mut with_db, source, "test", ());
+    assert_eq!(result, 631, "6 * 100 + 1 + 30");
+}
+
+/// A variadic method runs as the copy of the instance that calls it: one
+/// inherited, an override, `THIS.Sum` in a base's code run on a derived
+/// instance (the override), and `SUPER.Sum` (the base's).
+#[rstest]
+fn a_variadic_method_runs_as_the_instances_copy(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Base
+            METHOD PUBLIC Sum : DINT VAR_INPUT args : DINT...; END_VAR
+                Sum := ...args+;
+            END_METHOD
+            METHOD PUBLIC Twice : DINT
+                Twice := THIS.Sum(1, 2) * 2;
+            END_METHOD
+        END_FUNCTION_BLOCK
+
+        FUNCTION_BLOCK Derived EXTENDS Base
+            METHOD PUBLIC OVERRIDE Sum : DINT VAR_INPUT args : DINT...; END_VAR
+                Sum := ...args+ + 100;
+            END_METHOD
+            METHOD PUBLIC Plain : DINT
+                Plain := SUPER.Sum(4, 5, 6);
+            END_METHOD
+        END_FUNCTION_BLOCK
+
+        FUNCTION_BLOCK Child EXTENDS Base
+        END_FUNCTION_BLOCK
+
+        FUNCTION test : DINT
+        VAR c : Child; d : Derived; END_VAR
+            test := c.Sum(1, 2) + d.Plain() * 10 + d.Sum(1) * 1000 + d.Twice() * 1000000;
+        END_FUNCTION
+    "#;
+    let result: i32 = super::run(&mut with_db, source, "test", ());
+    assert_eq!(result, 206101153, "3, 15, 101 and (3 + 100) * 2");
+}
+
+/// A call through an interface runs the copy of whichever implementer is
+/// bound, at the call's argument count: each implementer has one, an
+/// implementer deriving from another included.
+#[rstest]
+fn a_variadic_call_through_an_interface_runs_the_implementers_copy(mut with_db: db::RootDatabase) {
+    let source = r#"
+        INTERFACE ISum
+            METHOD Sum : DINT VAR_INPUT args : DINT...; END_VAR END_METHOD
+        END_INTERFACE
+
+        FUNCTION_BLOCK Acc IMPLEMENTS ISum
+            METHOD PUBLIC Sum : DINT VAR_INPUT args : DINT...; END_VAR
+                Sum := ...args+;
+            END_METHOD
+        END_FUNCTION_BLOCK
+
+        FUNCTION_BLOCK Child EXTENDS Acc
+        END_FUNCTION_BLOCK
+
+        CLASS Other IMPLEMENTS ISum
+            METHOD PUBLIC Sum : DINT VAR_INPUT args : DINT...; END_VAR
+                Sum := ...args+ * 1000;
+            END_METHOD
+        END_CLASS
+
+        FUNCTION through : DINT
+        VAR_IN_OUT s : ISum; END_VAR
+            through := s.Sum(1, 2);
+        END_FUNCTION
+
+        FUNCTION test : DINT
+        VAR a : Acc; c : Child; o : Other; END_VAR
+            test := through(a) + through(c) * 10 + through(o);
+        END_FUNCTION
+    "#;
+    let result: i32 = super::run(&mut with_db, source, "test", ());
+    assert_eq!(result, 3033, "3 + 3 * 10 + 3 * 1000");
+}
