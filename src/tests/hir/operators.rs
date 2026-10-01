@@ -55,6 +55,35 @@ fn invalid_comparison_of_aggregates(mut with_db: RootDatabase) {
     ");
 }
 
+// Two interfaces are compared no more than two instances: it passed the
+// check, then stopped the build with an internal error.
+#[rstest]
+fn invalid_comparison_of_interfaces(mut with_db: RootDatabase) {
+    let source = r#"
+        INTERFACE I
+            METHOD M : INT END_METHOD
+        END_INTERFACE
+
+        FUNCTION Same : BOOL
+        VAR_IN_OUT i1 : I; i2 : I; END_VAR
+            Same := i1 = i2;
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0305] Error: type mismatch
+       ,-[ file:///test0.st:8:21 ]
+       |
+     2 |         INTERFACE I
+       |                   |
+       |                   `-- INTERFACE 'I' is defined here
+       |
+     8 |             Same := i1 = i2;
+       |                     ^^^|^^^
+       |                        `----- operator '=' cannot be applied to type 'I'
+    ---'
+    ");
+}
+
 // AND, OR and XOR combine bits, and a float has none to combine. It used to
 // build an invalid module.
 #[rstest]

@@ -550,15 +550,23 @@ impl<'db> InferExprCtx<'db> {
                         CallSite::from_scoped(db, right),
                     ));
                 } else {
-                    // A comparison reads one value on each side: a STRUCT, an
-                    // ARRAY or an instance has no single value to compare.
+                    // A comparison reads one value on each side: an elementary
+                    // value, an enum, a reference. A STRUCT, an ARRAY, an
+                    // instance or an interface has no single value to compare.
                     let operand = inference_results
                         .type_of_expr_with_adjustments(db, *left)
                         .normalize(db);
-                    if matches!(
-                        operand,
-                        Type::Struct(_) | Type::Array(_) | Type::FunctionBlock(_) | Type::Class(_)
-                    ) {
+                    let comparable = operand.is_never()
+                        || operand.has_infer()
+                        || matches!(
+                            operand,
+                            Type::Elementary(_)
+                                | Type::Enum(_)
+                                | Type::EnumVariant(..)
+                                | Type::RefTo(_)
+                                | Type::Null
+                        );
+                    if !comparable {
                         inference_results.errors.push(
                             TypeError::UnsupportedOperator {
                                 call_site: expr.as_call_site(db),
