@@ -3,7 +3,7 @@ use ide_diagnostic::IdeDiagnostic;
 use rustc_hash::FxHashMap;
 
 use crate::{
-    HasModifiers, HasName, HirNodeInfo, Modifier,
+    HasModifiers, HasName, HasVisibility, HirNodeInfo, Modifier, Visibility,
     check::errors::{ToIdeDiagnostic, e01_duplicates::DuplicateError, e11_oop::OopError},
     hir_def::{
         pous::{pou::Pou, variable::VariableDecl},
@@ -140,6 +140,17 @@ impl<'db> InitInference<'db> {
                     .to_diagnostic(db, self.scope.file(db)),
                 );
             }
+            // An INTERFACE's method is public, so is its implementation: a
+            // call through the interface reaches it from anywhere.
+            if base_method.is_prototype() && !is_public(own.get_visibility(db)) {
+                self.errors.push(
+                    OopError::ImplementationNotPublic {
+                        method: *own,
+                        interface: base.owner,
+                    }
+                    .to_diagnostic(db, self.scope.file(db)),
+                );
+            }
         }
 
         // An INTERFACE it names may be implemented by a method it inherits.
@@ -167,6 +178,15 @@ impl<'db> InitInference<'db> {
                 }
                 let mut found = Vec::new();
                 check_signature(db, prototype.method, inherited.method, &mut found);
+                if !is_public(inherited.method.get_visibility(db)) {
+                    found.push(
+                        OopError::ImplementationNotPublic {
+                            method: inherited.method,
+                            interface: prototype.owner,
+                        }
+                        .to_diagnostic(db, inherited.method.get_scope_id(db).file(db)),
+                    );
+                }
                 // The method is fine in its own POU: what is wrong is this one
                 // taking it as an implementation, so that is where it shows.
                 for mut diagnostic in found {
@@ -433,4 +453,9 @@ fn same_default<'db>(
         },
         _ => false,
     }
+}
+
+/// An access specifier that hides nothing: PUBLIC, or none written.
+fn is_public(visibility: Visibility) -> bool {
+    visibility.is_empty() || visibility.contains(Visibility::PUBLIC)
 }

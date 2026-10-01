@@ -280,6 +280,12 @@ pub enum OopError<'db> {
     AbstractMethodWithBody {
         method: MethodRef<'db>,
     },
+    /// A method implementing an INTERFACE's narrower than PUBLIC: a call
+    /// through the interface reached what its POU hides.
+    ImplementationNotPublic {
+        method: MethodRef<'db>,
+        interface: Pou<'db>,
+    },
 }
 
 impl<'db> ErrorCode for OopError<'db> {
@@ -320,6 +326,7 @@ impl<'db> ErrorCode for OopError<'db> {
             Self::SuperBodyWithoutBaseBody { .. } => "E1132",
             Self::SuperCallsAbstract { .. } => "E1133",
             Self::AbstractMethodWithBody { .. } => "E1134",
+            Self::ImplementationNotPublic { .. } => "E1135",
         }
     }
 
@@ -360,6 +367,7 @@ impl<'db> ErrorCode for OopError<'db> {
             Self::SuperBodyWithoutBaseBody { .. } => "invalid use of SUPER or THIS",
             Self::SuperCallsAbstract { .. } => "invalid use of SUPER or THIS",
             Self::AbstractMethodWithBody { .. } => "inheritance violation",
+            Self::ImplementationNotPublic { .. } => "inheritance violation",
         }
     }
 }
@@ -1209,6 +1217,39 @@ impl<'db> ToIdeDiagnostic<'db> for OopError<'db> {
                 diag.with_note(
                     "a derived block implements it; without ABSTRACT, this body is the method's"
                         .into(),
+                );
+                diag
+            }
+            Self::ImplementationNotPublic { method, interface } => {
+                use crate::{HasVisibility, Visibility};
+                let visibility = method.get_visibility(db);
+                let written = if visibility.contains(Visibility::PRIVATE) {
+                    "PRIVATE"
+                } else if visibility.contains(Visibility::PROTECTED) {
+                    "PROTECTED"
+                } else {
+                    "INTERNAL"
+                };
+                let interface_name = interface.get_name_with_case(db).text(db).to_string();
+                let mut diag = diag()
+                    .message(format!(
+                        "method '{}' implements INTERFACE '{interface_name}' and must be PUBLIC, \
+                         not {written}",
+                        method.get_name_with_case(db).text(db),
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(
+                        crate::denormalize(db, file, &method.get_name_span(db)).unwrap_or_default(),
+                    )
+                    .call();
+                diag.with_related(Related::new(
+                    format!("INTERFACE '{interface_name}' is declared here"),
+                    interface.get_scope_id(db).file(db),
+                    interface.get_name_span(db),
+                ));
+                diag.with_note(
+                    "a call through the interface reaches it from anywhere the interface is".into(),
                 );
                 diag
             }

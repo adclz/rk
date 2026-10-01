@@ -22,6 +22,8 @@
 
 `E1002` Cannot access a PROTECTED item outside the POU or its derived POUs.
 
+`E1135` A method implementing an interface is PRIVATE, PROTECTED or INTERNAL: an interface's methods are public.
+
 `E1108` `SUPER()` not valid in this context.
 
 `E1132` `SUPER()` in a function block that extends a CLASS, which has no body to run.

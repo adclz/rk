@@ -1315,8 +1315,9 @@ END_FUNCTION
 }
 
 /// An INTERFACE met by an inherited method is checked against it too, at
-/// the IMPLEMENTS that asks for it. It used to pass, and the call through
-/// the interface read an INT where it promised an LREAL: an invalid module.
+/// the IMPLEMENTS that asks for it: its signature, and its visibility. It
+/// used to pass, and the call through the interface read an INT where it
+/// promised an LREAL: an invalid module.
 #[rstest]
 fn an_inherited_implementation_is_checked_against_the_interface(mut with_db: RootDatabase) {
     let source = r#"
@@ -1331,6 +1332,15 @@ FUNCTION_BLOCK Base
 END_FUNCTION_BLOCK
 
 FUNCTION_BLOCK Sensor EXTENDS Base IMPLEMENTS IMeasure
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK Guarded
+    METHOD PROTECTED Value : LREAL
+        Value := 3.0;
+    END_METHOD
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK Exposed EXTENDS Guarded IMPLEMENTS IMeasure
 END_FUNCTION_BLOCK
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
@@ -1350,6 +1360,23 @@ END_FUNCTION_BLOCK
         |                                                   `----- method 'Value' has an incompatible return type: expected 'LREAL', got 'INT'
         |
         | Note: the return type must match the interface method's
+    ----'
+    [E1135] Error: inheritance violation
+        ,-[ file:///test0.st:21:51 ]
+        |
+      2 | INTERFACE IMeasure
+        |           ^^^^|^^^
+        |               `----- INTERFACE 'IMeasure' is declared here
+        |
+     16 |     METHOD PROTECTED Value : LREAL
+        |                      ^^|^^
+        |                        `---- 'Value' is inherited from 'Guarded', declared here
+        |
+     21 | FUNCTION_BLOCK Exposed EXTENDS Guarded IMPLEMENTS IMeasure
+        |                                                   ^^^^|^^^
+        |                                                       `----- method 'Value' implements INTERFACE 'IMeasure' and must be PUBLIC, not PROTECTED
+        |
+        | Note: a call through the interface reaches it from anywhere the interface is
     ----'
     ");
 }
@@ -1839,6 +1866,76 @@ END_FUNCTION_BLOCK
         |                                  `-- invalid usage of OVERRIDE for method 'L'
         |
         | Note: OVERRIDE is only valid when the method is inherited
+    ----'
+    ");
+}
+
+/// An INTERFACE's methods are public, and so is the method implementing
+/// one: through the interface, a PRIVATE, PROTECTED or INTERNAL one was
+/// called from anywhere. A method with no specifier is PUBLIC in rk, where
+/// the standard says PROTECTED, so it implements one.
+#[rstest]
+fn an_interface_method_implemented_without_public_is_refused(mut with_db: RootDatabase) {
+    let source = r#"
+INTERFACE IShow
+    METHOD Show : INT END_METHOD
+END_INTERFACE
+
+FUNCTION_BLOCK Hidden IMPLEMENTS IShow
+    METHOD PRIVATE Show : INT Show := 7; END_METHOD
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK Guarded IMPLEMENTS IShow
+    METHOD PROTECTED Show : INT Show := 7; END_METHOD
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK Local IMPLEMENTS IShow
+    METHOD INTERNAL Show : INT Show := 7; END_METHOD
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK Open IMPLEMENTS IShow
+    METHOD Show : INT Show := 8; END_METHOD
+END_FUNCTION_BLOCK
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1135] Error: inheritance violation
+       ,-[ file:///test0.st:7:20 ]
+       |
+     2 | INTERFACE IShow
+       |           ^^|^^
+       |             `---- INTERFACE 'IShow' is declared here
+       |
+     7 |     METHOD PRIVATE Show : INT Show := 7; END_METHOD
+       |                    ^^|^
+       |                      `--- method 'Show' implements INTERFACE 'IShow' and must be PUBLIC, not PRIVATE
+       |
+       | Note: a call through the interface reaches it from anywhere the interface is
+    ---'
+    [E1135] Error: inheritance violation
+        ,-[ file:///test0.st:11:22 ]
+        |
+      2 | INTERFACE IShow
+        |           ^^|^^
+        |             `---- INTERFACE 'IShow' is declared here
+        |
+     11 |     METHOD PROTECTED Show : INT Show := 7; END_METHOD
+        |                      ^^|^
+        |                        `--- method 'Show' implements INTERFACE 'IShow' and must be PUBLIC, not PROTECTED
+        |
+        | Note: a call through the interface reaches it from anywhere the interface is
+    ----'
+    [E1135] Error: inheritance violation
+        ,-[ file:///test0.st:15:21 ]
+        |
+      2 | INTERFACE IShow
+        |           ^^|^^
+        |             `---- INTERFACE 'IShow' is declared here
+        |
+     15 |     METHOD INTERNAL Show : INT Show := 7; END_METHOD
+        |                     ^^|^
+        |                       `--- method 'Show' implements INTERFACE 'IShow' and must be PUBLIC, not INTERNAL
+        |
+        | Note: a call through the interface reaches it from anywhere the interface is
     ----'
     ");
 }

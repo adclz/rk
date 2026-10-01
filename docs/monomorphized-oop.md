@@ -53,6 +53,7 @@ That is **monomorphization**, and it is why an interface cannot go anywhere its 
 - Not inside an `ARRAY`, a `REF_TO` or a `STRUCT` (`E1123`).
 
 A POU declares `IMPLEMENTS` itself: inheriting it from a base is not enough.
+The method that implements an interface's is `PUBLIC` (`E1135`), whether the POU declares it or inherits it.
 
 ## No virtual classes
 
