@@ -317,10 +317,14 @@ impl<'db> StmtsResolverCtx<'db> {
                     resolver.resolve_variable_access(db, *var, ctx);
                     let base_typ = ctx.get_type_of_variable_access(db, *var);
 
-                    if ctx.is_constant_access(db, *var) {
+                    // A field or an element of a constant is the constant.
+                    // A CONSTANT variable itself is refused by
+                    // `check_assignable`, below.
+                    if ctx.is_constant_place(db, *var) && !is_constant_variable(db, base_typ) {
                         ctx.errors.push(
                             InitError::AssignToConstant {
                                 access: CallSite::from_scoped(db, var),
+                                constant: ctx.constant_root(db, *var),
                             }
                             .to_diagnostic(db, ctx.scope.file(db)),
                         );
@@ -1102,6 +1106,12 @@ fn for_control_is_bare_identifier<'db>(
         return false;
     };
     matches!(path.expr(db), PathExprKind::VarAccess(_))
+}
+
+/// Whether `ty` is a CONSTANT variable written whole, which
+/// `check_assignable` refuses.
+pub(crate) fn is_constant_variable<'db>(db: &'db dyn WorkspaceDataBase, ty: Type<'db>) -> bool {
+    matches!(ty, Type::Variable((var, _)) if var.qualifier(db).contains(crate::Qualifier::CONSTANT))
 }
 
 /// Refuse a string literal wider than the destination it is assigned to.

@@ -327,6 +327,26 @@ impl<'db> InitInference<'db> {
                     .to_diagnostic(db, self.scope.file(db)),
                 );
             }
+            // An instance changes when it runs: its body and its methods
+            // write its variables. Declared CONSTANT, it changed anyway. Its
+            // VAR_EXTERNAL is the global's, refused where that is declared.
+            if var.qualifier(db).contains(crate::Qualifier::CONSTANT)
+                && var.kind(db) != crate::hir_def::pous::variable::VariableKind::External
+                && let block @ (Type::FunctionBlock(_) | Type::Class(_)) =
+                    innermost_element(db, var.spec(db)).infer(db).normalize(db)
+            {
+                self.errors.push(
+                    crate::check::errors::e04_init::InitError::ConstantInstance {
+                        var: *var,
+                        block: block.type_name(db),
+                        many: matches!(
+                            through_aliases(db, var.spec(db)).kind(db),
+                            SpecKind::Array(_)
+                        ),
+                    }
+                    .to_diagnostic(db, self.scope.file(db)),
+                );
+            }
             // A VAR_EXTERNAL aliases its VAR_GLOBAL's storage by NAME, so
             // the two declarations must agree about the TYPE, any type
             // (E0207). Cycle-safe here where a named global type resolves

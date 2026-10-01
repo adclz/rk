@@ -508,7 +508,9 @@ END_FUNCTION
        |
      9 |     MY_STRUCT.field1 := 42;
        |     ^^^^^^^^|^^^^^^^
-       |             `--------- cannot assign to constant type
+       |             `--------- cannot write to constant 'MY_STRUCT.field1'
+       |
+       | Note: a CONSTANT keeps the value it is declared with; copy it into a variable to change the copy
     ---'
     ");
 }
@@ -567,7 +569,9 @@ END_FUNCTION
         |
      19 |     consumer(val := MY_CONSTANTS.MAX_VAL);
         |                     ^^^^^^^^^^|^^^^^^^^^
-        |                               `----------- cannot assign to constant type
+        |                               `----------- cannot pass constant 'MY_CONSTANTS.MAX_VAL' to a VAR_IN_OUT
+        |
+        | Note: a VAR_IN_OUT could change it; pass it to a VAR_INPUT, or copy it into a variable and pass that
     ----'
     ");
 }
@@ -602,7 +606,9 @@ END_FUNCTION
         |
      19 |     consumer(MY_CONSTANTS.MAX_VAL);
         |              ^^^^^^^^^^|^^^^^^^^^
-        |                        `----------- cannot assign to constant type
+        |                        `----------- cannot pass constant 'MY_CONSTANTS.MAX_VAL' to a VAR_IN_OUT
+        |
+        | Note: a VAR_IN_OUT could change it; pass it to a VAR_INPUT, or copy it into a variable and pass that
     ----'
     ");
 }

@@ -774,6 +774,31 @@ fn check_by_ref_subrange<'db>(
     }
 }
 
+/// A constant passed where the callee could change it (E0404): a
+/// VAR_IN_OUT binds to it, and an output writes it.
+fn refuse_constant_argument<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    var: VariableDecl<'db>,
+    value: Expr<'db>,
+    ctx: &mut BodyInferenceResult<'db>,
+) {
+    if !(var.is_in_out(db) || var.is_output(db)) || !ctx.is_constant_value(db, value) {
+        return;
+    }
+    let access = CallSite::from_scoped(db, &value);
+    let constant = ctx.constant_root_value(db, value);
+    let err = if var.is_in_out(db) {
+        InitError::ConstantHandedOut {
+            access,
+            route: crate::check::errors::e04_init::ConstantRoute::InOut,
+            constant,
+        }
+    } else {
+        InitError::AssignToConstant { access, constant }
+    };
+    ctx.errors.push(err.to_diagnostic(db, ctx.scope.file(db)));
+}
+
 /// A STRING literal passed to an input it does not fit (E0314): the copy
 /// into the parameter cuts it, as an assignment's would.
 fn check_string_argument<'db>(
@@ -811,14 +836,7 @@ fn apply_param_coercion<'db>(
             coerce_with_var_target(db, resolver, value, var, ctx);
             check_string_argument(db, var, value, ctx);
 
-            if (var.is_in_out(db) || var.is_output(db)) && ctx.is_constant_type(db, value) {
-                ctx.errors.push(
-                    InitError::AssignToConstant {
-                        access: CallSite::from_scoped(db, &value),
-                    }
-                    .to_diagnostic(db, ctx.scope.file(db)),
-                );
-            }
+            refuse_constant_argument(db, var, value, ctx);
             if var.is_in_out(db) || var.is_output(db) {
                 refuse_input_location_target(db, value, ctx);
             }
@@ -863,14 +881,7 @@ fn apply_param_coercion<'db>(
             coerce_with_var_target(db, resolver, value, var, ctx);
             check_string_argument(db, var, value, ctx);
 
-            if (var.is_in_out(db) || var.is_output(db)) && ctx.is_constant_type(db, value) {
-                ctx.errors.push(
-                    InitError::AssignToConstant {
-                        access: CallSite::from_scoped(db, &value),
-                    }
-                    .to_diagnostic(db, ctx.scope.file(db)),
-                );
-            }
+            refuse_constant_argument(db, var, value, ctx);
             if var.is_in_out(db) || var.is_output(db) {
                 refuse_input_location_target(db, value, ctx);
             }
@@ -928,10 +939,18 @@ fn apply_param_coercion<'db>(
                 check_by_ref_subrange(db, var, rhs_typ, variable.get_span(db), true, ctx);
             }
 
-            if (var.is_in_out(db) || var.is_output(db)) && ctx.is_constant_access(db, variable) {
+            // A field or an element of a constant is the constant. A
+            // CONSTANT variable itself is refused by `check_assignable`.
+            if (var.is_in_out(db) || var.is_output(db))
+                && ctx.is_constant_place(db, variable)
+                && !crate::hir_ty::body::statements::is_constant_variable(db, rhs_typ)
+            {
                 ctx.errors.push(
-                    InitError::AssignToConstant { access: call_site }
-                        .to_diagnostic(db, ctx.scope.file(db)),
+                    InitError::AssignToConstant {
+                        access: call_site,
+                        constant: ctx.constant_root(db, variable),
+                    }
+                    .to_diagnostic(db, ctx.scope.file(db)),
                 );
             }
 

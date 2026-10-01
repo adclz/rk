@@ -47,6 +47,9 @@ pub enum InitError<'db> {
     },
     AssignToConstant {
         access: CallSite<'db>,
+        /// The CONSTANT variable written, or the one the place is part of;
+        /// `None` for a TYPE's constant.
+        constant: Option<crate::hir_def::pous::variable::VariableDecl<'db>>,
     },
     /// An instance's initializer names a member that has no value of its own
     /// for it to give.
@@ -55,6 +58,24 @@ pub enum InitError<'db> {
         /// The member, pointed at where it is declared.
         var: crate::hir_def::pous::variable::VariableDecl<'db>,
         kind: UninitializableMember,
+    },
+    /// A constant handed where it could be changed: to a VAR_IN_OUT, or to
+    /// `REF()`. Only a store into it was refused, and it changed through the
+    /// parameter or the pointer.
+    ConstantHandedOut {
+        access: CallSite<'db>,
+        route: ConstantRoute,
+        /// As in [`Self::AssignToConstant`].
+        constant: Option<crate::hir_def::pous::variable::VariableDecl<'db>>,
+    },
+    /// A FUNCTION_BLOCK or CLASS instance declared CONSTANT: its body and its
+    /// methods write its own variables, so it changed whenever it ran.
+    ConstantInstance {
+        var: crate::hir_def::pous::variable::VariableDecl<'db>,
+        /// The block it is an instance of, as named.
+        block: String,
+        /// An ARRAY of instances.
+        many: bool,
     },
     /// A FUNCTION's or METHOD's initializer reads one of its variables that
     /// gets its value after it, itself included. They take their values at
@@ -84,6 +105,13 @@ pub enum RefOrigin<'db> {
     Unknown,
 }
 
+/// Where a constant was handed out to be changed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, salsa::Update)]
+pub enum ConstantRoute {
+    InOut,
+    Reference,
+}
+
 /// A member an instance's initializer names but cannot set.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, salsa::Update)]
 pub enum UninitializableMember {
@@ -105,6 +133,7 @@ impl<'db> ErrorCode for InitError<'db> {
             Self::FunctionCallInInitExpression(_) => "E0402",
             Self::NoFieldOnElementaryType { .. } => "E0403",
             Self::AssignToConstant { .. } => "E0404",
+            Self::ConstantHandedOut { .. } | Self::ConstantInstance { .. } => "E0404",
             Self::UninitializableMember { .. } => "E0405",
             Self::ReadBeforeInitialized { .. } => "E0406",
         }
@@ -117,7 +146,9 @@ impl<'db> ErrorCode for InitError<'db> {
             }
             Self::FunctionCallInInitExpression(_) => "syntax",
             Self::NoFieldOnElementaryType { .. } => "invalid operation",
-            Self::AssignToConstant { .. } => "semantic violation",
+            Self::AssignToConstant { .. }
+            | Self::ConstantHandedOut { .. }
+            | Self::ConstantInstance { .. } => "semantic violation",
             Self::UninitializableMember { .. } => "member cannot be initialized",
             Self::ReadBeforeInitialized { .. } => "read before it has its value",
         }
@@ -305,12 +336,69 @@ impl<'db> ToIdeDiagnostic<'db> for InitError<'db> {
                 .desc(self)
                 .range(crate::denormalize(db, file, &expr.get_span(db)).unwrap_or_default())
                 .call(),
-            Self::AssignToConstant { access } => diag()
-                .message("cannot assign to constant type".to_string())
-                .severity(DiagnosticSeverity::ERROR)
-                .desc(self)
-                .range(crate::denormalize(db, file, &access.get_span(db)).unwrap_or_default())
-                .call(),
+            Self::AssignToConstant { access, constant } => {
+                let mut d = diag()
+                    .message(format!(
+                        "cannot write to {}",
+                        constant_place(db, *access, *constant)
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &access.get_span(db)).unwrap_or_default())
+                    .call();
+                declared_constant(db, *constant, &mut d);
+                d.with_note(
+                    "a CONSTANT keeps the value it is declared with; copy it into a variable to change the copy"
+                        .to_string(),
+                );
+                d
+            }
+            Self::ConstantHandedOut {
+                access,
+                route,
+                constant,
+            } => {
+                let place = constant_place(db, *access, *constant);
+                let (message, note) = match route {
+                    ConstantRoute::InOut => (
+                        format!("cannot pass {place} to a VAR_IN_OUT"),
+                        "a VAR_IN_OUT could change it; pass it to a VAR_INPUT, or copy it into a variable and pass that",
+                    ),
+                    ConstantRoute::Reference => (
+                        format!("cannot take a reference to {place}"),
+                        "a reference could change it; copy it into a variable and take the reference of that",
+                    ),
+                };
+                let mut d = diag()
+                    .message(message)
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &access.get_span(db)).unwrap_or_default())
+                    .call();
+                declared_constant(db, *constant, &mut d);
+                d.with_note(note.to_string());
+                d
+            }
+            Self::ConstantInstance { var, block, many } => {
+                use crate::HasName;
+                let name = var.get_name_with_case(db).text(db);
+                let message = if *many {
+                    format!("array '{name}' of '{block}' instances cannot be CONSTANT")
+                } else {
+                    format!("instance '{name}' of '{block}' cannot be CONSTANT")
+                };
+                let mut d = diag()
+                    .message(message)
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &var.get_name_span(db)).unwrap_or_default())
+                    .call();
+                d.with_note(
+                    "an instance changes when it runs; declare it in a VAR section without CONSTANT"
+                        .to_string(),
+                );
+                d
+            }
             Self::UninitializableMember { expr, var, kind } => {
                 use crate::HasName;
                 let name = var.get_name_with_case(db).text(db);
@@ -396,5 +484,40 @@ impl<'db> ToIdeDiagnostic<'db> for InitError<'db> {
                 d
             }
         }
+    }
+}
+
+/// The place a write would change: `constant 'k'`, or `'p.x' in constant 'p'`
+/// when it is a field or an element of one.
+fn constant_place<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    access: CallSite<'db>,
+    constant: Option<crate::hir_def::pous::variable::VariableDecl<'db>>,
+) -> String {
+    let text = access.to_string(db);
+    match constant {
+        Some(var) if !text.eq_ignore_ascii_case(var.name_with_case(db).text(db)) => {
+            format!("'{text}' in constant '{}'", var.name_with_case(db).text(db))
+        }
+        _ => format!("constant '{text}'"),
+    }
+}
+
+/// Where the constant is declared CONSTANT, when it is a variable.
+fn declared_constant<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    constant: Option<crate::hir_def::pous::variable::VariableDecl<'db>>,
+    diag: &mut IdeDiagnostic,
+) {
+    use crate::HasName;
+    if let Some(var) = constant {
+        diag.with_related(Related::new(
+            format!(
+                "'{}' is declared CONSTANT here",
+                var.name_with_case(db).text(db)
+            ),
+            var.get_scope_id(db).file(db),
+            var.get_name_span(db),
+        ));
     }
 }
