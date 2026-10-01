@@ -165,6 +165,7 @@ pub fn lower_function<'db>(
     at_node(db, func, r)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn lower_function_block<'db>(
     db: &'db dyn WorkspaceDataBase,
     fb: FunctionBlock<'db>,
@@ -173,6 +174,7 @@ pub fn lower_function_block<'db>(
     string_pool: Rc<RefCell<super::lower_expr::StringPool>>,
     iface_call_rewrites: &super::mono_iface::IfaceCallRewrites<'db>,
     iface_method_instances: &[&super::mono_iface::IfaceInstance<'db>],
+    arity_method_instances: &[&super::mono_arity::ArityInstance<'db>],
 ) -> Result<Vec<MirFunction>, LowerTypeError> {
     let r = lower_function_block_inner(
         db,
@@ -182,10 +184,12 @@ pub fn lower_function_block<'db>(
         string_pool,
         iface_call_rewrites,
         iface_method_instances,
+        arity_method_instances,
     );
     at_node(db, fb, r)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn lower_class<'db>(
     db: &'db dyn WorkspaceDataBase,
     class: Class<'db>,
@@ -194,6 +198,7 @@ pub fn lower_class<'db>(
     string_pool: Rc<RefCell<super::lower_expr::StringPool>>,
     iface_call_rewrites: &super::mono_iface::IfaceCallRewrites<'db>,
     iface_method_instances: &[&super::mono_iface::IfaceInstance<'db>],
+    arity_method_instances: &[&super::mono_arity::ArityInstance<'db>],
 ) -> Result<Vec<MirFunction>, LowerTypeError> {
     let r = lower_class_inner(
         db,
@@ -203,6 +208,7 @@ pub fn lower_class<'db>(
         string_pool,
         iface_call_rewrites,
         iface_method_instances,
+        arity_method_instances,
     );
     at_node(db, class, r)
 }
@@ -267,35 +273,12 @@ fn lower_function_inner<'db>(
         if let Some(arity) = variadic_arity
             && var.variadic(db)
         {
-            let elem_ty = lower_var_type(db, *var)?;
-            let elem = match &elem_ty {
-                MirType::Elementary(e) => *e,
-                other => {
-                    return Err(LowerTypeError::UnsupportedType(format!(
-                        "a variadic parameter must be elementary, got {other:?}"
-                    )));
-                }
-            };
-            let mut names = Vec::with_capacity(arity);
-            for i in 0..arity {
-                let name = hir::hir_def::interned::identifier::Ident::new(
-                    db,
-                    compact_str::CompactString::from(format!("{}${i}", var.name(db).text(db))),
-                );
-                names.push(name);
-                let param = MirParam {
-                    name,
-                    ty: input_param_type(elem_ty.clone()),
-                    kind: MirParamKind::Input,
-                };
+            let (pack, expansion) = pack_params(db, *var, arity)?;
+            for param in pack {
                 next_local_idx += param_wasm_width(&param.ty, param.kind);
                 params.push(param);
             }
-            variadic_expansion = Some(Rc::new(super::lower_expr::VariadicExpansion {
-                pack: var.name(db),
-                params: names,
-                elem,
-            }));
+            variadic_expansion = Some(expansion);
             continue;
         }
         if let Some(param) = param_for_var(db, var, iface_subs)? {
@@ -452,6 +435,7 @@ fn lower_function_inner<'db>(
 }
 
 /// Lower a FUNCTION_BLOCK to MirFunctions (one per method + instance type).
+#[allow(clippy::too_many_arguments)]
 fn lower_function_block_inner<'db>(
     db: &'db dyn WorkspaceDataBase,
     fb: FunctionBlock<'db>,
@@ -460,44 +444,25 @@ fn lower_function_block_inner<'db>(
     string_pool: Rc<RefCell<super::lower_expr::StringPool>>,
     iface_call_rewrites: &super::mono_iface::IfaceCallRewrites<'db>,
     iface_method_instances: &[&super::mono_iface::IfaceInstance<'db>],
+    arity_method_instances: &[&super::mono_arity::ArityInstance<'db>],
 ) -> Result<Vec<MirFunction>, LowerTypeError> {
     let mut functions = Vec::new();
     let mut idx = start_index;
 
     // Each method is emitted once, except interface-param methods, emitted
-    // once per specialization (`Owner#Use$@Worker`). A base's method or body
-    // reached through SUPER is emitted here too, on this instance type.
+    // once per specialization (`Owner#Use$@Worker`), and variadic ones, once
+    // per argument count called. A base's method or body reached through
+    // SUPER is emitted here too, on this instance type.
     let copies = instance_copies(db, hir::hir_def::pous::pou::Pou::FunctionBlock(fb));
-    let method_jobs: Vec<(
-        hir::hir_def::pous::class::MethodDecl<'db>,
-        Option<&super::mono_iface::IfaceInstance<'db>>,
-    )> = copies
-        .methods
-        .iter()
-        .flat_map(|method| -> Vec<_> {
-            if method
-                .variables(db)
-                .iter()
-                .any(|v| super::mono_iface::is_interface_param(db, v))
-            {
-                iface_method_instances
-                    .iter()
-                    .filter(|inst| {
-                        matches!(
-                            inst.target,
-                            super::mono_iface::IfaceTarget::Method { method: m, .. } if m == *method
-                        )
-                    })
-                    .map(|inst| (*method, Some(*inst)))
-                    .collect()
-            } else {
-                vec![(*method, None)]
-            }
-        })
-        .collect();
+    let jobs = method_jobs(
+        db,
+        hir::hir_def::pous::pou::Pou::FunctionBlock(fb),
+        iface_method_instances,
+        arity_method_instances,
+    );
 
     // Lower each method as a separate function with 'this' parameter
-    for (method, spec) in method_jobs {
+    for (method, spec, arity) in jobs {
         let mut params = Vec::new();
         let mut locals = Vec::new();
         let mut next_local_idx: u32 = 1; // 0 is 'this'
@@ -533,7 +498,19 @@ fn lower_function_block_inner<'db>(
         // comes before the first local's, whatever order the sections are
         // declared in.
         let mut local_vars = Vec::new();
+        let mut variadic_expansion = None;
         for var in method.variables(db) {
+            if let Some(arity) = arity
+                && var.variadic(db)
+            {
+                let (pack, expansion) = pack_params(db, *var, arity)?;
+                for param in pack {
+                    next_local_idx += param_wasm_width(&param.ty, param.kind);
+                    params.push(param);
+                }
+                variadic_expansion = Some(expansion);
+                continue;
+            }
             match param_for_var(db, var, spec.map(|i| &i.iface_subs))? {
                 Some(param) => {
                     next_local_idx += param_wasm_width(&param.ty, param.kind);
@@ -607,7 +584,7 @@ fn lower_function_block_inner<'db>(
             string_pool.clone(),
             body_subs,
             body_rewrites,
-            None,
+            variadic_expansion,
         );
         let mut body = crate::lower::lower_stmt::lower_body(&ctx, method.stmts(db))?;
 
@@ -653,6 +630,14 @@ fn lower_function_block_inner<'db>(
                 hir::hir_def::pous::pou::Pou::FunctionBlock(fb),
                 method,
             ),
+        };
+        // A variadic method's copy for one argument count, as the call site
+        // names it: `Acc#Sum$3`.
+        let qualified_name = match arity {
+            Some(arity) => {
+                super::naming::mangle_generic_name(db, qualified_name, &[&arity.to_string()])
+            }
+            None => qualified_name,
         };
 
         functions.push(MirFunction {
@@ -803,6 +788,7 @@ fn lower_fb_body<'db>(
 }
 
 /// Lower a CLASS to MirFunctions (one per method + instance type).
+#[allow(clippy::too_many_arguments)]
 fn lower_class_inner<'db>(
     db: &'db dyn WorkspaceDataBase,
     class: Class<'db>,
@@ -811,40 +797,21 @@ fn lower_class_inner<'db>(
     string_pool: Rc<RefCell<super::lower_expr::StringPool>>,
     iface_call_rewrites: &super::mono_iface::IfaceCallRewrites<'db>,
     iface_method_instances: &[&super::mono_iface::IfaceInstance<'db>],
+    arity_method_instances: &[&super::mono_arity::ArityInstance<'db>],
 ) -> Result<Vec<MirFunction>, LowerTypeError> {
     let mut functions = Vec::new();
 
-    // Interface-param methods are emitted once per specialization (see the
-    // FB-method site), and a base's method reached through SUPER too.
-    let method_jobs: Vec<(
-        hir::hir_def::pous::class::MethodDecl<'db>,
-        Option<&super::mono_iface::IfaceInstance<'db>>,
-    )> = instance_copies(db, hir::hir_def::pous::pou::Pou::Class(class))
-        .methods
-        .iter()
-        .flat_map(|method| -> Vec<_> {
-            if method
-                .variables(db)
-                .iter()
-                .any(|v| super::mono_iface::is_interface_param(db, v))
-            {
-                iface_method_instances
-                    .iter()
-                    .filter(|inst| {
-                        matches!(
-                            inst.target,
-                            super::mono_iface::IfaceTarget::Method { method: m, .. } if m == *method
-                        )
-                    })
-                    .map(|inst| (*method, Some(*inst)))
-                    .collect()
-            } else {
-                vec![(*method, None)]
-            }
-        })
-        .collect();
+    // Interface-param and variadic methods are emitted once per
+    // specialization (see the FB-method site), and a base's method reached
+    // through SUPER too.
+    let jobs = method_jobs(
+        db,
+        hir::hir_def::pous::pou::Pou::Class(class),
+        iface_method_instances,
+        arity_method_instances,
+    );
 
-    for (idx, (method, spec)) in (start_index..).zip(method_jobs) {
+    for (idx, (method, spec, arity)) in (start_index..).zip(jobs) {
         let mut params = Vec::new();
         let mut locals = Vec::new();
         let mut next_local_idx: u32 = 1; // 0 is 'this'
@@ -880,7 +847,19 @@ fn lower_class_inner<'db>(
         // comes before the first local's, whatever order the sections are
         // declared in.
         let mut local_vars = Vec::new();
+        let mut variadic_expansion = None;
         for var in method.variables(db) {
+            if let Some(arity) = arity
+                && var.variadic(db)
+            {
+                let (pack, expansion) = pack_params(db, *var, arity)?;
+                for param in pack {
+                    next_local_idx += param_wasm_width(&param.ty, param.kind);
+                    params.push(param);
+                }
+                variadic_expansion = Some(expansion);
+                continue;
+            }
             match param_for_var(db, var, spec.map(|i| &i.iface_subs))? {
                 Some(param) => {
                     next_local_idx += param_wasm_width(&param.ty, param.kind);
@@ -954,7 +933,7 @@ fn lower_class_inner<'db>(
             string_pool.clone(),
             body_subs,
             body_rewrites,
-            None,
+            variadic_expansion,
         );
         let mut body = crate::lower::lower_stmt::lower_body(&ctx, method.stmts(db))?;
 
@@ -998,6 +977,14 @@ fn lower_class_inner<'db>(
                 hir::hir_def::pous::pou::Pou::Class(class),
                 method,
             ),
+        };
+        // A variadic method's copy for one argument count, as the call site
+        // names it: `Acc#Sum$3`.
+        let qualified_name = match arity {
+            Some(arity) => {
+                super::naming::mangle_generic_name(db, qualified_name, &[&arity.to_string()])
+            }
+            None => qualified_name,
         };
 
         functions.push(MirFunction {
@@ -1125,6 +1112,104 @@ fn lower_program_inner<'db>(
         host_entry: true,
     };
     Ok((func, prog_type))
+}
+
+/// A variadic pack at `arity`: that many by-value parameters `pack$0..`,
+/// and the expansion its folds read them through.
+fn pack_params<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    var: VariableDecl<'db>,
+    arity: usize,
+) -> Result<(Vec<MirParam>, Rc<super::lower_expr::VariadicExpansion>), LowerTypeError> {
+    let elem_ty = lower_var_type(db, var)?;
+    let elem = match &elem_ty {
+        MirType::Elementary(e) => *e,
+        other => {
+            return Err(LowerTypeError::UnsupportedType(format!(
+                "a variadic parameter must be elementary, got {other:?}"
+            )));
+        }
+    };
+    let mut names = Vec::with_capacity(arity);
+    let mut params = Vec::with_capacity(arity);
+    for i in 0..arity {
+        let name = Ident::new(
+            db,
+            compact_str::CompactString::from(format!("{}${i}", var.name(db).text(db))),
+        );
+        names.push(name);
+        params.push(MirParam {
+            name,
+            ty: input_param_type(elem_ty.clone()),
+            kind: MirParamKind::Input,
+        });
+    }
+    let expansion = Rc::new(super::lower_expr::VariadicExpansion {
+        pack: var.name(db),
+        params: names,
+        elem,
+    });
+    Ok((params, expansion))
+}
+
+/// The copies of an instance type's methods to emit, each with its
+/// interface specialization and its argument count: a method with an
+/// interface parameter once per specialization, a variadic one once per
+/// argument count called (an uncalled one not at all), any other once. A
+/// base's method or body reached through SUPER is emitted on this instance
+/// type too.
+#[allow(clippy::type_complexity)]
+fn method_jobs<'a, 'db>(
+    db: &'db dyn WorkspaceDataBase,
+    owner: hir::hir_def::pous::pou::Pou<'db>,
+    iface_method_instances: &[&'a super::mono_iface::IfaceInstance<'db>],
+    arity_method_instances: &[&'a super::mono_arity::ArityInstance<'db>],
+) -> Vec<(
+    hir::hir_def::pous::class::MethodDecl<'db>,
+    Option<&'a super::mono_iface::IfaceInstance<'db>>,
+    Option<usize>,
+)> {
+    let mut jobs = Vec::new();
+    for method in instance_copies(db, owner).methods.iter().copied() {
+        let specs: Vec<_> = if method
+            .variables(db)
+            .iter()
+            .any(|v| super::mono_iface::is_interface_param(db, v))
+        {
+            iface_method_instances
+                .iter()
+                .filter(|inst| {
+                    matches!(
+                        inst.target,
+                        super::mono_iface::IfaceTarget::Method { method: m, .. } if m == method
+                    )
+                })
+                .map(|inst| Some(*inst))
+                .collect()
+        } else {
+            vec![None]
+        };
+        let arities: Vec<_> = if method.variables(db).iter().any(|v| v.variadic(db)) {
+            arity_method_instances
+                .iter()
+                .filter(|inst| {
+                    matches!(
+                        inst.target,
+                        super::mono_arity::ArityTarget::Method { method: m, .. } if m == method
+                    )
+                })
+                .map(|inst| Some(inst.arity))
+                .collect()
+        } else {
+            vec![None]
+        };
+        for spec in &specs {
+            for arity in &arities {
+                jobs.push((method, *spec, *arity));
+            }
+        }
+    }
+    jobs
 }
 
 /// The wasm-level parameter a declared variable becomes, or `None` when it

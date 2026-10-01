@@ -170,16 +170,27 @@ fn lower_module_from_pous<'db>(
         super::mono_iface::collect_iface_instantiations(db, all_pous, all_programs);
     let no_rewrites = super::mono_iface::IfaceCallRewrites::default();
 
-    // Phase C: one specialization per (variadic function, argument count)
-    // called; call sites re-read the resolution in `variadic_arity_of`.
+    // Phase C: one specialization per (variadic function or method, argument
+    // count) called; call sites re-read the resolution in `variadic_arity_of`.
     let (arity_instances, _arity_call_rewrites) =
         super::mono_arity::collect_arity_instantiations(db, all_pous, all_programs);
     let mut arity_by_func: FxHashMap<
         hir::hir_def::pous::function::Function<'db>,
         Vec<&super::mono_arity::ArityInstance<'db>>,
     > = FxHashMap::default();
+    let mut arity_methods_by_owner: FxHashMap<
+        Pou<'db>,
+        Vec<&super::mono_arity::ArityInstance<'db>>,
+    > = FxHashMap::default();
     for inst in &arity_instances {
-        arity_by_func.entry(inst.func).or_default().push(inst);
+        match inst.target {
+            super::mono_arity::ArityTarget::Function(f) => {
+                arity_by_func.entry(f).or_default().push(inst);
+            }
+            super::mono_arity::ArityTarget::Method { owner, .. } => {
+                arity_methods_by_owner.entry(owner).or_default().push(inst);
+            }
+        }
     }
     let mut iface_by_func: FxHashMap<
         hir::hir_def::pous::function::Function<'db>,
@@ -249,26 +260,53 @@ fn lower_module_from_pous<'db>(
                     .iter()
                     .any(|v| super::mono_iface::is_interface_param(db, v));
                 if has_iface_param {
+                    // Variadic as well: one copy per instance and argument
+                    // count, `f$@Pump$2`, the instance's symbol with the
+                    // count the call site appends.
+                    let arities: Vec<Option<usize>> =
+                        match super::mono_arity::variadic_param(db, *func) {
+                            Some(_) => arity_by_func
+                                .get(func)
+                                .into_iter()
+                                .flatten()
+                                .map(|a| Some(a.arity))
+                                .collect(),
+                            None => vec![None],
+                        };
                     for inst in iface_by_func.get(func).into_iter().flatten() {
-                        let mut mir_func = lower_function(
-                            db,
-                            *func,
-                            next_fn_idx,
-                            &mut memory_layout,
-                            string_pool.clone(),
-                            Some(&inst.iface_subs),
-                            // A specialization's body uses its own rewrites.
-                            &inst.call_rewrites,
-                            None,
-                        )?;
-                        mir_func.name = inst.mangled_name;
-                        at_pou(
-                            db,
-                            *func,
-                            register_symbol(db, &mut function_indices, mir_func.name, next_fn_idx),
-                        )?;
-                        next_fn_idx += 1;
-                        functions.push(mir_func);
+                        for &arity in &arities {
+                            let mut mir_func = lower_function(
+                                db,
+                                *func,
+                                next_fn_idx,
+                                &mut memory_layout,
+                                string_pool.clone(),
+                                Some(&inst.iface_subs),
+                                // A specialization's body uses its own rewrites.
+                                &inst.call_rewrites,
+                                arity,
+                            )?;
+                            mir_func.name = match arity {
+                                Some(arity) => super::naming::mangle_generic_name(
+                                    db,
+                                    inst.mangled_name,
+                                    &[&arity.to_string()],
+                                ),
+                                None => inst.mangled_name,
+                            };
+                            at_pou(
+                                db,
+                                *func,
+                                register_symbol(
+                                    db,
+                                    &mut function_indices,
+                                    mir_func.name,
+                                    next_fn_idx,
+                                ),
+                            )?;
+                            next_fn_idx += 1;
+                            functions.push(mir_func);
+                        }
                     }
                     continue;
                 }
@@ -390,6 +428,10 @@ fn lower_module_from_pous<'db>(
                         .get(&Pou::FunctionBlock(*fb))
                         .map(Vec::as_slice)
                         .unwrap_or(&[]),
+                    arity_methods_by_owner
+                        .get(&Pou::FunctionBlock(*fb))
+                        .map(Vec::as_slice)
+                        .unwrap_or(&[]),
                 )?;
                 for mf in method_funcs {
                     at_pou(
@@ -450,6 +492,10 @@ fn lower_module_from_pous<'db>(
                         .get(&Pou::Class(*class))
                         .unwrap_or(&no_rewrites),
                     iface_methods_by_owner
+                        .get(&Pou::Class(*class))
+                        .map(Vec::as_slice)
+                        .unwrap_or(&[]),
+                    arity_methods_by_owner
                         .get(&Pou::Class(*class))
                         .map(Vec::as_slice)
                         .unwrap_or(&[]),
