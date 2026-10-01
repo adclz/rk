@@ -56,6 +56,19 @@ pub enum InitError<'db> {
         var: crate::hir_def::pous::variable::VariableDecl<'db>,
         kind: UninitializableMember,
     },
+    /// A FUNCTION's or METHOD's initializer reads one of its variables that
+    /// gets its value after it, itself included. They take their values at
+    /// each call, in the order they are declared, so the read saw 0.
+    ReadBeforeInitialized {
+        /// Where the initializer names it.
+        read: CallSite<'db>,
+        /// The variable the initializer gives a value.
+        var: crate::hir_def::pous::variable::VariableDecl<'db>,
+        /// The variable read.
+        source: crate::hir_def::pous::variable::VariableDecl<'db>,
+        /// The reference it was read through, `p^` with `p := REF(source)`.
+        through: Option<crate::hir_def::pous::variable::VariableDecl<'db>>,
+    },
 }
 
 /// What keeps a `REF()` from being one address everywhere.
@@ -93,6 +106,7 @@ impl<'db> ErrorCode for InitError<'db> {
             Self::NoFieldOnElementaryType { .. } => "E0403",
             Self::AssignToConstant { .. } => "E0404",
             Self::UninitializableMember { .. } => "E0405",
+            Self::ReadBeforeInitialized { .. } => "E0406",
         }
     }
 
@@ -105,6 +119,7 @@ impl<'db> ErrorCode for InitError<'db> {
             Self::NoFieldOnElementaryType { .. } => "invalid operation",
             Self::AssignToConstant { .. } => "semantic violation",
             Self::UninitializableMember { .. } => "member cannot be initialized",
+            Self::ReadBeforeInitialized { .. } => "read before it has its value",
         }
     }
 }
@@ -332,6 +347,51 @@ impl<'db> ToIdeDiagnostic<'db> for InitError<'db> {
                     var.get_scope_id(db).file(db),
                     var.get_name_span(db),
                 ));
+                d.with_note(note);
+                d
+            }
+            Self::ReadBeforeInitialized {
+                read,
+                var,
+                source,
+                through,
+            } => {
+                use crate::HasName;
+                let name = var.get_name_with_case(db).text(db);
+                let read_name = source.get_name_with_case(db).text(db);
+                let via = through
+                    .map(|reference| {
+                        format!(", through '{}'", reference.get_name_with_case(db).text(db))
+                    })
+                    .unwrap_or_default();
+                let (message, note) = if var == source && through.is_none() {
+                    (
+                        format!("the initial value of '{name}' reads '{name}' itself"),
+                        "an initial value cannot read the variable it initializes".to_string(),
+                    )
+                } else {
+                    (
+                        format!(
+                            "the initial value of '{name}' reads '{read_name}', declared after it{via}"
+                        ),
+                        format!(
+                            "variables get their initial values in the order they are declared; declare '{read_name}' before '{name}'"
+                        ),
+                    )
+                };
+                let mut d = diag()
+                    .message(message)
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &read.get_span(db)).unwrap_or_default())
+                    .call();
+                if var != source {
+                    d.with_related(Related::new(
+                        format!("'{read_name}' is declared here"),
+                        source.get_scope_id(db).file(db),
+                        source.get_name_span(db),
+                    ));
+                }
                 d.with_note(note);
                 d
             }

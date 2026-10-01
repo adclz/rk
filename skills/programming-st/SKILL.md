@@ -119,13 +119,14 @@ What an initial value can be depends on where it is declared:
 | Declared in | Initial value |
 | --- | --- |
 | `TYPE`, STRUCT field, FB or CLASS member, `PROGRAM`, `VAR_GLOBAL` | a constant (E0401) |
-| `FUNCTION`/`METHOD` `VAR`, `VAR_OUTPUT` | any expression, computed at every call |
+| `FUNCTION`/`METHOD` `VAR`, `VAR_OUTPUT` | any expression, computed at every call, naming only variables declared before it (E0406) |
 | `FUNCTION`/`METHOD` `VAR_INPUT` | a constant (E0401): the caller passes it for an omitted argument |
 | `VAR_TEMP`, `VAR_IN_OUT`, `VAR_EXTERNAL` | none (E0004) |
 
 A constant is a literal, an enum value, `NULL`, a `CONSTANT` declared beside it or imported with `VAR_EXTERNAL CONSTANT`, arithmetic over those, or `REF()` of a global.
 A member or STRUCT field default may also be `REF()` of a member beside it: it points into the same instance.
 A call inside an array or STRUCT initializer is E0402.
+In a `FUNCTION` or `METHOD` the variables take their values at every call, in declaration order: an initial value can name another of them only if it is declared first, else E0406. Inputs, `VAR_EXTERNAL`s, `CONSTANT`s and `REF()` can be named in any order.
 
 ```iecst continues
 CONFIGURATION Plant

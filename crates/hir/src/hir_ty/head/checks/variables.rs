@@ -19,7 +19,7 @@ use crate::{
     },
     hir_def::{
         expressions::{
-            expression::{Elementary, ExprKind, InitExpr, InitExprKind, PrimaryExpr},
+            expression::{Elementary, ExprKind, InitExpr, InitExprKind, PathExprKind, PrimaryExpr},
             spec::{Spec, SpecKind},
         },
         pous::variable::VariableDecl,
@@ -682,6 +682,137 @@ impl<'db> InitInference<'db> {
             InitExprKind::StructElement { .. } => {}
         }
     }
+}
+
+impl<'db> InitInference<'db> {
+    /// A FUNCTION's or METHOD's variables take their values at each call, in
+    /// the order they are declared: an initializer that reads one declared
+    /// at or after it read 0 (E0406). An input, an in-out and an external
+    /// hold their values before the first initializer runs, a CONSTANT's
+    /// value is put in its place, and a `REF()` takes an address, not a
+    /// value. A `^` on a reference set to `REF(x)` reads x.
+    pub(crate) fn check_initialization_order(&mut self, db: &'db dyn WorkspaceDataBase) {
+        use crate::hir_def::pous::variable::VariableKind;
+        let variables: &[VariableDecl<'db>] = match get_scope(db, self.scope).kind {
+            ScopeKind::Pou(Pou::Function(f)) => f.variables(db),
+            ScopeKind::MethodDecl(m) => m.variables(db),
+            _ => return,
+        };
+        let starts_at_entry = |var: &VariableDecl<'db>| {
+            !matches!(
+                var.kind(db),
+                VariableKind::Input | VariableKind::InOut | VariableKind::External
+            )
+        };
+        let position: FxHashMap<VariableDecl<'db>, usize> = variables
+            .iter()
+            .enumerate()
+            .map(|(index, var)| (*var, index))
+            .collect();
+        let contains = |outer: auto_lsp::tree_sitter::Range,
+                        inner: auto_lsp::tree_sitter::Range| {
+            outer.start_byte <= inner.start_byte && inner.end_byte <= outer.end_byte
+        };
+        let references: Vec<auto_lsp::tree_sitter::Range> = self
+            .body_infer_result
+            .type_of_expr
+            .keys()
+            .filter(|expr| {
+                matches!(
+                    expr.expr(db),
+                    ExprKind::PrimaryExpr(PrimaryExpr::RefValue {
+                        value: crate::hir_def::expressions::expression::RefValue::Address(_)
+                    })
+                )
+            })
+            .map(|expr| expr.get_span(db))
+            .collect();
+        let mut reads: Vec<_> = self
+            .body_infer_result
+            .variable_of_path_expr
+            .iter()
+            .map(|(path, source)| (*path, *source, None))
+            .collect();
+        // `q := p^` with `p := REF(c)` reads c, through p.
+        reads.extend(
+            self.body_infer_result
+                .type_of_path_expr
+                .keys()
+                .filter_map(|path| {
+                    let PathExprKind::Deref(deref) = path.expr(db) else {
+                        return None;
+                    };
+                    let reference = *self
+                        .body_infer_result
+                        .variable_of_path_expr
+                        .get(&deref.path)?;
+                    let pointee = referenced_root(db, &self.body_infer_result, reference)?;
+                    Some((*path, pointee, Some(reference)))
+                }),
+        );
+        reads.sort_by_key(|(path, _, _)| path.get_span(db).start_byte);
+
+        let mut reported = rustc_hash::FxHashSet::default();
+        for (path, source, through) in reads {
+            let Some(&from) = position.get(&source) else {
+                continue;
+            };
+            if !starts_at_entry(&source)
+                || source.qualifier(db).contains(crate::Qualifier::CONSTANT)
+            {
+                continue;
+            }
+            let span = path.get_span(db);
+            if references
+                .iter()
+                .any(|reference| contains(*reference, span))
+            {
+                continue;
+            }
+            let Some((index, var)) = variables.iter().enumerate().find(|(_, var)| {
+                starts_at_entry(var)
+                    && var
+                        .init(db)
+                        .is_some_and(|init| contains(init.get_span(db), span))
+            }) else {
+                continue;
+            };
+            // A reference read before its own value is reported as itself.
+            let reference_ready = through
+                .and_then(|reference| position.get(&reference))
+                .is_none_or(|at| *at < index);
+            if from >= index && reference_ready && reported.insert((*var, source)) {
+                self.errors.push(
+                    crate::check::errors::e04_init::InitError::ReadBeforeInitialized {
+                        read: crate::CallSite::from_scoped(db, &path),
+                        var: *var,
+                        source,
+                        through,
+                    }
+                    .to_diagnostic(db, self.scope.file(db)),
+                );
+            }
+        }
+    }
+}
+
+/// The variable a reference's initializer `REF(x...)` points into: x.
+fn referenced_root<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    result: &crate::hir_ty::body::BodyInferenceResult<'db>,
+    reference: VariableDecl<'db>,
+) -> Option<VariableDecl<'db>> {
+    let InitExprKind::ConstantExpr(init) = reference.init(db)?.kind(db) else {
+        return None;
+    };
+    let ExprKind::PrimaryExpr(PrimaryExpr::RefValue {
+        value: crate::hir_def::expressions::expression::RefValue::Address(address),
+    }) = init.expr(db)
+    else {
+        return None;
+    };
+    let root = address.expr(db)?.flatten(db).first()?.get_expr(db);
+    result.variable_of_path_expr.get(&root).copied()
 }
 
 /// `spec` through the names it goes by: a named type is its data type's own
