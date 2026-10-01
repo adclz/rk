@@ -231,3 +231,26 @@ fn not_untyped_literal_mask(mut with_db: db::RootDatabase) {
     let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 1, "16#F0F0 and 16#F0");
 }
+
+/// NOT on an untyped literal takes the width of the operand beside it, not
+/// the target's: `w OR NOT 16#0F0F` is a WORD mask widened to the DWORD.
+/// AND could not tell the two apart.
+#[rstest]
+fn not_untyped_literal_takes_its_operand_width(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION test : INT
+        VAR w : WORD := 0; d : DWORD := 0; a : DWORD; b : DWORD; c : DWORD; END_VAR
+            a := w OR NOT 16#0F0F;
+            b := d OR NOT 16#0F0F;
+            c := NOT 16#0F0F;
+            IF a = DWORD#16#0000_F0F0 AND b = DWORD#16#FFFF_F0F0 AND c = DWORD#16#FFFF_F0F0 THEN
+                test := 1;
+            END_IF;
+        END_FUNCTION
+    "#;
+    let result: i32 = super::run(&mut with_db, source, "test", ());
+    assert_eq!(
+        result, 1,
+        "16#0000F0F0 beside a WORD, 16#FFFFF0F0 beside a DWORD or alone"
+    );
+}

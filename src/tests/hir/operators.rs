@@ -212,7 +212,8 @@ fn invalid_sign_on_a_type_without_arithmetic(mut with_db: RootDatabase) {
 }
 
 // Numbers, bit strings and durations keep their sign, as they keep binary
-// `-`.
+// `-`. A bit string taking arithmetic is an rk extension: IEC 61131-3 gives
+// ANY_BIT none.
 #[rstest]
 fn valid_sign_on_numbers_bit_strings_and_durations(mut with_db: RootDatabase) {
     let source = r#"

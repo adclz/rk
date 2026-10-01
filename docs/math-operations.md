@@ -20,6 +20,9 @@ END_FUNCTION
 - `+`, `-`, `*`, `/`, `MOD`, `SQRT` and `ABS` are one WebAssembly instruction each.
 - `SIN`, `COS`, `TAN`, `ASIN`, `ACOS`, `ATAN`, `ATAN2`, `EXP`, `LN`, `LOG` and `**` come from libm, and are added to the module only when you call them.
 
+`BYTE`, `WORD`, `DWORD` and `LWORD` take `+`, `-`, `*` and `/` as unsigned integers of their width.
+IEC 61131-3 gives bit strings no arithmetic: this is an rk extension.
+
 ## When a result does not fit
 
 An integer that goes past its limit wraps around, without an error:
