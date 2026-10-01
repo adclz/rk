@@ -22,7 +22,13 @@
 
 `E1002` Cannot access a PROTECTED item outside the POU or its derived POUs.
 
+`E1135` A method implementing an interface is PRIVATE, PROTECTED or INTERNAL: an interface's methods are public.
+
 `E1108` `SUPER()` not valid in this context.
+
+`E1132` `SUPER()` in a function block that extends a CLASS, which has no body to run.
+
+`E1133` `SUPER.Method()` on an ABSTRACT method, or on one the base takes from an interface without implementing it.
 
 `E1106` `SUPER` not valid in this context.
 
@@ -38,6 +44,8 @@
 
 `E1117` ABSTRACT method declared in a POU that is not itself ABSTRACT.
 
+`E1134` ABSTRACT method with statements: the derived POUs implement it.
+
 `E1118` Instantiation of an ABSTRACT CLASS or FUNCTION_BLOCK.
 
 `E1104` Extending a FINAL CLASS or FUNCTION_BLOCK.
@@ -49,6 +57,7 @@
 `E1127` Method return type mismatch: a different return type, or one where the base has none.
 `E1128` Method parameter name mismatch: parameters are matched by position, and the name at each position is part of the signature.
 `E1129` Method parameter section mismatch: `VAR_INPUT` in the prototype, `VAR_IN_OUT` or `VAR_OUTPUT` in the implementation; the section decides how the argument is passed.
+`E1131` Method parameter default mismatch: an input defaults differently than in the prototype or base method; a call passes the default of the method it names.
 
 `E1107` `SUPER` used with no EXTENDS clause.
 

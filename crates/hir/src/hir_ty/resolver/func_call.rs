@@ -589,7 +589,7 @@ fn in_out_fit<'db>(
 /// [`BodyInferenceResult::omitted_param_defaults`].
 ///
 /// [`BodyInferenceResult::omitted_param_defaults`]: crate::hir_ty::body::BodyInferenceResult::omitted_param_defaults
-fn input_default<'db>(
+pub(crate) fn input_default<'db>(
     db: &'db dyn WorkspaceDataBase,
     var: VariableDecl<'db>,
 ) -> Option<crate::hir_def::expressions::expression::Expr<'db>> {

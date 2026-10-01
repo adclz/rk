@@ -53,6 +53,7 @@ That is **monomorphization**, and it is why an interface cannot go anywhere its 
 - Not inside an `ARRAY`, a `REF_TO` or a `STRUCT` (`E1123`).
 
 A POU declares `IMPLEMENTS` itself: inheriting it from a base is not enough.
+The method that implements an interface's is `PUBLIC` (`E1135`), whether the POU declares it or inherits it.
 
 ## No virtual classes
 
@@ -87,6 +88,9 @@ END_FUNCTION_BLOCK
 - `SUPER.Method()` calls the base's version, even when the instance overrides it. Inside it, `THIS` is still the instance, so `THIS.Method()` there calls the instance's version too.
 - Base code is compiled again for each derived block that runs it, so the call is known at compile time: an inherited method, and a base method or body reached through `SUPER`, is a copy per derived block.
 - An inherited variable needs no prefix: `SUPER.someVar` is `E0202`.
+- `SUPER.Method()` on an `ABSTRACT` method has no body to run, and is `E1133`.
+- A `PRIVATE` method stays its block's own: a derived block does not inherit or override it, and may declare a method of the same name, which the base's code does not call.
+- An override or an implementation gives each input the default the base method or the interface gives it (`E1131`): a call passes the default of the method it names.
 - A variable and a method may share a name, as in CODESYS and TwinCAT, and `L0120` warns. Inside the block the name is the variable, `THIS` included; from outside, a `VAR` of that name gives way to the method.
 - Inside a method, its own name is its result, before any member of that name. A method without a return type has no result, and there its name reaches the member.
 
@@ -118,3 +122,5 @@ It goes in a function block body, once, outside any loop:
 - `E1109` in a `METHOD`
 - `E1110` for a second one
 - `E1111` inside a loop
+
+A `CLASS` base has no body, so `SUPER()` in a function block that extends one is `E1132`.

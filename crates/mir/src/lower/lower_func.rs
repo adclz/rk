@@ -69,9 +69,10 @@ fn emittable_methods<'db>(
 
 /// What is emitted for the instance type `pou`: every method it answers to
 /// ([`emittable_methods`]), then each method and FB body of a base its code
-/// reaches through `SUPER.m()` and `SUPER()`, followed transitively. Each is
-/// emitted on `pou`, so `THIS` inside it is `pou` and an override wins there,
-/// as it does in an inherited method. Base-most bodies last.
+/// reaches through `SUPER.m()` and `SUPER()`, and each PRIVATE method of a
+/// base it calls, followed transitively. Each is emitted on `pou`, so `THIS`
+/// inside it is `pou` and an override wins there, as it does in an inherited
+/// method. Base-most bodies last.
 pub(crate) struct InstanceCopies<'db> {
     pub methods: Vec<hir::hir_def::pous::class::MethodDecl<'db>>,
     pub bodies: Vec<FunctionBlock<'db>>,
@@ -105,6 +106,18 @@ pub(crate) fn instance_copies<'db>(
         let body = hir::hir_ty::body::infer_body(db, scope);
         for fc in &body.calls {
             let path = fc.path(db);
+            // A base's PRIVATE method is no method `pou` answers to, and the
+            // base's code still calls it on this instance.
+            if let Type::MethodDecl(MethodRef::Declared(m))
+            | Type::CallableType(CallableType::MethodDecl(MethodRef::Declared(m))) =
+                path.infer(db)
+                && m.visibility(db).contains(hir::Visibility::PRIVATE)
+                && !methods.contains(&m)
+            {
+                methods.push(m);
+                work.push(m.scope_id(db));
+                continue;
+            }
             if path.invocation(db).map(|i| i.kind(db)) != Some(InvocationKind::Super) {
                 continue;
             }

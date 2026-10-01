@@ -19,6 +19,27 @@ use ide_diagnostic::IdeDiagnostic;
 use ide_diagnostic::Related;
 use ide_diagnostic::diag;
 
+/// What a message calls the method a signature is matched against: an
+/// INTERFACE's prototype is no base.
+fn counterpart(method: MethodRef) -> &'static str {
+    if method.is_prototype() {
+        "interface method"
+    } else {
+        "base method"
+    }
+}
+
+/// [`counterpart`] for the method a parameter belongs to.
+fn param_counterpart<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    param: VariableDecl<'db>,
+) -> &'static str {
+    match crate::hir_def::semantic_index::get_scope(db, param.scope_id(db)).kind {
+        crate::hir_def::scope::ScopeKind::MethodProt(_) => "interface method",
+        _ => "base method",
+    }
+}
+
 /// The declaring keyword of a variable section, for messages.
 fn section_keyword(kind: VariableKind) -> &'static str {
     match kind {
@@ -131,7 +152,8 @@ pub enum OopError<'db> {
     /// An ABSTRACT type describes what derived POUs must provide; it has no
     /// implementation of its own, so it cannot be instantiated.
     InstantiatedAbstractPou {
-        var: VariableDecl<'db>,
+        /// The type as written: a variable's, a STRUCT field's.
+        spec: Spec<'db>,
         pou: Pou<'db>,
     },
     UnimplementedInterfaceMethod {
@@ -233,6 +255,37 @@ pub enum OopError<'db> {
         role: crate::hir_ty::oop::BaseRole,
         site: CallSite<'db>,
     },
+    /// An input's default differs from the base method's. A call passes the
+    /// default of the method it names, so through the base or an INTERFACE
+    /// the implementation's own default never applied.
+    SignatureDefaultMismatch {
+        method: MethodRef<'db>,
+        base_param: VariableDecl<'db>,
+        param: VariableDecl<'db>,
+    },
+    /// `SUPER()` runs the base's body, which a CLASS base does not have: an
+    /// FB may extend one, and reach its methods with `SUPER.m()`.
+    SuperBodyWithoutBaseBody {
+        base: Pou<'db>,
+        call_site: CallSite<'db>,
+    },
+    /// `SUPER.m()` names a method with no body to run: an ABSTRACT one, or
+    /// a prototype the base takes from an INTERFACE without implementing it.
+    SuperCallsAbstract {
+        method: MethodRef<'db>,
+        call_site: CallSite<'db>,
+    },
+    /// An ABSTRACT method with statements: a derived block implements it,
+    /// so they never run.
+    AbstractMethodWithBody {
+        method: MethodRef<'db>,
+    },
+    /// A method implementing an INTERFACE's narrower than PUBLIC: a call
+    /// through the interface reached what its POU hides.
+    ImplementationNotPublic {
+        method: MethodRef<'db>,
+        interface: Pou<'db>,
+    },
 }
 
 impl<'db> ErrorCode for OopError<'db> {
@@ -269,6 +322,11 @@ impl<'db> ErrorCode for OopError<'db> {
             Self::SignatureNameMismatch { .. } => "E1128",
             Self::SignatureSectionMismatch { .. } => "E1129",
             Self::WrongBaseKind { .. } => "E1130",
+            Self::SignatureDefaultMismatch { .. } => "E1131",
+            Self::SuperBodyWithoutBaseBody { .. } => "E1132",
+            Self::SuperCallsAbstract { .. } => "E1133",
+            Self::AbstractMethodWithBody { .. } => "E1134",
+            Self::ImplementationNotPublic { .. } => "E1135",
         }
     }
 
@@ -305,6 +363,11 @@ impl<'db> ErrorCode for OopError<'db> {
             Self::SignatureNameMismatch { .. } => "method parameter name mismatch",
             Self::SignatureSectionMismatch { .. } => "method parameter section mismatch",
             Self::WrongBaseKind { .. } => "base of the wrong kind",
+            Self::SignatureDefaultMismatch { .. } => "method parameter default mismatch",
+            Self::SuperBodyWithoutBaseBody { .. } => "invalid use of SUPER or THIS",
+            Self::SuperCallsAbstract { .. } => "invalid use of SUPER or THIS",
+            Self::AbstractMethodWithBody { .. } => "inheritance violation",
+            Self::ImplementationNotPublic { .. } => "inheritance violation",
         }
     }
 }
@@ -661,7 +724,7 @@ impl<'db> ToIdeDiagnostic<'db> for OopError<'db> {
                 );
                 diag
             }
-            Self::InstantiatedAbstractPou { var, pou } => {
+            Self::InstantiatedAbstractPou { spec, pou } => {
                 let kind = match pou {
                     Pou::Class(_) => "CLASS",
                     _ => "FUNCTION_BLOCK",
@@ -673,10 +736,7 @@ impl<'db> ToIdeDiagnostic<'db> for OopError<'db> {
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(
-                        crate::denormalize(db, file, &var.spec(db).get_span(db))
-                            .unwrap_or_default(),
-                    )
+                    .range(crate::denormalize(db, file, &spec.get_span(db)).unwrap_or_default())
                     .call();
                 diag.with_related(Related::new(
                     format!(
@@ -686,7 +746,7 @@ impl<'db> ToIdeDiagnostic<'db> for OopError<'db> {
                     pou.get_scope_id(db).file(db),
                     pou.get_name_span(db),
                 ));
-                diag.with_note("declare a variable of a derived type that implements it".into());
+                diag.with_note("use a derived type that implements it".into());
                 diag
             }
             Self::UnimplementedInterfaceMethod {
@@ -871,7 +931,8 @@ impl<'db> ToIdeDiagnostic<'db> for OopError<'db> {
 
                 diag.with_related(Related::new(
                     format!(
-                        "base method '{}' is declared here",
+                        "{} '{}' is declared here",
+                        counterpart(*m1),
                         m1.get_name_with_case(db).text(db)
                     ),
                     m1.get_scope_id(db).file(db),
@@ -901,16 +962,17 @@ impl<'db> ToIdeDiagnostic<'db> for OopError<'db> {
                             .unwrap_or_default(),
                     )
                     .call();
+                let base = param_counterpart(db, *base_param);
                 diag.with_related(Related::new(
                     format!(
-                        "the base method declares '{}' as '{}' here",
+                        "the {base} declares '{}' as '{}' here",
                         base_param.name_with_case(db).text(db),
                         expected.type_name(db),
                     ),
                     base_param.get_scope_id(db).file(db),
                     base_param.spec(db).get_span(db),
                 ));
-                diag.with_note("parameter types must match those of the base method".into());
+                diag.with_note(format!("parameter types must match those of the {base}"));
                 diag
             }
             Self::SignatureReturnMismatch {
@@ -940,13 +1002,17 @@ impl<'db> ToIdeDiagnostic<'db> for OopError<'db> {
                     .call();
                 diag.with_related(Related::new(
                     format!(
-                        "base method '{}' declares its return type here",
+                        "{} '{}' declares its return type here",
+                        counterpart(*base),
                         base.get_name_with_case(db).text(db),
                     ),
                     base.get_scope_id(db).file(db),
                     ret_span(base),
                 ));
-                diag.with_note("the return type must match the base method's".into());
+                diag.with_note(format!(
+                    "the return type must match the {}'s",
+                    counterpart(*base)
+                ));
                 diag
             }
             Self::SignatureNameMismatch {
@@ -954,9 +1020,10 @@ impl<'db> ToIdeDiagnostic<'db> for OopError<'db> {
                 base_param,
                 param,
             } => {
+                let base = param_counterpart(db, *base_param);
                 let mut diag = diag()
                     .message(format!(
-                        "parameter '{}' of method '{}' is named '{}' in the base method",
+                        "parameter '{}' of method '{}' is named '{}' in the {base}",
                         param.name_with_case(db).text(db),
                         method.get_name_with_case(db).text(db),
                         base_param.name_with_case(db).text(db),
@@ -969,7 +1036,7 @@ impl<'db> ToIdeDiagnostic<'db> for OopError<'db> {
                     .call();
                 diag.with_related(Related::new(
                     format!(
-                        "the base method declares '{}' at this position",
+                        "the {base} declares '{}' at this position",
                         base_param.name_with_case(db).text(db),
                     ),
                     base_param.get_scope_id(db).file(db),
@@ -982,9 +1049,10 @@ impl<'db> ToIdeDiagnostic<'db> for OopError<'db> {
                 base_param,
                 param,
             } => {
+                let base = param_counterpart(db, *base_param);
                 let mut diag = diag()
                     .message(format!(
-                        "parameter '{}' of method '{}' is {} here but {} in the base method",
+                        "parameter '{}' of method '{}' is {} here but {} in the {base}",
                         param.name_with_case(db).text(db),
                         method.get_name_with_case(db).text(db),
                         section_keyword(param.kind(db)),
@@ -998,7 +1066,7 @@ impl<'db> ToIdeDiagnostic<'db> for OopError<'db> {
                     .call();
                 diag.with_related(Related::new(
                     format!(
-                        "the base method declares '{}' as {} here",
+                        "the {base} declares '{}' as {} here",
                         base_param.name_with_case(db).text(db),
                         section_keyword(base_param.kind(db)),
                     ),
@@ -1055,6 +1123,134 @@ impl<'db> ToIdeDiagnostic<'db> for OopError<'db> {
                 if let Some(note) = note {
                     diag.with_note(note);
                 }
+                diag
+            }
+            Self::SignatureDefaultMismatch {
+                method,
+                base_param,
+                param,
+            } => {
+                let base = param_counterpart(db, *base_param);
+                let mut diag = diag()
+                    .message(format!(
+                        "input '{}' of method '{}' has a different default than in the {base}",
+                        param.name_with_case(db).text(db),
+                        method.get_name_with_case(db).text(db),
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(
+                        crate::denormalize(db, file, &param.get_name_span(db)).unwrap_or_default(),
+                    )
+                    .call();
+                diag.with_related(Related::new(
+                    format!(
+                        "the {base} declares '{}' here",
+                        base_param.name_with_case(db).text(db),
+                    ),
+                    base_param.get_scope_id(db).file(db),
+                    base_param.get_name_span(db),
+                ));
+                diag.with_note(
+                    "a call passes the default of the method it names, so through the base or \
+                     an INTERFACE this one would not apply"
+                        .into(),
+                );
+                diag
+            }
+            Self::SuperBodyWithoutBaseBody { base, call_site } => {
+                let base_name = base.get_name_with_case(db).text(db).to_string();
+                let mut diag = diag()
+                    .message(format!(
+                        "SUPER() runs the base's body, and CLASS '{base_name}' has none"
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(
+                        crate::denormalize(db, file, &call_site.get_span(db)).unwrap_or_default(),
+                    )
+                    .call();
+                diag.with_related(Related::new(
+                    format!("CLASS '{base_name}' is declared here"),
+                    base.get_scope_id(db).file(db),
+                    base.get_name_span(db),
+                ));
+                diag.with_note("its methods are reached with SUPER.Method()".into());
+                diag
+            }
+            Self::SuperCallsAbstract { method, call_site } => {
+                let name = method.get_name_with_case(db).text(db).to_string();
+                let why = if method.is_prototype() {
+                    "which the base takes from an INTERFACE without implementing it"
+                } else {
+                    "which is ABSTRACT"
+                };
+                let mut diag = diag()
+                    .message(format!(
+                        "SUPER.{name}() calls the base's '{name}', {why}: it has no body to run"
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(
+                        crate::denormalize(db, file, &call_site.get_span(db)).unwrap_or_default(),
+                    )
+                    .call();
+                diag.with_related(Related::new(
+                    format!("'{name}' is declared here"),
+                    method.get_scope_id(db).file(db),
+                    method.get_name_span(db),
+                ));
+                diag
+            }
+            Self::AbstractMethodWithBody { method } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "ABSTRACT method '{}' cannot have a body",
+                        method.get_name_with_case(db).text(db),
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(
+                        crate::denormalize(db, file, &method.get_name_span(db)).unwrap_or_default(),
+                    )
+                    .call();
+                diag.with_note(
+                    "a derived block implements it; without ABSTRACT, this body is the method's"
+                        .into(),
+                );
+                diag
+            }
+            Self::ImplementationNotPublic { method, interface } => {
+                use crate::{HasVisibility, Visibility};
+                let visibility = method.get_visibility(db);
+                let written = if visibility.contains(Visibility::PRIVATE) {
+                    "PRIVATE"
+                } else if visibility.contains(Visibility::PROTECTED) {
+                    "PROTECTED"
+                } else {
+                    "INTERNAL"
+                };
+                let interface_name = interface.get_name_with_case(db).text(db).to_string();
+                let mut diag = diag()
+                    .message(format!(
+                        "method '{}' implements INTERFACE '{interface_name}' and must be PUBLIC, \
+                         not {written}",
+                        method.get_name_with_case(db).text(db),
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(
+                        crate::denormalize(db, file, &method.get_name_span(db)).unwrap_or_default(),
+                    )
+                    .call();
+                diag.with_related(Related::new(
+                    format!("INTERFACE '{interface_name}' is declared here"),
+                    interface.get_scope_id(db).file(db),
+                    interface.get_name_span(db),
+                ));
+                diag.with_note(
+                    "a call through the interface reaches it from anywhere the interface is".into(),
+                );
                 diag
             }
         }

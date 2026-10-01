@@ -3,7 +3,7 @@ use ide_diagnostic::IdeDiagnostic;
 use rustc_hash::FxHashMap;
 
 use crate::{
-    HasModifiers, HasName, HirNodeInfo, Modifier,
+    HasModifiers, HasName, HasVisibility, HirNodeInfo, Modifier, Visibility,
     check::errors::{ToIdeDiagnostic, e01_duplicates::DuplicateError, e11_oop::OopError},
     hir_def::{
         pous::{pou::Pou, variable::VariableDecl},
@@ -79,6 +79,20 @@ impl<'db> InitInference<'db> {
             }
         }
 
+        // An ABSTRACT method declares what a derived block implements: its
+        // statements would never run, and nothing could call them.
+        for method in declared_methods.values() {
+            if let MethodRef::Declared(decl) = method
+                && method.get_modifiers(db).contains(Modifier::ABSTRACT)
+                && !decl.stmts(db).is_empty()
+            {
+                self.errors.push(
+                    OopError::AbstractMethodWithBody { method: *method }
+                        .to_diagnostic(db, self.scope.file(db)),
+                );
+            }
+        }
+
         for (m1, m2) in &members.duplicates {
             self.errors.push(
                 DuplicateError::InheritedMethod {
@@ -96,33 +110,100 @@ impl<'db> InitInference<'db> {
                 continue;
             };
             check_signature(db, base_method, *own, &mut self.errors);
-            match (base_method.get_modifiers(db), own.get_modifiers(db)) {
-                (Modifier::FINAL, Modifier::OVERRIDE) => {
-                    self.errors.push(
-                        OopError::OverrideFinalMethod {
-                            base_method,
-                            derived_method: *own,
-                        }
-                        .to_diagnostic(db, self.scope.file(db)),
-                    );
-                }
-                // OVERRIDE is required when the base method is a concrete
-                // (non-abstract) declared method. For interface prototypes and
-                // abstract methods it is optional: the implementer must
-                // provide a body regardless.
-                (_, Modifier::EMPTY)
-                    if !base_method.is_prototype()
-                        && base_method.get_modifiers(db) != Modifier::ABSTRACT =>
+            // Each rule reads the flag it is about: `FINAL OVERRIDE` is both,
+            // and a set compared whole missed it on either side.
+            let (base_modifiers, own_modifiers) =
+                (base_method.get_modifiers(db), own.get_modifiers(db));
+            // A FINAL method closes its name, OVERRIDE or not.
+            if base_modifiers.contains(Modifier::FINAL) {
+                self.errors.push(
+                    OopError::OverrideFinalMethod {
+                        base_method,
+                        derived_method: *own,
+                    }
+                    .to_diagnostic(db, self.scope.file(db)),
+                );
+            }
+            // OVERRIDE is required when the base method is a concrete
+            // (non-abstract) declared method. For interface prototypes and
+            // abstract methods it is optional: the implementer must
+            // provide a body regardless.
+            if !own_modifiers.contains(Modifier::OVERRIDE)
+                && !base_method.is_prototype()
+                && !base_modifiers.contains(Modifier::ABSTRACT)
+            {
+                self.errors.push(
+                    OopError::MissingOverride {
+                        base_method,
+                        derived_method: *own,
+                    }
+                    .to_diagnostic(db, self.scope.file(db)),
+                );
+            }
+            // An INTERFACE's method is public, so is its implementation: a
+            // call through the interface reaches it from anywhere.
+            if base_method.is_prototype() && !is_public(own.get_visibility(db)) {
+                self.errors.push(
+                    OopError::ImplementationNotPublic {
+                        method: *own,
+                        interface: base.owner,
+                    }
+                    .to_diagnostic(db, self.scope.file(db)),
+                );
+            }
+        }
+
+        // An INTERFACE it names may be implemented by a method it inherits.
+        // That method is checked here, at the IMPLEMENTS that asks for it:
+        // its own POU may implement no INTERFACE at all, and one that
+        // implements this one was checked there.
+        let mut checked = rustc_hash::FxHashSet::default();
+        for base in crate::hir_ty::oop::written_bases(db, implementer) {
+            let Some(named @ Pou::Interface(_)) = base.target else {
+                continue;
+            };
+            let site = crate::CallSite::from_scoped(db, &base.spec);
+            for (name, prototype) in &crate::hir_ty::oop::class_members(db, named).methods {
+                let (Some(inherited), Pou::Interface(declaring)) =
+                    (members.methods.get(name), prototype.owner)
+                else {
+                    continue;
+                };
+                if inherited.owner == implementer
+                    || !inherited.method.is_declared()
+                    || crate::hir_ty::oop::ancestry(db, inherited.owner).implements(declaring)
+                    || !checked.insert((prototype.method, inherited.method))
                 {
-                    self.errors.push(
-                        OopError::MissingOverride {
-                            base_method,
-                            derived_method: *own,
+                    continue;
+                }
+                let mut found = Vec::new();
+                check_signature(db, prototype.method, inherited.method, &mut found);
+                if !is_public(inherited.method.get_visibility(db)) {
+                    found.push(
+                        OopError::ImplementationNotPublic {
+                            method: inherited.method,
+                            interface: prototype.owner,
                         }
-                        .to_diagnostic(db, self.scope.file(db)),
+                        .to_diagnostic(db, inherited.method.get_scope_id(db).file(db)),
                     );
                 }
-                _ => {}
+                // The method is fine in its own POU: what is wrong is this one
+                // taking it as an implementation, so that is where it shows.
+                for mut diagnostic in found {
+                    diagnostic.diagnostic.range =
+                        crate::denormalize(db, self.scope.file(db), &site.get_span(db))
+                            .unwrap_or_default();
+                    diagnostic.with_related(ide_diagnostic::Related::new(
+                        format!(
+                            "'{}' is inherited from '{}', declared here",
+                            inherited.method.get_name_with_case(db).text(db),
+                            inherited.owner.get_name_with_case(db).text(db),
+                        ),
+                        inherited.method.get_scope_id(db).file(db),
+                        inherited.method.get_name_span(db),
+                    ));
+                    self.errors.push(diagnostic);
+                }
             }
         }
 
@@ -141,7 +222,7 @@ impl<'db> InitInference<'db> {
                     .to_diagnostic(db, self.scope.file(db)),
                 );
             }
-            if let Modifier::ABSTRACT = method.get_modifiers(db)
+            if method.get_modifiers(db).contains(Modifier::ABSTRACT)
                 && !implementer.modifier(db).contains(Modifier::ABSTRACT)
             {
                 self.errors.push(
@@ -156,7 +237,8 @@ impl<'db> InitInference<'db> {
 
         // OVERRIDE with nothing to override.
         for (name, own) in declared_methods {
-            if own.get_modifiers(db) == Modifier::OVERRIDE && !members.overridden.contains_key(name)
+            if own.get_modifiers(db).contains(Modifier::OVERRIDE)
+                && !members.overridden.contains_key(name)
             {
                 self.errors.push(
                     OopError::EmptyOverride { base_method: *own }
@@ -256,8 +338,19 @@ fn check_signature<'db>(
     m2: MethodRef<'db>,
     errors: &mut Vec<IdeDiagnostic>,
 ) {
-    let sig1 = m1.variables(db);
-    let sig2 = m2.variables(db);
+    // The parameters are the signature: a method's own VAR and VAR_TEMP
+    // are not, and a prototype has none.
+    let parameters = |method: MethodRef<'db>| -> Vec<VariableDecl<'db>> {
+        method
+            .variables(db)
+            .iter()
+            .copied()
+            .filter(|var| var.is_input(db) || var.is_output(db) || var.is_in_out(db))
+            .collect()
+    };
+    let (sig1, sig2) = (parameters(m1), parameters(m2));
+    // Each error points at `m2`, whose span is read in its own file.
+    let file = m2.get_scope_id(db).file(db);
     if sig1.len() != sig2.len() {
         errors.push(
             OopError::SignatureParametersCountMismatch {
@@ -266,7 +359,7 @@ fn check_signature<'db>(
                 m2,
                 got: sig2.len(),
             }
-            .to_diagnostic(db, m1.get_scope_id(db).file(db)),
+            .to_diagnostic(db, file),
         );
     }
 
@@ -284,7 +377,7 @@ fn check_signature<'db>(
                 method: m2,
                 base: m1,
             }
-            .to_diagnostic(db, m1.get_scope_id(db).file(db)),
+            .to_diagnostic(db, file),
         );
     }
 
@@ -305,7 +398,7 @@ fn check_signature<'db>(
                     base_param: *var1,
                     param: *var2,
                 }
-                .to_diagnostic(db, m1.get_scope_id(db).file(db)),
+                .to_diagnostic(db, file),
             );
             continue;
         }
@@ -316,7 +409,7 @@ fn check_signature<'db>(
                     base_param: *var1,
                     param: *var2,
                 }
-                .to_diagnostic(db, m1.get_scope_id(db).file(db)),
+                .to_diagnostic(db, file),
             );
             continue;
         }
@@ -329,8 +422,40 @@ fn check_signature<'db>(
                     base_param: *var1,
                     param: *var2,
                 }
-                .to_diagnostic(db, m1.get_scope_id(db).file(db)),
+                .to_diagnostic(db, file),
+            )
+        } else if var1.is_input(db) && !same_default(db, *var1, *var2) {
+            errors.push(
+                OopError::SignatureDefaultMismatch {
+                    method: m2,
+                    base_param: *var1,
+                    param: *var2,
+                }
+                .to_diagnostic(db, file),
             )
         }
     }
+}
+
+/// Whether two inputs default alike: neither has a default, or both fold
+/// to the same integer, or are written the same.
+fn same_default<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    a: VariableDecl<'db>,
+    b: VariableDecl<'db>,
+) -> bool {
+    use crate::hir_ty::{infer::const_eval::spec_value, resolver::func_call::input_default};
+    match (input_default(db, a), input_default(db, b)) {
+        (None, None) => true,
+        (Some(a), Some(b)) => match (spec_value(db, a), spec_value(db, b)) {
+            (Some(a), Some(b)) => a == b,
+            _ => a.as_call_site(db).to_string(db) == b.as_call_site(db).to_string(db),
+        },
+        _ => false,
+    }
+}
+
+/// An access specifier that hides nothing: PUBLIC, or none written.
+fn is_public(visibility: Visibility) -> bool {
+    visibility.is_empty() || visibility.contains(Visibility::PUBLIC)
 }

@@ -175,7 +175,7 @@ fn method_signature_count_mismatch_in_implementer(mut with_db: RootDatabase) {
         |
       3 |             METHOD DAYTIME
         |                    ^^^|^^^
-        |                       `----- base method 'DAYTIME' is declared here
+        |                       `----- interface method 'DAYTIME' is declared here
         |
      11 |             METHOD OVERRIDE DAYTIME
         |                             ^^^|^^^
@@ -207,7 +207,7 @@ fn method_signature_count_mismatch_in_base(mut with_db: RootDatabase) {
        |
      3 |             METHOD DAYTIME
        |                    ^^^|^^^
-       |                       `----- base method 'DAYTIME' is declared here
+       |                       `----- interface method 'DAYTIME' is declared here
        |
      8 |             METHOD OVERRIDE DAYTIME
        |                             ^^^|^^^
@@ -244,13 +244,13 @@ fn method_signature_type_mismatch(mut with_db: RootDatabase) {
         |
       6 |                     value2: INT;
         |                             ^|^
-        |                              `--- the base method declares 'value2' as 'INT' here
+        |                              `--- the interface method declares 'value2' as 'INT' here
         |
      15 |                     value2: REAL; // should be INT
         |                             ^^|^
         |                               `--- parameter 'value2' of method 'DAYTIME' has an incompatible type: expected 'INT', got 'REAL'
         |
-        | Note: parameter types must match those of the base method
+        | Note: parameter types must match those of the interface method
     ----'
     ");
 }
@@ -432,13 +432,13 @@ END_FUNCTION_BLOCK
        |
      3 |     METHOD M : INT
        |                ^|^
-       |                 `--- base method 'M' declares its return type here
+       |                 `--- interface method 'M' declares its return type here
        |
      8 |     METHOD M : REAL
        |                ^^|^
        |                  `--- method 'M' has an incompatible return type: expected 'INT', got 'REAL'
        |
-       | Note: the return type must match the base method's
+       | Note: the return type must match the interface method's
     ---'
     ");
 }
@@ -465,13 +465,13 @@ END_FUNCTION_BLOCK
        |
      3 |     METHOD M : INT
        |                ^|^
-       |                 `--- base method 'M' declares its return type here
+       |                 `--- interface method 'M' declares its return type here
        |
      8 |     METHOD M : DINT
        |                ^^|^
        |                  `--- method 'M' has an incompatible return type: expected 'INT', got 'DINT'
        |
-       | Note: the return type must match the base method's
+       | Note: the return type must match the interface method's
     ---'
     ");
 }
@@ -709,7 +709,7 @@ END_PROGRAM
        |         |
        |         `-- cannot instantiate ABSTRACT CLASS 'B'
        |
-       | Note: declare a variable of a derived type that implements it
+       | Note: use a derived type that implements it
     ---'
     ");
 }
@@ -947,11 +947,11 @@ END_CLASS
         |
       4 |         VAR_INPUT a : INT; END_VAR
         |                   |
-        |                   `-- the base method declares 'a' as VAR_INPUT here
+        |                   `-- the interface method declares 'a' as VAR_INPUT here
         |
      10 |         VAR_IN_OUT a : INT; END_VAR
         |                    |
-        |                    `-- parameter 'a' of method 'M' is VAR_IN_OUT here but VAR_INPUT in the base method
+        |                    `-- parameter 'a' of method 'M' is VAR_IN_OUT here but VAR_INPUT in the interface method
     ----'
     ");
 }
@@ -978,11 +978,11 @@ END_CLASS
         |
       4 |         VAR_INPUT a : INT; END_VAR
         |                   |
-        |                   `-- the base method declares 'a' at this position
+        |                   `-- the interface method declares 'a' at this position
         |
      10 |         VAR_INPUT b : INT; END_VAR
         |                   |
-        |                   `-- parameter 'b' of method 'M' is named 'a' in the base method
+        |                   `-- parameter 'b' of method 'M' is named 'a' in the interface method
     ----'
     ");
 }
@@ -1043,22 +1043,22 @@ END_CLASS
         |
       4 |         VAR_INPUT a : INT; b : REAL; END_VAR
         |                   |
-        |                   `-- the base method declares 'a' at this position
+        |                   `-- the interface method declares 'a' at this position
         |
      10 |         VAR_INPUT b : REAL; a : INT; END_VAR
         |                   |
-        |                   `-- parameter 'b' of method 'M' is named 'a' in the base method
+        |                   `-- parameter 'b' of method 'M' is named 'a' in the interface method
     ----'
     [E1128] Error: method parameter name mismatch
         ,-[ file:///test0.st:10:29 ]
         |
       4 |         VAR_INPUT a : INT; b : REAL; END_VAR
         |                            |
-        |                            `-- the base method declares 'b' at this position
+        |                            `-- the interface method declares 'b' at this position
         |
      10 |         VAR_INPUT b : REAL; a : INT; END_VAR
         |                             |
-        |                             `-- parameter 'a' of method 'M' is named 'b' in the base method
+        |                             `-- parameter 'a' of method 'M' is named 'b' in the interface method
     ----'
     ");
 }
@@ -1310,6 +1310,632 @@ END_FUNCTION
         |       -> IA
         |       -> IB
         |       ... and back to IA
+    ----'
+    ");
+}
+
+/// An INTERFACE met by an inherited method is checked against it too, at
+/// the IMPLEMENTS that asks for it: its signature, and its visibility. It
+/// used to pass, and the call through the interface read an INT where it
+/// promised an LREAL: an invalid module.
+#[rstest]
+fn an_inherited_implementation_is_checked_against_the_interface(mut with_db: RootDatabase) {
+    let source = r#"
+INTERFACE IMeasure
+    METHOD Value : LREAL END_METHOD
+END_INTERFACE
+
+FUNCTION_BLOCK Base
+    METHOD PUBLIC Value : INT
+        Value := 3;
+    END_METHOD
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK Sensor EXTENDS Base IMPLEMENTS IMeasure
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK Guarded
+    METHOD PROTECTED Value : LREAL
+        Value := 3.0;
+    END_METHOD
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK Exposed EXTENDS Guarded IMPLEMENTS IMeasure
+END_FUNCTION_BLOCK
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1127] Error: method return type mismatch
+        ,-[ file:///test0.st:12:47 ]
+        |
+      3 |     METHOD Value : LREAL END_METHOD
+        |                    ^^|^^
+        |                      `---- interface method 'Value' declares its return type here
+        |
+      7 |     METHOD PUBLIC Value : INT
+        |                   ^^|^^
+        |                     `---- 'Value' is inherited from 'Base', declared here
+        |
+     12 | FUNCTION_BLOCK Sensor EXTENDS Base IMPLEMENTS IMeasure
+        |                                               ^^^^|^^^
+        |                                                   `----- method 'Value' has an incompatible return type: expected 'LREAL', got 'INT'
+        |
+        | Note: the return type must match the interface method's
+    ----'
+    [E1135] Error: inheritance violation
+        ,-[ file:///test0.st:21:51 ]
+        |
+      2 | INTERFACE IMeasure
+        |           ^^^^|^^^
+        |               `----- INTERFACE 'IMeasure' is declared here
+        |
+     16 |     METHOD PROTECTED Value : LREAL
+        |                      ^^|^^
+        |                        `---- 'Value' is inherited from 'Guarded', declared here
+        |
+     21 | FUNCTION_BLOCK Exposed EXTENDS Guarded IMPLEMENTS IMeasure
+        |                                                   ^^^^|^^^
+        |                                                       `----- method 'Value' implements INTERFACE 'IMeasure' and must be PUBLIC, not PROTECTED
+        |
+        | Note: a call through the interface reaches it from anywhere the interface is
+    ----'
+    ");
+}
+
+/// A PRIVATE method is its POU's own: a derived POU does not inherit it.
+/// It implements none of the derived POU's INTERFACEs, which can declare
+/// their method itself, and a method of the same name is a method of its
+/// own, which OVERRIDE does not fit (E1113).
+#[rstest]
+fn a_private_method_is_not_inherited(mut with_db: RootDatabase) {
+    let source = r#"
+INTERFACE IMeasure
+    METHOD Value : LREAL END_METHOD
+END_INTERFACE
+
+FUNCTION_BLOCK Base
+    METHOD PRIVATE Value : INT
+        Value := 3;
+    END_METHOD
+    METHOD PRIVATE Step : INT
+        Step := 1;
+    END_METHOD
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK Sensor EXTENDS Base IMPLEMENTS IMeasure
+    METHOD PUBLIC Value : LREAL
+        Value := 1.5;
+    END_METHOD
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK Unmet EXTENDS Base IMPLEMENTS IMeasure
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK Stepper EXTENDS Base
+    METHOD PUBLIC Step : INT
+        Step := 2;
+    END_METHOD
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK Overrider EXTENDS Base
+    METHOD PUBLIC OVERRIDE Step : INT
+        Step := 3;
+    END_METHOD
+END_FUNCTION_BLOCK
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1119] Error: inheritance violation
+        ,-[ file:///test0.st:21:16 ]
+        |
+      3 |     METHOD Value : LREAL END_METHOD
+        |            ^^|^^
+        |              `---- method 'Value' is declared by interface 'IMeasure' here
+        |
+     21 | FUNCTION_BLOCK Unmet EXTENDS Base IMPLEMENTS IMeasure
+        |                ^^|^^
+        |                  `---- missing implementation for interface method 'Value'
+    ----'
+    [E1113] Error: inheritance violation
+        ,-[ file:///test0.st:31:28 ]
+        |
+     31 |     METHOD PUBLIC OVERRIDE Step : INT
+        |                            ^^|^
+        |                              `--- invalid usage of OVERRIDE for method 'Step'
+        |
+        | Note: OVERRIDE is only valid when the method is inherited
+    ----'
+    ");
+}
+
+/// The signature is the parameters: an override's or an implementation's
+/// own VAR and VAR_TEMP are not part of it.
+#[rstest]
+fn locals_are_no_part_of_a_signature(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK Base
+    METHOD PUBLIC Calc : INT
+    VAR_INPUT x : INT; END_VAR
+        Calc := x;
+    END_METHOD
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK Derived EXTENDS Base
+    METHOD PUBLIC OVERRIDE Calc : INT
+    VAR_INPUT x : INT; END_VAR
+    VAR tmp : INT; END_VAR
+        tmp := x * 2;
+        Calc := tmp;
+    END_METHOD
+END_FUNCTION_BLOCK
+
+INTERFACE ICalc
+    METHOD Calc : INT
+    VAR_INPUT x : INT; END_VAR
+    END_METHOD
+END_INTERFACE
+
+FUNCTION_BLOCK Impl IMPLEMENTS ICalc
+    METHOD PUBLIC Calc : INT
+    VAR_INPUT x : INT; END_VAR
+    VAR_TEMP t : INT; END_VAR
+        t := x + 1;
+        Calc := t;
+    END_METHOD
+END_FUNCTION_BLOCK
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
+
+/// One prototype reached by two paths is one method: through two
+/// interfaces extending the same one, or named directly and again through
+/// an interface that extends it.
+#[rstest]
+fn an_interface_reached_twice_is_one_method(mut with_db: RootDatabase) {
+    let source = r#"
+INTERFACE IBase
+    METHOD Id : INT END_METHOD
+END_INTERFACE
+
+INTERFACE IRead EXTENDS IBase
+    METHOD Read : INT END_METHOD
+END_INTERFACE
+
+INTERFACE IWrite EXTENDS IBase
+    METHOD Write : INT END_METHOD
+END_INTERFACE
+
+FUNCTION_BLOCK Diamond IMPLEMENTS IRead, IWrite
+    METHOD PUBLIC Id : INT Id := 5; END_METHOD
+    METHOD PUBLIC Read : INT Read := 9; END_METHOD
+    METHOD PUBLIC Write : INT Write := 8; END_METHOD
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK Twice IMPLEMENTS IRead, IBase
+    METHOD PUBLIC Id : INT Id := 5; END_METHOD
+    METHOD PUBLIC Read : INT Read := 9; END_METHOD
+END_FUNCTION_BLOCK
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
+
+/// Every instance of an ABSTRACT type is refused: an array's elements at
+/// any depth, a FUNCTION's or a METHOD's result, and a named type or a
+/// STRUCT field that holds one, at its declaration, where the fix goes.
+/// A variable of such a type is not refused again.
+#[rstest]
+fn every_instance_of_an_abstract_type_is_refused(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK ABSTRACT Shape
+    METHOD PUBLIC ABSTRACT Area : INT
+    END_METHOD
+END_FUNCTION_BLOCK
+
+TYPE Shapes : ARRAY[0..1] OF Shape; END_TYPE
+TYPE Holder : STRUCT s : Shape; END_STRUCT END_TYPE
+
+FUNCTION MakeShape : Shape
+END_FUNCTION
+
+FUNCTION_BLOCK Factory
+    METHOD PUBLIC Make : Shape
+    END_METHOD
+END_FUNCTION_BLOCK
+
+PROGRAM P
+VAR
+    grid : ARRAY[0..1, 0..1] OF Shape;
+    named : Shapes;
+END_VAR
+END_PROGRAM
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1118] Error: inheritance violation
+       ,-[ file:///test0.st:7:15 ]
+       |
+     2 | FUNCTION_BLOCK ABSTRACT Shape
+       |                         ^^|^^
+       |                           `---- FUNCTION_BLOCK 'Shape' is declared ABSTRACT here
+       |
+     7 | TYPE Shapes : ARRAY[0..1] OF Shape; END_TYPE
+       |               ^^^^^^^^^^|^^^^^^^^^
+       |                         `----------- cannot instantiate ABSTRACT FUNCTION_BLOCK 'Shape'
+       |
+       | Note: use a derived type that implements it
+    ---'
+    [E1118] Error: inheritance violation
+       ,-[ file:///test0.st:8:26 ]
+       |
+     2 | FUNCTION_BLOCK ABSTRACT Shape
+       |                         ^^|^^
+       |                           `---- FUNCTION_BLOCK 'Shape' is declared ABSTRACT here
+       |
+     8 | TYPE Holder : STRUCT s : Shape; END_STRUCT END_TYPE
+       |                          ^^|^^
+       |                            `---- cannot instantiate ABSTRACT FUNCTION_BLOCK 'Shape'
+       |
+       | Note: use a derived type that implements it
+    ---'
+    [E1118] Error: inheritance violation
+        ,-[ file:///test0.st:10:22 ]
+        |
+      2 | FUNCTION_BLOCK ABSTRACT Shape
+        |                         ^^|^^
+        |                           `---- FUNCTION_BLOCK 'Shape' is declared ABSTRACT here
+        |
+     10 | FUNCTION MakeShape : Shape
+        |                      ^^|^^
+        |                        `---- cannot instantiate ABSTRACT FUNCTION_BLOCK 'Shape'
+        |
+        | Note: use a derived type that implements it
+    ----'
+    [E1118] Error: inheritance violation
+        ,-[ file:///test0.st:14:26 ]
+        |
+      2 | FUNCTION_BLOCK ABSTRACT Shape
+        |                         ^^|^^
+        |                           `---- FUNCTION_BLOCK 'Shape' is declared ABSTRACT here
+        |
+     14 |     METHOD PUBLIC Make : Shape
+        |                          ^^|^^
+        |                            `---- cannot instantiate ABSTRACT FUNCTION_BLOCK 'Shape'
+        |
+        | Note: use a derived type that implements it
+    ----'
+    [E1118] Error: inheritance violation
+        ,-[ file:///test0.st:20:12 ]
+        |
+      2 | FUNCTION_BLOCK ABSTRACT Shape
+        |                         ^^|^^
+        |                           `---- FUNCTION_BLOCK 'Shape' is declared ABSTRACT here
+        |
+     20 |     grid : ARRAY[0..1, 0..1] OF Shape;
+        |            ^^^^^^^^^^^^^|^^^^^^^^^^^^
+        |                         `-------------- cannot instantiate ABSTRACT FUNCTION_BLOCK 'Shape'
+        |
+        | Note: use a derived type that implements it
+    ----'
+    ");
+}
+
+/// A call passes the default of the method it names, so an implementation
+/// or an override keeps the default it is given, none included. Equal
+/// values written differently are the same default.
+#[rstest]
+fn an_input_default_differing_from_the_base_is_refused(mut with_db: RootDatabase) {
+    let source = r#"
+INTERFACE IScale
+    METHOD Scale : INT
+    VAR_INPUT k : INT := 1; END_VAR
+    END_METHOD
+END_INTERFACE
+
+FUNCTION_BLOCK Doubler IMPLEMENTS IScale
+    METHOD PUBLIC Scale : INT
+    VAR_INPUT k : INT := 2; END_VAR
+        Scale := k * 10;
+    END_METHOD
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK Same IMPLEMENTS IScale
+    METHOD PUBLIC Scale : INT
+    VAR_INPUT k : INT := INT#1; END_VAR
+        Scale := k;
+    END_METHOD
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK Base
+    METHOD PUBLIC Hook : INT
+    VAR_INPUT a : INT := 5; END_VAR
+        Hook := a;
+    END_METHOD
+    METHOD PUBLIC Plain : INT
+    VAR_INPUT b : INT; END_VAR
+        Plain := b;
+    END_METHOD
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK Derived EXTENDS Base
+    METHOD PUBLIC OVERRIDE Hook : INT
+    VAR_INPUT a : INT; END_VAR
+        Hook := a;
+    END_METHOD
+    METHOD PUBLIC OVERRIDE Plain : INT
+    VAR_INPUT b : INT := 5; END_VAR
+        Plain := b;
+    END_METHOD
+END_FUNCTION_BLOCK
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1131] Error: method parameter default mismatch
+        ,-[ file:///test0.st:10:15 ]
+        |
+      4 |     VAR_INPUT k : INT := 1; END_VAR
+        |               |
+        |               `-- the interface method declares 'k' here
+        |
+     10 |     VAR_INPUT k : INT := 2; END_VAR
+        |               |
+        |               `-- input 'k' of method 'Scale' has a different default than in the interface method
+        |
+        | Note: a call passes the default of the method it names, so through the base or an INTERFACE this one would not apply
+    ----'
+    [E1131] Error: method parameter default mismatch
+        ,-[ file:///test0.st:35:15 ]
+        |
+     24 |     VAR_INPUT a : INT := 5; END_VAR
+        |               |
+        |               `-- the base method declares 'a' here
+        |
+     35 |     VAR_INPUT a : INT; END_VAR
+        |               |
+        |               `-- input 'a' of method 'Hook' has a different default than in the base method
+        |
+        | Note: a call passes the default of the method it names, so through the base or an INTERFACE this one would not apply
+    ----'
+    [E1131] Error: method parameter default mismatch
+        ,-[ file:///test0.st:39:15 ]
+        |
+     28 |     VAR_INPUT b : INT; END_VAR
+        |               |
+        |               `-- the base method declares 'b' here
+        |
+     39 |     VAR_INPUT b : INT := 5; END_VAR
+        |               |
+        |               `-- input 'b' of method 'Plain' has a different default than in the base method
+        |
+        | Note: a call passes the default of the method it names, so through the base or an INTERFACE this one would not apply
+    ----'
+    ");
+}
+
+/// `SUPER()` runs the base's body, and a CLASS base has none. It used to
+/// pass the check, then stop the build with an internal error.
+#[rstest]
+fn super_body_with_a_class_base_is_refused(mut with_db: RootDatabase) {
+    let source = r#"
+CLASS K
+VAR v : INT := 4; END_VAR
+END_CLASS
+
+FUNCTION_BLOCK Fb EXTENDS K
+VAR_OUTPUT o : INT; END_VAR
+    SUPER();
+    o := v;
+END_FUNCTION_BLOCK
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1132] Error: invalid use of SUPER or THIS
+       ,-[ file:///test0.st:8:5 ]
+       |
+     2 | CLASS K
+       |       |
+       |       `-- CLASS 'K' is declared here
+       |
+     8 |     SUPER();
+       |     ^^|^^
+       |       `---- SUPER() runs the base's body, and CLASS 'K' has none
+       |
+       | Note: its methods are reached with SUPER.Method()
+    ---'
+    ");
+}
+
+/// `SUPER.m()` on an ABSTRACT method has no body to run: it returned 0. An
+/// ABSTRACT method with statements is refused too, since none would run.
+#[rstest]
+fn an_abstract_method_has_no_body_to_call(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK ABSTRACT Shape
+    METHOD PUBLIC ABSTRACT Area : INT
+    END_METHOD
+    METHOD PUBLIC ABSTRACT Perimeter : INT
+        Perimeter := 5;
+    END_METHOD
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK Square EXTENDS Shape
+    METHOD PUBLIC OVERRIDE Area : INT
+        Area := SUPER.Area() + 4;
+    END_METHOD
+    METHOD PUBLIC OVERRIDE Perimeter : INT
+        Perimeter := 16;
+    END_METHOD
+END_FUNCTION_BLOCK
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1134] Error: inheritance violation
+       ,-[ file:///test0.st:5:28 ]
+       |
+     5 |     METHOD PUBLIC ABSTRACT Perimeter : INT
+       |                            ^^^^|^^^^
+       |                                `------ ABSTRACT method 'Perimeter' cannot have a body
+       |
+       | Note: a derived block implements it; without ABSTRACT, this body is the method's
+    ---'
+    [E1133] Error: invalid use of SUPER or THIS
+        ,-[ file:///test0.st:12:23 ]
+        |
+      3 |     METHOD PUBLIC ABSTRACT Area : INT
+        |                            ^^|^
+        |                              `--- 'Area' is declared here
+        |
+     12 |         Area := SUPER.Area() + 4;
+        |                       ^^|^
+        |                         `--- SUPER.Area() calls the base's 'Area', which is ABSTRACT: it has no body to run
+    ----'
+    ");
+}
+
+/// FINAL and OVERRIDE are read as flags: a method carrying both is FINAL,
+/// and is an OVERRIDE. The rules compared the whole set and missed it.
+#[rstest]
+fn final_and_override_together_are_both(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK A
+    METHOD PUBLIC M : INT M := 1; END_METHOD
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK B EXTENDS A
+    METHOD PUBLIC FINAL OVERRIDE M : INT M := 2; END_METHOD
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK C EXTENDS B
+    METHOD PUBLIC OVERRIDE M : INT M := 3; END_METHOD
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK X
+    METHOD PUBLIC FINAL N : INT N := 1; END_METHOD
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK Y EXTENDS X
+    METHOD PUBLIC FINAL OVERRIDE N : INT N := 2; END_METHOD
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK Z EXTENDS A
+    METHOD PUBLIC FINAL M : INT M := 3; END_METHOD
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK Lone
+    METHOD PUBLIC FINAL OVERRIDE L : INT L := 1; END_METHOD
+END_FUNCTION_BLOCK
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1114] Error: override violation
+        ,-[ file:///test0.st:11:28 ]
+        |
+      7 |     METHOD PUBLIC FINAL OVERRIDE M : INT M := 2; END_METHOD
+        |                                  |
+        |                                  `-- FINAL method 'M' is declared here
+        |
+     11 |     METHOD PUBLIC OVERRIDE M : INT M := 3; END_METHOD
+        |                            |
+        |                            `-- cannot override FINAL method 'M'
+        |
+        | Note: methods marked as FINAL cannot be overridden
+    ----'
+    [E1114] Error: override violation
+        ,-[ file:///test0.st:19:34 ]
+        |
+     15 |     METHOD PUBLIC FINAL N : INT N := 1; END_METHOD
+        |                         |
+        |                         `-- FINAL method 'N' is declared here
+        |
+     19 |     METHOD PUBLIC FINAL OVERRIDE N : INT N := 2; END_METHOD
+        |                                  |
+        |                                  `-- cannot override FINAL method 'N'
+        |
+        | Note: methods marked as FINAL cannot be overridden
+    ----'
+    [E1112] Error: override violation
+        ,-[ file:///test0.st:23:25 ]
+        |
+      3 |     METHOD PUBLIC M : INT M := 1; END_METHOD
+        |                   |
+        |                   `-- base method 'M' is declared here
+        |
+     23 |     METHOD PUBLIC FINAL M : INT M := 3; END_METHOD
+        |                         |
+        |                         `-- missing OVERRIDE keyword for method 'M'
+        |
+        | Note: OVERRIDE is required when redefining a method with the same signature from a base class or function block
+    ----'
+    [E1113] Error: inheritance violation
+        ,-[ file:///test0.st:27:34 ]
+        |
+     27 |     METHOD PUBLIC FINAL OVERRIDE L : INT L := 1; END_METHOD
+        |                                  |
+        |                                  `-- invalid usage of OVERRIDE for method 'L'
+        |
+        | Note: OVERRIDE is only valid when the method is inherited
+    ----'
+    ");
+}
+
+/// An INTERFACE's methods are public, and so is the method implementing
+/// one: through the interface, a PRIVATE, PROTECTED or INTERNAL one was
+/// called from anywhere. A method with no specifier is PUBLIC in rk, where
+/// the standard says PROTECTED, so it implements one.
+#[rstest]
+fn an_interface_method_implemented_without_public_is_refused(mut with_db: RootDatabase) {
+    let source = r#"
+INTERFACE IShow
+    METHOD Show : INT END_METHOD
+END_INTERFACE
+
+FUNCTION_BLOCK Hidden IMPLEMENTS IShow
+    METHOD PRIVATE Show : INT Show := 7; END_METHOD
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK Guarded IMPLEMENTS IShow
+    METHOD PROTECTED Show : INT Show := 7; END_METHOD
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK Local IMPLEMENTS IShow
+    METHOD INTERNAL Show : INT Show := 7; END_METHOD
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK Open IMPLEMENTS IShow
+    METHOD Show : INT Show := 8; END_METHOD
+END_FUNCTION_BLOCK
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1135] Error: inheritance violation
+       ,-[ file:///test0.st:7:20 ]
+       |
+     2 | INTERFACE IShow
+       |           ^^|^^
+       |             `---- INTERFACE 'IShow' is declared here
+       |
+     7 |     METHOD PRIVATE Show : INT Show := 7; END_METHOD
+       |                    ^^|^
+       |                      `--- method 'Show' implements INTERFACE 'IShow' and must be PUBLIC, not PRIVATE
+       |
+       | Note: a call through the interface reaches it from anywhere the interface is
+    ---'
+    [E1135] Error: inheritance violation
+        ,-[ file:///test0.st:11:22 ]
+        |
+      2 | INTERFACE IShow
+        |           ^^|^^
+        |             `---- INTERFACE 'IShow' is declared here
+        |
+     11 |     METHOD PROTECTED Show : INT Show := 7; END_METHOD
+        |                      ^^|^
+        |                        `--- method 'Show' implements INTERFACE 'IShow' and must be PUBLIC, not PROTECTED
+        |
+        | Note: a call through the interface reaches it from anywhere the interface is
+    ----'
+    [E1135] Error: inheritance violation
+        ,-[ file:///test0.st:15:21 ]
+        |
+      2 | INTERFACE IShow
+        |           ^^|^^
+        |             `---- INTERFACE 'IShow' is declared here
+        |
+     15 |     METHOD INTERNAL Show : INT Show := 7; END_METHOD
+        |                     ^^|^
+        |                       `--- method 'Show' implements INTERFACE 'IShow' and must be PUBLIC, not INTERNAL
+        |
+        | Note: a call through the interface reaches it from anywhere the interface is
     ----'
     ");
 }

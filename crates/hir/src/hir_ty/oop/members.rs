@@ -1,11 +1,11 @@
 use db::WorkspaceDataBase;
 use rustc_hash::FxHashMap;
 
-use crate::HirNodeInfo;
 use crate::hir_def::{
     interned::identifier::Ident,
     pous::{class::MethodDecl, pou::Pou, variable::VariableDecl},
 };
+use crate::{HasVisibility, HirNodeInfo, Visibility};
 
 use super::{MethodRef, ancestry};
 
@@ -59,9 +59,14 @@ pub fn class_members<'db>(db: &'db dyn WorkspaceDataBase, pou: Pou<'db>) -> Clas
     let lineage = ancestry(db, pou);
     let mut members = ClassMembers::default();
 
-    // Base first, so the nearest declaration takes the name.
+    // Base first, so the nearest declaration takes the name. A PRIVATE
+    // method stays its POU's own: a derived POU neither inherits nor
+    // overrides it, and may declare one of the same name.
     for owner in lineage.chain.iter().rev() {
         for (name, method) in declared(*owner) {
+            if *owner != pou && method.get_visibility(db).contains(Visibility::PRIVATE) {
+                continue;
+            }
             let member = ClassMember {
                 owner: *owner,
                 method: *method,

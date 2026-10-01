@@ -442,6 +442,91 @@ fn interface_satisfied_by_an_inherited_method(mut with_db: db::RootDatabase) {
     assert_eq!(result, 6, "the inherited method implements the interface");
 }
 
+/// An override and an implementation may keep locals of their own: the
+/// signature is the parameters. Both were refused as having one parameter
+/// too many.
+#[rstest]
+fn an_override_and_an_implementation_keep_their_locals(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Base
+            METHOD PUBLIC Calc : INT
+            VAR_INPUT x : INT; END_VAR
+                Calc := x;
+            END_METHOD
+        END_FUNCTION_BLOCK
+
+        FUNCTION_BLOCK Derived EXTENDS Base
+            METHOD PUBLIC OVERRIDE Calc : INT
+            VAR_INPUT x : INT; END_VAR
+            VAR tmp : INT; END_VAR
+                tmp := x * 2;
+                Calc := tmp;
+            END_METHOD
+        END_FUNCTION_BLOCK
+
+        INTERFACE ICalc
+            METHOD Calc : INT
+            VAR_INPUT x : INT; END_VAR
+            END_METHOD
+        END_INTERFACE
+
+        FUNCTION_BLOCK Impl IMPLEMENTS ICalc
+            METHOD PUBLIC Calc : INT
+            VAR_INPUT x : INT; END_VAR
+            VAR_TEMP t : INT; END_VAR
+                t := x + 1;
+                Calc := t;
+            END_METHOD
+        END_FUNCTION_BLOCK
+
+        FUNCTION through : INT
+        VAR_IN_OUT c : ICalc; END_VAR
+            through := c.Calc(x := 3);
+        END_FUNCTION
+
+        FUNCTION test : INT
+        VAR d : Derived; i : Impl; END_VAR
+            test := d.Calc(x := 3) * 10 + through(c := i);
+        END_FUNCTION
+    "#;
+    let result: i32 = super::run(&mut with_db, source, "test", ());
+    assert_eq!(
+        result, 64,
+        "the override doubles 3, the implementation adds 1"
+    );
+}
+
+/// A PRIVATE method is its block's own: the base's code calls it, through
+/// `THIS` or bare, on a derived instance too, and a method the derived
+/// block declares under the same name is another method. The base's call
+/// used to reach the derived one.
+#[rstest]
+fn a_private_method_is_called_as_its_block_declares_it(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Base
+            METHOD PRIVATE M : INT
+                M := 1;
+            END_METHOD
+            METHOD PUBLIC Call : INT
+                Call := THIS.M() + M();
+            END_METHOD
+        END_FUNCTION_BLOCK
+
+        FUNCTION_BLOCK Derived EXTENDS Base
+            METHOD PUBLIC M : INT
+                M := 30;
+            END_METHOD
+        END_FUNCTION_BLOCK
+
+        FUNCTION test : INT
+        VAR d : Derived; END_VAR
+            test := d.Call() * 100 + d.M();
+        END_FUNCTION
+    "#;
+    let result: i32 = super::run(&mut with_db, source, "test", ());
+    assert_eq!(result, 230, "Base's M twice, then Derived's own M");
+}
+
 /// A CLASS method with an interface param monomorphizes exactly like an FB
 /// method: `c.Get(dev := a)` -> `Owner#Get$One` -> direct `One#V`. Two
 /// implementers stay distinct: 1 + 100*10 = 1001.
