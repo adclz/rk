@@ -231,6 +231,26 @@ fn a_subrange_fb_input_is_checked(mut with_db: db::RootDatabase) {
     expect_fault(&mut with_db, source, "99 into a Small FB input");
 }
 
+/// A subrange RESULT checks its store like a plain variable.
+#[rstest]
+fn a_subrange_function_result_is_checked(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE Small : INT (0..10); END_TYPE
+
+        FUNCTION gives : Small
+        VAR_INPUT
+            n : INT;
+        END_VAR
+            gives := n;
+        END_FUNCTION
+
+        FUNCTION run : DINT
+            run := gives(99);
+        END_FUNCTION
+    "#;
+    expect_fault(&mut with_db, source, "99 into a Small result");
+}
+
 /// A store through a REF_TO a subrange is checked: the reference keeps its
 /// target's bounds.
 #[rstest]
@@ -251,6 +271,30 @@ fn a_store_through_a_reference_to_a_subrange_is_checked(mut with_db: db::RootDat
         END_FUNCTION
     "#;
     expect_fault(&mut with_db, source, "99 through a REF_TO Small");
+}
+
+/// A local's initializer is a store: one only the running program knows is
+/// checked.
+#[rstest]
+fn a_subrange_initializer_is_checked(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE Small : INT (0..10); END_TYPE
+
+        FUNCTION takes : DINT
+        VAR_INPUT
+            n : INT;
+        END_VAR
+        VAR
+            s : Small := n;
+        END_VAR
+            takes := s;
+        END_FUNCTION
+
+        FUNCTION run : DINT
+            run := takes(99);
+        END_FUNCTION
+    "#;
+    expect_fault(&mut with_db, source, "99 initializes a Small local");
 }
 
 /// A bit write stores the whole word back: bit 7 set on a (0..10) holding

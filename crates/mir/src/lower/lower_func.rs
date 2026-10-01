@@ -1849,6 +1849,13 @@ fn lower_init_leaves<'db>(
                  being constant: {value:?}"
             )));
         }
+        // A subrange slot checks its value as an assignment does: a local's
+        // initializer may compute anything (`p : Pct := i`). A constant one
+        // in range folds away; E0702 refused the others.
+        let value = match &leaf_ty {
+            MirType::Subrange(sub) => ctx.checked_range_mir(value, sub),
+            _ => value,
+        };
         out.push(MirStmt::Assign {
             target: init_place(target.offset_by(offset), leaf_ty, leaf.path.is_empty()),
             value,
