@@ -1,6 +1,6 @@
 use auto_lsp::lsp_types::DiagnosticSeverity;
 use db::WorkspaceDataBase;
-use hir::{HasName, HirNodeInfo, hir_ty::body::BodyInferenceResult};
+use hir::{HasName, HirNodeInfo, hir_ty::body::ScopeInference};
 use ide_diagnostic::{ErrorCode, IdeDiagnostic, Related, diag};
 
 pub const NAME: &str = "shadowing-variable";
@@ -20,10 +20,10 @@ impl ErrorCode for ShadowingVariable {
 
 pub fn check<'db>(
     db: &'db dyn WorkspaceDataBase,
-    body: &BodyInferenceResult<'db>,
+    body: ScopeInference<'db>,
     diagnostics: &mut Vec<IdeDiagnostic>,
 ) {
-    for (var, pou) in &body.variables_shadowing {
+    for (var, pou) in body.variables_shadowing() {
         let var_name = var.get_name_with_case(db).text(db);
         // Each as it is declared: the two may differ in case.
         let pou_name = pou.get_name_with_case(db).text(db);

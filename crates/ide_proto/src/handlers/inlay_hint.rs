@@ -11,7 +11,7 @@ use hir::{
         namespace::NamespaceDecl,
         pous::pou::Pou,
     },
-    hir_ty::{body::infer_body, infer::Infer, ty::Type},
+    hir_ty::{infer::Infer, ty::Type},
 };
 
 use crate::{
@@ -90,12 +90,12 @@ impl<'db> InlayHintHandler<'db> for ParamAssign<'db> {
             ParamAssignKind::NonFormal { .. } => {}
         }
 
-        let infer = infer_body(db, self.scope_id(db));
-        infer.variable_of_param.get(self).map(|var| {
+        let inference = self.scope_id(db).inference(db);
+        inference.variable_for_param(*self).map(|var| {
             // A variadic argument is named by position, which is not written
             // anywhere; a formal one links to the parameter it fills.
             let label = if var.variadic(db) {
-                let pos = infer.variadic_position.get(self).copied().unwrap_or(0);
+                let pos = inference.variadic_position(*self).unwrap_or(0);
                 InlayHintLabel::String(format!("({pos}):"))
             } else {
                 InlayHintLabel::LabelParts(vec![part(

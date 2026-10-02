@@ -367,3 +367,45 @@ fn ldt_pre_epoch_decomposition_is_exact(mut with_db: db::RootDatabase) {
         "pre-epoch LDT must floor to the correct DATE and an in-domain LTOD"
     );
 }
+
+/// A comparison in an initial value widens its operands as one in the body
+/// does, and so does an addition. The operand type was read from the body's
+/// inference alone, so `t > l` compared a TIME's milliseconds with an
+/// LTIME's nanoseconds.
+#[rstest]
+fn comparison_in_an_initial_value_widens_its_operands(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Fb
+            METHOD Check : BOOL
+            VAR t : TIME := T#2s; l : LTIME := LT#1s; b : BOOL := t > l; END_VAR
+                Check := b;
+            END_METHOD
+        END_FUNCTION_BLOCK
+
+        FUNCTION run : DINT
+        VAR
+            t : TIME := T#2s;
+            l : LTIME := LT#1s;
+            later : BOOL := t > l;
+            o : TOD := TOD#12:00:00;
+            lo : LTOD := LTOD#12:00:00;
+            same : BOOL := o = lo;
+            d : DT := DT#2024-01-01-00:00:00;
+            ld : LDT := LDT#2000-01-01-00:00:00;
+            newer : BOOL := d > ld;
+            sum : LTIME := t + l;
+            f : Fb;
+        END_VAR
+            IF later THEN run := run + 1; END_IF;
+            IF same THEN run := run + 10; END_IF;
+            IF newer THEN run := run + 100; END_IF;
+            IF f.Check() THEN run := run + 1000; END_IF;
+            IF sum = LT#3s THEN run := run + 10000; END_IF;
+        END_FUNCTION
+    "#;
+    let result: i32 = super::run(&mut with_db, source, "run", ());
+    assert_eq!(
+        result, 11111,
+        "T#2s > LT#1s, TOD = LTOD at noon, DT 2024 > LDT 2000, in a METHOD, and T#2s + LT#1s"
+    );
+}

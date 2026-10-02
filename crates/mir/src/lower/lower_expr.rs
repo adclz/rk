@@ -487,11 +487,11 @@ impl<'db> ExprLowerCtx<'db> {
         // The comparison type is inference's decision (`comparison_operand_type`);
         // `wider_type` remains only for enums and subranges, which HIR does not
         // record.
-        let common = match hir::hir_ty::body::infer_body(self.db, expr.scope_id(self.db))
-            .comparison_operand_type
-            .get(&expr)
-        {
-            Some(ty) => self.type_to_mir_elementary(*ty)?,
+        let recorded = self
+            .inference(expr.scope_id(self.db))
+            .comparison_operand_type(expr);
+        let common = match recorded {
+            Some(ty) => self.type_to_mir_elementary(ty)?,
             None => {
                 let left_elem = self.expr_to_mir_elementary(left)?;
                 let right_elem = self.expr_to_mir_elementary(right)?;
@@ -615,19 +615,7 @@ impl<'db> ExprLowerCtx<'db> {
             PrimaryExpr::EnumValue { name, variant } => {
                 // An enum literal is its variant's ordinal in declaration order, at
                 // the enum's storage lane.
-                let mut enum_ty = name.infer(self.db).normalize(self.db);
-                if !matches!(enum_ty, Type::Enum(_)) {
-                    // Initializer paths are typed by init inference, not body inference.
-                    let init_res = hir::hir_ty::head::init_inference::infer_initialization(
-                        self.db,
-                        name.scope_id(self.db),
-                    );
-                    if let Some(pe) = name.expr(self.db)
-                        && let Some(t) = init_res.body_infer_result.type_of_path_expr.get(&pe)
-                    {
-                        enum_ty = t.normalize(self.db);
-                    }
-                }
+                let enum_ty = name.infer(self.db).normalize(self.db);
                 let Type::Enum(e) = enum_ty else {
                     return Err(LowerTypeError::UnsupportedType(format!(
                         "Enum literal on non-enum type {:?}",
@@ -661,8 +649,9 @@ impl<'db> ExprLowerCtx<'db> {
                     // A part of a wider address has no cell of its own: the
                     // reference is to its bytes in its owner's (a bit has
                     // none, E1423).
-                    let ty = hir::hir_ty::body::infer_body(self.db, path.scope_id(self.db))
-                        .type_of_begin_expr_with_adjustments(self.db, *path);
+                    let ty = self
+                        .inference(path.scope_id(self.db))
+                        .type_of_begin_path_expr_adjusted(*path);
                     if let Some(super::multibit::View::Bytes(place)) = self.view_of_variable(ty)? {
                         return Ok(MirExpr::AddrOf(place));
                     }
@@ -1023,10 +1012,9 @@ impl<'db> ExprLowerCtx<'db> {
                 StorageClass::InstanceMember => {}
             }
         } else if let Some(root_expr) = root.flatten(self.db).first().map(|s| s.get_expr(self.db))
-            && let Some(Type::ReturnValue(callable)) =
-                hir::hir_ty::body::infer_body(self.db, root.scope_id(self.db))
-                    .type_of_path_expr
-                    .get(&root_expr)
+            && let Type::ReturnValue(callable) = self
+                .inference(root.scope_id(self.db))
+                .type_of_path_expr(root_expr)
         {
             // The callable's return value, however it is spelled: held under
             // the declared name, and before any member of that name.
@@ -1120,19 +1108,10 @@ impl<'db> ExprLowerCtx<'db> {
         &self,
         path: hir::hir_def::expressions::expression::PathExpr<'db>,
     ) -> Option<hir::hir_def::pous::variable::VariableDecl<'db>> {
-        use hir::hir_ty::body::infer_body;
-
         // `flatten()[0]` is the innermost root step.
         let root_expr = path.flatten(self.db).first().map(|s| s.get_expr(self.db))?;
-        let scope = path.scope_id(self.db);
-        infer_body(self.db, scope)
+        self.inference(path.scope_id(self.db))
             .variable_for_path_expr(root_expr)
-            // A path in an initializer is bound by init inference.
-            .or_else(|| {
-                hir::hir_ty::head::init_inference::infer_initialization(self.db, scope)
-                    .body_infer_result
-                    .variable_for_path_expr(root_expr)
-            })
     }
 
     /// What a dereference `r^` reads and writes. HIR types the `^` step as
@@ -1140,8 +1119,8 @@ impl<'db> ExprLowerCtx<'db> {
     /// reference's own type made every store through it a four-byte one, and
     /// every load of a 64-bit or real pointee an i32.
     fn pointee_of(&self, deref: hir::hir_def::expressions::expression::PathExpr<'db>) -> Type<'db> {
-        hir::hir_ty::body::infer_body(self.db, deref.scope_id(self.db))
-            .type_of_path_expr_with_adjustments(deref)
+        self.inference(deref.scope_id(self.db))
+            .type_of_path_expr_adjusted(deref)
     }
 
     /// The MIR type `reference^` reaches: its pointee, with what the
@@ -1161,17 +1140,15 @@ impl<'db> ExprLowerCtx<'db> {
             return pointee;
         }
         // The raw type: the adjusted one has already dereferenced it.
-        match hir::hir_ty::body::infer_body(self.db, reference.scope_id(self.db))
-            .type_of_path_expr
-            .get(&reference)
-            .map(|ty| ty.normalize(self.db))
+        match self
+            .inference(reference.scope_id(self.db))
+            .type_of_path_expr(reference)
+            .normalize(self.db)
         {
-            Some(Type::RefTo(target)) => {
-                match crate::lower::lower_type::lower_spec(self.db, target) {
-                    Ok(declared @ (MirType::String { .. } | MirType::Subrange(_))) => declared,
-                    _ => pointee,
-                }
-            }
+            Type::RefTo(target) => match crate::lower::lower_type::lower_spec(self.db, target) {
+                Ok(declared @ (MirType::String { .. } | MirType::Subrange(_))) => declared,
+                _ => pointee,
+            },
             _ => pointee,
         }
     }
@@ -1823,8 +1800,9 @@ impl<'db> ExprLowerCtx<'db> {
         path: hir::hir_def::expressions::expression::PathExpr<'db>,
     ) -> Option<hir::hir_def::pous::pou::Pou<'db>> {
         use hir::hir_def::pous::pou::Pou;
-        match hir::hir_ty::body::infer_body(self.db, path.scope_id(self.db))
-            .type_of_path_expr_with_adjustments(path)
+        match self
+            .inference(path.scope_id(self.db))
+            .type_of_path_expr_adjusted(path)
             .normalize(self.db)
         {
             Type::FunctionBlock(fb) => Some(Pou::FunctionBlock(fb)),
@@ -2211,9 +2189,9 @@ impl<'db> ExprLowerCtx<'db> {
                         _ => None,
                     };
                     let target_lane = out_lane.and_then(|from| {
-                        let dest =
-                            hir::hir_ty::body::infer_body(self.db, variable.scope_id(self.db))
-                                .type_of_variable_access_with_adjustments(self.db, *variable);
+                        let dest = self
+                            .inference(variable.scope_id(self.db))
+                            .type_of_variable_access_adjusted(*variable);
                         match self.type_to_mir_elementary(dest) {
                             Ok(to) if to != from => Some(to),
                             _ => None,
@@ -2430,15 +2408,11 @@ impl<'db> ExprLowerCtx<'db> {
         let mut input_writes = Vec::new();
         let mut output_reads = Vec::new();
 
-        let record = hir::hir_ty::body::infer_body(self.db, path.scope_id(self.db))
-            .resolved_calls
-            .get(&func_call)
-            .cloned()
-            .ok_or_else(|| {
-                LowerTypeError::UnsupportedType(
-                    "FB call was lowered without a resolved plan".to_string(),
-                )
-            })?;
+        let record = self.resolved_call_of(func_call).ok_or_else(|| {
+            LowerTypeError::UnsupportedType(
+                "FB call was lowered without a resolved plan".to_string(),
+            )
+        })?;
 
         for (var, binding) in &record.params {
             let var_name = var.name(self.db);
@@ -2585,9 +2559,9 @@ impl<'db> ExprLowerCtx<'db> {
                         _ => None,
                     };
                     let target_lane = field_lane.and_then(|from| {
-                        let dest =
-                            hir::hir_ty::body::infer_body(self.db, variable.scope_id(self.db))
-                                .type_of_variable_access_with_adjustments(self.db, *variable);
+                        let dest = self
+                            .inference(variable.scope_id(self.db))
+                            .type_of_variable_access_adjusted(*variable);
                         match self.type_to_mir_elementary(dest) {
                             Ok(to) if to != from => Some(to),
                             _ => None,
@@ -2828,11 +2802,11 @@ impl<'db> ExprLowerCtx<'db> {
                 .expr_to_mir_elementary(label)
                 .is_ok_and(MirElementary::is_64bit),
         };
-        let body = hir::hir_ty::body::infer_body(self.db, label.scope_id(self.db));
         // Only the integer domain becomes a scalar constant; a string label
         // lowers to its own test.
-        if let Some(hir::hir_ty::body::CaseLabelValue::Int(value)) =
-            body.case_label_value.get(&label)
+        if let Some(hir::hir_ty::body::CaseLabelValue::Int(value)) = self
+            .inference(label.scope_id(self.db))
+            .case_label_value(label)
         {
             return Ok(if wide {
                 MirConstant::I64(*value as i64)
@@ -2934,32 +2908,30 @@ impl<'db> ExprLowerCtx<'db> {
         Ok(lowered)
     }
 
-    /// The plan resolution assembled for this call: from body inference, or
-    /// from init inference for a call in an initializer.
+    /// What inference knows about `scope`: its statements and its
+    /// initializers, which lower here too.
+    pub(crate) fn inference(
+        &self,
+        scope: hir::hir_def::scope::ScopeId<'db>,
+    ) -> hir::hir_ty::body::ScopeInference<'db> {
+        scope.inference(self.db)
+    }
+
+    /// The plan resolution assembled for this call.
     fn resolved_call_of(
         &self,
         func_call: hir::hir_def::expressions::expression::FuncCall<'db>,
     ) -> Option<hir::hir_ty::body::ResolvedCall<'db>> {
-        let scope = func_call.path(self.db).scope_id(self.db);
-        hir::hir_ty::body::infer_body(self.db, scope)
-            .resolved_calls
-            .get(&func_call)
-            .or_else(|| {
-                hir::hir_ty::head::init_inference::infer_initialization(self.db, scope)
-                    .body_infer_result
-                    .resolved_calls
-                    .get(&func_call)
-            })
+        self.inference(func_call.path(self.db).scope_id(self.db))
+            .resolved_call(func_call)
             .cloned()
     }
 
     /// The lane inference accepted for this value where it is consumed, when
     /// it recorded one.
     fn recorded_lane(&self, expr: Expr<'db>) -> Option<MirElementary> {
-        hir::hir_ty::body::infer_body(self.db, expr.scope_id(self.db))
-            .coercion_target
-            .get(&expr)
-            .copied()
+        self.inference(expr.scope_id(self.db))
+            .coercion_target(expr)
             .and_then(|ty| self.type_to_mir_elementary(ty).ok())
     }
 

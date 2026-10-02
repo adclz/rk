@@ -11,11 +11,7 @@ use hir::{
         },
         scope::ScopeId,
     },
-    hir_ty::{
-        body::{BodyInferenceResult, infer_body},
-        head::init_inference::infer_initialization,
-        ty::Type,
-    },
+    hir_ty::ty::Type,
 };
 use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
 
@@ -45,20 +41,16 @@ impl ErrorCode for Latin1Escape {
 pub fn check<'db>(
     db: &'db dyn WorkspaceDataBase,
     scope: ScopeId<'db>,
-    has_body: bool,
     diagnostics: &mut Vec<IdeDiagnostic>,
 ) {
-    let mut seen: rustc_hash::FxHashMap<Expr<'db>, bool> = rustc_hash::FxHashMap::default();
-    let mut collect = |result: &BodyInferenceResult<'db>| {
-        for (expr, ty) in &result.type_of_expr {
+    let seen: rustc_hash::FxHashMap<Expr<'db>, bool> = scope
+        .inference(db)
+        .typed_exprs()
+        .map(|(expr, ty)| {
             let is_char = matches!(ty.normalize(db), Type::Elementary(ElementarySpec::Char));
-            seen.insert(*expr, is_char);
-        }
-    };
-    collect(&infer_initialization(db, scope).body_infer_result);
-    if has_body {
-        collect(infer_body(db, scope));
-    }
+            (expr, is_char)
+        })
+        .collect();
     // In source order: the maps are not.
     let mut literals: Vec<(Expr<'db>, bool)> = seen.into_iter().collect();
     literals.sort_by_key(|(expr, _)| expr.get_span(db).start_byte);

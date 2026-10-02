@@ -11,11 +11,7 @@ use hir::{
         },
         scope::ScopeId,
     },
-    hir_ty::{
-        body::{BodyInferenceResult, infer_body},
-        head::init_inference::infer_initialization,
-        ty::Type,
-    },
+    hir_ty::ty::Type,
 };
 use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
 
@@ -46,17 +42,10 @@ impl ErrorCode for NegativeRadixLiteral {
 pub fn check<'db>(
     db: &'db dyn WorkspaceDataBase,
     scope: ScopeId<'db>,
-    has_body: bool,
     diagnostics: &mut Vec<IdeDiagnostic>,
 ) {
-    let mut typed: rustc_hash::FxHashMap<Expr<'db>, Type<'db>> = rustc_hash::FxHashMap::default();
-    let mut collect = |result: &BodyInferenceResult<'db>| {
-        typed.extend(result.type_of_expr.iter().map(|(expr, ty)| (*expr, *ty)));
-    };
-    collect(&infer_initialization(db, scope).body_infer_result);
-    if has_body {
-        collect(infer_body(db, scope));
-    }
+    let typed: rustc_hash::FxHashMap<Expr<'db>, Type<'db>> =
+        scope.inference(db).typed_exprs().collect();
     // A minus in front, through parentheses and a plus, makes the literal a
     // number, as the check reads it; AND, OR and XOR read its bits.
     let mut exempt: rustc_hash::FxHashSet<Expr<'db>> = rustc_hash::FxHashSet::default();

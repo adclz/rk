@@ -9,7 +9,6 @@ use hir::{
         semantic_index::semantic_index,
     },
     hir_ty::{
-        body::infer_body,
         index_graphs::{absolute_namespace_path, namespace_index},
         infer::Infer,
         ty::{CallableType, Type},
@@ -124,7 +123,7 @@ fn normalize_reference_type<'db>(ty: Type<'db>) -> Option<Type<'db>> {
 /// inferred as the block it invokes, and taking that for the reference made
 /// a rename of the instance rename the block, everywhere.
 fn path_reference_target<'db>(db: &'db dyn WorkspaceDataBase, p: PathExpr<'db>) -> Type<'db> {
-    if let Some(var) = infer_body(db, p.scope_id(db)).variable_for_path_expr(p) {
+    if let Some(var) = p.scope_id(db).inference(db).variable_for_path_expr(p) {
         return Type::Variable((var, None));
     }
     p.infer(db)

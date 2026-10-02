@@ -241,6 +241,7 @@ Type checking proceeds in three memoized salsa queries:
 - **`ordermap::OrderMap`** when insertion order matters (e.g., variable declarations for parameter ordering).
 - **Scope-stable IDs**: `SemanticIndexBuilder` uses a monotonic counter (not raw AST IDs) for `ScopeId` values, enabling fine-grained incrementality.
 - **Head vs body separation**: Changing a function body doesn't re-infer its signature.
+- **One view over a scope's inference**: `infer_body` records the statements and `infer_initialization` the initializers; both are crate-private to `hir`. Everything else reads a scope through `ScopeId::inference(db)` (`ScopeInference`), whose lookups answer from whichever query recorded the node and whose scans walk both. A FUNCTION's locals start over at each call, so an initializer's `p^`, `REF(v)` or `SUPER.m()` is the scope's as much as a statement's.
 - **Exports are opt-in**: a module exports `__init`, the PROGRAM bodies, the `Inst$__scan__` of a program instance with connections, the bodies of the function blocks a task runs (`fb1 WITH T`), the FUNCTIONs marked `{export}` and, in the debug profile only, the workspace's `{test}` functions. Everything else is `MirLinkage::Internal`, other FB bodies and methods included, because an export is a root Binaryen cannot remove. A library's `{test}` functions are not lowered. The codegen tests call FUNCTIONs by name, so `codegen/harness.rs` re-exports everything (`export_everything`) on a clone of the MIR.
 
 ### Error Code Categories

@@ -3,7 +3,7 @@ use db::WorkspaceDataBase;
 use hir::{
     HasName, HirNodeInfo,
     hir_def::expressions::expression::{PathExprKind, VariableAccess, VariableAccessKind},
-    hir_ty::{body::BodyInferenceResult, head::signature::infer_signature, ty::Type},
+    hir_ty::{body::ScopeInference, head::signature::infer_signature, ty::Type},
 };
 use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
 
@@ -27,7 +27,7 @@ impl ErrorCode for ExternalMutation {
 /// a field access on a FB/CLASS instance (e.g. `fb.x := 42`).
 pub fn check_assignment<'db>(
     db: &'db dyn WorkspaceDataBase,
-    body: &BodyInferenceResult<'db>,
+    body: ScopeInference<'db>,
     var: VariableAccess<'db>,
     diagnostics: &mut Vec<IdeDiagnostic>,
 ) {
@@ -52,9 +52,7 @@ pub fn check_assignment<'db>(
     let inner_path = field_expr.path;
 
     // Check what type the inner path resolves to
-    let Some(inner_type) = body.type_of_path_expr.get(&inner_path) else {
-        return;
-    };
+    let inner_type = body.type_of_path_expr(inner_path);
 
     // Only flag if the inner type is a FB or CLASS instance variable
     let instance_name = match inner_type {

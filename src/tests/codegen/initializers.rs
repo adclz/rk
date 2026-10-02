@@ -1367,3 +1367,107 @@ fn empty_repetition_keeps_the_defaults(mut with_db: db::RootDatabase) {
         "a is 1, 0, 0, 4 and p is 7, 7, 5: the defaults stay"
     );
 }
+
+/// A FUNCTION local's initializer reads what the body's statements do: a
+/// `p^` loads at the pointee's width, and the root of a `REF()`, a
+/// VAR_IN_OUT argument or an output destination lives in memory. Read from
+/// the statements' inference alone, the first loaded an i32 for a LREAL and
+/// the others asked for the address of a wasm local.
+#[rstest]
+fn function_local_initializer_takes_addresses_and_dereferences(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION bump : INT
+        VAR_IN_OUT io : INT; END_VAR
+            io := io + 1;
+            bump := io;
+        END_FUNCTION
+
+        FUNCTION pair : INT
+        VAR_OUTPUT o : INT; END_VAR
+            o := -5;
+            pair := 1;
+        END_FUNCTION
+
+        FUNCTION is_set : BOOL
+        VAR_INPUT p : REF_TO INT; END_VAR
+            is_set := p <> NULL;
+        END_FUNCTION
+
+        // One bit per initializer that read or wrote the wrong thing.
+        FUNCTION test : INT
+        VAR
+            v : LREAL := 2.5;
+            pv : REF_TO LREAL := REF(v);
+            x : LREAL := pv^;
+            big : LINT := 9000000000;
+            pb : REF_TO LINT := REF(big);
+            y : LINT := pb^;
+            n : INT := 1;
+            bumped : INT := bump(n);
+            wide : LINT;
+            one : INT := pair(o => wide);
+            m : INT := 1;
+            set : BOOL := is_set(REF(m));
+        END_VAR
+            IF x <> 2.5 THEN test := test + 1; END_IF;
+            IF y <> 9000000000 THEN test := test + 2; END_IF;
+            IF bumped <> 2 OR n <> 2 THEN test := test + 4; END_IF;
+            IF one <> 1 OR wide <> -5 THEN test := test + 8; END_IF;
+            IF NOT set THEN test := test + 16; END_IF;
+        END_FUNCTION
+    "#;
+    let result: i32 = super::run(&mut with_db, source, "test", ());
+    assert_eq!(result, 0);
+}
+
+/// A METHOD local's initializer calls as the body does: `SUPER.m()` and a
+/// base's PRIVATE method through `THIS` are emitted on the instance type,
+/// and a call on a derived instance runs that instance's copy. The copies
+/// were collected from the statements alone, so the first two were missing
+/// from the module and the third ran the base's.
+#[rstest]
+fn method_local_initializer_calls_as_the_body_does(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Base
+            METHOD PROTECTED tag : DINT
+                tag := 5;
+            END_METHOD
+            METHOD PRIVATE secret : DINT
+                secret := 40;
+            END_METHOD
+            METHOD PUBLIC reveal : DINT
+            VAR s : DINT := THIS.secret(); END_VAR
+                reveal := s;
+            END_METHOD
+            METHOD PUBLIC name : DINT
+                name := 1;
+            END_METHOD
+            METHOD PUBLIC go : DINT
+                go := THIS.name();
+            END_METHOD
+        END_FUNCTION_BLOCK
+
+        FUNCTION_BLOCK Derived EXTENDS Base
+            METHOD PUBLIC OVERRIDE tag : DINT
+            VAR t : DINT := SUPER.tag(); END_VAR
+                tag := t + 1;
+            END_METHOD
+            METHOD PUBLIC OVERRIDE name : DINT
+                name := 2;
+            END_METHOD
+        END_FUNCTION_BLOCK
+
+        // One bit per call whose copy went missing or was the base's.
+        FUNCTION test : INT
+        VAR
+            d : Derived;
+            went : DINT := d.go();
+        END_VAR
+            IF d.tag() <> 6 THEN test := test + 1; END_IF;
+            IF d.reveal() <> 40 THEN test := test + 2; END_IF;
+            IF went <> 2 THEN test := test + 4; END_IF;
+        END_FUNCTION
+    "#;
+    let result: i32 = super::run(&mut with_db, source, "test", ());
+    assert_eq!(result, 0);
+}

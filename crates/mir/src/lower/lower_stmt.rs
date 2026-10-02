@@ -121,11 +121,11 @@ fn lower_stmt<'db>(
             let place = ctx.lower_variable_access(*var)?;
             // The conversion lane is inference's decision (`coercion_target`); the
             // fallback covers what HIR does not record.
-            let var_type = match hir::hir_ty::body::infer_body(ctx.db, target.scope_id(ctx.db))
-                .coercion_target
-                .get(target)
+            let var_type = match ctx
+                .inference(target.scope_id(ctx.db))
+                .coercion_target(*target)
             {
-                Some(ty) => *ty,
+                Some(ty) => ty,
                 None => var.infer(ctx.db).normalize(ctx.db),
             };
             // ADJUSTED: `a[i]` infers as the array, but the value read is the
@@ -354,10 +354,9 @@ fn lower_stmt<'db>(
             // constant at the counter's width: its sign picks the exit comparison.
             let step_mir = match step {
                 Some(s) => {
-                    let v = hir::hir_ty::body::infer_body(ctx.db, s.scope_id(ctx.db))
-                        .for_step_value
-                        .get(s)
-                        .copied()
+                    let v = ctx
+                        .inference(s.scope_id(ctx.db))
+                        .for_step_value(*s)
                         .ok_or_else(|| {
                             LowerTypeError::UnsupportedType(
                                 "FOR step was not folded to a constant".to_string(),

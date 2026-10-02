@@ -39,7 +39,7 @@ struct SeenRange {
 /// Check a single CASE statement's selectors for duplicates and overlaps.
 pub fn check_case<'db>(
     db: &'db dyn WorkspaceDataBase,
-    body: &hir::hir_ty::body::BodyInferenceResult<'db>,
+    body: hir::hir_ty::body::ScopeInference<'db>,
     cases: &[(
         Vec<CaseKind<'db>>,
         Vec<hir::hir_def::expressions::statement::Stmt<'db>>,
@@ -69,11 +69,11 @@ pub fn check_case<'db>(
                     // `STRING#'a'`). A label with no recorded value — an enum
                     // variant — is the variant it names, in any case:
                     // `Mode#Idle` and `Mode#IDLE` are one label.
-                    let key = match body.case_label_value.get(expr) {
+                    let key = match body.case_label_value(*expr) {
                         Some(CaseLabelValue::Int(v)) => format!("#{v}"),
                         Some(CaseLabelValue::Str(bytes)) => format!("${bytes:?}"),
-                        None => match body.type_of_expr.get(expr) {
-                            Some(hir::hir_ty::ty::Type::EnumVariant(dt, variant)) => {
+                        None => match body.type_of_expr(*expr) {
+                            hir::hir_ty::ty::Type::EnumVariant(dt, variant) => {
                                 format!("%{dt:?}#{}", variant.text(db))
                             }
                             _ => written.clone(),
@@ -254,11 +254,11 @@ fn emit(
 /// one. The local literal walk stays only as the fallback for a label HIR did
 /// not record.
 fn eval_label<'db>(
-    body: &hir::hir_ty::body::BodyInferenceResult<'db>,
+    body: hir::hir_ty::body::ScopeInference<'db>,
     db: &'db dyn WorkspaceDataBase,
     expr: &Expr<'db>,
 ) -> Option<u64> {
-    match body.case_label_value.get(expr) {
+    match body.case_label_value(*expr) {
         // Only integers order, so only integers enter the interval scan; a
         // string label has no place on a number line and never reaches it.
         Some(CaseLabelValue::Int(v)) => u64::try_from(*v).ok(),

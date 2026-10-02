@@ -5,7 +5,6 @@ use auto_lsp::tree_sitter::Range;
 use db::RootDatabase;
 use db::WorkspaceDataBase;
 use hir::HirNodeInfo;
-use hir::hir_ty::body::infer_body;
 use ide_diagnostic::{IdeDiagnostic, Related};
 use insta::assert_snapshot;
 use rstest::rstest;
@@ -44,12 +43,12 @@ fn path_expr_diagnostics(
         None => return vec![],
     };
 
-    let infer_result = infer_body(db, pou.get_scope_id(db));
+    let inference = pou.get_scope_id(db).inference(db);
 
     let mut entries: Vec<(Range, String)> = vec![];
-    for (path_expr, typ) in &infer_result.type_of_path_expr {
+    for (path_expr, typ) in inference.typed_path_exprs() {
         let span = path_expr.get_span(db);
-        let adjs = infer_result.adjustments_of_path_expr(*path_expr);
+        let adjs = inference.adjustments_of_path_expr(path_expr);
         let label = format!(
             "{} {}",
             typ.kind(),
@@ -171,8 +170,14 @@ END_FUNCTION
     assert_snapshot!(test_snapshot(&mut with_db, &[source], |db, file| {
         path_expr_diagnostics(db, file, "fn")
     }), @r"
-    Info: VARIABLE <none>
-        ,-[ file:///test0.st:13:2 ]
+    Info: VARIABLE [Index -> INT]
+        ,-[ file:///test0.st:10:31 ]
+        |
+     10 |        myRefInt: REF_TO INT := REF(myA1[1]);
+        |                                    ^^|^
+        |                                      `--- VARIABLE [Index -> INT]
+        |                                      |
+        |                                      `--- VARIABLE [Index -> INT, Ref -> INT]
         |
      13 |     myRefInt := REF(myA1[11]);
         |     ^^^^|^^^        ^^|^

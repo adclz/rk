@@ -1,6 +1,6 @@
 use auto_lsp::lsp_types::{DiagnosticSeverity, DiagnosticTag};
 use db::WorkspaceDataBase;
-use hir::{HirNodeInfo, hir_ty::body::BodyInferenceResult};
+use hir::{HirNodeInfo, hir_ty::body::ScopeInference};
 use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
 
 pub const NAME: &str = "dead-code";
@@ -20,10 +20,10 @@ impl ErrorCode for DeadCode {
 
 pub fn check<'db>(
     db: &'db dyn WorkspaceDataBase,
-    body: &BodyInferenceResult<'db>,
+    body: ScopeInference<'db>,
     diagnostics: &mut Vec<IdeDiagnostic>,
 ) {
-    for stmt in &body.dead_code_statements {
+    for stmt in body.dead_code_statements() {
         diagnostics.push(
             diag()
                 .message("unreachable statement".to_string())

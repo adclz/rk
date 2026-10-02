@@ -3,7 +3,7 @@ use db::WorkspaceDataBase;
 use hir::{
     HirNodeInfo,
     hir_def::pous::pragma::WarnPragmaLevel,
-    hir_ty::{body::BodyInferenceResult, ty::Type},
+    hir_ty::{body::ScopeInference, ty::Type},
 };
 use ide_diagnostic::{ErrorCode, IdeDiagnostic, Related, diag};
 
@@ -36,12 +36,12 @@ impl ErrorCode for WarnPragma {
 /// Check all resolved call sites for {warn}/{info} pragmas on the target callable.
 pub fn check<'db>(
     db: &'db dyn WorkspaceDataBase,
-    body: &BodyInferenceResult<'db>,
+    body: ScopeInference<'db>,
     diagnostics: &mut Vec<IdeDiagnostic>,
 ) {
-    for (path_expr, typ) in &body.type_of_path_expr {
+    for (path_expr, typ) in body.typed_path_exprs() {
         let callable = match typ {
-            Type::CallableType(ct) => *ct,
+            Type::CallableType(ct) => ct,
             _ => continue,
         };
 

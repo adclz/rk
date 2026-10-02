@@ -3,7 +3,7 @@ use db::WorkspaceDataBase;
 use hir::{
     HirNodeInfo,
     hir_def::{scope::ScopeId, using::Using},
-    hir_ty::{body::infer_body, head::signature::infer_signature},
+    hir_ty::head::signature::infer_signature,
 };
 use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
 use rustc_hash::FxHashSet;
@@ -41,8 +41,7 @@ pub fn check<'db>(
         all_used.extend(&sig.usings_used);
     }
     for scope in body_scopes {
-        let body = infer_body(db, *scope);
-        all_used.extend(&body.usings_used);
+        all_used.extend(scope.inference(db).usings_used());
     }
 
     // Report unused USINGs

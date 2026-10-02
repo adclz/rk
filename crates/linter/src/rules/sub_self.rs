@@ -5,7 +5,7 @@ use hir::{
     hir_def::expressions::expression::{
         AddOperatorKind, Expr, ExprKind, PrimaryExpr, VariableAccessKind,
     },
-    hir_ty::{body::BodyInferenceResult, infer::Infer, ty::Type},
+    hir_ty::{body::ScopeInference, infer::Infer, ty::Type},
 };
 use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
 
@@ -26,7 +26,7 @@ impl ErrorCode for SubSelf {
 
 pub fn check_node<'db>(
     db: &'db dyn WorkspaceDataBase,
-    body: &BodyInferenceResult<'db>,
+    body: ScopeInference<'db>,
     expr: &Expr<'db>,
     diagnostics: &mut Vec<IdeDiagnostic>,
 ) {
@@ -55,7 +55,7 @@ pub fn check_node<'db>(
 
 fn same_variable<'db>(
     db: &'db dyn WorkspaceDataBase,
-    body: &BodyInferenceResult<'db>,
+    body: ScopeInference<'db>,
     left: &Expr<'db>,
     right: &Expr<'db>,
 ) -> Option<String> {
@@ -75,7 +75,7 @@ fn same_variable<'db>(
 
 fn resolve_var<'db>(
     db: &'db dyn WorkspaceDataBase,
-    body: &BodyInferenceResult<'db>,
+    body: ScopeInference<'db>,
     expr: &Expr<'db>,
 ) -> Option<hir::hir_def::pous::variable::VariableDecl<'db>> {
     let ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess(access)) = expr.expr(db) else {
@@ -85,8 +85,8 @@ fn resolve_var<'db>(
         return None;
     };
     let path = begin.expr(db)?;
-    let Type::Variable((var, _)) = body.type_of_path_expr.get(&path)? else {
+    let Type::Variable((var, _)) = body.type_of_path_expr(path) else {
         return None;
     };
-    Some(*var)
+    Some(var)
 }

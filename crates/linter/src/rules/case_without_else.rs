@@ -1,6 +1,6 @@
 use auto_lsp::lsp_types::DiagnosticSeverity;
 use db::WorkspaceDataBase;
-use hir::{HirNodeInfo, hir_ty::body::BodyInferenceResult};
+use hir::{HirNodeInfo, hir_ty::body::ScopeInference};
 use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
 
 pub const NAME: &str = "case-without-else";
@@ -20,10 +20,10 @@ impl ErrorCode for CaseWithoutElse {
 
 pub fn check<'db>(
     db: &'db dyn WorkspaceDataBase,
-    body: &BodyInferenceResult<'db>,
+    body: ScopeInference<'db>,
     diagnostics: &mut Vec<IdeDiagnostic>,
 ) {
-    for stmt in &body.case_without_else {
+    for stmt in body.case_without_else() {
         diagnostics.push(
             diag()
                 .message("CASE statement has no ELSE branch".to_string())

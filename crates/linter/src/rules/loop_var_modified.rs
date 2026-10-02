@@ -6,7 +6,7 @@ use hir::{
         expressions::expression::{VariableAccess, VariableAccessKind},
         pous::variable::VariableDecl,
     },
-    hir_ty::{body::BodyInferenceResult, ty::Type},
+    hir_ty::{body::ScopeInference, ty::Type},
 };
 use ide_diagnostic::{ErrorCode, IdeDiagnostic, Related, diag};
 
@@ -30,7 +30,7 @@ impl ErrorCode for LoopVarModified {
 /// Called by the statement visitor for each assignment encountered.
 pub fn check_assignment<'db>(
     db: &'db dyn WorkspaceDataBase,
-    body: &BodyInferenceResult<'db>,
+    body: ScopeInference<'db>,
     var_access: VariableAccess<'db>,
     active_loop_vars: &[(VariableDecl<'db>, VariableAccess<'db>)],
     diagnostics: &mut Vec<IdeDiagnostic>,
@@ -77,7 +77,7 @@ pub fn check_assignment<'db>(
 /// Resolve a control variable to its declaration, if possible.
 pub fn resolve_control_var<'db>(
     db: &'db dyn WorkspaceDataBase,
-    body: &BodyInferenceResult<'db>,
+    body: ScopeInference<'db>,
     var_access: VariableAccess<'db>,
 ) -> Option<VariableDecl<'db>> {
     resolve_var_decl(db, body, var_access)
@@ -85,15 +85,15 @@ pub fn resolve_control_var<'db>(
 
 fn resolve_var_decl<'db>(
     db: &'db dyn WorkspaceDataBase,
-    body: &BodyInferenceResult<'db>,
+    body: ScopeInference<'db>,
     var_access: VariableAccess<'db>,
 ) -> Option<VariableDecl<'db>> {
     let VariableAccessKind::Symbolic(begin) = var_access.kind(db) else {
         return None;
     };
     let path_expr = begin.expr(db)?;
-    match body.type_of_path_expr.get(&path_expr)? {
-        Type::Variable((var_decl, _)) => Some(*var_decl),
+    match body.type_of_path_expr(path_expr) {
+        Type::Variable((var_decl, _)) => Some(var_decl),
         _ => None,
     }
 }

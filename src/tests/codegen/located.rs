@@ -1473,6 +1473,45 @@ fn a_part_of_a_byte_or_more_is_passed_and_referenced_by_address(mut with_db: db:
     assert_eq!(word(&plc, "%QD1"), 0xAABB_CCDD, "the next cell untouched");
 }
 
+/// A FUNCTION local initialized with `REF()` of a part of a wider cell
+/// points at those bytes, as an assignment of it does. The initializer's
+/// path was typed from the statements' inference alone, so the part read as
+/// an ordinary global, which has no storage of its own.
+#[rstest]
+fn a_local_initializer_references_a_part_of_a_cell(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION set_low : INT
+        VAR_EXTERNAL level : SINT; END_VAR
+        VAR r : REF_TO SINT := REF(level); END_VAR
+            r^ := -1;
+            set_low := 0;
+        END_FUNCTION
+
+        PROGRAM P
+        VAR x : INT; END_VAR
+            %QD0 := 16#11223344;
+            x := set_low();
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+        VAR_GLOBAL level AT %QB0 : SINT; END_VAR
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    let mut plc = TestPlc::load(&wasm).expect("load");
+    plc.run(1).expect("scan");
+    let word = u32::from_le_bytes(
+        plc.read_located("%QD0").expect("read")[..4]
+            .try_into()
+            .unwrap(),
+    );
+    assert_eq!(word, 0x1122_33FF, "byte 0 set through the reference");
+}
+
 // ---------------------------------------------------------------------------
 // A PROGRAM's located VAR. It is the channel, not a field of the instance, so
 // every instance of the program shares its one cell, known as `P.x`.

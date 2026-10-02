@@ -1115,3 +1115,28 @@ END_FUNCTION
     ----'
     ");
 }
+
+/// A comparison is no constant, however constant its operands: `T#2s >
+/// LT#1s` is refused as a member default, so no static initializer reaches
+/// the comparison lowering and the folder has no comparison to get wrong.
+/// The operands' widening is a different fold, which `LTIME := T#2s` takes.
+#[rstest]
+fn an_fb_member_default_from_a_comparison_is_refused(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK Fb
+VAR
+    later : BOOL := T#2s > LT#1s;
+    wide : LTIME := T#2s;
+END_VAR
+END_FUNCTION_BLOCK
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0401] Error: initial value is not constant
+       ,-[ file:///test0.st:4:21 ]
+       |
+     4 |     later : BOOL := T#2s > LT#1s;
+       |                     ^^^^^^|^^^^^
+       |                           `------- this initial value must be a constant: it is fixed before the program runs
+    ---'
+    ");
+}

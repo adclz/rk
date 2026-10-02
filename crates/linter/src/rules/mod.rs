@@ -12,7 +12,6 @@ use hir::{
         semantic_index::{get_scope, semantic_index},
         using::Using,
     },
-    hir_ty::body::infer_body,
 };
 use ide_diagnostic::IdeDiagnostic;
 
@@ -378,12 +377,12 @@ fn lint_scope<'db>(
     // Initializers too, so a TYPE's or a CLASS's default is read as well.
     if is_enabled(config, latin1_escape::NAME) {
         run_lint(latin1_escape::NAME, diagnostics, |d| {
-            latin1_escape::check(db, scope, has_body, d)
+            latin1_escape::check(db, scope, d)
         });
     }
     if is_enabled(config, negative_radix_literal::NAME) {
         run_lint(negative_radix_literal::NAME, diagnostics, |d| {
-            negative_radix_literal::check(db, scope, has_body, d)
+            negative_radix_literal::check(db, scope, d)
         });
     }
     if !has_body {
@@ -434,7 +433,7 @@ fn lint_scope<'db>(
         });
     }
 
-    let body = infer_body(db, scope);
+    let body = scope.inference(db);
 
     if is_enabled(config, unused_variable::NAME) {
         run_lint(unused_variable::NAME, diagnostics, |d| {

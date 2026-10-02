@@ -8,7 +8,6 @@ use crate::{
         spec::Spec,
     },
     hir_ty::{
-        body::infer_body,
         head::{init_inference::infer_initialization, signature::infer_signature},
         ty::Type,
     },
@@ -47,15 +46,24 @@ impl<'db> Infer<'db> for InitExpr<'db> {
     }
 }
 
+// Each node below is recorded by the scope's statements or by its
+// initializers, and answers alike from either (`ScopeId::inference`).
+
 impl<'db> Infer<'db> for Invocation<'db> {
     fn infer(&self, db: &'db dyn WorkspaceDataBase) -> Type<'db> {
-        infer_body(db, self.get_scope_id(db)).get_type_of_invocation(db, *self)
+        self.get_scope_id(db)
+            .inference(db)
+            .type_of_invocation(*self)
     }
 }
 
 impl<'db> Infer<'db> for ParamAssign<'db> {
     fn infer(&self, db: &'db dyn WorkspaceDataBase) -> Type<'db> {
-        match infer_body(db, self.get_scope_id(db)).variable_for_param(*self) {
+        match self
+            .get_scope_id(db)
+            .inference(db)
+            .variable_for_param(*self)
+        {
             Some(var) => Type::new_var(db, var),
             None => Type::Never,
         }
@@ -64,82 +72,42 @@ impl<'db> Infer<'db> for ParamAssign<'db> {
 
 impl<'db> Infer<'db> for VariableAccess<'db> {
     fn infer(&self, db: &'db dyn WorkspaceDataBase) -> Type<'db> {
-        // The head first, like an expression: a name inside a spec — an array
-        // bound, a STRING length — is resolved while the head is inferred and
-        // never appears in a body, so asking the body alone answered nothing.
-        let head = infer_initialization(db, self.get_scope_id(db))
-            .body_infer_result
-            .get_type_of_variable_access(db, *self);
-        if head.is_never() {
-            infer_body(db, self.get_scope_id(db)).get_type_of_variable_access(db, *self)
-        } else {
-            head
-        }
+        self.get_scope_id(db)
+            .inference(db)
+            .type_of_variable_access(*self)
     }
 }
 
 impl<'db> Infer<'db> for BeginPathExpr<'db> {
     fn infer(&self, db: &'db dyn WorkspaceDataBase) -> Type<'db> {
-        let body = infer_body(db, self.get_scope_id(db)).get_type_of_begin_path_expr(db, *self);
-        if body.is_never() {
-            // A path in an initializer (`y : INT := THIS.m()`).
-            infer_initialization(db, self.get_scope_id(db))
-                .body_infer_result
-                .get_type_of_begin_path_expr(db, *self)
-        } else {
-            body
-        }
+        self.get_scope_id(db)
+            .inference(db)
+            .type_of_begin_path_expr(*self)
     }
 }
 
 impl<'db> Infer<'db> for PathExpr<'db> {
     fn infer(&self, db: &'db dyn WorkspaceDataBase) -> Type<'db> {
-        let body = infer_body(db, self.get_scope_id(db)).get_type_of_path_expr(db, *self);
-        if body.is_never() {
-            // A path in an initializer (`REF(arr[1])`).
-            infer_initialization(db, self.get_scope_id(db))
-                .body_infer_result
-                .get_type_of_path_expr(db, *self)
-        } else {
-            body
-        }
+        self.get_scope_id(db).inference(db).type_of_path_expr(*self)
     }
 }
 
 impl<'db> PathExpr<'db> {
     /// The array this bracket indexes and the dimensions of it consumed
-    /// ([`IndexedArray`]), as the walk recorded them: in a body, or in an
-    /// initializer (`REF(arr[1])`).
+    /// ([`IndexedArray`]), as the walk recorded them.
     ///
     /// [`IndexedArray`]: crate::hir_ty::body::IndexedArray
     pub fn indexed_array(
         &self,
         db: &'db dyn WorkspaceDataBase,
     ) -> Option<crate::hir_ty::body::IndexedArray<'db>> {
-        let scope = self.get_scope_id(db);
-        infer_body(db, scope)
-            .indexed_arrays
-            .get(self)
-            .or_else(|| {
-                infer_initialization(db, scope)
-                    .body_infer_result
-                    .indexed_arrays
-                    .get(self)
-            })
-            .copied()
+        self.get_scope_id(db).inference(db).indexed_array(*self)
     }
 }
 
 impl<'db> Infer<'db> for Expr<'db> {
     fn infer(&self, db: &'db dyn WorkspaceDataBase) -> Type<'db> {
-        let head = infer_initialization(db, self.get_scope_id(db))
-            .body_infer_result
-            .get_type_of_expr(*self);
-        if head.is_never() {
-            infer_body(db, self.get_scope_id(db)).get_type_of_expr(*self)
-        } else {
-            head
-        }
+        self.get_scope_id(db).inference(db).type_of_expr(*self)
     }
 }
 
@@ -153,14 +121,8 @@ impl<'db> Expr<'db> {
     /// classifying an argument — must use this, or they have to reconstruct the
     /// adjustment themselves.
     pub fn infer_adjusted(&self, db: &'db dyn WorkspaceDataBase) -> Type<'db> {
-        let head = infer_initialization(db, self.get_scope_id(db));
-        let from_head = head
-            .body_infer_result
-            .type_of_expr_with_adjustments(db, *self);
-        if from_head.is_never() {
-            infer_body(db, self.get_scope_id(db)).type_of_expr_with_adjustments(db, *self)
-        } else {
-            from_head
-        }
+        self.get_scope_id(db)
+            .inference(db)
+            .type_of_expr_adjusted(*self)
     }
 }

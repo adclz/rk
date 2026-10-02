@@ -103,8 +103,8 @@ pub(crate) fn instance_copies<'db>(
         work.push(fb.scope_id(db));
     }
     while let Some(scope) = work.pop() {
-        let body = hir::hir_ty::body::infer_body(db, scope);
-        for fc in &body.calls {
+        let inference = scope.inference(db);
+        for fc in inference.calls() {
             let path = fc.path(db);
             // A base's PRIVATE method is no method `pou` answers to, and the
             // base's code still calls it on this instance.
@@ -139,7 +139,7 @@ pub(crate) fn instance_copies<'db>(
             }
         }
         // `SUPER()` runs the base of the block whose body holds it.
-        if body.first_super_body.is_some()
+        if inference.first_super_body().is_some()
             && let ScopeKind::Pou(holder) = hir::hir_def::semantic_index::get_scope(db, scope).kind
             && let Some(Pou::FunctionBlock(base)) =
                 hir::hir_ty::oop::explicit_bases(db, holder).extends
@@ -274,8 +274,7 @@ fn lower_function_inner<'db>(
     );
 
     // Collect address-taken variables for storage decisions
-    let mut address_taken = collect_address_taken_vars(db, func.scope_id(db));
-    address_taken.extend(collect_address_taken_in_inits(db, func.variables(db)));
+    let address_taken = collect_address_taken_vars(db, func.scope_id(db));
 
     // 1. Parameters (Input, InOut, Output). VAR_OUTPUT is a pointer at the
     // wasm level. `next_local_idx` advances by the slots each param consumes
@@ -486,8 +485,7 @@ fn lower_function_block_inner<'db>(
         );
         // A method local whose address is taken must live in memory. Same scan
         // as the other bodies.
-        let mut address_taken = collect_address_taken_vars(db, method.scope_id(db));
-        address_taken.extend(collect_address_taken_in_inits(db, method.variables(db)));
+        let address_taken = collect_address_taken_vars(db, method.scope_id(db));
 
         // 'this' pointer parameter — the FB's instance struct.
         let fb_type = super::lower_type::lower_fb_type(db, fb)?;
@@ -719,8 +717,7 @@ fn lower_fb_body<'db>(
         memory_layout,
     );
 
-    let mut address_taken = collect_address_taken_vars(db, body_of.scope_id(db));
-    address_taken.extend(collect_address_taken_in_inits(db, body_of.variables(db)));
+    let address_taken = collect_address_taken_vars(db, body_of.scope_id(db));
 
     for var in body_of.variables(db) {
         if var.kind(db) == VariableKind::Temp {
@@ -853,8 +850,7 @@ fn lower_class_inner<'db>(
         });
 
         // Same address-taken rule as the FB method loop above.
-        let mut address_taken = collect_address_taken_vars(db, method.scope_id(db));
-        address_taken.extend(collect_address_taken_in_inits(db, method.variables(db)));
+        let address_taken = collect_address_taken_vars(db, method.scope_id(db));
 
         // Method parameters, then its locals: every wasm parameter's index
         // comes before the first local's, whatever order the sections are
@@ -1052,8 +1048,7 @@ fn lower_program_inner<'db>(
     // fields accessed through `this`.
     let mut locals = Vec::new();
     let mut next_local_idx: u32 = 1; // 0 is 'this'
-    let mut address_taken = collect_address_taken_vars(db, program.scope_id(db));
-    address_taken.extend(collect_address_taken_in_inits(db, program.variables(db)));
+    let address_taken = collect_address_taken_vars(db, program.scope_id(db));
     for var in program.variables(db) {
         if var.kind(db) == VariableKind::Temp {
             let ty = lower_var_type(db, *var)?;
@@ -1454,55 +1449,12 @@ pub(crate) fn lower_var_type<'db>(
     super::lower_type::lower_spec(db, var.spec(db))
 }
 
-/// The variables a declaration initializer takes the address of:
-/// `q : REF_TO INT := REF(x)` marks `x` like the statement `q := REF(x)`
-/// does.
-fn collect_address_taken_in_inits<'db>(
-    db: &'db dyn WorkspaceDataBase,
-    vars: &[hir::hir_def::pous::variable::VariableDecl<'db>],
-) -> FxHashSet<Ident> {
-    use hir::hir_def::expressions::expression::{ExprKind, InitExprKind, PrimaryExpr, RefValue};
-
-    fn walk_init<'db>(
-        db: &'db dyn WorkspaceDataBase,
-        init: &hir::hir_def::expressions::expression::InitExpr<'db>,
-        result: &mut FxHashSet<Ident>,
-    ) {
-        match init.kind(db) {
-            InitExprKind::ConstantExpr(expr) => {
-                if let ExprKind::PrimaryExpr(PrimaryExpr::RefValue {
-                    value: RefValue::Address(begin_path),
-                }) = expr.expr(db)
-                    && let Some(path_expr) = begin_path.expr(db)
-                {
-                    result.insert(path_expr.ident(db).ident(db));
-                }
-            }
-            InitExprKind::ArrayInit { values }
-            | InitExprKind::ArrayIndexedElement { values, .. }
-            | InitExprKind::StructInit { values } => {
-                for v in values {
-                    walk_init(db, &v, result);
-                }
-            }
-            InitExprKind::StructElement { value, .. } => walk_init(db, &value, result),
-        }
-    }
-
-    let mut result = FxHashSet::default();
-    for var in vars {
-        if let Some(init) = var.init(db) {
-            walk_init(db, &init, &mut result);
-        }
-    }
-    result
-}
-
-/// The variables whose address the body of `scope` takes, which linear
-/// memory holds even when they are scalars: the root of every `REF()`,
-/// VAR_IN_OUT argument and output destination, wherever it stands (a
-/// subscript, an assignment target, a nested call). Read off the body's
-/// inference, which visited every expression and bound every call.
+/// The variables whose address `scope` takes, in its statements and in its
+/// locals' initializers, which linear memory holds even when they are
+/// scalars: the root of every `REF()`, VAR_IN_OUT argument and output
+/// destination, wherever it stands (a subscript, an assignment target, a
+/// nested call, an initializer). Read off inference, which visited every
+/// expression and bound every call.
 fn collect_address_taken_vars<'db>(
     db: &'db dyn WorkspaceDataBase,
     scope: hir::hir_def::scope::ScopeId<'db>,
@@ -1517,9 +1469,9 @@ fn collect_address_taken_vars<'db>(
         Some(root.ident(db).ident(db))
     }
 
-    let body = hir::hir_ty::body::infer_body(db, scope);
+    let inference = scope.inference(db);
     let mut result = FxHashSet::default();
-    for expr in body.type_of_expr.keys() {
+    for (expr, _) in inference.typed_exprs() {
         if let ExprKind::PrimaryExpr(PrimaryExpr::RefValue {
             value: RefValue::Address(path),
         }) = expr.expr(db)
@@ -1527,7 +1479,7 @@ fn collect_address_taken_vars<'db>(
             result.extend(root(db, path));
         }
     }
-    for call in body.resolved_calls.values() {
+    for (_, call) in inference.resolved_calls() {
         for (var, binding) in &call.params {
             let access = match binding {
                 ParamBinding::Values(values) if var.is_in_out(db) => values

@@ -7,7 +7,7 @@ use hir::{
         scope::{ScopeId, ScopeKind},
         semantic_index::get_scope,
     },
-    hir_ty::body::{BodyInferenceResult, infer_body},
+    hir_ty::body::ScopeInference,
 };
 use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
 
@@ -29,7 +29,7 @@ impl ErrorCode for UnusedVariable {
 pub fn check<'db>(
     db: &'db dyn WorkspaceDataBase,
     scope: ScopeId<'db>,
-    body: &BodyInferenceResult<'db>,
+    body: ScopeInference<'db>,
     diagnostics: &mut Vec<IdeDiagnostic>,
 ) {
     let def_map = scope.def_map(db);
@@ -46,15 +46,13 @@ pub fn check<'db>(
         }
     }
 
-    // Collect variables used in the body itself
-    let mut all_used = body.variables_used.clone();
+    // The variables the scope uses, in its statements and its initializers.
+    let mut all_used: rustc_hash::FxHashSet<VariableDecl<'db>> = body.variables_used().collect();
 
     // For FB/class scopes, also collect variables used by child methods via THIS
     if let Some(methods) = scope.method_declarations(db) {
         for method in methods {
-            let method_scope = method.get_scope_id(db);
-            let method_body = infer_body(db, method_scope);
-            all_used.extend(method_body.variables_used.iter().copied());
+            all_used.extend(method.get_scope_id(db).inference(db).variables_used());
         }
     }
 
@@ -67,8 +65,7 @@ pub fn check<'db>(
             ScopeKind::Program(_) | ScopeKind::Pou(Pou::FunctionBlock(_) | Pou::Class(_))
         ) {
             for config in hir::hir_ty::index_graphs::declared_configs(db) {
-                let named = &infer_body(db, config.scope_id(db)).variables_used;
-                all_used.extend(named.iter().copied());
+                all_used.extend(config.scope_id(db).inference(db).variables_used());
             }
         }
     }

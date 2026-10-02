@@ -17,8 +17,7 @@ use hir::hir_def::pous::class::MethodDecl;
 use hir::hir_def::pous::function::Function;
 use hir::hir_def::pous::pou::Pou;
 use hir::hir_def::scope::ScopeId;
-use hir::hir_ty::body::{ParamBinding, infer_body};
-use hir::hir_ty::head::init_inference::infer_initialization;
+use hir::hir_ty::body::{ParamBinding, ScopeInference};
 use hir::hir_ty::oop::MethodRef;
 use hir::hir_ty::ty::CallableType;
 
@@ -118,65 +117,62 @@ fn process_body<'db>(
     instances: &mut Vec<ArityInstance<'db>>,
     rewrites: &mut ArityCallRewrites<'db>,
 ) {
-    // The body's calls and its local initializers': `x : INT :=
-    // sum_all(1, 2, 3)` reached codegen with no `sum_all$3`.
-    let body = infer_body(db, scope);
-    let inits = &infer_initialization(db, scope).body_infer_result;
-    for result in [body, inits] {
-        // Every call resolution recorded, instead of a second walk over the tree.
-        for fc in result.calls.clone() {
-            let Some(record) = result.resolved_calls.get(&fc) else {
-                continue;
-            };
-            // The pack's own binding is the argument count: resolution put
-            // every value it collected there, in call order.
-            let Some(arity) = record.params.iter().find_map(|(var, binding)| {
-                if !var.variadic(db) {
-                    return None;
-                }
-                match binding {
-                    ParamBinding::Values(vs) => Some(vs.len()),
-                    // An empty pack is E0813; nothing to specialize.
-                    _ => None,
-                }
-            }) else {
-                continue;
-            };
-
-            // A method runs as the instance type's copy, the one the call
-            // site names.
-            let targets = match record.callable {
-                CallableType::Function(f) => vec![ArityTarget::Function(f)],
-                CallableType::MethodDecl(MethodRef::Declared(md)) => {
-                    match super::mono_iface::method_target(db, fc, md, result, self_pou) {
-                        Some(IfaceTarget::Method { owner, method }) => {
-                            vec![ArityTarget::Method { owner, method }]
-                        }
-                        _ => continue,
-                    }
-                }
-                CallableType::MethodDecl(MethodRef::Prototype(proto)) => {
-                    implementer_targets(db, fc, result, proto.get_name_ident(db))
-                }
-                _ => continue,
-            };
-            for target in targets {
-                let base = match target {
-                    ArityTarget::Function(f) => mir_function_symbol(db, f),
-                    ArityTarget::Method { owner, method } => method_copy_symbol(db, owner, method),
-                };
-                by_canonical.entry((base, arity)).or_insert_with(|| {
-                    let name = mangle_generic_name(db, base, &[&arity.to_string()]);
-                    instances.push(ArityInstance {
-                        target,
-                        arity,
-                        mangled_name: name,
-                    });
-                    name
-                });
+    // Every call resolution recorded, in the statements and the local
+    // initializers (`x : INT := sum_all(1, 2, 3)` reached codegen with no
+    // `sum_all$3`), instead of a second walk over the tree.
+    let inference = scope.inference(db);
+    for fc in inference.calls() {
+        let Some(record) = inference.resolved_call(fc) else {
+            continue;
+        };
+        // The pack's own binding is the argument count: resolution put
+        // every value it collected there, in call order.
+        let Some(arity) = record.params.iter().find_map(|(var, binding)| {
+            if !var.variadic(db) {
+                return None;
             }
-            rewrites.insert(fc, arity);
+            match binding {
+                ParamBinding::Values(vs) => Some(vs.len()),
+                // An empty pack is E0813; nothing to specialize.
+                _ => None,
+            }
+        }) else {
+            continue;
+        };
+
+        // A method runs as the instance type's copy, the one the call
+        // site names.
+        let targets = match record.callable {
+            CallableType::Function(f) => vec![ArityTarget::Function(f)],
+            CallableType::MethodDecl(MethodRef::Declared(md)) => {
+                match super::mono_iface::method_target(db, fc, md, inference, self_pou) {
+                    Some(IfaceTarget::Method { owner, method }) => {
+                        vec![ArityTarget::Method { owner, method }]
+                    }
+                    _ => continue,
+                }
+            }
+            CallableType::MethodDecl(MethodRef::Prototype(proto)) => {
+                implementer_targets(db, fc, inference, proto.get_name_ident(db))
+            }
+            _ => continue,
+        };
+        for target in targets {
+            let base = match target {
+                ArityTarget::Function(f) => mir_function_symbol(db, f),
+                ArityTarget::Method { owner, method } => method_copy_symbol(db, owner, method),
+            };
+            by_canonical.entry((base, arity)).or_insert_with(|| {
+                let name = mangle_generic_name(db, base, &[&arity.to_string()]);
+                instances.push(ArityInstance {
+                    target,
+                    arity,
+                    mangled_name: name,
+                });
+                name
+            });
         }
+        rewrites.insert(fc, arity);
     }
 }
 
@@ -187,17 +183,17 @@ fn process_body<'db>(
 fn implementer_targets<'db>(
     db: &'db dyn WorkspaceDataBase,
     fc: FuncCall<'db>,
-    result: &hir::hir_ty::body::BodyInferenceResult<'db>,
+    inference: ScopeInference<'db>,
     name: Ident,
 ) -> Vec<ArityTarget<'db>> {
     use hir::hir_def::expressions::expression::PathExprKind;
     let Some(PathExprKind::Field(field)) = fc.path(db).expr(db).map(|pe| pe.expr(db)) else {
         return Vec::new();
     };
-    let Some(interface @ Pou::Interface(_)) = result
-        .type_of_path_expr
-        .get(&field.path)
-        .and_then(|ty| ty.normalize(db).as_pou(db))
+    let Some(interface @ Pou::Interface(_)) = inference
+        .type_of_path_expr(field.path)
+        .normalize(db)
+        .as_pou(db)
     else {
         return Vec::new();
     };

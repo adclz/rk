@@ -6,7 +6,7 @@ use hir::{
         BeginPathExpr, BooleanOperatorKind, Expr, ExprKind, PrimaryExpr, VariableAccess,
         VariableAccessKind,
     },
-    hir_ty::{body::BodyInferenceResult, expr_store::PathExprWalkStep},
+    hir_ty::{body::ScopeInference, expr_store::PathExprWalkStep},
 };
 use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
 
@@ -27,7 +27,7 @@ impl ErrorCode for IdenticalSubExpr {
 /// Check a single node for `a AND a`, `a OR a`, `a XOR a`. No recursion.
 pub fn check_node<'db>(
     db: &'db dyn WorkspaceDataBase,
-    body: &BodyInferenceResult<'db>,
+    body: ScopeInference<'db>,
     expr: &Expr<'db>,
     diagnostics: &mut Vec<IdeDiagnostic>,
 ) {
@@ -65,7 +65,7 @@ pub fn check_node<'db>(
 
 fn same_expr<'db>(
     db: &'db dyn WorkspaceDataBase,
-    body: &BodyInferenceResult<'db>,
+    body: ScopeInference<'db>,
     left: &Expr<'db>,
     right: &Expr<'db>,
 ) -> bool {
@@ -107,7 +107,7 @@ fn same_expr<'db>(
 /// and two places.
 fn same_access<'db>(
     db: &'db dyn WorkspaceDataBase,
-    body: &BodyInferenceResult<'db>,
+    body: ScopeInference<'db>,
     left: VariableAccess<'db>,
     right: VariableAccess<'db>,
 ) -> bool {
@@ -129,7 +129,7 @@ fn same_access<'db>(
 /// a lint.
 fn same_path<'db>(
     db: &'db dyn WorkspaceDataBase,
-    body: &BodyInferenceResult<'db>,
+    body: ScopeInference<'db>,
     left: BeginPathExpr<'db>,
     right: BeginPathExpr<'db>,
 ) -> bool {
@@ -153,8 +153,8 @@ fn same_path<'db>(
                 // One name in any case; the resolved type then separates two
                 // declarations of one name.
                 l.ident(db) == r.ident(db)
-                    && body.type_of_path_expr.get(&step.get_expr(db))
-                        == body.type_of_path_expr.get(&other.get_expr(db))
+                    && body.type_of_path_expr(step.get_expr(db))
+                        == body.type_of_path_expr(other.get_expr(db))
             }
             (
                 PathExprWalkStep::Deref { count: l, .. },

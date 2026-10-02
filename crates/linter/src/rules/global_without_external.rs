@@ -1,6 +1,6 @@
 use auto_lsp::lsp_types::DiagnosticSeverity;
 use db::WorkspaceDataBase;
-use hir::{HasName, HirNodeInfo, hir_ty::body::BodyInferenceResult};
+use hir::{HasName, HirNodeInfo, hir_ty::body::ScopeInference};
 use ide_diagnostic::{ErrorCode, IdeDiagnostic, Related, diag};
 
 pub const NAME: &str = "global-without-external";
@@ -23,10 +23,10 @@ impl ErrorCode for GlobalWithoutExternal {
 
 pub fn check<'db>(
     db: &'db dyn WorkspaceDataBase,
-    body: &BodyInferenceResult<'db>,
+    body: ScopeInference<'db>,
     diagnostics: &mut Vec<IdeDiagnostic>,
 ) {
-    for (access, global) in &body.globals_without_external {
+    for (access, global) in body.globals_without_external() {
         let name = global.get_name_with_case(db).text(db);
         let access_file = access.get_scope_id(db).file(db);
 

@@ -14,7 +14,7 @@ use hir::{
         scope::{ScopeId, ScopeKind},
         semantic_index::get_scope,
     },
-    hir_ty::body::BodyInferenceResult,
+    hir_ty::body::ScopeInference,
 };
 use ide_diagnostic::IdeDiagnostic;
 
@@ -32,7 +32,7 @@ pub fn check<'db>(
     db: &'db dyn WorkspaceDataBase,
     config: &LinterConfig,
     scope: ScopeId<'db>,
-    body: &BodyInferenceResult<'db>,
+    body: ScopeInference<'db>,
     diagnostics: &mut Vec<IdeDiagnostic>,
 ) {
     let statements = match get_scope(db, scope).kind {
@@ -190,7 +190,7 @@ impl VisitorCtx {
 /// Each lint only checks the current node - the recursion is handled here.
 fn check_expr_lints<'db>(
     db: &'db dyn WorkspaceDataBase,
-    body: &BodyInferenceResult<'db>,
+    body: ScopeInference<'db>,
     ctx: &VisitorCtx,
     expr: &Expr<'db>,
     diagnostics: &mut Vec<IdeDiagnostic>,
@@ -271,7 +271,7 @@ fn check_expr_lints<'db>(
 #[allow(clippy::too_many_arguments)]
 fn visit_statements<'db>(
     db: &'db dyn WorkspaceDataBase,
-    body: &BodyInferenceResult<'db>,
+    body: ScopeInference<'db>,
     ctx: &VisitorCtx,
     scope: ScopeId<'db>,
     stmts: &[Stmt<'db>],
@@ -308,7 +308,7 @@ fn visit_statements<'db>(
                 }
                 if ctx.missing_return
                     && !*return_assigned
-                    && missing_return::check_assignment(db, body, *var)
+                    && missing_return::check_assignment(body, *var)
                 {
                     *return_assigned = true;
                 }

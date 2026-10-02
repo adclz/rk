@@ -23,6 +23,7 @@ mod function_inputs;
 mod function_outputs;
 mod globals;
 mod imports;
+mod initializer_forms;
 mod initializers;
 mod inout;
 mod instance_initializers;
