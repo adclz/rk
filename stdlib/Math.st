@@ -1082,5 +1082,16 @@ NAMESPACE Std.Math
 			ASSERT(LN(0.0) < -1000000.0, 'LN(0) is -inf');
 			ASSERT(EXP(1000.0) > 1000000.0, 'EXP(1000) overflows to +inf');
 		END_FUNCTION
+
+		// wasm traps on the minimum divided by -1; the compiler guards it, so
+		// the quotient wraps like every other overflow.
+		{test}
+		FUNCTION test_division_at_the_minimum_wraps
+			VAR i : INT := INT#-32768; d : DINT := DINT#-2147483648; l : LINT := -LINT#9223372036854775807 - LINT#1; END_VAR
+			ASSERT(i / INT#-1 = INT#-32768, 'INT');
+			ASSERT(d / DINT#-1 = DINT#-2147483648, 'DINT');
+			ASSERT(l / LINT#-1 = l, 'LINT');
+			ASSERT(d MOD DINT#-1 = DINT#0, 'MOD is 0');
+		END_FUNCTION
 	END_NAMESPACE
 END_NAMESPACE
