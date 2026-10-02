@@ -233,23 +233,23 @@ impl<'db> InferExprCtx<'db> {
                 inference_results.type_of_expr[&curr_expr]
             }
             ExprKind::FoldExpr { param_id, operator } => {
-                // Look up the variadic parameter in the current scope
+                // The fold reads the POU's own variadic parameter and nothing
+                // else: another local, a member, a name that is nothing, or a
+                // POU without a pack is E0814. Left as a silent `Never`, each
+                // reached MIR as an internal compiler error.
                 let scope = curr_expr.scope_id(db);
                 let def_map = scope.def_map(db);
-                let ty = match def_map.local_variables.get(&param_id.ident(db)) {
-                    Some(var) => {
+                let pack = def_map
+                    .local_variables
+                    .values()
+                    .find(|var| var.variadic(db))
+                    .copied();
+                let named = def_map.local_variables.get(&param_id.ident(db)).copied();
+                let ty = match named {
+                    Some(var) if var.variadic(db) => {
                         // A fold is the ONLY way to consume a pack, so without
                         // this every variadic parameter reads as unused (L0201).
-                        inference_results.variables_used.insert(*var);
-                        if !var.variadic(db) {
-                            inference_results.errors.push(
-                                CallError::NonVariadicFoldParameter {
-                                    call_site: curr_expr.as_call_site(db),
-                                    var: *var,
-                                }
-                                .to_diagnostic(db, inference_results.scope.file(db)),
-                            );
-                        }
+                        inference_results.variables_used.insert(var);
 
                         let var_ty = var.spec(db).infer(db).normalize(db);
 
@@ -277,7 +277,7 @@ impl<'db> InferExprCtx<'db> {
                             inference_results.errors.push(
                                 TypeError::UnsupportedOperator {
                                     call_site: curr_expr.as_call_site(db),
-                                    typ: Type::new_var(db, *var),
+                                    typ: Type::new_var(db, var),
                                     operator: operator.as_str(),
                                 }
                                 .to_diagnostic(db, inference_results.scope.file(db)),
@@ -287,10 +287,23 @@ impl<'db> InferExprCtx<'db> {
                         if operator.is_comparison() {
                             Type::new_bool()
                         } else {
-                            Type::new_var(db, *var)
+                            Type::new_var(db, var)
                         }
                     }
-                    None => Type::Never,
+                    _ => {
+                        if let Some(var) = named {
+                            inference_results.variables_used.insert(var);
+                        }
+                        inference_results.errors.push(
+                            CallError::NonVariadicFoldParameter {
+                                call_site: curr_expr.as_call_site(db),
+                                name: param_id.with_case,
+                                pack,
+                            }
+                            .to_diagnostic(db, inference_results.scope.file(db)),
+                        );
+                        Type::Never
+                    }
                 };
                 inference_results.type_of_expr.insert(curr_expr, ty);
                 ty

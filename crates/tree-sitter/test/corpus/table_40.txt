@@ -250,3 +250,27 @@ END_FUNCTION_BLOCK
                           (field))))))))))))
     (pascal_style_comment
       (comment_text))))
+
+================================================================================
+A variadic input parses, for the check to refuse
+================================================================================
+
+FUNCTION_BLOCK myFB
+    VAR_INPUT values : INT...; END_VAR
+END_FUNCTION_BLOCK
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (fb_decl
+    (identifier)
+    (fb_input_decls
+      (fb_input_var
+        (variable_list
+          (identifier))
+        (ERR_variadic_fb_input
+          (variadic_decl
+            (numeric_type_name
+              (int_type_name
+                (sign_int_type_name
+                  (int_name))))))))))

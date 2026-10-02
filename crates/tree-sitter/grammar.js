@@ -348,6 +348,9 @@ module.exports = grammar({
     // Invalid variable sections
     ERR_var_in_out_not_allowed: ($) => prec(-1, $.in_out_decls), // VAR_IN_OUT
     ERR_var_temp_not_allowed: ($) => prec(-1, $.temp_var_decls), // VAR_TEMP
+    // `values : INT...` on a FUNCTION_BLOCK input: named here (E0029), so the
+    // builder declares no variable for it.
+    ERR_variadic_fb_input: ($) => prec(-1, $.variadic_decl),
     ERR_var_access_not_allowed: ($) => prec(-1, $.prog_access_decls), // VAR_ACCESS
     ERR_var_config_not_allowed: ($) => prec(-1, $.config_init), // VAR_CONFIG
     ERR_var_external_not_allowed: ($) => prec(-1, $.external_var_decls), // VAR_EXTERNAL
@@ -1320,7 +1323,12 @@ module.exports = grammar({
       ),
 
     _fb_input_var_kind: ($) =>
-      choice($.var_decl_init, $.edge_decl, $.array_conformand),
+      choice(
+        $.var_decl_init,
+        $.edge_decl,
+        $.array_conformand,
+        $.ERR_variadic_fb_input,
+      ),
 
     fb_output_decls: ($) =>
       seq(

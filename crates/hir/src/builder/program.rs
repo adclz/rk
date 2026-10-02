@@ -80,6 +80,8 @@ impl<'db> SemanticIndexBuilder<'db> {
     ) -> (Vec<ProgAccessDecl<'db>>, Vec<VariableDecl<'db>>) {
         let mut prog_decls = vec![];
         let mut variables = vec![];
+        // A pack among the inputs is E0029, as the inputs are parsed.
+        self.instance_inputs = Some("PROGRAM");
         type ProgVariables = ast::generated::ERRVarGlobalNotAllowed_ExternalVarDecls_InOutDecls_InputDecls_LocPartlyVarDecl_NoRetainVarDecls_OutputDecls_ProgAccessDecls_RetainVarDecls_TempVarDecls_VarDecls;
 
         for variable in program.declarations.iter() {
@@ -111,6 +113,7 @@ impl<'db> SemanticIndexBuilder<'db> {
             }
         }
 
+        self.instance_inputs = None;
         (prog_decls, variables)
     }
 }
