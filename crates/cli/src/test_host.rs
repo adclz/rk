@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Running a module's `{test}` functions in-process on a wasmtime host. A
 //! `{test}` export is `() -> i32`, the address of a 12-byte canonical-ABI
 //! `result<_, string>` the host decodes itself. Each test gets a fresh

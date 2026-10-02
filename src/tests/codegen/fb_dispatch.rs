@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Calling a function block through something other than a bare local name.
 //!
 //! The receiver of an FB invocation used to be collapsed to a single ident and

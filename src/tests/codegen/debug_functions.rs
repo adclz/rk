@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! `debug-functions` / wasm `name` section: map a wasm `DefinedFuncIndex` (as
 //! reported by wasmtime's `FrameHandle`) to its IEC function name, for naming a
 //! debugger's stack frames. The lookup lives in `DebugInfo`, not the `Plc`.

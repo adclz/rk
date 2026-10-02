@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Struct execution tests - testing struct field access and manipulation.
 
 use crate::tests::codegen::with_db;

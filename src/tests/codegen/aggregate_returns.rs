@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Functions returning STRUCTs and ARRAYs.
 //!
 //! An aggregate return follows the STRING convention: the callee holds a

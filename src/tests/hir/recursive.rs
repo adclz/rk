@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 use crate::tests::utils::{test_diagnostics, with_db};
 use db::RootDatabase;
 use insta::assert_snapshot;

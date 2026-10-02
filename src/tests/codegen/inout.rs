@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! VAR_IN_OUT semantics at FB call sites: by-reference binding (a pointer
 //! field in the instance struct, stored once per call, auto-dereferenced in the
 //! body), aliasing, aggregates, nesting/passthrough, STRING, and the E0806

@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! The skills are the documentation. This module reads `skills/`, renders
 //! each `SKILL.md` and its references, and runs every `iecst` fence through
 //! the compiler so the site cannot publish an example that no longer holds.

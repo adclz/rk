@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 use rk::diagnostics::{DiagnosticReporter, collect_diagnostics};
 
 use super::{disable_stdlib, temp_workspace};

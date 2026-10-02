@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Single-pass statement visitor that dispatches to all statement-walking lint rules.
 //!
 //! Instead of each lint walking the entire statement tree independently,

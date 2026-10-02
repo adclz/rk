@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Incremental re-analysis: apply one edit to a fully-checked workspace and
 //! re-check *everything*, timed. The setup primes every Salsa cache, so the
 //! timed region is exactly what an editor session pays per change: reparse

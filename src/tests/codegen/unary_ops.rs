@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Unary operator codegen: negation and NOT across type widths.
 //! (Regression: 64-bit integer negation emitted `value; i64.const 0; i64.sub`
 //! = `value - 0` — a silent no-op.)

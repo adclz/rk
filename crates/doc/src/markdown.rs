@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Markdown as the site's sources write it: split the frontmatter, find the
 //! fences the compiler must check, and pre-render what Zola cannot, which is
 //! `iecst` fences through the grammar's highlighter, inline code with the

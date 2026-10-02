@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! The type a directly represented address reads as.
 //!
 //! An address itself is decoded once, by HIR ([`LocatedAddress`]): its area,

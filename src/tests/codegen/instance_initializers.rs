@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Initializers on the *members* of an FB or CLASS, seen through an instance.
 //!
 //! `VAR f : Flags;` carries no initializer of its own — the `:= 3` sits on

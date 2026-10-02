@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 use crate::hir_def::pous::variable::{LocatedAddress, VariableDecl};
 use db::WorkspaceDataBase;
 use ide_diagnostic::IdeDiagnostic;

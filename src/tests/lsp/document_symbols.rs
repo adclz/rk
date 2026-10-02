@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 use auto_lsp::core::document_symbols_builder::DocumentSymbolsBuilder;
 use db::RootDatabase;
 use hir::hir_def::semantic_index::semantic_index;

@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Phase B: interface-parameter monomorphization. An interface only appears
 //! as a direct `VAR_INPUT` / `VAR_IN_OUT` parameter, so at every call site
 //! the concrete implementer is statically known: the callee is specialized

@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! The formatter, as `rk fmt` and the editor's format-on-save run it.
 //!
 //! Idempotence alone proves little: `BOOL READ_ONLY` once formatted to

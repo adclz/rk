@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! `**` operand typing.
 //!
 //! IEC: `IN1 ** IN2` takes IN1 of ANY_REAL and IN2 of ANY_NUM, and the result

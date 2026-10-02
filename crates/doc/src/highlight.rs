@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Syntax highlighting for Structured Text at build time, from the
 //! repository's own tree-sitter grammar. The page needs no script: every
 //! token is a `<span class="hl-…">` the stylesheet colors.

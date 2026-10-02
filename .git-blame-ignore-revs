@@ -1,0 +1,5 @@
+# Commits `git blame` skips: `git config blame.ignoreRevsFile
+# .git-blame-ignore-revs` locally; GitHub reads this file by itself.
+#
+# chore(license): SPDX headers on every file
+# (add that commit's hash below once it exists)

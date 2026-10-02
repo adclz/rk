@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! FUNCTION overloads lower to distinct WASM symbols (via the signature
 //! discriminant) and each call routes to the right one.
 

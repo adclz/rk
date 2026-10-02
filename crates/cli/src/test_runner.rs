@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Reporting for `rk test`: execution is [`crate::test_host`]'s, this is
 //! presentation, in three output shapes. The records are
 //! [`debug_format::test_report`]'s, so a tool that runs the module

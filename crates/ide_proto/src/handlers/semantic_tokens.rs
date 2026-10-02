@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 use auto_lsp::core::semantic_tokens_builder::SemanticTokensBuilder;
 use db::WorkspaceDataBase;
 use hir::{

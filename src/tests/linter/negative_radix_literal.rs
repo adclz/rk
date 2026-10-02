@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! L0123: an untyped radix literal with its top bit set, where a signed
 //! integer is expected, is negative: `16#80` is -128 in a SINT.
 

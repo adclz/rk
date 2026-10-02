@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Tests for CONFIGURATION / TASK schedule lowering (Phase 1, cooperative).
 
 use crate::tests::codegen::{compile_to_mir_and_wasm, compile_to_mir_and_wasm_expecting, with_db};

@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Inline values: where a debugger should show what a variable holds.
 //!
 //! The server never sees a runtime value. It answers with the RANGES that name

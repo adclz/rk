@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! `MOD` executes with IEC's sign rule (the result takes the dividend's
 //! sign), across widths. The hir suite pins what is REJECTED; this
 //! pins what the accepted shapes compute.

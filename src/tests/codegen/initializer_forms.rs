@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Every form an initializer can take, computed once in the initializer and
 //! once in a body and compared at run time. A FUNCTION local's runs at each
 //! call and lowers as its body does, because both read the scope's inference

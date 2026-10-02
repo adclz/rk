@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 use auto_lsp::lsp_types::{DiagnosticSeverity, DiagnosticTag};
 use db::WorkspaceDataBase;
 use hir::{HirNodeInfo, hir_ty::body::ScopeInference};

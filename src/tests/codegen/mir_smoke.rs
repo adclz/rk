@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Smoke tests for the MIR-based codegen pipeline.
 
 use crate::tests::codegen::{compile_to_wasm, execute_wasm, validate_wasm, with_db};

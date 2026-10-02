@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 use crate::hir_ty::infer::normalize::string_capacity;
 use db::WorkspaceDataBase;
 use rustc_hash::FxHashMap;

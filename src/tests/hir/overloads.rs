@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! FUNCTION overload resolution — a call binds to the same-name overload whose
 //! signature (ordered parameter types, see `function_signature`) matches the
 //! call's argument types. Overloads that are exact-on-every-arg win; when an

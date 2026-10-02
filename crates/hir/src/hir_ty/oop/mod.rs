@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! FUNCTION_BLOCKs, CLASSes and INTERFACEs, and how they relate, shaped
 //! after ty's classes: each POU's bases are resolved once
 //! ([`explicit_bases`]), its [`ancestry`] is built from its bases' cached

@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! `debug-lines`: per-function (within-body offset → source position). Verifies
 //! codegen records each statement's source line, and that `DebugInfo` maps an
 //! absolute wasm `pc` back to it (the offset crux confirmed by the runtime's

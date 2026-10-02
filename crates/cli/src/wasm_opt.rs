@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Locating `wasm-opt`, Binaryen's optimizer. The `wasm-opt` crate wraps
 //! Binaryen 116, which predates `try_table` and cannot read a realistic
 //! module, so the optimizer is an external binary: one already on PATH

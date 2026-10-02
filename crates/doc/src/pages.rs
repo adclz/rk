@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! The hand-written pages in `site/pages/`, mirrored into `site/content/`
 //! with their fences and inline code pre-rendered. Zola's `+++` frontmatter
 //! passes through untouched; the generator reads only the title, the

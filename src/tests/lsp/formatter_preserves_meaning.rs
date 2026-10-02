@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! The property every formatter change must keep: **formatting does not change
 //! what a program means**.
 //!

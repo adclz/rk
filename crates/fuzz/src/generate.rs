@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Well-typed programs, written with their expected results.
 //!
 //! Every other oracle checks that the compiler behaves; none checks that

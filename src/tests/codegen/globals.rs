@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! End-to-end tests for VAR_GLOBAL: shared state across programs, accessed both
 //! via VAR_EXTERNAL and directly by name.
 

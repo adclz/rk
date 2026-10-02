@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Terminal output for the CLI: the single place that reaches for color
 //! and picks a stream. Problems ([`error`]/[`warn`]/[`failure`]) go to
 //! stderr; results ([`success`]/[`detail`]) to stdout, or to stderr via

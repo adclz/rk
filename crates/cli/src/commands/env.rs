@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! `rk env`: the paths this toolchain resolved and where each came from,
 //! the way `rustc --print sysroot` or `go env GOROOT` do.
 

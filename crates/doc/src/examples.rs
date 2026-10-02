@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! The diagnostics reference's sources: one Markdown file per code in
 //! `crates/doc/examples/`, named `<CODE>.md`. Its frontmatter carries the
 //! title (and the lint rule, for an L-code); the body is the description

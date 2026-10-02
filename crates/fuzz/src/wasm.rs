@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! What must hold of a module the compiler emitted: it validates, its custom
 //! sections decode and agree with it, and it runs the way a host runs it.
 

@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! `rk test NAME`: which tests a name selects.
 
 use crate::tests::codegen::{compile_to_wasm, with_db};

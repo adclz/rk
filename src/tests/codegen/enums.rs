@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Enum codegen across contexts: literals resolve to declaration ordinals
 //! (DInt storage), through FB fields, function params/returns, initializers,
 //! CASE labels, arrays, and struct fields.

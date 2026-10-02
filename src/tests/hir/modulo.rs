@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! `MOD` operand typing.
 //!
 //! IEC: MOD takes ANY_INT. That is narrower than the other multiplicative

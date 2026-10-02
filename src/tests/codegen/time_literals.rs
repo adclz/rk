@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Date and time literals through codegen: the integer encodings, the unit
 //! conversions of the cast emitter, and the implicit widenings whose
 //! containment the `const` assertions in hir's literals.rs declare.

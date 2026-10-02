@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! The compiler, end to end, on one file: what `rk check`, `rk compile` and
 //! a host do with it.
 

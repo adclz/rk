@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Tests for constant variable initializers: program statics, globals, and the
 //! cold-vs-warm-start interaction with RETAIN. Run once at load via `__init`.
 

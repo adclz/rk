@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! What a completion item WRITES has to be valid where it is offered.
 //!
 //! The placeholders are hints the user types over, but they are also what

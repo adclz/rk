@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Builder for the debug-symbol table; the on-wire types live in [`debug_format`].
 //! Walks configuration globals and program-instance fields down to their
 //! elementary leaves. Pointers are not emitted.

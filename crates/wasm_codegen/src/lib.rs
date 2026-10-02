@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! WebAssembly code generation for IEC 61131-3 programs.
 //!
 //! Uses the MIR pipeline: HIR → MIR → WASM (via `from_mir`).

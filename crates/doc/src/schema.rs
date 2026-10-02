@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! A `schema` fence: a tree in box-drawing characters, which GitHub shows as
 //! written and the site draws as blocks within blocks, in the front page's
 //! style.

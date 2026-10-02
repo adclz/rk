@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Recursion: each call of a POU that may call itself has a frame of its
 //! own on the stack for its memory-resident storage, so an activation never
 //! sees another's array, STRING, instance or address-taken scalar. Every

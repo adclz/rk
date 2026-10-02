@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 use ast::generated::UsingDirective;
 use auto_lsp::anyhow;
 use auto_lsp::core::ast::AstNodeId;

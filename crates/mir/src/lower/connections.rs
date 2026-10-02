@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! What a task runs for a program instance with connections: `PROGRAM P1
 //! WITH T : F(x1 := %IX1.1, y1 => total)` feeds `x1` before each scan of the
 //! instance and copies `y1` out after it.

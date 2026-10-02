@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Topiary-based formatting of every corpus file. Purely CST-driven, so
 //! only parsing is primed (by `setup_db`) — no HIR work in the timed region.
 

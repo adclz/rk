@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! A constant expression folds to what the program computes: each operation
 //! at its type, wrapping at that type's width, wherever it is written — an
 //! initializer, a CASE label, a FOR step, a bound.

@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 use db::RootDatabase;
 use ide_proto::handlers::workspace_symbols::workspace_symbols;
 use insta::assert_debug_snapshot;

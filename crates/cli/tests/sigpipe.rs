@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! A reader that closes early is a normal thing on a pipeline, not a crash.
 
 #![cfg(unix)]

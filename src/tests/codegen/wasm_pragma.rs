@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! A `{wasm}` pragma emits the instruction it names. Every single-input
 //! pragma without a type basis used to lower as a CAST between its parameter
 //! and result types, the instruction string ignored: with REAL in and REAL

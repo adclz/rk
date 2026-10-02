@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! The instruction names a `{wasm}` pragma may carry.
 //!
 //! The emitter accepts four disjoint name families, and nothing else: an

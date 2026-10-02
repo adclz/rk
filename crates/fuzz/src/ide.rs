@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! The language server's requests, sent the way the editor sends them.
 //!
 //! The server runs all day on half-typed code, so a request that panics

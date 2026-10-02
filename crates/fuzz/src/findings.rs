@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! What the fuzzers found, kept where the suite runs it.
 //!
 //! A unit test, not an integration one: Cargo builds a package's binaries

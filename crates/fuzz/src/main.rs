@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Corpus generator:
 //! `cargo run --release -p rk-fuzz --bin corpus_gen -- <source>... <output_dir>`.
 //!

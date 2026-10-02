@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 use crate::tests::utils::{add_source, with_db};
 use auto_lsp::core::document::Document;
 use db::RootDatabase;

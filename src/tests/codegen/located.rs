@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! End-to-end tests for located (`AT %…`) VAR_GLOBALs: the three I/O bands, a
 //! host writing the input image, and a program writing the output one.
 

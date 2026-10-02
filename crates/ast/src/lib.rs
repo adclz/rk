@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 #![recursion_limit = "256"]
 // `configure_parser!` (auto-lsp) expands to functions returning
 // `Result<_, ParseError>` whose Err variant is ~144 bytes

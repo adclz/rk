@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! `--output-format=json-lines` is honoured by every command: a tool reading
 //! `rk` under it never meets prose. The diagnostics honoured it and every
 //! status line around them dropped it.

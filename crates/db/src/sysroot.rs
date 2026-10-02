@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Where the standard library lives, found the way a compiler finds its
 //! sysroot: relative to the executable. Installing it is packaging's job;
 //! finding it is the compiler's. Two layouts satisfy the probe:

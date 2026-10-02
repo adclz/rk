@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Evaluating an expression to a value known before the program runs.
 //!
 //! "Constant" in IEC is a semantic property, not a shape: `Constant_Expr :

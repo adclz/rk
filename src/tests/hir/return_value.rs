@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Inside a FUNCTION or METHOD, the callable's own name is its return value
 //! and is checked as a local of the return type would be.
 

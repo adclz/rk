@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Run the fuzzing oracles on files and say which one fails.
 //!
 //! `cargo run -p rk-fuzz --bin repro -- [--only pipeline|semantics|format|incremental|ide] <path>...`

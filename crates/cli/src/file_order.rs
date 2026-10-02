@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! One deterministic order over the workspace's files. The database stores
 //! files in `DashMap`s, whose iteration order changes per process, and
 //! that order reaches the wasm function index space. Anything that feeds

@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Helpers for the codegen tests: compile a source, run the module.
 //!
 //! [`TestPlc`] instantiates a compiled module the way a host does — it

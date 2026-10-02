@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 use auto_lsp::lsp_types::{CodeLens, Command};
 use db::WorkspaceDataBase;
 use hir::hir_ty::{oop::descendants, ty::Type};

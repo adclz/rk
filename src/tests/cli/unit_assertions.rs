@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Every assertion of `Std.Unit` must fail when it should.
 //!
 //! The standard library's own suite only ever calls them on values that

@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Variadic parameters end to end: a pack is specialized per argument count
 //! unrolls over the parameters that specialization expanded it into.
 //!

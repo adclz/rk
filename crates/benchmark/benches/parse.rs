@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Raw tree-sitter parsing over the real corpora — the front of the
 //! pipeline, isolated from the database and every later stage.
 

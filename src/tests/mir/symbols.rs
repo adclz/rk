@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Every function lowers to a symbol of its own: the spellings
 //! `mir::lower::naming` promises, and the internal error when two functions
 //! would still meet on one.

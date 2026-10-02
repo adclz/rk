@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Every language server request, at positions spread over the input.
 //! See `rk_fuzz::ide`.
 #![no_main]

@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 /*
 This file is part of auto-lsp.
 Copyright (C) 2025 CLAUZEL Adrien

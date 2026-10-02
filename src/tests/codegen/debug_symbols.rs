@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Debug-symbol table tests: the `debug-symbols` custom section maps every
 //! debuggable IEC variable (config/resource globals + program-instance fields,
 //! down to elementary leaves) to its absolute linear-memory address. Programs
