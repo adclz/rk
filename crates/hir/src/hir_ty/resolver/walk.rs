@@ -586,6 +586,27 @@ impl<'db> Type<'db> {
                             .to_diagnostic(db, ctx.scope.file(db)),
                     );
                     ctx.type_of_path_expr.insert(expr, Type::Never);
+                    place.current_typ = Type::Never;
+                    place.current_path = expr;
+                    return;
+                }
+                // A pack is read by a fold and by nothing else: it is as many
+                // parameters as the call passed, which no single read, write
+                // or argument can be, and lowering has no cell for it.
+                if var.variadic(db) {
+                    ctx.errors.push(
+                        crate::check::errors::e08_call::CallError::VariadicOutsideFold {
+                            expr,
+                            var,
+                        }
+                        .to_diagnostic(db, ctx.scope.file(db)),
+                    );
+                    ctx.variables_used.insert(var);
+                    ctx.type_of_path_expr.insert(expr, Type::Never);
+                    // The steps after it start from `Never` and say nothing:
+                    // `values[1]` indexed the FUNCTION, `values^` dereferenced it.
+                    place.current_typ = Type::Never;
+                    place.current_path = expr;
                     return;
                 }
                 if let Some(mb) = multibits {
@@ -676,7 +697,7 @@ impl<'db> Type<'db> {
                         .push(Adjustment::new_deref(db, ty));
                 }
                 Err(non_ref) => {
-                    if report_errors {
+                    if report_errors && !non_ref.is_never() {
                         ctx.errors.push(
                             ReferenceError::DerefNonRefType { expr, ty: non_ref }
                                 .to_diagnostic(db, ctx.scope.file(db)),
@@ -697,7 +718,7 @@ impl<'db> Type<'db> {
         ctx: &mut BodyInferenceResult<'db>,
     ) {
         let Type::Array(arr) = self else {
-            if report_errors {
+            if report_errors && !self.is_never() {
                 ctx.errors.push(
                     ArrayError::IndexNonArrayTypePathExpr {
                         expr,

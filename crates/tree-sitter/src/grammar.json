@@ -541,6 +541,14 @@
         "name": "temp_var_decls"
       }
     },
+    "ERR_variadic_fb_input": {
+      "type": "PREC",
+      "value": -1,
+      "content": {
+        "type": "SYMBOL",
+        "name": "variadic_decl"
+      }
+    },
     "ERR_var_access_not_allowed": {
       "type": "PREC",
       "value": -1,
@@ -6478,6 +6486,10 @@
         {
           "type": "SYMBOL",
           "name": "array_conformand"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "ERR_variadic_fb_input"
         }
       ]
     },

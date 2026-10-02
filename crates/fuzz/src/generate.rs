@@ -233,6 +233,39 @@ enum Expr {
     Logic(Logic, Box<Expr>, Box<Expr>),
     /// A FUNCTION, which has no state: callable anywhere.
     Call(usize, Vec<Expr>),
+    /// A variadic FUNCTION's body: its pack, of this type, folded.
+    Fold(Fold, Ty),
+}
+
+/// What a variadic FUNCTION folds its pack with: `+`, `-` and `*` from
+/// left to right, `&`, `|` and `^` over BOOLs, a comparison of each
+/// adjacent pair (docs/variadics.md).
+#[derive(Clone, Copy, Debug)]
+enum Fold {
+    Arith(Arith),
+    Logic(Logic),
+    Cmp(Cmp),
+}
+
+impl Fold {
+    fn symbol(self) -> &'static str {
+        match self {
+            Fold::Arith(Arith::Add) => "+",
+            Fold::Arith(Arith::Sub) => "-",
+            Fold::Arith(Arith::Mul) => "*",
+            Fold::Arith(Arith::Div) => "/",
+            Fold::Arith(Arith::Mod) => "%",
+            Fold::Logic(Logic::And) => "&",
+            Fold::Logic(Logic::Or) => "|",
+            Fold::Logic(Logic::Xor) => "^",
+            Fold::Cmp(Cmp::Eq) => "=",
+            Fold::Cmp(Cmp::Ne) => "<>",
+            Fold::Cmp(Cmp::Lt) => "<",
+            Fold::Cmp(Cmp::Gt) => ">",
+            Fold::Cmp(Cmp::Le) => "<=",
+            Fold::Cmp(Cmp::Ge) => ">=",
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -303,6 +336,9 @@ struct Function {
     ty: Ty,
     inputs: Vec<Var>,
     body: Expr,
+    /// One input, the pack, which `body` folds: a call passes it any
+    /// number of arguments, positionally.
+    variadic: bool,
 }
 
 #[derive(Clone)]
@@ -767,6 +803,28 @@ impl Generator<'_> {
         }
     }
 
+    /// A fold, the type of the pack it folds and the type it gives: integers
+    /// added, subtracted or multiplied (wrapping at each step), BOOLs
+    /// combined, integers compared pair by pair into a BOOL.
+    fn fold(&mut self) -> (Fold, Ty, Ty) {
+        let integer = INTEGERS[self.choices.below(INTEGERS.len())];
+        match self.choices.below(3) {
+            0 => {
+                let op = [Arith::Add, Arith::Sub, Arith::Mul][self.choices.below(3)];
+                (Fold::Arith(op), integer, integer)
+            }
+            1 => {
+                let op = [Logic::And, Logic::Or, Logic::Xor][self.choices.below(3)];
+                (Fold::Logic(op), Ty::Bool, Ty::Bool)
+            }
+            _ => {
+                let op =
+                    [Cmp::Eq, Cmp::Ne, Cmp::Lt, Cmp::Gt, Cmp::Le, Cmp::Ge][self.choices.below(6)];
+                (Fold::Cmp(op), integer, Ty::Bool)
+            }
+        }
+    }
+
     /// A call to a FUNCTION returning `ty` (any string, for a string), if
     /// there is one and calls are allowed here.
     fn call(&mut self, ty: Ty, depth: u32, readable: &[usize]) -> Option<Expr> {
@@ -790,6 +848,12 @@ impl Generator<'_> {
     /// The arguments of a call to FUNCTION `f`, each of its parameter's
     /// exact type, if there is a STRUCT for each STRUCT parameter.
     fn args(&mut self, f: usize, depth: u32, readable: &[usize]) -> Option<Vec<Expr>> {
+        if self.d.functions[f].variadic {
+            // One to four arguments, each of the pack's type.
+            let pack = self.d.functions[f].inputs[0].ty;
+            let n = 1 + self.choices.below(4);
+            return Some((0..n).map(|_| self.expr(pack, depth, readable)).collect());
+        }
         let inputs: Vec<Ty> = self.d.functions[f].inputs.iter().map(|v| v.ty).collect();
         let mut args = Vec::new();
         for t in inputs {
@@ -834,6 +898,10 @@ impl Generator<'_> {
     /// evaluator runs (docs/overloading.md).
     fn overload(&mut self) -> Option<(String, Ty, Vec<Var>)> {
         let sibling = self.choices.below(self.d.functions.len());
+        // A variadic FUNCTION keeps its name to itself.
+        if self.d.functions[sibling].variadic {
+            return None;
+        }
         let name = self.d.functions[sibling].name.clone();
         let ty = self.d.functions[sibling].ty;
         let mut inputs = self.d.functions[sibling].inputs.clone();
@@ -1239,6 +1307,19 @@ pub fn program(bytes: &[u8]) -> String {
     }
 
     for k in 0..g.choices.below(5) {
+        // One in four is variadic: a name of its own, never an overload, and
+        // not a program variable's (`v0`).
+        if g.choices.percent(25) {
+            let (fold, pack, ty) = g.fold();
+            g.d.functions.push(Function {
+                name: format!("fold{k}"),
+                ty,
+                inputs: vec![input(0, pack)],
+                body: Expr::Fold(fold, pack),
+                variadic: true,
+            });
+            continue;
+        }
         let overload = match g.d.functions.is_empty() || !g.choices.percent(40) {
             true => None,
             false => g.overload(),
@@ -1271,6 +1352,7 @@ pub fn program(bytes: &[u8]) -> String {
             ty,
             inputs,
             body,
+            variadic: false,
         });
     }
 
@@ -1649,7 +1731,12 @@ fn write_program(vars: &[Var], d: &Decls, body: &[Stmt], state: &State) -> Strin
     for f in &d.functions {
         let _ = writeln!(out, "FUNCTION {} : {}\nVAR_INPUT", f.name, f.ty.name());
         for v in &f.inputs {
-            decl(&mut out, v, false);
+            match f.variadic {
+                true => {
+                    let _ = writeln!(out, "    {} : {}...;", v.name, v.ty.name());
+                }
+                false => decl(&mut out, v, false),
+            }
         }
         let _ = writeln!(
             out,
@@ -1933,8 +2020,14 @@ impl Names<'_> {
             }
             Expr::Call(f, args) => {
                 let f = &self.d.functions[*f];
-                format!("{}({})", f.name, self.args(&f.inputs, args))
+                if f.variadic {
+                    let args: Vec<String> = args.iter().map(|a| self.expr(a)).collect();
+                    format!("{}({})", f.name, args.join(", "))
+                } else {
+                    format!("{}({})", f.name, self.args(&f.inputs, args))
+                }
             }
+            Expr::Fold(op, _) => format!("...{}{}", self.vars[0], op.symbol()),
         }
     }
 
@@ -2508,20 +2601,95 @@ fn eval(e: &Expr, st: &State, d: &Decls) -> Val {
         }
         Expr::Call(f, args) => {
             let f = &d.functions[*f];
-            let inputs = f
-                .inputs
-                .iter()
-                .zip(args)
-                .map(|(v, a)| store(v.ty, ev(a)))
-                .collect();
+            let inputs = match f.variadic {
+                // The pack: every argument, at its type.
+                true => args.iter().map(|a| store(f.inputs[0].ty, ev(a))).collect(),
+                false => f
+                    .inputs
+                    .iter()
+                    .zip(args)
+                    .map(|(v, a)| store(v.ty, ev(a)))
+                    .collect(),
+            };
             store(f.ty, eval(&f.body, &State::frame(inputs), d))
         }
+        // The frame holds the pack, one value per argument. An arithmetic
+        // fold wraps at the pack's type at each step, a single argument is
+        // itself, and a comparison of one argument is TRUE.
+        Expr::Fold(op, ty) => match op {
+            Fold::Arith(op) => Val::Int(
+                st.vars
+                    .iter()
+                    .map(Val::int)
+                    .reduce(|a, b| {
+                        ty.wrap(match op {
+                            Arith::Add => a.wrapping_add(b),
+                            Arith::Sub => a.wrapping_sub(b),
+                            Arith::Mul => a.wrapping_mul(b),
+                            Arith::Div | Arith::Mod => unreachable!("no `/` or `%` fold"),
+                        })
+                    })
+                    .unwrap_or(0),
+            ),
+            Fold::Logic(op) => Val::Int(
+                st.vars
+                    .iter()
+                    .map(Val::truthy)
+                    .reduce(|a, b| match op {
+                        Logic::And => a && b,
+                        Logic::Or => a || b,
+                        Logic::Xor => a ^ b,
+                    })
+                    .unwrap_or(false) as i128,
+            ),
+            Fold::Cmp(op) => Val::Int(st.vars.windows(2).all(|pair| {
+                let (a, b) = (pair[0].int(), pair[1].int());
+                match op {
+                    Cmp::Eq => a == b,
+                    Cmp::Ne => a != b,
+                    Cmp::Lt => a < b,
+                    Cmp::Gt => a > b,
+                    Cmp::Le => a <= b,
+                    Cmp::Ge => a >= b,
+                }
+            }) as i128),
+        },
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Programs from a spread of seeds, kept when one declares a pack: the
+    /// compiler and the runtime agree with the folds this evaluator does.
+    #[test]
+    fn variadic_functions_compute_their_folds() {
+        let mut seed = 0x2545_F491_4F6C_DD1Du64;
+        let mut checked = 0;
+        for _ in 0..200 {
+            let bytes: Vec<u8> = (0..96)
+                .map(|_| {
+                    seed ^= seed << 13;
+                    seed ^= seed >> 7;
+                    seed ^= seed << 17;
+                    (seed >> 24) as u8
+                })
+                .collect();
+            let text = program(&bytes);
+            if !text.contains("...") {
+                continue;
+            }
+            if let Err(finding) = crate::check_generated(&text) {
+                panic!("{finding}\n--- the program ---\n{text}");
+            }
+            checked += 1;
+            if checked == 6 {
+                break;
+            }
+        }
+        assert!(checked >= 3, "only {checked} seeds declared a pack");
+    }
 
     #[test]
     fn wrapping_follows_twos_complement() {

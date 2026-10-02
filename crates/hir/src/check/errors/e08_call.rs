@@ -153,9 +153,20 @@ pub enum CallError<'db> {
         var: VariableDecl<'db>,
         func_call: FuncCall<'db>,
     },
+    /// A fold names something other than the POU's variadic parameter: a
+    /// variable that is not variadic, a member, a name that is nothing.
     NonVariadicFoldParameter {
-        var: VariableDecl<'db>,
         call_site: CallSite<'db>,
+        /// As written.
+        name: Ident,
+        /// The POU's variadic parameter, when it has one.
+        pack: Option<VariableDecl<'db>>,
+    },
+    /// A variadic parameter read, written or passed as a whole: only a
+    /// fold consumes it.
+    VariadicOutsideFold {
+        expr: crate::hir_def::expressions::expression::PathExpr<'db>,
+        var: VariableDecl<'db>,
     },
     /// Variadic parameter must be the only VAR_INPUT parameter.
     VariadicMixedWithOtherInputs {
@@ -183,6 +194,7 @@ impl<'db> ErrorCode for CallError<'db> {
             Self::EmptyVariadicCall { .. } => "E0813",
             Self::NonVariadicFoldParameter { .. } => "E0814",
             Self::VariadicMixedWithOtherInputs { .. } => "E0815",
+            Self::VariadicOutsideFold { .. } => "E0816",
         }
     }
 
@@ -204,8 +216,9 @@ impl<'db> ErrorCode for CallError<'db> {
             Self::NonVariadicTypeForVariable { .. } => "invalid type",
             Self::MultipleVariadicVariables { .. } => "invalid variadic declaration",
             Self::EmptyVariadicCall { .. } => "variadic call without arguments",
-            Self::NonVariadicFoldParameter { .. } => "type mismatch",
+            Self::NonVariadicFoldParameter { .. } => "not a variadic parameter",
             Self::VariadicMixedWithOtherInputs { .. } => "invalid variadic declaration",
+            Self::VariadicOutsideFold { .. } => "variadic parameter used outside a fold",
         }
     }
 }
@@ -678,20 +691,58 @@ impl<'db> ToIdeDiagnostic<'db> for CallError<'db> {
 
                 diag
             }
-            Self::NonVariadicFoldParameter { var, call_site } => {
+            Self::NonVariadicFoldParameter {
+                call_site,
+                name,
+                pack,
+            } => {
                 let mut diag = diag()
-                    .message(format!(
-                        "variable '{}' is not variadic",
-                        var.get_name_with_case(db).text(db)
-                    ))
+                    .message(format!("'{}' is not a variadic parameter", name.text(db)))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
                     .range(
                         crate::denormalize(db, file, &call_site.get_span(db)).unwrap_or_default(),
                     )
                     .call();
-
-                diag.with_note("... can only be used on VAR_INPUT variables that are declared variadic with the same operator (e.g: INT...)".into());
+                match pack {
+                    Some(pack) => {
+                        let pack_name = pack.name_with_case(db).text(db);
+                        diag.with_related(Related::new(
+                            format!("the variadic parameter here is '{pack_name}'"),
+                            pack.scope_id(db).file(db),
+                            pack.get_span(db),
+                        ));
+                        diag.with_note(format!(
+                            "a fold reads it: `...{pack_name}+` adds every argument the call passed"
+                        ));
+                    }
+                    None => diag.with_note(
+                        "a fold reads the variadic parameter of its FUNCTION or METHOD, declared \
+                         as `values : INT...` in VAR_INPUT; this one has none"
+                            .into(),
+                    ),
+                }
+                diag
+            }
+            Self::VariadicOutsideFold { expr, var } => {
+                let name = var.name_with_case(db).text(db);
+                let mut diag = diag()
+                    .message(format!(
+                        "variadic parameter '{name}' is used outside a fold"
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &expr.get_span(db)).unwrap_or_default())
+                    .call();
+                diag.with_related(Related::new(
+                    format!("'{name}' is declared variadic here"),
+                    var.scope_id(db).file(db),
+                    var.get_span(db),
+                ));
+                diag.with_note(format!(
+                    "a pack is as many parameters as the call passed, which only a fold reads: \
+                     `...{name}+` adds them, `...{name}=` compares them"
+                ));
                 diag
             }
         }

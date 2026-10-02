@@ -72,6 +72,12 @@ pub enum SyntaxError {
     VarNotAllowed(Range),
     VarInOutNotAllowed(Range),
     VarTempNotAllowed(Range),
+    /// `values : INT...` on a PROGRAM's or a FUNCTION_BLOCK's input: an
+    /// instance has no argument count to be specialized for.
+    VariadicNotAllowed {
+        span: Range,
+        holder: &'static str,
+    },
     VarExternalNotAllowed(Range),
     VarGlobalNotAllowed(Range),
     VarAccessNotAllowed(Range),
@@ -126,6 +132,7 @@ impl ErrorCode for SyntaxError {
             Self::FbVariablesAfterMethod { .. } => "E0026",
             Self::ClassVariablesAfterMethod { .. } => "E0027",
             Self::MethodDeclInBody(_) => "E0028",
+            Self::VariadicNotAllowed { .. } => "E0029",
         }
     }
 
@@ -150,6 +157,7 @@ impl ErrorCode for SyntaxError {
             Self::VarNotAllowed(_) => "syntax",
             Self::VarInOutNotAllowed(_) => "syntax",
             Self::VarTempNotAllowed(_) => "syntax",
+            Self::VariadicNotAllowed { .. } => "syntax",
             Self::VarExternalNotAllowed(_) => "syntax",
             Self::VarGlobalNotAllowed(_) => "syntax",
             Self::VarAccessNotAllowed(_) => "syntax",
@@ -607,6 +615,19 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                     .call();
 
                 diag.with_note("VAR_TEMP can only be used inside FUNCTION, FUNCTION_BLOCK".into());
+                diag
+            }
+            Self::VariadicNotAllowed { span, holder } => {
+                let mut diag = diag()
+                    .message(format!("a {holder} takes no variadic parameter"))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, span).unwrap_or_default())
+                    .call();
+                diag.with_note(format!(
+                    "a variadic FUNCTION or METHOD is compiled once per argument count; a \
+                     {holder} is an instance, whose inputs are its members"
+                ));
                 diag
             }
             Self::VarExternalNotAllowed(span) => {

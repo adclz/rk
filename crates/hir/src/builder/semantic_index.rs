@@ -32,6 +32,10 @@ pub struct SemanticIndexBuilder<'db> {
     /// The current scope ID being processed (by default, the global scope).
     pub(crate) current_scope: ScopeId<'db>,
 
+    /// `Some` while an instance's declarations are built (a PROGRAM): its
+    /// inputs are members, and a pack among them is E0029, named after it.
+    pub(crate) instance_inputs: Option<&'static str>,
+
     /// Maps scope IDs to their corresponding scopes.
     pub(crate) scope_keys: FxHashMap<usize, Arc<Scope<'db>>>,
 
@@ -78,6 +82,7 @@ impl<'db> SemanticIndexBuilder<'db> {
             located: vec![],
             scope_ctr: 0,
             current_scope: ScopeId::global(db, file),
+            instance_inputs: None,
             errors: vec![],
         }
     }

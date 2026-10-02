@@ -181,3 +181,8 @@
 "TASK T(INTERVAL := T#10ms, PRIORITY := 1);"
 "RESOURCE R ON CPU"
 "PROGRAM P1 WITH T : P;"
+
+# Variadics: the pack and its fold.
+"..."
+"INT..."
+"...args+"

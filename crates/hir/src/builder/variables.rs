@@ -126,6 +126,19 @@ impl<'db> ParseVarSection<'db> for ast::generated::InputDecls {
                             }
                         }
                         ast::generated::InputVarKind::VariadicDecl(variadic_decl) => {
+                            // A PROGRAM's inputs parse as a FUNCTION's. It is an
+                            // instance, whose inputs are its members, so a pack is
+                            // refused here (E0029) and never declared.
+                            if let Some(holder) = sema.instance_inputs {
+                                sema.errors.push(
+                                    SyntaxError::VariadicNotAllowed {
+                                        span: child.get_range().to_owned(),
+                                        holder,
+                                    }
+                                    .to_diagnostic(sema.db, sema.file),
+                                );
+                                continue;
+                            }
                             for variable in child.variables.cast(sema.ast).children.iter() {
                                 let r =
                                     Ident::from_node(sema.db, sema.file, variable.cast(sema.ast));
@@ -170,6 +183,16 @@ impl<'db> ParseVarSection<'db> for ast::generated::FbInputDecls {
                 }
                 ast::generated::ERRVariableWithNoSpec_FbInputVar::FbInputVar(child) => {
                     match child.Type.cast(sema.ast) {
+                        // Named by the parser (E0029): no variable is declared.
+                        ast::generated::FbInputVarKind::ERRVariadicFbInput(_) => {
+                            sema.errors.push(
+                                SyntaxError::VariadicNotAllowed {
+                                    span: child.get_range().to_owned(),
+                                    holder: "FUNCTION_BLOCK",
+                                }
+                                .to_diagnostic(sema.db, sema.file),
+                            );
+                        }
                         ast::generated::FbInputVarKind::VarDeclInit(var_decl) => {
                             for variable in child.variables.cast(sema.ast).children.iter() {
                                 let r =
