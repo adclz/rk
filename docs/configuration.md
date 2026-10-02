@@ -184,7 +184,7 @@ END_CONFIGURATION
 The compiler tells you:
 
 ```console
-[E1412] Error: program instance never runs
+[E1412] Error: program instance without a task
    ╭─[ main.st:7:17 ]
    │
  7 │         PROGRAM Belt1 : Conveyor; // <-- no WITH
@@ -319,9 +319,11 @@ If the program calls `filter()` too, the compiler tells you:
     │
  27 │         PROGRAM T1 WITH Slow : Tank(filter WITH Fast);
     │                                     ───┬──
-    │                                        ╰──── 'filter' runs under its task, and 'Tank' calls it too
+    │                                        ╰──── 'filter' is run by its task and called by 'Tank' too
     │
-    │ Note: the task runs the instance on its own; remove the call from the program
+    │ Help: remove the call from the program
+    │
+    │ Note: the task runs the instance on its own
 ────╯
 ```
 

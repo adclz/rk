@@ -98,7 +98,7 @@ END_FUNCTION_BLOCK
     |
   8 |         test: INT;
     |         ^^|^
-    |           `--- type is declared by variable 'test' here
+    |           `--- 'test' is declared here
     |
  11 |     test := fn1();
     |             ^^|^^

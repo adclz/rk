@@ -58,22 +58,20 @@ END_FUNCTION
 [E0809] Error: ambiguous overloaded call
     ╭─[ file:///example0.st:14:15 ]
     │
-  1 │ ╭───▶ FUNCTION pick : INT
-    ┆ ┆     
-  4 │ ├───▶ END_FUNCTION
-    │ │                    
-    │ ╰──────────────────── candidate overload declared here
+  1 │ FUNCTION pick : INT
+    │          ──┬─  
+    │            ╰─── a candidate is declared here
     │ 
-  6 │   ╭─▶ FUNCTION pick : INT
-    ┆   ┆   
-  9 │   ├─▶ END_FUNCTION
-    │   │                  
-    │   ╰────────────────── candidate overload declared here
+  6 │ FUNCTION pick : INT
+    │          ──┬─  
+    │            ╰─── a candidate is declared here
     │ 
- 14 │           caller := pick(y);
-    │                     ──┬─  
-    │                       ╰─── call to 'pick' is ambiguous: 2 overloads accept these arguments
-    │       
-    │       Note: an argument widens to each of them: a typed literal or a conversion picks one, such as `DINT#5` or `INT_TO_DINT(x)`
+ 14 │     caller := pick(y);
+    │               ──┬─  
+    │                 ╰─── call to 'pick' is ambiguous: 2 overloads accept these arguments
+    │ 
+    │ Help: pick one with a typed literal or a conversion, such as `DINT#5` or `INT_TO_DINT(x)`
+    │ 
+    │ Note: an argument widens to each overload
 ────╯
 ```
