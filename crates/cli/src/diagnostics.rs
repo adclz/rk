@@ -306,9 +306,10 @@ impl<'db> DiagnosticReporter<'db> {
             source: d.source.as_deref(),
             notes: diagnostic.notes().iter().map(String::as_str).collect(),
             help: diagnostic
-                .fixes()
+                .helps()
                 .iter()
-                .map(|f| f.title.as_str())
+                .map(String::as_str)
+                .chain(diagnostic.fixes().iter().map(|f| f.title.as_str()))
                 .collect(),
             related,
         };
