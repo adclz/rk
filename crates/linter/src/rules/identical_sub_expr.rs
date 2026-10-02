@@ -21,10 +21,6 @@ impl ErrorCode for IdenticalSubExpr {
     fn code(&self) -> &'static str {
         "L0108"
     }
-
-    fn description(&self) -> &'static str {
-        "identical subexpressions"
-    }
 }
 
 /// Check a single node for `a AND a`, `a OR a`, `a XOR a`. No recursion.
@@ -47,14 +43,14 @@ pub fn check_node<'db>(
     }
     let op = operator.as_str();
     let hint = match operator {
-        BooleanOperatorKind::And => "result is always the same as either operand",
-        BooleanOperatorKind::Or => "result is always the same as either operand",
-        BooleanOperatorKind::Xor => "result is always FALSE",
+        BooleanOperatorKind::And => "the result is either operand",
+        BooleanOperatorKind::Or => "the result is either operand",
+        BooleanOperatorKind::Xor => "the result is always FALSE",
     };
     diagnostics.push(
         diag()
             .message(format!(
-                "identical expressions on both sides of '{op}', {hint}"
+                "both sides of '{op}' are the same expression: {hint}"
             ))
             .desc(&IdenticalSubExpr)
             .range(

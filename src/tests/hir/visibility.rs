@@ -81,14 +81,14 @@ fn invalid_access_private_method(mut with_db: RootDatabase) {
     "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1001] Error: access control violation
+    [E1001] Error: access to a PRIVATE item
        ,-[ file:///test0.st:8:19 ]
        |
      8 |             SUPER.myPrivateMethod();
        |                   ^^^^^^^|^^^^^^^
-       |                          `--------- can not access PRIVATE item 'myPrivateMethod'
+       |                          `--------- cannot access PRIVATE item 'myPrivateMethod'
        |
-       | Note: variables and methods marked PRIVATE can only be accessed from within the same POU
+       | Note: a PRIVATE variable or method is reached from its own POU only
     ---'
     ");
 }
@@ -114,14 +114,14 @@ END_NAMESPACE
     "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1003] Error: access control violation
+    [E1003] Error: access to an INTERNAL item
         ,-[ file:///test0.st:13:19 ]
         |
      13 |             SUPER.myInternalMethod();
         |                   ^^^^^^^^|^^^^^^^
-        |                           `--------- can not access INTERNAL item 'myInternalMethod'
+        |                           `--------- cannot access INTERNAL item 'myInternalMethod'
         |
-        | Note: calling scope is in NAMESPACE 'ns2', item is only available in NAMESPACE 'ns1'
+        | Note: the item is INTERNAL to NAMESPACE 'ns1', while this is NAMESPACE 'ns2'
     ----'
     ");
 }
@@ -145,14 +145,14 @@ END_NAMESPACE
     "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1003] Error: access control violation
+    [E1003] Error: access to an INTERNAL item
        ,-[ file:///test0.st:6:15 ]
        |
      6 |         SUPER.myInternalMethod();
        |               ^^^^^^^^|^^^^^^^
-       |                       `--------- can not access INTERNAL item 'myInternalMethod'
+       |                       `--------- cannot access INTERNAL item 'myInternalMethod'
        |
-       | Note: calling scope is in the GLOBAL scope, item is only available in NAMESPACE 'ns2'
+       | Note: the item is INTERNAL to NAMESPACE 'ns2', while this is the global scope
     ---'
     ");
 }
@@ -174,14 +174,14 @@ END_NAMESPACE
     "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1003] Error: access control violation
+    [E1003] Error: access to an INTERNAL item
        ,-[ file:///test0.st:9:19 ]
        |
      9 |             SUPER.myInternalMethod();
        |                   ^^^^^^^^|^^^^^^^
-       |                           `--------- can not access INTERNAL item 'myInternalMethod'
+       |                           `--------- cannot access INTERNAL item 'myInternalMethod'
        |
-       | Note: calling scope is in NAMESPACE 'ns2', item scope is only available the GLOBAL scope
+       | Note: the item is INTERNAL to the global scope, while this is NAMESPACE 'ns2'
     ---'
     ");
 }
@@ -224,14 +224,14 @@ END_FUNCTION_BLOCK
     "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1002] Error: access control violation
+    [E1002] Error: access to a PROTECTED item
         ,-[ file:///test0.st:11:9 ]
         |
      11 |     obj.myProtectedMethod();
         |         ^^^^^^^^|^^^^^^^^
-        |                 `---------- can not access PROTECTED item 'myProtectedMethod'
+        |                 `---------- cannot access PROTECTED item 'myProtectedMethod'
         |
-        | Note: Variables and methods marked PROTECTED are only available within the same POU or derived POUs
+        | Note: a PROTECTED variable or method is reached from its own POU and those derived from it
     ----'
     ");
 }
@@ -309,31 +309,27 @@ fn invalid_call_private_function_from_another_namespace(mut with_db: RootDatabas
     END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1005] Error: access control violation
+    [E1005] Error: call of a PRIVATE function
         ,-[ file:///test0.st:10:20 ]
         |
-      3 | ,->         FUNCTION PRIVATE helper : INT
-        : :
-      5 | |->         END_FUNCTION
-        | |
-        | `-------------------------- declared PRIVATE here
+      3 |         FUNCTION PRIVATE helper : INT
+        |                          ^^^|^^
+        |                             `---- the FUNCTION is declared PRIVATE here
         |
-     10 |                 use := Lib.helper();
-        |                        ^^^^^|^^^^
-        |                             `------ can not call PRIVATE function 'Lib.helper'
+     10 |             use := Lib.helper();
+        |                    ^^^^^|^^^^
+        |                         `------ cannot call PRIVATE function 'Lib.helper'
     ----'
-    [E1005] Error: access control violation
+    [E1005] Error: call of a PRIVATE function
         ,-[ file:///test0.st:16:23 ]
         |
-      3 | ,->         FUNCTION PRIVATE helper : INT
-        : :
-      5 | |->         END_FUNCTION
-        | |
-        | `-------------------------- declared PRIVATE here
+      3 |         FUNCTION PRIVATE helper : INT
+        |                          ^^^|^^
+        |                             `---- the FUNCTION is declared PRIVATE here
         |
-     16 |             use_global := helper();
-        |                           ^^^|^^
-        |                              `---- can not call PRIVATE function 'helper'
+     16 |         use_global := helper();
+        |                       ^^^|^^
+        |                          `---- cannot call PRIVATE function 'helper'
     ----'
     ");
 }
@@ -360,20 +356,18 @@ fn invalid_call_library_private_function_by_reopening_its_namespace(mut with_db:
     let rendered =
         crate::tests::utils::test_diagnostics_with_library(&mut with_db, &[lib], &[workspace]);
     assert_snapshot!(rendered, @r"
-    [E1005] Error: access control violation
+    [E1005] Error: call of a PRIVATE function
        ,-[ file:///test0.st:4:22 ]
        |
      4 |             sneak := helper();
        |                      ^^^|^^
-       |                         `---- can not call PRIVATE function 'helper'
+       |                         `---- cannot call PRIVATE function 'helper'
        |
-       |-[ file:///lib0.st:3:9 ]
+       |-[ file:///lib0.st:3:26 ]
        |
-     3 | ,->         FUNCTION PRIVATE helper : INT
-       : :
-     5 | |->         END_FUNCTION
-       | |
-       | `-------------------------- declared PRIVATE here
+     3 |         FUNCTION PRIVATE helper : INT
+       |                          ^^^|^^
+       |                             `---- the FUNCTION is declared PRIVATE here
     ---'
     ");
 }
@@ -389,14 +383,14 @@ fn invalid_protected_or_internal_on_a_function(mut with_db: RootDatabase) {
     END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1006] Error: access control violation
+    [E1006] Error: specifier not applicable to a FUNCTION
        ,-[ file:///test0.st:2:14 ]
        |
      2 |     FUNCTION PROTECTED f : INT
        |              ^^^^|^^^^
        |                  `------ 'PROTECTED' does not apply to a FUNCTION: only PRIVATE does
     ---'
-    [E1006] Error: access control violation
+    [E1006] Error: specifier not applicable to a FUNCTION
        ,-[ file:///test0.st:5:14 ]
        |
      5 |     FUNCTION INTERNAL g : INT
@@ -474,38 +468,38 @@ fn invalid_access_internal_namespace_from_outside(mut with_db: RootDatabase) {
     END_NAMESPACE
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1004] Error: access control violation
+    [E1004] Error: access to an INTERNAL namespace
         ,-[ file:///test0.st:17:37 ]
         |
      10 |             NAMESPACE INTERNAL Deep
         |                                ^^|^
-        |                                  `--- namespace is declared INTERNAL here
+        |                                  `--- the namespace is declared INTERNAL here
         |
      17 |             outside_mid := Mid.Deep.f();
         |                                     |
-        |                                     `-- can not access 'Lib.Mid.Deep' from INTERNAL namespace
+        |                                     `-- cannot access INTERNAL namespace 'Lib.Mid.Deep'
     ----'
-    [E1004] Error: access control violation
+    [E1004] Error: access to an INTERNAL namespace
         ,-[ file:///test0.st:23:21 ]
         |
       3 |         NAMESPACE INTERNAL Impl
         |                            ^^|^
-        |                              `--- namespace is declared INTERNAL here
+        |                              `--- the namespace is declared INTERNAL here
         |
      23 |             VAR x : Lib.Impl.T; END_VAR
         |                     ^^^^^|^^^^
-        |                          `------ can not access 'Lib.Impl' from INTERNAL namespace
+        |                          `------ cannot access INTERNAL namespace 'Lib.Impl'
     ----'
-    [E1004] Error: access control violation
+    [E1004] Error: access to an INTERNAL namespace
         ,-[ file:///test0.st:24:29 ]
         |
       3 |         NAMESPACE INTERNAL Impl
         |                            ^^|^
-        |                              `--- namespace is declared INTERNAL here
+        |                              `--- the namespace is declared INTERNAL here
         |
      24 |             use := Lib.Impl.hidden() + x;
         |                             ^^^|^^
-        |                                `---- can not access 'Lib.Impl' from INTERNAL namespace
+        |                                `---- cannot access INTERNAL namespace 'Lib.Impl'
     ----'
     ");
 }
@@ -528,16 +522,16 @@ fn invalid_using_of_an_internal_namespace(mut with_db: RootDatabase) {
     END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1004] Error: access control violation
+    [E1004] Error: access to an INTERNAL namespace
         ,-[ file:///test0.st:10:11 ]
         |
       3 |         NAMESPACE INTERNAL Impl
         |                            ^^|^
-        |                              `--- namespace is declared INTERNAL here
+        |                              `--- the namespace is declared INTERNAL here
         |
      10 |     USING Lib.Impl;
         |           ^^^^|^^^
-        |               `----- can not access 'Lib.Impl' from INTERNAL namespace
+        |               `----- cannot access INTERNAL namespace 'Lib.Impl'
     ----'
     ");
 }
@@ -561,18 +555,18 @@ fn invalid_access_library_internal_namespace_from_workspace(mut with_db: RootDat
     let rendered =
         crate::tests::utils::test_diagnostics_with_library(&mut with_db, &[lib], &[workspace]);
     assert_snapshot!(rendered, @r"
-    [E1004] Error: access control violation
+    [E1004] Error: access to an INTERNAL namespace
        ,-[ file:///test0.st:3:24 ]
        |
      3 |         use := LibPriv.hidden();
        |                        ^^^|^^
-       |                           `---- can not access 'LibPriv' from INTERNAL namespace
+       |                           `---- cannot access INTERNAL namespace 'LibPriv'
        |
        |-[ file:///lib0.st:2:24 ]
        |
      2 |     NAMESPACE INTERNAL LibPriv
        |                        ^^^|^^^
-       |                           `----- namespace is declared INTERNAL here
+       |                           `----- the namespace is declared INTERNAL here
     ---'
     ");
 }

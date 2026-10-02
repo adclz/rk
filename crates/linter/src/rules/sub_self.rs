@@ -21,10 +21,6 @@ impl ErrorCode for SubSelf {
     fn code(&self) -> &'static str {
         "L0106"
     }
-
-    fn description(&self) -> &'static str {
-        "subtraction from self"
-    }
 }
 
 pub fn check_node<'db>(
@@ -43,7 +39,7 @@ pub fn check_node<'db>(
         diagnostics.push(
             diag()
                 .message(format!(
-                    "'{name}' is subtracted from itself, result is always 0"
+                    "'{name}' is subtracted from itself: the result is always 0"
                 ))
                 .desc(&SubSelf)
                 .range(

@@ -25,10 +25,6 @@ impl ErrorCode for DivisionByZero {
     fn code(&self) -> &'static str {
         "L0102"
     }
-
-    fn description(&self) -> &'static str {
-        "division by zero"
-    }
 }
 
 pub fn check<'db>(

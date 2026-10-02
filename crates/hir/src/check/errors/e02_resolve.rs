@@ -131,21 +131,6 @@ impl<'db> ErrorCode for ResolveError<'db> {
             Self::OutOfReach { .. } => "E0209",
         }
     }
-
-    fn description(&self) -> &'static str {
-        match self {
-            Self::NoItemInScope { .. } => "no item found in scope",
-            Self::NoSuchFieldInitExpr { .. } => "no such field",
-            Self::NoSuchFieldPathExpr { .. } => "no such field",
-            Self::NoNamespaceItemFound { .. } => "no namespace item found",
-            Self::UsingNamespaceNotFound { .. } => "namespace not found",
-            Self::MultipleItemsInScope { .. } => "multiple items in scope",
-            Self::ExternalVarNotFound { .. } => "external variable not found",
-            Self::ExternalVarTypeMismatch { .. } => "external variable type mismatch",
-            Self::RetainInStatelessPou { .. } => "invalid retentive qualifier",
-            Self::OutOfReach { .. } => "variable out of reach",
-        }
-    }
 }
 
 impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
@@ -158,7 +143,7 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
             Self::NoItemInScope { expr, scope } => {
                 let mut diag = diag()
                     .message(format!(
-                        "no item {:?} found in scope",
+                        "no item '{}' found in scope",
                         expr.ident(db).as_str(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
@@ -260,13 +245,9 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                             ns_kw,
                         );
                         if !namespace_index(db, ns_kw).is_empty() {
-                            diag.with_note(format!(
-                                r#"namespace named '{}' exists but it cannot be used as an item, you can either:
-- Import the namespace via an USING directive: 'USING {}'
-- Import an item from this namespace: '{}.<POU>'"#,
-                                path_str,
-                                path_str,
-                                path_str,
+                            diag.with_note(format!("'{path_str}' is a namespace, not an item"));
+                            diag.with_help(format!(
+                                "import it with 'USING {path_str}', or name an item of it, as '{path_str}.<POU>'"
                             ));
                         }
                     }
@@ -283,13 +264,9 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                             full_path,
                         );
                         if !namespace_index(db, full_path).is_empty() {
-                            diag.with_note(format!(
-                                r#"namespace named '{}' exists but it cannot be used as an item, you can either:
-- Import the namespace via an USING directive: 'USING {}'
-- Import an item from this namespace: '{}.<POU>'"#,
-                                path_str,
-                                path_str,
-                                path_str,
+                            diag.with_note(format!("'{path_str}' is a namespace, not an item"));
+                            diag.with_help(format!(
+                                "import it with 'USING {path_str}', or name an item of it, as '{path_str}.<POU>'"
                             ));
                         } else {
                             let mut ns_query = Query::new(path.to_string(db));
@@ -395,7 +372,7 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                     });
                     for (pou, _) in in_ns {
                         diag.with_related(Related::new(
-                            format!("'{}' declared here", name),
+                            format!("'{}' is declared here", name),
                             pou.get_scope_id(db).file(db),
                             pou.get_span(db),
                         ));
@@ -408,22 +385,19 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                         .map(|ns| format!("{}.{}", ns, name))
                         .collect();
 
-                    diag.with_note(format!(
-                        "qualify the name to resolve the ambiguity: {}",
-                        qualified.join(" or "),
-                    ));
+                    diag.with_help(format!("qualify the name: {}", qualified.join(" or ")));
                 }
 
                 diag
             }
             Self::ExternalVarNotFound { var } => diag()
                 .message(format!(
-                    "external variable '{}' not found in any accessible VAR_GLOBAL",
+                    "no VAR_GLOBAL is named '{}'",
                     var.name_with_case(db).text(db)
                 ))
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
-                .range(crate::denormalize(db, file, &var.get_span(db)).unwrap_or_default())
+                .range(crate::denormalize(db, file, &var.get_name_span(db)).unwrap_or_default())
                 .call(),
             Self::ExternalVarTypeMismatch {
                 var,
@@ -439,17 +413,24 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                         None => crate::check::errors::e07_subrange::with_bounds(db, ty),
                     }
                 };
-                diag()
-                .message(format!(
-                    "'{}' is declared '{}' here but its VAR_GLOBAL is '{}': an external must repeat the global's type exactly",
-                    var.name_with_case(db).text(db),
-                    shown(var, *external),
-                    shown(global_var, *global),
-                ))
-                .severity(DiagnosticSeverity::ERROR)
-                .desc(self)
-                .range(crate::denormalize(db, file, &var.get_span(db)).unwrap_or_default())
-                .call()
+                let mut diag = diag()
+                    .message(format!(
+                        "'{}' is declared '{}' and its VAR_GLOBAL is '{}'",
+                        var.name_with_case(db).text(db),
+                        shown(var, *external),
+                        shown(global_var, *global),
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(
+                        crate::denormalize(db, file, &var.spec(db).get_span(db))
+                            .unwrap_or_default(),
+                    )
+                    .call();
+                diag.with_note(
+                    "a VAR_EXTERNAL repeats the type of its VAR_GLOBAL exactly".to_string(),
+                );
+                diag
             }
             Self::RetainInStatelessPou { var, pou_kind } => {
                 let qualifier = if var.qualifier(db).contains(crate::Qualifier::RETAIN) {
@@ -466,10 +447,10 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(crate::denormalize(db, file, &var.get_span(db)).unwrap_or_default())
+                    .range(crate::denormalize(db, file, &var.get_name_span(db)).unwrap_or_default())
                     .call();
                 diag.with_note(
-                    "retentive behavior requires instance storage; only FUNCTION_BLOCK, CLASS, and PROGRAM variables (and VAR_GLOBAL) can be RETAIN/NON_RETAIN"
+                    "only a variable of a FUNCTION_BLOCK, CLASS or PROGRAM, or a VAR_GLOBAL, has storage to retain"
                         .to_string(),
                 );
 
@@ -482,21 +463,22 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                     ScopeKind::MethodDecl(m) => Type::MethodDecl(m.into()).type_name(db),
                     _ => String::new(),
                 };
-                let (message, note) = match why {
+                let (message, note, help) = match why {
                     Unreachable::Temp {
                         route: TempRoute::Method,
                     } => (
                         format!("VAR_TEMP '{name}' of '{owner}' cannot be used in a METHOD"),
-                        "a VAR_TEMP belongs to the body that declares it; declare one in the METHOD"
-                            .to_string(),
+                        "a VAR_TEMP belongs to the body that declares it".to_string(),
+                        Some("declare one in the METHOD".to_string()),
                     ),
                     Unreachable::Temp {
                         route: TempRoute::OtherBody,
                     } => (
                         format!("VAR_TEMP '{name}' of '{owner}' cannot be used in a derived block"),
                         format!(
-                            "a VAR_TEMP belongs to the body that declares it; declare one in the derived block, as SUPER() runs the body of '{owner}' with its own"
+                            "SUPER() runs the body of '{owner}' with that body's own VAR_TEMPs"
                         ),
+                        Some("declare one in the derived block".to_string()),
                     ),
                     Unreachable::Temp {
                         route: TempRoute::Path,
@@ -505,19 +487,21 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                             "VAR_TEMP '{name}' of '{owner}' cannot be reached through an instance"
                         ),
                         "a VAR_TEMP exists only while the body runs".to_string(),
+                        None,
                     ),
                     Unreachable::External => (
                         format!(
                             "VAR_EXTERNAL '{name}' of '{owner}' cannot be reached through an instance"
                         ),
-                        format!(
-                            "it names the VAR_GLOBAL '{name}'; declare that global VAR_EXTERNAL where it is used"
-                        ),
+                        format!("it names the VAR_GLOBAL '{name}', which no instance holds"),
+                        Some("declare that global VAR_EXTERNAL where it is used".to_string()),
                     ),
                     Unreachable::CallVariable => (
                         format!("'{name}' of METHOD '{owner}' cannot be reached from outside it"),
-                        "a METHOD's variables exist only while it runs; it hands out its result, and its outputs through '=>' in the call"
-                            .to_string(),
+                        "a METHOD's variables exist only while it runs".to_string(),
+                        Some(
+                            "take its result from the call, and its outputs with '=>'".to_string(),
+                        ),
                     ),
                 };
                 let mut diag = diag()
@@ -531,7 +515,7 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                     var.get_scope_id(db).file(db),
                     var.get_name_span(db),
                 ));
-                diag.with_note(note);
+                diag.with_advice(Some(note), help);
                 diag
             }
         }
@@ -591,10 +575,10 @@ fn list_candidates<'db>(
         .collect();
     if !local_names.is_empty() {
         let count = local_names.len().min(5);
-        let mut note = format!(
-            "{} with similar name available in scope:\n",
-            if count > 1 { "items" } else { "an item" }
-        );
+        let mut note = match count {
+            1 => "an item with a similar name is in scope:\n".to_string(),
+            _ => "items with similar names are in scope:\n".to_string(),
+        };
         for (i, name) in local_names.iter().take(count).enumerate() {
             if i > 0 {
                 note.push('\n');

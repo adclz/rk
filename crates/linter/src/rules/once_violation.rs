@@ -23,10 +23,6 @@ impl ErrorCode for OnceViolation {
     fn code(&self) -> &'static str {
         "L0004"
     }
-
-    fn description(&self) -> &'static str {
-        "calling a {once} function more than once"
-    }
 }
 
 struct OnceCallInfo<'db> {
@@ -123,7 +119,7 @@ pub fn check<'db>(
 
             if let Some(pragma_span) = once_span {
                 d.with_related(Related::new(
-                    "{once} pragma declared here".to_string(),
+                    "the {once} pragma is declared here".to_string(),
                     decl_file,
                     pragma_span,
                 ));

@@ -87,19 +87,6 @@ impl<'db> ErrorCode for ControlFlowError<'db> {
             Self::CaseRangeEmpty { .. } => "E1208",
         }
     }
-
-    fn description(&self) -> &'static str {
-        match self {
-            Self::ExitOutsideLoop { .. } => "control flow violation",
-            Self::ContinueOutsideLoop { .. } => "control flow violation",
-            Self::ForControlNotAVariable { .. } => "control flow violation",
-            Self::ForControlNotInteger { .. } => "FOR counter is not an integer",
-            Self::ForStepInvalid { .. } => "control flow violation",
-            Self::CaseLabelNotConstant { .. } => "control flow violation",
-            Self::CaseSelectorNotSupported { .. } => "CASE selector of the wrong type",
-            Self::CaseRangeEmpty { .. } => "empty CASE range",
-        }
-    }
 }
 
 impl<'db> ToIdeDiagnostic<'db> for ControlFlowError<'db> {
@@ -110,25 +97,28 @@ impl<'db> ToIdeDiagnostic<'db> for ControlFlowError<'db> {
     ) -> IdeDiagnostic {
         match self {
             Self::ExitOutsideLoop { stmt } => diag()
-                .message("'EXIT' can only be used inside loops".to_string())
+                .message("'EXIT' is outside a loop".to_string())
                 .range(crate::denormalize(db, file, &stmt.get_span(db)).unwrap_or_default())
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
                 .call(),
             Self::ContinueOutsideLoop { stmt } => diag()
-                .message("'CONTINUE' can only be used inside loops".to_string())
+                .message("'CONTINUE' is outside a loop".to_string())
                 .range(crate::denormalize(db, file, &stmt.get_span(db)).unwrap_or_default())
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
                 .call(),
             Self::ForControlNotAVariable { access } => {
                 let mut diag = diag()
-                    .message("a FOR control variable must be a plain variable".to_string())
+                    .message(format!(
+                        "'{}' is not a plain variable",
+                        access.to_string(db)
+                    ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
                     .range(crate::denormalize(db, file, &access.get_span(db)).unwrap_or_default())
                     .call();
-                diag.with_note(
+                diag.with_help(
                     "count in a plain variable and assign it where it is needed inside the loop"
                         .to_string(),
                 );
@@ -137,7 +127,7 @@ impl<'db> ToIdeDiagnostic<'db> for ControlFlowError<'db> {
             Self::ForControlNotInteger { access, ty } => {
                 let mut diag = diag()
                     .message(format!(
-                        "'{}' is '{}', and a FOR loop counts in an integer",
+                        "'{}' is '{}', not an integer",
                         access.to_string(db),
                         ty.type_name(db)
                     ))
@@ -145,7 +135,7 @@ impl<'db> ToIdeDiagnostic<'db> for ControlFlowError<'db> {
                     .desc(self)
                     .range(crate::denormalize(db, file, &access.get_span(db)).unwrap_or_default())
                     .call();
-                diag.with_note(
+                diag.with_help(
                     "declare the counter as SINT, INT, DINT or LINT, or an unsigned one"
                         .to_string(),
                 );
@@ -157,7 +147,7 @@ impl<'db> ToIdeDiagnostic<'db> for ControlFlowError<'db> {
                         if *zero {
                             "a FOR step of zero never advances the loop"
                         } else {
-                            "a FOR step must evaluate to a constant at compile time"
+                            "the step is not a compile-time constant"
                         }
                         .to_string(),
                     )
@@ -169,11 +159,11 @@ impl<'db> ToIdeDiagnostic<'db> for ControlFlowError<'db> {
                     let site = var.as_call_site(db);
                     diag.with_related(Related::new(
                         format!(
-                            "declaring '{}' CONSTANT would let the step fold",
+                            "'{}' is declared here, not CONSTANT",
                             var.get_name_with_case(db).text(db)
                         ),
                         site.scope.file(db),
-                        site.get_span(db),
+                        var.get_name_span(db),
                     ));
                 }
                 diag
@@ -184,9 +174,9 @@ impl<'db> ToIdeDiagnostic<'db> for ControlFlowError<'db> {
             } => diag()
                 .message(
                     if *as_range_bound {
-                        "a CASE range bound must be an integer constant"
+                        "the bound is not an integer constant"
                     } else {
-                        "a CASE label must evaluate to a constant at compile time"
+                        "the label is not a compile-time constant"
                     }
                     .to_string(),
                 )
@@ -207,11 +197,12 @@ impl<'db> ToIdeDiagnostic<'db> for ControlFlowError<'db> {
                     .call();
                 // A BOOL is a bit, not a bit string: its two values are an IF.
                 diag.with_note(if ty.normalize(db).is_boolean() {
-                    "a BOOL has two values; branch with IF".to_string()
+                    "a BOOL has two values".to_string()
                 } else {
-                    "CASE branches on an integer, a bit string, a CHAR, an enum or a STRING; branch with IF on anything else"
+                    "CASE branches on an integer, a bit string, a CHAR, an enum or a STRING"
                         .to_string()
                 });
+                diag.with_help("branch with IF".to_string());
                 diag
             }
             Self::CaseRangeEmpty {
@@ -235,9 +226,9 @@ impl<'db> ToIdeDiagnostic<'db> for ControlFlowError<'db> {
                     .range(crate::denormalize(db, file, &range.get_span(db)).unwrap_or_default())
                     .call();
                 diag.with_note(
-                    "the lower bound is above the upper, so the arm never runs; swap the bounds"
-                        .to_string(),
+                    "the lower bound is above the upper, so the arm never runs".to_string(),
                 );
+                diag.with_help("swap the bounds".to_string());
                 diag
             }
         }

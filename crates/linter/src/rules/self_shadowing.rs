@@ -24,10 +24,6 @@ impl ErrorCode for SelfShadowing {
     fn code(&self) -> &'static str {
         "L0115"
     }
-
-    fn description(&self) -> &'static str {
-        "variable shadows its own POU"
-    }
 }
 
 pub fn check<'db>(

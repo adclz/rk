@@ -52,12 +52,12 @@ fn invalid_power_with_integer_base(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0305] Error: type mismatch
+    [E0305] Error: operator not supported by the type
        ,-[ file:///test0.st:7:18 ]
        |
      4 |             i : INT := 2;
        |             |
-       |             `-- type is declared by variable 'i' here
+       |             `-- 'i' is declared here
        |
      7 |             r := i ** 3.0;
        |                  ^^^^|^^^
@@ -80,7 +80,7 @@ fn invalid_power_with_integer_literal_base(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0305] Error: type mismatch
+    [E0305] Error: operator not supported by the type
        ,-[ file:///test0.st:6:18 ]
        |
      6 |             r := 2 ** 3.0;

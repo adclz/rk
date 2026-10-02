@@ -20,10 +20,6 @@ impl ErrorCode for NegatedComparison {
     fn code(&self) -> &'static str {
         "L0208"
     }
-
-    fn description(&self) -> &'static str {
-        "negated comparison"
-    }
 }
 
 pub fn check_node<'db>(

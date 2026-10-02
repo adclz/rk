@@ -43,12 +43,12 @@ fn bare_literal(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "effectless-statement"), @r"
-    [E0001] Error: syntax
+    [E0001] Error: syntax error
        ,-[ file:///test0.st:6:13 ]
        |
      6 |             42;
        |             ^|
-       |              `-- Unexpected token(s): '42'
+       |              `-- unexpected token(s): '42'
     ---'
     ");
 }

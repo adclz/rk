@@ -18,10 +18,6 @@ impl ErrorCode for GlobalWithoutExternal {
     fn code(&self) -> &'static str {
         "L0118"
     }
-
-    fn description(&self) -> &'static str {
-        "global accessed without VAR_EXTERNAL"
-    }
 }
 
 pub fn check<'db>(

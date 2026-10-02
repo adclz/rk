@@ -43,12 +43,12 @@ fn array_initializer_out_of_bounds(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0507] Error: invalid array access
+    [E0507] Error: too many elements in array initializer
        ,-[ file:///test0.st:8:35 ]
        |
      8 |                 Base : Engine := [5(10)];
        |                                   ^^|^^
-       |                                     `---- too many elements in array initializer (expected at most 4)
+       |                                     `---- the initializer has more elements than the array's 4
     ---'
     ");
 }
@@ -70,12 +70,12 @@ fn array_initializer_out_of_bounds_with_single_values(mut with_db: RootDatabase)
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0507] Error: invalid array access
+    [E0507] Error: too many elements in array initializer
        ,-[ file:///test0.st:9:45 ]
        |
      9 |                 Base : Engine := [3(10), 5, 6, 4];
        |                                             |
-       |                                             `-- too many elements in array initializer (expected at most 4)
+       |                                             `-- the initializer has more elements than the array's 4
     ---'
     ");
 }
@@ -97,12 +97,12 @@ fn multi_dimensional_array_initializer_out_of_bounds(mut with_db: RootDatabase) 
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0507] Error: invalid array access
+    [E0507] Error: too many elements in array initializer
        ,-[ file:///test0.st:8:35 ]
        |
      8 |                 Base : Engine := [3(10(10))];
        |                                   ^^^^|^^^^
-       |                                       `------ too many elements in array initializer (expected at most 28)
+       |                                       `------ the initializer has more elements than the array's 28
     ---'
     ");
 }
@@ -124,12 +124,14 @@ fn type_check_multi_dimensional_array(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0308] Error: invalid literal
+    [E0308] Error: literal of the wrong kind
        ,-[ file:///test0.st:8:39 ]
        |
      8 |                 Base : Engine := [3(5(10.5))];
        |                                       ^^|^
-       |                                         `--- cannot infer '<float>' to 'BOOL': invalid boolean literal; BOOL is TRUE or FALSE
+       |                                         `--- invalid boolean literal
+       |
+       | Note: BOOL is TRUE or FALSE
     ---'
     ");
 }
@@ -208,12 +210,12 @@ fn multi_dimensional_first_dim_overflow(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0507] Error: invalid array access
+    [E0507] Error: too many elements in array initializer
        ,-[ file:///test0.st:8:35 ]
        |
      8 |                 Base : Engine := [5(7(1))];
        |                                   ^^^|^^^
-       |                                      `----- too many elements in array initializer (expected at most 28)
+       |                                      `----- the initializer has more elements than the array's 28
     ---'
     ");
 }
@@ -235,12 +237,12 @@ fn multi_dimensional_both_dims_overflow(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0507] Error: invalid array access
+    [E0507] Error: too many elements in array initializer
        ,-[ file:///test0.st:8:35 ]
        |
      8 |                 Base : Engine := [5(10(1))];
        |                                   ^^^^|^^^
-       |                                       `----- too many elements in array initializer (expected at most 28)
+       |                                       `----- the initializer has more elements than the array's 28
     ---'
     ");
 }
@@ -262,12 +264,12 @@ fn three_dimensional_array(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0507] Error: invalid array access
+    [E0507] Error: too many elements in array initializer
        ,-[ file:///test0.st:8:33 ]
        |
      8 |                 Data : Cube := [2(3(5(1)))];
        |                                 ^^^^^|^^^^
-       |                                      `------ too many elements in array initializer (expected at most 24)
+       |                                      `------ the initializer has more elements than the array's 24
     ---'
     ");
 }
@@ -313,12 +315,12 @@ fn array_in_struct_overflow(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0507] Error: invalid array access
+    [E0507] Error: too many elements in array initializer
         ,-[ file:///test0.st:11:45 ]
         |
      11 |                 Base : Engine := (Power := [5(10)], Torque := 100);
         |                                             ^^|^^
-        |                                               `---- too many elements in array initializer (expected at most 3)
+        |                                               `---- the initializer has more elements than the array's 3
     ----'
     ");
 }
@@ -343,12 +345,12 @@ fn array_of_struct_overflow(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0507] Error: invalid array access
+    [E0507] Error: too many elements in array initializer
         ,-[ file:///test0.st:11:70 ]
         |
      11 |                 Base : EngineArray := [(Power := 10), (Power := 20), (Power := 30)];
         |                                                                      ^^^^^^|^^^^^^
-        |                                                                            `-------- too many elements in array initializer (expected at most 2)
+        |                                                                            `-------- the initializer has more elements than the array's 2
     ----'
     ");
 }
@@ -373,12 +375,12 @@ fn nested_array_in_struct_in_array(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0507] Error: invalid array access
+    [E0507] Error: too many elements in array initializer
         ,-[ file:///test0.st:11:52 ]
         |
      11 |                 Base : EngineArray := [(Values := [5(1)])];
         |                                                    ^^|^
-        |                                                      `--- too many elements in array initializer (expected at most 2)
+        |                                                      `--- the initializer has more elements than the array's 2
     ----'
     ");
 }
@@ -400,12 +402,12 @@ fn single_element_array_overflow(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0507] Error: invalid array access
+    [E0507] Error: too many elements in array initializer
        ,-[ file:///test0.st:8:38 ]
        |
      8 |                 Data : Single := [1, 2];
        |                                      |
-       |                                      `-- too many elements in array initializer (expected at most 1)
+       |                                      `-- the initializer has more elements than the array's 1
     ---'
     ");
 }
@@ -466,12 +468,12 @@ fn multi_dim_bracket_init_overflow(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0507] Error: invalid array access
+    [E0507] Error: too many elements in array initializer
        ,-[ file:///test0.st:8:31 ]
        |
      8 |                 Data : Matrix := [[1, 2, 3], [4, 5, 6], [7, 8, 9]];
        |                               ^^^^^^^^^^^^^^^^^^|^^^^^^^^^^^^^^^^^
-       |                                                 `------------------- too many elements in array initializer (expected at most 6)
+       |                                                 `------------------- the initializer has more elements than the array's 6
     ---'
     ");
 }
@@ -510,12 +512,12 @@ fn non_zero_based_array_overflow(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0507] Error: invalid array access
+    [E0507] Error: too many elements in array initializer
        ,-[ file:///test0.st:8:42 ]
        |
      8 |                 Data : OneBasedArray := [4(10)];
        |                                          ^^|^^
-       |                                            `---- too many elements in array initializer (expected at most 3)
+       |                                            `---- the initializer has more elements than the array's 3
     ---'
     ");
 }
@@ -554,12 +556,12 @@ fn flat_list_past_the_last_cell_is_too_many(mut with_db: RootDatabase) {
         END_FUNCTION
         "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0507] Error: invalid array access
+    [E0507] Error: too many elements in array initializer
        ,-[ file:///test0.st:4:53 ]
        |
      4 |             VAR Data : Matrix := [1, 2, 3, 4, 5, 6, 7]; END_VAR
        |                                                     |
-       |                                                     `-- too many elements in array initializer (expected at most 6)
+       |                                                     `-- the initializer has more elements than the array's 6
     ---'
     ");
 }
@@ -627,26 +629,26 @@ fn nested_brackets_overflow_their_own_bounds(mut with_db: RootDatabase) {
         END_FUNCTION
         "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0507] Error: invalid array access
+    [E0507] Error: too many elements in array initializer
        ,-[ file:///test0.st:5:58 ]
        |
      5 |                 long : ARRAY[0..1] OF RowT := [[1, 2, 3, 4], [5]];
        |                                                          |
-       |                                                          `-- too many elements in array initializer (expected at most 3)
+       |                                                          `-- the initializer has more elements than the array's 3
     ---'
-    [E0507] Error: invalid array access
+    [E0507] Error: too many elements in array initializer
        ,-[ file:///test0.st:6:58 ]
        |
      6 |                 many : ARRAY[0..1] OF RowT := [[1], [2], [3]];
        |                                                          ^|^
-       |                                                           `--- too many elements in array initializer (expected at most 2)
+       |                                                           `--- the initializer has more elements than the array's 2
     ---'
-    [E0507] Error: invalid array access
+    [E0507] Error: too many elements in array initializer
        ,-[ file:///test0.st:7:53 ]
        |
      7 |                 rows : ARRAY[1..2, 1..3] OF INT := [3([1])];
        |                                                     ^^^|^^
-       |                                                        `---- too many elements in array initializer (expected at most 6)
+       |                                                        `---- the initializer has more elements than the array's 6
     ---'
     ");
 }

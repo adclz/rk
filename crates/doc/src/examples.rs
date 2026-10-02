@@ -27,7 +27,7 @@ pub const SECTIONS: &[(&str, &str)] = &[
     ("E10", "Visibility"),
     ("E11", "OOP"),
     ("E12", "Control Flow"),
-    ("E13", "Recursion"),
+    ("E13", "Type cycles"),
     ("E14", "Configuration"),
     ("E15", "Pragmas"),
     ("L00", "Lint pragmas"),

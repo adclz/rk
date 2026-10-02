@@ -15,10 +15,6 @@ impl ErrorCode for EffectlessStatement {
     fn code(&self) -> &'static str {
         "L0310"
     }
-
-    fn description(&self) -> &'static str {
-        "effectless statement"
-    }
 }
 
 pub fn check<'db>(

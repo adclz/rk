@@ -27,7 +27,7 @@ END_FUNCTION_BLOCK"#;
        |
      4 |         test: REAL;
        |         ^^|^
-       |           `--- type is declared by variable 'test' here
+       |           `--- 'test' is declared here
        |
      7 |     test := %IX0.0
        |             ^^^|^^
@@ -55,7 +55,7 @@ END_FUNCTION_BLOCK"#;
        |
      4 |         test: REAL;
        |         ^^|^
-       |           `--- type is declared by variable 'test' here
+       |           `--- 'test' is declared here
        |
      7 |     test := %IB0.0
        |             ^^^|^^
@@ -83,7 +83,7 @@ END_FUNCTION_BLOCK"#;
        |
      4 |         test: REAL;
        |         ^^|^
-       |           `--- type is declared by variable 'test' here
+       |           `--- 'test' is declared here
        |
      7 |     test := %IW0
        |             ^^|^
@@ -111,7 +111,7 @@ END_FUNCTION_BLOCK"#;
        |
      4 |         test: REAL;
        |         ^^|^
-       |           `--- type is declared by variable 'test' here
+       |           `--- 'test' is declared here
        |
      7 |     test := %ID0
        |             ^^|^
@@ -143,7 +143,7 @@ END_FUNCTION_BLOCK"#;
        |
      4 |         test: REAL;
        |         ^^|^
-       |           `--- type is declared by variable 'test' here
+       |           `--- 'test' is declared here
        |
      7 |     test := %IL0
        |             ^^|^
@@ -194,7 +194,7 @@ END_FUNCTION_BLOCK"#;
        |
      4 |         Byv: REAL;
        |         ^|^
-       |          `--- type is declared by variable 'Byv' here
+       |          `--- 'Byv' is declared here
        |
      8 |     Byv:= Wo.%X0; // bit 0 of Wo (invalid because we expect a REAL)
        |           ^^^|^^
@@ -205,7 +205,7 @@ END_FUNCTION_BLOCK"#;
        |
      4 |         Byv: REAL;
        |         ^|^
-       |          `--- type is declared by variable 'Byv' here
+       |          `--- 'Byv' is declared here
        |
      9 |     Byv:= Wo.%1; // bit 1 of Wo (same but with omitted %X)
        |           ^^|^^
@@ -233,7 +233,7 @@ END_FUNCTION_BLOCK"#;
        |
      4 |         Byv: REAL;
        |         ^|^
-       |          `--- type is declared by variable 'Byv' here
+       |          `--- 'Byv' is declared here
        |
      8 |     Byv:= Wo.%B0; // byte 0 of Wo (invalid because we expect a REAL)
        |           ^^^|^^
@@ -261,7 +261,7 @@ END_FUNCTION_BLOCK"#;
        |
      4 |         Byv: REAL;
        |         ^|^
-       |          `--- type is declared by variable 'Byv' here
+       |          `--- 'Byv' is declared here
        |
      8 |     Byv:= Dwv.%W0; // word 0 of Dwv (invalid because we expect a REAL)
        |           ^^^|^^^
@@ -289,7 +289,7 @@ END_FUNCTION_BLOCK"#;
        |
      4 |         Byv: REAL;
        |         ^|^
-       |          `--- type is declared by variable 'Byv' here
+       |          `--- 'Byv' is declared here
        |
      8 |     Byv:= Lo.%D0; // dword 0 of Lo (invalid because we expect a REAL)
        |           ^^^|^^
@@ -321,7 +321,7 @@ END_FUNCTION_BLOCK"#;
        |
      4 |         Byv: REAL;
        |         ^|^
-       |          `--- type is declared by variable 'Byv' here
+       |          `--- 'Byv' is declared here
        |
      8 |     Byv:= Lo.%L0; // lword 0 of Lo (invalid because we expect a REAL)
        |           ^^^|^^
@@ -348,12 +348,12 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0808] Error: multibit access out of range
+    [E1429] Error: partial access out of range
         ,-[ file:///test0.st:12:11 ]
         |
       4 |         cnt: BYTE;
-        |         ^^^^|^^^^
-        |             `------ 'cnt' is declared here
+        |         ^|^
+        |          `--- 'cnt' is declared here
         |
      12 |     Q8 := cnt.8;  // invalid: bit 8 exceeds BYTE (0..7)
         |           ^|^
@@ -377,12 +377,12 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0808] Error: multibit access out of range
+    [E1429] Error: partial access out of range
        ,-[ file:///test0.st:9:10 ]
        |
      4 |         w: WORD;
-       |         ^^^|^^^
-       |            `----- 'w' is declared here
+       |         |
+       |         `-- 'w' is declared here
        |
      9 |     Q := w.16;  // invalid: bit 16 exceeds WORD (0..15)
        |          |
@@ -406,12 +406,12 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0808] Error: multibit access out of range
+    [E1429] Error: partial access out of range
        ,-[ file:///test0.st:9:10 ]
        |
      4 |         w: WORD;
-       |         ^^^|^^^
-       |            `----- 'w' is declared here
+       |         |
+       |         `-- 'w' is declared here
        |
      9 |     b := w.%B2;  // invalid: byte 2 exceeds WORD (0..1)
        |          |
@@ -543,14 +543,16 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1417] Error: address cannot be located
+    [E1417] Error: address not locatable
        ,-[ file:///test0.st:7:13 ]
        |
      7 |     test := %IZ0;
        |             ^^|^
        |               `--- '%IZ0' does not name an area and a width
        |
-       | Note: an address names its area with I, Q or M and its width with X, B, W, D or L, as in '%IX0.0'; a bit may leave the width out, as in '%I0.0'
+       | Help: write it as '%IX0.0', or as '%I0.0' for a bit
+       |
+       | Note: an address names its area with I, Q or M and its width with X, B, W, D or L
     ---'
     ");
 }
@@ -723,10 +725,10 @@ END_CONFIGURATION
        ,-[ file:///test0.st:9:19 ]
        |
      9 | VAR_GLOBAL RETAIN sensor AT %IX0.0 : BOOL; END_VAR
-       |                   ^^^^^^^^^^^|^^^^^^^^^^^
-       |                              `------------- 'sensor' is located at '%IX0.0' and cannot be RETAIN
+       |                   ^^^|^^
+       |                      `---- 'sensor' is located at '%IX0.0' and cannot be RETAIN
        |
-       | Note: the retain band is restored at startup, so a retained I/O image would run the first scan on the values of the last power cycle; only '%M' may persist
+       | Note: the retain band is restored at startup, so a retained I/O image would run the first scan on the values of the last power cycle
     ---'
     ");
 }
@@ -771,23 +773,27 @@ END_VAR
     Probe := raw;
 END_FUNCTION"#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1417] Error: address cannot be located
-       ,-[ file:///test0.st:4:5 ]
+    [E1417] Error: address not locatable
+       ,-[ file:///test0.st:4:12 ]
        |
      4 |     POS AT %QW28 : INT;
-       |     ^^^^^^^^^|^^^^^^^^
-       |              `---------- '%QW28' cannot locate a variable of this POU
+       |            ^^|^^
+       |              `---- '%QW28' cannot locate a variable of this POU
        |
-       | Note: a function's, function block's or class's variables belong to each call or instance, so one address cannot be theirs; in a function block or class, declare it AT %I*, %Q* or %M* and give each instance its address in VAR_CONFIG, and elsewhere declare it in a PROGRAM, or as a VAR_GLOBAL of the CONFIGURATION, and name it from here
+       | Help: declare it AT %I*, %Q* or %M* and locate each instance in VAR_CONFIG, or declare it in a PROGRAM or as a VAR_GLOBAL
+       |
+       | Note: the variables of a FUNCTION, FUNCTION_BLOCK or CLASS belong to each call or instance
     ---'
-    [E1417] Error: address cannot be located
-        ,-[ file:///test0.st:10:5 ]
+    [E1417] Error: address not locatable
+        ,-[ file:///test0.st:10:12 ]
         |
      10 |     raw AT %IX0.0 : BOOL;
-        |     ^^^^^^^^^^|^^^^^^^^^
-        |               `----------- '%IX0.0' cannot locate a variable of this POU
+        |            ^^^|^^
+        |               `---- '%IX0.0' cannot locate a variable of this POU
         |
-        | Note: a function's, function block's or class's variables belong to each call or instance, so one address cannot be theirs; in a function block or class, declare it AT %I*, %Q* or %M* and give each instance its address in VAR_CONFIG, and elsewhere declare it in a PROGRAM, or as a VAR_GLOBAL of the CONFIGURATION, and name it from here
+        | Help: declare it AT %I*, %Q* or %M* and locate each instance in VAR_CONFIG, or declare it in a PROGRAM or as a VAR_GLOBAL
+        |
+        | Note: the variables of a FUNCTION, FUNCTION_BLOCK or CLASS belong to each call or instance
     ----'
     ");
 }
@@ -804,32 +810,38 @@ TYPE Frame : STRUCT
     len : INT;
 END_STRUCT; END_TYPE"#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1417] Error: address cannot be located
-       ,-[ file:///test0.st:3:5 ]
+    [E1417] Error: address not locatable
+       ,-[ file:///test0.st:3:13 ]
        |
      3 |     head AT %MW8 : INT;
-       |     ^^^^^^^^^|^^^^^^^^
-       |              `---------- '%MW8' cannot locate a STRUCT field
+       |             ^^|^
+       |               `--- '%MW8' cannot locate a STRUCT field
        |
-       | Note: a field is part of every variable of its type, so one address cannot be its; declare the address on a variable of a PROGRAM or a VAR_GLOBAL, and copy between it and the field
+       | Help: declare the address on a variable of a PROGRAM or a VAR_GLOBAL, and copy between it and the field
+       |
+       | Note: a field is part of every variable of its type
     ---'
-    [E1417] Error: address cannot be located
-       ,-[ file:///test0.st:4:5 ]
+    [E1417] Error: address not locatable
+       ,-[ file:///test0.st:4:14 ]
        |
      4 |     ready AT %IX0.0 : BOOL;
-       |     ^^^^^^^^^^^|^^^^^^^^^^
-       |                `------------ '%IX0.0' cannot locate a STRUCT field
+       |              ^^|^
+       |                `--- '%IX0.0' cannot locate a STRUCT field
        |
-       | Note: a field is part of every variable of its type, so one address cannot be its; declare the address on a variable of a PROGRAM or a VAR_GLOBAL, and copy between it and the field
+       | Help: declare the address on a variable of a PROGRAM or a VAR_GLOBAL, and copy between it and the field
+       |
+       | Note: a field is part of every variable of its type
     ---'
-    [E1417] Error: address cannot be located
-       ,-[ file:///test0.st:5:5 ]
+    [E1417] Error: address not locatable
+       ,-[ file:///test0.st:5:12 ]
        |
      5 |     out AT %Q* : INT;
-       |     ^^^^^^^^|^^^^^^^
-       |             `--------- '%Q*' cannot locate a STRUCT field
+       |            ^|^
+       |             `--- '%Q*' cannot locate a STRUCT field
        |
-       | Note: an incomplete address on a STRUCT field is not supported; declare the channel in a FUNCTION_BLOCK, where VAR_CONFIG locates it per instance
+       | Help: declare the channel in a FUNCTION_BLOCK, where VAR_CONFIG locates it per instance
+       |
+       | Note: an incomplete address on a STRUCT field is not supported
     ---'
     ");
 }
@@ -898,54 +910,60 @@ END_CONFIGURATION
        ,-[ file:///test0.st:4:5 ]
        |
      4 |     kept AT %IW0 : WORD;
-       |     ^^^^^^^^^|^^^^^^^^^
-       |              `----------- 'kept' is located at '%IW0' and cannot be RETAIN
+       |     ^^|^
+       |       `--- 'kept' is located at '%IW0' and cannot be RETAIN
        |
-       | Note: the retain band is restored at startup, so a retained I/O image would run the first scan on the values of the last power cycle; only '%M' may persist
+       | Note: the retain band is restored at startup, so a retained I/O image would run the first scan on the values of the last power cycle
     ---'
     [E1419] Error: write to an input location
-       ,-[ file:///test0.st:7:5 ]
+       ,-[ file:///test0.st:7:27 ]
        |
      7 |     preset AT %IB8 : BYTE := 3;
-       |     ^^^^^^^^^^^^^|^^^^^^^^^^^^
-       |                  `-------------- '%IB8' is an input, so an initial value is overwritten before anything reads it
+       |                           ^^|^
+       |                             `--- '%IB8' is an input, so an initial value is overwritten before anything reads it
        |
        | Note: the host writes the input image before every scan, the first one included
     ---'
     [E1422] Error: location type mismatch
-       ,-[ file:///test0.st:8:5 ]
+       ,-[ file:///test0.st:8:24 ]
        |
      8 |     wide   AT %QX1.0 : INT;
-       |     ^^^^^^^^^^^|^^^^^^^^^^
-       |                `------------ '%QX1.0' is 1 bit, but 'wide' is declared 'INT', which is 16
+       |                        ^|^
+       |                         `--- 'wide' is 'INT' (16 bits), while '%QX1.0' is 1 bit
        |
-       | Note: a located variable holds one value as wide as its address; declare it as an elementary type of 1 bit, such as BOOL
+       | Help: declare it as an elementary type of 1 bit, such as BOOL
+       |
+       | Note: a located variable holds one value as wide as its address
     ---'
     [E1421] Error: duplicate location
-        ,-[ file:///test0.st:9:5 ]
+        ,-[ file:///test0.st:9:15 ]
         |
       9 |     twin   AT %QW4 : WORD;
-        |     ^^^^^^^^^^|^^^^^^^^^^
-        |               `------------ 'twin' is located at '%QW4', which 'valve' also claims
+        |               ^^|^
+        |                 `--- 'twin' and 'valve' are both located at '%QW4'
         |
      14 | VAR_GLOBAL valve AT %QW4 : WORD; END_VAR
-        |            ^^^^^^^^^^|^^^^^^^^^
-        |                      `----------- 'valve' is located here
+        |                     ^^|^
+        |                       `--- 'valve' is located here
         |
-        | Note: an address is one channel, and each declaration is given storage of its own, so the two would never see each other's value; name the one variable from wherever it is needed
+        | Help: declare the address once and name that variable
+        |
+        | Note: each declaration gets storage of its own, so the two would never see each other's value
     ----'
     [E1421] Error: duplicate location
-        ,-[ file:///test0.st:14:12 ]
+        ,-[ file:///test0.st:14:21 ]
         |
       9 |     twin   AT %QW4 : WORD;
-        |     ^^^^^^^^^^|^^^^^^^^^^
-        |               `------------ 'twin' is located here
+        |               ^^|^
+        |                 `--- 'twin' is located here
         |
      14 | VAR_GLOBAL valve AT %QW4 : WORD; END_VAR
-        |            ^^^^^^^^^^|^^^^^^^^^
-        |                      `----------- 'valve' is located at '%QW4', which 'twin' also claims
+        |                     ^^|^
+        |                       `--- 'valve' and 'twin' are both located at '%QW4'
         |
-        | Note: an address is one channel, and each declaration is given storage of its own, so the two would never see each other's value; name the one variable from wherever it is needed
+        | Help: declare the address once and name that variable
+        |
+        | Note: each declaration gets storage of its own, so the two would never see each other's value
     ----'
     ");
 }
@@ -993,34 +1011,40 @@ END_CONFIGURATION
         |              ^^|^^
         |                `---- 'plain' is not declared AT %I*, %Q* or %M*, so its address is not VAR_CONFIG's to give
         |
-        | Note: declare it AT %I*, %Q* or %M* in its POU to leave its address to the configuration
+        | Help: declare it AT %I*, %Q* or %M* in its POU to leave its address to the configuration
     ----'
     [E1424] Error: location refused
         ,-[ file:///test0.st:18:14 ]
         |
      18 |     Res.P1.d.level AT %QW2   : INT;
         |              ^^|^^
-        |                `---- 'level' is declared AT %I*, and '%QW2' is not in that area
+        |                `---- 'level' is declared AT %I*, while '%QW2' is in another area
         |
-        | Note: the area is the declaration's: give an input an address in %I, an output one in %Q, a marker one in %M
+        | Help: give an input an address in %I, an output one in %Q, a marker one in %M
+        |
+        | Note: the area is the declaration's
     ----'
     [E1424] Error: location refused
         ,-[ file:///test0.st:19:14 ]
         |
      19 |     Res.P1.d.run   AT %QX0.3 : BOOL;
         |              ^|^
-        |               `--- '%QX0.3' is a bit of '%QW0', and a bit has no address to locate 'run' at
+        |               `--- '%QX0.3' is a bit of '%QW0', with no address to locate 'run' at
         |
-        | Note: the variable points at its channel, so give it a byte or wider, or a bit nothing wider around it is named
+        | Help: give it a byte or wider, or a bit that no wider address around it names
+        |
+        | Note: the variable points at its channel
     ----'
     [E1424] Error: location refused
         ,-[ file:///test0.st:20:14 ]
         |
      20 |     Res.P2.d.run   AT %QW4   : BOOL;
         |              ^|^
-        |               `--- '%QW4' is 16 bits, but 'run' is declared 'BOOL', which is 1
+        |               `--- 'run' is 'BOOL' (1 bit), while '%QW4' is 16 bits
         |
-        | Note: the variable holds one value as wide as its address; give it an address of its type's width
+        | Help: give it an address of its type's width
+        |
+        | Note: the variable holds one value as wide as its address
     ----'
     [E1424] Error: location refused
         ,-[ file:///test0.st:21:14 ]
@@ -1118,7 +1142,9 @@ END_CONFIGURATION
         |              ^^|^^
         |                `---- the entry says 'UINT', but 'level' is declared 'INT'
         |
-        | Note: the entry repeats the variable's type; write the declared one
+        | Help: write the declared type
+        |
+        | Note: the entry repeats the variable's type
     ----'
     [E1426] Error: configuration entry refused
         ,-[ file:///test0.st:19:15 ]
@@ -1127,9 +1153,9 @@ END_CONFIGURATION
         |               ^|^
         |                `--- a VAR_CONFIG path names instances and variables, not an element or what a reference points at
         |
-        | Note: name the variable itself; an element of an array or a referenced value cannot be configured
+        | Help: name the variable itself
     ----'
-    [E1414] Error: configuration error
+    [E1414] Error: unknown field in VAR_CONFIG
         ,-[ file:///test0.st:20:14 ]
         |
      20 |     Res.P1.d.lvl   AT %QW1   : INT;
@@ -1143,7 +1169,9 @@ END_CONFIGURATION
         |              ^|^
         |               `--- 'run' is located at '%QX0.0' here and at '%QX0.1' by another entry
         |
-        | Note: an instance's variable has one address; keep one of the entries
+        | Help: keep one of the entries
+        |
+        | Note: an instance's variable has one address
     ----'
     [E1424] Error: location refused
         ,-[ file:///test0.st:17:14 ]
@@ -1152,7 +1180,9 @@ END_CONFIGURATION
         |              ^|^
         |               `--- 'run' is located at '%QX0.1' here and at '%QX0.0' by another entry
         |
-        | Note: an instance's variable has one address; keep one of the entries
+        | Help: keep one of the entries
+        |
+        | Note: an instance's variable has one address
     ----'
     ");
 }
@@ -1188,37 +1218,45 @@ END_CONFIGURATION
        ,-[ file:///test0.st:4:12 ]
        |
      4 | VAR RETAIN kept AT %M* : INT; END_VAR
-       |            ^^^^^^^^|^^^^^^^^
-       |                    `---------- 'kept' is located at '%M*' and cannot be RETAIN
+       |            ^^|^
+       |              `--- 'kept' is located at '%M*' and cannot be RETAIN
        |
-       | Note: a variable VAR_CONFIG locates points at its channel and has no storage of its own to retain; to persist a marker, declare it located in full, RETAIN, in a PROGRAM or as a VAR_GLOBAL
+       | Help: to persist a marker, declare it located in full, RETAIN, in a PROGRAM or as a VAR_GLOBAL
+       |
+       | Note: a variable VAR_CONFIG locates points at its channel and has no storage of its own to retain
     ---'
     [E1425] Error: variable not located
        ,-[ file:///test0.st:8:5 ]
        |
      8 | VAR drives : ARRAY[0..1] OF Drive; END_VAR
-       |     ^^^^^^^^^^^^^^|^^^^^^^^^^^^^^
-       |                   `---------------- 'drives' holds 'run', declared AT %Q*, in the elements of an array, which VAR_CONFIG cannot name
+       |     ^^^|^^
+       |        `---- 'drives' holds 'run', declared AT %Q*, in the elements of an array
        |
-       | Note: a VAR_CONFIG path names a PROGRAM instance and the instances it holds by name; hold this one there
+       | Help: hold the instance in a PROGRAM, or in a function block the PROGRAM holds
+       |
+       | Note: a VAR_CONFIG path names a PROGRAM instance and the instances it holds by name
     ---'
     [E1425] Error: variable not located
        ,-[ file:///test0.st:9:10 ]
        |
      9 | VAR_TEMP scratch : Drive; END_VAR
-       |          ^^^^^^^|^^^^^^^
-       |                 `--------- 'scratch' holds 'run', declared AT %Q*, in an instance made for each call, which VAR_CONFIG cannot name
+       |          ^^^|^^^
+       |             `----- 'scratch' holds 'run', declared AT %Q*, in an instance made for each call
        |
-       | Note: a VAR_CONFIG path names a PROGRAM instance and the instances it holds by name; hold this one there
+       | Help: hold the instance in a PROGRAM, or in a function block the PROGRAM holds
+       |
+       | Note: a VAR_CONFIG path names a PROGRAM instance and the instances it holds by name
     ---'
     [E1425] Error: variable not located
         ,-[ file:///test0.st:13:12 ]
         |
      13 | VAR_GLOBAL spare : Drive; END_VAR
-        |            ^^^^^^|^^^^^^
-        |                  `-------- 'spare' holds 'run', declared AT %Q*, in a VAR_GLOBAL, which VAR_CONFIG cannot name
+        |            ^^|^^
+        |              `---- 'spare' holds 'run', declared AT %Q*, in a VAR_GLOBAL
         |
-        | Note: a VAR_CONFIG path names a PROGRAM instance and the instances it holds by name; hold this one there
+        | Help: hold the instance in a PROGRAM, or in a function block the PROGRAM holds
+        |
+        | Note: a VAR_CONFIG path names a PROGRAM instance and the instances it holds by name
     ----'
     ");
 }
@@ -1277,61 +1315,75 @@ END_CONFIGURATION
         |
      11 | VAR inner : Motor := (cnt := 50); END_VAR
         |                       ^^^^|^^^^
-        |                           `------ 'cnt' is declared AT %M*, so it points at the channel VAR_CONFIG gives it and has no value of its own to initialize
+        |                           `------ 'cnt' is declared AT %M* and has no value of its own to initialize
         |
-        | Note: give it its starting value in its VAR_CONFIG entry instead
+        | Help: give it its starting value in its VAR_CONFIG entry
+        |
+        | Note: it points at the channel VAR_CONFIG gives it
     ----'
     [E1425] Error: variable not located
         ,-[ file:///test0.st:17:11 ]
         |
      17 | VAR_INPUT d : Motor; END_VAR
-        |           ^^^^|^^^^
-        |               `------ 'd' holds 'cnt', declared AT %M*, in a VAR_INPUT, which each call overwrites with a copy of its argument
+        |           |
+        |           `-- 'd' holds 'cnt', declared AT %M*, in a VAR_INPUT
         |
-        | Note: pass the instance as a VAR_IN_OUT: the call then uses it where it is held, and located
+        | Help: pass the instance as a VAR_IN_OUT
+        |
+        | Note: each call overwrites a VAR_INPUT with a copy of its argument
     ----'
     [E1425] Error: variable not located
         ,-[ file:///test0.st:21:5 ]
         |
      21 | VAR s : Pair; pairs : ARRAY[0..1] OF Pair; END_VAR
-        |     ^^^^|^^^
-        |         `----- 's' holds 'c.raw', declared AT %Q*, in a field of a STRUCT, which VAR_CONFIG cannot name
+        |     |
+        |     `-- 's' holds 'c.raw', declared AT %Q*, in a field of a STRUCT
         |
-        | Note: a VAR_CONFIG path names a PROGRAM instance and the instances it holds by name; hold this one there
+        | Help: hold the instance in a PROGRAM, or in a function block the PROGRAM holds
+        |
+        | Note: a VAR_CONFIG path names a PROGRAM instance and the instances it holds by name
     ----'
     [E1425] Error: variable not located
         ,-[ file:///test0.st:21:15 ]
         |
      21 | VAR s : Pair; pairs : ARRAY[0..1] OF Pair; END_VAR
-        |               ^^^^^^^^^^^^^|^^^^^^^^^^^^^
-        |                            `--------------- 'pairs' holds 'c.raw', declared AT %Q*, in a field of a STRUCT, which VAR_CONFIG cannot name
+        |               ^^|^^
+        |                 `---- 'pairs' holds 'c.raw', declared AT %Q*, in a field of a STRUCT
         |
-        | Note: a VAR_CONFIG path names a PROGRAM instance and the instances it holds by name; hold this one there
+        | Help: hold the instance in a PROGRAM, or in a function block the PROGRAM holds
+        |
+        | Note: a VAR_CONFIG path names a PROGRAM instance and the instances it holds by name
     ----'
     [E1420] Error: RETAIN on an I/O location
         ,-[ file:///test0.st:22:12 ]
         |
      22 | VAR RETAIN m : Motor; END_VAR
-        |            ^^^^|^^^^
-        |                `------ 'm' is RETAIN and holds 'cnt', declared AT %M*, which cannot be retained
+        |            |
+        |            `-- 'm' is RETAIN and holds 'cnt', declared AT %M*, with no storage of its own to retain
         |
-        | Note: a variable VAR_CONFIG locates points at its marker and has no storage of its own to retain; to persist a marker, declare it located in full, RETAIN, in a PROGRAM or as a VAR_GLOBAL
+        | Help: to persist a marker, declare it located in full, RETAIN, in a PROGRAM or as a VAR_GLOBAL
+        |
+        | Note: a variable VAR_CONFIG locates points at its marker and has no storage of its own to retain
     ----'
     [E1427] Error: located variable overwritten
         ,-[ file:///test0.st:23:64 ]
         |
      23 | VAR a : Sensor; b : Sensor; u : User; o : Outer; k : Motor := (cnt := 3); END_VAR
         |                                                                ^^^^|^^^
-        |                                                                    `----- 'cnt' is declared AT %M*, so it points at the channel VAR_CONFIG gives it and has no value of its own to initialize
+        |                                                                    `----- 'cnt' is declared AT %M* and has no value of its own to initialize
         |
-        | Note: give it its starting value in its VAR_CONFIG entry instead
+        | Help: give it its starting value in its VAR_CONFIG entry
+        |
+        | Note: it points at the channel VAR_CONFIG gives it
     ----'
-    [E0318] Error: semantic violation
+    [E0318] Error: assignment to an instance
         ,-[ file:///test0.st:24:5 ]
         |
      24 |     b := a;
         |     |
-        |     `-- 'Sensor' is a CLASS and can not be assigned
+        |     `-- an instance of 'Sensor' cannot be assigned
+        |
+        | Help: pass the instance as a VAR_IN_OUT, or assign its members one by one
     ----'
     ");
 }
@@ -1364,18 +1416,22 @@ END_FUNCTION_BLOCK
        |
      8 | FUNCTION make : Box
        |                 ^|^
-       |                  `--- the FUNCTION returns a 'Box', which holds 'level', declared AT %M*, in a result made for each call, which VAR_CONFIG cannot name
+       |                  `--- the FUNCTION returns a 'Box' holding 'level', declared AT %M*
        |
-       | Note: a VAR_CONFIG path names a PROGRAM instance and the instances it holds by name; hold the instance there and pass it to the FUNCTION as a VAR_IN_OUT
+       | Help: hold the instance in a PROGRAM and pass it to the FUNCTION as a VAR_IN_OUT
+       |
+       | Note: a VAR_CONFIG path names a PROGRAM instance and the instances it holds by name, not a result made for each call
     ---'
     [E1425] Error: variable not located
         ,-[ file:///test0.st:13:21 ]
         |
      13 | METHOD PUBLIC Get : Crate
         |                     ^^|^^
-        |                       `---- the METHOD returns a 'Crate', which holds 'b.level', declared AT %M*, in a result made for each call, which VAR_CONFIG cannot name
+        |                       `---- the METHOD returns a 'Crate' holding 'b.level', declared AT %M*
         |
-        | Note: a VAR_CONFIG path names a PROGRAM instance and the instances it holds by name; hold the instance there and pass it to the METHOD as a VAR_IN_OUT
+        | Help: hold the instance in a PROGRAM and pass it to the METHOD as a VAR_IN_OUT
+        |
+        | Note: a VAR_CONFIG path names a PROGRAM instance and the instances it holds by name, not a result made for each call
     ----'
     ");
 }
@@ -1406,23 +1462,23 @@ END_VAR
 END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1417] Error: address cannot be located
-       ,-[ file:///test0.st:3:5 ]
+    [E1417] Error: address not locatable
+       ,-[ file:///test0.st:3:10 ]
        |
      3 | VAR z AT %Z* : INT; END_VAR
-       |     ^^^^^^^|^^^^^^
-       |            `-------- '%Z*' is not a partial address: write '%I*', '%Q*' or '%M*'
+       |          ^|^
+       |           `--- '%Z*' is not a partial address: write '%I*', '%Q*' or '%M*'
        |
-       | Note: the variable's type gives the width, and VAR_CONFIG gives the rest of the address
+       | Note: the variable's type gives the width, and VAR_CONFIG the rest of the address
     ---'
-    [E1417] Error: address cannot be located
-       ,-[ file:///test0.st:4:5 ]
+    [E1417] Error: address not locatable
+       ,-[ file:///test0.st:4:10 ]
        |
      4 | VAR w AT %IW* : INT; END_VAR
-       |     ^^^^^^^|^^^^^^^
-       |            `--------- '%IW*' is not a partial address: write '%I*', '%Q*' or '%M*'
+       |          ^^|^
+       |            `--- '%IW*' is not a partial address: write '%I*', '%Q*' or '%M*'
        |
-       | Note: the variable's type gives the width, and VAR_CONFIG gives the rest of the address
+       | Note: the variable's type gives the width, and VAR_CONFIG the rest of the address
     ---'
     [E1424] Error: location refused
         ,-[ file:///test0.st:13:14 ]
@@ -1431,7 +1487,7 @@ END_CONFIGURATION
         |              |
         |              `-- 'w' is not declared AT %I*, %Q* or %M*, so its address is not VAR_CONFIG's to give
         |
-        | Note: declare it AT %I*, %Q* or %M* in its POU to leave its address to the configuration
+        | Help: declare it AT %I*, %Q* or %M* in its POU to leave its address to the configuration
     ----'
     ");
 }
@@ -1464,19 +1520,19 @@ VAR ok : BOOL; END_VAR
 END_PROGRAM
 "#;
     assert_snapshot!(crate::tests::utils::test_library_diagnostics(&mut with_db, &[library], &[workspace]), @r"
-    [E1417] Error: address cannot be located
+    [E1417] Error: address not locatable
        ,-[ file:///lib0.st:3:5 ]
        |
      3 |     %QD0 := 16#11223344;
        |     ^^|^
        |       `--- '%QD0' cannot be named in a library
     ---'
-    [E1417] Error: address cannot be located
-       ,-[ file:///lib0.st:8:5 ]
+    [E1417] Error: address not locatable
+       ,-[ file:///lib0.st:8:13 ]
        |
      8 | VAR lamp AT %QW2 : WORD; END_VAR
-       |     ^^^^^^^^^|^^^^^^^^^
-       |              `----------- '%QW2' cannot be named in a library
+       |             ^^|^
+       |               `--- '%QW2' cannot be named in a library
     ---'
     ");
 }
@@ -1501,14 +1557,16 @@ VAR_GLOBAL sensor AT %I* : BOOL; END_VAR
 END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1417] Error: address cannot be located
-       ,-[ file:///test0.st:9:12 ]
+    [E1417] Error: address not locatable
+       ,-[ file:///test0.st:9:22 ]
        |
      9 | VAR_GLOBAL sensor AT %I* : BOOL; END_VAR
-       |            ^^^^^^^^^^|^^^^^^^^^
-       |                      `----------- '%I*' is not a complete address
+       |                      ^|^
+       |                       `--- '%I*' is not a complete address
        |
-       | Note: VAR_CONFIG completes a partial address for a variable of a PROGRAM, FUNCTION_BLOCK or CLASS, instance by instance; anywhere else, write the address in full
+       | Help: write the address in full
+       |
+       | Note: VAR_CONFIG completes a partial address for a variable of a PROGRAM, FUNCTION_BLOCK or CLASS, instance by instance
     ---'
     ");
 }
@@ -1661,28 +1719,32 @@ END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     [E1421] Error: duplicate location
-        ,-[ file:///test0.st:10:5 ]
+        ,-[ file:///test0.st:10:10 ]
         |
      10 |     a AT %IW0 : INT;
-        |     ^^^^^^^|^^^^^^^
-        |            `--------- 'a' is located at '%IW0', which 'b' also claims
+        |          ^^|^
+        |            `--- 'a' and 'b' are both located at '%IW0'
      11 |     b AT %IW0 : INT;
-        |     ^^^^^^^|^^^^^^^
-        |            `--------- 'b' is located here
+        |          ^^|^
+        |            `--- 'b' is located here
         |
-        | Note: an address is one channel, and each declaration is given storage of its own, so the two would never see each other's value; name the one variable from wherever it is needed
+        | Help: declare the address once and name that variable
+        |
+        | Note: each declaration gets storage of its own, so the two would never see each other's value
     ----'
     [E1421] Error: duplicate location
-        ,-[ file:///test0.st:11:5 ]
+        ,-[ file:///test0.st:11:10 ]
         |
      10 |     a AT %IW0 : INT;
-        |     ^^^^^^^|^^^^^^^
-        |            `--------- 'a' is located here
+        |          ^^|^
+        |            `--- 'a' is located here
      11 |     b AT %IW0 : INT;
-        |     ^^^^^^^|^^^^^^^
-        |            `--------- 'b' is located at '%IW0', which 'a' also claims
+        |          ^^|^
+        |            `--- 'b' and 'a' are both located at '%IW0'
         |
-        | Note: an address is one channel, and each declaration is given storage of its own, so the two would never see each other's value; name the one variable from wherever it is needed
+        | Help: declare the address once and name that variable
+        |
+        | Note: each declaration gets storage of its own, so the two would never see each other's value
     ----'
     ");
 }
@@ -1708,13 +1770,15 @@ END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     [E1422] Error: location type mismatch
-       ,-[ file:///test0.st:9:12 ]
+       ,-[ file:///test0.st:9:29 ]
        |
      9 | VAR_GLOBAL wide AT %IX0.0 : INT; END_VAR
-       |            ^^^^^^^^^^|^^^^^^^^^
-       |                      `----------- '%IX0.0' is 1 bit, but 'wide' is declared 'INT', which is 16
+       |                             ^|^
+       |                              `--- 'wide' is 'INT' (16 bits), while '%IX0.0' is 1 bit
        |
-       | Note: a located variable holds one value as wide as its address; declare it as an elementary type of 1 bit, such as BOOL
+       | Help: declare it as an elementary type of 1 bit, such as BOOL
+       |
+       | Note: a located variable holds one value as wide as its address
     ---'
     ");
 }
@@ -1776,13 +1840,15 @@ END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     [E1422] Error: location type mismatch
-       ,-[ file:///test0.st:9:5 ]
+       ,-[ file:///test0.st:9:21 ]
        |
      9 |     stamp AT %ID0 : DT;
-       |     ^^^^^^^^^|^^^^^^^^
-       |              `---------- '%ID0' is 32 bits, but 'stamp' is declared 'DT', which is 64
+       |                     ^|
+       |                      `-- 'stamp' is 'DT' (64 bits), while '%ID0' is 32 bits
        |
-       | Note: a located variable holds one value as wide as its address; declare it as an elementary type of 32 bits, such as DWORD, DINT or REAL
+       | Help: declare it as an elementary type of 32 bits, such as DWORD, DINT or REAL
+       |
+       | Note: a located variable holds one value as wide as its address
     ---'
     ");
 }
@@ -1850,49 +1916,59 @@ END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     [E1422] Error: location type mismatch
-        ,-[ file:///test0.st:14:5 ]
+        ,-[ file:///test0.st:14:20 ]
         |
      14 |     c    AT %IB0 : Colour;
-        |     ^^^^^^^^^^|^^^^^^^^^^
-        |               `------------ '%IB0' is 8 bits, but 'c' is declared 'Colour', which is not an elementary type of any width
+        |                    ^^^|^^
+        |                       `---- 'c' is 'Colour', not an elementary type, while '%IB0' is 8 bits
         |
-        | Note: a located variable holds one value as wide as its address; declare it as an elementary type of 8 bits, such as BYTE, SINT or USINT
+        | Help: declare it as an elementary type of 8 bits, such as BYTE, SINT or USINT
+        |
+        | Note: a located variable holds one value as wide as its address
     ----'
     [E1422] Error: location type mismatch
-        ,-[ file:///test0.st:15:5 ]
+        ,-[ file:///test0.st:15:20 ]
         |
      15 |     p    AT %IW1 : Pct;
-        |     ^^^^^^^^^|^^^^^^^^
-        |              `---------- '%IW1' is 16 bits, but 'p' is declared 'Pct', which is not an elementary type of any width
+        |                    ^|^
+        |                     `--- 'p' is 'Pct', not an elementary type, while '%IW1' is 16 bits
         |
-        | Note: a located variable holds one value as wide as its address; declare it as an elementary type of 16 bits, such as WORD, INT or UINT
+        | Help: declare it as an elementary type of 16 bits, such as WORD, INT or UINT
+        |
+        | Note: a located variable holds one value as wide as its address
     ----'
     [E1422] Error: location type mismatch
-        ,-[ file:///test0.st:16:5 ]
+        ,-[ file:///test0.st:16:20 ]
         |
      16 |     s    AT %IW2 : Pair;
-        |     ^^^^^^^^^|^^^^^^^^^
-        |              `----------- '%IW2' is 16 bits, but 's' is declared 'Pair', which is not an elementary type of any width
+        |                    ^^|^
+        |                      `--- 's' is 'Pair', not an elementary type, while '%IW2' is 16 bits
         |
-        | Note: a located variable holds one value as wide as its address; declare it as an elementary type of 16 bits, such as WORD, INT or UINT
+        | Help: declare it as an elementary type of 16 bits, such as WORD, INT or UINT
+        |
+        | Note: a located variable holds one value as wide as its address
     ----'
     [E1422] Error: location type mismatch
-        ,-[ file:///test0.st:17:5 ]
+        ,-[ file:///test0.st:17:20 ]
         |
      17 |     bits AT %IB6 : ARRAY[0..7] OF BOOL;
-        |     ^^^^^^^^^^^^^^^^^|^^^^^^^^^^^^^^^^
-        |                      `------------------ '%IB6' is 8 bits, but 'bits' is declared 'ARRAY [0..7] OF BOOL', which is not an elementary type of any width
+        |                    ^^^^^^^^^|^^^^^^^^^
+        |                             `----------- 'bits' is 'ARRAY [0..7] OF BOOL', not an elementary type, while '%IB6' is 8 bits
         |
-        | Note: a located variable holds one value as wide as its address; declare it as an elementary type of 8 bits, such as BYTE, SINT or USINT
+        | Help: declare it as an elementary type of 8 bits, such as BYTE, SINT or USINT
+        |
+        | Note: a located variable holds one value as wide as its address
     ----'
     [E1422] Error: location type mismatch
-        ,-[ file:///test0.st:18:5 ]
+        ,-[ file:///test0.st:18:20 ]
         |
      18 |     name AT %ID2 : STRING;
-        |     ^^^^^^^^^^|^^^^^^^^^^
-        |               `------------ '%ID2' is 32 bits, but 'name' is declared 'STRING', which is not an elementary type of any width
+        |                    ^^^|^^
+        |                       `---- 'name' is 'STRING', not an elementary type, while '%ID2' is 32 bits
         |
-        | Note: a located variable holds one value as wide as its address; declare it as an elementary type of 32 bits, such as DWORD, DINT or REAL
+        | Help: declare it as an elementary type of 32 bits, such as DWORD, DINT or REAL
+        |
+        | Note: a located variable holds one value as wide as its address
     ----'
     ");
 }
@@ -2006,7 +2082,7 @@ END_PROGRAM
         |            ^^^|^^
         |               `---- '%QX0.3' is part of '%QW0' and has no address of its own to pass to a VAR_IN_OUT
         |
-        | Note: copy it into a variable, pass that, and assign it back
+        | Help: copy it into a variable, pass that, and assign it back
     ----'
     ");
 }
@@ -2038,7 +2114,7 @@ END_CONFIGURATION
        |              ^^|^^
        |                `---- '%QX0.5' is part of '%QW0' and has no address of its own to take a reference to
        |
-       | Note: take the reference of '%QW0' as a whole
+       | Help: take the reference of '%QW0' as a whole
     ---'
     ");
 }
@@ -2094,13 +2170,13 @@ END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     [E1423] Error: part of a wider address
-        ,-[ file:///test0.st:14:5 ]
+        ,-[ file:///test0.st:14:13 ]
         |
      14 |     keep AT %MX0.2 : BOOL;
-        |     ^^^^^^^^^^|^^^^^^^^^^
-        |               `------------ '%MX0.2' is part of '%MW0' and cannot be RETAIN on its own
+        |             ^^^|^^
+        |                `---- '%MX0.2' is part of '%MW0' and cannot be RETAIN on its own
         |
-        | Note: RETAIN belongs on the variable located at '%MW0', whose storage this is
+        | Help: declare the variable located at '%MW0' RETAIN
     ----'
     ");
 }
@@ -2126,11 +2202,11 @@ END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     [E1419] Error: write to an input location
-       ,-[ file:///test0.st:9:12 ]
+       ,-[ file:///test0.st:9:36 ]
        |
      9 | VAR_GLOBAL sensor AT %IX0.0 : BOOL := TRUE; END_VAR
-       |            ^^^^^^^^^^^^^^^|^^^^^^^^^^^^^^^
-       |                           `----------------- '%IX0.0' is an input, so an initial value is overwritten before anything reads it
+       |                                    ^^^|^^^
+       |                                       `----- '%IX0.0' is an input, so an initial value is overwritten before anything reads it
        |
        | Note: the host writes the input image before every scan, the first one included
     ---'
@@ -2160,13 +2236,13 @@ END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     [E1423] Error: part of a wider address
-        ,-[ file:///test0.st:10:5 ]
+        ,-[ file:///test0.st:10:14 ]
         |
      10 |     lamp  AT %QX0.3 : BOOL := TRUE;
-        |     ^^^^^^^^^^^^^^^|^^^^^^^^^^^^^^
-        |                    `---------------- '%QX0.3' is part of '%QW0' and cannot have an initial value of its own
+        |              ^^^|^^
+        |                 `---- '%QX0.3' is part of '%QW0' and cannot have an initial value of its own
         |
-        | Note: give the variable located at '%QW0' an initial value with this part set in it
+        | Help: give the variable located at '%QW0' an initial value with this part set in it
     ----'
     ");
 }
@@ -2205,31 +2281,37 @@ END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     [E1423] Error: part of a wider address
-        ,-[ file:///test0.st:13:5 ]
+        ,-[ file:///test0.st:13:10 ]
         |
      13 |     g AT %QB0 : BYTE := 16#12;
-        |     ^^^^^^^^^^^^|^^^^^^^^^^^^
-        |                 `-------------- '%QB0' is part of '%QW0' and cannot have an initial value of its own
+        |          ^^|^
+        |            `--- '%QB0' is part of '%QW0' and cannot have an initial value of its own
         |
-        | Note: '%QW0' is the channel VAR_CONFIG gives a variable, which takes no initial value; declare a VAR_GLOBAL located at '%QW0' with this part set in its initial value
+        | Help: declare a VAR_GLOBAL located at '%QW0' with this part set in its initial value
+        |
+        | Note: VAR_CONFIG gives '%QW0' to a variable that takes no initial value
     ----'
     [E1423] Error: part of a wider address
-        ,-[ file:///test0.st:14:5 ]
+        ,-[ file:///test0.st:14:10 ]
         |
      14 |     h AT %QB8 : BYTE := 16#34;
-        |     ^^^^^^^^^^^^|^^^^^^^^^^^^
-        |                 `-------------- '%QB8' is part of '%QW4' and cannot have an initial value of its own
+        |          ^^|^
+        |            `--- '%QB8' is part of '%QW4' and cannot have an initial value of its own
         |
-        | Note: no variable is located at '%QW4', a body names it bare; declare a VAR_GLOBAL located at '%QW4' with this part set in its initial value
+        | Help: declare a VAR_GLOBAL located at '%QW4' with this part set in its initial value
+        |
+        | Note: no variable is located at '%QW4'
     ----'
     [E1423] Error: part of a wider address
-        ,-[ file:///test0.st:16:19 ]
+        ,-[ file:///test0.st:16:27 ]
         |
      16 | VAR_GLOBAL RETAIN flag AT %MX0.1 : BOOL; END_VAR
-        |                   ^^^^^^^^^^|^^^^^^^^^^
-        |                             `------------ '%MX0.1' is part of '%MW0' and cannot be RETAIN on its own
+        |                           ^^^|^^
+        |                              `---- '%MX0.1' is part of '%MW0' and cannot be RETAIN on its own
         |
-        | Note: '%MW0' is the channel VAR_CONFIG gives a variable declared AT %M*, which cannot be RETAIN; to persist this part, declare a VAR_GLOBAL located at '%MW0', RETAIN
+        | Help: to persist this part, declare a VAR_GLOBAL located at '%MW0', RETAIN
+        |
+        | Note: VAR_CONFIG gives '%MW0' to a variable declared AT %M*, with no storage to retain
     ----'
     ");
 }
@@ -2258,30 +2340,34 @@ END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     [E1421] Error: duplicate location
-        ,-[ file:///test0.st:8:5 ]
+        ,-[ file:///test0.st:8:13 ]
         |
       8 | VAR lamp AT %QW0 : WORD; END_VAR
-        |     ^^^^^^^^^|^^^^^^^^^
-        |              `----------- 'lamp' is located at '%QW0', which 'panel' also claims
+        |             ^^|^
+        |               `--- 'lamp' and 'panel' are both located at '%QW0'
         |
      12 | VAR_GLOBAL panel AT %QW0 : WORD; END_VAR
-        |            ^^^^^^^^^^|^^^^^^^^^
-        |                      `----------- 'panel' is located here
+        |                     ^^|^
+        |                       `--- 'panel' is located here
         |
-        | Note: an address is one channel, and each declaration is given storage of its own, so the two would never see each other's value; name the one variable from wherever it is needed
+        | Help: declare the address once and name that variable
+        |
+        | Note: each declaration gets storage of its own, so the two would never see each other's value
     ----'
     [E1421] Error: duplicate location
-        ,-[ file:///test0.st:12:12 ]
+        ,-[ file:///test0.st:12:21 ]
         |
       8 | VAR lamp AT %QW0 : WORD; END_VAR
-        |     ^^^^^^^^^|^^^^^^^^^
-        |              `----------- 'lamp' is located here
+        |             ^^|^
+        |               `--- 'lamp' is located here
         |
      12 | VAR_GLOBAL panel AT %QW0 : WORD; END_VAR
-        |            ^^^^^^^^^^|^^^^^^^^^
-        |                      `----------- 'panel' is located at '%QW0', which 'lamp' also claims
+        |                     ^^|^
+        |                       `--- 'panel' and 'lamp' are both located at '%QW0'
         |
-        | Note: an address is one channel, and each declaration is given storage of its own, so the two would never see each other's value; name the one variable from wherever it is needed
+        | Help: declare the address once and name that variable
+        |
+        | Note: each declaration gets storage of its own, so the two would never see each other's value
     ----'
     ");
 }

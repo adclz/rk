@@ -136,28 +136,6 @@ impl<'db> ErrorCode for DuplicateError<'db> {
             Self::Resource { .. } => "E0115",
         }
     }
-
-    fn description(&self) -> &'static str {
-        match self {
-            Self::Variable { .. } => "duplicate definitions",
-            Self::Pou { .. } => "duplicate definitions",
-            Self::ProgramPou { .. } => "duplicate definitions",
-            Self::Parameter { .. } => "duplicate definitions",
-            Self::StructField { .. } => "duplicate definitions",
-            Self::EnumVariant { .. } => "duplicate definitions",
-            Self::InitExprField { .. } => "duplicate definitions",
-            Self::VariableIsReturnValue { .. } => "duplicate definitions",
-            Self::MethodDecl { .. } => "duplicate definitions",
-            Self::MethodProt { .. } => "duplicate definitions",
-            Self::InheritedMethod { .. } => "duplicate definitions",
-            Self::Using { .. } => "duplicate definitions",
-            Self::Program { .. } => "duplicate definitions",
-            Self::ProgInstance { .. } => "duplicate definitions",
-            Self::InstanceGlobal { .. } => "duplicate definitions",
-            Self::Task { .. } => "duplicate definitions",
-            Self::Resource { .. } => "duplicate definitions",
-        }
-    }
 }
 
 impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
@@ -182,7 +160,7 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
 
                 diag.with_related(Related::new(
                     format!(
-                        "variable '{}' is already defined here",
+                        "variable '{}' is already declared here",
                         var2.get_name_with_case(db).text(db)
                     ),
                     var2.get_scope_id(db).file(db),
@@ -206,7 +184,7 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
 
                 diag.with_related(Related::new(
                     format!(
-                        "POU '{}' is already defined here",
+                        "POU '{}' is already declared here",
                         pou2.get_name_with_case(db).text(db)
                     ),
                     pou2.get_scope_id(db).file(db),
@@ -240,7 +218,7 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
                     .range(crate::denormalize(db, file, &span).unwrap_or_default())
                     .call();
                 diag.with_related(Related::new(
-                    format!("POU '{name}' is also defined here"),
+                    format!("POU '{name}' is also declared here"),
                     other_file,
                     other_span,
                 ));
@@ -252,14 +230,14 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
                 name,
             } => {
                 let mut diag = diag()
-                    .message(format!("duplicate parameter '{}' found", name.text(db)))
+                    .message(format!("duplicate parameter '{}'", name.text(db)))
                     .range(crate::denormalize(db, file, &param_2.get_span(db)).unwrap_or_default())
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
                     .call();
 
                 diag.with_related(Related::new(
-                    "previously defined here".to_string(),
+                    "already passed here".to_string(),
                     param_1.get_scope_id(db).file(db),
                     param_1.get_span(db),
                 ));
@@ -281,7 +259,7 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
 
                 diag.with_related(Related::new(
                     format!(
-                        "field '{}' is already defined here",
+                        "field '{}' is already declared here",
                         field2.get_name_with_case(db).text(db)
                     ),
                     field2.get_scope_id(db).file(db),
@@ -303,7 +281,7 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
 
                 diag.with_related(Related::new(
                     format!(
-                        "enum variant '{}' is already defined here",
+                        "enum variant '{}' is already declared here",
                         variant2.with_case.text(db)
                     ),
                     variant2.get_scope_id(db).file(db),
@@ -360,7 +338,7 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
 
                 diag.with_related(Related::new(
                     format!(
-                        "method '{}' is already defined here",
+                        "method '{}' is already declared here",
                         method2.get_name_with_case(db).text(db)
                     ),
                     method2.get_scope_id(db).file(db),
@@ -385,7 +363,7 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
 
                 diag.with_related(Related::new(
                     format!(
-                        "method '{}' is already defined here",
+                        "method '{}' is already declared here",
                         method2.get_name_with_case(db).text(db)
                     ),
                     method2.get_scope_id(db).file(db),
@@ -410,7 +388,7 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
 
                 diag.with_related(Related::new(
                     format!(
-                        "method '{}' is already defined here",
+                        "method '{}' is already declared here",
                         method2.method.get_name_with_case(db).text(db)
                     ),
                     method2.method.get_scope_id(db).file(db),
@@ -418,7 +396,7 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
                 ));
 
                 diag.with_note(format!(
-                    "this error happens because both interfaces '{}' and '{}' define a method '{}'",
+                    "interfaces '{}' and '{}' both declare a method '{}'",
                     method1.owner.get_name_with_case(db).text(db),
                     method2.owner.get_name_with_case(db).text(db),
                     method1.method.get_name_with_case(db).text(db)
@@ -429,7 +407,7 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
             Self::Using { using, other } => {
                 let mut diag = diag()
                     .message(format!(
-                        "duplicate `USING` for namespace '{}'",
+                        "duplicate USING of namespace '{}'",
                         using.path(db).path_with_case.to_string(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
@@ -463,7 +441,7 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
 
                 diag.with_related(Related::new(
                     format!(
-                        "program '{}' is already defined here",
+                        "program '{}' is already declared here",
                         prog2.get_name_with_case(db).text(db)
                     ),
                     prog2.get_scope_id(db).file(db),
@@ -485,7 +463,7 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
 
                 diag.with_related(Related::new(
                     format!(
-                        "program instance '{}' is already defined here",
+                        "program instance '{}' is already declared here",
                         prog2.with_case.text(db)
                     ),
                     prog2.get_scope_id(db).file(db),
@@ -545,7 +523,7 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
 
                 diag.with_related(Related::new(
                     format!(
-                        "task '{}' is already defined here",
+                        "task '{}' is already declared here",
                         task2.with_case.text(db)
                     ),
                     task2.get_scope_id(db).file(db),
@@ -564,7 +542,7 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
 
                 diag.with_related(Related::new(
                     format!(
-                        "resource '{}' is already defined here",
+                        "resource '{}' is already declared here",
                         res2.with_case.text(db)
                     ),
                     res2.get_scope_id(db).file(db),

@@ -20,7 +20,7 @@ END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "loop-var-modified"), @r"
-    [L0112] Warning: loop variable modified in body
+    [L0112] Warning: FOR control variable written
        ,-[ file:///test0.st:7:9 ]
        |
      6 |     FOR i := 0 TO 10 DO
@@ -50,7 +50,7 @@ END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "loop-var-modified"), @r"
-    [L0112] Warning: loop variable modified in body
+    [L0112] Warning: FOR control variable written
        ,-[ file:///test0.st:8:13 ]
        |
      6 |     FOR i := 0 TO 10 DO
@@ -98,7 +98,7 @@ END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "loop-var-modified"), @r"
-    [L0112] Warning: loop variable modified in body
+    [L0112] Warning: FOR control variable written
        ,-[ file:///test0.st:9:13 ]
        |
      8 |         FOR j := 0 TO 5 DO
@@ -129,7 +129,7 @@ END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "loop-var-modified"), @r"
-    [L0112] Warning: loop variable modified in body
+    [L0112] Warning: FOR control variable written
        ,-[ file:///test0.st:9:13 ]
        |
      7 |     FOR i := 0 TO 10 DO
@@ -161,7 +161,7 @@ END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "loop-var-modified"), @r"
-    [L0112] Warning: loop variable modified in body
+    [L0112] Warning: FOR control variable written
        ,-[ file:///test0.st:9:13 ]
        |
      7 |     FOR i := 0 TO 10 DO
@@ -193,7 +193,7 @@ END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "loop-var-modified"), @r"
-    [L0112] Warning: loop variable modified in body
+    [L0112] Warning: FOR control variable written
        ,-[ file:///test0.st:8:13 ]
        |
      6 |     FOR i := 0 TO 10 DO

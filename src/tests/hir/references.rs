@@ -107,7 +107,7 @@ fn assign_non_ref_type(mut with_db: RootDatabase) {
        |
      4 |             test: REF_TO INT;
        |             ^^|^
-       |               `--- type is declared by variable 'test' here
+       |               `--- 'test' is declared here
        |
      7 |         test := 0;
        |                 |
@@ -207,7 +207,7 @@ END_FUNCTION
        |
      6 |        myInt: INT;
        |        ^^|^^
-       |          `---- type is declared by variable 'myInt' here
+       |          `---- 'myInt' is declared here
        |
      9 |     myInt := REF(myA1[2][9]);
        |              ^^^^^^^|^^^^^^^
@@ -325,7 +325,7 @@ END_FUNCTION_BLOCK
        |
      5 |         arr: ARRAY[0..2] OF REF_TO INT;
        |         ^|^
-       |          `--- type is declared by variable 'arr' here
+       |          `--- 'arr' is declared here
        |
      8 |     arr[0] := REF(x);
        |               ^^^|^^
@@ -495,7 +495,7 @@ END_FUNCTION
        |
      4 | FUNCTION borrow : PInt
        |          ^^^|^^
-       |             `---- FUNCTION 'borrow' is defined here, with return type 'PInt'
+       |             `---- FUNCTION 'borrow' is declared here, with return type 'PInt'
        |
      6 |     borrow := REF(r);
        |               ^^^|^^
@@ -505,13 +505,13 @@ END_FUNCTION
        ,-[ file:///test0.st:6:15 ]
        |
      5 | VAR r : REAL; END_VAR
-       |     ^^^^|^^^
-       |         `----- 'r' is per-call storage, declared here
+       |     |
+       |     `-- 'r' is per-call storage, declared here
      6 |     borrow := REF(r);
        |               ^^^|^^
        |                  `---- reference to 'r' outlives the call that owns it
        |
-       | Note: return a reference to instance state, or to storage the caller owns (a VAR_IN_OUT)
+       | Help: return a reference to instance state, or to storage the caller owns (a VAR_IN_OUT)
     ---'
     ");
 }
@@ -536,13 +536,13 @@ END_FUNCTION
        ,-[ file:///test0.st:6:15 ]
        |
      5 | VAR local : INT := 1; END_VAR
-       |     ^^^^^^^^|^^^^^^^
-       |             `--------- 'local' is per-call storage, declared here
+       |     ^^|^^
+       |       `---- 'local' is per-call storage, declared here
      6 |     borrow := REF(local);
        |               ^^^^^|^^^^
        |                    `------ reference to 'local' outlives the call that owns it
        |
-       | Note: return a reference to instance state, or to storage the caller owns (a VAR_IN_OUT)
+       | Help: return a reference to instance state, or to storage the caller owns (a VAR_IN_OUT)
     ---'
     ");
 }
@@ -564,13 +564,13 @@ END_FUNCTION_BLOCK
        ,-[ file:///test0.st:7:17 ]
        |
      6 |     VAR local : INT; END_VAR
-       |         ^^^^^|^^^^^
-       |              `------- 'local' is per-call storage, declared here
+       |         ^^|^^
+       |           `---- 'local' is per-call storage, declared here
      7 |         slot := REF(local);
        |                 ^^^^^|^^^^
        |                      `------ reference to 'local' outlives the call that owns it
        |
-       | Note: return a reference to instance state, or to storage the caller owns (a VAR_IN_OUT)
+       | Help: return a reference to instance state, or to storage the caller owns (a VAR_IN_OUT)
     ---'
     ");
 }
@@ -633,7 +633,7 @@ END_FUNCTION
        |
      3 |     VAR x : INT; p : REF_TO REAL; q : REF_TO INT; r : REF_TO REAL := REF(x); END_VAR
        |                  |
-       |                  `-- type is declared by variable 'p' here
+       |                  `-- 'p' is declared here
      4 |     p := REF(x);
        |          ^^^|^^
        |             `---- expected 'REF_TO REAL', got 'REF_TO INT'
@@ -643,7 +643,7 @@ END_FUNCTION
        |
      3 |     VAR x : INT; p : REF_TO REAL; q : REF_TO INT; r : REF_TO REAL := REF(x); END_VAR
        |                  |
-       |                  `-- type is declared by variable 'p' here
+       |                  `-- 'p' is declared here
        |
      6 |     p := q;
        |          |
@@ -676,7 +676,7 @@ END_FUNCTION
         |
       8 |     VAR_INPUT p : REF_TO REAL; END_VAR
         |               |
-        |               `-- type is declared by variable 'p' here
+        |               `-- 'p' is declared here
         |
      13 |     i(p := REF(x));
         |            ^^^|^^
@@ -687,7 +687,7 @@ END_FUNCTION
         |
       3 |     VAR_INPUT p : REF_TO REAL; END_VAR
         |               |
-        |               `-- type is declared by variable 'p' here
+        |               `-- 'p' is declared here
         |
      14 |     t := g(p := REF(x));
         |                 ^^^|^^
@@ -752,7 +752,7 @@ END_FUNCTION
         |
       3 |     VAR_IN_OUT io : REAL; END_VAR
         |                ^|
-        |                 `-- type is declared by variable 'io' here
+        |                 `-- 'io' is declared here
         |
      13 |     t := g(io := x);
         |                  |
@@ -763,7 +763,7 @@ END_FUNCTION
         |
       3 |     VAR_IN_OUT io : REAL; END_VAR
         |                ^|
-        |                 `-- type is declared by variable 'io' here
+        |                 `-- 'io' is declared here
         |
      14 |     t := g(x);
         |            |
@@ -774,7 +774,7 @@ END_FUNCTION
         |
       8 |     VAR_IN_OUT io : DINT; END_VAR
         |                ^|
-        |                 `-- type is declared by variable 'io' here
+        |                 `-- 'io' is declared here
         |
      15 |     i(io := x);
         |             |
@@ -852,7 +852,7 @@ END_FUNCTION
         |
       2 | INTERFACE I
         |           |
-        |           `-- INTERFACE 'I' is defined here
+        |           `-- INTERFACE 'I' is declared here
         |
      20 |     t := by_in_out(i := n);
         |                         |
@@ -881,7 +881,7 @@ END_FUNCTION
        |
      3 | VAR s4 : STRING[4]; r : REF_TO STRING; r4 : REF_TO STRING[4]; END_VAR
        |                     |
-       |                     `-- type is declared by variable 'r' here
+       |                     `-- 'r' is declared here
      4 |     r := REF(s4);
        |          ^^^|^^^
        |             `----- expected 'REF_TO STRING', got 'REF_TO STRING[4]'
@@ -891,7 +891,7 @@ END_FUNCTION
        |
      3 | VAR s4 : STRING[4]; r : REF_TO STRING; r4 : REF_TO STRING[4]; END_VAR
        |                     |
-       |                     `-- type is declared by variable 'r' here
+       |                     `-- 'r' is declared here
        |
      5 |     r := r4;
        |          ^|
@@ -952,59 +952,71 @@ END_CONFIGURATION
         ,-[ file:///test0.st:10:12 ]
         |
      10 | VAR RETAIN q : PInt; END_VAR
-        |            ^^^^|^^^
-        |                `----- 'q' is a reference in RETAIN storage: its address does not survive a new build
+        |            |
+        |            `-- 'q' is a reference in RETAIN storage: its address does not survive a new build
         |
-        | Note: a warm start restores the address even where a new build moved its target; keep references out of RETAIN (NON_RETAIN on a member) and set them in the first scan
+        | Help: keep references out of RETAIN (NON_RETAIN on a member) and set them in the first scan
+        |
+        | Note: a warm start restores the address even where a new build moved its target
     ----'
     [E0904] Error: reference in RETAIN storage
         ,-[ file:///test0.st:21:5 ]
         |
      21 |     r : PInt;
-        |     ^^^^|^^^
-        |         `----- 'r' is a reference in RETAIN storage: its address does not survive a new build
+        |     |
+        |     `-- 'r' is a reference in RETAIN storage: its address does not survive a new build
         |
-        | Note: a warm start restores the address even where a new build moved its target; keep references out of RETAIN (NON_RETAIN on a member) and set them in the first scan
+        | Help: keep references out of RETAIN (NON_RETAIN on a member) and set them in the first scan
+        |
+        | Note: a warm start restores the address even where a new build moved its target
     ----'
     [E0904] Error: reference in RETAIN storage
         ,-[ file:///test0.st:22:5 ]
         |
      22 |     s : S;
-        |     ^^|^^
-        |       `---- 's.p' is a reference in RETAIN storage: its address does not survive a new build
+        |     |
+        |     `-- 's.p' is a reference in RETAIN storage: its address does not survive a new build
         |
-        | Note: a warm start restores the address even where a new build moved its target; keep references out of RETAIN (NON_RETAIN on a member) and set them in the first scan
+        | Help: keep references out of RETAIN (NON_RETAIN on a member) and set them in the first scan
+        |
+        | Note: a warm start restores the address even where a new build moved its target
     ----'
     [E0904] Error: reference in RETAIN storage
         ,-[ file:///test0.st:23:5 ]
         |
      23 |     arr : ARRAY[0..1] OF H;
-        |     ^^^^^^^^^^^|^^^^^^^^^^
-        |                `------------ 'arr.p' is a reference in RETAIN storage: its address does not survive a new build
+        |     ^|^
+        |      `--- 'arr.p' is a reference in RETAIN storage: its address does not survive a new build
         |
-        | Note: a warm start restores the address even where a new build moved its target; keep references out of RETAIN (NON_RETAIN on a member) and set them in the first scan
+        | Help: keep references out of RETAIN (NON_RETAIN on a member) and set them in the first scan
+        |
+        | Note: a warm start restores the address even where a new build moved its target
     ----'
     [E0904] Error: reference in RETAIN storage
         ,-[ file:///test0.st:38:24 ]
         |
      30 | VAR h : H; n : INT; END_VAR
-        |     ^^|^^
-        |       `---- 'h' is declared here
+        |     |
+        |     `-- 'h' is declared here
         |
      38 |         PROGRAM RETAIN Q1 WITH T : Q;
         |                        ^|
-        |                         `-- PROGRAM RETAIN 'Q1' keeps 'h.p', a reference, whose address does not survive a new build
+        |                         `-- PROGRAM RETAIN 'Q1' keeps 'h.p', a reference: its address does not survive a new build
         |
-        | Note: a warm start restores the address even where a new build moved its target; keep references out of RETAIN (NON_RETAIN on a member) and set them in the first scan
+        | Help: keep references out of RETAIN (NON_RETAIN on a member) and set them in the first scan
+        |
+        | Note: a warm start restores the address even where a new build moved its target
     ----'
     [E0904] Error: reference in RETAIN storage
         ,-[ file:///test0.st:34:19 ]
         |
      34 | VAR_GLOBAL RETAIN g : PInt; END_VAR
-        |                   ^^^^|^^^
-        |                       `----- 'g' is a reference in RETAIN storage: its address does not survive a new build
+        |                   |
+        |                   `-- 'g' is a reference in RETAIN storage: its address does not survive a new build
         |
-        | Note: a warm start restores the address even where a new build moved its target; keep references out of RETAIN (NON_RETAIN on a member) and set them in the first scan
+        | Help: keep references out of RETAIN (NON_RETAIN on a member) and set them in the first scan
+        |
+        | Note: a warm start restores the address even where a new build moved its target
     ----'
     ");
 }

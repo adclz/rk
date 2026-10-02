@@ -21,12 +21,12 @@ FUNCTION main : INT
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "once-violation"), @r"
-    [L0004] Info: calling a {once} function more than once
+    [L0004] Info: {once} POU called more than once
        ,-[ file:///test0.st:9:5 ]
        |
      2 | {once}
        | ^^^|^^
-       |    `---- {once} pragma declared here
+       |    `---- the {once} pragma is declared here
        |
      8 |     setup();
        |     ^^|^^
@@ -87,12 +87,12 @@ VAR fb : MyFB; END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "once-violation"), @r"
-    [L0004] Info: calling a {once} function more than once
+    [L0004] Info: {once} POU called more than once
         ,-[ file:///test0.st:12:8 ]
         |
       3 |     {once}
         |     ^^^|^^
-        |        `---- {once} pragma declared here
+        |        `---- the {once} pragma is declared here
         |
      11 |     fb.init();
         |        ^^|^
@@ -159,12 +159,12 @@ FUNCTION main : INT
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "once-violation"), @r"
-    [L0004] Info: calling a {once} function more than once
+    [L0004] Info: {once} POU called more than once
        ,-[ file:///test0.st:9:5 ]
        |
      2 | {once}
        | ^^^|^^
-       |    `---- {once} pragma declared here
+       |    `---- the {once} pragma is declared here
        |
      8 |     setup();
        |     ^^|^^

@@ -29,14 +29,14 @@ fn ambiguous_using_same_name(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0205] Error: multiple items in scope
+    [E0205] Error: ambiguous name
         ,-[ file:///test0.st:17:21 ]
         |
      17 |             test := SharedName();
         |                     ^^^^^|^^^^
         |                          `------ multiple items named 'SharedName' available in scope
         |
-        | Note: qualify the name to resolve the ambiguity: ns1.SharedName or ns2.SharedName
+        | Help: qualify the name: ns1.SharedName or ns2.SharedName
     ----'
     ");
 }
@@ -66,12 +66,12 @@ fn duplicate_in_same_namespace_is_one_error_not_ambiguity(mut with_db: RootDatab
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0102] Error: duplicate definitions
+    [E0102] Error: duplicate POU
        ,-[ file:///test0.st:9:22 ]
        |
      3 |             FUNCTION SharedName : INT
        |                      ^^^^^|^^^^
-       |                           `------ POU 'SharedName' is already defined here
+       |                           `------ POU 'SharedName' is already declared here
        |
      9 |             FUNCTION SharedName : INT
        |                      ^^^^^|^^^^
@@ -191,14 +191,14 @@ fn ambiguous_using_same_name_in_spec(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0205] Error: multiple items in scope
+    [E0205] Error: ambiguous name
         ,-[ file:///test0.st:16:18 ]
         |
      16 |             fb : SharedFB;
         |                  ^^^^|^^^
         |                      `----- multiple items named 'SharedFB' available in scope
         |
-        | Note: qualify the name to resolve the ambiguity: ns1.SharedFB or ns2.SharedFB
+        | Help: qualify the name: ns1.SharedFB or ns2.SharedFB
     ----'
     ");
 }

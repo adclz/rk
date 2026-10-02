@@ -397,25 +397,25 @@ VAR_INPUT b : BOOL; r : REAL; END_VAR
     f := b + r;
 END_FUNCTION"#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0305] Error: type mismatch
+    [E0305] Error: operator not supported by the type
        ,-[ file:///test0.st:4:10 ]
        |
      3 | VAR_INPUT b : BOOL; r : REAL; END_VAR
        |           |
-       |           `-- type is declared by variable 'b' here
+       |           `-- 'b' is declared here
      4 |     f := b + r;
        |          ^^|^^
        |            `---- operator '+' cannot be applied to type 'BOOL'
     ---'
-    [E0303] Error: type mismatch
+    [E0303] Error: types not addable
        ,-[ file:///test0.st:4:14 ]
        |
      3 | VAR_INPUT b : BOOL; r : REAL; END_VAR
        |           |
-       |           `-- type is declared by variable 'b' here
+       |           `-- 'b' is declared here
      4 |     f := b + r;
        |              |
-       |              `-- can not add 'BOOL' with 'REAL'
+       |              `-- cannot add 'BOOL' with 'REAL'
     ---'
     ");
 }
@@ -435,7 +435,7 @@ END_FUNCTION"#;
        |
      2 | FUNCTION f : INT
        |          |
-       |          `-- FUNCTION 'f' is defined here, with return type 'INT'
+       |          `-- FUNCTION 'f' is declared here, with return type 'INT'
        |
      4 |     f := i * r;
        |          ^^|^^
@@ -506,25 +506,25 @@ VAR_INPUT b : BOOL; r : REAL; END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0305] Error: type mismatch
+    [E0305] Error: operator not supported by the type
        ,-[ file:///test0.st:4:12 ]
        |
      3 | VAR_INPUT b : BOOL; r : REAL; END_VAR
        |           |
-       |           `-- type is declared by variable 'b' here
+       |           `-- 'b' is declared here
      4 |     fn1 := b + r;
        |            ^^|^^
        |              `---- operator '+' cannot be applied to type 'BOOL'
     ---'
-    [E0303] Error: type mismatch
+    [E0303] Error: types not addable
        ,-[ file:///test0.st:4:16 ]
        |
      3 | VAR_INPUT b : BOOL; r : REAL; END_VAR
        |           |
-       |           `-- type is declared by variable 'b' here
+       |           `-- 'b' is declared here
      4 |     fn1 := b + r;
        |                |
-       |                `-- can not add 'BOOL' with 'REAL'
+       |                `-- cannot add 'BOOL' with 'REAL'
     ---'
     ");
 }
@@ -538,15 +538,15 @@ VAR_INPUT b : BOOL; r : REAL; END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0303] Error: type mismatch
+    [E0303] Error: types not addable
        ,-[ file:///test0.st:4:16 ]
        |
      3 | VAR_INPUT b : BOOL; r : REAL; END_VAR
        |                     |
-       |                     `-- type is declared by variable 'r' here
+       |                     `-- 'r' is declared here
      4 |     fn1 := r + b;
        |                |
-       |                `-- can not add 'REAL' with 'BOOL'
+       |                `-- cannot add 'REAL' with 'BOOL'
     ---'
     ");
 }

@@ -5,6 +5,7 @@ pub mod caseless;
 pub mod cli;
 pub mod codegen;
 pub mod completions;
+pub mod diagnostic_shape;
 pub mod hir;
 pub mod linter;
 pub mod lsp;

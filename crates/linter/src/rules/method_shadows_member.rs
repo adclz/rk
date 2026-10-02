@@ -19,10 +19,6 @@ impl ErrorCode for MethodShadowsMember {
     fn code(&self) -> &'static str {
         "L0116"
     }
-
-    fn description(&self) -> &'static str {
-        "method variable shadows an owner member"
-    }
 }
 
 pub fn check<'db>(
@@ -37,7 +33,7 @@ pub fn check<'db>(
 
         let mut d = diag()
             .message(format!(
-                "method variable '{name}' shadows the member '{member_name}' of its FB/class"
+                "method variable '{name}' hides the member '{member_name}' of its block"
             ))
             .desc(&MethodShadowsMember)
             .range(

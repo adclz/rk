@@ -34,7 +34,7 @@ END_FUNCTION_BLOCK
         |
       5 |         b : INT;
         |         ^^^|^^^
-        |            `----- 'b' declared here
+        |            `----- 'b' is declared here
         |
      11 |     inst(a := 1);
         |     ^^^^^^|^^^^^
@@ -67,10 +67,10 @@ END_FUNCTION_BLOCK
         |
       5 |         y : INT;
         |         ^^^|^^^
-        |            `----- 'y' declared here
+        |            `----- 'y' is declared here
       6 |         z : INT;
         |         ^^^|^^^
-        |            `----- 'z' declared here
+        |            `----- 'z' is declared here
         |
      12 |     inst(x := 1);
         |     ^^^^^^|^^^^^
@@ -121,14 +121,14 @@ END_FUNCTION_BLOCK
         ,-[ file:///test0.st:11:5 ]
         |
       5 |     b : INT;
-        |     ^^^|^^^
-        |        `----- parameter 'b' declared here
+        |     |
+        |     `-- parameter 'b' is declared here
         |
      11 |     add(a := 1);
         |     ^|^
         |      `--- call to 'add' is missing 1 required parameter: 'b'
         |
-        | Note: VAR_INPUT on FUNCTION/METHOD parameters must be supplied unless the declaration provides a scalar default value
+        | Note: a FUNCTION or METHOD call supplies every VAR_INPUT without a default
     ----'
     ");
 }
@@ -157,14 +157,14 @@ END_FUNCTION_BLOCK
         ,-[ file:///test0.st:15:5 ]
         |
       6 |         b : INT;
-        |         ^^^|^^^
-        |            `----- parameter 'b' declared here
+        |         |
+        |         `-- parameter 'b' is declared here
         |
      15 |     fb.set_values(a := 1);
         |     ^^^^^^|^^^^^^
         |           `-------- call to 'set_values' is missing 1 required parameter: 'b'
         |
-        | Note: VAR_INPUT on FUNCTION/METHOD parameters must be supplied unless the declaration provides a scalar default value
+        | Note: a FUNCTION or METHOD call supplies every VAR_INPUT without a default
     ----'
     ");
 }
@@ -197,7 +197,7 @@ END_FUNCTION_BLOCK
         |
       4 |         a : INT;
         |         ^^^|^^^
-        |            `----- 'a' declared here
+        |            `----- 'a' is declared here
         |
      16 |     inst(b := 1);
         |     ^^^^^^|^^^^^

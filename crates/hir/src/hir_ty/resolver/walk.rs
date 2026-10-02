@@ -7,7 +7,6 @@ use db::WorkspaceDataBase;
 
 use crate::check::errors::e04_init::InitError;
 use crate::check::errors::e05_array::ArrayError;
-use crate::check::errors::e08_call::CallError;
 use crate::check::errors::e09_reference::ReferenceError;
 use crate::check::errors::e14_config::ConfigError;
 use crate::{
@@ -168,7 +167,7 @@ pub(crate) fn check_multibits_bounds<'db>(
     if (offset_val + 1) * access_bits > base_bits {
         let max_offset = (access_bits <= base_bits).then(|| base_bits / access_bits - 1);
         ctx.errors.push(
-            CallError::MultibitsOutOfRange {
+            ConfigError::MultibitsOutOfRange {
                 expr,
                 var,
                 offset: offset_val,
@@ -899,7 +898,7 @@ impl<'db> Type<'db> {
                     ctx.errors.push(
                         ConfigError::PartlyLocatedOverwritten {
                             site: crate::CallSite::from_scoped(db, &expr),
-                            member: var.name_with_case(db).text(db).clone(),
+                            member: vec![var.name_with_case(db)],
                             address: var
                                 .location(db)
                                 .map(|dv| compact_str::CompactString::from(dv.to_address(db)))

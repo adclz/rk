@@ -21,10 +21,6 @@ impl ErrorCode for DuplicateVarSection {
     fn code(&self) -> &'static str {
         "L0203"
     }
-
-    fn description(&self) -> &'static str {
-        "duplicate variable section"
-    }
 }
 
 static POU_QUERY: LazyLock<tree_sitter::Query> = LazyLock::new(|| {
@@ -143,7 +139,7 @@ fn check_pou_node(
                 )
                 .call();
 
-            d.with_note("merge this section with the existing one above".to_string());
+            d.with_help("merge this section with the existing one above".to_string());
 
             diagnostics.push(d);
         }

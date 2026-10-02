@@ -90,12 +90,12 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0308] Error: invalid literal
+    [E0308] Error: literal of the wrong kind
        ,-[ file:///test0.st:9:9 ]
        |
      9 |         'hello': y := 10;
        |         ^^^|^^^
-       |            `----- cannot infer '<string>' to 'INT': cannot use string literal as INT
+       |            `----- cannot use string literal as INT
     ---'
     ");
 }
@@ -142,33 +142,33 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1205] Error: control flow violation
+    [E1205] Error: CASE label not constant
        ,-[ file:///test0.st:9:9 ]
        |
      9 |         'a'..'z': y := 10;
        |         ^|^
-       |          `--- a CASE range bound must be an integer constant
+       |          `--- the bound is not an integer constant
     ---'
-    [E1205] Error: control flow violation
+    [E1205] Error: CASE label not constant
        ,-[ file:///test0.st:9:14 ]
        |
      9 |         'a'..'z': y := 10;
        |              ^|^
-       |               `--- a CASE range bound must be an integer constant
+       |               `--- the bound is not an integer constant
     ---'
-    [E0308] Error: invalid literal
+    [E0308] Error: literal of the wrong kind
        ,-[ file:///test0.st:9:9 ]
        |
      9 |         'a'..'z': y := 10;
        |         ^|^
-       |          `--- cannot infer '<string>' to 'INT': cannot use string literal as INT
+       |          `--- cannot use string literal as INT
     ---'
-    [E0308] Error: invalid literal
+    [E0308] Error: literal of the wrong kind
        ,-[ file:///test0.st:9:14 ]
        |
      9 |         'a'..'z': y := 10;
        |              ^|^
-       |               `--- cannot infer '<string>' to 'INT': cannot use string literal as INT
+       |               `--- cannot use string literal as INT
     ---'
     ");
 }
@@ -192,16 +192,16 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0308] Error: invalid literal
+    [E0308] Error: literal of the wrong kind
         ,-[ file:///test0.st:10:17 ]
         |
       5 |         y : INT;
         |         |
-        |         `-- type is declared by variable 'y' here
+        |         `-- 'y' is declared here
         |
      10 |         2: y := 'bad';
         |                 ^^|^^
-        |                   `---- cannot infer '<string>' to 'INT': cannot use string literal as INT
+        |                   `---- cannot use string literal as INT
     ----'
     ");
 }
@@ -278,12 +278,12 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1205] Error: control flow violation
+    [E1205] Error: CASE label not constant
         ,-[ file:///test0.st:10:9 ]
         |
      10 |         LIMIT: y := 1;
         |         ^^|^^
-        |           `---- a CASE label must evaluate to a constant at compile time
+        |           `---- the label is not a compile-time constant
     ----'
     ");
 }
@@ -306,16 +306,16 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0308] Error: invalid literal
+    [E0308] Error: literal of the wrong kind
         ,-[ file:///test0.st:11:14 ]
         |
       5 |         y : INT;
         |         |
-        |         `-- type is declared by variable 'y' here
+        |         `-- 'y' is declared here
         |
      11 |         y := 'wrong';
         |              ^^^|^^^
-        |                 `----- cannot infer '<string>' to 'INT': cannot use string literal as INT
+        |                 `----- cannot use string literal as INT
     ----'
     ");
 }
@@ -342,19 +342,19 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1205] Error: control flow violation
+    [E1205] Error: CASE label not constant
        ,-[ file:///test0.st:9:9 ]
        |
      9 |         'a'..'z': y := 1;
        |         ^|^
-       |          `--- a CASE range bound must be an integer constant
+       |          `--- the bound is not an integer constant
     ---'
-    [E1205] Error: control flow violation
+    [E1205] Error: CASE label not constant
        ,-[ file:///test0.st:9:14 ]
        |
      9 |         'a'..'z': y := 1;
        |              ^|^
-       |               `--- a CASE range bound must be an integer constant
+       |               `--- the bound is not an integer constant
     ---'
     ");
 }
@@ -383,7 +383,9 @@ END_FUNCTION"#;
        |          |
        |          `-- CASE cannot branch on 'r' of type 'REAL'
        |
-       | Note: CASE branches on an integer, a bit string, a CHAR, an enum or a STRING; branch with IF on anything else
+       | Help: branch with IF
+       |
+       | Note: CASE branches on an integer, a bit string, a CHAR, an enum or a STRING
     ---'
     [E1207] Error: CASE selector of the wrong type
        ,-[ file:///test0.st:6:10 ]
@@ -392,7 +394,9 @@ END_FUNCTION"#;
        |          |
        |          `-- CASE cannot branch on 'b' of type 'BOOL'
        |
-       | Note: a BOOL has two values; branch with IF
+       | Help: branch with IF
+       |
+       | Note: a BOOL has two values
     ---'
     [E1207] Error: CASE selector of the wrong type
        ,-[ file:///test0.st:7:10 ]
@@ -401,7 +405,9 @@ END_FUNCTION"#;
        |          |
        |          `-- CASE cannot branch on 't' of type 'TIME'
        |
-       | Note: CASE branches on an integer, a bit string, a CHAR, an enum or a STRING; branch with IF on anything else
+       | Help: branch with IF
+       |
+       | Note: CASE branches on an integer, a bit string, a CHAR, an enum or a STRING
     ---'
     [E1207] Error: CASE selector of the wrong type
        ,-[ file:///test0.st:8:10 ]
@@ -410,7 +416,9 @@ END_FUNCTION"#;
        |          |
        |          `-- CASE cannot branch on 'p' of type 'Pt'
        |
-       | Note: CASE branches on an integer, a bit string, a CHAR, an enum or a STRING; branch with IF on anything else
+       | Help: branch with IF
+       |
+       | Note: CASE branches on an integer, a bit string, a CHAR, an enum or a STRING
     ---'
     ");
 }
@@ -435,7 +443,9 @@ END_FUNCTION"#;
        |         |
        |         `-- CASE range 9..6 is empty
        |
-       | Note: the lower bound is above the upper, so the arm never runs; swap the bounds
+       | Help: swap the bounds
+       |
+       | Note: the lower bound is above the upper, so the arm never runs
     ---'
     ");
 }
@@ -478,7 +488,9 @@ END_FUNCTION"#;
        |         ^|^
        |          `--- CASE range 'z'..'a' is empty
        |
-       | Note: the lower bound is above the upper, so the arm never runs; swap the bounds
+       | Help: swap the bounds
+       |
+       | Note: the lower bound is above the upper, so the arm never runs
     ---'
     ");
 }

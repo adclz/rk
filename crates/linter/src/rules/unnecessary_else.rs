@@ -23,10 +23,6 @@ impl ErrorCode for UnnecessaryElse {
     fn code(&self) -> &'static str {
         "L0211"
     }
-
-    fn description(&self) -> &'static str {
-        "unnecessary ELSE"
-    }
 }
 
 pub fn check<'db>(

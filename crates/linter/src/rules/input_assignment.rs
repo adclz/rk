@@ -27,10 +27,6 @@ impl ErrorCode for InputAssignment {
     fn code(&self) -> &'static str {
         "L0113"
     }
-
-    fn description(&self) -> &'static str {
-        "assignment to input variable"
-    }
 }
 
 pub fn check<'db>(

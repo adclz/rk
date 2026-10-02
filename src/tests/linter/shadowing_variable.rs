@@ -23,18 +23,18 @@ fn variable_shadows_function_block(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source_fb, source_fn], "shadowing-variable"), @r"
-    [L0202] Info: name shadowing
+    [L0202] Info: variable named after a POU
        ,-[ file:///test1.st:4:13 ]
        |
      4 |             PrintLog : BOOL;
-       |             ^^^^^^^|^^^^^^^
-       |                    `--------- variable 'PrintLog' shadows POU 'PrintLog' available in this scope
+       |             ^^^^|^^^
+       |                 `----- variable 'PrintLog' has the name of the POU 'PrintLog', in scope here
        |
        |-[ file:///test0.st:2:24 ]
        |
      2 |         FUNCTION_BLOCK PrintLog
        |                        ^^^^|^^^
-       |                            `----- POU PrintLog is declared here
+       |                            `----- POU 'PrintLog' is declared here
        |
        | Note: lint rule: shadowing-variable
     ---'
@@ -58,18 +58,18 @@ fn variable_shadows_function(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source_fn1, source_fn2], "shadowing-variable"), @r"
-    [L0202] Info: name shadowing
+    [L0202] Info: variable named after a POU
        ,-[ file:///test1.st:4:13 ]
        |
      4 |             helper : INT;
-       |             ^^^^^^|^^^^^
-       |                   `------- variable 'helper' shadows POU 'helper' available in this scope
+       |             ^^^|^^
+       |                `---- variable 'helper' has the name of the POU 'helper', in scope here
        |
        |-[ file:///test0.st:2:18 ]
        |
      2 |         FUNCTION helper : INT
        |                  ^^^|^^
-       |                     `---- POU helper is declared here
+       |                     `---- POU 'helper' is declared here
        |
        | Note: lint rule: shadowing-variable
     ---'
@@ -94,18 +94,18 @@ fn variable_shadows_data_type(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source_type, source_fn], "shadowing-variable"), @r"
-    [L0202] Info: name shadowing
+    [L0202] Info: variable named after a POU
        ,-[ file:///test1.st:4:13 ]
        |
      4 |             MyType : INT;
-       |             ^^^^^^|^^^^^
-       |                   `------- variable 'MyType' shadows POU 'MyType' available in this scope
+       |             ^^^|^^
+       |                `---- variable 'MyType' has the name of the POU 'MyType', in scope here
        |
        |-[ file:///test0.st:2:14 ]
        |
      2 |         TYPE MyType : STRUCT
        |              ^^^|^^
-       |                 `---- POU MyType is declared here
+       |                 `---- POU 'MyType' is declared here
        |
        | Note: lint rule: shadowing-variable
     ---'

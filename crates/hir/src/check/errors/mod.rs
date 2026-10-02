@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 use auto_lsp::default::db::file::File;
+use auto_lsp::tree_sitter;
 use db::WorkspaceDataBase;
 use ide_diagnostic::IdeDiagnostic;
 
@@ -47,3 +48,33 @@ E13xx = Recursion
 E14xx = Configuration
 E15xx = Pragmas
 */
+
+/// The first word of `span`: the keyword a misplaced section or declaration
+/// opens with, so that a report underlines `VAR_TEMP` and not the block down
+/// to its `END_VAR`. The span itself when it opens with anything else.
+pub(crate) fn first_word(
+    db: &dyn WorkspaceDataBase,
+    file: File,
+    span: &tree_sitter::Range,
+) -> tree_sitter::Range {
+    let document = file.document(db);
+    let text = document.texter.text.as_bytes();
+    let len = text
+        .get(span.start_byte..span.end_byte)
+        .unwrap_or_default()
+        .iter()
+        .take_while(|byte| byte.is_ascii_alphanumeric() || **byte == b'_')
+        .count();
+    if len == 0 {
+        return *span;
+    }
+    tree_sitter::Range {
+        start_byte: span.start_byte,
+        end_byte: span.start_byte + len,
+        start_point: span.start_point,
+        end_point: tree_sitter::Point {
+            row: span.start_point.row,
+            column: span.start_point.column + len,
+        },
+    }
+}

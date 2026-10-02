@@ -20,10 +20,6 @@ impl ErrorCode for ExternalMutation {
     fn code(&self) -> &'static str {
         "L0117"
     }
-
-    fn description(&self) -> &'static str {
-        "external instance mutation"
-    }
 }
 
 /// Called by the stmt_visitor for each assignment. Check if the LHS is
@@ -76,10 +72,13 @@ pub fn check_assignment<'db>(
     diagnostics.push(
         diag()
             .message(format!(
-                "direct mutation of '{instance_name}.{field_name}' - instances should own their data"
+                "'{instance_name}.{field_name}' is written from outside its instance"
             ))
             .desc(&ExternalMutation)
-            .range(hir::denormalize(db, var.get_scope_id(db).file(db), &var.get_span(db)).unwrap_or_default())
+            .range(
+                hir::denormalize(db, var.get_scope_id(db).file(db), &var.get_span(db))
+                    .unwrap_or_default(),
+            )
             .severity(DiagnosticSeverity::WARNING)
             .call(),
     );

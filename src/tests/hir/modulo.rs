@@ -50,7 +50,7 @@ fn invalid_mod_with_real_operands(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0305] Error: type mismatch
+    [E0305] Error: operator not supported by the type
        ,-[ file:///test0.st:8:18 ]
        |
      8 |             r := a MOD b;
@@ -75,7 +75,7 @@ fn invalid_mod_with_one_real_operand(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0305] Error: type mismatch
+    [E0305] Error: operator not supported by the type
        ,-[ file:///test0.st:8:18 ]
        |
      8 |             r := a MOD b;

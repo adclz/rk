@@ -32,7 +32,7 @@ END_FUNCTION
         |
       2 | FUNCTION add : INT
         |          ^|^
-        |           `--- FUNCTION 'add' is defined here, with return type 'INT'
+        |           `--- FUNCTION 'add' is declared here, with return type 'INT'
         |
      14 |     add(a := 1, b := 2);
         |     ^^^^^^^^^|^^^^^^^^^
@@ -133,7 +133,7 @@ END_FUNCTION
         |
       3 |     METHOD PUBLIC get_value : INT
         |                   ^^^^|^^^^
-        |                       `------ METHOD 'get_value' is defined here, with return type 'INT'
+        |                       `------ METHOD 'get_value' is declared here, with return type 'INT'
         |
      12 |     fb.get_value();
         |     ^^^^^^^|^^^^^^
@@ -208,7 +208,7 @@ END_FUNCTION_BLOCK
         |
       2 | FUNCTION compute : INT
         |          ^^^|^^^
-        |             `----- FUNCTION 'compute' is defined here, with return type 'INT'
+        |             `----- FUNCTION 'compute' is declared here, with return type 'INT'
         |
      13 |     compute(x := inst_x);
         |     ^^^^^^^^^^|^^^^^^^^^

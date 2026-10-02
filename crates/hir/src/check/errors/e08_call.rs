@@ -7,7 +7,6 @@ use crate::HirNodeInfo;
 use crate::check::errors::ToIdeDiagnostic;
 use crate::hir_def::expressions::expression::Expr;
 use crate::hir_def::expressions::expression::FuncCall;
-use crate::hir_def::expressions::expression::PathExpr;
 use crate::hir_def::interned::identifier::Ident;
 use crate::hir_def::interned::identifier::SpanIdent;
 use crate::hir_def::pous::function::Function;
@@ -91,21 +90,6 @@ pub enum CallError<'db> {
         var: VariableDecl<'db>,
         param: SpanIdent<'db>,
     },
-    /// Multibit access offset exceeds the size of the base type.
-    MultibitsOutOfRange {
-        expr: PathExpr<'db>,
-        /// The declaration to point at, when the base IS one. A slice of a
-        /// struct field or an array element has no declaration of its own.
-        var: Option<VariableDecl<'db>>,
-        offset: usize,
-        /// Width in bits of one slice - 1 for `%X`, 8 for `%B`, and so on.
-        access_bits: usize,
-        /// Largest offset the base type admits, or `None` when the base is too
-        /// narrow to hold even one slice (`%D` on a `WORD`) - there is no valid
-        /// offset then, so reporting a range would contradict itself.
-        max_offset: Option<usize>,
-        base_type: Type<'db>,
-    },
     CallNonCallableType {
         typ: Type<'db>,
         func_call: FuncCall<'db>,
@@ -185,7 +169,6 @@ impl<'db> ErrorCode for CallError<'db> {
             Self::OutputParameterUsedAsInput { .. } => "E0805",
             Self::InOutParameterRequiresLValue { .. } => "E0806",
             Self::InOutParameterBoundWithArrow { .. } => "E0807",
-            Self::MultibitsOutOfRange { .. } => "E0808",
             Self::CallNonCallableType { .. } => "E0808",
             Self::AmbiguousOverload { .. } => "E0809",
             Self::NoMatchingOverload { .. } => "E0810",
@@ -195,30 +178,6 @@ impl<'db> ErrorCode for CallError<'db> {
             Self::NonVariadicFoldParameter { .. } => "E0814",
             Self::VariadicMixedWithOtherInputs { .. } => "E0815",
             Self::VariadicOutsideFold { .. } => "E0816",
-        }
-    }
-
-    fn description(&self) -> &'static str {
-        match self {
-            Self::IncorrectNumberOfParameters { .. } => "function call parameter mismatch",
-            Self::MissingRequiredParameter { .. } => "missing required parameter",
-            Self::UnknownInputParameter { .. } => "function call parameter mismatch",
-            Self::UnknownOutputParameter { .. } => "function call parameter mismatch",
-            Self::OutputParameterUsedAsInput { .. } => "function call parameter mismatch",
-            Self::InOutParameterRequiresLValue { .. } => "VAR_IN_OUT argument must be a variable",
-            Self::InOutParameterBoundWithArrow { .. } => {
-                "VAR_IN_OUT parameter bound with output syntax"
-            }
-            Self::MultibitsOutOfRange { .. } => "multibit access out of range",
-            Self::CallNonCallableType { .. } => "semantic violation",
-            Self::AmbiguousOverload { .. } => "ambiguous overloaded call",
-            Self::NoMatchingOverload { .. } => "no matching overload",
-            Self::NonVariadicTypeForVariable { .. } => "invalid type",
-            Self::MultipleVariadicVariables { .. } => "invalid variadic declaration",
-            Self::EmptyVariadicCall { .. } => "variadic call without arguments",
-            Self::NonVariadicFoldParameter { .. } => "not a variadic parameter",
-            Self::VariadicMixedWithOtherInputs { .. } => "invalid variadic declaration",
-            Self::VariadicOutsideFold { .. } => "variadic parameter used outside a fold",
         }
     }
 }
@@ -236,27 +195,27 @@ impl<'db> ToIdeDiagnostic<'db> for CallError<'db> {
             } => {
                 let mut diag = diag()
                     .message(format!(
-                        "variadic parameter '{}' must be the only VAR_INPUT parameter",
+                        "'{}' is declared beside the variadic parameter '{}'",
+                        other_var.name_with_case(db).text(db),
                         variadic_var.name_with_case(db).text(db),
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
                     .range(
-                        crate::denormalize(db, file, &other_var.get_span(db)).unwrap_or_default(),
+                        crate::denormalize(db, file, &other_var.get_name_span(db))
+                            .unwrap_or_default(),
                     )
                     .call();
 
                 diag.with_related(Related::new(
                     format!(
-                        "variadic parameter '{}' declared here",
+                        "variadic parameter '{}' is declared here",
                         variadic_var.name_with_case(db).text(db)
                     ),
                     variadic_var.scope_id(db).file(db),
-                    variadic_var.get_span(db),
+                    variadic_var.get_name_span(db),
                 ));
-                diag.with_note(
-                    "a variadic parameter must be the only parameter in VAR_INPUT".into(),
-                );
+                diag.with_note("a variadic parameter takes every argument of the call".into());
                 diag
             }
             Self::IncorrectNumberOfParameters {
@@ -327,7 +286,7 @@ impl<'db> ToIdeDiagnostic<'db> for CallError<'db> {
 
                 if any_input {
                     diag.with_note(
-                        "VAR_INPUT on FUNCTION/METHOD parameters must be supplied unless the declaration provides a scalar default value"
+                        "a FUNCTION or METHOD call supplies every VAR_INPUT without a default"
                             .to_string(),
                     );
                 }
@@ -341,11 +300,11 @@ impl<'db> ToIdeDiagnostic<'db> for CallError<'db> {
                 for var in vars {
                     diag.with_related(Related::new(
                         format!(
-                            "parameter '{}' declared here",
+                            "parameter '{}' is declared here",
                             var.name_with_case(db).text(db)
                         ),
                         var.scope_id(db).file(db),
-                        var.get_span(db),
+                        var.get_name_span(db),
                     ));
                 }
 
@@ -400,8 +359,8 @@ impl<'db> ToIdeDiagnostic<'db> for CallError<'db> {
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
                     .call();
-                diag.with_note(format!(
-                    "use formal syntax instead: {} => <variable>",
+                diag.with_help(format!(
+                    "bind it by name: {} => <variable>",
                     var.get_name_with_case(db).text(db)
                 ));
 
@@ -419,16 +378,16 @@ impl<'db> ToIdeDiagnostic<'db> for CallError<'db> {
                     .range(crate::denormalize(db, file, &expr.get_span(db)).unwrap_or_default())
                     .call();
                 diag.with_note(
-                    "VAR_IN_OUT binds the callee to the caller's storage by reference; a literal, expression, or call result has no address to bind"
+                    "a literal, an expression or a call result has no address for a VAR_IN_OUT to bind"
                         .to_string(),
                 );
                 diag.with_related(Related::new(
                     format!(
-                        "parameter '{}' declared here",
+                        "parameter '{}' is declared here",
                         var.name_with_case(db).text(db)
                     ),
                     var.scope_id(db).file(db),
-                    var.get_span(db),
+                    var.get_name_span(db),
                 ));
 
                 diag
@@ -450,50 +409,12 @@ impl<'db> ToIdeDiagnostic<'db> for CallError<'db> {
                 ));
                 diag.with_related(Related::new(
                     format!(
-                        "parameter '{}' declared here",
+                        "parameter '{}' is declared here",
                         var.name_with_case(db).text(db)
                     ),
                     var.scope_id(db).file(db),
-                    var.get_span(db),
+                    var.get_name_span(db),
                 ));
-
-                diag
-            }
-            Self::MultibitsOutOfRange {
-                expr,
-                var,
-                offset,
-                access_bits,
-                max_offset,
-                base_type,
-            } => {
-                let message = match max_offset {
-                    Some(max) => format!(
-                        "offset {} is out of range for type '{}' (valid range: 0..{})",
-                        offset,
-                        base_type.type_name(db),
-                        max,
-                    ),
-                    None => format!(
-                        "a {}-bit access does not fit in type '{}'",
-                        access_bits,
-                        base_type.type_name(db),
-                    ),
-                };
-                let mut diag = diag()
-                    .message(message)
-                    .severity(DiagnosticSeverity::ERROR)
-                    .desc(self)
-                    .range(crate::denormalize(db, file, &expr.get_span(db)).unwrap_or_default())
-                    .call();
-
-                if let Some(var) = var {
-                    diag.with_related(Related::new(
-                        format!("'{}' is declared here", var.name_with_case(db).text(db)),
-                        var.scope_id(db).file(db),
-                        var.get_span(db),
-                    ));
-                }
 
                 diag
             }
@@ -509,8 +430,8 @@ impl<'db> ToIdeDiagnostic<'db> for CallError<'db> {
                     .call();
 
                 if let Type::FunctionBlock(_) = typ {
-                    diag.with_note(
-                        "to call a FUNCTION_BLOCK, you need to instantiate it first.".into(),
+                    diag.with_help(
+                        "declare an instance of the FUNCTION_BLOCK and call the instance".into(),
                     );
                 }
 
@@ -539,30 +460,39 @@ impl<'db> ToIdeDiagnostic<'db> for CallError<'db> {
 
                 for c in candidates {
                     diag.with_related(Related::new(
-                        "candidate overload declared here".to_string(),
+                        "a candidate is declared here".to_string(),
                         c.get_scope_id(db).file(db),
-                        c.get_span(db),
+                        c.get_name_span(db),
                     ));
                 }
-                diag.with_note(match why {
-                    Ambiguity::Return => "they differ only in their return type, and nothing here \
-                        expects one: assign the call to a variable of the type you want"
-                        .to_string(),
-                    Ambiguity::Null => "NULL is a reference of any type: pass a variable of the \
-                        reference type you want"
-                        .to_string(),
-                    Ambiguity::Implementer { instance } => format!(
-                        "'{}' implements the interface each one takes, and nothing converts it \
-                         to one of them",
-                        instance.type_name(db)
+                let (note, help) = match why {
+                    Ambiguity::Return => (
+                        "the overloads differ only in their return type, and nothing here expects one"
+                            .to_string(),
+                        Some("assign the call to a variable of that type"),
                     ),
-                    Ambiguity::Widening => "an argument widens to each of them: a typed literal \
-                        or a conversion picks one, such as `DINT#5` or `INT_TO_DINT(x)`"
-                        .to_string(),
-                    Ambiguity::Defaults => "they differ only in inputs this call leaves to their \
-                        defaults: passing one of those picks an overload"
-                        .to_string(),
-                });
+                    Ambiguity::Null => (
+                        "NULL is a reference of any type".to_string(),
+                        Some("pass a variable of the reference type"),
+                    ),
+                    Ambiguity::Implementer { instance } => (
+                        format!(
+                            "'{}' implements the interface each overload takes",
+                            instance.type_name(db)
+                        ),
+                        None,
+                    ),
+                    Ambiguity::Widening => (
+                        "an argument widens to each overload".to_string(),
+                        Some("pick one with a typed literal or a conversion, such as `DINT#5` or `INT_TO_DINT(x)`"),
+                    ),
+                    Ambiguity::Defaults => (
+                        "the overloads differ only in inputs this call leaves to their defaults"
+                            .to_string(),
+                        Some("pass one of those inputs to pick an overload"),
+                    ),
+                };
+                diag.with_advice(Some(note), help);
                 match by_name.as_slice() {
                     [] if matches!(why, Ambiguity::Implementer { .. }) => {
                         diag.with_note(
@@ -623,41 +553,45 @@ impl<'db> ToIdeDiagnostic<'db> for CallError<'db> {
                     diag.with_related(Related::new(
                         format!("overload accepting ({})", names(&params)),
                         c.get_scope_id(db).file(db),
-                        c.get_span(db),
+                        c.get_name_span(db),
                     ));
                 }
                 diag
             }
             Self::NonVariadicTypeForVariable { var, typ } => {
                 let mut diag = diag()
-                    .message(format!(
-                        "variable '{}' is declared as variadic but has non-variadic type '{}'",
-                        var.name_with_case(db).text(db),
-                        typ.type_name(db)
-                    ))
+                    .message(format!("'{}' cannot be variadic", typ.type_name(db)))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(crate::denormalize(db, file, &var.get_span(db)).unwrap_or_default())
+                    .range(
+                        crate::denormalize(db, file, &var.spec(db).get_span(db))
+                            .unwrap_or_default(),
+                    )
                     .call();
 
-                diag.with_note("only elementary types can be variadic".into());
+                diag.with_note("only an elementary type can be variadic".into());
                 diag
             }
             Self::MultipleVariadicVariables { first, second } => {
                 let mut diag = diag()
-                    .message("only one variadic variable is allowed per POU".to_string())
+                    .message(format!(
+                        "'{}' is a second variadic parameter",
+                        second.name_with_case(db).text(db)
+                    ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(crate::denormalize(db, file, &second.get_span(db)).unwrap_or_default())
+                    .range(
+                        crate::denormalize(db, file, &second.get_name_span(db)).unwrap_or_default(),
+                    )
                     .call();
 
                 diag.with_related(Related::new(
                     format!(
-                        "first variadic variable '{}' declared here",
+                        "first variadic parameter '{}' is declared here",
                         first.name_with_case(db).text(db)
                     ),
                     first.scope_id(db).file(db),
-                    first.get_span(db),
+                    first.get_name_span(db),
                 ));
                 diag
             }
@@ -668,7 +602,7 @@ impl<'db> ToIdeDiagnostic<'db> for CallError<'db> {
             } => {
                 let mut diag = diag()
                     .message(format!(
-                        "call to '{}' must pass at least one argument to variadic parameter '{}'",
+                        "the call to '{}' passes no argument to the variadic parameter '{}'",
                         func.get_name_with_case(db).text(db),
                         var.name_with_case(db).text(db),
                     ))
@@ -682,11 +616,11 @@ impl<'db> ToIdeDiagnostic<'db> for CallError<'db> {
 
                 diag.with_related(Related::new(
                     format!(
-                        "variadic parameter '{}' declared here",
+                        "variadic parameter '{}' is declared here",
                         var.name_with_case(db).text(db)
                     ),
                     var.scope_id(db).file(db),
-                    var.get_span(db),
+                    var.get_name_span(db),
                 ));
 
                 diag
@@ -710,17 +644,18 @@ impl<'db> ToIdeDiagnostic<'db> for CallError<'db> {
                         diag.with_related(Related::new(
                             format!("the variadic parameter here is '{pack_name}'"),
                             pack.scope_id(db).file(db),
-                            pack.get_span(db),
+                            pack.get_name_span(db),
                         ));
                         diag.with_note(format!(
                             "a fold reads it: `...{pack_name}+` adds every argument the call passed"
                         ));
                     }
-                    None => diag.with_note(
-                        "a fold reads the variadic parameter of its FUNCTION or METHOD, declared \
-                         as `values : INT...` in VAR_INPUT; this one has none"
-                            .into(),
-                    ),
+                    None => {
+                        diag.with_note("the POU declares no variadic parameter".to_string());
+                        diag.with_help(
+                            "declare one in VAR_INPUT, as `values : INT...`".to_string(),
+                        );
+                    }
                 }
                 diag
             }
@@ -737,11 +672,13 @@ impl<'db> ToIdeDiagnostic<'db> for CallError<'db> {
                 diag.with_related(Related::new(
                     format!("'{name}' is declared variadic here"),
                     var.scope_id(db).file(db),
-                    var.get_span(db),
+                    var.get_name_span(db),
                 ));
-                diag.with_note(format!(
-                    "a pack is as many parameters as the call passed, which only a fold reads: \
-                     `...{name}+` adds them, `...{name}=` compares them"
+                diag.with_note(
+                    "a pack stands for as many parameters as the call passed".to_string(),
+                );
+                diag.with_help(format!(
+                    "read it with a fold: `...{name}+` adds them, `...{name}=` compares them"
                 ));
                 diag
             }

@@ -25,7 +25,7 @@ END_VAR
 END_FUNCTION_BLOCK
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "variable-method-name"), @r"
-    [L0120] Warning: a variable and a method share a name
+    [L0120] Warning: variable and method with the same name
         ,-[ file:///test0.st:11:19 ]
         |
       9 |     step : Inner;
@@ -60,7 +60,7 @@ END_VAR
 END_FUNCTION_BLOCK
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "variable-method-name"), @r"
-    [L0120] Warning: a variable and a method share a name
+    [L0120] Warning: variable and method with the same name
         ,-[ file:///test0.st:10:5 ]
         |
       3 |     METHOD PUBLIC Run : INT
@@ -94,7 +94,7 @@ CLASS Derived EXTENDS Base
 END_CLASS
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "variable-method-name"), @r"
-    [L0120] Warning: a variable and a method share a name
+    [L0120] Warning: variable and method with the same name
        ,-[ file:///test0.st:9:19 ]
        |
      4 |     speed : INT;

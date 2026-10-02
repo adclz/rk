@@ -125,12 +125,10 @@ pub fn suggest_similar_note<'a>(
     }
 
     let display_count = collected.len().min(5);
-    let mut note = format!(
-        "'{}' has {}{} with similar name:\n",
-        owner_name,
-        noun,
-        if display_count > 1 { "s" } else { "" }
-    );
+    let mut note = match display_count {
+        1 => format!("'{owner_name}' has a {noun} with a similar name:\n"),
+        _ => format!("'{owner_name}' has {noun}s with similar names:\n"),
+    };
 
     for (i, name) in collected.iter().take(display_count).enumerate() {
         if i > 0 {

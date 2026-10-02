@@ -21,7 +21,7 @@ END_FUNCTION
        |
      4 |     x := x * 1;
        |          ^^|^^
-       |            `---- '* 1' has no effect, the result is always the same as the other operand
+       |            `---- '* 1' has no effect
        |
        | Note: lint rule: identity-operation
     ---'
@@ -42,7 +42,7 @@ END_FUNCTION
        |
      4 |     x := 1 * x;
        |          ^^|^^
-       |            `---- '1 *' has no effect, the result is always the same as the other operand
+       |            `---- '1 *' has no effect
        |
        | Note: lint rule: identity-operation
     ---'
@@ -63,7 +63,7 @@ END_FUNCTION
        |
      4 |     x := x / 1;
        |          ^^|^^
-       |            `---- '/ 1' has no effect, the result is always the same as the other operand
+       |            `---- '/ 1' has no effect
        |
        | Note: lint rule: identity-operation
     ---'
@@ -84,7 +84,7 @@ END_FUNCTION
        |
      4 |     x := x + 0;
        |          ^^|^^
-       |            `---- '+ 0' has no effect, the result is always the same as the other operand
+       |            `---- '+ 0' has no effect
        |
        | Note: lint rule: identity-operation
     ---'
@@ -105,7 +105,7 @@ END_FUNCTION
        |
      4 |     x := 0 + x;
        |          ^^|^^
-       |            `---- '0 +' has no effect, the result is always the same as the other operand
+       |            `---- '0 +' has no effect
        |
        | Note: lint rule: identity-operation
     ---'
@@ -126,7 +126,7 @@ END_FUNCTION
        |
      4 |     x := x - 0;
        |          ^^|^^
-       |            `---- '- 0' has no effect, the result is always the same as the other operand
+       |            `---- '- 0' has no effect
        |
        | Note: lint rule: identity-operation
     ---'
@@ -147,7 +147,7 @@ END_FUNCTION
        |
      4 |     x := x * 1.0;
        |          ^^^|^^^
-       |             `----- '* 1' has no effect, the result is always the same as the other operand
+       |             `----- '* 1' has no effect
        |
        | Note: lint rule: identity-operation
     ---'
@@ -168,7 +168,7 @@ END_FUNCTION
        |
      4 |     x := x * INT#1;
        |          ^^^^|^^^^
-       |              `------ '* 1' has no effect, the result is always the same as the other operand
+       |              `------ '* 1' has no effect
        |
        | Note: lint rule: identity-operation
     ---'

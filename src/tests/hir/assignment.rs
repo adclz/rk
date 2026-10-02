@@ -26,7 +26,7 @@ END_FUNCTION_BLOCK"#;
        |
      4 |         test: INT;
        |         ^^|^
-       |           `--- type is declared by variable 'test' here
+       |           `--- 'test' is declared here
        |
      7 |     test := ULINT#5;
        |             ^^^|^^^
@@ -53,12 +53,12 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0317] Error: semantic violation
+    [E0317] Error: type name used as a value
        ,-[ file:///test0.st:8:5 ]
        |
      8 |     fb2 := ULINT#5;
        |     ^|^
-       |      `--- cannot use direct type 'fb2' here
+       |      `--- 'fb2' is not a value
     ---'
     ");
 }
@@ -78,7 +78,7 @@ END_FUNCTION"#;
        |
      2 | FUNCTION fn1 : INT
        |          ^|^
-       |           `--- FUNCTION 'fn1' is defined here, with return type 'INT'
+       |           `--- FUNCTION 'fn1' is declared here, with return type 'INT'
        |
      4 |     fn1 := ULINT#5;
        |            ^^^|^^^
@@ -101,16 +101,16 @@ FUNCTION fn1
 END_FUNCTION"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0319] Error: semantic violation
+    [E0319] Error: assignment to a missing return value
        ,-[ file:///test0.st:4:5 ]
        |
      2 | FUNCTION fn1
        |          ^|^
-       |           `--- FUNCTION 'fn1' is defined here
+       |           `--- FUNCTION 'fn1' is declared here
        |
      4 |     fn1 := ULINT#5;
        |     ^|^
-       |      `--- 'fn1' is void and can not be assigned
+       |      `--- 'fn1' has no return value to assign
     ---'
     ");
 }
@@ -129,12 +129,12 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0317] Error: semantic violation
+    [E0317] Error: type name used as a value
        ,-[ file:///test0.st:8:5 ]
        |
      8 |     T1 := ULINT#5;
        |     ^|
-       |      `-- cannot use direct type 'T1' here
+       |      `-- 'T1' is not a value
     ---'
     ");
 }
@@ -156,12 +156,14 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0318] Error: semantic violation
+    [E0318] Error: assignment to an instance
         ,-[ file:///test0.st:11:5 ]
         |
      11 |     d_fb2 := ULINT#5;
         |     ^^|^^
-        |       `---- 'fb2' is a callable type and can not be assigned
+        |       `---- an instance of 'fb2' cannot be assigned
+        |
+        | Help: pass the instance as a VAR_IN_OUT, or assign its members one by one
     ----'
     ");
 }
@@ -182,12 +184,14 @@ VAR a : Sensor; b : Sensor; END_VAR
 END_FUNCTION_BLOCK
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0318] Error: semantic violation
+    [E0318] Error: assignment to an instance
        ,-[ file:///test0.st:8:5 ]
        |
      8 |     b := a;
        |     |
-       |     `-- 'Sensor' is a CLASS and can not be assigned
+       |     `-- an instance of 'Sensor' cannot be assigned
+       |
+       | Help: pass the instance as a VAR_IN_OUT, or assign its members one by one
     ---'
     ");
 }
@@ -229,7 +233,7 @@ END_FUNCTION_BLOCK"#;
         |
       8 |         test: INT;
         |         ^^|^
-        |           `--- type is declared by variable 'test' here
+        |           `--- 'test' is declared here
         |
      11 |     test := fn1();
         |             ^^|^^
@@ -260,7 +264,7 @@ END_FUNCTION_BLOCK"#;
         |
       8 |         test: INT;
         |         ^^|^
-        |           `--- type is declared by variable 'test' here
+        |           `--- 'test' is declared here
         |
      11 |     test := fn1();
         |             ^^|^^
@@ -291,7 +295,7 @@ END_FUNCTION_BLOCK"#;
        |
      4 |         test: INT;
        |         ^^|^
-       |           `--- type is declared by variable 'test' here
+       |           `--- 'test' is declared here
        |
      7 |     test := TRUE AND FALSE;
        |             ^^^^^^^|^^^^^^
@@ -363,7 +367,7 @@ END_FUNCTION_BLOCK"#;
         |
       6 |         result: INT;
         |         ^^^|^^
-        |            `---- type is declared by variable 'result' here
+        |            `---- 'result' is declared here
         |
      10 |     result := (a < b);
         |               ^^^|^^^
@@ -391,12 +395,12 @@ PROGRAM A
 END_PROGRAM"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0317] Error: semantic violation
+    [E0317] Error: type name used as a value
         ,-[ file:///test0.st:10:10 ]
         |
      10 |     x := Motor;
         |          ^^|^^
-        |            `---- cannot use direct type 'Motor' here
+        |            `---- 'Motor' is not a value
     ----'
     ");
 }
@@ -416,12 +420,12 @@ PROGRAM A
 END_PROGRAM"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0317] Error: semantic violation
+    [E0317] Error: type name used as a value
         ,-[ file:///test0.st:10:10 ]
         |
      10 |     x := ClBase;
         |          ^^^|^^
-        |             `---- cannot use direct type 'ClBase' here
+        |             `---- 'ClBase' is not a value
     ----'
     ");
 }
@@ -438,12 +442,12 @@ PROGRAM A
 END_PROGRAM"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0317] Error: semantic violation
+    [E0317] Error: type name used as a value
        ,-[ file:///test0.st:6:8 ]
        |
      6 |     IF Motor THEN
        |        ^^|^^
-       |          `---- cannot use direct type 'Motor' here
+       |          `---- 'Motor' is not a value
     ---'
     ");
 }
@@ -463,12 +467,12 @@ PROGRAM A
 END_PROGRAM"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0317] Error: semantic violation
+    [E0317] Error: type name used as a value
         ,-[ file:///test0.st:10:14 ]
         |
      10 |     x := 5 + Motor;
         |              ^^|^^
-        |                `---- cannot use direct type 'Motor' here
+        |                `---- 'Motor' is not a value
     ----'
     ");
 }
@@ -522,7 +526,7 @@ END_FUNCTION
 "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0404] Error: semantic violation
+    [E0404] Error: write to a constant
         ,-[ file:///test0.st:11:5 ]
         |
       4 |         A: REAL := 3.90802E-3;
@@ -533,7 +537,9 @@ END_FUNCTION
         |     |
         |     `-- cannot write to constant 'A'
         |
-        | Note: a CONSTANT keeps the value it is declared with; copy it into a variable to change the copy
+        | Help: copy it into a variable to change the copy
+        |
+        | Note: a CONSTANT keeps the value it is declared with
     ----'
     ");
 }
@@ -588,7 +594,7 @@ END_FUNCTION
 "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0404] Error: semantic violation
+    [E0404] Error: write to a constant
         ,-[ file:///test0.st:19:5 ]
         |
      16 |     p : Pt := (x := 1);
@@ -599,9 +605,11 @@ END_FUNCTION
         |     ^|^
         |      `--- cannot write to 'p.x' in constant 'p'
         |
-        | Note: a CONSTANT keeps the value it is declared with; copy it into a variable to change the copy
+        | Help: copy it into a variable to change the copy
+        |
+        | Note: a CONSTANT keeps the value it is declared with
     ----'
-    [E0404] Error: semantic violation
+    [E0404] Error: write to a constant
         ,-[ file:///test0.st:20:5 ]
         |
      14 | VAR_EXTERNAL CONSTANT G : Pt; END_VAR
@@ -612,9 +620,11 @@ END_FUNCTION
         |     ^|^
         |      `--- cannot write to 'G.x' in constant 'G'
         |
-        | Note: a CONSTANT keeps the value it is declared with; copy it into a variable to change the copy
+        | Help: copy it into a variable to change the copy
+        |
+        | Note: a CONSTANT keeps the value it is declared with
     ----'
-    [E0404] Error: semantic violation
+    [E0404] Error: write to a constant
         ,-[ file:///test0.st:21:5 ]
         |
      17 |     arr : ARRAY[0..1] OF INT := [1, 2];
@@ -625,9 +635,11 @@ END_FUNCTION
         |     ^^^|^^
         |        `---- cannot write to 'arr[0]' in constant 'arr'
         |
-        | Note: a CONSTANT keeps the value it is declared with; copy it into a variable to change the copy
+        | Help: copy it into a variable to change the copy
+        |
+        | Note: a CONSTANT keeps the value it is declared with
     ----'
-    [E0404] Error: semantic violation
+    [E0404] Error: write to a constant
         ,-[ file:///test0.st:22:14 ]
         |
      16 |     p : Pt := (x := 1);
@@ -638,9 +650,11 @@ END_FUNCTION
         |              ^|^
         |               `--- cannot write to 'p.x' in constant 'p'
         |
-        | Note: a CONSTANT keeps the value it is declared with; copy it into a variable to change the copy
+        | Help: copy it into a variable to change the copy
+        |
+        | Note: a CONSTANT keeps the value it is declared with
     ----'
-    [E0404] Error: semantic violation
+    [E0404] Error: write to a constant
         ,-[ file:///test0.st:23:14 ]
         |
      17 |     arr : ARRAY[0..1] OF INT := [1, 2];
@@ -651,7 +665,9 @@ END_FUNCTION
         |              ^^^|^^
         |                 `---- cannot write to 'arr[1]' in constant 'arr'
         |
-        | Note: a CONSTANT keeps the value it is declared with; copy it into a variable to change the copy
+        | Help: copy it into a variable to change the copy
+        |
+        | Note: a CONSTANT keeps the value it is declared with
     ----'
     ");
 }
@@ -695,7 +711,7 @@ END_PROGRAM
 "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0404] Error: semantic violation
+    [E0404] Error: write to a constant
         ,-[ file:///test0.st:26:15 ]
         |
      21 |     k : INT := 1;
@@ -706,9 +722,11 @@ END_PROGRAM
         |               |
         |               `-- cannot pass constant 'k' to a VAR_IN_OUT
         |
-        | Note: a VAR_IN_OUT could change it; pass it to a VAR_INPUT, or copy it into a variable and pass that
+        | Help: pass it to a VAR_INPUT, or copy it into a variable and pass that
+        |
+        | Note: a VAR_IN_OUT could change it
     ----'
-    [E0404] Error: semantic violation
+    [E0404] Error: write to a constant
         ,-[ file:///test0.st:27:10 ]
         |
      19 | VAR_EXTERNAL CONSTANT LIMIT : INT; END_VAR
@@ -719,9 +737,11 @@ END_PROGRAM
         |          ^^|^^
         |            `---- cannot pass constant 'LIMIT' to a VAR_IN_OUT
         |
-        | Note: a VAR_IN_OUT could change it; pass it to a VAR_INPUT, or copy it into a variable and pass that
+        | Help: pass it to a VAR_INPUT, or copy it into a variable and pass that
+        |
+        | Note: a VAR_IN_OUT could change it
     ----'
-    [E0404] Error: semantic violation
+    [E0404] Error: write to a constant
         ,-[ file:///test0.st:28:12 ]
         |
      22 |     arr : ARRAY[0..1] OF INT := [1, 2];
@@ -732,9 +752,11 @@ END_PROGRAM
         |            ^^^|^^
         |               `---- cannot pass 'arr[0]' in constant 'arr' to a VAR_IN_OUT
         |
-        | Note: a VAR_IN_OUT could change it; pass it to a VAR_INPUT, or copy it into a variable and pass that
+        | Help: pass it to a VAR_INPUT, or copy it into a variable and pass that
+        |
+        | Note: a VAR_IN_OUT could change it
     ----'
-    [E0404] Error: semantic violation
+    [E0404] Error: write to a constant
         ,-[ file:///test0.st:29:15 ]
         |
      23 |     p : Pt := (x := 1);
@@ -745,9 +767,11 @@ END_PROGRAM
         |               ^|^
         |                `--- cannot pass 'p.x' in constant 'p' to a VAR_IN_OUT
         |
-        | Note: a VAR_IN_OUT could change it; pass it to a VAR_INPUT, or copy it into a variable and pass that
+        | Help: pass it to a VAR_INPUT, or copy it into a variable and pass that
+        |
+        | Note: a VAR_IN_OUT could change it
     ----'
-    [E0404] Error: semantic violation
+    [E0404] Error: write to a constant
         ,-[ file:///test0.st:30:14 ]
         |
      21 |     k : INT := 1;
@@ -758,9 +782,11 @@ END_PROGRAM
         |              |
         |              `-- cannot take a reference to constant 'k'
         |
-        | Note: a reference could change it; copy it into a variable and take the reference of that
+        | Help: copy it into a variable and take the reference of that
+        |
+        | Note: a reference could change it
     ----'
-    [E0404] Error: semantic violation
+    [E0404] Error: write to a constant
         ,-[ file:///test0.st:31:14 ]
         |
      23 |     p : Pt := (x := 1);
@@ -771,7 +797,9 @@ END_PROGRAM
         |              ^|^
         |               `--- cannot take a reference to 'p.x' in constant 'p'
         |
-        | Note: a reference could change it; copy it into a variable and take the reference of that
+        | Help: copy it into a variable and take the reference of that
+        |
+        | Note: a reference could change it
     ----'
     ");
 }
@@ -813,7 +841,7 @@ END_FUNCTION
 "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0404] Error: semantic violation
+    [E0404] Error: write to a constant
        ,-[ file:///test0.st:7:9 ]
        |
      4 |     k : INT := 1;
@@ -824,9 +852,11 @@ END_FUNCTION
        |         |
        |         `-- cannot write to constant 'k'
        |
-       | Note: a CONSTANT keeps the value it is declared with; copy it into a variable to change the copy
+       | Help: copy it into a variable to change the copy
+       |
+       | Note: a CONSTANT keeps the value it is declared with
     ---'
-    [E0404] Error: semantic violation
+    [E0404] Error: write to a constant
         ,-[ file:///test0.st:10:5 ]
         |
       5 |     MASK : WORD := 16#00FF;
@@ -837,7 +867,9 @@ END_FUNCTION
         |     ^^^|^^
         |        `---- cannot write to 'MASK.3' in constant 'MASK'
         |
-        | Note: a CONSTANT keeps the value it is declared with; copy it into a variable to change the copy
+        | Help: copy it into a variable to change the copy
+        |
+        | Note: a CONSTANT keeps the value it is declared with
     ----'
     ");
 }
@@ -875,41 +907,49 @@ END_PROGRAM
 "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0404] Error: semantic violation
+    [E0404] Error: write to a constant
         ,-[ file:///test0.st:21:5 ]
         |
      21 |     f : Fb;
         |     |
         |     `-- instance 'f' of 'Fb' cannot be CONSTANT
         |
-        | Note: an instance changes when it runs; declare it in a VAR section without CONSTANT
+        | Help: declare it in a VAR section without CONSTANT
+        |
+        | Note: an instance changes when it runs
     ----'
-    [E0404] Error: semantic violation
+    [E0404] Error: write to a constant
         ,-[ file:///test0.st:22:5 ]
         |
      22 |     c : Counter;
         |     |
         |     `-- instance 'c' of 'Counter' cannot be CONSTANT
         |
-        | Note: an instance changes when it runs; declare it in a VAR section without CONSTANT
+        | Help: declare it in a VAR section without CONSTANT
+        |
+        | Note: an instance changes when it runs
     ----'
-    [E0404] Error: semantic violation
+    [E0404] Error: write to a constant
         ,-[ file:///test0.st:23:5 ]
         |
      23 |     many : ARRAY[0..1] OF Fb;
         |     ^^|^
         |       `--- array 'many' of 'Fb' instances cannot be CONSTANT
         |
-        | Note: an instance changes when it runs; declare it in a VAR section without CONSTANT
+        | Help: declare it in a VAR section without CONSTANT
+        |
+        | Note: an instance changes when it runs
     ----'
-    [E0404] Error: semantic violation
+    [E0404] Error: write to a constant
         ,-[ file:///test0.st:16:21 ]
         |
      16 | VAR_GLOBAL CONSTANT shared : Fb; END_VAR
         |                     ^^^|^^
         |                        `---- instance 'shared' of 'Fb' cannot be CONSTANT
         |
-        | Note: an instance changes when it runs; declare it in a VAR section without CONSTANT
+        | Help: declare it in a VAR section without CONSTANT
+        |
+        | Note: an instance changes when it runs
     ----'
     ");
 }
@@ -939,7 +979,7 @@ END_PROGRAM
 "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0404] Error: semantic violation
+    [E0404] Error: write to a constant
         ,-[ file:///test0.st:11:33 ]
         |
      10 | VAR_EXTERNAL CONSTANT LIMIT : INT; END_VAR
@@ -949,9 +989,11 @@ END_PROGRAM
         |                                 ^^|^^
         |                                   `---- cannot take a reference to constant 'LIMIT'
         |
-        | Note: a reference could change it; copy it into a variable and take the reference of that
+        | Help: copy it into a variable and take the reference of that
+        |
+        | Note: a reference could change it
     ----'
-    [E0404] Error: semantic violation
+    [E0404] Error: write to a constant
         ,-[ file:///test0.st:17:31 ]
         |
      16 | VAR_EXTERNAL CONSTANT LIMIT : INT; END_VAR
@@ -961,9 +1003,11 @@ END_PROGRAM
         |                               ^^|^^
         |                                 `---- cannot take a reference to constant 'LIMIT'
         |
-        | Note: a reference could change it; copy it into a variable and take the reference of that
+        | Help: copy it into a variable and take the reference of that
+        |
+        | Note: a reference could change it
     ----'
-    [E0404] Error: semantic violation
+    [E0404] Error: write to a constant
        ,-[ file:///test0.st:6:29 ]
        |
      5 | VAR_GLOBAL CONSTANT LIMIT : INT := 10; END_VAR
@@ -973,7 +1017,9 @@ END_PROGRAM
        |                             ^^|^^
        |                               `---- cannot take a reference to constant 'LIMIT'
        |
-       | Note: a reference could change it; copy it into a variable and take the reference of that
+       | Help: copy it into a variable and take the reference of that
+       |
+       | Note: a reference could change it
     ---'
     ");
 }

@@ -177,13 +177,19 @@ pub fn partly_located_in_struct<'db>(
     for element in &strukt.elements(db) {
         let field = element_of(element.spec(db).infer(db).normalize(db));
         let inner = match pou_of_type(db, field) {
-            Some(pou) => partly_located_members(db, pou)
-                .first()
-                .and_then(|path| Some((path.iter().map(|v| v.name(db)).collect(), *path.last()?))),
+            Some(pou) => partly_located_members(db, pou).first().and_then(|path| {
+                Some((
+                    path.iter().map(|v| v.name_with_case(db)).collect(),
+                    *path.last()?,
+                ))
+            }),
             None => partly_located_in_struct(db, field, visited),
         };
-        if let Some((mut names, var)) = inner {
-            names.insert(0, element.name(db));
+        if let Some((rest, var)) = inner {
+            // The path shown, from this field down.
+            let names = std::iter::once(element.name_with_case(db))
+                .chain(rest)
+                .collect();
             found = Some((names, var));
             break;
         }

@@ -23,7 +23,7 @@ END_FUNCTION
        |
      6 |     test := x = x;
        |             ^^|^^
-       |               `---- 'x' is compared to itself with '=', result is always TRUE
+       |               `---- 'x' is compared to itself with '=': the result is always TRUE
        |
        | Note: lint rule: self-comparison
     ---'
@@ -46,7 +46,7 @@ END_FUNCTION
        |
      6 |     test := x <> x;
        |             ^^^|^^
-       |                `---- 'x' is compared to itself with '<>', result is always FALSE
+       |                `---- 'x' is compared to itself with '<>': the result is always FALSE
        |
        | Note: lint rule: self-comparison
     ---'
@@ -69,7 +69,7 @@ END_FUNCTION
        |
      6 |     test := x > x;
        |             ^^|^^
-       |               `---- 'x' is compared to itself with '>', result is always FALSE
+       |               `---- 'x' is compared to itself with '>': the result is always FALSE
        |
        | Note: lint rule: self-comparison
     ---'
@@ -92,7 +92,7 @@ END_FUNCTION
        |
      6 |     test := x <= x;
        |             ^^^|^^
-       |                `---- 'x' is compared to itself with '<=', result is always TRUE
+       |                `---- 'x' is compared to itself with '<=': the result is always TRUE
        |
        | Note: lint rule: self-comparison
     ---'
@@ -117,7 +117,7 @@ END_FUNCTION
        |
      6 |     IF x = x THEN
        |        ^^|^^
-       |          `---- 'x' is compared to itself with '=', result is always TRUE
+       |          `---- 'x' is compared to itself with '=': the result is always TRUE
        |
        | Note: lint rule: self-comparison
     ---'
@@ -172,7 +172,7 @@ fn a_float_against_itself_is_a_nan_test(mut with_db: RootDatabase) {
        |
      8 |             f := n <> n;
        |                  ^^^|^^
-       |                     `---- 'n' is compared to itself with '<>', result is always FALSE
+       |                     `---- 'n' is compared to itself with '<>': the result is always FALSE
        |
        | Note: lint rule: self-comparison
     ---'

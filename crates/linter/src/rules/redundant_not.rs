@@ -18,10 +18,6 @@ impl ErrorCode for RedundantNot {
     fn code(&self) -> &'static str {
         "L0210"
     }
-
-    fn description(&self) -> &'static str {
-        "redundant NOT"
-    }
 }
 
 pub fn check_node<'db>(

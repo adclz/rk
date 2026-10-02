@@ -18,10 +18,6 @@ impl ErrorCode for EmptyIfBranch {
     fn code(&self) -> &'static str {
         "L0306"
     }
-
-    fn description(&self) -> &'static str {
-        "empty IF branch"
-    }
 }
 
 pub fn check_if<'db>(

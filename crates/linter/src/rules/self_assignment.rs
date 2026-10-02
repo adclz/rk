@@ -27,10 +27,6 @@ impl ErrorCode for SelfAssignment {
     fn code(&self) -> &'static str {
         "L0104"
     }
-
-    fn description(&self) -> &'static str {
-        "self-assignment"
-    }
 }
 
 pub fn check<'db>(

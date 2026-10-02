@@ -34,10 +34,6 @@ impl ErrorCode for NegativeRadixLiteral {
     fn code(&self) -> &'static str {
         "L0123"
     }
-
-    fn description(&self) -> &'static str {
-        "radix literal is negative"
-    }
 }
 
 /// Every untyped radix literal of `scope`, in its body and in its
@@ -105,13 +101,15 @@ pub fn check<'db>(
 
         let range = hir::denormalize(db, file, &expr.get_span(db)).unwrap_or_default();
         let mut diagnostic = diag()
-            .message(format!(
-                "'{text}' is the {type_name} {value}: a radix literal is a bit pattern, and the top bit is the sign"
-            ))
+            .message(format!("'{text}' is the {type_name} {value}"))
             .desc(&NegativeRadixLiteral)
             .range(range)
             .severity(DiagnosticSeverity::WARNING)
             .call();
+        diagnostic.with_note(
+            "a radix literal is a bit pattern, with its top bit the sign of a signed type"
+                .to_string(),
+        );
         diagnostic.with_fix(CodeAction {
             title: format!("write {replacement}"),
             edit: Some(WorkspaceEdit::new(HashMap::from([(

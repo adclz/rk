@@ -153,12 +153,14 @@ FUNCTION_BLOCK fb1
     END_VAR
 END_FUNCTION_BLOCK"#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0306] Error: invalid literal
+    [E0306] Error: literal out of range
        ,-[ file:///test0.st:4:30 ]
        |
      4 |         x : DATE_AND_TIME := DT#1500-01-01-00:00:00;
        |                              ^^^^^^^^^^^|^^^^^^^^^^
-       |                                         `------------ cannot infer 'DT literal' to 'DT': DT value is below the supported minimum; DT holds DT#1677-09-21-00:12:44 to DT#2262-04-11-23:47:16
+       |                                         `------------ DT value is below the supported minimum
+       |
+       | Note: DT holds DT#1677-09-21-00:12:44 to DT#2262-04-11-23:47:16
     ---'
     ");
 }
@@ -172,12 +174,14 @@ FUNCTION_BLOCK fb1
     END_VAR
 END_FUNCTION_BLOCK"#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0306] Error: invalid literal
+    [E0306] Error: literal out of range
        ,-[ file:///test0.st:4:30 ]
        |
      4 |         x : DATE_AND_TIME := DT#2500-01-01-00:00:00;
        |                              ^^^^^^^^^^^|^^^^^^^^^^
-       |                                         `------------ cannot infer 'DT literal' to 'DT': DT value exceeds the supported maximum; DT holds DT#1677-09-21-00:12:44 to DT#2262-04-11-23:47:16
+       |                                         `------------ DT value exceeds the supported maximum
+       |
+       | Note: DT holds DT#1677-09-21-00:12:44 to DT#2262-04-11-23:47:16
     ---'
     ");
 }
@@ -218,12 +222,14 @@ FUNCTION_BLOCK fb1
     END_VAR
 END_FUNCTION_BLOCK"#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0306] Error: invalid literal
+    [E0306] Error: literal out of range
        ,-[ file:///test0.st:4:31 ]
        |
      4 |         x : LDATE_AND_TIME := LDT#3000-01-01-00:00:00;
        |                               ^^^^^^^^^^^|^^^^^^^^^^^
-       |                                          `------------- cannot infer 'LDT literal' to 'LDT': LDT value exceeds the supported maximum; LDT holds LDT#1677-09-21-00:12:43.145224192 to LDT#2262-04-11-23:47:16.854775807
+       |                                          `------------- LDT value exceeds the supported maximum
+       |
+       | Note: LDT holds LDT#1677-09-21-00:12:43.145224192 to LDT#2262-04-11-23:47:16.854775807
     ---'
     ");
 }
@@ -237,12 +243,14 @@ FUNCTION_BLOCK fb1
     END_VAR
 END_FUNCTION_BLOCK"#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0306] Error: invalid literal
+    [E0306] Error: literal out of range
        ,-[ file:///test0.st:4:31 ]
        |
      4 |         x : LDATE_AND_TIME := LDT#1500-01-01-00:00:00;
        |                               ^^^^^^^^^^^|^^^^^^^^^^^
-       |                                          `------------- cannot infer 'LDT literal' to 'LDT': LDT value is below the supported minimum; LDT holds LDT#1677-09-21-00:12:43.145224192 to LDT#2262-04-11-23:47:16.854775807
+       |                                          `------------- LDT value is below the supported minimum
+       |
+       | Note: LDT holds LDT#1677-09-21-00:12:43.145224192 to LDT#2262-04-11-23:47:16.854775807
     ---'
     ");
 }
@@ -256,12 +264,14 @@ FUNCTION_BLOCK fb1
     END_VAR
 END_FUNCTION_BLOCK"#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0312] Error: invalid literal
+    [E0312] Error: malformed date and time
        ,-[ file:///test0.st:4:30 ]
        |
      4 |         x : DATE_AND_TIME := DT#garbage;
        |                              ^^^^^|^^^^
-       |                                   `------ cannot infer 'DT literal' to 'DT': expected the form DT#1984-06-25-15:36:55; DT is written DT#2025-01-31-12:30:00
+       |                                   `------ 'garbage' has none of the components of a DT
+       |
+       | Note: DT is written DT#2025-01-31-12:30:00
     ---'
     ");
 }

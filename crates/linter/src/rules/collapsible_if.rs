@@ -21,10 +21,6 @@ impl ErrorCode for CollapsibleIf {
     fn code(&self) -> &'static str {
         "L0312"
     }
-
-    fn description(&self) -> &'static str {
-        "collapsible IF statements"
-    }
 }
 
 pub fn check_if<'db>(

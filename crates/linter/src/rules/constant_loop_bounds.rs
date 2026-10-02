@@ -15,10 +15,6 @@ impl ErrorCode for ConstantLoopBounds {
     fn code(&self) -> &'static str {
         "L0111"
     }
-
-    fn description(&self) -> &'static str {
-        "constant FOR loop bounds"
-    }
 }
 
 pub fn check<'db>(
@@ -35,9 +31,7 @@ pub fn check<'db>(
     if start_text.to_lowercase() == end_text.to_lowercase() {
         diagnostics.push(
             diag()
-                .message(format!(
-                    "FOR loop bounds are equal (both {start_text}), loop body executes exactly once"
-                ))
+                .message(format!("both bounds are {start_text}: the body runs once"))
                 .desc(&ConstantLoopBounds)
                 .range(
                     hir::denormalize(db, start.get_scope_id(db).file(db), &start.get_span(db))

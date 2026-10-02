@@ -275,16 +275,18 @@ END_FUNCTION
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0308] Error: invalid literal
+    [E0308] Error: literal of the wrong kind
        ,-[ file:///test0.st:7:13 ]
        |
      4 |        test: ARRAY[0..2] OF BOOL;
        |        ^^|^
-       |          `--- type is declared by variable 'test' here
+       |          `--- 'test' is declared here
        |
      7 |     test[0] := 0.5;
        |                ^|^
-       |                 `--- cannot infer '<float>' to 'BOOL': invalid boolean literal; BOOL is TRUE or FALSE
+       |                 `--- invalid boolean literal
+       |
+       | Note: BOOL is TRUE or FALSE
     ---'
     ");
     let file = *with_db.get_files().iter().last().unwrap();
@@ -322,21 +324,19 @@ END_FUNCTION
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0202] Error: no such field
+    [E0202] Error: unknown field
         ,-[ file:///test0.st:14:7 ]
         |
-      3 | ,->     STRUCT
-        : :
-      6 | |->     END_STRUCT
-        | |
-        | `-------------------- type is defined by 'Engine' here
+      2 | TYPE Engine:
+        |      ^^^|^^
+        |         `---- 'Engine' is declared here
         |
-     14 |         test.powerr := 0.2;
-        |              ^^^|^^
-        |                 `---- 'Engine' has no field named 'powerr'
+     14 |     test.powerr := 0.2;
+        |          ^^^|^^
+        |             `---- 'Engine' has no field named 'powerr'
         |
-        |     Note: 'Engine' has field with similar name:
-        |           - power
+        | Note: 'Engine' has a field with a similar name:
+        |       - power
     ----'
     ");
 }
@@ -362,16 +362,18 @@ END_FUNCTION
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0308] Error: invalid literal
+    [E0308] Error: literal of the wrong kind
         ,-[ file:///test0.st:14:16 ]
         |
       4 |         power : INT;
         |         ^^|^^
-        |           `---- type is defined by struct field 'power' here
+        |           `---- field 'power' is declared here
         |
      14 |     test.power := 0.2;
         |                   ^|^
-        |                    `--- cannot infer '<float>' to 'INT': invalid INT literal; INT takes a whole number, written like 42 or 16#2A
+        |                    `--- invalid INT literal
+        |
+        | Note: INT takes a whole number, written like 42 or 16#2A
     ----'
     ");
 }
@@ -397,7 +399,7 @@ END_FUNCTION
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0508] Error: invalid operation
+    [E0508] Error: index into a non-array type
         ,-[ file:///test0.st:14:2 ]
         |
      14 |     test[0] := 0.2;
@@ -421,12 +423,12 @@ END_FUNCTION
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0202] Error: no such field
+    [E0202] Error: unknown field
        ,-[ file:///test0.st:7:7 ]
        |
      4 |        test: ARRAY[0..1] OF INT;
        |        ^^|^
-       |          `--- type is declared by variable 'test' here
+       |          `--- 'test' is declared here
        |
      7 |     test.not_a_field := 0.2;
        |          ^^^^^|^^^^^
@@ -448,7 +450,7 @@ FUNCTION fn0
 END_FUNCTION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0203] Error: no namespace item found
+    [E0203] Error: unknown name in a namespace
        ,-[ file:///test0.st:4:15 ]
        |
      4 |         test: unknown;
@@ -511,14 +513,16 @@ FUNCTION fn0
 END_FUNCTION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0404] Error: semantic violation
+    [E0404] Error: write to a constant
        ,-[ file:///test0.st:9:5 ]
        |
      9 |     MY_STRUCT.field1 := 42;
        |     ^^^^^^^^|^^^^^^^
        |             `--------- cannot write to constant 'MY_STRUCT.field1'
        |
-       | Note: a CONSTANT keeps the value it is declared with; copy it into a variable to change the copy
+       | Help: copy it into a variable to change the copy
+       |
+       | Note: a CONSTANT keeps the value it is declared with
     ---'
     ");
 }
@@ -572,14 +576,16 @@ END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0404] Error: semantic violation
+    [E0404] Error: write to a constant
         ,-[ file:///test0.st:19:21 ]
         |
      19 |     consumer(val := MY_CONSTANTS.MAX_VAL);
         |                     ^^^^^^^^^^|^^^^^^^^^
         |                               `----------- cannot pass constant 'MY_CONSTANTS.MAX_VAL' to a VAR_IN_OUT
         |
-        | Note: a VAR_IN_OUT could change it; pass it to a VAR_INPUT, or copy it into a variable and pass that
+        | Help: pass it to a VAR_INPUT, or copy it into a variable and pass that
+        |
+        | Note: a VAR_IN_OUT could change it
     ----'
     ");
 }
@@ -609,14 +615,16 @@ END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0404] Error: semantic violation
+    [E0404] Error: write to a constant
         ,-[ file:///test0.st:19:14 ]
         |
      19 |     consumer(MY_CONSTANTS.MAX_VAL);
         |              ^^^^^^^^^^|^^^^^^^^^
         |                        `----------- cannot pass constant 'MY_CONSTANTS.MAX_VAL' to a VAR_IN_OUT
         |
-        | Note: a VAR_IN_OUT could change it; pass it to a VAR_INPUT, or copy it into a variable and pass that
+        | Help: pass it to a VAR_INPUT, or copy it into a variable and pass that
+        |
+        | Note: a VAR_IN_OUT could change it
     ----'
     ");
 }
@@ -633,15 +641,15 @@ END_VAR
     x := UNKNOWN_TYPE.field1;
 END_FUNCTION
 "#;
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r#"
-    [E0201] Error: no item found in scope
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0201] Error: unknown name
        ,-[ file:///test0.st:6:10 ]
        |
      6 |     x := UNKNOWN_TYPE.field1;
        |          ^^^^^^|^^^^^
-       |                `------- no item "UNKNOWN_TYPE" found in scope
+       |                `------- no item 'UNKNOWN_TYPE' found in scope
     ---'
-    "#);
+    ");
 }
 
 #[rstest]
@@ -741,12 +749,12 @@ END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0101] Error: duplicate definitions
+    [E0101] Error: duplicate variable
         ,-[ file:///test0.st:10:5 ]
         |
       4 |     X : REAL;
         |     |
-        |     `-- variable 'X' is already defined here
+        |     `-- variable 'X' is already declared here
         |
      10 |     x : REAL;
         |     |
@@ -814,12 +822,12 @@ fn invalid_this_path_bad_final_field(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0202] Error: no such field
+    [E0202] Error: unknown field
        ,-[ file:///test0.st:8:20 ]
        |
      2 |         TYPE Pt : STRUCT x : DINT; END_STRUCT; END_TYPE
-       |                   ^^^^^^^^^^^^^|^^^^^^^^^^^^^
-       |                                `--------------- type is defined by 'Pt' here
+       |              ^|
+       |               `-- 'Pt' is declared here
        |
      8 |             THIS.p.zz := 8;
        |                    ^|
@@ -862,7 +870,9 @@ END_PROGRAM
        |         ^^^|^^^
        |            `----- VAR_TEMP 'scratch' of 'Fb' cannot be used in a METHOD
        |
-       | Note: a VAR_TEMP belongs to the body that declares it; declare one in the METHOD
+       | Help: declare one in the METHOD
+       |
+       | Note: a VAR_TEMP belongs to the body that declares it
     ---'
     [E0209] Error: variable out of reach
        ,-[ file:///test0.st:7:23 ]
@@ -929,7 +939,9 @@ END_PROGRAM
         |            |
         |            `-- VAR_EXTERNAL 'g' of 'Fb' cannot be reached through an instance
         |
-        | Note: it names the VAR_GLOBAL 'g'; declare that global VAR_EXTERNAL where it is used
+        | Help: declare that global VAR_EXTERNAL where it is used
+        |
+        | Note: it names the VAR_GLOBAL 'g', which no instance holds
     ----'
     [E0209] Error: variable out of reach
         ,-[ file:///test0.st:18:14 ]
@@ -942,7 +954,9 @@ END_PROGRAM
         |              ^|^
         |               `--- 'loc' of METHOD 'M' cannot be reached from outside it
         |
-        | Note: a METHOD's variables exist only while it runs; it hands out its result, and its outputs through '=>' in the call
+        | Help: take its result from the call, and its outputs with '=>'
+        |
+        | Note: a METHOD's variables exist only while it runs
     ----'
     ");
 }
@@ -1014,7 +1028,9 @@ END_PROGRAM
         |          ^^^|^^^
         |             `----- VAR_TEMP 'scratch' of 'Fb' cannot be used in a derived block
         |
-        | Note: a VAR_TEMP belongs to the body that declares it; declare one in the derived block, as SUPER() runs the body of 'Fb' with its own
+        | Help: declare one in the derived block
+        |
+        | Note: SUPER() runs the body of 'Fb' with that body's own VAR_TEMPs
     ----'
     [E0209] Error: variable out of reach
         ,-[ file:///test0.st:10:14 ]
@@ -1027,7 +1043,9 @@ END_PROGRAM
         |              ^^^|^^^
         |                 `----- VAR_TEMP 'scratch' of 'Fb' cannot be used in a derived block
         |
-        | Note: a VAR_TEMP belongs to the body that declares it; declare one in the derived block, as SUPER() runs the body of 'Fb' with its own
+        | Help: declare one in the derived block
+        |
+        | Note: SUPER() runs the body of 'Fb' with that body's own VAR_TEMPs
     ----'
     [E0209] Error: variable out of reach
         ,-[ file:///test0.st:17:12 ]

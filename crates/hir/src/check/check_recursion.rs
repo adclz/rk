@@ -132,7 +132,7 @@ impl<'db> TypeDependencyGraph<'db> {
                         field_ty,
                         deps,
                         callsites,
-                        CallSite::from_scoped(db, &field),
+                        CallSite::from_scoped(db, &field.spec(db)),
                     );
                 }
             }

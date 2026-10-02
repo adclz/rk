@@ -79,14 +79,14 @@ END_FUNCTION
 "#,
     ];
     assert_snapshot!(test_single_lint(&mut with_db, sources, "unused-import"), @r"
-    [E0205] Error: multiple items in scope
+    [E0205] Error: ambiguous name
        ,-[ file:///test1.st:5:13 ]
        |
      5 |     test := helper();
        |             ^^^|^^
        |                `---- multiple items named 'helper' available in scope
        |
-       | Note: qualify the name to resolve the ambiguity: Tools.helper or Utils.helper
+       | Help: qualify the name: Tools.helper or Utils.helper
     ---'
     [L0301] Hint: unused import
        ,-[ file:///test1.st:3:11 ]

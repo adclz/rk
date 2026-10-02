@@ -15,10 +15,6 @@ impl ErrorCode for EmptyCaseBranch {
     fn code(&self) -> &'static str {
         "L0307"
     }
-
-    fn description(&self) -> &'static str {
-        "empty CASE branch"
-    }
 }
 
 /// Check a CASE statement's branches for empty bodies.

@@ -105,7 +105,7 @@ END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "missing-return"), @r"
-    [E0107] Error: duplicate definitions
+    [E0107] Error: return value declared again
        ,-[ file:///test0.st:4:5 ]
        |
      4 |     MyFn : INT;

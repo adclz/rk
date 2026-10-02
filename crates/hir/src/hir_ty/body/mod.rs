@@ -412,8 +412,9 @@ fn init_ref_null_states<'db>(
                         NullState::NonNull
                     }
                 }
+                // The declaration is its name: that is what the report points at.
                 None => NullState::Uninitialized(NullOrigin {
-                    site: var.as_call_site(db),
+                    site: CallSite::new(var.get_scope_id(db), crate::HasName::get_name_id(var, db)),
                     var: *var,
                 }),
             };

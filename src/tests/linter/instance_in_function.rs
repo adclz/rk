@@ -23,11 +23,11 @@ END_CLASS
 #[rstest]
 #[case::var(
     "FUNCTION f : INT VAR i : Motor; END_VAR f := 1; END_FUNCTION",
-    "'i' holds a FUNCTION_BLOCK instance, which starts over at every call of the FUNCTION"
+    "'i' holds a FUNCTION_BLOCK instance, made afresh by each call of the FUNCTION"
 )]
 #[case::var_class(
     "FUNCTION f : INT VAR i : Sensor; END_VAR f := 1; END_FUNCTION",
-    "'i' holds a CLASS instance, which starts over at every call of the FUNCTION"
+    "'i' holds a CLASS instance, made afresh by each call of the FUNCTION"
 )]
 #[case::temp(
     "FUNCTION f : INT VAR_TEMP i : Motor; END_VAR f := 1; END_FUNCTION",
@@ -47,7 +47,7 @@ END_CLASS
 )]
 #[case::method_var(
     "FUNCTION_BLOCK H METHOD PUBLIC M : INT VAR i : Motor; END_VAR M := 1; END_METHOD END_FUNCTION_BLOCK",
-    "'i' holds a FUNCTION_BLOCK instance, which starts over at every call of the METHOD"
+    "'i' holds a FUNCTION_BLOCK instance, made afresh by each call of the METHOD"
 )]
 #[case::returned(
     "FUNCTION f : Motor END_FUNCTION",
@@ -124,7 +124,7 @@ END_FUNCTION
        |
      7 | VAR t : TON_ms; END_VAR
        |     |
-       |     `-- 't' holds a FUNCTION_BLOCK instance, which starts over at every call of the FUNCTION
+       |     `-- 't' holds a FUNCTION_BLOCK instance, made afresh by each call of the FUNCTION
        |
        | Note 1: FUNCTIONs and METHODs are stateless
        |

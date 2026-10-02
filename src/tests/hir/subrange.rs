@@ -17,14 +17,14 @@ fn invalid_subrange_type(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0701] Error: invalid subrange type
+    [E0701] Error: subrange base type not an integer
        ,-[ file:///test0.st:3:20 ]
        |
      3 |             Range: BOOL (0..5);
        |                    ^^|^
-       |                      `--- Invalid subrange type 'BOOL'
+       |                      `--- 'BOOL' is not an integer type
        |
-       | Note: only numeric integer types are allowed for SUBRANGE
+       | Note: a subrange is a range of an integer type
     ---'
     ");
 }
@@ -38,12 +38,14 @@ fn invalid_start_value(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0307] Error: invalid literal
+    [E0307] Error: negative literal for an unsigned type
        ,-[ file:///test0.st:3:26 ]
        |
      3 |             Range: UINT (-10..0);
        |                          ^|^
-       |                           `--- cannot infer '<integer>' to 'UINT': UINT cannot be negative; UINT is unsigned; use INT, or drop the sign
+       |                           `--- the value is negative and UINT is unsigned
+       |
+       | Help: use INT, or drop the sign
     ---'
     ");
 }
@@ -57,12 +59,14 @@ fn invalid_end_value(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0307] Error: invalid literal
+    [E0307] Error: negative literal for an unsigned type
        ,-[ file:///test0.st:3:29 ]
        |
      3 |             Range: UINT (0..-5);
        |                             ^|
-       |                              `-- cannot infer '<integer>' to 'UINT': UINT cannot be negative; UINT is unsigned; use INT, or drop the sign
+       |                              `-- the value is negative and UINT is unsigned
+       |
+       | Help: use INT, or drop the sign
     ---'
     ");
 }
@@ -85,16 +89,18 @@ fn invalid_subrange_value_type(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0307] Error: invalid literal
+    [E0307] Error: negative literal for an unsigned type
         ,-[ file:///test0.st:11:22 ]
         |
       3 |             Range: UINT (0..5);
-        |                    ^^^^^|^^^^^
-        |                         `------- type is defined by 'Range' here
+        |             ^^|^^
+        |               `---- 'Range' is declared here
         |
      11 |             test :=  -1 // -1 should not be allowed here (UINT)
         |                      ^|
-        |                       `-- cannot infer '<integer>' to 'UINT': UINT cannot be negative; UINT is unsigned; use INT, or drop the sign
+        |                       `-- the value is negative and UINT is unsigned
+        |
+        | Help: use INT, or drop the sign
     ----'
     ");
 }
@@ -130,7 +136,7 @@ VAR p : INT (0..100); END_VAR
 END_PROGRAM
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0702] Error: value outside subrange
+    [E0702] Error: value outside the subrange
        ,-[ file:///test0.st:4:10 ]
        |
      4 |     p := 101;
@@ -151,7 +157,7 @@ VAR p : INT (0..100); END_VAR
 END_PROGRAM
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0702] Error: value outside subrange
+    [E0702] Error: value outside the subrange
        ,-[ file:///test0.st:4:10 ]
        |
      4 |     p := -1;
@@ -174,15 +180,17 @@ VAR u : UINT (0..5); END_VAR
 END_PROGRAM
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0307] Error: invalid literal
+    [E0307] Error: negative literal for an unsigned type
        ,-[ file:///test0.st:4:10 ]
        |
      3 | VAR u : UINT (0..5); END_VAR
        |     |
-       |     `-- type is declared by variable 'u' here
+       |     `-- 'u' is declared here
      4 |     u := -1;
        |          ^|
-       |           `-- cannot infer '<integer>' to 'UINT': UINT cannot be negative; UINT is unsigned; use INT, or drop the sign
+       |           `-- the value is negative and UINT is unsigned
+       |
+       | Help: use INT, or drop the sign
     ---'
     ");
 }
@@ -215,7 +223,7 @@ VAR p : INT (0..100) := 200; END_VAR
 END_PROGRAM
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0702] Error: value outside subrange
+    [E0702] Error: value outside the subrange
        ,-[ file:///test0.st:3:25 ]
        |
      3 | VAR p : INT (0..100) := 200; END_VAR
@@ -242,7 +250,7 @@ VAR r : INT; END_VAR
 END_PROGRAM
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0702] Error: value outside subrange
+    [E0702] Error: value outside the subrange
        ,-[ file:///test0.st:9:20 ]
        |
      9 |     r := take(p := 200);
@@ -285,7 +293,7 @@ VAR a : ARRAY[0..3] OF INT (0..100); END_VAR
 END_PROGRAM
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0702] Error: value outside subrange
+    [E0702] Error: value outside the subrange
        ,-[ file:///test0.st:5:13 ]
        |
      5 |     a[1] := 200;
@@ -337,12 +345,12 @@ fn invalid_subrange_bound_not_constant(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0703] Error: invalid subrange bound
+    [E0703] Error: subrange bound not constant
        ,-[ file:///test0.st:3:34 ]
        |
      3 |         VAR n : INT; x : INT (0..n); END_VAR
        |                                  |
-       |                                  `-- a subrange bound must evaluate to a constant at compile time
+       |                                  `-- the bound is not a compile-time constant
     ---'
     ");
 }
@@ -358,7 +366,7 @@ fn invalid_value_outside_constant_bounds(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0702] Error: value outside subrange
+    [E0702] Error: value outside the subrange
        ,-[ file:///test0.st:4:31 ]
        |
      4 |         VAR x : INT (0..K) := 9; END_VAR
@@ -669,7 +677,7 @@ END_FUNCTION
         |
       7 |         q : REF_TO Small; p : REF_TO INT; r : REF_TO REAL;
         |                                           |
-        |                                           `-- type is declared by variable 'r' here
+        |                                           `-- 'r' is declared here
         |
      13 |     r := REF(s);
         |          ^^^|^^
@@ -688,7 +696,7 @@ fn invalid_subrange_type_default_out_of_bounds(mut with_db: RootDatabase) {
         END_TYPE
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0702] Error: value outside subrange
+    [E0702] Error: value outside the subrange
        ,-[ file:///test0.st:3:35 ]
        |
      3 |             Pct : INT (0..100) := 200;
@@ -711,7 +719,7 @@ fn invalid_reversed_bounds(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0705] Error: empty subrange
+    [E0705] Error: subrange bounds reversed
        ,-[ file:///test0.st:3:30 ]
        |
      3 |             Level : INT (10..1);

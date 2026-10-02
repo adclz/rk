@@ -79,16 +79,6 @@ impl<'db> ErrorCode for SubRangeError<'db> {
             Self::ReversedBounds { .. } => "E0705",
         }
     }
-
-    fn description(&self) -> &'static str {
-        match self {
-            Self::InvalidSubrangeType { .. } => "invalid subrange type",
-            Self::ValueOutOfRange { .. } => "value outside subrange",
-            Self::BoundNotConstant { .. } => "invalid subrange bound",
-            Self::ByRefSubrangeMismatch { .. } => "subrange mismatch across a reference",
-            Self::ReversedBounds { .. } => "empty subrange",
-        }
-    }
 }
 
 impl<'db> ToIdeDiagnostic<'db> for SubRangeError<'db> {
@@ -100,13 +90,13 @@ impl<'db> ToIdeDiagnostic<'db> for SubRangeError<'db> {
         match self {
             SubRangeError::InvalidSubrangeType { spec, typ } => {
                 let mut diag = diag()
-                    .message(format!("Invalid subrange type '{}'", typ.type_name(db)))
+                    .message(format!("'{}' is not an integer type", typ.type_name(db)))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
                     .range(crate::denormalize(db, file, &spec.get_span(db)).unwrap_or_default())
                     .call();
 
-                diag.with_note("only numeric integer types are allowed for SUBRANGE".to_string());
+                diag.with_note("a subrange is a range of an integer type".to_string());
 
                 diag
             }
@@ -132,7 +122,7 @@ impl<'db> ToIdeDiagnostic<'db> for SubRangeError<'db> {
                 diag
             }
             SubRangeError::BoundNotConstant { value } => diag()
-                .message("a subrange bound must evaluate to a constant at compile time".to_string())
+                .message("the bound is not a compile-time constant".to_string())
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
                 .range(crate::denormalize(db, file, &value.get_span(db)).unwrap_or_default())

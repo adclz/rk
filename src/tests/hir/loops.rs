@@ -29,7 +29,7 @@ END_FUNCTION_BLOCK"#;
        |
      4 |         I: INT;
        |         |
-       |         `-- type is declared by variable 'I' here
+       |         `-- 'I' is declared here
        |
      8 |     FOR I := O TO 10 DO
        |              |
@@ -58,16 +58,16 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0302] Error: type mismatch
+    [E0302] Error: types not comparable
        ,-[ file:///test0.st:8:20 ]
        |
      4 |         I: INT;
        |         |
-       |         `-- type is declared by variable 'I' here
+       |         `-- 'I' is declared here
        |
      8 |     FOR I := 10 TO O DO
        |                    |
-       |                    `-- can't compare 'INT' with 'BOOL'
+       |                    `-- cannot compare 'INT' with 'BOOL'
        |                    |
        |                    `-- consider explicitly casting with 'BOOL_TO_INT(O)'
        |
@@ -92,31 +92,31 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0302] Error: type mismatch
+    [E0302] Error: types not comparable
        ,-[ file:///test0.st:8:25 ]
        |
      4 |         I: INT;
        |         |
-       |         `-- type is declared by variable 'I' here
+       |         `-- 'I' is declared here
        |
      8 |     FOR I := 0 TO 10 BY O DO
        |                         |
-       |                         `-- can't compare 'INT' with 'BOOL'
+       |                         `-- cannot compare 'INT' with 'BOOL'
        |                         |
        |                         `-- consider explicitly casting with 'BOOL_TO_INT(O)'
        |
        | Help: insert explicit cast 'BOOL_TO_INT(O)'
     ---'
-    [E1204] Error: control flow violation
+    [E1204] Error: FOR step not a nonzero constant
        ,-[ file:///test0.st:8:25 ]
        |
      5 |         O: BOOL;
-       |         ^^^|^^^
-       |            `----- declaring 'O' CONSTANT would let the step fold
+       |         |
+       |         `-- 'O' is declared here, not CONSTANT
        |
      8 |     FOR I := 0 TO 10 BY O DO
        |                         |
-       |                         `-- a FOR step must evaluate to a constant at compile time
+       |                         `-- the step is not a compile-time constant
     ---'
     ");
 }
@@ -258,16 +258,16 @@ fn invalid_for_step_not_constant(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1204] Error: control flow violation
+    [E1204] Error: FOR step not a nonzero constant
        ,-[ file:///test0.st:5:32 ]
        |
      3 |         VAR i : INT; n : INT; END_VAR
-       |                      ^^^|^^^
-       |                         `----- declaring 'n' CONSTANT would let the step fold
+       |                      |
+       |                      `-- 'n' is declared here, not CONSTANT
        |
      5 |             FOR i := 5 TO 1 BY n DO
        |                                |
-       |                                `-- a FOR step must evaluate to a constant at compile time
+       |                                `-- the step is not a compile-time constant
     ---'
     ");
 }
@@ -282,7 +282,7 @@ fn invalid_for_step_zero(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1204] Error: control flow violation
+    [E1204] Error: FOR step not a nonzero constant
        ,-[ file:///test0.st:4:32 ]
        |
      4 |             FOR i := 1 TO 3 BY 0 DO
@@ -317,12 +317,12 @@ fn invalid_for_step_indexed_gets_no_advice(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1204] Error: control flow violation
+    [E1204] Error: FOR step not a nonzero constant
        ,-[ file:///test0.st:4:32 ]
        |
      4 |             FOR i := 5 TO 1 BY arr[j] DO
        |                                ^^^|^^
-       |                                   `---- a FOR step must evaluate to a constant at compile time
+       |                                   `---- the step is not a compile-time constant
     ---'
     ");
 }
@@ -338,7 +338,7 @@ fn invalid_for_step_folds_to_zero(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1204] Error: control flow violation
+    [E1204] Error: FOR step not a nonzero constant
        ,-[ file:///test0.st:4:32 ]
        |
      4 |             FOR i := 1 TO 3 BY 2 - 2 DO
@@ -359,7 +359,7 @@ fn invalid_for_step_constant_folds_to_zero(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1204] Error: control flow violation
+    [E1204] Error: FOR step not a nonzero constant
        ,-[ file:///test0.st:5:32 ]
        |
      5 |             FOR i := 1 TO 3 BY K DO
@@ -417,12 +417,12 @@ fn invalid_for_step_nonconstant_operand(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1204] Error: control flow violation
+    [E1204] Error: FOR step not a nonzero constant
        ,-[ file:///test0.st:4:32 ]
        |
      4 |             FOR i := 1 TO 5 BY n + 1 DO
        |                                ^^|^^
-       |                                  `---- a FOR step must evaluate to a constant at compile time
+       |                                  `---- the step is not a compile-time constant
     ---'
     ");
 }
@@ -486,14 +486,14 @@ fn a_for_loop_counts_in_an_integer_rendering(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1206] Error: FOR counter is not an integer
+    [E1206] Error: FOR counter not an integer
        ,-[ file:///test0.st:4:17 ]
        |
      4 |             FOR b := FALSE TO TRUE DO
        |                 |
-       |                 `-- 'b' is 'BOOL', and a FOR loop counts in an integer
+       |                 `-- 'b' is 'BOOL', not an integer
        |
-       | Note: declare the counter as SINT, INT, DINT or LINT, or an unsigned one
+       | Help: declare the counter as SINT, INT, DINT or LINT, or an unsigned one
     ---'
     ");
 }
@@ -511,15 +511,17 @@ fn invalid_negative_step_through_a_sign(mut with_db: RootDatabase) {
     "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0307] Error: invalid literal
+    [E0307] Error: negative literal for an unsigned type
        ,-[ file:///test0.st:4:32 ]
        |
      3 |         VAR i : UDINT; END_VAR
        |             |
-       |             `-- type is declared by variable 'i' here
+       |             `-- 'i' is declared here
      4 |             FOR i := 5 TO 1 BY -(1) DO
        |                                ^^|^
-       |                                  `--- cannot infer '<unary expression>' to 'UDINT': UDINT cannot be negative; UDINT is unsigned; use DINT, or drop the sign
+       |                                  `--- the value is negative and UDINT is unsigned
+       |
+       | Help: use DINT, or drop the sign
     ---'
     ");
 }

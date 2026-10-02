@@ -27,10 +27,6 @@ impl ErrorCode for MissingInputParam {
     fn code(&self) -> &'static str {
         "L0303"
     }
-
-    fn description(&self) -> &'static str {
-        "missing input parameter"
-    }
 }
 
 pub fn check_func_call<'db>(
@@ -104,7 +100,7 @@ pub fn check_func_call<'db>(
     let file = callable.get_scope_id(db).file(db);
     for var in &missing {
         d.with_related(Related::new(
-            format!("'{}' declared here", var.name_with_case(db).text(db)),
+            format!("'{}' is declared here", var.name_with_case(db).text(db)),
             file,
             var.get_span(db),
         ));

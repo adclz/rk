@@ -32,14 +32,14 @@ fn fuzzy_struct_fields(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0202] Error: no such field
+    [E0202] Error: unknown field
         ,-[ file:///test0.st:15:49 ]
         |
      15 |                 Base : Engine := (power := 100, fuel := 10.0);
         |                                                 ^^^^^^|^^^^^
         |                                                       `------- 'Engine' has no field named 'fuel'
         |
-        | Note: 'Engine' has fields with similar name:
+        | Note: 'Engine' has fields with similar names:
         |       - fuel1
         |       - fuel2
         |       - fuel3
@@ -63,18 +63,18 @@ fn fuzzy_pou_local_variables(mut with_db: RootDatabase) {
         END_FUNCTION_BLOCK
         "#;
 
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r#"
-    [E0201] Error: no item found in scope
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0201] Error: unknown name
        ,-[ file:///test0.st:9:13 ]
        |
      9 |             engine := ULINT#5;
        |             ^^^|^^
-       |                `---- no item "engine" found in scope
+       |                `---- no item 'engine' found in scope
        |
-       | Note: 'fb1' has item with similar name:
+       | Note: 'fb1' has a item with a similar name:
        |       - engine2
     ---'
-    "#);
+    ");
 }
 
 #[rstest]
@@ -97,19 +97,19 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK
         "#;
 
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r#"
-    [E0201] Error: no item found in scope
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0201] Error: unknown name
         ,-[ file:///test0.st:14:2 ]
         |
      14 |     fn();
         |     ^|
-        |      `-- no item "fn" found in scope
+        |      `-- no item 'fn' found in scope
         |
         | Note: items with similar names are available, but need to be imported:
         |       - 'fn' via USING System
         |       - 'fn2' via USING System
     ----'
-    "#);
+    ");
 }
 
 // same test as above but with multiple items with similar name to check that the error message is not duplicated
@@ -134,29 +134,29 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK
         "#;
 
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r#"
-    [E0102] Error: duplicate definitions
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0102] Error: duplicate POU
        ,-[ file:///test0.st:7:11 ]
        |
      3 |     FUNCTION fn
        |              ^|
-       |               `-- POU 'fn' is already defined here
+       |               `-- POU 'fn' is already declared here
        |
      7 |     FUNCTION fn
        |              ^|
        |               `-- duplicate POU 'fn'
     ---'
-    [E0201] Error: no item found in scope
+    [E0201] Error: unknown name
         ,-[ file:///test0.st:14:2 ]
         |
      14 |     fn();
         |     ^|
-        |      `-- no item "fn" found in scope
+        |      `-- no item 'fn' found in scope
         |
         | Note: an item with a similar name is available, but needs to be imported:
         |       - 'fn' via USING System
     ----'
-    "#);
+    ");
 }
 
 #[rstest]
@@ -173,18 +173,18 @@ FUNCTION fn2
 END_FUNCTION
     "#;
 
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r#"
-    [E0201] Error: no item found in scope
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0201] Error: unknown name
        ,-[ file:///test0.st:8:5 ]
        |
      8 |     f();
        |     |
-       |     `-- no item "f" found in scope
+       |     `-- no item 'f' found in scope
        |
-       | Note: an item with similar name available in scope:
+       | Note: an item with a similar name is in scope:
        |       - fn
     ---'
-    "#);
+    ");
 }
 
 /// A note offers what looks like the name, not every name that contains its
@@ -207,18 +207,18 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK
 "#;
 
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r#"
-    [E0201] Error: no item found in scope
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0201] Error: unknown name
         ,-[ file:///test0.st:12:5 ]
         |
      12 |     fa();
         |     ^|
-        |      `-- no item "fa" found in scope
+        |      `-- no item 'fa' found in scope
         |
         | Note: an item with a similar name is available, but needs to be imported:
         |       - 'fab' via USING Std.Unit.Test
     ----'
-    "#);
+    ");
 }
 
 #[rstest]
@@ -237,7 +237,7 @@ END_FUNCTION_BLOCK
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0203] Error: no namespace item found
+    [E0203] Error: unknown name in a namespace
        ,-[ file:///test0.st:8:17 ]
        |
      8 |         engine: Engine;
@@ -266,16 +266,16 @@ END_FUNCTION_BLOCK
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0203] Error: no namespace item found
+    [E0203] Error: unknown name in a namespace
        ,-[ file:///test0.st:8:11 ]
        |
      8 |        engine: System;
        |                ^^^|^^
        |                   `---- no item found for path 'System'
        |
-       | Note: namespace named 'System' exists but it cannot be used as an item, you can either:
-       |       - Import the namespace via an USING directive: 'USING System'
-       |       - Import an item from this namespace: 'System.<POU>'
+       | Help: import it with 'USING System', or name an item of it, as 'System.<POU>'
+       |
+       | Note: 'System' is a namespace, not an item
     ---'
     ");
 }
@@ -304,18 +304,16 @@ fn fuzzy_struct_path_expr(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0202] Error: no such field
+    [E0202] Error: unknown field
         ,-[ file:///test0.st:15:15 ]
         |
-      3 | ,->             STRUCT
-        : :
-      7 | |->             END_STRUCT
-        | |
-        | `---------------------------- type is defined by 'Engine' here
+      2 |         TYPE Engine:
+        |              ^^^|^^
+        |                 `---- 'Engine' is declared here
         |
-     15 |                 e.fule1 := 1.0;
-        |                   ^^|^^
-        |                     `---- 'Engine' has no field named 'fule1'
+     15 |             e.fule1 := 1.0;
+        |               ^^|^^
+        |                 `---- 'Engine' has no field named 'fule1'
     ----'
     ");
 }
@@ -344,12 +342,12 @@ fn fuzzy_fb_fields(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0202] Error: no such field
+    [E0202] Error: unknown field
         ,-[ file:///test0.st:16:15 ]
         |
       2 |         FUNCTION_BLOCK Motor
         |                        ^^|^^
-        |                          `---- FUNCTION_BLOCK 'Motor' is defined here
+        |                          `---- FUNCTION_BLOCK 'Motor' is declared here
         |
      16 |             m.speeed := 100;
         |               ^^^|^^
@@ -381,18 +379,18 @@ fn fuzzy_class_fields(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0202] Error: no such field
+    [E0202] Error: unknown field
         ,-[ file:///test0.st:15:15 ]
         |
       2 |         CLASS Pump
         |               ^^|^
-        |                 `--- CLASS 'Pump' is defined here
+        |                 `--- CLASS 'Pump' is declared here
         |
      15 |             p.presure := 1.0;
         |               ^^^|^^^
         |                  `----- 'Pump' has no field named 'presure'
         |
-        | Note: 'Pump' has field with similar name:
+        | Note: 'Pump' has a field with a similar name:
         |       - pressure
     ----'
     ");
@@ -415,14 +413,14 @@ END_FUNCTION_BLOCK
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0803] Error: function call parameter mismatch
+    [E0803] Error: unknown input parameter
         ,-[ file:///test0.st:11:5 ]
         |
      11 |     fn(param := 0);
         |        ^^|^^
         |          `---- unknown input parameter 'param'
         |
-        | Note: 'fn' has parameters with similar name:
+        | Note: 'fn' has parameters with similar names:
         |       - param1
         |       - param2
     ----'
@@ -430,17 +428,17 @@ END_FUNCTION_BLOCK
         ,-[ file:///test0.st:11:2 ]
         |
       4 |        param1: INT;
-        |        ^^^^^|^^^^^
-        |             `------- parameter 'param1' declared here
+        |        ^^^|^^
+        |           `---- parameter 'param1' is declared here
       5 |        param2: REAL;
-        |        ^^^^^^|^^^^^
-        |              `------- parameter 'param2' declared here
+        |        ^^^|^^
+        |           `---- parameter 'param2' is declared here
         |
      11 |     fn(param := 0);
         |     ^|
         |      `-- call to 'fn' is missing 2 required parameters: 'param1', 'param2'
         |
-        | Note: VAR_INPUT on FUNCTION/METHOD parameters must be supplied unless the declaration provides a scalar default value
+        | Note: a FUNCTION or METHOD call supplies every VAR_INPUT without a default
     ----'
     ");
 }
@@ -465,14 +463,14 @@ END_FUNCTION_BLOCK
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0804] Error: function call parameter mismatch
+    [E0804] Error: unknown output parameter
         ,-[ file:///test0.st:14:5 ]
         |
      14 |     fn(param => param_out);
         |        ^^|^^
         |          `---- unknown output parameter 'param'
         |
-        | Note: 'fn' has parameters with similar name:
+        | Note: 'fn' has parameters with similar names:
         |       - param1
         |       - param2
     ----'

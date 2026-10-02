@@ -20,10 +20,6 @@ impl ErrorCode for IdentityOperation {
     fn code(&self) -> &'static str {
         "L0107"
     }
-
-    fn description(&self) -> &'static str {
-        "identity operation"
-    }
 }
 
 pub fn check_node<'db>(
@@ -79,9 +75,7 @@ fn emit<'db>(
 ) {
     diagnostics.push(
         diag()
-            .message(format!(
-                "'{op_desc}' has no effect, the result is always the same as the other operand"
-            ))
+            .message(format!("'{op_desc}' has no effect"))
             .desc(&IdentityOperation)
             .range(
                 hir::denormalize(db, expr.get_scope_id(db).file(db), &expr.get_span(db))

@@ -19,10 +19,6 @@ impl ErrorCode for BoolComparison {
     fn code(&self) -> &'static str {
         "L0209"
     }
-
-    fn description(&self) -> &'static str {
-        "comparison with boolean literal"
-    }
 }
 
 /// Check a single node (no recursion) for `x = TRUE`, `x = FALSE`, `x <> TRUE`, `x <> FALSE`.

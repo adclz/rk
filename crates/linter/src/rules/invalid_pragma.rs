@@ -21,10 +21,6 @@ impl ErrorCode for InvalidPragma {
     fn code(&self) -> &'static str {
         "L0003"
     }
-
-    fn description(&self) -> &'static str {
-        "invalid pragma for this POU"
-    }
 }
 
 pub fn check<'db>(
@@ -50,7 +46,7 @@ pub fn check<'db>(
             // merely warn.
             Pragma::Test(_) => (false, ""),
             Pragma::Once(_) => match kind {
-                ScopeKind::Program(_) => (true, "{once} is not valid on PROGRAM"),
+                ScopeKind::Program(_) => (true, "{once} has no effect on a PROGRAM"),
                 _ => (false, ""),
             },
             // Position legality for {export} is a compiler ERROR (E1508):

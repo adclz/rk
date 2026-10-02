@@ -6,6 +6,7 @@ use crate::HasName;
 use crate::HirNodeInfo;
 use crate::check::errors::ToIdeDiagnostic;
 use crate::hir_def::expressions::spec::Spec;
+use crate::hir_def::interned::identifier::Ident;
 use crate::hir_def::interned::identifier::SpanIdent;
 use crate::hir_def::pous::function::Function;
 use crate::hir_def::pous::variable::VariableDecl;
@@ -92,7 +93,7 @@ impl ExportForbiddenKind {
         match self {
             Self::Extern => "an {extern} FUNCTION is an import, it has no body to export",
             Self::Test => {
-                "a {test} FUNCTION is already exported for `rk test`, and left out of a release build"
+                "a {test} FUNCTION is already exported for `rk test` and left out of a release build"
             }
             Self::InterfaceParam => {
                 "it is compiled once per implementation it is called with, so there is no single function to export"
@@ -101,10 +102,10 @@ impl ExportForbiddenKind {
                 "it is compiled once per number of arguments it is called with, so there is no single function to export"
             }
             Self::Overloaded => {
-                "an export is found by its name, and this name belongs to several FUNCTIONs"
+                "the module finds an export by its name, which several FUNCTIONs share"
             }
             Self::Reserved => {
-                "the module exports `__init`, `memory`, and the base and size of each memory band under these names, for the host"
+                "the module already exports `__init`, `memory` and the base and size of each memory band under these names"
             }
         }
     }
@@ -167,7 +168,7 @@ pub enum PragmaError<'db> {
     /// the FUNCTION. The lowering runs the instruction on exactly the names
     /// the pragma gives, so an unknown one has no slot to read or write.
     UnknownWasmOperand {
-        name: compact_str::CompactString,
+        name: Ident,
         span: tree_sitter::Range,
     },
     /// A `{wasm}` pragma whose operands do not fit its instruction: the
@@ -197,22 +198,6 @@ impl<'db> ErrorCode for PragmaError<'db> {
             Self::ExportForbidden { .. } => "E1509",
         }
     }
-
-    fn description(&self) -> &'static str {
-        match self {
-            Self::ExternOutsideFunction { .. } => "extern pragma outside a FUNCTION",
-            Self::ExternForbiddenSection { .. } => "not representable on an extern FUNCTION",
-            Self::ExternNonScalarReturn { .. } => "not representable on an extern FUNCTION",
-            Self::ExternWithBody { .. } => "not representable on an extern FUNCTION",
-            Self::TestOutsideFunction { .. } => "test pragma outside a FUNCTION",
-            Self::WasmPragmaOutsideFunction { .. } => "invalid wasm pragma",
-            Self::UnknownWasmInstruction { .. } => "invalid wasm pragma",
-            Self::UnknownWasmOperand { .. } => "invalid wasm pragma",
-            Self::WasmSignatureMismatch { .. } => "invalid wasm pragma",
-            Self::ExportOutsideFunction { .. } => "export pragma outside a FUNCTION",
-            Self::ExportForbidden { .. } => "this FUNCTION cannot be exported",
-        }
-    }
 }
 
 impl<'db> ToIdeDiagnostic<'db> for PragmaError<'db> {
@@ -224,15 +209,14 @@ impl<'db> ToIdeDiagnostic<'db> for PragmaError<'db> {
         match self {
             Self::ExternOutsideFunction { anchor, pou_kind } => {
                 let mut diag = diag()
-                    .message(format!("an {{extern}} pragma cannot be placed on a {pou_kind}"))
+                    .message(format!(
+                        "an {{extern}} pragma cannot be placed on a {pou_kind}"
+                    ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
                     .range(crate::denormalize(db, file, &anchor.get_span(db)).unwrap_or_default())
                     .call();
-                diag.with_note(
-                    "{extern} pragmas can ony be used with FUNCTION"
-                        .to_string(),
-                );
+                diag.with_note("only a FUNCTION can be {extern}".to_string());
                 diag
             }
             Self::ExternForbiddenSection { var, kind } => {
@@ -245,7 +229,7 @@ impl<'db> ToIdeDiagnostic<'db> for PragmaError<'db> {
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(crate::denormalize(db, file, &var.get_span(db)).unwrap_or_default())
+                    .range(crate::denormalize(db, file, &var.get_name_span(db)).unwrap_or_default())
                     .call();
                 diag.with_note(kind.note().to_string());
                 diag
@@ -267,25 +251,28 @@ impl<'db> ToIdeDiagnostic<'db> for PragmaError<'db> {
                     .range(crate::denormalize(db, file, &site.get_span(db)).unwrap_or_default())
                     .call();
                 diag.with_note(
-                    "FUNCTIONs marked with {extern} act as external calls, they can not have a body"
-                        .to_string(),
+                    "an {extern} FUNCTION is an import: the host has its body".to_string(),
                 );
                 diag
             }
             Self::TestOutsideFunction { anchor, pou_kind } => diag()
-                .message(format!("a {{test}} pragma cannot be placed on a {pou_kind}"))
+                .message(format!(
+                    "a {{test}} pragma cannot be placed on a {pou_kind}"
+                ))
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
                 .range(crate::denormalize(db, file, &anchor.get_span(db)).unwrap_or_default())
                 .call(),
             Self::ExportOutsideFunction { anchor, pou_kind } => {
                 let mut diag = diag()
-                    .message(format!("an {{export}} pragma cannot be placed on a {pou_kind}"))
+                    .message(format!(
+                        "an {{export}} pragma cannot be placed on a {pou_kind}"
+                    ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
                     .range(crate::denormalize(db, file, &anchor.get_span(db)).unwrap_or_default())
                     .call();
-                diag.with_note("{export} pragmas can only be used with FUNCTION".to_string());
+                diag.with_note("only a FUNCTION can be {export}".to_string());
                 diag
             }
             Self::ExportForbidden { anchor, func, kind } => {
@@ -303,10 +290,7 @@ impl<'db> ToIdeDiagnostic<'db> for PragmaError<'db> {
                 diag
             }
             Self::WasmPragmaOutsideFunction { span } => diag()
-                .message(
-                    "a {wasm} body is only available on a FUNCTION; here the pragma would be silently dropped"
-                        .to_string(),
-                )
+                .message("a {wasm} body is only available on a FUNCTION".to_string())
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
                 .range(crate::denormalize(db, file, span).unwrap_or_default())
@@ -321,7 +305,8 @@ impl<'db> ToIdeDiagnostic<'db> for PragmaError<'db> {
                 .call(),
             Self::UnknownWasmOperand { name, span } => diag()
                 .message(format!(
-                    "'{name}' is not a parameter, a local or the return of this FUNCTION"
+                    "'{}' is not a parameter, a local or the return of this FUNCTION",
+                    name.text(db)
                 ))
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
@@ -333,9 +318,7 @@ impl<'db> ToIdeDiagnostic<'db> for PragmaError<'db> {
                 actual,
                 span,
             } => diag()
-                .message(format!(
-                    "'{instruction}' takes {expected}; this pragma gives it {actual}"
-                ))
+                .message(format!("'{instruction}' takes {expected}, not {actual}"))
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
                 .range(crate::denormalize(db, file, span).unwrap_or_default())

@@ -24,7 +24,7 @@ END_VAR
 END_FUNCTION_BLOCK
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "method-shadows-member"), @r"
-    [L0116] Warning: method variable shadows an owner member
+    [L0116] Warning: method variable named after a member
        ,-[ file:///test0.st:8:9 ]
        |
      4 |     c : INT;
@@ -33,7 +33,7 @@ END_FUNCTION_BLOCK
        |
      8 |         c : INT;
        |         |
-       |         `-- method variable 'c' shadows the member 'c' of its FB/class
+       |         `-- method variable 'c' hides the member 'c' of its block
        |
        | Note: lint rule: method-shadows-member
     ---'
@@ -56,7 +56,7 @@ END_VAR
 END_FUNCTION_BLOCK
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "method-shadows-member"), @r"
-    [L0116] Warning: method variable shadows an owner member
+    [L0116] Warning: method variable named after a member
        ,-[ file:///test0.st:8:9 ]
        |
      4 |     speed : INT;
@@ -65,7 +65,7 @@ END_FUNCTION_BLOCK
        |
      8 |         speed : INT;
        |         ^^|^^
-       |           `---- method variable 'speed' shadows the member 'speed' of its FB/class
+       |           `---- method variable 'speed' hides the member 'speed' of its block
        |
        | Note: lint rule: method-shadows-member
     ---'
@@ -88,7 +88,7 @@ END_VAR
 END_CLASS
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "method-shadows-member"), @r"
-    [L0116] Warning: method variable shadows an owner member
+    [L0116] Warning: method variable named after a member
        ,-[ file:///test0.st:8:9 ]
        |
      4 |     id : INT;
@@ -97,7 +97,7 @@ END_CLASS
        |
      8 |         id : INT;
        |         ^|
-       |          `-- method variable 'id' shadows the member 'id' of its FB/class
+       |          `-- method variable 'id' hides the member 'id' of its block
        |
        | Note: lint rule: method-shadows-member
     ---'
@@ -140,7 +140,7 @@ END_VAR
 END_FUNCTION_BLOCK
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "method-shadows-member"), @r"
-    [L0116] Warning: method variable shadows an owner member
+    [L0116] Warning: method variable named after a member
        ,-[ file:///test0.st:8:9 ]
        |
      4 |     Speed : INT;
@@ -149,7 +149,7 @@ END_FUNCTION_BLOCK
        |
      8 |         speed : INT;
        |         ^^|^^
-       |           `---- method variable 'speed' shadows the member 'Speed' of its FB/class
+       |           `---- method variable 'speed' hides the member 'Speed' of its block
        |
        | Note: lint rule: method-shadows-member
     ---'

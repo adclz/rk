@@ -18,10 +18,6 @@ impl ErrorCode for EmptyLoopBody {
     fn code(&self) -> &'static str {
         "L0308"
     }
-
-    fn description(&self) -> &'static str {
-        "empty loop body"
-    }
 }
 
 pub fn check_for<'db>(

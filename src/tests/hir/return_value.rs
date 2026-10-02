@@ -25,7 +25,7 @@ END_FUNCTION"#;
        |
      2 | FUNCTION Narrowed : INT
        |          ^^^^|^^^
-       |              `----- FUNCTION 'Narrowed' is defined here, with return type 'INT'
+       |              `----- FUNCTION 'Narrowed' is declared here, with return type 'INT'
        |
      5 |     Narrowed := Narrowed + d;
        |                 ^^^^^^|^^^^^
@@ -65,14 +65,16 @@ FUNCTION Small : SINT
     Small := Small + 300;
 END_FUNCTION"#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0306] Error: invalid literal
+    [E0306] Error: literal out of range
        ,-[ file:///test0.st:4:22 ]
        |
      4 |     Small := Small + 300;
        |              ^^|^^   ^|^
        |                `---------- 'SINT' is expected due to this
        |                       |
-       |                       `--- cannot infer '<integer>' to 'SINT': the value does not fit in SINT; SINT holds -128 to 127
+       |                       `--- the value does not fit in SINT
+       |
+       | Note: SINT holds -128 to 127
     ---'
     ");
 }
@@ -87,7 +89,7 @@ FUNCTION RetPct : Pct
     RetPct := 500;
 END_FUNCTION"#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0702] Error: value outside subrange
+    [E0702] Error: value outside the subrange
        ,-[ file:///test0.st:5:15 ]
        |
      5 |     RetPct := 500;
@@ -122,19 +124,19 @@ FUNCTION_BLOCK Fb
     END_METHOD
 END_FUNCTION_BLOCK"#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0317] Error: semantic violation
+    [E0317] Error: type name used as a value
        ,-[ file:///test0.st:7:18 ]
        |
      7 |     UsesOther := Other + 1;
        |                  ^^|^^
-       |                    `---- cannot use direct type 'Other' here
+       |                    `---- 'Other' is not a value
     ---'
-    [E0317] Error: semantic violation
+    [E0317] Error: type name used as a value
         ,-[ file:///test0.st:12:14 ]
         |
      12 |         A := B;
         |              |
-        |              `-- cannot use direct type 'B' here
+        |              `-- 'B' is not a value
     ----'
     ");
 }
@@ -149,15 +151,15 @@ FUNCTION_BLOCK Fb
     END_METHOD
 END_FUNCTION_BLOCK"#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0319] Error: semantic violation
+    [E0319] Error: assignment to a missing return value
        ,-[ file:///test0.st:4:9 ]
        |
      3 |     METHOD PUBLIC Reset
        |                   ^^|^^
-       |                     `---- METHOD 'Reset' is defined here
+       |                     `---- METHOD 'Reset' is declared here
      4 |         Reset := 0;
        |         ^^|^^
-       |           `---- 'Reset' is void and can not be assigned
+       |           `---- 'Reset' has no return value to assign
     ---'
     ");
 }

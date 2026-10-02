@@ -17,14 +17,14 @@ fn invalid_enum_type(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0601] Error: invalid enum type
+    [E0601] Error: ENUM base type not an integer
        ,-[ file:///test0.st:3:19 ]
        |
      3 |             List: BOOL (A, B, C);
        |                   ^^|^
-       |                     `--- invalid enum type 'BOOL'
+       |                     `--- 'BOOL' is not an integer type
        |
-       | Note: only numeric integer types are allowed for ENUM
+       | Note: an ENUM is stored in an integer type
     ---'
     ");
 }
@@ -47,7 +47,7 @@ fn access_enum_variant_on_non_enum_type(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0602] Error: invalid enum access
+    [E0602] Error: not an ENUM type
         ,-[ file:///test0.st:12:21 ]
         |
      12 |             test := typ#A
@@ -66,12 +66,14 @@ fn type_mismatch_enum_variant_decl(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0307] Error: invalid literal
+    [E0307] Error: negative literal for an unsigned type
        ,-[ file:///test0.st:3:33 ]
        |
      3 |             List: UINT (A, B := -5, C);
        |                                 ^|
-       |                                  `-- cannot infer '<integer>' to 'UINT': UINT cannot be negative; UINT is unsigned; use INT, or drop the sign
+       |                                  `-- the value is negative and UINT is unsigned
+       |
+       | Help: use INT, or drop the sign
     ---'
     ");
 }
@@ -94,7 +96,7 @@ fn unknown_enum_variant(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0603] Error: invalid enum access
+    [E0603] Error: unknown ENUM variant
         ,-[ file:///test0.st:11:26 ]
         |
      11 |             test := List#D; // D is not a valid enum variant
@@ -125,8 +127,8 @@ fn invalid_foreign_enum_variant(mut with_db: RootDatabase) {
        ,-[ file:///test0.st:7:18 ]
        |
      2 |         TYPE Mode  : (Stop, Run); END_TYPE
-       |                      ^^^^^|^^^^^
-       |                           `------- type is defined by 'Mode' here
+       |              ^^|^
+       |                `--- 'Mode' is declared here
        |
      7 |             m := Color#Red;
        |                  ^^^^|^^^^
@@ -156,16 +158,16 @@ fn invalid_foreign_enum_variant_case_label(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0302] Error: type mismatch
+    [E0302] Error: types not comparable
        ,-[ file:///test0.st:9:17 ]
        |
      2 |         TYPE STATE: INT(A, B, C) END_TYPE
-       |                     ^^^^^^|^^^^^
-       |                           `------- type is defined by 'STATE' here
+       |              ^^|^^
+       |                `---- 'STATE' is declared here
        |
      9 |                 STATE2#A: test := 20;
        |                 ^^^^|^^^
-       |                     `----- can't compare 'STATE' with 'STATE2#A'
+       |                     `----- cannot compare 'STATE' with 'STATE2#A'
     ---'
     ");
 }
@@ -194,12 +196,12 @@ fn invalid_enum_value_not_constant(mut with_db: RootDatabase) {
         TYPE Mode : (Idle := fn1(), Run) END_TYPE
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0604] Error: invalid enum value
+    [E0604] Error: ENUM variant value not constant
        ,-[ file:///test0.st:5:30 ]
        |
      5 |         TYPE Mode : (Idle := fn1(), Run) END_TYPE
        |                              ^^|^^
-       |                                `---- an enum variant value must evaluate to a constant at compile time
+       |                                `---- the value is not a compile-time constant
     ---'
     ");
 }
@@ -229,7 +231,7 @@ fn invalid_enum_type_default_bare_variant(mut with_db: RootDatabase) {
         END_TYPE
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0401] Error: initial value is not constant
+    [E0401] Error: initial value not constant
        ,-[ file:///test0.st:3:43 ]
        |
      3 |             Color : (Red, Green, Blue) := Green;
@@ -254,8 +256,8 @@ fn invalid_enum_type_default_of_another_enum(mut with_db: RootDatabase) {
        ,-[ file:///test0.st:5:27 ]
        |
      3 |             Color : (Red, Green, Blue);
-       |                     ^^^^^^^^^|^^^^^^^^
-       |                              `---------- type is defined by 'Color' here
+       |             ^^|^^
+       |               `---- 'Color' is declared here
        |
      5 |             Shade : Color := Other#Red;
        |                           ^^^^^^|^^^^^
@@ -277,21 +279,21 @@ fn invalid_value_past_the_storage(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0605] Error: invalid enum value
+    [E0605] Error: ENUM value outside its storage type
        ,-[ file:///test0.st:3:36 ]
        |
      3 |             Code : SINT (A := 127, B, C);
        |                                    |
-       |                                    `-- 'B' is 128, which SINT does not hold
+       |                                    `-- 'B' is 128, out of range for SINT
        |
        | Note: a variant without a value is one more than the one before
     ---'
-    [E0605] Error: invalid enum value
+    [E0605] Error: ENUM value outside its storage type
        ,-[ file:///test0.st:4:21 ]
        |
      4 |             Wide : (P := 3000000000);
        |                     |
-       |                     `-- 'P' is 3000000000, which DINT does not hold
+       |                     `-- 'P' is 3000000000, out of range for DINT
     ---'
     ");
 }

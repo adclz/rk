@@ -17,10 +17,6 @@ impl ErrorCode for DuplicateConfiguration {
     fn code(&self) -> &'static str {
         "L0205"
     }
-
-    fn description(&self) -> &'static str {
-        "duplicate configuration in same file"
-    }
 }
 
 /// Same-named CONFIGURATION blocks are fragments and merge, which is what lets

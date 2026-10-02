@@ -21,7 +21,7 @@ END_FUNCTION
        |
      4 |     test := x - x;
        |             ^^|^^
-       |               `---- 'x' is subtracted from itself, result is always 0
+       |               `---- 'x' is subtracted from itself: the result is always 0
        |
        | Note: lint rule: sub-self
     ---'
@@ -42,7 +42,7 @@ END_FUNCTION
        |
      4 |     test := y + (x - x);
        |                  ^^|^^
-       |                    `---- 'x' is subtracted from itself, result is always 0
+       |                    `---- 'x' is subtracted from itself: the result is always 0
        |
        | Note: lint rule: sub-self
     ---'
@@ -92,7 +92,7 @@ fn a_float_minus_itself_is_a_finiteness_test(mut with_db: RootDatabase) {
        |
      8 |             f := (n - n) <> 0;
        |                   ^^|^^
-       |                     `---- 'n' is subtracted from itself, result is always 0
+       |                     `---- 'n' is subtracted from itself: the result is always 0
        |
        | Note: lint rule: sub-self
     ---'

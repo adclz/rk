@@ -25,14 +25,14 @@ FUNCTION sum_all : INT
 END_FUNCTION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0811] Error: invalid type
-        ,-[ file:///test0.st:10:9 ]
+    [E0811] Error: variadic parameter of a composite type
+        ,-[ file:///test0.st:10:15 ]
         |
      10 |         args: MyStruct...
-        |         ^^^^^^^^|^^^^^^^^
-        |                 `---------- variable 'args' is declared as variadic but has non-variadic type 'MyStruct'
+        |               ^^^^|^^^
+        |                   `----- 'MyStruct' cannot be variadic
         |
-        | Note: only elementary types can be variadic
+        | Note: only an elementary type can be variadic
     ----'
     ");
 }
@@ -70,7 +70,9 @@ END_FUNCTION
        |                ^^^^|^^^
        |                    `----- 'args' is not a variadic parameter
        |
-       | Note: a fold reads the variadic parameter of its FUNCTION or METHOD, declared as `values : INT...` in VAR_INPUT; this one has none
+       | Help: declare one in VAR_INPUT, as `values : INT...`
+       |
+       | Note: the POU declares no variadic parameter
     ---'
     ");
 }
@@ -88,12 +90,12 @@ FUNCTION sum_all : BOOL
 END_FUNCTION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0305] Error: type mismatch
+    [E0305] Error: operator not supported by the type
        ,-[ file:///test0.st:7:16 ]
        |
      4 |         args: BOOL...
        |         ^^|^
-       |           `--- type is declared by variable 'args' here
+       |           `--- 'args' is declared here
        |
      7 |     sum_all := ...args+
        |                ^^^^|^^^
@@ -165,15 +167,15 @@ FUNCTION fn1 : INT
 END_FUNCTION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0812] Error: invalid variadic declaration
+    [E0812] Error: more than one variadic parameter
        ,-[ file:///test0.st:5:9 ]
        |
      4 |         a: INT...
-       |         ^^^^|^^^^
-       |             `------ first variadic variable 'a' declared here
+       |         |
+       |         `-- first variadic parameter 'a' is declared here
      5 |         b: INT...
-       |         ^^^^|^^^^
-       |             `------ only one variadic variable is allowed per POU
+       |         |
+       |         `-- 'b' is a second variadic parameter
     ---'
     ");
 }
@@ -290,16 +292,16 @@ FUNCTION fn
 END_FUNCTION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0308] Error: invalid literal
+    [E0308] Error: literal of the wrong kind
         ,-[ file:///test0.st:10:19 ]
         |
       4 |         args: INT...
         |         ^^|^
-        |           `--- type is declared by variable 'args' here
+        |           `--- 'args' is declared here
         |
      10 |     sum_all(1, 2, 'hello');
         |                   ^^^|^^^
-        |                      `----- cannot infer '<string>' to 'INT': cannot use string literal as INT
+        |                      `----- cannot use string literal as INT
     ----'
     ");
 }
@@ -349,17 +351,17 @@ FUNCTION fn1 : INT
 END_FUNCTION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0815] Error: invalid variadic declaration
+    [E0815] Error: variadic parameter beside other inputs
        ,-[ file:///test0.st:4:9 ]
        |
      4 |         x: INT;
-       |         ^^^|^^
-       |            `---- variadic parameter 'args' must be the only VAR_INPUT parameter
+       |         |
+       |         `-- 'x' is declared beside the variadic parameter 'args'
      5 |         args: INT...
-       |         ^^^^^^|^^^^^
-       |               `------- variadic parameter 'args' declared here
+       |         ^^|^
+       |           `--- variadic parameter 'args' is declared here
        |
-       | Note: a variadic parameter must be the only parameter in VAR_INPUT
+       | Note: a variadic parameter takes every argument of the call
     ---'
     ");
 }
@@ -386,12 +388,12 @@ END_FUNCTION
         ,-[ file:///test0.st:10:12 ]
         |
       4 |         args: INT...
-        |         ^^^^^^|^^^^^
-        |               `------- variadic parameter 'args' declared here
+        |         ^^|^
+        |           `--- variadic parameter 'args' is declared here
         |
      10 |     fn1 := sum_all()
         |            ^^^|^^^
-        |               `----- call to 'sum_all' must pass at least one argument to variadic parameter 'args'
+        |               `----- the call to 'sum_all' passes no argument to the variadic parameter 'args'
     ----'
     ");
 }
@@ -439,12 +441,12 @@ END_FUNCTION
         ,-[ file:///test0.st:15:12 ]
         |
       5 |         args: INT...
-        |         ^^^^^^|^^^^^
-        |               `------- variadic parameter 'args' declared here
+        |         ^^|^
+        |           `--- variadic parameter 'args' is declared here
         |
      15 |     fn1 := f.sum_all()
         |            ^^^^|^^^^
-        |                `------ call to 'sum_all' must pass at least one argument to variadic parameter 'args'
+        |                `------ the call to 'sum_all' passes no argument to the variadic parameter 'args'
     ----'
     ");
 }
@@ -472,8 +474,8 @@ END_FUNCTION
        ,-[ file:///test0.st:6:16 ]
        |
      5 |         VAR_INPUT values : INT...; END_VAR
-       |                   ^^^^^^^|^^^^^^^
-       |                          `--------- the variadic parameter here is 'values'
+       |                   ^^^|^^
+       |                      `---- the variadic parameter here is 'values'
      6 |         Sum := ...m+ + ...unknown+;
        |                ^^|^^
        |                  `---- 'm' is not a variadic parameter
@@ -484,8 +486,8 @@ END_FUNCTION
        ,-[ file:///test0.st:6:24 ]
        |
      5 |         VAR_INPUT values : INT...; END_VAR
-       |                   ^^^^^^^|^^^^^^^
-       |                          `--------- the variadic parameter here is 'values'
+       |                   ^^^|^^
+       |                      `---- the variadic parameter here is 'values'
      6 |         Sum := ...m+ + ...unknown+;
        |                        ^^^^^|^^^^^
        |                             `------- 'unknown' is not a variadic parameter
@@ -499,7 +501,9 @@ END_FUNCTION
         |          ^^^^^|^^^^^
         |               `------- 'nothing' is not a variadic parameter
         |
-        | Note: a fold reads the variadic parameter of its FUNCTION or METHOD, declared as `values : INT...` in VAR_INPUT; this one has none
+        | Help: declare one in VAR_INPUT, as `values : INT...`
+        |
+        | Note: the POU declares no variadic parameter
     ----'
     ");
 }
@@ -530,91 +534,105 @@ END_FUNCTION
        ,-[ file:///test0.st:9:24 ]
        |
      8 |     VAR_INPUT values : INT...; END_VAR
-       |               ^^^^^^^|^^^^^^^
-       |                      `--------- 'values' is declared variadic here
+       |               ^^^|^^
+       |                  `---- 'values' is declared variadic here
      9 |     VAR first : INT := values; i : INT; END_VAR
        |                        ^^^|^^
        |                           `---- variadic parameter 'values' is used outside a fold
        |
-       | Note: a pack is as many parameters as the call passed, which only a fold reads: `...values+` adds them, `...values=` compares them
+       | Help: read it with a fold: `...values+` adds them, `...values=` compares them
+       |
+       | Note: a pack stands for as many parameters as the call passed
     ---'
     [E0816] Error: variadic parameter used outside a fold
         ,-[ file:///test0.st:10:15 ]
         |
       8 |     VAR_INPUT values : INT...; END_VAR
-        |               ^^^^^^^|^^^^^^^
-        |                      `--------- 'values' is declared variadic here
+        |               ^^^|^^
+        |                  `---- 'values' is declared variadic here
         |
      10 |     misuse := values;
         |               ^^^|^^
         |                  `---- variadic parameter 'values' is used outside a fold
         |
-        | Note: a pack is as many parameters as the call passed, which only a fold reads: `...values+` adds them, `...values=` compares them
+        | Help: read it with a fold: `...values+` adds them, `...values=` compares them
+        |
+        | Note: a pack stands for as many parameters as the call passed
     ----'
     [E0816] Error: variadic parameter used outside a fold
         ,-[ file:///test0.st:11:5 ]
         |
       8 |     VAR_INPUT values : INT...; END_VAR
-        |               ^^^^^^^|^^^^^^^
-        |                      `--------- 'values' is declared variadic here
+        |               ^^^|^^
+        |                  `---- 'values' is declared variadic here
         |
      11 |     values := 0;
         |     ^^^|^^
         |        `---- variadic parameter 'values' is used outside a fold
         |
-        | Note: a pack is as many parameters as the call passed, which only a fold reads: `...values+` adds them, `...values=` compares them
+        | Help: read it with a fold: `...values+` adds them, `...values=` compares them
+        |
+        | Note: a pack stands for as many parameters as the call passed
     ----'
     [E0816] Error: variadic parameter used outside a fold
         ,-[ file:///test0.st:12:9 ]
         |
       8 |     VAR_INPUT values : INT...; END_VAR
-        |               ^^^^^^^|^^^^^^^
-        |                      `--------- 'values' is declared variadic here
+        |               ^^^|^^
+        |                  `---- 'values' is declared variadic here
         |
      12 |     FOR values := 1 TO 3 DO i := i + 1; END_FOR;
         |         ^^^|^^
         |            `---- variadic parameter 'values' is used outside a fold
         |
-        | Note: a pack is as many parameters as the call passed, which only a fold reads: `...values+` adds them, `...values=` compares them
+        | Help: read it with a fold: `...values+` adds them, `...values=` compares them
+        |
+        | Note: a pack stands for as many parameters as the call passed
     ----'
     [E0816] Error: variadic parameter used outside a fold
         ,-[ file:///test0.st:13:23 ]
         |
       8 |     VAR_INPUT values : INT...; END_VAR
-        |               ^^^^^^^|^^^^^^^
-        |                      `--------- 'values' is declared variadic here
+        |               ^^^|^^
+        |                  `---- 'values' is declared variadic here
         |
      13 |     misuse := sum_all(values);
         |                       ^^^|^^
         |                          `---- variadic parameter 'values' is used outside a fold
         |
-        | Note: a pack is as many parameters as the call passed, which only a fold reads: `...values+` adds them, `...values=` compares them
+        | Help: read it with a fold: `...values+` adds them, `...values=` compares them
+        |
+        | Note: a pack stands for as many parameters as the call passed
     ----'
     [E0816] Error: variadic parameter used outside a fold
         ,-[ file:///test0.st:14:15 ]
         |
       8 |     VAR_INPUT values : INT...; END_VAR
-        |               ^^^^^^^|^^^^^^^
-        |                      `--------- 'values' is declared variadic here
+        |               ^^^|^^
+        |                  `---- 'values' is declared variadic here
         |
      14 |     misuse := values[1];
         |               ^^^|^^
         |                  `---- variadic parameter 'values' is used outside a fold
         |
-        | Note: a pack is as many parameters as the call passed, which only a fold reads: `...values+` adds them, `...values=` compares them
+        | Help: read it with a fold: `...values+` adds them, `...values=` compares them
+        |
+        | Note: a pack stands for as many parameters as the call passed
     ----'
     [E0816] Error: variadic parameter used outside a fold
         ,-[ file:///test0.st:15:15 ]
         |
       8 |     VAR_INPUT values : INT...; END_VAR
-        |               ^^^^^^^|^^^^^^^
-        |                      `--------- 'values' is declared variadic here
+        |               ^^^|^^
+        |                  `---- 'values' is declared variadic here
         |
      15 |     misuse := values^;
         |               ^^^|^^
         |                  `---- variadic parameter 'values' is used outside a fold
         |
-        | Note: a pack is as many parameters as the call passed, which only a fold reads: `...values+` adds them, `...values=` compares them
+        | Help: read it with a fold: `...values+` adds them, `...values=` compares them
+        |
+        | Note: a pack stands for as many parameters as the call passed
     ----'
     ");
 }
@@ -634,23 +652,23 @@ FUNCTION_BLOCK Fb
 END_FUNCTION_BLOCK
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0029] Error: syntax
+    [E0029] Error: variadic parameter outside a FUNCTION or METHOD
        ,-[ file:///test0.st:3:15 ]
        |
      3 |     VAR_INPUT values : INT...; END_VAR
        |               ^^^^^^^|^^^^^^^
        |                      `--------- a PROGRAM takes no variadic parameter
        |
-       | Note: a variadic FUNCTION or METHOD is compiled once per argument count; a PROGRAM is an instance, whose inputs are its members
+       | Note: the inputs of a PROGRAM are members of one instance
     ---'
-    [E0029] Error: syntax
+    [E0029] Error: variadic parameter outside a FUNCTION or METHOD
        ,-[ file:///test0.st:7:15 ]
        |
      7 |     VAR_INPUT values : INT...; END_VAR
        |               ^^^^^^^|^^^^^^^
        |                      `--------- a FUNCTION_BLOCK takes no variadic parameter
        |
-       | Note: a variadic FUNCTION or METHOD is compiled once per argument count; a FUNCTION_BLOCK is an instance, whose inputs are its members
+       | Note: the inputs of a FUNCTION_BLOCK are members of one instance
     ---'
     ");
 }

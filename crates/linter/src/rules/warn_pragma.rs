@@ -18,10 +18,6 @@ impl ErrorCode for InfoPragma {
     fn code(&self) -> &'static str {
         "L0001"
     }
-
-    fn description(&self) -> &'static str {
-        "call site info notice"
-    }
 }
 
 struct WarnPragma;
@@ -29,10 +25,6 @@ struct WarnPragma;
 impl ErrorCode for WarnPragma {
     fn code(&self) -> &'static str {
         "L0002"
-    }
-
-    fn description(&self) -> &'static str {
-        "call site warning notice"
     }
 }
 
@@ -82,7 +74,7 @@ pub fn check<'db>(
         };
 
         diag.with_related(Related::new(
-            "pragma declared here".into(),
+            "the pragma is declared here".into(),
             pragma_span.get_scope_id(db).file(db),
             pragma_span.get_span(db),
         ));

@@ -18,10 +18,6 @@ impl ErrorCode for EmptyType {
     fn code(&self) -> &'static str {
         "L0309"
     }
-
-    fn description(&self) -> &'static str {
-        "empty type declaration"
-    }
 }
 
 pub fn check<'db>(

@@ -166,7 +166,10 @@ pub fn check_function_visibility<'db>(
     errors.push(
         VisibilityError::PrivateFunction {
             call_site: *call_site,
-            target: func.as_call_site(db),
+            target: CallSite::new(
+                func.get_scope_id(db),
+                crate::HasName::get_name_id(&func, db),
+            ),
         }
         .to_diagnostic(db, call_site.get_scope_id(db).file(db)),
     );

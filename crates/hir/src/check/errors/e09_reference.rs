@@ -59,15 +59,6 @@ impl<'db> ErrorCode for ReferenceError<'db> {
             Self::RetainedReference { .. } => "E0904",
         }
     }
-
-    fn description(&self) -> &'static str {
-        match self {
-            Self::DerefNonRefType { .. } => "invalid operation",
-            Self::DerefPossiblyNull { .. } => "possibly null dereference",
-            Self::ReturnsReferenceToLocal { .. } => "reference outlives its storage",
-            Self::RetainedReference { .. } => "reference in RETAIN storage",
-        }
-    }
 }
 
 impl<'db> ToIdeDiagnostic<'db> for ReferenceError<'db> {
@@ -95,16 +86,16 @@ impl<'db> ToIdeDiagnostic<'db> for ReferenceError<'db> {
                     NullState::Uninitialized(origin) => {
                         let from = origin.var.get_name_with_case(db).text(db);
                         (
-                            format!("dereference of reference '{name}' which is never initialized"),
-                            format!("'{from}' declared without initializer here"),
+                            format!("'{name}' is dereferenced and never set"),
+                            format!("'{from}' is declared without an initial value here"),
                             &origin.site,
                         )
                     }
                     NullState::Null(origin) => {
                         let from = origin.var.get_name_with_case(db).text(db);
                         (
-                            format!("dereference of reference '{name}' which is null"),
-                            format!("'{from}' set to NULL here"),
+                            format!("'{name}' is dereferenced and is NULL"),
+                            format!("'{from}' is set to NULL here"),
                             &origin.site,
                         )
                     }
@@ -139,9 +130,9 @@ impl<'db> ToIdeDiagnostic<'db> for ReferenceError<'db> {
                         var.name_with_case(db).text(db),
                     ),
                     var.get_scope_id(db).file(db),
-                    var.get_span(db),
+                    var.get_name_span(db),
                 ));
-                diag.with_note(
+                diag.with_help(
                     "return a reference to instance state, or to storage the caller owns (a VAR_IN_OUT)"
                         .into(),
                 );
@@ -160,7 +151,7 @@ impl<'db> ToIdeDiagnostic<'db> for ReferenceError<'db> {
                 let (message, range) = match instance {
                     Some(instance) => (
                         format!(
-                            "PROGRAM RETAIN '{}' keeps '{held}', a reference, whose address does not survive a new build",
+                            "PROGRAM RETAIN '{}' keeps '{held}', a reference: its address does not survive a new build",
                             instance.with_case.text(db)
                         ),
                         instance.get_span(db),
@@ -169,7 +160,7 @@ impl<'db> ToIdeDiagnostic<'db> for ReferenceError<'db> {
                         format!(
                             "'{held}' is a reference in RETAIN storage: its address does not survive a new build"
                         ),
-                        var.get_span(db),
+                        var.get_name_span(db),
                     ),
                 };
                 let mut diag = diag()
@@ -182,12 +173,15 @@ impl<'db> ToIdeDiagnostic<'db> for ReferenceError<'db> {
                     diag.with_related(Related::new(
                         format!("'{}' is declared here", var.name_with_case(db).text(db)),
                         var.get_scope_id(db).file(db),
-                        var.get_span(db),
+                        var.get_name_span(db),
                     ));
                 }
                 diag.with_note(
-                    "a warm start restores the address even where a new build moved its target; \
-                     keep references out of RETAIN (NON_RETAIN on a member) and set them in the first scan"
+                    "a warm start restores the address even where a new build moved its target"
+                        .into(),
+                );
+                diag.with_help(
+                    "keep references out of RETAIN (NON_RETAIN on a member) and set them in the first scan"
                         .into(),
                 );
                 diag

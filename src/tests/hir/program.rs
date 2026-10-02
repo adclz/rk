@@ -26,7 +26,7 @@ END_PROGRAM"#;
        |
      4 |         test: INT;
        |         ^^|^
-       |           `--- type is declared by variable 'test' here
+       |           `--- 'test' is declared here
        |
      7 |     test := ULINT#5;
        |             ^^^|^^^

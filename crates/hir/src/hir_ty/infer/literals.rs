@@ -780,7 +780,7 @@ impl std::fmt::Display for UnsignedIntError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             UnsignedIntError::ParseIntError(err) => write!(f, "{err}"),
-            UnsignedIntError::NegativeSign => write!(f, "literal can not be negative"),
+            UnsignedIntError::NegativeSign => write!(f, "literal cannot be negative"),
         }
     }
 }
@@ -1109,7 +1109,8 @@ fn calendar_format_error(
     if value.contains(separator) {
         err.to_string()
     } else {
-        format!("expected the form {example}")
+        let kind = example.split_once('#').map_or(example, |(kind, _)| kind);
+        format!("'{value}' has none of the components of a {kind}")
     }
 }
 
@@ -1162,7 +1163,7 @@ fn parse_duration_components(s: &str, kind: &'static str) -> Result<Duration, In
                 "NS" => value,
                 _ => {
                     return Err(InferLiteralError::Invalid_TIME_Unit(format!(
-                        "'{}' is not a valid duration unit: use d, h, m, s, ms, us or ns",
+                        "'{}' is not a duration unit (d, h, m, s, ms, us, ns)",
                         unit.to_lowercase()
                     )));
                 }
@@ -1223,7 +1224,7 @@ fn parse_next_component<'a>(
 
     if unit_end == 0 {
         return Err(InferLiteralError::Invalid_TIME_Unit(format!(
-            "a {kind} component is missing its unit: use d, h, m, s, ms, us or ns"
+            "a {kind} component has no unit (d, h, m, s, ms, us, ns)"
         )));
     }
 
@@ -1246,7 +1247,7 @@ fn parse_next_component<'a>(
             "NS" => float_val,
             _ => {
                 return Err(InferLiteralError::Invalid_TIME_Unit(format!(
-                    "'{}' is not a valid duration unit: use d, h, m, s, ms, us or ns",
+                    "'{}' is not a duration unit (d, h, m, s, ms, us, ns)",
                     unit.to_lowercase()
                 )));
             }

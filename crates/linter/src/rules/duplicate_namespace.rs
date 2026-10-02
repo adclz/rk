@@ -17,10 +17,6 @@ impl ErrorCode for DuplicateNamespace {
     fn code(&self) -> &'static str {
         "L0204"
     }
-
-    fn description(&self) -> &'static str {
-        "duplicate namespace in same file"
-    }
 }
 
 pub fn check<'db>(

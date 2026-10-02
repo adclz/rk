@@ -34,7 +34,7 @@ END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "latin1-escape"), @r"
-    [L0121] Warning: escape is not UTF-8 text
+    [L0121] Warning: STRING with a Latin-1 escape
        ,-[ file:///test0.st:2:24 ]
        |
      2 | TYPE Place : STRING := 'M$FCnchen'; END_TYPE
@@ -45,7 +45,7 @@ END_FUNCTION
        |
        | Note: lint rule: latin1-escape
     ---'
-    [L0121] Warning: escape is not UTF-8 text
+    [L0121] Warning: STRING with a Latin-1 escape
         ,-[ file:///test0.st:11:26 ]
         |
      11 |     greeting : STRING := 'caf$E9';
@@ -56,7 +56,7 @@ END_FUNCTION
         |
         | Note: lint rule: latin1-escape
     ----'
-    [L0121] Warning: escape is not UTF-8 text
+    [L0121] Warning: STRING with a Latin-1 escape
         ,-[ file:///test0.st:14:10 ]
         |
      14 |     s := 'na$EFve';
@@ -67,7 +67,7 @@ END_FUNCTION
         |
         | Note: lint rule: latin1-escape
     ----'
-    [L0121] Warning: escape is not UTF-8 text
+    [L0121] Warning: STRING with a Latin-1 escape
         ,-[ file:///test0.st:15:10 ]
         |
      15 |     s := STRING#'r$E9sum$E9';
@@ -78,7 +78,7 @@ END_FUNCTION
         |
         | Note: lint rule: latin1-escape
     ----'
-    [L0121] Warning: escape is not UTF-8 text
+    [L0121] Warning: STRING with a Latin-1 escape
         ,-[ file:///test0.st:16:20 ]
         |
      16 |     Caller := Show('$A3100');
