@@ -1127,7 +1127,9 @@ fn parse_duration_components(s: &str, kind: &'static str) -> Result<Duration, In
         return Err(InferLiteralError::Invalid_TIME_Components);
     }
 
-    let mut total_nanos = 0i64;
+    // Summed in i128: the minimum's magnitude is one past `i64::MAX`, and
+    // only the signed total has to fit.
+    let mut total_nanos = 0i128;
     let mut remaining = value_str;
 
     // Parse each component (days, hours, minutes, seconds, milliseconds, microseconds, nanoseconds)
@@ -1164,9 +1166,7 @@ fn parse_duration_components(s: &str, kind: &'static str) -> Result<Duration, In
             }
         };
 
-        total_nanos = total_nanos
-            .checked_add(nanos)
-            .ok_or(InferLiteralError::DurationOverflow)?;
+        total_nanos += i128::from(nanos);
 
         remaining = rest;
     }
@@ -1176,6 +1176,8 @@ fn parse_duration_components(s: &str, kind: &'static str) -> Result<Duration, In
     } else {
         total_nanos
     };
+    let total_nanos =
+        i64::try_from(total_nanos).map_err(|_| InferLiteralError::DurationOverflow)?;
     Ok(Duration::nanoseconds(total_nanos))
 }
 
