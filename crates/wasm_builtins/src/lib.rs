@@ -147,8 +147,9 @@ pub extern "C" fn rk_str_assign(
 }
 
 /// Encode a UTF-32 code point as UTF-8 into the STRING slot at `out_addr`;
-/// backs `Std.Convert.CHAR_TO_STRING`. An invalid code point or an
-/// over-capacity slot writes zero length.
+/// backs `Std.Convert.CHAR_TO_STRING`. An invalid code point writes zero
+/// length; a slot too small for the character keeps the bytes that fit, as
+/// every STRING producer does.
 #[unsafe(no_mangle)]
 pub extern "C" fn rk_str_from_char(codepoint: u32, out_addr: u32, out_cap: u32) {
     let Some(c) = char::from_u32(codepoint) else {
@@ -503,7 +504,9 @@ pub extern "C" fn str_byte_mid(
     }
     let s = unsafe { ffi_slice(s_ptr, s_len) };
     let start = (p - 1) as usize;
-    let end = (start + n as usize).min(s.len());
+    // Saturating: `LEN(s) - k` with `k > LEN(s)` is an `n` near 2^32, and
+    // the sum wrapped on wasm32 before the clamp.
+    let end = start.saturating_add(n as usize).min(s.len());
     unsafe { str_emit_bytes(out_addr, out_cap, &s[start..end]) };
 }
 
@@ -569,7 +572,8 @@ pub extern "C" fn str_byte_delete(
         return;
     }
     let start = (p - 1) as usize;
-    let end = (start + n as usize).min(s.len());
+    // Saturating, as in `str_byte_mid`.
+    let end = start.saturating_add(n as usize).min(s.len());
     let take_left = (start as u32).min(out_cap);
     let take_right = ((s.len() - end) as u32).min(out_cap - take_left);
     let total = take_left + take_right;
@@ -609,7 +613,8 @@ pub extern "C" fn str_byte_replace(
         return;
     }
     let start = (p - 1) as usize;
-    let end = (start + n as usize).min(s.len());
+    // Saturating, as in `str_byte_mid`.
+    let end = start.saturating_add(n as usize).min(s.len());
     let take_left = (start as u32).min(out_cap);
     let take_ins = (ins.len() as u32).min(out_cap - take_left);
     let take_right =

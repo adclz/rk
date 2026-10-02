@@ -901,6 +901,48 @@ NAMESPACE Std.Strings
 			ASSERT(CHAR_REPLACE('café', 'X', 2, 5) = CHAR_REPLACE('café', 'X', 2, 99) AND CHAR_REPLACE('café', 'X', 2, 99) = 'café');
 			ASSERT(CHAR_INSERT('café', 'X', 5) = CHAR_INSERT('café', 'X', 99) AND CHAR_INSERT('café', 'X', 99) = 'caféX');
 		END_FUNCTION
+
+		// `LEN(s) - k` with k > LEN(s) is an N near 2^32, and `start + n`
+		// wrapped on wasm32: MID trapped, DELETE and REPLACE kept the wrong
+		// part. CHAR_MID and its kin count N first and never did.
+		{test}
+		FUNCTION test_mid_delete_replace_with_n_near_the_limit
+			ASSERT(MID('hello', UDINT#4294967295, 2) = 'ello', 'MID N = 2^32-1');
+			ASSERT(MID('hello', UDINT#4294967294, 3) = 'llo', 'MID N = 2^32-2 at P = 3');
+			ASSERT(DELETE('hello', UDINT#4294967295, 3) = 'he', 'DELETE N = 2^32-1');
+			ASSERT(REPLACE('hello', 'Y', UDINT#4294967295, 3) = 'heY', 'REPLACE N = 2^32-1');
+			ASSERT(CHAR_MID('café', UDINT#4294967295, 2) = 'afé', 'CHAR_MID N = 2^32-1');
+			ASSERT(CHAR_DELETE('café', UDINT#4294967295, 2) = 'c', 'CHAR_DELETE N = 2^32-1');
+			ASSERT(CHAR_REPLACE('café', 'X', UDINT#4294967295, 2) = 'cX', 'CHAR_REPLACE N = 2^32-1');
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_n_from_len_minus_k_past_the_end
+			VAR s : STRING := 'hello'; k : UDINT := 7; END_VAR
+			ASSERT(MID(s, LEN(s) - k, 2) = 'ello', 'MID with LEN(s) - k');
+			ASSERT(DELETE(s, LEN(s) - k, 2) = 'h', 'DELETE with LEN(s) - k');
+			ASSERT(REPLACE(s, '-', LEN(s) - k, 2) = 'h-', 'REPLACE with LEN(s) - k');
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_insert_past_the_end_appends
+			ASSERT(INSERT('hello', 'X', 6) = 'helloX', 'P = LEN + 1');
+			ASSERT(INSERT('hello', 'X', UDINT#4294967295) = 'helloX', 'P = 2^32-1');
+			ASSERT(INSERT('', 'X', 0) = 'X', 'into an empty string');
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_replace_with_an_empty_ins_deletes
+			ASSERT(REPLACE('hello', '', 2, 2) = 'hlo', 'an empty INS');
+			ASSERT(REPLACE('hello', 'X', 0, 3) = 'heXllo', 'N = 0 inserts');
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_find_on_empty_strings
+			ASSERT(FIND('', 'a') = 0, 'an empty haystack');
+			ASSERT(FIND('', '') = 1, 'both empty');
+			ASSERT(CHAR_FIND('café', '') = 1, 'an empty needle');
+		END_FUNCTION
 	END_NAMESPACE
 
 END_NAMESPACE

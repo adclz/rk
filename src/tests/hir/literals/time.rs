@@ -382,3 +382,21 @@ END_FUNCTION_BLOCK"#;
     ---'
     ");
 }
+
+/// Both ends of the encoding are literals. The minimum is what
+/// `LTIME_TO_STRING` prints for it, and it did not read back (E0306): its
+/// magnitude is one past `i64::MAX`, and the parser summed it in `i64`
+/// before applying the sign.
+#[rstest]
+fn valid_ltime_extremes(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION fn1 : LTIME
+VAR
+    lo : LTIME := LT#-106751d23h47m16s854ms775us808ns;
+    hi : LTIME := LT#106751d23h47m16s854ms775us807ns;
+END_VAR
+    fn1 := lo + hi;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
