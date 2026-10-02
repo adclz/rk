@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 // # Index Graphs — Cross-File Name Resolution
 //
 // ## Original problem (pre-2026-03-09)

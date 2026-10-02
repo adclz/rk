@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 #![allow(deprecated)]
 use auto_lsp::{define_semantic_token_modifiers, define_semantic_token_types};
 

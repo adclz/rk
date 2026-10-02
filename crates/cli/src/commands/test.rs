@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 use crate::cli::OutputFormat;
 use crate::compiler::build_core_with_format;
 use crate::error::{CliError, CliResult};

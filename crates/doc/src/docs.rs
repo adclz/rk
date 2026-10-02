@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! The documentation in `docs/`: plain Markdown, one file per page, so GitHub
 //! renders it as it is. The site takes each file's H1 as the title and its
 //! first paragraph as the description, and builds its sidebar from the list

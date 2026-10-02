@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! The invariant the debug-attach swap rests on: optimizing a module changes
 //! its CODE but not its MEMORY.
 //!

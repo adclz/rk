@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! End-to-end: compile IEC to a core module and run its `{test}` functions
 //! through the runtime — the same loader a plant uses, no component wrapper.
 

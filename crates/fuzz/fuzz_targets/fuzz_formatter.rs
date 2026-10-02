@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! The formatter: its output parses, is a fixed point, and means what the
 //! input meant. See `rk_fuzz::format`.
 #![no_main]

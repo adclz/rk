@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! The agent-facing surfaces Zola does not produce: `llms.txt`, `_headers`,
 //! the well-known discovery files, and the small helpers the generator
 //! shares. The page frame, stylesheet and sitemap are Zola's, in site/.

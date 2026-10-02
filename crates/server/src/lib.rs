@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 #![allow(unused_variables)]
 #![recursion_limit = "256"]
 // Public for the fuzzer (crates/fuzz), which sends each request the way

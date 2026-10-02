@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 use compact_str::CompactString;
 use db::WorkspaceDataBase;
 use hir::hir_def::{

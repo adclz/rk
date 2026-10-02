@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! `THIS` in inherited code is the instance the code runs on.
 //!
 //! Nothing is looked up at run time: a method or body a derived instance

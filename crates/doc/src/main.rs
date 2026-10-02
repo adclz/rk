@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Verifies the site's sources against the compiler, then writes what Zola
 //! renders: `site/content/` (every page, its fences and inline code
 //! pre-rendered through the grammar), `site/data/` (what the templates and

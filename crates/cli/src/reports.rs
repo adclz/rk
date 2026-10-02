@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 use ariadne::{Cache, FnCache, Source};
 
 /// A source cache for ariadne reports from `(id, source)` pairs.

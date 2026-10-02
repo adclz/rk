@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Case is not significant in IEC 61131-3 — §6.1.2 for identifiers, §6.1.1
 //! for keywords — and this is where that is held to account, end to end.
 //!

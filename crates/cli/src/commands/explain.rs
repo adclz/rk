@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! `rk explain <code>`: the code, its title and its explanation, for
 //! agents. The text is the committed reference the site serves
 //! (`crates/doc/diagnostics.json`), embedded at build time.

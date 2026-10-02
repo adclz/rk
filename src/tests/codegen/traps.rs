@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Runtime checks that fault the scan instead of computing a wrong answer:
 //! the subrange range check (`rk.range_check_*`, the runtime half of E0702)
 //! and the VM's own division traps. The array bounds check has its own tests

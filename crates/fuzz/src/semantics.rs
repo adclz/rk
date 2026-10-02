@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Does the program compute what it should?
 //!
 //! A source whose first line is `(* rk-fuzz expects, after N scans:`

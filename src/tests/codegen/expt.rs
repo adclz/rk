@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! `**` executes: it lowers to the grafted `libm` pow, so these run the
 //! whole path — graft, call resolution, operand casting — under wasmtime.
 //! The hir suite pins what is REJECTED; this pins what the accepted

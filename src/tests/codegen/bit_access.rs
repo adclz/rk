@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Partial (bit / byte / word) variable access — `b.1`, `w.%X3`, `d.%B2`.
 //!
 //! IEC 61131-3 §6.5.5. Before these landed, MIR ignored the `multibits` part

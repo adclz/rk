@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! A file's AST and its syntax errors, as the compiler reads them.
 //!
 //! auto-lsp's `get_ast` accumulates the syntax errors tree-sitter finds, and

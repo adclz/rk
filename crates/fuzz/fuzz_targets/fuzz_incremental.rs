@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! The editor's incremental path against a fresh build of the same text.
 //! See `rk_fuzz::incremental`.
 #![no_main]

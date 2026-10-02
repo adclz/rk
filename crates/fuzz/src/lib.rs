@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! The compiler's fuzzing oracles, and the corpus they start from.
 //!
 //! A fuzz target only finds what its oracle can see, and "did not panic" sees

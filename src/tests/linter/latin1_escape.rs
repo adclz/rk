@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! L0121: a `$hh` escape of $80 or more in a STRING literal is one byte, not
 //! a Latin-1 character, so the literal is no UTF-8 text.
 

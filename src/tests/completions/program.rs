@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 use db::RootDatabase;
 use hir::{HasName, hir_def::semantic_index::semantic_index};
 use ide_proto::handlers::completions_utils::{CompletionCtx, QueryMode};

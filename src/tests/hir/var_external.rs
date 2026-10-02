@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! VAR_EXTERNAL: a declaration that aliases a CONFIGURATION's VAR_GLOBAL by
 //! name. Existence is E0206; the type agreement the alias demands is E0207.
 

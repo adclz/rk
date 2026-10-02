@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Where every variable starts: its type's defaults (an alias's, a STRUCT's
 //! fields', an instance's members', an enum's first value, a subrange's lower
 //! limit), then its declaration's own initializer, overlaid by store order.

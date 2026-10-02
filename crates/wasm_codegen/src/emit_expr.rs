@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Emit WASM instructions from MIR expressions.
 //! Purely mechanical - reads pre-resolved types, places, and indices.
 

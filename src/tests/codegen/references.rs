@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Reference and pointer code generation tests (VAR_IN_OUT parameters).
 
 use crate::tests::codegen::{compile_to_wasm, validate_wasm, with_db};

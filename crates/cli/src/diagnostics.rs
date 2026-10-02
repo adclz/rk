@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Diagnostic collection and rendering for the CLI: [`collect_diagnostics`]
 //! runs the per-file checks in parallel; a [`DiagnosticReporter`] renders
 //! them and tallies the counts.

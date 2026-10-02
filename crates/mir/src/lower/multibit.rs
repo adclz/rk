@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Partial (bit / byte / word) access: `b.1`, `w.%X3`, `d.%B2`, `l.%W1`.
 //! HIR owns the meaning ([`multibits_slice`], E0808); this module turns its
 //! answer into shift/mask arithmetic at the base value's wasm width. A read

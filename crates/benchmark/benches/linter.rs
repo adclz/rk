@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Lint-rule execution over a fully-checked workspace: the HIR pipeline is
 //! primed in setup, so the timed region is the linter's own walking and
 //! rule logic, with every rule enabled.

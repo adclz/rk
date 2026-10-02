@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! FUNCTION aggregate (struct/array) `VAR_INPUT` args: copy semantics, like
 //! FUNCTION_BLOCK inputs. The caller copies the arg into a scratch local at
 //! call entry (`MirExpr::CopyIntoScratch`) and the callee receives a pointer

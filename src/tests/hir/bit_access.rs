@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Partial (bit / byte / word) variable access — typing and bounds.
 //!
 //! IEC 61131-3 §6.5.5. `v.%<size><n>` selects the n-th `<size>`-wide slice of

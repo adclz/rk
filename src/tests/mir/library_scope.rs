@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! What a LIBRARY contributes to the module, and what it does not.
 //!
 //! A library is code, not a PLC. Its POUs are there to be used, but the

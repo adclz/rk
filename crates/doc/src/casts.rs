@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! The cast tables in docs/strict-casts.md, derived so they cannot drift
 //! from the compiler: `ElementarySpec::implicit_cast` is what an assignment
 //! widens on its own, and the `X_TO_Y` functions of `Std.Convert` are what a

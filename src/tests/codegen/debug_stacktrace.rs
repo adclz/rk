@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Classic source-level stack traces on wasmtime 45 — no guest_debug, no RR.
 //! When a compiled PLC traps, wasmtime's `WasmBacktrace` gives the frame chain
 //! (`func_index` + `module_offset`), and we resolve each frame to its IEC

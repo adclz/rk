@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! One source in a fresh database, as `rk check` sees a single file.
 
 use auto_lsp::default::db::{BaseDatabase, FileManager, file::File};

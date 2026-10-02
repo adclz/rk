@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! FUNCTION `VAR_OUTPUT` at call sites: bound (`o => x`, a pointer to the
 //! caller's l-value, which the callee resets at entry) and DISCARDED (omitted at the call — legal per E0802's
 //! rules; the callee's pointer param is satisfied by a synthesized scratch

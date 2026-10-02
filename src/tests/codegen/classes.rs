@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! CLASS execution tests. A CLASS is a bodyless FUNCTION_BLOCK — a pure
 //! method/property container: it has state and methods but no cyclic body, so it
 //! emits only `Class#method` (no `Class$__body__`) and cannot be invoked like an

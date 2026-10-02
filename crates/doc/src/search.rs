@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! `search.json`, what the search field in the top bar looks through: one
 //! entry per section of a page, so a result lands on its heading. The field
 //! reads `diagnostics.json` beside it for the codes.

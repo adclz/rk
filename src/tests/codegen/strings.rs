@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! STRING codegen, end to end: the passing MATRIX (every `{source} x
 //! {operation}` combination, validated with `wasmparser`) and the STORAGE
 //! semantics (instance fields, globals, defaults, FB call I/O — compiled AND

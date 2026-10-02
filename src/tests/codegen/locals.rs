@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! The lifetime of a POU's own locals: a FUNCTION or METHOD starts every call
 //! with fresh storage, an instance keeps its state between invocations.
 

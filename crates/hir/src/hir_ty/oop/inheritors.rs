@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! The reverse of [`explicit_bases`]: the POUs that name a POU as a base.
 //! ty keeps no such relation, since Python only asks a class for its
 //! subclasses at run time; rk needs it for go-to-implementation, and for the

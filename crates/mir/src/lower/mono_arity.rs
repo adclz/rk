@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! A variadic parameter collects however many arguments its call site
 //! supplies, so `sum_all` is specialized per arity called (`sum_all$3`), and
 //! a variadic METHOD per arity on the instance type a call runs it on

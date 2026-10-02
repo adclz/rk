@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Call hierarchy: what calls this, and what does this call.
 //!
 //! Both directions read the resolved calls (`ScopeInference::resolved_calls`),

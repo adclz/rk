@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! The per-field RETAIN persistence map: which byte ranges of the retain
 //! band survive a power cycle. Relocation is whole-instance, persistence is
 //! per-field. Rules (matching `schedule::is_retain_field`): `RETAIN` retains

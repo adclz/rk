@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Benchmark helpers for the IEC 61131-3 compiler.
 //!
 //! The fixture is a real corpus tracked in this repository: `stdlib/` (the

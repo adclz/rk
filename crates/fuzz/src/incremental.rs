@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! The editor's path against `rk check`'s.
 //!
 //! The language server never builds a file from scratch: each keystroke

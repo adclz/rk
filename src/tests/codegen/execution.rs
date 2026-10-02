@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! WASM execution tests (actually running the generated code).
 
 use crate::tests::codegen::{compile_to_wasm, with_db};

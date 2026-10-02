@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Pull-based diagnostics for the IEC 61131-3 LSP server.
 //!
 //! # How it works

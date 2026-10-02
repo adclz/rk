@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Encoding (de)normalization tests.
 //!
 //! The rest of the suite uses pure-ASCII `.st` sources, where UTF-8 byte columns, UTF-16 code

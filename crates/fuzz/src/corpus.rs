@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! The seed corpus: every piece of Structured Text the repository already
 //! holds, one file per program.
 //!

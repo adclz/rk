@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Codegen (HIR → MIR lowering) failures must carry a source location.
 //!
 //! A `LowerTypeError` used to surface as a bare string with no file, line, or

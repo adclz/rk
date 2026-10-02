@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Symbol naming: namespace-qualified POU names and the `$`-suffix
 //! mangling.
 //!

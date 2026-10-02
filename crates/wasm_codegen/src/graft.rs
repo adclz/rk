@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Graft math intrinsics from `wasm_builtins.wasm` into the output module:
 //! the union of the requested builtins' transitive closures, a fresh type
 //! index per signature and function index per body, every

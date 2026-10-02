@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Durations as a person types them: `30s`, `500ms`, `2m`, a bare number
 //! as seconds, and IEC's own `T#30s`.
 

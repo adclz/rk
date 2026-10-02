@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 use auto_lsp::lsp_types;
 use db::RootDatabase;
 use ide_proto::handlers::signature_help::find_signature_help;

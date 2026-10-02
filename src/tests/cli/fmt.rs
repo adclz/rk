@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 use rk::cli::OutputFormat;
 use rk::commands::fmt::run_fmt;
 

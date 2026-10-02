@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! The resolved scheduling model of a module's CONFIGURATION: which TASKs
 //! exist, how often each fires, which PROGRAM instances each runs; built
 //! from HIR's `ResolvedSchedule` and carried as the `rk.schedule` manifest.

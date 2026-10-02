@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 use ast::generated::DataTypeDecl;
 use auto_lsp::{default::db::file::File, lsp_types::CompletionItem};
 use db::WorkspaceDataBase;

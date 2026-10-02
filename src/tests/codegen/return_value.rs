@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Inside a FUNCTION or METHOD, the callable's own name is its return value:
 //! a variable of the return type. Read in an expression it used to stay the
 //! callable, so arithmetic and comparisons on it picked the wrong operand

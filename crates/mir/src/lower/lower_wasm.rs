@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! A `{wasm}` statement emits the instruction it names on the operands it
 //! names and writes the parameter, local or return slot its `(result)`
 //! names. A body may hold several, in order.

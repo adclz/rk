@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! The call graph HIR keeps for recursion: which bodies reach themselves
 //! again, following dispatch the way lowering does.
 

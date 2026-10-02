@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Namespaced POUs as modules: the semantic index's namespace list is FLAT
 //! (nested included), and every consumer that also recursed into children
 //! visited nested namespaces twice. Here that doubled the EXPORTS — a module

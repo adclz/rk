@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Math intrinsics from `crates/wasm_builtins`, embedded at build time: a
 //! function is looked up by its dotted IEC name (`f32.sin`) and grafted,
 //! with every helper it transitively calls, into the output module.

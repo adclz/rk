@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Back-end benchmarks on the stdlib (the corpus that compiles clean):
 //! HIR → MIR lowering, and MIR → WASM emission, each isolated by priming
 //! everything earlier in setup.

@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! Locating the binaries that go with *this* `rk`: beside the current
 //! executable first, then `PATH`.
 

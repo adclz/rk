@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 //! CLI error type: [`CliError::Message`] is a hard error (`error: <msg>`,
 //! exit 1); [`CliError::Failed`] means the command found problems and
 //! already printed its own summary, so `main` exits non-zero silently.

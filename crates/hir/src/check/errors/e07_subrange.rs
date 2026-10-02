@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
 use crate::HirNodeInfo;
 use crate::check::errors::ToIdeDiagnostic;
 use crate::hir_def::expressions::expression::Expr;
