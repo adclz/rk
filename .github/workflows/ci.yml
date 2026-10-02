@@ -1,6 +1,7 @@
 # The compiler's CI: the workspace suite on the three hosts a user installs
 # on, clippy with warnings denied, rustfmt, the standard library's own test suite
-# (plain and optimized), and the site's examples against the compiler.
+# (plain and optimized), the site's examples against the compiler, and the
+# SPDX lines on every Rust source under the AGPL.
 #
 # Every job runs on every push and pull request. The caches make an unchanged
 # tree mostly download time, and a path filter that skips the wrong job costs
@@ -76,6 +77,14 @@ jobs:
       - uses: ./.github/actions/rust-toolchain
       - name: Check formatting
         run: cargo fmt --all --check
+
+  # LICENSING.md's license, stated by every Rust source under the AGPL.
+  spdx:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Every Rust source under the AGPL starts with its SPDX lines
+        run: python3 scripts/spdx.py --check
 
   stdlib:
     runs-on: ubuntu-latest

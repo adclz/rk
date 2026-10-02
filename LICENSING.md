@@ -43,3 +43,8 @@ crates/index/
 crates/macros/
   -> Derived from https://github.com/astral-sh/ruff (ruff_macros).
 ```
+
+## SPDX headers
+
+Every Rust source under the AGPL starts with `SPDX-FileCopyrightText` and `SPDX-License-Identifier` lines; the directories under Apache-2.0 and MIT carry their own `LICENSE` instead.
+`python3 scripts/spdx.py --fix` adds a missing header, and `--check`, which CI runs, refuses a file without one.

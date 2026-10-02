@@ -110,6 +110,11 @@ cargo about generate about.hbs -o ../../THIRD-PARTY-NOTICES
 # Build the tree-sitter grammar (run from crates/tree-sitter/)
 tree-sitter generate
 
+# SPDX lines: every Rust source under the AGPL starts with them (the
+# directories under Apache-2.0 and MIT carry their own LICENSE instead).
+# `--fix` adds a missing header, `--check` is what CI runs.
+python3 scripts/spdx.py --check
+
 # Build the VSCode extension (run from vscode/)
 npm run build
 
@@ -374,7 +379,7 @@ toolchain pinned by `rust-toolchain.toml` through the composite action in
 
 | Workflow      | Trigger                                              | What it does                                                                                                                                                                                                                                                                       |
 | ------------- | ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ci`          | Push to main, PR, manual                             | `test`: `cargo nextest run --workspace --profile ci` on Linux, macOS and Windows. `clippy`: `-Dwarnings`. `rustfmt`: `cargo fmt --all --check`. `stdlib`: the stdlib's own suite, plain and `-O z` on Binaryen 131. `notices`: `THIRD-PARTY-NOTICES` matches a fresh `cargo about` run. `site`: examples vs compiler, `diagnostics.json` freshness, Worker bundle |
+| `ci`          | Push to main, PR, manual                             | `test`: `cargo nextest run --workspace --profile ci` on Linux, macOS and Windows. `clippy`: `-Dwarnings`. `rustfmt`: `cargo fmt --all --check`. `stdlib`: the stdlib's own suite, plain and `-O z` on Binaryen 131. `notices`: `THIRD-PARTY-NOTICES` matches a fresh `cargo about` run. `site`: examples vs compiler, `diagnostics.json` freshness, Worker bundle. `spdx`: every Rust source under the AGPL starts with its SPDX lines |
 | `tree-sitter` | Push/PR touching `crates/tree-sitter/**`             | `tree-sitter test` + `tree-sitter fuzz`                                                                                                                                                                                                                                            |
 | `fuzzing`     | Daily at 02:00 UTC, manual                           | `cargo fuzz` runs the five targets for 30 min each on a corpus kept between nights; `triage` replays the crashes with `repro`, groups them in the run summary, and fails the run                                                                                                   |
 | `codspeed`    | Push to main, PR                                     | Benchmarks under CodSpeed                                                                                                                                                                                                                                                          |
