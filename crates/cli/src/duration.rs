@@ -38,6 +38,6 @@ pub fn parse(text: &str) -> CliResult<Duration> {
 
 fn invalid(text: &str) -> CliError {
     CliError::msg(format!(
-        "`{text}` is not a duration; write it like 30s, 500ms, 2m or T#30s"
+        "`{text}` is not a duration, written like 30s, 500ms, 2m or T#30s"
     ))
 }

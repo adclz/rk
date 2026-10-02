@@ -38,7 +38,7 @@ pub fn print(
         for key in keys {
             let Some(row) = rows.iter().find(|row| row.key == key) else {
                 return Err(crate::error::CliError::Message(format!(
-                    "unknown key '{key}'; known keys: {}",
+                    "unknown key '{key}' (known keys: {})",
                     rows.iter().map(|r| r.key).collect::<Vec<_>>().join(", ")
                 )));
             };
@@ -113,7 +113,7 @@ pub fn describe(workspace: &Path) -> (Vec<Row>, Vec<std::path::PathBuf>) {
         false => noted(
             "lsp",
             lsp.display().to_string(),
-            "not beside the executable; from PATH",
+            "from PATH, not beside the executable",
         ),
     });
 
