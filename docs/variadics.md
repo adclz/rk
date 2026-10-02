@@ -1,6 +1,6 @@
 # Variadics
 
-A FUNCTION can take any number of arguments of one type, collected in a variadic parameter.
+A FUNCTION or a METHOD can take any number of arguments of one type, collected in a variadic parameter.
 
 Declare it with `...` after its type, and read it with a fold: `...values+` adds every argument.
 
@@ -18,6 +18,7 @@ END_FUNCTION
 ```
 
 The compiler makes one copy of `Sum` per argument count, so each call runs on plain parameters, with no array.
+A METHOD gets its copies the same way, per argument count and per instance type it runs on.
 
 ## Folds
 
@@ -30,9 +31,11 @@ With a single argument, an arithmetic fold gives that argument and a comparison 
 ## Rules
 
 - The type must be elementary, or an alias of one (`E0811`).
-- A FUNCTION has one variadic parameter (`E0812`), and it is its only `VAR_INPUT` (`E0815`).
+- A FUNCTION or METHOD has one variadic parameter (`E0812`), and it is its only `VAR_INPUT` (`E0815`).
+- A PROGRAM or a FUNCTION_BLOCK takes none (`E0029`).
 - A call passes it at least one argument (`E0813`).
-- `...` folds a variadic parameter only (`E0814`).
+- `...` folds the POU's own variadic parameter and nothing else (`E0814`).
+- A fold is the only way to read it: `First := values`, `values := 0` or `Other(values)` is `E0816`.
 - An `{export}` FUNCTION cannot be variadic, since each argument count is a function of its own (`E1509`).
 
 Each argument converts to the parameter's type as any input does, see [Strict casts](strict-casts.md).
