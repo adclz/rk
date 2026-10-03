@@ -158,7 +158,12 @@ impl<'db> Type<'db> {
             Self::DirectVariable((_, Some(multibits))) => {
                 multibits_to_type(db, *multibits).type_name(db)
             }
-            Self::DirectVariable((dv, None)) => dv.adress(db).text(db).to_string(),
+            // The type its size letter gives it: `%IX0.0` is a BOOL. The
+            // address alone read as a type named 'IX'.
+            Self::DirectVariable((dv, None)) => {
+                crate::hir_ty::infer::normalize::direct_variable_to_type(db, *dv, None)
+                    .type_name(db)
+            }
             Self::CallableType(typ) => match typ {
                 CallableType::Function(f) => f.get_name_with_case(db).text(db).to_string(),
                 CallableType::FunctionBlock(fb) => fb.get_name_with_case(db).text(db).to_string(),
