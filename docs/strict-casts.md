@@ -103,8 +103,6 @@ END_FUNCTION_BLOCK
  11 |     test := fn1();
     |             ^^|^^
     |               `---- expected 'INT', got 'BOOL'
-    |               |
-    |               `---- consider explicitly casting with 'BOOL_TO_INT(fn1())'
     |
     | Help: insert explicit cast 'BOOL_TO_INT(fn1())'
 ----'

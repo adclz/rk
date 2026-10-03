@@ -116,8 +116,6 @@ END_FUNCTION_BLOCK"#;
      7 |     test := %ID0
        |             ^^|^
        |               `--- expected 'REAL', got 'DWORD'
-       |               |
-       |               `--- consider explicitly casting with 'DWORD_TO_REAL(%ID0)'
        |
        | Help: insert explicit cast 'DWORD_TO_REAL(%ID0)'
     ---'
@@ -294,8 +292,6 @@ END_FUNCTION_BLOCK"#;
      8 |     Byv:= Lo.%D0; // dword 0 of Lo (invalid because we expect a REAL)
        |           ^^^|^^
        |              `---- expected 'REAL', got 'DWORD'
-       |              |
-       |              `---- consider explicitly casting with 'DWORD_TO_REAL(Lo.%D0)'
        |
        | Help: insert explicit cast 'DWORD_TO_REAL(Lo.%D0)'
     ---'

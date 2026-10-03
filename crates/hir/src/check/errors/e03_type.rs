@@ -675,18 +675,8 @@ fn explicit_cast_suggestion(
         && lhs.explicit_cast(rhs)
     {
         let value = actual_site.to_string(db);
-        diag.with_related(Related::new(
-            format!(
-                "consider explicitly casting with '{}_TO_{}({})'",
-                rhs.type_name(),
-                lhs.type_name(),
-                value
-            ),
-            actual_site.get_scope_id(db).file(db),
-            actual_site.get_span(db),
-        ));
-
-        // The edit the title promises. It used to carry an empty
+        // The fix is the advice: its title is the report's Help line, and the
+        // code action writes the cast. It used to carry an empty
         // `WorkspaceEdit`, so the action appeared, applied nothing, and left
         // the reader to write the call out themselves.
         let file = actual_site.get_scope_id(db).file(db);

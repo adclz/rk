@@ -440,8 +440,6 @@ END_FUNCTION"#;
      4 |     f := i * r;
        |          ^^|^^
        |            `---- expected 'INT', got 'REAL'
-       |            |
-       |            `---- consider explicitly casting with 'REAL_TO_INT(i * r)'
        |
        | Help: insert explicit cast 'REAL_TO_INT(i * r)'
     ---'

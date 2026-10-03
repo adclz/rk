@@ -211,8 +211,6 @@ END_FUNCTION"#;
      7 |     s := c;
        |          |
        |          `-- expected 'STRING', got 'CHAR'
-       |          |
-       |          `-- consider explicitly casting with 'CHAR_TO_STRING(c)'
        |
        | Help: insert explicit cast 'CHAR_TO_STRING(c)'
     ---'

@@ -73,9 +73,17 @@ impl IdeDiagnostic {
             message.push_str("\n\nNote: ");
             message.push_str(&self.notes.join("\n"));
         }
-        if !self.helps.is_empty() {
+        // A quick fix's title is a help too, as the report prints it: the
+        // hover says what to write, and the code action writes it.
+        let helps: Vec<&str> = self
+            .helps
+            .iter()
+            .map(String::as_str)
+            .chain(self.fixes.iter().map(|fix| fix.title.as_str()))
+            .collect();
+        if !helps.is_empty() {
             message.push_str("\n\nHelp: ");
-            message.push_str(&self.helps.join("\n"));
+            message.push_str(&helps.join("\n"));
         }
 
         Diagnostic {

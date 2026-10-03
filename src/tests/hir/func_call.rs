@@ -230,8 +230,6 @@ END_FUNCTION_BLOCK"#;
      19 |         param1 := TRUE,
         |                   ^^|^
         |                     `--- expected 'INT', got 'BOOL'
-        |                     |
-        |                     `--- consider explicitly casting with 'BOOL_TO_INT(TRUE)'
         |
         | Help: insert explicit cast 'BOOL_TO_INT(TRUE)'
     ----'

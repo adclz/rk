@@ -5,7 +5,7 @@
 //! from the compiler: `ElementarySpec::implicit_cast` is what an assignment
 //! widens on its own, and the `X_TO_Y` functions of `Std.Convert` are what a
 //! program can call. The compiler's own `explicit_cast` — the table behind
-//! E0301's "consider explicitly casting with" hint — is checked against those
+//! E0301's "insert explicit cast" fix — is checked against those
 //! functions, so the hint can never name one that does not exist.
 
 use std::collections::{BTreeMap, BTreeSet};

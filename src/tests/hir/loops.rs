@@ -34,8 +34,6 @@ END_FUNCTION_BLOCK"#;
      8 |     FOR I := O TO 10 DO
        |              |
        |              `-- expected 'INT', got 'BOOL'
-       |              |
-       |              `-- consider explicitly casting with 'BOOL_TO_INT(O)'
        |
        | Help: insert explicit cast 'BOOL_TO_INT(O)'
     ---'
@@ -68,8 +66,6 @@ END_FUNCTION_BLOCK"#;
      8 |     FOR I := 10 TO O DO
        |                    |
        |                    `-- cannot compare 'INT' with 'BOOL'
-       |                    |
-       |                    `-- consider explicitly casting with 'BOOL_TO_INT(O)'
        |
        | Help: insert explicit cast 'BOOL_TO_INT(O)'
     ---'
@@ -102,8 +98,6 @@ END_FUNCTION_BLOCK"#;
      8 |     FOR I := 0 TO 10 BY O DO
        |                         |
        |                         `-- cannot compare 'INT' with 'BOOL'
-       |                         |
-       |                         `-- consider explicitly casting with 'BOOL_TO_INT(O)'
        |
        | Help: insert explicit cast 'BOOL_TO_INT(O)'
     ---'

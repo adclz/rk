@@ -30,8 +30,6 @@ END_FUNCTION"#;
      5 |     Narrowed := Narrowed + d;
        |                 ^^^^^^|^^^^^
        |                       `------- expected 'INT', got 'DINT'
-       |                       |
-       |                       `------- consider explicitly casting with 'DINT_TO_INT(Narrowed + d)'
        |
        | Help: insert explicit cast 'DINT_TO_INT(Narrowed + d)'
     ---'
