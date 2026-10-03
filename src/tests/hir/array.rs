@@ -583,3 +583,35 @@ END_FUNCTION
     ---'
     ");
 }
+
+/// A repetition past the array's end is E0507, and nothing more: the
+/// flattened leaves the lowering reads are made only for an initializer
+/// the walk accepted. Expanded count by count, this one took the checker
+/// down at two gigabytes.
+#[rstest]
+fn invalid_repeat_count_beyond_the_array(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK fb1
+VAR
+    x : ARRAY[0..2] OF INT := [15532559262904483838(0)];
+    y : ARRAY[0..2] OF INT := [4(1)];
+END_VAR
+END_FUNCTION_BLOCK
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0507] Error: too many elements in array initializer
+       ,-[ file:///test0.st:4:32 ]
+       |
+     4 |     x : ARRAY[0..2] OF INT := [15532559262904483838(0)];
+       |                                ^^^^^^^^^^^|^^^^^^^^^^^
+       |                                           `------------- the initializer has more elements than the array's 3
+    ---'
+    [E0507] Error: too many elements in array initializer
+       ,-[ file:///test0.st:5:32 ]
+       |
+     5 |     y : ARRAY[0..2] OF INT := [4(1)];
+       |                                ^^|^
+       |                                  `--- the initializer has more elements than the array's 3
+    ---'
+    ");
+}

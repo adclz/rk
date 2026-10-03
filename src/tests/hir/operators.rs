@@ -275,3 +275,150 @@ fn valid_not_on_an_untyped_literal(mut with_db: RootDatabase) {
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
 }
+
+/// An element or a dereference keeps its type under parentheses, a sign
+/// or NOT, and as a CASE selector. The parentheses and the unary used to
+/// record their operand's base type, the array or the reference, so
+/// `x := -a[1]` was a mismatch with 'ARRAY [0..2] OF DINT' and
+/// `y + (-a[i])` passed the check to fail in lowering. A field is part of
+/// the path and was never affected.
+#[rstest]
+fn valid_element_and_dereference_under_parentheses_and_unary(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE Pt : STRUCT x : DINT; END_STRUCT; END_TYPE
+
+FUNCTION f : DINT
+VAR
+    a : ARRAY[0..2] OF DINT; r : REF_TO DINT; x : DINT; y : DINT; i : INT;
+    b : BOOL; bs : ARRAY[0..1] OF BOOL; w : WORD; ws : ARRAY[0..1] OF WORD;
+    p : Pt; pr : REF_TO Pt; names : ARRAY[0..1] OF STRING;
+END_VAR
+    r := REF(x);
+    pr := REF(p);
+    x := (a[1]);
+    x := -a[1];
+    x := -(a[1]);
+    x := y + (-a[i]);
+    x := (a[1]) + 1;
+    x := (r^);
+    x := -r^;
+    b := NOT bs[1];
+    b := (bs[0]);
+    w := NOT ws[1];
+    x := (p.x);
+    x := -pr^.x;
+    CASE names[i] OF
+        'a': x := 1;
+    END_CASE;
+    CASE a[i] OF
+        1: x := 2;
+    END_CASE;
+    f := x;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+/// An array takes an array and nothing else. A value of its element type
+/// used to pass for it: `a := 5` compiled and wrote `a[0]`, and `y + a`
+/// or `g(y)` for an array input went through the check into a lowering
+/// failure. The array on the left of `+` was already refused.
+#[rstest]
+fn invalid_scalar_where_an_array_is_expected(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION g : DINT
+VAR_INPUT arr : ARRAY[0..2] OF DINT; END_VAR
+    g := arr[0];
+END_FUNCTION
+
+FUNCTION f : DINT
+VAR a : ARRAY[0..2] OF DINT; x : DINT; y : DINT; END_VAR
+    a := 5;
+    a := y;
+    x := y + a;
+    x := y * a;
+    x := y + (a);
+    x := g(y);
+    x := g(arr := 5);
+    f := x;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0301] Error: type mismatch
+       ,-[ file:///test0.st:9:10 ]
+       |
+     8 | VAR a : ARRAY[0..2] OF DINT; x : DINT; y : DINT; END_VAR
+       |     |
+       |     `-- 'a' is declared here
+     9 |     a := 5;
+       |          |
+       |          `-- expected 'ARRAY [0..2] OF DINT', got 'INT'
+    ---'
+    [E0301] Error: type mismatch
+        ,-[ file:///test0.st:10:10 ]
+        |
+      8 | VAR a : ARRAY[0..2] OF DINT; x : DINT; y : DINT; END_VAR
+        |     |
+        |     `-- 'a' is declared here
+        |
+     10 |     a := y;
+        |          |
+        |          `-- expected 'ARRAY [0..2] OF DINT', got 'DINT'
+    ----'
+    [E0303] Error: types not addable
+        ,-[ file:///test0.st:11:14 ]
+        |
+      8 | VAR a : ARRAY[0..2] OF DINT; x : DINT; y : DINT; END_VAR
+        |                                        |
+        |                                        `-- 'y' is declared here
+        |
+     11 |     x := y + a;
+        |              |
+        |              `-- cannot add 'DINT' with 'ARRAY [0..2] OF DINT'
+    ----'
+    [E0304] Error: types not multiplicable
+        ,-[ file:///test0.st:12:14 ]
+        |
+      8 | VAR a : ARRAY[0..2] OF DINT; x : DINT; y : DINT; END_VAR
+        |                                        |
+        |                                        `-- 'y' is declared here
+        |
+     12 |     x := y * a;
+        |              |
+        |              `-- cannot multiply 'DINT' with 'ARRAY [0..2] OF DINT'
+    ----'
+    [E0303] Error: types not addable
+        ,-[ file:///test0.st:13:14 ]
+        |
+      8 | VAR a : ARRAY[0..2] OF DINT; x : DINT; y : DINT; END_VAR
+        |                                        |
+        |                                        `-- 'y' is declared here
+        |
+     13 |     x := y + (a);
+        |              ^|^
+        |               `--- cannot add 'DINT' with 'ARRAY [0..2] OF DINT'
+    ----'
+    [E0301] Error: type mismatch
+        ,-[ file:///test0.st:14:12 ]
+        |
+      3 | VAR_INPUT arr : ARRAY[0..2] OF DINT; END_VAR
+        |           ^|^
+        |            `--- 'arr' is declared here
+        |
+     14 |     x := g(y);
+        |            |
+        |            `-- expected 'ARRAY [0..2] OF DINT', got 'DINT'
+    ----'
+    [E0301] Error: type mismatch
+        ,-[ file:///test0.st:15:19 ]
+        |
+      3 | VAR_INPUT arr : ARRAY[0..2] OF DINT; END_VAR
+        |           ^|^
+        |            `--- 'arr' is declared here
+        |
+     15 |     x := g(arr := 5);
+        |                   |
+        |                   `-- expected 'ARRAY [0..2] OF DINT', got 'INT'
+    ----'
+    ");
+}

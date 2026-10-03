@@ -220,8 +220,11 @@ static NEW_LINES: &str = r##"
 ] @prepend_hardline
 
 ; Blank line after closing keywords is handled by @allow_blank_line_before
-; on the next declaration - no @append_hardline needed here.
-("USING" (_) ";"? @append_hardline)
+; on the next declaration - no @append_hardline needed here. Nothing ends
+; a USING's line either: whatever follows one, a declaration, a section, a
+; body or another USING, opens its own. A line break appended to the `;`
+; moved a comment after it, `USING a; // c`, down a line on the second
+; pass, since the comment is the directive's sibling, not the `;`'s.
 
 (func_decl body: (func_body) @prepend_hardline)
 (fb_decl body: (fb_body) @prepend_hardline)

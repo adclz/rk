@@ -209,7 +209,12 @@ impl<'db> InferExprCtx<'db> {
                 ty
             }
             ExprKind::UnaryOperator { expr, .. } => {
-                let ty = self.resolve_expr(db, *expr, inference_results);
+                self.resolve_expr(db, *expr, inference_results);
+                // The operand's type after its subscript or dereference:
+                // `-a[1]` is a DINT, not the array. Recorded bare, the
+                // unary read as its operand's base and `x := -a[1]` was a
+                // mismatch with 'ARRAY [0..2] OF DINT'.
+                let ty = inference_results.type_of_expr_with_adjustments(db, *expr);
                 inference_results.type_of_expr.insert(curr_expr, ty);
                 ty
             }
@@ -474,9 +479,11 @@ impl<'db> InferExprCtx<'db> {
                 }
                 RefValue::Null => Type::Null,
             },
+            // The parentheses take the inner expression's type after its
+            // adjustments: `(a[1])` is an element, `(r^)` a value.
             PrimaryExpr::ParenthesizedExpr { expr } => {
                 self.resolve_expr_expecting(db, *expr, inference_result, expected);
-                inference_result.type_of_expr[expr]
+                inference_result.type_of_expr_with_adjustments(db, *expr)
             }
         }
     }
@@ -503,8 +510,10 @@ impl<'db> InferExprCtx<'db> {
             }
             ExprKind::PrimaryExpr(PrimaryExpr::ParenthesizedExpr { expr: inner_expr }) => {
                 self.check_expr(db, *inner_expr, inference_results);
-                // Update the parenthesized expression's type to match the inner expression
-                let inner_ty = inference_results.type_of_expr[inner_expr];
+                // The check may have changed the inner type (an operator
+                // its type does not support reads as Never): follow it,
+                // with the inner expression's adjustments applied.
+                let inner_ty = inference_results.type_of_expr_with_adjustments(db, *inner_expr);
                 inference_results.type_of_expr.insert(expr, inner_ty);
             }
             ExprKind::PrimaryExpr(_) | ExprKind::FoldExpr { .. } => {}
@@ -624,11 +633,14 @@ impl<'db> InferExprCtx<'db> {
                         // BYTE/WORD/DWORD/LWORD. A bit-string operand passes
                         // as-is; everything else must coerce to BOOL.
                         use crate::hir_def::expressions::spec::ElementarySpec;
-                        let operand_ty = inference_results
-                            .type_of_expr
-                            .get(expr)
-                            .copied()
-                            .map(|t| t.normalize(db));
+                        // After its adjustments: `NOT words[1]` on an
+                        // ARRAY OF WORD is a bitwise NOT on a WORD.
+                        let operand_ty =
+                            inference_results.type_of_expr.contains_key(expr).then(|| {
+                                inference_results
+                                    .type_of_expr_with_adjustments(db, *expr)
+                                    .normalize(db)
+                            });
                         let is_bit_string = matches!(
                             operand_ty,
                             Some(Type::Elementary(

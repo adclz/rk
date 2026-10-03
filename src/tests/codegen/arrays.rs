@@ -577,3 +577,43 @@ fn a_64bit_or_unsigned_subscript_addresses_its_element(mut with_db: db::RootData
     let result: i32 = super::run(&mut with_db, source, "run", ());
     assert_eq!(result, 789);
 }
+
+/// An element or a dereference under parentheses, a sign or NOT, and as a
+/// CASE selector, reads the element's value. These used to take the type
+/// of the whole array or reference, and `y + (-a[i])` failed in lowering.
+#[rstest]
+fn an_element_keeps_its_value_under_parentheses_and_unary(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION f : DINT
+        VAR
+            a : ARRAY[0..2] OF DINT := [10, 20, 30];
+            bs : ARRAY[0..1] OF BOOL := [TRUE, FALSE];
+            ws : ARRAY[0..1] OF WORD := [16#00FF, 16#0F0F];
+            names : ARRAY[0..1] OF STRING := ['zero', 'one'];
+            r : REF_TO DINT; x : DINT; y : DINT := 100; i : INT := 1;
+        END_VAR
+            r := REF(a[2]);
+            x := (a[1]);                 // 20
+            x := x + (-a[i]);            // 0
+            x := x + y + (-a[0]);        // 90
+            x := x - (r^);               // 60
+            x := x + -r^ + 2 * a[2];     // 90
+            IF NOT bs[1] AND (bs[0]) THEN
+                x := x + 1;              // 91
+            END_IF;
+            IF (NOT ws[1]) = WORD#16#F0F0 THEN
+                x := x + 1;              // 92
+            END_IF;
+            CASE names[i] OF
+                'one': x := x + 1;       // 93
+            END_CASE;
+            CASE a[i] OF
+                20: x := x + 1;          // 94
+            END_CASE;
+            f := x;
+        END_FUNCTION
+    "#;
+
+    let result = super::run::<(), i32>(&mut with_db, source, "f", ());
+    assert_eq!(result, 94);
+}
