@@ -168,12 +168,15 @@ impl MirMemoryLayout {
     }
 
     /// `size` bytes at `align` in the frame being laid out; `None` outside
-    /// one.
+    /// one. A value of no size, an instance of a block with no variables,
+    /// still takes a byte: the frame it is in must have a size, since the
+    /// code generator gives a function a frame base only for a frame that
+    /// pushes something, and a frame local without one is a panic there.
     pub fn allocate_in_frame(&mut self, size: u32, align: u32) -> Option<u32> {
         let used = self.frame.as_mut()?;
         debug_assert!(align <= crate::function::FRAME_ALIGN);
         let offset = align_to(*used, align);
-        *used = offset + size;
+        *used = offset + size.max(1);
         Some(offset)
     }
 
