@@ -6,7 +6,6 @@ use insta::assert_snapshot;
 use rstest::rstest;
 
 use crate::tests::utils::test_diagnostics;
-use crate::tests::utils::test_diagnostics_not_compiled;
 use crate::tests::utils::with_db;
 
 #[rstest]
@@ -180,9 +179,7 @@ FUNCTION fn: BOOL
 END_FUNCTION
         "#;
 
-    // Does not lower yet: `REF(myA1[1])` in the initializer is an internal
-    // compiler error, "indexed expression did not resolve to an array type".
-    assert_snapshot!(test_diagnostics_not_compiled(&mut with_db, &[source]), @"");
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
 
 #[rstest]

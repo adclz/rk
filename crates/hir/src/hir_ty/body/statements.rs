@@ -252,11 +252,18 @@ fn apply_guard<'db>(
 ///
 /// A branch that returns cannot reach the statements that follow, so its state
 /// must not join into theirs: `IF p = NULL THEN RETURN; END_IF;` leaves only
-/// the non-null path alive.
+/// the non-null path alive. Any terminator among the branch's own statements
+/// ends it, since what follows one is dead: read from the last statement
+/// alone, `RETURN; x := 1;` fell through, and `__RAISE` never counted.
 fn falls_through<'db>(db: &'db dyn WorkspaceDataBase, stmts: &[Stmt<'db>]) -> bool {
-    !matches!(
-        stmts.last().map(|s| s.stmt(db)),
-        Some(StmtKind::Return | StmtKind::Exit | StmtKind::Continue)
+    !stmts.iter().any(|s| terminates(db, *s))
+}
+
+/// A statement nothing in its block can follow: the ones after it are dead.
+fn terminates<'db>(db: &'db dyn WorkspaceDataBase, stmt: Stmt<'db>) -> bool {
+    matches!(
+        stmt.stmt(db),
+        StmtKind::Return | StmtKind::Exit | StmtKind::Continue | StmtKind::Raise { .. }
     )
 }
 
@@ -278,7 +285,20 @@ impl<'db> StmtsResolverCtx<'db> {
     ) {
         let mut infer = InferExprCtx::new(resolver);
 
+        // The null state the block's first terminator was reached with. The
+        // statements after it are dead, inferred and checked like the
+        // others so that an undeclared name or a mismatch there is reported
+        // and lowering finds their types, but what they do to a reference
+        // never happens: the state is put back once the block ends.
+        let mut state_at_terminator = None;
+
         for (i, stmt) in statements.iter().enumerate() {
+            if terminates(db, *stmt) && state_at_terminator.is_none() {
+                for dead in &statements[i + 1..] {
+                    ctx.dead_code_statements.push(*dead);
+                }
+                state_at_terminator = Some(ctx.ref_null_state.clone());
+            }
             match stmt.stmt(db) {
                 StmtKind::EmptyPathExpression(expr) => {
                     resolver.resolve_begin_path_expr(db, *expr, None, ctx);
@@ -781,12 +801,6 @@ impl<'db> StmtsResolverCtx<'db> {
                         };
                         ctx.errors.push(err.to_diagnostic(db, ctx.scope.file(db)));
                     }
-
-                    // Remaining statements in this block are unreachable
-                    for dead in &statements[i + 1..] {
-                        ctx.dead_code_statements.push(*dead);
-                    }
-                    break;
                 }
 
                 StmtKind::Case {
@@ -926,13 +940,7 @@ impl<'db> StmtsResolverCtx<'db> {
                     }
                 }
 
-                StmtKind::Return => {
-                    // Remaining statements in this block are unreachable
-                    for dead in &statements[i + 1..] {
-                        ctx.dead_code_statements.push(*dead);
-                    }
-                    break;
-                }
+                StmtKind::Return => {}
 
                 StmtKind::Raise { message } => {
                     // The message expression must be STRING
@@ -945,10 +953,6 @@ impl<'db> StmtsResolverCtx<'db> {
                             CallSite::from_scoped(db, message),
                         ));
                     }
-                    for dead in &statements[i + 1..] {
-                        ctx.dead_code_statements.push(*dead);
-                    }
-                    break;
                 }
 
                 // Nothing to infer: the pragma only marks the next statement
@@ -1082,6 +1086,10 @@ impl<'db> StmtsResolverCtx<'db> {
                     }
                 }
             }
+        }
+
+        if let Some(state) = state_at_terminator {
+            ctx.ref_null_state = state;
         }
     }
 

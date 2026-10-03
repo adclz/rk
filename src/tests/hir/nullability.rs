@@ -952,3 +952,107 @@ END_FUNCTION
     ---'
     ");
 }
+
+/// A branch ends at its first terminator, not at its last statement: the
+/// dead `x := 1` after the RETURN does not make the branch fall through,
+/// and the null path stays out of the code below.
+#[rstest]
+fn early_return_followed_by_dead_code_still_guards(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION fn1 : INT
+    VAR
+        x: INT := 1;
+        ptr: REF_TO INT := NULL;
+    END_VAR
+
+    IF ptr = NULL THEN
+        RETURN;
+        x := 1;
+    END_IF;
+
+    fn1 := ptr^;
+END_FUNCTION
+    "#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+/// `__RAISE` ends its branch as a RETURN does: nothing after it runs, so
+/// the null path it takes never reaches the dereference.
+#[rstest]
+fn raise_guard_is_accepted(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION fn1 : INT
+    VAR
+        x: INT := 1;
+        ptr: REF_TO INT := NULL;
+    END_VAR
+
+    IF ptr = NULL THEN
+        __RAISE('null');
+    END_IF;
+
+    fn1 := ptr^;
+END_FUNCTION
+    "#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+/// Dead code is checked but never runs: what it does to a reference is
+/// undone once its block ends, so the dead `ptr := NULL` leaves the
+/// dereference below guarded.
+#[rstest]
+fn dead_assignment_does_not_change_the_null_state(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION fn1 : INT
+    VAR
+        x: INT := 1;
+        c: BOOL;
+        ptr: REF_TO INT := NULL;
+    END_VAR
+
+    ptr := REF(x);
+    IF c THEN
+        RETURN;
+        ptr := NULL;
+    END_IF;
+
+    fn1 := ptr^;
+END_FUNCTION
+    "#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+/// A dereference in dead code is checked with the state the terminator
+/// was reached with: `ptr` was never set, and the report stands even where
+/// it would not run.
+#[rstest]
+fn deref_in_dead_code_is_reported(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION fn1 : INT
+    VAR
+        ptr: REF_TO INT;
+    END_VAR
+
+    fn1 := 0;
+    RETURN;
+    fn1 := ptr^;
+END_FUNCTION
+    "#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0902] Error: possibly null dereference
+       ,-[ file:///test0.st:9:12 ]
+       |
+     4 |         ptr: REF_TO INT;
+       |         ^|^
+       |          `--- 'ptr' is declared without an initial value here
+       |
+     9 |     fn1 := ptr^;
+       |            ^|^
+       |             `--- 'ptr' is dereferenced and never set
+    ---'
+    ");
+}

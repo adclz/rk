@@ -225,18 +225,6 @@ pub fn test_diagnostics<'db>(db: &'db mut RootDatabase, source: &'db [&'db str])
     trimmed(out)
 }
 
-/// [`test_diagnostics`] without the compilation, for a source `rk check`
-/// accepts that does not compile yet. Each caller says what breaks; once it
-/// is fixed, the caller goes back to [`test_diagnostics`].
-pub fn test_diagnostics_not_compiled<'db>(
-    db: &'db mut RootDatabase,
-    source: &'db [&'db str],
-) -> String {
-    test_snapshot(db, source, |db, file| {
-        diagnostics_for_file(db, file).as_ref().clone()
-    })
-}
-
 /// Lower, emit and validate the workspace, as `rk compile` does, unless a
 /// file (library ones included) has an error.
 fn assert_accepted_workspace_compiles(db: &RootDatabase) {
