@@ -256,12 +256,10 @@ impl<'db> Type<'db> {
                     }),
                 }
             }
-            // check array spec equality
-            (Type::Array(a1), rhs) => {
-                a1.of_type(db)
-                    .infer(db)
-                    .coerce_with_type(db, *rhs, adjustments, resolver)
-            }
+            // No arm takes a value of the element type for the array: it
+            // used to, and `a := 5` wrote `a[0]`, `y + a` reached lowering,
+            // and an element read bare, `(a[1])`, passed for the array it
+            // is in. An array takes an array of its storage type, above.
             // No SubRange arms: `normalize` resolves a subrange to its base, so
             // both sides arrive here already peeled — an `INT (0..100)` and an
             // `INT` meet as two INTs. Bounds are enforced by
