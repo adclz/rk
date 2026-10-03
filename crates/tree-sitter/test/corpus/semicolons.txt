@@ -1,0 +1,236 @@
+================================================================================
+Semicolons - a statement without one
+================================================================================
+
+FUNCTION fn
+VAR x : INT END_VAR
+	x := 1
+	IF x = 1 THEN x := 2 END_IF
+	fn := x
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (func_decl
+    (identifier)
+    (var_decls
+      (var_decl_init_list
+        (variable_list
+          (identifier))
+        (var_decl_init
+          (simple_type_spec
+            (numeric_type_name
+              (int_type_name
+                (sign_int_type_name
+                  (int_name))))))))
+    (func_body
+      (stmt_list
+        (assign
+          (variable_access
+            (variable
+              (begin_path_expression
+                (path_expression
+                  (var_access
+                    (field))))))
+          (assignment
+            (constant
+              (numeric_literal
+                (int_literal
+                  (signed_int
+                    (unsigned_int)))))))
+        (if_stmt
+          (comparison_operator
+            (eq_operator
+              (variable_access
+                (variable
+                  (begin_path_expression
+                    (path_expression
+                      (var_access
+                        (field))))))
+              (constant
+                (numeric_literal
+                  (int_literal
+                    (signed_int
+                      (unsigned_int)))))))
+          (stmt_list
+            (assign
+              (variable_access
+                (variable
+                  (begin_path_expression
+                    (path_expression
+                      (var_access
+                        (field))))))
+              (assignment
+                (constant
+                  (numeric_literal
+                    (int_literal
+                      (signed_int
+                        (unsigned_int)))))))))
+        (assign
+          (variable_access
+            (variable
+              (begin_path_expression
+                (path_expression
+                  (var_access
+                    (field))))))
+          (assignment
+            (variable_access
+              (variable
+                (begin_path_expression
+                  (path_expression
+                    (var_access
+                      (field))))))))))))
+
+================================================================================
+Semicolons - the empty statement
+================================================================================
+
+FUNCTION fn
+VAR x : INT; END_VAR;
+	;
+	x := 1;;
+	IF x = 1 THEN ; END_IF;
+	CASE x OF 1: ; 2: x := 2;; ELSE ; END_CASE;
+	;;
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (func_decl
+    (identifier)
+    (var_decls
+      (var_decl_init_list
+        (variable_list
+          (identifier))
+        (var_decl_init
+          (simple_type_spec
+            (numeric_type_name
+              (int_type_name
+                (sign_int_type_name
+                  (int_name))))))))
+    (func_body
+      (stmt_list
+        (assign
+          (variable_access
+            (variable
+              (begin_path_expression
+                (path_expression
+                  (var_access
+                    (field))))))
+          (assignment
+            (constant
+              (numeric_literal
+                (int_literal
+                  (signed_int
+                    (unsigned_int)))))))
+        (if_stmt
+          (comparison_operator
+            (eq_operator
+              (variable_access
+                (variable
+                  (begin_path_expression
+                    (path_expression
+                      (var_access
+                        (field))))))
+              (constant
+                (numeric_literal
+                  (int_literal
+                    (signed_int
+                      (unsigned_int)))))))
+          (stmt_list))
+        (case_stmt
+          (variable_access
+            (variable
+              (begin_path_expression
+                (path_expression
+                  (var_access
+                    (field))))))
+          (case_selection
+            (case_list
+              (case_list_elem
+                (constant_expr
+                  (constant
+                    (numeric_literal
+                      (int_literal
+                        (signed_int
+                          (unsigned_int))))))))
+            (stmt_list))
+          (case_selection
+            (case_list
+              (case_list_elem
+                (constant_expr
+                  (constant
+                    (numeric_literal
+                      (int_literal
+                        (signed_int
+                          (unsigned_int))))))))
+            (stmt_list
+              (assign
+                (variable_access
+                  (variable
+                    (begin_path_expression
+                      (path_expression
+                        (var_access
+                          (field))))))
+                (assignment
+                  (constant
+                    (numeric_literal
+                      (int_literal
+                        (signed_int
+                          (unsigned_int)))))))))
+          (stmt_list))))))
+
+================================================================================
+Semicolons - the one after END_VAR is the section's
+================================================================================
+
+FUNCTION fn
+VAR_INPUT a : INT; END_VAR;
+VAR b : INT; END_VAR;
+	;
+	fn := a;
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (func_decl
+    (identifier)
+    (input_decls
+      (input_var
+        (variable_list
+          (identifier))
+        (var_decl_init
+          (simple_type_spec
+            (numeric_type_name
+              (int_type_name
+                (sign_int_type_name
+                  (int_name))))))))
+    (var_decls
+      (var_decl_init_list
+        (variable_list
+          (identifier))
+        (var_decl_init
+          (simple_type_spec
+            (numeric_type_name
+              (int_type_name
+                (sign_int_type_name
+                  (int_name))))))))
+    (func_body
+      (stmt_list
+        (assign
+          (variable_access
+            (variable
+              (begin_path_expression
+                (path_expression
+                  (var_access
+                    (field))))))
+          (assignment
+            (variable_access
+              (variable
+                (begin_path_expression
+                  (path_expression
+                    (var_access
+                      (field))))))))))))

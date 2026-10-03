@@ -1188,3 +1188,80 @@ fn a_node_the_ast_has_no_place_for_is_a_syntax_error(mut with_db: RootDatabase) 
         diagnostic.message
     );
 }
+
+/// A `;` ends a statement and is not required: a statement may go without
+/// one, and so may a declaration, a TYPE, a VAR_CONFIG entry, a TASK or a
+/// USING. The program compiles the same.
+#[rstest]
+fn valid_statements_and_declarations_without_semicolons(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE
+    Pt : STRUCT x : INT y : INT END_STRUCT
+    Row : ARRAY[0..1] OF INT
+    Mode : (Off, On)
+END_TYPE
+
+FUNCTION_BLOCK Fb
+VAR_INPUT a : INT b : INT := 2 END_VAR
+VAR_OUTPUT q : INT END_VAR
+VAR n : INT END_VAR
+    q := a + b + n
+END_FUNCTION_BLOCK
+
+FUNCTION f : INT
+VAR x : INT y : INT END_VAR
+VAR_TEMP t : INT END_VAR
+    IF x = 1 THEN RETURN END_IF
+    FOR x := 0 TO 2 DO IF x = 1 THEN CONTINUE END_IF y := y + 1 END_FOR
+    WHILE x > 5 DO x := x - 1 IF x = 7 THEN EXIT END_IF END_WHILE
+    REPEAT x := x + 1 UNTIL x > 3 END_REPEAT
+    CASE x OF 1: y := 1 2: y := 2 ELSE y := 0 END_CASE
+    f := y
+END_FUNCTION
+
+PROGRAM Main
+VAR fb : Fb p : Pt r : Row m : Mode END_VAR
+    fb(a := 1)
+    p.x := fb.q
+    r[0] := p.x
+    m := Mode#On
+END_PROGRAM
+
+CONFIGURATION Cfg
+VAR_GLOBAL g : INT END_VAR
+    RESOURCE Res ON CPU
+        TASK T(INTERVAL := T#10ms, PRIORITY := 1)
+        PROGRAM P1 WITH T : Main
+    END_RESOURCE
+END_CONFIGURATION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+/// The empty statement, a `;` on its own: as a whole body, after a
+/// statement's own `;`, in a branch, and after a section's `END_VAR`.
+/// IEC 61131-3 writes a statement list as `( Stmt? ';' )*`.
+#[rstest]
+fn valid_empty_statements(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK Idle
+    ;
+END_FUNCTION_BLOCK
+
+FUNCTION f : INT
+VAR_INPUT a : INT; END_VAR;
+VAR x : INT; END_VAR;
+    ;
+    x := a;;
+    IF x = 1 THEN ; END_IF;
+    IF x = 2 THEN ; ELSE ; END_IF
+    CASE x OF 1: ; 2: x := 2;; ELSE ; END_CASE;
+    FOR x := 0 TO 2 DO ; END_FOR;
+    WHILE x > 5 DO ; END_WHILE
+    REPEAT ; UNTIL x > 3 END_REPEAT;
+    ;;
+    f := x
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
