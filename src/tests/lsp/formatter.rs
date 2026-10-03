@@ -2302,6 +2302,20 @@ END_VAR
 END_CONFIGURATION
 "#
 )]
+#[case::using_directives(
+    r#"
+NAMESPACE Lib
+END_NAMESPACE
+USING Lib; // after
+USING Lib; (* after too *)
+FUNCTION f : INT
+USING Lib; // in a body
+VAR x : INT; END_VAR
+    x := 1; // one
+    f := x;
+END_FUNCTION
+"#
+)]
 #[case::comments(
     r#"
 FUNCTION f : INT
