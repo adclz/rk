@@ -1224,3 +1224,51 @@ fn for_bounds_convert_to_the_counter_width(mut with_db: db::RootDatabase) {
     let result: i32 = super::run(&mut with_db, source, "run", ());
     assert_eq!(result, 36, "-2..3 is six turns, 3 down to 1 three");
 }
+
+/// Dead code after a RETURN, an EXIT or a CONTINUE compiles and never runs.
+/// Lowering used to fail on it as a compiler bug, since the checker had
+/// skipped it and left it with no types.
+#[rstest]
+fn dead_code_compiles_and_never_runs(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE Pt : STRUCT f0 : INT; END_STRUCT; END_TYPE
+
+        FUNCTION after_return : INT
+        VAR v : INT := 1; s : Pt; END_VAR
+            after_return := 10;
+            RETURN;
+            v := v + 1;
+            s.f0 := 7;
+            after_return := v + s.f0;
+        END_FUNCTION
+
+        FUNCTION after_exit_and_continue : INT
+        VAR i : INT; n : INT; END_VAR
+            FOR i := 0 TO 3 DO
+                n := n + 1;
+                CONTINUE;
+                n := n + 100;
+            END_FOR;
+            FOR i := 0 TO 3 DO
+                n := n + 10;
+                EXIT;
+                FOR i := 0 TO 1 DO
+                    n := n + 1000;
+                END_FOR;
+            END_FOR;
+            after_exit_and_continue := n;
+        END_FUNCTION
+    "#;
+
+    let wasm_bytes = compile_to_wasm(&mut with_db, source);
+    assert_eq!(
+        super::execute_wasm::<(), i32>(&wasm_bytes, "after_return", ()),
+        10,
+        "the result set before the RETURN stands"
+    );
+    assert_eq!(
+        super::execute_wasm::<(), i32>(&wasm_bytes, "after_exit_and_continue", ()),
+        14,
+        "four CONTINUEs and one EXIT, nothing after them"
+    );
+}

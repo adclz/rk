@@ -10,6 +10,7 @@ pub mod call_graph;
 pub mod case;
 pub mod config;
 pub mod constant_folding;
+pub mod dead_code;
 pub mod direct_variables;
 pub mod duplicates;
 pub mod enums;
