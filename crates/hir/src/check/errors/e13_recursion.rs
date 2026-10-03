@@ -33,13 +33,6 @@ impl<'db> ErrorCode for RecursionError<'db> {
             Self::MutualRecursion { .. } => "E1302",
         }
     }
-
-    fn description(&self) -> &'static str {
-        match self {
-            Self::DirectRecursion { .. } => "recursion detected",
-            Self::MutualRecursion { .. } => "recursion detected",
-        }
-    }
 }
 
 impl<'db> ToIdeDiagnostic<'db> for RecursionError<'db> {
@@ -52,7 +45,7 @@ impl<'db> ToIdeDiagnostic<'db> for RecursionError<'db> {
             RecursionError::DirectRecursion { pou, callsite } => {
                 let mut diag = diag()
                     .message(format!(
-                        "type '{}' is recursive (contains itself)",
+                        "type '{}' contains itself",
                         pou.get_name_with_case(db).text(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
@@ -90,7 +83,7 @@ impl<'db> ToIdeDiagnostic<'db> for RecursionError<'db> {
 
                 for cs in callsite {
                     diag.with_related(Related::new(
-                        "recurses at this location".to_string(),
+                        "the cycle passes here".to_string(),
                         cs.get_scope_id(db).file(db),
                         cs.get_span(db),
                     ));

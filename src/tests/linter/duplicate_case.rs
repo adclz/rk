@@ -20,16 +20,16 @@ VAR x : INT; END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "duplicate-case"), @r"
-    [L0109] Warning: duplicate CASE selector
+    [L0109] Warning: duplicate CASE value
        ,-[ file:///test0.st:7:9 ]
        |
      5 |         1: test := 10;
        |         |
-       |         `-- CASE selector is already defined here
+       |         `-- the selector is already used here
        |
      7 |         1: test := 30;
        |         |
-       |         `-- CASE selector '1' is duplicated, second branch is unreachable
+       |         `-- selector '1' is already used: this branch never runs
        |
        | Note: lint rule: duplicate-case
     ---'
@@ -49,16 +49,16 @@ VAR x : INT; END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "duplicate-case"), @r"
-    [L0109] Warning: duplicate CASE selector
+    [L0109] Warning: duplicate CASE value
        ,-[ file:///test0.st:7:9 ]
        |
      5 |         0: test := 10;
        |         |
-       |         `-- CASE selector is already defined here
+       |         `-- the selector is already used here
        |
      7 |         0: test := 30;
        |         |
-       |         `-- CASE selector '0' is duplicated, second branch is unreachable
+       |         `-- selector '0' is already used: this branch never runs
        |
        | Note: lint rule: duplicate-case
     ---'
@@ -78,27 +78,27 @@ VAR x : INT; END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "duplicate-case"), @r"
-    [L0109] Warning: duplicate CASE selector
+    [L0109] Warning: duplicate CASE value
        ,-[ file:///test0.st:6:9 ]
        |
      5 |         5: test := 10;
        |         |
-       |         `-- CASE selector is already defined here
+       |         `-- the selector is already used here
      6 |         5: test := 20;
        |         |
-       |         `-- CASE selector '5' is duplicated, second branch is unreachable
+       |         `-- selector '5' is already used: this branch never runs
        |
        | Note: lint rule: duplicate-case
     ---'
-    [L0109] Warning: duplicate CASE selector
+    [L0109] Warning: duplicate CASE value
        ,-[ file:///test0.st:7:9 ]
        |
      6 |         5: test := 20;
        |         |
-       |         `-- CASE selector is already defined here
+       |         `-- the selector is already used here
      7 |         5: test := 30;
        |         |
-       |         `-- CASE selector '5' is duplicated, second branch is unreachable
+       |         `-- selector '5' is already used: this branch never runs
        |
        | Note: lint rule: duplicate-case
     ---'
@@ -117,15 +117,15 @@ VAR x : INT; END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "duplicate-case"), @r"
-    [L0109] Warning: duplicate CASE selector
+    [L0109] Warning: duplicate CASE value
        ,-[ file:///test0.st:6:9 ]
        |
      5 |         INT#1: test := 10;
        |         ^^|^^
-       |           `---- CASE selector is already defined here
+       |           `---- the selector is already used here
      6 |         1: test := 20;
        |         |
-       |         `-- CASE selector '1' is duplicated, second branch is unreachable
+       |         `-- selector '1' is already used: this branch never runs
        |
        | Note: lint rule: duplicate-case
     ---'
@@ -148,15 +148,15 @@ VAR x : Range; END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "duplicate-case"), @r"
-    [L0109] Warning: duplicate CASE selector
+    [L0109] Warning: duplicate CASE value
         ,-[ file:///test0.st:10:9 ]
         |
       9 |         0..2: test := 10;
         |         |
-        |         `-- CASE selector is already defined here
+        |         `-- the selector is already used here
      10 |         0..2: test := 20;
         |         |
-        |         `-- CASE range '0..2' is duplicated, second branch is unreachable
+        |         `-- range '0..2' is already used: this branch never runs
         |
         | Note: lint rule: duplicate-case
     ----'
@@ -177,16 +177,16 @@ VAR x : STATE; END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "duplicate-case"), @r"
-    [L0109] Warning: duplicate CASE selector
+    [L0109] Warning: duplicate CASE value
        ,-[ file:///test0.st:8:9 ]
        |
      6 |         STATE#A: test := 10;
        |         ^^^|^^^
-       |            `----- CASE selector is already defined here
+       |            `----- the selector is already used here
        |
      8 |         STATE#A: test := 20;
        |         ^^^|^^^
-       |            `----- CASE selector 'STATE#A' is duplicated, second branch is unreachable
+       |            `----- selector 'STATE#A' is already used: this branch never runs
        |
        | Note: lint rule: duplicate-case
     ---'
@@ -205,15 +205,15 @@ VAR x : INT; END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "duplicate-case"), @r"
-    [L0109] Warning: duplicate CASE selector
+    [L0109] Warning: duplicate CASE value
        ,-[ file:///test0.st:6:9 ]
        |
      5 |         1..5: test := 10;
        |         |
-       |         `-- overlapping range defined here
+       |         `-- the overlapping range is here
      6 |         3..8: test := 20;
        |         |
-       |         `-- CASE range '3..8' overlaps with '1..5'
+       |         `-- range '3..8' overlaps '1..5'
        |
        | Note: lint rule: duplicate-case
     ---'
@@ -232,15 +232,15 @@ VAR x : INT; END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "duplicate-case"), @r"
-    [L0109] Warning: duplicate CASE selector
+    [L0109] Warning: duplicate CASE value
        ,-[ file:///test0.st:6:9 ]
        |
      5 |         1..10: test := 10;
        |         |
-       |         `-- range defined here
+       |         `-- the range is here
      6 |         5: test := 20;
        |         |
-       |         `-- CASE selector '5' is already covered by range '1..10'
+       |         `-- selector '5' is already covered by range '1..10'
        |
        | Note: lint rule: duplicate-case
     ---'
@@ -259,15 +259,15 @@ VAR x : INT; END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "duplicate-case"), @r"
-    [L0109] Warning: duplicate CASE selector
+    [L0109] Warning: duplicate CASE value
        ,-[ file:///test0.st:6:9 ]
        |
      5 |         5: test := 10;
        |         |
-       |         `-- selector defined here
+       |         `-- the selector is used here
      6 |         1..10: test := 20;
        |         |
-       |         `-- CASE range '1..10' covers already defined selector '5'
+       |         `-- range '1..10' covers the selector '5', already used
        |
        | Note: lint rule: duplicate-case
     ---'
@@ -307,15 +307,15 @@ VAR s : STRING; y : INT; END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "duplicate-case"), @r"
-    [L0109] Warning: duplicate CASE selector
+    [L0109] Warning: duplicate CASE value
        ,-[ file:///test0.st:6:9 ]
        |
      5 |         'A': y := 1;
        |         ^|^
-       |          `--- CASE selector is already defined here
+       |          `--- the selector is already used here
      6 |         '$41': y := 2;
        |         ^^|^^
-       |           `---- CASE selector ''$41'' is duplicated, second branch is unreachable
+       |           `---- selector ''$41'' is already used: this branch never runs
        |
        | Note: lint rule: duplicate-case
     ---'
@@ -338,15 +338,15 @@ VAR m : Mode; END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "duplicate-case"), @r"
-    [L0109] Warning: duplicate CASE selector
+    [L0109] Warning: duplicate CASE value
        ,-[ file:///test0.st:8:9 ]
        |
      7 |         Mode#Idle: test := 1;
        |         ^^^^|^^^^
-       |             `------ CASE selector is already defined here
+       |             `------ the selector is already used here
      8 |         Mode#IDLE: test := 2;
        |         ^^^^|^^^^
-       |             `------ CASE selector 'Mode#IDLE' is duplicated, second branch is unreachable
+       |             `------ selector 'Mode#IDLE' is already used: this branch never runs
        |
        | Note: lint rule: duplicate-case
     ---'

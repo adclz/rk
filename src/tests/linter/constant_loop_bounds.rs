@@ -25,7 +25,7 @@ END_FUNCTION
        |
      6 |     FOR i := 5 TO 5 DO
        |              |
-       |              `-- FOR loop bounds are equal (both 5), loop body executes exactly once
+       |              `-- both bounds are 5: the body runs once
        |
        | Note: lint rule: constant-loop-bounds
     ---'
@@ -65,7 +65,7 @@ END_FUNCTION
        |
      6 |     FOR i := 0 TO 0 DO
        |              |
-       |              `-- FOR loop bounds are equal (both 0), loop body executes exactly once
+       |              `-- both bounds are 0: the body runs once
        |
        | Note: lint rule: constant-loop-bounds
     ---'
@@ -91,7 +91,7 @@ END_FUNCTION
        |
      7 |     FOR i := n TO n DO
        |              |
-       |              `-- FOR loop bounds are equal (both n), loop body executes exactly once
+       |              `-- both bounds are n: the body runs once
        |
        | Note: lint rule: constant-loop-bounds
     ---'
@@ -132,7 +132,7 @@ END_FUNCTION
        |
      4 |     FOR i := n TO N DO
        |              |
-       |              `-- FOR loop bounds are equal (both n), loop body executes exactly once
+       |              `-- both bounds are n: the body runs once
        |
        | Note: lint rule: constant-loop-bounds
     ---'

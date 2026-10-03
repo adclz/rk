@@ -26,10 +26,6 @@ impl ErrorCode for UnknownAllow {
     fn code(&self) -> &'static str {
         "L0005"
     }
-
-    fn description(&self) -> &'static str {
-        "unknown-allow"
-    }
 }
 
 /// A region of the file where the named rules are silenced.

@@ -41,10 +41,10 @@ fn diagnostic_identities(rendered: &str) -> String {
         .filter_map(|l| {
             let t = l.trim();
             if t.starts_with('[') && t.contains(']') {
-                // `[E0201] Error: no item found in scope`
+                // `[E0201] Error: unknown name`
                 return Some(t.to_string());
             }
-            // "`------ no item \"STATION_1\" found in scope" — the annotation
+            // "`------ no item 'STATION_1' found in scope" — the annotation
             // text, whose dash run encodes width and so is dropped.
             let (_, msg) = t.split_once('`')?;
             let msg = msg.trim_start_matches('-').trim();

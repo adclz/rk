@@ -25,14 +25,14 @@ fn invalid_bound_wraps_at_its_type(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0503] Error: invalid array bounds
+    [E0503] Error: upper bound below the lower bound
        ,-[ file:///test0.st:5:26 ]
        |
      5 |             a : ARRAY[0..200 * 200] OF BYTE;
        |                          ^^^^|^^^^
        |                              `------ the upper bound -25536 is below the lower bound 0
     ---'
-    [E0503] Error: invalid array bounds
+    [E0503] Error: upper bound below the lower bound
        ,-[ file:///test0.st:6:26 ]
        |
      6 |             b : ARRAY[0..N] OF BYTE;
@@ -54,7 +54,7 @@ fn invalid_subscript_wraps_at_its_type(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0506] Error: invalid array access
+    [E0506] Error: constant index out of bounds
        ,-[ file:///test0.st:5:22 ]
        |
      5 |             fn1 := a[K + 1];
@@ -78,19 +78,19 @@ fn invalid_negative_string_length(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0320] Error: length is negative
+    [E0320] Error: negative STRING length
        ,-[ file:///test0.st:4:24 ]
        |
      4 |             s : STRING[-5];
        |                        ^|
-       |                         `-- a STRING length cannot be negative, and this one is -5
+       |                         `-- the length is -5: it cannot be negative
     ---'
-    [E0320] Error: length is negative
+    [E0320] Error: negative STRING length
        ,-[ file:///test0.st:5:24 ]
        |
      5 |             t : STRING[200 * 200];
        |                        ^^^^|^^^^
-       |                            `------ a STRING length cannot be negative, and this one is -25536
+       |                            `------ the length is -25536: it cannot be negative
     ---'
     ");
 }

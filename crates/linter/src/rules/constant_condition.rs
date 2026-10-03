@@ -26,10 +26,6 @@ impl ErrorCode for ConstantCondition {
     fn code(&self) -> &'static str {
         "L0103"
     }
-
-    fn description(&self) -> &'static str {
-        "constant condition"
-    }
 }
 
 pub fn check<'db>(

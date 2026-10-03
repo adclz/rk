@@ -21,7 +21,7 @@ fn missing_override(mut with_db: RootDatabase) {
         END_CLASS"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1112] Error: override violation
+    [E1112] Error: missing OVERRIDE keyword
        ,-[ file:///test0.st:8:20 ]
        |
      3 |             METHOD Tick : INT END_METHOD
@@ -50,7 +50,7 @@ fn override_final_method(mut with_db: RootDatabase) {
         END_CLASS"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1114] Error: override violation
+    [E1114] Error: FINAL method overridden
        ,-[ file:///test0.st:8:29 ]
        |
      3 |             METHOD FINAL Tick : INT END_METHOD
@@ -78,7 +78,7 @@ fn missing_abstract_method(mut with_db: RootDatabase) {
         END_CLASS"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1116] Error: inheritance violation
+    [E1116] Error: missing ABSTRACT method implementation
        ,-[ file:///test0.st:6:15 ]
        |
      3 |             METHOD ABSTRACT Tick : INT END_METHOD
@@ -102,12 +102,12 @@ fn empty_override(mut with_db: RootDatabase) {
         END_CLASS"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1113] Error: inheritance violation
+    [E1113] Error: OVERRIDE without a base method
        ,-[ file:///test0.st:3:29 ]
        |
      3 |             METHOD OVERRIDE Tick : INT END_METHOD
        |                             ^^|^
-       |                               `--- invalid usage of OVERRIDE for method 'Tick'
+       |                               `--- method 'Tick' overrides nothing
        |
        | Note: OVERRIDE is only valid when the method is inherited
     ---'
@@ -140,7 +140,7 @@ fn interface_methods_not_implemented(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1119] Error: inheritance violation
+    [E1119] Error: unimplemented interface method
        ,-[ file:///test0.st:6:15 ]
        |
      3 |             METHOD DAYTIME END_METHOD
@@ -182,7 +182,7 @@ fn method_signature_count_mismatch_in_implementer(mut with_db: RootDatabase) {
         |
      11 |             METHOD OVERRIDE DAYTIME
         |                             ^^^|^^^
-        |                                `----- invalid number of parameters for method 'DAYTIME': expected 1, got 0
+        |                                `----- method 'DAYTIME' declares 0 parameters, not 1
     ----'
     ");
 }
@@ -214,7 +214,7 @@ fn method_signature_count_mismatch_in_base(mut with_db: RootDatabase) {
        |
      8 |             METHOD OVERRIDE DAYTIME
        |                             ^^^|^^^
-       |                                `----- invalid number of parameters for method 'DAYTIME': expected 0, got 1
+       |                                `----- method 'DAYTIME' declares 1 parameters, not 0
     ---'
     ");
 }
@@ -266,7 +266,7 @@ fn super_without_extends_clause_on_fb(mut with_db: RootDatabase) {
         END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1107] Error: invalid use of SUPER or THIS
+    [E1107] Error: SUPER without an EXTENDS clause
        ,-[ file:///test0.st:3:13 ]
        |
      3 |             SUPER.something
@@ -286,7 +286,7 @@ fn super_without_extends_clause_on_class(mut with_db: RootDatabase) {
         END_CLASS"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1107] Error: invalid use of SUPER or THIS
+    [E1107] Error: SUPER without an EXTENDS clause
        ,-[ file:///test0.st:4:17 ]
        |
      4 |                 SUPER.something
@@ -369,7 +369,7 @@ fn concrete_method_still_requires_override(mut with_db: RootDatabase) {
 
     // Overriding a concrete method STILL requires OVERRIDE
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1112] Error: override violation
+    [E1112] Error: missing OVERRIDE keyword
        ,-[ file:///test0.st:7:20 ]
        |
      3 |             METHOD Tick : INT END_METHOD
@@ -544,7 +544,7 @@ CLASS B EXTENDS A
 END_CLASS
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1115] Error: inheritance violation
+    [E1115] Error: inherited variable redeclared
        ,-[ file:///test0.st:7:9 ]
        |
      3 |     VAR x : INT; END_VAR
@@ -606,8 +606,8 @@ END_PROGRAM
         ,-[ file:///test0.st:12:5 ]
         |
       3 |     VAR_IN_OUT io : INT; END_VAR
-        |                ^^^^|^^^
-        |                    `----- parameter 'io' declared here
+        |                ^|
+        |                 `-- parameter 'io' is declared here
         |
      12 |     d(own := 2);
         |     |
@@ -651,7 +651,7 @@ CLASS C
 END_CLASS
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1117] Error: inheritance violation
+    [E1117] Error: ABSTRACT method in a concrete POU
        ,-[ file:///test0.st:2:7 ]
        |
      2 | CLASS C
@@ -674,7 +674,7 @@ FUNCTION_BLOCK F
 END_FUNCTION_BLOCK
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1117] Error: inheritance violation
+    [E1117] Error: ABSTRACT method in a concrete POU
        ,-[ file:///test0.st:2:16 ]
        |
      2 | FUNCTION_BLOCK F
@@ -701,7 +701,7 @@ VAR b : B; END_VAR
 END_PROGRAM
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1118] Error: inheritance violation
+    [E1118] Error: instantiation of an ABSTRACT type
        ,-[ file:///test0.st:7:9 ]
        |
      2 | CLASS ABSTRACT B
@@ -712,7 +712,7 @@ END_PROGRAM
        |         |
        |         `-- cannot instantiate ABSTRACT CLASS 'B'
        |
-       | Note: use a derived type that implements it
+       | Help: use a derived type that implements it
     ---'
     ");
 }
@@ -787,7 +787,7 @@ END_FUNCTION_BLOCK
         |
      18 | VAR q : Square; rs : REF_TO Shape; d : Derived; rb : REF_TO Base; x : INT; END_VAR
         |                 ^|
-        |                  `-- type is declared by variable 'rs' here
+        |                  `-- 'rs' is declared here
      19 |     rs := REF(q);
         |           ^^^|^^
         |              `---- expected 'REF_TO Shape', got 'REF_TO Square'
@@ -797,7 +797,7 @@ END_FUNCTION_BLOCK
         |
      18 | VAR q : Square; rs : REF_TO Shape; d : Derived; rb : REF_TO Base; x : INT; END_VAR
         |                                                 ^|
-        |                                                  `-- type is declared by variable 'rb' here
+        |                                                  `-- 'rb' is declared here
         |
      20 |     rb := REF(d);
         |           ^^^|^^
@@ -808,7 +808,7 @@ END_FUNCTION_BLOCK
         |
       9 | FUNCTION_BLOCK Base
         |                ^^|^
-        |                  `--- FUNCTION_BLOCK 'Base' is defined here
+        |                  `--- FUNCTION_BLOCK 'Base' is declared here
         |
      21 |     x := TakeBase(b := d);
         |                        |
@@ -849,7 +849,7 @@ CLASS D EXTENDS B
 END_CLASS
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1104] Error: inheritance violation
+    [E1104] Error: FINAL type extended
        ,-[ file:///test0.st:6:17 ]
        |
      2 | CLASS FINAL B
@@ -875,7 +875,7 @@ FUNCTION_BLOCK D EXTENDS B
 END_FUNCTION_BLOCK
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1104] Error: inheritance violation
+    [E1104] Error: FINAL type extended
        ,-[ file:///test0.st:5:26 ]
        |
      2 | FUNCTION_BLOCK FINAL B
@@ -1217,7 +1217,7 @@ END_FUNCTION_BLOCK
 @@@ garbage ###
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1302] Error: recursion detected
+    [E1302] Error: types contain each other
        ,-[ file:///test0.st:2:16 ]
        |
      2 | FUNCTION_BLOCK A EXTENDS B
@@ -1226,19 +1226,19 @@ END_FUNCTION_BLOCK
        |
      5 | FUNCTION_BLOCK B EXTENDS A
        |                          |
-       |                          `-- recurses at this location
+       |                          `-- the cycle passes here
        |
        | Note: cycle goes
        |       -> A
        |       -> B
        |       ... and back to A
     ---'
-    [E0001] Error: syntax
+    [E0001] Error: syntax error
        ,-[ file:///test0.st:8:1 ]
        |
      8 | @@@ garbage ###
        | ^^^^^^^|^^^^^^^
-       |        `--------- Unexpected token(s): '@@@ garbage # # #'
+       |        `--------- unexpected token(s): '@@@ garbage # # #'
     ---'
     ");
 }
@@ -1282,7 +1282,7 @@ VAR_INPUT i : IA; END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1302] Error: recursion detected
+    [E1302] Error: types contain each other
        ,-[ file:///test0.st:2:16 ]
        |
      2 | FUNCTION_BLOCK A EXTENDS B
@@ -1291,14 +1291,14 @@ END_FUNCTION
        |
      9 | FUNCTION_BLOCK B EXTENDS A
        |                          |
-       |                          `-- recurses at this location
+       |                          `-- the cycle passes here
        |
        | Note: cycle goes
        |       -> A
        |       -> B
        |       ... and back to A
     ---'
-    [E1302] Error: recursion detected
+    [E1302] Error: types contain each other
         ,-[ file:///test0.st:16:11 ]
         |
      16 | INTERFACE IA EXTENDS IB
@@ -1307,7 +1307,7 @@ END_FUNCTION
         |
      20 | INTERFACE IB EXTENDS IA
         |                      ^|
-        |                       `-- recurses at this location
+        |                       `-- the cycle passes here
         |
         | Note: cycle goes
         |       -> IA
@@ -1364,7 +1364,7 @@ END_FUNCTION_BLOCK
         |
         | Note: the return type must match the interface method's
     ----'
-    [E1135] Error: inheritance violation
+    [E1135] Error: interface method implemented without PUBLIC
         ,-[ file:///test0.st:21:51 ]
         |
       2 | INTERFACE IMeasure
@@ -1426,7 +1426,7 @@ FUNCTION_BLOCK Overrider EXTENDS Base
 END_FUNCTION_BLOCK
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1119] Error: inheritance violation
+    [E1119] Error: unimplemented interface method
         ,-[ file:///test0.st:21:16 ]
         |
       3 |     METHOD Value : LREAL END_METHOD
@@ -1437,12 +1437,12 @@ END_FUNCTION_BLOCK
         |                ^^|^^
         |                  `---- missing implementation for interface method 'Value'
     ----'
-    [E1113] Error: inheritance violation
+    [E1113] Error: OVERRIDE without a base method
         ,-[ file:///test0.st:31:28 ]
         |
      31 |     METHOD PUBLIC OVERRIDE Step : INT
         |                            ^^|^
-        |                              `--- invalid usage of OVERRIDE for method 'Step'
+        |                              `--- method 'Step' overrides nothing
         |
         | Note: OVERRIDE is only valid when the method is inherited
     ----'
@@ -1551,7 +1551,7 @@ END_VAR
 END_PROGRAM
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1118] Error: inheritance violation
+    [E1118] Error: instantiation of an ABSTRACT type
        ,-[ file:///test0.st:7:15 ]
        |
      2 | FUNCTION_BLOCK ABSTRACT Shape
@@ -1562,9 +1562,9 @@ END_PROGRAM
        |               ^^^^^^^^^^|^^^^^^^^^
        |                         `----------- cannot instantiate ABSTRACT FUNCTION_BLOCK 'Shape'
        |
-       | Note: use a derived type that implements it
+       | Help: use a derived type that implements it
     ---'
-    [E1118] Error: inheritance violation
+    [E1118] Error: instantiation of an ABSTRACT type
        ,-[ file:///test0.st:8:26 ]
        |
      2 | FUNCTION_BLOCK ABSTRACT Shape
@@ -1575,9 +1575,9 @@ END_PROGRAM
        |                          ^^|^^
        |                            `---- cannot instantiate ABSTRACT FUNCTION_BLOCK 'Shape'
        |
-       | Note: use a derived type that implements it
+       | Help: use a derived type that implements it
     ---'
-    [E1118] Error: inheritance violation
+    [E1118] Error: instantiation of an ABSTRACT type
         ,-[ file:///test0.st:10:22 ]
         |
       2 | FUNCTION_BLOCK ABSTRACT Shape
@@ -1588,9 +1588,9 @@ END_PROGRAM
         |                      ^^|^^
         |                        `---- cannot instantiate ABSTRACT FUNCTION_BLOCK 'Shape'
         |
-        | Note: use a derived type that implements it
+        | Help: use a derived type that implements it
     ----'
-    [E1118] Error: inheritance violation
+    [E1118] Error: instantiation of an ABSTRACT type
         ,-[ file:///test0.st:14:26 ]
         |
       2 | FUNCTION_BLOCK ABSTRACT Shape
@@ -1601,9 +1601,9 @@ END_PROGRAM
         |                          ^^|^^
         |                            `---- cannot instantiate ABSTRACT FUNCTION_BLOCK 'Shape'
         |
-        | Note: use a derived type that implements it
+        | Help: use a derived type that implements it
     ----'
-    [E1118] Error: inheritance violation
+    [E1118] Error: instantiation of an ABSTRACT type
         ,-[ file:///test0.st:20:12 ]
         |
       2 | FUNCTION_BLOCK ABSTRACT Shape
@@ -1614,7 +1614,7 @@ END_PROGRAM
         |            ^^^^^^^^^^^^^|^^^^^^^^^^^^
         |                         `-------------- cannot instantiate ABSTRACT FUNCTION_BLOCK 'Shape'
         |
-        | Note: use a derived type that implements it
+        | Help: use a derived type that implements it
     ----'
     ");
 }
@@ -1679,7 +1679,9 @@ END_FUNCTION_BLOCK
         |               |
         |               `-- input 'k' of method 'Scale' has a different default than in the interface method
         |
-        | Note: a call passes the default of the method it names, so through the base or an INTERFACE this one would not apply
+        | Help: give both the same default
+        |
+        | Note: a call through the base or an INTERFACE passes that method's default, not the implementation's
     ----'
     [E1131] Error: method parameter default mismatch
         ,-[ file:///test0.st:35:15 ]
@@ -1692,7 +1694,9 @@ END_FUNCTION_BLOCK
         |               |
         |               `-- input 'a' of method 'Hook' has a different default than in the base method
         |
-        | Note: a call passes the default of the method it names, so through the base or an INTERFACE this one would not apply
+        | Help: give both the same default
+        |
+        | Note: a call through the base or an INTERFACE passes that method's default, not the implementation's
     ----'
     [E1131] Error: method parameter default mismatch
         ,-[ file:///test0.st:39:15 ]
@@ -1705,7 +1709,9 @@ END_FUNCTION_BLOCK
         |               |
         |               `-- input 'b' of method 'Plain' has a different default than in the base method
         |
-        | Note: a call passes the default of the method it names, so through the base or an INTERFACE this one would not apply
+        | Help: give both the same default
+        |
+        | Note: a call through the base or an INTERFACE passes that method's default, not the implementation's
     ----'
     ");
 }
@@ -1726,7 +1732,7 @@ VAR_OUTPUT o : INT; END_VAR
 END_FUNCTION_BLOCK
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1132] Error: invalid use of SUPER or THIS
+    [E1132] Error: SUPER() with a CLASS base
        ,-[ file:///test0.st:8:5 ]
        |
      2 | CLASS K
@@ -1735,9 +1741,9 @@ END_FUNCTION_BLOCK
        |
      8 |     SUPER();
        |     ^^|^^
-       |       `---- SUPER() runs the base's body, and CLASS 'K' has none
+       |       `---- SUPER() runs the base's body, but CLASS 'K' has none
        |
-       | Note: its methods are reached with SUPER.Method()
+       | Help: reach its methods with SUPER.Method()
     ---'
     ");
 }
@@ -1765,16 +1771,18 @@ FUNCTION_BLOCK Square EXTENDS Shape
 END_FUNCTION_BLOCK
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1134] Error: inheritance violation
+    [E1134] Error: ABSTRACT method with a body
        ,-[ file:///test0.st:5:28 ]
        |
      5 |     METHOD PUBLIC ABSTRACT Perimeter : INT
        |                            ^^^^|^^^^
        |                                `------ ABSTRACT method 'Perimeter' cannot have a body
        |
-       | Note: a derived block implements it; without ABSTRACT, this body is the method's
+       | Help: remove ABSTRACT to keep this body
+       |
+       | Note: a derived block implements an ABSTRACT method
     ---'
-    [E1133] Error: invalid use of SUPER or THIS
+    [E1133] Error: SUPER calls a method with no body
         ,-[ file:///test0.st:12:23 ]
         |
       3 |     METHOD PUBLIC ABSTRACT Area : INT
@@ -1783,7 +1791,7 @@ END_FUNCTION_BLOCK
         |
      12 |         Area := SUPER.Area() + 4;
         |                       ^^|^
-        |                         `--- SUPER.Area() calls the base's 'Area', which is ABSTRACT: it has no body to run
+        |                         `--- SUPER.Area() calls an ABSTRACT method, with no body to run
     ----'
     ");
 }
@@ -1822,7 +1830,7 @@ FUNCTION_BLOCK Lone
 END_FUNCTION_BLOCK
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1114] Error: override violation
+    [E1114] Error: FINAL method overridden
         ,-[ file:///test0.st:11:28 ]
         |
       7 |     METHOD PUBLIC FINAL OVERRIDE M : INT M := 2; END_METHOD
@@ -1835,7 +1843,7 @@ END_FUNCTION_BLOCK
         |
         | Note: methods marked as FINAL cannot be overridden
     ----'
-    [E1114] Error: override violation
+    [E1114] Error: FINAL method overridden
         ,-[ file:///test0.st:19:34 ]
         |
      15 |     METHOD PUBLIC FINAL N : INT N := 1; END_METHOD
@@ -1848,7 +1856,7 @@ END_FUNCTION_BLOCK
         |
         | Note: methods marked as FINAL cannot be overridden
     ----'
-    [E1112] Error: override violation
+    [E1112] Error: missing OVERRIDE keyword
         ,-[ file:///test0.st:23:25 ]
         |
       3 |     METHOD PUBLIC M : INT M := 1; END_METHOD
@@ -1861,12 +1869,12 @@ END_FUNCTION_BLOCK
         |
         | Note: OVERRIDE is required when redefining a method with the same signature from a base class or function block
     ----'
-    [E1113] Error: inheritance violation
+    [E1113] Error: OVERRIDE without a base method
         ,-[ file:///test0.st:27:34 ]
         |
      27 |     METHOD PUBLIC FINAL OVERRIDE L : INT L := 1; END_METHOD
         |                                  |
-        |                                  `-- invalid usage of OVERRIDE for method 'L'
+        |                                  `-- method 'L' overrides nothing
         |
         | Note: OVERRIDE is only valid when the method is inherited
     ----'
@@ -1901,7 +1909,7 @@ FUNCTION_BLOCK Open IMPLEMENTS IShow
 END_FUNCTION_BLOCK
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1135] Error: inheritance violation
+    [E1135] Error: interface method implemented without PUBLIC
        ,-[ file:///test0.st:7:20 ]
        |
      2 | INTERFACE IShow
@@ -1914,7 +1922,7 @@ END_FUNCTION_BLOCK
        |
        | Note: a call through the interface reaches it from anywhere the interface is
     ---'
-    [E1135] Error: inheritance violation
+    [E1135] Error: interface method implemented without PUBLIC
         ,-[ file:///test0.st:11:22 ]
         |
       2 | INTERFACE IShow
@@ -1927,7 +1935,7 @@ END_FUNCTION_BLOCK
         |
         | Note: a call through the interface reaches it from anywhere the interface is
     ----'
-    [E1135] Error: inheritance violation
+    [E1135] Error: interface method implemented without PUBLIC
         ,-[ file:///test0.st:15:21 ]
         |
       2 | INTERFACE IShow

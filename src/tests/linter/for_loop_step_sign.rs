@@ -51,15 +51,13 @@ fn ascending_with_negative_step_warning(mut with_db: RootDatabase) {
     "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "for-loop-step-sign"), @r"
     [L0110] Warning: FOR loop step sign mismatch
-       ,-[ file:///test0.st:6:13 ]
+       ,-[ file:///test0.st:6:33 ]
        |
-     6 | ,->             FOR i := 1 TO 10 BY -1 DO
-       : :
-     8 | |->             END_FOR;
-       | |
-       | `-------------------------- FOR loop step direction mismatches bounds direction
+     6 |             FOR i := 1 TO 10 BY -1 DO
+       |                                 ^|
+       |                                  `-- the sign of the step does not match the direction of the bounds
        |
-       |     Note: lint rule: for-loop-step-sign
+       | Note: lint rule: for-loop-step-sign
     ---'
     ");
 }
@@ -78,15 +76,13 @@ fn descending_with_positive_step_warning(mut with_db: RootDatabase) {
     "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "for-loop-step-sign"), @r"
     [L0110] Warning: FOR loop step sign mismatch
-       ,-[ file:///test0.st:6:13 ]
+       ,-[ file:///test0.st:6:33 ]
        |
-     6 | ,->             FOR i := 10 TO 1 BY 1 DO
-       : :
-     8 | |->             END_FOR;
-       | |
-       | `-------------------------- FOR loop step direction mismatches bounds direction
+     6 |             FOR i := 10 TO 1 BY 1 DO
+       |                                 |
+       |                                 `-- the sign of the step does not match the direction of the bounds
        |
-       |     Note: lint rule: for-loop-step-sign
+       | Note: lint rule: for-loop-step-sign
     ---'
     ");
 }
@@ -120,15 +116,13 @@ fn descending_default_step_warning(mut with_db: RootDatabase) {
     "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "for-loop-step-sign"), @r"
     [L0110] Warning: FOR loop step sign mismatch
-       ,-[ file:///test0.st:6:13 ]
+       ,-[ file:///test0.st:6:22 ]
        |
-     6 | ,->             FOR i := 10 TO 1 DO
-       : :
-     8 | |->             END_FOR;
-       | |
-       | `-------------------------- FOR loop step direction mismatches bounds direction
+     6 |             FOR i := 10 TO 1 DO
+       |                      ^^^|^^^
+       |                         `----- the sign of the step does not match the direction of the bounds
        |
-       |     Note: lint rule: for-loop-step-sign
+       | Note: lint rule: for-loop-step-sign
     ---'
     ");
 }
@@ -163,15 +157,13 @@ fn constant_bounds_are_folded(mut with_db: RootDatabase) {
     "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "for-loop-step-sign"), @r"
     [L0110] Warning: FOR loop step sign mismatch
-       ,-[ file:///test0.st:5:13 ]
+       ,-[ file:///test0.st:5:22 ]
        |
-     5 | ,->             FOR i := HI TO LO DO
-       : :
-     7 | |->             END_FOR;
-       | |
-       | `-------------------------- FOR loop step direction mismatches bounds direction
+     5 |             FOR i := HI TO LO DO
+       |                      ^^^^|^^^
+       |                          `----- the sign of the step does not match the direction of the bounds
        |
-       |     Note: lint rule: for-loop-step-sign
+       | Note: lint rule: for-loop-step-sign
     ---'
     ");
 }
@@ -191,15 +183,13 @@ fn step_folds_at_its_type(mut with_db: RootDatabase) {
     "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "for-loop-step-sign"), @r"
     [L0110] Warning: FOR loop step sign mismatch
-       ,-[ file:///test0.st:5:13 ]
+       ,-[ file:///test0.st:5:35 ]
        |
-     5 | ,->             FOR i := 0 TO 1000 BY K + 1 DO
-       : :
-     7 | |->             END_FOR;
-       | |
-       | `-------------------------- FOR loop step direction mismatches bounds direction
+     5 |             FOR i := 0 TO 1000 BY K + 1 DO
+       |                                   ^^|^^
+       |                                     `---- the sign of the step does not match the direction of the bounds
        |
-       |     Note: lint rule: for-loop-step-sign
+       | Note: lint rule: for-loop-step-sign
     ---'
     ");
 }

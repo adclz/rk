@@ -295,31 +295,31 @@ fn duplicates_are_detected_in_any_case(mut with_db: RootDatabase) {
         END_FUNCTION_BLOCK
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0104] Error: duplicate definitions
+    [E0104] Error: duplicate struct field
        ,-[ file:///test0.st:5:17 ]
        |
      4 |                 fld : INT;
        |                 ^|^
-       |                  `--- field 'fld' is already defined here
+       |                  `--- field 'fld' is already declared here
      5 |                 FLD : STRING;
        |                 ^|^
        |                  `--- duplicate field 'FLD'
     ---'
-    [E0105] Error: duplicate definitions
+    [E0105] Error: duplicate enum variant
        ,-[ file:///test0.st:7:18 ]
        |
      7 |             E : (Red, RED);
        |                  ^|^  ^|^
        |                   `-------- duplicate enum variant 'Red'
        |                        |
-       |                        `--- enum variant 'RED' is already defined here
+       |                        `--- enum variant 'RED' is already declared here
     ---'
-    [E0108] Error: duplicate definitions
+    [E0108] Error: duplicate method declaration
         ,-[ file:///test0.st:14:23 ]
         |
      11 |         METHOD PUBLIC Run : INT
         |                       ^|^
-        |                        `--- method 'Run' is already defined here
+        |                        `--- method 'Run' is already declared here
         |
      14 |         METHOD PUBLIC run : INT
         |                       ^|^
@@ -345,7 +345,7 @@ fn using_duplicates_fold(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0111] Error: duplicate definitions
+    [E0111] Error: duplicate USING
         ,-[ file:///test0.st:10:19 ]
         |
       9 |             USING Tools;
@@ -353,7 +353,7 @@ fn using_duplicates_fold(mut with_db: RootDatabase) {
         |                     `---- namespace 'Tools' is already imported here
      10 |             USING tools;
         |                   ^^|^^
-        |                     `---- duplicate `USING` for namespace 'tools'
+        |                     `---- duplicate USING of namespace 'tools'
     ----'
     ");
 }
@@ -370,7 +370,7 @@ fn folded_variable_collides_with_the_return_value(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0107] Error: duplicate definitions
+    [E0107] Error: return value declared again
        ,-[ file:///test0.st:4:13 ]
        |
      4 |             wide : LINT;
@@ -404,7 +404,7 @@ fn slice_size_is_case_insensitive(mut with_db: db::RootDatabase) {
        |
      5 |             b : BOOL;
        |             |
-       |             `-- type is declared by variable 'b' here
+       |             `-- 'b' is declared here
        |
      9 |             b := w.%b1;
        |                  ^^|^^

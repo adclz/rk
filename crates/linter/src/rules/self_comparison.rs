@@ -21,10 +21,6 @@ impl ErrorCode for SelfComparison {
     fn code(&self) -> &'static str {
         "L0105"
     }
-
-    fn description(&self) -> &'static str {
-        "self-comparison"
-    }
 }
 
 /// Check a comparison expression for `x = x`, `x <> x`, `x > x`, etc.
@@ -53,7 +49,7 @@ pub fn check_node<'db>(
         diagnostics.push(
             diag()
                 .message(format!(
-                    "'{var_name}' is compared to itself with '{op}', result is {result_hint}"
+                    "'{var_name}' is compared to itself with '{op}': the result is {result_hint}"
                 ))
                 .desc(&SelfComparison)
                 .range(

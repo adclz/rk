@@ -23,12 +23,12 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0101] Error: duplicate definitions
+    [E0101] Error: duplicate variable
        ,-[ file:///test0.st:5:9 ]
        |
      4 |         test: INT;
        |         ^^|^
-       |           `--- variable 'test' is already defined here
+       |           `--- variable 'test' is already declared here
      5 |         test: REAL;
        |         ^^|^
        |           `--- duplicate variable 'test'
@@ -47,12 +47,12 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0101] Error: duplicate definitions
+    [E0101] Error: duplicate variable
        ,-[ file:///test0.st:4:15 ]
        |
      4 |         test, test: INT;
        |         ^^|^  ^^|^
-       |           `--------- variable 'test' is already defined here
+       |           `--------- variable 'test' is already declared here
        |                 |
        |                 `--- duplicate variable 'test'
     ---'
@@ -70,12 +70,12 @@ TYPE
 END_TYPE"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0104] Error: duplicate definitions
+    [E0104] Error: duplicate struct field
        ,-[ file:///test0.st:5:9 ]
        |
      4 |         test: INT;
        |         ^^|^
-       |           `--- field 'test' is already defined here
+       |           `--- field 'test' is already declared here
      5 |         test: REAL;
        |         ^^|^
        |           `--- duplicate field 'test'
@@ -96,12 +96,12 @@ END_FUNCTION_BLOCK
 "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0102] Error: duplicate definitions
+    [E0102] Error: duplicate POU
        ,-[ file:///test0.st:6:16 ]
        |
      2 | FUNCTION_BLOCK fb1
        |                ^|^
-       |                 `--- POU 'fb1' is already defined here
+       |                 `--- POU 'fb1' is already declared here
        |
      6 | FUNCTION_BLOCK fb1
        |                ^|^
@@ -146,12 +146,12 @@ END_FUNCTION
 "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0102] Error: duplicate definitions
+    [E0102] Error: duplicate POU
        ,-[ file:///test0.st:7:10 ]
        |
      2 | FUNCTION foo : INT
        |          ^|^
-       |           `--- POU 'foo' is already defined here
+       |           `--- POU 'foo' is already declared here
        |
      7 | FUNCTION foo : INT
        |          ^|^
@@ -169,14 +169,14 @@ END_TYPE
 "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0105] Error: duplicate definitions
+    [E0105] Error: duplicate enum variant
        ,-[ file:///test0.st:3:11 ]
        |
      3 |     E1 : (A, B, A);
        |           |     |
        |           `-------- duplicate enum variant 'A'
        |                 |
-       |                 `-- enum variant 'A' is already defined here
+       |                 `-- enum variant 'A' is already declared here
     ---'
     ");
 }
@@ -196,12 +196,12 @@ END_NAMESPACE
 "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0102] Error: duplicate definitions
+    [E0102] Error: duplicate POU
        ,-[ file:///test0.st:7:20 ]
        |
      3 |     FUNCTION_BLOCK fb1
        |                    ^|^
-       |                     `--- POU 'fb1' is already defined here
+       |                     `--- POU 'fb1' is already declared here
        |
      7 |     FUNCTION_BLOCK fb1
        |                    ^|^
@@ -281,12 +281,12 @@ END_INTERFACE
 "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0109] Error: duplicate definitions
+    [E0109] Error: duplicate method prototype
        ,-[ file:///test0.st:4:12 ]
        |
      3 |     METHOD m1 END_METHOD
        |            ^|
-       |             `-- method 'm1' is already defined here
+       |             `-- method 'm1' is already declared here
      4 |     METHOD m1 END_METHOD
        |            ^|
        |             `-- duplicate method 'm1'
@@ -304,12 +304,12 @@ END_CLASS
 "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0108] Error: duplicate definitions
+    [E0108] Error: duplicate method declaration
        ,-[ file:///test0.st:4:12 ]
        |
      3 |     METHOD m1 END_METHOD
        |            ^|
-       |             `-- method 'm1' is already defined here
+       |             `-- method 'm1' is already declared here
      4 |     METHOD m1 END_METHOD
        |            ^|
        |             `-- duplicate method 'm1'
@@ -327,12 +327,12 @@ END_FUNCTION_BLOCK
 "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0108] Error: duplicate definitions
+    [E0108] Error: duplicate method declaration
        ,-[ file:///test0.st:4:12 ]
        |
      3 |     METHOD m1 END_METHOD
        |            ^|
-       |             `-- method 'm1' is already defined here
+       |             `-- method 'm1' is already declared here
      4 |     METHOD m1 END_METHOD
        |            ^|
        |             `-- duplicate method 'm1'
@@ -357,7 +357,7 @@ END_CLASS
 "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0110] Error: duplicate definitions
+    [E0110] Error: duplicate inherited method
        ,-[ file:///test0.st:3:12 ]
        |
      3 |     METHOD m1 END_METHOD
@@ -366,9 +366,9 @@ END_CLASS
        |
      7 |     METHOD m1 END_METHOD
        |            ^|
-       |             `-- method 'm1' is already defined here
+       |             `-- method 'm1' is already declared here
        |
-       | Note: this error happens because both interfaces 'I1' and 'I2' define a method 'm1'
+       | Note: interfaces 'I1' and 'I2' both declare a method 'm1'
     ---'
     ");
 }
@@ -392,7 +392,7 @@ fn duplicate_init_expr(mut with_db: RootDatabase) {
 "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0106] Error: duplicate definitions
+    [E0106] Error: duplicate field in an initializer
         ,-[ file:///test0.st:11:49 ]
         |
      11 |                 Base : Engine := (power := 100, power := 100);
@@ -418,7 +418,7 @@ fn duplicate_usings(mut with_db: RootDatabase) {
 "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0111] Error: duplicate definitions
+    [E0111] Error: duplicate USING
        ,-[ file:///test0.st:7:19 ]
        |
      6 |             USING ns1;
@@ -426,7 +426,7 @@ fn duplicate_usings(mut with_db: RootDatabase) {
        |                    `--- namespace 'ns1' is already imported here
      7 |             USING ns1;
        |                   ^|^
-       |                    `--- duplicate `USING` for namespace 'ns1'
+       |                    `--- duplicate USING of namespace 'ns1'
     ---'
     ");
 }
@@ -442,12 +442,12 @@ fn duplicate_prorams(mut with_db: RootDatabase) {
 "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0112] Error: duplicate definitions
+    [E0112] Error: duplicate PROGRAM
        ,-[ file:///test0.st:5:17 ]
        |
      2 |         PROGRAM prog1
        |                 ^^|^^
-       |                   `---- program 'prog1' is already defined here
+       |                   `---- program 'prog1' is already declared here
        |
      5 |         PROGRAM prog1
        |                 ^^|^^
@@ -488,12 +488,12 @@ CONFIGURATION MyCfg
 END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0114] Error: duplicate definitions
+    [E0114] Error: duplicate TASK
        ,-[ file:///test0.st:5:14 ]
        |
      4 |         TASK t1(INTERVAL := T#10ms, PRIORITY := 1);
        |              ^|
-       |               `-- task 't1' is already defined here
+       |               `-- task 't1' is already declared here
      5 |         TASK t1(INTERVAL := T#10ms, PRIORITY := 2);
        |              ^|
        |               `-- duplicate task 't1'
@@ -516,12 +516,12 @@ CONFIGURATION MyCfg
 END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0113] Error: duplicate definitions
+    [E0113] Error: duplicate PROGRAM instance
        ,-[ file:///test0.st:9:17 ]
        |
      8 |         PROGRAM inst1 WITH t1 : MyProg;
        |                 ^^|^^
-       |                   `---- program instance 'inst1' is already defined here
+       |                   `---- program instance 'inst1' is already declared here
      9 |         PROGRAM inst1 WITH t1 : MyProg;
        |                 ^^|^^
        |                   `---- duplicate program instance 'inst1'
@@ -547,12 +547,12 @@ CONFIGURATION MyCfg
 END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0115] Error: duplicate definitions
+    [E0115] Error: duplicate RESOURCE
         ,-[ file:///test0.st:10:14 ]
         |
       6 |     RESOURCE res1 ON CPU_TYPE
         |              ^^|^
-        |                `--- resource 'res1' is already defined here
+        |                `--- resource 'res1' is already declared here
         |
      10 |     RESOURCE res1 ON CPU_TYPE
         |              ^^|^
@@ -572,12 +572,12 @@ CONFIGURATION MyCfg
 END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0114] Error: duplicate definitions
+    [E0114] Error: duplicate TASK
        ,-[ file:///test0.st:5:14 ]
        |
      4 |         TASK t1(INTERVAL := T#10ms, PRIORITY := 1);
        |              ^|
-       |               `-- task 't1' is already defined here
+       |               `-- task 't1' is already declared here
      5 |         TASK t1(INTERVAL := T#10ms, PRIORITY := 2);
        |              ^|
        |               `-- duplicate task 't1'
@@ -600,12 +600,12 @@ CONFIGURATION MyCfg
 END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0113] Error: duplicate definitions
+    [E0113] Error: duplicate PROGRAM instance
        ,-[ file:///test0.st:9:17 ]
        |
      8 |         PROGRAM inst1 WITH t1 : MyProg;
        |                 ^^|^^
-       |                   `---- program instance 'inst1' is already defined here
+       |                   `---- program instance 'inst1' is already declared here
      9 |         PROGRAM inst1 WITH t1 : MyProg;
        |                 ^^|^^
        |                   `---- duplicate program instance 'inst1'
@@ -628,7 +628,7 @@ END_PROGRAM
 "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0102] Error: duplicate definitions
+    [E0102] Error: duplicate POU
        ,-[ file:///test0.st:2:16 ]
        |
      2 | FUNCTION_BLOCK Main
@@ -637,14 +637,14 @@ END_PROGRAM
        |
      6 | PROGRAM Main
        |         ^^|^
-       |           `--- POU 'Main' is also defined here
+       |           `--- POU 'Main' is also declared here
     ---'
-    [E0102] Error: duplicate definitions
+    [E0102] Error: duplicate POU
        ,-[ file:///test0.st:6:9 ]
        |
      2 | FUNCTION_BLOCK Main
        |                ^^|^
-       |                  `--- POU 'Main' is also defined here
+       |                  `--- POU 'Main' is also declared here
        |
      6 | PROGRAM Main
        |         ^^|^
@@ -676,18 +676,18 @@ END_CONFIGURATION
 "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0102] Error: duplicate definitions
+    [E0102] Error: duplicate POU
        ,-[ file:///test0.st:7:10 ]
        |
      2 | PROGRAM Main
        |         ^^|^
-       |           `--- POU 'Main' is also defined here
+       |           `--- POU 'Main' is also declared here
        |
      7 | FUNCTION Main : INT
        |          ^^|^
        |            `--- duplicate POU 'Main'
     ---'
-    [E0102] Error: duplicate definitions
+    [E0102] Error: duplicate POU
        ,-[ file:///test0.st:2:9 ]
        |
      2 | PROGRAM Main
@@ -696,7 +696,7 @@ END_CONFIGURATION
        |
      7 | FUNCTION Main : INT
        |          ^^|^
-       |            `--- POU 'Main' is also defined here
+       |            `--- POU 'Main' is also declared here
     ---'
     ");
 }
@@ -721,7 +721,7 @@ END_CONFIGURATION
 "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0113] Error: duplicate definitions
+    [E0113] Error: duplicate PROGRAM instance
         ,-[ file:///test0.st:12:17 ]
         |
       8 |     Run : INT;
@@ -732,7 +732,7 @@ END_CONFIGURATION
         |                 ^|^
         |                  `--- program instance 'Run' has the name of a VAR_GLOBAL
     ----'
-    [E0113] Error: duplicate definitions
+    [E0113] Error: duplicate PROGRAM instance
         ,-[ file:///test0.st:8:5 ]
         |
       8 |     Run : INT;

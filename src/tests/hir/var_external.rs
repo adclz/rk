@@ -54,12 +54,12 @@ CONFIGURATION MyCfg
 END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0206] Error: external variable not found
+    [E0206] Error: VAR_EXTERNAL without a VAR_GLOBAL
        ,-[ file:///test0.st:4:9 ]
        |
      4 |         missing : INT;
-       |         ^^^^^^|^^^^^^
-       |               `-------- external variable 'missing' not found in any accessible VAR_GLOBAL
+       |         ^^^|^^^
+       |            `----- no VAR_GLOBAL is named 'missing'
     ---'
     ");
 }
@@ -75,12 +75,12 @@ PROGRAM StandaloneProgram
 END_PROGRAM
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0206] Error: external variable not found
+    [E0206] Error: VAR_EXTERNAL without a VAR_GLOBAL
        ,-[ file:///test0.st:4:9 ]
        |
      4 |         orphan : INT;
-       |         ^^^^^^|^^^^^
-       |               `------- external variable 'orphan' not found in any accessible VAR_GLOBAL
+       |         ^^^|^^
+       |            `---- no VAR_GLOBAL is named 'orphan'
     ---'
     ");
 }
@@ -105,12 +105,14 @@ CONFIGURATION MyCfg
 END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0207] Error: external variable type mismatch
-       ,-[ file:///test0.st:4:9 ]
+    [E0207] Error: VAR_EXTERNAL type mismatch
+       ,-[ file:///test0.st:4:13 ]
        |
      4 |         g : REAL;
-       |         ^^^^|^^^
-       |             `----- 'g' is declared 'REAL' here but its VAR_GLOBAL is 'INT': an external must repeat the global's type exactly
+       |             ^^|^
+       |               `--- 'g' is declared 'REAL' and its VAR_GLOBAL is 'INT'
+       |
+       | Note: a VAR_EXTERNAL repeats the type of its VAR_GLOBAL exactly
     ---'
     ");
 }
@@ -137,12 +139,14 @@ CONFIGURATION MyCfg
 END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0207] Error: external variable type mismatch
-       ,-[ file:///test0.st:6:9 ]
+    [E0207] Error: VAR_EXTERNAL type mismatch
+       ,-[ file:///test0.st:6:13 ]
        |
      6 |         g : INT;
-       |         ^^^|^^^
-       |            `----- 'g' is declared 'INT' here but its VAR_GLOBAL is 'Small (0..10)': an external must repeat the global's type exactly
+       |             ^|^
+       |              `--- 'g' is declared 'INT' and its VAR_GLOBAL is 'Small (0..10)'
+       |
+       | Note: a VAR_EXTERNAL repeats the type of its VAR_GLOBAL exactly
     ---'
     ");
 }
@@ -222,12 +226,14 @@ CONFIGURATION MyCfg
 END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0207] Error: external variable type mismatch
-       ,-[ file:///test0.st:4:9 ]
+    [E0207] Error: VAR_EXTERNAL type mismatch
+       ,-[ file:///test0.st:4:15 ]
        |
      4 |         arr : ARRAY[0..3] OF INT;
-       |         ^^^^^^^^^^^^|^^^^^^^^^^^
-       |                     `------------- 'arr' is declared 'ARRAY [0..3] OF INT' here but its VAR_GLOBAL is 'ARRAY [0..2] OF INT': an external must repeat the global's type exactly
+       |               ^^^^^^^^^|^^^^^^^^
+       |                        `---------- 'arr' is declared 'ARRAY [0..3] OF INT' and its VAR_GLOBAL is 'ARRAY [0..2] OF INT'
+       |
+       | Note: a VAR_EXTERNAL repeats the type of its VAR_GLOBAL exactly
     ---'
     ");
 }
@@ -246,19 +252,23 @@ VAR_EXTERNAL g4 : STRING; ga : ARRAY[0..1] OF STRING; g : STRING[80]; END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0207] Error: external variable type mismatch
-       ,-[ file:///test0.st:6:14 ]
+    [E0207] Error: VAR_EXTERNAL type mismatch
+       ,-[ file:///test0.st:6:19 ]
        |
      6 | VAR_EXTERNAL g4 : STRING; ga : ARRAY[0..1] OF STRING; g : STRING[80]; END_VAR
-       |              ^^^^^|^^^^^
-       |                   `------- 'g4' is declared 'STRING[80]' here but its VAR_GLOBAL is 'STRING[4]': an external must repeat the global's type exactly
+       |                   ^^^|^^
+       |                      `---- 'g4' is declared 'STRING[80]' and its VAR_GLOBAL is 'STRING[4]'
+       |
+       | Note: a VAR_EXTERNAL repeats the type of its VAR_GLOBAL exactly
     ---'
-    [E0207] Error: external variable type mismatch
-       ,-[ file:///test0.st:6:27 ]
+    [E0207] Error: VAR_EXTERNAL type mismatch
+       ,-[ file:///test0.st:6:32 ]
        |
      6 | VAR_EXTERNAL g4 : STRING; ga : ARRAY[0..1] OF STRING; g : STRING[80]; END_VAR
-       |                           ^^^^^^^^^^^^^|^^^^^^^^^^^^
-       |                                        `-------------- 'ga' is declared 'ARRAY [0..1] OF STRING' here but its VAR_GLOBAL is 'ARRAY [0..1] OF STRING[4]': an external must repeat the global's type exactly
+       |                                ^^^^^^^^^^|^^^^^^^^^^
+       |                                          `------------ 'ga' is declared 'ARRAY [0..1] OF STRING' and its VAR_GLOBAL is 'ARRAY [0..1] OF STRING[4]'
+       |
+       | Note: a VAR_EXTERNAL repeats the type of its VAR_GLOBAL exactly
     ---'
     ");
 }

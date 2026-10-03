@@ -83,7 +83,7 @@ CONFIGURATION MyCfg
 END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source1, source2]), @r"
-    [E0115] Error: duplicate definitions
+    [E0115] Error: duplicate RESOURCE
        ,-[ file:///test0.st:3:14 ]
        |
      3 |     RESOURCE Res ON CPU
@@ -94,9 +94,9 @@ END_CONFIGURATION
        |
      3 |     RESOURCE Res ON CPU
        |              ^|^
-       |               `--- resource 'Res' is already defined here
+       |               `--- resource 'Res' is already declared here
     ---'
-    [E0115] Error: duplicate definitions
+    [E0115] Error: duplicate RESOURCE
        ,-[ file:///test1.st:3:14 ]
        |
      3 |     RESOURCE Res ON CPU
@@ -107,7 +107,7 @@ END_CONFIGURATION
        |
      3 |     RESOURCE Res ON CPU
        |              ^|^
-       |               `--- resource 'Res' is already defined here
+       |               `--- resource 'Res' is already declared here
     ---'
     ");
 }
@@ -131,7 +131,7 @@ CONFIGURATION MyCfg
 END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source1, source2]), @r"
-    [E0101] Error: duplicate definitions
+    [E0101] Error: duplicate variable
        ,-[ file:///test0.st:4:9 ]
        |
      4 |         shared : INT;
@@ -142,9 +142,9 @@ END_CONFIGURATION
        |
      4 |         shared : DINT;
        |         ^^^|^^
-       |            `---- variable 'shared' is already defined here
+       |            `---- variable 'shared' is already declared here
     ---'
-    [E0101] Error: duplicate definitions
+    [E0101] Error: duplicate variable
        ,-[ file:///test1.st:4:9 ]
        |
      4 |         shared : DINT;
@@ -155,7 +155,7 @@ END_CONFIGURATION
        |
      4 |         shared : INT;
        |         ^^^|^^
-       |            `---- variable 'shared' is already defined here
+       |            `---- variable 'shared' is already declared here
     ---'
     ");
 }
@@ -237,7 +237,7 @@ CONFIGURATION MyCfg
 END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0203] Error: no namespace item found
+    [E0203] Error: unknown name in a namespace
        ,-[ file:///test0.st:5:33 ]
        |
      5 |         PROGRAM inst1 WITH t1 : UnknownProg;
@@ -261,12 +261,12 @@ CONFIGURATION MyCfg
 END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1411] Error: configuration error
+    [E1411] Error: unknown TASK reference
        ,-[ file:///test0.st:7:28 ]
        |
      7 |         PROGRAM inst1 WITH unknownTask : MyProg;
        |                            ^^^^^|^^^^^
-       |                                 `------- task 'unknownTask' not found in this configuration
+       |                                 `------- no TASK is named 'unknownTask' in this configuration
     ---'
     ");
 }
@@ -303,7 +303,7 @@ CONFIGURATION MyCfg
 END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0203] Error: no namespace item found
+    [E0203] Error: unknown name in a namespace
        ,-[ file:///test0.st:4:13 ]
        |
      4 |         x : UnknownType;
@@ -353,12 +353,12 @@ CONFIGURATION MyCfg
 END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1411] Error: configuration error
+    [E1411] Error: unknown TASK reference
        ,-[ file:///test0.st:8:28 ]
        |
      8 |         PROGRAM inst1 WITH noSuchTask : MyProg;
        |                            ^^^^^|^^^^
-       |                                 `------ task 'noSuchTask' not found in this configuration
+       |                                 `------ no TASK is named 'noSuchTask' in this configuration
     ---'
     ");
 }
@@ -395,7 +395,7 @@ PROGRAM MyProg
 END_PROGRAM
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0203] Error: no namespace item found
+    [E0203] Error: unknown name in a namespace
        ,-[ file:///test0.st:7:20 ]
        |
      7 |         ABLE : x : UnknownType READ_ONLY;
@@ -418,15 +418,15 @@ PROGRAM MyProg
     END_VAR
 END_PROGRAM
 "#;
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r#"
-    [E0201] Error: no item found in scope
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0201] Error: unknown name
        ,-[ file:///test0.st:7:16 ]
        |
      7 |         ABLE : nonexistent : INT READ_ONLY;
        |                ^^^^^|^^^^^
-       |                     `------- no item "nonexistent" found in scope
+       |                     `------- no item 'nonexistent' found in scope
     ---'
-    "#);
+    ");
 }
 
 /// A VAR_ACCESS declared type differs from the actual variable type should report E1415.
@@ -443,7 +443,7 @@ PROGRAM MyProg
 END_PROGRAM
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1415] Error: access declaration type mismatch
+    [E1415] Error: VAR_ACCESS type mismatch
        ,-[ file:///test0.st:7:20 ]
        |
      4 |         x : INT;
@@ -511,7 +511,9 @@ END_CONFIGURATION
         |            |
         |            `-- 'n' is given a value here and by another entry
         |
-        | Note: an instance's variable has one starting value; keep one of the entries
+        | Help: keep one of the entries
+        |
+        | Note: an instance's variable has one starting value
     ----'
     [E1426] Error: configuration entry refused
         ,-[ file:///test0.st:20:12 ]
@@ -520,7 +522,9 @@ END_CONFIGURATION
         |            |
         |            `-- 'n' is given a value here and by another entry
         |
-        | Note: an instance's variable has one starting value; keep one of the entries
+        | Help: keep one of the entries
+        |
+        | Note: an instance's variable has one starting value
     ----'
     [E1419] Error: write to an input location
         ,-[ file:///test0.st:23:14 ]
@@ -536,18 +540,18 @@ END_CONFIGURATION
         |
      24 |     Res.P1.d.out AT %QW4 : INT := 6;
         |              ^|^
-        |               `--- 'out' is at '%QW4', whose declaration gives its starting value
+        |               `--- 'out' is at '%QW4', where a declaration gives its starting value
         |
-        | Note: give the value in that declaration instead
+        | Help: give the value in that declaration
     ----'
     [E1426] Error: configuration entry refused
         ,-[ file:///test0.st:25:12 ]
         |
      25 |     Res.P1.lamp : INT := 7;
         |            ^^|^
-        |              `--- 'lamp' is at '%QW8', whose declaration gives its starting value
+        |              `--- 'lamp' is at '%QW8', where a declaration gives its starting value
         |
-        | Note: give the value in that declaration instead
+        | Help: give the value in that declaration
     ----'
     [E1423] Error: part of a wider address
         ,-[ file:///test0.st:26:14 ]
@@ -556,7 +560,7 @@ END_CONFIGURATION
         |              |
         |              `-- '%QB9' is part of '%QW4' and cannot have an initial value of its own
         |
-        | Note: give the variable located at '%QW4' an initial value with this part set in it
+        | Help: give the variable located at '%QW4' an initial value with this part set in it
     ----'
     [E1426] Error: configuration entry refused
         ,-[ file:///test0.st:27:12 ]
@@ -565,7 +569,9 @@ END_CONFIGURATION
         |            ^^|^
         |              `--- 'pump' is given a value here and by another entry
         |
-        | Note: an instance's variable has one starting value; keep one of the entries
+        | Help: keep one of the entries
+        |
+        | Note: an instance's variable has one starting value
     ----'
     [E1426] Error: configuration entry refused
         ,-[ file:///test0.st:28:17 ]
@@ -574,9 +580,11 @@ END_CONFIGURATION
         |                 |
         |                 `-- 'k' is given a value here and by another entry
         |
-        | Note: an instance's variable has one starting value; keep one of the entries
+        | Help: keep one of the entries
+        |
+        | Note: an instance's variable has one starting value
     ----'
-    [E0405] Error: member cannot be initialized
+    [E0405] Error: initializer for a member that takes none
         ,-[ file:///test0.st:21:23 ]
         |
       4 | VAR_IN_OUT io : INT; END_VAR
@@ -585,11 +593,13 @@ END_CONFIGURATION
         |
      21 |     Res.P1.d.io : INT := 3;
         |                       ^^|^
-        |                         `--- 'io' is a VAR_IN_OUT, which each call binds to its argument, so an initializer cannot give it a value
+        |                         `--- an initializer cannot set 'io', a VAR_IN_OUT
         |
-        | Note: pass the variable in the call instead, as 'io := x'
+        | Help: pass the variable in the call, as 'io := x'
+        |
+        | Note: a VAR_IN_OUT is bound to its argument at each call
     ----'
-    [E0405] Error: member cannot be initialized
+    [E0405] Error: initializer for a member that takes none
         ,-[ file:///test0.st:22:22 ]
         |
       5 | VAR CONSTANT c : INT := 1; END_VAR
@@ -598,9 +608,11 @@ END_CONFIGURATION
         |
      22 |     Res.P1.d.c : INT := 4;
         |                      ^^|^
-        |                        `--- 'c' is CONSTANT, whose value is its declaration's, so an initializer cannot give it a value
+        |                        `--- an initializer cannot set 'c', a CONSTANT
         |
-        | Note: declare it without CONSTANT to let each instance start at its own value
+        | Help: declare it without CONSTANT to let each instance start at its own value
+        |
+        | Note: a CONSTANT has the value of its declaration
     ----'
     ");
 }
@@ -699,9 +711,11 @@ END_CONFIGURATION
         |
      22 |         PROGRAM P1 WITH T : F(y1 := 1, x1 => w, x2 := w, x1 := TRUE, x1 := FALSE, y1 => %IW0);
         |                                                 ^|
-        |                                                  `-- 'x2' is 'UINT', and 'w' is 'INT'
+        |                                                  `-- 'x2' is 'UINT', while 'w' is 'INT'
         |
-        | Note: a connection copies the value as it is; connect a variable of the same type
+        | Help: connect a variable of the same type
+        |
+        | Note: a connection copies the value as it is
     ----'
     [E1419] Error: write to an input location
         ,-[ file:///test0.st:22:83 ]
@@ -719,7 +733,9 @@ END_CONFIGURATION
         |                                                          ^|
         |                                                           `-- 'x1' is connected here and by another element
         |
-        | Note: an input has one source; keep one of the elements
+        | Help: keep one of the elements
+        |
+        | Note: an input has one source
     ----'
     [E1428] Error: program configuration element refused
         ,-[ file:///test0.st:22:70 ]
@@ -728,7 +744,9 @@ END_CONFIGURATION
         |                                                                      ^|
         |                                                                       `-- 'x1' is connected here and by another element
         |
-        | Note: an input has one source; keep one of the elements
+        | Help: keep one of the elements
+        |
+        | Note: an input has one source
     ----'
     [E1428] Error: program configuration element refused
         ,-[ file:///test0.st:23:31 ]
@@ -737,9 +755,9 @@ END_CONFIGURATION
         |                               |
         |                               `-- 'b' is not a FUNCTION_BLOCK instance, so no task can run it
         |
-        | Note: a task runs a function block's body; a CLASS has none
+        | Note: a CLASS has no body for a task to run
     ----'
-    [E1414] Error: configuration error
+    [E1414] Error: unknown field in VAR_CONFIG
         ,-[ file:///test0.st:23:77 ]
         |
      23 |         PROGRAM P2 WITH T : F(b WITH T, fb2 WITH T, fb1 WITH T, fb1 WITH T, nosuch := 1);
@@ -753,7 +771,9 @@ END_CONFIGURATION
         |                                                     ^|^
         |                                                      `--- 'fb1' is associated with a task here and by another element
         |
-        | Note: a function block runs under one task; keep one of the elements
+        | Help: keep one of the elements
+        |
+        | Note: a function block runs under one task
     ----'
     [E1428] Error: program configuration element refused
         ,-[ file:///test0.st:23:65 ]
@@ -762,7 +782,9 @@ END_CONFIGURATION
         |                                                                 ^|^
         |                                                                  `--- 'fb1' is associated with a task here and by another element
         |
-        | Note: a function block runs under one task; keep one of the elements
+        | Help: keep one of the elements
+        |
+        | Note: a function block runs under one task
     ----'
     [E1428] Error: program configuration element refused
         ,-[ file:///test0.st:23:41 ]
@@ -773,9 +795,11 @@ END_CONFIGURATION
         |
      23 |         PROGRAM P2 WITH T : F(b WITH T, fb2 WITH T, fb1 WITH T, fb1 WITH T, nosuch := 1);
         |                                         ^|^
-        |                                          `--- 'fb2' runs under its task, and 'F' calls it too
+        |                                          `--- 'fb2' is run by its task and called by 'F' too
         |
-        | Note: the task runs the instance on its own; remove the call from the program
+        | Help: remove the call from the program
+        |
+        | Note: the task runs the instance on its own
     ----'
     ");
 }
@@ -836,7 +860,7 @@ END_CONFIGURATION
         |               |
         |               `-- 'x' is not declared AT %I*, %Q* or %M*, so its address is not VAR_CONFIG's to give
         |
-        | Note: declare it AT %I*, %Q* or %M* in its POU to leave its address to the configuration
+        | Help: declare it AT %I*, %Q* or %M* in its POU to leave its address to the configuration
     ----'
     ");
 }
@@ -915,12 +939,12 @@ CONFIGURATION MyCfg
 END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1413] Error: configuration error
+    [E1413] Error: unknown instance in VAR_CONFIG
         ,-[ file:///test0.st:15:9 ]
         |
      15 |         Nope.inst1.x : INT := 42;
         |         ^^|^
-        |           `--- no program instance 'Nope' found in this configuration
+        |           `--- no PROGRAM instance is named 'Nope' in this configuration
     ----'
     ");
 }
@@ -977,12 +1001,12 @@ CONFIGURATION MyCfg
 END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1413] Error: configuration error
+    [E1413] Error: unknown instance in VAR_CONFIG
         ,-[ file:///test0.st:15:9 ]
         |
      15 |         noSuchInst.x : INT := 42;
         |         ^^^^^|^^^^
-        |              `------ no program instance 'noSuchInst' found in this configuration
+        |              `------ no PROGRAM instance is named 'noSuchInst' in this configuration
     ----'
     ");
 }
@@ -1009,7 +1033,7 @@ CONFIGURATION MyCfg
 END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1414] Error: configuration error
+    [E1414] Error: unknown field in VAR_CONFIG
         ,-[ file:///test0.st:15:15 ]
         |
      15 |         inst1.nonexistent : INT := 42;
@@ -1041,12 +1065,12 @@ CONFIGURATION MyCfg
 END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0308] Error: invalid literal
+    [E0308] Error: literal of the wrong kind
         ,-[ file:///test0.st:15:26 ]
         |
      15 |         inst1.x : INT := 'hello';
         |                          ^^^|^^^
-        |                             `----- cannot infer '<string>' to 'INT': cannot use string literal as INT
+        |                             `----- cannot use string literal as INT
     ----'
     ");
 }
@@ -1073,7 +1097,7 @@ CONFIGURATION MyCfg
 END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1414] Error: configuration error
+    [E1414] Error: unknown field in VAR_CONFIG
         ,-[ file:///test0.st:15:17 ]
         |
      15 |         inst1.x.deeper : INT := 42;
@@ -1255,7 +1279,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0203] Error: no namespace item found
+    [E0203] Error: unknown name in a namespace
        ,-[ file:///test0.st:7:13 ]
        |
      7 |         x : MyProg;
@@ -1277,12 +1301,12 @@ fn config_global_bad_initializer_is_a_type_error(mut with_db: db::RootDatabase) 
         END_CONFIGURATION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0308] Error: invalid literal
+    [E0308] Error: literal of the wrong kind
        ,-[ file:///test0.st:4:30 ]
        |
      4 |                 bad : INT := 'oops';
        |                              ^^^|^^
-       |                                 `---- cannot infer '<string>' to 'INT': cannot use string literal as INT
+       |                                 `---- cannot use string literal as INT
     ---'
     ");
 }
@@ -1298,12 +1322,12 @@ fn duplicate_config_globals_are_reported(mut with_db: db::RootDatabase) {
         END_CONFIGURATION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0101] Error: duplicate definitions
+    [E0101] Error: duplicate variable
        ,-[ file:///test0.st:5:17 ]
        |
      4 |                 g : INT;
        |                 |
-       |                 `-- variable 'g' is already defined here
+       |                 `-- variable 'g' is already declared here
      5 |                 g : INT;
        |                 |
        |                 `-- duplicate variable 'g'
@@ -1330,14 +1354,14 @@ fn event_driven_task_is_rejected(mut with_db: db::RootDatabase) {
         END_CONFIGURATION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1410] Error: task cannot be scheduled
+    [E1410] Error: unschedulable TASK
        ,-[ file:///test0.st:5:22 ]
        |
      5 |                 TASK T(SINGLE := go, PRIORITY := 1);
        |                      |
-       |                      `-- task 'T' cannot be scheduled: event-driven tasks (SINGLE) are not supported yet; only cyclic tasks run
+       |                      `-- task 'T' cannot be scheduled: event-driven tasks (SINGLE) are not supported
        |
-       | Note: use a cyclic period, e.g. `INTERVAL := T#10ms`
+       | Help: use a cyclic period, e.g. `INTERVAL := T#10ms`
     ---'
     ");
 }
@@ -1354,7 +1378,7 @@ fn zero_interval_task_is_rejected(mut with_db: db::RootDatabase) {
         END_CONFIGURATION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1410] Error: task cannot be scheduled
+    [E1410] Error: unschedulable TASK
        ,-[ file:///test0.st:5:22 ]
        |
      5 |                 TASK T(INTERVAL := T#0ms, PRIORITY := 1);
@@ -1377,14 +1401,14 @@ fn non_literal_interval_is_rejected(mut with_db: db::RootDatabase) {
         END_CONFIGURATION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1410] Error: task cannot be scheduled
+    [E1410] Error: unschedulable TASK
        ,-[ file:///test0.st:5:22 ]
        |
      5 |                 TASK T(INTERVAL := someName, PRIORITY := 1);
        |                      |
        |                      `-- task 'T' cannot be scheduled: INTERVAL must be a TIME literal or a CONSTANT global holding one
        |
-       | Note: declare the global `VAR_GLOBAL CONSTANT`
+       | Help: declare the global `VAR_GLOBAL CONSTANT`
     ---'
     ");
 }
@@ -1422,14 +1446,14 @@ fn mutable_global_interval_is_rejected(mut with_db: db::RootDatabase) {
         END_CONFIGURATION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1410] Error: task cannot be scheduled
+    [E1410] Error: unschedulable TASK
        ,-[ file:///test0.st:6:22 ]
        |
      6 |                 TASK T(INTERVAL := period, PRIORITY := 1);
        |                      |
        |                      `-- task 'T' cannot be scheduled: INTERVAL must be a TIME literal or a CONSTANT global holding one
        |
-       | Note: declare the global `VAR_GLOBAL CONSTANT`
+       | Help: declare the global `VAR_GLOBAL CONSTANT`
     ---'
     ");
 }
@@ -1446,7 +1470,7 @@ fn program_instance_without_a_task_is_rejected(mut with_db: db::RootDatabase) {
         END_CONFIGURATION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1412] Error: program instance never runs
+    [E1412] Error: program instance without a task
        ,-[ file:///test0.st:6:25 ]
        |
      6 |                 PROGRAM P1 : P;
@@ -1471,14 +1495,14 @@ fn trigger_less_task_is_rejected(mut with_db: db::RootDatabase) {
         END_CONFIGURATION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1410] Error: task cannot be scheduled
+    [E1410] Error: unschedulable TASK
        ,-[ file:///test0.st:5:22 ]
        |
      5 |                 TASK T(PRIORITY := 1);
        |                      |
        |                      `-- task 'T' cannot be scheduled: a TASK needs an INTERVAL to run its programs
        |
-       | Note: add `INTERVAL := T#10ms`
+       | Help: add `INTERVAL := T#10ms`
     ---'
     ");
 }
@@ -1558,7 +1582,7 @@ fn a_program_connection_names_a_variable_of_the_program(mut with_db: RootDatabas
         END_CONFIGURATION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1414] Error: configuration error
+    [E1414] Error: unknown field in VAR_CONFIG
         ,-[ file:///test0.st:12:65 ]
         |
      12 |                 PROGRAM PA WITH T : A (inp := src, outp => snk, ghost := nosuch);
@@ -1584,14 +1608,14 @@ fn unusable_task_priority_is_rejected(mut with_db: RootDatabase) {
         END_CONFIGURATION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1406] Error: configuration error
+    [E1406] Error: unusable TASK priority
        ,-[ file:///test0.st:6:22 ]
        |
      6 |                 TASK T(INTERVAL := T#10ms, PRIORITY := 99999999999);
        |                      |
        |                      `-- task 'T' has an unusable PRIORITY '99999999999'
        |
-       | Note: PRIORITY must fit in a 32-bit unsigned integer; 0 is the most urgent
+       | Note: PRIORITY is a 32-bit unsigned integer, 0 the most urgent
     ---'
     ");
 }
@@ -1610,23 +1634,23 @@ fn task_or_program_outside_a_resource_is_rejected(mut with_db: RootDatabase) {
         END_CONFIGURATION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1404] Error: syntax
+    [E1404] Error: TASK or PROGRAM outside a RESOURCE
        ,-[ file:///test0.st:5:13 ]
        |
      5 |             TASK T(INTERVAL := T#10ms, PRIORITY := 1);
-       |             ^^^^^^^^^^^^^^^^^^^^^|^^^^^^^^^^^^^^^^^^^^
-       |                                  `---------------------- TASK and PROGRAM must be declared inside a RESOURCE
+       |             ^^|^
+       |               `--- a TASK or a PROGRAM instance is declared inside a RESOURCE
        |
-       | Note: wrap them in a RESOURCE <name> ON <cpu> ... END_RESOURCE block
+       | Help: wrap them in a RESOURCE <name> ON <cpu> ... END_RESOURCE block
     ---'
-    [E1404] Error: syntax
+    [E1404] Error: TASK or PROGRAM outside a RESOURCE
        ,-[ file:///test0.st:6:13 ]
        |
      6 |             PROGRAM A WITH T : P;
-       |             ^^^^^^^^^^|^^^^^^^^^^
-       |                       `------------ TASK and PROGRAM must be declared inside a RESOURCE
+       |             ^^^|^^^
+       |                `----- a TASK or a PROGRAM instance is declared inside a RESOURCE
        |
-       | Note: wrap them in a RESOURCE <name> ON <cpu> ... END_RESOURCE block
+       | Help: wrap them in a RESOURCE <name> ON <cpu> ... END_RESOURCE block
     ---'
     ");
 }
@@ -1658,37 +1682,41 @@ fn var_global_in_a_resource_is_rejected(mut with_db: RootDatabase) {
         END_CONFIGURATION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0021] Error: syntax
+    [E0021] Error: VAR_GLOBAL not allowed in this context
        ,-[ file:///test0.st:6:17 ]
        |
      6 |                 VAR_GLOBAL g : INT := 10; END_VAR
-       |                 ^^^^^^^^^^^^^^^^|^^^^^^^^^^^^^^^^
-       |                                 `------------------ VAR_GLOBAL is not allowed in this context
+       |                 ^^^^^|^^^^
+       |                      `------ VAR_GLOBAL is not allowed here
        |
-       | Note: VAR_GLOBAL can only be used inside CONFIGURATION
+       | Note: VAR_GLOBAL goes in a CONFIGURATION
     ---'
-    [E0021] Error: syntax
+    [E0021] Error: VAR_GLOBAL not allowed in this context
         ,-[ file:///test0.st:11:17 ]
         |
      11 |                 VAR_GLOBAL g : INT := 99; END_VAR
-        |                 ^^^^^^^^^^^^^^^^|^^^^^^^^^^^^^^^^
-        |                                 `------------------ VAR_GLOBAL is not allowed in this context
+        |                 ^^^^^|^^^^
+        |                      `------ VAR_GLOBAL is not allowed here
         |
-        | Note: VAR_GLOBAL can only be used inside CONFIGURATION
+        | Note: VAR_GLOBAL goes in a CONFIGURATION
     ----'
-    [E0206] Error: external variable not found
+    [E0206] Error: VAR_EXTERNAL without a VAR_GLOBAL
        ,-[ file:///test0.st:2:32 ]
        |
      2 |         PROGRAM P VAR_EXTERNAL g : INT; END_VAR VAR n : INT; END_VAR n := g; END_PROGRAM
-       |                                ^^^|^^^
-       |                                   `----- external variable 'g' not found in any accessible VAR_GLOBAL
+       |                                |
+       |                                `-- no VAR_GLOBAL is named 'g'
     ---'
-    [E1403] Error: configuration error
+    [E1403] Error: more than one RESOURCE
        ,-[ file:///test0.st:5:22 ]
        |
      5 |             RESOURCE R1 ON CPU
        |                      ^|
-       |                       `-- a deployment drives one RESOURCE; this configuration declares 2 (R1, R2); deploy one RESOURCE per runtime
+       |                       `-- the configuration declares 2 RESOURCEs (R1, R2)
+       |
+       | Help: deploy one RESOURCE per runtime
+       |
+       | Note: a deployment drives one RESOURCE
     ---'
     ");
 }
@@ -1717,18 +1745,22 @@ fn more_than_one_configuration_is_rejected(mut with_db: RootDatabase) {
         END_CONFIGURATION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1402] Error: configuration error
+    [E1402] Error: more than one CONFIGURATION
         ,-[ file:///test0.st:4:23 ]
         |
       4 |         CONFIGURATION First
         |                       ^^|^^
-        |                         `---- a workspace can only have one CONFIGURATION; this one declares 2
+        |                         `---- the workspace declares 2 CONFIGURATIONs
         |
      11 |         CONFIGURATION Second
         |                       ^^^|^^
         |                          `---- 'Second' is declared here
+        |
+        | Help: describe another PLC in its own workspace
+        |
+        | Note: a workspace has one CONFIGURATION
     ----'
-    [E1402] Error: configuration error
+    [E1402] Error: more than one CONFIGURATION
         ,-[ file:///test0.st:11:23 ]
         |
       4 |         CONFIGURATION First
@@ -1737,7 +1769,11 @@ fn more_than_one_configuration_is_rejected(mut with_db: RootDatabase) {
         |
      11 |         CONFIGURATION Second
         |                       ^^^|^^
-        |                          `---- a workspace can only have one CONFIGURATION; this one declares 2
+        |                          `---- the workspace declares 2 CONFIGURATIONs
+        |
+        | Help: describe another PLC in its own workspace
+        |
+        | Note: a workspace has one CONFIGURATION
     ----'
     ");
 }
@@ -2030,12 +2066,16 @@ CONFIGURATION Cfg
 END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1403] Error: configuration error
+    [E1403] Error: more than one RESOURCE
        ,-[ file:///test0.st:5:14 ]
        |
      5 |     RESOURCE Core0 ON CPU
        |              ^^|^^
-       |                `---- a deployment drives one RESOURCE; this configuration declares 2 (Core0, Core1); deploy one RESOURCE per runtime
+       |                `---- the configuration declares 2 RESOURCEs (Core0, Core1)
+       |
+       | Help: deploy one RESOURCE per runtime
+       |
+       | Note: a deployment drives one RESOURCE
     ---'
     ");
 }
@@ -2061,19 +2101,27 @@ CONFIGURATION Cfg
 END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source1, source2]), @r"
-    [E1403] Error: configuration error
+    [E1403] Error: more than one RESOURCE
        ,-[ file:///test0.st:5:14 ]
        |
      5 |     RESOURCE Core0 ON CPU
        |              ^^|^^
-       |                `---- a deployment drives one RESOURCE; this configuration declares 2 (Core0, Core1); deploy one RESOURCE per runtime
+       |                `---- the configuration declares 2 RESOURCEs (Core0, Core1)
+       |
+       | Help: deploy one RESOURCE per runtime
+       |
+       | Note: a deployment drives one RESOURCE
     ---'
-    [E1403] Error: configuration error
+    [E1403] Error: more than one RESOURCE
        ,-[ file:///test1.st:3:14 ]
        |
      3 |     RESOURCE Core1 ON CPU
        |              ^^|^^
-       |                `---- a deployment drives one RESOURCE; this configuration declares 2 (Core0, Core1); deploy one RESOURCE per runtime
+       |                `---- the configuration declares 2 RESOURCEs (Core0, Core1)
+       |
+       | Help: deploy one RESOURCE per runtime
+       |
+       | Note: a deployment drives one RESOURCE
     ---'
     ");
 }
@@ -2119,28 +2167,28 @@ END_VAR
 END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0003] Error: syntax
+    [E0003] Error: missing variable type
        ,-[ file:///test0.st:9:5 ]
        |
      9 |     Res.P1.k;
        |     ^^^^|^^^
-       |         `----- variable type is missing
+       |         `----- the variable has no type
     ---'
-    [E0003] Error: syntax
+    [E0003] Error: missing variable type
         ,-[ file:///test0.st:10:5 ]
         |
      10 |     Res.P1.x AT %QW0;
         |     ^^^^^^^^|^^^^^^^
-        |             `--------- variable type is missing
+        |             `--------- the variable has no type
     ----'
     [E1425] Error: variable not located
         ,-[ file:///test0.st:14:17 ]
         |
      14 |         PROGRAM P1 WITH T : F;
         |                 ^|
-        |                  `-- 'P1.x' is declared AT %Q*, and no VAR_CONFIG entry locates it
+        |                  `-- no VAR_CONFIG entry locates 'P1.x', declared AT %Q*
         |
-        | Note: each instance is given its address in the CONFIGURATION's VAR_CONFIG, as in 'Res.P1.fb.x AT %IX0.0 : BOOL;'
+        | Help: give each instance its address in VAR_CONFIG, as in 'Res.P1.fb.x AT %IX0.0 : BOOL;'
     ----'
     ");
 }
@@ -2174,14 +2222,14 @@ VAR f : Fb; END_VAR
 END_PROGRAM
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1414] Error: configuration error
+    [E1414] Error: unknown field in VAR_CONFIG
        ,-[ file:///test0.st:9:18 ]
        |
      9 |         Res.P1.f.g AT %QW0 : INT;
        |                  |
        |                  `-- 'Fb' has no field named 'g'
     ---'
-    [E1414] Error: configuration error
+    [E1414] Error: unknown field in VAR_CONFIG
         ,-[ file:///test0.st:10:18 ]
         |
      10 |         Res.P1.f.scratch : INT := 5;

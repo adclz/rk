@@ -258,16 +258,16 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0308] Error: invalid literal
+    [E0308] Error: literal of the wrong kind
         ,-[ file:///test0.st:11:14 ]
         |
       4 |         x : INT;
         |         |
-        |         `-- type is declared by variable 'x' here
+        |         `-- 'x' is declared here
         |
      11 |         x := 'hello';
         |              ^^^|^^^
-        |                 `----- cannot infer '<string>' to 'INT': cannot use string literal as INT
+        |                 `----- cannot use string literal as INT
     ----'
     ");
 }

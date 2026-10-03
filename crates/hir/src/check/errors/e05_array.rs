@@ -34,9 +34,9 @@ pub enum ArrayError<'db> {
         ty: crate::hir_ty::ty::Type<'db>,
     },
     // Array access
+    /// A repeat count too large to read: `[99999999999999999999(0)]`.
     InvalidIndex {
         size: SpanIdent<'db>,
-        err: String,
     },
     IndexOutOfBounds {
         expr: Expr<'db>,
@@ -84,22 +84,6 @@ impl<'db> ErrorCode for ArrayError<'db> {
             Self::IncompleteSubscript { .. } => "E0510",
         }
     }
-
-    fn description(&self) -> &'static str {
-        match self {
-            Self::InvalidArrayLowerValue { .. } => "invalid array bounds",
-            Self::InvalidArrayUpperValue { .. } => "invalid array bounds",
-            Self::InferiorUpperBound { .. } => "invalid array bounds",
-            Self::NonIntegerIndex { .. } => "invalid array access",
-            Self::InvalidIndex { .. } => "invalid array access",
-            Self::IndexOutOfBounds { .. } => "invalid array access",
-            Self::TooManyElements { .. } => "invalid array access",
-            Self::IndexNonArrayTypeInitExpr { .. } => "invalid operation",
-            Self::IndexNonArrayTypePathExpr { .. } => "invalid operation",
-            Self::ArrayConformandNotSupported(_) => "syntax",
-            Self::IncompleteSubscript { .. } => "invalid array access",
-        }
-    }
 }
 
 impl<'db> ToIdeDiagnostic<'db> for ArrayError<'db> {
@@ -110,13 +94,13 @@ impl<'db> ToIdeDiagnostic<'db> for ArrayError<'db> {
     ) -> IdeDiagnostic {
         match self {
             ArrayError::InvalidArrayLowerValue { value } => diag()
-                .message("invalid lower bound value for ARRAY".to_string())
+                .message("the lower bound is not an integer constant".to_string())
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
                 .range(crate::denormalize(db, file, &value.get_span(db)).unwrap_or_default())
                 .call(),
             ArrayError::InvalidArrayUpperValue { value } => diag()
-                .message("invalid upper bound value for ARRAY".to_string())
+                .message("the upper bound is not an integer constant".to_string())
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
                 .range(crate::denormalize(db, file, &value.get_span(db)).unwrap_or_default())
@@ -135,15 +119,18 @@ impl<'db> ToIdeDiagnostic<'db> for ArrayError<'db> {
                 .call(),
             Self::NonIntegerIndex { expr, ty } => diag()
                 .message(format!(
-                    "array index must be an integer, found {}",
+                    "the index is '{}', not an integer",
                     ty.type_name(db)
                 ))
                 .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
                 .desc(self)
                 .range(crate::denormalize(db, file, &expr.get_span(db)).unwrap_or_default())
                 .call(),
-            Self::InvalidIndex { size, err } => diag()
-                .message(format!("invalid index value '{}': {err}", size.as_str(db)))
+            Self::InvalidIndex { size } => diag()
+                .message(format!(
+                    "the repeat count '{}' is too large",
+                    size.as_str(db)
+                ))
                 .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
                 .desc(self)
                 .range(crate::denormalize(db, file, &size.get_span(db)).unwrap_or_default())
@@ -180,7 +167,7 @@ impl<'db> ToIdeDiagnostic<'db> for ArrayError<'db> {
             } => {
                 let mut diag = diag()
                     .message(format!(
-                        "too many elements in array initializer (expected at most {})",
+                        "the initializer has more elements than the array's {}",
                         max_size
                     ))
                     .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
@@ -225,8 +212,11 @@ impl<'db> ToIdeDiagnostic<'db> for ArrayError<'db> {
                     .range(crate::denormalize(db, file, &expr.get_span(db)).unwrap_or_default())
                     .call();
                 diag.with_note(
-                    "a multi-dimensional array is indexed in all its dimensions, `m[i, j]` or \
-                     `m[i][j]`; an array of an array type has rows"
+                    "a multi-dimensional array is indexed in all its dimensions".to_string(),
+                );
+                diag.with_help(
+                    "subscript every dimension, `m[i, j]` or `m[i][j]`, or declare an array of \
+                     an array type for rows"
                         .to_string(),
                 );
                 diag

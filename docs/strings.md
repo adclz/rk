@@ -92,7 +92,7 @@ END_FUNCTION
 
 > [!IMPORTANT]
 > At a call boundary a `STRING` input or return is a `(ptr, len)`.
-> The callee copies an input into a buffer of its own, of the input's capacity: like any input it keeps the value passed, whatever the call changes.
+> The callee copies an input into a buffer of its own, of the input's capacity: like any input but an [interface](monomorphized-oop.md), it keeps the value passed, whatever the call changes.
 > That is a copy of its bytes at every call.
 >
 > A `VAR_IN_OUT` or `VAR_OUTPUT` is instead `(addr, capacity)`, so the callee's writes clamp.

@@ -6,6 +6,7 @@ use db::WorkspaceDataBase;
 use rustc_hash::FxHashMap;
 
 use crate::HasPragmas;
+use crate::check::errors::e04_init::InitError;
 use crate::check::errors::e08_call::CallError;
 use crate::check::errors::e14_config::ConfigError;
 use crate::check::errors::e15_pragma::ExportForbiddenKind;
@@ -123,11 +124,6 @@ impl<'db> InitInference<'db> {
         } else {
             return false;
         };
-        let member_path = names
-            .iter()
-            .map(|n| n.text(db).to_string())
-            .collect::<Vec<_>>()
-            .join(".");
         let address = member
             .location(db)
             .map(|dv| dv.to_address(db))
@@ -135,7 +131,7 @@ impl<'db> InitInference<'db> {
         self.errors.push(
             ConfigError::PartlyLocatedUnlocated(PartlyUnlocated::Unreachable {
                 var: *var,
-                member: compact_str::CompactString::from(member_path),
+                member: names,
                 address: compact_str::CompactString::from(address),
                 place,
             })
@@ -169,15 +165,10 @@ impl<'db> InitInference<'db> {
                     == Some(crate::hir_def::pous::variable::LocationArea::Marker)
             });
         if let Some(path) = marker {
-            let member = path
-                .iter()
-                .map(|m| m.name_with_case(db).text(db).to_string())
-                .collect::<Vec<_>>()
-                .join(".");
             self.errors.push(
                 ConfigError::RetainHoldsPartlyLocated {
                     var: *var,
-                    member: compact_str::CompactString::from(member),
+                    member: path.iter().map(|m| m.name_with_case(db)).collect(),
                 }
                 .to_diagnostic(db, self.scope.file(db)),
             );
@@ -441,13 +432,13 @@ impl<'db> InitInference<'db> {
                         }
                         // `__init` would write it, and the host's copy-in
                         // before the first scan overwrites it unread.
-                        if var.init(db).is_some()
+                        if let Some(init) = var.init(db)
                             && dv.area(db)
                                 == Some(crate::hir_def::pous::variable::LocationArea::Input)
                         {
                             self.errors.push(
                                 ConfigError::WriteToInputLocation {
-                                    site: var.as_call_site(db),
+                                    site: init.as_call_site(db),
                                     address: address.clone(),
                                     via: crate::check::errors::e14_config::InputWriteRoute::Initializer,
                                 }
@@ -511,7 +502,7 @@ impl<'db> InitInference<'db> {
                             let mut refuse = |usage| {
                                 self.errors.push(
                                     ConfigError::PartOfWiderAddress {
-                                        site: var.as_call_site(db),
+                                        site: dv.as_call_site(db),
                                         address: located.text.clone(),
                                         owner: view.owner.text.clone(),
                                         usage,
@@ -549,7 +540,7 @@ impl<'db> InitInference<'db> {
                         };
                         self.errors.push(
                             ConfigError::DirectVariableUnsupported {
-                                site: var.as_call_site(db),
+                                site: dv.as_call_site(db),
                                 address,
                                 why,
                             }
@@ -640,6 +631,22 @@ impl<'db> InitInference<'db> {
 
                 // Check string literal length for sized string specs
                 self.check_string_init(db, var.spec(db), init_expr);
+
+                // A FUNCTION's or METHOD's input keeps nothing between calls:
+                // its default is what the caller passes, a constant. An
+                // aggregate there could never apply (E0407).
+                if stateless_pou.is_some()
+                    && var.is_input(db)
+                    && crate::hir_ty::resolver::func_call::input_default(db, *var).is_none()
+                {
+                    self.errors.push(
+                        InitError::AggregateInputDefault {
+                            var: *var,
+                            init: init_expr,
+                        }
+                        .to_diagnostic(db, self.scope.file(db)),
+                    );
+                }
             }
         }
 

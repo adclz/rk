@@ -20,12 +20,12 @@ VAR x : INT; END_VAR
 END_FUNCTION"#;
 
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "warn-pragma"), @r"
-    [L0002] Warning: call site warning notice
+    [L0002] Warning: {warn} notice
        ,-[ file:///test0.st:8:10 ]
        |
      2 | {warn = 'this function is deprecated, use fn2 instead'}
        | ^^^^^^^^^^^^^^^^^^^^^^^^^^^|^^^^^^^^^^^^^^^^^^^^^^^^^^^
-       |                            `----------------------------- pragma declared here
+       |                            `----------------------------- the pragma is declared here
        |
      8 |     x := fn1();
        |          ^|^
@@ -49,12 +49,12 @@ VAR x : INT; END_VAR
 END_FUNCTION"#;
 
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "warn-pragma"), @r"
-    [L0001] Info: call site info notice
+    [L0001] Info: {info} notice
        ,-[ file:///test0.st:8:10 ]
        |
      2 | {info = 'prefer new_fn for better performance'}
        | ^^^^^^^^^^^^^^^^^^^^^^^|^^^^^^^^^^^^^^^^^^^^^^^
-       |                        `------------------------- pragma declared here
+       |                        `------------------------- the pragma is declared here
        |
      8 |     x := old_fn();
        |          ^^^|^^
@@ -79,12 +79,12 @@ VAR fb : OldFB; END_VAR
 END_FUNCTION"#;
 
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "warn-pragma"), @r"
-    [L0002] Warning: call site warning notice
+    [L0002] Warning: {warn} notice
        ,-[ file:///test0.st:9:5 ]
        |
      2 | {warn = 'use NewFB instead'}
        | ^^^^^^^^^^^^^^|^^^^^^^^^^^^^
-       |               `--------------- pragma declared here
+       |               `--------------- the pragma is declared here
        |
      9 |     fb(_x := 1);
        |     ^|
@@ -111,12 +111,12 @@ VAR fb : MyFB; y : INT; END_VAR
 END_FUNCTION"#;
 
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "warn-pragma"), @r"
-    [L0002] Warning: call site warning notice
+    [L0002] Warning: {warn} notice
         ,-[ file:///test0.st:11:13 ]
         |
       4 |     {warn = 'this method is deprecated'}
         |     ^^^^^^^^^^^^^^^^^^|^^^^^^^^^^^^^^^^^
-        |                       `------------------- pragma declared here
+        |                       `------------------- the pragma is declared here
         |
      11 |     y := fb.doStuff();
         |             ^^^|^^^
@@ -145,12 +145,12 @@ VAR y : INT; END_VAR
 END_FUNCTION"#;
 
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "warn-pragma"), @r"
-    [L0002] Warning: call site warning notice
+    [L0002] Warning: {warn} notice
        ,-[ file:///test0.st:8:10 ]
        |
      2 | {warn = 'deprecated'}
        | ^^^^^^^^^^|^^^^^^^^^^
-       |           `------------ pragma declared here
+       |           `------------ the pragma is declared here
        |
      8 |     x := old();
        |          ^|^
@@ -158,12 +158,12 @@ END_FUNCTION"#;
        |
        | Note: lint rule: warn-pragma
     ---'
-    [L0002] Warning: call site warning notice
+    [L0002] Warning: {warn} notice
         ,-[ file:///test0.st:13:10 ]
         |
       2 | {warn = 'deprecated'}
         | ^^^^^^^^^^|^^^^^^^^^^
-        |           `------------ pragma declared here
+        |           `------------ the pragma is declared here
         |
      13 |     y := old();
         |          ^|^

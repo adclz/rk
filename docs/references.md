@@ -19,12 +19,12 @@ END_FUNCTION_BLOCK
    ╭─[ file:///example0.st:6:10 ]
    │
  3 │     ptr: REF_TO INT;
-   │     ───────┬───────  
-   │            ╰───────── 'ptr' declared without initializer here
+   │     ─┬─  
+   │      ╰─── 'ptr' is declared without an initial value here
    │ 
  6 │     x := ptr^;
    │          ─┬─  
-   │           ╰─── dereference of reference 'ptr' which is never initialized
+   │           ╰─── 'ptr' is dereferenced and never set
 ───╯
 ```
 

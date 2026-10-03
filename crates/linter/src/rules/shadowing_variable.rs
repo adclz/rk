@@ -15,10 +15,6 @@ impl ErrorCode for ShadowingVariable {
     fn code(&self) -> &'static str {
         "L0202"
     }
-
-    fn description(&self) -> &'static str {
-        "name shadowing"
-    }
 }
 
 pub fn check<'db>(
@@ -33,18 +29,18 @@ pub fn check<'db>(
 
         let mut diag = diag()
             .message(format!(
-                "variable '{var_name}' shadows POU '{pou_name}' available in this scope"
+                "variable '{var_name}' has the name of the POU '{pou_name}', in scope here"
             ))
             .severity(DiagnosticSeverity::INFORMATION)
             .desc(&ShadowingVariable)
             .range(
-                hir::denormalize(db, var.get_scope_id(db).file(db), &var.get_span(db))
+                hir::denormalize(db, var.get_scope_id(db).file(db), &var.get_name_span(db))
                     .unwrap_or_default(),
             )
             .call();
 
         diag.with_related(Related::new(
-            format!("POU {pou_name} is declared here"),
+            format!("POU '{pou_name}' is declared here"),
             pou.get_scope_id(db).file(db),
             pou.get_name_span(db),
         ));

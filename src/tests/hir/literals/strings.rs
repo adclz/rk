@@ -104,12 +104,14 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0313] Error: invalid literal
+    [E0313] Error: CHAR literal of the wrong length
        ,-[ file:///test0.st:4:21 ]
        |
      4 |         c : CHAR := CHAR#'ab';
        |                     ^^^^|^^^^
-       |                         `------ cannot infer '<char>' to 'CHAR': CHAR literal must be exactly 1 character, got 2; CHAR is one character, written 'a'
+       |                         `------ the CHAR literal has 2 characters
+       |
+       | Note: CHAR is one character, written 'a'
     ---'
     ");
 }
@@ -148,12 +150,14 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0313] Error: invalid literal
+    [E0313] Error: CHAR literal of the wrong length
        ,-[ file:///test0.st:4:21 ]
        |
      4 |         c : CHAR := 'ab';
        |                     ^^|^
-       |                       `--- cannot infer '<string>' to 'CHAR': CHAR literal must be exactly 1 character, got 2; CHAR is one character, written 'a'
+       |                       `--- the CHAR literal has 2 characters
+       |
+       | Note: CHAR is one character, written 'a'
     ---'
     ");
 }
@@ -202,13 +206,11 @@ END_FUNCTION"#;
        |
      5 |         s : STRING;
        |         |
-       |         `-- type is declared by variable 's' here
+       |         `-- 's' is declared here
        |
      7 |     s := c;
        |          |
        |          `-- expected 'STRING', got 'CHAR'
-       |          |
-       |          `-- consider explicitly casting with 'CHAR_TO_STRING(c)'
        |
        | Help: insert explicit cast 'CHAR_TO_STRING(c)'
     ---'
@@ -225,12 +227,12 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0308] Error: invalid literal
+    [E0308] Error: literal of the wrong kind
        ,-[ file:///test0.st:4:20 ]
        |
      4 |         x : INT := 'hello';
        |                    ^^^|^^^
-       |                       `----- cannot infer '<string>' to 'INT': cannot use string literal as INT
+       |                       `----- cannot use string literal as INT
     ---'
     ");
 }
@@ -245,12 +247,12 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0308] Error: invalid literal
+    [E0308] Error: literal of the wrong kind
        ,-[ file:///test0.st:4:23 ]
        |
      4 |         s : STRING := 42;
        |                       ^|
-       |                        `-- cannot infer '<integer>' to 'STRING': cannot use numeric literal as STRING
+       |                        `-- cannot use numeric literal as STRING
     ---'
     ");
 }
@@ -307,12 +309,14 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0314] Error: invalid literal
+    [E0314] Error: STRING literal over its capacity
        ,-[ file:///test0.st:4:26 ]
        |
      4 |         s : STRING[2] := 'hello';
        |                          ^^^|^^^
-       |                             `----- cannot infer '<string>' to 'STRING': STRING literal exceeds the capacity of 2 bytes, got 5; declare it STRING[5], or shorten the literal
+       |                             `----- the literal is 5 bytes, over the capacity of 2
+       |
+       | Help: declare it STRING[5], or shorten the literal
     ---'
     ");
 }
@@ -358,12 +362,14 @@ fn sized_string_length_may_name_a_constant(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0314] Error: invalid literal
+    [E0314] Error: STRING literal over its capacity
        ,-[ file:///test0.st:5:18 ]
        |
      5 |             s := 'toolong';
        |                  ^^^^|^^^^
-       |                      `------ cannot infer '<string>' to 'STRING': STRING literal exceeds the capacity of 4 bytes, got 7; declare it STRING[7], or shorten the literal
+       |                      `------ the literal is 7 bytes, over the capacity of 4
+       |
+       | Help: declare it STRING[7], or shorten the literal
     ---'
     ");
 }
@@ -382,12 +388,12 @@ fn sized_string_length_must_fold(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0315] Error: length is not constant
+    [E0315] Error: STRING length not constant
        ,-[ file:///test0.st:4:24 ]
        |
      4 |         VAR s : STRING[n]; END_VAR
        |                        |
-       |                        `-- a STRING length must be known at compile time
+       |                        `-- the length is not a compile-time constant
     ---'
     ");
 }
@@ -412,19 +418,23 @@ fn assigned_literal_must_fit_the_destination(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0314] Error: invalid literal
+    [E0314] Error: STRING literal over its capacity
        ,-[ file:///test0.st:7:22 ]
        |
      7 |             sized := 'far too long for five';
        |                      ^^^^^^^^^^^|^^^^^^^^^^^
-       |                                 `------------- cannot infer '<string>' to 'STRING': STRING literal exceeds the capacity of 5 bytes, got 21; declare it STRING[21], or shorten the literal
+       |                                 `------------- the literal is 21 bytes, over the capacity of 5
+       |
+       | Help: declare it STRING[21], or shorten the literal
     ---'
-    [E0314] Error: invalid literal
+    [E0314] Error: STRING literal over its capacity
        ,-[ file:///test0.st:8:22 ]
        |
      8 |             plain := 'this literal is well beyond eighty characters long, which is the silent default capacity a plain STRING declaration gets when nothing is said';
        |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^|^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-       |                                                                                             `------------------------------------------------------------------------- cannot infer '<string>' to 'STRING': STRING literal exceeds the capacity of 80 bytes, got 141; declare it STRING[141], or shorten the literal
+       |                                                                                             `------------------------------------------------------------------------- the literal is 141 bytes, over the capacity of 80
+       |
+       | Help: declare it STRING[141], or shorten the literal
     ---'
     ");
 }
@@ -491,12 +501,14 @@ fn assigned_literal_must_fit_an_array_element(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0314] Error: invalid literal
+    [E0314] Error: STRING literal over its capacity
        ,-[ file:///test0.st:6:21 ]
        |
      6 |             a[1] := 'ABCDEFGHIJKLMNOP';
        |                     ^^^^^^^^^|^^^^^^^^
-       |                              `---------- cannot infer '<string>' to 'STRING': STRING literal exceeds the capacity of 4 bytes, got 16; declare it STRING[16], or shorten the literal
+       |                              `---------- the literal is 16 bytes, over the capacity of 4
+       |
+       | Help: declare it STRING[16], or shorten the literal
     ---'
     ");
 }
@@ -519,19 +531,23 @@ fn assigned_literal_must_fit_a_nested_array_element(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0314] Error: invalid literal
+    [E0314] Error: STRING literal over its capacity
        ,-[ file:///test0.st:9:21 ]
        |
      9 |             a[1] := 'ABCDEFGHIJKLMNOP';
        |                     ^^^^^^^^^|^^^^^^^^
-       |                              `---------- cannot infer '<string>' to 'STRING': STRING literal exceeds the capacity of 4 bytes, got 16; change 'Small' to STRING[16] or use another type, or shorten the literal
+       |                              `---------- the literal is 16 bytes, over the capacity of 4
+       |
+       | Help: change 'Small' to STRING[16] or use another type, or shorten the literal
     ---'
-    [E0314] Error: invalid literal
+    [E0314] Error: STRING literal over its capacity
         ,-[ file:///test0.st:10:24 ]
         |
      10 |             b[1, 1] := 'ABCDEFGHIJKLMNOP';
         |                        ^^^^^^^^^|^^^^^^^^
-        |                                 `---------- cannot infer '<string>' to 'STRING': STRING literal exceeds the capacity of 4 bytes, got 16; declare it STRING[16], or shorten the literal
+        |                                 `---------- the literal is 16 bytes, over the capacity of 4
+        |
+        | Help: declare it STRING[16], or shorten the literal
     ----'
     ");
 }
@@ -584,12 +600,14 @@ fn invalid_string_literal_capacity_counts_bytes(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0314] Error: invalid literal
+    [E0314] Error: STRING literal over its capacity
        ,-[ file:///test0.st:4:30 ]
        |
      4 |             t : STRING[4] := 'café';
        |                              ^^^|^^
-       |                                 `---- cannot infer '<string>' to 'STRING': STRING literal exceeds the capacity of 4 bytes, got 5; declare it STRING[5], or shorten the literal
+       |                                 `---- the literal is 5 bytes, over the capacity of 4
+       |
+       | Help: declare it STRING[5], or shorten the literal
     ---'
     ");
 }
@@ -636,61 +654,77 @@ END_PROGRAM
 "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0314] Error: invalid literal
+    [E0314] Error: STRING literal over its capacity
        ,-[ file:///test0.st:3:38 ]
        |
      3 |     Rec : STRUCT name : STRING[3] := 'abcdef'; END_STRUCT;
        |                                      ^^^^|^^^
-       |                                          `----- cannot infer '<string>' to 'STRING': STRING literal exceeds the capacity of 3 bytes, got 6; declare it STRING[6], or shorten the literal
+       |                                          `----- the literal is 6 bytes, over the capacity of 3
+       |
+       | Help: declare it STRING[6], or shorten the literal
     ---'
-    [E0314] Error: invalid literal
+    [E0314] Error: STRING literal over its capacity
        ,-[ file:///test0.st:4:25 ]
        |
      4 |     Str3 : STRING[3] := 'wxyz';
        |                         ^^^|^^
-       |                            `---- cannot infer '<string>' to 'STRING': STRING literal exceeds the capacity of 3 bytes, got 4; declare it STRING[4], or shorten the literal
+       |                            `---- the literal is 4 bytes, over the capacity of 3
+       |
+       | Help: declare it STRING[4], or shorten the literal
     ---'
-    [E0314] Error: invalid literal
+    [E0314] Error: STRING literal over its capacity
         ,-[ file:///test0.st:17:11 ]
         |
      17 |     R3 := 'abcdef';
         |           ^^^^|^^^
-        |               `----- cannot infer '<string>' to 'STRING': STRING literal exceeds the capacity of 3 bytes, got 6; declare it STRING[6], or shorten the literal
+        |               `----- the literal is 6 bytes, over the capacity of 3
+        |
+        | Help: declare it STRING[6], or shorten the literal
     ----'
-    [E0314] Error: invalid literal
+    [E0314] Error: STRING literal over its capacity
         ,-[ file:///test0.st:22:38 ]
         |
      22 |     a : ARRAY[0..1] OF STRING[2] := ['abc', 'd'];
         |                                      ^^|^^
-        |                                        `---- cannot infer '<string>' to 'STRING': STRING literal exceeds the capacity of 2 bytes, got 3; declare it STRING[3], or shorten the literal
+        |                                        `---- the literal is 3 bytes, over the capacity of 2
+        |
+        | Help: declare it STRING[3], or shorten the literal
     ----'
-    [E0314] Error: invalid literal
+    [E0314] Error: STRING literal over its capacity
         ,-[ file:///test0.st:23:25 ]
         |
      23 |     r : Rec := (name := 'wxyz');
         |                         ^^^|^^
-        |                            `---- cannot infer '<string>' to 'STRING': STRING literal exceeds the capacity of 3 bytes, got 4; declare it STRING[4], or shorten the literal
+        |                            `---- the literal is 4 bytes, over the capacity of 3
+        |
+        | Help: declare it STRING[4], or shorten the literal
     ----'
-    [E0314] Error: invalid literal
+    [E0314] Error: STRING literal over its capacity
         ,-[ file:///test0.st:29:13 ]
         |
      29 |     fb(s := 'abcd');
         |             ^^^|^^
-        |                `---- cannot infer '<string>' to 'STRING': STRING literal exceeds the capacity of 3 bytes, got 4; declare it STRING[4], or shorten the literal
+        |                `---- the literal is 4 bytes, over the capacity of 3
+        |
+        | Help: declare it STRING[4], or shorten the literal
     ----'
-    [E0314] Error: invalid literal
+    [E0314] Error: STRING literal over its capacity
         ,-[ file:///test0.st:30:15 ]
         |
      30 |     x := Take('abcd');
         |               ^^^|^^
-        |                  `---- cannot infer '<string>' to 'STRING': STRING literal exceeds the capacity of 3 bytes, got 4; declare it STRING[4], or shorten the literal
+        |                  `---- the literal is 4 bytes, over the capacity of 3
+        |
+        | Help: declare it STRING[4], or shorten the literal
     ----'
-    [E0314] Error: invalid literal
+    [E0314] Error: STRING literal over its capacity
         ,-[ file:///test0.st:32:11 ]
         |
      32 |     p^ := 'abcdef';
         |           ^^^^|^^^
-        |               `----- cannot infer '<string>' to 'STRING': STRING literal exceeds the capacity of 2 bytes, got 6; declare it STRING[6], or shorten the literal
+        |               `----- the literal is 6 bytes, over the capacity of 2
+        |
+        | Help: declare it STRING[6], or shorten the literal
     ----'
     ");
 }

@@ -21,7 +21,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0808] Error: semantic violation
+    [E0808] Error: call of a non-callable type
        ,-[ file:///test0.st:7:5 ]
        |
      7 |     test();
@@ -43,14 +43,14 @@ END_FUNCTION_BLOCK
 "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0808] Error: semantic violation
+    [E0808] Error: call of a non-callable type
        ,-[ file:///test0.st:3:5 ]
        |
      3 |     fb2();
        |     ^|^
        |      `--- 'fb2' is not a callable type
        |
-       | Note: to call a FUNCTION_BLOCK, you need to instantiate it first.
+       | Help: declare an instance of the FUNCTION_BLOCK and call the instance
     ---'
     ");
 }
@@ -92,7 +92,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0803] Error: function call parameter mismatch
+    [E0803] Error: unknown input parameter
         ,-[ file:///test0.st:10:9 ]
         |
      10 |         unknown := TRUE
@@ -103,14 +103,14 @@ END_FUNCTION_BLOCK"#;
        ,-[ file:///test0.st:9:5 ]
        |
      4 |         u: BOOL;
-       |         ^^^|^^^
-       |            `----- parameter 'u' declared here
+       |         |
+       |         `-- parameter 'u' is declared here
        |
      9 |     fn(
        |     ^|
        |      `-- call to 'fn' is missing 1 required parameter: 'u'
        |
-       | Note: VAR_INPUT on FUNCTION/METHOD parameters must be supplied unless the declaration provides a scalar default value
+       | Note: a FUNCTION or METHOD call supplies every VAR_INPUT without a default
     ---'
     ");
 }
@@ -129,14 +129,14 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0801] Error: function call parameter mismatch
+    [E0801] Error: wrong number of arguments
        ,-[ file:///test0.st:6:5 ]
        |
      6 |     fn(
        |     ^|
        |      `-- 'fn' expects 0 parameters, but got 1
     ---'
-    [E0804] Error: function call parameter mismatch
+    [E0804] Error: unknown output parameter
        ,-[ file:///test0.st:7:9 ]
        |
      7 |         unknown => TRUE
@@ -165,23 +165,25 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0308] Error: invalid literal
+    [E0308] Error: literal of the wrong kind
         ,-[ file:///test0.st:11:19 ]
         |
       4 |     param1: LINT;
         |     ^^^|^^
-        |        `---- type is declared by variable 'param1' here
+        |        `---- 'param1' is declared here
         |
      11 |         param1 := 5.5,
         |                   ^|^
-        |                    `--- cannot infer '<float>' to 'LINT': invalid LINT literal; LINT takes a whole number, written like 42 or 16#2A
+        |                    `--- invalid LINT literal
+        |
+        | Note: LINT takes a whole number, written like 42 or 16#2A
     ----'
     [E0301] Error: type mismatch
         ,-[ file:///test0.st:12:19 ]
         |
       5 |     param2: LREAL;
         |     ^^^|^^
-        |        `---- type is declared by variable 'param2' here
+        |        `---- 'param2' is declared here
         |
      12 |         param2 := TRUE
         |                   ^^|^
@@ -223,13 +225,11 @@ END_FUNCTION_BLOCK"#;
         |
       4 |     param1: INT;
         |     ^^^|^^
-        |        `---- type is declared by variable 'param1' here
+        |        `---- 'param1' is declared here
         |
      19 |         param1 := TRUE,
         |                   ^^|^
         |                     `--- expected 'INT', got 'BOOL'
-        |                     |
-        |                     `--- consider explicitly casting with 'BOOL_TO_INT(TRUE)'
         |
         | Help: insert explicit cast 'BOOL_TO_INT(TRUE)'
     ----'
@@ -238,7 +238,7 @@ END_FUNCTION_BLOCK"#;
         |
       5 |     param2: REAL;
         |     ^^^|^^
-        |        `---- type is declared by variable 'param2' here
+        |        `---- 'param2' is declared here
         |
      20 |         param2 := TRUE,
         |                   ^^|^
@@ -249,7 +249,7 @@ END_FUNCTION_BLOCK"#;
         |
       9 |     param3: INT;
         |     ^^^|^^
-        |        `---- type is declared by variable 'param3' here
+        |        `---- 'param3' is declared here
         |
      21 |         param3 => variable1
         |                   ^^^^|^^^^
@@ -294,7 +294,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0801] Error: function call parameter mismatch
+    [E0801] Error: wrong number of arguments
         ,-[ file:///test0.st:11:2 ]
         |
      11 |     fn(0, 1.5, 5);
@@ -321,27 +321,27 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0103] Error: duplicate definitions
+    [E0103] Error: duplicate parameter
         ,-[ file:///test0.st:11:21 ]
         |
      11 |     fn(param1 := 0, param1 := 1);
         |        ^^^^^|^^^^^  ^^^^^|^^^^^
-        |             `-------------------- previously defined here
+        |             `-------------------- already passed here
         |                          |
-        |                          `------- duplicate parameter 'param1' found
+        |                          `------- duplicate parameter 'param1'
     ----'
     [E0802] Error: missing required parameter
         ,-[ file:///test0.st:11:5 ]
         |
       5 |         param2: INT;
-        |         ^^^^^|^^^^^
-        |              `------- parameter 'param2' declared here
+        |         ^^^|^^
+        |            `---- parameter 'param2' is declared here
         |
      11 |     fn(param1 := 0, param1 := 1);
         |     ^|
         |      `-- call to 'fn' is missing 1 required parameter: 'param2'
         |
-        | Note: VAR_INPUT on FUNCTION/METHOD parameters must be supplied unless the declaration provides a scalar default value
+        | Note: a FUNCTION or METHOD call supplies every VAR_INPUT without a default
     ----'
     ");
 }
@@ -367,14 +367,14 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0103] Error: duplicate definitions
+    [E0103] Error: duplicate parameter
         ,-[ file:///test0.st:15:22 ]
         |
      15 |     fn(param1 => a1, param1 => a2);
         |        ^^^^^^|^^^^^  ^^^^^^|^^^^^
-        |              `--------------------- previously defined here
+        |              `--------------------- already passed here
         |                            |
-        |                            `------- duplicate parameter 'param1' found
+        |                            `------- duplicate parameter 'param1'
     ----'
     ");
 }
@@ -398,12 +398,12 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0317] Error: semantic violation
+    [E0317] Error: type name used as a value
         ,-[ file:///test0.st:13:18 ]
         |
      13 |     fn(param1 => b1);
         |                  ^|
-        |                   `-- cannot use direct type 'b1' here
+        |                   `-- 'b1' is not a value
     ----'
     ");
 }
@@ -449,17 +449,17 @@ END_FUNCTION_BLOCK"#;
         ,-[ file:///test0.st:11:5 ]
         |
       4 |         a: INT;
-        |         ^^^|^^
-        |            `---- parameter 'a' declared here
+        |         |
+        |         `-- parameter 'a' is declared here
       5 |         b: REAL;
-        |         ^^^|^^^
-        |            `----- parameter 'b' declared here
+        |         |
+        |         `-- parameter 'b' is declared here
         |
      11 |     fn();
         |     ^|
         |      `-- call to 'fn' is missing 2 required parameters: 'a', 'b'
         |
-        | Note: VAR_INPUT on FUNCTION/METHOD parameters must be supplied unless the declaration provides a scalar default value
+        | Note: a FUNCTION or METHOD call supplies every VAR_INPUT without a default
     ----'
     ");
 }
@@ -484,14 +484,14 @@ END_FUNCTION_BLOCK"#;
         ,-[ file:///test0.st:11:5 ]
         |
       5 |         b: REAL;
-        |         ^^^|^^^
-        |            `----- parameter 'b' declared here
+        |         |
+        |         `-- parameter 'b' is declared here
         |
      11 |     fn(a := 1);
         |     ^|
         |      `-- call to 'fn' is missing 1 required parameter: 'b'
         |
-        | Note: VAR_INPUT on FUNCTION/METHOD parameters must be supplied unless the declaration provides a scalar default value
+        | Note: a FUNCTION or METHOD call supplies every VAR_INPUT without a default
     ----'
     ");
 }
@@ -539,20 +539,20 @@ END_FUNCTION_BLOCK"#;
         ,-[ file:///test0.st:12:10 ]
         |
       4 |         a: INT;
-        |         ^^^|^^
-        |            `---- parameter 'a' declared here
+        |         |
+        |         `-- parameter 'a' is declared here
         |
      12 |     x := fn();
         |          ^|
         |           `-- call to 'fn' is missing 1 required parameter: 'a'
         |
-        | Note: VAR_INPUT on FUNCTION/METHOD parameters must be supplied unless the declaration provides a scalar default value
+        | Note: a FUNCTION or METHOD call supplies every VAR_INPUT without a default
     ----'
     ");
 }
 
-// A compound (struct-literal) default value cannot yet be materialized at the
-// call site, so the param remains required.
+// An aggregate default cannot be materialized at the call site: it is refused
+// where it is written (E0407), and the input stays required (E0802).
 #[rstest]
 fn function_var_input_with_struct_default_still_required(mut with_db: RootDatabase) {
     let source = r#"
@@ -576,18 +576,31 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0407] Error: aggregate default on a FUNCTION or METHOD input
+        ,-[ file:///test0.st:11:18 ]
+        |
+     11 |         p: point := (x := 1, y := 2);
+        |         |        ^^^^^^^^^|^^^^^^^^^
+        |         `----------------------------- 'p' is declared here
+        |                           |
+        |                           `----------- the default of 'p' is an aggregate
+        |
+        | Help: set 'p' in the body, or pass it in every call
+        |
+        | Note: a default is passed by the caller for an omitted argument, so it has to be a constant
+    ----'
     [E0802] Error: missing required parameter
         ,-[ file:///test0.st:18:10 ]
         |
      11 |         p: point := (x := 1, y := 2);
-        |         ^^^^^^^^^^^^^^|^^^^^^^^^^^^^
-        |                       `--------------- parameter 'p' declared here
+        |         |
+        |         `-- parameter 'p' is declared here
         |
      18 |     r := fn();
         |          ^|
         |           `-- call to 'fn' is missing 1 required parameter: 'p'
         |
-        | Note: VAR_INPUT on FUNCTION/METHOD parameters must be supplied unless the declaration provides a scalar default value
+        | Note: a FUNCTION or METHOD call supplies every VAR_INPUT without a default
     ----'
     ");
 }
@@ -634,8 +647,8 @@ END_FUNCTION_BLOCK"#;
         ,-[ file:///test0.st:10:5 ]
         |
       4 |         a: INT;
-        |         ^^^|^^
-        |            `---- parameter 'a' declared here
+        |         |
+        |         `-- parameter 'a' is declared here
         |
      10 |     fn();
         |     ^|
@@ -667,8 +680,8 @@ END_FUNCTION_BLOCK"#;
         ,-[ file:///test0.st:12:5 ]
         |
       4 |         target: INT;
-        |         ^^^^^|^^^^^
-        |              `------- parameter 'target' declared here
+        |         ^^^|^^
+        |            `---- parameter 'target' is declared here
         |
      12 |     d();
         |     |
@@ -699,14 +712,14 @@ END_FUNCTION_BLOCK"#;
         ,-[ file:///test0.st:10:5 ]
         |
       5 |             a: INT;
-        |             ^^^|^^
-        |                `---- parameter 'a' declared here
+        |             |
+        |             `-- parameter 'a' is declared here
         |
      10 |     THIS.m();
         |     ^^^|^^
         |        `---- call to 'm' is missing 1 required parameter: 'a'
         |
-        | Note: VAR_INPUT on FUNCTION/METHOD parameters must be supplied unless the declaration provides a scalar default value
+        | Note: a FUNCTION or METHOD call supplies every VAR_INPUT without a default
     ----'
     ");
 }
@@ -728,18 +741,18 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0806] Error: VAR_IN_OUT argument must be a variable
+    [E0806] Error: VAR_IN_OUT argument not a variable
         ,-[ file:///test0.st:10:13 ]
         |
       4 |         a: INT;
-        |         ^^^|^^
-        |            `---- parameter 'a' declared here
+        |         |
+        |         `-- parameter 'a' is declared here
         |
      10 |     fn(a := 5);
         |             |
         |             `-- VAR_IN_OUT parameter 'a' of 'fn' requires a variable, not a value
         |
-        | Note: VAR_IN_OUT binds the callee to the caller's storage by reference; a literal, expression, or call result has no address to bind
+        | Note: a literal, an expression or a call result has no address for a VAR_IN_OUT to bind
     ----'
     ");
 }
@@ -763,18 +776,18 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0806] Error: VAR_IN_OUT argument must be a variable
+    [E0806] Error: VAR_IN_OUT argument not a variable
         ,-[ file:///test0.st:13:8 ]
         |
       4 |         a: INT;
-        |         ^^^|^^
-        |            `---- parameter 'a' declared here
+        |         |
+        |         `-- parameter 'a' is declared here
         |
      13 |     fn(x + 1);
         |        ^^|^^
         |          `---- VAR_IN_OUT parameter 'a' of 'fn' requires a variable, not a value
         |
-        | Note: VAR_IN_OUT binds the callee to the caller's storage by reference; a literal, expression, or call result has no address to bind
+        | Note: a literal, an expression or a call result has no address for a VAR_IN_OUT to bind
     ----'
     ");
 }
@@ -797,18 +810,18 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0806] Error: VAR_IN_OUT argument must be a variable
+    [E0806] Error: VAR_IN_OUT argument not a variable
         ,-[ file:///test0.st:12:17 ]
         |
       4 |         target: INT;
-        |         ^^^^^|^^^^^
-        |              `------- parameter 'target' declared here
+        |         ^^^|^^
+        |            `---- parameter 'target' is declared here
         |
      12 |     d(target := 42);
         |                 ^|
         |                  `-- VAR_IN_OUT parameter 'target' of 'driver' requires a variable, not a value
         |
-        | Note: VAR_IN_OUT binds the callee to the caller's storage by reference; a literal, expression, or call result has no address to bind
+        | Note: a literal, an expression or a call result has no address for a VAR_IN_OUT to bind
     ----'
     ");
 }
@@ -870,12 +883,12 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0807] Error: VAR_IN_OUT parameter bound with output syntax
+    [E0807] Error: VAR_IN_OUT bound with =>
         ,-[ file:///test0.st:21:8 ]
         |
       4 |         io: INT;
-        |         ^^^|^^^
-        |            `----- parameter 'io' declared here
+        |         ^|
+        |          `-- parameter 'io' is declared here
         |
      21 |     fn(io => x);
         |        ^|
@@ -883,12 +896,12 @@ END_FUNCTION_BLOCK"#;
         |
         | Note: VAR_IN_OUT is bound by reference at call entry: use io := <variable>
     ----'
-    [E0807] Error: VAR_IN_OUT parameter bound with output syntax
+    [E0807] Error: VAR_IN_OUT bound with =>
         ,-[ file:///test0.st:22:7 ]
         |
      11 |         target: INT;
-        |         ^^^^^|^^^^^
-        |              `------- parameter 'target' declared here
+        |         ^^^|^^
+        |            `---- parameter 'target' is declared here
         |
      22 |     d(target => y);
         |       ^^^|^^
@@ -924,31 +937,31 @@ VAR b : BYTE; f : FBSet; END_VAR
 END_FUNCTION"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0806] Error: VAR_IN_OUT argument must be a variable
+    [E0806] Error: VAR_IN_OUT argument not a variable
         ,-[ file:///test0.st:14:17 ]
         |
       3 | VAR_IN_OUT io : BOOL; END_VAR
-        |            ^^^^|^^^^
-        |                `------ parameter 'io' declared here
+        |            ^|
+        |             `-- parameter 'io' is declared here
         |
      14 |     SetIt(io := b.%X1);
         |                 ^^|^^
         |                   `---- VAR_IN_OUT parameter 'io' of 'SetIt' requires a variable, not a value
         |
-        | Note: VAR_IN_OUT binds the callee to the caller's storage by reference; a literal, expression, or call result has no address to bind
+        | Note: a literal, an expression or a call result has no address for a VAR_IN_OUT to bind
     ----'
-    [E0806] Error: VAR_IN_OUT argument must be a variable
+    [E0806] Error: VAR_IN_OUT argument not a variable
         ,-[ file:///test0.st:15:13 ]
         |
       8 | VAR_IN_OUT io : BOOL; END_VAR
-        |            ^^^^|^^^^
-        |                `------ parameter 'io' declared here
+        |            ^|
+        |             `-- parameter 'io' is declared here
         |
      15 |     f(io := b.%X1);
         |             ^^|^^
         |               `---- VAR_IN_OUT parameter 'io' of 'FBSet' requires a variable, not a value
         |
-        | Note: VAR_IN_OUT binds the callee to the caller's storage by reference; a literal, expression, or call result has no address to bind
+        | Note: a literal, an expression or a call result has no address for a VAR_IN_OUT to bind
     ----'
     ");
 }
@@ -995,7 +1008,7 @@ fn invalid_output_binding_narrows(mut with_db: RootDatabase) {
        |
      3 |         VAR_OUTPUT o : DINT; END_VAR
        |                    |
-       |                    `-- type is declared by variable 'o' here
+       |                    `-- 'o' is declared here
        |
      8 |             s(o => d);
        |                    |

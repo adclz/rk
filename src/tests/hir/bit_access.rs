@@ -68,7 +68,7 @@ fn bit_access_is_not_the_base_type(mut with_db: db::RootDatabase) {
        |
      5 |             s : STRING;
        |             |
-       |             `-- type is declared by variable 's' here
+       |             `-- 's' is declared here
        |
      7 |             s := w.3;
        |                  ^|^
@@ -96,7 +96,7 @@ fn byte_slice_is_byte(mut with_db: db::RootDatabase) {
        |
      5 |             b : BOOL;
        |             |
-       |             `-- type is declared by variable 'b' here
+       |             `-- 'b' is declared here
        |
      7 |             b := d.%B1;
        |                  ^^|^^
@@ -117,12 +117,12 @@ fn bit_offset_past_the_end_is_rejected(mut with_db: db::RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0808] Error: multibit access out of range
+    [E1429] Error: partial access out of range
        ,-[ file:///test0.st:6:18 ]
        |
      4 |             b : BYTE;
-       |             ^^^^|^^^
-       |                 `----- 'b' is declared here
+       |             |
+       |             `-- 'b' is declared here
        |
      6 |             f := b.8;
        |                  |
@@ -144,12 +144,12 @@ fn byte_offset_past_the_end_is_rejected(mut with_db: db::RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0808] Error: multibit access out of range
+    [E1429] Error: partial access out of range
        ,-[ file:///test0.st:6:18 ]
        |
      4 |             d : DWORD;
-       |             ^^^^|^^^^
-       |                 `------ 'd' is declared here
+       |             |
+       |             `-- 'd' is declared here
        |
      6 |             f := d.%B4;
        |                  |
@@ -170,12 +170,12 @@ fn slice_wider_than_base_is_rejected(mut with_db: db::RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0808] Error: multibit access out of range
+    [E1429] Error: partial access out of range
        ,-[ file:///test0.st:6:18 ]
        |
      4 |             w : WORD;
-       |             ^^^^|^^^
-       |                 `----- 'w' is declared here
+       |             |
+       |             `-- 'w' is declared here
        |
      6 |             f := w.%D0;
        |                  |
@@ -221,7 +221,7 @@ fn assigning_wrong_type_through_a_slice_is_rejected(mut with_db: db::RootDatabas
        |
      4 |             b : BYTE;
        |             |
-       |             `-- type is declared by variable 'b' here
+       |             `-- 'b' is declared here
        |
      7 |             b.0 := s;
        |                    |
@@ -307,14 +307,14 @@ fn offset_is_bounded_by_the_element_it_slices(mut with_db: db::RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0808] Error: multibit access out of range
+    [E1429] Error: partial access out of range
         ,-[ file:///test0.st:12:18 ]
         |
      12 |             f := arr[k].9;
         |                  ^|^
         |                   `--- offset 9 is out of range for type 'BYTE' (valid range: 0..7)
     ----'
-    [E0808] Error: multibit access out of range
+    [E1429] Error: partial access out of range
         ,-[ file:///test0.st:13:20 ]
         |
      13 |             f := s.fld.16;
@@ -339,7 +339,7 @@ fn sized_slice_wider_than_the_element(mut with_db: db::RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0808] Error: multibit access out of range
+    [E1429] Error: partial access out of range
        ,-[ file:///test0.st:8:18 ]
        |
      8 |             w := arr[k].%W1;
@@ -365,12 +365,12 @@ fn a_variable_offset_is_not_a_slice(mut with_db: db::RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0202] Error: no such field
+    [E0202] Error: unknown field
        ,-[ file:///test0.st:7:20 ]
        |
      4 |             b : BYTE;
        |             |
-       |             `-- type is declared by variable 'b' here
+       |             `-- 'b' is declared here
        |
      7 |             f := b.i;
        |                    |

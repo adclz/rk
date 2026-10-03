@@ -30,10 +30,6 @@ impl ErrorCode for UninitializedOutput {
     fn code(&self) -> &'static str {
         "L0206"
     }
-
-    fn description(&self) -> &'static str {
-        "uninitialized output"
-    }
 }
 
 /// Collect the variable assigned by a single assignment LHS.
@@ -102,7 +98,7 @@ pub fn check_outputs<'db>(
 
     for var in &missing {
         d.with_related(Related::new(
-            format!("'{}' declared here", var.name_with_case(db).text(db)),
+            format!("'{}' is declared here", var.name_with_case(db).text(db)),
             var.scope_id(db).file(db),
             var.get_name_span(db),
         ));

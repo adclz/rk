@@ -15,10 +15,6 @@ impl ErrorCode for DeadCode {
     fn code(&self) -> &'static str {
         "L0101"
     }
-
-    fn description(&self) -> &'static str {
-        "unreachable code"
-    }
 }
 
 pub fn check<'db>(

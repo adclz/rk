@@ -33,10 +33,6 @@ impl ErrorCode for Latin1Escape {
     fn code(&self) -> &'static str {
         "L0121"
     }
-
-    fn description(&self) -> &'static str {
-        "escape is not UTF-8 text"
-    }
 }
 
 /// Every STRING literal of `scope`, in its body and in its declarations'

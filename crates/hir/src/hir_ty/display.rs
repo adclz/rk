@@ -355,22 +355,16 @@ impl<'db> Type<'db> {
                     v.spec(db).infer(db).with_location(db, diag);
                 }
                 _ => diag.with_related(Related::new(
-                    format!(
-                        "type is declared by variable '{}' here",
-                        v.name_with_case(db).text(db)
-                    ),
+                    format!("'{}' is declared here", v.name_with_case(db).text(db)),
                     v.get_scope_id(db).file(db),
                     v.get_name_span(db),
                 )),
             },
             Self::DataType(typ) => {
                 diag.with_related(Related::new(
-                    format!(
-                        "type is defined by '{}' here",
-                        typ.get_name_with_case(db).text(db)
-                    ),
+                    format!("'{}' is declared here", typ.get_name_with_case(db).text(db)),
                     typ.scope_id(db).file(db),
-                    typ.spec(db).get_span(db),
+                    typ.get_name_span(db),
                 ));
             }
             Self::StructElement(elem) => match elem.spec(db).kind(db) {
@@ -379,7 +373,7 @@ impl<'db> Type<'db> {
                 }
                 _ => diag.with_related(Related::new(
                     format!(
-                        "type is defined by struct field '{}' here",
+                        "field '{}' is declared here",
                         elem.name_with_case(db).text(db)
                     ),
                     elem.get_scope_id(db).file(db),
@@ -389,7 +383,7 @@ impl<'db> Type<'db> {
             Self::Function(f) => {
                 diag.with_related(Related::new(
                     format!(
-                        "FUNCTION '{}' is defined here{}",
+                        "FUNCTION '{}' is declared here{}",
                         f.get_name_with_case(db).text(db),
                         match f.return_type(db) {
                             Some(ret) =>
@@ -404,7 +398,7 @@ impl<'db> Type<'db> {
             Self::MethodDecl(f) => {
                 diag.with_related(Related::new(
                     format!(
-                        "METHOD '{}' is defined here{}",
+                        "METHOD '{}' is declared here{}",
                         f.get_name_with_case(db).text(db),
                         match f.return_type(db) {
                             Some(ret) =>
@@ -419,7 +413,7 @@ impl<'db> Type<'db> {
             Self::FunctionBlock(f) => {
                 diag.with_related(Related::new(
                     format!(
-                        "FUNCTION_BLOCK '{}' is defined here",
+                        "FUNCTION_BLOCK '{}' is declared here",
                         f.get_name_with_case(db).text(db),
                     ),
                     f.get_scope_id(db).file(db),
@@ -429,7 +423,7 @@ impl<'db> Type<'db> {
             Self::Class(f) => {
                 diag.with_related(Related::new(
                     format!(
-                        "CLASS '{}' is defined here",
+                        "CLASS '{}' is declared here",
                         f.get_name_with_case(db).text(db),
                     ),
                     f.get_scope_id(db).file(db),
@@ -439,7 +433,7 @@ impl<'db> Type<'db> {
             Self::Interface(f) => {
                 diag.with_related(Related::new(
                     format!(
-                        "INTERFACE '{}' is defined here",
+                        "INTERFACE '{}' is declared here",
                         f.get_name_with_case(db).text(db),
                     ),
                     f.get_scope_id(db).file(db),

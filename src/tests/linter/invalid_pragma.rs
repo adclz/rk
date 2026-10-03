@@ -35,12 +35,12 @@ PROGRAM main
 END_PROGRAM
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "invalid-pragma"), @r"
-    [L0003] Warning: invalid pragma for this POU
+    [L0003] Warning: pragma without effect on the POU
        ,-[ file:///test0.st:2:1 ]
        |
      2 | {once}
        | ^^^|^^
-       |    `---- {once} is not valid on PROGRAM
+       |    `---- {once} has no effect on a PROGRAM
        |
        | Note: lint rule: invalid-pragma
     ---'

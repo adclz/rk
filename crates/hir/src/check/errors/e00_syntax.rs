@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 use crate::check::errors::ToIdeDiagnostic;
+use crate::check::errors::first_word;
 use auto_lsp::core::errors::LexerError;
 use auto_lsp::core::errors::ParseError;
 use auto_lsp::default::db::file::File;
@@ -135,40 +136,6 @@ impl ErrorCode for SyntaxError {
             Self::VariadicNotAllowed { .. } => "E0029",
         }
     }
-
-    fn description(&self) -> &'static str {
-        match self {
-            Self::SyntaxError { .. } => "syntax",
-            Self::MissingNode { .. } => "syntax",
-            Self::MissingVarType(_) => "syntax",
-            Self::UnexpectedVarInit(_) => "syntax",
-            Self::EmptyRightHandSide(_) => "syntax",
-            Self::MissingDotInAssignment { .. } => "syntax",
-            Self::MissingEqualInAssignment { .. } => "syntax",
-            Self::OutputAssignInAssignment { .. } => "syntax",
-            Self::MissingDotInForList { .. } => "syntax",
-            Self::MissingEqualInForList { .. } => "syntax",
-            Self::OutputAssignInForList { .. } => "syntax",
-            Self::AssignInCondition { .. } => "syntax",
-            Self::AssignToFunctionCall(_) => "syntax",
-            Self::IncompleteEdgeQualifier(_) => "syntax",
-            Self::UnexpectedThis(_) => "syntax",
-            Self::UnexpectedSuper(_) => "syntax",
-            Self::VarNotAllowed(_) => "syntax",
-            Self::VarInOutNotAllowed(_) => "syntax",
-            Self::VarTempNotAllowed(_) => "syntax",
-            Self::VariadicNotAllowed { .. } => "syntax",
-            Self::VarExternalNotAllowed(_) => "syntax",
-            Self::VarGlobalNotAllowed(_) => "syntax",
-            Self::VarAccessNotAllowed(_) => "syntax",
-            Self::VarConfigNotAllowed(_) => "syntax",
-            Self::ProgramNotAllowedInNamespace(_) => "syntax",
-            Self::ConfigNotAllowedInNamespace(_) => "syntax",
-            Self::FbVariablesAfterMethod { .. } => "syntax",
-            Self::ClassVariablesAfterMethod { .. } => "syntax",
-            Self::MethodDeclInBody(_) => "syntax",
-        }
-    }
 }
 
 impl SyntaxError {
@@ -199,7 +166,7 @@ impl SyntaxError {
                         let end = range.end_byte;
                         if end <= doc.len() {
                             let text = String::from_utf8_lossy(&doc[start..end]);
-                            format!("Unexpected token(s): '{}'", text.trim())
+                            format!("unexpected token(s): '{}'", text.trim())
                         } else {
                             error.to_owned()
                         }
@@ -216,9 +183,7 @@ impl SyntaxError {
             // (auto-lsp-codegen flattened nested supertypes one level only).
             ParseError::AstError { span, error } => SyntaxError::SyntaxError {
                 span: *span,
-                err: format!(
-                    "the parser has no place for this construct ({error}); this is a compiler bug"
-                ),
+                err: format!("compiler bug: the parser has no place for this construct ({error})"),
             },
         }
     }
@@ -282,19 +247,19 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                 diagnostic
             }
             Self::MissingVarType(span) => diag()
-                .message("variable type is missing".into())
+                .message("the variable has no type".into())
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
                 .range(crate::denormalize(db, file, span).unwrap_or_default())
                 .call(),
             Self::UnexpectedVarInit(span) => diag()
-                .message("unexpected variable initialization".into())
+                .message("an initial value is not allowed here".into())
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
                 .range(crate::denormalize(db, file, span).unwrap_or_default())
                 .call(),
             Self::EmptyRightHandSide(span) => diag()
-                .message("right-hand side of assignment cannot be empty".into())
+                .message("the assignment has no right-hand side".into())
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
                 .range(crate::denormalize(db, file, span).unwrap_or_default())
@@ -304,7 +269,7 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                     .message("'=' is not a valid assignment sign".into())
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(crate::denormalize(db, file, span).unwrap_or_default())
+                    .range(crate::denormalize(db, file, &first_bytes(span, 1)).unwrap_or_default())
                     .call();
 
                 // only replace '=' with ':='
@@ -343,7 +308,7 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                     .message("':' is not a valid assignment sign".into())
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(crate::denormalize(db, file, span).unwrap_or_default())
+                    .range(crate::denormalize(db, file, &first_bytes(span, 1)).unwrap_or_default())
                     .call();
 
                 // only replace '=' with ':='
@@ -382,7 +347,7 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                     .message("'=>' is not a valid assignment sign".into())
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(crate::denormalize(db, file, span).unwrap_or_default())
+                    .range(crate::denormalize(db, file, &first_bytes(span, 2)).unwrap_or_default())
                     .call();
 
                 let range = Range {
@@ -533,7 +498,7 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
             }
             Self::AssignInCondition { file, span, sign } => {
                 let mut diag = diag()
-                    .message("':=' assigns, a condition compares with '='".into())
+                    .message("a condition compares with '=', not ':='".into())
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
                     .range(crate::denormalize(db, file, span).unwrap_or_default())
@@ -557,7 +522,7 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                 diag
             }
             Self::AssignToFunctionCall(span) => diag()
-                .message("assignment to function call is not allowed".into())
+                .message("a function call cannot be assigned".into())
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
                 .range(crate::denormalize(db, file, span).unwrap_or_default())
@@ -569,54 +534,41 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                 .range(crate::denormalize(db, file, span).unwrap_or_default())
                 .call(),
             Self::UnexpectedThis(span) => diag()
-                .message("'THIS' is not valid in this context".into())
+                .message("'THIS' cannot follow a dot".into())
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
                 .range(crate::denormalize(db, file, span).unwrap_or_default())
                 .call(),
             Self::UnexpectedSuper(span) => diag()
-                .message("'SUPER' is not valid in this context".into())
+                .message("'SUPER' cannot follow a dot".into())
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
                 .range(crate::denormalize(db, file, span).unwrap_or_default())
                 .call(),
-            Self::VarNotAllowed(span) => {
-                let mut diag = diag()
-                    .message("VAR is not allowed in this context".into())
-                    .severity(DiagnosticSeverity::ERROR)
-                    .desc(self)
-                    .range(crate::denormalize(db, file, span).unwrap_or_default())
-                    .call();
-
-                diag.with_note(
-                    "VAR can only be used inside FUNCTION, FUNCTION_BLOCK, PROGRAM".into(),
-                );
-                diag
-            }
-            Self::VarInOutNotAllowed(span) => {
-                let mut diag = diag()
-                    .message("VAR_IN_OUT is not allowed in this context".into())
-                    .severity(DiagnosticSeverity::ERROR)
-                    .desc(self)
-                    .range(crate::denormalize(db, file, span).unwrap_or_default())
-                    .call();
-
-                diag.with_note(
-                    "VAR_IN_OUT can only be used inside FUNCTION, FUNCTION_BLOCK".into(),
-                );
-                diag
-            }
-            Self::VarTempNotAllowed(span) => {
-                let mut diag = diag()
-                    .message("VAR_TEMP is not allowed in this context".into())
-                    .severity(DiagnosticSeverity::ERROR)
-                    .desc(self)
-                    .range(crate::denormalize(db, file, span).unwrap_or_default())
-                    .call();
-
-                diag.with_note("VAR_TEMP can only be used inside FUNCTION, FUNCTION_BLOCK".into());
-                diag
-            }
+            Self::VarNotAllowed(span) => section_not_allowed(
+                self,
+                db,
+                file,
+                span,
+                "VAR",
+                "VAR declares the variables of a FUNCTION, FUNCTION_BLOCK, PROGRAM, CLASS or METHOD",
+            ),
+            Self::VarInOutNotAllowed(span) => section_not_allowed(
+                self,
+                db,
+                file,
+                span,
+                "VAR_IN_OUT",
+                "VAR_IN_OUT is a parameter of a FUNCTION, FUNCTION_BLOCK, PROGRAM or METHOD",
+            ),
+            Self::VarTempNotAllowed(span) => section_not_allowed(
+                self,
+                db,
+                file,
+                span,
+                "VAR_TEMP",
+                "VAR_TEMP declares the per-call variables of a FUNCTION, FUNCTION_BLOCK, PROGRAM or METHOD",
+            ),
             Self::VariadicNotAllowed { span, holder } => {
                 let mut diag = diag()
                     .message(format!("a {holder} takes no variadic parameter"))
@@ -625,91 +577,80 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                     .range(crate::denormalize(db, file, span).unwrap_or_default())
                     .call();
                 diag.with_note(format!(
-                    "a variadic FUNCTION or METHOD is compiled once per argument count; a \
-                     {holder} is an instance, whose inputs are its members"
+                    "the inputs of a {holder} are members of one instance"
                 ));
                 diag
             }
-            Self::VarExternalNotAllowed(span) => {
-                let mut diag = diag()
-                    .message("VAR_EXTERNAL is not allowed in this context".into())
-                    .severity(DiagnosticSeverity::ERROR)
-                    .desc(self)
-                    .range(crate::denormalize(db, file, span).unwrap_or_default())
-                    .call();
-
-                diag.with_note(
-                    "VAR_EXTERNAL can only be used inside PROGRAM, FUNCTION_BLOCK, FUNCTION".into(),
-                );
-                diag
-            }
-            Self::VarGlobalNotAllowed(span) => {
-                let mut diag = diag()
-                    .message("VAR_GLOBAL is not allowed in this context".into())
-                    .severity(DiagnosticSeverity::ERROR)
-                    .desc(self)
-                    .range(crate::denormalize(db, file, span).unwrap_or_default())
-                    .call();
-
-                diag.with_note("VAR_GLOBAL can only be used inside CONFIGURATION".into());
-                diag
-            }
-            Self::VarAccessNotAllowed(span) => {
-                let mut diag = diag()
-                    .message("VAR_ACCESS is not allowed in this context".into())
-                    .severity(DiagnosticSeverity::ERROR)
-                    .desc(self)
-                    .range(crate::denormalize(db, file, span).unwrap_or_default())
-                    .call();
-
-                diag.with_note("VAR_ACCESS can only be used inside PROGRAM".into());
-                diag
-            }
-            Self::VarConfigNotAllowed(span) => {
-                let mut diag = diag()
-                    .message("VAR_CONFIG is not allowed in this context".into())
-                    .severity(DiagnosticSeverity::ERROR)
-                    .desc(self)
-                    .range(crate::denormalize(db, file, span).unwrap_or_default())
-                    .call();
-
-                diag.with_note("VAR_CONFIG can only be used inside CONFIGURATION".into());
-                diag
-            }
+            Self::VarExternalNotAllowed(span) => section_not_allowed(
+                self,
+                db,
+                file,
+                span,
+                "VAR_EXTERNAL",
+                "VAR_EXTERNAL names a global from a FUNCTION, FUNCTION_BLOCK, PROGRAM, CLASS or METHOD",
+            ),
+            Self::VarGlobalNotAllowed(span) => section_not_allowed(
+                self,
+                db,
+                file,
+                span,
+                "VAR_GLOBAL",
+                "VAR_GLOBAL goes in a CONFIGURATION",
+            ),
+            Self::VarAccessNotAllowed(span) => section_not_allowed(
+                self,
+                db,
+                file,
+                span,
+                "VAR_ACCESS",
+                "VAR_ACCESS goes in a PROGRAM or a CONFIGURATION",
+            ),
+            Self::VarConfigNotAllowed(span) => section_not_allowed(
+                self,
+                db,
+                file,
+                span,
+                "VAR_CONFIG",
+                "VAR_CONFIG goes in a CONFIGURATION",
+            ),
             Self::ProgramNotAllowedInNamespace(span) => diag()
-                .message("programs are not allowed in namespaces".into())
+                .message("a PROGRAM cannot be declared in a NAMESPACE".into())
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
-                .range(crate::denormalize(db, file, span).unwrap_or_default())
+                .range(
+                    crate::denormalize(db, file, &first_word(db, file, span)).unwrap_or_default(),
+                )
                 .call(),
             Self::ConfigNotAllowedInNamespace(span) => diag()
-                .message("configs are not allowed in namespaces".into())
+                .message("a CONFIGURATION cannot be declared in a NAMESPACE".into())
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
-                .range(crate::denormalize(db, file, span).unwrap_or_default())
+                .range(
+                    crate::denormalize(db, file, &first_word(db, file, span)).unwrap_or_default(),
+                )
                 .call(),
             Self::FbVariablesAfterMethod {
                 file,
                 var_span,
                 method_span,
             } => {
-                // We do not want to highlight the first method, just the start point
-                let method_span_start = Range {
-                    start_byte: method_span.start_byte,
-                    end_byte: method_span.start_byte,
-                    start_point: method_span.start_point,
-                    end_point: method_span.start_point,
-                };
+                // The method's keyword, not its whole body.
+                let method_span_start = first_word(db, *file, method_span);
 
                 let mut diag = diag()
-                    .message("FB variable declarations must appear before methods".into())
+                    .message(
+                        "the variable sections of a FUNCTION_BLOCK come before its methods".into(),
+                    )
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(crate::denormalize(db, file, var_span).unwrap_or_default())
+                    .range(
+                        crate::denormalize(db, file, &first_word(db, *file, var_span))
+                            .unwrap_or_default(),
+                    )
                     .call();
 
                 diag.with_related(Related::new(
-                    "move variables before methods here".into(),
+                    "the first method is declared here".into(),
                     *file,
                     method_span_start,
                 ));
@@ -720,34 +661,67 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                 var_span,
                 method_span,
             } => {
-                // We do not want to highlight the first method, just the start point
-                let method_span_start = Range {
-                    start_byte: method_span.start_byte,
-                    end_byte: method_span.start_byte,
-                    start_point: method_span.start_point,
-                    end_point: method_span.start_point,
-                };
+                // The method's keyword, not its whole body.
+                let method_span_start = first_word(db, *file, method_span);
 
                 let mut diag = diag()
-                    .message("CLASS variable declarations must appear before methods".into())
+                    .message("the variable sections of a CLASS come before its methods".into())
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(crate::denormalize(db, file, var_span).unwrap_or_default())
+                    .range(
+                        crate::denormalize(db, file, &first_word(db, *file, var_span))
+                            .unwrap_or_default(),
+                    )
                     .call();
 
                 diag.with_related(Related::new(
-                    "move variables before methods here".into(),
+                    "the first method is declared here".into(),
                     *file,
                     method_span_start,
                 ));
                 diag
             }
             Self::MethodDeclInBody(span) => diag()
-                .message("method declarations are not allowed inside a body".into())
+                .message("a METHOD cannot be declared in a body".into())
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
-                .range(crate::denormalize(db, file, span).unwrap_or_default())
+                .range(
+                    crate::denormalize(db, file, &first_word(db, file, span)).unwrap_or_default(),
+                )
                 .call(),
         }
+    }
+}
+
+/// A variable section in a POU that takes none. The report underlines the
+/// keyword, and its note says where the section goes.
+fn section_not_allowed(
+    error: &SyntaxError,
+    db: &dyn WorkspaceDataBase,
+    file: File,
+    span: &Range,
+    keyword: &str,
+    place: &str,
+) -> IdeDiagnostic {
+    let mut diag = diag()
+        .message(format!("{keyword} is not allowed here"))
+        .severity(DiagnosticSeverity::ERROR)
+        .desc(error)
+        .range(crate::denormalize(db, file, &first_word(db, file, span)).unwrap_or_default())
+        .call();
+    diag.with_note(place.to_string());
+    diag
+}
+
+/// The first `len` bytes of `span`: an assignment sign, without what follows.
+fn first_bytes(span: &Range, len: usize) -> Range {
+    Range {
+        start_byte: span.start_byte,
+        end_byte: span.start_byte + len,
+        start_point: span.start_point,
+        end_point: tree_sitter::Point {
+            row: span.start_point.row,
+            column: span.start_point.column + len,
+        },
     }
 }

@@ -209,24 +209,6 @@ impl<'db> ErrorCode for TypeError<'db> {
             Self::AssignVoidResult { .. } => "E0319",
         }
     }
-
-    fn description(&self) -> &'static str {
-        match self {
-            Self::NotAssignable { .. } => "type mismatch",
-            Self::NotComparable { .. } => "type mismatch",
-            Self::NotAddable { .. } => "type mismatch",
-            Self::NotMultiplicable { .. } => "type mismatch",
-            Self::UnsupportedOperator { .. } => "type mismatch",
-            Self::InferLiteralError { .. } => "invalid literal",
-            Self::StringLengthNotConstant { .. } => "length is not constant",
-            Self::StringLengthNegative { .. } => "length is negative",
-            Self::FunctionAsType { .. } => "invalid type",
-            Self::DirectType { .. } => "semantic violation",
-            Self::AssignCallableType { .. } => "semantic violation",
-            Self::AssignClassInstance { .. } => "semantic violation",
-            Self::AssignVoidResult { .. } => "semantic violation",
-        }
-    }
 }
 
 impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
@@ -270,7 +252,7 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
             } => {
                 let mut diag = diag()
                     .message(format!(
-                        "can't compare '{}' with '{}'",
+                        "cannot compare '{}' with '{}'",
                         lhs.type_name(db),
                         adjustment_to_string(db, *rhs, adjustment),
                     ))
@@ -293,7 +275,7 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
             } => {
                 let mut diag = diag()
                     .message(format!(
-                        "can not {} '{}' with '{}'",
+                        "cannot {} '{}' with '{}'",
                         match operator {
                             AddOperatorKind::Plus => "add",
                             AddOperatorKind::Minus => "subtract",
@@ -319,7 +301,7 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
             } => {
                 let mut diag = diag()
                     .message(format!(
-                        "can not {} '{}' with '{}'",
+                        "cannot {} '{}' with '{}'",
                         match operator {
                             MultOperatorKind::Mul => "multiply",
                             MultOperatorKind::Div => "divide",
@@ -365,22 +347,14 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                 target,
             } => {
                 let target_name = target.type_name(db);
-                let mut message = format!(
-                    "cannot infer '{}' to '{}': {}",
-                    expr.to_string(db),
-                    target_name,
-                    err
-                );
-                if let Some(shape) = err.shape(&target_name) {
-                    message.push_str("; ");
-                    message.push_str(&shape);
-                }
                 let mut diag = diag()
-                    .message(message)
+                    .message(err.to_string())
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
                     .range(crate::denormalize(db, file, &expr.get_span(db)).unwrap_or_default())
                     .call();
+                let (note, help) = err.advice(&target_name);
+                diag.with_advice(note, help);
 
                 if let Some(source) = source {
                     match source {
@@ -398,59 +372,39 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                 diag
             }
             Self::StringLengthNotConstant { length } => diag()
-                .message("a STRING length must be known at compile time".to_string())
+                .message("the length is not a compile-time constant".to_string())
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
                 .range(crate::denormalize(db, file, &length.get_span(db)).unwrap_or_default())
                 .call(),
             Self::StringLengthNegative { length, value } => diag()
-                .message(format!(
-                    "a STRING length cannot be negative, and this one is {value}"
-                ))
+                .message(format!("the length is {value}: it cannot be negative"))
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
                 .range(crate::denormalize(db, file, &length.get_span(db)).unwrap_or_default())
                 .call(),
             Self::FunctionAsType { expr, ty } => diag()
-                .message(format!(
-                    "'{}' is a function and cannot be used as a variable or data type",
-                    ty.type_name(db)
-                ))
+                .message(format!("'{}' is a FUNCTION, not a type", ty.type_name(db)))
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
                 .range(crate::denormalize(db, file, &expr.get_span(db)).unwrap_or_default())
                 .call(),
             Self::DirectType { expr, typ } => diag()
-                .message(format!(
-                    "cannot use direct type '{}' here",
-                    typ.type_name(db)
-                ))
+                .message(format!("'{}' is not a value", typ.type_name(db)))
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
                 .range(crate::denormalize(db, file, &expr.get_span(db)).unwrap_or_default())
                 .call(),
-            Self::AssignCallableType { typ, access } => diag()
-                .message(format!(
-                    "'{}' is a callable type and can not be assigned",
-                    typ.get_name_with_case(db).text(db)
-                ))
-                .severity(DiagnosticSeverity::ERROR)
-                .desc(self)
-                .range(crate::denormalize(db, file, &access.get_span(db)).unwrap_or_default())
-                .call(),
-            Self::AssignClassInstance { class, access } => diag()
-                .message(format!(
-                    "'{}' is a CLASS and can not be assigned",
-                    class.type_name(db)
-                ))
-                .severity(DiagnosticSeverity::ERROR)
-                .desc(self)
-                .range(crate::denormalize(db, file, &access.get_span(db)).unwrap_or_default())
-                .call(),
+            Self::AssignCallableType { typ, access } => {
+                instance_assigned(self, db, file, typ.get_name_with_case(db).text(db), access)
+            }
+            Self::AssignClassInstance { class, access } => {
+                instance_assigned(self, db, file, &class.type_name(db), access)
+            }
             Self::AssignVoidResult { callable, access } => {
                 let mut diag = diag()
                     .message(format!(
-                        "'{}' is void and can not be assigned",
+                        "'{}' has no return value to assign",
                         callable.get_name_with_case(db).text(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
@@ -518,9 +472,31 @@ impl InferLiteralError {
         }
     }
 
-    /// What a correct literal looks like, for the end of the message. Short
-    /// on purpose: the shape, not a tutorial.
-    pub fn shape(&self, target: &str) -> Option<String> {
+    /// What the type takes, as a note, and what to write instead, as a help.
+    /// Short on purpose: the shape, not a tutorial.
+    pub fn advice(&self, target: &str) -> (Option<String>, Option<String>) {
+        use InferLiteralError::*;
+        let help = match self {
+            NegativeUnsigned { type_name } => Some(match signed_twin(type_name) {
+                Some(t) => format!("use {t}, or drop the sign"),
+                None => "drop the sign".to_string(),
+            }),
+            Invalid_STRING_Length {
+                got,
+                alias: Some(alias),
+                ..
+            } => Some(format!(
+                "change '{alias}' to STRING[{got}] or use another type, or shorten the literal"
+            )),
+            Invalid_STRING_Length { got, .. } => {
+                Some(format!("declare it STRING[{got}], or shorten the literal"))
+            }
+            _ => None,
+        };
+        (self.shape(target), help)
+    }
+
+    fn shape(&self, target: &str) -> Option<String> {
         use InferLiteralError::*;
         Some(match self {
             OutOfRange { type_name } => {
@@ -528,7 +504,9 @@ impl InferLiteralError {
                 format!("{type_name} holds {b}")
             }
             PatternTooWide { type_name, bits } => {
-                format!("a radix literal is a bit pattern, and {type_name} has {bits} bits")
+                format!(
+                    "a radix literal is a bit pattern too wide for the {bits} bits of {type_name}"
+                )
             }
             DurationOutOfRange {
                 type_name,
@@ -543,10 +521,7 @@ impl InferLiteralError {
                 "REAL" => "REAL holds magnitudes up to about 3.4E38".to_string(),
                 _ => format!("{type_name} holds magnitudes up to about 1.8E308"),
             },
-            NegativeUnsigned { type_name } => match signed_twin(type_name) {
-                Some(t) => format!("{type_name} is unsigned; use {t}, or drop the sign"),
-                None => format!("{type_name} is unsigned; drop the sign"),
-            },
+            NegativeUnsigned { .. } => return None,
             Invalid_BOOL_Literal => "BOOL is TRUE or FALSE".to_string(),
             Invalid_REAL_Literal | Invalid_LREAL_Literal => {
                 format!("{target} takes a number, written like 3.14 or 1.0E3")
@@ -573,16 +548,7 @@ impl InferLiteralError {
             Invalid_DT_Format(_) => "DT is written DT#2025-01-31-12:30:00".to_string(),
             Invalid_LDT_Format(_) => "LDT is written LDT#2025-01-31-12:30:00".to_string(),
             Invalid_CHAR_Length(_) => "CHAR is one character, written 'a'".to_string(),
-            Invalid_STRING_Length {
-                got,
-                alias: Some(alias),
-                ..
-            } => format!(
-                "change '{alias}' to STRING[{got}] or use another type, or shorten the literal"
-            ),
-            Invalid_STRING_Length { got, .. } => {
-                format!("declare it STRING[{got}], or shorten the literal")
-            }
+            Invalid_STRING_Length { .. } => return None,
         })
     }
 }
@@ -623,7 +589,7 @@ impl std::fmt::Display for InferLiteralError {
                 return write!(f, "the value does not fit in {type_name}");
             }
             InferLiteralError::NegativeUnsigned { type_name } => {
-                return write!(f, "{type_name} cannot be negative");
+                return write!(f, "the value is negative and {type_name} is unsigned");
             }
 
             InferLiteralError::Invalid_BOOL_Literal => "invalid boolean literal",
@@ -641,13 +607,10 @@ impl std::fmt::Display for InferLiteralError {
             InferLiteralError::Invalid_LREAL_Literal => "invalid LREAL literal",
 
             InferLiteralError::Invalid_CHAR_Length(len) => {
-                return write!(f, "CHAR literal must be exactly 1 character, got {len}");
+                return write!(f, "the CHAR literal has {len} characters");
             }
             InferLiteralError::Invalid_STRING_Length { max, got, .. } => {
-                return write!(
-                    f,
-                    "STRING literal exceeds the capacity of {max} bytes, got {got}"
-                );
+                return write!(f, "the literal is {got} bytes, over the capacity of {max}");
             }
 
             InferLiteralError::ExpectedNumber => "expected number",
@@ -680,6 +643,26 @@ impl std::fmt::Display for InferLiteralError {
     }
 }
 
+/// E0318: an instance on the left of `:=`.
+fn instance_assigned<'db>(
+    error: &TypeError<'db>,
+    db: &'db dyn WorkspaceDataBase,
+    file: auto_lsp::default::db::file::File,
+    type_name: &str,
+    access: &CallSite<'db>,
+) -> IdeDiagnostic {
+    let mut diag = diag()
+        .message(format!("an instance of '{type_name}' cannot be assigned"))
+        .severity(DiagnosticSeverity::ERROR)
+        .desc(error)
+        .range(crate::denormalize(db, file, &access.get_span(db)).unwrap_or_default())
+        .call();
+    diag.with_help(
+        "pass the instance as a VAR_IN_OUT, or assign its members one by one".to_string(),
+    );
+    diag
+}
+
 fn explicit_cast_suggestion(
     db: &dyn WorkspaceDataBase,
     expected: Type,
@@ -692,18 +675,8 @@ fn explicit_cast_suggestion(
         && lhs.explicit_cast(rhs)
     {
         let value = actual_site.to_string(db);
-        diag.with_related(Related::new(
-            format!(
-                "consider explicitly casting with '{}_TO_{}({})'",
-                rhs.type_name(),
-                lhs.type_name(),
-                value
-            ),
-            actual_site.get_scope_id(db).file(db),
-            actual_site.get_span(db),
-        ));
-
-        // The edit the title promises. It used to carry an empty
+        // The fix is the advice: its title is the report's Help line, and the
+        // code action writes the cast. It used to carry an empty
         // `WorkspaceEdit`, so the action appeared, applied nothing, and left
         // the reader to write the call out themselves.
         let file = actual_site.get_scope_id(db).file(db);

@@ -26,12 +26,12 @@ END_FUNCTION_BLOCK
        ,-[ file:///test0.st:8:15 ]
        |
      4 |         ptr: REF_TO INT;
-       |         ^^^^^^^|^^^^^^^
-       |                `--------- 'ptr' declared without initializer here
+       |         ^|^
+       |          `--- 'ptr' is declared without an initial value here
        |
      8 |     result := ptr^;
        |               ^|^
-       |                `--- dereference of reference 'ptr' which is never initialized
+       |                `--- 'ptr' is dereferenced and never set
     ---'
     ");
 }
@@ -58,10 +58,10 @@ END_FUNCTION_BLOCK
         |
      10 |     ptr := NULL;
         |     ^^^^^|^^^^^
-        |          `------- 'ptr' set to NULL here
+        |          `------- 'ptr' is set to NULL here
      11 |     result := ptr^;
         |               ^|^
-        |                `--- dereference of reference 'ptr' which is null
+        |                `--- 'ptr' is dereferenced and is NULL
     ----'
     ");
 }
@@ -120,11 +120,11 @@ END_FUNCTION_BLOCK
        |
      4 |         ptr: REF_TO INT := NULL;
        |                         ^^^|^^^
-       |                            `----- 'ptr' set to NULL here
+       |                            `----- 'ptr' is set to NULL here
        |
      8 |     result := ptr^;
        |               ^|^
-       |                `--- dereference of reference 'ptr' which is null
+       |                `--- 'ptr' is dereferenced and is NULL
     ---'
     ");
 }
@@ -190,12 +190,12 @@ END_FUNCTION_BLOCK
         ,-[ file:///test0.st:11:15 ]
         |
       6 |         ptr_2: REF_TO INT;
-        |         ^^^^^^^^|^^^^^^^^
-        |                 `---------- 'ptr_2' declared without initializer here
+        |         ^^|^^
+        |           `---- 'ptr_2' is declared without an initial value here
         |
      11 |     result := ptr^;
         |               ^|^
-        |                `--- dereference of reference 'ptr' which is never initialized
+        |                `--- 'ptr' is dereferenced and never set
     ----'
     ");
 }
@@ -221,11 +221,11 @@ END_FUNCTION_BLOCK
         |
       5 |         ptr_2: REF_TO INT := NULL;
         |                           ^^^|^^^
-        |                              `----- 'ptr_2' set to NULL here
+        |                              `----- 'ptr_2' is set to NULL here
         |
      10 |     result := ptr^;
         |               ^|^
-        |                `--- dereference of reference 'ptr' which is null
+        |                `--- 'ptr' is dereferenced and is NULL
     ----'
     ");
 }
@@ -290,10 +290,10 @@ END_FUNCTION_BLOCK
         |
       9 |     ptr := NULL;
         |     ^^^^^|^^^^^
-        |          `------- 'ptr' set to NULL here
+        |          `------- 'ptr' is set to NULL here
      10 |     result := ptr^;
         |               ^|^
-        |                `--- dereference of reference 'ptr' which is null
+        |                `--- 'ptr' is dereferenced and is NULL
     ----'
     ");
 }
@@ -338,12 +338,12 @@ END_FUNCTION_BLOCK
         ,-[ file:///test0.st:12:16 ]
         |
       6 |         ptr2: REF_TO INT;
-        |         ^^^^^^^^|^^^^^^^
-        |                 `--------- 'ptr2' declared without initializer here
+        |         ^^|^
+        |           `--- 'ptr2' is declared without an initial value here
         |
      12 |     result2 := ptr2^;
         |                ^^|^
-        |                  `--- dereference of reference 'ptr2' which is never initialized
+        |                  `--- 'ptr2' is dereferenced and never set
     ----'
     ");
 }
@@ -366,12 +366,12 @@ END_FUNCTION_BLOCK
        ,-[ file:///test0.st:8:15 ]
        |
      4 |         ptr: REF_TO REF_TO INT;
-       |         ^^^^^^^^^^^|^^^^^^^^^^
-       |                    `------------ 'ptr' declared without initializer here
+       |         ^|^
+       |          `--- 'ptr' is declared without an initial value here
        |
      8 |     result := ptr^^;
        |               ^|^
-       |                `--- dereference of reference 'ptr' which is never initialized
+       |                `--- 'ptr' is dereferenced and never set
     ---'
     ");
 }
@@ -393,12 +393,12 @@ END_FUNCTION
        ,-[ file:///test0.st:7:12 ]
        |
      4 |         ptr: REF_TO INT;
-       |         ^^^^^^^|^^^^^^^
-       |                `--------- 'ptr' declared without initializer here
+       |         ^|^
+       |          `--- 'ptr' is declared without an initial value here
        |
      7 |     fn1 := ptr^;
        |            ^|^
-       |             `--- dereference of reference 'ptr' which is never initialized
+       |             `--- 'ptr' is dereferenced and never set
     ---'
     ");
 }
@@ -421,12 +421,12 @@ END_PROGRAM
        ,-[ file:///test0.st:8:15 ]
        |
      4 |         ptr: REF_TO INT;
-       |         ^^^^^^^|^^^^^^^
-       |                `--------- 'ptr' declared without initializer here
+       |         ^|^
+       |          `--- 'ptr' is declared without an initial value here
        |
      8 |     result := ptr^;
        |               ^|^
-       |                `--- dereference of reference 'ptr' which is never initialized
+       |                `--- 'ptr' is dereferenced and never set
     ---'
     ");
 }
@@ -503,11 +503,11 @@ END_FUNCTION_BLOCK
         |
      13 |         ptr := NULL;
         |         ^^^^^|^^^^^
-        |              `------- 'ptr' set to NULL here
+        |              `------- 'ptr' is set to NULL here
         |
      16 |     result := ptr^;
         |               ^|^
-        |                `--- dereference of reference 'ptr' which is null
+        |                `--- 'ptr' is dereferenced and is NULL
     ----'
     ");
 }
@@ -537,12 +537,12 @@ END_FUNCTION_BLOCK
         ,-[ file:///test0.st:14:15 ]
         |
       5 |         ptr: REF_TO INT;
-        |         ^^^^^^^|^^^^^^^
-        |                `--------- 'ptr' declared without initializer here
+        |         ^|^
+        |          `--- 'ptr' is declared without an initial value here
         |
      14 |     result := ptr^;
         |               ^|^
-        |                `--- dereference of reference 'ptr' which is never initialized
+        |                `--- 'ptr' is dereferenced and never set
     ----'
     ");
 }
@@ -606,12 +606,12 @@ END_FUNCTION_BLOCK
         ,-[ file:///test0.st:18:15 ]
         |
       6 |         ptr: REF_TO INT;
-        |         ^^^^^^^|^^^^^^^
-        |                `--------- 'ptr' declared without initializer here
+        |         ^|^
+        |          `--- 'ptr' is declared without an initial value here
         |
      18 |     result := ptr^;
         |               ^|^
-        |                `--- dereference of reference 'ptr' which is never initialized
+        |                `--- 'ptr' is dereferenced and never set
     ----'
     ");
 }
@@ -725,11 +725,11 @@ END_FUNCTION
        |
      4 |         ptr: REF_TO INT := NULL;
        |                         ^^^|^^^
-       |                            `----- 'ptr' set to NULL here
+       |                            `----- 'ptr' is set to NULL here
        |
      8 |         fn1 := ptr^;
        |                ^|^
-       |                 `--- dereference of reference 'ptr' which is null
+       |                 `--- 'ptr' is dereferenced and is NULL
     ---'
     ");
 }
@@ -755,11 +755,11 @@ END_FUNCTION
        |
      4 |         ptr: REF_TO INT := NULL;
        |                         ^^^|^^^
-       |                            `----- 'ptr' set to NULL here
+       |                            `----- 'ptr' is set to NULL here
        |
      9 |         fn1 := ptr^;
        |                ^|^
-       |                 `--- dereference of reference 'ptr' which is null
+       |                 `--- 'ptr' is dereferenced and is NULL
     ---'
     ");
 }
@@ -828,11 +828,11 @@ END_FUNCTION
         |
       5 |         ptr: REF_TO INT := NULL;
         |                         ^^^|^^^
-        |                            `----- 'ptr' set to NULL here
+        |                            `----- 'ptr' is set to NULL here
         |
      10 |         fn1 := ptr^;
         |                ^|^
-        |                 `--- dereference of reference 'ptr' which is null
+        |                 `--- 'ptr' is dereferenced and is NULL
     ----'
     ");
 }
@@ -859,11 +859,11 @@ END_FUNCTION
        |
      4 |         ptr: REF_TO INT := NULL;
        |                         ^^^|^^^
-       |                            `----- 'ptr' set to NULL here
+       |                            `----- 'ptr' is set to NULL here
        |
      9 |         fn1 := ptr^;
        |                ^|^
-       |                 `--- dereference of reference 'ptr' which is null
+       |                 `--- 'ptr' is dereferenced and is NULL
     ---'
     ");
 }
@@ -944,11 +944,11 @@ END_FUNCTION
        |
      4 |         ptr: REF_TO INT := NULL;
        |                         ^^^|^^^
-       |                            `----- 'ptr' set to NULL here
+       |                            `----- 'ptr' is set to NULL here
        |
      8 |         fn1 := ptr^;
        |                ^|^
-       |                 `--- dereference of reference 'ptr' which is null
+       |                 `--- 'ptr' is dereferenced and is NULL
     ---'
     ");
 }

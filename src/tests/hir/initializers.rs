@@ -32,14 +32,16 @@ PROGRAM Dummy
 END_PROGRAM
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0401] Error: initial value is not constant
+    [E0401] Error: initial value not constant
        ,-[ file:///test0.st:5:17 ]
        |
      5 |     b : DINT := a;
        |                 |
        |                 `-- this initial value must be a constant: it is fixed before the program runs
        |
-       | Note: 'a' is an ordinary variable; declare it CONSTANT if its value never changes
+       | Help: declare it CONSTANT if its value never changes
+       |
+       | Note: 'a' is not CONSTANT
     ---'
     ");
 }
@@ -65,14 +67,16 @@ PROGRAM Dummy
 END_PROGRAM
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0401] Error: initial value is not constant
+    [E0401] Error: initial value not constant
        ,-[ file:///test0.st:3:21 ]
        |
      3 |     VAR m : DINT := some_global; END_VAR
        |                     ^^^^^|^^^^^
        |                          `------- this initial value must be a constant: it is fixed before the program runs
        |
-       | Note: 'some_global' is an ordinary variable; declare it CONSTANT if its value never changes
+       | Help: declare it CONSTANT if its value never changes
+       |
+       | Note: 'some_global' is not CONSTANT
     ---'
     ");
 }
@@ -99,7 +103,7 @@ PROGRAM Dummy
 END_PROGRAM
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0401] Error: initial value is not constant
+    [E0401] Error: initial value not constant
        ,-[ file:///test0.st:2:22 ]
        |
      2 | TYPE AliasK : INT := K; END_TYPE
@@ -159,7 +163,7 @@ PROGRAM Dummy
 END_PROGRAM
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0401] Error: initial value is not constant
+    [E0401] Error: initial value not constant
        ,-[ file:///test0.st:4:18 ]
        |
      4 |     k1 : DINT := k2;
@@ -168,7 +172,7 @@ END_PROGRAM
        |
        | Note: 'k2' is CONSTANT, but its own value does not fold (a reference cycle, or a non-constant initializer)
     ---'
-    [E0401] Error: initial value is not constant
+    [E0401] Error: initial value not constant
        ,-[ file:///test0.st:5:18 ]
        |
      5 |     k2 : DINT := k1;
@@ -223,7 +227,7 @@ PROGRAM Dummy
 END_PROGRAM
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0401] Error: initial value is not constant
+    [E0401] Error: initial value not constant
        ,-[ file:///test0.st:4:24 ]
        |
      4 | VAR_GLOBAL g : DINT := k; END_VAR
@@ -308,7 +312,7 @@ END_FUNCTION
         |
      13 |         b : ARRAY[0..2] OF REAL := a;
         |         |
-        |         `-- type is declared by variable 'b' here
+        |         `-- 'b' is declared here
         |
      17 |     b := a;
         |          |
@@ -319,7 +323,7 @@ END_FUNCTION
         |
      12 |         a : ARRAY[0..2] OF INT := [1, 2, 3];
         |         |
-        |         `-- type is declared by variable 'a' here
+        |         `-- 'a' is declared here
         |
      18 |     a := s;
         |          |
@@ -330,7 +334,7 @@ END_FUNCTION
         |
      15 |         n : ARRAY[0..1] OF Row; d : ARRAY[0..1] OF RowD;
         |                                 |
-        |                                 `-- type is declared by variable 'd' here
+        |                                 `-- 'd' is declared here
         |
      19 |     d := n;
         |          |
@@ -341,7 +345,7 @@ END_FUNCTION
         |
       6 |     VAR_INPUT arr : ARRAY[0..2] OF REAL; END_VAR
         |               ^|^
-        |                `--- type is declared by variable 'arr' here
+        |                `--- 'arr' is declared here
         |
      20 |     f := g(arr := a);
         |                   |
@@ -388,14 +392,14 @@ fn invalid_struct_alias_default_names_an_unknown_field(mut with_db: RootDatabase
         END_TYPE
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0202] Error: no such field
+    [E0202] Error: unknown field
        ,-[ file:///test0.st:7:32 ]
        |
      7 |             Origin : Point := (z := 7);
        |                                ^^^|^^
        |                                   `---- 'Point' has no field named 'z'
        |
-       | Note: 'Point' has fields with similar name:
+       | Note: 'Point' has fields with similar names:
        |       - x
        |       - y
     ---'
@@ -434,10 +438,10 @@ END_FUNCTION_BLOCK
         .collect();
 
     assert_snapshot!(over.join("\n"), @r"
-    exceeds the capacity of 5 bytes, got 12; declare it STRING[12], or shorten the literal
-    exceeds the capacity of 5 bytes, got 12; declare it STRING[12], or shorten the literal
-    exceeds the capacity of 5 bytes, got 12; change 'Alias5' to STRING[12] or use another type, or shorten the literal
-    exceeds the capacity of 80 bytes, got 100; declare it STRING[100], or shorten the literal
+    over its capacity
+    over its capacity
+    over its capacity
+    over its capacity
     ");
 }
 
@@ -462,7 +466,7 @@ VAR d : Drive := (io := 30, k := 2); o : Outer; END_VAR
 END_PROGRAM
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0405] Error: member cannot be initialized
+    [E0405] Error: initializer for a member that takes none
        ,-[ file:///test0.st:9:23 ]
        |
      3 | VAR_IN_OUT io : INT; END_VAR
@@ -471,11 +475,13 @@ END_PROGRAM
        |
      9 | VAR inner : Drive := (io := 5); END_VAR
        |                       ^^^|^^^
-       |                          `----- 'io' is a VAR_IN_OUT, which each call binds to its argument, so an initializer cannot give it a value
+       |                          `----- an initializer cannot set 'io', a VAR_IN_OUT
        |
-       | Note: pass the variable in the call instead, as 'io := x'
+       | Help: pass the variable in the call, as 'io := x'
+       |
+       | Note: a VAR_IN_OUT is bound to its argument at each call
     ---'
-    [E0405] Error: member cannot be initialized
+    [E0405] Error: initializer for a member that takes none
         ,-[ file:///test0.st:13:19 ]
         |
       3 | VAR_IN_OUT io : INT; END_VAR
@@ -484,9 +490,11 @@ END_PROGRAM
         |
      13 | VAR d : Drive := (io := 30, k := 2); o : Outer; END_VAR
         |                   ^^^^|^^^
-        |                       `----- 'io' is a VAR_IN_OUT, which each call binds to its argument, so an initializer cannot give it a value
+        |                       `----- an initializer cannot set 'io', a VAR_IN_OUT
         |
-        | Note: pass the variable in the call instead, as 'io := x'
+        | Help: pass the variable in the call, as 'io := x'
+        |
+        | Note: a VAR_IN_OUT is bound to its argument at each call
     ----'
     ");
 }
@@ -497,26 +505,14 @@ END_PROGRAM
 /// VAR_GLOBAL, so their value was silently dropped; a CONSTANT's reads fold
 /// to its declared value while `__init` wrote the new one.
 #[rstest]
-#[case::in_out(
-    "VAR_IN_OUT m : INT; END_VAR",
-    "",
-    "a VAR_IN_OUT, which each call binds to its argument"
-)]
-#[case::temp(
-    "VAR_TEMP m : INT; END_VAR",
-    "",
-    "a VAR_TEMP, which each call makes afresh"
-)]
+#[case::in_out("VAR_IN_OUT m : INT; END_VAR", "", "a VAR_IN_OUT")]
+#[case::temp("VAR_TEMP m : INT; END_VAR", "", "a VAR_TEMP")]
 #[case::external(
     "VAR_EXTERNAL m : INT; END_VAR",
     "VAR_GLOBAL m : INT; END_VAR",
-    "a VAR_EXTERNAL, which names a VAR_GLOBAL"
+    "a VAR_EXTERNAL"
 )]
-#[case::constant(
-    "VAR CONSTANT m : INT := 1; END_VAR",
-    "",
-    "CONSTANT, whose value is its declaration's"
-)]
+#[case::constant("VAR CONSTANT m : INT := 1; END_VAR", "", "a CONSTANT")]
 fn invalid_member_an_instance_initializer_cannot_set(
     mut with_db: RootDatabase,
     #[case] decl: &str,
@@ -551,13 +547,97 @@ END_CONFIGURATION
         "only the member is refused, got:\n{rendered}"
     );
     assert!(
-        rendered.contains("[E0405] Error: member cannot be initialized")
-            && rendered.contains(&format!(
-                "'m' is {what}, so an initializer cannot give it a value"
-            ))
+        rendered.contains("[E0405] Error: initializer for a member that takes none")
+            && rendered.contains(&format!("an initializer cannot set 'm', {what}"))
             && rendered.contains("'m' is declared here"),
         "`(m := 30)` on {decl} must be E0405 pointing at the declaration, got:\n{rendered}"
     );
+}
+
+/// A STRUCT or ARRAY initializer on a FUNCTION's or METHOD's input can never
+/// apply: a call either passes the argument or is E0802. It was accepted and
+/// ignored, so the author believed the input had a default.
+#[rstest]
+fn invalid_aggregate_default_on_a_function_or_method_input(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE Pt : STRUCT x : INT; y : INT; END_STRUCT; END_TYPE
+
+FUNCTION sum : INT
+VAR_INPUT p : Pt := (x := 4, y := 5); arr : ARRAY[0..1] OF INT := [1, 2]; k : INT := 1; END_VAR
+    sum := p.x + p.y + arr[0] + k;
+END_FUNCTION
+
+CLASS C
+METHOD M : INT
+VAR_INPUT p : Pt := (x := 1); END_VAR
+    M := p.x;
+END_METHOD
+END_CLASS
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0407] Error: aggregate default on a FUNCTION or METHOD input
+       ,-[ file:///test0.st:5:18 ]
+       |
+     5 | VAR_INPUT p : Pt := (x := 4, y := 5); arr : ARRAY[0..1] OF INT := [1, 2]; k : INT := 1; END_VAR
+       |           |      ^^^^^^^^^|^^^^^^^^^
+       |           `--------------------------- 'p' is declared here
+       |                           |
+       |                           `----------- the default of 'p' is an aggregate
+       |
+       | Help: set 'p' in the body, or pass it in every call
+       |
+       | Note: a default is passed by the caller for an omitted argument, so it has to be a constant
+    ---'
+    [E0407] Error: aggregate default on a FUNCTION or METHOD input
+       ,-[ file:///test0.st:5:64 ]
+       |
+     5 | VAR_INPUT p : Pt := (x := 4, y := 5); arr : ARRAY[0..1] OF INT := [1, 2]; k : INT := 1; END_VAR
+       |                                       ^|^                      ^^^^|^^^^
+       |                                        `---------------------------------- 'arr' is declared here
+       |                                                                    |
+       |                                                                    `------ the default of 'arr' is an aggregate
+       |
+       | Help: set 'arr' in the body, or pass it in every call
+       |
+       | Note: a default is passed by the caller for an omitted argument, so it has to be a constant
+    ---'
+    [E0407] Error: aggregate default on a FUNCTION or METHOD input
+        ,-[ file:///test0.st:11:18 ]
+        |
+     11 | VAR_INPUT p : Pt := (x := 1); END_VAR
+        |           |      ^^^^^|^^^^^
+        |           `------------------- 'p' is declared here
+        |                       |
+        |                       `------- the default of 'p' is an aggregate
+        |
+        | Help: set 'p' in the body, or pass it in every call
+        |
+        | Note: a default is passed by the caller for an omitted argument, so it has to be a constant
+    ----'
+    ");
+}
+
+/// A FUNCTION_BLOCK's or PROGRAM's input is a member: its initializer is the
+/// member's starting value, and an aggregate is as good as a scalar.
+#[rstest]
+fn valid_aggregate_initializer_on_an_instance_input(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE Pt : STRUCT x : INT; y : INT; END_STRUCT; END_TYPE
+
+FUNCTION_BLOCK Fb
+VAR_INPUT p : Pt := (x := 4, y := 5); END_VAR
+VAR_OUTPUT o : INT; END_VAR
+    o := p.x + p.y;
+END_FUNCTION_BLOCK
+
+PROGRAM P
+VAR_INPUT q : Pt := (x := 1, y := 2); END_VAR
+VAR f : Fb; r : INT; END_VAR
+    f();
+    r := f.o + q.x;
+END_PROGRAM
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
 
 /// An input's default is what the caller passes when the argument is
@@ -617,16 +697,18 @@ VAR_EXTERNAL G : INT; END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0401] Error: initial value is not constant
+    [E0401] Error: initial value not constant
         ,-[ file:///test0.st:12:16 ]
         |
      12 |     a : INT := G;
         |                |
         |                `-- this initial value must be a constant: the caller passes it
         |
-        | Note: 'G' is an ordinary variable; declare it CONSTANT if its value never changes
+        | Help: declare it CONSTANT if its value never changes
+        |
+        | Note: 'G' is not CONSTANT
     ----'
-    [E0401] Error: initial value is not constant
+    [E0401] Error: initial value not constant
         ,-[ file:///test0.st:13:16 ]
         |
      13 |     b : INT := a;
@@ -635,7 +717,7 @@ END_FUNCTION
         |
         | Note: 'a' is another input of this call: it has no value before the call binds it
     ----'
-    [E0401] Error: initial value is not constant
+    [E0401] Error: initial value not constant
         ,-[ file:///test0.st:14:16 ]
         |
      14 |     c : INT := one();
@@ -644,7 +726,7 @@ END_FUNCTION
         |
         | Note: a call is not a constant
     ----'
-    [E0401] Error: initial value is not constant
+    [E0401] Error: initial value not constant
         ,-[ file:///test0.st:15:23 ]
         |
      15 |     d : REF_TO INT := REF(a);
@@ -678,7 +760,7 @@ VAR a : INT := 100; y : INT := 100; END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0401] Error: initial value is not constant
+    [E0401] Error: initial value not constant
        ,-[ file:///test0.st:5:16 ]
        |
      5 |     b : INT := a * 2;
@@ -687,14 +769,14 @@ END_FUNCTION
        |
        | Note: 'a' is another input of this call: it has no value before the call binds it
     ---'
-    [E0401] Error: initial value is not constant
+    [E0401] Error: initial value not constant
        ,-[ file:///test0.st:6:16 ]
        |
      6 |     c : INT := y;
        |                |
        |                `-- this initial value must be a constant: the caller passes it
        |
-       | Note: 'y' belongs to the call, which has not started when the caller passes the default
+       | Note: 'y' belongs to the call, not yet started when the caller passes the default
     ---'
     ");
 }
@@ -737,7 +819,7 @@ VAR CONSTANT PS : PInt := REF(speed); END_VAR
 END_FUNCTION_BLOCK
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0401] Error: initial value is not constant
+    [E0401] Error: initial value not constant
         ,-[ file:///test0.st:11:17 ]
         |
      11 |     p : PInt := REF(G[i]);
@@ -746,16 +828,16 @@ END_FUNCTION_BLOCK
         |
         | Note: 'i' is another input of this call: it has no value before the call binds it
     ----'
-    [E0401] Error: initial value is not constant
+    [E0401] Error: initial value not constant
         ,-[ file:///test0.st:18:23 ]
         |
      18 | VAR_INPUT p : PInt := PK; END_VAR
         |                       ^|
         |                        `-- this initial value must be a constant: the caller passes it
         |
-        | Note: 'loc' belongs to the call, which has not started when the caller passes the default
+        | Note: 'loc' belongs to the call, not yet started when the caller passes the default
     ----'
-    [E0401] Error: initial value is not constant
+    [E0401] Error: initial value not constant
         ,-[ file:///test0.st:20:27 ]
         |
      20 | VAR CONSTANT PK : PInt := REF(loc); END_VAR
@@ -764,7 +846,7 @@ END_FUNCTION_BLOCK
         |
         | Note: 'loc' belongs to the call: each call has its own
     ----'
-    [E0401] Error: initial value is not constant
+    [E0401] Error: initial value not constant
         ,-[ file:///test0.st:26:27 ]
         |
      26 | VAR CONSTANT PS : PInt := REF(speed); END_VAR
@@ -773,7 +855,7 @@ END_FUNCTION_BLOCK
         |
         | Note: 'speed' is a member: each instance has its own
     ----'
-    [E0401] Error: initial value is not constant
+    [E0401] Error: initial value not constant
         ,-[ file:///test0.st:28:27 ]
         |
      28 |     VAR_INPUT p : PInt := PS; END_VAR
@@ -816,26 +898,26 @@ VAR_GLOBAL
 END_VAR
 END_CONFIGURATION
 "#;
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r#"
-    [E0201] Error: no item found in scope
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0201] Error: unknown name
         ,-[ file:///test0.st:11:23 ]
         |
      11 |     bad : PInt := REF(nothing);
         |                       ^^^|^^^
-        |                          `----- no item "nothing" found in scope
+        |                          `----- no item 'nothing' found in scope
     ----'
     [E0301] Error: type mismatch
         ,-[ file:///test0.st:23:18 ]
         |
       2 | TYPE PInt : REF_TO INT; END_TYPE
-        |             ^^^^^|^^^^
-        |                  `------ type is defined by 'PInt' here
+        |      ^^|^
+        |        `--- 'PInt' is declared here
         |
      23 |     wrong : PInt := REF(greal);
         |                  ^^^^^^|^^^^^^
         |                        `-------- expected 'PInt', got 'REF_TO REAL'
     ----'
-    "#);
+    ");
 }
 
 /// A CONSTANT is one value for every instance and every call, so a `REF()`
@@ -865,7 +947,7 @@ VAR_EXTERNAL CONSTANT KG : PInt; END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0401] Error: initial value is not constant
+    [E0401] Error: initial value not constant
         ,-[ file:///test0.st:11:27 ]
         |
      11 | VAR CONSTANT PS : PInt := REF(speed); END_VAR
@@ -874,7 +956,7 @@ END_FUNCTION
         |
         | Note: 'speed' is a member: each instance has its own
     ----'
-    [E0401] Error: initial value is not constant
+    [E0401] Error: initial value not constant
         ,-[ file:///test0.st:16:27 ]
         |
      16 | VAR CONSTANT PK : PInt := REF(loc); END_VAR
@@ -911,14 +993,16 @@ VAR CONSTANT KR : REAL := 1.0; END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0401] Error: initial value is not constant
+    [E0401] Error: initial value not constant
         ,-[ file:///test0.st:11:50 ]
         |
      11 | VAR r : REAL := -(KR + 0.5) * 2.0; bad : REAL := G * 2.0; END_VAR
         |                                                  ^^^|^^^
         |                                                     `----- this initial value must be a constant: it is fixed before the program runs
         |
-        | Note: 'G' is an ordinary variable; declare it CONSTANT if its value never changes
+        | Help: declare it CONSTANT if its value never changes
+        |
+        | Note: 'G' is not CONSTANT
     ----'
     ");
 }
@@ -950,7 +1034,7 @@ END_FUNCTION_BLOCK
 "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0406] Error: read before it has its value
+    [E0406] Error: read before initialization
        ,-[ file:///test0.st:5:16 ]
        |
      5 |     a : INT := b;
@@ -960,9 +1044,11 @@ END_FUNCTION_BLOCK
        |     |
        |     `-- 'b' is declared here
        |
-       | Note: variables get their initial values in the order they are declared; declare 'b' before 'a'
+       | Help: declare 'b' before 'a'
+       |
+       | Note: variables get their initial values in the order they are declared
     ---'
-    [E0406] Error: read before it has its value
+    [E0406] Error: read before initialization
        ,-[ file:///test0.st:7:16 ]
        |
      7 |     c : INT := c + 1;
@@ -971,7 +1057,7 @@ END_FUNCTION_BLOCK
        |
        | Note: an initial value cannot read the variable it initializes
     ---'
-    [E0406] Error: read before it has its value
+    [E0406] Error: read before initialization
        ,-[ file:///test0.st:8:32 ]
        |
      8 |     d : ARRAY[0..1] OF INT := [e, e];
@@ -981,9 +1067,11 @@ END_FUNCTION_BLOCK
        |     |
        |     `-- 'e' is declared here
        |
-       | Note: variables get their initial values in the order they are declared; declare 'e' before 'd'
+       | Help: declare 'e' before 'd'
+       |
+       | Note: variables get their initial values in the order they are declared
     ---'
-    [E0406] Error: read before it has its value
+    [E0406] Error: read before initialization
         ,-[ file:///test0.st:16:20 ]
         |
      16 |     VAR x : INT := y; y : INT := 4; END_VAR
@@ -992,7 +1080,9 @@ END_FUNCTION_BLOCK
         |                       |
         |                       `-- 'y' is declared here
         |
-        | Note: variables get their initial values in the order they are declared; declare 'y' before 'x'
+        | Help: declare 'y' before 'x'
+        |
+        | Note: variables get their initial values in the order they are declared
     ----'
     ");
 }
@@ -1045,7 +1135,7 @@ END_FUNCTION
 "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0406] Error: read before it has its value
+    [E0406] Error: read before initialization
         ,-[ file:///test0.st:11:16 ]
         |
      11 |     d : INT := o;
@@ -1056,7 +1146,9 @@ END_FUNCTION
         |            |
         |            `-- 'o' is declared here
         |
-        | Note: variables get their initial values in the order they are declared; declare 'o' before 'd'
+        | Help: declare 'o' before 'd'
+        |
+        | Note: variables get their initial values in the order they are declared
     ----'
     ");
 }
@@ -1092,7 +1184,7 @@ END_FUNCTION
 "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0406] Error: read before it has its value
+    [E0406] Error: read before initialization
         ,-[ file:///test0.st:12:16 ]
         |
      12 |     q : INT := p^;
@@ -1102,9 +1194,11 @@ END_FUNCTION
         |     |
         |     `-- 'c' is declared here
         |
-        | Note: variables get their initial values in the order they are declared; declare 'c' before 'q'
+        | Help: declare 'c' before 'q'
+        |
+        | Note: variables get their initial values in the order they are declared
     ----'
-    [E0406] Error: read before it has its value
+    [E0406] Error: read before initialization
         ,-[ file:///test0.st:20:16 ]
         |
      20 |     a : INT := inst.Get();
@@ -1114,7 +1208,9 @@ END_FUNCTION
         |     ^^|^
         |       `--- 'inst' is declared here
         |
-        | Note: variables get their initial values in the order they are declared; declare 'inst' before 'a'
+        | Help: declare 'inst' before 'a'
+        |
+        | Note: variables get their initial values in the order they are declared
     ----'
     ");
 }
@@ -1134,7 +1230,7 @@ END_VAR
 END_FUNCTION_BLOCK
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0401] Error: initial value is not constant
+    [E0401] Error: initial value not constant
        ,-[ file:///test0.st:4:21 ]
        |
      4 |     later : BOOL := T#2s > LT#1s;

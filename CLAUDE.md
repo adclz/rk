@@ -221,7 +221,7 @@ The HIR is the core data layer, organized into:
   - `resolver/` — Path resolution, function call resolution, visibility checks
 
 - **`check/`** — Diagnostic collection:
-  - `errors/` — Error types; the code's first two digits name its section (E00xx–E15xx, L00xx–L03xx)
+  - `errors/` — Error types; the code's first two digits name its section (E00xx–E15xx, L00xx–L03xx), and one code is one fault
   - `check_duplicates.rs`, `check_recursion.rs`
 
 - **`query_string/`** — Symbol search for IDE features (exact/fuzzy/prefix)
@@ -238,6 +238,7 @@ Type checking proceeds in three memoized salsa queries:
 
 - **Salsa everywhere**: `#[salsa::tracked]` structs, `#[salsa::interned]` identifiers, `#[salsa::input]` for DB. The `'db` lifetime is threaded through all signatures.
 - **`Type::Never` contract**: When resolution fails, `Type::Never` is returned AND a diagnostic MUST be emitted at that point. Consumers of `Never` skip further error reporting to avoid cascading errors.
+- **A diagnostic is made one way**: the header after its code is its title, the one `crates/doc/examples/<code>.md` gives it, written once in `ide_diagnostic::headers` (`ErrorCode::description` reads it). The message is one clause about what is under the caret, `with_note` the rule it rests on, `with_help` what to write instead; a text that needs a `;` is two of those. A related label reads `'x' is declared here` and sits on the name. `src/tests/diagnostic_shape.rs` guards the header table and the one-clause rule.
 - **Names are caseless through their accessors** (IEC 61131-3 §6.1.2): a declaration stores its name as written (`name_with_case`), and `name(db)`, `get_name_ident(db)` and `SpanIdent::ident(db)` hand it out case folded, so every comparison and map key is caseless without folding at the call site. `*_with_case` is only for what is shown. `src/tests/caseless.rs` guards both halves.
 - **`#[return_ref]`** on salsa queries for zero-copy access.
 - **`#[no_eq]`** on span-only fields so editing positions don't trigger recomputation.
@@ -266,7 +267,7 @@ Type checking proceeds in three memoized salsa queries:
 | E10xx | Visibility               |
 | E11xx | OOP                      |
 | E12xx | Control Flow             |
-| E13xx | Recursion                |
+| E13xx | Type cycles              |
 | E14xx | Configuration            |
 | E15xx | Pragmas                  |
 | L00xx | Lint pragmas             |

@@ -25,10 +25,6 @@ impl ErrorCode for DuplicateCase {
     fn code(&self) -> &'static str {
         "L0109"
     }
-
-    fn description(&self) -> &'static str {
-        "duplicate CASE selector"
-    }
 }
 
 /// A resolved range with its source span and file.
@@ -91,7 +87,7 @@ pub fn check_case<'db>(
                             expr.get_span(db),
                             expr.get_scope_id(db).file(db),
                             &format!(
-                                "CASE selector '{written}' is duplicated, second branch is unreachable"
+                                "selector '{written}' is already used: this branch never runs"
                             ),
                             diagnostics,
                         );
@@ -104,16 +100,23 @@ pub fn check_case<'db>(
                             if val >= prev.lo && val <= prev.hi {
                                 let mut d = diag()
                                     .message(format!(
-                                        "CASE selector '{written}' is already covered by range '{}..{}'",
+                                        "selector '{written}' is already covered by range '{}..{}'",
                                         prev.lo, prev.hi
                                     ))
                                     .desc(&DuplicateCase)
-                                    .range(hir::denormalize(db, expr.get_scope_id(db).file(db), &expr.get_span(db)).unwrap_or_default())
+                                    .range(
+                                        hir::denormalize(
+                                            db,
+                                            expr.get_scope_id(db).file(db),
+                                            &expr.get_span(db),
+                                        )
+                                        .unwrap_or_default(),
+                                    )
                                     .severity(DiagnosticSeverity::WARNING)
                                     .tags(vec![DiagnosticTag::UNNECESSARY])
                                     .call();
                                 d.with_related(Related::new(
-                                    "range defined here".into(),
+                                    "the range is here".into(),
                                     prev.file,
                                     prev.span,
                                 ));
@@ -135,7 +138,7 @@ pub fn check_case<'db>(
                         if let Some(prev) = exact_dup {
                             let mut d = diag()
                                 .message(format!(
-                                    "CASE range '{lo}..{hi}' is duplicated, second branch is unreachable"
+                                    "range '{lo}..{hi}' is already used: this branch never runs"
                                 ))
                                 .desc(&DuplicateCase)
                                 .range(hir::denormalize(db, file, &span).unwrap_or_default())
@@ -143,7 +146,7 @@ pub fn check_case<'db>(
                                 .tags(vec![DiagnosticTag::UNNECESSARY])
                                 .call();
                             d.with_related(Related::new(
-                                "CASE selector is already defined here".into(),
+                                "the selector is already used here".into(),
                                 prev.file,
                                 prev.span,
                             ));
@@ -156,7 +159,7 @@ pub fn check_case<'db>(
                             if lo <= prev.hi && hi >= prev.lo {
                                 let mut d = diag()
                                     .message(format!(
-                                        "CASE range '{lo}..{hi}' overlaps with '{}'",
+                                        "range '{lo}..{hi}' overlaps '{}'",
                                         format_range(prev)
                                     ))
                                     .desc(&DuplicateCase)
@@ -164,7 +167,7 @@ pub fn check_case<'db>(
                                     .severity(DiagnosticSeverity::WARNING)
                                     .call();
                                 d.with_related(Related::new(
-                                    "overlapping range defined here".into(),
+                                    "the overlapping range is here".into(),
                                     prev.file,
                                     prev.span,
                                 ));
@@ -196,14 +199,14 @@ pub fn check_case<'db>(
                                 };
                                 let mut d = diag()
                                         .message(format!(
-                                            "CASE range '{lo}..{hi}' covers already defined selector '{prev_written}'"
+                                            "range '{lo}..{hi}' covers the selector '{prev_written}', already used"
                                         ))
                                         .desc(&DuplicateCase)
                                         .range(hir::denormalize(db, file, &span).unwrap_or_default())
                                         .severity(DiagnosticSeverity::WARNING)
                                         .call();
                                 d.with_related(Related::new(
-                                    "selector defined here".into(),
+                                    "the selector is used here".into(),
                                     prev_file,
                                     prev_span,
                                 ));
@@ -245,7 +248,7 @@ fn emit(
         CaseKind::Subrange { lower, .. } => (lower.get_scope_id(db).file(db), lower.get_span(db)),
     };
     d.with_related(Related::new(
-        "CASE selector is already defined here".into(),
+        "the selector is already used here".into(),
         related_file,
         related_range,
     ));

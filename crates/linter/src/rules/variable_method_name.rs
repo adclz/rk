@@ -27,10 +27,6 @@ impl ErrorCode for VariableMethodName {
     fn code(&self) -> &'static str {
         "L0120"
     }
-
-    fn description(&self) -> &'static str {
-        "a variable and a method share a name"
-    }
 }
 
 pub fn check<'db>(

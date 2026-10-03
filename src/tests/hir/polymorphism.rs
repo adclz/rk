@@ -37,18 +37,18 @@ PROGRAM A
 END_PROGRAM
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1121] Error: interface type not allowed here
+    [E1121] Error: interface type outside a parameter
        ,-[ file:///test0.st:8:9 ]
        |
      2 | INTERFACE ITF1
        |           ^^|^
-       |             `--- interface 'ITF1' is defined here
+       |             `--- interface 'ITF1' is declared here
        |
      8 |         itf: ITF1;
        |         ^|^
        |          `--- interface type 'ITF1' is not allowed in VAR
        |
-       | Note: interfaces are supported only as VAR_INPUT or VAR_IN_OUT parameters
+       | Note: an interface is a VAR_INPUT or VAR_IN_OUT parameter of a FUNCTION or METHOD
     ---'
     ");
 }
@@ -67,18 +67,18 @@ FUNCTION_BLOCK Holder
 END_FUNCTION_BLOCK
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1121] Error: interface type not allowed here
+    [E1121] Error: interface type outside a parameter
        ,-[ file:///test0.st:8:9 ]
        |
      2 | INTERFACE ITF1
        |           ^^|^
-       |             `--- interface 'ITF1' is defined here
+       |             `--- interface 'ITF1' is declared here
        |
      8 |         dev: ITF1;
        |         ^|^
        |          `--- interface type 'ITF1' is not allowed in VAR
        |
-       | Note: interfaces are supported only as VAR_INPUT or VAR_IN_OUT parameters
+       | Note: an interface is a VAR_INPUT or VAR_IN_OUT parameter of a FUNCTION or METHOD
     ---'
     ");
 }
@@ -97,18 +97,18 @@ FUNCTION_BLOCK Producer
 END_FUNCTION_BLOCK
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1121] Error: interface type not allowed here
+    [E1121] Error: interface type outside a parameter
        ,-[ file:///test0.st:8:9 ]
        |
      2 | INTERFACE ITF1
        |           ^^|^
-       |             `--- interface 'ITF1' is defined here
+       |             `--- interface 'ITF1' is declared here
        |
      8 |         out: ITF1;
        |         ^|^
        |          `--- interface type 'ITF1' is not allowed in VAR_OUTPUT
        |
-       | Note: interfaces are supported only as VAR_INPUT or VAR_IN_OUT parameters
+       | Note: an interface is a VAR_INPUT or VAR_IN_OUT parameter of a FUNCTION or METHOD
     ---'
     ");
 }
@@ -128,18 +128,18 @@ FUNCTION Use : INT
 END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1121] Error: interface type not allowed here
+    [E1121] Error: interface type outside a parameter
        ,-[ file:///test0.st:8:9 ]
        |
      2 | INTERFACE ITF1
        |           ^^|^
-       |             `--- interface 'ITF1' is defined here
+       |             `--- interface 'ITF1' is declared here
        |
      8 |         t: ITF1;
        |         |
        |         `-- interface type 'ITF1' is not allowed in VAR_TEMP
        |
-       | Note: interfaces are supported only as VAR_INPUT or VAR_IN_OUT parameters
+       | Note: an interface is a VAR_INPUT or VAR_IN_OUT parameter of a FUNCTION or METHOD
     ---'
     ");
 }
@@ -160,18 +160,18 @@ PROGRAM A
 END_PROGRAM
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1123] Error: interface type not allowed here
+    [E1123] Error: interface nested in an aggregate
        ,-[ file:///test0.st:8:14 ]
        |
      2 | INTERFACE ITF1
        |           ^^|^
-       |             `--- interface 'ITF1' is defined here
+       |             `--- interface 'ITF1' is declared here
        |
      8 |         arr: ARRAY[0..2] OF ITF1;
        |              ^^^^^^^^^|^^^^^^^^^
        |                       `----------- interface type 'ITF1' cannot be nested inside another type (array, reference, or struct)
        |
-       | Note: an interface may only appear directly as a VAR_INPUT or VAR_IN_OUT parameter
+       | Note: an interface is a VAR_INPUT or VAR_IN_OUT parameter of a FUNCTION or METHOD
     ---'
     ");
 }
@@ -189,18 +189,18 @@ FUNCTION Make : ITF1
 END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1122] Error: interface type not allowed here
+    [E1122] Error: interface as a return type
        ,-[ file:///test0.st:6:17 ]
        |
      2 | INTERFACE ITF1
        |           ^^|^
-       |             `--- interface 'ITF1' is defined here
+       |             `--- interface 'ITF1' is declared here
        |
      6 | FUNCTION Make : ITF1
        |                 ^^|^
        |                   `--- interface type 'ITF1' is not allowed as a return type
        |
-       | Note: interfaces are supported only as VAR_INPUT or VAR_IN_OUT parameters
+       | Note: an interface is a VAR_INPUT or VAR_IN_OUT parameter of a FUNCTION or METHOD
     ---'
     ");
 }
@@ -223,18 +223,18 @@ TYPE Holder :
 END_TYPE
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1123] Error: interface type not allowed here
+    [E1123] Error: interface nested in an aggregate
        ,-[ file:///test0.st:8:14 ]
        |
      2 | INTERFACE ITF1
        |           ^^|^
-       |             `--- interface 'ITF1' is defined here
+       |             `--- interface 'ITF1' is declared here
        |
      8 |         dev: ITF1;
        |              ^^|^
        |                `--- interface type 'ITF1' cannot be nested inside another type (array, reference, or struct)
        |
-       | Note: an interface may only appear directly as a VAR_INPUT or VAR_IN_OUT parameter
+       | Note: an interface is a VAR_INPUT or VAR_IN_OUT parameter of a FUNCTION or METHOD
     ---'
     ");
 }
@@ -254,18 +254,18 @@ PROGRAM A
 END_PROGRAM
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1123] Error: interface type not allowed here
+    [E1123] Error: interface nested in an aggregate
        ,-[ file:///test0.st:8:24 ]
        |
      2 | INTERFACE ITF1
        |           ^^|^
-       |             `--- interface 'ITF1' is defined here
+       |             `--- interface 'ITF1' is declared here
        |
      8 |         s: STRUCT dev: ITF1; END_STRUCT;
        |                        ^^|^
        |                          `--- interface type 'ITF1' cannot be nested inside another type (array, reference, or struct)
        |
-       | Note: an interface may only appear directly as a VAR_INPUT or VAR_IN_OUT parameter
+       | Note: an interface is a VAR_INPUT or VAR_IN_OUT parameter of a FUNCTION or METHOD
     ---'
     ");
 }
@@ -287,18 +287,18 @@ FUNCTION Use : INT
 END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1123] Error: interface type not allowed here
+    [E1123] Error: interface nested in an aggregate
        ,-[ file:///test0.st:8:14 ]
        |
      2 | INTERFACE ITF1
        |           ^^|^
-       |             `--- interface 'ITF1' is defined here
+       |             `--- interface 'ITF1' is declared here
        |
      8 |         arr: ARRAY[0..2] OF ITF1;
        |              ^^^^^^^^^|^^^^^^^^^
        |                       `----------- interface type 'ITF1' cannot be nested inside another type (array, reference, or struct)
        |
-       | Note: an interface may only appear directly as a VAR_INPUT or VAR_IN_OUT parameter
+       | Note: an interface is a VAR_INPUT or VAR_IN_OUT parameter of a FUNCTION or METHOD
     ---'
     ");
 }
@@ -340,12 +340,16 @@ FUNCTION_BLOCK Runner
 END_FUNCTION_BLOCK
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1121] Error: interface type not allowed here
-       ,-[ file:///test0.st:8:9 ]
+    [E1121] Error: interface type outside a parameter
+       ,-[ file:///test0.st:8:14 ]
        |
      8 |         dev: ITF1;
-       |         ^^^^|^^^^
-       |             `------ interface 'ITF1' cannot be a FUNCTION_BLOCK VAR_IN_OUT: the instance would store it across calls; interface parameters exist on FUNCTION and METHOD only
+       |              ^^|^
+       |                `--- interface 'ITF1' cannot be a FUNCTION_BLOCK VAR_IN_OUT
+       |
+       | Help: take it as a parameter of a FUNCTION or METHOD
+       |
+       | Note: the instance would store it across calls
     ---'
     ");
 }
@@ -364,12 +368,16 @@ FUNCTION_BLOCK Runner
 END_FUNCTION_BLOCK
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1121] Error: interface type not allowed here
-       ,-[ file:///test0.st:8:9 ]
+    [E1121] Error: interface type outside a parameter
+       ,-[ file:///test0.st:8:14 ]
        |
      8 |         dev: ITF1;
-       |         ^^^^|^^^^
-       |             `------ interface 'ITF1' cannot be a FUNCTION_BLOCK VAR_INPUT: the instance would store it across calls; interface parameters exist on FUNCTION and METHOD only
+       |              ^^|^
+       |                `--- interface 'ITF1' cannot be a FUNCTION_BLOCK VAR_INPUT
+       |
+       | Help: take it as a parameter of a FUNCTION or METHOD
+       |
+       | Note: the instance would store it across calls
     ---'
     ");
 }
@@ -388,12 +396,16 @@ PROGRAM P
 END_PROGRAM
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1121] Error: interface type not allowed here
-       ,-[ file:///test0.st:8:9 ]
+    [E1121] Error: interface type outside a parameter
+       ,-[ file:///test0.st:8:14 ]
        |
      8 |         dev: ITF1;
-       |         ^^^^|^^^^
-       |             `------ interface 'ITF1' cannot be a PROGRAM VAR_INPUT: the instance would store it across calls; interface parameters exist on FUNCTION and METHOD only
+       |              ^^|^
+       |                `--- interface 'ITF1' cannot be a PROGRAM VAR_INPUT
+       |
+       | Help: take it as a parameter of a FUNCTION or METHOD
+       |
+       | Note: the instance would store it across calls
     ---'
     ");
 }
@@ -437,12 +449,12 @@ END_PROGRAM
     "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0317] Error: semantic violation
+    [E0317] Error: type name used as a value
         ,-[ file:///test0.st:11:10 ]
         |
      11 |     x := ITF1;
         |          ^^|^
-        |            `--- cannot use direct type 'ITF1' here
+        |            `--- 'ITF1' is not a value
     ----'
     ");
 }
@@ -464,7 +476,7 @@ FUNCTION Use : INT
 END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1124] Error: interface parameter is not assignable
+    [E1124] Error: assignment to an interface parameter
        ,-[ file:///test0.st:8:5 ]
        |
      7 |     VAR_IN_OUT a : ITF1; b : ITF1; END_VAR
@@ -474,7 +486,9 @@ END_FUNCTION
        |     |
        |     `-- cannot assign to interface parameter 'a'
        |
-       | Note: an interface parameter is a fixed binding to the concrete type passed by the caller; it can be used (methods called, passed on) but not reassigned
+       | Help: call its methods, or pass it on
+       |
+       | Note: an interface parameter stays bound to the type the caller passed
     ---'
     ");
 }
@@ -523,7 +537,7 @@ fn invalid_this_as_interface_argument_not_implemented(mut with_db: RootDatabase)
         |
       2 |         INTERFACE IWork
         |                   ^^|^^
-        |                     `---- INTERFACE 'IWork' is defined here
+        |                     `---- INTERFACE 'IWork' is declared here
         |
      10 |             METHOD Go : INT  Go := drive(dev := THIS); END_METHOD
         |                                                 ^^|^
@@ -547,22 +561,24 @@ fn invalid_this_assigned_to_variable(mut with_db: RootDatabase) {
         END_FUNCTION_BLOCK
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1301] Error: recursion detected
+    [E1301] Error: type contains itself
        ,-[ file:///test0.st:2:24 ]
        |
      2 |         FUNCTION_BLOCK Worker
        |                        ^^^|^^
-       |                           `---- type 'Worker' is recursive (contains itself)
+       |                           `---- type 'Worker' contains itself
      3 |         VAR other : Worker; END_VAR
        |                     ^^^|^^
        |                        `---- 'Worker' references itself here
     ---'
-    [E0318] Error: semantic violation
+    [E0318] Error: assignment to an instance
        ,-[ file:///test0.st:5:17 ]
        |
      5 |                 other := THIS;
        |                 ^^|^^
-       |                   `---- 'Worker' is a callable type and can not be assigned
+       |                   `---- an instance of 'Worker' cannot be assigned
+       |
+       | Help: pass the instance as a VAR_IN_OUT, or assign its members one by one
     ---'
     ");
 }

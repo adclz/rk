@@ -709,58 +709,58 @@ fn a_literal_cannot_be_written_through(mut with_db: db::RootDatabase) {
     "#;
     insta::assert_snapshot!(
         crate::tests::utils::test_diagnostics(&mut with_db, &[source]),
-        @r#"
-    [E0005] Error: syntax
+        @r"
+    [E0005] Error: empty right-hand side of assignment
         ,-[ file:///test0.st:18:15 ]
         |
      18 |             r := REF('ab');
         |               ^|
-        |                `-- right-hand side of assignment cannot be empty
+        |                `-- the assignment has no right-hand side
     ----'
-    [E0806] Error: VAR_IN_OUT argument must be a variable
+    [E0806] Error: VAR_IN_OUT argument not a variable
         ,-[ file:///test0.st:13:24 ]
         |
       3 |         VAR_IN_OUT io : STRING; END_VAR
-        |                    ^^^^^|^^^^^
-        |                         `------- parameter 'io' declared here
+        |                    ^|
+        |                     `-- parameter 'io' is declared here
         |
      13 |             Fill(io := 'ab');
         |                        ^^|^
         |                          `--- VAR_IN_OUT parameter 'io' of 'Fill' requires a variable, not a value
         |
-        | Note: VAR_IN_OUT binds the callee to the caller's storage by reference; a literal, expression, or call result has no address to bind
+        | Note: a literal, an expression or a call result has no address for a VAR_IN_OUT to bind
     ----'
-    [E0201] Error: no item found in scope
+    [E0201] Error: unknown name
         ,-[ file:///test0.st:22:18 ]
         |
      22 |             Give(o => 'ab');
         |                  |
-        |                  `-- no item "o" found in scope
+        |                  `-- no item 'o' found in scope
     ----'
-    [E0805] Error: function call parameter mismatch
+    [E0805] Error: output parameter used as input
         ,-[ file:///test0.st:22:18 ]
         |
      22 |             Give(o => 'ab');
         |                  |
         |                  `-- output parameter at index '0' cannot be used as input
         |
-        | Note: use formal syntax instead: o => <variable>
+        | Help: bind it by name: o => <variable>
     ----'
-    [E0001] Error: syntax
+    [E0001] Error: syntax error
         ,-[ file:///test0.st:18:18 ]
         |
      18 |             r := REF('ab');
         |                  ^^^^|^^^^
-        |                      `------ Unexpected token(s): 'REF ( 'ab' )'
+        |                      `------ unexpected token(s): 'REF ( 'ab' )'
     ----'
-    [E0001] Error: syntax
+    [E0001] Error: syntax error
         ,-[ file:///test0.st:22:20 ]
         |
      22 |             Give(o => 'ab');
         |                    ^^^|^^^
-        |                       `----- Unexpected token(s): '=> 'ab''
+        |                       `----- unexpected token(s): '=> 'ab''
     ----'
-    "#
+    "
     );
 }
 

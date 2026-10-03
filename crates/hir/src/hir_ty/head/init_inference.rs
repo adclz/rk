@@ -597,13 +597,10 @@ impl<'db> InitExprInferenceResult<'db> {
                 }
             }
             InitExprWalkStep::SizedIndex { expr, size, values } => {
-                let repeat_count = size.with_case.as_u64(db).unwrap_or_else(|err| {
+                let repeat_count = size.with_case.as_u64(db).unwrap_or_else(|_| {
                     self.errors.push(
-                        ArrayError::InvalidIndex {
-                            size: *size,
-                            err: err.to_string(),
-                        }
-                        .to_diagnostic(db, self.scope.file(db)),
+                        ArrayError::InvalidIndex { size: *size }
+                            .to_diagnostic(db, self.scope.file(db)),
                     );
                     1
                 }) as usize;

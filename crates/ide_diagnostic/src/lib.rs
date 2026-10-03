@@ -11,6 +11,7 @@ use auto_lsp::{
     tree_sitter,
 };
 
+pub mod headers;
 pub mod report;
 
 #[derive(Clone, Debug)]
@@ -19,6 +20,7 @@ pub struct IdeDiagnostic {
     related: Vec<Related>,
     fixes: Vec<auto_lsp::lsp_types::CodeAction>,
     notes: Vec<String>,
+    helps: Vec<String>,
     code_desc: Option<&'static str>,
 }
 impl IdeDiagnostic {
@@ -36,6 +38,10 @@ impl IdeDiagnostic {
 
     pub fn notes(&self) -> &[String] {
         &self.notes
+    }
+
+    pub fn helps(&self) -> &[String] {
+        &self.helps
     }
 
     pub fn related(&self) -> &[Related] {
@@ -62,15 +68,23 @@ impl IdeDiagnostic {
             })
             .collect();
 
-        let message = match self.notes.len() {
-            0 => self.diagnostic.message.clone(),
-            _ => {
-                let mut message = self.diagnostic.message.clone();
-                message.push_str("\n\nNote: ");
-                message.push_str(&self.notes.join("\n"));
-                message
-            }
-        };
+        let mut message = self.diagnostic.message.clone();
+        if !self.notes.is_empty() {
+            message.push_str("\n\nNote: ");
+            message.push_str(&self.notes.join("\n"));
+        }
+        // A quick fix's title is a help too, as the report prints it: the
+        // hover says what to write, and the code action writes it.
+        let helps: Vec<&str> = self
+            .helps
+            .iter()
+            .map(String::as_str)
+            .chain(self.fixes.iter().map(|fix| fix.title.as_str()))
+            .collect();
+        if !helps.is_empty() {
+            message.push_str("\n\nHelp: ");
+            message.push_str(&helps.join("\n"));
+        }
 
         Diagnostic {
             range: self.diagnostic.range,
@@ -124,6 +138,7 @@ impl IdeDiagnostic {
             related: vec![],
             fixes: vec![],
             notes: vec![],
+            helps: vec![],
             code_desc: None,
         }
     }
@@ -132,8 +147,28 @@ impl IdeDiagnostic {
         self.related.push(related);
     }
 
+    /// The rule the diagnostic rests on: one clause.
     pub fn with_note(&mut self, message: String) {
         self.notes.push(message);
+    }
+
+    /// What to write instead: one clause, in the imperative.
+    pub fn with_help(&mut self, message: String) {
+        self.helps.push(message);
+    }
+
+    /// A note, a help, both or neither, for a site that picks them by case.
+    pub fn with_advice(
+        &mut self,
+        note: Option<impl Into<String>>,
+        help: Option<impl Into<String>>,
+    ) {
+        if let Some(note) = note {
+            self.notes.push(note.into());
+        }
+        if let Some(help) = help {
+            self.helps.push(help.into());
+        }
     }
 
     pub fn with_fix(&mut self, fix: auto_lsp::lsp_types::CodeAction) {
@@ -161,7 +196,10 @@ impl From<auto_lsp::lsp_types::Diagnostic> for IdeDiagnostic {
 
 pub trait ErrorCode {
     fn code(&self) -> &'static str;
-    fn description(&self) -> &'static str;
+    /// What the report says after the code: the diagnostic's title.
+    fn description(&self) -> &'static str {
+        headers::header(self.code())
+    }
     fn url(&self) -> CodeDescription {
         CodeDescription {
             href: Url::parse(&format!(
@@ -211,6 +249,7 @@ pub fn diag(
         fixes: vec![],
         related: vec![],
         notes: vec![],
+        helps: vec![],
         code_desc: desc.and_then(|d| d.description),
     }
 }

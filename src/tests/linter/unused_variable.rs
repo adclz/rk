@@ -19,7 +19,7 @@ fn unused_local_variable(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "unused-variable"), @r"
-    [L0201] Info: unused code
+    [L0201] Info: unused variable
        ,-[ file:///test0.st:5:13 ]
        |
      5 |             y : INT;
@@ -46,7 +46,7 @@ fn unused_variable_in_function_block(mut with_db: RootDatabase) {
         END_FUNCTION_BLOCK
     "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "unused-variable"), @r"
-    [L0201] Info: unused code
+    [L0201] Info: unused variable
        ,-[ file:///test0.st:5:13 ]
        |
      5 |             y : INT;
@@ -73,7 +73,7 @@ fn unused_variable_in_program(mut with_db: RootDatabase) {
         END_PROGRAM
     "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "unused-variable"), @r"
-    [L0201] Info: unused code
+    [L0201] Info: unused variable
        ,-[ file:///test0.st:5:13 ]
        |
      5 |             y : INT;
@@ -150,7 +150,7 @@ fn unused_input_on_function(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "unused-variable"), @r"
-    [L0201] Info: unused code
+    [L0201] Info: unused variable
        ,-[ file:///test0.st:5:13 ]
        |
      5 |             b : INT;
@@ -195,7 +195,7 @@ fn variable_used_via_this_in_method_not_flagged(mut with_db: RootDatabase) {
     // speed is used via THIS in a method - should NOT be flagged
     // unused_var is never used anywhere - should be flagged
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "unused-variable"), @r"
-    [L0201] Info: unused code
+    [L0201] Info: unused variable
        ,-[ file:///test0.st:5:13 ]
        |
      5 |             unused_var : INT;
@@ -285,7 +285,7 @@ fn named_by_the_configuration_not_reported(mut with_db: RootDatabase) {
         END_CONFIGURATION
     "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "unused-variable"), @r"
-    [L0201] Info: unused code
+    [L0201] Info: unused variable
         ,-[ file:///test0.st:12:39 ]
         |
      12 |         VAR fb1 : Counter; d : Drive; idle : INT; END_VAR

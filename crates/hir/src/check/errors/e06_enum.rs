@@ -54,16 +54,6 @@ impl<'db> ErrorCode for EnumError<'db> {
             Self::ValueOutOfStorage { .. } => "E0605",
         }
     }
-
-    fn description(&self) -> &'static str {
-        match self {
-            Self::InvalidEnumType { .. } => "invalid enum type",
-            Self::NotAnEnum { .. } => "invalid enum access",
-            Self::EnumVariantNotFound { .. } => "invalid enum access",
-            Self::EnumValueNotConstant { .. } => "invalid enum value",
-            Self::ValueOutOfStorage { .. } => "invalid enum value",
-        }
-    }
 }
 
 impl<'db> ToIdeDiagnostic<'db> for EnumError<'db> {
@@ -75,13 +65,13 @@ impl<'db> ToIdeDiagnostic<'db> for EnumError<'db> {
         match self {
             EnumError::InvalidEnumType { value, typ } => {
                 let mut diag = diag()
-                    .message(format!("invalid enum type '{}'", typ.type_name(db)))
+                    .message(format!("'{}' is not an integer type", typ.type_name(db)))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
                     .range(crate::denormalize(db, file, &value.get_span(db)).unwrap_or_default())
                     .call();
 
-                diag.with_note("only numeric integer types are allowed for ENUM".to_string());
+                diag.with_note("an ENUM is stored in an integer type".to_string());
 
                 diag
             }
@@ -102,9 +92,7 @@ impl<'db> ToIdeDiagnostic<'db> for EnumError<'db> {
                 .range(crate::denormalize(db, file, &variant_name.get_span(db)).unwrap_or_default())
                 .call(),
             Self::EnumValueNotConstant { value } => diag()
-                .message(
-                    "an enum variant value must evaluate to a constant at compile time".to_string(),
-                )
+                .message("the value is not a compile-time constant".to_string())
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
                 .range(crate::denormalize(db, file, &value.get_span(db)).unwrap_or_default())
@@ -117,7 +105,7 @@ impl<'db> ToIdeDiagnostic<'db> for EnumError<'db> {
             } => {
                 let mut diag = diag()
                     .message(format!(
-                        "'{}' is {value}, which {} does not hold",
+                        "'{}' is {value}, out of range for {}",
                         variant.with_case.text(db),
                         storage.type_name()
                     ))

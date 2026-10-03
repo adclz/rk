@@ -20,10 +20,6 @@ impl ErrorCode for UnusedImport {
     fn code(&self) -> &'static str {
         "L0301"
     }
-
-    fn description(&self) -> &'static str {
-        "unused import"
-    }
 }
 
 pub fn check<'db>(

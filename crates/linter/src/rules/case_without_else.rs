@@ -15,10 +15,6 @@ impl ErrorCode for CaseWithoutElse {
     fn code(&self) -> &'static str {
         "L0304"
     }
-
-    fn description(&self) -> &'static str {
-        "CASE without ELSE"
-    }
 }
 
 pub fn check<'db>(

@@ -93,6 +93,14 @@ pub enum InitError<'db> {
         /// The reference it was read through, `p^` with `p := REF(source)`.
         through: Option<crate::hir_def::pous::variable::VariableDecl<'db>>,
     },
+    /// A STRUCT or ARRAY initializer on a FUNCTION's or METHOD's input. The
+    /// caller passes a default for an omitted argument, and passes constants
+    /// only, so this one could never apply: the call either passed the
+    /// argument or was refused (E0802). It was accepted and ignored.
+    AggregateInputDefault {
+        var: crate::hir_def::pous::variable::VariableDecl<'db>,
+        init: InitExpr<'db>,
+    },
 }
 
 /// What keeps a `REF()` from being one address everywhere.
@@ -139,21 +147,7 @@ impl<'db> ErrorCode for InitError<'db> {
             Self::ConstantHandedOut { .. } | Self::ConstantInstance { .. } => "E0404",
             Self::UninitializableMember { .. } => "E0405",
             Self::ReadBeforeInitialized { .. } => "E0406",
-        }
-    }
-
-    fn description(&self) -> &'static str {
-        match self {
-            Self::InitNotConstant { .. } | Self::ReferenceNotConstant { .. } => {
-                "initial value is not constant"
-            }
-            Self::FunctionCallInInitExpression(_) => "syntax",
-            Self::NoFieldOnElementaryType { .. } => "invalid operation",
-            Self::AssignToConstant { .. }
-            | Self::ConstantHandedOut { .. }
-            | Self::ConstantInstance { .. } => "semantic violation",
-            Self::UninitializableMember { .. } => "member cannot be initialized",
-            Self::ReadBeforeInitialized { .. } => "read before it has its value",
+            Self::AggregateInputDefault { .. } => "E0407",
         }
     }
 }
@@ -207,7 +201,7 @@ impl<'db> ToIdeDiagnostic<'db> for InitError<'db> {
                                 )
                             } else {
                                 format!(
-                                    "'{}' belongs to the call, which has not started when the caller passes the default",
+                                    "'{}' belongs to the call, not yet started when the caller passes the default",
                                     name.text(db)
                                 )
                             });
@@ -231,10 +225,12 @@ impl<'db> ToIdeDiagnostic<'db> for InitError<'db> {
                         }
                         Some(decl) => {
                             d.with_note(format!(
-                                "'{}' is an ordinary variable; declare it CONSTANT \
-                                 if its value never changes",
+                                "'{}' is not CONSTANT",
                                 decl.name_with_case(db).text(db)
                             ));
+                            d.with_help(
+                                "declare it CONSTANT if its value never changes".to_string(),
+                            );
                         }
                         None => {
                             if let Some(ident) = const_eval::bare_access_name(db, *va)
@@ -243,10 +239,13 @@ impl<'db> ToIdeDiagnostic<'db> for InitError<'db> {
                             {
                                 if !global.qualifier(db).contains(Qualifier::CONSTANT) {
                                     d.with_note(format!(
-                                        "'{}' is an ordinary variable; declare it CONSTANT \
-                                         if its value never changes",
+                                        "'{}' is not CONSTANT",
                                         global.name_with_case(db).text(db)
                                     ));
+                                    d.with_help(
+                                        "declare it CONSTANT if its value never changes"
+                                            .to_string(),
+                                    );
                                     return d;
                                 }
                                 let in_type = matches!(
@@ -295,9 +294,7 @@ impl<'db> ToIdeDiagnostic<'db> for InitError<'db> {
                         use crate::hir_def::pous::variable::StorageClass;
                         let name = var.name_with_case(db).text(db).to_string();
                         match var.storage_class(db) {
-                            StorageClass::Global => format!(
-                                "'{name}' is an ordinary variable; declare it CONSTANT if its value never changes"
-                            ),
+                            StorageClass::Global => format!("'{name}' is not CONSTANT"),
                             StorageClass::InstanceMember => {
                                 format!("'{name}' is a member: each instance has its own")
                             }
@@ -305,7 +302,7 @@ impl<'db> ToIdeDiagnostic<'db> for InitError<'db> {
                                 "'{name}' is another input of this call: it has no value before the call binds it"
                             ),
                             StorageClass::Local if *input_default => format!(
-                                "'{name}' belongs to the call, which has not started when the caller passes the default"
+                                "'{name}' belongs to the call, not yet started when the caller passes the default"
                             ),
                             StorageClass::Local => {
                                 format!("'{name}' belongs to the call: each call has its own")
@@ -325,14 +322,14 @@ impl<'db> ToIdeDiagnostic<'db> for InitError<'db> {
                 d
             }
             Self::FunctionCallInInitExpression(span) => diag()
-                .message("function call in initialization expression is not allowed".into())
+                .message("the repeat count is a call, not a constant".into())
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
                 .range(crate::denormalize(db, file, span).unwrap_or_default())
                 .call(),
             Self::NoFieldOnElementaryType { expr, ty } => ide_diagnostic::diag()
                 .message(format!(
-                    "type '{}' is an elementary type and cannot be initiliazed with '()'",
+                    "'{}' is an elementary type and takes no '()' initializer",
                     ty.type_name(db)
                 ))
                 .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
@@ -350,10 +347,8 @@ impl<'db> ToIdeDiagnostic<'db> for InitError<'db> {
                     .range(crate::denormalize(db, file, &access.get_span(db)).unwrap_or_default())
                     .call();
                 declared_constant(db, *constant, &mut d);
-                d.with_note(
-                    "a CONSTANT keeps the value it is declared with; copy it into a variable to change the copy"
-                        .to_string(),
-                );
+                d.with_note("a CONSTANT keeps the value it is declared with".to_string());
+                d.with_help("copy it into a variable to change the copy".to_string());
                 d
             }
             Self::ConstantHandedOut {
@@ -362,14 +357,16 @@ impl<'db> ToIdeDiagnostic<'db> for InitError<'db> {
                 constant,
             } => {
                 let place = constant_place(db, *access, *constant);
-                let (message, note) = match route {
+                let (message, note, help) = match route {
                     ConstantRoute::InOut => (
                         format!("cannot pass {place} to a VAR_IN_OUT"),
-                        "a VAR_IN_OUT could change it; pass it to a VAR_INPUT, or copy it into a variable and pass that",
+                        "a VAR_IN_OUT could change it",
+                        "pass it to a VAR_INPUT, or copy it into a variable and pass that",
                     ),
                     ConstantRoute::Reference => (
                         format!("cannot take a reference to {place}"),
-                        "a reference could change it; copy it into a variable and take the reference of that",
+                        "a reference could change it",
+                        "copy it into a variable and take the reference of that",
                     ),
                 };
                 let mut d = diag()
@@ -380,6 +377,7 @@ impl<'db> ToIdeDiagnostic<'db> for InitError<'db> {
                     .call();
                 declared_constant(db, *constant, &mut d);
                 d.with_note(note.to_string());
+                d.with_help(help.to_string());
                 d
             }
             Self::ConstantInstance { var, block, many } => {
@@ -396,39 +394,38 @@ impl<'db> ToIdeDiagnostic<'db> for InitError<'db> {
                     .desc(self)
                     .range(crate::denormalize(db, file, &var.get_name_span(db)).unwrap_or_default())
                     .call();
-                d.with_note(
-                    "an instance changes when it runs; declare it in a VAR section without CONSTANT"
-                        .to_string(),
-                );
+                d.with_note("an instance changes when it runs".to_string());
+                d.with_help("declare it in a VAR section without CONSTANT".to_string());
                 d
             }
             Self::UninitializableMember { expr, var, kind } => {
                 use crate::HasName;
                 let name = var.get_name_with_case(db).text(db);
-                let (what, note) = match kind {
+                let (what, note, help) = match kind {
                     UninitializableMember::InOut => (
-                        "a VAR_IN_OUT, which each call binds to its argument",
-                        format!("pass the variable in the call instead, as '{name} := x'"),
+                        "a VAR_IN_OUT",
+                        "a VAR_IN_OUT is bound to its argument at each call",
+                        format!("pass the variable in the call, as '{name} := x'"),
                     ),
                     UninitializableMember::Temp => (
-                        "a VAR_TEMP, which each call makes afresh",
-                        "give the value in its declaration, which applies at every call"
-                            .to_string(),
+                        "a VAR_TEMP",
+                        "a VAR_TEMP is made afresh at each call",
+                        "give the value in its declaration".to_string(),
                     ),
                     UninitializableMember::External => (
-                        "a VAR_EXTERNAL, which names a VAR_GLOBAL",
+                        "a VAR_EXTERNAL",
+                        "a VAR_EXTERNAL names a VAR_GLOBAL",
                         "give the value in the VAR_GLOBAL's declaration".to_string(),
                     ),
                     UninitializableMember::Constant => (
-                        "CONSTANT, whose value is its declaration's",
+                        "a CONSTANT",
+                        "a CONSTANT has the value of its declaration",
                         "declare it without CONSTANT to let each instance start at its own value"
                             .to_string(),
                     ),
                 };
                 let mut d = diag()
-                    .message(format!(
-                        "'{name}' is {what}, so an initializer cannot give it a value"
-                    ))
+                    .message(format!("an initializer cannot set '{name}', {what}"))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
                     .range(crate::denormalize(db, file, &expr.get_span(db)).unwrap_or_default())
@@ -438,7 +435,31 @@ impl<'db> ToIdeDiagnostic<'db> for InitError<'db> {
                     var.get_scope_id(db).file(db),
                     var.get_name_span(db),
                 ));
-                d.with_note(note);
+                d.with_note(note.to_string());
+                d.with_help(help);
+                d
+            }
+            Self::AggregateInputDefault { var, init } => {
+                use crate::HasName;
+                let name = var.get_name_with_case(db).text(db);
+                let mut d = diag()
+                    .message(format!("the default of '{name}' is an aggregate"))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &init.get_span(db)).unwrap_or_default())
+                    .call();
+                d.with_related(Related::new(
+                    format!("'{name}' is declared here"),
+                    var.get_scope_id(db).file(db),
+                    var.get_name_span(db),
+                ));
+                d.with_note(
+                    "a default is passed by the caller for an omitted argument, so it has to be a constant"
+                        .to_string(),
+                );
+                d.with_help(format!(
+                    "set '{name}' in the body, or pass it in every call"
+                ));
                 d
             }
             Self::ReadBeforeInitialized {
@@ -455,19 +476,19 @@ impl<'db> ToIdeDiagnostic<'db> for InitError<'db> {
                         format!(", through '{}'", reference.get_name_with_case(db).text(db))
                     })
                     .unwrap_or_default();
-                let (message, note) = if var == source && through.is_none() {
+                let (message, note, help) = if var == source && through.is_none() {
                     (
                         format!("the initial value of '{name}' reads '{name}' itself"),
-                        "an initial value cannot read the variable it initializes".to_string(),
+                        "an initial value cannot read the variable it initializes",
+                        None,
                     )
                 } else {
                     (
                         format!(
                             "the initial value of '{name}' reads '{read_name}', declared after it{via}"
                         ),
-                        format!(
-                            "variables get their initial values in the order they are declared; declare '{read_name}' before '{name}'"
-                        ),
+                        "variables get their initial values in the order they are declared",
+                        Some(format!("declare '{read_name}' before '{name}'")),
                     )
                 };
                 let mut d = diag()
@@ -483,7 +504,7 @@ impl<'db> ToIdeDiagnostic<'db> for InitError<'db> {
                         source.get_name_span(db),
                     ));
                 }
-                d.with_note(note);
+                d.with_advice(Some(note), help);
                 d
             }
         }

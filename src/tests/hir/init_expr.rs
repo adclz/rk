@@ -37,7 +37,7 @@ fn unknown_struct_field(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0202] Error: no such field
+    [E0202] Error: unknown field
         ,-[ file:///test0.st:12:49 ]
         |
      12 |                 Base : Engine := (power := 100, fuel := 10.0);
@@ -67,7 +67,7 @@ fn invalid_struct_value(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0202] Error: no such field
+    [E0202] Error: unknown field
         ,-[ file:///test0.st:11:48 ]
         |
      11 |                 Base : Engine := (power := 10, fuel := 10.0);
@@ -94,12 +94,14 @@ fn invalid_array_value(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0308] Error: invalid literal
+    [E0308] Error: literal of the wrong kind
        ,-[ file:///test0.st:8:37 ]
        |
      8 |                 Base : Engine := [3(10.5)];
        |                                     ^^|^
-       |                                       `--- cannot infer '<float>' to 'INT': invalid INT literal; INT takes a whole number, written like 42 or 16#2A
+       |                                       `--- invalid INT literal
+       |
+       | Note: INT takes a whole number, written like 42 or 16#2A
     ---'
     ");
 }
@@ -124,12 +126,14 @@ fn invalid_value_in_array_of_struct(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0308] Error: invalid literal
+    [E0308] Error: literal of the wrong kind
         ,-[ file:///test0.st:12:64 ]
         |
      12 |                 Base : EngineArray := [(Power := 10, Torque := 10.0)];
         |                                                                ^^|^
-        |                                                                  `--- cannot infer '<float>' to 'INT': invalid INT literal; INT takes a whole number, written like 42 or 16#2A
+        |                                                                  `--- invalid INT literal
+        |
+        | Note: INT takes a whole number, written like 42 or 16#2A
     ----'
     ");
 }
@@ -153,12 +157,14 @@ fn invalid_value_in_struct_with_array(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0308] Error: invalid literal
+    [E0308] Error: literal of the wrong kind
         ,-[ file:///test0.st:11:49 ]
         |
      11 |                 Base : Engine := (Power := [10, 5.3], Torque := 10);
         |                                                 ^|^
-        |                                                  `--- cannot infer '<float>' to 'INT': invalid INT literal; INT takes a whole number, written like 42 or 16#2A
+        |                                                  `--- invalid INT literal
+        |
+        | Note: INT takes a whole number, written like 42 or 16#2A
     ----'
     ");
 }
@@ -180,7 +186,7 @@ fn unexpected_struct_field(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0202] Error: no such field
+    [E0202] Error: unknown field
        ,-[ file:///test0.st:8:37 ]
        |
      8 |                 Base : Engine := [2(param1 := 0)];
@@ -207,7 +213,7 @@ fn unexpected_array(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0508] Error: invalid operation
+    [E0508] Error: index into a non-array type
        ,-[ file:///test0.st:8:31 ]
        |
      8 |                 Base : Engine := [2];
@@ -386,12 +392,12 @@ fn radix_repeat_count_rejected(mut with_db: RootDatabase) {
         END_FUNCTION
         "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0001] Error: syntax
+    [E0001] Error: syntax error
        ,-[ file:///test0.st:3:44 ]
        |
      3 |             VAR a : ARRAY[0..3] OF INT := [16#4(0)]; END_VAR
        |                                            ^^|^
-       |                                              `--- Unexpected token(s): '16#4'
+       |                                              `--- unexpected token(s): '16#4'
     ---'
     ");
 }
@@ -408,12 +414,12 @@ fn named_constant_repeat_count_rejected(mut with_db: RootDatabase) {
         END_FUNCTION
         "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0402] Error: syntax
+    [E0402] Error: function call in a repeat count
        ,-[ file:///test0.st:3:44 ]
        |
      3 |             VAR a : ARRAY[0..3] OF INT := [FOO(0)]; END_VAR
        |                                            ^^^|^^
-       |                                               `---- function call in initialization expression is not allowed
+       |                                               `---- the repeat count is a call, not a constant
     ---'
     ");
 }
@@ -432,12 +438,12 @@ fn empty_repetition_counts_its_elements(mut with_db: RootDatabase) {
         END_FUNCTION
         "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0507] Error: invalid array access
+    [E0507] Error: too many elements in array initializer
        ,-[ file:///test0.st:5:47 ]
        |
      5 |                 b : ARRAY[0..3] OF INT := [1, 4()];
        |                                               ^|^
-       |                                                `--- too many elements in array initializer (expected at most 4)
+       |                                                `--- the initializer has more elements than the array's 4
     ---'
     ");
 }

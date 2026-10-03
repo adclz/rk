@@ -18,10 +18,6 @@ impl ErrorCode for DefaultForStep {
     fn code(&self) -> &'static str {
         "L0213"
     }
-
-    fn description(&self) -> &'static str {
-        "redundant FOR loop step"
-    }
 }
 
 pub fn check_step<'db>(

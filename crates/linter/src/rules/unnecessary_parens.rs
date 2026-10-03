@@ -18,10 +18,6 @@ impl ErrorCode for UnnecessaryParens {
     fn code(&self) -> &'static str {
         "L0311"
     }
-
-    fn description(&self) -> &'static str {
-        "unnecessary parentheses"
-    }
 }
 
 /// Check a single node for unnecessary parentheses.

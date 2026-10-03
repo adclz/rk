@@ -25,7 +25,7 @@ END_FUNCTION
        |     ^^^|^^
        |        `---- 1 VAR_OUTPUT is never assigned in the body: 'result'
        |        |
-       |        `---- 'result' declared here
+       |        `---- 'result' is declared here
        |
        | Note: lint rule: uninitialized-output
     ---'
@@ -96,10 +96,10 @@ END_FUNCTION_BLOCK
        |     ^^|^
        |       `--- 2 VAR_OUTPUT are never assigned in the body: 'done', 'value'
        |       |
-       |       `--- 'done' declared here
+       |       `--- 'done' is declared here
      5 |     value : INT;
        |     ^^|^^
-       |       `---- 'value' declared here
+       |       `---- 'value' is declared here
        |
        | Note: lint rule: uninitialized-output
     ---'

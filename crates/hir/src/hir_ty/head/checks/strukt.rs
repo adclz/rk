@@ -51,7 +51,7 @@ impl<'db> InitInference<'db> {
                 }
                 self.errors.push(
                     ConfigError::DirectVariableUnsupported {
-                        site: field.as_call_site(db),
+                        site: dv.as_call_site(db),
                         address,
                         why: if dv.partly(db) {
                             UnlocatableAddress::InStructPartly

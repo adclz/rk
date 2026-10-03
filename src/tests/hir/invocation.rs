@@ -20,12 +20,12 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0202] Error: no such field
+    [E0202] Error: unknown field
        ,-[ file:///test0.st:6:7 ]
        |
      2 | FUNCTION_BLOCK fb1
        |                ^|^
-       |                 `--- FUNCTION_BLOCK 'fb1' is defined here
+       |                 `--- FUNCTION_BLOCK 'fb1' is declared here
        |
      6 |     THIS.decl1();
        |          ^^|^^
@@ -62,12 +62,12 @@ FUNCTION_BLOCK fb1 EXTENDS base
 
 END_FUNCTION_BLOCK"#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0202] Error: no such field
+    [E0202] Error: unknown field
        ,-[ file:///test0.st:8:11 ]
        |
      6 | FUNCTION_BLOCK fb1 EXTENDS base
        |                ^|^
-       |                 `--- FUNCTION_BLOCK 'fb1' is defined here
+       |                 `--- FUNCTION_BLOCK 'fb1' is declared here
        |
      8 |     SUPER.super_method1()
        |           ^^^^^^|^^^^^^
@@ -85,12 +85,12 @@ CLASS fb1
     END_METHOD
 END_CLASS"#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1108] Error: invalid use of SUPER or THIS
+    [E1108] Error: SUPER() outside a function block body
        ,-[ file:///test0.st:4:9 ]
        |
      4 |         SUPER()
        |         ^^|^^
-       |           `---- 'SUPER()' is not valid in this context
+       |           `---- 'SUPER()' has no base body to run here
     ---'
     ");
 }
@@ -103,12 +103,12 @@ FUNCTION fn1
 END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1108] Error: invalid use of SUPER or THIS
+    [E1108] Error: SUPER() outside a function block body
        ,-[ file:///test0.st:3:5 ]
        |
      3 |     SUPER()
        |     ^^|^^
-       |       `---- 'SUPER()' is not valid in this context
+       |       `---- 'SUPER()' has no base body to run here
     ---'
     ");
 }
@@ -121,12 +121,12 @@ FUNCTION fn1
 END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1106] Error: invalid use of SUPER or THIS
+    [E1106] Error: SUPER in a FUNCTION or PROGRAM
        ,-[ file:///test0.st:3:5 ]
        |
      3 |     SUPER.something()
        |     ^^|^^
-       |       `---- 'SUPER' is not valid in this context
+       |       `---- 'SUPER' has no base to name here
     ---'
     ");
 }
@@ -139,12 +139,12 @@ FUNCTION fn1
 END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1105] Error: invalid use of SUPER or THIS
+    [E1105] Error: THIS in a FUNCTION
        ,-[ file:///test0.st:3:5 ]
        |
      3 |     THIS.something()
        |     ^^|^
-       |       `--- 'THIS' is not valid in this context
+       |       `--- 'THIS' has no instance to name here
     ---'
     ");
 }
@@ -157,12 +157,12 @@ PROGRAM prgrm
 END_PROGRAM
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1105] Error: invalid use of SUPER or THIS
+    [E1105] Error: THIS in a FUNCTION
        ,-[ file:///test0.st:3:5 ]
        |
      3 |     THIS.something()
        |     ^^|^
-       |       `--- 'THIS' is not valid in this context
+       |       `--- 'THIS' has no instance to name here
     ---'
     ");
 }
@@ -175,12 +175,12 @@ PROGRAM prgrm
 END_PROGRAM
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1106] Error: invalid use of SUPER or THIS
+    [E1106] Error: SUPER in a FUNCTION or PROGRAM
        ,-[ file:///test0.st:3:5 ]
        |
      3 |     SUPER.something()
        |     ^^|^^
-       |       `---- 'SUPER' is not valid in this context
+       |       `---- 'SUPER' has no base to name here
     ---'
     ");
 }
@@ -193,12 +193,12 @@ PROGRAM prgrm
 END_PROGRAM
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1108] Error: invalid use of SUPER or THIS
+    [E1108] Error: SUPER() outside a function block body
        ,-[ file:///test0.st:3:5 ]
        |
      3 |     SUPER()
        |     ^^|^^
-       |       `---- 'SUPER()' is not valid in this context
+       |       `---- 'SUPER()' has no base body to run here
     ---'
     ");
 }
@@ -219,16 +219,18 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0308] Error: invalid literal
+    [E0308] Error: literal of the wrong kind
        ,-[ file:///test0.st:7:12 ]
        |
      4 |         VAR_INPUT input1 : BOOL; END_VAR
        |                   ^^^|^^
-       |                      `---- type is declared by variable 'input1' here
+       |                      `---- 'input1' is declared here
        |
      7 |     THIS.decl(0.5);
        |               ^|^
-       |                `--- cannot infer '<float>' to 'BOOL': invalid boolean literal; BOOL is TRUE or FALSE
+       |                `--- invalid boolean literal
+       |
+       | Note: BOOL is TRUE or FALSE
     ---'
     ");
 }
@@ -252,16 +254,18 @@ END_CLASS
 "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0308] Error: invalid literal
+    [E0308] Error: literal of the wrong kind
         ,-[ file:///test0.st:10:17 ]
         |
       4 |         VAR_INPUT input1 : BOOL; END_VAR
         |                   ^^^|^^
-        |                      `---- type is declared by variable 'input1' here
+        |                      `---- 'input1' is declared here
         |
      10 |         SUPER.decl(0.5);
         |                    ^|^
-        |                     `--- cannot infer '<float>' to 'BOOL': invalid boolean literal; BOOL is TRUE or FALSE
+        |                     `--- invalid boolean literal
+        |
+        | Note: BOOL is TRUE or FALSE
     ----'
     ");
 }
@@ -285,16 +289,18 @@ END_FUNCTION_BLOCK
 "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0308] Error: invalid literal
+    [E0308] Error: literal of the wrong kind
         ,-[ file:///test0.st:10:17 ]
         |
       4 |         VAR_INPUT input1 : BOOL; END_VAR
         |                   ^^^|^^
-        |                      `---- type is declared by variable 'input1' here
+        |                      `---- 'input1' is declared here
         |
      10 |         SUPER.decl(0.5);
         |                    ^|^
-        |                     `--- cannot infer '<float>' to 'BOOL': invalid boolean literal; BOOL is TRUE or FALSE
+        |                     `--- invalid boolean literal
+        |
+        | Note: BOOL is TRUE or FALSE
     ----'
     ");
 }
@@ -309,7 +315,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1107] Error: invalid use of SUPER or THIS
+    [E1107] Error: SUPER without an EXTENDS clause
        ,-[ file:///test0.st:3:5 ]
        |
      3 |     SUPER()
@@ -333,14 +339,14 @@ FUNCTION_BLOCK derived EXTENDS base
 END_FUNCTION_BLOCK
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1109] Error: invalid use of SUPER or THIS
+    [E1109] Error: SUPER() called in a method
        ,-[ file:///test0.st:6:9 ]
        |
      6 |         SUPER()
        |         ^^|^^
        |           `---- 'SUPER()' cannot be called in a method of a function block
        |
-       | Note: SUPER() is only valid in the function block body, not in a method
+       | Note: SUPER() runs the base body from the function block body
     ---'
     ");
 }
@@ -358,7 +364,7 @@ FUNCTION_BLOCK derived EXTENDS base
 END_FUNCTION_BLOCK
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1110] Error: invalid use of SUPER or THIS
+    [E1110] Error: SUPER() called more than once
        ,-[ file:///test0.st:6:5 ]
        |
      5 |     SUPER();
@@ -366,7 +372,7 @@ END_FUNCTION_BLOCK
        |        `----- the first 'SUPER()' is here
      6 |     SUPER();
        |     ^^^|^^^
-       |        `----- 'SUPER()' may only be called once in a function block body
+       |        `----- 'SUPER()' is called a second time
     ---'
     ");
 }
@@ -385,7 +391,7 @@ FUNCTION_BLOCK derived EXTENDS base
 END_FUNCTION_BLOCK
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1111] Error: invalid use of SUPER or THIS
+    [E1111] Error: SUPER() called inside a loop
        ,-[ file:///test0.st:7:9 ]
        |
      7 |         SUPER();
@@ -426,7 +432,7 @@ VAR c : INT; END_VAR
 END_FUNCTION_BLOCK
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1115] Error: inheritance violation
+    [E1115] Error: inherited variable redeclared
        ,-[ file:///test0.st:6:5 ]
        |
      3 | VAR c : INT; END_VAR

@@ -84,6 +84,35 @@ const TOOLS: [&str; 3] = ["linter.md", "formatter.md", "lsp.md"];
 /// A diagnostic code a page names links to its entry, so it must have one.
 /// The pages are rendered before anything is written; the front page is
 /// rendered while writing, which `written` says.
+/// One paragraph of a diagnostic's description: its `code` spans colored as
+/// the pages color theirs, and each code it names linked to its entry.
+fn description_html(highlighter: &StHighlighter, para: &str) -> String {
+    let mut out = String::new();
+    for (i, part) in para.split('`').enumerate() {
+        if i % 2 == 1 {
+            out.push_str(&format!("<code>{}</code>", highlighter.inline(part)));
+            continue;
+        }
+        // Prose: a word that is a code links to its entry.
+        let mut word = String::new();
+        for ch in part.chars().chain(std::iter::once(' ')) {
+            if ch.is_ascii_alphanumeric() {
+                word.push(ch);
+                continue;
+            }
+            match highlighter.code_href(&word) {
+                Some(href) => out.push_str(&format!("<a href=\"{href}\">{word}</a>")),
+                None => out.push_str(&escape(&word)),
+            }
+            word.clear();
+            out.push_str(&escape(&ch.to_string()));
+        }
+        // The space that closed the last word.
+        out.pop();
+    }
+    out
+}
+
 fn refuse_unknown_codes(highlighter: &StHighlighter, written: &str) {
     let unknown = highlighter.unknown_codes();
     if unknown.is_empty() {
@@ -437,7 +466,12 @@ fn main() {
                         .ex
                         .description
                         .split("\n\n")
-                        .map(|para| format!("<p class=\"description\">{}</p>", escape(para)))
+                        .map(|para| {
+                            format!(
+                                "<p class=\"description\">{}</p>",
+                                description_html(&highlighter, para)
+                            )
+                        })
                         .collect::<String>(),
                     "text": text,
                     "sources_html": sources_html,

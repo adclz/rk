@@ -23,10 +23,6 @@ impl ErrorCode for UnusedVariable {
     fn code(&self) -> &'static str {
         "L0201"
     }
-
-    fn description(&self) -> &'static str {
-        "unused code"
-    }
 }
 
 pub fn check<'db>(

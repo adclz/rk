@@ -20,7 +20,7 @@ fn unknown_type(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0203] Error: no namespace item found
+    [E0203] Error: unknown name in a namespace
        ,-[ file:///test0.st:4:25 ]
        |
      4 |                 input : something;
@@ -53,12 +53,12 @@ fn non_constant_array_bound_is_rejected(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0501] Error: invalid array bounds
+    [E0501] Error: invalid array lower bound
        ,-[ file:///test0.st:3:34 ]
        |
      3 |         VAR x : INT; arr : ARRAY[x..10] OF INT; END_VAR
        |                                  |
-       |                                  `-- invalid lower bound value for ARRAY
+       |                                  `-- the lower bound is not an integer constant
     ---'
     ");
 }
@@ -75,7 +75,7 @@ fn upper_bound_below_lower_bound_is_rejected(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0503] Error: invalid array bounds
+    [E0503] Error: upper bound below the lower bound
        ,-[ file:///test0.st:3:28 ]
        |
      3 |             List: ARRAY[0..-10] OF INT;
@@ -94,7 +94,7 @@ fn inferior_upper_bound_in_array(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0503] Error: invalid array bounds
+    [E0503] Error: upper bound below the lower bound
        ,-[ file:///test0.st:3:29 ]
        |
      3 |             List: ARRAY[10..1] OF INT;
@@ -128,7 +128,7 @@ fn array_conformand_not_supported(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0509] Error: syntax
+    [E0509] Error: array conformands not supported
        ,-[ file:///test0.st:4:14 ]
        |
      4 |             A: ARRAY [*] OF INT;
@@ -184,33 +184,35 @@ fn invalid_non_integer_subscript(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0504] Error: invalid array access
+    [E0504] Error: array index not an integer
        ,-[ file:///test0.st:7:15 ]
        |
      7 |             a[r] := 1;
        |               |
-       |               `-- array index must be an integer, found REAL
+       |               `-- the index is 'REAL', not an integer
     ---'
-    [E0504] Error: invalid array access
+    [E0504] Error: array index not an integer
        ,-[ file:///test0.st:8:15 ]
        |
      8 |             a[TRUE] := 2;
        |               ^^|^
-       |                 `--- array index must be an integer, found BOOL
+       |                 `--- the index is 'BOOL', not an integer
     ---'
-    [E0308] Error: invalid literal
+    [E0308] Error: literal of the wrong kind
        ,-[ file:///test0.st:9:15 ]
        |
      9 |             a[1.5] := 3;
        |               ^|^
-       |                `--- cannot infer '<float>' to 'DINT': invalid DINT literal; DINT takes a whole number, written like 42 or 16#2A
+       |                `--- invalid DINT literal
+       |
+       | Note: DINT takes a whole number, written like 42 or 16#2A
     ---'
-    [E0308] Error: invalid literal
+    [E0308] Error: literal of the wrong kind
         ,-[ file:///test0.st:10:15 ]
         |
      10 |             a['x'] := 4;
         |               ^|^
-        |                `--- cannot infer '<string>' to 'DINT': cannot use string literal as DINT
+        |                `--- cannot use string literal as DINT
     ----'
     ");
 }
@@ -229,15 +231,15 @@ fn invalid_unresolved_name_in_subscript(mut with_db: RootDatabase) {
         END_FUNCTION
         "#;
 
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r#"
-    [E0201] Error: no item found in scope
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0201] Error: unknown name
        ,-[ file:///test0.st:6:15 ]
        |
      6 |             a[zz + 1] := 1;
        |               ^|
-       |                `-- no item "zz" found in scope
+       |                `-- no item 'zz' found in scope
     ---'
-    "#);
+    ");
 }
 
 /// Compound subscripts reach body inference through every path-resolution
@@ -286,28 +288,28 @@ fn invalid_constant_subscript_out_of_bounds(mut with_db: RootDatabase) {
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0506] Error: invalid array access
+    [E0506] Error: constant index out of bounds
        ,-[ file:///test0.st:8:15 ]
        |
      8 |             a[5] := 1;
        |               |
        |               `-- index 5 is out of bounds (the dimension is declared 0..2)
     ---'
-    [E0506] Error: invalid array access
+    [E0506] Error: constant index out of bounds
        ,-[ file:///test0.st:9:15 ]
        |
      9 |             a[-1] := 2;
        |               ^|
        |                `-- index -1 is out of bounds (the dimension is declared 0..2)
     ---'
-    [E0506] Error: invalid array access
+    [E0506] Error: constant index out of bounds
         ,-[ file:///test0.st:10:15 ]
         |
      10 |             n[-3] := 3;
         |               ^|
         |                `-- index -3 is out of bounds (the dimension is declared -2..2)
     ----'
-    [E0506] Error: invalid array access
+    [E0506] Error: constant index out of bounds
         ,-[ file:///test0.st:11:18 ]
         |
      11 |             m[1][9] := 4;
@@ -316,7 +318,7 @@ fn invalid_constant_subscript_out_of_bounds(mut with_db: RootDatabase) {
         |
         | Note: this error occurred in array dimension 2
     ----'
-    [E0506] Error: invalid array access
+    [E0506] Error: constant index out of bounds
         ,-[ file:///test0.st:12:15 ]
         |
      12 |             m[9][1] := 5;
@@ -365,7 +367,7 @@ fn invalid_constant_subscript_out_of_a_rows_bounds(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0506] Error: invalid array access
+    [E0506] Error: constant index out of bounds
        ,-[ file:///test0.st:5:18 ]
        |
      5 |             r[1][3] := 2;
@@ -398,23 +400,27 @@ fn invalid_incomplete_subscript(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0510] Error: invalid array access
+    [E0510] Error: incomplete subscript
         ,-[ file:///test0.st:12:17 ]
         |
      12 |             h.m[1] := m2;
         |                 |
         |                 `-- this subscript names 1 of the array's 2 dimensions
         |
-        | Note: a multi-dimensional array is indexed in all its dimensions, `m[i, j]` or `m[i][j]`; an array of an array type has rows
+        | Help: subscript every dimension, `m[i, j]` or `m[i][j]`, or declare an array of an array type for rows
+        |
+        | Note: a multi-dimensional array is indexed in all its dimensions
     ----'
-    [E0510] Error: invalid array access
+    [E0510] Error: incomplete subscript
         ,-[ file:///test0.st:13:24 ]
         |
      13 |             row := h.m[1];
         |                        |
         |                        `-- this subscript names 1 of the array's 2 dimensions
         |
-        | Note: a multi-dimensional array is indexed in all its dimensions, `m[i, j]` or `m[i][j]`; an array of an array type has rows
+        | Help: subscript every dimension, `m[i, j]` or `m[i][j]`, or declare an array of an array type for rows
+        |
+        | Note: a multi-dimensional array is indexed in all its dimensions
     ----'
     ");
 }
@@ -467,12 +473,12 @@ fn invalid_array_bound_not_constant(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0502] Error: invalid array bounds
+    [E0502] Error: invalid array upper bound
        ,-[ file:///test0.st:3:35 ]
        |
      3 |         VAR n : INT; a : ARRAY[0..n] OF INT; END_VAR
        |                                   |
-       |                                   `-- invalid upper bound value for ARRAY
+       |                                   `-- the upper bound is not an integer constant
     ---'
     ");
 }
@@ -488,12 +494,12 @@ fn invalid_too_many_elements_with_constant_bound(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0507] Error: invalid array access
+    [E0507] Error: too many elements in array initializer
        ,-[ file:///test0.st:4:49 ]
        |
      4 |         VAR a : ARRAY[0..K] OF INT := [1, 2, 3, 4]; END_VAR
        |                                                 |
-       |                                                 `-- too many elements in array initializer (expected at most 3)
+       |                                                 `-- the initializer has more elements than the array's 3
     ---'
     ");
 }
@@ -510,7 +516,7 @@ fn invalid_constant_subscript_out_of_constant_bound(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0506] Error: invalid array access
+    [E0506] Error: constant index out of bounds
        ,-[ file:///test0.st:5:22 ]
        |
      5 |             fn1 := a[K + 1];
@@ -559,7 +565,7 @@ END_FUNCTION
        |
      4 | VAR a4 : ARRAY[0..1] OF STRING[4]; a80 : ARRAY[0..1] OF STRING; b4 : ARRAY[0..1] OF STRING[4]; END_VAR
        |                                    ^|^
-       |                                     `--- type is declared by variable 'a80' here
+       |                                     `--- 'a80' is declared here
      5 |     a80 := a4;
        |            ^|
        |             `-- expected 'ARRAY [0..1] OF STRING', got 'ARRAY [0..1] OF STRING[4]'
@@ -569,7 +575,7 @@ END_FUNCTION
        |
      2 | FUNCTION TakeWide : INT VAR_INPUT a : ARRAY[0..1] OF STRING; END_VAR TakeWide := 0; END_FUNCTION
        |                                   |
-       |                                   `-- type is declared by variable 'a' here
+       |                                   `-- 'a' is declared here
        |
      7 |     f := TakeWide(a4);
        |                   ^|

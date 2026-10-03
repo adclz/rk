@@ -18,10 +18,6 @@ impl ErrorCode for YodaCondition {
     fn code(&self) -> &'static str {
         "L0313"
     }
-
-    fn description(&self) -> &'static str {
-        "yoda condition"
-    }
 }
 
 /// Check a single comparison node for literal-on-left pattern.

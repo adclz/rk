@@ -29,7 +29,7 @@ END_FUNCTION
         |
      12 |     fb.x := 42;
         |     ^^|^
-        |       `--- direct mutation of 'fb.x' - instances should own their data
+        |       `--- 'fb.x' is written from outside its instance
         |
         | Note: lint rule: external-mutation
     ----'
@@ -58,7 +58,7 @@ END_FUNCTION
         |
      12 |     obj.x := 42;
         |     ^^|^^
-        |       `---- direct mutation of 'obj.x' - instances should own their data
+        |       `---- 'obj.x' is written from outside its instance
         |
         | Note: lint rule: external-mutation
     ----'

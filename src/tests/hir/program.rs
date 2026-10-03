@@ -26,13 +26,11 @@ END_PROGRAM"#;
        |
      4 |         test: INT;
        |         ^^|^
-       |           `--- type is declared by variable 'test' here
+       |           `--- 'test' is declared here
        |
      7 |     test := ULINT#5;
        |             ^^^|^^^
        |                `----- expected 'INT', got 'ULINT'
-       |                |
-       |                `----- consider explicitly casting with 'ULINT_TO_INT(ULINT#5)'
        |
        | Help: insert explicit cast 'ULINT_TO_INT(ULINT#5)'
     ---'

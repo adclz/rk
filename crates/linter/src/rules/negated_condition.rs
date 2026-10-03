@@ -21,10 +21,6 @@ impl ErrorCode for NegatedCondition {
     fn code(&self) -> &'static str {
         "L0207"
     }
-
-    fn description(&self) -> &'static str {
-        "negated condition"
-    }
 }
 
 /// Check if an IF statement has a negated condition with an ELSE branch.

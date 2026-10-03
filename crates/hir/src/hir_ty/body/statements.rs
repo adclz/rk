@@ -1016,7 +1016,7 @@ impl<'db> StmtsResolverCtx<'db> {
                         all_known = false;
                         ctx.errors.push(
                             crate::check::errors::e15_pragma::PragmaError::UnknownWasmOperand {
-                                name: ident.with_case.text(db).clone(),
+                                name: ident.with_case,
                                 span: ident.get_span(db),
                             }
                             .to_diagnostic(db, ctx.scope.file(db)),

@@ -98,13 +98,11 @@ END_FUNCTION_BLOCK
     |
   8 |         test: INT;
     |         ^^|^
-    |           `--- type is declared by variable 'test' here
+    |           `--- 'test' is declared here
     |
  11 |     test := fn1();
     |             ^^|^^
     |               `---- expected 'INT', got 'BOOL'
-    |               |
-    |               `---- consider explicitly casting with 'BOOL_TO_INT(fn1())'
     |
     | Help: insert explicit cast 'BOOL_TO_INT(fn1())'
 ----'

@@ -332,47 +332,6 @@ impl<'db> ErrorCode for OopError<'db> {
             Self::ImplementationNotPublic { .. } => "E1135",
         }
     }
-
-    fn description(&self) -> &'static str {
-        match self {
-            Self::MultipleExtends { .. } => "syntax",
-            Self::MultipleImplements { .. } => "syntax",
-            Self::ImplementsBeforeExtends { .. } => "syntax",
-            Self::ExtendsFinalPou { .. } => "inheritance violation",
-            Self::ThisOnIncompatiblePou { .. } => "invalid use of SUPER or THIS",
-            Self::SuperOnIncompatiblePou { .. } => "invalid use of SUPER or THIS",
-            Self::SuperButNoExtends { .. } => "invalid use of SUPER or THIS",
-            Self::SuperBodyOnIncompatiblePou { .. } => "invalid use of SUPER or THIS",
-            Self::SuperBodyInMethod { .. } => "invalid use of SUPER or THIS",
-            Self::SuperBodyMultiple { .. } => "invalid use of SUPER or THIS",
-            Self::SuperBodyInLoop { .. } => "invalid use of SUPER or THIS",
-            Self::MissingOverride { .. } => "override violation",
-            Self::EmptyOverride { .. } => "inheritance violation",
-            Self::OverrideFinalMethod { .. } => "override violation",
-            Self::InheritedMemberShadowed { .. } => "inheritance violation",
-            Self::MissingAbstractMethod { .. } => "inheritance violation",
-            Self::AbstractMethodInConcretePou { .. } => "inheritance violation",
-            Self::InstantiatedAbstractPou { .. } => "inheritance violation",
-            Self::UnimplementedInterfaceMethod { .. } => "inheritance violation",
-            Self::AccessSpecNotAllowedInMethodPrototype(_) => "syntax",
-            Self::InterfaceOnlyAllowedAsParam { .. } => "interface type not allowed here",
-            Self::InterfaceParamOnStatefulPou { .. } => "interface type not allowed here",
-            Self::InterfaceNotAllowedInReturn { .. } => "interface type not allowed here",
-            Self::InterfaceNotAllowedNested { .. } => "interface type not allowed here",
-            Self::InterfaceParamNotAssignable { .. } => "interface parameter is not assignable",
-            Self::SignatureParametersCountMismatch { .. } => "method parameter count mismatch",
-            Self::SignatureTypeMismatch { .. } => "method parameter type mismatch",
-            Self::SignatureReturnMismatch { .. } => "method return type mismatch",
-            Self::SignatureNameMismatch { .. } => "method parameter name mismatch",
-            Self::SignatureSectionMismatch { .. } => "method parameter section mismatch",
-            Self::WrongBaseKind { .. } => "base of the wrong kind",
-            Self::SignatureDefaultMismatch { .. } => "method parameter default mismatch",
-            Self::SuperBodyWithoutBaseBody { .. } => "invalid use of SUPER or THIS",
-            Self::SuperCallsAbstract { .. } => "invalid use of SUPER or THIS",
-            Self::AbstractMethodWithBody { .. } => "inheritance violation",
-            Self::ImplementationNotPublic { .. } => "inheritance violation",
-        }
-    }
 }
 
 impl<'db> ToIdeDiagnostic<'db> for OopError<'db> {
@@ -401,7 +360,7 @@ impl<'db> ToIdeDiagnostic<'db> for OopError<'db> {
                 let first = extract(first_extend_span);
 
                 let mut diag = diag()
-                    .message("multiple EXTENDS declarations are not allowed".into())
+                    .message("second EXTENDS clause".into())
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
                     .range(crate::denormalize(db, file, location).unwrap_or_default())
@@ -433,7 +392,7 @@ impl<'db> ToIdeDiagnostic<'db> for OopError<'db> {
                 let first = extract(first_implements_span);
 
                 let mut diag = diag()
-                    .message("multiple IMPLEMENTS declarations are not allowed".into())
+                    .message("second IMPLEMENTS clause".into())
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
                     .range(crate::denormalize(db, file, location).unwrap_or_default())
@@ -463,7 +422,7 @@ impl<'db> ToIdeDiagnostic<'db> for OopError<'db> {
                 let implements_text = extract(implements_span);
 
                 let mut diag = diag()
-                    .message("IMPLEMENTS must be declared after EXTENDS".into())
+                    .message("IMPLEMENTS comes after EXTENDS".into())
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
                     .range(crate::denormalize(db, file, implements_span).unwrap_or_default())
@@ -509,13 +468,13 @@ impl<'db> ToIdeDiagnostic<'db> for OopError<'db> {
                 diag
             }
             Self::ThisOnIncompatiblePou { call_site } => diag()
-                .message("'THIS' is not valid in this context".to_string())
+                .message("'THIS' has no instance to name here".to_string())
                 .range(crate::denormalize(db, file, &call_site.get_span(db)).unwrap_or_default())
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
                 .call(),
             Self::SuperOnIncompatiblePou { call_site } => diag()
-                .message("'SUPER' is not valid in this context".to_string())
+                .message("'SUPER' has no base to name here".to_string())
                 .range(crate::denormalize(db, file, &call_site.get_span(db)).unwrap_or_default())
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
@@ -530,7 +489,7 @@ impl<'db> ToIdeDiagnostic<'db> for OopError<'db> {
                 .desc(self)
                 .call(),
             Self::SuperBodyOnIncompatiblePou { call_site } => diag()
-                .message("'SUPER()' is not valid in this context".to_string())
+                .message("'SUPER()' has no base body to run here".to_string())
                 .range(crate::denormalize(db, file, &call_site.get_span(db)).unwrap_or_default())
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
@@ -546,16 +505,12 @@ impl<'db> ToIdeDiagnostic<'db> for OopError<'db> {
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
                     .call();
-                diag.with_note(
-                    "SUPER() is only valid in the function block body, not in a method".into(),
-                );
+                diag.with_note("SUPER() runs the base body from the function block body".into());
                 diag
             }
             Self::SuperBodyMultiple { call_site, first } => {
                 let mut diag = diag()
-                    .message(
-                        "'SUPER()' may only be called once in a function block body".to_string(),
-                    )
+                    .message("'SUPER()' is called a second time".to_string())
                     .range(
                         crate::denormalize(db, file, &call_site.get_span(db)).unwrap_or_default(),
                     )
@@ -606,7 +561,7 @@ impl<'db> ToIdeDiagnostic<'db> for OopError<'db> {
             Self::EmptyOverride { base_method } => {
                 let mut diag = diag()
                     .message(format!(
-                        "invalid usage of OVERRIDE for method '{}'",
+                        "method '{}' overrides nothing",
                         base_method.get_name_with_case(db).text(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
@@ -749,7 +704,7 @@ impl<'db> ToIdeDiagnostic<'db> for OopError<'db> {
                     pou.get_scope_id(db).file(db),
                     pou.get_name_span(db),
                 ));
-                diag.with_note("use a derived type that implements it".into());
+                diag.with_help("use a derived type that implements it".into());
                 diag
             }
             Self::UnimplementedInterfaceMethod {
@@ -818,14 +773,15 @@ impl<'db> ToIdeDiagnostic<'db> for OopError<'db> {
 
                 diag.with_related(Related::new(
                     format!(
-                        "interface '{}' is defined here",
+                        "interface '{}' is declared here",
                         interface.get_name_with_case(db).text(db)
                     ),
                     interface.get_scope_id(db).file(db),
                     interface.get_name_span(db),
                 ));
                 diag.with_note(
-                    "interfaces are supported only as VAR_INPUT or VAR_IN_OUT parameters".into(),
+                    "an interface is a VAR_INPUT or VAR_IN_OUT parameter of a FUNCTION or METHOD"
+                        .into(),
                 );
                 diag
             }
@@ -838,15 +794,21 @@ impl<'db> ToIdeDiagnostic<'db> for OopError<'db> {
                     VariableKind::InOut => "VAR_IN_OUT",
                     _ => "VAR_INPUT",
                 };
-                diag()
+                let mut diag = diag()
                     .message(format!(
-                        "interface '{}' cannot be a {pou_kind} {section}: the instance would store it across calls; interface parameters exist on FUNCTION and METHOD only",
+                        "interface '{}' cannot be a {pou_kind} {section}",
                         interface.get_name_with_case(db).text(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(crate::denormalize(db, file, &var.get_span(db)).unwrap_or_default())
-                    .call()
+                    .range(
+                        crate::denormalize(db, file, &var.spec(db).get_span(db))
+                            .unwrap_or_default(),
+                    )
+                    .call();
+                diag.with_note("the instance would store it across calls".to_string());
+                diag.with_help("take it as a parameter of a FUNCTION or METHOD".to_string());
+                diag
             }
             Self::InterfaceNotAllowedInReturn { interface, spec } => {
                 let mut diag = diag()
@@ -861,14 +823,15 @@ impl<'db> ToIdeDiagnostic<'db> for OopError<'db> {
 
                 diag.with_related(Related::new(
                     format!(
-                        "interface '{}' is defined here",
+                        "interface '{}' is declared here",
                         interface.get_name_with_case(db).text(db)
                     ),
                     interface.get_scope_id(db).file(db),
                     interface.get_name_span(db),
                 ));
                 diag.with_note(
-                    "interfaces are supported only as VAR_INPUT or VAR_IN_OUT parameters".into(),
+                    "an interface is a VAR_INPUT or VAR_IN_OUT parameter of a FUNCTION or METHOD"
+                        .into(),
                 );
                 diag
             }
@@ -885,14 +848,14 @@ impl<'db> ToIdeDiagnostic<'db> for OopError<'db> {
 
                 diag.with_related(Related::new(
                     format!(
-                        "interface '{}' is defined here",
+                        "interface '{}' is declared here",
                         interface.get_name_with_case(db).text(db)
                     ),
                     interface.get_scope_id(db).file(db),
                     interface.get_name_span(db),
                 ));
                 diag.with_note(
-                    "an interface may only appear directly as a VAR_INPUT or VAR_IN_OUT parameter"
+                    "an interface is a VAR_INPUT or VAR_IN_OUT parameter of a FUNCTION or METHOD"
                         .into(),
                 );
                 diag
@@ -911,7 +874,10 @@ impl<'db> ToIdeDiagnostic<'db> for OopError<'db> {
                     var.get_scope_id(db).file(db),
                     var.get_name_span(db),
                 ));
-                diag.with_note("an interface parameter is a fixed binding to the concrete type passed by the caller; it can be used (methods called, passed on) but not reassigned".into());
+                diag.with_note(
+                    "an interface parameter stays bound to the type the caller passed".into(),
+                );
+                diag.with_help("call its methods, or pass it on".into());
                 diag
             }
             Self::SignatureParametersCountMismatch {
@@ -922,10 +888,10 @@ impl<'db> ToIdeDiagnostic<'db> for OopError<'db> {
             } => {
                 let mut diag = diag()
                     .message(format!(
-                        "invalid number of parameters for method '{}': expected {}, got {}",
+                        "method '{}' declares {} parameters, not {}",
                         m1.get_name_with_case(db).text(db),
-                        expected,
-                        got
+                        got,
+                        expected
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
@@ -1155,17 +1121,17 @@ impl<'db> ToIdeDiagnostic<'db> for OopError<'db> {
                     base_param.get_name_span(db),
                 ));
                 diag.with_note(
-                    "a call passes the default of the method it names, so through the base or \
-                     an INTERFACE this one would not apply"
+                    "a call through the base or an INTERFACE passes that method's default, not the implementation's"
                         .into(),
                 );
+                diag.with_help("give both the same default".into());
                 diag
             }
             Self::SuperBodyWithoutBaseBody { base, call_site } => {
                 let base_name = base.get_name_with_case(db).text(db).to_string();
                 let mut diag = diag()
                     .message(format!(
-                        "SUPER() runs the base's body, and CLASS '{base_name}' has none"
+                        "SUPER() runs the base's body, but CLASS '{base_name}' has none"
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
@@ -1178,20 +1144,18 @@ impl<'db> ToIdeDiagnostic<'db> for OopError<'db> {
                     base.get_scope_id(db).file(db),
                     base.get_name_span(db),
                 ));
-                diag.with_note("its methods are reached with SUPER.Method()".into());
+                diag.with_help("reach its methods with SUPER.Method()".into());
                 diag
             }
             Self::SuperCallsAbstract { method, call_site } => {
                 let name = method.get_name_with_case(db).text(db).to_string();
-                let why = if method.is_prototype() {
-                    "which the base takes from an INTERFACE without implementing it"
+                let what = if method.is_prototype() {
+                    "a method the base takes from an INTERFACE without implementing it"
                 } else {
-                    "which is ABSTRACT"
+                    "an ABSTRACT method"
                 };
                 let mut diag = diag()
-                    .message(format!(
-                        "SUPER.{name}() calls the base's '{name}', {why}: it has no body to run"
-                    ))
+                    .message(format!("SUPER.{name}() calls {what}, with no body to run"))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
                     .range(
@@ -1217,10 +1181,8 @@ impl<'db> ToIdeDiagnostic<'db> for OopError<'db> {
                         crate::denormalize(db, file, &method.get_name_span(db)).unwrap_or_default(),
                     )
                     .call();
-                diag.with_note(
-                    "a derived block implements it; without ABSTRACT, this body is the method's"
-                        .into(),
-                );
+                diag.with_note("a derived block implements an ABSTRACT method".into());
+                diag.with_help("remove ABSTRACT to keep this body".into());
                 diag
             }
             Self::ImplementationNotPublic { method, interface } => {

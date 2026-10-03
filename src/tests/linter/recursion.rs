@@ -39,7 +39,7 @@ END_FUNCTION
        |                                ^^|^^
        |                                  `---- 'SumTo' calls itself
        |
-       | Note 1: each call gets its own frame on the stack, and too deep a recursion stops the program
+       | Note 1: each call gets its own frame on the stack, so too deep a recursion stops the program
        |
        | Note 2: lint rule: recursion
     ---'
@@ -50,7 +50,7 @@ END_FUNCTION
        |                           ^^|^
        |                             `--- 'Ping' calls itself through 'Pong'
        |
-       | Note 1: each call gets its own frame on the stack, and too deep a recursion stops the program
+       | Note 1: each call gets its own frame on the stack, so too deep a recursion stops the program
        |
        | Note 2: lint rule: recursion
     ---'
@@ -61,7 +61,7 @@ END_FUNCTION
         |             ^^|^
         |               `--- 'Pong' calls itself through 'Ping'
         |
-        | Note 1: each call gets its own frame on the stack, and too deep a recursion stops the program
+        | Note 1: each call gets its own frame on the stack, so too deep a recursion stops the program
         |
         | Note 2: lint rule: recursion
     ----'

@@ -23,10 +23,6 @@ impl ErrorCode for MissingReturn {
     fn code(&self) -> &'static str {
         "L0114"
     }
-
-    fn description(&self) -> &'static str {
-        "missing return assignment"
-    }
 }
 
 /// Called by the stmt_visitor for each assignment: whether it writes the

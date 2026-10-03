@@ -32,10 +32,11 @@ fn render_codegen_error(
         .severity(DiagnosticSeverity::ERROR)
         .source("codegen".to_string())
         .call();
-    diagnostic.with_note(format!(
-        "the workspace passed `rk check`; this is a compiler bug or an \
-         unimplemented construct; please report it at {ISSUES_URL}"
-    ));
+    diagnostic.with_note(
+        "the workspace passed `rk check`: this is a compiler bug or an unimplemented construct"
+            .to_string(),
+    );
+    diagnostic.with_help(format!("report it at {ISSUES_URL}"));
 
     let mut buffer: Vec<u8> = Vec::new();
     DiagnosticReporter::new(db, workspace)
@@ -135,10 +136,10 @@ pub fn build_core_profile(
                 }
                 None => {
                     ui::error(format!(
-                        "internal compiler error: {e}; please report it at {ISSUES_URL}"
+                        "internal compiler error: {e} (report it at {ISSUES_URL})"
                     ));
                     Err(format!(
-                        "internal compiler error: {e}; please report it at {ISSUES_URL}"
+                        "internal compiler error: {e} (report it at {ISSUES_URL})"
                     ))
                 }
             };
@@ -188,9 +189,7 @@ pub fn build_core_quiet(
         // Same ICE rendering as `build_core`, returned rather than printed.
         render_codegen_error(db, workspace, &e, crate::cli::OutputFormat::Full)
             .map(|report| format!("{report}\ninternal compiler error: cannot compile.\n"))
-            .unwrap_or_else(|| {
-                format!("internal compiler error: {e}; please report it at {ISSUES_URL}")
-            })
+            .unwrap_or_else(|| format!("internal compiler error: {e} (report it at {ISSUES_URL})"))
     })?;
     let wasm_module = wasm_codegen::generate_wasm(db, &mir_module);
     Ok((wasm_module.finish(), mir_module))
@@ -247,7 +246,7 @@ pub fn optimize_wasm_release(
     // input unchanged. For a release that signal becomes an error...
     if optimized == original {
         return Err(
-            "wasm-opt did not produce an optimized module; a release build requires it.
+            "wasm-opt did not produce an optimized module, and a release build requires one.
                     Install Binaryen 119+ (CI pins 131) and ensure `wasm-opt` is on PATH."
                 .to_string(),
         );
@@ -342,15 +341,15 @@ pub fn optimize_wasm(wasm_bytes: Vec<u8>, opt_level: Option<&str>, verbose: bool
         Ok(bytes) if bytes.starts_with(b"\0asm") => bytes,
         Ok(bytes) => {
             ui::warn(format!(
-                "the optimizer produced {} bytes that are not a wasm module; keeping the \
-                 unoptimized build",
+                "the optimizer produced {} bytes that are not a wasm module: the build stays \
+                 unoptimized",
                 bytes.len()
             ));
             return wasm_bytes;
         }
         Err(e) => {
             ui::warn(format!(
-                "could not read the optimizer's output ({e}); keeping the unoptimized build"
+                "could not read the optimizer's output ({e}): the build stays unoptimized"
             ));
             return wasm_bytes;
         }

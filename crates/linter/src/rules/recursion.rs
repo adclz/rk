@@ -25,10 +25,6 @@ impl ErrorCode for Recursion {
     fn code(&self) -> &'static str {
         "L0122"
     }
-
-    fn description(&self) -> &'static str {
-        "recursive call"
-    }
 }
 
 pub fn check<'db>(
@@ -82,7 +78,7 @@ pub fn check<'db>(
             .severity(DiagnosticSeverity::WARNING)
             .call();
         d.with_note(
-            "each call gets its own frame on the stack, and too deep a recursion stops the program"
+            "each call gets its own frame on the stack, so too deep a recursion stops the program"
                 .to_string(),
         );
         diagnostics.push(d);

@@ -225,12 +225,14 @@ FUNCTION_BLOCK fb1
     END_VAR
 END_FUNCTION_BLOCK"#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0306] Error: invalid literal
+    [E0306] Error: literal out of range
        ,-[ file:///test0.st:4:21 ]
        |
      4 |         x : TIME := T#100d;
        |                     ^^^|^^
-       |                        `---- cannot infer 'TIME literal' to 'TIME': TIME value exceeds the supported maximum; TIME holds T#-24d20h31m23s648ms to T#24d20h31m23s647ms
+       |                        `---- TIME value exceeds the supported maximum
+       |
+       | Note: TIME holds T#-24d20h31m23s648ms to T#24d20h31m23s647ms
     ---'
     ");
 }
@@ -244,12 +246,14 @@ FUNCTION_BLOCK fb1
     END_VAR
 END_FUNCTION_BLOCK"#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0306] Error: invalid literal
+    [E0306] Error: literal out of range
        ,-[ file:///test0.st:4:21 ]
        |
      4 |         x : TIME := T#-100d;
        |                     ^^^|^^^
-       |                        `----- cannot infer 'TIME literal' to 'TIME': TIME value is below the supported minimum; TIME holds T#-24d20h31m23s648ms to T#24d20h31m23s647ms
+       |                        `----- TIME value is below the supported minimum
+       |
+       | Note: TIME holds T#-24d20h31m23s648ms to T#24d20h31m23s647ms
     ---'
     ");
 }
@@ -276,12 +280,14 @@ FUNCTION_BLOCK fb1
     END_VAR
 END_FUNCTION_BLOCK"#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0306] Error: invalid literal
+    [E0306] Error: literal out of range
        ,-[ file:///test0.st:4:22 ]
        |
      4 |         x : LTIME := LT#9999999d;
        |                      ^^^^^|^^^^^
-       |                           `------- cannot infer 'LTIME literal' to 'LTIME': LTIME value exceeds the supported maximum; LTIME holds LT#-106751d23h47m16s854ms775us808ns to LT#106751d23h47m16s854ms775us807ns
+       |                           `------- LTIME value exceeds the supported maximum
+       |
+       | Note: LTIME holds LT#-106751d23h47m16s854ms775us808ns to LT#106751d23h47m16s854ms775us807ns
     ---'
     ");
 }
@@ -295,18 +301,20 @@ FUNCTION_BLOCK fb1
     END_VAR
 END_FUNCTION_BLOCK"#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0306] Error: invalid literal
+    [E0306] Error: literal out of range
        ,-[ file:///test0.st:4:22 ]
        |
      4 |         x : LTIME := LT#-9999999d;
        |                      ^^^^^^|^^^^^
-       |                            `------- cannot infer 'LTIME literal' to 'LTIME': LTIME value is below the supported minimum; LTIME holds LT#-106751d23h47m16s854ms775us808ns to LT#106751d23h47m16s854ms775us807ns
+       |                            `------- LTIME value is below the supported minimum
+       |
+       | Note: LTIME holds LT#-106751d23h47m16s854ms775us808ns to LT#106751d23h47m16s854ms775us807ns
     ---'
     ");
 }
 
 // A bad unit used to shred into an identifier at the CST (`y` reported as
-// E0201 "no item found in scope" plus a syntax error). The value now lexes
+// E0201 "unknown name" plus a syntax error). The value now lexes
 // liberally and the HIR names the unit.
 #[rstest]
 fn invalid_duration_unit_diagnostic(mut with_db: RootDatabase) {
@@ -317,12 +325,14 @@ FUNCTION_BLOCK fb1
     END_VAR
 END_FUNCTION_BLOCK"#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0309] Error: invalid literal
+    [E0309] Error: malformed duration
        ,-[ file:///test0.st:4:21 ]
        |
      4 |         x : TIME := T#2y;
        |                     ^^|^
-       |                       `--- cannot infer 'TIME literal' to 'TIME': 'y' is not a valid duration unit: use d, h, m, s, ms, us or ns; TIME is written T#1d2h3m4s5ms
+       |                       `--- 'y' is not a duration unit (d, h, m, s, ms, us, ns)
+       |
+       | Note: TIME is written T#1d2h3m4s5ms
     ---'
     ");
 }
@@ -336,12 +346,14 @@ FUNCTION_BLOCK fb1
     END_VAR
 END_FUNCTION_BLOCK"#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0309] Error: invalid literal
+    [E0309] Error: malformed duration
        ,-[ file:///test0.st:4:22 ]
        |
      4 |         x : LTIME := LT#292y;
        |                      ^^^|^^^
-       |                         `----- cannot infer 'LTIME literal' to 'LTIME': 'y' is not a valid duration unit: use d, h, m, s, ms, us or ns; LTIME is written LT#1d2h3m4s5ms
+       |                         `----- 'y' is not a duration unit (d, h, m, s, ms, us, ns)
+       |
+       | Note: LTIME is written LT#1d2h3m4s5ms
     ---'
     ");
 }
@@ -357,12 +369,14 @@ FUNCTION_BLOCK fb1
     END_VAR
 END_FUNCTION_BLOCK"#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0309] Error: invalid literal
+    [E0309] Error: malformed duration
        ,-[ file:///test0.st:4:21 ]
        |
      4 |         x : TIME := T#5;
        |                     ^|^
-       |                      `--- cannot infer 'TIME literal' to 'TIME': a TIME component is missing its unit: use d, h, m, s, ms, us or ns; TIME is written T#1d2h3m4s5ms
+       |                      `--- a TIME component has no unit (d, h, m, s, ms, us, ns)
+       |
+       | Note: TIME is written T#1d2h3m4s5ms
     ---'
     ");
 }
@@ -376,12 +390,14 @@ FUNCTION_BLOCK fb1
     END_VAR
 END_FUNCTION_BLOCK"#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0309] Error: invalid literal
+    [E0309] Error: malformed duration
        ,-[ file:///test0.st:4:21 ]
        |
      4 |         x : TIME := T#1h30;
        |                     ^^^|^^
-       |                        `---- cannot infer 'TIME literal' to 'TIME': a TIME component is missing its unit: use d, h, m, s, ms, us or ns; TIME is written T#1d2h3m4s5ms
+       |                        `---- a TIME component has no unit (d, h, m, s, ms, us, ns)
+       |
+       | Note: TIME is written T#1d2h3m4s5ms
     ---'
     ");
 }

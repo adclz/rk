@@ -21,12 +21,12 @@ fn a_label_survives_a_non_ascii_character_before_it(mut with_db: db::RootDatabas
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0808] Error: multibit access out of range
+    [E1429] Error: partial access out of range
        ,-[ file:///test0.st:7:18 ]
        |
      5 |             b : BYTE;
-       |             ^^^^|^^^
-       |                 `----- 'b' is declared here
+       |             |
+       |             `-- 'b' is declared here
        |
      7 |             f := b.8;
        |                  |

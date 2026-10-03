@@ -513,8 +513,8 @@ fn report_called_by_program<'db>(
                     ConfigError::ProgElementRefused {
                         expr: *path,
                         why: ProgElementRefusal::CalledByProgram {
-                            var: member.name_with_case(db).text(db).clone(),
-                            program: program.name_with_case(db).text(db).clone(),
+                            var: member.name_with_case(db),
+                            program: program.name_with_case(db),
                             call: crate::CallSite::from_scoped(db, &call),
                         },
                     }
@@ -768,10 +768,10 @@ fn time_literal_nanos<'db>(
 /// Where a VAR_CONFIG location entry stands after the checks that do not
 /// look at the workspace's other addresses.
 #[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
-pub enum EntryLocation {
+pub enum EntryLocation<'db> {
     /// A complete address in the variable's area, as wide as its type.
     Given(LocatedAddress),
-    Refused(crate::check::errors::e14_config::ConfigLocationRefusal),
+    Refused(crate::check::errors::e14_config::ConfigLocationRefusal<'db>),
 }
 
 /// A VAR_CONFIG entry whose path resolves.
@@ -786,7 +786,7 @@ pub struct ConfigEntry<'db> {
     /// The `AT` it gives, with how it stands.
     pub location: Option<(
         crate::hir_def::pous::variable::DirectVariable<'db>,
-        EntryLocation,
+        EntryLocation<'db>,
     )>,
     pub init: Option<crate::hir_def::expressions::expression::InitExpr<'db>>,
 }
@@ -961,9 +961,9 @@ pub fn resolve_config_entries<'db>(
                     ConfigError::ConfigEntryRefused {
                         expr: decl.path,
                         why: ConfigEntryRefusal::TypeMismatch {
-                            var: var.name_with_case(db).text(db).clone(),
-                            written: compact_str::CompactString::from(written.type_name(db)),
-                            declared: compact_str::CompactString::from(declared.type_name(db)),
+                            var: var.name_with_case(db),
+                            written,
+                            declared,
                         },
                     }
                     .to_diagnostic(db, file),
@@ -1136,7 +1136,7 @@ pub fn prog_elements<'db>(
                     continue;
                 };
                 out.names.insert(path, var);
-                let name = var.name_with_case(db).text(db).clone();
+                let name = var.name_with_case(db);
                 let refusal = match element {
                     ProgConfElement::Connection(ProgCnxn::Source { source, .. }) => {
                         if !var.is_input(db) {
@@ -1187,7 +1187,7 @@ pub fn prog_elements<'db>(
                             None
                         } else {
                             Some(ProgElementRefusal::UnknownTask {
-                                task: fb.task.with_case.text(db).clone(),
+                                task: fb.task.with_case,
                             })
                         }
                     }
@@ -1208,7 +1208,7 @@ pub fn prog_elements<'db>(
             };
             for (var, path, fb) in &named {
                 if twice(var, *fb) {
-                    let var = var.name_with_case(db).text(db).clone();
+                    let var = var.name_with_case(db);
                     let why = if *fb {
                         ProgElementRefusal::AssociatedTwice { var }
                     } else {
@@ -1327,7 +1327,7 @@ fn connected_global<'db>(
     let var =
         crate::hir_ty::index_graphs::external_var_lookup(db, ident.ident(db)).ok_or_else(|| {
             ProgElementRefusal::NoSuchGlobal {
-                name: ident.with_case.text(db).clone(),
+                name: ident.with_case,
             }
         })?;
     names.insert(global, var);
@@ -1346,8 +1346,7 @@ fn check_connected<'db>(
     if declared.is_never() {
         return Ok(()); // already diagnosed
     }
-    let name = var.name_with_case(db).text(db).clone();
-    let declared_name = compact_str::CompactString::from(declared.type_name(db));
+    let name = var.name_with_case(db);
     match end {
         ConnectionEnd::Constant(_) => Ok(()),
         ConnectionEnd::Global(global) => {
@@ -1357,9 +1356,9 @@ fn check_connected<'db>(
             }
             Err(ProgElementRefusal::TypeMismatch {
                 var: name,
-                declared: declared_name,
-                global: global.name_with_case(db).text(db).clone(),
-                ty: compact_str::CompactString::from(ty.type_name(db)),
+                declared,
+                global: global.name_with_case(db),
+                ty,
             })
         }
         ConnectionEnd::Address(address) => {
@@ -1370,7 +1369,7 @@ fn check_connected<'db>(
             }
             Err(ProgElementRefusal::WidthMismatch {
                 var: name,
-                declared: declared_name,
+                declared,
                 address: address.text.clone(),
                 bits: address.width,
             })
@@ -1562,7 +1561,7 @@ fn check_config_entries<'db>(
                 (Some(why), _) => errors.push(
                     ConfigError::ConfigLocationRefused {
                         expr: entry.path,
-                        var: var.name_with_case(db).text(db).clone(),
+                        var: var.name_with_case(db),
                         address: compact_str::CompactString::from(dv.to_address(db)),
                         why,
                     }
@@ -1614,7 +1613,7 @@ fn check_config_value<'db>(
         errors.push(refuse(ConfigEntryRefusal::ProgramValue));
         return None;
     };
-    let var_name = var.name_with_case(db).text(db).clone();
+    let var_name = var.name_with_case(db);
     let same_instance = |o: &ConfigEntry<'db>| o.instance == entry.instance;
     // Every such entry is reported, since fragments have no order.
     let twice = all.iter().any(|o| {
@@ -1712,7 +1711,7 @@ fn check_config_location<'db>(
     db: &'db dyn WorkspaceDataBase,
     var: VariableDecl<'db>,
     dv: crate::hir_def::pous::variable::DirectVariable<'db>,
-) -> Result<LocatedAddress, crate::check::errors::e14_config::ConfigLocationRefusal> {
+) -> Result<LocatedAddress, crate::check::errors::e14_config::ConfigLocationRefusal<'db>> {
     use crate::check::errors::e14_config::ConfigLocationRefusal as Refusal;
     let declared_at = match var.location(db) {
         Some(declared) if var.is_partly_located(db) => declared,
@@ -1738,7 +1737,7 @@ fn check_config_location<'db>(
         return Err(Refusal::Width {
             address_bits: usize::from(address.width),
             declared_bits,
-            declared: compact_str::CompactString::from(declared.type_name(db)),
+            declared,
         });
     }
     Ok(address)
@@ -1784,11 +1783,6 @@ fn check_partly_located_coverage<'db>(
                 if located {
                     continue;
                 }
-                let mut text = instance.with_case.text(db).to_string();
-                for member in &path {
-                    text.push('.');
-                    text.push_str(member.name_with_case(db).text(db));
-                }
                 let address = path
                     .last()
                     .and_then(|v| v.location(db))
@@ -1797,7 +1791,7 @@ fn check_partly_located_coverage<'db>(
                 result.errors.push(
                     ConfigError::PartlyLocatedUnlocated(PartlyUnlocated::Missing {
                         instance,
-                        path: compact_str::CompactString::from(text),
+                        path: path.iter().map(|v| v.name_with_case(db)).collect(),
                         address: compact_str::CompactString::from(address),
                     })
                     .to_diagnostic(db, config.get_scope_id(db).file(db)),

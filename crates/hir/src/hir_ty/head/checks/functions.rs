@@ -59,7 +59,9 @@ impl<'db> InitInference<'db> {
                 .first()
                 .and_then(|path| {
                     Some((
-                        path.iter().map(|m| m.name(db)).collect::<Vec<_>>(),
+                        path.iter()
+                            .map(|m| m.name_with_case(db))
+                            .collect::<Vec<_>>(),
                         *path.last()?,
                     ))
                 }),
@@ -72,17 +74,12 @@ impl<'db> InitInference<'db> {
         let Some((names, member)) = held else {
             return;
         };
-        let member_path = names
-            .iter()
-            .map(|n| n.text(db).to_string())
-            .collect::<Vec<_>>()
-            .join(".");
         self.errors.push(
             ConfigError::PartlyLocatedUnlocated(PartlyUnlocated::Returned {
                 ret: *ret,
                 callable,
-                ty: compact_str::CompactString::from(returned.type_name(db)),
-                member: compact_str::CompactString::from(member_path),
+                ty: returned,
+                member: names,
                 address: compact_str::CompactString::from(
                     member
                         .location(db)

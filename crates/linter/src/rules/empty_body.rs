@@ -23,10 +23,6 @@ impl ErrorCode for EmptyBody {
     fn code(&self) -> &'static str {
         "L0305"
     }
-
-    fn description(&self) -> &'static str {
-        "empty body"
-    }
 }
 
 pub fn check<'db>(

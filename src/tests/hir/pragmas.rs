@@ -48,8 +48,8 @@ END_FUNCTION"#;
        ,-[ file:///test0.st:4:12 ]
        |
      4 | VAR_IN_OUT buf : INT; END_VAR
-       |            ^^^^|^^^^
-       |                `------ VAR_IN_OUT 'buf' cannot cross a WASM import: an extern takes copies, not references
+       |            ^|^
+       |             `--- VAR_IN_OUT 'buf' cannot cross a WASM import: an extern takes copies, not references
        |
        | Note: an extern FUNCTION receives VAR_INPUT copies and returns scalar VAR_OUTPUT results (the return value last)
     ---'
@@ -72,8 +72,8 @@ END_FUNCTION"#;
        ,-[ file:///test0.st:6:12 ]
        |
      6 | VAR_OUTPUT p : Pt; s : STRING; END_VAR
-       |            ^^^|^^
-       |               `---- VAR_OUTPUT 'p' cannot be a WASM result: only scalar outputs cross an import
+       |            |
+       |            `-- VAR_OUTPUT 'p' cannot be a WASM result: only scalar outputs cross an import
        |
        | Note: return scalars, or split the aggregate into scalar outputs
     ---'
@@ -81,8 +81,8 @@ END_FUNCTION"#;
        ,-[ file:///test0.st:6:20 ]
        |
      6 | VAR_OUTPUT p : Pt; s : STRING; END_VAR
-       |                    ^^^^^|^^^^
-       |                         `------ VAR_OUTPUT 's' cannot be a WASM result: only scalar outputs cross an import
+       |                    |
+       |                    `-- VAR_OUTPUT 's' cannot be a WASM result: only scalar outputs cross an import
        |
        | Note: return scalars, or split the aggregate into scalar outputs
     ---'
@@ -107,7 +107,7 @@ END_FUNCTION"#;
        |     ^^^^|^^^^
        |         `------ an extern FUNCTION has no statements
        |
-       | Note: FUNCTIONs marked with {extern} act as external calls, they can not have a body
+       | Note: an {extern} FUNCTION is an import: the host has its body
     ---'
     ");
 }
@@ -130,7 +130,7 @@ END_FUNCTION_BLOCK"#;
        | ^^^^^^^^^^^|^^^^^^^^^^
        |            `------------ an {extern} pragma cannot be placed on a FUNCTION_BLOCK
        |
-       | Note: {extern} pragmas can ony be used with FUNCTION
+       | Note: only a FUNCTION can be {extern}
     ---'
     ");
 }
@@ -168,14 +168,16 @@ VAR x : INT; END_VAR
 END_FUNCTION"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1007] Error: access control violation
+    [E1007] Error: access to a test-only item
        ,-[ file:///test0.st:9:10 ]
        |
      9 |     x := test_helper();
        |          ^^^^^|^^^^^
-       |               `------- can not access test item 'test_helper'
+       |               `------- cannot access test item 'test_helper'
        |
-       | Note: a {test} FUNCTION is the test runner's entry point, not a callable; for code shared between tests, write a FUNCTION without the pragma
+       | Help: for code shared between tests, write a FUNCTION without the pragma
+       |
+       | Note: a {test} FUNCTION is the test runner's entry point, not a callable
     ---'
     ");
 }
@@ -193,14 +195,16 @@ VAR x : INT; END_VAR
 END_FUNCTION"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1007] Error: access control violation
+    [E1007] Error: access to a test-only item
        ,-[ file:///test0.st:8:10 ]
        |
      8 |     x := test_only();
        |          ^^^^|^^^^
-       |              `------ can not access test item 'test_only'
+       |              `------ cannot access test item 'test_only'
        |
-       | Note: a {test} FUNCTION is the test runner's entry point, not a callable; for code shared between tests, write a FUNCTION without the pragma
+       | Help: for code shared between tests, write a FUNCTION without the pragma
+       |
+       | Note: a {test} FUNCTION is the test runner's entry point, not a callable
     ---'
     ");
 }
@@ -219,7 +223,7 @@ fn invalid_unknown_wasm_instruction(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1505] Error: invalid wasm pragma
+    [E1505] Error: unknown wasm instruction
        ,-[ file:///test0.st:4:19 ]
        |
      4 |             {wasm 'not.a.real.instruction' (params a b) (result BOGUS)}
@@ -238,7 +242,7 @@ fn invalid_unknown_wasm_instruction_with_type_basis(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1505] Error: invalid wasm pragma
+    [E1505] Error: unknown wasm instruction
        ,-[ file:///test0.st:4:21 ]
        |
      4 |             {wasm a 'zorble' (params a) (result BOGUS)}
@@ -261,7 +265,7 @@ fn invalid_wasm_operand_not_declared(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1506] Error: invalid wasm pragma
+    [E1506] Error: wasm operand not declared
        ,-[ file:///test0.st:4:38 ]
        |
      4 |             {wasm 'f32.sqrt' (params b) (result Root)}
@@ -280,7 +284,7 @@ fn invalid_wasm_result_on_a_function_without_a_return(mut with_db: RootDatabase)
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1506] Error: invalid wasm pragma
+    [E1506] Error: wasm operand not declared
        ,-[ file:///test0.st:4:49 ]
        |
      4 |             {wasm 'f32.sqrt' (params a) (result Root)}
@@ -316,12 +320,12 @@ fn invalid_wasm_operand_in_the_wrong_lane(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1507] Error: invalid wasm pragma
+    [E1507] Error: wasm operands of the wrong type
        ,-[ file:///test0.st:4:19 ]
        |
      4 |             {wasm 'f32.nearest' (params IN) (result NEAREST)}
        |                   ^^^^^^|^^^^^^
-       |                         `-------- 'f32.nearest' takes (f32) -> f32; this pragma gives it (IN: DINT (i32)) -> NEAREST: DINT (i32)
+       |                         `-------- 'f32.nearest' takes (f32) -> f32, not (IN: DINT (i32)) -> NEAREST: DINT (i32)
     ---'
     ");
 }
@@ -335,12 +339,12 @@ fn invalid_wasm_operand_count(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1507] Error: invalid wasm pragma
+    [E1507] Error: wasm operands of the wrong type
        ,-[ file:///test0.st:4:19 ]
        |
      4 |             {wasm 'f32.sqrt' (params a b) (result ROOT)}
        |                   ^^^^^|^^^^
-       |                        `------ 'f32.sqrt' takes (f32) -> f32; this pragma gives it (a: REAL (f32), b: REAL (f32)) -> ROOT: REAL (f32)
+       |                        `------ 'f32.sqrt' takes (f32) -> f32, not (a: REAL (f32), b: REAL (f32)) -> ROOT: REAL (f32)
     ---'
     ");
 }
@@ -357,12 +361,12 @@ fn invalid_wasm_result_in_the_wrong_lane(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1507] Error: invalid wasm pragma
+    [E1507] Error: wasm operands of the wrong type
        ,-[ file:///test0.st:4:19 ]
        |
      4 |             {wasm 'i32.trunc_sat_f32_s' (params IN) (result TRUNCATE)}
        |                   ^^^^^^^^^^|^^^^^^^^^^
-       |                             `------------ 'i32.trunc_sat_f32_s' takes (f32) -> i32; this pragma gives it (IN: REAL (f32)) -> TRUNCATE: REAL (f32)
+       |                             `------------ 'i32.trunc_sat_f32_s' takes (f32) -> i32, not (IN: REAL (f32)) -> TRUNCATE: REAL (f32)
     ---'
     ");
 }
@@ -381,12 +385,12 @@ fn invalid_wasm_string_operand_on_a_numeric_instruction(mut with_db: RootDatabas
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1507] Error: invalid wasm pragma
+    [E1507] Error: wasm operands of the wrong type
        ,-[ file:///test0.st:9:19 ]
        |
      9 |             {wasm 'f32.sqrt' (params s) (result ROOT)}
        |                   ^^^^^|^^^^
-       |                        `------ 'f32.sqrt' takes (f32) -> f32; this pragma gives it (s: STRING (i32, i32)) -> ROOT: REAL (f32)
+       |                        `------ 'f32.sqrt' takes (f32) -> f32, not (s: STRING (i32, i32)) -> ROOT: REAL (f32)
     ---'
     ");
 }
@@ -401,7 +405,7 @@ fn invalid_wasm_type_basis_without_a_form(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1505] Error: invalid wasm pragma
+    [E1505] Error: unknown wasm instruction
        ,-[ file:///test0.st:4:22 ]
        |
      4 |             {wasm IN 'shl' (params IN N) (result SHIFT)}
@@ -454,12 +458,12 @@ fn invalid_wasm_pragma_outside_function(mut with_db: RootDatabase) {
         END_FUNCTION_BLOCK
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1504] Error: invalid wasm pragma
+    [E1504] Error: wasm pragma outside a FUNCTION
        ,-[ file:///test0.st:5:19 ]
        |
      5 |             {wasm 'i32.shl' (params a a) (result o)}
        |                   ^^^^|^^^^
-       |                       `------ a {wasm} body is only available on a FUNCTION; here the pragma would be silently dropped
+       |                       `------ a {wasm} body is only available on a FUNCTION
     ---'
     ");
 }
@@ -638,7 +642,7 @@ END_FUNCTION_BLOCK
        | ^^^^|^^^
        |     `----- an {export} pragma cannot be placed on a FUNCTION_BLOCK
        |
-       | Note: {export} pragmas can only be used with FUNCTION
+       | Note: only a FUNCTION can be {export}
     ---'
     [E1508] Error: export pragma outside a FUNCTION
         ,-[ file:///test0.st:11:5 ]
@@ -647,7 +651,7 @@ END_FUNCTION_BLOCK
         |     ^^^^|^^^
         |         `----- an {export} pragma cannot be placed on a METHOD
         |
-        | Note: {export} pragmas can only be used with FUNCTION
+        | Note: only a FUNCTION can be {export}
     ----'
     [E1508] Error: export pragma outside a FUNCTION
        ,-[ file:///test0.st:6:1 ]
@@ -656,7 +660,7 @@ END_FUNCTION_BLOCK
        | ^^^^|^^^
        |     `----- an {export} pragma cannot be placed on a PROGRAM
        |
-       | Note: {export} pragmas can only be used with FUNCTION
+       | Note: only a FUNCTION can be {export}
     ---'
     ");
 }
@@ -677,7 +681,7 @@ FUNCTION checks_something
 END_FUNCTION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1509] Error: this FUNCTION cannot be exported
+    [E1509] Error: FUNCTION not exportable
        ,-[ file:///test0.st:2:1 ]
        |
      2 | {export}
@@ -686,14 +690,14 @@ END_FUNCTION
        |
        | Note: an {extern} FUNCTION is an import, it has no body to export
     ---'
-    [E1509] Error: this FUNCTION cannot be exported
+    [E1509] Error: FUNCTION not exportable
        ,-[ file:///test0.st:8:1 ]
        |
      8 | {export}
        | ^^^^|^^^
        |     `----- 'checks_something' cannot be exported: it is a {test} FUNCTION
        |
-       | Note: a {test} FUNCTION is already exported for `rk test`, and left out of a release build
+       | Note: a {test} FUNCTION is already exported for `rk test` and left out of a release build
     ---'
     ");
 }
@@ -720,7 +724,7 @@ VAR_INPUT args : INT...; END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1509] Error: this FUNCTION cannot be exported
+    [E1509] Error: FUNCTION not exportable
        ,-[ file:///test0.st:6:1 ]
        |
      6 | {export}
@@ -729,7 +733,7 @@ END_FUNCTION
        |
        | Note: it is compiled once per implementation it is called with, so there is no single function to export
     ---'
-    [E1509] Error: this FUNCTION cannot be exported
+    [E1509] Error: FUNCTION not exportable
         ,-[ file:///test0.st:12:1 ]
         |
      12 | {export}
@@ -758,14 +762,14 @@ VAR_INPUT a : REAL; END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1509] Error: this FUNCTION cannot be exported
+    [E1509] Error: FUNCTION not exportable
        ,-[ file:///test0.st:2:1 ]
        |
      2 | {export}
        | ^^^^|^^^
        |     `----- 'Twice' cannot be exported: it is overloaded
        |
-       | Note: an export is found by its name, and this name belongs to several FUNCTIONs
+       | Note: the module finds an export by its name, which several FUNCTIONs share
     ---'
     ");
 }
@@ -781,14 +785,14 @@ FUNCTION memory : INT
 END_FUNCTION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1509] Error: this FUNCTION cannot be exported
+    [E1509] Error: FUNCTION not exportable
        ,-[ file:///test0.st:2:1 ]
        |
      2 | {export}
        | ^^^^|^^^
        |     `----- 'memory' cannot be exported: it has the name of an export the module makes
        |
-       | Note: the module exports `__init`, `memory`, and the base and size of each memory band under these names, for the host
+       | Note: the module already exports `__init`, `memory` and the base and size of each memory band under these names
     ---'
     ");
 }
@@ -802,14 +806,14 @@ FUNCTION __init
 END_FUNCTION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1509] Error: this FUNCTION cannot be exported
+    [E1509] Error: FUNCTION not exportable
        ,-[ file:///test0.st:2:1 ]
        |
      2 | {test}
        | ^^^|^^
        |    `---- '__init' cannot be exported: it has the name of an export the module makes
        |
-       | Note: the module exports `__init`, `memory`, and the base and size of each memory band under these names, for the host
+       | Note: the module already exports `__init`, `memory` and the base and size of each memory band under these names
     ---'
     ");
 }

@@ -27,10 +27,6 @@ impl ErrorCode for InstanceInFunction {
     fn code(&self) -> &'static str {
         "L0119"
     }
-
-    fn description(&self) -> &'static str {
-        "instance in a stateless POU"
-    }
 }
 
 pub fn check<'db>(
@@ -58,7 +54,7 @@ pub fn check<'db>(
         };
         let mut d = diag()
             .message(format!(
-                "'{}' holds a {kind} instance, which starts over at every call of the {callable}",
+                "'{}' holds a {kind} instance, made afresh by each call of the {callable}",
                 var.get_name_with_case(db).text(db)
             ))
             .desc(&InstanceInFunction)

@@ -63,18 +63,6 @@ impl<'db> ErrorCode for VisibilityError<'db> {
             Self::TestOnly { .. } => "E1007",
         }
     }
-
-    fn description(&self) -> &'static str {
-        match self {
-            Self::Private { .. } => "access control violation",
-            Self::Protected { .. } => "access control violation",
-            Self::Internal { .. } => "access control violation",
-            Self::InternalNamespace { .. } => "access control violation",
-            Self::PrivateFunction { .. } => "access control violation",
-            Self::SpecifierNotOnFunction { .. } => "access control violation",
-            Self::TestOnly { .. } => "access control violation",
-        }
-    }
 }
 
 impl<'db> ToIdeDiagnostic<'db> for VisibilityError<'db> {
@@ -87,7 +75,7 @@ impl<'db> ToIdeDiagnostic<'db> for VisibilityError<'db> {
             VisibilityError::Private { call_site, target } => {
                 let mut diag = diag()
                     .message(format!(
-                        "can not access PRIVATE item '{}'",
+                        "cannot access PRIVATE item '{}'",
                         call_site.to_string(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
@@ -98,7 +86,7 @@ impl<'db> ToIdeDiagnostic<'db> for VisibilityError<'db> {
                     .call();
 
                 diag.with_note(
-                    "variables and methods marked PRIVATE can only be accessed from within the same POU".into(),
+                    "a PRIVATE variable or method is reached from its own POU only".into(),
                 );
 
                 diag
@@ -106,7 +94,7 @@ impl<'db> ToIdeDiagnostic<'db> for VisibilityError<'db> {
             VisibilityError::Protected { call_site, target } => {
                 let mut diag = diag()
                     .message(format!(
-                        "can not access PROTECTED item '{}'",
+                        "cannot access PROTECTED item '{}'",
                         call_site.to_string(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
@@ -116,7 +104,9 @@ impl<'db> ToIdeDiagnostic<'db> for VisibilityError<'db> {
                     )
                     .call();
 
-                diag.with_note("Variables and methods marked PROTECTED are only available within the same POU or derived POUs".into());
+                diag.with_note(
+                    "a PROTECTED variable or method is reached from its own POU and those derived from it".into(),
+                );
 
                 diag
             }
@@ -127,7 +117,7 @@ impl<'db> ToIdeDiagnostic<'db> for VisibilityError<'db> {
             } => {
                 let mut diag = diag()
                     .message(format!(
-                        "can not access INTERNAL item '{}'",
+                        "cannot access INTERNAL item '{}'",
                         call_site.to_string(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
@@ -140,20 +130,20 @@ impl<'db> ToIdeDiagnostic<'db> for VisibilityError<'db> {
                 match result {
                     SameNamespaceResult::DifferentNamespaces((ns1, ns2)) => {
                         diag.with_note(format!(
-                            "calling scope is in NAMESPACE '{}', item is only available in NAMESPACE '{}'",
-                            ns1.path_with_case(db).to_string(db),
-                            ns2.path_with_case(db).to_string(db)
+                            "the item is INTERNAL to NAMESPACE '{}', while this is NAMESPACE '{}'",
+                            ns2.path_with_case(db).to_string(db),
+                            ns1.path_with_case(db).to_string(db)
                         ));
                     }
                     SameNamespaceResult::GlobalAndNamespace(ns) => {
                         diag.with_note(format!(
-                            "calling scope is in the GLOBAL scope, item is only available in NAMESPACE '{}'",
+                            "the item is INTERNAL to NAMESPACE '{}', while this is the global scope",
                             ns.path_with_case(db).to_string(db),
                         ));
                     }
                     SameNamespaceResult::NamespaceAndGlobal(ns) => {
                         diag.with_note(format!(
-                            "calling scope is in NAMESPACE '{}', item scope is only available the GLOBAL scope",
+                            "the item is INTERNAL to the global scope, while this is NAMESPACE '{}'",
                             ns.path_with_case(db).to_string(db),
                         ));
                     }
@@ -167,7 +157,7 @@ impl<'db> ToIdeDiagnostic<'db> for VisibilityError<'db> {
             } => {
                 let mut diag = diag()
                     .message(format!(
-                        "can not access '{}' from INTERNAL namespace",
+                        "cannot access INTERNAL namespace '{}'",
                         namespace.path_with_case(db).to_string(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
@@ -177,7 +167,7 @@ impl<'db> ToIdeDiagnostic<'db> for VisibilityError<'db> {
                     )
                     .call();
                 diag.with_related(ide_diagnostic::Related::new(
-                    "namespace is declared INTERNAL here".to_string(),
+                    "the namespace is declared INTERNAL here".to_string(),
                     namespace.scope_id(db).file(db),
                     CallSite::new(namespace.scope_id(db), namespace.name_id(db)).get_span(db),
                 ));
@@ -186,7 +176,7 @@ impl<'db> ToIdeDiagnostic<'db> for VisibilityError<'db> {
             VisibilityError::PrivateFunction { call_site, target } => {
                 let mut diag = diag()
                     .message(format!(
-                        "can not call PRIVATE function '{}'",
+                        "cannot call PRIVATE function '{}'",
                         call_site.to_string(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
@@ -196,7 +186,7 @@ impl<'db> ToIdeDiagnostic<'db> for VisibilityError<'db> {
                     )
                     .call();
                 diag.with_related(ide_diagnostic::Related::new(
-                    "declared PRIVATE here".to_string(),
+                    "the FUNCTION is declared PRIVATE here".to_string(),
                     target.get_scope_id(db).file(db),
                     target.get_span(db),
                 ));
@@ -213,7 +203,7 @@ impl<'db> ToIdeDiagnostic<'db> for VisibilityError<'db> {
             VisibilityError::TestOnly { call_site } => {
                 let mut diag = diag()
                     .message(format!(
-                        "can not access test item '{}'",
+                        "cannot access test item '{}'",
                         call_site.to_string(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
@@ -224,9 +214,10 @@ impl<'db> ToIdeDiagnostic<'db> for VisibilityError<'db> {
                     .call();
 
                 diag.with_note(
-                    "a {test} FUNCTION is the test runner's entry point, not a callable; \
-                     for code shared between tests, write a FUNCTION without the pragma"
-                        .into(),
+                    "a {test} FUNCTION is the test runner's entry point, not a callable".into(),
+                );
+                diag.with_help(
+                    "for code shared between tests, write a FUNCTION without the pragma".into(),
                 );
 
                 diag

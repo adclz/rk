@@ -15,10 +15,6 @@ impl ErrorCode for UnusedReturnType {
     fn code(&self) -> &'static str {
         "L0302"
     }
-
-    fn description(&self) -> &'static str {
-        "unused return value"
-    }
 }
 
 pub fn check<'db>(

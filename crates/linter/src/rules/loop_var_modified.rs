@@ -22,10 +22,6 @@ impl ErrorCode for LoopVarModified {
     fn code(&self) -> &'static str {
         "L0112"
     }
-
-    fn description(&self) -> &'static str {
-        "loop variable modified in body"
-    }
 }
 
 /// Check whether an assignment target matches any active FOR loop control variable.

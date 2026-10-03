@@ -23,7 +23,7 @@ END_FUNCTION
        |
      6 |     test := x AND x;
        |             ^^^|^^^
-       |                `----- identical expressions on both sides of 'AND', result is always the same as either operand
+       |                `----- both sides of 'AND' are the same expression: the result is either operand
        |
        | Note: lint rule: identical-sub-expr
     ---'
@@ -46,7 +46,7 @@ END_FUNCTION
        |
      6 |     test := x OR x;
        |             ^^^|^^
-       |                `---- identical expressions on both sides of 'OR', result is always the same as either operand
+       |                `---- both sides of 'OR' are the same expression: the result is either operand
        |
        | Note: lint rule: identical-sub-expr
     ---'
@@ -69,7 +69,7 @@ END_FUNCTION
        |
      6 |     test := x XOR x;
        |             ^^^|^^^
-       |                `----- identical expressions on both sides of 'XOR', result is always FALSE
+       |                `----- both sides of 'XOR' are the same expression: the result is always FALSE
        |
        | Note: lint rule: identical-sub-expr
     ---'
@@ -108,7 +108,7 @@ END_FUNCTION
        |
      6 |     IF flag OR flag THEN
        |        ^^^^^^|^^^^^
-       |              `------- identical expressions on both sides of 'OR', result is always the same as either operand
+       |              `------- both sides of 'OR' are the same expression: the result is either operand
        |
        | Note: lint rule: identical-sub-expr
     ---'
@@ -131,7 +131,7 @@ END_FUNCTION
        |
      6 |     test := NOT x AND NOT x;
        |             ^^^^^^^|^^^^^^^
-       |                    `--------- identical expressions on both sides of 'AND', result is always the same as either operand
+       |                    `--------- both sides of 'AND' are the same expression: the result is either operand
        |
        | Note: lint rule: identical-sub-expr
     ---'
@@ -186,7 +186,7 @@ END_FUNCTION_BLOCK
         |
      13 |     ok := a_T.Q AND a_T.Q;
         |           ^^^^^^^|^^^^^^^
-        |                  `--------- identical expressions on both sides of 'AND', result is always the same as either operand
+        |                  `--------- both sides of 'AND' are the same expression: the result is either operand
         |
         | Note: lint rule: identical-sub-expr
     ----'
@@ -224,7 +224,7 @@ END_FUNCTION
        |
      6 |     test := w.0 AND w.0;
        |             ^^^^^|^^^^^
-       |                  `------- identical expressions on both sides of 'AND', result is always the same as either operand
+       |                  `------- both sides of 'AND' are the same expression: the result is either operand
        |
        | Note: lint rule: identical-sub-expr
     ---'
@@ -246,7 +246,7 @@ END_FUNCTION
        |
      4 |     test := flag AND FLAG;
        |             ^^^^^^|^^^^^^
-       |                   `-------- identical expressions on both sides of 'AND', result is always the same as either operand
+       |                   `-------- both sides of 'AND' are the same expression: the result is either operand
        |
        | Note: lint rule: identical-sub-expr
     ---'

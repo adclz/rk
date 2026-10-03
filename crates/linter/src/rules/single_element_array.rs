@@ -15,10 +15,6 @@ impl ErrorCode for SingleElementArray {
     fn code(&self) -> &'static str {
         "L0212"
     }
-
-    fn description(&self) -> &'static str {
-        "single-element array"
-    }
 }
 
 /// Check a variable's spec for single-element array dimensions.

@@ -23,12 +23,12 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0316] Error: invalid type
+    [E0316] Error: FUNCTION used as a type
        ,-[ file:///test0.st:8:15 ]
        |
      8 |         test: fn;
        |               ^|
-       |                `-- 'fn' is a function and cannot be used as a variable or data type
+       |                `-- 'fn' is a FUNCTION, not a type
     ---'
     ");
 }
@@ -47,12 +47,12 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0001] Error: syntax
+    [E0001] Error: syntax error
        ,-[ file:///test0.st:3:16 ]
        |
      3 |     VAR_IN_OUT RETAIN
        |                ^^^|^^
-       |                   `---- Unexpected token(s): 'RETAIN'
+       |                   `---- unexpected token(s): 'RETAIN'
     ---'
     ");
 }
@@ -101,23 +101,23 @@ FUNCTION fn : INT
 END_FUNCTION"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0208] Error: invalid retentive qualifier
+    [E0208] Error: RETAIN in a stateless POU
        ,-[ file:///test0.st:4:9 ]
        |
      4 |         a: INT;
-       |         ^^^|^^
-       |            `---- 'a' cannot be RETAIN: a FUNCTION is stateless
+       |         |
+       |         `-- 'a' cannot be RETAIN: a FUNCTION is stateless
        |
-       | Note: retentive behavior requires instance storage; only FUNCTION_BLOCK, CLASS, and PROGRAM variables (and VAR_GLOBAL) can be RETAIN/NON_RETAIN
+       | Note: only a variable of a FUNCTION_BLOCK, CLASS or PROGRAM, or a VAR_GLOBAL, has storage to retain
     ---'
-    [E0208] Error: invalid retentive qualifier
+    [E0208] Error: RETAIN in a stateless POU
        ,-[ file:///test0.st:7:9 ]
        |
      7 |         b: INT;
-       |         ^^^|^^
-       |            `---- 'b' cannot be NON_RETAIN: a FUNCTION is stateless
+       |         |
+       |         `-- 'b' cannot be NON_RETAIN: a FUNCTION is stateless
        |
-       | Note: retentive behavior requires instance storage; only FUNCTION_BLOCK, CLASS, and PROGRAM variables (and VAR_GLOBAL) can be RETAIN/NON_RETAIN
+       | Note: only a variable of a FUNCTION_BLOCK, CLASS or PROGRAM, or a VAR_GLOBAL, has storage to retain
     ---'
     ");
 }
@@ -136,14 +136,14 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0208] Error: invalid retentive qualifier
+    [E0208] Error: RETAIN in a stateless POU
        ,-[ file:///test0.st:5:13 ]
        |
      5 |             x: INT;
-       |             ^^^|^^
-       |                `---- 'x' cannot be RETAIN: a METHOD is stateless
+       |             |
+       |             `-- 'x' cannot be RETAIN: a METHOD is stateless
        |
-       | Note: retentive behavior requires instance storage; only FUNCTION_BLOCK, CLASS, and PROGRAM variables (and VAR_GLOBAL) can be RETAIN/NON_RETAIN
+       | Note: only a variable of a FUNCTION_BLOCK, CLASS or PROGRAM, or a VAR_GLOBAL, has storage to retain
     ---'
     ");
 }
@@ -164,12 +164,12 @@ FUNCTION fn : INT
 END_FUNCTION"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0001] Error: syntax
+    [E0001] Error: syntax error
        ,-[ file:///test0.st:3:9 ]
        |
      3 |     VAR RETAIN
        |         ^^^|^^
-       |            `---- Unexpected token(s): 'RETAIN'
+       |            `---- unexpected token(s): 'RETAIN'
     ---'
     ");
 }
@@ -205,7 +205,7 @@ fn variable_named_like_its_callable_is_the_return_value(mut with_db: RootDatabas
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0107] Error: duplicate definitions
+    [E0107] Error: return value declared again
        ,-[ file:///test0.st:4:13 ]
        |
      4 |             fn1 : LINT;

@@ -147,7 +147,12 @@ pub fn compile_and_render(
                         (r.message.clone(), index_of(&r.file), line, col)
                     })
                     .collect(),
-                fixes: d.fixes().iter().map(|f| f.title.clone()).collect(),
+                fixes: d
+                    .helps()
+                    .iter()
+                    .cloned()
+                    .chain(d.fixes().iter().map(|f| f.title.clone()))
+                    .collect(),
             });
 
             d.create_report(db, file.url(db), src, Some(config), true)

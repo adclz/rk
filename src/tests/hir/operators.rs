@@ -30,34 +30,34 @@ fn invalid_comparison_of_aggregates(mut with_db: RootDatabase) {
         END_PROGRAM
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0305] Error: type mismatch
+    [E0305] Error: operator not supported by the type
         ,-[ file:///test0.st:12:18 ]
         |
       2 |         TYPE Pt : STRUCT x : INT; END_STRUCT; END_TYPE
-        |                   ^^^^^^^^^^^^^|^^^^^^^^^^^^
-        |                                `-------------- type is defined by 'Pt' here
+        |              ^|
+        |               `-- 'Pt' is declared here
         |
      12 |             r := p = q;
         |                  ^^|^^
         |                    `---- operator '=' cannot be applied to type 'Pt'
     ----'
-    [E0305] Error: type mismatch
+    [E0305] Error: operator not supported by the type
         ,-[ file:///test0.st:13:18 ]
         |
       8 |             a : ARRAY[0..1] OF INT; b : ARRAY[0..1] OF INT;
         |             |
-        |             `-- type is declared by variable 'a' here
+        |             `-- 'a' is declared here
         |
      13 |             r := a <> b;
         |                  ^^^|^^
         |                     `---- operator '<>' cannot be applied to type 'ARRAY [0..1] OF INT'
     ----'
-    [E0305] Error: type mismatch
+    [E0305] Error: operator not supported by the type
         ,-[ file:///test0.st:14:18 ]
         |
       3 |         FUNCTION_BLOCK Fb END_FUNCTION_BLOCK
         |                        ^|
-        |                         `-- FUNCTION_BLOCK 'Fb' is defined here
+        |                         `-- FUNCTION_BLOCK 'Fb' is declared here
         |
      14 |             r := f < g;
         |                  ^^|^^
@@ -81,12 +81,12 @@ fn invalid_comparison_of_interfaces(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0305] Error: type mismatch
+    [E0305] Error: operator not supported by the type
        ,-[ file:///test0.st:8:21 ]
        |
      2 |         INTERFACE I
        |                   |
-       |                   `-- INTERFACE 'I' is defined here
+       |                   `-- INTERFACE 'I' is declared here
        |
      8 |             Same := i1 = i2;
        |                     ^^^|^^^
@@ -107,14 +107,14 @@ fn invalid_logic_on_floats(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0305] Error: type mismatch
+    [E0305] Error: operator not supported by the type
        ,-[ file:///test0.st:4:18 ]
        |
      4 |             F := a AND a;
        |                  ^^^|^^^
        |                     `----- operator 'AND' cannot be applied to type 'REAL'
     ---'
-    [E0305] Error: type mismatch
+    [E0305] Error: operator not supported by the type
        ,-[ file:///test0.st:5:18 ]
        |
      5 |             b := b XOR b;
@@ -145,67 +145,67 @@ fn invalid_sign_on_a_type_without_arithmetic(mut with_db: RootDatabase) {
         END_PROGRAM
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0305] Error: type mismatch
+    [E0305] Error: operator not supported by the type
        ,-[ file:///test0.st:9:18 ]
        |
      6 |             b : BOOL; e : Color; s : STRING; c : CHAR; d : DATE;
        |             |
-       |             `-- type is declared by variable 'b' here
+       |             `-- 'b' is declared here
        |
      9 |             b := -b;
        |                  ^|
        |                   `-- operator '-' cannot be applied to type 'BOOL'
     ---'
-    [E0305] Error: type mismatch
+    [E0305] Error: operator not supported by the type
         ,-[ file:///test0.st:10:18 ]
         |
       2 |         TYPE Color : (Red, Green); END_TYPE
-        |                      ^^^^^^|^^^^^
-        |                            `------- type is defined by 'Color' here
+        |              ^^|^^
+        |                `---- 'Color' is declared here
         |
      10 |             e := -e;
         |                  ^|
         |                   `-- operator '-' cannot be applied to type 'Color'
     ----'
-    [E0305] Error: type mismatch
+    [E0305] Error: operator not supported by the type
         ,-[ file:///test0.st:11:18 ]
         |
       6 |             b : BOOL; e : Color; s : STRING; c : CHAR; d : DATE;
         |                                  |
-        |                                  `-- type is declared by variable 's' here
+        |                                  `-- 's' is declared here
         |
      11 |             s := -s;
         |                  ^|
         |                   `-- operator '-' cannot be applied to type 'STRING'
     ----'
-    [E0305] Error: type mismatch
+    [E0305] Error: operator not supported by the type
         ,-[ file:///test0.st:12:18 ]
         |
       6 |             b : BOOL; e : Color; s : STRING; c : CHAR; d : DATE;
         |                                              |
-        |                                              `-- type is declared by variable 'c' here
+        |                                              `-- 'c' is declared here
         |
      12 |             c := -c;
         |                  ^|
         |                   `-- operator '-' cannot be applied to type 'CHAR'
     ----'
-    [E0305] Error: type mismatch
+    [E0305] Error: operator not supported by the type
         ,-[ file:///test0.st:13:18 ]
         |
       6 |             b : BOOL; e : Color; s : STRING; c : CHAR; d : DATE;
         |                                                        |
-        |                                                        `-- type is declared by variable 'd' here
+        |                                                        `-- 'd' is declared here
         |
      13 |             d := -d;
         |                  ^|
         |                   `-- operator '-' cannot be applied to type 'DATE'
     ----'
-    [E0305] Error: type mismatch
+    [E0305] Error: operator not supported by the type
         ,-[ file:///test0.st:14:18 ]
         |
       7 |             a : ARRAY[0..1] OF INT;
         |             |
-        |             `-- type is declared by variable 'a' here
+        |             `-- 'a' is declared here
         |
      14 |             a := -a;
         |                  ^|
@@ -244,14 +244,14 @@ fn invalid_sign_or_not_given_a_type_without_it(mut with_db: RootDatabase) {
         END_PROGRAM
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0305] Error: type mismatch
+    [E0305] Error: operator not supported by the type
        ,-[ file:///test0.st:4:18 ]
        |
      4 |             b := -(1);
        |                  ^^|^
        |                    `--- operator '-' cannot be applied to type 'BOOL'
     ---'
-    [E0305] Error: type mismatch
+    [E0305] Error: operator not supported by the type
        ,-[ file:///test0.st:5:18 ]
        |
      5 |             i := NOT 16#0F;

@@ -95,12 +95,16 @@ impl IdeDiagnostic {
             )
         }
 
-        for fix in &self.fixes {
-            report.add_help(fix.title.to_string());
-        }
-
         for note in self.notes.iter() {
             report.add_note(note.to_string());
+        }
+
+        for help in self.helps.iter() {
+            report.add_help(help.to_string());
+        }
+
+        for fix in &self.fixes {
+            report.add_help(fix.title.to_string());
         }
 
         if let Some(code) = &self.diagnostic.code {

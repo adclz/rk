@@ -106,14 +106,14 @@ END_FUNCTION
 Since SharedName is available in both scopes:
 
 ```sh
-[E0205] Error: multiple items in scope
+[E0205] Error: ambiguous name
     ╭─[ file:///example0.st:16:13 ]
     │
  16 │     test := SharedName();
     │             ─────┬────  
     │                  ╰────── multiple items named 'SharedName' available in scope
     │ 
-    │ Note: qualify the name to resolve the ambiguity: ns1.SharedName or ns2.SharedName
+    │ Help: qualify the name: ns1.SharedName or ns2.SharedName
 ────╯
 ```
 

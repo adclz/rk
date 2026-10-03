@@ -38,7 +38,7 @@ END_FUNCTION_BLOCK
         |
       4 |         a : INT;
         |         ^^^|^^^
-        |            `----- 'a' declared here
+        |            `----- 'a' is declared here
         |
      16 |     p2(b := 2);
         |     ^^^^^|^^^^
@@ -199,7 +199,7 @@ FUNCTION f : INT
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "unknown-allow"), @r"
-    [L0005] Warning: unknown-allow
+    [L0005] Warning: unknown rule name in {allow}
        ,-[ file:///test0.st:3:12 ]
        |
      3 |     {allow 'not-a-rule'}

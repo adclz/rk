@@ -73,7 +73,7 @@ fn syntax_error(node: &Node, source: &[u8]) -> LexerError {
     if node.is_missing() {
         LexerError::Missing {
             range: node.range(),
-            error: format!("Syntax error: Missing '{}'", node.grammar_name()),
+            error: format!("missing '{}'", node.grammar_name()),
             grammar_name: node.grammar_name(),
         }
     } else {
@@ -83,7 +83,7 @@ fn syntax_error(node: &Node, source: &[u8]) -> LexerError {
             .collect();
         LexerError::Syntax {
             range: node.range(),
-            error: format!("Unexpected token(s): '{}'", children.join(" ")),
+            error: format!("unexpected token(s): '{}'", children.join(" ")),
             affected: children.join(" "),
         }
     }

@@ -186,12 +186,10 @@ END_FUNCTION
        |
      3 | VAR x : INT; y : INT; END_VAR
        |     |
-       |     `-- type is declared by variable 'x' here
+       |     `-- 'x' is declared here
      4 |     FOR x := NOT (x > y) TO 1 BY 1 DO
        |              ^^^^^|^^^^^
        |                   `------- expected 'INT', got 'BOOL'
-       |                   |
-       |                   `------- consider explicitly casting with 'BOOL_TO_INT(NOT (x > y))'
        |
        | Help: insert explicit cast 'BOOL_TO_INT(NOT (x > y))'
     ---'

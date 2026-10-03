@@ -72,7 +72,7 @@ END_FUNCTION
         |
      13 | VAR i : INT; END_VAR
         |     |
-        |     `-- type is declared by variable 'i' here
+        |     `-- 'i' is declared here
      14 |     i := foo(1, 2);     // foo/2 returns STRING -> STRING := INT is a type error
         |          ^^^^|^^^^
         |              `------ expected 'INT', got 'STRING'
@@ -132,23 +132,21 @@ END_FUNCTION
     [E0809] Error: ambiguous overloaded call
         ,-[ file:///test0.st:13:13 ]
         |
-      2 | ,---> FUNCTION pick : INT
-        : :
-      5 | |---> END_FUNCTION
-        | |
-        | `-------------------- candidate overload declared here
+      2 | FUNCTION pick : INT
+        |          ^^|^
+        |            `--- a candidate is declared here
         |
-      7 |   ,-> FUNCTION pick : INT
-        :   :
-     10 |   |-> END_FUNCTION
-        |   |
-        |   `------------------ candidate overload declared here
+      7 | FUNCTION pick : INT
+        |          ^^|^
+        |            `--- a candidate is declared here
         |
-     13 |           test := pick(1);
-        |                   ^^|^
-        |                     `--- call to 'pick' is ambiguous: 2 overloads accept these arguments
-        | |
-        | |     Note: an argument widens to each of them: a typed literal or a conversion picks one, such as `DINT#5` or `INT_TO_DINT(x)`
+     13 |     test := pick(1);
+        |             ^^|^
+        |               `--- call to 'pick' is ambiguous: 2 overloads accept these arguments
+        |
+        | Help: pick one with a typed literal or a conversion, such as `DINT#5` or `INT_TO_DINT(x)`
+        |
+        | Note: an argument widens to each overload
     ----'
     ");
 }
@@ -175,7 +173,7 @@ END_FUNCTION
 "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0801] Error: function call parameter mismatch
+    [E0801] Error: wrong number of arguments
         ,-[ file:///test0.st:14:13 ]
         |
      14 |     test := foo(x, x, x);   // no 3-arg overload
@@ -211,21 +209,17 @@ END_FUNCTION
     [E0810] Error: no matching overload
         ,-[ file:///test0.st:13:15 ]
         |
-      2 |   ,-> FUNCTION take : INT
-        :   :
-      5 |   |-> END_FUNCTION
-        |   |
-        |   `------------------ overload accepting (INT)
+      2 | FUNCTION take : INT
+        |          ^^|^
+        |            `--- overload accepting (INT)
         |
-      7 | ,---> FUNCTION take : INT
-        : :
-     10 | |---> END_FUNCTION
-        | |
-        | `-------------------- overload accepting (REAL)
+      7 | FUNCTION take : INT
+        |          ^^|^
+        |            `--- overload accepting (REAL)
         |
-     13 |           caller := take('text');
-        |                     ^^|^
-        |                       `--- no overload of 'take' accepts (STRING)
+     13 |     caller := take('text');
+        |               ^^|^
+        |                 `--- no overload of 'take' accepts (STRING)
     ----'
     ");
 }
@@ -254,21 +248,17 @@ END_FUNCTION
     [E0810] Error: no matching overload
         ,-[ file:///test0.st:13:15 ]
         |
-      2 |   ,-> FUNCTION take : INT
-        :   :
-      5 |   |-> END_FUNCTION
-        |   |
-        |   `------------------ overload accepting (INT)
+      2 | FUNCTION take : INT
+        |          ^^|^
+        |            `--- overload accepting (INT)
         |
-      7 | ,---> FUNCTION take : INT
-        : :
-     10 | |---> END_FUNCTION
-        | |
-        | `-------------------- overload accepting (INT, INT)
+      7 | FUNCTION take : INT
+        |          ^^|^
+        |            `--- overload accepting (INT, INT)
         |
-     13 |           caller := take(TRUE);
-        |                     ^^|^
-        |                       `--- no overload of 'take' accepts (BOOL)
+     13 |     caller := take(TRUE);
+        |               ^^|^
+        |                 `--- no overload of 'take' accepts (BOOL)
     ----'
     ");
 }
@@ -379,23 +369,21 @@ END_FUNCTION
     [E0809] Error: ambiguous overloaded call
         ,-[ file:///test0.st:14:15 ]
         |
-      2 | ,---> FUNCTION mix : INT
-        : :
-      5 | |---> END_FUNCTION
-        | |
-        | `-------------------- candidate overload declared here
+      2 | FUNCTION mix : INT
+        |          ^|^
+        |           `--- a candidate is declared here
         |
-      7 |   ,-> FUNCTION mix : INT
-        :   :
-     10 |   |-> END_FUNCTION
-        |   |
-        |   `------------------ candidate overload declared here
+      7 | FUNCTION mix : INT
+        |          ^|^
+        |           `--- a candidate is declared here
         |
-     14 |           caller := mix(i, r);
-        |                     ^|^
-        |                      `--- call to 'mix' is ambiguous: 2 overloads accept these arguments
-        | |
-        | |     Note: an argument widens to each of them: a typed literal or a conversion picks one, such as `DINT#5` or `INT_TO_DINT(x)`
+     14 |     caller := mix(i, r);
+        |               ^|^
+        |                `--- call to 'mix' is ambiguous: 2 overloads accept these arguments
+        |
+        | Help: pick one with a typed literal or a conversion, such as `DINT#5` or `INT_TO_DINT(x)`
+        |
+        | Note: an argument widens to each overload
     ----'
     ");
 }
@@ -424,23 +412,21 @@ END_FUNCTION
     [E0809] Error: ambiguous overloaded call
         ,-[ file:///test0.st:14:15 ]
         |
-      2 |   ,-> FUNCTION up : DINT
-        :   :
-      5 |   |-> END_FUNCTION
-        |   |
-        |   `------------------ candidate overload declared here
+      2 | FUNCTION up : DINT
+        |          ^|
+        |           `-- a candidate is declared here
         |
-      7 | ,---> FUNCTION up : LREAL
-        : :
-     10 | |---> END_FUNCTION
-        | |
-        | `-------------------- candidate overload declared here
+      7 | FUNCTION up : LREAL
+        |          ^|
+        |           `-- a candidate is declared here
         |
-     14 |           caller := up(s);
-        |                     ^|
-        |                      `-- call to 'up' is ambiguous: 2 overloads accept these arguments
-        |   |
-        |   |   Note: an argument widens to each of them: a typed literal or a conversion picks one, such as `DINT#5` or `INT_TO_DINT(x)`
+     14 |     caller := up(s);
+        |               ^|
+        |                `-- call to 'up' is ambiguous: 2 overloads accept these arguments
+        |
+        | Help: pick one with a typed literal or a conversion, such as `DINT#5` or `INT_TO_DINT(x)`
+        |
+        | Note: an argument widens to each overload
     ----'
     ");
 }
@@ -521,22 +507,21 @@ fn invalid_return_overload_without_context(mut with_db: RootDatabase) {
     [E0809] Error: ambiguous overloaded call
         ,-[ file:///test0.st:10:18 ]
         |
-      2 |   ,->         FUNCTION G : TIME
-        :   :
-      4 |   |->         END_FUNCTION
-        |   |
-        |   `-------------------------- candidate overload declared here
-      5 | ,--->         FUNCTION G : LTIME
-        : :
-      7 | |--->         END_FUNCTION
-        | |
-        | `---------------------------- candidate overload declared here
+      2 |         FUNCTION G : TIME
+        |                  |
+        |                  `-- a candidate is declared here
         |
-     10 |                   t := G() + T#1ms;
-        |                        |
-        |                        `-- call to 'G' is ambiguous: 2 overloads accept these arguments
+      5 |         FUNCTION G : LTIME
+        |                  |
+        |                  `-- a candidate is declared here
         |
-        |       Note: they differ only in their return type, and nothing here expects one: assign the call to a variable of the type you want
+     10 |             t := G() + T#1ms;
+        |                  |
+        |                  `-- call to 'G' is ambiguous: 2 overloads accept these arguments
+        |
+        | Help: assign the call to a variable of that type
+        |
+        | Note: the overloads differ only in their return type, and nothing here expects one
     ----'
     ");
 }
@@ -563,22 +548,21 @@ fn invalid_zero_arg_defaulted_overloads_ambiguous(mut with_db: RootDatabase) {
     [E0809] Error: ambiguous overloaded call
         ,-[ file:///test0.st:11:20 ]
         |
-      2 |   ,->         FUNCTION H : INT
-        :   :
-      5 |   |->         END_FUNCTION
-        |   |
-        |   `-------------------------- candidate overload declared here
-      6 | ,--->         FUNCTION H : INT
-        : :
-      9 | |--->         END_FUNCTION
-        | |
-        | `---------------------------- candidate overload declared here
+      2 |         FUNCTION H : INT
+        |                  |
+        |                  `-- a candidate is declared here
         |
-     11 |                   fn1 := H();
-        |                          |
-        |                          `-- call to 'H' is ambiguous: 2 overloads accept these arguments
+      6 |         FUNCTION H : INT
+        |                  |
+        |                  `-- a candidate is declared here
         |
-        |       Note: they differ only in inputs this call leaves to their defaults: passing one of those picks an overload
+     11 |             fn1 := H();
+        |                    |
+        |                    `-- call to 'H' is ambiguous: 2 overloads accept these arguments
+        |
+        | Help: pass one of those inputs to pick an overload
+        |
+        | Note: the overloads differ only in inputs this call leaves to their defaults
     ----'
     ");
 }
@@ -603,22 +587,21 @@ fn invalid_return_overload_in_while_condition(mut with_db: RootDatabase) {
     [E0809] Error: ambiguous overloaded call
         ,-[ file:///test0.st:10:19 ]
         |
-      2 |   ,->         FUNCTION G : TIME
-        :   :
-      4 |   |->         END_FUNCTION
-        |   |
-        |   `-------------------------- candidate overload declared here
-      5 | ,--->         FUNCTION G : LTIME
-        : :
-      7 | |--->         END_FUNCTION
-        | |
-        | `---------------------------- candidate overload declared here
+      2 |         FUNCTION G : TIME
+        |                  |
+        |                  `-- a candidate is declared here
         |
-     10 |                   WHILE G() - t < T#60ms DO
-        |                         |
-        |                         `-- call to 'G' is ambiguous: 2 overloads accept these arguments
+      5 |         FUNCTION G : LTIME
+        |                  |
+        |                  `-- a candidate is declared here
         |
-        |       Note: they differ only in their return type, and nothing here expects one: assign the call to a variable of the type you want
+     10 |             WHILE G() - t < T#60ms DO
+        |                   |
+        |                   `-- call to 'G' is ambiguous: 2 overloads accept these arguments
+        |
+        | Help: assign the call to a variable of that type
+        |
+        | Note: the overloads differ only in their return type, and nothing here expects one
     ----'
     ");
 }
@@ -641,22 +624,21 @@ fn invalid_return_overload_as_statement(mut with_db: RootDatabase) {
     [E0809] Error: ambiguous overloaded call
        ,-[ file:///test0.st:9:13 ]
        |
-     2 |   ,->         FUNCTION G : TIME
-       :   :
-     4 |   |->         END_FUNCTION
-       |   |
-       |   `-------------------------- candidate overload declared here
-     5 | ,--->         FUNCTION G : LTIME
-       : :
-     7 | |--->         END_FUNCTION
-       | |
-       | `---------------------------- candidate overload declared here
+     2 |         FUNCTION G : TIME
+       |                  |
+       |                  `-- a candidate is declared here
        |
-     9 |                   G();
-       |                   |
-       |                   `-- call to 'G' is ambiguous: 2 overloads accept these arguments
+     5 |         FUNCTION G : LTIME
+       |                  |
+       |                  `-- a candidate is declared here
        |
-       |       Note: they differ only in their return type, and nothing here expects one: assign the call to a variable of the type you want
+     9 |             G();
+       |             |
+       |             `-- call to 'G' is ambiguous: 2 overloads accept these arguments
+       |
+       | Help: assign the call to a variable of that type
+       |
+       | Note: the overloads differ only in their return type, and nothing here expects one
     ---'
     ");
 }
@@ -688,22 +670,21 @@ fn invalid_return_overload_as_overloaded_argument(mut with_db: RootDatabase) {
     [E0809] Error: ambiguous overloaded call
         ,-[ file:///test0.st:17:27 ]
         |
-      2 |   ,->         FUNCTION G : TIME
-        :   :
-      4 |   |->         END_FUNCTION
-        |   |
-        |   `-------------------------- candidate overload declared here
-      5 | ,--->         FUNCTION G : LTIME
-        : :
-      7 | |--->         END_FUNCTION
-        | |
-        | `---------------------------- candidate overload declared here
+      2 |         FUNCTION G : TIME
+        |                  |
+        |                  `-- a candidate is declared here
         |
-     17 |                   fn1 := f(x := G());
-        |                                 |
-        |                                 `-- call to 'G' is ambiguous: 2 overloads accept these arguments
+      5 |         FUNCTION G : LTIME
+        |                  |
+        |                  `-- a candidate is declared here
         |
-        |       Note: they differ only in their return type, and nothing here expects one: assign the call to a variable of the type you want
+     17 |             fn1 := f(x := G());
+        |                           |
+        |                           `-- call to 'G' is ambiguous: 2 overloads accept these arguments
+        |
+        | Help: assign the call to a variable of that type
+        |
+        | Note: the overloads differ only in their return type, and nothing here expects one
     ----'
     ");
 }
@@ -750,22 +731,21 @@ fn invalid_equal_default_padding_stays_ambiguous(mut with_db: RootDatabase) {
     [E0809] Error: ambiguous overloaded call
         ,-[ file:///test0.st:11:20 ]
         |
-      2 |   ,->         FUNCTION add : INT
-        :   :
-      5 |   |->         END_FUNCTION
-        |   |
-        |   `-------------------------- candidate overload declared here
-      6 | ,--->         FUNCTION add : INT
-        : :
-      9 | |--->         END_FUNCTION
-        | |
-        | `---------------------------- candidate overload declared here
+      2 |         FUNCTION add : INT
+        |                  ^|^
+        |                   `--- a candidate is declared here
         |
-     11 |                   fn1 := add(10);
-        |                          ^|^
-        |                           `--- call to 'add' is ambiguous: 2 overloads accept these arguments
+      6 |         FUNCTION add : INT
+        |                  ^|^
+        |                   `--- a candidate is declared here
         |
-        |       Note: they differ only in inputs this call leaves to their defaults: passing one of those picks an overload
+     11 |             fn1 := add(10);
+        |                    ^|^
+        |                     `--- call to 'add' is ambiguous: 2 overloads accept these arguments
+        |
+        | Help: pass one of those inputs to pick an overload
+        |
+        | Note: the overloads differ only in inputs this call leaves to their defaults
     ----'
     ");
 }
@@ -793,22 +773,21 @@ fn invalid_literal_with_only_promoted_candidates(mut with_db: RootDatabase) {
     [E0809] Error: ambiguous overloaded call
         ,-[ file:///test0.st:11:20 ]
         |
-      2 |   ,->         FUNCTION conv : INT
-        :   :
-      5 |   |->         END_FUNCTION
-        |   |
-        |   `-------------------------- candidate overload declared here
-      6 | ,--->         FUNCTION conv : INT
-        : :
-      9 | |--->         END_FUNCTION
-        | |
-        | `---------------------------- candidate overload declared here
+      2 |         FUNCTION conv : INT
+        |                  ^^|^
+        |                    `--- a candidate is declared here
         |
-     11 |                   fn1 := conv(5);
-        |                          ^^|^
-        |                            `--- call to 'conv' is ambiguous: 2 overloads accept these arguments
+      6 |         FUNCTION conv : INT
+        |                  ^^|^
+        |                    `--- a candidate is declared here
         |
-        |       Note: an argument widens to each of them: a typed literal or a conversion picks one, such as `DINT#5` or `INT_TO_DINT(x)`
+     11 |             fn1 := conv(5);
+        |                    ^^|^
+        |                      `--- call to 'conv' is ambiguous: 2 overloads accept these arguments
+        |
+        | Help: pick one with a typed literal or a conversion, such as `DINT#5` or `INT_TO_DINT(x)`
+        |
+        | Note: an argument widens to each overload
     ----'
     ");
 }
@@ -867,27 +846,25 @@ fn invalid_three_way_incomparable_names_all(mut with_db: RootDatabase) {
     [E0809] Error: ambiguous overloaded call
         ,-[ file:///test0.st:16:20 ]
         |
-      2 | ,----->         FUNCTION mix : INT
-        : :
-      5 | |----->         END_FUNCTION
-        | |
-        | `------------------------------ candidate overload declared here
-      6 |   ,--->         FUNCTION mix : INT
-        :   :
-      9 |   |--->         END_FUNCTION
-        |   |
-        |   `---------------------------- candidate overload declared here
-     10 |     ,->         FUNCTION mix : INT
-        :     :
-     13 |     |->         END_FUNCTION
-        |     |
-        |     `-------------------------- candidate overload declared here
+      2 |         FUNCTION mix : INT
+        |                  ^|^
+        |                   `--- a candidate is declared here
         |
-     16 |                     fn1 := mix(i, j, k);
-        |                            ^|^
-        |                             `--- call to 'mix' is ambiguous: 3 overloads accept these arguments
+      6 |         FUNCTION mix : INT
+        |                  ^|^
+        |                   `--- a candidate is declared here
         |
-        |         Note: an argument widens to each of them: a typed literal or a conversion picks one, such as `DINT#5` or `INT_TO_DINT(x)`
+     10 |         FUNCTION mix : INT
+        |                  ^|^
+        |                   `--- a candidate is declared here
+        |
+     16 |             fn1 := mix(i, j, k);
+        |                    ^|^
+        |                     `--- call to 'mix' is ambiguous: 3 overloads accept these arguments
+        |
+        | Help: pick one with a typed literal or a conversion, such as `DINT#5` or `INT_TO_DINT(x)`
+        |
+        | Note: an argument widens to each overload
     ----'
     ");
 }
@@ -974,21 +951,17 @@ END_FUNCTION
     [E0810] Error: no matching overload
         ,-[ file:///test0.st:13:15 ]
         |
-      2 | ,---> FUNCTION eq : INT
-        : :
-      5 | |---> END_FUNCTION
-        | |
-        | `-------------------- overload accepting (CHAR)
+      2 | FUNCTION eq : INT
+        |          ^|
+        |           `-- overload accepting (CHAR)
         |
-      7 |   ,-> FUNCTION eq : INT
-        :   :
-     10 |   |-> END_FUNCTION
-        |   |
-        |   `------------------ overload accepting (BOOL)
+      7 | FUNCTION eq : INT
+        |          ^|
+        |           `-- overload accepting (BOOL)
         |
-     13 |           caller := eq('word');
-        |                     ^|
-        |                      `-- no overload of 'eq' accepts (STRING)
+     13 |     caller := eq('word');
+        |               ^|
+        |                `-- no overload of 'eq' accepts (STRING)
     ----'
     ");
 }
@@ -1002,12 +975,12 @@ FUNCTION Dup : INT VAR_INPUT r : REF_TO INT; END_VAR Dup := 1; END_FUNCTION
 FUNCTION Dup : INT VAR_INPUT r : REF_TO INT; END_VAR Dup := 2; END_FUNCTION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0102] Error: duplicate definitions
+    [E0102] Error: duplicate POU
        ,-[ file:///test0.st:3:10 ]
        |
      2 | FUNCTION Dup : INT VAR_INPUT r : REF_TO INT; END_VAR Dup := 1; END_FUNCTION
        |          ^|^
-       |           `--- POU 'Dup' is already defined here
+       |           `--- POU 'Dup' is already declared here
      3 | FUNCTION Dup : INT VAR_INPUT r : REF_TO INT; END_VAR Dup := 2; END_FUNCTION
        |          ^|^
        |           `--- duplicate POU 'Dup'
@@ -1028,15 +1001,15 @@ VAR r : REAL; END_VAR
     caller := Which(nope, r);
 END_FUNCTION
 "#;
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r#"
-    [E0201] Error: no item found in scope
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0201] Error: unknown name
        ,-[ file:///test0.st:7:21 ]
        |
      7 |     caller := Which(nope, r);
        |                     ^^|^
-       |                       `--- no item "nope" found in scope
+       |                       `--- no item 'nope' found in scope
     ---'
-    "#);
+    ");
 }
 
 /// What fits two overloads equally is still ambiguous: an instance of both
@@ -1073,17 +1046,17 @@ END_FUNCTION_BLOCK
         ,-[ file:///test0.st:19:10 ]
         |
      10 | FUNCTION Dev : INT VAR_IN_OUT d : IA; END_VAR Dev := 1; END_FUNCTION
-        | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^|^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-        |                                   `----------------------------------- candidate overload declared here
+        |          ^|^
+        |           `--- a candidate is declared here
      11 | FUNCTION Dev : INT VAR_IN_OUT d : IB; END_VAR Dev := 2; END_FUNCTION
-        | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^|^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-        |                                   `----------------------------------- candidate overload declared here
+        |          ^|^
+        |           `--- a candidate is declared here
         |
      19 |     x := Dev(b);
         |          ^|^
         |           `--- call to 'Dev' is ambiguous: 2 overloads accept these arguments
         |
-        | Note 1: 'Both' implements the interface each one takes, and nothing converts it to one of them
+        | Note 1: 'Both' implements the interface each overload takes
         |
         | Note 2: they name that parameter alike, so no call can pick one of them with this argument
     ----'
@@ -1091,17 +1064,17 @@ END_FUNCTION_BLOCK
         ,-[ file:///test0.st:20:10 ]
         |
      12 | FUNCTION Dev2 : INT VAR_IN_OUT da : IA; END_VAR Dev2 := 1; END_FUNCTION
-        | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^|^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-        |                                    `------------------------------------- candidate overload declared here
+        |          ^^|^
+        |            `--- a candidate is declared here
      13 | FUNCTION Dev2 : INT VAR_IN_OUT db : IB; END_VAR Dev2 := 2; END_FUNCTION
-        | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^|^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-        |                                    `------------------------------------- candidate overload declared here
+        |          ^^|^
+        |            `--- a candidate is declared here
         |
      20 |     x := Dev2(b);
         |          ^^|^
         |            `--- call to 'Dev2' is ambiguous: 2 overloads accept these arguments
         |
-        | Note 1: 'Both' implements the interface each one takes, and nothing converts it to one of them
+        | Note 1: 'Both' implements the interface each overload takes
         |
         | Note 2: they name that parameter differently: naming it picks one, as 'da := ...' or 'db := ...'
     ----'
@@ -1109,17 +1082,19 @@ END_FUNCTION_BLOCK
         ,-[ file:///test0.st:21:10 ]
         |
      14 | FUNCTION Nul : INT VAR_INPUT r : RI; END_VAR Nul := 1; END_FUNCTION
-        | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^|^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-        |                                  `----------------------------------- candidate overload declared here
+        |          ^|^
+        |           `--- a candidate is declared here
      15 | FUNCTION Nul : INT VAR_INPUT r : RR; END_VAR Nul := 2; END_FUNCTION
-        | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^|^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-        |                                  `----------------------------------- candidate overload declared here
+        |          ^|^
+        |           `--- a candidate is declared here
         |
      21 |     x := Nul(NULL);
         |          ^|^
         |           `--- call to 'Nul' is ambiguous: 2 overloads accept these arguments
         |
-        | Note: NULL is a reference of any type: pass a variable of the reference type you want
+        | Help: pass a variable of the reference type
+        |
+        | Note: NULL is a reference of any type
     ----'
     ");
 }
@@ -1142,17 +1117,19 @@ END_FUNCTION
        ,-[ file:///test0.st:6:15 ]
        |
      2 | FUNCTION Lit : INT VAR_INPUT v : SINT; END_VAR Lit := 1; END_FUNCTION
-       | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^|^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-       |                                   `------------------------------------ candidate overload declared here
+       |          ^|^
+       |           `--- a candidate is declared here
      3 | FUNCTION Lit : INT VAR_INPUT v : DINT; END_VAR Lit := 2; END_FUNCTION
-       | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^|^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-       |                                   `------------------------------------ candidate overload declared here
+       |          ^|^
+       |           `--- a candidate is declared here
        |
      6 |     caller := Lit(5);
        |               ^|^
        |                `--- call to 'Lit' is ambiguous: 2 overloads accept these arguments
        |
-       | Note: an argument widens to each of them: a typed literal or a conversion picks one, such as `DINT#5` or `INT_TO_DINT(x)`
+       | Help: pick one with a typed literal or a conversion, such as `DINT#5` or `INT_TO_DINT(x)`
+       |
+       | Note: an argument widens to each overload
     ---'
     ");
 }
@@ -1183,52 +1160,52 @@ FUNCTION_BLOCK Fb
 END_FUNCTION_BLOCK
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0102] Error: duplicate definitions
+    [E0102] Error: duplicate POU
        ,-[ file:///test0.st:3:10 ]
        |
      2 | FUNCTION Cap : INT VAR_INPUT s : STRING[8]; END_VAR Cap := 1; END_FUNCTION
        |          ^|^
-       |           `--- POU 'Cap' is already defined here
+       |           `--- POU 'Cap' is already declared here
      3 | FUNCTION Cap : INT VAR_INPUT s : STRING[80]; END_VAR Cap := 2; END_FUNCTION
        |          ^|^
        |           `--- duplicate POU 'Cap'
     ---'
-    [E0102] Error: duplicate definitions
+    [E0102] Error: duplicate POU
        ,-[ file:///test0.st:6:10 ]
        |
      5 | FUNCTION Sub : INT VAR_INPUT x : INT (0..10); END_VAR Sub := 1; END_FUNCTION
        |          ^|^
-       |           `--- POU 'Sub' is already defined here
+       |           `--- POU 'Sub' is already declared here
      6 | FUNCTION Sub : INT VAR_INPUT x : INT; END_VAR Sub := 2; END_FUNCTION
        |          ^|^
        |           `--- duplicate POU 'Sub'
     ---'
-    [E0102] Error: duplicate definitions
+    [E0102] Error: duplicate POU
        ,-[ file:///test0.st:9:10 ]
        |
      8 | FUNCTION Kind : INT VAR_INPUT x : INT; END_VAR Kind := 1; END_FUNCTION
        |          ^^|^
-       |            `--- POU 'Kind' is already defined here
+       |            `--- POU 'Kind' is already declared here
      9 | FUNCTION Kind : INT VAR_IN_OUT x : INT; END_VAR Kind := 2; END_FUNCTION
        |          ^^|^
        |            `--- duplicate POU 'Kind'
     ---'
-    [E0102] Error: duplicate definitions
+    [E0102] Error: duplicate POU
         ,-[ file:///test0.st:12:10 ]
         |
      11 | FUNCTION Named : INT VAR_INPUT a : INT; b : REAL; END_VAR Named := 1; END_FUNCTION
         |          ^^|^^
-        |            `---- POU 'Named' is already defined here
+        |            `---- POU 'Named' is already declared here
      12 | FUNCTION Named : INT VAR_INPUT b : INT; a : REAL; END_VAR Named := 2; END_FUNCTION
         |          ^^|^^
         |            `---- duplicate POU 'Named'
     ----'
-    [E0108] Error: duplicate definitions
+    [E0108] Error: duplicate method declaration
         ,-[ file:///test0.st:16:19 ]
         |
      15 |     METHOD PUBLIC M : INT VAR_INPUT x : INT; END_VAR M := 1; END_METHOD
         |                   |
-        |                   `-- method 'M' is already defined here
+        |                   `-- method 'M' is already declared here
      16 |     METHOD PUBLIC M : INT VAR_INPUT x : REAL; END_VAR M := 2; END_METHOD
         |                   |
         |                   `-- duplicate method 'M'

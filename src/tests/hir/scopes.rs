@@ -719,14 +719,14 @@ END_FUNCTION_BLOCK
 "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0204] Error: namespace not found
+    [E0204] Error: unknown namespace in USING
        ,-[ file:///test0.st:3:11 ]
        |
      3 |     USING unknown_ns; // unknown namespace
        |           ^^^^^|^^^^
        |                `------ namespace 'unknown_ns' not found
     ---'
-    [E0204] Error: namespace not found
+    [E0204] Error: unknown namespace in USING
        ,-[ file:///test0.st:7:11 ]
        |
      7 |     USING unknown_ns2; // unknown namespace
@@ -864,7 +864,7 @@ fn nested_namespace_diagnostics_report_once(mut with_db: RootDatabase) {
        |
      5 |                 VAR t : TIME; END_VAR
        |                     |
-       |                     `-- type is declared by variable 't' here
+       |                     `-- 't' is declared here
      6 |                     t := 'not a time';
        |                          ^^^^^^|^^^^^
        |                                `------- expected 'TIME', got 'STRING'
