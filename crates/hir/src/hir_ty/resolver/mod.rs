@@ -698,7 +698,7 @@ fn namespace_value<'db>(
 
 /// The callable whose body `base` is, when it has a return value, which that
 /// body names by the callable's name: a FUNCTION or a METHOD with a return
-/// type. Without one the name is the callable's (E0318 when assigned), and a
+/// type. Without one the name is the callable's (E0319 when assigned), and a
 /// member of that name stays reachable.
 fn own_result<'db>(db: &'db dyn WorkspaceDataBase, base: Type<'db>) -> Option<CallableType<'db>> {
     let callable = match base {

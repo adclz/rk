@@ -152,23 +152,115 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0318] Error: assignment to an instance
-        ,-[ file:///test0.st:11:5 ]
+    [E0301] Error: type mismatch
+        ,-[ file:///test0.st:11:14 ]
+        |
+      2 | FUNCTION_BLOCK fb2
+        |                ^|^
+        |                 `--- FUNCTION_BLOCK 'fb2' is declared here
         |
      11 |     d_fb2 := ULINT#5;
-        |     ^^|^^
-        |       `---- an instance of 'fb2' cannot be assigned
-        |
-        | Help: pass the instance as a VAR_IN_OUT, or assign its members one by one
+        |              ^^^|^^^
+        |                 `----- expected 'fb2', got 'ULINT'
     ----'
     ");
 }
 
-/// A CLASS instance cannot be assigned either (E0318). It has no body, so it
-/// is not callable, and the check that refuses a FUNCTION_BLOCK's assignment
-/// let it through as a copy.
+/// A FUNCTION or METHOD on the left of `:=` outside its own body (E0318):
+/// a callable has no storage, and only inside its body is its name its
+/// return value. Reached bare, through `THIS` and through an instance, with
+/// and without a return type. Reading the name is E0317 as before.
 #[rstest]
-fn invalid_class_instance_assigned(mut with_db: RootDatabase) {
+fn invalid_assignment_to_a_function_or_method(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION scale : INT
+VAR_INPUT x : INT; END_VAR
+    scale := x * 2;
+END_FUNCTION
+
+FUNCTION_BLOCK Fb
+METHOD PUBLIC m : INT
+    m := 1;
+END_METHOD
+METHOD PUBLIC v
+END_METHOD
+METHOD PUBLIC w : INT
+    m := 2;
+    THIS.v := 3;
+    scale := 4;
+    w := 0;
+END_METHOD
+END_FUNCTION_BLOCK
+
+PROGRAM P
+VAR i : Fb; n : INT; END_VAR
+    scale := 5;
+    i.m := 6;
+    n := scale;
+    n := scale(x := 2);
+END_PROGRAM
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0318] Error: assignment to a FUNCTION or METHOD
+        ,-[ file:///test0.st:14:5 ]
+        |
+     14 |     m := 2;
+        |     |
+        |     `-- 'm' is a METHOD and cannot be assigned
+        |
+        | Note: a FUNCTION or METHOD has no storage: its name is its return value inside its own body only
+    ----'
+    [E0318] Error: assignment to a FUNCTION or METHOD
+        ,-[ file:///test0.st:15:5 ]
+        |
+     15 |     THIS.v := 3;
+        |     ^^^|^^
+        |        `---- 'v' is a METHOD and cannot be assigned
+        |
+        | Note: a FUNCTION or METHOD has no storage: its name is its return value inside its own body only
+    ----'
+    [E0318] Error: assignment to a FUNCTION or METHOD
+        ,-[ file:///test0.st:16:5 ]
+        |
+     16 |     scale := 4;
+        |     ^^|^^
+        |       `---- 'scale' is a FUNCTION and cannot be assigned
+        |
+        | Note: a FUNCTION or METHOD has no storage: its name is its return value inside its own body only
+    ----'
+    [E0318] Error: assignment to a FUNCTION or METHOD
+        ,-[ file:///test0.st:23:5 ]
+        |
+     23 |     scale := 5;
+        |     ^^|^^
+        |       `---- 'scale' is a FUNCTION and cannot be assigned
+        |
+        | Note: a FUNCTION or METHOD has no storage: its name is its return value inside its own body only
+    ----'
+    [E0318] Error: assignment to a FUNCTION or METHOD
+        ,-[ file:///test0.st:24:5 ]
+        |
+     24 |     i.m := 6;
+        |     ^|^
+        |      `--- 'm' is a METHOD and cannot be assigned
+        |
+        | Note: a FUNCTION or METHOD has no storage: its name is its return value inside its own body only
+    ----'
+    [E0317] Error: type name used as a value
+        ,-[ file:///test0.st:25:10 ]
+        |
+     25 |     n := scale;
+        |          ^^|^^
+        |            `---- 'scale' is not a value
+    ----'
+    ");
+}
+
+/// An instance is copied by an assignment, a CLASS instance like a
+/// FUNCTION_BLOCK one. The copy takes the whole state and goes its own way
+/// afterwards: the codegen tests in `codegen/copies.rs` check the values.
+#[rstest]
+fn valid_class_instance_copied(mut with_db: RootDatabase) {
     let source = r#"
 CLASS Sensor
 VAR n : INT; END_VAR
@@ -179,17 +271,7 @@ VAR a : Sensor; b : Sensor; END_VAR
     b := a;
 END_FUNCTION_BLOCK
 "#;
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0318] Error: assignment to an instance
-       ,-[ file:///test0.st:8:5 ]
-       |
-     8 |     b := a;
-       |     |
-       |     `-- an instance of 'Sensor' cannot be assigned
-       |
-       | Help: pass the instance as a VAR_IN_OUT, or assign its members one by one
-    ---'
-    ");
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
 
 #[rstest]
@@ -1010,6 +1092,80 @@ END_PROGRAM
        | Help: copy it into a variable and take the reference of that
        |
        | Note: a reference could change it
+    ---'
+    ");
+}
+
+/// An instance is copied wherever it is assigned: on its own, as an element
+/// of an ARRAY of instances, as a field of a STRUCT, or inside the array or
+/// the struct copied as a whole. Its members are assigned as before.
+#[rstest]
+fn valid_assignment_of_instances_and_what_holds_them(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK Fb
+VAR n : INT; END_VAR
+    n := n + 1;
+END_FUNCTION_BLOCK
+
+TYPE Holder : STRUCT inst : Fb; k : INT; END_STRUCT; END_TYPE
+
+PROGRAM P
+VAR
+    arr1 : ARRAY[0..1] OF Fb; arr2 : ARRAY[0..1] OF Fb;
+    h1 : Holder; h2 : Holder; i1 : Fb; i2 : Fb;
+END_VAR
+    i1 := i2;
+    arr1 := arr2;
+    arr1[0] := arr2[1];
+    arr1[1] := i1;
+    h1 := h2;
+    h1.inst := i1;
+    i2 := h1.inst;
+    arr1[0].n := 5;
+    h1.inst.n := 1;
+    h1.k := 2;
+    arr1[0]();
+END_PROGRAM
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+/// A STRUCT type is named in a mismatch, not shown as `STRUCT`: the type
+/// recorded for the value was the normalized one.
+#[rstest]
+fn invalid_struct_mismatch_names_the_type(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE Pt : STRUCT x : INT; END_STRUCT; END_TYPE
+TYPE Other : STRUCT x : INT; END_STRUCT; END_TYPE
+
+PROGRAM P
+VAR p : Pt; o : Other; n : INT; END_VAR
+    o := p;
+    n := p;
+END_PROGRAM
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0301] Error: type mismatch
+       ,-[ file:///test0.st:7:10 ]
+       |
+     3 | TYPE Other : STRUCT x : INT; END_STRUCT; END_TYPE
+       |      ^^|^^
+       |        `---- 'Other' is declared here
+       |
+     7 |     o := p;
+       |          |
+       |          `-- expected 'Other', got 'Pt'
+    ---'
+    [E0301] Error: type mismatch
+       ,-[ file:///test0.st:8:10 ]
+       |
+     6 | VAR p : Pt; o : Other; n : INT; END_VAR
+       |                        |
+       |                        `-- 'n' is declared here
+       |
+     8 |     n := p;
+       |          |
+       |          `-- expected 'INT', got 'Pt'
     ---'
     ");
 }

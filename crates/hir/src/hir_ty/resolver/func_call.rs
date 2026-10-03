@@ -943,10 +943,12 @@ fn apply_param_coercion<'db>(
             }
 
             // A field or an element of a constant is the constant. A
-            // CONSTANT variable itself is refused by `check_assignable`.
+            // CONSTANT variable itself is refused by `check_assignable`,
+            // from the place: `arr[1]` is the variable with a subscript.
+            let place_typ = ctx.get_type_of_variable_access(db, variable);
             if (var.is_in_out(db) || var.is_output(db))
                 && ctx.is_constant_place(db, variable)
-                && !crate::hir_ty::body::statements::is_constant_variable(db, rhs_typ)
+                && !crate::hir_ty::body::statements::is_constant_variable(db, place_typ)
             {
                 ctx.errors.push(
                     InitError::AssignToConstant {
@@ -961,22 +963,32 @@ fn apply_param_coercion<'db>(
             // the other way, every widening binding was refused and every
             // narrowing one accepted. Reported around the OUTPUT though: the
             // caret is on `d`, so the type named is the one `d` had to hold.
-            if rhs_typ.check_assignable(db, call_site, ctx)
-                && rhs_typ
+            // Assignability is the place's, as for an assignment: checked
+            // on the adjusted type, a struct element read as a type name
+            // used as a value (E0317).
+            if place_typ.check_assignable(db, call_site, ctx) {
+                if rhs_typ
                     .coerce_with_type(db, lhs_typ, None, resolver)
                     .is_err()
-            {
-                ctx.errors.push(
-                    TypeError::NotAssignable {
-                        base_target: lhs_typ,
-                        lhs: lhs_typ,
-                        rhs: rhs_typ,
-                        adjustment: None,
-                        expr: call_site,
-                        suggest_cast: false,
-                    }
-                    .to_diagnostic(db, ctx.scope.file(db)),
-                );
+                {
+                    ctx.errors.push(
+                        TypeError::NotAssignable {
+                            base_target: lhs_typ,
+                            lhs: lhs_typ,
+                            rhs: rhs_typ,
+                            adjustment: None,
+                            expr: call_site,
+                            suggest_cast: false,
+                        }
+                        .to_diagnostic(db, ctx.scope.file(db)),
+                    );
+                } else {
+                    // The output is copied whole over the target, as by an
+                    // assignment (E1427).
+                    crate::hir_ty::body::statements::check_copy_keeps_location(
+                        db, rhs_typ, call_site, ctx,
+                    );
+                }
             }
 
             ctx.variable_of_param.insert(param, var);

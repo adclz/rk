@@ -18,6 +18,7 @@ use hir::{
 };
 use ide_diagnostic::IdeDiagnostic;
 
+pub mod aggregate_copy;
 pub mod allow;
 pub mod bool_comparison;
 pub mod case_without_else;
@@ -122,6 +123,7 @@ pub fn is_enabled(config: &LinterConfig, name: &str) -> bool {
 
 /// All lint rule names, for building configs that enable/disable specific rules.
 pub const ALL_RULE_NAMES: &[&str] = &[
+    aggregate_copy::NAME,
     allow::NAME,
     bool_comparison::NAME,
     case_without_else::NAME,
@@ -438,6 +440,11 @@ fn lint_scope<'db>(
 
     let body = scope.inference(db);
 
+    if is_enabled(config, aggregate_copy::NAME) {
+        run_lint(aggregate_copy::NAME, diagnostics, |d| {
+            aggregate_copy::check_calls(db, body, d)
+        });
+    }
     if is_enabled(config, unused_variable::NAME) {
         run_lint(unused_variable::NAME, diagnostics, |d| {
             unused_variable::check(db, scope, body, d)

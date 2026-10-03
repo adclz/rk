@@ -124,3 +124,34 @@ It goes in a function block body, once, outside any loop:
 - `E1111` inside a loop
 
 A `CLASS` base has no body, so `SUPER()` in a function block that extends one is `E1132`.
+
+## Copies
+
+An instance is a value, like a struct.
+Assigning one copies it whole: its variables, its inputs and outputs, and the instances it holds.
+The two then run on their own.
+
+```iecst
+FUNCTION_BLOCK Counter
+VAR n : INT; END_VAR
+    n := n + 1;
+END_FUNCTION_BLOCK
+
+PROGRAM P
+VAR a : Counter; b : Counter; END_VAR
+    a();
+    b := a;    // <-- b.n is 1
+    b();       // <-- b.n is 2, a.n is still 1
+END_PROGRAM
+```
+
+A `REF_TO` member is copied as it is, and still points at the original's target.
+To share one instance instead, pass it as a `VAR_IN_OUT`.
+The copy costs as much as the instance is large: the `aggregate-copy` lint (`L0214`) points at every one.
+
+A copy takes the exact type: a `Derived` into a `Base` is `E0301`, as it would keep the base part only.
+
+A `VAR_INPUT` of an instance type is a copy too, as every input is.
+An interface parameter is not: it binds the caller's instance by reference, so `dev : Conveyor` and `dev : IDevice` read the same at the call and do different things.
+
+A `FUNCTION` or `METHOD` is not a value: assigning to its name outside its own body is `E0318`.

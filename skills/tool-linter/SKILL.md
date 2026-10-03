@@ -40,7 +40,7 @@ Two layers.
 | -------- | -------------- |
 | absent, or no `[linter]` at all | the 27 recommended rules |
 | `"recommended"` | the same 27, stated explicitly |
-| `"all"` | all 53 |
+| `"all"` | all 54 |
 | `"none"` | none, unless `[linter.rules]` names one |
 
 ```toml
@@ -55,7 +55,7 @@ select = "all"           # default is "recommended"
 yoda-condition = false   # opt OUT of one `select` turned on
 ```
 
-To run the style rules on top of the default instead of taking all 53:
+To run the style rules on top of the default instead of taking all 54:
 
 ```toml
 [linter]
@@ -85,7 +85,7 @@ L0001 and L0202 report at info severity and still run by default, because what t
 
 L0001 and L0002 share the rule name `warn-pragma`; disabling it silences both.
 
-## Declarations and naming (L01xx)
+## Declarations and naming
 
 | Code | Rule | Severity | Flags |
 | --- | --- | --- | --- |
@@ -104,12 +104,13 @@ L0001 and L0002 share the rule name `warn-pragma`; disabling it silences both.
 `unused-variable` never reports VAR_OUTPUT, VAR_IN_OUT, VAR_GLOBAL, VAR_EXTERNAL, VAR_CONFIG or VAR_ACCESS, since those are read or written from outside the POU.
 It also skips the VAR_INPUT of a PROGRAM (written by the CONFIGURATION), the whole body of an `{extern}` FUNCTION, and any name starting with an underscore, which is the way to mark a declaration as deliberately unused.
 
-## Style and clarity (L02xx)
+## Style and clarity
 
 | Code | Rule | Severity | Flags |
 | --- | --- | --- | --- |
 | L0206 | `uninitialized-output` | info | VAR_OUTPUT declarations with no initializer that the body never assigns |
 | L0213 | `default-for-step` | hint | an explicit `BY 1`, which is already the default |
+| L0214 | `aggregate-copy` | info | an assignment or a call binding that copies an ARRAY, a STRUCT or a FUNCTION_BLOCK or CLASS instance whole, which costs as much as the type is large; a STRING copies its text only and is not reported |
 | L0301 | `unused-import` | hint | a USING directive that nothing in the file resolves through |
 | L0302 | `unused-return-type` | hint | a call whose return value is discarded |
 | L0303 | `missing-input-param` | hint | a FUNCTION_BLOCK or PROGRAM call that does not pass every declared VAR_INPUT |
@@ -133,7 +134,7 @@ L0206 collapses every unassigned output of one body into a single diagnostic lis
 
 `empty-body` never reports an `{extern}` FUNCTION, whose body is empty by definition.
 
-## Suspicious code (L03xx)
+## Suspicious code
 
 | Code | Rule | Severity | Flags |
 | --- | --- | --- | --- |
@@ -165,7 +166,7 @@ L0109 keys on the value the compiler computed, not on the text, so `7`, `INT#7` 
 L0103 only looks at a literal TRUE or FALSE.
 A condition that is constant after folding is not reported.
 
-## Globals (L04xx)
+## Globals
 
 | Code | Rule | Severity | Flags |
 | --- | --- | --- | --- |

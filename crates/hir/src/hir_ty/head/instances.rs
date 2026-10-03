@@ -300,6 +300,30 @@ pub fn pou_of_type<'db>(
     }
 }
 
+/// The member declared `AT %I*`, `%Q*` or `%M*` an instance of `ty` holds,
+/// as the names that reach it and the member itself, when a copy of the
+/// instance would write the other instance's pointer over it (E1427). An
+/// instance held in an ARRAY, a STRUCT, a VAR_GLOBAL, a VAR_INPUT or a
+/// FUNCTION's local is refused where it is declared (E1425), so only an
+/// instance on its own is looked at.
+pub fn partly_located_in_copy<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    ty: crate::hir_ty::ty::Type<'db>,
+) -> Option<(Vec<Ident>, VariableDecl<'db>)> {
+    use crate::hir_ty::ty::{CallableType, Type};
+    // A field or an element of instance type reads as the callable it is
+    // an instance of.
+    let ty = match ty.normalize(db) {
+        Type::CallableType(CallableType::FunctionBlock(fb)) => Type::FunctionBlock(fb),
+        other => other,
+    };
+    let path = partly_located_members(db, pou_of_type(db, ty)?).first()?;
+    Some((
+        path.iter().map(|v| v.name_with_case(db)).collect(),
+        *path.last()?,
+    ))
+}
+
 /// The FB or CLASS a variable is an instance of, if it is one.
 pub fn instance_pou_of<'db>(
     db: &'db dyn WorkspaceDataBase,

@@ -228,6 +228,17 @@ pub enum ConfigError<'db> {
         member: Vec<Ident>,
         address: compact_str::CompactString,
     },
+    /// An instance copied whole, `b := a` or `fb(o => b)`, with a member
+    /// declared `AT %I*`, `%Q*` or `%M*`. The member points at the channel
+    /// VAR_CONFIG gives its instance, and the copy would write the other
+    /// instance's pointer over it.
+    PartlyLocatedCopied {
+        /// The target of the copy.
+        site: CallSite<'db>,
+        /// The member declared with the partial address: `x`, or `fb.x`.
+        member: Vec<Ident>,
+        address: compact_str::CompactString,
+    },
 }
 
 /// Why a VAR_CONFIG entry cannot be taken as written.
@@ -713,6 +724,7 @@ impl<'db> ErrorCode for ConfigError<'db> {
             Self::ConfigEntryRefused { .. } => "E1426",
             Self::RetainHoldsPartlyLocated { .. } => "E1420",
             Self::PartlyLocatedOverwritten { .. } => "E1427",
+            Self::PartlyLocatedCopied { .. } => "E1427",
             Self::ProgElementRefused { .. } => "E1428",
         }
     }
@@ -1451,6 +1463,30 @@ impl<'db> ToIdeDiagnostic<'db> for ConfigError<'db> {
                     .call();
                 diag.with_note("it points at the channel VAR_CONFIG gives it".to_string());
                 diag.with_help("give it its starting value in its VAR_CONFIG entry".to_string());
+                diag
+            }
+            Self::PartlyLocatedCopied {
+                site,
+                member,
+                address,
+            } => {
+                let member = dotted(db, member.iter().copied());
+                let mut diag = diag()
+                    .message(format!(
+                        "the copy writes over '{member}', declared AT {address}"
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &site.get_span(db)).unwrap_or_default())
+                    .call();
+                diag.with_note(
+                    "it points at the channel VAR_CONFIG gives its instance, and the copy would point it at the other instance's"
+                        .to_string(),
+                );
+                diag.with_help(
+                    "copy the other members one by one, or share the instance through a VAR_IN_OUT"
+                        .to_string(),
+                );
                 diag
             }
         }
