@@ -151,7 +151,7 @@ impl<'db> Type<'db> {
                         true => Ok(()),
                         false => Err(CoerceError {
                             expected: *self,
-                            actual: to,
+                            actual: written,
                             adjustment: adjs.iter().last().cloned(),
                         }),
                     };
@@ -159,7 +159,7 @@ impl<'db> Type<'db> {
                 _ => {
                     return Err(CoerceError {
                         expected: *self,
-                        actual: to,
+                        actual: written,
                         adjustment: adjs.iter().last().cloned(),
                     });
                 }
@@ -175,7 +175,7 @@ impl<'db> Type<'db> {
                 Type::Enum(e2) if e1.eq(&e2) => Ok(()),
                 _ => Err(CoerceError {
                     expected: *self,
-                    actual: to,
+                    actual: written,
                     adjustment: None,
                 }),
             },
@@ -185,7 +185,7 @@ impl<'db> Type<'db> {
                 } else {
                     Err(CoerceError {
                         expected: *self,
-                        actual: to,
+                        actual: written,
                         adjustment: None,
                     })
                 }
@@ -195,7 +195,7 @@ impl<'db> Type<'db> {
                 true => Ok(()),
                 false => Err(CoerceError {
                     expected: *self,
-                    actual: to,
+                    actual: written,
                     adjustment: None,
                 }),
             },
@@ -216,7 +216,7 @@ impl<'db> Type<'db> {
                 if s1.len() != s2.len() {
                     return Err(CoerceError {
                         expected: *self,
-                        actual: to,
+                        actual: written,
                         adjustment: None,
                     });
                 }
@@ -231,7 +231,7 @@ impl<'db> Type<'db> {
                     if !bounds_match {
                         return Err(CoerceError {
                             expected: *self,
-                            actual: to,
+                            actual: written,
                             adjustment: None,
                         });
                     }
@@ -240,18 +240,18 @@ impl<'db> Type<'db> {
                 // array copy moves bytes, it does not convert them, so an
                 // `ARRAY OF INT` into an `ARRAY OF REAL` checked clean and
                 // read back garbage (b[1] was not 2.0). A STRING element's
-                // capacity is its size, so `STRING[4]` and `STRING` differ.
-                match same_type(
+                // capacity is its size, so `STRING[4]` and `STRING` differ,
+                // and so does a subrange: the copy checks no element, so an
+                // `ARRAY OF INT` into an `ARRAY OF INT (0..10)` stored 50.
+                match crate::hir_ty::head::checks::variables::same_storage_type(
                     db,
-                    a1.of_type(db).infer(db).normalize(db),
-                    a2.of_type(db).infer(db).normalize(db),
-                ) && string_capacity(db, a1.of_type(db))
-                    == string_capacity(db, a2.of_type(db))
-                {
+                    Type::Array(a1),
+                    Type::Array(*a2),
+                ) {
                     true => Ok(()),
                     false => Err(CoerceError {
                         expected: *self,
-                        actual: to,
+                        actual: written,
                         adjustment: None,
                     }),
                 }
@@ -275,7 +275,7 @@ impl<'db> Type<'db> {
                     true => Ok(()),
                     false => Err(CoerceError {
                         expected: *self,
-                        actual: to,
+                        actual: written,
                         adjustment: None,
                     }),
                 }
@@ -287,16 +287,15 @@ impl<'db> Type<'db> {
                     true => Ok(()),
                     false => Err(CoerceError {
                         expected: *self,
-                        actual: to,
+                        actual: written,
                         adjustment: None,
                     }),
                 }
             }
-            // An instance passed where its own POU is expected. VAR_IN_OUT binds
-            // by reference, so this hands over the instance rather than copying
-            // it — the way to share one. Assigning an instance is a different
-            // question and stays refused, by the check on the assignment TARGET
-            // (E0318), not here.
+            // An instance where its own POU is expected: a VAR_IN_OUT binds
+            // it by reference, an assignment copies it whole. A reference it
+            // holds is copied as it is, still pointing at the original
+            // target.
             (Type::FunctionBlock(expected), Type::FunctionBlock(actual)) if expected == *actual => {
                 Ok(())
             }
@@ -314,7 +313,7 @@ impl<'db> Type<'db> {
             }
             _ => Err(CoerceError {
                 expected: *self,
-                actual: to,
+                actual: written,
                 adjustment: None,
             }),
         }
@@ -366,29 +365,6 @@ impl<'db> Type<'db> {
         match self {
             Type::Variable((variable, multibits)) => {
                 let mut assignable = true;
-                // a variable of callable type cannot be assigned to
-                if let Some(callable_typ) = variable.spec(db).infer(db).as_callable(db) {
-                    ctx.errors.push(
-                        TypeError::AssignCallableType {
-                            typ: callable_typ,
-                            access: call_site,
-                        }
-                        .to_diagnostic(db, ctx.scope.file(db)),
-                    );
-                    assignable = false;
-                }
-                // Nor a CLASS instance, which is not callable only because it
-                // has no body.
-                if let class @ Type::Class(_) = variable.spec(db).infer(db).normalize(db) {
-                    ctx.errors.push(
-                        TypeError::AssignClassInstance {
-                            class,
-                            access: call_site,
-                        }
-                        .to_diagnostic(db, ctx.scope.file(db)),
-                    );
-                    assignable = false;
-                }
                 // a CONSTANT variable cannot be assigned to
                 if variable.qualifier(db).contains(crate::Qualifier::CONSTANT) {
                     ctx.errors.push(
@@ -448,6 +424,22 @@ impl<'db> Type<'db> {
                 ctx.errors.push(
                     TypeError::AssignVoidResult {
                         callable,
+                        access: call_site,
+                    }
+                    .to_diagnostic(db, ctx.scope.file(db)),
+                );
+                false
+            }
+            // A FUNCTION or METHOD named anywhere else: a callable has no
+            // storage to write (E0318). An instance is a variable, copied
+            // like any other.
+            Type::Function(_) | Type::MethodDecl(_) => {
+                let Some(callable) = self.as_callable(db) else {
+                    return true;
+                };
+                ctx.errors.push(
+                    TypeError::AssignFunctionOrMethod {
+                        typ: callable,
                         access: call_site,
                     }
                     .to_diagnostic(db, ctx.scope.file(db)),

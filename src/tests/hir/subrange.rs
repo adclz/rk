@@ -728,3 +728,46 @@ fn invalid_reversed_bounds(mut with_db: RootDatabase) {
     ---'
     ");
 }
+
+/// An array copy moves bytes and checks no element, so the element types are
+/// the same storage type, subrange included: an `ARRAY OF INT` into an
+/// `ARRAY OF INT (0..10)` stored 50 with nothing said.
+#[rstest]
+fn invalid_array_copy_into_a_subrange(mut with_db: RootDatabase) {
+    let source = r#"
+PROGRAM P
+VAR
+    a : ARRAY[0..2] OF INT (0..10);
+    b : ARRAY[0..2] OF INT := [50, 2, 3];
+    c : ARRAY[0..2] OF INT (0..10);
+END_VAR
+    a := b;
+    b := a;
+    a := c;
+END_PROGRAM
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0301] Error: type mismatch
+       ,-[ file:///test0.st:8:10 ]
+       |
+     4 |     a : ARRAY[0..2] OF INT (0..10);
+       |     |
+       |     `-- 'a' is declared here
+       |
+     8 |     a := b;
+       |          |
+       |          `-- expected 'ARRAY [0..2] OF INT (0..10)', got 'ARRAY [0..2] OF INT'
+    ---'
+    [E0301] Error: type mismatch
+       ,-[ file:///test0.st:9:10 ]
+       |
+     5 |     b : ARRAY[0..2] OF INT := [50, 2, 3];
+       |     |
+       |     `-- 'b' is declared here
+       |
+     9 |     b := a;
+       |          |
+       |          `-- expected 'ARRAY [0..2] OF INT', got 'ARRAY [0..2] OF INT (0..10)'
+    ---'
+    ");
+}
