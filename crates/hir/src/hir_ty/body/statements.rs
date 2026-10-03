@@ -811,7 +811,9 @@ impl<'db> StmtsResolverCtx<'db> {
                     // check condition
                     self.infer_and_check_expr(db, &mut infer, *condition, ctx);
 
-                    let condition_typ = ctx.get_type_of_expr(*condition);
+                    // After its adjustments: `CASE names[i] OF` selects on
+                    // an element, not on the array.
+                    let condition_typ = ctx.type_of_expr_with_adjustments(db, *condition);
 
                     // CASE branches on an integer, a bit string, a CHAR, an
                     // enum or a STRING. Another selector is refused once, and
