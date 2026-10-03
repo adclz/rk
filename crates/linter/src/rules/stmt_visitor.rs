@@ -22,9 +22,9 @@ use hir::{
 use ide_diagnostic::IdeDiagnostic;
 
 use super::{
-    bool_comparison, collapsible_if, constant_condition, constant_loop_bounds, default_for_step,
-    duplicate_case, empty_case_branch, empty_if_branch, empty_loop_body, external_mutation,
-    identical_sub_expr, identity_operation, input_assignment, loop_var_modified,
+    aggregate_copy, bool_comparison, collapsible_if, constant_condition, constant_loop_bounds,
+    default_for_step, duplicate_case, empty_case_branch, empty_if_branch, empty_loop_body,
+    external_mutation, identical_sub_expr, identity_operation, input_assignment, loop_var_modified,
     missing_input_param, missing_return, negated_comparison, negated_condition, redundant_not,
     run_lint, self_assignment, self_comparison, sub_self, uninitialized_output, unnecessary_else,
     unnecessary_parens, yoda_condition,
@@ -51,6 +51,7 @@ pub fn check<'db>(
 
     let ctx = VisitorCtx {
         input_assignment: crate::rules::is_enabled(config, input_assignment::NAME),
+        aggregate_copy: crate::rules::is_enabled(config, aggregate_copy::NAME),
         self_assignment: crate::rules::is_enabled(config, self_assignment::NAME),
         collapsible_if: crate::rules::is_enabled(config, collapsible_if::NAME),
         empty_if_branch: crate::rules::is_enabled(config, empty_if_branch::NAME),
@@ -118,6 +119,7 @@ pub fn check<'db>(
 }
 
 struct VisitorCtx {
+    aggregate_copy: bool,
     input_assignment: bool,
     self_assignment: bool,
     collapsible_if: bool,
@@ -148,7 +150,8 @@ struct VisitorCtx {
 
 impl VisitorCtx {
     fn any_enabled(&self) -> bool {
-        self.input_assignment
+        self.aggregate_copy
+            || self.input_assignment
             || self.self_assignment
             || self.collapsible_if
             || self.empty_if_branch
@@ -302,6 +305,11 @@ fn visit_statements<'db>(
                 if ctx.self_assignment {
                     run_lint(self_assignment::NAME, diagnostics, |d| {
                         self_assignment::check_assignment(db, body, *stmt, *var, *target, d)
+                    });
+                }
+                if ctx.aggregate_copy {
+                    run_lint(aggregate_copy::NAME, diagnostics, |d| {
+                        aggregate_copy::check_assignment(db, body, *stmt, *var, d)
                     });
                 }
                 if ctx.loop_var_modified {
