@@ -546,39 +546,101 @@ fn invalid_this_as_interface_argument_not_implemented(mut with_db: RootDatabase)
     ");
 }
 
-// `THIS` is not assignable: an instance cannot be rebound to another, which
-// would copy one instance's state over another's. The check on the assignment
-// TARGET says so, and now says it alone — it used to be followed by a type
-// mismatch reading "expected 'Worker', got 'Worker'".
+/// A derived instance is not a base one, nor the other way round: `b := d`
+/// would keep the base part only, and a later `b()` would run the base body
+/// on what the derived one left. A mismatch, both ways, for a FUNCTION_BLOCK
+/// and a CLASS. A copy takes the exact type.
 #[rstest]
-fn invalid_this_assigned_to_variable(mut with_db: RootDatabase) {
+fn invalid_derived_instance_copied_into_a_base(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Base
+        VAR n : INT; END_VAR
+            n := n + 1;
+        END_FUNCTION_BLOCK
+
+        FUNCTION_BLOCK Derived EXTENDS Base
+        VAR m : INT; END_VAR
+        END_FUNCTION_BLOCK
+
+        CLASS CBase
+        VAR n : INT; END_VAR
+        END_CLASS
+
+        CLASS CDerived EXTENDS CBase
+        VAR m : INT; END_VAR
+        END_CLASS
+
+        PROGRAM P
+        VAR b : Base; d : Derived; cb : CBase; cd : CDerived; END_VAR
+            b := d;
+            d := b;
+            cb := cd;
+            cd := cb;
+        END_PROGRAM
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0301] Error: type mismatch
+        ,-[ file:///test0.st:21:18 ]
+        |
+      2 |         FUNCTION_BLOCK Base
+        |                        ^^|^
+        |                          `--- FUNCTION_BLOCK 'Base' is declared here
+        |
+     21 |             b := d;
+        |                  |
+        |                  `-- expected 'Base', got 'Derived'
+    ----'
+    [E0301] Error: type mismatch
+        ,-[ file:///test0.st:22:18 ]
+        |
+      7 |         FUNCTION_BLOCK Derived EXTENDS Base
+        |                        ^^^|^^^
+        |                           `----- FUNCTION_BLOCK 'Derived' is declared here
+        |
+     22 |             d := b;
+        |                  |
+        |                  `-- expected 'Derived', got 'Base'
+    ----'
+    [E0301] Error: type mismatch
+        ,-[ file:///test0.st:23:19 ]
+        |
+     11 |         CLASS CBase
+        |               ^^|^^
+        |                 `---- CLASS 'CBase' is declared here
+        |
+     23 |             cb := cd;
+        |                   ^|
+        |                    `-- expected 'CBase', got 'CDerived'
+    ----'
+    [E0301] Error: type mismatch
+        ,-[ file:///test0.st:24:19 ]
+        |
+     15 |         CLASS CDerived EXTENDS CBase
+        |               ^^^^|^^^
+        |                   `----- CLASS 'CDerived' is declared here
+        |
+     24 |             cd := cb;
+        |                   ^|
+        |                    `-- expected 'CDerived', got 'CBase'
+    ----'
+    ");
+}
+
+/// `THIS` is the instance, and copying it into a variable of its own type
+/// is an instance copy like any other: the copy is checked as a value, and
+/// does not read "expected 'Worker', got 'Worker'". A block holding one of
+/// itself is E1301 on its own.
+#[rstest]
+fn valid_this_copied_into_a_variable(mut with_db: RootDatabase) {
     let source = r#"
         FUNCTION_BLOCK Worker
-        VAR other : Worker; END_VAR
-            METHOD Go
-                other := THIS;
+        VAR n : INT; END_VAR
+            METHOD Snapshot
+            VAR copy : Worker; END_VAR
+                copy := THIS;
+                copy.n := n + 1;
             END_METHOD
         END_FUNCTION_BLOCK
     "#;
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1301] Error: type contains itself
-       ,-[ file:///test0.st:2:24 ]
-       |
-     2 |         FUNCTION_BLOCK Worker
-       |                        ^^^|^^
-       |                           `---- type 'Worker' contains itself
-     3 |         VAR other : Worker; END_VAR
-       |                     ^^^|^^
-       |                        `---- 'Worker' references itself here
-    ---'
-    [E0318] Error: assignment to an instance
-       ,-[ file:///test0.st:5:17 ]
-       |
-     5 |                 other := THIS;
-       |                 ^^|^^
-       |                   `---- an instance of 'Worker' cannot be assigned
-       |
-       | Help: pass the instance as a VAR_IN_OUT, or assign its members one by one
-    ---'
-    ");
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }

@@ -1259,10 +1259,10 @@ END_CONFIGURATION
 
 /// A variable declared `AT %I*` points at its instance's channel, so what
 /// would write over that pointer is refused: an instance's initializer
-/// naming it (E1427), and a VAR_INPUT each call copies its argument over
-/// (E1425). A CLASS is not assigned at all (E0318). A STRUCT's field is
-/// not something a VAR_CONFIG path names (E1425), and a RETAIN instance
-/// cannot retain the marker such a variable points at (E1420).
+/// naming it (E1427), a copy of the instance (E1427), and a VAR_INPUT each
+/// call copies its argument over (E1425). A STRUCT's field is not something
+/// a VAR_CONFIG path names (E1425), and a RETAIN instance cannot retain the
+/// marker such a variable points at (E1420).
 #[rstest]
 fn invalid_partly_located_members_overwritten_or_unreachable(mut with_db: RootDatabase) {
     let source = r#"
@@ -1372,14 +1372,117 @@ END_CONFIGURATION
         |
         | Note: it points at the channel VAR_CONFIG gives it
     ----'
-    [E0318] Error: assignment to an instance
+    [E1427] Error: located variable overwritten
         ,-[ file:///test0.st:24:5 ]
         |
      24 |     b := a;
         |     |
-        |     `-- an instance of 'Sensor' cannot be assigned
+        |     `-- the copy writes over 'raw', declared AT %Q*
         |
-        | Help: pass the instance as a VAR_IN_OUT, or assign its members one by one
+        | Help: copy the other members one by one, or share the instance through a VAR_IN_OUT
+        |
+        | Note: it points at the channel VAR_CONFIG gives its instance, and the copy would point it at the other instance's
+    ----'
+    ");
+}
+
+/// An instance is copied whole, and one with a member declared `AT %I*`
+/// holds the address of its channel there: the copy would write the other
+/// instance's over it, and `b.raw` would drive `a`'s channel. Refused for
+/// an assignment, to a variable or to a member, and for an output binding
+/// (E1427). The other members copy one by one, and an instance without
+/// such a member copies whole.
+#[rstest]
+fn invalid_copy_of_a_partly_located_instance(mut with_db: RootDatabase) {
+    let source = r#"
+CLASS Sensor
+VAR raw AT %Q* : INT; END_VAR
+VAR n : INT; END_VAR
+END_CLASS
+
+FUNCTION_BLOCK Motor
+VAR cnt AT %M* : INT; END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK Plain
+VAR n : INT; END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK Outer
+VAR inner : Motor; END_VAR
+VAR_OUTPUT o : Motor; END_VAR
+END_FUNCTION_BLOCK
+
+PROGRAM P
+VAR a : Sensor; b : Sensor; m1 : Motor; m2 : Motor; o : Outer; k : Motor; p1 : Plain; p2 : Plain; END_VAR
+    b := a;
+    m1 := m2;
+    o.inner := k;
+    o(o => k);
+    b.n := a.n;
+    p1 := p2;
+END_PROGRAM
+
+CONFIGURATION Cfg
+VAR_CONFIG
+    Res.P1.a.raw       AT %QW0 : INT;
+    Res.P1.b.raw       AT %QW1 : INT;
+    Res.P1.m1.cnt      AT %MW0 : INT;
+    Res.P1.m2.cnt      AT %MW1 : INT;
+    Res.P1.o.inner.cnt AT %MW2 : INT;
+    Res.P1.o.o.cnt     AT %MW3 : INT;
+    Res.P1.k.cnt       AT %MW4 : INT;
+END_VAR
+    RESOURCE Res ON CPU
+        TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM P1 WITH T : P;
+    END_RESOURCE
+END_CONFIGURATION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1427] Error: located variable overwritten
+        ,-[ file:///test0.st:22:5 ]
+        |
+     22 |     b := a;
+        |     |
+        |     `-- the copy writes over 'raw', declared AT %Q*
+        |
+        | Help: copy the other members one by one, or share the instance through a VAR_IN_OUT
+        |
+        | Note: it points at the channel VAR_CONFIG gives its instance, and the copy would point it at the other instance's
+    ----'
+    [E1427] Error: located variable overwritten
+        ,-[ file:///test0.st:23:5 ]
+        |
+     23 |     m1 := m2;
+        |     ^|
+        |      `-- the copy writes over 'cnt', declared AT %M*
+        |
+        | Help: copy the other members one by one, or share the instance through a VAR_IN_OUT
+        |
+        | Note: it points at the channel VAR_CONFIG gives its instance, and the copy would point it at the other instance's
+    ----'
+    [E1427] Error: located variable overwritten
+        ,-[ file:///test0.st:24:5 ]
+        |
+     24 |     o.inner := k;
+        |     ^^^|^^^
+        |        `----- the copy writes over 'cnt', declared AT %M*
+        |
+        | Help: copy the other members one by one, or share the instance through a VAR_IN_OUT
+        |
+        | Note: it points at the channel VAR_CONFIG gives its instance, and the copy would point it at the other instance's
+    ----'
+    [E1427] Error: located variable overwritten
+        ,-[ file:///test0.st:25:12 ]
+        |
+     25 |     o(o => k);
+        |            |
+        |            `-- the copy writes over 'cnt', declared AT %M*
+        |
+        | Help: copy the other members one by one, or share the instance through a VAR_IN_OUT
+        |
+        | Note: it points at the channel VAR_CONFIG gives its instance, and the copy would point it at the other instance's
     ----'
     ");
 }

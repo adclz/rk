@@ -89,14 +89,11 @@ pub enum TypeError<'db> {
         typ: Type<'db>,
         expr: CallSite<'db>,
     },
-    AssignCallableType {
+    /// A FUNCTION or METHOD named as an assignment target outside its own
+    /// body, `f := 5` or `inst.m := 5`. A callable has no storage: its name
+    /// is its return value inside its own body only.
+    AssignFunctionOrMethod {
         typ: CallableType<'db>,
-        access: CallSite<'db>,
-    },
-    /// A CLASS instance as an assignment target. It has no body, so it is not
-    /// callable, and it used to be copied where a FUNCTION_BLOCK is refused.
-    AssignClassInstance {
-        class: Type<'db>,
         access: CallSite<'db>,
     },
     /// The own name of a FUNCTION or METHOD declared without a return type,
@@ -204,8 +201,7 @@ impl<'db> ErrorCode for TypeError<'db> {
             Self::StringLengthNegative { .. } => "E0320",
             Self::FunctionAsType { .. } => "E0316",
             Self::DirectType { .. } => "E0317",
-            Self::AssignCallableType { .. } => "E0318",
-            Self::AssignClassInstance { .. } => "E0318",
+            Self::AssignFunctionOrMethod { .. } => "E0318",
             Self::AssignVoidResult { .. } => "E0319",
         }
     }
@@ -395,11 +391,27 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                 .desc(self)
                 .range(crate::denormalize(db, file, &expr.get_span(db)).unwrap_or_default())
                 .call(),
-            Self::AssignCallableType { typ, access } => {
-                instance_assigned(self, db, file, typ.get_name_with_case(db).text(db), access)
-            }
-            Self::AssignClassInstance { class, access } => {
-                instance_assigned(self, db, file, &class.type_name(db), access)
+            Self::AssignFunctionOrMethod { typ, access } => {
+                let kind = match typ {
+                    CallableType::Function(_) => "FUNCTION",
+                    CallableType::MethodDecl(_) => "METHOD",
+                    // An instance is a variable, copied by an assignment.
+                    CallableType::FunctionBlock(_) => "FUNCTION_BLOCK",
+                };
+                let mut diag = diag()
+                    .message(format!(
+                        "'{}' is a {kind} and cannot be assigned",
+                        typ.get_name_with_case(db).text(db)
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &access.get_span(db)).unwrap_or_default())
+                    .call();
+                diag.with_note(
+                    "a FUNCTION or METHOD has no storage: its name is its return value inside its own body only"
+                        .to_string(),
+                );
+                diag
             }
             Self::AssignVoidResult { callable, access } => {
                 let mut diag = diag()
@@ -641,26 +653,6 @@ impl std::fmt::Display for InferLiteralError {
         };
         f.write_str(msg)
     }
-}
-
-/// E0318: an instance on the left of `:=`.
-fn instance_assigned<'db>(
-    error: &TypeError<'db>,
-    db: &'db dyn WorkspaceDataBase,
-    file: auto_lsp::default::db::file::File,
-    type_name: &str,
-    access: &CallSite<'db>,
-) -> IdeDiagnostic {
-    let mut diag = diag()
-        .message(format!("an instance of '{type_name}' cannot be assigned"))
-        .severity(DiagnosticSeverity::ERROR)
-        .desc(error)
-        .range(crate::denormalize(db, file, &access.get_span(db)).unwrap_or_default())
-        .call();
-    diag.with_help(
-        "pass the instance as a VAR_IN_OUT, or assign its members one by one".to_string(),
-    );
-    diag
 }
 
 fn explicit_cast_suggestion(

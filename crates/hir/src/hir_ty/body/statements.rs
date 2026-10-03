@@ -368,6 +368,17 @@ impl<'db> StmtsResolverCtx<'db> {
                             base_typ,
                             CallSite::from_scoped(db, target),
                         ));
+                    } else if assignable {
+                        // An instance is copied whole. One with a member
+                        // declared `AT %I*` holds the address of its channel
+                        // there, and the copy would write the other
+                        // instance's over it (E1427).
+                        check_copy_keeps_location(
+                            db,
+                            ctx.type_of_variable_access_with_adjustments(db, *var),
+                            CallSite::from_scoped(db, var),
+                            ctx,
+                        );
                     }
 
                     // A string literal must FIT the destination. The store
@@ -1185,4 +1196,30 @@ fn stored_spec<'db>(
     Some(crate::hir_ty::head::checks::variables::innermost_element(
         db, spec,
     ))
+}
+
+/// E1427 for a copy over `target`, an instance with a member declared
+/// `AT %I*`, `%Q*` or `%M*`: the member is the address of its channel, and
+/// the copy would write the source instance's over it.
+pub(crate) fn check_copy_keeps_location<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    target: Type<'db>,
+    site: CallSite<'db>,
+    ctx: &mut BodyInferenceResult<'db>,
+) {
+    let Some((member, var)) = crate::hir_ty::head::instances::partly_located_in_copy(db, target)
+    else {
+        return;
+    };
+    ctx.errors.push(
+        crate::check::errors::e14_config::ConfigError::PartlyLocatedCopied {
+            site,
+            member,
+            address: var
+                .location(db)
+                .map(|dv| compact_str::CompactString::from(dv.to_address(db)))
+                .unwrap_or_default(),
+        }
+        .to_diagnostic(db, ctx.scope.file(db)),
+    );
 }
