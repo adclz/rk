@@ -307,3 +307,42 @@ fn the_next_scan_starts_the_stack_over(mut with_db: db::RootDatabase) {
     let got = i32::from_le_bytes([globals[0], globals[1], globals[2], globals[3]]);
     assert_eq!(got, 55, "0 + 1 + ... + 10");
 }
+
+/// An instance of a block with no variables takes no bytes, and the frame
+/// of a recursive function holding one had no size: the code generator
+/// gives a frame base only to a function whose frame pushes something,
+/// and panicked on the frame local. The empty instance takes a byte of the
+/// frame now, and the function runs. A cycle through `SUPER()` was the
+/// shape the fuzzer found it in; it compiles, and is not run, since it
+/// never returns.
+#[rstest]
+fn a_recursive_function_holding_an_empty_instance(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Empty
+        END_FUNCTION_BLOCK
+
+        FUNCTION Depth : INT
+        VAR_INPUT n : INT; END_VAR
+        VAR e : Empty; END_VAR
+            e();
+            IF n > 0 THEN
+                Depth := Depth(n := n - 1) + 1;
+            END_IF;
+        END_FUNCTION
+
+        FUNCTION_BLOCK Base
+            Kick();
+        END_FUNCTION_BLOCK
+
+        FUNCTION_BLOCK Derived EXTENDS Base
+            SUPER();
+        END_FUNCTION_BLOCK
+
+        FUNCTION Kick : INT
+        VAR d : Derived; END_VAR
+            d();
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    assert_eq!(super::execute_wasm::<i32, i32>(&wasm, "Depth", 4), 4);
+}
