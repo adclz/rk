@@ -1016,3 +1016,44 @@ fn invalid_output_binding_narrows(mut with_db: RootDatabase) {
     ---'
     ");
 }
+
+/// An output bound to an element, a field or a dereference: the place is
+/// what is assigned, as in an assignment statement. Checked on the type
+/// after the subscript, a STRUCT element read as a type name used as a value
+/// (E0317), for FUNCTIONs and FUNCTION_BLOCKs alike.
+#[rstest]
+fn valid_aggregate_output_into_an_element_or_a_dereference(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE Point : STRUCT x : INT; y : INT; END_STRUCT; END_TYPE
+
+FUNCTION make : INT
+VAR_OUTPUT o : Point; END_VAR
+    o.x := 1; o.y := 2; make := 0;
+END_FUNCTION
+
+TYPE Row : ARRAY[0..1] OF INT; END_TYPE
+
+FUNCTION make_row : INT
+VAR_OUTPUT o : Row; END_VAR
+    o[0] := 1; make_row := 0;
+END_FUNCTION
+
+FUNCTION_BLOCK Mk
+VAR_OUTPUT o : Point; END_VAR
+    o.x := 3;
+END_FUNCTION_BLOCK
+
+PROGRAM P
+VAR
+    a : ARRAY[0..2] OF Point; j : INT; r : REF_TO Point; pt : Point;
+    m : ARRAY[0..2] OF Row; mk : Mk; n : INT;
+END_VAR
+    r := REF(pt);
+    n := make(o => a[j]);
+    n := make(o => r^);
+    n := make_row(o => m[1]);
+    mk(o => a[0]);
+END_PROGRAM
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
