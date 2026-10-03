@@ -429,6 +429,7 @@ impl<'db> InitExprInferenceResult<'db> {
         let mut place = InitPlaceBuilder {
             current_init_typ: typ,
         };
+        let errors_before = self.errors.len();
         self.resolve_steps(db, typ, &mut place, body_ctx, &mut ctx, map);
 
         // Produce the authoritative, flattened resolved leaves. This is a pure,
@@ -436,6 +437,15 @@ impl<'db> InitExprInferenceResult<'db> {
         // initializer into row-major (path, value) leaves for MIR to consume,
         // placing each nested bracket as the walk above decided, a row or an
         // element. Validation lives in the walk; this never re-validates.
+        //
+        // Only for an initializer the walk accepted: the leaves feed the
+        // lowering, which a rejected program never reaches, and a repetition
+        // the walk refused as too many elements (E0507) is expanded here
+        // count by count. `[15532559262904483838(0)]` took the checker down
+        // at two gigabytes.
+        if self.errors.len() > errors_before {
+            return;
+        }
         let mut leaves = Vec::new();
         resolve_leaves(
             db,
