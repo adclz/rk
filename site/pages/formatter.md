@@ -106,9 +106,36 @@ q: Pt := (
 Semicolons `;` are not mandatory, see [Syntax](/docs/syntax/).
 
 The formatter writes the missing ones in: every declaration, statement and directive comes back terminated, and one already there is left alone.
+A statement is laid out the same with or without its `;`, each on its own line, and the empty statement, a `;` on its own, is kept where it stands.
 
 > [!NOTE]
 > A `USING` naming several namespaces takes one terminator at the end, not one per name.
+
+## Statements
+
+One statement per line, however the source was written.
+The first statement of a `CASE` branch may share the label's line; a nested block there starts a line of its own.
+
+```iecst fragment
+// as written
+WHILE x > 5 DO x := x - 1; IF x = 7 THEN EXIT; END_IF; END_WHILE;
+CASE x OF 1: x := 1; 2: IF y THEN x := 2; END_IF; END_CASE;
+
+// as formatted
+WHILE x > 5 DO
+	x := x - 1;
+	IF x = 7 THEN
+		EXIT;
+	END_IF;
+END_WHILE;
+CASE x OF
+	1: x := 1;
+	2:
+		IF y THEN
+			x := 2;
+		END_IF;
+END_CASE;
+```
 
 ## What it never touches
 

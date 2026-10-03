@@ -13,12 +13,14 @@ description: Format every .st file in a workspace with `rk fmt`. Use when asked 
 
 Formats every `.st` file in the workspace.
 
-A file that does not parse is refused and left untouched.
+A file with a syntax error is refused and left untouched, whether the parser stopped on it or recovered from it (an `E00xx`).
 Compilation errors are not syntax errors: a file that fails to type-check still formats.
 
 The `;` at the end of a declaration, a statement or a `USING` is optional to the
 parser, and the formatter writes it in. One already there is left alone, and a
 `USING` naming several namespaces takes one terminator at the end.
+A statement is laid out the same with or without its `;`: one per line.
+The empty statement, a `;` on its own, is kept where it stands.
 
 ## Usage
 

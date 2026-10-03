@@ -35,7 +35,11 @@ static SURROUND_SPACES: &str = r##"
     "END_VAR"
     "USING"
     "FINAL" "ABSTRACT" "OVERRIDE"
-    (public) (protected) (private) (internal) (ref_to)
+    (public) (protected) (private) (internal)
+    ; `REF_TO` is the `(ref_to)` alias in a VAR, and the bare keyword in a
+    ; VAR_TEMP's `ref_spec`. Without the second, `REF_TO INT` there was
+    ; written `REF_TOINT`, a type that does not exist.
+    (ref_to) "REF_TO"
     "IMPLEMENTS" "EXTENDS"
     "METHOD" "END_METHOD"
     "IF" "THEN" "ELSE" "ELSIF"
@@ -53,10 +57,13 @@ static SURROUND_SPACES: &str = r##"
    
     ":=" "=" "=>" "<=" "<" ">=" ">" "<>" "+" "-" "*" "/" 
     "&" "AND" "OR" "XOR" "MOD" "NOT"
-    (line_comment)
     (c_style_comment)
     (pascal_style_comment)
 ] @prepend_space @append_space
+
+; A line comment ends its line: a space after it went before the line
+; break and was written as an indented blank line.
+(line_comment) @prepend_space
 
 ; A whole statement on its own: nothing follows it but the terminator, and a
 ; trailing space there would be written before the `;` this file appends and
@@ -65,7 +72,12 @@ static SURROUND_SPACES: &str = r##"
 
 [(identifier) "%"] @prepend_space
 ["(" "[" "." "END_CASE"] @append_antispace
-[")" "]" ":" ";" "," "." (deref_sign)] @prepend_antispace
+[")" "]" ":" "," "." (deref_sign)] @prepend_antispace
+; A `;` sits against what it ends: a statement, a declaration, a comment
+; between the two, an `END_VAR` or a `STRUCT`. The one that opens a CASE
+; branch, `1: ;`, follows the label's space instead.
+(_ (_) . ";" @prepend_antispace)
+(_ ["END_VAR" "STRUCT"] . ";" @prepend_antispace)
 ["NOT" ":"] @append_space
 
 ; signed_int and signed_real_value: sign is part of the token, no formatting needed
@@ -78,6 +90,12 @@ static SURROUND_SPACES: &str = r##"
 
 ; Enum value: no space around # (Color#Red, not Color # Red)
 (enum_value "#" @prepend_antispace @append_antispace)
+
+; The `*` of a partial address, `%Q*`, is the same token as the
+; multiplication above: spaced like one, it was written `%Q *`.
+(direct_variable (partly) @prepend_antispace @append_antispace)
+(relative_direct_variable (partly) @prepend_antispace @append_antispace)
+(loc_partly_var "*" @prepend_antispace @append_antispace)
 
 ; Extern pragma: normalize spacing between children
 (extern_pragma "{" @append_antispace)
@@ -196,6 +214,9 @@ static NEW_LINES: &str = r##"
     (external_decl)
     (global_var_decl)
     (struct_elem_decl)
+    (config_inst_init)
+    (access_decl)
+    (prog_access_decl)
 ] @prepend_hardline
 
 ; Blank line after closing keywords is handled by @allow_blank_line_before
@@ -211,33 +232,63 @@ static NEW_LINES: &str = r##"
     "TASK"
     "PROGRAM"
     "RESOURCE"
-    (assign)
-    (invocation)
-    (super_body_invocation)
     (extern_pragma)
-    (wasm_pragma)
-    (allow_pragma)
-    "RETURN"
+] @prepend_spaced_softline
+
+; A statement starts its own line. The `;` decides nothing here: it used to
+; carry the line break, so a statement with one and a statement without
+; were laid out two ways, and a file settled only on the second pass, once
+; the `;` this file writes in had become a token. The first statement of a
+; CASE branch is the exception, below; the first of any other body is
+; listed by its parent, since a branch's body and a block's are the same
+; `stmt_list` node.
+(stmt_list
+  (_)
+  .
+  [
+    (assign)
+    (func_call)
+    (begin_path_expression)
     (if_stmt)
     (case_stmt)
     (for_stmt)
     (while_stmt)
     (repeat_stmt)
+    (raise_stmt)
+    (wasm_pragma)
+    (allow_pragma)
+    "RETURN"
     "EXIT"
     "CONTINUE"
-] @prepend_spaced_softline
+  ] @prepend_hardline
+)
+(
+  [
+    (func_body (stmt_list . (_) @prepend_hardline))
+    (fb_body (stmt_list . (_) @prepend_hardline))
+    (if_stmt if_body: (stmt_list . (_) @prepend_hardline))
+    (if_stmt else_body: (stmt_list . (_) @prepend_hardline))
+    (else_if_stmt else_if_body: (stmt_list . (_) @prepend_hardline))
+    (case_stmt default: (stmt_list . (_) @prepend_hardline))
+    (for_stmt body: (stmt_list . (_) @prepend_hardline))
+    (while_stmt while_body: (stmt_list . (_) @prepend_hardline))
+    (repeat_stmt repeat_body: (stmt_list . (_) @prepend_hardline))
+  ]
+)
 
-; func_call as a statement (inside stmt_list) - not inside expressions
-(stmt_list (func_call) @prepend_spaced_softline)
+; The first statement of a CASE branch: a block starts its own line under
+; the label, a plain statement stays on the label's line or keeps the line
+; the source gave it. The source's line break is the body's, not its first
+; statement's: Topiary records a break between a node and the node before
+; it in walking order, and the body starts where its first statement does.
+(case_selection case_do: (stmt_list) @prepend_input_softline)
+(case_selection case_do: (stmt_list . [(if_stmt) (case_stmt) (for_stmt) (while_stmt) (repeat_stmt)] @prepend_hardline))
+
+; An empty statement, a `;` of its own, keeps the line it had.
+(stmt_list (_) . ";" @prepend_input_softline)
 
  (
   "," @append_spaced_softline
-  .
-  [(line_comment) (c_style_comment) (pascal_style_comment)]* @do_nothing
-)
-
-(
-  ";" @append_spaced_softline
   .
   [(line_comment) (c_style_comment) (pascal_style_comment)]* @do_nothing
 )
@@ -250,13 +301,12 @@ static NEW_LINES: &str = r##"
   [ "," ";" ]* @do_nothing
 )
 
-(stmt_list  ";" @do_nothing)
-
 [
     (line_comment)
     "THEN"
     "ELSE"
     "DO"
+    "REPEAT"
 ] @append_hardline
 
 (case_stmt "OF" @append_hardline)
@@ -337,7 +387,9 @@ static INDENTATIONS: &str = r#"
 ; whole file would fail to format — exactly when an editor formats on save.
 (for_stmt "DO" @append_indent_start "END_FOR" @prepend_indent_end)
 (while_stmt "DO" @append_indent_start "END_WHILE" @prepend_indent_end)
-(repeat_stmt "REPEAT" @append_indent_start "END_REPEAT" @prepend_indent_end)
+; The body of a REPEAT ends at UNTIL, which stands at the REPEAT's level
+; with the condition, and END_REPEAT under it.
+(repeat_stmt "REPEAT" @append_indent_start "UNTIL" @prepend_indent_end)
 
 (prog_decl name: (identifier) @append_indent_start) ; using "PROGRAM" will break the indentation in CONFIGURATION and RESOURCE
 
@@ -435,8 +487,9 @@ static LEAF: &str = r#"
 ] @leaf
 "#;
 
-// should we keep this ? semi colons are just making things worse
-#[allow(dead_code)]
+/// The terminators the grammar lets a source leave out, written in once.
+/// Each pattern names the node a `;` follows and gives up when one is
+/// already there.
 static SEMI_COLONS: &str = r#"
 (
   [
@@ -458,25 +511,32 @@ static SEMI_COLONS: &str = r#"
     (config_inst_init)
 
     (assign)
-    (super_body_invocation)
     "RETURN"
+    "EXIT"
     "CONTINUE"
     (if_stmt)
     (for_stmt)
     (case_stmt)
     (while_stmt)
     (repeat_stmt)
+    (raise_stmt)
   ] @append_delimiter
   .
   ";"* @do_nothing
   (#delimiter! ";")
 )
 
-((stmt_list (func_call)*  @append_delimiter
- .
- ";"* @do_nothing
- (#delimiter! ";")
-))
+; A call, `SUPER()` or `THIS.m()` is a statement only as a child of a
+; statement list; in an expression it takes no `;`. The guard has to see
+; the `;` as the statement's sibling: `SUPER()` matched as the invocation
+; inside its `begin_path_expression` saw none there and was given a second
+; one, `SUPER();;`, on every pass.
+(stmt_list
+  [(func_call) (begin_path_expression)] @append_delimiter
+  .
+  ";"* @do_nothing
+  (#delimiter! ";")
+)
 
 ; A USING directive holds its own `;`, so the sibling guard above cannot see
 ; it and the guard has to look inside. Matching an arbitrary child instead
@@ -526,15 +586,12 @@ pub static TOPIARY_LANG: LazyLock<Language> = LazyLock::new(|| Language {
 /// but not on MISSING ones (a token the parser inserted to recover), and it
 /// formatted such a file: one indent level cascaded over every POU after the
 /// gap, on a save that check had already rejected with E0002. `has_error`
-/// covers both kinds.
+/// covers both kinds. A recovery rule of the grammar, an `ERR_*` node, is
+/// refused too: it is a syntax error `check` reports, and what the
+/// formatter wrote for one (`x :=;`) was anyone's guess.
 pub fn format_source(source: &str) -> anyhow::Result<String> {
-    let mut parser = auto_lsp::tree_sitter::Parser::new();
-    parser.set_language(&tree_sitter_rk::LANGUAGE.into())?;
-    let tree = parser
-        .parse(source, None)
-        .ok_or_else(|| anyhow::anyhow!("could not parse document"))?;
-    if tree.root_node().has_error() {
-        let (line, column, what) = first_syntax_error(tree.root_node());
+    let tree = parse(source)?;
+    if let Some((line, column, what)) = syntax_error(&tree) {
         anyhow::bail!("syntax error at line {line}, column {column}: {what}; nothing was written");
     }
 
@@ -550,6 +607,33 @@ pub fn format_source(source: &str) -> anyhow::Result<String> {
     )
     .map_err(|e| anyhow::anyhow!("could not format document: {}", e))?;
     Ok(String::from_utf8(output)?)
+}
+
+fn parse(source: &str) -> anyhow::Result<auto_lsp::tree_sitter::Tree> {
+    let mut parser = auto_lsp::tree_sitter::Parser::new();
+    parser.set_language(&tree_sitter_rk::LANGUAGE.into())?;
+    parser
+        .parse(source, None)
+        .ok_or_else(|| anyhow::anyhow!("could not parse document"))
+}
+
+/// Whether the formatter would take `source`: it parses with no ERROR,
+/// MISSING or `ERR_*` node. The fuzz oracle asks before holding a refusal
+/// against it.
+pub fn accepts(source: &str) -> bool {
+    parse(source).is_ok_and(|tree| syntax_error(&tree).is_none())
+}
+
+/// The first syntax error in `tree`, as a 1-based line, column and what it
+/// is: an ERROR or MISSING node, or else a node of a recovery rule.
+fn syntax_error(tree: &auto_lsp::tree_sitter::Tree) -> Option<(usize, usize, String)> {
+    let root = tree.root_node();
+    if root.has_error() {
+        return Some(first_syntax_error(root));
+    }
+    let node = first_recovered_error(root)?;
+    let p = node.start_position();
+    Some((p.row + 1, p.column + 1, "unexpected input".to_string()))
 }
 
 /// The first ERROR or MISSING node, as a 1-based line, column, and what it is.
@@ -576,6 +660,22 @@ fn first_syntax_error(node: auto_lsp::tree_sitter::Node<'_>) -> (usize, usize, S
     }
     let p = node.start_position();
     (p.row + 1, p.column + 1, "unexpected input".to_string())
+}
+
+/// The first node a recovery rule of the grammar produced, in source order.
+fn first_recovered_error(
+    node: auto_lsp::tree_sitter::Node<'_>,
+) -> Option<auto_lsp::tree_sitter::Node<'_>> {
+    if node.kind().starts_with("ERR_") {
+        return Some(node);
+    }
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if let Some(found) = first_recovered_error(child) {
+            return Some(found);
+        }
+    }
+    None
 }
 
 pub fn format(db: &impl WorkspaceDataBase, file: File) -> anyhow::Result<Option<Vec<TextEdit>>> {

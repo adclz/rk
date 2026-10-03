@@ -994,15 +994,21 @@ module.exports = grammar({
         alias($.identifier, $.field),
       ),
 
+    // A section ends with an optional `;`, and a statement list may begin
+    // with an empty statement: after `END_VAR ;` both readings fit, and
+    // `prec.right` keeps the `;` with the section, as before. Every section
+    // a body can follow is wrapped the same way, and so is USING.
     input_decls: ($) =>
-      seq(
-        kw("VAR_INPUT"),
-        field("retain", optional(choice(kw("RETAIN"), kw("NON_RETAIN")))),
-        repeat(
-          seq(choice($.input_var, $.ERR_variable_with_no_spec), optional(";")),
+      prec.right(
+        seq(
+          kw("VAR_INPUT"),
+          field("retain", optional(choice(kw("RETAIN"), kw("NON_RETAIN")))),
+          repeat(
+            seq(choice($.input_var, $.ERR_variable_with_no_spec), optional(";")),
+          ),
+          kw("END_VAR"),
+          optional(";"),
         ),
-        kw("END_VAR"),
-        optional(";"),
       ),
 
     input_var: ($) =>
@@ -1061,14 +1067,16 @@ module.exports = grammar({
       seq(":", kw("ARRAY"), "[", commaSep1("*"), "]", kw("OF"), $.data_type_access),
 
     output_decls: ($) =>
-      seq(
-        kw("VAR_OUTPUT"),
-        field("retain", optional(choice(kw("RETAIN"), kw("NON_RETAIN")))),
-        repeat(
-          seq(choice($.output_var, $.ERR_variable_with_no_spec), optional(";")),
+      prec.right(
+        seq(
+          kw("VAR_OUTPUT"),
+          field("retain", optional(choice(kw("RETAIN"), kw("NON_RETAIN")))),
+          repeat(
+            seq(choice($.output_var, $.ERR_variable_with_no_spec), optional(";")),
+          ),
+          kw("END_VAR"),
+          optional(";"),
         ),
-        kw("END_VAR"),
-        optional(";"),
       ),
 
     output_var: ($) =>
@@ -1080,13 +1088,15 @@ module.exports = grammar({
     _output_var_kind: ($) => choice($.var_decl_init, $.array_conformand),
 
     in_out_decls: ($) =>
-      seq(
-        kw("VAR_IN_OUT"),
-        repeat(
-          seq(choice($.in_out_var, $.ERR_variable_with_no_spec), optional(";")),
+      prec.right(
+        seq(
+          kw("VAR_IN_OUT"),
+          repeat(
+            seq(choice($.in_out_var, $.ERR_variable_with_no_spec), optional(";")),
+          ),
+          kw("END_VAR"),
+          optional(";"),
         ),
-        kw("END_VAR"),
-        optional(";"),
       ),
 
     in_out_var: ($) =>
@@ -1098,41 +1108,45 @@ module.exports = grammar({
     _in_out_var_kind: ($) => choice($.var_decl, $.array_conformand),
 
     var_decls: ($) =>
-      seq(
-        kw("VAR"),
-        field("constant", optional(kw("CONSTANT"))),
-        field("access", optional($.access_spec)),
-        repeat(
-          seq(
-            choice(
-              $.var_decl_init_list,
-              $.loc_var_decl,
-              $.ERR_variable_with_no_spec,
+      prec.right(
+        seq(
+          kw("VAR"),
+          field("constant", optional(kw("CONSTANT"))),
+          field("access", optional($.access_spec)),
+          repeat(
+            seq(
+              choice(
+                $.var_decl_init_list,
+                $.loc_var_decl,
+                $.ERR_variable_with_no_spec,
+              ),
+              optional(";"),
             ),
-            optional(";"),
           ),
+          kw("END_VAR"),
+          optional(";"),
         ),
-        kw("END_VAR"),
-        optional(";"),
       ),
 
     retain_var_decls: ($) =>
-      seq(
-        kw("VAR"),
-        field("retain", kw("RETAIN")),
-        field("access", optional($.access_spec)),
-        repeat(
-          seq(
-            choice(
-              $.var_decl_init_list,
-              $.loc_var_decl,
-              $.ERR_variable_with_no_spec,
+      prec.right(
+        seq(
+          kw("VAR"),
+          field("retain", kw("RETAIN")),
+          field("access", optional($.access_spec)),
+          repeat(
+            seq(
+              choice(
+                $.var_decl_init_list,
+                $.loc_var_decl,
+                $.ERR_variable_with_no_spec,
+              ),
+              optional(";"),
             ),
-            optional(";"),
           ),
+          kw("END_VAR"),
+          optional(";"),
         ),
-        kw("END_VAR"),
-        optional(";"),
       ),
 
     var_decl_init_list: ($) =>
@@ -1146,13 +1160,15 @@ module.exports = grammar({
       ),
 
     temp_var_decls: ($) =>
-      seq(
-        kw("VAR_TEMP"),
-        repeat(
-          seq(choice($.temp_var, $.ERR_variable_with_no_spec), optional(";")),
+      prec.right(
+        seq(
+          kw("VAR_TEMP"),
+          repeat(
+            seq(choice($.temp_var, $.ERR_variable_with_no_spec), optional(";")),
+          ),
+          kw("END_VAR"),
+          optional(";"),
         ),
-        kw("END_VAR"),
-        optional(";"),
       ),
 
     temp_var: ($) =>
@@ -1161,17 +1177,19 @@ module.exports = grammar({
     _temp_var_kind: ($) => choice($.var_decl, $.ref_spec),
 
     external_var_decls: ($) =>
-      seq(
-        kw("VAR_EXTERNAL"),
-        field("constant", optional(kw("CONSTANT"))),
-        repeat(
-          seq(
-            choice($.external_decl, $.ERR_variable_with_no_spec),
-            optional(";"),
+      prec.right(
+        seq(
+          kw("VAR_EXTERNAL"),
+          field("constant", optional(kw("CONSTANT"))),
+          repeat(
+            seq(
+              choice($.external_decl, $.ERR_variable_with_no_spec),
+              optional(";"),
+            ),
           ),
+          kw("END_VAR"),
+          optional(";"),
         ),
-        kw("END_VAR"),
-        optional(";"),
       ),
 
     external_decl: ($) =>
@@ -1181,12 +1199,14 @@ module.exports = grammar({
 
     // Global_Var_Decls : 'VAR_GLOBAL' ( 'CONSTANT' | 'RETAIN' )? ( Global_Var_Decl ';' )* 'END_VAR';
     global_var_decls: ($) =>
-      seq(
-        kw("VAR_GLOBAL"),
-        field("constant_or_retain", optional(choice(kw("CONSTANT"), kw("RETAIN")))),
-        repeat(seq($.global_var_decl, optional(";"))),
-        kw("END_VAR"),
-        optional(";"),
+      prec.right(
+        seq(
+          kw("VAR_GLOBAL"),
+          field("constant_or_retain", optional(choice(kw("CONSTANT"), kw("RETAIN")))),
+          repeat(seq($.global_var_decl, optional(";"))),
+          kw("END_VAR"),
+          optional(";"),
+        ),
       ),
 
     // Global_Var_Decl : Global_Var_Spec ':' ( Loc_Var_Spec_Init | FB_Type_Access );
@@ -1218,12 +1238,14 @@ module.exports = grammar({
     located_at: ($) => seq(kw("AT"), $.direct_variable),
 
     loc_partly_var_decl: ($) =>
-      seq(
-        kw("VAR"),
-        field("retain", optional(choice(kw("RETAIN"), kw("NON_RETAIN")))),
-        repeat1(seq($.loc_partly_var, optional(";"))),
-        kw("END_VAR"),
-        optional(";"),
+      prec.right(
+        seq(
+          kw("VAR"),
+          field("retain", optional(choice(kw("RETAIN"), kw("NON_RETAIN")))),
+          repeat1(seq($.loc_partly_var, optional(";"))),
+          kw("END_VAR"),
+          optional(";"),
+        ),
       ),
 
     loc_partly_var: ($) =>
@@ -1303,17 +1325,19 @@ module.exports = grammar({
       ),
 
     fb_input_decls: ($) =>
-      seq(
-        kw("VAR_INPUT"),
-        field("retain", optional(choice(kw("RETAIN"), kw("NON_RETAIN")))),
-        repeat(
-          seq(
-            choice($.fb_input_var, $.ERR_variable_with_no_spec),
-            optional(";"),
+      prec.right(
+        seq(
+          kw("VAR_INPUT"),
+          field("retain", optional(choice(kw("RETAIN"), kw("NON_RETAIN")))),
+          repeat(
+            seq(
+              choice($.fb_input_var, $.ERR_variable_with_no_spec),
+              optional(";"),
+            ),
           ),
+          kw("END_VAR"),
+          optional(";"),
         ),
-        kw("END_VAR"),
-        optional(";"),
       ),
 
     fb_input_var: ($) =>
@@ -1331,17 +1355,19 @@ module.exports = grammar({
       ),
 
     fb_output_decls: ($) =>
-      seq(
-        kw("VAR_OUTPUT"),
-        field("retain", optional(choice(kw("RETAIN"), kw("NON_RETAIN")))),
-        repeat(
-          seq(
-            choice($.fb_output_var, $.ERR_variable_with_no_spec),
-            optional(";"),
+      prec.right(
+        seq(
+          kw("VAR_OUTPUT"),
+          field("retain", optional(choice(kw("RETAIN"), kw("NON_RETAIN")))),
+          repeat(
+            seq(
+              choice($.fb_output_var, $.ERR_variable_with_no_spec),
+              optional(";"),
+            ),
           ),
+          kw("END_VAR"),
+          optional(";"),
         ),
-        kw("END_VAR"),
-        optional(";"),
       ),
 
     fb_output_var: ($) =>
@@ -1353,22 +1379,24 @@ module.exports = grammar({
     _fb_output_var_kind: ($) => choice($.var_decl_init, $.array_conformand),
 
     no_retain_var_decls: ($) =>
-      seq(
-        kw("VAR"),
-        kw("NON_RETAIN"),
-        field("spec", optional($.access_spec)),
-        repeat(
-          seq(
-            choice(
-              $.var_decl_init_list,
-              $.loc_var_decl,
-              $.ERR_variable_with_no_spec,
+      prec.right(
+        seq(
+          kw("VAR"),
+          kw("NON_RETAIN"),
+          field("spec", optional($.access_spec)),
+          repeat(
+            seq(
+              choice(
+                $.var_decl_init_list,
+                $.loc_var_decl,
+                $.ERR_variable_with_no_spec,
+              ),
+              optional(";"),
             ),
-            optional(";"),
           ),
+          kw("END_VAR"),
+          optional(";"),
         ),
-        kw("END_VAR"),
-        optional(";"),
       ),
 
     fb_body: ($) => choice($.SFC, $.ladder_diagram, $.fb_diagram, $.stmt_list),
@@ -1739,16 +1767,18 @@ module.exports = grammar({
     data_sink: ($) => choice($.path_expression, $.direct_variable),
 
     config_init: ($) =>
-      seq(
-        kw("VAR_CONFIG"),
-        repeat(
-          seq(
-            choice($.config_inst_init, $.ERR_config_entry_with_no_spec),
-            optional(";"),
+      prec.right(
+        seq(
+          kw("VAR_CONFIG"),
+          repeat(
+            seq(
+              choice($.config_inst_init, $.ERR_config_entry_with_no_spec),
+              optional(";"),
+            ),
           ),
+          kw("END_VAR"),
+          optional(";"),
         ),
-        kw("END_VAR"),
-        optional(";"),
       ),
 
     // Config_Inst_Init : Resource_Name '.' Prog_Name '.' ( ( FB_Instance_Name | Class_Instance_Name ) '.' )*
@@ -1791,7 +1821,7 @@ module.exports = grammar({
     namespace_h_name: ($) => dotSep1($.identifier),
 
     using_directive: ($) =>
-      seq(kw("USING"), commaSep1($.namespace_h_name), optional(";")),
+      prec.right(seq(kw("USING"), commaSep1($.namespace_h_name), optional(";"))),
 
     // Table 71 - 72 - Language Structured Text (ST)
 
@@ -1963,7 +1993,11 @@ module.exports = grammar({
         ")",
       ),
 
-    stmt_list: ($) => prec.left(repeat1(seq($._stmt, optional(";")))),
+    // A `;` ends a statement, and stands on its own as the empty statement
+    // of IEC 61131-3's `( Stmt? ';' )*`. Neither is required here: a
+    // statement may go without one, and `;;` is a statement and an empty
+    // one.
+    stmt_list: ($) => prec.left(repeat1(choice($._stmt, ";"))),
 
     // Stmt : Assign_Stmt | Subprog_Ctrl_Stmt | Selection_Stmt | Iteration_Stmt;
     _stmt: ($) =>
@@ -2070,7 +2104,7 @@ module.exports = grammar({
         field("case_do", optional(alias($.case_body, $.stmt_list))),
       ),
 
-    case_body: ($) => repeat1(seq($._stmt, optional(";"))),
+    case_body: ($) => repeat1(choice($._stmt, ";")),
 
     //Case_List : Case_List_Elem ( ',' Case_List_Elem )*;
     case_list: ($) => commaSep1($.case_list_elem),

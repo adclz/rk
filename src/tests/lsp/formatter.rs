@@ -322,8 +322,9 @@ END_FUNCTION
     assert_snapshot!(fmt(document), @r"
     FUNCTION fn
     	J := -1;
-    	REPEAT J := J + 2;
-    		UNTIL J = 101 OR WORDS[J] = 'KEY'
+    	REPEAT
+    		J := J + 2;
+    	UNTIL J = 101 OR WORDS[J] = 'KEY'
     	END_REPEAT;
     END_FUNCTION
     ");
@@ -644,7 +645,7 @@ END_FUNCTION
     assert_snapshot!(fmt(document), @r"
     FUNCTION dffd: BOOL
 
-    	test.sdf.sdf[0].dd
+    	test.sdf.sdf[0].dd;
 
     END_FUNCTION
     ");
@@ -697,9 +698,7 @@ END_FUNCTION_BLOCK
     	END_VAR
     	myRefS1^.SC1 := myRefA1^[12]; // in this case, equivalent to S1.SC1:= A1[12];
     	myRefInt := REF(A1[11]);
-    	S1.SC1 := myRefInt^;
-    	// assigns the value of A1[11] to S1.SC1
-
+    	S1.SC1 := myRefInt^; // assigns the value of A1[11] to S1.SC1
 
     END_FUNCTION_BLOCK
     ");
@@ -1602,6 +1601,47 @@ END_VAR
 END_FUNCTION_BLOCK
 "#,
         ),
+        (
+            "SUPER, THIS, a call, a path, a raise, EXIT and CONTINUE",
+            r#"
+FUNCTION_BLOCK base
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK fb EXTENDS base
+VAR
+    i : INT;
+    inner : base;
+END_VAR
+METHOD m
+END_METHOD
+    SUPER()
+    THIS.m()
+    inner()
+    inner
+    __RAISE('stop')
+    FOR i := 0 TO 1 DO
+        EXIT
+    END_FOR
+    WHILE TRUE DO
+        CONTINUE
+    END_WHILE
+END_FUNCTION_BLOCK
+"#,
+        ),
+        (
+            "a REPEAT",
+            r#"
+FUNCTION f : INT
+VAR
+    x : INT;
+END_VAR
+    REPEAT
+        x := x + 1
+    UNTIL x > 3
+    END_REPEAT
+END_FUNCTION
+"#,
+        ),
     ];
 
     assert_snapshot!(formatted(CASES), @r"
@@ -1666,7 +1706,7 @@ END_FUNCTION_BLOCK
     	END_VAR
     	FOR i := 1 TO 3 DO
     		WHILE TRUE DO
-    			EXIT
+    			EXIT;
     		END_WHILE;
     	END_FOR;
     END_FUNCTION
@@ -1689,6 +1729,39 @@ END_FUNCTION_BLOCK
     	END_VAR
     	a := 1;
     END_FUNCTION_BLOCK
+    --- SUPER, THIS, a call, a path, a raise, EXIT and CONTINUE
+    FUNCTION_BLOCK base
+    END_FUNCTION_BLOCK
+
+    FUNCTION_BLOCK fb EXTENDS base
+    	VAR
+    		i: INT;
+    		inner: base;
+    	END_VAR
+    	METHOD m
+    	END_METHOD
+    	SUPER();
+    	THIS.m();
+    	inner();
+    	inner;
+    	__RAISE('stop');
+    	FOR i := 0 TO 1 DO
+    		EXIT;
+    	END_FOR;
+    	WHILE TRUE DO
+    		CONTINUE;
+    	END_WHILE;
+    END_FUNCTION_BLOCK
+    --- a REPEAT
+    FUNCTION f: INT
+    	VAR
+    		x: INT;
+    	END_VAR
+    	REPEAT
+    		x := x + 1;
+    	UNTIL x > 3
+    	END_REPEAT;
+    END_FUNCTION
     ");
 }
 
@@ -2080,4 +2153,316 @@ fn formatted(cases: &[(&str, &str)]) -> String {
         rendered.push_str(&format!("--- {label}\n{once}"));
     }
     rendered
+}
+
+/// The `;` is a terminator and nothing else: a source with every `;` and the
+/// same source with none format to one text, and that text formats to
+/// itself. The layout used to hang on the `;` token, so the two differed,
+/// and a file settled only on its second pass, once the `;` the first pass
+/// wrote in had become a token. Every statement kind, blocks on one line and
+/// on several, CASE branches, declarations and comments after a statement or
+/// a closing keyword.
+#[rstest]
+#[case::statements(
+    r#"
+FUNCTION_BLOCK base
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK fb EXTENDS base
+VAR
+    x : INT;
+    y : INT;
+    inner : base;
+END_VAR
+METHOD m
+END_METHOD
+    x := 1;
+    y := x + 2;
+    inner();
+    inner;
+    THIS.m();
+    SUPER();
+    __RAISE('stop');
+    {allow 'self-assignment'}
+    x := x;
+    RETURN;
+END_FUNCTION_BLOCK
+"#
+)]
+#[case::blocks(
+    r#"
+FUNCTION f : INT
+VAR
+    x : INT;
+    y : INT;
+END_VAR
+    IF x = 1 THEN
+        y := 1;
+    ELSIF x = 2 THEN
+        y := 2;
+    ELSE
+        y := 3;
+    END_IF;
+    FOR x := 0 TO 2 DO
+        IF x = 1 THEN
+            CONTINUE;
+        END_IF;
+        y := y + 1;
+    END_FOR;
+    WHILE x > 5 DO
+        x := x - 1;
+        IF x = 7 THEN
+            EXIT;
+        END_IF;
+    END_WHILE;
+    REPEAT
+        x := x + 1;
+    UNTIL x > 3
+    END_REPEAT;
+    f := y;
+END_FUNCTION
+"#
+)]
+#[case::blocks_on_one_line(
+    r#"
+FUNCTION f : INT
+VAR
+    x : INT;
+END_VAR
+    WHILE x > 5 DO x := x - 1; IF x = 7 THEN EXIT; END_IF; END_WHILE;
+    IF x = 1 THEN x := 2; ELSE x := 3; END_IF;
+    FOR x := 0 TO 2 DO x := 1; END_FOR;
+    REPEAT x := x + 1; UNTIL x > 3 END_REPEAT;
+    CASE x OF 1: x := 1; 2: x := 2; ELSE x := 0; END_CASE;
+    f := x;
+END_FUNCTION
+"#
+)]
+#[case::case_branches(
+    r#"
+FUNCTION f : INT
+VAR
+    x : INT;
+    y : INT;
+END_VAR
+    CASE x OF
+        1: y := 1;
+        2:
+            y := 2;
+            x := 3;
+        3, 4: y := 3;
+           x := 4;
+        5: IF y = 1 THEN y := 5; END_IF;
+        6:
+            CASE y OF
+                1: y := 6;
+            END_CASE;
+    ELSE
+        y := 0;
+    END_CASE;
+    f := y;
+END_FUNCTION
+"#
+)]
+#[case::declarations(
+    r#"
+USING Std.Unit;
+TYPE
+    Pt : STRUCT x : INT; y : INT; END_STRUCT;
+    Row : ARRAY[0..1] OF INT;
+    Mode : (Off, On);
+END_TYPE
+
+FUNCTION_BLOCK Fb
+VAR_INPUT a : INT; b : INT := 2; END_VAR
+VAR_OUTPUT q : INT; END_VAR
+VAR n : INT; END_VAR
+VAR_TEMP t : INT; END_VAR
+    q := a + b + n;
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK Drive
+VAR out AT %Q* : INT; END_VAR
+END_FUNCTION_BLOCK
+
+PROGRAM Main
+VAR fb : Fb; d : Drive; END_VAR
+    fb(a := 1);
+END_PROGRAM
+
+CONFIGURATION Cfg
+VAR_GLOBAL g : INT; END_VAR
+VAR_CONFIG
+    Res.P1.d.out AT %QW0 : INT;
+END_VAR
+    RESOURCE Res ON CPU
+        TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM P1 WITH T : Main;
+    END_RESOURCE
+END_CONFIGURATION
+"#
+)]
+#[case::comments(
+    r#"
+FUNCTION f : INT
+VAR
+    x : INT; // one
+    y : INT; (* two *)
+END_VAR // after the section
+    x := 1; // one
+    y := 2; (* two *)
+    IF x = 1 THEN // why
+        x := 3; // three
+        // alone
+    ELSE // other
+        x := 4;
+    END_IF; // closed
+    // alone again
+    f := x; /* last */
+END_FUNCTION // done
+"#
+)]
+fn a_terminator_carries_no_layout(#[case] with: &str) {
+    let without = with.replace(';', "");
+    let once = formatter::format_source(with).expect("formats");
+    let bare = formatter::format_source(&without).expect("formats without terminators");
+    assert_eq!(once, bare, "the layout depended on the `;`");
+    let twice = formatter::format_source(&once).expect("formats again");
+    assert_eq!(once, twice, "a second pass changed the text");
+    assert!(!once.contains(";;"), "wrote a second terminator:\n{once}");
+}
+
+/// The empty statement, a `;` of its own, is kept where it stands: on its
+/// line, after a statement's own `;`, or alone in a branch. The formatter
+/// adds nothing to it and takes nothing from it.
+#[rstest]
+fn an_empty_statement_keeps_its_line() {
+    let source = r#"
+FUNCTION f : INT
+VAR x : INT; END_VAR;
+    ;
+    x := 1;;
+    IF x = 1 THEN ; END_IF;
+    CASE x OF
+        1: ;
+        2: x := 2;;
+    ELSE ;
+    END_CASE;
+    ;;
+    f := x;
+END_FUNCTION
+"#;
+    let once = formatter::format_source(source).expect("formats");
+    let twice = formatter::format_source(&once).expect("formats again");
+    assert_eq!(once, twice, "a second pass changed the text");
+    assert_snapshot!(once, @r"
+    FUNCTION f: INT
+    	VAR
+    		x: INT;
+    	END_VAR;
+    	;
+    	x := 1;;
+    	IF x = 1 THEN
+    		;
+    	END_IF;
+    	CASE x OF
+    		1: ;
+    		2: x := 2;;
+    	ELSE
+    		;
+    	END_CASE;
+    	;;
+    	f := x;
+    END_FUNCTION
+    ");
+}
+
+/// A comment after a `;`, or after a closing keyword with no `;` yet, stays
+/// on its line. The comment is the function's child, not the statement
+/// list's, so a rule on the `;` could not see it and broke the line before
+/// it on the second pass.
+#[rstest]
+fn a_comment_after_a_terminator_stays_on_its_line() {
+    let source = r#"
+FUNCTION MyFn
+    VAR
+        test: INT //;
+        test2: INT //;
+    END_VAR //;
+
+    IF test > test2 THEN
+        //;
+    END_IF  //;
+    test := test2; // assigns
+END_FUNCTION
+"#;
+    let once = formatter::format_source(source).expect("formats");
+    let twice = formatter::format_source(&once).expect("formats again");
+    assert_eq!(once, twice, "a second pass changed the text");
+    assert_snapshot!(once, @r"
+    FUNCTION MyFn
+    	VAR
+    		test: INT; //;
+    		test2: INT; //;
+    	END_VAR //;
+
+    	IF test > test2 THEN
+    		//;
+    	END_IF; //;
+    	test := test2; // assigns
+    END_FUNCTION
+    ");
+}
+
+/// What a recovery rule of the grammar parsed is a syntax error `check`
+/// reports, and nothing to format: `x := ;` was written `x :=;`.
+#[rstest]
+#[case::empty_right_hand_side(
+    "FUNCTION f : INT
+VAR x : INT; END_VAR
+    x := ;
+END_FUNCTION
+",
+    "line 3"
+)]
+#[case::assignment_in_a_condition(
+    "FUNCTION f : INT
+VAR x : INT; END_VAR
+    IF x := 1 THEN
+    END_IF;
+END_FUNCTION
+",
+    "line 3"
+)]
+fn a_recovered_syntax_error_is_refused(#[case] source: &str, #[case] where_: &str) {
+    let err = formatter::format_source(source).expect_err("must refuse");
+    let msg = err.to_string();
+    assert!(msg.starts_with("syntax error at "), "{msg}");
+    assert!(msg.contains(where_), "names the line: {msg}");
+}
+
+/// Two tokens the spacing rules missed: `REF_TO` in a VAR_TEMP, where the
+/// grammar keeps the bare keyword, was glued to its type as `REF_TOINT`,
+/// and the `*` of a partial address was spaced like a multiplication,
+/// `%Q *`.
+#[rstest]
+fn a_var_temp_reference_and_a_partial_address_keep_their_spelling() {
+    let source = r#"
+FUNCTION_BLOCK D
+VAR_TEMP p : REF_TO INT; END_VAR
+VAR q : REF_TO INT; out AT %Q* : INT; END_VAR
+END_FUNCTION_BLOCK
+"#;
+    let once = formatter::format_source(source).expect("formats");
+    assert_snapshot!(once, @r"
+    FUNCTION_BLOCK D
+    	VAR_TEMP
+    		p: REF_TO INT;
+    	END_VAR
+    	VAR
+    		q: REF_TO INT;
+    		out AT %Q*: INT;
+    	END_VAR
+    END_FUNCTION_BLOCK
+    ");
 }

@@ -7,15 +7,14 @@
 //! `BOOLREAD_ONLY`, stably (src/tests/lsp/formatter_preserves_meaning.rs).
 //! So the output must also parse and mean what the input meant.
 
-use auto_lsp::tree_sitter::Parser;
-
 use crate::{Finding, session};
 
 pub fn check(source: &str) -> Result<(), Finding> {
     let once = match formatter::format_source(source) {
         Ok(text) => text,
-        // Refusing a file that does not parse is the contract.
-        Err(_) if !parses(source) => return Ok(()),
+        // Refusing a file with a syntax error is the contract, a recovered
+        // one included.
+        Err(_) if !formatter::accepts(source) => return Ok(()),
         Err(e) => {
             return Err(Finding::new(
                 "format-refused",
@@ -35,10 +34,10 @@ pub fn check(source: &str) -> Result<(), Finding> {
         return Ok(());
     };
     if twice != once {
-        // The grammar recovers some mistakes (a missing `;`) without an
-        // ERROR node, and the formatter goes on to format them. A bug
-        // there is real but minor, and kept apart so it does not bury one
-        // on a program that compiles.
+        // A program the compiler rejects for another reason than its
+        // syntax is formatted all the same. A bug there is real but minor,
+        // and kept apart so it does not bury one on a program that
+        // compiles.
         let oracle = match before.accepted {
             true => "format-idempotence",
             false => "format-idempotence-rejected",
@@ -70,16 +69,6 @@ pub fn check(source: &str) -> Result<(), Finding> {
         ));
     }
     Ok(())
-}
-
-fn parses(source: &str) -> bool {
-    let mut parser = Parser::new();
-    parser
-        .set_language(&tree_sitter_rk::LANGUAGE.into())
-        .expect("the rk grammar loads");
-    parser
-        .parse(source, None)
-        .is_some_and(|tree| !tree.root_node().has_error())
 }
 
 /// What `rk check` says of a text, in a database of its own: registering

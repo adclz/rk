@@ -19,6 +19,8 @@ END_FUNCTION
 
 The formatter writes the missing ones in.
 
+A `;` on its own is the empty statement and is accepted wherever a statement is, `IF ready THEN ; END_IF` included.
+
 - Keywords and identifiers are case-insensitive: `myFn` and `MyFn` are one name.
 
 - Enum values are always qualified: `Color#Green`. A bare `Green` is `E0201`.

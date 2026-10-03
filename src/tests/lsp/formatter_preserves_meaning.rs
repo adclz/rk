@@ -345,3 +345,79 @@ END_CONFIGURATION
 "#,
     );
 }
+
+/// `SUPER();` was written `SUPER();;`, a `;` the grammar refused, and a
+/// VAR_TEMP's `REF_TO INT` was written `REF_TOINT`, a type that does not
+/// exist. A partial address `%Q*` was written `%Q *`.
+#[rstest]
+fn super_calls_temp_references_and_partial_addresses_survive_formatting(
+    #[allow(unused)] with_db: RootDatabase,
+) {
+    assert_meaning_preserved(
+        "SUPER(), VAR_TEMP REF_TO, %Q*",
+        r#"
+FUNCTION_BLOCK Base
+VAR n : INT; END_VAR
+    n := n + 1;
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK Derived EXTENDS Base
+VAR_TEMP p : REF_TO INT; END_VAR
+VAR out AT %Q* : INT; END_VAR
+    SUPER();
+    p := REF(n);
+    out := p^;
+END_FUNCTION_BLOCK
+
+PROGRAM Main
+VAR d : Derived; END_VAR
+    d();
+END_PROGRAM
+
+CONFIGURATION Cfg
+VAR_CONFIG
+    Res.P1.d.out AT %QW0 : INT;
+END_VAR
+    RESOURCE Res ON CPU
+        TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM P1 WITH T : Main;
+    END_RESOURCE
+END_CONFIGURATION
+"#,
+    );
+}
+
+/// A source with no `;` at all, and one with empty statements, mean the
+/// same before and after formatting.
+#[rstest]
+fn omitted_and_empty_terminators_survive_formatting(#[allow(unused)] with_db: RootDatabase) {
+    assert_meaning_preserved(
+        "no terminators",
+        r#"
+FUNCTION f : INT
+VAR x : INT y : INT END_VAR
+    IF x = 1 THEN RETURN END_IF
+    FOR x := 0 TO 2 DO IF x = 1 THEN CONTINUE END_IF y := y + 1 END_FOR
+    WHILE x > 5 DO x := x - 1 IF x = 7 THEN EXIT END_IF END_WHILE
+    REPEAT x := x + 1 UNTIL x > 3 END_REPEAT
+    CASE x OF 1: y := 1 2: y := 2 ELSE y := 0 END_CASE
+    f := y
+END_FUNCTION
+"#,
+    );
+    assert_meaning_preserved(
+        "empty statements",
+        r#"
+FUNCTION f : INT
+VAR_INPUT a : INT; END_VAR;
+VAR x : INT; END_VAR;
+    ;
+    x := a;;
+    IF x = 1 THEN ; END_IF;
+    CASE x OF 1: ; 2: x := 2;; ELSE ; END_CASE;
+    ;;
+    f := x
+END_FUNCTION
+"#,
+    );
+}
