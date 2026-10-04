@@ -1,0 +1,42 @@
+================================================================================
+Unknown pragma - one token, quoted text included
+================================================================================
+
+{attribute 'qualified_only'}
+FUNCTION_BLOCK fb
+VAR
+    {attribute 'see http://x'}
+    a : INT;
+    b : INT {attribute 'a}b' (* c *)};
+END_VAR
+    {pack_mode := '1'}
+END_FUNCTION_BLOCK
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (pragma)
+  (fb_decl
+    (identifier)
+    (var_decls
+      (pragma)
+      (var_decl_init_list
+        (variable_list
+          (identifier))
+        (var_decl_init
+          (simple_type_spec
+            (numeric_type_name
+              (int_type_name
+                (sign_int_type_name
+                  (int_name)))))))
+      (var_decl_init_list
+        (variable_list
+          (identifier))
+        (var_decl_init
+          (simple_type_spec
+            (numeric_type_name
+              (int_type_name
+                (sign_int_type_name
+                  (int_name)))))))
+      (pragma))
+    (pragma)))

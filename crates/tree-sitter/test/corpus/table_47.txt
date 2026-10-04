@@ -485,8 +485,7 @@ END_PROGRAM
                       (path_expression
                         (var_access
                           (field))))))))))))
-    (pascal_style_comment
-      (comment_text))))
+    (pascal_style_comment)))
 
 ================================================================================
 VAR_GLOBAL...END_VAR declaration within a PROGRAM (rejected: globals are application-scoped)

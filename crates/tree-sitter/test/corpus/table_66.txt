@@ -1,5 +1,5 @@
 ================================================================================
-USING in global namespace 
+USING in global namespace
 ================================================================================
 
 USING Standard.Timers;
@@ -11,29 +11,29 @@ END_FUNCTION
 
 --------------------------------------------------------------------------------
 
-    (source_file
-      (using_directive
-        (namespace_h_name
-          (identifier)
-          (identifier)))
-      (func_decl
-        (access_spec
-          (public))
-        (identifier)
-        (bit_str_type_name
-          (multibits_type_name
-            (dword_name)))
-        (var_decls
-          (var_decl_init_list
-            (variable_list
-              (identifier))
-            (var_decl_init
-              (simple_type_spec
-                (namespace_access
-                  (identifier))))))))
+(source_file
+  (using_directive
+    (namespace_h_name
+      (identifier)
+      (identifier)))
+  (func_decl
+    (access_spec
+      (public))
+    (identifier)
+    (bit_str_type_name
+      (multibits_type_name
+        (dword_name)))
+    (var_decls
+      (var_decl_init_list
+        (variable_list
+          (identifier))
+        (var_decl_init
+          (simple_type_spec
+            (namespace_access
+              (identifier))))))))
 
 ================================================================================
-USING in other namespace 
+USING in other namespace
 ================================================================================
 
 NAMESPACE Standard.Timers.HighResolution
@@ -45,26 +45,25 @@ END_NAMESPACE (*Standard.Timers.HighResolution*)
 
 --------------------------------------------------------------------------------
 
-   (source_file
-      (namespace_decl
-        (namespace_h_name
-          (identifier)
-          (identifier)
-          (identifier))
-        (using_directive
-          (namespace_h_name
-            (identifier)))
-        (namespace_elements
-          (func_decl
-            (access_spec
-              (public))
-            (identifier)
-            (bit_str_type_name
-              (multibits_type_name
-                (dword_name)))
-              (line_comment))))
-      (pascal_style_comment
-        (comment_text)))
+(source_file
+  (namespace_decl
+    (namespace_h_name
+      (identifier)
+      (identifier)
+      (identifier))
+    (using_directive
+      (namespace_h_name
+        (identifier)))
+    (namespace_elements
+      (func_decl
+        (access_spec
+          (public))
+        (identifier)
+        (bit_str_type_name
+          (multibits_type_name
+            (dword_name)))
+        (line_comment))))
+  (pascal_style_comment))
 
 ================================================================================
 USING in POUs
@@ -91,75 +90,74 @@ END_FUNCTION
 
 --------------------------------------------------------------------------------
 
-    (source_file
-      (fb_decl
+(source_file
+  (fb_decl
+    (identifier)
+    (using_directive
+      (namespace_h_name
         (identifier)
-        (using_directive
-          (namespace_h_name
-            (identifier)
-            (identifier))
-          (namespace_h_name
-            (identifier)))
-        (var_decls
-          (var_decl_init_list
-            (variable_list
-              (identifier))
-            (var_decl_init
-              (simple_type_spec
-                (namespace_access
-                  (identifier)))))
-          (pascal_style_comment
-            (comment_text))
-          (var_decl_init_list
-            (variable_list
-              (identifier))
-            (var_decl_init
-              (simple_type_spec
-                (namespace_access
-                  (identifier)))))
-          (var_decl_init_list
-            (variable_list
-              (identifier))
-            (var_decl_init
-              (simple_type_spec
-                (bit_str_type_name
-                  (bool_name))))))
-        (fb_body
-          (stmt_list
-            (func_call
-              (begin_path_expression
-                (path_expression
-                  (var_access
-                    (field))))
-              (param_assign
-                (param_assign_input
-                  (identifier)
-                  (variable_access
-                    (variable
-                      (begin_path_expression
-                        (path_expression
-                          (var_access
-                            (field))))))))
-              (param_assign
-                (param_assign_input
-                  (identifier)
-                  (constant
-                    (time_literal
-                      (duration
-                        (time
-                          (time_type_name)
-                          (time_value)))))))))))
-      (func_decl
-        (identifier)
-        (numeric_type_name
-          (int_type_name
-            (sign_int_type_name
-              (int_name))))
-        (using_directive
-          (namespace_h_name
-            (identifier))
-          (namespace_h_name
-            (identifier)))
-        (using_directive
-          (namespace_h_name
-            (identifier)))))
+        (identifier))
+      (namespace_h_name
+        (identifier)))
+    (var_decls
+      (var_decl_init_list
+        (variable_list
+          (identifier))
+        (var_decl_init
+          (simple_type_spec
+            (namespace_access
+              (identifier)))))
+      (pascal_style_comment)
+      (var_decl_init_list
+        (variable_list
+          (identifier))
+        (var_decl_init
+          (simple_type_spec
+            (namespace_access
+              (identifier)))))
+      (var_decl_init_list
+        (variable_list
+          (identifier))
+        (var_decl_init
+          (simple_type_spec
+            (bit_str_type_name
+              (bool_name))))))
+    (fb_body
+      (stmt_list
+        (func_call
+          (begin_path_expression
+            (path_expression
+              (var_access
+                (field))))
+          (param_assign
+            (param_assign_input
+              (identifier)
+              (variable_access
+                (variable
+                  (begin_path_expression
+                    (path_expression
+                      (var_access
+                        (field))))))))
+          (param_assign
+            (param_assign_input
+              (identifier)
+              (constant
+                (time_literal
+                  (duration
+                    (time
+                      (time_type_name)
+                      (time_value)))))))))))
+  (func_decl
+    (identifier)
+    (numeric_type_name
+      (int_type_name
+        (sign_int_type_name
+          (int_name))))
+    (using_directive
+      (namespace_h_name
+        (identifier))
+      (namespace_h_name
+        (identifier)))
+    (using_directive
+      (namespace_h_name
+        (identifier)))))

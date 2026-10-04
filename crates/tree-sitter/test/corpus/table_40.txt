@@ -248,8 +248,7 @@ END_FUNCTION_BLOCK
                       (path_expression
                         (var_access
                           (field))))))))))))
-    (pascal_style_comment
-      (comment_text))))
+    (pascal_style_comment)))
 
 ================================================================================
 A variadic input parses, for the check to refuse
