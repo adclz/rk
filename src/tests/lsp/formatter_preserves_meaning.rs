@@ -421,3 +421,35 @@ END_FUNCTION
 "#,
     );
 }
+
+/// A comment or a pragma between a declaration and its `;` was given a
+/// second `;`, and a pragma the grammar has no rule for lost its text: the
+/// formatted file no longer parsed. Such a pragma is E1510, before and
+/// after formatting alike.
+#[rstest]
+fn comments_and_pragmas_before_a_terminator_survive_formatting(
+    #[allow(unused)] with_db: RootDatabase,
+) {
+    assert_meaning_preserved(
+        "comments and pragmas before a terminator",
+        r#"
+TYPE
+    Pt : STRUCT x : INT (* c *); y : INT {attribute 'z'}; END_STRUCT;
+    Mode : (Off, On) (* c *);
+    Matrix : ARRAY[1..2, 1..3] OF INT {attribute 'm'};
+END_TYPE
+
+FUNCTION_BLOCK Fb
+VAR
+    {attribute 'hide'}
+    a : INT (* c *);
+    b : INT {attribute 'b'};
+END_VAR
+    a := 1 (* c *);
+    IF a = 1 THEN
+        b := 2;
+    END_IF; // closed
+END_FUNCTION_BLOCK
+"#,
+    );
+}

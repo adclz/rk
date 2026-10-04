@@ -1,7 +1,8 @@
 # Pragmas
 
-Only these exist; anything else in braces is a syntax error,
+Only these exist. Any other text in braces is refused (`E1510`),
 so `{attribute '…'}` from other toolchains cannot be copied in.
+A known pragma where it has no place, such as `{export}` inside a `VAR` section, is a syntax error.
 
 - `{test}` marks a `FUNCTION` the test runner calls.
 

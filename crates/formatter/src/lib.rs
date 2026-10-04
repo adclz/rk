@@ -296,10 +296,13 @@ static NEW_LINES: &str = r##"
   [(line_comment) (c_style_comment) (pascal_style_comment)]* @do_nothing
 )
 
-[(line_comment) (c_style_comment) (pascal_style_comment)] @prepend_input_softline
+; A comment, or a pragma the grammar has no rule for (`{attribute 'x'}`),
+; keeps the line the source gave it. Such a pragma above a declaration was
+; pulled onto the `VAR` line.
+[(line_comment) (c_style_comment) (pascal_style_comment) (pragma)] @prepend_input_softline
 
 (
-  [(line_comment) (c_style_comment) (pascal_style_comment)] @append_input_softline
+  [(line_comment) (c_style_comment) (pascal_style_comment) (pragma)] @append_input_softline
   .
   [ "," ";" ]* @do_nothing
 )
@@ -480,11 +483,15 @@ static ALLOW_BLANK_LINE: &str = r#"
 (_ (_) . "END_VAR" @allow_blank_line_before)
 "#;
 
+// A pragma the grammar has no rule for is `{`, its text and `}`, and the text
+// is no node of its own: written back leaf by leaf, `{attribute 'hide'}` came
+// out as `{}`, which does not parse. As a leaf it is written as it stands.
 static LEAF: &str = r#"
 [
     (line_comment)
     (c_style_comment)
     (pascal_style_comment)
+    (pragma)
     (s_byte_char_str)
     (d_byte_char_str)
 ] @leaf
@@ -492,7 +499,16 @@ static LEAF: &str = r#"
 
 /// The terminators the grammar lets a source leave out, written in once.
 /// Each pattern names the node a `;` follows and gives up when one is
-/// already there.
+/// already there, past any comment or pragma between the two: the guard
+/// used to look at the next node only, and `x : INT (* c *);` was given a
+/// second `;`, which a declaration section refuses.
+///
+/// The `;` is looked for on both sides of the comments. An anchor skips an
+/// anonymous node, so with the comments alone the query also matched
+/// `END_IF; // c` with the comment and without the `;`, and that match
+/// wrote a second one. With a `;` on both sides, every match where one
+/// follows captures it, and the engine drops the match that skips it,
+/// whose captures are a part of another's.
 static SEMI_COLONS: &str = r#"
 (
   [
@@ -526,6 +542,10 @@ static SEMI_COLONS: &str = r#"
   ] @append_delimiter
   .
   ";"* @do_nothing
+  .
+  [(line_comment) (c_style_comment) (pascal_style_comment) (pragma)]*
+  .
+  ";"* @do_nothing
   (#delimiter! ";")
 )
 
@@ -536,6 +556,10 @@ static SEMI_COLONS: &str = r#"
 ; one, `SUPER();;`, on every pass.
 (stmt_list
   [(func_call) (begin_path_expression)] @append_delimiter
+  .
+  ";"* @do_nothing
+  .
+  [(line_comment) (c_style_comment) (pascal_style_comment) (pragma)]*
   .
   ";"* @do_nothing
   (#delimiter! ";")
@@ -555,6 +579,10 @@ static SEMI_COLONS: &str = r#"
 
 (
     (struct_elem_decl) @append_delimiter
+    .
+    ";"* @do_nothing
+    .
+    [(line_comment) (c_style_comment) (pascal_style_comment) (pragma)]*
     .
     ";"* @do_nothing
     (#delimiter! ";")
