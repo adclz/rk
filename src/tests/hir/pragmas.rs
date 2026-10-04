@@ -837,7 +837,8 @@ END_NAMESPACE
 /// used to be read and dropped without a word. It is read to its `}`, so a
 /// `//` or a `}` inside a quoted string is text: the `//` used to start a
 /// line comment that ate the `}`. A known name in capitals is pointed at
-/// its lowercase spelling.
+/// its lowercase spelling. A `{` in a string, a comment or a known pragma
+/// opens no pragma, and one inside a pragma's text opens no second one.
 #[rstest]
 fn invalid_unknown_pragmas(mut with_db: RootDatabase) {
     let source = r#"
@@ -854,6 +855,12 @@ END_FUNCTION_BLOCK
 
 {TEST}
 FUNCTION t
+END_FUNCTION
+
+{info = 'a {braced} note'}
+FUNCTION u : STRING
+    u := '{not a pragma}'; (* {nor this} *) // {nor this}
+    {attribute '{u}'}
 END_FUNCTION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
@@ -909,6 +916,17 @@ END_FUNCTION
         |    `---- no pragma named 'TEST'
         |
         | Help: write it in lowercase, {test}
+        |
+        | Note: the pragmas are {test}, {once}, {export}, {warn}, {info}, {allow}, {extern} and {wasm}
+    ----'
+    [E1510] Error: unknown pragma
+        ,-[ file:///test0.st:20:5 ]
+        |
+     20 |     {attribute '{u}'}
+        |     ^^^^^^^^|^^^^^^^^
+        |             `---------- no pragma named 'attribute'
+        |
+        | Help: remove it
         |
         | Note: the pragmas are {test}, {once}, {export}, {warn}, {info}, {allow}, {extern} and {wasm}
     ----'

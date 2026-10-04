@@ -68,34 +68,38 @@ pub fn parse(db: &dyn WorkspaceDataBase, file: File) -> Parsed {
     }
 }
 
-/// Every `pragma` node under `root`. An extra stands anywhere in the tree,
-/// so the whole tree is walked.
+/// Every `pragma` node under `root`. One is an extra and can stand anywhere
+/// in the tree, but it is a token that starts with `{`, so the node at each
+/// `{` of the text is looked up instead of walking every node, which cost a
+/// fifth of the parse.
 fn unknown_pragmas(root: &Node, source: &[u8]) -> Vec<UnknownPragma> {
+    let pragma = root.language().id_for_node_kind("pragma", true);
     let mut found = Vec::new();
-    let mut cursor = root.walk();
-    loop {
-        let node = cursor.node();
-        if node.kind() == "pragma" {
-            let text = node.utf8_text(source).unwrap_or_default();
-            let name = text
-                .trim_start_matches('{')
-                .trim_start()
-                .chars()
-                .take_while(|c| c.is_alphanumeric() || *c == '_')
-                .collect();
-            found.push(UnknownPragma {
-                range: node.range(),
-                name,
-            });
-        } else if cursor.goto_first_child() {
+    let mut at = 0;
+    while let Some(offset) = source[at..].iter().position(|byte| *byte == b'{') {
+        let start = at + offset;
+        at = start + 1;
+        // A `{` in a string, a comment or a known pragma is no pragma's.
+        let Some(node) = root
+            .descendant_for_byte_range(start, at)
+            .filter(|node| node.kind_id() == pragma && node.start_byte() == start)
+        else {
             continue;
-        }
-        while !cursor.goto_next_sibling() {
-            if !cursor.goto_parent() {
-                return found;
-            }
-        }
+        };
+        let text = node.utf8_text(source).unwrap_or_default();
+        let name = text
+            .trim_start_matches('{')
+            .trim_start()
+            .chars()
+            .take_while(|c| c.is_alphanumeric() || *c == '_')
+            .collect();
+        found.push(UnknownPragma {
+            range: node.range(),
+            name,
+        });
+        at = node.end_byte();
     }
+    found
 }
 
 /// The error nodes under `node`, worded as auto-lsp words them: a node with
