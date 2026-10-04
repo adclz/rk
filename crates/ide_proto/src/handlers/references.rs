@@ -8,7 +8,12 @@ use db::WorkspaceDataBase;
 use hir::{
     HasName, HirNodeInfo,
     hir_def::{
-        expressions::expression::PathExpr, hir_node::HirNode, interned::namespace::NamespacePath,
+        expressions::{
+            expression::{ParamAssign, ParamAssignKind, PathExpr},
+            spec::{Spec, SpecKind},
+        },
+        hir_node::HirNode,
+        interned::{identifier::SpanIdent, namespace::NamespacePath},
         semantic_index::semantic_index,
     },
     hir_ty::{
@@ -173,12 +178,26 @@ fn resolve_walk_target<'db>(
         // Leaf-level reference nodes only
         HirNode::Spec(spec) => spec.infer(db),
         HirNode::PathExpr(p) => path_reference_target(db, *p),
-        HirNode::Param(p) => p.infer(db),
+        // A binding names its parameter, `in := x` or `out => y`; a
+        // positional argument names nothing, and taking it for the
+        // parameter it reaches wrote the new name over the argument: `f(v)`
+        // and `f(1.5)` came back as `f(renamed)`.
+        HirNode::Param(p) => param_name(db, *p).map(|_| p.infer(db))?,
         // Skip Expr, Invocation, InitExpr, VariableAccess — they wrap inner nodes
         // and would produce duplicate matches (PathExpr already covers variable accesses)
         _ => return None,
     };
     normalize_reference_type(ty)
+}
+
+/// The parameter a binding names, `in` of `in := x` or `out => y`; a
+/// positional argument has none.
+fn param_name<'db>(db: &'db dyn WorkspaceDataBase, p: ParamAssign<'db>) -> Option<SpanIdent<'db>> {
+    match p.kind(db) {
+        ParamAssignKind::FormalInput { param, .. }
+        | ParamAssignKind::FormalOutput { param, .. } => Some(param),
+        ParamAssignKind::NonFormal { .. } => None,
+    }
 }
 
 /// Extract the identifier text from a HirNode for reference matching.
@@ -193,8 +212,19 @@ fn node_reference_ident<'db>(
         HirNode::MethodRef(m) => m.get_name_ident(db).text(db),
         HirNode::StructElement(st) => st.get_name_ident(db).text(db),
         HirNode::PathExpr(p) => p.ident(db).ident(db).text(db),
+        HirNode::Param(p) => param_name(db, *p)?.ident(db).text(db),
+        HirNode::Spec(spec) => spec_target(db, *spec)?.ident(db).text(db),
         _ => return None,
     })
+}
+
+/// The name a type specification names, `T` of `x : Lib.T`, when it names
+/// one.
+fn spec_target<'db>(db: &'db dyn WorkspaceDataBase, spec: Spec<'db>) -> Option<SpanIdent<'db>> {
+    match spec.kind(db) {
+        SpecKind::Target(access) => Some(access.path.target),
+        _ => None,
+    }
 }
 
 /// Get the span for a reference result.
@@ -210,6 +240,18 @@ fn reference_span<'db>(
         HirNode::MethodRef(m) => m.get_name_span(db),
         HirNode::StructElement(st) => st.get_name_span(db),
         HirNode::PathExpr(p) => p.ident(db).get_span(db),
+        // The name alone: the whole binding, `IN := 5`, used to be replaced
+        // by the new name, value included.
+        HirNode::Param(p) => match param_name(db, *p) {
+            Some(name) => name.get_span(db),
+            None => node.get_span(db),
+        },
+        // The name alone, `T` of `Lib.T`: the whole path was replaced, and
+        // the namespace it was qualified with went with it.
+        HirNode::Spec(spec) => match spec_target(db, *spec) {
+            Some(name) => name.get_span(db),
+            None => node.get_span(db),
+        },
         _ => node.get_span(db),
     }
 }
@@ -250,11 +292,15 @@ fn find_namespace_references<'db>(
 ) -> Option<Vec<ReferenceLocation>> {
     let mut locations = vec![];
 
-    // All namespace declarations with this path
+    // All namespace declarations with this path. A namespace is named by
+    // the last segment of what declares it: `Motors` of `NAMESPACE
+    // App.Motors`, the whole name of a nested `NAMESPACE Motors`. The
+    // segments before it name its parents.
     for ns in namespace_index(db, path).iter() {
+        let file = ns.scope_id(db).file(db);
         locations.push(ReferenceLocation {
-            file: ns.scope_id(db).file(db),
-            span: ns.name_span(db),
+            file,
+            span: last_segment(db, file, ns.name_span(db)),
         });
     }
 
@@ -266,9 +312,10 @@ fn find_namespace_references<'db>(
             if let HirNode::Using(u) = &node
                 && absolute_namespace_path(db, u.scope_id(db), u.path(db).path(db)) == path
             {
+                let file = u.scope_id(db).file(db);
                 locations.push(ReferenceLocation {
-                    file: u.scope_id(db).file(db),
-                    span: u.get_span(db),
+                    file,
+                    span: last_segment(db, file, u.get_span(db)),
                 });
             }
             ControlFlow::Continue(())
@@ -279,5 +326,41 @@ fn find_namespace_references<'db>(
         None
     } else {
         Some(locations)
+    }
+}
+
+/// The last segment of the dotted name at `span`: `Motors` of `App.Motors`,
+/// the whole of a name with one segment. A rename edit replaces one
+/// identifier; replacing the whole name wrote the new one over the parents
+/// too, `NAMESPACE App.Motors` becoming `NAMESPACE Drives`.
+pub(crate) fn last_segment(
+    db: &dyn WorkspaceDataBase,
+    file: File,
+    span: tree_sitter::Range,
+) -> tree_sitter::Range {
+    let source = file.document(db).as_str();
+    let Some(text) = source.get(span.start_byte..span.end_byte) else {
+        return span;
+    };
+    let after_dot = text.rfind('.').map_or(0, |i| i + 1);
+    let skipped = text[after_dot..].len() - text[after_dot..].trim_start().len();
+    let start = after_dot + skipped;
+    if start == 0 {
+        return span;
+    }
+    // The point moves over what was skipped, line by line.
+    let mut point = span.start_point;
+    for byte in text[..start].bytes() {
+        if byte == b'\n' {
+            point.row += 1;
+            point.column = 0;
+        } else {
+            point.column += 1;
+        }
+    }
+    tree_sitter::Range {
+        start_byte: span.start_byte + start,
+        start_point: point,
+        ..span
     }
 }

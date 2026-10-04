@@ -62,7 +62,7 @@ END_FUNCTION
 
     let offset = source.find("MyFB").unwrap();
     let node = descendant_at(&with_db, file, offset).unwrap();
-    let edit = node.rename(&with_db, "RenamedFB").unwrap();
+    let edit = node.rename(&with_db, offset, "RenamedFB").unwrap();
 
     assert_snapshot!(apply_rename(&with_db, &edit, &[source]), @r"
     FUNCTION_BLOCK RenamedFB
@@ -91,7 +91,7 @@ END_FUNCTION
 
     let offset = source.find("x : INT").unwrap();
     let node = descendant_at(&with_db, file, offset).unwrap();
-    let edit = node.rename(&with_db, "counter").unwrap();
+    let edit = node.rename(&with_db, offset, "counter").unwrap();
 
     assert_snapshot!(apply_rename(&with_db, &edit, &[source]), @r"
     FUNCTION fn1
@@ -119,7 +119,7 @@ END_FUNCTION
 
     let offset = source.find("x := 1").unwrap();
     let node = descendant_at(&with_db, file, offset).unwrap();
-    let edit = node.rename(&with_db, "counter").unwrap();
+    let edit = node.rename(&with_db, offset, "counter").unwrap();
 
     assert_snapshot!(apply_rename(&with_db, &edit, &[source]), @r"
     FUNCTION fn1
@@ -159,7 +159,7 @@ END_FUNCTION
 
     let offset = source1.find("SharedFB").unwrap();
     let node = descendant_at(&with_db, file1, offset).unwrap();
-    let edit = node.rename(&with_db, "CommonFB").unwrap();
+    let edit = node.rename(&with_db, offset, "CommonFB").unwrap();
 
     assert_snapshot!(apply_rename(&with_db, &edit, &[source1, source2, source3]), @r"
     FUNCTION_BLOCK CommonFB
@@ -200,7 +200,7 @@ END_FUNCTION
 
     let offset = source.find("x : INT").unwrap();
     let node = descendant_at(&with_db, file, offset).unwrap();
-    let edit = node.rename(&with_db, "y").unwrap();
+    let edit = node.rename(&with_db, offset, "y").unwrap();
 
     assert_snapshot!(apply_rename(&with_db, &edit, &[source]), @r"
     FUNCTION fn1
@@ -239,7 +239,7 @@ END_FUNCTION
 
     let offset = source1.find("MyNs").unwrap();
     let node = descendant_at(&with_db, file1, offset).unwrap();
-    let edit = node.rename(&with_db, "NewNs").unwrap();
+    let edit = node.rename(&with_db, offset, "NewNs").unwrap();
 
     assert_snapshot!(apply_rename(&with_db, &edit, &[source1, source2]), @r"
     NAMESPACE NewNs
@@ -278,7 +278,7 @@ END_FUNCTION_BLOCK
 
     let offset = source.find("fuel: BOOL").unwrap();
     let node = descendant_at(&with_db, file, offset).unwrap();
-    let edit = node.rename(&with_db, "gas").unwrap();
+    let edit = node.rename(&with_db, offset, "gas").unwrap();
 
     assert_snapshot!(apply_rename(&with_db, &edit, &[source]), @r"
     TYPE
@@ -330,7 +330,7 @@ END_FUNCTION_BLOCK
     // Rename the `engine` field of Engine — referenced through nested access
     let offset = source.find("engine: SubEngine").unwrap();
     let node = descendant_at(&with_db, file, offset).unwrap();
-    let edit = node.rename(&with_db, "motor").unwrap();
+    let edit = node.rename(&with_db, offset, "motor").unwrap();
 
     assert_snapshot!(apply_rename(&with_db, &edit, &[source]), @r"
     TYPE
@@ -398,7 +398,7 @@ END_FUNCTION
     for needle in ["motor : Engine", "motor();", "motor.start"] {
         let offset = source.find(needle).unwrap();
         let node = descendant_at(&with_db, file, offset).unwrap();
-        let edit = node.rename(&with_db, "pump").unwrap();
+        let edit = node.rename(&with_db, offset, "pump").unwrap();
         assert_eq!(
             apply_rename(&with_db, &edit, &[source]).trim(),
             expected.replace("\n    ", "\n").trim(),
@@ -435,11 +435,12 @@ END_FUNCTION
     let offset = source.find(needle).expect("the name");
     let node = ide_proto::walk::descendant_at(&with_db, file, offset).expect("a node");
 
-    let written = ide_proto::handlers::RenameHandler::rename(&node, &with_db, "Renamed").map(|e| {
-        e.changes
-            .map(|c| c.values().map(|v| v.len()).sum::<usize>())
-            .unwrap_or(0)
-    });
+    let written = ide_proto::handlers::RenameHandler::rename(&node, &with_db, offset, "Renamed")
+        .map(|e| {
+            e.changes
+                .map(|c| c.values().map(|v| v.len()).sum::<usize>())
+                .unwrap_or(0)
+        });
 
     assert_eq!(written, edits);
 }
@@ -465,9 +466,156 @@ fn rename_in_a_program_configuration(
 
     let offset = connected_at(at, in_config);
     let node = descendant_at(&with_db, file, offset).unwrap();
-    let edit = node.rename(&with_db, new_name).expect("an edit");
+    let edit = node.rename(&with_db, offset, new_name).expect("an edit");
     let renamed = apply_rename(&with_db, &edit, &[CONNECTED]);
     for text in expected {
         assert!(renamed.contains(text), "missing `{text}`:\n{renamed}");
     }
+}
+
+/// A rename edits names and nothing else. A binding `in := x` names its
+/// parameter, so renaming the parameter edits `in`; a positional argument
+/// names nothing and is left alone. Each used to be replaced whole, so
+/// `g(a0 := 1, a1 := 3)` came back as `g(renamed, a1 := 3)` and `g(v)` as
+/// `g(renamed)`.
+#[rstest]
+fn rename_a_parameter_edits_its_bindings_only(mut with_db: RootDatabase) {
+    let source = r#"FUNCTION g : INT
+VAR_INPUT a0 : INT; a1 : INT; END_VAR
+VAR_OUTPUT o : INT; END_VAR
+    g := a0 + a1;
+END_FUNCTION
+
+FUNCTION caller : INT
+VAR v : INT; r : INT; END_VAR
+    caller := g(a0 := 1, a1 := 3) + g(v, 2) + g(a0 := g(a0 := 4, a1 := 5), a1 := v, o => r);
+END_FUNCTION
+"#;
+    let file = add_source(&mut with_db, source);
+    let offset = source.find("a0 : INT").unwrap();
+    let node = descendant_at(&with_db, file, offset).unwrap();
+    let edit = node.rename(&with_db, offset, "first").unwrap();
+
+    assert_snapshot!(apply_rename(&with_db, &edit, &[source]), @r"
+    FUNCTION g : INT
+    VAR_INPUT first : INT; a1 : INT; END_VAR
+    VAR_OUTPUT o : INT; END_VAR
+        g := first + a1;
+    END_FUNCTION
+
+    FUNCTION caller : INT
+    VAR v : INT; r : INT; END_VAR
+        caller := g(first := 1, a1 := 3) + g(v, 2) + g(first := g(first := 4, a1 := 5), a1 := v, o => r);
+    END_FUNCTION
+    ");
+
+    let offset = source.find("o : INT").unwrap();
+    let node = descendant_at(&with_db, file, offset).unwrap();
+    let edit = node.rename(&with_db, offset, "out").unwrap();
+    assert_snapshot!(apply_rename(&with_db, &edit, &[source]), @r"
+    FUNCTION g : INT
+    VAR_INPUT a0 : INT; a1 : INT; END_VAR
+    VAR_OUTPUT out : INT; END_VAR
+        g := a0 + a1;
+    END_FUNCTION
+
+    FUNCTION caller : INT
+    VAR v : INT; r : INT; END_VAR
+        caller := g(a0 := 1, a1 := 3) + g(v, 2) + g(a0 := g(a0 := 4, a1 := 5), a1 := v, out => r);
+    END_FUNCTION
+    ");
+}
+
+/// A namespace declared with a dotted name is renamed by its last segment,
+/// in its declarations and in the USINGs that name it; the segments before
+/// it are its parents. With the cursor on a parent segment nothing is
+/// edited from here: the parent is renamed where it is declared. Replacing
+/// the whole name wrote `NAMESPACE Drives` over `NAMESPACE App.Motors`.
+#[rstest]
+fn rename_a_dotted_namespace_by_its_last_segment(mut with_db: RootDatabase) {
+    let source1 = r#"NAMESPACE App.Motors
+    FUNCTION fn1 : INT
+    END_FUNCTION
+END_NAMESPACE
+
+NAMESPACE App
+    NAMESPACE Motors
+        FUNCTION fn2 : INT
+        END_FUNCTION
+    END_NAMESPACE
+END_NAMESPACE
+"#;
+    let source2 = r#"USING App.Motors;
+FUNCTION fn3 : INT
+END_FUNCTION
+"#;
+    add_sources(&mut with_db, &[source1, source2]);
+    let file1 = with_db
+        .get_file(&Url::parse("file:///test0.st").unwrap())
+        .unwrap();
+
+    let offset = source1.find("Motors").unwrap();
+    let node = descendant_at(&with_db, file1, offset).unwrap();
+    let edit = node.rename(&with_db, offset, "Drives").unwrap();
+    assert_snapshot!(apply_rename(&with_db, &edit, &[source1, source2]), @r"
+    NAMESPACE App.Drives
+        FUNCTION fn1 : INT
+        END_FUNCTION
+    END_NAMESPACE
+
+    NAMESPACE App
+        NAMESPACE Drives
+            FUNCTION fn2 : INT
+            END_FUNCTION
+        END_NAMESPACE
+    END_NAMESPACE
+    ---
+    USING App.Drives;
+    FUNCTION fn3 : INT
+    END_FUNCTION
+    ");
+
+    let offset = source1.find("App.Motors").unwrap();
+    let node = descendant_at(&with_db, file1, offset).unwrap();
+    assert!(
+        node.rename(&with_db, offset, "Plant").is_none(),
+        "a parent segment is renamed at its own declaration"
+    );
+}
+
+/// A qualified type reference, `x : Lib.T`, is edited at its name: the
+/// whole path was replaced, and the namespace went with it. A located
+/// variable declared without a name, `AT %QB4 : INT`, has its address
+/// where a name would be, and is not renamed.
+#[rstest]
+fn rename_edits_names_only(mut with_db: RootDatabase) {
+    let source = r#"NAMESPACE Lib
+    FUNCTION_BLOCK T
+    END_FUNCTION_BLOCK
+END_NAMESPACE
+
+PROGRAM Main
+VAR t : Lib.T; u : Lib.T; END_VAR
+VAR AT %QB4 : INT; END_VAR
+END_PROGRAM
+"#;
+    let file = add_source(&mut with_db, source);
+    let offset = source.find("FUNCTION_BLOCK T").unwrap() + "FUNCTION_BLOCK ".len();
+    let node = descendant_at(&with_db, file, offset).unwrap();
+    let edit = node.rename(&with_db, offset, "Timer").unwrap();
+    assert_snapshot!(apply_rename(&with_db, &edit, &[source]), @r"
+    NAMESPACE Lib
+        FUNCTION_BLOCK Timer
+        END_FUNCTION_BLOCK
+    END_NAMESPACE
+
+    PROGRAM Main
+    VAR t : Lib.Timer; u : Lib.Timer; END_VAR
+    VAR AT %QB4 : INT; END_VAR
+    END_PROGRAM
+    ");
+
+    let offset = source.find("%QB4").unwrap();
+    let node = descendant_at(&with_db, file, offset).unwrap();
+    assert!(node.rename(&with_db, offset, "out").is_none());
 }
