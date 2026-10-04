@@ -236,25 +236,61 @@ impl<'db> DefinitionHandler<'db> for ParamAssign<'db> {
     }
 }
 
+/// `ty` with its aliases followed: a variable or an alias declared as
+/// another name goes to that name's declaration, as many times as it takes.
+/// A cycle of aliases, `TYPE A : B; B : A;`, is E1302 where it is declared;
+/// followed name by name it took the language server down. A second walker
+/// two names ahead meets the first only on a cycle, and the chase then
+/// stops at the alias it is on.
+fn through_aliases<'db>(db: &'db dyn WorkspaceDataBase, ty: Type<'db>) -> Type<'db> {
+    let mut slow = ty;
+    let mut fast = ty;
+    loop {
+        for _ in 0..2 {
+            fast = match aliased(db, fast) {
+                Some(next) => next,
+                None => return fast,
+            };
+        }
+        slow = match aliased(db, slow) {
+            Some(next) => next,
+            None => return slow,
+        };
+        if slow == fast {
+            return slow;
+        }
+    }
+}
+
+/// The name `ty` is declared as, when it is a variable or an alias declared
+/// as another name.
+fn aliased<'db>(db: &'db dyn WorkspaceDataBase, ty: Type<'db>) -> Option<Type<'db>> {
+    let spec = match ty {
+        Type::DataType(dt) => dt.spec(db),
+        Type::Variable((var, _)) => var.spec(db),
+        _ => return None,
+    };
+    matches!(spec.kind(db), SpecKind::Target(_)).then(|| spec.infer(db))
+}
+
 impl<'db> DefinitionHandler<'db> for Type<'db> {
     fn definition(
         &'db self,
         db: &'db dyn WorkspaceDataBase,
         _offset: usize,
     ) -> Option<GotoDefinitionResponse> {
-        let loc: &'db dyn HasName<'db> = match self {
-            Type::CallableType(c) | Type::ReturnValue(c) => return c.definition(db, _offset),
-            Type::Program(p) => p as _,
-            Type::Function(f) => f as _,
-            Type::FunctionBlock(f) => f as _,
-            Type::Class(c) => c as _,
-            Type::Interface(i) => i as _,
-            Type::StructElement(st) => st as _,
-            Type::MethodDecl(m) => m as _,
-            Type::DataType(dt) => match dt.spec(db).kind(db) {
-                SpecKind::Target(_) => return dt.spec(db).infer(db).definition(db, _offset),
-                _ => dt as _,
-            },
+        // Each arm names its holder by value: a `dyn HasName` would pin the
+        // borrow of a local to `'db`.
+        match through_aliases(db, *self) {
+            Type::CallableType(c) | Type::ReturnValue(c) => c.definition(db, _offset),
+            Type::Program(p) => Some(named_location(db, &p)),
+            Type::Function(f) => Some(named_location(db, &f)),
+            Type::FunctionBlock(f) => Some(named_location(db, &f)),
+            Type::Class(c) => Some(named_location(db, &c)),
+            Type::Interface(i) => Some(named_location(db, &i)),
+            Type::StructElement(st) => Some(named_location(db, &st)),
+            Type::MethodDecl(m) => Some(named_location(db, &m)),
+            Type::DataType(dt) => Some(named_location(db, &dt)),
             // A qualified value names the VARIANT, so it goes to where that
             // variant is written. Only the type half of `Mode#Running`
             // resolved; the half the reader clicked answered nothing.
@@ -262,21 +298,16 @@ impl<'db> DefinitionHandler<'db> for Type<'db> {
                 let SpecKind::Enum(enm) = data_type.spec(db).kind(db) else {
                     None?
                 };
-                let declared = enm.enum_variants(db).get(variant).copied()?;
+                let declared = enm.enum_variants(db).get(&variant).copied()?;
                 let file = data_type.get_scope_id(db).file(db);
-                return Some(GotoDefinitionResponse::Scalar(Location::new(
+                Some(GotoDefinitionResponse::Scalar(Location::new(
                     file.url(db).to_owned(),
                     hir::denormalize(db, file, &declared.name.get_span(db)).unwrap_or_default(),
-                )));
+                )))
             }
-            Type::Variable((var, _multibits)) => match var.spec(db).kind(db) {
-                SpecKind::Target(_) => return var.spec(db).infer(db).definition(db, _offset),
-                _ => var as _,
-            },
-            _ => None?,
-        };
-
-        Some(named_location(db, loc))
+            Type::Variable((var, _multibits)) => Some(named_location(db, &var)),
+            _ => None,
+        }
     }
 }
 

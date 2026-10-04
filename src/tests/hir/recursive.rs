@@ -272,3 +272,47 @@ fn recursion_in_namespace(mut with_db: RootDatabase) {
     ----'
     ");
 }
+
+/// An alias of itself, and a cycle of aliases, each with a variable of its
+/// type. The cycle is reported once, at the declaration, and the variable
+/// is checked no further: the checker used to follow the cycle through the
+/// variable until the stack ran out, on a four-line file.
+#[rstest]
+fn a_variable_of_a_cyclic_alias_is_reported_once(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE A : A; END_TYPE
+TYPE B : C; C : D; D : B; END_TYPE
+
+FUNCTION f : INT
+VAR a : A; b : B; END_VAR
+    a := b;
+    f := a;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1301] Error: type contains itself
+       ,-[ file:///test0.st:2:6 ]
+       |
+     2 | TYPE A : A; END_TYPE
+       |      |   |
+       |      `------ type 'A' contains itself
+       |          |
+       |          `-- 'A' references itself here
+    ---'
+    [E1302] Error: types contain each other
+       ,-[ file:///test0.st:3:6 ]
+       |
+     3 | TYPE B : C; C : D; D : B; END_TYPE
+       |      |                 |
+       |      `-------------------- type 'B' is recursive
+       |                        |
+       |                        `-- the cycle passes here
+       |
+       | Note: cycle goes
+       |       -> B
+       |       -> C
+       |       -> D
+       |       ... and back to B
+    ---'
+    ");
+}

@@ -88,3 +88,23 @@ fn a_block_typed_variable_goes_to_the_block(mut with_db: RootDatabase) {
 fn an_elementary_type_has_nowhere_to_go(mut with_db: RootDatabase) {
     assert_snapshot!(target(&mut with_db, SOURCE, "n : INT"), @"<none>");
 }
+
+/// The type of a variable declared with a cyclic alias is the alias it
+/// reached when the chase gave up: followed name by name, the cycle took
+/// the language server down.
+#[rstest]
+fn a_cyclic_alias_goes_to_an_alias(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE A : B; B : A; END_TYPE
+
+FUNCTION f : INT
+VAR a : A; END_VAR
+    f := 0;
+END_FUNCTION
+"#;
+    let landed = target(&mut with_db, source, "a : A");
+    assert!(
+        landed == "line 1: A" || landed == "line 1: B",
+        "landed on {landed}"
+    );
+}
