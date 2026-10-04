@@ -10,9 +10,10 @@ use rstest::rstest;
 use topiary_core::{Operation, formatter};
 
 pub fn fmt(document: &Document) -> String {
+    let source = formatter::supply_terminators(&document.texter.text).unwrap();
     let mut output = vec![];
     formatter(
-        &mut document.texter.text.as_bytes(),
+        &mut source.as_bytes(),
         &mut output,
         &TOPIARY_LANG,
         Operation::Format {
@@ -1474,6 +1475,8 @@ fn a_parseable_source_is_formatted() {
 /// Every place the grammar makes the terminator optional, written without
 /// one. The formatter supplies it, and supplies it once: each case is
 /// formatted again from its own output and has to land on the same text.
+/// A statement before a jump with its own `;` was left without one: the
+/// guard skipped the `RETURN`, a keyword, and saw that `;`.
 #[rstest]
 pub fn a_missing_terminator_is_supplied_once() {
     const CASES: &[(&str, &str)] = &[
@@ -1629,6 +1632,23 @@ END_FUNCTION_BLOCK
 "#,
         ),
         (
+            "before a jump that has one",
+            r#"
+FUNCTION f : INT
+VAR
+    i : INT;
+END_VAR
+    FOR i := 1 TO 3 DO
+        i := 2 EXIT;
+    END_FOR
+    WHILE TRUE DO
+        i := 3 CONTINUE;
+    END_WHILE
+    i := 1 RETURN;
+END_FUNCTION
+"#,
+        ),
+        (
             "a REPEAT",
             r#"
 FUNCTION f : INT
@@ -1752,6 +1772,22 @@ END_FUNCTION
     		CONTINUE;
     	END_WHILE;
     END_FUNCTION_BLOCK
+    --- before a jump that has one
+    FUNCTION f: INT
+    	VAR
+    		i: INT;
+    	END_VAR
+    	FOR i := 1 TO 3 DO
+    		i := 2;
+    		EXIT;
+    	END_FOR;
+    	WHILE TRUE DO
+    		i := 3;
+    		CONTINUE;
+    	END_WHILE;
+    	i := 1;
+    	RETURN;
+    END_FUNCTION
     --- a REPEAT
     FUNCTION f: INT
     	VAR
