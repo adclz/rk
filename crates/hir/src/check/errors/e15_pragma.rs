@@ -180,7 +180,21 @@ pub enum PragmaError<'db> {
         actual: String,
         span: tree_sitter::Range,
     },
+    /// A pragma the grammar has no rule for, `{attribute 'hide'}`, wherever
+    /// it stands. Inside a declaration section it used to be read and
+    /// dropped without a word, and some attributes change what the code
+    /// means.
+    UnknownPragma {
+        /// Its first word, empty when it has none.
+        name: compact_str::CompactString,
+        span: tree_sitter::Range,
+    },
 }
+
+/// The first words of rk's pragmas, as the grammar spells them.
+const KNOWN_PRAGMAS: &[&str] = &[
+    "test", "once", "export", "warn", "info", "allow", "extern", "wasm",
+];
 
 impl<'db> ErrorCode for PragmaError<'db> {
     fn code(&self) -> &'static str {
@@ -196,6 +210,7 @@ impl<'db> ErrorCode for PragmaError<'db> {
             Self::WasmSignatureMismatch { .. } => "E1507",
             Self::ExportOutsideFunction { .. } => "E1508",
             Self::ExportForbidden { .. } => "E1509",
+            Self::UnknownPragma { .. } => "E1510",
         }
     }
 }
@@ -295,6 +310,31 @@ impl<'db> ToIdeDiagnostic<'db> for PragmaError<'db> {
                 .desc(self)
                 .range(crate::denormalize(db, file, span).unwrap_or_default())
                 .call(),
+            Self::UnknownPragma { name, span } => {
+                let message = match name.is_empty() {
+                    true => "the pragma names nothing".to_string(),
+                    false => format!("no pragma named '{name}'"),
+                };
+                let mut diag = diag()
+                    .message(message)
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, span).unwrap_or_default())
+                    .call();
+                let lowered = name.to_lowercase();
+                let advice = match KNOWN_PRAGMAS.contains(&lowered.as_str()) {
+                    true => format!("write it in lowercase, {{{lowered}}}"),
+                    false => "remove it".to_string(),
+                };
+                diag.with_advice(
+                    Some(
+                        "the pragmas are {test}, {once}, {export}, {warn}, {info}, {allow}, {extern} and {wasm}"
+                            .to_string(),
+                    ),
+                    Some(advice),
+                );
+                diag
+            }
             Self::UnknownWasmInstruction { name, span } => diag()
                 .message(format!(
                     "'{name}' is not a wasm instruction this compiler emits"

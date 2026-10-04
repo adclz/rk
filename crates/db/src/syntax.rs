@@ -25,6 +25,18 @@ pub struct Parsed {
     pub syntax_errors: Vec<ParseError>,
     /// Why no AST could be built at all, when none could.
     pub failure: Option<ParseError>,
+    /// The pragmas the grammar has no rule for, in the order of the text.
+    /// The parser reads one as a token wherever it stands and the AST has
+    /// no place for it, so the compiler reports it from here (E1510).
+    pub unknown_pragmas: Vec<UnknownPragma>,
+}
+
+/// A pragma the grammar has no rule for: `{attribute 'hide'}`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UnknownPragma {
+    pub range: auto_lsp::tree_sitter::Range,
+    /// The first word after the `{`, `attribute`; empty when there is none.
+    pub name: String,
 }
 
 /// The AST of `file` and its syntax errors, in the result rather than
@@ -39,17 +51,50 @@ pub fn parse(db: &dyn WorkspaceDataBase, file: File) -> Parsed {
     }
     let mut syntax_errors = Vec::new();
     collect_syntax_errors(&doc.tree.root_node(), doc.as_bytes(), &mut syntax_errors);
+    let unknown_pragmas = unknown_pragmas(&doc.tree.root_node(), doc.as_bytes());
     match (file.parsers(db).ast_parser)(db, doc) {
         Ok(nodes) => Parsed {
             ast: ParsedAst::new(nodes),
             syntax_errors,
             failure: None,
+            unknown_pragmas,
         },
         Err(failure) => Parsed {
             ast: ParsedAst::default(),
             syntax_errors,
             failure: Some(failure),
+            unknown_pragmas,
         },
+    }
+}
+
+/// Every `pragma` node under `root`. An extra stands anywhere in the tree,
+/// so the whole tree is walked.
+fn unknown_pragmas(root: &Node, source: &[u8]) -> Vec<UnknownPragma> {
+    let mut found = Vec::new();
+    let mut cursor = root.walk();
+    loop {
+        let node = cursor.node();
+        if node.kind() == "pragma" {
+            let text = node.utf8_text(source).unwrap_or_default();
+            let name = text
+                .trim_start_matches('{')
+                .trim_start()
+                .chars()
+                .take_while(|c| c.is_alphanumeric() || *c == '_')
+                .collect();
+            found.push(UnknownPragma {
+                range: node.range(),
+                name,
+            });
+        } else if cursor.goto_first_child() {
+            continue;
+        }
+        while !cursor.goto_next_sibling() {
+            if !cursor.goto_parent() {
+                return found;
+            }
+        }
     }
 }
 
