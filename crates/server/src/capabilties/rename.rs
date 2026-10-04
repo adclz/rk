@@ -30,5 +30,5 @@ pub fn rename(
             )
         })?;
 
-    Ok(descendant_at(db, file, position).and_then(|s| s.rename(db, &params.new_name)))
+    Ok(descendant_at(db, file, position).and_then(|s| s.rename(db, position, &params.new_name)))
 }

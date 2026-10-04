@@ -108,7 +108,14 @@ pub trait ReferencesHandler<'db> {
 }
 
 pub trait RenameHandler<'db> {
-    fn rename(&'db self, db: &'db dyn WorkspaceDataBase, new_name: &str) -> Option<WorkspaceEdit>;
+    /// The edits that rename what stands at `offset` of this node to
+    /// `new_name`, or `None` when nothing there can be renamed.
+    fn rename(
+        &'db self,
+        db: &'db dyn WorkspaceDataBase,
+        offset: usize,
+        new_name: &str,
+    ) -> Option<WorkspaceEdit>;
 }
 
 pub trait DocumentSymbolsHandler<'db> {

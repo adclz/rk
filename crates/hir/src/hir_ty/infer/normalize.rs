@@ -55,41 +55,73 @@ impl<'db> Type<'db> {
         }
     }
 
+    /// Through every name to the identity behind it: a variable's declared
+    /// type, an alias's target, a callable's return type. The chain is
+    /// walked twice over, the second walker two names at a time: they meet
+    /// only on a cycle of aliases, `TYPE A : B; B : A;`, which is E1302
+    /// where it is declared and resolves to [`Type::Never`] here, the type
+    /// of what is already reported. Followed name by name, such a cycle
+    /// took every feature that asked for the type's identity down with
+    /// the stack, semantic tokens on the declaration first.
     fn normalize_keep_subrange(&self, db: &'db dyn WorkspaceDataBase) -> Type<'db> {
+        let mut slow = *self;
+        let mut fast = *self;
+        loop {
+            for _ in 0..2 {
+                fast = match fast.behind_name(db) {
+                    Ok(next) => next,
+                    Err(identity) => return identity,
+                };
+            }
+            slow = match slow.behind_name(db) {
+                Ok(next) => next,
+                Err(identity) => return identity,
+            };
+            if slow == fast {
+                return Type::Never;
+            }
+        }
+    }
+
+    /// One name of [`Self::normalize_keep_subrange`]'s chain: `Ok` with
+    /// what the name stands for, `Err` with the identity when this is no
+    /// name to go through.
+    fn behind_name(&self, db: &'db dyn WorkspaceDataBase) -> Result<Type<'db>, Type<'db>> {
         match self {
-            Type::DataType(dt) => infer_signature(db, dt.get_scope_id(db)).type_of_specs
-                [&dt.spec(db)]
-                .normalize_keep_subrange(db),
+            Type::DataType(dt) => {
+                Ok(infer_signature(db, dt.get_scope_id(db)).type_of_specs[&dt.spec(db)])
+            }
             Type::Variable((var, multibits)) => {
                 if let Some(multibits) = multibits {
-                    return multibits_to_type(db, *multibits);
+                    return Err(multibits_to_type(db, *multibits));
                 }
-                infer_signature(db, var.get_scope_id(db)).type_of_specs[&var.spec(db)]
-                    .normalize_keep_subrange(db)
+                Ok(infer_signature(db, var.get_scope_id(db)).type_of_specs[&var.spec(db)])
             }
             Type::CallableType(typ) | Type::ReturnValue(typ) => match typ {
                 CallableType::Function(f) => match f.return_type(db) {
-                    Some(ret_ty) => infer_signature(db, f.get_scope_id(db)).type_of_specs[ret_ty]
-                        .normalize_keep_subrange(db),
-                    _ => Type::Void,
+                    Some(ret_ty) => {
+                        Ok(infer_signature(db, f.get_scope_id(db)).type_of_specs[ret_ty])
+                    }
+                    _ => Err(Type::Void),
                 },
                 CallableType::MethodDecl(m) => match m.return_type(db) {
-                    Some(ret_ty) => infer_signature(db, m.get_scope_id(db)).type_of_specs[ret_ty]
-                        .normalize_keep_subrange(db),
-                    _ => Type::Void,
+                    Some(ret_ty) => {
+                        Ok(infer_signature(db, m.get_scope_id(db)).type_of_specs[ret_ty])
+                    }
+                    _ => Err(Type::Void),
                 },
-                _ => *self,
+                _ => Err(*self),
             },
             Type::DirectVariable((dv, multibits)) => {
                 if let Some(multibits) = multibits {
-                    return multibits_to_type(db, *multibits);
+                    return Err(multibits_to_type(db, *multibits));
                 }
-                direct_variable_to_type(db, *dv, *multibits)
+                Err(direct_variable_to_type(db, *dv, *multibits))
             }
-            Type::StructElement(element) => infer_signature(db, element.get_scope_id(db))
-                .type_of_specs[&element.spec(db)]
-                .normalize_keep_subrange(db),
-            _ => *self,
+            Type::StructElement(element) => {
+                Ok(infer_signature(db, element.get_scope_id(db)).type_of_specs[&element.spec(db)])
+            }
+            _ => Err(*self),
         }
     }
 }

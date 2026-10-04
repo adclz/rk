@@ -263,3 +263,25 @@ USING ns;
     }
     // result == None is also acceptable (no node at that position)
 }
+
+/// A completion inside a METHOD of an INTERFACE. The prototype's scope was
+/// the one kind the USING-insertion range had no arm for, and the request
+/// panicked on `unreachable!()`, which killed the language server.
+#[rstest]
+pub fn completion_inside_an_interface_method(mut with_db: RootDatabase) {
+    let source = r#"
+NAMESPACE Lib
+    FUNCTION_BLOCK Motor
+    END_FUNCTION_BLOCK
+END_NAMESPACE
+
+INTERFACE IDevice
+    METHOD Start : INT
+    END_METHOD
+END_INTERFACE
+"#;
+    let file = add_source(&mut with_db, source);
+    let offset = source.find("END_METHOD").unwrap();
+    let items = complete(&with_db, file, offset, None);
+    assert!(items.iter().any(|item| item.label == "Lib"), "{items:?}");
+}

@@ -691,3 +691,28 @@ fn a_configuration_colours_the_names_it_writes(mut with_db: RootDatabase) {
     fb1 variable
     ");
 }
+
+/// A cycle of aliases is E1302 and nothing else: asked for the identity of
+/// such a type, semantic tokens followed the cycle until the stack ran out
+/// and took the language server down.
+#[rstest]
+pub fn a_cyclic_alias_has_tokens(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE A : B; B : A; C : C; END_TYPE
+
+FUNCTION f : INT
+VAR a : A; c : C; END_VAR
+    f := 0;
+END_FUNCTION
+"#;
+    let file = add_source(&mut with_db, source);
+    let sema = semantic_index(&with_db, file);
+    let mut sink = ide_proto::handlers::semantic_tokens::TokenSink::default();
+    let _ = sema.walk_hir(&with_db, &mut |node| {
+        node.semantic_tokens(&with_db, &mut sink);
+        std::ops::ControlFlow::Continue(())
+    });
+    let mut builder = SemanticTokensBuilder::new("".into());
+    sink.drain_into(&mut builder);
+    assert!(!builder.build().data.is_empty());
+}
