@@ -217,6 +217,7 @@ pub const HEADERS: &[(&str, &str)] = &[
     ("E1507", "wasm operands of the wrong type"),
     ("E1508", "export pragma outside a FUNCTION"),
     ("E1509", "FUNCTION not exportable"),
+    ("E1510", "unknown pragma"),
     ("L0001", "{info} notice"),
     ("L0002", "{warn} notice"),
     ("L0003", "pragma without effect on the POU"),

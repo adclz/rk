@@ -44,10 +44,8 @@ A framed comment on three line
 --------------------------------------------------------------------------------
 
 (source_file
-  (pascal_style_comment
-    (comment_text))
-  (pascal_style_comment
-    (comment_text)))
+  (pascal_style_comment)
+  (pascal_style_comment))
 
 ================================================================================
 Multi-line comment with /* … */
@@ -59,8 +57,7 @@ or more lines */
 --------------------------------------------------------------------------------
 
 (source_file
-  (c_style_comment
-    (comment_text)))
+  (c_style_comment))
 
 ================================================================================
 Nested comment with (* .. (* .. *) ..*)
@@ -71,9 +68,7 @@ Nested comment with (* .. (* .. *) ..*)
 --------------------------------------------------------------------------------
 
 (source_file
-  (pascal_style_comment
-    (pascal_style_comment
-      (comment_text))))
+  (pascal_style_comment))
 
 ================================================================================
 Nested comment with /* .. /* .. */ .. */
@@ -84,6 +79,117 @@ Nested comment with /* .. /* .. */ .. */
 --------------------------------------------------------------------------------
 
 (source_file
-  (c_style_comment
-    (c_style_comment
-      (comment_text))))
+  (c_style_comment))
+
+================================================================================
+Nested comment two deep, closed at the right depth
+================================================================================
+
+(* a (* b (* c *) b *) a *)
+FUNCTION f
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (pascal_style_comment)
+  (func_decl
+    (identifier)))
+
+================================================================================
+A comment counts its own delimiters only
+================================================================================
+
+(* a /* b *)
+/* a (* b */
+(* a // b *)
+FUNCTION f
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (pascal_style_comment)
+  (c_style_comment)
+  (pascal_style_comment)
+  (func_decl
+    (identifier)))
+
+================================================================================
+Stars and parentheses inside a comment
+================================================================================
+
+(**) (***) (* x *y* (z) *) /**/ /*/ */ /* a*b */
+FUNCTION f
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (pascal_style_comment)
+  (pascal_style_comment)
+  (pascal_style_comment)
+  (c_style_comment)
+  (c_style_comment)
+  (c_style_comment)
+  (func_decl
+    (identifier)))
+
+================================================================================
+Division, multiplication and parentheses are no comment
+================================================================================
+
+FUNCTION f : INT
+VAR x : INT; END_VAR
+    x := 6 / (2) * (x);
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (func_decl
+    (identifier)
+    (numeric_type_name
+      (int_type_name
+        (sign_int_type_name
+          (int_name))))
+    (var_decls
+      (var_decl_init_list
+        (variable_list
+          (identifier))
+        (var_decl_init
+          (simple_type_spec
+            (numeric_type_name
+              (int_type_name
+                (sign_int_type_name
+                  (int_name))))))))
+    (func_body
+      (stmt_list
+        (assign
+          (variable_access
+            (variable
+              (begin_path_expression
+                (path_expression
+                  (var_access
+                    (field))))))
+          (assignment
+            (mult_operator
+              (mult_operator
+                (constant
+                  (numeric_literal
+                    (int_literal
+                      (signed_int
+                        (unsigned_int)))))
+                (parenthesized_expression
+                  (constant
+                    (numeric_literal
+                      (int_literal
+                        (signed_int
+                          (unsigned_int)))))))
+              (parenthesized_expression
+                (variable_access
+                  (variable
+                    (begin_path_expression
+                      (path_expression
+                        (var_access
+                          (field))))))))))))))

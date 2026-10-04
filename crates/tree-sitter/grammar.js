@@ -191,6 +191,14 @@ const RESERVED_NAMES = [
 module.exports = grammar({
   name: "rk",
 
+  // One token per comment, nested ones included, and one per pragma rk has
+  // no rule for. Each was built from a token per character, as a rule,
+  // which gave the parser tokens that match whitespace: after an edit, a
+  // reused token could take the whitespace before it, and the tree no
+  // longer matched a fresh parse of the text. A `//` inside a pragma also
+  // started a line comment that ate its `}`.
+  externals: ($) => [$.c_style_comment, $.pascal_style_comment, $.pragma],
+
   extras: ($) => [
     /\s/, // Whitespace
     $.line_comment,
@@ -371,15 +379,13 @@ module.exports = grammar({
 
     line_comment: ($) => token(seq("//", /.*/)),
 
-    c_style_comment: ($) => seq("/*", optional($.comment_text), "*/"),
-
-    pascal_style_comment: ($) => seq("(*", optional($.comment_text), "*)"),
-
-    comment_text: ($) => repeat1(/.|\n|\r/),
+    // `(* *)` and `/* */` are read by the external scanner, src/scanner.c:
+    // a comment nests, `(* (* NESTED *) *)`, and only a scanner can count.
 
     // Table 4 - Pragma
 
-    pragma: ($) => seq("{", repeat(choice(/[^*]/, /\*[^)]/)), "}"),
+    // `pragma`, a pragma rk has no rule for, is read by the external
+    // scanner as well; the compiler reports it (E1510).
 
     // Extern pragma - declares the annotated FUNCTION as a WASM import.
     // {extern 'module' 'name'}

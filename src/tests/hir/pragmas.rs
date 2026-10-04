@@ -831,3 +831,137 @@ END_NAMESPACE
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
+
+/// A pragma rk has no rule for is E1510 wherever it stands: above a POU,
+/// in a declaration section, after a type, in a body. Inside a section it
+/// used to be read and dropped without a word. It is read to its `}`, so a
+/// `//` or a `}` inside a quoted string is text: the `//` used to start a
+/// line comment that ate the `}`. A known name in capitals is pointed at
+/// its lowercase spelling. A `{` in a string, a comment or a known pragma
+/// opens no pragma, and one inside a pragma's text opens no second one.
+#[rstest]
+fn invalid_unknown_pragmas(mut with_db: RootDatabase) {
+    let source = r#"
+{attribute 'qualified_only'}
+FUNCTION_BLOCK Fb
+VAR
+    {attribute 'see http://x'}
+    a : INT;
+    b : INT {attribute 'a}b'};
+END_VAR
+    {pack_mode := '1'}
+    a := 1;
+END_FUNCTION_BLOCK
+
+{TEST}
+FUNCTION t
+END_FUNCTION
+
+{info = 'a {braced} note'}
+FUNCTION u : STRING
+    u := '{not a pragma}'; (* {nor this} *) // {nor this}
+    {attribute '{u}'}
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1510] Error: unknown pragma
+       ,-[ file:///test0.st:2:1 ]
+       |
+     2 | {attribute 'qualified_only'}
+       | ^^^^^^^^^^^^^^|^^^^^^^^^^^^^
+       |               `--------------- no pragma named 'attribute'
+       |
+       | Help: remove it
+       |
+       | Note: the pragmas are {test}, {once}, {export}, {warn}, {info}, {allow}, {extern} and {wasm}
+    ---'
+    [E1510] Error: unknown pragma
+       ,-[ file:///test0.st:5:5 ]
+       |
+     5 |     {attribute 'see http://x'}
+       |     ^^^^^^^^^^^^^|^^^^^^^^^^^^
+       |                  `-------------- no pragma named 'attribute'
+       |
+       | Help: remove it
+       |
+       | Note: the pragmas are {test}, {once}, {export}, {warn}, {info}, {allow}, {extern} and {wasm}
+    ---'
+    [E1510] Error: unknown pragma
+       ,-[ file:///test0.st:7:13 ]
+       |
+     7 |     b : INT {attribute 'a}b'};
+       |             ^^^^^^^^|^^^^^^^^
+       |                     `---------- no pragma named 'attribute'
+       |
+       | Help: remove it
+       |
+       | Note: the pragmas are {test}, {once}, {export}, {warn}, {info}, {allow}, {extern} and {wasm}
+    ---'
+    [E1510] Error: unknown pragma
+       ,-[ file:///test0.st:9:5 ]
+       |
+     9 |     {pack_mode := '1'}
+       |     ^^^^^^^^^|^^^^^^^^
+       |              `---------- no pragma named 'pack_mode'
+       |
+       | Help: remove it
+       |
+       | Note: the pragmas are {test}, {once}, {export}, {warn}, {info}, {allow}, {extern} and {wasm}
+    ---'
+    [E1510] Error: unknown pragma
+        ,-[ file:///test0.st:13:1 ]
+        |
+     13 | {TEST}
+        | ^^^|^^
+        |    `---- no pragma named 'TEST'
+        |
+        | Help: write it in lowercase, {test}
+        |
+        | Note: the pragmas are {test}, {once}, {export}, {warn}, {info}, {allow}, {extern} and {wasm}
+    ----'
+    [E1510] Error: unknown pragma
+        ,-[ file:///test0.st:20:5 ]
+        |
+     20 |     {attribute '{u}'}
+        |     ^^^^^^^^|^^^^^^^^
+        |             `---------- no pragma named 'attribute'
+        |
+        | Help: remove it
+        |
+        | Note: the pragmas are {test}, {once}, {export}, {warn}, {info}, {allow}, {extern} and {wasm}
+    ----'
+    ");
+}
+
+/// A known pragma where its rule cannot stand is a syntax error: `{export}`
+/// after a type, and `{ test }`, which `{test}` is written without spaces.
+/// Both were read as an unknown pragma and dropped, so the FUNCTION was
+/// quietly no test.
+#[rstest]
+fn invalid_known_pragma_out_of_place(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE
+    Row : ARRAY[0..1] OF INT {export};
+END_TYPE
+
+{ test }
+FUNCTION t
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0001] Error: syntax error
+       ,-[ file:///test0.st:3:30 ]
+       |
+     3 |     Row : ARRAY[0..1] OF INT {export};
+       |                              ^^^^|^^^
+       |                                  `----- unexpected token(s): '{export}'
+    ---'
+    [E0001] Error: syntax error
+       ,-[ file:///test0.st:6:1 ]
+       |
+     6 | { test }
+       | ^^^^|^^^
+       |     `----- unexpected token(s): '{ test }'
+    ---'
+    ");
+}

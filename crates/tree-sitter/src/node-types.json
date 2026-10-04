@@ -1881,22 +1881,6 @@
     }
   },
   {
-    "type": "c_style_comment",
-    "named": true,
-    "extra": true,
-    "fields": {},
-    "children": {
-      "multiple": false,
-      "required": false,
-      "types": [
-        {
-          "type": "comment_text",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
     "type": "case_list",
     "named": true,
     "fields": {},
@@ -2147,11 +2131,6 @@
         }
       ]
     }
-  },
-  {
-    "type": "comment_text",
-    "named": true,
-    "fields": {}
   },
   {
     "type": "comparison_operator",
@@ -4915,22 +4894,6 @@
     }
   },
   {
-    "type": "pascal_style_comment",
-    "named": true,
-    "extra": true,
-    "fields": {},
-    "children": {
-      "multiple": false,
-      "required": false,
-      "types": [
-        {
-          "type": "comment_text",
-          "named": true
-        }
-      ]
-    }
-  },
-  {
     "type": "path_expression",
     "named": true,
     "fields": {},
@@ -5017,12 +4980,6 @@
         ]
       }
     }
-  },
-  {
-    "type": "pragma",
-    "named": true,
-    "extra": true,
-    "fields": {}
   },
   {
     "type": "prog_access_decl",
@@ -7168,10 +7125,6 @@
     "named": false
   },
   {
-    "type": "(*",
-    "named": false
-  },
-  {
     "type": ")",
     "named": false
   },
@@ -7180,15 +7133,7 @@
     "named": false
   },
   {
-    "type": "*)",
-    "named": false
-  },
-  {
     "type": "**",
-    "named": false
-  },
-  {
-    "type": "*/",
     "named": false
   },
   {
@@ -7217,10 +7162,6 @@
   },
   {
     "type": "/",
-    "named": false
-  },
-  {
-    "type": "/*",
     "named": false
   },
   {
@@ -7740,6 +7681,11 @@
     "named": true
   },
   {
+    "type": "c_style_comment",
+    "named": true,
+    "extra": true
+  },
+  {
     "type": "d_byte_char_str",
     "named": true
   },
@@ -7923,6 +7869,16 @@
   {
     "type": "partly",
     "named": true
+  },
+  {
+    "type": "pascal_style_comment",
+    "named": true,
+    "extra": true
+  },
+  {
+    "type": "pragma",
+    "named": true,
+    "extra": true
   },
   {
     "type": "pragma_string",

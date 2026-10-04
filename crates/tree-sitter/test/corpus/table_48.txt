@@ -61,8 +61,7 @@ END_CLASS
               (int_type_name
                 (sign_int_type_name
                   (int_name)))))))
-      (pascal_style_comment
-        (comment_text))
+      (pascal_style_comment)
       (var_decl_init_list
         (variable_list
           (identifier))
@@ -110,8 +109,7 @@ END_CLASS
                     (signed_int)))))))))
     (method_decl
       (identifier)
-      (pascal_style_comment
-        (comment_text))
+      (pascal_style_comment)
       (func_body
         (stmt_list
           (if_stmt

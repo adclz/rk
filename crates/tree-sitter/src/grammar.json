@@ -633,92 +633,6 @@
         ]
       }
     },
-    "c_style_comment": {
-      "type": "SEQ",
-      "members": [
-        {
-          "type": "STRING",
-          "value": "/*"
-        },
-        {
-          "type": "CHOICE",
-          "members": [
-            {
-              "type": "SYMBOL",
-              "name": "comment_text"
-            },
-            {
-              "type": "BLANK"
-            }
-          ]
-        },
-        {
-          "type": "STRING",
-          "value": "*/"
-        }
-      ]
-    },
-    "pascal_style_comment": {
-      "type": "SEQ",
-      "members": [
-        {
-          "type": "STRING",
-          "value": "(*"
-        },
-        {
-          "type": "CHOICE",
-          "members": [
-            {
-              "type": "SYMBOL",
-              "name": "comment_text"
-            },
-            {
-              "type": "BLANK"
-            }
-          ]
-        },
-        {
-          "type": "STRING",
-          "value": "*)"
-        }
-      ]
-    },
-    "comment_text": {
-      "type": "REPEAT1",
-      "content": {
-        "type": "PATTERN",
-        "value": ".|\\n|\\r"
-      }
-    },
-    "pragma": {
-      "type": "SEQ",
-      "members": [
-        {
-          "type": "STRING",
-          "value": "{"
-        },
-        {
-          "type": "REPEAT",
-          "content": {
-            "type": "CHOICE",
-            "members": [
-              {
-                "type": "PATTERN",
-                "value": "[^*]"
-              },
-              {
-                "type": "PATTERN",
-                "value": "\\*[^)]"
-              }
-            ]
-          }
-        },
-        {
-          "type": "STRING",
-          "value": "}"
-        }
-      ]
-    },
     "extern_pragma": {
       "type": "PREC",
       "value": 1,
@@ -12495,7 +12409,20 @@
     ]
   ],
   "precedences": [],
-  "externals": [],
+  "externals": [
+    {
+      "type": "SYMBOL",
+      "name": "c_style_comment"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "pascal_style_comment"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "pragma"
+    }
+  ],
   "inline": [],
   "supertypes": [
     "_func_variables",

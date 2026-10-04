@@ -57,6 +57,13 @@ pub fn diagnostics_for_file(db: &dyn WorkspaceDataBase, file: File) -> Arc<Vec<I
         .chain(unbuilt.iter().map(|e| &e.0))
         .chain(&parsed.failure)
         .map(|e| SyntaxError::from_parse_error(db, file, e).to_diagnostic(db, file))
+        .chain(parsed.unknown_pragmas.iter().map(|pragma| {
+            errors::e15_pragma::PragmaError::UnknownPragma {
+                name: compact_str::CompactString::from(pragma.name.as_str()),
+                span: pragma.range,
+            }
+            .to_diagnostic(db, file)
+        }))
         .collect::<Vec<_>>();
 
     semantic_index(db, file).check(db, &mut all_diagnostics);

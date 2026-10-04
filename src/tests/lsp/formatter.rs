@@ -10,9 +10,10 @@ use rstest::rstest;
 use topiary_core::{Operation, formatter};
 
 pub fn fmt(document: &Document) -> String {
+    let source = formatter::supply_terminators(&document.texter.text).unwrap();
     let mut output = vec![];
     formatter(
-        &mut document.texter.text.as_bytes(),
+        &mut source.as_bytes(),
         &mut output,
         &TOPIARY_LANG,
         Operation::Format {
@@ -1474,6 +1475,8 @@ fn a_parseable_source_is_formatted() {
 /// Every place the grammar makes the terminator optional, written without
 /// one. The formatter supplies it, and supplies it once: each case is
 /// formatted again from its own output and has to land on the same text.
+/// A statement before a jump with its own `;` was left without one: the
+/// guard skipped the `RETURN`, a keyword, and saw that `;`.
 #[rstest]
 pub fn a_missing_terminator_is_supplied_once() {
     const CASES: &[(&str, &str)] = &[
@@ -1629,6 +1632,23 @@ END_FUNCTION_BLOCK
 "#,
         ),
         (
+            "before a jump that has one",
+            r#"
+FUNCTION f : INT
+VAR
+    i : INT;
+END_VAR
+    FOR i := 1 TO 3 DO
+        i := 2 EXIT;
+    END_FOR
+    WHILE TRUE DO
+        i := 3 CONTINUE;
+    END_WHILE
+    i := 1 RETURN;
+END_FUNCTION
+"#,
+        ),
+        (
             "a REPEAT",
             r#"
 FUNCTION f : INT
@@ -1752,6 +1772,22 @@ END_FUNCTION
     		CONTINUE;
     	END_WHILE;
     END_FUNCTION_BLOCK
+    --- before a jump that has one
+    FUNCTION f: INT
+    	VAR
+    		i: INT;
+    	END_VAR
+    	FOR i := 1 TO 3 DO
+    		i := 2;
+    		EXIT;
+    	END_FOR;
+    	WHILE TRUE DO
+    		i := 3;
+    		CONTINUE;
+    	END_WHILE;
+    	i := 1;
+    	RETURN;
+    END_FUNCTION
     --- a REPEAT
     FUNCTION f: INT
     	VAR
@@ -2478,5 +2514,97 @@ END_FUNCTION_BLOCK
     		out AT %Q*: INT;
     	END_VAR
     END_FUNCTION_BLOCK
+    ");
+}
+
+/// A terminator behind a comment or a pragma is seen, in every section, and
+/// one missing there goes before the comment. The guard looked at the next
+/// node only, so `x : INT (* c *);` was given a second `;`, which TYPE,
+/// STRUCT and VAR sections refuse: a file that checked clean stopped
+/// parsing. A pragma the grammar has no rule for keeps its text and its
+/// line: `{attribute 'hide'}` came out as `{}`, pulled onto the `VAR` line.
+#[rstest]
+fn a_terminator_behind_a_comment_or_a_pragma_is_seen() {
+    let source = r#"
+TYPE
+    Pt : STRUCT x : INT (* c *); y : INT {attribute 'z'}; END_STRUCT;
+    Mode : (Off, On) (* c *);
+    Row : ARRAY[0..1] OF INT {attribute 'r'};
+END_TYPE
+
+FUNCTION_BLOCK Fb
+VAR
+    {attribute 'hide'}
+    a : INT (* c *);
+    b : INT {attribute 'b'};
+    c : INT; // ok
+    d : INT (* none *)
+END_VAR
+    a := 1 (* c *);
+    b := 2 // none
+    IF a = 1 THEN
+        c := 3;
+    END_IF; // closed
+    // alone
+    d := 4;
+END_FUNCTION_BLOCK
+"#;
+    let once = formatter::format_source(source).expect("formats");
+    let twice = formatter::format_source(&once).expect("its output formats");
+    assert_eq!(once, twice, "a second pass changed the text");
+    assert!(
+        formatter::accepts(&once),
+        "the output does not parse:\n{once}"
+    );
+    assert_snapshot!(once, @r"
+    TYPE
+    	Pt: STRUCT
+    		x: INT (* c *);
+    		y: INT {attribute 'z'};
+    	END_STRUCT;
+    	Mode: (Off, On) (* c *);
+    	Row: ARRAY[0..1] OF INT {attribute 'r'};
+    END_TYPE
+
+    FUNCTION_BLOCK Fb
+    	VAR
+    		{attribute 'hide'}
+    		a: INT (* c *);
+    		b: INT {attribute 'b'};
+    		c: INT; // ok
+    		d: INT; (* none *)
+    	END_VAR
+    	a := 1 (* c *);
+    	b := 2; // none
+    	IF a = 1 THEN
+    		c := 3;
+    	END_IF; // closed
+    	// alone
+    	d := 4;
+    END_FUNCTION_BLOCK
+    ");
+}
+
+/// A comment counts its own nesting, and the formatter writes it as it
+/// stands, nested comments included.
+#[rstest]
+fn a_nested_comment_is_written_as_it_stands() {
+    let source = r#"
+(* outer (* inner *) still outer *)
+FUNCTION f : INT
+    /* a /* b */ c */ f := 1;
+END_FUNCTION
+"#;
+    let once = formatter::format_source(source).expect("formats");
+    assert_eq!(
+        once,
+        formatter::format_source(&once).expect("formats again")
+    );
+    assert_snapshot!(once, @r"
+    (* outer (* inner *) still outer *)
+    FUNCTION f: INT
+    	/* a /* b */ c */
+    	f := 1;
+    END_FUNCTION
     ");
 }

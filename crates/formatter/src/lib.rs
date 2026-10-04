@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Clauzel Adrien
 // SPDX-License-Identifier: AGPL-3.0-only
 
+use std::borrow::Cow;
 use std::sync::LazyLock;
 
 use auto_lsp::{
@@ -296,10 +297,13 @@ static NEW_LINES: &str = r##"
   [(line_comment) (c_style_comment) (pascal_style_comment)]* @do_nothing
 )
 
-[(line_comment) (c_style_comment) (pascal_style_comment)] @prepend_input_softline
+; A comment, or a pragma the grammar has no rule for (`{attribute 'x'}`),
+; keeps the line the source gave it. Such a pragma above a declaration was
+; pulled onto the `VAR` line.
+[(line_comment) (c_style_comment) (pascal_style_comment) (pragma)] @prepend_input_softline
 
 (
-  [(line_comment) (c_style_comment) (pascal_style_comment)] @append_input_softline
+  [(line_comment) (c_style_comment) (pascal_style_comment) (pragma)] @append_input_softline
   .
   [ "," ";" ]* @do_nothing
 )
@@ -480,88 +484,22 @@ static ALLOW_BLANK_LINE: &str = r#"
 (_ (_) . "END_VAR" @allow_blank_line_before)
 "#;
 
+// A pragma the grammar has no rule for is `{`, its text and `}`, and the text
+// is no node of its own: written back leaf by leaf, `{attribute 'hide'}` came
+// out as `{}`, which does not parse. As a leaf it is written as it stands.
 static LEAF: &str = r#"
 [
     (line_comment)
     (c_style_comment)
     (pascal_style_comment)
+    (pragma)
     (s_byte_char_str)
     (d_byte_char_str)
 ] @leaf
 "#;
 
-/// The terminators the grammar lets a source leave out, written in once.
-/// Each pattern names the node a `;` follows and gives up when one is
-/// already there.
-static SEMI_COLONS: &str = r#"
-(
-  [
-    (var_decl_init_list)
-    (input_var) (fb_input_var)
-    (output_var) (fb_output_var)
-    (in_out_var)
-    (temp_var)
-    (loc_var_decl)
-    (loc_partly_var)
-    (external_decl)
-    (global_var_decl)
-
-    (type_decl)
-    (task_config)
-    (prog_config)
-    (access_decl)
-    (prog_access_decl)
-    (config_inst_init)
-
-    (assign)
-    "RETURN"
-    "EXIT"
-    "CONTINUE"
-    (if_stmt)
-    (for_stmt)
-    (case_stmt)
-    (while_stmt)
-    (repeat_stmt)
-    (raise_stmt)
-  ] @append_delimiter
-  .
-  ";"* @do_nothing
-  (#delimiter! ";")
-)
-
-; A call, `SUPER()` or `THIS.m()` is a statement only as a child of a
-; statement list; in an expression it takes no `;`. The guard has to see
-; the `;` as the statement's sibling: `SUPER()` matched as the invocation
-; inside its `begin_path_expression` saw none there and was given a second
-; one, `SUPER();;`, on every pass.
-(stmt_list
-  [(func_call) (begin_path_expression)] @append_delimiter
-  .
-  ";"* @do_nothing
-  (#delimiter! ";")
-)
-
-; A USING directive holds its own `;`, so the sibling guard above cannot see
-; it and the guard has to look inside. Matching an arbitrary child instead
-; produced one match per name, and every name but the last had no `;` after
-; it to suppress on, which wrote `USING a, b;;`. An anchor is no help here:
-; anchors skip anonymous nodes, so `;` is invisible to one.
-(
-  (using_directive
-    ";"* @do_nothing
-  ) @append_delimiter
-  (#delimiter! ";")
-)
-
-(
-    (struct_elem_decl) @append_delimiter
-    .
-    ";"* @do_nothing
-    (#delimiter! ";")
-)
-
-"#;
-
+/// The formatting rules, all but the terminators: `format_source` writes
+/// those in before Topiary runs, and so does `supply_terminators`.
 pub static TOPIARY_LANG: LazyLock<Language> = LazyLock::new(|| Language {
     name: "IEC".into(),
     grammar: tree_sitter_rk::LANGUAGE.into(),
@@ -575,7 +513,6 @@ pub static TOPIARY_LANG: LazyLock<Language> = LazyLock::new(|| Language {
     {LEAF}
     {BLOCKS}
     {NEW_LINES}
-    {SEMI_COLONS}
 "#
         ),
     )
@@ -597,6 +534,7 @@ pub fn format_source(source: &str) -> anyhow::Result<String> {
     if let Some((line, column, what)) = syntax_error(&tree) {
         anyhow::bail!("syntax error at line {line}, column {column}: {what}; nothing was written");
     }
+    let source = terminated(source, &tree);
 
     let mut output = vec![];
     formatter(
@@ -610,6 +548,170 @@ pub fn format_source(source: &str) -> anyhow::Result<String> {
     )
     .map_err(|e| anyhow::anyhow!("could not format document: {}", e))?;
     Ok(String::from_utf8(output)?)
+}
+
+/// The nodes a `;` follows: declarations, the entries of `TYPE` and
+/// configuration sections, and statements. A call, `SUPER()` or `THIS.m()`
+/// takes one only as a statement, a child of a statement list, and a
+/// `USING` directive holds its own.
+const TERMINATED: &[&str] = &[
+    "var_decl_init_list",
+    "input_var",
+    "fb_input_var",
+    "output_var",
+    "fb_output_var",
+    "in_out_var",
+    "temp_var",
+    "loc_var_decl",
+    "loc_partly_var",
+    "external_decl",
+    "global_var_decl",
+    "struct_elem_decl",
+    "type_decl",
+    "task_config",
+    "prog_config",
+    "access_decl",
+    "prog_access_decl",
+    "config_inst_init",
+    "assign",
+    "if_stmt",
+    "for_stmt",
+    "case_stmt",
+    "while_stmt",
+    "repeat_stmt",
+    "raise_stmt",
+];
+/// The jump statements, which are keywords and no named nodes.
+const JUMPS: &[&str] = &["RETURN", "EXIT", "CONTINUE"];
+const CALLS: &[&str] = &["func_call", "begin_path_expression"];
+/// What may stand between a node and its `;`.
+const COMMENTS: &[&str] = &[
+    "line_comment",
+    "c_style_comment",
+    "pascal_style_comment",
+    "pragma",
+];
+
+/// The kinds above by id, so the walk compares numbers and not names.
+struct Kinds {
+    terminated: Vec<bool>,
+    calls: Vec<bool>,
+    comments: Vec<bool>,
+    semicolon: u16,
+    stmt_list: u16,
+    using: u16,
+}
+
+static KINDS: LazyLock<Kinds> = LazyLock::new(|| {
+    let language: auto_lsp::tree_sitter::Language = tree_sitter_rk::LANGUAGE.into();
+    // A name the grammar no longer has would leave its nodes without a `;`.
+    let id = |name: &str, named: bool| match language.id_for_node_kind(name, named) {
+        0 => panic!("the grammar has no node `{name}`"),
+        id => id,
+    };
+    let table = |names: &[&str], named: bool| {
+        let mut table = vec![false; language.node_kind_count()];
+        for name in names {
+            table[usize::from(id(name, named))] = true;
+        }
+        table
+    };
+    let mut terminated = table(TERMINATED, true);
+    for jump in JUMPS {
+        terminated[usize::from(id(jump, false))] = true;
+    }
+    Kinds {
+        terminated,
+        calls: table(CALLS, true),
+        comments: table(COMMENTS, true),
+        semicolon: id(";", false),
+        stmt_list: id("stmt_list", true),
+        using: id("using_directive", true),
+    }
+});
+
+impl Kinds {
+    fn is(table: &[bool], node: auto_lsp::tree_sitter::Node<'_>) -> bool {
+        table.get(usize::from(node.kind_id())) == Some(&true)
+    }
+
+    /// Whether `node` takes a `;`, as a child of a statement list or not.
+    fn takes_terminator(&self, node: auto_lsp::tree_sitter::Node<'_>, statement: bool) -> bool {
+        Self::is(&self.terminated, node) || statement && Self::is(&self.calls, node)
+    }
+}
+
+/// Where a `;` is missing, in the order of the text: after each node that
+/// takes one, unless the next node past any comment or pragma is a `;`.
+fn missing_terminators(tree: &auto_lsp::tree_sitter::Tree) -> Vec<usize> {
+    let kinds = &*KINDS;
+    let mut missing = Vec::new();
+    let mut walk = tree.walk();
+    let mut children = tree.walk();
+    loop {
+        let node = walk.node();
+        if node.kind_id() == kinds.using {
+            let last = node.child(node.child_count().saturating_sub(1) as u32);
+            if last.is_none_or(|last| last.kind_id() != kinds.semicolon) {
+                missing.push(node.end_byte());
+            }
+        } else {
+            let statements = node.kind_id() == kinds.stmt_list;
+            // The end of the last child that takes a `;`, until one is seen.
+            let mut open = None;
+            for child in node.children(&mut children) {
+                if child.kind_id() == kinds.semicolon {
+                    open = None;
+                } else if !Kinds::is(&kinds.comments, child) {
+                    missing.extend(open.take());
+                    if kinds.takes_terminator(child, statements) {
+                        open = Some(child.end_byte());
+                    }
+                }
+            }
+            missing.extend(open);
+        }
+        if walk.goto_first_child() {
+            continue;
+        }
+        while !walk.goto_next_sibling() {
+            if !walk.goto_parent() {
+                missing.sort_unstable();
+                return missing;
+            }
+        }
+    }
+}
+
+/// `source` with a `;` written after every node that takes one and has none.
+///
+/// The grammar lets a source leave a terminator out, and the formatter
+/// writes it in, once: one already there is left alone, past any comment or
+/// pragma between the two. This was a Topiary query, and a query's anchor
+/// skips anonymous nodes, `RETURN`, `EXIT` and `CONTINUE` among them: in
+/// `x := 1 RETURN;` the guard saw the `RETURN`'s `;` and wrote none after
+/// the assignment. Looking past the comments made the query slow as well.
+fn terminated<'a>(source: &'a str, tree: &auto_lsp::tree_sitter::Tree) -> Cow<'a, str> {
+    let missing = missing_terminators(tree);
+    if missing.is_empty() {
+        return Cow::Borrowed(source);
+    }
+    let mut text = String::with_capacity(source.len() + missing.len());
+    let mut from = 0;
+    for at in missing {
+        text.push_str(&source[from..at]);
+        text.push(';');
+        from = at;
+    }
+    text.push_str(&source[from..]);
+    Cow::Owned(text)
+}
+
+/// `source` with its missing terminators written in, as `format_source`
+/// writes them, whether it parses or not. The tests that format a broken
+/// source on purpose call Topiary themselves, past the gate.
+pub fn supply_terminators(source: &str) -> anyhow::Result<Cow<'_, str>> {
+    Ok(terminated(source, &parse(source)?))
 }
 
 fn parse(source: &str) -> anyhow::Result<auto_lsp::tree_sitter::Tree> {
