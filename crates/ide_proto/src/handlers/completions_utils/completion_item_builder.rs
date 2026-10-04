@@ -257,7 +257,10 @@ pub fn find_using_range<'db>(
             // Same with namespaces and POUs: insert after their name declaration line.
             ScopeKind::Namespace(ns) => go_to_next_line(ns.name_span(db)),
             // We want to avoid inserting USING inside POUs/Programs because it could break variable declarations.
+            // A method prototype of an INTERFACE goes up too: it was the
+            // one kind left out, and a completion inside it panicked.
             ScopeKind::MethodDecl(_)
+            | ScopeKind::MethodProt(_)
             | ScopeKind::Pou(_)
             | ScopeKind::Program(_)
             | ScopeKind::Config(_) => {
@@ -266,7 +269,6 @@ pub fn find_using_range<'db>(
                     .expect("All methods should have a parent scope");
                 return find_using_range(db, parent_scope);
             }
-            _ => unreachable!(),
         },
     };
 
