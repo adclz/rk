@@ -23,7 +23,15 @@ env.memory                          the host's, from address 0
 ```
 
 A POU that calls itself, directly or through others, gets a frame on the stack at each call for its arrays, strings, structures and instances, where any other POU has them at a fixed address (`L0122`).
-The stack takes 64 KiB, only in a module with such a POU; a deeper recursion stops the program with `stack overflow`.
+The stack holds the largest such frame and 64 KiB more, only in a module with such a POU; a deeper recursion stops the program with `stack overflow`.
+`stack_size` in `config.toml` gives it another size, in bytes, up to 4 GiB (4294967296):
+
+```toml
+[settings]
+stack_size = 1048576 # 1 MiB
+```
+
+A stack too small for a frame, or that does not fit in 4 GiB with the rest of the memory, stops the build.
 
 | Band | Exports | Holds | The host |
 |---|---|---|---|

@@ -260,6 +260,76 @@ fn too_deep_a_recursion_raises(mut with_db: db::RootDatabase) {
     assert_eq!(message, "stack overflow: recursion too deep");
 }
 
+/// A frame bigger than 64 KiB fits: the stack holds the largest frame and
+/// 64 KiB more. The stack was 64 KiB, so a function with such a frame
+/// raised `stack overflow` on its first call, before it recursed. The last
+/// element of the array is the far end of the frame.
+#[rstest]
+fn a_frame_bigger_than_64_kib_fits(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION Big : DINT
+        VAR_INPUT n : DINT; END_VAR
+        VAR cells : ARRAY[0..19999] OF DINT; END_VAR
+            cells[19999] := n + 7;
+            IF n > 0 THEN
+                Big := Big(n - 1);
+            ELSE
+                Big := cells[19999];
+            END_IF;
+        END_FUNCTION
+
+        FUNCTION test : DINT
+            test := Big(0);
+        END_FUNCTION
+    "#;
+    let result: i32 = run(&mut with_db, source, "test", ());
+    assert_eq!(result, 7, "the call wrote and read the end of its frame");
+}
+
+/// `stack_size` from `config.toml` is the stack's size: a recursion 30 deep
+/// with 4000-byte frames is more than the largest frame and 64 KiB, and fits
+/// in 1 MiB.
+#[rstest]
+fn a_configured_stack_size_is_the_stack(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION Depth : DINT
+        VAR_INPUT n : DINT; END_VAR
+        VAR cells : ARRAY[0..999] OF DINT; END_VAR
+            cells[999] := n;
+            IF n > 0 THEN
+                Depth := Depth(n - 1) + 1;
+            ELSE
+                Depth := cells[999];
+            END_IF;
+        END_FUNCTION
+
+        FUNCTION test : DINT
+            test := Depth(30);
+        END_FUNCTION
+    "#;
+    let (mut mir, wasm) = crate::tests::codegen::compile_to_mir_and_wasm(&mut with_db, source);
+    let engine = crate::tests::codegen::test_engine();
+    let module = wasmtime::Module::new(&engine, &wasm).unwrap();
+    let mut store = wasmtime::Store::new(&engine, ());
+    let (instance, memory) =
+        crate::tests::codegen::instantiate_returning_memory(&mut store, &module);
+    let f = instance
+        .get_typed_func::<(), i32>(&mut store, "test")
+        .unwrap();
+    let err = f
+        .call(&mut store, ())
+        .expect_err("too deep for the default");
+    let message = crate::tests::codegen::fault_message(&mut store, memory, err);
+    assert_eq!(message, "stack overflow: recursion too deep");
+
+    mir.stack_size = Some(1 << 20);
+    let wasm =
+        wasm_codegen::generate_wasm(&with_db, &crate::tests::codegen::export_everything(&mir))
+            .finish();
+    let result: i32 = crate::tests::codegen::execute_wasm(&wasm, "test", ());
+    assert_eq!(result, 30, "30 frames fit in 1 MiB");
+}
+
 /// A PROGRAM is only ever started by the host, so its body starts the stack
 /// over: a scan the overflow stopped leaves no frames behind for the next.
 #[rstest]

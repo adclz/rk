@@ -663,6 +663,7 @@ fn lower_module_from_pous<'db>(
         retain_map: debug_format::RetainMap::new(Vec::new()),
         located_map: debug_format::LocatedMap::new(Vec::new()),
         source_files: Vec::new(),
+        stack_size: None,
     };
 
     // Phase 4.5: relocate RETAIN variables into one contiguous band above

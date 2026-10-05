@@ -293,6 +293,7 @@ version = "0.1.0"
 
 [settings]
 opt_level = "2"
+stack_size = 1048576
 
 [settings.output]
 directory = "build"
@@ -311,6 +312,11 @@ A missing `[project]` section is an error.
 
 Defaults to `"2"`, and a `--opt-level` flag on `rk compile` wins over it.
 Release builds use the `wasm-opt` on PATH, else a checksum-verified Binaryen downloaded once (see `cli-compile`); the debug artifact is never optimized, so this key does not touch it.
+
+`[settings] stack_size` The size of the stack recursive calls push their frames on, in bytes: `1048576` for 1 MiB.
+At most 4294967296, the 4 GiB a module can address.
+Without it, the stack holds the largest frame and 64 KiB more.
+A stack too small for a recursive function's frame, or one that does not fit in 4 GiB after the rest of the memory, stops the build with an error naming the setting.
 
 `[settings.output] directory` Accepted by the schema and currently ignored — artifacts always land in `rk_build/debug/core.wasm` or `rk_build/release/core.wasm`.
 

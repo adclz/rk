@@ -97,6 +97,12 @@ pub struct MirModule {
     /// Source file URLs, indexed by `MirSourceLocation::file_id` and emitted
     /// as `DebugLines::files`.
     pub source_files: Vec<String>,
+
+    /// The size of the stack recursive calls push their frames on, when
+    /// `config.toml` sets one (`stack_size`). `None` gives the stack the
+    /// largest frame and 64 KiB more. Lowering leaves it unset: the build
+    /// reads the setting, as it does the optimization level.
+    pub stack_size: Option<u64>,
 }
 
 /// Instance type layout for a FUNCTION_BLOCK or CLASS.

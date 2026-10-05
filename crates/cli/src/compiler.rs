@@ -45,6 +45,38 @@ fn render_codegen_error(
     Some(String::from_utf8_lossy(&buffer).into_owned())
 }
 
+/// Size the module's stack as `config.toml` asks (`stack_size`), or say why
+/// that stack does not fit. A build checks it before codegen, which lays the
+/// stack out regardless.
+fn size_stack(db: &RootDatabase, module: &mut mir::MirModule) -> Result<(), String> {
+    let configured = db::config_file::get_config(db)
+        .settings
+        .as_ref()
+        .and_then(|settings| settings.stack_size);
+    module.stack_size = configured.map(|size| size.bytes());
+    wasm_codegen::check_stack(module).map_err(|error| {
+        let stack = |size: u64| match configured {
+            Some(configured) => format!("`stack_size` in config.toml is {configured}"),
+            None => format!("the stack takes {size} bytes"),
+        };
+        match error {
+            wasm_codegen::StackError::TooSmall {
+                size,
+                function,
+                frame,
+            } => format!(
+                "{}, smaller than the {frame}-byte frame of '{}'",
+                stack(size),
+                function.text(db)
+            ),
+            wasm_codegen::StackError::TooLarge { size, base } => format!(
+                "{}, and the memory before the stack takes {base} bytes: a module addresses at most 4 GiB",
+                stack(size)
+            ),
+        }
+    })
+}
+
 /// Check diagnostics and lower HIR → MIR → core WASM. On success returns the
 /// core wasm + MIR; on failure returns the rendered diagnostics (also echoed to
 /// stderr) so a caller that serves another transport can forward them.
@@ -122,7 +154,7 @@ pub fn build_core_profile(
         .map(|file| semantic_index(db, file))
         .collect();
 
-    let mir_module = match mir::lower::lower_module::lower_modules(db, &sem_indices) {
+    let mut mir_module = match mir::lower::lower_module::lower_modules(db, &sem_indices) {
         Ok(m) => m,
         Err(e) => {
             // An ICE, not a user error (see `render_codegen_error`).
@@ -145,6 +177,11 @@ pub fn build_core_profile(
             };
         }
     };
+
+    if let Err(message) = size_stack(db, &mut mir_module) {
+        ui::failure("compilation failed:", &message);
+        return Err(format!("compilation failed: {message}\n"));
+    }
 
     let wasm_module = wasm_codegen::generate_wasm_profile(db, &mir_module, profile);
     Ok((wasm_module.finish(), mir_module))
@@ -185,12 +222,17 @@ pub fn build_core_quiet(
         .into_iter()
         .map(|file| semantic_index(db, file))
         .collect();
-    let mir_module = mir::lower::lower_module::lower_modules(db, &sem_indices).map_err(|e| {
-        // Same ICE rendering as `build_core`, returned rather than printed.
-        render_codegen_error(db, workspace, &e, crate::cli::OutputFormat::Full)
-            .map(|report| format!("{report}\ninternal compiler error: cannot compile.\n"))
-            .unwrap_or_else(|| format!("internal compiler error: {e} (report it at {ISSUES_URL})"))
-    })?;
+    let mut mir_module =
+        mir::lower::lower_module::lower_modules(db, &sem_indices).map_err(|e| {
+            // Same ICE rendering as `build_core`, returned rather than printed.
+            render_codegen_error(db, workspace, &e, crate::cli::OutputFormat::Full)
+                .map(|report| format!("{report}\ninternal compiler error: cannot compile.\n"))
+                .unwrap_or_else(|| {
+                    format!("internal compiler error: {e} (report it at {ISSUES_URL})")
+                })
+        })?;
+    size_stack(db, &mut mir_module)
+        .map_err(|message| format!("compilation failed: {message}\n"))?;
     let wasm_module = wasm_codegen::generate_wasm(db, &mir_module);
     Ok((wasm_module.finish(), mir_module))
 }
