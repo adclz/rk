@@ -158,7 +158,7 @@ L0206 collapses every unassigned output of one body into a single diagnostic lis
 | L0119 | `instance-in-function` | warning | a FUNCTION or METHOD holding or returning a FUNCTION_BLOCK or CLASS instance, which starts over at every call: a timer in it never expires |
 | L0120 | `variable-method-name` | warning | a variable and a method of a FUNCTION_BLOCK or CLASS, or of one it extends, with the same name: legal, the variable wins inside the block |
 | L0121 | `latin1-escape` | warning | a STRING literal whose `$hh` escapes are not UTF-8 text, such as `'caf$E9'` written for `'café'`: `$E9` is one byte, and `é` is `$C3$A9`; not a CHAR, where `$E9` is `é` |
-| L0122 | `recursion` | warning | a call that leads back to the POU making it, directly or through others; each call gets its own frame on a stack that holds the largest frame and 64 KiB more, and too deep a recursion stops the program with `stack overflow` |
+| L0122 | `recursion` | warning | a call that leads back to the POU making it, directly or through others; each call gets its own frame on a stack that holds the largest frame and 64 KiB more, or the `stack_size` set in `config.toml`, and too deep a recursion stops the program with `stack overflow` |
 | L0123 | `negative-radix-literal` | warning | an untyped radix literal with its top bit set where a signed integer is expected: `16#80` is -128 in a SINT and 128 in an INT; not a typed `SINT#16#80`, nor one under a minus, `-(16#80)`, nor an operand of AND, OR or XOR |
 
 L0109 keys on the value the compiler computed, not on the text, so `7`, `INT#7` and a CONSTANT holding 7 are one label; enum variants and strings fall back to the written form.

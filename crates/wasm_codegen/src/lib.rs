@@ -314,9 +314,9 @@ impl MemAddr {
 }
 
 /// Bytes of linear memory for the frames of recursive calls, past the
-/// largest frame: the stack holds that frame and this much more, so every
-/// recursive function can be called, and a call deeper than the stack
-/// raises `stack overflow`.
+/// largest frame, when `config.toml` sets no `stack_size`: the stack holds
+/// that frame and this much more, so every recursive function can be
+/// called, and a call deeper than the stack raises `stack overflow`.
 pub const STACK_HEADROOM: u32 = 64 * 1024;
 
 /// The stack recursive calls push their frames on, when any function has
@@ -390,25 +390,72 @@ fn frame_bytes(func: &MirFunction) -> u32 {
     func.frame.map_or(0, |frame| frame.size)
 }
 
-/// `[base, end)` of the stack for the frames of recursive calls, past the
-/// `{test}` result areas; `None` when no call pushes one. It holds the
-/// largest frame and [`STACK_HEADROOM`] more: a stack of a fixed size could
-/// not take a frame bigger than itself, and that function raised `stack
-/// overflow` on its first call.
-fn stack_bounds(module: &MirModule) -> Option<(u32, u32)> {
+/// The function with the largest frame, where the stack starts, past the
+/// `{test}` result areas, and its size in bytes; `None` when no call pushes
+/// a frame. The size is `stack_size` from `config.toml`, or else the largest
+/// frame and [`STACK_HEADROOM`] more: a stack of a fixed size could not take
+/// a frame bigger than itself, and that function raised `stack overflow` on
+/// its first call.
+fn stack_plan(module: &MirModule) -> Option<(&MirFunction, u32, u64)> {
     use mir::function::FRAME_ALIGN;
     use mir::memory::align_to;
-    let largest = module.functions.iter().map(frame_bytes).max().unwrap_or(0);
-    if largest == 0 {
-        return None;
-    }
+    let largest = module
+        .functions
+        .iter()
+        .max_by_key(|func| frame_bytes(func))
+        .filter(|func| frame_bytes(func) > 0)?;
     // Each result area is 4-aligned, from the first on.
     let results_end =
         align_to(static_data_end(module), 4) + module_test_count(module) * TEST_RESULT_AREA_SIZE;
     let base = align_to(results_end, FRAME_ALIGN);
-    // A frame near 4 GiB stops at the end of the address space.
-    let end = base.saturating_add(largest).saturating_add(STACK_HEADROOM);
+    let size = module
+        .stack_size
+        .unwrap_or(u64::from(frame_bytes(largest)) + u64::from(STACK_HEADROOM));
+    Some((largest, base, size))
+}
+
+/// `[base, end)` of the stack for the frames of recursive calls; `None`
+/// when no call pushes one. One that does not fit stops at the end of the
+/// memory: a build refuses it before codegen ([`check_stack`]).
+fn stack_bounds(module: &MirModule) -> Option<(u32, u32)> {
+    let (_, base, size) = stack_plan(module)?;
+    let end = u32::try_from(u64::from(base) + size).unwrap_or(u32::MAX);
     Some((base, end))
+}
+
+/// Why the stack does not fit, which a build reports instead of a module.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum StackError {
+    /// `stack_size` is smaller than the frame of `function`, which could
+    /// then never be called.
+    TooSmall {
+        size: u64,
+        function: hir::hir_def::interned::identifier::Ident,
+        frame: u32,
+    },
+    /// The stack ends past the last address of the memory, after the
+    /// `base` bytes before it.
+    TooLarge { size: u64, base: u32 },
+}
+
+/// Whether the stack fits. Codegen lays it out regardless, so a build asks
+/// first.
+pub fn check_stack(module: &MirModule) -> Result<(), StackError> {
+    let Some((largest, base, size)) = stack_plan(module) else {
+        return Ok(());
+    };
+    let frame = frame_bytes(largest);
+    if size < u64::from(frame) {
+        return Err(StackError::TooSmall {
+            size,
+            function: largest.origin_name,
+            frame,
+        });
+    }
+    if u64::from(base) + size > u64::from(u32::MAX) {
+        return Err(StackError::TooLarge { size, base });
+    }
+    Ok(())
 }
 
 /// WASM page size.

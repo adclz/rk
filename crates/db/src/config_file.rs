@@ -31,6 +31,61 @@ pub struct SettingsConfig {
     /// WASM optimization level: 0-4, "s" (size), "z" (aggressive size).
     /// Requires wasm-opt. Default: no optimization.
     pub opt_level: Option<String>,
+    /// The size of the stack recursive calls push their frames on, in bytes:
+    /// `1048576`. Without it, the stack holds the largest frame and 64 KiB
+    /// more.
+    pub stack_size: Option<StackSize>,
+}
+
+/// A stack size from `config.toml`: a number of bytes, more than none and
+/// at most the 4 GiB a module can address.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct StackSize(u64);
+
+impl StackSize {
+    /// The memory a module can address.
+    pub const MAX: u64 = 4 << 30;
+
+    pub fn bytes(self) -> u64 {
+        self.0
+    }
+}
+
+impl std::fmt::Display for StackSize {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} bytes", self.0)
+    }
+}
+
+impl<'de> Deserialize<'de> for StackSize {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct Size;
+        impl serde::de::Visitor<'_> for Size {
+            type Value = StackSize;
+
+            fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                f.write_str("a number of bytes, like 1048576")
+            }
+
+            fn visit_i64<E: serde::de::Error>(self, bytes: i64) -> Result<StackSize, E> {
+                match u64::try_from(bytes) {
+                    Ok(bytes) => self.visit_u64(bytes),
+                    Err(_) => Err(E::custom("the stack cannot be a negative number of bytes")),
+                }
+            }
+
+            fn visit_u64<E: serde::de::Error>(self, bytes: u64) -> Result<StackSize, E> {
+                match bytes {
+                    0 => Err(E::custom("the stack cannot be empty")),
+                    _ if bytes <= StackSize::MAX => Ok(StackSize(bytes)),
+                    _ => Err(E::custom(
+                        "the stack can be at most 4294967296 bytes, the 4 GiB a module can address",
+                    )),
+                }
+            }
+        }
+        deserializer.deserialize_u64(Size)
+    }
 }
 
 #[derive(Default, Clone, Debug, PartialEq, Eq, Hash, Deserialize)]
@@ -381,5 +436,29 @@ directory = "build"
 "#;
         let err = parse_config(input).unwrap_err();
         assert!(err.span().is_some());
+    }
+
+    /// `stack_size` is a number of bytes, more than none and at most 4 GiB.
+    #[test]
+    fn stack_size_is_a_number_of_bytes() {
+        let size = |value: &str| {
+            parse_config(&format!(
+                "[project]\nname = \"T\"\nversion = \"1\"\n\n[settings]\nstack_size = {value}\n"
+            ))
+            .map(|config| config.settings.unwrap().stack_size.unwrap().bytes())
+            .map_err(|e| e.message().to_string())
+        };
+        assert_eq!(size("65536"), Ok(65536));
+        assert_eq!(size("4294967296"), Ok(4 << 30));
+        for (value, message) in [
+            ("4294967297", "at most 4294967296 bytes"),
+            ("0", "cannot be empty"),
+            ("-1", "negative"),
+            ("\"1 MiB\"", "expected a number of bytes"),
+            ("1.5", "expected a number of bytes"),
+        ] {
+            let err = size(value).unwrap_err();
+            assert!(err.contains(message), "{value}: {err}");
+        }
     }
 }
