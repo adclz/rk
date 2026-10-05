@@ -260,6 +260,32 @@ fn too_deep_a_recursion_raises(mut with_db: db::RootDatabase) {
     assert_eq!(message, "stack overflow: recursion too deep");
 }
 
+/// A frame bigger than 64 KiB fits: the stack holds the largest frame and
+/// 64 KiB more. The stack was 64 KiB, so a function with such a frame
+/// raised `stack overflow` on its first call, before it recursed. The last
+/// element of the array is the far end of the frame.
+#[rstest]
+fn a_frame_bigger_than_64_kib_fits(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION Big : DINT
+        VAR_INPUT n : DINT; END_VAR
+        VAR cells : ARRAY[0..19999] OF DINT; END_VAR
+            cells[19999] := n + 7;
+            IF n > 0 THEN
+                Big := Big(n - 1);
+            ELSE
+                Big := cells[19999];
+            END_IF;
+        END_FUNCTION
+
+        FUNCTION test : DINT
+            test := Big(0);
+        END_FUNCTION
+    "#;
+    let result: i32 = run(&mut with_db, source, "test", ());
+    assert_eq!(result, 7, "the call wrote and read the end of its frame");
+}
+
 /// A PROGRAM is only ever started by the host, so its body starts the stack
 /// over: a scan the overflow stopped leaves no frames behind for the next.
 #[rstest]

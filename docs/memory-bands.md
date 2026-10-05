@@ -23,7 +23,7 @@ env.memory                          the host's, from address 0
 ```
 
 A POU that calls itself, directly or through others, gets a frame on the stack at each call for its arrays, strings, structures and instances, where any other POU has them at a fixed address (`L0122`).
-The stack takes 64 KiB, only in a module with such a POU; a deeper recursion stops the program with `stack overflow`.
+The stack holds the largest such frame and 64 KiB more, only in a module with such a POU; a deeper recursion stops the program with `stack overflow`.
 
 | Band | Exports | Holds | The host |
 |---|---|---|---|

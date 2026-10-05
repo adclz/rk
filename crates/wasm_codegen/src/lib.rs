@@ -313,9 +313,11 @@ impl MemAddr {
     }
 }
 
-/// Bytes of linear memory for the frames of recursive calls, past every
-/// static allocation. A call deeper than it raises `stack overflow`.
-pub const STACK_SIZE: u32 = 64 * 1024;
+/// Bytes of linear memory for the frames of recursive calls, past the
+/// largest frame: the stack holds that frame and this much more, so every
+/// recursive function can be called, and a call deeper than the stack
+/// raises `stack overflow`.
+pub const STACK_HEADROOM: u32 = 64 * 1024;
 
 /// The stack recursive calls push their frames on, when any function has
 /// one: `[base, end)`, and the global holding its top.
@@ -389,18 +391,24 @@ fn frame_bytes(func: &MirFunction) -> u32 {
 }
 
 /// `[base, end)` of the stack for the frames of recursive calls, past the
-/// `{test}` result areas; `None` when no call pushes one.
+/// `{test}` result areas; `None` when no call pushes one. It holds the
+/// largest frame and [`STACK_HEADROOM`] more: a stack of a fixed size could
+/// not take a frame bigger than itself, and that function raised `stack
+/// overflow` on its first call.
 fn stack_bounds(module: &MirModule) -> Option<(u32, u32)> {
     use mir::function::FRAME_ALIGN;
     use mir::memory::align_to;
-    if module.functions.iter().all(|f| frame_bytes(f) == 0) {
+    let largest = module.functions.iter().map(frame_bytes).max().unwrap_or(0);
+    if largest == 0 {
         return None;
     }
     // Each result area is 4-aligned, from the first on.
     let results_end =
         align_to(static_data_end(module), 4) + module_test_count(module) * TEST_RESULT_AREA_SIZE;
     let base = align_to(results_end, FRAME_ALIGN);
-    Some((base, base + STACK_SIZE))
+    // A frame near 4 GiB stops at the end of the address space.
+    let end = base.saturating_add(largest).saturating_add(STACK_HEADROOM);
+    Some((base, end))
 }
 
 /// WASM page size.
