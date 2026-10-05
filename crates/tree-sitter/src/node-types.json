@@ -2496,6 +2496,16 @@
             "named": false
           }
         ]
+      },
+      "type": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "data_type_access",
+            "named": true
+          }
+        ]
       }
     }
   },
@@ -7230,10 +7240,6 @@
   },
   {
     "type": "AT",
-    "named": false
-  },
-  {
-    "type": "BOOL",
     "named": false
   },
   {

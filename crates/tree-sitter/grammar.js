@@ -1033,10 +1033,12 @@ module.exports = grammar({
     variadic_decl: ($) =>
       seq(":", field("type", $.data_type_access), "..."),
 
+    // Any type parses, so that the checker can refuse one other than BOOL
+    // with its own error rather than a syntax error.
     edge_decl: ($) =>
       seq(
         ":",
-        kw("BOOL"),
+        field("type", $.data_type_access),
         field("edge", choice(kw("R_EDGE"), kw("F_EDGE"), $.ERR_invalid_edge_qualifier)),
       ),
 

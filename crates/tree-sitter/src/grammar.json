@@ -4077,20 +4077,12 @@
           "value": ":"
         },
         {
-          "type": "ALIAS",
+          "type": "FIELD",
+          "name": "type",
           "content": {
-            "type": "TOKEN",
-            "content": {
-              "type": "PREC",
-              "value": 0,
-              "content": {
-                "type": "PATTERN",
-                "value": "[bB][oO][oO][lL]"
-              }
-            }
-          },
-          "named": false,
-          "value": "BOOL"
+            "type": "SYMBOL",
+            "name": "data_type_access"
+          }
         },
         {
           "type": "FIELD",

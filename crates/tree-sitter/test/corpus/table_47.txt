@@ -448,11 +448,15 @@ END_PROGRAM
       (input_var
         (variable_list
           (identifier))
-        (edge_decl))
+        (edge_decl
+          (bit_str_type_name
+            (bool_name))))
       (input_var
         (variable_list
           (identifier))
-        (edge_decl)))
+        (edge_decl
+          (bit_str_type_name
+            (bool_name)))))
     (output_decls
       (output_var
         (variable_list

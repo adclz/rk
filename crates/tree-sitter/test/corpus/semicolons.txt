@@ -278,4 +278,6 @@ END_FUNCTION_BLOCK
       (fb_input_var
         (variable_list
           (identifier))
-        (edge_decl)))))
+        (edge_decl
+          (bit_str_type_name
+            (bool_name)))))))

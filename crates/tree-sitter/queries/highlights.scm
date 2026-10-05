@@ -43,7 +43,7 @@
 [ "TRUE" "FALSE" ] @constant.builtin
 (null) @constant.builtin
 
-[ "ARRAY" "STRING" "BOOL" "CHAR" ] @type.builtin
+[ "ARRAY" "STRING" "CHAR" ] @type.builtin
 (int_type_name) @type.builtin
 (real_type_name) @type.builtin
 (bit_str_type_name) @type.builtin
