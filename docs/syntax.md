@@ -93,8 +93,13 @@ END_VAR
 END_FUNCTION_BLOCK
 ```
 
-The block's own code reads the edge, its methods included.
-A caller still passes the input's value, and reads it back as it gave it.
-The first call counts as an edge when the input is already `TRUE`, as with `R_TRIG`, and already `FALSE` for `F_EDGE`, as with `F_TRIG`.
+- **Inside the block**, the body and the methods read the edge. It is computed once, when the call starts.
+- **Outside the block**, `counter.pulse` is the value the caller passed.
+- **The first call** counts as an edge when the input is already `TRUE`, as with `R_TRIG`. For `F_EDGE`, it counts when the input is already `FALSE`, as with `F_TRIG`.
+- **The previous value** is stored in the instance. A retained instance keeps it across a power cycle. A copy of the instance carries it too.
 
-A `FUNCTION` or a `METHOD` keeps nothing from one call to the next, so it has no edge input (`E0210`).
+A cold start, or a warm start of an instance that is not retained, starts the previous value over.
+An input held `TRUE` through the restart then reads as a rising edge on the first scan, as with `R_TRIG`. This is intended.
+
+Inside its block, an edge input cannot be written, referenced or passed to a `VAR_IN_OUT` (`E0211`).
+A `FUNCTION` or a `METHOD` keeps nothing between calls and cannot declare an edge input (`E0210`).

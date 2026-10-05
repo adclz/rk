@@ -395,19 +395,6 @@ pub(crate) fn string_capacity_field(db: &dyn WorkspaceDataBase, name: Ident) -> 
     )
 }
 
-/// Whether `var` is an input read as its rising or falling edge: `R_EDGE`
-/// or `F_EDGE`, on a FUNCTION_BLOCK or PROGRAM (E0210 refuses one anywhere
-/// else).
-pub(crate) fn is_edge_input(
-    db: &dyn WorkspaceDataBase,
-    var: hir::hir_def::pous::variable::VariableDecl<'_>,
-) -> bool {
-    var.kind(db) == hir::hir_def::pous::variable::VariableKind::Input
-        && var
-            .qualifier(db)
-            .intersects(hir::Qualifier::R_EDGE | hir::Qualifier::F_EDGE)
-}
-
 /// The member holding an edge input's edge, which the block's own code reads
 /// under the input's name.
 pub(crate) fn edge_field(db: &dyn WorkspaceDataBase, name: Ident) -> Ident {
@@ -537,7 +524,7 @@ fn lower_instance_struct<'db>(
             offset += 4;
         }
 
-        if is_edge_input(db, var) {
+        if var.is_edge_input(db) {
             offset = push_edge_fields(db, var, offset, &mut fields, &mut max_align);
         }
     }
@@ -598,7 +585,7 @@ pub fn lower_program_type<'db>(
         });
         offset += field_size;
 
-        if is_edge_input(db, *var) {
+        if var.is_edge_input(db) {
             offset = push_edge_fields(db, *var, offset, &mut fields, &mut max_align);
         }
     }

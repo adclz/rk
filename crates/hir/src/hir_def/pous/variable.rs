@@ -105,6 +105,16 @@ impl<'db> VariableDecl<'db> {
         matches!(self.kind(db), VariableKind::External)
     }
 
+    /// An input read as its rising or falling edge in its block's own code:
+    /// declared `R_EDGE` or `F_EDGE` (E0210 refuses one outside a
+    /// FUNCTION_BLOCK or PROGRAM).
+    pub fn is_edge_input(&self, db: &'db dyn WorkspaceDataBase) -> bool {
+        self.kind(db) == VariableKind::Input
+            && self
+                .qualifier(db)
+                .intersects(crate::Qualifier::R_EDGE | crate::Qualifier::F_EDGE)
+    }
+
     pub fn is_global(&self, db: &'db dyn WorkspaceDataBase) -> bool {
         matches!(self.kind(db), VariableKind::Global)
     }

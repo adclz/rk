@@ -171,3 +171,107 @@ fn a_program_input_detects_its_edge(mut with_db: db::RootDatabase) {
     plc.run(2).expect("held for two scans");
     assert_eq!(total(&plc), 2, "two presses");
 }
+
+/// The edge is computed once, when the call starts: every read in the call
+/// sees it, and the memory is updated even when the body returns early. The
+/// skipped call is the one that lets the input fall, so the next call rises
+/// only if that call's early return updated the memory.
+#[rstest]
+fn every_read_sees_the_edge_and_an_early_return_keeps_the_memory(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Twice
+        VAR_INPUT E : BOOL R_EDGE; skip : BOOL; END_VAR
+        VAR_OUTPUT n : DINT; END_VAR
+            IF skip THEN RETURN; END_IF;
+            IF E THEN n := n + 1; END_IF;
+            IF E THEN n := n + 10; END_IF;
+        END_FUNCTION_BLOCK
+
+        FUNCTION run : DINT
+        VAR t : Twice; END_VAR
+            t(E := TRUE, skip := FALSE);
+            t(E := FALSE, skip := TRUE);
+            t(E := TRUE, skip := FALSE);
+            run := t.n;
+        END_FUNCTION
+    "#;
+    let result: i32 = run(&mut with_db, source, "run", ());
+    assert_eq!(
+        result, 22,
+        "both reads saw each edge, and the second call's early return still recorded the fall"
+    );
+}
+
+/// A copy of an instance carries the memory with the input: the copy's next
+/// call sees the edge the original would.
+#[rstest]
+fn a_copy_carries_the_memory(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Rising
+        VAR_INPUT E : BOOL R_EDGE; END_VAR
+        VAR_OUTPUT Q : BOOL; END_VAR
+            Q := E;
+        END_FUNCTION_BLOCK
+
+        FUNCTION run : DINT
+        VAR a : Rising; b : Rising; END_VAR
+            a(E := TRUE);
+            b := a;
+            b(E := TRUE);
+            IF b.Q THEN run := 1; END_IF;
+        END_FUNCTION
+    "#;
+    let result: i32 = run(&mut with_db, source, "run", ());
+    assert_eq!(result, 0, "the copy remembered that E was already TRUE");
+}
+
+/// A retained instance keeps its edge memory with its inputs. Restored
+/// without it, an input still TRUE after a warm start rose again on the first
+/// scan: on a machine, a start command nobody gave.
+#[rstest]
+fn an_edge_memory_survives_a_power_cycle(mut with_db: db::RootDatabase) {
+    let source = r#"
+        PROGRAM Counter
+        VAR_INPUT pulse : BOOL R_EDGE; END_VAR
+        VAR_OUTPUT count : UINT; END_VAR
+            IF pulse THEN count := count + 1; END_IF;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+        VAR_GLOBAL total AT %QW0 : UINT; END_VAR
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM RETAIN P1 WITH T : Counter(pulse := %IX0.0, count => total);
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (mir, wasm) = crate::tests::codegen::compile_to_mir_and_wasm(&mut with_db, source);
+    let total = |plc: &TestPlc| {
+        u16::from_le_bytes(
+            plc.read_located("%QW0").expect("total")[..2]
+                .try_into()
+                .unwrap(),
+        )
+    };
+    let mut plc = TestPlc::load(&wasm).expect("load");
+    plc.write_located("%IX0.0", &1i32.to_le_bytes())
+        .expect("press");
+    plc.run(2).expect("held");
+    assert_eq!(total(&plc), 1, "one press");
+
+    // Snapshot the retain map's ranges, then replay them after `__init`.
+    let saved: Vec<Vec<u8>> = mir
+        .retain_map
+        .ranges
+        .iter()
+        .map(|r| plc.read_bytes(r.addr, r.size as usize).expect("snapshot"))
+        .collect();
+    let mut warm = TestPlc::load(&wasm).expect("reload");
+    for (range, bytes) in mir.retain_map.ranges.iter().zip(&saved) {
+        warm.write_bytes(range.addr, bytes).expect("restore");
+    }
+    warm.write_located("%IX0.0", &1i32.to_le_bytes())
+        .expect("still pressed");
+    warm.run(1).expect("first scan after the warm start");
+    assert_eq!(total(&warm), 1, "still the same press: no edge");
+}

@@ -714,7 +714,7 @@ fn edge_inputs<'db>(
         Some((name, field.offset))
     };
     vars.into_iter()
-        .filter(|var| super::lower_type::is_edge_input(db, *var))
+        .filter(|var| var.is_edge_input(db))
         .filter_map(|var| {
             let name = var.name(db);
             Some(EdgeInput {

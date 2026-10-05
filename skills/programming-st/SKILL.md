@@ -115,8 +115,11 @@ A POU reaches a global by declaring the same name in `VAR_EXTERNAL`; if no `CONF
 
 Input defaults (`a: INT := 3;`) apply when the argument is omitted, in `FUNCTION`, `FUNCTION_BLOCK` and `PROGRAM` alike.
 
-An input declared `start : BOOL R_EDGE;` reads as its rising edge in the block's own code, its methods included: TRUE for the one call where it went from FALSE to TRUE, as `R_TRIG` counts it, first call included. `F_EDGE` reads the falling edge, as `F_TRIG`.
-A caller still passes the input's value and reads it back as it gave it, and an input left out of a call keeps its value, which is then no edge.
+An input declared `start : BOOL R_EDGE;` reads as its rising edge in the body and the methods of its block, counted as `R_TRIG` counts it. `F_EDGE` reads the falling edge, counted as `F_TRIG` counts it.
+The edge is computed once, when the call starts. Inside its block, the input cannot be written, referenced or passed to a VAR_IN_OUT (E0211).
+From outside the block, `fb.start` is the value the caller passed. An input left out of a call keeps its value and makes no edge.
+A retained instance keeps the previous value across a power cycle. A copy of the instance carries it too.
+A cold start, or a warm start of an instance that is not retained, starts the previous value over: an input held TRUE rises on the first scan, as with R_TRIG. This is intended.
 Only a BOOL has an edge (E0321).
 
 What an initial value can be depends on where it is declared:

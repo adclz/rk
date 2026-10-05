@@ -124,6 +124,21 @@ fn walk_members<'db>(
             retained,
             out,
         );
+        // An edge input's memory is kept with the input: restored without
+        // it, an input still TRUE after a warm start rose again on the first
+        // scan. Its edge is computed anew at every call.
+        let memory = crate::lower::lower_type::edge_memory_field(db, v.name(db));
+        if retained
+            && v.is_edge_input(db)
+            && let Some(m) = fields.iter().find(|m| m.name(db) == memory)
+        {
+            out.push(RetainRange {
+                path: crate::debug_symbols::join_path(db, root, m.name_with_case),
+                addr: base + m.offset,
+                size: m.ty.size_bytes(),
+                type_key: type_key(db, &m.ty),
+            });
+        }
     }
 }
 

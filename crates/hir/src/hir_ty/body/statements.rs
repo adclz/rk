@@ -353,6 +353,12 @@ impl<'db> StmtsResolverCtx<'db> {
                         );
                     }
 
+                    refuse_edge_input_as_storage(
+                        db,
+                        *var,
+                        crate::check::errors::e02_resolve::EdgeUse::Written,
+                        ctx,
+                    );
                     let assignable =
                         base_typ.check_assignable(db, CallSite::from_scoped(db, var), ctx);
 
@@ -1137,6 +1143,64 @@ impl<'db> StmtsResolverCtx<'db> {
     ) {
         infer.resolve_expr(db, expr, ctx);
         infer.check_expr(db, expr, ctx);
+    }
+}
+
+/// The edge input a path names in its own block: by its bare name or as
+/// `THIS.name`, where it stands for its edge, a value computed for the call,
+/// which has no storage to write, reference or bind by reference (E0211).
+/// Through an instance, `fb.start` is the input as it was given. `ty` is the
+/// path's type.
+pub(crate) fn edge_input_named<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    begin: crate::hir_def::expressions::expression::BeginPathExpr<'db>,
+    ty: Type<'db>,
+) -> Option<VariableDecl<'db>> {
+    use crate::hir_def::expressions::expression::PathExprKind;
+    use crate::hir_def::expressions::invocation::InvocationKind;
+    if begin
+        .invocation(db)
+        .is_some_and(|invocation| invocation.kind(db) != InvocationKind::This)
+        || !matches!(begin.expr(db)?.expr(db), PathExprKind::VarAccess(_))
+    {
+        return None;
+    }
+    let Type::Variable((var, _)) = ty else {
+        return None;
+    };
+    // Anywhere else, E0210 already refused the declaration.
+    let in_instance = matches!(
+        get_scope(db, var.get_scope_id(db)).kind,
+        ScopeKind::Program(_) | ScopeKind::Pou(crate::hir_def::pous::pou::Pou::FunctionBlock(_))
+    );
+    (var.is_edge_input(db) && in_instance).then_some(var)
+}
+
+/// E0211 when `access`, written or bound by reference, names an edge input of
+/// its own block.
+pub(crate) fn refuse_edge_input_as_storage<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    access: crate::hir_def::expressions::expression::VariableAccess<'db>,
+    usage: crate::check::errors::e02_resolve::EdgeUse,
+    ctx: &mut BodyInferenceResult<'db>,
+) {
+    use crate::hir_def::expressions::expression::VariableAccessKind;
+    let VariableAccessKind::Symbolic(begin) = access.kind(db) else {
+        return;
+    };
+    if access.multibits(db).is_some() {
+        return;
+    }
+    let ty = ctx.get_type_of_variable_access(db, access);
+    if let Some(var) = edge_input_named(db, begin, ty) {
+        ctx.errors.push(
+            crate::check::errors::e02_resolve::ResolveError::EdgeInputAsStorage {
+                access: CallSite::from_scoped(db, &access),
+                var,
+                usage,
+            }
+            .to_diagnostic(db, ctx.scope.file(db)),
+        );
     }
 }
 
