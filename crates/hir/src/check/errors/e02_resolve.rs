@@ -85,6 +85,12 @@ pub enum ResolveError<'db> {
         var: VariableDecl<'db>,
         pou_kind: &'static str,
     },
+    /// An input declared `R_EDGE` or `F_EDGE` in a FUNCTION or METHOD, which
+    /// keeps no value from one call to the next to compare it with.
+    EdgeInStatelessPou {
+        var: VariableDecl<'db>,
+        pou_kind: &'static str,
+    },
     /// A variable named where its storage is not: it passed the check, then
     /// codegen found no such local or no such field of the instance.
     OutOfReach {
@@ -129,6 +135,7 @@ impl<'db> ErrorCode for ResolveError<'db> {
             Self::ExternalVarTypeMismatch { .. } => "E0207",
             Self::RetainInStatelessPou { .. } => "E0208",
             Self::OutOfReach { .. } => "E0209",
+            Self::EdgeInStatelessPou { .. } => "E0210",
         }
     }
 }
@@ -454,6 +461,28 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                         .to_string(),
                 );
 
+                diag
+            }
+            Self::EdgeInStatelessPou { var, pou_kind } => {
+                let (edge, detector) = if var.qualifier(db).contains(crate::Qualifier::R_EDGE) {
+                    ("R_EDGE", "R_TRIG")
+                } else {
+                    ("F_EDGE", "F_TRIG")
+                };
+                let mut diag = diag()
+                    .message(format!(
+                        "'{}' cannot be {edge} in a {pou_kind}",
+                        var.name_with_case(db).text(db),
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &var.get_name_span(db)).unwrap_or_default())
+                    .call();
+                diag.with_note(
+                    "an edge compares an input with its value at the previous call, which only a FUNCTION_BLOCK or a PROGRAM keeps"
+                        .to_string(),
+                );
+                diag.with_help(format!("detect it with an {detector} from Std.Edge"));
                 diag
             }
             Self::OutOfReach { expr, var, why } => {

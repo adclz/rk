@@ -100,6 +100,7 @@ Every section is a `VAR…`/`END_VAR` pair.
 | --- | --- | --- | --- | --- | --- | --- |
 | `VAR` (+ `CONSTANT`) | yes | yes | yes | yes | yes | no |
 | `VAR_INPUT` | yes | yes | yes | yes | no | no |
+| `VAR_INPUT` `BOOL R_EDGE` / `F_EDGE` | no (E0210) | no (E0210) | yes | yes | no | no |
 | `VAR_OUTPUT` | yes | yes | yes | yes | no | no |
 | `VAR_IN_OUT` | yes | yes | yes | yes | no (E0018) | no |
 | `VAR_TEMP` | yes | yes | yes | yes | no (E0019) | no |
@@ -113,6 +114,10 @@ A POU reaches a global by declaring the same name in `VAR_EXTERNAL`; if no `CONF
 `VAR_IN_OUT` passes by reference in both `FUNCTION` and `FUNCTION_BLOCK` — the callee writes through to the caller's variable.
 
 Input defaults (`a: INT := 3;`) apply when the argument is omitted, in `FUNCTION`, `FUNCTION_BLOCK` and `PROGRAM` alike.
+
+An input declared `start : BOOL R_EDGE;` reads as its rising edge in the block's own code, its methods included: TRUE for the one call where it went from FALSE to TRUE, as `R_TRIG` counts it, first call included. `F_EDGE` reads the falling edge, as `F_TRIG`.
+A caller still passes the input's value and reads it back as it gave it, and an input left out of a call keeps its value, which is then no edge.
+Only a BOOL has an edge (E0321).
 
 What an initial value can be depends on where it is declared:
 

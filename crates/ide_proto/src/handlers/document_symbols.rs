@@ -181,9 +181,7 @@ impl<'db> DocumentSymbolsHandler<'db> for Pou<'db> {
                     }
                     SpecKind::SizedString(_) => SymbolKind::STRING,
                     SpecKind::Simple(simple) => match simple {
-                        ElementarySpec::Bool
-                        | ElementarySpec::FEDGEBool
-                        | ElementarySpec::REDGEBool => SymbolKind::BOOLEAN,
+                        ElementarySpec::Bool => SymbolKind::BOOLEAN,
                         ElementarySpec::Byte
                         | ElementarySpec::Word
                         | ElementarySpec::DWord

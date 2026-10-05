@@ -53,8 +53,6 @@ pub enum SpecKind<'db> {
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum ElementarySpec {
     Bool,
-    REDGEBool,
-    FEDGEBool,
     Byte,
     Word,
     DWord,

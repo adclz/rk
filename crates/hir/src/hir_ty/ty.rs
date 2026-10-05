@@ -304,9 +304,7 @@ impl<'db> Type<'db> {
     pub const fn get_size(&self) -> Size {
         match self {
             Type::Elementary(elem) => match elem {
-                ElementarySpec::Bool | ElementarySpec::FEDGEBool | ElementarySpec::REDGEBool => {
-                    Size::Size(1)
-                }
+                ElementarySpec::Bool => Size::Size(1),
                 ElementarySpec::Byte | ElementarySpec::SInt | ElementarySpec::USInt => {
                     Size::Size(8)
                 }

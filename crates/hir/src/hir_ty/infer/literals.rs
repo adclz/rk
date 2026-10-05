@@ -80,9 +80,7 @@ impl<'db> InferType {
             return check_string(db, *s, typ);
         }
         match typ {
-            ElementarySpec::Bool | ElementarySpec::REDGEBool | ElementarySpec::FEDGEBool => {
-                check_bool(db, self)
-            }
+            ElementarySpec::Bool => check_bool(db, self),
             ElementarySpec::Byte => bit_string(check_u8(db, self), "BYTE"),
             ElementarySpec::Word => bit_string(check_u16(db, self), "WORD"),
             ElementarySpec::DWord => bit_string(check_u32(db, self), "DWORD"),
