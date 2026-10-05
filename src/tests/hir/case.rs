@@ -515,3 +515,90 @@ END_FUNCTION"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
+
+// A literal selector takes its type from the labels, as the two sides of
+// `=` do, and is an INT or a STRING when every label is a literal. It stayed
+// a literal, so every label was refused as not comparable with it, under a
+// message naming the compiler's own types: "cannot compare '{integer} 5'
+// with 'INT'". In a function block, the selector reached lowering untyped.
+#[rstest]
+fn valid_case_on_a_literal_selector(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION F : INT
+VAR CONSTANT k : DINT := 100000; END_VAR
+    CASE 5 OF 1..4: F := 1; 5, 6: F := 2; END_CASE;
+    CASE -5 OF -5: F := 3; END_CASE;
+    CASE (5) OF 5: F := 4; END_CASE;
+    CASE 16#FF OF 255: F := 5; END_CASE;
+    CASE 'bd' OF 'd': F := 6; 'bd': F := 7; END_CASE;
+    CASE 5 OF DINT#5: F := 8; END_CASE;
+    CASE 100000 OF k: F := 9; END_CASE;
+    CASE 'b' OF CHAR#'a'..CHAR#'c': F := 10; END_CASE;
+END_FUNCTION
+
+FUNCTION_BLOCK Fb
+VAR x : INT; END_VAR
+    CASE 'bd' OF 'bd': x := 1; END_CASE;
+END_FUNCTION_BLOCK
+"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+// With only literals for labels, a literal selector is an INT, as a literal
+// with nothing to unify with is anywhere: 100000 needs a typed literal or a
+// typed label. A REAL literal is refused as a REAL variable is, and an enum
+// label is no INT.
+#[rstest]
+fn invalid_case_on_a_literal_selector(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE Color : (Red, Green); END_TYPE
+FUNCTION F : INT
+    CASE 1.5 OF 1: F := 1; END_CASE;
+    CASE 100000 OF 100000: F := 2; END_CASE;
+    CASE 5 OF Color#Red: F := 3; END_CASE;
+END_FUNCTION"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1207] Error: CASE selector of the wrong type
+       ,-[ file:///test0.st:4:10 ]
+       |
+     4 |     CASE 1.5 OF 1: F := 1; END_CASE;
+       |          ^|^
+       |           `--- CASE cannot branch on '1.5' of type 'REAL'
+       |
+       | Help: branch with IF
+       |
+       | Note: CASE branches on an integer, a bit string, a CHAR, an enum or a STRING
+    ---'
+    [E0306] Error: literal out of range
+       ,-[ file:///test0.st:5:10 ]
+       |
+     5 |     CASE 100000 OF 100000: F := 2; END_CASE;
+       |          ^^^|^^
+       |             `---- the value does not fit in INT
+       |             |
+       |             `---- 'INT' is expected due to this
+       |
+       | Note: INT holds -32768 to 32767
+    ---'
+    [E0306] Error: literal out of range
+       ,-[ file:///test0.st:5:20 ]
+       |
+     5 |     CASE 100000 OF 100000: F := 2; END_CASE;
+       |          ^^^|^^    ^^^|^^
+       |             `-------------- 'INT' is expected due to this
+       |                       |
+       |                       `---- the value does not fit in INT
+       |
+       | Note: INT holds -32768 to 32767
+    ---'
+    [E0302] Error: types not comparable
+       ,-[ file:///test0.st:6:15 ]
+       |
+     6 |     CASE 5 OF Color#Red: F := 3; END_CASE;
+       |               ^^^^|^^^^
+       |                   `------ cannot compare 'INT' with 'Color#Red'
+    ---'
+    ");
+}

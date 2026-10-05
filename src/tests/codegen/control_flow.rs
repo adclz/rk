@@ -1205,6 +1205,45 @@ fn case_ranges_on_unsigned_selectors_compare_unsigned(mut with_db: db::RootDatab
     );
 }
 
+/// A literal selector takes its branch: an INT or a STRING with only
+/// literals for labels, or the type of a typed label. `rk check` refused
+/// every label of one, and in a function block the selector reached
+/// lowering untyped.
+#[rstest]
+fn a_literal_selector_takes_its_branch(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK InBlock
+        VAR_OUTPUT r : DINT; END_VAR
+            CASE 'bd' OF
+                'bd': r := 10000;
+            END_CASE;
+        END_FUNCTION_BLOCK
+
+        FUNCTION run : DINT
+        VAR CONSTANT big : DINT := 100000; END_VAR
+        VAR r : DINT; b : InBlock; END_VAR
+            CASE 5 OF
+                1..4: r := 9;
+                5, 6: r := 1;
+            END_CASE;
+            CASE 'bd' OF
+                'd': r := r + 90;
+                'bd': r := r + 10;
+            END_CASE;
+            CASE 100000 OF
+                big: r := r + 100;
+            END_CASE;
+            CASE 'b' OF
+                CHAR#'a'..CHAR#'c': r := r + 1000;
+            END_CASE;
+            b();
+            run := r + b.r;
+        END_FUNCTION
+    "#;
+    let result: i32 = super::run(&mut with_db, source, "run", ());
+    assert_eq!(result, 11111, "every literal selector took its branch");
+}
+
 /// FOR's bounds convert to the counter's width, as an assignment's value
 /// does: INT and DINT bounds on a LINT counter made an invalid module.
 #[rstest]

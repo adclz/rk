@@ -50,6 +50,8 @@ __RAISE('message');   // throws to the host; there is no in-language catch
 `EXIT` outside a loop is E1201 and `CONTINUE` outside a loop is E1202.
 A `FOR` step must fold to a non-zero compile-time constant (E1204); a `VAR CONSTANT` or a constant expression is fine, a plain variable is not.
 After a normal `FOR` completion the control variable holds the first value past the bound, EXCEPT when the bound is the control type's maximum, where it wraps instead: do not use it to detect completion.
+A `CASE` selector is an integer, a bit string, a CHAR, an enum or a STRING (E1207), and a label is a compile-time constant (E1205).
+A literal selector takes its type from its labels, as the two sides of `=` do: `CASE 5 OF DINT#5:` compares as DINT, and with only literals for labels it is an INT or a STRING, so `CASE 100000 OF` needs a typed literal or a typed label.
 
 Comments: `// to end of line`, `/* … */`, `(* … *)`.
 A comment opener inside a string literal is text: `'(*'` and `'//'` are two-character strings.
