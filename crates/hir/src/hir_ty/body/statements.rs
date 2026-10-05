@@ -23,7 +23,7 @@ use crate::{
     },
     hir_ty::{
         body::{Adjust, BodyInferenceResult, CaseLabelValue, NullState},
-        infer::{Infer, expr::InferExprCtx},
+        infer::{Infer, expr::InferExprCtx, table::InferenceTable},
         resolver::{Resolver, func_call::resolve_func_call},
         ty::{InferType, Type},
     },
@@ -811,6 +811,32 @@ impl<'db> StmtsResolverCtx<'db> {
                     // check condition
                     self.infer_and_check_expr(db, &mut infer, *condition, ctx);
 
+                    // A literal selector, `CASE 5 OF` or `CASE 'bd' OF`, takes
+                    // its type from the labels, as the two sides of `=` do:
+                    // `CASE 5 OF DINT#5:` compares as DINT, and with only
+                    // literals for labels the selector is an INT or a STRING.
+                    // Left a literal, every label was refused as not
+                    // comparable with it. The labels are inferred here for
+                    // that, and not again below.
+                    let literal = ctx.type_of_expr_with_adjustments(db, *condition);
+                    let literal_selector = literal.has_infer();
+                    if literal_selector {
+                        let mut table = InferenceTable::new();
+                        table.add_type(db, *condition, literal, resolver);
+                        for kind in cases.iter().flat_map(|(kinds, _)| kinds) {
+                            let label_exprs = match kind {
+                                CaseKind::Expression(expr) => [Some(*expr), None],
+                                CaseKind::Subrange { lower, upper } => [Some(*lower), Some(*upper)],
+                            };
+                            for label in label_exprs.into_iter().flatten() {
+                                self.infer_and_check_expr(db, &mut infer, label, ctx);
+                                let ty = ctx.type_of_expr_with_adjustments(db, label);
+                                table.add_type(db, label, ty, resolver);
+                            }
+                        }
+                        table.resolve_completly(db, resolver, ctx);
+                    }
+
                     // After its adjustments: `CASE names[i] OF` selects on
                     // an element, not on the array.
                     let condition_typ = ctx.type_of_expr_with_adjustments(db, *condition);
@@ -829,7 +855,6 @@ impl<'db> StmtsResolverCtx<'db> {
                             Type::Enum(_)
                                 | Type::EnumVariant(..)
                                 | Type::Elementary(ElementarySpec::Char | ElementarySpec::String)
-                                | Type::Infer(InferType::Integer(_) | InferType::String(_))
                         );
                     if !selectable {
                         ctx.errors.push(
@@ -846,14 +871,20 @@ impl<'db> StmtsResolverCtx<'db> {
                         for case in case_kind {
                             match case {
                                 CaseKind::Expression(expr) if !selectable => {
-                                    self.infer_and_check_expr(db, &mut infer, *expr, ctx);
+                                    if !literal_selector {
+                                        self.infer_and_check_expr(db, &mut infer, *expr, ctx);
+                                    }
                                 }
                                 CaseKind::Subrange { lower, upper } if !selectable => {
-                                    self.infer_and_check_expr(db, &mut infer, *lower, ctx);
-                                    self.infer_and_check_expr(db, &mut infer, *upper, ctx);
+                                    if !literal_selector {
+                                        self.infer_and_check_expr(db, &mut infer, *lower, ctx);
+                                        self.infer_and_check_expr(db, &mut infer, *upper, ctx);
+                                    }
                                 }
                                 CaseKind::Expression(expr) => {
-                                    self.infer_and_check_expr(db, &mut infer, *expr, ctx);
+                                    if !literal_selector {
+                                        self.infer_and_check_expr(db, &mut infer, *expr, ctx);
+                                    }
                                     check_case_label_constant(db, *expr, true, condition_typ, ctx);
 
                                     if let Err(err) =
@@ -867,8 +898,10 @@ impl<'db> StmtsResolverCtx<'db> {
                                     }
                                 }
                                 CaseKind::Subrange { lower, upper } => {
-                                    self.infer_and_check_expr(db, &mut infer, *lower, ctx);
-                                    self.infer_and_check_expr(db, &mut infer, *upper, ctx);
+                                    if !literal_selector {
+                                        self.infer_and_check_expr(db, &mut infer, *lower, ctx);
+                                        self.infer_and_check_expr(db, &mut infer, *upper, ctx);
+                                    }
                                     check_case_label_constant(
                                         db,
                                         *lower,

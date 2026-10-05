@@ -55,3 +55,21 @@ END_FUNCTION
 ```
 
 Inputs, `VAR_EXTERNAL`s, `CONSTANT`s and `REF()` can be named in any order.
+
+## CASE
+
+`CASE` branches on an integer, a bit string, a `CHAR`, an enum or a `STRING`, and each label is a constant.
+
+A literal selector takes its type from the labels, as the two sides of `=` do:
+
+```iecst
+FUNCTION Pick : INT
+    CASE 5 OF
+        DINT#5: Pick := 1; // <-- compares as DINT
+    ELSE
+        Pick := 0;
+    END_CASE;
+END_FUNCTION
+```
+
+With only literals for labels, it is an `INT` or a `STRING`, like the operands of `200 * 200` in [Math operations](math-operations.md).
