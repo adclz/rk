@@ -1513,6 +1513,18 @@ END_FUNCTION_BLOCK
 "#,
         ),
         (
+            "an input named R after a BOOL one",
+            r#"
+FUNCTION_BLOCK ctu
+VAR_INPUT
+    CU : BOOL
+    R : BOOL
+    F : BOOL
+END_VAR
+END_FUNCTION_BLOCK
+"#,
+        ),
+        (
             "a using directive",
             r#"
 NAMESPACE ns
@@ -1684,6 +1696,14 @@ END_FUNCTION
     	END_VAR
     	VAR
     		b: BOOL;
+    	END_VAR
+    END_FUNCTION_BLOCK
+    --- an input named R after a BOOL one
+    FUNCTION_BLOCK ctu
+    	VAR_INPUT
+    		CU: BOOL;
+    		R: BOOL;
+    		F: BOOL;
     	END_VAR
     END_FUNCTION_BLOCK
     --- a using directive

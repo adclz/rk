@@ -307,7 +307,11 @@ module.exports = grammar({
     // after it, or its location and nothing else, misses it.
     ERR_config_entry_with_no_spec: ($) =>
       prec(-1, seq(field("path", $.path_expression), optional($.located_at))),
-    ERR_invalid_edge_qualifier: ($) => prec(-1, /[FR](_(E(D(G)?)?)?)?/),
+    // A qualifier started and not finished: `R_` to `R_EDG`, `F_` to
+    // `F_EDG`. A bare `R` or `F` is none: with the `;` optional, it is the
+    // name of the next input (`CU : BOOL` then `R : BOOL`), and this token,
+    // defined before `identifier`, took it on a tie.
+    ERR_invalid_edge_qualifier: ($) => prec(-1, /[FR]_(E(D(G)?)?)?/),
 
     // Statements
     ERR_empty_right_hand_assignment: ($) => prec(-1, ":="), // a := ?
