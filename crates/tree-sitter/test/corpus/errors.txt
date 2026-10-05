@@ -227,11 +227,15 @@ END_FUNCTION_BLOCK
         (variable_list
           (identifier))
         (edge_decl
+          (bit_str_type_name
+            (bool_name))
           (ERR_invalid_edge_qualifier)))
       (fb_input_var
         (variable_list
           (identifier))
         (edge_decl
+          (bit_str_type_name
+            (bool_name))
           (ERR_invalid_edge_qualifier))))))
 
 ================================================================================

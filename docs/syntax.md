@@ -73,3 +73,33 @@ END_FUNCTION
 ```
 
 With only literals for labels, it is an `INT` or a `STRING`, like the operands of `200 * 200` in [Math operations](math-operations.md).
+
+## Edge inputs
+
+An input of a `FUNCTION_BLOCK` or a `PROGRAM` declared `R_EDGE` reads as its rising edge: `TRUE` for the one call where it went from `FALSE` to `TRUE`.
+`F_EDGE` reads the falling edge.
+
+```iecst
+FUNCTION_BLOCK Counter
+VAR_INPUT
+    pulse : BOOL R_EDGE;
+END_VAR
+VAR_OUTPUT
+    count : UINT;
+END_VAR
+    IF pulse THEN // <-- once per press, however many calls it is held
+        count := count + 1;
+    END_IF;
+END_FUNCTION_BLOCK
+```
+
+- **Inside the block**, the body and the methods read the edge. It is computed once, when the call starts.
+- **Outside the block**, `counter.pulse` is the value the caller passed.
+- **The first call** counts as an edge when the input is already `TRUE`, as with `R_TRIG`. For `F_EDGE`, it counts when the input is already `FALSE`, as with `F_TRIG`.
+- **The previous value** is stored in the instance. A retained instance keeps it across a power cycle. A copy of the instance carries it too.
+
+A cold start, or a warm start of an instance that is not retained, starts the previous value over.
+An input held `TRUE` through the restart then reads as a rising edge on the first scan, as with `R_TRIG`. This is intended.
+
+Inside its block, an edge input cannot be written, referenced or passed to a `VAR_IN_OUT` (`E0211`).
+A `FUNCTION` or a `METHOD` keeps nothing between calls and cannot declare an edge input (`E0210`).

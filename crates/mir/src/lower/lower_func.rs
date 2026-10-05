@@ -493,9 +493,9 @@ fn lower_function_block_inner<'db>(
         // 'this' pointer parameter — the FB's instance struct.
         let fb_type = super::lower_type::lower_fb_type(db, fb)?;
         // The method body resolves bare member access (implicit THIS) against
-        // this struct.
+        // this struct, where an edge input reads as its edge.
         let this_struct = match &fb_type {
-            MirType::Struct(s) => s.clone(),
+            MirType::Struct(s) => edge_view(db, s, &fb_edge_inputs(db, fb, s)),
             _ => {
                 return Err(LowerTypeError::UnsupportedType(
                     "FB type is not a struct".into(),
@@ -691,6 +691,115 @@ fn lower_function_block_inner<'db>(
     Ok(functions)
 }
 
+/// An edge input in an instance's layout: where the caller's value sits, the
+/// edge the block's own code reads under the input's name, and the memory the
+/// edge is computed against.
+struct EdgeInput {
+    rising: bool,
+    input: (Ident, u32),
+    edge: (Ident, u32),
+    memory: (Ident, u32),
+}
+
+/// The edge inputs among `vars`, found in `layout`.
+fn edge_inputs<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    vars: impl IntoIterator<Item = VariableDecl<'db>>,
+    layout: &crate::types::MirStructType,
+) -> Vec<EdgeInput> {
+    // The hidden members' names are built from the input's folded name, which
+    // a field's own `name` matches.
+    let slot = |name: Ident| {
+        let field = layout.fields.iter().find(|f| f.name(db) == name)?;
+        Some((name, field.offset))
+    };
+    vars.into_iter()
+        .filter(|var| var.is_edge_input(db))
+        .filter_map(|var| {
+            let name = var.name(db);
+            Some(EdgeInput {
+                rising: var.qualifier(db).contains(hir::Qualifier::R_EDGE),
+                input: slot(name)?,
+                edge: slot(super::lower_type::edge_field(db, name))?,
+                memory: slot(super::lower_type::edge_memory_field(db, name))?,
+            })
+        })
+        .collect()
+}
+
+/// The layout the block's own code resolves names against, its body's and its
+/// methods': an edge input's name stands for its edge. A caller, a
+/// connection or `VAR_CONFIG` still writes the input itself, and code outside
+/// the block reads it as it was given.
+fn edge_view(
+    db: &dyn WorkspaceDataBase,
+    layout: &crate::types::MirStructType,
+    edges: &[EdgeInput],
+) -> crate::types::MirStructType {
+    let mut view = layout.clone();
+    for edge in edges {
+        if let Some(field) = view.fields.iter_mut().find(|f| f.name(db) == edge.input.0) {
+            field.offset = edge.edge.1;
+        }
+    }
+    view
+}
+
+/// What the block's own body does first: each edge, from the input and the
+/// memory, as `R_TRIG` computes its `Q` (`CLK AND NOT M`, then `M := CLK`),
+/// and `F_TRIG` with `NOT CLK`, first call included. A base's body that
+/// `SUPER()` reaches does not run it: the memory would already be updated,
+/// and the base would see no edge.
+fn edge_prologue(edges: &[EdgeInput]) -> Vec<MirStmt> {
+    use crate::expr::{MirBinOp, MirPlace, MirUnaryOp};
+    use crate::types::MirElementary;
+    let ty = MirType::Elementary(MirElementary::Bool);
+    let place = |(name, offset): (Ident, u32)| MirPlace::ThisField {
+        field_name: name,
+        field_offset: offset,
+        field_type: ty.clone(),
+    };
+    let not = |expr: MirExpr| MirExpr::UnaryOp {
+        op: MirUnaryOp::Not,
+        expr: Box::new(expr),
+        ty: MirElementary::Bool,
+    };
+    edges
+        .iter()
+        .flat_map(|edge| {
+            let input = MirExpr::Load(place(edge.input), ty.clone());
+            let clk = if edge.rising { input } else { not(input) };
+            let memory = MirExpr::Load(place(edge.memory), ty.clone());
+            [
+                MirStmt::Assign {
+                    target: place(edge.edge),
+                    value: MirExpr::BinOp {
+                        op: MirBinOp::And,
+                        lhs: Box::new(clk.clone()),
+                        rhs: Box::new(not(memory)),
+                        ty: MirElementary::Bool,
+                    },
+                },
+                MirStmt::Assign {
+                    target: place(edge.memory),
+                    value: clk,
+                },
+            ]
+        })
+        .collect()
+}
+
+/// The edge inputs of an FB instance type, inherited ones included.
+fn fb_edge_inputs<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    fb: FunctionBlock<'db>,
+    layout: &crate::types::MirStructType,
+) -> Vec<EdgeInput> {
+    let members =
+        hir::hir_ty::oop::instance_members(db, hir::hir_def::pous::pou::Pou::FunctionBlock(fb));
+    edge_inputs(db, members.iter().map(|member| member.var), layout)
+}
+
 /// The body of `body_of` emitted for the instance type `instance`: its own,
 /// or a base's that `SUPER()` reaches, where `THIS` is still `instance`. A
 /// derived instance is layout-compatible with its base, so the base's
@@ -753,10 +862,11 @@ fn lower_fb_body<'db>(
             ));
         }
     };
+    let edges = fb_edge_inputs(db, instance, &this_struct);
     let (body_stmts, call_scratch) = crate::lower::lower_stmt::lower_stmts_fb_body(
         db,
         body_of.statements(db),
-        this_struct,
+        edge_view(db, &this_struct, &edges),
         Some(hir::hir_def::pous::pou::Pou::FunctionBlock(instance)),
         string_pool.clone(),
         None,
@@ -764,6 +874,9 @@ fn lower_fb_body<'db>(
     )?;
     // VAR_TEMP starts over at every call, from its declared values.
     let mut body_stmts = with_temp_inits(db, body_of.variables(db), body_stmts, &string_pool)?;
+    if body_of == instance {
+        body_stmts.splice(0..0, edge_prologue(&edges));
+    }
     append_call_scratch_locals(
         call_scratch,
         &mut body_locals,
@@ -1073,10 +1186,11 @@ fn lower_program_inner<'db>(
         }
     }
 
+    let edges = edge_inputs(db, program.variables(db).iter().copied(), &this_struct);
     let (body, call_scratch) = crate::lower::lower_stmt::lower_stmts_fb_body(
         db,
         program.statements(db),
-        this_struct,
+        edge_view(db, &this_struct, &edges),
         None,
         string_pool.clone(),
         None,
@@ -1084,6 +1198,7 @@ fn lower_program_inner<'db>(
     )?;
     // VAR_TEMP starts over at every scan, from its declared values.
     let mut body = with_temp_inits(db, program.variables(db), body, &string_pool)?;
+    body.splice(0..0, edge_prologue(&edges));
     append_call_scratch_locals(
         call_scratch,
         &mut locals,

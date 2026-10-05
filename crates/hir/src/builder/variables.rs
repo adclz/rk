@@ -102,6 +102,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::InputDecls {
                             }
                         }
                         ast::generated::InputVarKind::EdgeDecl(edge_decl) => {
+                            let edge = edge_qualifier(edge_decl, sema);
                             for variable in child.variables.cast(sema.ast).children.iter() {
                                 let r =
                                     Ident::from_node(sema.db, sema.file, variable.cast(sema.ast));
@@ -116,7 +117,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::InputDecls {
                                     var_name,
                                     variable.cast(sema.ast).into(),
                                     VariableKind::Input,
-                                    qualifier,
+                                    qualifier | edge,
                                     false,
                                     result.spec,
                                     result.init,
@@ -242,6 +243,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::FbInputDecls {
                             }
                         }
                         ast::generated::FbInputVarKind::EdgeDecl(edge_decl) => {
+                            let edge = edge_qualifier(edge_decl, sema);
                             for variable in child.variables.cast(sema.ast).children.iter() {
                                 let r =
                                     Ident::from_node(sema.db, sema.file, variable.cast(sema.ast));
@@ -256,7 +258,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::FbInputDecls {
                                     var_name,
                                     variable.cast(sema.ast).into(),
                                     VariableKind::Input,
-                                    qualifier,
+                                    qualifier | edge,
                                     false,
                                     result.spec,
                                     result.init,
@@ -1042,39 +1044,36 @@ impl<'db> ParseVarSection<'db> for ast::generated::GlobalVarDecls {
     }
 }
 
+/// The type an edge input is declared with. The edge itself is a qualifier
+/// of the input ([`edge_qualifier`]), not a type, and one declared on a type
+/// other than BOOL is refused once the type is known (E0321).
 impl<'db> ParseSpecInit<'db> for ast::generated::EdgeDecl {
     fn to_spec_init(
         &self,
         sema: &mut SemanticIndexBuilder<'db>,
     ) -> anyhow::Result<SpecInitResult<'db>, IdeDiagnostic> {
-        let spec = match self.edge.cast(sema.ast) {
-            ast::generated::ERRInvalidEdgeQualifier_FEDGE_REDGE::ERRInvalidEdgeQualifier(err) => {
-                sema.errors.push(
-                    SyntaxError::IncompleteEdgeQualifier(err.get_range().to_owned())
-                        .to_diagnostic(sema.db, sema.file),
-                );
-                Spec::new(
-                    sema.db,
-                    SpecKind::Simple(ElementarySpec::Bool),
-                    self.into(),
-                    sema.current_scope,
-                )
-            }
-            ast::generated::ERRInvalidEdgeQualifier_FEDGE_REDGE::Token_F_EDGE(fedge) => Spec::new(
-                sema.db,
-                SpecKind::Simple(ElementarySpec::FEDGEBool),
-                self.into(),
-                sema.current_scope,
-            ),
-            ast::generated::ERRInvalidEdgeQualifier_FEDGE_REDGE::Token_R_EDGE(redge) => Spec::new(
-                sema.db,
-                SpecKind::Simple(ElementarySpec::REDGEBool),
-                self.into(),
-                sema.current_scope,
-            ),
-        };
-
+        let spec = self.Type.cast(sema.ast).to_spec(sema)?;
         Ok(SpecInitResult::new(spec, None))
+    }
+}
+
+/// The qualifier an edge declaration gives its inputs: `R_EDGE`, `F_EDGE`, or
+/// none for one started and not finished, which is E0014, once per
+/// declaration.
+fn edge_qualifier<'db>(
+    edge_decl: &ast::generated::EdgeDecl,
+    sema: &mut SemanticIndexBuilder<'db>,
+) -> Qualifier {
+    match edge_decl.edge.cast(sema.ast) {
+        ast::generated::ERRInvalidEdgeQualifier_FEDGE_REDGE::ERRInvalidEdgeQualifier(err) => {
+            sema.errors.push(
+                SyntaxError::IncompleteEdgeQualifier(err.get_range().to_owned())
+                    .to_diagnostic(sema.db, sema.file),
+            );
+            Qualifier::empty()
+        }
+        ast::generated::ERRInvalidEdgeQualifier_FEDGE_REDGE::Token_F_EDGE(_) => Qualifier::F_EDGE,
+        ast::generated::ERRInvalidEdgeQualifier_FEDGE_REDGE::Token_R_EDGE(_) => Qualifier::R_EDGE,
     }
 }
 

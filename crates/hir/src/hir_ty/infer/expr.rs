@@ -422,6 +422,19 @@ impl<'db> InferExprCtx<'db> {
 
                     let typ = inference_result.type_of_begin_expr_with_adjustments(db, *adress);
 
+                    if let Some(var) =
+                        crate::hir_ty::body::statements::edge_input_named(db, *adress, typ)
+                    {
+                        inference_result.errors.push(
+                            crate::check::errors::e02_resolve::ResolveError::EdgeInputAsStorage {
+                                access: CallSite::from_scoped(db, adress),
+                                var,
+                                usage: crate::check::errors::e02_resolve::EdgeUse::Referenced,
+                            }
+                            .to_diagnostic(db, inference_result.scope.file(db)),
+                        );
+                    }
+
                     // A REF_TO is a writable pointer, so one to a constant
                     // would change it.
                     if adress

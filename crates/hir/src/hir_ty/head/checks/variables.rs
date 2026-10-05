@@ -203,6 +203,49 @@ impl<'db> InitInference<'db> {
         }
     }
 
+    /// An input declared `R_EDGE` or `F_EDGE`: only a FUNCTION_BLOCK or a
+    /// PROGRAM keeps the value it compares with (E0210), and only a BOOL
+    /// changes from FALSE to TRUE (E0321).
+    fn check_edge(
+        &mut self,
+        db: &'db dyn WorkspaceDataBase,
+        var: &VariableDecl<'db>,
+        stateless_pou: Option<&'static str>,
+    ) {
+        let qualifier = var.qualifier(db);
+        let edge = if qualifier.contains(crate::Qualifier::R_EDGE) {
+            "R_EDGE"
+        } else if qualifier.contains(crate::Qualifier::F_EDGE) {
+            "F_EDGE"
+        } else {
+            return;
+        };
+        if let Some(pou_kind) = stateless_pou {
+            self.errors.push(
+                ResolveError::EdgeInStatelessPou {
+                    var: *var,
+                    pou_kind,
+                }
+                .to_diagnostic(db, self.scope.file(db)),
+            );
+        }
+        let ty = var.spec(db).infer(db);
+        let normalized = ty.normalize(db);
+        if !normalized.is_never()
+            && normalized
+                != Type::Elementary(crate::hir_def::expressions::spec::ElementarySpec::Bool)
+        {
+            self.errors.push(
+                TypeError::EdgeNotBool {
+                    spec: var.spec(db),
+                    ty,
+                    edge,
+                }
+                .to_diagnostic(db, self.scope.file(db)),
+            );
+        }
+    }
+
     pub(crate) fn check_variables(&mut self, db: &'db dyn WorkspaceDataBase) {
         let variables = match self.scope.variables(db) {
             Some(vars) => vars,
@@ -321,6 +364,7 @@ impl<'db> InitInference<'db> {
                     .to_diagnostic(db, self.scope.file(db)),
                 );
             }
+            self.check_edge(db, var, stateless_pou);
             // An instance changes when it runs: its body and its methods
             // write its variables. Declared CONSTANT, it changed anyway. Its
             // VAR_EXTERNAL is the global's, refused where that is declared.

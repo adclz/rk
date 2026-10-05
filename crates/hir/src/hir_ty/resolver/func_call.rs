@@ -853,6 +853,16 @@ fn apply_param_coercion<'db>(
             {
                 ctx.errors.push(err.to_diagnostic(db, ctx.scope.file(db)));
             }
+            if var.is_in_out(db)
+                && let ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess(access)) = value.expr(db)
+            {
+                crate::hir_ty::body::statements::refuse_edge_input_as_storage(
+                    db,
+                    *access,
+                    crate::check::errors::e02_resolve::EdgeUse::InOut,
+                    ctx,
+                );
+            }
 
             check_in_out_lvalue(db, callable, var, value, ctx);
             if let Some(err) = ctx.ref_subrange_mismatch(db, Type::new_var(db, var), value) {
@@ -898,6 +908,16 @@ fn apply_param_coercion<'db>(
             {
                 ctx.errors.push(err.to_diagnostic(db, ctx.scope.file(db)));
             }
+            if var.is_in_out(db)
+                && let ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess(access)) = value.expr(db)
+            {
+                crate::hir_ty::body::statements::refuse_edge_input_as_storage(
+                    db,
+                    *access,
+                    crate::check::errors::e02_resolve::EdgeUse::InOut,
+                    ctx,
+                );
+            }
 
             check_in_out_lvalue(db, callable, var, value, ctx);
             if let Some(err) = ctx.ref_subrange_mismatch(db, Type::new_var(db, var), value) {
@@ -935,6 +955,12 @@ fn apply_param_coercion<'db>(
             let lhs_typ = Type::new_var(db, var);
 
             resolver.resolve_variable_access(db, variable, ctx);
+            crate::hir_ty::body::statements::refuse_edge_input_as_storage(
+                db,
+                variable,
+                crate::check::errors::e02_resolve::EdgeUse::Written,
+                ctx,
+            );
             let call_site = CallSite::from_scoped(db, &variable);
             let rhs_typ = ctx.type_of_variable_access_with_adjustments(db, variable);
 

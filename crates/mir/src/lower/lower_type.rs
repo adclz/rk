@@ -144,9 +144,7 @@ pub fn lower_type<'db>(
 /// Convert an `ElementarySpec` to `MirElementary`; an error for ANY_*.
 pub fn elementary_spec_to_mir(spec: ElementarySpec) -> Result<MirElementary, LowerTypeError> {
     Ok(match spec {
-        ElementarySpec::Bool | ElementarySpec::REDGEBool | ElementarySpec::FEDGEBool => {
-            MirElementary::Bool
-        }
+        ElementarySpec::Bool => MirElementary::Bool,
         ElementarySpec::SInt => MirElementary::SInt,
         ElementarySpec::Int => MirElementary::Int,
         ElementarySpec::DInt => MirElementary::DInt,
@@ -397,6 +395,44 @@ pub(crate) fn string_capacity_field(db: &dyn WorkspaceDataBase, name: Ident) -> 
     )
 }
 
+/// The member holding an edge input's edge, which the block's own code reads
+/// under the input's name.
+pub(crate) fn edge_field(db: &dyn WorkspaceDataBase, name: Ident) -> Ident {
+    Ident::new(db, CompactString::from(format!("{}$edge", name.text(db))))
+}
+
+/// The member holding what an edge input's edge is computed against at the
+/// next call, as `R_TRIG` and `F_TRIG` keep their `M`.
+pub(crate) fn edge_memory_field(db: &dyn WorkspaceDataBase, name: Ident) -> Ident {
+    Ident::new(db, CompactString::from(format!("{}$m", name.text(db))))
+}
+
+/// Lay out an edge input's edge and memory right after the input, inside
+/// the declaring block's part of the layout, so that a derived instance stays
+/// compatible with its base. Returns the offset past them.
+fn push_edge_fields(
+    db: &dyn WorkspaceDataBase,
+    var: hir::hir_def::pous::variable::VariableDecl<'_>,
+    mut offset: u32,
+    fields: &mut Vec<MirStructField>,
+    max_align: &mut u32,
+) -> u32 {
+    let ty = MirType::Elementary(MirElementary::Bool);
+    *max_align = (*max_align).max(ty.alignment());
+    let name = var.name_with_case(db);
+    for name_with_case in [edge_field(db, name), edge_memory_field(db, name)] {
+        offset = align_to(offset, ty.alignment());
+        fields.push(MirStructField {
+            name_with_case,
+            ty: ty.clone(),
+            offset,
+            by_ref: false,
+        });
+        offset += ty.size_bytes();
+    }
+    offset
+}
+
 pub fn lower_fb_type<'db>(
     db: &'db dyn WorkspaceDataBase,
     fb: FunctionBlock<'db>,
@@ -487,6 +523,10 @@ fn lower_instance_struct<'db>(
             });
             offset += 4;
         }
+
+        if var.is_edge_input(db) {
+            offset = push_edge_fields(db, var, offset, &mut fields, &mut max_align);
+        }
     }
 
     offset = align_to(offset, max_align);
@@ -544,6 +584,10 @@ pub fn lower_program_type<'db>(
             by_ref: partly,
         });
         offset += field_size;
+
+        if var.is_edge_input(db) {
+            offset = push_edge_fields(db, *var, offset, &mut fields, &mut max_align);
+        }
     }
 
     offset = align_to(offset, max_align);

@@ -165,8 +165,6 @@ mod lane_parity {
         use ElementarySpec::*;
         for spec in [
             Bool,
-            REDGEBool,
-            FEDGEBool,
             Byte,
             Word,
             DWord,

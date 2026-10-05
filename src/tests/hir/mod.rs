@@ -13,6 +13,7 @@ pub mod constant_folding;
 pub mod dead_code;
 pub mod direct_variables;
 pub mod duplicates;
+pub mod edges;
 pub mod enums;
 pub mod expt;
 pub mod func_call;

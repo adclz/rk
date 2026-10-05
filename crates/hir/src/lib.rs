@@ -281,6 +281,8 @@ bitflags! {
         const CONSTANT = 1 << 0;
         const RETAIN = 1 << 1;
         const NON_RETAIN = 1 << 2;
+        const R_EDGE = 1 << 3;
+        const F_EDGE = 1 << 4;
     }
 }
 

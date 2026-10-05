@@ -38,7 +38,7 @@ impl ElementarySpec {
 
         Some(match typ {
             // BOOL BYTE WORD DWORD LWORD
-            Bool | REDGEBool | FEDGEBool => match self {
+            Bool => match self {
                 Byte => Byte,
                 Word => Word,
                 DWord => DWord,
@@ -239,7 +239,7 @@ impl ElementarySpec {
             // so E0301 names them: IEC widens CHAR to STRING implicitly, and
             // this compiler asks for the call instead.
             Char => matches!(self, String | Byte),
-            Bool | REDGEBool | FEDGEBool => matches!(
+            Bool => matches!(
                 self,
                 LInt | DInt | Int | SInt | ULInt | UDInt | UInt | USInt
             ),

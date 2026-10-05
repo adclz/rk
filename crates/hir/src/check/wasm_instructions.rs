@@ -406,8 +406,8 @@ impl Lane {
 pub fn lane_of(spec: ElementarySpec) -> Option<Lane> {
     use ElementarySpec::*;
     Some(match spec {
-        Bool | REDGEBool | FEDGEBool | Byte | Word | DWord | SInt | USInt | UInt | Int | DInt
-        | UDInt | Char | Date | Time | Tod => Lane::I32,
+        Bool | Byte | Word | DWord | SInt | USInt | UInt | Int | DInt | UDInt | Char | Date
+        | Time | Tod => Lane::I32,
         LWord | LInt | ULInt | LDate | DateAndTime | LDateTime | LTime | LTod => Lane::I64,
         Real => Lane::F32,
         LReal => Lane::F64,
@@ -420,7 +420,7 @@ pub fn lane_of(spec: ElementarySpec) -> Option<Lane> {
 pub fn rk_bits_of(spec: ElementarySpec) -> u32 {
     use ElementarySpec::*;
     match spec {
-        Bool | REDGEBool | FEDGEBool => 1,
+        Bool => 1,
         Byte | SInt | USInt => 8,
         Word | Int | UInt => 16,
         DWord | DInt | UDInt | Char | Real | Date | Time | Tod => 32,

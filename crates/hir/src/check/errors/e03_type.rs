@@ -81,6 +81,13 @@ pub enum TypeError<'db> {
         length: Expr<'db>,
         value: i64,
     },
+    /// An edge qualifier on an input of a type other than BOOL:
+    /// `x : INT R_EDGE`.
+    EdgeNotBool {
+        spec: Spec<'db>,
+        ty: Type<'db>,
+        edge: &'static str,
+    },
     FunctionAsType {
         expr: Spec<'db>,
         ty: Type<'db>,
@@ -199,6 +206,7 @@ impl<'db> ErrorCode for TypeError<'db> {
             Self::InferLiteralError { err, .. } => err.code(),
             Self::StringLengthNotConstant { .. } => "E0315",
             Self::StringLengthNegative { .. } => "E0320",
+            Self::EdgeNotBool { .. } => "E0321",
             Self::FunctionAsType { .. } => "E0316",
             Self::DirectType { .. } => "E0317",
             Self::AssignFunctionOrMethod { .. } => "E0318",
@@ -379,6 +387,16 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                 .desc(self)
                 .range(crate::denormalize(db, file, &length.get_span(db)).unwrap_or_default())
                 .call(),
+            Self::EdgeNotBool { spec, ty, edge } => {
+                let mut diag = diag()
+                    .message(format!("expected 'BOOL', got '{}'", ty.type_name(db)))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &spec.get_span(db)).unwrap_or_default())
+                    .call();
+                diag.with_note(format!("{edge} detects a change of a BOOL"));
+                diag
+            }
             Self::FunctionAsType { expr, ty } => diag()
                 .message(format!("'{}' is a FUNCTION, not a type", ty.type_name(db)))
                 .severity(DiagnosticSeverity::ERROR)

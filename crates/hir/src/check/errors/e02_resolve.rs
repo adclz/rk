@@ -85,6 +85,19 @@ pub enum ResolveError<'db> {
         var: VariableDecl<'db>,
         pou_kind: &'static str,
     },
+    /// An input declared `R_EDGE` or `F_EDGE` in a FUNCTION or METHOD, which
+    /// keeps no value from one call to the next to compare it with.
+    EdgeInStatelessPou {
+        var: VariableDecl<'db>,
+        pou_kind: &'static str,
+    },
+    /// An edge input written, referenced or passed to a VAR_IN_OUT in its own
+    /// block, where its name stands for its edge, computed for the call.
+    EdgeInputAsStorage {
+        access: CallSite<'db>,
+        var: VariableDecl<'db>,
+        usage: EdgeUse,
+    },
     /// A variable named where its storage is not: it passed the check, then
     /// codegen found no such local or no such field of the instance.
     OutOfReach {
@@ -92,6 +105,17 @@ pub enum ResolveError<'db> {
         var: VariableDecl<'db>,
         why: Unreachable,
     },
+}
+
+/// What a block did with its edge input that only storage allows.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, salsa::Update)]
+pub enum EdgeUse {
+    /// Assigned to, or the target of an output binding `=>`.
+    Written,
+    /// Handed to `REF()`.
+    Referenced,
+    /// Bound to a VAR_IN_OUT.
+    InOut,
 }
 
 /// Why a variable found by name cannot be used where it is named.
@@ -129,6 +153,8 @@ impl<'db> ErrorCode for ResolveError<'db> {
             Self::ExternalVarTypeMismatch { .. } => "E0207",
             Self::RetainInStatelessPou { .. } => "E0208",
             Self::OutOfReach { .. } => "E0209",
+            Self::EdgeInStatelessPou { .. } => "E0210",
+            Self::EdgeInputAsStorage { .. } => "E0211",
         }
     }
 }
@@ -454,6 +480,48 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                         .to_string(),
                 );
 
+                diag
+            }
+            Self::EdgeInputAsStorage { access, var, usage } => {
+                let what = match usage {
+                    EdgeUse::Written => "written",
+                    EdgeUse::Referenced => "referenced",
+                    EdgeUse::InOut => "passed to a VAR_IN_OUT",
+                };
+                let mut diag = diag()
+                    .message(format!(
+                        "the edge of '{}' cannot be {what}",
+                        var.name_with_case(db).text(db),
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &access.get_span(db)).unwrap_or_default())
+                    .call();
+                diag.with_note(
+                    "in its own block, an edge input is the edge computed for the call".to_string(),
+                );
+                diag
+            }
+            Self::EdgeInStatelessPou { var, pou_kind } => {
+                let (edge, detector) = if var.qualifier(db).contains(crate::Qualifier::R_EDGE) {
+                    ("R_EDGE", "R_TRIG")
+                } else {
+                    ("F_EDGE", "F_TRIG")
+                };
+                let mut diag = diag()
+                    .message(format!(
+                        "'{}' cannot be {edge} in a {pou_kind}",
+                        var.name_with_case(db).text(db),
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &var.get_name_span(db)).unwrap_or_default())
+                    .call();
+                diag.with_note(
+                    "only a FUNCTION_BLOCK or a PROGRAM keeps an input's value from one call to the next"
+                        .to_string(),
+                );
+                diag.with_help(format!("detect it with an {detector} from Std.Edge"));
                 diag
             }
             Self::OutOfReach { expr, var, why } => {

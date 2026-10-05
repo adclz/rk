@@ -1238,6 +1238,58 @@ END_CONFIGURATION
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
 
+/// An input named `R` or `F` after a BOOL one without a `;`. The recovery
+/// for an edge qualifier started and not finished read the bare letter as
+/// one, and the input lost its name. `R` is the usual name of a reset input,
+/// as in the stdlib's counters.
+#[rstest]
+fn valid_inputs_named_r_and_f_without_semicolons(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK Ctu
+VAR_INPUT
+    CU : BOOL
+    R : BOOL
+    F : BOOL
+    E : BOOL R_EDGE
+END_VAR
+VAR_OUTPUT Q : BOOL END_VAR
+    Q := CU AND NOT R AND F
+END_FUNCTION_BLOCK
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+/// An edge qualifier started and not finished is still E0014, with or
+/// without the `;`.
+#[rstest]
+fn invalid_incomplete_edge_qualifier(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK Ctu
+VAR_INPUT
+    a : BOOL R_;
+    b : BOOL F_ED
+    c : BOOL
+END_VAR
+END_FUNCTION_BLOCK
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0014] Error: incomplete edge qualifier
+       ,-[ file:///test0.st:4:14 ]
+       |
+     4 |     a : BOOL R_;
+       |              ^|
+       |               `-- incomplete edge qualifier
+    ---'
+    [E0014] Error: incomplete edge qualifier
+       ,-[ file:///test0.st:5:14 ]
+       |
+     5 |     b : BOOL F_ED
+       |              ^^|^
+       |                `--- incomplete edge qualifier
+    ---'
+    ");
+}
+
 /// The empty statement, a `;` on its own: as a whole body, after a
 /// statement's own `;`, in a branch, and after a section's `END_VAR`.
 /// IEC 61131-3 writes a statement list as `( Stmt? ';' )*`.

@@ -53,8 +53,6 @@ impl ElementarySpec {
     pub fn type_name(&self) -> &'static str {
         match self {
             Self::Bool => "BOOL",
-            Self::REDGEBool => "BOOL (R_EDGE)",
-            Self::FEDGEBool => "BOOL (F_EDGE)",
             Self::Byte => "BYTE",
             Self::Word => "WORD",
             Self::DWord => "DWORD",
