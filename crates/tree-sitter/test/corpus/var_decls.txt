@@ -20,6 +20,8 @@ END_FUNCTION
         (variable_list
           (identifier))
         (array_conformand
+          (conformand_dimension)
+          (conformand_dimension)
           (numeric_type_name
             (int_type_name
               (sign_int_type_name
@@ -28,6 +30,8 @@ END_FUNCTION
         (variable_list
           (identifier))
         (array_conformand
+          (conformand_dimension)
+          (conformand_dimension)
           (numeric_type_name
             (int_type_name
               (sign_int_type_name
@@ -37,8 +41,32 @@ END_FUNCTION
         (variable_list
           (identifier))
         (array_conformand
+          (conformand_dimension)
+          (conformand_dimension)
           (namespace_access
             (identifier)))))))
+
+================================================================================
+Array conformand of any type
+================================================================================
+
+FUNCTION Count
+	VAR_INPUT
+		A: ARRAY [*];
+	END_VAR
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (func_decl
+    (identifier)
+    (input_decls
+      (input_var
+        (variable_list
+          (identifier))
+        (array_conformand
+          (conformand_dimension))))))
 
 ================================================================================
 Array with multiple ranges
