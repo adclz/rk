@@ -387,6 +387,73 @@ fn a_row_binds_to_an_array_of_one_dimension(mut with_db: db::RootDatabase) {
     );
 }
 
+/// A row of a STRING array is an array, not a STRING: it is passed as one,
+/// in place, to an `ARRAY[*] OF STRING` and to an `ARRAY[*]`. The call
+/// passed a STRING's capacity beside its address, and the module did not
+/// validate.
+#[rstest]
+fn a_row_of_strings_binds_as_an_array(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION Shift : DINT
+        VAR_IN_OUT names : ARRAY[*] OF STRING[4]; END_VAR
+        VAR i : DINT; END_VAR
+            FOR i := LOWER_BOUND(names, 1) TO UPPER_BOUND(names, 1) - 1 DO
+                names[i] := names[i + 1];
+            END_FOR;
+            Shift := UPPER_BOUND(names, 1) - LOWER_BOUND(names, 1) + 1;
+        END_FUNCTION
+
+        FUNCTION run : DINT
+        VAR m : ARRAY[1..2, 0..2] OF STRING[4] := ['a', 'bb', 'ccc', 'dddd', 'e', 'f']; END_VAR
+            run := Shift(m[2]) * 100 + UPPER_BOUND(m[1], 1) * 10;
+            IF m[2, 0] = 'e' AND m[2, 1] = 'f' AND m[1, 0] = 'a' THEN
+                run := run + 1;
+            END_IF;
+        END_FUNCTION
+    "#;
+    let result: i32 = execute_wasm(&compile(&mut with_db, source), "run", ());
+    assert_eq!(
+        result,
+        3 * 100 + 2 * 10 + 1,
+        "m[2] has 3 elements and moved left, m[1] ends at 2 and is untouched"
+    );
+}
+
+/// A row of a three-dimensional array has two dimensions, and a row of
+/// that row one: each binds to the `ARRAY[*]` of its rank, in place.
+#[rstest]
+fn the_rows_of_three_dimensions_bind_by_rank(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION Shape : DINT
+        VAR_IN_OUT m : ARRAY[*, *] OF INT; END_VAR
+            Shape := (UPPER_BOUND(m, 1) - LOWER_BOUND(m, 1) + 1) * 10
+                + UPPER_BOUND(m, 2) - LOWER_BOUND(m, 2) + 1;
+            m[LOWER_BOUND(m, 1), UPPER_BOUND(m, 2)] := 7;
+        END_FUNCTION
+
+        FUNCTION Sum : DINT
+        VAR_IN_OUT values : ARRAY[*] OF INT; END_VAR
+        VAR i : DINT; END_VAR
+            FOR i := LOWER_BOUND(values, 1) TO UPPER_BOUND(values, 1) DO
+                Sum := Sum + values[i];
+            END_FOR;
+        END_FUNCTION
+
+        FUNCTION run : DINT
+        VAR cube : ARRAY[1..2, 0..2, -1..2] OF INT := [24(1)]; END_VAR
+            run := Shape(cube[2]) * 10000;
+            run := run + Sum(cube[2, 0]) * 100;
+            run := run + Sum(cube[1, 0]);
+        END_FUNCTION
+    "#;
+    let result: i32 = execute_wasm(&compile(&mut with_db, source), "run", ());
+    assert_eq!(
+        result,
+        34 * 10000 + 10 * 100 + 4,
+        "cube[2] is 3 rows of 4, Shape set cube[2, 0, 2] to 7, cube[1] is untouched"
+    );
+}
+
 /// Overloads rank an array's fits: a parameter declaring its bounds, then
 /// an `ARRAY[*]` of its element type, then an `ARRAY[*]` of any type.
 #[rstest]
@@ -485,6 +552,65 @@ fn a_copy_for_any_type_is_one_per_bounds(mut with_db: db::RootDatabase) {
         .collect();
     copies.sort();
     assert_eq!(copies, ["Count$[0..9]", "Count$[1..3]"]);
+}
+
+/// With several `ARRAY[*]` parameters, a copy stands for one combination
+/// of array types: two products of matrices of the same types share one,
+/// a third over other types has its own.
+#[rstest]
+fn a_copy_is_one_per_combination_of_array_types(mut with_db: db::RootDatabase) {
+    let source = r#"
+        USING Std.Arrays;
+
+        FUNCTION MATRIX_MUL
+        VAR_INPUT
+            A : ARRAY[*, *] OF INT;
+            B : ARRAY[*, *] OF INT;
+        END_VAR
+        VAR_OUTPUT C : ARRAY[*, *] OF INT; END_VAR
+        VAR i, j, k : DINT; END_VAR
+            FOR i := LOWER_BOUND(A, 1) TO UPPER_BOUND(A, 1) DO
+                FOR j := LOWER_BOUND(B, 2) TO UPPER_BOUND(B, 2) DO
+                    C[i, j] := 0;
+                    FOR k := LOWER_BOUND(A, 2) TO UPPER_BOUND(A, 2) DO
+                        C[i, j] := C[i, j] + A[i, k] * B[k, j];
+                    END_FOR;
+                END_FOR;
+            END_FOR;
+        END_FUNCTION
+
+        FUNCTION run
+        VAR
+            a, a2 : ARRAY[1..2, 1..3] OF INT;
+            b : ARRAY[1..3, 1..2] OF INT;
+            c, c2 : ARRAY[1..2, 1..2] OF INT;
+            d : ARRAY[1..3, 1..3] OF INT;
+        END_VAR
+            MATRIX_MUL(A := a, B := b, C => c);
+            MATRIX_MUL(A := a2, B := b, C => c2);
+            MATRIX_MUL(A := b, B := a, C => d);
+        END_FUNCTION
+    "#;
+    crate::tests::utils::add_library_sources(
+        &mut with_db,
+        &[include_str!("../../../stdlib/Arrays.st")],
+    );
+    crate::tests::utils::add_source(&mut with_db, source);
+    let module = crate::tests::utils::lower_workspace(&with_db);
+    let mut copies: Vec<String> = module
+        .functions
+        .iter()
+        .map(|f| f.name.text(&with_db).to_string())
+        .filter(|name| name.starts_with("MATRIX_MUL"))
+        .collect();
+    copies.sort();
+    assert_eq!(
+        copies,
+        [
+            "MATRIX_MUL$[1..2,1..3]$[1..3,1..2]$[1..2,1..2]",
+            "MATRIX_MUL$[1..3,1..2]$[1..2,1..3]$[1..3,1..3]",
+        ]
+    );
 }
 
 // The examples of IEC 61131-3, 6.5.3 (Table 15), as the standard prints them

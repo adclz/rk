@@ -363,6 +363,37 @@ END_FUNCTION
     ");
 }
 
+/// A block's `ARRAY[*]` VAR_IN_OUT is bound at every call: its body walks
+/// the array the call gives.
+#[rstest]
+fn invalid_block_conformand_left_unbound(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK Sum
+VAR_IN_OUT values : ARRAY[*] OF INT; END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION Caller
+VAR s : Sum; END_VAR
+    s();
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0802] Error: missing required parameter
+       ,-[ file:///test0.st:8:5 ]
+       |
+     3 | VAR_IN_OUT values : ARRAY[*] OF INT; END_VAR
+       |            ^^^|^^
+       |               `---- parameter 'values' is declared here
+       |
+     8 |     s();
+       |     |
+       |     `-- call to 'Sum' is missing 1 required parameter: 'values'
+       |
+       | Note: VAR_IN_OUT parameters bind to caller-side l-values and must always be supplied
+    ---'
+    ");
+}
+
 #[rstest]
 fn invalid_element_of_any_type(mut with_db: RootDatabase) {
     let source = r#"
