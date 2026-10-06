@@ -9,6 +9,7 @@ pub mod bit_access;
 pub mod call_graph;
 pub mod case;
 pub mod config;
+pub mod conformands;
 pub mod constant_folding;
 pub mod dead_code;
 pub mod direct_variables;

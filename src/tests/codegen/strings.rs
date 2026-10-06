@@ -730,19 +730,12 @@ fn a_literal_cannot_be_written_through(mut with_db: db::RootDatabase) {
         |
         | Note: a literal, an expression or a call result has no address for a VAR_IN_OUT to bind
     ----'
-    [E0201] Error: unknown name
-        ,-[ file:///test0.st:22:18 ]
-        |
-     22 |             Give(o => 'ab');
-        |                  |
-        |                  `-- no item 'o' found in scope
-    ----'
     [E0805] Error: output parameter used as input
-        ,-[ file:///test0.st:22:18 ]
+        ,-[ file:///test0.st:22:23 ]
         |
      22 |             Give(o => 'ab');
-        |                  |
-        |                  `-- output parameter at index '0' cannot be used as input
+        |                       ^^|^
+        |                         `--- output parameter at index '0' cannot be used as input
         |
         | Help: bind it by name: o => <variable>
     ----'
@@ -754,11 +747,11 @@ fn a_literal_cannot_be_written_through(mut with_db: db::RootDatabase) {
         |                      `------ unexpected token(s): 'REF ( 'ab' )'
     ----'
     [E0001] Error: syntax error
-        ,-[ file:///test0.st:22:20 ]
+        ,-[ file:///test0.st:22:18 ]
         |
      22 |             Give(o => 'ab');
-        |                    ^^^|^^^
-        |                       `----- unexpected token(s): '=> 'ab''
+        |                  ^^|^
+        |                    `--- unexpected token(s): 'o =>'
     ----'
     "
     );
