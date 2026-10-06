@@ -344,11 +344,18 @@ pub const BUILTINS: &[(&str, &[Lane], &[Lane])] = &[
 /// name only says which kind of move the author meant.
 const PSEUDO: &[&str] = &["nop", "cast"];
 
+/// What an array's type says, read where it is known: in each copy of a
+/// FUNCTION taking an `ARRAY[*]`, the array it was called with. The number
+/// of its dimensions, and the lower or upper bound of one, numbered from 1,
+/// into an integer of any type.
+pub const ARRAY: &[&str] = &["array.dimensions", "array.lower_bound", "array.upper_bound"];
+
 /// Whether the emitter does something DEFINED with `name` as written.
 pub fn known(name: &str) -> bool {
     PSEUDO.contains(&name)
         || NATIVE.contains(&name)
         || RK_PSEUDO.contains(&name)
+        || ARRAY.contains(&name)
         || BUILTINS.iter().any(|(n, _, _)| *n == name)
 }
 
@@ -631,6 +638,49 @@ pub fn check_signature<'db>(
         }
         None => instruction.into(),
     };
+
+    // An array intrinsic reads the first operand's type, an array, and
+    // takes a dimension after it but for `array.dimensions`. The dimension
+    // and the result are integers of any type.
+    if ARRAY.contains(&name.as_str()) {
+        let dimension = name != "array.dimensions";
+        let is_integer = |ty: &Type<'db>| {
+            let ty = ty.normalize(db);
+            ty.is_signed_integer() || ty.is_unsigned_integer()
+        };
+        let fits = match params {
+            [(_, array), rest @ ..] => {
+                matches!(
+                    array.normalize(db),
+                    Type::Array(_) | Type::ArrayConformand(_)
+                ) && match (dimension, rest) {
+                    (true, [(_, dim)]) => is_integer(dim),
+                    (false, []) => true,
+                    _ => false,
+                }
+            }
+            [] => false,
+        } && result.as_ref().is_some_and(|(_, ty)| is_integer(ty));
+        if fits {
+            return None;
+        }
+        let given: Vec<String> = params
+            .iter()
+            .map(|(ident, ty)| format!("{}: {}", ident.text(db), ty.type_name(db)))
+            .collect();
+        let result = match &result {
+            Some((ident, ty)) => format!("{}: {}", ident.text(db), ty.type_name(db)),
+            None => "nothing".to_string(),
+        };
+        return mismatch(
+            &name,
+            match dimension {
+                true => "(an array, an integer) -> an integer".to_string(),
+                false => "(an array) -> an integer".to_string(),
+            },
+            format!("({}) -> {result}", given.join(", ")),
+        );
+    }
 
     // What the pragma gives.
     let mut actual_params: Vec<Lane> = Vec::new();

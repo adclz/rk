@@ -115,6 +115,9 @@ impl<'db> InitInference<'db> {
 
         self.check_input_defaults(db);
         self.check_constant_references(db);
+        // No initializer runs in a call: a member's runs at `__init`, a
+        // method local's in a call of its own.
+        crate::hir_ty::body::refuse_conformand_outside_body(db, false, &mut self.body_infer_result);
 
         for error in &self.init_expr_result.errors {
             self.errors.push(error.clone());
@@ -733,6 +736,9 @@ impl<'db> InitExprInferenceResult<'db> {
                     self.errors.push(err.to_diagnostic(db, self.scope.file(db)));
                 }
                 if let Some(err) = body_ctx.ref_subrange_mismatch(db, expected, *value) {
+                    self.errors.push(err.to_diagnostic(db, self.scope.file(db)));
+                }
+                if let Some(err) = body_ctx.ref_capacity_mismatch(db, expected, *value) {
                     self.errors.push(err.to_diagnostic(db, self.scope.file(db)));
                 }
 

@@ -640,6 +640,9 @@ pub enum ProgElementRefusal<'db> {
     AssociatedTwice { var: Ident },
     /// `fb WITH task` naming no task of the resource.
     UnknownTask { task: Ident },
+    /// `fb WITH task` on an instance with an `ARRAY[*]` VAR_IN_OUT, which
+    /// only a call binds.
+    UnboundConformand { var: Ident, param: Ident },
     /// A function block a task runs, which the program's body calls too.
     CalledByProgram {
         var: Ident,
@@ -1039,6 +1042,15 @@ impl<'db> ToIdeDiagnostic<'db> for ConfigError<'db> {
                         format!("no TASK is named '{}' in this resource", task.text(db)),
                         None,
                         Some("associate the function block with a TASK the resource declares"),
+                    ),
+                    ProgElementRefusal::UnboundConformand { var, param } => (
+                        format!(
+                            "no task binds the ARRAY[*] '{}' of '{}'",
+                            param.text(db),
+                            var.text(db)
+                        ),
+                        Some("an ARRAY[*] VAR_IN_OUT has the bounds of what a call binds to it"),
+                        Some("call the function block from the program's body"),
                     ),
                     ProgElementRefusal::CalledByProgram { var, program, .. } => (
                         format!(

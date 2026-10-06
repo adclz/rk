@@ -116,28 +116,6 @@ fn nested_array_negative_bound_is_valid(mut with_db: RootDatabase) {
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
 
-#[rstest]
-fn array_conformand_not_supported(mut with_db: RootDatabase) {
-    let source = r#"
-        FUNCTION fn1
-        VAR_INPUT
-            A: ARRAY [*] OF INT;
-        END_VAR
-
-        END_FUNCTION
-        "#;
-
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0509] Error: array conformands not supported
-       ,-[ file:///test0.st:4:14 ]
-       |
-     4 |             A: ARRAY [*] OF INT;
-       |              ^^^^^^^^^|^^^^^^^^
-       |                       `---------- array conformands (ARRAY[*]) are not supported
-    ---'
-    ");
-}
-
 /// A subscript is an ordinary expression — arithmetic, calls, nesting. These
 /// used to type as `Never` (the path walk never descended into them) and MIR
 /// refused to lower any compound subscript at all.

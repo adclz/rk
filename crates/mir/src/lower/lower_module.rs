@@ -208,7 +208,9 @@ fn lower_module_from_pous<'db>(
             super::mono_iface::IfaceTarget::Function(f) => {
                 iface_by_func.entry(f).or_default().push(inst);
             }
-            super::mono_iface::IfaceTarget::Method { owner, .. } => {
+            // A body's copies are emitted with the block's methods.
+            super::mono_iface::IfaceTarget::Method { owner, .. }
+            | super::mono_iface::IfaceTarget::Body { owner, .. } => {
                 iface_methods_by_owner.entry(owner).or_default().push(inst);
             }
         }
@@ -256,12 +258,13 @@ fn lower_module_from_pous<'db>(
                     continue;
                 }
 
-                // Phase B: a function with an interface param has no generic form; one
-                // copy per concrete instantiation (`drive$@Worker`).
+                // Phase B: a function with an interface or `ARRAY[*]` param has no
+                // generic form; one copy per concrete instantiation
+                // (`drive$@Worker`, `Sum$[0..9]`).
                 let has_iface_param = func
                     .variables(db)
                     .iter()
-                    .any(|v| super::mono_iface::is_interface_param(db, v));
+                    .any(|v| super::mono_iface::is_specialized_param(db, v));
                 if has_iface_param {
                     // Variadic as well: one copy per instance and argument
                     // count, `f$@Pump$2`, the instance's symbol with the
@@ -284,7 +287,7 @@ fn lower_module_from_pous<'db>(
                                 next_fn_idx,
                                 &mut memory_layout,
                                 string_pool.clone(),
-                                Some(&inst.iface_subs),
+                                Some(&inst.param_subs),
                                 // A specialization's body uses its own rewrites.
                                 &inst.call_rewrites,
                                 arity,

@@ -77,6 +77,14 @@ pub enum CallError<'db> {
     /// element). VAR_IN_OUT binds the callee to the caller's storage by
     /// reference, so a literal, arithmetic expression, or call result has no
     /// address to bind.
+    /// An `ARRAY[*]` VAR_INPUT bound to a value: the parameter is connected
+    /// to a variable, or a row of one, whose bounds it takes. A VAR_IN_OUT
+    /// one is E0806.
+    ConformandRequiresVariable {
+        func: CallableType<'db>,
+        var: VariableDecl<'db>,
+        expr: Expr<'db>,
+    },
     InOutParameterRequiresLValue {
         func: CallableType<'db>,
         var: VariableDecl<'db>,
@@ -168,6 +176,7 @@ impl<'db> ErrorCode for CallError<'db> {
             Self::UnknownOutputParameter { .. } => "E0804",
             Self::OutputParameterUsedAsInput { .. } => "E0805",
             Self::InOutParameterRequiresLValue { .. } => "E0806",
+            Self::ConformandRequiresVariable { .. } => "E0817",
             Self::InOutParameterBoundWithArrow { .. } => "E0807",
             Self::CallNonCallableType { .. } => "E0808",
             Self::AmbiguousOverload { .. } => "E0809",
@@ -296,6 +305,15 @@ impl<'db> ToIdeDiagnostic<'db> for CallError<'db> {
                             .to_string(),
                     );
                 }
+                if vars
+                    .iter()
+                    .any(|v| !v.is_in_out(db) && v.conformand(db).is_some())
+                {
+                    diag.with_note(
+                        "an ARRAY[*] parameter has the bounds of the array the call binds to it"
+                            .to_string(),
+                    );
+                }
 
                 for var in vars {
                     diag.with_related(Related::new(
@@ -364,6 +382,32 @@ impl<'db> ToIdeDiagnostic<'db> for CallError<'db> {
                     var.get_name_with_case(db).text(db)
                 ));
 
+                diag
+            }
+            Self::ConformandRequiresVariable { func, var, expr } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "ARRAY[*] parameter '{}' of '{}' requires a variable, not a value",
+                        var.name_with_case(db).text(db),
+                        func.get_name_with_case(db).text(db),
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &expr.get_span(db)).unwrap_or_default())
+                    .call();
+                diag.with_note(
+                    "an ARRAY[*] is bound to a variable, or a row of one, and takes its bounds"
+                        .to_string(),
+                );
+                diag.with_help("store the value in a variable, and pass the variable".to_string());
+                diag.with_related(Related::new(
+                    format!(
+                        "parameter '{}' is declared here",
+                        var.name_with_case(db).text(db)
+                    ),
+                    var.scope_id(db).file(db),
+                    var.get_name_span(db),
+                ));
                 diag
             }
             Self::InOutParameterRequiresLValue { func, var, expr } => {

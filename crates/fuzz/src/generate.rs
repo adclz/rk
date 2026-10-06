@@ -40,6 +40,13 @@
 //!   its index fixed when `REF()` was taken. A reference is set at the top
 //!   of the body, before any use; not in its declaration, where rk leaves a
 //!   PROGRAM variable NULL.
+//! - `ARRAY[*]` parameters of FUNCTIONs, METHODs and FUNCTION_BLOCK bodies,
+//!   bound to a program array, a two-dimensional one or one of its rows.
+//!   Each walks its array between the bounds `LOWER_BOUND` and
+//!   `UPPER_BOUND` read, forward or backward. It folds the elements, or
+//!   rewrites them with a running total. A VAR_INPUT walks its own copy.
+//!   The bound functions are the standard library's, written into the
+//!   program, which is one file.
 //!
 //! Nothing may stop the module: an integer divisor is a literal other than
 //! 0 and -1 (`DINT#-2147483648 / -1` traps), an index is wrapped into its
@@ -293,6 +300,8 @@ enum Stmt {
     CallThis(Place, usize, Vec<Expr>, bool),
     /// `r := REF(place)`.
     SetRef(usize, Place),
+    /// A walker called on an array.
+    Walk(WalkCall),
     If(Vec<(Expr, Vec<Stmt>)>, Option<Vec<Stmt>>),
     Case(Expr, Vec<(Vec<Label>, Vec<Stmt>)>, Option<Vec<Stmt>>),
     For(usize, i128, i128, i128, Vec<Stmt>),
@@ -428,6 +437,103 @@ struct Reference {
     target: Ty,
 }
 
+/// A program array of two dimensions. Only `ARRAY[*]` parameters reach
+/// it, whole or one row at a time.
+struct Matrix {
+    name: String,
+    ty: Ty,
+    /// Each dimension's lower bound.
+    lo: [i128; 2],
+    /// How many rows, and how many elements in a row.
+    len: [usize; 2],
+    /// Row by row.
+    init: Vec<Val>,
+}
+
+/// What a call binds to an `ARRAY[*]` parameter.
+#[derive(Clone, Copy, Debug)]
+enum Bound {
+    Array(usize),
+    Matrix(usize),
+    /// A row of a matrix: `mat0[2]`.
+    Row(usize, i128),
+}
+
+/// Where a walker's code is written.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Host {
+    /// A FUNCTION, whose result starts from its default at each call.
+    Function,
+    /// A FUNCTION_BLOCK's body, its `ARRAY[*]` a VAR_IN_OUT and its result
+    /// the output `acc`, kept between calls.
+    Block,
+    /// A CLASS's METHOD `run`, which returns the class variable `acc`,
+    /// kept between calls.
+    Method,
+}
+
+/// Code over an `ARRAY[*] OF T` parameter `a`, which visits every element
+/// between the bounds `LOWER_BOUND` and `UPPER_BOUND` read. It folds the
+/// elements into `acc`, or rewrites them with a running total that starts
+/// from its input `k` and counts them in `acc`.
+struct Walker {
+    name: String,
+    host: Host,
+    elem: Ty,
+    rank: usize,
+    /// A VAR_IN_OUT; a VAR_INPUT walks its own copy.
+    in_out: bool,
+    /// The field of a STRUCT element it reads and writes.
+    field: Option<usize>,
+    writes: bool,
+    /// From each upper bound down.
+    backward: bool,
+    /// With two dimensions, the second in the outer loop.
+    transposed: bool,
+    /// An earlier FUNCTION walker that `a` is passed on to first, whose
+    /// result `acc` starts from.
+    pass: Option<usize>,
+}
+
+impl Walker {
+    /// The type of what it reads and writes in each element.
+    fn view(&self, d: &Decls) -> Ty {
+        match (self.elem, self.field) {
+            (Ty::Struct(k), Some(f)) => d.structs[k][f].ty,
+            (t, _) => t,
+        }
+    }
+
+    /// The type of `acc`: what the walk folds, or a DINT count.
+    fn result(&self, d: &Decls) -> Ty {
+        match self.writes {
+            true => Ty::Dint,
+            false => self.view(d),
+        }
+    }
+}
+
+/// A program's instance of a FUNCTION_BLOCK or CLASS walker.
+struct WalkerInstance {
+    name: String,
+    walker: usize,
+}
+
+/// A walker called on an array: `target := walk0(a := arr0, k := 1)` for a
+/// FUNCTION, `w0(a := arr0)` for a block instance, `target :=
+/// w1.run(a := mat0[2])` for an object. It writes the array it is bound
+/// to, so it is a statement of its own.
+#[derive(Clone, Debug)]
+struct WalkCall {
+    target: Option<Place>,
+    walker: usize,
+    /// The block instance or object, for a walker that is not a FUNCTION.
+    instance: Option<usize>,
+    bound: Bound,
+    /// The argument for `k`, when the walker writes.
+    k: Option<Expr>,
+}
+
 /// A program's declarations, which the evaluator and the printer read.
 #[derive(Default)]
 struct Decls {
@@ -442,6 +548,9 @@ struct Decls {
     classes: Vec<Class>,
     objects: Vec<Object>,
     refs: Vec<Reference>,
+    matrices: Vec<Matrix>,
+    walkers: Vec<Walker>,
+    walker_instances: Vec<WalkerInstance>,
 }
 
 impl Decls {
@@ -579,13 +688,10 @@ impl Generator<'_> {
 
     fn default_of(&self, ty: Ty) -> Val {
         match ty {
-            Ty::Real => Val::F32(0.0),
-            Ty::Lreal => Val::F64(0.0),
-            Ty::Str(_) => Val::Str(Vec::new()),
             Ty::Struct(k) => {
                 Val::Struct(self.d.structs[k].iter().map(|f| f.init.clone()).collect())
             }
-            _ => Val::Int(0),
+            t => zero(t),
         }
     }
 
@@ -956,7 +1062,7 @@ impl Generator<'_> {
             }
             self.budget -= 1;
             let nested = |g: &mut Self| g.block(depth - 1, readable, free, in_loop, may_return);
-            let stmt = match self.choices.below(19) {
+            let stmt = match self.choices.below(21) {
                 0 | 1 if depth > 0 => {
                     let mut arms = Vec::new();
                     for _ in 0..1 + self.choices.below(3) {
@@ -1026,6 +1132,12 @@ impl Generator<'_> {
                 },
                 15 | 16 if self.in_program && !self.d.functions.is_empty() => {
                     match self.function_call(readable) {
+                        Some(call) => call,
+                        None => continue,
+                    }
+                }
+                19 | 20 if self.in_program && !self.d.walkers.is_empty() => {
+                    match self.walk_call(readable) {
                         Some(call) => call,
                         None => continue,
                     }
@@ -1212,6 +1324,115 @@ impl Generator<'_> {
             .map(|p| self.expr(p.ty, 2, readable))
             .collect();
         Some(Stmt::CallThis(target, i, args, via_super))
+    }
+
+    /// A walker over elements of a type some program array or matrix has,
+    /// so a call can bind one.
+    fn walker(&mut self, n: usize) -> Option<Walker> {
+        let mut shapes: Vec<(Ty, usize)> = self.d.arrays.iter().map(|a| (a.ty, 1)).collect();
+        for m in &self.d.matrices {
+            shapes.extend([(m.ty, 1), (m.ty, 2)]);
+        }
+        let (elem, rank) = *shapes.get(self.choices.below(shapes.len()))?;
+        let host = match self.choices.below(5) {
+            0 => Host::Block,
+            1 => Host::Method,
+            _ => Host::Function,
+        };
+        let field = match elem {
+            Ty::Struct(k) => Some(self.choices.below(self.d.structs[k].len())),
+            _ => None,
+        };
+        let mut walker = Walker {
+            name: format!("walk{n}"),
+            host,
+            elem,
+            rank,
+            in_out: host == Host::Block || self.choices.percent(50),
+            field,
+            writes: self.choices.percent(50),
+            backward: self.choices.percent(30),
+            transposed: rank == 2 && self.choices.percent(30),
+            pass: None,
+        };
+        // A FUNCTION walking the same elements the same way. A VAR_INPUT
+        // is passed on to a VAR_INPUT only.
+        let passes: Vec<usize> = (0..self.d.walkers.len())
+            .filter(|&j| {
+                let other = &self.d.walkers[j];
+                other.host == Host::Function
+                    && (other.elem, other.rank, other.field, other.writes)
+                        == (elem, rank, field, walker.writes)
+                    && (walker.in_out || !other.in_out)
+            })
+            .collect();
+        if !passes.is_empty() && self.choices.percent(50) {
+            walker.pass = Some(passes[self.choices.below(passes.len())]);
+        }
+        Some(walker)
+    }
+
+    /// A walker called on an array of its element type and rank, or on a
+    /// row of a matrix for one dimension.
+    fn walk_call(&mut self, readable: &[usize]) -> Option<Stmt> {
+        let w = self.choices.below(self.d.walkers.len());
+        let walker = &self.d.walkers[w];
+        let (elem, rank, host, writes) = (walker.elem, walker.rank, walker.host, walker.writes);
+        let (view, result) = (walker.view(&self.d), walker.result(&self.d));
+        let mut bounds: Vec<Bound> = Vec::new();
+        for (a, array) in self.d.arrays.iter().enumerate() {
+            if rank == 1 && array.ty == elem {
+                bounds.push(Bound::Array(a));
+            }
+        }
+        for (m, matrix) in self.d.matrices.iter().enumerate() {
+            match (matrix.ty == elem, rank) {
+                (false, _) => {}
+                (true, 2) => bounds.push(Bound::Matrix(m)),
+                (true, _) => bounds
+                    .extend((0..matrix.len[0]).map(|r| Bound::Row(m, matrix.lo[0] + r as i128))),
+            }
+        }
+        let bound = *bounds.get(self.choices.below(bounds.len()))?;
+        let instance = match host {
+            Host::Function => None,
+            _ => {
+                let held: Vec<usize> = (0..self.d.walker_instances.len())
+                    .filter(|&i| self.d.walker_instances[i].walker == w)
+                    .collect();
+                Some(held[self.choices.below(held.len())])
+            }
+        };
+        let target = match host {
+            Host::Block => None,
+            _ => Some(self.target(result)?),
+        };
+        let k = writes.then(|| self.expr(view, 2, readable));
+        Some(Stmt::Walk(WalkCall {
+            target,
+            walker: w,
+            instance,
+            bound,
+            k,
+        }))
+    }
+
+    /// Make sure a program variable can take a value of `ty` (a string of
+    /// any capacity, for a string), declaring one when none can.
+    fn holder(&mut self, ty: Ty) {
+        let present = self.vars.iter().any(|v| match (v.ty, ty) {
+            (Ty::Str(_), Ty::Str(_)) => true,
+            (a, b) => a == b,
+        });
+        if !present {
+            let init = self.literal(ty);
+            self.vars.push(Var {
+                name: format!("v{}", self.vars.len()),
+                ty,
+                init,
+                role: Role::Plain,
+            });
+        }
     }
 
     fn place_ty(&self, place: &Place) -> Ty {
@@ -1540,19 +1761,7 @@ pub fn program(bytes: &[u8]) -> String {
             )
             .collect();
     for ty in results {
-        let present = g.vars.iter().any(|v| match (v.ty, ty) {
-            (Ty::Str(_), Ty::Str(_)) => true,
-            (a, b) => a == b,
-        });
-        if !present {
-            let init = g.literal(ty);
-            g.vars.push(Var {
-                name: format!("v{}", g.vars.len()),
-                ty,
-                init,
-                role: Role::Plain,
-            });
-        }
+        g.holder(ty);
     }
     for k in 0..g.choices.below(3) {
         let ty = g.var_type(true);
@@ -1599,6 +1808,37 @@ pub fn program(bytes: &[u8]) -> String {
             name: format!("r{k}"),
             target,
         });
+    }
+    for k in 0..g.choices.below(3) {
+        let ty = g.var_type(true);
+        let lo = [0, 1].map(|_| g.choices.below(6) as i128 - 3);
+        let len = [1 + g.choices.below(3), 1 + g.choices.below(4)];
+        let init = (0..len[0] * len[1]).map(|_| g.literal(ty)).collect();
+        g.d.matrices.push(Matrix {
+            name: format!("mat{k}"),
+            ty,
+            lo,
+            len,
+            init,
+        });
+    }
+    for n in 0..g.choices.below(4) {
+        if let Some(walker) = g.walker(n) {
+            g.d.walkers.push(walker);
+        }
+    }
+    for w in 0..g.d.walkers.len() {
+        if g.d.walkers[w].host != Host::Function {
+            for _ in 0..1 + g.choices.below(2) {
+                g.d.walker_instances.push(WalkerInstance {
+                    name: format!("w{}", g.d.walker_instances.len()),
+                    walker: w,
+                });
+            }
+        }
+        if g.d.walkers[w].host != Host::Block {
+            g.holder(g.d.walkers[w].result(&g.d));
+        }
     }
     let readable: Vec<usize> = (0..g.vars.len()).collect();
     let counters: Vec<usize> = (0..2)
@@ -1655,6 +1895,13 @@ pub fn program(bytes: &[u8]) -> String {
             .collect(),
         refs: vec![Loc::Var(0); g.d.refs.len()],
         this: None,
+        matrices: g.d.matrices.iter().map(|m| m.init.clone()).collect(),
+        walkers: g
+            .d
+            .walker_instances
+            .iter()
+            .map(|i| zero(g.d.walkers[i.walker].result(&g.d)))
+            .collect(),
     };
     let tys: Vec<Ty> = g.vars.iter().map(|v| v.ty).collect();
     for _ in 0..SCANS {
@@ -1691,6 +1938,22 @@ fn write_program(vars: &[Var], d: &Decls, body: &[Stmt], state: &State) -> Strin
             let path = format!("Run.{}.{}", o.name, v.name);
             expect(&mut out, d, &path, v.ty, value);
         }
+    }
+    for (m, values) in d.matrices.iter().zip(&state.matrices) {
+        for (k, value) in values.iter().enumerate() {
+            let (row, column) = (k / m.len[1], k % m.len[1]);
+            let path = format!(
+                "Run.{}[{}, {}]",
+                m.name,
+                m.lo[0] + row as i128,
+                m.lo[1] + column as i128
+            );
+            expect(&mut out, d, &path, m.ty, value);
+        }
+    }
+    for (i, value) in d.walker_instances.iter().zip(&state.walkers) {
+        let ty = d.walkers[i.walker].result(d);
+        expect(&mut out, d, &format!("Run.{}.acc", i.name), ty, value);
     }
     out.push_str("*)\n\n");
 
@@ -1866,6 +2129,12 @@ fn write_program(vars: &[Var], d: &Decls, body: &[Stmt], state: &State) -> Strin
         }
         out.push_str("END_CLASS\n\n");
     }
+    if !d.walkers.is_empty() {
+        out.push_str(BOUNDS);
+    }
+    for w in &d.walkers {
+        write_walker(&mut out, d, w);
+    }
     out.push_str("PROGRAM P\nVAR\n");
     for v in vars {
         decl(&mut out, v, !matches!(v.ty, Ty::Struct(_)));
@@ -1899,12 +2168,207 @@ fn write_program(vars: &[Var], d: &Decls, body: &[Stmt], state: &State) -> Strin
     for r in &d.refs {
         let _ = writeln!(out, "    {} : REF_TO {};", r.name, r.target.name());
     }
+    for m in &d.matrices {
+        let ranges = format!(
+            "{}..{}, {}..{}",
+            m.lo[0],
+            m.lo[0] + m.len[0] as i128 - 1,
+            m.lo[1],
+            m.lo[1] + m.len[1] as i128 - 1
+        );
+        let _ = match m.ty {
+            Ty::Struct(_) => writeln!(out, "    {} : ARRAY[{ranges}] OF {};", m.name, m.ty.name()),
+            _ => {
+                let values: Vec<String> = m.init.iter().map(|v| literal(m.ty, v)).collect();
+                writeln!(
+                    out,
+                    "    {} : ARRAY[{ranges}] OF {} := [{}];",
+                    m.name,
+                    m.ty.name(),
+                    values.join(", ")
+                )
+            }
+        };
+    }
+    for i in &d.walker_instances {
+        let _ = writeln!(out, "    {} : {};", i.name, d.walkers[i.walker].name);
+    }
     out.push_str("END_VAR\n");
     names(vars).block(&mut out, body, 1);
     out.push_str(
         "END_PROGRAM\n\nCONFIGURATION C\n    RESOURCE R ON CPU\n        TASK T(INTERVAL := T#10ms, PRIORITY := 1);\n        PROGRAM Run WITH T : P;\n    END_RESOURCE\nEND_CONFIGURATION\n",
     );
     out
+}
+
+/// The bounds every walker reads, as the standard library's `Std.Arrays`
+/// declares them.
+const BOUNDS: &str = "\
+FUNCTION LOWER_BOUND : DINT
+VAR_INPUT
+    ARR : ARRAY[*];
+    DIM : DINT;
+END_VAR
+VAR
+    dimensions : DINT;
+END_VAR
+    {wasm 'array.dimensions' (params ARR) (result dimensions)}
+    IF DIM < 1 OR DIM > dimensions THEN
+        __RAISE('array dimension out of range');
+    END_IF;
+    {wasm 'array.lower_bound' (params ARR DIM) (result LOWER_BOUND)}
+END_FUNCTION
+
+FUNCTION UPPER_BOUND : DINT
+VAR_INPUT
+    ARR : ARRAY[*];
+    DIM : DINT;
+END_VAR
+VAR
+    dimensions : DINT;
+END_VAR
+    {wasm 'array.dimensions' (params ARR) (result dimensions)}
+    IF DIM < 1 OR DIM > dimensions THEN
+        __RAISE('array dimension out of range');
+    END_IF;
+    {wasm 'array.upper_bound' (params ARR DIM) (result UPPER_BOUND)}
+END_FUNCTION
+
+";
+
+/// A walker's declaration: `a`, `k` when it writes, its counters, then
+/// the walk over `acc`.
+fn write_walker(out: &mut String, d: &Decls, w: &Walker) {
+    let (view, result) = (w.view(d), w.result(d));
+    // A METHOD's sections sit one level in.
+    let pad = match w.host {
+        Host::Method => "    ",
+        _ => "",
+    };
+    let acc = match w.host {
+        Host::Function => w.name.as_str(),
+        _ => "acc",
+    };
+    let _ = match w.host {
+        Host::Function => writeln!(out, "FUNCTION {} : {}", w.name, result.name()),
+        Host::Block => writeln!(out, "FUNCTION_BLOCK {}", w.name),
+        Host::Method => writeln!(
+            out,
+            "CLASS {}\nVAR\n    acc : {};\nEND_VAR\n    METHOD run : {}",
+            w.name,
+            result.name(),
+            result.name()
+        ),
+    };
+    let section = |out: &mut String, name: &str, lines: &[String]| {
+        let _ = writeln!(out, "{pad}{name}");
+        for line in lines {
+            let _ = writeln!(out, "{pad}    {line}");
+        }
+        let _ = writeln!(out, "{pad}END_VAR");
+    };
+    let dims = vec!["*"; w.rank].join(", ");
+    let array = format!("a : ARRAY[{dims}] OF {};", w.elem.name());
+    section(
+        out,
+        if w.in_out { "VAR_IN_OUT" } else { "VAR_INPUT" },
+        &[array],
+    );
+    if w.writes {
+        section(out, "VAR_INPUT", &[format!("k : {};", view.name())]);
+    }
+    if w.host == Host::Block {
+        section(out, "VAR_OUTPUT", &[format!("acc : {};", result.name())]);
+    }
+    let mut locals = vec!["i : DINT;".to_string()];
+    if w.rank == 2 {
+        locals.push("j : DINT;".into());
+    }
+    if w.writes {
+        locals.push(format!("prev : {};", view.name()));
+        if let Ty::Str(_) = view {
+            locals.push(format!("t : {};", view.name()));
+        }
+    }
+    section(out, "VAR", &locals);
+
+    let mut level = format!("{pad}    ");
+    if let Some(j) = w.pass {
+        let callee = &d.walkers[j];
+        let k = if callee.writes { ", k := k" } else { "" };
+        let _ = writeln!(out, "{level}{acc} := {}(a := a{k});", callee.name);
+    }
+    if w.writes {
+        let _ = writeln!(out, "{level}prev := k;");
+    }
+    let loops: &[(&str, usize)] = match (w.rank, w.transposed) {
+        (1, _) => &[("i", 1)],
+        (_, false) => &[("i", 1), ("j", 2)],
+        (_, true) => &[("j", 2), ("i", 1)],
+    };
+    for (counter, dim) in loops {
+        let range = match w.backward {
+            false => format!("LOWER_BOUND(a, {dim}) TO UPPER_BOUND(a, {dim})"),
+            true => format!("UPPER_BOUND(a, {dim}) TO LOWER_BOUND(a, {dim}) BY -1"),
+        };
+        let _ = writeln!(out, "{level}FOR {counter} := {range} DO");
+        level.push_str("    ");
+    }
+    let element = match w.rank {
+        1 => "a[i]".to_string(),
+        _ => "a[i, j]".to_string(),
+    };
+    let v = match w.field {
+        Some(f) => format!("{element}.f{f}"),
+        None => element,
+    };
+    let count = format!("{acc} := {acc} + 1;");
+    let steps: Vec<String> = match (w.writes, view) {
+        (false, Ty::Bool) => vec![format!("{acc} := (NOT {acc}) OR {v};")],
+        (false, Ty::Str(_)) => vec![
+            format!("IF {v} > {acc} THEN"),
+            format!("    {acc} := {v};"),
+            "END_IF;".into(),
+        ],
+        (false, t) => {
+            let factor = match t {
+                Ty::Real => Val::F32(2.0),
+                Ty::Lreal => Val::F64(2.0),
+                _ => Val::Int(3),
+            };
+            vec![format!("{acc} := {acc} * {} + {v};", literal(t, &factor))]
+        }
+        (true, Ty::Bool) => vec![
+            format!("prev := prev XOR {v};"),
+            format!("{v} := prev;"),
+            count,
+        ],
+        (true, Ty::Str(_)) => vec![
+            format!("t := {v};"),
+            format!("{v} := prev;"),
+            "prev := t;".into(),
+            count,
+        ],
+        (true, _) => vec![
+            format!("prev := prev + {v};"),
+            format!("{v} := prev;"),
+            count,
+        ],
+    };
+    for step in steps {
+        let _ = writeln!(out, "{level}{step}");
+    }
+    for _ in loops {
+        level.truncate(level.len() - 4);
+        let _ = writeln!(out, "{level}END_FOR;");
+    }
+    match w.host {
+        Host::Function => out.push_str("END_FUNCTION\n\n"),
+        Host::Block => out.push_str("END_FUNCTION_BLOCK\n\n"),
+        Host::Method => {
+            let _ = writeln!(out, "{level}run := acc;\n    END_METHOD\nEND_CLASS\n");
+        }
+    }
 }
 
 /// One header line per scalar; a STRUCT writes one per field.
@@ -2040,6 +2504,14 @@ impl Names<'_> {
             .join(", ")
     }
 
+    fn bound(&self, bound: Bound) -> String {
+        match bound {
+            Bound::Array(a) => self.d.arrays[a].name.clone(),
+            Bound::Matrix(m) => self.d.matrices[m].name.clone(),
+            Bound::Row(m, row) => format!("{}[{row}]", self.d.matrices[m].name),
+        }
+    }
+
     fn block(&self, out: &mut String, block: &[Stmt], level: usize) {
         let pad = "    ".repeat(level);
         for stmt in block {
@@ -2124,6 +2596,26 @@ impl Names<'_> {
                         self.place(place)
                     );
                 }
+                Stmt::Walk(call) => {
+                    let walker = &self.d.walkers[call.walker];
+                    let mut args = format!("a := {}", self.bound(call.bound));
+                    if let Some(k) = &call.k {
+                        let _ = write!(args, ", k := {}", self.expr(k));
+                    }
+                    let callee = match call.instance {
+                        Some(i) => self.d.walker_instances[i].name.as_str(),
+                        None => walker.name.as_str(),
+                    };
+                    let _ = match (&call.target, walker.host) {
+                        (Some(target), Host::Method) => {
+                            writeln!(out, "{pad}{} := {callee}.run({args});", self.place(target))
+                        }
+                        (Some(target), _) => {
+                            writeln!(out, "{pad}{} := {callee}({args});", self.place(target))
+                        }
+                        (None, _) => writeln!(out, "{pad}{callee}({args});"),
+                    };
+                }
                 Stmt::If(arms, otherwise) => {
                     for (i, (cond, body)) in arms.iter().enumerate() {
                         let kw = if i == 0 { "IF" } else { "ELSIF" };
@@ -2191,6 +2683,10 @@ struct State {
     refs: Vec<Loc>,
     /// In a class method, the instance it runs on.
     this: Option<This>,
+    /// Each matrix's elements, row by row.
+    matrices: Vec<Vec<Val>>,
+    /// The `acc` of each walker instance.
+    walkers: Vec<Val>,
 }
 
 impl State {
@@ -2202,6 +2698,8 @@ impl State {
             objects: Vec::new(),
             refs: Vec::new(),
             this: None,
+            matrices: Vec::new(),
+            walkers: Vec::new(),
         }
     }
 }
@@ -2472,6 +2970,42 @@ fn run_block(block: &[Stmt], st: &mut State, tys: &[Ty], d: &Decls) -> Flow {
                 st.refs[*r] = loc_of(place, st, d);
                 Flow::Next
             }
+            Stmt::Walk(call) => {
+                let walker = &d.walkers[call.walker];
+                let k = call
+                    .k
+                    .as_ref()
+                    .map(|e| store(walker.view(d), eval(e, st, d)));
+                let acc = match call.instance {
+                    Some(i) => st.walkers[i].clone(),
+                    None => zero(walker.result(d)),
+                };
+                let (elems, dims) = match call.bound {
+                    Bound::Array(a) => {
+                        let len = d.arrays[a].init.len();
+                        (&mut st.arrays[a][..], vec![(d.arrays[a].lo, len)])
+                    }
+                    Bound::Matrix(m) => {
+                        let [rows, columns] = d.matrices[m].len;
+                        let [lo, lo2] = d.matrices[m].lo;
+                        (&mut st.matrices[m][..], vec![(lo, rows), (lo2, columns)])
+                    }
+                    Bound::Row(m, row) => {
+                        let columns = d.matrices[m].len[1];
+                        let start = (row - d.matrices[m].lo[0]) as usize * columns;
+                        let elems = &mut st.matrices[m][start..start + columns];
+                        (elems, vec![(d.matrices[m].lo[1], columns)])
+                    }
+                };
+                let acc = walk(d, call.walker, elems, &dims, k.as_ref(), acc);
+                if let Some(i) = call.instance {
+                    st.walkers[i] = acc.clone();
+                }
+                if let Some(target) = &call.target {
+                    write(target, acc, st, tys, d);
+                }
+                Flow::Next
+            }
             Stmt::If(arms, otherwise) => {
                 match arms.iter().find(|(cond, _)| eval(cond, st, d).truthy()) {
                     Some((_, body)) => run_block(body, st, tys, d),
@@ -2526,6 +3060,95 @@ fn run_block(block: &[Stmt], st: &mut State, tys: &[Ty], d: &Decls) -> Flow {
         }
     }
     Flow::Next
+}
+
+/// The default of a type that is not a STRUCT.
+fn zero(ty: Ty) -> Val {
+    match ty {
+        Ty::Real => Val::F32(0.0),
+        Ty::Lreal => Val::F64(0.0),
+        Ty::Str(_) => Val::Str(Vec::new()),
+        _ => Val::Int(0),
+    }
+}
+
+/// Run walker `w` over `elems`, the array its `a` is bound to, row by row.
+/// Dimension `n` starts at `dims[n].0` and holds `dims[n].1` elements. A
+/// VAR_INPUT walks its own copy. `acc` is the accumulator as the call
+/// finds it, and the result the one the walk leaves.
+fn walk(
+    d: &Decls,
+    w: usize,
+    elems: &mut [Val],
+    dims: &[(i128, usize)],
+    k: Option<&Val>,
+    mut acc: Val,
+) -> Val {
+    let walker = &d.walkers[w];
+    let mut copy;
+    let elems = match walker.in_out {
+        true => elems,
+        false => {
+            copy = elems.to_vec();
+            &mut copy[..]
+        }
+    };
+    if let Some(j) = walker.pass {
+        let callee = &d.walkers[j];
+        let k = k.filter(|_| callee.writes);
+        acc = walk(d, j, elems, dims, k, zero(callee.result(d)));
+    }
+    let view = walker.view(d);
+    let mut prev = k.cloned().unwrap_or(Val::Int(0));
+    for flat in order(walker, dims) {
+        let slot = match (walker.field, &mut elems[flat]) {
+            (Some(f), Val::Struct(fields)) => &mut fields[f],
+            (_, slot) => slot,
+        };
+        if !walker.writes {
+            acc = match (view, &acc, &*slot) {
+                (Ty::Bool, a, x) => Val::Int((!a.truthy() || x.truthy()) as i128),
+                (_, Val::Str(a), Val::Str(x)) => Val::Str(a.max(x).clone()),
+                (_, Val::F32(a), Val::F32(x)) => Val::F32(a * 2.0 + x),
+                (_, Val::F64(a), Val::F64(x)) => Val::F64(a * 2.0 + x),
+                (t, a, x) => Val::Int(t.wrap(a.int() * 3 + x.int())),
+            };
+            continue;
+        }
+        // The running total, which the element takes; a string moves one
+        // place on instead, the first taking `k`.
+        let (next, written) = match (view, &prev, &*slot) {
+            (Ty::Bool, p, x) => {
+                let v = Val::Int((p.truthy() ^ x.truthy()) as i128);
+                (v.clone(), v)
+            }
+            (Ty::Str(_), p, x) => (x.clone(), p.clone()),
+            (_, Val::F32(p), Val::F32(x)) => (Val::F32(p + x), Val::F32(p + x)),
+            (_, Val::F64(p), Val::F64(x)) => (Val::F64(p + x), Val::F64(p + x)),
+            (t, p, x) => {
+                let v = Val::Int(t.wrap(p.int() + x.int()));
+                (v.clone(), v)
+            }
+        };
+        *slot = written;
+        prev = next;
+        acc = Val::Int(Ty::Dint.wrap(acc.int() + 1));
+    }
+    acc
+}
+
+/// The elements a walker visits, in order, as indexes row by row.
+fn order(w: &Walker, dims: &[(i128, usize)]) -> Vec<usize> {
+    let mut out: Vec<usize> = match (dims, w.transposed) {
+        ([(_, rows), (_, columns)], true) => (0..*columns)
+            .flat_map(|j| (0..*rows).map(move |i| i * columns + j))
+            .collect(),
+        _ => (0..dims.iter().map(|(_, n)| n).product::<usize>()).collect(),
+    };
+    if w.backward {
+        out.reverse();
+    }
+    out
 }
 
 /// An expression's value. Every integer operation wraps, not only the
@@ -2689,6 +3312,40 @@ mod tests {
             }
         }
         assert!(checked >= 3, "only {checked} seeds declared a pack");
+    }
+
+    /// Programs from a spread of seeds, kept when the program calls a
+    /// walker: the module walks its arrays as the evaluator does.
+    #[test]
+    fn walkers_compute_their_walks() {
+        let mut seed = 0x9E37_79B9_7F4A_7C15u64;
+        let mut checked = 0;
+        for _ in 0..400 {
+            let bytes: Vec<u8> = (0..1024)
+                .map(|_| {
+                    seed ^= seed << 13;
+                    seed ^= seed >> 7;
+                    seed ^= seed << 17;
+                    (seed >> 24) as u8
+                })
+                .collect();
+            let text = program(&bytes);
+            let calls = text
+                .split("\nPROGRAM P")
+                .nth(1)
+                .is_some_and(|body| body.contains("(a := "));
+            if !calls {
+                continue;
+            }
+            if let Err(finding) = crate::check_generated(&text) {
+                panic!("{finding}\n--- the program ---\n{text}");
+            }
+            checked += 1;
+            if checked == 4 {
+                break;
+            }
+        }
+        assert!(checked >= 3, "only {checked} seeds called a walker");
     }
 
     #[test]

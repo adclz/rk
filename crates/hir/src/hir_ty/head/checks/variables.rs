@@ -20,6 +20,7 @@ use crate::{
         e01_duplicates::DuplicateError,
         e02_resolve::ResolveError,
         e03_type::{InferLiteralError, TypeError},
+        e05_array::ArrayError,
     },
     hir_def::{
         expressions::{
@@ -246,6 +247,56 @@ impl<'db> InitInference<'db> {
         }
     }
 
+    /// An `ARRAY[*]` takes its bounds from each call: a parameter of a
+    /// FUNCTION or a METHOD, or a VAR_IN_OUT of a FUNCTION_BLOCK, which every
+    /// call binds (E0509). Anywhere else it would be storage of no size. One
+    /// of any type is only what a FUNCTION is given, its VAR_INPUT or its
+    /// VAR_IN_OUT: no code can write its elements.
+    fn check_conformand(
+        &mut self,
+        db: &'db dyn WorkspaceDataBase,
+        var: &VariableDecl<'db>,
+        scope_kind: ScopeKind<'db>,
+    ) {
+        use crate::hir_def::pous::variable::VariableKind;
+        let Some(conformand) = var.conformand(db) else {
+            return;
+        };
+        let any_type = conformand.of_type(db).is_none();
+        let function = matches!(scope_kind, ScopeKind::Pou(Pou::Function(_)));
+        let method = matches!(
+            scope_kind,
+            ScopeKind::MethodDecl(_) | ScopeKind::MethodProt(_)
+        );
+        let block = matches!(scope_kind, ScopeKind::Pou(Pou::FunctionBlock(_)));
+        let place = match var.kind(db) {
+            VariableKind::Input | VariableKind::InOut if any_type && function => return,
+            VariableKind::Output if any_type && function => "a VAR_OUTPUT",
+            _ if any_type && method => "a parameter of a METHOD",
+            VariableKind::InOut if any_type && block => "a VAR_IN_OUT of a FUNCTION_BLOCK",
+            VariableKind::Input | VariableKind::Output | VariableKind::InOut
+                if function || method =>
+            {
+                return;
+            }
+            VariableKind::InOut if block => return,
+            VariableKind::Input if block => "a VAR_INPUT of a FUNCTION_BLOCK",
+            VariableKind::Output if block => "a VAR_OUTPUT of a FUNCTION_BLOCK",
+            VariableKind::Input => "a VAR_INPUT of a PROGRAM",
+            VariableKind::Output => "a VAR_OUTPUT of a PROGRAM",
+            VariableKind::InOut => "a VAR_IN_OUT of a PROGRAM",
+            _ => "a VAR_EXTERNAL",
+        };
+        self.errors.push(
+            ArrayError::ConformandNotAllowed {
+                spec: var.spec(db),
+                place,
+                any_type,
+            }
+            .to_diagnostic(db, self.scope.file(db)),
+        );
+    }
+
     pub(crate) fn check_variables(&mut self, db: &'db dyn WorkspaceDataBase) {
         let variables = match self.scope.variables(db) {
             Some(vars) => vars,
@@ -365,6 +416,16 @@ impl<'db> InitInference<'db> {
                 );
             }
             self.check_edge(db, var, stateless_pou);
+            self.check_conformand(db, var, scope_kind);
+            if let ScopeKind::Pou(Pou::Function(f)) = scope_kind
+                && f.is_test(db)
+                && var.conformand(db).is_some()
+            {
+                self.errors.push(
+                    PragmaError::TestWithConformand { var: *var }
+                        .to_diagnostic(db, self.scope.file(db)),
+                );
+            }
             // An instance changes when it runs: its body and its methods
             // write its variables. Declared CONSTANT, it changed anyway. Its
             // VAR_EXTERNAL is the global's, refused where that is declared.
@@ -389,8 +450,10 @@ impl<'db> InitInference<'db> {
             // the two declarations must agree about the TYPE, any type
             // (E0207). Cycle-safe here where a named global type resolves
             // freely; inside signature inference the same resolution
-            // re-enters `infer_signature`. Absence is E0206, the signature's.
+            // re-enters `infer_signature`. Absence is E0206, the signature's,
+            // and an `ARRAY[*]` one is E0509.
             if var.kind(db) == crate::hir_def::pous::variable::VariableKind::External
+                && var.conformand(db).is_none()
                 && let Some(global) =
                     crate::hir_ty::index_graphs::external_var_lookup(db, var.get_name_ident(db))
             {
@@ -597,6 +660,9 @@ impl<'db> InitInference<'db> {
                 use crate::hir_def::pous::variable::VariableKind;
                 let forbidden = match var.kind(db) {
                     VariableKind::InOut => Some(ExternForbiddenKind::InOut),
+                    VariableKind::Input if var.conformand(db).is_some() => {
+                        Some(ExternForbiddenKind::Conformand)
+                    }
                     VariableKind::Output if !extern_scalar(db, var.spec(db).infer(db)) => {
                         Some(ExternForbiddenKind::AggregateOutput)
                     }
@@ -911,6 +977,10 @@ pub(crate) fn innermost_element<'db>(
     for _ in 0..16 {
         match through_aliases(db, spec).kind(db) {
             SpecKind::Array(array) => spec = array.of_type(db),
+            SpecKind::ArrayConformand(conformand) => match conformand.of_type(db) {
+                Some(of_type) => spec = of_type,
+                None => break,
+            },
             _ => break,
         }
     }
@@ -1059,6 +1129,12 @@ impl<'db> InitInference<'db> {
             ExportForbiddenKind::InterfaceParam
         } else if func.variables(db).iter().any(|v| v.variadic(db)) {
             ExportForbiddenKind::Variadic
+        } else if func
+            .variables(db)
+            .iter()
+            .any(|v| v.conformand(db).is_some())
+        {
+            ExportForbiddenKind::Conformand
         } else if crate::hir_ty::resolver::name::overload_discriminant(db, func).is_some() {
             ExportForbiddenKind::Overloaded
         } else if reserved {

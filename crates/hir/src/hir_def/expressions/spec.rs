@@ -36,7 +36,7 @@ pub enum SpecKind<'db> {
     // Composite types
     Struct(Struct<'db>),
     Array(Array<'db>),
-    ArrayConformand(Spec<'db>),
+    ArrayConformand(ArrayConformand<'db>),
     Subrange(SubRange<'db>),
     Enum(Enum<'db>),
 
@@ -171,6 +171,15 @@ pub struct Array<'db> {
     // lower - upper bounds
     pub subranges: Vec<(Expr<'db>, Expr<'db>)>,
     pub of_type: Spec<'db>,
+}
+
+/// `ARRAY[*, *] OF T`: a parameter whose bounds each call gives, one `*` per
+/// dimension. With no `OF`, `ARRAY[*]` is an array of any type and any
+/// number of dimensions: `of_type` is `None`, and so is `rank`'s meaning.
+#[salsa::tracked(debug)]
+pub struct ArrayConformand<'db> {
+    pub rank: usize,
+    pub of_type: Option<Spec<'db>>,
 }
 
 #[salsa::tracked(debug)]

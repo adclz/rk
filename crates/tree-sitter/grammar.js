@@ -1075,8 +1075,26 @@ module.exports = grammar({
 
     variable_list: ($) => commaSep1($.identifier),
 
+    // One `*` per dimension, whose bounds each call gives. With no `OF`, a
+    // single `*` is an array of any type and any number of dimensions.
     array_conformand: ($) =>
-      seq(":", kw("ARRAY"), "[", commaSep1("*"), "]", kw("OF"), $.data_type_access),
+      seq(
+        ":",
+        kw("ARRAY"),
+        "[",
+        choice(
+          seq(
+            commaSep1(field("dimensions", $.conformand_dimension)),
+            "]",
+            kw("OF"),
+            field("type", $.data_type_access),
+          ),
+          // any
+          seq(field("dimensions", $.conformand_dimension), "]"),
+        ),
+      ),
+
+    conformand_dimension: (_) => "*",
 
     output_decls: ($) =>
       prec.right(

@@ -60,7 +60,8 @@ A subscript is an integer.
 A `BOOL`, a `REAL` or a `STRING` cannot index an array (`E0504`).
 
 `grid[2, 3]` and `grid[2][3]` are the same element.
-`grid[2]` alone names a part of `grid`, and is refused (`E0510`).
+`grid[2]` alone names a row of `grid`.
+Only an `ARRAY[*]` argument takes one, as below: anywhere else it is refused (`E0510`).
 
 An array of an array type has rows: each element is a whole array, and a second subscript indexes it.
 
@@ -95,3 +96,59 @@ See [Bundled Traps](bundled-traps.md).
 
 Assigning an array copies every element.
 An array assigns to another with the same bounds and element type, whether it is declared through a `TYPE` or written in place.
+
+## Arrays of any bounds
+
+A parameter declared `ARRAY[*] OF T` takes an array of `T` of any bounds.
+Each call gives the bounds of the array it passes.
+`LOWER_BOUND` and `UPPER_BOUND`, from `Std.Arrays`, read them.
+
+```iecst
+USING Std.Arrays;
+
+FUNCTION Sum : DINT
+VAR_IN_OUT
+    values : ARRAY[*] OF INT;
+END_VAR
+VAR
+    i : DINT;
+END_VAR
+    FOR i := LOWER_BOUND(values, 1) TO UPPER_BOUND(values, 1) DO
+        Sum := Sum + values[i];
+    END_FOR;
+END_FUNCTION
+
+FUNCTION Demo : DINT
+VAR
+    a : ARRAY[0..2] OF INT := [1, 2, 3];
+    m : ARRAY[1..20, -2..2] OF INT := [20(5(1))];
+END_VAR
+    Demo := Sum(a) + Sum(m[2]);   // 6 + 5: m[2] is a row of m
+END_FUNCTION
+```
+
+- **Each `*`** is one dimension: `ARRAY[*, *] OF REAL` takes arrays of two dimensions.
+- **A FUNCTION or a METHOD** declares one as a VAR_INPUT, VAR_OUTPUT or VAR_IN_OUT, a FUNCTION_BLOCK as a VAR_IN_OUT (`E0509`).
+- **A call** binds a variable holding an array of the same element type and as many dimensions, or a row of one, every time (`E0802`, `E0817`).
+- **`LOWER_BOUND(a, 1)`** is the lower bound of the first dimension. A dimension the array does not have raises `array dimension out of range`.
+
+A FUNCTION_BLOCK reads its `ARRAY[*]` VAR_IN_OUT in its body, where the call bound it (`E0513`).
+An `ARRAY[*]` is not copied as a whole: it is read and written element by element.
+
+### Of any type
+
+Written with no `OF`, `ARRAY[*]` takes an array of any type and any number of dimensions.
+It is a VAR_INPUT or a VAR_IN_OUT of a FUNCTION.
+It is passed on, or has its bounds read, but never indexed (`E0511`).
+`LOWER_BOUND` and `UPPER_BOUND` take one: that is how they read any array.
+
+```iecst
+USING Std.Arrays;
+
+FUNCTION Cells : DINT
+VAR_INPUT
+    a : ARRAY[*];
+END_VAR
+    Cells := (UPPER_BOUND(a, 1) - LOWER_BOUND(a, 1) + 1) * (UPPER_BOUND(a, 2) - LOWER_BOUND(a, 2) + 1);
+END_FUNCTION
+```

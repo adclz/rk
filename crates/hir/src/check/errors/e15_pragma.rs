@@ -26,6 +26,9 @@ pub enum ExternForbiddenKind {
     InOut,
     /// A struct/array/STRING `VAR_OUTPUT` has no WASM result type to ride.
     AggregateOutput,
+    /// An `ARRAY[*]` `VAR_INPUT` has the size of each call's array, and an
+    /// import's copies have one size.
+    Conformand,
 }
 
 impl ExternForbiddenKind {
@@ -33,6 +36,7 @@ impl ExternForbiddenKind {
         match self {
             Self::InOut => "VAR_IN_OUT",
             Self::AggregateOutput => "VAR_OUTPUT",
+            Self::Conformand => "VAR_INPUT",
         }
     }
 
@@ -40,6 +44,9 @@ impl ExternForbiddenKind {
         match self {
             Self::InOut => "cannot cross a WASM import: an extern takes copies, not references",
             Self::AggregateOutput => "cannot be a WASM result: only scalar outputs cross an import",
+            Self::Conformand => {
+                "cannot cross a WASM import: an ARRAY[*] has the size of each call's array"
+            }
         }
     }
 
@@ -50,6 +57,7 @@ impl ExternForbiddenKind {
                  VAR_OUTPUT results (the return value last)"
             }
             Self::AggregateOutput => "return scalars, or split the aggregate into scalar outputs",
+            Self::Conformand => "an extern FUNCTION receives VAR_INPUT copies of a fixed size",
         }
     }
 }
@@ -67,6 +75,8 @@ pub enum ExportForbiddenKind {
     InterfaceParam,
     /// One copy per arity it is called with (`sum_all$3`).
     Variadic,
+    /// One copy per array type it is called with (`Sum$[0..9]`).
+    Conformand,
     /// The symbol carries the signature (`SHL$BYTE`), and a host finds an
     /// export by its name.
     Overloaded,
@@ -84,6 +94,7 @@ impl ExportForbiddenKind {
             Self::Test => "is a {test} FUNCTION",
             Self::InterfaceParam => "takes an interface",
             Self::Variadic => "is variadic",
+            Self::Conformand => "takes an ARRAY[*]",
             Self::Overloaded => "is overloaded",
             Self::Reserved => "has the name of an export the module makes",
         }
@@ -100,6 +111,9 @@ impl ExportForbiddenKind {
             }
             Self::Variadic => {
                 "it is compiled once per number of arguments it is called with, so there is no single function to export"
+            }
+            Self::Conformand => {
+                "it is compiled once per array type it is called with, so there is no single function to export"
             }
             Self::Overloaded => {
                 "the module finds an export by its name, which several FUNCTIONs share"
@@ -139,6 +153,9 @@ pub enum PragmaError<'db> {
         anchor: SpanIdent<'db>,
         pou_kind: &'static str,
     },
+    /// A `{test}` FUNCTION taking an `ARRAY[*]`: the runner calls a test with
+    /// no arguments, and an `ARRAY[*]` takes its bounds from the call.
+    TestWithConformand { var: VariableDecl<'db> },
     /// `{export}` on something other than a FUNCTION. A PROGRAM is already
     /// exported for the schedule; an FB, a CLASS or a METHOD needs an
     /// instance the host does not have.
@@ -211,6 +228,7 @@ impl<'db> ErrorCode for PragmaError<'db> {
             Self::ExportOutsideFunction { .. } => "E1508",
             Self::ExportForbidden { .. } => "E1509",
             Self::UnknownPragma { .. } => "E1510",
+            Self::TestWithConformand { .. } => "E1511",
         }
     }
 }
@@ -278,6 +296,23 @@ impl<'db> ToIdeDiagnostic<'db> for PragmaError<'db> {
                 .desc(self)
                 .range(crate::denormalize(db, file, &anchor.get_span(db)).unwrap_or_default())
                 .call(),
+            Self::TestWithConformand { var } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "the {{test}} FUNCTION cannot take the ARRAY[*] '{}'",
+                        var.name_with_case(db).text(db)
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &var.get_name_span(db)).unwrap_or_default())
+                    .call();
+                diag.with_note(
+                    "the runner calls a test with no arguments, and an ARRAY[*] takes its bounds from the call"
+                        .to_string(),
+                );
+                diag.with_help("call a FUNCTION taking the ARRAY[*] from the test".to_string());
+                diag
+            }
             Self::ExportOutsideFunction { anchor, pou_kind } => {
                 let mut diag = diag()
                     .message(format!(

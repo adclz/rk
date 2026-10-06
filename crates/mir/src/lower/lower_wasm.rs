@@ -30,6 +30,20 @@ pub(crate) fn lower_wasm_pragma<'db>(
         _ => None,
     };
 
+    let operand_var = |ident: Ident| {
+        let def_map = scope.def_map(db);
+        def_map
+            .local_variables
+            .get(&ident)
+            .or_else(|| def_map.global_variables.get(&ident))
+            .copied()
+            .ok_or_else(|| {
+                LowerTypeError::UnsupportedType(format!(
+                    "'{}' is not an operand of this FUNCTION",
+                    ident.text(db)
+                ))
+            })
+    };
     // An operand is resolved to the ident it was DECLARED under: the MIR
     // locals are keyed by that spelling, and the pragma may use another case.
     let operand = |ident: Ident| -> Result<(Ident, MirType), LowerTypeError> {
@@ -48,20 +62,17 @@ pub(crate) fn lower_wasm_pragma<'db>(
                 })?;
             return Ok((f.name(db), ty));
         }
-        let def_map = scope.def_map(db);
-        let key = ident;
-        let var = def_map
-            .local_variables
-            .get(&key)
-            .or_else(|| def_map.global_variables.get(&key))
-            .ok_or_else(|| {
-                LowerTypeError::UnsupportedType(format!(
-                    "'{}' is not an operand of this FUNCTION",
-                    ident.text(db)
-                ))
-            })?;
-        Ok((var.name(db), lower_var_type(db, *var)?))
+        let var = operand_var(ident)?;
+        // An `ARRAY[*]` is the array this copy is specialized for.
+        let ty = match ctx.shape_of(hir::hir_ty::ty::Type::new_var(db, var)) {
+            Some(shape) => shape,
+            None => lower_var_type(db, var)?,
+        };
+        Ok((var.name(db), ty))
     };
+    if hir::check::wasm_instructions::ARRAY.contains(&decl.instruction.as_str()) {
+        return lower_array_intrinsic(ctx, decl, &operand).map(Some);
+    }
     let elem_of = |ty: &MirType| match ty {
         MirType::Elementary(e) => Some(*e),
         _ => None,
@@ -140,6 +151,97 @@ pub(crate) fn lower_wasm_pragma<'db>(
         params,
         result,
     }))
+}
+
+/// `array.dimensions`, `array.lower_bound` or `array.upper_bound`: what the
+/// array's type says, read in this copy of the FUNCTION, a constant. A bound
+/// is one per dimension, which the `DIM` operand picks. One outside them
+/// leaves the result as it was: the library's FUNCTIONs check `DIM` first. A
+/// value the result's integer type cannot hold raises, as a store into a
+/// subrange does.
+fn lower_array_intrinsic<'db>(
+    ctx: &ExprLowerCtx<'db>,
+    decl: &WasmDecl<'db>,
+    operand: &dyn Fn(Ident) -> Result<(Ident, MirType), LowerTypeError>,
+) -> Result<MirStmt, LowerTypeError> {
+    use crate::expr::{MirBinOp, MirConstant};
+    let db = ctx.db;
+    let checked = || {
+        LowerTypeError::UnsupportedType(format!(
+            "`{}` was refused by the check, and still lowered",
+            decl.instruction
+        ))
+    };
+    let integer = |(name, ty): (Ident, MirType)| match ty {
+        MirType::Elementary(lane) if lane.is_integer() => Ok((name, lane)),
+        _ => Err(checked()),
+    };
+    let constant = |lane: MirElementary, value: i64| match lane.is_64bit() {
+        true => MirConstant::I64(value),
+        false => MirConstant::I32(value as i32),
+    };
+    let array = match decl.params.first().map(|p| operand(p.ident(db))) {
+        Some(Ok((_, MirType::Array(array)))) => array,
+        Some(Err(err)) => return Err(err),
+        _ => return Err(checked()),
+    };
+    let (result, lane) = integer(operand(
+        decl.result.as_ref().ok_or_else(checked)?.ident(db),
+    )?)?;
+    let store = |value: i64| match holds(lane, value) {
+        true => MirStmt::Assign {
+            target: MirPlace::Local(result),
+            value: MirExpr::Constant(constant(lane, value)),
+        },
+        false => {
+            let (id, len) = ctx
+                .string_pool
+                .borrow_mut()
+                .intern(b"array bound out of range of the result");
+            MirStmt::Raise {
+                message: MirExpr::StringLiteral { id, len },
+            }
+        }
+    };
+    if decl.instruction == "array.dimensions" {
+        return Ok(store(array.dimensions.len() as i64));
+    }
+    let upper = decl.instruction == "array.upper_bound";
+    let (dim, dim_lane) = integer(operand(decl.params.get(1).ok_or_else(checked)?.ident(db))?)?;
+    let mut arms = array
+        .dimensions
+        .iter()
+        .enumerate()
+        .map(|(i, (lower, bound))| {
+            let condition = MirExpr::BinOp {
+                op: MirBinOp::Eq,
+                lhs: Box::new(MirExpr::Load(
+                    MirPlace::Local(dim),
+                    MirType::Elementary(dim_lane),
+                )),
+                rhs: Box::new(MirExpr::Constant(constant(dim_lane, i as i64 + 1))),
+                ty: dim_lane,
+            };
+            (condition, vec![store(if upper { *bound } else { *lower })])
+        });
+    let (condition, then_body) = arms.next().ok_or_else(checked)?;
+    Ok(MirStmt::If {
+        condition,
+        then_body,
+        else_ifs: arms.collect(),
+        else_body: None,
+    })
+}
+
+/// Whether an integer of type `lane` holds `value`.
+fn holds(lane: MirElementary, value: i64) -> bool {
+    let bits = lane.rk_bits();
+    match (lane.is_signed(), bits >= 64) {
+        (true, true) => true,
+        (true, false) => (-(1i64 << (bits - 1))..1i64 << (bits - 1)).contains(&value),
+        (false, true) => value >= 0,
+        (false, false) => (0..1i64 << bits).contains(&value),
+    }
 }
 
 /// The wasm lane of a MIR scalar.

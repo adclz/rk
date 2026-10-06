@@ -15,6 +15,7 @@ stdlib/                             one file per namespace
 ├─ Std.Bistable                     SR, RS
 ├─ Std.Bits                         SHL, SHR, ROL, ROR
 ├─ Std.Memory                       MOVE
+├─ Std.Arrays                       LOWER_BOUND, UPPER_BOUND
 └─ Std.Unit                         ASSERT, ASSERT_EQ, ASSERT_NEQ
 ```
 

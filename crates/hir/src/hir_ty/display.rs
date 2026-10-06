@@ -193,10 +193,14 @@ impl<'db> Type<'db> {
                         .collect();
                 format!("ARRAY [{}] OF {}", dimensions.join(", "), elem_type)
             }
-            Self::ArrayConformand(spec) => {
-                let elem_type = spec.infer(db).type_name(db);
-                format!("ARRAY [*] OF {}", elem_type)
-            }
+            Self::ArrayConformand(conformand) => match conformand.of_type(db) {
+                Some(of_type) => {
+                    let elem_type = of_type.infer(db).type_name(db);
+                    let stars = vec!["*"; conformand.rank(db)].join(", ");
+                    format!("ARRAY [{stars}] OF {elem_type}")
+                }
+                None => "ARRAY [*]".to_string(),
+            },
             Self::SubRange(subrange) => {
                 let base_type = subrange._type(db).infer(db).type_name(db);
                 let (lower, upper) =

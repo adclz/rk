@@ -370,9 +370,14 @@ fn check_signature<'db>(
     // list let `METHOD M : INT` be implemented as `M : REAL` — invalid wasm
     // at exit 0 through the monomorphized call, and silently wrong values
     // for a same-lane divergence like INT vs DINT.
+    // By structure: two array types declared apart are two salsa values.
     let ret1 = m1.return_type(db).map(|s| s.infer(db).normalize(db));
     let ret2 = m2.return_type(db).map(|s| s.infer(db).normalize(db));
-    if ret1 != ret2 {
+    let same_return = match (ret1, ret2) {
+        (Some(ret1), Some(ret2)) => crate::hir_ty::infer::coerce::same_type(db, ret1, ret2),
+        (ret1, ret2) => ret1 == ret2,
+    };
+    if !same_return {
         errors.push(
             OopError::SignatureReturnMismatch {
                 expected: ret1,
@@ -416,7 +421,11 @@ fn check_signature<'db>(
             );
             continue;
         }
-        if !var1_typ.normalize(db).eq(&var2_typ.normalize(db)) {
+        if !crate::hir_ty::infer::coerce::same_type(
+            db,
+            var1_typ.normalize(db),
+            var2_typ.normalize(db),
+        ) {
             errors.push(
                 OopError::SignatureTypeMismatch {
                     expected: var1_typ,

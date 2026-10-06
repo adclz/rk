@@ -12,8 +12,9 @@
 //!   overloaded, one `$<type>` per `VAR_INPUT`/`VAR_IN_OUT`, then `$:<type>`
 //!   for the return of a RETURN-directed set (`F$INT$:REAL`, which
 //!   `F(INT, REAL)` cannot spell);
-//! - its specializations: `$@<implementer>` per interface parameter, by
-//!   parameter name, and `$<count>` per variadic arity;
+//! - its specializations: `$@<implementer>` per interface parameter and
+//!   `$[<bounds>]` per `ARRAY[*]` one, by parameter name, and `$<count>` per
+//!   variadic arity;
 //! - a METHOD: `<owner>#<name>`, specialized the same way. The owner is the
 //!   instance type the body is emitted for: an inherited method is emitted
 //!   on each inheritor, so `THIS` inside it is that inheritor. A base's
@@ -139,6 +140,26 @@ pub fn implementer_fragment(db: &dyn WorkspaceDataBase, implementer: Ident) -> S
     format!("@{}", implementer.text(db))
 }
 
+/// The fragment for an `ARRAY[*]` specialization's array type: its bounds in
+/// brackets, and an element STRING's capacity, the two that tell the arrays
+/// one parameter takes apart (`[0..9]`, `[1..3,1..3]`, `[0..3]STRING[10]`).
+pub fn shape_fragment(shape: &crate::types::MirType) -> String {
+    let crate::types::MirType::Array(array) = shape else {
+        return String::new();
+    };
+    let bounds: Vec<String> = array
+        .dimensions
+        .iter()
+        .map(|(lower, upper)| format!("{lower}..{upper}"))
+        .collect();
+    match array.element_type.as_ref() {
+        crate::types::MirType::String { capacity } => {
+            format!("[{}]STRING[{capacity}]", bounds.join(","))
+        }
+        _ => format!("[{}]", bounds.join(",")),
+    }
+}
+
 /// A type as a symbol fragment. Distinct types give distinct fragments,
 /// except two unnamed types of the same structure, which resolution cannot
 /// tell apart either.
@@ -157,7 +178,13 @@ fn type_fragment<'db>(db: &'db dyn WorkspaceDataBase, ty: Type<'db>) -> String {
             let of = type_fragment(db, array.of_type(db).infer(db));
             format!("ARRAY[{}]({of})", dims.join(","))
         }
-        Type::ArrayConformand(of) => format!("ARRAY[*]({})", type_fragment(db, of.infer(db))),
+        Type::ArrayConformand(conformand) => match conformand.of_type(db) {
+            Some(of_type) => {
+                let stars = vec!["*"; conformand.rank(db)].join(",");
+                format!("ARRAY[{stars}]({})", type_fragment(db, of_type.infer(db)))
+            }
+            None => "ARRAY[*]".to_string(),
+        },
         Type::SubRange(subrange) => {
             let (lo, hi) = subrange_bounds(db, subrange);
             let base = type_fragment(db, subrange._type(db).infer(db));

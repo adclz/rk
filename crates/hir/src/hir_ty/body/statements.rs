@@ -418,6 +418,9 @@ impl<'db> StmtsResolverCtx<'db> {
                     if let Some(err) = ctx.ref_subrange_mismatch(db, base_typ, *target) {
                         ctx.errors.push(err.to_diagnostic(db, ctx.scope.file(db)));
                     }
+                    if let Some(err) = ctx.ref_capacity_mismatch(db, base_typ, *target) {
+                        ctx.errors.push(err.to_diagnostic(db, ctx.scope.file(db)));
+                    }
 
                     // A reference to this call's own storage, handed back to
                     // the caller. It does not fault: an address-taken local
@@ -1296,6 +1299,7 @@ fn stored_spec<'db>(
         };
         spec = match (&adjustment.kind, named.kind(db)) {
             (Adjust::Index, SpecKind::Array(array)) => array.of_type(db),
+            (Adjust::Index, SpecKind::ArrayConformand(conformand)) => conformand.of_type(db)?,
             (Adjust::Deref, SpecKind::Ref(inner)) => *inner,
             _ => return None,
         };

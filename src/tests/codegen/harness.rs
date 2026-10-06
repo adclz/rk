@@ -52,6 +52,17 @@ pub fn compile_to_wasm_as_built(db: &mut RootDatabase, source: &str) -> Vec<u8> 
     compile(db, source, Expectation::Clean, Exports::AsBuilt).1
 }
 
+/// [`compile_to_wasm`] with `libraries` loaded as library files and lowered
+/// with the source, as `rk` builds a workspace with the stdlib: for a test
+/// calling a library FUNCTION.
+pub fn compile_with_libraries(db: &mut RootDatabase, libraries: &[&str], source: &str) -> Vec<u8> {
+    crate::tests::utils::add_library_sources(db, libraries);
+    let file = add_source(db, source);
+    check_diagnostics(db, file, Expectation::Clean);
+    let module = crate::tests::utils::lower_workspace(db);
+    wasm_codegen::generate_wasm(db, &export_everything(&module)).finish()
+}
+
 /// Lower IEC source to MIR and WASM in a single pass, returning both. Use this
 /// when a test needs to inspect the MIR layout (e.g. the retain band bounds or
 /// a variable's storage) and run the emitted module against it. Lowering only

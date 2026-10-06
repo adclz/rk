@@ -105,6 +105,26 @@ pub struct MirArrayType {
     pub align: u32,
 }
 
+impl MirArrayType {
+    /// The rows after the first `through` dimensions: what `m[i]` names,
+    /// laid out where it starts.
+    pub fn row(&self, through: usize) -> Option<MirArrayType> {
+        let dimensions = self.dimensions.get(through..)?.to_vec();
+        let total_elements = dimensions
+            .iter()
+            .map(|(lower, upper)| (upper - lower + 1).max(0) as u32)
+            .product::<u32>();
+        Some(MirArrayType {
+            element_type: self.element_type.clone(),
+            dimensions,
+            total_elements,
+            element_size: self.element_size,
+            size: self.element_size * total_elements,
+            align: self.align,
+        })
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct MirEnumType {
     pub name: Ident,

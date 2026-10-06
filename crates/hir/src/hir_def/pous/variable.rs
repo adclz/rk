@@ -115,6 +115,20 @@ impl<'db> VariableDecl<'db> {
                 .intersects(crate::Qualifier::R_EDGE | crate::Qualifier::F_EDGE)
     }
 
+    /// The `ARRAY[*]` this parameter is declared as, whose bounds each call
+    /// gives.
+    pub fn conformand(
+        &self,
+        db: &'db dyn WorkspaceDataBase,
+    ) -> Option<crate::hir_def::expressions::spec::ArrayConformand<'db>> {
+        match self.spec(db).kind(db) {
+            crate::hir_def::expressions::spec::SpecKind::ArrayConformand(conformand) => {
+                Some(*conformand)
+            }
+            _ => None,
+        }
+    }
+
     pub fn is_global(&self, db: &'db dyn WorkspaceDataBase) -> bool {
         matches!(self.kind(db), VariableKind::Global)
     }

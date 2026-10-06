@@ -26,6 +26,14 @@ use std::collections::HashMap;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, salsa::Update)]
 pub enum TypeError<'db> {
+    /// `REF(a[i])` bound to a `REF_TO STRING` whose capacity is not the
+    /// element's: `capacity` is the element's, `None` for an element of an
+    /// `ARRAY[*] OF STRING`, which has each call's.
+    ElementReferenceMismatch {
+        base_target: Type<'db>,
+        expr: CallSite<'db>,
+        capacity: Option<u32>,
+    },
     NotAssignable {
         base_target: Type<'db>,
         lhs: Type<'db>,
@@ -198,7 +206,7 @@ pub enum InferLiteralError {
 impl<'db> ErrorCode for TypeError<'db> {
     fn code(&self) -> &'static str {
         match self {
-            Self::NotAssignable { .. } => "E0301",
+            Self::NotAssignable { .. } | Self::ElementReferenceMismatch { .. } => "E0301",
             Self::NotComparable { .. } => "E0302",
             Self::NotAddable { .. } => "E0303",
             Self::NotMultiplicable { .. } => "E0304",
@@ -222,6 +230,33 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
         file: auto_lsp::default::db::file::File,
     ) -> IdeDiagnostic {
         match self {
+            Self::ElementReferenceMismatch {
+                base_target,
+                expr,
+                capacity,
+            } => {
+                let got = match capacity {
+                    Some(capacity) => format!("'REF_TO STRING[{capacity}]'"),
+                    None => "a reference to an element of an ARRAY[*] OF STRING".to_string(),
+                };
+                let mut diag = diag()
+                    .message(format!(
+                        "expected '{}', got {got}",
+                        base_target.type_name(db)
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &expr.get_span(db)).unwrap_or_default())
+                    .call();
+                base_target.with_location(db, &mut diag);
+                if capacity.is_none() {
+                    diag.with_note(
+                        "an element of an ARRAY[*] OF STRING has the capacity of each call's array"
+                            .to_string(),
+                    );
+                }
+                diag
+            }
             Self::NotAssignable {
                 base_target,
                 lhs: target,
@@ -244,6 +279,31 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                 base_target.with_location(db, &mut diag);
                 if *suggest_cast {
                     explicit_cast_suggestion(db, *target, *value, *expr, &mut diag);
+                }
+                // Arrays alike but for the bounds one of them has only in a
+                // call, or for bounds no DINT holds.
+                if let (Type::ArrayConformand(conformand), other)
+                | (other, Type::ArrayConformand(conformand)) =
+                    (target.normalize(db), value.normalize(db))
+                    && let Some(argument) =
+                        crate::hir_ty::infer::coerce::ArrayArgument::of(db, other)
+                {
+                    use crate::hir_ty::infer::coerce::{ArrayArgument, binds_conformand};
+                    let unbounded = ArrayArgument {
+                        bounds: Vec::new(),
+                        ..argument.clone()
+                    };
+                    if binds_conformand(db, conformand, &argument) {
+                        diag.with_note(
+                            "an ARRAY[*] has no bounds of its own to match another array's"
+                                .to_string(),
+                        );
+                        diag.with_help("read and write it element by element".to_string());
+                    } else if binds_conformand(db, conformand, &unbounded) {
+                        diag.with_note(
+                            "an ARRAY[*] takes arrays whose bounds fit a DINT".to_string(),
+                        );
+                    }
                 }
                 diag
             }

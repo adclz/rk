@@ -1179,8 +1179,25 @@ pub fn prog_elements<'db>(
                         if let Some(task) = task {
                             out.tasks.insert(path, *task);
                         }
-                        if !matches!(var.spec(db).infer(db).normalize(db), Type::FunctionBlock(_)) {
+                        let block = match var.spec(db).infer(db).normalize(db) {
+                            Type::FunctionBlock(block) => Some(block),
+                            _ => None,
+                        };
+                        // A task's run binds no VAR_IN_OUT, and an `ARRAY[*]`
+                        // one has no body to run without.
+                        let conformand = block.and_then(|block| {
+                            crate::hir_ty::oop::instance_members(
+                                db,
+                                crate::hir_def::pous::pou::Pou::FunctionBlock(block),
+                            )
+                            .iter()
+                            .find(|m| m.var.is_in_out(db) && m.var.conformand(db).is_some())
+                            .map(|m| m.var.name_with_case(db))
+                        });
+                        if block.is_none() {
                             Some(ProgElementRefusal::NotAFunctionBlock { var: name })
+                        } else if let Some(param) = conformand {
+                            Some(ProgElementRefusal::UnboundConformand { var: name, param })
                         } else if let Some(task) = task {
                             named.push((var, path, true));
                             resolved.function_blocks.push((var, *task, path));

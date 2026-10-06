@@ -7,7 +7,9 @@ use crate::{
         config::{ConfigDecl, ResourceDecl, TaskConfig},
         expressions::{
             expression::{Elementary, Integer, MultibitsPart},
-            spec::{Array, ElementarySpec, Enum, Spec, Struct, StructElement, SubRange},
+            spec::{
+                Array, ArrayConformand, ElementarySpec, Enum, Spec, Struct, StructElement, SubRange,
+            },
         },
         interned::identifier::{Ident, SpanIdent},
         pous::{
@@ -37,7 +39,7 @@ pub enum Type<'db> {
     Struct(Struct<'db>),
     StructElement(StructElement<'db>),
     Array(Array<'db>),
-    ArrayConformand(Spec<'db>),
+    ArrayConformand(ArrayConformand<'db>),
     Enum(Enum<'db>),
     EnumVariant(DataType<'db>, Ident),
     SubRange(SubRange<'db>),

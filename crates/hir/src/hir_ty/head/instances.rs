@@ -407,6 +407,15 @@ fn collect_type_defaults<'db>(
             collect_type_defaults(db, array.of_type(db).infer(db), prefix, out, visited, pous);
             prefix.pop();
         }
+        // Each element of the array a call binds, whatever its bounds. One of
+        // any type has no element type to start from.
+        Type::ArrayConformand(conformand) => {
+            if let Some(of_type) = conformand.of_type(db) {
+                prefix.push(InstanceInitStep::AllElements);
+                collect_type_defaults(db, of_type.infer(db), prefix, out, visited, pous);
+                prefix.pop();
+            }
+        }
         // An instance starts from its members' defaults, wherever it is held:
         // a variable, a member, an array element, a STRUCT field.
         Type::FunctionBlock(_) | Type::Class(_) => {

@@ -1581,16 +1581,27 @@
   {
     "type": "array_conformand",
     "named": true,
-    "fields": {},
-    "children": {
-      "multiple": false,
-      "required": true,
-      "types": [
-        {
-          "type": "data_type_access",
-          "named": true
-        }
-      ]
+    "fields": {
+      "dimensions": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "conformand_dimension",
+            "named": true
+          }
+        ]
+      },
+      "type": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "data_type_access",
+            "named": true
+          }
+        ]
+      }
     }
   },
   {
@@ -2259,6 +2270,11 @@
         }
       ]
     }
+  },
+  {
+    "type": "conformand_dimension",
+    "named": true,
+    "fields": {}
   },
   {
     "type": "constant",

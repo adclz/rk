@@ -8,6 +8,7 @@ mod aggregate_returns;
 mod arrays;
 mod bit_access;
 mod classes;
+mod conformands;
 mod constant_folding;
 mod control_flow;
 mod copies;
