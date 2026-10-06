@@ -39,7 +39,7 @@ pub fn body_ctx<'db>(
     // method.
     this_pou: Option<hir::hir_def::pous::pou::Pou<'db>>,
     string_pool: std::rc::Rc<std::cell::RefCell<super::lower_expr::StringPool>>,
-    iface_subs: Option<&super::mono_iface::IfaceSubs<'db>>,
+    param_subs: Option<&super::mono_iface::ParamSubs<'db>>,
     iface_call_rewrites: &super::mono_iface::IfaceCallRewrites<'db>,
     variadic_expansion: Option<std::rc::Rc<super::lower_expr::VariadicExpansion>>,
 ) -> ExprLowerCtx<'db> {
@@ -49,10 +49,10 @@ pub fn body_ctx<'db>(
     };
     ctx.this_pou = this_pou;
     ctx.variadic_expansion = variadic_expansion;
-    if let Some(subs) = iface_subs
+    if let Some(subs) = param_subs
         && !subs.is_empty()
     {
-        ctx.iface_subs = Some(std::rc::Rc::new(subs.clone()));
+        ctx.param_subs = Some(std::rc::Rc::new(subs.clone()));
     }
     if !iface_call_rewrites.is_empty() {
         ctx.iface_call_rewrites = Some(std::rc::Rc::new(iface_call_rewrites.clone()));
@@ -77,7 +77,7 @@ pub fn lower_stmts_fb_body<'db>(
     // method.
     this_pou: Option<hir::hir_def::pous::pou::Pou<'db>>,
     string_pool: std::rc::Rc<std::cell::RefCell<super::lower_expr::StringPool>>,
-    iface_subs: Option<&super::mono_iface::IfaceSubs<'db>>,
+    param_subs: Option<&super::mono_iface::ParamSubs<'db>>,
     iface_call_rewrites: &super::mono_iface::IfaceCallRewrites<'db>,
 ) -> Result<(Vec<MirStmt>, super::lower_expr::CallScratch), LowerTypeError> {
     // A specialized METHOD body carries its interface-param bindings, like
@@ -87,7 +87,7 @@ pub fn lower_stmts_fb_body<'db>(
         Some(this_struct),
         this_pou,
         string_pool,
-        iface_subs,
+        param_subs,
         iface_call_rewrites,
         None,
     );

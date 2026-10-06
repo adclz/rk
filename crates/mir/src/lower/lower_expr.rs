@@ -34,9 +34,9 @@ pub struct ExprLowerCtx<'db> {
     pub this_struct: Option<crate::types::MirStructType>,
     /// String literal pool - shared across all functions in the module.
     pub string_pool: std::rc::Rc<std::cell::RefCell<StringPool>>,
-    /// Phase B: in a specialized body (`drive$@Worker`), each interface param's
-    /// concrete POU.
-    pub iface_subs: Option<std::rc::Rc<crate::lower::mono_iface::IfaceSubs<'db>>>,
+    /// Phase B: in a specialized body (`drive$@Worker`, `Sum$[0..9]`), each
+    /// interface param's concrete POU and each `ARRAY[*]`'s array type.
+    pub param_subs: Option<std::rc::Rc<crate::lower::mono_iface::ParamSubs<'db>>>,
     /// Phase B: call site → mangled specialization (`drive` -> `drive$@Worker`),
     /// module-global.
     pub iface_call_rewrites: Option<
@@ -129,7 +129,7 @@ impl<'db> ExprLowerCtx<'db> {
             db,
             this_struct: None,
             string_pool,
-            iface_subs: None,
+            param_subs: None,
             iface_call_rewrites: None,
             variadic_expansion: None,
             call_scratch: Default::default(),
@@ -148,7 +148,7 @@ impl<'db> ExprLowerCtx<'db> {
             db,
             this_struct: Some(struct_type),
             string_pool,
-            iface_subs: None,
+            param_subs: None,
             iface_call_rewrites: None,
             variadic_expansion: None,
             call_scratch: Default::default(),
@@ -160,13 +160,33 @@ impl<'db> ExprLowerCtx<'db> {
 
     /// Lower a HIR type to its MIR form (normalizing aliases/variables first).
     pub fn lower_type_resolved(&self, ty: Type<'db>) -> Result<MirType, LowerTypeError> {
+        if let Some(shape) = self.shape_of(ty) {
+            return Ok(shape);
+        }
         lower_type(self.db, ty.normalize(self.db))
+    }
+
+    /// The array type this copy of the function binds to an `ARRAY[*]`
+    /// parameter, named or typed.
+    pub(crate) fn shape_of(&self, ty: Type<'db>) -> Option<MirType> {
+        let shapes = &self.param_subs.as_ref()?.shapes;
+        match ty {
+            Type::Variable((var, None)) => shapes.get(&var).cloned(),
+            Type::ArrayConformand(conformand) => shapes
+                .iter()
+                .find(|(var, _)| var.conformand(self.db) == Some(conformand))
+                .map(|(_, shape)| shape.clone()),
+            _ => None,
+        }
     }
 
     /// The type a path step addresses, looking through `REF_TO`. HIR records
     /// `^` as an adjustment and `lower_type` answers `Pointer(Void)` for the
     /// reference, so the pointee is resolved here, where its layout is wanted.
     fn lower_pointee(&self, ty: Type<'db>) -> Result<MirType, LowerTypeError> {
+        if let Some(shape) = self.shape_of(ty) {
+            return Ok(shape);
+        }
         let mut ty = ty.normalize(self.db);
         while let Type::RefTo(spec) = ty {
             ty = spec.infer(self.db).normalize(self.db);
@@ -1302,6 +1322,18 @@ impl<'db> ExprLowerCtx<'db> {
         // The base's body emitted on this instance (`Derived$Base.__body__`),
         // called with the current instance pointer.
         let body_name = crate::lower::naming::body_symbol(self.db, instance, base_pou);
+        // A base that sees an `ARRAY[*]` VAR_IN_OUT runs as its copy for the
+        // arrays this call bound.
+        let body_name = match &self.param_subs {
+            Some(subs) if crate::lower::mono_iface::has_conformand_in_out(self.db, base_pou) => {
+                crate::lower::mono_iface::specialized_symbol(
+                    self.db,
+                    body_name,
+                    &subs.for_block(self.db, base_pou),
+                )
+            }
+            _ => body_name,
+        };
         let this_arg = MirCallArg {
             value: MirExpr::AddrOf(MirPlace::ThisField {
                 field_name: hir::hir_def::interned::identifier::Ident::new(
@@ -1452,7 +1484,7 @@ impl<'db> ExprLowerCtx<'db> {
                 "a subscript HIR did not type reached lowering".to_string(),
             )
         })?;
-        let array_hir_type = Type::Array(indexed.array);
+        let array_hir_type = indexed.array.ty();
         for (k, sub) in index_expr.index.iter().enumerate() {
             let lane = self.expr_to_mir_elementary(*sub).ok();
             // A constant subscript folds, a named CONSTANT's as a literal's:
@@ -1758,11 +1790,11 @@ impl<'db> ExprLowerCtx<'db> {
         let (method_decl, instance) = match method {
             MethodRef::Declared(md) => (md, self.instance_pou_of(receiver_path)),
             // Phase B: a call through an interface param; the concrete implementer
-            // is known via `iface_subs`.
+            // is known via `param_subs`.
             MethodRef::Prototype(proto) => {
                 let concrete = self
                     .root_binding(receiver_path)
-                    .and_then(|param| self.iface_subs.as_ref()?.get(&param).copied())
+                    .and_then(|param| self.param_subs.as_ref()?.implementers.get(&param).copied())
                     .ok_or_else(|| {
                         LowerTypeError::UnsupportedType(
                             "interface method call not monomorphized (receiver is not a specialized interface param)"
@@ -2099,10 +2131,14 @@ impl<'db> ExprLowerCtx<'db> {
         for (var, binding) in &record.params {
             // An interface value is a reference, so an interface-typed param passes
             // the address whatever its kind.
+            // An `ARRAY[*]` of any type is never read: its address, no copy.
             let by_ref = matches!(
                 var.kind(self.db),
                 VariableKind::InOut | VariableKind::Output
-            ) || crate::lower::mono_iface::is_interface_param(self.db, var);
+            ) || crate::lower::mono_iface::is_interface_param(self.db, var)
+                || var
+                    .conformand(self.db)
+                    .is_some_and(|conformand| conformand.of_type(self.db).is_none());
 
             match binding {
                 hir::hir_ty::body::ParamBinding::Values(values) => {
@@ -2120,11 +2156,12 @@ impl<'db> ExprLowerCtx<'db> {
                             var.spec(self.db).infer(self.db).normalize(self.db),
                             Type::Struct(_)
                                 | Type::Array(_)
+                                | Type::ArrayConformand(_)
                                 | Type::FunctionBlock(_)
                                 | Type::Class(_)
                         );
                         if fills_defaults && is_aggregate {
-                            let var_ty = crate::lower::lower_func::lower_var_type(self.db, *var)?;
+                            let var_ty = self.input_type(*var, value)?;
                             if matches!(var_ty, MirType::Struct(_) | MirType::Array(_)) {
                                 let src = match lowered {
                                     MirExpr::Load(src, _) => MirExpr::AddrOf(src),
@@ -2182,7 +2219,7 @@ impl<'db> ExprLowerCtx<'db> {
                     }
                 }
                 hir::hir_ty::body::ParamBinding::Output(variable) => {
-                    let ty = crate::lower::lower_func::lower_var_type(self.db, *var)?;
+                    let ty = self.output_type(*var, *variable)?;
                     // A WIDER scalar destination converts after the call: the
                     // callee writes its own lane wherever it is pointed.
                     let out_lane = match &ty {
@@ -2360,6 +2397,55 @@ impl<'db> ExprLowerCtx<'db> {
             }
         }
         Ok(())
+    }
+
+    /// The type input `var` is passed at: its declared one, or for an
+    /// `ARRAY[*]` the array the call binds to it, `value` or the row it
+    /// names.
+    fn input_type(
+        &self,
+        var: hir::hir_def::pous::variable::VariableDecl<'db>,
+        value: Expr<'db>,
+    ) -> Result<MirType, LowerTypeError> {
+        match var.conformand(self.db) {
+            Some(_) => crate::lower::mono_iface::argument_shape(
+                self.db,
+                self.inference(value.scope_id(self.db)),
+                var,
+                value,
+                self.param_subs.as_deref().unwrap_or(&Default::default()),
+            )
+            .ok_or_else(|| {
+                LowerTypeError::UnsupportedType(
+                    "an ARRAY[*] argument HIR bound is no array".to_string(),
+                )
+            }),
+            None => crate::lower::lower_func::lower_var_type(self.db, var),
+        }
+    }
+
+    /// The type output `var` is passed at: its declared one, or for an
+    /// `ARRAY[*]` the array `destination` the call writes into.
+    fn output_type(
+        &self,
+        var: hir::hir_def::pous::variable::VariableDecl<'db>,
+        destination: hir::hir_def::expressions::expression::VariableAccess<'db>,
+    ) -> Result<MirType, LowerTypeError> {
+        match var.conformand(self.db) {
+            Some(_) => crate::lower::mono_iface::output_shape(
+                self.db,
+                var,
+                self.inference(destination.scope_id(self.db))
+                    .type_of_variable_access_adjusted(destination),
+                self.param_subs.as_deref().unwrap_or(&Default::default()),
+            )
+            .ok_or_else(|| {
+                LowerTypeError::UnsupportedType(
+                    "an ARRAY[*] output HIR bound is no array".to_string(),
+                )
+            }),
+            None => crate::lower::lower_func::lower_var_type(self.db, var),
+        }
     }
 
     /// A scalar wasm-local scratch for one extern result (`$extret$N`),
@@ -2575,15 +2661,28 @@ impl<'db> ExprLowerCtx<'db> {
             }
         }
 
-        // The body function: the FB's qualified name plus `$__body__`.
-        let mangled_root = crate::lower::naming::qualified_pou_ident(
-            self.db,
-            hir::hir_ty::ty::Type::FunctionBlock(fb),
-        );
-        let body_func = hir::hir_def::interned::identifier::Ident::new(
-            self.db,
-            compact_str::CompactString::from(format!("{}$__body__", mangled_root.text(self.db))),
-        );
+        // The body function: the FB's qualified name plus `$__body__`, or its
+        // copy for the arrays the call binds to its `ARRAY[*]` VAR_IN_OUTs.
+        let body_func = match self
+            .iface_call_rewrites
+            .as_ref()
+            .and_then(|m| m.get(&func_call).copied())
+        {
+            Some(copy) => copy,
+            None => {
+                let mangled_root = crate::lower::naming::qualified_pou_ident(
+                    self.db,
+                    hir::hir_ty::ty::Type::FunctionBlock(fb),
+                );
+                hir::hir_def::interned::identifier::Ident::new(
+                    self.db,
+                    compact_str::CompactString::from(format!(
+                        "{}$__body__",
+                        mangled_root.text(self.db)
+                    )),
+                )
+            }
+        };
 
         Ok(Some(crate::stmt::MirStmt::FbCall {
             instance,

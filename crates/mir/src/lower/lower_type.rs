@@ -483,9 +483,14 @@ fn lower_instance_struct<'db>(
         // writes from VAR_CONFIG.
         let is_inout = var.kind(db) == hir::hir_def::pous::variable::VariableKind::InOut
             || var.is_partly_located(db);
-        let mir_type = match lower_spec(db, var.spec(db)) {
-            Err(LowerTypeError::InstanceCycle(_)) if is_inout => MirType::Void,
-            other => other?,
+        // An `ARRAY[*]` holds arrays of the bounds each call gives: what it
+        // points at is typed in each copy of the body.
+        let mir_type = match var.conformand(db) {
+            Some(_) => MirType::Void,
+            None => match lower_spec(db, var.spec(db)) {
+                Err(LowerTypeError::InstanceCycle(_)) if is_inout => MirType::Void,
+                other => other?,
+            },
         };
         let mir_type = if is_inout {
             MirType::Pointer(Box::new(mir_type))

@@ -162,7 +162,7 @@ pub fn lower_function<'db>(
     index: u32,
     memory_layout: &mut MirMemoryLayout,
     string_pool: Rc<RefCell<super::lower_expr::StringPool>>,
-    iface_subs: Option<&super::mono_iface::IfaceSubs<'db>>,
+    param_subs: Option<&super::mono_iface::ParamSubs<'db>>,
     iface_call_rewrites: &super::mono_iface::IfaceCallRewrites<'db>,
     // Phase C: `Some(n)` when this is the arity specialization `f$n` of a
     // variadic function; `None` for every ordinary function.
@@ -174,7 +174,7 @@ pub fn lower_function<'db>(
         index,
         memory_layout,
         string_pool,
-        iface_subs,
+        param_subs,
         iface_call_rewrites,
         variadic_arity,
     );
@@ -257,7 +257,7 @@ fn lower_function_inner<'db>(
     string_pool: Rc<RefCell<super::lower_expr::StringPool>>,
     // Phase B: for a specialized copy, each interface param's concrete
     // implementer.
-    iface_subs: Option<&super::mono_iface::IfaceSubs<'db>>,
+    param_subs: Option<&super::mono_iface::ParamSubs<'db>>,
     // Phase B: module-global call-site -> mangled specialization rewrites, so
     // calls in this body route to the right specialization.
     iface_call_rewrites: &FxHashMap<
@@ -296,7 +296,7 @@ fn lower_function_inner<'db>(
             variadic_expansion = Some(expansion);
             continue;
         }
-        if let Some(param) = param_for_var(db, var, iface_subs)? {
+        if let Some(param) = param_for_var(db, var, param_subs)? {
             next_local_idx += param_wasm_width(&param.ty, param.kind);
             params.push(param);
         }
@@ -371,13 +371,13 @@ fn lower_function_inner<'db>(
 
     // The context the body lowers in; a local's own initializer, written in
     // the same declarations, lowers in it too. Interface specialization
-    // threads `iface_subs` and `iface_call_rewrites` into it.
+    // threads `param_subs` and `iface_call_rewrites` into it.
     let ctx = crate::lower::lower_stmt::body_ctx(
         db,
         None,
         None,
         string_pool.clone(),
-        iface_subs,
+        param_subs,
         iface_call_rewrites,
         variadic_expansion.clone(),
     );
@@ -525,7 +525,7 @@ fn lower_function_block_inner<'db>(
                 variadic_expansion = Some(expansion);
                 continue;
             }
-            match param_for_var(db, var, spec.map(|i| &i.iface_subs))? {
+            match param_for_var(db, var, spec.map(|i| &i.param_subs))? {
                 Some(param) => {
                     next_local_idx += param_wasm_width(&param.ty, param.kind);
                     params.push(param);
@@ -588,7 +588,7 @@ fn lower_function_block_inner<'db>(
         // A specialization lowers its body with its own bindings and call
         // rewrites.
         let (body_subs, body_rewrites) = match spec {
-            Some(inst) => (Some(&inst.iface_subs), &inst.call_rewrites),
+            Some(inst) => (Some(&inst.param_subs), &inst.call_rewrites),
             None => (None, iface_call_rewrites),
         };
         let ctx = crate::lower::lower_stmt::body_ctx(
@@ -674,18 +674,40 @@ fn lower_function_block_inner<'db>(
 
     // The FB body as `__body__`, every variable through `this`. Lowered even
     // when empty: call sites emit `call FB$__body__` regardless. Then each
-    // base's body its `SUPER()` reaches, on this instance.
+    // base's body its `SUPER()` reaches, on this instance. A body that sees
+    // an `ARRAY[*]` VAR_IN_OUT is emitted once per array type its calls bind,
+    // and only so.
     for body_of in std::iter::once(fb).chain(copies.bodies.iter().copied()) {
-        functions.push(lower_fb_body(
+        let specs: Vec<_> = if super::mono_iface::has_conformand_in_out(
             db,
-            fb,
-            body_of,
-            idx,
-            memory_layout,
-            string_pool.clone(),
-            iface_call_rewrites,
-        )?);
-        idx += 1;
+            hir::hir_def::pous::pou::Pou::FunctionBlock(body_of),
+        ) {
+            iface_method_instances
+                .iter()
+                .filter(|inst| {
+                    matches!(
+                        inst.target,
+                        super::mono_iface::IfaceTarget::Body { block, .. } if block == body_of
+                    )
+                })
+                .map(|inst| Some(*inst))
+                .collect()
+        } else {
+            vec![None]
+        };
+        for spec in specs {
+            functions.push(lower_fb_body(
+                db,
+                fb,
+                body_of,
+                idx,
+                memory_layout,
+                string_pool.clone(),
+                iface_call_rewrites,
+                spec,
+            )?);
+            idx += 1;
+        }
     }
 
     Ok(functions)
@@ -813,6 +835,8 @@ fn lower_fb_body<'db>(
     memory_layout: &mut MirMemoryLayout,
     string_pool: Rc<RefCell<super::lower_expr::StringPool>>,
     iface_call_rewrites: &super::mono_iface::IfaceCallRewrites<'db>,
+    // The copy for the arrays its calls bind to the `ARRAY[*]` VAR_IN_OUTs.
+    spec: Option<&super::mono_iface::IfaceInstance<'db>>,
 ) -> Result<MirFunction, LowerTypeError> {
     let fb_type = super::lower_type::lower_fb_type(db, instance)?;
     let body_params = vec![MirParam {
@@ -869,8 +893,8 @@ fn lower_fb_body<'db>(
         edge_view(db, &this_struct, &edges),
         Some(hir::hir_def::pous::pou::Pou::FunctionBlock(instance)),
         string_pool.clone(),
-        None,
-        iface_call_rewrites,
+        spec.map(|inst| &inst.param_subs),
+        spec.map_or(iface_call_rewrites, |inst| &inst.call_rewrites),
     )?;
     // VAR_TEMP starts over at every call, from its declared values.
     let mut body_stmts = with_temp_inits(db, body_of.variables(db), body_stmts, &string_pool)?;
@@ -892,11 +916,14 @@ fn lower_fb_body<'db>(
     );
 
     Ok(MirFunction {
-        name: super::naming::body_symbol(
-            db,
-            hir::hir_def::pous::pou::Pou::FunctionBlock(instance),
-            hir::hir_def::pous::pou::Pou::FunctionBlock(body_of),
-        ),
+        name: match spec {
+            Some(inst) => inst.mangled_name,
+            None => super::naming::body_symbol(
+                db,
+                hir::hir_def::pous::pou::Pou::FunctionBlock(instance),
+                hir::hir_def::pous::pou::Pou::FunctionBlock(body_of),
+            ),
+        },
         origin_name: body_of.name(db),
         index,
         params: body_params,
@@ -985,7 +1012,7 @@ fn lower_class_inner<'db>(
                 variadic_expansion = Some(expansion);
                 continue;
             }
-            match param_for_var(db, var, spec.map(|i| &i.iface_subs))? {
+            match param_for_var(db, var, spec.map(|i| &i.param_subs))? {
                 Some(param) => {
                     next_local_idx += param_wasm_width(&param.ty, param.kind);
                     params.push(param);
@@ -1048,7 +1075,7 @@ fn lower_class_inner<'db>(
         // Specializations lower with their own bindings + rewrites (see the
         // FB-method site).
         let (body_subs, body_rewrites) = match spec {
-            Some(inst) => (Some(&inst.iface_subs), &inst.call_rewrites),
+            Some(inst) => (Some(&inst.param_subs), &inst.call_rewrites),
             None => (None, iface_call_rewrites),
         };
         let ctx = crate::lower::lower_stmt::body_ctx(
@@ -1300,7 +1327,7 @@ fn method_jobs<'a, 'db>(
         let specs: Vec<_> = if method
             .variables(db)
             .iter()
-            .any(|v| super::mono_iface::is_interface_param(db, v))
+            .any(|v| super::mono_iface::is_specialized_param(db, v))
         {
             iface_method_instances
                 .iter()
@@ -1341,13 +1368,14 @@ fn method_jobs<'a, 'db>(
 /// The wasm-level parameter a declared variable becomes, or `None` when it
 /// is not part of the calling convention. The one encoding of the
 /// convention: input by value, `VAR_IN_OUT`/`VAR_OUTPUT` by pointer, a
-/// specialized interface param as a pointer to the concrete instance.
+/// specialized interface param as a pointer to the concrete instance, an
+/// `ARRAY[*]` as the array type this copy is specialized for.
 fn param_for_var<'db>(
     db: &'db dyn WorkspaceDataBase,
     var: &hir::hir_def::pous::variable::VariableDecl<'db>,
-    iface_subs: Option<&super::mono_iface::IfaceSubs<'db>>,
+    param_subs: Option<&super::mono_iface::ParamSubs<'db>>,
 ) -> Result<Option<MirParam>, LowerTypeError> {
-    if let Some(concrete) = iface_subs.and_then(|m| m.get(var)) {
+    if let Some(concrete) = param_subs.and_then(|m| m.implementers.get(var)) {
         let ty = lower_type(db, hir::hir_ty::ty::Type::new_pou(db, *concrete))?;
         return Ok(Some(MirParam {
             name: var.name(db),
@@ -1355,16 +1383,20 @@ fn param_for_var<'db>(
             kind: MirParamKind::InOut,
         }));
     }
+    let declared = || match param_subs.and_then(|m| m.shapes.get(var)) {
+        Some(shape) => Ok(shape.clone()),
+        None => lower_var_type(db, *var),
+    };
 
     Ok(match var.kind(db) {
         VariableKind::Input => Some(MirParam {
             name: var.name(db),
-            ty: input_param_type(lower_var_type(db, *var)?),
+            ty: input_param_type(declared()?),
             kind: MirParamKind::Input,
         }),
         VariableKind::InOut | VariableKind::Output => Some(MirParam {
             name: var.name(db),
-            ty: MirType::Pointer(Box::new(lower_var_type(db, *var)?)),
+            ty: MirType::Pointer(Box::new(declared()?)),
             kind: if var.kind(db) == VariableKind::InOut {
                 MirParamKind::InOut
             } else {
@@ -1641,7 +1673,11 @@ fn lower_local_init_stmts<'db>(
             VariableKind::Input | VariableKind::InOut | VariableKind::External => continue,
             _ => {}
         }
-        let var_ty = lower_var_type(db, *var)?;
+        // An `ARRAY[*]` output is the array this copy is specialized for.
+        let var_ty = match body.shape_of(hir::hir_ty::ty::Type::new_var(db, *var)) {
+            Some(shape) => shape,
+            None => lower_var_type(db, *var)?,
+        };
         lower_type_default_inits(
             db,
             InitTarget::Local {
