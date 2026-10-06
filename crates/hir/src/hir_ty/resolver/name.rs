@@ -519,22 +519,34 @@ fn pick_by_return<'db>(
     OverloadPick::Ambiguous(tie)
 }
 
-/// How one argument matches the parameter it is bound to.
+/// How one argument matches the parameter it is bound to, best first.
 pub enum ArgMatch {
     Exact,
+    /// An array bound to an `ARRAY[*]` of its element type: exact but for
+    /// the bounds, which a parameter declaring them matches better.
+    Bounds,
     Widen,
     No,
 }
 
 impl ArgMatch {
+    fn rank(&self) -> u8 {
+        match self {
+            ArgMatch::Exact => 3,
+            ArgMatch::Bounds => 2,
+            ArgMatch::Widen => 1,
+            ArgMatch::No => 0,
+        }
+    }
+
     /// `self` is at least as good a match as `other`.
     fn at_least(&self, other: &ArgMatch) -> bool {
-        matches!(self, ArgMatch::Exact) || matches!(other, ArgMatch::Widen | ArgMatch::No)
+        self.rank() >= other.rank()
     }
 
     /// `self` is strictly better than `other`.
     fn better(&self, other: &ArgMatch) -> bool {
-        matches!(self, ArgMatch::Exact) && !matches!(other, ArgMatch::Exact)
+        self.rank() > other.rank()
     }
 }
 

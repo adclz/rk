@@ -179,6 +179,9 @@ pub fn function_required_arity<'db>(db: &'db dyn WorkspaceDataBase, f: Function<
 fn spec_interface<'db>(db: &'db dyn WorkspaceDataBase, spec: Spec<'db>) -> Option<Interface<'db>> {
     match spec.kind(db) {
         SpecKind::Array(arr) => spec_interface(db, arr.of_type(db)),
+        SpecKind::ArrayConformand(conformand) => conformand
+            .of_type(db)
+            .and_then(|of_type| spec_interface(db, of_type)),
         SpecKind::Ref(rf) => spec_interface(db, *rf),
         _ => match Type::resolve_spec(db, spec) {
             Type::Interface(i) => Some(i),
@@ -490,6 +493,11 @@ impl<'db> Signature<'db> {
         match spec.kind(db) {
             SpecKind::Array(arr) => {
                 self.infer_spec(db, arr.of_type(db));
+            }
+            SpecKind::ArrayConformand(conformand) => {
+                if let Some(of_type) = conformand.of_type(db) {
+                    self.infer_spec(db, of_type);
+                }
             }
             SpecKind::Enum(enm) => {
                 if let Some(spec) = enm.typ(db) {

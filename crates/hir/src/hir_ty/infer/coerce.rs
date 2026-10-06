@@ -571,6 +571,106 @@ pub(crate) fn same_type<'db>(db: &'db dyn WorkspaceDataBase, a: Type<'db>, b: Ty
                 )
                 && string_capacity(db, x.of_type(db)) == string_capacity(db, y.of_type(db))
         }
+        (Type::ArrayConformand(x), Type::ArrayConformand(y)) => {
+            x.rank(db) == y.rank(db)
+                && match (x.of_type(db), y.of_type(db)) {
+                    (Some(x), Some(y)) => {
+                        same_type(db, x.infer(db).normalize(db), y.infer(db).normalize(db))
+                    }
+                    (None, None) => true,
+                    _ => false,
+                }
+        }
         _ => a.eq(&b),
     }
+}
+
+/// An array as an `ARRAY[*]` parameter sees what a call binds to it: a whole
+/// array, or a row of one (`m[i]` of a two-dimensional `m`).
+#[derive(Clone, Debug)]
+pub(crate) struct ArrayArgument<'db> {
+    pub rank: usize,
+    /// The element's declaration, none for an `ARRAY[*]` of any type.
+    pub of_type: Option<crate::hir_def::expressions::spec::Spec<'db>>,
+    /// The bounds it declares, each dimension's. None for an `ARRAY[*]`,
+    /// whose bounds were checked where it was bound.
+    pub bounds: Vec<(Option<i64>, Option<i64>)>,
+}
+
+impl<'db> ArrayArgument<'db> {
+    /// A whole array, `None` for anything else.
+    pub(crate) fn of(db: &'db dyn WorkspaceDataBase, ty: Type<'db>) -> Option<Self> {
+        match ty.normalize(db) {
+            Type::Array(array) => Some(ArrayArgument {
+                rank: array.subranges(db).len(),
+                of_type: Some(array.of_type(db)),
+                bounds: crate::hir_ty::infer::const_eval::array_dimensions(db, array),
+            }),
+            Type::ArrayConformand(conformand) => Some(ArrayArgument {
+                rank: conformand.rank(db),
+                of_type: conformand.of_type(db),
+                bounds: Vec::new(),
+            }),
+            _ => None,
+        }
+    }
+
+    /// The row a bracket leaving dimensions names: the dimensions after
+    /// the ones it subscripts.
+    pub(crate) fn row(
+        db: &'db dyn WorkspaceDataBase,
+        indexed: crate::hir_ty::body::IndexedArray<'db>,
+    ) -> Self {
+        let bounds = match indexed.array {
+            crate::hir_ty::body::IndexedType::Array(array) => {
+                crate::hir_ty::infer::const_eval::array_dimensions(db, array)
+                    .into_iter()
+                    .skip(indexed.through)
+                    .collect()
+            }
+            crate::hir_ty::body::IndexedType::Conformand(_) => Vec::new(),
+        };
+        ArrayArgument {
+            rank: indexed.array.rank(db) - indexed.through,
+            of_type: indexed.array.of_type(db),
+            bounds,
+        }
+    }
+
+    /// Whether every bound it declares fits the DINT `LOWER_BOUND` and
+    /// `UPPER_BOUND` return.
+    pub(crate) fn bounds_fit_dint(&self) -> bool {
+        self.bounds.iter().all(|(lower, upper)| {
+            [lower, upper]
+                .iter()
+                .all(|bound| bound.is_none_or(|bound| i32::try_from(bound).is_ok()))
+        })
+    }
+}
+
+/// Whether `arg` binds to the `ARRAY[*]` parameter `conformand`: an array of
+/// as many dimensions, whatever their bounds, of the same element type. The
+/// element's subrange counts, since a VAR_IN_OUT writes the caller's
+/// elements. A STRING element's capacity does not: the parameter declares
+/// none, and each call works on the one it was given. One of any type takes
+/// any array. Either way, the bounds fit a DINT.
+pub(crate) fn binds_conformand<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    conformand: crate::hir_def::expressions::spec::ArrayConformand<'db>,
+    arg: &ArrayArgument<'db>,
+) -> bool {
+    if !arg.bounds_fit_dint() {
+        return false;
+    }
+    let Some(of_type) = conformand.of_type(db) else {
+        return true;
+    };
+    arg.rank == conformand.rank(db)
+        && arg.of_type.is_some_and(|arg_of_type| {
+            crate::hir_ty::head::checks::variables::same_storage_type(
+                db,
+                Type::resolve_spec(db, of_type),
+                Type::resolve_spec(db, arg_of_type),
+            )
+        })
 }

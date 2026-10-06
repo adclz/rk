@@ -344,7 +344,55 @@ pub(crate) fn infer_body<'db>(
 
     ctx.check_statements(db, resolver, statements, NestedScope::None, &mut result);
 
+    let in_body = matches!(
+        get_scope(db, scope).kind,
+        ScopeKind::Pou(Pou::FunctionBlock(_))
+    );
+    refuse_conformand_outside_body(db, in_body, &mut result);
+
     result
+}
+
+/// E0513: a FUNCTION_BLOCK's `ARRAY[*]` VAR_IN_OUT has the bounds of what the
+/// call binds to it, which only the body that call runs knows, under the
+/// block's own name for it (`in_body`). A method runs in a call of its own,
+/// an initializer before any, and another instance's was bound by another
+/// call.
+pub(crate) fn refuse_conformand_outside_body<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    in_body: bool,
+    result: &mut BodyInferenceResult<'db>,
+) {
+    use crate::check::errors::ToIdeDiagnostic;
+    use crate::hir_def::expressions::expression::PathExprKind;
+    let mut reads: Vec<(PathExpr<'db>, VariableDecl<'db>, crate::Ident)> = result
+        .variable_of_path_expr
+        .iter()
+        .filter(|(path, var)| {
+            var.is_in_out(db)
+                && var.conformand(db).is_some()
+                && !(in_body && matches!(path.expr(db), PathExprKind::VarAccess(_)))
+        })
+        .filter_map(
+            |(path, var)| match get_scope(db, var.get_scope_id(db)).kind {
+                ScopeKind::Pou(Pou::FunctionBlock(block)) => {
+                    Some((*path, *var, block.name_with_case(db)))
+                }
+                _ => None,
+            },
+        )
+        .collect();
+    reads.sort_by_key(|(path, _, _)| path.get_id(db).0);
+    for (path, var, block) in reads {
+        result.errors.push(
+            crate::check::errors::e05_array::ArrayError::ConformandOutsideBody {
+                access: crate::CallSite::from_scoped(db, &path),
+                var,
+                block,
+            }
+            .to_diagnostic(db, result.scope.file(db)),
+        );
+    }
 }
 
 /// A method local/parameter that has the same name as a member of the owner
@@ -580,6 +628,11 @@ pub struct BodyInferenceResult<'db> {
     /// bounds check and MIR read it here rather than work it out again.
     pub(crate) indexed_arrays: FxHashMap<PathExpr<'db>, IndexedArray<'db>>,
 
+    /// The path of the argument being resolved for an `ARRAY[*]` parameter,
+    /// which may name a row of an array: a bracket leaving dimensions is no
+    /// E0510 there.
+    pub(crate) row_argument: Option<PathExpr<'db>>,
+
     // Errors encountered during inference
     pub(crate) errors: Vec<IdeDiagnostic>,
 
@@ -657,6 +710,7 @@ impl<'db> BodyInferenceResult<'db> {
             namespace_of_path_expr: FxHashSet::default(),
             path_expr_adjustments: FxHashMap::default(),
             indexed_arrays: FxHashMap::default(),
+            row_argument: None,
             errors: Vec::new(),
             variables_used: FxHashSet::default(),
             usings_used: FxHashSet::default(),
@@ -719,6 +773,52 @@ impl<'db> BodyInferenceResult<'db> {
                 span: value.get_span(db),
                 param: pointee,
                 arg: referenced,
+            },
+        )
+    }
+
+    /// E0301 for a reference bound from `REF(a[i])` to a STRING element of
+    /// another capacity than its target's. The element's type no longer
+    /// says it, so the type check let a `REF_TO STRING` reach a `STRING[4]`
+    /// element, and a write through it ran 76 bytes past. An element of an
+    /// `ARRAY[*] OF STRING` has each call's capacity, which no reference
+    /// target names.
+    pub(crate) fn ref_capacity_mismatch(
+        &self,
+        db: &'db dyn WorkspaceDataBase,
+        target: Type<'db>,
+        value: Expr<'db>,
+    ) -> Option<crate::check::errors::e03_type::TypeError<'db>> {
+        use crate::hir_def::expressions::expression::{ExprKind, PrimaryExpr, RefValue};
+        let Type::RefTo(spec) = target.normalize(db) else {
+            return None;
+        };
+        let ExprKind::PrimaryExpr(PrimaryExpr::RefValue {
+            value: RefValue::Address(begin),
+        }) = value.expr(db)
+        else {
+            return None;
+        };
+        let indexed = self
+            .indexed_arrays
+            .get(&begin.expr(db)?)
+            .filter(|indexed| !indexed.is_partial(db))?;
+        let capacity =
+            crate::hir_ty::infer::normalize::string_capacity(db, indexed.array.of_type(db)?)?;
+        let capacity = match indexed.array {
+            IndexedType::Conformand(_) => None,
+            IndexedType::Array(_) => Some(capacity),
+        };
+        if capacity.is_some()
+            && crate::hir_ty::infer::normalize::string_capacity(db, spec) == capacity
+        {
+            return None;
+        }
+        Some(
+            crate::check::errors::e03_type::TypeError::ElementReferenceMismatch {
+                base_target: target,
+                expr: crate::CallSite::from_scoped(db, &value),
+                capacity,
             },
         )
     }
@@ -1080,7 +1180,7 @@ pub enum Adjust {
 /// array of rows.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, salsa::Update)]
 pub struct IndexedArray<'db> {
-    pub array: crate::hir_def::expressions::spec::Array<'db>,
+    pub array: IndexedType<'db>,
     /// The dimensions consumed before this bracket's subscripts.
     pub first: usize,
     /// The dimensions consumed once they are.
@@ -1091,7 +1191,43 @@ impl<'db> IndexedArray<'db> {
     /// Whether the bracket leaves dimensions of the array to a further one:
     /// `m[i]` of a 2-D `m` names a part of it, and is no value.
     pub fn is_partial(&self, db: &'db dyn WorkspaceDataBase) -> bool {
-        self.through < self.array.subranges(db).len()
+        self.through < self.array.rank(db)
+    }
+}
+
+/// The type a bracket indexes: an array with declared bounds, or an
+/// `ARRAY[*]` parameter, whose bounds each call gives.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, salsa::Update)]
+pub enum IndexedType<'db> {
+    Array(crate::hir_def::expressions::spec::Array<'db>),
+    Conformand(crate::hir_def::expressions::spec::ArrayConformand<'db>),
+}
+
+impl<'db> IndexedType<'db> {
+    pub fn rank(self, db: &'db dyn WorkspaceDataBase) -> usize {
+        match self {
+            IndexedType::Array(array) => array.subranges(db).len(),
+            IndexedType::Conformand(conformand) => conformand.rank(db),
+        }
+    }
+
+    /// The element's declaration: none for an `ARRAY[*]` of any type, which
+    /// no subscript reaches (E0511).
+    pub fn of_type(
+        self,
+        db: &'db dyn WorkspaceDataBase,
+    ) -> Option<crate::hir_def::expressions::spec::Spec<'db>> {
+        match self {
+            IndexedType::Array(array) => Some(array.of_type(db)),
+            IndexedType::Conformand(conformand) => conformand.of_type(db),
+        }
+    }
+
+    pub fn ty(self) -> Type<'db> {
+        match self {
+            IndexedType::Array(array) => Type::Array(array),
+            IndexedType::Conformand(conformand) => Type::ArrayConformand(conformand),
+        }
     }
 }
 

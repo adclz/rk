@@ -27,7 +27,7 @@ use crate::{
         semantic_index::get_scope,
     },
     hir_ty::{
-        body::BodyInferenceResult,
+        body::{BodyInferenceResult, IndexedType},
         expr_store::PathExprWalkStep,
         index_graphs::namespace_index,
         infer::{expr::InferExprCtx, table::InferenceTable},
@@ -396,13 +396,14 @@ impl<'db> Resolver<'db> {
             if position + 1 == steps.len()
                 && let Some(indexed) = indexed
                 && indexed.is_partial(db)
+                && ctx.row_argument != Some(path_expr)
                 && let Some(last) = index_expr.index.last()
                 && !ctx.type_of_expr.contains_key(last)
             {
                 ctx.errors.push(
                     ArrayError::IncompleteSubscript {
                         expr: *last,
-                        rank: indexed.array.subranges(db).len(),
+                        rank: indexed.array.rank(db),
                         named: indexed.through,
                     }
                     .to_diagnostic(db, ctx.scope.file(db)),
@@ -454,10 +455,10 @@ impl<'db> Resolver<'db> {
                 // resolved, so a named CONSTANT folds too; the walk-side
                 // check ran first and could fold only literals.
                 if let Some(indexed) = indexed
+                    && let IndexedType::Array(array) = indexed.array
                     && let Some(val) = crate::hir_ty::infer::const_eval::const_int(db, *sub, ctx)
                     && let Some((lo, hi)) = {
-                        let dims =
-                            crate::hir_ty::infer::const_eval::array_dimensions(db, indexed.array);
+                        let dims = crate::hir_ty::infer::const_eval::array_dimensions(db, array);
                         dims.get(indexed.first + i)
                             .and_then(|(l, u)| Some(((*l)?, (*u)?)))
                     }

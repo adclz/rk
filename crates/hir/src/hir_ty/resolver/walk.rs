@@ -24,7 +24,7 @@ use crate::{
         semantic_index::get_scope,
     },
     hir_ty::{
-        body::{Adjust, Adjustment, BodyInferenceResult, IndexedArray, NullState},
+        body::{Adjust, Adjustment, BodyInferenceResult, IndexedArray, IndexedType, NullState},
         expr_store::{InitExprWalkStep, PathExprWalkStep},
         head::init_inference::InitExprInferenceResult,
         infer::Infer,
@@ -716,17 +716,37 @@ impl<'db> Type<'db> {
         place: &mut PathPlaceBuilder<'db>,
         ctx: &mut BodyInferenceResult<'db>,
     ) {
-        let Type::Array(arr) = self else {
-            if report_errors && !self.is_never() {
-                ctx.errors.push(
-                    ArrayError::IndexNonArrayTypePathExpr {
-                        expr,
-                        ty: place.current_typ,
-                    }
-                    .to_diagnostic(db, ctx.scope.file(db)),
-                );
+        let array = match self {
+            Type::Array(array) => IndexedType::Array(*array),
+            Type::ArrayConformand(conformand) if conformand.of_type(db).is_some() => {
+                IndexedType::Conformand(*conformand)
             }
-            return;
+            // An array of any type has elements of no type to read or write.
+            Type::ArrayConformand(_) => {
+                if report_errors {
+                    let var = match place.current_typ {
+                        Type::Variable((var, _)) => Some(var),
+                        _ => None,
+                    };
+                    ctx.errors.push(
+                        ArrayError::ElementOfAnyType { expr, var }
+                            .to_diagnostic(db, ctx.scope.file(db)),
+                    );
+                }
+                return;
+            }
+            _ => {
+                if report_errors && !self.is_never() {
+                    ctx.errors.push(
+                        ArrayError::IndexNonArrayTypePathExpr {
+                            expr,
+                            ty: place.current_typ,
+                        }
+                        .to_diagnostic(db, ctx.scope.file(db)),
+                    );
+                }
+                return;
+            }
         };
 
         // Multi-dimensional arrays use comma-separated indices (e.g., arr[i, j]).
@@ -749,11 +769,13 @@ impl<'db> Type<'db> {
             _ => 0,
         };
 
-        let rank = arr.subranges(db).len();
+        let rank = array.rank(db);
         for i in 0..index_count {
             let array_type = match (first + i + 1).cmp(&rank) {
                 Ordering::Less => *self,
-                Ordering::Equal => arr.of_type(db).infer(db),
+                Ordering::Equal => array
+                    .of_type(db)
+                    .map_or(Type::Never, |of_type| of_type.infer(db)),
                 Ordering::Greater => {
                     if report_errors {
                         ctx.errors.push(
@@ -776,7 +798,7 @@ impl<'db> Type<'db> {
         ctx.indexed_arrays.insert(
             expr,
             IndexedArray {
-                array: *arr,
+                array,
                 first,
                 through: first + index_count,
             },

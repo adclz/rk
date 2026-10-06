@@ -378,7 +378,14 @@ fn call_input_arg_types<'db>(
         };
         let mut ictx = InferExprCtx::new(resolver);
         if !ctx.type_of_expr.contains_key(&value) {
-            ictx.resolve_expr_expecting(db, value, ctx, expected_of.get(p).copied());
+            // An `ARRAY[*]` takes a row of an array, which a bracket leaving
+            // dimensions names: not E0510 there.
+            let expected = expected_of.get(p).copied();
+            ctx.row_argument = expected
+                .filter(|ty| matches!(ty.normalize(db), Type::ArrayConformand(_)))
+                .and_then(|_| argument_path(db, value));
+            ictx.resolve_expr_expecting(db, value, ctx, expected);
+            ctx.row_argument = None;
         }
         // Adjusted, not raw: indexing and dereference are recorded as
         // ADJUSTMENTS over the base type, so the raw type of `arr[0]` is the
@@ -440,7 +447,9 @@ fn candidate_fit<'db>(
             ParamAssignKind::FormalOutput { .. } if var.is_output(db) => continue,
             ParamAssignKind::FormalOutput { .. } => return CandidateFit::Unbound,
         };
-        let fit = if var.is_in_out(db) {
+        let fit = if let Some(conformand) = var.conformand(db) {
+            conformand_fit(db, conformand, var, value, ctx)
+        } else if var.is_in_out(db) {
             in_out_fit(db, resolver, var, value, ctx)
         } else if var.is_input(db) {
             classify_arg(
@@ -557,6 +566,38 @@ fn ambiguity<'db>(
 /// one) of the parameter's own type, or, for an interface, any implementer.
 /// A literal or a wider variable is no match, though a VAR_INPUT of the same
 /// type would take it.
+/// How an argument fits an `ARRAY[*]` parameter: as an array of its element
+/// type, below a parameter declaring the bounds too, and more loosely to one
+/// of any type, which takes every array. A VAR_IN_OUT takes a variable.
+fn conformand_fit<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    conformand: crate::hir_def::expressions::spec::ArrayConformand<'db>,
+    var: VariableDecl<'db>,
+    value: Expr<'db>,
+    ctx: &BodyInferenceResult<'db>,
+) -> ArgMatch {
+    if var.is_in_out(db)
+        && !matches!(
+            value.expr(db),
+            ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess(_))
+        )
+    {
+        return ArgMatch::No;
+    }
+    let binds = crate::hir_ty::infer::coerce::ArrayArgument::of(
+        db,
+        ctx.type_of_expr_with_adjustments(db, value),
+    )
+    .is_some_and(|argument| {
+        crate::hir_ty::infer::coerce::binds_conformand(db, conformand, &argument)
+    });
+    match (binds, conformand.of_type(db)) {
+        (false, _) => ArgMatch::No,
+        (true, Some(_)) => ArgMatch::Bounds,
+        (true, None) => ArgMatch::Widen,
+    }
+}
+
 fn in_out_fit<'db>(
     db: &'db dyn WorkspaceDataBase,
     resolver: Resolver<'db>,
@@ -610,6 +651,10 @@ fn is_param_required<'db>(
     var: VariableDecl<'db>,
 ) -> bool {
     if var.is_in_out(db) {
+        return true;
+    }
+    // The bounds of an `ARRAY[*]` come from what the call binds to it.
+    if var.conformand(db).is_some() {
         return true;
     }
     if !var.is_input(db) {
@@ -712,12 +757,18 @@ fn check_by_ref_invariance<'db>(
     let param_ty = Type::new_var(db, var);
     // An interface-typed parameter takes any implementer: that is dispatch,
     // not a reinterpretation of the caller's slot, and IMPLEMENTS is checked
-    // by the coercion itself.
-    if matches!(param_ty.normalize(db), Type::Interface(_))
-        || crate::hir_ty::infer::coerce::same_type(db, param_ty.normalize(db), arg_ty.normalize(db))
-        || param_ty
-            .coerce_with_type(db, arg_ty, None, resolver)
-            .is_err()
+    // by the coercion itself. An `ARRAY[*]` takes any bounds, checked where
+    // the argument is.
+    if matches!(
+        param_ty.normalize(db),
+        Type::Interface(_) | Type::ArrayConformand(_)
+    ) || crate::hir_ty::infer::coerce::same_type(
+        db,
+        param_ty.normalize(db),
+        arg_ty.normalize(db),
+    ) || param_ty
+        .coerce_with_type(db, arg_ty, None, resolver)
+        .is_err()
     {
         return;
     }
@@ -865,7 +916,11 @@ fn apply_param_coercion<'db>(
             }
 
             check_in_out_lvalue(db, callable, var, value, ctx);
+            check_conformand_variable(db, callable, var, value, ctx);
             if let Some(err) = ctx.ref_subrange_mismatch(db, Type::new_var(db, var), value) {
+                ctx.errors.push(err.to_diagnostic(db, ctx.scope.file(db)));
+            }
+            if let Some(err) = ctx.ref_capacity_mismatch(db, Type::new_var(db, var), value) {
                 ctx.errors.push(err.to_diagnostic(db, ctx.scope.file(db)));
             }
 
@@ -920,7 +975,11 @@ fn apply_param_coercion<'db>(
             }
 
             check_in_out_lvalue(db, callable, var, value, ctx);
+            check_conformand_variable(db, callable, var, value, ctx);
             if let Some(err) = ctx.ref_subrange_mismatch(db, Type::new_var(db, var), value) {
+                ctx.errors.push(err.to_diagnostic(db, ctx.scope.file(db)));
+            }
+            if let Some(err) = ctx.ref_capacity_mismatch(db, Type::new_var(db, var), value) {
                 ctx.errors.push(err.to_diagnostic(db, ctx.scope.file(db)));
             }
 
@@ -993,10 +1052,22 @@ fn apply_param_coercion<'db>(
             // on the adjusted type, a struct element read as a type name
             // used as a value (E0317).
             if place_typ.check_assignable(db, call_site, ctx) {
-                if rhs_typ
-                    .coerce_with_type(db, lhs_typ, None, resolver)
-                    .is_err()
-                {
+                // An `ARRAY[*]` output is written into an array of any bounds.
+                let binds = match var.conformand(db) {
+                    Some(conformand) => {
+                        rhs_typ.is_never()
+                            || crate::hir_ty::infer::coerce::ArrayArgument::of(db, rhs_typ)
+                                .is_some_and(|arg| {
+                                    crate::hir_ty::infer::coerce::binds_conformand(
+                                        db, conformand, &arg,
+                                    )
+                                })
+                    }
+                    None => rhs_typ
+                        .coerce_with_type(db, lhs_typ, None, resolver)
+                        .is_ok(),
+                };
+                if !binds {
                     ctx.errors.push(
                         TypeError::NotAssignable {
                             base_target: lhs_typ,
@@ -1037,6 +1108,34 @@ fn coerce_with_var_target<'db>(
     }
     caller_infer_ctx.check_expr(db, expr, ctx);
 
+    // An `ARRAY[*]` takes an array of any bounds, which no assignment does,
+    // and a row of one: what a bracket leaving dimensions names.
+    if let Some(conformand) = var.conformand(db) {
+        let arg = ctx.type_of_expr_with_adjustments(db, expr);
+        let argument = match argument_row(db, expr, ctx) {
+            Some(row) => Some(crate::hir_ty::infer::coerce::ArrayArgument::row(db, row)),
+            None => crate::hir_ty::infer::coerce::ArrayArgument::of(db, arg),
+        };
+        let binds = argument.is_some_and(|argument| {
+            crate::hir_ty::infer::coerce::binds_conformand(db, conformand, &argument)
+        });
+        if !arg.is_never() && !binds {
+            let param = Type::new_var(db, var);
+            ctx.errors.push(
+                TypeError::NotAssignable {
+                    suggest_cast: false,
+                    base_target: param,
+                    lhs: param,
+                    rhs: arg,
+                    adjustment: None,
+                    expr: CallSite::from_scoped(db, &expr),
+                }
+                .to_diagnostic(db, ctx.scope.file(db)),
+            );
+        }
+        return;
+    }
+
     if let Err(e) = caller_infer_ctx.coerce_var_decl_with_expr(db, var, expr, ctx) {
         let base_target = Type::new_var(db, var);
         ctx.errors.push(
@@ -1050,6 +1149,65 @@ fn coerce_with_var_target<'db>(
             }
             .to_diagnostic(db, ctx.scope.file(db)),
         );
+    }
+}
+
+/// E0817: an `ARRAY[*]` VAR_INPUT is connected to a variable, or a row of
+/// one, whose bounds it takes. A VAR_IN_OUT is E0806's.
+fn check_conformand_variable<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    callable: CallableType<'db>,
+    var: VariableDecl<'db>,
+    value: Expr<'db>,
+    ctx: &mut BodyInferenceResult<'db>,
+) {
+    if var.conformand(db).is_none()
+        || var.is_in_out(db)
+        || matches!(
+            value.expr(db),
+            ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess(_))
+        )
+        || ctx.type_of_expr_with_adjustments(db, value).is_never()
+    {
+        return;
+    }
+    ctx.errors.push(
+        CallError::ConformandRequiresVariable {
+            func: callable,
+            var,
+            expr: value,
+        }
+        .to_diagnostic(db, ctx.scope.file(db)),
+    );
+}
+
+/// The row `expr` names, when it is a path ending in a bracket that leaves
+/// dimensions of a multi-dimensional array: `m[i]` of `m : ARRAY[1..3,
+/// 1..4] OF INT`. Only an `ARRAY[*]` argument is one (E0510 elsewhere).
+pub(crate) fn argument_row<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    expr: Expr<'db>,
+    ctx: &BodyInferenceResult<'db>,
+) -> Option<crate::hir_ty::body::IndexedArray<'db>> {
+    let path = argument_path(db, expr)?;
+    ctx.indexed_arrays
+        .get(&path)
+        .copied()
+        .filter(|indexed| indexed.is_partial(db))
+}
+
+/// The path an argument names, when it is a variable access.
+fn argument_path<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    expr: Expr<'db>,
+) -> Option<crate::hir_def::expressions::expression::PathExpr<'db>> {
+    use crate::hir_def::expressions::expression::VariableAccessKind;
+    let ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess(access)) = expr.expr(db) else {
+        return None;
+    };
+    match access.kind(db) {
+        VariableAccessKind::Symbolic(begin) => begin.expr(db),
+        VariableAccessKind::Direct(_) => None,
     }
 }
 
