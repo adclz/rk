@@ -1512,8 +1512,9 @@ impl<'db> ExprLowerCtx<'db> {
         Ok(place)
     }
 
-    /// `(element_type, byte_stride, lower_bound)` for dimension `dim`,
-    /// row-major: `stride = element_size × ∏(later sizes)`.
+    /// `(reached_type, byte_stride, lower_bound, size)` for dimension `dim`,
+    /// row-major: `stride = element_size × ∏(later sizes)`. A subscript of
+    /// the last dimension reaches an element, an earlier one a row.
     fn resolve_array_dim_info(
         &self,
         array_type: Type<'db>,
@@ -1534,7 +1535,14 @@ impl<'db> ExprLowerCtx<'db> {
                 .get(dim)
                 .map(|(l, h)| (*l, (h - l + 1).max(0) as u32))
                 .unwrap_or((0, 0));
-            return Ok((*a.element_type.clone(), stride, lower_bound, dim_size));
+            // A subscript short of the last dimension reaches a row, the
+            // array of the dimensions after it: a STRING array's row is no
+            // STRING.
+            let element_type = match a.row(dim + 1) {
+                Some(row) if !row.dimensions.is_empty() => MirType::Array(row),
+                _ => *a.element_type.clone(),
+            };
+            return Ok((element_type, stride, lower_bound, dim_size));
         }
         // HIR type-checked the index, so a non-array here is a real disagreement.
         Err(LowerTypeError::UnsupportedType(

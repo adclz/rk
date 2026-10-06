@@ -670,25 +670,12 @@ fn for_param<'db>(
     }
 }
 
-/// The rows of `whole` after its first `through` dimensions: what `m[i]`
-/// names, laid out where it starts.
+/// The rows of `whole` after its first `through` dimensions.
 fn row_of(whole: &MirType, through: usize) -> Option<MirType> {
-    let MirType::Array(array) = whole else {
-        return None;
-    };
-    let dimensions = array.dimensions.get(through..)?.to_vec();
-    let total_elements = dimensions
-        .iter()
-        .map(|(lower, upper)| (upper - lower + 1).max(0) as u32)
-        .product::<u32>();
-    Some(MirType::Array(crate::types::MirArrayType {
-        element_type: array.element_type.clone(),
-        dimensions,
-        total_elements,
-        element_size: array.element_size,
-        size: array.element_size * total_elements,
-        align: array.align,
-    }))
+    match whole {
+        MirType::Array(array) => array.row(through).map(MirType::Array),
+        _ => None,
+    }
 }
 
 /// The array type an `ARRAY[*]` argument binds: a forwarded parameter's, as
