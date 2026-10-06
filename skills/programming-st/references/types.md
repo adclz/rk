@@ -182,6 +182,10 @@ m: ARRAY[0..1, 0..1] OF INT := [[1, 2], [3, 4]];
 o: Outer := (i := (a := 1, b := [1, 2]), name := 'hi');   // nested
 ```
 
+A FUNCTION parameter `ARRAY[*] OF T` takes an array of `T` of any bounds, with one `*` per dimension.
+`ARRAY[*]` with no `OF` takes any array: it is passed on, or has its bounds read.
+`LOWER_BOUND(a, DIM)` and `UPPER_BOUND(a, DIM)` come from `USING Std.Arrays;`.
+
 References use `REF()`, `^` and `NULL`:
 
 ```iecst fragment
