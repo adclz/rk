@@ -5,8 +5,7 @@ use auto_lsp::anyhow::{self};
 use auto_lsp::core::ast::AstNode;
 
 use crate::check::errors::e04_init::InitError;
-use crate::check::errors::e05_array::ArrayError;
-use crate::hir_def::expressions::spec::Array;
+use crate::hir_def::expressions::spec::{Array, ArrayConformand};
 use crate::hir_def::interned::identifier::SpanIdent;
 use crate::hir_def::interned::namespace::SpanNamespaceAccess;
 use crate::{
@@ -527,10 +526,16 @@ impl<'db> ParseSpec<'db> for ast::generated::ArrayConformand {
         &self,
         sema: &mut SemanticIndexBuilder<'db>,
     ) -> anyhow::Result<Spec<'db>, IdeDiagnostic> {
-        Err(
-            ArrayError::ArrayConformandNotSupported(self.get_range().to_owned())
-                .to_diagnostic(sema.db, sema.file),
-        )
+        let of_type = match &self.Type {
+            Some(of_type) => Some(of_type.cast(sema.ast).to_spec(sema)?),
+            None => None,
+        };
+        let conformand = ArrayConformand::new(sema.db, self.dimensions.len(), of_type);
+        Ok(sema.new_spec(
+            SpecKind::ArrayConformand(conformand),
+            self.into(),
+            sema.current_scope,
+        ))
     }
 }
 
