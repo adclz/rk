@@ -32,6 +32,7 @@ use hir::{
         config::infer_config_result,
         head::signature::infer_signature,
         infer::Infer,
+        layout,
         oop::MethodRef,
         ty::{CallableType, Type},
     },
@@ -44,6 +45,78 @@ use crate::{
     },
     hir_node::{HasComment, MaybeHirNode, get_param_start_pos},
 };
+
+/// What a value takes in memory, the way rust-analyzer shows it: `size =
+/// 40`, and `offset = 8` where it sits in a STRUCT or an instance. Empty for
+/// what has no storage of its own, a FUNCTION or an `ARRAY[*]`.
+fn layout_section(size: Option<u64>, offset: Option<u64>) -> String {
+    match (size, offset) {
+        (Some(size), Some(offset)) => format!("\n---\nsize = {size}, offset = {offset}\n"),
+        (Some(size), None) => format!("\n---\nsize = {size}\n"),
+        (None, _) => String::new(),
+    }
+}
+
+/// Where a member of an FB, a CLASS or a PROGRAM sits in its instance: its
+/// value, or the address a VAR_IN_OUT holds.
+fn member_part<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    var: VariableDecl<'db>,
+) -> Option<layout::Field<'db>> {
+    let instance = match get_scope(db, var.get_scope_id(db)).kind {
+        ScopeKind::Pou(pou @ (Pou::FunctionBlock(_) | Pou::Class(_))) => {
+            layout::instance_layout(db, pou).as_ref()
+        }
+        ScopeKind::Program(program) => layout::program_layout(db, program).as_ref(),
+        _ => None,
+    }?;
+    instance
+        .fields
+        .iter()
+        .find(|field| {
+            field.var == var && matches!(field.part, layout::Part::Value | layout::Part::Address)
+        })
+        .copied()
+}
+
+/// Where a STRUCT element sits in its STRUCT: the TYPE's, or one written in
+/// a declaration of the scope, nested ones included.
+fn element_offset<'db>(db: &'db dyn WorkspaceDataBase, element: StructElement<'db>) -> Option<u64> {
+    fn find<'db>(
+        db: &'db dyn WorkspaceDataBase,
+        spec: Spec<'db>,
+        element: StructElement<'db>,
+    ) -> Option<u64> {
+        match spec.kind(db) {
+            SpecKind::Struct(strukt) => {
+                if let Some(index) = strukt.elements(db).iter().position(|e| *e == element) {
+                    return layout::struct_layout(db, *strukt)
+                        .as_ref()?
+                        .offsets
+                        .get(index)
+                        .copied();
+                }
+                strukt
+                    .elements(db)
+                    .iter()
+                    .find_map(|e| find(db, e.spec(db), element))
+            }
+            SpecKind::Array(array) => find(db, array.of_type(db), element),
+            _ => None,
+        }
+    }
+    let scope = element.get_scope_id(db);
+    let mut specs: Vec<Spec<'db>> = scope
+        .variables(db)
+        .into_iter()
+        .flatten()
+        .map(|var| var.spec(db))
+        .collect();
+    if let ScopeKind::Pou(Pou::DataType(dt)) = get_scope(db, scope).kind {
+        specs.push(dt.spec(db));
+    }
+    specs.into_iter().find_map(|spec| find(db, spec, element))
+}
 
 /// The file holding this type's declaration, when it has a single named declaration
 /// site. Used to keep hover ranges same-file (see [`guard_same_file`]).
@@ -154,11 +227,15 @@ impl<'db> HoverHandler<'db> for ProgramDecl<'db> {
         let name = self.get_name_with_case(db).text(db);
 
         let path = Type::Program(*self).path_name(db);
+        let size = layout::program_layout(db, *self)
+            .as_ref()
+            .map(|instance| instance.whole.size);
+        let layout = layout_section(size, None);
 
         Some(Hover {
             contents: HoverContents::Markup(MarkupContent {
                 kind: MarkupKind::Markdown,
-                value: format!("```iecst\n{path}PROGRAM {name}\n```\n{comment}"),
+                value: format!("```iecst\n{path}PROGRAM {name}\n```\n{layout}{comment}"),
             }),
             range: Some(
                 hir::denormalize(db, self.get_scope_id(db).file(db), &self.get_name_span(db))
@@ -197,11 +274,21 @@ impl<'db> HoverHandler<'db> for Pou<'db> {
         };
 
         let path = Type::new_pou(db, *self).path_name(db);
+        let size = match self {
+            Pou::DataType(dt) => layout::of_spec(db, dt.spec(db)).map(|l| l.size),
+            Pou::FunctionBlock(_) | Pou::Class(_) => layout::instance_layout(db, *self)
+                .as_ref()
+                .map(|instance| instance.whole.size),
+            Pou::Function(_) | Pou::Interface(_) => None,
+        };
+        let layout = layout_section(size, None);
 
         Some(Hover {
             contents: HoverContents::Markup(MarkupContent {
                 kind: MarkupKind::Markdown,
-                value: format!("```iecst\n{path}{kind} {name}{return_type}\n```\n{comment}"),
+                value: format!(
+                    "```iecst\n{path}{kind} {name}{return_type}\n```\n{layout}{comment}"
+                ),
             }),
             range: Some(
                 hir::denormalize(db, self.get_scope_id(db).file(db), &self.get_name_span(db))
@@ -229,11 +316,15 @@ impl<'db> HoverHandler<'db> for VariableDecl<'db> {
         let infer = self.spec(db).infer(db);
         let name = self.name_with_case(db).text(db);
         let type_name = infer.type_name(db);
+        let layout = match member_part(db, *self) {
+            Some(field) => layout_section(Some(field.layout.size), Some(field.offset)),
+            None => layout_section(layout::of_spec(db, self.spec(db)).map(|l| l.size), None),
+        };
 
         Some(Hover {
             contents: HoverContents::Markup(MarkupContent {
                 kind: MarkupKind::Markdown,
-                value: format!("```iecst\n({kind}) {name}: {type_name}\n```\n{comment}"),
+                value: format!("```iecst\n({kind}) {name}: {type_name}\n```\n{layout}{comment}"),
             }),
             range: Some(
                 hir::denormalize(db, self.get_scope_id(db).file(db), &self.get_name_span(db))
@@ -283,11 +374,15 @@ impl<'db> HoverHandler<'db> for StructElement<'db> {
         let name = self.name_with_case(db).text(db);
         let type_name = self.spec(db).infer(db).type_name(db);
         let path = Type::StructElement(*self).path_name(db);
+        let layout = layout_section(
+            layout::of_spec(db, self.spec(db)).map(|l| l.size),
+            element_offset(db, *self),
+        );
 
         Some(Hover {
             contents: HoverContents::Markup(MarkupContent {
                 kind: MarkupKind::Markdown,
-                value: format!("```iecst\n{path}{name}: {type_name}\n```\n{comment}"),
+                value: format!("```iecst\n{path}{name}: {type_name}\n```\n{layout}{comment}"),
             }),
             range: Some(
                 hir::denormalize(db, self.get_scope_id(db).file(db), &self.get_name_span(db))

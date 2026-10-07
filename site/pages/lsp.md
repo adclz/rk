@@ -54,7 +54,7 @@ A missing `config.toml` is not fatal, it only adds the `E1401` hint to each file
 
 ## Reading code
 
-- **Hover** shows the signature, the namespace, and the doc comment written above the declaration.
+- **Hover** shows the signature, the namespace, the size in bytes and, for a field or a member, its offset, then the doc comment written above the declaration.
 - **Outline** lists the POUs of a file with their variables and their types.
 - **Workspace symbols** is a fuzzy search over the workspace and the standard library at once: `MC` finds `MotorController`.
 - **Highlights** mark every occurrence of the name under the cursor in the file.
