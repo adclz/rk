@@ -32,6 +32,7 @@ stack_size = 1048576 # 1 MiB
 ```
 
 A stack too small for a frame, or that does not fit in 4 GiB with the rest of the memory, stops the build.
+A TYPE, a variable or an instance that takes more than 4 GiB on its own is refused before that, by `rk check` (`E0322`).
 
 | Band | Exports | Holds | The host |
 |---|---|---|---|
