@@ -328,13 +328,15 @@ fn a_host_binds_by_address(mut with_db: db::RootDatabase) {
 }
 
 /// The layout hash covers the addresses a host bound, not where they landed:
-/// adding an unrelated global re-bases every band and must not invalidate a
-/// binding, while adding an address must.
+/// adding unrelated static storage re-bases every band and must not
+/// invalidate a binding, while adding an address must.
 #[rstest]
 fn the_layout_hash_ignores_rebasing(#[allow(unused)] with_db: db::RootDatabase) {
-    let program = |extra_global: &str, extra_addr: &str| {
+    let program = |extra_pou: &str, extra_addr: &str| {
         format!(
             r#"
+        {extra_pou}
+
         PROGRAM P
         VAR_EXTERNAL dial : INT; END_VAR
         VAR RETAIN seen : INT; END_VAR
@@ -344,7 +346,6 @@ fn the_layout_hash_ignores_rebasing(#[allow(unused)] with_db: db::RootDatabase) 
         CONFIGURATION Cfg
         VAR_GLOBAL
             dial AT %IW4 : INT;
-            {extra_global}
             {extra_addr}
         END_VAR
             RESOURCE Res ON CPU
@@ -356,17 +357,20 @@ fn the_layout_hash_ignores_rebasing(#[allow(unused)] with_db: db::RootDatabase) 
         )
     };
     // One database per variant: each is a whole workspace of its own.
-    let compile = |extra_global: &str, extra_addr: &str| {
+    let compile = |extra_pou: &str, extra_addr: &str| {
         let mut db = db::RootDatabase::default();
-        compile_to_mir_and_wasm(&mut db, &program(extra_global, extra_addr)).0
+        compile_to_mir_and_wasm(&mut db, &program(extra_pou, extra_addr)).0
     };
     let bare = compile("", "");
-    let padded = compile("pad : LREAL;", "");
+    let padded = compile(
+        "FUNCTION Pad : INT VAR cells : ARRAY[0..0] OF LREAL; END_VAR Pad := 0; END_FUNCTION",
+        "",
+    );
     let grown = compile("", "knob AT %IW8 : INT;");
 
     assert_ne!(
         bare.input_base, padded.input_base,
-        "the unrelated global re-based the bands"
+        "the unrelated static storage re-based the bands"
     );
     assert_eq!(
         bare.located_map.layout_hash, padded.located_map.layout_hash,
