@@ -63,6 +63,10 @@ impl<'db> InitInference<'db> {
                 );
             }
 
+            // An element's own type is checked as a variable's is: its
+            // bounds, its STRING length.
+            self.check_spec(db, field.spec(db));
+
             let element_type = field.spec(db).infer(db);
             if let Some(init_expr) = field.init(db) {
                 self.init_expr_result.resolve_init_expr(

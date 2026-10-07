@@ -593,3 +593,24 @@ END_FUNCTION_BLOCK
     ---'
     ");
 }
+
+/// A STRUCT element's array is checked as a variable's: its bounds were
+/// not, and `ARRAY[5..1]` inside a STRUCT went unreported.
+#[rstest]
+fn invalid_reversed_bound_in_a_struct_element(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE S : STRUCT
+    a : ARRAY[5..1] OF INT;
+END_STRUCT
+END_TYPE
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0503] Error: upper bound below the lower bound
+       ,-[ file:///test0.st:3:18 ]
+       |
+     3 |     a : ARRAY[5..1] OF INT;
+       |                  |
+       |                  `-- the upper bound 1 is below the lower bound 5
+    ---'
+    ");
+}
