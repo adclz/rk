@@ -31,9 +31,9 @@ END_FUNCTION
        |             ^^^|^^^
        |                `----- REAL values compared with '='
        |
-       | Help: compare with a tolerance, 'ABS(x - 0.3) < 1.0E-6'
+       | Help: compare with a tolerance if one is acceptable, 'ABS(x - 0.3) <= tolerance'
        |
-       | Note 1: a REAL holds the nearest binary fraction, so 0.1 + 0.2 = 0.3 is FALSE
+       | Note 1: a REAL holds the nearest binary fraction, so 1.1 + 2.2 = 3.3 is FALSE
        |
        | Note 2: lint rule: float-equality
     ---'
@@ -44,9 +44,9 @@ END_FUNCTION
        |             ^^^|^^
        |                `---- LREAL values compared with '<>'
        |
-       | Help: compare with a tolerance, 'ABS(y - x) >= 1.0E-6'
+       | Help: compare with a tolerance if one is acceptable, 'ABS(y - x) > tolerance'
        |
-       | Note 1: a REAL holds the nearest binary fraction, so 0.1 + 0.2 = 0.3 is FALSE
+       | Note 1: a REAL holds the nearest binary fraction, so 1.1 + 2.2 = 3.3 is FALSE
        |
        | Note 2: lint rule: float-equality
     ---'
@@ -57,9 +57,9 @@ END_FUNCTION
         |             ^^|^^
         |               `---- REAL values compared with '='
         |
-        | Help: compare with a tolerance, 'ABS(x - n) < 1.0E-6'
+        | Help: compare with a tolerance if one is acceptable, 'ABS(x - n) <= tolerance'
         |
-        | Note 1: a REAL holds the nearest binary fraction, so 0.1 + 0.2 = 0.3 is FALSE
+        | Note 1: a REAL holds the nearest binary fraction, so 1.1 + 2.2 = 3.3 is FALSE
         |
         | Note 2: lint rule: float-equality
     ----'
@@ -111,9 +111,9 @@ END_FUNCTION
        |             ^^^^|^^^^
        |                 `------ REAL values compared with '='
        |
-       | Help: compare with a tolerance, 'ABS(x - (a - b)) < 1.0E-6'
+       | Help: compare with a tolerance if one is acceptable, 'ABS(x - (a - b)) <= tolerance'
        |
-       | Note 1: a REAL holds the nearest binary fraction, so 0.1 + 0.2 = 0.3 is FALSE
+       | Note 1: a REAL holds the nearest binary fraction, so 1.1 + 2.2 = 3.3 is FALSE
        |
        | Note 2: lint rule: float-equality
     ---'

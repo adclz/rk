@@ -79,17 +79,19 @@ pub fn check_node<'db>(
         .severity(DiagnosticSeverity::WARNING)
         .call();
     d.with_note(
-        "a REAL holds the nearest binary fraction, so 0.1 + 0.2 = 0.3 is FALSE".to_string(),
+        "a REAL holds the nearest binary fraction, so 1.1 + 2.2 = 3.3 is FALSE".to_string(),
     );
     d.with_help(format!(
-        "compare with a tolerance, '{}'",
+        "compare with a tolerance if one is acceptable, '{}'",
         with_tolerance(db, left, operator, right)
     ));
     diagnostics.push(d);
 }
 
 /// The comparison rewritten against a tolerance, from its own operands:
-/// `x = 0.3` is `ABS(x - 0.3) < 1.0E-6`, `x <> y` is `ABS(x - y) >= 1.0E-6`.
+/// `x = 0.3` is `ABS(x - 0.3) <= tolerance`, `x <> y` is `ABS(x - y) >
+/// tolerance`. The tolerance is the values' own, in their unit: no number
+/// fits them all, and from 16 on two REALs are further apart than 1.0E-6.
 fn with_tolerance<'db>(
     db: &'db dyn WorkspaceDataBase,
     left: &Expr<'db>,
@@ -105,8 +107,8 @@ fn with_tolerance<'db>(
         _ => right.as_call_site(db).to_string(db).to_string(),
     };
     let within = match operator {
-        ComparisonOperatorKind::Ne => ">=",
-        _ => "<",
+        ComparisonOperatorKind::Ne => ">",
+        _ => "<=",
     };
-    format!("ABS({left} - {right}) {within} 1.0E-6")
+    format!("ABS({left} - {right}) {within} tolerance")
 }
