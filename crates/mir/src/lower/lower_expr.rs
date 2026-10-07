@@ -668,6 +668,10 @@ impl<'db> ExprLowerCtx<'db> {
 
             PrimaryExpr::RefValue { value } => match value {
                 RefValue::Null => Ok(MirExpr::Constant(MirConstant::Null)),
+                // HIR refused it (E0905).
+                RefValue::Value(_) => Err(LowerTypeError::UnsupportedType(
+                    "REF() of a value reached lowering".to_string(),
+                )),
                 RefValue::Address(path) => {
                     // A part of a wider address has no cell of its own: the
                     // reference is to its bytes in its owner's (a bit has
@@ -2000,7 +2004,13 @@ impl<'db> ExprLowerCtx<'db> {
                             kind: MirArgKind::ByValue,
                         });
                     }
-                    ParamAssignKind::FormalOutput { variable, .. } => {
+                    ParamAssignKind::FormalOutput { value, .. } => {
+                        // HIR refused an output bound to a value (E0805).
+                        let variable = value.variable_access(self.db).ok_or_else(|| {
+                            LowerTypeError::UnsupportedType(
+                                "an output bound to a value reached lowering".to_string(),
+                            )
+                        })?;
                         if self.view(variable, variable.infer(self.db))?.is_some() {
                             return Err(LowerTypeError::UnsupportedType(
                                 "a call with no signature cannot write its output into part \
@@ -2226,7 +2236,7 @@ impl<'db> ExprLowerCtx<'db> {
                         });
                     }
                 }
-                hir::hir_ty::body::ParamBinding::Output(variable) => {
+                hir::hir_ty::body::ParamBinding::Output { variable, not } => {
                     let ty = self.output_type(*var, *variable)?;
                     // A WIDER scalar destination converts after the call: the
                     // callee writes its own lane wherever it is pointed.
@@ -2245,6 +2255,16 @@ impl<'db> ExprLowerCtx<'db> {
                             _ => None,
                         }
                     });
+                    // `NOT o => x` stores the output's negation, in its own
+                    // lane (HIR allows it on a BOOL or a bit string only).
+                    let negated = |value: MirExpr| match (*not, out_lane) {
+                        (true, Some(lane)) => MirExpr::UnaryOp {
+                            op: crate::expr::MirUnaryOp::Not,
+                            expr: Box::new(value),
+                            ty: lane,
+                        },
+                        _ => value,
+                    };
                     let place = match self.view(*variable, variable.infer(self.db))? {
                         // Whole bytes of a wider address's cell have an
                         // address the callee writes through.
@@ -2280,7 +2300,7 @@ impl<'db> ExprLowerCtx<'db> {
                                 });
                                 scratch
                             };
-                            let mut value = MirExpr::Load(MirPlace::Local(scratch), ty);
+                            let mut value = negated(MirExpr::Load(MirPlace::Local(scratch), ty));
                             if let (Some(from), Some(to)) = (out_lane, target_lane) {
                                 value = MirExpr::Cast {
                                     expr: Box::new(value),
@@ -2299,7 +2319,35 @@ impl<'db> ExprLowerCtx<'db> {
                         }
                         None => self.lower_variable_access(*variable)?,
                     };
-                    if is_extern {
+                    if is_extern && *not {
+                        // Popped into a scratch, negated into the bound place
+                        // once the call returns.
+                        let scratch = self.extern_result_scratch(ty.clone());
+                        extern_results.push(crate::expr::ExternResultBind {
+                            scratch,
+                            dest: None,
+                            ty: ty.clone(),
+                            target_lane: None,
+                        });
+                        let lane = out_lane.ok_or_else(|| {
+                            LowerTypeError::UnsupportedType(
+                                "NOT on an output that is no scalar".into(),
+                            )
+                        })?;
+                        let mut value = negated(MirExpr::Load(MirPlace::Local(scratch), ty));
+                        if let Some(to) = target_lane {
+                            value = MirExpr::Cast {
+                                expr: Box::new(value),
+                                from: lane,
+                                to,
+                            };
+                        }
+                        output_bindings.push(crate::expr::MirOutputBinding {
+                            target: place,
+                            value,
+                            ty: target_lane.unwrap_or(lane),
+                        });
+                    } else if is_extern {
                         // The result pops off the stack into a scratch,
                         // then stores to the bound place — no pointer arg.
                         let scratch = self.extern_result_scratch(ty.clone());
@@ -2308,6 +2356,42 @@ impl<'db> ExprLowerCtx<'db> {
                             dest: Some(place),
                             ty,
                             target_lane,
+                        });
+                    } else if *not {
+                        // A memory scratch the callee writes through, negated
+                        // into the bound place once the call returns.
+                        let lane = out_lane.ok_or_else(|| {
+                            LowerTypeError::UnsupportedType(
+                                "NOT on an output that is no scalar".into(),
+                            )
+                        })?;
+                        let scratch = hir::hir_def::interned::identifier::Ident::new(
+                            self.db,
+                            compact_str::CompactString::from(format!(
+                                "$outcopy${}",
+                                self.call_scratch.borrow().memory.len()
+                            )),
+                        );
+                        self.call_scratch
+                            .borrow_mut()
+                            .memory
+                            .push((scratch, ty.clone()));
+                        args.push(MirCallArg {
+                            value: MirExpr::AddrOf(MirPlace::Local(scratch)),
+                            kind: MirArgKind::ByRef,
+                        });
+                        let mut value = negated(MirExpr::Load(MirPlace::Local(scratch), ty));
+                        if let Some(to) = target_lane {
+                            value = MirExpr::Cast {
+                                expr: Box::new(value),
+                                from: lane,
+                                to,
+                            };
+                        }
+                        output_bindings.push(crate::expr::MirOutputBinding {
+                            target: place,
+                            value,
+                            ty: target_lane.unwrap_or(lane),
                         });
                     } else if let (Some(from), Some(to)) = (out_lane, target_lane) {
                         // A memory scratch: the callee needs an address to write through.
@@ -2607,7 +2691,7 @@ impl<'db> ExprLowerCtx<'db> {
                         input_writes.push((field.offset, expr, field.ty.clone()));
                     }
                 }
-                hir::hir_ty::body::ParamBinding::Output(variable) => {
+                hir::hir_ty::body::ParamBinding::Output { variable, not } => {
                     // Same contract as inputs: a layout miss is a divergence.
                     let Some(field) = struct_type
                         .fields
@@ -2619,6 +2703,72 @@ impl<'db> ExprLowerCtx<'db> {
                             var_name.text(self.db)
                         )));
                     };
+                    // A wider scalar destination converts in the copy.
+                    let field_lane = match &field.ty {
+                        MirType::Elementary(e) => Some(*e),
+                        MirType::Enum(e) => Some(e.storage),
+                        MirType::Subrange(s) => Some(s.base),
+                        _ => None,
+                    };
+                    let target_lane = field_lane.and_then(|from| {
+                        let dest = self
+                            .inference(variable.scope_id(self.db))
+                            .type_of_variable_access_adjusted(*variable);
+                        match self.type_to_mir_elementary(dest) {
+                            Ok(to) if to != from => Some(to),
+                            _ => None,
+                        }
+                    });
+                    // `NOT q => x`: the output lands in a scratch, and the
+                    // statement after the call writes its negation into `x`.
+                    if *not {
+                        let lane = field_lane.ok_or_else(|| {
+                            LowerTypeError::UnsupportedType(
+                                "NOT on an output that is no scalar".into(),
+                            )
+                        })?;
+                        let scratch = hir::hir_def::interned::identifier::Ident::new(
+                            self.db,
+                            compact_str::CompactString::from(format!(
+                                "$notout${}",
+                                self.call_scratch.borrow().memory.len()
+                            )),
+                        );
+                        self.call_scratch
+                            .borrow_mut()
+                            .memory
+                            .push((scratch, field.ty.clone()));
+                        let mut value = MirExpr::UnaryOp {
+                            op: crate::expr::MirUnaryOp::Not,
+                            expr: Box::new(MirExpr::Load(
+                                MirPlace::Local(scratch),
+                                field.ty.clone(),
+                            )),
+                            ty: lane,
+                        };
+                        if let Some(to) = target_lane {
+                            value = MirExpr::Cast {
+                                expr: Box::new(value),
+                                from: lane,
+                                to,
+                            };
+                        }
+                        let (target, value) = match self.view(*variable, variable.infer(self.db))? {
+                            Some(super::multibit::View::Bytes(place)) => (place, value),
+                            Some(view) => view.write(value),
+                            None => (self.lower_variable_access(*variable)?, value),
+                        };
+                        self.after_stmt
+                            .borrow_mut()
+                            .push(crate::stmt::MirStmt::Assign { target, value });
+                        output_reads.push((
+                            field.offset,
+                            MirPlace::Local(scratch),
+                            field.ty.clone(),
+                            None,
+                        ));
+                        continue;
+                    }
                     // A view has no storage of its own: the output lands in a
                     // scratch, and the statement after the call rewrites the
                     // owner with those bits (`Q => %QX0.3` beside a `%QW0`).
@@ -2648,22 +2798,6 @@ impl<'db> ExprLowerCtx<'db> {
                         }
                         None => self.lower_variable_access(*variable)?,
                     };
-                    // A wider scalar destination converts in the copy.
-                    let field_lane = match &field.ty {
-                        MirType::Elementary(e) => Some(*e),
-                        MirType::Enum(e) => Some(e.storage),
-                        MirType::Subrange(s) => Some(s.base),
-                        _ => None,
-                    };
-                    let target_lane = field_lane.and_then(|from| {
-                        let dest = self
-                            .inference(variable.scope_id(self.db))
-                            .type_of_variable_access_adjusted(*variable);
-                        match self.type_to_mir_elementary(dest) {
-                            Ok(to) if to != from => Some(to),
-                            _ => None,
-                        }
-                    });
                     output_reads.push((field.offset, place, field.ty.clone(), target_lane));
                 }
             }
