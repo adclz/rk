@@ -66,9 +66,11 @@ n := Sum(1, 2);                      // positional
 n := Sum(a := 1, b := 2);            // named
 n := Sum(1, b := 2);                 // mixed is accepted
 n := Sum(a := 1, b := 2, carry => ov);   // bind a VAR_OUTPUT with =>
+n := Sum(1, 2, ov);                  // or by its place: every parameter, in declaration order
 
 c(CU := trig, PV := 5);              // call the instance
 c(CU := trig, Q => done, CV => n);   // read outputs inline…
+c(CU := trig, NOT Q => waiting);     // NOT stores the output negated
 done := c.Q;                         // …or off the instance afterwards
 c.Reset();                           // methods
 ```
