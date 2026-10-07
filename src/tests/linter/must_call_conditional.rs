@@ -60,7 +60,7 @@ END_PROGRAM
         |
         | Help: call 'in_if' at every scan, outside the IF, and pass the condition as an input
         |
-        | Note 1: a 'Delay' sees its inputs only when it is called, and a scan that skips the call leaves it as it was
+        | Note 1: a scan that skips the call leaves 'in_if' as it was
         |
         | Note 2: lint rule: must-call-conditional
     ----'
@@ -79,7 +79,7 @@ END_PROGRAM
         |
         | Help: call 'shared' at every scan, outside the CASE, and pass the condition as an input
         |
-        | Note 1: a 'Delay' sees its inputs only when it is called, and a scan that skips the call leaves it as it was
+        | Note 1: a scan that skips the call leaves 'shared' as it was
         |
         | Note 2: lint rule: must-call-conditional
     ----'
@@ -98,7 +98,7 @@ END_PROGRAM
         |
         | Help: call 'looped' at every scan, outside the loop, and pass the condition as an input
         |
-        | Note 1: a 'Delay' sees its inputs only when it is called, and a scan that skips the call leaves it as it was
+        | Note 1: a scan that skips the call leaves 'looped' as it was
         |
         | Note 2: lint rule: must-call-conditional
     ----'

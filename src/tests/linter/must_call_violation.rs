@@ -59,7 +59,7 @@ END_PROGRAM
        |
        | Help: call 'd' at every scan
        |
-       | Note 1: the outputs of a 'Delay' change only when it is called
+       | Note 1: every instance of a {must_call} block is to be called
        |
        | Note 2: lint rule: must-call-violation
     ---'
@@ -78,7 +78,7 @@ END_PROGRAM
         |
         | Help: call 'd' at every scan
         |
-        | Note 1: the outputs of a 'Delay' change only when it is called
+        | Note 1: every instance of a {must_call} block is to be called
         |
         | Note 2: lint rule: must-call-violation
     ----'
@@ -97,7 +97,7 @@ END_PROGRAM
         |
         | Help: call 'many' at every scan
         |
-        | Note 1: the outputs of a 'Delay' change only when it is called
+        | Note 1: every instance of a {must_call} block is to be called
         |
         | Note 2: lint rule: must-call-violation
     ----'
@@ -116,7 +116,7 @@ END_PROGRAM
         |
         | Help: call 'reset_only' at every scan
         |
-        | Note 1: the outputs of a 'Delay' change only when it is called
+        | Note 1: every instance of a {must_call} block is to be called
         |
         | Note 2: lint rule: must-call-violation
     ----'

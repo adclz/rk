@@ -158,9 +158,7 @@ fn report<'db>(
             pragma.get_span(db),
         ));
     }
-    d.with_note(format!(
-        "the outputs of a '{block_name}' change only when it is called"
-    ));
+    d.with_note("every instance of a {must_call} block is to be called".to_string());
     d.with_help(format!("call '{name}' at every scan"));
     d
 }

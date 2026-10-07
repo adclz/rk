@@ -158,7 +158,7 @@ fn report<'db>(
         ));
     }
     d.with_note(format!(
-        "a '{block_name}' sees its inputs only when it is called, and a scan that skips the call leaves it as it was"
+        "a scan that skips the call leaves '{name}' as it was"
     ));
     d.with_help(format!(
         "call '{name}' at every scan, outside {}, and pass the condition as an input",
