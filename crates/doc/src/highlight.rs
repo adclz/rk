@@ -366,7 +366,7 @@ pub fn escape(s: &str) -> String {
 }
 
 /// A diagnostic code as the compiler and the linter spell them: `E0301`,
-/// `L0307`.
+/// `L0212`.
 fn is_diagnostic_code(word: &str) -> bool {
     let mut chars = word.chars();
     matches!(chars.next(), Some('E' | 'L')) && word.len() >= 4 && chars.all(|c| c.is_ascii_digit())

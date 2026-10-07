@@ -11,12 +11,12 @@ use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
 
 pub const NAME: &str = "empty-if-branch";
 
-/// L0306: IF, ELSIF, or ELSE branch with no statements.
+/// L0211: IF, ELSIF, or ELSE branch with no statements.
 struct EmptyIfBranch;
 
 impl ErrorCode for EmptyIfBranch {
     fn code(&self) -> &'static str {
-        "L0306"
+        "L0211"
     }
 }
 
@@ -47,7 +47,7 @@ pub fn check_if<'db>(
                     )
                     .unwrap_or_default(),
                 )
-                .severity(DiagnosticSeverity::HINT)
+                .severity(DiagnosticSeverity::INFORMATION)
                 .call(),
         );
     }
@@ -63,7 +63,7 @@ pub fn check_if<'db>(
                         hir::denormalize(db, cond.get_scope_id(db).file(db), &cond.get_span(db))
                             .unwrap_or_default(),
                     )
-                    .severity(DiagnosticSeverity::HINT)
+                    .severity(DiagnosticSeverity::INFORMATION)
                     .call(),
             );
         }
@@ -79,7 +79,7 @@ pub fn check_if<'db>(
                     hir::denormalize(db, stmt.get_scope_id(db).file(db), &stmt.get_span(db))
                         .unwrap_or_default(),
                 )
-                .severity(DiagnosticSeverity::HINT)
+                .severity(DiagnosticSeverity::INFORMATION)
                 .call(),
         );
     }

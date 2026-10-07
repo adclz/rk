@@ -20,12 +20,12 @@ use rustc_hash::FxHashSet;
 
 pub const NAME: &str = "case-without-else";
 
-/// L0304: CASE statement without ELSE branch.
+/// L0209: CASE statement without ELSE branch.
 struct CaseWithoutElse;
 
 impl ErrorCode for CaseWithoutElse {
     fn code(&self) -> &'static str {
-        "L0304"
+        "L0209"
     }
 }
 
@@ -71,7 +71,7 @@ pub fn check<'db>(
                 hir::denormalize(db, stmt.get_scope_id(db).file(db), &stmt.get_span(db))
                     .unwrap_or_default(),
             )
-            .severity(DiagnosticSeverity::HINT)
+            .severity(DiagnosticSeverity::INFORMATION)
             .call();
         if let Some(help) = help {
             d.with_help(help.to_string());

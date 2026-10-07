@@ -58,7 +58,7 @@ END_PROGRAM
     );
     let rendered = test_single_lint(&mut with_db, &[&source], "aggregate-copy");
     assert_eq!(
-        rendered.matches("[L0214]").count(),
+        rendered.matches("[L0205]").count(),
         1,
         "one report, got:\n{rendered}"
     );
@@ -121,7 +121,7 @@ END_PROGRAM
 "#
     );
     assert_snapshot!(test_single_lint(&mut with_db, &[&source], "aggregate-copy"), @r"
-    [L0214] Info: aggregate copy
+    [L0205] Info: aggregate copy
         ,-[ file:///test0.st:24:14 ]
         |
      24 |     n := sum(p1, r1, o => p2);
@@ -134,7 +134,7 @@ END_PROGRAM
         |
         | Note 2: lint rule: aggregate-copy
     ----'
-    [L0214] Info: aggregate copy
+    [L0205] Info: aggregate copy
         ,-[ file:///test0.st:24:18 ]
         |
      24 |     n := sum(p1, r1, o => p2);
@@ -147,7 +147,7 @@ END_PROGRAM
         |
         | Note 2: lint rule: aggregate-copy
     ----'
-    [L0214] Info: aggregate copy
+    [L0205] Info: aggregate copy
         ,-[ file:///test0.st:24:22 ]
         |
      24 |     n := sum(p1, r1, o => p2);
@@ -160,7 +160,7 @@ END_PROGRAM
         |
         | Note 2: lint rule: aggregate-copy
     ----'
-    [L0214] Info: aggregate copy
+    [L0205] Info: aggregate copy
         ,-[ file:///test0.st:25:7 ]
         |
      25 |     t(cfg := p1, out => r2, shared := p2);
@@ -173,7 +173,7 @@ END_PROGRAM
         |
         | Note 2: lint rule: aggregate-copy
     ----'
-    [L0214] Info: aggregate copy
+    [L0205] Info: aggregate copy
         ,-[ file:///test0.st:25:18 ]
         |
      25 |     t(cfg := p1, out => r2, shared := p2);
@@ -201,7 +201,7 @@ VAR last : Samples; current : Samples; END_VAR
 END_PROGRAM
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "aggregate-copy"), @r"
-    [L0214] Info: aggregate copy
+    [L0205] Info: aggregate copy
        ,-[ file:///test0.st:6:5 ]
        |
      6 |     last := current;

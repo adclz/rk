@@ -20,7 +20,7 @@ END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "default-for-step"), @r"
-    [L0213] Hint: explicit default FOR step
+    [L0309] Hint: explicit default FOR step
        ,-[ file:///test0.st:6:25 ]
        |
      6 |     FOR i := 0 TO 10 BY 1 DO

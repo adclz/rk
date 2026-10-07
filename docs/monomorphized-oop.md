@@ -147,7 +147,7 @@ END_PROGRAM
 
 A `REF_TO` member is copied as it is, and still points at the original's target.
 To share one instance instead, pass it as a `VAR_IN_OUT`.
-The copy costs as much as the instance is large: the `aggregate-copy` lint (`L0214`) points at every one.
+The copy costs as much as the instance is large: the `aggregate-copy` lint (`L0205`) points at every one.
 
 A copy takes the exact type: a `Derived` into a `Base` is `E0301`, as it would keep the base part only.
 

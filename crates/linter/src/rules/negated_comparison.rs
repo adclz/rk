@@ -13,12 +13,12 @@ use ide_diagnostic::{ErrorCode, IdeDiagnostic, Related, diag};
 
 pub const NAME: &str = "negated-comparison";
 
-/// L0208: `NOT (x = y)` can be simplified to `x <> y`.
+/// L0305: `NOT (x = y)` can be simplified to `x <> y`.
 struct NegatedComparison;
 
 impl ErrorCode for NegatedComparison {
     fn code(&self) -> &'static str {
-        "L0208"
+        "L0305"
     }
 }
 
@@ -47,7 +47,7 @@ pub fn check_node<'db>(
                     hir::denormalize(db, expr.get_scope_id(db).file(db), &expr.get_span(db))
                         .unwrap_or_default(),
                 )
-                .severity(DiagnosticSeverity::INFORMATION)
+                .severity(DiagnosticSeverity::HINT)
                 .call();
 
             diag.with_related(Related::new(

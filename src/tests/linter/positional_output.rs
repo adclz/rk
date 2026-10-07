@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Clauzel Adrien
 // SPDX-License-Identifier: AGPL-3.0-only
 
-//! L0314: a positional argument in the place of a VAR_OUTPUT receives the
+//! L0313: a positional argument in the place of a VAR_OUTPUT receives the
 //! output, which nothing at the call site says.
 
 use db::RootDatabase;
@@ -42,7 +42,7 @@ VAR y, z, w, r : INT; b : B; END_VAR
 END_PROGRAM
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "positional-output"), @r"
-    [L0314] Hint: positional output
+    [L0313] Hint: positional output
         ,-[ file:///test0.st:23:16 ]
         |
       3 | VAR_OUTPUT o : INT; END_VAR
@@ -59,7 +59,7 @@ END_PROGRAM
         |
         | Note 2: lint rule: positional-output
     ----'
-    [L0314] Hint: positional output
+    [L0313] Hint: positional output
         ,-[ file:///test0.st:24:10 ]
         |
      11 | VAR_OUTPUT q : INT; END_VAR
@@ -76,7 +76,7 @@ END_PROGRAM
         |
         | Note 2: lint rule: positional-output
     ----'
-    [L0314] Hint: positional output
+    [L0313] Hint: positional output
         ,-[ file:///test0.st:25:17 ]
         |
      14 |     VAR_OUTPUT o : INT; END_VAR

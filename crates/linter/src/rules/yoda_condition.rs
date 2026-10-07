@@ -11,12 +11,12 @@ use ide_diagnostic::{ErrorCode, IdeDiagnostic, Related, diag};
 
 pub const NAME: &str = "yoda-condition";
 
-/// L0313: literal on the left side of a comparison.
+/// L0312: literal on the left side of a comparison.
 struct YodaCondition;
 
 impl ErrorCode for YodaCondition {
     fn code(&self) -> &'static str {
-        "L0313"
+        "L0312"
     }
 }
 

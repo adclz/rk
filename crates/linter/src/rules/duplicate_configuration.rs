@@ -10,12 +10,12 @@ use rustc_hash::FxHashMap;
 
 pub const NAME: &str = "duplicate-configuration";
 
-/// L0205: same-named CONFIGURATION blocks in one file could be merged.
+/// L0303: same-named CONFIGURATION blocks in one file could be merged.
 struct DuplicateConfiguration;
 
 impl ErrorCode for DuplicateConfiguration {
     fn code(&self) -> &'static str {
-        "L0205"
+        "L0303"
     }
 }
 
@@ -24,7 +24,7 @@ impl ErrorCode for DuplicateConfiguration {
 /// nothing, whatever they hold — merging them loses no ability.
 ///
 /// A lint, not an error: the code is valid and means what it says. Mirrors
-/// `duplicate-namespace` (L0204), which says the same about reopening a
+/// `duplicate-namespace` (L0302), which says the same about reopening a
 /// namespace twice in one file and likewise does not inspect the bodies.
 pub fn check<'db>(
     db: &'db dyn WorkspaceDataBase,
@@ -55,7 +55,7 @@ pub fn check<'db>(
                 ))
                 .desc(&DuplicateConfiguration)
                 .range(hir::denormalize(db, file, &config.get_name_span(db)).unwrap_or_default())
-                .severity(DiagnosticSeverity::INFORMATION)
+                .severity(DiagnosticSeverity::HINT)
                 .call();
             d.with_related(ide_diagnostic::Related {
                 message: format!("first declaration of '{name}' here"),

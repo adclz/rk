@@ -17,7 +17,7 @@ struct BoolComparison;
 
 impl ErrorCode for BoolComparison {
     fn code(&self) -> &'static str {
-        "L0209"
+        "L0306"
     }
 }
 
@@ -60,7 +60,7 @@ pub fn check_node<'db>(
                 hir::denormalize(db, expr.get_scope_id(db).file(db), &expr.get_span(db))
                     .unwrap_or_default(),
             )
-            .severity(DiagnosticSeverity::INFORMATION)
+            .severity(DiagnosticSeverity::HINT)
             .call(),
     );
 }

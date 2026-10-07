@@ -19,7 +19,7 @@ END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "empty-loop-body"), @r"
-    [L0308] Hint: empty loop body
+    [L0213] Info: empty loop body
        ,-[ file:///test0.st:6:5 ]
        |
      6 | ,->     FOR i := 0 TO 10 DO
@@ -44,7 +44,7 @@ END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "empty-loop-body"), @r"
-    [L0308] Hint: empty loop body
+    [L0213] Info: empty loop body
        ,-[ file:///test0.st:6:11 ]
        |
      6 |     WHILE x DO
@@ -69,7 +69,7 @@ END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "empty-loop-body"), @r"
-    [L0308] Hint: empty loop body
+    [L0213] Info: empty loop body
        ,-[ file:///test0.st:7:11 ]
        |
      7 |     UNTIL x

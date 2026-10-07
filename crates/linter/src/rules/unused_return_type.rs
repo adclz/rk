@@ -8,12 +8,12 @@ use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
 
 pub const NAME: &str = "unused-return-type";
 
-/// L0302: function call discards a return value.
+/// L0207: function call discards a return value.
 struct UnusedReturnType;
 
 impl ErrorCode for UnusedReturnType {
     fn code(&self) -> &'static str {
-        "L0302"
+        "L0207"
     }
 }
 
@@ -30,7 +30,7 @@ pub fn check<'db>(
                 hir::denormalize(db, stmt.get_scope_id(db).file(db), &stmt.get_span(db))
                     .unwrap_or_default(),
             )
-            .severity(DiagnosticSeverity::HINT)
+            .severity(DiagnosticSeverity::INFORMATION)
             .call();
 
         typ.with_location(db, &mut diag);

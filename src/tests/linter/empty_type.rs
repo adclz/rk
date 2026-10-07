@@ -15,7 +15,7 @@ END_STRUCT;
 END_TYPE
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "empty-type"), @r"
-    [L0309] Hint: empty type declaration
+    [L0214] Info: empty type declaration
        ,-[ file:///test0.st:2:6 ]
        |
      2 | TYPE EmptyStruct : STRUCT
@@ -34,7 +34,7 @@ TYPE EmptyEnum : ();
 END_TYPE
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "empty-type"), @r"
-    [L0309] Hint: empty type declaration
+    [L0214] Info: empty type declaration
        ,-[ file:///test0.st:2:6 ]
        |
      2 | TYPE EmptyEnum : ();

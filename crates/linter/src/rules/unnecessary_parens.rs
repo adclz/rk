@@ -11,12 +11,12 @@ use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
 
 pub const NAME: &str = "unnecessary-parens";
 
-/// L0311: unnecessary parentheses around a simple expression.
+/// L0310: unnecessary parentheses around a simple expression.
 struct UnnecessaryParens;
 
 impl ErrorCode for UnnecessaryParens {
     fn code(&self) -> &'static str {
-        "L0311"
+        "L0310"
     }
 }
 

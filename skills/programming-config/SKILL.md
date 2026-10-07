@@ -97,7 +97,7 @@ END_CONFIGURATION
 What may not collide across fragments is the same as what may not collide inside one block: a `VAR_GLOBAL` declared by two fragments is E0101, a `RESOURCE` name claimed by two fragments is E0115.
 Both are reported symmetrically, at each declaring fragment, with the sibling as related information.
 
-Two same-named blocks in the *same* file are valid and merge, but separate nothing; the linter says so with L0205 (`duplicate-configuration`).
+Two same-named blocks in the *same* file are valid and merge, but separate nothing; the linter says so with L0303 (`duplicate-configuration`).
 
 ## Globals
 

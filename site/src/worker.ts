@@ -85,7 +85,7 @@ function createServer(env: Env, origin: string): McpServer {
     "explain_diagnostic",
     {
       description:
-        "What an rk diagnostic code means: its title, explanation, and an example that produces it. Codes look like E0301 or L0307.",
+        "What an rk diagnostic code means: its title, explanation, and an example that produces it. Codes look like E0301 or L0212.",
       inputSchema: { code: z.string().describe("A diagnostic code such as E0301") },
     },
     async ({ code }) => {

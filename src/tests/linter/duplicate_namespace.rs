@@ -19,7 +19,7 @@ NAMESPACE MyProject
 END_NAMESPACE
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "duplicate-namespace"), @r"
-    [L0204] Info: duplicate namespace
+    [L0302] Hint: duplicate namespace
        ,-[ file:///test0.st:6:11 ]
        |
      2 | NAMESPACE MyProject
@@ -47,7 +47,7 @@ NAMESPACE MyProject.Motors
 END_NAMESPACE
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "duplicate-namespace"), @r"
-    [L0204] Info: duplicate namespace
+    [L0302] Hint: duplicate namespace
        ,-[ file:///test0.st:6:11 ]
        |
      2 | NAMESPACE MyProject.Motors
@@ -93,7 +93,7 @@ NAMESPACE Ns
 END_NAMESPACE
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "duplicate-namespace"), @r"
-    [L0204] Info: duplicate namespace
+    [L0302] Hint: duplicate namespace
        ,-[ file:///test0.st:6:11 ]
        |
      2 | NAMESPACE Ns
@@ -106,7 +106,7 @@ END_NAMESPACE
        |
        | Note: lint rule: duplicate-namespace
     ---'
-    [L0204] Info: duplicate namespace
+    [L0302] Hint: duplicate namespace
         ,-[ file:///test0.st:10:11 ]
         |
       2 | NAMESPACE Ns

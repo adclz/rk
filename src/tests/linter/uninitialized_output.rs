@@ -18,7 +18,7 @@ END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "uninitialized-output"), @r"
-    [L0206] Info: uninitialized output
+    [L0203] Info: uninitialized output
        ,-[ file:///test0.st:4:5 ]
        |
      4 |     result : INT;
@@ -89,7 +89,7 @@ END_VAR
 END_FUNCTION_BLOCK
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "uninitialized-output"), @r"
-    [L0206] Info: uninitialized output
+    [L0203] Info: uninitialized output
        ,-[ file:///test0.st:4:5 ]
        |
      4 |     done : BOOL;

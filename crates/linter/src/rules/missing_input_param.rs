@@ -22,7 +22,7 @@ use rustc_hash::FxHashSet;
 
 pub const NAME: &str = "missing-input-param";
 
-/// L0303: a FUNCTION_BLOCK or PROGRAM call does not pass every declared
+/// L0208: a FUNCTION_BLOCK or PROGRAM call does not pass every declared
 /// VAR_INPUT. This is *not* a hard error — the FB/PROGRAM
 /// instance retains the previous value (or compiler-initialised default).
 /// We surface it as a lint so the user is notified that not all inputs
@@ -32,7 +32,7 @@ struct MissingInputParam;
 
 impl ErrorCode for MissingInputParam {
     fn code(&self) -> &'static str {
-        "L0303"
+        "L0208"
     }
 }
 
@@ -184,7 +184,7 @@ pub fn check_func_call<'db>(
             hir::denormalize(db, stmt.get_scope_id(db).file(db), &stmt.get_span(db))
                 .unwrap_or_default(),
         )
-        .severity(DiagnosticSeverity::HINT)
+        .severity(DiagnosticSeverity::INFORMATION)
         .call();
 
     let file = callable.get_scope_id(db).file(db);

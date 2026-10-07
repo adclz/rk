@@ -18,7 +18,7 @@ END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "redundant-not"), @r"
-    [L0210] Info: redundant NOT
+    [L0307] Hint: redundant NOT
        ,-[ file:///test0.st:6:13 ]
        |
      6 |     test := NOT NOT x;
@@ -43,7 +43,7 @@ END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "redundant-not"), @r"
-    [L0210] Info: redundant NOT
+    [L0307] Hint: redundant NOT
        ,-[ file:///test0.st:6:8 ]
        |
      6 |     IF NOT NOT flag THEN
@@ -80,7 +80,7 @@ END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "redundant-not"), @r"
-    [L0210] Info: redundant NOT
+    [L0307] Hint: redundant NOT
        ,-[ file:///test0.st:7:19 ]
        |
      7 |     test := y AND NOT NOT x;

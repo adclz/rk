@@ -21,7 +21,7 @@ fn duplicate_var_in_function(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "duplicate-var-section"), @r"
-    [L0203] Info: duplicate variable section
+    [L0301] Hint: duplicate variable section
        ,-[ file:///test0.st:6:9 ]
        |
      6 | ,->         VAR
@@ -51,7 +51,7 @@ fn duplicate_var_input_in_function(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "duplicate-var-section"), @r"
-    [L0203] Info: duplicate variable section
+    [L0301] Hint: duplicate variable section
        ,-[ file:///test0.st:6:9 ]
        |
      6 | ,->         VAR_INPUT
@@ -81,7 +81,7 @@ fn duplicate_var_in_function_block(mut with_db: RootDatabase) {
         END_FUNCTION_BLOCK
     "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "duplicate-var-section"), @r"
-    [L0203] Info: duplicate variable section
+    [L0301] Hint: duplicate variable section
        ,-[ file:///test0.st:6:9 ]
        |
      6 | ,->         VAR
@@ -111,7 +111,7 @@ fn duplicate_var_input_in_function_block(mut with_db: RootDatabase) {
         END_FUNCTION_BLOCK
     "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "duplicate-var-section"), @r"
-    [L0203] Info: duplicate variable section
+    [L0301] Hint: duplicate variable section
        ,-[ file:///test0.st:6:9 ]
        |
      6 | ,->         VAR_INPUT
@@ -141,7 +141,7 @@ fn duplicate_var_in_program(mut with_db: RootDatabase) {
         END_PROGRAM
     "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "duplicate-var-section"), @r"
-    [L0203] Info: duplicate variable section
+    [L0301] Hint: duplicate variable section
        ,-[ file:///test0.st:6:9 ]
        |
      6 | ,->         VAR
@@ -173,7 +173,7 @@ fn duplicate_var_in_method(mut with_db: RootDatabase) {
         END_FUNCTION_BLOCK
     "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "duplicate-var-section"), @r"
-    [L0203] Info: duplicate variable section
+    [L0301] Hint: duplicate variable section
        ,-[ file:///test0.st:7:9 ]
        |
      7 | ,->         VAR
