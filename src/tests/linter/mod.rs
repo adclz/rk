@@ -21,6 +21,7 @@ mod empty_case_branch;
 mod empty_if_branch;
 mod empty_loop_body;
 mod empty_type;
+mod endless_loop;
 mod external_mutation;
 mod float_equality;
 mod for_loop_step_sign;

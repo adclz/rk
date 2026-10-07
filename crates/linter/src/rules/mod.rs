@@ -38,6 +38,7 @@ pub mod empty_case_branch;
 pub mod empty_if_branch;
 pub mod empty_loop_body;
 pub mod empty_type;
+pub mod endless_loop;
 pub mod external_mutation;
 pub mod float_equality;
 pub mod for_loop_step_sign;
@@ -109,6 +110,7 @@ pub const RECOMMENDED_RULE_NAMES: &[&str] = &[
     negative_radix_literal::NAME,
     recursion::NAME,
     float_equality::NAME,
+    endless_loop::NAME,
 ];
 
 /// Whether `name` runs under `config`: an explicit entry in `[linter.rules]`
@@ -147,6 +149,7 @@ pub const ALL_RULE_NAMES: &[&str] = &[
     empty_if_branch::NAME,
     empty_loop_body::NAME,
     empty_type::NAME,
+    endless_loop::NAME,
     float_equality::NAME,
     for_loop_step_sign::NAME,
     global_without_external::NAME,
@@ -577,6 +580,6 @@ mod select_tests {
                 "{name} is not a known rule name"
             );
         }
-        assert_eq!(RECOMMENDED_RULE_NAMES.len(), 28);
+        assert_eq!(RECOMMENDED_RULE_NAMES.len(), 29);
     }
 }

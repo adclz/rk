@@ -24,10 +24,10 @@ use ide_diagnostic::IdeDiagnostic;
 use super::{
     aggregate_copy, bool_comparison, collapsible_if, constant_condition, constant_loop_bounds,
     default_for_step, duplicate_case, empty_case_branch, empty_if_branch, empty_loop_body,
-    external_mutation, float_equality, identical_sub_expr, identity_operation, input_assignment,
-    loop_var_modified, missing_input_param, missing_return, negated_comparison, negated_condition,
-    redundant_not, run_lint, self_assignment, self_comparison, sub_self, uninitialized_output,
-    unnecessary_else, unnecessary_parens, yoda_condition,
+    endless_loop, external_mutation, float_equality, identical_sub_expr, identity_operation,
+    input_assignment, loop_var_modified, missing_input_param, missing_return, negated_comparison,
+    negated_condition, redundant_not, run_lint, self_assignment, self_comparison, sub_self,
+    uninitialized_output, unnecessary_else, unnecessary_parens, yoda_condition,
 };
 
 /// Run all statement-walking lints in a single pass over the statement tree.
@@ -56,6 +56,7 @@ pub fn check<'db>(
         collapsible_if: crate::rules::is_enabled(config, collapsible_if::NAME),
         empty_if_branch: crate::rules::is_enabled(config, empty_if_branch::NAME),
         empty_loop_body: crate::rules::is_enabled(config, empty_loop_body::NAME),
+        endless_loop: crate::rules::is_enabled(config, endless_loop::NAME),
         external_mutation: crate::rules::is_enabled(config, external_mutation::NAME),
         constant_condition: crate::rules::is_enabled(config, constant_condition::NAME),
         constant_loop_bounds: crate::rules::is_enabled(config, constant_loop_bounds::NAME),
@@ -130,6 +131,7 @@ struct VisitorCtx<'db> {
     collapsible_if: bool,
     empty_if_branch: bool,
     empty_loop_body: bool,
+    endless_loop: bool,
     external_mutation: bool,
     constant_condition: bool,
     constant_loop_bounds: bool,
@@ -165,6 +167,7 @@ impl VisitorCtx<'_> {
             || self.collapsible_if
             || self.empty_if_branch
             || self.empty_loop_body
+            || self.endless_loop
             || self.external_mutation
             || self.constant_condition
             || self.constant_loop_bounds
@@ -444,6 +447,11 @@ fn visit_statements<'db>(
                         empty_loop_body::check_while(db, condition, loop_body, d)
                     });
                 }
+                if ctx.endless_loop {
+                    run_lint(endless_loop::NAME, diagnostics, |d| {
+                        endless_loop::check_loop(db, body, scope, condition, loop_body, d)
+                    });
+                }
                 visit_statements(
                     db,
                     body,
@@ -523,6 +531,11 @@ fn visit_statements<'db>(
                 if ctx.empty_loop_body {
                     run_lint(empty_loop_body::NAME, diagnostics, |d| {
                         empty_loop_body::check_repeat(db, condition, loop_body, d)
+                    });
+                }
+                if ctx.endless_loop {
+                    run_lint(endless_loop::NAME, diagnostics, |d| {
+                        endless_loop::check_loop(db, body, scope, condition, loop_body, d)
                     });
                 }
                 visit_statements(
