@@ -12,6 +12,7 @@ mod constant_overflow;
 mod dead_code;
 mod default_for_step;
 mod division_by_zero;
+mod double_writer;
 mod duplicate_case;
 mod duplicate_configuration;
 mod duplicate_namespace;

@@ -165,6 +165,7 @@ L0206 collapses every unassigned output of one body into a single diagnostic lis
 | L0126 | `endless-loop` | warning | a WHILE or REPEAT whose body changes nothing its condition reads, with no EXIT, RETURN or `__RAISE`: waiting for an input in a loop, whose next value comes with the next scan; when the body calls something, only a FUNCTION's or METHOD's own locals count as unchanged |
 | L0127 | `string-truncation` | warning | a STRING variable assigned, passed to an input or bound from an output into a STRING declared shorter, which cuts the text; not a literal (E0314), nor a call's result |
 | L0128 | `constant-overflow` | warning | an operation on constants whose result the type it runs at cannot hold, which the program computes wrapped: `200 * 200` multiplies two INTs, so `N : DINT := 200 * 200` holds -25536; in a body, an initializer, a STRING length or an array, subrange or enum bound |
+| L0129 | `double-writer` | warning | an output location (`%Q`) written by more than one program instance, directly or through what it calls: a program with a located output instantiated twice, two programs writing one `%Q` global; at each scan the last to run sets the output |
 
 L0109 keys on the value the compiler computed, not on the text, so `7`, `INT#7` and a CONSTANT holding 7 are one label; enum variants and strings fall back to the written form.
 

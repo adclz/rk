@@ -29,6 +29,7 @@ pub mod constant_overflow;
 pub mod dead_code;
 pub mod default_for_step;
 pub mod division_by_zero;
+pub mod double_writer;
 pub mod duplicate_case;
 pub mod duplicate_configuration;
 pub mod duplicate_namespace;
@@ -115,6 +116,7 @@ pub const RECOMMENDED_RULE_NAMES: &[&str] = &[
     endless_loop::NAME,
     string_truncation::NAME,
     constant_overflow::NAME,
+    double_writer::NAME,
 ];
 
 /// Whether `name` runs under `config`: an explicit entry in `[linter.rules]`
@@ -143,6 +145,7 @@ pub const ALL_RULE_NAMES: &[&str] = &[
     dead_code::NAME,
     default_for_step::NAME,
     division_by_zero::NAME,
+    double_writer::NAME,
     duplicate_case::NAME,
     duplicate_configuration::NAME,
     duplicate_namespace::NAME,
@@ -208,6 +211,12 @@ pub fn lint_file(
     if is_enabled(config, duplicate_configuration::NAME) {
         run_lint(duplicate_configuration::NAME, diagnostics, |d| {
             duplicate_configuration::check(db, file, d)
+        });
+    }
+
+    if is_enabled(config, double_writer::NAME) {
+        run_lint(double_writer::NAME, diagnostics, |d| {
+            double_writer::check(db, file, d)
         });
     }
 
@@ -596,6 +605,6 @@ mod select_tests {
                 "{name} is not a known rule name"
             );
         }
-        assert_eq!(RECOMMENDED_RULE_NAMES.len(), 31);
+        assert_eq!(RECOMMENDED_RULE_NAMES.len(), 32);
     }
 }
