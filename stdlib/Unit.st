@@ -193,6 +193,8 @@ NAMESPACE Std.Unit
 		END_IF
 	END_FUNCTION
 
+	// Equal means the same value, not one within a tolerance.
+	{allow 'float-equality'}
 	FUNCTION ASSERT_EQ
 		VAR_INPUT
 			value: REAL;
@@ -205,6 +207,8 @@ NAMESPACE Std.Unit
 		END_IF
 	END_FUNCTION
 
+	// Equal means the same value, not one within a tolerance.
+	{allow 'float-equality'}
 	FUNCTION ASSERT_EQ
 		VAR_INPUT
 			value: LREAL;
@@ -425,6 +429,8 @@ NAMESPACE Std.Unit
 		END_IF
 	END_FUNCTION
 
+	// Equal means the same value, not one within a tolerance.
+	{allow 'float-equality'}
 	FUNCTION ASSERT_NEQ
 		VAR_INPUT
 			value: REAL;
@@ -437,6 +443,8 @@ NAMESPACE Std.Unit
 		END_IF
 	END_FUNCTION
 
+	// Equal means the same value, not one within a tolerance.
+	{allow 'float-equality'}
 	FUNCTION ASSERT_NEQ
 		VAR_INPUT
 			value: LREAL;

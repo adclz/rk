@@ -503,6 +503,8 @@ NAMESPACE Std.Strings
 				result: STRING[300];
 			END_VAR
 			result := CONCAT(a, a);
+			// LEN reads 255 bytes at most: the result holds 255.
+			{allow 'string-truncation'}
 			ASSERT(LEN(result) = 255);
 		END_FUNCTION
 

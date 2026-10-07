@@ -732,6 +732,8 @@ NAMESPACE Std.Counters
 				counter: CTU_INT;
 				i: INT;
 			END_VAR
+			// Each turn is two scans.
+			{allow 'must-call-conditional'}
 			FOR i := 1 TO 5 DO
 				counter(CU := TRUE, R := FALSE, PV := 3);
 				counter(CU := FALSE, R := FALSE, PV := 3);
