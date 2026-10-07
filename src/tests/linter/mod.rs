@@ -30,6 +30,7 @@ mod for_loop_step_sign;
 mod global_without_external;
 mod identical_sub_expr;
 mod identity_operation;
+mod in_out_alias;
 mod input_assignment;
 mod instance_in_function;
 mod invalid_pragma;

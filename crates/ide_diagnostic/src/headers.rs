@@ -258,6 +258,7 @@ pub const HEADERS: &[(&str, &str)] = &[
     ("L0122", "recursive call"),
     ("L0123", "negative radix literal"),
     ("L0124", "exact comparison of REAL values"),
+    ("L0125", "same storage passed twice by reference"),
     ("L0126", "loop that never ends"),
     ("L0127", "STRING into a shorter STRING"),
     ("L0128", "constant operation out of range"),

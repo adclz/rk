@@ -47,6 +47,7 @@ pub mod for_loop_step_sign;
 pub mod global_without_external;
 pub mod identical_sub_expr;
 pub mod identity_operation;
+pub mod in_out_alias;
 pub mod input_assignment;
 pub mod instance_in_function;
 pub mod invalid_pragma;
@@ -113,6 +114,7 @@ pub const RECOMMENDED_RULE_NAMES: &[&str] = &[
     negative_radix_literal::NAME,
     recursion::NAME,
     float_equality::NAME,
+    in_out_alias::NAME,
     endless_loop::NAME,
     string_truncation::NAME,
     constant_overflow::NAME,
@@ -163,6 +165,7 @@ pub const ALL_RULE_NAMES: &[&str] = &[
     global_without_external::NAME,
     identical_sub_expr::NAME,
     identity_operation::NAME,
+    in_out_alias::NAME,
     input_assignment::NAME,
     instance_in_function::NAME,
     invalid_pragma::NAME,
@@ -471,6 +474,13 @@ fn lint_scope<'db>(
     if is_enabled(config, aggregate_copy::NAME) {
         run_lint(aggregate_copy::NAME, diagnostics, |d| {
             aggregate_copy::check_calls(db, body, d)
+        });
+    }
+    if is_enabled(config, in_out_alias::NAME) {
+        run_lint(in_out_alias::NAME, diagnostics, |d| {
+            in_out_alias::check(db, body, d)
+        });
+    }
     if is_enabled(config, string_truncation::NAME) {
         run_lint(string_truncation::NAME, diagnostics, |d| {
             string_truncation::check_calls(db, body, d)
@@ -605,6 +615,6 @@ mod select_tests {
                 "{name} is not a known rule name"
             );
         }
-        assert_eq!(RECOMMENDED_RULE_NAMES.len(), 32);
+        assert_eq!(RECOMMENDED_RULE_NAMES.len(), 33);
     }
 }
