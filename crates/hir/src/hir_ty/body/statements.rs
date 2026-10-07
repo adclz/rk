@@ -423,29 +423,37 @@ impl<'db> StmtsResolverCtx<'db> {
                     }
 
                     // A reference to this call's own storage, handed back to
-                    // the caller. It does not fault: an address-taken local
-                    // sits at a fixed address, so the reference quietly reads
-                    // whatever the NEXT call leaves in that slot.
-                    if ctx.writes_result(db, *var)
-                        && let ExprKind::PrimaryExpr(PrimaryExpr::RefValue {
-                            value: RefValue::Address(path),
-                        }) = target.expr(db)
+                    // the caller or kept where it outlives the call. It does
+                    // not fault: an address-taken local sits at a fixed
+                    // address, so the reference quietly reads whatever the
+                    // NEXT call leaves in that slot.
+                    if let ExprKind::PrimaryExpr(PrimaryExpr::RefValue {
+                        value: RefValue::Address(path),
+                    }) = target.expr(db)
                         && let Some(path_expr) = path.expr(db)
                         && let Type::Variable((referenced, _)) =
                             ctx.get_type_of_path_expr(db, path_expr)
-                        && referenced.get_scope_id(db) == ctx.scope
-                        && matches!(
-                            referenced.kind(db),
-                            VariableKind::Var | VariableKind::Temp | VariableKind::Input
-                        )
+                        && per_call_storage(db, ctx.scope, referenced)
                     {
-                        ctx.errors.push(
-                            crate::check::errors::e09_reference::ReferenceError::ReturnsReferenceToLocal {
+                        use crate::check::errors::e09_reference::ReferenceError;
+                        let site = CallSite::from_scoped(db, target);
+                        let error = if ctx.writes_result(db, *var) {
+                            Some(ReferenceError::ReturnsReferenceToLocal {
                                 var: referenced,
-                                site: CallSite::from_scoped(db, target),
-                            }
-                            .to_diagnostic(db, ctx.scope.file(db)),
-                        );
+                                site,
+                            })
+                        } else if outlives_the_call(db, ctx, *var) {
+                            Some(ReferenceError::StoresReferenceToLocal {
+                                var: referenced,
+                                site,
+                                kept: CallSite::from_scoped(db, var),
+                            })
+                        } else {
+                            None
+                        };
+                        if let Some(error) = error {
+                            ctx.errors.push(error.to_diagnostic(db, ctx.scope.file(db)));
+                        }
                     }
 
                     // Update null state for REF_TO variables
@@ -1333,4 +1341,60 @@ pub(crate) fn check_copy_keeps_location<'db>(
         }
         .to_diagnostic(db, ctx.scope.file(db)),
     );
+}
+
+/// Whether `var` is storage of one call of `scope`, which the next call
+/// reuses: a FUNCTION's or METHOD's own VAR, VAR_TEMP and VAR_INPUT, and a
+/// VAR_TEMP anywhere. A block's or a PROGRAM's VAR and inputs are its
+/// instance's, and live as long.
+fn per_call_storage<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    scope: ScopeId<'db>,
+    var: VariableDecl<'db>,
+) -> bool {
+    use crate::hir_def::pous::pou::Pou;
+    if var.get_scope_id(db) != scope {
+        return false;
+    }
+    match var.kind(db) {
+        VariableKind::Temp => true,
+        VariableKind::Var | VariableKind::Input => matches!(
+            get_scope(db, scope).kind,
+            ScopeKind::Pou(Pou::Function(_)) | ScopeKind::MethodDecl(_)
+        ),
+        _ => false,
+    }
+}
+
+/// Whether the place `var` names outlives the call that writes it: an
+/// output or an in-out, which the caller owns, an instance member, a global.
+/// A place written through a dereference may be anywhere, and is not
+/// counted.
+fn outlives_the_call<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    ctx: &BodyInferenceResult<'db>,
+    var: crate::hir_def::expressions::expression::VariableAccess<'db>,
+) -> bool {
+    use crate::hir_def::expressions::expression::VariableAccessKind;
+    use crate::hir_ty::expr_store::PathExprWalkStep;
+    let VariableAccessKind::Symbolic(begin) = var.kind(db) else {
+        return false;
+    };
+    let Some(path) = begin.expr(db) else {
+        return false;
+    };
+    let steps = path.flatten(db);
+    if steps
+        .iter()
+        .any(|step| matches!(step, PathExprWalkStep::Deref { .. }))
+    {
+        return false;
+    }
+    let Some(root) = steps
+        .first()
+        .and_then(|step| ctx.variable_for_path_expr(step.get_expr(db)))
+    else {
+        return false;
+    };
+    !per_call_storage(db, ctx.scope, root)
 }

@@ -601,6 +601,160 @@ END_FUNCTION_BLOCK
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
 }
 
+// The same reference kept where it outlives the call: an output and an
+// in-out, which the caller owns, an instance member, a global. A block's
+// VAR_TEMP is per-call storage too.
+
+#[rstest]
+fn storing_a_reference_to_a_local_where_it_outlives_the_call_is_refused(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE PInt : REF_TO INT; END_TYPE
+
+FUNCTION lend
+VAR_OUTPUT o : PInt; END_VAR
+VAR_IN_OUT io : PInt; END_VAR
+VAR_EXTERNAL g : PInt; END_VAR
+VAR tmp : INT; END_VAR
+    o := REF(tmp);
+    io := REF(tmp);
+    g := REF(tmp);
+END_FUNCTION
+
+FUNCTION_BLOCK holder
+VAR keep : PInt; END_VAR
+VAR_TEMP scratch : INT; END_VAR
+    METHOD PUBLIC grab
+    VAR local : INT; END_VAR
+        keep := REF(local);
+        THIS.keep := REF(local);
+    END_METHOD
+    keep := REF(scratch);
+END_FUNCTION_BLOCK
+
+CONFIGURATION cfg
+VAR_GLOBAL g : PInt; END_VAR
+END_CONFIGURATION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0903] Error: reference outlives its storage
+       ,-[ file:///test0.st:9:10 ]
+       |
+     8 | VAR tmp : INT; END_VAR
+       |     ^|^
+       |      `--- 'tmp' is per-call storage, declared here
+     9 |     o := REF(tmp);
+       |     |    ^^^^|^^^
+       |     `-------------- 'o' outlives the call
+       |              |
+       |              `----- reference to 'tmp' outlives the call that owns it
+       |
+       | Help: keep the reference in a local of the call, or point it at storage that outlives it
+    ---'
+    [E0903] Error: reference outlives its storage
+        ,-[ file:///test0.st:10:11 ]
+        |
+      8 | VAR tmp : INT; END_VAR
+        |     ^|^
+        |      `--- 'tmp' is per-call storage, declared here
+        |
+     10 |     io := REF(tmp);
+        |     ^|    ^^^^|^^^
+        |      `-------------- 'io' outlives the call
+        |               |
+        |               `----- reference to 'tmp' outlives the call that owns it
+        |
+        | Help: keep the reference in a local of the call, or point it at storage that outlives it
+    ----'
+    [E0903] Error: reference outlives its storage
+        ,-[ file:///test0.st:11:10 ]
+        |
+      8 | VAR tmp : INT; END_VAR
+        |     ^|^
+        |      `--- 'tmp' is per-call storage, declared here
+        |
+     11 |     g := REF(tmp);
+        |     |    ^^^^|^^^
+        |     `-------------- 'g' outlives the call
+        |              |
+        |              `----- reference to 'tmp' outlives the call that owns it
+        |
+        | Help: keep the reference in a local of the call, or point it at storage that outlives it
+    ----'
+    [E0903] Error: reference outlives its storage
+        ,-[ file:///test0.st:22:13 ]
+        |
+     16 | VAR_TEMP scratch : INT; END_VAR
+        |          ^^^|^^^
+        |             `----- 'scratch' is per-call storage, declared here
+        |
+     22 |     keep := REF(scratch);
+        |     ^^|^    ^^^^^^|^^^^^
+        |       `------------------- 'keep' outlives the call
+        |                   |
+        |                   `------- reference to 'scratch' outlives the call that owns it
+        |
+        | Help: keep the reference in a local of the call, or point it at storage that outlives it
+    ----'
+    [E0903] Error: reference outlives its storage
+        ,-[ file:///test0.st:19:17 ]
+        |
+     18 |     VAR local : INT; END_VAR
+        |         ^^|^^
+        |           `---- 'local' is per-call storage, declared here
+     19 |         keep := REF(local);
+        |         ^^|^    ^^^^^|^^^^
+        |           `----------------- 'keep' outlives the call
+        |                      |
+        |                      `------ reference to 'local' outlives the call that owns it
+        |
+        | Help: keep the reference in a local of the call, or point it at storage that outlives it
+    ----'
+    [E0903] Error: reference outlives its storage
+        ,-[ file:///test0.st:20:22 ]
+        |
+     18 |     VAR local : INT; END_VAR
+        |         ^^|^^
+        |           `---- 'local' is per-call storage, declared here
+        |
+     20 |         THIS.keep := REF(local);
+        |         ^^^^|^^^^    ^^^^^|^^^^
+        |             `-------------------- 'THIS.keep' outlives the call
+        |                           |
+        |                           `------ reference to 'local' outlives the call that owns it
+        |
+        | Help: keep the reference in a local of the call, or point it at storage that outlives it
+    ----'
+    ");
+}
+
+#[rstest]
+fn storing_a_reference_where_it_lives_no_longer_is_allowed(mut with_db: RootDatabase) {
+    // A local holding a reference to another local dies with it; a member
+    // holding a reference to a member lives as long; a place written through
+    // a reference may be anywhere, and is not judged.
+    let source = r#"
+TYPE PInt : REF_TO INT; END_TYPE
+TYPE PPInt : REF_TO PInt; END_TYPE
+
+FUNCTION local_only : INT
+VAR tmp : INT; p : PInt; hold : PInt; pp : PPInt; END_VAR
+    p := REF(tmp);
+    pp := REF(hold);
+    pp^ := REF(tmp);
+    local_only := p^;
+END_FUNCTION
+
+FUNCTION_BLOCK holder
+VAR count : INT; keep : PInt; END_VAR
+    METHOD PUBLIC grab
+        keep := REF(count);
+    END_METHOD
+    keep := REF(count);
+END_FUNCTION_BLOCK
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
+
 // Reference binding is INVARIANT: the pointee must be exactly the declared
 // type. Before, the value-coercion table was consulted for the pointee, so
 // every implicitly-widenable pair checked clean and typed the load wrong —
