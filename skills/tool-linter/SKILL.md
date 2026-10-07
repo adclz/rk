@@ -151,7 +151,7 @@ L0206 collapses every unassigned output of one body into a single diagnostic lis
 | L0110 | `for-loop-step-sign` | warning | a FOR step whose direction contradicts the bounds, such as `FOR i := 10 TO 1 BY 1` |
 | L0111 | `constant-loop-bounds` | warning | a FOR loop whose start and end are the same value, so the body runs exactly once |
 | L0112 | `loop-var-modified` | warning | an assignment to a FOR control variable inside the loop body |
-| L0113 | `input-assignment` | warning | an assignment to a VAR_INPUT |
+| L0113 | `input-assignment` | warning | a POU assigning its own VAR_INPUT, `x := 1` or `THIS.x := 1`; setting another block's input, `t.x := 1`, is not reported |
 | L0114 | `missing-return` | warning | a FUNCTION or METHOD with a return type that never assigns the return value; a `{wasm}` statement whose `(result)` is the FUNCTION counts |
 | L0115 | `self-shadowing` | warning | a variable with the same name as the POU or method it is declared in |
 | L0116 | `method-shadows-member` | warning | a method local or parameter with the same name as a member of its FUNCTION_BLOCK or CLASS |

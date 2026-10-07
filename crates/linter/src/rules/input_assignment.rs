@@ -7,7 +7,7 @@ use hir::{
     HasName, HirNodeInfo,
     hir_def::{
         expressions::{
-            expression::{VariableAccess, VariableAccessKind},
+            expression::{PathExprKind, VariableAccess, VariableAccessKind},
             statement::{Stmt, StmtKind},
         },
         pous::{pou::Pou, variable::VariableKind},
@@ -107,6 +107,12 @@ pub fn check_assignment<'db>(
     let Some(path_expr) = begin.expr(db) else {
         return;
     };
+
+    // Its own input, `x` or `THIS.x`. Through an instance, `t.IN := TRUE`
+    // sets another block's input the way `t(IN := TRUE)` does.
+    if !matches!(path_expr.expr(db), PathExprKind::VarAccess(_)) {
+        return;
+    }
 
     let Type::Variable((var_decl, _)) = body.type_of_path_expr(path_expr) else {
         return;
