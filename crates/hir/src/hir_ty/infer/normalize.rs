@@ -253,6 +253,16 @@ pub fn declared_string_capacity<'db>(
     db: &'db dyn WorkspaceDataBase,
     spec: crate::hir_def::expressions::spec::Spec<'db>,
 ) -> Option<u32> {
+    declared_string_length(db, spec).and_then(|n| u32::try_from(n).ok())
+}
+
+/// The `N` a STRING spec declares, followed through aliases, however large:
+/// the layout reports one too large for a module (E0322) where
+/// [`declared_string_capacity`] has no capacity to give.
+pub fn declared_string_length<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    spec: crate::hir_def::expressions::spec::Spec<'db>,
+) -> Option<u64> {
     declared_string_capacity_inner(db, spec, 0)
 }
 
@@ -291,7 +301,7 @@ fn declared_string_capacity_inner<'db>(
     db: &'db dyn WorkspaceDataBase,
     spec: crate::hir_def::expressions::spec::Spec<'db>,
     depth: u32,
-) -> Option<u32> {
+) -> Option<u64> {
     use crate::hir_def::expressions::spec::SpecKind;
     // A cyclic alias is rejected separately (E09xx); stop regardless so a
     // consumer terminates on a body that was compiled anyway.
@@ -307,7 +317,7 @@ fn declared_string_capacity_inner<'db>(
         // already rejected.
         SpecKind::SizedString(length_expr) => {
             crate::hir_ty::infer::const_eval::spec_bound(db, *length_expr)
-                .and_then(|n| u32::try_from(n).ok())
+                .and_then(|n| u64::try_from(n).ok())
         }
         SpecKind::Ref(inner) => declared_string_capacity_inner(db, *inner, depth + 1),
         // Named: ask the data type it resolves to for its own spec. Using the
