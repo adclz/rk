@@ -22,6 +22,7 @@ mod empty_if_branch;
 mod empty_loop_body;
 mod empty_type;
 mod external_mutation;
+mod float_equality;
 mod for_loop_step_sign;
 mod global_without_external;
 mod identical_sub_expr;

@@ -257,6 +257,7 @@ pub const HEADERS: &[(&str, &str)] = &[
     ("L0121", "STRING with a Latin-1 escape"),
     ("L0122", "recursive call"),
     ("L0123", "negative radix literal"),
+    ("L0124", "exact comparison of REAL values"),
     ("L0201", "unused variable"),
     ("L0202", "variable named after a POU"),
     ("L0203", "duplicate variable section"),

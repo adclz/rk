@@ -159,7 +159,7 @@ fn check_expr<'db>(
 }
 
 /// Check if an expression is a literal integer zero (0, in any base or type prefix).
-fn is_zero_literal<'db>(db: &'db dyn WorkspaceDataBase, expr: &Expr<'db>) -> bool {
+pub(crate) fn is_zero_literal<'db>(db: &'db dyn WorkspaceDataBase, expr: &Expr<'db>) -> bool {
     match expr.expr(db) {
         ExprKind::PrimaryExpr(PrimaryExpr::Literal(lit)) => is_zero_elementary(db, lit),
         ExprKind::PrimaryExpr(PrimaryExpr::ParenthesizedExpr { expr }) => is_zero_literal(db, expr),

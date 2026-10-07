@@ -24,10 +24,10 @@ use ide_diagnostic::IdeDiagnostic;
 use super::{
     aggregate_copy, bool_comparison, collapsible_if, constant_condition, constant_loop_bounds,
     default_for_step, duplicate_case, empty_case_branch, empty_if_branch, empty_loop_body,
-    external_mutation, identical_sub_expr, identity_operation, input_assignment, loop_var_modified,
-    missing_input_param, missing_return, negated_comparison, negated_condition, redundant_not,
-    run_lint, self_assignment, self_comparison, sub_self, uninitialized_output, unnecessary_else,
-    unnecessary_parens, yoda_condition,
+    external_mutation, float_equality, identical_sub_expr, identity_operation, input_assignment,
+    loop_var_modified, missing_input_param, missing_return, negated_comparison, negated_condition,
+    redundant_not, run_lint, self_assignment, self_comparison, sub_self, uninitialized_output,
+    unnecessary_else, unnecessary_parens, yoda_condition,
 };
 
 /// Run all statement-walking lints in a single pass over the statement tree.
@@ -65,6 +65,7 @@ pub fn check<'db>(
         missing_input_param: crate::rules::is_enabled(config, missing_input_param::NAME),
         missing_return: crate::rules::is_enabled(config, missing_return::NAME),
         bool_comparison: crate::rules::is_enabled(config, bool_comparison::NAME),
+        float_equality: crate::rules::is_enabled(config, float_equality::NAME),
         self_comparison: crate::rules::is_enabled(config, self_comparison::NAME),
         identical_sub_expr: crate::rules::is_enabled(config, identical_sub_expr::NAME),
         identity_operation: crate::rules::is_enabled(config, identity_operation::NAME),
@@ -138,6 +139,7 @@ struct VisitorCtx<'db> {
     missing_input_param: bool,
     missing_return: bool,
     bool_comparison: bool,
+    float_equality: bool,
     self_comparison: bool,
     identical_sub_expr: bool,
     redundant_not: bool,
@@ -172,6 +174,7 @@ impl VisitorCtx<'_> {
             || self.missing_input_param
             || self.missing_return
             || self.bool_comparison
+            || self.float_equality
             || self.self_comparison
             || self.identical_sub_expr
             || self.redundant_not
@@ -189,6 +192,7 @@ impl VisitorCtx<'_> {
     fn any_expr_lint(&self) -> bool {
         self.bool_comparison
             || self.constant_condition
+            || self.float_equality
             || self.self_comparison
             || self.identical_sub_expr
             || self.redundant_not
@@ -226,6 +230,9 @@ fn check_expr_lints<'db>(
             constant_condition::check_comparison(db, body, expr, d)
         });
     }
+    if ctx.float_equality {
+        run_lint(float_equality::NAME, diagnostics, |d| {
+            float_equality::check_node(db, body, expr, d)
         });
     }
     if ctx.self_comparison {
