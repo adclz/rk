@@ -56,6 +56,7 @@ pub mod loop_var_modified;
 pub mod method_shadows_member;
 pub mod missing_input_param;
 pub mod missing_return;
+pub mod must_call_violation;
 pub mod negated_comparison;
 pub mod negated_condition;
 pub mod negative_radix_literal;
@@ -119,6 +120,7 @@ pub const RECOMMENDED_RULE_NAMES: &[&str] = &[
     string_truncation::NAME,
     constant_overflow::NAME,
     double_writer::NAME,
+    must_call_violation::NAME,
 ];
 
 /// Whether `name` runs under `config`: an explicit entry in `[linter.rules]`
@@ -174,6 +176,7 @@ pub const ALL_RULE_NAMES: &[&str] = &[
     method_shadows_member::NAME,
     missing_input_param::NAME,
     missing_return::NAME,
+    must_call_violation::NAME,
     negated_comparison::NAME,
     negated_condition::NAME,
     negative_radix_literal::NAME,
@@ -421,6 +424,12 @@ fn lint_scope<'db>(
             constant_overflow::check(db, scope, d)
         });
     }
+    // A CLASS's instances too, which its methods call.
+    if is_enabled(config, must_call_violation::NAME) {
+        run_lint(must_call_violation::NAME, diagnostics, |d| {
+            must_call_violation::check(db, scope, d)
+        });
+    }
     if !has_body {
         return;
     }
@@ -615,6 +624,6 @@ mod select_tests {
                 "{name} is not a known rule name"
             );
         }
-        assert_eq!(RECOMMENDED_RULE_NAMES.len(), 33);
+        assert_eq!(RECOMMENDED_RULE_NAMES.len(), 34);
     }
 }
