@@ -141,7 +141,7 @@ L0206 collapses every unassigned output of one body into a single diagnostic lis
 | --- | --- | --- | --- |
 | L0101 | `dead-code` | warning | a statement following RETURN, `__RAISE`, EXIT or CONTINUE in the same block |
 | L0102 | `division-by-zero` | warning | a literal `0` on the right-hand side of `/` or `MOD` |
-| L0103 | `constant-condition` | warning | an IF, ELSIF, WHILE or UNTIL condition written as the literal TRUE or FALSE |
+| L0103 | `constant-condition` | warning | an IF, ELSIF, WHILE or UNTIL condition written as the literal TRUE or FALSE, and any comparison the type of its value decides, `u < 0` on an unsigned integer or `l > 10` on an `INT (0..10)` |
 | L0104 | `self-assignment` | warning | `x := x` |
 | L0105 | `self-comparison` | warning | `x = x`, `x <> x`, `x > x` and the rest, whose result is constant; not on a REAL or LREAL, where `x <> x` is the NaN test |
 | L0106 | `sub-self` | warning | `x - x` on an integer, always 0; on a float it is the finiteness test and is not reported |
@@ -164,8 +164,8 @@ L0206 collapses every unassigned output of one body into a single diagnostic lis
 
 L0109 keys on the value the compiler computed, not on the text, so `7`, `INT#7` and a CONSTANT holding 7 are one label; enum variants and strings fall back to the written form.
 
-L0103 only looks at a literal TRUE or FALSE.
-A condition that is constant after folding is not reported.
+L0103 reads a condition as written, or a comparison against the range of its value's type.
+A comparison of two constants is not reported, nor a condition that is constant only after folding.
 
 ## Globals
 

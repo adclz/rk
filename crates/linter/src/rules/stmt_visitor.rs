@@ -188,6 +188,7 @@ impl VisitorCtx<'_> {
 
     fn any_expr_lint(&self) -> bool {
         self.bool_comparison
+            || self.constant_condition
             || self.self_comparison
             || self.identical_sub_expr
             || self.redundant_not
@@ -218,6 +219,13 @@ fn check_expr_lints<'db>(
     if ctx.bool_comparison {
         run_lint(bool_comparison::NAME, diagnostics, |d| {
             bool_comparison::check_node(db, expr, d)
+        });
+    }
+    if ctx.constant_condition {
+        run_lint(constant_condition::NAME, diagnostics, |d| {
+            constant_condition::check_comparison(db, body, expr, d)
+        });
+    }
         });
     }
     if ctx.self_comparison {
