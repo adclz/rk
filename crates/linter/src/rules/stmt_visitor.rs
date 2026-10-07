@@ -49,7 +49,7 @@ pub fn check<'db>(
         _ => return,
     };
 
-    let ctx = VisitorCtx {
+    let mut ctx = VisitorCtx {
         input_assignment: crate::rules::is_enabled(config, input_assignment::NAME),
         aggregate_copy: crate::rules::is_enabled(config, aggregate_copy::NAME),
         self_assignment: crate::rules::is_enabled(config, self_assignment::NAME),
@@ -77,10 +77,14 @@ pub fn check<'db>(
         loop_var_modified: crate::rules::is_enabled(config, loop_var_modified::NAME),
         unnecessary_parens: crate::rules::is_enabled(config, unnecessary_parens::NAME),
         yoda_condition: crate::rules::is_enabled(config, yoda_condition::NAME),
+        written_inputs: Default::default(),
     };
 
     if !ctx.any_enabled() {
         return;
+    }
+    if ctx.missing_input_param {
+        ctx.written_inputs = missing_input_param::written_inputs(db, body, statements);
     }
 
     let mut assigned_vars = if ctx.uninitialized_output {
@@ -118,7 +122,7 @@ pub fn check<'db>(
     }
 }
 
-struct VisitorCtx {
+struct VisitorCtx<'db> {
     aggregate_copy: bool,
     input_assignment: bool,
     self_assignment: bool,
@@ -146,9 +150,12 @@ struct VisitorCtx {
     loop_var_modified: bool,
     unnecessary_parens: bool,
     yoda_condition: bool,
+    /// The inputs the body writes through an instance, for
+    /// `missing_input_param`.
+    written_inputs: missing_input_param::WrittenInputs<'db>,
 }
 
-impl VisitorCtx {
+impl VisitorCtx<'_> {
     fn any_enabled(&self) -> bool {
         self.aggregate_copy
             || self.input_assignment
@@ -197,7 +204,7 @@ impl VisitorCtx {
 fn check_expr_lints<'db>(
     db: &'db dyn WorkspaceDataBase,
     body: ScopeInference<'db>,
-    ctx: &VisitorCtx,
+    ctx: &VisitorCtx<'db>,
     expr: &Expr<'db>,
     diagnostics: &mut Vec<IdeDiagnostic>,
 ) {
@@ -278,7 +285,7 @@ fn check_expr_lints<'db>(
 fn visit_statements<'db>(
     db: &'db dyn WorkspaceDataBase,
     body: ScopeInference<'db>,
-    ctx: &VisitorCtx,
+    ctx: &VisitorCtx<'db>,
     scope: ScopeId<'db>,
     stmts: &[Stmt<'db>],
     diagnostics: &mut Vec<IdeDiagnostic>,
@@ -560,7 +567,14 @@ fn visit_statements<'db>(
             }
             StmtKind::FuncCall(call) if ctx.missing_input_param => {
                 run_lint(missing_input_param::NAME, diagnostics, |d| {
-                    missing_input_param::check_func_call(db, body, *stmt, *call, d)
+                    missing_input_param::check_func_call(
+                        db,
+                        body,
+                        *stmt,
+                        *call,
+                        &ctx.written_inputs,
+                        d,
+                    )
                 });
             }
             StmtKind::WasmPragma(decl)
