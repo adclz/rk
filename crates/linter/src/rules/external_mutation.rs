@@ -5,7 +5,10 @@ use auto_lsp::lsp_types::DiagnosticSeverity;
 use db::WorkspaceDataBase;
 use hir::{
     HasName, HirNodeInfo,
-    hir_def::expressions::expression::{PathExprKind, VariableAccess, VariableAccessKind},
+    hir_def::{
+        expressions::expression::{PathExprKind, VariableAccess, VariableAccessKind},
+        pous::variable::VariableKind,
+    },
     hir_ty::{body::ScopeInference, head::signature::infer_signature, ty::Type},
 };
 use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
@@ -46,6 +49,14 @@ pub fn check_assignment<'db>(
     let PathExprKind::Field(field_expr) = outer_path.expr(db) else {
         return;
     };
+
+    // An input is the caller's to set: `fb.x := 42; fb();` passes it the way
+    // `fb(x := 42)` does.
+    if let Type::Variable((member, _)) = body.type_of_path_expr(outer_path)
+        && member.kind(db) == VariableKind::Input
+    {
+        return;
+    }
 
     // The inner path is the thing before the dot (e.g. `fb` in `fb.x`)
     let inner_path = field_expr.path;

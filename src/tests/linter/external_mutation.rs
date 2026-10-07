@@ -117,3 +117,41 @@ END_FUNCTION_BLOCK
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "external-mutation"), @r"");
 }
+
+/// An input is the caller's to set: written before the call, it is passed
+/// the way `fb(x := 42)` passes it. An output written from outside is still
+/// reported.
+#[rstest]
+fn input_written_from_outside_not_flagged(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK MyFB
+VAR_INPUT
+    x : INT;
+END_VAR
+VAR_OUTPUT
+    y : INT;
+END_VAR
+    y := x;
+END_FUNCTION_BLOCK
+
+FUNCTION caller : INT
+VAR
+    fb : MyFB;
+END_VAR
+    fb.x := 42;
+    fb();
+    fb.y := 0;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "external-mutation"), @r"
+    [L0117] Warning: external instance mutation
+        ,-[ file:///test0.st:18:5 ]
+        |
+     18 |     fb.y := 0;
+        |     ^^|^
+        |       `--- 'fb.y' is written from outside its instance
+        |
+        | Note: lint rule: external-mutation
+    ----'
+    ");
+}

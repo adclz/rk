@@ -155,7 +155,7 @@ L0206 collapses every unassigned output of one body into a single diagnostic lis
 | L0114 | `missing-return` | warning | a FUNCTION or METHOD with a return type that never assigns the return value; a `{wasm}` statement whose `(result)` is the FUNCTION counts |
 | L0115 | `self-shadowing` | warning | a variable with the same name as the POU or method it is declared in |
 | L0116 | `method-shadows-member` | warning | a method local or parameter with the same name as a member of its FUNCTION_BLOCK or CLASS |
-| L0117 | `external-mutation` | warning | writing a field of a function block or class instance from outside it, `inst.x := 42` |
+| L0117 | `external-mutation` | warning | writing a field of a function block or class instance from outside it, `inst.x := 42`; an input is not reported, writing it before the call is how it is passed |
 | L0119 | `instance-in-function` | warning | a FUNCTION or METHOD holding or returning a FUNCTION_BLOCK or CLASS instance, which starts over at every call: a timer in it never expires |
 | L0120 | `variable-method-name` | warning | a variable and a method of a FUNCTION_BLOCK or CLASS, or of one it extends, with the same name: legal, the variable wins inside the block |
 | L0121 | `latin1-escape` | warning | a STRING literal whose `$hh` escapes are not UTF-8 text, such as `'caf$E9'` written for `'café'`: `$E9` is one byte, and `é` is `$C3$A9`; not a CHAR, where `$E9` is `é` |
