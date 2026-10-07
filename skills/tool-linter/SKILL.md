@@ -124,6 +124,7 @@ It also skips the VAR_INPUT of a PROGRAM (written by the CONFIGURATION), the who
 | L0311 | `unnecessary-parens` | hint | parentheses around a bare literal, variable or enum value |
 | L0312 | `collapsible-if` | hint | a nested IF with no ELSE, which collapses into `IF a AND b THEN` |
 | L0313 | `yoda-condition` | hint | a literal on the left-hand side of a comparison |
+| L0314 | `positional-output` | hint | a positional argument in the place of a VAR_OUTPUT, which receives the output |
 
 The rule name for L0302 is `unused-return-type`, not `unused-return-value`, even though the message reads "unused return value".
 

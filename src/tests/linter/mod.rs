@@ -39,6 +39,7 @@ mod negated_comparison;
 mod negated_condition;
 mod negative_radix_literal;
 mod once_violation;
+mod positional_output;
 mod recursion;
 mod redundant_not;
 mod self_assignment;
