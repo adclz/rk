@@ -161,6 +161,13 @@ impl Folded {
 
 /// Whether `ty` holds `value`, when `ty` is an integer type.
 pub fn integer_holds(value: i128, ty: ElementarySpec) -> Option<bool> {
+    let (min, max) = integer_range(ty)?;
+    Some((min..=max).contains(&value))
+}
+
+/// The smallest and the largest value of an integer type, a bit string read
+/// unsigned. `None` for any other type.
+pub fn integer_range(ty: ElementarySpec) -> Option<(i128, i128)> {
     let (bits, signed) = integer_layout(ty)?;
     let (min, max) = if signed {
         (-(1i128 << (bits - 1)), (1i128 << (bits - 1)) - 1)

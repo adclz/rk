@@ -114,7 +114,7 @@ It also skips the VAR_INPUT of a PROGRAM (written by the CONFIGURATION), the who
 | L0301 | `unused-import` | hint | a USING directive that nothing in the file resolves through |
 | L0302 | `unused-return-type` | hint | a call whose return value is discarded |
 | L0303 | `missing-input-param` | hint | a FUNCTION_BLOCK or PROGRAM call that does not pass every declared VAR_INPUT; an input the body writes through the same instance, `inst.x := 1`, counts as passed |
-| L0304 | `case-without-else` | hint | a CASE statement with no ELSE branch |
+| L0304 | `case-without-else` | hint | a CASE statement with no ELSE branch, unless its labels take every variant of the selector's enum or its whole integer or subrange range; on an enum it names the variants left out |
 | L0305 | `empty-body` | hint | a FUNCTION, FUNCTION_BLOCK, METHOD or PROGRAM with no statements |
 | L0306 | `empty-if-branch` | hint | an IF, ELSIF or ELSE branch with no statements |
 | L0307 | `empty-case-branch` | hint | a CASE branch with no statements |
