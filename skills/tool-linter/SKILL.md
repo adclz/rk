@@ -6,7 +6,7 @@ description: The lint rules `rk` applies, what each L-code means and how to conf
 ## Summary
 
 The linter runs on top of the compiler diagnostics and reports style, clarity and suspicious-code findings.
-It is ON by default: a workspace that never mentions the linter still gets the **recommended** set — the 27 rules that report a probable bug rather than a matter of taste.
+It is ON by default: a workspace that never mentions the linter still gets the **recommended** set — the 35 rules that report a probable bug rather than a matter of taste.
 `[linter]` tunes that set; it does not switch the linter on.
 
 `rk check` and the language server both run it, on the same set, so an editor and the CLI agree about a workspace.
@@ -38,9 +38,9 @@ Two layers.
 
 | `select` | rules that run |
 | -------- | -------------- |
-| absent, or no `[linter]` at all | the 27 recommended rules |
-| `"recommended"` | the same 27, stated explicitly |
-| `"all"` | all 54 |
+| absent, or no `[linter]` at all | the 35 recommended rules |
+| `"recommended"` | the same 35, stated explicitly |
+| `"all"` | all 63 |
 | `"none"` | none, unless `[linter.rules]` names one |
 
 ```toml
@@ -55,7 +55,7 @@ select = "all"           # default is "recommended"
 yoda-condition = false   # opt OUT of one `select` turned on
 ```
 
-To run the style rules on top of the default instead of taking all 54:
+To run the style rules on top of the default instead of taking all 63:
 
 ```toml
 [linter]
