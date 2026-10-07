@@ -64,8 +64,8 @@ pub struct MirFrame {
     pub size: u32,
 }
 
-/// The alignment of every frame, the largest a MIR type asks for.
-pub const FRAME_ALIGN: u32 = 8;
+/// The alignment of every frame, and of every part of one.
+pub const FRAME_ALIGN: u32 = hir::hir_ty::frame::FRAME_ALIGN;
 
 /// An imported (extern) function declaration.
 #[derive(Debug, Clone)]

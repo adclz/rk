@@ -103,14 +103,6 @@ fn compile(
     check_diagnostics(db, file, expectation);
     let mir_module =
         mir::lower::lower_module::lower_module(db, sem_idx).expect("MIR lowering failed");
-    // HIR's call graph decides which functions get a frame; one it missed
-    // would share a recursive function's storage between its calls.
-    if let Some(func) = mir_module.unframed_recursion() {
-        panic!(
-            "`{}` can call itself again but has no frame",
-            func.name.text(db)
-        );
-    }
     let wasm = match exports {
         Exports::Everything => wasm_codegen::generate_wasm(db, &export_everything(&mir_module)),
         Exports::AsBuilt => wasm_codegen::generate_wasm(db, &mir_module),

@@ -1011,6 +1011,15 @@ fn lower_module_from_pous<'db>(
         module.source_files = source_files;
     }
 
+    // HIR's call graph decided which functions have a frame. One the calls
+    // emitted here reach again without one would share its storage between
+    // its calls.
+    if let Some(func) = module.unframed_recursion() {
+        return Err(LowerTypeError::UnframedRecursion(
+            func.name.text(db).to_string(),
+        ));
+    }
+
     Ok(module)
 }
 

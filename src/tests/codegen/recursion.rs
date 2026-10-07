@@ -230,6 +230,146 @@ fn an_instance_local_in_a_recursive_method(mut with_db: db::RootDatabase) {
     assert_eq!(result, 60, "every level counted its own two calls");
 }
 
+/// A call in a local's initializer is a call of the body: it runs at each
+/// call, before the first statement. `Keep` reaches itself only through
+/// the initializer of `below`; with one `mine` for every call, each would
+/// read the one below's.
+#[rstest]
+fn a_call_in_an_initializer_makes_a_body_recursive(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION Down : DINT
+        VAR_INPUT n : DINT; END_VAR
+            IF n > 0 THEN Down := Keep(n - 1); ELSE Down := 0; END_IF;
+        END_FUNCTION
+
+        FUNCTION Keep : DINT
+        VAR_INPUT n : DINT; END_VAR
+        VAR
+            mine : ARRAY[0..0] OF DINT;
+            below : DINT := Down(n);
+        END_VAR
+            Keep := below + mine[0] * 100 + n;
+            mine[0] := n;
+        END_FUNCTION
+
+        FUNCTION test : DINT
+            test := Keep(2);
+        END_FUNCTION
+    "#;
+    let result: i32 = run(&mut with_db, source, "test", ());
+    assert_eq!(result, 3, "0 + 1 + 2, every call reading its own `mine`");
+}
+
+/// A call through an interface parameter reaches every implementer: here
+/// the method that calls `Drive` back, in the copy of `Drive` for `Walker`.
+#[rstest]
+fn a_call_through_an_interface_makes_a_body_recursive(mut with_db: db::RootDatabase) {
+    let source = r#"
+        INTERFACE IStep
+            METHOD Step : DINT
+            VAR_INPUT n : DINT; END_VAR
+            END_METHOD
+        END_INTERFACE
+
+        FUNCTION Drive : DINT
+        VAR_INPUT it : IStep; n : DINT; END_VAR
+        VAR mine : ARRAY[0..0] OF DINT; END_VAR
+            mine[0] := n;
+            Drive := it.Step(n := n) + mine[0] * 100;
+        END_FUNCTION
+
+        CLASS Walker IMPLEMENTS IStep
+            METHOD PUBLIC Step : DINT
+            VAR_INPUT n : DINT; END_VAR
+                IF n > 0 THEN
+                    Step := Drive(it := THIS, n := n - 1);
+                ELSE
+                    Step := 0;
+                END_IF;
+            END_METHOD
+        END_CLASS
+
+        FUNCTION test : DINT
+        VAR w : Walker; END_VAR
+            test := Drive(it := w, n := 2);
+        END_FUNCTION
+    "#;
+    let result: i32 = run(&mut with_db, source, "test", ());
+    assert_eq!(
+        result, 300,
+        "100 from the call below, 200 from its own `mine`"
+    );
+}
+
+/// An instance called through a VAR_IN_OUT runs its block's body: the body
+/// reaches itself through `Visit`, and its VAR_TEMP is each call's own.
+#[rstest]
+fn an_instance_called_through_a_var_in_out_makes_a_body_recursive(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Node
+        VAR_INPUT depth : DINT; END_VAR
+        VAR_OUTPUT total : DINT; END_VAR
+        VAR peer : REF_TO Node; END_VAR
+        VAR_TEMP buf : ARRAY[0..0] OF DINT; END_VAR
+            buf[0] := depth;
+            total := 0;
+            IF peer <> NULL THEN
+                total := Visit(c := peer^, d := depth - 1);
+            END_IF;
+            total := total + buf[0] * 100;
+        END_FUNCTION_BLOCK
+
+        FUNCTION Visit : DINT
+        VAR_IN_OUT c : Node; END_VAR
+        VAR_INPUT d : DINT; END_VAR
+            c(depth := d);
+            Visit := c.total;
+        END_FUNCTION
+
+        FUNCTION test : DINT
+        VAR a : Node; b : Node; END_VAR
+            a.peer := REF(b);
+            a(depth := 2);
+            test := a.total;
+        END_FUNCTION
+    "#;
+    let result: i32 = run(&mut with_db, source, "test", ());
+    assert_eq!(result, 300, "100 from `b`, 200 from `a`'s own `buf`");
+}
+
+/// `SUPER.m()` runs the base's method, whose `THIS.m()` runs the override
+/// again: the base's method is on a cycle through both.
+#[rstest]
+fn a_cycle_through_super_method(mut with_db: db::RootDatabase) {
+    let source = r#"
+        CLASS Base
+            METHOD PUBLIC Walk : DINT
+            VAR_INPUT n : DINT; END_VAR
+            VAR mine : ARRAY[0..0] OF DINT; END_VAR
+                mine[0] := n;
+                IF n > 0 THEN
+                    Walk := THIS.Walk(n := n - 1);
+                END_IF;
+                Walk := Walk * 10 + mine[0];
+            END_METHOD
+        END_CLASS
+
+        CLASS Derived EXTENDS Base
+            METHOD PUBLIC OVERRIDE Walk : DINT
+            VAR_INPUT n : DINT; END_VAR
+                Walk := SUPER.Walk(n := n);
+            END_METHOD
+        END_CLASS
+
+        FUNCTION test : DINT
+        VAR d : Derived; END_VAR
+            test := d.Walk(n := 2);
+        END_FUNCTION
+    "#;
+    let result: i32 = run(&mut with_db, source, "test", ());
+    assert_eq!(result, 12, "each call appends its own `mine`: 0, 1, 2");
+}
+
 /// A recursion deeper than the stack stops with an exception naming it,
 /// instead of running on over the memory past the stack.
 #[rstest]
@@ -381,7 +521,7 @@ fn the_next_scan_starts_the_stack_over(mut with_db: db::RootDatabase) {
 /// An instance of a block with no variables takes no bytes, and the frame
 /// of a recursive function holding one had no size: the code generator
 /// gives a frame base only to a function whose frame pushes something,
-/// and panicked on the frame local. The empty instance takes a byte of the
+/// and panicked on the frame local. The empty instance takes a slot of the
 /// frame now, and the function runs. A cycle through `SUPER()` was the
 /// shape the fuzzer found it in; it compiles, and is not run, since it
 /// never returns.
@@ -415,4 +555,183 @@ fn a_recursive_function_holding_an_empty_instance(mut with_db: db::RootDatabase)
     "#;
     let wasm = compile_to_wasm(&mut with_db, source);
     assert_eq!(super::execute_wasm::<i32, i32>(&wasm, "Depth", 4), 4);
+}
+
+/// Every part a frame can hold, in recursive FUNCTIONs, METHODs and FB
+/// bodies: the inputs copied in, the result and the locals, and what the
+/// calls they make need while they run. MIR checks each frame it lays out
+/// against the one HIR plans, which `rk check` measures the stack against
+/// (E1430), so this compiles only if the two agree.
+#[rstest]
+fn every_part_of_a_frame_is_where_hir_plans_it(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE Pair : STRUCT a : DINT; b : DINT; END_STRUCT; END_TYPE
+
+        FUNCTION Take : DINT
+        VAR_INPUT p : Pair; END_VAR
+            Take := p.a + p.b;
+        END_FUNCTION
+
+        FUNCTION Outs : DINT
+        VAR_INPUT x : DINT; END_VAR
+        VAR_OUTPUT o : DINT; s : STRING[30]; f : BOOL; small : INT; END_VAR
+            o := x;
+            s := 'out';
+            f := x > 0;
+            small := 7;
+            Outs := x;
+        END_FUNCTION
+
+        FUNCTION Name : STRING[12]
+        VAR_INPUT n : DINT; END_VAR
+            IF n MOD 2 = 0 THEN Name := 'even'; ELSE Name := 'odd'; END_IF;
+        END_FUNCTION
+
+        FUNCTION Size : DINT
+        VAR_INPUT s : STRING[40]; END_VAR
+            Size := 1;
+        END_FUNCTION
+
+        FUNCTION Idx : DINT
+        VAR_INPUT n : DINT; END_VAR
+            Idx := n MOD 2;
+        END_FUNCTION
+
+        FUNCTION_BLOCK Gate
+        VAR_INPUT i : BOOL; END_VAR
+        VAR_OUTPUT q : BOOL; END_VAR
+            q := i;
+        END_FUNCTION_BLOCK
+
+        FUNCTION Deep : DINT
+        VAR_INPUT
+            n : DINT;
+            label : STRING[20];
+            k : INT;
+        END_VAR
+        VAR_EXTERNAL bit3 : BOOL; bit4 : BOOL; END_VAR
+        VAR
+            pair : Pair;
+            cells : ARRAY[0..2] OF DINT;
+            text : STRING[16];
+            wide : DINT;
+            flag : BOOL;
+            names : ARRAY[0..1] OF STRING[12];
+            gate : Gate;
+            r : REF_TO INT;
+        END_VAR
+        VAR_TEMP scratch : ARRAY[0..1] OF LREAL; END_VAR
+            r := REF(k);
+            pair.a := n;
+            pair.b := 1;
+            wide := Take(pair);
+            wide := Outs(x := n);
+            wide := Outs(x := n, NOT f => flag);
+            wide := Outs(x := n, small => wide);
+            wide := Outs(x := n, f => bit3);
+            gate(i := flag, NOT q => flag);
+            gate(i := flag, q => bit4);
+            names[0] := 'even';
+            names[1] := 'odd';
+            CASE Name(n) OF
+                'even': cells[0] := 2;
+            ELSE
+                cells[0] := 1;
+            END_CASE;
+            CASE names[Idx(n)] OF
+                'odd': cells[1] := 3;
+            END_CASE;
+            wide := Size(Name(n));
+            IF Name(n) = 'even' THEN cells[2] := 4; END_IF;
+            IF n > 0 THEN
+                Deep := Deep(n - 1, label, k) + cells[0];
+            ELSE
+                Deep := cells[0];
+            END_IF;
+        END_FUNCTION
+
+        FUNCTION_BLOCK Walker
+            METHOD PUBLIC Depth : Pair
+            VAR_INPUT n : DINT; tag : STRING[8]; END_VAR
+            VAR p : Pair; END_VAR
+                p.a := n;
+                p.b := Take(p);
+                IF n > 0 THEN
+                    Depth := THIS.Depth(n - 1, tag);
+                END_IF;
+                Depth.a := Depth.a + p.a;
+            END_METHOD
+        END_FUNCTION_BLOCK
+
+        FUNCTION_BLOCK Node
+        VAR_INPUT depth : DINT; END_VAR
+        VAR_OUTPUT total : DINT; END_VAR
+        VAR next : REF_TO Node; END_VAR
+        VAR_TEMP buf : ARRAY[0..3] OF DINT; pair : Pair; END_VAR
+            buf[0] := depth;
+            pair.a := depth;
+            buf[1] := Take(pair);
+            IF next <> NULL THEN
+                next^(depth := depth - 1);
+                total := next^.total + buf[0];
+            ELSE
+                total := buf[0];
+            END_IF;
+        END_FUNCTION_BLOCK
+
+        FUNCTION SumA : DINT
+        VAR_INPUT a : ARRAY[*] OF DINT; i : DINT; END_VAR
+            IF i < 0 THEN
+                SumA := 0;
+            ELSE
+                SumA := a[i] + SumA(a, i - 1);
+            END_IF;
+        END_FUNCTION
+
+        FUNCTION Count : DINT
+        VAR_INPUT xs : DINT...; END_VAR
+        VAR keep : ARRAY[0..0] OF DINT; END_VAR
+            keep[0] := ...xs+;
+            IF keep[0] > 3 THEN Count := Count(1, 1) + keep[0]; ELSE Count := keep[0]; END_IF;
+        END_FUNCTION
+
+        FUNCTION test : DINT
+        VAR
+            w : Walker;
+            pr : Pair;
+            a : Node;
+            b : Node;
+            three : ARRAY[0..2] OF DINT := [1, 2, 3];
+            m : ARRAY[0..1, 0..1] OF DINT := [1, 2, 3, 4];
+        END_VAR
+            a.next := REF(b);
+            a(depth := 2);
+            pr := w.Depth(2, 'y');
+            test := Deep(2, 'x', 1) + pr.a + a.total;
+            test := test + SumA(three, 2) + SumA(m[1], 1) + Count(5, 6, 7);
+        END_FUNCTION
+
+        PROGRAM P
+        VAR got : DINT; END_VAR
+            got := test();
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+        VAR_GLOBAL
+            lamps AT %QW0 : WORD;
+            bit3 AT %QX0.3 : BOOL;
+            bit4 AT %QX0.4 : BOOL;
+        END_VAR
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    assert_eq!(
+        super::execute_wasm::<(), i32>(&wasm, "test", ()),
+        5 + 3 + 3 + 6 + 7 + 20,
+        "Deep, Depth, the chain of Nodes, both copies of SumA, Count"
+    );
 }

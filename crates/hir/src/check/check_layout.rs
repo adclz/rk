@@ -1,24 +1,258 @@
 // SPDX-FileCopyrightText: 2026 Clauzel Adrien
 // SPDX-License-Identifier: AGPL-3.0-only
 
+//! What a file's declarations take in memory: a type that contains itself
+//! (E13xx), storage past what a module addresses (E0322), and the frame of a
+//! recursive call larger than the stack (E1430). Each file checks the
+//! declarations it makes and the calls it writes.
+
 use ide_diagnostic::IdeDiagnostic;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::{
-    CallSite, HirNodeInfo,
-    check::errors::{ToIdeDiagnostic, e13_recursion::RecursionError},
+    CallSite, HasName, HirNodeInfo,
+    check::errors::{
+        ToIdeDiagnostic, e03_type::TypeError, e13_recursion::RecursionError,
+        e14_config::ConfigError,
+    },
     hir_def::{
+        expressions::spec::{Spec, SpecKind},
         namespace::NamespaceDecl,
         pous::{
             pou::Pou,
             variable::{StorageClass, VariableKind},
         },
-        semantic_index::SemanticIndex,
+        scope::{ScopeId, ScopeKind},
+        semantic_index::{SemanticIndex, get_scope},
     },
-    hir_ty::{infer::Infer, ty::Type},
+    hir_ty::{
+        body::{ResolvedCall, ScopeInference},
+        calls::{CallNode, is_recursive},
+        frame::{self, Shapes},
+        infer::Infer,
+        layout,
+        ty::Type,
+    },
 };
 
 use db::WorkspaceDataBase;
+
+/// E0322 on the declarations of `scope` whose storage passes what a module
+/// addresses: a TYPE, a variable, an instance whose members together do.
+pub fn check_storage<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    scope: ScopeId<'db>,
+    errors: &mut Vec<IdeDiagnostic>,
+) {
+    let kind = get_scope(db, scope).kind;
+    if let ScopeKind::Pou(pou @ Pou::DataType(dt)) = kind {
+        storage(
+            db,
+            dt.spec(db),
+            CallSite::new(scope, pou.get_name_id(db)),
+            errors,
+        );
+    }
+    // A VAR_EXTERNAL's storage is its global's, reported there.
+    for var in scope.variables(db).into_iter().flatten() {
+        if !var.is_external(db) {
+            storage(
+                db,
+                var.spec(db),
+                CallSite::new(scope, var.get_name_id(db)),
+                errors,
+            );
+        }
+    }
+    let (instance, what, site) = match kind {
+        ScopeKind::Pou(pou @ (Pou::FunctionBlock(_) | Pou::Class(_))) => (
+            layout::instance_layout(db, pou).as_ref(),
+            format!("an instance of '{}'", pou.get_name_with_case(db).text(db)),
+            CallSite::new(scope, pou.get_name_id(db)),
+        ),
+        ScopeKind::Program(program) => (
+            layout::program_layout(db, program).as_ref(),
+            format!("the PROGRAM '{}'", program.get_name_with_case(db).text(db)),
+            CallSite::new(scope, program.get_name_id(db)),
+        ),
+        _ => return,
+    };
+    // Each member that is too large is reported on its own.
+    if let Some(instance) = instance
+        && !instance.whole.fits()
+        && instance.fields.iter().all(|field| field.layout.fits())
+    {
+        errors.push(
+            TypeError::StorageTooLarge {
+                site,
+                what,
+                size: instance.whole.size,
+            }
+            .to_diagnostic(db, scope.file(db)),
+        );
+    }
+}
+
+/// E0322 on a declaration whose storage passes what a module addresses, at
+/// the innermost part that does: a STRUCT holding an array too large is
+/// reported at the array, and a variable of a TYPE too large at the TYPE,
+/// not again. A STRUCT too large as a whole is reported at `name`, the
+/// declaration's, rather than across its lines.
+fn storage<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    spec: Spec<'db>,
+    name: CallSite<'db>,
+    errors: &mut Vec<IdeDiagnostic>,
+) {
+    let Some((part, size)) = oversized(db, spec) else {
+        return;
+    };
+    let (what, site) = match part.kind(db) {
+        SpecKind::Struct(_) if part == spec => ("this STRUCT", name),
+        SpecKind::Struct(_) => ("this STRUCT", CallSite::from_scoped(db, &part)),
+        SpecKind::SizedString(_) => ("this STRING", CallSite::from_scoped(db, &part)),
+        _ => ("this array", CallSite::from_scoped(db, &part)),
+    };
+    errors.push(
+        TypeError::StorageTooLarge {
+            site,
+            what: what.to_string(),
+            size,
+        }
+        .to_diagnostic(db, name.scope.file(db)),
+    );
+}
+
+/// The innermost part of `spec` whose storage passes what a module
+/// addresses, and its size. A named type is reported where it is declared,
+/// so neither it nor what holds it is reported here.
+fn oversized<'db>(db: &'db dyn WorkspaceDataBase, spec: Spec<'db>) -> Option<(Spec<'db>, u64)> {
+    let parts: Vec<Spec<'db>> = match spec.kind(db) {
+        SpecKind::Struct(strukt) => strukt.elements(db).iter().map(|e| e.spec(db)).collect(),
+        SpecKind::Array(array) => vec![array.of_type(db)],
+        SpecKind::SizedString(_) => Vec::new(),
+        _ => return None,
+    };
+    for part in &parts {
+        if let Some(found) = oversized(db, *part) {
+            return Some(found);
+        }
+    }
+    let fits = |spec| layout::of_spec(db, spec).is_none_or(layout::Layout::fits);
+    if !parts.iter().all(|part| fits(*part)) {
+        return None;
+    }
+    let whole = layout::of_spec(db, spec)?;
+    (!whole.fits()).then_some((spec, whole.size))
+}
+
+/// The frames of recursive calls `scope` decides: its own body's, when it
+/// may call itself, and those of the copies its calls create of a body with
+/// `ARRAY[*]` parameters. One larger than the stack `stack_size` sets is
+/// E1430, and one past what a module addresses E0322.
+pub fn check_frames<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    scope: ScopeId<'db>,
+    errors: &mut Vec<IdeDiagnostic>,
+) {
+    let stack = db::config_file::get_config(db)
+        .settings
+        .as_ref()
+        .and_then(|settings| settings.stack_size)
+        .map(|size| size.bytes());
+    let fits =
+        |frame: u64| frame <= u64::from(u32::MAX) && stack.is_none_or(|stack| frame <= stack);
+    let file = scope.file(db);
+    let too_large = |site, what: String, frame: u64| match stack {
+        _ if frame > u64::from(u32::MAX) => Some(
+            TypeError::StorageTooLarge {
+                site,
+                what,
+                size: frame,
+            }
+            .to_diagnostic(db, file),
+        ),
+        Some(stack) if frame > stack => Some(
+            ConfigError::FrameLargerThanStack {
+                site,
+                what,
+                frame,
+                stack,
+            }
+            .to_diagnostic(db, file),
+        ),
+        _ => None,
+    };
+
+    let node = match get_scope(db, scope).kind {
+        ScopeKind::Pou(Pou::Function(f)) => Some((CallNode::Function(f), f.get_name_id(db))),
+        ScopeKind::Pou(Pou::FunctionBlock(fb)) => Some((CallNode::Body(fb), fb.get_name_id(db))),
+        ScopeKind::MethodDecl(m) => Some((CallNode::Method(m), m.get_name_id(db))),
+        _ => None,
+    };
+    if let Some((node, name)) = node
+        && is_recursive(db, node)
+    {
+        let size = frame::frame(db, node, &Shapes::default());
+        if !fits(size) {
+            let what = format!("each call of '{}'", node.display_name(db));
+            errors.extend(too_large(CallSite::new(scope, name), what, size));
+        }
+    }
+
+    // A copy is reported where it is created, when the arrays it binds are
+    // what make it too large.
+    let inference = scope.inference(db);
+    let mut calls: Vec<_> = inference.resolved_calls().collect();
+    calls.sort_by_key(|(call, _)| call.path(db).get_span(db).start_byte);
+    for (call, resolved) in calls {
+        let copy = copies(db, inference, resolved)
+            .into_iter()
+            .find(|(node, size)| !fits(*size) && fits(frame::frame(db, *node, &Shapes::default())));
+        if let Some((node, size)) = copy {
+            let what = format!(
+                "each call of the copy of '{}' for these arrays",
+                node.display_name(db)
+            );
+            errors.extend(too_large(
+                CallSite::from_scoped(db, &call.path(db)),
+                what,
+                size,
+            ));
+        }
+    }
+}
+
+/// The copies of recursive bodies a call creates, and the frame of each: the
+/// callee's, and those its copy creates by passing its arrays on. A copy a
+/// body's own arrays decide is checked where that body is written.
+fn copies<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    inference: ScopeInference<'db>,
+    call: &ResolvedCall<'db>,
+) -> Vec<(CallNode<'db>, u64)> {
+    let mut work: Vec<_> = frame::copy_of(db, inference, call, &Shapes::default())
+        .into_iter()
+        .collect();
+    let mut seen: Vec<(CallNode<'db>, Shapes<'db>)> = Vec::new();
+    let mut found = Vec::new();
+    while let Some((node, shapes)) = work.pop() {
+        if seen.iter().any(|(n, s)| *n == node && *s == shapes) {
+            continue;
+        }
+        if is_recursive(db, node) {
+            found.push((node, frame::frame(db, node, &shapes)));
+        }
+        let inner = node.scope(db).inference(db);
+        for inner_call in frame::body_calls(db, node) {
+            if frame::copy_of(db, inner, inner_call, &Shapes::default()).is_none() {
+                work.extend(frame::copy_of(db, inner, inner_call, &shapes));
+            }
+        }
+        seen.push((node, shapes));
+    }
+    found
+}
 
 /// DFS-based cycle detection on type dependency graph
 ///

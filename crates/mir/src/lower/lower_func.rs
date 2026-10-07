@@ -277,7 +277,7 @@ fn lower_function_inner<'db>(
     );
 
     // Collect address-taken variables for storage decisions
-    let address_taken = collect_address_taken_vars(db, func.scope_id(db));
+    let address_taken = hir::hir_ty::layout::address_taken(db, func.scope_id(db));
 
     // 1. Parameters (Input, InOut, Output). VAR_OUTPUT is a pointer at the
     // wasm level. `next_local_idx` advances by the slots each param consumes
@@ -304,7 +304,7 @@ fn lower_function_inner<'db>(
     let entry_copies = shadow_inputs(
         db,
         &mut params,
-        &address_taken,
+        address_taken,
         &mut locals,
         &mut next_local_idx,
         memory_layout,
@@ -444,7 +444,12 @@ fn lower_function_inner<'db>(
         linkage,
         is_test: hir::hir_def::pous::pragma::is_test(db, func.pragmas(db)),
         export_name: None,
-        frame: memory_layout.end_frame(),
+        frame: close_frame(
+            db,
+            hir::hir_ty::calls::CallNode::Function(func),
+            param_subs,
+            memory_layout,
+        ),
         host_entry: hir::hir_def::pous::pragma::is_test(db, func.pragmas(db)),
     })
 }
@@ -488,7 +493,7 @@ fn lower_function_block_inner<'db>(
         );
         // A method local whose address is taken must live in memory. Same scan
         // as the other bodies.
-        let address_taken = collect_address_taken_vars(db, method.scope_id(db));
+        let address_taken = hir::hir_ty::layout::address_taken(db, method.scope_id(db));
 
         // 'this' pointer parameter — the FB's instance struct.
         let fb_type = super::lower_type::lower_fb_type(db, fb)?;
@@ -536,7 +541,7 @@ fn lower_function_block_inner<'db>(
         let entry_copies = shadow_inputs(
             db,
             &mut params,
-            &address_taken,
+            address_taken,
             &mut locals,
             &mut next_local_idx,
             memory_layout,
@@ -666,7 +671,12 @@ fn lower_function_block_inner<'db>(
             linkage: MirLinkage::Internal,
             is_test: false,
             export_name: None,
-            frame: memory_layout.end_frame(),
+            frame: close_frame(
+                db,
+                hir::hir_ty::calls::CallNode::Method(method),
+                spec.map(|inst| &inst.param_subs),
+                memory_layout,
+            ),
             host_entry: false,
         });
         idx += 1;
@@ -853,7 +863,7 @@ fn lower_fb_body<'db>(
         memory_layout,
     );
 
-    let address_taken = collect_address_taken_vars(db, body_of.scope_id(db));
+    let address_taken = hir::hir_ty::layout::address_taken(db, body_of.scope_id(db));
 
     for var in body_of.variables(db) {
         if var.kind(db) == VariableKind::Temp {
@@ -934,7 +944,12 @@ fn lower_fb_body<'db>(
         linkage: MirLinkage::Internal,
         is_test: false,
         export_name: None,
-        frame: memory_layout.end_frame(),
+        frame: close_frame(
+            db,
+            hir::hir_ty::calls::CallNode::Body(body_of),
+            spec.map(|inst| &inst.param_subs),
+            memory_layout,
+        ),
         // A task may run it, and so may any code holding an instance.
         host_entry: false,
     })
@@ -993,7 +1008,7 @@ fn lower_class_inner<'db>(
         });
 
         // Same address-taken rule as the FB method loop above.
-        let address_taken = collect_address_taken_vars(db, method.scope_id(db));
+        let address_taken = hir::hir_ty::layout::address_taken(db, method.scope_id(db));
 
         // Method parameters, then its locals: every wasm parameter's index
         // comes before the first local's, whatever order the sections are
@@ -1023,7 +1038,7 @@ fn lower_class_inner<'db>(
         let entry_copies = shadow_inputs(
             db,
             &mut params,
-            &address_taken,
+            address_taken,
             &mut locals,
             &mut next_local_idx,
             memory_layout,
@@ -1151,7 +1166,12 @@ fn lower_class_inner<'db>(
             linkage: MirLinkage::Internal,
             is_test: false,
             export_name: None,
-            frame: memory_layout.end_frame(),
+            frame: close_frame(
+                db,
+                hir::hir_ty::calls::CallNode::Method(method),
+                spec.map(|inst| &inst.param_subs),
+                memory_layout,
+            ),
             host_entry: false,
         });
     }
@@ -1191,7 +1211,7 @@ fn lower_program_inner<'db>(
     // fields accessed through `this`.
     let mut locals = Vec::new();
     let mut next_local_idx: u32 = 1; // 0 is 'this'
-    let address_taken = collect_address_taken_vars(db, program.scope_id(db));
+    let address_taken = hir::hir_ty::layout::address_taken(db, program.scope_id(db));
     for var in program.variables(db) {
         if var.kind(db) == VariableKind::Temp {
             let ty = lower_var_type(db, *var)?;
@@ -1539,6 +1559,55 @@ fn open_frame<'db>(
     }
 }
 
+/// The frame `node`'s storage was laid out in, closed: the one HIR plans for
+/// the copy of `node` that `subs` binds, which `rk check` measured the stack
+/// against (E1430).
+fn close_frame<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    node: hir::hir_ty::calls::CallNode<'db>,
+    subs: Option<&super::mono_iface::ParamSubs<'db>>,
+    memory_layout: &mut MirMemoryLayout,
+) -> Option<crate::function::MirFrame> {
+    let frame = memory_layout.end_frame();
+    if let Some(frame) = frame {
+        debug_assert_eq!(
+            u64::from(frame.size),
+            hir::hir_ty::frame::frame(db, node, &frame_shapes(subs)),
+            "the frame of '{}' is not the one HIR plans",
+            node.display_name(db)
+        );
+    }
+    frame
+}
+
+/// The arrays `subs` binds to `ARRAY[*]` parameters, as HIR lays them out.
+fn frame_shapes<'db>(
+    subs: Option<&super::mono_iface::ParamSubs<'db>>,
+) -> hir::hir_ty::frame::Shapes<'db> {
+    use hir::hir_ty::layout::{ArrayLayout, Layout};
+    subs.into_iter()
+        .flat_map(|subs| &subs.shapes)
+        .filter_map(|(var, shape)| match shape {
+            MirType::Array(array) => Some((
+                *var,
+                ArrayLayout {
+                    element: Layout {
+                        size: u64::from(array.element_size),
+                        align: array.align,
+                    },
+                    dimensions: array.dimensions.clone(),
+                    count: u64::from(array.total_elements),
+                    whole: Layout {
+                        size: u64::from(array.size),
+                        align: array.align,
+                    },
+                },
+            )),
+            _ => None,
+        })
+        .collect()
+}
+
 /// A VAR_INPUT that needs storage of its own has none as a wasm parameter:
 /// the parameter becomes `x$arg`, and `x` a local in linear memory, which
 /// the returned statements fill from it at entry. That is an input whose
@@ -1597,59 +1666,6 @@ pub(crate) fn lower_var_type<'db>(
     var: VariableDecl<'db>,
 ) -> Result<MirType, LowerTypeError> {
     super::lower_type::lower_spec(db, var.spec(db))
-}
-
-/// The variables whose address `scope` takes, in its statements and in its
-/// locals' initializers, which linear memory holds even when they are
-/// scalars: the root of every `REF()`, VAR_IN_OUT argument and output
-/// destination, wherever it stands (a subscript, an assignment target, a
-/// nested call, an initializer). Read off inference, which visited every
-/// expression and bound every call.
-fn collect_address_taken_vars<'db>(
-    db: &'db dyn WorkspaceDataBase,
-    scope: hir::hir_def::scope::ScopeId<'db>,
-) -> FxHashSet<Ident> {
-    use hir::hir_def::expressions::expression::{
-        BeginPathExpr, ExprKind, PrimaryExpr, RefValue, VariableAccessKind,
-    };
-    use hir::hir_ty::body::ParamBinding;
-
-    fn root<'db>(db: &'db dyn WorkspaceDataBase, path: &BeginPathExpr<'db>) -> Option<Ident> {
-        let root = path.expr(db)?.flatten(db).first()?.get_expr(db);
-        Some(root.ident(db).ident(db))
-    }
-
-    let inference = scope.inference(db);
-    let mut result = FxHashSet::default();
-    for (expr, _) in inference.typed_exprs() {
-        if let ExprKind::PrimaryExpr(PrimaryExpr::RefValue {
-            value: RefValue::Address(path),
-        }) = expr.expr(db)
-        {
-            result.extend(root(db, path));
-        }
-    }
-    for (_, call) in inference.resolved_calls() {
-        for (var, binding) in &call.params {
-            let access = match binding {
-                ParamBinding::Values(values) if var.is_in_out(db) => values
-                    .iter()
-                    .filter_map(|value| match value.expr(db) {
-                        ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess(access)) => Some(*access),
-                        _ => None,
-                    })
-                    .collect(),
-                ParamBinding::Output { variable, .. } => vec![*variable],
-                _ => continue,
-            };
-            for access in access {
-                if let VariableAccessKind::Symbolic(path) = access.kind(db) {
-                    result.extend(root(db, &path));
-                }
-            }
-        }
-    }
-    result
 }
 
 /// The statements that give a POU's own variables their starting values at

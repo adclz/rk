@@ -89,6 +89,15 @@ pub enum TypeError<'db> {
         length: Expr<'db>,
         value: i64,
     },
+    /// Storage past what a module addresses, whose sizes and addresses are
+    /// 32 bits: a type, a variable's or an instance, reported where its size
+    /// first passes them.
+    StorageTooLarge {
+        site: CallSite<'db>,
+        /// What takes it: "this array", "an instance of 'Big'".
+        what: String,
+        size: u64,
+    },
     /// An edge qualifier on an input of a type other than BOOL:
     /// `x : INT R_EDGE`.
     EdgeNotBool {
@@ -215,6 +224,7 @@ impl<'db> ErrorCode for TypeError<'db> {
             Self::StringLengthNotConstant { .. } => "E0315",
             Self::StringLengthNegative { .. } => "E0320",
             Self::EdgeNotBool { .. } => "E0321",
+            Self::StorageTooLarge { .. } => "E0322",
             Self::FunctionAsType { .. } => "E0316",
             Self::DirectType { .. } => "E0317",
             Self::AssignFunctionOrMethod { .. } => "E0318",
@@ -447,6 +457,19 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                 .desc(self)
                 .range(crate::denormalize(db, file, &length.get_span(db)).unwrap_or_default())
                 .call(),
+            Self::StorageTooLarge { site, what, size } => {
+                let mut diag = diag()
+                    .message(format!("{what} takes {size} bytes"))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &site.get_span(db)).unwrap_or_default())
+                    .call();
+                diag.with_note(format!(
+                    "a module's sizes and addresses are 32 bits: {} bytes at most",
+                    u32::MAX
+                ));
+                diag
+            }
             Self::EdgeNotBool { spec, ty, edge } => {
                 let mut diag = diag()
                     .message(format!("expected 'BOOL', got '{}'", ty.type_name(db)))

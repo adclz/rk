@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 use compact_str::CompactString;
-use hir::hir_def::interned::identifier::Ident;
+use hir::hir_def::{expressions::spec::ElementarySpec, interned::identifier::Ident};
+use hir::hir_ty::layout;
 
 pub use hir::hir_ty::infer::normalize::DEFAULT_STRING_CAPACITY;
 
@@ -142,16 +143,20 @@ pub struct MirSubrangeType {
 }
 
 impl MirType {
-    /// Size of this type in bytes.
+    /// Size of this type in bytes, as HIR lays it out
+    /// ([`hir::hir_ty::layout`]).
     pub fn size_bytes(&self) -> u32 {
         match self {
             MirType::Elementary(e) => e.size_bytes(),
-            MirType::String { capacity } => 4 + capacity, // ptr (i32) + len (i32)
+            // A capacity past what a module addresses is E0322.
+            MirType::String { capacity } => layout::string(u64::from(*capacity))
+                .size
+                .min(u64::from(u32::MAX)) as u32,
             MirType::Struct(s) => s.size,
             MirType::Array(a) => a.size,
             MirType::Enum(e) => e.storage.size_bytes(),
             MirType::Subrange(s) => s.base.size_bytes(),
-            MirType::Pointer(_) => 4, // i32 pointer
+            MirType::Pointer(_) => layout::POINTER.size as u32,
             MirType::Void => 0,
         }
     }
@@ -160,12 +165,12 @@ impl MirType {
     pub fn alignment(&self) -> u32 {
         match self {
             MirType::Elementary(e) => e.alignment(),
-            MirType::String { .. } => 4,
+            MirType::String { capacity } => layout::string(u64::from(*capacity)).align,
             MirType::Struct(s) => s.align,
             MirType::Array(a) => a.align,
             MirType::Enum(e) => e.storage.alignment(),
             MirType::Subrange(s) => s.base.alignment(),
-            MirType::Pointer(_) => 4,
+            MirType::Pointer(_) => layout::POINTER.align,
             MirType::Void => 1,
         }
     }
@@ -180,41 +185,47 @@ impl MirType {
 }
 
 impl MirElementary {
+    /// Its storage, as HIR lays it out: a 32-bit lane, or 8 bytes.
+    ///
+    /// The date and time encodings: TIME is i32 ms, LTIME i64 ns; DATE i32
+    /// days since 1970, LDATE i64; TOD i32 ms of the day, LTOD i64 ns; DT
+    /// i64 seconds since 1970 (bounded to LDT's span in HIR), LDT i64 ns.
     pub fn size_bytes(self) -> u32 {
-        match self {
-            MirElementary::Bool
-            | MirElementary::SInt
-            | MirElementary::USInt
-            | MirElementary::Byte
-            | MirElementary::Char => 4,
-            MirElementary::Int | MirElementary::UInt | MirElementary::Word => 4,
-            MirElementary::DInt
-            | MirElementary::UDInt
-            | MirElementary::DWord
-            | MirElementary::Real => 4,
-            MirElementary::LInt
-            | MirElementary::ULInt
-            | MirElementary::LWord
-            | MirElementary::LReal => 8,
-            // Date / time encodings
-            //   TIME = i32 ms,           LTIME = i64 ns
-            //   DATE = i32 days-1970,    LDATE = i64 days-1970
-            //   TOD  = i32 ms-of-day,    LTOD  = i64 ns-of-day
-            //   DT   = i64 secs-1970 (bounded to LDT's span in hir),
-            //   LDT  = i64 ns-1970
-            MirElementary::Time => 4,
-            MirElementary::LTime => 8,
-            MirElementary::Date => 4,
-            MirElementary::LDate => 8,
-            MirElementary::Tod => 4,
-            MirElementary::LTod => 8,
-            MirElementary::DateAndTime => 8,
-            MirElementary::LDateTime => 8,
-        }
+        layout::elementary(self.spec()).size as u32
     }
 
     pub fn alignment(self) -> u32 {
-        self.size_bytes()
+        layout::elementary(self.spec()).align
+    }
+
+    /// The HIR type it lowers from.
+    pub fn spec(self) -> ElementarySpec {
+        match self {
+            MirElementary::Bool => ElementarySpec::Bool,
+            MirElementary::SInt => ElementarySpec::SInt,
+            MirElementary::Int => ElementarySpec::Int,
+            MirElementary::DInt => ElementarySpec::DInt,
+            MirElementary::LInt => ElementarySpec::LInt,
+            MirElementary::USInt => ElementarySpec::USInt,
+            MirElementary::UInt => ElementarySpec::UInt,
+            MirElementary::UDInt => ElementarySpec::UDInt,
+            MirElementary::ULInt => ElementarySpec::ULInt,
+            MirElementary::Byte => ElementarySpec::Byte,
+            MirElementary::Word => ElementarySpec::Word,
+            MirElementary::DWord => ElementarySpec::DWord,
+            MirElementary::LWord => ElementarySpec::LWord,
+            MirElementary::Real => ElementarySpec::Real,
+            MirElementary::LReal => ElementarySpec::LReal,
+            MirElementary::Char => ElementarySpec::Char,
+            MirElementary::Time => ElementarySpec::Time,
+            MirElementary::LTime => ElementarySpec::LTime,
+            MirElementary::Date => ElementarySpec::Date,
+            MirElementary::LDate => ElementarySpec::LDate,
+            MirElementary::Tod => ElementarySpec::Tod,
+            MirElementary::LTod => ElementarySpec::LTod,
+            MirElementary::DateAndTime => ElementarySpec::DateAndTime,
+            MirElementary::LDateTime => ElementarySpec::LDateTime,
+        }
     }
 
     /// IEC semantic bit width (BYTE = 8, WORD = 16), distinct from the
