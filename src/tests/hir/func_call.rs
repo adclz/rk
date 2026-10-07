@@ -429,6 +429,285 @@ END_FUNCTION_BLOCK"#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
 
+/// An output is written into a variable: not into a literal, an expression,
+/// a call's result or a bit of a variable, bound by `=>` or by its place.
+#[rstest]
+fn invalid_output_bound_to_a_value(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION G : INT
+VAR_INPUT a : INT; END_VAR
+VAR_OUTPUT o : BOOL; END_VAR
+    G := a;
+END_FUNCTION
+
+FUNCTION Caller : INT
+VAR w : WORD; END_VAR
+    Caller := G(a := 1, o => TRUE);
+    Caller := G(1, w.%X3);
+    Caller := G(1, G(2));
+END_FUNCTION
+"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0805] Error: VAR_OUTPUT argument not a variable
+        ,-[ file:///test0.st:10:30 ]
+        |
+      4 | VAR_OUTPUT o : BOOL; END_VAR
+        |            |
+        |            `-- parameter 'o' is declared here
+        |
+     10 |     Caller := G(a := 1, o => TRUE);
+        |                              ^^|^
+        |                                `--- VAR_OUTPUT parameter 'o' of 'G' requires a variable, not a value
+        |
+        | Note: the call writes the output into the variable bound to it
+    ----'
+    [E0805] Error: VAR_OUTPUT argument not a variable
+        ,-[ file:///test0.st:11:20 ]
+        |
+      4 | VAR_OUTPUT o : BOOL; END_VAR
+        |            |
+        |            `-- parameter 'o' is declared here
+        |
+     11 |     Caller := G(1, w.%X3);
+        |                    ^^|^^
+        |                      `---- VAR_OUTPUT parameter 'o' of 'G' requires a variable, not a value
+        |
+        | Note: the call writes the output into the variable bound to it
+    ----'
+    [E0805] Error: VAR_OUTPUT argument not a variable
+        ,-[ file:///test0.st:12:20 ]
+        |
+      4 | VAR_OUTPUT o : BOOL; END_VAR
+        |            |
+        |            `-- parameter 'o' is declared here
+        |
+     12 |     Caller := G(1, G(2));
+        |                    ^^|^
+        |                      `--- VAR_OUTPUT parameter 'o' of 'G' requires a variable, not a value
+        |
+        | Note: the call writes the output into the variable bound to it
+    ----'
+    ");
+}
+
+/// `=>` names where an output goes: refused on an input of a FUNCTION, of an
+/// overloaded one (on the overload the variable picks) and of a block.
+#[rstest]
+fn invalid_input_bound_with_arrow(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION G : INT
+VAR_INPUT a : INT; END_VAR
+    G := a;
+END_FUNCTION
+
+FUNCTION H : INT
+VAR_INPUT a : INT; END_VAR
+    H := a;
+END_FUNCTION
+
+FUNCTION H : INT
+VAR_INPUT a : REAL; END_VAR
+    H := 0;
+END_FUNCTION
+
+FUNCTION_BLOCK B
+VAR_INPUT i : INT; END_VAR
+END_FUNCTION_BLOCK
+
+PROGRAM Main
+VAR x, y : INT; b : B; END_VAR
+    y := G(a => x);
+    y := H(a => x);
+    b(i => x);
+END_PROGRAM
+"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0807] Error: VAR_INPUT or VAR_IN_OUT bound with =>
+        ,-[ file:///test0.st:23:12 ]
+        |
+      3 | VAR_INPUT a : INT; END_VAR
+        |           |
+        |           `-- parameter 'a' is declared here
+        |
+     23 |     y := G(a => x);
+        |            |
+        |            `-- VAR_INPUT parameter 'a' of 'G' cannot be bound with '=>'
+        |
+        | Help: bind it with ':=': a := <value>
+        |
+        | Note: '=>' names the variable an output is written into, ':=' passes a value in
+    ----'
+    [E0807] Error: VAR_INPUT or VAR_IN_OUT bound with =>
+        ,-[ file:///test0.st:24:12 ]
+        |
+      8 | VAR_INPUT a : INT; END_VAR
+        |           |
+        |           `-- parameter 'a' is declared here
+        |
+     24 |     y := H(a => x);
+        |            |
+        |            `-- VAR_INPUT parameter 'a' of 'H' cannot be bound with '=>'
+        |
+        | Help: bind it with ':=': a := <value>
+        |
+        | Note: '=>' names the variable an output is written into, ':=' passes a value in
+    ----'
+    [E0807] Error: VAR_INPUT or VAR_IN_OUT bound with =>
+        ,-[ file:///test0.st:25:7 ]
+        |
+     18 | VAR_INPUT i : INT; END_VAR
+        |           |
+        |           `-- parameter 'i' is declared here
+        |
+     25 |     b(i => x);
+        |       |
+        |       `-- VAR_INPUT parameter 'i' of 'B' cannot be bound with '=>'
+        |
+        | Help: bind it with ':=': i := <value>
+        |
+        | Note: '=>' names the variable an output is written into, ':=' passes a value in
+    ----'
+    ");
+}
+
+/// `NOT q => x` writes the negation, which NOT gives a BOOL or a bit
+/// string: not an INT.
+#[rstest]
+fn invalid_negated_output_of_a_number(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION G : INT
+VAR_OUTPUT q : BOOL; n : INT; END_VAR
+    G := 0;
+END_FUNCTION
+
+FUNCTION Caller : INT
+VAR x : BOOL; y : INT; END_VAR
+    Caller := G(NOT q => x, NOT n => y);
+END_FUNCTION
+"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0305] Error: operator not supported by the type
+       ,-[ file:///test0.st:9:29 ]
+       |
+     3 | VAR_OUTPUT q : BOOL; n : INT; END_VAR
+       |                      |
+       |                      `-- 'n' is declared here
+       |
+     9 |     Caller := G(NOT q => x, NOT n => y);
+       |                             ^^^^^|^^^^
+       |                                  `------ operator 'NOT' cannot be applied to type 'INT'
+    ---'
+    ");
+}
+
+/// `:=` passes a value in, which an output never reads: refused for a
+/// FUNCTION, an overloaded one, a FUNCTION_BLOCK and a METHOD.
+#[rstest]
+fn invalid_output_bound_with_assign(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION G : INT
+VAR_INPUT a : INT; END_VAR
+VAR_OUTPUT o : INT; END_VAR
+    G := a;
+END_FUNCTION
+
+FUNCTION H : INT
+VAR_INPUT a : INT; END_VAR
+VAR_OUTPUT o : INT; END_VAR
+    H := a;
+END_FUNCTION
+
+FUNCTION H : INT
+VAR_INPUT a : REAL; END_VAR
+VAR_OUTPUT o : INT; END_VAR
+    H := 0;
+END_FUNCTION
+
+FUNCTION_BLOCK B
+VAR_OUTPUT q : INT; END_VAR
+    METHOD m : INT
+    VAR_OUTPUT o : INT; END_VAR
+        m := 0;
+    END_METHOD
+    q := 1;
+END_FUNCTION_BLOCK
+
+PROGRAM Main
+VAR x, y : INT; b : B; END_VAR
+    y := G(a := 1, o := x);
+    y := H(a := 1, o := x);
+    b(q := x);
+    y := b.m(o := x);
+END_PROGRAM
+"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0818] Error: VAR_OUTPUT bound with :=
+        ,-[ file:///test0.st:31:20 ]
+        |
+      4 | VAR_OUTPUT o : INT; END_VAR
+        |            |
+        |            `-- parameter 'o' is declared here
+        |
+     31 |     y := G(a := 1, o := x);
+        |                    |
+        |                    `-- VAR_OUTPUT parameter 'o' of 'G' cannot be bound with ':='
+        |
+        | Help: bind it with '=>': o => <variable>
+        |
+        | Note: ':=' passes a value in, '=>' names the variable an output is written into
+    ----'
+    [E0818] Error: VAR_OUTPUT bound with :=
+        ,-[ file:///test0.st:32:20 ]
+        |
+     10 | VAR_OUTPUT o : INT; END_VAR
+        |            |
+        |            `-- parameter 'o' is declared here
+        |
+     32 |     y := H(a := 1, o := x);
+        |                    |
+        |                    `-- VAR_OUTPUT parameter 'o' of 'H' cannot be bound with ':='
+        |
+        | Help: bind it with '=>': o => <variable>
+        |
+        | Note: ':=' passes a value in, '=>' names the variable an output is written into
+    ----'
+    [E0818] Error: VAR_OUTPUT bound with :=
+        ,-[ file:///test0.st:33:7 ]
+        |
+     21 | VAR_OUTPUT q : INT; END_VAR
+        |            |
+        |            `-- parameter 'q' is declared here
+        |
+     33 |     b(q := x);
+        |       |
+        |       `-- VAR_OUTPUT parameter 'q' of 'B' cannot be bound with ':='
+        |
+        | Help: bind it with '=>': q => <variable>
+        |
+        | Note: ':=' passes a value in, '=>' names the variable an output is written into
+    ----'
+    [E0818] Error: VAR_OUTPUT bound with :=
+        ,-[ file:///test0.st:34:14 ]
+        |
+     23 |     VAR_OUTPUT o : INT; END_VAR
+        |                |
+        |                `-- parameter 'o' is declared here
+        |
+     34 |     y := b.m(o := x);
+        |              |
+        |              `-- VAR_OUTPUT parameter 'o' of 'm' cannot be bound with ':='
+        |
+        | Help: bind it with '=>': o => <variable>
+        |
+        | Note: ':=' passes a value in, '=>' names the variable an output is written into
+    ----'
+    ");
+}
+
 #[rstest]
 fn missing_function_var_input(mut with_db: RootDatabase) {
     let source = r#"
@@ -883,7 +1162,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0807] Error: VAR_IN_OUT bound with =>
+    [E0807] Error: VAR_INPUT or VAR_IN_OUT bound with =>
         ,-[ file:///test0.st:21:8 ]
         |
       4 |         io: INT;
@@ -894,9 +1173,11 @@ END_FUNCTION_BLOCK"#;
         |        ^|
         |         `-- VAR_IN_OUT parameter 'io' of 'fn' cannot be bound with '=>'
         |
-        | Note: VAR_IN_OUT is bound by reference at call entry: use io := <variable>
+        | Help: bind it with ':=': io := <variable>
+        |
+        | Note: '=>' names the variable an output is written into, ':=' passes a value in
     ----'
-    [E0807] Error: VAR_IN_OUT bound with =>
+    [E0807] Error: VAR_INPUT or VAR_IN_OUT bound with =>
         ,-[ file:///test0.st:22:7 ]
         |
      11 |         target: INT;
@@ -907,7 +1188,9 @@ END_FUNCTION_BLOCK"#;
         |       ^^^|^^
         |          `---- VAR_IN_OUT parameter 'target' of 'driver' cannot be bound with '=>'
         |
-        | Note: VAR_IN_OUT is bound by reference at call entry: use target := <variable>
+        | Help: bind it with ':=': target := <variable>
+        |
+        | Note: '=>' names the variable an output is written into, ':=' passes a value in
     ----'
     ");
 }

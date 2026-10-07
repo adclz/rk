@@ -616,8 +616,7 @@ fn a_copy_is_one_per_combination_of_array_types(mut with_db: db::RootDatabase) {
 // The examples of IEC 61131-3, 6.5.3 (Table 15), as the standard prints them
 // but for: a `DO` after each `FOR`, which the text leaves out; DINT where the
 // bounds land, as `LOWER_BOUND` and `UPPER_BOUND` return one where the
-// standard says ANY_INT; no `;` after a FUNCTION's result type; and the
-// output of `MATRIX_MUL` bound by name.
+// standard says ANY_INT; and no `;` after a FUNCTION's result type.
 
 /// Example 1: the bounds of each dimension, and an error past them.
 #[rstest]
@@ -715,7 +714,7 @@ fn the_standards_matrix_example(mut with_db: db::RootDatabase) {
           C: ARRAY [1..5, 1..4] OF INT;
           c11, c23, c54: DINT;
         END_VAR
-          MATRIX_MUL (A := A, B := B, C => C);
+          MATRIX_MUL (A, B, C);
           c11 := C[1, 1];
           c23 := C[2, 3];
           c54 := C[5, 4];

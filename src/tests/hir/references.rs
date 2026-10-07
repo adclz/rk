@@ -1017,3 +1017,99 @@ END_CONFIGURATION
     ----'
     ");
 }
+
+/// A reference points at a named variable or instance: not at a literal, an
+/// expression, a call's result, a direct address or a bit, in a body or an
+/// initial value.
+#[rstest]
+fn invalid_reference_to_what_names_no_variable(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION G : INT
+    G := 1;
+END_FUNCTION
+
+FUNCTION_BLOCK fb1
+VAR
+    i : INT;
+    w : WORD;
+    r : REF_TO INT;
+    s : REF_TO STRING;
+    b : REF_TO BOOL;
+    first : REF_TO INT := REF(5);
+END_VAR
+    s := REF('ab');
+    r := REF(i + 1);
+    r := REF(G());
+    r := REF(%MW10);
+    b := REF(w.%X3);
+    r := REF(i);
+END_FUNCTION_BLOCK
+"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0905] Error: REF() argument not a variable
+        ,-[ file:///test0.st:13:31 ]
+        |
+     13 |     first : REF_TO INT := REF(5);
+        |                               |
+        |                               `-- REF() takes a variable, not a value
+        |
+        | Help: store the value in a variable, and take REF() of the variable
+        |
+        | Note: a literal, an expression or a call result has no storage to point at
+    ----'
+    [E0905] Error: REF() argument not a variable
+        ,-[ file:///test0.st:15:14 ]
+        |
+     15 |     s := REF('ab');
+        |              ^^|^
+        |                `--- REF() takes a variable, not a value
+        |
+        | Help: store the value in a variable, and take REF() of the variable
+        |
+        | Note: a literal, an expression or a call result has no storage to point at
+    ----'
+    [E0905] Error: REF() argument not a variable
+        ,-[ file:///test0.st:16:14 ]
+        |
+     16 |     r := REF(i + 1);
+        |              ^^|^^
+        |                `---- REF() takes a variable, not a value
+        |
+        | Help: store the value in a variable, and take REF() of the variable
+        |
+        | Note: a literal, an expression or a call result has no storage to point at
+    ----'
+    [E0905] Error: REF() argument not a variable
+        ,-[ file:///test0.st:17:14 ]
+        |
+     17 |     r := REF(G());
+        |              ^|^
+        |               `--- REF() takes a variable, not a value
+        |
+        | Help: store the value in a variable, and take REF() of the variable
+        |
+        | Note: a literal, an expression or a call result has no storage to point at
+    ----'
+    [E0905] Error: REF() argument not a variable
+        ,-[ file:///test0.st:18:14 ]
+        |
+     18 |     r := REF(%MW10);
+        |              ^^|^^
+        |                `---- REF() takes a variable, not a direct address
+        |
+        | Help: declare a variable AT the address, and take REF() of it
+        |
+        | Note: a reference points at a named variable or instance
+    ----'
+    [E0905] Error: REF() argument not a variable
+        ,-[ file:///test0.st:19:14 ]
+        |
+     19 |     b := REF(w.%X3);
+        |              ^^|^^
+        |                `---- REF() takes a variable, not a bit of one
+        |
+        | Note: a reference points at a named variable or instance
+    ----'
+    ");
+}

@@ -471,3 +471,157 @@ fn bound_output_converts_into_memory_places_and_from_methods(mut with_db: db::Ro
     let result: f64 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 276.5, "250 + 25 + 1.5");
 }
+
+/// A positional list gives every parameter in declaration order, outputs
+/// included: the variable in an output's place receives it, as with `=>`.
+/// A FUNCTION's, one declaring its output first, a block's and a METHOD's,
+/// each into a local of the caller.
+#[rstest]
+fn positional_outputs_are_written(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION g : INT
+        VAR_INPUT a : INT; END_VAR
+        VAR_OUTPUT o : INT; END_VAR
+            o := a + 1;
+            g := a;
+        END_FUNCTION
+
+        FUNCTION first : INT
+        VAR_OUTPUT o : INT; END_VAR
+        VAR_INPUT a : INT; END_VAR
+            o := a * 10;
+            first := 0;
+        END_FUNCTION
+
+        FUNCTION_BLOCK B
+        VAR_INPUT i : INT; END_VAR
+        VAR_OUTPUT q : INT; END_VAR
+            q := i * 2;
+        END_FUNCTION_BLOCK
+
+        FUNCTION_BLOCK M
+            METHOD m : INT
+            VAR_INPUT a : INT; END_VAR
+            VAR_OUTPUT o : INT; END_VAR
+                o := a * 1000;
+                m := a;
+            END_METHOD
+        END_FUNCTION_BLOCK
+
+        FUNCTION test : INT
+        VAR x, y, z, w, r : INT; b : B; mm : M; END_VAR
+            r := g(1, x);
+            r := first(y, 4);
+            b(300, z);
+            r := mm.m(5, w);
+            test := x + y + z + w;
+        END_FUNCTION
+    "#;
+    let result: i32 = super::run(&mut with_db, source, "test", ());
+    assert_eq!(result, 2 + 40 + 600 + 5000);
+}
+
+/// `NOT q => x` stores the output's negation: logical on a BOOL, bitwise on
+/// a WORD. A FUNCTION's and a block's, into a local and an array element.
+#[rstest]
+fn negated_outputs_are_written(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION g : INT
+        VAR_OUTPUT q : BOOL; m : WORD; END_VAR
+            q := TRUE;
+            m := 16#0F0F;
+            g := 0;
+        END_FUNCTION
+
+        FUNCTION_BLOCK B
+        VAR_OUTPUT q : BOOL; m : WORD; END_VAR
+            q := FALSE;
+            m := 16#00FF;
+        END_FUNCTION_BLOCK
+
+        FUNCTION test : DINT
+        VAR
+            x : BOOL := TRUE;
+            w, v : WORD;
+            flags : ARRAY[0..1] OF BOOL;
+            r : INT;
+            b : B;
+        END_VAR
+            r := g(NOT q => x, NOT m => w);
+            b(NOT q => flags[1], NOT m => v);
+            IF NOT x THEN test := test + 1; END_IF;
+            IF w = 16#F0F0 THEN test := test + 10; END_IF;
+            IF flags[1] THEN test := test + 100; END_IF;
+            IF v = 16#FF00 THEN test := test + 1000; END_IF;
+        END_FUNCTION
+    "#;
+    let result: i32 = super::run(&mut with_db, source, "test", ());
+    assert_eq!(result, 1111, "one digit per negated output");
+}
+
+/// NOT runs at the output's width, then the value widens into a wider
+/// destination: a WORD 16#0F0F lands in a DWORD as 16#0000F0F0, not as
+/// 16#FFFFF0F0.
+#[rstest]
+fn a_negated_output_widens_after_the_not(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION g : INT
+        VAR_OUTPUT m : WORD; END_VAR
+            m := 16#0F0F;
+            g := 0;
+        END_FUNCTION
+
+        FUNCTION_BLOCK B
+        VAR_OUTPUT m : WORD; END_VAR
+            m := 16#0F0F;
+        END_FUNCTION_BLOCK
+
+        FUNCTION test : INT
+        VAR d, e : DWORD; r : INT; b : B; END_VAR
+            r := g(NOT m => d);
+            b(NOT m => e);
+            IF d = 16#0000F0F0 THEN test := test + 1; END_IF;
+            IF e = 16#0000F0F0 THEN test := test + 10; END_IF;
+        END_FUNCTION
+    "#;
+    let result: i32 = super::run(&mut with_db, source, "test", ());
+    assert_eq!(
+        result, 11,
+        "a FUNCTION's and a block's, each widened after NOT"
+    );
+}
+
+/// Only the inputs pick an overload: two that differ only in an output are
+/// E0102. The output in a positional list is bound in the overload picked.
+#[rstest]
+fn a_positional_output_is_bound_in_the_overload_its_inputs_pick(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION K : INT
+        VAR_INPUT a : INT; END_VAR
+        VAR_OUTPUT o : INT; END_VAR
+            o := a * 10;
+            K := 1;
+        END_FUNCTION
+
+        FUNCTION K : INT
+        VAR_INPUT a : REAL; END_VAR
+        VAR_OUTPUT o : INT; END_VAR
+            o := 7;
+            K := 2;
+        END_FUNCTION
+
+        FUNCTION test : INT
+        VAR x, y, r : INT; END_VAR
+            r := K(3, x);
+            test := r * 10000;
+            r := K(REAL#1.5, y);
+            test := test + r * 1000 + x * 10 + y;
+        END_FUNCTION
+    "#;
+    let result: i32 = super::run(&mut with_db, source, "test", ());
+    assert_eq!(
+        result,
+        10000 + 2000 + 300 + 7,
+        "the INT overload, then the REAL one"
+    );
+}
