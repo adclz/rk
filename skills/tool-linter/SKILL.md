@@ -6,7 +6,7 @@ description: The lint rules `rk` applies, what each L-code means and how to conf
 ## Summary
 
 The linter runs on top of the compiler diagnostics and reports style, clarity and suspicious-code findings.
-It is ON by default: a workspace that never mentions the linter still gets the **recommended** set — the 35 rules that report a probable bug rather than a matter of taste.
+It is ON by default: a workspace that never mentions the linter still gets the **recommended** set — the 50 rules that report a probable bug or a likely mistake rather than a matter of style.
 `[linter]` tunes that set; it does not switch the linter on.
 
 `rk check` and the language server both run it, on the same set, so an editor and the CLI agree about a workspace.
@@ -21,7 +21,7 @@ Each lint diagnostic carries a note naming the rule that produced it, which is t
 
 ```sh
 rk check
-[L0307] Hint: empty CASE branch
+[L0212] Info: empty CASE branch
    ...
    │ Note: lint rule: empty-case-branch
 ```
@@ -38,8 +38,8 @@ Two layers.
 
 | `select` | rules that run |
 | -------- | -------------- |
-| absent, or no `[linter]` at all | the 35 recommended rules |
-| `"recommended"` | the same 35, stated explicitly |
+| absent, or no `[linter]` at all | the 50 recommended rules |
+| `"recommended"` | the same 50, stated explicitly |
 | `"all"` | all 63 |
 | `"none"` | none, unless `[linter.rules]` names one |
 
@@ -70,14 +70,13 @@ To silence one deliberate site instead of a whole rule, `{allow 'rule-name' ...}
 Several names fit one pragma.
 An unknown name there is NOT silent: `unknown-allow` (L0005) reports it, and it silences nothing.
 
-Severity almost decides the baseline: every warning-severity rule is recommended, and info and hint rules are opt-in with two exceptions, marked **(recommended)** in the tables below.
-L0001 and L0202 report at info severity and still run by default, because what they flag is a probable bug that is quiet enough not to warrant a warning.
+Severity decides the baseline: the warnings and the infos are recommended, and the hints, which are matters of style, are opt-in.
 
 ## Pragmas (L00xx)
 
 | Code | Rule | Severity | Flags |
 | --- | --- | --- | --- |
-| L0001 | `warn-pragma` | info **(recommended)** | the message of an `{info = '...'}` pragma, at each call site of the marked POU |
+| L0001 | `warn-pragma` | info | the message of an `{info = '...'}` pragma, at each call site of the marked POU |
 | L0002 | `warn-pragma` | warning | the message of a `{warn = '...'}` pragma, at each call site of the marked POU |
 | L0003 | `invalid-pragma` | warning | a pragma placed on a POU kind that does not accept it: `{test}` on FUNCTION_BLOCK, METHOD or PROGRAM, `{once}` on PROGRAM, `{must_call}` on anything but a FUNCTION_BLOCK |
 | L0004 | `once-violation` | info | a `{once}` POU called more than once in the same body; the timers, edge detectors, counters and bistables of the standard library carry `{once}`, so one instance shared by two steps is reported |
@@ -87,57 +86,7 @@ L0001 and L0202 report at info severity and still run by default, because what t
 
 L0001 and L0002 share the rule name `warn-pragma`; disabling it silences both.
 
-## Declarations and naming
-
-| Code | Rule | Severity | Flags |
-| --- | --- | --- | --- |
-| L0201 | `unused-variable` | info | a VAR, VAR_INPUT or VAR_TEMP declaration never used in the body |
-| L0202 | `shadowing-variable` | info **(recommended)** | a variable with the same name as a POU visible in the scope |
-| L0203 | `duplicate-var-section` | info | the same variable section opened twice in one POU |
-| L0204 | `duplicate-namespace` | info | the same NAMESPACE reopened in the same file |
-| L0205 | `duplicate-configuration` | info | two same-named CONFIGURATION blocks in the same file |
-| L0207 | `negated-condition` | info | `IF NOT c THEN ... ELSE ...`, which reads better with the branches swapped |
-| L0208 | `negated-comparison` | info | `NOT (x = y)`, which is `x <> y` |
-| L0209 | `bool-comparison` | info | `x = TRUE`, `x <> FALSE` and the other comparisons against a boolean literal |
-| L0210 | `redundant-not` | info | double negation `NOT NOT x` |
-| L0211 | `unnecessary-else` | info | an ELSE branch whose preceding branches all end with RETURN, EXIT or CONTINUE |
-| L0212 | `single-element-array` | info | an array dimension whose lower and upper bounds are equal |
-
-`unused-variable` never reports VAR_OUTPUT, VAR_IN_OUT, VAR_GLOBAL, VAR_EXTERNAL, VAR_CONFIG or VAR_ACCESS, since those are read or written from outside the POU.
-It also skips the VAR_INPUT of a PROGRAM (written by the CONFIGURATION), the whole body of an `{extern}` FUNCTION, and any name starting with an underscore, which is the way to mark a declaration as deliberately unused.
-
-## Style and clarity
-
-| Code | Rule | Severity | Flags |
-| --- | --- | --- | --- |
-| L0206 | `uninitialized-output` | info | VAR_OUTPUT declarations with no initializer that the body never assigns |
-| L0213 | `default-for-step` | hint | an explicit `BY 1`, which is already the default |
-| L0214 | `aggregate-copy` | info | an assignment or a call binding that copies an ARRAY, a STRUCT or a FUNCTION_BLOCK or CLASS instance whole, which costs as much as the type is large; a STRING copies its text only and is not reported |
-| L0301 | `unused-import` | hint | a USING directive that nothing in the file resolves through |
-| L0302 | `unused-return-type` | hint | a call whose return value is discarded |
-| L0303 | `missing-input-param` | hint | a FUNCTION_BLOCK or PROGRAM call that does not pass every declared VAR_INPUT; an input the body writes through the same instance, `inst.x := 1`, counts as passed |
-| L0304 | `case-without-else` | hint | a CASE statement with no ELSE branch, unless its labels take every variant of the selector's enum or its whole integer or subrange range; on an enum it names the variants left out |
-| L0305 | `empty-body` | hint | a FUNCTION, FUNCTION_BLOCK, METHOD or PROGRAM with no statements |
-| L0306 | `empty-if-branch` | hint | an IF, ELSIF or ELSE branch with no statements |
-| L0307 | `empty-case-branch` | hint | a CASE branch with no statements |
-| L0308 | `empty-loop-body` | hint | a FOR, WHILE or REPEAT loop with no statements |
-| L0309 | `empty-type` | hint | a STRUCT with no fields or an ENUM with no variants |
-| L0310 | `effectless-statement` | hint | a bare expression used as a statement, such as `x;` |
-| L0311 | `unnecessary-parens` | hint | parentheses around a bare literal, variable or enum value |
-| L0312 | `collapsible-if` | hint | a nested IF with no ELSE, which collapses into `IF a AND b THEN` |
-| L0313 | `yoda-condition` | hint | a literal on the left-hand side of a comparison |
-| L0314 | `positional-output` | hint | a positional argument in the place of a VAR_OUTPUT, which receives the output |
-
-The rule name for L0302 is `unused-return-type`, not `unused-return-value`, even though the message reads "unused return value".
-
-L0303 covers FUNCTION_BLOCK and PROGRAM call sites only.
-An incomplete FUNCTION or METHOD call is a hard error, E0802, and is not affected by this rule.
-
-L0206 collapses every unassigned output of one body into a single diagnostic listing the names, with a related span per declaration.
-
-`empty-body` never reports an `{extern}` FUNCTION, whose body is empty by definition.
-
-## Suspicious code
+## Probable bugs (L01xx)
 
 | Code | Rule | Severity | Flags |
 | --- | --- | --- | --- |
@@ -158,6 +107,7 @@ L0206 collapses every unassigned output of one body into a single diagnostic lis
 | L0115 | `self-shadowing` | warning | a variable with the same name as the POU or method it is declared in |
 | L0116 | `method-shadows-member` | warning | a method local or parameter with the same name as a member of its FUNCTION_BLOCK or CLASS |
 | L0117 | `external-mutation` | warning | writing a field of a function block or class instance from outside it, `inst.x := 42`; an input is not reported, writing it before the call is how it is passed |
+| L0118 | `global-without-external` | warning | reading or writing a CONFIGURATION VAR_GLOBAL by bare name, with no matching VAR_EXTERNAL in the POU |
 | L0119 | `instance-in-function` | warning | a FUNCTION or METHOD holding or returning a FUNCTION_BLOCK or CLASS instance, which starts over at every call: a timer in it never expires |
 | L0120 | `variable-method-name` | warning | a variable and a method of a FUNCTION_BLOCK or CLASS, or of one it extends, with the same name: legal, the variable wins inside the block |
 | L0121 | `latin1-escape` | warning | a STRING literal whose `$hh` escapes are not UTF-8 text, such as `'caf$E9'` written for `'café'`: `$E9` is one byte, and `é` is `$C3$A9`; not a CHAR, where `$E9` is `é` |
@@ -175,11 +125,54 @@ L0109 keys on the value the compiler computed, not on the text, so `7`, `INT#7` 
 L0103 reads a condition as written, or a comparison against the range of its value's type.
 A comparison of two constants is not reported, nor a condition that is constant only after folding.
 
-## Globals
+L0118 accepts the code, which compiles; strict IEC 61131-3 wants the global imported through VAR_EXTERNAL first.
+
+## Likely mistakes (L02xx)
 
 | Code | Rule | Severity | Flags |
 | --- | --- | --- | --- |
-| L0118 | `global-without-external` | warning | reading or writing a CONFIGURATION VAR_GLOBAL by bare name, with no matching VAR_EXTERNAL in the POU |
+| L0201 | `unused-variable` | info | a VAR, VAR_INPUT or VAR_TEMP declaration never used in the body |
+| L0202 | `shadowing-variable` | info | a variable with the same name as a POU visible in the scope |
+| L0203 | `uninitialized-output` | info | VAR_OUTPUT declarations with no initializer that the body never assigns |
+| L0204 | `single-element-array` | info | an array dimension whose lower and upper bounds are equal |
+| L0205 | `aggregate-copy` | info | an assignment or a call binding that copies an ARRAY, a STRUCT or a FUNCTION_BLOCK or CLASS instance whole, which costs as much as the type is large; a STRING copies its text only and is not reported |
+| L0206 | `unused-import` | info | a USING directive that nothing in the file resolves through |
+| L0207 | `unused-return-type` | info | a call whose return value is discarded |
+| L0208 | `missing-input-param` | info | a FUNCTION_BLOCK or PROGRAM call that does not pass every declared VAR_INPUT; an input the body writes through the same instance, `inst.x := 1`, counts as passed |
+| L0209 | `case-without-else` | info | a CASE statement with no ELSE branch, unless its labels take every variant of the selector's enum or its whole integer or subrange range; on an enum it names the variants left out |
+| L0210 | `empty-body` | info | a FUNCTION, FUNCTION_BLOCK, METHOD or PROGRAM with no statements |
+| L0211 | `empty-if-branch` | info | an IF, ELSIF or ELSE branch with no statements |
+| L0212 | `empty-case-branch` | info | a CASE branch with no statements |
+| L0213 | `empty-loop-body` | info | a FOR, WHILE or REPEAT loop with no statements |
+| L0214 | `empty-type` | info | a STRUCT with no fields or an ENUM with no variants |
+| L0215 | `effectless-statement` | info | a bare expression used as a statement, such as `x;` |
 
-The code is accepted and compiles; strict IEC 61131-3 wants the global imported through VAR_EXTERNAL first.
+`unused-variable` never reports VAR_OUTPUT, VAR_IN_OUT, VAR_GLOBAL, VAR_EXTERNAL, VAR_CONFIG or VAR_ACCESS, since those are read or written from outside the POU.
+It also skips the VAR_INPUT of a PROGRAM (written by the CONFIGURATION), the whole body of an `{extern}` FUNCTION, and any name starting with an underscore, which is the way to mark a declaration as deliberately unused.
 
+The rule name for L0207 is `unused-return-type`, not `unused-return-value`, even though the message reads "unused return value".
+
+L0208 covers FUNCTION_BLOCK and PROGRAM call sites only.
+An incomplete FUNCTION or METHOD call is a hard error, E0802, and is not affected by this rule.
+
+L0203 collapses every unassigned output of one body into a single diagnostic listing the names, with a related span per declaration.
+
+`empty-body` never reports an `{extern}` FUNCTION, whose body is empty by definition.
+
+## Style (L03xx)
+
+| Code | Rule | Severity | Flags |
+| --- | --- | --- | --- |
+| L0301 | `duplicate-var-section` | hint | the same variable section opened twice in one POU |
+| L0302 | `duplicate-namespace` | hint | the same NAMESPACE reopened in the same file |
+| L0303 | `duplicate-configuration` | hint | two same-named CONFIGURATION blocks in the same file |
+| L0304 | `negated-condition` | hint | `IF NOT c THEN ... ELSE ...`, which reads better with the branches swapped |
+| L0305 | `negated-comparison` | hint | `NOT (x = y)`, which is `x <> y` |
+| L0306 | `bool-comparison` | hint | `x = TRUE`, `x <> FALSE` and the other comparisons against a boolean literal |
+| L0307 | `redundant-not` | hint | double negation `NOT NOT x` |
+| L0308 | `unnecessary-else` | hint | an ELSE branch whose preceding branches all end with RETURN, EXIT or CONTINUE |
+| L0309 | `default-for-step` | hint | an explicit `BY 1`, which is already the default |
+| L0310 | `unnecessary-parens` | hint | parentheses around a bare literal, variable or enum value |
+| L0311 | `collapsible-if` | hint | a nested IF with no ELSE, which collapses into `IF a AND b THEN` |
+| L0312 | `yoda-condition` | hint | a literal on the left-hand side of a comparison |
+| L0313 | `positional-output` | hint | a positional argument in the place of a VAR_OUTPUT, which receives the output |

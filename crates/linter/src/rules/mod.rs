@@ -83,47 +83,31 @@ pub mod variable_method_name;
 pub mod warn_pragma;
 pub mod yoda_condition;
 
-/// The rules `Select::Recommended` turns on: the ones that report a probable
-/// BUG rather than a matter of taste. They are exactly the rules that emit at
-/// warning severity — style (hints) and declaration notes (info) stay opt-in,
-/// so a workspace that has said nothing about linting is not buried in taste.
-pub const RECOMMENDED_RULE_NAMES: &[&str] = &[
-    allow::NAME,
-    warn_pragma::NAME,
-    invalid_pragma::NAME,
-    dead_code::NAME,
-    for_loop_step_sign::NAME,
-    input_assignment::NAME,
-    constant_condition::NAME,
-    division_by_zero::NAME,
-    duplicate_case::NAME,
-    loop_var_modified::NAME,
-    self_assignment::NAME,
-    self_comparison::NAME,
-    identical_sub_expr::NAME,
-    identity_operation::NAME,
-    sub_self::NAME,
-    constant_loop_bounds::NAME,
-    self_shadowing::NAME,
-    shadowing_variable::NAME,
-    missing_return::NAME,
-    external_mutation::NAME,
-    method_shadows_member::NAME,
-    variable_method_name::NAME,
-    global_without_external::NAME,
-    instance_in_function::NAME,
-    latin1_escape::NAME,
-    negative_radix_literal::NAME,
-    recursion::NAME,
-    float_equality::NAME,
-    in_out_alias::NAME,
-    endless_loop::NAME,
-    string_truncation::NAME,
-    constant_overflow::NAME,
-    double_writer::NAME,
-    must_call_violation::NAME,
-    must_call_conditional::NAME,
+/// The rules that report a matter of style: code that does what it says,
+/// and reads better written another way. They report at hint severity
+/// (L03xx), and `Select::Recommended` leaves them out.
+pub const STYLE_RULE_NAMES: &[&str] = &[
+    duplicate_var_section::NAME,
+    duplicate_namespace::NAME,
+    duplicate_configuration::NAME,
+    negated_condition::NAME,
+    negated_comparison::NAME,
+    bool_comparison::NAME,
+    redundant_not::NAME,
+    unnecessary_else::NAME,
+    default_for_step::NAME,
+    unnecessary_parens::NAME,
+    collapsible_if::NAME,
+    yoda_condition::NAME,
+    positional_output::NAME,
 ];
+
+/// Whether `Select::Recommended` runs `name`: every rule but the style ones,
+/// so a probable bug (a warning) and a likely mistake (an info) are reported
+/// in a workspace that says nothing about linting.
+pub fn is_recommended(name: &str) -> bool {
+    !STYLE_RULE_NAMES.contains(&name)
+}
 
 /// Whether `name` runs under `config`: an explicit entry in `[linter.rules]`
 /// wins, otherwise the `select` baseline decides.
@@ -133,7 +117,7 @@ pub fn is_enabled(config: &LinterConfig, name: &str) -> bool {
     }
     match config.select() {
         Select::All => true,
-        Select::Recommended => RECOMMENDED_RULE_NAMES.contains(&name),
+        Select::Recommended => is_recommended(name),
         Select::None => false,
     }
 }
@@ -622,14 +606,18 @@ mod select_tests {
     }
 
     #[test]
-    fn every_recommended_rule_is_a_real_rule() {
-        // A typo here would silently drop a rule from the default set.
-        for name in RECOMMENDED_RULE_NAMES {
+    fn every_style_rule_is_a_real_rule() {
+        // A typo here would silently add a style rule to the default set.
+        for name in STYLE_RULE_NAMES {
             assert!(
                 ALL_RULE_NAMES.contains(name),
                 "{name} is not a known rule name"
             );
         }
-        assert_eq!(RECOMMENDED_RULE_NAMES.len(), 35);
+        let recommended = ALL_RULE_NAMES
+            .iter()
+            .filter(|name| is_recommended(name))
+            .count();
+        assert_eq!(recommended, 50);
     }
 }
