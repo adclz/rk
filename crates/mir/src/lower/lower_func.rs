@@ -444,7 +444,12 @@ fn lower_function_inner<'db>(
         linkage,
         is_test: hir::hir_def::pous::pragma::is_test(db, func.pragmas(db)),
         export_name: None,
-        frame: memory_layout.end_frame(),
+        frame: close_frame(
+            db,
+            hir::hir_ty::calls::CallNode::Function(func),
+            param_subs,
+            memory_layout,
+        ),
         host_entry: hir::hir_def::pous::pragma::is_test(db, func.pragmas(db)),
     })
 }
@@ -666,7 +671,12 @@ fn lower_function_block_inner<'db>(
             linkage: MirLinkage::Internal,
             is_test: false,
             export_name: None,
-            frame: memory_layout.end_frame(),
+            frame: close_frame(
+                db,
+                hir::hir_ty::calls::CallNode::Method(method),
+                spec.map(|inst| &inst.param_subs),
+                memory_layout,
+            ),
             host_entry: false,
         });
         idx += 1;
@@ -934,7 +944,12 @@ fn lower_fb_body<'db>(
         linkage: MirLinkage::Internal,
         is_test: false,
         export_name: None,
-        frame: memory_layout.end_frame(),
+        frame: close_frame(
+            db,
+            hir::hir_ty::calls::CallNode::Body(body_of),
+            spec.map(|inst| &inst.param_subs),
+            memory_layout,
+        ),
         // A task may run it, and so may any code holding an instance.
         host_entry: false,
     })
@@ -1151,7 +1166,12 @@ fn lower_class_inner<'db>(
             linkage: MirLinkage::Internal,
             is_test: false,
             export_name: None,
-            frame: memory_layout.end_frame(),
+            frame: close_frame(
+                db,
+                hir::hir_ty::calls::CallNode::Method(method),
+                spec.map(|inst| &inst.param_subs),
+                memory_layout,
+            ),
             host_entry: false,
         });
     }
@@ -1537,6 +1557,55 @@ fn open_frame<'db>(
     if hir::hir_ty::calls::is_recursive(db, node) {
         memory_layout.begin_frame();
     }
+}
+
+/// The frame `node`'s storage was laid out in, closed: the one HIR plans for
+/// the copy of `node` that `subs` binds, which `rk check` measured the stack
+/// against (E1430).
+fn close_frame<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    node: hir::hir_ty::calls::CallNode<'db>,
+    subs: Option<&super::mono_iface::ParamSubs<'db>>,
+    memory_layout: &mut MirMemoryLayout,
+) -> Option<crate::function::MirFrame> {
+    let frame = memory_layout.end_frame();
+    if let Some(frame) = frame {
+        debug_assert_eq!(
+            u64::from(frame.size),
+            hir::hir_ty::frame::frame(db, node, &frame_shapes(subs)),
+            "the frame of '{}' is not the one HIR plans",
+            node.display_name(db)
+        );
+    }
+    frame
+}
+
+/// The arrays `subs` binds to `ARRAY[*]` parameters, as HIR lays them out.
+fn frame_shapes<'db>(
+    subs: Option<&super::mono_iface::ParamSubs<'db>>,
+) -> hir::hir_ty::frame::Shapes<'db> {
+    use hir::hir_ty::layout::{ArrayLayout, Layout};
+    subs.into_iter()
+        .flat_map(|subs| &subs.shapes)
+        .filter_map(|(var, shape)| match shape {
+            MirType::Array(array) => Some((
+                *var,
+                ArrayLayout {
+                    element: Layout {
+                        size: u64::from(array.element_size),
+                        align: array.align,
+                    },
+                    dimensions: array.dimensions.clone(),
+                    count: u64::from(array.total_elements),
+                    whole: Layout {
+                        size: u64::from(array.size),
+                        align: array.align,
+                    },
+                },
+            )),
+            _ => None,
+        })
+        .collect()
 }
 
 /// A VAR_INPUT that needs storage of its own has none as a wasm parameter:
