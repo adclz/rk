@@ -153,9 +153,9 @@ impl MirModule {
     /// A function that can call itself again, following the calls lowering
     /// emitted, but has no frame. HIR's call graph decides which functions
     /// get one, and a call it missed would leave a recursive function's
-    /// storage shared between its calls: the tests and the fuzzer ask this,
-    /// lowering does not.
-    pub fn unframed_recursion(&self) -> Option<&MirFunction> {
+    /// storage shared between its calls: lowering refuses such a module
+    /// (`LowerTypeError::UnframedRecursion`).
+    pub(crate) fn unframed_recursion(&self) -> Option<&MirFunction> {
         let index: FxHashMap<Ident, usize> = self
             .functions
             .iter()

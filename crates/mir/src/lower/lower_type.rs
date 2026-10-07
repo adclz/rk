@@ -32,6 +32,12 @@ pub enum LowerTypeError {
     #[error("two functions lower to the symbol `{0}`")]
     DuplicateSymbol(String),
 
+    /// A function the emitted calls reach again, with no frame: HIR's call
+    /// graph missed one of the calls, and the function's storage would be
+    /// shared between them.
+    #[error("`{0}` can call itself again but has no frame")]
+    UnframedRecursion(String),
+
     /// An instance's layout reached back to itself. Only a VAR_IN_OUT
     /// member closes such a cycle, a by-value one being E1302, and the
     /// nearest one catches this: it holds an address whose pointee is typed

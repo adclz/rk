@@ -230,6 +230,146 @@ fn an_instance_local_in_a_recursive_method(mut with_db: db::RootDatabase) {
     assert_eq!(result, 60, "every level counted its own two calls");
 }
 
+/// A call in a local's initializer is a call of the body: it runs at each
+/// call, before the first statement. `Keep` reaches itself only through
+/// the initializer of `below`; with one `mine` for every call, each would
+/// read the one below's.
+#[rstest]
+fn a_call_in_an_initializer_makes_a_body_recursive(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION Down : DINT
+        VAR_INPUT n : DINT; END_VAR
+            IF n > 0 THEN Down := Keep(n - 1); ELSE Down := 0; END_IF;
+        END_FUNCTION
+
+        FUNCTION Keep : DINT
+        VAR_INPUT n : DINT; END_VAR
+        VAR
+            mine : ARRAY[0..0] OF DINT;
+            below : DINT := Down(n);
+        END_VAR
+            Keep := below + mine[0] * 100 + n;
+            mine[0] := n;
+        END_FUNCTION
+
+        FUNCTION test : DINT
+            test := Keep(2);
+        END_FUNCTION
+    "#;
+    let result: i32 = run(&mut with_db, source, "test", ());
+    assert_eq!(result, 3, "0 + 1 + 2, every call reading its own `mine`");
+}
+
+/// A call through an interface parameter reaches every implementer: here
+/// the method that calls `Drive` back, in the copy of `Drive` for `Walker`.
+#[rstest]
+fn a_call_through_an_interface_makes_a_body_recursive(mut with_db: db::RootDatabase) {
+    let source = r#"
+        INTERFACE IStep
+            METHOD Step : DINT
+            VAR_INPUT n : DINT; END_VAR
+            END_METHOD
+        END_INTERFACE
+
+        FUNCTION Drive : DINT
+        VAR_INPUT it : IStep; n : DINT; END_VAR
+        VAR mine : ARRAY[0..0] OF DINT; END_VAR
+            mine[0] := n;
+            Drive := it.Step(n := n) + mine[0] * 100;
+        END_FUNCTION
+
+        CLASS Walker IMPLEMENTS IStep
+            METHOD PUBLIC Step : DINT
+            VAR_INPUT n : DINT; END_VAR
+                IF n > 0 THEN
+                    Step := Drive(it := THIS, n := n - 1);
+                ELSE
+                    Step := 0;
+                END_IF;
+            END_METHOD
+        END_CLASS
+
+        FUNCTION test : DINT
+        VAR w : Walker; END_VAR
+            test := Drive(it := w, n := 2);
+        END_FUNCTION
+    "#;
+    let result: i32 = run(&mut with_db, source, "test", ());
+    assert_eq!(
+        result, 300,
+        "100 from the call below, 200 from its own `mine`"
+    );
+}
+
+/// An instance called through a VAR_IN_OUT runs its block's body: the body
+/// reaches itself through `Visit`, and its VAR_TEMP is each call's own.
+#[rstest]
+fn an_instance_called_through_a_var_in_out_makes_a_body_recursive(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Node
+        VAR_INPUT depth : DINT; END_VAR
+        VAR_OUTPUT total : DINT; END_VAR
+        VAR peer : REF_TO Node; END_VAR
+        VAR_TEMP buf : ARRAY[0..0] OF DINT; END_VAR
+            buf[0] := depth;
+            total := 0;
+            IF peer <> NULL THEN
+                total := Visit(c := peer^, d := depth - 1);
+            END_IF;
+            total := total + buf[0] * 100;
+        END_FUNCTION_BLOCK
+
+        FUNCTION Visit : DINT
+        VAR_IN_OUT c : Node; END_VAR
+        VAR_INPUT d : DINT; END_VAR
+            c(depth := d);
+            Visit := c.total;
+        END_FUNCTION
+
+        FUNCTION test : DINT
+        VAR a : Node; b : Node; END_VAR
+            a.peer := REF(b);
+            a(depth := 2);
+            test := a.total;
+        END_FUNCTION
+    "#;
+    let result: i32 = run(&mut with_db, source, "test", ());
+    assert_eq!(result, 300, "100 from `b`, 200 from `a`'s own `buf`");
+}
+
+/// `SUPER.m()` runs the base's method, whose `THIS.m()` runs the override
+/// again: the base's method is on a cycle through both.
+#[rstest]
+fn a_cycle_through_super_method(mut with_db: db::RootDatabase) {
+    let source = r#"
+        CLASS Base
+            METHOD PUBLIC Walk : DINT
+            VAR_INPUT n : DINT; END_VAR
+            VAR mine : ARRAY[0..0] OF DINT; END_VAR
+                mine[0] := n;
+                IF n > 0 THEN
+                    Walk := THIS.Walk(n := n - 1);
+                END_IF;
+                Walk := Walk * 10 + mine[0];
+            END_METHOD
+        END_CLASS
+
+        CLASS Derived EXTENDS Base
+            METHOD PUBLIC OVERRIDE Walk : DINT
+            VAR_INPUT n : DINT; END_VAR
+                Walk := SUPER.Walk(n := n);
+            END_METHOD
+        END_CLASS
+
+        FUNCTION test : DINT
+        VAR d : Derived; END_VAR
+            test := d.Walk(n := 2);
+        END_FUNCTION
+    "#;
+    let result: i32 = run(&mut with_db, source, "test", ());
+    assert_eq!(result, 12, "each call appends its own `mine`: 0, 1, 2");
+}
+
 /// A recursion deeper than the stack stops with an exception naming it,
 /// instead of running on over the memory past the stack.
 #[rstest]
