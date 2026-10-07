@@ -52,8 +52,8 @@ impl<'db> Parse<'db> for ast::generated::Stmt {
                                         parameters.push(sema.new_param(p.into(), sema.current_scope, kind))
                                     }
                                     ast::generated::ParamAssignInput_ParamAssignOutput::ParamAssignOutput(p) => {
-                                        let variable = p.variable.cast(sema.ast).to_access(sema)?;
-                                        let kind = ParamAssignKind::FormalOutput { not: p.not.is_some() , param: SpanIdent::from_node(sema.db, sema, p.param.cast(sema.ast))?, variable };
+                                        let value = p.value.cast(sema.ast).parse(sema)?;
+                                        let kind = ParamAssignKind::FormalOutput { not: p.not.is_some() , param: SpanIdent::from_node(sema.db, sema, p.param.cast(sema.ast))?, value };
                                         parameters.push(sema.new_param(p.into(), sema.current_scope, kind))
                                     }
                                 }

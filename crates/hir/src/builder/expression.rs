@@ -268,8 +268,8 @@ impl<'db> Parse<'db> for ast::generated::PrimaryExpression {
                                         parameters.push(sema.new_param(p.into(), sema.current_scope, kind))
                                     }
                                     ast::generated::ParamAssignInput_ParamAssignOutput::ParamAssignOutput(p) => {
-                                        let variable = p.variable.cast(sema.ast).to_access(sema)?;
-                                        let kind = ParamAssignKind::FormalOutput { not: p.not.is_some() , param: SpanIdent::from_node(sema.db, sema, p.param.cast(sema.ast))?, variable };
+                                        let value = p.value.cast(sema.ast).parse(sema)?;
+                                        let kind = ParamAssignKind::FormalOutput { not: p.not.is_some() , param: SpanIdent::from_node(sema.db, sema, p.param.cast(sema.ast))?, value };
                                         parameters.push(sema.new_param(p.into(), sema.current_scope, kind))
                                     }
                                 }
@@ -301,11 +301,26 @@ impl<'db> Parse<'db> for ast::generated::PrimaryExpression {
                     sema.current_scope,
                 )),
                 ast::generated::Null_RefAddr::RefAddr(a) => {
-                    let inner = a.children.cast(sema.ast).parse(sema)?;
+                    // A path names the variable. Anything else is typed as
+                    // what it is, and refused by the check (E0905).
+                    let value = a.value.cast(sema.ast);
+                    let path = match value {
+                        ast::generated::Expression::PrimaryExpression(
+                            ast::generated::PrimaryExpression::VariableAccess(v),
+                        ) if v.access.is_none() => {
+                            match v.variable.cast(sema.ast).children.cast(sema.ast) {
+                                ast::generated::BeginPathExpression_DirectVariable::BeginPathExpression(path) => Some(path),
+                                ast::generated::BeginPathExpression_DirectVariable::DirectVariable(_) => None,
+                            }
+                        }
+                        _ => None,
+                    };
+                    let value = match path {
+                        Some(path) => RefValue::Address(path.parse(sema)?),
+                        None => RefValue::Value(value.parse(sema)?),
+                    };
                     Ok(sema.new_expr(
-                        ExprKind::PrimaryExpr(PrimaryExpr::RefValue {
-                            value: RefValue::Address(inner),
-                        }),
+                        ExprKind::PrimaryExpr(PrimaryExpr::RefValue { value }),
                         a.into(),
                         sema.current_scope,
                     ))

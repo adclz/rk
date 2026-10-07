@@ -254,6 +254,19 @@ pub fn resolve_func_call<'db>(
             ParamMatch::Error => continue,
         };
         match pa.kind(db) {
+            // `o := x` was refused (E0818): no value goes into an output.
+            ParamAssignKind::FormalInput { .. } if var.is_output(db) => {}
+            ParamAssignKind::NonFormal { value } if var.is_output(db) => {
+                if let Some(variable) = value.variable_access(db) {
+                    bound.insert(
+                        *var,
+                        crate::hir_ty::body::ParamBinding::Output {
+                            variable,
+                            not: false,
+                        },
+                    );
+                }
+            }
             ParamAssignKind::NonFormal { value } | ParamAssignKind::FormalInput { value, .. } => {
                 if let crate::hir_ty::body::ParamBinding::Values(vs) = bound
                     .entry(*var)
@@ -262,9 +275,16 @@ pub fn resolve_func_call<'db>(
                     vs.push(value);
                 }
             }
-            ParamAssignKind::FormalOutput { variable, .. } => {
-                bound.insert(*var, crate::hir_ty::body::ParamBinding::Output(variable));
+            ParamAssignKind::FormalOutput { value, not, .. } if var.is_output(db) => {
+                if let Some(variable) = value.variable_access(db) {
+                    bound.insert(
+                        *var,
+                        crate::hir_ty::body::ParamBinding::Output { variable, not },
+                    );
+                }
             }
+            // `=>` on an input or an in-out was refused (E0807).
+            ParamAssignKind::FormalOutput { .. } => {}
         }
     }
 
@@ -331,7 +351,9 @@ pub fn resolve_func_call<'db>(
 
 /// The types of a call's value arguments (VAR_INPUT / VAR_IN_OUT), in call
 /// order — the arguments that drive overload selection. Pure `=>` output
-/// bindings are skipped (they don't participate). Each argument is inferred here
+/// bindings are skipped (they don't participate); a positional argument in an
+/// output's place is typed with the others, as the variable it names, and
+/// skipped by the overload fit. Each argument is inferred here
 /// and cached in `ctx.type_of_expr`, so the later coercion pass reuses it rather
 /// than re-resolving (see the guard in `coerce_with_var_target`).
 ///
@@ -350,6 +372,7 @@ fn call_input_arg_types<'db>(
         callable,
         CallableType::Function(f) if crate::hir_ty::head::signature::overload_set(db, f).len() > 1
     );
+    // An output's argument is where the output goes: nothing to expect of it.
     let expected_of: FxHashMap<ParamAssign<'db>, Type<'db>> = match overloaded {
         true => FxHashMap::default(),
         false => resolve_params(
@@ -361,10 +384,12 @@ fn call_input_arg_types<'db>(
         )
         .into_iter()
         .filter_map(|m| match m {
-            ParamMatch::Matched(pa, var) | ParamMatch::Variadic(pa, var, _) => {
+            ParamMatch::Matched(pa, var) | ParamMatch::Variadic(pa, var, _)
+                if !var.is_output(db) =>
+            {
                 Some((pa, Type::new_var(db, var)))
             }
-            ParamMatch::Error => None,
+            ParamMatch::Matched(..) | ParamMatch::Variadic(..) | ParamMatch::Error => None,
         })
         .collect(),
     };
@@ -374,7 +399,13 @@ fn call_input_arg_types<'db>(
             ParamAssignKind::NonFormal { value } | ParamAssignKind::FormalInput { value, .. } => {
                 value
             }
-            ParamAssignKind::FormalOutput { .. } => continue,
+            // Typed too, for the overload fit of `a => x` on an input.
+            ParamAssignKind::FormalOutput { value, .. } => {
+                if !ctx.type_of_expr.contains_key(&value) {
+                    InferExprCtx::new(resolver).resolve_expr(db, value, ctx);
+                }
+                continue;
+            }
         };
         let mut ictx = InferExprCtx::new(resolver);
         if !ctx.type_of_expr.contains_key(&value) {
@@ -441,11 +472,14 @@ fn candidate_fit<'db>(
             ParamMatch::Error => return CandidateFit::Unbound,
         };
         let value = match pa.kind(db) {
-            ParamAssignKind::NonFormal { value } | ParamAssignKind::FormalInput { value, .. } => {
-                value
-            }
-            ParamAssignKind::FormalOutput { .. } if var.is_output(db) => continue,
-            ParamAssignKind::FormalOutput { .. } => return CandidateFit::Unbound,
+            // Where the output goes, by `=>` or by position. `o := x` is
+            // refused on the overload picked (E0818), not by every overload.
+            _ if var.is_output(db) => continue,
+            // `a => x` on an input or an in-out is refused on the overload
+            // picked (E0807): `x` picks it as an argument would.
+            ParamAssignKind::NonFormal { value }
+            | ParamAssignKind::FormalInput { value, .. }
+            | ParamAssignKind::FormalOutput { value, .. } => value,
         };
         let fit = if let Some(conformand) = var.conformand(db) {
             conformand_fit(db, conformand, var, value, ctx)
@@ -886,6 +920,10 @@ fn apply_param_coercion<'db>(
     ctx: &mut BodyInferenceResult<'db>,
 ) {
     match param.kind(db) {
+        // In an output's place, a positional argument receives the output.
+        ParamAssignKind::NonFormal { value } if var.is_output(db) => {
+            bind_output(db, resolver, callable, param, var, value, false, ctx);
+        }
         ParamAssignKind::NonFormal { value } => {
             coerce_with_var_target(db, resolver, value, var, ctx);
             check_string_argument(db, var, value, ctx);
@@ -932,17 +970,20 @@ fn apply_param_coercion<'db>(
                 check_by_ref_subrange(db, var, arg_ty, va.get_span(db), false, ctx);
             }
 
-            if var.is_output(db) {
-                ctx.errors.push(
-                    CallError::OutputParameterUsedAsInput {
-                        func: callable,
-                        var,
-                        expr: value,
-                        param: 0,
-                    }
-                    .to_diagnostic(db, ctx.scope.file(db)),
-                );
-            }
+            ctx.variable_of_param.insert(param, var);
+        }
+        // `o := x` passes a value into an output, which the call never reads.
+        ParamAssignKind::FormalInput {
+            param: param_ident, ..
+        } if var.is_output(db) => {
+            ctx.errors.push(
+                CallError::OutputBoundWithAssign {
+                    func: callable,
+                    var,
+                    param: param_ident,
+                }
+                .to_diagnostic(db, ctx.scope.file(db)),
+            );
             ctx.variable_of_param.insert(param, var);
         }
         ParamAssignKind::FormalInput { value, .. } => {
@@ -993,102 +1034,164 @@ fn apply_param_coercion<'db>(
 
             ctx.variable_of_param.insert(param, var);
         }
+        // E0807: `=>` names where an output goes. An input or an in-out is
+        // bound with `:=`.
         ParamAssignKind::FormalOutput {
-            variable,
+            value,
             param: param_ident,
             ..
-        } => {
-            // E0807: `v => x` on a VAR_IN_OUT would leave the reference
-            // unbound — inouts are bound by reference at call entry with `:=`.
-            if var.is_in_out(db) {
-                ctx.errors.push(
-                    CallError::InOutParameterBoundWithArrow {
-                        func: callable,
-                        var,
-                        param: param_ident,
-                    }
-                    .to_diagnostic(db, ctx.scope.file(db)),
-                );
-            }
-
-            let lhs_typ = Type::new_var(db, var);
-
-            resolver.resolve_variable_access(db, variable, ctx);
-            crate::hir_ty::body::statements::refuse_edge_input_as_storage(
-                db,
-                variable,
-                crate::check::errors::e02_resolve::EdgeUse::Written,
-                ctx,
-            );
-            let call_site = CallSite::from_scoped(db, &variable);
-            let rhs_typ = ctx.type_of_variable_access_with_adjustments(db, variable);
-
-            if !var.is_in_out(db) {
-                check_by_ref_subrange(db, var, rhs_typ, variable.get_span(db), true, ctx);
-            }
-
-            // A field or an element of a constant is the constant. A
-            // CONSTANT variable itself is refused by `check_assignable`,
-            // from the place: `arr[1]` is the variable with a subscript.
-            let place_typ = ctx.get_type_of_variable_access(db, variable);
-            if (var.is_in_out(db) || var.is_output(db))
-                && ctx.is_constant_place(db, variable)
-                && !crate::hir_ty::body::statements::is_constant_variable(db, place_typ)
-            {
-                ctx.errors.push(
-                    InitError::AssignToConstant {
-                        access: call_site,
-                        constant: ctx.constant_root(db, variable),
-                    }
-                    .to_diagnostic(db, ctx.scope.file(db)),
-                );
-            }
-
-            // `o => d` writes the output INTO d, so d is the target. Checked
-            // the other way, every widening binding was refused and every
-            // narrowing one accepted. Reported around the OUTPUT though: the
-            // caret is on `d`, so the type named is the one `d` had to hold.
-            // Assignability is the place's, as for an assignment: checked
-            // on the adjusted type, a struct element read as a type name
-            // used as a value (E0317).
-            if place_typ.check_assignable(db, call_site, ctx) {
-                // An `ARRAY[*]` output is written into an array of any bounds.
-                let binds = match var.conformand(db) {
-                    Some(conformand) => {
-                        rhs_typ.is_never()
-                            || crate::hir_ty::infer::coerce::ArrayArgument::of(db, rhs_typ)
-                                .is_some_and(|arg| {
-                                    crate::hir_ty::infer::coerce::binds_conformand(
-                                        db, conformand, &arg,
-                                    )
-                                })
-                    }
-                    None => rhs_typ
-                        .coerce_with_type(db, lhs_typ, None, resolver)
-                        .is_ok(),
-                };
-                if !binds {
-                    ctx.errors.push(
-                        TypeError::NotAssignable {
-                            base_target: lhs_typ,
-                            lhs: lhs_typ,
-                            rhs: rhs_typ,
-                            adjustment: None,
-                            expr: call_site,
-                            suggest_cast: false,
-                        }
-                        .to_diagnostic(db, ctx.scope.file(db)),
-                    );
-                } else {
-                    // The output is copied whole over the target, as by an
-                    // assignment (E1427).
-                    crate::hir_ty::body::statements::check_copy_keeps_location(
-                        db, rhs_typ, call_site, ctx,
-                    );
+        } if !var.is_output(db) => {
+            ctx.errors.push(
+                CallError::InputBoundWithArrow {
+                    func: callable,
+                    var,
+                    param: param_ident,
                 }
-            }
-
+                .to_diagnostic(db, ctx.scope.file(db)),
+            );
             ctx.variable_of_param.insert(param, var);
+            if !ctx.type_of_expr.contains_key(&value) {
+                InferExprCtx::new(resolver).resolve_expr(db, value, ctx);
+            }
+        }
+        ParamAssignKind::FormalOutput { value, not, .. } => {
+            bind_output(db, resolver, callable, param, var, value, not, ctx);
+        }
+    }
+}
+
+/// `var => value`, or `value` in the place of output `var` in a positional
+/// list: the call writes the output into the variable `value` names (E0805
+/// when it names none), or its negation for `NOT var => value`.
+#[allow(clippy::too_many_arguments)]
+fn bind_output<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    resolver: Resolver<'db>,
+    callable: CallableType<'db>,
+    param: ParamAssign<'db>,
+    var: VariableDecl<'db>,
+    value: Expr<'db>,
+    not: bool,
+    ctx: &mut BodyInferenceResult<'db>,
+) {
+    ctx.variable_of_param.insert(param, var);
+    // A positional argument was typed with the call's other arguments.
+    if !ctx.type_of_expr.contains_key(&value) {
+        InferExprCtx::new(resolver).resolve_expr(db, value, ctx);
+    }
+    if ctx.get_type_of_expr(value).is_never() {
+        return;
+    }
+    // A bit of a variable is not one: `w.%X3`, as for a VAR_IN_OUT (E0806).
+    let variable = value
+        .variable_access(db)
+        .filter(|access| access.multibits(db).is_none());
+    let Some(variable) = variable else {
+        ctx.errors.push(
+            CallError::OutputRequiresVariable {
+                func: callable,
+                var,
+                expr: value,
+            }
+            .to_diagnostic(db, ctx.scope.file(db)),
+        );
+        return;
+    };
+
+    let lhs_typ = Type::new_var(db, var);
+
+    // NOT negates a BOOL or a bit string, as the operator does (E0305).
+    if not {
+        use crate::hir_def::expressions::spec::ElementarySpec;
+        let negates = matches!(
+            lhs_typ.normalize(db),
+            Type::Elementary(
+                ElementarySpec::Bool
+                    | ElementarySpec::Byte
+                    | ElementarySpec::Word
+                    | ElementarySpec::DWord
+                    | ElementarySpec::LWord
+            )
+        );
+        if !negates {
+            ctx.errors.push(
+                TypeError::UnsupportedOperator {
+                    typ: lhs_typ,
+                    operator: "NOT",
+                    call_site: CallSite::from_scoped(db, &param),
+                }
+                .to_diagnostic(db, ctx.scope.file(db)),
+            );
+            return;
+        }
+    }
+
+    crate::hir_ty::body::statements::refuse_edge_input_as_storage(
+        db,
+        variable,
+        crate::check::errors::e02_resolve::EdgeUse::Written,
+        ctx,
+    );
+    let call_site = CallSite::from_scoped(db, &variable);
+    let rhs_typ = ctx.type_of_variable_access_with_adjustments(db, variable);
+
+    if !var.is_in_out(db) {
+        check_by_ref_subrange(db, var, rhs_typ, variable.get_span(db), true, ctx);
+    }
+
+    // A field or an element of a constant is the constant. A
+    // CONSTANT variable itself is refused by `check_assignable`,
+    // from the place: `arr[1]` is the variable with a subscript.
+    let place_typ = ctx.get_type_of_variable_access(db, variable);
+    if (var.is_in_out(db) || var.is_output(db))
+        && ctx.is_constant_place(db, variable)
+        && !crate::hir_ty::body::statements::is_constant_variable(db, place_typ)
+    {
+        ctx.errors.push(
+            InitError::AssignToConstant {
+                access: call_site,
+                constant: ctx.constant_root(db, variable),
+            }
+            .to_diagnostic(db, ctx.scope.file(db)),
+        );
+    }
+
+    // `o => d` writes the output INTO d, so d is the target. Checked
+    // the other way, every widening binding was refused and every
+    // narrowing one accepted. Reported around the OUTPUT though: the
+    // caret is on `d`, so the type named is the one `d` had to hold.
+    // Assignability is the place's, as for an assignment: checked
+    // on the adjusted type, a struct element read as a type name
+    // used as a value (E0317).
+    if place_typ.check_assignable(db, call_site, ctx) {
+        // An `ARRAY[*]` output is written into an array of any bounds.
+        let binds = match var.conformand(db) {
+            Some(conformand) => {
+                rhs_typ.is_never()
+                    || crate::hir_ty::infer::coerce::ArrayArgument::of(db, rhs_typ).is_some_and(
+                        |arg| crate::hir_ty::infer::coerce::binds_conformand(db, conformand, &arg),
+                    )
+            }
+            None => rhs_typ
+                .coerce_with_type(db, lhs_typ, None, resolver)
+                .is_ok(),
+        };
+        if !binds {
+            ctx.errors.push(
+                TypeError::NotAssignable {
+                    base_target: lhs_typ,
+                    lhs: lhs_typ,
+                    rhs: rhs_typ,
+                    adjustment: None,
+                    expr: call_site,
+                    suggest_cast: false,
+                }
+                .to_diagnostic(db, ctx.scope.file(db)),
+            );
+        } else {
+            // The output is copied whole over the target, as by an
+            // assignment (E1427).
+            crate::hir_ty::body::statements::check_copy_keeps_location(db, rhs_typ, call_site, ctx);
         }
     }
 }

@@ -1126,24 +1126,15 @@ impl<'db> BodyInferenceResult<'db> {
     /// bound to an output (`o => F`), passed to a VAR_IN_OUT, or referenced
     /// with `REF(F)`.
     pub fn hands_out_result(&self, db: &'db dyn WorkspaceDataBase) -> bool {
-        use crate::hir_def::expressions::expression::{
-            ExprKind, ParamAssignKind, PrimaryExpr, RefValue,
-        };
-        let bound = self
-            .variable_of_param
-            .iter()
-            .any(|(param, var)| match param.kind(db) {
-                ParamAssignKind::FormalOutput { variable, .. } => self.writes_result(db, variable),
-                ParamAssignKind::NonFormal { value }
-                | ParamAssignKind::FormalInput { value, .. } => {
-                    var.is_in_out(db)
-                        && matches!(
-                            value.expr(db),
-                            ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess(access))
-                                if self.writes_result(db, *access)
-                        )
-                }
-            });
+        use crate::hir_def::expressions::expression::{ExprKind, PrimaryExpr, RefValue};
+        let bound = self.variable_of_param.iter().any(|(param, var)| {
+            (var.is_in_out(db) || var.is_output(db))
+                && param
+                    .kind(db)
+                    .value()
+                    .variable_access(db)
+                    .is_some_and(|access| self.writes_result(db, access))
+        });
         bound
             || self.type_of_expr.keys().any(|expr| {
                 matches!(
@@ -1311,8 +1302,12 @@ pub enum ParamBinding<'db> {
     /// Input value(s) the site supplied (`:=` or positional). A variadic
     /// parameter collects several, in call order; anything else has one.
     Values(Vec<Expr<'db>>),
-    /// `param => dest`.
-    Output(VariableAccess<'db>),
+    /// `param => dest`, or `dest` in the output's place in a positional
+    /// list; `NOT param => dest` writes the output's negation.
+    Output {
+        variable: VariableAccess<'db>,
+        not: bool,
+    },
     /// An omitted input, with the constant default that makes the omission
     /// legal (FUNCTION/METHOD only).
     Default(Expr<'db>),

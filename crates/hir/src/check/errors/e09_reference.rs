@@ -48,6 +48,12 @@ pub enum ReferenceError<'db> {
         /// declaration is not RETAIN.
         instance: Option<crate::hir_def::interned::identifier::SpanIdent<'db>>,
     },
+    /// `REF()` of what names no variable: a literal, an expression or a
+    /// call result has no storage of its own, and a direct address or a bit
+    /// is not the named variable or instance a reference points at.
+    RefArgumentNotAVariable {
+        expr: crate::hir_def::expressions::expression::Expr<'db>,
+    },
 }
 
 impl<'db> ErrorCode for ReferenceError<'db> {
@@ -57,6 +63,7 @@ impl<'db> ErrorCode for ReferenceError<'db> {
             Self::DerefPossiblyNull { .. } => "E0902",
             Self::ReturnsReferenceToLocal { .. } => "E0903",
             Self::RetainedReference { .. } => "E0904",
+            Self::RefArgumentNotAVariable { .. } => "E0905",
         }
     }
 }
@@ -68,6 +75,43 @@ impl<'db> ToIdeDiagnostic<'db> for ReferenceError<'db> {
         file: auto_lsp::default::db::file::File,
     ) -> IdeDiagnostic {
         match self {
+            Self::RefArgumentNotAVariable { expr } => {
+                use crate::hir_def::expressions::expression::{
+                    ExprKind, PrimaryExpr, VariableAccessKind,
+                };
+                let access = match expr.expr(db) {
+                    ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess(access)) => Some(*access),
+                    _ => None,
+                };
+                let (what, note, help) = match access {
+                    Some(access) if access.multibits(db).is_some() => (
+                        "a bit of one",
+                        "a reference points at a named variable or instance",
+                        None,
+                    ),
+                    Some(access) if matches!(access.kind(db), VariableAccessKind::Direct(_)) => (
+                        "a direct address",
+                        "a reference points at a named variable or instance",
+                        Some("declare a variable AT the address, and take REF() of it"),
+                    ),
+                    _ => (
+                        "a value",
+                        "a literal, an expression or a call result has no storage to point at",
+                        Some("store the value in a variable, and take REF() of the variable"),
+                    ),
+                };
+                let mut diag = diag()
+                    .message(format!("REF() takes a variable, not {what}"))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &expr.get_span(db)).unwrap_or_default())
+                    .call();
+                diag.with_note(note.to_string());
+                if let Some(help) = help {
+                    diag.with_help(help.to_string());
+                }
+                diag
+            }
             Self::DerefNonRefType { expr, ty } => diag()
                 .message(format!(
                     "cannot dereference non-reference type '{}'",

@@ -395,6 +395,18 @@ impl<'db> InferExprCtx<'db> {
                 }
             }
             PrimaryExpr::RefValue { value } => match value {
+                // Typed for the editor: there is no storage to point at.
+                RefValue::Value(value) => {
+                    if !self.resolve_expr(db, *value, inference_result).is_never() {
+                        inference_result.errors.push(
+                            crate::check::errors::e09_reference::ReferenceError::RefArgumentNotAVariable {
+                                expr: *value,
+                            }
+                            .to_diagnostic(db, inference_result.scope.file(db)),
+                        );
+                    }
+                    Type::Never
+                }
                 RefValue::Address(adress) => {
                     self.resolver
                         .resolve_begin_path_expr(db, *adress, None, inference_result);
