@@ -14,12 +14,9 @@ use hir::{
 use compact_str::CompactString;
 use std::cell::RefCell;
 
-use crate::{
-    memory::align_to,
-    types::{
-        MirArrayType, MirElementary, MirEnumType, MirStructField, MirStructType, MirSubrangeType,
-        MirType,
-    },
+use crate::types::{
+    MirArrayType, MirElementary, MirEnumType, MirStructField, MirStructType, MirSubrangeType,
+    MirType,
 };
 
 #[derive(Debug, thiserror::Error)]
@@ -217,30 +214,18 @@ pub fn lower_struct_type_named<'db>(
     struct_type: Struct<'db>,
     name: Option<Ident>,
 ) -> Result<MirType, LowerTypeError> {
-    let mut offset = 0u32;
-    let mut max_align = 1u32;
+    let layout = hir::hir_ty::layout::struct_layout(db, struct_type)
+        .as_ref()
+        .ok_or_else(|| no_layout("a STRUCT"))?;
     let mut fields = Vec::new();
-
-    for element in struct_type.elements(db) {
-        let mir_type = lower_spec(db, element.spec(db))?;
-        let field_align = mir_type.alignment();
-        let field_size = mir_type.size_bytes();
-
-        max_align = max_align.max(field_align);
-        offset = align_to(offset, field_align);
-
+    for (element, offset) in struct_type.elements(db).iter().zip(&layout.offsets) {
         fields.push(MirStructField {
             name_with_case: element.name_with_case(db),
-            ty: mir_type,
-            offset,
+            ty: lower_spec(db, element.spec(db))?,
+            offset: narrow(*offset)?,
             by_ref: false,
         });
-
-        offset += field_size;
     }
-
-    // Pad to alignment at the end
-    offset = align_to(offset, max_align);
 
     // Use provided name or create an anonymous one
     let struct_name = name.unwrap_or_else(|| Ident::new(db, CompactString::from("<anon_struct>")));
@@ -248,55 +233,41 @@ pub fn lower_struct_type_named<'db>(
     Ok(MirType::Struct(MirStructType {
         name: struct_name,
         fields,
-        size: offset,
-        align: max_align,
+        size: narrow(layout.whole.size)?,
+        align: layout.whole.align,
     }))
+}
+
+/// A size or an offset HIR laid out, in the 32 bits a module addresses:
+/// one past them is E0322, which stops a build before lowering.
+pub(crate) fn narrow(bytes: u64) -> Result<u32, LowerTypeError> {
+    u32::try_from(bytes).map_err(|_| {
+        LowerTypeError::UnsupportedType(format!(
+            "{bytes} bytes, past what a module addresses, reached lowering"
+        ))
+    })
+}
+
+/// HIR has no layout for it: a type that does not resolve, or contains
+/// itself, which the check reported.
+fn no_layout(what: &str) -> LowerTypeError {
+    LowerTypeError::UnsupportedType(format!("{what} with no layout reached lowering"))
 }
 
 fn lower_array_type<'db>(
     db: &'db dyn WorkspaceDataBase,
     array_type: Array<'db>,
 ) -> Result<MirType, LowerTypeError> {
-    let element_type = lower_spec(db, array_type.of_type(db))?;
-    let element_size = element_type.size_bytes();
-    let element_align = element_type.alignment();
-
-    let mut dimensions = Vec::new();
-    let mut total_elements = 1u32;
-
-    // The dimensions inference folded; a bound that does not fold is
-    // E0501/E0502.
-    for (start, end) in hir::hir_ty::infer::const_eval::array_dimensions(db, array_type) {
-        let (Some(start), Some(end)) = (start, end) else {
-            return Err(LowerTypeError::UnsupportedType(
-                "array bound was not folded to a constant".to_string(),
-            ));
-        };
-        dimensions.push((start, end));
-
-        let dim_size = (end - start + 1).max(0) as u32;
-        total_elements = total_elements.checked_mul(dim_size).ok_or_else(|| {
-            LowerTypeError::UnsupportedType(format!(
-                "Array dimension overflow: {} * {}",
-                total_elements, dim_size
-            ))
-        })?;
-    }
-
-    let total_size = element_size.checked_mul(total_elements).ok_or_else(|| {
-        LowerTypeError::UnsupportedType(format!(
-            "Array size overflow: {} * {}",
-            element_size, total_elements
-        ))
-    })?;
-
+    let layout = hir::hir_ty::layout::array_layout(db, array_type)
+        .as_ref()
+        .ok_or_else(|| no_layout("an array"))?;
     Ok(MirType::Array(MirArrayType {
-        element_type: Box::new(element_type),
-        dimensions,
-        total_elements,
-        element_size,
-        size: total_size,
-        align: element_align,
+        element_type: Box::new(lower_spec(db, array_type.of_type(db))?),
+        dimensions: layout.dimensions.clone(),
+        total_elements: narrow(layout.count)?,
+        element_size: narrow(layout.element.size)?,
+        size: narrow(layout.whole.size)?,
+        align: layout.element.align,
     }))
 }
 
@@ -407,32 +378,6 @@ pub(crate) fn edge_memory_field(db: &dyn WorkspaceDataBase, name: Ident) -> Iden
     Ident::new(db, CompactString::from(format!("{}$m", name.text(db))))
 }
 
-/// Lay out an edge input's edge and memory right after the input, inside
-/// the declaring block's part of the layout, so that a derived instance stays
-/// compatible with its base. Returns the offset past them.
-fn push_edge_fields(
-    db: &dyn WorkspaceDataBase,
-    var: hir::hir_def::pous::variable::VariableDecl<'_>,
-    mut offset: u32,
-    fields: &mut Vec<MirStructField>,
-    max_align: &mut u32,
-) -> u32 {
-    let ty = MirType::Elementary(MirElementary::Bool);
-    *max_align = (*max_align).max(ty.alignment());
-    let name = var.name_with_case(db);
-    for name_with_case in [edge_field(db, name), edge_memory_field(db, name)] {
-        offset = align_to(offset, ty.alignment());
-        fields.push(MirStructField {
-            name_with_case,
-            ty: ty.clone(),
-            offset,
-            by_ref: false,
-        });
-        offset += ty.size_bytes();
-    }
-    offset
-}
-
 pub fn lower_fb_type<'db>(
     db: &'db dyn WorkspaceDataBase,
     fb: FunctionBlock<'db>,
@@ -449,9 +394,11 @@ thread_local! {
     static LAYING_OUT: RefCell<Vec<Ident>> = const { RefCell::new(Vec::new()) };
 }
 
-/// Lay out an FB/CLASS instance from HIR's [`instance_members`] (base-most
-/// first, so a derived instance is layout-compatible with its base); MIR
-/// only turns the list into offsets.
+/// An FB/CLASS instance as HIR laid it out ([`instance_layout`]): its
+/// bases' members first, so a derived instance is laid out as its base where
+/// they overlap.
+///
+/// [`instance_layout`]: hir::hir_ty::layout::instance_layout
 fn lower_instance_struct<'db>(
     db: &'db dyn WorkspaceDataBase,
     pou: hir::hir_def::pous::pou::Pou<'db>,
@@ -471,76 +418,69 @@ fn lower_instance_struct<'db>(
     LAYING_OUT.with(|stack| stack.borrow_mut().push(name));
     let _leave = Leave;
 
-    let mut offset = 0u32;
-    let mut max_align = 1u32;
+    let layout = hir::hir_ty::layout::instance_layout(db, pou)
+        .as_ref()
+        .ok_or_else(|| no_layout("an instance"))?;
+    instance_struct(db, name, layout)
+}
+
+/// The struct of an instance HIR laid out: each part named and typed as the
+/// code reads it.
+fn instance_struct<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    name: Ident,
+    layout: &hir::hir_ty::layout::InstanceLayout<'db>,
+) -> Result<MirType, LowerTypeError> {
+    use hir::hir_ty::layout::Part;
     let mut fields = Vec::new();
-
-    for member in hir::hir_ty::oop::instance_members(db, pou) {
-        let var = member.var;
-        // A VAR_IN_OUT field holds the address of the caller's l-value: a
-        // pointer the body auto-derefs and the call site writes once. A field
-        // declared `AT %I*` holds the address of its channel, which `__init`
-        // writes from VAR_CONFIG.
-        let is_inout = var.kind(db) == hir::hir_def::pous::variable::VariableKind::InOut
-            || var.is_partly_located(db);
-        // An `ARRAY[*]` holds arrays of the bounds each call gives: what it
-        // points at is typed in each copy of the body.
-        let mir_type = match var.conformand(db) {
-            Some(_) => MirType::Void,
-            None => match lower_spec(db, var.spec(db)) {
-                Err(LowerTypeError::InstanceCycle(_)) if is_inout => MirType::Void,
-                other => other?,
-            },
+    for field in &layout.fields {
+        let var = field.var;
+        let var_name = var.name_with_case(db);
+        let (name_with_case, ty, by_ref) = match field.part {
+            Part::Value => (var_name, lower_spec(db, var.spec(db))?, false),
+            // The address of the caller's l-value, which the body auto-derefs
+            // and the call site writes once, or of a channel `__init` writes
+            // from VAR_CONFIG. An `ARRAY[*]` points at the array each copy of
+            // the body is specialized for, and a block two VAR_IN_OUTs hold
+            // through each other at what is typed where it is dereferenced.
+            Part::Address => {
+                let pointee = match var.conformand(db) {
+                    Some(_) => MirType::Void,
+                    None => match lower_spec(db, var.spec(db)) {
+                        Err(LowerTypeError::InstanceCycle(_)) => MirType::Void,
+                        other => other?,
+                    },
+                };
+                (var_name, MirType::Pointer(Box::new(pointee)), true)
+            }
+            Part::Capacity => (
+                string_capacity_field(db, var_name),
+                MirType::Elementary(MirElementary::UDInt),
+                false,
+            ),
+            Part::Edge => (
+                edge_field(db, var_name),
+                MirType::Elementary(MirElementary::Bool),
+                false,
+            ),
+            Part::EdgeMemory => (
+                edge_memory_field(db, var_name),
+                MirType::Elementary(MirElementary::Bool),
+                false,
+            ),
         };
-        let mir_type = if is_inout {
-            MirType::Pointer(Box::new(mir_type))
-        } else {
-            mir_type
-        };
-        let field_align = mir_type.alignment();
-        let field_size = mir_type.size_bytes();
-
-        max_align = max_align.max(field_align);
-        offset = align_to(offset, field_align);
-
-        let string_in_out = is_inout
-            && var.kind(db) == hir::hir_def::pous::variable::VariableKind::InOut
-            && matches!(&mir_type, MirType::Pointer(p) if matches!(**p, MirType::String { .. }));
         fields.push(MirStructField {
-            name_with_case: var.name_with_case(db),
-            ty: mir_type,
-            offset,
-            by_ref: is_inout,
+            name_with_case,
+            ty,
+            offset: narrow(field.offset)?,
+            by_ref,
         });
-
-        offset += field_size;
-
-        // A STRING VAR_IN_OUT also keeps the bound buffer's capacity, which
-        // the body writes at: an FB declaring `s : STRING` wrote 80 bytes
-        // into a caller's `STRING[4]`. It sits right after the pointer, at
-        // `offset + 4` (see `string_capacity_field`).
-        if string_in_out {
-            fields.push(MirStructField {
-                name_with_case: string_capacity_field(db, var.name_with_case(db)),
-                ty: MirType::Elementary(crate::types::MirElementary::UDInt),
-                offset,
-                by_ref: false,
-            });
-            offset += 4;
-        }
-
-        if var.is_edge_input(db) {
-            offset = push_edge_fields(db, var, offset, &mut fields, &mut max_align);
-        }
     }
-
-    offset = align_to(offset, max_align);
-
     Ok(MirType::Struct(MirStructType {
         name,
         fields,
-        size: offset,
-        align: max_align,
+        size: narrow(layout.whole.size)?,
+        align: layout.whole.align,
     }))
 }
 
@@ -548,61 +488,10 @@ pub fn lower_program_type<'db>(
     db: &'db dyn WorkspaceDataBase,
     program: hir::hir_def::program::ProgramDecl<'db>,
 ) -> Result<MirType, LowerTypeError> {
-    let mut offset = 0u32;
-    let mut max_align = 1u32;
-    let mut fields = Vec::new();
-
-    for var in program.variables(db) {
-        // VAR_EXTERNAL resolves to a global's address; not instance state.
-        if var.kind(db) == hir::hir_def::pous::variable::VariableKind::External {
-            continue;
-        }
-        // VAR_TEMP is a body local, fresh at every invocation, not instance
-        // state.
-        if var.kind(db) == hir::hir_def::pous::variable::VariableKind::Temp {
-            continue;
-        }
-        // A located VAR is its channel's cell, shared by every instance.
-        if var.is_program_located(db) {
-            continue;
-        }
-        let mir_type = lower_spec(db, var.spec(db))?;
-        // One declared `AT %I*` holds the address of its channel, which
-        // `__init` writes from VAR_CONFIG.
-        let partly = var.is_partly_located(db);
-        let mir_type = if partly {
-            MirType::Pointer(Box::new(mir_type))
-        } else {
-            mir_type
-        };
-        let field_align = mir_type.alignment();
-        let field_size = mir_type.size_bytes();
-
-        max_align = max_align.max(field_align);
-        offset = align_to(offset, field_align);
-        fields.push(MirStructField {
-            name_with_case: var.name_with_case(db),
-            ty: mir_type,
-            offset,
-            // PROGRAM instances are driven by the scheduler, never through an
-            // `FbCall`, so PROGRAM VAR_IN_OUT stays value-based.
-            by_ref: partly,
-        });
-        offset += field_size;
-
-        if var.is_edge_input(db) {
-            offset = push_edge_fields(db, *var, offset, &mut fields, &mut max_align);
-        }
-    }
-
-    offset = align_to(offset, max_align);
-
-    Ok(MirType::Struct(MirStructType {
-        name: program.name_with_case(db),
-        fields,
-        size: offset,
-        align: max_align,
-    }))
+    let layout = hir::hir_ty::layout::program_layout(db, program)
+        .as_ref()
+        .ok_or_else(|| no_layout("a PROGRAM"))?;
+    instance_struct(db, program.name_with_case(db), layout)
 }
 
 /// Lower a Class type to MirType::Struct.
