@@ -4487,6 +4487,11 @@
     }
   },
   {
+    "type": "must_call_pragma",
+    "named": true,
+    "fields": {}
+  },
+  {
     "type": "namespace_access",
     "named": true,
     "fields": {},
@@ -4964,6 +4969,10 @@
         },
         {
           "type": "extern_pragma",
+          "named": true
+        },
+        {
+          "type": "must_call_pragma",
           "named": true
         },
         {

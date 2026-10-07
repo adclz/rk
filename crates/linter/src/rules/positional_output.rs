@@ -13,7 +13,7 @@ use ide_diagnostic::{ErrorCode, IdeDiagnostic, Related, diag};
 
 pub const NAME: &str = "positional-output";
 
-/// L0314: a positional argument in the place of a VAR_OUTPUT. A positional
+/// L0313: a positional argument in the place of a VAR_OUTPUT. A positional
 /// list gives every parameter in declaration order, outputs included, so
 /// the variable there receives the output, and nothing at the call site
 /// says it is written: `first(y, 4)` reads like two values going in when
@@ -22,7 +22,7 @@ struct PositionalOutput;
 
 impl ErrorCode for PositionalOutput {
     fn code(&self) -> &'static str {
-        "L0314"
+        "L0313"
     }
 }
 

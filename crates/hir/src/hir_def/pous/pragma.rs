@@ -10,6 +10,9 @@ use crate::hir_def::interned::identifier::SpanIdent;
 pub enum Pragma<'db> {
     Test(SpanIdent<'db>),
     Once(SpanIdent<'db>),
+    /// `{must_call}` above a FUNCTION_BLOCK: every instance of it is to be
+    /// called, at every scan.
+    MustCall(SpanIdent<'db>),
     /// `{export}` above a FUNCTION: it is a WASM export, under its name.
     /// Nothing else a workspace declares is, so an optimizer may drop what
     /// nothing calls.
@@ -25,6 +28,7 @@ impl<'db> Pragma<'db> {
         match self {
             Pragma::Test(s) => s,
             Pragma::Once(s) => s,
+            Pragma::MustCall(s) => s,
             Pragma::Export(s) => s,
             Pragma::Warn(s, _) => s,
             Pragma::Extern(s, _) => s,
@@ -36,6 +40,7 @@ impl<'db> Pragma<'db> {
         match self {
             Pragma::Test(_) => "{test}",
             Pragma::Once(_) => "{once}",
+            Pragma::MustCall(_) => "{must_call}",
             Pragma::Export(_) => "{export}",
             Pragma::Warn(_, _) => "{warn}",
             Pragma::Extern(_, _) => "{extern}",

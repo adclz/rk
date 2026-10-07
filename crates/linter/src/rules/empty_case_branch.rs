@@ -8,12 +8,12 @@ use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
 
 pub const NAME: &str = "empty-case-branch";
 
-/// L0307: CASE branch with no statements.
+/// L0212: CASE branch with no statements.
 struct EmptyCaseBranch;
 
 impl ErrorCode for EmptyCaseBranch {
     fn code(&self) -> &'static str {
-        "L0307"
+        "L0212"
     }
 }
 
@@ -43,7 +43,7 @@ pub fn check_case<'db>(
                         .message("CASE branch has no statements".to_string())
                         .desc(&EmptyCaseBranch)
                         .range(hir::denormalize(db, file, &span).unwrap_or_default())
-                        .severity(DiagnosticSeverity::HINT)
+                        .severity(DiagnosticSeverity::INFORMATION)
                         .call(),
                 );
             }

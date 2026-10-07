@@ -330,7 +330,7 @@ fn severity_str(severity: Option<DiagnosticSeverity>) -> &'static str {
     }
 }
 
-/// The diagnostic code (`E0301`, `L0303`) as text, if any.
+/// The diagnostic code (`E0301`, `L0208`) as text, if any.
 fn code_str(code: Option<&auto_lsp::lsp_types::NumberOrString>) -> Option<String> {
     match code {
         Some(auto_lsp::lsp_types::NumberOrString::String(s)) => Some(s.clone()),

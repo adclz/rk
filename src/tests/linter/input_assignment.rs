@@ -120,3 +120,44 @@ END_FUNCTION_BLOCK
     ---'
     ");
 }
+
+/// Through an instance, `t.x := 1` sets another block's input, the way
+/// `t(x := 1)` does: only a block writing its own input is reported, by its
+/// name or through THIS.
+#[rstest]
+fn input_of_another_instance_not_flagged(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK Child
+VAR_INPUT
+    x : INT;
+END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK Parent
+VAR_INPUT
+    own : INT;
+END_VAR
+VAR
+    t : Child;
+END_VAR
+    t.x := 1;
+    t();
+    THIS.own := 2;
+END_FUNCTION_BLOCK
+"#;
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "input-assignment"), @r"
+    [L0113] Warning: assignment to input variable
+        ,-[ file:///test0.st:17:5 ]
+        |
+     10 |     own : INT;
+        |     ^|^
+        |      `--- 'own' is declared here
+        |
+     17 |     THIS.own := 2;
+        |     ^^^^|^^^
+        |         `----- assignment to VAR_INPUT 'own'
+        |
+        | Note: lint rule: input-assignment
+    ----'
+    ");
+}

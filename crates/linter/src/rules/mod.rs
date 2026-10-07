@@ -25,9 +25,11 @@ pub mod case_without_else;
 pub mod collapsible_if;
 pub mod constant_condition;
 pub mod constant_loop_bounds;
+pub mod constant_overflow;
 pub mod dead_code;
 pub mod default_for_step;
 pub mod division_by_zero;
+pub mod double_writer;
 pub mod duplicate_case;
 pub mod duplicate_configuration;
 pub mod duplicate_namespace;
@@ -38,11 +40,14 @@ pub mod empty_case_branch;
 pub mod empty_if_branch;
 pub mod empty_loop_body;
 pub mod empty_type;
+pub mod endless_loop;
 pub mod external_mutation;
+pub mod float_equality;
 pub mod for_loop_step_sign;
 pub mod global_without_external;
 pub mod identical_sub_expr;
 pub mod identity_operation;
+pub mod in_out_alias;
 pub mod input_assignment;
 pub mod instance_in_function;
 pub mod invalid_pragma;
@@ -51,6 +56,8 @@ pub mod loop_var_modified;
 pub mod method_shadows_member;
 pub mod missing_input_param;
 pub mod missing_return;
+pub mod must_call_conditional;
+pub mod must_call_violation;
 pub mod negated_comparison;
 pub mod negated_condition;
 pub mod negative_radix_literal;
@@ -64,6 +71,7 @@ pub mod self_shadowing;
 pub mod shadowing_variable;
 pub mod single_element_array;
 pub mod stmt_visitor;
+pub mod string_truncation;
 pub mod sub_self;
 pub mod uninitialized_output;
 pub mod unnecessary_else;
@@ -75,39 +83,31 @@ pub mod variable_method_name;
 pub mod warn_pragma;
 pub mod yoda_condition;
 
-/// The rules `Select::Recommended` turns on: the ones that report a probable
-/// BUG rather than a matter of taste. They are exactly the rules that emit at
-/// warning severity — style (hints) and declaration notes (info) stay opt-in,
-/// so a workspace that has said nothing about linting is not buried in taste.
-pub const RECOMMENDED_RULE_NAMES: &[&str] = &[
-    allow::NAME,
-    warn_pragma::NAME,
-    invalid_pragma::NAME,
-    dead_code::NAME,
-    for_loop_step_sign::NAME,
-    input_assignment::NAME,
-    constant_condition::NAME,
-    division_by_zero::NAME,
-    duplicate_case::NAME,
-    loop_var_modified::NAME,
-    self_assignment::NAME,
-    self_comparison::NAME,
-    identical_sub_expr::NAME,
-    identity_operation::NAME,
-    sub_self::NAME,
-    constant_loop_bounds::NAME,
-    self_shadowing::NAME,
-    shadowing_variable::NAME,
-    missing_return::NAME,
-    external_mutation::NAME,
-    method_shadows_member::NAME,
-    variable_method_name::NAME,
-    global_without_external::NAME,
-    instance_in_function::NAME,
-    latin1_escape::NAME,
-    negative_radix_literal::NAME,
-    recursion::NAME,
+/// The rules that report a matter of style: code that does what it says,
+/// and reads better written another way. They report at hint severity
+/// (L03xx), and `Select::Recommended` leaves them out.
+pub const STYLE_RULE_NAMES: &[&str] = &[
+    duplicate_var_section::NAME,
+    duplicate_namespace::NAME,
+    duplicate_configuration::NAME,
+    negated_condition::NAME,
+    negated_comparison::NAME,
+    bool_comparison::NAME,
+    redundant_not::NAME,
+    unnecessary_else::NAME,
+    default_for_step::NAME,
+    unnecessary_parens::NAME,
+    collapsible_if::NAME,
+    yoda_condition::NAME,
+    positional_output::NAME,
 ];
+
+/// Whether `Select::Recommended` runs `name`: every rule but the style ones,
+/// so a probable bug (a warning) and a likely mistake (an info) are reported
+/// in a workspace that says nothing about linting.
+pub fn is_recommended(name: &str) -> bool {
+    !STYLE_RULE_NAMES.contains(&name)
+}
 
 /// Whether `name` runs under `config`: an explicit entry in `[linter.rules]`
 /// wins, otherwise the `select` baseline decides.
@@ -117,7 +117,7 @@ pub fn is_enabled(config: &LinterConfig, name: &str) -> bool {
     }
     match config.select() {
         Select::All => true,
-        Select::Recommended => RECOMMENDED_RULE_NAMES.contains(&name),
+        Select::Recommended => is_recommended(name),
         Select::None => false,
     }
 }
@@ -131,9 +131,11 @@ pub const ALL_RULE_NAMES: &[&str] = &[
     collapsible_if::NAME,
     constant_condition::NAME,
     constant_loop_bounds::NAME,
+    constant_overflow::NAME,
     dead_code::NAME,
     default_for_step::NAME,
     division_by_zero::NAME,
+    double_writer::NAME,
     duplicate_case::NAME,
     duplicate_configuration::NAME,
     duplicate_namespace::NAME,
@@ -145,10 +147,13 @@ pub const ALL_RULE_NAMES: &[&str] = &[
     empty_if_branch::NAME,
     empty_loop_body::NAME,
     empty_type::NAME,
+    endless_loop::NAME,
+    float_equality::NAME,
     for_loop_step_sign::NAME,
     global_without_external::NAME,
     identical_sub_expr::NAME,
     identity_operation::NAME,
+    in_out_alias::NAME,
     input_assignment::NAME,
     instance_in_function::NAME,
     invalid_pragma::NAME,
@@ -157,6 +162,8 @@ pub const ALL_RULE_NAMES: &[&str] = &[
     method_shadows_member::NAME,
     missing_input_param::NAME,
     missing_return::NAME,
+    must_call_conditional::NAME,
+    must_call_violation::NAME,
     negated_comparison::NAME,
     negated_condition::NAME,
     negative_radix_literal::NAME,
@@ -169,6 +176,7 @@ pub const ALL_RULE_NAMES: &[&str] = &[
     self_shadowing::NAME,
     shadowing_variable::NAME,
     single_element_array::NAME,
+    string_truncation::NAME,
     sub_self::NAME,
     uninitialized_output::NAME,
     unnecessary_else::NAME,
@@ -196,6 +204,12 @@ pub fn lint_file(
     if is_enabled(config, duplicate_configuration::NAME) {
         run_lint(duplicate_configuration::NAME, diagnostics, |d| {
             duplicate_configuration::check(db, file, d)
+        });
+    }
+
+    if is_enabled(config, double_writer::NAME) {
+        run_lint(double_writer::NAME, diagnostics, |d| {
+            double_writer::check(db, file, d)
         });
     }
 
@@ -392,6 +406,17 @@ fn lint_scope<'db>(
             negative_radix_literal::check(db, scope, d)
         });
     }
+    if is_enabled(config, constant_overflow::NAME) {
+        run_lint(constant_overflow::NAME, diagnostics, |d| {
+            constant_overflow::check(db, scope, d)
+        });
+    }
+    // A CLASS's instances too, which its methods call.
+    if is_enabled(config, must_call_violation::NAME) {
+        run_lint(must_call_violation::NAME, diagnostics, |d| {
+            must_call_violation::check(db, scope, d)
+        });
+    }
     if !has_body {
         return;
     }
@@ -445,6 +470,21 @@ fn lint_scope<'db>(
     if is_enabled(config, aggregate_copy::NAME) {
         run_lint(aggregate_copy::NAME, diagnostics, |d| {
             aggregate_copy::check_calls(db, body, d)
+        });
+    }
+    if is_enabled(config, in_out_alias::NAME) {
+        run_lint(in_out_alias::NAME, diagnostics, |d| {
+            in_out_alias::check(db, body, d)
+        });
+    }
+    if is_enabled(config, string_truncation::NAME) {
+        run_lint(string_truncation::NAME, diagnostics, |d| {
+            string_truncation::check_calls(db, body, d)
+        });
+    }
+    if is_enabled(config, must_call_conditional::NAME) {
+        run_lint(must_call_conditional::NAME, diagnostics, |d| {
+            must_call_conditional::check(db, scope, d)
         });
     }
     if is_enabled(config, positional_output::NAME) {
@@ -566,14 +606,18 @@ mod select_tests {
     }
 
     #[test]
-    fn every_recommended_rule_is_a_real_rule() {
-        // A typo here would silently drop a rule from the default set.
-        for name in RECOMMENDED_RULE_NAMES {
+    fn every_style_rule_is_a_real_rule() {
+        // A typo here would silently add a style rule to the default set.
+        for name in STYLE_RULE_NAMES {
             assert!(
                 ALL_RULE_NAMES.contains(name),
                 "{name} is not a known rule name"
             );
         }
-        assert_eq!(RECOMMENDED_RULE_NAMES.len(), 27);
+        let recommended = ALL_RULE_NAMES
+            .iter()
+            .filter(|name| is_recommended(name))
+            .count();
+        assert_eq!(recommended, 50);
     }
 }

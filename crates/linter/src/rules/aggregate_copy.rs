@@ -16,7 +16,7 @@ use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
 
 pub const NAME: &str = "aggregate-copy";
 
-/// L0214: an ARRAY, a STRUCT or a FUNCTION_BLOCK or CLASS instance copied
+/// L0205: an ARRAY, a STRUCT or a FUNCTION_BLOCK or CLASS instance copied
 /// whole, by an assignment or a call binding. The copy takes every element
 /// and field, nested ones included, and costs as much as the type is large.
 /// A STRING copies its text only and is not reported. A VAR_IN_OUT shares
@@ -25,7 +25,7 @@ struct AggregateCopy;
 
 impl ErrorCode for AggregateCopy {
     fn code(&self) -> &'static str {
-        "L0214"
+        "L0205"
     }
 }
 

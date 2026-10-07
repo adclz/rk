@@ -11,12 +11,12 @@ use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
 
 pub const NAME: &str = "empty-loop-body";
 
-/// L0308: FOR, WHILE, or REPEAT loop with no statements in the body.
+/// L0213: FOR, WHILE, or REPEAT loop with no statements in the body.
 struct EmptyLoopBody;
 
 impl ErrorCode for EmptyLoopBody {
     fn code(&self) -> &'static str {
-        "L0308"
+        "L0213"
     }
 }
 
@@ -35,7 +35,7 @@ pub fn check_for<'db>(
                     hir::denormalize(db, stmt.get_scope_id(db).file(db), &stmt.get_span(db))
                         .unwrap_or_default(),
                 )
-                .severity(DiagnosticSeverity::HINT)
+                .severity(DiagnosticSeverity::INFORMATION)
                 .call(),
         );
     }
@@ -60,7 +60,7 @@ pub fn check_while<'db>(
                     )
                     .unwrap_or_default(),
                 )
-                .severity(DiagnosticSeverity::HINT)
+                .severity(DiagnosticSeverity::INFORMATION)
                 .call(),
         );
     }
@@ -85,7 +85,7 @@ pub fn check_repeat<'db>(
                     )
                     .unwrap_or_default(),
                 )
-                .severity(DiagnosticSeverity::HINT)
+                .severity(DiagnosticSeverity::INFORMATION)
                 .call(),
         );
     }

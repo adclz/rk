@@ -15,7 +15,7 @@ They never run during `rk compile` or `rk test`, and they never change the exit 
 
 ## Configuration
 
-The linter is on by default with the **recommended** set: the rules that report a probable bug rather than a matter of style.
+The linter is on by default with the **recommended** set: every rule that reports a probable bug or a likely mistake, and none of the style rules.
 
 A workspace that never mentions the linter still gets them.
 The `[linter]` section of `config.toml` tunes that set, it does not switch the linter on.

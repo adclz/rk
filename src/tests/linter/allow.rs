@@ -33,7 +33,7 @@ END_FUNCTION_BLOCK
 "#;
     // Only the UNGUARDED call reports.
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "missing-input-param"), @r"
-    [L0303] Hint: missing input parameter
+    [L0208] Info: missing input parameter
         ,-[ file:///test0.st:16:5 ]
         |
       4 |         a : INT;

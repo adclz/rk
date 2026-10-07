@@ -22,6 +22,8 @@ NAMESPACE Std.Bistable
 	   motor := latch.Q1;
 	   ```
 	*/
+	{must_call}
+	{once}
 	FUNCTION_BLOCK SR
 		VAR_INPUT
 			S1, R: BOOL;
@@ -47,6 +49,8 @@ NAMESPACE Std.Bistable
 	   motor := latch.Q1;
 	   ```
 	*/
+	{must_call}
+	{once}
 	FUNCTION_BLOCK RS
 		VAR_INPUT
 			S, R1: BOOL;
@@ -77,6 +81,8 @@ NAMESPACE Std.Bistable
 	   END_IF;
 	   ```
 	*/
+	{must_call}
+	{once}
 	FUNCTION_BLOCK SEMA
 		VAR_INPUT
 			CLAIM, RELEASE: BOOL;

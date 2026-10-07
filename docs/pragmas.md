@@ -8,6 +8,8 @@ A known pragma where it has no place, such as `{export}` inside a `VAR` section,
 
 - `{once}` marks a `FUNCTION`, `FUNCTION_BLOCK` or `METHOD` that should be called at most once per body.
 
+- `{must_call}` marks a `FUNCTION_BLOCK` whose every instance is to be called, at every scan. An instance never called is `L0006`, one called only inside a branch or a loop is `L0007`.
+
 - `{warn = 'message'}` and `{info = 'message'}` attach a diagnostic to every call site of the POU.
 
 - `{allow 'rule' 'rule'}` silences lint rules: above a POU for the whole POU, as a statement for the next statement.

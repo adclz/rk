@@ -54,8 +54,7 @@ FUNCTION Round: DINT
 END_FUNCTION
 ```
 
-`{warn}` and `{info}` report with no configuration at all: `warn-pragma` is one of the recommended rules, and the linter does not need a `[linter]` section to be on.
-`{once}` is the exception, because `once-violation` is opt-in: it reports only under `select = "all"` or an explicit `[linter.rules]` entry.
+`{warn}`, `{info}` and `{once}` report with no configuration at all: `warn-pragma` and `once-violation` are recommended rules, and the linter does not need a `[linter]` section to be on.
 See `tool-linter`.
 
 ## The export contract

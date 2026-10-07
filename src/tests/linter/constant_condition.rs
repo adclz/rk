@@ -237,3 +237,113 @@ END_FUNCTION
         "`{statement}` must say `{message}`, got:\n{rendered}"
     );
 }
+
+/// A comparison the value's type decides: an unsigned integer is never
+/// below zero, a SINT never above 127, a subrange never outside its bounds.
+/// The constant may stand on either side.
+#[rstest]
+fn comparison_decided_by_the_type(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE Level : INT (0..10); END_TYPE
+
+FUNCTION test : BOOL
+VAR
+    u : UINT;
+    w : UDINT;
+    s : SINT;
+    l : Level;
+END_VAR
+    test := u < 0;
+    test := w >= 0;
+    IF 0 > u THEN
+        test := s > 127;
+    END_IF;
+    test := l = 11;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "constant-condition"), @r"
+    [L0103] Warning: constant condition
+        ,-[ file:///test0.st:11:13 ]
+        |
+     11 |     test := u < 0;
+        |             ^^|^^
+        |               `---- the comparison is always FALSE
+        |
+        | Note 1: UINT holds 0 to 65535
+        |
+        | Note 2: lint rule: constant-condition
+    ----'
+    [L0103] Warning: constant condition
+        ,-[ file:///test0.st:12:13 ]
+        |
+     12 |     test := w >= 0;
+        |             ^^^|^^
+        |                `---- the comparison is always TRUE
+        |
+        | Note 1: UDINT holds 0 to 4294967295
+        |
+        | Note 2: lint rule: constant-condition
+    ----'
+    [L0103] Warning: constant condition
+        ,-[ file:///test0.st:13:8 ]
+        |
+     13 |     IF 0 > u THEN
+        |        ^^|^^
+        |          `---- the comparison is always FALSE
+        |
+        | Note 1: UINT holds 0 to 65535
+        |
+        | Note 2: lint rule: constant-condition
+    ----'
+    [L0103] Warning: constant condition
+        ,-[ file:///test0.st:14:17 ]
+        |
+     14 |         test := s > 127;
+        |                 ^^^|^^^
+        |                    `----- the comparison is always FALSE
+        |
+        | Note 1: SINT holds -128 to 127
+        |
+        | Note 2: lint rule: constant-condition
+    ----'
+    [L0103] Warning: constant condition
+        ,-[ file:///test0.st:16:13 ]
+        |
+     16 |     test := l = 11;
+        |             ^^^|^^
+        |                `---- the comparison is always FALSE
+        |
+        | Note 1: Level holds 0 to 10
+        |
+        | Note 2: lint rule: constant-condition
+    ----'
+    ");
+}
+
+/// A comparison the type does not decide stays quiet: a value in range, a
+/// signed integer against zero, a radix literal read as the INT it is, and
+/// two constants, which a CONSTANT is there to switch.
+#[rstest]
+fn comparison_not_decided_by_the_type(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION test : BOOL
+VAR CONSTANT
+    DEBUG : INT := 3;
+END_VAR
+VAR
+    u : UINT;
+    i : INT;
+    s : SINT;
+    r : REAL;
+END_VAR
+    test := u > 0;
+    test := u <= 100;
+    test := i < 0;
+    test := i = 16#FFFF;
+    test := s >= -100 AND s < 100;
+    test := DEBUG > 2;
+    test := r < 0;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "constant-condition"), @r"");
+}

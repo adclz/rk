@@ -1,6 +1,3 @@
 [project]
 name = "Oscat"
 version = "0.0"
-
-[linter]
-select = "all"

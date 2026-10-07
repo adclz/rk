@@ -14,12 +14,12 @@ use ide_diagnostic::{ErrorCode, IdeDiagnostic, Related, diag};
 
 pub const NAME: &str = "negated-condition";
 
-/// L0207: IF NOT ... THEN ... ELSE can be simplified by swapping branches.
+/// L0304: IF NOT ... THEN ... ELSE can be simplified by swapping branches.
 struct NegatedCondition;
 
 impl ErrorCode for NegatedCondition {
     fn code(&self) -> &'static str {
-        "L0207"
+        "L0304"
     }
 }
 
@@ -64,7 +64,7 @@ pub fn check_if<'db>(
             )
             .unwrap_or_default(),
         )
-        .severity(DiagnosticSeverity::INFORMATION)
+        .severity(DiagnosticSeverity::HINT)
         .call();
 
     d.with_related(Related::new(

@@ -16,12 +16,12 @@ use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
 
 pub const NAME: &str = "unnecessary-else";
 
-/// L0211: ELSE branch is unnecessary because the IF/ELSIF body always exits.
+/// L0308: ELSE branch is unnecessary because the IF/ELSIF body always exits.
 struct UnnecessaryElse;
 
 impl ErrorCode for UnnecessaryElse {
     fn code(&self) -> &'static str {
-        "L0211"
+        "L0308"
     }
 }
 
@@ -96,7 +96,7 @@ fn check_statements<'db>(
                         )
                         .desc(&UnnecessaryElse)
                         .range(hir::denormalize(db, else_.get_scope_id(db).file(db), &else_.get_span(db)).unwrap_or_default())
-                        .severity(DiagnosticSeverity::INFORMATION)
+                        .severity(DiagnosticSeverity::HINT)
                         .call(),
                 );
                 }
@@ -158,7 +158,7 @@ pub fn check_if<'db>(
                 )
                 .desc(&UnnecessaryElse)
                 .range(hir::denormalize(db, else_.get_scope_id(db).file(db), &else_.get_span(db)).unwrap_or_default())
-                .severity(DiagnosticSeverity::INFORMATION)
+                .severity(DiagnosticSeverity::HINT)
                 .call(),
         );
     }

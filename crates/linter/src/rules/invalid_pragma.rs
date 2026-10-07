@@ -49,6 +49,15 @@ pub fn check<'db>(
                 ScopeKind::Program(_) => (true, "{once} has no effect on a PROGRAM"),
                 _ => (false, ""),
             },
+            // It asks every instance to be called: a FUNCTION_BLOCK's.
+            Pragma::MustCall(_) => match kind {
+                ScopeKind::Pou(Pou::FunctionBlock(_)) => (false, ""),
+                ScopeKind::Pou(Pou::Function(_)) => {
+                    (true, "{must_call} has no effect on a FUNCTION")
+                }
+                ScopeKind::MethodDecl(_) => (true, "{must_call} has no effect on a METHOD"),
+                _ => (true, "{must_call} has no effect on a PROGRAM"),
+            },
             // Position legality for {export} is a compiler ERROR (E1508):
             // an export the module does not carry must not merely warn.
             Pragma::Export(_) => (false, ""),

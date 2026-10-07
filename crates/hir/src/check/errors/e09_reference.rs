@@ -35,6 +35,13 @@ pub enum ReferenceError<'db> {
         var: VariableDecl<'db>,
         site: CallSite<'db>,
     },
+    /// The same reference kept where it outlives the call: an output, an
+    /// in-out, an instance member, a global. `kept` is the place written.
+    StoresReferenceToLocal {
+        var: VariableDecl<'db>,
+        site: CallSite<'db>,
+        kept: CallSite<'db>,
+    },
     /// A reference a warm start would restore: a RETAIN variable, or one a
     /// `PROGRAM RETAIN` instance keeps, holding a REF_TO or an interface
     /// value, itself or in a field or member. What it restores is where its
@@ -61,7 +68,7 @@ impl<'db> ErrorCode for ReferenceError<'db> {
         match self {
             Self::DerefNonRefType { .. } => "E0901",
             Self::DerefPossiblyNull { .. } => "E0902",
-            Self::ReturnsReferenceToLocal { .. } => "E0903",
+            Self::ReturnsReferenceToLocal { .. } | Self::StoresReferenceToLocal { .. } => "E0903",
             Self::RetainedReference { .. } => "E0904",
             Self::RefArgumentNotAVariable { .. } => "E0905",
         }
@@ -178,6 +185,35 @@ impl<'db> ToIdeDiagnostic<'db> for ReferenceError<'db> {
                 ));
                 diag.with_help(
                     "return a reference to instance state, or to storage the caller owns (a VAR_IN_OUT)"
+                        .into(),
+                );
+                diag
+            }
+            Self::StoresReferenceToLocal { var, site, kept } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "reference to '{}' outlives the call that owns it",
+                        var.name_with_case(db).text(db)
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &site.get_span(db)).unwrap_or_default())
+                    .call();
+                diag.with_related(Related::new(
+                    format!(
+                        "'{}' is per-call storage, declared here",
+                        var.name_with_case(db).text(db),
+                    ),
+                    var.get_scope_id(db).file(db),
+                    var.get_name_span(db),
+                ));
+                diag.with_related(Related::new(
+                    format!("'{}' outlives the call", kept.to_string(db)),
+                    kept.scope.file(db),
+                    kept.get_span(db),
+                ));
+                diag.with_help(
+                    "keep the reference in a local of the call, or point it at storage that outlives it"
                         .into(),
                 );
                 diag

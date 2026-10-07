@@ -24,10 +24,11 @@ use ide_diagnostic::IdeDiagnostic;
 use super::{
     aggregate_copy, bool_comparison, collapsible_if, constant_condition, constant_loop_bounds,
     default_for_step, duplicate_case, empty_case_branch, empty_if_branch, empty_loop_body,
-    external_mutation, identical_sub_expr, identity_operation, input_assignment, loop_var_modified,
-    missing_input_param, missing_return, negated_comparison, negated_condition, redundant_not,
-    run_lint, self_assignment, self_comparison, sub_self, uninitialized_output, unnecessary_else,
-    unnecessary_parens, yoda_condition,
+    endless_loop, external_mutation, float_equality, identical_sub_expr, identity_operation,
+    input_assignment, loop_var_modified, missing_input_param, missing_return, negated_comparison,
+    negated_condition, redundant_not, run_lint, self_assignment, self_comparison,
+    string_truncation, sub_self, uninitialized_output, unnecessary_else, unnecessary_parens,
+    yoda_condition,
 };
 
 /// Run all statement-walking lints in a single pass over the statement tree.
@@ -49,13 +50,15 @@ pub fn check<'db>(
         _ => return,
     };
 
-    let ctx = VisitorCtx {
+    let mut ctx = VisitorCtx {
         input_assignment: crate::rules::is_enabled(config, input_assignment::NAME),
         aggregate_copy: crate::rules::is_enabled(config, aggregate_copy::NAME),
         self_assignment: crate::rules::is_enabled(config, self_assignment::NAME),
+        string_truncation: crate::rules::is_enabled(config, string_truncation::NAME),
         collapsible_if: crate::rules::is_enabled(config, collapsible_if::NAME),
         empty_if_branch: crate::rules::is_enabled(config, empty_if_branch::NAME),
         empty_loop_body: crate::rules::is_enabled(config, empty_loop_body::NAME),
+        endless_loop: crate::rules::is_enabled(config, endless_loop::NAME),
         external_mutation: crate::rules::is_enabled(config, external_mutation::NAME),
         constant_condition: crate::rules::is_enabled(config, constant_condition::NAME),
         constant_loop_bounds: crate::rules::is_enabled(config, constant_loop_bounds::NAME),
@@ -65,6 +68,7 @@ pub fn check<'db>(
         missing_input_param: crate::rules::is_enabled(config, missing_input_param::NAME),
         missing_return: crate::rules::is_enabled(config, missing_return::NAME),
         bool_comparison: crate::rules::is_enabled(config, bool_comparison::NAME),
+        float_equality: crate::rules::is_enabled(config, float_equality::NAME),
         self_comparison: crate::rules::is_enabled(config, self_comparison::NAME),
         identical_sub_expr: crate::rules::is_enabled(config, identical_sub_expr::NAME),
         identity_operation: crate::rules::is_enabled(config, identity_operation::NAME),
@@ -77,10 +81,14 @@ pub fn check<'db>(
         loop_var_modified: crate::rules::is_enabled(config, loop_var_modified::NAME),
         unnecessary_parens: crate::rules::is_enabled(config, unnecessary_parens::NAME),
         yoda_condition: crate::rules::is_enabled(config, yoda_condition::NAME),
+        written_inputs: Default::default(),
     };
 
     if !ctx.any_enabled() {
         return;
+    }
+    if ctx.missing_input_param {
+        ctx.written_inputs = missing_input_param::written_inputs(db, body, statements);
     }
 
     let mut assigned_vars = if ctx.uninitialized_output {
@@ -118,13 +126,15 @@ pub fn check<'db>(
     }
 }
 
-struct VisitorCtx {
+struct VisitorCtx<'db> {
     aggregate_copy: bool,
     input_assignment: bool,
     self_assignment: bool,
+    string_truncation: bool,
     collapsible_if: bool,
     empty_if_branch: bool,
     empty_loop_body: bool,
+    endless_loop: bool,
     external_mutation: bool,
     constant_condition: bool,
     constant_loop_bounds: bool,
@@ -134,6 +144,7 @@ struct VisitorCtx {
     missing_input_param: bool,
     missing_return: bool,
     bool_comparison: bool,
+    float_equality: bool,
     self_comparison: bool,
     identical_sub_expr: bool,
     redundant_not: bool,
@@ -146,16 +157,21 @@ struct VisitorCtx {
     loop_var_modified: bool,
     unnecessary_parens: bool,
     yoda_condition: bool,
+    /// The inputs the body writes through an instance, for
+    /// `missing_input_param`.
+    written_inputs: missing_input_param::WrittenInputs<'db>,
 }
 
-impl VisitorCtx {
+impl VisitorCtx<'_> {
     fn any_enabled(&self) -> bool {
         self.aggregate_copy
             || self.input_assignment
             || self.self_assignment
+            || self.string_truncation
             || self.collapsible_if
             || self.empty_if_branch
             || self.empty_loop_body
+            || self.endless_loop
             || self.external_mutation
             || self.constant_condition
             || self.constant_loop_bounds
@@ -165,6 +181,7 @@ impl VisitorCtx {
             || self.missing_input_param
             || self.missing_return
             || self.bool_comparison
+            || self.float_equality
             || self.self_comparison
             || self.identical_sub_expr
             || self.redundant_not
@@ -181,6 +198,8 @@ impl VisitorCtx {
 
     fn any_expr_lint(&self) -> bool {
         self.bool_comparison
+            || self.constant_condition
+            || self.float_equality
             || self.self_comparison
             || self.identical_sub_expr
             || self.redundant_not
@@ -197,7 +216,7 @@ impl VisitorCtx {
 fn check_expr_lints<'db>(
     db: &'db dyn WorkspaceDataBase,
     body: ScopeInference<'db>,
-    ctx: &VisitorCtx,
+    ctx: &VisitorCtx<'db>,
     expr: &Expr<'db>,
     diagnostics: &mut Vec<IdeDiagnostic>,
 ) {
@@ -211,6 +230,16 @@ fn check_expr_lints<'db>(
     if ctx.bool_comparison {
         run_lint(bool_comparison::NAME, diagnostics, |d| {
             bool_comparison::check_node(db, expr, d)
+        });
+    }
+    if ctx.constant_condition {
+        run_lint(constant_condition::NAME, diagnostics, |d| {
+            constant_condition::check_comparison(db, body, expr, d)
+        });
+    }
+    if ctx.float_equality {
+        run_lint(float_equality::NAME, diagnostics, |d| {
+            float_equality::check_node(db, body, expr, d)
         });
     }
     if ctx.self_comparison {
@@ -278,7 +307,7 @@ fn check_expr_lints<'db>(
 fn visit_statements<'db>(
     db: &'db dyn WorkspaceDataBase,
     body: ScopeInference<'db>,
-    ctx: &VisitorCtx,
+    ctx: &VisitorCtx<'db>,
     scope: ScopeId<'db>,
     stmts: &[Stmt<'db>],
     diagnostics: &mut Vec<IdeDiagnostic>,
@@ -310,6 +339,11 @@ fn visit_statements<'db>(
                 if ctx.aggregate_copy {
                     run_lint(aggregate_copy::NAME, diagnostics, |d| {
                         aggregate_copy::check_assignment(db, body, *stmt, *var, d)
+                    });
+                }
+                if ctx.string_truncation {
+                    run_lint(string_truncation::NAME, diagnostics, |d| {
+                        string_truncation::check_assignment(db, body, *var, target, d)
                     });
                 }
                 if ctx.loop_var_modified {
@@ -422,6 +456,11 @@ fn visit_statements<'db>(
                         empty_loop_body::check_while(db, condition, loop_body, d)
                     });
                 }
+                if ctx.endless_loop {
+                    run_lint(endless_loop::NAME, diagnostics, |d| {
+                        endless_loop::check_loop(db, body, scope, condition, loop_body, d)
+                    });
+                }
                 visit_statements(
                     db,
                     body,
@@ -503,6 +542,11 @@ fn visit_statements<'db>(
                         empty_loop_body::check_repeat(db, condition, loop_body, d)
                     });
                 }
+                if ctx.endless_loop {
+                    run_lint(endless_loop::NAME, diagnostics, |d| {
+                        endless_loop::check_loop(db, body, scope, condition, loop_body, d)
+                    });
+                }
                 visit_statements(
                     db,
                     body,
@@ -560,7 +604,14 @@ fn visit_statements<'db>(
             }
             StmtKind::FuncCall(call) if ctx.missing_input_param => {
                 run_lint(missing_input_param::NAME, diagnostics, |d| {
-                    missing_input_param::check_func_call(db, body, *stmt, *call, d)
+                    missing_input_param::check_func_call(
+                        db,
+                        body,
+                        *stmt,
+                        *call,
+                        &ctx.written_inputs,
+                        d,
+                    )
                 });
             }
             StmtKind::WasmPragma(decl)

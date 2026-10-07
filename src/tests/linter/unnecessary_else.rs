@@ -23,7 +23,7 @@ END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "unnecessary-else"), @r"
-    [L0211] Info: unnecessary ELSE
+    [L0308] Hint: unnecessary ELSE
         ,-[ file:///test0.st:10:9 ]
         |
      10 |         test := 0;
@@ -52,7 +52,7 @@ END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "unnecessary-else"), @r"
-    [L0211] Info: unnecessary ELSE
+    [L0308] Hint: unnecessary ELSE
         ,-[ file:///test0.st:10:13 ]
         |
      10 |             test := i;
@@ -81,7 +81,7 @@ END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "unnecessary-else"), @r"
-    [L0211] Info: unnecessary ELSE
+    [L0308] Hint: unnecessary ELSE
         ,-[ file:///test0.st:10:13 ]
         |
      10 |             test := i;
@@ -145,7 +145,7 @@ END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "unnecessary-else"), @r"
-    [L0211] Info: unnecessary ELSE
+    [L0308] Hint: unnecessary ELSE
         ,-[ file:///test0.st:13:9 ]
         |
      13 |         test := 0;

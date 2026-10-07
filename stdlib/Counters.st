@@ -29,6 +29,8 @@ NAMESPACE Std.Counters
 	   END_IF;
 	   ```
 	*/
+	{must_call}
+	{once}
 	FUNCTION_BLOCK CTU_SINT
 		VAR_INPUT
 			CU: BOOL;
@@ -53,6 +55,8 @@ NAMESPACE Std.Counters
 	END_FUNCTION_BLOCK
 
 	// Count Up with `INT` count value
+	{must_call}
+	{once}
 	FUNCTION_BLOCK CTU_INT
 		VAR_INPUT
 			CU: BOOL;
@@ -77,6 +81,8 @@ NAMESPACE Std.Counters
 	END_FUNCTION_BLOCK
 
 	// Count Up with `DINT` count value
+	{must_call}
+	{once}
 	FUNCTION_BLOCK CTU_DINT
 		VAR_INPUT
 			CU: BOOL;
@@ -101,6 +107,8 @@ NAMESPACE Std.Counters
 	END_FUNCTION_BLOCK
 
 	// Count Up with `LINT` count value
+	{must_call}
+	{once}
 	FUNCTION_BLOCK CTU_LINT
 		VAR_INPUT
 			CU: BOOL;
@@ -142,6 +150,8 @@ NAMESPACE Std.Counters
 	   END_IF;
 	   ```
 	*/
+	{must_call}
+	{once}
 	FUNCTION_BLOCK CTD_SINT
 		VAR_INPUT
 			CD: BOOL;
@@ -166,6 +176,8 @@ NAMESPACE Std.Counters
 	END_FUNCTION_BLOCK
 
 	// Count Down with `INT` count value
+	{must_call}
+	{once}
 	FUNCTION_BLOCK CTD_INT
 		VAR_INPUT
 			CD: BOOL;
@@ -190,6 +202,8 @@ NAMESPACE Std.Counters
 	END_FUNCTION_BLOCK
 
 	// Count Down with `DINT` count value
+	{must_call}
+	{once}
 	FUNCTION_BLOCK CTD_DINT
 		VAR_INPUT
 			CD: BOOL;
@@ -214,6 +228,8 @@ NAMESPACE Std.Counters
 	END_FUNCTION_BLOCK
 
 	// Count Down with `LINT` count value
+	{must_call}
+	{once}
 	FUNCTION_BLOCK CTD_LINT
 		VAR_INPUT
 			CD: BOOL;
@@ -256,6 +272,8 @@ NAMESPACE Std.Counters
 	   full := counter.QU;
 	   ```
 	*/
+	{must_call}
+	{once}
 	FUNCTION_BLOCK CTUD_SINT
 		VAR_INPUT
 			CU: BOOL;
@@ -294,6 +312,8 @@ NAMESPACE Std.Counters
 	END_FUNCTION_BLOCK
 
 	// Count Up/Down with `INT` count value
+	{must_call}
+	{once}
 	FUNCTION_BLOCK CTUD_INT
 		VAR_INPUT
 			CU: BOOL;
@@ -332,6 +352,8 @@ NAMESPACE Std.Counters
 	END_FUNCTION_BLOCK
 
 	// Count Up/Down with `DINT` count value
+	{must_call}
+	{once}
 	FUNCTION_BLOCK CTUD_DINT
 		VAR_INPUT
 			CU: BOOL;
@@ -370,6 +392,8 @@ NAMESPACE Std.Counters
 	END_FUNCTION_BLOCK
 
 	// Count Up/Down with `LINT` count value
+	{must_call}
+	{once}
 	FUNCTION_BLOCK CTUD_LINT
 		VAR_INPUT
 			CU: BOOL;
@@ -409,6 +433,8 @@ NAMESPACE Std.Counters
 
 
 	/* [Std.Counters.CTU_INT] under the name the standard gives it. */
+	{must_call}
+	{once}
 	FUNCTION_BLOCK CTU
 		VAR_INPUT
 			CU: BOOL;
@@ -433,6 +459,8 @@ NAMESPACE Std.Counters
 	END_FUNCTION_BLOCK
 
 	/* [Std.Counters.CTD_INT] under the name the standard gives it. */
+	{must_call}
+	{once}
 	FUNCTION_BLOCK CTD
 		VAR_INPUT
 			CD: BOOL;
@@ -457,6 +485,8 @@ NAMESPACE Std.Counters
 	END_FUNCTION_BLOCK
 
 	/* [Std.Counters.CTUD_INT] under the name the standard gives it. */
+	{must_call}
+	{once}
 	FUNCTION_BLOCK CTUD
 		VAR_INPUT
 			CU: BOOL;
@@ -495,6 +525,8 @@ NAMESPACE Std.Counters
 	END_FUNCTION_BLOCK
 
 	// Count Up with `UDINT` count value
+	{must_call}
+	{once}
 	FUNCTION_BLOCK CTU_UDINT
 		VAR_INPUT
 			CU: BOOL;
@@ -519,6 +551,8 @@ NAMESPACE Std.Counters
 	END_FUNCTION_BLOCK
 
 	// Count Up with `ULINT` count value
+	{must_call}
+	{once}
 	FUNCTION_BLOCK CTU_ULINT
 		VAR_INPUT
 			CU: BOOL;
@@ -543,6 +577,8 @@ NAMESPACE Std.Counters
 	END_FUNCTION_BLOCK
 
 	// Count Down with `UDINT` count value
+	{must_call}
+	{once}
 	FUNCTION_BLOCK CTD_UDINT
 		VAR_INPUT
 			CD: BOOL;
@@ -567,6 +603,8 @@ NAMESPACE Std.Counters
 	END_FUNCTION_BLOCK
 
 	// Count Down with `ULINT` count value
+	{must_call}
+	{once}
 	FUNCTION_BLOCK CTD_ULINT
 		VAR_INPUT
 			CD: BOOL;
@@ -591,6 +629,8 @@ NAMESPACE Std.Counters
 	END_FUNCTION_BLOCK
 
 	// Count Up/Down with `UDINT` count value
+	{must_call}
+	{once}
 	FUNCTION_BLOCK CTUD_UDINT
 		VAR_INPUT
 			CU: BOOL;
@@ -629,6 +669,8 @@ NAMESPACE Std.Counters
 	END_FUNCTION_BLOCK
 
 	// Count Up/Down with `ULINT` count value
+	{must_call}
+	{once}
 	FUNCTION_BLOCK CTUD_ULINT
 		VAR_INPUT
 			CU: BOOL;
@@ -690,6 +732,8 @@ NAMESPACE Std.Counters
 				counter: CTU_INT;
 				i: INT;
 			END_VAR
+			// Each turn is two scans.
+			{allow 'must-call-conditional'}
 			FOR i := 1 TO 5 DO
 				counter(CU := TRUE, R := FALSE, PV := 3);
 				counter(CU := FALSE, R := FALSE, PV := 3);

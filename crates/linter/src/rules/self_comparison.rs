@@ -85,7 +85,7 @@ fn same_variable<'db>(
     Some(lhs_var.name_with_case(db).text(db).to_string())
 }
 
-fn resolve_variable<'db>(
+pub(crate) fn resolve_variable<'db>(
     db: &'db dyn WorkspaceDataBase,
     body: ScopeInference<'db>,
     expr: &Expr<'db>,

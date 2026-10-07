@@ -10,12 +10,12 @@ use rustc_hash::FxHashMap;
 
 pub const NAME: &str = "duplicate-namespace";
 
-/// L0204: duplicate namespace declarations in the same file could be merged.
+/// L0302: duplicate namespace declarations in the same file could be merged.
 struct DuplicateNamespace;
 
 impl ErrorCode for DuplicateNamespace {
     fn code(&self) -> &'static str {
-        "L0204"
+        "L0302"
     }
 }
 
@@ -54,7 +54,7 @@ pub fn check<'db>(
                 ))
                 .desc(&DuplicateNamespace)
                 .range(hir::denormalize(db, ns.get_scope_id(db).file(db), &ns.name_span(db)).unwrap_or_default())
-                .severity(DiagnosticSeverity::INFORMATION)
+                .severity(DiagnosticSeverity::HINT)
                 .call();
             d.with_related(ide_diagnostic::Related {
                 message: format!("first declaration of '{path_str}' here"),

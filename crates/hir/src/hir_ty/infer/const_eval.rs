@@ -81,6 +81,88 @@ pub fn const_int<'db>(
     fold(db, expr, &bind, &mut Vec::new()).map(|folded| folded.value)
 }
 
+/// An operation on constants whose result the type it runs at cannot hold.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Overflow {
+    /// The result as written: `32767 + 1` is 32768.
+    pub exact: i128,
+    /// What the program computes, the result wrapped: -32768.
+    pub held: i128,
+    /// The type the operation runs at.
+    pub ty: ElementarySpec,
+}
+
+/// The overflow of `expr` itself, when it is a `+`, `-`, `*`, `/`, `MOD` or
+/// a minus sign on constants: `32767 + 1` at INT, `200 * 200` too. Its
+/// operands fold as the program computes them. An operand in which an
+/// operation wrapped already is that operation's overflow, and what follows
+/// is not another; an untyped literal its type cannot hold is reported as a
+/// literal (E0306).
+///
+/// `bind` is the declaration a name in it refers to: a body's binding, or
+/// [`spec_name_binding`] in a declaration.
+pub fn overflow<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    expr: Expr<'db>,
+    bind: &dyn Fn(VariableAccess<'db>) -> Option<VariableDecl<'db>>,
+) -> Option<Overflow> {
+    // An operand, or `None` when it does not fold or wrapped inside.
+    let operand = |e| {
+        let mut wrapped = false;
+        let folded = fold_tracking(db, e, bind, &mut Vec::new(), &mut wrapped)?;
+        (!wrapped).then_some(folded)
+    };
+    let fits = |operand: Folded, ty| {
+        operand.ty.is_some() || integer_holds(operand.value, ty) == Some(true)
+    };
+    let (exact, ty) = match expr.expr(db) {
+        ExprKind::AddOperator {
+            left,
+            operator,
+            right,
+        } => {
+            let (l, r) = (operand(*left)?, operand(*right)?);
+            let ty = l.join(r);
+            if !fits(l, ty) || !fits(r, ty) {
+                return None;
+            }
+            let exact = match operator {
+                AddOperatorKind::Plus => l.value.checked_add(r.value)?,
+                AddOperatorKind::Minus => l.value.checked_sub(r.value)?,
+            };
+            (exact, ty)
+        }
+        ExprKind::MultOperator {
+            left,
+            operator,
+            right,
+        } => {
+            let (l, r) = (operand(*left)?, operand(*right)?);
+            let ty = l.join(r);
+            if !fits(l, ty) || !fits(r, ty) {
+                return None;
+            }
+            let exact = match operator {
+                MultOperatorKind::Mul => l.value.checked_mul(r.value)?,
+                MultOperatorKind::Div => l.value.checked_div(r.value)?,
+                MultOperatorKind::Mod => l.value.checked_rem(r.value)?,
+            };
+            (exact, ty)
+        }
+        // A minus on an untyped literal is part of the literal: `-32768`.
+        ExprKind::UnaryOperator {
+            expr,
+            operator: UnaryOperatorKind::Minus,
+        } => {
+            let operand = operand(*expr)?;
+            (operand.value.checked_neg()?, operand.ty?)
+        }
+        _ => return None,
+    };
+    let held = Folded::at(exact, ty)?.value;
+    (held != exact).then_some(Overflow { exact, held, ty })
+}
+
 /// The compile-time integer value of a SPEC-context expression — an array or
 /// subrange bound, an enum value, a STRING length, an initializer. These are
 /// typed by INIT inference, not body inference, so a name binds through the
@@ -161,13 +243,19 @@ impl Folded {
 
 /// Whether `ty` holds `value`, when `ty` is an integer type.
 pub fn integer_holds(value: i128, ty: ElementarySpec) -> Option<bool> {
+    let (min, max) = integer_range(ty)?;
+    Some((min..=max).contains(&value))
+}
+
+/// The smallest and the largest value of an integer type, a bit string read
+/// unsigned. `None` for any other type.
+pub fn integer_range(ty: ElementarySpec) -> Option<(i128, i128)> {
     let (bits, signed) = integer_layout(ty)?;
-    let (min, max) = if signed {
+    Some(if signed {
         (-(1i128 << (bits - 1)), (1i128 << (bits - 1)) - 1)
     } else {
         (0, (1i128 << bits) - 1)
-    };
-    Some((min..=max).contains(&value))
+    })
 }
 
 /// Width and signedness of an integer type; a bit string reads unsigned.
@@ -190,10 +278,21 @@ fn fold<'db>(
     db: &'db dyn WorkspaceDataBase,
     expr: Expr<'db>,
     bind: &dyn Fn(VariableAccess<'db>) -> Option<VariableDecl<'db>>,
+    visited: &mut Vec<VariableDecl<'db>>,
+) -> Option<Folded> {
+    fold_tracking(db, expr, bind, visited, &mut false)
+}
+
+fn fold_tracking<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    expr: Expr<'db>,
+    bind: &dyn Fn(VariableAccess<'db>) -> Option<VariableDecl<'db>>,
     // The chain of CONSTANTs already being evaluated: `k1 := k2; k2 := k1`
     // used to recurse to a stack overflow (SIGABRT, no diagnostic) — a cycle
     // simply does not fold.
     visited: &mut Vec<VariableDecl<'db>>,
+    // Set when an operation's exact result differs from what it holds.
+    wrapped: &mut bool,
 ) -> Option<Folded> {
     match expr.expr(db) {
         ExprKind::PrimaryExpr(PrimaryExpr::Literal(literal)) => {
@@ -220,13 +319,17 @@ fn fold<'db>(
             }
         }
         ExprKind::PrimaryExpr(PrimaryExpr::ParenthesizedExpr { expr }) => {
-            fold(db, *expr, bind, visited)
+            fold_tracking(db, *expr, bind, visited, wrapped)
         }
         ExprKind::UnaryOperator { expr, operator } => {
-            let operand = fold(db, *expr, bind, visited)?;
+            let operand = fold_tracking(db, *expr, bind, visited, wrapped)?;
             match operator {
                 UnaryOperatorKind::Plus => Some(operand),
-                UnaryOperatorKind::Minus => operand.with(operand.value.wrapping_neg()),
+                UnaryOperatorKind::Minus => noted(
+                    operand.with(operand.value.wrapping_neg())?,
+                    operand.value.checked_neg(),
+                    wrapped,
+                ),
                 _ => None,
             }
         }
@@ -250,14 +353,14 @@ fn fold<'db>(
             right,
         } => {
             let (l, r) = (
-                fold(db, *left, bind, visited)?,
-                fold(db, *right, bind, visited)?,
+                fold_tracking(db, *left, bind, visited, wrapped)?,
+                fold_tracking(db, *right, bind, visited, wrapped)?,
             );
             let value = match operator {
                 AddOperatorKind::Plus => l.value.wrapping_add(r.value),
                 AddOperatorKind::Minus => l.value.wrapping_sub(r.value),
             };
-            Folded::at(value, l.join(r))
+            noted(Folded::at(value, l.join(r))?, Some(value), wrapped)
         }
         ExprKind::MultOperator {
             left,
@@ -265,18 +368,27 @@ fn fold<'db>(
             right,
         } => {
             let (l, r) = (
-                fold(db, *left, bind, visited)?,
-                fold(db, *right, bind, visited)?,
+                fold_tracking(db, *left, bind, visited, wrapped)?,
+                fold_tracking(db, *right, bind, visited, wrapped)?,
             );
             let value = match operator {
                 MultOperatorKind::Mul => l.value.wrapping_mul(r.value),
                 MultOperatorKind::Div => l.value.checked_div(r.value)?,
                 MultOperatorKind::Mod => l.value.checked_rem(r.value)?,
             };
-            Folded::at(value, l.join(r))
+            noted(Folded::at(value, l.join(r))?, Some(value), wrapped)
         }
         _ => None,
     }
+}
+
+/// `folded`, noting in `wrapped` when it is not `exact`, the result before
+/// wrapping. An exact result past 128 bits is noted too.
+fn noted(folded: Folded, exact: Option<i128>, wrapped: &mut bool) -> Option<Folded> {
+    if exact != Some(folded.value) {
+        *wrapped = true;
+    }
+    Some(folded)
 }
 
 /// The integer type a declaration holds: a subrange's base, a named type's

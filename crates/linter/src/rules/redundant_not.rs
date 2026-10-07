@@ -11,12 +11,12 @@ use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
 
 pub const NAME: &str = "redundant-not";
 
-/// L0210: double negation `NOT NOT x` can be simplified.
+/// L0307: double negation `NOT NOT x` can be simplified.
 struct RedundantNot;
 
 impl ErrorCode for RedundantNot {
     fn code(&self) -> &'static str {
-        "L0210"
+        "L0307"
     }
 }
 
@@ -44,7 +44,7 @@ pub fn check_node<'db>(
                         hir::denormalize(db, expr.get_scope_id(db).file(db), &expr.get_span(db))
                             .unwrap_or_default(),
                     )
-                    .severity(DiagnosticSeverity::INFORMATION)
+                    .severity(DiagnosticSeverity::HINT)
                     .call(),
             );
         }

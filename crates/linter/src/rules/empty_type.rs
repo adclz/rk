@@ -11,12 +11,12 @@ use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
 
 pub const NAME: &str = "empty-type";
 
-/// L0309: a STRUCT or ENUM type declaration has no members.
+/// L0214: a STRUCT or ENUM type declaration has no members.
 struct EmptyType;
 
 impl ErrorCode for EmptyType {
     fn code(&self) -> &'static str {
-        "L0309"
+        "L0214"
     }
 }
 
@@ -41,7 +41,7 @@ pub fn check<'db>(
                             )
                             .unwrap_or_default(),
                         )
-                        .severity(DiagnosticSeverity::HINT)
+                        .severity(DiagnosticSeverity::INFORMATION)
                         .call(),
                 );
             }
@@ -56,7 +56,7 @@ pub fn check<'db>(
                         hir::denormalize(db, dt.get_scope_id(db).file(db), &dt.get_name_span(db))
                             .unwrap_or_default(),
                     )
-                    .severity(DiagnosticSeverity::HINT)
+                    .severity(DiagnosticSeverity::INFORMATION)
                     .call(),
             );
         }

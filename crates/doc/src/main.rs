@@ -518,7 +518,7 @@ fn main() {
                 })
                 .unwrap_or("info")
         };
-        let groups: [(&str, &str, &str); 5] = [
+        let groups: [(&str, &str, &str); 4] = [
             (
                 "L00",
                 "Pragmas",
@@ -526,19 +526,18 @@ fn main() {
             ),
             (
                 "L01",
-                "Declarations",
-                "Declarations that are unused, shadowed or redundant.",
+                "Probable bugs",
+                "Code that likely does something other than what was meant. On by default.",
             ),
             (
                 "L02",
-                "Style",
-                "Matters of taste. Off unless you ask for them.",
+                "Likely mistakes",
+                "Leftovers, gaps and costs worth a second look. On by default.",
             ),
-            ("L03", "Suspicious code", "Probably a bug. On by default."),
             (
-                "L04",
-                "Globals",
-                "Reaching a CONFIGURATION global without declaring it. On by default.",
+                "L03",
+                "Style",
+                "Code that does what it says and reads better written another way. Off unless you ask for them.",
             ),
         ];
         let mut md = String::new();
@@ -557,8 +556,31 @@ fn main() {
             let mut html_rows: Vec<String> = Vec::new();
             for e in rows {
                 let rule = e.ex.lint_rule.as_deref().unwrap_or("");
-                let on = linter::RECOMMENDED_RULE_NAMES.contains(&rule);
+                let on = linter::is_recommended(rule);
                 let sev = severity_of(e);
+                // A code's family is its severity, and the style family is
+                // exactly what the default leaves out.
+                let family = match &e.ex.code[..3] {
+                    "L01" => Some("warning"),
+                    "L02" => Some("info"),
+                    "L03" => Some("hint"),
+                    _ => None,
+                };
+                if let Some(family) = family {
+                    if sev != family {
+                        panic!(
+                            "{}: `{rule}` reports a {sev}, in the {family} codes",
+                            e.ex.code
+                        );
+                    }
+                    if on == (family == "hint") {
+                        panic!(
+                            "{}: `{rule}` is {} by default, and its code says otherwise",
+                            e.ex.code,
+                            if on { "on" } else { "off" }
+                        );
+                    }
+                }
                 md.push_str(&format!(
                     "| {} | `{}` | {} | {} | {} |\n",
                     e.ex.code,

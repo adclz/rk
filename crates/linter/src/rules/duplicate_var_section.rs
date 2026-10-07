@@ -14,12 +14,12 @@ use rustc_hash::FxHashMap;
 
 pub const NAME: &str = "duplicate-var-section";
 
-/// L0203: duplicate variable section in the same POU.
+/// L0301: duplicate variable section in the same POU.
 struct DuplicateVarSection;
 
 impl ErrorCode for DuplicateVarSection {
     fn code(&self) -> &'static str {
-        "L0203"
+        "L0301"
     }
 }
 
@@ -130,7 +130,7 @@ fn check_pou_node(
             let range = child.range();
             let mut d = diag()
                 .message(format!("duplicate {name} section"))
-                .severity(DiagnosticSeverity::INFORMATION)
+                .severity(DiagnosticSeverity::HINT)
                 .desc(&DuplicateVarSection)
                 .range(
                     file.document(db)

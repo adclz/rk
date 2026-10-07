@@ -23,7 +23,7 @@ END_FUNCTION_BLOCK
 "#,
     ];
     assert_snapshot!(test_single_lint(&mut with_db, sources, "unused-import"), @r"
-    [L0301] Hint: unused import
+    [L0206] Info: unused import
        ,-[ file:///test1.st:3:11 ]
        |
      3 |     USING Tools;
@@ -88,7 +88,7 @@ END_FUNCTION
        |
        | Help: qualify the name: Tools.helper or Utils.helper
     ---'
-    [L0301] Hint: unused import
+    [L0206] Info: unused import
        ,-[ file:///test1.st:3:11 ]
        |
      3 |     USING Tools;
@@ -97,7 +97,7 @@ END_FUNCTION
        |
        | Note: lint rule: unused-import
     ---'
-    [L0301] Hint: unused import
+    [L0206] Info: unused import
        ,-[ file:///test1.st:4:11 ]
        |
      4 |     USING Utils;
@@ -207,7 +207,7 @@ END_FUNCTION
 "#,
     ];
     assert_snapshot!(test_single_lint(&mut with_db, sources, "unused-import"), @r"
-    [L0301] Hint: unused import
+    [L0206] Info: unused import
        ,-[ file:///test1.st:2:7 ]
        |
      2 | USING Tools;
@@ -244,7 +244,7 @@ END_NAMESPACE
 "#,
     ];
     assert_snapshot!(test_single_lint(&mut with_db, sources, "unused-import"), @r"
-    [L0301] Hint: unused import
+    [L0206] Info: unused import
        ,-[ file:///test1.st:3:11 ]
        |
      3 |     USING Tools;
@@ -306,7 +306,7 @@ END_NAMESPACE
 "#,
     ];
     assert_snapshot!(test_single_lint(&mut with_db, sources, "unused-import"), @r"
-    [L0301] Hint: unused import
+    [L0206] Info: unused import
        ,-[ file:///test1.st:3:11 ]
        |
      3 |     USING Tools;

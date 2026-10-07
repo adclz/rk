@@ -16,12 +16,12 @@ use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
 
 pub const NAME: &str = "empty-body";
 
-/// L0305: function or method has an empty body.
+/// L0210: function or method has an empty body.
 struct EmptyBody;
 
 impl ErrorCode for EmptyBody {
     fn code(&self) -> &'static str {
-        "L0305"
+        "L0210"
     }
 }
 
@@ -75,7 +75,7 @@ pub fn check<'db>(
                 .message(format!("{kind_str} '{name}' has an empty body"))
                 .desc(&EmptyBody)
                 .range(hir::denormalize(db, scope.file(db), &span).unwrap_or_default())
-                .severity(DiagnosticSeverity::HINT)
+                .severity(DiagnosticSeverity::INFORMATION)
                 .call(),
         );
     }

@@ -944,6 +944,30 @@
         }
       }
     },
+    "must_call_pragma": {
+      "type": "PREC",
+      "value": 1,
+      "content": {
+        "type": "TOKEN",
+        "content": {
+          "type": "SEQ",
+          "members": [
+            {
+              "type": "STRING",
+              "value": "{"
+            },
+            {
+              "type": "STRING",
+              "value": "must_call"
+            },
+            {
+              "type": "STRING",
+              "value": "}"
+            }
+          ]
+        }
+      }
+    },
     "export_pragma": {
       "type": "PREC",
       "value": 1,
@@ -978,6 +1002,10 @@
         {
           "type": "SYMBOL",
           "name": "once_pragma"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "must_call_pragma"
         },
         {
           "type": "SYMBOL",

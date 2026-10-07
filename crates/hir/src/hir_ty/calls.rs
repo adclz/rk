@@ -249,3 +249,121 @@ pub fn call_chain<'db>(
     }
     None
 }
+
+/// Every instance a file's bodies reach through a path of two steps or more:
+/// `o.t()` runs the body of `o`'s member `t`, `f(io := o.t)` and
+/// `REF(o.t)` hand it on. A member its own block never calls may be called,
+/// or handed on, from outside the block this way.
+#[salsa::tracked(returns(ref))]
+pub fn instances_reached_through_paths<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    file: auto_lsp::default::db::file::File,
+) -> Vec<crate::hir_def::pous::variable::VariableDecl<'db>> {
+    use crate::hir_def::expressions::expression::{
+        ExprKind, PrimaryExpr, RefValue, VariableAccessKind,
+    };
+    use crate::hir_ty::body::ParamBinding;
+
+    let index = crate::hir_def::semantic_index::semantic_index(db, file);
+    let mut scopes: Vec<ScopeId<'db>> = Vec::new();
+    let pous = index.global_pous.iter().copied().chain(
+        index
+            .namespaces
+            .iter()
+            .flat_map(|ns| ns.pous(db).iter().copied()),
+    );
+    for pou in pous {
+        let scope = pou.get_scope_id(db);
+        scopes.push(scope);
+        if let Some(methods) = scope.method_declarations(db) {
+            scopes.extend(methods.iter().map(|m| m.get_scope_id(db)));
+        }
+    }
+    scopes.extend(
+        index
+            .programs
+            .iter()
+            .map(|program| program.get_scope_id(db)),
+    );
+
+    let mut reached = Vec::new();
+    for scope in scopes {
+        let inference = scope.inference(db);
+        let mut reach = |path| {
+            if let Some(member) = member_of(db, inference, path)
+                && !reached.contains(&member)
+            {
+                reached.push(member);
+            }
+        };
+        for (call, resolved) in inference.resolved_calls() {
+            if matches!(resolved.callable, CallableType::FunctionBlock(_))
+                && let Some(path) = call.path(db).expr(db)
+            {
+                reach(path);
+            }
+            for (param, binding) in &resolved.params {
+                let access = match binding {
+                    ParamBinding::Values(values) if param.is_in_out(db) => {
+                        values.first().and_then(|value| match value.expr(db) {
+                            ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess(access)) => {
+                                Some(*access)
+                            }
+                            _ => None,
+                        })
+                    }
+                    ParamBinding::Output { variable, .. } => Some(*variable),
+                    _ => None,
+                };
+                if let Some(access) = access
+                    && let VariableAccessKind::Symbolic(begin) = access.kind(db)
+                    && let Some(path) = begin.expr(db)
+                {
+                    reach(path);
+                }
+            }
+        }
+        for (expr, _) in inference.typed_exprs() {
+            if let ExprKind::PrimaryExpr(PrimaryExpr::RefValue {
+                value: RefValue::Address(begin),
+            }) = expr.expr(db)
+                && let Some(path) = begin.expr(db)
+            {
+                reach(path);
+            }
+        }
+    }
+    reached
+}
+
+/// The member a path of two steps or more ends on: `t` for `o.t`, `ts` for
+/// `o.ts[i]`. `None` for a single name.
+fn member_of<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    inference: ScopeInference<'db>,
+    path: crate::hir_def::expressions::expression::PathExpr<'db>,
+) -> Option<crate::hir_def::pous::variable::VariableDecl<'db>> {
+    use crate::hir_ty::expr_store::PathExprWalkStep;
+    let steps = path.flatten(db);
+    steps
+        .iter()
+        .enumerate()
+        .skip(1)
+        .rev()
+        .find_map(|(_, step)| match step {
+            PathExprWalkStep::Field { expr, .. } => inference.variable_for_path_expr(*expr),
+            _ => None,
+        })
+}
+
+/// Whether a body of the workspace reaches `instance` through a path, as
+/// [`instances_reached_through_paths`] collects them. A library's bodies
+/// cannot name the workspace's instances.
+pub fn reached_through_a_path<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    instance: crate::hir_def::pous::variable::VariableDecl<'db>,
+) -> bool {
+    db.get_files()
+        .iter()
+        .any(|file| instances_reached_through_paths(db, *file).contains(&instance))
+}
