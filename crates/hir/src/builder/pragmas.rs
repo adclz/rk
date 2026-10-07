@@ -12,7 +12,7 @@ impl<'db> SemanticIndexBuilder<'db> {
         &mut self,
         pragmas: &[auto_lsp::core::ast::AstNodeId<ast::generated::PouPragma>],
     ) -> Vec<Pragma<'db>> {
-        use ast::generated::AllowPragma_ExportPragma_ExternPragma_OncePragma_TestPragma_WarnPragma as PragmaKind;
+        use ast::generated::AllowPragma_ExportPragma_ExternPragma_MustCallPragma_OncePragma_TestPragma_WarnPragma as PragmaKind;
 
         let mut result = Vec::new();
 
@@ -29,6 +29,9 @@ impl<'db> SemanticIndexBuilder<'db> {
                 }
                 PragmaKind::OncePragma(_) => {
                     result.push(Pragma::Once(si));
+                }
+                PragmaKind::MustCallPragma(_) => {
+                    result.push(Pragma::MustCall(si));
                 }
                 PragmaKind::ExportPragma(_) => {
                     result.push(Pragma::Export(si));

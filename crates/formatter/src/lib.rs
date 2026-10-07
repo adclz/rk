@@ -138,6 +138,7 @@ static SURROUND_SPACES: &str = r##"
 (test_pragma) @leaf @append_hardline
 (export_pragma) @leaf @append_hardline
 (once_pragma) @leaf @append_hardline
+(must_call_pragma) @leaf @append_hardline
 "##;
 
 static NEW_LINES: &str = r##"
@@ -475,6 +476,7 @@ static ALLOW_BLANK_LINE: &str = r#"
     (test_pragma)
     (export_pragma)
     (once_pragma)
+    (must_call_pragma)
     (allow_pragma)
 ] @allow_blank_line_before
 

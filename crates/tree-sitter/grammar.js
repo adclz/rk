@@ -464,6 +464,11 @@ module.exports = grammar({
     // {once}
     once_pragma: (_) => prec(1, token(seq("{", "once", "}"))),
 
+    // Must-call pragma - every instance of the annotated FUNCTION_BLOCK should
+    // be called, its outputs change only when its body runs
+    // {must_call}
+    must_call_pragma: (_) => prec(1, token(seq("{", "must_call", "}"))),
+
     // Export pragma - the annotated FUNCTION is a WASM export, under its name.
     // {export}
     // Nothing else a workspace declares is exported, so an optimizer may drop
@@ -471,12 +476,13 @@ module.exports = grammar({
     export_pragma: (_) => prec(1, token(seq("{", "export", "}"))),
 
     // Unified POU pragma list - validated during HIR building
-    // Covers: {test}, {once}, {export}, {warn = '...'}, {info = '...'},
-    // {extern 'module' 'name'}
+    // Covers: {test}, {once}, {must_call}, {export}, {warn = '...'},
+    // {info = '...'}, {extern 'module' 'name'}
     pou_pragma: ($) =>
       choice(
         $.test_pragma,
         $.once_pragma,
+        $.must_call_pragma,
         $.export_pragma,
         $.warn_pragma,
         $.extern_pragma,

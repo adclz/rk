@@ -79,7 +79,7 @@ L0001 and L0202 report at info severity and still run by default, because what t
 | --- | --- | --- | --- |
 | L0001 | `warn-pragma` | info **(recommended)** | the message of an `{info = '...'}` pragma, at each call site of the marked POU |
 | L0002 | `warn-pragma` | warning | the message of a `{warn = '...'}` pragma, at each call site of the marked POU |
-| L0003 | `invalid-pragma` | warning | a pragma placed on a POU kind that does not accept it: `{test}` on FUNCTION_BLOCK, METHOD or PROGRAM, `{once}` on PROGRAM |
+| L0003 | `invalid-pragma` | warning | a pragma placed on a POU kind that does not accept it: `{test}` on FUNCTION_BLOCK, METHOD or PROGRAM, `{once}` on PROGRAM, `{must_call}` on anything but a FUNCTION_BLOCK |
 | L0004 | `once-violation` | info | a `{once}` POU called more than once in the same body |
 | L0005 | `unknown-allow` | warning | an `{allow}` pragma naming a rule that does not exist |
 

@@ -56,3 +56,30 @@ END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "invalid-pragma"), @r"");
 }
+
+/// `{must_call}` asks every instance to be called: on anything but a
+/// FUNCTION_BLOCK it has no effect.
+#[rstest]
+fn must_call_outside_a_function_block(mut with_db: RootDatabase) {
+    let source = r#"
+{must_call}
+FUNCTION f : INT
+    f := 1;
+END_FUNCTION
+
+{must_call}
+FUNCTION_BLOCK Fb
+END_FUNCTION_BLOCK
+"#;
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "invalid-pragma"), @r"
+    [L0003] Warning: pragma without effect on the POU
+       ,-[ file:///test0.st:2:1 ]
+       |
+     2 | {must_call}
+       | ^^^^^|^^^^^
+       |      `------- {must_call} has no effect on a FUNCTION
+       |
+       | Note: lint rule: invalid-pragma
+    ---'
+    ");
+}

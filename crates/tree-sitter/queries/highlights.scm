@@ -69,6 +69,7 @@
 (export_pragma) @attribute
 (extern_pragma) @attribute
 (once_pragma) @attribute
+(must_call_pragma) @attribute
 (test_pragma) @attribute
 (warn_pragma) @attribute
 (wasm_pragma) @attribute

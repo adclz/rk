@@ -27,7 +27,7 @@ enum TokenType {
 
 // The first words of the pragmas the grammar has a rule for.
 static const char *const KNOWN_PRAGMAS[] = {
-    "test", "once", "export", "extern", "wasm", "allow", "warn", "info",
+    "test", "once", "must_call", "export", "extern", "wasm", "allow", "warn", "info",
 };
 
 static bool is_word_char(int32_t c) {

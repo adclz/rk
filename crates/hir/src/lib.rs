@@ -161,6 +161,17 @@ pub trait HasPragmas<'db>: HirNodeInfo<'db> {
         })
     }
 
+    /// `{must_call}`: every instance of this FUNCTION_BLOCK should be called.
+    fn must_call_pragma(
+        &self,
+        db: &'db dyn WorkspaceDataBase,
+    ) -> Option<&'db hir_def::interned::identifier::SpanIdent<'db>> {
+        self.get_pragmas(db).iter().find_map(|p| match p {
+            hir_def::pous::pragma::Pragma::MustCall(s) => Some(s),
+            _ => None,
+        })
+    }
+
     fn warn_pragma(
         &self,
         db: &'db dyn WorkspaceDataBase,
