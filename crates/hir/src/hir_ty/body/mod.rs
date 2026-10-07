@@ -270,6 +270,28 @@ impl<'db> ScopeInference<'db> {
         self.both().iter().any(|r| r.hands_out_result(self.db))
     }
 
+    // Statements only.
+
+    /// The calls of the statements, an initializer's left out: what an FB's
+    /// body runs, its members starting from their initializers once.
+    pub(crate) fn statement_calls(
+        self,
+    ) -> impl Iterator<Item = (FuncCall<'db>, &'db ResolvedCall<'db>)> {
+        self.statements
+            .resolved_calls
+            .iter()
+            .map(|(call, resolved)| (*call, resolved))
+    }
+
+    /// The expressions of the statements, with their types before
+    /// adjustments.
+    pub(crate) fn statement_exprs(self) -> impl Iterator<Item = (Expr<'db>, Type<'db>)> {
+        self.statements
+            .type_of_expr
+            .iter()
+            .map(|(expr, ty)| (*expr, *ty))
+    }
+
     // Statements only: an initializer has none.
 
     /// The value of a CASE label, as inference evaluated it.

@@ -123,6 +123,29 @@ pub struct ArrayLayout {
     pub whole: Layout,
 }
 
+impl ArrayLayout {
+    /// The rows after the first `through` dimensions: what `m[i]` names,
+    /// laid out where it starts.
+    pub fn row(&self, through: usize) -> Option<ArrayLayout> {
+        let dimensions = self.dimensions.get(through..)?.to_vec();
+        let count = dimensions
+            .iter()
+            .map(|(lower, upper)| {
+                u64::try_from(i128::from(*upper) - i128::from(*lower) + 1).unwrap_or(0)
+            })
+            .fold(1u64, u64::saturating_mul);
+        Some(ArrayLayout {
+            element: self.element,
+            dimensions,
+            count,
+            whole: Layout {
+                size: self.element.size.saturating_mul(count),
+                align: self.element.align,
+            },
+        })
+    }
+}
+
 #[salsa::tracked(returns(ref))]
 pub fn array_layout<'db>(db: &'db dyn WorkspaceDataBase, array: Array<'db>) -> Option<ArrayLayout> {
     array_parts(db, array, &mut Vec::new())
