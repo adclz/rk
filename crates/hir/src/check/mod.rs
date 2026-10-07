@@ -13,7 +13,7 @@ use crate::{
             check_config_fragment_collisions, check_duplicate_pous, check_duplicate_programs,
             check_single_configuration, check_single_resource,
         },
-        check_recursion::TypeDependencyGraph,
+        check_layout::{TypeDependencyGraph, check_frames, check_storage},
         errors::{ToIdeDiagnostic, e00_syntax::SyntaxError},
     },
     hir_def::semantic_index::semantic_index,
@@ -29,7 +29,7 @@ use crate::{
 };
 
 pub mod check_duplicates;
-pub mod check_recursion;
+pub mod check_layout;
 pub mod errors;
 pub mod wasm_instructions;
 
@@ -113,6 +113,8 @@ impl<'db> ScopeId<'db> {
             .for_each(|err| {
                 errors.push(err.clone());
             });
+        check_storage(db, *self, errors);
+        check_frames(db, *self, errors);
 
         infer_body(db, *self).errors.iter().for_each(|err| {
             errors.push(err.clone());

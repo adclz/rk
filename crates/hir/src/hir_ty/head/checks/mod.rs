@@ -12,7 +12,6 @@ use crate::{
 pub mod array;
 pub mod enum_;
 pub mod functions;
-pub mod layout;
 pub mod methods;
 pub mod strukt;
 pub mod subrange;
