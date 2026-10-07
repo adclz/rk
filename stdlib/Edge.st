@@ -23,6 +23,8 @@ NAMESPACE Std.Edge
 	   END_IF;
 	   ```
 	*/
+	{must_call}
+	{once}
 	FUNCTION_BLOCK R_TRIG
 		VAR_INPUT
 			CLK: BOOL;
@@ -55,6 +57,8 @@ NAMESPACE Std.Edge
 	   END_IF;
 	   ```
 	*/
+	{must_call}
+	{once}
 	FUNCTION_BLOCK F_TRIG
 		VAR_INPUT
 			CLK: BOOL;

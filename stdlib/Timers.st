@@ -47,6 +47,8 @@ NAMESPACE Std.Timers
 	   valve := pulse.Q;  // open for five seconds
 	   ```
 	*/
+	{must_call}
+	{once}
 	FUNCTION_BLOCK TP_TIME
 		VAR_INPUT
 			IN: BOOL;
@@ -86,6 +88,8 @@ NAMESPACE Std.Timers
 	TYPE TP: TP_TIME END_TYPE
 
 	/* [Std.Timers.TP_TIME] in `LTIME`. */
+	{must_call}
+	{once}
 	FUNCTION_BLOCK TP_LTIME
 		VAR_INPUT
 			IN: BOOL;
@@ -140,6 +144,8 @@ NAMESPACE Std.Timers
 	   END_IF;
 	   ```
 	*/
+	{must_call}
+	{once}
 	FUNCTION_BLOCK TON_TIME
 		VAR_INPUT
 			IN: BOOL;
@@ -181,6 +187,8 @@ NAMESPACE Std.Timers
 	TYPE TON: TON_TIME END_TYPE
 
 	/* [Std.Timers.TON_TIME] in `LTIME`. */
+	{must_call}
+	{once}
 	FUNCTION_BLOCK TON_LTIME
 		VAR_INPUT
 			IN: BOOL;
@@ -235,6 +243,8 @@ NAMESPACE Std.Timers
 	   cooling_fan := off_delay.Q;  // runs ten seconds after the motor stops
 	   ```
 	*/
+	{must_call}
+	{once}
 	FUNCTION_BLOCK TOF_TIME
 		VAR_INPUT
 			IN: BOOL;
@@ -274,6 +284,8 @@ NAMESPACE Std.Timers
 	TYPE TOF: TOF_TIME END_TYPE
 
 	/* [Std.Timers.TOF_TIME] in `LTIME`. */
+	{must_call}
+	{once}
 	FUNCTION_BLOCK TOF_LTIME
 		VAR_INPUT
 			IN: BOOL;
