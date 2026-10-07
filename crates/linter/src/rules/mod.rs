@@ -25,6 +25,7 @@ pub mod case_without_else;
 pub mod collapsible_if;
 pub mod constant_condition;
 pub mod constant_loop_bounds;
+pub mod constant_overflow;
 pub mod dead_code;
 pub mod default_for_step;
 pub mod division_by_zero;
@@ -113,6 +114,7 @@ pub const RECOMMENDED_RULE_NAMES: &[&str] = &[
     float_equality::NAME,
     endless_loop::NAME,
     string_truncation::NAME,
+    constant_overflow::NAME,
 ];
 
 /// Whether `name` runs under `config`: an explicit entry in `[linter.rules]`
@@ -137,6 +139,7 @@ pub const ALL_RULE_NAMES: &[&str] = &[
     collapsible_if::NAME,
     constant_condition::NAME,
     constant_loop_bounds::NAME,
+    constant_overflow::NAME,
     dead_code::NAME,
     default_for_step::NAME,
     division_by_zero::NAME,
@@ -401,6 +404,11 @@ fn lint_scope<'db>(
             negative_radix_literal::check(db, scope, d)
         });
     }
+    if is_enabled(config, constant_overflow::NAME) {
+        run_lint(constant_overflow::NAME, diagnostics, |d| {
+            constant_overflow::check(db, scope, d)
+        });
+    }
     if !has_body {
         return;
     }
@@ -588,6 +596,6 @@ mod select_tests {
                 "{name} is not a known rule name"
             );
         }
-        assert_eq!(RECOMMENDED_RULE_NAMES.len(), 30);
+        assert_eq!(RECOMMENDED_RULE_NAMES.len(), 31);
     }
 }

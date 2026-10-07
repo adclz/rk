@@ -8,6 +8,7 @@ mod case_without_else;
 mod collapsible_if;
 mod constant_condition;
 mod constant_loop_bounds;
+mod constant_overflow;
 mod dead_code;
 mod default_for_step;
 mod division_by_zero;

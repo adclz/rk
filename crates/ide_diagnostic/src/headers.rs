@@ -260,6 +260,7 @@ pub const HEADERS: &[(&str, &str)] = &[
     ("L0124", "exact comparison of REAL values"),
     ("L0126", "loop that never ends"),
     ("L0127", "STRING into a shorter STRING"),
+    ("L0128", "constant operation out of range"),
     ("L0201", "unused variable"),
     ("L0202", "variable named after a POU"),
     ("L0203", "duplicate variable section"),
