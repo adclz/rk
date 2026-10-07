@@ -3802,8 +3802,12 @@
           "value": "("
         },
         {
-          "type": "SYMBOL",
-          "name": "begin_path_expression"
+          "type": "FIELD",
+          "name": "value",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_expression"
+          }
         },
         {
           "type": "STRING",
@@ -11117,57 +11121,61 @@
       ]
     },
     "param_assign_output": {
-      "type": "SEQ",
-      "members": [
-        {
-          "type": "FIELD",
-          "name": "not",
-          "content": {
-            "type": "CHOICE",
-            "members": [
-              {
-                "type": "ALIAS",
-                "content": {
-                  "type": "TOKEN",
+      "type": "PREC",
+      "value": 8,
+      "content": {
+        "type": "SEQ",
+        "members": [
+          {
+            "type": "FIELD",
+            "name": "not",
+            "content": {
+              "type": "CHOICE",
+              "members": [
+                {
+                  "type": "ALIAS",
                   "content": {
-                    "type": "PREC",
-                    "value": 0,
+                    "type": "TOKEN",
                     "content": {
-                      "type": "PATTERN",
-                      "value": "[nN][oO][tT]"
+                      "type": "PREC",
+                      "value": 0,
+                      "content": {
+                        "type": "PATTERN",
+                        "value": "[nN][oO][tT]"
+                      }
                     }
-                  }
+                  },
+                  "named": false,
+                  "value": "NOT"
                 },
-                "named": false,
-                "value": "NOT"
-              },
-              {
-                "type": "BLANK"
-              }
-            ]
+                {
+                  "type": "BLANK"
+                }
+              ]
+            }
+          },
+          {
+            "type": "FIELD",
+            "name": "param",
+            "content": {
+              "type": "SYMBOL",
+              "name": "identifier"
+            }
+          },
+          {
+            "type": "STRING",
+            "value": "=>"
+          },
+          {
+            "type": "FIELD",
+            "name": "value",
+            "content": {
+              "type": "SYMBOL",
+              "name": "_expression"
+            }
           }
-        },
-        {
-          "type": "FIELD",
-          "name": "param",
-          "content": {
-            "type": "SYMBOL",
-            "name": "identifier"
-          }
-        },
-        {
-          "type": "STRING",
-          "value": "=>"
-        },
-        {
-          "type": "FIELD",
-          "name": "variable",
-          "content": {
-            "type": "SYMBOL",
-            "name": "variable"
-          }
-        }
-      ]
+        ]
+      }
     },
     "if_stmt": {
       "type": "SEQ",
@@ -12441,6 +12449,10 @@
     ],
     [
       "case_body"
+    ],
+    [
+      "unary",
+      "param_assign_output"
     ]
   ],
   "precedences": [],

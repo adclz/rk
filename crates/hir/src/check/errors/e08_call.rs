@@ -67,16 +67,20 @@ pub enum CallError<'db> {
         func: CallableType<'db>,
         param: SpanIdent<'db>,
     },
-    OutputParameterUsedAsInput {
+    /// A VAR_OUTPUT bound to something that is not a variable, by `=>` or
+    /// by position: the call writes the output into what it is bound to.
+    OutputRequiresVariable {
         func: CallableType<'db>,
         var: VariableDecl<'db>,
         expr: Expr<'db>,
-        param: usize,
     },
-    /// A VAR_IN_OUT argument is not an l-value (a variable, field, or array
-    /// element). VAR_IN_OUT binds the callee to the caller's storage by
-    /// reference, so a literal, arithmetic expression, or call result has no
-    /// address to bind.
+    /// A VAR_OUTPUT bound with `:=`, which passes a value in: an output is
+    /// bound with `=>`, the way E0807 is the other way round.
+    OutputBoundWithAssign {
+        func: CallableType<'db>,
+        var: VariableDecl<'db>,
+        param: SpanIdent<'db>,
+    },
     /// An `ARRAY[*]` VAR_INPUT bound to a value: the parameter is connected
     /// to a variable, or a row of one, whose bounds it takes. A VAR_IN_OUT
     /// one is E0806.
@@ -85,15 +89,19 @@ pub enum CallError<'db> {
         var: VariableDecl<'db>,
         expr: Expr<'db>,
     },
+    /// A VAR_IN_OUT argument is not an l-value (a variable, field, or array
+    /// element). VAR_IN_OUT binds the callee to the caller's storage by
+    /// reference, so a literal, arithmetic expression, or call result has no
+    /// address to bind.
     InOutParameterRequiresLValue {
         func: CallableType<'db>,
         var: VariableDecl<'db>,
         expr: Expr<'db>,
     },
-    /// A VAR_IN_OUT parameter bound with output syntax (`v => x`). VAR_IN_OUT
-    /// is bound by reference at call entry with `:=`; `=>` is an output
-    /// copy-back binding and would leave the reference unbound.
-    InOutParameterBoundWithArrow {
+    /// A VAR_INPUT or a VAR_IN_OUT bound with `=>`, which names where an
+    /// output goes: an input takes a value with `:=`, and an in-out is bound
+    /// by reference at call entry with `:=`.
+    InputBoundWithArrow {
         func: CallableType<'db>,
         var: VariableDecl<'db>,
         param: SpanIdent<'db>,
@@ -174,10 +182,11 @@ impl<'db> ErrorCode for CallError<'db> {
             Self::MissingRequiredParameter { .. } => "E0802",
             Self::UnknownInputParameter { .. } => "E0803",
             Self::UnknownOutputParameter { .. } => "E0804",
-            Self::OutputParameterUsedAsInput { .. } => "E0805",
+            Self::OutputRequiresVariable { .. } => "E0805",
+            Self::OutputBoundWithAssign { .. } => "E0818",
             Self::InOutParameterRequiresLValue { .. } => "E0806",
             Self::ConformandRequiresVariable { .. } => "E0817",
-            Self::InOutParameterBoundWithArrow { .. } => "E0807",
+            Self::InputBoundWithArrow { .. } => "E0807",
             Self::CallNonCallableType { .. } => "E0808",
             Self::AmbiguousOverload { .. } => "E0809",
             Self::NoMatchingOverload { .. } => "E0810",
@@ -362,26 +371,51 @@ impl<'db> ToIdeDiagnostic<'db> for CallError<'db> {
 
                 diag
             }
-            Self::OutputParameterUsedAsInput {
-                func,
-                expr,
-                var,
-                param,
-            } => {
+            Self::OutputRequiresVariable { func, var, expr } => {
                 let mut diag = diag()
                     .message(format!(
-                        "output parameter at index '{}' cannot be used as input",
-                        param
+                        "VAR_OUTPUT parameter '{}' of '{}' requires a variable, not a value",
+                        var.name_with_case(db).text(db),
+                        func.get_name_with_case(db).text(db),
                     ))
-                    .range(crate::denormalize(db, file, &expr.get_span(db)).unwrap_or_default())
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
+                    .range(crate::denormalize(db, file, &expr.get_span(db)).unwrap_or_default())
                     .call();
-                diag.with_help(format!(
-                    "bind it by name: {} => <variable>",
-                    var.get_name_with_case(db).text(db)
+                diag.with_note(
+                    "the call writes the output into the variable bound to it".to_string(),
+                );
+                diag.with_related(Related::new(
+                    format!(
+                        "parameter '{}' is declared here",
+                        var.name_with_case(db).text(db)
+                    ),
+                    var.scope_id(db).file(db),
+                    var.get_name_span(db),
                 ));
-
+                diag
+            }
+            Self::OutputBoundWithAssign { func, var, param } => {
+                let name = var.name_with_case(db).text(db);
+                let mut diag = diag()
+                    .message(format!(
+                        "VAR_OUTPUT parameter '{name}' of '{}' cannot be bound with ':='",
+                        func.get_name_with_case(db).text(db),
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &param.get_span(db)).unwrap_or_default())
+                    .call();
+                diag.with_note(
+                    "':=' passes a value in, '=>' names the variable an output is written into"
+                        .to_string(),
+                );
+                diag.with_help(format!("bind it with '=>': {name} => <variable>"));
+                diag.with_related(Related::new(
+                    format!("parameter '{name}' is declared here"),
+                    var.scope_id(db).file(db),
+                    var.get_name_span(db),
+                ));
                 diag
             }
             Self::ConformandRequiresVariable { func, var, expr } => {
@@ -436,30 +470,31 @@ impl<'db> ToIdeDiagnostic<'db> for CallError<'db> {
 
                 diag
             }
-            Self::InOutParameterBoundWithArrow { func, var, param } => {
+            Self::InputBoundWithArrow { func, var, param } => {
+                let name = var.name_with_case(db).text(db);
+                let (kind, argument) = match var.is_in_out(db) {
+                    true => ("VAR_IN_OUT", "<variable>"),
+                    false => ("VAR_INPUT", "<value>"),
+                };
                 let mut diag = diag()
                     .message(format!(
-                        "VAR_IN_OUT parameter '{}' of '{}' cannot be bound with '=>'",
-                        var.name_with_case(db).text(db),
+                        "{kind} parameter '{name}' of '{}' cannot be bound with '=>'",
                         func.get_name_with_case(db).text(db),
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
                     .range(crate::denormalize(db, file, &param.get_span(db)).unwrap_or_default())
                     .call();
-                diag.with_note(format!(
-                    "VAR_IN_OUT is bound by reference at call entry: use {} := <variable>",
-                    var.name_with_case(db).text(db),
-                ));
+                diag.with_note(
+                    "'=>' names the variable an output is written into, ':=' passes a value in"
+                        .to_string(),
+                );
+                diag.with_help(format!("bind it with ':=': {name} := {argument}"));
                 diag.with_related(Related::new(
-                    format!(
-                        "parameter '{}' is declared here",
-                        var.name_with_case(db).text(db)
-                    ),
+                    format!("parameter '{name}' is declared here"),
                     var.scope_id(db).file(db),
                     var.get_name_span(db),
                 ));
-
                 diag
             }
             Self::CallNonCallableType { typ, func_call } => {

@@ -389,6 +389,9 @@ pub enum MultibitsPart {
 pub enum RefValue<'db> {
     Address(BeginPathExpr<'db>),
     Null,
+    /// `REF()` of what names no variable: a literal, an expression, a call
+    /// result, a direct address or a bit. Refused (E0905).
+    Value(Expr<'db>),
 }
 
 #[salsa::tracked(debug)]
@@ -422,11 +425,25 @@ pub enum ParamAssignKind<'db> {
         param: SpanIdent<'db>,
         value: Expr<'db>,
     },
+    /// `param => value`: the value names the variable the output is
+    /// written into, or the call refuses it (E0805).
     FormalOutput {
         not: bool,
         param: SpanIdent<'db>,
-        variable: VariableAccess<'db>,
+        value: Expr<'db>,
     },
+}
+
+impl<'db> ParamAssignKind<'db> {
+    /// What the call site wrote for the parameter: a value, or the variable
+    /// an output is written into.
+    pub fn value(&self) -> Expr<'db> {
+        match self {
+            ParamAssignKind::NonFormal { value }
+            | ParamAssignKind::FormalInput { value, .. }
+            | ParamAssignKind::FormalOutput { value, .. } => *value,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
@@ -578,6 +595,17 @@ pub enum IntegerKind {
     Hex,
     Octal,
     Signed,
+}
+
+impl<'db> Expr<'db> {
+    /// The variable the expression is, when it is nothing else: what an
+    /// output is written into.
+    pub fn variable_access(self, db: &'db dyn WorkspaceDataBase) -> Option<VariableAccess<'db>> {
+        match self.expr(db) {
+            ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess(access)) => Some(*access),
+            _ => None,
+        }
+    }
 }
 
 impl<'db> HirNodeInfo<'db> for Expr<'db> {

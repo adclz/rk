@@ -549,6 +549,7 @@ impl<'db> PrimaryExpr<'db> {
             PrimaryExpr::EnumValue { name, variant } => variant.with_case.text(db),
             PrimaryExpr::RefValue { value } => match value {
                 RefValue::Address(addr) => "<DEREF>",
+                RefValue::Value(_) => "<REF>",
                 RefValue::Null => "NULL",
             },
             PrimaryExpr::ParenthesizedExpr { expr } => expr.to_string(db),

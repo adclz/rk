@@ -55,6 +55,7 @@ pub mod negated_comparison;
 pub mod negated_condition;
 pub mod negative_radix_literal;
 pub mod once_violation;
+pub mod positional_output;
 pub mod recursion;
 pub mod redundant_not;
 pub mod self_assignment;
@@ -160,6 +161,7 @@ pub const ALL_RULE_NAMES: &[&str] = &[
     negated_condition::NAME,
     negative_radix_literal::NAME,
     once_violation::NAME,
+    positional_output::NAME,
     recursion::NAME,
     redundant_not::NAME,
     self_assignment::NAME,
@@ -443,6 +445,11 @@ fn lint_scope<'db>(
     if is_enabled(config, aggregate_copy::NAME) {
         run_lint(aggregate_copy::NAME, diagnostics, |d| {
             aggregate_copy::check_calls(db, body, d)
+        });
+    }
+    if is_enabled(config, positional_output::NAME) {
+        run_lint(positional_output::NAME, diagnostics, |d| {
+            positional_output::check(db, body, d)
         });
     }
     if is_enabled(config, unused_variable::NAME) {

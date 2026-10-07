@@ -5,10 +5,7 @@ use auto_lsp::lsp_types::DiagnosticSeverity;
 use db::WorkspaceDataBase;
 use hir::{
     HasName, HirNodeInfo,
-    hir_def::expressions::{
-        expression::{ParamAssignKind, VariableAccess},
-        statement::Stmt,
-    },
+    hir_def::expressions::{expression::VariableAccess, statement::Stmt},
     hir_ty::{
         body::ScopeInference,
         infer::Infer,
@@ -69,14 +66,13 @@ pub fn check_calls<'db>(
                 continue;
             };
             let formal_name = formal.get_name_with_case(db).text(db);
-            let message = match param.kind(db) {
-                ParamAssignKind::NonFormal { .. } | ParamAssignKind::FormalInput { .. } => {
-                    format!(
-                        "the argument copies {} into '{formal_name}'",
-                        aggregate.what(db)
-                    )
-                }
-                ParamAssignKind::FormalOutput { .. } => format!(
+            // An output is copied out, whether bound by `=>` or by position.
+            let message = match formal.is_output(db) {
+                false => format!(
+                    "the argument copies {} into '{formal_name}'",
+                    aggregate.what(db)
+                ),
+                true => format!(
                     "the binding copies {} out of '{formal_name}'",
                     aggregate.what(db)
                 ),

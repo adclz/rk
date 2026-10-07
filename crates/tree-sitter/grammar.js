@@ -263,6 +263,7 @@ module.exports = grammar({
     [$.pou_pragma, $._stmt],
     [$.case_selection],
     [$.case_body],
+    [$.unary, $.param_assign_output],
   ],
 
   word: ($) => $.identifier,
@@ -984,7 +985,9 @@ module.exports = grammar({
 
     ref_value: ($) => choice($.ref_addr, alias(kw("NULL"), $.null)),
 
-    ref_addr: ($) => seq(kw("REF"), "(", $.begin_path_expression, ")"),
+    // Any expression: one that names no variable is refused by the check,
+    // not as a syntax error.
+    ref_addr: ($) => seq(kw("REF"), "(", field("value", $._expression), ")"),
 
     deref_expression: ($) =>
       prec(
@@ -2090,12 +2093,19 @@ module.exports = grammar({
         field("value", $._expression),
       ),
 
+    // Any expression after `=>`: one that names no variable is refused by
+    // the call's check, not as a syntax error. `NOT q => x` and `NOT q` as an
+    // input start alike: only the `=>` tells them apart (the conflict with
+    // `unary`, at its precedence).
     param_assign_output: ($) =>
-      seq(
-        field("not", optional(kw("NOT"))),
-        field("param", $.identifier),
-        "=>",
-        field("variable", $.variable),
+      prec(
+        RK_PREC.unary,
+        seq(
+          field("not", optional(kw("NOT"))),
+          field("param", $.identifier),
+          "=>",
+          field("value", $._expression),
+        ),
       ),
 
     if_stmt: ($) =>

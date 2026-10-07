@@ -1639,7 +1639,7 @@ fn collect_address_taken_vars<'db>(
                         _ => None,
                     })
                     .collect(),
-                ParamBinding::Output(access) => vec![*access],
+                ParamBinding::Output { variable, .. } => vec![*variable],
                 _ => continue,
             };
             for access in access {

@@ -63,19 +63,21 @@ END_FUNCTION
               (param_assign
                 (param_assign_output
                   (identifier)
-                  (variable
-                    (direct_variable
-                      (adress_identifier)
-                      (offset
-                        (unsigned_int))))))
+                  (variable_access
+                    (variable
+                      (direct_variable
+                        (adress_identifier)
+                        (offset
+                          (unsigned_int)))))))
               (param_assign
                 (param_assign_output
                   (identifier)
-                  (variable
-                    (begin_path_expression
-                      (path_expression
-                        (var_access
-                          (field))))))))))))))
+                  (variable_access
+                    (variable
+                      (begin_path_expression
+                        (path_expression
+                          (var_access
+                            (field)))))))))))))))
 
 ================================================================================
 Non-formal call (textual only)
@@ -134,3 +136,42 @@ END_FUNCTION
                         (path_expression
                           (var_access
                             (field)))))))))))))))
+
+================================================================================
+Negated output assignment
+================================================================================
+
+PROGRAM P
+    F(NOT q => x, NOT q);
+END_PROGRAM
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (prog_decl
+    (identifier)
+    (fb_body
+      (stmt_list
+        (func_call
+          (begin_path_expression
+            (path_expression
+              (var_access
+                (field))))
+          (param_assign
+            (param_assign_output
+              (identifier)
+              (variable_access
+                (variable
+                  (begin_path_expression
+                    (path_expression
+                      (var_access
+                        (field))))))))
+          (param_assign
+            (param_assign_input
+              (unary_operator
+                (variable_access
+                  (variable
+                    (begin_path_expression
+                      (path_expression
+                        (var_access
+                          (field))))))))))))))

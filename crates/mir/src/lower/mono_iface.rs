@@ -426,6 +426,17 @@ fn process_call<'db>(
             .copied()
             .unwrap_or(param);
         let shape = match pa.kind(db) {
+            // An `ARRAY[*]` output is written into the array it is bound to,
+            // by `=>` or by position.
+            kind if param.is_output(db) => match kind.value().variable_access(db) {
+                Some(variable) if param.conformand(db).is_some() => output_shape(
+                    db,
+                    param,
+                    inference.type_of_variable_access_adjusted(variable),
+                    subs,
+                ),
+                _ => continue,
+            },
             ParamAssignKind::NonFormal { value } | ParamAssignKind::FormalInput { value, .. } => {
                 if is_interface_param(db, &param) {
                     // `THIS` resolves to the enclosing FB/Class; otherwise the
@@ -445,15 +456,6 @@ fn process_call<'db>(
                     continue;
                 }
                 argument_shape(db, inference, param, value, subs)
-            }
-            // An `ARRAY[*]` output is written into the array it is bound to.
-            ParamAssignKind::FormalOutput { variable, .. } if param.conformand(db).is_some() => {
-                output_shape(
-                    db,
-                    param,
-                    inference.type_of_variable_access_adjusted(variable),
-                    subs,
-                )
             }
             ParamAssignKind::FormalOutput { .. } => continue,
         };

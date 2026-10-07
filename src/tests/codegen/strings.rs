@@ -710,13 +710,6 @@ fn a_literal_cannot_be_written_through(mut with_db: db::RootDatabase) {
     insta::assert_snapshot!(
         crate::tests::utils::test_diagnostics(&mut with_db, &[source]),
         @r"
-    [E0005] Error: empty right-hand side of assignment
-        ,-[ file:///test0.st:18:15 ]
-        |
-     18 |             r := REF('ab');
-        |               ^|
-        |                `-- the assignment has no right-hand side
-    ----'
     [E0806] Error: VAR_IN_OUT argument not a variable
         ,-[ file:///test0.st:13:24 ]
         |
@@ -730,28 +723,29 @@ fn a_literal_cannot_be_written_through(mut with_db: db::RootDatabase) {
         |
         | Note: a literal, an expression or a call result has no address for a VAR_IN_OUT to bind
     ----'
-    [E0805] Error: output parameter used as input
+    [E0905] Error: REF() argument not a variable
+        ,-[ file:///test0.st:18:22 ]
+        |
+     18 |             r := REF('ab');
+        |                      ^^|^
+        |                        `--- REF() takes a variable, not a value
+        |
+        | Help: store the value in a variable, and take REF() of the variable
+        |
+        | Note: a literal, an expression or a call result has no storage to point at
+    ----'
+    [E0805] Error: VAR_OUTPUT argument not a variable
         ,-[ file:///test0.st:22:23 ]
+        |
+      8 |         VAR_OUTPUT o : STRING; END_VAR
+        |                    |
+        |                    `-- parameter 'o' is declared here
         |
      22 |             Give(o => 'ab');
         |                       ^^|^
-        |                         `--- output parameter at index '0' cannot be used as input
+        |                         `--- VAR_OUTPUT parameter 'o' of 'Give' requires a variable, not a value
         |
-        | Help: bind it by name: o => <variable>
-    ----'
-    [E0001] Error: syntax error
-        ,-[ file:///test0.st:18:18 ]
-        |
-     18 |             r := REF('ab');
-        |                  ^^^^|^^^^
-        |                      `------ unexpected token(s): 'REF ( 'ab' )'
-    ----'
-    [E0001] Error: syntax error
-        ,-[ file:///test0.st:22:18 ]
-        |
-     22 |             Give(o => 'ab');
-        |                  ^^|^
-        |                    `--- unexpected token(s): 'o =>'
+        | Note: the call writes the output into the variable bound to it
     ----'
     "
     );
