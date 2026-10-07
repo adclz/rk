@@ -396,18 +396,14 @@ fn frame_bytes(func: &MirFunction) -> u32 {
 /// frame and [`STACK_HEADROOM`] more: a stack of a fixed size could not take
 /// a frame bigger than itself, and that function raised `stack overflow` on
 /// its first call.
-fn stack_plan(module: &MirModule) -> Option<(&MirFunction, u32, u64)> {
+fn stack_plan(module: &MirModule) -> Option<(&MirFunction, u64, u64)> {
     use mir::function::FRAME_ALIGN;
-    use mir::memory::align_to;
     let largest = module
         .functions
         .iter()
         .max_by_key(|func| frame_bytes(func))
         .filter(|func| frame_bytes(func) > 0)?;
-    // Each result area is 4-aligned, from the first on.
-    let results_end =
-        align_to(static_data_end(module), 4) + module_test_count(module) * TEST_RESULT_AREA_SIZE;
-    let base = align_to(results_end, FRAME_ALIGN);
+    let base = results_end(module).next_multiple_of(u64::from(FRAME_ALIGN));
     let size = module
         .stack_size
         .unwrap_or(u64::from(frame_bytes(largest)) + u64::from(STACK_HEADROOM));
@@ -419,8 +415,15 @@ fn stack_plan(module: &MirModule) -> Option<(&MirFunction, u32, u64)> {
 /// memory: a build refuses it before codegen ([`check_stack`]).
 fn stack_bounds(module: &MirModule) -> Option<(u32, u32)> {
     let (_, base, size) = stack_plan(module)?;
-    let end = u32::try_from(u64::from(base) + size).unwrap_or(u32::MAX);
-    Some((base, end))
+    let narrow = |at: u64| u32::try_from(at).unwrap_or(u32::MAX);
+    Some((narrow(base), narrow(base + size)))
+}
+
+/// Where the `{test}` result areas end, past the static data; each is
+/// 4-aligned, from the first on.
+fn results_end(module: &MirModule) -> u64 {
+    u64::from(static_data_end(module)).next_multiple_of(4)
+        + u64::from(module_test_count(module)) * u64::from(TEST_RESULT_AREA_SIZE)
 }
 
 /// A stack that ends past the last address of the memory, after the `base`
@@ -429,7 +432,7 @@ fn stack_bounds(module: &MirModule) -> Option<(u32, u32)> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StackTooLarge {
     pub size: u64,
-    pub base: u32,
+    pub base: u64,
 }
 
 /// Whether the stack fits. Codegen lays it out regardless, so a build asks
@@ -438,7 +441,7 @@ pub fn check_stack(module: &MirModule) -> Result<(), StackTooLarge> {
     let Some((_, base, size)) = stack_plan(module) else {
         return Ok(());
     };
-    if u64::from(base) + size > u64::from(u32::MAX) {
+    if base + size > u64::from(u32::MAX) {
         return Err(StackTooLarge { size, base });
     }
     Ok(())
@@ -467,15 +470,8 @@ fn static_data_end(module: &MirModule) -> u32 {
 }
 
 pub(crate) fn core_memory_pages(module: &MirModule) -> u64 {
-    let static_total = static_data_end(module);
-    let test_results_total = module_test_count(module) * TEST_RESULT_AREA_SIZE;
-    let total =
-        (static_total + test_results_total).max(stack_bounds(module).map_or(0, |(_, end)| end));
-    if total == 0 {
-        1
-    } else {
-        total.div_ceil(WASM_PAGE) as u64
-    }
+    let total = results_end(module).max(stack_bounds(module).map_or(0, |(_, end)| u64::from(end)));
+    total.div_ceil(u64::from(WASM_PAGE)).max(1)
 }
 
 /// Name of the builtin that faults a null dereference.

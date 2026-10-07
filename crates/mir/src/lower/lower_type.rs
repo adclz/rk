@@ -38,6 +38,15 @@ pub enum LowerTypeError {
     #[error("`{0}` can call itself again but has no frame")]
     UnframedRecursion(String),
 
+    /// The module's memory passes the last address it has: its globals,
+    /// instances and static locals as laid out, and its strings. No fault of
+    /// the compiler's: the program asks for more than a module addresses,
+    /// and a build says so instead of emitting a module that wraps.
+    #[error(
+        "the module's memory takes {size} bytes, most of it {largest}: a module addresses at most 4 GiB"
+    )]
+    MemoryTooLarge { size: u64, largest: String },
+
     /// An instance's layout reached back to itself. Only a VAR_IN_OUT
     /// member closes such a cycle, a by-value one being E1302, and the
     /// nearest one catches this: it holds an address whose pointee is typed

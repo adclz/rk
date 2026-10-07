@@ -145,6 +145,12 @@ pub fn build_core_profile(
 
     let mut mir_module = match mir::lower::lower_module::lower_modules(db, &sem_indices) {
         Ok(m) => m,
+        // The program's fault, not the compiler's.
+        Err(e @ mir::lower::lower_type::LowerTypeError::MemoryTooLarge { .. }) => {
+            let message = e.to_string();
+            ui::failure("compilation failed:", &message);
+            return Err(format!("compilation failed: {message}\n"));
+        }
         Err(e) => {
             // An ICE, not a user error (see `render_codegen_error`).
             return match render_codegen_error(db, workspace, &e, format) {
@@ -213,6 +219,9 @@ pub fn build_core_quiet(
         .collect();
     let mut mir_module =
         mir::lower::lower_module::lower_modules(db, &sem_indices).map_err(|e| {
+            if let mir::lower::lower_type::LowerTypeError::MemoryTooLarge { .. } = e {
+                return format!("compilation failed: {e}\n");
+            }
             // Same ICE rendering as `build_core`, returned rather than printed.
             render_codegen_error(db, workspace, &e, crate::cli::OutputFormat::Full)
                 .map(|report| format!("{report}\ninternal compiler error: cannot compile.\n"))
