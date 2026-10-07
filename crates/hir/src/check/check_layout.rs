@@ -16,6 +16,7 @@ use crate::{
         e14_config::ConfigError,
     },
     hir_def::{
+        config::ConfigDecl,
         expressions::spec::{Spec, SpecKind},
         namespace::NamespaceDecl,
         pous::{
@@ -29,6 +30,7 @@ use crate::{
         body::{ResolvedCall, ScopeInference},
         calls::{CallNode, is_recursive},
         frame::{self, Shapes},
+        index_graphs::config_fragments,
         infer::Infer,
         layout,
         ty::Type,
@@ -38,7 +40,8 @@ use crate::{
 use db::WorkspaceDataBase;
 
 /// E0322 on the declarations of `scope` whose storage passes what a module
-/// addresses: a TYPE, a variable, an instance whose members together do.
+/// addresses: a TYPE, a variable, an instance whose members together do, a
+/// configuration whose globals and programs together do.
 pub fn check_storage<'db>(
     db: &'db dyn WorkspaceDataBase,
     scope: ScopeId<'db>,
@@ -64,6 +67,9 @@ pub fn check_storage<'db>(
             );
         }
     }
+    if let ScopeKind::Config(config) = kind {
+        configuration_storage(db, scope, config, errors);
+    }
     let (instance, what, site) = match kind {
         ScopeKind::Pou(pou @ (Pou::FunctionBlock(_) | Pou::Class(_))) => (
             layout::instance_layout(db, pou).as_ref(),
@@ -87,6 +93,72 @@ pub fn check_storage<'db>(
                 site,
                 what,
                 size: instance.whole.size,
+            }
+            .to_diagnostic(db, scope.file(db)),
+        );
+    }
+}
+
+/// E0322 on a configuration whose globals and program instances pass what a
+/// module addresses together, though each fits: they are the bulk of a
+/// module's memory, which the editor can count without lowering. The rest,
+/// the static locals of the POUs, the strings and the stack, only a build
+/// counts. Every block of the configuration counts, and the first in file
+/// order reports. A located global is its area's cell, which a narrower
+/// address inside it shares, so it is left out: the sum never passes what
+/// the module takes.
+fn configuration_storage<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    scope: ScopeId<'db>,
+    config: ConfigDecl<'db>,
+    errors: &mut Vec<IdeDiagnostic>,
+) {
+    let mut blocks = config_fragments(db, config.get_name_ident(db));
+    blocks.sort_by_key(|block| {
+        (
+            block.get_scope_id(db).file(db).url(db).to_string(),
+            block.get_name_span(db).start_byte,
+        )
+    });
+    if blocks.first() != Some(&config) {
+        return;
+    }
+    let mut parts = Vec::new();
+    for block in &blocks {
+        for var in block.variables(db) {
+            if var.is_global(db) && var.location(db).is_none() {
+                parts.extend(layout::of_spec(db, var.spec(db)));
+            }
+        }
+        for resource in block.resources(db) {
+            for instance in resource.programs(db) {
+                if let Type::Program(program) = instance.prog_type(db).infer(db) {
+                    parts.extend(
+                        layout::program_layout(db, program)
+                            .as_ref()
+                            .map(|l| l.whole),
+                    );
+                }
+            }
+        }
+    }
+    // A part too large on its own is reported where it is declared.
+    if !parts.iter().all(|part| part.fits()) {
+        return;
+    }
+    let size = parts
+        .iter()
+        .map(|part| part.size)
+        .fold(0, u64::saturating_add);
+    if size > u64::from(u32::MAX) {
+        errors.push(
+            TypeError::StorageTooLarge {
+                site: CallSite::new(scope, config.name_span(db)),
+                what: format!(
+                    "the configuration '{}'",
+                    config.get_name_with_case(db).text(db)
+                ),
+                size,
             }
             .to_diagnostic(db, scope.file(db)),
         );

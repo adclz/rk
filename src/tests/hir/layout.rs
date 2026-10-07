@@ -190,3 +190,41 @@ END_FUNCTION
     ---'
     ");
 }
+
+/// Globals and program instances that each fit, too large together: the
+/// configuration is reported once, at its first block, wherever its parts
+/// are declared. A located global is its area's cell, and does not count.
+#[rstest]
+fn invalid_configuration_storage_too_large(mut with_db: RootDatabase) {
+    let globals = r#"
+CONFIGURATION Cfg
+VAR_GLOBAL
+    a : ARRAY[0..599999999] OF DINT;
+    lamps AT %QW0 : WORD;
+END_VAR
+END_CONFIGURATION
+"#;
+    let resources = r#"
+PROGRAM Logger
+VAR buffer : ARRAY[0..299999999] OF LINT; END_VAR
+END_PROGRAM
+
+CONFIGURATION Cfg
+    RESOURCE Res ON CPU
+        TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM L1 WITH T : Logger;
+    END_RESOURCE
+END_CONFIGURATION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[globals, resources]), @r"
+    [E0322] Error: storage larger than 4 GiB
+       ,-[ file:///test0.st:2:15 ]
+       |
+     2 | CONFIGURATION Cfg
+       |               ^|^
+       |                `--- the configuration 'Cfg' takes 4800000000 bytes
+       |
+       | Note: a module's sizes and addresses are 32 bits: 4294967295 bytes at most
+    ---'
+    ");
+}
