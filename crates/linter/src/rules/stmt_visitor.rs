@@ -26,8 +26,9 @@ use super::{
     default_for_step, duplicate_case, empty_case_branch, empty_if_branch, empty_loop_body,
     endless_loop, external_mutation, float_equality, identical_sub_expr, identity_operation,
     input_assignment, loop_var_modified, missing_input_param, missing_return, negated_comparison,
-    negated_condition, redundant_not, run_lint, self_assignment, self_comparison, sub_self,
-    uninitialized_output, unnecessary_else, unnecessary_parens, yoda_condition,
+    negated_condition, redundant_not, run_lint, self_assignment, self_comparison,
+    string_truncation, sub_self, uninitialized_output, unnecessary_else, unnecessary_parens,
+    yoda_condition,
 };
 
 /// Run all statement-walking lints in a single pass over the statement tree.
@@ -53,6 +54,7 @@ pub fn check<'db>(
         input_assignment: crate::rules::is_enabled(config, input_assignment::NAME),
         aggregate_copy: crate::rules::is_enabled(config, aggregate_copy::NAME),
         self_assignment: crate::rules::is_enabled(config, self_assignment::NAME),
+        string_truncation: crate::rules::is_enabled(config, string_truncation::NAME),
         collapsible_if: crate::rules::is_enabled(config, collapsible_if::NAME),
         empty_if_branch: crate::rules::is_enabled(config, empty_if_branch::NAME),
         empty_loop_body: crate::rules::is_enabled(config, empty_loop_body::NAME),
@@ -128,6 +130,7 @@ struct VisitorCtx<'db> {
     aggregate_copy: bool,
     input_assignment: bool,
     self_assignment: bool,
+    string_truncation: bool,
     collapsible_if: bool,
     empty_if_branch: bool,
     empty_loop_body: bool,
@@ -164,6 +167,7 @@ impl VisitorCtx<'_> {
         self.aggregate_copy
             || self.input_assignment
             || self.self_assignment
+            || self.string_truncation
             || self.collapsible_if
             || self.empty_if_branch
             || self.empty_loop_body
@@ -335,6 +339,11 @@ fn visit_statements<'db>(
                 if ctx.aggregate_copy {
                     run_lint(aggregate_copy::NAME, diagnostics, |d| {
                         aggregate_copy::check_assignment(db, body, *stmt, *var, d)
+                    });
+                }
+                if ctx.string_truncation {
+                    run_lint(string_truncation::NAME, diagnostics, |d| {
+                        string_truncation::check_assignment(db, body, *var, target, d)
                     });
                 }
                 if ctx.loop_var_modified {

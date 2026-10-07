@@ -163,6 +163,7 @@ L0206 collapses every unassigned output of one body into a single diagnostic lis
 | L0123 | `negative-radix-literal` | warning | an untyped radix literal with its top bit set where a signed integer is expected: `16#80` is -128 in a SINT and 128 in an INT; not a typed `SINT#16#80`, nor one under a minus, `-(16#80)`, nor an operand of AND, OR or XOR |
 | L0124 | `float-equality` | warning | two REAL or LREAL values compared with `=` or `<>`, which a rounding difference makes FALSE; not against a literal zero, nor `x <> x`, the NaN test |
 | L0126 | `endless-loop` | warning | a WHILE or REPEAT whose body changes nothing its condition reads, with no EXIT, RETURN or `__RAISE`: waiting for an input in a loop, whose next value comes with the next scan; when the body calls something, only a FUNCTION's or METHOD's own locals count as unchanged |
+| L0127 | `string-truncation` | warning | a STRING variable assigned, passed to an input or bound from an output into a STRING declared shorter, which cuts the text; not a literal (E0314), nor a call's result |
 
 L0109 keys on the value the compiler computed, not on the text, so `7`, `INT#7` and a CONSTANT holding 7 are one label; enum variants and strings fall back to the written form.
 

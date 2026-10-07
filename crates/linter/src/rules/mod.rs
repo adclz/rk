@@ -66,6 +66,7 @@ pub mod self_shadowing;
 pub mod shadowing_variable;
 pub mod single_element_array;
 pub mod stmt_visitor;
+pub mod string_truncation;
 pub mod sub_self;
 pub mod uninitialized_output;
 pub mod unnecessary_else;
@@ -111,6 +112,7 @@ pub const RECOMMENDED_RULE_NAMES: &[&str] = &[
     recursion::NAME,
     float_equality::NAME,
     endless_loop::NAME,
+    string_truncation::NAME,
 ];
 
 /// Whether `name` runs under `config`: an explicit entry in `[linter.rules]`
@@ -175,6 +177,7 @@ pub const ALL_RULE_NAMES: &[&str] = &[
     self_shadowing::NAME,
     shadowing_variable::NAME,
     single_element_array::NAME,
+    string_truncation::NAME,
     sub_self::NAME,
     uninitialized_output::NAME,
     unnecessary_else::NAME,
@@ -451,6 +454,11 @@ fn lint_scope<'db>(
     if is_enabled(config, aggregate_copy::NAME) {
         run_lint(aggregate_copy::NAME, diagnostics, |d| {
             aggregate_copy::check_calls(db, body, d)
+    if is_enabled(config, string_truncation::NAME) {
+        run_lint(string_truncation::NAME, diagnostics, |d| {
+            string_truncation::check_calls(db, body, d)
+        });
+    }
         });
     }
     if is_enabled(config, positional_output::NAME) {
@@ -580,6 +588,6 @@ mod select_tests {
                 "{name} is not a known rule name"
             );
         }
-        assert_eq!(RECOMMENDED_RULE_NAMES.len(), 29);
+        assert_eq!(RECOMMENDED_RULE_NAMES.len(), 30);
     }
 }

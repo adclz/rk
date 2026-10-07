@@ -49,6 +49,7 @@ mod self_comparison;
 mod self_shadowing;
 mod shadowing_variable;
 mod single_element_array;
+mod string_truncation;
 mod sub_self;
 mod uninitialized_output;
 mod unnecessary_else;
