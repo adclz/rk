@@ -704,6 +704,11 @@ impl<'db> InitInference<'db> {
             }
 
             self.check_spec(db, var.spec(db));
+            // A VAR_EXTERNAL's storage is its global's, reported there.
+            if !var.is_external(db) {
+                let name = crate::CallSite::new(self.scope, var.get_name_id(db));
+                self.check_storage(db, var.spec(db), name);
+            }
 
             let var_type = var.spec(db).infer(db);
 

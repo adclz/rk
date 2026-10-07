@@ -84,6 +84,7 @@ pub const HEADERS: &[(&str, &str)] = &[
     ("E0319", "assignment to a missing return value"),
     ("E0320", "negative STRING length"),
     ("E0321", "edge qualifier on a type other than BOOL"),
+    ("E0322", "storage larger than 4 GiB"),
     ("E0401", "initial value not constant"),
     ("E0402", "function call in a repeat count"),
     ("E0403", "elementary type initialized with parentheses"),

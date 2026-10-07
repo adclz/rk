@@ -64,6 +64,8 @@ impl<'db> InitInference<'db> {
             && let Pou::DataType(dt) = pou
         {
             self.check_spec(db, dt.spec(db));
+            let name = crate::CallSite::new(self.scope, crate::HasName::get_name_id(&pou, db));
+            self.check_storage(db, dt.spec(db), name);
 
             let typ = dt.spec(db).infer(db);
             if let Some(expr) = dt.init(db) {
@@ -74,6 +76,7 @@ impl<'db> InitInference<'db> {
         }
 
         self.check_variables(db);
+        self.check_instance_storage(db);
         self.check_initialization_order(db);
         self.check_usings(db);
         self.check_methods(db);
