@@ -133,6 +133,16 @@ pub enum ConfigError<'db> {
         max_offset: Option<usize>,
         base_type: Type<'db>,
     },
+    /// A recursive call whose frame is larger than the stack `stack_size`
+    /// sets: it could never be pushed, and the program would stop at the
+    /// first such call.
+    FrameLargerThanStack {
+        site: CallSite<'db>,
+        /// What pushes it: "each call of 'f'".
+        what: String,
+        frame: u64,
+        stack: u64,
+    },
     /// A write to a variable declared `AT` an input address. The host owns
     /// the input band: it copies the process image in before the scan, so a
     /// store the program makes is overwritten before anyone can read it.
@@ -717,6 +727,7 @@ impl<'db> ErrorCode for ConfigError<'db> {
             Self::DirectVariableUnsupported { .. } => "E1417",
             Self::UnknownMultibitsAccess { .. } => "E1418",
             Self::MultibitsOutOfRange { .. } => "E1429",
+            Self::FrameLargerThanStack { .. } => "E1430",
             Self::WriteToInputLocation { .. } => "E1419",
             Self::RetainOnIoLocation { .. } => "E1420",
             Self::DuplicateLocation { .. } => "E1421",
@@ -1133,6 +1144,24 @@ impl<'db> ToIdeDiagnostic<'db> for ConfigError<'db> {
                     ));
                 }
 
+                diag
+            }
+            Self::FrameLargerThanStack {
+                site,
+                what,
+                frame,
+                stack,
+            } => {
+                let mut diag = diag()
+                    .message(format!("{what} pushes {frame} bytes"))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &site.get_span(db)).unwrap_or_default())
+                    .call();
+                diag.with_note(format!(
+                    "a recursive call pushes its frame on the stack, and `stack_size` in config.toml makes it {stack} bytes"
+                ));
+                diag.with_help(format!("make `stack_size` {frame} bytes or more"));
                 diag
             }
             Self::WriteToInputLocation { site, address, via } => {

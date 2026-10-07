@@ -222,7 +222,7 @@ The HIR is the core data layer, organized into:
 
 - **`check/`** — Diagnostic collection:
   - `errors/` — Error types; the code's first two digits name its section (E00xx–E15xx, L00xx–L03xx), and one code is one fault
-  - `check_duplicates.rs`, `check_recursion.rs`
+  - `check_duplicates.rs`, `check_layout.rs` (type cycles, E0322, the frames of recursive calls)
 
 - **`query_string/`** — Symbol search for IDE features (exact/fuzzy/prefix)
 

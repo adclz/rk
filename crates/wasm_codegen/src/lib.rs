@@ -423,37 +423,23 @@ fn stack_bounds(module: &MirModule) -> Option<(u32, u32)> {
     Some((base, end))
 }
 
-/// Why the stack does not fit, which a build reports instead of a module.
+/// A stack that ends past the last address of the memory, after the `base`
+/// bytes before it, which a build reports instead of a module. A frame
+/// larger than the stack is refused before that, by `rk check` (E1430).
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum StackError {
-    /// `stack_size` is smaller than the frame of `function`, which could
-    /// then never be called.
-    TooSmall {
-        size: u64,
-        function: hir::hir_def::interned::identifier::Ident,
-        frame: u32,
-    },
-    /// The stack ends past the last address of the memory, after the
-    /// `base` bytes before it.
-    TooLarge { size: u64, base: u32 },
+pub struct StackTooLarge {
+    pub size: u64,
+    pub base: u32,
 }
 
 /// Whether the stack fits. Codegen lays it out regardless, so a build asks
 /// first.
-pub fn check_stack(module: &MirModule) -> Result<(), StackError> {
-    let Some((largest, base, size)) = stack_plan(module) else {
+pub fn check_stack(module: &MirModule) -> Result<(), StackTooLarge> {
+    let Some((_, base, size)) = stack_plan(module) else {
         return Ok(());
     };
-    let frame = frame_bytes(largest);
-    if size < u64::from(frame) {
-        return Err(StackError::TooSmall {
-            size,
-            function: largest.origin_name,
-            frame,
-        });
-    }
     if u64::from(base) + size > u64::from(u32::MAX) {
-        return Err(StackError::TooLarge { size, base });
+        return Err(StackTooLarge { size, base });
     }
     Ok(())
 }

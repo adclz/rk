@@ -31,8 +31,8 @@ The stack holds the largest such frame and 64 KiB more, only in a module with su
 stack_size = 1048576 # 1 MiB
 ```
 
-A stack too small for a frame, or that does not fit in 4 GiB with the rest of the memory, stops the build.
-A TYPE, a variable or an instance that takes more than 4 GiB on its own is refused before that, by `rk check` (`E0322`).
+`rk check` refuses a frame larger than the stack (`E1430`), and a TYPE, a variable, an instance or a frame that takes more than 4 GiB on its own (`E0322`).
+A stack that does not fit in 4 GiB with the rest of the memory stops the build.
 
 | Band | Exports | Holds | The host |
 |---|---|---|---|

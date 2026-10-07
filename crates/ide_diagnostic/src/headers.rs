@@ -217,6 +217,7 @@ pub const HEADERS: &[(&str, &str)] = &[
     ("E1427", "located variable overwritten"),
     ("E1428", "program configuration element refused"),
     ("E1429", "partial access out of range"),
+    ("E1430", "frame larger than the stack"),
     ("E1501", "extern pragma outside a FUNCTION"),
     ("E1502", "not representable on an extern FUNCTION"),
     ("E1503", "test pragma outside a FUNCTION"),

@@ -46,34 +46,23 @@ fn render_codegen_error(
 }
 
 /// Size the module's stack as `config.toml` asks (`stack_size`), or say why
-/// that stack does not fit. A build checks it before codegen, which lays the
-/// stack out regardless.
+/// that stack does not fit in the memory. A build checks it before codegen,
+/// which lays the stack out regardless. A frame larger than the stack is
+/// refused before, by `rk check` (E1430).
 fn size_stack(db: &RootDatabase, module: &mut mir::MirModule) -> Result<(), String> {
     let configured = db::config_file::get_config(db)
         .settings
         .as_ref()
         .and_then(|settings| settings.stack_size);
     module.stack_size = configured.map(|size| size.bytes());
-    wasm_codegen::check_stack(module).map_err(|error| {
-        let stack = |size: u64| match configured {
+    wasm_codegen::check_stack(module).map_err(|wasm_codegen::StackTooLarge { size, base }| {
+        let stack = match configured {
             Some(configured) => format!("`stack_size` in config.toml is {configured}"),
             None => format!("the stack takes {size} bytes"),
         };
-        match error {
-            wasm_codegen::StackError::TooSmall {
-                size,
-                function,
-                frame,
-            } => format!(
-                "{}, smaller than the {frame}-byte frame of '{}'",
-                stack(size),
-                function.text(db)
-            ),
-            wasm_codegen::StackError::TooLarge { size, base } => format!(
-                "{}, and the memory before the stack takes {base} bytes: a module addresses at most 4 GiB",
-                stack(size)
-            ),
-        }
+        format!(
+            "{stack}, and the memory before the stack takes {base} bytes: a module addresses at most 4 GiB"
+        )
     })
 }
 

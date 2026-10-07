@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 //! E0322: storage past what a module addresses, whose sizes and addresses are
-//! 32 bits, reported where its size first passes them.
+//! 32 bits, reported where its size first passes them: a declaration, or the
+//! frame of a recursive call.
 
 use db::RootDatabase;
 use insta::assert_snapshot;
@@ -158,5 +159,34 @@ END_PROGRAM
         |
         | Note: a module's sizes and addresses are 32 bits: 4294967295 bytes at most
     ----'
+    ");
+}
+
+/// A recursive call pushes its storage on the stack: a frame past what a
+/// module addresses is reported at the body, though each local fits.
+#[rstest]
+fn invalid_frame_too_large(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION Deep : DINT
+VAR_INPUT n : DINT; END_VAR
+VAR
+    a : ARRAY[0..299999999] OF LINT;
+    b : ARRAY[0..299999999] OF LINT;
+END_VAR
+    IF n > 0 THEN
+        Deep := Deep(n - 1);
+    END_IF;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0322] Error: storage larger than 4 GiB
+       ,-[ file:///test0.st:2:10 ]
+       |
+     2 | FUNCTION Deep : DINT
+       |          ^^|^
+       |            `--- each call of 'Deep' takes 4800000000 bytes
+       |
+       | Note: a module's sizes and addresses are 32 bits: 4294967295 bytes at most
+    ---'
     ");
 }
