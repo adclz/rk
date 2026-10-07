@@ -39,6 +39,7 @@ mod loop_var_modified;
 mod method_shadows_member;
 mod missing_input_param;
 mod missing_return;
+mod must_call_conditional;
 mod must_call_violation;
 mod namespace_nesting;
 mod negated_comparison;

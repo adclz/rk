@@ -235,6 +235,7 @@ pub const HEADERS: &[(&str, &str)] = &[
     ("L0004", "{once} POU called more than once"),
     ("L0005", "unknown rule name in {allow}"),
     ("L0006", "{must_call} instance never called"),
+    ("L0007", "{must_call} instance called only in a branch"),
     ("L0101", "unreachable code"),
     ("L0102", "division by zero"),
     ("L0103", "constant condition"),
