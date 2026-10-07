@@ -73,10 +73,12 @@ END_FUNCTION
           (assignment
             (ref_value
               (ref_addr
-                (begin_path_expression
-                  (path_expression
-                    (var_access
-                      (field))))))))))))
+                (variable_access
+                  (variable
+                    (begin_path_expression
+                      (path_expression
+                        (var_access
+                          (field))))))))))))))
 
 ================================================================================
 Dereferencing
@@ -164,3 +166,33 @@ END_FUNCTION
                               (deref_sign)))
                           (deref_sign)))
                       (deref_sign))))))))))))
+
+================================================================================
+Reference of a value
+================================================================================
+
+PROGRAM P
+    r := REF('ab');
+END_PROGRAM
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (prog_decl
+    (identifier)
+    (fb_body
+      (stmt_list
+        (assign
+          (variable_access
+            (variable
+              (begin_path_expression
+                (path_expression
+                  (var_access
+                    (field))))))
+          (assignment
+            (ref_value
+              (ref_addr
+                (constant
+                  (char_literal
+                    (char_str
+                      (s_byte_char_str))))))))))))

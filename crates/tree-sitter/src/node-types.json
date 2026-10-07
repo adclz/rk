@@ -4892,12 +4892,12 @@
           }
         ]
       },
-      "variable": {
+      "value": {
         "multiple": false,
         "required": true,
         "types": [
           {
-            "type": "variable",
+            "type": "_expression",
             "named": true
           }
         ]
@@ -5387,16 +5387,17 @@
   {
     "type": "ref_addr",
     "named": true,
-    "fields": {},
-    "children": {
-      "multiple": false,
-      "required": true,
-      "types": [
-        {
-          "type": "begin_path_expression",
-          "named": true
-        }
-      ]
+    "fields": {
+      "value": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "_expression",
+            "named": true
+          }
+        ]
+      }
     }
   },
   {
