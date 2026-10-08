@@ -31,7 +31,7 @@ The stack holds the largest such frame and 64 KiB more, only in a module with su
 stack_size = 1048576 # 1 MiB
 ```
 
-`rk check` refuses a frame larger than the stack (`E1430`), and a TYPE, a variable, an instance or a frame that takes more than 4 GiB on its own, or a configuration whose globals and programs do together (`E0322`).
+`rk check` refuses a frame larger than the stack (`E1430`), and a TYPE, a variable, a result, an instance or a frame that takes more than 4 GiB on its own (`E0322`).
 A module whose memory does not fit in 4 GiB, with its stack, stops the build, which names its largest parts.
 
 | Band | Exports | Holds | The host |

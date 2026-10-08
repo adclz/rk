@@ -191,38 +191,63 @@ END_FUNCTION
     ");
 }
 
-/// Globals and program instances that each fit, too large together: the
-/// configuration is reported once, at its first block, wherever its parts
-/// are declared. A located global is its area's cell, and does not count.
+/// A result is stored like a local: a STRING too large is reported at its
+/// type, on a FUNCTION and on a METHOD. It lowered at the default capacity.
 #[rstest]
-fn invalid_configuration_storage_too_large(mut with_db: RootDatabase) {
-    let globals = r#"
-CONFIGURATION Cfg
-VAR_GLOBAL
-    a : ARRAY[0..599999999] OF DINT;
-    lamps AT %QW0 : WORD;
-END_VAR
-END_CONFIGURATION
-"#;
-    let resources = r#"
-PROGRAM Logger
-VAR buffer : ARRAY[0..299999999] OF LINT; END_VAR
-END_PROGRAM
+fn invalid_result_too_large(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION Text : STRING[5000000000]
+    Text := 'a';
+END_FUNCTION
 
-CONFIGURATION Cfg
-    RESOURCE Res ON CPU
-        TASK T(INTERVAL := T#10ms, PRIORITY := 1);
-        PROGRAM L1 WITH T : Logger;
-    END_RESOURCE
-END_CONFIGURATION
+CLASS Log
+METHOD PUBLIC Line : STRING[5000000000]
+    Line := 'b';
+END_METHOD
+END_CLASS
 "#;
-    assert_snapshot!(test_diagnostics(&mut with_db, &[globals, resources]), @r"
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     [E0322] Error: storage larger than 4 GiB
-       ,-[ file:///test0.st:2:15 ]
+       ,-[ file:///test0.st:2:17 ]
        |
-     2 | CONFIGURATION Cfg
-       |               ^|^
-       |                `--- the configuration 'Cfg' takes 4800000000 bytes
+     2 | FUNCTION Text : STRING[5000000000]
+       |                 ^^^^^^^^^|^^^^^^^^
+       |                          `---------- this STRING takes 5000000004 bytes
+       |
+       | Note: a module's sizes and addresses are 32 bits: 4294967295 bytes at most
+    ---'
+    [E0322] Error: storage larger than 4 GiB
+       ,-[ file:///test0.st:7:22 ]
+       |
+     7 | METHOD PUBLIC Line : STRING[5000000000]
+       |                      ^^^^^^^^^|^^^^^^^^
+       |                               `---------- this STRING takes 5000000004 bytes
+       |
+       | Note: a module's sizes and addresses are 32 bits: 4294967295 bytes at most
+    ---'
+    ");
+}
+
+/// A part of a frame too large on its own is reported where it is
+/// declared, and the frame that holds it is not.
+#[rstest]
+fn invalid_frame_part_reported_once(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION Deep : DINT
+VAR_INPUT n : DINT; END_VAR
+VAR huge : ARRAY[0..4294967296] OF BYTE; END_VAR
+    IF n > 0 THEN
+        Deep := Deep(n - 1);
+    END_IF;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0322] Error: storage larger than 4 GiB
+       ,-[ file:///test0.st:4:12 ]
+       |
+     4 | VAR huge : ARRAY[0..4294967296] OF BYTE; END_VAR
+       |            ^^^^^^^^^^^^^^|^^^^^^^^^^^^^
+       |                          `--------------- this array takes 17179869188 bytes
        |
        | Note: a module's sizes and addresses are 32 bits: 4294967295 bytes at most
     ---'
