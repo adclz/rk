@@ -1,0 +1,603 @@
+/*
+Byte order conversion.
+
+rk keeps every value in little-endian order, the order of WebAssembly: its
+least significant byte at the lowest address. TO_BIG_ENDIAN and
+FROM_BIG_ENDIAN reverse the bytes of a value, and TO_LITTLE_ENDIAN and
+FROM_LITTLE_ENDIAN return it as it is.
+
+Each takes an integer, a bit string, a REAL, an LREAL, a TIME or an LTIME,
+and returns the type it was given. A value of one byte has no order, and is
+returned as it is.
+*/
+NAMESPACE Std.Bytes
+
+	/* Returns `IN` with its bytes in big-endian order, the most significant
+	   first: the order a peer reading big-endian data expects.
+
+	   # Examples
+
+	   ```iecst
+	   w := TO_BIG_ENDIAN(WORD#16#1234);       // WORD#16#3412
+	   d := TO_BIG_ENDIAN(DWORD#16#12345678);  // DWORD#16#78563412
+	   b := TO_BIG_ENDIAN(BYTE#16#AB);         // BYTE#16#AB
+	   ```
+	*/
+	FUNCTION TO_BIG_ENDIAN: BYTE
+		VAR_INPUT
+			IN: BYTE;
+		END_VAR
+		TO_BIG_ENDIAN := IN;
+	END_FUNCTION
+
+	FUNCTION TO_BIG_ENDIAN: SINT
+		VAR_INPUT
+			IN: SINT;
+		END_VAR
+		TO_BIG_ENDIAN := IN;
+	END_FUNCTION
+
+	FUNCTION TO_BIG_ENDIAN: USINT
+		VAR_INPUT
+			IN: USINT;
+		END_VAR
+		TO_BIG_ENDIAN := IN;
+	END_FUNCTION
+
+	FUNCTION TO_BIG_ENDIAN: WORD
+		VAR_INPUT
+			IN: WORD;
+		END_VAR
+		{wasm IN 'bswap' (params IN) (result TO_BIG_ENDIAN)}
+	END_FUNCTION
+
+	FUNCTION TO_BIG_ENDIAN: INT
+		VAR_INPUT
+			IN: INT;
+		END_VAR
+		VAR
+			swapped: WORD;
+		END_VAR
+		{wasm IN 'bswap' (params IN) (result swapped)}
+		{wasm 'nop' (params swapped) (result TO_BIG_ENDIAN)}
+	END_FUNCTION
+
+	FUNCTION TO_BIG_ENDIAN: UINT
+		VAR_INPUT
+			IN: UINT;
+		END_VAR
+		{wasm IN 'bswap' (params IN) (result TO_BIG_ENDIAN)}
+	END_FUNCTION
+
+	FUNCTION TO_BIG_ENDIAN: DWORD
+		VAR_INPUT
+			IN: DWORD;
+		END_VAR
+		{wasm IN 'bswap' (params IN) (result TO_BIG_ENDIAN)}
+	END_FUNCTION
+
+	FUNCTION TO_BIG_ENDIAN: DINT
+		VAR_INPUT
+			IN: DINT;
+		END_VAR
+		{wasm IN 'bswap' (params IN) (result TO_BIG_ENDIAN)}
+	END_FUNCTION
+
+	FUNCTION TO_BIG_ENDIAN: UDINT
+		VAR_INPUT
+			IN: UDINT;
+		END_VAR
+		{wasm IN 'bswap' (params IN) (result TO_BIG_ENDIAN)}
+	END_FUNCTION
+
+	FUNCTION TO_BIG_ENDIAN: REAL
+		VAR_INPUT
+			IN: REAL;
+		END_VAR
+		VAR
+			bits: DWORD;
+		END_VAR
+		{wasm 'i32.reinterpret_f32' (params IN) (result bits)}
+		{wasm bits 'bswap' (params bits) (result bits)}
+		{wasm 'f32.reinterpret_i32' (params bits) (result TO_BIG_ENDIAN)}
+	END_FUNCTION
+
+	FUNCTION TO_BIG_ENDIAN: TIME
+		VAR_INPUT
+			IN: TIME;
+		END_VAR
+		{wasm IN 'bswap' (params IN) (result TO_BIG_ENDIAN)}
+	END_FUNCTION
+
+	FUNCTION TO_BIG_ENDIAN: LWORD
+		VAR_INPUT
+			IN: LWORD;
+		END_VAR
+		{wasm IN 'bswap' (params IN) (result TO_BIG_ENDIAN)}
+	END_FUNCTION
+
+	FUNCTION TO_BIG_ENDIAN: LINT
+		VAR_INPUT
+			IN: LINT;
+		END_VAR
+		{wasm IN 'bswap' (params IN) (result TO_BIG_ENDIAN)}
+	END_FUNCTION
+
+	FUNCTION TO_BIG_ENDIAN: ULINT
+		VAR_INPUT
+			IN: ULINT;
+		END_VAR
+		{wasm IN 'bswap' (params IN) (result TO_BIG_ENDIAN)}
+	END_FUNCTION
+
+	FUNCTION TO_BIG_ENDIAN: LREAL
+		VAR_INPUT
+			IN: LREAL;
+		END_VAR
+		VAR
+			bits: LWORD;
+		END_VAR
+		{wasm 'i64.reinterpret_f64' (params IN) (result bits)}
+		{wasm bits 'bswap' (params bits) (result bits)}
+		{wasm 'f64.reinterpret_i64' (params bits) (result TO_BIG_ENDIAN)}
+	END_FUNCTION
+
+	FUNCTION TO_BIG_ENDIAN: LTIME
+		VAR_INPUT
+			IN: LTIME;
+		END_VAR
+		{wasm IN 'bswap' (params IN) (result TO_BIG_ENDIAN)}
+	END_FUNCTION
+
+	/* Returns `IN`, whose bytes are in big-endian order, in the order rk
+	   computes with.
+
+	   # Examples
+
+	   ```iecst
+	   w := FROM_BIG_ENDIAN(WORD#16#3412);     // WORD#16#1234
+	   ```
+	*/
+	FUNCTION FROM_BIG_ENDIAN: BYTE
+		VAR_INPUT
+			IN: BYTE;
+		END_VAR
+		FROM_BIG_ENDIAN := IN;
+	END_FUNCTION
+
+	FUNCTION FROM_BIG_ENDIAN: SINT
+		VAR_INPUT
+			IN: SINT;
+		END_VAR
+		FROM_BIG_ENDIAN := IN;
+	END_FUNCTION
+
+	FUNCTION FROM_BIG_ENDIAN: USINT
+		VAR_INPUT
+			IN: USINT;
+		END_VAR
+		FROM_BIG_ENDIAN := IN;
+	END_FUNCTION
+
+	FUNCTION FROM_BIG_ENDIAN: WORD
+		VAR_INPUT
+			IN: WORD;
+		END_VAR
+		{wasm IN 'bswap' (params IN) (result FROM_BIG_ENDIAN)}
+	END_FUNCTION
+
+	FUNCTION FROM_BIG_ENDIAN: INT
+		VAR_INPUT
+			IN: INT;
+		END_VAR
+		VAR
+			swapped: WORD;
+		END_VAR
+		{wasm IN 'bswap' (params IN) (result swapped)}
+		{wasm 'nop' (params swapped) (result FROM_BIG_ENDIAN)}
+	END_FUNCTION
+
+	FUNCTION FROM_BIG_ENDIAN: UINT
+		VAR_INPUT
+			IN: UINT;
+		END_VAR
+		{wasm IN 'bswap' (params IN) (result FROM_BIG_ENDIAN)}
+	END_FUNCTION
+
+	FUNCTION FROM_BIG_ENDIAN: DWORD
+		VAR_INPUT
+			IN: DWORD;
+		END_VAR
+		{wasm IN 'bswap' (params IN) (result FROM_BIG_ENDIAN)}
+	END_FUNCTION
+
+	FUNCTION FROM_BIG_ENDIAN: DINT
+		VAR_INPUT
+			IN: DINT;
+		END_VAR
+		{wasm IN 'bswap' (params IN) (result FROM_BIG_ENDIAN)}
+	END_FUNCTION
+
+	FUNCTION FROM_BIG_ENDIAN: UDINT
+		VAR_INPUT
+			IN: UDINT;
+		END_VAR
+		{wasm IN 'bswap' (params IN) (result FROM_BIG_ENDIAN)}
+	END_FUNCTION
+
+	FUNCTION FROM_BIG_ENDIAN: REAL
+		VAR_INPUT
+			IN: REAL;
+		END_VAR
+		VAR
+			bits: DWORD;
+		END_VAR
+		{wasm 'i32.reinterpret_f32' (params IN) (result bits)}
+		{wasm bits 'bswap' (params bits) (result bits)}
+		{wasm 'f32.reinterpret_i32' (params bits) (result FROM_BIG_ENDIAN)}
+	END_FUNCTION
+
+	FUNCTION FROM_BIG_ENDIAN: TIME
+		VAR_INPUT
+			IN: TIME;
+		END_VAR
+		{wasm IN 'bswap' (params IN) (result FROM_BIG_ENDIAN)}
+	END_FUNCTION
+
+	FUNCTION FROM_BIG_ENDIAN: LWORD
+		VAR_INPUT
+			IN: LWORD;
+		END_VAR
+		{wasm IN 'bswap' (params IN) (result FROM_BIG_ENDIAN)}
+	END_FUNCTION
+
+	FUNCTION FROM_BIG_ENDIAN: LINT
+		VAR_INPUT
+			IN: LINT;
+		END_VAR
+		{wasm IN 'bswap' (params IN) (result FROM_BIG_ENDIAN)}
+	END_FUNCTION
+
+	FUNCTION FROM_BIG_ENDIAN: ULINT
+		VAR_INPUT
+			IN: ULINT;
+		END_VAR
+		{wasm IN 'bswap' (params IN) (result FROM_BIG_ENDIAN)}
+	END_FUNCTION
+
+	FUNCTION FROM_BIG_ENDIAN: LREAL
+		VAR_INPUT
+			IN: LREAL;
+		END_VAR
+		VAR
+			bits: LWORD;
+		END_VAR
+		{wasm 'i64.reinterpret_f64' (params IN) (result bits)}
+		{wasm bits 'bswap' (params bits) (result bits)}
+		{wasm 'f64.reinterpret_i64' (params bits) (result FROM_BIG_ENDIAN)}
+	END_FUNCTION
+
+	FUNCTION FROM_BIG_ENDIAN: LTIME
+		VAR_INPUT
+			IN: LTIME;
+		END_VAR
+		{wasm IN 'bswap' (params IN) (result FROM_BIG_ENDIAN)}
+	END_FUNCTION
+
+	/* Returns `IN` with its bytes in little-endian order, the least
+	   significant first. rk keeps every value in that order, so `IN` is
+	   returned as it is.
+	*/
+	FUNCTION TO_LITTLE_ENDIAN: BYTE
+		VAR_INPUT
+			IN: BYTE;
+		END_VAR
+		TO_LITTLE_ENDIAN := IN;
+	END_FUNCTION
+
+	FUNCTION TO_LITTLE_ENDIAN: SINT
+		VAR_INPUT
+			IN: SINT;
+		END_VAR
+		TO_LITTLE_ENDIAN := IN;
+	END_FUNCTION
+
+	FUNCTION TO_LITTLE_ENDIAN: USINT
+		VAR_INPUT
+			IN: USINT;
+		END_VAR
+		TO_LITTLE_ENDIAN := IN;
+	END_FUNCTION
+
+	FUNCTION TO_LITTLE_ENDIAN: WORD
+		VAR_INPUT
+			IN: WORD;
+		END_VAR
+		TO_LITTLE_ENDIAN := IN;
+	END_FUNCTION
+
+	FUNCTION TO_LITTLE_ENDIAN: INT
+		VAR_INPUT
+			IN: INT;
+		END_VAR
+		TO_LITTLE_ENDIAN := IN;
+	END_FUNCTION
+
+	FUNCTION TO_LITTLE_ENDIAN: UINT
+		VAR_INPUT
+			IN: UINT;
+		END_VAR
+		TO_LITTLE_ENDIAN := IN;
+	END_FUNCTION
+
+	FUNCTION TO_LITTLE_ENDIAN: DWORD
+		VAR_INPUT
+			IN: DWORD;
+		END_VAR
+		TO_LITTLE_ENDIAN := IN;
+	END_FUNCTION
+
+	FUNCTION TO_LITTLE_ENDIAN: DINT
+		VAR_INPUT
+			IN: DINT;
+		END_VAR
+		TO_LITTLE_ENDIAN := IN;
+	END_FUNCTION
+
+	FUNCTION TO_LITTLE_ENDIAN: UDINT
+		VAR_INPUT
+			IN: UDINT;
+		END_VAR
+		TO_LITTLE_ENDIAN := IN;
+	END_FUNCTION
+
+	FUNCTION TO_LITTLE_ENDIAN: REAL
+		VAR_INPUT
+			IN: REAL;
+		END_VAR
+		TO_LITTLE_ENDIAN := IN;
+	END_FUNCTION
+
+	FUNCTION TO_LITTLE_ENDIAN: TIME
+		VAR_INPUT
+			IN: TIME;
+		END_VAR
+		TO_LITTLE_ENDIAN := IN;
+	END_FUNCTION
+
+	FUNCTION TO_LITTLE_ENDIAN: LWORD
+		VAR_INPUT
+			IN: LWORD;
+		END_VAR
+		TO_LITTLE_ENDIAN := IN;
+	END_FUNCTION
+
+	FUNCTION TO_LITTLE_ENDIAN: LINT
+		VAR_INPUT
+			IN: LINT;
+		END_VAR
+		TO_LITTLE_ENDIAN := IN;
+	END_FUNCTION
+
+	FUNCTION TO_LITTLE_ENDIAN: ULINT
+		VAR_INPUT
+			IN: ULINT;
+		END_VAR
+		TO_LITTLE_ENDIAN := IN;
+	END_FUNCTION
+
+	FUNCTION TO_LITTLE_ENDIAN: LREAL
+		VAR_INPUT
+			IN: LREAL;
+		END_VAR
+		TO_LITTLE_ENDIAN := IN;
+	END_FUNCTION
+
+	FUNCTION TO_LITTLE_ENDIAN: LTIME
+		VAR_INPUT
+			IN: LTIME;
+		END_VAR
+		TO_LITTLE_ENDIAN := IN;
+	END_FUNCTION
+
+	/* Returns `IN`, whose bytes are in little-endian order, in the order rk
+	   computes with. rk keeps every value in that order, so `IN` is
+	   returned as it is.
+	*/
+	FUNCTION FROM_LITTLE_ENDIAN: BYTE
+		VAR_INPUT
+			IN: BYTE;
+		END_VAR
+		FROM_LITTLE_ENDIAN := IN;
+	END_FUNCTION
+
+	FUNCTION FROM_LITTLE_ENDIAN: SINT
+		VAR_INPUT
+			IN: SINT;
+		END_VAR
+		FROM_LITTLE_ENDIAN := IN;
+	END_FUNCTION
+
+	FUNCTION FROM_LITTLE_ENDIAN: USINT
+		VAR_INPUT
+			IN: USINT;
+		END_VAR
+		FROM_LITTLE_ENDIAN := IN;
+	END_FUNCTION
+
+	FUNCTION FROM_LITTLE_ENDIAN: WORD
+		VAR_INPUT
+			IN: WORD;
+		END_VAR
+		FROM_LITTLE_ENDIAN := IN;
+	END_FUNCTION
+
+	FUNCTION FROM_LITTLE_ENDIAN: INT
+		VAR_INPUT
+			IN: INT;
+		END_VAR
+		FROM_LITTLE_ENDIAN := IN;
+	END_FUNCTION
+
+	FUNCTION FROM_LITTLE_ENDIAN: UINT
+		VAR_INPUT
+			IN: UINT;
+		END_VAR
+		FROM_LITTLE_ENDIAN := IN;
+	END_FUNCTION
+
+	FUNCTION FROM_LITTLE_ENDIAN: DWORD
+		VAR_INPUT
+			IN: DWORD;
+		END_VAR
+		FROM_LITTLE_ENDIAN := IN;
+	END_FUNCTION
+
+	FUNCTION FROM_LITTLE_ENDIAN: DINT
+		VAR_INPUT
+			IN: DINT;
+		END_VAR
+		FROM_LITTLE_ENDIAN := IN;
+	END_FUNCTION
+
+	FUNCTION FROM_LITTLE_ENDIAN: UDINT
+		VAR_INPUT
+			IN: UDINT;
+		END_VAR
+		FROM_LITTLE_ENDIAN := IN;
+	END_FUNCTION
+
+	FUNCTION FROM_LITTLE_ENDIAN: REAL
+		VAR_INPUT
+			IN: REAL;
+		END_VAR
+		FROM_LITTLE_ENDIAN := IN;
+	END_FUNCTION
+
+	FUNCTION FROM_LITTLE_ENDIAN: TIME
+		VAR_INPUT
+			IN: TIME;
+		END_VAR
+		FROM_LITTLE_ENDIAN := IN;
+	END_FUNCTION
+
+	FUNCTION FROM_LITTLE_ENDIAN: LWORD
+		VAR_INPUT
+			IN: LWORD;
+		END_VAR
+		FROM_LITTLE_ENDIAN := IN;
+	END_FUNCTION
+
+	FUNCTION FROM_LITTLE_ENDIAN: LINT
+		VAR_INPUT
+			IN: LINT;
+		END_VAR
+		FROM_LITTLE_ENDIAN := IN;
+	END_FUNCTION
+
+	FUNCTION FROM_LITTLE_ENDIAN: ULINT
+		VAR_INPUT
+			IN: ULINT;
+		END_VAR
+		FROM_LITTLE_ENDIAN := IN;
+	END_FUNCTION
+
+	FUNCTION FROM_LITTLE_ENDIAN: LREAL
+		VAR_INPUT
+			IN: LREAL;
+		END_VAR
+		FROM_LITTLE_ENDIAN := IN;
+	END_FUNCTION
+
+	FUNCTION FROM_LITTLE_ENDIAN: LTIME
+		VAR_INPUT
+			IN: LTIME;
+		END_VAR
+		FROM_LITTLE_ENDIAN := IN;
+	END_FUNCTION
+
+	NAMESPACE Test
+		USING Std.Unit
+		USING Std.Convert
+
+		{test}
+		FUNCTION test_word ASSERT_EQ(TO_BIG_ENDIAN(WORD#16#1234), WORD#16#3412);
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_uint ASSERT_EQ(TO_BIG_ENDIAN(UINT#16#FF00), UINT#16#00FF);
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_int_keeps_its_sign ASSERT_EQ(TO_BIG_ENDIAN(INT#-2), INT#-257);
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_int_takes_a_sign ASSERT_EQ(TO_BIG_ENDIAN(INT#384), INT#-32767);
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_dword ASSERT_EQ(TO_BIG_ENDIAN(DWORD#16#12345678), DWORD#16#78563412);
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_dint ASSERT_EQ(TO_BIG_ENDIAN(DINT#-2), DINT#-16777217);
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_udint ASSERT_EQ(TO_BIG_ENDIAN(UDINT#16#11223344), UDINT#16#44332211);
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_lword ASSERT_EQ(TO_BIG_ENDIAN(LWORD#16#0102030405060708), LWORD#16#0807060504030201);
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_lint ASSERT_EQ(TO_BIG_ENDIAN(LINT#1), LINT#16#0100000000000000);
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_ulint ASSERT_EQ(TO_BIG_ENDIAN(ULINT#16#FF), ULINT#16#FF00000000000000);
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_real ASSERT_EQ(TO_BIG_ENDIAN(REAL#1.0), DWORD_TO_REAL(DWORD#16#0000803F));
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_lreal ASSERT_EQ(TO_BIG_ENDIAN(LREAL#1.0), LWORD_TO_LREAL(LWORD#16#000000000000F03F));
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_time ASSERT_EQ(TO_BIG_ENDIAN(T#1ms), T#16777216ms);
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_ltime ASSERT_EQ(TO_BIG_ENDIAN(LT#1ns), LT#72057594037927936ns);
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_one_byte ASSERT_EQ(TO_BIG_ENDIAN(BYTE#16#AB), BYTE#16#AB);
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_signed_byte ASSERT_EQ(FROM_BIG_ENDIAN(SINT#-3), SINT#-3);
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_round_trip_real ASSERT_EQ(FROM_BIG_ENDIAN(TO_BIG_ENDIAN(REAL#1.5)), REAL#1.5);
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_round_trip_dint ASSERT_EQ(FROM_BIG_ENDIAN(TO_BIG_ENDIAN(DINT#-123456)), DINT#-123456);
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_little_endian ASSERT_EQ(TO_LITTLE_ENDIAN(DWORD#16#12345678), DWORD#16#12345678);
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_from_little_endian ASSERT_EQ(FROM_LITTLE_ENDIAN(LINT#-5), LINT#-5);
+		END_FUNCTION
+	END_NAMESPACE
+END_NAMESPACE

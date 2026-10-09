@@ -309,7 +309,7 @@ Date and time comparisons are signed, matching the encodings: `T#-5s < T#0s`, an
 `Std.Math` has no `ADD`/`SUB`/`MUL`/`DIV`/`MOD` — those are operators.
 It has `ABS`, `SQRT`, `LN`, `LOG`, `EXP`, `EXPT`, the trig functions, and `IS_NAN`/`NOT_OK` to test a REAL before converting it.
 `Std.Strings` has `LEN`/`FIND`/`LEFT`/`RIGHT`/`MID`/`INSERT`/`DELETE`/`REPLACE`/`CONCAT` counting bytes and their `CHAR_` twins counting characters (plus `CHAR_AT`, `IS_UTF8`).
-`Std.Convert` holds the `X_TO_Y` casts and `TRUNC`, `Std.Selection` has `SEL`/`MIN`/`MAX`/`LIMIT`/`MUX`, `Std.Bits` has `SHL`/`SHR`/`ROL`/`ROR`, `Std.Timers` has `TP_TIME`/`TON_TIME`/`TOF_TIME` (and `_LTIME` variants), `Std.Counters` `CTU`/`CTD`/`CTUD`, `Std.Edge` `R_TRIG`/`F_TRIG`, `Std.Bistable` `SR`/`RS`/`SEMA`, `Std.Memory` `MOVE`, `Std.Unit` `ASSERT`/`ASSERT_EQ`/`ASSERT_NEQ`.
+`Std.Convert` holds the `X_TO_Y` casts and `TRUNC`, `Std.Selection` has `SEL`/`MIN`/`MAX`/`LIMIT`/`MUX`, `Std.Bits` has `SHL`/`SHR`/`ROL`/`ROR`, `Std.Bytes` `TO_BIG_ENDIAN`/`FROM_BIG_ENDIAN`/`TO_LITTLE_ENDIAN`/`FROM_LITTLE_ENDIAN`, `Std.Timers` has `TP_TIME`/`TON_TIME`/`TOF_TIME` (and `_LTIME` variants), `Std.Counters` `CTU`/`CTD`/`CTUD`, `Std.Edge` `R_TRIG`/`F_TRIG`, `Std.Bistable` `SR`/`RS`/`SEMA`, `Std.Memory` `MOVE`, `Std.Unit` `ASSERT`/`ASSERT_EQ`/`ASSERT_NEQ`.
 
 ## Reference files
 

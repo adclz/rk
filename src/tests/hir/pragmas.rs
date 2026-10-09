@@ -415,6 +415,39 @@ fn invalid_wasm_type_basis_without_a_form(mut with_db: RootDatabase) {
     ");
 }
 
+/// One byte has no order, and a REAL has no byte swap: `rk.bswap8` and
+/// `f32.bswap` are no instructions.
+#[rstest]
+fn invalid_wasm_byte_swap_without_a_form(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION SWAP8 : BYTE
+        VAR_INPUT IN : BYTE; END_VAR
+            {wasm IN 'bswap' (params IN) (result SWAP8)}
+        END_FUNCTION
+
+        FUNCTION SWAPR : REAL
+        VAR_INPUT IN : REAL; END_VAR
+            {wasm IN 'bswap' (params IN) (result SWAPR)}
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1505] Error: unknown wasm instruction
+       ,-[ file:///test0.st:4:22 ]
+       |
+     4 |             {wasm IN 'bswap' (params IN) (result SWAP8)}
+       |                      ^^^|^^^
+       |                         `----- 'rk.bswap8' is not a wasm instruction this compiler emits
+    ---'
+    [E1505] Error: unknown wasm instruction
+       ,-[ file:///test0.st:9:22 ]
+       |
+     9 |             {wasm IN 'bswap' (params IN) (result SWAPR)}
+       |                      ^^^|^^^
+       |                         `----- 'f32.bswap' is not a wasm instruction this compiler emits
+    ---'
+    ");
+}
+
 /// The shapes the library relies on all fit: a STRING producer, a STRING
 /// consumer, a 64-bit rotate with an INT count, a widening with a basis.
 #[rstest]
@@ -443,6 +476,11 @@ fn valid_wasm_signatures(mut with_db: RootDatabase) {
         FUNCTION ROOT : LREAL
         VAR_INPUT IN : LREAL; END_VAR
             {wasm IN 'sqrt' (params IN) (result ROOT)}
+        END_FUNCTION
+
+        FUNCTION SWAP : LWORD
+        VAR_INPUT IN : LWORD; END_VAR
+            {wasm IN 'bswap' (params IN) (result SWAP)}
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");

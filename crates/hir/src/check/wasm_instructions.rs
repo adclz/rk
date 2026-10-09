@@ -103,6 +103,11 @@ const RK_PSEUDO: &[&str] = &[
     "rk.rotr16",
 ];
 
+/// Byte swaps the emitter synthesizes, by width: the value's bytes in the
+/// other order. Wasm has no such instruction. A 16-bit result is zero
+/// extended, so a signed one is narrowed after (`{wasm 'nop' ...}`).
+const RK_BYTE_SWAP: &[&str] = &["rk.bswap16", "rk.bswap32", "rk.bswap64"];
+
 /// Grafted Rust builtins, by their dotted export names, with the wasm
 /// signature each has in the bundle: what a pragma's operands must push and
 /// what it gets back. A STRING operand is its (ptr, len) pair, a STRING
@@ -355,21 +360,22 @@ pub fn known(name: &str) -> bool {
     PSEUDO.contains(&name)
         || NATIVE.contains(&name)
         || RK_PSEUDO.contains(&name)
+        || RK_BYTE_SWAP.contains(&name)
         || ARRAY.contains(&name)
         || BUILTINS.iter().any(|(n, _, _)| *n == name)
 }
 
 /// As [`known`], for a pragma WITH a type basis (`{wasm IN 'shl' ...}`):
 /// lowering prefixes the name with the basis type's lane (`sin` on a `LREAL`
-/// becomes `f64.sin`), and `shl`/`shr_u`/`rotl`/`rotr` on integers become
-/// the width-aware `rk.*` pseudo-ops. Accepting a name if ANY lane form is
-/// known needs no type inference here; the lane itself is checked by the
-/// emitter's typed lookup.
+/// becomes `f64.sin`), and `shl`/`shr_u`/`rotl`/`rotr`/`bswap` on integers
+/// become the width-aware `rk.*` pseudo-ops. Accepting a name if ANY lane
+/// form is known needs no type inference here; the lane itself is checked
+/// by the emitter's typed lookup.
 pub fn known_with_type_basis(name: &str) -> bool {
     if known(name) {
         return true;
     }
-    if matches!(name, "shl" | "shr_u" | "shr_s" | "rotl" | "rotr") {
+    if matches!(name, "shl" | "shr_u" | "shr_s" | "rotl" | "rotr" | "bswap") {
         return true;
     }
     ["i32", "i64", "f32", "f64"]
@@ -444,6 +450,11 @@ pub fn rk_bits_of(spec: ElementarySpec) -> u32 {
 /// MSB. Full-width rotates keep the native op. The check and the MIR lowering
 /// both resolve here, so what is checked is what is emitted.
 pub fn resolve_type_basis(op: &str, lane: Lane, rk_bits: u32) -> CompactString {
+    // A byte swap on an integer of 16 bits or more. One byte has no order,
+    // and `rk.bswap8` is no instruction: the check refuses it.
+    if op == "bswap" && !matches!(lane, Lane::F32 | Lane::F64) {
+        return format!("rk.bswap{rk_bits}").into();
+    }
     if matches!(op, "shl" | "shr_u" | "rotl" | "rotr") && !matches!(lane, Lane::F32 | Lane::F64) {
         return match (op, rk_bits) {
             ("shl", b) => format!("rk.shl{b}"),
@@ -496,6 +507,14 @@ impl Signature {
 pub fn signature(name: &str) -> Option<Signature> {
     if let Some((_, params, results)) = BUILTINS.iter().find(|(n, _, _)| *n == name) {
         return Some(Signature::new(params, results.first().copied()));
+    }
+    if RK_BYTE_SWAP.contains(&name) {
+        let lane = if name == "rk.bswap64" {
+            Lane::I64
+        } else {
+            Lane::I32
+        };
+        return Some(Signature::new(&[lane], Some(lane)));
     }
     if let Some(rest) = name.strip_prefix("rk.") {
         // rk.shl8 .. rk.shl64, rk.shr*, rk.rotl8/16, rk.rotr8/16
@@ -764,7 +783,7 @@ mod tests {
     /// never checked; every native and pseudo-op has one.
     #[test]
     fn every_native_and_pseudo_op_has_a_signature() {
-        for name in NATIVE.iter().chain(RK_PSEUDO) {
+        for name in NATIVE.iter().chain(RK_PSEUDO).chain(RK_BYTE_SWAP) {
             assert!(signature(name).is_some(), "`{name}` has no signature");
         }
     }
@@ -782,6 +801,8 @@ mod tests {
         assert_eq!(sig("i32.shl"), "(i32, i32) -> i32");
         assert_eq!(sig("rk.shl16"), "(i32, i32) -> i32");
         assert_eq!(sig("rk.shl64"), "(i64, i32) -> i64");
+        assert_eq!(sig("rk.bswap16"), "(i32) -> i32");
+        assert_eq!(sig("rk.bswap64"), "(i64) -> i64");
         assert_eq!(sig("str.concat"), "(i32, i32, i32, i32, i32, i32) -> ()");
         assert_eq!(sig("rk.str_from_f32"), "(f32, i32, i32) -> ()");
     }
@@ -793,5 +814,9 @@ mod tests {
         assert_eq!(resolve_type_basis("rotl", Lane::I32, 32), "i32.rotl");
         assert_eq!(resolve_type_basis("rotr", Lane::I64, 64), "i64.rotr");
         assert_eq!(resolve_type_basis("rotl", Lane::I32, 16), "rk.rotl16");
+        assert_eq!(resolve_type_basis("bswap", Lane::I32, 16), "rk.bswap16");
+        assert_eq!(resolve_type_basis("bswap", Lane::I32, 32), "rk.bswap32");
+        assert_eq!(resolve_type_basis("bswap", Lane::I64, 64), "rk.bswap64");
+        assert!(!known(&resolve_type_basis("bswap", Lane::I32, 8)));
     }
 }
