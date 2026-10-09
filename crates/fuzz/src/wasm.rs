@@ -8,7 +8,7 @@ use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::{Arc, LazyLock};
 
 use debug_format::{LocatedArea, LocatedMap, RetainMap, ScheduleManifest};
-use wasmparser::{Payload, Validator, WasmFeatures};
+use wasmparser::Payload;
 use wasmtime::{
     Engine, ExternType, Func, Instance, Linker, Memory, MemoryType, Module, Store, Trap, Val,
     ValType,
@@ -16,24 +16,10 @@ use wasmtime::{
 
 use crate::Finding;
 
-/// The proposals rk's output may use, and no others: `WASM_FEATURES` in
-/// `crates/cli/src/compiler.rs` is what `rk compile -O` enables in wasm-opt,
-/// which refuses a module using anything it was not told about. A module
-/// that needs more validates in wasmtime and fails the optimized build.
-fn features() -> WasmFeatures {
-    WasmFeatures::WASM1
-        | WasmFeatures::BULK_MEMORY
-        | WasmFeatures::BULK_MEMORY_OPT
-        | WasmFeatures::SIGN_EXTENSION
-        | WasmFeatures::EXCEPTIONS
-        | WasmFeatures::MULTI_VALUE
-        | WasmFeatures::SATURATING_FLOAT_TO_INT
-}
-
+/// The module validates with the proposals rk's output may use, and no
+/// others: what a build checks ([`wasm_codegen::validate`]).
 pub(crate) fn validate(wasm: &[u8], profile: &str) -> Result<(), Finding> {
-    Validator::new_with_features(features())
-        .validate_all(wasm)
-        .map(|_| ())
+    wasm_codegen::validate(wasm)
         .map_err(|e| Finding::new("wasm-validate", format!("{profile} module: {e}")))
 }
 

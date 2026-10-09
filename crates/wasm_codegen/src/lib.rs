@@ -447,6 +447,29 @@ pub fn check_stack(module: &MirModule) -> Result<(), StackTooLarge> {
     Ok(())
 }
 
+/// The proposals an emitted module may use, and no others: `rk compile -O`
+/// enables the same ones in wasm-opt, which refuses a module using anything
+/// it was not told about.
+pub fn features() -> wasmparser::WasmFeatures {
+    use wasmparser::WasmFeatures;
+    WasmFeatures::WASM1
+        | WasmFeatures::BULK_MEMORY
+        | WasmFeatures::BULK_MEMORY_OPT
+        | WasmFeatures::SIGN_EXTENSION
+        | WasmFeatures::EXCEPTIONS
+        | WasmFeatures::MULTI_VALUE
+        | WasmFeatures::SATURATING_FLOAT_TO_INT
+}
+
+/// Whether `wasm` is a module a host can load, with no proposal but
+/// [`features`]. A build validates what it emits: a fault of the code
+/// generator stops the build instead of reaching a host.
+pub fn validate(wasm: &[u8]) -> Result<(), wasmparser::BinaryReaderError> {
+    wasmparser::Validator::new_with_features(features())
+        .validate_all(wasm)
+        .map(|_| ())
+}
+
 /// WASM page size.
 const WASM_PAGE: u32 = 65536;
 

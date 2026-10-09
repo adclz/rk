@@ -12,6 +12,7 @@ mod report;
 mod stack_size;
 mod test_filter;
 mod unit_assertions;
+mod validation;
 mod watcher;
 mod workspace;
 

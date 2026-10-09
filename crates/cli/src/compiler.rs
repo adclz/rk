@@ -179,7 +179,13 @@ pub fn build_core_profile(
     }
 
     let wasm_module = wasm_codegen::generate_wasm_profile(db, &mir_module, profile);
-    Ok((wasm_module.finish(), mir_module))
+    match validated(wasm_module.finish()) {
+        Ok(wasm) => Ok((wasm, mir_module)),
+        Err(message) => {
+            ui::error(&message);
+            Err(message)
+        }
+    }
 }
 
 /// Like [`build_core`] but never writes to stderr or stdout; on failure
@@ -232,7 +238,18 @@ pub fn build_core_quiet(
     size_stack(db, &mut mir_module)
         .map_err(|message| format!("compilation failed: {message}\n"))?;
     let wasm_module = wasm_codegen::generate_wasm(db, &mir_module);
-    Ok((wasm_module.finish(), mir_module))
+    Ok((validated(wasm_module.finish())?, mir_module))
+}
+
+/// The module code generation emitted, refused when it does not validate:
+/// a host would refuse it when it loads, and the fault is the compiler's.
+fn validated(wasm: Vec<u8>) -> Result<Vec<u8>, String> {
+    match wasm_codegen::validate(&wasm) {
+        Ok(()) => Ok(wasm),
+        Err(e) => Err(format!(
+            "internal compiler error: the emitted module is invalid: {e} (report it at {ISSUES_URL})"
+        )),
+    }
 }
 
 /// Where a build of `workspace` lands, by profile, the only axis there
