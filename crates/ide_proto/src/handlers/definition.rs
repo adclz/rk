@@ -282,7 +282,7 @@ impl<'db> DefinitionHandler<'db> for Type<'db> {
         // Each arm names its holder by value: a `dyn HasName` would pin the
         // borrow of a local to `'db`.
         match through_aliases(db, *self) {
-            Type::CallableType(c) | Type::ReturnValue(c) => c.definition(db, _offset),
+            Type::CallableType(c) | Type::ReturnValue((c, _)) => c.definition(db, _offset),
             Type::Program(p) => Some(named_location(db, &p)),
             Type::Function(f) => Some(named_location(db, &f)),
             Type::FunctionBlock(f) => Some(named_location(db, &f)),

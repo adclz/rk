@@ -97,7 +97,8 @@ impl<'db> Type<'db> {
                 }
                 Ok(infer_signature(db, var.get_scope_id(db)).type_of_specs[&var.spec(db)])
             }
-            Type::CallableType(typ) | Type::ReturnValue(typ) => match typ {
+            Type::ReturnValue((_, Some(multibits))) => Err(multibits_to_type(db, *multibits)),
+            Type::CallableType(typ) | Type::ReturnValue((typ, None)) => match typ {
                 CallableType::Function(f) => match f.return_type(db) {
                     Some(ret_ty) => {
                         Ok(infer_signature(db, f.get_scope_id(db)).type_of_specs[ret_ty])
@@ -291,7 +292,7 @@ pub fn declared_capacity_of<'db>(db: &'db dyn WorkspaceDataBase, ty: Type<'db>) 
         Type::Variable((var, None)) => var.spec(db),
         Type::StructElement(element) => element.spec(db),
         Type::DataType(dt) => dt.spec(db),
-        Type::ReturnValue(callable) => *callable.return_type(db)?,
+        Type::ReturnValue((callable, None)) => *callable.return_type(db)?,
         _ => return None,
     };
     string_capacity(db, spec)

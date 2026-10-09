@@ -107,6 +107,10 @@ impl<'db> ExprLowerCtx<'db> {
             Type::Variable((var, _)) => {
                 self.type_to_mir_elementary_pub(var.spec(self.db).infer(self.db))?
             }
+            // The callable's own result: the slice is of its return type.
+            Type::ReturnValue((callable, Some(_))) => {
+                self.type_to_mir_elementary_pub(Type::ReturnValue((callable, None)))?
+            }
             Type::DirectVariable(_) => {
                 return Err(LowerTypeError::UnsupportedType(
                     "partial access on a directly represented variable is not supported"

@@ -539,7 +539,22 @@ impl<'db> Resolver<'db> {
                         .contains_key(&ident.ident(db))
                 })
             {
-                let result = Type::ReturnValue(callable);
+                // A partial access of it is a slice of the result, as of a
+                // variable: `F.%B7` is a BYTE of an LWORD result.
+                let partial = if single_step { multibits } else { None };
+                if let Some(mb) = partial
+                    && let Some(spec) = callable.return_type(db)
+                {
+                    crate::hir_ty::resolver::walk::check_multibits_bounds(
+                        db,
+                        step.get_expr(db),
+                        crate::hir_ty::infer::Infer::infer(spec, db),
+                        None,
+                        mb,
+                        ctx,
+                    );
+                }
+                let result = Type::ReturnValue((callable, partial));
                 ctx.type_of_path_expr.insert(step.get_expr(db), result);
                 if single_step {
                     ctx.type_of_path_expr.insert(path_expr, result);

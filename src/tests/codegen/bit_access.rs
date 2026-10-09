@@ -516,3 +516,62 @@ fn a_bit_write_runs_its_subscript_once(mut with_db: db::RootDatabase) {
     let result: i32 = execute_wasm(&wasm, "run", ());
     assert_eq!(result, 111, "a[0] got the bit, a[1] untouched, one call");
 }
+
+/// A slice of a FUNCTION's own result: written into a 64-bit result it was
+/// the 8-bit value converted twice, an invalid module. The other bits stay,
+/// and a signed result keeps its sign.
+#[rstest]
+fn slices_of_a_result(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION F : LWORD
+        VAR_INPUT x : BYTE; END_VAR
+            F.%B7 := x;
+            F.%X0 := TRUE;
+        END_FUNCTION
+
+        FUNCTION G : LWORD
+            G := LWORD#16#1122334455667788;
+            G.%W1 := WORD#16#ABCD;
+        END_FUNCTION
+
+        FUNCTION S : INT
+            S := INT#-1;
+            S.%B1 := BYTE#16#7F;
+        END_FUNCTION
+
+        FUNCTION byte_of_f : LWORD
+            byte_of_f := F(BYTE#16#01);
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let f: i64 = execute_wasm(&wasm, "byte_of_f", ());
+    assert_eq!(f as u64, 0x0100_0000_0000_0001);
+    let g: i64 = execute_wasm(&wasm, "G", ());
+    assert_eq!(g as u64, 0x1122_3344_ABCD_7788);
+    let s: i32 = execute_wasm(&wasm, "S", ());
+    assert_eq!(s, 32767, "16#7FFF");
+}
+
+/// A slice through a reference is of the value it points to: the place
+/// took the slice's type for the pointee's, and a `DWORD` of a `LINT`
+/// stopped lowering ("reaches bit 64 of a 32-bit value").
+#[rstest]
+fn slices_through_a_reference(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION run : DINT
+        VAR r : REF_TO LINT; l : LINT := -1; high : DWORD; END_VAR
+            r := REF(l);
+            r^.%D1 := DWORD#0;
+            IF l = 4294967295 THEN run := 1; END_IF;
+            IF r^.31 THEN run := run + 10; END_IF;
+            r^.%B7 := BYTE#16#80;
+            high := r^.%D1;
+            IF high = DWORD#16#80000000 THEN run := run + 100; END_IF;
+        END_FUNCTION
+    "#;
+    let result: i32 = run(&mut with_db, source, "run", ());
+    assert_eq!(
+        result, 111,
+        "the high half cleared, bit 31 kept, the top byte set"
+    );
+}

@@ -1039,7 +1039,7 @@ impl<'db> ExprLowerCtx<'db> {
                 StorageClass::InstanceMember => {}
             }
         } else if let Some(root_expr) = root.flatten(self.db).first().map(|s| s.get_expr(self.db))
-            && let Type::ReturnValue(callable) = self
+            && let Type::ReturnValue((callable, _)) = self
                 .inference(root.scope_id(self.db))
                 .type_of_path_expr(root_expr)
         {
@@ -1166,14 +1166,19 @@ impl<'db> ExprLowerCtx<'db> {
         if !matches!(pointee, MirType::String { .. } | MirType::Elementary(_)) {
             return pointee;
         }
-        // The raw type: the adjusted one has already dereferenced it.
+        // The raw type: the adjusted one has already dereferenced it, and a
+        // partial access of it (`r^.%D1`) made it the slice's.
         match self
             .inference(reference.scope_id(self.db))
             .type_of_path_expr(reference)
             .normalize(self.db)
         {
             Type::RefTo(target) => match crate::lower::lower_type::lower_spec(self.db, target) {
-                Ok(declared @ (MirType::String { .. } | MirType::Subrange(_))) => declared,
+                Ok(
+                    declared @ (MirType::String { .. }
+                    | MirType::Subrange(_)
+                    | MirType::Elementary(_)),
+                ) => declared,
                 _ => pointee,
             },
             _ => pointee,

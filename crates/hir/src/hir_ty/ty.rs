@@ -66,8 +66,9 @@ pub enum Type<'db> {
     CallableType(CallableType<'db>),
     // The enclosing FUNCTION's or METHOD's return value, which its body names
     // by the callable's own name: a value of the return type, as a local is a
-    // value of its declared type.
-    ReturnValue(CallableType<'db>),
+    // value of its declared type. With a partial access (`F.%B7`), the slice
+    // of it, as a variable's.
+    ReturnValue((CallableType<'db>, Option<MultibitsPart>)),
     // Void type, usually the result of a call that does not return anything
     Void,
     // Never type, represents an unresolvable type

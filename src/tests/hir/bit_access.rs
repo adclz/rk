@@ -230,6 +230,49 @@ fn assigning_wrong_type_through_a_slice_is_rejected(mut with_db: db::RootDatabas
     ");
 }
 
+/// A FUNCTION's own name is its result, and a slice of it is a slice as of a
+/// variable: typed as the slice, bounded by the result's type. It was typed
+/// as the whole result, so an LWORD went into a BYTE unchecked, and an
+/// offset past the result was never refused.
+#[rstest]
+fn a_slice_of_a_result_is_a_slice(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION F : LWORD
+            F.%B7 := LWORD#16#FFFF;
+        END_FUNCTION
+
+        FUNCTION H : WORD
+            H.%B2 := BYTE#1;
+        END_FUNCTION
+
+        FUNCTION Fine : LWORD
+            Fine.%B7 := BYTE#1;
+            Fine.%X0 := TRUE;
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0301] Error: type mismatch
+       ,-[ file:///test0.st:3:22 ]
+       |
+     2 |         FUNCTION F : LWORD
+       |                  |
+       |                  `-- 'F' is declared here
+     3 |             F.%B7 := LWORD#16#FFFF;
+       |                      ^^^^^^|^^^^^^
+       |                            `-------- expected 'BYTE', got 'LWORD'
+       |
+       | Help: insert explicit cast 'LWORD_TO_BYTE(LWORD#16#FFFF)'
+    ---'
+    [E1429] Error: partial access out of range
+       ,-[ file:///test0.st:7:13 ]
+       |
+     7 |             H.%B2 := BYTE#1;
+       |             |
+       |             `-- offset 2 is out of range for type 'WORD' (valid range: 0..1)
+    ---'
+    ");
+}
+
 /// Partial access reaches through a path: the slice applies to the member the
 /// path lands on, not to the root.
 #[rstest]
