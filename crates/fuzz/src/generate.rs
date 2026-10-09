@@ -56,6 +56,13 @@
 //!   of, before calling itself, and reads it back after: calls sharing it
 //!   compute another value.
 //!
+//! - Partial access of integers: a bit read as a BOOL (`p.%X3`, or bare
+//!   `p.3`) or written (`p.%X3 := cond`), and a byte, word, double word or
+//!   long word copied from one place into another (`a.%B1 := b.%B0`), on a
+//!   variable, an array element, a field, a reference's target or an FB's
+//!   member. A FUNCTION writes part of its own result after assigning it.
+//!   The evaluator works on the two's-complement bits of the place's width.
+//!
 //! Nothing may stop the module: an integer divisor is a literal other than
 //! 0 and -1 (`DINT#-2147483648 / -1` traps), an index is wrapped into its
 //! array's range by the expression itself, and loops have literal bounds.
@@ -250,6 +257,9 @@ enum Expr {
     Call(usize, Vec<Expr>),
     /// A variadic FUNCTION's body: its pack, of this type, folded.
     Fold(Fold, Ty),
+    /// Bit `n` of an integer place of type `ty`, as a BOOL: `p.%Xn`, or
+    /// `p.n` when bare.
+    Bit(Box<Place>, Ty, u32, bool),
 }
 
 /// What a variadic FUNCTION folds its pack with: `+`, `-` and `*` from
@@ -315,9 +325,76 @@ enum Stmt {
     If(Vec<(Expr, Vec<Stmt>)>, Option<Vec<Stmt>>),
     Case(Expr, Vec<(Vec<Label>, Vec<Stmt>)>, Option<Vec<Stmt>>),
     For(usize, i128, i128, i128, Vec<Stmt>),
+    /// `p.%Xn := cond`, or `p.n := cond` when bare, on an integer place of
+    /// type `ty`.
+    SetBit(Place, Ty, u32, bool, Expr),
+    /// `to.%B1 := from.%B0`: the slice of `width` bits at offset `from_off`
+    /// of `from` copied over the one at `to_off` of `to`, each offset counted
+    /// in widths.
+    MoveSlice(Slice, Slice, u32),
     Exit,
     Continue,
     Return,
+}
+
+/// An integer place, its type and a slice offset of it, in widths.
+#[derive(Clone, Debug)]
+struct Slice {
+    place: Place,
+    ty: Ty,
+    offset: u32,
+}
+
+/// What a FUNCTION writes into part of its result, after `f := body`.
+#[derive(Clone, Debug)]
+enum ResultSlice {
+    /// `f.%Xn := cond`, or `f.n := cond` when bare: a BOOL over the inputs.
+    Bit(u32, bool, Expr),
+    /// `f.%B1 := a0.%B0`: a slice of an integer input, `width` bits.
+    Move {
+        to_off: u32,
+        input: usize,
+        from_off: u32,
+        width: u32,
+    },
+}
+
+/// The letter a slice of `width` bits is written with: `%B1`, `%W0`.
+fn width_letter(width: u32) -> char {
+    match width {
+        8 => 'B',
+        16 => 'W',
+        32 => 'D',
+        _ => 'L',
+    }
+}
+
+/// The bits of an integer value of type `ty`, as two's complement holds
+/// them in the type's width.
+fn raw(ty: Ty, v: &Val) -> u128 {
+    v.int().rem_euclid(1i128 << ty.bits()) as u128
+}
+
+/// The value of type `ty` whose bits are `bits`.
+fn from_raw(ty: Ty, bits: u128) -> Val {
+    Val::Int(ty.wrap(bits as i128))
+}
+
+/// `width` bits set.
+fn mask(width: u32) -> u128 {
+    (1u128 << width) - 1
+}
+
+/// `value` with the slice of `width` bits at `offset` (in widths) replaced
+/// by `slice`.
+fn put_slice(value: u128, offset: u32, width: u32, slice: u128) -> u128 {
+    let shift = offset * width;
+    (value & !(mask(width) << shift)) | ((slice & mask(width)) << shift)
+}
+
+/// The slice of `width` bits at `offset` (in widths) of `value`.
+fn get_slice(value: u128, offset: u32, width: u32) -> u128 {
+    (value >> (offset * width)) & mask(width)
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -355,6 +432,8 @@ struct Function {
     ty: Ty,
     inputs: Vec<Var>,
     body: Expr,
+    /// Parts of an integer result written after `body` is assigned.
+    slices: Vec<ResultSlice>,
     /// One input, the pack, which `body` folds: a call passes it any
     /// number of arguments, positionally.
     variadic: bool,
@@ -923,7 +1002,13 @@ impl Generator<'_> {
         }
         let d = depth - 1;
         if ty == Ty::Bool {
-            return match self.choices.below(4) {
+            let pick = self.choices.below(5);
+            if pick == 4
+                && let Some(bit) = self.bit_read(readable)
+            {
+                return bit;
+            }
+            return match pick {
                 0 => Expr::Not(Box::new(self.expr(ty, d, readable))),
                 1 => {
                     let op = [Logic::And, Logic::Or, Logic::Xor][self.choices.below(3)];
@@ -980,6 +1065,100 @@ impl Generator<'_> {
                 )
             }
         }
+    }
+
+    /// A bit of an integer place, read as a BOOL.
+    fn bit_read(&mut self, readable: &[usize]) -> Option<Expr> {
+        let ty = INTEGERS[self.choices.below(INTEGERS.len())];
+        let places = self.places(ty, readable, true);
+        let place = self.pick(places)?;
+        let bit = self.choices.below(ty.bits() as usize) as u32;
+        Some(Expr::Bit(
+            Box::new(place),
+            ty,
+            bit,
+            self.choices.percent(50),
+        ))
+    }
+
+    /// A bit of an integer place written: `p.%X3 := cond`.
+    fn set_bit(&mut self, readable: &[usize]) -> Option<Stmt> {
+        let ty = INTEGERS[self.choices.below(INTEGERS.len())];
+        let target = self.target(ty)?;
+        let bit = self.choices.below(ty.bits() as usize) as u32;
+        let bare = self.choices.percent(50);
+        let value = self.expr(Ty::Bool, 3, readable);
+        Some(Stmt::SetBit(target, ty, bit, bare, value))
+    }
+
+    /// A slice of one integer place copied over one of another, of a width
+    /// both have: `a.%W1 := b.%W0`.
+    fn move_slice(&mut self, readable: &[usize]) -> Option<Stmt> {
+        let to_ty = INTEGERS[self.choices.below(INTEGERS.len())];
+        let from_ty = INTEGERS[self.choices.below(INTEGERS.len())];
+        let widths: Vec<u32> = [8, 16, 32, 64]
+            .into_iter()
+            .filter(|w| *w <= to_ty.bits() && *w <= from_ty.bits())
+            .collect();
+        let width = widths[self.choices.below(widths.len())];
+        let to = self.target(to_ty)?;
+        let sources = self.places(from_ty, readable, true);
+        let from = self.pick(sources)?;
+        let to_off = self.choices.below((to_ty.bits() / width) as usize) as u32;
+        let from_off = self.choices.below((from_ty.bits() / width) as usize) as u32;
+        Some(Stmt::MoveSlice(
+            Slice {
+                place: to,
+                ty: to_ty,
+                offset: to_off,
+            },
+            Slice {
+                place: from,
+                ty: from_ty,
+                offset: from_off,
+            },
+            width,
+        ))
+    }
+
+    /// What a FUNCTION of type `ty` writes into parts of its result, over
+    /// its inputs: nothing unless its result is an integer.
+    fn result_slices(&mut self, ty: Ty, readable: &[usize]) -> Vec<ResultSlice> {
+        if !ty.is_int() {
+            return Vec::new();
+        }
+        let mut out = Vec::new();
+        for _ in 0..self.choices.below(3) {
+            let integers: Vec<usize> = readable
+                .iter()
+                .copied()
+                .filter(|&i| self.vars[i].ty.is_int())
+                .collect();
+            if self.choices.percent(50) || integers.is_empty() {
+                let bit = self.choices.below(ty.bits() as usize) as u32;
+                let bare = self.choices.percent(50);
+                out.push(ResultSlice::Bit(
+                    bit,
+                    bare,
+                    self.expr(Ty::Bool, 2, readable),
+                ));
+                continue;
+            }
+            let input = integers[self.choices.below(integers.len())];
+            let from_ty = self.vars[input].ty;
+            let widths: Vec<u32> = [8, 16, 32, 64]
+                .into_iter()
+                .filter(|w| *w <= ty.bits() && *w <= from_ty.bits())
+                .collect();
+            let width = widths[self.choices.below(widths.len())];
+            out.push(ResultSlice::Move {
+                to_off: self.choices.below((ty.bits() / width) as usize) as u32,
+                input,
+                from_off: self.choices.below((from_ty.bits() / width) as usize) as u32,
+                width,
+            });
+        }
+        out
     }
 
     /// A fold, the type of the pack it folds and the type it gives: integers
@@ -1135,7 +1314,7 @@ impl Generator<'_> {
             }
             self.budget -= 1;
             let nested = |g: &mut Self| g.block(depth - 1, readable, free, in_loop, may_return);
-            let stmt = match self.choices.below(21) {
+            let stmt = match self.choices.below(23) {
                 0 | 1 if depth > 0 => {
                     let mut arms = Vec::new();
                     for _ in 0..1 + self.choices.below(3) {
@@ -1221,6 +1400,14 @@ impl Generator<'_> {
                         None => continue,
                     }
                 }
+                21 => match self.set_bit(readable) {
+                    Some(set) => set,
+                    None => continue,
+                },
+                22 => match self.move_slice(readable) {
+                    Some(copy) => copy,
+                    None => continue,
+                },
                 _ => match self.assign(readable) {
                     Some(assign) => assign,
                     None => continue,
@@ -1666,6 +1853,7 @@ pub fn program(bytes: &[u8]) -> String {
                 ty,
                 inputs: vec![input(0, pack)],
                 body: Expr::Fold(fold, pack),
+                slices: Vec::new(),
                 variadic: true,
             });
             continue;
@@ -1696,12 +1884,16 @@ pub fn program(bytes: &[u8]) -> String {
             }
         };
         let readable: Vec<usize> = (0..inputs.len()).collect();
-        let (inputs, body) = g.with_frame(inputs, |g| g.expr(ty, 3, &readable));
+        let (inputs, (body, slices)) = g.with_frame(inputs, |g| {
+            let body = g.expr(ty, 3, &readable);
+            (body, g.result_slices(ty, &readable))
+        });
         g.d.functions.push(Function {
             name,
             ty,
             inputs,
             body,
+            slices,
             variadic: false,
         });
     }
@@ -2137,12 +2329,33 @@ fn write_program(vars: &[Var], d: &Decls, body: &[Stmt], state: &State) -> Strin
                 false => decl(&mut out, v, false),
             }
         }
-        let _ = writeln!(
-            out,
-            "END_VAR\n    {} := {};\nEND_FUNCTION\n",
-            f.name,
-            names(&f.inputs).expr(&f.body)
-        );
+        let n = names(&f.inputs);
+        let _ = writeln!(out, "END_VAR\n    {} := {};", f.name, n.expr(&f.body));
+        for slice in &f.slices {
+            match slice {
+                ResultSlice::Bit(bit, bare, cond) => {
+                    let part = match bare {
+                        true => format!("{bit}"),
+                        false => format!("%X{bit}"),
+                    };
+                    let _ = writeln!(out, "    {}.{part} := {};", f.name, n.expr(cond));
+                }
+                ResultSlice::Move {
+                    to_off,
+                    input,
+                    from_off,
+                    width,
+                } => {
+                    let w = width_letter(*width);
+                    let _ = writeln!(
+                        out,
+                        "    {}.%{w}{to_off} := {}.%{w}{from_off};",
+                        f.name, f.inputs[*input].name
+                    );
+                }
+            }
+        }
+        out.push_str("END_FUNCTION\n\n");
     }
     for i in &d.interfaces {
         let _ = writeln!(out, "INTERFACE {}", i.name);
@@ -2826,6 +3039,10 @@ impl Names<'_> {
                 }
             }
             Expr::Fold(op, _) => format!("...{}{}", self.vars[0], op.symbol()),
+            Expr::Bit(p, _, bit, bare) => match bare {
+                true => format!("{}.{bit}", self.place(p)),
+                false => format!("{}.%X{bit}", self.place(p)),
+            },
         }
     }
 
@@ -2852,6 +3069,24 @@ impl Names<'_> {
             match stmt {
                 Stmt::Assign(p, e) => {
                     let _ = writeln!(out, "{pad}{} := {};", self.place(p), self.expr(e));
+                }
+                Stmt::SetBit(p, _, bit, bare, e) => {
+                    let part = match bare {
+                        true => format!("{bit}"),
+                        false => format!("%X{bit}"),
+                    };
+                    let _ = writeln!(out, "{pad}{}.{part} := {};", self.place(p), self.expr(e));
+                }
+                Stmt::MoveSlice(to, from, width) => {
+                    let w = width_letter(*width);
+                    let _ = writeln!(
+                        out,
+                        "{pad}{}.%{w}{} := {}.%{w}{};",
+                        self.place(&to.place),
+                        to.offset,
+                        self.place(&from.place),
+                        from.offset
+                    );
                 }
                 Stmt::CallFb(i, args, bound) => {
                     let inst = &self.d.instances[*i];
@@ -3248,6 +3483,23 @@ fn run_block(block: &[Stmt], st: &mut State, tys: &[Ty], d: &Decls) -> Flow {
                 write(p, v, st, tys, d);
                 Flow::Next
             }
+            Stmt::SetBit(p, ty, bit, _, e) => {
+                let set = eval(e, st, d).truthy() as u128;
+                let bits = put_slice(raw(*ty, &read(p, st, d)), *bit, 1, set);
+                write(p, from_raw(*ty, bits), st, tys, d);
+                Flow::Next
+            }
+            Stmt::MoveSlice(to, from, width) => {
+                let slice = get_slice(raw(from.ty, &read(&from.place, st, d)), from.offset, *width);
+                let bits = put_slice(
+                    raw(to.ty, &read(&to.place, st, d)),
+                    to.offset,
+                    *width,
+                    slice,
+                );
+                write(&to.place, from_raw(to.ty, bits), st, tys, d);
+                Flow::Next
+            }
             Stmt::CallFb(i, args, bound) => {
                 let block = &d.blocks[d.instances[*i].block];
                 let values: Vec<Val> = args.iter().map(|a| eval(a, st, d)).collect();
@@ -3624,8 +3876,30 @@ fn eval(e: &Expr, st: &State, d: &Decls) -> Val {
                     .map(|(v, a)| store(v.ty, ev(a)))
                     .collect(),
             };
-            store(f.ty, eval(&f.body, &State::frame(inputs), d))
+            let frame = State::frame(inputs);
+            let mut result = store(f.ty, eval(&f.body, &frame, d));
+            for slice in &f.slices {
+                let bits = match slice {
+                    ResultSlice::Bit(bit, _, cond) => {
+                        let set = eval(cond, &frame, d).truthy() as u128;
+                        put_slice(raw(f.ty, &result), *bit, 1, set)
+                    }
+                    ResultSlice::Move {
+                        to_off,
+                        input,
+                        from_off,
+                        width,
+                    } => {
+                        let from = raw(f.inputs[*input].ty, &frame.vars[*input]);
+                        let slice = get_slice(from, *from_off, *width);
+                        put_slice(raw(f.ty, &result), *to_off, *width, slice)
+                    }
+                };
+                result = from_raw(f.ty, bits);
+            }
+            result
         }
+        Expr::Bit(p, ty, bit, _) => Val::Int(get_slice(raw(*ty, &read(p, st, d)), *bit, 1) as i128),
         // The frame holds the pack, one value per argument. An arithmetic
         // fold wraps at the pack's type at each step, a single argument is
         // itself, and a comparison of one argument is TRUE.
@@ -3781,6 +4055,97 @@ mod tests {
             }
         }
         assert_eq!(reached.len(), markers.len(), "routes reached: {reached:?}");
+    }
+
+    #[test]
+    fn partial_access_computes_its_bits() {
+        // Each form by what only it writes: a bit through `%X` and bare, a
+        // slice of each width, and a FUNCTION's own result written in part.
+        // `.3` after a name, a subscript or a dereference: not a REAL
+        // literal's decimals, nor anything in a comment.
+        let bare = |text: &str| {
+            text.lines()
+                .filter(|line| !line.trim_start().starts_with("//"))
+                .any(|line| {
+                    let b = line.as_bytes();
+                    (1..b.len()).any(|i| {
+                        if b[i] != b'.' || !b.get(i + 1).is_some_and(u8::is_ascii_digit) {
+                            return false;
+                        }
+                        let mut start = i;
+                        while start > 0
+                            && (b[start - 1].is_ascii_alphanumeric() || b[start - 1] == b'_')
+                        {
+                            start -= 1;
+                        }
+                        match start < i {
+                            true => b[start].is_ascii_alphabetic(),
+                            false => matches!(b[i - 1], b']' | b'^'),
+                        }
+                    })
+                })
+        };
+        let result = |text: &str| {
+            text.lines().any(|line| {
+                let line = line.trim_start();
+                line.starts_with('g')
+                    && line
+                        .split_once('.')
+                        .is_some_and(|(name, _)| name[1..].bytes().all(|b| b.is_ascii_digit()))
+            })
+        };
+        type Has = fn(&str) -> bool;
+        let forms: [(&str, Has); 7] = [
+            ("%X", |t| t.contains(".%X")),
+            ("bare", bare),
+            ("%B", |t| t.contains(".%B")),
+            ("%W", |t| t.contains(".%W")),
+            ("%D", |t| t.contains(".%D")),
+            ("%L", |t| t.contains(".%L")),
+            ("result", result),
+        ];
+        let mut seed = 0x2545_F491_4F6C_DD1Du64;
+        let mut reached: Vec<&str> = Vec::new();
+        for _ in 0..2000 {
+            let bytes: Vec<u8> = (0..1024)
+                .map(|_| {
+                    seed ^= seed << 13;
+                    seed ^= seed >> 7;
+                    seed ^= seed << 17;
+                    (seed >> 24) as u8
+                })
+                .collect();
+            let text = program(&bytes);
+            let fresh: Vec<&str> = forms
+                .iter()
+                .filter(|(name, has)| has(&text) && !reached.contains(name))
+                .map(|(name, _)| *name)
+                .collect();
+            if fresh.is_empty() {
+                continue;
+            }
+            if let Err(finding) = crate::check_generated(&text) {
+                panic!("{finding}\n--- the program ---\n{text}");
+            }
+            reached.extend(fresh);
+            if reached.len() == forms.len() {
+                break;
+            }
+        }
+        assert_eq!(reached.len(), forms.len(), "forms reached: {reached:?}");
+    }
+
+    #[test]
+    fn slices_are_two_complement_bits() {
+        assert_eq!(raw(Ty::Int, &Val::Int(-2)), 0xFFFE);
+        assert_eq!(from_raw(Ty::Int, 0xFEFF), Val::Int(-257));
+        assert_eq!(get_slice(0x1122_3344, 1, 8), 0x33);
+        assert_eq!(put_slice(0x1122_3344, 1, 16, 0xABCD), 0xABCD_3344);
+        assert_eq!(
+            put_slice(raw(Ty::Lint, &Val::Int(-1)), 1, 32, 0),
+            0xFFFF_FFFF
+        );
+        assert_eq!(get_slice(u64::MAX as u128, 0, 64), u64::MAX as u128);
     }
 
     #[test]
