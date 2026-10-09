@@ -1,21 +1,25 @@
 // SPDX-FileCopyrightText: 2026 Clauzel Adrien
 // SPDX-License-Identifier: AGPL-3.0-only
 
-//! The BCD conversions of `Std.Bytes` raise on what has no BCD form: a
-//! digit above 9, a number with more digits than the bit string holds. The
-//! stdlib's own tests cover the values. A raise is what they cannot check.
+//! What the byte functions refuse at run time: a BCD conversion of
+//! `Std.Bytes` raises on what has no BCD form, a digit above 9 or a number
+//! with more digits than the bit string holds, and a buffer read or write of
+//! `Std.Arrays` faults where its bytes run past the array. The stdlib's own
+//! tests cover the values. A raise is what they cannot check.
 
 use rstest::rstest;
 
 use super::with_db;
 
-/// The message `call` raises, in a workspace with `Std.Bytes`, which uses
-/// no other namespace. Its tests are a library's, and not lowered.
+/// The message `call` raises, in a workspace with `Std.Bytes` and
+/// `Std.Arrays`, which use no other namespace. Their tests are a library's,
+/// and not lowered.
 fn raised(db: &mut db::RootDatabase, call: &str) -> String {
     let source = format!(
         "USING Std.Bytes;
+USING Std.Arrays;
 FUNCTION run : DINT
-VAR w : WORD; n : UINT; END_VAR
+VAR w : WORD; n : UINT; d : DWORD; buf : ARRAY[0..3] OF BYTE; END_VAR
     {call};
     run := 0;
 END_FUNCTION
@@ -23,7 +27,10 @@ END_FUNCTION
     );
     let wasm = crate::tests::codegen::compile_with_libraries(
         db,
-        &[include_str!("../../../stdlib/Bytes.st")],
+        &[
+            include_str!("../../../stdlib/Bytes.st"),
+            include_str!("../../../stdlib/Arrays.st"),
+        ],
         &source,
     );
     let engine = crate::tests::codegen::test_engine();
@@ -49,4 +56,18 @@ fn what_has_no_bcd_form_raises(
 ) {
     let raised = raised(&mut with_db, call);
     assert!(raised.contains(message), "{call}: got {raised}");
+}
+
+/// A buffer position is a subscript of the array: four bytes from 1 run past
+/// `ARRAY[0..3]`, and so does a position below its lower bound.
+#[rstest]
+#[case::read_past_the_end("d := GET_DWORD_BE(buf, 1)")]
+#[case::write_past_the_end("PUT_DWORD_LE(buf, 1, DWORD#16#12345678)")]
+#[case::below_the_start("w := GET_WORD_LE(buf, -1)")]
+fn a_position_past_the_array_faults(mut with_db: db::RootDatabase, #[case] call: &str) {
+    let raised = raised(&mut with_db, call);
+    assert!(
+        raised.contains("array index out of bounds"),
+        "{call}: got {raised}"
+    );
 }
