@@ -14,7 +14,7 @@ stdlib/                             one file per namespace
 ├─ Std.Edge                         R_TRIG, F_TRIG
 ├─ Std.Bistable                     SR, RS
 ├─ Std.Bits                         SHL, SHR, ROL, ROR
-├─ Std.Bytes                        TO_BIG_ENDIAN, FROM_BIG_ENDIAN, …
+├─ Std.Bytes                        TO_BIG_ENDIAN, WORD_BCD_TO_UINT, …
 ├─ Std.Memory                       MOVE
 ├─ Std.Arrays                       LOWER_BOUND, UPPER_BOUND
 └─ Std.Unit                         ASSERT, ASSERT_EQ, ASSERT_NEQ
