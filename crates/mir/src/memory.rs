@@ -3,7 +3,7 @@
 
 use hir::hir_def::interned::identifier::Ident;
 use hir::hir_def::pous::variable::LocationArea;
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 /// Bytes reserved at the bottom of linear memory before any IEC allocation:
 /// the grafted `wasm_builtins` use `[0, 8192)` as their shadow stack and
@@ -13,8 +13,13 @@ pub const BUILTIN_RESERVED_FLOOR: u32 = 16_384;
 /// Memory layout for the entire module - fully resolved during MIR lowering.
 #[derive(Debug, Clone)]
 pub struct MirMemoryLayout {
-    /// Current offset (next available address).
-    offset: u32,
+    /// The next available address, counted past the last one a module has,
+    /// so a layout that does not fit can say by how much (see
+    /// [`Self::end`]).
+    offset: u64,
+    /// The furthest `offset` went, before the bands took back the slots
+    /// their variables were first allocated in.
+    peak: u64,
     /// All allocations in order.
     pub allocations: Vec<MirAllocation>,
     /// Addresses of `Retain` variables as allocated, before band relocation.
@@ -33,7 +38,8 @@ pub struct MirMemoryLayout {
 impl Default for MirMemoryLayout {
     fn default() -> Self {
         Self {
-            offset: BUILTIN_RESERVED_FLOOR,
+            offset: u64::from(BUILTIN_RESERVED_FLOOR),
+            peak: u64::from(BUILTIN_RESERVED_FLOOR),
             allocations: Vec::new(),
             retain_allocations: Vec::new(),
             global_allocations: Vec::new(),
@@ -138,10 +144,15 @@ impl MirMemoryLayout {
         Self::default()
     }
 
-    /// Allocate `size` bytes at `align`; returns the address.
+    /// Allocate `size` bytes at `align`; returns the address. A part that
+    /// ends past the last address a module has gets address 0: lowering
+    /// refuses the layout once everything is counted, and no module is
+    /// emitted with it.
     pub fn allocate(&mut self, name: Ident, size: u32, align: u32, kind: MirAllocKind) -> u32 {
-        // Align current offset
-        let address = align_to(self.offset, align);
+        let start = align_to_u64(self.offset, align);
+        self.offset = start + u64::from(size);
+        self.peak = self.peak.max(self.offset);
+        let address = within(start, self.offset);
         self.allocations.push(MirAllocation {
             name,
             address,
@@ -149,8 +160,18 @@ impl MirMemoryLayout {
             align,
             kind,
         });
-        self.offset = address + size;
         address
+    }
+
+    /// Where the layout ends, past the last address a module has when it
+    /// does not fit. A layout that went past it before the bands gave back
+    /// their slots handed out addresses that stand for nothing, and ends
+    /// there.
+    pub fn end(&self) -> u64 {
+        match self.peak > u64::from(u32::MAX) {
+            true => self.peak,
+            false => self.offset,
+        }
     }
 
     /// Lay out the locals that follow in a frame, for a function that may
@@ -224,15 +245,18 @@ impl MirMemoryLayout {
         self.located_allocations.push(entry);
     }
 
-    /// Relocate every RETAIN and located variable into contiguous bands at
-    /// the top of the arena; returns the bounds and the old→new remap. The
-    /// original slots stay as holes.
+    /// Relocate every RETAIN and located variable, and every VAR_GLOBAL, into
+    /// contiguous bands at the top of the arena; returns the bounds and the
+    /// old→new remap. The slots they were first allocated in are given back:
+    /// the rest of the arena is laid out again without them, each address
+    /// that moves going through the remap too, so a variable takes its size
+    /// once.
     pub fn finalize_bands(&mut self) -> MemoryBands {
         let retain_fields = std::mem::take(&mut self.retain_allocations);
         let globals = std::mem::take(&mut self.global_allocations);
         let located = std::mem::take(&mut self.located_allocations);
         if globals.is_empty() && retain_fields.is_empty() && located.is_empty() {
-            let p = self.offset;
+            let p = within(self.offset, self.offset);
             return MemoryBands {
                 globals_base: p,
                 globals_size: 0,
@@ -263,6 +287,12 @@ impl MirMemoryLayout {
         // the non-retain globals, which is what the retain MAP is for: it
         // names the ranges that actually persist, and everything else in the
         // band stays transient.
+        let banded: FxHashSet<(Ident, u32)> = retain_fields
+            .iter()
+            .map(|r| (r.name, r.address))
+            .chain(globals.iter().map(|g| (g.name, g.address)))
+            .chain(located.iter().map(|l| (l.name, l.address)))
+            .collect();
         let (retain_globals, nonretain_globals): (Vec<_>, Vec<_>) =
             globals.into_iter().partition(|g| g.retain);
         // The bands' base takes the largest alignment they contain.
@@ -274,12 +304,27 @@ impl MirMemoryLayout {
             .chain(located.iter().map(|l| l.align))
             .max()
             .unwrap_or(1);
-        let mut cursor = align_to(self.offset, band_align);
         let mut remap = FxHashMap::default();
+        let mut cursor = u64::from(BUILTIN_RESERVED_FLOOR);
+        for allocation in &mut self.allocations {
+            if banded.contains(&(allocation.name, allocation.address)) {
+                continue;
+            }
+            let start = align_to_u64(cursor, allocation.align);
+            cursor = start + u64::from(allocation.size);
+            let address = within(start, cursor);
+            // A part of no size holds nothing to move, and shares its address
+            // with the part after it, whose entry it must not take.
+            if allocation.size > 0 && address != allocation.address {
+                remap.insert(allocation.address, address);
+            }
+            allocation.address = address;
+        }
+        let mut cursor = align_to_u64(cursor, band_align);
 
         // The retain band may begin inside `%M`, so both are in hand before
         // the located walk rather than after it.
-        let mut retain_base: Option<u32> = None;
+        let mut retain_base: Option<u64> = None;
         let mut relocated_retain_globals = Vec::new();
 
         // The located bands come first, one per area. Sorted by the ADDRESS,
@@ -304,19 +349,21 @@ impl MirMemoryLayout {
                 ))
         });
         let mut relocated_located = Vec::with_capacity(located.len());
-        let mut area_bands = [(cursor, 0u32); 3];
+        let mut area_bands = [(cursor, 0u64); 3];
         for (slot, area) in area_bands.iter_mut().zip([
             LocationArea::Input,
             LocationArea::Output,
             LocationArea::Marker,
         ]) {
-            let mut base: Option<u32> = None;
+            let mut base: Option<u64> = None;
             for entry in located.iter().filter(|e| e.located.area == area) {
-                let addr = align_to(cursor, entry.align);
-                base.get_or_insert(addr);
+                let start = align_to_u64(cursor, entry.align);
+                cursor = start + u64::from(entry.size);
+                let addr = within(start, cursor);
+                base.get_or_insert(start);
                 remap.insert(entry.address, addr);
                 if entry.retain {
-                    retain_base.get_or_insert(addr);
+                    retain_base.get_or_insert(start);
                     relocated_retain_globals.push(RetainEntry {
                         name: entry.name,
                         address: addr,
@@ -328,7 +375,6 @@ impl MirMemoryLayout {
                     address: addr,
                     ..entry.clone()
                 });
-                cursor = addr + entry.size;
             }
             let base = base.unwrap_or(cursor);
             *slot = (base, cursor - base);
@@ -341,18 +387,20 @@ impl MirMemoryLayout {
         // the map's ranges would bring it back from the last power cycle
         // instead of its initializer.
         for r in &retain_fields {
-            let addr = align_to(cursor, r.align);
-            retain_base.get_or_insert(addr);
-            remap.insert(r.address, addr);
-            cursor = addr + r.size;
+            let start = align_to_u64(cursor, r.align);
+            cursor = start + u64::from(r.size);
+            retain_base.get_or_insert(start);
+            remap.insert(r.address, within(start, cursor));
         }
         // The globals band opens on the retained globals, which are also
         // where the retain band ends: the two overlap on exactly them.
-        let globals_base = align_to(cursor, band_align);
+        let globals_base = align_to_u64(cursor, band_align);
         cursor = globals_base;
         for g in &retain_globals {
-            let addr = align_to(cursor, g.align);
-            retain_base.get_or_insert(addr);
+            let start = align_to_u64(cursor, g.align);
+            cursor = start + u64::from(g.size);
+            let addr = within(start, cursor);
+            retain_base.get_or_insert(start);
             remap.insert(g.address, addr);
             relocated_retain_globals.push(RetainEntry {
                 name: g.name,
@@ -360,38 +408,63 @@ impl MirMemoryLayout {
                 size: g.size,
                 align: g.align,
             });
-            cursor = addr + g.size;
         }
         let retain_end = cursor;
         for g in &nonretain_globals {
-            let addr = align_to(cursor, g.align);
-            remap.insert(g.address, addr);
-            cursor = addr + g.size;
+            let start = align_to_u64(cursor, g.align);
+            cursor = start + u64::from(g.size);
+            remap.insert(g.address, within(start, cursor));
         }
         let globals_end = cursor; // globals band = retain + non-retain globals
         self.offset = cursor;
         let retain_base = retain_base.unwrap_or(retain_end);
+        // A band past the last address is refused with the layout; its
+        // bounds are 0 meanwhile.
+        let band = |base: u64, end: u64| match within(base, end) {
+            0 => (0, 0),
+            base32 => (base32, within(end - base, end)),
+        };
+        let (globals_base, globals_size) = band(globals_base, globals_end);
+        let (retain_base, retain_size) = band(retain_base, retain_end);
+        let [input, output, marker] = area_bands.map(|(base, size)| band(base, base + size));
         MemoryBands {
             globals_base,
-            globals_size: globals_end - globals_base,
+            globals_size,
             retain_base,
-            retain_size: retain_end - retain_base,
-            input_base: area_bands[0].0,
-            input_size: area_bands[0].1,
-            output_base: area_bands[1].0,
-            output_size: area_bands[1].1,
-            marker_base: area_bands[2].0,
-            marker_size: area_bands[2].1,
+            retain_size,
+            input_base: input.0,
+            input_size: input.1,
+            output_base: output.0,
+            output_size: output.1,
+            marker_base: marker.0,
+            marker_size: marker.1,
             located: relocated_located,
             remap,
             retain_globals: relocated_retain_globals,
         }
     }
 
-    /// Total memory size used (useful for WASM memory section).
+    /// Total memory size used (useful for WASM memory section). Lowering
+    /// refuses a layout past the last address before anything reads it.
     pub fn total_size(&self) -> u32 {
-        self.offset
+        within(self.offset, self.offset)
     }
+}
+
+/// `value` when the part it starts ends at or before the last address a
+/// module has, `end` being where it ends; 0 otherwise, which no module is
+/// emitted with.
+fn within(value: u64, end: u64) -> u32 {
+    match u32::try_from(end) {
+        Ok(_) => value as u32,
+        Err(_) => 0,
+    }
+}
+
+/// [`align_to`] past the 32 bits of an address.
+fn align_to_u64(offset: u64, align: u32) -> u64 {
+    let align = u64::from(align.max(1));
+    offset.div_ceil(align) * align
 }
 
 /// Align `offset` up to the next multiple of `align`.

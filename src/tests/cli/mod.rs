@@ -7,10 +7,12 @@ mod duration;
 mod env;
 mod file_order;
 mod fmt;
+mod memory;
 mod report;
 mod stack_size;
 mod test_filter;
 mod unit_assertions;
+mod validation;
 mod watcher;
 mod workspace;
 

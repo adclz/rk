@@ -245,7 +245,7 @@ fn assert_accepted_workspace_compiles(db: &RootDatabase) {
         panic!("`rk check` accepts this workspace, but it does not lower: {e}")
     });
     let wasm = wasm_codegen::generate_wasm(db, &module).finish();
-    if let Err(e) = wasmparser::validate(&wasm) {
+    if let Err(e) = wasm_codegen::validate(&wasm) {
         panic!("`rk check` accepts this workspace, but its module is invalid: {e}");
     }
 }

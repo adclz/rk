@@ -53,6 +53,17 @@ pub fn check_storage<'db>(
             errors,
         );
     }
+    // A result is stored like a variable.
+    let result = match kind {
+        ScopeKind::Pou(pou @ Pou::Function(f)) => {
+            f.return_type(db).map(|spec| (*spec, pou.get_name_id(db)))
+        }
+        ScopeKind::MethodDecl(m) => m.return_type(db).map(|spec| (*spec, m.get_name_id(db))),
+        _ => None,
+    };
+    if let Some((spec, name)) = result {
+        storage(db, spec, CallSite::new(scope, name), errors);
+    }
     // A VAR_EXTERNAL's storage is its global's, reported there.
     for var in scope.variables(db).into_iter().flatten() {
         if !var.is_external(db) {
@@ -190,8 +201,12 @@ pub fn check_frames<'db>(
         ScopeKind::MethodDecl(m) => Some((CallNode::Method(m), m.get_name_id(db))),
         _ => None,
     };
+    // A part too large on its own is reported where it is declared.
     if let Some((node, name)) = node
         && is_recursive(db, node)
+        && frame::parts(db, node, &Shapes::default())
+            .iter()
+            .all(|part| part.fits())
     {
         let size = frame::frame(db, node, &Shapes::default());
         if !fits(size) {

@@ -48,6 +48,14 @@
 //!   The bound functions are the standard library's, written into the
 //!   program, which is one file.
 //!
+//! - Recursive FUNCTIONs, METHODs and FUNCTION_BLOCK bodies, called at a
+//!   literal depth of 0 to 4, which close their cycle directly, through a
+//!   second FUNCTION, a local's initializer, an interface, a VAR_IN_OUT, a
+//!   reference, `SUPER.m()` or `SUPER()`. Each call keeps a value of its own
+//!   in memory, an array element, a STRING or a scalar it takes the address
+//!   of, before calling itself, and reads it back after: calls sharing it
+//!   compute another value.
+//!
 //! Nothing may stop the module: an integer divisor is a literal other than
 //! 0 and -1 (`DINT#-2147483648 / -1` traps), an index is wrapped into its
 //! array's range by the expression itself, and loops have literal bounds.
@@ -302,6 +310,8 @@ enum Stmt {
     SetRef(usize, Place),
     /// A walker called on an array.
     Walk(WalkCall),
+    /// A recursive body called with a depth.
+    Recurse(Recurse),
     If(Vec<(Expr, Vec<Stmt>)>, Option<Vec<Stmt>>),
     Case(Expr, Vec<(Vec<Label>, Vec<Stmt>)>, Option<Vec<Stmt>>),
     For(usize, i128, i128, i128, Vec<Stmt>),
@@ -534,6 +544,68 @@ struct WalkCall {
     k: Option<Expr>,
 }
 
+/// How a recursive body reaches itself again: the call the call graph has
+/// to find for each call's storage to be its own.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Route {
+    /// `rec{k}` calls itself.
+    Direct,
+    /// `rec{k}` calls `hop{k}`, which calls it back.
+    Hop,
+    /// The call is the initializer of `rec{k}`'s local `below`, through
+    /// `hop{k}`, which stops at depth 0.
+    Initializer,
+    /// `climb` of CLASS `rb{k}` calls `THIS.climb`, which `rd{k}` overrides
+    /// with `SUPER.climb`: on an `rd{k}`, the base's method is on a cycle.
+    Super,
+    /// `rec{k}` calls `dev.climb` through its interface VAR_IN_OUT, and the
+    /// CLASS `rc{k}` implementing it calls `rec{k}(dev := THIS)`.
+    Interface,
+    /// The body of FB `node{k}` calls `visit{k}`, which calls the instance
+    /// bound to its VAR_IN_OUT, bound to itself: what each call keeps is a
+    /// VAR_TEMP.
+    InOut,
+    /// The body of FB `node{k}` calls `next^()`, a reference to itself.
+    Ref,
+    /// The body of FB `base{k}` calls `kick{k}`, whose `derived{k}`
+    /// instance's body calls `SUPER()`.
+    SuperBody,
+}
+
+/// What a recursive body writes before it calls itself and reads after:
+/// shared between the calls, each would read the one below's.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Keep {
+    /// Element `at` of `keep : ARRAY[0..len - 1] OF DINT`.
+    Array { len: usize, at: usize },
+    /// `keep : STRING[cap]`, 'even' or 'odd' after the call's value.
+    Text { cap: u8 },
+    /// `own : DINT`, read back through `r := REF(own)`.
+    Addressed,
+}
+
+/// A recursive body `rec{k}`, called with a depth `n` and a `seed`. Each
+/// call keeps `seed + n`, calls itself with `n - 1` and `seed * mul + add`
+/// while `n > 0`, and returns what came back times `factor`, plus what it
+/// kept.
+struct Recursion {
+    route: Route,
+    keep: Keep,
+    factor: i128,
+    mul: i128,
+    add: i128,
+}
+
+/// `target := rec{k}(n := depth, seed := ...)`, or `ro{k}.climb(...)`. The
+/// depth is a literal, so every recursion ends.
+#[derive(Clone, Debug)]
+struct Recurse {
+    target: Place,
+    recursion: usize,
+    depth: i128,
+    seed: Expr,
+}
+
 /// A program's declarations, which the evaluator and the printer read.
 #[derive(Default)]
 struct Decls {
@@ -551,6 +623,7 @@ struct Decls {
     matrices: Vec<Matrix>,
     walkers: Vec<Walker>,
     walker_instances: Vec<WalkerInstance>,
+    recursions: Vec<Recursion>,
 }
 
 impl Decls {
@@ -1136,6 +1209,12 @@ impl Generator<'_> {
                         None => continue,
                     }
                 }
+                17 | 18 if self.in_program && !self.d.recursions.is_empty() => {
+                    match self.recurse(readable) {
+                        Some(call) => call,
+                        None => continue,
+                    }
+                }
                 19 | 20 if self.in_program && !self.d.walkers.is_empty() => {
                     match self.walk_call(readable) {
                         Some(call) => call,
@@ -1414,6 +1493,56 @@ impl Generator<'_> {
             instance,
             bound,
             k,
+        }))
+    }
+
+    /// A recursive body, which closes its cycle one of the ways the call
+    /// graph knows, and keeps one kind of storage across its own call.
+    fn recursion(&mut self) -> Recursion {
+        let route = [
+            Route::Direct,
+            Route::Hop,
+            Route::Initializer,
+            Route::Super,
+            Route::Interface,
+            Route::InOut,
+            Route::Ref,
+            Route::SuperBody,
+        ][self.choices.below(8)];
+        let keep = match (route, self.choices.below(3)) {
+            // An initializer writes no array element and no STRING.
+            (Route::Initializer, _) | (_, 2) => Keep::Addressed,
+            (_, 0) => {
+                let len = 1 + self.choices.below(4);
+                Keep::Array {
+                    len,
+                    at: self.choices.below(len),
+                }
+            }
+            _ => Keep::Text {
+                cap: 4 + self.choices.below(5) as u8,
+            },
+        };
+        Recursion {
+            route,
+            keep,
+            factor: 2 + self.choices.below(8) as i128,
+            mul: 1 + self.choices.below(5) as i128,
+            add: self.choices.below(7) as i128 - 3,
+        }
+    }
+
+    /// A recursive body called at a depth of 0 to 4, with any seed.
+    fn recurse(&mut self, readable: &[usize]) -> Option<Stmt> {
+        let recursion = self.choices.below(self.d.recursions.len());
+        let target = self.target(Ty::Dint)?;
+        let depth = self.choices.below(5) as i128;
+        let seed = self.expr(Ty::Dint, 2, readable);
+        Some(Stmt::Recurse(Recurse {
+            target,
+            recursion,
+            depth,
+            seed,
         }))
     }
 
@@ -1840,6 +1969,13 @@ pub fn program(bytes: &[u8]) -> String {
             g.holder(g.d.walkers[w].result(&g.d));
         }
     }
+    for _ in 0..g.choices.below(3) {
+        let recursion = g.recursion();
+        g.d.recursions.push(recursion);
+    }
+    if !g.d.recursions.is_empty() {
+        g.holder(Ty::Dint);
+    }
     let readable: Vec<usize> = (0..g.vars.len()).collect();
     let counters: Vec<usize> = (0..2)
         .map(|k| {
@@ -2135,6 +2271,9 @@ fn write_program(vars: &[Var], d: &Decls, body: &[Stmt], state: &State) -> Strin
     for w in &d.walkers {
         write_walker(&mut out, d, w);
     }
+    for (k, r) in d.recursions.iter().enumerate() {
+        write_recursion(&mut out, k, r);
+    }
     out.push_str("PROGRAM P\nVAR\n");
     for v in vars {
         decl(&mut out, v, !matches!(v.ty, Ty::Struct(_)));
@@ -2192,6 +2331,15 @@ fn write_program(vars: &[Var], d: &Decls, body: &[Stmt], state: &State) -> Strin
     }
     for i in &d.walker_instances {
         let _ = writeln!(out, "    {} : {};", i.name, d.walkers[i.walker].name);
+    }
+    for (k, r) in d.recursions.iter().enumerate() {
+        let _ = match r.route {
+            Route::Super => writeln!(out, "    ro{k} : rd{k};"),
+            Route::Interface => writeln!(out, "    ro{k} : rc{k};"),
+            Route::InOut => writeln!(out, "    na{k} : node{k};\n    nb{k} : node{k};"),
+            Route::Ref => writeln!(out, "    nn{k} : node{k};"),
+            _ => Ok(()),
+        };
     }
     out.push_str("END_VAR\n");
     names(vars).block(&mut out, body, 1);
@@ -2367,6 +2515,192 @@ fn write_walker(out: &mut String, d: &Decls, w: &Walker) {
         Host::Block => out.push_str("END_FUNCTION_BLOCK\n\n"),
         Host::Method => {
             let _ = writeln!(out, "{level}run := acc;\n    END_METHOD\nEND_CLASS\n");
+        }
+    }
+}
+
+/// Recursion `k`: `rec{k}` and the `hop{k}` it goes through, or the
+/// CLASSes `rb{k}` and `rd{k}`. Each call writes what it keeps before it
+/// calls itself, and reads it after.
+fn write_recursion(out: &mut String, k: usize, r: &Recursion) {
+    let (decls, keep, read): (Vec<String>, Vec<String>, String) = match r.keep {
+        Keep::Array { len, at } => (
+            vec![format!("keep : ARRAY[0..{}] OF DINT;", len - 1)],
+            vec![format!("keep[{at}] := seed + n;")],
+            format!("keep[{at}]"),
+        ),
+        Keep::Text { cap } => (
+            vec![format!("keep : STRING[{cap}];"), "own : DINT;".into()],
+            [
+                "IF (seed + n) MOD 2 = 0 THEN",
+                "    keep := 'even';",
+                "ELSE",
+                "    keep := 'odd';",
+                "END_IF;",
+            ]
+            .map(String::from)
+            .to_vec(),
+            "own".into(),
+        ),
+        Keep::Addressed => (
+            vec!["own : DINT;".into(), "r : REF_TO DINT;".into()],
+            vec!["r := REF(own);".into(), "own := seed + n;".into()],
+            "r^".into(),
+        ),
+    };
+    // A STRING is read back as a number once the call below has returned.
+    let reread: &[&str] = match r.keep {
+        Keep::Text { .. } => &[
+            "IF keep = 'even' THEN",
+            "    own := 1;",
+            "ELSE",
+            "    own := 2;",
+            "END_IF;",
+        ],
+        _ => &[],
+    };
+    let next = match r.add < 0 {
+        true => format!("n := n - 1, seed := seed * {} - {}", r.mul, -r.add),
+        false => format!("n := n - 1, seed := seed * {} + {}", r.mul, r.add),
+    };
+    let inputs = "VAR_INPUT\n    n : DINT;\n    seed : DINT;\nEND_VAR\n";
+    let factor = r.factor;
+    // The body that keeps, calls `call` while `n > 0`, and returns into
+    // `result`, its lines indented by `pad`. A block's body keeps in its
+    // VAR_TEMP, which starts over at each call.
+    let body = |out: &mut String, pad: &str, section: &str, call: &str, result: &str| {
+        let _ = writeln!(out, "{pad}{section}");
+        for decl in &decls {
+            let _ = writeln!(out, "{pad}    {decl}");
+        }
+        let _ = writeln!(out, "{pad}    below : DINT;\n{pad}END_VAR");
+        for line in &keep {
+            let _ = writeln!(out, "{pad}    {line}");
+        }
+        let _ = writeln!(out, "{pad}    IF n > 0 THEN");
+        for line in call.replace("{next}", &next).lines() {
+            let _ = writeln!(out, "{pad}        {line}");
+        }
+        let _ = writeln!(out, "{pad}    END_IF;");
+        for line in reread {
+            let _ = writeln!(out, "{pad}    {line}");
+        }
+        let _ = writeln!(out, "{pad}    {result} := below * {factor} + {read};");
+    };
+    match r.route {
+        Route::Direct | Route::Hop => {
+            let _ = write!(out, "FUNCTION rec{k} : DINT\n{inputs}");
+            let call = match r.route {
+                Route::Direct => format!("rec{k}"),
+                _ => format!("hop{k}"),
+            };
+            body(
+                out,
+                "",
+                "VAR",
+                &format!("below := {call}({{next}});"),
+                &format!("rec{k}"),
+            );
+            out.push_str("END_FUNCTION\n\n");
+            if r.route == Route::Hop {
+                let _ = writeln!(
+                    out,
+                    "FUNCTION hop{k} : DINT\n{inputs}    hop{k} := rec{k}(n := n, seed := seed);\nEND_FUNCTION\n"
+                );
+            }
+        }
+        Route::Initializer => {
+            let _ = writeln!(
+                out,
+                "FUNCTION rec{k} : DINT\n{inputs}VAR\n    own : DINT := seed + n;\n    r : REF_TO DINT := REF(own);\n    below : DINT := hop{k}(n := n, seed := seed);\nEND_VAR\n    rec{k} := below * {factor} + r^;\nEND_FUNCTION\n"
+            );
+            let _ = writeln!(
+                out,
+                "FUNCTION hop{k} : DINT\n{inputs}    IF n > 0 THEN\n        hop{k} := rec{k}({next});\n    END_IF;\nEND_FUNCTION\n"
+            );
+        }
+        Route::Super => {
+            let nested: String = inputs.lines().map(|line| format!("    {line}\n")).collect();
+            let _ = write!(out, "CLASS rb{k}\n    METHOD PUBLIC climb : DINT\n{nested}");
+            body(out, "    ", "VAR", "below := THIS.climb({next});", "climb");
+            out.push_str("    END_METHOD\nEND_CLASS\n\n");
+            let _ = writeln!(
+                out,
+                "CLASS rd{k} EXTENDS rb{k}\n    METHOD PUBLIC OVERRIDE climb : DINT\n{nested}        climb := SUPER.climb(n := n, seed := seed) + 1;\n    END_METHOD\nEND_CLASS\n"
+            );
+        }
+        Route::Interface => {
+            let nested: String = inputs.lines().map(|line| format!("    {line}\n")).collect();
+            let _ = writeln!(
+                out,
+                "INTERFACE IR{k}\n    METHOD climb : DINT\n{nested}    END_METHOD\nEND_INTERFACE\n"
+            );
+            let _ = write!(
+                out,
+                "FUNCTION rec{k} : DINT\nVAR_IN_OUT\n    dev : IR{k};\nEND_VAR\n{inputs}"
+            );
+            body(
+                out,
+                "",
+                "VAR",
+                "below := dev.climb({next});",
+                &format!("rec{k}"),
+            );
+            out.push_str("END_FUNCTION\n\n");
+            let _ = writeln!(
+                out,
+                "CLASS rc{k} IMPLEMENTS IR{k}\n    METHOD PUBLIC climb : DINT\n{nested}        climb := rec{k}(dev := THIS, n := n, seed := seed);\n    END_METHOD\nEND_CLASS\n"
+            );
+        }
+        Route::InOut | Route::Ref => {
+            let _ = write!(
+                out,
+                "FUNCTION_BLOCK node{k}\n{inputs}VAR_OUTPUT\n    total : DINT;\nEND_VAR\n"
+            );
+            let call = match r.route {
+                Route::InOut => {
+                    out.push_str("VAR_IN_OUT\n    peer : node");
+                    let _ = writeln!(out, "{k};\nEND_VAR");
+                    format!("below := visit{k}(c := peer, {{next}});")
+                }
+                _ => {
+                    out.push_str("VAR\n    next : REF_TO node");
+                    let _ = writeln!(out, "{k};\nEND_VAR");
+                    // Set from outside, so the body checks it (E0902).
+                    "IF next <> NULL THEN\n    next^({next});\n    below := next^.total;\nEND_IF;"
+                        .to_string()
+                }
+            };
+            body(out, "", "VAR_TEMP", &call, "total");
+            out.push_str("END_FUNCTION_BLOCK\n\n");
+            if r.route == Route::InOut {
+                let _ = writeln!(
+                    out,
+                    "FUNCTION visit{k} : DINT\nVAR_IN_OUT\n    c : node{k};\nEND_VAR\n{inputs}    c(n := n, seed := seed, peer := c);\n    visit{k} := c.total;\nEND_FUNCTION\n"
+                );
+            }
+        }
+        Route::SuperBody => {
+            let _ = write!(
+                out,
+                "FUNCTION_BLOCK base{k}\n{inputs}VAR_OUTPUT\n    total : DINT;\nEND_VAR\n"
+            );
+            body(
+                out,
+                "",
+                "VAR_TEMP",
+                &format!("below := kick{k}({{next}});"),
+                "total",
+            );
+            out.push_str("END_FUNCTION_BLOCK\n\n");
+            let _ = writeln!(
+                out,
+                "FUNCTION_BLOCK derived{k} EXTENDS base{k}\n    SUPER();\nEND_FUNCTION_BLOCK\n"
+            );
+            let _ = writeln!(
+                out,
+                "FUNCTION kick{k} : DINT\n{inputs}VAR\n    d : derived{k};\nEND_VAR\n    d(n := n, seed := seed);\n    kick{k} := d.total;\nEND_FUNCTION\n"
+            );
         }
     }
 }
@@ -2614,6 +2948,27 @@ impl Names<'_> {
                             writeln!(out, "{pad}{} := {callee}({args});", self.place(target))
                         }
                         (None, _) => writeln!(out, "{pad}{callee}({args});"),
+                    };
+                }
+                Stmt::Recurse(call) => {
+                    let k = call.recursion;
+                    let target = self.place(&call.target);
+                    let args = format!("n := {}, seed := {}", call.depth, self.expr(&call.seed));
+                    let _ = match self.d.recursions[k].route {
+                        Route::Super => writeln!(out, "{pad}{target} := ro{k}.climb({args});"),
+                        Route::Interface => {
+                            writeln!(out, "{pad}{target} := rec{k}(dev := ro{k}, {args});")
+                        }
+                        Route::InOut => writeln!(
+                            out,
+                            "{pad}na{k}({args}, peer := nb{k});\n{pad}{target} := na{k}.total;"
+                        ),
+                        Route::Ref => writeln!(
+                            out,
+                            "{pad}nn{k}.next := REF(nn{k});\n{pad}nn{k}({args});\n{pad}{target} := nn{k}.total;"
+                        ),
+                        Route::SuperBody => writeln!(out, "{pad}{target} := kick{k}({args});"),
+                        _ => writeln!(out, "{pad}{target} := rec{k}({args});"),
                     };
                 }
                 Stmt::If(arms, otherwise) => {
@@ -3006,6 +3361,17 @@ fn run_block(block: &[Stmt], st: &mut State, tys: &[Ty], d: &Decls) -> Flow {
                 }
                 Flow::Next
             }
+            Stmt::Recurse(call) => {
+                let r = &d.recursions[call.recursion];
+                let seed = Ty::Dint.wrap(eval(&call.seed, st, d).int());
+                let value = match r.route {
+                    // The override adds 1 to the base's.
+                    Route::Super => Ty::Dint.wrap(descend(r, call.depth, seed) + 1),
+                    _ => descend(r, call.depth, seed),
+                };
+                write(&call.target, Val::Int(value), st, tys, d);
+                Flow::Next
+            }
             Stmt::If(arms, otherwise) => {
                 match arms.iter().find(|(cond, _)| eval(cond, st, d).truthy()) {
                     Some((_, body)) => run_block(body, st, tys, d),
@@ -3135,6 +3501,30 @@ fn walk(
         acc = Val::Int(Ty::Dint.wrap(acc.int() + 1));
     }
     acc
+}
+
+/// What a call of `r` at depth `n` with `seed` returns, each call reading
+/// back what it kept itself. Under `Super`, the call below runs the
+/// override, which adds 1.
+fn descend(r: &Recursion, n: i128, seed: i128) -> i128 {
+    let dint = |v| Ty::Dint.wrap(v);
+    let kept = dint(seed + n);
+    let own = match r.keep {
+        Keep::Text { .. } if kept % 2 == 0 => 1,
+        Keep::Text { .. } => 2,
+        _ => kept,
+    };
+    let below = match n > 0 {
+        false => 0,
+        true => {
+            let next = dint(dint(seed * r.mul) + r.add);
+            match r.route {
+                Route::Super => dint(descend(r, n - 1, next) + 1),
+                _ => descend(r, n - 1, next),
+            }
+        }
+    };
+    dint(dint(below * r.factor) + own)
 }
 
 /// The elements a walker visits, in order, as indexes row by row.
@@ -3346,6 +3736,51 @@ mod tests {
             }
         }
         assert!(checked >= 3, "only {checked} seeds called a walker");
+    }
+
+    /// A program for each route a recursive body closes its cycle by: each
+    /// call reads back what it kept itself.
+    #[test]
+    fn recursive_bodies_keep_their_own_storage() {
+        // Each route by a line only its skeleton writes.
+        let markers = [
+            "below := rec",
+            "below := hop",
+            "below : DINT := hop",
+            "SUPER.climb",
+            "dev.climb",
+            "visit",
+            "next^(",
+            "SUPER();",
+        ];
+        let mut seed = 0xD1B5_4A32_D192_ED03u64;
+        let mut reached: Vec<&str> = Vec::new();
+        for _ in 0..600 {
+            let bytes: Vec<u8> = (0..1024)
+                .map(|_| {
+                    seed ^= seed << 13;
+                    seed ^= seed >> 7;
+                    seed ^= seed << 17;
+                    (seed >> 24) as u8
+                })
+                .collect();
+            let text = program(&bytes);
+            let fresh: Vec<&str> = markers
+                .into_iter()
+                .filter(|m| text.contains(m) && !reached.contains(m))
+                .collect();
+            if fresh.is_empty() {
+                continue;
+            }
+            if let Err(finding) = crate::check_generated(&text) {
+                panic!("{finding}\n--- the program ---\n{text}");
+            }
+            reached.extend(fresh);
+            if reached.len() == markers.len() {
+                break;
+            }
+        }
+        assert_eq!(reached.len(), markers.len(), "routes reached: {reached:?}");
     }
 
     #[test]

@@ -93,10 +93,16 @@ END_CLASS
     ```
 
     ---
+    size = 0
+
+    ---
     # fb1 comment
     ```iecst
     CLASS class1
     ```
+
+    ---
+    size = 0
 
     ---
     # class1 comment
@@ -129,6 +135,9 @@ END_NAMESPACE
     System
     FUNCTION_BLOCK SR
     ```
+
+    ---
+    size = 0
 
     ---
     ## SR - Set-Dominant Bistable
@@ -190,15 +199,24 @@ END_FUNCTION_BLOCK
     (VAR) var1: INT
     ```
 
+    ---
+    size = 4, offset = 0
+
     ```iecst
     (VAR) var2: INT
     ```
+
+    ---
+    size = 4, offset = 4
 
     ---
     # var2 comment
     ```iecst
     (VAR) var3: INT
     ```
+
+    ---
+    size = 4, offset = 8
 
     ---
     # var3 comment
@@ -234,10 +252,16 @@ END_NAMESPACE
     FUNCTION_BLOCK fb1
     ```
 
+    ---
+    size = 0
+
     ```iecst
     System.Subsystem1.Subsystem1
     FUNCTION_BLOCK fb2
     ```
+
+    ---
+    size = 0
     ");
 }
 
@@ -254,6 +278,9 @@ TYPE Arr10: ARRAY[1..10] OF INT; END_TYPE
     ```iecst
     TYPE Arr10: ARRAY [1..10] OF INT
     ```
+
+    ---
+    size = 40
     ");
 }
 
@@ -270,6 +297,9 @@ TYPE ASubrange: INT (0..6) END_TYPE
     ```iecst
     TYPE ASubrange: INT (0..6)
     ```
+
+    ---
+    size = 4
     ");
 }
 
@@ -302,9 +332,15 @@ END_TYPE
     TYPE AnEnum: ENUM A, B, C, D 
     ```
 
+    ---
+    size = 4
+
     ```iecst
     TYPE ABiggerEnum: ENUM A, B, C, D, E, F, G, H, I, J, ... (2 more) 
     ```
+
+    ---
+    size = 4
     ");
 }
 
@@ -340,6 +376,9 @@ END_TYPE
     ```iecst
     TYPE Arr10: ARRAY [1..10] OF INT
     ```
+
+    ---
+    size = 40
     ");
 }
 
@@ -380,6 +419,9 @@ END_TYPE
 
     ```
 
+    ---
+    size = 8
+
     ```iecst
     TYPE Engine: STRUCT 
         oil1: INT,
@@ -395,6 +437,9 @@ END_TYPE
         ... (2 more fields)
 
     ```
+
+    ---
+    size = 48
     ");
 }
 
@@ -417,9 +462,15 @@ END_TYPE
     oil: INT
     ```
 
+    ---
+    size = 4, offset = 0
+
     ```iecst
     fuel: BOOL
     ```
+
+    ---
+    size = 4, offset = 4
     ");
 }
 
@@ -451,17 +502,29 @@ END_FUNCTION_BLOCK
     (VAR) my_var: Engine
     ```
 
+    ---
+    size = 8, offset = 0
+
     ```iecst
     oil: INT
     ```
+
+    ---
+    size = 4, offset = 0
 
     ```iecst
     (VAR) my_var: Engine
     ```
 
+    ---
+    size = 8, offset = 0
+
     ```iecst
     fuel: BOOL
     ```
+
+    ---
+    size = 4, offset = 4
     ");
 }
 
@@ -513,12 +576,13 @@ END_FUNCTION_BLOCK
     let ctrl_offset = source.find("System.Controller;").unwrap() + "System.".len();
     let hover_target = ns_spec.hover(&with_db, ctrl_offset).unwrap();
     assert_snapshot!(hover_markup(hover_target.contents).unwrap(), @r"
-
     ```iecst
     System
     FUNCTION_BLOCK Controller
     ```
 
+    ---
+    size = 0
     ");
 }
 
@@ -691,11 +755,12 @@ END_CONFIGURATION
 
     let hover = prog_spec.hover(&with_db, 0).unwrap();
     assert_snapshot!(hover_markup(hover.contents).unwrap(), @r"
-
     ```iecst
     PROGRAM MyProg
     ```
 
+    ---
+    size = 0
     ");
 }
 
@@ -794,6 +859,9 @@ END_FUNCTION
     ```iecst
     (VAR) x: INT
     ```
+
+    ---
+    size = 4
 
     ---
     Controls a [Sensor](file:///test0.st)
@@ -969,9 +1037,9 @@ END_FUNCTION_BLOCK
 
     assert_snapshot!(hovered.join("\n"), @r"
     20] -> ```iecst {integer} 20 ```
-    SIZE] -> ```iecst (VAR) SIZE: INT ```
+    SIZE] -> ```iecst (VAR) SIZE: INT ```  --- size = 4, offset = 0
     9] -> ```iecst {integer} 9 ```
-    SIZE] OF -> ```iecst (VAR) SIZE: INT ```
+    SIZE] OF -> ```iecst (VAR) SIZE: INT ```  --- size = 4, offset = 0
     ");
 }
 
@@ -1104,4 +1172,124 @@ END_CONFIGURATION
     let hover = node.hover(&with_db, offset).expect("a hover");
     let markup = hover_markup(hover.contents).unwrap();
     assert!(markup.contains(shown), "{markup}");
+}
+
+/// A declaration's hover shows what it takes in memory, as rust-analyzer
+/// does: `size`, and `offset` where it sits in a STRUCT or an instance. A
+/// VAR_IN_OUT member holds an address, a STRING its length and capacity, a
+/// BOOL a 4-byte lane; a FUNCTION and an `ARRAY[*]` have no size of their own.
+#[rstest]
+pub fn hover_shows_sizes(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE Pair : STRUCT a : BOOL; b : LREAL; END_STRUCT; END_TYPE
+
+FUNCTION_BLOCK Motor
+VAR_INPUT speed : INT; END_VAR
+VAR_IN_OUT shared : Pair; END_VAR
+VAR log : ARRAY[0..9] OF DINT; END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION Sum : DINT
+VAR_INPUT values : ARRAY[*] OF DINT; END_VAR
+VAR name : STRING[10]; END_VAR
+    Sum := 0;
+END_FUNCTION
+
+PROGRAM Main
+VAR m : Motor; END_VAR
+END_PROGRAM
+"#;
+    assert_snapshot!(collect_hovers(&mut with_db, source, |db, node| {
+        let hover = match node {
+            HirNode::PouDecl(pou) => pou.hover(db, pou.get_name_span(db).start_byte)?,
+            HirNode::Program(program) => {
+                program.hover(db, program.get_name_span(db).start_byte)?
+            }
+            HirNode::VariableDecl(var) => var.hover(db, var.get_name_span(db).start_byte)?,
+            HirNode::StructElement(e) => e.hover(db, e.get_name_span(db).start_byte)?,
+            _ => return None,
+        };
+        hover_markup(hover.contents)
+    }), @r"
+    ```iecst
+    TYPE Pair: STRUCT 
+        a: BOOL,
+        b: LREAL
+
+    ```
+
+    ---
+    size = 16
+
+    ```iecst
+    a: BOOL
+    ```
+
+    ---
+    size = 4, offset = 0
+
+    ```iecst
+    b: LREAL
+    ```
+
+    ---
+    size = 8, offset = 8
+
+    ```iecst
+    FUNCTION_BLOCK Motor
+    ```
+
+    ---
+    size = 48
+
+    ```iecst
+    (INPUT) speed: INT
+    ```
+
+    ---
+    size = 4, offset = 0
+
+    ```iecst
+    (IN_OUT) shared: Pair
+    ```
+
+    ---
+    size = 4, offset = 4
+
+    ```iecst
+    (VAR) log: ARRAY [0..9] OF DINT
+    ```
+
+    ---
+    size = 40, offset = 8
+
+    ```iecst
+    FUNCTION Sum: DINT
+    ```
+
+    ```iecst
+    (INPUT) values: ARRAY [*] OF DINT
+    ```
+
+    ```iecst
+    (VAR) name: STRING
+    ```
+
+    ---
+    size = 14
+
+    ```iecst
+    PROGRAM Main
+    ```
+
+    ---
+    size = 48
+
+    ```iecst
+    (VAR) m: Motor
+    ```
+
+    ---
+    size = 48, offset = 0
+    ");
 }

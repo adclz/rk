@@ -90,6 +90,35 @@ fn register_symbol(
     }
 }
 
+/// Whether `layout` and `strings` more bytes fit in what a module addresses;
+/// the error names the layout's largest allocations when they do not.
+fn memory_fits(
+    db: &dyn WorkspaceDataBase,
+    layout: &crate::memory::MirMemoryLayout,
+    strings: u64,
+) -> Result<(), LowerTypeError> {
+    let size = layout.end() + strings;
+    if size <= u64::from(u32::MAX) {
+        return Ok(());
+    }
+    let mut largest: Vec<_> = layout.allocations.iter().collect();
+    largest.sort_by_key(|a| std::cmp::Reverse(a.size));
+    let mut named: Vec<String> = largest
+        .iter()
+        .take(3)
+        .map(|a| format!("'{}' ({} bytes)", a.name.text(db), a.size))
+        .collect();
+    if strings > 0 {
+        named.push(format!("its strings ({strings} bytes)"));
+    }
+    let largest = match named.split_last() {
+        Some((last, [])) => last.clone(),
+        Some((last, rest)) => format!("{} and {last}", rest.join(", ")),
+        None => "its strings".to_string(),
+    };
+    Err(LowerTypeError::MemoryTooLarge { size, largest })
+}
+
 /// Lower multiple HIR semantic indices (from multiple files) into a single MirModule.
 pub fn lower_modules<'db>(
     db: &'db dyn WorkspaceDataBase,
@@ -673,6 +702,9 @@ fn lower_module_from_pous<'db>(
     // every other allocation, then patch the moved addresses into each
     // function's locals.
     let bands = module.memory_layout.finalize_bands();
+    // Laid out but for the strings: past the last address, nothing reads the
+    // addresses handed out.
+    memory_fits(db, &module.memory_layout, 0)?;
     if !bands.remap.is_empty() {
         for func in &mut module.functions {
             for local in &mut func.locals {
@@ -996,6 +1028,13 @@ fn lower_module_from_pous<'db>(
             *offset += static_mem_end;
         }
     }
+    let strings: u64 = string_pool
+        .borrow()
+        .entries
+        .iter()
+        .map(|(_, bytes)| bytes.len() as u64)
+        .sum();
+    memory_fits(db, &module.memory_layout, strings)?;
     module.string_data = std::mem::take(&mut string_pool.borrow_mut().entries)
         .into_iter()
         .collect();

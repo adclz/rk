@@ -27,7 +27,7 @@ A missing `config.toml` is not fatal for the server, it only adds the `E1401` hi
 For an agent, this is a cheaper substitute for reading files.
 `textDocument/documentSymbol` gives the outline of a file (POUs with their kind, their variables with their type) for a fraction of the file's tokens.
 `textDocument/definition` replaces grepping for a declaration, and it crosses into the library: on a `TON` instance it returns a range inside `stdlib/Timers.st`.
-`textDocument/hover` returns the signature plus the doc comment written above the declaration, which is usually all that was wanted from opening the file.
+`textDocument/hover` returns the signature, the size in bytes (`size = 40`, with `offset = 8` for a STRUCT field or an instance member), and the doc comment written above the declaration, which is usually all that was wanted from opening the file.
 `workspace/symbol` is a fuzzy search over the workspace and the library at once.
 
 Diagnostics are also served, but for a whole-workspace pass `rk check --output-format json-lines` is simpler than a session; use the LSP diagnostics when a session is already open.
@@ -55,7 +55,7 @@ An elementary type is written nowhere, so `INT` answers `null` rather than falli
 `textDocument/documentHighlight` The same occurrences narrowed to ONE document, which is what the editor paints as the cursor moves.
 Every hit is `kind: 1` (text): telling a read from a write is inference's answer, and this request is not the place to take a second opinion on it.
 
-`textDocument/hover` Markdown, an `iecst` fence with the signature (`(VAR) total: REAL`, `FUNCTION Add: INT`), the qualified namespace when there is one, and the preceding doc comment below a rule.
+`textDocument/hover` Markdown, an `iecst` fence with the signature (`(VAR) total: REAL`, `FUNCTION Add: INT`), the qualified namespace when there is one, the size below a rule when the declaration has storage (`size = 16`, and `offset = 8` in a STRUCT or an instance), and the preceding doc comment below another.
 
 `workspace/symbol` Fuzzy, capped at 128 results, searches workspace files and the library index.
 METHODs are included alongside POUs, programs and types.

@@ -96,10 +96,8 @@ fn validate(db: &mut db::RootDatabase, source: &str, dump_name: &str) -> Result<
         Err(e) => return Err(format!("MIR lowering failed: {:?}", e)),
     };
     let core_bytes = wasm_codegen::generate_wasm(db, &mir_module).finish();
-    let mut features = wasmparser::WasmFeatures::default();
-    features.insert(wasmparser::WasmFeatures::EXCEPTIONS);
-    match wasmparser::Validator::new_with_features(features).validate_all(&core_bytes) {
-        Ok(_) => Ok(()),
+    match wasm_codegen::validate(&core_bytes) {
+        Ok(()) => Ok(()),
         Err(e) => {
             let dump_path = format!("/tmp/str_audit_{}.wasm", dump_name);
             std::fs::write(&dump_path, &core_bytes).ok();

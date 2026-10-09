@@ -145,6 +145,12 @@ pub fn build_core_profile(
 
     let mut mir_module = match mir::lower::lower_module::lower_modules(db, &sem_indices) {
         Ok(m) => m,
+        // The program's fault, not the compiler's.
+        Err(e @ mir::lower::lower_type::LowerTypeError::MemoryTooLarge { .. }) => {
+            let message = e.to_string();
+            ui::failure("compilation failed:", &message);
+            return Err(format!("compilation failed: {message}\n"));
+        }
         Err(e) => {
             // An ICE, not a user error (see `render_codegen_error`).
             return match render_codegen_error(db, workspace, &e, format) {
@@ -173,7 +179,13 @@ pub fn build_core_profile(
     }
 
     let wasm_module = wasm_codegen::generate_wasm_profile(db, &mir_module, profile);
-    Ok((wasm_module.finish(), mir_module))
+    match validated(wasm_module.finish()) {
+        Ok(wasm) => Ok((wasm, mir_module)),
+        Err(message) => {
+            ui::error(&message);
+            Err(message)
+        }
+    }
 }
 
 /// Like [`build_core`] but never writes to stderr or stdout; on failure
@@ -213,6 +225,9 @@ pub fn build_core_quiet(
         .collect();
     let mut mir_module =
         mir::lower::lower_module::lower_modules(db, &sem_indices).map_err(|e| {
+            if let mir::lower::lower_type::LowerTypeError::MemoryTooLarge { .. } = e {
+                return format!("compilation failed: {e}\n");
+            }
             // Same ICE rendering as `build_core`, returned rather than printed.
             render_codegen_error(db, workspace, &e, crate::cli::OutputFormat::Full)
                 .map(|report| format!("{report}\ninternal compiler error: cannot compile.\n"))
@@ -223,7 +238,18 @@ pub fn build_core_quiet(
     size_stack(db, &mut mir_module)
         .map_err(|message| format!("compilation failed: {message}\n"))?;
     let wasm_module = wasm_codegen::generate_wasm(db, &mir_module);
-    Ok((wasm_module.finish(), mir_module))
+    Ok((validated(wasm_module.finish())?, mir_module))
+}
+
+/// The module code generation emitted, refused when it does not validate:
+/// a host would refuse it when it loads, and the fault is the compiler's.
+fn validated(wasm: Vec<u8>) -> Result<Vec<u8>, String> {
+    match wasm_codegen::validate(&wasm) {
+        Ok(()) => Ok(wasm),
+        Err(e) => Err(format!(
+            "internal compiler error: the emitted module is invalid: {e} (report it at {ISSUES_URL})"
+        )),
+    }
 }
 
 /// Where a build of `workspace` lands, by profile, the only axis there
