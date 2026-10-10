@@ -516,3 +516,163 @@ fn a_bit_write_runs_its_subscript_once(mut with_db: db::RootDatabase) {
     let result: i32 = execute_wasm(&wasm, "run", ());
     assert_eq!(result, 111, "a[0] got the bit, a[1] untouched, one call");
 }
+
+/// A slice of a FUNCTION's own result: written into a 64-bit result it was
+/// the 8-bit value converted twice, an invalid module. The other bits stay,
+/// and a signed result keeps its sign.
+#[rstest]
+fn slices_of_a_result(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION F : LWORD
+        VAR_INPUT x : BYTE; END_VAR
+            F.%B7 := x;
+            F.%X0 := TRUE;
+        END_FUNCTION
+
+        FUNCTION G : LWORD
+            G := LWORD#16#1122334455667788;
+            G.%W1 := WORD#16#ABCD;
+        END_FUNCTION
+
+        FUNCTION S : INT
+            S := INT#-1;
+            S.%B1 := BYTE#16#7F;
+        END_FUNCTION
+
+        FUNCTION byte_of_f : LWORD
+            byte_of_f := F(BYTE#16#01);
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let f: i64 = execute_wasm(&wasm, "byte_of_f", ());
+    assert_eq!(f as u64, 0x0100_0000_0000_0001);
+    let g: i64 = execute_wasm(&wasm, "G", ());
+    assert_eq!(g as u64, 0x1122_3344_ABCD_7788);
+    let s: i32 = execute_wasm(&wasm, "S", ());
+    assert_eq!(s, 32767, "16#7FFF");
+}
+
+/// A slice through a reference is of the value it points to: the place
+/// took the slice's type for the pointee's, and a `DWORD` of a `LINT`
+/// stopped lowering ("reaches bit 64 of a 32-bit value").
+#[rstest]
+fn slices_through_a_reference(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION run : DINT
+        VAR r : REF_TO LINT; l : LINT := -1; high : DWORD; END_VAR
+            r := REF(l);
+            r^.%D1 := DWORD#0;
+            IF l = 4294967295 THEN run := 1; END_IF;
+            IF r^.31 THEN run := run + 10; END_IF;
+            r^.%B7 := BYTE#16#80;
+            high := r^.%D1;
+            IF high = DWORD#16#80000000 THEN run := run + 100; END_IF;
+        END_FUNCTION
+    "#;
+    let result: i32 = run(&mut with_db, source, "run", ());
+    assert_eq!(
+        result, 111,
+        "the high half cleared, bit 31 kept, the top byte set"
+    );
+}
+
+/// A BOOL is its own bit 0. Read, written, and as a FUNCTION's result, it
+/// keeps the 0 or 1 a BOOL holds, so it still compares equal to TRUE.
+#[rstest]
+fn a_bool_is_its_own_bit_zero(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION result : BOOL
+            result.0 := TRUE;
+        END_FUNCTION
+
+        FUNCTION get : DINT
+        VAR
+            t : BOOL := TRUE;
+            u : BOOL;
+            a : BOOL;
+            b : BOOL := TRUE;
+        END_VAR
+            a.0 := TRUE;
+            b.%X0 := FALSE;
+            get := 0;
+            IF t.0 THEN get := get + 1; END_IF;
+            IF NOT u.%X0 THEN get := get + 10; END_IF;
+            IF a = TRUE THEN get := get + 100; END_IF;
+            IF NOT b THEN get := get + 1000; END_IF;
+            IF result() = TRUE THEN get := get + 10000; END_IF;
+        END_FUNCTION
+    "#;
+    let result: i32 = run(&mut with_db, source, "get", ());
+    assert_eq!(result, 11111);
+}
+
+/// The size letter is caseless, `%b0` is the byte `%B0` is, and it may be
+/// left out for a bit, `%12` is `%X12`.
+#[rstest]
+fn a_lowercase_or_omitted_size_names_the_same_part(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION get : DWORD
+        VAR
+            d : DWORD := DWORD#16#11223344;
+        END_VAR
+            d.%w1 := WORD#16#ABCD;
+            d.%b0 := BYTE#16#77;
+            d.%x8 := FALSE;
+            d.%12 := FALSE;
+            get := d;
+        END_FUNCTION
+    "#;
+    let result: i32 = run(&mut with_db, source, "get", ());
+    assert_eq!(result as u32, 0xABCD_2277);
+}
+
+/// A slice of a VAR_IN_OUT reads and writes the caller's variable: the
+/// write goes through the reference, the other bits stay.
+#[rstest]
+fn slices_of_an_in_out(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION Mark : BOOL
+        VAR_IN_OUT w : WORD; END_VAR
+            Mark := w.15;
+            w.%B1 := BYTE#16#AB;
+            w.0 := TRUE;
+        END_FUNCTION
+
+        FUNCTION get : WORD
+        VAR w : WORD := WORD#16#8010; was : BOOL; END_VAR
+            was := Mark(w);
+            IF was THEN w.%X1 := TRUE; END_IF;
+            get := w;
+        END_FUNCTION
+    "#;
+    let result: i32 = run(&mut with_db, source, "get", ());
+    assert_eq!(
+        result, 0xAB13,
+        "byte 1 replaced, bits 0 and 1 set, bit 4 kept"
+    );
+}
+
+/// Inside a METHOD, a slice of the instance's state and of the METHOD's own
+/// result, as of a FUNCTION's.
+#[rstest]
+fn slices_in_a_method(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Reg
+        VAR_OUTPUT flags : BYTE; END_VAR
+            METHOD Pack : DWORD
+            VAR_INPUT hi : WORD; lo : WORD; END_VAR
+                Pack.%W1 := hi;
+                Pack.%W0 := lo;
+                flags.3 := TRUE;
+            END_METHOD
+        END_FUNCTION_BLOCK
+
+        FUNCTION get : DWORD
+        VAR r : Reg; d : DWORD; END_VAR
+            d := r.Pack(hi := WORD#16#1234, lo := WORD#16#5678);
+            IF r.flags = BYTE#2#0000_1000 THEN get := d; END_IF;
+        END_FUNCTION
+    "#;
+    let result: i32 = run(&mut with_db, source, "get", ());
+    assert_eq!(result as u32, 0x1234_5678);
+}

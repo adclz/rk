@@ -11,6 +11,7 @@
   - [Variadics](variadics.md)
   - [Monomorphized OOP](monomorphized-oop.md)
   - [References](references.md)
+  - [Partial access](partial-access.md)
   - [Strings](strings.md)
 - Data types
   - [Structs](structs.md)

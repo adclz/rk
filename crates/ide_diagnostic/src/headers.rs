@@ -218,6 +218,7 @@ pub const HEADERS: &[(&str, &str)] = &[
     ("E1428", "program configuration element refused"),
     ("E1429", "partial access out of range"),
     ("E1430", "frame larger than the stack"),
+    ("E1431", "partial access to a type without parts"),
     ("E1501", "extern pragma outside a FUNCTION"),
     ("E1502", "not representable on an extern FUNCTION"),
     ("E1503", "test pragma outside a FUNCTION"),

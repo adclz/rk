@@ -22,6 +22,7 @@ use crate::{
     hir_ty::{
         index_graphs::namespace_index,
         infer::{Infer, normalize::multibits_to_type},
+        oop::MethodRef,
         ty::{CallableType, InferType, Type},
     },
 };
@@ -105,7 +106,7 @@ impl<'db> Type<'db> {
             Self::Enum(e) => "ENUM",
             Self::EnumVariant(..) => "ENUM_VARIANT",
             Self::CallableType(_) => "CALLABLE",
-            Self::ReturnValue(_) => "RETURN_VALUE",
+            Self::ReturnValue(..) => "RETURN_VALUE",
             Self::RefTo(_) => "REF_TO",
             Self::Null => "NULL",
             Self::Infer(_) => "INFER",
@@ -169,7 +170,10 @@ impl<'db> Type<'db> {
             },
             // Named by its declared type, as a variable is: `PInt`, not the
             // `REF_TO INT` behind it.
-            Self::ReturnValue(callable) => match callable.return_type(db) {
+            Self::ReturnValue((_, Some(multibits))) => {
+                multibits_to_type(db, *multibits).type_name(db)
+            }
+            Self::ReturnValue((callable, None)) => match callable.return_type(db) {
                 Some(spec) => spec_type_name(db, *spec),
                 None => Type::Void.type_name(db),
             },
@@ -354,7 +358,23 @@ impl<'db> Type<'db> {
 
     pub fn with_location(&self, db: &'db dyn WorkspaceDataBase, diag: &mut IdeDiagnostic) {
         match self {
-            Self::CallableType(typ) | Self::ReturnValue(typ) => {
+            // A slice of the result is no value of the return type: named as
+            // a sliced variable is.
+            Self::ReturnValue((CallableType::Function(f), Some(_))) => {
+                diag.with_related(Related::new(
+                    format!("'{}' is declared here", f.get_name_with_case(db).text(db)),
+                    f.get_scope_id(db).file(db),
+                    f.get_name_span(db),
+                ));
+            }
+            Self::ReturnValue((CallableType::MethodDecl(MethodRef::Declared(m)), Some(_))) => {
+                diag.with_related(Related::new(
+                    format!("'{}' is declared here", m.get_name_with_case(db).text(db)),
+                    m.get_scope_id(db).file(db),
+                    m.get_name_span(db),
+                ));
+            }
+            Self::CallableType(typ) | Self::ReturnValue((typ, _)) => {
                 typ.inner_callable().with_location(db, diag);
             }
             Self::Variable((v, multibits)) => match v.spec(db).kind(db) {

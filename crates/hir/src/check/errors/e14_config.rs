@@ -133,6 +133,14 @@ pub enum ConfigError<'db> {
         max_offset: Option<usize>,
         base_type: Type<'db>,
     },
+    /// A partial access of what is not a bit string, an integer or a BOOL:
+    /// `r.31` of a REAL, `a.0` of an ARRAY.
+    PartialAccessWithoutParts {
+        expr: PathExpr<'db>,
+        /// The declaration to point at, when the base IS one.
+        var: Option<VariableDecl<'db>>,
+        base_type: Type<'db>,
+    },
     /// A recursive call whose frame is larger than the stack `stack_size`
     /// sets: it could never be pushed, and the program would stop at the
     /// first such call.
@@ -728,6 +736,7 @@ impl<'db> ErrorCode for ConfigError<'db> {
             Self::UnknownMultibitsAccess { .. } => "E1418",
             Self::MultibitsOutOfRange { .. } => "E1429",
             Self::FrameLargerThanStack { .. } => "E1430",
+            Self::PartialAccessWithoutParts { .. } => "E1431",
             Self::WriteToInputLocation { .. } => "E1419",
             Self::RetainOnIoLocation { .. } => "E1420",
             Self::DuplicateLocation { .. } => "E1421",
@@ -1144,6 +1153,62 @@ impl<'db> ToIdeDiagnostic<'db> for ConfigError<'db> {
                     ));
                 }
 
+                diag
+            }
+            Self::PartialAccessWithoutParts {
+                expr,
+                var,
+                base_type,
+            } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "type '{}' has no parts to access",
+                        base_type.type_name(db)
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &expr.get_span(db)).unwrap_or_default())
+                    .call();
+                diag.with_note(
+                    "a partial access applies to a bit string, an integer or a BOOL".to_string(),
+                );
+                // A REAL's bits encode the number: the conversion to the bit
+                // string of its width is what says the encoding is wanted.
+                let normalized = base_type.normalize(db);
+                if let Type::RefTo(target) = normalized
+                    && crate::hir_ty::infer::Infer::infer(&target, db)
+                        .normalize(db)
+                        .takes_partial_access()
+                {
+                    diag.with_help(
+                        "dereference it with '^' and access the parts of what it points to"
+                            .to_string(),
+                    );
+                }
+                if let Type::Elementary(spec) = normalized {
+                    use crate::hir_def::expressions::spec::ElementarySpec as E;
+                    let bits = match spec {
+                        E::Real => Some(E::DWord),
+                        E::LReal => Some(E::LWord),
+                        E::Char => Some(E::Byte),
+                        _ => None,
+                    };
+                    if let Some(bits) = bits.filter(|bits| bits.explicit_cast(spec)) {
+                        diag.with_help(format!(
+                            "convert it with '{}_TO_{}' and access the parts of the '{}'",
+                            spec.type_name(),
+                            bits.type_name(),
+                            bits.type_name(),
+                        ));
+                    }
+                }
+                if let Some(var) = var {
+                    diag.with_related(Related::new(
+                        format!("'{}' is declared here", var.name_with_case(db).text(db)),
+                        var.scope_id(db).file(db),
+                        var.get_name_span(db),
+                    ));
+                }
                 diag
             }
             Self::FrameLargerThanStack {

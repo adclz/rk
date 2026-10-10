@@ -117,7 +117,7 @@ fn normalize_reference_type<'db>(ty: Type<'db>) -> Option<Type<'db>> {
         Type::Variable((var, _)) => Type::Variable((var, None)),
         // The return value is referred to by its callable's name: renaming the
         // FUNCTION renames `F := ...` in its body too.
-        Type::CallableType(ct) | Type::ReturnValue(ct) => match ct {
+        Type::CallableType(ct) | Type::ReturnValue((ct, _)) => match ct {
             CallableType::Function(f) => Type::Function(f),
             CallableType::FunctionBlock(fb) => Type::FunctionBlock(fb),
             CallableType::MethodDecl(m) => Type::MethodDecl(m),

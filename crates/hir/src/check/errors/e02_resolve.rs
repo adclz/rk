@@ -231,6 +231,20 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
 
                 ty.with_location(db, &mut diag);
                 fuzzy_type_fields(db, *ty, &mut diag, ident.text(db).as_str());
+                // `b.i` of a BYTE is a bit at a computed position, the likeliest
+                // meaning, which a partial access cannot take.
+                let base = ty.normalize(db);
+                if base.takes_partial_access() {
+                    diag.with_note(
+                        "the position of a partial access is an integer literal".to_string(),
+                    );
+                    if base.is_binary_integer() {
+                        diag.with_help(format!(
+                            "shift the value right by '{}' with 'SHR' to reach a computed bit",
+                            ident.text(db)
+                        ));
+                    }
+                }
                 diag
             }
             Self::NoNamespaceItemFound { path } => {

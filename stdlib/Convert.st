@@ -161,7 +161,6 @@ NAMESPACE Std.Convert
 	END_FUNCTION
 
 	/* Returns the 64 bits of `IN`, as IEEE 754 stores them. */
-	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION LREAL_TO_LWORD: LWORD
 		VAR_INPUT
 			IN: LREAL;
@@ -296,7 +295,6 @@ NAMESPACE Std.Convert
 	END_FUNCTION
 
 	/* Returns the 32 bits of `IN`, as IEEE 754 stores them. */
-	{info = 'narrowing conversion, possible loss of value'}
 	FUNCTION REAL_TO_DWORD: DWORD
 		VAR_INPUT
 			IN: REAL;

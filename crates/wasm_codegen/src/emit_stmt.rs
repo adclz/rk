@@ -844,6 +844,19 @@ fn emit_stmt(func: &mut wasm_encoder::Function, stmt: &MirStmt, ctx: &Ctx) {
                 return;
             }
 
+            // A byte swap (`rk.bswap16`, `rk.bswap32`, `rk.bswap64`), composed
+            // of shifts, masks and a rotate: wasm has no such instruction.
+            if let Some(bits) = instruction.strip_prefix("rk.bswap") {
+                let scalar = |name: &_| match ctx.locals.get(name) {
+                    Some(LocalInfo::Scalar { index, .. }) => *index,
+                    _ => panic!("rk.bswap operands must be scalar locals"),
+                };
+                let in_idx = scalar(params.first().expect("rk.bswap needs IN"));
+                let out_idx = scalar(result.as_ref().expect("rk.bswap needs a result"));
+                emit_byte_swap(func, bits, in_idx, out_idx);
+                return;
+            }
+
             // IEC-width shifts and rotates (`rk.shl8`, `rk.rotl16`): sub-width
             // results are masked, sub-width rotates are composed from shifts, and
             // a count of the type width yields 0. Needs the param locals.
@@ -975,6 +988,70 @@ fn emit_iec_shift_rotate(func: &mut wasm_encoder::Function, op: &str, in_idx: u3
         "rotr16" => rotate(func, 16, Instruction::I32ShrU, Instruction::I32Shl),
         other => panic!("unknown rk.* pseudo-op: rk.{}", other),
     }
+}
+
+/// Write into `out_idx` the value of `in_idx` with its `bits` (16, 32 or 64)
+/// in the other byte order. Each step swaps neighbours: the bytes of each
+/// 16-bit half, then for 64 bits the halves of each 32-bit word, and a
+/// rotate swaps the two largest parts. A 16-bit result is zero extended:
+/// the bits of a sign-extended `INT` past its 16 are not read.
+fn emit_byte_swap(func: &mut wasm_encoder::Function, bits: &str, in_idx: u32, out_idx: u32) {
+    match bits {
+        // `((IN & 16#FF) << 8) | ((IN >> 8) & 16#FF)`
+        "16" => {
+            func.instruction(&Instruction::LocalGet(in_idx));
+            func.instruction(&Instruction::I32Const(0xFF));
+            func.instruction(&Instruction::I32And);
+            func.instruction(&Instruction::I32Const(8));
+            func.instruction(&Instruction::I32Shl);
+            func.instruction(&Instruction::LocalGet(in_idx));
+            func.instruction(&Instruction::I32Const(8));
+            func.instruction(&Instruction::I32ShrU);
+            func.instruction(&Instruction::I32Const(0xFF));
+            func.instruction(&Instruction::I32And);
+            func.instruction(&Instruction::I32Or);
+        }
+        // `ROL(((IN >> 8) & 16#00FF00FF) | ((IN & 16#00FF00FF) << 8), 16)`
+        "32" => {
+            func.instruction(&Instruction::LocalGet(in_idx));
+            func.instruction(&Instruction::I32Const(8));
+            func.instruction(&Instruction::I32ShrU);
+            func.instruction(&Instruction::I32Const(0x00FF_00FF));
+            func.instruction(&Instruction::I32And);
+            func.instruction(&Instruction::LocalGet(in_idx));
+            func.instruction(&Instruction::I32Const(0x00FF_00FF));
+            func.instruction(&Instruction::I32And);
+            func.instruction(&Instruction::I32Const(8));
+            func.instruction(&Instruction::I32Shl);
+            func.instruction(&Instruction::I32Or);
+            func.instruction(&Instruction::I32Const(16));
+            func.instruction(&Instruction::I32Rotl);
+        }
+        // The bytes of each 16-bit part, then the 16-bit parts of each
+        // 32-bit half, in `out_idx` between the two, then `ROL(_, 32)`.
+        "64" => {
+            let swap = |func: &mut wasm_encoder::Function, from: u32, shift: i64, mask: i64| {
+                func.instruction(&Instruction::LocalGet(from));
+                func.instruction(&Instruction::I64Const(shift));
+                func.instruction(&Instruction::I64ShrU);
+                func.instruction(&Instruction::I64Const(mask));
+                func.instruction(&Instruction::I64And);
+                func.instruction(&Instruction::LocalGet(from));
+                func.instruction(&Instruction::I64Const(mask));
+                func.instruction(&Instruction::I64And);
+                func.instruction(&Instruction::I64Const(shift));
+                func.instruction(&Instruction::I64Shl);
+                func.instruction(&Instruction::I64Or);
+            };
+            swap(func, in_idx, 8, 0x00FF_00FF_00FF_00FF);
+            func.instruction(&Instruction::LocalSet(out_idx));
+            swap(func, out_idx, 16, 0x0000_FFFF_0000_FFFF);
+            func.instruction(&Instruction::I64Const(32));
+            func.instruction(&Instruction::I64Rotl);
+        }
+        other => panic!("unknown byte swap: rk.bswap{other}"),
+    }
+    func.instruction(&Instruction::LocalSet(out_idx));
 }
 
 fn emit_wasm_instruction(func: &mut wasm_encoder::Function, name: &str) {

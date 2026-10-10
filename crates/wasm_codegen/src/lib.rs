@@ -346,6 +346,9 @@ struct WasmGen<'a> {
     index_remap: FxHashMap<u32, u32>,
     /// Builtin name (`f32.sin`) → wasm index of the grafted implementation.
     builtin_indices: FxHashMap<String, u32>,
+    /// Name → wasm index for every call, built once before the functions
+    /// are emitted ([`Self::build_call_indices`]).
+    call_indices: FxHashMap<hir::hir_def::interned::identifier::Ident, u32>,
     /// Tag index of `$rk_exception` (`(i32, i32) -> ()`, the raised STRING's
     /// `(ptr, len)`), `Some` when any function contains `Raise`.
     rk_exception_tag_idx: Option<u32>,
@@ -534,6 +537,7 @@ impl<'a> WasmGen<'a> {
             next_type_idx: 0,
             index_remap: FxHashMap::default(),
             builtin_indices: FxHashMap::default(),
+            call_indices: FxHashMap::default(),
             rk_exception_tag_idx: None,
             rk_exception_tag_type_idx: None,
             test_catch_block_type_idx: None,
@@ -684,7 +688,11 @@ impl<'a> WasmGen<'a> {
             });
         }
 
-        // 8. Emit user functions.
+        // 8. Emit user functions. The call indices are the same for each:
+        //    rebuilt per function, they cost functions × functions.
+        let call_indices = self.build_call_indices();
+        self.publish_builtin_indices(&call_indices);
+        self.call_indices = call_indices;
         for func in &self.module.functions {
             self.emit_function(func);
         }
@@ -1226,10 +1234,6 @@ impl<'a> WasmGen<'a> {
             None
         };
 
-        // Build remapped function indices for call instructions
-        let remapped_fn_indices = self.build_call_indices();
-        self.publish_builtin_indices(&remapped_fn_indices);
-
         let prev_floor_tmp =
             crate::mir_cast::DATETIME_FLOOR_TMP.with(|cell| cell.replace(datetime_floor_tmp));
         let prev_addr_tmp = crate::emit_expr::STR_ADDR_TMP.with(|cell| cell.replace(str_addr_tmp));
@@ -1283,7 +1287,7 @@ impl<'a> WasmGen<'a> {
             &mut wasm_func,
             &func.body,
             &local_map,
-            &remapped_fn_indices,
+            &self.call_indices,
             &self.builtin_indices,
             return_value,
             self.rk_exception_tag_idx,
@@ -1417,9 +1421,6 @@ impl<'a> WasmGen<'a> {
         let mut wasm_func = wasm_encoder::Function::new(extra_locals);
         self.emit_entry(&mut wasm_func, func, frame_base, frame_size);
 
-        let remapped_fn_indices = self.build_call_indices();
-        self.publish_builtin_indices(&remapped_fn_indices);
-
         let prev_floor_tmp =
             crate::mir_cast::DATETIME_FLOOR_TMP.with(|cell| cell.replace(datetime_floor_tmp));
         let prev_addr_tmp = crate::emit_expr::STR_ADDR_TMP.with(|cell| cell.replace(str_addr_tmp));
@@ -1454,7 +1455,7 @@ impl<'a> WasmGen<'a> {
             &mut wasm_func,
             &func.body,
             &local_map,
-            &remapped_fn_indices,
+            &self.call_indices,
             &self.builtin_indices,
             None,
             self.rk_exception_tag_idx,

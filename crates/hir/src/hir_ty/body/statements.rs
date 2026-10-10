@@ -1297,7 +1297,7 @@ fn stored_spec<'db>(
     let mut spec = match base_typ {
         Type::Variable((var, None)) => var.spec(db),
         Type::StructElement(el) => el.spec(db),
-        Type::ReturnValue(callable) => *callable.return_type(db)?,
+        Type::ReturnValue((callable, None)) => *callable.return_type(db)?,
         _ => return None,
     };
     for adjustment in adjustments {

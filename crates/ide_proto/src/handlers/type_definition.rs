@@ -40,7 +40,9 @@ pub fn type_definition<'db>(
         // The declared type of the slot, not the slot.
         Type::Variable((var, _)) => var.spec(db).infer(db),
         Type::StructElement(st) => st.spec(db).infer(db),
-        Type::ReturnValue(callable) => callable.return_type(db).map_or(ty, |spec| spec.infer(db)),
+        Type::ReturnValue((callable, _)) => {
+            callable.return_type(db).map_or(ty, |spec| spec.infer(db))
+        }
         // A call is worth its return type, which is the type the reader is
         // asking about at a call site.
         Type::CallableType(_) | Type::Function(_) | Type::MethodDecl(_) => {

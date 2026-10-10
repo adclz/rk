@@ -66,8 +66,9 @@ pub enum Type<'db> {
     CallableType(CallableType<'db>),
     // The enclosing FUNCTION's or METHOD's return value, which its body names
     // by the callable's own name: a value of the return type, as a local is a
-    // value of its declared type.
-    ReturnValue(CallableType<'db>),
+    // value of its declared type. With a partial access (`F.%B7`), the slice
+    // of it, as a variable's.
+    ReturnValue((CallableType<'db>, Option<MultibitsPart>)),
     // Void type, usually the result of a call that does not return anything
     Void,
     // Never type, represents an unresolvable type
@@ -341,6 +342,15 @@ impl<'db> Type<'db> {
             || self.is_signed_integer()
             || self.is_unsigned_integer()
             || self.is_float()
+    }
+
+    /// A bit string, an integer or a BOOL: what a partial access (`x.%B1`)
+    /// takes a part of. Normalize first, so a subrange is its base.
+    pub fn takes_partial_access(&self) -> bool {
+        self.is_boolean()
+            || self.is_binary_integer()
+            || self.is_signed_integer()
+            || self.is_unsigned_integer()
     }
 
     pub fn is_binary_integer(&self) -> bool {

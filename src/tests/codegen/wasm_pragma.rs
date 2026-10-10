@@ -131,3 +131,59 @@ END_FUNCTION
     let r: i32 = execute_wasm(&wasm, "run", ());
     assert_eq!(r, expected, "to_int({input})");
 }
+
+/// A byte swap reverses the bytes of its type's width, with no instruction
+/// of its own in wasm: 16 bits zero extended, 32, and 64 through the result
+/// local, which may be the operand itself.
+#[rstest]
+fn a_byte_swap_reverses_the_bytes_of_its_width(mut with_db: db::RootDatabase) {
+    let source = r#"
+FUNCTION swap16 : WORD
+VAR_INPUT IN : WORD; END_VAR
+    {wasm IN 'bswap' (params IN) (result swap16)}
+END_FUNCTION
+
+FUNCTION swap16_signed : WORD
+VAR_INPUT IN : INT; END_VAR
+    {wasm IN 'bswap' (params IN) (result swap16_signed)}
+END_FUNCTION
+
+FUNCTION swap32 : DWORD
+VAR_INPUT IN : DWORD; END_VAR
+    {wasm IN 'bswap' (params IN) (result swap32)}
+END_FUNCTION
+
+FUNCTION swap64 : LWORD
+VAR_INPUT IN : LWORD; END_VAR
+VAR v : LWORD; END_VAR
+    v := IN;
+    {wasm v 'bswap' (params v) (result v)}
+    swap64 := v;
+END_FUNCTION
+
+FUNCTION run16 : WORD
+    run16 := swap16(WORD#16#1234);
+END_FUNCTION
+
+FUNCTION run16_signed : WORD
+    run16_signed := swap16_signed(INT#-2);
+END_FUNCTION
+
+FUNCTION run32 : DWORD
+    run32 := swap32(DWORD#16#12345678);
+END_FUNCTION
+
+FUNCTION run64 : LWORD
+    run64 := swap64(LWORD#16#0102030405060708);
+END_FUNCTION
+"#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let r16: i32 = execute_wasm(&wasm, "run16", ());
+    assert_eq!(r16, 0x3412);
+    let signed: i32 = execute_wasm(&wasm, "run16_signed", ());
+    assert_eq!(signed, 0xFEFF, "the bits past 16 are not read, nor set");
+    let r32: i32 = execute_wasm(&wasm, "run32", ());
+    assert_eq!(r32 as u32, 0x7856_3412);
+    let r64: i64 = execute_wasm(&wasm, "run64", ());
+    assert_eq!(r64 as u64, 0x0807_0605_0403_0201);
+}

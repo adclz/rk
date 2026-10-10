@@ -7,6 +7,7 @@
 mod aggregate_returns;
 mod arrays;
 mod bit_access;
+mod bytes;
 mod classes;
 mod conformands;
 mod constant_folding;

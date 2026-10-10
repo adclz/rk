@@ -230,6 +230,49 @@ fn assigning_wrong_type_through_a_slice_is_rejected(mut with_db: db::RootDatabas
     ");
 }
 
+/// A FUNCTION's own name is its result, and a slice of it is a slice as of a
+/// variable: typed as the slice, bounded by the result's type. It was typed
+/// as the whole result, so an LWORD went into a BYTE unchecked, and an
+/// offset past the result was never refused.
+#[rstest]
+fn a_slice_of_a_result_is_a_slice(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION F : LWORD
+            F.%B7 := LWORD#16#FFFF;
+        END_FUNCTION
+
+        FUNCTION H : WORD
+            H.%B2 := BYTE#1;
+        END_FUNCTION
+
+        FUNCTION Fine : LWORD
+            Fine.%B7 := BYTE#1;
+            Fine.%X0 := TRUE;
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0301] Error: type mismatch
+       ,-[ file:///test0.st:3:22 ]
+       |
+     2 |         FUNCTION F : LWORD
+       |                  |
+       |                  `-- 'F' is declared here
+     3 |             F.%B7 := LWORD#16#FFFF;
+       |                      ^^^^^^|^^^^^^
+       |                            `-------- expected 'BYTE', got 'LWORD'
+       |
+       | Help: insert explicit cast 'LWORD_TO_BYTE(LWORD#16#FFFF)'
+    ---'
+    [E1429] Error: partial access out of range
+       ,-[ file:///test0.st:7:13 ]
+       |
+     7 |             H.%B2 := BYTE#1;
+       |             |
+       |             `-- offset 2 is out of range for type 'WORD' (valid range: 0..1)
+    ---'
+    ");
+}
+
 /// Partial access reaches through a path: the slice applies to the member the
 /// path lands on, not to the root.
 #[rstest]
@@ -352,7 +395,8 @@ fn sized_slice_wider_than_the_element(mut with_db: db::RootDatabase) {
 /// The offset must be a literal: there is no runtime-computed slice.
 ///
 /// Both spellings LOOK valid, so both are pinned. `b.i` reads as a field
-/// access and is refused as one; `b.%Xi` does not parse at all.
+/// access and is refused as one, with the rule and the way to a computed
+/// bit. `b.%Xi` reads as a size `Xi` with no position, a syntax error.
 #[rstest]
 fn a_variable_offset_is_not_a_slice(mut with_db: db::RootDatabase) {
     let source = r#"
@@ -362,6 +406,13 @@ fn a_variable_offset_is_not_a_slice(mut with_db: db::RootDatabase) {
             i : INT := 3;
         END_VAR
             f := b.i;
+        END_FUNCTION
+
+        FUNCTION g : BOOL
+        VAR
+            b : BYTE;
+        END_VAR
+            g := b.%Xi;
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
@@ -375,6 +426,396 @@ fn a_variable_offset_is_not_a_slice(mut with_db: db::RootDatabase) {
      7 |             f := b.i;
        |                    |
        |                    `-- 'BYTE' has no field named 'i'
+       |
+       | Help: shift the value right by 'i' with 'SHR' to reach a computed bit
+       |
+       | Note: the position of a partial access is an integer literal
     ---'
+    [E0002] Error: missing element
+        ,-[ file:///test0.st:14:23 ]
+        |
+     14 |             g := b.%Xi;
+        |                       |
+        |                       `- missing 'unsigned_int'
+        |                       |
+        |                       `- add missing unsigned_int here
+    ----'
+    ");
+}
+
+/// Every integer takes a partial access, signed or not, and so does a
+/// subrange of one. A BOOL has one part, its bit 0.
+#[rstest]
+fn integers_and_bools_take_a_partial_access(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE Small : INT (0..10); END_TYPE
+
+        FUNCTION f : BOOL
+        VAR
+            si : SINT; i : INT; di : DINT; li : LINT;
+            usi : USINT; ui : UINT; udi : UDINT; uli : ULINT;
+            s : Small;
+            b : BOOL;
+            y : BYTE; w : WORD; d : DWORD; l : LWORD;
+        END_VAR
+            f := si.7 AND i.%X15 AND di.31 AND li.63;
+            f := usi.0 AND ui.15 AND udi.%X31 AND uli.%X63;
+            y := i.%B1; w := di.%W1; d := li.%D1; l := uli.%L0;
+            y := s.%B0;
+            s.0 := TRUE;
+            b.0 := f;
+            f := b.%X0;
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+/// What is not a bit string, an integer or a BOOL has no parts. These went
+/// through `check` and failed in the build: a REAL's emitted an invalid
+/// module, a STRING's, a STRUCT's or an ARRAY's stopped with an internal
+/// compiler error, the others read their encoding. Where a conversion gives
+/// the bits, the help names it.
+#[rstest]
+fn a_type_without_parts_is_refused(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE Color : (Red, Green); END_TYPE
+        TYPE Pair : STRUCT a : INT; END_STRUCT; END_TYPE
+
+        FUNCTION f : BOOL
+        VAR
+            r : REAL;
+            lr : LREAL;
+            c : CHAR;
+            t : TIME;
+            e : Color;
+            s : STRING;
+            p : Pair;
+            a : ARRAY[0..3] OF BYTE;
+            rp : REF_TO INT;
+            w : WORD;
+        END_VAR
+            f := r.31;
+            w := lr.%W3;
+            c.0 := TRUE;
+            f := t.3;
+            f := e.0;
+            f := s.0;
+            f := p.0;
+            f := a.0;
+            f := rp.0;
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1431] Error: partial access to a type without parts
+        ,-[ file:///test0.st:18:18 ]
+        |
+      7 |             r : REAL;
+        |             |
+        |             `-- 'r' is declared here
+        |
+     18 |             f := r.31;
+        |                  |
+        |                  `-- type 'REAL' has no parts to access
+        |
+        | Help: convert it with 'REAL_TO_DWORD' and access the parts of the 'DWORD'
+        |
+        | Note: a partial access applies to a bit string, an integer or a BOOL
+    ----'
+    [E1431] Error: partial access to a type without parts
+        ,-[ file:///test0.st:19:18 ]
+        |
+      8 |             lr : LREAL;
+        |             ^|
+        |              `-- 'lr' is declared here
+        |
+     19 |             w := lr.%W3;
+        |                  ^|
+        |                   `-- type 'LREAL' has no parts to access
+        |
+        | Help: convert it with 'LREAL_TO_LWORD' and access the parts of the 'LWORD'
+        |
+        | Note: a partial access applies to a bit string, an integer or a BOOL
+    ----'
+    [E1431] Error: partial access to a type without parts
+        ,-[ file:///test0.st:20:13 ]
+        |
+      9 |             c : CHAR;
+        |             |
+        |             `-- 'c' is declared here
+        |
+     20 |             c.0 := TRUE;
+        |             |
+        |             `-- type 'CHAR' has no parts to access
+        |
+        | Help: convert it with 'CHAR_TO_BYTE' and access the parts of the 'BYTE'
+        |
+        | Note: a partial access applies to a bit string, an integer or a BOOL
+    ----'
+    [E1431] Error: partial access to a type without parts
+        ,-[ file:///test0.st:21:18 ]
+        |
+     10 |             t : TIME;
+        |             |
+        |             `-- 't' is declared here
+        |
+     21 |             f := t.3;
+        |                  |
+        |                  `-- type 'TIME' has no parts to access
+        |
+        | Note: a partial access applies to a bit string, an integer or a BOOL
+    ----'
+    [E1431] Error: partial access to a type without parts
+        ,-[ file:///test0.st:22:18 ]
+        |
+     11 |             e : Color;
+        |             |
+        |             `-- 'e' is declared here
+        |
+     22 |             f := e.0;
+        |                  |
+        |                  `-- type 'Color' has no parts to access
+        |
+        | Note: a partial access applies to a bit string, an integer or a BOOL
+    ----'
+    [E1431] Error: partial access to a type without parts
+        ,-[ file:///test0.st:23:18 ]
+        |
+     12 |             s : STRING;
+        |             |
+        |             `-- 's' is declared here
+        |
+     23 |             f := s.0;
+        |                  |
+        |                  `-- type 'STRING' has no parts to access
+        |
+        | Note: a partial access applies to a bit string, an integer or a BOOL
+    ----'
+    [E1431] Error: partial access to a type without parts
+        ,-[ file:///test0.st:24:18 ]
+        |
+     13 |             p : Pair;
+        |             |
+        |             `-- 'p' is declared here
+        |
+     24 |             f := p.0;
+        |                  |
+        |                  `-- type 'Pair' has no parts to access
+        |
+        | Note: a partial access applies to a bit string, an integer or a BOOL
+    ----'
+    [E1431] Error: partial access to a type without parts
+        ,-[ file:///test0.st:25:18 ]
+        |
+     14 |             a : ARRAY[0..3] OF BYTE;
+        |             |
+        |             `-- 'a' is declared here
+        |
+     25 |             f := a.0;
+        |                  |
+        |                  `-- type 'ARRAY [0..3] OF BYTE' has no parts to access
+        |
+        | Note: a partial access applies to a bit string, an integer or a BOOL
+    ----'
+    [E1431] Error: partial access to a type without parts
+        ,-[ file:///test0.st:26:18 ]
+        |
+     15 |             rp : REF_TO INT;
+        |             ^|
+        |              `-- 'rp' is declared here
+        |
+     26 |             f := rp.0;
+        |                  ^|
+        |                   `-- type 'REF_TO INT' has no parts to access
+        |
+        | Help: dereference it with '^' and access the parts of what it points to
+        |
+        | Note: a partial access applies to a bit string, an integer or a BOOL
+    ----'
+    ");
+}
+
+/// A size is one letter. Only the first was read, so `%BX1` and `%Bfoo1`
+/// passed as `%B1`.
+#[rstest]
+fn a_size_is_one_letter(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION f : BYTE
+        VAR
+            w : WORD;
+        END_VAR
+            f := w.%BX1;
+            f := w.%Bfoo1;
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1418] Error: unknown multibit access size
+       ,-[ file:///test0.st:6:18 ]
+       |
+     6 |             f := w.%BX1;
+       |                  |
+       |                  `-- '%BX' names no access size (expected X, B, W, D or L)
+    ---'
+    [E1418] Error: unknown multibit access size
+       ,-[ file:///test0.st:7:18 ]
+       |
+     7 |             f := w.%Bfoo1;
+       |                  |
+       |                  `-- '%Bfoo' names no access size (expected X, B, W, D or L)
+    ---'
+    ");
+}
+
+/// The size letter is caseless, as every keyword is.
+#[rstest]
+fn the_size_letter_is_caseless(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION f : BOOL
+        VAR
+            l : LWORD;
+            y : BYTE; w : WORD; d : DWORD;
+        END_VAR
+            f := l.%x63;
+            y := l.%b7;
+            w := l.%w3;
+            d := l.%d1;
+            l := l.%l0;
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
+
+/// A subrange is sliced as its base: its offsets are the INT's, whatever
+/// its range, through a named type too.
+#[rstest]
+fn a_slice_of_a_subrange_is_bounded_by_its_base(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE Small : INT (0..10); END_TYPE
+
+        FUNCTION f : BOOL
+        VAR
+            x : INT (0..10);
+            s : Small;
+            y : BYTE;
+        END_VAR
+            f := x.15;
+            f := x.16;
+            y := s.%B2;
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1429] Error: partial access out of range
+        ,-[ file:///test0.st:11:18 ]
+        |
+      6 |             x : INT (0..10);
+        |             |
+        |             `-- 'x' is declared here
+        |
+     11 |             f := x.16;
+        |                  |
+        |                  `-- offset 16 is out of range for type 'INT' (valid range: 0..15)
+    ----'
+    [E1429] Error: partial access out of range
+        ,-[ file:///test0.st:12:18 ]
+        |
+      7 |             s : Small;
+        |             |
+        |             `-- 's' is declared here
+        |
+     12 |             y := s.%B2;
+        |                  |
+        |                  `-- offset 2 is out of range for type 'INT' (valid range: 0..1)
+    ----'
+    ");
+}
+
+/// The base without parts is refused wherever the access sits: an array
+/// element, a field, a dereference, an instance's member and a FUNCTION's
+/// own result, each a path of its own to the check.
+#[rstest]
+fn a_type_without_parts_is_refused_on_every_path(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE Pair : STRUCT r : REAL; END_STRUCT; END_TYPE
+
+        FUNCTION_BLOCK Holder
+        VAR_OUTPUT r : REAL; END_VAR
+        END_FUNCTION_BLOCK
+
+        FUNCTION Half : REAL
+            Half := 0.5;
+            Half.31 := TRUE;
+        END_FUNCTION
+
+        FUNCTION f : BOOL
+        VAR
+            ra : ARRAY[0..3] OF REAL;
+            k : INT := 1;
+            p : Pair;
+            x : REAL;
+            rr : REF_TO REAL;
+            h : Holder;
+        END_VAR
+            rr := REF(x);
+            f := ra[k].0;
+            f := p.r.31;
+            f := rr^.0;
+            f := h.r.0;
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1431] Error: partial access to a type without parts
+        ,-[ file:///test0.st:10:13 ]
+        |
+     10 |             Half.31 := TRUE;
+        |             ^^|^
+        |               `--- type 'REAL' has no parts to access
+        |
+        | Help: convert it with 'REAL_TO_DWORD' and access the parts of the 'DWORD'
+        |
+        | Note: a partial access applies to a bit string, an integer or a BOOL
+    ----'
+    [E1431] Error: partial access to a type without parts
+        ,-[ file:///test0.st:23:18 ]
+        |
+     23 |             f := ra[k].0;
+        |                  ^|
+        |                   `-- type 'REAL' has no parts to access
+        |
+        | Help: convert it with 'REAL_TO_DWORD' and access the parts of the 'DWORD'
+        |
+        | Note: a partial access applies to a bit string, an integer or a BOOL
+    ----'
+    [E1431] Error: partial access to a type without parts
+        ,-[ file:///test0.st:24:20 ]
+        |
+     24 |             f := p.r.31;
+        |                    |
+        |                    `-- type 'REAL' has no parts to access
+        |
+        | Help: convert it with 'REAL_TO_DWORD' and access the parts of the 'DWORD'
+        |
+        | Note: a partial access applies to a bit string, an integer or a BOOL
+    ----'
+    [E1431] Error: partial access to a type without parts
+        ,-[ file:///test0.st:25:18 ]
+        |
+     25 |             f := rr^.0;
+        |                  ^|
+        |                   `-- type 'REAL' has no parts to access
+        |
+        | Help: convert it with 'REAL_TO_DWORD' and access the parts of the 'DWORD'
+        |
+        | Note: a partial access applies to a bit string, an integer or a BOOL
+    ----'
+    [E1431] Error: partial access to a type without parts
+        ,-[ file:///test0.st:26:20 ]
+        |
+     26 |             f := h.r.0;
+        |                    |
+        |                    `-- type 'REAL' has no parts to access
+        |
+        | Help: convert it with 'REAL_TO_DWORD' and access the parts of the 'DWORD'
+        |
+        | Note: a partial access applies to a bit string, an integer or a BOOL
+    ----'
     ");
 }

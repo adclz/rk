@@ -97,7 +97,8 @@ impl<'db> Type<'db> {
                 }
                 Ok(infer_signature(db, var.get_scope_id(db)).type_of_specs[&var.spec(db)])
             }
-            Type::CallableType(typ) | Type::ReturnValue(typ) => match typ {
+            Type::ReturnValue((_, Some(multibits))) => Err(multibits_to_type(db, *multibits)),
+            Type::CallableType(typ) | Type::ReturnValue((typ, None)) => match typ {
                 CallableType::Function(f) => match f.return_type(db) {
                     Some(ret_ty) => {
                         Ok(infer_signature(db, f.get_scope_id(db)).type_of_specs[ret_ty])
@@ -208,7 +209,14 @@ pub fn multibits_slice(
         // A bare offset is a bit access.
         MultibitsPart::Offset(offset) => (offset, ElementarySpec::Bool, 1),
         MultibitsPart::AccessOffset { access, offset } => {
-            let (spec, width) = access_size(access.text(db).chars().next()?)?;
+            // One letter, or none for a bit (`%1` is `%X1`): `%BX1` is no
+            // size, not `%B1`.
+            let mut letters = access.text(db).chars();
+            let (spec, width) = match (letters.next(), letters.next()) {
+                (None, _) => (ElementarySpec::Bool, 1),
+                (Some(c), None) => access_size(c)?,
+                _ => return None,
+            };
             (offset, spec, width)
         }
     };
@@ -291,7 +299,7 @@ pub fn declared_capacity_of<'db>(db: &'db dyn WorkspaceDataBase, ty: Type<'db>) 
         Type::Variable((var, None)) => var.spec(db),
         Type::StructElement(element) => element.spec(db),
         Type::DataType(dt) => dt.spec(db),
-        Type::ReturnValue(callable) => *callable.return_type(db)?,
+        Type::ReturnValue((callable, None)) => *callable.return_type(db)?,
         _ => return None,
     };
     string_capacity(db, spec)
