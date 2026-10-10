@@ -625,3 +625,54 @@ fn a_lowercase_or_omitted_size_names_the_same_part(mut with_db: db::RootDatabase
     let result: i32 = run(&mut with_db, source, "get", ());
     assert_eq!(result as u32, 0xABCD_2277);
 }
+
+/// A slice of a VAR_IN_OUT reads and writes the caller's variable: the
+/// write goes through the reference, the other bits stay.
+#[rstest]
+fn slices_of_an_in_out(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION Mark : BOOL
+        VAR_IN_OUT w : WORD; END_VAR
+            Mark := w.15;
+            w.%B1 := BYTE#16#AB;
+            w.0 := TRUE;
+        END_FUNCTION
+
+        FUNCTION get : WORD
+        VAR w : WORD := WORD#16#8010; was : BOOL; END_VAR
+            was := Mark(w);
+            IF was THEN w.%X1 := TRUE; END_IF;
+            get := w;
+        END_FUNCTION
+    "#;
+    let result: i32 = run(&mut with_db, source, "get", ());
+    assert_eq!(
+        result, 0xAB13,
+        "byte 1 replaced, bits 0 and 1 set, bit 4 kept"
+    );
+}
+
+/// Inside a METHOD, a slice of the instance's state and of the METHOD's own
+/// result, as of a FUNCTION's.
+#[rstest]
+fn slices_in_a_method(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Reg
+        VAR_OUTPUT flags : BYTE; END_VAR
+            METHOD Pack : DWORD
+            VAR_INPUT hi : WORD; lo : WORD; END_VAR
+                Pack.%W1 := hi;
+                Pack.%W0 := lo;
+                flags.3 := TRUE;
+            END_METHOD
+        END_FUNCTION_BLOCK
+
+        FUNCTION get : DWORD
+        VAR r : Reg; d : DWORD; END_VAR
+            d := r.Pack(hi := WORD#16#1234, lo := WORD#16#5678);
+            IF r.flags = BYTE#2#0000_1000 THEN get := d; END_IF;
+        END_FUNCTION
+    "#;
+    let result: i32 = run(&mut with_db, source, "get", ());
+    assert_eq!(result as u32, 0x1234_5678);
+}

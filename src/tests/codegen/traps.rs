@@ -335,6 +335,78 @@ fn a_bit_write_into_a_subrange_element_is_checked(mut with_db: db::RootDatabase)
     expect_fault(&mut with_db, source, "bit 7 makes 138");
 }
 
+/// A wider part stores the whole word back too: byte 0 of a (0..10) set to
+/// 16#FF makes 255.
+#[rstest]
+fn a_byte_write_into_a_subrange_is_checked(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE Small : INT (0..10); END_TYPE
+
+        FUNCTION run : DINT
+        VAR
+            s : Small := 10;
+        END_VAR
+            s.%B0 := BYTE#16#FF;
+            run := s;
+        END_FUNCTION
+    "#;
+    let msg = expect_fault(&mut with_db, source, "byte 0 makes 255");
+    assert!(msg.contains("value out of subrange bounds"), "{msg}");
+}
+
+/// A bit write leaving the range is caught on a field and through a
+/// reference too: each slot carries the bounds of its type.
+#[rstest]
+#[case::field("p.v.7 := TRUE; run := p.v;")]
+#[case::reference("r := REF(t); r^.7 := TRUE; run := t;")]
+fn a_bit_write_leaving_the_subrange_is_checked_on_every_slot(
+    mut with_db: db::RootDatabase,
+    #[case] body: &str,
+) {
+    let source = format!(
+        r#"
+        TYPE Small : INT (0..10); END_TYPE
+        TYPE Pair : STRUCT v : Small; END_STRUCT; END_TYPE
+
+        FUNCTION run : DINT
+        VAR
+            p : Pair := (v := 10);
+            t : Small := 10;
+            r : REF_TO Small;
+        END_VAR
+            {body}
+        END_FUNCTION
+    "#
+    );
+    let msg = expect_fault(&mut with_db, &source, "bit 7 makes 138");
+    assert!(msg.contains("value out of subrange bounds"), "{msg}");
+}
+
+/// A part is of an element that must exist: the subscript under a partial
+/// access is checked, read or written.
+#[rstest]
+#[case::read_before_the_start("-1", "run := 0; IF a[k].%X3 THEN run := 1; END_IF;")]
+#[case::write_past_the_end("4", "a[k].3 := TRUE; run := 0;")]
+fn a_part_of_a_missing_element_faults(
+    mut with_db: db::RootDatabase,
+    #[case] k: &str,
+    #[case] body: &str,
+) {
+    let source = format!(
+        r#"
+        FUNCTION run : DINT
+        VAR
+            a : ARRAY[0..3] OF BYTE;
+            k : INT := {k};
+        END_VAR
+            {body}
+        END_FUNCTION
+    "#
+    );
+    let msg = expect_fault(&mut with_db, &source, "the element does not exist");
+    assert!(msg.contains("array index out of bounds"), "{msg}");
+}
+
 /// The check is on the word, not the bit: TRUE is 1, outside (5..10), and
 /// setting bit 1 of 5 makes 7, inside it. The same through an element and a
 /// reference, whose slots carry the bounds.

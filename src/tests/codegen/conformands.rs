@@ -483,6 +483,39 @@ fn the_most_specific_array_overload_is_picked(mut with_db: db::RootDatabase) {
     assert_eq!(result, 123);
 }
 
+/// Two overloads whose arrays differ only by their element type: each call
+/// takes the one of its array, as a byte buffer and a word buffer would.
+#[rstest]
+fn an_array_overload_is_picked_by_its_element_type(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION First : DWORD
+        VAR_IN_OUT buf : ARRAY[*] OF BYTE; END_VAR
+        VAR_INPUT pos : DINT; END_VAR
+            First.%B1 := buf[pos];
+            First.%B0 := buf[pos + 1];
+        END_FUNCTION
+
+        FUNCTION First : DWORD
+        VAR_IN_OUT buf : ARRAY[*] OF WORD; END_VAR
+        VAR_INPUT pos : DINT; END_VAR
+            First.%W1 := buf[pos];
+            First.%W0 := buf[pos + 1];
+        END_FUNCTION
+
+        FUNCTION run : DINT
+        VAR
+            b : ARRAY[0..1] OF BYTE := [16#12, 16#34];
+            w : ARRAY[1..2] OF WORD := [16#1234, 16#5678];
+        END_VAR
+            run := 0;
+            IF First(b, 0) = DWORD#16#1234 THEN run := run + 1; END_IF;
+            IF First(w, 1) = DWORD#16#12345678 THEN run := run + 10; END_IF;
+        END_FUNCTION
+    "#;
+    let result: i32 = execute_wasm(&compile(&mut with_db, source), "run", ());
+    assert_eq!(result, 11);
+}
+
 /// A method taking an `ARRAY[*]`, called through an interface: the
 /// implementer's method, for the array the call binds.
 #[rstest]

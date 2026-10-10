@@ -683,3 +683,139 @@ fn the_size_letter_is_caseless(mut with_db: db::RootDatabase) {
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
 }
+
+/// A subrange is sliced as its base: its offsets are the INT's, whatever
+/// its range, through a named type too.
+#[rstest]
+fn a_slice_of_a_subrange_is_bounded_by_its_base(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE Small : INT (0..10); END_TYPE
+
+        FUNCTION f : BOOL
+        VAR
+            x : INT (0..10);
+            s : Small;
+            y : BYTE;
+        END_VAR
+            f := x.15;
+            f := x.16;
+            y := s.%B2;
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1429] Error: partial access out of range
+        ,-[ file:///test0.st:11:18 ]
+        |
+      6 |             x : INT (0..10);
+        |             |
+        |             `-- 'x' is declared here
+        |
+     11 |             f := x.16;
+        |                  |
+        |                  `-- offset 16 is out of range for type 'INT' (valid range: 0..15)
+    ----'
+    [E1429] Error: partial access out of range
+        ,-[ file:///test0.st:12:18 ]
+        |
+      7 |             s : Small;
+        |             |
+        |             `-- 's' is declared here
+        |
+     12 |             y := s.%B2;
+        |                  |
+        |                  `-- offset 2 is out of range for type 'INT' (valid range: 0..1)
+    ----'
+    ");
+}
+
+/// The base without parts is refused wherever the access sits: an array
+/// element, a field, a dereference, an instance's member and a FUNCTION's
+/// own result, each a path of its own to the check.
+#[rstest]
+fn a_type_without_parts_is_refused_on_every_path(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE Pair : STRUCT r : REAL; END_STRUCT; END_TYPE
+
+        FUNCTION_BLOCK Holder
+        VAR_OUTPUT r : REAL; END_VAR
+        END_FUNCTION_BLOCK
+
+        FUNCTION Half : REAL
+            Half := 0.5;
+            Half.31 := TRUE;
+        END_FUNCTION
+
+        FUNCTION f : BOOL
+        VAR
+            ra : ARRAY[0..3] OF REAL;
+            k : INT := 1;
+            p : Pair;
+            x : REAL;
+            rr : REF_TO REAL;
+            h : Holder;
+        END_VAR
+            rr := REF(x);
+            f := ra[k].0;
+            f := p.r.31;
+            f := rr^.0;
+            f := h.r.0;
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1431] Error: partial access to a type without parts
+        ,-[ file:///test0.st:10:13 ]
+        |
+     10 |             Half.31 := TRUE;
+        |             ^^|^
+        |               `--- type 'REAL' has no parts to access
+        |
+        | Help: convert it with 'REAL_TO_DWORD' and access the parts of the 'DWORD'
+        |
+        | Note: a partial access applies to a bit string, an integer or a BOOL
+    ----'
+    [E1431] Error: partial access to a type without parts
+        ,-[ file:///test0.st:23:18 ]
+        |
+     23 |             f := ra[k].0;
+        |                  ^|
+        |                   `-- type 'REAL' has no parts to access
+        |
+        | Help: convert it with 'REAL_TO_DWORD' and access the parts of the 'DWORD'
+        |
+        | Note: a partial access applies to a bit string, an integer or a BOOL
+    ----'
+    [E1431] Error: partial access to a type without parts
+        ,-[ file:///test0.st:24:20 ]
+        |
+     24 |             f := p.r.31;
+        |                    |
+        |                    `-- type 'REAL' has no parts to access
+        |
+        | Help: convert it with 'REAL_TO_DWORD' and access the parts of the 'DWORD'
+        |
+        | Note: a partial access applies to a bit string, an integer or a BOOL
+    ----'
+    [E1431] Error: partial access to a type without parts
+        ,-[ file:///test0.st:25:18 ]
+        |
+     25 |             f := rr^.0;
+        |                  ^|
+        |                   `-- type 'REAL' has no parts to access
+        |
+        | Help: convert it with 'REAL_TO_DWORD' and access the parts of the 'DWORD'
+        |
+        | Note: a partial access applies to a bit string, an integer or a BOOL
+    ----'
+    [E1431] Error: partial access to a type without parts
+        ,-[ file:///test0.st:26:20 ]
+        |
+     26 |             f := h.r.0;
+        |                    |
+        |                    `-- type 'REAL' has no parts to access
+        |
+        | Help: convert it with 'REAL_TO_DWORD' and access the parts of the 'DWORD'
+        |
+        | Note: a partial access applies to a bit string, an integer or a BOOL
+    ----'
+    ");
+}

@@ -5,7 +5,7 @@ use db::RootDatabase;
 use insta::assert_snapshot;
 use rstest::rstest;
 
-use crate::tests::utils::{test_single_lint, with_db};
+use crate::tests::utils::{add_library_sources, test_single_lint, with_db};
 
 #[rstest]
 fn warn_pragma_on_function(mut with_db: RootDatabase) {
@@ -171,5 +171,41 @@ END_FUNCTION"#;
         |
         | Note: lint rule: warn-pragma
     ----'
+    ");
+}
+
+/// `REAL_TO_DWORD` and `LREAL_TO_LWORD` copy the bits, and lose nothing: they
+/// carried the stdlib's narrowing notice, so every caller got an info, and
+/// E1431 now sends a REAL's partial access to them. A real narrowing keeps it.
+#[rstest]
+fn a_bit_copy_is_not_a_narrowing(mut with_db: RootDatabase) {
+    add_library_sources(&mut with_db, &[include_str!("../../../stdlib/Convert.st")]);
+    let source = r#"
+USING Std.Convert;
+
+FUNCTION caller : BOOL
+VAR r : REAL; lr : LREAL; d : DWORD; l : LWORD; s : USINT; END_VAR
+    d := REAL_TO_DWORD(r);
+    l := LREAL_TO_LWORD(lr);
+    s := LINT_TO_USINT(LINT#300);
+    caller := d.31 OR l.63 OR s.0;
+END_FUNCTION"#;
+
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "warn-pragma"), @r"
+    [L0001] Info: {info} notice
+         ,-[ file:///test0.st:8:10 ]
+         |
+       8 |     s := LINT_TO_USINT(LINT#300);
+         |          ^^^^^^|^^^^^^
+         |                `-------- narrowing conversion, possible loss of value
+         |
+         |-[ file:///lib0.st:369:2 ]
+         |
+     369 |     {info = 'narrowing conversion, possible loss of value'}
+         |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^|^^^^^^^^^^^^^^^^^^^^^^^^^^^
+         |                                `----------------------------- the pragma is declared here
+         |
+         | Note: lint rule: warn-pragma
+    -----'
     ");
 }
