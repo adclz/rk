@@ -21,6 +21,7 @@ All these tables are stored as custom sections, encoded with [MessagePack](https
 
 Paths are resolved through arrays and struct fields without enumerating them.
 So `pts[7423].history[2].y` is a single lookup, and writes go back the same way.
+An element of a multi-dimensional array is `m[1, 2]`, as the standard spells it; `m[1][2]` is read too.
 
 ## Pointers
 
@@ -35,8 +36,9 @@ A pointer's own value is the address it holds and the variable there, when a tab
 ## Recursive calls
 
 A recursive function's arrays, structs and strings are in a frame each call pushes, whose start a wasm local holds.
-`debug-locals` gives that local and each of them at its offset from the start.
+`debug-locals` gives that local, the frame's size, and each of them at its offset from the start.
 A debugger stopped in such a call reads the local and places them from it, with `DebugInfo::resolve_in_frame` or `follow_local`.
+`debug-symbols` gives the region of the stack those frames are pushed on, so an address in it is known to be a call's local, and `frame_variable_at` names it from the live frames.
 
 ## Versions
 

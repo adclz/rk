@@ -52,6 +52,11 @@ pub struct DebugSymbols {
     /// bound to. They are not in `symbols`, a pointer having no [`SymType`].
     #[serde(default)]
     pub pointers: Vec<PointerSym>,
+    /// `[base, end)` of the stack the frames of recursive calls are pushed
+    /// on (v9), `None` when no function pushes one: an address in it is in
+    /// the frame of some call, which only the live frames name.
+    #[serde(default)]
+    pub stack: Option<(u32, u32)>,
 }
 
 /// A pointer in linear memory: 4 bytes holding an address, or 0 for none.
@@ -138,7 +143,8 @@ pub enum TypeDesc {
 }
 
 /// An array element's IEC-subscripted path from its flat row-major index,
-/// chained (`a[1][2]`); owned here so emitter and consumers agree.
+/// `a[1, 2]` as the standard spells it; owned here so emitter and consumers
+/// agree. A reader takes the chained `a[1][2]` as well.
 pub fn element_path(path: &str, flat: u32, dimensions: &[(i64, i64)]) -> String {
     if dimensions.is_empty() {
         return format!("{path}[{flat}]");
@@ -153,9 +159,9 @@ pub fn element_path(path: &str, flat: u32, dimensions: &[(i64, i64)]) -> String 
     }
     let joined = subs
         .iter()
-        .map(|s| s.to_string())
+        .map(i64::to_string)
         .collect::<Vec<_>>()
-        .join("][");
+        .join(", ");
     format!("{path}[{joined}]")
 }
 
@@ -363,6 +369,7 @@ impl DebugSymbols {
             types: Vec::new(),
             containers: Vec::new(),
             pointers: Vec::new(),
+            stack: None,
         }
     }
 
@@ -572,6 +579,10 @@ pub struct FrameLocals {
     pub arrays: Vec<ArraySym>,
     /// As [`FuncLocals::pointers`], likewise.
     pub pointers: Vec<PointerSym>,
+    /// Bytes a call pushes: `[start, start + size)` is this call's, and an
+    /// address in it is one of these locals'.
+    #[serde(default)]
+    pub size: u32,
 }
 
 /// One scalar local: its wasm local slot index + IEC name and type.
@@ -1071,6 +1082,7 @@ mod tests {
                 type_name: "Prog".into(),
             }],
             pointers: vec![],
+            stack: Some((4096, 8192)),
         };
         let back = DebugSymbols::from_msgpack(&table.to_msgpack()).unwrap();
         assert_eq!(back, table);
@@ -1199,6 +1211,7 @@ mod tests {
                     memory: vec![leaf],
                     arrays: Vec::new(),
                     pointers: Vec::new(),
+                    size: 16,
                 }),
             }],
             types: vec![TypeDesc::Scalar(SymType::Int)],

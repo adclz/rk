@@ -169,6 +169,8 @@ pub struct DebugInfo {
     /// The symbols by address, then in `symbols` order, for
     /// [`variable_at`](Self::variable_at).
     by_address: Vec<(u32, usize)>,
+    /// `[base, end)` of the stack of recursive calls' frames.
+    stack: Option<(u32, u32)>,
     /// Why a debug section that is present could not be used, or is used
     /// in part: a decode failure, or a version newer than this build knows.
     /// A newer compiler's added fields are not a failure, they are skipped.
@@ -181,12 +183,13 @@ impl DebugInfo {
     pub fn from_wasm(wasm: &[u8]) -> Self {
         let mut problems = Vec::new();
         let table = read_section::<crate::DebugSymbols>(wasm, &mut problems).unwrap_or_default();
-        let (symbols, arrays, types, containers, pointers) = (
+        let (symbols, arrays, types, containers, pointers, stack) = (
             table.symbols,
             table.arrays,
             table.types,
             table.containers,
             table.pointers,
+            table.stack,
         );
         // Present but pre-typing: nested instances that share a base address
         // cannot be told apart, so a frame may be attributed to the outer one.
@@ -259,6 +262,7 @@ impl DebugInfo {
             pointers,
             pointer_index,
             by_address,
+            stack,
             function_names,
             line_tables,
             body_ranges,
@@ -288,6 +292,7 @@ impl DebugInfo {
             pointers: Vec::new(),
             pointer_index: HashMap::new(),
             by_address,
+            stack: None,
             function_names: HashMap::new(),
             line_tables: HashMap::new(),
             body_ranges: Vec::new(),
@@ -594,9 +599,60 @@ impl DebugInfo {
     }
 
     /// The variable at `address`, when a table names one: a leaf, an element
-    /// of an array, or an aggregate by its base.
+    /// of an array, or an aggregate by its base. An address on the
+    /// [`stack`](Self::stack) is a recursive call's local, which
+    /// [`frame_variable_at`](Self::frame_variable_at) names from the live
+    /// frames.
     pub fn variable_at(&self, address: u32) -> Option<String> {
         self.variable_at_as(address, None)
+    }
+
+    /// `[base, end)` of the stack the frames of recursive calls are pushed
+    /// on; `None` when no function pushes one.
+    pub fn stack(&self) -> Option<(u32, u32)> {
+        self.stack
+    }
+
+    /// The local at `address` in one of `frames`, each a live frame as
+    /// `(defined index, frame start)`: which of them, by position, and the
+    /// local's path in it. For a pointer into a recursive call's locals,
+    /// which no static table names.
+    pub fn frame_variable_at(
+        &self,
+        address: u32,
+        frames: &[(u32, u32)],
+    ) -> Option<(usize, String)> {
+        frames
+            .iter()
+            .enumerate()
+            .find_map(|(at, &(defined_index, base))| {
+                let frame = self.frame_locals.get(&defined_index)?.frame.as_ref()?;
+                let offset = address.checked_sub(base)?;
+                if offset >= frame.size {
+                    return None;
+                }
+                if let Some(sym) = frame.memory.iter().find(|s| s.address == offset) {
+                    return Some((at, sym.path.clone()));
+                }
+                if let Some(p) = frame.pointers.iter().find(|p| p.address == offset) {
+                    return Some((at, p.path.clone()));
+                }
+                frame
+                    .arrays
+                    .iter()
+                    .filter(|a| a.elem_size > 0)
+                    .find_map(|arr| {
+                        let bytes = arr.total_elements.checked_mul(arr.elem_size)?;
+                        let inside =
+                            offset >= arr.address && offset < arr.address.checked_add(bytes)?;
+                        (inside && (offset - arr.address).is_multiple_of(arr.elem_size)).then(
+                            || {
+                                let flat = (offset - arr.address) / arr.elem_size;
+                                (at, crate::element_path(&arr.path, flat, &arr.dimensions))
+                            },
+                        )
+                    })
+            })
     }
 
     /// [`variable_at`](Self::variable_at) for what a pointer points at: an
@@ -1751,6 +1807,7 @@ mod section_health_tests {
             types: Vec<crate::TypeDesc>,
             containers: Vec<crate::ContainerSym>,
             pointers: Vec<crate::PointerSym>,
+            stack: Option<(u32, u32)>,
             checksum: u64,
         }
         let newer = NewerSymbols {
@@ -1769,6 +1826,7 @@ mod section_health_tests {
             types: Vec::new(),
             containers: Vec::new(),
             pointers: Vec::new(),
+            stack: None,
             checksum: 7,
         };
         let info = DebugInfo::from_wasm(&module_with_section(
@@ -2036,6 +2094,7 @@ mod follow_tests {
                 pointer("P1.rp", 132, Some(5), false),
                 pointer("P1.unknown", 136, None, false),
             ],
+            stack: Some((4096, 8192)),
         };
         let info = DebugInfo::from_wasm(&module_with_sections(&[(
             crate::DEBUG_SYMBOLS_SECTION,
@@ -2312,6 +2371,7 @@ mod follow_tests {
                         elem_type: None,
                     }],
                     pointers: vec![pointer("link", 8, Some(1), false)],
+                    size: 24,
                 }),
             }],
             types: vec![
@@ -2400,6 +2460,30 @@ mod follow_tests {
             None,
             "past the memory"
         );
+    }
+
+    /// An address in a recursive call's frame is named from the live frames:
+    /// the frame it is in, by position, and the local there.
+    #[test]
+    fn an_address_in_a_frame_names_its_local() {
+        let (info, _) = frame_module();
+        let frames = [(7, 2000), (7, 1000)];
+        let at = |address: u32| info.frame_variable_at(address, &frames);
+        assert_eq!(at(1004), Some((1, "trail[1]".to_string())));
+        assert_eq!(at(1016), Some((1, "pt.x".to_string())));
+        assert_eq!(at(1008), Some((1, "link".to_string())));
+        assert_eq!(at(2020), Some((0, "pt.y".to_string())));
+        assert_eq!(at(1023), None, "inside a value");
+        assert_eq!(at(1024), None, "past the frame: 24 bytes");
+        assert_eq!(at(500), None);
+        assert_eq!(
+            info.frame_variable_at(1004, &[(8, 1000)]),
+            None,
+            "no such frame"
+        );
+        let (module, _) = module();
+        assert_eq!(module.stack(), Some((4096, 8192)));
+        assert_eq!(info.stack(), None);
     }
 
     #[test]

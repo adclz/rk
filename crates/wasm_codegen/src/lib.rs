@@ -373,8 +373,9 @@ struct WasmGen<'a> {
     /// `debug-locals` section describes them.
     func_memory_locals: FxHashMap<u32, FrameTables>,
     /// Per recursive function: the wasm local holding the start of its
-    /// frame, and its memory locals at offsets from it (`debug-locals` v5).
-    func_frame_locals: FxHashMap<u32, (u32, FrameTables)>,
+    /// frame, the frame's size, and its memory locals at offsets from it
+    /// (`debug-locals` v5).
+    func_frame_locals: FxHashMap<u32, (u32, u32, FrameTables)>,
     /// Per function: the pointers it holds in wasm locals (`debug-locals`
     /// v5).
     func_local_pointers: FxHashMap<u32, Vec<debug_format::LocalPointer>>,
@@ -1184,11 +1185,13 @@ impl<'a> WasmGen<'a> {
                 MirStorage::Frame { offset, .. } => (&mut frame, offset),
                 MirStorage::Scalar { .. } => continue,
             };
-            mir::debug_symbols::collect_frame_root(
+            mir::debug_symbols::collect_root(
                 self.db,
                 local.name.text(self.db).as_ref(),
                 address,
                 &local.ty,
+                false,
+                false,
                 &mut into.tables(&mut self.local_type_table),
             );
         }
@@ -1200,7 +1203,8 @@ impl<'a> WasmGen<'a> {
             && !frame.is_empty()
         {
             frame.sort();
-            self.func_frame_locals.insert(func.index, (slot, frame));
+            self.func_frame_locals
+                .insert(func.index, (slot, frame_bytes(func), frame));
         }
 
         // The pointers in wasm locals: a parameter by reference, an aggregate
@@ -1876,16 +1880,15 @@ impl<'a> WasmGen<'a> {
                         .get(&mir_idx)
                         .cloned()
                         .unwrap_or_default();
-                    let frame =
-                        self.func_frame_locals
-                            .get(&mir_idx)
-                            .cloned()
-                            .map(|(slot, tables)| debug_format::FrameLocals {
-                                slot,
-                                memory: tables.symbols,
-                                arrays: tables.arrays,
-                                pointers: tables.pointers,
-                            });
+                    let frame = self.func_frame_locals.get(&mir_idx).cloned().map(
+                        |(slot, size, tables)| debug_format::FrameLocals {
+                            slot,
+                            memory: tables.symbols,
+                            arrays: tables.arrays,
+                            pointers: tables.pointers,
+                            size,
+                        },
+                    );
                     Some(debug_format::FuncLocals {
                         defined_index: widx - n_func_imports,
                         locals: vars,
@@ -1916,7 +1919,10 @@ impl<'a> WasmGen<'a> {
 
         // The debug-symbol table (`debug-symbols`), for by-name monitoring;
         // strippable.
-        let debug_bytes = self.module.debug_symbols.to_msgpack();
+        // The stack's region is placed here, past what MIR laid out.
+        let mut symbols = self.module.debug_symbols.clone();
+        symbols.stack = self.stack_bounds;
+        let debug_bytes = symbols.to_msgpack();
         module.section(&wasm_encoder::CustomSection {
             name: std::borrow::Cow::Borrowed(mir::debug_symbols::DEBUG_SYMBOLS_SECTION),
             data: std::borrow::Cow::Owned(debug_bytes),

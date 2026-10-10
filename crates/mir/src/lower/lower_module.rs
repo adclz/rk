@@ -940,6 +940,8 @@ fn lower_module_from_pous<'db>(
         types: type_table.into_entries(),
         containers,
         pointers,
+        // The region is the build's: codegen places the stack.
+        stack: None,
     };
 
     // The per-field retain map from the same final addresses.

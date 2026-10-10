@@ -20,6 +20,18 @@ use wasmtime::{DebugEvent, DebugHandler, Memory, StoreContextMut};
 struct Captured {
     memory: Option<Memory>,
     frames: Vec<(VarValue, VarValue, VarValue)>,
+    /// What the second frame's `link` holds.
+    link_of_second: Option<Link>,
+}
+
+/// The address a `link` holds, whether a static table names it, the
+/// stack's region, and the live frames' name for it.
+#[derive(Debug, PartialEq)]
+struct Link {
+    held: u32,
+    named: Option<String>,
+    stack: Option<(u32, u32)>,
+    in_frame: Option<(usize, String)>,
 }
 
 #[derive(Clone)]
@@ -84,6 +96,25 @@ impl DebugHandler for AtRaise {
         }
         let memory = store.data().memory.expect("the memory");
         let bytes = memory.data(&store).to_vec();
+        // The second call's `link`, a `REF_TO` in a wasm local, holds an
+        // address in its own frame: no static table names it, the live
+        // frames do.
+        let live_frames: Vec<(u32, u32)> = depth_frames
+            .iter()
+            .map(|(i, base, _)| (*i, *base))
+            .collect();
+        let (index, _, locals) = &depth_frames[1];
+        let held = info
+            .frame_locals(*index)
+            .and_then(|t| t.local_pointers.iter().find(|p| p.name == "link"))
+            .and_then(|p| locals.iter().find(|(i, _)| *i == p.wasm_index))
+            .map(|(_, v)| *v);
+        store.data_mut().link_of_second = held.map(|held| Link {
+            held,
+            named: info.variable_at(held),
+            stack: info.stack(),
+            in_frame: info.frame_variable_at(held, &live_frames),
+        });
         let mut frames = Vec::new();
         for (index, base, locals) in depth_frames {
             let live = &mut Frame {
@@ -186,6 +217,23 @@ fn a_recursive_call_s_locals_are_read_in_its_frame(mut with_db: db::RootDatabase
             .call_async(&mut store, 3)
             .await
             .expect_err("the innermost call raises");
+        let link = store
+            .data_mut()
+            .link_of_second
+            .take()
+            .expect("the second frame's link was read");
+        assert_eq!(link.named, None, "no static name on the stack");
+        let (base, end) = link.stack.expect("the stack's region");
+        let held = link.held;
+        assert!(
+            held >= base && held < end,
+            "{held} is on the stack [{base}, {end})"
+        );
+        assert_eq!(
+            link.in_frame,
+            Some((1, "pt.x".to_string())),
+            "the second frame's own pt"
+        );
         std::mem::take(&mut store.data_mut().frames)
     });
 

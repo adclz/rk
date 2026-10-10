@@ -188,9 +188,9 @@ fn runtime_reads_and_writes_vars_by_name(mut with_db: db::RootDatabase) {
     );
 }
 
-/// Aggregates: arrays expand to per-element leaves with IEC subscripts (1-D and
-/// row-major N-D), enums/subranges emit one underlying-integer leaf; STRING is
-/// still skipped (needs a length-prefix wire type).
+/// Aggregates: an array is one descriptor, its elements resolved on demand
+/// by IEC subscript (1-D and row-major N-D); enums/subranges emit one
+/// underlying-integer leaf; a STRING is one leaf carrying its capacity.
 #[rstest]
 fn aggregate_symbols(mut with_db: db::RootDatabase) {
     let source = r#"
@@ -426,7 +426,7 @@ fn a_large_array_is_described_and_addressable_not_invisible(mut with_db: db::Roo
     assert_eq!(
         plc.read_var(&info, "P1.big[4321]"),
         Some(VarValue::I32(8642)),
-        "an element far past the leaf budget reads through the descriptor"
+        "an element reads through the descriptor"
     );
     plc.write_var(&info, "P1.big[4321]", VarValue::I32(-7))
         .expect("forcing an un-enumerated element");
@@ -488,8 +488,9 @@ fn an_aggregate_array_is_one_descriptor_not_ten_thousand_leaves(mut with_db: db:
     assert_eq!(arr.elem_size, 40);
 }
 
-/// Multi-dimensional on-demand resolution uses the emitted `[i][j]` form —
-/// what the grammar accepts — and the legacy `[i,j]` spelling still resolves.
+/// Multi-dimensional on-demand resolution takes both spellings the grammar
+/// accepts: `[i][j]`, the chained form the tables emit, and `[i, j]`, the
+/// standard's.
 #[rstest]
 fn multi_dimensional_paths_resolve_in_both_spellings(mut with_db: db::RootDatabase) {
     let source = r#"
@@ -512,8 +513,8 @@ fn multi_dimensional_paths_resolve_in_both_spellings(mut with_db: db::RootDataba
     let mut plc = TestPlc::load(&wasm).expect("load");
     plc.run(1).expect("scan");
     let info = DebugInfo::from_wasm(&wasm);
-    // 1600 elements > budget, so [7][9] is not an eager leaf — it resolves
-    // through the descriptor with per-dimension lower bounds honoured.
+    // A module array has no element leaves: [7][9] resolves through the
+    // descriptor, with per-dimension lower bounds honoured.
     assert_eq!(plc.read_var(&info, "P1.m[7][9]"), Some(VarValue::I16(79)));
     assert_eq!(plc.read_var(&info, "P1.m[7,9]"), Some(VarValue::I16(79)));
     assert_eq!(
@@ -526,9 +527,10 @@ fn multi_dimensional_paths_resolve_in_both_spellings(mut with_db: db::RootDataba
 /// A frame's MEMORY-resident locals — aggregates, strings — must appear in
 /// `debug-locals` alongside its scalars. They lived nowhere before v2:
 /// stepping into a function, its arrays and structs were uninspectable, in
-/// either debug section. Their addresses are static (IEC forbids recursion,
-/// so a function's memory locals have fixed homes), which is what lets them
-/// reuse the module-symbol machinery scoped to the frame.
+/// either debug section. For a function that does not recurse their
+/// addresses are static, which is what lets them reuse the module-symbol
+/// machinery scoped to the frame; a recursive function's are in `frame`,
+/// by offset (the next test).
 #[rstest]
 fn a_frame_s_aggregate_locals_are_described(mut with_db: db::RootDatabase) {
     let source = r#"
@@ -585,9 +587,9 @@ fn a_frame_s_aggregate_locals_are_described(mut with_db: db::RootDatabase) {
             .unwrap_or_else(|| panic!("no locals table for {name}"))
     };
 
-    // The FUNCTION's frame: struct leaves, array leaves, the STRING, and a
-    // descriptor for every array — including the big one, whose leaves are
-    // budget-bounded rather than enumerated or dropped.
+    // The FUNCTION's frame: struct leaves, the STRING, and a descriptor for
+    // every array and no element leaves, as in the module: an element
+    // resolves through its descriptor.
     let crunch = frame("crunch");
     let by = |p: &str| crunch.memory.iter().find(|s| s.path == p);
     let rx = by("r.x").expect("struct leaf r.x");
@@ -596,7 +598,11 @@ fn a_frame_s_aggregate_locals_are_described(mut with_db: db::RootDatabase) {
     // convention), so the second field sits at +4 — the assertion is that the
     // offsets come from the REAL frame layout, not recomputed guesses.
     assert_eq!(ry.address, rx.address + 4, "layout offsets are frame-real");
-    assert!(by("samples[0]").is_some(), "array leaf");
+    assert!(by("samples[0]").is_none(), "no element leaf");
+    assert!(
+        crunch.arrays.iter().any(|a| a.path == "samples"),
+        "its descriptor"
+    );
     assert_eq!(
         by("msg").expect("string leaf").ty,
         SymType::String { capacity: 8 }
@@ -608,14 +614,9 @@ fn a_frame_s_aggregate_locals_are_described(mut with_db: db::RootDatabase) {
         .expect("descriptor for the 5000-element local");
     assert_eq!(big.total_elements, 5000);
     assert_eq!(big.elem_ty, Some(SymType::DInt));
-    let big_leaves = crunch
-        .memory
-        .iter()
-        .filter(|s| s.path.starts_with("big["))
-        .count();
     assert!(
-        big_leaves <= 1024,
-        "the frame's leaf budget holds, got {big_leaves}"
+        !crunch.memory.iter().any(|s| s.path.starts_with("big[")),
+        "5000 elements, none enumerated"
     );
 
     // The METHOD's frame — a different lowering path — describes its struct
@@ -682,24 +683,23 @@ fn a_recursive_function_s_frame_locals_are_in_its_frame(mut with_db: db::RootDat
     );
     let in_frame = frame.frame.as_ref().expect("the frame of each call");
     assert!(
-        in_frame.memory.iter().any(|s| s.path == "a[0]")
-            && in_frame.arrays.iter().any(|a| a.path == "a"),
+        in_frame.arrays.iter().any(|a| a.path == "a"),
         "in the frame, by offset: {:?}",
-        in_frame.memory.iter().map(|s| &s.path).collect::<Vec<_>>()
+        in_frame.arrays.iter().map(|a| &a.path).collect::<Vec<_>>()
     );
+    assert!(in_frame.size >= 8, "two INTs, got {}", in_frame.size);
     assert!(
         frame.locals.iter().any(|l| l.name == "n"),
         "the scalar input, per frame"
     );
 }
 
-/// The v5 type table: an AGGREGATE array element far past the leaf budget is
-/// addressable member by member — `pts[1500].y`, `pts[1500].history[2]` —
-/// by indexing through the descriptor and walking the element's `TypeDesc`,
-/// exactly how a debugger resolves member paths from DWARF. Before v5 the
-/// descriptor said `elem_ty: None` and every un-enumerated element of an
-/// array of structs was unreachable — readable for the first budget's worth
-/// of leaves and silently invisible past that.
+/// The v5 type table: an AGGREGATE array element is addressable member by
+/// member — `pts[1500].y`, `pts[1500].history[2]` — by indexing through the
+/// descriptor and walking the element's `TypeDesc`, exactly how a debugger
+/// resolves member paths from DWARF. Before v5 the descriptor said
+/// `elem_ty: None` and no element of an array of structs was reachable: a
+/// module array has no element leaves to fall back on.
 #[rstest]
 fn aggregate_elements_resolve_through_the_type_table(mut with_db: db::RootDatabase) {
     let source = r#"
@@ -771,14 +771,13 @@ fn aggregate_elements_resolve_through_the_type_table(mut with_db: db::RootDataba
         debug_format::TypeDesc::Scalar(SymType::DInt)
     ));
 
-    // 2000 elements × 6 leaves each ≫ budget: element 1500 was never
-    // enumerated. It reads and forces through the table.
+    // No element is enumerated: 1500 reads and forces through the table.
     let mut plc = TestPlc::load(&wasm).expect("load");
     plc.run(1).expect("scan");
     let info = DebugInfo::from_wasm(&wasm);
     assert!(
         info.symbol("P1.pts[1500].y").is_none(),
-        "the probe element must be past the leaf budget for this test to prove anything"
+        "an element leaf would let the table prove nothing"
     );
     assert_eq!(
         plc.read_var(&info, "P1.pts[1500].y"),
@@ -796,7 +795,7 @@ fn aggregate_elements_resolve_through_the_type_table(mut with_db: db::RootDataba
         Some(VarValue::I32(-3))
     );
 
-    // In-budget elements still read through the eager leaf table and agree.
+    // The first element reads the same way.
     assert_eq!(plc.read_var(&info, "P1.pts[0].y"), Some(VarValue::I32(0)));
 
     // Refusals, not misreads:
@@ -1313,6 +1312,7 @@ fn a_container_table_without_types_degrades_and_says_so() {
             },
         ],
         pointers: vec![],
+        stack: None,
     };
     let wasm = wasm_with_debug_symbols(&table.to_msgpack());
     let info = DebugInfo::from_wasm(&wasm);
@@ -1380,8 +1380,14 @@ const POINTERS: &str = r#"
         refs : ARRAY[0..2] OF REF_TO INT;
         n : INT;
         m : Motor;
+        arr : ARRAY[0..5] OF INT;
+        rf : REF_TO REAL;
+        ra : REF_TO INT;
     END_VAR
         a.value := 1; b.value := 2;
+        arr[3] := 33;
+        rf := REF(pt.y);
+        ra := REF(arr[3]);
         a.next := REF(b);
         head := REF(a);
         pt.y := 2.5;
@@ -1598,15 +1604,29 @@ fn a_function_s_pointers_and_a_recursive_frame_are_described(mut with_db: db::Ro
             .unwrap_or_else(|| panic!("no {p} in {:?}", frame.memory))
     };
     assert_eq!(
-        by("trail[1]").address,
-        by("trail[0]").address + 4,
+        by("pt.y").address,
+        by("pt.x").address + 4,
         "offsets in the frame"
     );
-    assert_eq!(by("pt.y").address, by("pt.x").address + 4);
-    assert!(frame.arrays.iter().any(|a| a.path == "trail"));
+    let trail = frame
+        .arrays
+        .iter()
+        .find(|a| a.path == "trail")
+        .expect("the array's descriptor");
+    assert!(
+        trail.address + 16 <= frame.size && by("pt.y").address + 4 <= frame.size,
+        "inside the frame"
+    );
     assert!(
         depth.locals.iter().all(|l| l.wasm_index != frame.slot),
         "the frame's slot is no declared local"
+    );
+    let (base, end) = read_debug_symbols(&wasm)
+        .stack
+        .expect("a stack, since Depth recurses");
+    assert!(
+        base < end && end - base >= frame.size,
+        "the stack holds a frame"
     );
 }
 
@@ -1671,6 +1691,10 @@ fn pointers_are_followed_on_a_running_module(mut with_db: db::RootDatabase) {
     assert_eq!(points_at("P1.ri").as_deref(), Some("P1.n"));
     assert_eq!(points_at("P1.rp").as_deref(), Some("P1.pt"));
     assert_eq!(points_at("P1.m.target").as_deref(), Some("hold"));
+    // Into a variable: a field, and an element no leaf lists.
+    assert_eq!(points_at("P1.rf").as_deref(), Some("P1.pt.y"));
+    assert_eq!(points_at("P1.ra").as_deref(), Some("P1.arr[3]"));
+    assert_eq!(value(info.follow("P1.ra^", live)), VarValue::I16(33));
     let n_at = info.resolve("P1.n").unwrap().address;
     assert_eq!(info.variable_at(n_at).as_deref(), Some("P1.n"));
 }

@@ -229,10 +229,9 @@ pub fn sym_type_of(e: MirElementary) -> SymType {
     }
 }
 
-/// Leaf budget per root variable: the most scalar leaves one root may
-/// expand into the table. Arrays past it stay described by their
-/// [`ArraySym`] and are resolved on demand.
-const MAX_ROOT_LEAVES: u32 = 1024;
+/// The most aggregates [`collect_containers`] names under one root: an
+/// array of structs is entered per element.
+const MAX_CONTAINERS: u32 = 1024;
 
 /// Where a walk writes: the leaves, the array descriptors, the pointers, and
 /// the types those reference.
@@ -243,19 +242,18 @@ pub struct Tables<'a> {
     pub types: &'a mut TypeTable,
 }
 
-/// One walk's state: what it is inside of, and what it has left to spend.
+/// One walk's state: what it is inside of.
 struct Walk<'t> {
     global: bool,
     /// The structs the walk is inside of, outermost first.
     outer: Vec<(Ident, &'t MirType)>,
-    budget: u32,
-    arrays_eager: bool,
 }
 
 /// Emit a [`Symbol`] for every elementary leaf reachable from a root
-/// variable at `addr` with type `ty`. Structs add `.field`, arrays `[i]`;
-/// enums and subranges emit their underlying integer; a pointer is listed
-/// with what it points at, `by_ref` when it is a VAR_IN_OUT member's.
+/// variable at `addr` with type `ty`. Structs add `.field`; an array is one
+/// descriptor, its elements resolved on demand; enums and subranges emit
+/// their underlying integer; a pointer is listed with what it points at,
+/// `by_ref` when it is a VAR_IN_OUT member's.
 fn walk_type<'t>(
     db: &dyn WorkspaceDataBase,
     path: &str,
@@ -265,10 +263,6 @@ fn walk_type<'t>(
     walk: &mut Walk<'t>,
     out: &mut Tables,
 ) {
-    // The budget gates leaves; descriptors are always recorded.
-    if walk.budget == 0 && !matches!(ty, MirType::Array(_) | MirType::Struct(_)) {
-        return;
-    }
     let global = walk.global;
     match ty {
         MirType::Elementary(e) => {
@@ -281,7 +275,6 @@ fn walk_type<'t>(
                 named_type: None,
                 bits: None,
             });
-            walk.budget = walk.budget.saturating_sub(1);
         }
         // An enum leaf references its variant table so a debugger can name
         // the value.
@@ -295,7 +288,6 @@ fn walk_type<'t>(
                 named_type: Some(out.types.intern_enum(db, e)),
                 bits: None,
             });
-            walk.budget = walk.budget.saturating_sub(1);
         }
         // A subrange is its base type; the bounds are display-only.
         MirType::Subrange(s) => {
@@ -308,7 +300,6 @@ fn walk_type<'t>(
                 named_type: None,
                 bits: None,
             });
-            walk.budget = walk.budget.saturating_sub(1);
         }
         MirType::Struct(s) => {
             walk.outer.push((s.name, ty));
@@ -318,9 +309,8 @@ fn walk_type<'t>(
             }
             walk.outer.pop();
         }
-        // The descriptor is the durable record: shape once, elements resolved on
-        // demand by `locate`. Frame locals stay eager (`arrays_eager`): their
-        // paths are frame-relative and only alive while the stop is.
+        // The descriptor is the whole record: shape once, elements resolved
+        // on demand, in a frame as in the module.
         MirType::Array(a) => {
             let elem_ty = scalar_sym_ty(&a.element_type);
             out.arrays.push(debug_format::ArraySym {
@@ -337,23 +327,6 @@ fn walk_type<'t>(
                     .is_none()
                     .then(|| out.types.intern_in(db, &a.element_type, false, &walk.outer)),
             });
-            if walk.arrays_eager {
-                for k in 0..a.total_elements {
-                    if walk.budget == 0 {
-                        break;
-                    }
-                    let child = debug_format::element_path(path, k, &a.dimensions);
-                    walk_type(
-                        db,
-                        &child,
-                        addr + k * a.element_size,
-                        &a.element_type,
-                        false,
-                        walk,
-                        out,
-                    );
-                }
-            }
         }
         // STRING → one leaf carrying capacity; the runtime reads the 4-byte len
         // prefix then that many UTF-8 bytes.
@@ -369,7 +342,6 @@ fn walk_type<'t>(
                 named_type: None,
                 bits: None,
             });
-            walk.budget = walk.budget.saturating_sub(1);
         }
         // An address: what it points at is read through it, live.
         MirType::Pointer(pointee) => {
@@ -380,7 +352,6 @@ fn walk_type<'t>(
                 target: out.types.target(db, pointee, &walk.outer),
                 by_ref,
             });
-            walk.budget = walk.budget.saturating_sub(1);
         }
         MirType::Void | MirType::RefTarget(_) => {}
     }
@@ -413,28 +384,8 @@ pub fn collect_root(
     let mut walk = Walk {
         global,
         outer: Vec::new(),
-        budget: MAX_ROOT_LEAVES,
-        arrays_eager: false,
     };
     walk_type(db, root, base, ty, by_ref, &mut walk, out);
-}
-
-/// As [`collect_root`], but with eager array elements — for FRAME locals,
-/// whose relative paths the on-demand read cannot address.
-pub fn collect_frame_root(
-    db: &dyn WorkspaceDataBase,
-    root: &str,
-    base: u32,
-    ty: &MirType,
-    out: &mut Tables,
-) {
-    let mut walk = Walk {
-        global: false,
-        outer: Vec::new(),
-        budget: MAX_ROOT_LEAVES,
-        arrays_eager: true,
-    };
-    walk_type(db, root, base, ty, false, &mut walk, out);
 }
 
 /// Name every aggregate under `root` by its base address: what a frame's
@@ -447,8 +398,7 @@ pub fn collect_containers(
     global: bool,
     out: &mut Vec<debug_format::ContainerSym>,
 ) {
-    // Same order of magnitude as the leaf budget.
-    if out.len() as u32 >= MAX_ROOT_LEAVES {
+    if out.len() as u32 >= MAX_CONTAINERS {
         return;
     }
     match ty {
