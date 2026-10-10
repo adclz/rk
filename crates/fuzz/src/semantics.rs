@@ -135,6 +135,9 @@ fn compare(module: &[u8], expected: &Expectation, build: &str) -> Result<(), Fin
             Some(_) => {}
         }
     }
+    // The tables beyond the expected values: every pointer, descriptor and
+    // frame the module describes.
+    crate::debug::audit(sections.info(), &memory)?;
     Ok(())
 }
 

@@ -25,6 +25,7 @@
 //! failed, and `src/findings.rs` keeps every past finding fixed.
 
 pub mod corpus;
+pub mod debug;
 #[cfg(test)]
 mod findings;
 pub mod format;
