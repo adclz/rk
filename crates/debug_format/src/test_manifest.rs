@@ -49,7 +49,7 @@ impl TestManifest {
 
     /// Deserialize from MessagePack bytes.
     pub fn from_msgpack(bytes: &[u8]) -> Result<Self, rmp_serde::decode::Error> {
-        rmp_serde::from_slice(bytes)
+        crate::tolerant::from_slice(bytes)
     }
 }
 

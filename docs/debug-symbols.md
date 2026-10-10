@@ -22,6 +22,12 @@ All these tables are stored as custom sections, encoded with [MessagePack](https
 Paths are resolved through arrays and struct fields without enumerating them.
 So `pts[7423].history[2].y` is a single lookup, and writes go back the same way.
 
+## Versions
+
+Each table carries a version, and a runtime can be older than the compiler that built a module.
+A reader built from `debug_format` skips the fields it does not know, so a newer module still loads.
+`DebugInfo::problems()` then names each table that is newer than the reader, or that it could not read at all.
+
 > [!NOTE]
 > **Rk ships no debugger.**
 >

@@ -34,8 +34,7 @@ pub enum VarValue {
         raw: i64,
     },
     /// The variable exists but its value could not be read, with the reason;
-    /// a dropped row would read as "no such variable". Kept last: `rmp_serde`
-    /// encodes an enum by variant index.
+    /// a dropped row would read as "no such variable".
     Unavailable(String),
 }
 
@@ -156,10 +155,12 @@ pub struct DebugInfo {
     /// Per-function frame-local tables (`debug-locals`), keyed by
     /// `DefinedFuncIndex`.
     frame_locals: HashMap<u32, crate::FuncLocals>,
-    /// Why a debug section that is present could not be used: a decode
-    /// failure or an unknown version. The realistic cause is a module built
-    /// by a newer compiler, whose extra trailing fields positional
-    /// MessagePack rejects.
+    /// The type table of `debug-locals`: what a frame's symbols and arrays
+    /// reference. Its ids are its own, not those of `types`.
+    local_types: Vec<crate::TypeDesc>,
+    /// Why a debug section that is present could not be used, or is used
+    /// in part: a decode failure, or a version newer than this build knows.
+    /// A newer compiler's added fields are not a failure, they are skipped.
     problems: Vec<String>,
 }
 
@@ -168,7 +169,9 @@ impl DebugInfo {
     /// an empty view for a stripped or hand-written module.
     pub fn from_wasm(wasm: &[u8]) -> Self {
         let mut problems = Vec::new();
-        let (symbols, arrays, types, containers) = read_debug_symbols(wasm, &mut problems);
+        let table = read_section::<crate::DebugSymbols>(wasm, &mut problems).unwrap_or_default();
+        let (symbols, arrays, types, containers) =
+            (table.symbols, table.arrays, table.types, table.containers);
         // Present but pre-typing: nested instances that share a base address
         // cannot be told apart, so a frame may be attributed to the outer one.
         if containers.iter().any(|c| c.type_name.is_empty()) {
@@ -191,10 +194,36 @@ impl DebugInfo {
             .enumerate()
             .map(|(i, a)| (fold_path(&a.path), i))
             .collect();
-        let function_names = read_function_names(wasm);
-        let (source_files, line_tables) = read_debug_lines(wasm);
+        let function_names = read_section::<crate::DebugFunctions>(wasm, &mut problems)
+            .map(|table| {
+                table
+                    .functions
+                    .into_iter()
+                    .map(|e| (e.defined_index, e.name))
+                    .collect()
+            })
+            .unwrap_or_default();
+        let (source_files, line_tables) = read_section::<crate::DebugLines>(wasm, &mut problems)
+            .map(|table| {
+                let lines = table
+                    .functions
+                    .into_iter()
+                    .map(|f| (f.defined_index, f.lines))
+                    .collect();
+                (table.files, lines)
+            })
+            .unwrap_or_default();
         let body_starts = read_body_starts(wasm);
-        let frame_locals = read_debug_locals(wasm);
+        let (frame_locals, local_types) = read_section::<crate::DebugLocals>(wasm, &mut problems)
+            .map(|table| {
+                let frames = table
+                    .functions
+                    .into_iter()
+                    .map(|f| (f.defined_index, f))
+                    .collect();
+                (frames, table.types)
+            })
+            .unwrap_or_default();
         DebugInfo {
             symbols,
             symbol_index,
@@ -203,6 +232,7 @@ impl DebugInfo {
             types,
             containers,
             frame_locals,
+            local_types,
             function_names,
             line_tables,
             body_starts,
@@ -226,6 +256,7 @@ impl DebugInfo {
             types: Vec::new(),
             containers: Vec::new(),
             frame_locals: HashMap::new(),
+            local_types: Vec::new(),
             function_names: HashMap::new(),
             line_tables: HashMap::new(),
             body_starts: Vec::new(),
@@ -407,87 +438,53 @@ impl DebugInfo {
         let bracket = path.find('[')?;
         let (stem, rest) = path.split_at(bracket);
         let arr = &self.arrays[*self.array_index.get(&fold_path(stem))?];
-        let toks = tokenize_accessors(rest)?;
-        let mut pos = 0;
-        let flat = flatten_indices(&arr.dimensions, &toks, &mut pos)?;
-        let mut addr = arr.address + u32::try_from(flat).ok()? * arr.elem_size;
-        if pos == toks.len() {
-            // The element itself: readable only when scalar — a whole
-            // aggregate has no single `VarValue`.
-            let t = arr.elem_ty?;
-            return Some((addr, arr.elem_size, t, arr.global));
+        locate_in_array(arr, rest, &self.types)
+    }
+
+    /// Resolve a path among the memory locals of one function's frame:
+    /// `r.x`, `recs[12].a`. As [`resolve`](Self::resolve), against the
+    /// frame's own leaves and arrays and the type table of `debug-locals`.
+    /// `None` for a wasm local, which has no address, and for a recursive
+    /// function, whose memory locals are in the frame of each call.
+    pub fn resolve_local(&self, defined_index: u32, path: &str) -> Option<VarLoc> {
+        let frame = self.frame_locals.get(&defined_index)?;
+        let folded = fold_path(path);
+        if let Some(sym) = frame.memory.iter().find(|s| fold_path(&s.path) == folded) {
+            return Some(VarLoc {
+                address: sym.address,
+                size: sym.size,
+                ty: sym.ty,
+                global: sym.global,
+                bits: sym.bits,
+            });
         }
-        // Members of the element: walk its layout in the type table.
-        let mut ty_id = arr.elem_type?;
-        loop {
-            match self.types.get(ty_id as usize)? {
-                crate::TypeDesc::Scalar(t) => {
-                    // Reached a leaf; any leftover accessor is a bad path.
-                    return (pos == toks.len()).then(|| (addr, t.size_bytes(), *t, arr.global));
-                }
-                crate::TypeDesc::Struct { fields, .. } => {
-                    let Access::Field(name) = toks.get(pos)? else {
-                        return None;
-                    };
-                    let f = fields
-                        .iter()
-                        .find(|f| fold_path(&f.name) == fold_path(name))?;
-                    addr += f.offset;
-                    ty_id = f.ty;
-                    pos += 1;
-                }
-                crate::TypeDesc::Array {
-                    dimensions,
-                    elem_size,
-                    elem,
-                    ..
-                } => {
-                    let flat = flatten_indices(dimensions, &toks, &mut pos)?;
-                    addr += u32::try_from(flat).ok()? * elem_size;
-                    ty_id = *elem;
-                }
-                // An enum is a leaf, stored as its underlying integer.
-                crate::TypeDesc::Enum { storage, .. } => {
-                    return (pos == toks.len())
-                        .then(|| (addr, storage.size_bytes(), *storage, arr.global));
-                }
-                // A pointer: locating THROUGH it needs a live dereference.
-                crate::TypeDesc::Opaque { .. } => return None,
-            }
-        }
+        let bracket = path.find('[')?;
+        let (stem, rest) = path.split_at(bracket);
+        let stem = fold_path(stem);
+        let arr = frame.arrays.iter().find(|a| fold_path(&a.path) == stem)?;
+        let (address, size, ty, global) = locate_in_array(arr, rest, &self.local_types)?;
+        Some(VarLoc {
+            address,
+            size,
+            ty,
+            global,
+            bits: None,
+        })
     }
 
     /// Decode `bytes` for `sym`, naming the variant when the symbol is an
     /// enumeration.
     pub fn decode_symbol(&self, sym: &Symbol, bytes: &[u8]) -> VarValue {
-        let raw = match sym.bits {
-            Some(bits) => decode(sym.ty, &bits.extract(bytes)),
-            None => decode(sym.ty, bytes),
-        };
-        let Some(id) = sym.named_type else {
-            return raw;
-        };
-        let Some(crate::TypeDesc::Enum { name, variants, .. }) = self.types.get(id as usize) else {
-            return raw;
-        };
-        let n = match raw {
-            VarValue::I8(v) => i64::from(v),
-            VarValue::I16(v) => i64::from(v),
-            VarValue::I32(v) => i64::from(v),
-            VarValue::I64(v) => v,
-            VarValue::U8(v) => i64::from(v),
-            VarValue::U16(v) => i64::from(v),
-            VarValue::U32(v) => i64::from(v),
-            _ => return raw,
-        };
-        VarValue::Enum {
-            type_name: name.clone(),
-            variant: variants
-                .iter()
-                .find(|(_, value)| *value == n)
-                .map(|(variant, _)| variant.clone()),
-            raw: n,
-        }
+        decode_named(&self.types, sym, bytes)
+    }
+
+    /// [`decode_symbol`](Self::decode_symbol) for a symbol of a frame
+    /// ([`FuncLocals::memory`](crate::FuncLocals::memory)): its enumeration
+    /// is in the type table of `debug-locals`, whose ids are not those of
+    /// `debug-symbols`. Read against that one, an enum local showed its raw
+    /// integer, or the variant of whatever type shared its id.
+    pub fn decode_local(&self, sym: &Symbol, bytes: &[u8]) -> VarValue {
+        decode_named(&self.local_types, sym, bytes)
     }
 
     /// Snapshot every monitorable variable, in symbol order, reading each
@@ -681,81 +678,167 @@ pub fn encode(ty: SymType, value: VarValue) -> Result<Vec<u8>, TypeMismatch> {
 
 /// Parse the `debug-symbols` custom section out of a compiled core module.
 /// Returns an empty list when the section is absent or malformed.
-fn read_debug_symbols(
-    wasm: &[u8],
-    problems: &mut Vec<String>,
-) -> (
-    Vec<Symbol>,
-    Vec<crate::ArraySym>,
-    Vec<crate::TypeDesc>,
-    Vec<crate::ContainerSym>,
-) {
+/// The element of `arr` that `rest` names (`[7423].history[2].y`), or a
+/// member of it: `base + flat * stride`, bounds-checked, then the element's
+/// [`crate::TypeDesc`] in `types` for what follows. `types` is the table of
+/// the section `arr` came from.
+fn locate_in_array(
+    arr: &crate::ArraySym,
+    rest: &str,
+    types: &[crate::TypeDesc],
+) -> Option<(u32, u32, SymType, bool)> {
+    let toks = tokenize_accessors(rest)?;
+    let mut pos = 0;
+    let flat = flatten_indices(&arr.dimensions, &toks, &mut pos)?;
+    let mut addr = arr.address + u32::try_from(flat).ok()? * arr.elem_size;
+    if pos == toks.len() {
+        // The element itself: readable only when scalar — a whole
+        // aggregate has no single `VarValue`.
+        let t = arr.elem_ty?;
+        return Some((addr, arr.elem_size, t, arr.global));
+    }
+    // Members of the element: walk its layout in the type table.
+    let mut ty_id = arr.elem_type?;
+    loop {
+        match types.get(ty_id as usize)? {
+            crate::TypeDesc::Scalar(t) => {
+                // Reached a leaf; any leftover accessor is a bad path.
+                return (pos == toks.len()).then(|| (addr, t.size_bytes(), *t, arr.global));
+            }
+            crate::TypeDesc::Struct { fields, .. } => {
+                let Access::Field(name) = toks.get(pos)? else {
+                    return None;
+                };
+                let f = fields
+                    .iter()
+                    .find(|f| fold_path(&f.name) == fold_path(name))?;
+                addr += f.offset;
+                ty_id = f.ty;
+                pos += 1;
+            }
+            crate::TypeDesc::Array {
+                dimensions,
+                elem_size,
+                elem,
+                ..
+            } => {
+                let flat = flatten_indices(dimensions, &toks, &mut pos)?;
+                addr += u32::try_from(flat).ok()? * elem_size;
+                ty_id = *elem;
+            }
+            // An enum is a leaf, stored as its underlying integer.
+            crate::TypeDesc::Enum { storage, .. } => {
+                return (pos == toks.len())
+                    .then(|| (addr, storage.size_bytes(), *storage, arr.global));
+            }
+            // A pointer: locating THROUGH it needs a live dereference.
+            crate::TypeDesc::Opaque { .. } => return None,
+        }
+    }
+}
+
+/// Decode `bytes` for `sym`, naming the variant when `sym` is an enumeration
+/// of `types`, the table of the section `sym` came from.
+fn decode_named(types: &[crate::TypeDesc], sym: &Symbol, bytes: &[u8]) -> VarValue {
+    let raw = match sym.bits {
+        Some(bits) => decode(sym.ty, &bits.extract(bytes)),
+        None => decode(sym.ty, bytes),
+    };
+    let Some(id) = sym.named_type else {
+        return raw;
+    };
+    let Some(crate::TypeDesc::Enum { name, variants, .. }) = types.get(id as usize) else {
+        return raw;
+    };
+    let n = match raw {
+        VarValue::I8(v) => i64::from(v),
+        VarValue::I16(v) => i64::from(v),
+        VarValue::I32(v) => i64::from(v),
+        VarValue::I64(v) => v,
+        VarValue::U8(v) => i64::from(v),
+        VarValue::U16(v) => i64::from(v),
+        VarValue::U32(v) => i64::from(v),
+        _ => return raw,
+    };
+    VarValue::Enum {
+        type_name: name.clone(),
+        variant: variants
+            .iter()
+            .find(|(_, value)| *value == n)
+            .map(|(variant, _)| variant.clone()),
+        raw: n,
+    }
+}
+
+/// A versioned debug section, for [`read_section`].
+trait Section: Sized {
+    const NAME: &'static str;
+    /// The newest version this build knows.
+    const VERSION: u16;
+    fn decode(bytes: &[u8]) -> Result<Self, rmp_serde::decode::Error>;
+    fn version(&self) -> u16;
+}
+
+macro_rules! section {
+    ($($ty:ident, $name:ident, $version:ident;)*) => {$(
+        impl Section for crate::$ty {
+            const NAME: &'static str = crate::$name;
+            const VERSION: u16 = crate::$version;
+            fn decode(bytes: &[u8]) -> Result<Self, rmp_serde::decode::Error> {
+                Self::from_msgpack(bytes)
+            }
+            fn version(&self) -> u16 {
+                self.version
+            }
+        }
+    )*};
+}
+
+section! {
+    DebugSymbols, DEBUG_SYMBOLS_SECTION, DEBUG_SYMBOLS_VERSION;
+    DebugFunctions, DEBUG_FUNCTIONS_SECTION, DEBUG_FUNCTIONS_VERSION;
+    DebugLines, DEBUG_LINES_SECTION, DEBUG_LINES_VERSION;
+    DebugLocals, DEBUG_LOCALS_SECTION, DEBUG_LOCALS_VERSION;
+}
+
+/// One debug section of `wasm`, decoded; `None` when the module does not
+/// carry it, which is not a problem to report. Every section answers the
+/// same way: one that is there and unreadable says so, and one from a newer
+/// compiler is used for what this build knows of it, and says that too.
+/// The stepping sections used to vanish in silence, where `debug-symbols`
+/// spoke.
+fn read_section<T: Section>(wasm: &[u8], problems: &mut Vec<String>) -> Option<T> {
     for payload in wasmparser::Parser::new(0).parse_all(wasm) {
         if let Ok(wasmparser::Payload::CustomSection(reader)) = payload
-            && reader.name() == crate::DEBUG_SYMBOLS_SECTION
+            && reader.name() == T::NAME
         {
-            match crate::DebugSymbols::from_msgpack(reader.data()) {
+            return match T::decode(reader.data()) {
                 Ok(table) => {
-                    if table.version > crate::DEBUG_SYMBOLS_VERSION {
+                    if table.version() > T::VERSION {
                         problems.push(format!(
                             "`{}` is version {} but this build reads up to {}; rebuild with a \
                              matching toolchain, or update the runtime",
-                            crate::DEBUG_SYMBOLS_SECTION,
-                            table.version,
-                            crate::DEBUG_SYMBOLS_VERSION
+                            T::NAME,
+                            table.version(),
+                            T::VERSION
                         ));
                     }
-                    return (table.symbols, table.arrays, table.types, table.containers);
+                    Some(table)
                 }
-                // The encoding is positional, so a newer producer's record fails
-                // on length before its version can be read.
-                Err(e) => problems.push(format!(
-                    "`{}` is present but unreadable ({e}); most likely built by a newer \
-                     compiler than this runtime understands",
-                    crate::DEBUG_SYMBOLS_SECTION
-                )),
-            }
-            break;
+                // A newer compiler's added fields are skipped, so what is
+                // left is damage, or a change no reader can step over.
+                Err(e) => {
+                    problems.push(format!(
+                        "`{}` is present but unreadable ({e}); most likely built by a newer \
+                         compiler than this runtime understands",
+                        T::NAME
+                    ));
+                    None
+                }
+            };
         }
     }
-    (Vec::new(), Vec::new(), Vec::new(), Vec::new())
-}
-
-/// Parse the `debug-lines` section: the file list and per-function line
-/// tables; empty when absent or malformed.
-fn read_debug_lines(wasm: &[u8]) -> (Vec<String>, HashMap<u32, Vec<crate::LineEntry>>) {
-    for payload in wasmparser::Parser::new(0).parse_all(wasm) {
-        if let Ok(wasmparser::Payload::CustomSection(reader)) = payload
-            && reader.name() == crate::DEBUG_LINES_SECTION
-            && let Ok(table) = crate::DebugLines::from_msgpack(reader.data())
-        {
-            let map = table
-                .functions
-                .into_iter()
-                .map(|f| (f.defined_index, f.lines))
-                .collect();
-            return (table.files, map);
-        }
-    }
-    (Vec::new(), HashMap::new())
-}
-
-/// Parse the `debug-locals` custom section: per-function frame-local tables
-/// keyed by `DefinedFuncIndex`. Empty when absent or malformed.
-fn read_debug_locals(wasm: &[u8]) -> HashMap<u32, crate::FuncLocals> {
-    for payload in wasmparser::Parser::new(0).parse_all(wasm) {
-        if let Ok(wasmparser::Payload::CustomSection(reader)) = payload
-            && reader.name() == crate::DEBUG_LOCALS_SECTION
-            && let Ok(table) = crate::DebugLocals::from_msgpack(reader.data())
-        {
-            return table
-                .functions
-                .into_iter()
-                .map(|f| (f.defined_index, f))
-                .collect();
-        }
-    }
-    HashMap::new()
+    None
 }
 
 /// The start offset of each defined function's body, by
@@ -769,24 +852,6 @@ fn read_body_starts(wasm: &[u8]) -> Vec<u32> {
         }
     }
     starts
-}
-
-/// Parse the `debug-functions` custom section: `DefinedFuncIndex → IEC name`.
-/// Empty when the section is absent or malformed.
-fn read_function_names(wasm: &[u8]) -> HashMap<u32, String> {
-    for payload in wasmparser::Parser::new(0).parse_all(wasm) {
-        if let Ok(wasmparser::Payload::CustomSection(reader)) = payload
-            && reader.name() == crate::DEBUG_FUNCTIONS_SECTION
-            && let Ok(table) = crate::DebugFunctions::from_msgpack(reader.data())
-        {
-            return table
-                .functions
-                .into_iter()
-                .map(|e| (e.defined_index, e.name))
-                .collect();
-        }
-    }
-    HashMap::new()
 }
 
 #[cfg(test)]
@@ -848,9 +913,9 @@ mod tests {
 mod section_health_tests {
     use super::*;
 
-    /// A minimal wasm module carrying one custom section, hand-encoded so the
-    /// crate gains no dependency for a test.
-    fn module_with_section(name: &str, data: &[u8]) -> Vec<u8> {
+    /// A minimal wasm module carrying these custom sections, hand-encoded
+    /// so the crate gains no dependency for a test.
+    fn module_with_sections(sections: &[(&str, &[u8])]) -> Vec<u8> {
         fn leb128(mut v: u32, out: &mut Vec<u8>) {
             loop {
                 let byte = (v & 0x7f) as u8;
@@ -862,16 +927,21 @@ mod section_health_tests {
                 out.push(byte | 0x80);
             }
         }
-        let mut body = Vec::new();
-        leb128(name.len() as u32, &mut body);
-        body.extend_from_slice(name.as_bytes());
-        body.extend_from_slice(data);
-
         let mut m = vec![0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00];
-        m.push(0); // custom section id
-        leb128(body.len() as u32, &mut m);
-        m.extend_from_slice(&body);
+        for (name, data) in sections {
+            let mut body = Vec::new();
+            leb128(name.len() as u32, &mut body);
+            body.extend_from_slice(name.as_bytes());
+            body.extend_from_slice(data);
+            m.push(0); // custom section id
+            leb128(body.len() as u32, &mut m);
+            m.extend_from_slice(&body);
+        }
         m
+    }
+
+    fn module_with_section(name: &str, data: &[u8]) -> Vec<u8> {
+        module_with_sections(&[(name, data)])
     }
 
     /// A STRIPPED binary is silent — no symbols and nothing to report.
@@ -901,6 +971,38 @@ mod section_health_tests {
         );
     }
 
+    /// The stepping sections speak as `debug-symbols` does. They returned
+    /// empty in silence: with a module this build could not read, source
+    /// lines, frame names and locals were gone and nothing said why.
+    #[test]
+    fn every_unreadable_section_is_reported() {
+        let garbage: &[u8] = b"\xc1 not messagepack";
+        let info = DebugInfo::from_wasm(&module_with_sections(&[
+            (crate::DEBUG_SYMBOLS_SECTION, garbage),
+            (crate::DEBUG_FUNCTIONS_SECTION, garbage),
+            (crate::DEBUG_LINES_SECTION, garbage),
+            (crate::DEBUG_LOCALS_SECTION, garbage),
+        ]));
+        assert!(!info.has_lines());
+        assert_eq!(info.function_name(0), None);
+        assert!(info.frame_locals(0).is_none());
+        let problems = info.problems();
+        assert_eq!(problems.len(), 4, "one per section: {problems:?}");
+        for name in [
+            crate::DEBUG_SYMBOLS_SECTION,
+            crate::DEBUG_FUNCTIONS_SECTION,
+            crate::DEBUG_LINES_SECTION,
+            crate::DEBUG_LOCALS_SECTION,
+        ] {
+            assert!(
+                problems
+                    .iter()
+                    .any(|p| p.contains(&format!("`{name}`")) && p.contains("unreadable")),
+                "{name} is not named in {problems:?}"
+            );
+        }
+    }
+
     /// A section from a newer producer is flagged rather than half-trusted.
     #[test]
     fn a_future_version_is_flagged() {
@@ -915,6 +1017,225 @@ mod section_health_tests {
         assert!(
             problems[0].contains("this build reads up to"),
             "got: {problems:?}"
+        );
+    }
+
+    /// The same for the stepping sections, which carried a version nothing
+    /// compared: each newer one is flagged, and still read.
+    #[test]
+    fn a_future_version_of_a_stepping_section_is_flagged_and_read() {
+        let functions = crate::DebugFunctions {
+            version: crate::DEBUG_FUNCTIONS_VERSION + 1,
+            functions: vec![crate::FuncEntry {
+                defined_index: 0,
+                name: "Main".to_string(),
+            }],
+        };
+        let lines = crate::DebugLines {
+            version: crate::DEBUG_LINES_VERSION + 1,
+            files: vec!["main.st".to_string()],
+            functions: Vec::new(),
+        };
+        let locals = crate::DebugLocals {
+            version: crate::DEBUG_LOCALS_VERSION + 1,
+            functions: Vec::new(),
+            types: Vec::new(),
+        };
+        let info = DebugInfo::from_wasm(&module_with_sections(&[
+            (crate::DEBUG_FUNCTIONS_SECTION, &functions.to_msgpack()),
+            (crate::DEBUG_LINES_SECTION, &lines.to_msgpack()),
+            (crate::DEBUG_LOCALS_SECTION, &locals.to_msgpack()),
+        ]));
+        assert_eq!(info.function_name(0), Some("Main"), "still read");
+        assert_eq!(info.source_files(), ["main.st".to_string()]);
+        let problems = info.problems();
+        assert_eq!(problems.len(), 3, "one per section: {problems:?}");
+        assert!(
+            problems
+                .iter()
+                .all(|p| p.contains("this build reads up to")),
+            "got: {problems:?}"
+        );
+    }
+
+    /// A newer compiler's section, with a field this build has never seen at
+    /// the tail of the table and of each symbol, is read for what it knows.
+    /// It was the fault a device meets first: the whole table lost, to a
+    /// field it had no use for.
+    #[test]
+    fn a_newer_compiler_s_extra_fields_do_not_cost_the_section() {
+        #[derive(serde::Serialize)]
+        struct NewerSymbol {
+            path: String,
+            address: u32,
+            size: u32,
+            ty: SymType,
+            global: bool,
+            named_type: Option<u32>,
+            bits: Option<crate::SymBits>,
+            unit: String,
+        }
+        #[derive(serde::Serialize)]
+        struct NewerSymbols {
+            version: u16,
+            symbols: Vec<NewerSymbol>,
+            arrays: Vec<crate::ArraySym>,
+            types: Vec<crate::TypeDesc>,
+            containers: Vec<crate::ContainerSym>,
+            checksum: u64,
+        }
+        let newer = NewerSymbols {
+            version: crate::DEBUG_SYMBOLS_VERSION,
+            symbols: vec![NewerSymbol {
+                path: "P1.speed".to_string(),
+                address: 1024,
+                size: 4,
+                ty: SymType::Real,
+                global: false,
+                named_type: None,
+                bits: None,
+                unit: "rpm".to_string(),
+            }],
+            arrays: Vec::new(),
+            types: Vec::new(),
+            containers: Vec::new(),
+            checksum: 7,
+        };
+        let info = DebugInfo::from_wasm(&module_with_section(
+            crate::DEBUG_SYMBOLS_SECTION,
+            &rmp_serde::to_vec(&newer).unwrap(),
+        ));
+        assert!(info.problems().is_empty(), "got: {:?}", info.problems());
+        let loc = info.resolve("p1.SPEED").expect("the symbol is there");
+        assert_eq!((loc.address, loc.size, loc.ty), (1024, 4, SymType::Real));
+    }
+
+    /// One frame with an enum leaf and an array of records, whose type ids
+    /// are those of `debug-locals`, beside a `debug-symbols` table where the
+    /// same ids name other types.
+    fn module_with_a_frame() -> Vec<u8> {
+        let lamp = crate::TypeDesc::Enum {
+            name: "Lamp".to_string(),
+            storage: SymType::Int,
+            variants: vec![("Off".to_string(), 0), ("On".to_string(), 1)],
+        };
+        let gear = crate::TypeDesc::Enum {
+            name: "Gear".to_string(),
+            storage: SymType::Int,
+            variants: vec![("Low".to_string(), 0), ("High".to_string(), 1)],
+        };
+        let rec = crate::TypeDesc::Struct {
+            name: "Rec".to_string(),
+            size: 8,
+            fields: vec![
+                crate::FieldDesc {
+                    name: "a".to_string(),
+                    offset: 0,
+                    ty: 2,
+                },
+                crate::FieldDesc {
+                    name: "b".to_string(),
+                    offset: 4,
+                    ty: 2,
+                },
+            ],
+        };
+        let mut symbols = crate::DebugSymbols::new();
+        // Id 0 of the module table is another enum than id 0 of the frames'.
+        symbols.types = vec![lamp];
+        let leaf = |path: &str, address: u32, named_type| Symbol {
+            path: path.to_string(),
+            address,
+            size: 4,
+            ty: SymType::Int,
+            global: false,
+            named_type,
+            bits: None,
+        };
+        let locals = crate::DebugLocals {
+            version: crate::DEBUG_LOCALS_VERSION,
+            functions: vec![crate::FuncLocals {
+                defined_index: 3,
+                locals: Vec::new(),
+                memory: vec![leaf("g", 4096, Some(0)), leaf("r.x", 4100, None)],
+                arrays: vec![crate::ArraySym {
+                    path: "recs".to_string(),
+                    address: 8192,
+                    elem_size: 8,
+                    total_elements: 1000,
+                    dimensions: vec![(0, 999)],
+                    elem_ty: None,
+                    global: false,
+                    elem_type: Some(1),
+                }],
+                this_slot: None,
+            }],
+            types: vec![gear, rec, crate::TypeDesc::Scalar(SymType::DInt)],
+        };
+        module_with_sections(&[
+            (crate::DEBUG_SYMBOLS_SECTION, &symbols.to_msgpack()),
+            (crate::DEBUG_LOCALS_SECTION, &locals.to_msgpack()),
+        ])
+    }
+
+    /// A frame's enum is named from the type table of `debug-locals`. That
+    /// table was dropped on reading, and the only decode there was looked
+    /// the id up in `debug-symbols`: this `Gear` read as a `Lamp`.
+    #[test]
+    fn a_frame_s_enum_is_named_from_its_own_table() {
+        let info = DebugInfo::from_wasm(&module_with_a_frame());
+        assert!(info.problems().is_empty(), "got: {:?}", info.problems());
+        let frame = info.frame_locals(3).expect("the frame");
+        let gear = &frame.memory[0];
+        let one = 1i32.to_le_bytes();
+        assert_eq!(
+            info.decode_local(gear, &one),
+            VarValue::Enum {
+                type_name: "Gear".to_string(),
+                variant: Some("High".to_string()),
+                raw: 1,
+            }
+        );
+        assert_eq!(
+            info.decode_symbol(gear, &one),
+            VarValue::Enum {
+                type_name: "Lamp".to_string(),
+                variant: Some("On".to_string()),
+                raw: 1,
+            },
+            "the module's table answers for a module symbol, as before"
+        );
+    }
+
+    /// A path into a frame resolves like a module path: a leaf by name, an
+    /// element of the frame's array through its descriptor and the frames'
+    /// type table, in either case of the letters.
+    #[test]
+    fn a_path_into_a_frame_resolves() {
+        let info = DebugInfo::from_wasm(&module_with_a_frame());
+        let at = |path: &str| {
+            info.resolve_local(3, path)
+                .map(|loc| (loc.address, loc.size, loc.ty))
+        };
+        assert_eq!(at("r.x"), Some((4100, 4, SymType::Int)));
+        assert_eq!(at("R.X"), Some((4100, 4, SymType::Int)));
+        assert_eq!(
+            at("recs[12].b"),
+            Some((8192 + 12 * 8 + 4, 4, SymType::DInt))
+        );
+        assert_eq!(at("RECS[0].a"), Some((8192, 4, SymType::DInt)));
+        assert_eq!(at("recs[1000].a"), None, "past the array");
+        assert_eq!(at("recs[1].c"), None, "no such field");
+        assert_eq!(at("nothing"), None);
+        assert_eq!(
+            info.resolve_local(4, "r.x").map(|l| l.address),
+            None,
+            "no such frame"
+        );
+        assert_eq!(
+            info.resolve("recs[12].b").map(|l| l.address),
+            None,
+            "a frame's array is not a module path"
         );
     }
 }

@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 pub mod info;
 pub mod test_manifest;
 pub mod test_report;
+mod tolerant;
 
 pub use info::{DebugInfo, SourcePos, StackFrame, TypeMismatch, VarLoc, VarValue, decode, encode};
 
@@ -15,7 +16,10 @@ pub const DEBUG_SYMBOLS_SECTION: &str = "debug-symbols";
 
 /// On-wire format version; bump on any breaking change. A new field goes
 /// at the TAIL of its struct: `rmp_serde` encodes positionally, so
-/// `#[serde(default)]` only backfills a field missing from the end.
+/// `#[serde(default)]` only backfills a field missing from the end, and an
+/// older reader skips the fields past those it knows ([`tolerant`]). An enum
+/// variant is written by its name: its place in the enum is free, and a new
+/// one is what an older reader cannot step over.
 pub const DEBUG_SYMBOLS_VERSION: u16 = 8;
 
 /// The complete debug-symbol table for a module.
@@ -85,7 +89,6 @@ pub enum TypeDesc {
     /// dereference.
     Opaque { size: u32 },
     /// An IEC enumeration: stored as `storage`, displayed as a variant name.
-    /// Last on purpose (variant index encoding).
     Enum {
         /// The IEC type name (`TrafficLight`).
         name: String,
@@ -330,7 +333,7 @@ impl DebugSymbols {
 
     /// Deserialize from MessagePack bytes.
     pub fn from_msgpack(bytes: &[u8]) -> Result<Self, rmp_serde::decode::Error> {
-        rmp_serde::from_slice(bytes)
+        crate::tolerant::from_slice(bytes)
     }
 }
 
@@ -377,7 +380,7 @@ impl DebugFunctions {
 
     /// Deserialize from MessagePack bytes.
     pub fn from_msgpack(bytes: &[u8]) -> Result<Self, rmp_serde::decode::Error> {
-        rmp_serde::from_slice(bytes)
+        crate::tolerant::from_slice(bytes)
     }
 }
 
@@ -434,7 +437,7 @@ impl DebugLines {
 
     /// Deserialize from MessagePack bytes.
     pub fn from_msgpack(bytes: &[u8]) -> Result<Self, rmp_serde::decode::Error> {
-        rmp_serde::from_slice(bytes)
+        crate::tolerant::from_slice(bytes)
     }
 }
 
@@ -503,7 +506,7 @@ impl DebugLocals {
 
     /// Deserialize from MessagePack bytes.
     pub fn from_msgpack(bytes: &[u8]) -> Result<Self, rmp_serde::decode::Error> {
-        rmp_serde::from_slice(bytes)
+        crate::tolerant::from_slice(bytes)
     }
 }
 
@@ -567,7 +570,7 @@ impl ScheduleManifest {
 
     /// Deserialize from MessagePack bytes.
     pub fn from_msgpack(bytes: &[u8]) -> Result<Self, rmp_serde::decode::Error> {
-        rmp_serde::from_slice(bytes)
+        crate::tolerant::from_slice(bytes)
     }
 }
 
@@ -659,7 +662,7 @@ impl RetainMap {
 
     /// Deserialize from MessagePack bytes.
     pub fn from_msgpack(bytes: &[u8]) -> Result<Self, rmp_serde::decode::Error> {
-        rmp_serde::from_slice(bytes)
+        crate::tolerant::from_slice(bytes)
     }
 }
 
@@ -812,7 +815,7 @@ impl LocatedMap {
 
     /// Deserialize from MessagePack bytes.
     pub fn from_msgpack(bytes: &[u8]) -> Result<Self, rmp_serde::decode::Error> {
-        rmp_serde::from_slice(bytes)
+        crate::tolerant::from_slice(bytes)
     }
 }
 

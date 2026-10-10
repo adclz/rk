@@ -858,6 +858,115 @@ fn a_frame_s_aggregate_array_elements_carry_their_layout(mut with_db: db::RootDa
     );
 }
 
+/// Through [`debug_format::DebugInfo`], a frame's memory locals read like the
+/// module's: an enum by its variant, a member of an array element by its
+/// path. The frames' type table was dropped on reading, so an enum local
+/// was looked up in the module's table, where its id is another type's:
+/// here `Gear` would read as the program's `Lamp`.
+#[rstest]
+fn a_frame_s_locals_read_through_debug_info(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE Lamp : (Off, On); END_TYPE
+        TYPE Gear : (Low, High); END_TYPE
+        TYPE Rec : STRUCT mode : Gear; n : DINT; END_STRUCT; END_TYPE
+
+        FUNCTION crunch : DINT
+        VAR
+            r : Rec;
+            recs : ARRAY[0..999] OF Rec;
+        END_VAR
+            r.mode := Gear#High;
+            recs[12].n := 7;
+            crunch := recs[12].n;
+        END_FUNCTION
+
+        PROGRAM P
+        VAR lamp : Lamp; n : DINT; END_VAR
+            lamp := Lamp#On;
+            n := crunch();
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    let info = debug_format::DebugInfo::from_wasm(&wasm);
+    assert!(info.problems().is_empty(), "got: {:?}", info.problems());
+    let funcs =
+        debug_format::DebugFunctions::from_msgpack(super::expect_section(&wasm, "debug-functions"))
+            .unwrap();
+    let crunch = funcs
+        .functions
+        .iter()
+        .find(|f| f.name == "crunch")
+        .expect("crunch is named")
+        .defined_index;
+
+    // The program's enum, from the module's table.
+    let lamp = info.symbol("P1.lamp").expect("the program's enum");
+    let one = |size: u32| 1u64.to_le_bytes()[..size as usize].to_vec();
+    assert!(
+        matches!(
+            info.decode_symbol(lamp, &one(lamp.size)),
+            debug_format::VarValue::Enum { ref type_name, ref variant, .. }
+                if type_name == "Lamp" && variant.as_deref() == Some("On")
+        ),
+        "got {:?}",
+        info.decode_symbol(lamp, &one(lamp.size))
+    );
+
+    // The frame's enum, from the frames' table.
+    let frame = info.frame_locals(crunch).expect("crunch has a frame");
+    let mode = frame
+        .memory
+        .iter()
+        .find(|s| s.path == "r.mode")
+        .expect("the struct local's enum leaf");
+    assert!(
+        matches!(
+            info.decode_local(mode, &one(mode.size)),
+            debug_format::VarValue::Enum { ref type_name, ref variant, .. }
+                if type_name == "Gear" && variant.as_deref() == Some("High")
+        ),
+        "got {:?}",
+        info.decode_local(mode, &one(mode.size))
+    );
+
+    // A member of an element of the frame's array, never enumerated.
+    let recs = frame
+        .arrays
+        .iter()
+        .find(|a| a.path == "recs")
+        .expect("the frame's array");
+    let n = info
+        .resolve_local(crunch, "recs[12].n")
+        .expect("a path into the frame's array");
+    let first = info
+        .resolve_local(crunch, "recs[0].mode")
+        .expect("the first element's first field");
+    assert_eq!(first.address, recs.address);
+    assert_eq!(n.ty, SymType::DInt);
+    assert_eq!(
+        n.address,
+        recs.address + 12 * recs.elem_size + (n.address - recs.address) % recs.elem_size,
+        "in element 12"
+    );
+    assert!(
+        n.address > recs.address + 12 * recs.elem_size,
+        "past `mode`"
+    );
+    assert_eq!(
+        info.resolve_local(crunch, "r.mode").map(|l| l.address),
+        Some(mode.address)
+    );
+    assert_eq!(info.resolve_local(crunch, "recs[1000].n"), None);
+    assert_eq!(info.resolve("recs[12].n"), None, "not a module path");
+}
+
 /// The artifact cost of an array is its DESCRIPTOR, not its length.
 ///
 /// An `ARRAY[0..4999] OF DINT` used to spend ~22 KB — 98% of the module — on
