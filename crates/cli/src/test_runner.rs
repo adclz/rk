@@ -7,10 +7,10 @@
 //! elsewhere renders through the same functions. Results stream as they
 //! happen.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use debug_format::test_report::{ReportLine, Status, Summary, TestRecord};
+use debug_format::test_report::{Frame, ReportLine, Status, Summary, TestRecord};
 use yansi::Paint;
 
 use crate::cli::OutputFormat;
@@ -21,6 +21,60 @@ fn loc_suffix(record: &TestRecord) -> String {
     match (&record.file, record.line) {
         (Some(file), Some(line)) if !file.is_empty() && line > 0 => format!(" ({file}:{line})"),
         _ => String::new(),
+    }
+}
+
+/// What a backtrace's files are named against. The line tables hold each
+/// file's URL, for a debugger to open; a report names it as the manifest
+/// names a test's own file: relative to the workspace, `<lib>/` for the
+/// library, and its bare name anywhere else.
+pub struct SourceRoots {
+    pub workspace: PathBuf,
+    pub library: Option<PathBuf>,
+}
+
+impl SourceRoots {
+    fn name(&self, url: &str) -> String {
+        let Some(path) = auto_lsp::lsp_types::Url::parse(url)
+            .ok()
+            .and_then(|url| url.to_file_path().ok())
+        else {
+            return url.to_string();
+        };
+        if let Ok(rel) = path.strip_prefix(&self.workspace) {
+            return crate::diagnostics::slash_path(rel);
+        }
+        if let Some(rel) = self
+            .library
+            .as_ref()
+            .and_then(|library| path.strip_prefix(library).ok())
+        {
+            return format!("<lib>/{}", crate::diagnostics::slash_path(rel));
+        }
+        path.file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+            .unwrap_or_else(|| url.to_string())
+    }
+
+    /// `record` with its backtrace's files named for a report.
+    fn named(&self, record: &TestRecord) -> TestRecord {
+        let mut record = record.clone();
+        for frame in &mut record.backtrace {
+            frame.file = frame.file.as_deref().map(|url| self.name(url));
+        }
+        record
+    }
+}
+
+/// One call of a failure's backtrace: `Scale (main.st:7:5)`, as far as the
+/// line tables place it.
+fn frame_text(frame: &Frame) -> String {
+    match (&frame.file, frame.line, frame.column) {
+        (Some(file), Some(line), Some(column)) => {
+            format!("{} ({file}:{line}:{column})", frame.function)
+        }
+        (Some(file), Some(line), None) => format!("{} ({file}:{line})", frame.function),
+        _ => frame.function.clone(),
     }
 }
 
@@ -36,8 +90,12 @@ fn fmt_duration(d: Duration) -> String {
 }
 
 /// Run a compiled module's tests and report them. Returns the failure count.
+/// `unoptimized` is the build an optimized module was made from: it has the
+/// line tables a failure is located with.
 pub fn run_tests(
     wasm_path: &Path,
+    unoptimized: Option<&[u8]>,
+    roots: &SourceRoots,
     filter: Option<&str>,
     timeout: Option<Duration>,
     format: OutputFormat,
@@ -54,13 +112,14 @@ pub fn run_tests(
     let total_start = std::time::Instant::now();
     let mut failures = Vec::new();
     let mut passed = 0;
-    let run = crate::test_host::run_each(&wasm, filter, timeout, |record| {
+    let run = crate::test_host::run_each_located(&wasm, unoptimized, filter, timeout, |record| {
+        let record = roots.named(record);
+        report_one(&record, format);
         if record.status == Status::Fail {
-            failures.push(record.clone());
+            failures.push(record);
         } else {
             passed += 1;
         }
-        report_one(record, format);
     });
     let total_elapsed = total_start.elapsed();
 
@@ -120,6 +179,9 @@ pub fn summarize(
                         loc_suffix(f).dim(),
                         f.reason.as_deref().unwrap_or_default().bold()
                     );
+                    for frame in &f.backtrace {
+                        println!("             {} {}", "at".dim(), frame_text(frame));
+                    }
                 }
                 println!("{}", rule.dim());
             }
@@ -186,13 +248,73 @@ pub fn report_one(r: &TestRecord, format: OutputFormat) {
         // Reason inline, no durations/decoration — line-stable for agents.
         OutputFormat::Concise => match &r.reason {
             None => println!("PASS {name}"),
-            Some(reason) => println!(
-                "FAIL {name}{}: {}",
-                loc_suffix(r),
-                reason.replace('\n', " ")
-            ),
+            Some(reason) => {
+                // One line still: the calls, innermost first.
+                let calls: Vec<String> = r.backtrace.iter().map(frame_text).collect();
+                let at = match calls.is_empty() {
+                    true => String::new(),
+                    false => format!(" [at {}]", calls.join(" < ")),
+                };
+                println!(
+                    "FAIL {name}{}: {}{at}",
+                    loc_suffix(r),
+                    reason.replace('\n', " ")
+                )
+            }
         },
         // The report's own shape, forwarded unchanged.
         OutputFormat::JsonLines => print_json(&ReportLine::Test(r.clone())),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A backtrace's file is named as the manifest names a test's own: by
+    /// its path in the workspace, `<lib>/` in the library, its bare name
+    /// anywhere else, and as it is when it is no file URL.
+    #[test]
+    fn a_source_file_is_named_against_its_root() {
+        let root = std::env::temp_dir().join("rk-roots");
+        let url = |path: &Path| {
+            auto_lsp::lsp_types::Url::from_file_path(path)
+                .unwrap()
+                .to_string()
+        };
+        let roots = SourceRoots {
+            workspace: root.join("plant"),
+            library: Some(root.join("std")),
+        };
+        assert_eq!(
+            roots.name(&url(&root.join("plant").join("lines").join("main.st"))),
+            "lines/main.st"
+        );
+        assert_eq!(
+            roots.name(&url(&root.join("std").join("Unit.st"))),
+            "<lib>/Unit.st"
+        );
+        assert_eq!(
+            roots.name(&url(&root.join("elsewhere").join("x.st"))),
+            "x.st"
+        );
+        assert_eq!(roots.name("not a url"), "not a url");
+
+        let record = TestRecord {
+            name: "t".to_string(),
+            status: Status::Fail,
+            reason: Some("boom".to_string()),
+            duration_us: 1,
+            file: Some("main.st".to_string()),
+            line: Some(3),
+            backtrace: vec![Frame {
+                function: "f".to_string(),
+                file: Some(url(&root.join("plant").join("main.st"))),
+                line: Some(7),
+                column: Some(5),
+            }],
+        };
+        let named = roots.named(&record);
+        assert_eq!(frame_text(&named.backtrace[0]), "f (main.st:7:5)");
     }
 }

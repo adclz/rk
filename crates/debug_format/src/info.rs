@@ -150,6 +150,9 @@ pub struct DebugInfo {
     /// `DefinedFuncIndex` → the function body's start offset in the binary,
     /// for converting an absolute `wasm_pc` to a within-body offset.
     body_starts: Vec<u32>,
+    /// How many functions the module imports: they take the first function
+    /// indices, ahead of the defined ones every table here is keyed by.
+    imported_functions: u32,
     /// Source file paths, indexed by `LineEntry::file`.
     source_files: Vec<String>,
     /// Per-function frame-local tables (`debug-locals`), keyed by
@@ -214,6 +217,7 @@ impl DebugInfo {
             })
             .unwrap_or_default();
         let body_starts = read_body_starts(wasm);
+        let imported_functions = count_imported_functions(wasm);
         let (frame_locals, local_types) = read_section::<crate::DebugLocals>(wasm, &mut problems)
             .map(|table| {
                 let frames = table
@@ -236,6 +240,7 @@ impl DebugInfo {
             function_names,
             line_tables,
             body_starts,
+            imported_functions,
             source_files,
             problems,
         }
@@ -260,6 +265,7 @@ impl DebugInfo {
             function_names: HashMap::new(),
             line_tables: HashMap::new(),
             body_starts: Vec::new(),
+            imported_functions: 0,
             source_files: Vec::new(),
             problems: Vec::new(),
         }
@@ -388,6 +394,13 @@ impl DebugInfo {
         lines.sort_unstable();
         lines.dedup();
         lines
+    }
+
+    /// The `DefinedFuncIndex` of a function index as a trap's backtrace or a
+    /// browser's stack reports it (`wasm-function[7]`), which counts the
+    /// imported functions first. `None` for an import: it has no body here.
+    pub fn defined_index(&self, func_index: u32) -> Option<u32> {
+        func_index.checked_sub(self.imported_functions)
     }
 
     /// Resolve one wasm frame to its IEC name and source position; `pc` is
@@ -839,6 +852,28 @@ fn read_section<T: Section>(wasm: &[u8], problems: &mut Vec<String>) -> Option<T
         }
     }
     None
+}
+
+/// How many of the module's imports are functions.
+fn count_imported_functions(wasm: &[u8]) -> u32 {
+    let mut count = 0;
+    for payload in wasmparser::Parser::new(0).parse_all(wasm) {
+        if let Ok(wasmparser::Payload::ImportSection(imports)) = payload {
+            count += imports
+                .into_imports()
+                .filter(|import| {
+                    matches!(
+                        import,
+                        Ok(wasmparser::Import {
+                            ty: wasmparser::TypeRef::Func(_),
+                            ..
+                        })
+                    )
+                })
+                .count() as u32;
+        }
+    }
+    count
 }
 
 /// The start offset of each defined function's body, by

@@ -40,6 +40,25 @@ pub struct TestRecord {
     pub file: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub line: Option<u32>,
+    /// Where it failed: the calls in progress at the trap or the raise,
+    /// innermost first. Empty on a pass, and when the module carries no line
+    /// tables to tell.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub backtrace: Vec<Frame>,
+}
+
+/// One call in progress when a test failed.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Frame {
+    /// The FUNCTION, the `Block.Method` or the block whose body was running.
+    pub function: String,
+    /// The source position, 1-based, when the line tables have one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub file: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub line: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub column: Option<u32>,
 }
 
 impl TestRecord {
@@ -69,6 +88,7 @@ mod tests {
             duration_us: 812,
             file: Some("math.st".into()),
             line: Some(42),
+            backtrace: Vec::new(),
         }
     }
 

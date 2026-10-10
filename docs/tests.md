@@ -27,6 +27,26 @@ END_FUNCTION
     Summary [158.5ms] 341 tests run: 341 passed, 0 failed
 ```
 
+## When a test fails
+
+A test that fails is reported with the calls that were in progress, the innermost first.
+
+```sh
+     Failures:
+        FAIL test_subrange (main.st:44): value out of subrange bounds
+             at Clamp (main.st:6:5)
+             at Twice (main.st:12:5)
+             at test_subrange (main.st:45:5)
+```
+
+The line after the test's name is where it is declared, and each `at` line a statement that was running.
+A file of the standard library is shown as `<lib>/Unit.st`.
+
+It works the same for a failed assertion, a `__RAISE`, a check the compiler inserted, a trap of the VM and a test the watchdog stopped.
+`rk test -O` reports it too: an optimized build has lost its line tables, so the failed test is run once more on the unoptimized one.
+
+With `--output-format concise` the calls follow the reason on the same line, and with `json-lines` they are the record's `backtrace`.
+
 The `Std.Unit` namespace contains three assertion FUNCTIONs, each one of them carries an optional **STRING** payload that the CLI or runtime should display in case of failure.
 
 - `ASSERT` which asserts the condition being passed is TRUE:
