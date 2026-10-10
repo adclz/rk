@@ -615,44 +615,66 @@ impl DebugInfo {
 
     /// The local at `address` in one of `frames`, each a live frame as
     /// `(defined index, frame start)`: which of them, by position, and the
-    /// local's path in it. For a pointer into a recursive call's locals,
-    /// which no static table names.
+    /// local's path in it. For a pointer into a call's locals, which no
+    /// static table names: a recursive call's, in its frame, or any call's
+    /// at a static address. `target` is the name of the STRUCT the pointer
+    /// points at, when it points at one: an aggregate and its first leaf
+    /// share a base, and the target says which is meant.
     pub fn frame_variable_at(
         &self,
         address: u32,
         frames: &[(u32, u32)],
+        target: Option<&str>,
     ) -> Option<(usize, String)> {
         frames
             .iter()
             .enumerate()
             .find_map(|(at, &(defined_index, base))| {
-                let frame = self.frame_locals.get(&defined_index)?.frame.as_ref()?;
+                let locals = self.frame_locals.get(&defined_index)?;
+                let tables = Named {
+                    memory: &locals.memory,
+                    arrays: &locals.arrays,
+                    pointers: &locals.pointers,
+                    containers: &locals.containers,
+                };
+                if let Some(path) = tables.name_at(address, target) {
+                    return Some((at, path));
+                }
+                let frame = locals.frame.as_ref()?;
                 let offset = address.checked_sub(base)?;
                 if offset >= frame.size {
                     return None;
                 }
-                if let Some(sym) = frame.memory.iter().find(|s| s.address == offset) {
-                    return Some((at, sym.path.clone()));
-                }
-                if let Some(p) = frame.pointers.iter().find(|p| p.address == offset) {
-                    return Some((at, p.path.clone()));
-                }
-                frame
-                    .arrays
-                    .iter()
-                    .filter(|a| a.elem_size > 0)
-                    .find_map(|arr| {
-                        let bytes = arr.total_elements.checked_mul(arr.elem_size)?;
-                        let inside =
-                            offset >= arr.address && offset < arr.address.checked_add(bytes)?;
-                        (inside && (offset - arr.address).is_multiple_of(arr.elem_size)).then(
-                            || {
-                                let flat = (offset - arr.address) / arr.elem_size;
-                                (at, crate::element_path(&arr.path, flat, &arr.dimensions))
-                            },
-                        )
-                    })
+                let tables = Named {
+                    memory: &frame.memory,
+                    arrays: &frame.arrays,
+                    pointers: &frame.pointers,
+                    containers: &frame.containers,
+                };
+                tables.name_at(offset, target).map(|path| (at, path))
             })
+    }
+
+    /// Every pointer in the module's memory, sorted by path.
+    pub fn list_pointers(&self) -> &[crate::PointerSym] {
+        &self.pointers
+    }
+
+    /// Every function's locals table, with its defined index.
+    pub fn frame_tables(&self) -> impl Iterator<Item = (u32, &crate::FuncLocals)> {
+        self.frame_locals
+            .iter()
+            .map(|(index, table)| (*index, table))
+    }
+
+    /// An entry of the module's type table, by id.
+    pub fn module_type(&self, id: crate::TypeId) -> Option<&crate::TypeDesc> {
+        self.types.get(id as usize)
+    }
+
+    /// An entry of the frames' type table (`debug-locals`), by id.
+    pub fn local_type(&self, id: crate::TypeId) -> Option<&crate::TypeDesc> {
+        self.local_types.get(id as usize)
     }
 
     /// [`variable_at`](Self::variable_at) for what a pointer points at: an
@@ -927,11 +949,20 @@ impl DebugInfo {
                 if address == 0 {
                     return Some(Place::Null { pointer: path });
                 }
+                let variable = self.variable_at_as(address, target.map(|t| (types, t)));
+                let in_frame = match variable {
+                    Some(_) => None,
+                    None => {
+                        let frames = live.frames();
+                        self.frame_variable_at(address, &frames, struct_name(types, target))
+                    }
+                };
                 Some(Place::Pointer(Pointee {
                     address,
                     target,
                     by_ref: false,
-                    variable: self.variable_at_as(address, target.map(|t| (types, t))),
+                    variable,
+                    in_frame,
                 }))
             }
         }
@@ -1023,6 +1054,13 @@ pub trait Live {
         let _ = index;
         None
     }
+
+    /// The live frames, innermost first, each as `(defined index, frame
+    /// start)`: what names a pointer into a call's locals. By default there
+    /// are none.
+    fn frames(&mut self) -> Vec<(u32, u32)> {
+        Vec::new()
+    }
 }
 
 impl<F: FnMut(u32, u32) -> Option<Vec<u8>>> Live for F {
@@ -1060,8 +1098,66 @@ pub struct Pointee {
     pub target: Option<crate::TypeId>,
     /// A VAR_IN_OUT, read as the variable itself.
     pub by_ref: bool,
-    /// The variable at `address`, when a table names one.
+    /// The variable at `address`, when a static table names one.
     pub variable: Option<String>,
+    /// Else the local of a live frame ([`Live::frames`]): which frame, by
+    /// position, and the local's path in it.
+    pub in_frame: Option<(usize, String)>,
+}
+
+/// The name of the STRUCT `id` is, in `types`; `None` for any other type.
+fn struct_name(types: &[crate::TypeDesc], id: Option<crate::TypeId>) -> Option<&str> {
+    match types.get(id? as usize)? {
+        crate::TypeDesc::Struct { name, .. } => Some(name),
+        _ => None,
+    }
+}
+
+/// One scope's tables, for naming an address in them: a frame's static
+/// locals, or the locals in the frame of a call, by offset.
+struct Named<'a> {
+    memory: &'a [Symbol],
+    arrays: &'a [crate::ArraySym],
+    pointers: &'a [crate::PointerSym],
+    containers: &'a [crate::ContainerSym],
+}
+
+impl Named<'_> {
+    /// The variable at `address`: the STRUCT named `target` based there,
+    /// else a leaf, a pointer, any aggregate based there, or an element of
+    /// an array. An aggregate and its first leaf share a base: the target
+    /// says which is meant, and without one the leaf is.
+    fn name_at(&self, address: u32, target: Option<&str>) -> Option<String> {
+        let at = |c: &&crate::ContainerSym| c.address == address;
+        if let Some(name) = target
+            && let Some(c) = self
+                .containers
+                .iter()
+                .find(|c| at(c) && c.type_name == name)
+        {
+            return Some(c.path.clone());
+        }
+        if let Some(s) = self.memory.iter().find(|s| s.address == address) {
+            return Some(s.path.clone());
+        }
+        if let Some(p) = self.pointers.iter().find(|p| p.address == address) {
+            return Some(p.path.clone());
+        }
+        if let Some(c) = self.containers.iter().find(at) {
+            return Some(c.path.clone());
+        }
+        self.arrays
+            .iter()
+            .filter(|a| a.elem_size > 0)
+            .find_map(|arr| {
+                let bytes = arr.total_elements.checked_mul(arr.elem_size)?;
+                let inside = address >= arr.address && address < arr.address.checked_add(bytes)?;
+                (inside && (address - arr.address).is_multiple_of(arr.elem_size)).then(|| {
+                    let flat = (address - arr.address) / arr.elem_size;
+                    crate::element_path(&arr.path, flat, &arr.dimensions)
+                })
+            })
+    }
 }
 
 /// Where a pointer's 4 bytes are.
@@ -1275,7 +1371,11 @@ fn flatten_indices(dimensions: &[(i64, i64)], toks: &[Access], pos: &mut usize) 
         if sub < lo || sub > hi {
             return None;
         }
-        flat = flat * (hi - lo + 1) + (sub - lo);
+        // A hostile table's bounds can span the whole of i64.
+        let extent = hi.checked_sub(*lo)?.checked_add(1)?;
+        flat = flat
+            .checked_mul(extent)?
+            .checked_add(sub.checked_sub(*lo)?)?;
         *pos += 1;
     }
     Some(flat)
@@ -1283,6 +1383,16 @@ fn flatten_indices(dimensions: &[(i64, i64)], toks: &[Access], pos: &mut usize) 
 
 /// Decode the bytes of a variable of type `ty`.
 pub fn decode(ty: SymType, bytes: &[u8]) -> VarValue {
+    // A table can claim a width its type has not: the bytes it was given
+    // are all there is to read.
+    let needed = ty.size_bytes() as usize;
+    if bytes.len() < needed {
+        return VarValue::Unavailable(format!(
+            "{} bytes for a {}, which takes {needed}",
+            bytes.len(),
+            ty.rk_name()
+        ));
+    }
     let i32le = || i32::from_le_bytes(bytes[..4].try_into().unwrap());
     let u32le = || u32::from_le_bytes(bytes[..4].try_into().unwrap());
     let i64le = || i64::from_le_bytes(bytes[..8].try_into().unwrap());
@@ -1378,7 +1488,9 @@ fn locate_in_array(
     let toks = tokenize_accessors(rest)?;
     let mut pos = 0;
     let flat = flatten_indices(&arr.dimensions, &toks, &mut pos)?;
-    let mut addr = arr.address + u32::try_from(flat).ok()? * arr.elem_size;
+    let mut addr = arr
+        .address
+        .checked_add(u32::try_from(flat).ok()?.checked_mul(arr.elem_size)?)?;
     if pos == toks.len() {
         // The element itself: readable only when scalar — a whole
         // aggregate has no single `VarValue`.
@@ -1400,7 +1512,7 @@ fn locate_in_array(
                 let f = fields
                     .iter()
                     .find(|f| fold_path(&f.name) == fold_path(name))?;
-                addr += f.offset;
+                addr = addr.checked_add(f.offset)?;
                 ty_id = f.ty;
                 pos += 1;
             }
@@ -1411,7 +1523,7 @@ fn locate_in_array(
                 ..
             } => {
                 let flat = flatten_indices(dimensions, &toks, &mut pos)?;
-                addr += u32::try_from(flat).ok()? * elem_size;
+                addr = addr.checked_add(u32::try_from(flat).ok()?.checked_mul(*elem_size)?)?;
                 ty_id = *elem;
             }
             // An enum is a leaf, stored as its underlying integer.
@@ -1900,6 +2012,7 @@ mod section_health_tests {
                 pointers: Vec::new(),
                 local_pointers: Vec::new(),
                 frame: None,
+                containers: Vec::new(),
             }],
             types: vec![gear, rec, crate::TypeDesc::Scalar(SymType::DInt)],
         };
@@ -2191,6 +2304,7 @@ mod follow_tests {
                 target: Some(0),
                 by_ref: false,
                 variable: Some("P1.a".to_string()),
+                in_frame: None,
             }))
         );
         assert_eq!(
@@ -2200,6 +2314,7 @@ mod follow_tests {
                 target: Some(1),
                 by_ref: false,
                 variable: Some("P1.n".to_string()),
+                in_frame: None,
             }))
         );
         assert_eq!(
@@ -2218,6 +2333,7 @@ mod follow_tests {
                 target: None,
                 by_ref: false,
                 variable: Some("P1.n".to_string()),
+                in_frame: None,
             }))
         );
         assert_eq!(info.follow("P1.unknown^", live), None);
@@ -2256,6 +2372,7 @@ mod follow_tests {
                 target: Some(1),
                 by_ref: false,
                 variable: Some("P1.a.value".to_string()),
+                in_frame: None,
             }))
         );
         assert_eq!(
@@ -2372,7 +2489,9 @@ mod follow_tests {
                     }],
                     pointers: vec![pointer("link", 8, Some(1), false)],
                     size: 24,
+                    containers: vec![container("pt", 16, "Pt")],
                 }),
+                containers: Vec::new(),
             }],
             types: vec![
                 TypeDesc::Scalar(SymType::Int),
@@ -2463,27 +2582,161 @@ mod follow_tests {
     }
 
     /// An address in a recursive call's frame is named from the live frames:
-    /// the frame it is in, by position, and the local there.
+    /// the frame it is in, by position, and the local there. A STRUCT and
+    /// its first leaf share a base: a pointer to the STRUCT names it, one
+    /// to its first leaf, or to nothing in particular, names the leaf.
     #[test]
     fn an_address_in_a_frame_names_its_local() {
         let (info, _) = frame_module();
         let frames = [(7, 2000), (7, 1000)];
-        let at = |address: u32| info.frame_variable_at(address, &frames);
-        assert_eq!(at(1004), Some((1, "trail[1]".to_string())));
-        assert_eq!(at(1016), Some((1, "pt.x".to_string())));
-        assert_eq!(at(1008), Some((1, "link".to_string())));
-        assert_eq!(at(2020), Some((0, "pt.y".to_string())));
-        assert_eq!(at(1023), None, "inside a value");
-        assert_eq!(at(1024), None, "past the frame: 24 bytes");
-        assert_eq!(at(500), None);
+        let at =
+            |address: u32, target: Option<&str>| info.frame_variable_at(address, &frames, target);
+        assert_eq!(at(1004, None), Some((1, "trail[1]".to_string())));
+        assert_eq!(at(1016, None), Some((1, "pt.x".to_string())));
+        assert_eq!(at(1016, Some("Pt")), Some((1, "pt".to_string())));
+        assert_eq!(at(1016, Some("Other")), Some((1, "pt.x".to_string())));
+        assert_eq!(at(1008, None), Some((1, "link".to_string())));
+        assert_eq!(at(2020, None), Some((0, "pt.y".to_string())));
         assert_eq!(
-            info.frame_variable_at(1004, &[(8, 1000)]),
+            at(400, None),
+            Some((0, "buf".to_string())),
+            "a static local"
+        );
+        assert_eq!(at(1023, None), None, "inside a value");
+        assert_eq!(at(1024, None), None, "past the frame: 24 bytes");
+        assert_eq!(at(500, None), None);
+        assert_eq!(
+            info.frame_variable_at(1004, &[(8, 1000)], None),
             None,
             "no such frame"
         );
         let (module, _) = module();
         assert_eq!(module.stack(), Some((4096, 8192)));
         assert_eq!(info.stack(), None);
+    }
+
+    /// A pointer into a call's locals is named through the live frames the
+    /// reader gives: a `REF_TO Pt` as the STRUCT it points at, a `REF_TO
+    /// INT` as the leaf, and nothing without the frames.
+    #[test]
+    fn a_pointer_into_a_frame_is_named_from_the_live_frames() {
+        let (info, mut mem) = frame_module();
+        // `link` holds the second frame's own `pt`.
+        mem[1008..1012].copy_from_slice(&1016u32.to_le_bytes());
+        struct WithFrames<'a>(Frame<'a>);
+        impl Live for WithFrames<'_> {
+            fn read(&mut self, address: u32, size: u32) -> Option<Vec<u8>> {
+                self.0.read(address, size)
+            }
+            fn local(&mut self, index: u32) -> Option<u32> {
+                self.0.local(index)
+            }
+            fn frames(&mut self) -> Vec<(u32, u32)> {
+                vec![(7, 2000), (7, 1000)]
+            }
+        }
+        // `r`, a REF_TO INT in wasm local 2, holds the second frame's `pt.x`.
+        let locals = vec![(2, 1016), (5, 1000)];
+        let live = &mut WithFrames(Frame {
+            mem: &mem,
+            locals: locals.clone(),
+        });
+        let Some(Place::Pointer(r)) = info.follow_local(7, "r", Some(1000), live) else {
+            panic!("r is a pointer");
+        };
+        assert_eq!(r.variable, None, "no static name");
+        assert_eq!(r.in_frame, Some((1, "pt.x".to_string())), "the leaf");
+        let Some(Place::Pointer(link)) = info.follow_local(7, "link", Some(1000), live) else {
+            panic!("link is a pointer");
+        };
+        assert_eq!(link.in_frame, Some((1, "pt".to_string())), "the STRUCT");
+
+        let live = &mut Frame { mem: &mem, locals };
+        let Some(Place::Pointer(r)) = info.follow_local(7, "r", Some(1000), live) else {
+            panic!("r is a pointer");
+        };
+        assert_eq!(r.in_frame, None, "no frames given, no name");
+    }
+
+    /// A table a reader was not built for: widths its types have not,
+    /// bounds spanning the whole of i64, sizes and addresses at the top of
+    /// u32. Nothing may panic; what cannot be read is unavailable.
+    #[test]
+    fn a_hostile_table_does_not_panic() {
+        let mut table = crate::DebugSymbols::new();
+        table.symbols = vec![
+            Symbol {
+                path: "narrow".to_string(),
+                address: 0,
+                size: 1,
+                ty: SymType::LInt,
+                global: false,
+                named_type: Some(7),
+                bits: None,
+            },
+            Symbol {
+                path: "last".to_string(),
+                address: u32::MAX,
+                size: u32::MAX,
+                ty: SymType::String { capacity: u32::MAX },
+                global: false,
+                named_type: None,
+                bits: None,
+            },
+        ];
+        table.arrays = vec![ArraySym {
+            path: "wide".to_string(),
+            address: u32::MAX - 3,
+            dimensions: vec![(i64::MIN, i64::MAX), (-1, 1)],
+            total_elements: u32::MAX,
+            elem_size: u32::MAX,
+            elem_ty: None,
+            global: false,
+            elem_type: Some(u32::MAX),
+        }];
+        table.pointers = vec![pointer("p", u32::MAX - 1, Some(u32::MAX), true)];
+        let info = DebugInfo::from_wasm(&module_with_sections(&[(
+            crate::DEBUG_SYMBOLS_SECTION,
+            &table.to_msgpack(),
+        )]));
+        let mem = vec![0u8; 64];
+        let live = &mut reader(&mem);
+        assert!(matches!(
+            info.read_all_bytes(&mem)[0].1,
+            VarValue::Unavailable(_)
+        ));
+        assert_eq!(
+            decode(SymType::Int, &[1]),
+            VarValue::Unavailable("1 bytes for a INT, which takes 4".to_string())
+        );
+        for path in [
+            "narrow",
+            "narrow^",
+            "last",
+            "wide[0]",
+            "wide[0, 0]",
+            "wide[-9223372036854775808, 1]",
+            "wide[9223372036854775807, 1]^",
+            "p",
+            "p^",
+            "p^.x",
+        ] {
+            let _ = info.resolve(path);
+            let _ = info.follow(path, live);
+        }
+        assert_eq!(
+            info.follow("wide[0, 0]", live),
+            None,
+            "no entry at the top of u32"
+        );
+        for address in [0, u32::MAX - 3, u32::MAX] {
+            let _ = info.variable_at(address);
+        }
+        assert_eq!(
+            crate::element_path("w", 5, &[(i64::MIN, i64::MAX)]),
+            "w[5]",
+            "a bound that cannot be counted is left as the flat index"
+        );
     }
 
     #[test]

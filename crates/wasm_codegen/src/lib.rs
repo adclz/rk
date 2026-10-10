@@ -395,6 +395,7 @@ struct FrameTables {
     symbols: Vec<debug_format::Symbol>,
     arrays: Vec<debug_format::ArraySym>,
     pointers: Vec<debug_format::PointerSym>,
+    containers: Vec<debug_format::ContainerSym>,
 }
 
 impl FrameTables {
@@ -411,13 +412,17 @@ impl FrameTables {
     }
 
     fn is_empty(&self) -> bool {
-        self.symbols.is_empty() && self.arrays.is_empty() && self.pointers.is_empty()
+        self.symbols.is_empty()
+            && self.arrays.is_empty()
+            && self.pointers.is_empty()
+            && self.containers.is_empty()
     }
 
     fn sort(&mut self) {
         self.symbols.sort_by(|a, b| a.path.cmp(&b.path));
         self.arrays.sort_by(|a, b| a.path.cmp(&b.path));
         self.pointers.sort_by(|a, b| a.path.cmp(&b.path));
+        self.containers.sort_by(|a, b| a.path.cmp(&b.path));
     }
 }
 
@@ -1194,6 +1199,14 @@ impl<'a> WasmGen<'a> {
                 false,
                 &mut into.tables(&mut self.local_type_table),
             );
+            mir::debug_symbols::collect_containers(
+                self.db,
+                local.name.text(self.db).as_ref(),
+                address,
+                &local.ty,
+                false,
+                &mut into.containers,
+            );
         }
         if !memory.is_empty() {
             memory.sort();
@@ -1887,6 +1900,7 @@ impl<'a> WasmGen<'a> {
                             arrays: tables.arrays,
                             pointers: tables.pointers,
                             size,
+                            containers: tables.containers,
                         },
                     );
                     Some(debug_format::FuncLocals {
@@ -1902,6 +1916,7 @@ impl<'a> WasmGen<'a> {
                             .cloned()
                             .unwrap_or_default(),
                         frame,
+                        containers: memory.containers,
                     })
                 })
                 .collect();

@@ -607,6 +607,12 @@ fn a_frame_s_aggregate_locals_are_described(mut with_db: db::RootDatabase) {
         by("msg").expect("string leaf").ty,
         SymType::String { capacity: 8 }
     );
+    let r = crunch
+        .containers
+        .iter()
+        .find(|c| c.path == "r")
+        .expect("the struct local, by its base");
+    assert_eq!((r.address, r.type_name.as_str()), (rx.address, "Rec"));
     let big = crunch
         .arrays
         .iter()
@@ -1620,6 +1626,15 @@ fn a_function_s_pointers_and_a_recursive_frame_are_described(mut with_db: db::Ro
     assert!(
         depth.locals.iter().all(|l| l.wasm_index != frame.slot),
         "the frame's slot is no declared local"
+    );
+    let pt = frame
+        .containers
+        .iter()
+        .find(|c| c.path == "pt")
+        .expect("the struct local in the frame, by its offset");
+    assert_eq!(
+        (pt.address, pt.type_name.as_str()),
+        (by("pt.x").address, "Pt")
     );
     let (base, end) = read_debug_symbols(&wasm)
         .stack

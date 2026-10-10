@@ -104,16 +104,25 @@ impl DebugHandler for AtRaise {
             .map(|(i, base, _)| (*i, *base))
             .collect();
         let (index, _, locals) = &depth_frames[1];
-        let held = info
+        let link = info
             .frame_locals(*index)
-            .and_then(|t| t.local_pointers.iter().find(|p| p.name == "link"))
+            .and_then(|t| t.local_pointers.iter().find(|p| p.name == "link"));
+        let held = link
             .and_then(|p| locals.iter().find(|(i, _)| *i == p.wasm_index))
             .map(|(_, v)| *v);
+        // What `link` points at is a Pt: named as the STRUCT, not its first
+        // field, which shares its address.
+        let target = link
+            .and_then(|p| info.local_type(p.target?))
+            .and_then(|t| match t {
+                debug_format::TypeDesc::Struct { name, .. } => Some(name.clone()),
+                _ => None,
+            });
         store.data_mut().link_of_second = held.map(|held| Link {
             held,
             named: info.variable_at(held),
             stack: info.stack(),
-            in_frame: info.frame_variable_at(held, &live_frames),
+            in_frame: info.frame_variable_at(held, &live_frames, target.as_deref()),
         });
         let mut frames = Vec::new();
         for (index, base, locals) in depth_frames {
@@ -231,8 +240,8 @@ fn a_recursive_call_s_locals_are_read_in_its_frame(mut with_db: db::RootDatabase
         );
         assert_eq!(
             link.in_frame,
-            Some((1, "pt.x".to_string())),
-            "the second frame's own pt"
+            Some((1, "pt".to_string())),
+            "the second frame's own pt, the STRUCT"
         );
         std::mem::take(&mut store.data_mut().frames)
     });

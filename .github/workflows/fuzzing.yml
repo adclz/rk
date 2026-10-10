@@ -32,7 +32,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: [fuzz_compiler, fuzz_formatter, fuzz_incremental, fuzz_semantics, fuzz_ide]
+        target: [fuzz_compiler, fuzz_formatter, fuzz_incremental, fuzz_semantics, fuzz_ide, fuzz_debug_format]
     env:
       CORPUS: crates/fuzz/corpus/${{ matrix.target }}
     steps:
@@ -202,6 +202,7 @@ jobs:
                 fuzz_incremental) flag="--only incremental" ;;
                 fuzz_ide) flag="--only ide" ;;
                 fuzz_semantics) flag="--generated" ;;
+                fuzz_debug_format) flag="--only debug" ;;
                 *) flag="" ;;
               esac
               echo

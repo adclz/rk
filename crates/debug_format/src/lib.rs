@@ -153,8 +153,16 @@ pub fn element_path(path: &str, flat: u32, dimensions: &[(i64, i64)]) -> String 
     let mut rem = i64::from(flat);
     for d in (0..dimensions.len()).rev() {
         let (lo, hi) = dimensions[d];
-        let size = (hi - lo + 1).max(1);
-        subs[d] = lo + rem % size;
+        // A bound a hostile table wrote can span the whole of i64: the flat
+        // index is then all there is to say.
+        let Some(size) = hi.checked_sub(lo).and_then(|n| n.checked_add(1)) else {
+            return format!("{path}[{flat}]");
+        };
+        let size = size.max(1);
+        let Some(sub) = lo.checked_add(rem % size) else {
+            return format!("{path}[{flat}]");
+        };
+        subs[d] = sub;
         rem /= size;
     }
     let joined = subs
@@ -546,6 +554,11 @@ pub struct FuncLocals {
     /// frame of each call.
     #[serde(default)]
     pub frame: Option<FrameLocals>,
+    /// Every aggregate among the memory locals above, by its base (v5), as
+    /// [`DebugSymbols::containers`]: what a reference into this function's
+    /// locals points at, when it points at a whole STRUCT.
+    #[serde(default)]
+    pub containers: Vec<ContainerSym>,
 }
 
 /// A pointer in a wasm local: an i32 holding an address, or 0 for none.
@@ -583,6 +596,10 @@ pub struct FrameLocals {
     /// address in it is one of these locals'.
     #[serde(default)]
     pub size: u32,
+    /// As [`FuncLocals::containers`], each `address` counted from the
+    /// frame's start.
+    #[serde(default)]
+    pub containers: Vec<ContainerSym>,
 }
 
 /// One scalar local: its wasm local slot index + IEC name and type.
@@ -1212,7 +1229,9 @@ mod tests {
                     arrays: Vec::new(),
                     pointers: Vec::new(),
                     size: 16,
+                    containers: Vec::new(),
                 }),
+                containers: Vec::new(),
             }],
             types: vec![TypeDesc::Scalar(SymType::Int)],
         };
