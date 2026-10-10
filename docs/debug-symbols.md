@@ -22,6 +22,22 @@ All these tables are stored as custom sections, encoded with [MessagePack](https
 Paths are resolved through arrays and struct fields without enumerating them.
 So `pts[7423].history[2].y` is a single lookup, and writes go back the same way.
 
+## Pointers
+
+Every pointer in memory is listed in `debug-symbols` with what it points at: a `REF_TO` variable or member, and a `VAR_IN_OUT` member of an instance.
+A path can go through one by writing `^`, as the program does: `P1.head^.value`, `P1.a.next^.next^.value`.
+A `VAR_IN_OUT` reads as the variable it is bound to, with or without `^`.
+Following a pointer needs the running module's memory, so `DebugInfo::follow` takes a reader of it, and stops at a null pointer, naming it.
+A pointer's own value is the address it holds and the variable there, when a table names one.
+
+`debug-locals` lists the pointers a function holds in wasm locals: its `VAR_IN_OUT` and `VAR_OUTPUT` parameters, a `REF_TO` input or local, and an aggregate input, which reads as the input itself.
+
+## Recursive calls
+
+A recursive function's arrays, structs and strings are in a frame each call pushes, whose start a wasm local holds.
+`debug-locals` gives that local and each of them at its offset from the start.
+A debugger stopped in such a call reads the local and places them from it, with `DebugInfo::resolve_in_frame` or `follow_local`.
+
 ## Versions
 
 Each table carries a version, and a runtime can be older than the compiler that built a module.

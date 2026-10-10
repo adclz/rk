@@ -147,9 +147,10 @@ pub struct DebugInfo {
     /// `DefinedFuncIndex` → its line table (from `debug-lines`), sorted by
     /// within-body offset.
     line_tables: HashMap<u32, Vec<crate::LineEntry>>,
-    /// `DefinedFuncIndex` → the function body's start offset in the binary,
-    /// for converting an absolute `wasm_pc` to a within-body offset.
-    body_starts: Vec<u32>,
+    /// `DefinedFuncIndex` → the function body's `[start, end)` offsets in the
+    /// binary, for converting an absolute `wasm_pc` to a within-body offset,
+    /// and for the function a bare offset is in.
+    body_ranges: Vec<(u32, u32)>,
     /// How many functions the module imports: they take the first function
     /// indices, ahead of the defined ones every table here is keyed by.
     imported_functions: u32,
@@ -161,6 +162,13 @@ pub struct DebugInfo {
     /// The type table of `debug-locals`: what a frame's symbols and arrays
     /// reference. Its ids are its own, not those of `types`.
     local_types: Vec<crate::TypeDesc>,
+    /// Every pointer in the module's memory (`debug-symbols` v9), sorted by
+    /// path.
+    pointers: Vec<crate::PointerSym>,
+    pointer_index: HashMap<String, usize>,
+    /// The symbols by address, then in `symbols` order, for
+    /// [`variable_at`](Self::variable_at).
+    by_address: Vec<(u32, usize)>,
     /// Why a debug section that is present could not be used, or is used
     /// in part: a decode failure, or a version newer than this build knows.
     /// A newer compiler's added fields are not a failure, they are skipped.
@@ -173,8 +181,13 @@ impl DebugInfo {
     pub fn from_wasm(wasm: &[u8]) -> Self {
         let mut problems = Vec::new();
         let table = read_section::<crate::DebugSymbols>(wasm, &mut problems).unwrap_or_default();
-        let (symbols, arrays, types, containers) =
-            (table.symbols, table.arrays, table.types, table.containers);
+        let (symbols, arrays, types, containers, pointers) = (
+            table.symbols,
+            table.arrays,
+            table.types,
+            table.containers,
+            table.pointers,
+        );
         // Present but pre-typing: nested instances that share a base address
         // cannot be told apart, so a frame may be attributed to the outer one.
         if containers.iter().any(|c| c.type_name.is_empty()) {
@@ -216,7 +229,13 @@ impl DebugInfo {
                 (table.files, lines)
             })
             .unwrap_or_default();
-        let body_starts = read_body_starts(wasm);
+        let pointer_index = pointers
+            .iter()
+            .enumerate()
+            .map(|(i, p)| (fold_path(&p.path), i))
+            .collect();
+        let by_address = by_address(&symbols);
+        let body_ranges = read_body_ranges(wasm);
         let imported_functions = count_imported_functions(wasm);
         let (frame_locals, local_types) = read_section::<crate::DebugLocals>(wasm, &mut problems)
             .map(|table| {
@@ -237,9 +256,12 @@ impl DebugInfo {
             containers,
             frame_locals,
             local_types,
+            pointers,
+            pointer_index,
+            by_address,
             function_names,
             line_tables,
-            body_starts,
+            body_ranges,
             imported_functions,
             source_files,
             problems,
@@ -253,6 +275,7 @@ impl DebugInfo {
             .enumerate()
             .map(|(i, s)| (fold_path(&s.path), i))
             .collect();
+        let by_address = by_address(&symbols);
         DebugInfo {
             symbols,
             symbol_index,
@@ -262,9 +285,12 @@ impl DebugInfo {
             containers: Vec::new(),
             frame_locals: HashMap::new(),
             local_types: Vec::new(),
+            pointers: Vec::new(),
+            pointer_index: HashMap::new(),
+            by_address,
             function_names: HashMap::new(),
             line_tables: HashMap::new(),
-            body_starts: Vec::new(),
+            body_ranges: Vec::new(),
             imported_functions: 0,
             source_files: Vec::new(),
             problems: Vec::new(),
@@ -341,7 +367,7 @@ impl DebugInfo {
     /// the absolute pc becomes a within-body offset via the body's start,
     /// then the largest recorded offset `<=` it wins.
     pub fn source_position(&self, defined_index: u32, wasm_pc: u32) -> Option<SourcePos> {
-        let body_start = *self.body_starts.get(defined_index as usize)?;
+        let (body_start, _) = *self.body_ranges.get(defined_index as usize)?;
         let within = wasm_pc.checked_sub(body_start)?;
         let table = self.line_tables.get(&defined_index)?;
         let upper = table.partition_point(|e| e.offset <= within);
@@ -360,7 +386,7 @@ impl DebugInfo {
     pub fn line_to_pc(&self, file: u32, line: u32) -> Option<(u32, u32)> {
         let mut best: Option<(u32, u32)> = None;
         for (&defined, table) in &self.line_tables {
-            let Some(&body_start) = self.body_starts.get(defined as usize) else {
+            let Some(&(body_start, _)) = self.body_ranges.get(defined as usize) else {
                 continue;
             };
             for e in table {
@@ -388,7 +414,7 @@ impl DebugInfo {
         let mut lines: Vec<(u32, u32)> = self
             .line_tables
             .iter()
-            .filter(|(defined, _)| self.body_starts.get(**defined as usize).is_some())
+            .filter(|(defined, _)| self.body_ranges.get(**defined as usize).is_some())
             .flat_map(|(_, table)| table.iter().map(|e| (e.file, e.line)))
             .collect();
         lines.sort_unstable();
@@ -401,6 +427,17 @@ impl DebugInfo {
     /// imported functions first. `None` for an import: it has no body here.
     pub fn defined_index(&self, func_index: u32) -> Option<u32> {
         func_index.checked_sub(self.imported_functions)
+    }
+
+    /// The defined function whose body holds the module offset `pc`: what a
+    /// bare code address resolves to, when nothing names its function.
+    pub fn function_at(&self, pc: u32) -> Option<u32> {
+        let at = self
+            .body_ranges
+            .partition_point(|&(start, _)| start <= pc)
+            .checked_sub(1)?;
+        let (start, end) = self.body_ranges[at];
+        (pc >= start && pc < end).then_some(at as u32)
     }
 
     /// Resolve one wasm frame to its IEC name and source position; `pc` is
@@ -485,6 +522,365 @@ impl DebugInfo {
         })
     }
 
+    /// Resolve a path among the memory locals of a recursive function, in
+    /// the frame of one call: as [`resolve_local`](Self::resolve_local), with
+    /// each address counted from `frame_base`, the value of the wasm local
+    /// [`FrameLocals::slot`](crate::FrameLocals::slot) names in that call.
+    pub fn resolve_in_frame(
+        &self,
+        defined_index: u32,
+        path: &str,
+        frame_base: u32,
+    ) -> Option<VarLoc> {
+        let frame = self.frame_locals.get(&defined_index)?.frame.as_ref()?;
+        let folded = fold_path(path);
+        if let Some(sym) = frame.memory.iter().find(|s| fold_path(&s.path) == folded) {
+            return Some(VarLoc {
+                address: frame_base.checked_add(sym.address)?,
+                size: sym.size,
+                ty: sym.ty,
+                global: false,
+                bits: sym.bits,
+            });
+        }
+        let bracket = path.find('[')?;
+        let (stem, rest) = path.split_at(bracket);
+        let stem = fold_path(stem);
+        let arr = frame.arrays.iter().find(|a| fold_path(&a.path) == stem)?;
+        let (address, size, ty, _) = locate_in_array(arr, rest, &self.local_types)?;
+        Some(VarLoc {
+            address: frame_base.checked_add(address)?,
+            size,
+            ty,
+            global: false,
+            bits: None,
+        })
+    }
+
+    // ----- Following pointers ---------------------------------------------
+
+    /// The pointer `path` names in the module's memory: a `REF_TO` variable
+    /// or member, or a VAR_IN_OUT member of an instance.
+    pub fn pointer(&self, path: &str) -> Option<&crate::PointerSym> {
+        self.pointer_index
+            .get(&fold_path(path))
+            .map(|&i| &self.pointers[i])
+    }
+
+    /// What `path` names once the pointers on it are followed: `head^.value`
+    /// through a `REF_TO`, `motor.speed` through a VAR_IN_OUT member, as far
+    /// as `live` reads the module. `None` for a path that names nothing, or
+    /// that goes through a pointer without `^`.
+    pub fn follow(&self, path: &str, live: &mut dyn Live) -> Option<Place> {
+        let (cursor, rest) = self.module_stem(path)?;
+        let toks = tokenize_accessors(rest)?;
+        self.walk(&self.types, cursor, &toks, live)
+    }
+
+    /// [`follow`](Self::follow) among the locals of one function's frame:
+    /// its memory locals, the pointers in its wasm locals, which `live`
+    /// reads, and, for a recursive function, the locals in the frame of the
+    /// call looked at, which starts at `frame_base`.
+    pub fn follow_local(
+        &self,
+        defined_index: u32,
+        path: &str,
+        frame_base: Option<u32>,
+        live: &mut dyn Live,
+    ) -> Option<Place> {
+        let (cursor, rest) = self.frame_stem(defined_index, path, frame_base)?;
+        let toks = tokenize_accessors(rest)?;
+        self.walk(&self.local_types, cursor, &toks, live)
+    }
+
+    /// The variable at `address`, when a table names one: a leaf, an element
+    /// of an array, or an aggregate by its base.
+    pub fn variable_at(&self, address: u32) -> Option<String> {
+        self.variable_at_as(address, None)
+    }
+
+    /// [`variable_at`](Self::variable_at) for what a pointer points at: an
+    /// aggregate and its first leaf share a base, and the pointer's target,
+    /// in `types`, says which is meant.
+    fn variable_at_as(
+        &self,
+        address: u32,
+        target: Option<(&[crate::TypeDesc], crate::TypeId)>,
+    ) -> Option<String> {
+        let target = target.and_then(|(types, id)| types.get(id as usize));
+        if let Some(crate::TypeDesc::Struct { name, .. }) = target
+            && let Some(c) = self
+                .containers
+                .iter()
+                .find(|c| c.address == address && c.type_name == *name)
+        {
+            return Some(c.path.clone());
+        }
+        let leaf = || {
+            let at = self.by_address.partition_point(|&(a, _)| a < address);
+            match self.by_address.get(at) {
+                Some(&(a, i)) if a == address => Some(self.symbols[i].path.clone()),
+                _ => None,
+            }
+        };
+        let aggregate = matches!(
+            target,
+            Some(crate::TypeDesc::Struct { .. } | crate::TypeDesc::Array { .. })
+        );
+        if !aggregate && let Some(path) = leaf() {
+            return Some(path);
+        }
+        if let Some(c) = self.containers.iter().find(|c| c.address == address) {
+            return Some(c.path.clone());
+        }
+        for arr in self.arrays.iter().filter(|a| a.elem_size > 0) {
+            let bytes = arr.total_elements.checked_mul(arr.elem_size)?;
+            if address >= arr.address
+                && address < arr.address.checked_add(bytes)?
+                && (address - arr.address).is_multiple_of(arr.elem_size)
+            {
+                let flat = (address - arr.address) / arr.elem_size;
+                return Some(crate::element_path(&arr.path, flat, &arr.dimensions));
+            }
+        }
+        leaf()
+    }
+
+    /// The start of a walk over the module's tables: the longest prefix of
+    /// `path` a table names, and what follows it.
+    fn module_stem<'a>(&'a self, path: &'a str) -> Option<(Cursor<'a>, &'a str)> {
+        for (stem, rest) in stems(path) {
+            let folded = fold_path(stem);
+            if let Some(&i) = self.symbol_index.get(&folded) {
+                return Some((Cursor::Value(leaf_loc(&self.symbols[i], 0)?), rest));
+            }
+            if let Some(&i) = self.pointer_index.get(&folded) {
+                return Some((pointer_cursor(&self.pointers[i], 0)?, rest));
+            }
+            if let Some(&i) = self.array_index.get(&folded) {
+                return Some((array_cursor(&self.arrays[i], 0)?, rest));
+            }
+        }
+        None
+    }
+
+    /// As [`module_stem`](Self::module_stem), over one frame's tables.
+    fn frame_stem<'a>(
+        &'a self,
+        defined_index: u32,
+        path: &'a str,
+        frame_base: Option<u32>,
+    ) -> Option<(Cursor<'a>, &'a str)> {
+        let locals = self.frame_locals.get(&defined_index)?;
+        for (stem, rest) in stems(path) {
+            let folded = fold_path(stem);
+            let named = |p: &str| fold_path(p) == folded;
+            if let Some(s) = locals.memory.iter().find(|s| named(&s.path)) {
+                return Some((Cursor::Value(leaf_loc(s, 0)?), rest));
+            }
+            if let Some(p) = locals.pointers.iter().find(|p| named(&p.path)) {
+                return Some((pointer_cursor(p, 0)?, rest));
+            }
+            if let Some(a) = locals.arrays.iter().find(|a| named(&a.path)) {
+                return Some((array_cursor(a, 0)?, rest));
+            }
+            if let Some(p) = locals.local_pointers.iter().find(|p| named(&p.name)) {
+                let cursor = Cursor::Pointer {
+                    at: PointerAt::Local(p.wasm_index),
+                    target: p.target,
+                    by_ref: p.by_ref,
+                    global: false,
+                    path: p.name.clone(),
+                };
+                return Some((cursor, rest));
+            }
+            if let (Some(base), Some(frame)) = (frame_base, &locals.frame) {
+                if let Some(s) = frame.memory.iter().find(|s| named(&s.path)) {
+                    return Some((Cursor::Value(leaf_loc(s, base)?), rest));
+                }
+                if let Some(p) = frame.pointers.iter().find(|p| named(&p.path)) {
+                    return Some((pointer_cursor(p, base)?, rest));
+                }
+                if let Some(a) = frame.arrays.iter().find(|a| named(&a.path)) {
+                    return Some((array_cursor(a, base)?, rest));
+                }
+            }
+        }
+        None
+    }
+
+    /// Walk `toks` from `cursor`, in the scope whose type table is `types`.
+    fn walk<'a>(
+        &self,
+        types: &[crate::TypeDesc],
+        mut cursor: Cursor<'a>,
+        toks: &[Access],
+        live: &mut dyn Live,
+    ) -> Option<Place> {
+        let mut pos = 0;
+        while pos < toks.len() {
+            cursor = match (cursor, &toks[pos]) {
+                (
+                    Cursor::Pointer {
+                        at,
+                        target,
+                        global,
+                        path,
+                        ..
+                    },
+                    Access::Deref,
+                ) => {
+                    pos += 1;
+                    match deref(types, at, target, global, &path, live)? {
+                        Ok(next) => next,
+                        Err(stop) => return Some(stop),
+                    }
+                }
+                // A VAR_IN_OUT is read as the variable it is bound to: a
+                // member of it is that variable's member.
+                (
+                    Cursor::Pointer {
+                        at,
+                        target,
+                        by_ref: true,
+                        global,
+                        path,
+                    },
+                    _,
+                ) => match deref(types, at, target, global, &path, live)? {
+                    Ok(next) => next,
+                    Err(stop) => return Some(stop),
+                },
+                (
+                    Cursor::Typed {
+                        address,
+                        ty,
+                        global,
+                        path,
+                    },
+                    Access::Field(name),
+                ) => {
+                    let crate::TypeDesc::Struct { fields, .. } = types.get(ty as usize)? else {
+                        return None;
+                    };
+                    let f = fields
+                        .iter()
+                        .find(|f| fold_path(&f.name) == fold_path(name))?;
+                    pos += 1;
+                    typed(
+                        types,
+                        address.checked_add(f.offset)?,
+                        f.ty,
+                        global,
+                        format!("{path}.{}", f.name),
+                    )?
+                }
+                (
+                    Cursor::Typed {
+                        address,
+                        ty,
+                        global,
+                        path,
+                    },
+                    Access::Index(_),
+                ) => {
+                    let crate::TypeDesc::Array {
+                        dimensions,
+                        elem_size,
+                        elem,
+                        ..
+                    } = types.get(ty as usize)?
+                    else {
+                        return None;
+                    };
+                    let flat = flatten_indices(dimensions, toks, &mut pos)?;
+                    let flat = u32::try_from(flat).ok()?;
+                    typed(
+                        types,
+                        address.checked_add(flat.checked_mul(*elem_size)?)?,
+                        *elem,
+                        global,
+                        crate::element_path(&path, flat, dimensions),
+                    )?
+                }
+                (
+                    Cursor::Array {
+                        arr,
+                        address,
+                        global,
+                        path,
+                    },
+                    Access::Index(_),
+                ) => {
+                    let flat = flatten_indices(&arr.dimensions, toks, &mut pos)?;
+                    let flat = u32::try_from(flat).ok()?;
+                    let address = address.checked_add(flat.checked_mul(arr.elem_size)?)?;
+                    let path = crate::element_path(&path, flat, &arr.dimensions);
+                    match (arr.elem_type, arr.elem_ty) {
+                        (Some(ty), _) => typed(types, address, ty, global, path)?,
+                        (None, Some(ty)) => Cursor::Value(VarLoc {
+                            address,
+                            size: ty.size_bytes(),
+                            ty,
+                            global,
+                            bits: None,
+                        }),
+                        (None, None) => return None,
+                    }
+                }
+                // A value has no members, a STRUCT no elements, a `REF_TO`
+                // nothing before `^`.
+                _ => return None,
+            };
+        }
+        self.finish(types, cursor, live)
+    }
+
+    /// Where a walk ends.
+    fn finish(
+        &self,
+        types: &[crate::TypeDesc],
+        cursor: Cursor<'_>,
+        live: &mut dyn Live,
+    ) -> Option<Place> {
+        match cursor {
+            Cursor::Value(loc) => Some(Place::Value(loc)),
+            Cursor::Typed { address, ty, .. } => Some(Place::Aggregate {
+                address,
+                ty: Some(ty),
+            }),
+            Cursor::Array { address, .. } => Some(Place::Aggregate { address, ty: None }),
+            Cursor::Pointer {
+                at,
+                target,
+                by_ref: true,
+                global,
+                path,
+            } => match deref(types, at, target, global, &path, live)? {
+                Ok(next) => self.finish(types, next, live),
+                Err(stop) => Some(stop),
+            },
+            Cursor::Pointer {
+                at,
+                target,
+                by_ref: false,
+                path,
+                ..
+            } => {
+                let address = held(at, live)?;
+                if address == 0 {
+                    return Some(Place::Null { pointer: path });
+                }
+                Some(Place::Pointer(Pointee {
+                    address,
+                    target,
+                    by_ref: false,
+                    variable: self.variable_at_as(address, target.map(|t| (types, t))),
+                }))
+            }
+        }
+    }
+
     /// Decode `bytes` for `sym`, naming the variant when the symbol is an
     /// enumeration.
     pub fn decode_symbol(&self, sym: &Symbol, bytes: &[u8]) -> VarValue {
@@ -558,11 +954,231 @@ impl DebugInfo {
     }
 }
 
-/// One step of a variable path after its stem: a subscript or a field.
+/// How a resolver reads what only the running module has: its linear
+/// memory, and the wasm locals of the frame being looked at. A closure
+/// reading memory is one, for the module's variables.
+pub trait Live {
+    /// `size` bytes at `address`; `None` when they are outside the memory.
+    fn read(&mut self, address: u32, size: u32) -> Option<Vec<u8>>;
+
+    /// The i32 held in the wasm local `index` of the frame looked at. Only
+    /// a frame has one: by default there is none.
+    fn local(&mut self, index: u32) -> Option<u32> {
+        let _ = index;
+        None
+    }
+}
+
+impl<F: FnMut(u32, u32) -> Option<Vec<u8>>> Live for F {
+    fn read(&mut self, address: u32, size: u32) -> Option<Vec<u8>> {
+        self(address, size)
+    }
+}
+
+/// What a path names, the pointers on it followed.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Place {
+    /// A value, to read where it is.
+    Value(VarLoc),
+    /// A pointer, by what it holds.
+    Pointer(Pointee),
+    /// A STRUCT or an ARRAY at its base: no value of its own. `ty` is its
+    /// layout in the type table of the scope asked, `None` for an array
+    /// the table describes by a descriptor.
+    Aggregate {
+        address: u32,
+        ty: Option<crate::TypeId>,
+    },
+    /// A pointer on the way holds no address: the path stops at it.
+    Null { pointer: String },
+}
+
+/// A pointer's value: the address it holds, and what is there.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Pointee {
+    /// The address held, never 0: that is [`Place::Null`].
+    pub address: u32,
+    /// What it points at, in the type table of the scope asked (`types`
+    /// for the module, `DebugLocals::types` for a frame). `None` when the
+    /// compiler had no type for it.
+    pub target: Option<crate::TypeId>,
+    /// A VAR_IN_OUT, read as the variable itself.
+    pub by_ref: bool,
+    /// The variable at `address`, when a table names one.
+    pub variable: Option<String>,
+}
+
+/// Where a pointer's 4 bytes are.
+#[derive(Clone, Copy)]
+enum PointerAt {
+    Memory(u32),
+    Local(u32),
+}
+
+/// One point of a walk along a path.
+enum Cursor<'a> {
+    Value(VarLoc),
+    /// An address with a layout in the scope's type table: a STRUCT or an
+    /// ARRAY.
+    Typed {
+        address: u32,
+        ty: crate::TypeId,
+        global: bool,
+        path: String,
+    },
+    /// An array by its descriptor, before its subscripts.
+    Array {
+        arr: &'a crate::ArraySym,
+        address: u32,
+        global: bool,
+        path: String,
+    },
+    Pointer {
+        at: PointerAt,
+        target: Option<crate::TypeId>,
+        by_ref: bool,
+        global: bool,
+        path: String,
+    },
+}
+
+/// A leaf's location, `base` added to its address: 0 for a static one, the
+/// frame's start for one in the frame of a call.
+fn leaf_loc(sym: &Symbol, base: u32) -> Option<VarLoc> {
+    Some(VarLoc {
+        address: base.checked_add(sym.address)?,
+        size: sym.size,
+        ty: sym.ty,
+        global: sym.global,
+        bits: sym.bits,
+    })
+}
+
+fn pointer_cursor(p: &crate::PointerSym, base: u32) -> Option<Cursor<'_>> {
+    Some(Cursor::Pointer {
+        at: PointerAt::Memory(base.checked_add(p.address)?),
+        target: p.target,
+        by_ref: p.by_ref,
+        global: p.global,
+        path: p.path.clone(),
+    })
+}
+
+fn array_cursor(arr: &crate::ArraySym, base: u32) -> Option<Cursor<'_>> {
+    Some(Cursor::Array {
+        arr,
+        address: base.checked_add(arr.address)?,
+        global: arr.global,
+        path: arr.path.clone(),
+    })
+}
+
+/// The cursor at `address` for the type `ty` of `types`: a value, a
+/// pointer, or an aggregate to walk into. `None` for a type with nothing
+/// at it.
+fn typed<'a>(
+    types: &[crate::TypeDesc],
+    address: u32,
+    ty: crate::TypeId,
+    global: bool,
+    path: String,
+) -> Option<Cursor<'a>> {
+    Some(match types.get(ty as usize)? {
+        crate::TypeDesc::Scalar(t) => Cursor::Value(VarLoc {
+            address,
+            size: t.size_bytes(),
+            ty: *t,
+            global,
+            bits: None,
+        }),
+        crate::TypeDesc::Enum { storage, .. } => Cursor::Value(VarLoc {
+            address,
+            size: storage.size_bytes(),
+            ty: *storage,
+            global,
+            bits: None,
+        }),
+        crate::TypeDesc::Opaque {
+            size: 4,
+            target,
+            by_ref,
+        } => Cursor::Pointer {
+            at: PointerAt::Memory(address),
+            target: *target,
+            by_ref: *by_ref,
+            global,
+            path,
+        },
+        crate::TypeDesc::Opaque { .. } => return None,
+        crate::TypeDesc::Struct { .. } | crate::TypeDesc::Array { .. } => Cursor::Typed {
+            address,
+            ty,
+            global,
+            path,
+        },
+    })
+}
+
+/// The address a pointer holds.
+fn held(at: PointerAt, live: &mut dyn Live) -> Option<u32> {
+    match at {
+        PointerAt::Memory(address) => {
+            let bytes = live.read(address, 4)?;
+            Some(u32::from_le_bytes(bytes.get(..4)?.try_into().ok()?))
+        }
+        PointerAt::Local(index) => live.local(index),
+    }
+}
+
+/// Through a pointer: the cursor at what it points at, or the place the
+/// path stops at. `None` for a pointer whose target has no type.
+fn deref<'a>(
+    types: &[crate::TypeDesc],
+    at: PointerAt,
+    target: Option<crate::TypeId>,
+    global: bool,
+    path: &str,
+    live: &mut dyn Live,
+) -> Option<Result<Cursor<'a>, Place>> {
+    let address = held(at, live)?;
+    if address == 0 {
+        return Some(Err(Place::Null {
+            pointer: path.to_string(),
+        }));
+    }
+    Some(Ok(typed(
+        types,
+        address,
+        target?,
+        global,
+        format!("{path}^"),
+    )?))
+}
+
+/// Where a path may split into a stem a table names and the accessors
+/// after it, longest stem first: before each `[`, `^` and `.`, and the
+/// whole path.
+fn stems(path: &str) -> Vec<(&str, &str)> {
+    let mut cuts: Vec<usize> = path
+        .char_indices()
+        .filter(|(_, c)| matches!(c, '[' | '^' | '.'))
+        .map(|(i, _)| i)
+        .collect();
+    cuts.push(path.len());
+    cuts.sort_unstable_by(|a, b| b.cmp(a));
+    cuts.into_iter()
+        .filter(|&i| i > 0)
+        .map(|i| path.split_at(i))
+        .collect()
+}
+
+/// One step of a variable path after its stem: a subscript, a field, or
+/// `^`, the value a pointer points at.
 #[derive(Debug, PartialEq)]
 enum Access {
     Index(i64),
     Field(String),
+    Deref,
 }
 
 /// Tokenize a path's accessor tail (`"[7][2].y"` → `Index(7), Index(2),
@@ -570,7 +1186,10 @@ enum Access {
 fn tokenize_accessors(mut rest: &str) -> Option<Vec<Access>> {
     let mut out = Vec::new();
     while !rest.is_empty() {
-        if let Some(r) = rest.strip_prefix('[') {
+        if let Some(r) = rest.strip_prefix('^') {
+            out.push(Access::Deref);
+            rest = r;
+        } else if let Some(r) = rest.strip_prefix('[') {
             let end = r.find(']')?;
             for part in r[..end].split(',') {
                 out.push(Access::Index(part.trim().parse().ok()?));
@@ -578,7 +1197,7 @@ fn tokenize_accessors(mut rest: &str) -> Option<Vec<Access>> {
             rest = &r[end + 1..];
         } else {
             let r = rest.strip_prefix('.')?;
-            let end = r.find(['.', '[']).unwrap_or(r.len());
+            let end = r.find(['.', '[', '^']).unwrap_or(r.len());
             if end == 0 {
                 return None;
             }
@@ -876,17 +1495,30 @@ fn count_imported_functions(wasm: &[u8]) -> u32 {
     count
 }
 
-/// The start offset of each defined function's body, by
+/// The `[start, end)` offsets of each defined function's body, by
 /// `DefinedFuncIndex`, for turning an absolute `wasm_pc` into a
 /// within-body offset.
-fn read_body_starts(wasm: &[u8]) -> Vec<u32> {
-    let mut starts = Vec::new();
+fn read_body_ranges(wasm: &[u8]) -> Vec<(u32, u32)> {
+    let mut ranges = Vec::new();
     for payload in wasmparser::Parser::new(0).parse_all(wasm) {
         if let Ok(wasmparser::Payload::CodeSectionEntry(body)) = payload {
-            starts.push(body.range().start as u32);
+            let range = body.range();
+            ranges.push((range.start as u32, range.end as u32));
         }
     }
-    starts
+    ranges
+}
+
+/// The symbols by address, then in table order: a leaf is found by where
+/// it is, and two at one address come in the table's order.
+fn by_address(symbols: &[Symbol]) -> Vec<(u32, usize)> {
+    let mut by_address: Vec<(u32, usize)> = symbols
+        .iter()
+        .enumerate()
+        .map(|(i, s)| (s.address, i))
+        .collect();
+    by_address.sort_unstable();
+    by_address
 }
 
 #[cfg(test)]
@@ -944,36 +1576,37 @@ mod tests {
     }
 }
 
+/// A minimal wasm module carrying these custom sections, hand-encoded so
+/// the crate gains no dependency for a test.
+#[cfg(test)]
+fn module_with_sections(sections: &[(&str, &[u8])]) -> Vec<u8> {
+    fn leb128(mut v: u32, out: &mut Vec<u8>) {
+        loop {
+            let byte = (v & 0x7f) as u8;
+            v >>= 7;
+            if v == 0 {
+                out.push(byte);
+                return;
+            }
+            out.push(byte | 0x80);
+        }
+    }
+    let mut m = vec![0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00];
+    for (name, data) in sections {
+        let mut body = Vec::new();
+        leb128(name.len() as u32, &mut body);
+        body.extend_from_slice(name.as_bytes());
+        body.extend_from_slice(data);
+        m.push(0); // custom section id
+        leb128(body.len() as u32, &mut m);
+        m.extend_from_slice(&body);
+    }
+    m
+}
+
 #[cfg(test)]
 mod section_health_tests {
     use super::*;
-
-    /// A minimal wasm module carrying these custom sections, hand-encoded
-    /// so the crate gains no dependency for a test.
-    fn module_with_sections(sections: &[(&str, &[u8])]) -> Vec<u8> {
-        fn leb128(mut v: u32, out: &mut Vec<u8>) {
-            loop {
-                let byte = (v & 0x7f) as u8;
-                v >>= 7;
-                if v == 0 {
-                    out.push(byte);
-                    return;
-                }
-                out.push(byte | 0x80);
-            }
-        }
-        let mut m = vec![0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00];
-        for (name, data) in sections {
-            let mut body = Vec::new();
-            leb128(name.len() as u32, &mut body);
-            body.extend_from_slice(name.as_bytes());
-            body.extend_from_slice(data);
-            m.push(0); // custom section id
-            leb128(body.len() as u32, &mut m);
-            m.extend_from_slice(&body);
-        }
-        m
-    }
 
     fn module_with_section(name: &str, data: &[u8]) -> Vec<u8> {
         module_with_sections(&[(name, data)])
@@ -1117,6 +1750,7 @@ mod section_health_tests {
             arrays: Vec<crate::ArraySym>,
             types: Vec<crate::TypeDesc>,
             containers: Vec<crate::ContainerSym>,
+            pointers: Vec<crate::PointerSym>,
             checksum: u64,
         }
         let newer = NewerSymbols {
@@ -1134,6 +1768,7 @@ mod section_health_tests {
             arrays: Vec::new(),
             types: Vec::new(),
             containers: Vec::new(),
+            pointers: Vec::new(),
             checksum: 7,
         };
         let info = DebugInfo::from_wasm(&module_with_section(
@@ -1204,6 +1839,9 @@ mod section_health_tests {
                     elem_type: Some(1),
                 }],
                 this_slot: None,
+                pointers: Vec::new(),
+                local_pointers: Vec::new(),
+                frame: None,
             }],
             types: vec![gear, rec, crate::TypeDesc::Scalar(SymType::DInt)],
         };
@@ -1272,5 +1910,519 @@ mod section_health_tests {
             None,
             "a frame's array is not a module path"
         );
+    }
+}
+
+#[cfg(test)]
+mod follow_tests {
+    use super::*;
+    use crate::{ArraySym, ContainerSym, PointerSym, TypeDesc};
+
+    fn leaf(path: &str, address: u32, ty: SymType) -> Symbol {
+        Symbol {
+            path: path.to_string(),
+            address,
+            size: ty.size_bytes(),
+            ty,
+            global: false,
+            named_type: None,
+            bits: None,
+        }
+    }
+
+    fn pointer(path: &str, address: u32, target: Option<u32>, by_ref: bool) -> PointerSym {
+        PointerSym {
+            path: path.to_string(),
+            address,
+            global: false,
+            target,
+            by_ref,
+        }
+    }
+
+    fn container(path: &str, address: u32, type_name: &str) -> ContainerSym {
+        ContainerSym {
+            path: path.to_string(),
+            address,
+            global: false,
+            type_name: type_name.to_string(),
+        }
+    }
+
+    fn field(name: &str, offset: u32, ty: u32) -> crate::FieldDesc {
+        crate::FieldDesc {
+            name: name.to_string(),
+            offset,
+            ty,
+        }
+    }
+
+    fn opaque(target: Option<u32>, by_ref: bool) -> TypeDesc {
+        TypeDesc::Opaque {
+            size: 4,
+            target,
+            by_ref,
+        }
+    }
+
+    /// A program's memory with two `Node`s, `a` at 100 pointing at `b` at
+    /// 108, `head` pointing at `a`, an INT `n` at 200 that `m.speed` (by
+    /// reference), `ri` and `refs[1]` point at, a `Pt` at 300 `rp` points
+    /// at, and two `Node`s in an array at 160.
+    fn module() -> (DebugInfo, Vec<u8>) {
+        let node = TypeDesc::Struct {
+            name: "Node".to_string(),
+            size: 8,
+            fields: vec![field("value", 0, 1), field("next", 4, 2)],
+        };
+        let pt = TypeDesc::Struct {
+            name: "Pt".to_string(),
+            size: 8,
+            fields: vec![field("x", 0, 6), field("y", 4, 6)],
+        };
+        let table = crate::DebugSymbols {
+            version: crate::DEBUG_SYMBOLS_VERSION,
+            symbols: vec![
+                leaf("P1.a.value", 100, SymType::Int),
+                leaf("P1.b.value", 108, SymType::Int),
+                leaf("P1.n", 200, SymType::Int),
+                leaf("P1.pt.x", 300, SymType::Real),
+                leaf("P1.pt.y", 304, SymType::Real),
+            ],
+            arrays: vec![
+                ArraySym {
+                    path: "P1.refs".to_string(),
+                    address: 140,
+                    dimensions: vec![(0, 2)],
+                    total_elements: 3,
+                    elem_size: 4,
+                    elem_ty: None,
+                    global: false,
+                    elem_type: Some(4),
+                },
+                ArraySym {
+                    path: "P1.nodes".to_string(),
+                    address: 160,
+                    dimensions: vec![(0, 1)],
+                    total_elements: 2,
+                    elem_size: 8,
+                    elem_ty: None,
+                    global: false,
+                    elem_type: Some(0),
+                },
+            ],
+            types: vec![
+                node,
+                TypeDesc::Scalar(SymType::Int),
+                opaque(Some(0), false),
+                opaque(Some(1), true),
+                opaque(Some(1), false),
+                pt,
+                TypeDesc::Scalar(SymType::Real),
+            ],
+            containers: vec![
+                container("P1.a", 100, "Node"),
+                container("P1.b", 108, "Node"),
+                container("P1.nodes[0]", 160, "Node"),
+                container("P1.nodes[1]", 168, "Node"),
+                container("P1.pt", 300, "Pt"),
+            ],
+            pointers: vec![
+                pointer("P1.a.next", 104, Some(0), false),
+                pointer("P1.b.next", 112, Some(0), false),
+                pointer("P1.head", 120, Some(0), false),
+                pointer("P1.m.speed", 124, Some(1), true),
+                pointer("P1.ri", 128, Some(1), false),
+                pointer("P1.rp", 132, Some(5), false),
+                pointer("P1.unknown", 136, None, false),
+            ],
+        };
+        let info = DebugInfo::from_wasm(&module_with_sections(&[(
+            crate::DEBUG_SYMBOLS_SECTION,
+            &table.to_msgpack(),
+        )]));
+        assert!(info.problems().is_empty(), "{:?}", info.problems());
+        let mut mem = vec![0u8; 512];
+        let mut put = |at: usize, v: u32| mem[at..at + 4].copy_from_slice(&v.to_le_bytes());
+        put(100, 1);
+        put(104, 108);
+        put(108, 2);
+        put(120, 100);
+        put(124, 200);
+        put(128, 200);
+        put(132, 300);
+        put(136, 200);
+        put(144, 200);
+        put(148, 100);
+        put(160, 7);
+        put(164, 168);
+        put(168, 8);
+        put(200, 42);
+        put(300, 1.5f32.to_bits());
+        put(304, 2.5f32.to_bits());
+        (info, mem)
+    }
+
+    fn reader(mem: &[u8]) -> impl FnMut(u32, u32) -> Option<Vec<u8>> + '_ {
+        move |address, size| {
+            mem.get(address as usize..(address as usize).checked_add(size as usize)?)
+                .map(<[u8]>::to_vec)
+        }
+    }
+
+    /// The location a `Value` place reads at.
+    fn at(place: Option<Place>) -> (u32, SymType) {
+        match place {
+            Some(Place::Value(loc)) => (loc.address, loc.ty),
+            other => panic!("not a value: {other:?}"),
+        }
+    }
+
+    /// A path reads through its pointers, `^` by `^`, and stops at a null
+    /// one, naming it.
+    #[test]
+    fn a_path_follows_its_pointers() {
+        let (info, mem) = module();
+        let live = &mut reader(&mem);
+        assert_eq!(at(info.follow("P1.head^.value", live)), (100, SymType::Int));
+        assert_eq!(
+            at(info.follow("P1.head^.next^.value", live)),
+            (108, SymType::Int)
+        );
+        assert_eq!(
+            info.follow("P1.head^.next^.next^.value", live),
+            Some(Place::Null {
+                pointer: "P1.head^.next^.next".to_string()
+            })
+        );
+        assert_eq!(
+            at(info.follow("P1.a.next^.value", live)),
+            (108, SymType::Int)
+        );
+        assert_eq!(at(info.follow("P1.rp^.y", live)), (304, SymType::Real));
+        assert_eq!(
+            at(info.follow("p1.HEAD^.VALUE", live)),
+            (100, SymType::Int),
+            "caseless"
+        );
+        assert_eq!(
+            info.follow("P1.head^", live),
+            Some(Place::Aggregate {
+                address: 100,
+                ty: Some(0)
+            })
+        );
+        // A plain variable still reads as one.
+        assert_eq!(at(info.follow("P1.a.value", live)), (100, SymType::Int));
+        let value = info.follow("P1.ri^", live);
+        let bytes = live(at(value).0, 4).unwrap();
+        assert_eq!(decode(SymType::Int, &bytes), VarValue::I16(42));
+    }
+
+    /// A pointer's own value is the address it holds and the variable
+    /// there: an aggregate when its target is one, the leaf otherwise.
+    #[test]
+    fn a_pointer_names_what_it_points_at() {
+        let (info, mem) = module();
+        let live = &mut reader(&mem);
+        assert_eq!(
+            info.follow("P1.head", live),
+            Some(Place::Pointer(Pointee {
+                address: 100,
+                target: Some(0),
+                by_ref: false,
+                variable: Some("P1.a".to_string()),
+            }))
+        );
+        assert_eq!(
+            info.follow("P1.ri", live),
+            Some(Place::Pointer(Pointee {
+                address: 200,
+                target: Some(1),
+                by_ref: false,
+                variable: Some("P1.n".to_string()),
+            }))
+        );
+        assert_eq!(
+            info.follow("P1.rp", live).map(|p| match p {
+                Place::Pointer(p) => p.variable,
+                _ => None,
+            }),
+            Some(Some("P1.pt".to_string()))
+        );
+        // No type for the target: the address and the leaf there, nothing
+        // to walk through.
+        assert_eq!(
+            info.follow("P1.unknown", live),
+            Some(Place::Pointer(Pointee {
+                address: 200,
+                target: None,
+                by_ref: false,
+                variable: Some("P1.n".to_string()),
+            }))
+        );
+        assert_eq!(info.follow("P1.unknown^", live), None);
+        assert_eq!(info.pointer("p1.head").map(|p| p.address), Some(120));
+        assert_eq!(info.pointer("P1.n"), None);
+    }
+
+    /// A VAR_IN_OUT reads as the variable it is bound to, with or without
+    /// `^`.
+    #[test]
+    fn a_by_reference_member_reads_as_its_variable() {
+        let (info, mem) = module();
+        let live = &mut reader(&mem);
+        assert_eq!(at(info.follow("P1.m.speed", live)), (200, SymType::Int));
+        assert_eq!(at(info.follow("P1.m.speed^", live)), (200, SymType::Int));
+    }
+
+    /// An array of pointers, and an array of structs with a pointer in each:
+    /// the element is reached through the descriptor, the pointer through
+    /// the element.
+    #[test]
+    fn an_element_can_be_a_pointer_or_hold_one() {
+        let (info, mem) = module();
+        let live = &mut reader(&mem);
+        assert_eq!(at(info.follow("P1.refs[1]^", live)), (200, SymType::Int));
+        assert_eq!(
+            info.follow("P1.refs[0]^", live),
+            Some(Place::Null {
+                pointer: "P1.refs[0]".to_string()
+            })
+        );
+        assert_eq!(
+            info.follow("P1.refs[2]", live),
+            Some(Place::Pointer(Pointee {
+                address: 100,
+                target: Some(1),
+                by_ref: false,
+                variable: Some("P1.a.value".to_string()),
+            }))
+        );
+        assert_eq!(
+            at(info.follow("P1.nodes[0].next^.value", live)),
+            (168, SymType::Int)
+        );
+        assert_eq!(
+            info.follow("P1.nodes[1]", live),
+            Some(Place::Aggregate {
+                address: 168,
+                ty: Some(0)
+            })
+        );
+        assert_eq!(info.follow("P1.refs[3]^", live), None, "past the array");
+    }
+
+    /// What names nothing, and a pointer gone through without `^`.
+    #[test]
+    fn a_path_through_a_pointer_needs_a_caret() {
+        let (info, mem) = module();
+        let live = &mut reader(&mem);
+        assert_eq!(info.follow("P1.a.next.value", live), None);
+        assert_eq!(info.follow("P1.n^", live), None, "not a pointer");
+        assert_eq!(info.follow("P1.head^.nope", live), None);
+        assert_eq!(info.follow("P1.nothing", live), None);
+        assert_eq!(info.follow("", live), None);
+        assert_eq!(info.follow("^", live), None);
+    }
+
+    /// Which variable an address is: a leaf, an element, an aggregate.
+    #[test]
+    fn an_address_names_its_variable() {
+        let (info, _) = module();
+        assert_eq!(info.variable_at(100).as_deref(), Some("P1.a.value"));
+        assert_eq!(info.variable_at(144).as_deref(), Some("P1.refs[1]"));
+        assert_eq!(info.variable_at(168).as_deref(), Some("P1.nodes[1]"));
+        assert_eq!(info.variable_at(300).as_deref(), Some("P1.pt.x"));
+        assert_eq!(info.variable_at(999), None);
+        assert_eq!(info.variable_at(102), None, "inside a value");
+    }
+
+    /// A frame's pointers in wasm locals, read through [`Live::local`], and
+    /// the locals of a recursive call, at offsets from the frame's start.
+    struct Frame<'a> {
+        mem: &'a [u8],
+        locals: Vec<(u32, u32)>,
+    }
+
+    impl Live for Frame<'_> {
+        fn read(&mut self, address: u32, size: u32) -> Option<Vec<u8>> {
+            reader(self.mem)(address, size)
+        }
+
+        fn local(&mut self, index: u32) -> Option<u32> {
+            self.locals
+                .iter()
+                .find(|(i, _)| *i == index)
+                .map(|(_, v)| *v)
+        }
+    }
+
+    fn frame_module() -> (DebugInfo, Vec<u8>) {
+        let pt = TypeDesc::Struct {
+            name: "Pt".to_string(),
+            size: 8,
+            fields: vec![field("x", 0, 2), field("y", 4, 2)],
+        };
+        let locals = crate::DebugLocals {
+            version: crate::DEBUG_LOCALS_VERSION,
+            functions: vec![crate::FuncLocals {
+                defined_index: 7,
+                locals: Vec::new(),
+                memory: vec![leaf("buf", 400, SymType::Int)],
+                arrays: Vec::new(),
+                this_slot: None,
+                pointers: vec![pointer("q", 404, Some(0), false)],
+                local_pointers: vec![
+                    crate::LocalPointer {
+                        wasm_index: 0,
+                        name: "v".to_string(),
+                        target: Some(0),
+                        by_ref: true,
+                    },
+                    crate::LocalPointer {
+                        wasm_index: 1,
+                        name: "p".to_string(),
+                        target: Some(1),
+                        by_ref: true,
+                    },
+                    crate::LocalPointer {
+                        wasm_index: 2,
+                        name: "r".to_string(),
+                        target: Some(0),
+                        by_ref: false,
+                    },
+                ],
+                frame: Some(crate::FrameLocals {
+                    slot: 5,
+                    memory: vec![
+                        leaf("trail[0]", 0, SymType::Int),
+                        leaf("trail[1]", 4, SymType::Int),
+                        leaf("pt.x", 16, SymType::Real),
+                        leaf("pt.y", 20, SymType::Real),
+                    ],
+                    arrays: vec![ArraySym {
+                        path: "trail".to_string(),
+                        address: 0,
+                        dimensions: vec![(0, 1)],
+                        total_elements: 2,
+                        elem_size: 4,
+                        elem_ty: Some(SymType::Int),
+                        global: false,
+                        elem_type: None,
+                    }],
+                    pointers: vec![pointer("link", 8, Some(1), false)],
+                }),
+            }],
+            types: vec![
+                TypeDesc::Scalar(SymType::Int),
+                pt,
+                TypeDesc::Scalar(SymType::Real),
+            ],
+        };
+        let info = DebugInfo::from_wasm(&module_with_sections(&[(
+            crate::DEBUG_LOCALS_SECTION,
+            &locals.to_msgpack(),
+        )]));
+        assert!(info.problems().is_empty(), "{:?}", info.problems());
+        let mut mem = vec![0u8; 1100];
+        let mut put = |at: usize, v: u32| mem[at..at + 4].copy_from_slice(&v.to_le_bytes());
+        put(200, 9);
+        put(304, 2.5f32.to_bits());
+        put(400, 3);
+        put(404, 200);
+        put(1000, 5);
+        put(1004, 6);
+        put(1008, 300);
+        put(1016, 4.0f32.to_bits());
+        (info, mem)
+    }
+
+    #[test]
+    fn a_frame_s_pointers_are_read_from_its_locals() {
+        let (info, mem) = frame_module();
+        let live = &mut Frame {
+            mem: &mem,
+            locals: vec![(0, 200), (1, 300), (2, 0), (5, 1000)],
+        };
+        assert_eq!(
+            at(info.follow_local(7, "v", None, live)),
+            (200, SymType::Int)
+        );
+        assert_eq!(
+            at(info.follow_local(7, "p.y", None, live)),
+            (304, SymType::Real)
+        );
+        assert_eq!(
+            info.follow_local(7, "r", None, live),
+            Some(Place::Null {
+                pointer: "r".to_string()
+            })
+        );
+        assert_eq!(
+            at(info.follow_local(7, "buf", None, live)),
+            (400, SymType::Int)
+        );
+        assert_eq!(
+            at(info.follow_local(7, "q^", None, live)),
+            (200, SymType::Int)
+        );
+        assert_eq!(info.follow_local(8, "v", None, live), None, "no such frame");
+    }
+
+    /// The locals in the frame of one call: at the frame's start plus their
+    /// offset, with the start the caller read from the frame's slot. Without
+    /// it they are not placed at all.
+    #[test]
+    fn a_recursive_call_s_locals_are_placed_from_its_frame() {
+        let (info, mem) = frame_module();
+        let live = &mut Frame {
+            mem: &mem,
+            locals: vec![(5, 1000)],
+        };
+        assert_eq!(
+            at(info.follow_local(7, "trail[1]", Some(1000), live)),
+            (1004, SymType::Int)
+        );
+        assert_eq!(
+            at(info.follow_local(7, "link^.x", Some(1000), live)),
+            (300, SymType::Real)
+        );
+        assert_eq!(info.follow_local(7, "trail[1]", None, live), None);
+        let loc = |path: &str| info.resolve_in_frame(7, path, 1000).map(|l| l.address);
+        assert_eq!(loc("pt.y"), Some(1020));
+        assert_eq!(loc("trail[0]"), Some(1000));
+        assert_eq!(loc("TRAIL[1]"), Some(1004));
+        assert_eq!(loc("trail[2]"), None, "past the array");
+        assert_eq!(loc("buf"), None, "a static local is not in the frame");
+        assert_eq!(
+            info.resolve_in_frame(7, "pt.y", u32::MAX),
+            None,
+            "past the memory"
+        );
+    }
+
+    #[test]
+    fn a_caret_is_an_accessor() {
+        assert_eq!(
+            tokenize_accessors("^.x[1]^").unwrap(),
+            vec![
+                Access::Deref,
+                Access::Field("x".to_string()),
+                Access::Index(1),
+                Access::Deref
+            ]
+        );
+        assert_eq!(
+            stems("P1.a.next^.value"),
+            vec![
+                ("P1.a.next^.value", ""),
+                ("P1.a.next^", ".value"),
+                ("P1.a.next", "^.value"),
+                ("P1.a", ".next^.value"),
+                ("P1", ".a.next^.value"),
+            ]
+        );
+        assert!(stems("").is_empty());
     }
 }

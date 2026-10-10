@@ -628,12 +628,12 @@ fn a_frame_s_aggregate_locals_are_described(mut with_db: db::RootDatabase) {
     );
 }
 
-/// A recursive FUNCTION's aggregate locals are in the frame of each call,
-/// at an address the section cannot give: they are left out, where a static
-/// address would show every frame the innermost call's values. Its scalars
-/// are wasm locals, one set per frame, and stay described.
+/// A recursive FUNCTION's aggregate locals are in the frame of each call:
+/// not among the static ones, where an address would show every frame the
+/// innermost call's values, but in `frame`, at offsets from the call's own
+/// start. Its scalars are wasm locals, one set per frame.
 #[rstest]
-fn a_recursive_function_s_frame_locals_are_left_out(mut with_db: db::RootDatabase) {
+fn a_recursive_function_s_frame_locals_are_in_its_frame(mut with_db: db::RootDatabase) {
     let source = r#"
         FUNCTION FDepth : INT
         VAR_INPUT n : INT; END_VAR
@@ -679,6 +679,13 @@ fn a_recursive_function_s_frame_locals_are_left_out(mut with_db: db::RootDatabas
         frame.memory.is_empty() && frame.arrays.is_empty(),
         "no static address for a frame's array: {:?}",
         frame.memory.iter().map(|s| &s.path).collect::<Vec<_>>()
+    );
+    let in_frame = frame.frame.as_ref().expect("the frame of each call");
+    assert!(
+        in_frame.memory.iter().any(|s| s.path == "a[0]")
+            && in_frame.arrays.iter().any(|a| a.path == "a"),
+        "in the frame, by offset: {:?}",
+        in_frame.memory.iter().map(|s| &s.path).collect::<Vec<_>>()
     );
     assert!(
         frame.locals.iter().any(|l| l.name == "n"),
@@ -1305,6 +1312,7 @@ fn a_container_table_without_types_degrades_and_says_so() {
                 type_name: String::new(),
             },
         ],
+        pointers: vec![],
     };
     let wasm = wasm_with_debug_symbols(&table.to_msgpack());
     let info = DebugInfo::from_wasm(&wasm);
@@ -1331,4 +1339,355 @@ fn wasm_with_debug_symbols(payload: &[u8]) -> Vec<u8> {
         data: std::borrow::Cow::Borrowed(payload),
     });
     module.finish()
+}
+
+/// A program with every kind of pointer: a `REF_TO` variable, a `REF_TO`
+/// member of a STRUCT that points at itself, a VAR_IN_OUT and a `REF_TO`
+/// member of an instance, an array of `REF_TO`.
+const POINTERS: &str = r#"
+    TYPE Node : STRUCT
+        value : INT;
+        next : REF_TO Node;
+    END_STRUCT; END_TYPE
+
+    TYPE Pt : STRUCT x : REAL; y : REAL; END_STRUCT; END_TYPE
+
+    FUNCTION_BLOCK Motor
+    VAR_IN_OUT speed : INT; END_VAR
+    VAR_EXTERNAL hold : Pt; END_VAR
+    VAR target : REF_TO Pt; count : INT; END_VAR
+        speed := speed + 1;
+        count := count + 1;
+        target := REF(hold);
+    END_FUNCTION_BLOCK
+
+    FUNCTION Bump : INT
+    VAR_IN_OUT v : INT; p : Pt; END_VAR
+    VAR_INPUT r : REF_TO INT; END_VAR
+        v := v + 1;
+        p.x := p.x + 1.0;
+        IF r <> NULL THEN r^ := r^ + 1; END_IF;
+        Bump := v;
+    END_FUNCTION
+
+    PROGRAM Main
+    VAR
+        a : Node; b : Node;
+        head : REF_TO Node;
+        pt : Pt;
+        rp : REF_TO Pt;
+        ri : REF_TO INT;
+        refs : ARRAY[0..2] OF REF_TO INT;
+        n : INT;
+        m : Motor;
+    END_VAR
+        a.value := 1; b.value := 2;
+        a.next := REF(b);
+        head := REF(a);
+        pt.y := 2.5;
+        rp := REF(pt);
+        ri := REF(n);
+        refs[1] := REF(n);
+        m(speed := n);
+        n := Bump(n, pt, ri);
+    END_PROGRAM
+
+    CONFIGURATION Cfg
+    VAR_GLOBAL hold : Pt; END_VAR
+        RESOURCE Res ON CPU
+            TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+            PROGRAM P1 WITH T : Main;
+        END_RESOURCE
+    END_CONFIGURATION
+"#;
+
+/// Every pointer in memory is listed with what it points at (v9). A
+/// `REF_TO` was dropped from the tables, and a `REF_TO` member was "opaque":
+/// a debugger could not follow `head^`, nor tell what `m.speed` was bound
+/// to.
+#[rstest]
+fn pointers_are_listed_with_their_targets(mut with_db: db::RootDatabase) {
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, POINTERS);
+    let table = read_debug_symbols(&wasm);
+    assert_eq!(table.version, debug_format::DEBUG_SYMBOLS_VERSION);
+    let pointer = |path: &str| {
+        table
+            .pointers
+            .iter()
+            .find(|p| p.path == path)
+            .unwrap_or_else(|| panic!("no pointer {path} in {:?}", table.pointers))
+    };
+    let struct_name = |id: Option<u32>| match &table.types[id.expect("a target") as usize] {
+        debug_format::TypeDesc::Struct { name, .. } => name.clone(),
+        other => panic!("not a struct: {other:?}"),
+    };
+
+    // The STRUCT that points at itself: its member's target is the STRUCT,
+    // whose member's target is the STRUCT, by one entry.
+    let next = pointer("P1.a.next");
+    assert_eq!(struct_name(next.target), "Node");
+    let debug_format::TypeDesc::Struct { fields, .. } = &table.types[next.target.unwrap() as usize]
+    else {
+        unreachable!()
+    };
+    let field = fields
+        .iter()
+        .find(|f| f.name == "next")
+        .expect("the next field");
+    assert_eq!(
+        table.types[field.ty as usize],
+        debug_format::TypeDesc::Opaque {
+            size: 4,
+            target: next.target,
+            by_ref: false,
+        }
+    );
+    assert_eq!(struct_name(pointer("P1.head").target), "Node");
+    assert_eq!(struct_name(pointer("P1.rp").target), "Pt");
+
+    // An instance's VAR_IN_OUT reads through, its REF_TO does not.
+    let speed = pointer("P1.m.speed");
+    assert!(speed.by_ref);
+    assert_eq!(
+        table.types[speed.target.unwrap() as usize],
+        debug_format::TypeDesc::Scalar(SymType::Int)
+    );
+    let target = pointer("P1.m.target");
+    assert!(!target.by_ref);
+    assert_eq!(struct_name(target.target), "Pt");
+
+    // An array of REF_TO: a descriptor whose element is a pointer.
+    let refs = table
+        .arrays
+        .iter()
+        .find(|a| a.path == "P1.refs")
+        .expect("the array's descriptor");
+    assert_eq!(refs.elem_ty, None);
+    let debug_format::TypeDesc::Opaque {
+        size: 4,
+        target: Some(elem),
+        by_ref: false,
+    } = table.types[refs.elem_type.unwrap() as usize]
+    else {
+        panic!("the element is a pointer");
+    };
+    assert_eq!(
+        table.types[elem as usize],
+        debug_format::TypeDesc::Scalar(SymType::Int)
+    );
+
+    // A pointer is not a symbol: it has no type of its own to decode.
+    assert!(table.symbols.iter().all(|s| s.path != "P1.head"));
+    assert!(
+        table.pointers.windows(2).all(|w| w[0].path < w[1].path),
+        "sorted"
+    );
+}
+
+/// The pointers a FUNCTION holds in wasm locals, and the frame of a
+/// recursive function (`debug-locals` v5). A `REF_TO` input was listed as
+/// an INT, and a recursive function's arrays and structs not at all.
+#[rstest]
+fn a_function_s_pointers_and_a_recursive_frame_are_described(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE Pt : STRUCT x : REAL; y : REAL; END_STRUCT; END_TYPE
+
+        FUNCTION Bump : INT
+        VAR_IN_OUT v : INT; p : Pt; END_VAR
+        VAR_INPUT r : REF_TO INT; END_VAR
+        VAR q : REF_TO Pt; END_VAR
+            q := REF(p);
+            v := v + 1;
+            IF r <> NULL THEN r^ := r^ + 1; END_IF;
+            Bump := v;
+        END_FUNCTION
+
+        FUNCTION Depth : INT
+        VAR_INPUT n : INT; END_VAR
+        VAR trail : ARRAY[0..3] OF INT; pt : Pt; END_VAR
+            trail[0] := n;
+            pt.x := n;
+            IF n > 0 THEN Depth := Depth(n - 1) + 1; ELSE Depth := 0; END_IF;
+        END_FUNCTION
+
+        PROGRAM P
+        VAR n : INT; pt : Pt; END_VAR
+            n := Bump(n, pt, NULL) + Depth(2);
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    let read_section = |name: &str| super::expect_section(&wasm, name);
+    let funcs =
+        debug_format::DebugFunctions::from_msgpack(read_section("debug-functions")).unwrap();
+    let locals = debug_format::DebugLocals::from_msgpack(read_section("debug-locals")).unwrap();
+    assert_eq!(locals.version, debug_format::DEBUG_LOCALS_VERSION);
+    let frame = |name: &str| -> &debug_format::FuncLocals {
+        let idx = funcs
+            .functions
+            .iter()
+            .find(|f| f.name == name)
+            .unwrap_or_else(|| panic!("no function named {name}"))
+            .defined_index;
+        locals
+            .functions
+            .iter()
+            .find(|f| f.defined_index == idx)
+            .unwrap_or_else(|| panic!("no locals table for {name}"))
+    };
+
+    let bump = frame("Bump");
+    let ptr = |name: &str| {
+        bump.local_pointers
+            .iter()
+            .find(|p| p.name == name)
+            .unwrap_or_else(|| panic!("no pointer {name} in {:?}", bump.local_pointers))
+    };
+    let is = |id: Option<u32>, desc: &debug_format::TypeDesc| {
+        &locals.types[id.expect("a target") as usize] == desc
+    };
+    assert!(
+        ptr("v").by_ref
+            && is(
+                ptr("v").target,
+                &debug_format::TypeDesc::Scalar(SymType::Int)
+            )
+    );
+    assert!(ptr("p").by_ref);
+    assert!(
+        matches!(&locals.types[ptr("p").target.unwrap() as usize], debug_format::TypeDesc::Struct { name, .. } if name == "Pt")
+    );
+    assert!(
+        !ptr("r").by_ref
+            && is(
+                ptr("r").target,
+                &debug_format::TypeDesc::Scalar(SymType::Int)
+            )
+    );
+    assert!(!ptr("q").by_ref, "a REF_TO local");
+    assert!(
+        bump.locals.iter().all(|l| l.name != "r" && l.name != "q"),
+        "a pointer is not an integer local: {:?}",
+        bump.locals
+    );
+    assert!(
+        bump.local_pointers
+            .windows(2)
+            .all(|w| w[0].wasm_index < w[1].wasm_index),
+        "by slot"
+    );
+    assert!(bump.frame.is_none(), "Bump does not recurse");
+
+    let depth = frame("Depth");
+    assert!(
+        depth.memory.is_empty() && depth.arrays.is_empty(),
+        "nothing static"
+    );
+    let frame = depth.frame.as_ref().expect("a recursive function's frame");
+    let by = |p: &str| {
+        frame
+            .memory
+            .iter()
+            .find(|s| s.path == p)
+            .unwrap_or_else(|| panic!("no {p} in {:?}", frame.memory))
+    };
+    assert_eq!(
+        by("trail[1]").address,
+        by("trail[0]").address + 4,
+        "offsets in the frame"
+    );
+    assert_eq!(by("pt.y").address, by("pt.x").address + 4);
+    assert!(frame.arrays.iter().any(|a| a.path == "trail"));
+    assert!(
+        depth.locals.iter().all(|l| l.wasm_index != frame.slot),
+        "the frame's slot is no declared local"
+    );
+}
+
+/// Pointers followed on a running module: `head^.value` through the
+/// `REF_TO`, `m.speed` through the VAR_IN_OUT, an element of an array of
+/// `REF_TO`, and a pointer's own value as the variable it points at.
+#[rstest]
+fn pointers_are_followed_on_a_running_module(mut with_db: db::RootDatabase) {
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, POINTERS);
+    let mut plc = TestPlc::load(&wasm).expect("load");
+    plc.run(1).expect("scan");
+    let info = DebugInfo::from_wasm(&wasm);
+    assert!(info.problems().is_empty(), "{:?}", info.problems());
+    let live = &mut |address: u32, size: u32| plc.read_bytes(address, size as usize).ok();
+    let value = |place: Option<debug_format::Place>| match place {
+        Some(debug_format::Place::Value(loc)) => loc.decode(
+            &plc.read_bytes(loc.address, loc.size as usize)
+                .expect("in memory"),
+        ),
+        other => panic!("not a value: {other:?}"),
+    };
+    let n = plc.read_var(&info, "P1.n").expect("n");
+
+    assert_eq!(value(info.follow("P1.head^.value", live)), VarValue::I16(1));
+    assert_eq!(
+        value(info.follow("P1.head^.next^.value", live)),
+        VarValue::I16(2)
+    );
+    assert_eq!(
+        value(info.follow("P1.a.next^.value", live)),
+        VarValue::I16(2)
+    );
+    assert_eq!(
+        info.follow("P1.head^.next^.next^.value", live),
+        Some(debug_format::Place::Null {
+            pointer: "P1.head^.next^.next".to_string()
+        }),
+        "b.next is null"
+    );
+    assert_eq!(value(info.follow("P1.m.speed", live)), n, "bound to n");
+    assert_eq!(value(info.follow("P1.ri^", live)), n);
+    assert_eq!(value(info.follow("P1.refs[1]^", live)), n);
+    assert_eq!(
+        info.follow("P1.refs[0]^", live),
+        Some(debug_format::Place::Null {
+            pointer: "P1.refs[0]".to_string()
+        })
+    );
+    assert_eq!(value(info.follow("P1.rp^.y", live)), VarValue::F32(2.5));
+    assert_eq!(
+        value(info.follow("P1.m.target^.x", live)),
+        VarValue::F32(0.0),
+        "the global"
+    );
+
+    let mut points_at = |path: &str| match info.follow(path, live) {
+        Some(debug_format::Place::Pointer(p)) => p.variable,
+        other => panic!("not a pointer: {other:?}"),
+    };
+    assert_eq!(points_at("P1.head").as_deref(), Some("P1.a"));
+    assert_eq!(points_at("P1.a.next").as_deref(), Some("P1.b"));
+    assert_eq!(points_at("P1.ri").as_deref(), Some("P1.n"));
+    assert_eq!(points_at("P1.rp").as_deref(), Some("P1.pt"));
+    assert_eq!(points_at("P1.m.target").as_deref(), Some("hold"));
+    let n_at = info.resolve("P1.n").unwrap().address;
+    assert_eq!(info.variable_at(n_at).as_deref(), Some("P1.n"));
+}
+
+/// A bare code offset resolves to its function: the one `line_to_pc` places
+/// a line in, and nothing before the first body.
+#[rstest]
+fn a_code_offset_resolves_to_its_function(mut with_db: db::RootDatabase) {
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, POINTERS);
+    let info = DebugInfo::from_wasm(&wasm);
+    let lines = info.breakable_lines();
+    assert!(!lines.is_empty());
+    for (file, line) in lines {
+        let (defined, pc) = info
+            .line_to_pc(file, line)
+            .expect("a pc for a breakable line");
+        assert_eq!(info.function_at(pc), Some(defined), "line {line}");
+    }
+    assert_eq!(info.function_at(0), None);
 }

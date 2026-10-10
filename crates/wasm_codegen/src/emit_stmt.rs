@@ -1514,7 +1514,7 @@ fn emit_fb_field_write(
                 dst_mem: 0,
             });
         }
-        MirType::Void => {}
+        MirType::Void | MirType::RefTarget(_) => {}
     }
 }
 
@@ -1586,7 +1586,7 @@ fn emit_fb_field_read(
                 dst_mem: 0,
             });
         }
-        MirType::Void => {}
+        MirType::Void | MirType::RefTarget(_) => {}
     }
 }
 

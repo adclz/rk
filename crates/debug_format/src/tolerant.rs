@@ -22,7 +22,7 @@ use std::fmt;
 
 /// Decode `bytes` as `rmp_serde::from_slice` does, skipping the trailing
 /// fields of any record that has more than `T` declares.
-pub(crate) fn from_slice<'de, T: de::Deserialize<'de>>(
+pub fn from_slice<'de, T: de::Deserialize<'de>>(
     bytes: &'de [u8],
 ) -> Result<T, rmp_serde::decode::Error> {
     let mut de = rmp_serde::Deserializer::from_read_ref(bytes);

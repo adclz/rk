@@ -35,6 +35,40 @@ pub enum MirType {
 
     /// Void (for functions with no return value).
     Void,
+
+    /// What a `REF_TO` points at, for the debug tables. Never the type of a
+    /// value: it is only the pointee of a [`MirType::Pointer`], where
+    /// lowering reads it as it reads `Void`, an address typed where it is
+    /// dereferenced.
+    RefTarget(MirRefTarget),
+}
+
+/// The target of a `REF_TO`, as the debug tables describe it.
+///
+/// Any two compare equal and hash alike. Lowering never typed a `REF_TO`'s
+/// pointee, so every `REF_TO` was one type to it, and the code it emits
+/// must not come to depend on what a debugger is told.
+#[derive(Debug, Clone)]
+pub enum MirRefTarget {
+    Type(Box<MirType>),
+    /// A STRUCT or an instance that was being lowered when the reference to
+    /// it was (`next : REF_TO Node`, in `Node`), by its name: lowering it
+    /// again would not end.
+    Enclosing(Ident),
+    /// A target lowering has no type for.
+    Unknown,
+}
+
+impl PartialEq for MirRefTarget {
+    fn eq(&self, _: &Self) -> bool {
+        true
+    }
+}
+
+impl Eq for MirRefTarget {}
+
+impl std::hash::Hash for MirRefTarget {
+    fn hash<H: std::hash::Hasher>(&self, _: &mut H) {}
 }
 
 /// Concrete elementary types  every ANY_* has been resolved to one of these.
@@ -157,7 +191,7 @@ impl MirType {
             MirType::Enum(e) => e.storage.size_bytes(),
             MirType::Subrange(s) => s.base.size_bytes(),
             MirType::Pointer(_) => layout::POINTER.size as u32,
-            MirType::Void => 0,
+            MirType::Void | MirType::RefTarget(_) => 0,
         }
     }
 
@@ -171,7 +205,7 @@ impl MirType {
             MirType::Enum(e) => e.storage.alignment(),
             MirType::Subrange(s) => s.base.alignment(),
             MirType::Pointer(_) => layout::POINTER.align,
-            MirType::Void => 1,
+            MirType::Void | MirType::RefTarget(_) => 1,
         }
     }
 
