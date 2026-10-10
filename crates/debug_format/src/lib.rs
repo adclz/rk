@@ -95,6 +95,22 @@ pub struct ContainerSym {
 /// Index into a `types` table.
 pub type TypeId = u32;
 
+/// Which type table a [`TypeRef`] indexes: the module's
+/// ([`DebugSymbols::types`]) or the frames' ([`DebugLocals::types`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Table {
+    Module,
+    Frames,
+}
+
+/// A type by its table and id: what a resolved location carries when its
+/// entry says more than its [`SymType`] does, an enumeration's variants.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TypeRef {
+    pub table: Table,
+    pub id: TypeId,
+}
+
 /// The layout of one type, enough to locate any member of a value of that
 /// type from its base address. Deduplicated: one entry per distinct layout.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

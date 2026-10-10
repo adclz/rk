@@ -103,6 +103,10 @@ pub struct VarLoc {
     /// that value's, and this says which of their bits are this one's.
     /// [`decode`](Self::decode) and [`encode`](Self::encode) account for it.
     pub bits: Option<crate::SymBits>,
+    /// The enumeration this is a value of, when it is one:
+    /// [`DebugInfo::decode_at`] names the variant, where
+    /// [`decode`](Self::decode) gives the integer.
+    pub named: Option<crate::TypeRef>,
 }
 
 impl VarLoc {
@@ -462,21 +466,19 @@ impl DebugInfo {
     /// monitoring handle; `None` for a path that names nothing readable.
     pub fn resolve(&self, path: &str) -> Option<VarLoc> {
         if let Some(sym) = self.symbol(path) {
-            return Some(VarLoc {
-                address: sym.address,
-                size: sym.size,
-                ty: sym.ty,
-                global: sym.global,
-                bits: sym.bits,
-            });
+            return leaf_loc(sym, 0, crate::Table::Module);
         }
-        let (address, size, ty, global) = self.locate(path)?;
+        let (address, size, ty, global, named) = self.locate(path)?;
         Some(VarLoc {
             address,
             size,
             ty,
             global,
             bits: None,
+            named: named.map(|id| crate::TypeRef {
+                table: crate::Table::Module,
+                id,
+            }),
         })
     }
 
@@ -484,9 +486,9 @@ impl DebugInfo {
     /// through an array descriptor (`base + flat * stride`, bounds-checked)
     /// and the element's [`crate::TypeDesc`] for what follows, so
     /// `pts[7423].history[2].y` resolves without being enumerated.
-    fn locate(&self, path: &str) -> Option<(u32, u32, SymType, bool)> {
+    fn locate(&self, path: &str) -> Option<Located> {
         if let Some(sym) = self.symbol(path) {
-            return Some((sym.address, sym.size, sym.ty, sym.global));
+            return Some((sym.address, sym.size, sym.ty, sym.global, sym.named_type));
         }
         // `stem[...]…` — descriptor route. The stem is the dotted path of the
         // array itself; everything after the first `[` is accessors.
@@ -505,25 +507,23 @@ impl DebugInfo {
         let frame = self.frame_locals.get(&defined_index)?;
         let folded = fold_path(path);
         if let Some(sym) = frame.memory.iter().find(|s| fold_path(&s.path) == folded) {
-            return Some(VarLoc {
-                address: sym.address,
-                size: sym.size,
-                ty: sym.ty,
-                global: sym.global,
-                bits: sym.bits,
-            });
+            return leaf_loc(sym, 0, crate::Table::Frames);
         }
         let bracket = path.find('[')?;
         let (stem, rest) = path.split_at(bracket);
         let stem = fold_path(stem);
         let arr = frame.arrays.iter().find(|a| fold_path(&a.path) == stem)?;
-        let (address, size, ty, global) = locate_in_array(arr, rest, &self.local_types)?;
+        let (address, size, ty, global, named) = locate_in_array(arr, rest, &self.local_types)?;
         Some(VarLoc {
             address,
             size,
             ty,
             global,
             bits: None,
+            named: named.map(|id| crate::TypeRef {
+                table: crate::Table::Frames,
+                id,
+            }),
         })
     }
 
@@ -540,26 +540,41 @@ impl DebugInfo {
         let frame = self.frame_locals.get(&defined_index)?.frame.as_ref()?;
         let folded = fold_path(path);
         if let Some(sym) = frame.memory.iter().find(|s| fold_path(&s.path) == folded) {
-            return Some(VarLoc {
-                address: frame_base.checked_add(sym.address)?,
-                size: sym.size,
-                ty: sym.ty,
-                global: false,
-                bits: sym.bits,
-            });
+            return leaf_loc(sym, frame_base, crate::Table::Frames);
         }
         let bracket = path.find('[')?;
         let (stem, rest) = path.split_at(bracket);
         let stem = fold_path(stem);
         let arr = frame.arrays.iter().find(|a| fold_path(&a.path) == stem)?;
-        let (address, size, ty, _) = locate_in_array(arr, rest, &self.local_types)?;
+        let (address, size, ty, _, named) = locate_in_array(arr, rest, &self.local_types)?;
         Some(VarLoc {
             address: frame_base.checked_add(address)?,
             size,
             ty,
             global: false,
             bits: None,
+            named: named.map(|id| crate::TypeRef {
+                table: crate::Table::Frames,
+                id,
+            }),
         })
+    }
+
+    /// Decode the bytes read at `loc`, naming the variant when `loc` is an
+    /// enumeration's: [`VarLoc::decode`] gives the integer it is stored as.
+    pub fn decode_at(&self, loc: &VarLoc, bytes: &[u8]) -> VarValue {
+        let raw = loc.decode(bytes);
+        match loc.named {
+            Some(crate::TypeRef { table, id }) => name_variant(self.table(table), id, raw),
+            None => raw,
+        }
+    }
+
+    fn table(&self, table: crate::Table) -> &[crate::TypeDesc] {
+        match table {
+            crate::Table::Module => &self.types,
+            crate::Table::Frames => &self.local_types,
+        }
     }
 
     // ----- Following pointers ---------------------------------------------
@@ -579,7 +594,7 @@ impl DebugInfo {
     pub fn follow(&self, path: &str, live: &mut dyn Live) -> Option<Place> {
         let (cursor, rest) = self.module_stem(path)?;
         let toks = tokenize_accessors(rest)?;
-        self.walk(&self.types, cursor, &toks, live)
+        self.walk(&self.types, crate::Table::Module, cursor, &toks, live)
     }
 
     /// [`follow`](Self::follow) among the locals of one function's frame:
@@ -595,7 +610,7 @@ impl DebugInfo {
     ) -> Option<Place> {
         let (cursor, rest) = self.frame_stem(defined_index, path, frame_base)?;
         let toks = tokenize_accessors(rest)?;
-        self.walk(&self.local_types, cursor, &toks, live)
+        self.walk(&self.local_types, crate::Table::Frames, cursor, &toks, live)
     }
 
     /// The variable at `address`, when a table names one: a leaf, an element
@@ -730,7 +745,10 @@ impl DebugInfo {
         for (stem, rest) in stems(path) {
             let folded = fold_path(stem);
             if let Some(&i) = self.symbol_index.get(&folded) {
-                return Some((Cursor::Value(leaf_loc(&self.symbols[i], 0)?), rest));
+                return Some((
+                    Cursor::Value(leaf_loc(&self.symbols[i], 0, crate::Table::Module)?),
+                    rest,
+                ));
             }
             if let Some(&i) = self.pointer_index.get(&folded) {
                 return Some((pointer_cursor(&self.pointers[i], 0)?, rest));
@@ -754,7 +772,7 @@ impl DebugInfo {
             let folded = fold_path(stem);
             let named = |p: &str| fold_path(p) == folded;
             if let Some(s) = locals.memory.iter().find(|s| named(&s.path)) {
-                return Some((Cursor::Value(leaf_loc(s, 0)?), rest));
+                return Some((Cursor::Value(leaf_loc(s, 0, crate::Table::Frames)?), rest));
             }
             if let Some(p) = locals.pointers.iter().find(|p| named(&p.path)) {
                 return Some((pointer_cursor(p, 0)?, rest));
@@ -774,7 +792,10 @@ impl DebugInfo {
             }
             if let (Some(base), Some(frame)) = (frame_base, &locals.frame) {
                 if let Some(s) = frame.memory.iter().find(|s| named(&s.path)) {
-                    return Some((Cursor::Value(leaf_loc(s, base)?), rest));
+                    return Some((
+                        Cursor::Value(leaf_loc(s, base, crate::Table::Frames)?),
+                        rest,
+                    ));
                 }
                 if let Some(p) = frame.pointers.iter().find(|p| named(&p.path)) {
                     return Some((pointer_cursor(p, base)?, rest));
@@ -791,6 +812,7 @@ impl DebugInfo {
     fn walk<'a>(
         &self,
         types: &[crate::TypeDesc],
+        table: crate::Table,
         mut cursor: Cursor<'a>,
         toks: &[Access],
         live: &mut dyn Live,
@@ -809,7 +831,7 @@ impl DebugInfo {
                     Access::Deref,
                 ) => {
                     pos += 1;
-                    match deref(types, at, target, global, &path, live)? {
+                    match deref(types, table, at, target, global, &path, live)? {
                         Ok(next) => next,
                         Err(stop) => return Some(stop),
                     }
@@ -825,7 +847,7 @@ impl DebugInfo {
                         path,
                     },
                     _,
-                ) => match deref(types, at, target, global, &path, live)? {
+                ) => match deref(types, table, at, target, global, &path, live)? {
                     Ok(next) => next,
                     Err(stop) => return Some(stop),
                 },
@@ -847,6 +869,7 @@ impl DebugInfo {
                     pos += 1;
                     typed(
                         types,
+                        table,
                         address.checked_add(f.offset)?,
                         f.ty,
                         global,
@@ -875,6 +898,7 @@ impl DebugInfo {
                     let flat = u32::try_from(flat).ok()?;
                     typed(
                         types,
+                        table,
                         address.checked_add(flat.checked_mul(*elem_size)?)?,
                         *elem,
                         global,
@@ -895,13 +919,14 @@ impl DebugInfo {
                     let address = address.checked_add(flat.checked_mul(arr.elem_size)?)?;
                     let path = crate::element_path(&path, flat, &arr.dimensions);
                     match (arr.elem_type, arr.elem_ty) {
-                        (Some(ty), _) => typed(types, address, ty, global, path)?,
+                        (Some(ty), _) => typed(types, table, address, ty, global, path)?,
                         (None, Some(ty)) => Cursor::Value(VarLoc {
                             address,
                             size: ty.size_bytes(),
                             ty,
                             global,
                             bits: None,
+                            named: None,
                         }),
                         (None, None) => return None,
                     }
@@ -911,13 +936,14 @@ impl DebugInfo {
                 _ => return None,
             };
         }
-        self.finish(types, cursor, live)
+        self.finish(types, table, cursor, live)
     }
 
     /// Where a walk ends.
     fn finish(
         &self,
         types: &[crate::TypeDesc],
+        table: crate::Table,
         cursor: Cursor<'_>,
         live: &mut dyn Live,
     ) -> Option<Place> {
@@ -934,8 +960,8 @@ impl DebugInfo {
                 by_ref: true,
                 global,
                 path,
-            } => match deref(types, at, target, global, &path, live)? {
-                Ok(next) => self.finish(types, next, live),
+            } => match deref(types, table, at, target, global, &path, live)? {
+                Ok(next) => self.finish(types, table, next, live),
                 Err(stop) => Some(stop),
             },
             Cursor::Pointer {
@@ -1196,13 +1222,14 @@ enum Cursor<'a> {
 
 /// A leaf's location, `base` added to its address: 0 for a static one, the
 /// frame's start for one in the frame of a call.
-fn leaf_loc(sym: &Symbol, base: u32) -> Option<VarLoc> {
+fn leaf_loc(sym: &Symbol, base: u32, table: crate::Table) -> Option<VarLoc> {
     Some(VarLoc {
         address: base.checked_add(sym.address)?,
         size: sym.size,
         ty: sym.ty,
         global: sym.global,
         bits: sym.bits,
+        named: sym.named_type.map(|id| crate::TypeRef { table, id }),
     })
 }
 
@@ -1230,6 +1257,7 @@ fn array_cursor(arr: &crate::ArraySym, base: u32) -> Option<Cursor<'_>> {
 /// at it.
 fn typed<'a>(
     types: &[crate::TypeDesc],
+    table: crate::Table,
     address: u32,
     ty: crate::TypeId,
     global: bool,
@@ -1242,6 +1270,7 @@ fn typed<'a>(
             ty: *t,
             global,
             bits: None,
+            named: None,
         }),
         crate::TypeDesc::Enum { storage, .. } => Cursor::Value(VarLoc {
             address,
@@ -1249,6 +1278,7 @@ fn typed<'a>(
             ty: *storage,
             global,
             bits: None,
+            named: Some(crate::TypeRef { table, id: ty }),
         }),
         crate::TypeDesc::Opaque {
             size: 4,
@@ -1286,6 +1316,7 @@ fn held(at: PointerAt, live: &mut dyn Live) -> Option<u32> {
 /// path stops at. `None` for a pointer whose target has no type.
 fn deref<'a>(
     types: &[crate::TypeDesc],
+    table: crate::Table,
     at: PointerAt,
     target: Option<crate::TypeId>,
     global: bool,
@@ -1300,6 +1331,7 @@ fn deref<'a>(
     }
     Some(Ok(typed(
         types,
+        table,
         address,
         target?,
         global,
@@ -1480,11 +1512,15 @@ pub fn encode(ty: SymType, value: VarValue) -> Result<Vec<u8>, TypeMismatch> {
 /// member of it: `base + flat * stride`, bounds-checked, then the element's
 /// [`crate::TypeDesc`] in `types` for what follows. `types` is the table of
 /// the section `arr` came from.
+/// What a path locates: address, size, type, whether a global, and the
+/// enumeration it is a value of.
+type Located = (u32, u32, SymType, bool, Option<crate::TypeId>);
+
 fn locate_in_array(
     arr: &crate::ArraySym,
     rest: &str,
     types: &[crate::TypeDesc],
-) -> Option<(u32, u32, SymType, bool)> {
+) -> Option<Located> {
     let toks = tokenize_accessors(rest)?;
     let mut pos = 0;
     let flat = flatten_indices(&arr.dimensions, &toks, &mut pos)?;
@@ -1493,9 +1529,13 @@ fn locate_in_array(
         .checked_add(u32::try_from(flat).ok()?.checked_mul(arr.elem_size)?)?;
     if pos == toks.len() {
         // The element itself: readable only when scalar — a whole
-        // aggregate has no single `VarValue`.
+        // aggregate has no single `VarValue`. An enumeration's variants are
+        // in its entry, when the descriptor names one.
         let t = arr.elem_ty?;
-        return Some((addr, arr.elem_size, t, arr.global));
+        let named = arr
+            .elem_type
+            .filter(|id| matches!(types.get(*id as usize), Some(crate::TypeDesc::Enum { .. })));
+        return Some((addr, arr.elem_size, t, arr.global, named));
     }
     // Members of the element: walk its layout in the type table.
     let mut ty_id = arr.elem_type?;
@@ -1503,7 +1543,7 @@ fn locate_in_array(
         match types.get(ty_id as usize)? {
             crate::TypeDesc::Scalar(t) => {
                 // Reached a leaf; any leftover accessor is a bad path.
-                return (pos == toks.len()).then(|| (addr, t.size_bytes(), *t, arr.global));
+                return (pos == toks.len()).then(|| (addr, t.size_bytes(), *t, arr.global, None));
             }
             crate::TypeDesc::Struct { fields, .. } => {
                 let Access::Field(name) = toks.get(pos)? else {
@@ -1528,8 +1568,15 @@ fn locate_in_array(
             }
             // An enum is a leaf, stored as its underlying integer.
             crate::TypeDesc::Enum { storage, .. } => {
-                return (pos == toks.len())
-                    .then(|| (addr, storage.size_bytes(), *storage, arr.global));
+                return (pos == toks.len()).then(|| {
+                    (
+                        addr,
+                        storage.size_bytes(),
+                        *storage,
+                        arr.global,
+                        Some(ty_id),
+                    )
+                });
             }
             // A pointer: locating THROUGH it needs a live dereference.
             crate::TypeDesc::Opaque { .. } => return None,
@@ -1544,9 +1591,15 @@ fn decode_named(types: &[crate::TypeDesc], sym: &Symbol, bytes: &[u8]) -> VarVal
         Some(bits) => decode(sym.ty, &bits.extract(bytes)),
         None => decode(sym.ty, bytes),
     };
-    let Some(id) = sym.named_type else {
-        return raw;
-    };
+    match sym.named_type {
+        Some(id) => name_variant(types, id, raw),
+        None => raw,
+    }
+}
+
+/// `raw` as a variant of the enumeration `id` is in `types`; `raw` itself
+/// when `id` is no enumeration or `raw` no integer.
+fn name_variant(types: &[crate::TypeDesc], id: crate::TypeId, raw: VarValue) -> VarValue {
     let Some(crate::TypeDesc::Enum { name, variants, .. }) = types.get(id as usize) else {
         return raw;
     };
@@ -2181,6 +2234,16 @@ mod follow_tests {
                     global: false,
                     elem_type: Some(0),
                 },
+                ArraySym {
+                    path: "P1.lamps".to_string(),
+                    address: 400,
+                    dimensions: vec![(0, 3)],
+                    total_elements: 4,
+                    elem_size: 4,
+                    elem_ty: Some(SymType::Int),
+                    global: false,
+                    elem_type: Some(7),
+                },
             ],
             types: vec![
                 node,
@@ -2190,6 +2253,11 @@ mod follow_tests {
                 opaque(Some(1), false),
                 pt,
                 TypeDesc::Scalar(SymType::Real),
+                TypeDesc::Enum {
+                    name: "Lamp".to_string(),
+                    storage: SymType::Int,
+                    variants: vec![("Off".to_string(), 0), ("On".to_string(), 1)],
+                },
             ],
             containers: vec![
                 container("P1.a", 100, "Node"),
@@ -2232,7 +2300,40 @@ mod follow_tests {
         put(200, 42);
         put(300, 1.5f32.to_bits());
         put(304, 2.5f32.to_bits());
+        put(404, 1);
         (info, mem)
+    }
+
+    /// An element of an array of enumerations reads by its variant: the
+    /// descriptor names the enumeration, and `decode_at` its variants. It
+    /// read as its integer, the location carrying no table entry.
+    #[test]
+    fn an_enum_element_reads_by_its_variant() {
+        let (info, mem) = module();
+        let on = info.resolve("P1.lamps[1]").expect("an element");
+        assert_eq!(
+            on.named,
+            Some(crate::TypeRef {
+                table: crate::Table::Module,
+                id: 7
+            })
+        );
+        let bytes = &mem[404..408];
+        assert_eq!(on.decode(bytes), VarValue::I16(1), "the integer");
+        assert_eq!(
+            info.decode_at(&on, bytes),
+            VarValue::Enum {
+                type_name: "Lamp".to_string(),
+                variant: Some("On".to_string()),
+                raw: 1,
+            }
+        );
+        let live = &mut reader(&mem);
+        let Some(Place::Value(through)) = info.follow("P1.lamps[1]", live) else {
+            panic!("a value");
+        };
+        assert_eq!(through.named, on.named, "followed, the same");
+        assert_eq!(info.resolve("P1.a.value").unwrap().named, None, "an INT");
     }
 
     fn reader(mem: &[u8]) -> impl FnMut(u32, u32) -> Option<Vec<u8>> + '_ {
@@ -2474,6 +2575,10 @@ mod follow_tests {
                     memory: vec![
                         leaf("trail[0]", 0, SymType::Int),
                         leaf("trail[1]", 4, SymType::Int),
+                        Symbol {
+                            named_type: Some(3),
+                            ..leaf("gear", 12, SymType::Int)
+                        },
                         leaf("pt.x", 16, SymType::Real),
                         leaf("pt.y", 20, SymType::Real),
                     ],
@@ -2497,6 +2602,11 @@ mod follow_tests {
                 TypeDesc::Scalar(SymType::Int),
                 pt,
                 TypeDesc::Scalar(SymType::Real),
+                TypeDesc::Enum {
+                    name: "Gear".to_string(),
+                    storage: SymType::Int,
+                    variants: vec![("Low".to_string(), 0), ("High".to_string(), 1)],
+                },
             ],
         };
         let info = DebugInfo::from_wasm(&module_with_sections(&[(
@@ -2574,6 +2684,26 @@ mod follow_tests {
         assert_eq!(loc("TRAIL[1]"), Some(1004));
         assert_eq!(loc("trail[2]"), None, "past the array");
         assert_eq!(loc("buf"), None, "a static local is not in the frame");
+        // An enumeration in the frame names its variant from the frames'
+        // table, not the module's.
+        let gear = info
+            .resolve_in_frame(7, "gear", 1000)
+            .expect("the enum local");
+        assert_eq!(
+            gear.named,
+            Some(crate::TypeRef {
+                table: crate::Table::Frames,
+                id: 3
+            })
+        );
+        assert_eq!(
+            info.decode_at(&gear, &1i32.to_le_bytes()),
+            VarValue::Enum {
+                type_name: "Gear".to_string(),
+                variant: Some("High".to_string()),
+                raw: 1,
+            }
+        );
         assert_eq!(
             info.resolve_in_frame(7, "pt.y", u32::MAX),
             None,

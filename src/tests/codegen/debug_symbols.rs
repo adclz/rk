@@ -1730,3 +1730,131 @@ fn a_code_offset_resolves_to_its_function(mut with_db: db::RootDatabase) {
     }
     assert_eq!(info.function_at(0), None);
 }
+
+/// An enumeration reached through an element or a field reads by its
+/// variant: the descriptor and the field name their entry, which carries
+/// the variants. It read as its integer, where a plain variable read `On`.
+#[rstest]
+fn an_enum_element_reads_by_its_variant(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE Lamp : (Off, On); END_TYPE
+        TYPE Gear : (Low, High); END_TYPE
+        TYPE Rec : STRUCT mode : Gear; n : DINT; END_STRUCT; END_TYPE
+
+        PROGRAM P
+        VAR
+            lamps : ARRAY[0..3] OF Lamp;
+            recs : ARRAY[0..1] OF Rec;
+            lamp : Lamp;
+        END_VAR
+            lamps[3] := Lamp#On;
+            recs[1].mode := Gear#High;
+            lamp := Lamp#On;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    let mut plc = TestPlc::load(&wasm).expect("load");
+    plc.run(1).expect("scan");
+    let info = DebugInfo::from_wasm(&wasm);
+    let variant = |path: &str| match plc.read_var(&info, path) {
+        Some(VarValue::Enum {
+            type_name, variant, ..
+        }) => format!("{type_name}#{}", variant.unwrap_or_default()),
+        other => panic!("{path} is not an enumeration: {other:?}"),
+    };
+    assert_eq!(variant("P1.lamp"), "Lamp#On");
+    assert_eq!(variant("P1.lamps[3]"), "Lamp#On");
+    assert_eq!(variant("P1.lamps[0]"), "Lamp#Off");
+    assert_eq!(variant("P1.recs[1].mode"), "Gear#High");
+    assert_eq!(variant("P1.recs[0].mode"), "Gear#Low");
+    assert_eq!(
+        plc.read_var(&info, "P1.recs[1].n"),
+        Some(VarValue::I32(0)),
+        "a DINT is one"
+    );
+}
+
+/// Two blocks holding each other through VAR_IN_OUT members: each member
+/// is listed with the other block as its target. The one lowered second
+/// closed the cycle with no type at all, and a debugger could not read
+/// through it.
+#[rstest]
+fn blocks_holding_each_other_name_each_other(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Ping
+        VAR_IN_OUT peer : Pong; END_VAR
+        VAR n : INT; END_VAR
+            n := n + 1;
+        END_FUNCTION_BLOCK
+
+        FUNCTION_BLOCK Pong
+        VAR_IN_OUT peer : Ping; END_VAR
+        VAR n : INT; END_VAR
+            n := n + 2;
+        END_FUNCTION_BLOCK
+
+        PROGRAM Main
+        VAR a : Ping; b : Pong; END_VAR
+            a(peer := b);
+            b(peer := a);
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : Main;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    let table = read_debug_symbols(&wasm);
+    let target_of = |path: &str| {
+        let p = table
+            .pointers
+            .iter()
+            .find(|p| p.path == path)
+            .unwrap_or_else(|| panic!("no pointer {path} in {:?}", table.pointers));
+        assert!(p.by_ref, "{path} is a VAR_IN_OUT");
+        match &table.types[p.target.expect("a target") as usize] {
+            debug_format::TypeDesc::Struct { name, .. } => name.clone(),
+            other => panic!("{path} points at {other:?}"),
+        }
+    };
+    assert_eq!(target_of("P1.a.peer"), "Pong");
+    assert_eq!(target_of("P1.b.peer"), "Ping");
+
+    // Read through, each way round, on the running module.
+    let mut plc = TestPlc::load(&wasm).expect("load");
+    plc.run(1).expect("scan");
+    let info = DebugInfo::from_wasm(&wasm);
+    let live = &mut |address: u32, size: u32| plc.read_bytes(address, size as usize).ok();
+    let value = |place: Option<debug_format::Place>| match place {
+        Some(debug_format::Place::Value(loc)) => loc.decode(
+            &plc.read_bytes(loc.address, loc.size as usize)
+                .expect("in memory"),
+        ),
+        other => panic!("not a value: {other:?}"),
+    };
+    assert_eq!(
+        value(info.follow("P1.a.peer.n", live)),
+        VarValue::I16(2),
+        "b's n"
+    );
+    assert_eq!(
+        value(info.follow("P1.b.peer.n", live)),
+        VarValue::I16(1),
+        "a's n"
+    );
+    assert_eq!(
+        value(info.follow("P1.a.peer.peer.n", live)),
+        VarValue::I16(1),
+        "and back"
+    );
+}

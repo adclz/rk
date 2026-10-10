@@ -716,7 +716,7 @@ impl TestPlc {
     pub fn read_var(&self, info: &DebugInfo, path: &str) -> Option<VarValue> {
         let loc = info.resolve(path)?;
         let bytes = self.read_bytes(loc.address, loc.size as usize).ok()?;
-        Some(debug_format::decode(loc.ty, &bytes))
+        Some(info.decode_at(&loc, &bytes))
     }
 
     /// The current value of every symbol, in symbol order.

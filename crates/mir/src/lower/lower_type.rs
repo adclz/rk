@@ -495,12 +495,18 @@ fn instance_struct<'db>(
             // and the call site writes once, or of a channel `__init` writes
             // from VAR_CONFIG. An `ARRAY[*]` points at the array each copy of
             // the body is specialized for, and a block two VAR_IN_OUTs hold
-            // through each other at what is typed where it is dereferenced.
+            // through each other at what is typed where it is dereferenced,
+            // and named for the debug tables.
             Part::Address => {
                 let pointee = match var.conformand(db) {
                     Some(_) => MirType::Void,
                     None => match lower_spec(db, var.spec(db)) {
-                        Err(LowerTypeError::InstanceCycle(_)) => MirType::Void,
+                        Err(LowerTypeError::InstanceCycle(name)) => {
+                            MirType::RefTarget(crate::types::MirRefTarget::Enclosing(Ident::new(
+                                db,
+                                CompactString::from(name),
+                            )))
+                        }
                         other => other?,
                     },
                 };

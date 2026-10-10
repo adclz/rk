@@ -80,13 +80,12 @@ impl TypeTable {
         outer: &Outer,
     ) -> u32 {
         let desc = match ty {
-            MirType::Elementary(_)
-            | MirType::Enum(_)
-            | MirType::Subrange(_)
-            | MirType::String { .. } => {
-                // Exactly the scalar set `scalar_sym_ty` covers.
+            MirType::Elementary(_) | MirType::Subrange(_) | MirType::String { .. } => {
+                // Exactly the scalar set `scalar_sym_ty` covers, but the
+                // enumeration, whose entry names its variants.
                 TypeDesc::Scalar(scalar_sym_ty(ty).expect("scalar arm covers scalar types"))
             }
+            MirType::Enum(e) => return self.intern_enum(db, e),
             MirType::Struct(s) => return self.intern_struct(db, ty, s, outer),
             MirType::Array(a) => TypeDesc::Array {
                 dimensions: a.dimensions.clone(),
@@ -322,9 +321,9 @@ fn walk_type<'t>(
                 elem_ty,
                 global,
                 // An aggregate element, or a pointer, gets its layout
-                // interned so members resolve on demand.
-                elem_type: elem_ty
-                    .is_none()
+                // interned so members resolve on demand; an enumeration,
+                // its variants.
+                elem_type: (elem_ty.is_none() || matches!(&*a.element_type, MirType::Enum(_)))
                     .then(|| out.types.intern_in(db, &a.element_type, false, &walk.outer)),
             });
         }
