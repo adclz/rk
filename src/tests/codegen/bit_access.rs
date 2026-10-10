@@ -575,3 +575,53 @@ fn slices_through_a_reference(mut with_db: db::RootDatabase) {
         "the high half cleared, bit 31 kept, the top byte set"
     );
 }
+
+/// A BOOL is its own bit 0. Read, written, and as a FUNCTION's result, it
+/// keeps the 0 or 1 a BOOL holds, so it still compares equal to TRUE.
+#[rstest]
+fn a_bool_is_its_own_bit_zero(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION result : BOOL
+            result.0 := TRUE;
+        END_FUNCTION
+
+        FUNCTION get : DINT
+        VAR
+            t : BOOL := TRUE;
+            u : BOOL;
+            a : BOOL;
+            b : BOOL := TRUE;
+        END_VAR
+            a.0 := TRUE;
+            b.%X0 := FALSE;
+            get := 0;
+            IF t.0 THEN get := get + 1; END_IF;
+            IF NOT u.%X0 THEN get := get + 10; END_IF;
+            IF a = TRUE THEN get := get + 100; END_IF;
+            IF NOT b THEN get := get + 1000; END_IF;
+            IF result() = TRUE THEN get := get + 10000; END_IF;
+        END_FUNCTION
+    "#;
+    let result: i32 = run(&mut with_db, source, "get", ());
+    assert_eq!(result, 11111);
+}
+
+/// The size letter is caseless, `%b0` is the byte `%B0` is, and it may be
+/// left out for a bit, `%12` is `%X12`.
+#[rstest]
+fn a_lowercase_or_omitted_size_names_the_same_part(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION get : DWORD
+        VAR
+            d : DWORD := DWORD#16#11223344;
+        END_VAR
+            d.%w1 := WORD#16#ABCD;
+            d.%b0 := BYTE#16#77;
+            d.%x8 := FALSE;
+            d.%12 := FALSE;
+            get := d;
+        END_FUNCTION
+    "#;
+    let result: i32 = run(&mut with_db, source, "get", ());
+    assert_eq!(result as u32, 0xABCD_2277);
+}

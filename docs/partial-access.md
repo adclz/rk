@@ -4,7 +4,7 @@ A bit, a byte, a word or a double word of a variable, read and written by its po
 
 | Access | Reads and writes | Type |
 |---|---|---|
-| `x.%X3` or `x.3` | bit 3 | `BOOL` |
+| `x.%X3`, `x.%3` or `x.3` | bit 3 | `BOOL` |
 | `x.%B1` | byte 1, bits 8 to 15 | `BYTE` |
 | `x.%W1` | word 1, bits 16 to 31 | `WORD` |
 | `x.%D1` | double word 1, bits 32 to 63 | `DWORD` |
@@ -12,6 +12,7 @@ A bit, a byte, a word or a double word of a variable, read and written by its po
 
 The position counts in units of the part: `%B1` is the second byte, `%W1` the second word.
 Bit 0 is the least significant, so `%B0` is the low byte, whatever order the bytes have in memory.
+The size letter can be written in either case: `x.%b1` is `x.%B1`.
 
 ```iecst
 FUNCTION Pack : DWORD
@@ -35,7 +36,9 @@ A write replaces those bits only, and the rest of the variable keeps its value.
 
 ## Where it applies
 
-A partial access takes a bit string or an integer, from `BYTE` to `LWORD` and from `SINT` to `ULINT`:
+A partial access takes a bit string, an integer or a subrange of one, from `BYTE` to `LWORD` and from `SINT` to `ULINT`.
+A `BOOL` has a single part, `b.0`.
+It applies to:
 - **A variable**, an input, an output or a local.
 - **An array element**, `a[i].%B1`.
 - **A field**, `s.flags.%X0`.
@@ -45,6 +48,8 @@ A partial access takes a bit string or an integer, from `BYTE` to `LWORD` and fr
 
 A signed integer is read as two's complement holds it: `i.%X15` is the sign of an `INT`.
 Writing `.%B1 := BYTE#16#7F` into an `INT` of -1 gives 32767.
+
+A write into a subrange is checked like any other store: setting bit 4 of an `INT (0..10)` that holds 0 raises `value out of subrange bounds`.
 
 ## What is refused
 
@@ -60,6 +65,10 @@ END_FUNCTION
 ```
 
 A value written must have the type of the part: a `WORD` into `d.%B0` is `E0301`, and `WORD_TO_BYTE` converts it.
+
+Other types have no parts, and a partial access of them is `E1431`.
+The bits of a `REAL` encode the number. To work on them, convert it with `REAL_TO_DWORD` and take the parts of the `DWORD`.
+A direct variable such as `%QX3.7` is not a partial access: it names a bit of the output area, whatever variable is located there.
 
 ## Byte order
 

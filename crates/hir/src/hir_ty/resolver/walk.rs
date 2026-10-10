@@ -138,18 +138,23 @@ pub(crate) fn check_multibits_bounds<'db>(
     multibits: MultibitsPart,
     ctx: &mut BodyInferenceResult<'db>,
 ) {
+    // As declared, to be shown: normalized, a STRUCT's name reads 'STRUCT'.
+    let declared = base_type;
     let base_type = base_type.normalize(db);
-    let Size::Size(base_bits) = base_type.get_size() else {
+    if base_type.is_never() {
         return;
-    };
+    }
+    let (MultibitsPart::Offset(offset) | MultibitsPart::AccessOffset { offset, .. }) = multibits;
+    if offset.ident(db).text(db).is_empty() {
+        // `b.%Xi`: the position is missing, and the syntax error says so.
+        return;
+    }
 
     let Some(slice) = crate::hir_ty::infer::normalize::multibits_slice(db, multibits) else {
-        // A size character naming no slice reaches lowering as a BOOL that
-        // lowering cannot emit, so it is refused here instead.
-        if let MultibitsPart::AccessOffset { access, .. } = multibits
-            && let Some(c) = access.text(db).chars().next()
-            && crate::hir_ty::infer::normalize::access_size(c).is_none()
-        {
+        // A size naming no slice reaches lowering as a BOOL that lowering
+        // cannot emit, so it is refused here instead. `%BX1` is one too: the
+        // size is one letter, and reading only the first took it for `%B1`.
+        if let MultibitsPart::AccessOffset { access, .. } = multibits {
             ctx.errors.push(
                 ConfigError::UnknownMultibitsAccess {
                     expr,
@@ -158,6 +163,24 @@ pub(crate) fn check_multibits_bounds<'db>(
                 .to_diagnostic(db, ctx.scope.file(db)),
             );
         }
+        return;
+    };
+
+    // Only a bit string, an integer or a BOOL has parts. The others passed
+    // here unchecked: a REAL's or an ARRAY's reached lowering, which emitted
+    // an invalid module or stopped with an internal compiler error.
+    if !base_type.takes_partial_access() {
+        ctx.errors.push(
+            ConfigError::PartialAccessWithoutParts {
+                expr,
+                var,
+                base_type: declared,
+            }
+            .to_diagnostic(db, ctx.scope.file(db)),
+        );
+        return;
+    }
+    let Size::Size(base_bits) = base_type.get_size() else {
         return;
     };
     let (access_bits, offset_val) = (slice.width, slice.index);

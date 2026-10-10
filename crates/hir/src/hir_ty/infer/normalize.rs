@@ -209,7 +209,14 @@ pub fn multibits_slice(
         // A bare offset is a bit access.
         MultibitsPart::Offset(offset) => (offset, ElementarySpec::Bool, 1),
         MultibitsPart::AccessOffset { access, offset } => {
-            let (spec, width) = access_size(access.text(db).chars().next()?)?;
+            // One letter, or none for a bit (`%1` is `%X1`): `%BX1` is no
+            // size, not `%B1`.
+            let mut letters = access.text(db).chars();
+            let (spec, width) = match (letters.next(), letters.next()) {
+                (None, _) => (ElementarySpec::Bool, 1),
+                (Some(c), None) => access_size(c)?,
+                _ => return None,
+            };
             (offset, spec, width)
         }
     };

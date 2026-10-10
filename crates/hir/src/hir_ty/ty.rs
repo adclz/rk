@@ -344,6 +344,15 @@ impl<'db> Type<'db> {
             || self.is_float()
     }
 
+    /// A bit string, an integer or a BOOL: what a partial access (`x.%B1`)
+    /// takes a part of. Normalize first, so a subrange is its base.
+    pub fn takes_partial_access(&self) -> bool {
+        self.is_boolean()
+            || self.is_binary_integer()
+            || self.is_signed_integer()
+            || self.is_unsigned_integer()
+    }
+
     pub fn is_binary_integer(&self) -> bool {
         matches!(
             self,
