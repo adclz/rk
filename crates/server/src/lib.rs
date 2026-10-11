@@ -301,31 +301,35 @@ fn on_requests<Db: WorkspaceDataBase + Clone + RefUnwindSafe>(
         .on::<WorkspaceSymbolRequest, _>(ThreadIntent::Worker, workspace_symbols)
 }
 
+/// Whether the editor's document is one of rk's own. The requests read
+/// rk's tree (hover, completion, the formatter), so a document of another
+/// kind is not opened here: its file is still read from disk, with the
+/// workspace.
+fn is_rk_document(uri: &Url) -> bool {
+    db::loader::is_st_file(std::path::Path::new(uri.path()))
+}
+
 fn on_notifications(
     registry: &mut NotificationRegistry<RootDatabase>,
 ) -> &mut NotificationRegistry<RootDatabase> {
     registry
-        .on_mut::<DidOpenTextDocument, _>(|s, p| {
-            match p.text_document.uri.as_str().ends_with(".st") {
-                true => {
-                    if s.db.get_library_files().contains_key(&p.text_document.uri) {
-                        return Ok(());
-                    }
-                    Ok(open_text_document(s, p, &RK_PARSER)?)
+        .on_mut::<DidOpenTextDocument, _>(|s, p| match is_rk_document(&p.text_document.uri) {
+            true => {
+                if s.db.get_library_files().contains_key(&p.text_document.uri) {
+                    return Ok(());
                 }
-                false => Ok(()),
+                Ok(open_text_document(s, p, &RK_PARSER)?)
             }
+            false => Ok(()),
         })
-        .on_mut::<DidChangeTextDocument, _>(|s, p| {
-            match p.text_document.uri.as_str().ends_with(".st") {
-                true => {
-                    if s.db.get_library_files().contains_key(&p.text_document.uri) {
-                        return Ok(());
-                    }
-                    Ok(change_text_document(s, p)?)
+        .on_mut::<DidChangeTextDocument, _>(|s, p| match is_rk_document(&p.text_document.uri) {
+            true => {
+                if s.db.get_library_files().contains_key(&p.text_document.uri) {
+                    return Ok(());
                 }
-                false => Ok(()),
+                Ok(change_text_document(s, p)?)
             }
+            false => Ok(()),
         })
         .on_mut::<DidChangeWatchedFiles, _>(|s, p| {
             let config_changed = Workspace::try_get(&s.db)
@@ -338,9 +342,11 @@ fn on_notifications(
                     Workspace::try_get(&s.db).and_then(|c| c.workspace_folder(&s.db).cloned());
                 refresh_configuration(s, workspace.as_deref())?;
             } else {
+                // A file on disk is read again by the parser of its kind,
+                // as the workspace's loader read it.
                 changed_watched_files(s, p, |url| {
                     let path = url.to_file_path().ok()?;
-                    db::loader::is_st_file(&path).then(|| &*RK_PARSER)
+                    db::source::kind_of(&path).map(|kind| kind.parser)
                 })?;
             }
 
@@ -481,6 +487,17 @@ pub fn send_request<N: lsp_types::request::Request>(
     Ok(())
 }
 
+/// What the editor is asked to watch on disk: the files a workspace is
+/// made of, of every kind, and its configuration.
+fn watched_globs() -> Vec<String> {
+    db::source::kinds()
+        .iter()
+        .flat_map(|kind| kind.extensions)
+        .map(|extension| format!("**/*.{extension}"))
+        .chain(["**/config.toml".to_string()])
+        .collect()
+}
+
 fn setup_file_watcher_if_necessary(
     session: &mut Session<impl salsa::Database>,
     capabilities: &lsp_types::ClientCapabilities,
@@ -495,16 +512,13 @@ fn setup_file_watcher_if_necessary(
                 }),
             ..
         }) => {
-            let watchers = vec![
-                FileSystemWatcher {
-                    glob_pattern: GlobPattern::String("**/*.st".to_string()),
+            let watchers: Vec<FileSystemWatcher> = watched_globs()
+                .into_iter()
+                .map(|glob| FileSystemWatcher {
+                    glob_pattern: GlobPattern::String(glob),
                     kind: Some(WatchKind::Create | WatchKind::Change | WatchKind::Delete),
-                },
-                FileSystemWatcher {
-                    glob_pattern: GlobPattern::String("**/config.toml".to_string()),
-                    kind: Some(WatchKind::Create | WatchKind::Change | WatchKind::Delete),
-                },
-            ];
+                })
+                .collect();
 
             let registration_params = RegistrationParams {
                 registrations: vec![Registration {
@@ -535,5 +549,30 @@ fn setup_file_watcher_if_necessary(
         _ => {
             tracing::error!("Client does not support did_change_watched_files capability");
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A document is rk's by its extension, in any case, as the workspace's
+    /// loader reads it: `MAIN.ST` was loaded from disk and its edits were
+    /// dropped.
+    #[test]
+    fn a_document_is_rk_s_by_its_extension() {
+        let is_rk = |uri: &str| is_rk_document(&Url::parse(uri).unwrap());
+        assert!(is_rk("file:///plant/main.st"));
+        assert!(is_rk("file:///plant/MAIN.ST"));
+        assert!(is_rk("untitled:/draft.st"));
+        assert!(!is_rk("file:///plant/config.toml"));
+        assert!(!is_rk("file:///plant/main.st.bak"));
+        assert!(!is_rk("file:///plant/st"));
+    }
+
+    /// With rk's own front-end alone, what is watched is what was.
+    #[test]
+    fn rk_alone_watches_its_files_and_the_configuration() {
+        assert_eq!(watched_globs(), ["**/*.st", "**/config.toml"]);
     }
 }
