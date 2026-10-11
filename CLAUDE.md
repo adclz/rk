@@ -248,6 +248,7 @@ Type checking proceeds in three memoized salsa queries:
 - **Scope-stable IDs**: `SemanticIndexBuilder` uses a monotonic counter (not raw AST IDs) for `ScopeId` values, enabling fine-grained incrementality.
 - **Head vs body separation**: Changing a function body doesn't re-infer its signature.
 - **One view over a scope's inference**: `infer_body` records the statements and `infer_initialization` the initializers; both are crate-private to `hir`. Everything else reads a scope through `ScopeId::inference(db)` (`ScopeInference`), whose lookups answer from whichever query recorded the node and whose scans walk both. A FUNCTION's locals start over at each call, so an initializer's `p^`, `REF(v)` or `SUPER.m()` is the scope's as much as a statement's.
+- **A front-end reads one kind of file**: `hir::front_end::register` adds one beside rk's own, before a workspace is opened: its extensions, its parser and the function that builds a file's `SemanticIndex`. That function walks its own tree with rk's `SemanticIndexBuilder`, which holds no root and whose fields are public for it, and ends with `finish`. A tool's `main` registers, then calls `rk::main()`. `db::source` holds the kinds, and the loader, `--watch` and the server's watched patterns read it. A file keeps the parser that read it, and `semantic_index` asks that parser's front-end. The table is the process's and is fixed at its first read; a front-end added later panics. `rk fmt` and the editor's requests take rk's `.st` files only, because they read rk's own tree, and E1510 is reported in rk's files only.
 - **Exports are opt-in**: a module exports `__init`, the PROGRAM bodies, the `Inst$__scan__` of a program instance with connections, the bodies of the function blocks a task runs (`fb1 WITH T`), the FUNCTIONs marked `{export}` and, in the debug profile only, the workspace's `{test}` functions. Everything else is `MirLinkage::Internal`, other FB bodies and methods included, because an export is a root Binaryen cannot remove. A library's `{test}` functions are not lowered. The codegen tests call FUNCTIONs by name, so `codegen/harness.rs` re-exports everything (`export_everything`) on a clone of the MIR.
 
 ### Error Code Categories
@@ -310,6 +311,8 @@ All integration tests live in `src/tests/`:
 - `completions/` — Completion items: body, head, call signatures, fly imports, field, using, query scope
 - `codegen/` — WASM codegen + execution tests (compile IEC → MIR → wasm, run on the wasmtime harness): value passing, inout, retain bands, enums, strings, debug symbols, scheduling. Helpers (`compile_to_wasm`, `compile_to_mir_and_wasm`, `execute_wasm`, `TestPlc`, `run_tests`) live in `codegen/harness.rs`
 - `mir/` — MIR structure/lowering assertions (exports, extern pragmas)
+
+`tests/front_end.rs` is the one test binary outside `src/tests/`: it adds a second front-end, which a process can only do before it reads a file.
 
 Crates keep only in-crate `#[cfg(test)]` unit tests for crate-private machinery (e.g. `wasm_codegen`'s `graft.rs`/`builtins.rs`, `mir/src/memory.rs`).
 

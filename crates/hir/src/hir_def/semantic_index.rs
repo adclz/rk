@@ -54,7 +54,7 @@ pub fn semantic_index<'db>(db: &'db dyn WorkspaceDataBase, file: File) -> Semant
         };
     }
     match root.downcast_ref::<ast::generated::SourceFile>() {
-        Some(source) => SemanticIndexBuilder::new(db, file, ast, source).build(),
+        Some(source) => SemanticIndexBuilder::new(db, file, ast).build(source),
         None => SemanticIndex::empty(db, file, ast.nodes.clone()),
     }
 }

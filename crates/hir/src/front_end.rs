@@ -11,8 +11,7 @@
 //! of the two kinds, and the checks, the lints, the lowering and the
 //! emitted module are the same for both.
 //!
-//! A tool registers before it opens a workspace, then runs rk's own
-//! commands:
+//! A tool registers before it opens a workspace, then is rk:
 //!
 //! ```ignore
 //! fn main() -> std::process::ExitCode {
@@ -21,9 +20,13 @@
 //!         parser: &other::PARSER,
 //!         index: other::index,
 //!     });
-//!     // What rk's own `main` does from here: `rk::run`.
+//!     rk::main()
 //! }
 //! ```
+//!
+//! Its index function has rk's builder to make the index with
+//! ([`SemanticIndexBuilder`](crate::builder::semantic_index::SemanticIndexBuilder)):
+//! it walks its own tree, and the builder's methods make the nodes.
 //!
 //! What stays rk's: the formatter and the editor read rk's own tree, so
 //! `rk fmt` and the language server take `.st` files only.

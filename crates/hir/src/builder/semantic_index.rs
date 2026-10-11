@@ -22,32 +22,39 @@ use crate::hir_def::semantic_index::{NodeKey, SemanticIndex};
 use crate::hir_def::using::Using;
 use crate::{AstId, HirNodeInfo};
 
+/// What a front-end builds a file's index with: the nodes made so far, the
+/// scope being read, and the faults found on the way.
+///
+/// It holds no tree's root. rk's own [`build`](Self::build) reads rk's, and
+/// a front-end for another kind of file walks its own, with the methods
+/// here that make a node and the handlers of the nodes its tree shares with
+/// rk's, then ends with [`finish`](Self::finish). The fields are public for
+/// that front-end, as they are read and filled by rk's own.
 pub struct SemanticIndexBuilder<'db> {
-    pub(crate) source: &'db ast::generated::SourceFile,
-    pub(crate) ast: &'db ParsedAst,
+    pub ast: &'db ParsedAst,
 
-    pub(crate) db: &'db dyn WorkspaceDataBase,
-    pub(crate) file: File,
+    pub db: &'db dyn WorkspaceDataBase,
+    pub file: File,
 
     /// The current scope ID being processed (by default, the global scope).
-    pub(crate) current_scope: ScopeId<'db>,
+    pub current_scope: ScopeId<'db>,
 
     /// `Some` while an instance's declarations are built (a PROGRAM): its
     /// inputs are members, and a pack among them is E0029, named after it.
-    pub(crate) instance_inputs: Option<&'static str>,
+    pub instance_inputs: Option<&'static str>,
 
     /// Maps scope IDs to their corresponding scopes.
-    pub(crate) scope_keys: FxHashMap<usize, Arc<Scope<'db>>>,
+    pub scope_keys: FxHashMap<usize, Arc<Scope<'db>>>,
 
     /// HIR nodes indexed by document order.
-    pub(crate) node_index: IndexVec<NodeKey, HirNode<'db>>,
+    pub node_index: IndexVec<NodeKey, HirNode<'db>>,
 
-    pub(crate) programs: Vec<ProgramDecl<'db>>,
-    pub(crate) configs: Vec<ConfigDecl<'db>>,
-    pub(crate) namespaces: Vec<NamespaceDecl<'db>>,
-    pub(crate) global_pous: Vec<Pou<'db>>,
+    pub programs: Vec<ProgramDecl<'db>>,
+    pub configs: Vec<ConfigDecl<'db>>,
+    pub namespaces: Vec<NamespaceDecl<'db>>,
+    pub global_pous: Vec<Pou<'db>>,
     /// Every mention of an I/O address, as the nodes are built.
-    pub(crate) located: Vec<(crate::hir_def::pous::variable::LocatedAddress, HirNode<'db>)>,
+    pub located: Vec<(crate::hir_def::pous::variable::LocatedAddress, HirNode<'db>)>,
 
     /// Counter for generating stable scope IDs.
     ///
@@ -56,23 +63,17 @@ pub struct SemanticIndexBuilder<'db> {
     ///
     /// Since scope are only created when visiting a Pou or Namespace,
     /// writing variables / statements / expressions, will preserve the IDs of scopes.
-    pub(crate) scope_ctr: usize,
+    pub scope_ctr: usize,
 
-    pub(crate) errors: Vec<IdeDiagnostic>,
+    pub errors: Vec<IdeDiagnostic>,
 }
 
 impl<'db> SemanticIndexBuilder<'db> {
-    pub fn new(
-        db: &'db dyn WorkspaceDataBase,
-        file: File,
-        ast: &'db ParsedAst,
-        source: &'db ast::generated::SourceFile,
-    ) -> Self {
+    pub fn new(db: &'db dyn WorkspaceDataBase, file: File, ast: &'db ParsedAst) -> Self {
         Self {
             db,
             file,
             ast,
-            source,
             scope_keys: FxHashMap::default(),
             node_index: IndexVec::new(),
             programs: vec![],
@@ -334,11 +335,11 @@ impl<'db> SemanticIndexBuilder<'db> {
 
     // Fix me: This function should not panic, but handle errors gracefully.
     #[tracing::instrument(level = "debug", skip_all, name = "build HIR")]
-    pub fn build(mut self) -> SemanticIndex<'db> {
+    pub fn build(mut self, source: &ast::generated::SourceFile) -> SemanticIndex<'db> {
         let mut usings = vec![];
         let global_scope = ScopeId::global(self.db, self.file);
 
-        for child in self.source.children.iter() {
+        for child in source.children.iter() {
             type SourceFileDecl = ast::generated::ClassDecl_ConfigDecl_DataTypeDecl_FbDecl_FuncDecl_InterfaceDecl_NamespaceDecl_ProgDecl_UsingDirective;
 
             self.current_scope = global_scope;
