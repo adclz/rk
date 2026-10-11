@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use auto_lsp::{
-    core::document::Document,
+    core::{document::Document, parsers::Parser},
     default::db::{FileManager, file::File},
     lsp_types::Url,
     salsa::Durability,
@@ -124,14 +124,33 @@ pub fn resolve_config_file(workspace: &Path) -> Option<PathBuf> {
 // --- File discovery ---
 
 /// Whether `path` names a Structured Text source: extension `st` in any
-/// case (`MAIN.ST` is the usual Windows spelling).
+/// case (`MAIN.ST` is the usual Windows spelling). What only rk's own files
+/// take, the formatter and the editor, asks this.
 pub fn is_st_file(path: &Path) -> bool {
-    path.extension()
-        .is_some_and(|ext| ext.eq_ignore_ascii_case("st"))
+    path.extension().is_some_and(|ext| {
+        crate::source::RK_EXTENSIONS
+            .iter()
+            .any(|own| ext.eq_ignore_ascii_case(own))
+    })
+}
+
+/// Whether `path` names a source file of any kind the process reads
+/// ([`crate::source`]): what a workspace is made of.
+pub fn is_source_file(path: &Path) -> bool {
+    crate::source::kind_of(path).is_some()
 }
 
 /// Recursively discovers all `.st` files under `path`.
 pub fn find_st_files(path: &Path) -> Vec<PathBuf> {
+    find_files(path, &is_st_file)
+}
+
+/// Recursively discovers the source files under `path`, of every kind.
+pub fn find_source_files(path: &Path) -> Vec<PathBuf> {
+    find_files(path, &is_source_file)
+}
+
+fn find_files(path: &Path, wanted: &dyn Fn(&Path) -> bool) -> Vec<PathBuf> {
     let mut files = Vec::new();
     if !path.exists() {
         return files;
@@ -139,20 +158,32 @@ pub fn find_st_files(path: &Path) -> Vec<PathBuf> {
     if let Ok(entries) = std::fs::read_dir(path) {
         for entry in entries.flatten() {
             let entry_path = entry.path();
-            if entry_path.is_file() && is_st_file(&entry_path) {
+            if entry_path.is_file() && wanted(&entry_path) {
                 files.push(entry_path);
             } else if entry_path.is_dir() {
-                files.extend(find_st_files(&entry_path));
+                files.extend(find_files(&entry_path, wanted));
             }
         }
     }
     files
 }
 
+/// The source files under `path`, each with the parser of its kind.
+fn find_sources(path: &Path) -> Vec<(PathBuf, &'static Parser)> {
+    find_source_files(path)
+        .into_iter()
+        .filter_map(|path| {
+            let parser = crate::source::kind_of(&path)?.parser;
+            Some((path, parser))
+        })
+        .collect()
+}
+
 // --- Parsing ---
 
-/// Reads and parses a single `.st` file, returning the URL and parsed Document.
-fn read_and_parse(path: &Path, parsers: &'static auto_lsp::core::parsers::Parser) -> ParseResult {
+/// Reads a source file and parses it with the parser of its kind, returning
+/// the URL and parsed Document.
+fn read_and_parse(path: &Path, parsers: &'static Parser) -> ParseResult {
     let content = std::fs::read_to_string(path)?;
     let absolute_path = std::fs::canonicalize(path)?;
     let url = Url::from_file_path(&absolute_path)
@@ -169,7 +200,7 @@ fn read_and_parse(path: &Path, parsers: &'static auto_lsp::core::parsers::Parser
 // --- Loading ---
 
 /// Opens `workspace` in `db`: the configuration, the library that
-/// configuration resolves to, and then the workspace's own `.st` files.
+/// configuration resolves to, and then the workspace's own source files.
 /// Returns one result per file found, as [`load_workspace`] does.
 ///
 /// The ORDER is the contract, and the reason this is one function instead of
@@ -208,8 +239,11 @@ fn is_library_file(db: &RootDatabase, path: &Path) -> bool {
         .is_some_and(|url| db.get_library_files().contains_key(&url))
 }
 
-/// Loads a single workspace file into the database (LOW durability).
+/// Loads a single workspace file into the database (LOW durability), read
+/// by the parser of its kind.
 pub fn load_file(db: &mut RootDatabase, path: &Path) -> Result<File, Box<dyn std::error::Error>> {
+    let kind = crate::source::kind_of(path)
+        .ok_or_else(|| format!("{}: not a source file", path.display()))?;
     let content = std::fs::read_to_string(path)?;
     let absolute_path = std::fs::canonicalize(path)?;
     let url = Url::from_file_path(&absolute_path)
@@ -217,7 +251,7 @@ pub fn load_file(db: &mut RootDatabase, path: &Path) -> Result<File, Box<dyn std
 
     let file = File::from_string()
         .db(db)
-        .parsers(&ast::RK_PARSER)
+        .parsers(kind.parser)
         .url(&url)
         .source(content)
         .call()?;
@@ -226,7 +260,7 @@ pub fn load_file(db: &mut RootDatabase, path: &Path) -> Result<File, Box<dyn std
     Ok(file)
 }
 
-/// Discovers and loads all `.st` files under `path`: I/O and parsing in
+/// Discovers and loads the source files under `path`: I/O and parsing in
 /// parallel, Salsa inputs created sequentially.
 pub fn load_workspace(db: &mut RootDatabase, path: &Path) -> Vec<Result<File, String>> {
     // A workspace folder that CONTAINS the library holds its files twice:
@@ -234,20 +268,19 @@ pub fn load_workspace(db: &mut RootDatabase, path: &Path) -> Vec<Result<File, St
     // itself and the whole library reads as duplicated (E0102), which is what
     // opening the rk checkout in an editor used to report. The library is
     // loaded first, so the ones it claimed are not this workspace's.
-    let paths: Vec<PathBuf> = find_st_files(path)
+    let paths: Vec<_> = find_sources(path)
         .into_iter()
-        .filter(|path| !is_library_file(db, path))
+        .filter(|(path, _)| !is_library_file(db, path))
         .collect();
-    let parsers = &*ast::RK_PARSER;
 
     let parsed: Vec<_> = paths
         .into_par_iter()
-        .map(|p| (read_and_parse(&p, parsers), p))
+        .map(|(p, parsers)| (read_and_parse(&p, parsers), p, parsers))
         .collect();
 
     parsed
         .into_iter()
-        .map(|(result, path)| match result {
+        .map(|(result, path, parsers)| match result {
             Ok((url, document)) => {
                 let file = File::builder(url.clone(), parsers, document, None).new(db);
                 db.workspace_files.insert(url, file);
@@ -260,7 +293,7 @@ pub fn load_workspace(db: &mut RootDatabase, path: &Path) -> Vec<Result<File, St
         .collect()
 }
 
-/// Loads all library `.st` files with HIGH durability: libraries rarely
+/// Loads the library's source files with HIGH durability: libraries rarely
 /// change, so salsa can skip re-validating queries that only touched them.
 pub fn load_libraries(db: &mut RootDatabase) {
     let Some(config) = Workspace::try_get(db) else {
@@ -270,15 +303,12 @@ pub fn load_libraries(db: &mut RootDatabase) {
         return;
     };
 
-    let paths = find_st_files(library_path);
-    let parsers = &*ast::RK_PARSER;
-
-    let parsed: Vec<_> = paths
+    let parsed: Vec<_> = find_sources(library_path)
         .into_par_iter()
-        .map(|p| read_and_parse(&p, parsers))
+        .map(|(p, parsers)| (read_and_parse(&p, parsers), parsers))
         .collect();
 
-    for result in parsed {
+    for (result, parsers) in parsed {
         match result {
             Ok((url, document)) => {
                 let file = File::builder(url.clone(), parsers, document, None)
