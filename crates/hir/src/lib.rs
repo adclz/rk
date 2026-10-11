@@ -34,6 +34,7 @@ use crate::hir_def::{
 
 pub mod builder;
 pub mod check;
+pub mod front_end;
 pub mod hir_def;
 pub mod hir_ty;
 pub mod query_string;

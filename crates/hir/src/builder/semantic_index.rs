@@ -402,13 +402,20 @@ impl<'db> SemanticIndexBuilder<'db> {
             }
         }
 
-        let scope = Scope::new(
-            self.file,
-            ScopeKind::Global,
-            usings,
-            self.current_scope,
-            None,
-        );
+        self.finish(usings)
+    }
+
+    /// The index of what was read: the end of a file for every front-end.
+    /// `usings` are the file's own, outside any namespace.
+    ///
+    /// It registers the global scope, puts the nodes in document order,
+    /// keys the namespaces by path and gathers the declarations located
+    /// at each address: what the rest of the compiler expects of an index.
+    pub fn finish(mut self, usings: Vec<Using<'db>>) -> SemanticIndex<'db> {
+        // The file's own scope, wherever the last declaration read left
+        // the current one.
+        let global_scope = ScopeId::global(self.db, self.file);
+        let scope = Scope::new(self.file, ScopeKind::Global, usings, global_scope, None);
 
         self.scope_keys
             .insert(global_scope.scope(self.db), Arc::new(scope));
