@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 mod args;
+mod backtrace;
 mod diagnostics;
 mod duration;
 mod env;

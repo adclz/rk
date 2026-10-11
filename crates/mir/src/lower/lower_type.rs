@@ -47,10 +47,11 @@ pub enum LowerTypeError {
     )]
     MemoryTooLarge { size: u64, largest: String },
 
-    /// An instance's layout reached back to itself. Only a VAR_IN_OUT
-    /// member closes such a cycle, a by-value one being E1302, and the
-    /// nearest one catches this: it holds an address whose pointee is typed
-    /// where it is dereferenced.
+    /// An instance's or a STRUCT's layout reached back to itself. Only a
+    /// VAR_IN_OUT member or a `REF_TO` closes such a cycle, a by-value one
+    /// being E1302, and the nearest one catches this: it holds an address
+    /// whose pointee is typed where it is dereferenced, and named for the
+    /// debug tables.
     #[error("the layout of '{0}' contains itself")]
     InstanceCycle(String),
 
@@ -127,11 +128,13 @@ pub fn lower_type<'db>(
         }
 
         // An opaque address: what it points at is typed where it is
-        // dereferenced, by HIR's deref adjustment (`pointee_of`). Typing it
-        // here lowers a type that references itself (`next : REF_TO Node`)
-        // without end, and a pointer to a struct or an array would read as a
-        // by-reference parameter, which a REF_TO is not.
-        Type::RefTo(_) => Ok(MirType::Pointer(Box::new(MirType::Void))),
+        // dereferenced, by HIR's deref adjustment (`pointee_of`). A pointer
+        // to a struct or an array would read as a by-reference parameter,
+        // which a REF_TO is not. Its target rides along for the debug
+        // tables, where lowering does not look.
+        Type::RefTo(target) => Ok(MirType::Pointer(Box::new(MirType::RefTarget(ref_target(
+            db, target,
+        ))))),
 
         Type::Struct(s) => lower_struct_type_named(db, s, type_name),
 
@@ -222,6 +225,23 @@ fn apply_sized_string<'db>(
     }
 }
 
+/// What a `REF_TO target` points at. A type that references itself comes
+/// back to the STRUCT or the instance being lowered, which is named instead
+/// of lowered again.
+fn ref_target<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    target: hir::hir_def::expressions::spec::Spec<'db>,
+) -> crate::types::MirRefTarget {
+    use crate::types::MirRefTarget;
+    match lower_spec(db, target) {
+        Ok(ty) => MirRefTarget::Type(Box::new(ty)),
+        Err(LowerTypeError::InstanceCycle(name)) => {
+            MirRefTarget::Enclosing(Ident::new(db, CompactString::from(name)))
+        }
+        Err(_) => MirRefTarget::Unknown,
+    }
+}
+
 /// Lower a struct type, optionally with an explicit name
 /// (used when the name comes from a wrapping DataType or variable).
 pub fn lower_struct_type_named<'db>(
@@ -229,6 +249,12 @@ pub fn lower_struct_type_named<'db>(
     struct_type: Struct<'db>,
     name: Option<Ident>,
 ) -> Result<MirType, LowerTypeError> {
+    // A named STRUCT reached again while it is being lowered: only a
+    // `REF_TO` to itself gets here, a member by value being E1302.
+    let _laying_out = match name {
+        Some(name) => Some(LayingOut::enter(db, name)?),
+        None => None,
+    };
     let layout = hir::hir_ty::layout::struct_layout(db, struct_type)
         .as_ref()
         .ok_or_else(|| no_layout("a STRUCT"))?;
@@ -405,8 +431,30 @@ pub fn lower_fb_type<'db>(
 }
 
 thread_local! {
-    /// The instances whose layout is being built, innermost last.
+    /// The instances and the named STRUCTs whose layout is being built,
+    /// innermost last.
     static LAYING_OUT: RefCell<Vec<Ident>> = const { RefCell::new(Vec::new()) };
+}
+
+/// `name` on [`LAYING_OUT`] for as long as this lives.
+struct LayingOut;
+
+impl LayingOut {
+    /// Refused when `name` is being laid out already: its layout reached
+    /// back to itself.
+    fn enter(db: &dyn WorkspaceDataBase, name: Ident) -> Result<Self, LowerTypeError> {
+        if LAYING_OUT.with(|stack| stack.borrow().contains(&name)) {
+            return Err(LowerTypeError::InstanceCycle(name.text(db).to_string()));
+        }
+        LAYING_OUT.with(|stack| stack.borrow_mut().push(name));
+        Ok(LayingOut)
+    }
+}
+
+impl Drop for LayingOut {
+    fn drop(&mut self) {
+        LAYING_OUT.with(|stack| stack.borrow_mut().pop());
+    }
 }
 
 /// An FB/CLASS instance as HIR laid it out ([`instance_layout`]): its
@@ -419,19 +467,9 @@ fn lower_instance_struct<'db>(
     pou: hir::hir_def::pous::pou::Pou<'db>,
     name: Ident,
 ) -> Result<MirType, LowerTypeError> {
-    // Two FBs holding each other through VAR_IN_OUT members come back here
-    // while the first is still being laid out.
-    struct Leave;
-    impl Drop for Leave {
-        fn drop(&mut self) {
-            LAYING_OUT.with(|stack| stack.borrow_mut().pop());
-        }
-    }
-    if LAYING_OUT.with(|stack| stack.borrow().contains(&name)) {
-        return Err(LowerTypeError::InstanceCycle(name.text(db).to_string()));
-    }
-    LAYING_OUT.with(|stack| stack.borrow_mut().push(name));
-    let _leave = Leave;
+    // Two FBs holding each other through VAR_IN_OUT members, or through a
+    // `REF_TO`, come back here while the first is still being laid out.
+    let _laying_out = LayingOut::enter(db, name)?;
 
     let layout = hir::hir_ty::layout::instance_layout(db, pou)
         .as_ref()
@@ -457,12 +495,18 @@ fn instance_struct<'db>(
             // and the call site writes once, or of a channel `__init` writes
             // from VAR_CONFIG. An `ARRAY[*]` points at the array each copy of
             // the body is specialized for, and a block two VAR_IN_OUTs hold
-            // through each other at what is typed where it is dereferenced.
+            // through each other at what is typed where it is dereferenced,
+            // and named for the debug tables.
             Part::Address => {
                 let pointee = match var.conformand(db) {
                     Some(_) => MirType::Void,
                     None => match lower_spec(db, var.spec(db)) {
-                        Err(LowerTypeError::InstanceCycle(_)) => MirType::Void,
+                        Err(LowerTypeError::InstanceCycle(name)) => {
+                            MirType::RefTarget(crate::types::MirRefTarget::Enclosing(Ident::new(
+                                db,
+                                CompactString::from(name),
+                            )))
+                        }
                         other => other?,
                     },
                 };

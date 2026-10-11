@@ -90,11 +90,16 @@ fn code_section(wasm: &[u8]) -> Vec<u8> {
 /// the test skips honestly instead of comparing a module to itself. A silent
 /// no-op optimizer would make every assertion below pass vacuously.
 fn optimize(wasm: &[u8]) -> Option<Vec<u8>> {
+    optimize_at(wasm, "2")
+}
+
+/// [`optimize`] at the level `rk compile -O` was given.
+fn optimize_at(wasm: &[u8], level: &str) -> Option<Vec<u8>> {
     // Never reach for the network in a test: only use a wasm-opt already
     // present. `find` with the download refused returns None when absent.
     // SAFETY: single-threaded test setup, no other thread reads the env here.
     unsafe { std::env::set_var("RK_NO_DOWNLOAD", "1") };
-    let optimized = rk::compiler::optimize_wasm(wasm.to_vec(), Some("2"), false);
+    let optimized = rk::compiler::optimize_wasm(wasm.to_vec(), Some(level), false);
     // `optimize_wasm` returns the input unchanged when it cannot optimize;
     // treat an unchanged code section as "no optimizer ran".
     if code_section(&optimized) == code_section(wasm) {
@@ -274,5 +279,90 @@ fn release_omits_the_stepping_tier_and_nothing_else(mut with_db: RootDatabase) {
     assert!(
         !release_info.list_symbols().is_empty(),
         "and still watchable: the symbol table is intact"
+    );
+}
+
+/// A release build keeps the names of its functions: a trap in one names
+/// the function it happened in, where it showed `wasm-function[112]`.
+/// wasm-opt drops the name section unless told to keep it.
+#[rstest]
+fn a_release_build_keeps_its_function_names(mut with_db: RootDatabase) {
+    let plain = compile_to_wasm(&mut with_db, SRC);
+    let Some(opt) = optimize(&plain) else {
+        eprintln!("SKIP: no wasm-opt available; the name section not exercised");
+        return;
+    };
+    let names = wasmparser::Parser::new(0)
+        .parse_all(&opt)
+        .find_map(|payload| match payload {
+            Ok(wasmparser::Payload::CustomSection(c)) if c.name() == "name" => {
+                Some(c.data().to_vec())
+            }
+            _ => None,
+        })
+        .expect("the optimized module carries a name section");
+    let functions = debug_format::DebugFunctions::from_msgpack(super::expect_section(
+        &plain,
+        "debug-functions",
+    ))
+    .unwrap();
+    assert!(
+        functions
+            .functions
+            .iter()
+            .any(|f| names.windows(f.name.len()).any(|w| w == f.name.as_bytes())),
+        "a function of the program is named in it"
+    );
+}
+
+/// `caller` hands its input to `boom`, which divides by it.
+const TRAP_SRC: &str = r#"
+FUNCTION boom : INT
+VAR_INPUT n : INT; END_VAR
+    boom := 100 / n;
+END_FUNCTION
+
+FUNCTION caller : INT
+VAR_INPUT m : INT; END_VAR
+    caller := boom(n := m);
+END_FUNCTION
+"#;
+
+/// What the names are kept for: a trap in an optimized module is reported
+/// under a function of the program at each level, `-O4` and its skipped pass
+/// included. The optimizer decides which one. Binaryen 131 keeps the two
+/// frames at `-O2`, and at `-O4` gives `caller` and `boom` one body under the
+/// name `boom`. The test takes either name and no number.
+#[rstest]
+#[case::o2("2")]
+#[case::oz("z")]
+#[case::o4("4")]
+fn a_trap_in_a_release_build_names_its_function(mut with_db: RootDatabase, #[case] level: &str) {
+    let plain = compile_to_wasm(&mut with_db, TRAP_SRC);
+    let Some(opt) = optimize_at(&plain, level) else {
+        eprintln!("SKIP: no wasm-opt available; the named trap not exercised");
+        return;
+    };
+    let engine = crate::tests::codegen::test_engine();
+    let module = wasmtime::Module::new(&engine, &opt).expect("the optimized module loads");
+    let mut store = wasmtime::Store::new(&engine, ());
+    let instance = crate::tests::codegen::instantiate_with_memory(&mut store, &module);
+    let caller = instance
+        .get_typed_func::<i32, i32>(&mut store, "caller")
+        .expect("caller is exported");
+    let err = caller
+        .call(&mut store, 0)
+        .expect_err("a division by zero traps");
+    let backtrace = err
+        .downcast_ref::<wasmtime::WasmBacktrace>()
+        .expect("the trap carries a backtrace");
+    let names: Vec<Option<&str>> = backtrace.frames().iter().map(|f| f.func_name()).collect();
+    eprintln!("-O{level}: {names:?}");
+    assert!(!names.is_empty(), "the trap has a frame");
+    assert!(
+        names
+            .iter()
+            .all(|name| matches!(name, Some("boom" | "caller"))),
+        "each frame is a function of the program: {names:?}"
     );
 }

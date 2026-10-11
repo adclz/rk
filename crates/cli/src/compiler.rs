@@ -364,6 +364,10 @@ pub fn optimize_wasm(wasm_bytes: Vec<u8>, opt_level: Option<&str>, verbose: bool
         cmd.arg(format!("--enable-{feature}"));
     }
     cmd.arg(format!("-O{level}"));
+    // The functions keep their names: a trap in a release build names the
+    // function it happened in, where it showed a number. The stepping
+    // tables are still dropped, since the bodies are rewritten.
+    cmd.arg("-g");
     // -O4 is the level that runs Binaryen's Flatten pass, and Flatten does not
     // support `try_table`, the instruction that catches a raise: it aborts
     // (WebAssembly/binaryen#8372, no fix planned). Every module carries one,

@@ -51,12 +51,73 @@ pub fn load_corpus(dir: &Path) -> anyhow::Result<Vec<Vec<u8>>> {
 pub fn create_seed_corpus(source: &Path, output_dir: &Path, start: usize) -> anyhow::Result<usize> {
     std::fs::create_dir_all(output_dir)?;
     let output_dir = output_dir.canonicalize()?;
+    // The target's own corpus directory says what it reads.
+    let seeds = match output_dir.file_name().and_then(|n| n.to_str()) {
+        Some("fuzz_debug_format") => Seeds::DebugModules,
+        _ => Seeds::Sources,
+    };
     let mut count = start;
-    walk(source, &output_dir, &mut count)?;
+    walk(source, &output_dir, &mut count, seeds)?;
     Ok(count - start)
 }
 
-fn walk(path: &Path, output_dir: &Path, count: &mut usize) -> anyhow::Result<()> {
+/// What a corpus holds: the programs, or, for `fuzz_debug_format`, the
+/// debug tables of those that compile, each as a module of its custom
+/// sections.
+#[derive(Clone, Copy)]
+enum Seeds {
+    Sources,
+    DebugModules,
+}
+
+/// The custom sections of the debug build of `source`, as a module of
+/// their own: what `fuzz_debug_format` reads. `None` when the source does
+/// not compile on its own.
+pub(crate) fn debug_module(source: &str) -> Option<Vec<u8>> {
+    let (db, file) = crate::session::load(source)?;
+    if !crate::session::compiles(&db, file) {
+        return None;
+    }
+    let index = hir::hir_def::semantic_index::semantic_index(&db, file);
+    let mir = mir::lower::lower_module::lower_module(&db, index).ok()?;
+    // A program codegen refuses is `fuzz_compiler`'s finding, not a seed.
+    let wasm = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        wasm_codegen::generate_wasm_profile(&db, &mir, wasm_codegen::Profile::Debug).finish()
+    }))
+    .ok()?;
+    Some(custom_sections_only(&wasm))
+}
+
+/// `wasm` without its code: the custom sections, in a module of their own.
+fn custom_sections_only(wasm: &[u8]) -> Vec<u8> {
+    fn leb128(mut v: u32, out: &mut Vec<u8>) {
+        loop {
+            let byte = (v & 0x7f) as u8;
+            v >>= 7;
+            if v == 0 {
+                out.push(byte);
+                return;
+            }
+            out.push(byte | 0x80);
+        }
+    }
+    let mut module = vec![0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00];
+    for payload in wasmparser::Parser::new(0).parse_all(wasm) {
+        let Ok(wasmparser::Payload::CustomSection(section)) = payload else {
+            continue;
+        };
+        let mut body = Vec::new();
+        leb128(section.name().len() as u32, &mut body);
+        body.extend_from_slice(section.name().as_bytes());
+        body.extend_from_slice(section.data());
+        module.push(0);
+        leb128(body.len() as u32, &mut module);
+        module.extend_from_slice(&body);
+    }
+    module
+}
+
+fn walk(path: &Path, output_dir: &Path, count: &mut usize, seeds: Seeds) -> anyhow::Result<()> {
     if path.is_dir() {
         // Build outputs are not sources, and an output directory inside the
         // tree would feed on itself.
@@ -71,7 +132,7 @@ fn walk(path: &Path, output_dir: &Path, count: &mut usize) -> anyhow::Result<()>
             .collect();
         entries.sort();
         for entry in entries {
-            walk(&entry, output_dir, count)?;
+            walk(&entry, output_dir, count, seeds)?;
         }
         return Ok(());
     }
@@ -86,8 +147,18 @@ fn walk(path: &Path, output_dir: &Path, count: &mut usize) -> anyhow::Result<()>
         _ => Vec::new(),
     };
     for source in sources {
-        if !source.trim().is_empty() {
-            save_corpus_entry(&source, output_dir, count)?;
+        if source.trim().is_empty() {
+            continue;
+        }
+        match seeds {
+            Seeds::Sources => save_corpus_entry(&source, output_dir, count)?,
+            Seeds::DebugModules => {
+                if let Some(module) = debug_module(&source) {
+                    let path = output_dir.join(format!("seed-{:06}.wasm", *count));
+                    std::fs::write(&path, &module)?;
+                    *count += 1;
+                }
+            }
         }
     }
     Ok(())

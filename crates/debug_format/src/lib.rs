@@ -7,16 +7,27 @@ use serde::{Deserialize, Serialize};
 pub mod info;
 pub mod test_manifest;
 pub mod test_report;
+mod tolerant;
 
-pub use info::{DebugInfo, SourcePos, StackFrame, TypeMismatch, VarLoc, VarValue, decode, encode};
+pub use info::{
+    DebugInfo, Live, Place, Pointee, SourcePos, StackFrame, TypeMismatch, VarLoc, VarValue, decode,
+    encode,
+};
+/// Decode a section's MessagePack as every `from_msgpack` here does: the
+/// fields `T` declares, and whatever a newer producer wrote after them
+/// skipped. For a reader of an older shape, or a mirror of one in a test.
+pub use tolerant::from_slice as read_tolerant;
 
 /// Custom wasm section carrying the MessagePack-encoded [`DebugSymbols`].
 pub const DEBUG_SYMBOLS_SECTION: &str = "debug-symbols";
 
 /// On-wire format version; bump on any breaking change. A new field goes
 /// at the TAIL of its struct: `rmp_serde` encodes positionally, so
-/// `#[serde(default)]` only backfills a field missing from the end.
-pub const DEBUG_SYMBOLS_VERSION: u16 = 8;
+/// `#[serde(default)]` only backfills a field missing from the end, and an
+/// older reader skips the fields past those it knows ([`tolerant`]). An enum
+/// variant is written by its name: its place in the enum is free, and a new
+/// one is what an older reader cannot step over.
+pub const DEBUG_SYMBOLS_VERSION: u16 = 9;
 
 /// The complete debug-symbol table for a module.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -36,6 +47,34 @@ pub struct DebugSymbols {
     /// on.
     #[serde(default)]
     pub containers: Vec<ContainerSym>,
+    /// Every pointer in memory, by path (v9), sorted by `path`: what a
+    /// `REF_TO` variable or member holds, and what a VAR_IN_OUT member is
+    /// bound to. They are not in `symbols`, a pointer having no [`SymType`].
+    #[serde(default)]
+    pub pointers: Vec<PointerSym>,
+    /// `[base, end)` of the stack the frames of recursive calls are pushed
+    /// on (v9), `None` when no function pushes one: an address in it is in
+    /// the frame of some call, which only the live frames name.
+    #[serde(default)]
+    pub stack: Option<(u32, u32)>,
+}
+
+/// A pointer in linear memory: 4 bytes holding an address, or 0 for none.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PointerSym {
+    /// Dotted path of the pointer itself, as [`Symbol::path`] spells it.
+    pub path: String,
+    /// Where the pointer is: an address in linear memory, or, in a
+    /// [`FrameLocals`], bytes from the start of the frame.
+    pub address: u32,
+    /// Whether it lives in the configuration's globals.
+    pub global: bool,
+    /// What it points at, in the type table of its section. `None` when the
+    /// compiler has no type for it.
+    pub target: Option<TypeId>,
+    /// A VAR_IN_OUT member: its name reads as the variable it is bound to,
+    /// where a `REF_TO` is followed by writing `^`.
+    pub by_ref: bool,
 }
 
 /// One aggregate's name and base address.
@@ -55,6 +94,22 @@ pub struct ContainerSym {
 
 /// Index into a `types` table.
 pub type TypeId = u32;
+
+/// Which type table a [`TypeRef`] indexes: the module's
+/// ([`DebugSymbols::types`]) or the frames' ([`DebugLocals::types`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Table {
+    Module,
+    Frames,
+}
+
+/// A type by its table and id: what a resolved location carries when its
+/// entry says more than its [`SymType`] does, an enumeration's variants.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TypeRef {
+    pub table: Table,
+    pub id: TypeId,
+}
 
 /// The layout of one type, enough to locate any member of a value of that
 /// type from its base address. Deduplicated: one entry per distinct layout.
@@ -81,11 +136,19 @@ pub enum TypeDesc {
         /// Element type.
         elem: TypeId,
     },
-    /// Present but not walkable: a pointer. Locating through one needs a live
-    /// dereference.
-    Opaque { size: u32 },
+    /// A pointer when `size` is 4: locating through one needs a live
+    /// dereference, a read of the address it holds.
+    Opaque {
+        size: u32,
+        /// What it points at (v9); `None` when the compiler has no type
+        /// for it.
+        #[serde(default)]
+        target: Option<TypeId>,
+        /// A VAR_IN_OUT member (v9), read through without `^`.
+        #[serde(default)]
+        by_ref: bool,
+    },
     /// An IEC enumeration: stored as `storage`, displayed as a variant name.
-    /// Last on purpose (variant index encoding).
     Enum {
         /// The IEC type name (`TrafficLight`).
         name: String,
@@ -96,7 +159,8 @@ pub enum TypeDesc {
 }
 
 /// An array element's IEC-subscripted path from its flat row-major index,
-/// chained (`a[1][2]`); owned here so emitter and consumers agree.
+/// `a[1, 2]` as the standard spells it; owned here so emitter and consumers
+/// agree. A reader takes the chained `a[1][2]` as well.
 pub fn element_path(path: &str, flat: u32, dimensions: &[(i64, i64)]) -> String {
     if dimensions.is_empty() {
         return format!("{path}[{flat}]");
@@ -105,15 +169,23 @@ pub fn element_path(path: &str, flat: u32, dimensions: &[(i64, i64)]) -> String 
     let mut rem = i64::from(flat);
     for d in (0..dimensions.len()).rev() {
         let (lo, hi) = dimensions[d];
-        let size = (hi - lo + 1).max(1);
-        subs[d] = lo + rem % size;
+        // A bound a hostile table wrote can span the whole of i64: the flat
+        // index is then all there is to say.
+        let Some(size) = hi.checked_sub(lo).and_then(|n| n.checked_add(1)) else {
+            return format!("{path}[{flat}]");
+        };
+        let size = size.max(1);
+        let Some(sub) = lo.checked_add(rem % size) else {
+            return format!("{path}[{flat}]");
+        };
+        subs[d] = sub;
         rem /= size;
     }
     let joined = subs
         .iter()
-        .map(|s| s.to_string())
+        .map(i64::to_string)
         .collect::<Vec<_>>()
-        .join("][");
+        .join(", ");
     format!("{path}[{joined}]")
 }
 
@@ -320,6 +392,8 @@ impl DebugSymbols {
             arrays: Vec::new(),
             types: Vec::new(),
             containers: Vec::new(),
+            pointers: Vec::new(),
+            stack: None,
         }
     }
 
@@ -330,7 +404,7 @@ impl DebugSymbols {
 
     /// Deserialize from MessagePack bytes.
     pub fn from_msgpack(bytes: &[u8]) -> Result<Self, rmp_serde::decode::Error> {
-        rmp_serde::from_slice(bytes)
+        crate::tolerant::from_slice(bytes)
     }
 }
 
@@ -377,7 +451,7 @@ impl DebugFunctions {
 
     /// Deserialize from MessagePack bytes.
     pub fn from_msgpack(bytes: &[u8]) -> Result<Self, rmp_serde::decode::Error> {
-        rmp_serde::from_slice(bytes)
+        crate::tolerant::from_slice(bytes)
     }
 }
 
@@ -434,7 +508,7 @@ impl DebugLines {
 
     /// Deserialize from MessagePack bytes.
     pub fn from_msgpack(bytes: &[u8]) -> Result<Self, rmp_serde::decode::Error> {
-        rmp_serde::from_slice(bytes)
+        crate::tolerant::from_slice(bytes)
     }
 }
 
@@ -447,7 +521,7 @@ pub const DEBUG_LOCALS_SECTION: &str = "debug-locals";
 
 /// On-wire format version for [`DebugLocals`]. v2 adds `memory`/`arrays`
 /// per function; v3 adds the module-level `types` table.
-pub const DEBUG_LOCALS_VERSION: u16 = 4;
+pub const DEBUG_LOCALS_VERSION: u16 = 5;
 
 /// Per-function scalar-local tables: wasm local slot → IEC name and type;
 /// memory-resident variables are reached via [`DebugSymbols`].
@@ -484,6 +558,64 @@ pub struct FuncLocals {
     /// turns back into a name.
     #[serde(default)]
     pub this_slot: Option<u32>,
+    /// The pointers among the memory locals above (v5), at static addresses,
+    /// as [`DebugSymbols::pointers`].
+    #[serde(default)]
+    pub pointers: Vec<PointerSym>,
+    /// The pointers held in wasm locals (v5): a VAR_IN_OUT or VAR_OUTPUT
+    /// parameter, a `REF_TO` input or local.
+    #[serde(default)]
+    pub local_pointers: Vec<LocalPointer>,
+    /// The memory locals of a recursive function (v5), which are in the
+    /// frame of each call.
+    #[serde(default)]
+    pub frame: Option<FrameLocals>,
+    /// Every aggregate among the memory locals above, by its base (v5), as
+    /// [`DebugSymbols::containers`]: what a reference into this function's
+    /// locals points at, when it points at a whole STRUCT.
+    #[serde(default)]
+    pub containers: Vec<ContainerSym>,
+}
+
+/// A pointer in a wasm local: an i32 holding an address, or 0 for none.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct LocalPointer {
+    /// Index for `FrameHandle::local(i)`.
+    pub wasm_index: u32,
+    pub name: String,
+    /// What it points at, in [`DebugLocals::types`].
+    pub target: Option<TypeId>,
+    /// A VAR_IN_OUT or VAR_OUTPUT parameter: its name reads as the caller's
+    /// variable, where a `REF_TO` is followed by writing `^`.
+    pub by_ref: bool,
+}
+
+/// The memory locals of a recursive function. Each call pushes a frame on
+/// the stack and keeps where it starts in a wasm local: a local lives at
+/// that address plus its offset, in the frame of the call being looked at.
+///
+/// They are not in [`FuncLocals::memory`], whose addresses are absolute: a
+/// reader that took an offset for an address would show memory that is
+/// something else's.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct FrameLocals {
+    /// The wasm local holding the address the frame starts at.
+    pub slot: u32,
+    /// As [`FuncLocals::memory`], each `address` counted from the frame's
+    /// start.
+    pub memory: Vec<Symbol>,
+    /// As [`FuncLocals::arrays`], likewise.
+    pub arrays: Vec<ArraySym>,
+    /// As [`FuncLocals::pointers`], likewise.
+    pub pointers: Vec<PointerSym>,
+    /// Bytes a call pushes: `[start, start + size)` is this call's, and an
+    /// address in it is one of these locals'.
+    #[serde(default)]
+    pub size: u32,
+    /// As [`FuncLocals::containers`], each `address` counted from the
+    /// frame's start.
+    #[serde(default)]
+    pub containers: Vec<ContainerSym>,
 }
 
 /// One scalar local: its wasm local slot index + IEC name and type.
@@ -503,7 +635,7 @@ impl DebugLocals {
 
     /// Deserialize from MessagePack bytes.
     pub fn from_msgpack(bytes: &[u8]) -> Result<Self, rmp_serde::decode::Error> {
-        rmp_serde::from_slice(bytes)
+        crate::tolerant::from_slice(bytes)
     }
 }
 
@@ -567,7 +699,7 @@ impl ScheduleManifest {
 
     /// Deserialize from MessagePack bytes.
     pub fn from_msgpack(bytes: &[u8]) -> Result<Self, rmp_serde::decode::Error> {
-        rmp_serde::from_slice(bytes)
+        crate::tolerant::from_slice(bytes)
     }
 }
 
@@ -659,7 +791,7 @@ impl RetainMap {
 
     /// Deserialize from MessagePack bytes.
     pub fn from_msgpack(bytes: &[u8]) -> Result<Self, rmp_serde::decode::Error> {
-        rmp_serde::from_slice(bytes)
+        crate::tolerant::from_slice(bytes)
     }
 }
 
@@ -812,7 +944,7 @@ impl LocatedMap {
 
     /// Deserialize from MessagePack bytes.
     pub fn from_msgpack(bytes: &[u8]) -> Result<Self, rmp_serde::decode::Error> {
-        rmp_serde::from_slice(bytes)
+        crate::tolerant::from_slice(bytes)
     }
 }
 
@@ -982,9 +1114,152 @@ mod tests {
                 global: false,
                 type_name: "Prog".into(),
             }],
+            pointers: vec![],
+            stack: Some((4096, 8192)),
         };
         let back = DebugSymbols::from_msgpack(&table.to_msgpack()).unwrap();
         assert_eq!(back, table);
+    }
+
+    /// A reader of the formats before this one reads a table of this one:
+    /// what it knows, with the pointers and the frames it does not skipped.
+    /// What a runtime on a device does with a newer program.
+    #[test]
+    fn an_older_reader_reads_the_newer_tables() {
+        /// `debug-symbols` as v8 declared it, and `debug-locals` as v4 did.
+        #[derive(Deserialize)]
+        #[allow(dead_code)]
+        struct V8Symbols {
+            version: u16,
+            symbols: Vec<Symbol>,
+            #[serde(default)]
+            arrays: Vec<ArraySym>,
+            #[serde(default)]
+            types: Vec<V8Type>,
+            #[serde(default)]
+            containers: Vec<ContainerSym>,
+        }
+        #[derive(Deserialize, Debug)]
+        #[allow(dead_code)]
+        enum V8Type {
+            Scalar(SymType),
+            Struct {
+                name: String,
+                size: u32,
+                fields: Vec<FieldDesc>,
+            },
+            Array {
+                dimensions: Vec<(i64, i64)>,
+                total_elements: u32,
+                elem_size: u32,
+                elem: TypeId,
+            },
+            Opaque {
+                size: u32,
+            },
+            Enum {
+                name: String,
+                storage: SymType,
+                variants: Vec<(String, i64)>,
+            },
+        }
+        #[derive(Deserialize)]
+        #[allow(dead_code)]
+        struct V4Locals {
+            version: u16,
+            functions: Vec<V4Func>,
+            #[serde(default)]
+            types: Vec<V8Type>,
+        }
+        #[derive(Deserialize)]
+        #[allow(dead_code)]
+        struct V4Func {
+            defined_index: u32,
+            locals: Vec<LocalVar>,
+            #[serde(default)]
+            memory: Vec<Symbol>,
+            #[serde(default)]
+            arrays: Vec<ArraySym>,
+            #[serde(default)]
+            this_slot: Option<u32>,
+        }
+
+        let leaf = Symbol {
+            path: "P1.n".into(),
+            address: 8,
+            size: 4,
+            ty: SymType::Int,
+            global: false,
+            named_type: None,
+            bits: None,
+        };
+        let mut table = DebugSymbols::new();
+        table.symbols = vec![leaf.clone()];
+        table.types = vec![
+            TypeDesc::Scalar(SymType::Int),
+            TypeDesc::Opaque {
+                size: 4,
+                target: Some(0),
+                by_ref: true,
+            },
+        ];
+        table.pointers = vec![PointerSym {
+            path: "P1.m.speed".into(),
+            address: 12,
+            global: false,
+            target: Some(0),
+            by_ref: true,
+        }];
+        let read: V8Symbols = crate::tolerant::from_slice(&table.to_msgpack())
+            .expect("the v8 reader reads a v9 table");
+        assert_eq!(read.version, DEBUG_SYMBOLS_VERSION);
+        assert_eq!(read.symbols, vec![leaf.clone()]);
+        assert!(
+            matches!(read.types[1], V8Type::Opaque { size: 4 }),
+            "the pointer's entry, its target skipped: {:?}",
+            read.types
+        );
+
+        let locals = DebugLocals {
+            version: DEBUG_LOCALS_VERSION,
+            functions: vec![FuncLocals {
+                defined_index: 3,
+                locals: vec![LocalVar {
+                    wasm_index: 0,
+                    name: "n".into(),
+                    ty: SymType::Int,
+                }],
+                memory: Vec::new(),
+                arrays: Vec::new(),
+                this_slot: Some(1),
+                pointers: Vec::new(),
+                local_pointers: vec![LocalPointer {
+                    wasm_index: 4,
+                    name: "v".into(),
+                    target: Some(0),
+                    by_ref: true,
+                }],
+                frame: Some(FrameLocals {
+                    slot: 2,
+                    memory: vec![leaf],
+                    arrays: Vec::new(),
+                    pointers: Vec::new(),
+                    size: 16,
+                    containers: Vec::new(),
+                }),
+                containers: Vec::new(),
+            }],
+            types: vec![TypeDesc::Scalar(SymType::Int)],
+        };
+        let read: V4Locals = crate::tolerant::from_slice(&locals.to_msgpack())
+            .expect("the v4 reader reads a v5 table");
+        assert_eq!(read.version, DEBUG_LOCALS_VERSION);
+        assert_eq!(read.functions[0].this_slot, Some(1));
+        assert_eq!(read.functions[0].locals[0].name, "n");
+        assert!(
+            read.functions[0].memory.is_empty(),
+            "a frame's locals are not taken for static ones"
+        );
     }
 
     /// A v6 module and a v3 locals table must still decode: the encoding is

@@ -755,8 +755,15 @@ fn lower_module_from_pous<'db>(
     // path.
     let mut symbols = Vec::new();
     let mut array_syms = Vec::new();
+    let mut pointers = Vec::new();
     let mut containers = Vec::new();
     let mut type_table = crate::debug_symbols::TypeTable::new();
+    let mut tables = crate::debug_symbols::Tables {
+        symbols: &mut symbols,
+        arrays: &mut array_syms,
+        pointers: &mut pointers,
+        types: &mut type_table,
+    };
     if let Some(sched) = &module.schedule {
         for task in &sched.tasks {
             for inst in &task.programs {
@@ -788,9 +795,8 @@ fn lower_module_from_pous<'db>(
                         inst.instance_addr + f.offset,
                         &f.ty,
                         false, // program-instance field
-                        &mut symbols,
-                        &mut array_syms,
-                        &mut type_table,
+                        f.by_ref,
+                        &mut tables,
                     );
                     crate::debug_symbols::collect_containers(
                         db,
@@ -824,9 +830,8 @@ fn lower_module_from_pous<'db>(
                             *addr,
                             ty,
                             false,
-                            &mut symbols,
-                            &mut array_syms,
-                            &mut type_table,
+                            false,
+                            &mut tables,
                         );
                     } else if let Some(address) = var
                         .location(db)
@@ -840,7 +845,7 @@ fn lower_module_from_pous<'db>(
                     {
                         // A part of a wider address has no cell of its own:
                         // it is the bits of its owner's.
-                        symbols.push(debug_format::Symbol {
+                        tables.symbols.push(debug_format::Symbol {
                             path,
                             address: part.addr,
                             size: part.size,
@@ -889,23 +894,13 @@ fn lower_module_from_pous<'db>(
                 cell + offset,
                 &super::lower_type::lower_spec(db, var.spec(db))?,
                 false,
-                &mut symbols,
-                &mut array_syms,
-                &mut type_table,
+                false,
+                &mut tables,
             );
         }
     }
     for (name, (addr, ty)) in &global_table {
-        crate::debug_symbols::collect_root(
-            db,
-            name.text(db),
-            *addr,
-            ty,
-            true,
-            &mut symbols,
-            &mut array_syms,
-            &mut type_table,
-        );
+        crate::debug_symbols::collect_root(db, name.text(db), *addr, ty, true, false, &mut tables);
         crate::debug_symbols::collect_containers(
             db,
             name.text(db),
@@ -921,7 +916,7 @@ fn lower_module_from_pous<'db>(
         let (Some(of), Some(ty)) = (&part.part_of, part.ty) else {
             continue;
         };
-        symbols.push(debug_format::Symbol {
+        tables.symbols.push(debug_format::Symbol {
             path: part.name.clone(),
             address: part.addr,
             size: part.size,
@@ -937,12 +932,16 @@ fn lower_module_from_pous<'db>(
     symbols.sort_by(|a, b| a.path.cmp(&b.path));
     containers.sort_by(|a, b| a.path.cmp(&b.path));
     array_syms.sort_by(|a, b| a.path.cmp(&b.path));
+    pointers.sort_by(|a, b| a.path.cmp(&b.path));
     module.debug_symbols = crate::debug_symbols::DebugSymbols {
         version: crate::debug_symbols::DEBUG_SYMBOLS_VERSION,
         symbols,
         arrays: array_syms,
         types: type_table.into_entries(),
         containers,
+        pointers,
+        // The region is the build's: codegen places the stack.
+        stack: None,
     };
 
     // The per-field retain map from the same final addresses.

@@ -21,6 +21,66 @@ All these tables are stored as custom sections, encoded with [MessagePack](https
 
 Paths are resolved through arrays and struct fields without enumerating them.
 So `pts[7423].history[2].y` is a single lookup, and writes go back the same way.
+An element of a multi-dimensional array is written `m[1, 2]`.
+The reader also accepts `m[1][2]`.
+
+## Pointers
+
+`debug-symbols` lists each pointer with the type it points at:
+
+- **A `REF_TO`** variable or member.
+- **A `VAR_IN_OUT`** member of an instance.
+
+Write `^` to go through a pointer, as in the program:
+
+```st
+P1.head^.value
+P1.a.next^.next^.value
+```
+
+A `VAR_IN_OUT` reads as the variable it is bound to.
+`P1.m.speed` and `P1.m.speed^` are the same.
+
+Following a pointer needs the memory of the running module.
+`DebugInfo::follow` takes a reader of it.
+A null pointer stops the path.
+The result names the pointer.
+
+The value of a pointer is the address it holds and the variable at that address.
+
+`debug-locals` lists the pointers a function holds in wasm locals:
+
+- **A `VAR_IN_OUT` or `VAR_OUTPUT`** parameter.
+- **A `REF_TO`** input or local.
+- **An aggregate input.** It reads as the input itself.
+
+## Recursive calls
+
+A recursive function keeps its arrays, structs and strings in a frame.
+Each call pushes one.
+A wasm local holds where the frame starts.
+
+`debug-locals` gives:
+
+- **The local** that holds the start of the frame.
+- **The size** of the frame.
+- **Each variable** at its offset from the start.
+
+A debugger stopped in such a call reads the local.
+It then resolves a path with `DebugInfo::resolve_in_frame` or `follow_local`.
+
+`debug-symbols` gives the region of the stack the frames are pushed on.
+An address in that region belongs to a call.
+`frame_variable_at` names it from the live frames.
+A reference to a STRUCT is named as the STRUCT, not as its first field at the same address.
+
+## Versions
+
+Each table carries a version.
+A runtime can be older than the compiler that built the module.
+A reader built from `debug_format` skips the fields it does not know.
+The newer module still loads.
+`DebugInfo::problems()` names each table the reader could not read, or that is newer than the reader.
 
 > [!NOTE]
 > **Rk ships no debugger.**

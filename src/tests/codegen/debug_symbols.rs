@@ -188,9 +188,9 @@ fn runtime_reads_and_writes_vars_by_name(mut with_db: db::RootDatabase) {
     );
 }
 
-/// Aggregates: arrays expand to per-element leaves with IEC subscripts (1-D and
-/// row-major N-D), enums/subranges emit one underlying-integer leaf; STRING is
-/// still skipped (needs a length-prefix wire type).
+/// Aggregates: an array is one descriptor, its elements resolved on demand
+/// by IEC subscript (1-D and row-major N-D); enums/subranges emit one
+/// underlying-integer leaf; a STRING is one leaf carrying its capacity.
 #[rstest]
 fn aggregate_symbols(mut with_db: db::RootDatabase) {
     let source = r#"
@@ -426,7 +426,7 @@ fn a_large_array_is_described_and_addressable_not_invisible(mut with_db: db::Roo
     assert_eq!(
         plc.read_var(&info, "P1.big[4321]"),
         Some(VarValue::I32(8642)),
-        "an element far past the leaf budget reads through the descriptor"
+        "an element reads through the descriptor"
     );
     plc.write_var(&info, "P1.big[4321]", VarValue::I32(-7))
         .expect("forcing an un-enumerated element");
@@ -488,8 +488,9 @@ fn an_aggregate_array_is_one_descriptor_not_ten_thousand_leaves(mut with_db: db:
     assert_eq!(arr.elem_size, 40);
 }
 
-/// Multi-dimensional on-demand resolution uses the emitted `[i][j]` form —
-/// what the grammar accepts — and the legacy `[i,j]` spelling still resolves.
+/// Multi-dimensional on-demand resolution takes both spellings the grammar
+/// accepts: `[i][j]`, the chained form the tables emit, and `[i, j]`, the
+/// standard's.
 #[rstest]
 fn multi_dimensional_paths_resolve_in_both_spellings(mut with_db: db::RootDatabase) {
     let source = r#"
@@ -512,8 +513,8 @@ fn multi_dimensional_paths_resolve_in_both_spellings(mut with_db: db::RootDataba
     let mut plc = TestPlc::load(&wasm).expect("load");
     plc.run(1).expect("scan");
     let info = DebugInfo::from_wasm(&wasm);
-    // 1600 elements > budget, so [7][9] is not an eager leaf — it resolves
-    // through the descriptor with per-dimension lower bounds honoured.
+    // A module array has no element leaves: [7][9] resolves through the
+    // descriptor, with per-dimension lower bounds honoured.
     assert_eq!(plc.read_var(&info, "P1.m[7][9]"), Some(VarValue::I16(79)));
     assert_eq!(plc.read_var(&info, "P1.m[7,9]"), Some(VarValue::I16(79)));
     assert_eq!(
@@ -526,9 +527,10 @@ fn multi_dimensional_paths_resolve_in_both_spellings(mut with_db: db::RootDataba
 /// A frame's MEMORY-resident locals — aggregates, strings — must appear in
 /// `debug-locals` alongside its scalars. They lived nowhere before v2:
 /// stepping into a function, its arrays and structs were uninspectable, in
-/// either debug section. Their addresses are static (IEC forbids recursion,
-/// so a function's memory locals have fixed homes), which is what lets them
-/// reuse the module-symbol machinery scoped to the frame.
+/// either debug section. For a function that does not recurse their
+/// addresses are static, which is what lets them reuse the module-symbol
+/// machinery scoped to the frame; a recursive function's are in `frame`,
+/// by offset (the next test).
 #[rstest]
 fn a_frame_s_aggregate_locals_are_described(mut with_db: db::RootDatabase) {
     let source = r#"
@@ -585,9 +587,9 @@ fn a_frame_s_aggregate_locals_are_described(mut with_db: db::RootDatabase) {
             .unwrap_or_else(|| panic!("no locals table for {name}"))
     };
 
-    // The FUNCTION's frame: struct leaves, array leaves, the STRING, and a
-    // descriptor for every array — including the big one, whose leaves are
-    // budget-bounded rather than enumerated or dropped.
+    // The FUNCTION's frame: struct leaves, the STRING, and a descriptor for
+    // every array and no element leaves, as in the module: an element
+    // resolves through its descriptor.
     let crunch = frame("crunch");
     let by = |p: &str| crunch.memory.iter().find(|s| s.path == p);
     let rx = by("r.x").expect("struct leaf r.x");
@@ -596,11 +598,21 @@ fn a_frame_s_aggregate_locals_are_described(mut with_db: db::RootDatabase) {
     // convention), so the second field sits at +4 — the assertion is that the
     // offsets come from the REAL frame layout, not recomputed guesses.
     assert_eq!(ry.address, rx.address + 4, "layout offsets are frame-real");
-    assert!(by("samples[0]").is_some(), "array leaf");
+    assert!(by("samples[0]").is_none(), "no element leaf");
+    assert!(
+        crunch.arrays.iter().any(|a| a.path == "samples"),
+        "its descriptor"
+    );
     assert_eq!(
         by("msg").expect("string leaf").ty,
         SymType::String { capacity: 8 }
     );
+    let r = crunch
+        .containers
+        .iter()
+        .find(|c| c.path == "r")
+        .expect("the struct local, by its base");
+    assert_eq!((r.address, r.type_name.as_str()), (rx.address, "Rec"));
     let big = crunch
         .arrays
         .iter()
@@ -608,14 +620,9 @@ fn a_frame_s_aggregate_locals_are_described(mut with_db: db::RootDatabase) {
         .expect("descriptor for the 5000-element local");
     assert_eq!(big.total_elements, 5000);
     assert_eq!(big.elem_ty, Some(SymType::DInt));
-    let big_leaves = crunch
-        .memory
-        .iter()
-        .filter(|s| s.path.starts_with("big["))
-        .count();
     assert!(
-        big_leaves <= 1024,
-        "the frame's leaf budget holds, got {big_leaves}"
+        !crunch.memory.iter().any(|s| s.path.starts_with("big[")),
+        "5000 elements, none enumerated"
     );
 
     // The METHOD's frame — a different lowering path — describes its struct
@@ -628,12 +635,12 @@ fn a_frame_s_aggregate_locals_are_described(mut with_db: db::RootDatabase) {
     );
 }
 
-/// A recursive FUNCTION's aggregate locals are in the frame of each call,
-/// at an address the section cannot give: they are left out, where a static
-/// address would show every frame the innermost call's values. Its scalars
-/// are wasm locals, one set per frame, and stay described.
+/// A recursive FUNCTION's aggregate locals are in the frame of each call:
+/// not among the static ones, where an address would show every frame the
+/// innermost call's values, but in `frame`, at offsets from the call's own
+/// start. Its scalars are wasm locals, one set per frame.
 #[rstest]
-fn a_recursive_function_s_frame_locals_are_left_out(mut with_db: db::RootDatabase) {
+fn a_recursive_function_s_frame_locals_are_in_its_frame(mut with_db: db::RootDatabase) {
     let source = r#"
         FUNCTION FDepth : INT
         VAR_INPUT n : INT; END_VAR
@@ -680,19 +687,25 @@ fn a_recursive_function_s_frame_locals_are_left_out(mut with_db: db::RootDatabas
         "no static address for a frame's array: {:?}",
         frame.memory.iter().map(|s| &s.path).collect::<Vec<_>>()
     );
+    let in_frame = frame.frame.as_ref().expect("the frame of each call");
+    assert!(
+        in_frame.arrays.iter().any(|a| a.path == "a"),
+        "in the frame, by offset: {:?}",
+        in_frame.arrays.iter().map(|a| &a.path).collect::<Vec<_>>()
+    );
+    assert!(in_frame.size >= 8, "two INTs, got {}", in_frame.size);
     assert!(
         frame.locals.iter().any(|l| l.name == "n"),
         "the scalar input, per frame"
     );
 }
 
-/// The v5 type table: an AGGREGATE array element far past the leaf budget is
-/// addressable member by member — `pts[1500].y`, `pts[1500].history[2]` —
-/// by indexing through the descriptor and walking the element's `TypeDesc`,
-/// exactly how a debugger resolves member paths from DWARF. Before v5 the
-/// descriptor said `elem_ty: None` and every un-enumerated element of an
-/// array of structs was unreachable — readable for the first budget's worth
-/// of leaves and silently invisible past that.
+/// The v5 type table: an AGGREGATE array element is addressable member by
+/// member — `pts[1500].y`, `pts[1500].history[2]` — by indexing through the
+/// descriptor and walking the element's `TypeDesc`, exactly how a debugger
+/// resolves member paths from DWARF. Before v5 the descriptor said
+/// `elem_ty: None` and no element of an array of structs was reachable: a
+/// module array has no element leaves to fall back on.
 #[rstest]
 fn aggregate_elements_resolve_through_the_type_table(mut with_db: db::RootDatabase) {
     let source = r#"
@@ -764,14 +777,13 @@ fn aggregate_elements_resolve_through_the_type_table(mut with_db: db::RootDataba
         debug_format::TypeDesc::Scalar(SymType::DInt)
     ));
 
-    // 2000 elements × 6 leaves each ≫ budget: element 1500 was never
-    // enumerated. It reads and forces through the table.
+    // No element is enumerated: 1500 reads and forces through the table.
     let mut plc = TestPlc::load(&wasm).expect("load");
     plc.run(1).expect("scan");
     let info = DebugInfo::from_wasm(&wasm);
     assert!(
         info.symbol("P1.pts[1500].y").is_none(),
-        "the probe element must be past the leaf budget for this test to prove anything"
+        "an element leaf would let the table prove nothing"
     );
     assert_eq!(
         plc.read_var(&info, "P1.pts[1500].y"),
@@ -789,7 +801,7 @@ fn aggregate_elements_resolve_through_the_type_table(mut with_db: db::RootDataba
         Some(VarValue::I32(-3))
     );
 
-    // In-budget elements still read through the eager leaf table and agree.
+    // The first element reads the same way.
     assert_eq!(plc.read_var(&info, "P1.pts[0].y"), Some(VarValue::I32(0)));
 
     // Refusals, not misreads:
@@ -856,6 +868,115 @@ fn a_frame_s_aggregate_array_elements_carry_their_layout(mut with_db: db::RootDa
         matches!(&locals.types[id], debug_format::TypeDesc::Struct { fields, .. } if fields.len() == 2),
         "DebugLocals carries the type table its frames reference"
     );
+}
+
+/// Through [`debug_format::DebugInfo`], a frame's memory locals read like the
+/// module's: an enum by its variant, a member of an array element by its
+/// path. The frames' type table was dropped on reading, so an enum local
+/// was looked up in the module's table, where its id is another type's:
+/// here `Gear` would read as the program's `Lamp`.
+#[rstest]
+fn a_frame_s_locals_read_through_debug_info(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE Lamp : (Off, On); END_TYPE
+        TYPE Gear : (Low, High); END_TYPE
+        TYPE Rec : STRUCT mode : Gear; n : DINT; END_STRUCT; END_TYPE
+
+        FUNCTION crunch : DINT
+        VAR
+            r : Rec;
+            recs : ARRAY[0..999] OF Rec;
+        END_VAR
+            r.mode := Gear#High;
+            recs[12].n := 7;
+            crunch := recs[12].n;
+        END_FUNCTION
+
+        PROGRAM P
+        VAR lamp : Lamp; n : DINT; END_VAR
+            lamp := Lamp#On;
+            n := crunch();
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    let info = debug_format::DebugInfo::from_wasm(&wasm);
+    assert!(info.problems().is_empty(), "got: {:?}", info.problems());
+    let funcs =
+        debug_format::DebugFunctions::from_msgpack(super::expect_section(&wasm, "debug-functions"))
+            .unwrap();
+    let crunch = funcs
+        .functions
+        .iter()
+        .find(|f| f.name == "crunch")
+        .expect("crunch is named")
+        .defined_index;
+
+    // The program's enum, from the module's table.
+    let lamp = info.symbol("P1.lamp").expect("the program's enum");
+    let one = |size: u32| 1u64.to_le_bytes()[..size as usize].to_vec();
+    assert!(
+        matches!(
+            info.decode_symbol(lamp, &one(lamp.size)),
+            debug_format::VarValue::Enum { ref type_name, ref variant, .. }
+                if type_name == "Lamp" && variant.as_deref() == Some("On")
+        ),
+        "got {:?}",
+        info.decode_symbol(lamp, &one(lamp.size))
+    );
+
+    // The frame's enum, from the frames' table.
+    let frame = info.frame_locals(crunch).expect("crunch has a frame");
+    let mode = frame
+        .memory
+        .iter()
+        .find(|s| s.path == "r.mode")
+        .expect("the struct local's enum leaf");
+    assert!(
+        matches!(
+            info.decode_local(mode, &one(mode.size)),
+            debug_format::VarValue::Enum { ref type_name, ref variant, .. }
+                if type_name == "Gear" && variant.as_deref() == Some("High")
+        ),
+        "got {:?}",
+        info.decode_local(mode, &one(mode.size))
+    );
+
+    // A member of an element of the frame's array, never enumerated.
+    let recs = frame
+        .arrays
+        .iter()
+        .find(|a| a.path == "recs")
+        .expect("the frame's array");
+    let n = info
+        .resolve_local(crunch, "recs[12].n")
+        .expect("a path into the frame's array");
+    let first = info
+        .resolve_local(crunch, "recs[0].mode")
+        .expect("the first element's first field");
+    assert_eq!(first.address, recs.address);
+    assert_eq!(n.ty, SymType::DInt);
+    assert_eq!(
+        n.address,
+        recs.address + 12 * recs.elem_size + (n.address - recs.address) % recs.elem_size,
+        "in element 12"
+    );
+    assert!(
+        n.address > recs.address + 12 * recs.elem_size,
+        "past `mode`"
+    );
+    assert_eq!(
+        info.resolve_local(crunch, "r.mode").map(|l| l.address),
+        Some(mode.address)
+    );
+    assert_eq!(info.resolve_local(crunch, "recs[1000].n"), None);
+    assert_eq!(info.resolve("recs[12].n"), None, "not a module path");
 }
 
 /// The artifact cost of an array is its DESCRIPTOR, not its length.
@@ -1196,6 +1317,8 @@ fn a_container_table_without_types_degrades_and_says_so() {
                 type_name: String::new(),
             },
         ],
+        pointers: vec![],
+        stack: None,
     };
     let wasm = wasm_with_debug_symbols(&table.to_msgpack());
     let info = DebugInfo::from_wasm(&wasm);
@@ -1222,4 +1345,516 @@ fn wasm_with_debug_symbols(payload: &[u8]) -> Vec<u8> {
         data: std::borrow::Cow::Borrowed(payload),
     });
     module.finish()
+}
+
+/// A program with every kind of pointer: a `REF_TO` variable, a `REF_TO`
+/// member of a STRUCT that points at itself, a VAR_IN_OUT and a `REF_TO`
+/// member of an instance, an array of `REF_TO`.
+const POINTERS: &str = r#"
+    TYPE Node : STRUCT
+        value : INT;
+        next : REF_TO Node;
+    END_STRUCT; END_TYPE
+
+    TYPE Pt : STRUCT x : REAL; y : REAL; END_STRUCT; END_TYPE
+
+    FUNCTION_BLOCK Motor
+    VAR_IN_OUT speed : INT; END_VAR
+    VAR_EXTERNAL hold : Pt; END_VAR
+    VAR target : REF_TO Pt; count : INT; END_VAR
+        speed := speed + 1;
+        count := count + 1;
+        target := REF(hold);
+    END_FUNCTION_BLOCK
+
+    FUNCTION Bump : INT
+    VAR_IN_OUT v : INT; p : Pt; END_VAR
+    VAR_INPUT r : REF_TO INT; END_VAR
+        v := v + 1;
+        p.x := p.x + 1.0;
+        IF r <> NULL THEN r^ := r^ + 1; END_IF;
+        Bump := v;
+    END_FUNCTION
+
+    PROGRAM Main
+    VAR
+        a : Node; b : Node;
+        head : REF_TO Node;
+        pt : Pt;
+        rp : REF_TO Pt;
+        ri : REF_TO INT;
+        refs : ARRAY[0..2] OF REF_TO INT;
+        n : INT;
+        m : Motor;
+        arr : ARRAY[0..5] OF INT;
+        rf : REF_TO REAL;
+        ra : REF_TO INT;
+    END_VAR
+        a.value := 1; b.value := 2;
+        arr[3] := 33;
+        rf := REF(pt.y);
+        ra := REF(arr[3]);
+        a.next := REF(b);
+        head := REF(a);
+        pt.y := 2.5;
+        rp := REF(pt);
+        ri := REF(n);
+        refs[1] := REF(n);
+        m(speed := n);
+        n := Bump(n, pt, ri);
+    END_PROGRAM
+
+    CONFIGURATION Cfg
+    VAR_GLOBAL hold : Pt; END_VAR
+        RESOURCE Res ON CPU
+            TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+            PROGRAM P1 WITH T : Main;
+        END_RESOURCE
+    END_CONFIGURATION
+"#;
+
+/// Every pointer in memory is listed with what it points at (v9). A
+/// `REF_TO` was dropped from the tables, and a `REF_TO` member was "opaque":
+/// a debugger could not follow `head^`, nor tell what `m.speed` was bound
+/// to.
+#[rstest]
+fn pointers_are_listed_with_their_targets(mut with_db: db::RootDatabase) {
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, POINTERS);
+    let table = read_debug_symbols(&wasm);
+    assert_eq!(table.version, debug_format::DEBUG_SYMBOLS_VERSION);
+    let pointer = |path: &str| {
+        table
+            .pointers
+            .iter()
+            .find(|p| p.path == path)
+            .unwrap_or_else(|| panic!("no pointer {path} in {:?}", table.pointers))
+    };
+    let struct_name = |id: Option<u32>| match &table.types[id.expect("a target") as usize] {
+        debug_format::TypeDesc::Struct { name, .. } => name.clone(),
+        other => panic!("not a struct: {other:?}"),
+    };
+
+    // The STRUCT that points at itself: its member's target is the STRUCT,
+    // whose member's target is the STRUCT, by one entry.
+    let next = pointer("P1.a.next");
+    assert_eq!(struct_name(next.target), "Node");
+    let debug_format::TypeDesc::Struct { fields, .. } = &table.types[next.target.unwrap() as usize]
+    else {
+        unreachable!()
+    };
+    let field = fields
+        .iter()
+        .find(|f| f.name == "next")
+        .expect("the next field");
+    assert_eq!(
+        table.types[field.ty as usize],
+        debug_format::TypeDesc::Opaque {
+            size: 4,
+            target: next.target,
+            by_ref: false,
+        }
+    );
+    assert_eq!(struct_name(pointer("P1.head").target), "Node");
+    assert_eq!(struct_name(pointer("P1.rp").target), "Pt");
+
+    // An instance's VAR_IN_OUT reads through, its REF_TO does not.
+    let speed = pointer("P1.m.speed");
+    assert!(speed.by_ref);
+    assert_eq!(
+        table.types[speed.target.unwrap() as usize],
+        debug_format::TypeDesc::Scalar(SymType::Int)
+    );
+    let target = pointer("P1.m.target");
+    assert!(!target.by_ref);
+    assert_eq!(struct_name(target.target), "Pt");
+
+    // An array of REF_TO: a descriptor whose element is a pointer.
+    let refs = table
+        .arrays
+        .iter()
+        .find(|a| a.path == "P1.refs")
+        .expect("the array's descriptor");
+    assert_eq!(refs.elem_ty, None);
+    let debug_format::TypeDesc::Opaque {
+        size: 4,
+        target: Some(elem),
+        by_ref: false,
+    } = table.types[refs.elem_type.unwrap() as usize]
+    else {
+        panic!("the element is a pointer");
+    };
+    assert_eq!(
+        table.types[elem as usize],
+        debug_format::TypeDesc::Scalar(SymType::Int)
+    );
+
+    // A pointer is not a symbol: it has no type of its own to decode.
+    assert!(table.symbols.iter().all(|s| s.path != "P1.head"));
+    assert!(
+        table.pointers.windows(2).all(|w| w[0].path < w[1].path),
+        "sorted"
+    );
+}
+
+/// The pointers a FUNCTION holds in wasm locals, and the frame of a
+/// recursive function (`debug-locals` v5). A `REF_TO` input was listed as
+/// an INT, and a recursive function's arrays and structs not at all.
+#[rstest]
+fn a_function_s_pointers_and_a_recursive_frame_are_described(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE Pt : STRUCT x : REAL; y : REAL; END_STRUCT; END_TYPE
+
+        FUNCTION Bump : INT
+        VAR_IN_OUT v : INT; p : Pt; END_VAR
+        VAR_INPUT r : REF_TO INT; END_VAR
+        VAR q : REF_TO Pt; END_VAR
+            q := REF(p);
+            v := v + 1;
+            IF r <> NULL THEN r^ := r^ + 1; END_IF;
+            Bump := v;
+        END_FUNCTION
+
+        FUNCTION Depth : INT
+        VAR_INPUT n : INT; END_VAR
+        VAR trail : ARRAY[0..3] OF INT; pt : Pt; END_VAR
+            trail[0] := n;
+            pt.x := n;
+            IF n > 0 THEN Depth := Depth(n - 1) + 1; ELSE Depth := 0; END_IF;
+        END_FUNCTION
+
+        PROGRAM P
+        VAR n : INT; pt : Pt; END_VAR
+            n := Bump(n, pt, NULL) + Depth(2);
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    let read_section = |name: &str| super::expect_section(&wasm, name);
+    let funcs =
+        debug_format::DebugFunctions::from_msgpack(read_section("debug-functions")).unwrap();
+    let locals = debug_format::DebugLocals::from_msgpack(read_section("debug-locals")).unwrap();
+    assert_eq!(locals.version, debug_format::DEBUG_LOCALS_VERSION);
+    let frame = |name: &str| -> &debug_format::FuncLocals {
+        let idx = funcs
+            .functions
+            .iter()
+            .find(|f| f.name == name)
+            .unwrap_or_else(|| panic!("no function named {name}"))
+            .defined_index;
+        locals
+            .functions
+            .iter()
+            .find(|f| f.defined_index == idx)
+            .unwrap_or_else(|| panic!("no locals table for {name}"))
+    };
+
+    let bump = frame("Bump");
+    let ptr = |name: &str| {
+        bump.local_pointers
+            .iter()
+            .find(|p| p.name == name)
+            .unwrap_or_else(|| panic!("no pointer {name} in {:?}", bump.local_pointers))
+    };
+    let is = |id: Option<u32>, desc: &debug_format::TypeDesc| {
+        &locals.types[id.expect("a target") as usize] == desc
+    };
+    assert!(
+        ptr("v").by_ref
+            && is(
+                ptr("v").target,
+                &debug_format::TypeDesc::Scalar(SymType::Int)
+            )
+    );
+    assert!(ptr("p").by_ref);
+    assert!(
+        matches!(&locals.types[ptr("p").target.unwrap() as usize], debug_format::TypeDesc::Struct { name, .. } if name == "Pt")
+    );
+    assert!(
+        !ptr("r").by_ref
+            && is(
+                ptr("r").target,
+                &debug_format::TypeDesc::Scalar(SymType::Int)
+            )
+    );
+    assert!(!ptr("q").by_ref, "a REF_TO local");
+    assert!(
+        bump.locals.iter().all(|l| l.name != "r" && l.name != "q"),
+        "a pointer is not an integer local: {:?}",
+        bump.locals
+    );
+    assert!(
+        bump.local_pointers
+            .windows(2)
+            .all(|w| w[0].wasm_index < w[1].wasm_index),
+        "by slot"
+    );
+    assert!(bump.frame.is_none(), "Bump does not recurse");
+
+    let depth = frame("Depth");
+    assert!(
+        depth.memory.is_empty() && depth.arrays.is_empty(),
+        "nothing static"
+    );
+    let frame = depth.frame.as_ref().expect("a recursive function's frame");
+    let by = |p: &str| {
+        frame
+            .memory
+            .iter()
+            .find(|s| s.path == p)
+            .unwrap_or_else(|| panic!("no {p} in {:?}", frame.memory))
+    };
+    assert_eq!(
+        by("pt.y").address,
+        by("pt.x").address + 4,
+        "offsets in the frame"
+    );
+    let trail = frame
+        .arrays
+        .iter()
+        .find(|a| a.path == "trail")
+        .expect("the array's descriptor");
+    assert!(
+        trail.address + 16 <= frame.size && by("pt.y").address + 4 <= frame.size,
+        "inside the frame"
+    );
+    assert!(
+        depth.locals.iter().all(|l| l.wasm_index != frame.slot),
+        "the frame's slot is no declared local"
+    );
+    let pt = frame
+        .containers
+        .iter()
+        .find(|c| c.path == "pt")
+        .expect("the struct local in the frame, by its offset");
+    assert_eq!(
+        (pt.address, pt.type_name.as_str()),
+        (by("pt.x").address, "Pt")
+    );
+    let (base, end) = read_debug_symbols(&wasm)
+        .stack
+        .expect("a stack, since Depth recurses");
+    assert!(
+        base < end && end - base >= frame.size,
+        "the stack holds a frame"
+    );
+}
+
+/// Pointers followed on a running module: `head^.value` through the
+/// `REF_TO`, `m.speed` through the VAR_IN_OUT, an element of an array of
+/// `REF_TO`, and a pointer's own value as the variable it points at.
+#[rstest]
+fn pointers_are_followed_on_a_running_module(mut with_db: db::RootDatabase) {
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, POINTERS);
+    let mut plc = TestPlc::load(&wasm).expect("load");
+    plc.run(1).expect("scan");
+    let info = DebugInfo::from_wasm(&wasm);
+    assert!(info.problems().is_empty(), "{:?}", info.problems());
+    let live = &mut |address: u32, size: u32| plc.read_bytes(address, size as usize).ok();
+    let value = |place: Option<debug_format::Place>| match place {
+        Some(debug_format::Place::Value(loc)) => loc.decode(
+            &plc.read_bytes(loc.address, loc.size as usize)
+                .expect("in memory"),
+        ),
+        other => panic!("not a value: {other:?}"),
+    };
+    let n = plc.read_var(&info, "P1.n").expect("n");
+
+    assert_eq!(value(info.follow("P1.head^.value", live)), VarValue::I16(1));
+    assert_eq!(
+        value(info.follow("P1.head^.next^.value", live)),
+        VarValue::I16(2)
+    );
+    assert_eq!(
+        value(info.follow("P1.a.next^.value", live)),
+        VarValue::I16(2)
+    );
+    assert_eq!(
+        info.follow("P1.head^.next^.next^.value", live),
+        Some(debug_format::Place::Null {
+            pointer: "P1.head^.next^.next".to_string()
+        }),
+        "b.next is null"
+    );
+    assert_eq!(value(info.follow("P1.m.speed", live)), n, "bound to n");
+    assert_eq!(value(info.follow("P1.ri^", live)), n);
+    assert_eq!(value(info.follow("P1.refs[1]^", live)), n);
+    assert_eq!(
+        info.follow("P1.refs[0]^", live),
+        Some(debug_format::Place::Null {
+            pointer: "P1.refs[0]".to_string()
+        })
+    );
+    assert_eq!(value(info.follow("P1.rp^.y", live)), VarValue::F32(2.5));
+    assert_eq!(
+        value(info.follow("P1.m.target^.x", live)),
+        VarValue::F32(0.0),
+        "the global"
+    );
+
+    let mut points_at = |path: &str| match info.follow(path, live) {
+        Some(debug_format::Place::Pointer(p)) => p.variable,
+        other => panic!("not a pointer: {other:?}"),
+    };
+    assert_eq!(points_at("P1.head").as_deref(), Some("P1.a"));
+    assert_eq!(points_at("P1.a.next").as_deref(), Some("P1.b"));
+    assert_eq!(points_at("P1.ri").as_deref(), Some("P1.n"));
+    assert_eq!(points_at("P1.rp").as_deref(), Some("P1.pt"));
+    assert_eq!(points_at("P1.m.target").as_deref(), Some("hold"));
+    // Into a variable: a field, and an element no leaf lists.
+    assert_eq!(points_at("P1.rf").as_deref(), Some("P1.pt.y"));
+    assert_eq!(points_at("P1.ra").as_deref(), Some("P1.arr[3]"));
+    assert_eq!(value(info.follow("P1.ra^", live)), VarValue::I16(33));
+    let n_at = info.resolve("P1.n").unwrap().address;
+    assert_eq!(info.variable_at(n_at).as_deref(), Some("P1.n"));
+}
+
+/// A bare code offset resolves to its function: the one `line_to_pc` places
+/// a line in, and nothing before the first body.
+#[rstest]
+fn a_code_offset_resolves_to_its_function(mut with_db: db::RootDatabase) {
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, POINTERS);
+    let info = DebugInfo::from_wasm(&wasm);
+    let lines = info.breakable_lines();
+    assert!(!lines.is_empty());
+    for (file, line) in lines {
+        let (defined, pc) = info
+            .line_to_pc(file, line)
+            .expect("a pc for a breakable line");
+        assert_eq!(info.function_at(pc), Some(defined), "line {line}");
+    }
+    assert_eq!(info.function_at(0), None);
+}
+
+/// An enumeration reached through an element or a field reads by its
+/// variant: the descriptor and the field name their entry, which carries
+/// the variants. It read as its integer, where a plain variable read `On`.
+#[rstest]
+fn an_enum_element_reads_by_its_variant(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE Lamp : (Off, On); END_TYPE
+        TYPE Gear : (Low, High); END_TYPE
+        TYPE Rec : STRUCT mode : Gear; n : DINT; END_STRUCT; END_TYPE
+
+        PROGRAM P
+        VAR
+            lamps : ARRAY[0..3] OF Lamp;
+            recs : ARRAY[0..1] OF Rec;
+            lamp : Lamp;
+        END_VAR
+            lamps[3] := Lamp#On;
+            recs[1].mode := Gear#High;
+            lamp := Lamp#On;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    let mut plc = TestPlc::load(&wasm).expect("load");
+    plc.run(1).expect("scan");
+    let info = DebugInfo::from_wasm(&wasm);
+    let variant = |path: &str| match plc.read_var(&info, path) {
+        Some(VarValue::Enum {
+            type_name, variant, ..
+        }) => format!("{type_name}#{}", variant.unwrap_or_default()),
+        other => panic!("{path} is not an enumeration: {other:?}"),
+    };
+    assert_eq!(variant("P1.lamp"), "Lamp#On");
+    assert_eq!(variant("P1.lamps[3]"), "Lamp#On");
+    assert_eq!(variant("P1.lamps[0]"), "Lamp#Off");
+    assert_eq!(variant("P1.recs[1].mode"), "Gear#High");
+    assert_eq!(variant("P1.recs[0].mode"), "Gear#Low");
+    assert_eq!(
+        plc.read_var(&info, "P1.recs[1].n"),
+        Some(VarValue::I32(0)),
+        "a DINT is one"
+    );
+}
+
+/// Two blocks holding each other through VAR_IN_OUT members: each member
+/// is listed with the other block as its target. The one lowered second
+/// closed the cycle with no type at all, and a debugger could not read
+/// through it.
+#[rstest]
+fn blocks_holding_each_other_name_each_other(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Ping
+        VAR_IN_OUT peer : Pong; END_VAR
+        VAR n : INT; END_VAR
+            n := n + 1;
+        END_FUNCTION_BLOCK
+
+        FUNCTION_BLOCK Pong
+        VAR_IN_OUT peer : Ping; END_VAR
+        VAR n : INT; END_VAR
+            n := n + 2;
+        END_FUNCTION_BLOCK
+
+        PROGRAM Main
+        VAR a : Ping; b : Pong; END_VAR
+            a(peer := b);
+            b(peer := a);
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : Main;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    let table = read_debug_symbols(&wasm);
+    let target_of = |path: &str| {
+        let p = table
+            .pointers
+            .iter()
+            .find(|p| p.path == path)
+            .unwrap_or_else(|| panic!("no pointer {path} in {:?}", table.pointers));
+        assert!(p.by_ref, "{path} is a VAR_IN_OUT");
+        match &table.types[p.target.expect("a target") as usize] {
+            debug_format::TypeDesc::Struct { name, .. } => name.clone(),
+            other => panic!("{path} points at {other:?}"),
+        }
+    };
+    assert_eq!(target_of("P1.a.peer"), "Pong");
+    assert_eq!(target_of("P1.b.peer"), "Ping");
+
+    // Read through, each way round, on the running module.
+    let mut plc = TestPlc::load(&wasm).expect("load");
+    plc.run(1).expect("scan");
+    let info = DebugInfo::from_wasm(&wasm);
+    let live = &mut |address: u32, size: u32| plc.read_bytes(address, size as usize).ok();
+    let value = |place: Option<debug_format::Place>| match place {
+        Some(debug_format::Place::Value(loc)) => loc.decode(
+            &plc.read_bytes(loc.address, loc.size as usize)
+                .expect("in memory"),
+        ),
+        other => panic!("not a value: {other:?}"),
+    };
+    assert_eq!(
+        value(info.follow("P1.a.peer.n", live)),
+        VarValue::I16(2),
+        "b's n"
+    );
+    assert_eq!(
+        value(info.follow("P1.b.peer.n", live)),
+        VarValue::I16(1),
+        "a's n"
+    );
+    assert_eq!(
+        value(info.follow("P1.a.peer.peer.n", live)),
+        VarValue::I16(1),
+        "and back"
+    );
 }

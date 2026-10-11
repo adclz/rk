@@ -1070,8 +1070,8 @@ impl<'db> ExprLowerCtx<'db> {
     /// A `VAR_IN_OUT` member holds a pointer to the caller's l-value, so its
     /// place is wrapped in a `Deref`; a `REF_TO` member is dereferenced only
     /// where the user writes `^`. A member closing a cycle of layouts points
-    /// at no layout (`InstanceCycle`), so its pointee is `member_type`, the
-    /// type HIR gave the member.
+    /// at no layout (`InstanceCycle`), only at a name for the debug tables,
+    /// so its pointee is `member_type`, the type HIR gave the member.
     fn wrap_inout_deref(
         &self,
         field: &crate::types::MirStructField,
@@ -1079,12 +1079,16 @@ impl<'db> ExprLowerCtx<'db> {
         member_type: Type<'db>,
     ) -> MirPlace {
         match (&field.by_ref, &field.ty) {
-            (true, MirType::Pointer(pointee)) if **pointee == MirType::Void => MirPlace::Deref {
-                capacity: None,
-                base: Box::new(place),
-                pointee_type: self.lower_pointee(member_type).unwrap_or(MirType::Void),
-                checked: true,
-            },
+            (true, MirType::Pointer(pointee))
+                if matches!(**pointee, MirType::Void | MirType::RefTarget(_)) =>
+            {
+                MirPlace::Deref {
+                    capacity: None,
+                    base: Box::new(place),
+                    pointee_type: self.lower_pointee(member_type).unwrap_or(MirType::Void),
+                    checked: true,
+                }
+            }
             (true, MirType::Pointer(pointee)) => MirPlace::Deref {
                 capacity: match **pointee {
                     MirType::String { .. } => self.in_out_capacity_place(field, &place),

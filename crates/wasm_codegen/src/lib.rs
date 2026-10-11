@@ -369,10 +369,16 @@ struct WasmGen<'a> {
     /// MIR func index → the wasm local holding its instance pointer, for the
     /// bodies that take one.
     func_this_slot: FxHashMap<u32, u32>,
-    /// Per function: leaf symbols and array descriptors for its memory-resident
-    /// locals at static addresses. Emitted into `debug-locals` v2; the locals
-    /// of a recursive function, in the frame of each call, are not described.
-    func_memory_locals: FxHashMap<u32, (Vec<debug_format::Symbol>, Vec<debug_format::ArraySym>)>,
+    /// Per function: its memory-resident locals at static addresses, as the
+    /// `debug-locals` section describes them.
+    func_memory_locals: FxHashMap<u32, FrameTables>,
+    /// Per recursive function: the wasm local holding the start of its
+    /// frame, the frame's size, and its memory locals at offsets from it
+    /// (`debug-locals` v5).
+    func_frame_locals: FxHashMap<u32, (u32, u32, FrameTables)>,
+    /// Per function: the pointers it holds in wasm locals (`debug-locals`
+    /// v5).
+    func_local_pointers: FxHashMap<u32, Vec<debug_format::LocalPointer>>,
     /// Type table shared by every frame's array descriptors (aggregate
     /// element layouts) — becomes `DebugLocals::types` (v3).
     local_type_table: mir::debug_symbols::TypeTable,
@@ -380,6 +386,44 @@ struct WasmGen<'a> {
     /// is added once the graft has placed the bundle's.
     stack_bounds: Option<(u32, u32)>,
     stack: Option<Stack>,
+}
+
+/// A function's memory locals as `debug-locals` describes them: the leaves,
+/// the array descriptors and the pointers, each sorted by path.
+#[derive(Clone, Default)]
+struct FrameTables {
+    symbols: Vec<debug_format::Symbol>,
+    arrays: Vec<debug_format::ArraySym>,
+    pointers: Vec<debug_format::PointerSym>,
+    containers: Vec<debug_format::ContainerSym>,
+}
+
+impl FrameTables {
+    fn tables<'a>(
+        &'a mut self,
+        types: &'a mut mir::debug_symbols::TypeTable,
+    ) -> mir::debug_symbols::Tables<'a> {
+        mir::debug_symbols::Tables {
+            symbols: &mut self.symbols,
+            arrays: &mut self.arrays,
+            pointers: &mut self.pointers,
+            types,
+        }
+    }
+
+    fn is_empty(&self) -> bool {
+        self.symbols.is_empty()
+            && self.arrays.is_empty()
+            && self.pointers.is_empty()
+            && self.containers.is_empty()
+    }
+
+    fn sort(&mut self) {
+        self.symbols.sort_by(|a, b| a.path.cmp(&b.path));
+        self.arrays.sort_by(|a, b| a.path.cmp(&b.path));
+        self.pointers.sort_by(|a, b| a.path.cmp(&b.path));
+        self.containers.sort_by(|a, b| a.path.cmp(&b.path));
+    }
 }
 
 /// Size of the per-`{test}` canonical-ABI `result<unit, string>` area: an
@@ -546,6 +590,8 @@ impl<'a> WasmGen<'a> {
             func_locals: FxHashMap::default(),
             func_this_slot: FxHashMap::default(),
             func_memory_locals: FxHashMap::default(),
+            func_frame_locals: FxHashMap::default(),
+            func_local_pointers: FxHashMap::default(),
             local_type_table: mir::debug_symbols::TypeTable::new(),
             stack_bounds: stack_bounds(module),
             stack: None,
@@ -1095,8 +1141,19 @@ impl<'a> WasmGen<'a> {
 
         // Collect scalar locals (params + VARs held in wasm locals) for the
         // `debug-locals` table, so a debugger can label `FrameHandle::local(i)`.
+        // A `REF_TO` is an i32 to the local map, and was listed as an INT: it
+        // is a pointer, listed with the pointers below.
+        let pointer_names: rustc_hash::FxHashSet<_> = func
+            .params
+            .iter()
+            .map(|p| (p.name, &p.ty))
+            .chain(func.locals.iter().map(|l| (l.name, &l.ty)))
+            .filter(|(_, ty)| matches!(ty, MirType::Pointer(_)))
+            .map(|(name, _)| name)
+            .collect();
         let mut scalar_locals: Vec<(u32, String, MirElementary)> = local_map
             .iter()
+            .filter(|(name, _)| !pointer_names.contains(name))
             .filter_map(|(name, info)| match info {
                 LocalInfo::Scalar { index, elem } => {
                     Some((*index, name.text(self.db).to_string(), *elem))
@@ -1123,27 +1180,87 @@ impl<'a> WasmGen<'a> {
         }
 
         // Memory-resident locals, leaf-walked like module symbols with
-        // frame-relative paths.
-        let mut mem_symbols = Vec::new();
-        let mut mem_arrays = Vec::new();
+        // frame-relative paths: at static addresses, or, in a recursive
+        // function, at offsets in the frame of each call.
+        let mut memory = FrameTables::default();
+        let mut frame = FrameTables::default();
         for local in &func.locals {
-            if let mir::function::MirStorage::Memory { address, .. } = local.storage {
-                mir::debug_symbols::collect_frame_root(
-                    self.db,
-                    local.name.text(self.db).as_ref(),
-                    address,
-                    &local.ty,
-                    &mut mem_symbols,
-                    &mut mem_arrays,
-                    &mut self.local_type_table,
-                );
-            }
+            let (into, address) = match local.storage {
+                MirStorage::Memory { address, .. } => (&mut memory, address),
+                MirStorage::Frame { offset, .. } => (&mut frame, offset),
+                MirStorage::Scalar { .. } => continue,
+            };
+            mir::debug_symbols::collect_root(
+                self.db,
+                local.name.text(self.db).as_ref(),
+                address,
+                &local.ty,
+                false,
+                false,
+                &mut into.tables(&mut self.local_type_table),
+            );
+            mir::debug_symbols::collect_containers(
+                self.db,
+                local.name.text(self.db).as_ref(),
+                address,
+                &local.ty,
+                false,
+                &mut into.containers,
+            );
         }
-        if !mem_symbols.is_empty() || !mem_arrays.is_empty() {
-            mem_symbols.sort_by(|a, b| a.path.cmp(&b.path));
-            mem_arrays.sort_by(|a, b| a.path.cmp(&b.path));
-            self.func_memory_locals
-                .insert(func.index, (mem_symbols, mem_arrays));
+        if !memory.is_empty() {
+            memory.sort();
+            self.func_memory_locals.insert(func.index, memory);
+        }
+        if let Some(slot) = frame_base
+            && !frame.is_empty()
+        {
+            frame.sort();
+            self.func_frame_locals
+                .insert(func.index, (slot, frame_bytes(func), frame));
+        }
+
+        // The pointers in wasm locals: a parameter by reference, an aggregate
+        // input (the address of its call-entry copy, read through as the
+        // input itself), a `REF_TO` input or local. A STRING by reference is
+        // two locals, the address first.
+        let mut local_pointers = Vec::new();
+        for param in &func.params {
+            let MirType::Pointer(pointee) = &param.ty else {
+                continue;
+            };
+            // The instance pointer is `this_slot`.
+            if matches!(param.kind, MirParamKind::This) {
+                continue;
+            }
+            let wasm_index = match local_map.get(&param.name) {
+                Some(LocalInfo::Pointer { index, .. } | LocalInfo::Scalar { index, .. }) => *index,
+                Some(LocalInfo::StringInOutParam { addr_index, .. }) => *addr_index,
+                _ => continue,
+            };
+            local_pointers.push(debug_format::LocalPointer {
+                wasm_index,
+                name: param.name.text(self.db).to_string(),
+                target: self.local_type_table.target(self.db, pointee, &[]),
+                by_ref: !matches!(&**pointee, MirType::RefTarget(_)),
+            });
+        }
+        for local in &func.locals {
+            let (MirStorage::Scalar { local_index }, MirType::Pointer(pointee)) =
+                (&local.storage, &local.ty)
+            else {
+                continue;
+            };
+            local_pointers.push(debug_format::LocalPointer {
+                wasm_index: *local_index,
+                name: local.name.text(self.db).to_string(),
+                target: self.local_type_table.target(self.db, pointee, &[]),
+                by_ref: false,
+            });
+        }
+        if !local_pointers.is_empty() {
+            local_pointers.sort_by_key(|p| p.wasm_index);
+            self.func_local_pointers.insert(func.index, local_pointers);
         }
 
         // Extra (non-parameter) wasm locals. The scalar return slot is not
@@ -1747,6 +1864,8 @@ impl<'a> WasmGen<'a> {
                 .func_locals
                 .keys()
                 .chain(self.func_memory_locals.keys())
+                .chain(self.func_frame_locals.keys())
+                .chain(self.func_local_pointers.keys())
                 .chain(self.func_this_slot.keys())
                 .copied()
                 .collect();
@@ -1769,17 +1888,35 @@ impl<'a> WasmGen<'a> {
                         })
                         .unwrap_or_default();
                     vars.sort_by_key(|v| v.wasm_index);
-                    let (memory, arrays) = self
+                    let memory = self
                         .func_memory_locals
                         .get(&mir_idx)
                         .cloned()
                         .unwrap_or_default();
+                    let frame = self.func_frame_locals.get(&mir_idx).cloned().map(
+                        |(slot, size, tables)| debug_format::FrameLocals {
+                            slot,
+                            memory: tables.symbols,
+                            arrays: tables.arrays,
+                            pointers: tables.pointers,
+                            size,
+                            containers: tables.containers,
+                        },
+                    );
                     Some(debug_format::FuncLocals {
                         defined_index: widx - n_func_imports,
                         locals: vars,
-                        memory,
-                        arrays,
+                        memory: memory.symbols,
+                        arrays: memory.arrays,
                         this_slot: self.func_this_slot.get(&mir_idx).copied(),
+                        pointers: memory.pointers,
+                        local_pointers: self
+                            .func_local_pointers
+                            .get(&mir_idx)
+                            .cloned()
+                            .unwrap_or_default(),
+                        frame,
+                        containers: memory.containers,
                     })
                 })
                 .collect();
@@ -1797,7 +1934,10 @@ impl<'a> WasmGen<'a> {
 
         // The debug-symbol table (`debug-symbols`), for by-name monitoring;
         // strippable.
-        let debug_bytes = self.module.debug_symbols.to_msgpack();
+        // The stack's region is placed here, past what MIR laid out.
+        let mut symbols = self.module.debug_symbols.clone();
+        symbols.stack = self.stack_bounds;
+        let debug_bytes = symbols.to_msgpack();
         module.section(&wasm_encoder::CustomSection {
             name: std::borrow::Cow::Borrowed(mir::debug_symbols::DEBUG_SYMBOLS_SECTION),
             data: std::borrow::Cow::Owned(debug_bytes),

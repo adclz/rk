@@ -187,6 +187,10 @@ impl Sections {
         let bytes = memory.get(start..start + loc.size as usize)?;
         Some(loc.decode(bytes))
     }
+
+    pub(crate) fn info(&self) -> &debug_format::DebugInfo {
+        &self.info
+    }
 }
 
 pub(crate) struct Sections {

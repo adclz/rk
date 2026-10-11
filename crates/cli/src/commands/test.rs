@@ -21,6 +21,9 @@ pub fn run_test(
     // build can be checked to compute the same answers.
     let (core_bytes, mir_module) =
         build_core_with_format(&db, workspace, verbose, format).map_err(|_| CliError::Failed)?;
+    // An optimized build loses its line tables: the unoptimized one is kept
+    // to say where a test failed.
+    let unoptimized = opt_level.is_some().then(|| core_bytes.clone());
     let core_bytes = crate::compiler::optimize_wasm(core_bytes, opt_level, verbose);
     let _ = &mir_module;
 
@@ -39,7 +42,25 @@ pub fn run_test(
     std::fs::write(&wasm_path, &core_bytes)
         .map_err(|e| CliError::msg(format!("writing test binary: {e}")))?;
 
-    let failures = crate::test_runner::run_tests(&wasm_path, filter, timeout, format);
+    // The roots the manifest named each test's file against.
+    let layout = db::workspace::Workspace::try_get(&db);
+    let roots = crate::test_runner::SourceRoots {
+        workspace: layout
+            .and_then(|w| w.workspace_folder(&db))
+            .map(|root| root.to_path_buf())
+            .unwrap_or_else(|| workspace.to_path_buf()),
+        library: layout
+            .and_then(|w| w.library_path(&db))
+            .map(|lib| lib.to_path_buf()),
+    };
+    let failures = crate::test_runner::run_tests(
+        &wasm_path,
+        unoptimized.as_deref(),
+        &roots,
+        filter,
+        timeout,
+        format,
+    );
     if failures > 0 {
         Err(CliError::Failed)
     } else {

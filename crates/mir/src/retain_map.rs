@@ -318,7 +318,9 @@ pub(crate) fn type_key(db: &dyn WorkspaceDataBase, ty: &MirType) -> u32 {
                 eat(h, b"P");
                 walk(db, h, inner, depth + 1);
             }
-            MirType::Void => eat(h, b"V"),
+            // A `REF_TO`'s target is the debug tables' business: the bytes
+            // retained are an address either way, as before it was recorded.
+            MirType::Void | MirType::RefTarget(_) => eat(h, b"V"),
         }
     }
 

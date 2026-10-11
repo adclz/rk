@@ -25,6 +25,7 @@ mod exceptions_spike;
 mod execution;
 mod expt;
 mod fb_dispatch;
+mod frames;
 mod function_blocks;
 mod function_inputs;
 mod function_outputs;

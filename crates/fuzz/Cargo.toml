@@ -85,3 +85,9 @@ name = "fuzz_ide"
 path = "fuzz_targets/fuzz_ide.rs"
 test = false
 doc = false
+
+[[bin]]
+name = "fuzz_debug_format"
+path = "fuzz_targets/fuzz_debug_format.rs"
+test = false
+doc = false

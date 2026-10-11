@@ -3,7 +3,7 @@
 
 //! Run the fuzzing oracles on files and say which one fails.
 //!
-//! `cargo run -p rk-fuzz --bin repro -- [--only pipeline|semantics|format|incremental|ide] <path>...`
+//! `cargo run -p rk-fuzz --bin repro -- [--only pipeline|semantics|format|incremental|ide|debug] <path>...`
 //!
 //! With `--generated`, each input is a `fuzz_semantics` crash file: the
 //! bytes the program generator ran on. The program is written again and
@@ -51,7 +51,7 @@ fn main() -> ExitCode {
             "--print" => print = true,
             "-h" | "--help" => {
                 eprintln!(
-                    "usage: repro [--only pipeline|semantics|format|incremental|ide] [--generated [--print]] [--isolate] <file-or-dir>..."
+                    "usage: repro [--only pipeline|semantics|format|incremental|ide|debug] [--generated [--print]] [--isolate] <file-or-dir>..."
                 );
                 return ExitCode::SUCCESS;
             }
@@ -60,7 +60,7 @@ fn main() -> ExitCode {
     }
     if paths.is_empty() {
         eprintln!(
-            "usage: repro [--only pipeline|semantics|format|incremental|ide] [--generated [--print]] [--isolate] <file-or-dir>..."
+            "usage: repro [--only pipeline|semantics|format|incremental|ide|debug] [--generated [--print]] [--isolate] <file-or-dir>..."
         );
         return ExitCode::FAILURE;
     }
@@ -74,6 +74,8 @@ fn main() -> ExitCode {
         Some("format") => |s| rk_fuzz::format::check(s).map(|()| None),
         Some("incremental") => |s| rk_fuzz::incremental::check(s).map(|()| None),
         Some("ide") => |s| rk_fuzz::ide::check(s).map(|()| None),
+        // The debug-format target's input is a module's bytes, run below.
+        Some("debug") => |_| Ok(None),
         Some("semantics") => |s| rk_fuzz::semantics::check(s).map(|()| None),
         Some(other) => {
             eprintln!("unknown oracle `{other}`");
@@ -122,8 +124,10 @@ fn main() -> ExitCode {
             continue;
         };
         let program;
-        let source = match generated {
-            true => {
+        let tables = only.as_deref() == Some("debug");
+        let source = match (tables, generated) {
+            (true, _) => "",
+            (false, true) => {
                 program = rk_fuzz::generate::program(&bytes);
                 if print {
                     println!("{program}");
@@ -131,7 +135,7 @@ fn main() -> ExitCode {
                 }
                 program.as_str()
             }
-            false => match std::str::from_utf8(&bytes) {
+            (false, false) => match std::str::from_utf8(&bytes) {
                 Ok(source) => source,
                 Err(_) => {
                     // The fuzz targets reject these before any code runs.
@@ -140,7 +144,13 @@ fn main() -> ExitCode {
                 }
             },
         };
-        match panic::catch_unwind(AssertUnwindSafe(|| check(source))) {
+        let outcome = match tables {
+            true => panic::catch_unwind(AssertUnwindSafe(|| {
+                rk_fuzz::debug::check(&bytes).map(|()| None)
+            })),
+            false => panic::catch_unwind(AssertUnwindSafe(|| check(source))),
+        };
+        match outcome {
             Ok(Ok(verdict)) => {
                 let how = match verdict {
                     Some(Verdict::Unparsed) => " (not parsed)",
