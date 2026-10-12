@@ -78,6 +78,11 @@ When you fix a bug, its test fails and tells you to move the file to `regression
 
 `corpus_gen` takes every piece of ST in the repository: the tree-sitter tests, the standard library, the `iecst` fences of the docs and examples, and the programs in the Rust tests.
 The codegen tests' programs compile and run, so they are the seeds that reach the code generator.
+`fuzz_semantics` reads no ST: its input is the choices its generator makes, and `corpus_gen` writes it 64 strings of bytes instead.
+The seeds an earlier run left in the directory are removed first.
+
+The nightly run replays the kept corpus before it mutates anything, and that replay is taken from the 30 minutes.
+The run summary says how long it took, warns past half of them and fails when nothing was fuzzed.
 
 ## References
 

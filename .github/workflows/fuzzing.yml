@@ -23,6 +23,8 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
+  # Seconds a target is given, the replay of its kept corpus included.
+  BUDGET: 1800
 
 jobs:
   fuzz:
@@ -80,8 +82,9 @@ jobs:
           restore-keys: fuzz-corpus-${{ matrix.target }}-
       # Every piece of ST the repository holds, including the programs the
       # codegen tests compile and run: the seeds closest to the code
-      # generator's oracles. Numbered names, so the same seed overwrites
-      # itself night after night.
+      # generator's oracles. The seeds of the night before are removed
+      # first. fuzz_semantics reads no ST: its input is the choices its
+      # generator makes, and corpus_gen writes it strings of bytes.
       - name: Seed the corpus
         run: |
           cargo run --release -p rk-fuzz --bin corpus_gen -- \
@@ -107,17 +110,39 @@ jobs:
         run: |
           artifacts="crates/fuzz/artifacts/${{ matrix.target }}"
           mkdir -p "$artifacts"
-          status=0
+          log="$RUNNER_TEMP/fuzz.log"
+          set +e
           ./target/x86_64-unknown-linux-gnu/release/${{ matrix.target }} "$CORPUS" \
             -artifact_prefix="$artifacts/" \
-            -max_total_time=1800 -fork=3 \
+            -max_total_time="$BUDGET" -fork=3 \
             -ignore_crashes=1 -ignore_timeouts=1 -ignore_ooms=1 \
             -timeout=60 -report_slow_units=60 -rss_limit_mb=4096 -detect_leaks=0 \
-            -dict=crates/fuzz/st.dict || status=$?
+            -dict=crates/fuzz/st.dict 2>&1 | tee "$log"
+          status=${PIPESTATUS[0]}
+          set -e
           case "$status" in
             0|70|77) echo "libFuzzer exited $status; $(ls "$artifacts" | wc -l) file(s) in $artifacts" ;;
             *) echo "::error::the fuzzer itself failed (exit $status)"; exit "$status" ;;
           esac
+          # Fork mode replays the kept corpus before its first mutation, and
+          # the replay is taken from the budget. A corpus that takes all of
+          # it leaves a green night that fuzzed nothing: fuzz_semantics ran
+          # 57 inputs a night that way from its first night on. The first
+          # report says when the replay ended, the last how many inputs ran.
+          replay=$(grep -m1 -oE 'time: [0-9]+s' "$log" | tr -dc 0-9 || true)
+          runs=$(grep -oE '^#[0-9]+' "$log" | tail -n 1 | tr -dc 0-9 || true)
+          if [ -z "$replay" ]; then
+            echo "::error::libFuzzer made no report: no input was run"
+            exit 1
+          fi
+          echo "${{ matrix.target }}: $runs inputs run, the first new one after $replay s on the kept corpus" \
+            | tee -a "$GITHUB_STEP_SUMMARY"
+          if [ "$replay" -ge "$BUDGET" ]; then
+            echo "::error::replaying the kept corpus took $replay s of the night's $BUDGET: nothing was fuzzed"
+            exit 1
+          elif [ "$replay" -ge $((BUDGET / 2)) ]; then
+            echo "::warning::replaying the kept corpus took $replay s of the night's $BUDGET"
+          fi
       - name: Save the corpus
         if: always()
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
