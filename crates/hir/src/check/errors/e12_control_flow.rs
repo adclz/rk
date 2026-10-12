@@ -5,7 +5,7 @@ use crate::CallSite;
 use crate::HasName;
 use crate::HirNodeInfo;
 use crate::check::errors::ToIdeDiagnostic;
-use crate::hir_def::expressions::statement::Stmt;
+use crate::hir_def::expressions::statement::{Stmt, StmtKind};
 use crate::hir_def::pous::variable::VariableDecl;
 use auto_lsp::lsp_types::DiagnosticSeverity;
 use db::WorkspaceDataBase;
@@ -21,6 +21,21 @@ pub enum ControlFlowError<'db> {
     },
     ContinueOutsideLoop {
         stmt: Stmt<'db>,
+    },
+    /// A `__TRY` with neither a `__CATCH` nor a `__FINALLY`: nothing of it
+    /// is left but its body.
+    TryWithoutClause {
+        stmt: Stmt<'db>,
+    },
+    /// A `RETURN`, an `EXIT` or a `CONTINUE` that leaves a `__FINALLY`,
+    /// which runs with an exception pending as well: the jump would drop
+    /// it.
+    JumpLeavesFinally {
+        stmt: Stmt<'db>,
+    },
+    /// A `__CATCH` written after the `__FINALLY`.
+    CatchAfterFinally {
+        span: auto_lsp::tree_sitter::Range,
     },
     /// A FOR control variable that is not a bare identifier. IEC 61131-3's
     /// grammar says `control_variable ::= identifier`, so `r.i`, `a[k]` and
@@ -79,6 +94,9 @@ impl<'db> ErrorCode for ControlFlowError<'db> {
         match self {
             Self::ExitOutsideLoop { .. } => "E1201",
             Self::ContinueOutsideLoop { .. } => "E1202",
+            Self::TryWithoutClause { .. } => "E1209",
+            Self::JumpLeavesFinally { .. } => "E1210",
+            Self::CatchAfterFinally { .. } => "E1211",
             Self::ForControlNotAVariable { .. } => "E1203",
             Self::ForControlNotInteger { .. } => "E1206",
             Self::ForStepInvalid { .. } => "E1204",
@@ -108,6 +126,56 @@ impl<'db> ToIdeDiagnostic<'db> for ControlFlowError<'db> {
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
                 .call(),
+            Self::TryWithoutClause { stmt } => {
+                let keyword = keyword_of(&stmt.get_span(db), "__TRY".len());
+                let mut diag = diag()
+                    .message("this __TRY has neither a __CATCH nor a __FINALLY".to_string())
+                    .range(crate::denormalize(db, file, &keyword).unwrap_or_default())
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .call();
+                diag.with_note(
+                    "a __TRY handles the exception its body raises in its __CATCH, or runs its \
+                     __FINALLY on the way out"
+                        .to_string(),
+                );
+                diag.with_help("add a __CATCH, or remove the __TRY".to_string());
+                diag
+            }
+            Self::JumpLeavesFinally { stmt } => {
+                let jump = match stmt.stmt(db) {
+                    StmtKind::Exit => "EXIT",
+                    StmtKind::Continue => "CONTINUE",
+                    _ => "RETURN",
+                };
+                let mut diag = diag()
+                    .message(format!("'{jump}' leaves the __FINALLY"))
+                    .range(crate::denormalize(db, file, &stmt.get_span(db)).unwrap_or_default())
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .call();
+                diag.with_note(
+                    "a __FINALLY runs on the way out of its __TRY, with or without an exception \
+                     pending, which a jump out of it would drop"
+                        .to_string(),
+                );
+                diag.with_help(format!("move the '{jump}' after __END_TRY"));
+                diag
+            }
+            Self::CatchAfterFinally { span } => {
+                let keyword = keyword_of(span, "__CATCH".len());
+                let mut diag = diag()
+                    .message("this __CATCH comes after the __FINALLY".to_string())
+                    .range(crate::denormalize(db, file, &keyword).unwrap_or_default())
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .call();
+                diag.with_note(
+                    "the clauses of a __TRY are its __CATCH, then its __FINALLY".to_string(),
+                );
+                diag.with_help("move the __CATCH before the __FINALLY".to_string());
+                diag
+            }
             Self::ForControlNotAVariable { access } => {
                 let mut diag = diag()
                     .message(format!(
@@ -232,5 +300,20 @@ impl<'db> ToIdeDiagnostic<'db> for ControlFlowError<'db> {
                 diag
             }
         }
+    }
+}
+
+/// The first `len` bytes of `span`: the keyword a statement or a clause
+/// starts with, where a report on the whole of it would underline every
+/// line of the body.
+fn keyword_of(span: &auto_lsp::tree_sitter::Range, len: usize) -> auto_lsp::tree_sitter::Range {
+    auto_lsp::tree_sitter::Range {
+        start_byte: span.start_byte,
+        end_byte: span.start_byte + len,
+        start_point: span.start_point,
+        end_point: auto_lsp::tree_sitter::Point {
+            row: span.start_point.row,
+            column: span.start_point.column + len,
+        },
     }
 }

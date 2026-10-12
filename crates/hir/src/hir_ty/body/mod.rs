@@ -364,7 +364,7 @@ pub(crate) fn infer_body<'db>(
 
     let resolver = Resolver::for_scope(db, scope);
 
-    ctx.check_statements(db, resolver, statements, NestedScope::None, &mut result);
+    ctx.check_statements(db, resolver, statements, NestedScope::NONE, &mut result);
 
     let in_body = matches!(
         get_scope(db, scope).kind,

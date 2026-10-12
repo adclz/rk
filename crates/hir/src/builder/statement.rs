@@ -8,8 +8,9 @@ use crate::builder::expression::ParseVariableAccess;
 use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::check::errors::ToIdeDiagnostic;
 use crate::check::errors::e00_syntax::SyntaxError;
+use crate::check::errors::e12_control_flow::ControlFlowError;
 use crate::hir_def::expressions::expression::{FuncCall, ParamAssignKind};
-use crate::hir_def::expressions::statement::{CaseKind, Stmt, StmtKind};
+use crate::hir_def::expressions::statement::{CaseKind, Catch, Stmt, StmtKind};
 use crate::hir_def::interned::identifier::SpanIdent;
 use auto_lsp::anyhow::{self};
 use auto_lsp::core::ast::AstNode;
@@ -336,6 +337,50 @@ impl<'db> Parse<'db> for ast::generated::Stmt {
                     sema.current_scope,
                 ))
             }
+            StmtType::TryStmt(try_stmt) => {
+                let body = stmt_list(sema, try_stmt.body.as_ref())?;
+                let mut catch = match try_stmt.catch.as_ref() {
+                    Some(clause) => Some(catch_clause(
+                        sema,
+                        clause.cast(sema.ast).variable.as_ref(),
+                        clause.cast(sema.ast).body.as_ref(),
+                    )?),
+                    None => None,
+                };
+                let finally = match try_stmt.finally.as_ref() {
+                    Some(clause) => Some(stmt_list(sema, clause.cast(sema.ast).body.as_ref())?),
+                    None => None,
+                };
+                // A __CATCH written after the __FINALLY is reported. It is
+                // still the handler when no other precedes it, so that the
+                // editor reads what it holds.
+                if let Some(late) = try_stmt.children.as_ref() {
+                    let late = late.cast(sema.ast);
+                    sema.errors.push(
+                        ControlFlowError::CatchAfterFinally {
+                            span: late.get_range().to_owned(),
+                        }
+                        .to_diagnostic(sema.db, sema.file),
+                    );
+                    if catch.is_none() {
+                        catch = Some(catch_clause(
+                            sema,
+                            late.variable.as_ref(),
+                            late.body.as_ref(),
+                        )?);
+                    }
+                }
+                Ok(Stmt::new(
+                    sema.db,
+                    StmtKind::Try {
+                        body,
+                        catch,
+                        finally,
+                    },
+                    try_stmt.into(),
+                    sema.current_scope,
+                ))
+            }
             StmtType::WasmPragma(pragma) => {
                 let doc = sema.file.document(sema.db).as_bytes();
 
@@ -501,4 +546,35 @@ fn parse_condition<'db>(
         sign,
     }
     .to_diagnostic(sema.db, sema.file))
+}
+
+/// The statements of a body, none when it is empty.
+fn stmt_list<'db>(
+    sema: &mut SemanticIndexBuilder<'db>,
+    list: Option<&auto_lsp::core::ast::AstNodeId<ast::generated::StmtList>>,
+) -> Result<Vec<Stmt<'db>>, IdeDiagnostic> {
+    let Some(list) = list else {
+        return Ok(Vec::new());
+    };
+    list.cast(sema.ast)
+        .children
+        .iter()
+        .map(|stmt| stmt.cast(sema.ast).parse(sema))
+        .collect()
+}
+
+/// A `__CATCH`, written in its place or after the `__FINALLY`.
+fn catch_clause<'db>(
+    sema: &mut SemanticIndexBuilder<'db>,
+    variable: Option<&auto_lsp::core::ast::AstNodeId<ast::generated::VariableAccess>>,
+    body: Option<&auto_lsp::core::ast::AstNodeId<ast::generated::StmtList>>,
+) -> Result<Catch<'db>, IdeDiagnostic> {
+    let variable = match variable {
+        Some(variable) => Some(variable.cast(sema.ast).to_access(sema)?),
+        None => None,
+    };
+    Ok(Catch {
+        variable,
+        body: stmt_list(sema, body)?,
+    })
 }

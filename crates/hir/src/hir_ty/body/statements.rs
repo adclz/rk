@@ -29,10 +29,37 @@ use crate::{
     },
 };
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub enum NestedScope {
-    Loop,
-    None,
+/// What the statements being checked are inside of.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Default)]
+pub struct NestedScope {
+    /// Inside a loop: an EXIT or a CONTINUE has one to leave.
+    pub in_loop: bool,
+    /// Inside a __FINALLY, which no jump may leave.
+    pub in_finally: bool,
+}
+
+impl NestedScope {
+    /// At the top of a body.
+    pub const NONE: Self = Self {
+        in_loop: false,
+        in_finally: false,
+    };
+
+    /// Entering a loop.
+    pub fn in_loop(self) -> Self {
+        Self {
+            in_loop: true,
+            ..self
+        }
+    }
+
+    /// Entering a __FINALLY: the loops outside it are out of reach.
+    pub fn in_finally(self) -> Self {
+        Self {
+            in_loop: false,
+            in_finally: true,
+        }
+    }
 }
 
 pub struct StmtsResolverCtx<'db> {
@@ -271,7 +298,7 @@ impl<'db> StmtsResolverCtx<'db> {
     pub fn new(scope: ScopeId<'db>) -> Self {
         StmtsResolverCtx {
             scope,
-            nested_scope: NestedScope::None,
+            nested_scope: NestedScope::NONE,
         }
     }
 
@@ -314,7 +341,7 @@ impl<'db> StmtsResolverCtx<'db> {
                         )
                     {
                         // Rule 2: SUPER() shall not be in a loop.
-                        if nested_scope == NestedScope::Loop {
+                        if nested_scope.in_loop {
                             ctx.errors.push(
                                 OopError::SuperBodyInLoop {
                                     call_site: stmt.as_call_site(db),
@@ -602,7 +629,7 @@ impl<'db> StmtsResolverCtx<'db> {
                     // `WHILE p <> NULL DO p^` is as guarded as the IF form.
                     let guard = null_guards(db, *condition, ctx);
                     apply_guard(&mut ctx.ref_null_state, &guard.when_true);
-                    self.check_statements(db, resolver, body, NestedScope::Loop, ctx);
+                    self.check_statements(db, resolver, body, nested_scope.in_loop(), ctx);
                 }
 
                 StmtKind::Repeat { condition, body } => {
@@ -620,7 +647,7 @@ impl<'db> StmtsResolverCtx<'db> {
 
                     // REPEAT tests AFTER the body, so the condition proves
                     // nothing about the first pass — no narrowing here.
-                    self.check_statements(db, resolver, body, NestedScope::Loop, ctx);
+                    self.check_statements(db, resolver, body, nested_scope.in_loop(), ctx);
                 }
 
                 StmtKind::For {
@@ -789,7 +816,7 @@ impl<'db> StmtsResolverCtx<'db> {
                         }
                     }
 
-                    self.check_statements(db, resolver, body, NestedScope::Loop, ctx);
+                    self.check_statements(db, resolver, body, nested_scope.in_loop(), ctx);
                 }
 
                 StmtKind::FuncCall(call) => {
@@ -809,7 +836,12 @@ impl<'db> StmtsResolverCtx<'db> {
                 }
 
                 StmtKind::Continue | StmtKind::Exit => {
-                    if nested_scope != NestedScope::Loop {
+                    if nested_scope.in_finally && !nested_scope.in_loop {
+                        ctx.errors.push(
+                            ControlFlowError::JumpLeavesFinally { stmt: *stmt }
+                                .to_diagnostic(db, ctx.scope.file(db)),
+                        );
+                    } else if !nested_scope.in_loop {
                         let err = match stmt.stmt(db) {
                             StmtKind::Continue => {
                                 ControlFlowError::ContinueOutsideLoop { stmt: *stmt }
@@ -992,7 +1024,40 @@ impl<'db> StmtsResolverCtx<'db> {
                     }
                 }
 
-                StmtKind::Return => {}
+                StmtKind::Return => {
+                    if nested_scope.in_finally {
+                        ctx.errors.push(
+                            ControlFlowError::JumpLeavesFinally { stmt: *stmt }
+                                .to_diagnostic(db, ctx.scope.file(db)),
+                        );
+                    }
+                }
+
+                StmtKind::Try {
+                    body,
+                    catch,
+                    finally,
+                } => {
+                    if catch.is_none() && finally.is_none() {
+                        ctx.errors.push(
+                            ControlFlowError::TryWithoutClause { stmt: *stmt }
+                                .to_diagnostic(db, ctx.scope.file(db)),
+                        );
+                    }
+                    self.check_statements(db, resolver, body, nested_scope, ctx);
+                    if let Some(catch) = catch {
+                        self.check_statements(db, resolver, &catch.body, nested_scope, ctx);
+                    }
+                    if let Some(finally) = finally {
+                        self.check_statements(
+                            db,
+                            resolver,
+                            finally,
+                            nested_scope.in_finally(),
+                            ctx,
+                        );
+                    }
+                }
 
                 StmtKind::Raise { message } => {
                     // The message expression must be STRING

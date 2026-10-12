@@ -75,8 +75,24 @@ pub enum StmtKind<'db> {
     Raise {
         message: Expr<'db>,
     },
+    /// `__TRY body __CATCH(e) handler __FINALLY cleanup __END_TRY`: an
+    /// exception raised in the body lands in the catch, and the finally
+    /// runs on every way out. Either clause may be left out.
+    Try {
+        body: Vec<Stmt<'db>>,
+        catch: Option<Catch<'db>>,
+        finally: Option<Vec<Stmt<'db>>>,
+    },
     WasmPragma(WasmDecl<'db>),
     AllowPragma(AllowPragma),
+}
+
+/// A `__CATCH`: the STRING variable the message is copied into, when one is
+/// named, and the handler.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
+pub struct Catch<'db> {
+    pub variable: Option<VariableAccess<'db>>,
+    pub body: Vec<Stmt<'db>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, salsa::Update)]
