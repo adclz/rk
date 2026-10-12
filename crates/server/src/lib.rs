@@ -301,10 +301,8 @@ fn on_requests<Db: WorkspaceDataBase + Clone + RefUnwindSafe>(
         .on::<WorkspaceSymbolRequest, _>(ThreadIntent::Worker, workspace_symbols)
 }
 
-/// Whether the editor's document is one of rk's own. The requests read
-/// rk's tree (hover, completion, the formatter), so a document of another
-/// kind is not opened here: its file is still read from disk, with the
-/// workspace.
+/// Whether the editor's document is one of rk's own: the language server
+/// reads rk's files only, on disk and in the editor.
 fn is_rk_document(uri: &Url) -> bool {
     db::loader::is_st_file(std::path::Path::new(uri.path()))
 }
@@ -342,11 +340,9 @@ fn on_notifications(
                     Workspace::try_get(&s.db).and_then(|c| c.workspace_folder(&s.db).cloned());
                 refresh_configuration(s, workspace.as_deref())?;
             } else {
-                // A file on disk is read again by the parser of its kind,
-                // as the workspace's loader read it.
                 changed_watched_files(s, p, |url| {
                     let path = url.to_file_path().ok()?;
-                    db::source::kind_of(&path).map(|kind| kind.parser)
+                    db::loader::rk_parser(&path)
                 })?;
             }
 
@@ -385,6 +381,7 @@ fn refresh_configuration(
         &mut session.db,
         workspace,
         session.encoding.clone(),
+        db::loader::rk_parser,
         &mut file_errors,
         &mut notices,
     );
@@ -487,17 +484,6 @@ pub fn send_request<N: lsp_types::request::Request>(
     Ok(())
 }
 
-/// What the editor is asked to watch on disk: the files a workspace is
-/// made of, of every kind, and its configuration.
-fn watched_globs() -> Vec<String> {
-    db::source::kinds()
-        .iter()
-        .flat_map(|kind| kind.extensions)
-        .map(|extension| format!("**/*.{extension}"))
-        .chain(["**/config.toml".to_string()])
-        .collect()
-}
-
 fn setup_file_watcher_if_necessary(
     session: &mut Session<impl salsa::Database>,
     capabilities: &lsp_types::ClientCapabilities,
@@ -512,13 +498,16 @@ fn setup_file_watcher_if_necessary(
                 }),
             ..
         }) => {
-            let watchers: Vec<FileSystemWatcher> = watched_globs()
-                .into_iter()
-                .map(|glob| FileSystemWatcher {
-                    glob_pattern: GlobPattern::String(glob),
+            let watchers = vec![
+                FileSystemWatcher {
+                    glob_pattern: GlobPattern::String("**/*.st".to_string()),
                     kind: Some(WatchKind::Create | WatchKind::Change | WatchKind::Delete),
-                })
-                .collect();
+                },
+                FileSystemWatcher {
+                    glob_pattern: GlobPattern::String("**/config.toml".to_string()),
+                    kind: Some(WatchKind::Create | WatchKind::Change | WatchKind::Delete),
+                },
+            ];
 
             let registration_params = RegistrationParams {
                 registrations: vec![Registration {
@@ -568,11 +557,5 @@ mod tests {
         assert!(!is_rk("file:///plant/config.toml"));
         assert!(!is_rk("file:///plant/main.st.bak"));
         assert!(!is_rk("file:///plant/st"));
-    }
-
-    /// With rk's own front-end alone, what is watched is what was.
-    #[test]
-    fn rk_alone_watches_its_files_and_the_configuration() {
-        assert_eq!(watched_globs(), ["**/*.st", "**/config.toml"]);
     }
 }

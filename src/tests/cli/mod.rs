@@ -8,6 +8,7 @@ mod duration;
 mod env;
 mod file_order;
 mod fmt;
+mod front_end;
 mod memory;
 mod report;
 mod stack_size;

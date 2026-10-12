@@ -229,7 +229,10 @@ fn load_stdlib() -> Vec<(Url, String)> {
     let Some(dir) = stdlib_dir() else {
         return Vec::new();
     };
-    let mut files = db::loader::find_st_files(&dir);
+    let mut files: Vec<_> = db::loader::find_files(&dir, db::loader::rk_parser)
+        .into_iter()
+        .map(|(path, _)| path)
+        .collect();
     files.sort();
     files
         .into_iter()

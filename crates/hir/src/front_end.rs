@@ -11,7 +11,7 @@
 //! of the two kinds, and the checks, the lints, the lowering and the
 //! emitted module are the same for both.
 //!
-//! A tool registers before it opens a workspace, then is rk:
+//! A tool adds its front-end, then is rk:
 //!
 //! ```ignore
 //! fn main() -> std::process::ExitCode {
@@ -31,13 +31,13 @@
 //! What stays rk's: the formatter and the editor read rk's own tree, so
 //! `rk fmt` and the language server take `.st` files only.
 
+use std::path::Path;
 use std::sync::RwLock;
 
 use auto_lsp::core::parsers::Parser;
 use auto_lsp::default::db::file::File;
 use auto_lsp::default::db::tracked::ParsedAst;
 use db::WorkspaceDataBase;
-use db::source::SourceKind;
 
 use crate::hir_def::semantic_index::SemanticIndex;
 
@@ -55,58 +55,85 @@ pub type IndexFn =
 #[derive(Clone, Copy)]
 pub struct FrontEnd {
     /// The extensions that name a file of this kind, without the dot, in
-    /// any case. One extension names one kind.
+    /// any case. One extension names one kind, and `st` is rk's.
     pub extensions: &'static [&'static str],
-    /// The parser that reads one.
+    /// The parser that reads one. A file keeps the parser it was read
+    /// with, and that is how its front-end is found again.
     pub parser: &'static Parser,
     /// What builds its index.
     pub index: IndexFn,
 }
 
-/// The index function of each front-end added, by the address of its
-/// parser: a file keeps the parser that read it.
-static INDEXES: RwLock<Vec<(usize, IndexFn)>> = RwLock::new(Vec::new());
-
-fn address(parser: &Parser) -> usize {
-    std::ptr::from_ref(parser) as usize
-}
-
-/// Adds a front-end to the process, beside rk's own.
-///
-/// Call it before a workspace is opened or a file read. Adding the same
-/// front-end again changes nothing, at any time.
-///
-/// # Panics
-///
-/// When files were read already and this front-end is a new one: what was
-/// answered without it would stay as it is. And when another front-end
-/// names one of its extensions.
-pub fn register(front_end: FrontEnd) {
-    // Held across both halves: a file of this kind is not indexed between
-    // the moment it can be found and the moment its index can be built.
-    let mut indexes = INDEXES.write().unwrap_or_else(|e| e.into_inner());
-    db::source::register(SourceKind {
-        extensions: front_end.extensions,
-        parser: front_end.parser,
-    });
-    let parser = address(front_end.parser);
-    if !db::source::is_rk(front_end.parser) && indexes.iter().all(|(known, _)| *known != parser) {
-        indexes.push((parser, front_end.index));
+impl FrontEnd {
+    fn names(&self, extension: &std::ffi::OsStr) -> bool {
+        self.extensions
+            .iter()
+            .any(|own| extension.eq_ignore_ascii_case(own))
     }
 }
 
-/// What builds the index of a file `parser` read, when a front-end was
-/// added for it. rk's own is not in this table.
-pub(crate) fn index_of(parser: &Parser) -> Option<IndexFn> {
-    // The answer is kept with the file's index, so the table is fixed
-    // before it is given: a front-end added after is refused, where it
-    // would leave this file with the index of a file nothing reads.
-    db::source::kinds();
-    let parser = address(parser);
-    INDEXES
+/// The front-ends added, in the order they were. rk's own is not among
+/// them: it needs no adding.
+static ADDED: RwLock<Vec<FrontEnd>> = RwLock::new(Vec::new());
+
+/// Adds a front-end to the process, beside rk's own.
+///
+/// Call it before a workspace is opened: a file is found, and its index
+/// built, with the front-ends there are at that moment. Adding the same
+/// front-end again changes nothing.
+///
+/// # Panics
+///
+/// When rk or another front-end names one of its extensions.
+pub fn register(front_end: FrontEnd) {
+    let taken = {
+        let mut added = ADDED.write().unwrap_or_else(|e| e.into_inner());
+        let known = db::loader::is_rk_parser(front_end.parser)
+            || added
+                .iter()
+                .any(|other| std::ptr::eq(other.parser, front_end.parser));
+        if known {
+            return;
+        }
+        let taken = front_end.extensions.iter().find(|extension| {
+            let extension = std::ffi::OsStr::new(extension);
+            db::loader::is_rk_extension(extension)
+                || added.iter().any(|other| other.names(extension))
+        });
+        if taken.is_none() {
+            added.push(front_end);
+        }
+        taken
+    };
+    if let Some(extension) = taken {
+        panic!("another front-end reads '.{extension}' files");
+    }
+}
+
+/// The parser that reads the file at `path`, by its extension: rk's for a
+/// `.st` file, a front-end's for one of its own, and none for a file that
+/// is no source. What the workspace's loader is given to find its files
+/// with.
+pub fn parser_of(path: &Path) -> Option<&'static Parser> {
+    if let Some(rk) = db::loader::rk_parser(path) {
+        return Some(rk);
+    }
+    let extension = path.extension()?;
+    ADDED
         .read()
         .unwrap_or_else(|e| e.into_inner())
         .iter()
-        .find(|(known, _)| *known == parser)
-        .map(|(_, index)| *index)
+        .find(|front_end| front_end.names(extension))
+        .map(|front_end| front_end.parser)
+}
+
+/// What builds the index of a file `parser` read, when a front-end was
+/// added for it. rk's own is not asked here.
+pub(crate) fn index_of(parser: &Parser) -> Option<IndexFn> {
+    ADDED
+        .read()
+        .unwrap_or_else(|e| e.into_inner())
+        .iter()
+        .find(|front_end| std::ptr::eq(front_end.parser, parser))
+        .map(|front_end| front_end.index)
 }

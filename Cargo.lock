@@ -924,7 +924,6 @@ dependencies = [
  "serde",
  "tempfile",
  "toml 0.8.23",
- "tree-sitter-rk",
 ]
 
 [[package]]

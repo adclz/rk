@@ -47,7 +47,7 @@ pub fn semantic_index<'db>(db: &'db dyn WorkspaceDataBase, file: File) -> Semant
 
     // The parser that read the file says whose it is.
     let parser = file.parsers(db);
-    if !db::source::is_rk(parser) {
+    if !db::loader::is_rk_parser(parser) {
         return match crate::front_end::index_of(parser) {
             Some(index) => index(db, file, ast),
             None => SemanticIndex::empty(db, file, ast.nodes.clone()),

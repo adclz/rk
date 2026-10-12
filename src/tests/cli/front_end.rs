@@ -3,18 +3,12 @@
 
 //! A second front-end, added the way a tool built on rk adds one, and rk's
 //! own commands run on a workspace of the two kinds.
-//!
-//! A test binary of its own, where the other tests live in `src/tests/`:
-//! the table of front-ends is the process's and is fixed at its first
-//! read, so a test that adds one cannot come, in the same process, after a
-//! test that read a file. Each test here starts with [`second`].
 
 // `configure_parser!` (auto-lsp) expands to functions returning
 // `Result<_, ParseError>` whose Err variant is ~144 bytes.
 #![allow(clippy::result_large_err)]
 
 use std::path::{Path, PathBuf};
-use std::sync::Once;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ast::generated::SourceFile;
@@ -31,6 +25,8 @@ use hir::front_end::FrontEnd;
 use hir::hir_def::scope::ScopeId;
 use hir::hir_def::semantic_index::{SemanticIndex, semantic_index};
 use rk::cli::{Command, OutputFormat};
+
+use super::{disable_stdlib, set_stdlib, temp_workspace};
 
 // rk's own grammar under another parser: a second kind of file needs no
 // second language to be one. The parser is what tells the two apart.
@@ -88,35 +84,15 @@ fn read<'db>(
     sema.finish(vec![])
 }
 
-/// Adds the second front-end, which reads `.two` files. The first thing a
-/// test does.
+/// Adds the second front-end, which reads `.two` files, and leaves the
+/// developer's library out. The first thing a test does.
 fn second() {
-    // The library is the one a workspace's `.env` names, never the
-    // developer's.
-    static ENV: Once = Once::new();
-    ENV.call_once(|| unsafe { std::env::remove_var(db::loader::STDLIB_PATH_ENV) });
+    disable_stdlib();
     hir::front_end::register(FrontEnd {
         extensions: &["two"],
         parser: &SECOND,
         index: read,
     });
-}
-
-/// A workspace on disk with no library: a `config.toml`, a `.env` saying
-/// so, and `files`.
-fn workspace(files: &[(&str, &str)]) -> (tempfile::TempDir, PathBuf) {
-    let dir = tempfile::tempdir().expect("workspace tempdir");
-    let root = std::fs::canonicalize(dir.path()).unwrap();
-    std::fs::write(
-        root.join("config.toml"),
-        "[project]\nname = \"T\"\nversion = \"0.0\"\n",
-    )
-    .unwrap();
-    std::fs::write(root.join(".env"), "RK_STDLIB_PATH=\n").unwrap();
-    for (name, source) in files {
-        std::fs::write(root.join(name), source).unwrap();
-    }
-    (dir, root)
 }
 
 fn open(root: &Path) -> (RootDatabase, Vec<File>) {
@@ -125,6 +101,7 @@ fn open(root: &Path) -> (RootDatabase, Vec<File>) {
         &mut db,
         Some(root),
         PositionEncodingKind::UTF8,
+        hir::front_end::parser_of,
         &mut vec![],
         &mut vec![],
     )
@@ -175,7 +152,7 @@ END_FUNCTION
 #[test]
 fn a_file_of_the_second_kind_is_found_and_read_by_its_front_end() {
     second();
-    let (_dir, root) = workspace(&[
+    let (_dir, root) = temp_workspace(&[
         ("main.st", USES_TWICE),
         ("lib.two", TWICE),
         ("notes.txt", "FUNCTION NotASource END_FUNCTION"),
@@ -185,7 +162,7 @@ fn a_file_of_the_second_kind_is_found_and_read_by_its_front_end() {
 
     let main = file_named(&db, &root, "main.st");
     let lib = file_named(&db, &root, "lib.two");
-    assert!(db::source::is_rk(main.parsers(&db)));
+    assert!(db::loader::is_rk_parser(main.parsers(&db)));
     assert!(std::ptr::eq(lib.parsers(&db), &*SECOND));
 
     let before = READ.load(Ordering::Relaxed);
@@ -205,7 +182,7 @@ fn a_file_of_the_second_kind_is_found_and_read_by_its_front_end() {
 #[test]
 fn rk_s_commands_run_a_workspace_of_the_two_kinds() {
     second();
-    let (_dir, root) = workspace(&[("main.st", USES_TWICE), ("lib.two", TWICE)]);
+    let (_dir, root) = temp_workspace(&[("main.st", USES_TWICE), ("lib.two", TWICE)]);
     let run = |command| rk::run(&root, false, OutputFormat::Concise, command);
 
     assert!(run(Command::Check { watch: false }).is_ok());
@@ -238,7 +215,7 @@ fn rk_s_commands_run_a_workspace_of_the_two_kinds() {
 fn a_test_fails_on_what_the_second_kind_s_file_computes() {
     second();
     let thrice = TWICE.replace("x * 2", "x * 3");
-    let (_dir, root) = workspace(&[("main.st", USES_TWICE), ("lib.two", &thrice)]);
+    let (_dir, root) = temp_workspace(&[("main.st", USES_TWICE), ("lib.two", &thrice)]);
     let tested = rk::run(
         &root,
         false,
@@ -258,7 +235,7 @@ fn a_test_fails_on_what_the_second_kind_s_file_computes() {
 fn a_file_of_the_second_kind_is_checked_like_rk_s() {
     second();
     let wrong = TWICE.replace("x * 2", "'two'");
-    let (_dir, root) = workspace(&[("lib.two", &wrong)]);
+    let (_dir, root) = temp_workspace(&[("lib.two", &wrong)]);
     let (db, _) = open(&root);
     assert_eq!(codes(&db, file_named(&db, &root, "lib.two")), ["E0308"]);
     assert!(
@@ -279,7 +256,7 @@ fn a_file_of_the_second_kind_is_checked_like_rk_s() {
 fn what_the_second_front_end_does_not_read_is_its_own_to_report() {
     second();
     let source = format!("{TWICE}\nPROGRAM NotRead\nEND_PROGRAM\n");
-    let (_dir, root) = workspace(&[("lib.two", &source)]);
+    let (_dir, root) = temp_workspace(&[("lib.two", &source)]);
     let (db, _) = open(&root);
     let lib = file_named(&db, &root, "lib.two");
     assert_eq!(semantic_index(&db, lib).global_pous.len(), 1);
@@ -298,7 +275,7 @@ fn what_the_second_front_end_does_not_read_is_its_own_to_report() {
 #[test]
 fn a_tool_s_main_is_rk_s_after_its_front_end_was_added() {
     second();
-    let (_dir, root) = workspace(&[("main.st", USES_TWICE), ("lib.two", TWICE)]);
+    let (_dir, root) = temp_workspace(&[("main.st", USES_TWICE), ("lib.two", TWICE)]);
     let check = |root: &Path| {
         rk::run_args([
             "tool".as_ref(),
@@ -310,7 +287,7 @@ fn a_tool_s_main_is_rk_s_after_its_front_end_was_added() {
     assert!(check(&root).is_ok());
 
     let wrong = TWICE.replace("x * 2", "'two'");
-    let (_dir, faulty) = workspace(&[("lib.two", &wrong)]);
+    let (_dir, faulty) = temp_workspace(&[("lib.two", &wrong)]);
     assert!(check(&faulty).is_err());
 }
 
@@ -326,7 +303,7 @@ FUNCTION Hidden : INT
     Hidden := 1;
 END_FUNCTION
 ";
-    let (_dir, root) = workspace(&[
+    let (_dir, root) = temp_workspace(&[
         ("main.st", source),
         ("lib.two", &source.replace("Hidden", "HiddenToo")),
     ]);
@@ -345,7 +322,7 @@ fn rk_fmt_formats_rk_s_files_only() {
     second();
     let one_line = "FUNCTION g : INT  g := 2; END_FUNCTION\n";
     let other = one_line.replace(" g ", " h ").replace("g :=", "h :=");
-    let (_dir, root) = workspace(&[("main.st", one_line), ("lib.two", &other)]);
+    let (_dir, root) = temp_workspace(&[("main.st", one_line), ("lib.two", &other)]);
     assert!(
         rk::run(
             &root,
@@ -373,12 +350,8 @@ fn a_library_holds_files_of_the_second_kind() {
     let library = tempfile::tempdir().unwrap();
     let library_root = std::fs::canonicalize(library.path()).unwrap();
     std::fs::write(library_root.join("Lib.two"), TWICE).unwrap();
-    let (_dir, root) = workspace(&[("main.st", USES_TWICE)]);
-    std::fs::write(
-        root.join(".env"),
-        format!("RK_STDLIB_PATH=\"{}\"\n", library_root.display()),
-    )
-    .unwrap();
+    let (_dir, root) = temp_workspace(&[("main.st", USES_TWICE)]);
+    set_stdlib(library_root.as_os_str());
 
     let (db, files) = open(&root);
     assert_eq!(files.len(), 1, "the workspace's own file");
@@ -412,33 +385,20 @@ fn a_file_whose_parser_has_no_front_end_has_an_empty_index() {
     assert_eq!(semantic_index(&db, rk_s).global_pous.len(), 1);
 }
 
-/// Files were read with the front-ends there were. One added after would
-/// leave them as they are, so it is refused.
-#[test]
-#[should_panic(expected = "are fixed once a workspace was opened or a file read")]
-fn a_front_end_added_after_files_were_read_is_refused() {
-    second();
-    db::source::kinds();
-    hir::front_end::register(FrontEnd {
-        extensions: &["late"],
-        parser: &NOBODY_S,
-        index: read,
-    });
-}
-
 /// A tool with several entries adds its front-end on each: the same one
-/// again is no fault, files read or not.
+/// again is no fault, and its files are still read by it.
 #[test]
 fn the_same_front_end_added_again_changes_nothing() {
     second();
     second();
-    assert_eq!(db::source::kinds().len(), 2);
-    second();
-    assert_eq!(db::source::kinds().len(), 2);
+    let parser = hir::front_end::parser_of(Path::new("a.two")).expect("a .two file is a source");
+    assert!(std::ptr::eq(parser, &*SECOND));
 }
 
+/// One extension names one front-end, and `st` is rk's: a second front-end
+/// naming it is a fault of the tool, said when it is made.
 #[test]
-#[should_panic(expected = "another kind of source file is named '.ST'")]
+#[should_panic(expected = "another front-end reads '.ST' files")]
 fn an_extension_names_one_front_end() {
     second();
     hir::front_end::register(FrontEnd {
@@ -448,17 +408,19 @@ fn an_extension_names_one_front_end() {
     });
 }
 
-/// What is a source file, to the workspace and to what only takes rk's,
-/// and how a message names the extensions.
+/// Which parser reads a file, by its extension in any case: what the
+/// workspace's loader is given. The language server gives it rk's rule,
+/// which knows `.st` alone.
 #[test]
-fn a_source_file_is_one_a_front_end_named() {
+fn a_file_is_read_by_the_front_end_that_named_its_extension() {
     second();
-    assert!(db::loader::is_source_file(Path::new("a.two")));
-    assert!(db::loader::is_source_file(Path::new("A.TWO")));
-    assert!(db::loader::is_source_file(Path::new("a.st")));
-    assert!(!db::loader::is_source_file(Path::new("a.txt")));
+    let parser_of = |name: &str| hir::front_end::parser_of(Path::new(name));
+    assert!(parser_of("a.two").is_some_and(|parser| std::ptr::eq(parser, &*SECOND)));
+    assert!(parser_of("A.TWO").is_some_and(|parser| std::ptr::eq(parser, &*SECOND)));
+    assert!(parser_of("a.st").is_some_and(db::loader::is_rk_parser));
+    assert!(parser_of("a.txt").is_none());
+    assert!(db::loader::rk_parser(Path::new("a.two")).is_none());
     assert!(!db::loader::is_st_file(Path::new("a.two")));
-    assert_eq!(db::source::extensions(), ".st or .two");
 }
 
 /// `--watch` runs again when a file of the second kind changes, as it
@@ -469,7 +431,7 @@ fn a_change_to_a_file_of_the_second_kind_is_watched() {
     use std::time::Duration;
 
     second();
-    let (_dir, root) = workspace(&[]);
+    let (_dir, root) = temp_workspace(&[]);
     let seen = Arc::new(Mutex::new(Vec::new()));
     let events = seen.clone();
     let watcher = rk::watcher::Watcher::new(&root, move |batch| {

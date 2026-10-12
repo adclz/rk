@@ -61,6 +61,7 @@ pub fn init_db(
         &mut db,
         Some(workspace),
         PositionEncodingKind::UTF8,
+        hir::front_end::parser_of,
         &mut config_errors,
         &mut config_notices,
     );
@@ -95,10 +96,7 @@ pub fn init_db(
     }
 
     if results.is_empty() {
-        ui::error(format!(
-            "no {} files found in workspace",
-            db::source::extensions()
-        ));
+        ui::error("no .st files found in workspace");
         return None;
     }
 

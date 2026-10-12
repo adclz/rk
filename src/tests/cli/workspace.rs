@@ -101,7 +101,7 @@ fn a_load_failure_names_the_file() {
     )
     .unwrap();
     let mut db = RootDatabase::default();
-    let results = db::loader::load_workspace(&mut db, &root);
+    let results = db::loader::load_workspace(&mut db, &root, db::loader::rk_parser);
     let err = results
         .iter()
         .find_map(|r| r.as_ref().err())

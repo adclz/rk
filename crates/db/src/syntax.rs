@@ -54,7 +54,7 @@ pub fn parse(db: &dyn WorkspaceDataBase, file: File) -> Parsed {
     collect_syntax_errors(&doc.tree.root_node(), doc.as_bytes(), &mut syntax_errors);
     // The pragmas are rk's, and so is the fault of writing one it has no
     // rule for. A file of another kind is its front-end's to report on.
-    let unknown_pragmas = if crate::source::is_rk(file.parsers(db)) {
+    let unknown_pragmas = if crate::loader::is_rk_parser(file.parsers(db)) {
         unknown_pragmas(&doc.tree.root_node(), doc.as_bytes())
     } else {
         Vec::new()
