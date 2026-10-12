@@ -510,6 +510,19 @@ fn find_func_call_in_stmts<'db>(
             | StmtKind::Repeat { body, .. } => {
                 find_func_call_in_stmts(db, body, offset, best);
             }
+            StmtKind::Try {
+                body,
+                catch,
+                finally,
+            } => {
+                find_func_call_in_stmts(db, body, offset, best);
+                if let Some(catch) = catch {
+                    find_func_call_in_stmts(db, &catch.body, offset, best);
+                }
+                if let Some(finally) = finally {
+                    find_func_call_in_stmts(db, finally, offset, best);
+                }
+            }
             _ => {}
         }
     }
