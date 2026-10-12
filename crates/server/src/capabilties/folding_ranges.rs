@@ -78,12 +78,17 @@ pub fn folding_ranges(
             "import" => FoldingRangeKind::Imports,
             _ => FoldingRangeKind::Region,
         };
-        let range = capture.node.range();
+        // Converted like every range sent to the editor: its lines are the
+        // document's, and its columns in the client's encoding. The
+        // parser's own rows and byte columns went out as they were.
+        let Some(range) = hir::denormalize_in(document, &capture.node.range()) else {
+            continue;
+        };
         ranges.push(FoldingRange {
-            start_line: range.start_point.row as u32,
-            start_character: Some(range.start_point.column as u32),
-            end_line: range.end_point.row as u32,
-            end_character: Some(range.end_point.column as u32),
+            start_line: range.start.line,
+            start_character: Some(range.start.character),
+            end_line: range.end.line,
+            end_character: Some(range.end.character),
             kind: Some(kind),
             collapsed_text: None,
         });
@@ -94,6 +99,11 @@ pub fn folding_ranges(
 
 #[cfg(test)]
 mod tests {
+    use auto_lsp::default::db::{FileManager, file::File};
+    use auto_lsp::lsp_types::{
+        PartialResultParams, PositionEncodingKind, TextDocumentIdentifier, Url,
+        WorkDoneProgressParams,
+    };
     use auto_lsp::tree_sitter;
 
     use super::*;
@@ -147,5 +157,45 @@ END_CONFIGURATION
         ] {
             assert!(folded.contains(&kind), "{kind} does not fold: {folded:?}");
         }
+    }
+
+    /// A folding range is sent on the lines an editor counts and in its
+    /// encoding, like every other range. The parser's own rows and byte
+    /// columns went out: a line short past a carriage return no `\n`
+    /// follows, and bytes where UTF-16 units were asked.
+    #[test]
+    fn a_folding_range_is_on_the_editor_s_lines() {
+        let source =
+            "(* a *)\r(* 🎈 *) FUNCTION_BLOCK fb\nVAR\n    x : INT;\nEND_VAR\nEND_FUNCTION_BLOCK";
+        let url = Url::parse("file:///fold.st").unwrap();
+        let mut db = db::RootDatabase::default();
+        let file = File::from_string()
+            .db(&db)
+            .parsers(&ast::RK_PARSER)
+            .url(&url)
+            .source(source.to_string())
+            .encoding(&PositionEncodingKind::UTF16)
+            .call()
+            .unwrap();
+        db.add_file(file).unwrap();
+
+        let ranges = folding_ranges(
+            &db,
+            FoldingRangeParams {
+                text_document: TextDocumentIdentifier { uri: url },
+                work_done_progress_params: WorkDoneProgressParams::default(),
+                partial_result_params: PartialResultParams::default(),
+            },
+        )
+        .unwrap()
+        .unwrap();
+        // The block: from `FUNCTION_BLOCK`, after the balloon's two units.
+        let block = ranges
+            .iter()
+            .find(|range| range.end_line == 5)
+            .expect("the block folds");
+        assert_eq!((block.start_line, block.start_character), (1, Some(9)));
+        // The VAR section, two lines below the block's first.
+        assert!(ranges.iter().any(|r| (r.start_line, r.end_line) == (2, 4)));
     }
 }

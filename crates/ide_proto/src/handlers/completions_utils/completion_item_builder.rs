@@ -241,7 +241,7 @@ pub fn find_using_range<'db>(
 
     let range = match scope.usings.last() {
         // Some USING directives exist; insert after the last one.
-        Some(u) => go_to_next_line(u.get_span(db)),
+        Some(u) => go_to_next_line(db, node, u.get_span(db)),
         None => match scope.kind {
             // In case of Global scope and no USING directives, insert at the start of the file.
             ScopeKind::Global => lsp_types::Range {
@@ -255,7 +255,7 @@ pub fn find_using_range<'db>(
                 },
             },
             // Same with namespaces and POUs: insert after their name declaration line.
-            ScopeKind::Namespace(ns) => go_to_next_line(ns.name_span(db)),
+            ScopeKind::Namespace(ns) => go_to_next_line(db, node, ns.name_span(db)),
             // We want to avoid inserting USING inside POUs/Programs because it could break variable declarations.
             // A method prototype of an INTERFACE goes up too: it was the
             // one kind left out, and a completion inside it panicked.
@@ -277,10 +277,16 @@ pub fn find_using_range<'db>(
 
 // todo: set indentation
 #[inline]
-fn go_to_next_line(span: auto_lsp::tree_sitter::Range) -> lsp_types::Range {
+fn go_to_next_line<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    scope: ScopeId<'db>,
+    span: auto_lsp::tree_sitter::Range,
+) -> lsp_types::Range {
     // Move to the beginning of the next line to avoid intersection with existing content.
-    // Only the line number is needed, and rows are encoding-invariant, so no denormalization.
-    let next_line = span.end_point.row as u32 + 1;
+    // The line is the document's, as every position sent to the editor is.
+    let last_line = hir::denormalize(db, scope.file(db), &span)
+        .map_or(span.end_point.row as u32, |range| range.end.line);
+    let next_line = last_line + 1;
     lsp_types::Range {
         start: lsp_types::Position {
             line: next_line,
