@@ -27,7 +27,7 @@ pub fn require_workspace_dir(path: &std::path::Path) -> crate::error::CliResult<
 }
 
 /// Load and parse a workspace into a fresh [`RootDatabase`]; `None` (with
-/// the reason on stderr) when the config is invalid, no `.st` files exist,
+/// the reason on stderr) when the config is invalid, no source file exists,
 /// or, with `require_config`, there is no `config.toml`. Without a config,
 /// defaults apply and no linter runs; the library still comes from
 /// `RK_STDLIB_PATH`.
@@ -61,6 +61,7 @@ pub fn init_db(
         &mut db,
         Some(workspace),
         PositionEncodingKind::UTF8,
+        hir::front_end::parser_of,
         &mut config_errors,
         &mut config_notices,
     );

@@ -27,7 +27,8 @@ pub struct Parsed {
     pub failure: Option<ParseError>,
     /// The pragmas the grammar has no rule for, in the order of the text.
     /// The parser reads one as a token wherever it stands and the AST has
-    /// no place for it, so the compiler reports it from here (E1510).
+    /// no place for it, so the compiler reports it from here (E1510). Of
+    /// rk's own files only.
     pub unknown_pragmas: Vec<UnknownPragma>,
 }
 
@@ -51,7 +52,13 @@ pub fn parse(db: &dyn WorkspaceDataBase, file: File) -> Parsed {
     }
     let mut syntax_errors = Vec::new();
     collect_syntax_errors(&doc.tree.root_node(), doc.as_bytes(), &mut syntax_errors);
-    let unknown_pragmas = unknown_pragmas(&doc.tree.root_node(), doc.as_bytes());
+    // The pragmas are rk's, and so is the fault of writing one it has no
+    // rule for. A file of another kind is its front-end's to report on.
+    let unknown_pragmas = if crate::loader::is_rk_parser(file.parsers(db)) {
+        unknown_pragmas(&doc.tree.root_node(), doc.as_bytes())
+    } else {
+        Vec::new()
+    };
     match (file.parsers(db).ast_parser)(db, doc) {
         Ok(nodes) => Parsed {
             ast: ParsedAst::new(nodes),

@@ -22,9 +22,62 @@ use std::path::Path;
 use cli::{Command, OutputFormat};
 use error::CliResult;
 
-/// Run one compiler command against `workspace`: the binary's dispatcher,
-/// kept in the library so a wrapping tool runs the shared commands the
-/// same way.
+/// What the `rk` binary does: the process's arguments read, the command
+/// run, and its outcome as the exit code.
+///
+/// A tool built on rk is this after it added its front-end
+/// (`hir::front_end::register`): rk, reading its files as well.
+///
+/// ```ignore
+/// fn main() -> std::process::ExitCode {
+///     other::register();
+///     rk::main()
+/// }
+/// ```
+pub fn main() -> std::process::ExitCode {
+    restore_sigpipe();
+    exit_code(run_args(std::env::args_os()))
+}
+
+/// [`main`] on arguments given: the program's name first, as a process
+/// receives them. Arguments that name no command print the help, and ones
+/// that cannot be read end the process the way they do for `rk`.
+pub fn run_args<I, T>(args: I) -> CliResult<()>
+where
+    I: IntoIterator<Item = T>,
+    T: Into<std::ffi::OsString> + Clone,
+{
+    use clap::{CommandFactory, Parser};
+
+    let args = cli::Args::parse_from(args);
+    let workspace = args.common.workspace.as_path();
+
+    // One process-wide color decision, before any output.
+    ui::init_output(args.common.output_format);
+
+    // The default is the current directory, which exists; only an explicit
+    // --workspace can name nothing, and every command reads it.
+    workspace::require_workspace_dir(workspace)?;
+
+    match args.command {
+        Some(command) => run(
+            workspace,
+            args.common.verbose,
+            args.common.output_format,
+            command,
+        ),
+        None => {
+            cli::Args::command()
+                .print_help()
+                .map_err(error::CliError::msg)?;
+            println!();
+            Ok(())
+        }
+    }
+}
+
+/// Run one compiler command against `workspace`: what [`run_args`] does
+/// once the arguments are read, for a tool that reads its own.
 pub fn run(
     workspace: &Path,
     verbose: bool,

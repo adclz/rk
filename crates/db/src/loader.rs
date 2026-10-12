@@ -5,8 +5,8 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use auto_lsp::{
-    core::document::Document,
-    default::db::{FileManager, file::File},
+    core::{document::Document, parsers::Parser},
+    default::db::file::File,
     lsp_types::Url,
     salsa::Durability,
 };
@@ -123,15 +123,37 @@ pub fn resolve_config_file(workspace: &Path) -> Option<PathBuf> {
 
 // --- File discovery ---
 
-/// Whether `path` names a Structured Text source: extension `st` in any
-/// case (`MAIN.ST` is the usual Windows spelling).
-pub fn is_st_file(path: &Path) -> bool {
-    path.extension()
-        .is_some_and(|ext| ext.eq_ignore_ascii_case("st"))
+/// Whether `extension` is the one of rk's own files: `st`, in any case
+/// (`MAIN.ST` is the usual Windows spelling).
+pub fn is_rk_extension(extension: &std::ffi::OsStr) -> bool {
+    extension.eq_ignore_ascii_case("st")
 }
 
-/// Recursively discovers all `.st` files under `path`.
-pub fn find_st_files(path: &Path) -> Vec<PathBuf> {
+/// Whether `path` names a Structured Text source, by its extension. What
+/// takes rk's own files only asks this: the formatter, the editor.
+pub fn is_st_file(path: &Path) -> bool {
+    path.extension().is_some_and(is_rk_extension)
+}
+
+/// Whether `parser` is rk's own: the file it read is one of rk's.
+pub fn is_rk_parser(parser: &Parser) -> bool {
+    std::ptr::eq(parser, &*ast::RK_PARSER)
+}
+
+/// rk's parser for a `.st` file, and none for another: the [`ParserOf`]
+/// of rk alone.
+pub fn rk_parser(path: &Path) -> Option<&'static Parser> {
+    is_st_file(path).then(|| &*ast::RK_PARSER)
+}
+
+/// The parser that reads the file at a path, and none for a file that is
+/// no source. The loader does not decide it: whoever opens a workspace
+/// says which files it reads, [`rk_parser`] for rk's own alone.
+pub type ParserOf = fn(&Path) -> Option<&'static Parser>;
+
+/// Recursively discovers the source files under `path`, each with the
+/// parser that reads it.
+pub fn find_files(path: &Path, parser_of: ParserOf) -> Vec<(PathBuf, &'static Parser)> {
     let mut files = Vec::new();
     if !path.exists() {
         return files;
@@ -139,10 +161,12 @@ pub fn find_st_files(path: &Path) -> Vec<PathBuf> {
     if let Ok(entries) = std::fs::read_dir(path) {
         for entry in entries.flatten() {
             let entry_path = entry.path();
-            if entry_path.is_file() && is_st_file(&entry_path) {
-                files.push(entry_path);
-            } else if entry_path.is_dir() {
-                files.extend(find_st_files(&entry_path));
+            if entry_path.is_dir() {
+                files.extend(find_files(&entry_path, parser_of));
+            } else if entry_path.is_file()
+                && let Some(parser) = parser_of(&entry_path)
+            {
+                files.push((entry_path, parser));
             }
         }
     }
@@ -151,8 +175,9 @@ pub fn find_st_files(path: &Path) -> Vec<PathBuf> {
 
 // --- Parsing ---
 
-/// Reads and parses a single `.st` file, returning the URL and parsed Document.
-fn read_and_parse(path: &Path, parsers: &'static auto_lsp::core::parsers::Parser) -> ParseResult {
+/// Reads a source file and parses it with its parser, returning the URL
+/// and parsed Document.
+fn read_and_parse(path: &Path, parsers: &'static Parser) -> ParseResult {
     let content = std::fs::read_to_string(path)?;
     let absolute_path = std::fs::canonicalize(path)?;
     let url = Url::from_file_path(&absolute_path)
@@ -169,8 +194,9 @@ fn read_and_parse(path: &Path, parsers: &'static auto_lsp::core::parsers::Parser
 // --- Loading ---
 
 /// Opens `workspace` in `db`: the configuration, the library that
-/// configuration resolves to, and then the workspace's own `.st` files.
-/// Returns one result per file found, as [`load_workspace`] does.
+/// configuration resolves to, and then the workspace's own source files,
+/// the ones `parser_of` names. Returns one result per file found, as
+/// [`load_workspace`] does.
 ///
 /// The ORDER is the contract, and the reason this is one function instead of
 /// three calls each caller writes out. The configuration decides which
@@ -185,6 +211,7 @@ pub fn open_workspace(
     db: &mut RootDatabase,
     workspace: Option<&Path>,
     encoding: auto_lsp::lsp_types::PositionEncodingKind,
+    parser_of: ParserOf,
     file_errors: &mut Vec<ide_diagnostic::IdeDiagnostic>,
     notices: &mut Vec<crate::workspace::ConfigurationNotice>,
 ) -> Vec<Result<File, String>> {
@@ -192,9 +219,9 @@ pub fn open_workspace(
         .and_then(|path| std::fs::canonicalize(path).ok())
         .and_then(|path| Url::from_file_path(path).ok());
     Workspace::init_or_update(db, workspace_uri, encoding, file_errors, notices);
-    load_libraries(db);
+    load_libraries(db, parser_of);
     match workspace {
-        Some(path) => load_workspace(db, path),
+        Some(path) => load_workspace(db, path, parser_of),
         None => Vec::new(),
     }
 }
@@ -208,46 +235,31 @@ fn is_library_file(db: &RootDatabase, path: &Path) -> bool {
         .is_some_and(|url| db.get_library_files().contains_key(&url))
 }
 
-/// Loads a single workspace file into the database (LOW durability).
-pub fn load_file(db: &mut RootDatabase, path: &Path) -> Result<File, Box<dyn std::error::Error>> {
-    let content = std::fs::read_to_string(path)?;
-    let absolute_path = std::fs::canonicalize(path)?;
-    let url = Url::from_file_path(&absolute_path)
-        .map_err(|_| "Failed to convert path to URL".to_string())?;
-
-    let file = File::from_string()
-        .db(db)
-        .parsers(&ast::RK_PARSER)
-        .url(&url)
-        .source(content)
-        .call()?;
-
-    db.add_file(file)?;
-    Ok(file)
-}
-
-/// Discovers and loads all `.st` files under `path`: I/O and parsing in
+/// Discovers and loads the source files under `path`: I/O and parsing in
 /// parallel, Salsa inputs created sequentially.
-pub fn load_workspace(db: &mut RootDatabase, path: &Path) -> Vec<Result<File, String>> {
+pub fn load_workspace(
+    db: &mut RootDatabase,
+    path: &Path,
+    parser_of: ParserOf,
+) -> Vec<Result<File, String>> {
     // A workspace folder that CONTAINS the library holds its files twice:
     // once as its own, once as the library's. Every POU then collides with
     // itself and the whole library reads as duplicated (E0102), which is what
     // opening the rk checkout in an editor used to report. The library is
     // loaded first, so the ones it claimed are not this workspace's.
-    let paths: Vec<PathBuf> = find_st_files(path)
+    let paths: Vec<_> = find_files(path, parser_of)
         .into_iter()
-        .filter(|path| !is_library_file(db, path))
+        .filter(|(path, _)| !is_library_file(db, path))
         .collect();
-    let parsers = &*ast::RK_PARSER;
 
     let parsed: Vec<_> = paths
         .into_par_iter()
-        .map(|p| (read_and_parse(&p, parsers), p))
+        .map(|(p, parsers)| (read_and_parse(&p, parsers), p, parsers))
         .collect();
 
     parsed
         .into_iter()
-        .map(|(result, path)| match result {
+        .map(|(result, path, parsers)| match result {
             Ok((url, document)) => {
                 let file = File::builder(url.clone(), parsers, document, None).new(db);
                 db.workspace_files.insert(url, file);
@@ -260,9 +272,9 @@ pub fn load_workspace(db: &mut RootDatabase, path: &Path) -> Vec<Result<File, St
         .collect()
 }
 
-/// Loads all library `.st` files with HIGH durability: libraries rarely
+/// Loads the library's source files with HIGH durability: libraries rarely
 /// change, so salsa can skip re-validating queries that only touched them.
-pub fn load_libraries(db: &mut RootDatabase) {
+pub fn load_libraries(db: &mut RootDatabase, parser_of: ParserOf) {
     let Some(config) = Workspace::try_get(db) else {
         return;
     };
@@ -270,15 +282,12 @@ pub fn load_libraries(db: &mut RootDatabase) {
         return;
     };
 
-    let paths = find_st_files(library_path);
-    let parsers = &*ast::RK_PARSER;
-
-    let parsed: Vec<_> = paths
+    let parsed: Vec<_> = find_files(library_path, parser_of)
         .into_par_iter()
-        .map(|p| read_and_parse(&p, parsers))
+        .map(|(p, parsers)| (read_and_parse(&p, parsers), parsers))
         .collect();
 
-    for result in parsed {
+    for (result, parsers) in parsed {
         match result {
             Ok((url, document)) => {
                 let file = File::builder(url.clone(), parsers, document, None)
@@ -311,8 +320,9 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join("MAIN.ST"), "FUNCTION f : INT END_FUNCTION").unwrap();
         std::fs::write(dir.path().join("notes.txt"), "not a source").unwrap();
-        let found = find_st_files(dir.path());
+        let found = find_files(dir.path(), rk_parser);
         assert_eq!(found.len(), 1, "{found:?}");
-        assert!(found[0].ends_with("MAIN.ST"));
+        assert!(found[0].0.ends_with("MAIN.ST"));
+        assert!(is_rk_parser(found[0].1));
     }
 }

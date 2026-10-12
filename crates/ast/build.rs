@@ -25,5 +25,13 @@ fn main() {
         ])),
     )
     .to_string();
-    fs::write(output_path, format!("{header}{code}")).unwrap();
+    // Written only when it changed: a build that writes the same text
+    // again still gives the file a new date, and cargo then builds this
+    // crate and what depends on it once more, for every workspace that
+    // builds rk.
+    let generated = format!("{header}{code}");
+    if fs::read_to_string(&output_path).is_ok_and(|current| current == generated) {
+        return;
+    }
+    fs::write(output_path, generated).unwrap();
 }

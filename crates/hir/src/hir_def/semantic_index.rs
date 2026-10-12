@@ -23,7 +23,9 @@ use crate::hir_def::program::ProgramDecl;
 use crate::hir_def::scope::{Scope, ScopeId};
 use index::{IndexVec, newtype_index};
 
-/// Returns the semantic index of a given file
+/// Returns the semantic index of a given file: rk's builder reads one of
+/// rk's, and a file of another kind is read by the front-end added for it
+/// ([`crate::front_end`]). A file nothing reads has an empty index.
 #[tracing::instrument(level = "debug", skip_all, name = "query_semantic_index")]
 #[salsa::tracked(returns(ref), no_eq)]
 pub fn semantic_index<'db>(db: &'db dyn WorkspaceDataBase, file: File) -> SemanticIndex<'db> {
@@ -31,10 +33,6 @@ pub fn semantic_index<'db>(db: &'db dyn WorkspaceDataBase, file: File) -> Semant
     let ast = &parsed.ast;
     let root = match ast.get_root() {
         Some(root) => root,
-        None => return SemanticIndex::empty(db, file, ast.nodes.clone()),
-    };
-    let source = match root.downcast_ref::<ast::generated::SourceFile>() {
-        Some(source) => source,
         None => return SemanticIndex::empty(db, file, ast.nodes.clone()),
     };
     // A node the generated AST had no place for leaves ids pointing at the
@@ -47,27 +45,42 @@ pub fn semantic_index<'db>(db: &'db dyn WorkspaceDataBase, file: File) -> Semant
         return SemanticIndex::empty(db, file, ast.nodes.clone());
     }
 
-    SemanticIndexBuilder::new(db, file, ast, source).build()
+    // The parser that read the file says whose it is.
+    let parser = file.parsers(db);
+    if !db::loader::is_rk_parser(parser) {
+        return match crate::front_end::index_of(parser) {
+            Some(index) => index(db, file, ast),
+            None => SemanticIndex::empty(db, file, ast.nodes.clone()),
+        };
+    }
+    match root.downcast_ref::<ast::generated::SourceFile>() {
+        Some(source) => SemanticIndexBuilder::new(db, file, ast).build(source),
+        None => SemanticIndex::empty(db, file, ast.nodes.clone()),
+    }
 }
 
 #[newtype_index]
 #[derive(Ord, PartialOrd, salsa::Update)]
 pub struct NodeKey;
 
+/// What a front-end makes of a file. The fields are public so that one
+/// outside this crate can make it; rk's own ends in
+/// [`SemanticIndexBuilder::finish`], which says what the rest of the
+/// compiler expects of them.
 #[derive(Debug, PartialEq, Eq, salsa::Update)]
 pub struct SemanticIndex<'db> {
     /// Global scope
     pub scope: ScopeId<'db>,
 
-    pub(crate) file: File,
+    pub file: File,
 
     /// The AST nodes of the file
-    pub(crate) ast: Arc<Vec<Box<dyn AstNode>>>,
+    pub ast: Arc<Vec<Box<dyn AstNode>>>,
 
     /// Map of scope IDs to their corresponding scopes
-    pub(crate) scopes: FxHashMap<usize, Arc<Scope<'db>>>,
+    pub scopes: FxHashMap<usize, Arc<Scope<'db>>>,
 
-    /// HIR nodes indexed by document order
+    /// HIR nodes indexed by document order: sorted by their id
     pub node_index: IndexVec<NodeKey, HirNode<'db>>,
 
     /// Program declarations in the file
@@ -97,7 +110,7 @@ pub struct SemanticIndex<'db> {
     >,
 
     /// A list of errors encountered during semantic analysis
-    pub(crate) errors: Vec<IdeDiagnostic>,
+    pub errors: Vec<IdeDiagnostic>,
 }
 
 impl<'db> SemanticIndex<'db> {

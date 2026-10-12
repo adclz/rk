@@ -301,31 +301,33 @@ fn on_requests<Db: WorkspaceDataBase + Clone + RefUnwindSafe>(
         .on::<WorkspaceSymbolRequest, _>(ThreadIntent::Worker, workspace_symbols)
 }
 
+/// Whether the editor's document is one of rk's own: the language server
+/// reads rk's files only, on disk and in the editor.
+fn is_rk_document(uri: &Url) -> bool {
+    db::loader::is_st_file(std::path::Path::new(uri.path()))
+}
+
 fn on_notifications(
     registry: &mut NotificationRegistry<RootDatabase>,
 ) -> &mut NotificationRegistry<RootDatabase> {
     registry
-        .on_mut::<DidOpenTextDocument, _>(|s, p| {
-            match p.text_document.uri.as_str().ends_with(".st") {
-                true => {
-                    if s.db.get_library_files().contains_key(&p.text_document.uri) {
-                        return Ok(());
-                    }
-                    Ok(open_text_document(s, p, &RK_PARSER)?)
+        .on_mut::<DidOpenTextDocument, _>(|s, p| match is_rk_document(&p.text_document.uri) {
+            true => {
+                if s.db.get_library_files().contains_key(&p.text_document.uri) {
+                    return Ok(());
                 }
-                false => Ok(()),
+                Ok(open_text_document(s, p, &RK_PARSER)?)
             }
+            false => Ok(()),
         })
-        .on_mut::<DidChangeTextDocument, _>(|s, p| {
-            match p.text_document.uri.as_str().ends_with(".st") {
-                true => {
-                    if s.db.get_library_files().contains_key(&p.text_document.uri) {
-                        return Ok(());
-                    }
-                    Ok(change_text_document(s, p)?)
+        .on_mut::<DidChangeTextDocument, _>(|s, p| match is_rk_document(&p.text_document.uri) {
+            true => {
+                if s.db.get_library_files().contains_key(&p.text_document.uri) {
+                    return Ok(());
                 }
-                false => Ok(()),
+                Ok(change_text_document(s, p)?)
             }
+            false => Ok(()),
         })
         .on_mut::<DidChangeWatchedFiles, _>(|s, p| {
             let config_changed = Workspace::try_get(&s.db)
@@ -340,7 +342,7 @@ fn on_notifications(
             } else {
                 changed_watched_files(s, p, |url| {
                     let path = url.to_file_path().ok()?;
-                    db::loader::is_st_file(&path).then(|| &*RK_PARSER)
+                    db::loader::rk_parser(&path)
                 })?;
             }
 
@@ -379,6 +381,7 @@ fn refresh_configuration(
         &mut session.db,
         workspace,
         session.encoding.clone(),
+        db::loader::rk_parser,
         &mut file_errors,
         &mut notices,
     );
@@ -535,5 +538,24 @@ fn setup_file_watcher_if_necessary(
         _ => {
             tracing::error!("Client does not support did_change_watched_files capability");
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A document is rk's by its extension, in any case, as the workspace's
+    /// loader reads it: `MAIN.ST` was loaded from disk and its edits were
+    /// dropped.
+    #[test]
+    fn a_document_is_rk_s_by_its_extension() {
+        let is_rk = |uri: &str| is_rk_document(&Url::parse(uri).unwrap());
+        assert!(is_rk("file:///plant/main.st"));
+        assert!(is_rk("file:///plant/MAIN.ST"));
+        assert!(is_rk("untitled:/draft.st"));
+        assert!(!is_rk("file:///plant/config.toml"));
+        assert!(!is_rk("file:///plant/main.st.bak"));
+        assert!(!is_rk("file:///plant/st"));
     }
 }
