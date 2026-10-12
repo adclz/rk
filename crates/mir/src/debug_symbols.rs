@@ -99,11 +99,13 @@ impl TypeTable {
                 size: 4,
                 target: self.target(db, pointee, outer),
                 by_ref,
+                conformand: self.conformand(db, pointee, outer),
             },
             MirType::Void | MirType::RefTarget(_) => TypeDesc::Opaque {
                 size: 0,
                 target: None,
                 by_ref: false,
+                conformand: None,
             },
         };
         self.push(desc)
@@ -133,6 +135,7 @@ impl TypeTable {
             size: 0,
             target: None,
             by_ref: false,
+            conformand: None,
         });
         self.laying_out.push((s.name, id));
         let fields = s
@@ -162,7 +165,9 @@ impl TypeTable {
         outer: &Outer,
     ) -> Option<u32> {
         match pointee {
-            MirType::Void | MirType::RefTarget(MirRefTarget::Unknown) => None,
+            // An `ARRAY[*]` has no type of its own: see `conformand`.
+            MirType::Void
+            | MirType::RefTarget(MirRefTarget::Unknown | MirRefTarget::Conformand { .. }) => None,
             MirType::RefTarget(MirRefTarget::Type(ty)) => {
                 Some(self.intern_in(db, ty, false, outer))
             }
@@ -183,6 +188,23 @@ impl TypeTable {
             // A VAR_IN_OUT's, typed as declared.
             ty => Some(self.intern_in(db, ty, false, outer)),
         }
+    }
+
+    /// What a pointer to `pointee` says of the array it is bound to, when
+    /// it is an `ARRAY[*]` VAR_IN_OUT member's: the rank, and the element.
+    pub fn conformand(
+        &mut self,
+        db: &dyn WorkspaceDataBase,
+        pointee: &MirType,
+        outer: &Outer,
+    ) -> Option<debug_format::Conformand> {
+        let MirType::RefTarget(MirRefTarget::Conformand { rank, element }) = pointee else {
+            return None;
+        };
+        Some(debug_format::Conformand {
+            rank: *rank,
+            elem: self.intern_in(db, element, false, outer),
+        })
     }
 
     /// Deduplicate by structural identity.
@@ -350,6 +372,7 @@ fn walk_type<'t>(
                 global,
                 target: out.types.target(db, pointee, &walk.outer),
                 by_ref,
+                conformand: out.types.conformand(db, pointee, &walk.outer),
             });
         }
         MirType::Void | MirType::RefTarget(_) => {}

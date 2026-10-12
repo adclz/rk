@@ -522,6 +522,11 @@ fn multi_dimensional_paths_resolve_in_both_spellings(mut with_db: db::RootDataba
         None,
         "below the lower bound"
     );
+    assert_eq!(
+        plc.read_var(&info, "P1.m[7][41]"),
+        None,
+        "past the second dimension, inside the whole"
+    );
 }
 
 /// A frame's MEMORY-resident locals — aggregates, strings — must appear in
@@ -1857,4 +1862,253 @@ fn blocks_holding_each_other_name_each_other(mut with_db: db::RootDatabase) {
         VarValue::I16(1),
         "and back"
     );
+}
+
+/// `source` after `USING Std.Arrays;`, the stdlib's array functions loaded
+/// with it: for a body that reads the bounds of an `ARRAY[*]`.
+fn compile_with_bounds(db: &mut db::RootDatabase, source: &str) -> Vec<u8> {
+    crate::tests::codegen::compile_with_libraries(
+        db,
+        &[include_str!("../../../stdlib/Arrays.st")],
+        &format!("USING Std.Arrays;\n{source}"),
+    )
+}
+
+/// A VAR_IN_OUT that is an `ARRAY[*]` has no bounds of its own, and the
+/// instance keeps the address alone: the table gives its pointer no target.
+/// It reads as the array that starts at the address, with that array's
+/// bounds, which are those of the last call. Once bound, a debugger asking
+/// for it got nothing. A block never called holds no address, and reads as
+/// null.
+#[rstest]
+fn a_conformant_in_out_reads_as_the_array_at_its_address(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Walk
+        VAR_IN_OUT a : ARRAY[*] OF USINT; END_VAR
+        VAR_OUTPUT seen : USINT; END_VAR
+            seen := a[UPPER_BOUND(a, 1)];
+        END_FUNCTION_BLOCK
+
+        PROGRAM Main
+        VAR
+            line : ARRAY[-1..2] OF USINT := [1, 2, 3, 4];
+            other : ARRAY[5..7] OF USINT := [7, 8, 9];
+            w : Walk;
+            twice : Walk;
+            idle : Walk;
+        END_VAR
+            w(a := line);
+            twice(a := line);
+            twice(a := other);
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : Main;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let wasm = compile_with_bounds(&mut with_db, source);
+    let table = read_debug_symbols(&wasm);
+    let pointer = table
+        .pointers
+        .iter()
+        .find(|p| p.path == "P1.w.a")
+        .expect("the VAR_IN_OUT is listed");
+    assert!(pointer.by_ref);
+    assert_eq!(pointer.target, None, "an ARRAY[*] has no type of its own");
+    let line = table
+        .arrays
+        .iter()
+        .find(|a| a.path == "P1.line")
+        .expect("the array it is bound to");
+
+    let mut plc = TestPlc::load(&wasm).expect("load");
+    plc.run(1).expect("scan");
+    let info = DebugInfo::from_wasm(&wasm);
+    let live = &mut |address: u32, size: u32| plc.read_bytes(address, size as usize).ok();
+    let value = |place: Option<debug_format::Place>| match place {
+        Some(debug_format::Place::Value(loc)) => loc.decode(
+            &plc.read_bytes(loc.address, loc.size as usize)
+                .expect("in memory"),
+        ),
+        other => panic!("not a value: {other:?}"),
+    };
+    assert!(matches!(
+        info.follow("P1.w.a", live),
+        Some(debug_format::Place::Aggregate { address, .. }) if address == line.address
+    ));
+    assert_eq!(value(info.follow("P1.w.a[-1]", live)), VarValue::U8(1));
+    assert_eq!(value(info.follow("P1.w.a[2]", live)), VarValue::U8(4));
+    assert_eq!(
+        value(info.follow("P1.w.a[2]", live)),
+        plc.read_var(&info, "P1.w.seen").expect("the output")
+    );
+    assert_eq!(info.follow("P1.w.a[3]", live), None, "past its bounds");
+
+    assert_eq!(
+        value(info.follow("P1.twice.a[7]", live)),
+        VarValue::U8(9),
+        "the last binding's bounds"
+    );
+    assert_eq!(
+        info.follow("P1.twice.a[-1]", live),
+        None,
+        "not the first binding's"
+    );
+    assert_eq!(plc.read_var(&info, "P1.twice.seen"), Some(VarValue::U8(9)));
+
+    let null = Some(debug_format::Place::Null {
+        pointer: "P1.idle.a".to_string(),
+    });
+    assert_eq!(info.follow("P1.idle.a", live), null);
+    assert_eq!(info.follow("P1.idle.a[0]", live), null);
+}
+
+/// An address says where an array starts and not which: a matrix and its
+/// first row start together, and so do an array of STRUCTs and the array
+/// its first element begins with. The table gives an `ARRAY[*]` neither its
+/// rank nor its element, so where two arrays start, or none the tables
+/// describe, the path stops at the pointer, with the address it holds, and
+/// a subscript after it reaches nothing. The descriptor at the address was
+/// taken for the array: `member.r[1]` read as the STRUCT `recs2[1]`.
+#[rstest]
+fn a_conformant_in_out_stops_at_the_pointer_where_two_arrays_start(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE Rec : STRUCT hist : ARRAY[0..1, 0..1] OF USINT; k : USINT; END_STRUCT; END_TYPE
+        TYPE Rec2 : STRUCT list : ARRAY[0..1] OF USINT; k : USINT; END_STRUCT; END_TYPE
+
+        FUNCTION_BLOCK Grid
+        VAR_IN_OUT a : ARRAY[*, *] OF USINT; END_VAR
+        VAR_OUTPUT seen : USINT; END_VAR
+            seen := a[UPPER_BOUND(a, 1), UPPER_BOUND(a, 2)];
+        END_FUNCTION_BLOCK
+
+        FUNCTION_BLOCK Row
+        VAR_IN_OUT r : ARRAY[*] OF USINT; END_VAR
+        VAR_OUTPUT seen : USINT; END_VAR
+            seen := r[UPPER_BOUND(r, 1)];
+        END_FUNCTION_BLOCK
+
+        PROGRAM Main
+        VAR
+            mat : ARRAY[-1..0, 2..3] OF USINT := [1, 2, 3, 4];
+            recs : ARRAY[0..2] OF Rec;
+            recs2 : ARRAY[0..2] OF Rec2;
+            whole : Grid;
+            first : Grid;
+            inner : Grid;
+            top : Row;
+            low : Row;
+            member : Row;
+        END_VAR
+            recs[0].hist[1, 1] := 5;
+            recs[2].hist[1, 1] := 6;
+            recs2[0].list[1] := 9;
+            whole(a := mat);
+            first(a := recs[0].hist);
+            inner(a := recs[2].hist);
+            top(r := mat[-1]);
+            low(r := mat[0]);
+            member(r := recs2[0].list);
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : Main;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let wasm = compile_with_bounds(&mut with_db, source);
+    let table = read_debug_symbols(&wasm);
+    let array = |path: &str| {
+        table
+            .arrays
+            .iter()
+            .find(|a| a.path == path)
+            .unwrap_or_else(|| panic!("{path} is described"))
+    };
+    let (mat, recs, recs2) = (array("P1.mat"), array("P1.recs"), array("P1.recs2"));
+
+    let mut plc = TestPlc::load(&wasm).expect("load");
+    plc.run(1).expect("scan");
+    let info = DebugInfo::from_wasm(&wasm);
+    // Each body read the array its call bound: the last element of each.
+    for (output, seen) in [
+        ("P1.whole.seen", 4),
+        ("P1.first.seen", 5),
+        ("P1.inner.seen", 6),
+        ("P1.top.seen", 2),
+        ("P1.low.seen", 4),
+        ("P1.member.seen", 9),
+    ] {
+        assert_eq!(
+            plc.read_var(&info, output),
+            Some(VarValue::U8(seen)),
+            "{output}"
+        );
+    }
+
+    let live = &mut |address: u32, size: u32| plc.read_bytes(address, size as usize).ok();
+    // The matrix itself reads, each subscript within its own bounds.
+    assert_eq!(plc.read_var(&info, "P1.mat[0, 3]"), Some(VarValue::U8(4)));
+    assert_eq!(
+        plc.read_var(&info, "P1.mat[-1, 4]"),
+        None,
+        "past the second dimension, inside the whole"
+    );
+    assert_eq!(info.follow("P1.mat[-1, 4]", live), None);
+
+    let held = |address: u32, variable: &str| {
+        Some(debug_format::Place::Pointer(debug_format::Pointee {
+            address,
+            target: None,
+            by_ref: true,
+            variable: Some(variable.to_string()),
+            in_frame: None,
+        }))
+    };
+    let row = 2 * mat.elem_size;
+    for (path, subscripted, stop) in [
+        // A matrix and its first row.
+        (
+            "P1.whole.a",
+            "P1.whole.a[0, 3]",
+            held(mat.address, "P1.mat[-1, 2]"),
+        ),
+        (
+            "P1.top.r",
+            "P1.top.r[3]",
+            held(mat.address, "P1.mat[-1, 2]"),
+        ),
+        // A row no descriptor starts at.
+        (
+            "P1.low.r",
+            "P1.low.r[3]",
+            held(mat.address + row, "P1.mat[0, 2]"),
+        ),
+        // An array in the first member of an element, where the array of
+        // STRUCTs starts, and in a later element.
+        (
+            "P1.first.a",
+            "P1.first.a[1, 1]",
+            held(recs.address, "P1.recs[0]"),
+        ),
+        (
+            "P1.inner.a",
+            "P1.inner.a[1, 1]",
+            held(recs.address + 2 * recs.elem_size, "P1.recs[2]"),
+        ),
+        // Not the STRUCT `recs2[1]`, which the descriptor's subscript names.
+        (
+            "P1.member.r",
+            "P1.member.r[1]",
+            held(recs2.address, "P1.recs2[0]"),
+        ),
+    ] {
+        assert_eq!(info.follow(path, live), stop, "{path}");
+        assert_eq!(info.follow(subscripted, live), stop, "{subscripted}");
+    }
 }

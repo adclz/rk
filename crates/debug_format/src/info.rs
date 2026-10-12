@@ -810,7 +810,7 @@ impl DebugInfo {
 
     /// Walk `toks` from `cursor`, in the scope whose type table is `types`.
     fn walk<'a>(
-        &self,
+        &'a self,
         types: &[crate::TypeDesc],
         table: crate::Table,
         mut cursor: Cursor<'a>,
@@ -824,14 +824,21 @@ impl DebugInfo {
                     Cursor::Pointer {
                         at,
                         target,
+                        by_ref,
                         global,
                         path,
-                        ..
                     },
                     Access::Deref,
                 ) => {
                     pos += 1;
-                    match deref(types, table, at, target, global, &path, live)? {
+                    let held = Held {
+                        at,
+                        target,
+                        by_ref,
+                        global,
+                        path: &path,
+                    };
+                    match self.deref(types, table, held, live)? {
                         Ok(next) => next,
                         Err(stop) => return Some(stop),
                     }
@@ -847,10 +854,19 @@ impl DebugInfo {
                         path,
                     },
                     _,
-                ) => match deref(types, table, at, target, global, &path, live)? {
-                    Ok(next) => next,
-                    Err(stop) => return Some(stop),
-                },
+                ) => {
+                    let held = Held {
+                        at,
+                        target,
+                        by_ref: true,
+                        global,
+                        path: &path,
+                    };
+                    match self.deref(types, table, held, live)? {
+                        Ok(next) => next,
+                        Err(stop) => return Some(stop),
+                    }
+                }
                 (
                     Cursor::Typed {
                         address,
@@ -960,10 +976,19 @@ impl DebugInfo {
                 by_ref: true,
                 global,
                 path,
-            } => match deref(types, table, at, target, global, &path, live)? {
-                Ok(next) => self.finish(types, table, next, live),
-                Err(stop) => Some(stop),
-            },
+            } => {
+                let held = Held {
+                    at,
+                    target,
+                    by_ref: true,
+                    global,
+                    path: &path,
+                };
+                match self.deref(types, table, held, live)? {
+                    Ok(next) => self.finish(types, table, next, live),
+                    Err(stop) => Some(stop),
+                }
+            }
             Cursor::Pointer {
                 at,
                 target,
@@ -992,6 +1017,61 @@ impl DebugInfo {
                 }))
             }
         }
+    }
+
+    /// Through a pointer: the cursor at what it points at, or the place the
+    /// path stops at. `None` for a `REF_TO` whose target has no type.
+    ///
+    /// A VAR_IN_OUT is read as the variable it is bound to, and one that is
+    /// an `ARRAY[*]` has no type of its own: its bounds are those of that
+    /// variable. The module's table describes the array based at the
+    /// address held, and the walk goes on from there. Bound to anything
+    /// else, or asked in a frame's table, whose types are not the
+    /// descriptor's, the path stops at the pointer, with the address it
+    /// holds.
+    fn deref<'a>(
+        &'a self,
+        types: &[crate::TypeDesc],
+        table: crate::Table,
+        pointer: Held<'_>,
+        live: &mut dyn Live,
+    ) -> Option<Result<Cursor<'a>, Place>> {
+        let address = held(pointer.at, live)?;
+        if address == 0 {
+            return Some(Err(Place::Null {
+                pointer: pointer.path.to_string(),
+            }));
+        }
+        if let Some(target) = pointer.target {
+            let path = format!("{}^", pointer.path);
+            return Some(Ok(typed(
+                types,
+                table,
+                address,
+                target,
+                pointer.global,
+                path,
+            )?));
+        }
+        if !pointer.by_ref {
+            return None;
+        }
+        let bound = self.arrays.iter().find(|arr| arr.address == address);
+        if let (crate::Table::Module, Some(arr)) = (table, bound) {
+            return Some(Ok(array_cursor(arr, 0)?));
+        }
+        let variable = self.variable_at(address);
+        let in_frame = match variable {
+            Some(_) => None,
+            None => self.frame_variable_at(address, &live.frames(), None),
+        };
+        Some(Err(Place::Pointer(Pointee {
+            address,
+            target: None,
+            by_ref: true,
+            variable,
+            in_frame,
+        })))
     }
 
     /// Decode `bytes` for `sym`, naming the variant when the symbol is an
@@ -1193,6 +1273,16 @@ enum PointerAt {
     Local(u32),
 }
 
+/// A pointer a walk goes through: where it is, what the table says of it,
+/// and the path that names it.
+struct Held<'p> {
+    at: PointerAt,
+    target: Option<crate::TypeId>,
+    by_ref: bool,
+    global: bool,
+    path: &'p str,
+}
+
 /// One point of a walk along a path.
 enum Cursor<'a> {
     Value(VarLoc),
@@ -1310,33 +1400,6 @@ fn held(at: PointerAt, live: &mut dyn Live) -> Option<u32> {
         }
         PointerAt::Local(index) => live.local(index),
     }
-}
-
-/// Through a pointer: the cursor at what it points at, or the place the
-/// path stops at. `None` for a pointer whose target has no type.
-fn deref<'a>(
-    types: &[crate::TypeDesc],
-    table: crate::Table,
-    at: PointerAt,
-    target: Option<crate::TypeId>,
-    global: bool,
-    path: &str,
-    live: &mut dyn Live,
-) -> Option<Result<Cursor<'a>, Place>> {
-    let address = held(at, live)?;
-    if address == 0 {
-        return Some(Err(Place::Null {
-            pointer: path.to_string(),
-        }));
-    }
-    Some(Ok(typed(
-        types,
-        table,
-        address,
-        target?,
-        global,
-        format!("{path}^"),
-    )?))
 }
 
 /// Where a path may split into a stem a table names and the accessors
@@ -2274,6 +2337,9 @@ mod follow_tests {
                 pointer("P1.ri", 128, Some(1), false),
                 pointer("P1.rp", 132, Some(5), false),
                 pointer("P1.unknown", 136, None, false),
+                pointer("P1.w.a", 420, None, true),
+                pointer("P1.w.unbound", 424, None, true),
+                pointer("P1.w.elsewhere", 428, None, true),
             ],
             stack: Some((4096, 8192)),
         };
@@ -2301,6 +2367,8 @@ mod follow_tests {
         put(300, 1.5f32.to_bits());
         put(304, 2.5f32.to_bits());
         put(404, 1);
+        put(420, 400);
+        put(428, 200);
         (info, mem)
     }
 
@@ -2450,6 +2518,55 @@ mod follow_tests {
         let live = &mut reader(&mem);
         assert_eq!(at(info.follow("P1.m.speed", live)), (200, SymType::Int));
         assert_eq!(at(info.follow("P1.m.speed^", live)), (200, SymType::Int));
+    }
+
+    /// A VAR_IN_OUT that is an `ARRAY[*]` has no type of its own: it reads
+    /// as the array it is bound to, with that array's bounds. With no
+    /// target the reader answered nothing for it, once bound. Not bound it
+    /// is null, and bound to what is no array's base the path stops at the
+    /// pointer, with the address it holds and the variable there.
+    #[test]
+    fn a_by_reference_array_with_no_bounds_reads_as_the_array_it_is_bound_to() {
+        let (info, mem) = module();
+        let live = &mut reader(&mem);
+        assert_eq!(
+            info.follow("P1.w.a", live),
+            Some(Place::Aggregate {
+                address: 400,
+                ty: None
+            })
+        );
+        let Some(Place::Value(loc)) = info.follow("P1.w.a[1]", live) else {
+            panic!("an element of the bound array is a value");
+        };
+        assert_eq!((loc.address, loc.ty), (404, SymType::Int));
+        assert_eq!(
+            info.decode_at(&loc, &mem[404..408]),
+            VarValue::Enum {
+                type_name: "Lamp".to_string(),
+                variant: Some("On".to_string()),
+                raw: 1,
+            }
+        );
+        assert_eq!(info.follow("P1.w.a[4]", live), None, "past its bounds");
+        assert_eq!(
+            info.follow("P1.w.unbound", live),
+            Some(Place::Null {
+                pointer: "P1.w.unbound".to_string()
+            })
+        );
+        assert_eq!(
+            info.follow("P1.w.elsewhere", live),
+            Some(Place::Pointer(Pointee {
+                address: 200,
+                target: None,
+                by_ref: true,
+                variable: Some("P1.n".to_string()),
+                in_frame: None,
+            }))
+        );
+        // A `REF_TO` with no target still has nothing behind its `^`.
+        assert_eq!(info.follow("P1.unknown^", live), None);
     }
 
     /// An array of pointers, and an array of structs with a pointer in each:
