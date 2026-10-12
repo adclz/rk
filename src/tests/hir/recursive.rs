@@ -386,3 +386,37 @@ END_FUNCTION
     ---'
     ");
 }
+
+/// The reference a cycle cites is the first one written. The members were
+/// visited in the order of a map keyed by interned names, which is the
+/// order the names were first met in: this block cited `c`, and the editor
+/// disagreed with a fresh check on the same text after an edit.
+#[rstest]
+fn a_cycle_cites_the_first_reference_written(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK Inner
+VAR
+    n : INT;
+    a : Inner;
+    b : Inner;
+    c : Inner;
+    d : Inner;
+    e : Inner;
+    f : Inner;
+END_VAR
+END_FUNCTION_BLOCK
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1301] Error: type contains itself
+       ,-[ file:///test0.st:2:16 ]
+       |
+     2 | FUNCTION_BLOCK Inner
+       |                ^^|^^
+       |                  `---- type 'Inner' contains itself
+       |
+     5 |     a : Inner;
+       |         ^^|^^
+       |           `---- 'Inner' references itself here
+    ---'
+    ");
+}
