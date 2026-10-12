@@ -706,6 +706,11 @@ pub struct BodyInferenceResult<'db> {
     // through linear statement flow.
     pub(crate) ref_null_state: FxHashMap<VariableDecl<'db>, NullState<'db>>,
 
+    // One entry per `__TRY` being checked, innermost last: the join of
+    // every state each reference took since the `__TRY` started, which is
+    // what its `__CATCH` and its `__FINALLY` can be entered with.
+    pub(crate) null_states_in_try: Vec<FxHashMap<VariableDecl<'db>, NullState<'db>>>,
+
     // The first `SUPER()` (base-body call) statement seen in a function block
     // body. Per IEC 6.6.7.2.9 rule 2, `SUPER()` shall occur once — a second
     // occurrence is reported (E1110), pointing back to this first one.
@@ -745,6 +750,7 @@ impl<'db> BodyInferenceResult<'db> {
             dead_code_statements: Vec::new(),
             mismatched_for_step: Vec::new(),
             ref_null_state: FxHashMap::default(),
+            null_states_in_try: Vec::new(),
             first_super_body: None,
         }
     }
