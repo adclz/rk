@@ -176,9 +176,12 @@ const RESERVED_NAMES = [
   "END_WHILE",
   "EXIT",
   "RETURN",
-  // Exception throw (no in-language catch; propagates to the host).
-  // Used by the stdlib's `__ASSERT_FAIL` and any future panic-shape paths.
+  // Exceptions: a throw, and the statement that handles one.
   "__RAISE",
+  "__TRY",
+  "__CATCH",
+  "__FINALLY",
+  "__END_TRY",
   // References
   "AT",
   "%",
@@ -213,7 +216,7 @@ module.exports = grammar({
     // Without the list a keyword can be read as an identifier: `NAMESPACE
     // END_NAMESPACE` would take END_NAMESPACE as the namespace's name.
     global: ($) =>
-      RESERVED_NAMES.map((w) => (/^[A-Z]/.test(w) ? token(prec(0, caseInsensitive(w))) : w)),
+      RESERVED_NAMES.map((w) => (/^_*[A-Z]/.test(w) ? token(prec(0, caseInsensitive(w))) : w)),
   },
 
 
@@ -354,6 +357,15 @@ module.exports = grammar({
     ERR_config_not_allowed_in_namespace: ($) => prec(-1, $.config_decl),
 
     ERR_single_after_interval: ($) => prec(-1, seq(",", kw("SINGLE"), ":=", field("single", $.data_source))),
+    ERR_catch_after_finally: ($) =>
+      prec(
+        -1,
+        seq(
+          kw("__CATCH"),
+          optional(seq("(", field("variable", $.variable_access), ")")),
+          field("body", optional($.stmt_list)),
+        ),
+      ),
     ERR_interval_before_single: ($) => prec(-1, seq(kw("INTERVAL"), ":=", field("interval", $.data_source), ",")),
     ERR_interval_after_priority: ($) => prec(-1, seq(",", kw("INTERVAL"), ":=", field("interval", $.data_source))),
     ERR_single_after_priorty: ($) => prec(-1, seq(",", kw("SINGLE"), ":=", field("single", $.data_source))),
@@ -2072,6 +2084,7 @@ module.exports = grammar({
         kw("CONTINUE"),
         // Throws a wasm-level exception with a STRING payload
         $.raise_stmt,
+        $.try_stmt,
         $.wasm_pragma,
         $.allow_pragma,
         $.ERR_method_decl_in_body
@@ -2214,7 +2227,31 @@ module.exports = grammar({
       ),
 
     raise_stmt: ($) =>
-      seq("__RAISE", "(", field("message", $._expression), ")"),
+      seq(kw("__RAISE"), "(", field("message", $._expression), ")"),
+
+    // `__TRY body __CATCH(e) handler __FINALLY cleanup __END_TRY`: an
+    // exception raised in the body lands in the __CATCH, which takes the
+    // message in a STRING variable, and the __FINALLY runs on every way
+    // out. Either clause may be left out. So may both, which is reported
+    // rather than refused here, and so is a __CATCH written after the
+    // __FINALLY.
+    try_stmt: ($) =>
+      seq(
+        kw("__TRY"),
+        field("body", optional($.stmt_list)),
+        field("catch", optional($.catch_clause)),
+        optional(seq(field("finally", $.finally_clause), optional($.ERR_catch_after_finally))),
+        kw("__END_TRY"),
+      ),
+
+    catch_clause: ($) =>
+      seq(
+        kw("__CATCH"),
+        optional(seq("(", field("variable", $.variable_access), ")")),
+        field("body", optional($.stmt_list)),
+      ),
+
+    finally_clause: ($) => seq(kw("__FINALLY"), field("body", optional($.stmt_list))),
 
     // Other
 

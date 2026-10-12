@@ -175,7 +175,7 @@
       "patterns": [
         {
           "name": "keyword.control.conditional.st",
-          "match": "(?i)\\b(?:END_)?(?:IF|CASE|OF|ELSE|ELSIF|THEN|OR(_ELSE)?|AND(_THEN)?|NOT|XOR|NOR|__TRY|__CATCH|__FINALLY|__ENDTRY)\\b"
+          "match": "(?i)\\b(?:END_)?(?:IF|CASE|OF|ELSE|ELSIF|THEN|OR(_ELSE)?|AND(_THEN)?|NOT|XOR|NOR|__TRY|__CATCH|__FINALLY|__END_TRY)\\b"
         },
         {
           "name": "keyword.control.loop.st",

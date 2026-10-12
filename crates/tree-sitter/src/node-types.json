@@ -552,6 +552,10 @@
         "named": true
       },
       {
+        "type": "try_stmt",
+        "named": true
+      },
+      {
         "type": "wasm_pragma",
         "named": true
       },
@@ -718,6 +722,32 @@
           "named": true
         }
       ]
+    }
+  },
+  {
+    "type": "ERR_catch_after_finally",
+    "named": true,
+    "fields": {
+      "body": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "stmt_list",
+            "named": true
+          }
+        ]
+      },
+      "variable": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "variable_access",
+            "named": true
+          }
+        ]
+      }
     }
   },
   {
@@ -1988,6 +2018,32 @@
     }
   },
   {
+    "type": "catch_clause",
+    "named": true,
+    "fields": {
+      "body": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "stmt_list",
+            "named": true
+          }
+        ]
+      },
+      "variable": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "variable_access",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "char_literal",
     "named": true,
     "fields": {
@@ -3133,6 +3189,22 @@
         "types": [
           {
             "type": "var_access",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "finally_clause",
+    "named": true,
+    "fields": {
+      "body": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "stmt_list",
             "named": true
           }
         ]
@@ -6582,6 +6654,52 @@
     }
   },
   {
+    "type": "try_stmt",
+    "named": true,
+    "fields": {
+      "body": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "stmt_list",
+            "named": true
+          }
+        ]
+      },
+      "catch": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "catch_clause",
+            "named": true
+          }
+        ]
+      },
+      "finally": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "finally_clause",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": false,
+      "required": false,
+      "types": [
+        {
+          "type": "ERR_catch_after_finally",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "type_decl",
     "named": true,
     "fields": {
@@ -7689,7 +7807,23 @@
     "named": false
   },
   {
+    "type": "__CATCH",
+    "named": false
+  },
+  {
+    "type": "__END_TRY",
+    "named": false
+  },
+  {
+    "type": "__FINALLY",
+    "named": false
+  },
+  {
     "type": "__RAISE",
+    "named": false
+  },
+  {
+    "type": "__TRY",
     "named": false
   },
   {
