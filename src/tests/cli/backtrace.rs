@@ -478,3 +478,28 @@ fn a_block_s_body_is_named_by_its_block(mut with_db: db::RootDatabase) {
         ]
     );
 }
+
+/// A raise the test's own `__CATCH` takes is not where the test failed:
+/// the failure is placed at the last throw, the one nothing caught.
+#[rstest]
+fn a_caught_raise_is_not_where_the_test_failed(mut with_db: db::RootDatabase) {
+    let source = r#"
+        {test}
+        FUNCTION test_twice
+        VAR e : STRING; END_VAR
+            __TRY
+                __RAISE('handled');             // caught
+            __CATCH(e)
+                e := '';
+            __END_TRY;
+            __RAISE('not handled');             // failed
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let record = only(run(&wasm, None));
+    assert_eq!(record.reason.as_deref(), Some("not handled"));
+    assert_eq!(
+        calls(&record),
+        [("test_twice".to_string(), line_of(source, "// failed"))]
+    );
+}
