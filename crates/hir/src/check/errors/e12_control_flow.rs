@@ -5,6 +5,7 @@ use crate::CallSite;
 use crate::HasName;
 use crate::HirNodeInfo;
 use crate::check::errors::ToIdeDiagnostic;
+use crate::check::errors::e00_syntax::first_bytes;
 use crate::hir_def::expressions::statement::{Stmt, StmtKind};
 use crate::hir_def::pous::variable::VariableDecl;
 use auto_lsp::lsp_types::DiagnosticSeverity;
@@ -36,6 +37,12 @@ pub enum ControlFlowError<'db> {
     /// A `__CATCH` written after the `__FINALLY`.
     CatchAfterFinally {
         span: auto_lsp::tree_sitter::Range,
+    },
+    /// A second `__CATCH`, or a second `__FINALLY`: a `__TRY` has one of
+    /// each. `span` is the clause, `first` the one it comes after.
+    ClauseWrittenTwice {
+        span: auto_lsp::tree_sitter::Range,
+        first: auto_lsp::tree_sitter::Range,
     },
     /// A FOR control variable that is not a bare identifier. IEC 61131-3's
     /// grammar says `control_variable ::= identifier`, so `r.i`, `a[k]` and
@@ -97,6 +104,7 @@ impl<'db> ErrorCode for ControlFlowError<'db> {
             Self::TryWithoutClause { .. } => "E1209",
             Self::JumpLeavesFinally { .. } => "E1210",
             Self::CatchAfterFinally { .. } => "E1211",
+            Self::ClauseWrittenTwice { .. } => "E1212",
             Self::ForControlNotAVariable { .. } => "E1203",
             Self::ForControlNotInteger { .. } => "E1206",
             Self::ForStepInvalid { .. } => "E1204",
@@ -127,7 +135,7 @@ impl<'db> ToIdeDiagnostic<'db> for ControlFlowError<'db> {
                 .desc(self)
                 .call(),
             Self::TryWithoutClause { stmt } => {
-                let keyword = keyword_of(&stmt.get_span(db), "__TRY".len());
+                let keyword = first_bytes(&stmt.get_span(db), "__TRY".len());
                 let mut diag = diag()
                     .message("this __TRY has neither a __CATCH nor a __FINALLY".to_string())
                     .range(crate::denormalize(db, file, &keyword).unwrap_or_default())
@@ -135,8 +143,8 @@ impl<'db> ToIdeDiagnostic<'db> for ControlFlowError<'db> {
                     .desc(self)
                     .call();
                 diag.with_note(
-                    "a __TRY handles the exception its body raises in its __CATCH, or runs its \
-                     __FINALLY on the way out"
+                    "a __TRY's __CATCH handles what its body raises, and its __FINALLY runs on \
+                     the way out"
                         .to_string(),
                 );
                 diag.with_help("add a __CATCH, or remove the __TRY".to_string());
@@ -155,15 +163,15 @@ impl<'db> ToIdeDiagnostic<'db> for ControlFlowError<'db> {
                     .desc(self)
                     .call();
                 diag.with_note(
-                    "a __FINALLY runs on the way out of its __TRY, with or without an exception \
-                     pending, which a jump out of it would drop"
+                    "a __FINALLY also runs while an exception leaves its __TRY, and a jump out \
+                     of it would end that exception with no __CATCH"
                         .to_string(),
                 );
                 diag.with_help(format!("move the '{jump}' after __END_TRY"));
                 diag
             }
             Self::CatchAfterFinally { span } => {
-                let keyword = keyword_of(span, "__CATCH".len());
+                let keyword = first_bytes(span, "__CATCH".len());
                 let mut diag = diag()
                     .message("this __CATCH comes after the __FINALLY".to_string())
                     .range(crate::denormalize(db, file, &keyword).unwrap_or_default())
@@ -174,6 +182,34 @@ impl<'db> ToIdeDiagnostic<'db> for ControlFlowError<'db> {
                     "the clauses of a __TRY are its __CATCH, then its __FINALLY".to_string(),
                 );
                 diag.with_help("move the __CATCH before the __FINALLY".to_string());
+                diag
+            }
+            Self::ClauseWrittenTwice { span, first } => {
+                // Either clause starts with its keyword.
+                let source = file.document(db).as_str();
+                let keyword = match source.get(span.start_byte..span.start_byte + 3) {
+                    Some(start) if start.eq_ignore_ascii_case("__C") => "__CATCH",
+                    _ => "__FINALLY",
+                };
+                let mut diag = diag()
+                    .message(format!("this is the second {keyword} of the __TRY"))
+                    .range(
+                        crate::denormalize(db, file, &first_bytes(span, keyword.len()))
+                            .unwrap_or_default(),
+                    )
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .call();
+                diag.with_related(Related::new(
+                    format!("the first {keyword} is here"),
+                    file,
+                    first_bytes(first, keyword.len()),
+                ));
+                diag.with_note(match keyword {
+                    "__CATCH" => "a __TRY has one __CATCH, which takes every exception".to_string(),
+                    _ => "a __TRY has one __FINALLY".to_string(),
+                });
+                diag.with_help(format!("write one {keyword} that does both"));
                 diag
             }
             Self::ForControlNotAVariable { access } => {
@@ -300,20 +336,5 @@ impl<'db> ToIdeDiagnostic<'db> for ControlFlowError<'db> {
                 diag
             }
         }
-    }
-}
-
-/// The first `len` bytes of `span`: the keyword a statement or a clause
-/// starts with, where a report on the whole of it would underline every
-/// line of the body.
-fn keyword_of(span: &auto_lsp::tree_sitter::Range, len: usize) -> auto_lsp::tree_sitter::Range {
-    auto_lsp::tree_sitter::Range {
-        start_byte: span.start_byte,
-        end_byte: span.start_byte + len,
-        start_point: span.start_point,
-        end_point: auto_lsp::tree_sitter::Point {
-            row: span.start_point.row,
-            column: span.start_point.column + len,
-        },
     }
 }

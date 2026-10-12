@@ -182,6 +182,8 @@ const RESERVED_NAMES = [
   "__CATCH",
   "__FINALLY",
   "__END_TRY",
+  // The closer without its second underscore, read to be reported.
+  "__ENDTRY",
   // References
   "AT",
   "%",
@@ -357,15 +359,6 @@ module.exports = grammar({
     ERR_config_not_allowed_in_namespace: ($) => prec(-1, $.config_decl),
 
     ERR_single_after_interval: ($) => prec(-1, seq(",", kw("SINGLE"), ":=", field("single", $.data_source))),
-    ERR_catch_after_finally: ($) =>
-      prec(
-        -1,
-        seq(
-          kw("__CATCH"),
-          optional(seq("(", field("variable", $.variable_access), ")")),
-          field("body", optional($.stmt_list)),
-        ),
-      ),
     ERR_interval_before_single: ($) => prec(-1, seq(kw("INTERVAL"), ":=", field("interval", $.data_source), ",")),
     ERR_interval_after_priority: ($) => prec(-1, seq(",", kw("INTERVAL"), ":=", field("interval", $.data_source))),
     ERR_single_after_priorty: ($) => prec(-1, seq(",", kw("SINGLE"), ":=", field("single", $.data_source))),
@@ -2232,16 +2225,16 @@ module.exports = grammar({
     // `__TRY body __CATCH(e) handler __FINALLY cleanup __END_TRY`: an
     // exception raised in the body lands in the __CATCH, which takes the
     // message in a STRING variable, and the __FINALLY runs on every way
-    // out. Either clause may be left out. So may both, which is reported
-    // rather than refused here, and so is a __CATCH written after the
-    // __FINALLY.
+    // out. The clauses are read in any order and any number: a __TRY with
+    // none, with two of one, or with its __CATCH after its __FINALLY is
+    // reported as what it is, where a rule for the one valid shape left
+    // each of them a syntax error about some other token.
     try_stmt: ($) =>
       seq(
         kw("__TRY"),
         field("body", optional($.stmt_list)),
-        field("catch", optional($.catch_clause)),
-        optional(seq(field("finally", $.finally_clause), optional($.ERR_catch_after_finally))),
-        kw("__END_TRY"),
+        field("clause", repeat(choice($.catch_clause, $.finally_clause))),
+        choice(kw("__END_TRY"), $.ERR_end_try_spelling),
       ),
 
     catch_clause: ($) =>
@@ -2252,6 +2245,13 @@ module.exports = grammar({
       ),
 
     finally_clause: ($) => seq(kw("__FINALLY"), field("body", optional($.stmt_list))),
+
+    // `__ENDTRY`, where `__END_TRY` closes a __TRY: read as the closer, so
+    // that the report is about the spelling and the statement is still
+    // read. It stands after `try_stmt` on purpose: a closer that is missing
+    // is asked for as the first of the two tokens the grammar names, and
+    // that has to be `__END_TRY` (the corpus pins it).
+    ERR_end_try_spelling: ($) => prec(-1, kw("__ENDTRY")),
 
     // Other
 

@@ -14,6 +14,7 @@ use crate::hir_def::expressions::statement::{CaseKind, Catch, Stmt, StmtKind};
 use crate::hir_def::interned::identifier::SpanIdent;
 use auto_lsp::anyhow::{self};
 use auto_lsp::core::ast::AstNode;
+use auto_lsp::tree_sitter;
 use ide_diagnostic::IdeDiagnostic;
 
 impl<'db> Parse<'db> for ast::generated::Stmt {
@@ -338,44 +339,67 @@ impl<'db> Parse<'db> for ast::generated::Stmt {
                 ))
             }
             StmtType::TryStmt(try_stmt) => {
+                type Clause = ast::generated::CatchClause_FinallyClause;
                 let body = stmt_list(sema, try_stmt.body.as_ref())?;
-                let mut catch = match try_stmt.catch.as_ref() {
-                    Some(clause) => Some(catch_clause(
-                        sema,
-                        clause.cast(sema.ast).variable.as_ref(),
-                        clause.cast(sema.ast).body.as_ref(),
-                    )?),
-                    None => None,
-                };
-                let finally = match try_stmt.finally.as_ref() {
-                    Some(clause) => Some(stmt_list(sema, clause.cast(sema.ast).body.as_ref())?),
-                    None => None,
-                };
-                // A __CATCH written after the __FINALLY is reported. It is
-                // still the handler when no other precedes it, so that the
-                // editor reads what it holds.
-                if let Some(late) = try_stmt.children.as_ref() {
-                    let late = late.cast(sema.ast);
-                    sema.errors.push(
-                        ControlFlowError::CatchAfterFinally {
-                            span: late.get_range().to_owned(),
+                // The first __CATCH and the first __FINALLY are the
+                // statement's. Another of either is reported and left
+                // unread, and a __CATCH after the __FINALLY is reported and
+                // read: it is the one handler there is.
+                let mut catch: Option<(Catch<'db>, tree_sitter::Range)> = None;
+                let mut finally: Option<(Vec<Stmt<'db>>, tree_sitter::Range)> = None;
+                for clause in &try_stmt.clause {
+                    let (span, first) = match clause.cast(sema.ast) {
+                        Clause::CatchClause(clause) => {
+                            let span = clause.get_range().to_owned();
+                            match (&catch, &finally) {
+                                (Some((_, first)), _) => (span, Some(*first)),
+                                (None, after) => {
+                                    if after.is_some() {
+                                        sema.errors.push(
+                                            ControlFlowError::CatchAfterFinally { span }
+                                                .to_diagnostic(sema.db, sema.file),
+                                        );
+                                    }
+                                    let read = catch_clause(
+                                        sema,
+                                        clause.variable.as_ref(),
+                                        clause.body.as_ref(),
+                                    )?;
+                                    catch = Some((read, span));
+                                    (span, None)
+                                }
+                            }
                         }
-                        .to_diagnostic(sema.db, sema.file),
-                    );
-                    if catch.is_none() {
-                        catch = Some(catch_clause(
-                            sema,
-                            late.variable.as_ref(),
-                            late.body.as_ref(),
-                        )?);
+                        Clause::FinallyClause(clause) => {
+                            let span = clause.get_range().to_owned();
+                            match &finally {
+                                Some((_, first)) => (span, Some(*first)),
+                                None => {
+                                    let read = stmt_list(sema, clause.body.as_ref())?;
+                                    finally = Some((read, span));
+                                    (span, None)
+                                }
+                            }
+                        }
+                    };
+                    if let Some(first) = first {
+                        sema.errors.push(
+                            ControlFlowError::ClauseWrittenTwice { span, first }
+                                .to_diagnostic(sema.db, sema.file),
+                        );
                     }
+                }
+                if let Some(closer) = try_stmt.children.as_ref() {
+                    let span = closer.cast(sema.ast).get_range().to_owned();
+                    sema.errors
+                        .push(SyntaxError::EndTrySpelling(span).to_diagnostic(sema.db, sema.file));
                 }
                 Ok(Stmt::new(
                     sema.db,
                     StmtKind::Try {
                         body,
-                        catch,
-                        finally,
+                        catch: catch.map(|(catch, _)| catch),
+                        finally: finally.map(|(finally, _)| finally),
                     },
                     try_stmt.into(),
                     sema.current_scope,

@@ -101,14 +101,15 @@ END_FUNCTION
         (try_stmt)))))
 
 ================================================================================
-__TRY - a __CATCH after the __FINALLY is read as such
+__TRY - clauses in any order and number
 ================================================================================
 
 FUNCTION fn
-	VAR e : STRING; END_VAR
 	__TRY
 	__FINALLY
-	__CATCH(e)
+	__CATCH
+	__CATCH
+	__FINALLY
 	__END_TRY;
 END_FUNCTION
 
@@ -117,25 +118,54 @@ END_FUNCTION
 (source_file
   (func_decl
     (identifier)
-    (var_decls
-      (var_decl_init_list
-        (variable_list
-          (identifier))
-        (var_decl_init
-          (simple_type_spec
-            (string_type_name
-              (string_name))))))
     (func_body
       (stmt_list
         (try_stmt
           (finally_clause)
-          (ERR_catch_after_finally
-            (variable_access
-              (variable
-                (begin_path_expression
-                  (path_expression
-                    (var_access
-                      (field))))))))))))
+          (catch_clause)
+          (catch_clause)
+          (finally_clause))))))
+
+================================================================================
+__TRY - __ENDTRY closes it, as an error
+================================================================================
+
+FUNCTION fn
+	__TRY
+	__CATCH
+	__ENDTRY;
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (func_decl
+    (identifier)
+    (func_body
+      (stmt_list
+        (try_stmt
+          (catch_clause)
+          (ERR_end_try_spelling))))))
+
+================================================================================
+__TRY - a missing closer is asked for as __END_TRY
+================================================================================
+
+FUNCTION fn
+	__TRY
+	__CATCH
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (func_decl
+    (identifier)
+    (func_body
+      (stmt_list
+        (try_stmt
+          (catch_clause)
+          (MISSING "__END_TRY"))))))
 
 ================================================================================
 __TRY - keywords in any case
@@ -144,8 +174,9 @@ __TRY - keywords in any case
 FUNCTION fn
 	__try
 		__raise('x');
-	__catch
-	__end_try;
+	__Catch
+	__FINALLY
+	__End_Try;
 END_FUNCTION
 
 --------------------------------------------------------------------------------
@@ -162,4 +193,5 @@ END_FUNCTION
                 (char_literal
                   (char_str
                     (s_byte_char_str))))))
-          (catch_clause))))))
+          (catch_clause)
+          (finally_clause))))))

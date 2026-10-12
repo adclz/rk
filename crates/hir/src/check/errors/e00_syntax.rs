@@ -100,6 +100,8 @@ pub enum SyntaxError {
         file: File,
     },
     MethodDeclInBody(Range),
+    /// `__ENDTRY`, where a `__TRY` is closed by `__END_TRY`.
+    EndTrySpelling(Range),
 }
 
 impl ErrorCode for SyntaxError {
@@ -134,6 +136,7 @@ impl ErrorCode for SyntaxError {
             Self::ClassVariablesAfterMethod { .. } => "E0027",
             Self::MethodDeclInBody(_) => "E0028",
             Self::VariadicNotAllowed { .. } => "E0029",
+            Self::EndTrySpelling(_) => "E0030",
         }
     }
 }
@@ -689,6 +692,28 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                     crate::denormalize(db, file, &first_word(db, file, span)).unwrap_or_default(),
                 )
                 .call(),
+            Self::EndTrySpelling(span) => {
+                let range = crate::denormalize(db, file, span).unwrap_or_default();
+                let mut diag = diag()
+                    .message("'__ENDTRY' does not close a __TRY".into())
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(range)
+                    .call();
+                diag.with_fix(
+                    action()
+                        .title("replace '__ENDTRY' with '__END_TRY'".into())
+                        .kind(auto_lsp::lsp_types::CodeActionKind::QUICKFIX)
+                        .diagnostics(vec![diag.inner()])
+                        .is_preferred(true)
+                        .edit(WorkspaceEdit::new(HashMap::from([(
+                            file.url(db).clone(),
+                            vec![edit().new_text("__END_TRY".to_string()).range(range).call()],
+                        )])))
+                        .call(),
+                );
+                diag
+            }
         }
     }
 }
@@ -714,7 +739,7 @@ fn section_not_allowed(
 }
 
 /// The first `len` bytes of `span`: an assignment sign, without what follows.
-fn first_bytes(span: &Range, len: usize) -> Range {
+pub(crate) fn first_bytes(span: &Range, len: usize) -> Range {
     Range {
         start_byte: span.start_byte,
         end_byte: span.start_byte + len,
