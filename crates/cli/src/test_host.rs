@@ -361,7 +361,8 @@ struct Trace {
 
 /// Records the stack where a test fails. wasmtime calls it at the throw of
 /// an exception, caught or not, at a trap and at a hostcall's error, with
-/// the frames still there.
+/// the frames still there. The last one is the failure's: a `__CATCH` of
+/// the test's own takes the ones before it and goes on.
 #[derive(Clone)]
 struct AtFailure;
 
@@ -378,8 +379,7 @@ impl DebugHandler for AtFailure {
                 | DebugEvent::Trap(_)
                 | DebugEvent::HostcallError(_)
         );
-        // The first is the failure. Nothing a test runs catches and goes on.
-        if !failed || store.data().stack.is_some() {
+        if !failed {
             return;
         }
         // The backtrace a trap would come back with, taken here. The debug

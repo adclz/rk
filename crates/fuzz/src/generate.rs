@@ -63,6 +63,12 @@
 //!   member. A FUNCTION writes part of its own result after assigning it.
 //!   The evaluator works on the two's-complement bits of the place's width.
 //!
+//! - `__TRY … __CATCH(e) … __END_TRY`, the body raising a literal message
+//!   after some statements: the ones after the raise are left out, the
+//!   message is cut to the capacity of the STRING the `__CATCH` names, when
+//!   it names one, and the handler runs. A jump out of the body skips the
+//!   raise.
+//!
 //! Nothing may stop the module: an integer divisor is a literal other than
 //! 0 and -1 (`DINT#-2147483648 / -1` traps), an index is wrapped into its
 //! array's range by the expression itself, and loops have literal bounds.
@@ -335,6 +341,18 @@ enum Stmt {
     Exit,
     Continue,
     Return,
+    /// `__TRY body; __RAISE('message'); __CATCH(variable) handler __END_TRY`.
+    Try(Try),
+}
+
+/// A `__TRY` whose body ends on a raise.
+#[derive(Clone, Debug)]
+struct Try {
+    body: Vec<Stmt>,
+    message: Vec<u8>,
+    /// The STRING variable of the frame the `__CATCH` names, when it does.
+    variable: Option<usize>,
+    handler: Vec<Stmt>,
 }
 
 /// An integer place, its type and a slice offset of it, in widths.
@@ -1314,7 +1332,7 @@ impl Generator<'_> {
             }
             self.budget -= 1;
             let nested = |g: &mut Self| g.block(depth - 1, readable, free, in_loop, may_return);
-            let stmt = match self.choices.below(23) {
+            let stmt = match self.choices.below(24) {
                 0 | 1 if depth > 0 => {
                     let mut arms = Vec::new();
                     for _ in 0..1 + self.choices.below(3) {
@@ -1408,6 +1426,29 @@ impl Generator<'_> {
                     Some(copy) => copy,
                     None => continue,
                 },
+                23 if depth > 0 => {
+                    let body = nested(self);
+                    let len = self.choices.below(10);
+                    let message = (0..len).map(|_| b"abcde"[self.choices.below(5)]).collect();
+                    // Any STRING of the frame, cut to its capacity.
+                    let strings: Vec<usize> = (0..self.vars.len())
+                        .filter(|&v| {
+                            matches!(self.vars[v].ty, Ty::Str(_))
+                                && matches!(self.vars[v].role, Role::Plain | Role::Output)
+                        })
+                        .collect();
+                    let variable = match strings.is_empty() || self.choices.percent(25) {
+                        true => None,
+                        false => Some(strings[self.choices.below(strings.len())]),
+                    };
+                    let handler = nested(self);
+                    Stmt::Try(Try {
+                        body,
+                        message,
+                        variable,
+                        handler,
+                    })
+                }
                 _ => match self.assign(readable) {
                     Some(assign) => assign,
                     None => continue,
@@ -3256,6 +3297,25 @@ impl Names<'_> {
                 Stmt::Return => {
                     let _ = writeln!(out, "{pad}RETURN;");
                 }
+                Stmt::Try(t) => {
+                    let _ = writeln!(out, "{pad}__TRY");
+                    self.block(out, &t.body, level + 1);
+                    let _ = writeln!(
+                        out,
+                        "{pad}    __RAISE('{}');",
+                        String::from_utf8_lossy(&t.message)
+                    );
+                    match t.variable {
+                        Some(v) => {
+                            let _ = writeln!(out, "{pad}__CATCH({})", self.vars[v]);
+                        }
+                        None => {
+                            let _ = writeln!(out, "{pad}__CATCH");
+                        }
+                    }
+                    self.block(out, &t.handler, level + 1);
+                    let _ = writeln!(out, "{pad}__END_TRY;");
+                }
             }
         }
     }
@@ -3672,6 +3732,17 @@ fn run_block(block: &[Stmt], st: &mut State, tys: &[Ty], d: &Decls) -> Flow {
             Stmt::Exit => Flow::Exit,
             Stmt::Continue => Flow::Continue,
             Stmt::Return => Flow::Return,
+            Stmt::Try(t) => {
+                // The body runs to its raise, unless it jumps out first.
+                let flow = run_block(&t.body, st, tys, d);
+                if !matches!(flow, Flow::Next) {
+                    return flow;
+                }
+                if let Some(v) = t.variable {
+                    write(&Place::Var(v), Val::Str(t.message.clone()), st, tys, d);
+                }
+                run_block(&t.handler, st, tys, d)
+            }
         };
         if !matches!(flow, Flow::Next) {
             return flow;
