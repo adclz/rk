@@ -2628,3 +2628,56 @@ END_FUNCTION
     END_FUNCTION
     ");
 }
+
+/// A `__TRY`: its clauses at its level, each body under its clause, a
+/// nested one in a `__CATCH`, and a `__FINALLY` with no `__CATCH`. The
+/// result formats to itself.
+#[rstest]
+pub fn try_statement(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION fn
+VAR e : STRING; END_VAR
+__TRY
+__RAISE('x');
+__CATCH (e)
+fn := 1;
+__TRY fn := 3; __CATCH fn := 4; __END_TRY;
+__FINALLY
+fn := 2;
+__END_TRY
+__TRY
+fn := 5;
+__FINALLY
+__END_TRY
+END_FUNCTION
+"#;
+
+    let document = add_source(&mut with_db, source).document(&with_db);
+    let formatted = fmt(document);
+    assert_snapshot!(formatted, @r"
+    FUNCTION fn
+    	VAR
+    		e: STRING;
+    	END_VAR
+    	__TRY
+    		__RAISE('x');
+    	__CATCH(e)
+    		fn := 1;
+    		__TRY
+    			fn := 3;
+    		__CATCH
+    			fn := 4;
+    		__END_TRY;
+    	__FINALLY
+    		fn := 2;
+    	__END_TRY;
+    	__TRY
+    		fn := 5;
+    	__FINALLY
+    	__END_TRY;
+    END_FUNCTION
+    ");
+
+    let again = add_source(&mut with_db, &formatted).document(&with_db);
+    assert_eq!(fmt(again), formatted, "a fixed point");
+}

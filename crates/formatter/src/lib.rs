@@ -201,6 +201,9 @@ static NEW_LINES: &str = r##"
     "END_REPEAT"
     "END_CASE"
     "END_STRUCT"
+    "__END_TRY"
+    (catch_clause)
+    (finally_clause)
     (case_selection)
 
     (task_config)
@@ -260,6 +263,7 @@ static NEW_LINES: &str = r##"
     (while_stmt)
     (repeat_stmt)
     (raise_stmt)
+    (try_stmt)
     (wasm_pragma)
     (allow_pragma)
     "RETURN"
@@ -278,6 +282,9 @@ static NEW_LINES: &str = r##"
     (for_stmt body: (stmt_list . (_) @prepend_hardline))
     (while_stmt while_body: (stmt_list . (_) @prepend_hardline))
     (repeat_stmt repeat_body: (stmt_list . (_) @prepend_hardline))
+    (try_stmt body: (stmt_list . (_) @prepend_hardline))
+    (catch_clause body: (stmt_list . (_) @prepend_hardline))
+    (finally_clause body: (stmt_list . (_) @prepend_hardline))
   ]
 )
 
@@ -287,7 +294,7 @@ static NEW_LINES: &str = r##"
 ; statement's: Topiary records a break between a node and the node before
 ; it in walking order, and the body starts where its first statement does.
 (case_selection case_do: (stmt_list) @prepend_input_softline)
-(case_selection case_do: (stmt_list . [(if_stmt) (case_stmt) (for_stmt) (while_stmt) (repeat_stmt)] @prepend_hardline))
+(case_selection case_do: (stmt_list . [(if_stmt) (case_stmt) (for_stmt) (while_stmt) (repeat_stmt) (try_stmt)] @prepend_hardline))
 
 ; An empty statement, a `;` of its own, keeps the line it had.
 (stmt_list (_) . ";" @prepend_input_softline)
@@ -398,6 +405,10 @@ static INDENTATIONS: &str = r#"
 ; The body of a REPEAT ends at UNTIL, which stands at the REPEAT's level
 ; with the condition, and END_REPEAT under it.
 (repeat_stmt "REPEAT" @append_indent_start "UNTIL" @prepend_indent_end)
+; A __TRY's clauses stand at its level, each with its body under it.
+(try_stmt "__TRY" @append_indent_start "__END_TRY" @prepend_indent_end)
+(catch_clause "__CATCH" @prepend_indent_end @append_indent_start)
+(finally_clause "__FINALLY" @prepend_indent_end @append_indent_start)
 
 (prog_decl name: (identifier) @append_indent_start) ; using "PROGRAM" will break the indentation in CONFIGURATION and RESOURCE
 
@@ -582,6 +593,7 @@ const TERMINATED: &[&str] = &[
     "while_stmt",
     "repeat_stmt",
     "raise_stmt",
+    "try_stmt",
 ];
 /// The jump statements, which are keywords and no named nodes.
 const JUMPS: &[&str] = &["RETURN", "EXIT", "CONTINUE"];

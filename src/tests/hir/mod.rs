@@ -45,6 +45,7 @@ pub mod scopes;
 pub mod shadowing;
 pub mod subrange;
 pub mod syntax;
+pub mod try_catch;
 pub mod unit_tests;
 pub mod var_decls;
 pub mod var_external;
