@@ -436,13 +436,41 @@ fn lower_stmt<'db>(
             Ok(vec![MirStmt::Raise { message: mir_msg }])
         }
 
-        // Read and checked, not compiled yet.
-        StmtKind::Try { .. } => {
+        StmtKind::Try {
+            body,
+            catch,
+            finally,
+        } => {
             use hir::HirNodeInfo;
-            Err(LowerTypeError::NotCompiledYet("a __TRY").with_location(
-                stmt.get_scope_id(ctx.db).file(ctx.db),
-                stmt.get_span(ctx.db),
-            ))
+            let located = |e: LowerTypeError| {
+                e.with_location(
+                    stmt.get_scope_id(ctx.db).file(ctx.db),
+                    stmt.get_span(ctx.db),
+                )
+            };
+            // Read and checked, not compiled yet.
+            if finally.is_some() {
+                return Err(located(LowerTypeError::NotCompiledYet("a __FINALLY")));
+            }
+            // With no __FINALLY, `rk check` requires the __CATCH (E1209).
+            let Some(catch) = catch else {
+                return Err(located(LowerTypeError::UnsupportedType(
+                    "a __TRY with no clause".to_string(),
+                )));
+            };
+            let body = lower_stmts_inner(ctx, body)?;
+            let message = match catch.variable {
+                Some(variable) => Some(ctx.lower_variable_access(variable)?),
+                None => None,
+            };
+            let handler = lower_stmts_inner(ctx, &catch.body)?;
+            Ok(vec![MirStmt::Try {
+                body,
+                catch: crate::stmt::MirCatch {
+                    message,
+                    body: handler,
+                },
+            }])
         }
 
         StmtKind::WasmPragma(decl) => Ok(super::lower_wasm::lower_wasm_pragma(ctx, stmt, decl)?

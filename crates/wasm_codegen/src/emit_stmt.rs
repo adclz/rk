@@ -111,6 +111,9 @@ struct Ctx<'a> {
     /// [`for_scratch_requests`] order; `None` means a constant emitted
     /// inline. Per statement, since loops nest.
     for_scratch: &'a std::cell::RefCell<std::collections::VecDeque<(Option<u32>, Option<u32>)>>,
+    /// What a `__CATCH` lands with, and the block type its landing block
+    /// has.
+    catching: Catching,
     /// Open wasm labels at the emission point: `br N` is relative, so
     /// `EXIT`/`CONTINUE` need it to reach their loop from under enclosing
     /// `IF`/`CASE` labels.
@@ -118,6 +121,54 @@ struct Ctx<'a> {
     /// The innermost loops' branch targets; depth from a site with
     /// `open_labels = O` to a target `L` is `O - L`.
     loop_stack: &'a std::cell::RefCell<Vec<LoopTargets>>,
+}
+
+/// What the `__TRY` statements of a function need from it.
+#[derive(Clone, Copy, Default)]
+pub(crate) struct Catching {
+    /// The scratch locals, `None` when the function has no `__TRY`.
+    pub(crate) scratch: Option<TryScratch>,
+    /// The type `() -> (i32, i32)` of the block a `catch` lands in with the
+    /// exception's `(ptr, len)`, registered once per module.
+    pub(crate) block_type_idx: Option<u32>,
+}
+
+/// The scratch locals of a function's `__TRY`s.
+#[derive(Clone, Copy)]
+pub(crate) struct TryScratch {
+    /// The `(ptr, len)` of the exception's message, stashed at the landing.
+    pub(crate) ptr: u32,
+    pub(crate) len: u32,
+    /// Where the stack pointer of recursive calls is saved at `__TRY` and
+    /// put back at `__CATCH`: `(local, global)`. `None` when the module has
+    /// no stack. An exception leaves the frames of the calls it unwound on
+    /// the stack; a host entry starts the stack over, a `__CATCH` goes back
+    /// to where its `__TRY` found it.
+    pub(crate) sp: Option<(u32, u32)>,
+}
+
+/// The scratch locals a body's `__TRY`s need, appended to `extra_locals`.
+pub(crate) fn alloc_try_scratch(
+    body: &[MirStmt],
+    params_len: u32,
+    extra_locals: &mut Vec<(u32, wasm_encoder::ValType)>,
+    sp_global: Option<u32>,
+) -> Option<TryScratch> {
+    let mut found = false;
+    mir::stmt::for_each_stmt(body, &mut |stmt| {
+        found |= matches!(stmt, MirStmt::Try { .. })
+    });
+    if !found {
+        return None;
+    }
+    let next = params_len + extra_locals.iter().map(|(c, _)| *c).sum::<u32>();
+    let count = 2 + u32::from(sp_global.is_some());
+    extra_locals.push((count, wasm_encoder::ValType::I32));
+    Some(TryScratch {
+        ptr: next,
+        len: next + 1,
+        sp: sp_global.map(|global| (next + 2, global)),
+    })
 }
 
 /// The two branch targets a loop offers the statements in its body.
@@ -153,6 +204,7 @@ pub(crate) fn emit_stmts_with_return(
     rk_exception_tag_idx: Option<u32>,
     fb_recv_tmp: Option<u32>,
     for_scratch: std::collections::VecDeque<(Option<u32>, Option<u32>)>,
+    catching: Catching,
 ) -> Vec<(u32, MirSourceLocation)> {
     let lines = std::cell::RefCell::new(Vec::new());
     let for_scratch = std::cell::RefCell::new(for_scratch);
@@ -168,6 +220,7 @@ pub(crate) fn emit_stmts_with_return(
             lines: &lines,
             fb_recv_tmp,
             for_scratch: &for_scratch,
+            catching,
             open_labels: &open_labels,
             loop_stack: &loop_stack,
         };
@@ -914,7 +967,96 @@ fn emit_stmt(func: &mut wasm_encoder::Function, stmt: &MirStmt, ctx: &Ctx) {
                 .expect("MIR contains MirStmt::Raise but no $rk_exception tag was registered");
             func.instruction(&Instruction::Throw(tag_idx));
         }
+
+        MirStmt::Try { body, catch } => emit_try(func, body, catch, ctx),
     }
+}
+
+/// `__TRY body __CATCH(message) handler __END_TRY`:
+///
+/// ```text
+/// block $after
+///   block $catch (result i32 i32)
+///     try_table (catch $rk_exception $catch)
+///       body
+///     end
+///     br $after
+///   end                       ; landed with the exception's (ptr, len)
+///   <stash them, put the stack pointer back, copy the message>
+///   handler
+/// end
+/// ```
+///
+/// A `catch` clause names its label in the scope outside the `try_table`,
+/// so `$catch` is 0 there. The body runs under three labels and the
+/// handler under one, which an `EXIT` or a `CONTINUE` in either counts
+/// past to reach its loop; a `RETURN` returns from under a `try_table` as
+/// from anywhere.
+fn emit_try(
+    func: &mut wasm_encoder::Function,
+    body: &[MirStmt],
+    catch: &mir::stmt::MirCatch,
+    ctx: &Ctx,
+) {
+    let tag_idx = ctx
+        .rk_exception_tag_idx
+        .expect("MIR contains MirStmt::Try but no $rk_exception tag was registered");
+    let scratch = ctx
+        .catching
+        .scratch
+        .expect("MIR contains MirStmt::Try but the function has no scratch for it");
+    let landing_ty = ctx
+        .catching
+        .block_type_idx
+        .expect("MIR contains MirStmt::Try but no catch block type was registered");
+
+    if let Some((local, global)) = scratch.sp {
+        func.instruction(&Instruction::GlobalGet(global));
+        func.instruction(&Instruction::LocalSet(local));
+    }
+    func.instruction(&Instruction::Block(BlockType::Empty));
+    open_label(ctx);
+    func.instruction(&Instruction::Block(BlockType::FunctionType(landing_ty)));
+    open_label(ctx);
+    func.instruction(&Instruction::TryTable(
+        BlockType::Empty,
+        std::borrow::Cow::Owned(vec![wasm_encoder::Catch::One {
+            tag: tag_idx,
+            label: 0,
+        }]),
+    ));
+    open_label(ctx);
+    emit_stmts(func, body, ctx);
+    func.instruction(&Instruction::End); // try_table
+    close_label(ctx);
+    func.instruction(&Instruction::Br(1)); // $after: the body ran through
+    func.instruction(&Instruction::End); // $catch
+    close_label(ctx);
+
+    // Landed: the message's (ptr, len) are on the stack.
+    func.instruction(&Instruction::LocalSet(scratch.len));
+    func.instruction(&Instruction::LocalSet(scratch.ptr));
+    if let Some((local, global)) = scratch.sp {
+        func.instruction(&Instruction::LocalGet(local));
+        func.instruction(&Instruction::GlobalSet(global));
+    }
+    if let Some(target) = &catch.message {
+        // As an assignment of a STRING: `rk.str_assign(dest, cap, ptr, len)`
+        // copies what the capacity takes and writes the length.
+        let assign_idx = ctx
+            .builtin_indices
+            .get("rk.str_assign")
+            .copied()
+            .expect("rk.str_assign must be grafted for a __CATCH that takes the message");
+        emit_addr_of(func, target, ctx.locals, ctx.fn_indices);
+        emit_string_capacity(func, target, ctx.locals, ctx.fn_indices);
+        func.instruction(&Instruction::LocalGet(scratch.ptr));
+        func.instruction(&Instruction::LocalGet(scratch.len));
+        func.instruction(&Instruction::Call(assign_idx));
+    }
+    emit_stmts(func, &catch.body, ctx);
+    func.instruction(&Instruction::End); // $after
+    close_label(ctx);
 }
 
 /// Emit an IEC-width shift/rotate (`shl8`, `shr16`, `rotl8`, …) from the
@@ -1364,6 +1506,10 @@ fn collect_for_scratch(stmts: &[MirStmt], out: &mut Vec<ForScratchReq>) {
             }
             MirStmt::While { body, .. } | MirStmt::Repeat { body, .. } => {
                 collect_for_scratch(body, out);
+            }
+            MirStmt::Try { body, catch } => {
+                collect_for_scratch(body, out);
+                collect_for_scratch(&catch.body, out);
             }
             MirStmt::Case {
                 arms, else_body, ..

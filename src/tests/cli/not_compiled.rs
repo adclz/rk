@@ -13,16 +13,18 @@ use rk::workspace::init_db;
 
 use super::{disable_stdlib, temp_workspace};
 
-/// A `__TRY` passes `rk check`, and a build refuses it as not compiled
-/// yet, under the statement.
+/// A `__FINALLY` passes `rk check`, and a build refuses it as not
+/// compiled yet, under its `__TRY`.
 #[test]
-fn a_try_is_refused_by_the_build_as_not_compiled_yet() {
+fn a_finally_is_refused_by_the_build_as_not_compiled_yet() {
     let source = "FUNCTION Guarded : INT
 VAR e : STRING; END_VAR
     __TRY
         Guarded := 1;
     __CATCH(e)
         Guarded := 2;
+    __FINALLY
+        Guarded := 3;
     __END_TRY;
 END_FUNCTION
 ";
@@ -39,7 +41,7 @@ END_FUNCTION
 
     let error = rk::compiler::build_core_quiet(&db, &root, false).expect_err("no code for it");
     assert!(
-        error.ends_with("compilation failed: a __TRY is not compiled yet\n"),
+        error.ends_with("compilation failed: a __FINALLY is not compiled yet\n"),
         "{error}"
     );
     assert!(
