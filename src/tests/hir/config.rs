@@ -2238,3 +2238,42 @@ END_PROGRAM
     ----'
     ");
 }
+
+/// Two parameters of a TASK are separated by a comma. The comma was
+/// optional after SINGLE and after INTERVAL, so that either could end the
+/// list, and `INTERVAL := T#10ms PRIORITY := 1` passed with no diagnostic.
+/// What follows the missing comma is not read, so the TASK has no PRIORITY
+/// either.
+#[rstest]
+fn invalid_task_parameters_without_a_comma(mut with_db: RootDatabase) {
+    let source = r#"
+PROGRAM Main
+VAR n : INT; END_VAR
+    n := n + 1;
+END_PROGRAM
+
+CONFIGURATION Cfg
+    RESOURCE Res ON CPU
+        TASK Fast(INTERVAL := T#10ms PRIORITY := 1);
+        TASK Slow(INTERVAL := T#1s, PRIORITY := 2);
+        PROGRAM P1 WITH Slow : Main;
+    END_RESOURCE
+END_CONFIGURATION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1405] Error: missing PRIORITY in TASK
+       ,-[ file:///test0.st:9:9 ]
+       |
+     9 |         TASK Fast(INTERVAL := T#10ms PRIORITY := 1);
+       |         ^^^^^^^^^^^^^^^^^^^^^|^^^^^^^^^^^^^^^^^^^^^
+       |                              `----------------------- the TASK has no PRIORITY
+    ---'
+    [E0001] Error: syntax error
+       ,-[ file:///test0.st:9:38 ]
+       |
+     9 |         TASK Fast(INTERVAL := T#10ms PRIORITY := 1);
+       |                                      ^^^^^^|^^^^^^
+       |                                            `-------- unexpected token(s): 'PRIORITY := 1'
+    ---'
+    ");
+}
