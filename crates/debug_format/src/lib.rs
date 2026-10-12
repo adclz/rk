@@ -27,7 +27,7 @@ pub const DEBUG_SYMBOLS_SECTION: &str = "debug-symbols";
 /// older reader skips the fields past those it knows ([`tolerant`]). An enum
 /// variant is written by its name: its place in the enum is free, and a new
 /// one is what an older reader cannot step over.
-pub const DEBUG_SYMBOLS_VERSION: u16 = 9;
+pub const DEBUG_SYMBOLS_VERSION: u16 = 10;
 
 /// The complete debug-symbol table for a module.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -75,6 +75,25 @@ pub struct PointerSym {
     /// A VAR_IN_OUT member: its name reads as the variable it is bound to,
     /// where a `REF_TO` is followed by writing `^`.
     pub by_ref: bool,
+    /// An `ARRAY[*]` VAR_IN_OUT member (v10), which has no `target`: what
+    /// it says of the array it is bound to. Last on purpose, and left out
+    /// when unset, so every other pointer encodes as in v9.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub conformand: Option<Conformand>,
+}
+
+/// What an `ARRAY[*]` says of the array it is bound to: how many dimensions
+/// it has, and its element. The bounds are that array's. The instance keeps
+/// the address alone, each copy of the body having them as constants, and
+/// an address does not say which array starts there: a matrix and its
+/// first row start together, and so do an array of STRUCTs and the array
+/// its first element begins with. The rank and the element do.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Conformand {
+    /// One per `*`.
+    pub rank: u32,
+    /// The element, in the type table of the section.
+    pub elem: TypeId,
 }
 
 /// One aggregate's name and base address.
@@ -147,6 +166,10 @@ pub enum TypeDesc {
         /// A VAR_IN_OUT member (v9), read through without `^`.
         #[serde(default)]
         by_ref: bool,
+        /// An `ARRAY[*]` VAR_IN_OUT member (v10), as
+        /// [`PointerSym::conformand`]: left out when unset.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        conformand: Option<Conformand>,
     },
     /// An IEC enumeration: stored as `storage`, displayed as a variant name.
     Enum {
@@ -520,8 +543,9 @@ impl DebugLines {
 pub const DEBUG_LOCALS_SECTION: &str = "debug-locals";
 
 /// On-wire format version for [`DebugLocals`]. v2 adds `memory`/`arrays`
-/// per function; v3 adds the module-level `types` table.
-pub const DEBUG_LOCALS_VERSION: u16 = 5;
+/// per function; v3 adds the module-level `types` table; v6 lets a pointer
+/// of that table say what an `ARRAY[*]` is bound to ([`Conformand`]).
+pub const DEBUG_LOCALS_VERSION: u16 = 6;
 
 /// Per-function scalar-local tables: wasm local slot → IEC name and type;
 /// memory-resident variables are reached via [`DebugSymbols`].
@@ -1195,23 +1219,44 @@ mod tests {
         };
         let mut table = DebugSymbols::new();
         table.symbols = vec![leaf.clone()];
+        let of_ints = Conformand { rank: 2, elem: 0 };
         table.types = vec![
             TypeDesc::Scalar(SymType::Int),
             TypeDesc::Opaque {
                 size: 4,
                 target: Some(0),
                 by_ref: true,
+                conformand: None,
+            },
+            TypeDesc::Opaque {
+                size: 4,
+                target: None,
+                by_ref: true,
+                conformand: Some(of_ints),
             },
         ];
-        table.pointers = vec![PointerSym {
-            path: "P1.m.speed".into(),
-            address: 12,
-            global: false,
-            target: Some(0),
-            by_ref: true,
-        }];
+        table.pointers = vec![
+            PointerSym {
+                path: "P1.m.speed".into(),
+                address: 12,
+                global: false,
+                target: Some(0),
+                by_ref: true,
+                conformand: None,
+            },
+            PointerSym {
+                path: "P1.w.a".into(),
+                address: 16,
+                global: false,
+                target: None,
+                by_ref: true,
+                conformand: Some(of_ints),
+            },
+        ];
+        let back = DebugSymbols::from_msgpack(&table.to_msgpack()).expect("its own reader");
+        assert_eq!(back, table, "what an ARRAY[*] says comes back");
         let read: V8Symbols = crate::tolerant::from_slice(&table.to_msgpack())
-            .expect("the v8 reader reads a v9 table");
+            .expect("the v8 reader reads a v10 table");
         assert_eq!(read.version, DEBUG_SYMBOLS_VERSION);
         assert_eq!(read.symbols, vec![leaf.clone()]);
         assert!(
@@ -1252,13 +1297,70 @@ mod tests {
             types: vec![TypeDesc::Scalar(SymType::Int)],
         };
         let read: V4Locals = crate::tolerant::from_slice(&locals.to_msgpack())
-            .expect("the v4 reader reads a v5 table");
+            .expect("the v4 reader reads a v6 table");
         assert_eq!(read.version, DEBUG_LOCALS_VERSION);
         assert_eq!(read.functions[0].this_slot, Some(1));
         assert_eq!(read.functions[0].locals[0].name, "n");
         assert!(
             read.functions[0].memory.is_empty(),
             "a frame's locals are not taken for static ones"
+        );
+    }
+
+    /// What an `ARRAY[*]` says is the last field of a pointer and is left
+    /// out when there is nothing to say: every other pointer, and every
+    /// other pointer's type, is the bytes v9 wrote.
+    #[test]
+    fn a_pointer_that_is_no_conformand_encodes_as_before() {
+        #[derive(Serialize)]
+        struct PointerV9 {
+            path: String,
+            address: u32,
+            global: bool,
+            target: Option<TypeId>,
+            by_ref: bool,
+        }
+        #[derive(Serialize)]
+        enum TypeV9 {
+            Opaque {
+                size: u32,
+                target: Option<TypeId>,
+                by_ref: bool,
+            },
+        }
+        let pointer = PointerSym {
+            path: "P1.m.speed".into(),
+            address: 12,
+            global: false,
+            target: Some(0),
+            by_ref: true,
+            conformand: None,
+        };
+        let v9 = PointerV9 {
+            path: "P1.m.speed".into(),
+            address: 12,
+            global: false,
+            target: Some(0),
+            by_ref: true,
+        };
+        assert_eq!(
+            rmp_serde::to_vec(&pointer).unwrap(),
+            rmp_serde::to_vec(&v9).unwrap()
+        );
+        let ty = TypeDesc::Opaque {
+            size: 4,
+            target: Some(0),
+            by_ref: true,
+            conformand: None,
+        };
+        let v9 = TypeV9::Opaque {
+            size: 4,
+            target: Some(0),
+            by_ref: true,
+        };
+        assert_eq!(
+            rmp_serde::to_vec(&ty).unwrap(),
+            rmp_serde::to_vec(&v9).unwrap()
         );
     }
 

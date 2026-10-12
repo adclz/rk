@@ -886,11 +886,11 @@ END_CONFIGURATION"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     [E1408] Error: SINGLE after INTERVAL in TASK
-       ,-[ file:///test0.st:4:32 ]
+       ,-[ file:///test0.st:4:30 ]
        |
      4 |         TASK t1(INTERVAL := 1, SINGLE := 1, PRIORITY := 1);
-       |                                ^^^^^^|^^^^^
-       |                                      `------- SINGLE cannot be declared after INTERVAL
+       |                              ^^^^^^|^^^^^^
+       |                                    `-------- SINGLE cannot be declared after INTERVAL
     ---'
     ");
 }

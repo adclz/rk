@@ -131,7 +131,7 @@ pub fn document_links(db: &dyn WorkspaceDataBase, file: File) -> Vec<DocumentLin
 
                 let span = byte_range_to_span(source, content_start, content_end);
 
-                if let Ok(range) = document.denormalize_range(&span) {
+                if let Some(range) = hir::denormalize_in(document, &span) {
                     links.push(DocumentLink {
                         range,
                         target: Some(location.uri),

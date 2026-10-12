@@ -81,7 +81,7 @@ pub fn check(module: &[u8]) -> Result<(), Finding> {
     }
     for p in info.list_pointers().iter().take(LIMIT) {
         let _ = info.pointer(&p.path);
-        for tail in ["", "^", "^.x", "^[0]", "^^"] {
+        for tail in ["", "^", "^.x", "^[0]", "^^", "[0]", "[0, 0]"] {
             touch(&info, &format!("{}{tail}", p.path), live);
         }
         let _ = info.variable_at(p.address);
@@ -218,7 +218,24 @@ pub(crate) fn audit(info: &DebugInfo, memory: &[u8]) -> Result<(), Finding> {
         // the pointer itself, until `^`.
         match (p.by_ref, info.follow(&p.path, live)) {
             (false, Some(Place::Pointer(_) | Place::Null { .. })) => {}
-            (true, Some(Place::Value(_) | Place::Aggregate { .. } | Place::Null { .. })) => {}
+            (
+                true,
+                Some(
+                    Place::Value(_)
+                    | Place::Aggregate { .. }
+                    | Place::Array(_)
+                    | Place::Null { .. },
+                ),
+            ) => {}
+            // A VAR_IN_OUT the table gives no type stops at the pointer.
+            // Not one that is an `ARRAY[*]`, which reads as the array of its
+            // rank and element that starts at the address it holds. That
+            // one stops only where the module's tables describe no memory,
+            // at an array among a function's locals: where they name a
+            // variable, the array is one they describe, and it must have
+            // been found.
+            (true, Some(Place::Pointer(held)))
+                if p.target.is_none() && (p.conformand.is_none() || held.variable.is_none()) => {}
             (_, other) => return Err(bad(format!("pointer `{}` follows to {other:?}", p.path))),
         }
         if p.target.is_some() && info.follow(&format!("{}^", p.path), live).is_none() {
@@ -298,7 +315,8 @@ pub(crate) fn audit(info: &DebugInfo, memory: &[u8]) -> Result<(), Finding> {
 
 #[cfg(test)]
 mod tests {
-    /// Pointers of every kind, an array of structs, an enum, a STRING and
+    /// Pointers of every kind, a block bound to an array of any bounds and
+    /// one of them never bound, an array of structs, an enum, a STRING and
     /// a recursive function, under a configuration.
     const SOURCE: &str = r#"
         TYPE Node : STRUCT value : INT; next : REF_TO Node; END_STRUCT; END_TYPE
@@ -310,6 +328,12 @@ mod tests {
         VAR target : REF_TO Pt; count : INT; END_VAR
             speed := speed + 1;
             count := count + 1;
+        END_FUNCTION_BLOCK
+
+        FUNCTION_BLOCK Walk
+        VAR_IN_OUT cells : ARRAY[*] OF INT; END_VAR
+        VAR_OUTPUT first : INT; END_VAR
+            first := cells[0];
         END_FUNCTION_BLOCK
 
         FUNCTION Depth : INT
@@ -331,6 +355,9 @@ mod tests {
             name : STRING[8];
             n : INT;
             m : Motor;
+            row : ARRAY[0..2] OF INT;
+            w : Walk;
+            idle : Walk;
         END_VAR
             a.value := 1; b.value := 2;
             a.next := REF(b); head := REF(a);
@@ -339,6 +366,7 @@ mod tests {
             lamp := Lamp#On;
             name := 'abc';
             m(speed := n);
+            w(cells := row);
             n := n + Depth(2);
         END_PROGRAM
 

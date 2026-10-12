@@ -22,7 +22,46 @@ pub fn denormalize(
     file: impl std::borrow::Borrow<File>,
     range: &tree_sitter::Range,
 ) -> Option<lsp_types::Range> {
-    file.borrow().document(db).denormalize_range(range).ok()
+    denormalize_in(file.borrow().document(db), range)
+}
+
+/// [`denormalize`] on a document at hand.
+///
+/// The range is placed by its bytes, not by the parser's rows. The parser
+/// starts a row after each `\n`. An editor ends a line at a carriage
+/// return no `\n` follows as well, and so does the document's line index,
+/// which the columns are converted against: past such a carriage return
+/// the parser's row was one short, and a diagnostic, a rename's edit or a
+/// folding range was sent a line off.
+pub fn denormalize_in(
+    document: &auto_lsp::core::document::Document,
+    range: &tree_sitter::Range,
+) -> Option<lsp_types::Range> {
+    let placed = tree_sitter::Range {
+        start_point: document_point(document, range.start_byte)?,
+        end_point: document_point(document, range.end_byte)?,
+        ..*range
+    };
+    document.denormalize_range(&placed).ok()
+}
+
+/// Where the byte at `offset` stands in the document's own rows: the row,
+/// and the bytes from its start.
+fn document_point(
+    document: &auto_lsp::core::document::Document,
+    offset: usize,
+) -> Option<tree_sitter::Point> {
+    // One entry per row: 0, then the last byte of each line terminator.
+    let terminators = &document.texter.br_indexes;
+    let row = terminators
+        .0
+        .get(1..)?
+        .partition_point(|terminator| *terminator < offset);
+    let start = terminators.row_start(row)?;
+    Some(tree_sitter::Point {
+        row,
+        column: offset.checked_sub(start)?,
+    })
 }
 
 use crate::hir_def::{

@@ -353,7 +353,7 @@ module.exports = grammar({
     ERR_program_not_allowed_in_namespace: ($) => prec(-1, $.prog_decl),
     ERR_config_not_allowed_in_namespace: ($) => prec(-1, $.config_decl),
 
-    ERR_single_after_interval: ($) => prec(-1, seq(kw("SINGLE"), ":=", field("single", $.data_source), ",")),
+    ERR_single_after_interval: ($) => prec(-1, seq(",", kw("SINGLE"), ":=", field("single", $.data_source))),
     ERR_interval_before_single: ($) => prec(-1, seq(kw("INTERVAL"), ":=", field("interval", $.data_source), ",")),
     ERR_interval_after_priority: ($) => prec(-1, seq(",", kw("INTERVAL"), ":=", field("interval", $.data_source))),
     ERR_single_after_priorty: ($) => prec(-1, seq(",", kw("SINGLE"), ":=", field("single", $.data_source))),
@@ -1762,17 +1762,29 @@ module.exports = grammar({
     task_config: ($) =>
       seq(kw("TASK"), field("name", $.identifier), field("init", $.task_init)),
 
-    task_init: ($) =>
-      seq(
-        "(",
-        optional(seq(kw("SINGLE"), ":=", field("single", $.data_source), optional(","))),
-        optional(seq(kw("INTERVAL"), ":=", field("interval", $.data_source), optional(","))),
-        optional($.ERR_single_after_interval),
-        optional(seq(kw("PRIORITY"), ":=", field("priority", $.unsigned_int))),
+    // SINGLE, INTERVAL and PRIORITY, each optional, in that order, a comma
+    // between two of them. The comma was optional after SINGLE and after
+    // INTERVAL, so that either could end the list: `INTERVAL := T#10ms
+    // PRIORITY := 1` was read without one, and the formatter then wrote the
+    // two together.
+    task_init: ($) => {
+      const single = seq(kw("SINGLE"), ":=", field("single", $.data_source));
+      const interval = seq(kw("INTERVAL"), ":=", field("interval", $.data_source));
+      const priority = seq(kw("PRIORITY"), ":=", field("priority", $.unsigned_int));
+      // PRIORITY ends the list, but for what is written after it by mistake.
+      const from_priority = seq(
+        priority,
         optional($.ERR_interval_after_priority),
         optional($.ERR_single_after_priorty),
-        ")",
-      ),
+      );
+      const from_interval = seq(
+        interval,
+        optional($.ERR_single_after_interval),
+        optional(seq(",", from_priority)),
+      );
+      const from_single = seq(single, optional(seq(",", choice(from_interval, from_priority))));
+      return seq("(", optional(choice(from_single, from_interval, from_priority)), ")");
+    },
 
     data_source: ($) =>
       choice($.constant, $.path_expression, $.direct_variable),

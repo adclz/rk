@@ -619,3 +619,32 @@ END_PROGRAM
     let node = descendant_at(&with_db, file, offset).unwrap();
     assert!(node.rename(&with_db, offset, "out").is_none());
 }
+
+/// A file whose lines end with a bare carriage return, as an old editor
+/// wrote them: each edit of a rename is on the line an editor counts, and
+/// covers the name. The edits were placed by the parser's rows, which see
+/// one line in such a file, and replaced text that was no name.
+#[rstest]
+fn rename_in_a_file_of_bare_carriage_returns(mut with_db: RootDatabase) {
+    let source = "FUNCTION_BLOCK MyFB\rEND_FUNCTION_BLOCK\r\rFUNCTION fn1\rVAR\r    x : MyFB;\rEND_VAR\rEND_FUNCTION\r";
+    let file = add_source(&mut with_db, source);
+
+    let offset = source.find("MyFB").unwrap();
+    let node = descendant_at(&with_db, file, offset).unwrap();
+    let edit = node.rename(&with_db, offset, "RenamedFB").unwrap();
+
+    let url = Url::parse("file:///test0.st").unwrap();
+    let mut ranges: Vec<_> = edit.changes.as_ref().unwrap()[&url]
+        .iter()
+        .map(|edit| {
+            let (start, end) = (edit.range.start, edit.range.end);
+            ((start.line, start.character), (end.line, end.character))
+        })
+        .collect();
+    ranges.sort();
+    assert_eq!(ranges, [((0, 15), (0, 19)), ((5, 8), (5, 12))]);
+    assert_eq!(
+        apply_rename(&with_db, &edit, &[source]),
+        source.replace("MyFB", "RenamedFB")
+    );
+}

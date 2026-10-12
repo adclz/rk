@@ -19,7 +19,7 @@ use hir::{
 ///
 /// The client always sends a position, never an offset; like rust-analyzer's `from_proto::offset`,
 /// we convert at the boundary and work with byte offsets internally. The position is first
-/// normalized to UTF-8 (row, byte-column) via the document, then resolved against the line starts.
+/// normalized to UTF-8 (row, byte-column) via the document, then resolved against its line starts.
 ///
 /// Returns `None` if the position is out of bounds.
 pub fn position_to_offset(
@@ -29,21 +29,10 @@ pub fn position_to_offset(
 ) -> Option<usize> {
     let document = file.document(db);
     let norm = document.normalize_position(&position).ok()?;
-    let source = document.as_str();
-
-    // Byte index of the start of line `norm.line`.
-    let mut line_start = 0usize;
-    let mut line = 0u32;
-    for (i, b) in source.bytes().enumerate() {
-        if line == norm.line {
-            break;
-        }
-        if b == b'\n' {
-            line += 1;
-            line_start = i + 1;
-        }
-    }
-
+    // The row is the document's, which ends a line at a carriage return no
+    // `\n` follows too: its start is read off the same line index, where
+    // counting `\n` placed the request a line early past such a return.
+    let line_start = document.texter.br_indexes.row_start(norm.line as usize)?;
     Some(line_start + norm.character as usize)
 }
 

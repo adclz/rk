@@ -43,7 +43,8 @@ pub enum MirType {
     RefTarget(MirRefTarget),
 }
 
-/// The target of a `REF_TO`, as the debug tables describe it.
+/// The target of a `REF_TO`, or of a VAR_IN_OUT member lowering does not
+/// type, as the debug tables describe it.
 ///
 /// Any two compare equal and hash alike. Lowering never typed a `REF_TO`'s
 /// pointee, so every `REF_TO` was one type to it, and the code it emits
@@ -55,6 +56,13 @@ pub enum MirRefTarget {
     /// it was (`next : REF_TO Node`, in `Node`), by its name: lowering it
     /// again would not end.
     Enclosing(Ident),
+    /// What an `ARRAY[*]` VAR_IN_OUT member is bound to: an array of this
+    /// many dimensions and this element, whose bounds each copy of the body
+    /// has as constants and the instance does not keep.
+    Conformand {
+        rank: u32,
+        element: Box<MirType>,
+    },
     /// A target lowering has no type for.
     Unknown,
 }

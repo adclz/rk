@@ -16,6 +16,11 @@
 //! - `.rs` — raw strings holding ST in the test suite (`src/tests/`): the
 //!   codegen tests' programs are accepted AND executed, the closest seeds
 //!   to every runtime oracle there is.
+//!
+//! `fuzz_semantics` reads none of it. Its input is the bytes
+//! [`crate::generate::program`] draws its choices from, where a program's
+//! text is noise that still costs a compilation, a run and a formatting
+//! each night. It starts from strings of bytes instead.
 
 use std::path::Path;
 
@@ -51,23 +56,100 @@ pub fn load_corpus(dir: &Path) -> anyhow::Result<Vec<Vec<u8>>> {
 pub fn create_seed_corpus(source: &Path, output_dir: &Path, start: usize) -> anyhow::Result<usize> {
     std::fs::create_dir_all(output_dir)?;
     let output_dir = output_dir.canonicalize()?;
-    // The target's own corpus directory says what it reads.
-    let seeds = match output_dir.file_name().and_then(|n| n.to_str()) {
-        Some("fuzz_debug_format") => Seeds::DebugModules,
-        _ => Seeds::Sources,
-    };
+    let seeds = Seeds::of(&output_dir);
+    if matches!(seeds, Seeds::Choices) {
+        return Ok(0);
+    }
     let mut count = start;
     walk(source, &output_dir, &mut count, seeds)?;
     Ok(count - start)
 }
 
+/// Remove the seeds an earlier run wrote into `output_dir`; returns how
+/// many there were. The corpus is kept from night to night, and a seed of
+/// a program the repository no longer holds would be replayed on each of
+/// them. What libFuzzer kept is named by its hash, and stays.
+pub fn remove_seeds(output_dir: &Path) -> anyhow::Result<usize> {
+    if !output_dir.exists() {
+        return Ok(0);
+    }
+    let mut removed = 0;
+    for entry in std::fs::read_dir(output_dir)? {
+        let path = entry?.path();
+        let is_seed = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .is_some_and(|n| n.starts_with(SEED_PREFIX));
+        if is_seed && path.is_file() {
+            std::fs::remove_file(&path)?;
+            removed += 1;
+        }
+    }
+    Ok(removed)
+}
+
+/// Write the seeds of a target that reads no source; returns how many.
+/// `None` for a target that reads programs, which has none of the kind.
+pub fn create_choice_seeds(output_dir: &Path) -> anyhow::Result<Option<usize>> {
+    std::fs::create_dir_all(output_dir)?;
+    let output_dir = output_dir.canonicalize()?;
+    if !matches!(Seeds::of(&output_dir), Seeds::Choices) {
+        return Ok(None);
+    }
+    for seed in 0..CHOICE_SEEDS {
+        let path = output_dir.join(format!("{SEED_PREFIX}{seed:06}.bin"));
+        std::fs::write(&path, choices(seed as u64))?;
+    }
+    Ok(Some(CHOICE_SEEDS))
+}
+
+/// What every seed's file name starts with.
+const SEED_PREFIX: &str = "seed-";
+
+/// How many strings of choices `fuzz_semantics` starts from. Each is
+/// replayed at the start of every night, a compilation and a run apiece.
+const CHOICE_SEEDS: usize = 64;
+
+/// The length of one. `generate::program` read 850 bytes for the median
+/// program of forty random strings and 1,961 for the longest. A byte past
+/// the end reads as 0, so a shorter string would end its program on the
+/// first choice of every list.
+const CHOICE_SEED_LEN: usize = 2048;
+
+/// The string of choices number `seed`: SplitMix64, so the seeds are the
+/// same on every machine and every night.
+fn choices(seed: u64) -> Vec<u8> {
+    let mut state = seed;
+    let mut bytes = Vec::with_capacity(CHOICE_SEED_LEN);
+    while bytes.len() < CHOICE_SEED_LEN {
+        state = state.wrapping_add(0x9E37_79B9_7F4A_7C15);
+        let mut z = state;
+        z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+        bytes.extend_from_slice(&(z ^ (z >> 31)).to_le_bytes());
+    }
+    bytes
+}
+
 /// What a corpus holds: the programs, or, for `fuzz_debug_format`, the
 /// debug tables of those that compile, each as a module of its custom
-/// sections.
+/// sections, or, for `fuzz_semantics`, the choices its generator makes.
 #[derive(Clone, Copy)]
 enum Seeds {
     Sources,
     DebugModules,
+    Choices,
+}
+
+impl Seeds {
+    /// The target's own corpus directory says what it reads.
+    fn of(output_dir: &Path) -> Self {
+        match output_dir.file_name().and_then(|n| n.to_str()) {
+            Some("fuzz_debug_format") => Seeds::DebugModules,
+            Some("fuzz_semantics") => Seeds::Choices,
+            _ => Seeds::Sources,
+        }
+    }
 }
 
 /// The custom sections of the debug build of `source`, as a module of
@@ -154,11 +236,13 @@ fn walk(path: &Path, output_dir: &Path, count: &mut usize, seeds: Seeds) -> anyh
             Seeds::Sources => save_corpus_entry(&source, output_dir, count)?,
             Seeds::DebugModules => {
                 if let Some(module) = debug_module(&source) {
-                    let path = output_dir.join(format!("seed-{:06}.wasm", *count));
+                    let path = output_dir.join(format!("{SEED_PREFIX}{:06}.wasm", *count));
                     std::fs::write(&path, &module)?;
                     *count += 1;
                 }
             }
+            // `create_seed_corpus` walks nothing for it.
+            Seeds::Choices => {}
         }
     }
     Ok(())
@@ -295,7 +379,7 @@ fn extract_all_sources_from_corpus(content: &str) -> Vec<String> {
 }
 
 fn save_corpus_entry(source: &str, output_dir: &Path, count: &mut usize) -> anyhow::Result<()> {
-    let path = output_dir.join(format!("seed-{:06}.st", *count));
+    let path = output_dir.join(format!("{SEED_PREFIX}{:06}.st", *count));
     std::fs::write(&path, source.as_bytes())?;
     *count += 1;
     Ok(())
@@ -304,6 +388,90 @@ fn save_corpus_entry(source: &str, output_dir: &Path, count: &mut usize) -> anyh
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// An empty corpus directory of `target`, in a place of this test's own.
+    fn corpus_of(target: &str, test: &str) -> std::path::PathBuf {
+        let root = std::env::temp_dir().join(format!("rk-fuzz-{}-{test}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let dir = root.join(target);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn names(dir: &Path) -> Vec<String> {
+        let mut names: Vec<String> = std::fs::read_dir(dir)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        names.sort();
+        names
+    }
+
+    /// `fuzz_semantics` was given the repository's programs for two weeks:
+    /// 3,500 files its generator read as noise, replayed for 90 minutes of
+    /// a 30 minute night, which then ran 57 inputs.
+    #[test]
+    fn the_semantics_target_starts_from_choices_and_reads_no_source() {
+        let dir = corpus_of("fuzz_semantics", "choices");
+        let source = dir.parent().unwrap().join("a.st");
+        std::fs::write(&source, "FUNCTION f : INT\nEND_FUNCTION\n").unwrap();
+        // What the kept corpus holds: a seed of an earlier night, and an
+        // input libFuzzer found.
+        std::fs::write(dir.join("seed-000007.st"), "PROGRAM p\nEND_PROGRAM\n").unwrap();
+        std::fs::write(
+            dir.join("0a4d55a8d778e5022fab701977c5d840bbc486d0"),
+            [1, 2, 3],
+        )
+        .unwrap();
+
+        assert_eq!(remove_seeds(&dir).unwrap(), 1);
+        assert_eq!(create_choice_seeds(&dir).unwrap(), Some(CHOICE_SEEDS));
+        assert_eq!(create_seed_corpus(&source, &dir, 0).unwrap(), 0);
+
+        let names = names(&dir);
+        assert_eq!(names.len(), CHOICE_SEEDS + 1, "{names:?}");
+        assert_eq!(names[0], "0a4d55a8d778e5022fab701977c5d840bbc486d0");
+        assert_eq!(names[1], "seed-000000.bin");
+        assert_eq!(names[CHOICE_SEEDS], "seed-000063.bin");
+
+        // Every seed is a program of its own, and more of one than the
+        // program no choice at all makes.
+        let least = crate::generate::program(&[]).lines().count();
+        let mut programs = std::collections::BTreeSet::new();
+        for name in &names[1..] {
+            let bytes = std::fs::read(dir.join(name)).unwrap();
+            assert_eq!(bytes.len(), CHOICE_SEED_LEN, "{name}");
+            let program = crate::generate::program(&bytes);
+            assert!(program.lines().count() > least, "{name}");
+            programs.insert(program);
+        }
+        assert_eq!(programs.len(), CHOICE_SEEDS);
+        std::fs::remove_dir_all(dir.parent().unwrap()).unwrap();
+    }
+
+    /// The seeds are numbered, so one of a program that left the
+    /// repository stayed in the kept corpus under a number nothing
+    /// overwrites any more.
+    #[test]
+    fn the_seeds_of_an_earlier_run_are_removed_and_what_was_found_stays() {
+        let dir = corpus_of("fuzz_compiler", "stale");
+        let source = dir.parent().unwrap().join("a.st");
+        std::fs::write(&source, "FUNCTION f : INT\nEND_FUNCTION\n").unwrap();
+        std::fs::write(dir.join("seed-000000.st"), "PROGRAM old\nEND_PROGRAM\n").unwrap();
+        std::fs::write(dir.join("seed-004200.st"), "PROGRAM gone\nEND_PROGRAM\n").unwrap();
+        std::fs::write(dir.join("crash-seed-of-nothing"), "x").unwrap();
+
+        assert_eq!(remove_seeds(&dir).unwrap(), 2);
+        assert_eq!(create_choice_seeds(&dir).unwrap(), None);
+        assert_eq!(create_seed_corpus(&source, &dir, 0).unwrap(), 1);
+
+        assert_eq!(names(&dir), ["crash-seed-of-nothing", "seed-000000.st"]);
+        assert_eq!(
+            std::fs::read_to_string(dir.join("seed-000000.st")).unwrap(),
+            "FUNCTION f : INT\nEND_FUNCTION\n"
+        );
+        std::fs::remove_dir_all(dir.parent().unwrap()).unwrap();
+    }
 
     #[test]
     fn test_extract_source_simple() {

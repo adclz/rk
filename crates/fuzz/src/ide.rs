@@ -442,32 +442,52 @@ fn fits<T: serde::Serialize, E>(
     }
 }
 
-/// The text as LSP positions see it: lines, and their length in UTF-16
-/// code units, line terminators excluded.
+/// The text as LSP positions see it: its lines, each by the bytes it
+/// holds, line terminator excluded. A line ends at `\n`, at `\r\n`, and at
+/// a `\r` no `\n` follows: what an editor counts. Counting `\n` alone, this
+/// harness read a correct answer on the wrong line past a bare `\r`.
 struct Doc<'a> {
     text: &'a str,
-    lines: Vec<u32>,
+    lines: Vec<std::ops::Range<usize>>,
 }
 
 impl<'a> Doc<'a> {
     fn new(text: &'a str) -> Self {
-        let lines = text
-            .split('\n')
-            .map(|l| l.strip_suffix('\r').unwrap_or(l).encode_utf16().count() as u32)
-            .collect();
+        let bytes = text.as_bytes();
+        let mut lines = Vec::new();
+        let (mut start, mut at) = (0, 0);
+        while at < bytes.len() {
+            let terminator = match bytes[at] {
+                b'\r' if bytes.get(at + 1) == Some(&b'\n') => 2,
+                b'\r' | b'\n' => 1,
+                _ => 0,
+            };
+            if terminator > 0 {
+                lines.push(start..at);
+                start = at + terminator;
+            }
+            at += terminator.max(1);
+        }
+        lines.push(start..bytes.len());
         Self { text, lines }
+    }
+
+    /// The length of a line in UTF-16 code units.
+    fn width(&self, line: usize) -> Option<u32> {
+        let line = self.text.get(self.lines.get(line)?.clone())?;
+        Some(line.encode_utf16().count() as u32)
     }
 
     fn end(&self) -> Position {
         let last = self.lines.len() - 1;
-        Position::new(last as u32, self.lines[last])
+        Position::new(last as u32, self.width(last).unwrap_or(0))
     }
 
     /// Inside the text, or the start of the line after it: how an edit
     /// says "to the end of the document", which clients accept.
     fn contains(&self, p: Position) -> bool {
-        match self.lines.get(p.line as usize) {
-            Some(&len) => p.character <= len,
+        match self.width(p.line as usize) {
+            Some(len) => p.character <= len,
             None => p.line as usize == self.lines.len() && p.character == 0,
         }
     }
@@ -483,20 +503,20 @@ impl<'a> Doc<'a> {
     /// `:` and `(`, spread evenly, with the first and the last position.
     fn probes(&self) -> Vec<Position> {
         let mut all = vec![Position::new(0, 0)];
-        let (mut line, mut col, mut prev) = (0u32, 0u32, ' ');
-        for c in self.text.chars() {
-            let word_start =
-                (c.is_alphanumeric() || c == '_') && !(prev.is_alphanumeric() || prev == '_');
-            if word_start || matches!(prev, '.' | ':' | '(') {
-                all.push(Position::new(line, col));
-            }
-            if c == '\n' {
-                line += 1;
-                col = 0;
-            } else if c != '\r' {
+        let mut prev = ' ';
+        for (line, bytes) in self.lines.iter().enumerate() {
+            let mut col = 0u32;
+            for c in self.text[bytes.clone()].chars() {
+                let word_start =
+                    (c.is_alphanumeric() || c == '_') && !(prev.is_alphanumeric() || prev == '_');
+                if word_start || matches!(prev, '.' | ':' | '(') {
+                    all.push(Position::new(line as u32, col));
+                }
                 col += c.len_utf16() as u32;
+                prev = c;
             }
-            prev = c;
+            // The terminator between two lines separates two words.
+            prev = '\n';
         }
         all.push(self.end());
         let step = all.len().div_ceil(POSITIONS).max(1);
@@ -576,9 +596,9 @@ impl<'a> Doc<'a> {
             if start < end_of_prev {
                 return Err(bad("overlaps the token before it".to_string()));
             }
-            match self.lines.get(line as usize) {
+            match self.width(line as usize) {
                 None => return Err(bad("is past the last line".to_string())),
-                Some(&len) if start + t.length > len => {
+                Some(len) if start + t.length > len => {
                     return Err(bad(format!(
                         "ends at {}, past the line's {len}",
                         start + t.length
@@ -657,20 +677,19 @@ impl<'a> Doc<'a> {
 
     /// The byte offset of an LSP position, in UTF-16 code units.
     fn offset(&self, p: Position) -> Option<usize> {
-        let line_start: usize = self
-            .text
-            .split_inclusive('\n')
-            .take(p.line as usize)
-            .map(str::len)
-            .sum();
+        // The start of the line after the last: the end of the document.
+        if p.line as usize == self.lines.len() && p.character == 0 {
+            return Some(self.text.len());
+        }
+        let line = self.lines.get(p.line as usize)?.clone();
         let mut units = 0;
-        for (i, c) in self.text[line_start..].char_indices() {
-            if units >= p.character || c == '\n' {
-                return (units == p.character).then_some(line_start + i);
+        for (i, c) in self.text[line.clone()].char_indices() {
+            if units >= p.character {
+                return (units == p.character).then_some(line.start + i);
             }
             units += c.len_utf16() as u32;
         }
-        (units == p.character).then_some(self.text.len())
+        (units == p.character).then_some(line.end)
     }
 
     /// Edits to one document must not overlap, or the client refuses them

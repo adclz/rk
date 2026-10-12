@@ -1025,7 +1025,13 @@ impl Integer {
 /// it executes cannot disagree. They did — MIR pooled the raw source bytes, so
 /// `'A$0AB'` was checked as 3 characters and ran as 5.
 pub fn parse_single_byte_string(s: &str) -> Result<Vec<u8>, InferLiteralError> {
-    let inner = &s[1..s.len() - 1];
+    // A string the parser had to supply (`CHAR#` with nothing after it) has
+    // no text, quotes included. There is nothing to decode, and its syntax
+    // error says what is missing; slicing the quotes off it panicked.
+    let quoted = |quote: char| s.strip_prefix(quote)?.strip_suffix(quote);
+    let Some(inner) = quoted('\'').or_else(|| quoted('"')) else {
+        return Ok(Vec::new());
+    };
     let mut result = Vec::new();
     let mut chars = inner.chars().peekable();
 

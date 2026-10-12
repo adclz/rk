@@ -726,6 +726,11 @@ impl DebugInfo {
         if let Some(c) = self.containers.iter().find(|c| c.address == address) {
             return Some(c.path.clone());
         }
+        self.element_at(address).or_else(leaf)
+    }
+
+    /// The element of a described array that starts at `address`.
+    fn element_at(&self, address: u32) -> Option<String> {
         for arr in self.arrays.iter().filter(|a| a.elem_size > 0) {
             let bytes = arr.total_elements.checked_mul(arr.elem_size)?;
             if address >= arr.address
@@ -736,7 +741,7 @@ impl DebugInfo {
                 return Some(crate::element_path(&arr.path, flat, &arr.dimensions));
             }
         }
-        leaf()
+        None
     }
 
     /// The start of a walk over the module's tables: the longest prefix of
@@ -781,10 +786,12 @@ impl DebugInfo {
                 return Some((array_cursor(a, 0)?, rest));
             }
             if let Some(p) = locals.local_pointers.iter().find(|p| named(&p.name)) {
+                // A parameter's `ARRAY[*]` has the type of its copy.
                 let cursor = Cursor::Pointer {
                     at: PointerAt::Local(p.wasm_index),
                     target: p.target,
                     by_ref: p.by_ref,
+                    conformand: None,
                     global: false,
                     path: p.name.clone(),
                 };
@@ -810,7 +817,7 @@ impl DebugInfo {
 
     /// Walk `toks` from `cursor`, in the scope whose type table is `types`.
     fn walk<'a>(
-        &self,
+        &'a self,
         types: &[crate::TypeDesc],
         table: crate::Table,
         mut cursor: Cursor<'a>,
@@ -824,14 +831,23 @@ impl DebugInfo {
                     Cursor::Pointer {
                         at,
                         target,
+                        by_ref,
+                        conformand,
                         global,
                         path,
-                        ..
                     },
                     Access::Deref,
                 ) => {
                     pos += 1;
-                    match deref(types, table, at, target, global, &path, live)? {
+                    let held = Held {
+                        at,
+                        target,
+                        by_ref,
+                        conformand,
+                        global,
+                        path: &path,
+                    };
+                    match self.deref(types, table, held, live)? {
                         Ok(next) => next,
                         Err(stop) => return Some(stop),
                     }
@@ -843,14 +859,25 @@ impl DebugInfo {
                         at,
                         target,
                         by_ref: true,
+                        conformand,
                         global,
                         path,
                     },
                     _,
-                ) => match deref(types, table, at, target, global, &path, live)? {
-                    Ok(next) => next,
-                    Err(stop) => return Some(stop),
-                },
+                ) => {
+                    let held = Held {
+                        at,
+                        target,
+                        by_ref: true,
+                        conformand,
+                        global,
+                        path: &path,
+                    };
+                    match self.deref(types, table, held, live)? {
+                        Ok(next) => next,
+                        Err(stop) => return Some(stop),
+                    }
+                }
                 (
                     Cursor::Typed {
                         address,
@@ -949,21 +976,35 @@ impl DebugInfo {
     ) -> Option<Place> {
         match cursor {
             Cursor::Value(loc) => Some(Place::Value(loc)),
-            Cursor::Typed { address, ty, .. } => Some(Place::Aggregate {
+            Cursor::Typed { address, ty, .. } => Some(Place::Aggregate { address, ty }),
+            Cursor::Array {
+                arr, address, path, ..
+            } => Some(Place::Array(crate::ArraySym {
+                path,
                 address,
-                ty: Some(ty),
-            }),
-            Cursor::Array { address, .. } => Some(Place::Aggregate { address, ty: None }),
+                ..arr.into_owned()
+            })),
             Cursor::Pointer {
                 at,
                 target,
                 by_ref: true,
+                conformand,
                 global,
                 path,
-            } => match deref(types, table, at, target, global, &path, live)? {
-                Ok(next) => self.finish(types, table, next, live),
-                Err(stop) => Some(stop),
-            },
+            } => {
+                let held = Held {
+                    at,
+                    target,
+                    by_ref: true,
+                    conformand,
+                    global,
+                    path: &path,
+                };
+                match self.deref(types, table, held, live)? {
+                    Ok(next) => self.finish(types, table, next, live),
+                    Err(stop) => Some(stop),
+                }
+            }
             Cursor::Pointer {
                 at,
                 target,
@@ -991,6 +1032,249 @@ impl DebugInfo {
                     in_frame,
                 }))
             }
+        }
+    }
+
+    /// Through a pointer: the cursor at what it points at, or the place the
+    /// path stops at. `None` for a `REF_TO` whose target has no type.
+    ///
+    /// A VAR_IN_OUT is read as the variable it is bound to. One that is an
+    /// `ARRAY[*]` member of an instance has no type of its own, and the
+    /// instance keeps the address alone: the bounds are constants of the
+    /// copy of the body each call runs. The walk goes on through the array
+    /// of its rank and element that starts at that address in the module's
+    /// memory ([`bound_array`](Self::bound_array)). Where the tables
+    /// describe none, and in a frame's table, whose types are not the
+    /// module's, the path stops at the pointer, with the address it holds.
+    /// So does it for a VAR_IN_OUT the table says nothing of, which is not
+    /// known to be an array: a block two VAR_IN_OUTs hold through each
+    /// other can be one.
+    fn deref<'a>(
+        &'a self,
+        types: &[crate::TypeDesc],
+        table: crate::Table,
+        pointer: Held<'_>,
+        live: &mut dyn Live,
+    ) -> Option<Result<Cursor<'a>, Place>> {
+        let address = held(pointer.at, live)?;
+        if address == 0 {
+            return Some(Err(Place::Null {
+                pointer: pointer.path.to_string(),
+            }));
+        }
+        if let Some(target) = pointer.target {
+            let path = format!("{}^", pointer.path);
+            return Some(Ok(typed(
+                types,
+                table,
+                address,
+                target,
+                pointer.global,
+                path,
+            )?));
+        }
+        if !pointer.by_ref {
+            return None;
+        }
+        if let (crate::Table::Module, Some(of)) = (table, pointer.conformand)
+            && let Some(arr) = self.bound_array(address, of)
+        {
+            return Some(Ok(Cursor::Array {
+                address,
+                global: arr.global,
+                path: pointer.path.to_string(),
+                arr: std::borrow::Cow::Owned(arr),
+            }));
+        }
+        let variable = match pointer.conformand {
+            // What it is bound to is an array. The element that starts at
+            // the address names it closer than the program or the instance
+            // whose first member that array is, which start there too.
+            Some(_) => self
+                .element_at(address)
+                .or_else(|| self.variable_at(address)),
+            None => self.variable_at(address),
+        };
+        let in_frame = match variable {
+            Some(_) => None,
+            None => self.frame_variable_at(address, &live.frames(), None),
+        };
+        Some(Err(Place::Pointer(Pointee {
+            address,
+            target: None,
+            by_ref: true,
+            variable,
+            in_frame,
+        })))
+    }
+
+    /// The array an `ARRAY[*]` is bound to: the one of its rank and element
+    /// that starts at `address` in the module's memory, as a descriptor of
+    /// its own, with no path. It is a whole array a descriptor gives, the
+    /// last dimensions of one (a row, `mat[0]`), or an array in an element,
+    /// which the type table gives. An address alone says where an array
+    /// starts and not which: answering with the descriptor there read a
+    /// bound row as the whole, and an element of `recs[0].list` as the
+    /// STRUCT `recs[1]`.
+    ///
+    /// `None` when the tables describe no such array there: one among a
+    /// function's locals. And when they describe two, as for two variables
+    /// located at one address.
+    fn bound_array(&self, address: u32, of: crate::Conformand) -> Option<crate::ArraySym> {
+        let mut found = Vec::new();
+        for arr in &self.arrays {
+            let Some(offset) = address.checked_sub(arr.address) else {
+                continue;
+            };
+            // Past what the descriptor says it takes: most are.
+            let takes = u64::from(arr.total_elements) * u64::from(arr.elem_size);
+            if u64::from(offset) >= takes {
+                continue;
+            }
+            let shape = Shape {
+                dimensions: &arr.dimensions,
+                elem_size: arr.elem_size,
+                elem_ty: arr.elem_ty,
+                elem_type: arr.elem_type,
+            };
+            self.arrays_from(shape, offset, of, arr.global, NESTING, &mut found);
+            if found.len() > 1 {
+                return None;
+            }
+        }
+        let mut bound = found.pop()?;
+        bound.address = address;
+        Some(bound)
+    }
+
+    /// Add to `found` each array of `of`'s rank and element that starts
+    /// `offset` bytes into the array `shape` is: its last dimensions, or an
+    /// array in the element the offset is in.
+    fn arrays_from(
+        &self,
+        shape: Shape,
+        offset: u32,
+        of: crate::Conformand,
+        global: bool,
+        depth: u32,
+        found: &mut Vec<crate::ArraySym>,
+    ) {
+        // A hostile table's bounds can span the whole of i64, and its sizes
+        // multiply past any memory.
+        let Some(extents) = extents(shape.dimensions) else {
+            return;
+        };
+        let elem_size = u64::from(shape.elem_size);
+        let whole = extents
+            .iter()
+            .try_fold(elem_size, |bytes, extent| bytes.checked_mul(*extent));
+        let (Some(whole), offset) = (whole, u64::from(offset)) else {
+            return;
+        };
+        if elem_size == 0 || offset >= whole {
+            return;
+        }
+        let rank = of.rank as usize;
+        if (1..=extents.len()).contains(&rank) && self.is_element(shape, of.elem) {
+            let last = extents.len() - rank;
+            let elements: u64 = extents[last..].iter().product();
+            if offset.is_multiple_of(elements * elem_size)
+                && let Ok(total_elements) = u32::try_from(elements)
+            {
+                let (elem_ty, elem_type) = self.element_of(shape);
+                found.push(crate::ArraySym {
+                    path: String::new(),
+                    address: 0,
+                    dimensions: shape.dimensions[last..].to_vec(),
+                    total_elements,
+                    elem_size: shape.elem_size,
+                    elem_ty,
+                    global,
+                    elem_type,
+                });
+            }
+        }
+        if let (Some(depth), Some(element)) = (depth.checked_sub(1), shape.elem_type) {
+            let within = (offset % elem_size) as u32;
+            self.arrays_in(element, within, of, global, depth, found);
+        }
+    }
+
+    /// [`arrays_from`](Self::arrays_from), `offset` bytes into a value of
+    /// the type `ty`: in the member of a STRUCT the offset is in, or in the
+    /// array it is.
+    fn arrays_in(
+        &self,
+        ty: crate::TypeId,
+        offset: u32,
+        of: crate::Conformand,
+        global: bool,
+        depth: u32,
+        found: &mut Vec<crate::ArraySym>,
+    ) {
+        match self.types.get(ty as usize) {
+            Some(crate::TypeDesc::Struct { fields, .. }) => {
+                // The member the offset is in is the last that starts at or
+                // before it.
+                let member = fields
+                    .iter()
+                    .filter(|f| f.offset <= offset)
+                    .max_by_key(|f| f.offset);
+                if let (Some(depth), Some(f)) = (depth.checked_sub(1), member) {
+                    self.arrays_in(f.ty, offset - f.offset, of, global, depth, found);
+                }
+            }
+            Some(crate::TypeDesc::Array {
+                dimensions,
+                elem_size,
+                elem,
+                ..
+            }) => {
+                let shape = Shape {
+                    dimensions,
+                    elem_size: *elem_size,
+                    elem_ty: None,
+                    elem_type: Some(*elem),
+                };
+                self.arrays_from(shape, offset, of, global, depth, found);
+            }
+            _ => {}
+        }
+    }
+
+    /// Whether the elements of `shape` are what an `ARRAY[*] OF` the type
+    /// `elem` has: that entry of the table, or the same scalar. A STRING is
+    /// one whatever its capacity, an element keeping the one its array
+    /// declared.
+    fn is_element(&self, shape: Shape, elem: crate::TypeId) -> bool {
+        if shape.elem_type == Some(elem) {
+            return true;
+        }
+        let scalar = |id: crate::TypeId| match self.types.get(id as usize) {
+            Some(crate::TypeDesc::Scalar(ty)) => Some(*ty),
+            _ => None,
+        };
+        let have = match shape.elem_type {
+            Some(id) => scalar(id),
+            None => shape.elem_ty,
+        };
+        match (have, scalar(elem)) {
+            (Some(SymType::String { .. }), Some(SymType::String { .. })) => true,
+            (Some(have), Some(want)) => have == want,
+            _ => false,
+        }
+    }
+
+    /// The element of `shape` as a descriptor says it: how a value decodes,
+    /// and the table's entry for an aggregate, a pointer or an enumeration.
+    fn element_of(&self, shape: Shape) -> (Option<SymType>, Option<crate::TypeId>) {
+        let Some(id) = shape.elem_type else {
+            return (shape.elem_ty, None);
+        };
+        match self.types.get(id as usize) {
+            Some(crate::TypeDesc::Scalar(ty)) => (Some(*ty), None),
+            Some(crate::TypeDesc::Enum { storage, .. }) => (Some(*storage), Some(id)),
+            _ => (shape.elem_ty, Some(id)),
         }
     }
 
@@ -1102,13 +1386,15 @@ pub enum Place {
     Value(VarLoc),
     /// A pointer, by what it holds.
     Pointer(Pointee),
-    /// A STRUCT or an ARRAY at its base: no value of its own. `ty` is its
-    /// layout in the type table of the scope asked, `None` for an array
-    /// the table describes by a descriptor.
-    Aggregate {
-        address: u32,
-        ty: Option<crate::TypeId>,
-    },
+    /// A STRUCT, or an array in an element of one, at its base: no value
+    /// of its own. `ty` is its layout in the type table of the scope asked.
+    Aggregate { address: u32, ty: crate::TypeId },
+    /// An array at its base, with its shape: the descriptor a table gives
+    /// it, or, through an `ARRAY[*]`, that of the array it is bound to,
+    /// whose bounds are what lists its elements. The path is the one asked
+    /// for, the address where it is, and `elem_type` an entry of the type
+    /// table of the scope asked.
+    Array(crate::ArraySym),
     /// A pointer on the way holds no address: the path stops at it.
     Null { pointer: String },
 }
@@ -1186,11 +1472,48 @@ impl Named<'_> {
     }
 }
 
+/// An array as the search for what an `ARRAY[*]` is bound to sees it: a
+/// descriptor's, or one the type table gives in an element.
+#[derive(Clone, Copy)]
+struct Shape<'a> {
+    dimensions: &'a [(i64, i64)],
+    elem_size: u32,
+    elem_ty: Option<SymType>,
+    elem_type: Option<crate::TypeId>,
+}
+
+/// How many arrays and STRUCTs deep that search goes into an element. A
+/// table can describe a STRUCT that holds itself, which no memory does.
+const NESTING: u32 = 32;
+
+/// How many elements each dimension has; `None` for bounds that give none,
+/// or more than a count holds.
+fn extents(dimensions: &[(i64, i64)]) -> Option<Vec<u64>> {
+    dimensions
+        .iter()
+        .map(|(lo, hi)| {
+            let extent = hi.checked_sub(*lo)?.checked_add(1)?;
+            u64::try_from(extent).ok().filter(|n| *n > 0)
+        })
+        .collect()
+}
+
 /// Where a pointer's 4 bytes are.
 #[derive(Clone, Copy)]
 enum PointerAt {
     Memory(u32),
     Local(u32),
+}
+
+/// A pointer a walk goes through: where it is, what the table says of it,
+/// and the path that names it.
+struct Held<'p> {
+    at: PointerAt,
+    target: Option<crate::TypeId>,
+    by_ref: bool,
+    conformand: Option<crate::Conformand>,
+    global: bool,
+    path: &'p str,
 }
 
 /// One point of a walk along a path.
@@ -1204,9 +1527,10 @@ enum Cursor<'a> {
         global: bool,
         path: String,
     },
-    /// An array by its descriptor, before its subscripts.
+    /// An array by its descriptor, before its subscripts: a table's, or
+    /// the one made for the array an `ARRAY[*]` is bound to.
     Array {
-        arr: &'a crate::ArraySym,
+        arr: std::borrow::Cow<'a, crate::ArraySym>,
         address: u32,
         global: bool,
         path: String,
@@ -1215,6 +1539,7 @@ enum Cursor<'a> {
         at: PointerAt,
         target: Option<crate::TypeId>,
         by_ref: bool,
+        conformand: Option<crate::Conformand>,
         global: bool,
         path: String,
     },
@@ -1238,6 +1563,7 @@ fn pointer_cursor(p: &crate::PointerSym, base: u32) -> Option<Cursor<'_>> {
         at: PointerAt::Memory(base.checked_add(p.address)?),
         target: p.target,
         by_ref: p.by_ref,
+        conformand: p.conformand,
         global: p.global,
         path: p.path.clone(),
     })
@@ -1245,7 +1571,7 @@ fn pointer_cursor(p: &crate::PointerSym, base: u32) -> Option<Cursor<'_>> {
 
 fn array_cursor(arr: &crate::ArraySym, base: u32) -> Option<Cursor<'_>> {
     Some(Cursor::Array {
-        arr,
+        arr: std::borrow::Cow::Borrowed(arr),
         address: base.checked_add(arr.address)?,
         global: arr.global,
         path: arr.path.clone(),
@@ -1284,10 +1610,12 @@ fn typed<'a>(
             size: 4,
             target,
             by_ref,
+            conformand,
         } => Cursor::Pointer {
             at: PointerAt::Memory(address),
             target: *target,
             by_ref: *by_ref,
+            conformand: *conformand,
             global,
             path,
         },
@@ -1310,33 +1638,6 @@ fn held(at: PointerAt, live: &mut dyn Live) -> Option<u32> {
         }
         PointerAt::Local(index) => live.local(index),
     }
-}
-
-/// Through a pointer: the cursor at what it points at, or the place the
-/// path stops at. `None` for a pointer whose target has no type.
-fn deref<'a>(
-    types: &[crate::TypeDesc],
-    table: crate::Table,
-    at: PointerAt,
-    target: Option<crate::TypeId>,
-    global: bool,
-    path: &str,
-    live: &mut dyn Live,
-) -> Option<Result<Cursor<'a>, Place>> {
-    let address = held(at, live)?;
-    if address == 0 {
-        return Some(Err(Place::Null {
-            pointer: path.to_string(),
-        }));
-    }
-    Some(Ok(typed(
-        types,
-        table,
-        address,
-        target?,
-        global,
-        format!("{path}^"),
-    )?))
 }
 
 /// Where a path may split into a stem a table names and the accessors
@@ -2161,6 +2462,15 @@ mod follow_tests {
             global: false,
             target,
             by_ref,
+            conformand: None,
+        }
+    }
+
+    /// A VAR_IN_OUT `ARRAY[*]` of `rank` dimensions and of the type `elem`.
+    fn conformand(path: &str, address: u32, rank: u32, elem: u32) -> PointerSym {
+        PointerSym {
+            conformand: Some(crate::Conformand { rank, elem }),
+            ..pointer(path, address, None, true)
         }
     }
 
@@ -2186,6 +2496,7 @@ mod follow_tests {
             size: 4,
             target,
             by_ref,
+            conformand: None,
         }
     }
 
@@ -2244,6 +2555,16 @@ mod follow_tests {
                     global: false,
                     elem_type: Some(7),
                 },
+                ArraySym {
+                    path: "P1.grid".to_string(),
+                    address: 440,
+                    dimensions: vec![(0, 1), (5, 6)],
+                    total_elements: 4,
+                    elem_size: 4,
+                    elem_ty: Some(SymType::Int),
+                    global: false,
+                    elem_type: None,
+                },
             ],
             types: vec![
                 node,
@@ -2274,6 +2595,11 @@ mod follow_tests {
                 pointer("P1.ri", 128, Some(1), false),
                 pointer("P1.rp", 132, Some(5), false),
                 pointer("P1.unknown", 136, None, false),
+                pointer("P1.w.a", 420, None, true),
+                pointer("P1.w.unbound", 424, None, true),
+                pointer("P1.w.elsewhere", 428, None, true),
+                pointer("P1.w.row", 432, None, true),
+                pointer("P1.w.first", 436, None, true),
             ],
             stack: Some((4096, 8192)),
         };
@@ -2301,6 +2627,11 @@ mod follow_tests {
         put(300, 1.5f32.to_bits());
         put(304, 2.5f32.to_bits());
         put(404, 1);
+        put(420, 400);
+        put(428, 200);
+        put(432, 440);
+        put(436, 160);
+        put(444, 6);
         (info, mem)
     }
 
@@ -2382,7 +2713,7 @@ mod follow_tests {
             info.follow("P1.head^", live),
             Some(Place::Aggregate {
                 address: 100,
-                ty: Some(0)
+                ty: 0
             })
         );
         // A plain variable still reads as one.
@@ -2452,6 +2783,284 @@ mod follow_tests {
         assert_eq!(at(info.follow("P1.m.speed^", live)), (200, SymType::Int));
     }
 
+    /// A VAR_IN_OUT the table gives no type, and no rank and element
+    /// either, is not known to be an array: a block two VAR_IN_OUTs hold
+    /// through each other can be one, and so can an `ARRAY[*]` in a table
+    /// from before v10. The path stops at the pointer, with the address it
+    /// holds and the variable there, and a subscript after it reaches no
+    /// variable: with no target the reader answered nothing. Not bound it
+    /// reads as null.
+    #[test]
+    fn a_by_reference_pointer_the_table_says_nothing_of_stops_at_the_pointer() {
+        let (info, mem) = module();
+        let live = &mut reader(&mem);
+        let held = |address: u32, variable: &str| {
+            Some(Place::Pointer(Pointee {
+                address,
+                target: None,
+                by_ref: true,
+                variable: Some(variable.to_string()),
+                in_frame: None,
+            }))
+        };
+        // Where an array of one dimension starts, a matrix, an array of
+        // STRUCTs, and a variable.
+        for (path, stop) in [
+            ("P1.w.a", held(400, "P1.lamps[0]")),
+            ("P1.w.row", held(440, "P1.grid[0, 5]")),
+            ("P1.w.first", held(160, "P1.nodes[0]")),
+            ("P1.w.elsewhere", held(200, "P1.n")),
+        ] {
+            assert_eq!(info.follow(path, live), stop, "{path}");
+            assert_eq!(info.follow(&format!("{path}[1]"), live), stop, "{path}[1]");
+        }
+        let null = Some(Place::Null {
+            pointer: "P1.w.unbound".to_string(),
+        });
+        assert_eq!(info.follow("P1.w.unbound", live), null);
+        assert_eq!(info.follow("P1.w.unbound[1]", live), null);
+        // A `REF_TO` with no target still has nothing behind its `^`.
+        assert_eq!(info.follow("P1.unknown^", live), None);
+
+        // The arrays themselves read, each subscript within its own bounds,
+        // and end as their shape.
+        assert_eq!(at(info.follow("P1.grid[0, 6]", live)), (444, SymType::Int));
+        assert_eq!(info.follow("P1.grid[0, 7]", live), None);
+        let Some(Place::Array(grid)) = info.follow("P1.grid", live) else {
+            panic!("an array, with its shape");
+        };
+        assert_eq!(
+            (grid.path.as_str(), grid.address, &grid.dimensions[..]),
+            ("P1.grid", 440, &[(0, 1), (5, 6)][..])
+        );
+    }
+
+    /// A program's memory for what an `ARRAY[*]` is bound to: a matrix
+    /// `mat` at 100, three `Rec`s at 200 whose first member is a matrix,
+    /// two `Cell`s at 300 whose second is an array, REALs at 340, a `Loop`
+    /// that holds itself at 360, and two arrays located together at 380.
+    fn bound() -> (DebugInfo, Vec<u8>) {
+        // An element is a value, or an entry of the type table.
+        type Elem = Result<SymType, u32>;
+        let array =
+            |path: &str, address, dimensions: &[(i64, i64)], elem_size, elem: Elem| ArraySym {
+                path: path.to_string(),
+                address,
+                dimensions: dimensions.to_vec(),
+                total_elements: dimensions
+                    .iter()
+                    .map(|(lo, hi)| (hi - lo + 1) as u32)
+                    .product(),
+                elem_size,
+                elem_ty: elem.ok(),
+                global: false,
+                elem_type: elem.err(),
+            };
+        let table = crate::DebugSymbols {
+            version: crate::DEBUG_SYMBOLS_VERSION,
+            symbols: Vec::new(),
+            arrays: vec![
+                array("P1.mat", 100, &[(-1, 0), (2, 3)], 4, Ok(SymType::Int)),
+                array("P1.recs", 200, &[(0, 2)], 20, Err(2)),
+                array("P1.cells", 300, &[(0, 1)], 12, Err(4)),
+                array("P1.reals", 340, &[(0, 3)], 4, Ok(SymType::Real)),
+                array("P1.loops", 360, &[(0, 0)], 8, Err(6)),
+                array("P1.over", 380, &[(0, 1)], 4, Ok(SymType::Int)),
+                array("P1.lap", 380, &[(5, 6)], 4, Ok(SymType::Int)),
+            ],
+            types: vec![
+                TypeDesc::Scalar(SymType::Int),
+                TypeDesc::Array {
+                    dimensions: vec![(0, 1), (0, 1)],
+                    total_elements: 4,
+                    elem_size: 4,
+                    elem: 0,
+                },
+                TypeDesc::Struct {
+                    name: "Rec".to_string(),
+                    size: 20,
+                    fields: vec![field("hist", 0, 1), field("k", 16, 0)],
+                },
+                TypeDesc::Scalar(SymType::Real),
+                TypeDesc::Struct {
+                    name: "Cell".to_string(),
+                    size: 12,
+                    fields: vec![field("tag", 0, 0), field("list", 4, 5)],
+                },
+                TypeDesc::Array {
+                    dimensions: vec![(1, 2)],
+                    total_elements: 2,
+                    elem_size: 4,
+                    elem: 0,
+                },
+                TypeDesc::Struct {
+                    name: "Loop".to_string(),
+                    size: 8,
+                    fields: vec![field("again", 0, 6)],
+                },
+            ],
+            containers: Vec::new(),
+            pointers: vec![
+                conformand("P1.g.whole", 500, 2, 0),
+                conformand("P1.g.top", 504, 1, 0),
+                conformand("P1.g.low", 508, 1, 0),
+                conformand("P1.g.first", 512, 2, 0),
+                conformand("P1.g.inner", 516, 2, 0),
+                conformand("P1.g.strip", 520, 1, 0),
+                conformand("P1.g.recs", 524, 1, 2),
+                conformand("P1.g.list", 528, 1, 0),
+                conformand("P1.g.cube", 532, 3, 0),
+                conformand("P1.g.reals", 536, 2, 3),
+                conformand("P1.g.mid", 540, 1, 0),
+                conformand("P1.g.loop", 544, 1, 0),
+                conformand("P1.g.lap", 548, 1, 0),
+                conformand("P1.g.none", 552, 1, 0),
+            ],
+            stack: None,
+        };
+        let info = DebugInfo::from_wasm(&module_with_sections(&[(
+            crate::DEBUG_SYMBOLS_SECTION,
+            &table.to_msgpack(),
+        )]));
+        assert!(info.problems().is_empty(), "{:?}", info.problems());
+        let mut mem = vec![0u8; 600];
+        let mut put = |at: usize, v: u32| mem[at..at + 4].copy_from_slice(&v.to_le_bytes());
+        for (at, v) in [(100, 1), (104, 2), (108, 3), (112, 4)] {
+            put(at, v);
+        }
+        // `recs[0].hist[1, 1]`, `recs[1].k`, `recs[2].hist[1, 0]` and
+        // `cells[0].list[2]`.
+        for (at, v) in [(212, 5), (236, 77), (248, 6), (308, 9)] {
+            put(at, v);
+        }
+        for (pointer, held) in [
+            (500, 100),
+            (504, 100),
+            (508, 108),
+            (512, 200),
+            (516, 240),
+            (520, 208),
+            (524, 200),
+            (528, 304),
+            (532, 100),
+            (536, 100),
+            (540, 104),
+            (544, 360),
+            (548, 380),
+        ] {
+            put(pointer, held);
+        }
+        (info, mem)
+    }
+
+    /// The shape of the array a path ends at.
+    fn shape(place: Option<Place>) -> ArraySym {
+        match place {
+            Some(Place::Array(shape)) => shape,
+            other => panic!("not an array: {other:?}"),
+        }
+    }
+
+    /// The table gives an `ARRAY[*]` its rank and its element, and it reads
+    /// as the array of that rank and element that starts at the address it
+    /// holds, with that array's bounds: a whole array, the last dimensions
+    /// of one, or an array in an element. Its place is that array's shape,
+    /// which is what lists its elements.
+    #[test]
+    fn an_array_of_any_bounds_reads_as_the_array_of_its_rank_and_element() {
+        let (info, mem) = bound();
+        let live = &mut reader(&mem);
+        let read = |place: Option<Place>| {
+            let (address, _) = at(place);
+            u32::from_le_bytes(mem[address as usize..][..4].try_into().unwrap())
+        };
+
+        // A matrix and its first row start together: the rank says which.
+        let whole = shape(info.follow("P1.g.whole", live));
+        assert_eq!(whole.path, "P1.g.whole");
+        assert_eq!((whole.address, whole.total_elements), (100, 4));
+        assert_eq!(whole.dimensions, [(-1, 0), (2, 3)]);
+        assert_eq!((whole.elem_ty, whole.elem_type), (Some(SymType::Int), None));
+        assert_eq!(read(info.follow("P1.g.whole[0, 3]", live)), 4);
+        assert_eq!(
+            info.follow("P1.g.whole[-1, 4]", live),
+            None,
+            "past the second dimension, inside the whole"
+        );
+        assert_eq!(info.follow("P1.g.whole[1, 2]", live), None);
+
+        let top = shape(info.follow("P1.g.top", live));
+        assert_eq!((top.address, &top.dimensions[..]), (100, &[(2, 3)][..]));
+        assert_eq!(top.total_elements, 2);
+        assert_eq!(read(info.follow("P1.g.top[3]", live)), 2);
+        assert_eq!(info.follow("P1.g.top[4]", live), None, "the next row");
+        assert_eq!(info.follow("P1.g.top[-1, 2]", live), None, "one dimension");
+
+        // A row no descriptor starts at.
+        let low = shape(info.follow("P1.g.low", live));
+        assert_eq!((low.address, &low.dimensions[..]), (108, &[(2, 3)][..]));
+        assert_eq!(read(info.follow("P1.g.low[2]", live)), 3);
+
+        // An array of STRUCTs and the matrix its first element begins with
+        // start together: the element says which.
+        let first = shape(info.follow("P1.g.first", live));
+        assert_eq!(first.address, 200);
+        assert_eq!(first.dimensions, [(0, 1), (0, 1)]);
+        assert_eq!((first.elem_ty, first.elem_type), (Some(SymType::Int), None));
+        assert_eq!(read(info.follow("P1.g.first[1, 1]", live)), 5);
+        let recs = shape(info.follow("P1.g.recs", live));
+        assert_eq!((recs.address, &recs.dimensions[..]), (200, &[(0, 2)][..]));
+        assert_eq!((recs.elem_ty, recs.elem_type), (None, Some(2)));
+        assert_eq!(read(info.follow("P1.g.recs[1].k", live)), 77);
+        assert_eq!(read(info.follow("P1.g.recs[2].hist[1, 0]", live)), 6);
+
+        // In a later element, in a row of it, and in a member that is not
+        // the first.
+        assert_eq!(read(info.follow("P1.g.inner[1, 0]", live)), 6);
+        assert_eq!(shape(info.follow("P1.g.strip", live)).dimensions, [(0, 1)]);
+        assert_eq!(read(info.follow("P1.g.strip[1]", live)), 5);
+        let list = shape(info.follow("P1.g.list", live));
+        assert_eq!((list.address, &list.dimensions[..]), (304, &[(1, 2)][..]));
+        assert_eq!(read(info.follow("P1.g.list[2]", live)), 9);
+        assert_eq!(info.follow("P1.g.list[0]", live), None);
+
+        assert_eq!(
+            info.follow("P1.g.none[1]", live),
+            Some(Place::Null {
+                pointer: "P1.g.none".to_string()
+            })
+        );
+    }
+
+    /// Where the tables describe no array of the rank and element an
+    /// `ARRAY[*]` has, the path stops at the pointer, with the address it
+    /// holds: more dimensions than the array there, another element, an
+    /// address inside a row. So does it where they describe two, located
+    /// together. A table can describe a STRUCT that holds itself, which no
+    /// memory does: the search ends.
+    #[test]
+    fn an_array_of_any_bounds_stops_where_no_array_of_its_rank_and_element_starts() {
+        let (info, mem) = bound();
+        let live = &mut reader(&mem);
+        for (path, address, variable) in [
+            ("P1.g.cube", 100, "P1.mat[-1, 2]"),
+            ("P1.g.reals", 100, "P1.mat[-1, 2]"),
+            ("P1.g.mid", 104, "P1.mat[-1, 3]"),
+            ("P1.g.loop", 360, "P1.loops[0]"),
+            ("P1.g.lap", 380, "P1.over[0]"),
+        ] {
+            let stop = Some(Place::Pointer(Pointee {
+                address,
+                target: None,
+                by_ref: true,
+                variable: Some(variable.to_string()),
+                in_frame: None,
+            }));
+            assert_eq!(info.follow(path, live), stop, "{path}");
+            assert_eq!(info.follow(&format!("{path}[0]"), live), stop, "{path}[0]");
+        }
+    }
+
     /// An array of pointers, and an array of structs with a pointer in each:
     /// the element is reached through the descriptor, the pointer through
     /// the element.
@@ -2484,7 +3093,7 @@ mod follow_tests {
             info.follow("P1.nodes[1]", live),
             Some(Place::Aggregate {
                 address: 168,
-                ty: Some(0)
+                ty: 0
             })
         );
         assert_eq!(info.follow("P1.refs[3]^", live), None, "past the array");

@@ -295,8 +295,16 @@ fn type_layout<'db>(
     ty: Type<'db>,
     open: &mut Vec<Open<'db>>,
 ) -> Option<Layout> {
-    // A named type keeps its declaration's STRING length.
     if let Type::DataType(dt) = ty {
+        // A name that is its own alias, `TYPE A : B; B : A;`, has no
+        // identity and no layout. `normalize` answers `Never` for it,
+        // where going from the name to its spec and back never ends: a
+        // field, an element or an instance variable of such a type took
+        // `rk check` down with the stack, and hover on it the editor.
+        if ty.normalize(db).is_never() {
+            return None;
+        }
+        // A named type keeps its declaration's STRING length.
         return spec_layout(db, dt.spec(db), open);
     }
     match ty.normalize(db) {

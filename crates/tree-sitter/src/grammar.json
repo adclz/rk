@@ -368,6 +368,10 @@
         "type": "SEQ",
         "members": [
           {
+            "type": "STRING",
+            "value": ","
+          },
+          {
             "type": "ALIAS",
             "content": {
               "type": "TOKEN",
@@ -394,10 +398,6 @@
               "type": "SYMBOL",
               "name": "data_source"
             }
-          },
-          {
-            "type": "STRING",
-            "value": ","
           }
         ]
       }
@@ -9192,179 +9192,451 @@
           "type": "CHOICE",
           "members": [
             {
-              "type": "SEQ",
+              "type": "CHOICE",
               "members": [
                 {
-                  "type": "ALIAS",
-                  "content": {
-                    "type": "TOKEN",
-                    "content": {
-                      "type": "PREC",
-                      "value": 0,
-                      "content": {
-                        "type": "PATTERN",
-                        "value": "[sS][iI][nN][gG][lL][eE]"
-                      }
-                    }
-                  },
-                  "named": false,
-                  "value": "SINGLE"
-                },
-                {
-                  "type": "STRING",
-                  "value": ":="
-                },
-                {
-                  "type": "FIELD",
-                  "name": "single",
-                  "content": {
-                    "type": "SYMBOL",
-                    "name": "data_source"
-                  }
-                },
-                {
-                  "type": "CHOICE",
+                  "type": "SEQ",
                   "members": [
                     {
-                      "type": "STRING",
-                      "value": ","
+                      "type": "SEQ",
+                      "members": [
+                        {
+                          "type": "ALIAS",
+                          "content": {
+                            "type": "TOKEN",
+                            "content": {
+                              "type": "PREC",
+                              "value": 0,
+                              "content": {
+                                "type": "PATTERN",
+                                "value": "[sS][iI][nN][gG][lL][eE]"
+                              }
+                            }
+                          },
+                          "named": false,
+                          "value": "SINGLE"
+                        },
+                        {
+                          "type": "STRING",
+                          "value": ":="
+                        },
+                        {
+                          "type": "FIELD",
+                          "name": "single",
+                          "content": {
+                            "type": "SYMBOL",
+                            "name": "data_source"
+                          }
+                        }
+                      ]
                     },
                     {
-                      "type": "BLANK"
+                      "type": "CHOICE",
+                      "members": [
+                        {
+                          "type": "SEQ",
+                          "members": [
+                            {
+                              "type": "STRING",
+                              "value": ","
+                            },
+                            {
+                              "type": "CHOICE",
+                              "members": [
+                                {
+                                  "type": "SEQ",
+                                  "members": [
+                                    {
+                                      "type": "SEQ",
+                                      "members": [
+                                        {
+                                          "type": "ALIAS",
+                                          "content": {
+                                            "type": "TOKEN",
+                                            "content": {
+                                              "type": "PREC",
+                                              "value": 0,
+                                              "content": {
+                                                "type": "PATTERN",
+                                                "value": "[iI][nN][tT][eE][rR][vV][aA][lL]"
+                                              }
+                                            }
+                                          },
+                                          "named": false,
+                                          "value": "INTERVAL"
+                                        },
+                                        {
+                                          "type": "STRING",
+                                          "value": ":="
+                                        },
+                                        {
+                                          "type": "FIELD",
+                                          "name": "interval",
+                                          "content": {
+                                            "type": "SYMBOL",
+                                            "name": "data_source"
+                                          }
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "type": "CHOICE",
+                                      "members": [
+                                        {
+                                          "type": "SYMBOL",
+                                          "name": "ERR_single_after_interval"
+                                        },
+                                        {
+                                          "type": "BLANK"
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "type": "CHOICE",
+                                      "members": [
+                                        {
+                                          "type": "SEQ",
+                                          "members": [
+                                            {
+                                              "type": "STRING",
+                                              "value": ","
+                                            },
+                                            {
+                                              "type": "SEQ",
+                                              "members": [
+                                                {
+                                                  "type": "SEQ",
+                                                  "members": [
+                                                    {
+                                                      "type": "ALIAS",
+                                                      "content": {
+                                                        "type": "TOKEN",
+                                                        "content": {
+                                                          "type": "PREC",
+                                                          "value": 0,
+                                                          "content": {
+                                                            "type": "PATTERN",
+                                                            "value": "[pP][rR][iI][oO][rR][iI][tT][yY]"
+                                                          }
+                                                        }
+                                                      },
+                                                      "named": false,
+                                                      "value": "PRIORITY"
+                                                    },
+                                                    {
+                                                      "type": "STRING",
+                                                      "value": ":="
+                                                    },
+                                                    {
+                                                      "type": "FIELD",
+                                                      "name": "priority",
+                                                      "content": {
+                                                        "type": "SYMBOL",
+                                                        "name": "unsigned_int"
+                                                      }
+                                                    }
+                                                  ]
+                                                },
+                                                {
+                                                  "type": "CHOICE",
+                                                  "members": [
+                                                    {
+                                                      "type": "SYMBOL",
+                                                      "name": "ERR_interval_after_priority"
+                                                    },
+                                                    {
+                                                      "type": "BLANK"
+                                                    }
+                                                  ]
+                                                },
+                                                {
+                                                  "type": "CHOICE",
+                                                  "members": [
+                                                    {
+                                                      "type": "SYMBOL",
+                                                      "name": "ERR_single_after_priorty"
+                                                    },
+                                                    {
+                                                      "type": "BLANK"
+                                                    }
+                                                  ]
+                                                }
+                                              ]
+                                            }
+                                          ]
+                                        },
+                                        {
+                                          "type": "BLANK"
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "SEQ",
+                                  "members": [
+                                    {
+                                      "type": "SEQ",
+                                      "members": [
+                                        {
+                                          "type": "ALIAS",
+                                          "content": {
+                                            "type": "TOKEN",
+                                            "content": {
+                                              "type": "PREC",
+                                              "value": 0,
+                                              "content": {
+                                                "type": "PATTERN",
+                                                "value": "[pP][rR][iI][oO][rR][iI][tT][yY]"
+                                              }
+                                            }
+                                          },
+                                          "named": false,
+                                          "value": "PRIORITY"
+                                        },
+                                        {
+                                          "type": "STRING",
+                                          "value": ":="
+                                        },
+                                        {
+                                          "type": "FIELD",
+                                          "name": "priority",
+                                          "content": {
+                                            "type": "SYMBOL",
+                                            "name": "unsigned_int"
+                                          }
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "type": "CHOICE",
+                                      "members": [
+                                        {
+                                          "type": "SYMBOL",
+                                          "name": "ERR_interval_after_priority"
+                                        },
+                                        {
+                                          "type": "BLANK"
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "type": "CHOICE",
+                                      "members": [
+                                        {
+                                          "type": "SYMBOL",
+                                          "name": "ERR_single_after_priorty"
+                                        },
+                                        {
+                                          "type": "BLANK"
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "type": "BLANK"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "SEQ",
+                  "members": [
+                    {
+                      "type": "SEQ",
+                      "members": [
+                        {
+                          "type": "ALIAS",
+                          "content": {
+                            "type": "TOKEN",
+                            "content": {
+                              "type": "PREC",
+                              "value": 0,
+                              "content": {
+                                "type": "PATTERN",
+                                "value": "[iI][nN][tT][eE][rR][vV][aA][lL]"
+                              }
+                            }
+                          },
+                          "named": false,
+                          "value": "INTERVAL"
+                        },
+                        {
+                          "type": "STRING",
+                          "value": ":="
+                        },
+                        {
+                          "type": "FIELD",
+                          "name": "interval",
+                          "content": {
+                            "type": "SYMBOL",
+                            "name": "data_source"
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "type": "CHOICE",
+                      "members": [
+                        {
+                          "type": "SYMBOL",
+                          "name": "ERR_single_after_interval"
+                        },
+                        {
+                          "type": "BLANK"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "CHOICE",
+                      "members": [
+                        {
+                          "type": "SEQ",
+                          "members": [
+                            {
+                              "type": "STRING",
+                              "value": ","
+                            },
+                            {
+                              "type": "SEQ",
+                              "members": [
+                                {
+                                  "type": "SEQ",
+                                  "members": [
+                                    {
+                                      "type": "ALIAS",
+                                      "content": {
+                                        "type": "TOKEN",
+                                        "content": {
+                                          "type": "PREC",
+                                          "value": 0,
+                                          "content": {
+                                            "type": "PATTERN",
+                                            "value": "[pP][rR][iI][oO][rR][iI][tT][yY]"
+                                          }
+                                        }
+                                      },
+                                      "named": false,
+                                      "value": "PRIORITY"
+                                    },
+                                    {
+                                      "type": "STRING",
+                                      "value": ":="
+                                    },
+                                    {
+                                      "type": "FIELD",
+                                      "name": "priority",
+                                      "content": {
+                                        "type": "SYMBOL",
+                                        "name": "unsigned_int"
+                                      }
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "CHOICE",
+                                  "members": [
+                                    {
+                                      "type": "SYMBOL",
+                                      "name": "ERR_interval_after_priority"
+                                    },
+                                    {
+                                      "type": "BLANK"
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "CHOICE",
+                                  "members": [
+                                    {
+                                      "type": "SYMBOL",
+                                      "name": "ERR_single_after_priorty"
+                                    },
+                                    {
+                                      "type": "BLANK"
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "type": "BLANK"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "SEQ",
+                  "members": [
+                    {
+                      "type": "SEQ",
+                      "members": [
+                        {
+                          "type": "ALIAS",
+                          "content": {
+                            "type": "TOKEN",
+                            "content": {
+                              "type": "PREC",
+                              "value": 0,
+                              "content": {
+                                "type": "PATTERN",
+                                "value": "[pP][rR][iI][oO][rR][iI][tT][yY]"
+                              }
+                            }
+                          },
+                          "named": false,
+                          "value": "PRIORITY"
+                        },
+                        {
+                          "type": "STRING",
+                          "value": ":="
+                        },
+                        {
+                          "type": "FIELD",
+                          "name": "priority",
+                          "content": {
+                            "type": "SYMBOL",
+                            "name": "unsigned_int"
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "type": "CHOICE",
+                      "members": [
+                        {
+                          "type": "SYMBOL",
+                          "name": "ERR_interval_after_priority"
+                        },
+                        {
+                          "type": "BLANK"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "CHOICE",
+                      "members": [
+                        {
+                          "type": "SYMBOL",
+                          "name": "ERR_single_after_priorty"
+                        },
+                        {
+                          "type": "BLANK"
+                        }
+                      ]
                     }
                   ]
                 }
               ]
-            },
-            {
-              "type": "BLANK"
-            }
-          ]
-        },
-        {
-          "type": "CHOICE",
-          "members": [
-            {
-              "type": "SEQ",
-              "members": [
-                {
-                  "type": "ALIAS",
-                  "content": {
-                    "type": "TOKEN",
-                    "content": {
-                      "type": "PREC",
-                      "value": 0,
-                      "content": {
-                        "type": "PATTERN",
-                        "value": "[iI][nN][tT][eE][rR][vV][aA][lL]"
-                      }
-                    }
-                  },
-                  "named": false,
-                  "value": "INTERVAL"
-                },
-                {
-                  "type": "STRING",
-                  "value": ":="
-                },
-                {
-                  "type": "FIELD",
-                  "name": "interval",
-                  "content": {
-                    "type": "SYMBOL",
-                    "name": "data_source"
-                  }
-                },
-                {
-                  "type": "CHOICE",
-                  "members": [
-                    {
-                      "type": "STRING",
-                      "value": ","
-                    },
-                    {
-                      "type": "BLANK"
-                    }
-                  ]
-                }
-              ]
-            },
-            {
-              "type": "BLANK"
-            }
-          ]
-        },
-        {
-          "type": "CHOICE",
-          "members": [
-            {
-              "type": "SYMBOL",
-              "name": "ERR_single_after_interval"
-            },
-            {
-              "type": "BLANK"
-            }
-          ]
-        },
-        {
-          "type": "CHOICE",
-          "members": [
-            {
-              "type": "SEQ",
-              "members": [
-                {
-                  "type": "ALIAS",
-                  "content": {
-                    "type": "TOKEN",
-                    "content": {
-                      "type": "PREC",
-                      "value": 0,
-                      "content": {
-                        "type": "PATTERN",
-                        "value": "[pP][rR][iI][oO][rR][iI][tT][yY]"
-                      }
-                    }
-                  },
-                  "named": false,
-                  "value": "PRIORITY"
-                },
-                {
-                  "type": "STRING",
-                  "value": ":="
-                },
-                {
-                  "type": "FIELD",
-                  "name": "priority",
-                  "content": {
-                    "type": "SYMBOL",
-                    "name": "unsigned_int"
-                  }
-                }
-              ]
-            },
-            {
-              "type": "BLANK"
-            }
-          ]
-        },
-        {
-          "type": "CHOICE",
-          "members": [
-            {
-              "type": "SYMBOL",
-              "name": "ERR_interval_after_priority"
-            },
-            {
-              "type": "BLANK"
-            }
-          ]
-        },
-        {
-          "type": "CHOICE",
-          "members": [
-            {
-              "type": "SYMBOL",
-              "name": "ERR_single_after_priorty"
             },
             {
               "type": "BLANK"

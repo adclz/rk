@@ -337,10 +337,20 @@ impl<'db> TypeDependencyGraph<'db> {
         // The members an instance holds by value. A VAR_IN_OUT member is the
         // address of the caller's instance, like a REF_TO, and VAR_TEMP and
         // VAR_EXTERNAL are no part of the instance at all.
-        let contained = def_map.global_variables.values().filter(|var| {
-            var.storage_class(db) == StorageClass::InstanceMember
-                && var.kind(db) != VariableKind::InOut
-        });
+        let mut contained: Vec<_> = def_map
+            .global_variables
+            .values()
+            .filter(|var| {
+                var.storage_class(db) == StorageClass::InstanceMember
+                    && var.kind(db) != VariableKind::InOut
+            })
+            .collect();
+        // In the order they are written, so that the reference a cycle
+        // cites is the first one. The map is keyed by interned names: its
+        // order is the one the names were first met in, which changes from
+        // one session to the next, and the editor then disagreed with a
+        // fresh check on which member to cite.
+        contained.sort_by_key(|var| var.spec(db).get_id(db).0);
         for var in contained {
             let typ = var.spec(db).infer(db);
             let callsite = CallSite::from_scoped(db, &var.spec(db));
@@ -483,7 +493,21 @@ impl<'db> TypeDependencyGraph<'db> {
         stack.push(node);
         stack_set.insert(node);
 
-        for dep in self.edges.get(&node).cloned().unwrap_or_default() {
+        // What `node` references, in the order it first writes each: the
+        // set's own order is the one of interned ids, and the cycle found
+        // first, the one reported, followed it.
+        let mut deps: Vec<Pou<'db>> = self
+            .edges
+            .get(&node)
+            .map(|deps| deps.iter().copied().collect())
+            .unwrap_or_default();
+        deps.sort_by_key(|dep| {
+            self.callsites
+                .get(&(node, *dep))
+                .and_then(|sites| sites.first())
+                .map(|site| site.id.0)
+        });
+        for dep in deps {
             if dep == node {
                 // direct recursion anchored to file-local root
                 errors.push(

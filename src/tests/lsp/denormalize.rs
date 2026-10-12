@@ -159,3 +159,68 @@ fn document_symbols_emit_encoded_ranges(mut with_db: RootDatabase) {
     // whereas the UTF-8 byte column would be 15.
     assert_eq!(x.selection_range.start, Position::new(1, 13));
 }
+
+/// The same block on the line after a carriage return no `\n` follows.
+const BARE_RETURN: &str = "(* a *)\r(* 🎈 *) FUNCTION_BLOCK fb\nEND_FUNCTION_BLOCK";
+
+/// A carriage return no `\n` follows ends a line for an editor, where the
+/// parser's rows count `\n` alone. A name after one is sent on the editor's
+/// line, and a position on that line comes back to the name's byte. Both
+/// conversions went through the parser's row, one short: a rename's edit
+/// or a diagnostic landed on the line before.
+#[rstest]
+#[case(PositionEncodingKind::UTF8, 26, 28)]
+#[case(PositionEncodingKind::UTF16, 24, 26)]
+#[case(PositionEncodingKind::UTF32, 23, 25)]
+fn a_bare_carriage_return_ends_a_line(
+    mut with_db: RootDatabase,
+    #[case] encoding: PositionEncodingKind,
+    #[case] start_char: u32,
+    #[case] end_char: u32,
+) {
+    let file = add_source_enc(&mut with_db, BARE_RETURN, &encoding);
+    let fb = find_pou_with_name(&with_db, file, "fb").expect("fb not found");
+    let raw = fb.get_name_span(&with_db);
+    assert_eq!(raw.start_point.row, 0, "the parser counts `\\n` alone");
+
+    let range = denormalize(&with_db, file, &raw).expect("denormalize failed");
+    assert_eq!(range.start, Position::new(1, start_char));
+    assert_eq!(range.end, Position::new(1, end_char));
+
+    assert_eq!(
+        position_to_offset(&with_db, file, range.start),
+        Some(raw.start_byte)
+    );
+    // The line after the `\n` is the editor's third.
+    assert_eq!(
+        position_to_offset(&with_db, file, Position::new(2, 0)),
+        BARE_RETURN.find("END_FUNCTION_BLOCK")
+    );
+}
+
+/// `\r\n` is one line ending, as it always was: the name stays on the
+/// second line.
+#[rstest]
+#[case(PositionEncodingKind::UTF8, 26)]
+#[case(PositionEncodingKind::UTF16, 24)]
+#[case(PositionEncodingKind::UTF32, 23)]
+fn a_carriage_return_and_line_feed_are_one_line_ending(
+    mut with_db: RootDatabase,
+    #[case] encoding: PositionEncodingKind,
+    #[case] start_char: u32,
+) {
+    let source = BARE_RETURN.replace('\r', "\r\n").replace("fb\n", "fb\r\n");
+    let file = add_source_enc(&mut with_db, &source, &encoding);
+    let fb = find_pou_with_name(&with_db, file, "fb").expect("fb not found");
+    let raw = fb.get_name_span(&with_db);
+    let range = denormalize(&with_db, file, &raw).expect("denormalize failed");
+    assert_eq!(range.start, Position::new(1, start_char));
+    assert_eq!(
+        position_to_offset(&with_db, file, range.start),
+        Some(raw.start_byte)
+    );
+    assert_eq!(
+        position_to_offset(&with_db, file, Position::new(2, 0)),
+        source.find("END_FUNCTION_BLOCK")
+    );
+}

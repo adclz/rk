@@ -41,6 +41,19 @@ P1.a.next^.next^.value
 A `VAR_IN_OUT` reads as the variable it is bound to.
 `P1.m.speed` and `P1.m.speed^` are the same.
 
+An `ARRAY[*]` member keeps the address of the array it is bound to, and no bounds.
+Two arrays can start at one address: a matrix and its first row, or an array of STRUCTs and the array its first element begins with.
+So `debug-symbols` gives the member its rank and its element.
+It reads as the array of that rank and element that starts at the address:
+
+- **A whole array.**
+- **The last dimensions of one**, as `mat[0]` is a row of `mat`.
+- **An array in an element or a member**, as `recs[2].hist`.
+
+The result carries that array's bounds, which list its elements.
+An array among the locals of a function is not searched.
+The path stops at the pointer there.
+
 Following a pointer needs the memory of the running module.
 `DebugInfo::follow` takes a reader of it.
 A null pointer stops the path.
@@ -53,6 +66,8 @@ The value of a pointer is the address it holds and the variable at that address.
 - **A `VAR_IN_OUT` or `VAR_OUTPUT`** parameter.
 - **A `REF_TO`** input or local.
 - **An aggregate input.** It reads as the input itself.
+
+An `ARRAY[*]` parameter has the type of the array its copy of the function was compiled for, bounds included.
 
 ## Recursive calls
 
