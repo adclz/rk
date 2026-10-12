@@ -437,7 +437,13 @@ fn lower_stmt<'db>(
         }
 
         // Read and checked, not compiled yet.
-        StmtKind::Try { .. } => Err(LowerTypeError::UnsupportedType("a __TRY".to_string())),
+        StmtKind::Try { .. } => {
+            use hir::HirNodeInfo;
+            Err(LowerTypeError::NotCompiledYet("a __TRY").with_location(
+                stmt.get_scope_id(ctx.db).file(ctx.db),
+                stmt.get_span(ctx.db),
+            ))
+        }
 
         StmtKind::WasmPragma(decl) => Ok(super::lower_wasm::lower_wasm_pragma(ctx, stmt, decl)?
             .into_iter()

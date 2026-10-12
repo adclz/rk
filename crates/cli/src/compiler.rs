@@ -22,21 +22,61 @@ fn render_codegen_error(
     err: &mir::lower::lower_type::LowerTypeError,
     format: crate::cli::OutputFormat,
 ) -> Option<String> {
+    render_lowering_error(
+        db,
+        workspace,
+        err,
+        format,
+        format!("internal compiler error: {err}"),
+        "the workspace passed `rk check`: this is a compiler bug or an unimplemented construct",
+        Some(format!("report it at {ISSUES_URL}")),
+    )
+}
+
+/// Render the refusal of a statement rk reads and checks and has no code
+/// for yet: the program's to rewrite, said in its terms and where it is.
+fn render_not_compiled_yet(
+    db: &RootDatabase,
+    workspace: &std::path::Path,
+    err: &mir::lower::lower_type::LowerTypeError,
+    format: crate::cli::OutputFormat,
+) -> String {
+    render_lowering_error(
+        db,
+        workspace,
+        err,
+        format,
+        err.to_string(),
+        "`rk check` reads and checks the statement, and a build has no code for it yet",
+        None,
+    )
+    .unwrap_or_default()
+}
+
+/// A failure to lower, under the caret of the source it carries.
+fn render_lowering_error(
+    db: &RootDatabase,
+    workspace: &std::path::Path,
+    err: &mir::lower::lower_type::LowerTypeError,
+    format: crate::cli::OutputFormat,
+    message: String,
+    note: &str,
+    help: Option<String>,
+) -> Option<String> {
     use auto_lsp::lsp_types::DiagnosticSeverity;
 
     let (file, span) = err.location()?;
     let range = hir::denormalize(db, file, &span)?;
     let mut diagnostic = ide_diagnostic::diag()
         .range(range)
-        .message(format!("internal compiler error: {err}"))
+        .message(message)
         .severity(DiagnosticSeverity::ERROR)
         .source("codegen".to_string())
         .call();
-    diagnostic.with_note(
-        "the workspace passed `rk check`: this is a compiler bug or an unimplemented construct"
-            .to_string(),
-    );
-    diagnostic.with_help(format!("report it at {ISSUES_URL}"));
+    diagnostic.with_note(note.to_string());
+    if let Some(help) = help {
+        diagnostic.with_help(help);
+    }
 
     let mut buffer: Vec<u8> = Vec::new();
     DiagnosticReporter::new(db, workspace)
@@ -151,6 +191,13 @@ pub fn build_core_profile(
             ui::failure("compilation failed:", &message);
             return Err(format!("compilation failed: {message}\n"));
         }
+        // Read and checked, with no code for it yet: said as that.
+        Err(e) if e.is_not_compiled_yet() => {
+            let report = render_not_compiled_yet(db, workspace, &e, format);
+            let _ = std::io::stderr().write_all(report.as_bytes());
+            ui::failure("compilation failed:", e.to_string());
+            return Err(format!("{report}\ncompilation failed: {e}\n"));
+        }
         Err(e) => {
             // An ICE, not a user error (see `render_codegen_error`).
             return match render_codegen_error(db, workspace, &e, format) {
@@ -227,6 +274,11 @@ pub fn build_core_quiet(
         mir::lower::lower_module::lower_modules(db, &sem_indices).map_err(|e| {
             if let mir::lower::lower_type::LowerTypeError::MemoryTooLarge { .. } = e {
                 return format!("compilation failed: {e}\n");
+            }
+            if e.is_not_compiled_yet() {
+                let report =
+                    render_not_compiled_yet(db, workspace, &e, crate::cli::OutputFormat::Full);
+                return format!("{report}\ncompilation failed: {e}\n");
             }
             // Same ICE rendering as `build_core`, returned rather than printed.
             render_codegen_error(db, workspace, &e, crate::cli::OutputFormat::Full)

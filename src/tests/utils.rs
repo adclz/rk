@@ -241,9 +241,13 @@ fn assert_accepted_workspace_compiles(db: &RootDatabase) {
         return;
     }
     let indices: Vec<_> = files.iter().map(|file| semantic_index(db, *file)).collect();
-    let module = mir::lower::lower_module::lower_modules(db, &indices).unwrap_or_else(|e| {
-        panic!("`rk check` accepts this workspace, but it does not lower: {e}")
-    });
+    let module = match mir::lower::lower_module::lower_modules(db, &indices) {
+        Ok(module) => module,
+        // A statement that is read and checked, with no code for it yet:
+        // the build refuses it in those words (`cli/not_compiled.rs`).
+        Err(e) if e.is_not_compiled_yet() => return,
+        Err(e) => panic!("`rk check` accepts this workspace, but it does not lower: {e}"),
+    };
     let wasm = wasm_codegen::generate_wasm(db, &module).finish();
     if let Err(e) = wasm_codegen::validate(&wasm) {
         panic!("`rk check` accepts this workspace, but its module is invalid: {e}");

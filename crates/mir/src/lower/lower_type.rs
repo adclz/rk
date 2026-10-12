@@ -27,6 +27,12 @@ pub enum LowerTypeError {
     #[error("Type could not be resolved (Type::Never encountered)")]
     UnresolvedType,
 
+    /// A statement rk reads and checks, and has no code for yet. The
+    /// program's to rewrite, where any other failure to lower a checked
+    /// program is a bug of the compiler's: a build says it in those words.
+    #[error("{0} is not compiled yet")]
+    NotCompiledYet(&'static str),
+
     /// Two functions lowered to one symbol, so calls to one would reach the
     /// other. `naming` is meant to make this impossible.
     #[error("two functions lower to the symbol `{0}`")]
@@ -84,6 +90,16 @@ impl LowerTypeError {
     }
 
     /// The source location, if one was attached.
+    /// Whether this is a statement rk has no code for yet, wherever it
+    /// was found.
+    pub fn is_not_compiled_yet(&self) -> bool {
+        match self {
+            LowerTypeError::NotCompiledYet(_) => true,
+            LowerTypeError::Located { inner, .. } => inner.is_not_compiled_yet(),
+            _ => false,
+        }
+    }
+
     pub fn location(
         &self,
     ) -> Option<(

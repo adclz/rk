@@ -42,7 +42,13 @@ pub fn check(source: &str) -> Result<Verdict, Finding> {
 
     // `rk check` accepted it, so it must lower: a lowering error on a clean
     // source is what `rk compile` reports as an internal compiler error.
-    let mir = mir::lower::lower_module::lower_module(&db, index).map_err(|e| lowering(&e))?;
+    let mir = match mir::lower::lower_module::lower_module(&db, index) {
+        Ok(mir) => mir,
+        // A statement rk reads and checks and has no code for yet is
+        // refused by the build in those words: what the input deserved.
+        Err(e) if e.is_not_compiled_yet() => return Ok(Verdict::Rejected),
+        Err(e) => return Err(lowering(&e)),
+    };
 
     let debug = wasm_codegen::generate_wasm_profile(&db, &mir, Profile::Debug).finish();
     let release = wasm_codegen::generate_wasm_profile(&db, &mir, Profile::Release).finish();
