@@ -212,3 +212,93 @@ END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "endless-loop"), @r"");
 }
+
+/// A `__RAISE` leaves the loop, unless a `__CATCH` around it takes the
+/// exception: the loop then goes on. It leaves it again when it is the
+/// `__CATCH` that raises, and when the `__TRY` has only a `__FINALLY`.
+#[rstest]
+fn a_raise_a_catch_takes_does_not_leave_the_loop(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION test : INT
+VAR i : INT; x : INT; END_VAR
+    WHILE i < 10 DO
+        __TRY
+            __RAISE('caught');
+        __CATCH
+            x := x + 1;
+        __END_TRY;
+    END_WHILE;
+    WHILE i < 20 DO
+        __TRY
+            x := x + 1;
+        __CATCH
+            __RAISE('from the handler');
+        __END_TRY;
+    END_WHILE;
+    WHILE i < 30 DO
+        __TRY
+            __RAISE('not caught');
+        __FINALLY
+            x := x + 1;
+        __END_TRY;
+    END_WHILE;
+    test := x;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "endless-loop"), @r"
+    [L0126] Warning: loop that never ends
+       ,-[ file:///test0.st:4:11 ]
+       |
+     4 |     WHILE i < 10 DO
+       |           ^^^|^^
+       |              `---- the loop never changes 'i'
+       |
+       | Help: change 'i' in the loop, or leave it with EXIT
+       |
+       | Note 1: its condition never changes, so once the loop starts it never ends
+       |
+       | Note 2: lint rule: endless-loop
+    ---'
+    ");
+}
+
+/// The variable a `__CATCH` names is written: a loop whose condition reads
+/// it changes it. Not one whose `__CATCH` names another.
+#[rstest]
+fn a_catch_variable_is_written(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION test : INT
+VAR message : STRING; other : STRING; x : INT; END_VAR
+    WHILE message = '' DO
+        __TRY
+            x := x + 1;
+        __CATCH(message)
+            x := 0;
+        __END_TRY;
+    END_WHILE;
+    WHILE message = 'again' DO
+        __TRY
+            x := x + 1;
+        __CATCH(other)
+            x := 0;
+        __END_TRY;
+    END_WHILE;
+    test := x;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "endless-loop"), @r"
+    [L0126] Warning: loop that never ends
+        ,-[ file:///test0.st:11:11 ]
+        |
+     11 |     WHILE message = 'again' DO
+        |           ^^^^^^^^|^^^^^^^^
+        |                   `---------- the loop never changes 'message'
+        |
+        | Help: change 'message' in the loop, or leave it with EXIT
+        |
+        | Note 1: its condition never changes, so once the loop starts it never ends
+        |
+        | Note 2: lint rule: endless-loop
+    ----'
+    ");
+}

@@ -96,6 +96,9 @@ fn check_statements<'db>(
             } => {
                 check_statements(db, body, stmts, diagnostics);
                 if let Some(catch) = catch {
+                    if let Some(var) = catch.variable {
+                        check_assignment(db, body, var, diagnostics);
+                    }
                     check_statements(db, body, &catch.body, diagnostics);
                 }
                 if let Some(finally) = finally {

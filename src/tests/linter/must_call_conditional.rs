@@ -149,3 +149,46 @@ END_PROGRAM
         @r""
     );
 }
+
+/// A call in a `__TRY`'s body or its `__FINALLY` runs each time; one in
+/// its `__CATCH` runs only when the body raised.
+#[rstest]
+fn called_only_in_a_catch(mut with_db: RootDatabase) {
+    let source = r#"
+PROGRAM Main
+VAR
+    in_body : Delay;
+    in_catch : Delay;
+    in_finally : Delay;
+END_VAR
+    __TRY
+        in_body(start := TRUE);
+    __CATCH
+        in_catch(start := TRUE);
+    __FINALLY
+        in_finally(start := TRUE);
+    __END_TRY;
+END_PROGRAM
+"#;
+    assert_snapshot!(test_single_lint(&mut with_db, &[DELAY, source], "must-call-conditional"), @r"
+    [L0007] Warning: {must_call} instance called only in a branch
+        ,-[ file:///test1.st:11:9 ]
+        |
+     11 |         in_catch(start := TRUE);
+        |         ^^^^|^^^
+        |             `----- 'in_catch' is called only inside a __CATCH
+        |
+        |-[ file:///test0.st:2:1 ]
+        |
+      2 | {must_call}
+        | ^^^^^|^^^^^
+        |      `------- 'Delay' is marked {must_call} here
+        |
+        | Help: call 'in_catch' at every scan, outside the __CATCH, and pass the condition as an input
+        |
+        | Note 1: a scan that skips the call leaves 'in_catch' as it was
+        |
+        | Note 2: lint rule: must-call-conditional
+    ----'
+    ");
+}

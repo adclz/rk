@@ -152,3 +152,86 @@ fn multiple_statements_after_return(mut with_db: RootDatabase) {
     ----'
     ");
 }
+
+/// A `__TRY` ends its block when its body does and its `__CATCH` does
+/// too, or when its `__FINALLY` does. A `__CATCH` that runs on leaves the
+/// code after the `__TRY` alive, whatever the body does.
+#[rstest]
+fn the_code_after_a_try_no_path_leaves(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION both_return : INT
+    __TRY
+        RETURN;
+    __CATCH
+        RETURN;
+    __END_TRY;
+    both_return := 1;
+END_FUNCTION
+
+FUNCTION raised_with_no_catch : INT
+    __TRY
+        __RAISE('x');
+        raised_with_no_catch := 1;
+    __FINALLY
+        raised_with_no_catch := 2;
+    __END_TRY;
+    raised_with_no_catch := 3;
+END_FUNCTION
+
+FUNCTION finally_raises : INT
+    __TRY
+        finally_raises := 1;
+    __FINALLY
+        __RAISE('y');
+    __END_TRY;
+    finally_raises := 2;
+END_FUNCTION
+
+FUNCTION catch_runs_on : INT
+    __TRY
+        __RAISE('z');
+    __CATCH
+        catch_runs_on := 1;
+    __END_TRY;
+    catch_runs_on := 2;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "dead-code"), @r"
+    [L0101] Warning: unreachable code
+       ,-[ file:///test0.st:8:5 ]
+       |
+     8 |     both_return := 1;
+       |     ^^^^^^^^|^^^^^^^
+       |             `--------- unreachable statement
+       |
+       | Note: lint rule: dead-code
+    ---'
+    [L0101] Warning: unreachable code
+        ,-[ file:///test0.st:18:5 ]
+        |
+     18 |     raised_with_no_catch := 3;
+        |     ^^^^^^^^^^^^|^^^^^^^^^^^^
+        |                 `-------------- unreachable statement
+        |
+        | Note: lint rule: dead-code
+    ----'
+    [L0101] Warning: unreachable code
+        ,-[ file:///test0.st:14:9 ]
+        |
+     14 |         raised_with_no_catch := 1;
+        |         ^^^^^^^^^^^^|^^^^^^^^^^^^
+        |                     `-------------- unreachable statement
+        |
+        | Note: lint rule: dead-code
+    ----'
+    [L0101] Warning: unreachable code
+        ,-[ file:///test0.st:27:5 ]
+        |
+     27 |     finally_raises := 2;
+        |     ^^^^^^^^^|^^^^^^^^^
+        |              `----------- unreachable statement
+        |
+        | Note: lint rule: dead-code
+    ----'
+    ");
+}

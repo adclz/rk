@@ -263,3 +263,39 @@ END_FUNCTION_BLOCK
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "missing-return"), @r"");
 }
+
+/// A `__CATCH` that names the FUNCTION's result assigns it. One that
+/// names another variable does not.
+#[rstest]
+fn a_catch_that_names_the_result_assigns_it(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION describe : STRING
+VAR n : INT; END_VAR
+    __TRY
+        n := 1;
+    __CATCH(describe)
+        n := 2;
+    __END_TRY;
+END_FUNCTION
+
+FUNCTION silent : STRING
+VAR n : INT; other : STRING; END_VAR
+    __TRY
+        n := 1;
+    __CATCH(other)
+        n := 2;
+    __END_TRY;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "missing-return"), @r"
+    [L0114] Warning: missing return assignment
+        ,-[ file:///test0.st:11:10 ]
+        |
+     11 | FUNCTION silent : STRING
+        |          ^^^|^^
+        |             `---- FUNCTION 'silent' has a return type but never assigns a return value
+        |
+        | Note: lint rule: missing-return
+    ----'
+    ");
+}

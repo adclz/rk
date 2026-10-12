@@ -228,6 +228,9 @@ fn statement_writes<'db>(
             } => {
                 statement_writes(db, body, stmts, writes);
                 if let Some(catch) = catch {
+                    if let Some(var) = catch.variable {
+                        place_write(db, body, var, writes);
+                    }
                     statement_writes(db, body, &catch.body, writes);
                 }
                 if let Some(finally) = finally {
