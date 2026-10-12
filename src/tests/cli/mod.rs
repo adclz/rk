@@ -10,6 +10,7 @@ mod file_order;
 mod fmt;
 mod front_end;
 mod memory;
+mod release;
 mod report;
 mod stack_size;
 mod test_filter;

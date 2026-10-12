@@ -286,7 +286,7 @@ const WASM_FEATURES: &[&str] = &[
 
 /// Optimize for a RELEASE artifact: wasm-opt is mandatory and its failure
 /// is the build's failure (the lenient [`optimize_wasm`] serves
-/// `rk test -O`). The check trusts the output, not the exit status.
+/// `rk test -O`). It has run when it exited well and wrote a module.
 pub fn optimize_wasm_release(
     wasm_bytes: Vec<u8>,
     opt_level: &str,
@@ -297,25 +297,20 @@ pub fn optimize_wasm_release(
             "invalid release optimization level '{opt_level}' (valid: 0-4, s, z)"
         ));
     }
-    let original = wasm_bytes.clone();
-    let optimized = optimize_wasm(wasm_bytes, Some(opt_level), verbose);
-    // The lenient path signals every failure the same way: by returning the
-    // input unchanged. For a release that signal becomes an error...
-    if optimized == original {
-        return Err(
-            "wasm-opt did not produce an optimized module, and a release build requires one.
+    // The optimizer says whether it ran. Comparing its output with the
+    // module told nothing: at -O0 it hands a module with no library code
+    // back byte for byte, and that build was refused.
+    run_wasm_opt(&wasm_bytes, opt_level, verbose).map_err(|why| {
+        ui::warn(why);
+        "wasm-opt did not produce an optimized module, and a release build requires one.
                     Install Binaryen 119+ (CI pins 131) and ensure `wasm-opt` is on PATH."
-                .to_string(),
-        );
-    }
-    // ...and the output is verified as a module regardless of what the
-    // process claimed.
-    if !optimized.starts_with(b"\0asm") {
-        return Err("the optimizer's output is not a WebAssembly module".to_string());
-    }
-    Ok(optimized)
+            .to_string()
+    })
 }
 
+/// Optimize when it can: what could not be optimized is warned about and
+/// returned as it came, which is still a correct build. `rk test -O` uses
+/// it; a release build asks [`optimize_wasm_release`].
 pub fn optimize_wasm(wasm_bytes: Vec<u8>, opt_level: Option<&str>, verbose: bool) -> Vec<u8> {
     let Some(level) = opt_level else {
         return wasm_bytes;
@@ -326,11 +321,23 @@ pub fn optimize_wasm(wasm_bytes: Vec<u8>, opt_level: Option<&str>, verbose: bool
         ));
         return wasm_bytes;
     }
+    match run_wasm_opt(&wasm_bytes, level, verbose) {
+        Ok(optimized) => optimized,
+        Err(why) => {
+            ui::warn(why);
+            wasm_bytes
+        }
+    }
+}
+
+/// Run wasm-opt on a module at a level `rk compile -O` takes. `Err` is why
+/// there is no optimized module, in the words of a warning.
+fn run_wasm_opt(wasm_bytes: &[u8], level: &str, verbose: bool) -> Result<Vec<u8>, String> {
     let Some(wasm_opt) = crate::wasm_opt::find(verbose) else {
-        ui::warn(
-            "could not optimize: no wasm-opt available. The build is correct but NOT optimized.",
+        return Err(
+            "could not optimize: no wasm-opt available. The build is correct but NOT optimized."
+                .to_string(),
         );
-        return wasm_bytes;
     };
 
     if verbose {
@@ -347,16 +354,12 @@ pub fn optimize_wasm(wasm_bytes: Vec<u8>, opt_level: Option<&str>, verbose: bool
     // directory private to this invocation.
     let scratch = match tempfile::Builder::new().prefix("rk-wasm-opt-").tempdir() {
         Ok(dir) => dir,
-        Err(e) => {
-            ui::warn(format!("failed to create temp dir: {e}"));
-            return wasm_bytes;
-        }
+        Err(e) => return Err(format!("failed to create temp dir: {e}")),
     };
     let infile = scratch.path().join("in.wasm");
     let outfile = scratch.path().join("out.wasm");
-    if let Err(e) = std::fs::write(&infile, &wasm_bytes) {
-        ui::warn(format!("failed to write temp file: {e}"));
-        return wasm_bytes;
+    if let Err(e) = std::fs::write(&infile, wasm_bytes) {
+        return Err(format!("failed to write temp file: {e}"));
     }
 
     let mut cmd = std::process::Command::new(&wasm_opt);
@@ -383,17 +386,13 @@ pub fn optimize_wasm(wasm_bytes: Vec<u8>, opt_level: Option<&str>, verbose: bool
         Ok(out) => {
             // Report what the optimizer said.
             let stderr = String::from_utf8_lossy(&out.stderr);
-            ui::warn(format!(
+            return Err(format!(
                 "could not optimize: `wasm-opt -O{level}` failed: {}. The build is correct \
                  but NOT optimized.",
                 stderr.lines().next().unwrap_or("no output").trim()
             ));
-            return wasm_bytes;
         }
-        Err(e) => {
-            ui::warn(format!("could not run {}: {e}", wasm_opt.display()));
-            return wasm_bytes;
-        }
+        Err(e) => return Err(format!("could not run {}: {e}", wasm_opt.display())),
     }
 
     // Never ship what is not recognisably a wasm module: a partial output
@@ -401,21 +400,19 @@ pub fn optimize_wasm(wasm_bytes: Vec<u8>, opt_level: Option<&str>, verbose: bool
     let optimized = match std::fs::read(&outfile) {
         Ok(bytes) if bytes.starts_with(b"\0asm") => bytes,
         Ok(bytes) => {
-            ui::warn(format!(
+            return Err(format!(
                 "the optimizer produced {} bytes that are not a wasm module: the build stays \
                  unoptimized",
                 bytes.len()
             ));
-            return wasm_bytes;
         }
         Err(e) => {
-            ui::warn(format!(
+            return Err(format!(
                 "could not read the optimizer's output ({e}): the build stays unoptimized"
             ));
-            return wasm_bytes;
         }
     };
-    let optimized = preserve_load_bearing_sections(&wasm_bytes, optimized);
+    let optimized = preserve_load_bearing_sections(wasm_bytes, optimized);
 
     if verbose {
         let savings = original_size as f64 - optimized.len() as f64;
@@ -427,7 +424,7 @@ pub fn optimize_wasm(wasm_bytes: Vec<u8>, opt_level: Option<&str>, verbose: bool
             pct
         ));
     }
-    optimized
+    Ok(optimized)
 }
 
 /// wasm-opt strips custom sections, so re-attach the load-bearing ones:
