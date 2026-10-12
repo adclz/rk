@@ -763,3 +763,74 @@ END_PROGRAM
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
+
+/// A typed string literal with no string after its type name, which is
+/// what stands in a file while `CHAR#'a'` is being typed. The parser
+/// supplies the missing token, which has no text, and the decoder sliced
+/// the quotes off that: `rk check` panicked. The syntax error says what is
+/// missing, and a CHAR still has to be one character.
+#[rstest]
+fn invalid_typed_string_literal_without_its_string(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION F : INT
+VAR c : CHAR; s : STRING; END_VAR
+    c := CHAR#;
+    s := STRING#;
+    CASE c OF CHAR#'a'..CHAR#:'c': F := 10; END_CASE;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0313] Error: CHAR literal of the wrong length
+       ,-[ file:///test0.st:4:10 ]
+       |
+     4 |     c := CHAR#;
+       |          ^^|^^
+       |            `---- the CHAR literal has 0 characters
+       |
+       | Note: CHAR is one character, written 'a'
+    ---'
+    [E0313] Error: CHAR literal of the wrong length
+       ,-[ file:///test0.st:6:25 ]
+       |
+     6 |     CASE c OF CHAR#'a'..CHAR#:'c': F := 10; END_CASE;
+       |                         ^^|^^
+       |                           `---- the CHAR literal has 0 characters
+       |
+       | Note: CHAR is one character, written 'a'
+    ---'
+    [E1205] Error: CASE label not constant
+       ,-[ file:///test0.st:6:25 ]
+       |
+     6 |     CASE c OF CHAR#'a'..CHAR#:'c': F := 10; END_CASE;
+       |                         ^^|^^
+       |                           `---- the bound is not an integer constant
+    ---'
+    [E0002] Error: missing element
+       ,-[ file:///test0.st:4:15 ]
+       |
+     4 |     c := CHAR#;
+       |               |
+       |               `- missing 'hex_int'
+       |               |
+       |               `- add missing hex_int here
+    ---'
+    [E0002] Error: missing element
+       ,-[ file:///test0.st:5:17 ]
+       |
+     5 |     s := STRING#;
+       |                 |
+       |                 `- missing 'hex_int'
+       |                 |
+       |                 `- add missing hex_int here
+    ---'
+    [E0002] Error: missing element
+       ,-[ file:///test0.st:6:30 ]
+       |
+     6 |     CASE c OF CHAR#'a'..CHAR#:'c': F := 10; END_CASE;
+       |                              |
+       |                              `- missing 'hex_int'
+       |                              |
+       |                              `- add missing hex_int here
+    ---'
+    ");
+}
