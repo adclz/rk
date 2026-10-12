@@ -93,6 +93,19 @@ fn collect_written_inputs<'db>(
             | StmtKind::Repeat { body: stmts, .. } => {
                 collect_written_inputs(db, body, stmts, written);
             }
+            StmtKind::Try {
+                body: stmts,
+                catch,
+                finally,
+            } => {
+                collect_written_inputs(db, body, stmts, written);
+                if let Some(catch) = catch {
+                    collect_written_inputs(db, body, &catch.body, written);
+                }
+                if let Some(finally) = finally {
+                    collect_written_inputs(db, body, finally, written);
+                }
+            }
             _ => {}
         }
     }

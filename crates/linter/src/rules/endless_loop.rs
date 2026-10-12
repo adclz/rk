@@ -288,6 +288,21 @@ fn statements<'db>(
                 expression(db, body, condition, effects);
                 statements(db, body, stmts, false, effects);
             }
+            // The statements of a __TRY are at the loop's level: an EXIT in
+            // its body leaves the loop.
+            StmtKind::Try {
+                body: stmts,
+                catch,
+                finally,
+            } => {
+                statements(db, body, stmts, at_loop_level, effects);
+                if let Some(catch) = catch {
+                    statements(db, body, &catch.body, at_loop_level, effects);
+                }
+                if let Some(finally) = finally {
+                    statements(db, body, finally, at_loop_level, effects);
+                }
+            }
             StmtKind::Exit if at_loop_level => effects.exits = true,
             StmtKind::Return | StmtKind::Raise { .. } => effects.exits = true,
             StmtKind::WasmPragma(_) => effects.writes_anything = true,

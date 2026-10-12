@@ -221,6 +221,19 @@ fn statement_writes<'db>(
             StmtKind::While { body: stmts, .. } | StmtKind::Repeat { body: stmts, .. } => {
                 statement_writes(db, body, stmts, writes)
             }
+            StmtKind::Try {
+                body: stmts,
+                catch,
+                finally,
+            } => {
+                statement_writes(db, body, stmts, writes);
+                if let Some(catch) = catch {
+                    statement_writes(db, body, &catch.body, writes);
+                }
+                if let Some(finally) = finally {
+                    statement_writes(db, body, finally, writes);
+                }
+            }
             _ => {}
         }
     }

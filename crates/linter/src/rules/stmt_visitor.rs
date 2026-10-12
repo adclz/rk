@@ -559,6 +559,30 @@ fn visit_statements<'db>(
                     return_assigned,
                 );
             }
+            StmtKind::Try {
+                body: stmts,
+                catch,
+                finally,
+            } => {
+                let bodies = [
+                    Some(stmts),
+                    catch.as_ref().map(|catch| &catch.body),
+                    finally.as_ref(),
+                ];
+                for stmts in bodies.into_iter().flatten() {
+                    visit_statements(
+                        db,
+                        body,
+                        ctx,
+                        scope,
+                        stmts,
+                        diagnostics,
+                        assigned_vars,
+                        active_loop_vars,
+                        return_assigned,
+                    );
+                }
+            }
             StmtKind::Case {
                 condition,
                 cases,
