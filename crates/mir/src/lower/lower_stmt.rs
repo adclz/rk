@@ -436,6 +436,9 @@ fn lower_stmt<'db>(
             Ok(vec![MirStmt::Raise { message: mir_msg }])
         }
 
+        // Read and checked, not compiled yet.
+        StmtKind::Try { .. } => Err(LowerTypeError::UnsupportedType("a __TRY".to_string())),
+
         StmtKind::WasmPragma(decl) => Ok(super::lower_wasm::lower_wasm_pragma(ctx, stmt, decl)?
             .into_iter()
             .collect()),
