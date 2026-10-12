@@ -1293,3 +1293,77 @@ END_PROGRAM
     size = 48, offset = 0
     ");
 }
+
+/// A cycle of aliases has no size, and hover says the declaration without
+/// one. Asked for the size, the layout went round the cycle until the
+/// stack ran out, and the language server with it.
+#[rstest]
+pub fn hover_on_a_cyclic_alias(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE A : A; END_TYPE
+TYPE B : C; C : B; END_TYPE
+TYPE Holder : STRUCT a : A; n : INT; END_STRUCT; END_TYPE
+
+PROGRAM Main
+VAR a : A; b : B; h : Holder; END_VAR
+END_PROGRAM
+"#;
+    assert_snapshot!(collect_hovers(&mut with_db, source, |db, node| {
+        let hover = match node {
+            HirNode::PouDecl(pou) => pou.hover(db, pou.get_name_span(db).start_byte)?,
+            HirNode::Program(program) => {
+                program.hover(db, program.get_name_span(db).start_byte)?
+            }
+            HirNode::VariableDecl(var) => var.hover(db, var.get_name_span(db).start_byte)?,
+            HirNode::StructElement(e) => e.hover(db, e.get_name_span(db).start_byte)?,
+            _ => return None,
+        };
+        hover_markup(hover.contents)
+    }), @r"
+    ```iecst
+    TYPE A: A: A
+    ```
+
+    ```iecst
+    TYPE B: C: B
+    ```
+
+    ```iecst
+    TYPE C: B: C
+    ```
+
+    ```iecst
+    TYPE Holder: STRUCT 
+        a: A,
+        n: INT
+
+    ```
+
+    ```iecst
+    a: A
+    ```
+
+    ```iecst
+    n: INT
+    ```
+
+    ---
+    size = 4
+
+    ```iecst
+    PROGRAM Main
+    ```
+
+    ```iecst
+    (VAR) a: A
+    ```
+
+    ```iecst
+    (VAR) b: B
+    ```
+
+    ```iecst
+    (VAR) h: Holder
+    ```
+    ");
+}

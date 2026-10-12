@@ -223,6 +223,12 @@ impl<'db> Type<'db> {
     ) -> Option<(Type<'db>, Option<MultibitsPart>)> {
         match self {
             Type::Variable((v, multibits)) => Some((v.spec(db).infer(db), *multibits)),
+            // A name that is its own alias, `TYPE A : B; B : A;`, peels to
+            // itself for ever: the walks below recurse on what this
+            // answers. It has no identity (`normalize` says `Never`), so
+            // the step is taken on `Never`, which reports nothing more
+            // than the cycle already did.
+            Type::DataType(_) if self.normalize(db).is_never() => Some((Type::Never, None)),
             Type::DataType(dt) => Some((dt.spec(db).infer(db), None)),
             Type::StructElement(st) => Some((st.spec(db).infer(db), None)),
             _ => None,
@@ -852,6 +858,11 @@ impl<'db> Type<'db> {
         // Peel through Variable / DataType / StructElement wrappers first.
         if let Some((inner, _)) = self.peel_to_spec(db) {
             return inner.walk_init_expr(db, step, place, ctx);
+        }
+        // What is already reported has no initializer to check: a step
+        // through `Never` says nothing, here as in a path.
+        if self.is_never() {
+            return;
         }
 
         let expr = step.get_expr();

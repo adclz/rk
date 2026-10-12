@@ -316,3 +316,73 @@ END_FUNCTION
     ---'
     ");
 }
+
+/// The same cycle reached through an aggregate, an instance or a path: a
+/// STRUCT field, an ARRAY element, a variable of a PROGRAM or of a
+/// FUNCTION_BLOCK, a member, a subscript, a dereference, a call and an
+/// initializer. A FUNCTION's local was already safe, and each of these
+/// took `rk check` down with the stack: the layout went from the name to
+/// its spec and back, and so did the walk of a path. The cycle is what is
+/// reported, once, where it is declared.
+#[rstest]
+fn a_cyclic_alias_is_reported_once_wherever_it_is_used(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE A : A; END_TYPE
+TYPE B : C; C : B; END_TYPE
+
+TYPE
+    Holder : STRUCT
+        a : A;
+        b : B;
+    END_STRUCT;
+    Row : ARRAY[1..3] OF A;
+END_TYPE
+
+FUNCTION_BLOCK Block
+VAR a : A; b : B; END_VAR
+END_FUNCTION_BLOCK
+
+PROGRAM Main
+VAR a : A; b : B; h : Holder; r : Row; k : Block; i : INT; END_VAR
+    i := a.x;
+    i := b.x.y;
+    i := a[1];
+    i := b^;
+    i := h.a.x;
+    i := r[1].x;
+    i := k.a.x;
+    a.x := 1;
+    a();
+END_PROGRAM
+
+FUNCTION f : INT
+VAR a : A := (x := 1); b : B := [1, 2]; END_VAR
+    f := a.x + b[1];
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1301] Error: type contains itself
+       ,-[ file:///test0.st:2:6 ]
+       |
+     2 | TYPE A : A; END_TYPE
+       |      |   |
+       |      `------ type 'A' contains itself
+       |          |
+       |          `-- 'A' references itself here
+    ---'
+    [E1302] Error: types contain each other
+       ,-[ file:///test0.st:3:6 ]
+       |
+     3 | TYPE B : C; C : B; END_TYPE
+       |      |          |
+       |      `------------- type 'B' is recursive
+       |                 |
+       |                 `-- the cycle passes here
+       |
+       | Note: cycle goes
+       |       -> B
+       |       -> C
+       |       ... and back to B
+    ---'
+    ");
+}
