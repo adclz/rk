@@ -81,7 +81,7 @@ pub fn check(module: &[u8]) -> Result<(), Finding> {
     }
     for p in info.list_pointers().iter().take(LIMIT) {
         let _ = info.pointer(&p.path);
-        for tail in ["", "^", "^.x", "^[0]", "^^"] {
+        for tail in ["", "^", "^.x", "^[0]", "^^", "[0]", "[0, 0]"] {
             touch(&info, &format!("{}{tail}", p.path), live);
         }
         let _ = info.variable_at(p.address);
@@ -218,11 +218,24 @@ pub(crate) fn audit(info: &DebugInfo, memory: &[u8]) -> Result<(), Finding> {
         // the pointer itself, until `^`.
         match (p.by_ref, info.follow(&p.path, live)) {
             (false, Some(Place::Pointer(_) | Place::Null { .. })) => {}
-            (true, Some(Place::Value(_) | Place::Aggregate { .. } | Place::Null { .. })) => {}
-            // With no type of its own, an `ARRAY[*]`, it reads as the array
-            // it is bound to, or stops at the pointer when the tables
-            // describe none there.
-            (true, Some(Place::Pointer(_))) if p.target.is_none() => {}
+            (
+                true,
+                Some(
+                    Place::Value(_)
+                    | Place::Aggregate { .. }
+                    | Place::Array(_)
+                    | Place::Null { .. },
+                ),
+            ) => {}
+            // A VAR_IN_OUT the table gives no type stops at the pointer.
+            // Not one that is an `ARRAY[*]`, which reads as the array of its
+            // rank and element that starts at the address it holds. That
+            // one stops only where the module's tables describe no memory,
+            // at an array among a function's locals: where they name a
+            // variable, the array is one they describe, and it must have
+            // been found.
+            (true, Some(Place::Pointer(held)))
+                if p.target.is_none() && (p.conformand.is_none() || held.variable.is_none()) => {}
             (_, other) => return Err(bad(format!("pointer `{}` follows to {other:?}", p.path))),
         }
         if p.target.is_some() && info.follow(&format!("{}^", p.path), live).is_none() {

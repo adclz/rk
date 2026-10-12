@@ -42,9 +42,17 @@ A `VAR_IN_OUT` reads as the variable it is bound to.
 `P1.m.speed` and `P1.m.speed^` are the same.
 
 An `ARRAY[*]` member keeps the address of the array it is bound to, and no bounds.
-It reads as the array that starts at that address, with that array's bounds.
 Two arrays can start at one address: a matrix and its first row, or an array of STRUCTs and the array its first element begins with.
-The path then stops at the pointer, as it does where no described array starts.
+So `debug-symbols` gives the member its rank and its element.
+It reads as the array of that rank and element that starts at the address:
+
+- **A whole array.**
+- **The last dimensions of one**, as `mat[0]` is a row of `mat`.
+- **An array in an element or a member**, as `recs[2].hist`.
+
+The result carries that array's bounds, which list its elements.
+An array among the locals of a function is not searched.
+The path stops at the pointer there.
 
 Following a pointer needs the memory of the running module.
 `DebugInfo::follow` takes a reader of it.

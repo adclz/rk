@@ -496,10 +496,22 @@ fn instance_struct<'db>(
             // from VAR_CONFIG. An `ARRAY[*]` points at the array each copy of
             // the body is specialized for, and a block two VAR_IN_OUTs hold
             // through each other at what is typed where it is dereferenced,
-            // and named for the debug tables.
+            // and named for the debug tables. Those are told the rank and
+            // the element of the `ARRAY[*]`, all the declaration says.
             Part::Address => {
                 let pointee = match var.conformand(db) {
-                    Some(_) => MirType::Void,
+                    Some(conformand) => match conformand.of_type(db).map(|of| lower_spec(db, of)) {
+                        Some(Ok(element)) => {
+                            MirType::RefTarget(crate::types::MirRefTarget::Conformand {
+                                rank: conformand.rank(db) as u32,
+                                element: Box::new(element),
+                            })
+                        }
+                        // An element lowering has no type for, an
+                        // instance of the block being laid out: the tables
+                        // are left the address alone.
+                        _ => MirType::Void,
+                    },
                     None => match lower_spec(db, var.spec(db)) {
                         Err(LowerTypeError::InstanceCycle(name)) => {
                             MirType::RefTarget(crate::types::MirRefTarget::Enclosing(Ident::new(

@@ -7,6 +7,9 @@
 //! pushes, whose start a wasm local holds. A debugger stopped in one reads
 //! that local and places the locals from it: here with wasmtime's debug
 //! API, stopped at a raise four calls deep, as a debug adapter would be.
+//!
+//! An `ARRAY[*]` parameter is read the same way, stopped in the copy of
+//! the function a call runs: its bounds are that copy's.
 
 use crate::tests::codegen::{compile_to_wasm, with_db};
 use debug_format::{DebugInfo, Live, Place, VarValue};
@@ -22,6 +25,17 @@ struct Captured {
     frames: Vec<(VarValue, VarValue, VarValue)>,
     /// What the second frame's `link` holds.
     link_of_second: Option<Link>,
+    /// Per frame with an `ARRAY[*]` parameter `values`, innermost first.
+    copies: Vec<Copy>,
+}
+
+/// What `values` reads as in the frame of one copy: the copy's name, the
+/// bounds the frame's table gives the array, and its elements -2, 0 and 2.
+#[derive(Debug, PartialEq)]
+struct Copy {
+    function: String,
+    bounds: Vec<(i64, i64)>,
+    elements: [Option<VarValue>; 3],
 }
 
 /// The address a `link` holds, whether a static table names it, the
@@ -146,6 +160,117 @@ impl DebugHandler for AtRaise {
     }
 }
 
+/// Stopped at a raise, reads `values` in every frame that has one.
+#[derive(Clone)]
+struct AtRaiseInACopy(Arc<DebugInfo>);
+
+impl DebugHandler for AtRaiseInACopy {
+    type Data = Captured;
+
+    async fn handle(&self, mut store: StoreContextMut<'_, Captured>, event: DebugEvent<'_>) {
+        if !matches!(event, DebugEvent::UncaughtExceptionThrown(_)) {
+            return;
+        }
+        let info = &self.0;
+        let mut frames = Vec::new();
+        let exits: Vec<_> = store.debug_exit_frames().collect();
+        for exit in exits {
+            let mut frame = Some(exit);
+            while let Some(handle) = frame {
+                if let Ok(Some((index, _))) = handle.wasm_function_index_and_pc(&mut store) {
+                    let index = index.as_u32();
+                    let takes_values = info
+                        .frame_locals(index)
+                        .is_some_and(|t| t.local_pointers.iter().any(|p| p.name == "values"));
+                    if takes_values {
+                        let mut locals = Vec::new();
+                        for i in 0..handle.num_locals(&mut store).unwrap_or(0) {
+                            if let Ok(wasmtime::Val::I32(v)) = handle.local(&mut store, i) {
+                                locals.push((i, v as u32));
+                            }
+                        }
+                        frames.push((index, locals));
+                    }
+                }
+                frame = handle.parent(&mut store).ok().flatten();
+            }
+        }
+        let memory = store.data().memory.expect("the memory");
+        let bytes = memory.data(&store).to_vec();
+        let mut copies = Vec::new();
+        for (index, locals) in frames {
+            let live = &mut Frame {
+                memory: &bytes,
+                locals,
+            };
+            // The array itself: its place carries the type the copy gives
+            // it, where a debugger reads the bounds to list the elements.
+            let bounds = match info.follow_local(index, "values", None, live) {
+                Some(Place::Aggregate { ty, .. }) => match info.local_type(ty) {
+                    Some(debug_format::TypeDesc::Array { dimensions, .. }) => dimensions.clone(),
+                    other => panic!("not an array: {other:?}"),
+                },
+                other => panic!("not an aggregate: {other:?}"),
+            };
+            let elements = [-2, 0, 2].map(|at| {
+                match info.follow_local(index, &format!("values[{at}]"), None, live) {
+                    Some(Place::Value(loc)) => {
+                        Some(loc.decode(&live.read(loc.address, loc.size).unwrap()))
+                    }
+                    None => None,
+                    other => panic!("not a value: {other:?}"),
+                }
+            });
+            copies.push(Copy {
+                function: info.function_name(index).unwrap_or_default().to_string(),
+                bounds,
+                elements,
+            });
+        }
+        store.data_mut().copies = copies;
+    }
+}
+
+/// A store with the memory `wasm` imports and `handler` called on its debug
+/// events, a linker with that memory defined, and the module.
+fn debugged(
+    wasm: &[u8],
+    handler: impl DebugHandler<Data = Captured>,
+) -> (
+    wasmtime::Store<Captured>,
+    wasmtime::Linker<Captured>,
+    wasmtime::Module,
+) {
+    let mut config = wasmtime::Config::new();
+    config.wasm_exceptions(true);
+    config.guest_debug(true);
+    let engine = wasmtime::Engine::new(&config).expect("engine");
+    let module = wasmtime::Module::new(&engine, wasm).expect("module");
+    let mut store = wasmtime::Store::new(&engine, Captured::default());
+    store.set_debug_handler(handler);
+    let min_pages = module
+        .imports()
+        .find_map(|i| match i.ty() {
+            wasmtime::ExternType::Memory(mt) => Some(mt.minimum()),
+            _ => None,
+        })
+        .expect("an imported memory");
+    let memory = Memory::new(
+        &mut store,
+        wasmtime::MemoryType::new(min_pages as u32, None),
+    )
+    .expect("memory");
+    store.data_mut().memory = Some(memory);
+    let mut linker = wasmtime::Linker::new(&engine);
+    linker
+        .define(&store, "env", "memory", memory)
+        .expect("define");
+    linker
+        .define_unknown_imports_as_traps(&module)
+        .expect("stubs");
+    (store, linker, module)
+}
+
 /// Drive a future that never waits on anything outside itself.
 fn block_on<F: std::future::Future>(future: F) -> F::Output {
     let mut future = std::pin::pin!(future);
@@ -187,33 +312,7 @@ fn a_recursive_call_s_locals_are_read_in_its_frame(mut with_db: db::RootDatabase
     let info = Arc::new(DebugInfo::from_wasm(&wasm));
     assert!(info.problems().is_empty(), "{:?}", info.problems());
 
-    let mut config = wasmtime::Config::new();
-    config.wasm_exceptions(true);
-    config.guest_debug(true);
-    let engine = wasmtime::Engine::new(&config).expect("engine");
-    let module = wasmtime::Module::new(&engine, &wasm).expect("module");
-    let mut store = wasmtime::Store::new(&engine, Captured::default());
-    store.set_debug_handler(AtRaise(info.clone()));
-    let min_pages = module
-        .imports()
-        .find_map(|i| match i.ty() {
-            wasmtime::ExternType::Memory(mt) => Some(mt.minimum()),
-            _ => None,
-        })
-        .expect("an imported memory");
-    let memory = Memory::new(
-        &mut store,
-        wasmtime::MemoryType::new(min_pages as u32, None),
-    )
-    .expect("memory");
-    store.data_mut().memory = Some(memory);
-    let mut linker = wasmtime::Linker::new(&engine);
-    linker
-        .define(&store, "env", "memory", memory)
-        .expect("define");
-    linker
-        .define_unknown_imports_as_traps(&module)
-        .expect("stubs");
+    let (mut store, linker, module) = debugged(&wasm, AtRaise(info.clone()));
     let frames = block_on(async {
         let instance = linker
             .instantiate_async(&mut store, &module)
@@ -256,4 +355,67 @@ fn a_recursive_call_s_locals_are_read_in_its_frame(mut with_db: db::RootDatabase
         })
         .collect();
     assert_eq!(frames, expected, "innermost first, each call's own");
+}
+
+/// An `ARRAY[*]` parameter is a pointer in a wasm local, and each call runs
+/// the copy of the function compiled for the array it binds: the frame's
+/// table gives the pointer that array's type. Stopped two copies deep, each
+/// frame reads its own array within its own bounds, `Outer`'s copy the
+/// caller's `[0..2]` and `Last`'s the `[-2..2]` it was handed.
+#[rstest]
+fn a_conformand_parameter_is_read_with_the_bounds_of_its_copy(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION Last : INT
+        VAR_IN_OUT values : ARRAY[*] OF INT; END_VAR
+            Last := values[0];
+            __RAISE('here');
+        END_FUNCTION
+
+        FUNCTION Outer : INT
+        VAR_IN_OUT values : ARRAY[*] OF INT; END_VAR
+        VAR around : ARRAY[-2..2] OF INT := [100, 200, 300, 400, 500]; END_VAR
+            Outer := Last(around) + values[0];
+        END_FUNCTION
+
+        FUNCTION run : INT
+        VAR three : ARRAY[0..2] OF INT := [1, 2, 3]; END_VAR
+            run := Outer(three);
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let info = Arc::new(DebugInfo::from_wasm(&wasm));
+    assert!(info.problems().is_empty(), "{:?}", info.problems());
+
+    let (mut store, linker, module) = debugged(&wasm, AtRaiseInACopy(info.clone()));
+    let copies = block_on(async {
+        let instance = linker
+            .instantiate_async(&mut store, &module)
+            .await
+            .expect("instantiate");
+        let run = instance
+            .get_typed_func::<(), i32>(&mut store, "run")
+            .expect("run is exported");
+        run.call_async(&mut store, ())
+            .await
+            .expect_err("the innermost call raises");
+        std::mem::take(&mut store.data_mut().copies)
+    });
+
+    let int = |v: i16| Some(VarValue::I16(v));
+    assert_eq!(
+        copies,
+        [
+            Copy {
+                function: "Last$[-2..2]".to_string(),
+                bounds: vec![(-2, 2)],
+                elements: [int(100), int(300), int(500)],
+            },
+            Copy {
+                function: "Outer$[0..2]".to_string(),
+                bounds: vec![(0, 2)],
+                elements: [None, int(1), int(3)],
+            },
+        ],
+        "innermost first"
+    );
 }
