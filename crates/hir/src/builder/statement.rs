@@ -341,30 +341,32 @@ impl<'db> Parse<'db> for ast::generated::Stmt {
             StmtType::TryStmt(try_stmt) => {
                 type Clause = ast::generated::CatchClause_FinallyClause;
                 let body = stmt_list(sema, try_stmt.body.as_ref())?;
-                // The first __CATCH and the first __FINALLY are the
-                // statement's. Another of either is reported and left
-                // unread, and a __CATCH after the __FINALLY is reported and
-                // read: it is the one handler there is.
+                // A __TRY has one __CATCH and one __FINALLY. Another of
+                // either is reported, and its statements are read as the end
+                // of the first's, which is what the report asks to be
+                // written: they are checked like any other. A __CATCH after
+                // the __FINALLY is reported and is the one handler there is.
                 let mut catch: Option<(Catch<'db>, tree_sitter::Range)> = None;
                 let mut finally: Option<(Vec<Stmt<'db>>, tree_sitter::Range)> = None;
                 for clause in &try_stmt.clause {
                     let (span, first) = match clause.cast(sema.ast) {
                         Clause::CatchClause(clause) => {
                             let span = clause.get_range().to_owned();
-                            match (&catch, &finally) {
-                                (Some((_, first)), _) => (span, Some(*first)),
-                                (None, after) => {
-                                    if after.is_some() {
+                            let read =
+                                catch_clause(sema, clause.variable.as_ref(), clause.body.as_ref())?;
+                            match &mut catch {
+                                Some((kept, first)) => {
+                                    kept.variable = kept.variable.or(read.variable);
+                                    kept.body.extend(read.body);
+                                    (span, Some(*first))
+                                }
+                                None => {
+                                    if finally.is_some() {
                                         sema.errors.push(
                                             ControlFlowError::CatchAfterFinally { span }
                                                 .to_diagnostic(sema.db, sema.file),
                                         );
                                     }
-                                    let read = catch_clause(
-                                        sema,
-                                        clause.variable.as_ref(),
-                                        clause.body.as_ref(),
-                                    )?;
                                     catch = Some((read, span));
                                     (span, None)
                                 }
@@ -372,10 +374,13 @@ impl<'db> Parse<'db> for ast::generated::Stmt {
                         }
                         Clause::FinallyClause(clause) => {
                             let span = clause.get_range().to_owned();
-                            match &finally {
-                                Some((_, first)) => (span, Some(*first)),
+                            let read = stmt_list(sema, clause.body.as_ref())?;
+                            match &mut finally {
+                                Some((kept, first)) => {
+                                    kept.extend(read);
+                                    (span, Some(*first))
+                                }
                                 None => {
-                                    let read = stmt_list(sema, clause.body.as_ref())?;
                                     finally = Some((read, span));
                                     (span, None)
                                 }
