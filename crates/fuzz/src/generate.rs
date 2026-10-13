@@ -63,11 +63,12 @@
 //!   member. A FUNCTION writes part of its own result after assigning it.
 //!   The evaluator works on the two's-complement bits of the place's width.
 //!
-//! - `__TRY … __CATCH(e) … __END_TRY`, the body raising a literal message
-//!   after some statements: the ones after the raise are left out, the
-//!   message is cut to the capacity of the STRING the `__CATCH` names, when
-//!   it names one, and the handler runs. A jump out of the body skips the
-//!   raise.
+//! - `__TRY … __CATCH(e) … __FINALLY … __END_TRY`, the body raising a
+//!   literal message after some statements: the ones after the raise are
+//!   left out, the message is cut to the capacity of the STRING the
+//!   `__CATCH` names, when it names one, and the handler runs. A jump out
+//!   of the body skips the raise and the handler. The `__FINALLY`, when
+//!   there is one, runs last either way, and holds no jump.
 //!
 //! Nothing may stop the module: an integer divisor is a literal other than
 //! 0 and -1 (`DINT#-2147483648 / -1` traps), an index is wrapped into its
@@ -353,6 +354,7 @@ struct Try {
     /// The STRING variable of the frame the `__CATCH` names, when it does.
     variable: Option<usize>,
     handler: Vec<Stmt>,
+    finally: Option<Vec<Stmt>>,
 }
 
 /// An integer place, its type and a slice offset of it, in widths.
@@ -1442,11 +1444,18 @@ impl Generator<'_> {
                         false => Some(strings[self.choices.below(strings.len())]),
                     };
                     let handler = nested(self);
+                    // No jump in a __FINALLY (E1210): neither a loop's nor a
+                    // RETURN, whatever the __TRY is in.
+                    let finally = match self.choices.percent(50) {
+                        true => Some(self.block(depth - 1, readable, free, false, false)),
+                        false => None,
+                    };
                     Stmt::Try(Try {
                         body,
                         message,
                         variable,
                         handler,
+                        finally,
                     })
                 }
                 _ => match self.assign(readable) {
@@ -3314,6 +3323,10 @@ impl Names<'_> {
                         }
                     }
                     self.block(out, &t.handler, level + 1);
+                    if let Some(finally) = &t.finally {
+                        let _ = writeln!(out, "{pad}__FINALLY");
+                        self.block(out, finally, level + 1);
+                    }
                     let _ = writeln!(out, "{pad}__END_TRY;");
                 }
             }
@@ -3733,15 +3746,20 @@ fn run_block(block: &[Stmt], st: &mut State, tys: &[Ty], d: &Decls) -> Flow {
             Stmt::Continue => Flow::Continue,
             Stmt::Return => Flow::Return,
             Stmt::Try(t) => {
-                // The body runs to its raise, unless it jumps out first.
-                let flow = run_block(&t.body, st, tys, d);
-                if !matches!(flow, Flow::Next) {
-                    return flow;
+                // The body runs to its raise, unless it jumps out first; the
+                // handler then. The __FINALLY runs either way, and jumps
+                // nowhere itself.
+                let mut flow = run_block(&t.body, st, tys, d);
+                if matches!(flow, Flow::Next) {
+                    if let Some(v) = t.variable {
+                        write(&Place::Var(v), Val::Str(t.message.clone()), st, tys, d);
+                    }
+                    flow = run_block(&t.handler, st, tys, d);
                 }
-                if let Some(v) = t.variable {
-                    write(&Place::Var(v), Val::Str(t.message.clone()), st, tys, d);
+                if let Some(finally) = &t.finally {
+                    run_block(finally, st, tys, d);
                 }
-                run_block(&t.handler, st, tys, d)
+                flow
             }
         };
         if !matches!(flow, Flow::Next) {
