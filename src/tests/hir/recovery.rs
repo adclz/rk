@@ -413,17 +413,6 @@ END_FUNCTION_BLOCK
         "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0803] Error: unknown input parameter
-        ,-[ file:///test0.st:11:5 ]
-        |
-     11 |     fn(param := 0);
-        |        ^^|^^
-        |          `---- unknown input parameter 'param'
-        |
-        | Note: 'fn' has parameters with similar names:
-        |       - param1
-        |       - param2
-    ----'
     [E0802] Error: missing required parameter
         ,-[ file:///test0.st:11:2 ]
         |
@@ -439,6 +428,17 @@ END_FUNCTION_BLOCK
         |      `-- call to 'fn' is missing 2 required parameters: 'param1', 'param2'
         |
         | Note: a FUNCTION or METHOD call supplies every VAR_INPUT without a default
+    ----'
+    [E0803] Error: unknown input parameter
+        ,-[ file:///test0.st:11:5 ]
+        |
+     11 |     fn(param := 0);
+        |        ^^|^^
+        |          `---- unknown input parameter 'param'
+        |
+        | Note: 'fn' has parameters with similar names:
+        |       - param1
+        |       - param2
     ----'
     ");
 }

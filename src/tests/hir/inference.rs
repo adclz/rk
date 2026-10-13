@@ -50,17 +50,6 @@ FUNCTION fn1
 END_FUNCTION"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0305] Error: operator not supported by the type
-       ,-[ file:///test0.st:7:5 ]
-       |
-     4 |        test: BOOL;
-       |        ^^|^
-       |          `--- 'test' is declared here
-       |
-     7 |     IF 0.0 + test = 6 THEN
-       |        ^^^^^|^^^^
-       |             `------ operator '+' cannot be applied to type 'BOOL'
-    ---'
     [E0308] Error: literal of the wrong kind
        ,-[ file:///test0.st:7:5 ]
        |
@@ -71,6 +60,17 @@ END_FUNCTION"#;
        |                `--- 'BOOL' is expected due to this
        |
        | Note: BOOL is TRUE or FALSE
+    ---'
+    [E0305] Error: operator not supported by the type
+       ,-[ file:///test0.st:7:5 ]
+       |
+     4 |        test: BOOL;
+       |        ^^|^
+       |          `--- 'test' is declared here
+       |
+     7 |     IF 0.0 + test = 6 THEN
+       |        ^^^^^|^^^^
+       |             `------ operator '+' cannot be applied to type 'BOOL'
     ---'
     ");
 }

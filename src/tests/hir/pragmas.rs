@@ -608,19 +608,19 @@ END_FUNCTION
        |    `---- a {test} pragma cannot be placed on a FUNCTION_BLOCK
     ---'
     [E1503] Error: test pragma outside a FUNCTION
-        ,-[ file:///test0.st:11:5 ]
-        |
-     11 |     {test}
-        |     ^^^|^^
-        |        `---- a {test} pragma cannot be placed on a METHOD
-    ----'
-    [E1503] Error: test pragma outside a FUNCTION
        ,-[ file:///test0.st:6:1 ]
        |
      6 | {test}
        | ^^^|^^
        |    `---- a {test} pragma cannot be placed on a PROGRAM
     ---'
+    [E1503] Error: test pragma outside a FUNCTION
+        ,-[ file:///test0.st:11:5 ]
+        |
+     11 |     {test}
+        |     ^^^|^^
+        |        `---- a {test} pragma cannot be placed on a METHOD
+    ----'
     ");
 }
 
@@ -683,15 +683,6 @@ END_FUNCTION_BLOCK
        | Note: only a FUNCTION can be {export}
     ---'
     [E1508] Error: export pragma outside a FUNCTION
-        ,-[ file:///test0.st:11:5 ]
-        |
-     11 |     {export}
-        |     ^^^^|^^^
-        |         `----- an {export} pragma cannot be placed on a METHOD
-        |
-        | Note: only a FUNCTION can be {export}
-    ----'
-    [E1508] Error: export pragma outside a FUNCTION
        ,-[ file:///test0.st:6:1 ]
        |
      6 | {export}
@@ -700,6 +691,15 @@ END_FUNCTION_BLOCK
        |
        | Note: only a FUNCTION can be {export}
     ---'
+    [E1508] Error: export pragma outside a FUNCTION
+        ,-[ file:///test0.st:11:5 ]
+        |
+     11 |     {export}
+        |     ^^^^|^^^
+        |         `----- an {export} pragma cannot be placed on a METHOD
+        |
+        | Note: only a FUNCTION can be {export}
+    ----'
     ");
 }
 

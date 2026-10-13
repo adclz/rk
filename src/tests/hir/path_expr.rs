@@ -1018,21 +1018,6 @@ END_PROGRAM
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     [E0209] Error: variable out of reach
-        ,-[ file:///test0.st:12:10 ]
-        |
-      3 | VAR_TEMP scratch : INT; END_VAR
-        |          ^^^|^^^
-        |             `----- 'scratch' is declared here
-        |
-     12 |     o := scratch;
-        |          ^^^|^^^
-        |             `----- VAR_TEMP 'scratch' of 'Fb' cannot be used in a derived block
-        |
-        | Help: declare one in the derived block
-        |
-        | Note: SUPER() runs the body of 'Fb' with that body's own VAR_TEMPs
-    ----'
-    [E0209] Error: variable out of reach
         ,-[ file:///test0.st:10:14 ]
         |
       3 | VAR_TEMP scratch : INT; END_VAR
@@ -1042,6 +1027,21 @@ END_PROGRAM
      10 |         M := scratch;
         |              ^^^|^^^
         |                 `----- VAR_TEMP 'scratch' of 'Fb' cannot be used in a derived block
+        |
+        | Help: declare one in the derived block
+        |
+        | Note: SUPER() runs the body of 'Fb' with that body's own VAR_TEMPs
+    ----'
+    [E0209] Error: variable out of reach
+        ,-[ file:///test0.st:12:10 ]
+        |
+      3 | VAR_TEMP scratch : INT; END_VAR
+        |          ^^^|^^^
+        |             `----- 'scratch' is declared here
+        |
+     12 |     o := scratch;
+        |          ^^^|^^^
+        |             `----- VAR_TEMP 'scratch' of 'Fb' cannot be used in a derived block
         |
         | Help: declare one in the derived block
         |

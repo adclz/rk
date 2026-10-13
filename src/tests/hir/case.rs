@@ -149,19 +149,19 @@ END_FUNCTION_BLOCK"#;
        |         ^|^
        |          `--- the bound is not an integer constant
     ---'
-    [E1205] Error: CASE label not constant
-       ,-[ file:///test0.st:9:14 ]
-       |
-     9 |         'a'..'z': y := 10;
-       |              ^|^
-       |               `--- the bound is not an integer constant
-    ---'
     [E0308] Error: literal of the wrong kind
        ,-[ file:///test0.st:9:9 ]
        |
      9 |         'a'..'z': y := 10;
        |         ^|^
        |          `--- cannot use string literal as INT
+    ---'
+    [E1205] Error: CASE label not constant
+       ,-[ file:///test0.st:9:14 ]
+       |
+     9 |         'a'..'z': y := 10;
+       |              ^|^
+       |               `--- the bound is not an integer constant
     ---'
     [E0308] Error: literal of the wrong kind
        ,-[ file:///test0.st:9:14 ]
