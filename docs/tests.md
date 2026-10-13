@@ -43,6 +43,7 @@ The line after the test's name is where it is declared, and each `at` line a sta
 A file of the standard library is shown as `<lib>/Unit.st`.
 
 It works the same for a failed assertion, a `__RAISE`, a check the compiler inserted, a trap of the VM and a test the watchdog stopped.
+When an exception went through a `__FINALLY` or was raised again in a `__CATCH`, the report starts at that `__TRY`.
 `rk test -O` reports it too: an optimized build has lost its line tables, so the failed test is run once more on the unoptimized one.
 
 With `--output-format concise` the calls follow the reason on the same line, and with `json-lines` they are the record's `backtrace`.
@@ -63,7 +64,7 @@ ASSERT_EQ(1, 1, "1 + 1 should be 2")
 
 All three use [overloading](overloading.md) so they can be used with all elementary types.
 
-- Internally all assertions use the built-in `__RAISE` that triggers a WASM exception with a STRING payload
+- Internally all assertions use the built-in `__RAISE` that triggers a WASM exception with a STRING payload, see [Exceptions](exceptions.md)
   
 __Every test gets fresh instances, so tests never leak state into each other.__
 

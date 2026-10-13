@@ -30,8 +30,11 @@ Everything the compiler checks raises one exception, and it carries a message.
 A module declares a single exception tag, `(i32, i32)`: the pointer and the length of a STRING in the memory the host provided.
 The tag is never exported, so a host reads it from the pending-exception slot.
 
-`__RAISE(message)` is the only throw, and a raise always leaves the module.
-The one catcher a module contains is the wrapper around a `{test}` FUNCTION, which is why a failing assertion is reported rather than fatal.
+`__RAISE(message)` is a `throw` of that tag.
+A `__TRY` is a `try_table` that catches it.
+There is no `rethrow`: a `__FINALLY`, or a `__CATCH` that raises again, throws a new exception with the same message.
+An exception that no `__TRY` catches leaves the module.
+The wrapper around a `{test}` FUNCTION also catches it, which is why a failing assertion is reported rather than fatal.
 
 A runtime therefore needs the WebAssembly exception-handling proposal: `rk test` enables it on its own wasmtime host.
 
