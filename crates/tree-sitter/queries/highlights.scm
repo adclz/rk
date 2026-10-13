@@ -35,6 +35,7 @@
   "IF" "THEN" "ELSE" "ELSIF" "END_IF" "CASE" "OF" "END_CASE"
   "FOR" "TO" "BY" "DO" "END_FOR" "REPEAT" "UNTIL" "END_REPEAT"
   "WHILE" "END_WHILE" "EXIT" "RETURN" "CONTINUE" "__RAISE"
+  "__TRY" "__CATCH" "__FINALLY" "__END_TRY"
 ] @keyword.control
 
 [ "AND" "OR" "XOR" "NOT" ] @keyword.control

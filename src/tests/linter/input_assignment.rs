@@ -161,3 +161,34 @@ END_FUNCTION_BLOCK
     ----'
     ");
 }
+
+/// The variable a `__CATCH` names is written the message, as an
+/// assignment would.
+#[rstest]
+fn a_catch_writes_its_variable(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION test : INT
+VAR_INPUT text : STRING; END_VAR
+    __TRY
+        test := 1;
+    __CATCH(text)
+        test := 2;
+    __END_TRY;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "input-assignment"), @r"
+    [L0113] Warning: assignment to input variable
+       ,-[ file:///test0.st:6:13 ]
+       |
+     3 | VAR_INPUT text : STRING; END_VAR
+       |           ^^|^
+       |             `--- 'text' is declared here
+       |
+     6 |     __CATCH(text)
+       |             ^^|^
+       |               `--- assignment to VAR_INPUT 'text'
+       |
+       | Note: lint rule: input-assignment
+    ---'
+    ");
+}

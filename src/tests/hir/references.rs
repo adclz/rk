@@ -681,21 +681,6 @@ END_CONFIGURATION
         | Help: keep the reference in a local of the call, or point it at storage that outlives it
     ----'
     [E0903] Error: reference outlives its storage
-        ,-[ file:///test0.st:22:13 ]
-        |
-     16 | VAR_TEMP scratch : INT; END_VAR
-        |          ^^^|^^^
-        |             `----- 'scratch' is per-call storage, declared here
-        |
-     22 |     keep := REF(scratch);
-        |     ^^|^    ^^^^^^|^^^^^
-        |       `------------------- 'keep' outlives the call
-        |                   |
-        |                   `------- reference to 'scratch' outlives the call that owns it
-        |
-        | Help: keep the reference in a local of the call, or point it at storage that outlives it
-    ----'
-    [E0903] Error: reference outlives its storage
         ,-[ file:///test0.st:19:17 ]
         |
      18 |     VAR local : INT; END_VAR
@@ -721,6 +706,21 @@ END_CONFIGURATION
         |             `-------------------- 'THIS.keep' outlives the call
         |                           |
         |                           `------ reference to 'local' outlives the call that owns it
+        |
+        | Help: keep the reference in a local of the call, or point it at storage that outlives it
+    ----'
+    [E0903] Error: reference outlives its storage
+        ,-[ file:///test0.st:22:13 ]
+        |
+     16 | VAR_TEMP scratch : INT; END_VAR
+        |          ^^^|^^^
+        |             `----- 'scratch' is per-call storage, declared here
+        |
+     22 |     keep := REF(scratch);
+        |     ^^|^    ^^^^^^|^^^^^
+        |       `------------------- 'keep' outlives the call
+        |                   |
+        |                   `------- reference to 'scratch' outlives the call that owns it
         |
         | Help: keep the reference in a local of the call, or point it at storage that outlives it
     ----'
@@ -1144,6 +1144,17 @@ END_CONFIGURATION
         | Note: a warm start restores the address even where a new build moved its target
     ----'
     [E0904] Error: reference in RETAIN storage
+        ,-[ file:///test0.st:34:19 ]
+        |
+     34 | VAR_GLOBAL RETAIN g : PInt; END_VAR
+        |                   |
+        |                   `-- 'g' is a reference in RETAIN storage: its address does not survive a new build
+        |
+        | Help: keep references out of RETAIN (NON_RETAIN on a member) and set them in the first scan
+        |
+        | Note: a warm start restores the address even where a new build moved its target
+    ----'
+    [E0904] Error: reference in RETAIN storage
         ,-[ file:///test0.st:38:24 ]
         |
      30 | VAR h : H; n : INT; END_VAR
@@ -1153,17 +1164,6 @@ END_CONFIGURATION
      38 |         PROGRAM RETAIN Q1 WITH T : Q;
         |                        ^|
         |                         `-- PROGRAM RETAIN 'Q1' keeps 'h.p', a reference: its address does not survive a new build
-        |
-        | Help: keep references out of RETAIN (NON_RETAIN on a member) and set them in the first scan
-        |
-        | Note: a warm start restores the address even where a new build moved its target
-    ----'
-    [E0904] Error: reference in RETAIN storage
-        ,-[ file:///test0.st:34:19 ]
-        |
-     34 | VAR_GLOBAL RETAIN g : PInt; END_VAR
-        |                   |
-        |                   `-- 'g' is a reference in RETAIN storage: its address does not survive a new build
         |
         | Help: keep references out of RETAIN (NON_RETAIN on a member) and set them in the first scan
         |

@@ -37,6 +37,28 @@ pub fn with_db() -> RootDatabase {
     RootDatabase::default()
 }
 
+/// Whether a wasm-opt is installed, on PATH or in rk's cache. A test never
+/// downloads one: it uses the one that is there.
+pub fn wasm_opt_installed() -> bool {
+    // SAFETY: nextest runs each test in a process of its own, and nothing
+    // else reads the environment while this one writes it.
+    unsafe { std::env::set_var("RK_NO_DOWNLOAD", "1") };
+    rk::wasm_opt::find(false).is_some()
+}
+
+/// A test that optimizes found no wasm-opt: it says what it did not
+/// exercise and passes, as on a machine with no Binaryen. Where
+/// `RK_REQUIRE_WASM_OPT` is set it fails instead. CI sets it beside the
+/// Binaryen it installs, so that these tests cannot stop running there
+/// without the job saying so.
+pub fn skip_without_wasm_opt(not_exercised: &str) {
+    assert!(
+        std::env::var_os("RK_REQUIRE_WASM_OPT").is_none(),
+        "no wasm-opt available and RK_REQUIRE_WASM_OPT is set: {not_exercised} not exercised"
+    );
+    eprintln!("SKIP: no wasm-opt available; {not_exercised} not exercised");
+}
+
 pub fn no_color_and_ascii() -> Config {
     Config::default()
         .with_color(false)

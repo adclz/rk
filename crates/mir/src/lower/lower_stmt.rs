@@ -436,6 +436,44 @@ fn lower_stmt<'db>(
             Ok(vec![MirStmt::Raise { message: mir_msg }])
         }
 
+        StmtKind::Try {
+            body,
+            catch,
+            finally,
+        } => {
+            use hir::HirNodeInfo;
+            // `rk check` requires one of the two clauses (E1209).
+            if catch.is_none() && finally.is_none() {
+                return Err(
+                    LowerTypeError::UnsupportedType("a __TRY with no clause".to_string())
+                        .with_location(
+                            stmt.get_scope_id(ctx.db).file(ctx.db),
+                            stmt.get_span(ctx.db),
+                        ),
+                );
+            }
+            let body = lower_stmts_inner(ctx, body)?;
+            let catch = match catch {
+                Some(catch) => Some(crate::stmt::MirCatch {
+                    message: match catch.variable {
+                        Some(variable) => Some(ctx.lower_variable_access(variable)?),
+                        None => None,
+                    },
+                    body: lower_stmts_inner(ctx, &catch.body)?,
+                }),
+                None => None,
+            };
+            let finally = match finally {
+                Some(finally) => Some(lower_stmts_inner(ctx, finally)?),
+                None => None,
+            };
+            Ok(vec![MirStmt::Try {
+                body,
+                catch,
+                finally,
+            }])
+        }
+
         StmtKind::WasmPragma(decl) => Ok(super::lower_wasm::lower_wasm_pragma(ctx, stmt, decl)?
             .into_iter()
             .collect()),

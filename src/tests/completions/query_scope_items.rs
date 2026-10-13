@@ -191,7 +191,7 @@ END_FUNCTION_BLOCK
     };
     let completions = expr.completion(&with_db, &req).unwrap();
 
-    assert_eq!(completions.len(), 8); // statements ... + 3 variants
+    assert_eq!(completions.len(), 9); // the statement snippets + 3 variants
     assert!(format!("{completions:?}").contains("List#A"));
     assert!(format!("{completions:?}").contains("List#B"));
     assert!(format!("{completions:?}").contains("List#C"));

@@ -92,13 +92,6 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0803] Error: unknown input parameter
-        ,-[ file:///test0.st:10:9 ]
-        |
-     10 |         unknown := TRUE
-        |         ^^^|^^^
-        |            `----- unknown input parameter 'unknown'
-    ----'
     [E0802] Error: missing required parameter
        ,-[ file:///test0.st:9:5 ]
        |
@@ -112,6 +105,13 @@ END_FUNCTION_BLOCK"#;
        |
        | Note: a FUNCTION or METHOD call supplies every VAR_INPUT without a default
     ---'
+    [E0803] Error: unknown input parameter
+        ,-[ file:///test0.st:10:9 ]
+        |
+     10 |         unknown := TRUE
+        |         ^^^|^^^
+        |            `----- unknown input parameter 'unknown'
+    ----'
     ");
 }
 
@@ -321,15 +321,6 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0103] Error: duplicate parameter
-        ,-[ file:///test0.st:11:21 ]
-        |
-     11 |     fn(param1 := 0, param1 := 1);
-        |        ^^^^^|^^^^^  ^^^^^|^^^^^
-        |             `-------------------- already passed here
-        |                          |
-        |                          `------- duplicate parameter 'param1'
-    ----'
     [E0802] Error: missing required parameter
         ,-[ file:///test0.st:11:5 ]
         |
@@ -342,6 +333,15 @@ END_FUNCTION_BLOCK"#;
         |      `-- call to 'fn' is missing 1 required parameter: 'param2'
         |
         | Note: a FUNCTION or METHOD call supplies every VAR_INPUT without a default
+    ----'
+    [E0103] Error: duplicate parameter
+        ,-[ file:///test0.st:11:21 ]
+        |
+     11 |     fn(param1 := 0, param1 := 1);
+        |        ^^^^^|^^^^^  ^^^^^|^^^^^
+        |             `-------------------- already passed here
+        |                          |
+        |                          `------- duplicate parameter 'param1'
     ----'
     ");
 }

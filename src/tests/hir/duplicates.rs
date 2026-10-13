@@ -677,17 +677,6 @@ END_CONFIGURATION
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     [E0102] Error: duplicate POU
-       ,-[ file:///test0.st:7:10 ]
-       |
-     2 | PROGRAM Main
-       |         ^^|^
-       |           `--- POU 'Main' is also declared here
-       |
-     7 | FUNCTION Main : INT
-       |          ^^|^
-       |            `--- duplicate POU 'Main'
-    ---'
-    [E0102] Error: duplicate POU
        ,-[ file:///test0.st:2:9 ]
        |
      2 | PROGRAM Main
@@ -697,6 +686,17 @@ END_CONFIGURATION
      7 | FUNCTION Main : INT
        |          ^^|^
        |            `--- POU 'Main' is also declared here
+    ---'
+    [E0102] Error: duplicate POU
+       ,-[ file:///test0.st:7:10 ]
+       |
+     2 | PROGRAM Main
+       |         ^^|^
+       |           `--- POU 'Main' is also declared here
+       |
+     7 | FUNCTION Main : INT
+       |          ^^|^
+       |            `--- duplicate POU 'Main'
     ---'
     ");
 }
@@ -722,17 +722,6 @@ END_CONFIGURATION
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     [E0113] Error: duplicate PROGRAM instance
-        ,-[ file:///test0.st:12:17 ]
-        |
-      8 |     Run : INT;
-        |     ^|^
-        |      `--- VAR_GLOBAL 'Run' is declared here
-        |
-     12 |         PROGRAM Run WITH T : P;
-        |                 ^|^
-        |                  `--- program instance 'Run' has the name of a VAR_GLOBAL
-    ----'
-    [E0113] Error: duplicate PROGRAM instance
         ,-[ file:///test0.st:8:5 ]
         |
       8 |     Run : INT;
@@ -742,6 +731,17 @@ END_CONFIGURATION
      12 |         PROGRAM Run WITH T : P;
         |                 ^|^
         |                  `--- program instance 'Run' is declared here
+    ----'
+    [E0113] Error: duplicate PROGRAM instance
+        ,-[ file:///test0.st:12:17 ]
+        |
+      8 |     Run : INT;
+        |     ^|^
+        |      `--- VAR_GLOBAL 'Run' is declared here
+        |
+     12 |         PROGRAM Run WITH T : P;
+        |                 ^|^
+        |                  `--- program instance 'Run' has the name of a VAR_GLOBAL
     ----'
     ");
 }

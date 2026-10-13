@@ -22,21 +22,41 @@ fn render_codegen_error(
     err: &mir::lower::lower_type::LowerTypeError,
     format: crate::cli::OutputFormat,
 ) -> Option<String> {
+    render_lowering_error(
+        db,
+        workspace,
+        err,
+        format,
+        format!("internal compiler error: {err}"),
+        "the workspace passed `rk check`: this is a compiler bug or an unimplemented construct",
+        Some(format!("report it at {ISSUES_URL}")),
+    )
+}
+
+/// A failure to lower, under the caret of the source it carries.
+fn render_lowering_error(
+    db: &RootDatabase,
+    workspace: &std::path::Path,
+    err: &mir::lower::lower_type::LowerTypeError,
+    format: crate::cli::OutputFormat,
+    message: String,
+    note: &str,
+    help: Option<String>,
+) -> Option<String> {
     use auto_lsp::lsp_types::DiagnosticSeverity;
 
     let (file, span) = err.location()?;
     let range = hir::denormalize(db, file, &span)?;
     let mut diagnostic = ide_diagnostic::diag()
         .range(range)
-        .message(format!("internal compiler error: {err}"))
+        .message(message)
         .severity(DiagnosticSeverity::ERROR)
         .source("codegen".to_string())
         .call();
-    diagnostic.with_note(
-        "the workspace passed `rk check`: this is a compiler bug or an unimplemented construct"
-            .to_string(),
-    );
-    diagnostic.with_help(format!("report it at {ISSUES_URL}"));
+    diagnostic.with_note(note.to_string());
+    if let Some(help) = help {
+        diagnostic.with_help(help);
+    }
 
     let mut buffer: Vec<u8> = Vec::new();
     DiagnosticReporter::new(db, workspace)

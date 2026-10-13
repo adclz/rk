@@ -176,9 +176,14 @@ const RESERVED_NAMES = [
   "END_WHILE",
   "EXIT",
   "RETURN",
-  // Exception throw (no in-language catch; propagates to the host).
-  // Used by the stdlib's `__ASSERT_FAIL` and any future panic-shape paths.
+  // Exceptions: a throw, and the statement that handles one.
   "__RAISE",
+  "__TRY",
+  "__CATCH",
+  "__FINALLY",
+  "__END_TRY",
+  // The closer without its second underscore, read to be reported.
+  "__ENDTRY",
   // References
   "AT",
   "%",
@@ -213,7 +218,7 @@ module.exports = grammar({
     // Without the list a keyword can be read as an identifier: `NAMESPACE
     // END_NAMESPACE` would take END_NAMESPACE as the namespace's name.
     global: ($) =>
-      RESERVED_NAMES.map((w) => (/^[A-Z]/.test(w) ? token(prec(0, caseInsensitive(w))) : w)),
+      RESERVED_NAMES.map((w) => (/^_*[A-Z]/.test(w) ? token(prec(0, caseInsensitive(w))) : w)),
   },
 
 
@@ -2072,9 +2077,11 @@ module.exports = grammar({
         kw("CONTINUE"),
         // Throws a wasm-level exception with a STRING payload
         $.raise_stmt,
+        $.try_stmt,
         $.wasm_pragma,
         $.allow_pragma,
-        $.ERR_method_decl_in_body
+        $.ERR_method_decl_in_body,
+        $.ERR_clause_outside_try
       ),
 
     // assignment: $ => seq(
@@ -2214,7 +2221,51 @@ module.exports = grammar({
       ),
 
     raise_stmt: ($) =>
-      seq("__RAISE", "(", field("message", $._expression), ")"),
+      seq(kw("__RAISE"), "(", field("message", $._expression), ")"),
+
+    // `__TRY body __CATCH(e) handler __FINALLY cleanup __END_TRY`: an
+    // exception raised in the body lands in the __CATCH, which takes the
+    // message in a STRING variable, and the __FINALLY runs on every way
+    // out. The clauses are read in any order and any number: a __TRY with
+    // none, with two of one, or with its __CATCH after its __FINALLY is
+    // reported as what it is, where a rule for the one valid shape left
+    // each of them a syntax error about some other token.
+    try_stmt: ($) =>
+      seq(
+        kw("__TRY"),
+        field("body", optional($.stmt_list)),
+        field("clause", repeat(choice($.catch_clause, $.finally_clause))),
+        choice(kw("__END_TRY"), $.ERR_end_try_spelling),
+      ),
+
+    // Left: a clause ends where the next one, or the `__END_TRY`, begins.
+    // The other reading takes that keyword as a statement of the body
+    // (`ERR_clause_outside_try`).
+    catch_clause: ($) =>
+      prec.left(
+        seq(
+          kw("__CATCH"),
+          optional(seq("(", field("variable", $.variable_access), ")")),
+          field("body", optional($.stmt_list)),
+        ),
+      ),
+
+    finally_clause: ($) =>
+      prec.left(seq(kw("__FINALLY"), field("body", optional($.stmt_list)))),
+
+    // A `__CATCH`, a `__FINALLY` or an `__END_TRY` where a statement goes,
+    // with no __TRY open: read as a statement of its own, so that the
+    // statements before and after it stay what they are, and reported.
+    // Inside a __TRY, the clause wins: this is a last resort.
+    ERR_clause_outside_try: ($) =>
+      prec.dynamic(-1, prec(-1, choice(kw("__CATCH"), kw("__FINALLY"), kw("__END_TRY")))),
+
+    // `__ENDTRY`, where `__END_TRY` closes a __TRY: read as the closer, so
+    // that the report is about the spelling and the statement is still
+    // read. It stands after `try_stmt` on purpose: a closer that is missing
+    // is asked for as the first of the two tokens the grammar names, and
+    // that has to be `__END_TRY` (the corpus pins it).
+    ERR_end_try_spelling: ($) => prec(-1, kw("__ENDTRY")),
 
     // Other
 

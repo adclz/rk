@@ -1,0 +1,230 @@
+================================================================================
+__TRY - a __CATCH with its variable, and a __FINALLY
+================================================================================
+
+FUNCTION fn
+	VAR e : STRING; END_VAR
+	__TRY
+		__RAISE('oops');
+	__CATCH(e)
+		fn := 1;
+	__FINALLY
+		fn := 2;
+	__END_TRY;
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (func_decl
+    (identifier)
+    (var_decls
+      (var_decl_init_list
+        (variable_list
+          (identifier))
+        (var_decl_init
+          (simple_type_spec
+            (string_type_name
+              (string_name))))))
+    (func_body
+      (stmt_list
+        (try_stmt
+          (stmt_list
+            (raise_stmt
+              (constant
+                (char_literal
+                  (char_str
+                    (s_byte_char_str))))))
+          (catch_clause
+            (variable_access
+              (variable
+                (begin_path_expression
+                  (path_expression
+                    (var_access
+                      (field))))))
+            (stmt_list
+              (assign
+                (variable_access
+                  (variable
+                    (begin_path_expression
+                      (path_expression
+                        (var_access
+                          (field))))))
+                (assignment
+                  (constant
+                    (numeric_literal
+                      (int_literal
+                        (signed_int
+                          (unsigned_int)))))))))
+          (finally_clause
+            (stmt_list
+              (assign
+                (variable_access
+                  (variable
+                    (begin_path_expression
+                      (path_expression
+                        (var_access
+                          (field))))))
+                (assignment
+                  (constant
+                    (numeric_literal
+                      (int_literal
+                        (signed_int
+                          (unsigned_int))))))))))))))
+
+================================================================================
+__TRY - a bare __CATCH, a __FINALLY alone, and no clause at all
+================================================================================
+
+FUNCTION fn
+	__TRY
+	__CATCH
+	__END_TRY;
+	__TRY
+	__FINALLY
+	__END_TRY;
+	__TRY
+	__END_TRY;
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (func_decl
+    (identifier)
+    (func_body
+      (stmt_list
+        (try_stmt
+          (catch_clause))
+        (try_stmt
+          (finally_clause))
+        (try_stmt)))))
+
+================================================================================
+__TRY - clauses in any order and number
+================================================================================
+
+FUNCTION fn
+	__TRY
+	__FINALLY
+	__CATCH
+	__CATCH
+	__FINALLY
+	__END_TRY;
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (func_decl
+    (identifier)
+    (func_body
+      (stmt_list
+        (try_stmt
+          (finally_clause)
+          (catch_clause)
+          (catch_clause)
+          (finally_clause))))))
+
+================================================================================
+__TRY - __ENDTRY closes it, as an error
+================================================================================
+
+FUNCTION fn
+	__TRY
+	__CATCH
+	__ENDTRY;
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (func_decl
+    (identifier)
+    (func_body
+      (stmt_list
+        (try_stmt
+          (catch_clause)
+          (ERR_end_try_spelling))))))
+
+================================================================================
+__TRY - a missing closer is asked for as __END_TRY
+================================================================================
+
+FUNCTION fn
+	__TRY
+	__CATCH
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (func_decl
+    (identifier)
+    (func_body
+      (stmt_list
+        (try_stmt
+          (catch_clause)
+          (MISSING "__END_TRY"))))))
+
+================================================================================
+__TRY - keywords in any case
+================================================================================
+
+FUNCTION fn
+	__try
+		__raise('x');
+	__Catch
+	__FINALLY
+	__End_Try;
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (func_decl
+    (identifier)
+    (func_body
+      (stmt_list
+        (try_stmt
+          (stmt_list
+            (raise_stmt
+              (constant
+                (char_literal
+                  (char_str
+                    (s_byte_char_str))))))
+          (catch_clause)
+          (finally_clause))))))
+
+================================================================================
+__TRY - a clause with no __TRY is a statement of its own
+================================================================================
+
+FUNCTION fn
+	x();
+	__CATCH
+	y();
+	__FINALLY
+	__END_TRY
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (func_decl
+    (identifier)
+    (func_body
+      (stmt_list
+        (func_call
+          (begin_path_expression
+            (path_expression
+              (var_access
+                (field)))))
+        (ERR_clause_outside_try)
+        (func_call
+          (begin_path_expression
+            (path_expression
+              (var_access
+                (field)))))
+        (ERR_clause_outside_try)
+        (ERR_clause_outside_try)))))

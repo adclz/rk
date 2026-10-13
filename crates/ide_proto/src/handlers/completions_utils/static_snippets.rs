@@ -354,7 +354,7 @@ fn keyword(label: &str) -> CompletionItem {
 
 #[inline]
 pub fn all_stmts() -> Vec<CompletionItem> {
-    vec![if_(), for_(), while_(), repeat()]
+    vec![if_(), for_(), while_(), repeat(), try_()]
 }
 
 #[inline]
@@ -386,6 +386,17 @@ pub fn while_() -> CompletionItem {
         kind: Some(lsp_types::CompletionItemKind::INTERFACE),
         insert_text_format: Some(lsp_types::InsertTextFormat::SNIPPET),
         insert_text: Some("WHILE ${1:i} >= ${2:value} DO \n\nEND_WHILE".into()),
+        ..Default::default()
+    }
+}
+
+#[inline]
+pub fn try_() -> CompletionItem {
+    CompletionItem {
+        label: "__TRY".into(),
+        kind: Some(lsp_types::CompletionItemKind::INTERFACE),
+        insert_text_format: Some(lsp_types::InsertTextFormat::SNIPPET),
+        insert_text: Some("__TRY\n\t$1\n__CATCH(${2:message})\n\t$3\n__END_TRY".into()),
         ..Default::default()
     }
 }

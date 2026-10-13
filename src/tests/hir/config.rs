@@ -526,6 +526,36 @@ END_CONFIGURATION
         |
         | Note: an instance's variable has one starting value
     ----'
+    [E0405] Error: initializer for a member that takes none
+        ,-[ file:///test0.st:21:23 ]
+        |
+      4 | VAR_IN_OUT io : INT; END_VAR
+        |            ^|
+        |             `-- 'io' is declared here
+        |
+     21 |     Res.P1.d.io : INT := 3;
+        |                       ^^|^
+        |                         `--- an initializer cannot set 'io', a VAR_IN_OUT
+        |
+        | Help: pass the variable in the call, as 'io := x'
+        |
+        | Note: a VAR_IN_OUT is bound to its argument at each call
+    ----'
+    [E0405] Error: initializer for a member that takes none
+        ,-[ file:///test0.st:22:22 ]
+        |
+      5 | VAR CONSTANT c : INT := 1; END_VAR
+        |              |
+        |              `-- 'c' is declared here
+        |
+     22 |     Res.P1.d.c : INT := 4;
+        |                      ^^|^
+        |                        `--- an initializer cannot set 'c', a CONSTANT
+        |
+        | Help: declare it without CONSTANT to let each instance start at its own value
+        |
+        | Note: a CONSTANT has the value of its declaration
+    ----'
     [E1419] Error: write to an input location
         ,-[ file:///test0.st:23:14 ]
         |
@@ -583,36 +613,6 @@ END_CONFIGURATION
         | Help: keep one of the entries
         |
         | Note: an instance's variable has one starting value
-    ----'
-    [E0405] Error: initializer for a member that takes none
-        ,-[ file:///test0.st:21:23 ]
-        |
-      4 | VAR_IN_OUT io : INT; END_VAR
-        |            ^|
-        |             `-- 'io' is declared here
-        |
-     21 |     Res.P1.d.io : INT := 3;
-        |                       ^^|^
-        |                         `--- an initializer cannot set 'io', a VAR_IN_OUT
-        |
-        | Help: pass the variable in the call, as 'io := x'
-        |
-        | Note: a VAR_IN_OUT is bound to its argument at each call
-    ----'
-    [E0405] Error: initializer for a member that takes none
-        ,-[ file:///test0.st:22:22 ]
-        |
-      5 | VAR CONSTANT c : INT := 1; END_VAR
-        |              |
-        |              `-- 'c' is declared here
-        |
-     22 |     Res.P1.d.c : INT := 4;
-        |                      ^^|^
-        |                        `--- an initializer cannot set 'c', a CONSTANT
-        |
-        | Help: declare it without CONSTANT to let each instance start at its own value
-        |
-        | Note: a CONSTANT has the value of its declaration
     ----'
     ");
 }
@@ -717,15 +717,6 @@ END_CONFIGURATION
         |
         | Note: a connection copies the value as it is
     ----'
-    [E1419] Error: write to an input location
-        ,-[ file:///test0.st:22:83 ]
-        |
-     22 |         PROGRAM P1 WITH T : F(y1 := 1, x1 => w, x2 := w, x1 := TRUE, x1 := FALSE, y1 => %IW0);
-        |                                                                                   ^|
-        |                                                                                    `-- '%IW0' is an input: it is written by the host, not by the program
-        |
-        | Note: the host copies the input image in before each scan, so this write is overwritten before anything can read it
-    ----'
     [E1428] Error: program configuration element refused
         ,-[ file:///test0.st:22:58 ]
         |
@@ -748,6 +739,15 @@ END_CONFIGURATION
         |
         | Note: an input has one source
     ----'
+    [E1419] Error: write to an input location
+        ,-[ file:///test0.st:22:83 ]
+        |
+     22 |         PROGRAM P1 WITH T : F(y1 := 1, x1 => w, x2 := w, x1 := TRUE, x1 := FALSE, y1 => %IW0);
+        |                                                                                   ^|
+        |                                                                                    `-- '%IW0' is an input: it is written by the host, not by the program
+        |
+        | Note: the host copies the input image in before each scan, so this write is overwritten before anything can read it
+    ----'
     [E1428] Error: program configuration element refused
         ,-[ file:///test0.st:23:31 ]
         |
@@ -757,12 +757,20 @@ END_CONFIGURATION
         |
         | Note: a CLASS has no body for a task to run
     ----'
-    [E1414] Error: unknown field in VAR_CONFIG
-        ,-[ file:///test0.st:23:77 ]
+    [E1428] Error: program configuration element refused
+        ,-[ file:///test0.st:23:41 ]
+        |
+     15 |     fb2();
+        |     ^|^
+        |      `--- 'fb2' is called here
         |
      23 |         PROGRAM P2 WITH T : F(b WITH T, fb2 WITH T, fb1 WITH T, fb1 WITH T, nosuch := 1);
-        |                                                                             ^^^|^^
-        |                                                                                `---- 'F' has no field named 'nosuch'
+        |                                         ^|^
+        |                                          `--- 'fb2' is run by its task and called by 'F' too
+        |
+        | Help: remove the call from the program
+        |
+        | Note: the task runs the instance on its own
     ----'
     [E1428] Error: program configuration element refused
         ,-[ file:///test0.st:23:53 ]
@@ -786,20 +794,12 @@ END_CONFIGURATION
         |
         | Note: a function block runs under one task
     ----'
-    [E1428] Error: program configuration element refused
-        ,-[ file:///test0.st:23:41 ]
-        |
-     15 |     fb2();
-        |     ^|^
-        |      `--- 'fb2' is called here
+    [E1414] Error: unknown field in VAR_CONFIG
+        ,-[ file:///test0.st:23:77 ]
         |
      23 |         PROGRAM P2 WITH T : F(b WITH T, fb2 WITH T, fb1 WITH T, fb1 WITH T, nosuch := 1);
-        |                                         ^|^
-        |                                          `--- 'fb2' is run by its task and called by 'F' too
-        |
-        | Help: remove the call from the program
-        |
-        | Note: the task runs the instance on its own
+        |                                                                             ^^^|^^
+        |                                                                                `---- 'F' has no field named 'nosuch'
     ----'
     ");
 }
@@ -1682,24 +1682,6 @@ fn var_global_in_a_resource_is_rejected(mut with_db: RootDatabase) {
         END_CONFIGURATION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0021] Error: VAR_GLOBAL not allowed in this context
-       ,-[ file:///test0.st:6:17 ]
-       |
-     6 |                 VAR_GLOBAL g : INT := 10; END_VAR
-       |                 ^^^^^|^^^^
-       |                      `------ VAR_GLOBAL is not allowed here
-       |
-       | Note: VAR_GLOBAL goes in a CONFIGURATION
-    ---'
-    [E0021] Error: VAR_GLOBAL not allowed in this context
-        ,-[ file:///test0.st:11:17 ]
-        |
-     11 |                 VAR_GLOBAL g : INT := 99; END_VAR
-        |                 ^^^^^|^^^^
-        |                      `------ VAR_GLOBAL is not allowed here
-        |
-        | Note: VAR_GLOBAL goes in a CONFIGURATION
-    ----'
     [E0206] Error: VAR_EXTERNAL without a VAR_GLOBAL
        ,-[ file:///test0.st:2:32 ]
        |
@@ -1718,6 +1700,24 @@ fn var_global_in_a_resource_is_rejected(mut with_db: RootDatabase) {
        |
        | Note: a deployment drives one RESOURCE
     ---'
+    [E0021] Error: VAR_GLOBAL not allowed in this context
+       ,-[ file:///test0.st:6:17 ]
+       |
+     6 |                 VAR_GLOBAL g : INT := 10; END_VAR
+       |                 ^^^^^|^^^^
+       |                      `------ VAR_GLOBAL is not allowed here
+       |
+       | Note: VAR_GLOBAL goes in a CONFIGURATION
+    ---'
+    [E0021] Error: VAR_GLOBAL not allowed in this context
+        ,-[ file:///test0.st:11:17 ]
+        |
+     11 |                 VAR_GLOBAL g : INT := 99; END_VAR
+        |                 ^^^^^|^^^^
+        |                      `------ VAR_GLOBAL is not allowed here
+        |
+        | Note: VAR_GLOBAL goes in a CONFIGURATION
+    ----'
     ");
 }
 

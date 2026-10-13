@@ -154,6 +154,18 @@ fn stmt_assigns_static_string(stmt: &MirStmt) -> bool {
         MirStmt::While { body, .. } | MirStmt::Repeat { body, .. } => {
             stmts_assign_static_string(body)
         }
+        // The message a __CATCH takes is copied into its STRING the same way.
+        MirStmt::Try {
+            body,
+            catch,
+            finally,
+        } => {
+            stmts_assign_static_string(body)
+                || catch.as_ref().is_some_and(|catch| {
+                    catch.message.is_some() || stmts_assign_static_string(&catch.body)
+                })
+                || finally.as_deref().is_some_and(stmts_assign_static_string)
+        }
         _ => false,
     }
 }
@@ -183,10 +195,23 @@ fn place_is_static_string(place: &mir::expr::MirPlace) -> bool {
     }
 }
 
-/// Returns `true` when any function in `module` contains a `MirStmt::Raise`,
-/// triggering the codegen to declare the module-level `$rk_exception` tag.
+/// Returns `true` when any function in `module` contains a `MirStmt::Raise`
+/// or a `MirStmt::Try`, triggering the codegen to declare the module-level
+/// `$rk_exception` tag.
 pub(crate) fn module_uses_raise(module: &MirModule) -> bool {
     module.functions.iter().any(|f| stmts_use_raise(&f.body))
+}
+
+/// Whether any function catches: its `try_table` lands in a block typed
+/// `() -> (i32, i32)`, registered once per module.
+fn module_uses_try(module: &MirModule) -> bool {
+    module.functions.iter().any(|f| {
+        let mut found = false;
+        mir::stmt::for_each_stmt(&f.body, &mut |stmt| {
+            found |= matches!(stmt, MirStmt::Try { .. });
+        });
+        found
+    })
 }
 
 fn stmts_use_raise(stmts: &[MirStmt]) -> bool {
@@ -195,7 +220,7 @@ fn stmts_use_raise(stmts: &[MirStmt]) -> bool {
 
 fn stmt_uses_raise(stmt: &MirStmt) -> bool {
     match stmt {
-        MirStmt::Raise { .. } => true,
+        MirStmt::Raise { .. } | MirStmt::Try { .. } => true,
         MirStmt::If {
             then_body,
             else_ifs,
@@ -703,9 +728,9 @@ impl<'a> WasmGen<'a> {
             self.builtin_indices = plan.name_to_wasm_idx;
         }
 
-        // 7. With any `{test}` function, register the `$on_catch` block type
-        //    `() -> (i32, i32)`.
-        if module_test_count(self.module) > 0 {
+        // 7. With any `{test}` function or `__TRY`, register the `$on_catch`
+        //    block type `() -> (i32, i32)`.
+        if module_test_count(self.module) > 0 || module_uses_try(self.module) {
             let test_catch_ty = self.next_type_idx;
             self.type_section.ty().function(
                 std::iter::empty::<wasm_encoder::ValType>(),
@@ -939,6 +964,22 @@ impl<'a> WasmGen<'a> {
                         walk(db, body, found);
                     }
                     MirStmt::Raise { message } => walk_expr(db, message, found),
+                    MirStmt::Try {
+                        body,
+                        catch,
+                        finally,
+                    } => {
+                        walk(db, body, found);
+                        if let Some(catch) = catch {
+                            if let Some(message) = &catch.message {
+                                walk_place(db, message, found);
+                            }
+                            walk(db, &catch.body, found);
+                        }
+                        if let Some(finally) = finally {
+                            walk(db, finally, found);
+                        }
+                    }
                     _ => {}
                 }
             }
@@ -1320,6 +1361,14 @@ impl<'a> WasmGen<'a> {
         // The scratch pairs of a wrapping division (`DIV_TMP`).
         let div_tmp = alloc_div_scratch(&func.body, params.len() as u32, &mut extra_locals);
 
+        // What a `__CATCH` lands with, and the stack pointer it puts back.
+        let try_scratch = crate::emit_stmt::alloc_try_scratch(
+            &func.body,
+            params.len() as u32,
+            &mut extra_locals,
+            self.stack.map(|stack| stack.sp_global),
+        );
+
         let frame_size = frame_base.map(|_| frame_bytes(func));
 
         // Emit function body
@@ -1410,6 +1459,10 @@ impl<'a> WasmGen<'a> {
             self.rk_exception_tag_idx,
             fb_recv_tmp,
             for_scratch,
+            crate::emit_stmt::Catching {
+                scratch: try_scratch,
+                block_type_idx: self.test_catch_block_type_idx,
+            },
         );
         if !lines.is_empty() {
             self.func_lines.insert(func.index, lines);
@@ -1535,6 +1588,13 @@ impl<'a> WasmGen<'a> {
 
         let frame_size = frame_base.map(|_| frame_bytes(func));
 
+        // A `__TRY` of the test's own: what its `__CATCH` lands with.
+        let try_scratch = crate::emit_stmt::alloc_try_scratch(
+            &func.body,
+            0,
+            &mut extra_locals,
+            self.stack.map(|stack| stack.sp_global),
+        );
         let mut wasm_func = wasm_encoder::Function::new(extra_locals);
         self.emit_entry(&mut wasm_func, func, frame_base, frame_size);
 
@@ -1578,6 +1638,10 @@ impl<'a> WasmGen<'a> {
             self.rk_exception_tag_idx,
             fb_recv_tmp,
             for_scratch,
+            crate::emit_stmt::Catching {
+                scratch: try_scratch,
+                block_type_idx: self.test_catch_block_type_idx,
+            },
         );
         if !lines.is_empty() {
             self.func_lines.insert(func.index, lines);

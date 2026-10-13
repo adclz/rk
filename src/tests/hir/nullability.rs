@@ -1056,3 +1056,157 @@ END_FUNCTION
     ---'
     ");
 }
+
+/// What a `__TRY`'s body raises can come after any of its statements: in
+/// the `__CATCH`, a reference the body sets to NULL and then to a variable
+/// may still be NULL. So may it after the `__TRY`, which the `__CATCH`
+/// runs into.
+#[rstest]
+fn a_catch_is_entered_with_every_state_the_body_gave_a_reference(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION f1 : INT
+VAR
+    x : INT;
+    p : REF_TO INT;
+END_VAR
+    p := REF(x);
+    __TRY
+        p := NULL;
+        x := 1;
+        p := REF(x);
+    __CATCH
+        f1 := p^;
+    __END_TRY;
+    f1 := p^;
+END_FUNCTION
+    "#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0902] Error: possibly null dereference
+        ,-[ file:///test0.st:13:15 ]
+        |
+      9 |         p := NULL;
+        |         ^^^^|^^^^
+        |             `------ 'p' is set to NULL here
+        |
+     13 |         f1 := p^;
+        |               |
+        |               `-- 'p' is dereferenced and is NULL
+    ----'
+    [E0902] Error: possibly null dereference
+        ,-[ file:///test0.st:15:11 ]
+        |
+      9 |         p := NULL;
+        |         ^^^^|^^^^
+        |             `------ 'p' is set to NULL here
+        |
+     15 |     f1 := p^;
+        |           |
+        |           `-- 'p' is dereferenced and is NULL
+    ----'
+    ");
+}
+
+/// A reference the body does not assign is in the `__CATCH`, and after
+/// the `__TRY`, what it was before. A `__CATCH` that returns leaves the
+/// code after the `__TRY` to the body alone.
+#[rstest]
+fn a_catch_keeps_what_the_body_does_not_assign_and_a_returning_one_does_not_join(
+    mut with_db: RootDatabase,
+) {
+    let source = r#"
+FUNCTION f1 : INT
+VAR
+    x : INT;
+    kept : REF_TO INT;
+    late : REF_TO INT;
+END_VAR
+    kept := REF(x);
+    __TRY
+        x := 1;
+        late := REF(x);
+    __CATCH
+        f1 := kept^;
+        RETURN;
+    __END_TRY;
+    f1 := kept^ + late^;
+END_FUNCTION
+    "#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+/// A `__CATCH` that runs into the code after the `__TRY` brings its state
+/// there: a reference only the body sets is not set on that path.
+#[rstest]
+fn a_catch_that_falls_through_joins_the_code_after_the_try(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION f1 : INT
+VAR
+    x : INT;
+    late : REF_TO INT;
+END_VAR
+    __TRY
+        late := REF(x);
+    __CATCH
+        x := 2;
+    __END_TRY;
+    f1 := late^;
+END_FUNCTION
+    "#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0902] Error: possibly null dereference
+        ,-[ file:///test0.st:12:11 ]
+        |
+      5 |     late : REF_TO INT;
+        |     ^^|^
+        |       `--- 'late' is declared without an initial value here
+        |
+     12 |     f1 := late^;
+        |           ^^|^
+        |             `--- 'late' is dereferenced and never set
+    ----'
+    ");
+}
+
+/// A `__FINALLY` runs on every way out, an exception's included: it is
+/// entered with every state the body and the `__CATCH` gave a reference.
+/// What it assigns holds after the `__TRY`.
+#[rstest]
+fn a_finally_is_entered_from_anywhere_and_what_it_assigns_holds_after(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION f1 : INT
+VAR
+    x : INT;
+    p : REF_TO INT;
+    q : REF_TO INT;
+END_VAR
+    p := REF(x);
+    __TRY
+        p := NULL;
+        q := NULL;
+        x := 1;
+        p := REF(x);
+    __FINALLY
+        f1 := p^;
+        q := REF(x);
+    __END_TRY;
+    f1 := p^ + q^;
+END_FUNCTION
+    "#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0902] Error: possibly null dereference
+        ,-[ file:///test0.st:15:15 ]
+        |
+     10 |         p := NULL;
+        |         ^^^^|^^^^
+        |             `------ 'p' is set to NULL here
+        |
+     15 |         f1 := p^;
+        |               |
+        |               `-- 'p' is dereferenced and is NULL
+    ----'
+    ");
+}

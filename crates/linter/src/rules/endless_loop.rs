@@ -47,8 +47,11 @@ struct Effects<'db> {
     written: FxHashSet<VariableDecl<'db>>,
     /// It calls something, which may write a member, a global or an in-out.
     calls: bool,
-    /// It leaves the loop: EXIT at this loop's level, RETURN, `__RAISE`.
+    /// It leaves the loop: EXIT at this loop's level, RETURN.
     exits: bool,
+    /// It raises, which leaves the loop unless a `__CATCH` around the
+    /// `__RAISE` takes the exception.
+    raises: bool,
     /// It writes what no variable names here: through a reference, a direct
     /// address, a `{wasm}` statement.
     writes_anything: bool,
@@ -72,7 +75,7 @@ pub fn check_loop<'db>(
     }
     let mut effects = Effects::default();
     statements(db, body, loop_body, true, &mut effects);
-    if effects.exits || effects.writes_anything {
+    if effects.exits || effects.raises || effects.writes_anything {
         return;
     }
     let changes = |var: &VariableDecl<'db>| {
@@ -288,8 +291,30 @@ fn statements<'db>(
                 expression(db, body, condition, effects);
                 statements(db, body, stmts, false, effects);
             }
+            // The statements of a __TRY are at the loop's level: an EXIT in
+            // its body leaves the loop. What the body raises lands in the
+            // __CATCH, and leaves the loop only if the __CATCH does.
+            StmtKind::Try {
+                body: stmts,
+                catch,
+                finally,
+            } => {
+                let raised_outside = effects.raises;
+                statements(db, body, stmts, at_loop_level, effects);
+                if let Some(catch) = catch {
+                    effects.raises = raised_outside;
+                    if let Some(var) = catch.variable {
+                        write(db, body, var, effects);
+                    }
+                    statements(db, body, &catch.body, at_loop_level, effects);
+                }
+                if let Some(finally) = finally {
+                    statements(db, body, finally, at_loop_level, effects);
+                }
+            }
             StmtKind::Exit if at_loop_level => effects.exits = true,
-            StmtKind::Return | StmtKind::Raise { .. } => effects.exits = true,
+            StmtKind::Return => effects.exits = true,
+            StmtKind::Raise { .. } => effects.raises = true,
             StmtKind::WasmPragma(_) => effects.writes_anything = true,
             _ => {}
         }

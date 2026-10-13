@@ -559,6 +559,60 @@ fn visit_statements<'db>(
                     return_assigned,
                 );
             }
+            StmtKind::Try {
+                body: stmts,
+                catch,
+                finally,
+            } => {
+                // The variable a __CATCH names is written the message: an
+                // assignment's left side, for the rules that look at one.
+                if let Some(var) = catch.as_ref().and_then(|catch| catch.variable) {
+                    if ctx.input_assignment {
+                        run_lint(input_assignment::NAME, diagnostics, |d| {
+                            input_assignment::check_assignment(db, body, var, d)
+                        });
+                    }
+                    if ctx.external_mutation {
+                        run_lint(external_mutation::NAME, diagnostics, |d| {
+                            external_mutation::check_assignment(db, body, var, d)
+                        });
+                    }
+                    if ctx.loop_var_modified {
+                        run_lint(loop_var_modified::NAME, diagnostics, |d| {
+                            loop_var_modified::check_assignment(db, body, var, active_loop_vars, d)
+                        });
+                    }
+                    if ctx.missing_return
+                        && !*return_assigned
+                        && missing_return::check_assignment(body, var)
+                    {
+                        *return_assigned = true;
+                    }
+                    if ctx.uninitialized_output
+                        && let Some(assigned) = assigned_vars.as_mut()
+                    {
+                        uninitialized_output::collect_assigned(db, body, var, assigned);
+                    }
+                }
+                let bodies = [
+                    Some(stmts),
+                    catch.as_ref().map(|catch| &catch.body),
+                    finally.as_ref(),
+                ];
+                for stmts in bodies.into_iter().flatten() {
+                    visit_statements(
+                        db,
+                        body,
+                        ctx,
+                        scope,
+                        stmts,
+                        diagnostics,
+                        assigned_vars,
+                        active_loop_vars,
+                        return_assigned,
+                    );
+                }
+            }
             StmtKind::Case {
                 condition,
                 cases,

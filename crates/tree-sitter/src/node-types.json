@@ -504,6 +504,10 @@
         "named": false
       },
       {
+        "type": "ERR_clause_outside_try",
+        "named": true
+      },
+      {
         "type": "ERR_method_decl_in_body",
         "named": true
       },
@@ -549,6 +553,10 @@
       },
       {
         "type": "repeat_stmt",
+        "named": true
+      },
+      {
+        "type": "try_stmt",
         "named": true
       },
       {
@@ -736,6 +744,11 @@
     }
   },
   {
+    "type": "ERR_clause_outside_try",
+    "named": true,
+    "fields": {}
+  },
+  {
     "type": "ERR_config_entry_with_no_spec",
     "named": true,
     "fields": {
@@ -778,6 +791,11 @@
   },
   {
     "type": "ERR_empty_right_hand_assignment",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "ERR_end_try_spelling",
     "named": true,
     "fields": {}
   },
@@ -1988,6 +2006,32 @@
     }
   },
   {
+    "type": "catch_clause",
+    "named": true,
+    "fields": {
+      "body": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "stmt_list",
+            "named": true
+          }
+        ]
+      },
+      "variable": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "variable_access",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "char_literal",
     "named": true,
     "fields": {
@@ -3133,6 +3177,22 @@
         "types": [
           {
             "type": "var_access",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "finally_clause",
+    "named": true,
+    "fields": {
+      "body": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "stmt_list",
             "named": true
           }
         ]
@@ -6582,6 +6642,46 @@
     }
   },
   {
+    "type": "try_stmt",
+    "named": true,
+    "fields": {
+      "body": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "stmt_list",
+            "named": true
+          }
+        ]
+      },
+      "clause": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "catch_clause",
+            "named": true
+          },
+          {
+            "type": "finally_clause",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": false,
+      "required": false,
+      "types": [
+        {
+          "type": "ERR_end_try_spelling",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "type_decl",
     "named": true,
     "fields": {
@@ -7689,7 +7789,27 @@
     "named": false
   },
   {
+    "type": "__CATCH",
+    "named": false
+  },
+  {
+    "type": "__ENDTRY",
+    "named": false
+  },
+  {
+    "type": "__END_TRY",
+    "named": false
+  },
+  {
+    "type": "__FINALLY",
+    "named": false
+  },
+  {
     "type": "__RAISE",
+    "named": false
+  },
+  {
+    "type": "__TRY",
     "named": false
   },
   {

@@ -70,6 +70,12 @@ pub fn diagnostics_for_file(db: &dyn WorkspaceDataBase, file: File) -> Arc<Vec<I
 
     all_diagnostics.extend(lexer_errors);
 
+    // In the order of the source, whatever found each: a syntax error is
+    // not read after the errors of the lines below it, and two reports of
+    // one construct stand together. Stable, so that what one pass reports
+    // at one place keeps its order.
+    all_diagnostics.sort_by_key(|d| (d.diagnostic.range.start, d.diagnostic.range.end));
+
     Arc::new(all_diagnostics)
 }
 

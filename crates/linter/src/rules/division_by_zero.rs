@@ -87,6 +87,19 @@ fn check_statements<'db>(
                 check_expr(db, condition, diagnostics);
                 check_statements(db, body, diagnostics);
             }
+            StmtKind::Try {
+                body,
+                catch,
+                finally,
+            } => {
+                check_statements(db, body, diagnostics);
+                if let Some(catch) = catch {
+                    check_statements(db, &catch.body, diagnostics);
+                }
+                if let Some(finally) = finally {
+                    check_statements(db, finally, diagnostics);
+                }
+            }
             StmtKind::Case { cases, else_, .. } => {
                 for (_, stmts) in cases {
                     check_statements(db, stmts, diagnostics);

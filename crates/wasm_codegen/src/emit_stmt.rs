@@ -111,6 +111,16 @@ struct Ctx<'a> {
     /// [`for_scratch_requests`] order; `None` means a constant emitted
     /// inline. Per statement, since loops nest.
     for_scratch: &'a std::cell::RefCell<std::collections::VecDeque<(Option<u32>, Option<u32>)>>,
+    /// What a `__CATCH` lands with, and the block type its landing block
+    /// has.
+    catching: Catching,
+    /// The `__TRY`s with a `__FINALLY` the emission point is inside of,
+    /// innermost last, as far as a jump is concerned: one being emitted is
+    /// not there while its cleanup is.
+    finally_stack: &'a std::cell::RefCell<Vec<FinallyTargets>>,
+    /// How many `__TRY`s with a `__FINALLY` the emission point is inside
+    /// of, cleanups included: which `left` local the next one takes.
+    finally_level: &'a std::cell::Cell<u32>,
     /// Open wasm labels at the emission point: `br N` is relative, so
     /// `EXIT`/`CONTINUE` need it to reach their loop from under enclosing
     /// `IF`/`CASE` labels.
@@ -118,6 +128,143 @@ struct Ctx<'a> {
     /// The innermost loops' branch targets; depth from a site with
     /// `open_labels = O` to a target `L` is `O - L`.
     loop_stack: &'a std::cell::RefCell<Vec<LoopTargets>>,
+}
+
+/// What the `__TRY` statements of a function need from it.
+#[derive(Clone, Copy, Default)]
+pub(crate) struct Catching {
+    /// The scratch locals, `None` when the function has no `__TRY`.
+    pub(crate) scratch: Option<TryScratch>,
+    /// The type `() -> (i32, i32)` of the block a `catch` lands in with the
+    /// exception's `(ptr, len)`, registered once per module.
+    pub(crate) block_type_idx: Option<u32>,
+}
+
+/// The scratch locals of a function's `__TRY`s.
+#[derive(Clone, Copy)]
+pub(crate) struct TryScratch {
+    /// The `(ptr, len)` of the exception's message, stashed at the landing.
+    pub(crate) ptr: u32,
+    pub(crate) len: u32,
+    /// Where the stack pointer of recursive calls is saved at `__TRY` and
+    /// put back at `__CATCH`: `(local, global)`. `None` when the module has
+    /// no stack. An exception leaves the frames of the calls it unwound on
+    /// the stack; a host entry starts the stack over, a `__CATCH` goes back
+    /// to where its `__TRY` found it.
+    pub(crate) sp: Option<(u32, u32)>,
+    /// How a `__TRY` with a `__FINALLY` was left, for what follows the
+    /// cleanup: one of [`RAN_THROUGH`], [`RETHROW`], [`RETURN`], [`EXIT`]
+    /// and [`CONTINUE`]. One local per level of such `__TRY`s inside each
+    /// other, from this first one: a `__TRY` in a cleanup, or in a body
+    /// whose exception is thrown again, must not overwrite what the one
+    /// around it was left with. `None` when no `__TRY` has a `__FINALLY`.
+    pub(crate) left: Option<u32>,
+}
+
+/// The body and the handler ran through: what follows the cleanup is the
+/// code after the `__TRY`.
+const RAN_THROUGH: i32 = 0;
+/// An exception left the body with no `__CATCH`, or the handler: thrown
+/// again after the cleanup, with the `(ptr, len)` stashed.
+const RETHROW: i32 = 1;
+/// A `RETURN`, an `EXIT` or a `CONTINUE` left the body or the handler: made
+/// again after the cleanup, from outside the `__TRY`, where the next
+/// `__FINALLY` out takes it in turn.
+const RETURN: i32 = 2;
+const EXIT: i32 = 3;
+const CONTINUE: i32 = 4;
+
+/// The scratch locals a body's `__TRY`s need, appended to `extra_locals`.
+pub(crate) fn alloc_try_scratch(
+    body: &[MirStmt],
+    params_len: u32,
+    extra_locals: &mut Vec<(u32, wasm_encoder::ValType)>,
+    sp_global: Option<u32>,
+) -> Option<TryScratch> {
+    let mut found = false;
+    mir::stmt::for_each_stmt(body, &mut |stmt| {
+        found |= matches!(stmt, MirStmt::Try { .. })
+    });
+    if !found {
+        return None;
+    }
+    let levels = finally_levels(body);
+    let next = params_len + extra_locals.iter().map(|(c, _)| *c).sum::<u32>();
+    let count = 2 + u32::from(sp_global.is_some()) + levels;
+    extra_locals.push((count, wasm_encoder::ValType::I32));
+    let sp = sp_global.map(|global| (next + 2, global));
+    Some(TryScratch {
+        ptr: next,
+        len: next + 1,
+        sp,
+        left: (levels > 0).then_some(next + 2 + u32::from(sp.is_some())),
+    })
+}
+
+/// How many `__TRY`s with a `__FINALLY` are inside each other at most, a
+/// cleanup counted inside the `__TRY` it belongs to.
+fn finally_levels(stmts: &[MirStmt]) -> u32 {
+    stmts
+        .iter()
+        .map(|stmt| match stmt {
+            MirStmt::Try {
+                body,
+                catch,
+                finally,
+            } => {
+                let inside = finally_levels(body)
+                    .max(
+                        catch
+                            .as_ref()
+                            .map_or(0, |catch| finally_levels(&catch.body)),
+                    )
+                    .max(finally.as_deref().map_or(0, finally_levels));
+                inside + u32::from(finally.is_some())
+            }
+            MirStmt::If {
+                then_body,
+                else_ifs,
+                else_body,
+                ..
+            } => finally_levels(then_body)
+                .max(
+                    else_ifs
+                        .iter()
+                        .map(|(_, body)| finally_levels(body))
+                        .max()
+                        .unwrap_or(0),
+                )
+                .max(else_body.as_deref().map_or(0, finally_levels)),
+            MirStmt::Case {
+                arms, else_body, ..
+            } => arms
+                .iter()
+                .map(|arm| finally_levels(&arm.body))
+                .max()
+                .unwrap_or(0)
+                .max(else_body.as_deref().map_or(0, finally_levels)),
+            MirStmt::For { body, .. }
+            | MirStmt::While { body, .. }
+            | MirStmt::Repeat { body, .. } => finally_levels(body),
+            _ => 0,
+        })
+        .max()
+        .unwrap_or(0)
+}
+
+/// A `__TRY` with a `__FINALLY` around the statements being emitted: what a
+/// jump out of them goes through.
+#[derive(Clone, Copy)]
+struct FinallyTargets {
+    /// `open_labels` inside the block the cleanup follows: a jump out
+    /// branches to its end.
+    run_open: u32,
+    /// How many loops were open at the `__TRY`: an `EXIT` or a `CONTINUE`
+    /// for one of those leaves the `__TRY`, one for a loop opened inside
+    /// does not.
+    loops_at_entry: usize,
+    /// The local that says how the `__TRY` was left.
+    left: u32,
 }
 
 /// The two branch targets a loop offers the statements in its body.
@@ -153,11 +300,14 @@ pub(crate) fn emit_stmts_with_return(
     rk_exception_tag_idx: Option<u32>,
     fb_recv_tmp: Option<u32>,
     for_scratch: std::collections::VecDeque<(Option<u32>, Option<u32>)>,
+    catching: Catching,
 ) -> Vec<(u32, MirSourceLocation)> {
     let lines = std::cell::RefCell::new(Vec::new());
     let for_scratch = std::cell::RefCell::new(for_scratch);
     let open_labels = std::cell::Cell::new(0);
     let loop_stack = std::cell::RefCell::new(Vec::new());
+    let finally_stack = std::cell::RefCell::new(Vec::new());
+    let finally_level = std::cell::Cell::new(0);
     {
         let ctx = Ctx {
             locals,
@@ -168,6 +318,9 @@ pub(crate) fn emit_stmts_with_return(
             lines: &lines,
             fb_recv_tmp,
             for_scratch: &for_scratch,
+            catching,
+            finally_stack: &finally_stack,
+            finally_level: &finally_level,
             open_labels: &open_labels,
             loop_stack: &loop_stack,
         };
@@ -207,6 +360,11 @@ fn emit_stmt(func: &mut wasm_encoder::Function, stmt: &MirStmt, ctx: &Ctx) {
         }
 
         MirStmt::Return => {
+            // From inside a `__TRY` with a `__FINALLY`: the cleanup first.
+            if let Some(finally) = ctx.finally_stack.borrow().last().copied() {
+                leave_through_finally(func, ctx, finally, RETURN);
+                return;
+            }
             if let Some(ret) = ctx.return_value {
                 emit_return_value(func, ret);
             }
@@ -649,6 +807,10 @@ fn emit_stmt(func: &mut wasm_encoder::Function, stmt: &MirStmt, ctx: &Ctx) {
         }
 
         MirStmt::Exit => {
+            if let Some(finally) = finally_around_the_loop(ctx) {
+                leave_through_finally(func, ctx, finally, EXIT);
+                return;
+            }
             // Branch depth is relative: from under k IF/CASE labels, the loop's
             // exit block is k labels further out.
             let depth = {
@@ -660,6 +822,10 @@ fn emit_stmt(func: &mut wasm_encoder::Function, stmt: &MirStmt, ctx: &Ctx) {
         }
 
         MirStmt::Continue => {
+            if let Some(finally) = finally_around_the_loop(ctx) {
+                leave_through_finally(func, ctx, finally, CONTINUE);
+                return;
+            }
             let depth = {
                 let stack = ctx.loop_stack.borrow();
                 let t = stack
@@ -914,7 +1080,229 @@ fn emit_stmt(func: &mut wasm_encoder::Function, stmt: &MirStmt, ctx: &Ctx) {
                 .expect("MIR contains MirStmt::Raise but no $rk_exception tag was registered");
             func.instruction(&Instruction::Throw(tag_idx));
         }
+
+        MirStmt::Try {
+            body,
+            catch,
+            finally,
+        } => emit_try(func, body, catch.as_ref(), finally.as_deref(), ctx),
     }
+}
+
+/// The innermost `__TRY` with a `__FINALLY` that an `EXIT` or a `CONTINUE`
+/// here leaves: one entered after the loop the jump is for was.
+fn finally_around_the_loop(ctx: &Ctx) -> Option<FinallyTargets> {
+    let finally = ctx.finally_stack.borrow().last().copied()?;
+    (ctx.loop_stack.borrow().len() <= finally.loops_at_entry).then_some(finally)
+}
+
+/// Leave the body or the handler of a `__TRY` with a `__FINALLY` by a jump:
+/// say which, and branch to its cleanup, which makes the jump again after.
+fn leave_through_finally(
+    func: &mut wasm_encoder::Function,
+    ctx: &Ctx,
+    finally: FinallyTargets,
+    how: i32,
+) {
+    func.instruction(&Instruction::I32Const(how));
+    func.instruction(&Instruction::LocalSet(finally.left));
+    func.instruction(&Instruction::Br(ctx.open_labels.get() - finally.run_open));
+}
+
+/// `__TRY body __CATCH(message) handler __END_TRY`:
+///
+/// ```text
+/// block $after
+///   block $catch (result i32 i32)
+///     try_table (catch $rk_exception $catch)
+///       body
+///     end
+///     br $after
+///   end                       ; landed with the exception's (ptr, len)
+///   <stash them, put the stack pointer back, copy the message>
+///   handler
+/// end
+/// ```
+///
+/// A `catch` clause names its label in the scope outside the `try_table`,
+/// so `$catch` is 0 there. The body runs under three labels and the
+/// handler under one, which an `EXIT` or a `CONTINUE` in either counts
+/// past to reach its loop; a `RETURN` returns from under a `try_table` as
+/// from anywhere.
+///
+/// With a `__FINALLY`, every way out of the body and the handler goes
+/// through the cleanup, and what follows it depends on which way:
+///
+/// ```text
+/// left := RAN_THROUGH
+/// block $done
+///   block $run_finally
+///     block $catch (result i32 i32)
+///       try_table (catch $rk_exception $catch)
+///         body                     ; a jump out: left := how, br $run_finally
+///       end
+///       br $run_finally
+///     end
+///     <stash, put the stack pointer back>
+///     no handler: left := RETHROW
+///     a handler: <copy the message>
+///       block $hcatch (result i32 i32)
+///         try_table (catch $rk_exception $hcatch)
+///           handler                ; a jump out: the same
+///         end
+///         br $run_finally
+///       end
+///       <stash, put the stack pointer back>, left := RETHROW
+///   end
+///   cleanup
+///   left = RETHROW: throw the stashed (ptr, len)
+///   left = RETURN, EXIT, CONTINUE: the jump, from here, so that the next
+///                                  __FINALLY out takes it in turn
+/// end
+/// ```
+fn emit_try(
+    func: &mut wasm_encoder::Function,
+    body: &[MirStmt],
+    catch: Option<&mir::stmt::MirCatch>,
+    finally: Option<&[MirStmt]>,
+    ctx: &Ctx,
+) {
+    let tag_idx = ctx
+        .rk_exception_tag_idx
+        .expect("MIR contains MirStmt::Try but no $rk_exception tag was registered");
+    let scratch = ctx
+        .catching
+        .scratch
+        .expect("MIR contains MirStmt::Try but the function has no scratch for it");
+    let landing_ty = ctx
+        .catching
+        .block_type_idx
+        .expect("MIR contains MirStmt::Try but no catch block type was registered");
+
+    // The stack pointer at the `__TRY`, for its landings.
+    if let Some((local, global)) = scratch.sp {
+        func.instruction(&Instruction::GlobalGet(global));
+        func.instruction(&Instruction::LocalSet(local));
+    }
+    // What a landing does with the (ptr, len) it has on the stack.
+    let land = |func: &mut wasm_encoder::Function| {
+        func.instruction(&Instruction::LocalSet(scratch.len));
+        func.instruction(&Instruction::LocalSet(scratch.ptr));
+        if let Some((local, global)) = scratch.sp {
+            func.instruction(&Instruction::LocalGet(local));
+            func.instruction(&Instruction::GlobalSet(global));
+        }
+    };
+    // A `try_table` over `stmts`, landing in the block around it.
+    let guarded = |func: &mut wasm_encoder::Function, stmts: &[MirStmt]| {
+        func.instruction(&Instruction::Block(BlockType::FunctionType(landing_ty)));
+        open_label(ctx);
+        func.instruction(&Instruction::TryTable(
+            BlockType::Empty,
+            std::borrow::Cow::Owned(vec![wasm_encoder::Catch::One {
+                tag: tag_idx,
+                label: 0,
+            }]),
+        ));
+        open_label(ctx);
+        emit_stmts(func, stmts, ctx);
+        func.instruction(&Instruction::End); // try_table
+        close_label(ctx);
+        func.instruction(&Instruction::Br(1)); // ran through: past the landing
+        func.instruction(&Instruction::End); // the landing block
+        close_label(ctx);
+    };
+    // The message copied, as an assignment of a STRING: `rk.str_assign(dest,
+    // cap, ptr, len)` copies what the capacity takes and writes the length.
+    let copy_message = |func: &mut wasm_encoder::Function, catch: &mir::stmt::MirCatch| {
+        if let Some(target) = &catch.message {
+            let assign_idx = ctx
+                .builtin_indices
+                .get("rk.str_assign")
+                .copied()
+                .expect("rk.str_assign must be grafted for a __CATCH that takes the message");
+            emit_addr_of(func, target, ctx.locals, ctx.fn_indices);
+            emit_string_capacity(func, target, ctx.locals, ctx.fn_indices);
+            func.instruction(&Instruction::LocalGet(scratch.ptr));
+            func.instruction(&Instruction::LocalGet(scratch.len));
+            func.instruction(&Instruction::Call(assign_idx));
+        }
+    };
+
+    let Some(cleanup) = finally else {
+        let catch = catch.expect("a __TRY with no __FINALLY has its __CATCH (E1209)");
+        func.instruction(&Instruction::Block(BlockType::Empty)); // $after
+        open_label(ctx);
+        guarded(func, body);
+        land(func);
+        copy_message(func, catch);
+        emit_stmts(func, &catch.body, ctx);
+        func.instruction(&Instruction::End); // $after
+        close_label(ctx);
+        return;
+    };
+
+    let level = ctx.finally_level.get();
+    ctx.finally_level.set(level + 1);
+    let left = scratch
+        .left
+        .expect("a __TRY with a __FINALLY has the locals that say how it was left")
+        + level;
+    func.instruction(&Instruction::I32Const(RAN_THROUGH));
+    func.instruction(&Instruction::LocalSet(left));
+    func.instruction(&Instruction::Block(BlockType::Empty)); // $done
+    open_label(ctx);
+    func.instruction(&Instruction::Block(BlockType::Empty)); // $run_finally
+    open_label(ctx);
+    ctx.finally_stack.borrow_mut().push(FinallyTargets {
+        run_open: ctx.open_labels.get(),
+        loops_at_entry: ctx.loop_stack.borrow().len(),
+        left,
+    });
+    guarded(func, body);
+    land(func);
+    if let Some(catch) = catch {
+        copy_message(func, catch);
+        guarded(func, &catch.body);
+        land(func);
+    }
+    func.instruction(&Instruction::I32Const(RETHROW));
+    func.instruction(&Instruction::LocalSet(left));
+    ctx.finally_stack.borrow_mut().pop();
+    func.instruction(&Instruction::End); // $run_finally
+    close_label(ctx);
+
+    emit_stmts(func, cleanup, ctx);
+
+    // What follows the cleanup. A jump is made from here, outside this
+    // `__TRY`: the next `__FINALLY` out takes it in turn. An `EXIT` or a
+    // `CONTINUE` can only have left for a loop that was open at the `__TRY`.
+    let mut ways: Vec<(i32, Option<MirStmt>)> =
+        vec![(RETHROW, None), (RETURN, Some(MirStmt::Return))];
+    if !ctx.loop_stack.borrow().is_empty() {
+        ways.push((EXIT, Some(MirStmt::Exit)));
+        ways.push((CONTINUE, Some(MirStmt::Continue)));
+    }
+    for (how, jump) in ways {
+        func.instruction(&Instruction::LocalGet(left));
+        func.instruction(&Instruction::I32Const(how));
+        func.instruction(&Instruction::I32Eq);
+        func.instruction(&Instruction::If(BlockType::Empty));
+        open_label(ctx);
+        match jump {
+            None => {
+                func.instruction(&Instruction::LocalGet(scratch.ptr));
+                func.instruction(&Instruction::LocalGet(scratch.len));
+                func.instruction(&Instruction::Throw(tag_idx));
+            }
+            Some(jump) => emit_stmt(func, &jump, ctx),
+        }
+        func.instruction(&Instruction::End);
+        close_label(ctx);
+    }
+    func.instruction(&Instruction::End); // $done
+    close_label(ctx);
+    ctx.finally_level.set(level);
 }
 
 /// Emit an IEC-width shift/rotate (`shl8`, `shr16`, `rotl8`, …) from the
@@ -1308,6 +1696,15 @@ fn stmt_needs_dynamic_fb_base(stmt: &MirStmt, locals: &FxHashMap<Ident, LocalInf
         }
         MirStmt::While { body, .. } | MirStmt::Repeat { body, .. } => nested(body),
         MirStmt::For { body, .. } => nested(body),
+        MirStmt::Try {
+            body,
+            catch,
+            finally,
+        } => {
+            nested(body)
+                || catch.as_ref().is_some_and(|catch| nested(&catch.body))
+                || finally.as_deref().is_some_and(nested)
+        }
         MirStmt::Case {
             arms, else_body, ..
         } => arms.iter().any(|a| nested(&a.body)) || else_body.as_deref().is_some_and(nested),
@@ -1364,6 +1761,19 @@ fn collect_for_scratch(stmts: &[MirStmt], out: &mut Vec<ForScratchReq>) {
             }
             MirStmt::While { body, .. } | MirStmt::Repeat { body, .. } => {
                 collect_for_scratch(body, out);
+            }
+            MirStmt::Try {
+                body,
+                catch,
+                finally,
+            } => {
+                collect_for_scratch(body, out);
+                if let Some(catch) = catch {
+                    collect_for_scratch(&catch.body, out);
+                }
+                if let Some(finally) = finally {
+                    collect_for_scratch(finally, out);
+                }
             }
             MirStmt::Case {
                 arms, else_body, ..

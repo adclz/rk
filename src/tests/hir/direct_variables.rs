@@ -1131,6 +1131,28 @@ END_VAR
 END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1424] Error: location refused
+        ,-[ file:///test0.st:16:14 ]
+        |
+     16 |     Res.P1.d.run   AT %QX0.0 : BOOL;
+        |              ^|^
+        |               `--- 'run' is located at '%QX0.0' here and at '%QX0.1' by another entry
+        |
+        | Help: keep one of the entries
+        |
+        | Note: an instance's variable has one address
+    ----'
+    [E1424] Error: location refused
+        ,-[ file:///test0.st:17:14 ]
+        |
+     17 |     Res.P1.d.run   AT %QX0.1 : BOOL;
+        |              ^|^
+        |               `--- 'run' is located at '%QX0.1' here and at '%QX0.0' by another entry
+        |
+        | Help: keep one of the entries
+        |
+        | Note: an instance's variable has one address
+    ----'
     [E1426] Error: configuration entry refused
         ,-[ file:///test0.st:18:14 ]
         |
@@ -1157,28 +1179,6 @@ END_CONFIGURATION
      20 |     Res.P1.d.lvl   AT %QW1   : INT;
         |              ^|^
         |               `--- 'Drive' has no field named 'lvl'
-    ----'
-    [E1424] Error: location refused
-        ,-[ file:///test0.st:16:14 ]
-        |
-     16 |     Res.P1.d.run   AT %QX0.0 : BOOL;
-        |              ^|^
-        |               `--- 'run' is located at '%QX0.0' here and at '%QX0.1' by another entry
-        |
-        | Help: keep one of the entries
-        |
-        | Note: an instance's variable has one address
-    ----'
-    [E1424] Error: location refused
-        ,-[ file:///test0.st:17:14 ]
-        |
-     17 |     Res.P1.d.run   AT %QX0.1 : BOOL;
-        |              ^|^
-        |               `--- 'run' is located at '%QX0.1' here and at '%QX0.0' by another entry
-        |
-        | Help: keep one of the entries
-        |
-        | Note: an instance's variable has one address
     ----'
     ");
 }

@@ -21,8 +21,6 @@ END_NAMESPACE"#;
      2 | NAMESPACE
        |          |
        |          `- missing 'identifier'
-       |          |
-       |          `- add missing identifier here
     ---'
     ");
 }
@@ -42,8 +40,6 @@ fn missing_end_keyword(mut with_db: RootDatabase) {
      2 |     FUNCTION myFunc : INT
        |                          |
        |                          `- missing 'END_FUNCTION'
-       |                          |
-       |                          `- add missing END_FUNCTION here
     ---'
     ");
 }
@@ -999,19 +995,19 @@ END_FUNCTION_BLOCK
 "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0028] Error: METHOD declared in a body
-       ,-[ file:///test0.st:4:5 ]
-       |
-     4 |     METHOD m1
-       |     ^^^|^^
-       |        `---- a METHOD cannot be declared in a body
-    ---'
     [E0201] Error: unknown name
        ,-[ file:///test0.st:3:5 ]
        |
      3 |     x := 1;
        |     |
        |     `-- no item 'x' found in scope
+    ---'
+    [E0028] Error: METHOD declared in a body
+       ,-[ file:///test0.st:4:5 ]
+       |
+     4 |     METHOD m1
+       |     ^^^|^^
+       |        `---- a METHOD cannot be declared in a body
     ---'
     ");
 }

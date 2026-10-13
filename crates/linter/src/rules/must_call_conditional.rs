@@ -44,6 +44,8 @@ enum Within {
     If,
     Case,
     Loop,
+    /// A `__CATCH`, run when the body raised.
+    Catch,
 }
 
 impl Within {
@@ -52,6 +54,7 @@ impl Within {
             Within::If => "an IF",
             Within::Case => "a CASE",
             Within::Loop => "a loop",
+            Within::Catch => "a __CATCH",
         }
     }
 
@@ -60,6 +63,7 @@ impl Within {
             Within::If => "the IF",
             Within::Case => "the CASE",
             Within::Loop => "the loop",
+            Within::Catch => "the __CATCH",
         }
     }
 }
@@ -251,6 +255,21 @@ fn walk<'db>(
             | StmtKind::While { body: stmts, .. }
             | StmtKind::Repeat { body: stmts, .. } => {
                 walk(db, body, stmts, within.or(Some(Within::Loop)), calls)
+            }
+            // The body runs, the catch only when it raised, the finally
+            // either way.
+            StmtKind::Try {
+                body: stmts,
+                catch,
+                finally,
+            } => {
+                walk(db, body, stmts, within, calls);
+                if let Some(catch) = catch {
+                    walk(db, body, &catch.body, within.or(Some(Within::Catch)), calls);
+                }
+                if let Some(finally) = finally {
+                    walk(db, body, finally, within, calls);
+                }
             }
             _ => {}
         }

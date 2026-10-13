@@ -13,7 +13,7 @@ What the compiler can prove is refused at compile time instead, and costs nothin
 The rest is WebAssembly arithmetic:
 
 - Integer overflow wraps: `DINT#2147483647 + 1` is `-2147483648`, silently, at every width.
-- Division by zero is the VM's own trap: it carries no message, and a `{test}` cannot catch it.
+- Division by zero is the VM's own trap: it carries no message, and neither a `{test}` nor a `__CATCH` can catch it.
 - A `STRING` too long for its destination truncates.
 - `REAL#1.0 / 0.0` is `+inf` and the scan continues. Nothing faults on NaN or infinity.
 

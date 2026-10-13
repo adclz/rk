@@ -980,6 +980,17 @@ END_PROGRAM
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     [E0404] Error: write to a constant
+        ,-[ file:///test0.st:16:21 ]
+        |
+     16 | VAR_GLOBAL CONSTANT shared : Fb; END_VAR
+        |                     ^^^|^^
+        |                        `---- instance 'shared' of 'Fb' cannot be CONSTANT
+        |
+        | Help: declare it in a VAR section without CONSTANT
+        |
+        | Note: an instance changes when it runs
+    ----'
+    [E0404] Error: write to a constant
         ,-[ file:///test0.st:21:5 ]
         |
      21 |     f : Fb;
@@ -1007,17 +1018,6 @@ END_PROGRAM
      23 |     many : ARRAY[0..1] OF Fb;
         |     ^^|^
         |       `--- array 'many' of 'Fb' instances cannot be CONSTANT
-        |
-        | Help: declare it in a VAR section without CONSTANT
-        |
-        | Note: an instance changes when it runs
-    ----'
-    [E0404] Error: write to a constant
-        ,-[ file:///test0.st:16:21 ]
-        |
-     16 | VAR_GLOBAL CONSTANT shared : Fb; END_VAR
-        |                     ^^^|^^
-        |                        `---- instance 'shared' of 'Fb' cannot be CONSTANT
         |
         | Help: declare it in a VAR section without CONSTANT
         |
@@ -1052,6 +1052,20 @@ END_PROGRAM
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     [E0404] Error: write to a constant
+       ,-[ file:///test0.st:6:29 ]
+       |
+     5 | VAR_GLOBAL CONSTANT LIMIT : INT := 10; END_VAR
+       |                     ^^|^^
+       |                       `---- 'LIMIT' is declared CONSTANT here
+     6 | VAR_GLOBAL gp : PInt := REF(LIMIT); END_VAR
+       |                             ^^|^^
+       |                               `---- cannot take a reference to constant 'LIMIT'
+       |
+       | Help: copy it into a variable and take the reference of that
+       |
+       | Note: a reference could change it
+    ---'
+    [E0404] Error: write to a constant
         ,-[ file:///test0.st:11:33 ]
         |
      10 | VAR_EXTERNAL CONSTANT LIMIT : INT; END_VAR
@@ -1079,20 +1093,6 @@ END_PROGRAM
         |
         | Note: a reference could change it
     ----'
-    [E0404] Error: write to a constant
-       ,-[ file:///test0.st:6:29 ]
-       |
-     5 | VAR_GLOBAL CONSTANT LIMIT : INT := 10; END_VAR
-       |                     ^^|^^
-       |                       `---- 'LIMIT' is declared CONSTANT here
-     6 | VAR_GLOBAL gp : PInt := REF(LIMIT); END_VAR
-       |                             ^^|^^
-       |                               `---- cannot take a reference to constant 'LIMIT'
-       |
-       | Help: copy it into a variable and take the reference of that
-       |
-       | Note: a reference could change it
-    ---'
     ");
 }
 

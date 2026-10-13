@@ -13,6 +13,7 @@
   - [References](references.md)
   - [Partial access](partial-access.md)
   - [Strings](strings.md)
+  - [Exceptions](exceptions.md)
 - Data types
   - [Structs](structs.md)
   - [Arrays](arrays.md)

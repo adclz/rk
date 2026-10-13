@@ -180,6 +180,19 @@ fn scan_statements<'db>(
             | StmtKind::Repeat { body, .. } => {
                 scan_statements(db, file, body, report_unknown, regions, diagnostics);
             }
+            StmtKind::Try {
+                body,
+                catch,
+                finally,
+            } => {
+                scan_statements(db, file, body, report_unknown, regions, diagnostics);
+                if let Some(catch) = catch {
+                    scan_statements(db, file, &catch.body, report_unknown, regions, diagnostics);
+                }
+                if let Some(finally) = finally {
+                    scan_statements(db, file, finally, report_unknown, regions, diagnostics);
+                }
+            }
             _ => {}
         }
     }

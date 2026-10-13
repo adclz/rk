@@ -12,7 +12,7 @@ use crate::{
         expressions::{
             expression::{
                 BooleanOperatorKind, ComparisonOperatorKind, Elementary, Expr, ExprKind,
-                PrimaryExpr, RefValue, UnaryOperatorKind,
+                PrimaryExpr, RefValue, UnaryOperatorKind, VariableAccess,
             },
             spec::ElementarySpec,
             statement::{CaseKind, Stmt, StmtKind},
@@ -29,10 +29,37 @@ use crate::{
     },
 };
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub enum NestedScope {
-    Loop,
-    None,
+/// What the statements being checked are inside of.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Default)]
+pub struct NestedScope {
+    /// Inside a loop: an EXIT or a CONTINUE has one to leave.
+    pub in_loop: bool,
+    /// Inside a __FINALLY, which no jump may leave.
+    pub in_finally: bool,
+}
+
+impl NestedScope {
+    /// At the top of a body.
+    pub const NONE: Self = Self {
+        in_loop: false,
+        in_finally: false,
+    };
+
+    /// Entering a loop.
+    pub fn in_loop(self) -> Self {
+        Self {
+            in_loop: true,
+            ..self
+        }
+    }
+
+    /// Entering a __FINALLY: the loops outside it are out of reach.
+    pub fn in_finally(self) -> Self {
+        Self {
+            in_loop: false,
+            in_finally: true,
+        }
+    }
 }
 
 pub struct StmtsResolverCtx<'db> {
@@ -261,17 +288,51 @@ fn falls_through<'db>(db: &'db dyn WorkspaceDataBase, stmts: &[Stmt<'db>]) -> bo
 
 /// A statement nothing in its block can follow: the ones after it are dead.
 fn terminates<'db>(db: &'db dyn WorkspaceDataBase, stmt: Stmt<'db>) -> bool {
-    matches!(
-        stmt.stmt(db),
-        StmtKind::Return | StmtKind::Exit | StmtKind::Continue | StmtKind::Raise { .. }
-    )
+    match stmt.stmt(db) {
+        StmtKind::Return | StmtKind::Exit | StmtKind::Continue | StmtKind::Raise { .. } => true,
+        // A __TRY ends its block when its __FINALLY does, which every way
+        // out goes through. Or when its body does and its __CATCH, where
+        // what the body raises lands, does too.
+        StmtKind::Try {
+            body,
+            catch,
+            finally,
+        } => {
+            finally.as_deref().is_some_and(|f| !falls_through(db, f))
+                || (!falls_through(db, body)
+                    && catch
+                        .as_ref()
+                        .is_none_or(|catch| !falls_through(db, &catch.body)))
+        }
+        _ => false,
+    }
+}
+
+/// The null states of the references where several paths meet: a
+/// reference is non-null there when it is on each of them. `None` when no
+/// path arrives.
+fn join_states<'db>(
+    mut states: Vec<rustc_hash::FxHashMap<VariableDecl<'db>, NullState<'db>>>,
+) -> Option<rustc_hash::FxHashMap<VariableDecl<'db>, NullState<'db>>> {
+    if states.is_empty() {
+        return None;
+    }
+    let mut joined = states.remove(0);
+    for branch in states {
+        for (var, state) in &branch {
+            if let Some(existing) = joined.get(var) {
+                joined.insert(*var, existing.join(*state));
+            }
+        }
+    }
+    Some(joined)
 }
 
 impl<'db> StmtsResolverCtx<'db> {
     pub fn new(scope: ScopeId<'db>) -> Self {
         StmtsResolverCtx {
             scope,
-            nested_scope: NestedScope::None,
+            nested_scope: NestedScope::NONE,
         }
     }
 
@@ -314,7 +375,7 @@ impl<'db> StmtsResolverCtx<'db> {
                         )
                     {
                         // Rule 2: SUPER() shall not be in a loop.
-                        if nested_scope == NestedScope::Loop {
+                        if nested_scope.in_loop {
                             ctx.errors.push(
                                 OopError::SuperBodyInLoop {
                                     call_site: stmt.as_call_site(db),
@@ -337,48 +398,7 @@ impl<'db> StmtsResolverCtx<'db> {
                 }
 
                 StmtKind::Assignment { var, target } => {
-                    resolver.resolve_variable_access(db, *var, ctx);
-                    let base_typ = ctx.get_type_of_variable_access(db, *var);
-
-                    // A field or an element of a constant is the constant.
-                    // A CONSTANT variable itself is refused by
-                    // `check_assignable`, below.
-                    if ctx.is_constant_place(db, *var) && !is_constant_variable(db, base_typ) {
-                        ctx.errors.push(
-                            InitError::AssignToConstant {
-                                access: CallSite::from_scoped(db, var),
-                                constant: ctx.constant_root(db, *var),
-                            }
-                            .to_diagnostic(db, ctx.scope.file(db)),
-                        );
-                    }
-
-                    refuse_edge_input_as_storage(
-                        db,
-                        *var,
-                        crate::check::errors::e02_resolve::EdgeUse::Written,
-                        ctx,
-                    );
-                    let assignable =
-                        base_typ.check_assignable(db, CallSite::from_scoped(db, var), ctx);
-
-                    // Design 1: an interface parameter is a fixed binding to the
-                    // concrete type the caller supplied; reassigning it would
-                    // break monomorphization (see E1124).
-                    if let Type::Variable((var_decl, _)) = base_typ
-                        && matches!(
-                            var_decl.spec(db).infer(db).normalize(db),
-                            Type::Interface(_)
-                        )
-                    {
-                        ctx.errors.push(
-                            OopError::InterfaceParamNotAssignable {
-                                var: var_decl,
-                                access: *var,
-                            }
-                            .to_diagnostic(db, ctx.scope.file(db)),
-                        );
-                    }
+                    let (base_typ, assignable) = self.check_written_place(db, resolver, *var, ctx);
 
                     // The target's type was resolved above, so it can DIRECT
                     // the right-hand side: a RETURN-overloaded call picks the
@@ -482,6 +502,15 @@ impl<'db> StmtsResolverCtx<'db> {
                                 NullState::NonNull
                             };
                             ctx.ref_null_state.insert(var_decl, new_state);
+                            // A __TRY being checked keeps every state a
+                            // reference takes inside it: what its body
+                            // raises can come after any of them.
+                            for seen in &mut ctx.null_states_in_try {
+                                let state = seen
+                                    .get(&var_decl)
+                                    .map_or(new_state, |earlier| earlier.join(new_state));
+                                seen.insert(var_decl, state);
+                            }
                         }
                     }
                 }
@@ -569,20 +598,7 @@ impl<'db> StmtsResolverCtx<'db> {
 
                     // Every branch returned: nothing reaches the code below,
                     // so keep the state the IF was entered with.
-                    if branch_states.is_empty() {
-                        branch_states.push(pre_if_state);
-                    }
-
-                    // Join all branch states
-                    let mut joined = branch_states.remove(0);
-                    for branch in branch_states {
-                        for (var, state) in &branch {
-                            if let Some(existing) = joined.get(var) {
-                                joined.insert(*var, existing.join(*state));
-                            }
-                        }
-                    }
-                    ctx.ref_null_state = joined;
+                    ctx.ref_null_state = join_states(branch_states).unwrap_or(pre_if_state);
                 }
 
                 StmtKind::While { condition, body } => {
@@ -602,7 +618,7 @@ impl<'db> StmtsResolverCtx<'db> {
                     // `WHILE p <> NULL DO p^` is as guarded as the IF form.
                     let guard = null_guards(db, *condition, ctx);
                     apply_guard(&mut ctx.ref_null_state, &guard.when_true);
-                    self.check_statements(db, resolver, body, NestedScope::Loop, ctx);
+                    self.check_statements(db, resolver, body, nested_scope.in_loop(), ctx);
                 }
 
                 StmtKind::Repeat { condition, body } => {
@@ -620,7 +636,7 @@ impl<'db> StmtsResolverCtx<'db> {
 
                     // REPEAT tests AFTER the body, so the condition proves
                     // nothing about the first pass — no narrowing here.
-                    self.check_statements(db, resolver, body, NestedScope::Loop, ctx);
+                    self.check_statements(db, resolver, body, nested_scope.in_loop(), ctx);
                 }
 
                 StmtKind::For {
@@ -789,7 +805,7 @@ impl<'db> StmtsResolverCtx<'db> {
                         }
                     }
 
-                    self.check_statements(db, resolver, body, NestedScope::Loop, ctx);
+                    self.check_statements(db, resolver, body, nested_scope.in_loop(), ctx);
                 }
 
                 StmtKind::FuncCall(call) => {
@@ -809,7 +825,12 @@ impl<'db> StmtsResolverCtx<'db> {
                 }
 
                 StmtKind::Continue | StmtKind::Exit => {
-                    if nested_scope != NestedScope::Loop {
+                    if nested_scope.in_finally && !nested_scope.in_loop {
+                        ctx.errors.push(
+                            ControlFlowError::JumpLeavesFinally { stmt: *stmt }
+                                .to_diagnostic(db, ctx.scope.file(db)),
+                        );
+                    } else if !nested_scope.in_loop {
                         let err = match stmt.stmt(db) {
                             StmtKind::Continue => {
                                 ControlFlowError::ContinueOutsideLoop { stmt: *stmt }
@@ -992,7 +1013,85 @@ impl<'db> StmtsResolverCtx<'db> {
                     }
                 }
 
-                StmtKind::Return => {}
+                StmtKind::Return => {
+                    if nested_scope.in_finally {
+                        ctx.errors.push(
+                            ControlFlowError::JumpLeavesFinally { stmt: *stmt }
+                                .to_diagnostic(db, ctx.scope.file(db)),
+                        );
+                    }
+                }
+
+                StmtKind::Try {
+                    body,
+                    catch,
+                    finally,
+                } => {
+                    let file = ctx.scope.file(db);
+                    if catch.is_none() && finally.is_none() {
+                        ctx.errors.push(
+                            ControlFlowError::TryWithoutClause { stmt: *stmt }
+                                .to_diagnostic(db, file),
+                        );
+                    }
+
+                    // The states the references have before the __TRY, and
+                    // then every state one takes in its body and in its
+                    // __CATCH.
+                    let before = ctx.ref_null_state.clone();
+                    ctx.null_states_in_try.push(before.clone());
+                    self.check_statements(db, resolver, body, nested_scope, ctx);
+                    // The states the code after the __TRY is reached with.
+                    let mut leaves = Vec::new();
+                    if falls_through(db, body) {
+                        leaves.push(ctx.ref_null_state.clone());
+                    }
+
+                    if let Some(catch) = catch {
+                        // What the body raises can come from any of its
+                        // statements: a reference is non-null in the
+                        // __CATCH when it was before the __TRY and after
+                        // each assignment the body makes to it.
+                        if let Some(in_body) = ctx.null_states_in_try.last() {
+                            ctx.ref_null_state = in_body.clone();
+                        }
+                        if let Some(variable) = catch.variable {
+                            self.check_catch_variable(db, resolver, variable, ctx);
+                        }
+                        self.check_statements(db, resolver, &catch.body, nested_scope, ctx);
+                        if falls_through(db, &catch.body) {
+                            leaves.push(ctx.ref_null_state.clone());
+                        }
+                    }
+                    let anywhere = ctx.null_states_in_try.pop().unwrap_or_default();
+                    let after = join_states(leaves).unwrap_or(before);
+
+                    ctx.ref_null_state = match finally {
+                        None => after,
+                        // The __FINALLY runs on every way out: after the
+                        // body, after the __CATCH, and while an exception
+                        // one of them raised leaves. What it assigns holds
+                        // after the __TRY, and the rest is as the body and
+                        // the __CATCH left it.
+                        Some(finally) => {
+                            ctx.ref_null_state = anywhere.clone();
+                            self.check_statements(
+                                db,
+                                resolver,
+                                finally,
+                                nested_scope.in_finally(),
+                                ctx,
+                            );
+                            let mut after = after;
+                            for (var, state) in &ctx.ref_null_state {
+                                if anywhere.get(var) != Some(state) {
+                                    after.insert(*var, *state);
+                                }
+                            }
+                            after
+                        }
+                    };
+                }
 
                 StmtKind::Raise { message } => {
                     // The message expression must be STRING
@@ -1142,6 +1241,90 @@ impl<'db> StmtsResolverCtx<'db> {
 
         if let Some(state) = state_at_terminator {
             ctx.ref_null_state = state;
+        }
+    }
+
+    /// Resolve a place that is written, and refuse what cannot be: a
+    /// constant, an edge input, an interface parameter. Its type, and
+    /// whether it may be assigned at all.
+    fn check_written_place(
+        &self,
+        db: &'db dyn WorkspaceDataBase,
+        resolver: Resolver<'db>,
+        var: VariableAccess<'db>,
+        ctx: &mut BodyInferenceResult<'db>,
+    ) -> (Type<'db>, bool) {
+        resolver.resolve_variable_access(db, var, ctx);
+        let base_typ = ctx.get_type_of_variable_access(db, var);
+
+        // A field or an element of a constant is the constant.
+        // A CONSTANT variable itself is refused by
+        // `check_assignable`, below.
+        if ctx.is_constant_place(db, var) && !is_constant_variable(db, base_typ) {
+            ctx.errors.push(
+                InitError::AssignToConstant {
+                    access: CallSite::from_scoped(db, &var),
+                    constant: ctx.constant_root(db, var),
+                }
+                .to_diagnostic(db, ctx.scope.file(db)),
+            );
+        }
+
+        refuse_edge_input_as_storage(
+            db,
+            var,
+            crate::check::errors::e02_resolve::EdgeUse::Written,
+            ctx,
+        );
+        let assignable = base_typ.check_assignable(db, CallSite::from_scoped(db, &var), ctx);
+
+        // Design 1: an interface parameter is a fixed binding to the
+        // concrete type the caller supplied; reassigning it would
+        // break monomorphization (see E1124).
+        if let Type::Variable((var_decl, _)) = base_typ
+            && matches!(
+                var_decl.spec(db).infer(db).normalize(db),
+                Type::Interface(_)
+            )
+        {
+            ctx.errors.push(
+                OopError::InterfaceParamNotAssignable {
+                    var: var_decl,
+                    access: var,
+                }
+                .to_diagnostic(db, ctx.scope.file(db)),
+            );
+        }
+        (base_typ, assignable)
+    }
+
+    /// The variable a `__CATCH` names is written the message of the
+    /// exception: checked as the left side of an assignment is, for a
+    /// STRING. Any capacity will do, the message being cut to it.
+    fn check_catch_variable(
+        &self,
+        db: &'db dyn WorkspaceDataBase,
+        resolver: Resolver<'db>,
+        var: VariableAccess<'db>,
+        ctx: &mut BodyInferenceResult<'db>,
+    ) {
+        let (base_typ, assignable) = self.check_written_place(db, resolver, var, ctx);
+        let place = ctx.type_of_variable_access_with_adjustments(db, var);
+        let message = Type::Elementary(ElementarySpec::String);
+        if assignable && let Err(err) = place.coerce_with_type(db, message, None, resolver) {
+            let mut diag = crate::check::errors::e03_type::TypeError::NotAssignable {
+                base_target: base_typ,
+                lhs: err.expected,
+                rhs: err.actual,
+                adjustment: err.adjustment,
+                expr: CallSite::from_scoped(db, &var),
+                suggest_cast: false,
+            }
+            .to_diagnostic(db, ctx.scope.file(db));
+            diag.with_note(
+                "the variable of a __CATCH receives the message as a STRING".to_string(),
+            );
+            ctx.errors.push(diag);
         }
     }
 

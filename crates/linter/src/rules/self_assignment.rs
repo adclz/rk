@@ -89,6 +89,19 @@ fn check_statements<'db>(
             | StmtKind::Repeat { body: stmts, .. } => {
                 check_statements(db, body, stmts, diagnostics);
             }
+            StmtKind::Try {
+                body: stmts,
+                catch,
+                finally,
+            } => {
+                check_statements(db, body, stmts, diagnostics);
+                if let Some(catch) = catch {
+                    check_statements(db, body, &catch.body, diagnostics);
+                }
+                if let Some(finally) = finally {
+                    check_statements(db, body, finally, diagnostics);
+                }
+            }
             _ => {}
         }
     }

@@ -648,3 +648,48 @@ fn rename_in_a_file_of_bare_carriage_returns(mut with_db: RootDatabase) {
         source.replace("MyFB", "RenamedFB")
     );
 }
+
+/// The variable a `__CATCH` names is a use of it like any other: renamed
+/// from there, with its declaration and its uses in the handler, in the
+/// body and in the `__FINALLY`.
+#[rstest]
+fn rename_a_variable_from_its_catch(mut with_db: RootDatabase) {
+    let source = r#"FUNCTION fn1 : INT
+VAR
+    e : STRING;
+END_VAR
+    __TRY
+        e := 'before';
+    __CATCH(e)
+        IF e <> '' THEN
+            fn1 := 1;
+        END_IF;
+    __FINALLY
+        e := '';
+    __END_TRY;
+END_FUNCTION
+"#;
+
+    let file = add_source(&mut with_db, source);
+
+    let offset = source.find("__CATCH(e)").unwrap() + "__CATCH(".len();
+    let node = descendant_at(&with_db, file, offset).unwrap();
+    let edit = node.rename(&with_db, offset, "message").unwrap();
+
+    assert_snapshot!(apply_rename(&with_db, &edit, &[source]), @r"
+    FUNCTION fn1 : INT
+    VAR
+        message : STRING;
+    END_VAR
+        __TRY
+            message := 'before';
+        __CATCH(message)
+            IF message <> '' THEN
+                fn1 := 1;
+            END_IF;
+        __FINALLY
+            message := '';
+        __END_TRY;
+    END_FUNCTION
+    ");
+}

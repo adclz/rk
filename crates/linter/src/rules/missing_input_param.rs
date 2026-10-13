@@ -40,6 +40,24 @@ impl ErrorCode for MissingInputParam {
 /// variables the instance's path names, and the input.
 pub type WrittenInputs<'db> = FxHashSet<(Vec<VariableDecl<'db>>, VariableDecl<'db>)>;
 
+/// `var` is written: recorded when it is an input of an instance
+/// (`inst.in := …`, or a `__CATCH(inst.in)`).
+fn written_input<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    body: ScopeInference<'db>,
+    var: hir::hir_def::expressions::expression::VariableAccess<'db>,
+    written: &mut WrittenInputs<'db>,
+) {
+    if let VariableAccessKind::Symbolic(begin) = var.kind(db)
+        && let Some(path) = begin.expr(db)
+        && let PathExprKind::Field(field) = path.expr(db)
+        && let Some(member) = body.variable_for_path_expr(path)
+        && member.kind(db) == VariableKind::Input
+    {
+        written.insert((instance_path(db, body, field.path), member));
+    }
+}
+
 /// Every input `stmts` write through an instance, in any branch: before the
 /// call or after it, the value is the instance's at its next call.
 pub fn written_inputs<'db>(
@@ -60,16 +78,7 @@ fn collect_written_inputs<'db>(
 ) {
     for stmt in stmts {
         match stmt.stmt(db) {
-            StmtKind::Assignment { var, .. } => {
-                if let VariableAccessKind::Symbolic(begin) = var.kind(db)
-                    && let Some(path) = begin.expr(db)
-                    && let PathExprKind::Field(field) = path.expr(db)
-                    && let Some(member) = body.variable_for_path_expr(path)
-                    && member.kind(db) == VariableKind::Input
-                {
-                    written.insert((instance_path(db, body, field.path), member));
-                }
-            }
+            StmtKind::Assignment { var, .. } => written_input(db, body, *var, written),
             StmtKind::If {
                 then,
                 else_if,
@@ -92,6 +101,22 @@ fn collect_written_inputs<'db>(
             | StmtKind::While { body: stmts, .. }
             | StmtKind::Repeat { body: stmts, .. } => {
                 collect_written_inputs(db, body, stmts, written);
+            }
+            StmtKind::Try {
+                body: stmts,
+                catch,
+                finally,
+            } => {
+                collect_written_inputs(db, body, stmts, written);
+                if let Some(catch) = catch {
+                    if let Some(var) = catch.variable {
+                        written_input(db, body, var, written);
+                    }
+                    collect_written_inputs(db, body, &catch.body, written);
+                }
+                if let Some(finally) = finally {
+                    collect_written_inputs(db, body, finally, written);
+                }
             }
             _ => {}
         }

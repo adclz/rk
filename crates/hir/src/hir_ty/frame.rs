@@ -585,6 +585,19 @@ fn each_case<'db>(
             StmtKind::For { body, .. }
             | StmtKind::While { body, .. }
             | StmtKind::Repeat { body, .. } => each_case(db, body, f),
+            StmtKind::Try {
+                body,
+                catch,
+                finally,
+            } => {
+                each_case(db, body, f);
+                if let Some(catch) = catch {
+                    each_case(db, &catch.body, f);
+                }
+                if let Some(finally) = finally {
+                    each_case(db, finally, f);
+                }
+            }
             _ => {}
         }
     }

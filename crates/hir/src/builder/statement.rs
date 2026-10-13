@@ -8,11 +8,13 @@ use crate::builder::expression::ParseVariableAccess;
 use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::check::errors::ToIdeDiagnostic;
 use crate::check::errors::e00_syntax::SyntaxError;
+use crate::check::errors::e12_control_flow::ControlFlowError;
 use crate::hir_def::expressions::expression::{FuncCall, ParamAssignKind};
-use crate::hir_def::expressions::statement::{CaseKind, Stmt, StmtKind};
+use crate::hir_def::expressions::statement::{CaseKind, Catch, Stmt, StmtKind};
 use crate::hir_def::interned::identifier::SpanIdent;
 use auto_lsp::anyhow::{self};
 use auto_lsp::core::ast::AstNode;
+use auto_lsp::tree_sitter;
 use ide_diagnostic::IdeDiagnostic;
 
 impl<'db> Parse<'db> for ast::generated::Stmt {
@@ -336,6 +338,78 @@ impl<'db> Parse<'db> for ast::generated::Stmt {
                     sema.current_scope,
                 ))
             }
+            StmtType::TryStmt(try_stmt) => {
+                type Clause = ast::generated::CatchClause_FinallyClause;
+                let body = stmt_list(sema, try_stmt.body.as_ref())?;
+                // A __TRY has one __CATCH and one __FINALLY. Another of
+                // either is reported, and its statements are read as the end
+                // of the first's, which is what the report asks to be
+                // written: they are checked like any other. A __CATCH after
+                // the __FINALLY is reported and is the one handler there is.
+                let mut catch: Option<(Catch<'db>, tree_sitter::Range)> = None;
+                let mut finally: Option<(Vec<Stmt<'db>>, tree_sitter::Range)> = None;
+                for clause in &try_stmt.clause {
+                    let (span, first) = match clause.cast(sema.ast) {
+                        Clause::CatchClause(clause) => {
+                            let span = clause.get_range().to_owned();
+                            let read =
+                                catch_clause(sema, clause.variable.as_ref(), clause.body.as_ref())?;
+                            match &mut catch {
+                                Some((kept, first)) => {
+                                    kept.variable = kept.variable.or(read.variable);
+                                    kept.body.extend(read.body);
+                                    (span, Some(*first))
+                                }
+                                None => {
+                                    if finally.is_some() {
+                                        sema.errors.push(
+                                            ControlFlowError::CatchAfterFinally { span }
+                                                .to_diagnostic(sema.db, sema.file),
+                                        );
+                                    }
+                                    catch = Some((read, span));
+                                    (span, None)
+                                }
+                            }
+                        }
+                        Clause::FinallyClause(clause) => {
+                            let span = clause.get_range().to_owned();
+                            let read = stmt_list(sema, clause.body.as_ref())?;
+                            match &mut finally {
+                                Some((kept, first)) => {
+                                    kept.extend(read);
+                                    (span, Some(*first))
+                                }
+                                None => {
+                                    finally = Some((read, span));
+                                    (span, None)
+                                }
+                            }
+                        }
+                    };
+                    if let Some(first) = first {
+                        sema.errors.push(
+                            ControlFlowError::ClauseWrittenTwice { span, first }
+                                .to_diagnostic(sema.db, sema.file),
+                        );
+                    }
+                }
+                if let Some(closer) = try_stmt.children.as_ref() {
+                    let span = closer.cast(sema.ast).get_range().to_owned();
+                    sema.errors
+                        .push(SyntaxError::EndTrySpelling(span).to_diagnostic(sema.db, sema.file));
+                }
+                Ok(Stmt::new(
+                    sema.db,
+                    StmtKind::Try {
+                        body,
+                        catch: catch.map(|(catch, _)| catch),
+                        finally: finally.map(|(finally, _)| finally),
+                    },
+                    try_stmt.into(),
+                    sema.current_scope,
+                ))
+            }
             StmtType::WasmPragma(pragma) => {
                 let doc = sema.file.document(sema.db).as_bytes();
 
@@ -401,6 +475,10 @@ impl<'db> Parse<'db> for ast::generated::Stmt {
                 Err(SyntaxError::MethodDeclInBody(err.get_range().to_owned())
                     .to_diagnostic(sema.db, sema.file))
             }
+            StmtType::ERRClauseOutsideTry(err) => Err(ControlFlowError::ClauseOutsideTry {
+                span: err.get_range().to_owned(),
+            }
+            .to_diagnostic(sema.db, sema.file)),
         }
     }
 }
@@ -501,4 +579,35 @@ fn parse_condition<'db>(
         sign,
     }
     .to_diagnostic(sema.db, sema.file))
+}
+
+/// The statements of a body, none when it is empty.
+fn stmt_list<'db>(
+    sema: &mut SemanticIndexBuilder<'db>,
+    list: Option<&auto_lsp::core::ast::AstNodeId<ast::generated::StmtList>>,
+) -> Result<Vec<Stmt<'db>>, IdeDiagnostic> {
+    let Some(list) = list else {
+        return Ok(Vec::new());
+    };
+    list.cast(sema.ast)
+        .children
+        .iter()
+        .map(|stmt| stmt.cast(sema.ast).parse(sema))
+        .collect()
+}
+
+/// A `__CATCH`, written in its place or after the `__FINALLY`.
+fn catch_clause<'db>(
+    sema: &mut SemanticIndexBuilder<'db>,
+    variable: Option<&auto_lsp::core::ast::AstNodeId<ast::generated::VariableAccess>>,
+    body: Option<&auto_lsp::core::ast::AstNodeId<ast::generated::StmtList>>,
+) -> Result<Catch<'db>, IdeDiagnostic> {
+    let variable = match variable {
+        Some(variable) => Some(variable.cast(sema.ast).to_access(sema)?),
+        None => None,
+    };
+    Ok(Catch {
+        variable,
+        body: stmt_list(sema, body)?,
+    })
 }
