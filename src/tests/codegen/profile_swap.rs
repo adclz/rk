@@ -26,6 +26,7 @@ use db::RootDatabase;
 use rstest::rstest;
 
 use crate::tests::codegen::{compile_to_wasm, with_db};
+use crate::tests::utils::skip_without_wasm_opt;
 
 /// A program with enough real work that `-O2` actually rewrites its code —
 /// FBs, loops, arithmetic. RETAIN and a CONFIGURATION so every
@@ -115,7 +116,7 @@ fn optimize_at(wasm: &[u8], level: &str) -> Option<Vec<u8>> {
 fn optimization_preserves_every_memory_describing_section(mut with_db: RootDatabase) {
     let plain = compile_to_wasm(&mut with_db, SRC);
     let Some(opt) = optimize(&plain) else {
-        eprintln!("SKIP: no wasm-opt available; memory-invariance not exercised");
+        skip_without_wasm_opt("memory-invariance");
         return;
     };
 
@@ -161,7 +162,7 @@ fn optimization_preserves_every_memory_describing_section(mut with_db: RootDatab
 fn optimization_invalidates_the_line_table(mut with_db: RootDatabase) {
     let plain = compile_to_wasm(&mut with_db, SRC);
     let Some(opt) = optimize(&plain) else {
-        eprintln!("SKIP: no wasm-opt available");
+        skip_without_wasm_opt("the stale line table");
         return;
     };
 
@@ -289,7 +290,7 @@ fn release_omits_the_stepping_tier_and_nothing_else(mut with_db: RootDatabase) {
 fn a_release_build_keeps_its_function_names(mut with_db: RootDatabase) {
     let plain = compile_to_wasm(&mut with_db, SRC);
     let Some(opt) = optimize(&plain) else {
-        eprintln!("SKIP: no wasm-opt available; the name section not exercised");
+        skip_without_wasm_opt("the name section");
         return;
     };
     let names = wasmparser::Parser::new(0)
@@ -340,7 +341,7 @@ END_FUNCTION
 fn a_trap_in_a_release_build_names_its_function(mut with_db: RootDatabase, #[case] level: &str) {
     let plain = compile_to_wasm(&mut with_db, TRAP_SRC);
     let Some(opt) = optimize_at(&plain, level) else {
-        eprintln!("SKIP: no wasm-opt available; the named trap not exercised");
+        skip_without_wasm_opt("the named trap");
         return;
     };
     let engine = crate::tests::codegen::test_engine();

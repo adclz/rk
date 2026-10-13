@@ -14,10 +14,8 @@ use super::{disable_stdlib, temp_workspace};
 #[test]
 fn a_release_build_is_taken_at_each_level() {
     disable_stdlib();
-    // A test never downloads the optimizer: it uses the one that is there.
-    unsafe { std::env::set_var("RK_NO_DOWNLOAD", "1") };
-    if rk::wasm_opt::find(false).is_none() {
-        eprintln!("SKIP: no wasm-opt available; the release levels not exercised");
+    if !crate::tests::utils::wasm_opt_installed() {
+        crate::tests::utils::skip_without_wasm_opt("the release levels");
         return;
     }
     let source = "PROGRAM P
