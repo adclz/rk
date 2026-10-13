@@ -155,3 +155,43 @@ END_FUNCTION
     ----'
     ");
 }
+
+/// The variable a `__CATCH` names is written the message, as an
+/// assignment would: the output of another instance is reported, and its
+/// input, which is what a caller writes, is not.
+#[rstest]
+fn a_catch_writes_its_variable(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK Counter
+VAR_INPUT label : STRING; END_VAR
+VAR_OUTPUT last : STRING; END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION caller : INT
+VAR
+    c : Counter;
+END_VAR
+    __TRY
+        caller := 1;
+    __CATCH(c.last)
+        caller := 2;
+    __END_TRY;
+    __TRY
+        caller := 3;
+    __CATCH(c.label)
+        caller := 4;
+    __END_TRY;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "external-mutation"), @r"
+    [L0117] Warning: external instance mutation
+        ,-[ file:///test0.st:13:13 ]
+        |
+     13 |     __CATCH(c.last)
+        |             ^^^|^^
+        |                `---- 'c.last' is written from outside its instance
+        |
+        | Note: lint rule: external-mutation
+    ----'
+    ");
+}
