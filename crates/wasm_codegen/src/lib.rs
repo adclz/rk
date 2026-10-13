@@ -155,10 +155,16 @@ fn stmt_assigns_static_string(stmt: &MirStmt) -> bool {
             stmts_assign_static_string(body)
         }
         // The message a __CATCH takes is copied into its STRING the same way.
-        MirStmt::Try { body, catch } => {
-            catch.message.is_some()
-                || stmts_assign_static_string(body)
-                || stmts_assign_static_string(&catch.body)
+        MirStmt::Try {
+            body,
+            catch,
+            finally,
+        } => {
+            stmts_assign_static_string(body)
+                || catch.as_ref().is_some_and(|catch| {
+                    catch.message.is_some() || stmts_assign_static_string(&catch.body)
+                })
+                || finally.as_deref().is_some_and(stmts_assign_static_string)
         }
         _ => false,
     }
@@ -958,12 +964,21 @@ impl<'a> WasmGen<'a> {
                         walk(db, body, found);
                     }
                     MirStmt::Raise { message } => walk_expr(db, message, found),
-                    MirStmt::Try { body, catch } => {
+                    MirStmt::Try {
+                        body,
+                        catch,
+                        finally,
+                    } => {
                         walk(db, body, found);
-                        if let Some(message) = &catch.message {
-                            walk_place(db, message, found);
+                        if let Some(catch) = catch {
+                            if let Some(message) = &catch.message {
+                                walk_place(db, message, found);
+                            }
+                            walk(db, &catch.body, found);
                         }
-                        walk(db, &catch.body, found);
+                        if let Some(finally) = finally {
+                            walk(db, finally, found);
+                        }
                     }
                     _ => {}
                 }

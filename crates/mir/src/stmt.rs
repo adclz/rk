@@ -111,11 +111,17 @@ pub enum MirStmt {
     /// in-language catch.
     Raise { message: MirExpr },
 
-    /// `__TRY body __CATCH(message) handler __END_TRY`: an exception thrown
-    /// in the body, by a `Raise` or a check, lands in the handler. The
-    /// catch is the one way out of the body's exceptions, so a `Try` always
-    /// has it; a `__FINALLY` is not lowered yet.
-    Try { body: Vec<MirStmt>, catch: MirCatch },
+    /// `__TRY body __CATCH(message) handler __FINALLY cleanup __END_TRY`:
+    /// an exception thrown in the body, by a `Raise` or a check, lands in
+    /// the handler, and the cleanup runs on every way out of the body and
+    /// the handler: run through, an exception, which leaves again after it,
+    /// a `Return`, an `Exit` or a `Continue`. One of the two clauses may be
+    /// left out, not both (E1209).
+    Try {
+        body: Vec<MirStmt>,
+        catch: Option<MirCatch>,
+        finally: Option<Vec<MirStmt>>,
+    },
 }
 
 /// The `__CATCH` of a [`MirStmt::Try`].
@@ -155,9 +161,18 @@ pub fn for_each_stmt(stmts: &[MirStmt], f: &mut impl FnMut(&MirStmt)) {
             MirStmt::For { body, .. }
             | MirStmt::While { body, .. }
             | MirStmt::Repeat { body, .. } => for_each_stmt(body, f),
-            MirStmt::Try { body, catch } => {
+            MirStmt::Try {
+                body,
+                catch,
+                finally,
+            } => {
                 for_each_stmt(body, f);
-                for_each_stmt(&catch.body, f);
+                if let Some(catch) = catch {
+                    for_each_stmt(&catch.body, f);
+                }
+                if let Some(finally) = finally {
+                    for_each_stmt(finally, f);
+                }
             }
             _ => {}
         }
@@ -217,9 +232,18 @@ pub fn for_each_stmt_mut(stmts: &mut [MirStmt], f: &mut impl FnMut(&mut MirStmt)
             MirStmt::For { body, .. }
             | MirStmt::While { body, .. }
             | MirStmt::Repeat { body, .. } => for_each_stmt_mut(body, f),
-            MirStmt::Try { body, catch } => {
+            MirStmt::Try {
+                body,
+                catch,
+                finally,
+            } => {
                 for_each_stmt_mut(body, f);
-                for_each_stmt_mut(&mut catch.body, f);
+                if let Some(catch) = catch {
+                    for_each_stmt_mut(&mut catch.body, f);
+                }
+                if let Some(finally) = finally {
+                    for_each_stmt_mut(finally, f);
+                }
             }
             _ => {}
         }
@@ -339,14 +363,23 @@ impl MirStmt {
                 }
             }
             MirStmt::Raise { message } => message.exprs_mut(f),
-            MirStmt::Try { body, catch } => {
+            MirStmt::Try {
+                body,
+                catch,
+                finally,
+            } => {
                 for stmt in body {
                     stmt.exprs_mut(f);
                 }
-                if let Some(message) = &mut catch.message {
-                    message.exprs_mut(f);
+                if let Some(catch) = catch {
+                    if let Some(message) = &mut catch.message {
+                        message.exprs_mut(f);
+                    }
+                    for stmt in &mut catch.body {
+                        stmt.exprs_mut(f);
+                    }
                 }
-                for stmt in &mut catch.body {
+                for stmt in finally.iter_mut().flatten() {
                     stmt.exprs_mut(f);
                 }
             }
@@ -424,10 +457,16 @@ impl MirStmt {
                 condition.reaches_place_with_call() || body(b)
             }
             MirStmt::Raise { message } => message.reaches_place_with_call(),
-            MirStmt::Try { body: b, catch } => {
+            MirStmt::Try {
+                body: b,
+                catch,
+                finally,
+            } => {
                 body(b)
-                    || catch.message.as_ref().is_some_and(MirPlace::has_call)
-                    || body(&catch.body)
+                    || catch.as_ref().is_some_and(|catch| {
+                        catch.message.as_ref().is_some_and(MirPlace::has_call) || body(&catch.body)
+                    })
+                    || finally.as_deref().is_some_and(body)
             }
             MirStmt::Return
             | MirStmt::Exit
@@ -497,10 +536,17 @@ impl MirStmt {
                 condition.any(f) || body(b, f)
             }
             MirStmt::Raise { message } => message.any(f),
-            MirStmt::Try { body: b, catch } => {
+            MirStmt::Try {
+                body: b,
+                catch,
+                finally,
+            } => {
                 body(b, f)
-                    || catch.message.as_ref().is_some_and(|m| m.any_expr(f))
-                    || body(&catch.body, f)
+                    || catch.as_ref().is_some_and(|catch| {
+                        catch.message.as_ref().is_some_and(|m| m.any_expr(f))
+                            || body(&catch.body, f)
+                    })
+                    || finally.as_deref().is_some_and(|cleanup| body(cleanup, f))
             }
             MirStmt::Return
             | MirStmt::Exit

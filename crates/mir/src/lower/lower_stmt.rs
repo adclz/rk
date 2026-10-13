@@ -442,34 +442,35 @@ fn lower_stmt<'db>(
             finally,
         } => {
             use hir::HirNodeInfo;
-            let located = |e: LowerTypeError| {
-                e.with_location(
-                    stmt.get_scope_id(ctx.db).file(ctx.db),
-                    stmt.get_span(ctx.db),
-                )
-            };
-            // Read and checked, not compiled yet.
-            if finally.is_some() {
-                return Err(located(LowerTypeError::NotCompiledYet("a __FINALLY")));
+            // `rk check` requires one of the two clauses (E1209).
+            if catch.is_none() && finally.is_none() {
+                return Err(
+                    LowerTypeError::UnsupportedType("a __TRY with no clause".to_string())
+                        .with_location(
+                            stmt.get_scope_id(ctx.db).file(ctx.db),
+                            stmt.get_span(ctx.db),
+                        ),
+                );
             }
-            // With no __FINALLY, `rk check` requires the __CATCH (E1209).
-            let Some(catch) = catch else {
-                return Err(located(LowerTypeError::UnsupportedType(
-                    "a __TRY with no clause".to_string(),
-                )));
-            };
             let body = lower_stmts_inner(ctx, body)?;
-            let message = match catch.variable {
-                Some(variable) => Some(ctx.lower_variable_access(variable)?),
+            let catch = match catch {
+                Some(catch) => Some(crate::stmt::MirCatch {
+                    message: match catch.variable {
+                        Some(variable) => Some(ctx.lower_variable_access(variable)?),
+                        None => None,
+                    },
+                    body: lower_stmts_inner(ctx, &catch.body)?,
+                }),
                 None => None,
             };
-            let handler = lower_stmts_inner(ctx, &catch.body)?;
+            let finally = match finally {
+                Some(finally) => Some(lower_stmts_inner(ctx, finally)?),
+                None => None,
+            };
             Ok(vec![MirStmt::Try {
                 body,
-                catch: crate::stmt::MirCatch {
-                    message,
-                    body: handler,
-                },
+                catch,
+                finally,
             }])
         }
 

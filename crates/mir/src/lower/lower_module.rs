@@ -1140,9 +1140,18 @@ fn collect_source_files(
                 collect_source_files(body, seen, source_files);
             }
             MirStmt::For { body, .. } => collect_source_files(body, seen, source_files),
-            MirStmt::Try { body, catch } => {
+            MirStmt::Try {
+                body,
+                catch,
+                finally,
+            } => {
                 collect_source_files(body, seen, source_files);
-                collect_source_files(&catch.body, seen, source_files);
+                if let Some(catch) = catch {
+                    collect_source_files(&catch.body, seen, source_files);
+                }
+                if let Some(finally) = finally {
+                    collect_source_files(finally, seen, source_files);
+                }
             }
             MirStmt::Case {
                 arms, else_body, ..
@@ -1743,12 +1752,21 @@ fn rewrite_globals_stmt(
             rewrite_globals_body(body, globals, missing);
         }
         MirStmt::Raise { message } => rewrite_globals_expr(message, globals, missing),
-        MirStmt::Try { body, catch } => {
+        MirStmt::Try {
+            body,
+            catch,
+            finally,
+        } => {
             rewrite_globals_body(body, globals, missing);
-            if let Some(message) = &mut catch.message {
-                rewrite_globals_place(message, globals, missing);
+            if let Some(catch) = catch {
+                if let Some(message) = &mut catch.message {
+                    rewrite_globals_place(message, globals, missing);
+                }
+                rewrite_globals_body(&mut catch.body, globals, missing);
             }
-            rewrite_globals_body(&mut catch.body, globals, missing);
+            if let Some(finally) = finally {
+                rewrite_globals_body(finally, globals, missing);
+            }
         }
         MirStmt::Return
         | MirStmt::Exit
