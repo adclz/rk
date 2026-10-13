@@ -1321,7 +1321,9 @@ impl<'db> StmtsResolverCtx<'db> {
                 suggest_cast: false,
             }
             .to_diagnostic(db, ctx.scope.file(db));
-            diag.with_note("a __CATCH takes the message of the exception, a STRING".to_string());
+            diag.with_note(
+                "the variable of a __CATCH receives the message as a STRING".to_string(),
+            );
             ctx.errors.push(diag);
         }
     }

@@ -2,11 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 //! `__TRY … __CATCH … __FINALLY … __END_TRY`: read, its shape checked and
-//! its `__CATCH` variable typed.
-//!
-//! A `__TRY` is not compiled yet. `rk check` accepts one, and a build
-//! refuses it in those words (`cli/not_compiled.rs`), which is why an empty
-//! snapshot here is not followed by a build.
+//! its `__CATCH` variable typed. What it runs is `codegen/try_catch.rs`.
 
 use crate::tests::utils::{test_diagnostics, with_db};
 use db::RootDatabase;
@@ -105,9 +101,9 @@ fn invalid_try_without_a_clause(mut with_db: RootDatabase) {
        |             ^^|^^
        |               `---- this __TRY has neither a __CATCH nor a __FINALLY
        |
-       | Help: add a __CATCH, or remove the __TRY
+       | Help: add a __CATCH or remove the __TRY
        |
-       | Note: a __TRY's __CATCH handles what its body raises, and its __FINALLY runs on the way out
+       | Note: a __TRY needs a __CATCH, a __FINALLY or both
     ---'
     ");
 }
@@ -147,7 +143,7 @@ fn invalid_jump_out_of_a_finally(mut with_db: RootDatabase) {
         |
         | Help: move the 'EXIT' after __END_TRY
         |
-        | Note: a __FINALLY also runs while an exception leaves its __TRY, and a jump out of it would end that exception with no __CATCH
+        | Note: a jump out of a __FINALLY would cancel an exception that was not caught
     ----'
     [E1210] Error: jump out of a __FINALLY
         ,-[ file:///test0.st:15:25 ]
@@ -158,7 +154,7 @@ fn invalid_jump_out_of_a_finally(mut with_db: RootDatabase) {
         |
         | Help: move the 'CONTINUE' after __END_TRY
         |
-        | Note: a __FINALLY also runs while an exception leaves its __TRY, and a jump out of it would end that exception with no __CATCH
+        | Note: a jump out of a __FINALLY would cancel an exception that was not caught
     ----'
     [E1210] Error: jump out of a __FINALLY
         ,-[ file:///test0.st:17:21 ]
@@ -169,7 +165,7 @@ fn invalid_jump_out_of_a_finally(mut with_db: RootDatabase) {
         |
         | Help: move the 'RETURN' after __END_TRY
         |
-        | Note: a __FINALLY also runs while an exception leaves its __TRY, and a jump out of it would end that exception with no __CATCH
+        | Note: a jump out of a __FINALLY would cancel an exception that was not caught
     ----'
     ");
 }
@@ -210,7 +206,7 @@ fn invalid_jump_out_of_a_finally_from_a_loop_or_a_try_inside_it(mut with_db: Roo
         |
         | Help: move the 'RETURN' after __END_TRY
         |
-        | Note: a __FINALLY also runs while an exception leaves its __TRY, and a jump out of it would end that exception with no __CATCH
+        | Note: a jump out of a __FINALLY would cancel an exception that was not caught
     ----'
     [E1210] Error: jump out of a __FINALLY
         ,-[ file:///test0.st:16:25 ]
@@ -221,7 +217,7 @@ fn invalid_jump_out_of_a_finally_from_a_loop_or_a_try_inside_it(mut with_db: Roo
         |
         | Help: move the 'EXIT' after __END_TRY
         |
-        | Note: a __FINALLY also runs while an exception leaves its __TRY, and a jump out of it would end that exception with no __CATCH
+        | Note: a jump out of a __FINALLY would cancel an exception that was not caught
     ----'
     ");
 }
@@ -329,7 +325,7 @@ fn invalid_catch_after_finally(mut with_db: RootDatabase) {
         |
         | Help: move the __CATCH before the __FINALLY
         |
-        | Note: the clauses of a __TRY are its __CATCH, then its __FINALLY
+        | Note: in a __TRY, the __CATCH is written before the __FINALLY
     ----'
     [E0201] Error: unknown name
         ,-[ file:///test0.st:11:23 ]
@@ -342,9 +338,9 @@ fn invalid_catch_after_finally(mut with_db: RootDatabase) {
 }
 
 /// A `__TRY` has one `__CATCH` and one `__FINALLY`. A second of either is
-/// reported against the first, which is the one read: the second's
-/// unknown name is not looked up. Two `__CATCH` were reported as one
-/// written after a `__FINALLY` that was not there.
+/// reported against the first, and what it holds is checked all the same:
+/// its variable and its statements are read as the first's. Two `__CATCH`
+/// were reported as one written after a `__FINALLY` that was not there.
 #[rstest]
 fn invalid_clause_written_twice(mut with_db: RootDatabase) {
     let source = r#"
@@ -353,8 +349,8 @@ fn invalid_clause_written_twice(mut with_db: RootDatabase) {
                 f1 := 1;
             __CATCH
                 f1 := 2;
-            __CATCH
-                f1 := not_read;
+            __CATCH(nowhere)
+                f1 := unknown;
             __END_TRY;
             __TRY
                 f1 := 3;
@@ -373,13 +369,27 @@ fn invalid_clause_written_twice(mut with_db: RootDatabase) {
        |             ^^^|^^^
        |                `----- the first __CATCH is here
        |
-     7 |             __CATCH
+     7 |             __CATCH(nowhere)
        |             ^^^|^^^
        |                `----- this is the second __CATCH of the __TRY
        |
-       | Help: write one __CATCH that does both
+       | Help: move its statements into the first __CATCH
        |
-       | Note: a __TRY has one __CATCH, which takes every exception
+       | Note: a __TRY can only have one __CATCH
+    ---'
+    [E0201] Error: unknown name
+       ,-[ file:///test0.st:7:21 ]
+       |
+     7 |             __CATCH(nowhere)
+       |                     ^^^|^^^
+       |                        `----- no item 'nowhere' found in scope
+    ---'
+    [E0201] Error: unknown name
+       ,-[ file:///test0.st:8:23 ]
+       |
+     8 |                 f1 := unknown;
+       |                       ^^^|^^^
+       |                          `----- no item 'unknown' found in scope
     ---'
     [E1212] Error: clause of a __TRY written twice
         ,-[ file:///test0.st:14:13 ]
@@ -392,26 +402,57 @@ fn invalid_clause_written_twice(mut with_db: RootDatabase) {
         |             ^^^^|^^^^
         |                 `------ this is the second __FINALLY of the __TRY
         |
-        | Help: write one __FINALLY that does both
+        | Help: move its statements into the first __FINALLY
         |
-        | Note: a __TRY has one __FINALLY
+        | Note: a __TRY can only have one __FINALLY
     ----'
     ");
 }
 
-/// A `__CATCH` with no `__TRY` is a syntax error, and the statement after
-/// it is still read.
+/// A `__CATCH`, a `__FINALLY` or an `__END_TRY` with no `__TRY` is
+/// reported at the keyword: the statements before and after it are read as
+/// what they are.
 #[rstest]
-fn invalid_catch_without_a_try(mut with_db: RootDatabase) {
+fn invalid_clause_without_a_try(mut with_db: RootDatabase) {
     let source = r#"
         FUNCTION f1 : INT
-            f1 := 1;
+            f1 := before;
             __CATCH
                 f1 := 2;
             f1 := after;
+            __FINALLY
+                f1 := 3;
+            __END_TRY;
+        END_FUNCTION
+
+        FUNCTION f2 : INT
+            __TRY
+                f2 := 1;
+            __FINALLY
+                f2 := 2;
+            __END_TRY;
+            __END_TRY;
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0201] Error: unknown name
+       ,-[ file:///test0.st:3:19 ]
+       |
+     3 |             f1 := before;
+       |                   ^^^|^^
+       |                      `---- no item 'before' found in scope
+    ---'
+    [E1213] Error: __CATCH, __FINALLY or __END_TRY without a __TRY
+       ,-[ file:///test0.st:4:13 ]
+       |
+     4 |             __CATCH
+       |             ^^^|^^^
+       |                `----- this __CATCH has no __TRY
+       |
+       | Help: add a __TRY before it or remove it
+       |
+       | Note: __CATCH, __FINALLY and __END_TRY are only accepted inside a __TRY
+    ---'
     [E0201] Error: unknown name
        ,-[ file:///test0.st:6:19 ]
        |
@@ -419,14 +460,39 @@ fn invalid_catch_without_a_try(mut with_db: RootDatabase) {
        |                   ^^|^^
        |                     `---- no item 'after' found in scope
     ---'
-    [E0001] Error: syntax error
-       ,-[ file:///test0.st:3:13 ]
+    [E1213] Error: __CATCH, __FINALLY or __END_TRY without a __TRY
+       ,-[ file:///test0.st:7:13 ]
        |
-     3 | ,->             f1 := 1;
-     4 | |->             __CATCH
-       | |
-       | `------------------------- unexpected token(s): 'f1 := 1; __CATCH'
+     7 |             __FINALLY
+       |             ^^^^|^^^^
+       |                 `------ this __FINALLY has no __TRY
+       |
+       | Help: add a __TRY before it or remove it
+       |
+       | Note: __CATCH, __FINALLY and __END_TRY are only accepted inside a __TRY
     ---'
+    [E1213] Error: __CATCH, __FINALLY or __END_TRY without a __TRY
+       ,-[ file:///test0.st:9:13 ]
+       |
+     9 |             __END_TRY;
+       |             ^^^^|^^^^
+       |                 `------ this __END_TRY has no __TRY
+       |
+       | Help: add a __TRY before it or remove it
+       |
+       | Note: __CATCH, __FINALLY and __END_TRY are only accepted inside a __TRY
+    ---'
+    [E1213] Error: __CATCH, __FINALLY or __END_TRY without a __TRY
+        ,-[ file:///test0.st:18:13 ]
+        |
+     18 |             __END_TRY;
+        |             ^^^^|^^^^
+        |                 `------ this __END_TRY has no __TRY
+        |
+        | Help: add a __TRY before it or remove it
+        |
+        | Note: __CATCH, __FINALLY and __END_TRY are only accepted inside a __TRY
+    ----'
     ");
 }
 
@@ -447,6 +513,13 @@ fn invalid_try_without_its_end(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0002] Error: missing element
+       ,-[ file:///test0.st:6:25 ]
+       |
+     6 |                 f1 := 2;
+       |                         |
+       |                         `- missing '__END_TRY'
+    ---'
     [E0201] Error: unknown name
         ,-[ file:///test0.st:10:19 ]
         |
@@ -454,15 +527,6 @@ fn invalid_try_without_its_end(mut with_db: RootDatabase) {
         |                   ^^|^
         |                     `--- no item 'next' found in scope
     ----'
-    [E0002] Error: missing element
-       ,-[ file:///test0.st:6:25 ]
-       |
-     6 |                 f1 := 2;
-       |                         |
-       |                         `- missing '__END_TRY'
-       |                         |
-       |                         `- add missing __END_TRY here
-    ---'
     ");
 }
 
@@ -481,6 +545,13 @@ fn invalid_end_try_spelling(mut with_db: RootDatabase) {
         END_FUNCTION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0201] Error: unknown name
+       ,-[ file:///test0.st:6:23 ]
+       |
+     6 |                 f1 := unknown;
+       |                       ^^^|^^^
+       |                          `----- no item 'unknown' found in scope
+    ---'
     [E0030] Error: __ENDTRY for __END_TRY
        ,-[ file:///test0.st:7:13 ]
        |
@@ -489,13 +560,6 @@ fn invalid_end_try_spelling(mut with_db: RootDatabase) {
        |                 `----- '__ENDTRY' does not close a __TRY
        |
        | Help: replace '__ENDTRY' with '__END_TRY'
-    ---'
-    [E0201] Error: unknown name
-       ,-[ file:///test0.st:6:23 ]
-       |
-     6 |                 f1 := unknown;
-       |                       ^^^|^^^
-       |                          `----- no item 'unknown' found in scope
     ---'
     ");
 }
@@ -578,7 +642,7 @@ fn invalid_catch_variable(mut with_db: RootDatabase) {
         |                     |
         |                     `-- expected 'INT', got 'STRING'
         |
-        | Note: a __CATCH takes the message of the exception, a STRING
+        | Note: the variable of a __CATCH receives the message as a STRING
     ----'
     [E0404] Error: write to a constant
         ,-[ file:///test0.st:19:21 ]
@@ -611,4 +675,53 @@ fn invalid_catch_variable(mut with_db: RootDatabase) {
         | Note: a CONSTANT keeps the value it is declared with
     ----'
     ");
+}
+
+/// The variable is written as the left side of an assignment is, and is
+/// refused no more than one: an input of the block, an output of another
+/// instance and an input of it are accepted, and compiled. The linter warns
+/// of the first two, as it does of the assignment
+/// (`linter::input_assignment`, `linter::external_mutation`).
+#[rstest]
+fn a_catch_variable_of_an_instance_is_accepted(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Counter
+        VAR_INPUT
+            label : STRING;
+        END_VAR
+        VAR_OUTPUT
+            last : STRING;
+        END_VAR
+        VAR
+            n : INT;
+        END_VAR
+            __TRY
+                n := n + 1;
+            __CATCH(label)
+                n := 0;
+            __END_TRY;
+            __TRY
+                n := n + 1;
+            __CATCH(last)
+                n := 0;
+            __END_TRY;
+        END_FUNCTION_BLOCK
+
+        FUNCTION f1 : INT
+        VAR
+            c : Counter;
+        END_VAR
+            __TRY
+                f1 := 1;
+            __CATCH(c.last)
+                f1 := 2;
+            __END_TRY;
+            __TRY
+                f1 := 3;
+            __CATCH(c.label)
+                f1 := 4;
+            __END_TRY;
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }

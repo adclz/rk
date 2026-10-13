@@ -148,12 +148,8 @@ impl<'db> ToIdeDiagnostic<'db> for ControlFlowError<'db> {
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
                     .call();
-                diag.with_note(
-                    "a __TRY's __CATCH handles what its body raises, and its __FINALLY runs on \
-                     the way out"
-                        .to_string(),
-                );
-                diag.with_help("add a __CATCH, or remove the __TRY".to_string());
+                diag.with_note("a __TRY needs a __CATCH, a __FINALLY or both".to_string());
+                diag.with_help("add a __CATCH or remove the __TRY".to_string());
                 diag
             }
             Self::JumpLeavesFinally { stmt } => {
@@ -169,8 +165,7 @@ impl<'db> ToIdeDiagnostic<'db> for ControlFlowError<'db> {
                     .desc(self)
                     .call();
                 diag.with_note(
-                    "a __FINALLY also runs while an exception leaves its __TRY, and a jump out \
-                     of it would end that exception with no __CATCH"
+                    "a jump out of a __FINALLY would cancel an exception that was not caught"
                         .to_string(),
                 );
                 diag.with_help(format!("move the '{jump}' after __END_TRY"));
@@ -185,7 +180,7 @@ impl<'db> ToIdeDiagnostic<'db> for ControlFlowError<'db> {
                     .desc(self)
                     .call();
                 diag.with_note(
-                    "the clauses of a __TRY are its __CATCH, then its __FINALLY".to_string(),
+                    "in a __TRY, the __CATCH is written before the __FINALLY".to_string(),
                 );
                 diag.with_help("move the __CATCH before the __FINALLY".to_string());
                 diag
@@ -225,11 +220,8 @@ impl<'db> ToIdeDiagnostic<'db> for ControlFlowError<'db> {
                     file,
                     first_bytes(first, keyword.len()),
                 ));
-                diag.with_note(match keyword {
-                    "__CATCH" => "a __TRY has one __CATCH, which takes every exception".to_string(),
-                    _ => "a __TRY has one __FINALLY".to_string(),
-                });
-                diag.with_help(format!("write one {keyword} that does both"));
+                diag.with_note(format!("a __TRY can only have one {keyword}"));
+                diag.with_help(format!("move its statements into the first {keyword}"));
                 diag
             }
             Self::ForControlNotAVariable { access } => {
