@@ -437,8 +437,6 @@ fn a_variable_offset_is_not_a_slice(mut with_db: db::RootDatabase) {
      14 |             g := b.%Xi;
         |                       |
         |                       `- missing 'unsigned_int'
-        |                       |
-        |                       `- add missing unsigned_int here
     ----'
     ");
 }

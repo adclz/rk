@@ -789,6 +789,20 @@ END_FUNCTION
        |
        | Note: CHAR is one character, written 'a'
     ---'
+    [E0002] Error: missing element
+       ,-[ file:///test0.st:4:15 ]
+       |
+     4 |     c := CHAR#;
+       |               |
+       |               `- missing 'hex_int'
+    ---'
+    [E0002] Error: missing element
+       ,-[ file:///test0.st:5:17 ]
+       |
+     5 |     s := STRING#;
+       |                 |
+       |                 `- missing 'hex_int'
+    ---'
     [E0313] Error: CHAR literal of the wrong length
        ,-[ file:///test0.st:6:25 ]
        |
@@ -806,31 +820,11 @@ END_FUNCTION
        |                           `---- the bound is not an integer constant
     ---'
     [E0002] Error: missing element
-       ,-[ file:///test0.st:4:15 ]
-       |
-     4 |     c := CHAR#;
-       |               |
-       |               `- missing 'hex_int'
-       |               |
-       |               `- add missing hex_int here
-    ---'
-    [E0002] Error: missing element
-       ,-[ file:///test0.st:5:17 ]
-       |
-     5 |     s := STRING#;
-       |                 |
-       |                 `- missing 'hex_int'
-       |                 |
-       |                 `- add missing hex_int here
-    ---'
-    [E0002] Error: missing element
        ,-[ file:///test0.st:6:30 ]
        |
      6 |     CASE c OF CHAR#'a'..CHAR#:'c': F := 10; END_CASE;
        |                              |
        |                              `- missing 'hex_int'
-       |                              |
-       |                              `- add missing hex_int here
     ---'
     ");
 }

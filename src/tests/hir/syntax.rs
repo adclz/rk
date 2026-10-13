@@ -21,8 +21,6 @@ END_NAMESPACE"#;
      2 | NAMESPACE
        |          |
        |          `- missing 'identifier'
-       |          |
-       |          `- add missing identifier here
     ---'
     ");
 }
@@ -42,8 +40,6 @@ fn missing_end_keyword(mut with_db: RootDatabase) {
      2 |     FUNCTION myFunc : INT
        |                          |
        |                          `- missing 'END_FUNCTION'
-       |                          |
-       |                          `- add missing END_FUNCTION here
     ---'
     ");
 }

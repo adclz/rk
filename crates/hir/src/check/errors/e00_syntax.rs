@@ -219,12 +219,6 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                     .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
                     .call();
 
-                diagnostic.with_related(Related::new(
-                    format!("add missing {grammar_name} here"),
-                    *file,
-                    *span,
-                ));
-
                 // If the grammar name is an identifier, suggest inserting it.
                 if grammar_name.len() == 1 {
                     diagnostic.with_fix(
