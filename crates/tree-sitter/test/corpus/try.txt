@@ -195,3 +195,36 @@ END_FUNCTION
                     (s_byte_char_str))))))
           (catch_clause)
           (finally_clause))))))
+
+================================================================================
+__TRY - a clause with no __TRY is a statement of its own
+================================================================================
+
+FUNCTION fn
+	x();
+	__CATCH
+	y();
+	__FINALLY
+	__END_TRY
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (func_decl
+    (identifier)
+    (func_body
+      (stmt_list
+        (func_call
+          (begin_path_expression
+            (path_expression
+              (var_access
+                (field)))))
+        (ERR_clause_outside_try)
+        (func_call
+          (begin_path_expression
+            (path_expression
+              (var_access
+                (field)))))
+        (ERR_clause_outside_try)
+        (ERR_clause_outside_try)))))

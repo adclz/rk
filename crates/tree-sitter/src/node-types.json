@@ -504,6 +504,10 @@
         "named": false
       },
       {
+        "type": "ERR_clause_outside_try",
+        "named": true
+      },
+      {
         "type": "ERR_method_decl_in_body",
         "named": true
       },
@@ -738,6 +742,11 @@
         }
       ]
     }
+  },
+  {
+    "type": "ERR_clause_outside_try",
+    "named": true,
+    "fields": {}
   },
   {
     "type": "ERR_config_entry_with_no_spec",

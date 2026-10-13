@@ -44,6 +44,11 @@ pub enum ControlFlowError<'db> {
         span: auto_lsp::tree_sitter::Range,
         first: auto_lsp::tree_sitter::Range,
     },
+    /// A `__CATCH`, a `__FINALLY` or an `__END_TRY` where a statement goes,
+    /// with no `__TRY` open before it.
+    ClauseOutsideTry {
+        span: auto_lsp::tree_sitter::Range,
+    },
     /// A FOR control variable that is not a bare identifier. IEC 61131-3's
     /// grammar says `control_variable ::= identifier`, so `r.i`, `a[k]` and
     /// `p^` cannot be counters. (A bare name
@@ -105,6 +110,7 @@ impl<'db> ErrorCode for ControlFlowError<'db> {
             Self::JumpLeavesFinally { .. } => "E1210",
             Self::CatchAfterFinally { .. } => "E1211",
             Self::ClauseWrittenTwice { .. } => "E1212",
+            Self::ClauseOutsideTry { .. } => "E1213",
             Self::ForControlNotAVariable { .. } => "E1203",
             Self::ForControlNotInteger { .. } => "E1206",
             Self::ForStepInvalid { .. } => "E1204",
@@ -182,6 +188,20 @@ impl<'db> ToIdeDiagnostic<'db> for ControlFlowError<'db> {
                     "the clauses of a __TRY are its __CATCH, then its __FINALLY".to_string(),
                 );
                 diag.with_help("move the __CATCH before the __FINALLY".to_string());
+                diag
+            }
+            Self::ClauseOutsideTry { span } => {
+                let keyword = keyword_at(db, file, span);
+                let mut diag = diag()
+                    .message(format!("this {keyword} has no __TRY"))
+                    .range(crate::denormalize(db, file, span).unwrap_or_default())
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .call();
+                diag.with_note(
+                    "__CATCH, __FINALLY and __END_TRY are only accepted inside a __TRY".to_string(),
+                );
+                diag.with_help("add a __TRY before it or remove it".to_string());
                 diag
             }
             Self::ClauseWrittenTwice { span, first } => {
@@ -337,4 +357,23 @@ impl<'db> ToIdeDiagnostic<'db> for ControlFlowError<'db> {
             }
         }
     }
+}
+
+/// The keyword `span` starts with, as rk spells it: a report says which
+/// of the three it is.
+fn keyword_at(
+    db: &dyn WorkspaceDataBase,
+    file: auto_lsp::default::db::file::File,
+    span: &auto_lsp::tree_sitter::Range,
+) -> &'static str {
+    let source = file.document(db).as_str();
+    let text = source
+        .get(span.start_byte..span.end_byte)
+        .unwrap_or_default();
+    for keyword in ["__CATCH", "__FINALLY", "__END_TRY"] {
+        if text.len() >= keyword.len() && text[..keyword.len()].eq_ignore_ascii_case(keyword) {
+            return keyword;
+        }
+    }
+    "__CATCH"
 }

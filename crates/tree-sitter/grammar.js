@@ -2080,7 +2080,8 @@ module.exports = grammar({
         $.try_stmt,
         $.wasm_pragma,
         $.allow_pragma,
-        $.ERR_method_decl_in_body
+        $.ERR_method_decl_in_body,
+        $.ERR_clause_outside_try
       ),
 
     // assignment: $ => seq(
@@ -2237,14 +2238,27 @@ module.exports = grammar({
         choice(kw("__END_TRY"), $.ERR_end_try_spelling),
       ),
 
+    // Left: a clause ends where the next one, or the `__END_TRY`, begins.
+    // The other reading takes that keyword as a statement of the body
+    // (`ERR_clause_outside_try`).
     catch_clause: ($) =>
-      seq(
-        kw("__CATCH"),
-        optional(seq("(", field("variable", $.variable_access), ")")),
-        field("body", optional($.stmt_list)),
+      prec.left(
+        seq(
+          kw("__CATCH"),
+          optional(seq("(", field("variable", $.variable_access), ")")),
+          field("body", optional($.stmt_list)),
+        ),
       ),
 
-    finally_clause: ($) => seq(kw("__FINALLY"), field("body", optional($.stmt_list))),
+    finally_clause: ($) =>
+      prec.left(seq(kw("__FINALLY"), field("body", optional($.stmt_list)))),
+
+    // A `__CATCH`, a `__FINALLY` or an `__END_TRY` where a statement goes,
+    // with no __TRY open: read as a statement of its own, so that the
+    // statements before and after it stay what they are, and reported.
+    // Inside a __TRY, the clause wins: this is a last resort.
+    ERR_clause_outside_try: ($) =>
+      prec.dynamic(-1, prec(-1, choice(kw("__CATCH"), kw("__FINALLY"), kw("__END_TRY")))),
 
     // `__ENDTRY`, where `__END_TRY` closes a __TRY: read as the closer, so
     // that the report is about the spelling and the statement is still

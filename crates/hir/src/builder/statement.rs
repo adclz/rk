@@ -470,6 +470,10 @@ impl<'db> Parse<'db> for ast::generated::Stmt {
                 Err(SyntaxError::MethodDeclInBody(err.get_range().to_owned())
                     .to_diagnostic(sema.db, sema.file))
             }
+            StmtType::ERRClauseOutsideTry(err) => Err(ControlFlowError::ClauseOutsideTry {
+                span: err.get_range().to_owned(),
+            }
+            .to_diagnostic(sema.db, sema.file)),
         }
     }
 }
