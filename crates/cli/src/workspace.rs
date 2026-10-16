@@ -26,11 +26,23 @@ pub fn require_workspace_dir(path: &std::path::Path) -> crate::error::CliResult<
     Ok(())
 }
 
+/// What `rk` does for a library the workspace depends on and the cache
+/// lacks: it fetches it, when it `may`. A command that reads a workspace
+/// may unless `RK_NO_DOWNLOAD` is set, and `rk fetch` always does.
+pub fn fetcher(
+    may: bool,
+) -> Option<impl FnMut(&db::dependencies::Remote<'_>) -> Result<(), db::dependencies::FetchError>> {
+    let cache = db::cache::root().filter(|_| may)?;
+    Some(move |remote: &db::dependencies::Remote<'_>| {
+        ui::detail(format!("    Fetching {} ({})", remote.name, remote.url));
+        fetch::fetch_remote(&cache, remote)
+    })
+}
+
 /// Load and parse a workspace into a fresh [`RootDatabase`]; `None` (with
 /// the reason on stderr) when the config is invalid, no source file exists,
 /// or, with `require_config`, there is no `config.toml`. Without a config,
-/// defaults apply and no linter runs; the library still comes from
-/// `RK_STDLIB_PATH`.
+/// defaults apply and no linter runs; the standard library is still read.
 pub fn init_db(
     workspace: &std::path::Path,
     verbose: bool,
@@ -55,13 +67,18 @@ pub fn init_db(
     let mut config_errors = vec![];
     let mut config_notices = vec![];
 
-    // Configuration, then the library, then this workspace's files: the one
-    // order, shared with the language server.
+    // Configuration, then the libraries, then this workspace's files: the
+    // one order, shared with the language server. A library the cache lacks
+    // is fetched on the way.
+    let mut fetcher = fetcher(db::cache::may_download());
     let results = db::loader::open_workspace(
         &mut db,
         Some(workspace),
         PositionEncodingKind::UTF8,
         hir::front_end::parser_of,
+        fetcher
+            .as_mut()
+            .map(|fetch| fetch as db::dependencies::Fetch<'_>),
         &mut config_errors,
         &mut config_notices,
     );

@@ -30,7 +30,9 @@ fn loc_suffix(record: &TestRecord) -> String {
 /// library, and its bare name anywhere else.
 pub struct SourceRoots {
     pub workspace: PathBuf,
-    pub library: Option<PathBuf>,
+    /// Each library's folder, and the label its files are shown under:
+    /// `<lib>` for the standard library.
+    pub libraries: Vec<(String, PathBuf)>,
 }
 
 impl SourceRoots {
@@ -44,12 +46,10 @@ impl SourceRoots {
         if let Ok(rel) = path.strip_prefix(&self.workspace) {
             return crate::diagnostics::slash_path(rel);
         }
-        if let Some(rel) = self
-            .library
-            .as_ref()
-            .and_then(|library| path.strip_prefix(library).ok())
-        {
-            return format!("<lib>/{}", crate::diagnostics::slash_path(rel));
+        for (label, library) in &self.libraries {
+            if let Ok(rel) = path.strip_prefix(library) {
+                return format!("{label}/{}", crate::diagnostics::slash_path(rel));
+            }
         }
         path.file_name()
             .map(|name| name.to_string_lossy().into_owned())
@@ -284,7 +284,7 @@ mod tests {
         };
         let roots = SourceRoots {
             workspace: root.join("plant"),
-            library: Some(root.join("std")),
+            libraries: vec![("<lib>".to_string(), root.join("std"))],
         };
         assert_eq!(
             roots.name(&url(&root.join("plant").join("lines").join("main.st"))),
