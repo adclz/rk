@@ -102,6 +102,7 @@ fn open(root: &Path) -> (RootDatabase, Vec<File>) {
         Some(root),
         PositionEncodingKind::UTF8,
         hir::front_end::parser_of,
+        None,
         &mut vec![],
         &mut vec![],
     )

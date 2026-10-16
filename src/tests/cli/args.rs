@@ -37,8 +37,8 @@ fn the_vscode_extension_invokes_a_cli_that_exists() {
         .collect();
     assert_eq!(
         mine.len(),
-        2,
-        "expected the build task and the stdlib query; found {invocations:?}; \
+        1,
+        "expected the build task; found {invocations:?}; \
          if the extension gained an invocation, cover it here too"
     );
 
