@@ -382,6 +382,9 @@ fn refresh_configuration(
         workspace,
         session.encoding.clone(),
         db::loader::rk_parser,
+        // The editor reads: a library the cache lacks is reported, and
+        // `rk fetch` fetches it.
+        None,
         &mut file_errors,
         &mut notices,
     );

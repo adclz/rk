@@ -8,6 +8,7 @@ use ide_diagnostic::IdeDiagnostic;
 use salsa::{Durability, Setter};
 
 use crate::RootDatabase;
+use crate::dependencies::{Fetch, Library};
 
 /// Pure data store for workspace configuration, created and updated by
 /// the loader.
@@ -16,10 +17,12 @@ pub struct Workspace {
     #[returns(as_ref)]
     pub workspace_folder: Option<PathBuf>,
 
-    /// Directory of the loaded library, if any: named through
-    /// `RK_STDLIB_PATH`, else found beside the executable.
-    #[returns(as_ref)]
-    pub library_path: Option<PathBuf>,
+    /// The libraries read beside the workspace's own files, in the order
+    /// they are read: the standard library, when there is one, and then the
+    /// `[dependencies]` of `config.toml`. A library's place here is its
+    /// [`crate::dependencies::LibraryId`].
+    #[returns(ref)]
+    pub libraries: Vec<Library>,
 
     #[returns(as_ref)]
     pub config_file: Option<PathBuf>,
@@ -28,19 +31,26 @@ pub struct Workspace {
 }
 
 impl Workspace {
+    /// The standard library, when one is loaded: the one built into the
+    /// compiler, or the folder `RK_STDLIB_PATH` names.
+    pub fn standard_library(self, db: &dyn salsa::Database) -> Option<&Library> {
+        self.libraries(db).iter().find(|library| library.standard)
+    }
+
     pub fn init_or_update(
         db: &mut RootDatabase,
         workspace_uri: Option<Url>,
         encoding: PositionEncodingKind,
+        fetch: Option<Fetch<'_>>,
         file_errors: &mut Vec<IdeDiagnostic>,
         notices: &mut Vec<ConfigurationNotice>,
     ) -> Self {
         match Self::try_get(db) {
             Some(config) => {
-                config.update(db, workspace_uri, file_errors, notices);
+                config.update(db, workspace_uri, fetch, file_errors, notices);
                 config
             }
-            None => Self::create(db, workspace_uri, encoding, file_errors, notices),
+            None => Self::create(db, workspace_uri, encoding, fetch, file_errors, notices),
         }
     }
 
@@ -48,13 +58,14 @@ impl Workspace {
         db: &RootDatabase,
         workspace_uri: Option<Url>,
         encoding: PositionEncodingKind,
+        fetch: Option<Fetch<'_>>,
         file_errors: &mut Vec<IdeDiagnostic>,
         notices: &mut Vec<ConfigurationNotice>,
     ) -> Self {
-        let (workspace_folder, library_path, config_file) =
-            resolve_all(workspace_uri, &encoding, file_errors, notices);
+        let (workspace_folder, libraries, config_file) =
+            resolve_all(workspace_uri, fetch, file_errors, notices);
 
-        Self::builder(workspace_folder, library_path, config_file, encoding)
+        Self::builder(workspace_folder, libraries, config_file, encoding)
             .durability(Durability::HIGH)
             .new(db)
     }
@@ -63,24 +74,25 @@ impl Workspace {
         &self,
         db: &mut RootDatabase,
         workspace_uri: Option<Url>,
+        fetch: Option<Fetch<'_>>,
         file_errors: &mut Vec<IdeDiagnostic>,
         notices: &mut Vec<ConfigurationNotice>,
     ) {
-        let (workspace_folder, library_path, config_file) =
-            resolve_all(workspace_uri, &self.encoding(db), file_errors, notices);
+        let (workspace_folder, libraries, config_file) =
+            resolve_all(workspace_uri, fetch, file_errors, notices);
 
         self.set_workspace_folder(db).to(workspace_folder);
-        self.set_library_path(db).to(library_path);
+        self.set_libraries(db).to(libraries);
         self.set_config_file(db).to(config_file);
     }
 }
 
 fn resolve_all(
     workspace_uri: Option<Url>,
-    _encoding: &PositionEncodingKind,
+    fetch: Option<Fetch<'_>>,
     file_errors: &mut Vec<IdeDiagnostic>,
     notices: &mut Vec<ConfigurationNotice>,
-) -> (Option<PathBuf>, Option<PathBuf>, Option<PathBuf>) {
+) -> (Option<PathBuf>, Vec<Library>, Option<PathBuf>) {
     // 1. Resolve workspace folder from URI
     let workspace_folder = match workspace_uri {
         Some(uri) => match uri.to_file_path() {
@@ -108,44 +120,87 @@ fn resolve_all(
     };
 
     // 3. Parse config file — report parse errors. The config has no say in
-    //    library resolution (see step 4).
+    //    where the standard library is (see step 4), and names the other
+    //    libraries (step 5).
+    let mut config = None;
     if let Some(path) = &config_file
         && let Ok(source) = std::fs::read_to_string(path)
-        && let Err(e) = crate::config_file::parse_config(&source)
-        && Url::from_file_path(path).is_ok()
     {
-        // The config parser reports a byte span; convert it to an LSP range by
-        // counting line breaks in the already-read `source`.
-        let range = e
-            .span()
-            .map(|span| byte_range_to_lsp(&source, span))
-            .unwrap_or_default();
-        file_errors.push(IdeDiagnostic::new(Diagnostic {
-            range,
-            severity: Some(DiagnosticSeverity::ERROR),
-            source: Some("rk-lsp".to_string()),
-            message: e.message().to_string(),
-            ..Default::default()
-        }));
+        match crate::config_file::parse_config(&source) {
+            Ok(parsed) => config = Some((source, parsed)),
+            Err(e) if Url::from_file_path(path).is_ok() => {
+                // The config parser reports a byte span; convert it to an LSP
+                // range by counting line breaks in the already-read `source`.
+                let range = e
+                    .span()
+                    .map(|span| byte_range_to_lsp(&source, span))
+                    .unwrap_or_default();
+                file_errors.push(IdeDiagnostic::new(Diagnostic {
+                    range,
+                    severity: Some(DiagnosticSeverity::ERROR),
+                    source: Some("rk-lsp".to_string()),
+                    message: e.message().to_string(),
+                    ..Default::default()
+                }));
+            }
+            Err(_) => {}
+        }
     }
 
-    // 4. Resolve the library. Not finding one is never fatal: uses of
-    // library names fail to resolve like any other unknown name.
-    use crate::loader::LibraryPathResolution;
-    let library_path = match crate::loader::resolve_library_path(workspace_folder.as_deref()) {
-        LibraryPathResolution::Found { dir, .. } => Some(dir),
-        LibraryPathResolution::Disabled => None,
-        LibraryPathResolution::NotFound { probed } => {
-            notices.push(ConfigurationNotice::LibraryNotFound { probed });
+    // 4. Resolve the standard library. Not having one is never fatal: uses
+    // of library names fail to resolve like any other unknown name.
+    use crate::stdlib::Standard;
+    let standard = match crate::stdlib::locate(workspace_folder.as_deref()) {
+        Standard::Found { library, .. } => Some(library),
+        Standard::Disabled => None,
+        Standard::NotAFolder(value) => {
+            notices.push(ConfigurationNotice::LibraryPathInvalid { value });
             None
         }
-        LibraryPathResolution::Invalid(value) => {
-            notices.push(ConfigurationNotice::LibraryPathInvalid { value });
+        Standard::NotInstalled(reason) => {
+            notices.push(ConfigurationNotice::LibraryNotInstalled { reason });
             None
         }
     };
 
-    (workspace_folder, library_path, config_file)
+    // 5. Resolve the libraries the configuration names. One the cache
+    // lacks is fetched by the caller, or reported when it fetches nothing.
+    let libraries = match (&workspace_folder, config) {
+        (Some(workspace), Some((source, config))) => {
+            let cache = crate::cache::root();
+            let resolution =
+                crate::dependencies::resolve(workspace, &config, standard, cache.as_deref(), fetch);
+            file_errors.extend(
+                resolution
+                    .problems
+                    .into_iter()
+                    .map(|problem| dependency_diagnostic(&source, problem)),
+            );
+            resolution.libraries
+        }
+        _ => standard.into_iter().collect(),
+    };
+
+    (workspace_folder, libraries, config_file)
+}
+
+/// A dependency that could not be resolved, as a diagnostic on the entry of
+/// `config.toml` it comes from. `source` is the text of that file.
+pub fn dependency_diagnostic(source: &str, problem: crate::dependencies::Problem) -> IdeDiagnostic {
+    let mut diagnostic = IdeDiagnostic::new(Diagnostic {
+        range: byte_range_to_lsp(source, problem.span),
+        severity: Some(DiagnosticSeverity::ERROR),
+        source: Some("rk-lsp".to_string()),
+        message: problem.message,
+        ..Default::default()
+    });
+    for note in problem.notes {
+        diagnostic.with_note(note);
+    }
+    if let Some(help) = problem.help {
+        diagnostic.with_help(help);
+    }
+    diagnostic
 }
 
 /// Configuration-level issue with no specific file location.
@@ -158,9 +213,9 @@ pub enum ConfigurationNotice {
     ConfigFileNotFound {
         path: PathBuf,
     },
-    /// Nothing named a library and none was found beside the executable.
-    LibraryNotFound {
-        probed: Vec<PathBuf>,
+    /// The standard library could not be written in the cache.
+    LibraryNotInstalled {
+        reason: String,
     },
     /// `RK_STDLIB_PATH` is set to something that is not a readable directory.
     LibraryPathInvalid {
@@ -181,21 +236,11 @@ impl Display for ConfigurationNotice {
                     path.display()
                 )
             }
-            ConfigurationNotice::LibraryNotFound { probed } => {
-                writeln!(
-                    f,
-                    "No standard library found, so Std.* names will not resolve."
-                )?;
-                if !probed.is_empty() {
-                    writeln!(f, "Looked beside the executable in:")?;
-                    for path in probed {
-                        writeln!(f, "  {}", path.display())?;
-                    }
-                }
+            ConfigurationNotice::LibraryNotInstalled { reason } => {
                 write!(
                     f,
-                    "Set RK_STDLIB_PATH in the environment or in a .env file at \
-                     the workspace root; an empty string silences this message."
+                    "the standard library could not be installed, so Std.* names \
+                     will not resolve: {reason}"
                 )
             }
             ConfigurationNotice::LibraryPathInvalid { value } => {

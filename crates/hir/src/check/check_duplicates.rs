@@ -40,7 +40,7 @@ pub(crate) fn is_library_file(
     db: &dyn WorkspaceDataBase,
     file: auto_lsp::default::db::file::File,
 ) -> bool {
-    db.get_library_files().iter().any(|e| *e.value() == file)
+    db.library_of(file).is_some()
 }
 
 /// Check for duplicate global POU names.
