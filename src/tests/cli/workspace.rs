@@ -142,8 +142,12 @@ fn unset_variable_reads_the_library_built_in() {
         .map(|entry| entry.key().to_file_path().unwrap())
         .collect();
     assert!(!files.is_empty(), "the standard library is read");
+    // Canonical on both sides: on Windows a file URL gives the path back
+    // without the `\\?\` the canonical folder starts with.
     assert!(
-        files.iter().all(|file| file.starts_with(&copy)),
+        files
+            .iter()
+            .all(|file| file.canonicalize().unwrap().starts_with(&copy)),
         "from its copy in the cache: {files:?}"
     );
     assert!(

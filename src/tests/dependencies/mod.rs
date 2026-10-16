@@ -19,6 +19,16 @@ use std::path::Path;
 
 use auto_lsp::lsp_types::Url;
 
+/// `path` without the `\\?\` that `canonicalize` puts before it on Windows:
+/// git does not take one as an argument.
+pub(super) fn plain(path: &Path) -> std::path::PathBuf {
+    let text = path.to_string_lossy();
+    match text.strip_prefix(r"\\?\UNC\") {
+        Some(rest) => std::path::PathBuf::from(format!(r"\\{rest}")),
+        None => std::path::PathBuf::from(text.strip_prefix(r"\\?\").unwrap_or(&text)),
+    }
+}
+
 /// The URL of `bytes`, written as a file under `dir`.
 pub(super) fn served(dir: &Path, name: &str, bytes: &[u8]) -> String {
     let path = dir.join(name);

@@ -12,7 +12,7 @@ use db::dependencies::{ContentHash, Remote};
 use fetch::archive::FileType;
 use fetch::git::{Error, Format, Oid, Repository, Session, resolve};
 
-use super::{Answer, package_files, packet, serve};
+use super::{Answer, package_files, packet, plain, serve};
 
 fn git(dir: &Path, args: &[&str]) -> Vec<u8> {
     let output = Command::new("git")
@@ -40,6 +40,7 @@ fn git_text(dir: &Path, args: &[&str]) -> String {
 /// revisions, a tag of each kind, a branch, and a commit with a
 /// submodule. Answers the bare copy a server serves.
 fn repository(root: &Path, format: &str) -> std::path::PathBuf {
+    let root = plain(root);
     let work = root.join(format!("drives-{format}"));
     std::fs::create_dir_all(work.join("src/motion")).unwrap();
     std::fs::create_dir_all(work.join("src/io")).unwrap();
@@ -109,7 +110,7 @@ fn repository(root: &Path, format: &str) -> std::path::PathBuf {
 
     let bare = root.join(format!("drives-{format}.git"));
     git(
-        root,
+        &root,
         &[
             "clone",
             "-q",
@@ -399,7 +400,7 @@ fn serve_git(project_root: &Path) -> String {
             let mut backend = Command::new("git");
             backend
                 .arg("http-backend")
-                .env("GIT_PROJECT_ROOT", &root)
+                .env("GIT_PROJECT_ROOT", plain(&root))
                 .env("GIT_HTTP_EXPORT_ALL", "1")
                 .env("PATH_INFO", path)
                 .env("QUERY_STRING", query)

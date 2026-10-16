@@ -205,7 +205,9 @@ fn a_workspace_reads_the_standard_library_from_the_cache() {
         .get_library_files()
         .iter()
         .map(|entry| {
-            let path = entry.key().to_file_path().unwrap();
+            // Canonical, as `copy` is: a file URL gives a Windows path back
+            // without its `\\?\`.
+            let path = entry.key().to_file_path().unwrap().canonicalize().unwrap();
             let name = path.strip_prefix(&copy).unwrap();
             name.to_string_lossy().into_owned()
         })
@@ -227,7 +229,7 @@ fn a_workspace_reads_the_standard_library_from_the_cache() {
     let urls: Vec<_> = db
         .get_library_files()
         .iter()
-        .map(|entry| entry.key().to_file_path().unwrap())
+        .map(|entry| entry.key().to_file_path().unwrap().canonicalize().unwrap())
         .collect();
     assert_eq!(urls, [other.join("Std.st")]);
 
