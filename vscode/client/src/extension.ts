@@ -24,7 +24,6 @@ import {
 } from "vscode-languageclient/node";
 import { rkCommand, rememberExtension } from "./rk";
 import { registerCommands } from "./commands";
-import { execFileSync } from "child_process";
 
 let client: LanguageClient;
 let statusBarItem: StatusBarItem;
@@ -70,7 +69,6 @@ export async function activate(context: ExtensionContext) {
   const env = {
     ...process.env,
     RUST_BACKTRACE: "1",
-    ...stdlibEnv(),
   };
 
   outputChannel = window.createOutputChannel("rk Language Server", "log");
@@ -118,36 +116,6 @@ export async function activate(context: ExtensionContext) {
   // Register commands
   const commandsDisposable = registerCommands(restartServer, stopServer, showStatusMenu);
   context.subscriptions.push(commandsDisposable);
-}
-
-/// The standard library the INSTALLED toolchain resolved, as environment for
-/// the server.
-///
-/// The extension ships its own server binary, so client and server versions
-/// always match, but it must not ship its own standard library: a second copy
-/// is a second answer, and the editor would disagree with `rk check` about the
-/// same source. So it asks the toolchain rather than guessing, the way
-/// rust-analyzer asks rustc for its sysroot.
-///
-/// Nothing is set when the CLI cannot be reached: the server then finds a
-/// library beside itself, or reports that it found none. A missing `rk` is
-/// already visible elsewhere.
-function stdlibEnv(): Record<string, string> {
-  try {
-    // `rk env <key>` prints the value alone, the way `go env GOROOT` does.
-    // Nothing to parse, so a path with a space or a parenthesis in it
-    // survives.
-    const resolved = execFileSync(rkCommand(), ["env", "stdlib"], {
-      encoding: "utf8",
-      timeout: 5000,
-    }).trim();
-    if (resolved) {
-      return { RK_STDLIB_PATH: resolved };
-    }
-  } catch {
-    // Not installed, not on PATH, or too slow to answer.
-  }
-  return {};
 }
 
 /// Contributes an "rk: build (debug)" task: compiles the workspace with the
