@@ -138,6 +138,14 @@ A `NAMESPACE INTERNAL` or a `FUNCTION PRIVATE` of a library can only be used by 
 
 Your workspace cannot use it, and another library cannot either.
 
+## Hardware
+
+A library names no address: it is code for any machine.
+Its blocks declare `AT %I*`, `%Q*` or `%M*`, and your configuration gives each instance its address in `VAR_CONFIG`.
+A complete address in a library is `E1432`, in a `path` as in a `url`.
+
+See [VAR_CONFIG](var-config.md).
+
 ## The same library twice
 
 All the libraries share the same namespaces, so a library is only read once.

@@ -3,6 +3,7 @@
 - [Getting started](getting-started.md)
 - [Configuration](configuration.md)
 - [Direct variables](direct-variables.md)
+- [VAR_CONFIG](var-config.md)
 - Programming basics
   - [Syntax](syntax.md)
   - [Namespaces](namespaces.md)

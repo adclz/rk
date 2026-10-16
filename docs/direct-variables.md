@@ -118,7 +118,7 @@ END_CONFIGURATION
 
 An instance left without an address is `E1425`.
 
-A library cannot name a complete address, since it is code for any machine (`E1417`).
+A library cannot name a complete address, since it is code for any machine (`E1432`), see [VAR_CONFIG](var-config.md).
 
 ## On the host
 
