@@ -20,6 +20,9 @@ stdlib/                             one file per namespace
 └─ Std.Unit                         ASSERT, ASSERT_EQ, ASSERT_NEQ
 ```
 
+It is built into the compiler.
+At each start, `rk` writes it in the cache and reads it from there, `rk env stdlib` prints the folder.
+
 The compiler knows nothing about it beyond where the files are.
 
 So that means you can replace any part of the stdlib, extend it, or read it to see how a `TON` is written.

@@ -537,9 +537,11 @@ pub enum UnlocatableAddress {
     /// `%IW*`, `%Z*`: a partial address names an area, I, Q or M, and
     /// nothing else.
     NotAreaOnly,
-    /// An address in a library file. A library is code for any machine, and
-    /// its addresses were not the workspace's: a library's `%QD0` got a cell
-    /// of its own beside a workspace `%QW0`.
+    /// A complete address in a library file, its own code (E1432). A
+    /// library is code for any machine, and its addresses were not the
+    /// workspace's: a library's `%QD0` got a cell of its own beside a
+    /// workspace `%QW0`. The workspace maps the hardware: a library declares
+    /// `AT %I*` and VAR_CONFIG locates each instance.
     InLibrary,
     /// A complete address on a STRUCT field, which was accepted and
     /// ignored: a field is part of every variable of its type. rk has no
@@ -560,16 +562,16 @@ impl UnlocatableAddress {
             Self::NotAreaOnly => {
                 format!("'{address}' is not a partial address: write '%I*', '%Q*' or '%M*'")
             }
-            Self::InLibrary => format!("'{address}' cannot be named in a library"),
+            Self::InLibrary => format!("'{address}' is an address in a library"),
             Self::InStruct | Self::InStructPartly => {
                 format!("'{address}' cannot locate a STRUCT field")
             }
         }
     }
 
-    /// The rule behind the refusal, and what to write instead. Neither for a
-    /// library's address: whoever sees it uses the library and cannot rewrite
-    /// it.
+    /// The rule behind the refusal, and what to write instead. For a
+    /// library's address the help is the library author's: whoever builds
+    /// with the library sees the rule and passes the rest on.
     fn advice(self) -> (Option<&'static str>, Option<&'static str>) {
         match self {
             Self::InPou => (
@@ -594,7 +596,12 @@ impl UnlocatableAddress {
                 Some("the variable's type gives the width, and VAR_CONFIG the rest of the address"),
                 None,
             ),
-            Self::InLibrary => (None, None),
+            Self::InLibrary => (
+                Some("a library is code for any machine: the workspace maps the hardware"),
+                Some(
+                    "declare it AT %I*, %Q* or %M* and let the workspace locate each instance in VAR_CONFIG",
+                ),
+            ),
             Self::InStruct => (
                 Some("a field is part of every variable of its type"),
                 Some(
@@ -732,6 +739,10 @@ impl<'db> ErrorCode for ConfigError<'db> {
             Self::ConfigInstInitUnknownInstance { .. } => "E1413",
             Self::ConfigInstInitFieldNotFound { .. } => "E1414",
             Self::AccessDeclTypeMismatch { .. } => "E1415",
+            Self::DirectVariableUnsupported {
+                why: UnlocatableAddress::InLibrary,
+                ..
+            } => "E1432",
             Self::DirectVariableUnsupported { .. } => "E1417",
             Self::UnknownMultibitsAccess { .. } => "E1418",
             Self::MultibitsOutOfRange { .. } => "E1429",

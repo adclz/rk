@@ -19,7 +19,7 @@ mod validation;
 mod watcher;
 mod workspace;
 
-use db::loader::STDLIB_PATH_ENV;
+use db::stdlib::PATH_ENV;
 
 /// A workspace on disk: a `config.toml` and `files`, as `(name, source)`.
 /// A `config.toml` among `files` replaces the default one. The directory
@@ -43,16 +43,27 @@ fn temp_workspace(files: &[(&str, &str)]) -> (tempfile::TempDir, std::path::Path
 // runs every test in its own process.
 
 /// No standard library at all, so a test does not inherit the developer's.
-/// Distinct from [`unset_stdlib`]: an unset variable falls through to the
-/// probe beside the executable.
+/// Distinct from [`unset_stdlib`]: an unset variable reads the one built
+/// in.
 fn disable_stdlib() {
-    unsafe { std::env::set_var(STDLIB_PATH_ENV, "") };
+    unsafe { std::env::set_var(PATH_ENV, "") };
 }
 
+/// The standard library built into the compiler, written in a cache the
+/// tests share rather than in the developer's.
 fn unset_stdlib() {
-    unsafe { std::env::remove_var(STDLIB_PATH_ENV) };
+    unsafe {
+        std::env::remove_var(PATH_ENV);
+        std::env::set_var(db::cache::CACHE_DIR_ENV, tests_cache());
+    }
 }
 
 fn set_stdlib(path: &std::ffi::OsStr) {
-    unsafe { std::env::set_var(STDLIB_PATH_ENV, path) };
+    unsafe { std::env::set_var(PATH_ENV, path) };
+}
+
+/// The cache the tests write the standard library in. They share it, as
+/// builds share a user's cache.
+fn tests_cache() -> std::path::PathBuf {
+    std::env::temp_dir().join("rk-tests-cache")
 }

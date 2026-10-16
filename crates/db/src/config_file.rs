@@ -7,6 +7,9 @@ use serde::Deserialize;
 
 use crate::{WorkspaceDataBase, workspace::Workspace};
 
+/// What makes a folder a workspace or a library: the same file either way.
+pub const CONFIG_FILE: &str = "config.toml";
+
 /// Parsed and validated workspace configuration from `config.toml`; serde
 /// rejects unknown keys.
 #[derive(Default, Clone, Debug, PartialEq, Eq, Hash, Deserialize)]
@@ -15,6 +18,25 @@ pub struct Config {
     pub project: ProjectInfo,
     pub settings: Option<SettingsConfig>,
     pub linter: Option<LinterConfig>,
+    /// The libraries this workspace, or this library, reads beside its own
+    /// files, each under the name of its own `config.toml`
+    /// (see [`crate::dependencies`]). A name keeps its place in the file,
+    /// for the diagnostics that are about it.
+    #[serde(default)]
+    pub dependencies: BTreeMap<toml::Spanned<String>, Dependency>,
+}
+
+/// One entry of `[dependencies]`: a folder, or an archive and the hash of
+/// what it holds.
+#[derive(Default, Clone, Debug, PartialEq, Eq, Hash, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Dependency {
+    /// A folder, relative to the folder of the `config.toml` that names it.
+    pub path: Option<String>,
+    /// A `.tar.gz` archive, over `https`, `http` or `file`.
+    pub url: Option<String>,
+    /// What the archive holds, as `rk fetch --save` writes it.
+    pub hash: Option<String>,
 }
 
 impl Config {
@@ -93,6 +115,11 @@ impl<'de> Deserialize<'de> for StackSize {
 pub struct ProjectInfo {
     pub name: String,
     pub version: String,
+    /// The files and folders that make the library, for the day it is
+    /// fetched: what they do not hold is left out of it and of its hash.
+    /// With none, every file is part of it. `config.toml` always is.
+    #[serde(default)]
+    pub paths: Vec<String>,
 }
 
 #[derive(Default, Clone, Debug, PartialEq, Eq, Hash, Deserialize)]
@@ -239,8 +266,8 @@ version = "1"
         assert!(config.output().is_none());
     }
 
-    /// Library acquisition is selected by `RK_STDLIB_PATH` alone; both former
-    /// keys are rejected so a stale config fails loudly.
+    /// `config.toml` has no say in the standard library; both former keys
+    /// are rejected so a stale config fails loudly.
     #[test]
     fn removed_stdlib_keys_are_rejected() {
         for key in ["disable_stdlib = true", "stdlib_path = \"/x\""] {

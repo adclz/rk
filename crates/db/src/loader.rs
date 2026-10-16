@@ -14,106 +14,16 @@ use rayon::prelude::*;
 
 use crate::RootDatabase;
 use crate::WorkspaceDataBase;
-use crate::sysroot::LibraryOrigin;
+use crate::config_file::CONFIG_FILE;
 use crate::workspace::Workspace;
 
 type ParseResult = Result<(Url, Arc<Document>), Box<dyn std::error::Error + Send + Sync>>;
 
 // --- Path resolution ---
 
-/// Environment variable naming the library directory; when nothing names
-/// one, the library is found beside the executable (see
-/// [`crate::sysroot`]).
-pub const STDLIB_PATH_ENV: &str = "RK_STDLIB_PATH";
-
-/// Where the library came from, or why there is none.
-pub enum LibraryPathResolution {
-    /// Nothing named a library and the probe found none; the probed paths
-    /// travel with the answer.
-    NotFound { probed: Vec<PathBuf> },
-    /// The explicit, silent "no library": `RK_STDLIB_PATH` set to the empty
-    /// string, or the workspace IS the library.
-    Disabled,
-    /// A directory that exists, and where it came from.
-    Found { dir: PathBuf, origin: LibraryOrigin },
-    /// Named as something that is not a readable directory; never silently
-    /// ignored.
-    Invalid(String),
-}
-
-/// Resolves the library directory: `RK_STDLIB_PATH` in the environment,
-/// then in the workspace's `.env`, then the probe beside the executable. A
-/// named path wins outright, even when it names nothing.
-pub fn resolve_library_path(workspace: Option<&Path>) -> LibraryPathResolution {
-    let named = std::env::var(STDLIB_PATH_ENV)
-        .ok()
-        .map(|value| (LibraryOrigin::Env, value))
-        .or_else(|| {
-            workspace
-                .and_then(read_dotenv_var)
-                .map(|value| (LibraryOrigin::Dotenv, value))
-        });
-
-    if let Some((origin, value)) = named {
-        if value.is_empty() {
-            return LibraryPathResolution::Disabled;
-        }
-        return match std::fs::canonicalize(&value) {
-            Ok(dir) if dir.is_dir() => LibraryPathResolution::Found { dir, origin },
-            _ => LibraryPathResolution::Invalid(value),
-        };
-    }
-
-    match crate::sysroot::probe() {
-        // A workspace that IS the library loads no library, whatever `.env`
-        // says.
-        Some((_, dir)) if is_the_workspace(&dir, workspace) => LibraryPathResolution::Disabled,
-        Some((origin, dir)) => LibraryPathResolution::Found { dir, origin },
-        None => LibraryPathResolution::NotFound {
-            probed: crate::sysroot::probed(),
-        },
-    }
-}
-
-/// Whether a resolved library directory is the workspace being compiled,
-/// compared canonically.
-fn is_the_workspace(library: &Path, workspace: Option<&Path>) -> bool {
-    let Some(workspace) = workspace else {
-        return false;
-    };
-    match (library.canonicalize(), workspace.canonicalize()) {
-        (Ok(library), Ok(workspace)) => library == workspace,
-        _ => library == workspace,
-    }
-}
-
-/// Reads `RK_STDLIB_PATH` from `<workspace>/.env`: `KEY=VALUE` lines, `#`
-/// comments, optional quotes.
-fn read_dotenv_var(workspace: &Path) -> Option<String> {
-    let text = std::fs::read_to_string(workspace.join(".env")).ok()?;
-    for line in text.lines() {
-        let line = line.trim();
-        if line.starts_with('#') {
-            continue;
-        }
-        if let Some((key, value)) = line.split_once('=')
-            && key.trim() == STDLIB_PATH_ENV
-        {
-            let value = value.trim();
-            let value = value
-                .strip_prefix('"')
-                .and_then(|v| v.strip_suffix('"'))
-                .or_else(|| value.strip_prefix('\'').and_then(|v| v.strip_suffix('\'')))
-                .unwrap_or(value);
-            return Some(value.to_string());
-        }
-    }
-    None
-}
-
 /// Resolves the workspace config file (`config.toml` at the workspace root).
 pub fn resolve_config_file(workspace: &Path) -> Option<PathBuf> {
-    let path = workspace.join(crate::sysroot::CONFIG_FILE);
+    let path = workspace.join(CONFIG_FILE);
     if path.exists() {
         std::fs::canonicalize(path).ok()
     } else {
@@ -152,8 +62,19 @@ pub fn rk_parser(path: &Path) -> Option<&'static Parser> {
 pub type ParserOf = fn(&Path) -> Option<&'static Parser>;
 
 /// Recursively discovers the source files under `path`, each with the
-/// parser that reads it.
+/// parser that reads it. A folder with a `config.toml` of its own is
+/// another workspace or library, and its files are left out.
 pub fn find_files(path: &Path, parser_of: ParserOf) -> Vec<(PathBuf, &'static Parser)> {
+    find_files_except(path, parser_of, &[])
+}
+
+/// [`find_files`], leaving out the folders of `except` too, which are
+/// canonical: another library's, when one is inside this one.
+fn find_files_except(
+    path: &Path,
+    parser_of: ParserOf,
+    except: &[PathBuf],
+) -> Vec<(PathBuf, &'static Parser)> {
     let mut files = Vec::new();
     if !path.exists() {
         return files;
@@ -162,7 +83,14 @@ pub fn find_files(path: &Path, parser_of: ParserOf) -> Vec<(PathBuf, &'static Pa
         for entry in entries.flatten() {
             let entry_path = entry.path();
             if entry_path.is_dir() {
-                files.extend(find_files(&entry_path, parser_of));
+                let other = entry_path.join(CONFIG_FILE).is_file()
+                    || (!except.is_empty()
+                        && entry_path
+                            .canonicalize()
+                            .is_ok_and(|dir| except.contains(&dir)));
+                if !other {
+                    files.extend(find_files_except(&entry_path, parser_of, except));
+                }
             } else if entry_path.is_file()
                 && let Some(parser) = parser_of(&entry_path)
             {
@@ -200,25 +128,29 @@ fn read_and_parse(path: &Path, parsers: &'static Parser) -> ParseResult {
 ///
 /// The ORDER is the contract, and the reason this is one function instead of
 /// three calls each caller writes out. The configuration decides which
-/// library to read, and the library is read before the workspace so that a
-/// workspace CONTAINING it loads nothing twice. The CLI and the language
-/// server each wrote the sequence by hand, and nothing held them together:
-/// the server is handed `RK_STDLIB_PATH` by the editor extension, which took
-/// a different branch of [`resolve_library_path`] than the CLI's probe, and
-/// opening the rk checkout reported all 801 of its POUs as duplicates of
-/// themselves while `rk check` on the same folder was clean.
+/// libraries to read, and they are read before the workspace so that a
+/// workspace CONTAINING one loads nothing twice. The CLI and the language
+/// server each wrote the sequence by hand once, and nothing held them
+/// together: opening the rk checkout in the editor reported all 801 of its
+/// POUs as duplicates of themselves while `rk check` on the same folder was
+/// clean.
+///
+/// `fetch` puts in the cache a library the configuration names and the
+/// cache lacks. With none, such a library is reported: the editor reads,
+/// and `rk` fetches.
 pub fn open_workspace(
     db: &mut RootDatabase,
     workspace: Option<&Path>,
     encoding: auto_lsp::lsp_types::PositionEncodingKind,
     parser_of: ParserOf,
+    fetch: Option<crate::dependencies::Fetch<'_>>,
     file_errors: &mut Vec<ide_diagnostic::IdeDiagnostic>,
     notices: &mut Vec<crate::workspace::ConfigurationNotice>,
 ) -> Vec<Result<File, String>> {
     let workspace_uri = workspace
         .and_then(|path| std::fs::canonicalize(path).ok())
         .and_then(|path| Url::from_file_path(path).ok());
-    Workspace::init_or_update(db, workspace_uri, encoding, file_errors, notices);
+    Workspace::init_or_update(db, workspace_uri, encoding, fetch, file_errors, notices);
     load_libraries(db, parser_of);
     match workspace {
         Some(path) => load_workspace(db, path, parser_of),
@@ -272,30 +204,42 @@ pub fn load_workspace(
         .collect()
 }
 
-/// Loads the library's source files with HIGH durability: libraries rarely
-/// change, so salsa can skip re-validating queries that only touched them.
+/// Loads the source files of each library with HIGH durability: libraries
+/// rarely change, so salsa can skip re-validating queries that only touched
+/// them. A file is its library's alone: a library whose folder holds
+/// another one's, or the workspace's, does not read theirs.
 pub fn load_libraries(db: &mut RootDatabase, parser_of: ParserOf) {
     let Some(config) = Workspace::try_get(db) else {
         return;
     };
-    let Some(library_path) = config.library_path(db) else {
-        return;
-    };
+    let libraries = config.libraries(db).clone();
+    let canonical = |dir: &Path| dir.canonicalize().unwrap_or_else(|_| dir.to_path_buf());
+    let workspace = config.workspace_folder(db).map(|dir| canonical(dir));
 
-    let parsed: Vec<_> = find_files(library_path, parser_of)
-        .into_par_iter()
-        .map(|(p, parsers)| (read_and_parse(&p, parsers), parsers))
-        .collect();
+    for (id, library) in libraries.iter().enumerate() {
+        let except: Vec<PathBuf> = libraries
+            .iter()
+            .enumerate()
+            .filter(|(other, _)| *other != id)
+            .map(|(_, other)| canonical(&other.dir))
+            .chain(workspace.clone())
+            .collect();
+        let parsed: Vec<_> = find_files_except(&library.dir, parser_of, &except)
+            .into_par_iter()
+            .map(|(p, parsers)| (read_and_parse(&p, parsers), parsers))
+            .collect();
 
-    for (result, parsers) in parsed {
-        match result {
-            Ok((url, document)) => {
-                let file = File::builder(url.clone(), parsers, document, None)
-                    .durability(Durability::HIGH)
-                    .new(db);
-                db.library_files.insert(url, file);
+        for (result, parsers) in parsed {
+            match result {
+                Ok((url, _)) if db.library_files.contains_key(&url) => {}
+                Ok((url, document)) => {
+                    let file = File::builder(url.clone(), parsers, document, None)
+                        .durability(Durability::HIGH)
+                        .new(db);
+                    db.insert_file_of_library(url, file, id as crate::dependencies::LibraryId);
+                }
+                Err(e) => eprintln!("failed to load library file: {}", e),
             }
-            Err(e) => eprintln!("failed to load library file: {}", e),
         }
     }
 }

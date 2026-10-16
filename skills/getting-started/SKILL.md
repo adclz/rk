@@ -16,7 +16,7 @@ rk --version
 rk env          # the standard library and where it was found
 ```
 
-If `rk env` reports no standard library, point `RK_STDLIB_PATH` at the checkout's `stdlib/`, or put that directory beside the binary.
+The standard library is built into the binary; `rk env stdlib` prints the folder it is read from.
 
 ## A workspace
 
@@ -112,8 +112,9 @@ Any WebAssembly host can instantiate it; the ABI is documented in the repository
 
 | Variable | Used by | Effect |
 | --- | --- | --- |
-| `RK_STDLIB_PATH` | CLI, language server | Where the standard library is. |
-| `RK_NO_DOWNLOAD` | CLI | When set, Binaryen is never downloaded. |
+| `RK_STDLIB_PATH` | CLI, language server | A folder to read as the standard library, in place of the one built in. Empty, none is read. |
+| `RK_NO_DOWNLOAD` | CLI | When set, Binaryen is never downloaded, and a missing library is only downloaded by `rk fetch`. |
+| `RK_CACHE_DIR` | CLI, language server | Where the standard library, the downloaded libraries and Binaryen are kept. |
 | `NO_COLOR` | CLI | When set, the output is not colored. |
 
 `RK_STDLIB_PATH` can also be written in a `.env` file at the workspace root.

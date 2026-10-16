@@ -43,7 +43,7 @@ An address can also be written in a body, `IF %IX0.1 THEN`, and its type is its 
 - `%I` is read-only: a write, or an initial value, is E1419.
 - Only `%M` can be `RETAIN`: a restored `%I` or `%Q` would run the first scan on the last power cycle's values (E1420).
 - An address is declared once: a second declaration is E1421.
-- A variable of a FUNCTION, FUNCTION_BLOCK or CLASS cannot have a complete address (E1417), and neither can a library, which is code for any machine.
+- A variable of a FUNCTION, FUNCTION_BLOCK or CLASS cannot have a complete address (E1417), and neither can a library, which is code for any machine (E1432): it declares `AT %I*` and the workspace locates each instance in `VAR_CONFIG`.
 
 ## Parts of a wider address
 

@@ -303,6 +303,10 @@ directory = "build"
 [linter.rules]
 unused-variable = false
 global-without-external = true
+
+[dependencies]
+shared = { path = "../shared" }
+drives = { url = "https://github.com/acme/drives/archive/refs/tags/v2.1.0.tar.gz", hash = "sha256:…" }
 ```
 
 `[project]` Required, with both `name` and `version` as strings.
@@ -323,6 +327,18 @@ A recursive function's frame larger than the stack is refused by `rk check` (`E1
 `[linter]` Optional, and only for TUNING: the linter runs by default with its recommended rules whether or not this section exists.
 
 `select` picks the baseline (`all` / `recommended` / `none`), `[linter.rules]` overrides individual rules on top of it.
+
+`[dependencies]` Optional: the libraries the workspace uses, each a folder with its own `config.toml`.
+The key is the `name` of the library's `config.toml`.
+An entry has a `path`, relative to this file, or a `url` with a `hash`.
+The `url` is a `.tar.gz` or `.tar` archive over `https`, `http` or `file`, or a git repository as `git+https://host/repo#tag`, which `rk fetch --save` pins to the commit of that tag.
+`[project] paths` lists the files and folders a library is made of when it is fetched; without it, every file is.
+Never write a `hash` by hand: `rk fetch --save <url>` downloads the archive and writes the entry.
+There is no registry and no version range: a new version is another URL, saved the same way.
+`rk check`, `rk compile` and `rk test` download a library that is missing from the cache, and `rk fetch` downloads them all.
+A library can have `[dependencies]` of its own, and the same library taken from two places is an error.
+The standard library is not listed: it comes with the compiler.
+The repository's `docs/dependencies.md` has the details.
 
 See the `tool-linter` skill.
 

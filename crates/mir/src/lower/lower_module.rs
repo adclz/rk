@@ -39,16 +39,28 @@ fn test_location<'db>(db: &'db dyn WorkspaceDataBase, func: Function<'db>) -> (S
     {
         return (rel.to_string_lossy().into_owned(), line);
     }
-    if let Some(lib) = workspace.and_then(|w| w.library_path(db))
-        && let Ok(rel) = path.strip_prefix(lib)
-    {
-        return (format!("<lib>/{}", rel.to_string_lossy()), line);
+    for library in workspace.map(|w| w.libraries(db)).into_iter().flatten() {
+        if let Ok(rel) = path.strip_prefix(&library.dir) {
+            return (
+                format!("{}/{}", library_label(library), rel.to_string_lossy()),
+                line,
+            );
+        }
     }
     let name = path
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_default();
     (name, line)
+}
+
+/// How a file of `library` is named where a path would say the machine it
+/// was built on: `<lib>` for the standard library, `<name>` for another.
+pub fn library_label(library: &db::dependencies::Library) -> String {
+    match library.standard {
+        true => "<lib>".to_string(),
+        false => format!("<{}>", library.name),
+    }
 }
 
 /// Whether `node` was declared by the workspace rather than the library,

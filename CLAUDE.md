@@ -164,8 +164,9 @@ vscode/server (binary) — thin wrapper, logging setup
             │       └── formatter (Topiary-based code formatter)
             └── ide_diagnostic (rich diagnostic data model)
 
-cli (binary `rk`) — check, compile, test, fmt, explain, env
+cli (binary `rk`) — check, compile, test, fmt, fetch, explain, env
     ├── hir, ast, db, ide_diagnostic, linter, formatter, mir, wasm_codegen, debug_format
+    └── fetch (downloads a library into the cache; the language server does not link it)
 ```
 
 ### Crate Purposes
@@ -174,14 +175,15 @@ cli (binary `rk`) — check, compile, test, fmt, explain, env
 | ------------------------- | ----------------------- | ----------------------------------------------------------------------------------------------------------------------- |
 | `ast`                     | `crates/ast`            | **Auto-generated** AST types from tree-sitter grammar. Do NOT edit `generated.rs`.                                      |
 | `tree-sitter-rk` | `crates/tree-sitter`    | Tree-sitter grammar for IEC 61131-3 (.st). Grammar source is `grammar.js`.                                              |
-| `db`                      | `crates/db`             | Root Salsa database (`RootDatabase`), file management, workspace configuration.                                         |
+| `db`                      | `crates/db`             | Root Salsa database (`RootDatabase`), file management, workspace configuration, the cache, the libraries and the standard library built in.                                         |
 | `hir`                     | `crates/hir`            | **Core of the compiler**: HIR definitions, semantic index, type inference, name resolution, diagnostics.                |
 | `ide_proto`               | `crates/ide_proto`      | IDE feature implementations: hover, completions, go-to-definition, document symbols, inlay hints, semantic tokens, etc. |
 | `ide_diagnostic`          | `crates/ide_diagnostic` | Rich diagnostic model with related info, quick fixes, notes, and ariadne report rendering.                              |
 | `server`                  | `crates/server`         | LSP server wiring: connects `auto-lsp` framework to IEC-specific handlers.                                              |
 | `formatter`               | `crates/formatter`      | Code formatter using Topiary (tree-sitter-based, declarative query rules).                                              |
 | `memory_usage`            | `crates/memory_usage`   | Utility for heap memory measurement.                                                                                    |
-| `cli`                     | `crates/cli`            | The `rk` binary: check, compile, test (on an in-process wasmtime host), fmt, explain, env.                              |
+| `cli`                     | `crates/cli`            | The `rk` binary: check, compile, test (on an in-process wasmtime host), fmt, fetch, explain, env.                       |
+| `fetch`                   | `crates/fetch`          | Fetches a library: an archive or a commit of a git repository (its own client, no git needed), unpacked, hashed and kept in the cache; writes its entry in `config.toml`. Its tests are in `src/tests/dependencies/`. |
 | `mir`                     | `crates/mir`            | Mid-level IR between HIR and WASM codegen: layouts, lowering, the task schedule and retain map.                          |
 | `wasm_codegen`            | `crates/wasm_codegen`   | Emits the core WASM module from MIR, with the builtin bundle and the debug/test custom sections.                        |
 | `debug_format`            | `crates/debug_format`   | The custom-section formats (debug symbols, lines, schedule, retain map, test manifest) and their decoder.               |
@@ -249,6 +251,8 @@ Type checking proceeds in three memoized salsa queries:
 - **Head vs body separation**: Changing a function body doesn't re-infer its signature.
 - **One view over a scope's inference**: `infer_body` records the statements and `infer_initialization` the initializers; both are crate-private to `hir`. Everything else reads a scope through `ScopeId::inference(db)` (`ScopeInference`), whose lookups answer from whichever query recorded the node and whose scans walk both. A FUNCTION's locals start over at each call, so an initializer's `p^`, `REF(v)` or `SUPER.m()` is the scope's as much as a statement's.
 - **A front-end reads one kind of file**: `hir::front_end::register` adds one beside rk's own, before a workspace is opened: its extensions, its parser and the function that builds a file's `SemanticIndex`. That function walks its own tree with rk's `SemanticIndexBuilder`, which holds no root and whose fields are public for it, and ends with `finish`. A tool's `main` registers, then calls `rk::main()`. The table is `hir`'s alone: the loader is handed which parser reads a path (`hir::front_end::parser_of` by the CLI, `db::loader::rk_parser` by the language server), a file keeps the parser that read it, and `semantic_index` asks that parser's front-end. `rk fmt` and the language server take rk's `.st` files only, because they read rk's own tree, and E1510 is reported in rk's files only. "Is this rk's own?" is asked in `db::loader`: `is_st_file` of a path, `is_rk_parser` of a file's parser.
+- **A library is a folder with a `config.toml`**: the standard library, built into the compiler (below), and the `[dependencies]` of the workspace's `config.toml`, a `path` or a `url` (an archive, or `git+https://…#commit`) with the `hash` of the files it names. The hash: each file as its path, two zero bytes and its content, each link as its path and its target, then those hashes in the order of the paths. `db::dependencies::resolve` reads them, and the libraries they name in turn, into `Workspace::libraries`. It never downloads: `open_workspace` is handed a `Fetch` by the CLI, which calls the `fetch` crate, and none by the language server, which reports a library the cache lacks and does not link that crate. A file knows its library (`WorkspaceDataBase::library_of`), and `INTERNAL` and `PRIVATE` stop there: two libraries are as closed to each other as a library is to the workspace. There is no registry, no version range and no lockfile. The same library from two places is an error.
+- **The standard library is built into the compiler**: `crates/db/build.rs` lists `stdlib/` (every file but the hidden ones and `rk_build/`) and `db::stdlib` holds it with its hash, computed as a dependency's is. `db::stdlib::locate` writes it in the cache under that hash before a workspace is read, hashes the copy there at each start and writes it again when it differs. `RK_STDLIB_PATH`, from the environment or else from the `.env` at the workspace root, names a folder to read instead, and empty reads none: `stdlib/.env` leaves it empty, so the library's own workspace reads no copy of itself. The language server does the same, so the VSCode extension sets nothing for it. `rk env stdlib` prints the folder and its origin, `bundled` or `env`.
 - **Exports are opt-in**: a module exports `__init`, the PROGRAM bodies, the `Inst$__scan__` of a program instance with connections, the bodies of the function blocks a task runs (`fb1 WITH T`), the FUNCTIONs marked `{export}` and, in the debug profile only, the workspace's `{test}` functions. Everything else is `MirLinkage::Internal`, other FB bodies and methods included, because an export is a root Binaryen cannot remove. A library's `{test}` functions are not lowered. The codegen tests call FUNCTIONs by name, so `codegen/harness.rs` re-exports everything (`export_everything`) on a clone of the MIR.
 
 ### Error Code Categories
@@ -311,6 +315,7 @@ All integration tests live in `src/tests/`:
 - `completions/` — Completion items: body, head, call signatures, fly imports, field, using, query scope
 - `codegen/` — WASM codegen + execution tests (compile IEC → MIR → wasm, run on the wasmtime harness): value passing, inout, retain bands, enums, strings, debug symbols, scheduling. Helpers (`compile_to_wasm`, `compile_to_mir_and_wasm`, `execute_wasm`, `TestPlc`, `run_tests`) live in `codegen/harness.rs`
 - `mir/` — MIR structure/lowering assertions (exports, extern pragmas)
+- `dependencies/` — `[dependencies]`: resolution, archives, the global cache, the git client (against a scripted server and against `git http-backend`, which needs git installed), the workspace end to end, the standard library built in (`stdlib.rs`), and what differs by system (`platforms.rs`: the tests marked for Windows or macOS only run in CI)
 
 Crates keep only in-crate `#[cfg(test)]` unit tests for crate-private machinery (e.g. `wasm_codegen`'s `graft.rs`/`builtins.rs`, `mir/src/memory.rs`).
 
@@ -369,9 +374,9 @@ F5 build task and packaging both copy the release binary to that path: the
 debug build answers a first diagnostic pull on the stdlib in ~27 s where the
 release one takes 0.2 s.
 
-Standard library resolution: the server finds it relative to its own path, so
-a packaged extension ships `server/lib/rk/std/` and a development run picks up
-the checkout's `stdlib/`. `rk env` prints the resolved path and its origin.
+Standard library: built into the server binary as into `rk` (see `db::stdlib`
+above), so the extension ships nothing for it and sets no variable. `rk env`
+prints the folder in use and its origin, `bundled` or `env`.
 
 ## CI Workflows
 

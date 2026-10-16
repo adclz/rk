@@ -172,18 +172,18 @@ fn parse_info(info: &str) -> Result<Directive, String> {
     Ok(Directive { mode, expect })
 }
 
-/// Where the compiler finds `Std.*`: `RK_STDLIB_PATH` if set, else the
-/// checkout's own `stdlib/`. An empty variable loads nothing, as for `rk`.
+/// Where the compiler finds `Std.*`, found as `rk` finds it: the one built
+/// in, or the folder `RK_STDLIB_PATH` names. An empty variable loads
+/// nothing.
 fn stdlib_dir() -> Option<PathBuf> {
-    match std::env::var("RK_STDLIB_PATH") {
-        Ok(v) if v.is_empty() => None,
-        Ok(v) => Some(PathBuf::from(v)),
-        Err(_) => Some(
-            Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join("../../stdlib")
-                .canonicalize()
-                .expect("stdlib/ must exist beside crates/"),
-        ),
+    use db::stdlib::Standard;
+    match db::stdlib::locate(None) {
+        Standard::Found { library, .. } => Some(library.dir),
+        Standard::Disabled => None,
+        Standard::NotAFolder(value) => panic!("RK_STDLIB_PATH names no folder: {value}"),
+        Standard::NotInstalled(reason) => {
+            panic!("the standard library could not be installed: {reason}")
+        }
     }
 }
 

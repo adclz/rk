@@ -388,7 +388,7 @@ END_VAR
 The path goes through the function blocks a program holds, like `Main.L1.drive.speed`.
 The type must be the variable's own (`E1426`).
 
-`VAR_CONFIG` also finishes the wiring of function blocks.
+`VAR_CONFIG` also finishes the wiring of function blocks, see [VAR_CONFIG](var-config.md).
 A block declared `AT %I*` cannot know its address, since each instance has its own.
 Give each instance its address in the configuration:
 

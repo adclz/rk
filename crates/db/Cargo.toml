@@ -16,6 +16,6 @@ salsa = { workspace = true }
 rayon = { workspace = true }
 serde = { workspace = true }
 toml = { workspace = true }
-
-[dev-dependencies]
+dirs = { workspace = true }
+sha2 = "0.10"
 tempfile = "3"

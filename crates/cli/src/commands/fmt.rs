@@ -216,7 +216,11 @@ fn collect_st_files_recursive(dir: &Path, files: &mut Vec<std::path::PathBuf>) {
     for entry in entries.flatten() {
         let path = entry.path();
         if path.is_dir() {
-            collect_st_files_recursive(&path, files);
+            // A folder with a `config.toml` of its own is a library kept in
+            // the workspace: its files are the library's to format.
+            if !path.join(db::config_file::CONFIG_FILE).is_file() {
+                collect_st_files_recursive(&path, files);
+            }
         } else if db::loader::is_st_file(&path) {
             files.push(path);
         }

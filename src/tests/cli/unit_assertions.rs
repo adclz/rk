@@ -119,7 +119,7 @@ fn every_assertion_fails_when_it_should_and_only_then() {
         );
     }
 
-    // The library beside this binary: the checkout's `stdlib/`.
+    // The standard library built into the compiler.
     unset_stdlib();
     let (_ws, root) = temp_workspace(&[("main.st", &workspace_source())]);
     let db = rk::workspace::init_db(&root, false, true).expect("the workspace loads");

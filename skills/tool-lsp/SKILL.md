@@ -20,8 +20,9 @@ Redirect stderr, it is never part of the protocol stream.
 The `initialize` params must carry `workspaceFolders`.
 At startup the server parses every `.st` file found recursively under them, so all requests answer on files that were never opened.
 Passing only `rootUri` loads nothing: requests on a file return `null` and cross-file names do not resolve.
-The standard library resolves the same way as for the CLI: `RK_STDLIB_PATH` from the environment or a `.env` at the workspace root, else beside the server binary.
-When none is found `Std.*` does not resolve and the server pushes a `window/showMessage` warning naming the paths it tried.
+The standard library is built into the server, as into the CLI: at startup it is written in the cache (`RK_CACHE_DIR`, else the user's cache folder) under its hash, and read from there.
+`RK_STDLIB_PATH`, from the environment or a `.env` at the workspace root, names another folder to read in its place, and an empty one reads none.
+When the cache cannot be written `Std.*` does not resolve and the server pushes a `window/showMessage` warning saying why.
 A missing `config.toml` is not fatal for the server, it only adds the `E1401` hint diagnostic to each file.
 
 For an agent, this is a cheaper substitute for reading files.

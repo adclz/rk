@@ -6,29 +6,20 @@
 
 use std::path::Path;
 
-use db::loader::{LibraryPathResolution, resolve_library_path};
+use db::stdlib::Standard;
 
 use crate::cli::OutputFormat;
 use crate::error::CliResult;
 
 pub fn run_env(workspace: &Path, keys: &[String], format: OutputFormat) -> CliResult<()> {
-    let (rows, probed) = describe(workspace);
-    print(&rows, probed, keys, format)
+    print(&describe(workspace), keys, format)
 }
 
 /// Print the table, or the named keys alone, in `format`.
-pub fn print(
-    rows: &[Row],
-    probed: Vec<std::path::PathBuf>,
-    keys: &[String],
-    format: OutputFormat,
-) -> CliResult<()> {
+pub fn print(rows: &[Row], keys: &[String], format: OutputFormat) -> CliResult<()> {
     if keys.is_empty() && format == OutputFormat::JsonLines {
         for row in rows {
             println!("{}", env_record(row));
-        }
-        for path in probed {
-            crate::ui::detail(format!("looked in {}", path.display()));
         }
         return Ok(());
     }
@@ -59,9 +50,6 @@ pub fn print(
         };
         println!("{:<12}{value}", row.key);
     }
-    for path in probed {
-        crate::ui::detail(format!("    looked in {}", path.display()));
-    }
     Ok(())
 }
 
@@ -89,9 +77,8 @@ pub fn noted(key: &'static str, value: String, note: impl Into<String>) -> Row {
     }
 }
 
-/// The rows, and the paths to list when no library was found; separated
-/// from printing so the resolution can be asserted.
-pub fn describe(workspace: &Path) -> (Vec<Row>, Vec<std::path::PathBuf>) {
+/// The rows, separated from printing so the resolution can be asserted.
+pub fn describe(workspace: &Path) -> Vec<Row> {
     let mut rows = vec![
         row(
             "workspace",
@@ -117,26 +104,21 @@ pub fn describe(workspace: &Path) -> (Vec<Row>, Vec<std::path::PathBuf>) {
         ),
     });
 
-    // The library last, so the probed paths that follow it do not split the
-    // table.
-    let mut probed = Vec::new();
-    rows.push(match resolve_library_path(Some(workspace)) {
-        LibraryPathResolution::Found { dir, origin } => {
-            noted("stdlib", dir.display().to_string(), origin.as_str())
+    rows.push(row("cache", display_or(db::cache::root().as_deref())));
+
+    rows.push(match db::stdlib::locate(Some(workspace)) {
+        Standard::Found { library, origin } => {
+            noted("stdlib", library.dir.display().to_string(), origin.as_str())
         }
-        LibraryPathResolution::Disabled => noted("stdlib", String::new(), "disabled"),
-        LibraryPathResolution::Invalid(value) => noted(
+        Standard::Disabled => noted("stdlib", String::new(), "disabled"),
+        Standard::NotAFolder(value) => noted(
             "stdlib",
             String::new(),
             format!("'{value}' is not a directory"),
         ),
-        LibraryPathResolution::NotFound { probed: paths } => {
-            probed = paths;
-            noted("stdlib", String::new(), "not found")
-        }
+        Standard::NotInstalled(reason) => noted("stdlib", String::new(), reason),
     });
-
-    (rows, probed)
+    rows
 }
 
 fn display_or(path: Option<&Path>) -> String {

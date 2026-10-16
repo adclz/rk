@@ -58,3 +58,25 @@ fn a_task_is_formatted_to_a_file_that_formats_to_itself() {
     let twice = std::fs::read_to_string(root.join("main.st")).unwrap();
     assert_eq!(once, twice);
 }
+
+/// A library kept in a folder of the workspace is not the workspace's to
+/// format: a folder with a `config.toml` of its own is left as it is.
+#[test]
+fn a_library_inside_the_workspace_is_left_untouched() {
+    let source = "FUNCTION g : INT  g := 2; END_FUNCTION\n";
+    let (_ws, root) = temp_workspace(&[("main.st", source)]);
+    let library = root.join("libs").join("shared");
+    std::fs::create_dir_all(&library).unwrap();
+    std::fs::write(
+        library.join("config.toml"),
+        "[project]\nname = \"shared\"\nversion = \"1\"\n",
+    )
+    .unwrap();
+    std::fs::write(library.join("Shared.st"), source).unwrap();
+
+    assert!(run_fmt(&root, false, false, OutputFormat::Concise).is_ok());
+    let own = std::fs::read_to_string(root.join("main.st")).unwrap();
+    assert_ne!(own, source, "the workspace's file is formatted");
+    let theirs = std::fs::read_to_string(library.join("Shared.st")).unwrap();
+    assert_eq!(theirs, source, "the library's file is not");
+}
