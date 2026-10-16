@@ -23,6 +23,7 @@
 - Extras
   - [Tests](tests.md)
   - [Pragmas](pragmas.md)
+  - [Dependencies](dependencies.md)
 - Internal behavior
   - [Bundled Traps](bundled-traps.md)
   - [Math operations](math-operations.md)

@@ -29,10 +29,9 @@ For any other editor, see [Other editors](#other-editors).
 
 When the server starts, it parses every `.st` file of the workspace, so all the features work on files you never opened.
 
-> [!IMPORTANT]
-> The standard library is found the same way as for the CLI: `RK_STDLIB_PATH`, or beside the server binary.
->
-> If it is not found, `Std.*` does not resolve and the server shows a warning with the paths it tried.
+> [!NOTE]
+> The standard library is built into the server, as into the CLI, and read from the cache.
+> `RK_STDLIB_PATH` names another folder to read in its place.
 
 A missing `config.toml` is not fatal, it only adds the `E1401` hint to each file.
 
