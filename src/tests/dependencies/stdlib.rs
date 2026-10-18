@@ -96,7 +96,7 @@ fn the_compiler_holds_the_files_of_stdlib() {
     for name in ["config.toml", "LICENSE", "Math.st"] {
         assert!(bundle().entries.contains_key(name), "{name}");
     }
-    assert_eq!(bundle().name, "stdlib");
+    assert_eq!(bundle().name, "Std");
 }
 
 /// The hash of the standard library is the one of its files, as for any

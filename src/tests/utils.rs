@@ -164,6 +164,31 @@ where
 /// Register `sources` as LIBRARY files: analyzed, resolvable, but never
 /// reported on — the same standing the loaded stdlib has.
 pub fn add_library_sources(db: &mut RootDatabase, sources: &[&str]) {
+    // A library has a name, which is the root its declarations are under:
+    // `Std` here, as for the standard library `rk` bundles. The workspace
+    // input carries it, as the loader's does; the config file named is the
+    // standard library's own, with no settings, so that no report carries
+    // the "no config.toml" hint.
+    use auto_lsp::salsa::Setter;
+    let library = db::dependencies::Library {
+        name: "Std".to_string(),
+        dir: std::path::PathBuf::from("/lib"),
+        standard: true,
+    };
+    match db::workspace::Workspace::try_get(db) {
+        Some(workspace) => {
+            workspace.set_libraries(db).to(vec![library]);
+        }
+        None => {
+            db::workspace::Workspace::new(
+                db,
+                None,
+                vec![library],
+                Some(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("stdlib/config.toml")),
+                auto_lsp::lsp_types::PositionEncodingKind::UTF8,
+            );
+        }
+    }
     for (i, source) in sources.iter().enumerate() {
         let url = Url::parse(&format!("file:///lib{i}.st")).unwrap();
         let file = File::from_string()

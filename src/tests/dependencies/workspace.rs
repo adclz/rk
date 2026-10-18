@@ -231,10 +231,11 @@ fn a_library_is_closed_to_another_library() {
     );
 }
 
-/// Two libraries that declare the same name are reported, on the one read
-/// second.
+/// Two libraries that declare the same name do not clash: each library's
+/// name is the namespace its declarations are in. The bare name is
+/// ambiguous, and the library's name before it says which.
 #[test]
-fn a_name_two_libraries_declare_is_a_duplicate() {
+fn a_name_two_libraries_declare_is_ambiguous_until_qualified() {
     let (_dir, root) = sandbox();
     let clash = "FUNCTION Clash : INT\n    Clash := 1;\nEND_FUNCTION\n";
     write(
@@ -246,7 +247,8 @@ fn a_name_two_libraries_declare_is_a_duplicate() {
             ),
             (
                 "ws/main.st",
-                "FUNCTION Run : INT\n    Run := 1;\nEND_FUNCTION\n",
+                "FUNCTION Run : INT\n    Run := Clash();\nEND_FUNCTION\n\
+                 FUNCTION Sure : INT\n    Sure := A.Clash() + B.Clash();\nEND_FUNCTION\n",
             ),
             ("a/config.toml", &config("a", "")),
             ("a/A.st", clash),
@@ -259,7 +261,86 @@ fn a_name_two_libraries_declare_is_a_duplicate() {
     assert_eq!(reported, "");
     let errors = errors(&db, &ws);
     assert_eq!(errors.lines().count(), 1, "{errors}");
-    assert!(errors.contains("E0102"), "{errors}");
+    assert!(
+        errors.contains("main.st:2") && errors.contains("E0205"),
+        "{errors}"
+    );
+}
+
+/// A namespace two libraries declare is the same: ambiguous until the
+/// library's name is written before it, in a `USING` as in a path.
+#[test]
+fn a_namespace_two_libraries_declare_is_ambiguous_until_qualified() {
+    let (_dir, root) = sandbox();
+    let motion = |n: i32| {
+        format!(
+            "NAMESPACE Motion
+    FUNCTION Twice : INT
+        Twice := {n};
+    END_FUNCTION
+END_NAMESPACE
+"
+        )
+    };
+    write(
+        &root,
+        &[
+            (
+                "ws/config.toml",
+                &config("ws", "a = { path = \"../a\" }\nb = { path = \"../b\" }\n"),
+            ),
+            (
+                "ws/main.st",
+                "USING Motion;\nFUNCTION Run : INT\n    Run := Motion.Twice();\nEND_FUNCTION\n\
+                 FUNCTION Sure : INT\n    Sure := A.Motion.Twice() + B.Motion.Twice();\nEND_FUNCTION\n",
+            ),
+            ("a/config.toml", &config("a", "")),
+            ("a/A.st", &motion(1)),
+            ("b/config.toml", &config("b", "")),
+            ("b/B.st", &motion(2)),
+        ],
+    );
+    let ws = root.join("ws");
+    let (db, reported) = open(&ws);
+    assert_eq!(reported, "");
+    assert_snapshot!(errors(&db, &ws), @r"
+    main.st:1:7: error[E0212]: 'Motion' is 'a.Motion' and 'b.Motion'
+    main.st:3:19: error[E0212]: 'Motion' is 'a.Motion' and 'b.Motion'
+    ");
+}
+
+/// A library is named by a namespace name: `press-line` cannot be one.
+#[test]
+fn a_library_name_that_is_no_namespace_name_is_refused() {
+    let (_dir, root) = sandbox();
+    write(
+        &root,
+        &[
+            (
+                "ws/config.toml",
+                &config("ws", "press-line = { path = \"../press-line\" }\n"),
+            ),
+            (
+                "ws/main.st",
+                "FUNCTION Run : INT\n    Run := 1;\nEND_FUNCTION\n",
+            ),
+            ("press-line/config.toml", &config("press-line", "")),
+            (
+                "press-line/Line.st",
+                "FUNCTION Go : INT\n    Go := 1;\nEND_FUNCTION\n",
+            ),
+        ],
+    );
+    let ws = root.join("ws");
+    let (_db, reported) = open(&ws);
+    for expected in [
+        "config.toml:6:1",
+        "'press-line' is not a namespace name",
+        "Help: name it 'press_line'",
+        "Note: a library's name is the namespace its declarations are in",
+    ] {
+        assert!(reported.contains(expected), "{expected}:\n{reported}");
+    }
 }
 
 /// An entry written wrong is reported on its own line of `config.toml`,
