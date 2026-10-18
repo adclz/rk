@@ -49,6 +49,9 @@ You use it like any other namespace, see [Namespaces](namespaces.md):
 USING Drives;
 ```
 
+The library's name is its namespace: everything `drives` declares is in `Drives`, and a `NAMESPACE Motion` of its files is `Drives.Motion`.
+A name only one library has resolves bare; a name two libraries have takes the library's name before it.
+
 A library can have a `[dependencies]` table of its own.
 Those libraries are read too.
 

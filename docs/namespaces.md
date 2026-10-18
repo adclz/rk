@@ -156,3 +156,32 @@ NAMESPACE MyNs
 
 END_NAMESPACE
 ```
+
+## A library's namespace
+
+A library's name is a namespace: everything the library declares is in it.
+The name is the `name` of its `config.toml`, the one your `[dependencies]` uses, see [Dependencies](dependencies.md).
+
+```st
+// drives/Axis.st, in the library named drives
+FUNCTION_BLOCK Axis // <-- Drives.Axis
+END_FUNCTION_BLOCK
+
+NAMESPACE Motion // <-- Drives.Motion
+    FUNCTION Ramp // <-- Drives.Motion.Ramp
+    END_FUNCTION
+END_NAMESPACE
+```
+
+Every library is imported.
+A name only one library has resolves bare: `Axis`, or `USING Motion`.
+A name two libraries have is ambiguous (`E0205` for an item, `E0212` for a namespace), and the library's name says which: `Drives.Axis`, `USING Drives.Motion`.
+
+Your own declaration comes before a library's of the same name.
+The library's stays reachable under its name.
+
+Inside the library, a namespace is reached from the root: `USING Motion`, `Motion.Ramp` or `Drives.Motion.Ramp`.
+A namespace the library names after itself is its root: `NAMESPACE Drives.Motion` is `Drives.Motion`, as `NAMESPACE Motion` is.
+
+The standard library is the library `Std`.
+Its files write `NAMESPACE Std.Timers`, which is `Std.Timers`.
