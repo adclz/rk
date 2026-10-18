@@ -403,8 +403,7 @@ mod tests {
     fn a_built_module_passes_the_audit() {
         let (db, file) = crate::session::load(SOURCE).expect("parses");
         assert!(crate::session::compiles(&db, file));
-        let index = hir::hir_def::semantic_index::semantic_index(&db, file);
-        let mir = mir::lower::lower_module::lower_module(&db, index).expect("lowers");
+        let mir = crate::session::lower(&db, file).expect("lowers");
         let wasm = wasm_codegen::generate_wasm(&db, &mir).finish();
         let sections = crate::wasm::decode_sections(&wasm).expect("sections");
         let memory = crate::wasm::memory_after(&wasm, &sections, 2)

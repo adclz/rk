@@ -267,6 +267,43 @@ enum Expr {
     /// Bit `n` of an integer place of type `ty`, as a BOOL: `p.%Xn`, or
     /// `p.n` when bare.
     Bit(Box<Place>, Ty, u32, bool),
+    /// A FUNCTION of the library every program is read with
+    /// ([`crate::session::LIBRARY`]), spelled one of its two ways.
+    LibCall(LibFn, Vec<Expr>, u8),
+}
+
+/// The FUNCTIONs of the library, each with its semantics here.
+#[derive(Clone, Copy, Debug)]
+enum LibFn {
+    /// `Lib.Half(n)`: `n / 2`.
+    Half,
+    /// `Lib.Math.Clamp0(n)`: `n`, or 0 below it.
+    Clamp0,
+    /// `Lib.Flags.Both(a, b)`: `a AND b`.
+    Both,
+}
+
+impl LibFn {
+    fn params(self) -> &'static [Ty] {
+        match self {
+            LibFn::Half | LibFn::Clamp0 => &[Ty::Dint],
+            LibFn::Both => &[Ty::Bool, Ty::Bool],
+        }
+    }
+
+    /// How a call writes the name: under the library's name, or without
+    /// it, which the root import resolves, a nested namespace under the
+    /// root included.
+    fn spelled(self, form: u8) -> &'static str {
+        match (self, form % 2) {
+            (LibFn::Half, 0) => "Lib.Half",
+            (LibFn::Half, _) => "Half",
+            (LibFn::Clamp0, 0) => "Lib.Math.Clamp0",
+            (LibFn::Clamp0, _) => "Math.Clamp0",
+            (LibFn::Both, 0) => "Lib.Flags.Both",
+            (LibFn::Both, _) => "Flags.Both",
+        }
+    }
 }
 
 /// What a variadic FUNCTION folds its pack with: `+`, `-` and `*` from
@@ -1208,6 +1245,23 @@ impl Generator<'_> {
     fn call(&mut self, ty: Ty, depth: u32, readable: &[usize]) -> Option<Expr> {
         if !self.in_program || depth == 0 {
             return None;
+        }
+        // Some calls go to the library every program is read with.
+        let library = match ty {
+            Ty::Dint => Some([LibFn::Half, LibFn::Clamp0][self.choices.below(2)]),
+            Ty::Bool => Some(LibFn::Both),
+            _ => None,
+        };
+        if let Some(f) = library
+            && self.choices.percent(15)
+        {
+            let form = self.choices.below(2) as u8;
+            let args = f
+                .params()
+                .iter()
+                .map(|&t| self.expr(t, depth - 1, readable))
+                .collect();
+            return Some(Expr::LibCall(f, args, form));
         }
         let callable: Vec<usize> = (0..self.d.functions.len())
             .filter(|&f| match (self.d.functions[f].ty, ty) {
@@ -3088,6 +3142,10 @@ impl Names<'_> {
                     format!("{}({})", f.name, self.args(&f.inputs, args))
                 }
             }
+            Expr::LibCall(f, args, form) => {
+                let args: Vec<String> = args.iter().map(|a| self.expr(a)).collect();
+                format!("{}({})", f.spelled(*form), args.join(", "))
+            }
             Expr::Fold(op, _) => format!("...{}{}", self.vars[0], op.symbol()),
             Expr::Bit(p, _, bit, bare) => match bare {
                 true => format!("{}.{bit}", self.place(p)),
@@ -3992,6 +4050,14 @@ fn eval(e: &Expr, st: &State, d: &Decls) -> Val {
         // The frame holds the pack, one value per argument. An arithmetic
         // fold wraps at the pack's type at each step, a single argument is
         // itself, and a comparison of one argument is TRUE.
+        Expr::LibCall(f, args, _) => {
+            let args: Vec<Val> = args.iter().map(ev).collect();
+            Val::Int(match f {
+                LibFn::Half => (args[0].int() as i32 / 2) as i128,
+                LibFn::Clamp0 => (args[0].int() as i32).max(0) as i128,
+                LibFn::Both => (args[0].truthy() && args[1].truthy()) as i128,
+            })
+        }
         Expr::Fold(op, ty) => match op {
             Fold::Arith(op) => Val::Int(
                 st.vars
@@ -4065,6 +4131,64 @@ mod tests {
             }
         }
         assert!(checked >= 3, "only {checked} seeds declared a pack");
+    }
+
+    /// Programs from a spread of seeds: the generator writes a call to the
+    /// library in each of its spellings, under the library's name and
+    /// without it, a nested namespace included; and for the first few that
+    /// call it, the module computes what the library's FUNCTIONs do here.
+    #[test]
+    fn library_calls_compute_what_the_library_does() {
+        const SPELLINGS: [&str; 6] = [
+            "Lib.Half(",
+            " Half(",
+            "Lib.Math.Clamp0(",
+            " Math.Clamp0(",
+            "Lib.Flags.Both(",
+            " Flags.Both(",
+        ];
+        let mut seed = 0x6C62_272E_07BB_0142u64;
+        let mut seen: std::collections::BTreeSet<&str> = Default::default();
+        let mut checked = 0;
+        for _ in 0..400 {
+            // Long enough that the choices are still the input's when the
+            // calls are drawn: past the end, every choice is the first one,
+            // which is the qualified spelling.
+            let bytes: Vec<u8> = (0..1024)
+                .map(|_| {
+                    seed ^= seed << 13;
+                    seed ^= seed >> 7;
+                    seed ^= seed << 17;
+                    (seed >> 24) as u8
+                })
+                .collect();
+            let text = program(&bytes);
+            let used: Vec<&str> = SPELLINGS
+                .into_iter()
+                .filter(|spelling| text.contains(spelling))
+                .collect();
+            if used.is_empty() {
+                continue;
+            }
+            seen.extend(used);
+            // Compiling and running a program is the costly part: a few
+            // are enough, the spellings are counted on every text.
+            if checked < 6 {
+                if let Err(finding) = crate::check_generated(&text) {
+                    panic!("{finding}\n--- the program ---\n{text}");
+                }
+                checked += 1;
+            }
+            if checked == 6 && seen.len() == SPELLINGS.len() {
+                break;
+            }
+        }
+        assert_eq!(checked, 6, "only {checked} seeds called the library");
+        assert_eq!(
+            seen.len(),
+            SPELLINGS.len(),
+            "every spelling was written: {seen:?}"
+        );
     }
 
     /// Programs from a spread of seeds, kept when the program calls a

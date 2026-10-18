@@ -15,7 +15,6 @@
 
 use debug_format::VarValue;
 use hir::check::diagnostics_for_file;
-use hir::hir_def::semantic_index::semantic_index;
 
 use crate::{Finding, session, wasm};
 
@@ -68,8 +67,7 @@ pub fn check(source: &str) -> Result<(), Finding> {
             format!("`rk check` refuses a well-typed program: {errors:?}"),
         ));
     }
-    let mir = mir::lower::lower_module::lower_module(&db, semantic_index(&db, file))
-        .map_err(|e| crate::pipeline::lowering(&e))?;
+    let mir = session::lower(&db, file).map_err(|e| crate::pipeline::lowering(&e))?;
     let module = wasm_codegen::generate_wasm(&db, &mir).finish();
     compare(&module, &expected, "")?;
 
