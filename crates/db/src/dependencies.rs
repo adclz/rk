@@ -27,6 +27,43 @@ use crate::config_file::{CONFIG_FILE, Config, Dependency, parse_config};
 /// A library's place in [`crate::workspace::Workspace::libraries`].
 pub type LibraryId = u32;
 
+/// Whether `name` can name a namespace: letters, digits and `_`, not
+/// starting with a digit. A library's name is the namespace it declares
+/// everything in, so it has to be one.
+pub fn is_namespace_name(name: &str) -> bool {
+    let mut chars = name.chars();
+    chars
+        .next()
+        .is_some_and(|first| first.is_alphabetic() || first == '_')
+        && chars.all(|c| c.is_alphanumeric() || c == '_')
+}
+
+/// `name` with what a namespace name does not take replaced by `_`: what
+/// to suggest.
+pub fn as_namespace_name(name: &str) -> String {
+    let mut fixed: String = name
+        .chars()
+        .map(|c| {
+            if c.is_alphanumeric() || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    if fixed
+        .chars()
+        .next()
+        .is_some_and(|first| first.is_ascii_digit())
+    {
+        fixed.insert(0, '_');
+    }
+    if fixed.is_empty() {
+        fixed.push('_');
+    }
+    fixed
+}
+
 /// A library: a folder that holds a `config.toml` and sources.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Library {
@@ -467,6 +504,13 @@ impl Resolver<'_, '_> {
             )
             .note("a dependency has the name written in its library's config.toml")
             .help(format!("rename it to '{}'", config.project.name)));
+        }
+        if !is_namespace_name(name) {
+            return Err(
+                Problem::new(span, format!("'{name}' is not a namespace name"))
+                    .note("a library's name is the namespace its declarations are in")
+                    .help(format!("name it '{}'", as_namespace_name(name))),
+            );
         }
         let by = by.map_or_else(|| "the workspace".to_string(), |by| format!("'{by}'"));
         if let Some((first, first_by)) = self.required.get(name) {

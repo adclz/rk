@@ -71,8 +71,18 @@ pub fn check_duplicate_pous<'db>(
             .to_diagnostic(db, own_file),
         );
     }
+    // The candidates of the same top level: the workspace's, or the
+    // library's root in every file of the library.
+    let candidates = match crate::hir_ty::library::library_root(db, own_file) {
+        Some(root) => crate::hir_ty::index_graphs::namespace_pou_candidates(
+            db,
+            root.path,
+            pou.get_name_ident(db),
+        ),
+        None => pou_candidates(db, pou.get_name_ident(db)),
+    };
     let mut canonical = false;
-    for other in pou_candidates(db, pou.get_name_ident(db)) {
+    for other in candidates {
         if other == pou {
             canonical = true;
             continue;
@@ -320,7 +330,9 @@ pub fn check_duplicate_namespaces<'db>(
         let own_file = pou.get_scope_id(db).file(db);
         let own_is_library = is_library_file(db, own_file);
         let mut canonical = false;
-        for other in namespace_pou_candidates(db, namespace.path(db), pou.get_name_ident(db)) {
+        for other in
+            namespace_pou_candidates(db, namespace.absolute_path(db), pou.get_name_ident(db))
+        {
             if other == *pou {
                 canonical = true;
                 continue;

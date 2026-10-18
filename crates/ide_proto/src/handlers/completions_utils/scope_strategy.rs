@@ -60,9 +60,10 @@ impl CompletionCtx {
         let builder = CompletionBuilder::default().with_mode(self.mode);
         let path_fragments = path.fragments(db);
 
-        // 1. Get all POUs inside this namespace, those the scope may name.
-        for ns_decl in namespace_index(db, path).iter() {
-            for pou in ns_decl.pous(db).iter() {
+        // 1. Get all POUs inside this namespace, those the scope may name:
+        //    a library's root included, whose blocks are its files' top level.
+        for block in hir::hir_ty::index_graphs::namespace_scopes(db, path) {
+            for pou in block.pous(db).into_iter().flatten() {
                 if pou_visible_from(db, scope, *pou) {
                     builder.build_pou(db, pou, None, &mut self.items);
                 }

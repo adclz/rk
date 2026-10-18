@@ -116,6 +116,11 @@ pub fn describe(workspace: &Path) -> Vec<Row> {
             String::new(),
             format!("'{value}' is not a directory"),
         ),
+        Standard::NotANamespaceName { name, .. } => noted(
+            "stdlib",
+            String::new(),
+            format!("'{name}' is not a namespace name"),
+        ),
         Standard::NotInstalled(reason) => noted("stdlib", String::new(), reason),
     });
     rows

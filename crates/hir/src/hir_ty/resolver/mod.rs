@@ -29,7 +29,6 @@ use crate::{
     hir_ty::{
         body::{BodyInferenceResult, IndexedType},
         expr_store::PathExprWalkStep,
-        index_graphs::namespace_index,
         infer::{expr::InferExprCtx, table::InferenceTable},
         resolver::{
             visibility::{check_namespace_visibility, check_test_visibility},
@@ -138,22 +137,34 @@ impl<'db> Resolver<'db> {
                 );
                 false
             }
+            name::NameResolution::AmbiguousNamespace {
+                written,
+                candidates,
+            } => {
+                ctx.errors.push(
+                    ResolveError::AmbiguousNamespace {
+                        span: path_expr.get_span(db),
+                        written,
+                        candidates,
+                    }
+                    .to_diagnostic(db, ctx.scope.file(db)),
+                );
+                false
+            }
             name::NameResolution::NotFound => {
                 // When a namespaced path like `MY_TYPE.field` fails FQ resolution,
                 // check whether the namespace prefix itself is invalid. If the prefix
                 // is not a real namespace (e.g. it's a TYPE name), point the error at
                 // the first step rather than the last — the root cause is the prefix.
                 let error_expr = if let Some(ns_path) = &access.namespace
-                    && namespace_index(
+                    && !crate::hir_ty::index_graphs::namespace_exists(
                         db,
                         crate::hir_ty::index_graphs::absolute_namespace_path(
                             db,
                             path_expr.scope_id(db),
                             ns_path.path(db),
                         ),
-                    )
-                    .is_empty()
-                {
+                    ) {
                     path_expr
                         .flatten(db)
                         .first()

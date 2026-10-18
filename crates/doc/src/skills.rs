@@ -181,6 +181,9 @@ fn stdlib_dir() -> Option<PathBuf> {
         Standard::Found { library, .. } => Some(library.dir),
         Standard::Disabled => None,
         Standard::NotAFolder(value) => panic!("RK_STDLIB_PATH names no folder: {value}"),
+        Standard::NotANamespaceName { name, .. } => {
+            panic!("the standard library is named '{name}', which is no namespace name")
+        }
         Standard::NotInstalled(reason) => {
             panic!("the standard library could not be installed: {reason}")
         }

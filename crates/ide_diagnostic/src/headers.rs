@@ -64,6 +64,7 @@ pub const HEADERS: &[(&str, &str)] = &[
     ("E0209", "variable out of reach"),
     ("E0210", "edge input in a stateless POU"),
     ("E0211", "edge input written or referenced"),
+    ("E0212", "ambiguous namespace"),
     ("E0301", "type mismatch"),
     ("E0302", "types not comparable"),
     ("E0303", "types not addable"),

@@ -30,10 +30,16 @@ use crate::{
 /// A namespace path as its declaration writes it, for what is shown; the path
 /// itself when no namespace declares it.
 pub fn namespace_spelling(db: &dyn WorkspaceDataBase, path: NamespacePath) -> String {
-    namespace_index(db, path)
-        .first()
-        .map(|ns| ns.path_with_case(db).to_string(db))
-        .unwrap_or_else(|| path.to_string(db))
+    if let Some(ns) = namespace_index(db, path).first() {
+        return ns.absolute_path_with_case(db).to_string(db);
+    }
+    // A library's root: spelled as its config.toml does.
+    if let [name] = path.fragments(db).as_slice()
+        && let Some(root) = crate::hir_ty::library::root_named(db, *name)
+    {
+        return root.spelling.text(db).to_string();
+    }
+    path.to_string(db)
 }
 
 /// Returns the display name for a spec, handling sized strings specially.
@@ -291,11 +297,19 @@ impl<'db> Type<'db> {
         let sema = semantic_index(db, scope_id.file(db));
         for scope in sema.scope_iterator(db, scope_id) {
             if let ScopeKind::Namespace(ns) = scope.kind {
-                return format!("{}.{}", ns.path(db).to_string_dotted(db), name);
+                return format!(
+                    "{}.{}",
+                    ns.absolute_path_with_case(db).to_string_dotted(db),
+                    name
+                );
             }
         }
 
-        name
+        // The top level of a library's file is its root.
+        match crate::hir_ty::library::library_root(db, scope_id.file(db)) {
+            Some(root) => format!("{}.{name}", root.spelling.text(db)),
+            None => name,
+        }
     }
 
     pub fn full_type_name(&self, db: &'db dyn WorkspaceDataBase) -> String {

@@ -269,7 +269,7 @@ pub fn internal_namespace_violated<'db>(
     calling_scope: ScopeId<'db>,
     ns: NamespaceDecl<'db>,
 ) -> Option<NamespaceDecl<'db>> {
-    let fragments = ns.path(db).fragments(db).clone();
+    let fragments = ns.absolute_path(db).fragments(db).clone();
     let enclosing = &fragments[..fragments.len().saturating_sub(1)];
     let inside = match crate::hir_ty::resolver::name::enclosing_namespace_path(db, calling_scope) {
         Some(caller) => caller.fragments(db).starts_with(enclosing),

@@ -144,7 +144,10 @@ pub fn lower_modules<'db>(
     // fragment of it, lowered together in file order.
     let mut fragments: Vec<hir::hir_def::config::ConfigDecl<'db>> = Vec::new();
     for index in indices {
-        all_pous.extend(index.global_pous.iter().map(|p| (p, None)));
+        // A library's top level is its root: its symbols are under it.
+        let root = hir::hir_ty::library::library_root(db, index.file)
+            .map(|root| root.spelling.text(db).to_string());
+        all_pous.extend(index.global_pous.iter().map(|p| (p, root.clone())));
         all_programs.extend(index.programs.iter().map(|p| (p, None)));
         // The workspace's fragments only: a library's configuration is its
         // author's PLC.
@@ -158,7 +161,7 @@ pub fn lower_modules<'db>(
         // The index's namespace list is flat, so each namespace's POUs are
         // collected exactly once.
         for ns in index.namespaces.iter() {
-            let ns_prefix = ns.path_with_case(db).to_string(db);
+            let ns_prefix = ns.absolute_path_with_case(db).to_string(db);
             for pou in ns.pous(db).iter() {
                 all_pous.push((pou, Some(ns_prefix.clone())));
             }
@@ -173,10 +176,15 @@ pub fn lower_module<'db>(
     index: &SemanticIndex<'db>,
 ) -> Result<MirModule, LowerTypeError> {
     // Namespaced POUs included, as the multi-index path collects them.
-    let mut all_pous: Vec<(&Pou<'db>, Option<String>)> =
-        index.global_pous.iter().map(|p| (p, None)).collect();
+    let root = hir::hir_ty::library::library_root(db, index.file)
+        .map(|root| root.spelling.text(db).to_string());
+    let mut all_pous: Vec<(&Pou<'db>, Option<String>)> = index
+        .global_pous
+        .iter()
+        .map(|p| (p, root.clone()))
+        .collect();
     for ns in index.namespaces.iter() {
-        let ns_prefix = ns.path_with_case(db).to_string(db);
+        let ns_prefix = ns.absolute_path_with_case(db).to_string(db);
         for pou in ns.pous(db).iter() {
             all_pous.push((pou, Some(ns_prefix.clone())));
         }

@@ -251,10 +251,17 @@ pub fn qualified_pou_ident<'db>(
             db,
             CompactString::from(format!(
                 "{}.{}",
-                ns.path_with_case(db).to_string(db),
+                ns.absolute_path_with_case(db).to_string(db),
                 bare.text(db)
             )),
         ),
-        None => bare,
+        // The top level of a library's file is its root.
+        None => match hir::hir_ty::library::library_root(db, scope_id.file(db)) {
+            Some(root) => Ident::new(
+                db,
+                CompactString::from(format!("{}.{}", root.spelling.text(db), bare.text(db))),
+            ),
+            None => bare,
+        },
     }
 }

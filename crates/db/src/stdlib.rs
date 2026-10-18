@@ -111,6 +111,11 @@ pub enum Standard {
     Disabled,
     /// `RK_STDLIB_PATH` names something that is not a folder.
     NotAFolder(String),
+    /// The folder `RK_STDLIB_PATH` names has a name no namespace can have.
+    NotANamespaceName {
+        dir: PathBuf,
+        name: String,
+    },
     /// The one built in could not be written in the cache.
     NotInstalled(String),
 }
@@ -130,10 +135,16 @@ pub fn locate(workspace: Option<&Path>) -> Standard {
     match named {
         Some((value, _)) if value.is_empty() => Standard::Disabled,
         Some((value, origin)) => match std::fs::canonicalize(&value) {
-            Ok(dir) if dir.is_dir() => Standard::Found {
-                library: Library::standard(dir),
-                origin,
-            },
+            Ok(dir) if dir.is_dir() => {
+                let library = Library::standard(dir);
+                if !crate::dependencies::is_namespace_name(&library.name) {
+                    return Standard::NotANamespaceName {
+                        dir: library.dir,
+                        name: library.name,
+                    };
+                }
+                Standard::Found { library, origin }
+            }
             _ => Standard::NotAFolder(value),
         },
         None => {

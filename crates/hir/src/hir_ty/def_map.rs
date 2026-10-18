@@ -53,12 +53,14 @@ impl<'db> ScopeId<'db> {
     }
 
     fn local_pous(&self, db: &'db dyn WorkspaceDataBase) -> FxHashMap<Ident, Pou<'db>> {
+        // A namespace's POUs, or a file's top-level ones: a library's root
+        // is read through its files' top level.
         match get_scope(db, *self).kind {
-            ScopeKind::Namespace(ns) => {
+            ScopeKind::Namespace(_) | ScopeKind::Global => {
                 let mut result = FxHashMap::default();
-                ns.pous(db).iter().for_each(|pou| {
+                for pou in self.pous(db).into_iter().flatten() {
                     result.insert(pou.get_name_ident(db), *pou);
-                });
+                }
                 result
             }
             _ => FxHashMap::default(),

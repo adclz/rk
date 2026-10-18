@@ -329,7 +329,10 @@ pub fn file_namespace_map<'db>(
     Arc::clone(&semantic_index(db, file).namespace_map)
 }
 
-/// Returns all namespace declarations matching a given path across all files.
+/// Returns all namespace declarations matching a given path across all
+/// files. The path is absolute: a library's namespaces are under its root.
+/// A root itself has no declaration; what it holds is
+/// [`namespace_scopes`]'s to answer.
 pub fn namespace_index<'db>(
     db: &'db dyn WorkspaceDataBase,
     path: NamespacePath,
@@ -345,6 +348,37 @@ pub fn namespace_index<'db>(
     result
 }
 
+/// The scopes whose declarations `path` names: every block that declares
+/// it, and, when `path` is a library's root, the top level of each of the
+/// library's files. What a lookup of a namespace's members walks.
+pub fn namespace_scopes<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    path: NamespacePath,
+) -> Vec<crate::hir_def::scope::ScopeId<'db>> {
+    let mut scopes: Vec<_> = namespace_index(db, path)
+        .into_iter()
+        .map(|ns| ns.scope_id(db))
+        .collect();
+    if let [name] = path.fragments(db).as_slice()
+        && let Some(root) = crate::hir_ty::library::root_named(db, *name)
+    {
+        // The index holds a file's global scope: made once, when the file
+        // was read, as a tracked struct has to be.
+        scopes.extend(
+            crate::hir_ty::library::library_files_of_root(db, root)
+                .into_iter()
+                .map(|file| semantic_index(db, file).scope),
+        );
+    }
+    scopes
+}
+
+/// Whether anything declares the absolute path `path`: a namespace, or a
+/// library whose root it is.
+pub fn namespace_exists(db: &dyn WorkspaceDataBase, path: NamespacePath) -> bool {
+    !namespace_scopes(db, path).is_empty()
+}
+
 /// A written namespace path, made absolute from where it was written: the
 /// enclosing namespaces are tried innermost first (`Impl` inside `NAMESPACE
 /// Lib` means `Lib.Impl`), then the path as written. The first spelling any
@@ -356,12 +390,14 @@ pub fn absolute_namespace_path<'db>(
     written: NamespacePath,
 ) -> NamespacePath {
     namespace_path_candidates(db, scope, written)
-        .find(|candidate| !namespace_index(db, *candidate).is_empty())
+        .find(|candidate| namespace_exists(db, *candidate))
         .unwrap_or(written)
 }
 
 /// Every spelling a written path may mean from `scope`, in resolution order:
-/// under the innermost enclosing namespace first, outward, then as written.
+/// under the innermost enclosing namespace first, outward, then as written,
+/// then under each library's root, since every library is imported by
+/// default (see [`namespace_path_ambiguity`] for a path two of them have).
 /// Lazy, so [`absolute_namespace_path`] interns nothing past its first hit;
 /// an IDE feature completing a partial path walks the whole sequence, because
 /// a prefix nobody declares yet still names where the user is typing.
@@ -381,27 +417,71 @@ pub fn namespace_path_candidates<'db>(
             NamespacePath::new(db, candidate)
         })
         .chain(std::iter::once(written))
+        .chain(under_each_root(db, written))
 }
 
-/// Returns the canonical POU for a given name within a namespace path.
+/// `written` under each library's root, in the order the libraries are read.
+fn under_each_root<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    written: NamespacePath,
+) -> impl Iterator<Item = NamespacePath> + 'db {
+    crate::hir_ty::library::library_roots(db)
+        .iter()
+        .map(move |root| {
+            let mut candidate = vec![root.name];
+            candidate.extend(written.fragments(db).iter().copied());
+            NamespacePath::new(db, candidate)
+        })
+}
+
+/// The roots that answer to `written` from `scope` when nothing nearer does:
+/// a path two libraries declare is ambiguous until the library's name is
+/// written before it. `None` when a nearer spelling exists, or when fewer
+/// than two libraries have the path.
+pub fn namespace_path_ambiguity<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    scope: crate::hir_def::scope::ScopeId<'db>,
+    written: NamespacePath,
+) -> Option<Vec<NamespacePath>> {
+    let roots = crate::hir_ty::library::library_roots(db).len();
+    let candidates: Vec<NamespacePath> = namespace_path_candidates(db, scope, written).collect();
+    let nearer = candidates.len() - roots;
+    if candidates[..nearer]
+        .iter()
+        .any(|candidate| namespace_exists(db, *candidate))
+    {
+        return None;
+    }
+    let under_roots: Vec<NamespacePath> = candidates[nearer..]
+        .iter()
+        .copied()
+        .filter(|candidate| namespace_exists(db, *candidate))
+        .collect();
+    (under_roots.len() > 1).then_some(under_roots)
+}
+
+/// Returns the canonical POU for a given name within an absolute namespace
+/// path, a library's root included.
 #[tracing::instrument(level = "trace", skip(db))]
 pub fn namespace_pou_index<'db>(
     db: &'db dyn WorkspaceDataBase,
     path: NamespacePath,
     name: Ident,
 ) -> Option<Pou<'db>> {
-    for ns in namespace_index(db, path) {
-        if let Some(pou) = ns.scope_id(db).def_map(db).local_pous.get(&name) {
+    for scope in namespace_scopes(db, path) {
+        if let Some(pou) = scope.def_map(db).local_pous.get(&name) {
             return Some(*pou);
         }
     }
     None
 }
 
-/// Finds a globally declared POU by name across all files.
+/// Finds a POU declared at the top level of the WORKSPACE by name. A
+/// library's top level is its root: [`namespace_pou_index`] with the root
+/// as the path.
 #[tracing::instrument(level = "trace", skip(db))]
 pub fn pou_index<'db>(db: &'db dyn WorkspaceDataBase, name: Ident) -> Option<Pou<'db>> {
-    for file in all_files(db) {
+    for file in workspace_files(db) {
         for p in file_global_pous(db, file).iter() {
             if p.get_name_ident(db) == name {
                 return Some(*p);
@@ -411,15 +491,15 @@ pub fn pou_index<'db>(db: &'db dyn WorkspaceDataBase, name: Ident) -> Option<Pou
     None
 }
 
-/// Returns EVERY globally-declared POU with the given name, in a stable
-/// discovery order. Where [`pou_index`] returns the first match, this surfaces
-/// all same-name POUs so overload-aware callers (call resolution, the duplicate
-/// check) can pick among FUNCTION overloads by signature. A non-overloaded name
-/// yields a single-element vec.
+/// Returns EVERY POU declared at the top level of the WORKSPACE with the
+/// given name, in a stable discovery order. Where [`pou_index`] returns the
+/// first match, this surfaces all same-name POUs so overload-aware callers
+/// (call resolution, the duplicate check) can pick among FUNCTION overloads
+/// by signature. A non-overloaded name yields a single-element vec.
 #[tracing::instrument(level = "trace", skip(db))]
 pub fn pou_candidates<'db>(db: &'db dyn WorkspaceDataBase, name: Ident) -> Vec<Pou<'db>> {
     let mut result = Vec::new();
-    for file in all_files(db) {
+    for file in workspace_files(db) {
         for p in file_global_pous(db, file).iter() {
             if p.get_name_ident(db) == name {
                 result.push(*p);
@@ -429,8 +509,9 @@ pub fn pou_candidates<'db>(db: &'db dyn WorkspaceDataBase, name: Ident) -> Vec<P
     result
 }
 
-/// Namespace-scoped counterpart of [`pou_candidates`]: every POU with the given
-/// name declared directly in the namespace `path` (across files that reopen it).
+/// Namespace-scoped counterpart of [`pou_candidates`]: every POU with the
+/// given name declared directly in the absolute namespace `path` (across
+/// files that reopen it), the top level of a library's files for its root.
 #[tracing::instrument(level = "trace", skip(db))]
 pub fn namespace_pou_candidates<'db>(
     db: &'db dyn WorkspaceDataBase,
@@ -438,8 +519,8 @@ pub fn namespace_pou_candidates<'db>(
     name: Ident,
 ) -> Vec<Pou<'db>> {
     let mut result = Vec::new();
-    for ns in namespace_index(db, path) {
-        for p in ns.pous(db).iter() {
+    for scope in namespace_scopes(db, path) {
+        for p in scope.pous(db).into_iter().flatten() {
             if p.get_name_ident(db) == name {
                 result.push(*p);
             }
@@ -565,14 +646,18 @@ pub fn discover_all_tests<'db>(db: &'db dyn WorkspaceDataBase) -> Vec<TestItem<'
     let mut tests = vec![];
 
     for file in all_files(db) {
-        // Global test functions
+        // Top-level test functions: under the library's root, when the
+        // file is a library's.
+        let root = crate::hir_ty::library::library_root(db, file)
+            .map(|root| format!("{}.", root.spelling.text(db)))
+            .unwrap_or_default();
         for pou in file_global_pous(db, file).iter() {
             if let Pou::Function(f) = pou
                 && crate::hir_def::pous::pragma::is_test(db, f.pragmas(db))
             {
                 tests.push(TestItem::Function(
                     *f,
-                    f.name_with_case(db).text(db).to_string(),
+                    format!("{root}{}", f.name_with_case(db).text(db)),
                 ));
             }
         }
@@ -583,7 +668,7 @@ pub fn discover_all_tests<'db>(db: &'db dyn WorkspaceDataBase) -> Vec<TestItem<'
         // twice.
         for ns in file_namespaces(db, file).iter() {
             // A test is named as it is written: its export and its report say so.
-            let ns_prefix = ns.path_with_case(db).to_string(db);
+            let ns_prefix = ns.absolute_path_with_case(db).to_string(db);
             for pou in ns.pous(db).iter() {
                 if let Pou::Function(f) = pou
                     && crate::hir_def::pous::pragma::is_test(db, f.pragmas(db))

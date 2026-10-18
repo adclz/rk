@@ -157,6 +157,10 @@ fn resolve_all(
             notices.push(ConfigurationNotice::LibraryPathInvalid { value });
             None
         }
+        Standard::NotANamespaceName { dir, name } => {
+            notices.push(ConfigurationNotice::LibraryNameInvalid { dir, name });
+            None
+        }
         Standard::NotInstalled(reason) => {
             notices.push(ConfigurationNotice::LibraryNotInstalled { reason });
             None
@@ -221,6 +225,11 @@ pub enum ConfigurationNotice {
     LibraryPathInvalid {
         value: String,
     },
+    /// The library `RK_STDLIB_PATH` names has a name no namespace can have.
+    LibraryNameInvalid {
+        dir: PathBuf,
+        name: String,
+    },
 }
 
 impl Display for ConfigurationNotice {
@@ -241,6 +250,15 @@ impl Display for ConfigurationNotice {
                     f,
                     "the standard library could not be installed, so Std.* names \
                      will not resolve: {reason}"
+                )
+            }
+            ConfigurationNotice::LibraryNameInvalid { dir, name } => {
+                write!(
+                    f,
+                    "the library at '{}' is named '{name}', which is not a namespace name: \
+                     a library's name is the namespace its declarations are in.\nNo standard \
+                     library loaded",
+                    dir.display()
                 )
             }
             ConfigurationNotice::LibraryPathInvalid { value } => {

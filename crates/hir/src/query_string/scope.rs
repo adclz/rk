@@ -16,7 +16,6 @@ use crate::{
         scope::{ScopeId, ScopeKind},
         semantic_index::{get_scope, semantic_index},
     },
-    hir_ty::index_graphs::namespace_index,
     query_string::{
         file::{file_symbol_index, library_symbol_index},
         query::{Query, SymbolKind},
@@ -364,19 +363,30 @@ pub fn discover_in_scope<'db>(
         result.pous.insert(*n, *p);
     });
 
+    // Every library is imported: its root is in scope with no USING.
+    for root in crate::hir_ty::library::library_roots(db) {
+        result.seen_namespaces.insert(root.path);
+    }
+
     let it = semantic_index(db, scope.file(db)).scope_iterator(db, scope);
     for scope in it {
         // Find POUs in all shared namespaces
         if let ScopeKind::Namespace(ns) = scope.kind {
-            for ns in namespace_index(db, ns.path(db)).iter() {
-                result.seen_namespaces.insert(ns.path(db));
+            let path = ns.absolute_path(db);
+            if crate::hir_ty::index_graphs::namespace_exists(db, path) {
+                result.seen_namespaces.insert(path);
             }
         }
 
         // Find POUs in all USING directives
         for using in &scope.usings {
-            for ns in namespace_index(db, using.path(db).path(db)).iter() {
-                result.seen_namespaces.insert(ns.path(db));
+            let path = crate::hir_ty::index_graphs::absolute_namespace_path(
+                db,
+                scope.id,
+                using.path(db).path(db),
+            );
+            if crate::hir_ty::index_graphs::namespace_exists(db, path) {
+                result.seen_namespaces.insert(path);
             }
         }
     }

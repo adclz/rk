@@ -15,6 +15,18 @@ pub struct NamespaceDecl<'db> {
     /// The path as the author wrote it. Matching reads [`Self::path`].
     pub path_with_case: NamespacePath,
 
+    /// The path as the indexes key it: [`Self::path`] with the root of the
+    /// file's library before it, unless written from the root, and
+    /// [`Self::path`] itself for a namespace of the workspace
+    /// ([`crate::hir_ty::library::absolute_paths`]).
+    #[tracked]
+    pub absolute_path: NamespacePath,
+
+    /// [`Self::absolute_path`] as written: the root as the library's
+    /// `config.toml` spells it, the rest as the author wrote it.
+    #[tracked]
+    pub absolute_path_with_case: NamespacePath,
+
     /// `NAMESPACE INTERNAL`: reachable only from inside the enclosing
     /// namespace (nested ones included) on its own side of the library line.
     #[tracked]
