@@ -5,7 +5,6 @@
 //! a host do with it.
 
 use hir::check::diagnostics_for_file;
-use hir::hir_def::semantic_index::semantic_index;
 use wasm_codegen::Profile;
 
 use crate::{Finding, session, wasm};
@@ -28,7 +27,6 @@ pub fn check(source: &str) -> Result<Verdict, Finding> {
     let Some((db, file)) = session::load(source) else {
         return Ok(Verdict::Unparsed);
     };
-    let index = semantic_index(&db, file);
     let _ = diagnostics_for_file(&db, file);
 
     // Every rule, on every input: the editor lints code that does not
@@ -42,7 +40,7 @@ pub fn check(source: &str) -> Result<Verdict, Finding> {
 
     // `rk check` accepted it, so it must lower: a lowering error on a clean
     // source is what `rk compile` reports as an internal compiler error.
-    let mir = mir::lower::lower_module::lower_module(&db, index).map_err(|e| lowering(&e))?;
+    let mir = session::lower(&db, file).map_err(|e| lowering(&e))?;
 
     let debug = wasm_codegen::generate_wasm_profile(&db, &mir, Profile::Debug).finish();
     let release = wasm_codegen::generate_wasm_profile(&db, &mir, Profile::Release).finish();

@@ -84,9 +84,17 @@ impl<'db> SemanticIndexBuilder<'db> {
             }
         }
 
+        let (absolute_path, absolute_path_with_case) = crate::hir_ty::library::absolute_paths(
+            self.db,
+            self.file,
+            path.path(self.db),
+            path.path_with_case,
+        );
         let result = NamespaceDecl::new(
             self.db,
             path.path_with_case,
+            absolute_path,
+            absolute_path_with_case,
             nested.internal.is_some(),
             pous.clone(),
             namespaces,

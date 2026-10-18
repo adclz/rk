@@ -7,7 +7,7 @@ use db::WorkspaceDataBase;
 use rustc_hash::{FxBuildHasher, FxHashMap};
 
 use crate::{
-    CallSite,
+    CallSite, HirNodeInfo,
     check::errors::{ToIdeDiagnostic, e01_duplicates::DuplicateError, e02_resolve::ResolveError},
     hir_def::semantic_index::get_scope,
     hir_ty::{head::init_inference::InitInference, index_graphs::namespace_index},
@@ -43,13 +43,24 @@ impl<'db> InitInference<'db> {
                 })
                 .or_insert(*using);
 
-            let path = crate::hir_ty::index_graphs::absolute_namespace_path(
-                db,
-                self.scope,
-                using.path(db).path(db),
-            );
+            let written = using.path(db).path(db);
+            if let Some(candidates) =
+                crate::hir_ty::index_graphs::namespace_path_ambiguity(db, self.scope, written)
+            {
+                self.errors.push(
+                    ResolveError::AmbiguousNamespace {
+                        span: CallSite::from_scoped(db, using).get_span(db),
+                        written: using.path(db).path_with_case,
+                        candidates,
+                    }
+                    .to_diagnostic(db, self.scope.file(db)),
+                );
+                continue;
+            }
+            let path =
+                crate::hir_ty::index_graphs::absolute_namespace_path(db, self.scope, written);
             let decls = namespace_index(db, path);
-            if decls.is_empty() {
+            if decls.is_empty() && !crate::hir_ty::index_graphs::namespace_exists(db, path) {
                 self.errors.push(
                     ResolveError::UsingNamespaceNotFound {
                         path: using.path(db).path_with_case,

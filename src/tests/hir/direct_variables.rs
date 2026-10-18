@@ -1592,7 +1592,7 @@ END_CONFIGURATION
 }
 
 /// A library is code for any machine, so it names no address: neither bare
-/// in a body nor in an `AT` (E1417). Its addresses were not the workspace's,
+/// in a body nor in an `AT` (E1432). Its addresses were not the workspace's,
 /// so a library's `%QD0` got a cell of its own beside a workspace `%QW0`
 /// and the two never saw each other's bits. A partial address leaves the
 /// address to the workspace's VAR_CONFIG, so a library FB may declare one.
@@ -1619,19 +1619,27 @@ VAR ok : BOOL; END_VAR
 END_PROGRAM
 "#;
     assert_snapshot!(crate::tests::utils::test_library_diagnostics(&mut with_db, &[library], &[workspace]), @r"
-    [E1417] Error: address not locatable
+    [E1432] Error: address in a library
        ,-[ file:///lib0.st:3:5 ]
        |
      3 |     %QD0 := 16#11223344;
        |     ^^|^
-       |       `--- '%QD0' cannot be named in a library
+       |       `--- '%QD0' is an address in a library
+       |
+       | Help: declare it AT %I*, %Q* or %M* and let the workspace locate each instance in VAR_CONFIG
+       |
+       | Note: a library is code for any machine: the workspace maps the hardware
     ---'
-    [E1417] Error: address not locatable
+    [E1432] Error: address in a library
        ,-[ file:///lib0.st:8:13 ]
        |
      8 | VAR lamp AT %QW2 : WORD; END_VAR
        |             ^^|^
-       |               `--- '%QW2' cannot be named in a library
+       |               `--- '%QW2' is an address in a library
+       |
+       | Help: declare it AT %I*, %Q* or %M* and let the workspace locate each instance in VAR_CONFIG
+       |
+       | Note: a library is code for any machine: the workspace maps the hardware
     ---'
     ");
 }

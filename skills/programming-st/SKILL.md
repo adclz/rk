@@ -11,8 +11,8 @@ This is the syntax `rk` actually accepts, verified against the compiler and not 
 Keywords and identifiers are case-insensitive: `end_if` and `END_IF` are the same token, and `speed` and `Speed` are the same name.
 A trailing `;` on a statement or a declaration is optional; The canonical style is tabs, `name: TYPE` with no space before the colon, and variable sections indented inside their POU.
 A workspace is a directory holding a `config.toml` and any number of `.st` files found recursively.
-`Std.*` resolves out of the box: the library is found beside the `rk` binary, or in the checkout's `stdlib/` when running from a build.
-`RK_STDLIB_PATH` overrides that (environment, or a `.env` at the workspace root); `rk env stdlib` prints the one in use, empty if there is none.
+`Std.*` resolves out of the box: the library is built into `rk` and read from its copy in the cache.
+`RK_STDLIB_PATH` names another folder to read in its place (environment, or a `.env` at the workspace root); `rk env stdlib` prints the one in use, empty if there is none.
 
 ## POU kinds
 

@@ -425,9 +425,14 @@ impl<'db> SemanticIndexBuilder<'db> {
             .raw
             .sort_unstable_by_key(|node| *node.get_id(self.db));
 
+        // Keyed by the absolute path: a library's namespaces are under
+        // its root.
         let mut namespace_map: rustc_hash::FxHashMap<_, Vec<_>> = Default::default();
         for ns in &self.namespaces {
-            namespace_map.entry(ns.path(self.db)).or_default().push(*ns);
+            namespace_map
+                .entry(ns.absolute_path(self.db))
+                .or_default()
+                .push(*ns);
         }
 
         // Each address the file mentions, with the declarations located at

@@ -26,6 +26,7 @@ pub mod init_expr;
 pub mod initializers;
 pub mod invocation;
 pub mod layout;
+pub mod library_root;
 pub mod literals;
 pub mod loops;
 pub mod modulo;

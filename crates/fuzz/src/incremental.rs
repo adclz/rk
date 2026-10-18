@@ -24,7 +24,6 @@ use auto_lsp::lsp_types::{
 use auto_lsp::tree_sitter::Node;
 use db::RootDatabase;
 use hir::check::diagnostics_for_file;
-use hir::hir_def::semantic_index::semantic_index;
 
 use crate::{Finding, session};
 
@@ -140,7 +139,7 @@ fn prime(db: &RootDatabase, file: File) {
 /// The debug module: its line table carries every span, so a span left
 /// stale by an edit shows here even when the code is right.
 fn emit(db: &RootDatabase, file: File) -> Option<Vec<u8>> {
-    let mir = mir::lower::lower_module::lower_module(db, semantic_index(db, file)).ok()?;
+    let mir = session::lower(db, file).ok()?;
     Some(wasm_codegen::generate_wasm(db, &mir).finish())
 }
 

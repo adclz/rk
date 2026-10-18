@@ -22,11 +22,7 @@ use hir::{
         semantic_index::{NodeKey, get_scope, semantic_index},
         using::Using,
     },
-    hir_ty::{
-        index_graphs::{namespace_index, namespace_path_candidates},
-        infer::Infer,
-        oop::MethodRef,
-    },
+    hir_ty::{index_graphs::namespace_path_candidates, infer::Infer, oop::MethodRef},
     query_string::{query::Query, scope::SymbolSearch},
 };
 use rustc_hash::FxHashSet;
@@ -1170,7 +1166,7 @@ pub(crate) fn resolve_namespace_prefix<'db>(
     written: NamespacePath,
 ) -> Option<NamespacePath> {
     namespace_path_candidates(db, scope, written).find(|&candidate| {
-        if !namespace_index(db, candidate).is_empty() {
+        if hir::hir_ty::index_graphs::namespace_exists(db, candidate) {
             return true;
         }
         let mut query = Query::new(candidate.to_string(db));

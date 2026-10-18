@@ -17,7 +17,7 @@ rk --version
 rk env          # the standard library and where it was found
 ```
 
-If `rk env` finds no standard library, set `RK_STDLIB_PATH` to the repository's `stdlib/`, see [Environment variables](environment-variables.md).
+The standard library is built into `rk`, see [StdLib](stdlib.md).
 
 ## Create a workspace
 

@@ -84,11 +84,12 @@ pub fn run(
     format: OutputFormat,
     command: Command,
 ) -> CliResult<()> {
-    use commands::{check, compile, env, explain, fmt, test};
+    use commands::{check, compile, env, explain, fetch, fmt, test};
     match command {
         Command::Check { watch } => check::run_check(workspace, watch, verbose, format),
         Command::Env { keys } => env::run_env(workspace, &keys, format),
         Command::Explain { code } => explain::run_explain(&code, format),
+        Command::Fetch { save } => fetch::run_fetch(workspace, save.as_deref(), format),
         Command::Compile {
             output,
             release,

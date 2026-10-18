@@ -50,7 +50,12 @@ def has_header(text: str) -> bool:
 
 
 def check() -> int:
-    missing = [p for p in agpl_rust_sources() if not has_header((ROOT / p).read_text())]
+    # A tracked file deleted in the working tree has nothing to check.
+    missing = [
+        p
+        for p in agpl_rust_sources()
+        if (ROOT / p).is_file() and not has_header((ROOT / p).read_text())
+    ]
     for path in missing:
         print(f"{path}: no SPDX header (python3 scripts/spdx.py --fix)")
     if missing:

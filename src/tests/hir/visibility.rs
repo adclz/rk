@@ -346,8 +346,10 @@ fn invalid_call_library_private_function_by_reopening_its_namespace(mut with_db:
         END_FUNCTION
     END_NAMESPACE
     "#;
+    // The library's namespace is under its root: that is the one the
+    // workspace reopens.
     let workspace = r#"
-    NAMESPACE Lib
+    NAMESPACE Std.Lib
         FUNCTION sneak : INT
             sneak := helper();
         END_FUNCTION

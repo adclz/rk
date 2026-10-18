@@ -160,8 +160,7 @@ pub(crate) fn debug_module(source: &str) -> Option<Vec<u8>> {
     if !crate::session::compiles(&db, file) {
         return None;
     }
-    let index = hir::hir_def::semantic_index::semantic_index(&db, file);
-    let mir = mir::lower::lower_module::lower_module(&db, index).ok()?;
+    let mir = crate::session::lower(&db, file).ok()?;
     // A program codegen refuses is `fuzz_compiler`'s finding, not a seed.
     let wasm = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         wasm_codegen::generate_wasm_profile(&db, &mir, wasm_codegen::Profile::Debug).finish()

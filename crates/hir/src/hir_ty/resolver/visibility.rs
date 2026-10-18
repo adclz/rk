@@ -196,10 +196,7 @@ pub fn function_visible_from<'db>(
         (Some(target), Some(caller)) => caller.fragments(db).starts_with(target.fragments(db)),
         (Some(_), None) => false,
     };
-    let is_library =
-        |scope: ScopeId<'db>| crate::check::check_duplicates::is_library_file(db, scope.file(db));
-    let cross_origin = is_library(calling_scope) != is_library(target_scope);
-    inside && !cross_origin
+    inside && same_origin(db, calling_scope, target_scope)
 }
 
 /// Whether nothing on `target_scope`'s namespace chain is an INTERNAL
@@ -272,16 +269,20 @@ pub fn internal_namespace_violated<'db>(
     calling_scope: ScopeId<'db>,
     ns: NamespaceDecl<'db>,
 ) -> Option<NamespaceDecl<'db>> {
-    let fragments = ns.path(db).fragments(db).clone();
+    let fragments = ns.absolute_path(db).fragments(db).clone();
     let enclosing = &fragments[..fragments.len().saturating_sub(1)];
     let inside = match crate::hir_ty::resolver::name::enclosing_namespace_path(db, calling_scope) {
         Some(caller) => caller.fragments(db).starts_with(enclosing),
         None => enclosing.is_empty(),
     };
-    let is_library =
-        |scope: ScopeId<'db>| crate::check::check_duplicates::is_library_file(db, scope.file(db));
-    let cross_origin = is_library(calling_scope) != is_library(ns.scope_id(db));
-    (!inside || cross_origin).then_some(ns)
+    (!inside || !same_origin(db, calling_scope, ns.scope_id(db))).then_some(ns)
+}
+
+/// Whether two scopes are on the same side of the library line: both in the
+/// workspace, or both in the same library. Two libraries are as closed to
+/// each other as a library is to the workspace.
+fn same_origin<'db>(db: &'db dyn WorkspaceDataBase, a: ScopeId<'db>, b: ScopeId<'db>) -> bool {
+    db.library_of(a.file(db)) == db.library_of(b.file(db))
 }
 
 /// Check that no code references a `{test}`-annotated item.

@@ -124,17 +124,31 @@ fn the_same_file_loads_once_it_is_readable() {
     assert!(!counts.has_errors(), "clean once readable:\n{out}");
 }
 
-/// Unset variable: the library is found beside the executable, which for
-/// this test binary is the checkout's own `stdlib/`.
+/// Unset variable: the standard library is the one built in, read from
+/// its copy in the cache.
 #[test]
-fn unset_variable_finds_the_library_beside_the_executable() {
+fn unset_variable_reads_the_library_built_in() {
     unset_env();
     let (_ws, root) =
         write_workspace(&[("main.st", "FUNCTION f : INT\n    f := 1;\nEND_FUNCTION\n")]);
     let (db, counts, out) = check(&root);
+    let copy = db::dependencies::cached_dir(
+        &super::tests_cache().canonicalize().unwrap(),
+        &db::stdlib::bundle().hash,
+    );
+    let files: Vec<_> = db
+        .get_library_files()
+        .iter()
+        .map(|entry| entry.key().to_file_path().unwrap())
+        .collect();
+    assert!(!files.is_empty(), "the standard library is read");
+    // Canonical on both sides: on Windows a file URL gives the path back
+    // without the `\\?\` the canonical folder starts with.
     assert!(
-        !db.get_library_files().is_empty(),
-        "the probe must reach the checkout's stdlib"
+        files
+            .iter()
+            .all(|file| file.canonicalize().unwrap().starts_with(&copy)),
+        "from its copy in the cache: {files:?}"
     );
     assert!(
         !counts.has_errors(),
@@ -192,8 +206,6 @@ fn a_workspace_containing_its_library_does_not_load_it_twice() {
     let lib_root = root.join("vendor");
     std::fs::create_dir(&lib_root).unwrap();
     std::fs::write(lib_root.join("s.st"), LIB_NS).unwrap();
-    // Naming it outright is what the editor extension does, and it takes a
-    // different branch than the probe the CLI falls back to.
     set_env(lib_root.as_os_str());
 
     let (db, counts, out) = check(&root);
@@ -264,8 +276,7 @@ END_FUNCTION
     );
 }
 
-/// The empty value is the explicit, silent "no library", how the standard
-/// library's own workspace avoids loading a second copy of itself.
+/// The empty value is the explicit, silent "no library".
 #[test]
 fn empty_variable_disables_the_library() {
     set_env(std::ffi::OsStr::new(""));
@@ -278,7 +289,7 @@ fn empty_variable_disables_the_library() {
     assert!(counts.has_errors(), "USING an absent library must error");
 }
 
-/// A `.env` at the workspace root supplies the variable — with the usual
+/// A `.env` at the workspace root supplies the variable, with the usual
 /// dotenv rule: the process environment wins when both are set.
 #[test]
 fn workspace_dotenv_supplies_the_variable_and_process_env_wins() {

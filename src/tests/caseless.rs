@@ -78,6 +78,10 @@ const SPELLING_MATCHED: &[Allowed] = &[
 /// name arrives as text, not as an identifier the source declared.
 const FOLDED_OUTSIDE_AN_ACCESSOR: &[Allowed] = &[
     Allowed {
+        line: "name.folded(db)",
+        why: "a library's name is text from its config.toml, folded once as its root",
+    },
+    Allowed {
         line: "if fragments.iter().all(|f| f.folded(db) == *f) {",
         why: "the fold of a namespace path itself, fragment by fragment",
     },

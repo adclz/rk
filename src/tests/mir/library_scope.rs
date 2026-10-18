@@ -223,7 +223,8 @@ fn exports_and_sections(wasm: &[u8]) -> (Vec<String>, Vec<String>) {
 
 /// `{export}` is the only thing that exports a FUNCTION, wherever it is
 /// declared. An FB body and a method never are: the host has no instance to
-/// call them on. A PROGRAM body is, for the schedule.
+/// call them on. A PROGRAM body is, for the schedule. A library's symbols
+/// are under its root, `Std.LibEntry`: two libraries' exports never clash.
 #[rstest]
 fn a_function_is_exported_when_it_says_so(mut with_db: RootDatabase) {
     use mir::function::MirLinkage;
@@ -239,7 +240,7 @@ fn a_function_is_exported_when_it_says_so(mut with_db: RootDatabase) {
     };
     assert_eq!(linkage("Twice"), MirLinkage::Export, "{{export}}");
     assert_eq!(
-        linkage("LibEntry"),
+        linkage("Std.LibEntry"),
         MirLinkage::Export,
         "{{export}}, in a library"
     );
@@ -249,13 +250,13 @@ fn a_function_is_exported_when_it_says_so(mut with_db: RootDatabase) {
         "the workspace's, unmarked"
     );
     assert_eq!(
-        linkage("LibHelper"),
+        linkage("Std.LibHelper"),
         MirLinkage::Internal,
         "called, never exported"
     );
     assert_eq!(linkage("Counter$__body__"), MirLinkage::Internal);
     assert_eq!(linkage("Counter#Reset"), MirLinkage::Internal);
-    assert_eq!(linkage("LibFb$__body__"), MirLinkage::Internal);
+    assert_eq!(linkage("Std.LibFb$__body__"), MirLinkage::Internal);
     assert_eq!(
         linkage("Main$__body__"),
         MirLinkage::Export,
@@ -305,14 +306,17 @@ fn a_release_exports_no_test_and_lists_none(mut with_db: RootDatabase) {
             .finish();
 
     let (exports, sections) = exports_and_sections(&debug);
-    assert_eq!(exports, ["LibEntry", "Main$__body__", "Twice", "ws_test"]);
+    assert_eq!(
+        exports,
+        ["Main$__body__", "Std.LibEntry", "Twice", "ws_test"]
+    );
     assert!(
         sections.contains(&"test-manifest".to_string()),
         "{sections:?}"
     );
 
     let (exports, sections) = exports_and_sections(&release);
-    assert_eq!(exports, ["LibEntry", "Main$__body__", "Twice"]);
+    assert_eq!(exports, ["Main$__body__", "Std.LibEntry", "Twice"]);
     assert!(
         !sections.contains(&"test-manifest".to_string()),
         "{sections:?}"

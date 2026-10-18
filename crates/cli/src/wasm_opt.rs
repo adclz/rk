@@ -17,8 +17,7 @@ use crate::ui;
 /// version.
 const BINARYEN_VERSION: &str = "131";
 
-/// Environment variable that refuses the download step.
-const NO_DOWNLOAD_ENV: &str = "RK_NO_DOWNLOAD";
+use db::cache::NO_DOWNLOAD_ENV;
 
 /// Locate a usable `wasm-opt`, downloading the pinned release if needed;
 /// `None` when none can be obtained.
@@ -85,7 +84,7 @@ fn exe_name() -> &'static str {
 /// Where a downloaded Binaryen lives: the user's cache directory, so it
 /// survives between builds and is never written into the workspace.
 fn cache_dir() -> Option<PathBuf> {
-    Some(dirs::cache_dir()?.join("rk").join("binaryen"))
+    Some(db::cache::root()?.join("binaryen"))
 }
 
 /// The release asset for this platform, or `None`. Binaryen says `aarch64`
@@ -128,8 +127,8 @@ fn download(dest: &Path) -> Result<(), String> {
         parent.display()
     ));
 
-    let archive = get(&format!("{base}/{asset}"))?;
-    let expected = String::from_utf8(get(&format!("{base}/{asset}.sha256"))?)
+    let archive = fetch::get(&format!("{base}/{asset}"))?;
+    let expected = String::from_utf8(fetch::get(&format!("{base}/{asset}.sha256"))?)
         .map_err(|_| "checksum file is not text".to_string())?;
     // The file is `<hex>  <filename>`; take the hash.
     let expected = expected
@@ -172,27 +171,6 @@ fn download(dest: &Path) -> Result<(), String> {
         return Ok(());
     }
     std::fs::rename(&unpacked, dest).map_err(|e| format!("installing into {}: {e}", dest.display()))
-}
-
-/// Fetched under the platform's trust store.
-fn get(url: &str) -> Result<Vec<u8>, String> {
-    use ureq::tls::{RootCerts, TlsConfig};
-    let agent = ureq::Agent::config_builder()
-        .tls_config(
-            TlsConfig::builder()
-                .root_certs(RootCerts::PlatformVerifier)
-                .build(),
-        )
-        .build()
-        .new_agent();
-    let mut body = agent
-        .get(url)
-        .call()
-        .map_err(|e| format!("fetching {url}: {e}"))?
-        .into_body();
-    let mut bytes = Vec::new();
-    std::io::copy(&mut body.as_reader(), &mut bytes).map_err(|e| format!("reading {url}: {e}"))?;
-    Ok(bytes)
 }
 
 #[cfg(test)]

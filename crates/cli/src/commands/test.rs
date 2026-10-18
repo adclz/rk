@@ -49,9 +49,17 @@ pub fn run_test(
             .and_then(|w| w.workspace_folder(&db))
             .map(|root| root.to_path_buf())
             .unwrap_or_else(|| workspace.to_path_buf()),
-        library: layout
-            .and_then(|w| w.library_path(&db))
-            .map(|lib| lib.to_path_buf()),
+        libraries: layout
+            .map(|w| w.libraries(&db))
+            .into_iter()
+            .flatten()
+            .map(|library| {
+                (
+                    mir::lower::lower_module::library_label(library),
+                    library.dir.clone(),
+                )
+            })
+            .collect(),
     };
     let failures = crate::test_runner::run_tests(
         &wasm_path,

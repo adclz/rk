@@ -16,7 +16,6 @@ use crate::hir_def::pous::variable::VariableDecl;
 use crate::hir_def::scope::ScopeId;
 use crate::hir_def::scope::ScopeKind;
 use crate::hir_def::semantic_index::get_scope;
-use crate::hir_ty::index_graphs::namespace_index;
 use crate::hir_ty::ty::Type;
 use crate::query_string::fields::fuzzy_type_fields;
 use crate::query_string::fields::suggest_similar_note;
@@ -62,6 +61,15 @@ pub enum ResolveError<'db> {
         name: Ident,
         span: tree_sitter::Range,
         candidates: Vec<(Pou<'db>, NamespacePath)>,
+    },
+    /// A namespace written without a library's name before it, which two
+    /// libraries declare.
+    AmbiguousNamespace {
+        span: tree_sitter::Range,
+        /// As written.
+        written: NamespacePath,
+        /// Under each root that has it.
+        candidates: Vec<NamespacePath>,
     },
     /// A VAR_EXTERNAL declaration references a name not present in any accessible VAR_GLOBAL.
     ExternalVarNotFound {
@@ -155,6 +163,7 @@ impl<'db> ErrorCode for ResolveError<'db> {
             Self::OutOfReach { .. } => "E0209",
             Self::EdgeInStatelessPou { .. } => "E0210",
             Self::EdgeInputAsStorage { .. } => "E0211",
+            Self::AmbiguousNamespace { .. } => "E0212",
         }
     }
 }
@@ -284,7 +293,7 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                             path.scope_id,
                             ns_kw,
                         );
-                        if !namespace_index(db, ns_kw).is_empty() {
+                        if crate::hir_ty::index_graphs::namespace_exists(db, ns_kw) {
                             diag.with_note(format!("'{path_str}' is a namespace, not an item"));
                             diag.with_help(format!(
                                 "import it with 'USING {path_str}', or name an item of it, as '{path_str}.<POU>'"
@@ -303,7 +312,7 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                             path.scope_id,
                             full_path,
                         );
-                        if !namespace_index(db, full_path).is_empty() {
+                        if crate::hir_ty::index_graphs::namespace_exists(db, full_path) {
                             diag.with_note(format!("'{path_str}' is a namespace, not an item"));
                             diag.with_help(format!(
                                 "import it with 'USING {path_str}', or name an item of it, as '{path_str}.<POU>'"
@@ -341,6 +350,37 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                     .search(db);
 
                 list_candidates(db, path.to_string(db).as_str(), &mut diag, &results, None);
+                diag
+            }
+            Self::AmbiguousNamespace {
+                span,
+                written,
+                candidates,
+            } => {
+                let spelled: Vec<String> = candidates
+                    .iter()
+                    .map(|path| {
+                        format!(
+                            "'{}'",
+                            crate::hir_ty::display::namespace_spelling(db, *path)
+                        )
+                    })
+                    .collect();
+                let mut diag = diag()
+                    .message(format!(
+                        "'{}' is {}",
+                        written.to_string(db),
+                        spelled.join(" and ")
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, span).unwrap_or_default())
+                    .call();
+                diag.with_note(
+                    "a library's namespace is reached without the library's name while one library alone declares it"
+                        .to_string(),
+                );
+                diag.with_help(format!("write {}", spelled.join(" or ")));
                 diag
             }
             Self::MultipleItemsInScope {

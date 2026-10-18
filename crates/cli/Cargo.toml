@@ -14,6 +14,7 @@ path = "src/bin/main.rs"
 db = { workspace = true }
 hir = { workspace = true }
 linter = { workspace = true }
+fetch = { workspace = true }
 ast = { workspace = true }
 wasm_codegen = { workspace = true }
 mir = { workspace = true }
@@ -39,8 +40,6 @@ anyhow = "1"
 # `--timeout` and the watcher's hold times.
 time = { workspace = true, features = ["local-offset"] }
 # wasm optimizer: an external binary, downloaded and verified (see src/wasm_opt.rs)
-dirs = { workspace = true }
-ureq = { version = "3", features = ["platform-verifier"] }
 flate2 = "1"
 tar = "0.4"
 sha2 = "0.10"

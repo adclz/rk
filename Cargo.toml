@@ -22,6 +22,7 @@ members = [
     "crates/mir",
     "crates/debug_format",
     "crates/cli",
+    "crates/fetch",
     "crates/benchmark",
     "crates/linter",
     "crates/doc",
@@ -50,6 +51,7 @@ mir = { path = "crates/mir" }
 debug_format = { path = "crates/debug_format" }
 formatter = { path = "crates/formatter" }
 linter = { path = "crates/linter" }
+fetch = { path = "crates/fetch" }
 index = { path = "crates/index" }
 macros = { path = "crates/macros" }
 bon = "3.6.4"
@@ -135,6 +137,10 @@ wasmparser = { workspace = true }
 static_assertions = { workspace = true }
 rk = { path = "crates/cli" }
 tempfile = "3"
+tar = "0.4"
+flate2 = "1"
+sha2 = "0.10"
+fetch = { workspace = true }
 clap = { workspace = true }
 serde_json = { workspace = true }
 debug_format = { workspace = true }

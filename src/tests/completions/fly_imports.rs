@@ -6,7 +6,7 @@ use hir::HirNodeInfo;
 use ide_proto::handlers::completions_utils::{CompletionCtx, QueryMode};
 use rstest::rstest;
 
-use crate::tests::utils::{add_source, find_pou_with_name, with_db};
+use crate::tests::utils::{add_library_sources, add_source, find_pou_with_name, with_db};
 
 #[rstest]
 pub fn using_for_item_not_in_scope(mut with_db: RootDatabase) {
@@ -34,6 +34,30 @@ END_FUNCTION
 
     // fn1 should have an additional namespace prefix (check for the escaped newline in debug output)
     assert!(format!("{completions:?}").contains(r#""USING ns;\n\n""#));
+}
+
+/// A library's top level is imported by default: its FUNCTION completes
+/// with no `USING`. A namespace of the library completes with the
+/// namespace's full path, the library's name first.
+#[rstest]
+pub fn a_librarys_names_complete_under_its_root(mut with_db: RootDatabase) {
+    add_library_sources(
+        &mut with_db,
+        &["FUNCTION Seven : INT\n    Seven := 7;\nEND_FUNCTION\n\
+           NAMESPACE Motion\n    FUNCTION Twice : INT\n        Twice := 2;\n    END_FUNCTION\nEND_NAMESPACE\n"],
+    );
+    let source = "FUNCTION fn2\n\nEND_FUNCTION\n";
+    let file = add_source(&mut with_db, source);
+    let pou = find_pou_with_name(&with_db, file, "fn2").unwrap();
+
+    let mut ctx = CompletionCtx::new(13, QueryMode::Body);
+    ctx.scope_completion(pou.get_scope_id(&with_db), "", &with_db);
+    let shown = format!("{:?}", ctx.take_items());
+
+    assert!(shown.contains("Seven"), "{shown}");
+    assert!(!shown.contains("USING Std;"), "{shown}");
+    assert!(shown.contains("Twice"), "{shown}");
+    assert!(shown.contains(r#""USING Std.Motion;\n\n""#), "{shown}");
 }
 
 #[rstest]
