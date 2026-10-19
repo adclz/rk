@@ -57,7 +57,7 @@ FUNCTION PRIVATE Keep : DINT
 END_FUNCTION
 ";
 
-const LIBRARY_URL: &str = "file:///lib/Lib.st";
+pub(crate) const LIBRARY_URL: &str = "file:///lib/Lib.st";
 
 /// A database holding `source` as its only workspace file, beside
 /// [`LIBRARY`], or `None` when the parser gives up on it (tree-sitter only

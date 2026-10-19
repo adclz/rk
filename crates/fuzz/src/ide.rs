@@ -7,8 +7,9 @@
 //! costs more there than anywhere. Every request the server answers goes
 //! through its own handler (`server::capabilties`), at positions spread
 //! over the text: word starts, just after `.`, `:` and `(`, the first and
-//! the last position. What comes back must fit the document: every range
-//! and position in it, whatever the request, lies inside the text, a
+//! the last position. What comes back must fit the documents: every range
+//! and position in it, whatever the request, lies inside the text of the
+//! file it names, the input or the library it is read beside, a
 //! symbol's `selectionRange` lies inside its `range`, semantic tokens are
 //! sorted, apart and within their line, a completion edit is on one line
 //! and holds the cursor, and a rename's edits do not overlap. VS Code
@@ -24,7 +25,7 @@ use auto_lsp::lsp_types::{
     ReferenceContext, ReferenceParams, RenameParams, SemanticTokensParams,
     SemanticTokensRangeParams, SemanticTokensRangeResult, SemanticTokensResult,
     SignatureHelpParams, TextDocumentIdentifier, TextDocumentPositionParams, TextEdit,
-    WorkspaceSymbolParams,
+    WorkspaceEdit, WorkspaceSymbolParams,
 };
 use serde_json::Value;
 use server::capabilties as cap;
@@ -38,7 +39,8 @@ pub fn check(source: &str) -> Result<(), Finding> {
     let Some((db, _file)) = session::load(source) else {
         return Ok(());
     };
-    let doc = Doc::new(source);
+    let docs = Docs::new(source);
+    let doc = &docs.input;
     let uri = session::url();
     let id = || TextDocumentIdentifier { uri: uri.clone() };
     let whole = Range::new(Position::new(0, 0), doc.end());
@@ -48,7 +50,8 @@ pub fn check(source: &str) -> Result<(), Finding> {
     // The requests about the whole document.
     let r = "documentSymbol";
     fits(
-        &doc,
+        &docs,
+        doc,
         r,
         &ask(r, || {
             cap::document_symbols::document_symbols(
@@ -63,7 +66,8 @@ pub fn check(source: &str) -> Result<(), Finding> {
     )?;
     let r = "foldingRange";
     fits(
-        &doc,
+        &docs,
+        doc,
         r,
         &ask(r, || {
             cap::folding_ranges::folding_ranges(
@@ -78,7 +82,8 @@ pub fn check(source: &str) -> Result<(), Finding> {
     )?;
     let r = "inlayHint";
     fits(
-        &doc,
+        &docs,
+        doc,
         r,
         &ask(r, || {
             cap::inlay_hints::inlay_hints(
@@ -93,7 +98,8 @@ pub fn check(source: &str) -> Result<(), Finding> {
     )?;
     let r = "codeLens";
     fits(
-        &doc,
+        &docs,
+        doc,
         r,
         &ask(r, || {
             cap::code_lens::code_lens(
@@ -108,7 +114,8 @@ pub fn check(source: &str) -> Result<(), Finding> {
     )?;
     let r = "documentLink";
     fits(
-        &doc,
+        &docs,
+        doc,
         r,
         &ask(r, || {
             cap::document_links::document_links(
@@ -123,7 +130,8 @@ pub fn check(source: &str) -> Result<(), Finding> {
     )?;
     let r = "formatting";
     fits(
-        &doc,
+        &docs,
+        doc,
         r,
         &ask(r, || {
             cap::formatting::formatting(
@@ -142,7 +150,8 @@ pub fn check(source: &str) -> Result<(), Finding> {
     )?;
     let r = "diagnostic";
     fits(
-        &doc,
+        &docs,
+        doc,
         r,
         &ask(r, || {
             cap::diagnostics::diagnostics(
@@ -159,7 +168,8 @@ pub fn check(source: &str) -> Result<(), Finding> {
     )?;
     let r = "workspaceSymbol";
     fits(
-        &doc,
+        &docs,
+        doc,
         r,
         &ask(r, || {
             cap::workspace_symbols::workspace_symbols(
@@ -215,7 +225,8 @@ pub fn check(source: &str) -> Result<(), Finding> {
 
         let r = name("hover");
         fits(
-            &doc,
+            &docs,
+            doc,
             &r,
             &ask(&r, || {
                 cap::hover::hover(
@@ -229,19 +240,22 @@ pub fn check(source: &str) -> Result<(), Finding> {
         )?;
         let r = name("definition");
         fits(
-            &doc,
+            &docs,
+            doc,
             &r,
             &ask(&r, || cap::definition::go_to_definition(&db, goto()))?,
         )?;
         let r = name("declaration");
         fits(
-            &doc,
+            &docs,
+            doc,
             &r,
             &ask(&r, || cap::declaration::go_to_declaration(&db, goto()))?,
         )?;
         let r = name("typeDefinition");
         fits(
-            &doc,
+            &docs,
+            doc,
             &r,
             &ask(&r, || {
                 cap::type_definition::go_to_type_definition(&db, goto())
@@ -249,7 +263,8 @@ pub fn check(source: &str) -> Result<(), Finding> {
         )?;
         let r = name("implementation");
         fits(
-            &doc,
+            &docs,
+            doc,
             &r,
             &ask(&r, || {
                 cap::implementation::go_to_implementation(&db, goto())
@@ -257,7 +272,8 @@ pub fn check(source: &str) -> Result<(), Finding> {
         )?;
         let r = name("references");
         fits(
-            &doc,
+            &docs,
+            doc,
             &r,
             &ask(&r, || {
                 cap::references::references(
@@ -275,7 +291,8 @@ pub fn check(source: &str) -> Result<(), Finding> {
         )?;
         let r = name("documentHighlight");
         fits(
-            &doc,
+            &docs,
+            doc,
             &r,
             &ask(&r, || {
                 cap::document_highlight::highlights(
@@ -290,7 +307,8 @@ pub fn check(source: &str) -> Result<(), Finding> {
         )?;
         let r = name("signatureHelp");
         fits(
-            &doc,
+            &docs,
+            doc,
             &r,
             &ask(&r, || {
                 cap::signature_help::signature_help(
@@ -305,7 +323,8 @@ pub fn check(source: &str) -> Result<(), Finding> {
         )?;
         let r = name("codeAction");
         fits(
-            &doc,
+            &docs,
+            doc,
             &r,
             &ask(&r, || {
                 cap::code_actions::code_actions(
@@ -333,7 +352,7 @@ pub fn check(source: &str) -> Result<(), Finding> {
                 },
             )
         })?;
-        fits(&doc, &r, &completions)?;
+        fits(&docs, doc, &r, &completions)?;
         if let Ok(Some(response)) = completions {
             doc.completion_edits(&r, position, response)?;
         }
@@ -349,16 +368,9 @@ pub fn check(source: &str) -> Result<(), Finding> {
                 },
             )
         })?;
-        fits(&doc, &r, &rename)?;
+        fits(&docs, doc, &r, &rename)?;
         if let Ok(Some(edit)) = rename {
-            let edits: Vec<TextEdit> = edit
-                .changes
-                .into_iter()
-                .flat_map(|c| c.into_values())
-                .flatten()
-                .collect();
-            doc.apart(&r, &edits)?;
-            doc.renames_one_name(&r, &edits)?;
+            docs.rename_edits(&r, edit)?;
         }
 
         let r = name("prepareCallHierarchy");
@@ -371,12 +383,13 @@ pub fn check(source: &str) -> Result<(), Finding> {
                 },
             )
         })?;
-        fits(&doc, &r, &items)?;
+        fits(&docs, doc, &r, &items)?;
         for item in items.ok().flatten().unwrap_or_default() {
             let r = name("callHierarchy/incomingCalls");
             let incoming = item.clone();
             fits(
-                &doc,
+                &docs,
+                doc,
                 &r,
                 &ask(&r, || {
                     cap::call_hierarchy::incoming_calls(
@@ -390,8 +403,11 @@ pub fn check(source: &str) -> Result<(), Finding> {
                 })?,
             )?;
             let r = name("callHierarchy/outgoingCalls");
+            // Its `fromRanges` are in the file of the item asked about.
+            let caller = docs.at(&r, item.uri.as_str())?;
             fits(
-                &doc,
+                &docs,
+                caller,
                 &r,
                 &ask(&r, || {
                     cap::call_hierarchy::outgoing_calls(
@@ -429,6 +445,7 @@ fn ask<T>(request: &str, send: impl FnOnce() -> T) -> Result<T, Finding> {
 
 /// Check a response, if there is one; an error answer has no ranges.
 fn fits<T: serde::Serialize, E>(
+    docs: &Docs,
     doc: &Doc,
     request: &str,
     response: &Result<T, E>,
@@ -436,9 +453,146 @@ fn fits<T: serde::Serialize, E>(
     match response {
         Ok(value) => {
             let json = serde_json::to_value(value).unwrap_or(Value::Null);
-            doc.walk(request, &json)
+            docs.walk(doc, request, &json)
         }
         Err(_) => Ok(()),
+    }
+}
+
+/// The documents the server holds: the input, and the library it is read
+/// beside. An answer may point into either, and into nothing else.
+struct Docs<'a> {
+    input: Doc<'a>,
+    library: Doc<'a>,
+}
+
+impl<'a> Docs<'a> {
+    fn new(source: &'a str) -> Self {
+        Self {
+            input: Doc::new(source),
+            library: Doc::new(session::LIBRARY),
+        }
+    }
+
+    /// The document a uri names. One the server has not open is a
+    /// location the editor cannot show.
+    fn at(&self, request: &str, uri: &str) -> Result<&Doc<'a>, Finding> {
+        match uri {
+            session::URL => Ok(&self.input),
+            session::LIBRARY_URL => Ok(&self.library),
+            _ => Err(Finding::new(
+                "ide-range",
+                format!("{request}: a location in {uri}, which is not open"),
+            )),
+        }
+    }
+
+    /// Every position and range in a response, wherever it sits, against
+    /// the document it is in: `doc`, until an object names another file. A
+    /// `Location`, a workspace symbol or a call hierarchy item names its
+    /// file as `uri`; a `LocationLink` its target's as `targetUri`, while
+    /// its origin stays in `doc`; an incoming call's `fromRanges` are in
+    /// its caller's file, `from`; and a `WorkspaceEdit` keys its edits by
+    /// uri. An outgoing call's `fromRanges` are in the file of the item
+    /// asked about, which the walk is started from.
+    fn walk(&self, doc: &Doc<'a>, request: &str, v: &Value) -> Result<(), Finding> {
+        let bad = |why: String| Finding::new("ide-range", format!("{request}: {why}"));
+        match v {
+            Value::Array(items) => items.iter().try_for_each(|i| self.walk(doc, request, i)),
+            Value::Object(o) => {
+                let doc = match o.get("uri").and_then(Value::as_str) {
+                    Some(uri) => self.at(request, uri)?,
+                    None => doc,
+                };
+                if let Some(p) = position(v) {
+                    if !doc.contains(p) {
+                        return Err(bad(format!(
+                            "position {}:{} is outside the document",
+                            p.line, p.character
+                        )));
+                    }
+                } else if let Some(r) = range(v)
+                    && !le(r.start, r.end)
+                {
+                    return Err(bad(format!("range {r:?} ends before it starts")));
+                }
+                // LSP: a symbol's or a call hierarchy item's selection
+                // range "must be contained by the range".
+                if let (Some(outer), Some(inner)) = (
+                    o.get("range").and_then(range),
+                    o.get("selectionRange").and_then(range),
+                ) && !(le(outer.start, inner.start) && le(inner.end, outer.end))
+                {
+                    return Err(bad(format!(
+                        "selectionRange {inner:?} is not inside range {outer:?}"
+                    )));
+                }
+                if let (Some(start), Some(end)) = (
+                    o.get("startLine").and_then(Value::as_u64),
+                    o.get("endLine").and_then(Value::as_u64),
+                ) && (start > end || end as usize >= doc.lines.len())
+                {
+                    return Err(bad(format!(
+                        "folding lines {start}..{end} in a {}-line document",
+                        doc.lines.len()
+                    )));
+                }
+                let target = match o.get("targetUri").and_then(Value::as_str) {
+                    Some(uri) => Some(self.at(request, uri)?),
+                    None => None,
+                };
+                let caller = match o
+                    .get("from")
+                    .and_then(|from| from.get("uri"))
+                    .and_then(Value::as_str)
+                {
+                    Some(uri) => Some(self.at(request, uri)?),
+                    None => None,
+                };
+                o.iter().try_for_each(|(key, x)| {
+                    let doc = match (key.as_str(), target, caller) {
+                        (key, Some(target), _) if key.starts_with("target") => target,
+                        ("fromRanges", _, Some(caller)) => caller,
+                        (key, _, _) if key.starts_with("file:") => self.at(request, key)?,
+                        _ => doc,
+                    };
+                    self.walk(doc, request, x)
+                })
+            }
+            _ => Ok(()),
+        }
+    }
+
+    /// A rename replaces a name, and only it: its edits do not overlap,
+    /// each covers one identifier, and it is the same one in every file,
+    /// case aside as ST has it.
+    fn rename_edits(&self, request: &str, edit: WorkspaceEdit) -> Result<(), Finding> {
+        let mut names: Vec<String> = Vec::new();
+        for (uri, edits) in edit.changes.into_iter().flatten() {
+            let doc = self.at(request, uri.as_str())?;
+            doc.apart(request, &edits)?;
+            for e in &edits {
+                let text = doc.slice(e.range).unwrap_or_default();
+                let is_name =
+                    !text.is_empty() && text.chars().all(|c| c.is_alphanumeric() || c == '_');
+                if !is_name {
+                    return Err(Finding::new(
+                        "ide-edits",
+                        format!("{request}: an edit replaces {text:?}, which is not a name"),
+                    ));
+                }
+                names.push(text.to_ascii_lowercase());
+            }
+        }
+        names.sort();
+        names.dedup();
+        match names.len() {
+            0 | 1 => Ok(()),
+            _ => Err(Finding::new(
+                "ide-edits",
+                format!("{request}: the edits replace different names: {names:?}"),
+            )),
+        }
     }
 }
 
@@ -526,51 +680,6 @@ impl<'a> Doc<'a> {
         picked
     }
 
-    /// Every position and range in a response, wherever it sits.
-    fn walk(&self, request: &str, v: &Value) -> Result<(), Finding> {
-        let bad = |why: String| Finding::new("ide-range", format!("{request}: {why}"));
-        match v {
-            Value::Array(items) => items.iter().try_for_each(|i| self.walk(request, i)),
-            Value::Object(o) => {
-                if let Some(p) = position(v) {
-                    if !self.contains(p) {
-                        return Err(bad(format!(
-                            "position {}:{} is outside the document",
-                            p.line, p.character
-                        )));
-                    }
-                } else if let Some(r) = range(v)
-                    && !le(r.start, r.end)
-                {
-                    return Err(bad(format!("range {r:?} ends before it starts")));
-                }
-                // LSP: a symbol's or a call hierarchy item's selection
-                // range "must be contained by the range".
-                if let (Some(outer), Some(inner)) = (
-                    o.get("range").and_then(range),
-                    o.get("selectionRange").and_then(range),
-                ) && !(le(outer.start, inner.start) && le(inner.end, outer.end))
-                {
-                    return Err(bad(format!(
-                        "selectionRange {inner:?} is not inside range {outer:?}"
-                    )));
-                }
-                if let (Some(start), Some(end)) = (
-                    o.get("startLine").and_then(Value::as_u64),
-                    o.get("endLine").and_then(Value::as_u64),
-                ) && (start > end || end as usize >= self.lines.len())
-                {
-                    return Err(bad(format!(
-                        "folding lines {start}..{end} in a {}-line document",
-                        self.lines.len()
-                    )));
-                }
-                o.values().try_for_each(|x| self.walk(request, x))
-            }
-            _ => Ok(()),
-        }
-    }
-
     /// Semantic tokens: relative to each other, sorted by construction,
     /// they must not overlap and must end within their line.
     fn tokens(
@@ -644,31 +753,6 @@ impl<'a> Doc<'a> {
         Ok(())
     }
 
-    /// A rename replaces a name, and only it: every edit covers one
-    /// identifier, the same one each time, case aside as ST has it.
-    fn renames_one_name(&self, request: &str, edits: &[TextEdit]) -> Result<(), Finding> {
-        let mut names: Vec<String> = Vec::new();
-        for e in edits {
-            let text = self.slice(e.range).unwrap_or_default();
-            let is_name = !text.is_empty() && text.chars().all(|c| c.is_alphanumeric() || c == '_');
-            if !is_name {
-                return Err(Finding::new(
-                    "ide-edits",
-                    format!("{request}: an edit replaces {text:?}, which is not a name"),
-                ));
-            }
-            names.push(text.to_ascii_lowercase());
-        }
-        names.dedup();
-        match names.len() {
-            0 | 1 => Ok(()),
-            _ => Err(Finding::new(
-                "ide-edits",
-                format!("{request}: the edits replace different names: {names:?}"),
-            )),
-        }
-    }
-
     /// The text a range covers.
     fn slice(&self, r: Range) -> Option<&str> {
         let (start, end) = (self.offset(r.start)?, self.offset(r.end)?);
@@ -734,4 +818,79 @@ fn range(v: &Value) -> Option<Range> {
         position(o.get("start")?)?,
         position(o.get("end")?)?,
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn span(line: u32) -> Value {
+        json!({"start": {"line": 0, "character": 0}, "end": {"line": line, "character": 0}})
+    }
+
+    /// An answer may point into the library the input is read beside, at
+    /// a position the library has, and into no other file.
+    #[test]
+    fn a_location_is_checked_against_the_file_it_names() {
+        let docs = Docs::new("x\n");
+        let walk = |v: Value| docs.walk(&docs.input, "r", &v).map_err(|f| f.detail);
+        let location = |uri: &str, line: u32| json!({"uri": uri, "range": span(line)});
+        assert_eq!(walk(location(session::LIBRARY_URL, 20)), Ok(()));
+        assert_eq!(
+            walk(location(session::URL, 20)),
+            Err("r: position 20:0 is outside the document".to_string())
+        );
+        assert_eq!(
+            walk(location(session::LIBRARY_URL, 99)),
+            Err("r: position 99:0 is outside the document".to_string())
+        );
+        assert_eq!(
+            walk(location("file:///elsewhere.st", 0)),
+            Err("r: a location in file:///elsewhere.st, which is not open".to_string())
+        );
+    }
+
+    /// A link's target ranges are in the file it targets and its origin in
+    /// the input; a workspace edit's are in the file each is keyed by.
+    #[test]
+    fn a_link_and_an_edit_name_their_files_differently() {
+        let docs = Docs::new("x\n");
+        let walk = |v: Value| docs.walk(&docs.input, "r", &v).map_err(|f| f.detail);
+        let link = |origin: u32| {
+            json!({
+                "originSelectionRange": span(origin),
+                "targetUri": session::LIBRARY_URL,
+                "targetRange": span(20),
+                "targetSelectionRange": span(20),
+            })
+        };
+        assert_eq!(walk(link(1)), Ok(()));
+        assert_eq!(
+            walk(link(20)),
+            Err("r: position 20:0 is outside the document".to_string())
+        );
+        let edit = |uri: &str| json!({"changes": {uri: [{"range": span(20), "newText": "x"}]}});
+        assert_eq!(walk(edit(session::LIBRARY_URL)), Ok(()));
+        assert_eq!(
+            walk(edit(session::URL)),
+            Err("r: position 20:0 is outside the document".to_string())
+        );
+    }
+
+    /// An incoming call's `fromRanges` are in its caller's file; an
+    /// outgoing call's in the file of the item asked about.
+    #[test]
+    fn a_calls_ranges_are_in_the_callers_file() {
+        let docs = Docs::new("x\n");
+        let walk = |doc: &Doc, v: Value| docs.walk(doc, "r", &v).map_err(|f| f.detail);
+        let outside = Err("r: position 20:0 is outside the document".to_string());
+        let item = |uri: &str| json!({"name": "f", "kind": 12, "uri": uri, "range": span(0), "selectionRange": span(0)});
+        let incoming = |uri: &str| json!({"from": item(uri), "fromRanges": [span(20)]});
+        assert_eq!(walk(&docs.input, incoming(session::LIBRARY_URL)), Ok(()));
+        assert_eq!(walk(&docs.input, incoming(session::URL)), outside);
+        let outgoing = json!({"to": item(session::URL), "fromRanges": [span(20)]});
+        assert_eq!(walk(&docs.library, outgoing.clone()), Ok(()));
+        assert_eq!(walk(&docs.input, outgoing), outside);
+    }
 }
