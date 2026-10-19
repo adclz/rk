@@ -55,6 +55,31 @@ impl<'db> Type<'db> {
         }
     }
 
+    /// Deeper than the types of any program nest, and the depth at which a
+    /// walk that follows a type's parts stops: only a type that contains
+    /// itself (E1301 where it is declared) goes that deep, and two such
+    /// types are nothing to each other.
+    pub const NESTING_LIMIT: u32 = 64;
+
+    /// The type under every array dimension of `self`, normalized: an
+    /// array's element, and that one's when it is an array too, down to
+    /// what is no array. An array that contains itself, `TYPE A : ARRAY[0..1]
+    /// OF A`, which is E1301 where it is declared, has no such type and
+    /// answers [`Type::Never`]: followed element by element it never ended,
+    /// and `rk check` hung on a variable of it.
+    pub fn element_under_arrays(self, db: &'db dyn WorkspaceDataBase) -> Type<'db> {
+        let mut seen: Vec<Type<'db>> = Vec::new();
+        let mut ty = self.normalize(db);
+        while let Type::Array(array) = ty {
+            if seen.contains(&ty) {
+                return Type::Never;
+            }
+            seen.push(ty);
+            ty = array.of_type(db).infer(db).normalize(db);
+        }
+        ty
+    }
+
     /// Through every name to the identity behind it: a variable's declared
     /// type, an alias's target, a callable's return type. The chain is
     /// walked twice over, the second walker two names at a time: they meet

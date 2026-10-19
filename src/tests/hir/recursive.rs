@@ -92,6 +92,99 @@ fn function_blocks_referring_to_each_other_through_in_outs(mut with_db: RootData
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
 }
 
+/// An array that contains itself is reported where it is declared, and a
+/// variable of it is checked like any other: followed element by element
+/// the type never ended, and `rk check` hung on the variable (a fuzzer
+/// finding).
+#[rstest]
+fn a_variable_of_a_self_containing_array_is_checked(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE RowT : ARRAY[0..2] OF RowT; END_TYPE
+
+FUNCTION run : DINT
+VAR
+    full : ARRAY[0..1] OF RowT;
+END_VAR
+    run := 1;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1301] Error: type contains itself
+       ,-[ file:///test0.st:2:6 ]
+       |
+     2 | TYPE RowT : ARRAY[0..2] OF RowT; END_TYPE
+       |      ^^|^                  ^^|^
+       |        `------------------------- type 'RowT' contains itself
+       |                              |
+       |                              `--- 'RowT' references itself here
+    ---'
+    ");
+}
+
+/// Two arrays that contain themselves are nothing to each other: a copy
+/// from one to the other, or a reference to one pointed at the other, is
+/// refused as any mismatch is, where comparing them element by element
+/// overflowed the stack (a fuzzer finding).
+#[rstest]
+fn two_self_containing_arrays_are_compared_without_looping(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE A : ARRAY[0..1] OF A; B : ARRAY[0..1] OF B; END_TYPE
+
+FUNCTION f : DINT
+VAR
+    a : ARRAY[0..1] OF A;
+    b : ARRAY[0..1] OF B;
+    r : REF_TO A;
+END_VAR
+    a := b;
+    r := REF(b);
+    f := 1;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1301] Error: type contains itself
+       ,-[ file:///test0.st:2:6 ]
+       |
+     2 | TYPE A : ARRAY[0..1] OF A; B : ARRAY[0..1] OF B; END_TYPE
+       |      |                  |
+       |      `--------------------- type 'A' contains itself
+       |                         |
+       |                         `-- 'A' references itself here
+    ---'
+    [E1301] Error: type contains itself
+       ,-[ file:///test0.st:2:28 ]
+       |
+     2 | TYPE A : ARRAY[0..1] OF A; B : ARRAY[0..1] OF B; END_TYPE
+       |                            |                  |
+       |                            `--------------------- type 'B' contains itself
+       |                                               |
+       |                                               `-- 'B' references itself here
+    ---'
+    [E0301] Error: type mismatch
+        ,-[ file:///test0.st:10:10 ]
+        |
+      6 |     a : ARRAY[0..1] OF A;
+        |     |
+        |     `-- 'a' is declared here
+        |
+     10 |     a := b;
+        |          |
+        |          `-- expected 'ARRAY [0..1] OF A', got 'ARRAY [0..1] OF B'
+    ----'
+    [E0301] Error: type mismatch
+        ,-[ file:///test0.st:11:10 ]
+        |
+      8 |     r : REF_TO A;
+        |     |
+        |     `-- 'r' is declared here
+        |
+     11 |     r := REF(b);
+        |          ^^^|^^
+        |             `---- expected 'REF_TO A', got 'REF_TO ARRAY [0..1] OF B'
+    ----'
+    ");
+}
+
 #[rstest]
 fn self_referential_struct(mut with_db: RootDatabase) {
     let source = r#"

@@ -100,7 +100,10 @@ jobs:
       # execution is bounded by fuel, so a timeout is the compiler hanging.
       # The limit is generous: ASan, coverage and debug assertions make the
       # build many times slower, and a 22 KB stdlib file that takes 0.9 s
-      # natively went past 10 s here, as a timeout that was no hang.
+      # natively went past 10 s here, as a timeout that was no hang. The
+      # incremental target gets twice the limit: it checks a file, edits it
+      # and checks it again, and the stdlib's 27 KB Strings.st, 5 s
+      # natively, went past 60 s there as a timeout that was no hang.
       #
       # The binary runs directly, not through `cargo fuzz run`: in fork mode
       # libFuzzer exits with its last job's status, 77 for a crash and 70
@@ -111,12 +114,14 @@ jobs:
           artifacts="crates/fuzz/artifacts/${{ matrix.target }}"
           mkdir -p "$artifacts"
           log="$RUNNER_TEMP/fuzz.log"
+          limit=60
+          [ "${{ matrix.target }}" = fuzz_incremental ] && limit=120
           set +e
           ./target/x86_64-unknown-linux-gnu/release/${{ matrix.target }} "$CORPUS" \
             -artifact_prefix="$artifacts/" \
             -max_total_time="$BUDGET" -fork=3 \
             -ignore_crashes=1 -ignore_timeouts=1 -ignore_ooms=1 \
-            -timeout=60 -report_slow_units=60 -rss_limit_mb=4096 -detect_leaks=0 \
+            -timeout="$limit" -report_slow_units="$limit" -rss_limit_mb=4096 -detect_leaks=0 \
             -dict=crates/fuzz/st.dict 2>&1 | tee "$log"
           status=${PIPESTATUS[0]}
           set -e
@@ -135,6 +140,7 @@ jobs:
             echo "::error::libFuzzer made no report: no input was run"
             exit 1
           fi
+          echo "REPLAY=$replay" >> "$GITHUB_ENV"
           echo "${{ matrix.target }}: $runs inputs run, the first new one after $replay s on the kept corpus" \
             | tee -a "$GITHUB_STEP_SUMMARY"
           if [ "$replay" -ge "$BUDGET" ]; then
@@ -143,6 +149,32 @@ jobs:
           elif [ "$replay" -ge $((BUDGET / 2)) ]; then
             echo "::warning::replaying the kept corpus took $replay s of the night's $BUDGET"
           fi
+      # The kept corpus grows every night, and its replay comes out of the
+      # budget: fuzz_ide's 6,250 inputs took 1313 s one night, 1862 s of the
+      # 1800 five nights later, when nothing was fuzzed. Once the replay
+      # takes half the night, `-merge=1` keeps the inputs that add coverage,
+      # with the same binary and about the cost of one more replay, and the
+      # smaller corpus is what the next night restores.
+      - name: Minimize the corpus
+        if: always() && env.REPLAY != ''
+        run: |
+          if [ "$REPLAY" -lt $((BUDGET / 2)) ]; then
+            echo "the replay took $REPLAY s: the corpus stays as it is"
+            exit 0
+          fi
+          before=$(ls "$CORPUS" | wc -l)
+          mkdir -p "$CORPUS.min"
+          ./target/x86_64-unknown-linux-gnu/release/${{ matrix.target }} -merge=1 "$CORPUS.min" "$CORPUS" \
+            -timeout=120 -rss_limit_mb=4096 -detect_leaks=0 > "$RUNNER_TEMP/merge.log" 2>&1 || true
+          if [ -z "$(ls -A "$CORPUS.min")" ]; then
+            echo "::warning::the merge kept nothing; the corpus is left as it was"
+            tail -n 20 "$RUNNER_TEMP/merge.log"
+            exit 0
+          fi
+          rm -rf "$CORPUS"
+          mv "$CORPUS.min" "$CORPUS"
+          echo "${{ matrix.target }}: corpus minimized from $before to $(ls "$CORPUS" | wc -l) inputs" \
+            | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Save the corpus
         if: always()
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0

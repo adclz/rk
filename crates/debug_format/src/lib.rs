@@ -295,13 +295,22 @@ impl SymBits {
 
     /// The part, taken out of `whole`'s bytes: a value's own bytes,
     /// zero-extended, which [`decode`](crate::decode) reads as any other.
+    /// A shift past the value, which a module may say, is a part of
+    /// nothing: zero.
     pub fn extract(self, whole: &[u8]) -> [u8; 8] {
+        if self.shift >= 64 {
+            return [0; 8];
+        }
         ((widen(whole) >> self.shift) & self.mask()).to_le_bytes()
     }
 
     /// `whole` with the part's bits replaced by the low bits of `part`, a
-    /// value's own bytes; the rest of `whole` is kept.
+    /// value's own bytes; the rest of `whole` is kept, all of it for a
+    /// shift past the value.
     pub fn replace(self, whole: &[u8], part: &[u8]) -> Vec<u8> {
+        if self.shift >= 64 {
+            return whole[..whole.len().min(8)].to_vec();
+        }
         let mask = self.mask() << self.shift;
         let value = (widen(whole) & !mask) | ((widen(part) << self.shift) & mask);
         value.to_le_bytes()[..whole.len().min(8)].to_vec()
@@ -1095,6 +1104,23 @@ mod tests {
         );
         let forced = bits.replace(&cell, &encode(SymType::SInt, VarValue::I8(5)).unwrap());
         assert_eq!(forced, 0x0000_0501u32.to_le_bytes(), "the low byte kept");
+
+        // A module may say any shift: past the value the part is nothing,
+        // read as zero and written as no change, where a shift by 64 or
+        // more overflowed.
+        for past in [
+            SymBits {
+                shift: 64,
+                width: 8,
+            },
+            SymBits {
+                shift: u16::MAX,
+                width: 1,
+            },
+        ] {
+            assert_eq!(past.extract(&cell), [0; 8]);
+            assert_eq!(past.replace(&cell, &[5]), cell.to_vec());
+        }
     }
 
     /// The v5 additions round-trip.
