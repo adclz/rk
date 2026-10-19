@@ -77,12 +77,9 @@ impl<'db> InitInference<'db> {
         if var.is_external(db) || var.is_in_out(db) {
             return false;
         }
-        let mut ty = var.spec(db).infer(db).normalize(db);
-        let mut in_array = false;
-        while let Type::Array(array) = ty {
-            in_array = true;
-            ty = array.of_type(db).infer(db).normalize(db);
-        }
+        let declared = var.spec(db).infer(db).normalize(db);
+        let in_array = matches!(declared, Type::Array(_));
+        let ty = declared.element_under_arrays(db);
         let (names, member, in_struct) = match crate::hir_ty::head::instances::pou_of_type(db, ty) {
             Some(pou) => {
                 let paths = crate::hir_ty::head::instances::partly_located_members(db, pou);
@@ -1194,6 +1191,20 @@ pub(crate) fn same_storage_type<'db>(
     a: Type<'db>,
     b: Type<'db>,
 ) -> bool {
+    same_storage_type_within(db, a, b, 0)
+}
+
+/// [`same_storage_type`], `depth` elements in: past [`Type::NESTING_LIMIT`]
+/// the types contain themselves, and are not the same.
+fn same_storage_type_within<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    a: Type<'db>,
+    b: Type<'db>,
+    depth: u32,
+) -> bool {
+    if depth > Type::NESTING_LIMIT {
+        return false;
+    }
     let bounds = |t: Type<'db>| {
         t.as_subrange(db)
             .map(|s| crate::hir_ty::infer::const_eval::subrange_bounds(db, s))
@@ -1205,10 +1216,11 @@ pub(crate) fn same_storage_type<'db>(
         (Type::Array(x), Type::Array(y)) => {
             crate::hir_ty::infer::const_eval::array_dimensions(db, x)
                 == crate::hir_ty::infer::const_eval::array_dimensions(db, y)
-                && same_storage_type(
+                && same_storage_type_within(
                     db,
                     Type::resolve_spec(db, x.of_type(db)),
                     Type::resolve_spec(db, y.of_type(db)),
+                    depth + 1,
                 )
                 && string_capacity(db, x.of_type(db)) == string_capacity(db, y.of_type(db))
         }

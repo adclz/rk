@@ -160,12 +160,7 @@ pub fn partly_located_in_struct<'db>(
     visited: &mut Vec<crate::hir_def::expressions::spec::Struct<'db>>,
 ) -> Option<(Vec<Ident>, VariableDecl<'db>)> {
     use crate::hir_ty::ty::Type;
-    let element_of = |mut ty: Type<'db>| {
-        while let Type::Array(array) = ty {
-            ty = array.of_type(db).infer(db).normalize(db);
-        }
-        ty
-    };
+    let element_of = |ty: Type<'db>| ty.element_under_arrays(db);
     let Type::Struct(strukt) = element_of(ty) else {
         return None;
     };

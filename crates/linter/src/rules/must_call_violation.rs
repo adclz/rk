@@ -169,9 +169,8 @@ fn must_call_block<'db>(
     db: &'db dyn WorkspaceDataBase,
     ty: Type<'db>,
 ) -> Option<FunctionBlock<'db>> {
-    match ty.normalize(db) {
+    match ty.element_under_arrays(db) {
         Type::FunctionBlock(fb) => fb.must_call_pragma(db).is_some().then_some(fb),
-        Type::Array(array) => must_call_block(db, array.of_type(db).infer(db)),
         _ => None,
     }
 }

@@ -83,11 +83,7 @@ pub fn check<'db>(
 /// `FUNCTION_BLOCK` or `CLASS` when `ty` is an instance of one, or an array
 /// of them.
 fn instance_kind<'db>(db: &'db dyn WorkspaceDataBase, ty: Type<'db>) -> Option<&'static str> {
-    let mut ty = ty.normalize(db);
-    while let Type::Array(array) = ty {
-        ty = array.of_type(db).infer(db).normalize(db);
-    }
-    match ty {
+    match ty.element_under_arrays(db) {
         Type::FunctionBlock(_) => Some("FUNCTION_BLOCK"),
         Type::Class(_) => Some("CLASS"),
         _ => None,

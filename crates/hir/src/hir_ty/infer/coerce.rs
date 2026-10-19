@@ -547,11 +547,29 @@ impl<'db> CoerceError<'db> {
 /// target or element keeps its capacity here: it is the size of what a
 /// reference points at, and of each element.
 pub(crate) fn same_type<'db>(db: &'db dyn WorkspaceDataBase, a: Type<'db>, b: Type<'db>) -> bool {
+    same_type_within(db, a, b, 0)
+}
+
+/// [`same_type`], `depth` parts in: past [`Type::NESTING_LIMIT`] the types
+/// contain themselves, and are not the same.
+fn same_type_within<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    a: Type<'db>,
+    b: Type<'db>,
+    depth: u32,
+) -> bool {
+    if depth > Type::NESTING_LIMIT {
+        return false;
+    }
     match (a, b) {
         (Type::Elementary(x), Type::Elementary(y)) => x == y,
         (Type::RefTo(x), Type::RefTo(y)) => {
-            same_type(db, x.infer(db).normalize(db), y.infer(db).normalize(db))
-                && string_capacity(db, x) == string_capacity(db, y)
+            same_type_within(
+                db,
+                x.infer(db).normalize(db),
+                y.infer(db).normalize(db),
+                depth + 1,
+            ) && string_capacity(db, x) == string_capacity(db, y)
         }
         (Type::Array(x), Type::Array(y)) => {
             if x.eq(&y) {
@@ -564,19 +582,23 @@ pub(crate) fn same_type<'db>(db: &'db dyn WorkspaceDataBase, a: Type<'db>, b: Ty
                     .iter()
                     .zip(dy.iter())
                     .all(|(r1, r2)| r1.0.is_some() && r1.0 == r2.0 && r1.1 == r2.1)
-                && same_type(
+                && same_type_within(
                     db,
                     x.of_type(db).infer(db).normalize(db),
                     y.of_type(db).infer(db).normalize(db),
+                    depth + 1,
                 )
                 && string_capacity(db, x.of_type(db)) == string_capacity(db, y.of_type(db))
         }
         (Type::ArrayConformand(x), Type::ArrayConformand(y)) => {
             x.rank(db) == y.rank(db)
                 && match (x.of_type(db), y.of_type(db)) {
-                    (Some(x), Some(y)) => {
-                        same_type(db, x.infer(db).normalize(db), y.infer(db).normalize(db))
-                    }
+                    (Some(x), Some(y)) => same_type_within(
+                        db,
+                        x.infer(db).normalize(db),
+                        y.infer(db).normalize(db),
+                        depth + 1,
+                    ),
                     (None, None) => true,
                     _ => false,
                 }

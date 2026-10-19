@@ -7,7 +7,7 @@ use crate::{
     CallSite, Visibility,
     check::errors::{ToIdeDiagnostic, e10_visibility::VisibilityError},
     hir_def::{pous::pou::Pou, scope::ScopeKind, semantic_index::get_scope},
-    hir_ty::{head::init_inference::InitInference, infer::Infer, ty::Type},
+    hir_ty::{head::init_inference::InitInference, infer::Infer},
 };
 
 impl<'db> InitInference<'db> {
@@ -50,10 +50,7 @@ impl<'db> InitInference<'db> {
             return;
         };
         let returned = ret.infer(db);
-        let mut element = returned.normalize(db);
-        while let Type::Array(array) = element {
-            element = array.of_type(db).infer(db).normalize(db);
-        }
+        let element = returned.element_under_arrays(db);
         let held = match crate::hir_ty::head::instances::pou_of_type(db, element) {
             Some(pou) => crate::hir_ty::head::instances::partly_located_members(db, pou)
                 .first()
