@@ -894,6 +894,7 @@ NAMESPACE Std.Math
 				n := n + 1;
 			END_FOR;
 			ASSERT(n = USINT#5, 'body ran 5 times');
+			{allow 'loop-var-after-loop'}
 			ASSERT(i = USINT#255, 'counter exits in-domain at 255');
 		END_FUNCTION
 

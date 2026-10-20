@@ -119,6 +119,7 @@ L0001 and L0002 share the rule name `warn-pragma`; disabling it silences both.
 | L0127 | `string-truncation` | warning | a STRING variable assigned, passed to an input or bound from an output into a STRING declared shorter, which cuts the text; not a literal (E0314), nor a call's result |
 | L0128 | `constant-overflow` | warning | an operation on constants whose result the type it runs at cannot hold, which the program computes wrapped: `200 * 200` multiplies two INTs, so `N : DINT := 200 * 200` holds -25536; in a body, an initializer, a STRING length or an array, subrange or enum bound |
 | L0129 | `double-writer` | warning | an output location (`%Q`) written by more than one program instance, directly or through what it calls: a program with a located output instantiated twice, two programs writing one `%Q` global; at each scan the last to run sets the output |
+| L0130 | `loop-var-after-loop` | warning | a FOR control variable read after its loop, on some path, before anything writes it again, the first read of each path; IEC 61131-3 leaves its value there to the implementation, and rk's depends on how the loop ended |
 | L0131 | `time-equality` | warning | a TIME, TOD or DT compared with `=` or `<>` against a constant, which a time stepping by whole scans can pass without equalling; not two variables, nor a zero duration, nor a DATE |
 | L0132 | `address-in-body` | warning | an address named in a body, `%QX0.0 := %IX0.1`, instead of a variable declared `AT` it; not the configuration's connections of a program instance |
 

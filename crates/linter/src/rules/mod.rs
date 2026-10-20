@@ -54,6 +54,7 @@ pub mod input_assignment;
 pub mod instance_in_function;
 pub mod invalid_pragma;
 pub mod latin1_escape;
+pub mod loop_var_after_loop;
 pub mod loop_var_modified;
 pub mod method_shadows_member;
 pub mod missing_input_param;
@@ -164,6 +165,7 @@ pub const ALL_RULE_NAMES: &[&str] = &[
     instance_in_function::NAME,
     invalid_pragma::NAME,
     latin1_escape::NAME,
+    loop_var_after_loop::NAME,
     loop_var_modified::NAME,
     method_shadows_member::NAME,
     missing_input_param::NAME,
@@ -559,6 +561,11 @@ fn lint_scope<'db>(
             address_in_body::check(db, statements, d)
         });
     }
+    if is_enabled(config, loop_var_after_loop::NAME) {
+        run_lint(loop_var_after_loop::NAME, diagnostics, |d| {
+            loop_var_after_loop::check(db, body, statements, d)
+        });
+    }
 
     if is_enabled(config, warn_pragma::NAME) {
         run_lint(warn_pragma::NAME, diagnostics, |d| {
@@ -633,6 +640,6 @@ mod select_tests {
             .iter()
             .filter(|name| is_recommended(name))
             .count();
-        assert_eq!(recommended, 52);
+        assert_eq!(recommended, 53);
     }
 }
