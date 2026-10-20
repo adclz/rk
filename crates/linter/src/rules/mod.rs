@@ -25,6 +25,7 @@ pub mod allow;
 pub mod bool_comparison;
 pub mod case_without_else;
 pub mod collapsible_if;
+pub mod commented_out_code;
 pub mod constant_condition;
 pub mod constant_loop_bounds;
 pub mod constant_overflow;
@@ -113,6 +114,7 @@ pub const STYLE_RULE_NAMES: &[&str] = &[
     name_case::NAME,
     task_runs_block::NAME,
     var_could_be_temp::NAME,
+    commented_out_code::NAME,
 ];
 
 /// Whether `Select::Recommended` runs `name`: every rule but the style ones,
@@ -143,6 +145,7 @@ pub const ALL_RULE_NAMES: &[&str] = &[
     bool_comparison::NAME,
     case_without_else::NAME,
     collapsible_if::NAME,
+    commented_out_code::NAME,
     constant_condition::NAME,
     constant_loop_bounds::NAME,
     constant_overflow::NAME,
@@ -249,6 +252,12 @@ pub fn lint_file(
     if is_enabled(config, var_could_be_temp::NAME) {
         run_lint(var_could_be_temp::NAME, diagnostics, |d| {
             var_could_be_temp::check(db, file, d)
+        });
+    }
+
+    if is_enabled(config, commented_out_code::NAME) {
+        run_lint(commented_out_code::NAME, diagnostics, |d| {
+            commented_out_code::check(db, file, d)
         });
     }
 

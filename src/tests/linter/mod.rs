@@ -7,6 +7,7 @@ mod allow;
 mod bool_comparison;
 mod case_without_else;
 mod collapsible_if;
+mod commented_out_code;
 mod constant_condition;
 mod constant_loop_bounds;
 mod constant_overflow;
