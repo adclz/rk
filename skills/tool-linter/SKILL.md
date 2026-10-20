@@ -183,3 +183,4 @@ L0203 collapses every unassigned output of one body into a single diagnostic lis
 | L0313 | `positional-output` | hint | a positional argument in the place of a VAR_OUTPUT, which receives the output |
 | L0314 | `mixed-boolean-operators` | hint | AND, XOR and OR mixed in one expression without parentheses, `a AND b OR c`; reported on each bare operand |
 | L0315 | `name-case` | hint | a name written in another case than its declaration, `motorspeed` for `MotorSpeed`: a variable, a member, a field, a POU, a type, a parameter or an enum variant |
+| L0316 | `task-runs-block` | hint | a task associated with a FUNCTION_BLOCK instance in the configuration, `fb1 WITH Fast`, which is not recommended |

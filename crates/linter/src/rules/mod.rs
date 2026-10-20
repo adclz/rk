@@ -78,6 +78,7 @@ pub mod single_element_array;
 pub mod stmt_visitor;
 pub mod string_truncation;
 pub mod sub_self;
+pub mod task_runs_block;
 pub mod time_equality;
 pub mod uninitialized_output;
 pub mod unnecessary_else;
@@ -109,6 +110,7 @@ pub const STYLE_RULE_NAMES: &[&str] = &[
     positional_output::NAME,
     mixed_boolean_operators::NAME,
     name_case::NAME,
+    task_runs_block::NAME,
 ];
 
 /// Whether `Select::Recommended` runs `name`: every rule but the style ones,
@@ -191,6 +193,7 @@ pub const ALL_RULE_NAMES: &[&str] = &[
     single_element_array::NAME,
     string_truncation::NAME,
     sub_self::NAME,
+    task_runs_block::NAME,
     time_equality::NAME,
     uninitialized_output::NAME,
     unnecessary_else::NAME,
@@ -231,6 +234,12 @@ pub fn lint_file(
     if is_enabled(config, unused_variable::NAME) {
         run_lint(unused_variable::NAME, diagnostics, |d| {
             unused_variable::check_globals(db, file, d)
+        });
+    }
+
+    if is_enabled(config, task_runs_block::NAME) {
+        run_lint(task_runs_block::NAME, diagnostics, |d| {
+            task_runs_block::check(db, file, d)
         });
     }
 
