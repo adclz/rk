@@ -415,7 +415,7 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                 // Only an ordering reaches here for a reference: `=` and
                 // `<>` are what it has.
                 if matches!(typ.normalize(db), Type::RefTo(_) | Type::Null) {
-                    diag.with_note("a reference is compared with '=' or '<>' only".to_string());
+                    diag.with_note("references can only be compared with '=' or '<>'".to_string());
                 }
                 diag
             }

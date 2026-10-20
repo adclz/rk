@@ -1297,7 +1297,7 @@ END_FUNCTION
        |                ^^^|^^^
        |                   `----- operator '<' cannot be applied to type 'REF_TO DINT'
        |
-       | Note: a reference is compared with '=' or '<>' only
+       | Note: references can only be compared with '=' or '<>'
     ---'
     [E0305] Error: operator not supported by the type
         ,-[ file:///test0.st:10:16 ]
@@ -1310,7 +1310,7 @@ END_FUNCTION
         |                ^^^^^|^^^^
         |                     `------ operator '>=' cannot be applied to type 'REF_TO DINT'
         |
-        | Note: a reference is compared with '=' or '<>' only
+        | Note: references can only be compared with '=' or '<>'
     ----'
     [E0305] Error: operator not supported by the type
         ,-[ file:///test0.st:11:16 ]
@@ -1323,7 +1323,7 @@ END_FUNCTION
         |                ^^^^|^^^^
         |                    `------ operator '>' cannot be applied to type 'REF_TO DINT'
         |
-        | Note: a reference is compared with '=' or '<>' only
+        | Note: references can only be compared with '=' or '<>'
     ----'
     ");
 }

@@ -214,7 +214,6 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                 let mut diagnostic = diag()
                     .range(crate::denormalize(db, file, span).unwrap_or_default())
                     .message(err.to_string())
-                    .source("IEC".into())
                     .desc(self)
                     .severity(auto_lsp::lsp_types::DiagnosticSeverity::ERROR)
                     .call();
