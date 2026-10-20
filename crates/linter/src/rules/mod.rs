@@ -82,6 +82,7 @@ pub mod uninitialized_output;
 pub mod unnecessary_else;
 pub mod unnecessary_parens;
 pub mod unused_import;
+pub mod unused_pou;
 pub mod unused_return_type;
 pub mod unused_variable;
 pub mod variable_method_name;
@@ -192,6 +193,7 @@ pub const ALL_RULE_NAMES: &[&str] = &[
     unnecessary_else::NAME,
     unnecessary_parens::NAME,
     unused_import::NAME,
+    unused_pou::NAME,
     unused_return_type::NAME,
     unused_variable::NAME,
     variable_method_name::NAME,
@@ -220,6 +222,12 @@ pub fn lint_file(
     if is_enabled(config, double_writer::NAME) {
         run_lint(double_writer::NAME, diagnostics, |d| {
             double_writer::check(db, file, d)
+        });
+    }
+
+    if is_enabled(config, unused_pou::NAME) {
+        run_lint(unused_pou::NAME, diagnostics, |d| {
+            unused_pou::check(db, file, d)
         });
     }
 
@@ -640,6 +648,6 @@ mod select_tests {
             .iter()
             .filter(|name| is_recommended(name))
             .count();
-        assert_eq!(recommended, 53);
+        assert_eq!(recommended, 54);
     }
 }

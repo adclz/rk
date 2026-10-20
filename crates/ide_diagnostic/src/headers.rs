@@ -292,6 +292,7 @@ pub const HEADERS: &[(&str, &str)] = &[
     ("L0213", "empty loop body"),
     ("L0214", "empty type declaration"),
     ("L0215", "effectless statement"),
+    ("L0216", "unused POU"),
     ("L0301", "duplicate variable section"),
     ("L0302", "duplicate namespace"),
     ("L0303", "duplicate configuration"),

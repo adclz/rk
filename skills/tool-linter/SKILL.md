@@ -149,6 +149,7 @@ L0118 accepts the code, which compiles; strict IEC 61131-3 wants the global impo
 | L0213 | `empty-loop-body` | info | a FOR, WHILE or REPEAT loop with no statements |
 | L0214 | `empty-type` | info | a STRUCT with no fields or an ENUM with no variants |
 | L0215 | `effectless-statement` | info | a bare expression used as a statement, such as `x;` |
+| L0216 | `unused-pou` | info | a FUNCTION, FUNCTION_BLOCK, CLASS or PROGRAM nothing the application reaches from what the configuration runs, the exports and the tests; nothing is reported in a workspace without a CONFIGURATION, nor in a library |
 
 `unused-variable` never reports VAR_OUTPUT, VAR_IN_OUT, VAR_GLOBAL, VAR_EXTERNAL, VAR_CONFIG or VAR_ACCESS, since those are read or written from outside the POU.
 It also skips the VAR_INPUT of a PROGRAM (written by the CONFIGURATION), the whole body of an `{extern}` FUNCTION, and any name starting with an underscore, which is the way to mark a declaration as deliberately unused.
