@@ -44,6 +44,7 @@ mod missing_return;
 mod mixed_boolean_operators;
 mod must_call_conditional;
 mod must_call_violation;
+mod name_case;
 mod namespace_nesting;
 mod negated_comparison;
 mod negated_condition;

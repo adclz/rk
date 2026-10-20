@@ -307,6 +307,7 @@ pub const HEADERS: &[(&str, &str)] = &[
     ("L0312", "literal on the left of a comparison"),
     ("L0313", "positional output"),
     ("L0314", "boolean operators mixed without parentheses"),
+    ("L0315", "name written in another case"),
 ];
 
 /// The header of `code`, or the empty string for a code with no entry.

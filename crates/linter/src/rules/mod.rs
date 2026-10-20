@@ -62,6 +62,7 @@ pub mod missing_return;
 pub mod mixed_boolean_operators;
 pub mod must_call_conditional;
 pub mod must_call_violation;
+pub mod name_case;
 pub mod negated_comparison;
 pub mod negated_condition;
 pub mod negative_radix_literal;
@@ -107,6 +108,7 @@ pub const STYLE_RULE_NAMES: &[&str] = &[
     yoda_condition::NAME,
     positional_output::NAME,
     mixed_boolean_operators::NAME,
+    name_case::NAME,
 ];
 
 /// Whether `Select::Recommended` runs `name`: every rule but the style ones,
@@ -174,6 +176,7 @@ pub const ALL_RULE_NAMES: &[&str] = &[
     mixed_boolean_operators::NAME,
     must_call_conditional::NAME,
     must_call_violation::NAME,
+    name_case::NAME,
     negated_comparison::NAME,
     negated_condition::NAME,
     negative_radix_literal::NAME,
@@ -439,6 +442,12 @@ fn lint_scope<'db>(
     if is_enabled(config, must_call_violation::NAME) {
         run_lint(must_call_violation::NAME, diagnostics, |d| {
             must_call_violation::check(db, scope, d)
+        });
+    }
+    if is_enabled(config, name_case::NAME) {
+        let body = has_body.then(|| scope.inference(db));
+        run_lint(name_case::NAME, diagnostics, |d| {
+            name_case::check(db, scope, body, d)
         });
     }
     if !has_body {
