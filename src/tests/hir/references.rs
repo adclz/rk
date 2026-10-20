@@ -1267,3 +1267,80 @@ END_FUNCTION_BLOCK
     ----'
     ");
 }
+
+/// A reference is ordered by no operator: `<`, `<=`, `>` and `>=` on two
+/// references, or on one and NULL, are E0305, which names the reference.
+#[rstest]
+fn a_reference_is_not_ordered(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION Ordered : BOOL
+VAR
+    a, b : DINT;
+    r1, r2 : REF_TO DINT;
+END_VAR
+    r1 := REF(a);
+    r2 := REF(b);
+    Ordered := r1 < r2;
+    Ordered := r1 >= NULL;
+    Ordered := NULL > r2;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0305] Error: operator not supported by the type
+       ,-[ file:///test0.st:9:16 ]
+       |
+     5 |     r1, r2 : REF_TO DINT;
+       |     ^|
+       |      `-- 'r1' is declared here
+       |
+     9 |     Ordered := r1 < r2;
+       |                ^^^|^^^
+       |                   `----- operator '<' cannot be applied to type 'REF_TO DINT'
+       |
+       | Note: a reference is compared with '=' or '<>' only
+    ---'
+    [E0305] Error: operator not supported by the type
+        ,-[ file:///test0.st:10:16 ]
+        |
+      5 |     r1, r2 : REF_TO DINT;
+        |     ^|
+        |      `-- 'r1' is declared here
+        |
+     10 |     Ordered := r1 >= NULL;
+        |                ^^^^^|^^^^
+        |                     `------ operator '>=' cannot be applied to type 'REF_TO DINT'
+        |
+        | Note: a reference is compared with '=' or '<>' only
+    ----'
+    [E0305] Error: operator not supported by the type
+        ,-[ file:///test0.st:11:16 ]
+        |
+      5 |     r1, r2 : REF_TO DINT;
+        |         ^|
+        |          `-- 'r2' is declared here
+        |
+     11 |     Ordered := NULL > r2;
+        |                ^^^^|^^^^
+        |                    `------ operator '>' cannot be applied to type 'REF_TO DINT'
+        |
+        | Note: a reference is compared with '=' or '<>' only
+    ----'
+    ");
+}
+
+/// `=` and `<>` are what a reference has, against another or NULL.
+#[rstest]
+fn a_reference_is_compared_for_equality(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION Same : BOOL
+VAR
+    a : DINT;
+    r1, r2 : REF_TO DINT;
+END_VAR
+    r1 := REF(a);
+    r2 := r1;
+    Same := r1 = r2 AND r1 <> NULL AND NULL <> r2;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}

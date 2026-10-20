@@ -9,8 +9,8 @@ use crate::{
     check::errors::{ToIdeDiagnostic, e03_type::TypeError, e06_enum::EnumError},
     hir_def::{
         expressions::expression::{
-            Expr, ExprKind, FoldOperatorKind, MultOperatorKind, PrimaryExpr, RefValue,
-            UnaryOperatorKind, VariableAccess,
+            ComparisonOperatorKind, Expr, ExprKind, FoldOperatorKind, MultOperatorKind,
+            PrimaryExpr, RefValue, UnaryOperatorKind, VariableAccess,
         },
         pous::variable::VariableDecl,
     },
@@ -634,11 +634,38 @@ impl<'db> InferExprCtx<'db> {
                                 | Type::RefTo(_)
                                 | Type::Null
                         );
-                    if !comparable {
+                    // A reference compares for equality only: where two
+                    // variables sit in memory is no order to rely on. The
+                    // type named is the reference's, `NULL < r` included.
+                    // A side already reported (`Never`) is not again.
+                    let reference = || {
+                        let sides = [
+                            declared,
+                            inference_results.type_of_expr_with_adjustments(db, *right),
+                        ];
+                        if sides.iter().any(|ty| ty.normalize(db).is_never()) {
+                            return None;
+                        }
+                        let named = |wanted: fn(&Type<'db>) -> bool| {
+                            sides.into_iter().find(|ty| wanted(&ty.normalize(db)))
+                        };
+                        named(|ty| matches!(ty, Type::RefTo(_)))
+                            .or_else(|| named(|ty| matches!(ty, Type::Null)))
+                    };
+                    let ordered = !matches!(
+                        operator,
+                        ComparisonOperatorKind::Eq | ComparisonOperatorKind::Ne
+                    );
+                    let unsupported = match comparable {
+                        false => Some(declared),
+                        true if ordered => reference(),
+                        true => None,
+                    };
+                    if let Some(typ) = unsupported {
                         inference_results.errors.push(
                             TypeError::UnsupportedOperator {
                                 call_site: expr.as_call_site(db),
-                                typ: declared,
+                                typ,
                                 operator: operator.as_str(),
                             }
                             .to_diagnostic(db, inference_results.scope.file(db)),

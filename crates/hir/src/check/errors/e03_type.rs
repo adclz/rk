@@ -412,6 +412,11 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                     .call();
 
                 typ.with_location(db, &mut diag);
+                // Only an ordering reaches here for a reference: `=` and
+                // `<>` are what it has.
+                if matches!(typ.normalize(db), Type::RefTo(_) | Type::Null) {
+                    diag.with_note("a reference is compared with '=' or '<>' only".to_string());
+                }
                 diag
             }
             Self::InferLiteralError {
