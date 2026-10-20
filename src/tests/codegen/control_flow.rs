@@ -1054,6 +1054,27 @@ fn for_subrange_counter_inside_its_subrange_ends_past_the_bound(mut with_db: db:
     assert_eq!(r, 6, "the first value past 5");
 }
 
+/// A loop left by EXIT leaves its counter at the value it was at, and one
+/// that runs no pass leaves the start value.
+#[rstest]
+fn for_counter_after_an_exit_and_after_no_pass(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION test : DINT
+        VAR i, j : INT; END_VAR
+            FOR i := 1 TO 10 DO
+                IF i = 4 THEN
+                    EXIT;
+                END_IF;
+            END_FOR;
+            FOR j := 5 TO 1 DO
+            END_FOR;
+            test := i * 100 + j;
+        END_FUNCTION
+    "#;
+    let r: i32 = super::run(&mut with_db, source, "test", ());
+    assert_eq!(r, 405, "4 at the EXIT, 5 with no pass");
+}
+
 /// The full range of an unsigned type: 0 TO 255 over USINT runs 256 times.
 #[rstest]
 fn for_full_unsigned_range_terminates(mut with_db: db::RootDatabase) {
