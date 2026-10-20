@@ -87,6 +87,7 @@ pub mod unused_import;
 pub mod unused_pou;
 pub mod unused_return_type;
 pub mod unused_variable;
+pub mod var_could_be_temp;
 pub mod variable_method_name;
 pub mod warn_pragma;
 pub mod yoda_condition;
@@ -111,6 +112,7 @@ pub const STYLE_RULE_NAMES: &[&str] = &[
     mixed_boolean_operators::NAME,
     name_case::NAME,
     task_runs_block::NAME,
+    var_could_be_temp::NAME,
 ];
 
 /// Whether `Select::Recommended` runs `name`: every rule but the style ones,
@@ -202,6 +204,7 @@ pub const ALL_RULE_NAMES: &[&str] = &[
     unused_pou::NAME,
     unused_return_type::NAME,
     unused_variable::NAME,
+    var_could_be_temp::NAME,
     variable_method_name::NAME,
     warn_pragma::NAME,
     yoda_condition::NAME,
@@ -240,6 +243,12 @@ pub fn lint_file(
     if is_enabled(config, task_runs_block::NAME) {
         run_lint(task_runs_block::NAME, diagnostics, |d| {
             task_runs_block::check(db, file, d)
+        });
+    }
+
+    if is_enabled(config, var_could_be_temp::NAME) {
+        run_lint(var_could_be_temp::NAME, diagnostics, |d| {
+            var_could_be_temp::check(db, file, d)
         });
     }
 

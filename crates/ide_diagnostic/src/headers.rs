@@ -309,6 +309,7 @@ pub const HEADERS: &[(&str, &str)] = &[
     ("L0314", "boolean operators mixed without parentheses"),
     ("L0315", "name written in another case"),
     ("L0316", "task running a FUNCTION_BLOCK instance"),
+    ("L0317", "VAR that could be a VAR_TEMP"),
 ];
 
 /// The header of `code`, or the empty string for a code with no entry.

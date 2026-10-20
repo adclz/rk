@@ -184,3 +184,4 @@ L0203 collapses every unassigned output of one body into a single diagnostic lis
 | L0314 | `mixed-boolean-operators` | hint | AND, XOR and OR mixed in one expression without parentheses, `a AND b OR c`; reported on each bare operand |
 | L0315 | `name-case` | hint | a name written in another case than its declaration, `motorspeed` for `MotorSpeed`: a variable, a member, a field, a POU, a type, a parameter or an enum variant |
 | L0316 | `task-runs-block` | hint | a task associated with a FUNCTION_BLOCK instance in the configuration, `fb1 WITH Fast`, which is not recommended |
+| L0317 | `var-could-be-temp` | hint | a VAR of a FUNCTION_BLOCK or PROGRAM written whole before every read on every path through the body; not one used by a method, named from outside, given to `REF()`, RETAIN, CONSTANT or located |

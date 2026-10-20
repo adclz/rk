@@ -69,6 +69,7 @@ mod unused_import;
 mod unused_pou;
 mod unused_return_type;
 mod unused_variable;
+mod var_could_be_temp;
 mod variable_method_name;
 mod warn_pragma;
 mod yoda_condition;
