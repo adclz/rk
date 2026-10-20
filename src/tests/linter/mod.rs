@@ -56,6 +56,7 @@ mod shadowing_variable;
 mod single_element_array;
 mod string_truncation;
 mod sub_self;
+mod time_equality;
 mod uninitialized_output;
 mod unnecessary_else;
 mod unnecessary_parens;

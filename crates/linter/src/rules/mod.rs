@@ -73,6 +73,7 @@ pub mod single_element_array;
 pub mod stmt_visitor;
 pub mod string_truncation;
 pub mod sub_self;
+pub mod time_equality;
 pub mod uninitialized_output;
 pub mod unnecessary_else;
 pub mod unnecessary_parens;
@@ -178,6 +179,7 @@ pub const ALL_RULE_NAMES: &[&str] = &[
     single_element_array::NAME,
     string_truncation::NAME,
     sub_self::NAME,
+    time_equality::NAME,
     uninitialized_output::NAME,
     unnecessary_else::NAME,
     unnecessary_parens::NAME,
@@ -618,6 +620,6 @@ mod select_tests {
             .iter()
             .filter(|name| is_recommended(name))
             .count();
-        assert_eq!(recommended, 50);
+        assert_eq!(recommended, 51);
     }
 }
