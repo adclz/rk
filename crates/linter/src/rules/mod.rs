@@ -56,6 +56,7 @@ pub mod loop_var_modified;
 pub mod method_shadows_member;
 pub mod missing_input_param;
 pub mod missing_return;
+pub mod mixed_boolean_operators;
 pub mod must_call_conditional;
 pub mod must_call_violation;
 pub mod negated_comparison;
@@ -101,6 +102,7 @@ pub const STYLE_RULE_NAMES: &[&str] = &[
     collapsible_if::NAME,
     yoda_condition::NAME,
     positional_output::NAME,
+    mixed_boolean_operators::NAME,
 ];
 
 /// Whether `Select::Recommended` runs `name`: every rule but the style ones,
@@ -163,6 +165,7 @@ pub const ALL_RULE_NAMES: &[&str] = &[
     method_shadows_member::NAME,
     missing_input_param::NAME,
     missing_return::NAME,
+    mixed_boolean_operators::NAME,
     must_call_conditional::NAME,
     must_call_violation::NAME,
     negated_comparison::NAME,
