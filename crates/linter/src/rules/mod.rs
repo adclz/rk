@@ -225,6 +225,12 @@ pub fn lint_file(
         });
     }
 
+    if is_enabled(config, unused_variable::NAME) {
+        run_lint(unused_variable::NAME, diagnostics, |d| {
+            unused_variable::check_globals(db, file, d)
+        });
+    }
+
     if is_enabled(config, unused_pou::NAME) {
         run_lint(unused_pou::NAME, diagnostics, |d| {
             unused_pou::check(db, file, d)

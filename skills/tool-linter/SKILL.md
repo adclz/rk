@@ -134,7 +134,7 @@ L0118 accepts the code, which compiles; strict IEC 61131-3 wants the global impo
 
 | Code | Rule | Severity | Flags |
 | --- | --- | --- | --- |
-| L0201 | `unused-variable` | info | a VAR, VAR_INPUT or VAR_TEMP declaration never used in the body |
+| L0201 | `unused-variable` | info | a VAR, VAR_INPUT or VAR_TEMP declaration never used in the body, and a VAR_GLOBAL of the configuration no POU of the workspace uses |
 | L0202 | `shadowing-variable` | info | a variable with the same name as a POU visible in the scope |
 | L0203 | `uninitialized-output` | info | VAR_OUTPUT declarations with no initializer that the body never assigns |
 | L0204 | `single-element-array` | info | an array dimension whose lower and upper bounds are equal |
@@ -151,7 +151,8 @@ L0118 accepts the code, which compiles; strict IEC 61131-3 wants the global impo
 | L0215 | `effectless-statement` | info | a bare expression used as a statement, such as `x;` |
 | L0216 | `unused-pou` | info | a FUNCTION, FUNCTION_BLOCK, CLASS or PROGRAM nothing the application reaches from what the configuration runs, the exports and the tests; nothing is reported in a workspace without a CONFIGURATION, nor in a library |
 
-`unused-variable` never reports VAR_OUTPUT, VAR_IN_OUT, VAR_GLOBAL, VAR_EXTERNAL, VAR_CONFIG or VAR_ACCESS, since those are read or written from outside the POU.
+Inside a POU, `unused-variable` never reports VAR_OUTPUT, VAR_IN_OUT, VAR_EXTERNAL, VAR_CONFIG or VAR_ACCESS, since those are read or written from outside the POU.
+A VAR_GLOBAL of the configuration is reported when no POU of the workspace uses it, through a VAR_EXTERNAL or by its own name, and the configuration does not connect it.
 It also skips the VAR_INPUT of a PROGRAM (written by the CONFIGURATION), the whole body of an `{extern}` FUNCTION, and any name starting with an underscore, which is the way to mark a declaration as deliberately unused.
 
 The rule name for L0207 is `unused-return-type`, not `unused-return-value`, even though the message reads "unused return value".
