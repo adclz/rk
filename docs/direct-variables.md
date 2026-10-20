@@ -54,6 +54,7 @@ END_CONFIGURATION
 ```
 
 An address can also be written directly in a body, like `IF %IX0.1 THEN`, and its type is its width: `%IX` is a `BOOL`, `%IW` a `WORD`.
+The linter reports it (`L0132`): a variable declared at the address says what is wired there.
 
 A declaration's type is an elementary type as wide as the address (`E1422`): `%IW` takes a `WORD`, an `INT` or a `UINT`, and `%ID` a `DWORD`, a `DINT` or a `REAL`.
 

@@ -31,6 +31,21 @@ use super::{
     uninitialized_output, unnecessary_else, unnecessary_parens, yoda_condition,
 };
 
+/// The statements of a scope's body: a FUNCTION's, a FUNCTION_BLOCK's, a
+/// METHOD's or a PROGRAM's.
+pub(crate) fn body_statements<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    scope: ScopeId<'db>,
+) -> Option<&'db [Stmt<'db>]> {
+    match get_scope(db, scope).kind {
+        ScopeKind::Pou(Pou::Function(f)) => Some(f.statements(db)),
+        ScopeKind::Pou(Pou::FunctionBlock(fb)) => Some(fb.statements(db)),
+        ScopeKind::MethodDecl(m) => Some(m.stmts(db)),
+        ScopeKind::Program(program) => Some(program.statements(db)),
+        _ => None,
+    }
+}
+
 /// Run all statement-walking lints in a single pass over the statement tree.
 pub fn check<'db>(
     db: &'db dyn WorkspaceDataBase,
@@ -39,15 +54,8 @@ pub fn check<'db>(
     body: ScopeInference<'db>,
     diagnostics: &mut Vec<IdeDiagnostic>,
 ) {
-    let statements = match get_scope(db, scope).kind {
-        ScopeKind::Pou(pou) => match pou {
-            Pou::Function(f) => f.statements(db),
-            Pou::FunctionBlock(fb) => fb.statements(db),
-            _ => return,
-        },
-        ScopeKind::MethodDecl(m) => m.stmts(db),
-        ScopeKind::Program(program) => program.statements(db),
-        _ => return,
+    let Some(statements) = body_statements(db, scope) else {
+        return;
     };
 
     let mut ctx = VisitorCtx {

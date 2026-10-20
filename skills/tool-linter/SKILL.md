@@ -120,6 +120,7 @@ L0001 and L0002 share the rule name `warn-pragma`; disabling it silences both.
 | L0128 | `constant-overflow` | warning | an operation on constants whose result the type it runs at cannot hold, which the program computes wrapped: `200 * 200` multiplies two INTs, so `N : DINT := 200 * 200` holds -25536; in a body, an initializer, a STRING length or an array, subrange or enum bound |
 | L0129 | `double-writer` | warning | an output location (`%Q`) written by more than one program instance, directly or through what it calls: a program with a located output instantiated twice, two programs writing one `%Q` global; at each scan the last to run sets the output |
 | L0131 | `time-equality` | warning | a TIME, TOD or DT compared with `=` or `<>` against a constant, which a time stepping by whole scans can pass without equalling; not two variables, nor a zero duration, nor a DATE |
+| L0132 | `address-in-body` | warning | an address named in a body, `%QX0.0 := %IX0.1`, instead of a variable declared `AT` it; not the configuration's connections of a program instance |
 
 L0109 keys on the value the compiler computed, not on the text, so `7`, `INT#7` and a CONSTANT holding 7 are one label; enum variants and strings fall back to the written form.
 

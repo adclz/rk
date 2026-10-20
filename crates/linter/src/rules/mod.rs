@@ -18,6 +18,8 @@ use hir::{
 };
 use ide_diagnostic::IdeDiagnostic;
 
+pub(crate) mod accesses;
+pub mod address_in_body;
 pub mod aggregate_copy;
 pub mod allow;
 pub mod bool_comparison;
@@ -127,6 +129,7 @@ pub fn is_enabled(config: &LinterConfig, name: &str) -> bool {
 
 /// All lint rule names, for building configs that enable/disable specific rules.
 pub const ALL_RULE_NAMES: &[&str] = &[
+    address_in_body::NAME,
     aggregate_copy::NAME,
     allow::NAME,
     bool_comparison::NAME,
@@ -550,6 +553,13 @@ fn lint_scope<'db>(
     // Statement-walking lints: single pass over the statement tree
     stmt_visitor::check(db, config, scope, body, diagnostics);
 
+    let statements = stmt_visitor::body_statements(db, scope).unwrap_or_default();
+    if is_enabled(config, address_in_body::NAME) {
+        run_lint(address_in_body::NAME, diagnostics, |d| {
+            address_in_body::check(db, statements, d)
+        });
+    }
+
     if is_enabled(config, warn_pragma::NAME) {
         run_lint(warn_pragma::NAME, diagnostics, |d| {
             warn_pragma::check(db, body, d)
@@ -623,6 +633,6 @@ mod select_tests {
             .iter()
             .filter(|name| is_recommended(name))
             .count();
-        assert_eq!(recommended, 51);
+        assert_eq!(recommended, 52);
     }
 }

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Clauzel Adrien
 // SPDX-License-Identifier: AGPL-3.0-only
 
+mod address_in_body;
 mod aggregate_copy;
 mod allow;
 mod bool_comparison;

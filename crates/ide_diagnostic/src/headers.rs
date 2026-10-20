@@ -275,6 +275,7 @@ pub const HEADERS: &[(&str, &str)] = &[
     ("L0128", "constant operation out of range"),
     ("L0129", "output written by several program instances"),
     ("L0131", "exact comparison of time values"),
+    ("L0132", "address used in a body"),
     ("L0201", "unused variable"),
     ("L0202", "variable named after a POU"),
     ("L0203", "uninitialized output"),
