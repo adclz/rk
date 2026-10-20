@@ -29,9 +29,9 @@ END_FUNCTION
        |              ^^^|^^^
        |                 `----- 'a AND b' is an operand of OR without parentheses
        |
-       | Help: write '(a AND b)' to show the order
+       | Help: write '(a AND b)'
        |
-       | Note 1: AND binds tighter than XOR, and XOR tighter than OR
+       | Note 1: AND is applied first, then XOR, then OR
        |
        | Note 2: lint rule: mixed-boolean-operators
     ---'
@@ -42,9 +42,9 @@ END_FUNCTION
        |                         ^^^|^^^
        |                            `----- 'c AND d' is an operand of OR without parentheses
        |
-       | Help: write '(c AND d)' to show the order
+       | Help: write '(c AND d)'
        |
-       | Note 1: AND binds tighter than XOR, and XOR tighter than OR
+       | Note 1: AND is applied first, then XOR, then OR
        |
        | Note 2: lint rule: mixed-boolean-operators
     ---'
@@ -55,9 +55,9 @@ END_FUNCTION
        |                   ^^^|^^^
        |                      `----- 'b AND c' is an operand of OR without parentheses
        |
-       | Help: write '(b AND c)' to show the order
+       | Help: write '(b AND c)'
        |
-       | Note 1: AND binds tighter than XOR, and XOR tighter than OR
+       | Note 1: AND is applied first, then XOR, then OR
        |
        | Note 2: lint rule: mixed-boolean-operators
     ---'
@@ -68,9 +68,9 @@ END_FUNCTION
        |              ^^^|^^^
        |                 `----- 'a AND b' is an operand of XOR without parentheses
        |
-       | Help: write '(a AND b)' to show the order
+       | Help: write '(a AND b)'
        |
-       | Note 1: AND binds tighter than XOR, and XOR tighter than OR
+       | Note 1: AND is applied first, then XOR, then OR
        |
        | Note 2: lint rule: mixed-boolean-operators
     ---'
@@ -81,9 +81,9 @@ END_FUNCTION
        |              ^^^|^^^
        |                 `----- 'a XOR b' is an operand of OR without parentheses
        |
-       | Help: write '(a XOR b)' to show the order
+       | Help: write '(a XOR b)'
        |
-       | Note 1: AND binds tighter than XOR, and XOR tighter than OR
+       | Note 1: AND is applied first, then XOR, then OR
        |
        | Note 2: lint rule: mixed-boolean-operators
     ---'
@@ -94,9 +94,9 @@ END_FUNCTION
        |              ^^|^^
        |                `---- 'a & b' is an operand of OR without parentheses
        |
-       | Help: write '(a & b)' to show the order
+       | Help: write '(a & b)'
        |
-       | Note 1: AND binds tighter than XOR, and XOR tighter than OR
+       | Note 1: AND is applied first, then XOR, then OR
        |
        | Note 2: lint rule: mixed-boolean-operators
     ---'

@@ -80,13 +80,10 @@ pub fn check_node<'db>(
         )
         .severity(DiagnosticSeverity::WARNING)
         .call();
-    d.with_note(
-        "a time read at each scan moves by a whole scan, and can step past the value without ever equalling it"
-            .to_string(),
-    );
-    let (instead, either) = match operator {
-        ComparisonOperatorKind::Ne => ("<", "'<' or '>'"),
-        _ => (">=", "'>=' or '<='"),
+    d.with_note("a time read once per scan can step over the exact value".to_string());
+    let instead = match operator {
+        ComparisonOperatorKind::Ne => "<",
+        _ => ">=",
     };
     // The time that moves first, `et >= T#5S` for `T#5S = et`.
     let (moving, threshold) = match constant(left) {
@@ -94,7 +91,7 @@ pub fn check_node<'db>(
         false => (left, right),
     };
     d.with_help(format!(
-        "compare with {either}, '{} {instead} {}'",
+        "write '{} {instead} {}'",
         moving.as_call_site(db).to_string(db),
         threshold.as_call_site(db).to_string(db)
     ));

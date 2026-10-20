@@ -39,15 +39,15 @@ END_FUNCTION
         |
       9 |     FOR i := 0 TO 9 DO
         |         |
-        |         `-- 'i' counts this FOR loop
+        |         `-- 'i' controls this FOR loop
         |
      14 |     IF i <= 9 THEN
         |        |
-        |        `-- 'i' is read after the FOR loop it counts
+        |        `-- 'i' is read after the FOR loop it controls
         |
-        | Help: copy 'i' into a variable of its own inside the loop, or count with a WHILE loop
+        | Help: inside the loop, copy 'i' into a variable you read afterwards
         |
-        | Note 1: IEC 61131-3 leaves the value a FOR loop leaves in its counter to the implementation
+        | Note 1: after the loop, 'i' holds a value that depends on how the loop ended
         |
         | Note 2: lint rule: loop-var-after-loop
     ----'
@@ -56,15 +56,15 @@ END_FUNCTION
         |
      17 |     FOR j := 1 TO 3 DO
         |         |
-        |         `-- 'j' counts this FOR loop
+        |         `-- 'j' controls this FOR loop
         |
      20 |     FindKey := j;
         |                |
-        |                `-- 'j' is read after the FOR loop it counts
+        |                `-- 'j' is read after the FOR loop it controls
         |
-        | Help: copy 'j' into a variable of its own inside the loop, or count with a WHILE loop
+        | Help: inside the loop, copy 'j' into a variable you read afterwards
         |
-        | Note 1: IEC 61131-3 leaves the value a FOR loop leaves in its counter to the implementation
+        | Note 1: after the loop, 'j' holds a value that depends on how the loop ended
         |
         | Note 2: lint rule: loop-var-after-loop
     ----'
@@ -134,15 +134,15 @@ END_FUNCTION
         |
       5 |     FOR i := 0 TO 9 DO
         |         |
-        |         `-- 'i' counts this FOR loop
+        |         `-- 'i' controls this FOR loop
         |
      11 |     x := i;
         |          |
-        |          `-- 'i' is read after the FOR loop it counts
+        |          `-- 'i' is read after the FOR loop it controls
         |
-        | Help: copy 'i' into a variable of its own inside the loop, or count with a WHILE loop
+        | Help: inside the loop, copy 'i' into a variable you read afterwards
         |
-        | Note 1: IEC 61131-3 leaves the value a FOR loop leaves in its counter to the implementation
+        | Note 1: after the loop, 'i' holds a value that depends on how the loop ended
         |
         | Note 2: lint rule: loop-var-after-loop
     ----'
@@ -177,14 +177,14 @@ END_FUNCTION
        |
      5 |         x := x + j;
        |                  |
-       |                  `-- 'j' is read after the FOR loop it counts
+       |                  `-- 'j' is read after the FOR loop it controls
      6 |         FOR j := 1 TO 2 DO
        |             |
-       |             `-- 'j' counts this FOR loop
+       |             `-- 'j' controls this FOR loop
        |
-       | Help: copy 'j' into a variable of its own inside the loop, or count with a WHILE loop
+       | Help: inside the loop, copy 'j' into a variable you read afterwards
        |
-       | Note 1: IEC 61131-3 leaves the value a FOR loop leaves in its counter to the implementation
+       | Note 1: after the loop, 'j' holds a value that depends on how the loop ended
        |
        | Note 2: lint rule: loop-var-after-loop
     ---'
@@ -193,14 +193,14 @@ END_FUNCTION
         |
      11 |         x := x + k;
         |                  |
-        |                  `-- 'k' is read after the FOR loop it counts
+        |                  `-- 'k' is read after the FOR loop it controls
      12 |         FOR k := 1 TO 2 DO
         |             |
-        |             `-- 'k' counts this FOR loop
+        |             `-- 'k' controls this FOR loop
         |
-        | Help: copy 'k' into a variable of its own inside the loop, or count with a WHILE loop
+        | Help: inside the loop, copy 'k' into a variable you read afterwards
         |
-        | Note 1: IEC 61131-3 leaves the value a FOR loop leaves in its counter to the implementation
+        | Note 1: after the loop, 'k' holds a value that depends on how the loop ended
         |
         | Note 2: lint rule: loop-var-after-loop
     ----'
@@ -248,14 +248,14 @@ END_FUNCTION
         |
      13 |     FOR i := 0 TO 9 DO x := x + 1; END_FOR;
         |         |
-        |         `-- 'i' counts this FOR loop
+        |         `-- 'i' controls this FOR loop
      14 |     a[i] := 1;
         |       |
-        |       `-- 'i' is read after the FOR loop it counts
+        |       `-- 'i' is read after the FOR loop it controls
         |
-        | Help: copy 'i' into a variable of its own inside the loop, or count with a WHILE loop
+        | Help: inside the loop, copy 'i' into a variable you read afterwards
         |
-        | Note 1: IEC 61131-3 leaves the value a FOR loop leaves in its counter to the implementation
+        | Note 1: after the loop, 'i' holds a value that depends on how the loop ended
         |
         | Note 2: lint rule: loop-var-after-loop
     ----'
@@ -264,14 +264,14 @@ END_FUNCTION
         |
      16 |     FOR i := 0 TO 9 DO x := x + 1; END_FOR;
         |         |
-        |         `-- 'i' counts this FOR loop
+        |         `-- 'i' controls this FOR loop
      17 |     x := Twice(n := i);
         |                     |
-        |                     `-- 'i' is read after the FOR loop it counts
+        |                     `-- 'i' is read after the FOR loop it controls
         |
-        | Help: copy 'i' into a variable of its own inside the loop, or count with a WHILE loop
+        | Help: inside the loop, copy 'i' into a variable you read afterwards
         |
-        | Note 1: IEC 61131-3 leaves the value a FOR loop leaves in its counter to the implementation
+        | Note 1: after the loop, 'i' holds a value that depends on how the loop ended
         |
         | Note 2: lint rule: loop-var-after-loop
     ----'
@@ -280,14 +280,14 @@ END_FUNCTION
         |
      18 |     FOR i := 0 TO 9 DO x := x + 1; END_FOR;
         |         |
-        |         `-- 'i' counts this FOR loop
+        |         `-- 'i' controls this FOR loop
      19 |     p := REF(i);
         |              |
-        |              `-- 'i' is read after the FOR loop it counts
+        |              `-- 'i' is read after the FOR loop it controls
         |
-        | Help: copy 'i' into a variable of its own inside the loop, or count with a WHILE loop
+        | Help: inside the loop, copy 'i' into a variable you read afterwards
         |
-        | Note 1: IEC 61131-3 leaves the value a FOR loop leaves in its counter to the implementation
+        | Note 1: after the loop, 'i' holds a value that depends on how the loop ended
         |
         | Note 2: lint rule: loop-var-after-loop
     ----'
@@ -296,14 +296,14 @@ END_FUNCTION
         |
      20 |     FOR i := 0 TO 9 DO x := x + 1; END_FOR;
         |         |
-        |         `-- 'i' counts this FOR loop
+        |         `-- 'i' controls this FOR loop
      21 |     CASE i OF
         |          |
-        |          `-- 'i' is read after the FOR loop it counts
+        |          `-- 'i' is read after the FOR loop it controls
         |
-        | Help: copy 'i' into a variable of its own inside the loop, or count with a WHILE loop
+        | Help: inside the loop, copy 'i' into a variable you read afterwards
         |
-        | Note 1: IEC 61131-3 leaves the value a FOR loop leaves in its counter to the implementation
+        | Note 1: after the loop, 'i' holds a value that depends on how the loop ended
         |
         | Note 2: lint rule: loop-var-after-loop
     ----'
@@ -312,15 +312,15 @@ END_FUNCTION
         |
      24 |     FOR i := 0 TO 9 DO x := x + 1; END_FOR;
         |         |
-        |         `-- 'i' counts this FOR loop
+        |         `-- 'i' controls this FOR loop
         |
      27 |     UNTIL x > i
         |               |
-        |               `-- 'i' is read after the FOR loop it counts
+        |               `-- 'i' is read after the FOR loop it controls
         |
-        | Help: copy 'i' into a variable of its own inside the loop, or count with a WHILE loop
+        | Help: inside the loop, copy 'i' into a variable you read afterwards
         |
-        | Note 1: IEC 61131-3 leaves the value a FOR loop leaves in its counter to the implementation
+        | Note 1: after the loop, 'i' holds a value that depends on how the loop ended
         |
         | Note 2: lint rule: loop-var-after-loop
     ----'
@@ -349,7 +349,7 @@ fn deep_nesting_is_followed_quickly(mut with_db: RootDatabase) {
     let report = test_single_lint(&mut with_db, &[source.as_str()], "loop-var-after-loop");
     assert_eq!(
         report
-            .matches("is read after the FOR loop it counts")
+            .matches("is read after the FOR loop it controls")
             .count(),
         depth - 1
     );

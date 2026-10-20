@@ -36,9 +36,9 @@ END_FUNCTION_BLOCK
         |             ^^^^|^^^^
         |                 `------ TIME values compared with '='
         |
-        | Help: compare with '>=' or '<=', 'et >= T#5S'
+        | Help: write 'et >= T#5S'
         |
-        | Note 1: a time read at each scan moves by a whole scan, and can step past the value without ever equalling it
+        | Note 1: a time read once per scan can step over the exact value
         |
         | Note 2: lint rule: time-equality
     ----'
@@ -49,9 +49,9 @@ END_FUNCTION_BLOCK
         |             ^^^^^^^|^^^^^^^
         |                    `--------- LTIME values compared with '<>'
         |
-        | Help: compare with '<' or '>', 'lt < LTIME#1MS'
+        | Help: write 'lt < LTIME#1MS'
         |
-        | Note 1: a time read at each scan moves by a whole scan, and can step past the value without ever equalling it
+        | Note 1: a time read once per scan can step over the exact value
         |
         | Note 2: lint rule: time-equality
     ----'
@@ -62,9 +62,9 @@ END_FUNCTION_BLOCK
         |             ^^^^^^^^^|^^^^^^^^
         |                      `---------- TOD values compared with '='
         |
-        | Help: compare with '>=' or '<=', 'now >= TOD#12:00:00'
+        | Help: write 'now >= TOD#12:00:00'
         |
-        | Note 1: a time read at each scan moves by a whole scan, and can step past the value without ever equalling it
+        | Note 1: a time read once per scan can step over the exact value
         |
         | Note 2: lint rule: time-equality
     ----'
@@ -75,9 +75,9 @@ END_FUNCTION_BLOCK
         |             ^^^^^^^^^^^^^^^|^^^^^^^^^^^^^^
         |                            `---------------- DT values compared with '='
         |
-        | Help: compare with '>=' or '<=', 'stamp >= DT#2026-01-01-12:00:00'
+        | Help: write 'stamp >= DT#2026-01-01-12:00:00'
         |
-        | Note 1: a time read at each scan moves by a whole scan, and can step past the value without ever equalling it
+        | Note 1: a time read once per scan can step over the exact value
         |
         | Note 2: lint rule: time-equality
     ----'
@@ -88,9 +88,9 @@ END_FUNCTION_BLOCK
         |             ^^^^^|^^^^
         |                  `------ TIME values compared with '='
         |
-        | Help: compare with '>=' or '<=', 'et >= LIMIT'
+        | Help: write 'et >= LIMIT'
         |
-        | Note 1: a time read at each scan moves by a whole scan, and can step past the value without ever equalling it
+        | Note 1: a time read once per scan can step over the exact value
         |
         | Note 2: lint rule: time-equality
     ----'

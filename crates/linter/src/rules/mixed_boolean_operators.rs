@@ -58,8 +58,8 @@ pub fn check_node<'db>(
             )
             .severity(DiagnosticSeverity::HINT)
             .call();
-        d.with_note("AND binds tighter than XOR, and XOR tighter than OR".to_string());
-        d.with_help(format!("write '({text})' to show the order"));
+        d.with_note("AND is applied first, then XOR, then OR".to_string());
+        d.with_help(format!("write '({text})'"));
         diagnostics.push(d);
     }
 }

@@ -417,22 +417,21 @@ impl<'db> Walk<'db> {
         }
         let name = counter.get_name_with_case(db).text(db);
         let mut d = diag()
-            .message(format!("'{name}' is read after the FOR loop it counts"))
+            .message(format!("'{name}' is read after the FOR loop it controls"))
             .desc(&LoopVarAfterLoop)
             .range(hir::denormalize(db, site.get_scope_id(db).file(db), &span).unwrap_or_default())
             .severity(DiagnosticSeverity::WARNING)
             .call();
         d.with_related(Related::new(
-            format!("'{name}' counts this FOR loop"),
+            format!("'{name}' controls this FOR loop"),
             origin.scope_id(db).file(db),
             origin.get_span(db),
         ));
-        d.with_note(
-            "IEC 61131-3 leaves the value a FOR loop leaves in its counter to the implementation"
-                .to_string(),
-        );
+        d.with_note(format!(
+            "after the loop, '{name}' holds a value that depends on how the loop ended"
+        ));
         d.with_help(format!(
-            "copy '{name}' into a variable of its own inside the loop, or count with a WHILE loop"
+            "inside the loop, copy '{name}' into a variable you read afterwards"
         ));
         self.found.push(d);
     }

@@ -35,9 +35,9 @@ END_PROGRAM
         |               ^^^|^^
         |                  `---- the address '%IX0.1' is used directly
         |
-        | Help: declare a variable at it, 'name AT %IX0.1 : BOOL;', and use its name
+        | Help: use a variable declared at the address, 'name AT %IX0.1 : BOOL;'
         |
-        | Note 1: a variable declared at the address names what is wired there, and is the one place to change when the wiring moves
+        | Note 1: addresses are not recommended in a body
         |
         | Note 2: lint rule: address-in-body
     ----'
@@ -48,9 +48,9 @@ END_PROGRAM
         |     ^^^|^^
         |        `---- the address '%QX0.0' is used directly
         |
-        | Help: declare a variable at it, 'name AT %QX0.0 : BOOL;', and use its name
+        | Help: use a variable declared at the address, 'name AT %QX0.0 : BOOL;'
         |
-        | Note 1: a variable declared at the address names what is wired there, and is the one place to change when the wiring moves
+        | Note 1: addresses are not recommended in a body
         |
         | Note 2: lint rule: address-in-body
     ----'
@@ -61,9 +61,9 @@ END_PROGRAM
         |              ^^|^
         |                `--- the address '%IW2' is used directly
         |
-        | Help: declare a variable at it, 'name AT %IW2 : WORD;', and use its name
+        | Help: use a variable declared at the address, 'name AT %IW2 : WORD;'
         |
-        | Note 1: a variable declared at the address names what is wired there, and is the one place to change when the wiring moves
+        | Note 1: addresses are not recommended in a body
         |
         | Note 2: lint rule: address-in-body
     ----'
@@ -74,9 +74,9 @@ END_PROGRAM
         |            ^^|^
         |              `--- the address '%MW4' is used directly
         |
-        | Help: declare a variable at it, 'name AT %MW4 : WORD;', and use its name
+        | Help: use a variable declared at the address, 'name AT %MW4 : WORD;'
         |
-        | Note 1: a variable declared at the address names what is wired there, and is the one place to change when the wiring moves
+        | Note 1: addresses are not recommended in a body
         |
         | Note 2: lint rule: address-in-body
     ----'
@@ -87,9 +87,9 @@ END_PROGRAM
         |                       ^^^|^^
         |                          `---- the address '%QX0.1' is used directly
         |
-        | Help: declare a variable at it, 'name AT %QX0.1 : BOOL;', and use its name
+        | Help: use a variable declared at the address, 'name AT %QX0.1 : BOOL;'
         |
-        | Note 1: a variable declared at the address names what is wired there, and is the one place to change when the wiring moves
+        | Note 1: addresses are not recommended in a body
         |
         | Note 2: lint rule: address-in-body
     ----'

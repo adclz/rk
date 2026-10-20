@@ -44,10 +44,7 @@ pub fn check<'db>(
             )
             .severity(DiagnosticSeverity::WARNING)
             .call();
-        d.with_note(
-            "a variable declared at the address names what is wired there, and is the one place to change when the wiring moves"
-                .to_string(),
-        );
+        d.with_note("addresses are not recommended in a body".to_string());
         let ty = match direct.size_letter(db) {
             Some('B') => "BYTE",
             Some('W') => "WORD",
@@ -56,7 +53,7 @@ pub fn check<'db>(
             _ => "BOOL",
         };
         d.with_help(format!(
-            "declare a variable at it, 'name AT {address} : {ty};', and use its name"
+            "use a variable declared at the address, 'name AT {address} : {ty};'"
         ));
         diagnostics.push(d);
     });
