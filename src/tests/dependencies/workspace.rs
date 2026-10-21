@@ -183,6 +183,53 @@ fn a_workspace_reads_the_libraries_it_names() {
     );
 }
 
+/// A file is the workspace's where the loader reads it: under the folder,
+/// in no folder with a `config.toml` of its own, and not a library's. The
+/// language server asks it of what the editor opens and the watcher
+/// reports, a file the library gains once the workspace is open among them.
+#[test]
+fn a_file_is_the_workspace_s_where_the_loader_reads_it() {
+    let (_dir, root) = sandbox();
+    let pou = |name: &str| format!("FUNCTION {name} : INT\n    {name} := 1;\nEND_FUNCTION\n");
+    write(
+        &root,
+        &[
+            (
+                "ws/config.toml",
+                &config("ws", "local = { path = \"libs/local\" }\n"),
+            ),
+            ("ws/main.st", &pou("Run")),
+            ("ws/src/More.st", &pou("More")),
+            ("ws/libs/local/config.toml", &config("local", "")),
+            ("ws/libs/local/Local.st", &pou("Seven")),
+            ("ws/other/config.toml", &config("other", "")),
+            ("ws/other/Other.st", &pou("Other")),
+            ("elsewhere/Far.st", &pou("Far")),
+        ],
+    );
+    let ws = root.join("ws");
+    let (db, reported) = open(&ws);
+    assert_eq!(reported, "");
+    assert_eq!(
+        origins(&db),
+        [
+            ("Local.st".to_string(), Some("local".to_string())),
+            ("More.st".to_string(), None),
+            ("main.st".to_string(), None),
+        ]
+    );
+    write(&ws, &[("libs/local/Later.st", &pou("Later"))]);
+
+    let is_workspace_file = |path: &str| db::loader::is_workspace_file(&db, &root.join(path));
+    assert!(is_workspace_file("ws/main.st"));
+    assert!(is_workspace_file("ws/src/More.st"));
+    assert!(!is_workspace_file("ws/libs/local/Local.st"));
+    assert!(!is_workspace_file("ws/libs/local/Later.st"));
+    assert!(!is_workspace_file("ws/other/Other.st"));
+    assert!(!is_workspace_file("elsewhere/Far.st"));
+    assert!(!is_workspace_file("ws/missing.st"));
+}
+
 /// `INTERNAL` stops at the library: what one library keeps to itself is
 /// closed to another library as it is to the workspace, and open to its
 /// own files.

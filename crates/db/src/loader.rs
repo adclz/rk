@@ -167,6 +167,43 @@ fn is_library_file(db: &RootDatabase, path: &Path) -> bool {
         .is_some_and(|url| db.get_library_files().contains_key(&url))
 }
 
+/// Whether the file at `path` is the workspace's, as [`load_workspace`]
+/// finds them: under the workspace folder, in no folder there with a
+/// `config.toml` of its own, and not a library's. With no folder open,
+/// every file is but the libraries' and the cache's, which holds libraries
+/// only.
+///
+/// The language server asks it of each document the editor opens, which can
+/// be anywhere. A copy of the standard library an earlier build left in the
+/// cache, opened again from the editor's history, was read as the
+/// workspace's and declared every POU of the library a second time.
+pub fn is_workspace_file(db: &RootDatabase, path: &Path) -> bool {
+    let Ok(path) = std::fs::canonicalize(path) else {
+        return false;
+    };
+    if is_library_file(db, &path) {
+        return false;
+    }
+    match Workspace::try_get(db).and_then(|workspace| workspace.workspace_folder(db)) {
+        Some(folder) => {
+            // Canonical, as `path` is: the folder went through a file URL,
+            // which gives a Windows path back without its `\\?\`.
+            let folder = folder.canonicalize().unwrap_or_else(|_| folder.clone());
+            path.strip_prefix(&folder).is_ok_and(|relative| {
+                !relative
+                    .parent()
+                    .into_iter()
+                    .flat_map(Path::ancestors)
+                    .take_while(|dir| !dir.as_os_str().is_empty())
+                    .any(|dir| folder.join(dir).join(CONFIG_FILE).is_file())
+            })
+        }
+        None => !crate::cache::root()
+            .and_then(|cache| cache.canonicalize().ok())
+            .is_some_and(|cache| path.starts_with(cache)),
+    }
+}
+
 /// Discovers and loads the source files under `path`: I/O and parsing in
 /// parallel, Salsa inputs created sequentially.
 pub fn load_workspace(

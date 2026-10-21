@@ -3293,6 +3293,7 @@ dependencies = [
  "rayon",
  "salsa",
  "serde_json",
+ "tempfile",
  "tracing",
  "tracing-subscriber",
  "tree-sitter-rk",
