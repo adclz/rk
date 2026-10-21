@@ -367,3 +367,65 @@ pub fn reached_through_a_path<'db>(
         .iter()
         .any(|file| instances_reached_through_paths(db, *file).contains(&instance))
 }
+
+/// Every member a file's bodies name through a path: `inner` of
+/// `f.inner` or `THIS.inner`, read, written or called, the configuration's
+/// paths included. What a block keeps between runs, another body may read
+/// this way.
+#[salsa::tracked(returns(ref))]
+pub fn members_named_through_paths<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    file: auto_lsp::default::db::file::File,
+) -> Vec<crate::hir_def::pous::variable::VariableDecl<'db>> {
+    let index = crate::hir_def::semantic_index::semantic_index(db, file);
+    let mut scopes: Vec<ScopeId<'db>> = Vec::new();
+    let pous = index.global_pous.iter().copied().chain(
+        index
+            .namespaces
+            .iter()
+            .flat_map(|ns| ns.pous(db).iter().copied()),
+    );
+    for pou in pous {
+        if matches!(pou, Pou::DataType(_) | Pou::Interface(_)) {
+            continue;
+        }
+        let scope = pou.get_scope_id(db);
+        scopes.push(scope);
+        if let Some(methods) = scope.method_declarations(db) {
+            scopes.extend(methods.iter().map(|m| m.get_scope_id(db)));
+        }
+    }
+    scopes.extend(
+        index
+            .programs
+            .iter()
+            .map(|program| program.get_scope_id(db)),
+    );
+    scopes.extend(index.configs.iter().map(|config| config.scope_id(db)));
+
+    let mut named = Vec::new();
+    for scope in scopes {
+        let inference = scope.inference(db);
+        for (path, _) in inference.typed_path_exprs() {
+            if let PathExprKind::Field(_) = path.expr(db)
+                && let Some(member) = inference.variable_for_path_expr(path)
+                && !named.contains(&member)
+            {
+                named.push(member);
+            }
+        }
+    }
+    named
+}
+
+/// Whether a body of the workspace names `member` through a path, as
+/// [`members_named_through_paths`] collects them. A library's bodies
+/// cannot name the workspace's members.
+pub fn named_through_a_path<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    member: crate::hir_def::pous::variable::VariableDecl<'db>,
+) -> bool {
+    db.get_files()
+        .iter()
+        .any(|file| members_named_through_paths(db, *file).contains(&member))
+}
