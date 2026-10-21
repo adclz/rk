@@ -66,4 +66,7 @@ A reference is also **invariant**: a `REF_TO REAL` cannot point to an `INT`, eve
 A reference is an address, and a copy keeps it as it is.
 Copying a STRUCT, or passing an instance to a `VAR_INPUT`, gives a copy whose `p := REF(x)` still points at the original's `x`.
 
+Two references are compared with `=` and `<>` only.
+`<` and `>` are refused (`E0305`), since they would compare where the variables happen to sit in memory.
+
 A reference cannot be `RETAIN` (`E0904`): a new build may move what it points at.

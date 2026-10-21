@@ -274,6 +274,9 @@ pub const HEADERS: &[(&str, &str)] = &[
     ("L0127", "STRING into a shorter STRING"),
     ("L0128", "constant operation out of range"),
     ("L0129", "output written by several program instances"),
+    ("L0130", "FOR control variable read after the loop"),
+    ("L0131", "exact comparison of time values"),
+    ("L0132", "address used in a body"),
     ("L0201", "unused variable"),
     ("L0202", "variable named after a POU"),
     ("L0203", "uninitialized output"),
@@ -289,6 +292,7 @@ pub const HEADERS: &[(&str, &str)] = &[
     ("L0213", "empty loop body"),
     ("L0214", "empty type declaration"),
     ("L0215", "effectless statement"),
+    ("L0216", "unused POU"),
     ("L0301", "duplicate variable section"),
     ("L0302", "duplicate namespace"),
     ("L0303", "duplicate configuration"),
@@ -302,6 +306,11 @@ pub const HEADERS: &[(&str, &str)] = &[
     ("L0311", "collapsible IF"),
     ("L0312", "literal on the left of a comparison"),
     ("L0313", "positional output"),
+    ("L0314", "boolean operators mixed without parentheses"),
+    ("L0315", "name written in another case"),
+    ("L0316", "task running a FUNCTION_BLOCK instance"),
+    ("L0317", "VAR that could be a VAR_TEMP"),
+    ("L0318", "code left in a comment"),
 ];
 
 /// The header of `code`, or the empty string for a code with no entry.

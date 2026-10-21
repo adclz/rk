@@ -119,6 +119,9 @@ L0001 and L0002 share the rule name `warn-pragma`; disabling it silences both.
 | L0127 | `string-truncation` | warning | a STRING variable assigned, passed to an input or bound from an output into a STRING declared shorter, which cuts the text; not a literal (E0314), nor a call's result |
 | L0128 | `constant-overflow` | warning | an operation on constants whose result the type it runs at cannot hold, which the program computes wrapped: `200 * 200` multiplies two INTs, so `N : DINT := 200 * 200` holds -25536; in a body, an initializer, a STRING length or an array, subrange or enum bound |
 | L0129 | `double-writer` | warning | an output location (`%Q`) written by more than one program instance, directly or through what it calls: a program with a located output instantiated twice, two programs writing one `%Q` global; at each scan the last to run sets the output |
+| L0130 | `loop-var-after-loop` | warning | a FOR control variable read after its loop, on some path, before anything writes it again, the first read of each path; IEC 61131-3 leaves its value there to the implementation, and rk's depends on how the loop ended |
+| L0131 | `time-equality` | warning | a TIME, TOD or DT compared with `=` or `<>` against a constant, which a time stepping by whole scans can pass without equalling; not two variables, nor a zero duration, nor a DATE |
+| L0132 | `address-in-body` | warning | an address named in a body, `%QX0.0 := %IX0.1`, instead of a variable declared `AT` it; not the configuration's connections of a program instance |
 
 L0109 keys on the value the compiler computed, not on the text, so `7`, `INT#7` and a CONSTANT holding 7 are one label; enum variants and strings fall back to the written form.
 
@@ -131,7 +134,7 @@ L0118 accepts the code, which compiles; strict IEC 61131-3 wants the global impo
 
 | Code | Rule | Severity | Flags |
 | --- | --- | --- | --- |
-| L0201 | `unused-variable` | info | a VAR, VAR_INPUT or VAR_TEMP declaration never used in the body |
+| L0201 | `unused-variable` | info | a VAR, VAR_INPUT or VAR_TEMP declaration never used in the body, and a VAR_GLOBAL of the configuration no POU of the workspace uses |
 | L0202 | `shadowing-variable` | info | a variable with the same name as a POU visible in the scope |
 | L0203 | `uninitialized-output` | info | VAR_OUTPUT declarations with no initializer that the body never assigns |
 | L0204 | `single-element-array` | info | an array dimension whose lower and upper bounds are equal |
@@ -146,8 +149,10 @@ L0118 accepts the code, which compiles; strict IEC 61131-3 wants the global impo
 | L0213 | `empty-loop-body` | info | a FOR, WHILE or REPEAT loop with no statements |
 | L0214 | `empty-type` | info | a STRUCT with no fields or an ENUM with no variants |
 | L0215 | `effectless-statement` | info | a bare expression used as a statement, such as `x;` |
+| L0216 | `unused-pou` | info | a FUNCTION, FUNCTION_BLOCK, CLASS or PROGRAM nothing the application reaches from what the configuration runs, the exports and the tests; nothing is reported in a workspace without a CONFIGURATION, nor in a library |
 
-`unused-variable` never reports VAR_OUTPUT, VAR_IN_OUT, VAR_GLOBAL, VAR_EXTERNAL, VAR_CONFIG or VAR_ACCESS, since those are read or written from outside the POU.
+Inside a POU, `unused-variable` never reports VAR_OUTPUT, VAR_IN_OUT, VAR_EXTERNAL, VAR_CONFIG or VAR_ACCESS, since those are read or written from outside the POU.
+A VAR_GLOBAL of the configuration is reported when no POU of the workspace uses it, through a VAR_EXTERNAL or by its own name, and the configuration does not connect it.
 It also skips the VAR_INPUT of a PROGRAM (written by the CONFIGURATION), the whole body of an `{extern}` FUNCTION, and any name starting with an underscore, which is the way to mark a declaration as deliberately unused.
 
 The rule name for L0207 is `unused-return-type`, not `unused-return-value`, even though the message reads "unused return value".
@@ -176,3 +181,8 @@ L0203 collapses every unassigned output of one body into a single diagnostic lis
 | L0311 | `collapsible-if` | hint | a nested IF with no ELSE, which collapses into `IF a AND b THEN` |
 | L0312 | `yoda-condition` | hint | a literal on the left-hand side of a comparison |
 | L0313 | `positional-output` | hint | a positional argument in the place of a VAR_OUTPUT, which receives the output |
+| L0314 | `mixed-boolean-operators` | hint | AND, XOR and OR mixed in one expression without parentheses, `a AND b OR c`; reported on each bare operand |
+| L0315 | `name-case` | hint | a name written in another case than its declaration, `motorspeed` for `MotorSpeed`: a variable, a member, a field, a POU, a type, a parameter or an enum variant |
+| L0316 | `task-runs-block` | hint | a task associated with a FUNCTION_BLOCK instance in the configuration, `fb1 WITH Fast`, which is not recommended |
+| L0317 | `var-could-be-temp` | hint | a VAR of a FUNCTION_BLOCK or PROGRAM written whole before every read on every path through the body; not one used by a method, named from outside, given to `REF()`, RETAIN, CONSTANT or located |
+| L0318 | `commented-out-code` | hint | a comment whose text parses as statements; line comments on consecutive lines are read as one |

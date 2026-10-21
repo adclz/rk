@@ -1,11 +1,13 @@
 // SPDX-FileCopyrightText: 2026 Clauzel Adrien
 // SPDX-License-Identifier: AGPL-3.0-only
 
+mod address_in_body;
 mod aggregate_copy;
 mod allow;
 mod bool_comparison;
 mod case_without_else;
 mod collapsible_if;
+mod commented_out_code;
 mod constant_condition;
 mod constant_loop_bounds;
 mod constant_overflow;
@@ -35,12 +37,15 @@ mod input_assignment;
 mod instance_in_function;
 mod invalid_pragma;
 mod latin1_escape;
+mod loop_var_after_loop;
 mod loop_var_modified;
 mod method_shadows_member;
 mod missing_input_param;
 mod missing_return;
+mod mixed_boolean_operators;
 mod must_call_conditional;
 mod must_call_violation;
+mod name_case;
 mod namespace_nesting;
 mod negated_comparison;
 mod negated_condition;
@@ -56,12 +61,16 @@ mod shadowing_variable;
 mod single_element_array;
 mod string_truncation;
 mod sub_self;
+mod task_runs_block;
+mod time_equality;
 mod uninitialized_output;
 mod unnecessary_else;
 mod unnecessary_parens;
 mod unused_import;
+mod unused_pou;
 mod unused_return_type;
 mod unused_variable;
+mod var_could_be_temp;
 mod variable_method_name;
 mod warn_pragma;
 mod yoda_condition;

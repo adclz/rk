@@ -299,3 +299,48 @@ fn named_by_the_configuration_not_reported(mut with_db: RootDatabase) {
     ----'
     ");
 }
+
+/// A global of the configuration no POU uses is unused. One read through a
+/// VAR_EXTERNAL, one by its own name and one the configuration connects are
+/// used, and a name starting with an underscore is kept on purpose.
+#[rstest]
+fn an_unused_global(mut with_db: RootDatabase) {
+    let source = r#"
+PROGRAM Main
+VAR_INPUT pulse : BOOL; END_VAR
+VAR_EXTERNAL level : INT; END_VAR
+VAR x : INT; END_VAR
+    x := level + count;
+    IF pulse THEN x := 0; END_IF;
+END_PROGRAM
+
+CONFIGURATION Plant
+VAR_GLOBAL
+    level : INT;
+    count : INT;
+    start : BOOL;
+    spare : INT;
+    _reserve : INT;
+END_VAR
+    RESOURCE Res ON CPU
+        TASK Fast(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM M WITH Fast : Main(pulse := start);
+    END_RESOURCE
+END_CONFIGURATION
+"#;
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "unused-variable"), @r"
+    [L0201] Info: unused variable
+        ,-[ file:///test0.st:15:5 ]
+        |
+     15 |     spare : INT;
+        |     ^^|^^
+        |       `---- unused variable 'spare'
+        |
+        | Help: remove 'spare'
+        |
+        | Note 1: no POU of the workspace reads or writes it
+        |
+        | Note 2: lint rule: unused-variable
+    ----'
+    ");
+}

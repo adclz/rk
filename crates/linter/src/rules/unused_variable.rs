@@ -132,3 +132,90 @@ fn check_variable<'db>(
 
     diagnostics.push(diag);
 }
+
+/// The globals of a file's configurations that no body in the workspace
+/// uses, through a VAR_EXTERNAL or by the global's own name, and that the
+/// configuration does not use either. A located one is reported too: an
+/// address nothing reads or writes is as unused as a variable.
+pub fn check_globals<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    file: auto_lsp::default::db::file::File,
+    diagnostics: &mut Vec<IdeDiagnostic>,
+) {
+    use hir::hir_def::semantic_index::semantic_index;
+    let configs = &semantic_index(db, file).configs;
+    if configs.is_empty() {
+        return;
+    }
+    let used = globals_used(db);
+    for config in configs.iter() {
+        let by_config: rustc_hash::FxHashSet<VariableDecl<'db>> =
+            config.scope_id(db).inference(db).variables_used().collect();
+        for var in config.variables(db) {
+            if var.kind(db) != VariableKind::Global
+                || by_config.contains(var)
+                || used.contains(&var.get_name_ident(db))
+            {
+                continue;
+            }
+            let name = var.get_name_with_case(db).text(db);
+            if name.as_str().starts_with('_') {
+                continue;
+            }
+            let mut diag = diag()
+                .message(format!("unused variable '{name}'"))
+                .severity(DiagnosticSeverity::INFORMATION)
+                .tags(vec![DiagnosticTag::UNNECESSARY])
+                .desc(&UnusedVariable)
+                .range(
+                    hir::denormalize(db, var.get_scope_id(db).file(db), &var.get_name_span(db))
+                        .unwrap_or_default(),
+                )
+                .call();
+            diag.with_note("no POU of the workspace reads or writes it".to_string());
+            diag.with_help(format!("remove '{name}'"));
+            diagnostics.push(diag);
+        }
+    }
+}
+
+/// The names of the globals the workspace's bodies use: by a VAR_EXTERNAL,
+/// or by the global's own name. Folded, as names are matched.
+fn globals_used(
+    db: &dyn WorkspaceDataBase,
+) -> rustc_hash::FxHashSet<hir::hir_def::interned::identifier::Ident> {
+    use hir::hir_def::{pous::pou::Pou, semantic_index::semantic_index};
+    let mut used = rustc_hash::FxHashSet::default();
+    for file in db.get_files().iter().map(|entry| *entry) {
+        let sema = semantic_index(db, file);
+        let mut scopes: Vec<ScopeId> = Vec::new();
+        let pous = sema.global_pous.iter().copied().chain(
+            sema.namespaces
+                .iter()
+                .flat_map(|ns| ns.pous(db).iter().copied()),
+        );
+        for pou in pous {
+            if matches!(pou, Pou::DataType(_) | Pou::Interface(_)) {
+                continue;
+            }
+            let scope = pou.get_scope_id(db);
+            scopes.push(scope);
+            if let Some(methods) = scope.method_declarations(db) {
+                scopes.extend(methods.iter().map(|m| m.get_scope_id(db)));
+            }
+        }
+        scopes.extend(sema.programs.iter().map(|program| program.scope_id(db)));
+        for scope in scopes {
+            let body = scope.inference(db);
+            for var in body.variables_used() {
+                if var.kind(db) == VariableKind::External {
+                    used.insert(var.get_name_ident(db));
+                }
+            }
+            for (_, global) in body.globals_without_external() {
+                used.insert(global.get_name_ident(db));
+            }
+        }
+    }
+    used
+}

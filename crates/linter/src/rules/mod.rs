@@ -18,11 +18,14 @@ use hir::{
 };
 use ide_diagnostic::IdeDiagnostic;
 
+pub(crate) mod accesses;
+pub mod address_in_body;
 pub mod aggregate_copy;
 pub mod allow;
 pub mod bool_comparison;
 pub mod case_without_else;
 pub mod collapsible_if;
+pub mod commented_out_code;
 pub mod constant_condition;
 pub mod constant_loop_bounds;
 pub mod constant_overflow;
@@ -52,12 +55,15 @@ pub mod input_assignment;
 pub mod instance_in_function;
 pub mod invalid_pragma;
 pub mod latin1_escape;
+pub mod loop_var_after_loop;
 pub mod loop_var_modified;
 pub mod method_shadows_member;
 pub mod missing_input_param;
 pub mod missing_return;
+pub mod mixed_boolean_operators;
 pub mod must_call_conditional;
 pub mod must_call_violation;
+pub mod name_case;
 pub mod negated_comparison;
 pub mod negated_condition;
 pub mod negative_radix_literal;
@@ -73,12 +79,16 @@ pub mod single_element_array;
 pub mod stmt_visitor;
 pub mod string_truncation;
 pub mod sub_self;
+pub mod task_runs_block;
+pub mod time_equality;
 pub mod uninitialized_output;
 pub mod unnecessary_else;
 pub mod unnecessary_parens;
 pub mod unused_import;
+pub mod unused_pou;
 pub mod unused_return_type;
 pub mod unused_variable;
+pub mod var_could_be_temp;
 pub mod variable_method_name;
 pub mod warn_pragma;
 pub mod yoda_condition;
@@ -100,6 +110,11 @@ pub const STYLE_RULE_NAMES: &[&str] = &[
     collapsible_if::NAME,
     yoda_condition::NAME,
     positional_output::NAME,
+    mixed_boolean_operators::NAME,
+    name_case::NAME,
+    task_runs_block::NAME,
+    var_could_be_temp::NAME,
+    commented_out_code::NAME,
 ];
 
 /// Whether `Select::Recommended` runs `name`: every rule but the style ones,
@@ -124,11 +139,13 @@ pub fn is_enabled(config: &LinterConfig, name: &str) -> bool {
 
 /// All lint rule names, for building configs that enable/disable specific rules.
 pub const ALL_RULE_NAMES: &[&str] = &[
+    address_in_body::NAME,
     aggregate_copy::NAME,
     allow::NAME,
     bool_comparison::NAME,
     case_without_else::NAME,
     collapsible_if::NAME,
+    commented_out_code::NAME,
     constant_condition::NAME,
     constant_loop_bounds::NAME,
     constant_overflow::NAME,
@@ -158,12 +175,15 @@ pub const ALL_RULE_NAMES: &[&str] = &[
     instance_in_function::NAME,
     invalid_pragma::NAME,
     latin1_escape::NAME,
+    loop_var_after_loop::NAME,
     loop_var_modified::NAME,
     method_shadows_member::NAME,
     missing_input_param::NAME,
     missing_return::NAME,
+    mixed_boolean_operators::NAME,
     must_call_conditional::NAME,
     must_call_violation::NAME,
+    name_case::NAME,
     negated_comparison::NAME,
     negated_condition::NAME,
     negative_radix_literal::NAME,
@@ -178,12 +198,16 @@ pub const ALL_RULE_NAMES: &[&str] = &[
     single_element_array::NAME,
     string_truncation::NAME,
     sub_self::NAME,
+    task_runs_block::NAME,
+    time_equality::NAME,
     uninitialized_output::NAME,
     unnecessary_else::NAME,
     unnecessary_parens::NAME,
     unused_import::NAME,
+    unused_pou::NAME,
     unused_return_type::NAME,
     unused_variable::NAME,
+    var_could_be_temp::NAME,
     variable_method_name::NAME,
     warn_pragma::NAME,
     yoda_condition::NAME,
@@ -210,6 +234,36 @@ pub fn lint_file(
     if is_enabled(config, double_writer::NAME) {
         run_lint(double_writer::NAME, diagnostics, |d| {
             double_writer::check(db, file, d)
+        });
+    }
+
+    if is_enabled(config, unused_variable::NAME) {
+        run_lint(unused_variable::NAME, diagnostics, |d| {
+            unused_variable::check_globals(db, file, d)
+        });
+    }
+
+    if is_enabled(config, task_runs_block::NAME) {
+        run_lint(task_runs_block::NAME, diagnostics, |d| {
+            task_runs_block::check(db, file, d)
+        });
+    }
+
+    if is_enabled(config, var_could_be_temp::NAME) {
+        run_lint(var_could_be_temp::NAME, diagnostics, |d| {
+            var_could_be_temp::check(db, file, d)
+        });
+    }
+
+    if is_enabled(config, commented_out_code::NAME) {
+        run_lint(commented_out_code::NAME, diagnostics, |d| {
+            commented_out_code::check(db, file, d)
+        });
+    }
+
+    if is_enabled(config, unused_pou::NAME) {
+        run_lint(unused_pou::NAME, diagnostics, |d| {
+            unused_pou::check(db, file, d)
         });
     }
 
@@ -417,6 +471,12 @@ fn lint_scope<'db>(
             must_call_violation::check(db, scope, d)
         });
     }
+    if is_enabled(config, name_case::NAME) {
+        let body = has_body.then(|| scope.inference(db));
+        run_lint(name_case::NAME, diagnostics, |d| {
+            name_case::check(db, scope, body, d)
+        });
+    }
     if !has_body {
         return;
     }
@@ -545,6 +605,18 @@ fn lint_scope<'db>(
     // Statement-walking lints: single pass over the statement tree
     stmt_visitor::check(db, config, scope, body, diagnostics);
 
+    let statements = stmt_visitor::body_statements(db, scope).unwrap_or_default();
+    if is_enabled(config, address_in_body::NAME) {
+        run_lint(address_in_body::NAME, diagnostics, |d| {
+            address_in_body::check(db, statements, d)
+        });
+    }
+    if is_enabled(config, loop_var_after_loop::NAME) {
+        run_lint(loop_var_after_loop::NAME, diagnostics, |d| {
+            loop_var_after_loop::check(db, body, statements, d)
+        });
+    }
+
     if is_enabled(config, warn_pragma::NAME) {
         run_lint(warn_pragma::NAME, diagnostics, |d| {
             warn_pragma::check(db, body, d)
@@ -618,6 +690,6 @@ mod select_tests {
             .iter()
             .filter(|name| is_recommended(name))
             .count();
-        assert_eq!(recommended, 50);
+        assert_eq!(recommended, 54);
     }
 }
