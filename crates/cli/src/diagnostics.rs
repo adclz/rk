@@ -33,13 +33,25 @@ pub fn collect_diagnostics(
 
     // Ordered, so the diagnostics come out in the same sequence every run —
     // rayon's collect preserves the input order, it just cannot invent one.
-    crate::file_order::ordered_files(db)
+    // Every file is checked before any is linted: a lint that looks across
+    // the workspace, at the members other bodies name or at what the
+    // configuration reaches, then reads what the check computed. Linted
+    // with its file, it computed the other files' inference on its own
+    // thread, while the threads checking them waited on it.
+    let checked: Vec<(File, Vec<IdeDiagnostic>)> = crate::file_order::ordered_files(db)
         .into_par_iter()
         .map_with(db.clone(), |db, file| {
-            let mut diagnostics = hir::check::diagnostics_for_file(db, file).as_ref().clone();
-            if let Some(ref linter_config) = linter_config {
-                linter::lint_file(db, file, linter_config, &mut diagnostics);
-            }
+            let diagnostics = hir::check::diagnostics_for_file(db, file).as_ref().clone();
+            (file, diagnostics)
+        })
+        .collect();
+    let Some(linter_config) = linter_config else {
+        return checked;
+    };
+    checked
+        .into_par_iter()
+        .map_with(db.clone(), |db, (file, mut diagnostics)| {
+            linter::lint_file(db, file, &linter_config, &mut diagnostics);
             (file, diagnostics)
         })
         .collect()

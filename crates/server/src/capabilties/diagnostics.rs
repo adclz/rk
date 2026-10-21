@@ -143,22 +143,37 @@ pub fn workspace_diagnostics<Db: WorkspaceDataBase + Clone + RefUnwindSafe>(
         })
         .collect();
 
-    // Compute diagnostics for all current files.
-    let computed: Vec<_> = db
+    // Every file is checked before any is linted, as `rk check` does: a lint
+    // that looks across the workspace then reads what the check computed,
+    // instead of computing the other files' inference on its own thread.
+    let checked: Vec<_> = db
         .get_files()
         .into_par_iter()
         .map_with(db.clone(), |db, file| {
             let file = *file;
+            let diagnostics =
+                salsa::Cancelled::catch(|| diagnostics_for_file(db, file).as_ref().clone()).ok();
+            (file, diagnostics)
+        })
+        .collect();
+    let computed: Vec<_> = checked
+        .into_par_iter()
+        .map_with(db.clone(), |db, (file, diagnostics)| {
             let uri = file.url(db).clone();
 
-            let items = salsa::Cancelled::catch(|| {
-                let mut all = diagnostics_for_file(db, file).as_ref().clone();
-                linter::lint_file(db, file, &linter_config, &mut all);
-                all.iter()
-                    .map(|d| d.to_lsp_diagnostic(db))
-                    .collect::<Vec<_>>()
-            })
-            .unwrap_or_default();
+            let db = &*db;
+            let linter_config = &linter_config;
+            let items = diagnostics
+                .and_then(|mut all| {
+                    salsa::Cancelled::catch(move || {
+                        linter::lint_file(db, file, linter_config, &mut all);
+                        all.iter()
+                            .map(|d| d.to_lsp_diagnostic(db))
+                            .collect::<Vec<_>>()
+                    })
+                    .ok()
+                })
+                .unwrap_or_default();
 
             let new_id = fingerprint(&items);
             let version: Option<i64> = file.version(db).map(|i| i as i64);
