@@ -3,11 +3,16 @@
 
 pub use hir::hir_def::hir_node::HirNode;
 
+use auto_lsp::default::db::file::File;
+use auto_lsp::tree_sitter;
 use db::WorkspaceDataBase;
 use hir::{
     HirNodeInfo,
-    hir_def::expressions::expression::{ParamAssign, ParamAssignKind},
-    hir_ty::ty::Type,
+    hir_def::{
+        expressions::expression::{ParamAssign, ParamAssignKind},
+        pous::function::Function,
+    },
+    hir_ty::{head::signature::overload_set, ty::Type},
 };
 
 use crate::comments::{doc_text, find_nearby_comment};
@@ -35,20 +40,63 @@ impl<'db> MaybeHirNode<'db> for Type<'db> {
     }
 }
 
+/// The documentation of the node at `span` in `file`, as hover shows it:
+/// after a rule, with its `[TypeName]` references as links. Empty when the
+/// node has none.
+fn comment_at(db: &dyn WorkspaceDataBase, file: File, span: &tree_sitter::Range) -> String {
+    let Some(comment) = find_nearby_comment(db, file, span) else {
+        return String::new();
+    };
+    let comment = replace_bracket_refs_with_links(db, &doc_text(comment, file.document(db)));
+    if comment.is_empty() {
+        String::new()
+    } else {
+        format!("\n---\n{comment}")
+    }
+}
+
 pub trait HasComment<'db>: HirNodeInfo<'db> {
     fn get_comment(&'db self, db: &'db dyn WorkspaceDataBase) -> Option<String> {
-        let file = self.get_scope_id(db).file(db);
-        let comment = match find_nearby_comment(db, file, &self.get_span(db)) {
-            Some(c) => doc_text(c, file.document(db)),
-            None => return Some(String::new()),
-        };
-        let comment = replace_bracket_refs_with_links(db, &comment);
-        if comment.is_empty() {
-            Some(String::new())
-        } else {
-            Some(format!("\n---\n{comment}"))
-        }
+        Some(comment_at(
+            db,
+            self.get_scope_id(db).file(db),
+            &self.get_span(db),
+        ))
     }
+}
+
+/// The documentation of a FUNCTION: its own comment, or else the first one
+/// from the top among its overloads. An overloaded name is documented once,
+/// above its first declaration, and above each of the others is the
+/// END_FUNCTION of the one before.
+pub fn function_comment<'db>(db: &'db dyn WorkspaceDataBase, function: Function<'db>) -> String {
+    let at = |function: Function<'db>| {
+        comment_at(
+            db,
+            function.get_scope_id(db).file(db),
+            &function.get_span(db),
+        )
+    };
+    let own = at(function);
+    if !own.is_empty() {
+        return own;
+    }
+    let file = function.get_scope_id(db).file(db);
+    let mut overloads = overload_set(db, function);
+    // In the order of the text, the function's own file first.
+    overloads.sort_by_cached_key(|overload| {
+        let of = overload.get_scope_id(db).file(db);
+        (
+            of != file,
+            of.url(db).to_string(),
+            overload.get_span(db).start_byte,
+        )
+    });
+    overloads
+        .into_iter()
+        .map(at)
+        .find(|comment| !comment.is_empty())
+        .unwrap_or_default()
 }
 
 impl<'db, T> HasComment<'db> for T where T: HirNodeInfo<'db> + ?Sized {}
