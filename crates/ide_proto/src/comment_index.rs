@@ -1,74 +1,28 @@
 // SPDX-FileCopyrightText: 2026 Clauzel Adrien
 // SPDX-License-Identifier: AGPL-3.0-only
 
-use std::sync::LazyLock;
-
 use auto_lsp::{
     core::document::Document,
     default::db::{BaseDatabase, file::File},
-    tree_sitter::{self, StreamingIterator},
+    tree_sitter,
 };
 use rustc_hash::FxHashMap;
-
-static COMMENT_QUERY: LazyLock<tree_sitter::Query> = LazyLock::new(|| {
-    tree_sitter::Query::new(
-        &tree_sitter_rk::LANGUAGE.into(),
-        "
-(line_comment) @line_comment
-(c_style_comment) @c_comment
-(pascal_style_comment) @pascal_comment
-",
-    )
-    .unwrap()
-});
 
 #[tracing::instrument(level = "debug", skip_all, name = "query_comment_index")]
 #[salsa::tracked(returns(ref))]
 pub fn comment_index(db: &dyn BaseDatabase, file: File) -> CommentIndex {
     let mut map = FxHashMap::default();
-    let mut query_cursor = tree_sitter::QueryCursor::new();
-    let mut captures = query_cursor.captures(
-        &COMMENT_QUERY,
-        file.document(db).tree.root_node(),
-        file.document(db).as_bytes(),
-    );
-    // Since the standard supports nested comments,
-    // we need to carefully ignore them if they are nested
-    let mut curr_range: Option<tree_sitter::Range> = None;
-
-    while let Some((capture, capture_index)) = captures.next() {
-        let capture = capture.captures[*capture_index];
-        let kind = match COMMENT_QUERY.capture_names()[capture.index as usize] {
+    // A comment nested in another is part of its token: no entry of its own.
+    for node in db::syntax::comments(file.document(db)) {
+        let kind = match node.kind() {
             "line_comment" => CommentKind::Line,
-            "c_comment" => CommentKind::C,
-            "pascal_comment" => CommentKind::Pascal,
+            "c_style_comment" => CommentKind::C,
+            "pascal_style_comment" => CommentKind::Pascal,
             _ => continue,
         };
-
-        let node = capture.node;
         let range = node.range();
-
-        match curr_range {
-            Some(curr) => {
-                if range.start_byte >= curr.start_byte && range.end_byte <= curr.end_byte {
-                    // Ignore nested comments
-                    continue;
-                } else {
-                    // Update current range for new non-nested comment
-                    curr_range = Some(range);
-                }
-            }
-            None => {
-                // Initialize the current range if it's not set
-                curr_range = Some(range);
-            }
-        }
-
-        let comment = Comment { range, kind };
-
-        map.insert(range.end_point.row, comment);
+        map.insert(range.end_point.row, Comment { range, kind });
     }
-
     CommentIndex { map }
 }
 

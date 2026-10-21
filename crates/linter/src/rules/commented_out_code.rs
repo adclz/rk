@@ -73,74 +73,39 @@ pub fn check(db: &dyn WorkspaceDataBase, file: File, diagnostics: &mut Vec<IdeDi
     }
 }
 
-/// Where a comment may start: every `//`, `(*` and `/*`, in order. One
-/// inside a string is a false start, which only costs a descent.
-fn comment_starts(source: &[u8]) -> Vec<usize> {
-    source
-        .windows(2)
-        .enumerate()
-        .filter(|(_, pair)| matches!(pair, [b'/', b'/'] | [b'(', b'*'] | [b'/', b'*']))
-        .map(|(at, _)| at)
-        .collect()
-}
-
 fn comments(document: &Document) -> Vec<Comment> {
     let source = document.as_bytes();
-    let starts = comment_starts(source);
     let mut out: Vec<Comment> = Vec::new();
-    if starts.is_empty() {
-        return out;
-    }
-    // Whether a node holds a place where a comment may start.
-    let holds_a_start = |node: tree_sitter::Node| {
-        let first = starts.partition_point(|&at| at < node.start_byte());
-        starts.get(first).is_some_and(|&at| at < node.end_byte())
-    };
     // Whether the last comment was a line comment, which the next one on
     // the following line continues.
     let mut last_was_line = false;
-    // In source order, into the nodes that may hold a comment only.
-    let mut cursor = document.tree.walk();
-    loop {
-        let node = cursor.node();
-        let kind = node.kind();
-        let line = kind == "line_comment";
-        let comment = line || kind == "c_style_comment" || kind == "pascal_style_comment";
-        if comment {
-            let range = node.range();
-            let raw = String::from_utf8_lossy(&source[range.start_byte..range.end_byte]);
-            let text = if line {
-                raw.strip_prefix("//").unwrap_or(&raw).to_string()
-            } else {
-                raw.get(2..raw.len().saturating_sub(2))
-                    .unwrap_or_default()
-                    .to_string()
-            };
-            match out.last_mut() {
-                Some(previous)
-                    if line
-                        && last_was_line
-                        && range.start_point.row == previous.range.end_point.row + 1 =>
-                {
-                    previous.range.end_byte = range.end_byte;
-                    previous.range.end_point = range.end_point;
-                    previous.text.push('\n');
-                    previous.text.push_str(&text);
-                }
-                _ => out.push(Comment { range, text }),
+    for node in db::syntax::comments(document) {
+        let line = node.kind() == "line_comment";
+        let range = node.range();
+        let raw = String::from_utf8_lossy(&source[range.start_byte..range.end_byte]);
+        let text = if line {
+            raw.strip_prefix("//").unwrap_or(&raw).to_string()
+        } else {
+            raw.get(2..raw.len().saturating_sub(2))
+                .unwrap_or_default()
+                .to_string()
+        };
+        match out.last_mut() {
+            Some(previous)
+                if line
+                    && last_was_line
+                    && range.start_point.row == previous.range.end_point.row + 1 =>
+            {
+                previous.range.end_byte = range.end_byte;
+                previous.range.end_point = range.end_point;
+                previous.text.push('\n');
+                previous.text.push_str(&text);
             }
-            last_was_line = line;
+            _ => out.push(Comment { range, text }),
         }
-        // A comment inside another is part of it: no descent into one.
-        if !comment && holds_a_start(node) && cursor.goto_first_child() {
-            continue;
-        }
-        while !cursor.goto_next_sibling() {
-            if !cursor.goto_parent() {
-                return out;
-            }
-        }
+        last_was_line = line;
     }
+    out
 }
 
 /// Whether `text` parses as statements, one of them at least.

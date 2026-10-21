@@ -1,7 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Clauzel Adrien
 // SPDX-License-Identifier: AGPL-3.0-only
 
-//! A file's AST and its syntax errors, as the compiler reads them.
+//! A file's AST, its syntax errors and its comments, as the compiler reads
+//! them.
 //!
 //! auto-lsp's `get_ast` accumulates the syntax errors tree-sitter finds, and
 //! salsa marks every query calling one that accumulated, then every query
@@ -11,6 +12,7 @@
 //! syntax error anywhere in a file made them panic. Here the errors are part
 //! of the result.
 
+use auto_lsp::core::document::Document;
 use auto_lsp::core::errors::{LexerError, ParseError};
 use auto_lsp::default::db::{file::File, tracked::ParsedAst};
 use auto_lsp::tree_sitter::Node;
@@ -107,6 +109,49 @@ fn unknown_pragmas(root: &Node, source: &[u8]) -> Vec<UnknownPragma> {
         at = node.end_byte();
     }
     found
+}
+
+/// The comments of a file's tree, in the order of the text. A comment
+/// nested in another is part of its token. Only the nodes that hold a `//`,
+/// a `(*` or a `/*` are visited, so a file costs a scan of its bytes and a
+/// descent to each comment. A query visited every node of the tree, which
+/// was most of what the editor's comment index cost.
+pub fn comments(document: &Document) -> Vec<Node<'_>> {
+    let source = document.as_bytes();
+    // Where a comment may start, in order. One inside a string is a false
+    // start, which only costs a descent.
+    let starts: Vec<usize> = source
+        .windows(2)
+        .enumerate()
+        .filter(|(_, pair)| matches!(pair, [b'/', b'/'] | [b'(', b'*'] | [b'/', b'*']))
+        .map(|(at, _)| at)
+        .collect();
+    let mut found = Vec::new();
+    if starts.is_empty() {
+        return found;
+    }
+    let holds_a_start = |node: Node| {
+        let first = starts.partition_point(|&at| at < node.start_byte());
+        starts.get(first).is_some_and(|&at| at < node.end_byte())
+    };
+    let mut cursor = document.tree.walk();
+    loop {
+        let node = cursor.node();
+        let comment = matches!(
+            node.kind(),
+            "line_comment" | "c_style_comment" | "pascal_style_comment"
+        );
+        if comment {
+            found.push(node);
+        } else if holds_a_start(node) && cursor.goto_first_child() {
+            continue;
+        }
+        while !cursor.goto_next_sibling() {
+            if !cursor.goto_parent() {
+                return found;
+            }
+        }
+    }
 }
 
 /// The error nodes under `node`, worded as auto-lsp words them: a node with
