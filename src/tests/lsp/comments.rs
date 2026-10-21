@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Clauzel Adrien
 // SPDX-License-Identifier: AGPL-3.0-only
 
-use std::collections::BTreeMap;
 use std::path::Path;
 
 use auto_lsp::{
@@ -11,7 +10,8 @@ use auto_lsp::{
     tree_sitter::{self, StreamingIterator},
 };
 use db::RootDatabase;
-use ide_proto::comment_index::{Comment, CommentKind, comment_index};
+use db::syntax::{Comment, CommentKind, comments};
+use ide_proto::comments::{doc_text, find_nearby_comment};
 
 #[test]
 fn line_comment_above_is_ignored() {
@@ -34,10 +34,7 @@ END_FUNCTION
 
     db.add_file(file).unwrap();
 
-    let index = comment_index(&db, file);
-
     let file = db.get_file(&url).unwrap();
-    let document = file.document(&db);
     let range = tree_sitter::Range {
         start_byte: 0,
         end_byte: 35,
@@ -45,7 +42,7 @@ END_FUNCTION
         end_point: tree_sitter::Point { row: 2, column: 0 },
     };
     // `//` line comments are not documentation (see `Comment::is_doc`).
-    assert!(index.find_nearby_comment(document, &range).is_none());
+    assert!(find_nearby_comment(&db, file, &range).is_none());
 }
 
 #[test]
@@ -68,9 +65,7 @@ END_FUNCTION
 
     db.add_file(file).unwrap();
 
-    let index = comment_index(&db, file);
     let file = db.get_file(&url).unwrap();
-    let document = file.document(&db);
 
     let range = tree_sitter::Range {
         start_byte: 10,
@@ -80,7 +75,7 @@ END_FUNCTION
     };
 
     // A trailing `//` comment is not documentation.
-    assert!(index.find_nearby_comment(document, &range).is_none());
+    assert!(find_nearby_comment(&db, file, &range).is_none());
 }
 
 #[test]
@@ -107,9 +102,7 @@ END_FUNCTION
 
     db.add_file(file).unwrap();
 
-    let index = comment_index(&db, file);
     let file = db.get_file(&url).unwrap();
-    let document = file.document(&db);
 
     let range = tree_sitter::Range {
         start_byte: 0,
@@ -118,7 +111,7 @@ END_FUNCTION
         end_point: tree_sitter::Point { row: 5, column: 0 },
     };
     // A `//` comment (even adjacent across blank lines) is not documentation.
-    assert!(index.find_nearby_comment(document, &range).is_none());
+    assert!(find_nearby_comment(&db, file, &range).is_none());
 }
 
 #[test]
@@ -142,7 +135,6 @@ END_FUNCTION
 
     db.add_file(file).unwrap();
 
-    let index = comment_index(&db, file);
     let file = db.get_file(&url).unwrap();
     let document = file.document(&db);
 
@@ -152,9 +144,9 @@ END_FUNCTION
         start_point: tree_sitter::Point { row: 2, column: 0 },
         end_point: tree_sitter::Point { row: 2, column: 0 },
     };
-    let comment = index.find_nearby_comment(document, &range).unwrap();
+    let comment = find_nearby_comment(&db, file, &range).unwrap();
 
-    assert_eq!(comment.to_string(document), "This is a C-style comment");
+    assert_eq!(doc_text(comment, document), "This is a C-style comment");
 }
 
 #[test]
@@ -180,7 +172,6 @@ END_FUNCTION
 
     db.add_file(file).unwrap();
 
-    let index = comment_index(&db, file);
     let file = db.get_file(&url).unwrap();
     let document = file.document(&db);
 
@@ -190,9 +181,9 @@ END_FUNCTION
         start_point: tree_sitter::Point { row: 5, column: 0 },
         end_point: tree_sitter::Point { row: 5, column: 0 },
     };
-    let comment = index.find_nearby_comment(document, &range).unwrap();
+    let comment = find_nearby_comment(&db, file, &range).unwrap();
     assert_eq!(
-        comment.to_string(document),
+        doc_text(comment, document),
         "This is a\n   multiline\n   Pascal-style comment"
     );
 }
@@ -220,9 +211,10 @@ END_FUNCTION
 
     db.add_file(file).unwrap();
 
-    let index = comment_index(&db, file);
-
-    assert!(index.map.len() == 1, "Expected one comment in the index");
+    assert!(
+        comments(&db, file).len() == 1,
+        "Expected one comment in the index"
+    );
 
     let file = db.get_file(&url).unwrap();
     let document = file.document(&db);
@@ -233,8 +225,8 @@ END_FUNCTION
         start_point: tree_sitter::Point { row: 5, column: 0 },
         end_point: tree_sitter::Point { row: 5, column: 0 },
     };
-    let comment = index.find_nearby_comment(document, &range).unwrap();
-    assert_eq!(comment.to_string(document), "NOT NESTED\n(* NESTED *)");
+    let comment = find_nearby_comment(&db, file, &range).unwrap();
+    assert_eq!(doc_text(comment, document), "NOT NESTED\n(* NESTED *)");
 }
 
 #[test]
@@ -259,16 +251,18 @@ END_FUNCTION
 
     db.add_file(file).unwrap();
 
-    let index = comment_index(&db, file);
-
     // Comment should only be picked *once* for x
     // y should not pick it up because the comment is to the right of x
-    assert!(index.map.len() == 1, "Expected one comment in the index");
+    assert!(
+        comments(&db, file).len() == 1,
+        "Expected one comment in the index"
+    );
 }
 
-/// The index as a query over the whole tree built it, before it searched
-/// only where a comment may start: the reference the search agrees with.
-fn indexed_by_a_query(document: &Document) -> BTreeMap<usize, Comment> {
+/// The comments a query over the whole tree finds, as the editor's index
+/// was built before it searched only where a comment may start: the
+/// reference the search agrees with.
+fn found_by_a_query(document: &Document) -> Vec<Comment> {
     let query = tree_sitter::Query::new(
         &tree_sitter_rk::LANGUAGE.into(),
         "(line_comment) @line (c_style_comment) @c (pascal_style_comment) @pascal",
@@ -276,8 +270,7 @@ fn indexed_by_a_query(document: &Document) -> BTreeMap<usize, Comment> {
     .unwrap();
     let mut cursor = tree_sitter::QueryCursor::new();
     let mut captures = cursor.captures(&query, document.tree.root_node(), document.as_bytes());
-    let mut map = BTreeMap::new();
-    let mut outer: Option<tree_sitter::Range> = None;
+    let mut found: Vec<Comment> = Vec::new();
     while let Some((capture, index)) = captures.next() {
         let capture = capture.captures[*index];
         let kind = match query.capture_names()[capture.index as usize] {
@@ -285,25 +278,21 @@ fn indexed_by_a_query(document: &Document) -> BTreeMap<usize, Comment> {
             "c" => CommentKind::C,
             _ => CommentKind::Pascal,
         };
-        let range = capture.node.range();
-        // A comment nested in the last one is part of it.
-        if outer.is_some_and(|outer| {
-            range.start_byte >= outer.start_byte && range.end_byte <= outer.end_byte
-        }) {
-            continue;
-        }
-        outer = Some(range);
-        map.insert(range.end_point.row, Comment { range, kind });
+        found.push(Comment {
+            range: capture.node.range(),
+            kind,
+        });
     }
-    map
+    found
 }
 
-/// The index holds what a query over the whole tree found, in the standard
-/// library and where a search that only goes where a comment may start
-/// could be misled: a nested comment, comments ending on one row, comment
-/// marks in a string, comments in an expression and in a syntax error.
+/// The search finds every comment a query over the whole tree finds, in
+/// the standard library and where a search that only goes where a comment
+/// may start could be misled: a nested comment, comments ending on one row,
+/// comment marks in a string, comments in an expression and in a syntax
+/// error.
 #[test]
-fn the_index_holds_what_a_query_over_the_tree_finds() {
+fn the_search_finds_what_a_query_over_the_tree_finds() {
     let stdlib = Path::new(env!("CARGO_MANIFEST_DIR")).join("stdlib");
     let mut sources: Vec<(String, String)> = std::fs::read_dir(&stdlib)
         .unwrap()
@@ -340,13 +329,9 @@ fn the_index_holds_what_a_query_over_the_tree_finds() {
             .call()
             .unwrap();
         db.add_file(file).unwrap();
-        let index: BTreeMap<usize, Comment> = comment_index(&db, file)
-            .map
-            .iter()
-            .map(|(row, comment)| (*row, *comment))
-            .collect();
-        assert_eq!(index, indexed_by_a_query(file.document(&db)), "{name}");
-        total += index.len();
+        let found = comments(&db, file);
+        assert_eq!(found, &found_by_a_query(file.document(&db)), "{name}");
+        total += found.len();
     }
     assert!(total > 300, "only {total} comments in the standard library");
 }

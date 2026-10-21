@@ -6,7 +6,6 @@
 //! what it parses to, is code. Line comments on consecutive lines are one
 //! comment, so a block commented out line by line is reported once.
 
-use auto_lsp::core::document::Document;
 use auto_lsp::default::db::file::File;
 use auto_lsp::lsp_types::DiagnosticSeverity;
 use auto_lsp::tree_sitter;
@@ -48,7 +47,6 @@ pub fn check(db: &dyn WorkspaceDataBase, file: File, diagnostics: &mut Vec<IdeDi
     if !db::loader::is_rk_parser(file.parsers(db)) {
         return;
     }
-    let document = file.document(db);
     // One parser for the file's comments.
     let mut parser = tree_sitter::Parser::new();
     if parser
@@ -57,7 +55,7 @@ pub fn check(db: &dyn WorkspaceDataBase, file: File, diagnostics: &mut Vec<IdeDi
     {
         return;
     }
-    for comment in comments(document) {
+    for comment in comments(db, file) {
         if !is_code(&mut parser, &comment.text) {
             continue;
         }
@@ -73,15 +71,15 @@ pub fn check(db: &dyn WorkspaceDataBase, file: File, diagnostics: &mut Vec<IdeDi
     }
 }
 
-fn comments(document: &Document) -> Vec<Comment> {
-    let source = document.as_bytes();
+fn comments(db: &dyn WorkspaceDataBase, file: File) -> Vec<Comment> {
+    let source = file.document(db).as_bytes();
     let mut out: Vec<Comment> = Vec::new();
     // Whether the last comment was a line comment, which the next one on
     // the following line continues.
     let mut last_was_line = false;
-    for node in db::syntax::comments(document) {
-        let line = node.kind() == "line_comment";
-        let range = node.range();
+    for comment in db::syntax::comments(db, file) {
+        let line = comment.kind == db::syntax::CommentKind::Line;
+        let range = comment.range;
         let raw = String::from_utf8_lossy(&source[range.start_byte..range.end_byte]);
         let text = if line {
             raw.strip_prefix("//").unwrap_or(&raw).to_string()

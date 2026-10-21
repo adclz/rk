@@ -10,7 +10,7 @@ use hir::{
     hir_ty::ty::Type,
 };
 
-use crate::comment_index::comment_index;
+use crate::comments::{doc_text, find_nearby_comment};
 use crate::handlers::document_links::replace_bracket_refs_with_links;
 
 pub trait MaybeHirNode<'db> {
@@ -37,11 +37,9 @@ impl<'db> MaybeHirNode<'db> for Type<'db> {
 
 pub trait HasComment<'db>: HirNodeInfo<'db> {
     fn get_comment(&'db self, db: &'db dyn WorkspaceDataBase) -> Option<String> {
-        let comment = match comment_index(db, self.get_scope_id(db).file(db)).find_nearby_comment(
-            self.get_scope_id(db).file(db).document(db),
-            &self.get_span(db),
-        ) {
-            Some(c) => c.to_string(self.get_scope_id(db).file(db).document(db)),
+        let file = self.get_scope_id(db).file(db);
+        let comment = match find_nearby_comment(db, file, &self.get_span(db)) {
+            Some(c) => doc_text(c, file.document(db)),
             None => return Some(String::new()),
         };
         let comment = replace_bracket_refs_with_links(db, &comment);

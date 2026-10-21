@@ -28,7 +28,7 @@ use hir::{
 use rustc_hash::FxHashSet;
 
 use crate::{
-    comment_index::comment_index,
+    comments::in_comment,
     handlers::{
         CompletionHandler, CompletionRequest,
         completions_utils::{
@@ -49,12 +49,7 @@ pub fn complete(
     trigger_character: Option<String>,
 ) -> Vec<CompletionItem> {
     // Suppress completions inside comments
-    let in_comment = comment_index(db, file)
-        .map
-        .values()
-        .any(|comment| comment.range.start_byte <= offset && offset <= comment.range.end_byte);
-
-    if in_comment {
+    if in_comment(db, file, offset) {
         return vec![];
     }
 

@@ -14,8 +14,6 @@ use hir::{
     hir_ty::index_graphs::{namespace_pou_index, pou_index},
 };
 
-use crate::comment_index::comment_index;
-
 /// A bracket reference found inside a comment, e.g. `[MyFB]` or `[NS.MyType]`.
 pub(crate) struct BracketRef {
     /// The text inside the brackets.
@@ -104,13 +102,12 @@ pub(crate) fn resolve_bracket_ref(db: &dyn WorkspaceDataBase, content: &str) -> 
 
 /// Compute document links for all `[TypeName]` references in comments.
 pub fn document_links(db: &dyn WorkspaceDataBase, file: File) -> Vec<DocumentLink> {
-    let comment_idx = comment_index(db, file);
     let document = file.document(db);
     let source = document.as_str();
 
     let mut links = Vec::new();
 
-    for comment in comment_idx.map.values() {
+    for comment in db::syntax::comments(db, file) {
         let text = match source.get(comment.range.start_byte..comment.range.end_byte) {
             Some(t) => t,
             None => continue,

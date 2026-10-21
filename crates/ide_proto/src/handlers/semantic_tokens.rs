@@ -27,7 +27,7 @@ use hir::{
 use crate::{
     CLASS, ENUM, ENUM_MEMBER, FUNCTION, INTERFACE, METHOD, NAMESPACE, PARAMETER, PROPERTY, STRUCT,
     SUPPORTED_TYPES, TYPE, VARIABLE,
-    comment_index::comment_index,
+    comments::find_nearby_comment,
     handlers::SemanticTokensHandler,
     handlers::document_links::{byte_range_to_span, find_bracket_refs, resolve_bracket_ref_to_pou},
 };
@@ -98,7 +98,7 @@ fn comment_bracket_ref_tokens<'db>(
     let source = document.as_str();
     let node_span = node.get_span(db);
 
-    let comment = match comment_index(db, file).find_nearby_comment(document, &node_span) {
+    let comment = match find_nearby_comment(db, file, &node_span) {
         Some(c) => c,
         None => return,
     };

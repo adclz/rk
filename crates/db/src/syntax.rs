@@ -12,10 +12,9 @@
 //! syntax error anywhere in a file made them panic. Here the errors are part
 //! of the result.
 
-use auto_lsp::core::document::Document;
 use auto_lsp::core::errors::{LexerError, ParseError};
-use auto_lsp::default::db::{file::File, tracked::ParsedAst};
-use auto_lsp::tree_sitter::Node;
+use auto_lsp::default::db::{BaseDatabase, file::File, tracked::ParsedAst};
+use auto_lsp::tree_sitter::{Node, Range};
 
 use crate::WorkspaceDataBase;
 
@@ -111,12 +110,32 @@ fn unknown_pragmas(root: &Node, source: &[u8]) -> Vec<UnknownPragma> {
     found
 }
 
-/// The comments of a file's tree, in the order of the text. A comment
-/// nested in another is part of its token. Only the nodes that hold a `//`,
-/// a `(*` or a `/*` are visited, so a file costs a scan of its bytes and a
-/// descent to each comment. A query visited every node of the tree, which
-/// was most of what the editor's comment index cost.
-pub fn comments(document: &Document) -> Vec<Node<'_>> {
+/// A comment of a file: where it is, and which of the three it is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Comment {
+    pub range: Range,
+    pub kind: CommentKind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum CommentKind {
+    /// `// …`, to the end of the line.
+    Line,
+    /// `/* … */`.
+    C,
+    /// `(* … *)`.
+    Pascal,
+}
+
+/// The comments of a file, in the order of the text: the editor's
+/// documentation and links read them, and the linter. A comment nested in
+/// another is part of its token. Only the nodes that hold a `//`, a `(*` or
+/// a `/*` are visited, so a file costs a scan of its bytes and a descent to
+/// each comment. A query visited every node of the tree, which was most of
+/// what the editor's comment index cost.
+#[salsa::tracked(returns(ref))]
+pub fn comments(db: &dyn BaseDatabase, file: File) -> Vec<Comment> {
+    let document = file.document(db);
     let source = document.as_bytes();
     // Where a comment may start, in order. One inside a string is a false
     // start, which only costs a descent.
@@ -137,12 +156,17 @@ pub fn comments(document: &Document) -> Vec<Node<'_>> {
     let mut cursor = document.tree.walk();
     loop {
         let node = cursor.node();
-        let comment = matches!(
-            node.kind(),
-            "line_comment" | "c_style_comment" | "pascal_style_comment"
-        );
-        if comment {
-            found.push(node);
+        let kind = match node.kind() {
+            "line_comment" => Some(CommentKind::Line),
+            "c_style_comment" => Some(CommentKind::C),
+            "pascal_style_comment" => Some(CommentKind::Pascal),
+            _ => None,
+        };
+        if let Some(kind) = kind {
+            found.push(Comment {
+                range: node.range(),
+                kind,
+            });
         } else if holds_a_start(node) && cursor.goto_first_child() {
             continue;
         }
