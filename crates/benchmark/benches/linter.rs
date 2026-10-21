@@ -8,7 +8,7 @@
 use divan::Bencher;
 use rk_benchmark::{all_rules_config, check_all, expected_lints, lint_all, load_corpus, setup_db};
 
-const CORPORA: &[&str] = &["stdlib"];
+const CORPORA: &[&str] = &["stdlib", "generated_1k"];
 
 #[divan::bench(args = CORPORA, sample_count = 10, sample_size = 1)]
 fn lint(bencher: Bencher, name: &str) {
