@@ -20,7 +20,7 @@ use crate::hir_def::program::ProgramDecl;
 use crate::hir_def::scope::{Scope, ScopeId, ScopeKind};
 use crate::hir_def::semantic_index::{NodeKey, SemanticIndex};
 use crate::hir_def::using::Using;
-use crate::{AstId, HirNodeInfo};
+use crate::{AstId, HasName, HirNodeInfo};
 
 /// What a front-end builds a file's index with: the nodes made so far, the
 /// scope being read, and the faults found on the way.
@@ -435,6 +435,23 @@ impl<'db> SemanticIndexBuilder<'db> {
                 .push(*ns);
         }
 
+        // Keyed by the folded name, in declaration order: what a lookup by
+        // name compares.
+        let mut pou_map: rustc_hash::FxHashMap<_, Vec<_>> = Default::default();
+        for pou in &self.global_pous {
+            pou_map
+                .entry(pou.get_name_ident(self.db))
+                .or_default()
+                .push(*pou);
+        }
+        let mut program_map: rustc_hash::FxHashMap<_, Vec<_>> = Default::default();
+        for program in &self.programs {
+            program_map
+                .entry(program.get_name_ident(self.db))
+                .or_default()
+                .push(*program);
+        }
+
         // Each address the file mentions, with the declarations located at
         // it; one written only bare has none.
         let mut located: std::collections::BTreeMap<_, Vec<_>> = Default::default();
@@ -456,6 +473,8 @@ impl<'db> SemanticIndexBuilder<'db> {
             namespaces: Arc::new(self.namespaces),
             namespace_map: Arc::new(namespace_map),
             global_pous: Arc::new(self.global_pous),
+            pou_map: Arc::new(pou_map),
+            program_map: Arc::new(program_map),
             located: Arc::new(located),
             errors: self.errors,
         }

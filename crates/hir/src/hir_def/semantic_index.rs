@@ -10,6 +10,7 @@ use db::WorkspaceDataBase;
 use ide_diagnostic::IdeDiagnostic;
 use rustc_hash::FxHashMap;
 
+use crate::hir_def::interned::identifier::Ident;
 use crate::hir_def::interned::namespace::NamespacePath;
 use tracing::info_span;
 
@@ -98,6 +99,12 @@ pub struct SemanticIndex<'db> {
 
     /// All *global* POU declarations in the file
     pub global_pous: Arc<Vec<Pou<'db>>>,
+    /// The same POUs keyed by case-folded name, in declaration order: a
+    /// lookup by name is one probe per file rather than a fold and a
+    /// compare per POU.
+    pub pou_map: Arc<FxHashMap<Ident, Vec<Pou<'db>>>>,
+    /// The file's PROGRAMs keyed by case-folded name, likewise.
+    pub program_map: Arc<FxHashMap<Ident, Vec<ProgramDecl<'db>>>>,
 
     /// Every I/O address the file mentions, with the declarations located
     /// at it: a CONFIGURATION's VAR_GLOBALs and a PROGRAM's VARs, in source
@@ -144,6 +151,8 @@ impl<'db> SemanticIndex<'db> {
             namespaces: Arc::new(vec![]),
             namespace_map: Arc::new(FxHashMap::default()),
             global_pous: Arc::new(vec![]),
+            pou_map: Arc::new(FxHashMap::default()),
+            program_map: Arc::new(FxHashMap::default()),
             located: Arc::new(Default::default()),
             errors: vec![],
         }

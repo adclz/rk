@@ -101,6 +101,27 @@ pub fn file_global_pous<'db>(db: &'db dyn WorkspaceDataBase, file: File) -> Arc<
     Arc::clone(&semantic_index(db, file).global_pous)
 }
 
+/// A file's global POUs keyed by case-folded name, built with the file's
+/// semantic index. Per file for the reason [`file_namespace_map`] is, and
+/// with Eq: an edit that leaves the file's POUs and their names as they
+/// were backdates it.
+#[salsa::tracked(returns(ref))]
+pub fn file_pou_map<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    file: File,
+) -> Arc<FxHashMap<Ident, Vec<Pou<'db>>>> {
+    Arc::clone(&semantic_index(db, file).pou_map)
+}
+
+/// A file's PROGRAMs keyed by case-folded name, as [`file_pou_map`].
+#[salsa::tracked(returns(ref))]
+pub fn file_program_map<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    file: File,
+) -> Arc<FxHashMap<Ident, Vec<ProgramDecl<'db>>>> {
+    Arc::clone(&semantic_index(db, file).program_map)
+}
+
 /// Extracts namespace declarations from a file's semantic index.
 #[salsa::tracked(returns(ref))]
 pub fn file_namespaces<'db>(
@@ -481,14 +502,7 @@ pub fn namespace_pou_index<'db>(
 /// as the path.
 #[tracing::instrument(level = "trace", skip(db))]
 pub fn pou_index<'db>(db: &'db dyn WorkspaceDataBase, name: Ident) -> Option<Pou<'db>> {
-    for file in workspace_files(db) {
-        for p in file_global_pous(db, file).iter() {
-            if p.get_name_ident(db) == name {
-                return Some(*p);
-            }
-        }
-    }
-    None
+    workspace_files(db).find_map(|file| file_pou_map(db, file).get(&name)?.first().copied())
 }
 
 /// Returns EVERY POU declared at the top level of the WORKSPACE with the
@@ -500,10 +514,8 @@ pub fn pou_index<'db>(db: &'db dyn WorkspaceDataBase, name: Ident) -> Option<Pou
 pub fn pou_candidates<'db>(db: &'db dyn WorkspaceDataBase, name: Ident) -> Vec<Pou<'db>> {
     let mut result = Vec::new();
     for file in workspace_files(db) {
-        for p in file_global_pous(db, file).iter() {
-            if p.get_name_ident(db) == name {
-                result.push(*p);
-            }
+        if let Some(found) = file_pou_map(db, file).get(&name) {
+            result.extend(found.iter().copied());
         }
     }
     result
@@ -532,14 +544,7 @@ pub fn namespace_pou_candidates<'db>(
 /// Finds a globally declared program by name across all files.
 #[tracing::instrument(level = "trace", skip(db))]
 pub fn program_index<'db>(db: &'db dyn WorkspaceDataBase, name: Ident) -> Option<ProgramDecl<'db>> {
-    for file in all_files(db) {
-        for p in file_programs(db, file).iter() {
-            if p.get_name_ident(db) == name {
-                return Some(*p);
-            }
-        }
-    }
-    None
+    all_files(db).find_map(|file| file_program_map(db, file).get(&name)?.first().copied())
 }
 
 /// Every CONFIGURATION the workspace declares — for reporting that it
