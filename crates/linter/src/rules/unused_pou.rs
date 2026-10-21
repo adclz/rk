@@ -103,18 +103,15 @@ fn report(
     span: auto_lsp::tree_sitter::Range,
     diagnostics: &mut Vec<IdeDiagnostic>,
 ) {
-    let mut d = diag()
-        .message(format!("'{name}' is never used"))
-        .desc(&UnusedPou)
-        .range(hir::denormalize(db, file, &span).unwrap_or_default())
-        .severity(DiagnosticSeverity::INFORMATION)
-        .tags(vec![DiagnosticTag::UNNECESSARY])
-        .call();
-    d.with_note(
-        "no program, {export} FUNCTION or {test} uses it, directly or through others".to_string(),
+    diagnostics.push(
+        diag()
+            .message(format!("'{name}' is never used"))
+            .desc(&UnusedPou)
+            .range(hir::denormalize(db, file, &span).unwrap_or_default())
+            .severity(DiagnosticSeverity::INFORMATION)
+            .tags(vec![DiagnosticTag::UNNECESSARY])
+            .call(),
     );
-    d.with_help(format!("remove '{name}'"));
-    diagnostics.push(d);
 }
 
 /// Every scope the application reaches.
