@@ -238,6 +238,55 @@ fn a_workspace_reads_the_standard_library_from_the_cache() {
     assert!(db.get_library_files().is_empty());
 }
 
+/// A copy of the standard library an earlier build left in the cache,
+/// under the hash its files had then, is no file of the workspace, with a
+/// folder open or none. The editor opens it again from its history: read
+/// as the workspace's, it declared every POU of the library a second time.
+#[test]
+fn an_older_copy_of_the_standard_library_is_no_file_of_the_workspace() {
+    let t = tempfile::tempdir().unwrap();
+    let root = t.path().canonicalize().unwrap();
+    let cache = root.join("cache");
+    let ws = root.join("ws");
+    std::fs::create_dir(&ws).unwrap();
+    std::fs::write(
+        ws.join("config.toml"),
+        "[project]\nname = \"app\"\nversion = \"1\"\n",
+    )
+    .unwrap();
+    std::fs::write(ws.join("main.st"), "FUNCTION main : INT\nEND_FUNCTION\n").unwrap();
+    let elsewhere = root.join("Far.st");
+    std::fs::write(&elsewhere, "FUNCTION far : INT\nEND_FUNCTION\n").unwrap();
+
+    built_in(&cache);
+    let (db, _) = open(&ws);
+    let copy = cached_dir(&cache, &bundle().hash).join("Strings.st");
+    let older = packages_dir(&cache).join("0".repeat(64)).join("Strings.st");
+    std::fs::create_dir_all(older.parent().unwrap()).unwrap();
+    std::fs::copy(&copy, &older).unwrap();
+    let is_workspace_file = db::loader::is_workspace_file;
+    assert!(is_workspace_file(&db, &ws.join("main.st")));
+    assert!(!is_workspace_file(&db, &copy));
+    assert!(!is_workspace_file(&db, &older));
+    assert!(!is_workspace_file(&db, &elsewhere));
+
+    // No folder open: any file is the workspace's, but none in the cache.
+    let mut db = RootDatabase::default();
+    db::loader::open_workspace(
+        &mut db,
+        None,
+        PositionEncodingKind::UTF8,
+        db::loader::rk_parser,
+        None,
+        &mut vec![],
+        &mut vec![],
+    );
+    assert!(!db.get_library_files().is_empty());
+    assert!(is_workspace_file(&db, &elsewhere));
+    assert!(!is_workspace_file(&db, &copy));
+    assert!(!is_workspace_file(&db, &older));
+}
+
 /// The standard library's own workspace reads no copy of itself: its
 /// `.env` sets `RK_STDLIB_PATH` empty, so nothing in it is declared twice.
 #[test]
