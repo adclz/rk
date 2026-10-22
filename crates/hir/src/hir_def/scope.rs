@@ -8,7 +8,6 @@ use crate::hir_def::config::ConfigDecl;
 use crate::hir_def::expressions::spec::Spec;
 use crate::hir_def::pous::interface::MethodPrototype;
 use crate::hir_def::program::ProgramDecl;
-use crate::hir_def::semantic_index::semantic_index;
 use crate::hir_def::{
     namespace::NamespaceDecl,
     pous::{class::MethodDecl, pou::Pou, variable::VariableDecl},
@@ -39,7 +38,7 @@ impl<'db> ScopeId<'db> {
     pub fn namespaces(&self, db: &'db dyn WorkspaceDataBase) -> Option<&Vec<NamespaceDecl<'db>>> {
         Some(match get_scope(db, *self).kind {
             ScopeKind::Namespace(ns) => ns.namespaces(db),
-            ScopeKind::Global => &semantic_index(db, self.file(db)).namespaces,
+            ScopeKind::Global => crate::hir_ty::index_graphs::file_namespaces(db, self.file(db)),
             _ => None?,
         })
     }
@@ -47,7 +46,7 @@ impl<'db> ScopeId<'db> {
     pub fn pous(&self, db: &'db dyn WorkspaceDataBase) -> Option<&Vec<Pou<'db>>> {
         Some(match get_scope(db, *self).kind {
             ScopeKind::Namespace(ns) => ns.pous(db),
-            ScopeKind::Global => &semantic_index(db, self.file(db)).global_pous,
+            ScopeKind::Global => crate::hir_ty::index_graphs::file_global_pous(db, self.file(db)),
             _ => None?,
         })
     }

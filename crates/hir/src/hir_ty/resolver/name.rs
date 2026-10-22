@@ -698,15 +698,28 @@ pub fn enclosing_namespace<'db>(
     db: &'db dyn WorkspaceDataBase,
     scope_id: crate::hir_def::scope::ScopeId<'db>,
 ) -> Option<crate::hir_def::namespace::NamespaceDecl<'db>> {
+    enclosing_namespaces(db, scope_id).first().copied()
+}
+
+/// The namespaces enclosing `scope_id`, the innermost first. A query of the
+/// scope's own: a query of another file that climbs the scope's namespaces
+/// reads this list, and runs again when the list changed, not each time the
+/// scope's file is indexed again.
+#[salsa::tracked(returns(ref))]
+pub fn enclosing_namespaces<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    scope_id: crate::hir_def::scope::ScopeId<'db>,
+) -> Vec<crate::hir_def::namespace::NamespaceDecl<'db>> {
     if scope_id.is_global(db) {
-        return None;
+        return Vec::new();
     }
-    for scope in semantic_index(db, scope_id.file(db)).scope_iterator(db, scope_id) {
-        if let ScopeKind::Namespace(ns) = scope.kind {
-            return Some(ns);
-        }
-    }
-    None
+    semantic_index(db, scope_id.file(db))
+        .scope_iterator(db, scope_id)
+        .filter_map(|scope| match scope.kind {
+            ScopeKind::Namespace(ns) => Some(ns),
+            _ => None,
+        })
+        .collect()
 }
 
 fn function_namespace_path<'db>(

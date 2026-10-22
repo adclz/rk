@@ -39,7 +39,7 @@ use crate::{
     hir_def::{
         namespace::NamespaceDecl,
         scope::{ScopeId, ScopeKind},
-        semantic_index::{get_scope, semantic_index},
+        semantic_index::get_scope,
     },
 };
 
@@ -227,14 +227,10 @@ pub fn first_closed_internal<'db>(
     calling_scope: ScopeId<'db>,
     target_scope: ScopeId<'db>,
 ) -> Option<NamespaceDecl<'db>> {
-    let sema = semantic_index(db, target_scope.file(db));
-    sema.scope_iterator(db, target_scope)
-        .find_map(|scope_info| match scope_info.kind {
-            ScopeKind::Namespace(ns) if ns.internal(db) => {
-                internal_namespace_violated(db, calling_scope, ns)
-            }
-            _ => None,
-        })
+    crate::hir_ty::resolver::name::enclosing_namespaces(db, target_scope)
+        .iter()
+        .filter(|ns| ns.internal(db))
+        .find_map(|ns| internal_namespace_violated(db, calling_scope, *ns))
 }
 
 /// E1004: `NAMESPACE INTERNAL N` is reachable only from inside the namespace
@@ -317,9 +313,6 @@ fn is_derived_pou<'db>(
     calling_scope: ScopeId<'db>,
     method_scope: ScopeId<'db>,
 ) -> bool {
-    let sema_calling_scope = semantic_index(db, calling_scope.file(db));
-    let sema_method_scope = semantic_index(db, method_scope.file(db));
-
     let sema_calling_scope = get_scope(db, calling_scope);
     let sema_method_scope = get_scope(db, method_scope);
 
@@ -368,18 +361,10 @@ fn is_same_namespace<'db>(
     }
 }
 
-/// Find the namespace that contains the given scope using the scope iterator
+/// The namespace that contains the given scope, or `None` at top level.
 fn find_containing_namespace<'db>(
     db: &'db dyn WorkspaceDataBase,
     scope: ScopeId<'db>,
 ) -> Option<crate::hir_def::namespace::NamespaceDecl<'db>> {
-    let sema = semantic_index(db, scope.file(db));
-
-    for scope_info in sema.scope_iterator(db, scope) {
-        if let ScopeKind::Namespace(ns) = scope_info.kind {
-            return Some(ns);
-        }
-    }
-
-    None
+    crate::hir_ty::resolver::name::enclosing_namespace(db, scope)
 }

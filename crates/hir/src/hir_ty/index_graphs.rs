@@ -122,6 +122,18 @@ pub fn file_program_map<'db>(
     Arc::clone(&semantic_index(db, file).program_map)
 }
 
+/// A file's global scope. The index holds it: made once, when the file was
+/// read, as a tracked struct has to be. A query of its own, so that a lookup
+/// through the top level of another file reads this and not that file's
+/// whole index.
+#[salsa::tracked]
+pub fn file_scope<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    file: File,
+) -> crate::hir_def::scope::ScopeId<'db> {
+    semantic_index(db, file).scope
+}
+
 /// Extracts namespace declarations from a file's semantic index.
 #[salsa::tracked(returns(ref))]
 pub fn file_namespaces<'db>(
@@ -388,12 +400,10 @@ pub fn namespace_scopes<'db>(
     if let [name] = path.fragments(db).as_slice()
         && let Some(root) = crate::hir_ty::library::root_named(db, *name)
     {
-        // The index holds a file's global scope: made once, when the file
-        // was read, as a tracked struct has to be.
         scopes.extend(
             crate::hir_ty::library::library_files_of_root(db, root)
                 .into_iter()
-                .map(|file| semantic_index(db, file).scope),
+                .map(|file| file_scope(db, file)),
         );
     }
     scopes
