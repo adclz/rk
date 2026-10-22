@@ -12,7 +12,7 @@
 //! syntax error anywhere in a file made them panic. Here the errors are part
 //! of the result.
 
-use auto_lsp::core::errors::{LexerError, ParseError};
+use auto_lsp::core::errors::{LexerError, ParseError, ParseErrorAccumulator};
 use auto_lsp::default::db::{BaseDatabase, file::File, tracked::ParsedAst};
 use auto_lsp::tree_sitter::{Node, Range};
 
@@ -45,6 +45,7 @@ pub struct UnknownPragma {
 /// accumulated. A node auto-lsp's builder has no place for is still
 /// accumulated, by the builder, on this query: the generated AST not
 /// matching the grammar, a compiler bug the grammar no longer produces.
+/// Those are read through [`unbuilt_nodes`].
 #[salsa::tracked(returns(ref))]
 pub fn parse(db: &dyn WorkspaceDataBase, file: File) -> Parsed {
     let doc = file.document(db);
@@ -74,6 +75,20 @@ pub fn parse(db: &dyn WorkspaceDataBase, file: File) -> Parsed {
             unknown_pragmas,
         },
     }
+}
+
+/// The nodes auto-lsp's builder had no place for in `file`'s AST, which it
+/// accumulates on [`parse`] instead of returning them. Read through this
+/// query, never from the accumulator: salsa cannot track a read of
+/// accumulated values, so the reader runs again in every revision, and so
+/// does every query that reads the reader. This one runs again too, but it
+/// compares what it finds, and its readers run again only when that changed.
+#[salsa::tracked(returns(ref))]
+pub fn unbuilt_nodes(db: &dyn WorkspaceDataBase, file: File) -> Vec<ParseError> {
+    parse::accumulated::<ParseErrorAccumulator>(db, file)
+        .into_iter()
+        .map(|error| error.0.clone())
+        .collect()
 }
 
 /// Every `pragma` node under `root`. One is an extra and can stand anywhere

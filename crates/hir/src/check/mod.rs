@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use auto_lsp::{core::errors::ParseErrorAccumulator, default::db::file::File};
+use auto_lsp::default::db::file::File;
 use db::{WorkspaceDataBase, workspace::Workspace};
 use ide_diagnostic::IdeDiagnostic;
 
@@ -50,11 +50,10 @@ pub fn diagnostics_for_file(db: &dyn WorkspaceDataBase, file: File) -> Arc<Vec<I
     // tree-sitter's errors, the nodes the builder had no place for, then why
     // no AST was built at all: the order auto-lsp accumulated them in.
     let parsed = db::syntax::parse(db, file);
-    let unbuilt = db::syntax::parse::accumulated::<ParseErrorAccumulator>(db, file);
     let lexer_errors: Vec<IdeDiagnostic> = parsed
         .syntax_errors
         .iter()
-        .chain(unbuilt.iter().map(|e| &e.0))
+        .chain(db::syntax::unbuilt_nodes(db, file))
         .chain(&parsed.failure)
         .map(|e| SyntaxError::from_parse_error(db, file, e).to_diagnostic(db, file))
         .chain(parsed.unknown_pragmas.iter().map(|pragma| {
