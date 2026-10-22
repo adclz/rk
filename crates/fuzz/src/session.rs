@@ -4,7 +4,7 @@
 //! One source in a fresh database, as `rk check` sees a single file, read
 //! beside one library.
 
-use auto_lsp::default::db::{BaseDatabase, file::File};
+use auto_lsp::default::db::file::File;
 use auto_lsp::lsp_types::{DiagnosticSeverity, PositionEncodingKind, Url};
 use db::{RootDatabase, WorkspaceDataBase};
 use hir::check::diagnostics_for_file;
@@ -86,7 +86,7 @@ pub(crate) fn load(source: &str) -> Option<(RootDatabase, File)> {
         .source(LIBRARY.to_string())
         .call()
         .ok()?;
-    db.insert_library_file(library_url, library);
+    db.insert_library_file(library);
 
     let url = url();
     let file = File::from_string()
@@ -110,7 +110,7 @@ pub(crate) fn lower(
     let mut indices: Vec<_> = db
         .get_library_files()
         .iter()
-        .map(|entry| semantic_index(db, *entry.value()))
+        .map(|file| semantic_index(db, *file))
         .collect();
     indices.push(semantic_index(db, file));
     mir::lower::lower_module::lower_modules(db, &indices)
@@ -134,7 +134,7 @@ pub(crate) fn compiles(db: &RootDatabase, file: File) -> bool {
 pub(crate) fn positioned_diagnostics(db: &RootDatabase, file: File) -> Vec<String> {
     let mut out: Vec<String> = diagnostics_for_file(db, file)
         .iter()
-        .map(|d| format!("{:?}", d.to_lsp_diagnostic(db as &dyn BaseDatabase)))
+        .map(|d| format!("{:?}", d.to_lsp_diagnostic(db)))
         .collect();
     out.sort();
     out

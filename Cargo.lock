@@ -908,7 +908,6 @@ dependencies = [
  "lock_api",
  "once_cell",
  "parking_lot_core",
- "rayon",
 ]
 
 [[package]]
@@ -917,7 +916,6 @@ version = "0.1.0"
 dependencies = [
  "ast",
  "auto-lsp",
- "dashmap",
  "dirs",
  "ide_diagnostic",
  "rayon",

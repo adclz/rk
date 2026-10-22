@@ -120,7 +120,7 @@ fn reached<'db>(
     configs: &[ConfigDecl<'db>],
 ) -> FxHashSet<ScopeId<'db>> {
     let mut queue: Vec<ScopeId<'db>> = configs.iter().map(|c| c.scope_id(db)).collect();
-    for file in db.get_files().iter().map(|entry| *entry) {
+    for file in db.get_files().iter().copied() {
         for (scope, pou) in declared(db, file) {
             if let Pou::Function(f) = pou
                 && (f.is_export(db) || f.is_test(db))

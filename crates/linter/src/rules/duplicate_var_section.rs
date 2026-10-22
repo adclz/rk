@@ -4,10 +4,11 @@
 use std::sync::LazyLock;
 
 use auto_lsp::{
-    default::db::{BaseDatabase, file::File},
+    default::db::file::File,
     lsp_types::DiagnosticSeverity,
     tree_sitter::{self, StreamingIterator},
 };
+use db::WorkspaceDataBase;
 use db::config_file::LinterConfig;
 use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
 use rustc_hash::FxHashMap;
@@ -56,7 +57,7 @@ fn section_name(kind: &str) -> Option<&'static str> {
 }
 
 pub fn check(
-    db: &dyn BaseDatabase,
+    db: &dyn WorkspaceDataBase,
     file: File,
     config: &LinterConfig,
     diagnostics: &mut Vec<IdeDiagnostic>,
@@ -109,7 +110,7 @@ fn section_display_name(child: &tree_sitter::Node) -> Option<String> {
 }
 
 fn check_pou_node(
-    db: &dyn BaseDatabase,
+    db: &dyn WorkspaceDataBase,
     file: File,
     pou_node: tree_sitter::Node,
     diagnostics: &mut Vec<IdeDiagnostic>,

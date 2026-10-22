@@ -12,7 +12,7 @@
 //! anywhere in a file made it panic. Here the errors are part of the result.
 
 use auto_lsp::core::errors::{LexerError, ParseError, ParseErrorAccumulator};
-use auto_lsp::default::db::{BaseDatabase, file::File, tracked::ParsedAst};
+use auto_lsp::default::db::{file::File, tracked::ParsedAst};
 use auto_lsp::tree_sitter::{Node, Range};
 
 use crate::WorkspaceDataBase;
@@ -148,7 +148,7 @@ pub enum CommentKind {
 /// each comment. A query visited every node of the tree, which was most of
 /// what the editor's comment index cost.
 #[salsa::tracked(returns(ref))]
-pub fn comments(db: &dyn BaseDatabase, file: File) -> Vec<Comment> {
+pub fn comments(db: &dyn WorkspaceDataBase, file: File) -> Vec<Comment> {
     let document = file.document(db);
     let source = document.as_bytes();
     // Where a comment may start, in order. One inside a string is a false

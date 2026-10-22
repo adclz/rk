@@ -13,7 +13,6 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ast::generated::SourceFile;
 use auto_lsp::core::ast::AstNode;
-use auto_lsp::default::db::BaseDatabase;
 use auto_lsp::default::db::file::File;
 use auto_lsp::default::db::tracked::ParsedAst;
 use auto_lsp::lsp_types::{NumberOrString, PositionEncodingKind, Url};
@@ -356,7 +355,7 @@ fn a_library_holds_files_of_the_second_kind() {
     let (db, files) = open(&root);
     assert_eq!(files.len(), 1, "the workspace's own file");
     let lib = Url::from_file_path(library_root.join("Lib.two")).unwrap();
-    assert!(db.get_library_files().contains_key(&lib));
+    assert!(db.get_library_file(&lib).is_some());
     assert_eq!(
         codes(&db, file_named(&db, &root, "main.st")),
         Vec::<String>::new()

@@ -6,15 +6,11 @@
 // Public for the fuzzer (crates/fuzz), which sends each request the way
 // the server does.
 pub mod capabilties;
+mod file_events;
 
-use ast::RK_PARSER;
 use auto_lsp::anyhow;
-use auto_lsp::default::db::BaseDatabase;
 use auto_lsp::default::server::capabilities::TEXT_DOCUMENT_SYNC;
 use auto_lsp::default::server::capabilities::WORKSPACE_PROVIDER;
-use auto_lsp::default::server::file_events::change_text_document;
-use auto_lsp::default::server::file_events::changed_watched_files;
-use auto_lsp::default::server::file_events::open_text_document;
 use auto_lsp::lsp_server;
 use auto_lsp::lsp_server::Connection;
 use auto_lsp::lsp_server::Message;
@@ -316,10 +312,10 @@ fn is_rk_document(uri: &Url) -> bool {
     db::loader::is_st_file(std::path::Path::new(uri.path()))
 }
 
-/// Whether the editor's document is the workspace's. auto-lsp adds every
-/// document it is handed, from anywhere, so the server asks first: a
-/// `file:` one is when the loader reads it, and one with no file,
-/// `untitled:`, always is.
+/// Whether the editor's document is the workspace's. The editor hands the
+/// server documents from anywhere, so it asks before adding one: a `file:`
+/// one is when the loader reads it, and one with no file, `untitled:`,
+/// always is.
 fn is_workspace_document(db: &RootDatabase, uri: &Url) -> bool {
     is_rk_document(uri)
         && match uri.scheme() {
@@ -336,15 +332,13 @@ fn on_notifications(
     registry
         .on_mut::<DidOpenTextDocument, _>(|s, p| {
             if is_workspace_document(&s.db, &p.text_document.uri) {
-                open_text_document(s, p, &RK_PARSER)?;
-                // auto-lsp adds the document to the maps alone.
-                s.db.sync_file_set();
+                file_events::open_text_document(s, p)?;
             }
             Ok(())
         })
         // A document left out when it was opened stays out.
         .on_mut::<DidChangeTextDocument, _>(|s, p| match s.db.get_file(&p.text_document.uri) {
-            Some(_) => Ok(change_text_document(s, p)?),
+            Some(_) => Ok(file_events::change_text_document(s, p)?),
             None => Ok(()),
         })
         .on_mut::<DidChangeWatchedFiles, _>(|s, mut p| {
@@ -358,23 +352,13 @@ fn on_notifications(
                     Workspace::try_get(&s.db).and_then(|c| c.workspace_folder(&s.db).cloned());
                 refresh_configuration(s, workspace.as_deref())?;
             } else {
-                // auto-lsp adds a file created and rereads a file changed
-                // without asking whose it is: one created is taken when the
-                // workspace reads it, one changed or deleted when the
-                // workspace holds it.
-                p.changes.retain(|change| match change.typ {
-                    FileChangeType::CREATED => is_workspace_document(&s.db, &change.uri),
-                    _ => s.db.get_file(&change.uri).is_some(),
+                // A file created is taken when the workspace reads it; one
+                // changed or deleted is the workspace's when it holds it.
+                p.changes.retain(|change| {
+                    change.typ != FileChangeType::CREATED
+                        || is_workspace_document(&s.db, &change.uri)
                 });
-                let changed = changed_watched_files(s, p, |url| {
-                    let path = url.to_file_path().ok()?;
-                    db::loader::rk_parser(&path)
-                });
-                // auto-lsp adds and removes the files in the maps alone, and
-                // one it could not read stops the batch after the others
-                // were applied: what they changed reaches salsa either way.
-                s.db.sync_file_set();
-                changed?;
+                file_events::changed_watched_files(s, p)?;
             }
 
             send_request::<lsp_types::request::WorkspaceDiagnosticRefresh>(s, ())?;
@@ -611,6 +595,33 @@ mod tests {
     }
 
     impl Client {
+        /// A server serving the workspace folder `workspace`, once its files
+        /// are loaded, and the client's end of its connection.
+        fn start(workspace: Url) -> (Client, std::thread::JoinHandle<()>) {
+            let (server, connection) = Connection::memory();
+            let server = std::thread::spawn(move || serve(server).unwrap());
+            let mut client = Client {
+                connection,
+                id: 0,
+                errors: vec![],
+            };
+            client.request::<Initialize>(InitializeParams {
+                workspace_folders: Some(vec![WorkspaceFolder {
+                    uri: workspace,
+                    name: "ws".into(),
+                }]),
+                ..Default::default()
+            });
+            client.notify::<Initialized>(InitializedParams {});
+            (client, server)
+        }
+
+        fn stop(mut self, server: std::thread::JoinHandle<()>) {
+            self.request::<Shutdown>(());
+            self.notify::<Exit>(());
+            server.join().unwrap();
+        }
+
         /// Sends a request and waits for its answer.
         fn request<R: lsp_types::request::Request>(
             &mut self,
@@ -700,21 +711,7 @@ mod tests {
         write("elsewhere/other.st", later);
         let url = |path: &str| Url::from_file_path(root.join(path)).unwrap();
 
-        let (server, connection) = Connection::memory();
-        let server = std::thread::spawn(move || serve(server).unwrap());
-        let mut client = Client {
-            connection,
-            id: 0,
-            errors: vec![],
-        };
-        client.request::<Initialize>(InitializeParams {
-            workspace_folders: Some(vec![WorkspaceFolder {
-                uri: url("ws"),
-                name: "ws".into(),
-            }]),
-            ..Default::default()
-        });
-        client.notify::<Initialized>(InitializedParams {});
+        let (mut client, server) = Client::start(url("ws"));
         // Answered once the folder is loaded, which a file written before
         // that would be part of.
         assert_eq!(client.report(), [(url("ws/main.st").to_string(), 0)]);
@@ -751,9 +748,115 @@ mod tests {
             ]
         );
         assert_eq!(client.errors, [] as [String; 0]);
+        client.stop(server);
+    }
 
-        client.request::<Shutdown>(());
-        client.notify::<Exit>(());
-        server.join().unwrap();
+    /// What the editor and the watcher add, change and remove is what the
+    /// other files resolve: the server keeps the files in rk's file set,
+    /// which salsa sees, where auto-lsp's handlers kept them in a map of
+    /// their own. A change that fails leaves the rest of its batch applied.
+    #[test]
+    fn the_files_follow_the_editor_and_the_watcher() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().canonicalize().unwrap();
+        std::fs::create_dir_all(root.join("ws")).unwrap();
+        let write = |path: &str, text: &str| std::fs::write(root.join(path), text).unwrap();
+        let remove = |path: &str| std::fs::remove_file(root.join(path)).unwrap();
+        let declaring =
+            |name: &str| format!("FUNCTION {name} : INT\n    {name} := 1;\nEND_FUNCTION\n");
+        let run = "FUNCTION Run : INT\n    Run := Helper();\nEND_FUNCTION\n";
+        write(
+            "ws/config.toml",
+            "[project]\nname = \"app\"\nversion = \"1\"\n",
+        );
+        // No standard library: the test reads none of the developer's.
+        write("ws/.env", "RK_STDLIB_PATH=\n");
+        write("ws/main.st", run);
+        let url = |path: &str| Url::from_file_path(root.join(path)).unwrap();
+        let main = url("ws/main.st").to_string();
+        let helper = url("ws/helper.st").to_string();
+        let watched = |client: &Client, changes: &[(&str, FileChangeType)]| {
+            client.notify::<DidChangeWatchedFiles>(DidChangeWatchedFilesParams {
+                changes: changes
+                    .iter()
+                    .map(|(path, typ)| FileEvent::new(url(path), *typ))
+                    .collect(),
+            });
+        };
+
+        let (mut client, server) = Client::start(url("ws"));
+        assert_eq!(client.report(), [(main.clone(), 1)]);
+        // A document of the workspace, opened: its file takes the version.
+        client.notify::<DidOpenTextDocument>(DidOpenTextDocumentParams {
+            text_document: TextDocumentItem::new(url("ws/main.st"), "st".into(), 1, run.into()),
+        });
+        assert_eq!(client.report(), [(main.clone(), 1)]);
+
+        write("ws/helper.st", &declaring("Helper"));
+        watched(&client, &[("ws/helper.st", FileChangeType::CREATED)]);
+        assert_eq!(client.report(), [(helper.clone(), 0), (main.clone(), 0)]);
+
+        write("ws/helper.st", &declaring("Other"));
+        watched(&client, &[("ws/helper.st", FileChangeType::CHANGED)]);
+        assert_eq!(client.report(), [(helper.clone(), 0), (main.clone(), 1)]);
+
+        remove("ws/helper.st");
+        watched(&client, &[("ws/helper.st", FileChangeType::DELETED)]);
+        assert_eq!(client.report(), [(main.clone(), 1)]);
+
+        // A document no file holds, opened, then edited.
+        let draft = Url::parse("untitled:/draft.st").unwrap();
+        client.notify::<DidOpenTextDocument>(DidOpenTextDocumentParams {
+            text_document: TextDocumentItem::new(
+                draft.clone(),
+                "st".into(),
+                1,
+                declaring("Helper"),
+            ),
+        });
+        assert_eq!(client.report(), [(main.clone(), 0), (draft.to_string(), 0)]);
+        client.notify::<DidChangeTextDocument>(DidChangeTextDocumentParams {
+            text_document: VersionedTextDocumentIdentifier::new(draft.clone(), 2),
+            content_changes: vec![TextDocumentContentChangeEvent {
+                range: None,
+                range_length: None,
+                text: declaring("Other"),
+            }],
+        });
+        assert_eq!(client.report(), [(main.clone(), 1), (draft.to_string(), 0)]);
+
+        // The file read again is gone from disk, and the file created after
+        // it in the batch is added all the same.
+        write("ws/gone.st", &declaring("Gone"));
+        watched(&client, &[("ws/gone.st", FileChangeType::CREATED)]);
+        // Answered once the server read the file.
+        assert_eq!(
+            client.report(),
+            [
+                (url("ws/gone.st").to_string(), 0),
+                (main.clone(), 1),
+                (draft.to_string(), 0)
+            ]
+        );
+        remove("ws/gone.st");
+        write("ws/helper.st", &declaring("Helper"));
+        watched(
+            &client,
+            &[
+                ("ws/gone.st", FileChangeType::CHANGED),
+                ("ws/helper.st", FileChangeType::CREATED),
+            ],
+        );
+        assert_eq!(
+            client.report(),
+            [
+                (url("ws/gone.st").to_string(), 0),
+                (helper, 0),
+                (main, 0),
+                (draft.to_string(), 0)
+            ]
+        );
+        assert_eq!(client.errors.len(), 1, "{:?}", client.errors);
+        client.stop(server);
     }
 }

@@ -5,15 +5,13 @@
 //! `config.toml`, read from a folder or fetched into the cache, each
 //! library closed to the others as it is to the workspace.
 
-use std::path::{Path, PathBuf};
-
-use auto_lsp::default::db::BaseDatabase;
 use auto_lsp::lsp_types::{PositionEncodingKind, Url};
 use db::dependencies::ContentHash;
 use db::{RootDatabase, WorkspaceDataBase};
 use insta::assert_snapshot;
 use rk::cli::OutputFormat;
 use rk::diagnostics::DiagnosticReporter;
+use std::path::{Path, PathBuf};
 
 /// Writes `files` under `root`, each a path and its text.
 fn write(root: &Path, files: &[(&str, &str)]) {
@@ -104,11 +102,11 @@ fn origins(db: &RootDatabase) -> Vec<(String, Option<String>)> {
         .get_files()
         .iter()
         .chain(db.get_library_files().iter())
-        .map(|entry| {
+        .map(|file| {
             let library = db
-                .library_of(*entry.value())
+                .library_of(*file)
                 .map(|id| libraries[id as usize].name.clone());
-            (name(entry.key()), library)
+            (name(file.url(db)), library)
         })
         .collect();
     origins.sort();

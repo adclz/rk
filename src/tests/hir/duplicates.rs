@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Clauzel Adrien
 // SPDX-License-Identifier: AGPL-3.0-only
 
-use auto_lsp::default::db::BaseDatabase;
 use db::RootDatabase;
+use db::WorkspaceDataBase;
 use hir::check::diagnostics_for_file;
 use insta::assert_snapshot;
 use rstest::rstest;
@@ -209,10 +209,6 @@ END_NAMESPACE
     ---'
     ");
 }
-
-// DashMap keys are not ordered
-// This means the snapshot might not be in the order we expect.
-// So instead we just check the number of errors
 
 #[rstest]
 fn cross_file_global_duplicates(mut with_db: RootDatabase) {

@@ -87,5 +87,5 @@ fn declared_in_a_library<'db>(node: &'db HirNode<'db>, db: &'db dyn WorkspaceDat
         },
         _ => return false,
     };
-    db.get_library_files().contains_key(&declared)
+    db.get_library_file(&declared).is_some()
 }

@@ -1,9 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Clauzel Adrien
 // SPDX-License-Identifier: AGPL-3.0-only
 
-use auto_lsp::default::db::BaseDatabase;
 use auto_lsp::lsp_types::NumberOrString;
 use db::RootDatabase;
+use db::WorkspaceDataBase;
 use hir::check::diagnostics_for_file;
 use ide_proto::handlers::completions_utils::static_snippets::elem_type_names_init;
 use rstest::rstest;

@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Clauzel Adrien
 // SPDX-License-Identifier: AGPL-3.0-only
 
-use auto_lsp::default::db::BaseDatabase;
 use db::RootDatabase;
+use db::WorkspaceDataBase;
 use hir::hir_def::semantic_index::semantic_index;
 use hir::hir_ty::config::infer_config_result;
 use hir::hir_ty::index_graphs::config_fragments;
@@ -202,7 +202,7 @@ END_CONFIGURATION
 "#;
     add_sources(&mut with_db, &[source]);
 
-    let files: Vec<_> = with_db.get_files().iter().map(|f| *f).collect();
+    let files: Vec<_> = with_db.get_files().to_vec();
     let sema = semantic_index(&with_db, files[0]);
 
     assert_eq!(sema.configs.len(), 1);

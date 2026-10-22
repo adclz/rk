@@ -1,8 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Clauzel Adrien
 // SPDX-License-Identifier: AGPL-3.0-only
 
-use auto_lsp::{default::db::BaseDatabase, lsp_types::Url};
+use auto_lsp::lsp_types::Url;
 use db::RootDatabase;
+use db::WorkspaceDataBase;
 use hir::HirNodeInfo;
 use ide_proto::{
     handlers::{

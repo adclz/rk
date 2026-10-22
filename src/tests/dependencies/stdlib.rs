@@ -4,15 +4,13 @@
 //! The standard library built into the compiler: what it holds, its copy
 //! in the cache, and the workspaces that read it.
 
-use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
-
-use auto_lsp::default::db::BaseDatabase;
 use auto_lsp::lsp_types::PositionEncodingKind;
 use db::cache::Entry;
 use db::dependencies::{cached_dir, packages_dir};
 use db::stdlib::{Standard, bundle, install, locate};
 use db::{RootDatabase, WorkspaceDataBase};
+use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
 
 use super::{Expected, expected_hash, package_files};
 
@@ -204,10 +202,15 @@ fn a_workspace_reads_the_standard_library_from_the_cache() {
     let mut files: Vec<String> = db
         .get_library_files()
         .iter()
-        .map(|entry| {
+        .map(|file| {
             // Canonical, as `copy` is: a file URL gives a Windows path back
             // without its `\\?\`.
-            let path = entry.key().to_file_path().unwrap().canonicalize().unwrap();
+            let path = file
+                .url(&db)
+                .to_file_path()
+                .unwrap()
+                .canonicalize()
+                .unwrap();
             let name = path.strip_prefix(&copy).unwrap();
             name.to_string_lossy().into_owned()
         })
@@ -229,7 +232,13 @@ fn a_workspace_reads_the_standard_library_from_the_cache() {
     let urls: Vec<_> = db
         .get_library_files()
         .iter()
-        .map(|entry| entry.key().to_file_path().unwrap().canonicalize().unwrap())
+        .map(|file| {
+            file.url(&db)
+                .to_file_path()
+                .unwrap()
+                .canonicalize()
+                .unwrap()
+        })
         .collect();
     assert_eq!(urls, [other.join("Std.st")]);
 

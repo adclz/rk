@@ -203,7 +203,7 @@ fn codes(source: &str, stdlib: &[(Url, String)]) -> Vec<(String, bool)> {
             .source(text.clone())
             .call()
             .unwrap();
-        db.insert_library_file(url.clone(), file);
+        db.insert_library_file(file);
     }
     let url = Url::parse("file:///fence.st").unwrap();
     let file = File::from_string()

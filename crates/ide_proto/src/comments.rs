@@ -4,11 +4,8 @@
 //! The comments the editor reads, from [`db::syntax::comments`]: the
 //! documentation of a declaration, and whether a place is in a comment.
 
-use auto_lsp::{
-    core::document::Document,
-    default::db::{BaseDatabase, file::File},
-    tree_sitter,
-};
+use auto_lsp::{core::document::Document, default::db::file::File, tree_sitter};
+use db::WorkspaceDataBase;
 use db::syntax::{Comment, CommentKind, comments};
 
 /// The last of `comments` that ends on `row`. They are in the order of the
@@ -23,7 +20,7 @@ fn ending_on(comments: &[Comment], row: usize) -> Option<&Comment> {
 /// The documentation of the node at `range`: a block comment on the lines
 /// right above it, or else one after it on its line.
 pub fn find_nearby_comment<'db>(
-    db: &'db dyn BaseDatabase,
+    db: &'db dyn WorkspaceDataBase,
     file: File,
     range: &tree_sitter::Range,
 ) -> Option<&'db Comment> {
@@ -55,7 +52,7 @@ pub fn find_nearby_comment<'db>(
 
 /// Whether `offset` is inside one of the file's comments, its delimiters
 /// included.
-pub fn in_comment(db: &dyn BaseDatabase, file: File, offset: usize) -> bool {
+pub fn in_comment(db: &dyn WorkspaceDataBase, file: File, offset: usize) -> bool {
     let comments = comments(db, file);
     let first = comments.partition_point(|comment| comment.range.end_byte < offset);
     comments

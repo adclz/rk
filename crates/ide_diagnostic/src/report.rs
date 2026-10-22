@@ -2,10 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 use ariadne::{Label, Report, Source};
-use auto_lsp::{
-    default::db::BaseDatabase,
-    lsp_types::{DiagnosticSeverity, NumberOrString, Url},
-};
+use auto_lsp::lsp_types::{DiagnosticSeverity, NumberOrString, Url};
 use yansi::Paint;
 
 use crate::IdeDiagnostic;
@@ -13,7 +10,7 @@ use crate::IdeDiagnostic;
 impl IdeDiagnostic {
     pub fn create_report<'report>(
         &self,
-        db: &'report dyn BaseDatabase,
+        db: &'report dyn auto_lsp::salsa::Database,
         url: &'report Url,
         content: &'report str,
         config: Option<ariadne::Config>,

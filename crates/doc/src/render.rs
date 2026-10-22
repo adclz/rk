@@ -3,10 +3,10 @@
 
 use ariadne::{CharSet, Config, FnCache, Source};
 use auto_lsp::{
-    default::db::{BaseDatabase, file::File},
+    default::db::file::File,
     lsp_types::{DiagnosticSeverity, NumberOrString, Url},
 };
-use db::RootDatabase;
+use db::{RootDatabase, WorkspaceDataBase};
 use hir::check::diagnostics_for_file;
 
 /// One diagnostic the compiler reported on an example, located so the page
@@ -75,7 +75,7 @@ pub fn compile_and_render(
     let mut output = Vec::new();
     let mut spans = Vec::new();
 
-    let mut files: Vec<File> = db.get_files().iter().map(|entry| *entry.value()).collect();
+    let mut files: Vec<File> = db.get_files().to_vec();
     let index_of = |file: &File| -> usize {
         file.url(db)
             .as_str()

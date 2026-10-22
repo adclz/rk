@@ -8,7 +8,6 @@ use ariadne::CharSet;
 use ariadne::Config;
 use ariadne::FnCache;
 use ariadne::Source;
-use auto_lsp::default::db::BaseDatabase;
 use auto_lsp::lsp_types::DiagnosticSeverity;
 use auto_lsp::tree_sitter::Range;
 use auto_lsp::{default::db::file::File, lsp_types::Url};
@@ -70,9 +69,8 @@ pub fn no_color_and_ascii() -> Config {
 /// `codegen`'s single-source helpers. Lowering a source the compiler rejects
 /// measures code no user can run — see `compile_to_wasm`.
 pub fn assert_workspace_is_clean(db: &RootDatabase) {
-    use auto_lsp::default::db::BaseDatabase;
     let mut reported = Vec::new();
-    for file in db.get_files().iter().map(|f| *f) {
+    for file in db.get_files().iter().copied() {
         reported.extend(diagnostics_for_file(db, file).iter().map(diagnostic_line));
     }
     assert!(
@@ -195,7 +193,7 @@ pub fn add_library_sources(db: &mut RootDatabase, sources: &[&str]) {
             .source(source.to_string())
             .call()
             .unwrap();
-        db.insert_library_file(url, file);
+        db.insert_library_file(file);
     }
 }
 
@@ -221,11 +219,7 @@ pub fn test_library_diagnostics<'db>(
 ) -> String {
     add_library_sources(db, libs);
     add_sources(db, source);
-    let mut library_files = db
-        .get_library_files()
-        .iter()
-        .map(|e| *e.value())
-        .collect::<Vec<_>>();
+    let mut library_files = db.get_library_files().to_vec();
     library_files.sort_by_key(|file| file.url(db).to_string());
     let file_sources = library_files
         .iter()
@@ -343,7 +337,7 @@ pub(crate) fn test_lint_diagnostics_with_config<'db>(
 /// The workspace's files in the order [`add_sources`] registered them
 /// (`test0.st`, `test1.st`, ...), which is the order their reports render in.
 fn workspace_files(db: &RootDatabase) -> Vec<File> {
-    let mut files = db.get_files().iter().map(|file| *file).collect::<Vec<_>>();
+    let mut files = db.get_files().to_vec();
     files.sort_by_key(|file| {
         // Extract number from "file:///testN.st" format
         file.url(db)
@@ -358,11 +352,7 @@ fn workspace_files(db: &RootDatabase) -> Vec<File> {
 
 /// The library's files, by url: a stable order, whatever the map's is.
 fn library_files(db: &RootDatabase) -> Vec<File> {
-    let mut files = db
-        .get_library_files()
-        .iter()
-        .map(|e| *e.value())
-        .collect::<Vec<_>>();
+    let mut files = db.get_library_files().to_vec();
     files.sort_by_key(|file| file.url(db).to_string());
     files
 }
@@ -454,7 +444,7 @@ pub fn render_references(db: &RootDatabase, refs: &[ReferenceLocation], name: &s
             .then(a.span.start_byte.cmp(&b.span.start_byte))
     });
 
-    let all_files: Vec<File> = db.get_files().iter().map(|f| *f).collect();
+    let all_files: Vec<File> = db.get_files().to_vec();
     let file_sources: Vec<_> = all_files
         .iter()
         .map(|f| (f.url(db).as_str(), f.document(db).as_str()))

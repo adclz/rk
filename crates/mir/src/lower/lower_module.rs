@@ -67,7 +67,7 @@ pub fn library_label(library: &db::dependencies::Library) -> String {
 /// by the rule the LSP uses to scope its requests.
 fn is_workspace<'db>(db: &'db dyn WorkspaceDataBase, node: impl hir::HirNodeInfo<'db>) -> bool {
     let file = node.get_scope_id(db).file(db);
-    db.get_files().contains_key(file.url(db))
+    db.get_file(file.url(db)).is_some()
 }
 
 /// Only the workspace's tests are compiled: `rk test` runs those, and a

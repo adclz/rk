@@ -5,11 +5,12 @@ use std::path::Path;
 
 use auto_lsp::{
     core::document::Document,
-    default::db::{BaseDatabase, file::File},
+    default::db::file::File,
     lsp_types,
     tree_sitter::{self, StreamingIterator},
 };
 use db::RootDatabase;
+use db::WorkspaceDataBase;
 use db::syntax::{Comment, CommentKind, comments};
 use ide_proto::comments::{doc_text, find_nearby_comment};
 

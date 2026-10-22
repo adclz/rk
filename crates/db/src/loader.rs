@@ -164,7 +164,7 @@ fn is_library_file(db: &RootDatabase, path: &Path) -> bool {
     std::fs::canonicalize(path)
         .ok()
         .and_then(|path| Url::from_file_path(path).ok())
-        .is_some_and(|url| db.get_library_files().contains_key(&url))
+        .is_some_and(|url| db.get_library_file(&url).is_some())
 }
 
 /// Whether the file at `path` is the workspace's, as [`load_workspace`]
@@ -226,20 +226,21 @@ pub fn load_workspace(
         .map(|(p, parsers)| (read_and_parse(&p, parsers), p, parsers))
         .collect();
 
-    let files = parsed
+    let files: Vec<Result<File, String>> = parsed
         .into_iter()
         .map(|(result, path, parsers)| match result {
-            Ok((url, document)) => {
-                let file = File::builder(url.clone(), parsers, document, None).new(db);
-                db.workspace_files.insert(url, file);
-                Ok(file)
-            }
+            Ok((url, document)) => Ok(File::builder(url, parsers, document, None).new(db)),
             // The path travels with the error: a workspace of many files
             // cannot otherwise tell which one it could not read.
             Err(e) => Err(format!("{}: {e}", path.display())),
         })
         .collect();
-    db.sync_file_set();
+    db.insert_workspace_files(
+        files
+            .iter()
+            .filter_map(|file| file.as_ref().ok().copied())
+            .collect(),
+    );
     files
 }
 
@@ -268,22 +269,23 @@ pub fn load_libraries(db: &mut RootDatabase, parser_of: ParserOf) {
             .map(|(p, parsers)| (read_and_parse(&p, parsers), parsers))
             .collect();
 
+        let mut files = Vec::new();
         for (result, parsers) in parsed {
             match result {
-                Ok((url, _)) if db.library_files.contains_key(&url) => {}
+                Ok((url, _)) if db.get_library_file(&url).is_some() => {}
                 Ok((url, document)) => {
-                    let file = File::builder(url.clone(), parsers, document, None)
+                    let file = File::builder(url, parsers, document, None)
                         .durability(Durability::HIGH)
                         .new(db);
-                    db.library_files.insert(url, file);
-                    db.file_libraries
-                        .insert(file, id as crate::dependencies::LibraryId);
+                    files.push((file, id as crate::dependencies::LibraryId));
                 }
                 Err(e) => eprintln!("failed to load library file: {}", e),
             }
         }
+        // One write per library: the next library's files are told from
+        // this one's.
+        db.insert_library_files(files);
     }
-    db.sync_file_set();
 }
 
 #[cfg(test)]

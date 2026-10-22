@@ -3,10 +3,10 @@
 
 use std::ops::ControlFlow;
 
-use auto_lsp::default::db::BaseDatabase;
 use auto_lsp::lsp_types::HoverContents;
 use auto_lsp::lsp_types::MarkedString;
 use db::RootDatabase;
+use db::WorkspaceDataBase;
 use hir::HasName;
 use hir::HirNodeInfo;
 use hir::hir_def::hir_node::HirNode;
