@@ -12,8 +12,12 @@ use crate::{
 
 /// Library symbol index containing all POUs from library files
 /// tracked because std lib files have high durability and are not expected to change often
+///
+/// Compared, as [`file_symbol_index`] is: a symbol search runs inside
+/// inference, for the names an E02xx suggests, and its readers then run
+/// again only when some symbol changed.
 #[tracing::instrument(level = "debug", skip_all)]
-#[salsa::tracked(no_eq)]
+#[salsa::tracked]
 pub fn library_symbol_index<'db>(db: &'db dyn WorkspaceDataBase) -> SymbolIndex<'db> {
     let mut items = Vec::new();
 
@@ -64,9 +68,12 @@ fn symbols_of_file<'db>(
     }
 }
 
-// Construct a symbol index for all POUs in the given file
+/// A symbol index for all POUs in the given file. Compared, not `no_eq`: an
+/// edit that leaves the file's symbols as they were keeps the scopes that
+/// searched them, for the names an E02xx suggests, from being inferred
+/// again.
 #[tracing::instrument(level = "debug", skip_all)]
-#[salsa::tracked(no_eq)]
+#[salsa::tracked]
 pub fn file_symbol_index<'db>(db: &'db dyn WorkspaceDataBase, file: File) -> SymbolIndex<'db> {
     let mut items = Vec::new();
     symbols_of_file(db, file, &mut items);
