@@ -363,9 +363,8 @@ pub fn reached_through_a_path<'db>(
     db: &'db dyn WorkspaceDataBase,
     instance: crate::hir_def::pous::variable::VariableDecl<'db>,
 ) -> bool {
-    db.get_files()
-        .iter()
-        .any(|file| instances_reached_through_paths(db, *file).contains(&instance))
+    crate::hir_ty::index_graphs::workspace_files(db)
+        .any(|file| instances_reached_through_paths(db, file).contains(&instance))
 }
 
 /// Every member a file's bodies name through a path: `inner` of
@@ -425,7 +424,6 @@ pub fn named_through_a_path<'db>(
     db: &'db dyn WorkspaceDataBase,
     member: crate::hir_def::pous::variable::VariableDecl<'db>,
 ) -> bool {
-    db.get_files()
-        .iter()
-        .any(|file| members_named_through_paths(db, *file).contains(&member))
+    crate::hir_ty::index_graphs::workspace_files(db)
+        .any(|file| members_named_through_paths(db, file).contains(&member))
 }

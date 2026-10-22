@@ -17,7 +17,7 @@ use crate::{
 pub fn library_symbol_index<'db>(db: &'db dyn WorkspaceDataBase) -> SymbolIndex<'db> {
     let mut items = Vec::new();
 
-    for file in db.get_library_files().iter() {
+    for file in db::FileSet::get(db).libraries(db) {
         symbols_of_file(db, *file, &mut items);
     }
 

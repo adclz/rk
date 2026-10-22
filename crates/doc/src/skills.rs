@@ -191,8 +191,8 @@ fn stdlib_dir() -> Option<PathBuf> {
 }
 
 /// Every diagnostic code the compiler reports for `source`, with whether it
-/// is an error. A fresh database per call: the workspace file set is read
-/// untracked, so one database cannot be reused across sources.
+/// is an error. A fresh database per call, so that no source sees the
+/// files of another.
 fn codes(source: &str, stdlib: &[(Url, String)]) -> Vec<(String, bool)> {
     let mut db = RootDatabase::default();
     for (url, text) in stdlib {

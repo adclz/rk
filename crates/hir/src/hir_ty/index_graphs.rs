@@ -314,12 +314,15 @@ pub fn located_view(db: &dyn WorkspaceDataBase, address: &LocatedAddress) -> Opt
 // Helpers
 // ---------------------------------------------------------------------------
 
-/// Helper to iterate over all workspace + library files.
+/// Every file, the workspace's and then the libraries', each in the order of
+/// their URLs: read from the [`db::FileSet`], so a file added or removed is a
+/// change to what read them.
 pub(crate) fn all_files<'db>(db: &'db dyn WorkspaceDataBase) -> impl Iterator<Item = File> + 'db {
-    db.get_files()
+    let set = db::FileSet::get(db);
+    set.workspace(db)
         .iter()
-        .map(|e| *e)
-        .chain(db.get_library_files().iter().map(|e| *e))
+        .chain(set.libraries(db).iter())
+        .copied()
 }
 
 /// The workspace's OWN files, without the library's.
@@ -329,8 +332,10 @@ pub(crate) fn all_files<'db>(db: &'db dyn WorkspaceDataBase) -> impl Iterator<It
 /// author was building, not this one. Counted as the workspace's, it spent the
 /// single configuration a workspace may have before the user had written a
 /// line, and E1402 then refused them their own.
-fn workspace_files<'db>(db: &'db dyn WorkspaceDataBase) -> impl Iterator<Item = File> + 'db {
-    db.get_files().iter().map(|e| *e)
+pub(crate) fn workspace_files<'db>(
+    db: &'db dyn WorkspaceDataBase,
+) -> impl Iterator<Item = File> + 'db {
+    db::FileSet::get(db).workspace(db).iter().copied()
 }
 
 // ---------------------------------------------------------------------------
@@ -338,10 +343,10 @@ fn workspace_files<'db>(db: &'db dyn WorkspaceDataBase) -> impl Iterator<Item = 
 // ---------------------------------------------------------------------------
 
 /// A file's namespace declarations keyed by case-folded path, built with
-/// the file's semantic index. Per file on purpose: the file set is read
-/// outside salsa, so a workspace-wide map would not learn about a file added
-/// after it was built, while this one invalidates with the file it describes
-/// and, like [`file_namespaces`], backdates when the file changed elsewhere.
+/// the file's semantic index. Per file on purpose: a workspace-wide map would
+/// run again for an edit in any file, while this one runs again with the
+/// file it describes and, like [`file_namespaces`], backdates when the file
+/// changed elsewhere.
 #[salsa::tracked(returns(ref))]
 pub fn file_namespace_map<'db>(
     db: &'db dyn WorkspaceDataBase,
