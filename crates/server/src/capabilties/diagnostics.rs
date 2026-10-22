@@ -163,32 +163,46 @@ pub fn workspace_diagnostics<Db: WorkspaceDataBase + Clone + RefUnwindSafe>(
 
             let db = &*db;
             let linter_config = &linter_config;
-            let items = diagnostics
-                .and_then(|mut all| {
-                    salsa::Cancelled::catch(move || {
-                        linter::lint_file(db, file, linter_config, &mut all);
-                        all.iter()
-                            .map(|d| d.to_lsp_diagnostic(db))
-                            .collect::<Vec<_>>()
-                    })
-                    .ok()
+            // `None` when a write cancelled the file's check.
+            let items = diagnostics.and_then(|mut all| {
+                salsa::Cancelled::catch(move || {
+                    linter::lint_file(db, file, linter_config, &mut all);
+                    all.iter()
+                        .map(|d| d.to_lsp_diagnostic(db))
+                        .collect::<Vec<_>>()
                 })
-                .unwrap_or_default();
+                .ok()
+            });
 
-            let new_id = fingerprint(&items);
             let version: Option<i64> = file.version(db).map(|i| i as i64);
 
-            (uri, items, new_id, version)
+            (uri, items, version)
         })
         .collect();
 
     // Build reports, comparing against client's cached result IDs.
     let mut result: Vec<WorkspaceDocumentDiagnosticReport> = computed
         .into_iter()
-        .map(|(uri, items, new_id, version)| {
+        .filter_map(|(uri, items, version)| {
             let previous_id = previous.remove(&uri);
+            // A file whose check a write cancelled is no clean file: what the
+            // client holds for it stands until the next pull, and a file it
+            // holds nothing for waits for that pull.
+            let Some(items) = items else {
+                return previous_id.map(|result_id| {
+                    WorkspaceDocumentDiagnosticReport::Unchanged(
+                        WorkspaceUnchangedDocumentDiagnosticReport {
+                            version,
+                            unchanged_document_diagnostic_report:
+                                UnchangedDocumentDiagnosticReport { result_id },
+                            uri,
+                        },
+                    )
+                });
+            };
+            let new_id = fingerprint(&items);
 
-            if previous_id.as_deref() == Some(&new_id) {
+            Some(if previous_id.as_deref() == Some(&new_id) {
                 // Client already has this — skip resending.
                 WorkspaceDocumentDiagnosticReport::Unchanged(
                     WorkspaceUnchangedDocumentDiagnosticReport {
@@ -209,7 +223,7 @@ pub fn workspace_diagnostics<Db: WorkspaceDataBase + Clone + RefUnwindSafe>(
                     },
                     uri,
                 })
-            }
+            })
         })
         .collect();
 
