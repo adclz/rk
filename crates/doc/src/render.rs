@@ -1,13 +1,14 @@
 // SPDX-FileCopyrightText: 2026 Clauzel Adrien
 // SPDX-License-Identifier: AGPL-3.0-only
 
-use ariadne::{CharSet, Config, FnCache, Source};
+use ariadne::{CharSet, Config};
 use auto_lsp::{
     default::db::file::File,
     lsp_types::{DiagnosticSeverity, NumberOrString, Url},
 };
 use db::{RootDatabase, WorkspaceDataBase};
 use hir::check::diagnostics_for_file;
+use ide_diagnostic::report::Sources;
 
 /// One diagnostic the compiler reported on an example, located so the page
 /// can mark the exact source range.
@@ -86,11 +87,6 @@ pub fn compile_and_render(
     };
     files.sort_by_key(index_of);
 
-    let file_sources: Vec<(&str, &str)> = files
-        .iter()
-        .map(|file: &File| (file.url(db).as_str(), file.document(db).as_str()))
-        .collect();
-
     let config = Config::default()
         .with_color(true)
         .with_char_set(CharSet::Unicode);
@@ -108,6 +104,7 @@ pub fn compile_and_render(
         }
     });
 
+    let mut sources = Sources::default();
     for file in files.iter() {
         let source_idx = index_of(file);
         let source_text = file.document(db);
@@ -155,20 +152,8 @@ pub fn compile_and_render(
                     .collect(),
             });
 
-            d.create_report(db, file.url(db), src, Some(config), true)
-                .write(
-                    FnCache::new(
-                        (move |id: &&str| Err(format!("Failed to fetch source '{id}'")))
-                            as fn(&&str) -> _,
-                    )
-                    .with_sources(
-                        file_sources
-                            .iter()
-                            .map(|(id, s)| (*id, Source::from(*s)))
-                            .collect(),
-                    ),
-                    &mut output,
-                )
+            d.create_report(db, file.url(db), src, &mut sources, Some(config), true)
+                .write(&mut sources, &mut output)
                 .unwrap();
         }
     }

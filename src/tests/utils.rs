@@ -22,6 +22,7 @@ use hir::hir_def::pous::pou::Pou;
 use hir::hir_def::semantic_index::semantic_index;
 use hir::hir_ty::oop::MethodRef;
 use hir::hir_ty::resolver::name::{PouResolution, pou_names_res};
+use ide_diagnostic::report::Sources;
 use ide_diagnostic::{IdeDiagnostic, Related};
 use ide_proto::handlers::references::ReferenceLocation;
 use ide_proto::hir_node::HirNode;
@@ -221,10 +222,7 @@ pub fn test_library_diagnostics<'db>(
     add_sources(db, source);
     let mut library_files = db.get_library_files().to_vec();
     library_files.sort_by_key(|file| file.url(db).to_string());
-    let file_sources = library_files
-        .iter()
-        .map(|file| (file.url(db).as_str(), file.document(db).as_str()))
-        .collect::<Vec<_>>();
+    let mut sources = Sources::default();
     let mut cache = vec![];
     for file in &library_files {
         diagnostics_for_file(db, *file).iter().for_each(|d| {
@@ -232,10 +230,11 @@ pub fn test_library_diagnostics<'db>(
                 db,
                 file.url(db),
                 file.document(db).as_str(),
+                &mut sources,
                 Some(no_color_and_ascii()),
                 false,
             )
-            .write(sources(file_sources.clone()), &mut cache)
+            .write(&mut sources, &mut cache)
             .unwrap();
         });
     }
@@ -358,24 +357,19 @@ fn library_files(db: &RootDatabase) -> Vec<File> {
 }
 
 /// Write the reports of `diags`, all reported on `file`. A related span may
-/// point into any other file, so every source goes along: the workspace's,
-/// then the library's.
+/// point into any other file, whose source the report adds.
 fn write_reports(db: &RootDatabase, file: File, diags: &[IdeDiagnostic], out: &mut Vec<u8>) {
-    let file_sources = workspace_files(db)
-        .into_iter()
-        .chain(library_files(db))
-        .map(|file| (file.url(db).as_str(), file.document(db).as_str()))
-        .collect::<Vec<_>>();
-
+    let mut sources = Sources::default();
     for d in diags {
         d.create_report(
             db,
             file.url(db),
             file.document(db).as_str(),
+            &mut sources,
             Some(no_color_and_ascii()),
             false,
         )
-        .write(sources(file_sources.clone()), &mut *out)
+        .write(&mut sources, &mut *out)
         .unwrap();
     }
 }
@@ -444,12 +438,6 @@ pub fn render_references(db: &RootDatabase, refs: &[ReferenceLocation], name: &s
             .then(a.span.start_byte.cmp(&b.span.start_byte))
     });
 
-    let all_files: Vec<File> = db.get_files().to_vec();
-    let file_sources: Vec<_> = all_files
-        .iter()
-        .map(|f| (f.url(db).as_str(), f.document(db).as_str()))
-        .collect();
-
     let first = sorted[0];
     let mut diag = ide_diagnostic::diag()
         .range(hir::denormalize(db, first.file, &first.span).unwrap_or_default())
@@ -462,14 +450,16 @@ pub fn render_references(db: &RootDatabase, refs: &[ReferenceLocation], name: &s
     }
 
     let mut output = vec![];
+    let mut sources = Sources::default();
     diag.create_report(
         db,
         first.file.url(db),
         first.file.document(db).as_str(),
+        &mut sources,
         Some(no_color_and_ascii()),
         false,
     )
-    .write(sources(file_sources), &mut output)
+    .write(&mut sources, &mut output)
     .unwrap();
 
     // Strip trailing whitespace from each line for clean inline snapshots

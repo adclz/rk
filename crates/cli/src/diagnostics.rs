@@ -12,9 +12,8 @@ use auto_lsp::default::db::file::File;
 use auto_lsp::lsp_types::{DiagnosticSeverity, Url};
 use db::RootDatabase;
 use ide_diagnostic::IdeDiagnostic;
+use ide_diagnostic::report::Sources;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
-
-use crate::reports::sources;
 
 /// Collect diagnostics for every workspace file, in parallel; `with_linter`
 /// runs the configured passes too (`rk check`, not codegen).
@@ -166,20 +165,15 @@ impl<'db> DiagnosticReporter<'db> {
         self
     }
 
-    /// Render every file's diagnostics to `out`, returning the tallies; the
-    /// source cache spans all files so cross-file related info renders.
+    /// Render every file's diagnostics to `out`, returning the tallies. One
+    /// set of sources serves every report, a library's too when a related
+    /// span points into one.
     pub fn report_files(
         &self,
         per_file: &[(File, Vec<IdeDiagnostic>)],
         out: &mut dyn Write,
     ) -> DiagnosticCounts {
-        // Library sources ride along: a workspace diagnostic may point its
-        // related span into a library.
-        let caches: Vec<(&str, &str)> = crate::file_order::ordered_files_with_libraries(self.db)
-            .into_iter()
-            .map(|file| (file.url(self.db).as_str(), file.document(self.db).as_str()))
-            .collect();
-
+        let mut sources = Sources::default();
         let mut counts = DiagnosticCounts::default();
         for (file, diagnostics) in per_file {
             if diagnostics.is_empty() {
@@ -189,7 +183,7 @@ impl<'db> DiagnosticReporter<'db> {
                 file.url(self.db),
                 &file.document(self.db).texter.text,
                 diagnostics,
-                &caches,
+                &mut sources,
                 out,
             ));
         }
@@ -205,17 +199,16 @@ impl<'db> DiagnosticReporter<'db> {
         diagnostics: &[IdeDiagnostic],
         out: &mut dyn Write,
     ) -> DiagnosticCounts {
-        let caches = [(url.as_str(), content)];
-        self.render(url, content, diagnostics, &caches, out)
+        self.render(url, content, diagnostics, &mut Sources::default(), out)
     }
 
-    /// Render one source's diagnostics against `caches`, tallying counts.
-    fn render(
-        &self,
-        url: &Url,
-        content: &str,
+    /// Render one source's diagnostics against `sources`, tallying counts.
+    fn render<'s>(
+        &'s self,
+        url: &'s Url,
+        content: &'s str,
         diagnostics: &[IdeDiagnostic],
-        caches: &[(&str, &str)],
+        sources: &mut Sources<'s>,
         out: &mut dyn Write,
     ) -> DiagnosticCounts {
         let url_str = url.as_str();
@@ -227,11 +220,17 @@ impl<'db> DiagnosticReporter<'db> {
 
             match self.format {
                 OutputFormat::Full => {
-                    let report =
-                        diagnostic.create_report(self.db, url, content, Some(self.config), true);
+                    let report = diagnostic.create_report(
+                        self.db,
+                        url,
+                        content,
+                        sources,
+                        Some(self.config),
+                        true,
+                    );
                     let mut buffer = vec![];
                     report
-                        .write(sources(caches.iter().copied()), &mut buffer)
+                        .write(&mut *sources, &mut buffer)
                         .expect("failed to write report");
 
                     let output = String::from_utf8_lossy(&buffer);

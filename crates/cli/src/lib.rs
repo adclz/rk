@@ -8,7 +8,6 @@ pub mod diagnostics;
 pub mod duration;
 pub mod error;
 pub mod file_order;
-pub mod reports;
 pub mod spawn;
 pub mod test_host;
 pub mod test_runner;
