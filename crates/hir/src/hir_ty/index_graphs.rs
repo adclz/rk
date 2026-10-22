@@ -64,6 +64,22 @@
 // is NOT re-executed.
 //
 // Confirmed by the incremental test suite (`src/tests/incremental.rs`).
+//
+// ## 2026-10-22 — What still ran again, and the file set
+//
+// The suite above did not exist, and the firewall stopped nothing:
+// `semantic_index` read `parse::accumulated`, which salsa counts as a read
+// it cannot track, so every file's index ran again in every revision, and
+// every query that read one with it. It reads the Eq `unbuilt_nodes` now.
+// Name resolution also read other files' indexes directly (the namespaces
+// around a scope, a library's global scope, a global scope's POUs); those
+// go through Eq queries too. `src/tests/incremental.rs` lists what an edit
+// runs again, so the next such read shows in a snapshot.
+//
+// The set of files was a map outside salsa: a file added after a check
+// opened no revision, and what the check computed stayed. It is the input
+// `db::FileSet` now, in the order of the URLs, so the lookups below also go
+// through the files in the same order on every run.
 
 use rustc_hash::FxHashMap;
 use std::sync::Arc;
