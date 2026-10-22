@@ -22,7 +22,6 @@ use hir::builder::semantic_index::SemanticIndexBuilder;
 use hir::check::errors::ToIdeDiagnostic;
 use hir::check::errors::e00_syntax::SyntaxError;
 use hir::front_end::FrontEnd;
-use hir::hir_def::scope::ScopeId;
 use hir::hir_def::semantic_index::{SemanticIndex, semantic_index};
 use rk::cli::{Command, OutputFormat};
 
@@ -65,7 +64,7 @@ fn read<'db>(
         .expect("an index function is given a tree with its root");
     let mut sema = SemanticIndexBuilder::new(db, file, ast);
     for declaration in source.children.iter() {
-        sema.current_scope = ScopeId::global(db, file);
+        sema.current_scope = sema.global_scope;
         match declaration.cast(sema.ast) {
             Declaration::FuncDecl(function) => match sema.parse_function(function) {
                 Ok(function) => sema.global_pous.push(function),
