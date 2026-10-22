@@ -17,8 +17,8 @@ use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
 pub const NAME: &str = "recursion";
 
 /// L0122: a call that leads back to the POU making it. IEC 61131-3 has no
-/// recursion; rk runs it as CODESYS does, each call with a frame of its own
-/// on the stack, whose depth nothing bounds before the program runs.
+/// recursion; rk runs it with a frame of its own for each call, on a stack
+/// whose depth nothing bounds before the program runs.
 struct Recursion;
 
 impl ErrorCode for Recursion {
