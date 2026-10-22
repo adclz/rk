@@ -226,7 +226,7 @@ pub fn load_workspace(
         .map(|(p, parsers)| (read_and_parse(&p, parsers), p, parsers))
         .collect();
 
-    parsed
+    let files = parsed
         .into_iter()
         .map(|(result, path, parsers)| match result {
             Ok((url, document)) => {
@@ -238,7 +238,9 @@ pub fn load_workspace(
             // cannot otherwise tell which one it could not read.
             Err(e) => Err(format!("{}: {e}", path.display())),
         })
-        .collect()
+        .collect();
+    db.sync_file_set();
+    files
 }
 
 /// Loads the source files of each library with HIGH durability: libraries
@@ -273,12 +275,15 @@ pub fn load_libraries(db: &mut RootDatabase, parser_of: ParserOf) {
                     let file = File::builder(url.clone(), parsers, document, None)
                         .durability(Durability::HIGH)
                         .new(db);
-                    db.insert_file_of_library(url, file, id as crate::dependencies::LibraryId);
+                    db.library_files.insert(url, file);
+                    db.file_libraries
+                        .insert(file, id as crate::dependencies::LibraryId);
                 }
                 Err(e) => eprintln!("failed to load library file: {}", e),
             }
         }
     }
+    db.sync_file_set();
 }
 
 #[cfg(test)]

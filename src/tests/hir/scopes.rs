@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 use auto_lsp::{
-    default::db::{BaseDatabase, FileManager, file::File},
+    default::db::{BaseDatabase, file::File},
     lsp_types,
 };
 

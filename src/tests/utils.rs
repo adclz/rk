@@ -11,10 +11,7 @@ use ariadne::Source;
 use auto_lsp::default::db::BaseDatabase;
 use auto_lsp::lsp_types::DiagnosticSeverity;
 use auto_lsp::tree_sitter::Range;
-use auto_lsp::{
-    default::db::{FileManager, file::File},
-    lsp_types::Url,
-};
+use auto_lsp::{default::db::file::File, lsp_types::Url};
 use db::RootDatabase;
 use db::WorkspaceDataBase;
 use hir::HasName;

@@ -25,7 +25,7 @@
 use std::path::{Path, PathBuf};
 
 use auto_lsp::{
-    default::db::{FileManager, file::File},
+    default::db::file::File,
     lsp_types::{DiagnosticSeverity, NumberOrString, Url},
 };
 use db::RootDatabase;

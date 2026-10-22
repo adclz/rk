@@ -4,7 +4,7 @@
 //! One source in a fresh database, as `rk check` sees a single file, read
 //! beside one library.
 
-use auto_lsp::default::db::{BaseDatabase, FileManager, file::File};
+use auto_lsp::default::db::{BaseDatabase, file::File};
 use auto_lsp::lsp_types::{DiagnosticSeverity, PositionEncodingKind, Url};
 use db::{RootDatabase, WorkspaceDataBase};
 use hir::check::diagnostics_for_file;

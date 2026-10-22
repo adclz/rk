@@ -99,7 +99,7 @@ pub fn folding_ranges(
 
 #[cfg(test)]
 mod tests {
-    use auto_lsp::default::db::{FileManager, file::File};
+    use auto_lsp::default::db::file::File;
     use auto_lsp::lsp_types::{
         PartialResultParams, PositionEncodingKind, TextDocumentIdentifier, Url,
         WorkDoneProgressParams,

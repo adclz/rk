@@ -5,7 +5,7 @@ use std::path::Path;
 
 use auto_lsp::{
     core::document::Document,
-    default::db::{BaseDatabase, FileManager, file::File},
+    default::db::{BaseDatabase, file::File},
     lsp_types,
     tree_sitter::{self, StreamingIterator},
 };

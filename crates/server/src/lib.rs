@@ -335,10 +335,12 @@ fn on_notifications(
 ) -> &mut NotificationRegistry<RootDatabase> {
     registry
         .on_mut::<DidOpenTextDocument, _>(|s, p| {
-            match is_workspace_document(&s.db, &p.text_document.uri) {
-                true => Ok(open_text_document(s, p, &RK_PARSER)?),
-                false => Ok(()),
+            if is_workspace_document(&s.db, &p.text_document.uri) {
+                open_text_document(s, p, &RK_PARSER)?;
+                // auto-lsp adds the document to the maps alone.
+                s.db.sync_file_set();
             }
+            Ok(())
         })
         // A document left out when it was opened stays out.
         .on_mut::<DidChangeTextDocument, _>(|s, p| match s.db.get_file(&p.text_document.uri) {
@@ -364,10 +366,15 @@ fn on_notifications(
                     FileChangeType::CREATED => is_workspace_document(&s.db, &change.uri),
                     _ => s.db.get_file(&change.uri).is_some(),
                 });
-                changed_watched_files(s, p, |url| {
+                let changed = changed_watched_files(s, p, |url| {
                     let path = url.to_file_path().ok()?;
                     db::loader::rk_parser(&path)
-                })?;
+                });
+                // auto-lsp adds and removes the files in the maps alone, and
+                // one it could not read stops the batch after the others
+                // were applied: what they changed reaches salsa either way.
+                s.db.sync_file_set();
+                changed?;
             }
 
             send_request::<lsp_types::request::WorkspaceDiagnosticRefresh>(s, ())?;

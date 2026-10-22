@@ -18,7 +18,7 @@
 //! makes these assertions meaningful.
 
 use auto_lsp::core::document_symbols_builder::DocumentSymbolsBuilder;
-use auto_lsp::default::db::{FileManager, file::File};
+use auto_lsp::default::db::file::File;
 use auto_lsp::lsp_types::{Position, PositionEncodingKind, Url};
 use db::RootDatabase;
 use hir::hir_def::semantic_index::semantic_index;

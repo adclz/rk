@@ -3,7 +3,7 @@
 
 use ariadne::{CharSet, Config, FnCache, Source};
 use auto_lsp::{
-    default::db::{BaseDatabase, FileManager, file::File},
+    default::db::{BaseDatabase, file::File},
     lsp_types::{DiagnosticSeverity, NumberOrString, Url},
 };
 use db::RootDatabase;

@@ -14,12 +14,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use auto_lsp::{
-    core::document::Document,
-    default::db::{FileManager, file::File},
-    lsp_types::Url,
-    salsa::Setter,
-};
+use auto_lsp::{core::document::Document, default::db::file::File, lsp_types::Url, salsa::Setter};
 use db::RootDatabase;
 use hir::{
     HirNodeInfo,

@@ -921,6 +921,7 @@ dependencies = [
  "dirs",
  "ide_diagnostic",
  "rayon",
+ "rustc-hash",
  "salsa",
  "serde",
  "sha2",
