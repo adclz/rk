@@ -509,18 +509,27 @@ impl<'db> TypeDependencyGraph<'db> {
         });
         for dep in deps {
             if dep == node {
-                // direct recursion anchored to file-local root
-                errors.push(
-                    RecursionError::DirectRecursion {
-                        pou: node,
-                        callsite: self
-                            .callsites
-                            .get(&(node, node))
-                            .and_then(|v| v.first())
-                            .copied(),
-                    }
-                    .to_diagnostic(self.db, node.get_scope_id(self.db).file(self.db)),
-                );
+                // Reported in the file that declares it, whose own check
+                // finds it: a block of another workspace file holding it
+                // would report it again, at that file's lines. A library's
+                // own report is never shown, so a library's type is still
+                // reported where it is held.
+                let file = node.get_scope_id(self.db).file(self.db);
+                if file == root.get_scope_id(self.db).file(self.db)
+                    || self.db.library_of(file).is_some()
+                {
+                    errors.push(
+                        RecursionError::DirectRecursion {
+                            pou: node,
+                            callsite: self
+                                .callsites
+                                .get(&(node, node))
+                                .and_then(|v| v.first())
+                                .copied(),
+                        }
+                        .to_diagnostic(self.db, file),
+                    );
+                }
                 continue;
             }
 
