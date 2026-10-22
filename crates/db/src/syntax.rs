@@ -8,9 +8,8 @@
 //! salsa marks every query calling one that accumulated, then every query
 //! calling those: the mark is on the result, whether anyone reads the errors
 //! or not. Salsa's fixpoint iteration refuses to settle a cycle whose head
-//! carries it, and HIR's `ancestry` and call graph are such cycles, so a
-//! syntax error anywhere in a file made them panic. Here the errors are part
-//! of the result.
+//! carries it, and HIR's call graph is such a cycle, so a syntax error
+//! anywhere in a file made it panic. Here the errors are part of the result.
 
 use auto_lsp::core::errors::{LexerError, ParseError, ParseErrorAccumulator};
 use auto_lsp::default::db::{BaseDatabase, file::File, tracked::ParsedAst};
