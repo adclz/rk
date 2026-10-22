@@ -76,12 +76,18 @@ impl Recorder {
     /// Checks every file, as a workspace pull does, and names the POUs the
     /// files declare.
     fn check(&mut self) {
+        let files = self.files.clone();
+        self.check_in(&files);
+    }
+
+    /// Checks `files` in this order, and names the POUs they declare.
+    fn check_in(&mut self, files: &[File]) {
         salsa::attach(&self.db, || {
-            for file in &self.files {
+            for file in files {
                 diagnostics_for_file(&self.db, *file);
             }
         });
-        for file in &self.files {
+        for file in files {
             for pou in semantic_index(&self.db, *file).global_pous.iter() {
                 let name = pou.get_name_with_case(&self.db).text(&self.db).to_string();
                 let scope = pou.get_scope_id(&self.db).as_id();
@@ -94,8 +100,15 @@ impl Recorder {
     /// The queries checking every file executes again, sorted, each with
     /// what it is about; `_` for what has no name here.
     fn executed_by_check(&mut self) -> String {
+        let files = self.files.clone();
+        self.executed_by_check_in(&files)
+    }
+
+    /// The queries checking `files` in this order executes again, as
+    /// [`Recorder::executed_by_check`] lists them.
+    fn executed_by_check_in(&mut self, files: &[File]) -> String {
         self.executed.lock().unwrap().clear();
-        self.check();
+        self.check_in(files);
         let mut lines: Vec<String> = self
             .executed
             .lock()
@@ -242,6 +255,47 @@ fn a_body_edit_keeps_the_inference_of_an_unresolved_name_elsewhere() {
     file_pou_map(a.st)
     file_program_map(a.st)
     file_symbol_index(a.st)
+    get_scope(FA)
+    get_scope(_)
+    infer_body(FA)
+    infer_initialization(FA)
+    library_roots(_)
+    parse(a.st)
+    semantic_index(a.st)
+    unbuilt_nodes(a.st)
+    unbuilt_nodes(b.st)
+    ");
+}
+
+/// a.st is edited to write a number no file wrote before. b.st's names are
+/// the oldest, and a.st is indexed again before anything reads them: the
+/// number took the slot of a name only b.st holds, and b.st was indexed and
+/// inferred again. Salsa recycles an interned value the revision after
+/// nothing used it, unless told to keep it longer. A new value takes a slot
+/// of its own shard of the interner, so b.st has names in every shard.
+#[test]
+fn a_new_name_leaves_the_names_of_the_other_files_alone() {
+    let mut recorder = Recorder::new();
+    let a = recorder.add("a.st", A);
+    let variables: String = (0..400).map(|i| format!("    v{i} : INT;\n")).collect();
+    let b = recorder.add(
+        "b.st",
+        &B.replace(
+            "FB : INT\n",
+            &format!("FB : INT\nVAR\n{variables}END_VAR\n"),
+        ),
+    );
+    recorder.check_in(&[b, a]);
+    recorder.edit(a, &A.replace("x := 1;", "x := 7;"));
+    assert_snapshot!(recorder.executed_by_check_in(&[a, b]), @r"
+    Integer::as_i16_(_)
+    callees(FA)
+    diagnostics_for_file(a.st)
+    enclosing_namespaces(FA)
+    file_global_pous(a.st)
+    file_namespaces(a.st)
+    file_pou_map(a.st)
+    file_program_map(a.st)
     get_scope(FA)
     get_scope(_)
     infer_body(FA)

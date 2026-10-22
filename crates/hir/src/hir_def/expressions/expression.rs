@@ -583,7 +583,7 @@ impl Elementary {
     }
 }
 
-#[salsa::interned(debug, no_lifetime)]
+#[salsa::interned(debug, no_lifetime, revisions = crate::hir_def::interned::REVISIONS)]
 pub struct Integer {
     pub ident: Ident,
     pub kind: IntegerKind,
