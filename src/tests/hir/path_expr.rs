@@ -63,8 +63,12 @@ fn path_expr_diagnostics(
         entries.push((span, label));
     }
 
-    // Sort by position for deterministic output
-    entries.sort_by_key(|(span, _)| span.start_byte);
+    // By position, then by label: the inference keeps the path expressions
+    // in a map keyed by their salsa ids, whose order changes with whatever
+    // else the index creates.
+    entries.sort_by(|(a, a_label), (b, b_label)| {
+        (a.start_byte, a.end_byte, a_label).cmp(&(b.start_byte, b.end_byte, b_label))
+    });
 
     if entries.is_empty() {
         return vec![];
@@ -173,22 +177,22 @@ END_FUNCTION
     assert_snapshot!(test_snapshot(&mut with_db, &[source], |db, file| {
         path_expr_diagnostics(db, file, "fn")
     }), @r"
-    Info: VARIABLE [Index -> INT]
+    Info: VARIABLE [Index -> INT, Ref -> INT]
         ,-[ file:///test0.st:10:31 ]
         |
      10 |        myRefInt: REF_TO INT := REF(myA1[1]);
         |                                    ^^|^
-        |                                      `--- VARIABLE [Index -> INT]
-        |                                      |
         |                                      `--- VARIABLE [Index -> INT, Ref -> INT]
+        |                                      |
+        |                                      `--- VARIABLE [Index -> INT]
         |
      13 |     myRefInt := REF(myA1[11]);
         |     ^^^^|^^^        ^^|^
         |         `----------------- VARIABLE <none>
         |                       |
-        |                       `--- VARIABLE [Index -> INT]
-        |                       |
         |                       `--- VARIABLE [Index -> INT, Ref -> INT]
+        |                       |
+        |                       `--- VARIABLE [Index -> INT]
     ----'
     ");
 }
@@ -218,11 +222,11 @@ END_FUNCTION
        |     ^^|^^    ^^|^
        |       `------------ VARIABLE <none>
        |                |
+       |                `--- VARIABLE [Index -> ARRAY [1..10, 1..10] OF INT, Index -> INT]
+       |                |
        |                `--- VARIABLE [Index -> ARRAY [1..10, 1..10] OF INT]
        |                |
        |                `--- VARIABLE [Index -> INT]
-       |                |
-       |                `--- VARIABLE [Index -> ARRAY [1..10, 1..10] OF INT, Index -> INT]
     ---'
     ");
 }
@@ -252,11 +256,11 @@ END_FUNCTION
        |     ^^|^^        ^^|^
        |       `---------------- VARIABLE <none>
        |                    |
+       |                    `--- VARIABLE [Index -> ARRAY [1..10, 1..10] OF INT, Index -> INT]
+       |                    |
        |                    `--- VARIABLE [Index -> ARRAY [1..10, 1..10] OF INT]
        |                    |
        |                    `--- VARIABLE [Index -> INT, Ref -> INT]
-       |                    |
-       |                    `--- VARIABLE [Index -> ARRAY [1..10, 1..10] OF INT, Index -> INT]
     ---'
     ");
 }
