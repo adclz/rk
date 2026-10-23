@@ -71,6 +71,15 @@ fn check(
     files: Vec<File>,
     linter_config: Option<&db::config_file::LinterConfig>,
 ) -> Vec<(File, Vec<IdeDiagnostic>)> {
+    // Every file is indexed before any is checked, the libraries' too: a
+    // name is looked up in every file's index, in the order of the files, so
+    // a check that reached a file no thread had indexed yet indexed it
+    // while the other threads reaching it waited, one file after the other.
+    crate::file_order::ordered_files_with_libraries(db)
+        .par_iter()
+        .for_each_with(db.clone(), |db, file| {
+            hir::hir_def::semantic_index::semantic_index(db, *file);
+        });
     files.par_iter().for_each_with(db.clone(), |db, file| {
         hir::check::diagnostics_for_file(db, *file);
     });

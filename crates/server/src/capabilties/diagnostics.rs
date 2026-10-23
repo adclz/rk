@@ -148,6 +148,22 @@ pub fn workspace_diagnostics<Db: WorkspaceDataBase + Clone + RefUnwindSafe>(
         })
         .collect();
 
+    // Every file is indexed before any is checked, the libraries' too, as
+    // `rk check` does: a name is looked up in every file's index, so a check
+    // reaching a file no thread had indexed yet indexed it while the other
+    // threads reaching it waited. A file a write cancels is checked below,
+    // and found cancelled there.
+    db.get_files()
+        .iter()
+        .chain(db.get_library_files())
+        .copied()
+        .collect::<Vec<_>>()
+        .into_par_iter()
+        .for_each_with(db.clone(), |db, file| {
+            let _ = salsa::Cancelled::catch(|| {
+                hir::hir_def::semantic_index::semantic_index(db, file);
+            });
+        });
     // Every file is checked before the call graph is built and any is
     // linted, as `rk check` does: the graph, and a lint that looks across
     // the workspace, then read what the check computed, instead of
