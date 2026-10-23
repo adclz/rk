@@ -105,6 +105,9 @@ pub fn compile_and_render(
     });
 
     let graph = hir::hir_ty::calls::CallGraph::of_files(db, files.iter().copied());
+    let pass = linter_config
+        .as_ref()
+        .map(|config| linter::Pass::new(db, config, &graph));
     let mut sources = Sources::default();
     for file in files.iter() {
         let source_idx = index_of(file);
@@ -112,8 +115,8 @@ pub fn compile_and_render(
         let src = source_text.as_str();
 
         let mut all = check_file(db, &graph, *file);
-        if let Some(ref linter_config) = linter_config {
-            linter::lint_file(db, *file, linter_config, &graph, &mut all);
+        if let (Some(linter_config), Some(pass)) = (&linter_config, &pass) {
+            linter::lint_file(db, *file, linter_config, pass, &mut all);
         }
         for d in all.iter() {
             let range = d.range();

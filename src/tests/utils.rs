@@ -335,7 +335,8 @@ pub(crate) fn test_lint_diagnostics_with_config<'db>(
     test_snapshot(db, source, |db, file| {
         let graph = CallGraph::of_files(db, [file]);
         let mut all = check_file(db, &graph, file);
-        linter::lint_file(db, file, linter_config, &graph, &mut all);
+        let pass = linter::Pass::new(db, linter_config, &graph);
+        linter::lint_file(db, file, linter_config, &pass, &mut all);
         all
     })
 }

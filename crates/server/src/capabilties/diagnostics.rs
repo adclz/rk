@@ -97,7 +97,8 @@ pub fn diagnostics<Db: WorkspaceDataBase + Clone + RefUnwindSafe>(
     let graph = CallGraph::of_files(db, [file]);
     let mut all = check_file(db, &graph, file);
     let linter_config = get_config(db).linter.clone().unwrap_or_default();
-    linter::lint_file(db, file, &linter_config, &graph, &mut all);
+    let pass = linter::Pass::new(db, &linter_config, &graph);
+    linter::lint_file(db, file, &linter_config, &pass, &mut all);
 
     let items: Vec<_> = all.iter().map(|d| d.to_lsp_diagnostic(db)).collect();
     let new_id = fingerprint(&items);
@@ -166,6 +167,9 @@ pub fn workspace_diagnostics<Db: WorkspaceDataBase + Clone + RefUnwindSafe>(
     // `None` when a write cancelled it.
     let graph =
         salsa::Cancelled::catch(|| CallGraph::of_files(db, db.get_files().iter().copied())).ok();
+    let pass = graph.as_ref().and_then(|graph| {
+        salsa::Cancelled::catch(|| linter::Pass::new(db, &linter_config, graph)).ok()
+    });
     let computed: Vec<_> = checked
         .into_par_iter()
         .map_with(db.clone(), |db, (file, checked)| {
@@ -174,10 +178,10 @@ pub fn workspace_diagnostics<Db: WorkspaceDataBase + Clone + RefUnwindSafe>(
             let db = &*db;
             let linter_config = &linter_config;
             // `None` when a write cancelled the file's check.
-            let items = graph.as_ref().filter(|_| checked).and_then(|graph| {
+            let items = pass.as_ref().filter(|_| checked).and_then(|pass| {
                 salsa::Cancelled::catch(move || {
-                    let mut all = check_file(db, graph, file);
-                    linter::lint_file(db, file, linter_config, graph, &mut all);
+                    let mut all = check_file(db, pass.graph, file);
+                    linter::lint_file(db, file, linter_config, pass, &mut all);
                     all.iter()
                         .map(|d| d.to_lsp_diagnostic(db))
                         .collect::<Vec<_>>()

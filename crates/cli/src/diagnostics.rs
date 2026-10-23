@@ -75,14 +75,15 @@ fn check(
         hir::check::diagnostics_for_file(db, *file);
     });
     let graph = hir::hir_ty::calls::CallGraph::of_files(db, files.iter().copied());
+    let pass = linter_config.map(|config| (config, linter::Pass::new(db, config, &graph)));
     // Ordered, so the diagnostics come out in the same sequence every run:
     // rayon's collect preserves the input order, it just cannot invent one.
     files
         .into_par_iter()
         .map_with(db.clone(), |db, file| {
             let mut diagnostics = hir::check::check_file(db, &graph, file);
-            if let Some(linter_config) = linter_config {
-                linter::lint_file(db, file, linter_config, &graph, &mut diagnostics);
+            if let Some((config, pass)) = &pass {
+                linter::lint_file(db, file, config, pass, &mut diagnostics);
             }
             (file, diagnostics)
         })

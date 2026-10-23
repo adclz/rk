@@ -61,16 +61,19 @@ fn declared<'db>(db: &'db dyn WorkspaceDataBase, file: File) -> Vec<(ScopeId<'db
     out
 }
 
-pub fn check(db: &dyn WorkspaceDataBase, file: File, diagnostics: &mut Vec<IdeDiagnostic>) {
+pub fn check<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    pass: &crate::rules::Pass<'_, 'db>,
+    file: File,
+    diagnostics: &mut Vec<IdeDiagnostic>,
+) {
     // A library's POUs are its users'.
     if db.library_of(file).is_some() {
         return;
     }
-    let configs = declared_configs(db);
-    if configs.is_empty() {
+    let Some(reached) = &pass.reached else {
         return;
-    }
-    let reached = reached(db, &configs);
+    };
     let sema = semantic_index(db, file);
     for (scope, pou) in declared(db, file) {
         if !reached.contains(&scope) {
@@ -114,7 +117,19 @@ fn report(
     );
 }
 
-/// Every scope the application reaches.
+/// Every scope the application reaches, or `None` for a workspace with no
+/// configuration, which is a library. One walk of the workspace, which a
+/// lint pass makes once for all the files it lints: made for each file, it
+/// cost the walk times the files.
+pub(crate) fn reached_by_the_application<'db>(
+    db: &'db dyn WorkspaceDataBase,
+) -> Option<FxHashSet<ScopeId<'db>>> {
+    let configs = declared_configs(db);
+    (!configs.is_empty()).then(|| reached(db, &configs))
+}
+
+/// Every scope `configs` and the workspace's exported FUNCTIONs and tests
+/// reach.
 fn reached<'db>(
     db: &'db dyn WorkspaceDataBase,
     configs: &[ConfigDecl<'db>],

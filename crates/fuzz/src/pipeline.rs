@@ -33,7 +33,9 @@ pub fn check(source: &str) -> Result<Verdict, Finding> {
     // compile, and a lint that panics takes the request down with it.
     let mut lints = Vec::new();
     let graph = hir::hir_ty::calls::CallGraph::of_files(&db, [file]);
-    linter::lint_file(&db, file, &every_lint(), &graph, &mut lints);
+    let config = every_lint();
+    let pass = linter::Pass::new(&db, &config, &graph);
+    linter::lint_file(&db, file, &config, &pass, &mut lints);
 
     if !session::compiles(&db, file) {
         return Ok(Verdict::Rejected);

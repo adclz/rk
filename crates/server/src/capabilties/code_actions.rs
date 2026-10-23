@@ -24,7 +24,8 @@ pub fn code_actions(
     let graph = CallGraph::of_files(db, [file]);
     let mut all = check_file(db, &graph, file);
     let linter_config = get_config(db).linter.clone().unwrap_or_default();
-    linter::lint_file(db, file, &linter_config, &graph, &mut all);
+    let pass = linter::Pass::new(db, &linter_config, &graph);
+    linter::lint_file(db, file, &linter_config, &pass, &mut all);
 
     let mut results = vec![];
 

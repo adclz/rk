@@ -287,10 +287,11 @@ pub fn lint_all(
     config: &db::config_file::LinterConfig,
 ) -> usize {
     let graph = hir::hir_ty::calls::CallGraph::of_files(db, files.iter().copied());
+    let pass = linter::Pass::new(db, config, &graph);
     let mut total = 0;
     for file in files {
         let mut lints = Vec::new();
-        linter::lint_file(db, *file, config, &graph, &mut lints);
+        linter::lint_file(db, *file, config, &pass, &mut lints);
         total += lints.len();
     }
     total

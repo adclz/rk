@@ -214,16 +214,42 @@ pub const ALL_RULE_NAMES: &[&str] = &[
     yoda_condition::NAME,
 ];
 
+/// What a lint pass works out once for all the files it lints, rather than
+/// again for each: the call graph they reach, and what the application
+/// reaches when the unused-POU rule asks.
+pub struct Pass<'p, 'db> {
+    /// One the roots of every file the pass lints reach
+    /// ([`CallGraph::of_files`]).
+    pub graph: &'p CallGraph<'db>,
+    /// The scopes the application reaches, for L0216: `None` when the rule is
+    /// off, or the workspace has no configuration.
+    pub(crate) reached: Option<rustc_hash::FxHashSet<ScopeId<'db>>>,
+}
+
+impl<'p, 'db> Pass<'p, 'db> {
+    /// A pass linting with `config`, over the files `graph` was built from.
+    pub fn new(
+        db: &'db dyn WorkspaceDataBase,
+        config: &LinterConfig,
+        graph: &'p CallGraph<'db>,
+    ) -> Self {
+        let reached = is_enabled(config, unused_pou::NAME)
+            .then(|| unused_pou::reached_by_the_application(db))
+            .flatten();
+        Pass { graph, reached }
+    }
+}
+
 /// Run all lint rules on a file, appending warnings to `diagnostics`.
-/// `graph` is one the file's roots reach ([`CallGraph::of_files`]): a pass
-/// over many files builds one for them all.
+/// `pass` is one over the file and the others linted with it.
 pub fn lint_file<'db>(
     db: &'db dyn WorkspaceDataBase,
     file: File,
     config: &LinterConfig,
-    graph: &CallGraph<'db>,
+    pass: &Pass<'_, 'db>,
     diagnostics: &mut Vec<IdeDiagnostic>,
 ) {
+    let graph = pass.graph;
     // File-level lints
     run_lint(duplicate_var_section::NAME, diagnostics, |d| {
         duplicate_var_section::check(db, file, config, d)
@@ -267,7 +293,7 @@ pub fn lint_file<'db>(
 
     if is_enabled(config, unused_pou::NAME) {
         run_lint(unused_pou::NAME, diagnostics, |d| {
-            unused_pou::check(db, file, d)
+            unused_pou::check(db, pass, file, d)
         });
     }
 

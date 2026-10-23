@@ -4,6 +4,7 @@
 pub mod rules;
 
 pub use rules::ALL_RULE_NAMES;
+pub use rules::Pass;
 pub use rules::STYLE_RULE_NAMES;
 pub use rules::is_enabled;
 pub use rules::is_recommended;
