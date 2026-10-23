@@ -286,14 +286,9 @@ impl<'db> CallGraph<'db> {
                 })
                 .collect();
         }
-        graph.component = components(&graph.callees);
-        let mut size = vec![0usize; graph.nodes.len()];
-        for &component in &graph.component {
-            size[component] += 1;
-        }
-        graph.recursive = (0..graph.nodes.len())
-            .map(|at| size[graph.component[at]] > 1 || graph.callees[at].contains(&at))
-            .collect();
+        let cycles = cycles(&graph.callees);
+        graph.component = cycles.component;
+        graph.recursive = cycles.recursive;
         graph
     }
 
@@ -374,10 +369,36 @@ impl<'db> CallGraph<'db> {
     }
 }
 
+/// The cycles of a graph given by each node's successors.
+pub struct Cycles {
+    /// The strongly connected component of each node: two nodes share one
+    /// exactly when each reaches the other.
+    pub component: Vec<usize>,
+    /// Whether each node reaches itself again: its component holds another
+    /// node, or it has an edge to itself.
+    pub recursive: Vec<bool>,
+}
+
+/// The cycles of `edges`. The call graph asks it of the calls HIR resolves,
+/// and MIR's check of the calls lowering emitted.
+pub fn cycles(edges: &[Vec<usize>]) -> Cycles {
+    let component = components(edges);
+    let mut size = vec![0usize; edges.len()];
+    for &c in &component {
+        size[c] += 1;
+    }
+    let recursive = (0..edges.len())
+        .map(|at| size[component[at]] > 1 || edges[at].contains(&at))
+        .collect();
+    Cycles {
+        component,
+        recursive,
+    }
+}
+
 /// The strongly connected component of each node of `edges`, by Tarjan's
-/// search: two nodes share one exactly when each reaches the other. The
-/// search keeps its own stack: a chain of thousands of calls would overflow
-/// the thread's.
+/// search. The search keeps its own stack: a chain of thousands of calls
+/// would overflow the thread's.
 fn components(edges: &[Vec<usize>]) -> Vec<usize> {
     const UNSEEN: usize = usize::MAX;
     // When the search reached each node, and the earliest node still on the
@@ -615,7 +636,7 @@ pub fn named_through_a_path<'db>(
 
 #[cfg(test)]
 mod tests {
-    use super::components;
+    use super::cycles;
 
     /// Whether each node reaches each other, through one edge or more.
     fn reaches(edges: &[Vec<usize>]) -> Vec<Vec<bool>> {
@@ -634,7 +655,8 @@ mod tests {
     }
 
     /// Random graphs, self edges included: two nodes share a component
-    /// exactly when each reaches the other.
+    /// exactly when each reaches the other, and a node is recursive exactly
+    /// when it reaches itself.
     #[test]
     fn a_component_is_the_nodes_that_reach_each_other() {
         let mut seed: u64 = 0x9e37_79b9_7f4a_7c15;
@@ -650,13 +672,14 @@ mod tests {
                     let edges: Vec<Vec<usize>> = (0..size)
                         .map(|_| (0..size).filter(|_| next() % 1000 < per_mille).collect())
                         .collect();
-                    let component = components(&edges);
+                    let cycles = cycles(&edges);
                     let reach = reaches(&edges);
-                    for a in 0..size {
-                        for b in 0..size {
+                    for (a, from_a) in reach.iter().enumerate() {
+                        assert_eq!(cycles.recursive[a], from_a[a], "{a} in {edges:?}");
+                        for (b, a_reaches_b) in from_a.iter().enumerate() {
                             assert_eq!(
-                                component[a] == component[b],
-                                a == b || (reach[a][b] && reach[b][a]),
+                                cycles.component[a] == cycles.component[b],
+                                a == b || (*a_reaches_b && reach[b][a]),
                                 "{a} and {b} in {edges:?}"
                             );
                         }
@@ -667,18 +690,20 @@ mod tests {
     }
 
     /// The search keeps its own stack: a cycle through a million nodes,
-    /// searched on a thread of 64 KiB, is one component.
+    /// searched on a thread of 64 KiB, is one component, and every node on
+    /// it recursive.
     #[test]
     fn a_cycle_of_a_million_nodes_is_one_component() {
         let edges: Vec<Vec<usize>> = (0..1_000_000)
             .map(|at| vec![(at + 1) % 1_000_000])
             .collect();
-        let component = std::thread::Builder::new()
+        let cycles = std::thread::Builder::new()
             .stack_size(64 * 1024)
-            .spawn(move || components(&edges))
+            .spawn(move || cycles(&edges))
             .unwrap()
             .join()
             .unwrap();
-        assert!(component.iter().all(|c| *c == component[0]));
+        assert!(cycles.component.iter().all(|c| *c == cycles.component[0]));
+        assert!(cycles.recursive.iter().all(|recursive| *recursive));
     }
 }
