@@ -18,7 +18,6 @@ use auto_lsp::{core::document::Document, default::db::file::File, lsp_types::Url
 use db::RootDatabase;
 use hir::{
     HirNodeInfo,
-    check::diagnostics_for_file,
     hir_def::{namespace::NamespaceDecl, scope::ScopeId, semantic_index::semantic_index},
     hir_ty::head::{init_inference::infer_initialization, signature::infer_signature},
 };
@@ -259,11 +258,13 @@ pub fn bodies_all(db: &dyn db::WorkspaceDataBase, files: &[File]) {
     }
 }
 
-/// Full HIR diagnostics for the whole workspace; returns the total count.
+/// Full HIR diagnostics for the whole workspace, the frames of recursive
+/// calls included, as `rk check` finds them; returns the total count.
 pub fn check_all(db: &dyn db::WorkspaceDataBase, files: &[File]) -> usize {
+    let graph = hir::hir_ty::calls::CallGraph::of_files(db, files.iter().copied());
     files
         .iter()
-        .map(|file| diagnostics_for_file(db, *file).len())
+        .map(|file| hir::check::check_file(db, &graph, *file).len())
         .sum()
 }
 
@@ -285,10 +286,11 @@ pub fn lint_all(
     files: &[File],
     config: &db::config_file::LinterConfig,
 ) -> usize {
+    let graph = hir::hir_ty::calls::CallGraph::of_files(db, files.iter().copied());
     let mut total = 0;
     for file in files {
         let mut lints = Vec::new();
-        linter::lint_file(db, *file, config, &mut lints);
+        linter::lint_file(db, *file, config, &graph, &mut lints);
         total += lints.len();
     }
     total

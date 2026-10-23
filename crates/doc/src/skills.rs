@@ -29,7 +29,7 @@ use auto_lsp::{
     lsp_types::{DiagnosticSeverity, NumberOrString, Url},
 };
 use db::RootDatabase;
-use hir::check::diagnostics_for_file;
+use hir::check::check_file;
 
 use crate::highlight::StHighlighter;
 use crate::markdown::{self, Fence};
@@ -215,7 +215,8 @@ fn codes(source: &str, stdlib: &[(Url, String)]) -> Vec<(String, bool)> {
         .unwrap();
     db.add_file(file).unwrap();
 
-    diagnostics_for_file(&db, file)
+    let graph = hir::hir_ty::calls::CallGraph::of_files(&db, [file]);
+    check_file(&db, &graph, file)
         .iter()
         .filter_map(|d| {
             let code = match d.diagnostic.code.as_ref()? {

@@ -160,7 +160,6 @@ fn a_body_edit_runs_again_its_own_file_only() {
     recorder.edit(a, &A.replace("x := 1;", "x := 2;"));
     assert_snapshot!(recorder.executed_by_check(), @r"
     Integer::as_i16_(_)
-    callees(FA)
     diagnostics_for_file(a.st)
     enclosing_namespaces(FA)
     file_global_pous(a.st)
@@ -189,8 +188,6 @@ fn a_signature_edit_runs_again_its_callers() {
     recorder.edit(a, &A.replace("FA : INT", "FA : DINT"));
     assert_snapshot!(recorder.executed_by_check(), @r"
     Integer::as_i32_(_)
-    callees(FA)
-    callees(FB)
     diagnostics_for_file(a.st)
     diagnostics_for_file(b.st)
     enclosing_namespaces(FA)
@@ -246,7 +243,6 @@ fn a_body_edit_keeps_the_inference_of_an_unresolved_name_elsewhere() {
     recorder.edit(a, &A.replace("x := 1;", "x := 2;"));
     assert_snapshot!(recorder.executed_by_check(), @r"
     Integer::as_i16_(_)
-    callees(FA)
     diagnostics_for_file(a.st)
     enclosing_namespaces(FA)
     file_configs(a.st)
@@ -289,7 +285,6 @@ fn a_new_name_leaves_the_names_of_the_other_files_alone() {
     recorder.edit(a, &A.replace("x := 1;", "x := 7;"));
     assert_snapshot!(recorder.executed_by_check_in(&[a, b]), @r"
     Integer::as_i16_(_)
-    callees(FA)
     diagnostics_for_file(a.st)
     enclosing_namespaces(FA)
     file_global_pous(a.st)

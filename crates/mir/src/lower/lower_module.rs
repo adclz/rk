@@ -210,6 +210,19 @@ fn lower_module_from_pous<'db>(
     let type_indices = FxHashMap::default();
     let mut instance_types = Vec::new();
     let mut memory_layout = MirMemoryLayout::new();
+    // The bodies lowered here, and what they call: which may call itself
+    // decides which have a frame.
+    let graph = hir::hir_ty::calls::CallGraph::new(
+        db,
+        all_pous
+            .iter()
+            .flat_map(|(pou, _)| hir::hir_ty::calls::bodies(db, **pou)),
+    );
+    memory_layout.frame_bodies(
+        graph
+            .recursive()
+            .map(|node| salsa::plumbing::AsId::as_id(&node)),
+    );
     let string_pool = std::rc::Rc::new(std::cell::RefCell::new(
         super::lower_expr::StringPool::new(0), // base offset set later after memory layout is finalized
     ));

@@ -15,11 +15,12 @@ use db::RootDatabase;
 use db::WorkspaceDataBase;
 use hir::HasName;
 use hir::HirNodeInfo;
-use hir::check::diagnostics_for_file;
+use hir::check::check_file;
 use hir::hir_def::interned::identifier::Ident;
 use hir::hir_def::namespace::NamespaceDecl;
 use hir::hir_def::pous::pou::Pou;
 use hir::hir_def::semantic_index::semantic_index;
+use hir::hir_ty::calls::CallGraph;
 use hir::hir_ty::oop::MethodRef;
 use hir::hir_ty::resolver::name::{PouResolution, pou_names_res};
 use ide_diagnostic::report::Sources;
@@ -71,8 +72,9 @@ pub fn no_color_and_ascii() -> Config {
 /// measures code no user can run — see `compile_to_wasm`.
 pub fn assert_workspace_is_clean(db: &RootDatabase) {
     let mut reported = Vec::new();
+    let graph = CallGraph::of_files(db, db.get_files().iter().copied());
     for file in db.get_files().iter().copied() {
-        reported.extend(diagnostics_for_file(db, file).iter().map(diagnostic_line));
+        reported.extend(check_file(db, &graph, file).iter().map(diagnostic_line));
     }
     assert!(
         reported.is_empty(),
@@ -222,10 +224,11 @@ pub fn test_library_diagnostics<'db>(
     add_sources(db, source);
     let mut library_files = db.get_library_files().to_vec();
     library_files.sort_by_key(|file| file.url(db).to_string());
+    let graph = CallGraph::of_files(db, library_files.iter().copied());
     let mut sources = Sources::default();
     let mut cache = vec![];
     for file in &library_files {
-        diagnostics_for_file(db, *file).iter().for_each(|d| {
+        check_file(db, &graph, *file).iter().for_each(|d| {
             d.create_report(
                 db,
                 file.url(db),
@@ -254,9 +257,11 @@ pub fn test_library_diagnostics<'db>(
 pub fn test_diagnostics<'db>(db: &'db mut RootDatabase, source: &'db [&'db str]) -> String {
     add_sources(db, source);
     let db: &'db RootDatabase = db;
+    let files = workspace_files(db);
+    let graph = CallGraph::of_files(db, files.iter().copied());
     let mut out = vec![];
-    for file in workspace_files(db) {
-        write_reports(db, file, diagnostics_for_file(db, file), &mut out);
+    for file in files {
+        write_reports(db, file, &check_file(db, &graph, file), &mut out);
     }
     assert_accepted_workspace_compiles(db);
     trimmed(out)
@@ -266,8 +271,9 @@ pub fn test_diagnostics<'db>(db: &'db mut RootDatabase, source: &'db [&'db str])
 /// file (library ones included) has an error.
 fn assert_accepted_workspace_compiles(db: &RootDatabase) {
     let files = rk::file_order::ordered_files_with_libraries(db);
+    let graph = CallGraph::of_files(db, files.iter().copied());
     let rejected = files.iter().any(|file| {
-        diagnostics_for_file(db, *file).iter().any(|d| {
+        check_file(db, &graph, *file).iter().any(|d| {
             matches!(
                 d.diagnostic.severity,
                 Some(DiagnosticSeverity::ERROR) | None
@@ -327,8 +333,9 @@ pub(crate) fn test_lint_diagnostics_with_config<'db>(
     linter_config: &db::config_file::LinterConfig,
 ) -> String {
     test_snapshot(db, source, |db, file| {
-        let mut all = diagnostics_for_file(db, file).as_ref().clone();
-        linter::lint_file(db, file, linter_config, &mut all);
+        let graph = CallGraph::of_files(db, [file]);
+        let mut all = check_file(db, &graph, file);
+        linter::lint_file(db, file, linter_config, &graph, &mut all);
         all
     })
 }

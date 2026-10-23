@@ -10,7 +10,7 @@ use hir::{
         scope::{ScopeId, ScopeKind},
         semantic_index::get_scope,
     },
-    hir_ty::calls::{CallNode, call_chain, calls, is_recursive, reachable},
+    hir_ty::calls::{CallGraph, CallNode, calls},
 };
 use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
 
@@ -27,8 +27,13 @@ impl ErrorCode for Recursion {
     }
 }
 
+/// The bodies a message names before it says how many more: a cycle
+/// through thousands of POUs would name every one of them.
+const NAMED: usize = 8;
+
 pub fn check<'db>(
     db: &'db dyn WorkspaceDataBase,
+    graph: &CallGraph<'db>,
     scope: ScopeId<'db>,
     diagnostics: &mut Vec<IdeDiagnostic>,
 ) {
@@ -38,7 +43,7 @@ pub fn check<'db>(
         ScopeKind::MethodDecl(m) => CallNode::Method(m),
         _ => return,
     };
-    if !is_recursive(db, node) {
+    if !graph.is_recursive(node) {
         return;
     }
     let file = scope.file(db);
@@ -50,7 +55,7 @@ pub fn check<'db>(
                 .targets
                 .iter()
                 .copied()
-                .find(|target| *target == node || reachable(db, *target).contains(&node))?;
+                .find(|target| graph.on_one_cycle(*target, node))?;
             let range = hir::denormalize(db, file, &call.site.get_span(db))?;
             Some((range, target))
         })
@@ -63,12 +68,21 @@ pub fn check<'db>(
         let message = if target == node {
             format!("'{name}' calls itself")
         } else {
-            let chain = call_chain(db, target, node).unwrap_or_default();
-            let through: Vec<String> = chain
+            let chain = graph.chain(target, node).unwrap_or_default();
+            let between = &chain[..chain.len().saturating_sub(1)];
+            // One more name rather than "1 other".
+            let named = if between.len() > NAMED + 1 {
+                NAMED
+            } else {
+                between.len()
+            };
+            let mut through: Vec<String> = between[..named]
                 .iter()
-                .take(chain.len().saturating_sub(1))
                 .map(|node| format!("'{}'", node.display_name(db)))
                 .collect();
+            if named < between.len() {
+                through.push(format!("{} others", between.len() - named));
+            }
             format!("'{name}' calls itself through {}", through.join(", then "))
         };
         let mut d = diag()

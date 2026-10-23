@@ -570,6 +570,7 @@ mod tests {
         TextDocumentItem, VersionedTextDocumentIdentifier, WorkspaceDiagnosticParams,
         WorkspaceFolder,
     };
+    use auto_lsp::lsp_types::{DocumentDiagnosticParams, TextDocumentIdentifier};
 
     /// A document is rk's by its extension, in any case, as the workspace's
     /// loader reads it: `MAIN.ST` was loaded from disk and its edits were
@@ -857,6 +858,52 @@ mod tests {
             ]
         );
         assert_eq!(client.errors.len(), 1, "{:?}", client.errors);
+        client.stop(server);
+    }
+
+    /// The frame of a recursive call is reported by both pulls. Which bodies
+    /// may call themselves is the call graph's, which each pull builds: no
+    /// part of a file's own check, which a pull that read only that check
+    /// would miss.
+    #[test]
+    fn both_pulls_report_the_frame_of_a_recursive_call() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().canonicalize().unwrap();
+        std::fs::create_dir_all(root.join("ws")).unwrap();
+        let write = |path: &str, text: &str| std::fs::write(root.join(path), text).unwrap();
+        write(
+            "ws/config.toml",
+            "[project]\nname = \"app\"\nversion = \"1\"\n",
+        );
+        // No standard library: the test reads none of the developer's.
+        write("ws/.env", "RK_STDLIB_PATH=\n");
+        // Each local fits, and a call takes them both.
+        write(
+            "ws/deep.st",
+            "FUNCTION Deep : DINT\nVAR_INPUT n : DINT; END_VAR\nVAR\n    \
+             a : ARRAY[0..299999999] OF LINT;\n    b : ARRAY[0..299999999] OF LINT;\n\
+             END_VAR\n    IF n > 0 THEN\n        Deep := Deep(n - 1);\n    END_IF;\n\
+             END_FUNCTION\n",
+        );
+        let url = |path: &str| Url::from_file_path(root.join(path)).unwrap();
+
+        let (mut client, server) = Client::start(url("ws"));
+        assert_eq!(client.report(), [(url("ws/deep.st").to_string(), 1)]);
+        let report = client.request::<DocumentDiagnosticRequest>(DocumentDiagnosticParams {
+            text_document: TextDocumentIdentifier::new(url("ws/deep.st")),
+            identifier: None,
+            previous_result_id: None,
+            work_done_progress_params: Default::default(),
+            partial_result_params: Default::default(),
+        });
+        let errors: Vec<&str> = report["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|item| item["severity"] == 1)
+            .filter_map(|item| item["code"].as_str())
+            .collect();
+        assert_eq!(errors, ["E0322"]);
         client.stop(server);
     }
 }

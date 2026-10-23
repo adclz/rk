@@ -27,7 +27,7 @@ use crate::{
     },
     hir_ty::{
         body::{ResolvedCall, ScopeInference},
-        calls::{CallNode, is_recursive},
+        calls::{CallGraph, CallNode},
         frame::{self, Shapes},
         infer::Infer,
         layout,
@@ -160,9 +160,11 @@ fn oversized<'db>(db: &'db dyn WorkspaceDataBase, spec: Spec<'db>) -> Option<(Sp
 /// The frames of recursive calls `scope` decides: its own body's, when it
 /// may call itself, and those of the copies its calls create of a body with
 /// `ARRAY[*]` parameters. One larger than the stack `stack_size` sets is
-/// E1430, and one past what a module addresses E0322.
+/// E1430, and one past what a module addresses E0322. `graph` says which
+/// bodies may call themselves: one the roots of `scope`'s file reach.
 pub fn check_frames<'db>(
     db: &'db dyn WorkspaceDataBase,
+    graph: &CallGraph<'db>,
     scope: ScopeId<'db>,
     errors: &mut Vec<IdeDiagnostic>,
 ) {
@@ -203,7 +205,7 @@ pub fn check_frames<'db>(
     };
     // A part too large on its own is reported where it is declared.
     if let Some((node, name)) = node
-        && is_recursive(db, node)
+        && graph.is_recursive(node)
         && frame::parts(db, node, &Shapes::default())
             .iter()
             .all(|part| part.fits())
@@ -221,7 +223,7 @@ pub fn check_frames<'db>(
     let mut calls: Vec<_> = inference.resolved_calls().collect();
     calls.sort_by_key(|(call, _)| call.path(db).get_span(db).start_byte);
     for (call, resolved) in calls {
-        let copy = copies(db, inference, resolved)
+        let copy = copies(db, graph, inference, resolved)
             .into_iter()
             .find(|(node, size)| !fits(*size) && fits(frame::frame(db, *node, &Shapes::default())));
         if let Some((node, size)) = copy {
@@ -243,6 +245,7 @@ pub fn check_frames<'db>(
 /// body's own arrays decide is checked where that body is written.
 fn copies<'db>(
     db: &'db dyn WorkspaceDataBase,
+    graph: &CallGraph<'db>,
     inference: ScopeInference<'db>,
     call: &ResolvedCall<'db>,
 ) -> Vec<(CallNode<'db>, u64)> {
@@ -255,7 +258,7 @@ fn copies<'db>(
         if seen.iter().any(|(n, s)| *n == node && *s == shapes) {
             continue;
         }
-        if is_recursive(db, node) {
+        if graph.is_recursive(node) {
             found.push((node, frame::frame(db, node, &shapes)));
         }
         let inner = node.scope(db).inference(db);

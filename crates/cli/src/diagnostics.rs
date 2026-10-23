@@ -13,7 +13,7 @@ use auto_lsp::lsp_types::{DiagnosticSeverity, Url};
 use db::RootDatabase;
 use ide_diagnostic::IdeDiagnostic;
 use ide_diagnostic::report::Sources;
-use rayon::iter::{IntoParallelIterator, ParallelIterator};
+use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
 
 /// Collect diagnostics for every workspace file, in parallel; `with_linter`
 /// runs the configured passes too (`rk check`, not codegen).
@@ -29,31 +29,11 @@ pub fn collect_diagnostics(
             .clone()
             .unwrap_or_default()
     });
-
-    // Ordered, so the diagnostics come out in the same sequence every run —
-    // rayon's collect preserves the input order, it just cannot invent one.
-    // Every file is checked before any is linted: a lint that looks across
-    // the workspace, at the members other bodies name or at what the
-    // configuration reaches, then reads what the check computed. Linted
-    // with its file, it computed the other files' inference on its own
-    // thread, while the threads checking them waited on it.
-    let checked: Vec<(File, Vec<IdeDiagnostic>)> = crate::file_order::ordered_files(db)
-        .into_par_iter()
-        .map_with(db.clone(), |db, file| {
-            let diagnostics = hir::check::diagnostics_for_file(db, file).as_ref().clone();
-            (file, diagnostics)
-        })
-        .collect();
-    let Some(linter_config) = linter_config else {
-        return checked;
-    };
-    checked
-        .into_par_iter()
-        .map_with(db.clone(), |db, (file, mut diagnostics)| {
-            linter::lint_file(db, file, &linter_config, &mut diagnostics);
-            (file, diagnostics)
-        })
-        .collect()
+    check(
+        db,
+        crate::file_order::ordered_files(db),
+        linter_config.as_ref(),
+    )
 }
 
 /// The ERRORS of the library files, and only the errors: the editor hides
@@ -61,22 +41,51 @@ pub fn collect_diagnostics(
 /// library lowers into an invalid module with no message naming the
 /// cause.
 pub fn collect_library_errors(db: &RootDatabase) -> Vec<(File, Vec<IdeDiagnostic>)> {
-    crate::file_order::ordered_library_files(db)
-        .into_par_iter()
-        .map_with(db.clone(), |db, file| {
-            let errors: Vec<IdeDiagnostic> = hir::check::diagnostics_for_file(db, file)
-                .iter()
+    check(db, crate::file_order::ordered_library_files(db), None)
+        .into_iter()
+        .map(|(file, diagnostics)| {
+            let errors: Vec<IdeDiagnostic> = diagnostics
+                .into_iter()
                 .filter(|d| {
                     matches!(
                         d.diagnostic.severity,
                         Some(DiagnosticSeverity::ERROR) | None
                     )
                 })
-                .cloned()
                 .collect();
             (file, errors)
         })
         .filter(|(_, errors)| !errors.is_empty())
+        .collect()
+}
+
+/// Every diagnostic of `files`, in their order, linted with `linter_config`
+/// when there is one. Every file is checked before the call graph is built
+/// and any is linted: the graph, and a lint that looks across the
+/// workspace, at the members other bodies name or at what the
+/// configuration reaches, then read what the check computed. Built or
+/// linted with one file, they computed the other files' inference on one
+/// thread, while the threads checking them waited.
+fn check(
+    db: &RootDatabase,
+    files: Vec<File>,
+    linter_config: Option<&db::config_file::LinterConfig>,
+) -> Vec<(File, Vec<IdeDiagnostic>)> {
+    files.par_iter().for_each_with(db.clone(), |db, file| {
+        hir::check::diagnostics_for_file(db, *file);
+    });
+    let graph = hir::hir_ty::calls::CallGraph::of_files(db, files.iter().copied());
+    // Ordered, so the diagnostics come out in the same sequence every run:
+    // rayon's collect preserves the input order, it just cannot invent one.
+    files
+        .into_par_iter()
+        .map_with(db.clone(), |db, file| {
+            let mut diagnostics = hir::check::check_file(db, &graph, file);
+            if let Some(linter_config) = linter_config {
+                linter::lint_file(db, file, linter_config, &graph, &mut diagnostics);
+            }
+            (file, diagnostics)
+        })
         .collect()
 }
 

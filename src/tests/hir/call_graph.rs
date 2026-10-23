@@ -10,7 +10,7 @@ use hir::{
     HirNodeInfo,
     hir_def::{pous::pou::Pou, semantic_index::semantic_index},
     hir_ty::{
-        calls::{CallNode, is_recursive},
+        calls::{CallGraph, CallNode},
         oop::MethodRef,
     },
 };
@@ -39,9 +39,10 @@ fn bodies<'db>(db: &'db dyn WorkspaceDataBase, file: File) -> Vec<CallNode<'db>>
 /// The bodies of `source` that may call themselves, sorted by name.
 fn recursive(db: &mut RootDatabase, source: &str) -> Vec<String> {
     let file = add_source(db, source);
+    let graph = CallGraph::of_files(db, [file]);
     let mut names: Vec<String> = bodies(db, file)
         .into_iter()
-        .filter(|node| is_recursive(db, *node))
+        .filter(|node| graph.is_recursive(*node))
         .map(|node| node.display_name(db))
         .collect();
     names.sort();
@@ -73,9 +74,9 @@ END_FUNCTION
     assert_eq!(recursive(&mut with_db, source), ["Ping", "Pong", "SumTo"]);
 }
 
-/// A syntax error elsewhere in the file leaves the recursion found. Salsa
-/// refuses a cycle whose inputs accumulated anything, and the parse errors
-/// were accumulated: this panicked.
+/// A syntax error elsewhere in the file leaves the recursion found. When the
+/// graph was a salsa cycle, this panicked: salsa refuses a cycle whose
+/// inputs accumulated anything, and the parse errors were accumulated.
 #[rstest]
 fn recursion_beside_a_syntax_error(mut with_db: RootDatabase) {
     let source = r#"
@@ -206,8 +207,8 @@ END_FUNCTION
     assert_eq!(recursive(&mut with_db, source), ["Base", "Derived", "Kick"]);
 }
 
-/// An edit that breaks the cycle takes the recursion away: the settled
-/// cycle is no memo that outlives its cause.
+/// An edit that breaks the cycle takes the recursion away: a graph built
+/// after the edit finds no cycle.
 #[rstest]
 fn breaking_the_cycle_ends_the_recursion(mut with_db: RootDatabase) {
     use auto_lsp::lsp_types::{
@@ -217,9 +218,10 @@ fn breaking_the_cycle_ends_the_recursion(mut with_db: RootDatabase) {
     let source = "FUNCTION Ping : INT\n    Ping := Pong();\nEND_FUNCTION\n\nFUNCTION Pong : INT\n    Pong := Ping();\nEND_FUNCTION\n";
     let file = add_source(&mut with_db, source);
     let recursive = |db: &RootDatabase| -> Vec<bool> {
+        let graph = CallGraph::of_files(db, [file]);
         bodies(db, file)
             .into_iter()
-            .map(|node| is_recursive(db, node))
+            .map(|node| graph.is_recursive(node))
             .collect()
     };
     assert_eq!(recursive(&with_db), [true, true]);
@@ -242,9 +244,10 @@ fn breaking_the_cycle_ends_the_recursion(mut with_db: RootDatabase) {
 }
 
 /// Random call graphs, each body calling some others: a body is recursive
-/// exactly when it reaches itself, whichever body is asked first. Salsa
-/// settles a cycle from the body it was entered from, so cycles sharing
-/// bodies, entered in every order, are the case to cover.
+/// exactly when it reaches itself, whichever body the search starts from.
+/// Tarjan's search enters the graph from its roots in their order, so
+/// cycles sharing bodies, entered from every body first, are the case to
+/// cover.
 #[rstest]
 #[case::small(4, 0.35)]
 #[case::medium(8, 0.25)]
@@ -289,23 +292,26 @@ fn random_graphs_match_reachability(#[case] size: usize, #[case] density: f64) {
             })
             .collect();
 
-        // Asked in a rotating order, in a fresh database each time.
+        // The roots in a rotating order, in a fresh database each time.
         for first in 0..size {
             let mut db = RootDatabase::default();
             let file = add_source(&mut db, &source);
             let nodes = bodies(&db, file);
             let mut order: Vec<usize> = (0..size).collect();
             order.rotate_left(first);
-            for i in order {
-                let node = nodes
+            let node = |i: usize| {
+                nodes
                     .iter()
                     .find(|node| node.display_name(&db) == format!("f{i}"))
                     .copied()
-                    .unwrap();
+                    .unwrap()
+            };
+            let graph = CallGraph::new(&db, order.iter().map(|i| node(*i)));
+            for i in order {
                 assert_eq!(
-                    is_recursive(&db, node),
+                    graph.is_recursive(node(i)),
                     expected[i],
-                    "f{i} asked after f{first} in\n{source}"
+                    "f{i}, the search started from f{first}, in\n{source}"
                 );
             }
         }

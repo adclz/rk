@@ -7,7 +7,7 @@ use auto_lsp::{
     lsp_types::{DiagnosticSeverity, NumberOrString, Url},
 };
 use db::{RootDatabase, WorkspaceDataBase};
-use hir::check::diagnostics_for_file;
+use hir::check::check_file;
 use ide_diagnostic::report::Sources;
 
 /// One diagnostic the compiler reported on an example, located so the page
@@ -104,15 +104,16 @@ pub fn compile_and_render(
         }
     });
 
+    let graph = hir::hir_ty::calls::CallGraph::of_files(db, files.iter().copied());
     let mut sources = Sources::default();
     for file in files.iter() {
         let source_idx = index_of(file);
         let source_text = file.document(db);
         let src = source_text.as_str();
 
-        let mut all = diagnostics_for_file(db, *file).as_ref().clone();
+        let mut all = check_file(db, &graph, *file);
         if let Some(ref linter_config) = linter_config {
-            linter::lint_file(db, *file, linter_config, &mut all);
+            linter::lint_file(db, *file, linter_config, &graph, &mut all);
         }
         for d in all.iter() {
             let range = d.range();

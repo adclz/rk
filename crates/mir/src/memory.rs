@@ -33,6 +33,9 @@ pub struct MirMemoryLayout {
     /// The bytes of the frame being laid out, while a recursive function is
     /// lowered: its locals go there instead of at static addresses.
     frame: Option<u32>,
+    /// The bodies that may call themselves, by salsa id, as HIR's call graph
+    /// finds them: each of their calls has its storage in a frame.
+    framed: FxHashSet<salsa::Id>,
 }
 
 impl Default for MirMemoryLayout {
@@ -45,6 +48,7 @@ impl Default for MirMemoryLayout {
             global_allocations: Vec::new(),
             located_allocations: Vec::new(),
             frame: None,
+            framed: FxHashSet::default(),
         }
     }
 }
@@ -172,6 +176,17 @@ impl MirMemoryLayout {
             true => self.peak,
             false => self.offset,
         }
+    }
+
+    /// Say which bodies may call themselves: [`Self::is_framed`] answers
+    /// from these.
+    pub fn frame_bodies(&mut self, bodies: impl IntoIterator<Item = salsa::Id>) {
+        self.framed = bodies.into_iter().collect();
+    }
+
+    /// Whether the body of salsa id `body` lays its storage out in a frame.
+    pub fn is_framed(&self, body: salsa::Id) -> bool {
+        self.framed.contains(&body)
     }
 
     /// Lay out the locals that follow in a frame, for a function that may

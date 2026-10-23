@@ -15,6 +15,7 @@ use hir::{
         semantic_index::{get_scope, semantic_index},
         using::Using,
     },
+    hir_ty::calls::CallGraph,
 };
 use ide_diagnostic::IdeDiagnostic;
 
@@ -214,10 +215,13 @@ pub const ALL_RULE_NAMES: &[&str] = &[
 ];
 
 /// Run all lint rules on a file, appending warnings to `diagnostics`.
-pub fn lint_file(
-    db: &dyn WorkspaceDataBase,
+/// `graph` is one the file's roots reach ([`CallGraph::of_files`]): a pass
+/// over many files builds one for them all.
+pub fn lint_file<'db>(
+    db: &'db dyn WorkspaceDataBase,
     file: File,
     config: &LinterConfig,
+    graph: &CallGraph<'db>,
     diagnostics: &mut Vec<IdeDiagnostic>,
 ) {
     // File-level lints
@@ -284,20 +288,27 @@ pub fn lint_file(
     // Global usings
     all_usings.extend_from_slice(sema.scope.usings(db));
 
-    lint_scope(db, config, sema.scope, &mut body_scopes, diagnostics);
+    lint_scope(db, config, graph, sema.scope, &mut body_scopes, diagnostics);
 
     for pou in sema.global_pous.iter() {
         let scope = pou.get_scope_id(db);
         all_usings.extend_from_slice(scope.usings(db));
         all_scopes.push(scope);
-        lint_scope(db, config, scope, &mut body_scopes, diagnostics);
+        lint_scope(db, config, graph, scope, &mut body_scopes, diagnostics);
 
         if let Some(methods) = scope.method_declarations(db) {
             for method in methods {
                 let method_scope = method.get_scope_id(db);
                 all_usings.extend_from_slice(method_scope.usings(db));
                 all_scopes.push(method_scope);
-                lint_scope(db, config, method_scope, &mut body_scopes, diagnostics);
+                lint_scope(
+                    db,
+                    config,
+                    graph,
+                    method_scope,
+                    &mut body_scopes,
+                    diagnostics,
+                );
             }
         }
 
@@ -315,6 +326,7 @@ pub fn lint_file(
         collect_namespace_scopes(
             db,
             config,
+            graph,
             *ns,
             &mut all_scopes,
             &mut body_scopes,
@@ -327,7 +339,7 @@ pub fn lint_file(
         let scope = program.get_scope_id(db);
         all_usings.extend_from_slice(scope.usings(db));
         all_scopes.push(scope);
-        lint_scope(db, config, scope, &mut body_scopes, diagnostics);
+        lint_scope(db, config, graph, scope, &mut body_scopes, diagnostics);
     }
 
     // File-level lint: unused imports (needs all scopes collected)
@@ -348,6 +360,7 @@ pub fn lint_file(
 fn collect_namespace_scopes<'db>(
     db: &'db dyn WorkspaceDataBase,
     config: &LinterConfig,
+    graph: &CallGraph<'db>,
     ns: NamespaceDecl<'db>,
     all_scopes: &mut Vec<ScopeId<'db>>,
     body_scopes: &mut Vec<ScopeId<'db>>,
@@ -360,14 +373,14 @@ fn collect_namespace_scopes<'db>(
         let scope = pou.get_scope_id(db);
         all_usings.extend_from_slice(scope.usings(db));
         all_scopes.push(scope);
-        lint_scope(db, config, scope, body_scopes, diagnostics);
+        lint_scope(db, config, graph, scope, body_scopes, diagnostics);
 
         if let Some(methods) = scope.method_declarations(db) {
             for method in methods {
                 let method_scope = method.get_scope_id(db);
                 all_usings.extend_from_slice(method_scope.usings(db));
                 all_scopes.push(method_scope);
-                lint_scope(db, config, method_scope, body_scopes, diagnostics);
+                lint_scope(db, config, graph, method_scope, body_scopes, diagnostics);
             }
         }
     }
@@ -411,6 +424,7 @@ pub(crate) fn run_lint(
 fn lint_scope<'db>(
     db: &'db dyn WorkspaceDataBase,
     config: &LinterConfig,
+    graph: &CallGraph<'db>,
     scope: ScopeId<'db>,
     body_scopes: &mut Vec<ScopeId<'db>>,
     diagnostics: &mut Vec<IdeDiagnostic>,
@@ -505,7 +519,7 @@ fn lint_scope<'db>(
     }
     if is_enabled(config, recursion::NAME) {
         run_lint(recursion::NAME, diagnostics, |d| {
-            recursion::check(db, scope, d)
+            recursion::check(db, graph, scope, d)
         });
     }
     if is_enabled(config, single_element_array::NAME) {

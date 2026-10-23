@@ -270,11 +270,7 @@ fn lower_function_inner<'db>(
     let mut params = Vec::new();
     let mut locals = Vec::new();
     let mut next_local_idx: u32 = 0;
-    open_frame(
-        db,
-        hir::hir_ty::calls::CallNode::Function(func),
-        memory_layout,
-    );
+    open_frame(hir::hir_ty::calls::CallNode::Function(func), memory_layout);
 
     // Collect address-taken variables for storage decisions
     let address_taken = hir::hir_ty::layout::address_taken(db, func.scope_id(db));
@@ -486,11 +482,7 @@ fn lower_function_block_inner<'db>(
         let mut params = Vec::new();
         let mut locals = Vec::new();
         let mut next_local_idx: u32 = 1; // 0 is 'this'
-        open_frame(
-            db,
-            hir::hir_ty::calls::CallNode::Method(method),
-            memory_layout,
-        );
+        open_frame(hir::hir_ty::calls::CallNode::Method(method), memory_layout);
         // A method local whose address is taken must live in memory. Same scan
         // as the other bodies.
         let address_taken = hir::hir_ty::layout::address_taken(db, method.scope_id(db));
@@ -857,11 +849,7 @@ fn lower_fb_body<'db>(
 
     let mut body_locals = Vec::new();
     let mut next_local_idx: u32 = 1; // 0 is 'this'
-    open_frame(
-        db,
-        hir::hir_ty::calls::CallNode::Body(body_of),
-        memory_layout,
-    );
+    open_frame(hir::hir_ty::calls::CallNode::Body(body_of), memory_layout);
 
     let address_taken = hir::hir_ty::layout::address_taken(db, body_of.scope_id(db));
 
@@ -983,11 +971,7 @@ fn lower_class_inner<'db>(
         let mut params = Vec::new();
         let mut locals = Vec::new();
         let mut next_local_idx: u32 = 1; // 0 is 'this'
-        open_frame(
-            db,
-            hir::hir_ty::calls::CallNode::Method(method),
-            memory_layout,
-        );
+        open_frame(hir::hir_ty::calls::CallNode::Method(method), memory_layout);
 
         // 'this' pointer parameter
         let class_type = lower_type(db, Type::Class(class))?;
@@ -1549,12 +1533,8 @@ pub fn allocate_local_storage(
 /// Lay out `node`'s storage in a frame from here on when HIR's call graph
 /// says it may call itself: each of its calls then has storage of its own.
 /// The function's `frame` closes it.
-fn open_frame<'db>(
-    db: &'db dyn WorkspaceDataBase,
-    node: hir::hir_ty::calls::CallNode<'db>,
-    memory_layout: &mut MirMemoryLayout,
-) {
-    if hir::hir_ty::calls::is_recursive(db, node) {
+fn open_frame<'db>(node: hir::hir_ty::calls::CallNode<'db>, memory_layout: &mut MirMemoryLayout) {
+    if memory_layout.is_framed(salsa::plumbing::AsId::as_id(&node)) {
         memory_layout.begin_frame();
     }
 }

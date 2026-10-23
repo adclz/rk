@@ -144,6 +144,59 @@ pub struct MirInitStore {
     pub value: expr::MirConstant,
 }
 
+/// The strongly connected component of each node of `edges`, Kosaraju's
+/// way: the order in which a search of the calls leaves each node, then a
+/// search of the calls reversed, from the last node left: each search of
+/// the second pass stays in one component. Both searches keep their own
+/// stack, for a chain of thousands of calls.
+fn components(edges: &[Vec<usize>]) -> Vec<usize> {
+    let mut left = Vec::with_capacity(edges.len());
+    let mut seen = vec![false; edges.len()];
+    for start in 0..edges.len() {
+        if std::mem::replace(&mut seen[start], true) {
+            continue;
+        }
+        let mut path = vec![(start, 0)];
+        while let Some((at, next)) = path.last_mut() {
+            let at = *at;
+            if let Some(&callee) = edges[at].get(*next) {
+                *next += 1;
+                if !std::mem::replace(&mut seen[callee], true) {
+                    path.push((callee, 0));
+                }
+            } else {
+                left.push(at);
+                path.pop();
+            }
+        }
+    }
+    let mut callers = vec![Vec::new(); edges.len()];
+    for (caller, callees) in edges.iter().enumerate() {
+        for &callee in callees {
+            callers[callee].push(caller);
+        }
+    }
+    let mut component = vec![usize::MAX; edges.len()];
+    let mut next_component = 0;
+    for &start in left.iter().rev() {
+        if component[start] != usize::MAX {
+            continue;
+        }
+        component[start] = next_component;
+        let mut pending = vec![start];
+        while let Some(at) = pending.pop() {
+            for &caller in &callers[at] {
+                if component[caller] == usize::MAX {
+                    component[caller] = next_component;
+                    pending.push(caller);
+                }
+            }
+        }
+        next_component += 1;
+    }
+    component
+}
+
 impl MirModule {
     /// Look up an instance type by name.
     pub fn find_instance_type(&self, name: Ident) -> Option<&MirInstanceType> {
@@ -154,7 +207,9 @@ impl MirModule {
     /// emitted, but has no frame. HIR's call graph decides which functions
     /// get one, and a call it missed would leave a recursive function's
     /// storage shared between its calls: lowering refuses such a module
-    /// (`LowerTypeError::UnframedRecursion`).
+    /// (`LowerTypeError::UnframedRecursion`). Kosaraju's algorithm finds the
+    /// cycles, where HIR's graph uses Tarjan's: a mistake in one is not made
+    /// again by the other.
     pub(crate) fn unframed_recursion(&self) -> Option<&MirFunction> {
         let index: FxHashMap<Ident, usize> = self
             .functions
@@ -174,19 +229,88 @@ impl MirModule {
                     .collect()
             })
             .collect();
+        let component = components(&edges);
+        let mut size = vec![0usize; edges.len()];
+        for &c in &component {
+            size[c] += 1;
+        }
         self.functions
             .iter()
             .enumerate()
-            .find(|(start, func)| {
+            .find(|(at, func)| {
+                let recursive = size[component[*at]] > 1 || edges[*at].contains(at);
+                recursive && func.frame.is_none()
+            })
+            .map(|(_, func)| func)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::components;
+
+    /// Whether each node reaches each other, through one edge or more.
+    fn reaches(edges: &[Vec<usize>]) -> Vec<Vec<bool>> {
+        (0..edges.len())
+            .map(|start| {
                 let mut seen = vec![false; edges.len()];
-                let mut pending = edges[*start].clone();
+                let mut pending = edges[start].clone();
                 while let Some(at) = pending.pop() {
                     if !std::mem::replace(&mut seen[at], true) {
                         pending.extend(&edges[at]);
                     }
                 }
-                seen[*start] && func.frame.is_none()
+                seen
             })
-            .map(|(_, func)| func)
+            .collect()
+    }
+
+    /// Random graphs, self edges included: two nodes share a component
+    /// exactly when each reaches the other.
+    #[test]
+    fn a_component_is_the_nodes_that_reach_each_other() {
+        let mut seed: u64 = 0x9e37_79b9_7f4a_7c15;
+        let mut next = move || {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            seed
+        };
+        for size in [1, 2, 5, 12, 30] {
+            for per_mille in [50, 150, 400] {
+                for _ in 0..20 {
+                    let edges: Vec<Vec<usize>> = (0..size)
+                        .map(|_| (0..size).filter(|_| next() % 1000 < per_mille).collect())
+                        .collect();
+                    let component = components(&edges);
+                    let reach = reaches(&edges);
+                    for a in 0..size {
+                        for b in 0..size {
+                            assert_eq!(
+                                component[a] == component[b],
+                                a == b || (reach[a][b] && reach[b][a]),
+                                "{a} and {b} in {edges:?}"
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// The search keeps its own stack: a cycle through a million nodes,
+    /// searched on a thread of 64 KiB, is one component.
+    #[test]
+    fn a_cycle_of_a_million_nodes_is_one_component() {
+        let edges: Vec<Vec<usize>> = (0..1_000_000)
+            .map(|at| vec![(at + 1) % 1_000_000])
+            .collect();
+        let component = std::thread::Builder::new()
+            .stack_size(64 * 1024)
+            .spawn(move || components(&edges))
+            .unwrap()
+            .join()
+            .unwrap();
+        assert!(component.iter().all(|c| *c == component[0]));
     }
 }
