@@ -46,9 +46,12 @@ pub enum InitValue<'db> {
     /// 0, which storage already holds (IEC 61131-3): an enumerated type's
     /// first value, a subrange's lower limit.
     Implied(i64),
+    /// An instance of this POU, held at the entry's path: what
+    /// [`instance_initializers`] gives for the POU is written there.
+    Instance(Pou<'db>),
 }
 
-/// Every initializer that applies to a fresh instance of `pou`, flattened.
+/// Every initializer that applies to a fresh instance of `pou`.
 ///
 /// An FB or CLASS instance carries no initializer at its declaration site — the
 /// `:= 3` lives on the *type's* member declarations, one or more levels down.
@@ -56,12 +59,14 @@ pub enum InitValue<'db> {
 /// initial state:
 ///
 /// - **inheritance** — inherited members are included, via [`instance_members`];
-/// - **composition** — a member that is itself an instance contributes its own
-///   type's initializers, under a longer path.
+/// - **composition** — a member that is itself an instance is one entry,
+///   [`InitValue::Instance`]: its own POU's list is written where it is, one
+///   list for every instance of that POU. Copied under the path of each
+///   instance holding it, the list grew with the square of a chain of blocks
+///   each holding the next.
 ///
-/// Consumers therefore walk neither. A cyclic `EXTENDS` or a self-containing
-/// FB is reported separately (E05xx / E09xx recursion checks); the `visited`
-/// set here only guarantees this query terminates regardless.
+/// A self-containing FB is reported separately (E1301): a consumer following
+/// the instances stops where one holds itself.
 ///
 /// Order is layout order — base-most POU first, then declaration order —
 /// matching [`instance_members`], so writes land in a predictable sequence.
@@ -71,26 +76,7 @@ pub fn instance_initializers<'db>(
     pou: Pou<'db>,
 ) -> Vec<InstanceInit<'db>> {
     let mut out = Vec::new();
-    collect_instance_initializers(db, pou, &mut Vec::new(), &mut out, &mut Vec::new());
-    out
-}
-
-fn collect_instance_initializers<'db>(
-    db: &'db dyn WorkspaceDataBase,
-    pou: Pou<'db>,
-    prefix: &mut Vec<InstanceInitStep>,
-    out: &mut Vec<InstanceInit<'db>>,
-    pous: &mut Vec<Pou<'db>>,
-) {
-    // `pous` is the current *path*, not a global seen-set: a type reached
-    // twice through different members must contribute twice (`a : Inner;
-    // b : Inner;` initializes both), while a type reached through itself is a
-    // cycle and stops here.
-    if pous.contains(&pou) {
-        return;
-    }
-    pous.push(pou);
-
+    let mut prefix = Vec::new();
     for member in instance_members(db, pou) {
         // A member located by VAR_CONFIG is a pointer to its channel; its
         // initial value goes to the channel, once the pointer is bound.
@@ -106,10 +92,9 @@ fn collect_instance_initializers<'db>(
         collect_type_defaults(
             db,
             member.var.spec(db).infer(db),
-            prefix,
-            out,
+            &mut prefix,
+            &mut out,
             &mut Vec::new(),
-            pous,
         );
         if let Some(init) = member.var.init(db) {
             out.push(InstanceInit {
@@ -120,8 +105,7 @@ fn collect_instance_initializers<'db>(
 
         prefix.pop();
     }
-
-    pous.pop();
+    out
 }
 
 /// Every member declared `AT %I*`, `%Q*` or `%M*` an instance of `pou`
@@ -339,14 +323,7 @@ pub fn type_default_inits<'db>(
     ty: crate::hir_ty::ty::Type<'db>,
 ) -> Vec<InstanceInit<'db>> {
     let mut out = Vec::new();
-    collect_type_defaults(
-        db,
-        ty,
-        &mut Vec::new(),
-        &mut out,
-        &mut Vec::new(),
-        &mut Vec::new(),
-    );
+    collect_type_defaults(db, ty, &mut Vec::new(), &mut out, &mut Vec::new());
     out
 }
 
@@ -356,7 +333,6 @@ fn collect_type_defaults<'db>(
     prefix: &mut Vec<InstanceInitStep>,
     out: &mut Vec<InstanceInit<'db>>,
     visited: &mut Vec<crate::hir_def::pous::data_type::DataType<'db>>,
-    pous: &mut Vec<Pou<'db>>,
 ) {
     use crate::hir_ty::infer::const_eval::{enum_ordinals, subrange_bounds};
     use crate::hir_ty::ty::Type;
@@ -372,7 +348,7 @@ fn collect_type_defaults<'db>(
             // stores win, so `TYPE Origin : Point := (x := 7)` keeps Point's
             // `y := 1.5`. Taking the alias's init alone erased every member
             // it did not name.
-            collect_type_defaults(db, dt.spec(db).infer(db), prefix, out, visited, pous);
+            collect_type_defaults(db, dt.spec(db).infer(db), prefix, out, visited);
             if let Some(init) = dt.init(db) {
                 out.push(InstanceInit {
                     path: prefix.clone(),
@@ -387,7 +363,7 @@ fn collect_type_defaults<'db>(
                 // The element type's own defaults first, the element's
                 // explicit default after — later stores win, so a partial
                 // struct-typed default overlays instead of erasing.
-                collect_type_defaults(db, element.spec(db).infer(db), prefix, out, visited, pous);
+                collect_type_defaults(db, element.spec(db).infer(db), prefix, out, visited);
                 if let Some(init) = element.init(db) {
                     out.push(InstanceInit {
                         path: prefix.clone(),
@@ -399,7 +375,7 @@ fn collect_type_defaults<'db>(
         }
         Type::Array(array) => {
             prefix.push(InstanceInitStep::AllElements);
-            collect_type_defaults(db, array.of_type(db).infer(db), prefix, out, visited, pous);
+            collect_type_defaults(db, array.of_type(db).infer(db), prefix, out, visited);
             prefix.pop();
         }
         // Each element of the array a call binds, whatever its bounds. One of
@@ -407,7 +383,7 @@ fn collect_type_defaults<'db>(
         Type::ArrayConformand(conformand) => {
             if let Some(of_type) = conformand.of_type(db) {
                 prefix.push(InstanceInitStep::AllElements);
-                collect_type_defaults(db, of_type.infer(db), prefix, out, visited, pous);
+                collect_type_defaults(db, of_type.infer(db), prefix, out, visited);
                 prefix.pop();
             }
         }
@@ -415,7 +391,10 @@ fn collect_type_defaults<'db>(
         // a variable, a member, an array element, a STRUCT field.
         Type::FunctionBlock(_) | Type::Class(_) => {
             if let Some(pou) = pou_of_type(db, ty) {
-                collect_instance_initializers(db, pou, prefix, out, pous);
+                out.push(InstanceInit {
+                    path: prefix.clone(),
+                    init: InitValue::Instance(pou),
+                });
             }
         }
         // IEC 61131-3: an enumerated type starts at its first value...

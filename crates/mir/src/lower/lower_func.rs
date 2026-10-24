@@ -2037,6 +2037,8 @@ fn lower_init_value<'db>(
             return lower_init_leaves(db, target, ty, init, owner, None, string_pool, out);
         }
         InitValue::Implied(v) => v,
+        // `lower_inits` emits an instance's own list where it is.
+        InitValue::Instance(_) => return Ok(()),
     };
     let to = match ty {
         crate::types::MirType::Elementary(e) => *e,
@@ -2110,7 +2112,54 @@ pub(crate) fn lower_type_default_inits<'db>(
     string_pool: &Rc<RefCell<super::lower_expr::StringPool>>,
     out: &mut Vec<MirStmt>,
 ) -> Result<(), LowerTypeError> {
-    for entry in hir::hir_ty::head::instances::type_default_inits(db, hir_ty) {
+    let entries = hir::hir_ty::head::instances::type_default_inits(db, hir_ty);
+    lower_inits(
+        db,
+        target,
+        mir_ty,
+        &entries,
+        string_pool,
+        out,
+        &mut Vec::new(),
+    )
+}
+
+/// Emit `entries`, the initializers of a value of `mir_ty` at `target`, each
+/// path turned into byte offsets. An instance's entry is its POU's own list,
+/// emitted where the instance is: `open` is the instances being emitted, so
+/// one that holds itself, which E1301 refuses, stops there.
+fn lower_inits<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    target: InitTarget,
+    mir_ty: &crate::types::MirType,
+    entries: &[hir::hir_ty::head::instances::InstanceInit<'db>],
+    string_pool: &Rc<RefCell<super::lower_expr::StringPool>>,
+    out: &mut Vec<MirStmt>,
+    open: &mut Vec<hir::hir_def::pous::pou::Pou<'db>>,
+) -> Result<(), LowerTypeError> {
+    use hir::hir_ty::head::instances::{InitValue, instance_initializers};
+    for entry in entries {
+        if let InitValue::Instance(pou) = entry.init {
+            if open.contains(&pou) {
+                continue;
+            }
+            let mut slots = Vec::new();
+            member_path_slots(db, mir_ty, &entry.path, 0, &mut slots);
+            open.push(pou);
+            for (offset, slot_ty) in slots {
+                lower_inits(
+                    db,
+                    target.offset_by(offset),
+                    &slot_ty,
+                    instance_initializers(db, pou),
+                    string_pool,
+                    out,
+                    open,
+                )?;
+            }
+            open.pop();
+            continue;
+        }
         // The slots of the instances the member is part of, then the member
         // in each: the instance is the owner a REF() in its default names.
         let (owner_path, member) = match entry.path.split_last() {

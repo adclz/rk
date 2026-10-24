@@ -777,3 +777,35 @@ fn real_constant_arithmetic_folds(mut with_db: db::RootDatabase) {
     let result: i32 = run(&mut with_db, source, "test", ());
     assert_eq!(result, 0);
 }
+
+/// A chain of blocks, each holding the next: every level starts with its
+/// own value, and a block's list of initializers names the instance it
+/// holds, one entry, instead of copying that block's list under a longer
+/// path, which grew with the square of the chain.
+#[rstest]
+fn a_chain_of_instances_initializes_every_level(mut with_db: db::RootDatabase) {
+    use db::WorkspaceDataBase;
+    const DEPTH: usize = 40;
+    let mut source = String::new();
+    for i in 0..DEPTH {
+        let inner = if i + 1 < DEPTH {
+            format!("    inner : FB{};\n", i + 1)
+        } else {
+            String::new()
+        };
+        source.push_str(&format!(
+            "FUNCTION_BLOCK FB{i}\nVAR\n    v : INT := {i};\n{inner}END_VAR\nEND_FUNCTION_BLOCK\n\n"
+        ));
+    }
+    let deepest = format!("f{}.v", ".inner".repeat(DEPTH - 1));
+    source.push_str(&format!(
+        "FUNCTION run : INT\nVAR\n    f : FB0;\nEND_VAR\n    run := {deepest} * 100 + f.inner.v;\nEND_FUNCTION\n"
+    ));
+    let result: i32 = run(&mut with_db, &source, "run", ());
+    assert_eq!(result, (DEPTH as i32 - 1) * 100 + 1);
+
+    let file = with_db.get_files()[0];
+    let fb0 = crate::tests::utils::find_pou_with_name(&with_db, file, "FB0").unwrap();
+    let entries = hir::hir_ty::head::instances::instance_initializers(&with_db, fb0);
+    assert_eq!(entries.len(), 2, "{entries:?}");
+}
