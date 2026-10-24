@@ -8,6 +8,7 @@ pub mod completions;
 pub mod dependencies;
 pub mod diagnostic_shape;
 pub mod hir;
+pub mod incremental;
 pub mod linter;
 pub mod lsp;
 pub mod mir;

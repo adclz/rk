@@ -1154,8 +1154,8 @@ END_FUNCTION
 #[rstest]
 fn a_node_the_ast_has_no_place_for_is_a_syntax_error(mut with_db: RootDatabase) {
     use auto_lsp::core::errors::{AstError, ParseError};
-    use auto_lsp::default::db::BaseDatabase;
     use auto_lsp::tree_sitter::{Point, Range};
+    use db::WorkspaceDataBase;
     use hir::check::errors::{ToIdeDiagnostic, e00_syntax::SyntaxError};
 
     crate::tests::utils::add_sources(&mut with_db, &["FUNCTION f : INT\nEND_FUNCTION\n"]);

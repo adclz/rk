@@ -154,7 +154,8 @@ impl MirModule {
     /// emitted, but has no frame. HIR's call graph decides which functions
     /// get one, and a call it missed would leave a recursive function's
     /// storage shared between its calls: lowering refuses such a module
-    /// (`LowerTypeError::UnframedRecursion`).
+    /// (`LowerTypeError::UnframedRecursion`). The cycles are found as the
+    /// call graph finds them, in the calls lowering emitted.
     pub(crate) fn unframed_recursion(&self) -> Option<&MirFunction> {
         let index: FxHashMap<Ident, usize> = self
             .functions
@@ -174,19 +175,11 @@ impl MirModule {
                     .collect()
             })
             .collect();
+        let cycles = hir::hir_ty::calls::cycles(&edges);
         self.functions
             .iter()
-            .enumerate()
-            .find(|(start, func)| {
-                let mut seen = vec![false; edges.len()];
-                let mut pending = edges[*start].clone();
-                while let Some(at) = pending.pop() {
-                    if !std::mem::replace(&mut seen[at], true) {
-                        pending.extend(&edges[at]);
-                    }
-                }
-                seen[*start] && func.frame.is_none()
-            })
-            .map(|(_, func)| func)
+            .zip(cycles.recursive)
+            .find(|(func, recursive)| *recursive && func.frame.is_none())
+            .map(|(func, _)| func)
     }
 }

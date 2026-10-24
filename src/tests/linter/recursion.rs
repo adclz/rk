@@ -142,3 +142,28 @@ END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "recursion"), @"");
 }
+
+/// A cycle through many bodies names the first eight on the way back, then
+/// counts the others: one through ten thousand named every one of them. A
+/// chain of nine is named whole, rather than eight and "1 other".
+#[rstest]
+#[case::named_whole(
+    10,
+    "'f1', then 'f2', then 'f3', then 'f4', then 'f5', then 'f6', then 'f7', then 'f8', then 'f9'"
+)]
+#[case::counted(
+    12,
+    "'f1', then 'f2', then 'f3', then 'f4', then 'f5', then 'f6', then 'f7', then 'f8', then 3 others"
+)]
+fn a_long_cycle_names_its_first_bodies(#[case] size: usize, #[case] through: &str) {
+    let source: String = (0..size)
+        .map(|i| {
+            let next = (i + 1) % size;
+            format!("FUNCTION f{i} : INT\n    f{i} := f{next}();\nEND_FUNCTION\n\n")
+        })
+        .collect();
+    let mut db = RootDatabase::default();
+    let rendered = test_single_lint(&mut db, &[&source], "recursion");
+    let expected = format!("'f0' calls itself through {through}\n");
+    assert!(rendered.contains(&expected), "{rendered}");
+}

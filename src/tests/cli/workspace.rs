@@ -8,8 +8,6 @@ use super::{
     disable_stdlib as disable_env, set_stdlib as set_env, temp_workspace as write_workspace,
     unset_stdlib as unset_env,
 };
-
-use auto_lsp::default::db::BaseDatabase;
 use db::WorkspaceDataBase;
 
 /// A library namespace used by the tests below.
@@ -139,7 +137,7 @@ fn unset_variable_reads_the_library_built_in() {
     let files: Vec<_> = db
         .get_library_files()
         .iter()
-        .map(|entry| entry.key().to_file_path().unwrap())
+        .map(|file| file.url(&db).to_file_path().unwrap())
         .collect();
     assert!(!files.is_empty(), "the standard library is read");
     // Canonical on both sides: on Windows a file URL gives the path back

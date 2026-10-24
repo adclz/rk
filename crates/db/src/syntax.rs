@@ -1,19 +1,19 @@
 // SPDX-FileCopyrightText: 2026 Clauzel Adrien
 // SPDX-License-Identifier: AGPL-3.0-only
 
-//! A file's AST and its syntax errors, as the compiler reads them.
+//! A file's AST, its syntax errors and its comments, as the compiler reads
+//! them.
 //!
 //! auto-lsp's `get_ast` accumulates the syntax errors tree-sitter finds, and
 //! salsa marks every query calling one that accumulated, then every query
 //! calling those: the mark is on the result, whether anyone reads the errors
 //! or not. Salsa's fixpoint iteration refuses to settle a cycle whose head
-//! carries it, and HIR's `ancestry` and call graph are such cycles, so a
-//! syntax error anywhere in a file made them panic. Here the errors are part
-//! of the result.
+//! carries it, and HIR's call graph is such a cycle, so a syntax error
+//! anywhere in a file made it panic. Here the errors are part of the result.
 
-use auto_lsp::core::errors::{LexerError, ParseError};
+use auto_lsp::core::errors::{LexerError, ParseError, ParseErrorAccumulator};
 use auto_lsp::default::db::{file::File, tracked::ParsedAst};
-use auto_lsp::tree_sitter::Node;
+use auto_lsp::tree_sitter::{Node, Range};
 
 use crate::WorkspaceDataBase;
 
@@ -44,6 +44,7 @@ pub struct UnknownPragma {
 /// accumulated. A node auto-lsp's builder has no place for is still
 /// accumulated, by the builder, on this query: the generated AST not
 /// matching the grammar, a compiler bug the grammar no longer produces.
+/// Those are read through [`unbuilt_nodes`].
 #[salsa::tracked(returns(ref))]
 pub fn parse(db: &dyn WorkspaceDataBase, file: File) -> Parsed {
     let doc = file.document(db);
@@ -73,6 +74,20 @@ pub fn parse(db: &dyn WorkspaceDataBase, file: File) -> Parsed {
             unknown_pragmas,
         },
     }
+}
+
+/// The nodes auto-lsp's builder had no place for in `file`'s AST, which it
+/// accumulates on [`parse`] instead of returning them. Read through this
+/// query, never from the accumulator: salsa cannot track a read of
+/// accumulated values, so the reader runs again in every revision, and so
+/// does every query that reads the reader. This one runs again too, but it
+/// compares what it finds, and its readers run again only when that changed.
+#[salsa::tracked(returns(ref))]
+pub fn unbuilt_nodes(db: &dyn WorkspaceDataBase, file: File) -> Vec<ParseError> {
+    parse::accumulated::<ParseErrorAccumulator>(db, file)
+        .into_iter()
+        .map(|error| error.0.clone())
+        .collect()
 }
 
 /// Every `pragma` node under `root`. One is an extra and can stand anywhere
@@ -107,6 +122,74 @@ fn unknown_pragmas(root: &Node, source: &[u8]) -> Vec<UnknownPragma> {
         at = node.end_byte();
     }
     found
+}
+
+/// A comment of a file: where it is, and which of the three it is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Comment {
+    pub range: Range,
+    pub kind: CommentKind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum CommentKind {
+    /// `// …`, to the end of the line.
+    Line,
+    /// `/* … */`.
+    C,
+    /// `(* … *)`.
+    Pascal,
+}
+
+/// The comments of a file, in the order of the text: the editor's
+/// documentation and links read them, and the linter. A comment nested in
+/// another is part of its token. Only the nodes that hold a `//`, a `(*` or
+/// a `/*` are visited, so a file costs a scan of its bytes and a descent to
+/// each comment. A query visited every node of the tree, which was most of
+/// what the editor's comment index cost.
+#[salsa::tracked(returns(ref))]
+pub fn comments(db: &dyn WorkspaceDataBase, file: File) -> Vec<Comment> {
+    let document = file.document(db);
+    let source = document.as_bytes();
+    // Where a comment may start, in order. One inside a string is a false
+    // start, which only costs a descent.
+    let starts: Vec<usize> = source
+        .windows(2)
+        .enumerate()
+        .filter(|(_, pair)| matches!(pair, [b'/', b'/'] | [b'(', b'*'] | [b'/', b'*']))
+        .map(|(at, _)| at)
+        .collect();
+    let mut found = Vec::new();
+    if starts.is_empty() {
+        return found;
+    }
+    let holds_a_start = |node: Node| {
+        let first = starts.partition_point(|&at| at < node.start_byte());
+        starts.get(first).is_some_and(|&at| at < node.end_byte())
+    };
+    let mut cursor = document.tree.walk();
+    loop {
+        let node = cursor.node();
+        let kind = match node.kind() {
+            "line_comment" => Some(CommentKind::Line),
+            "c_style_comment" => Some(CommentKind::C),
+            "pascal_style_comment" => Some(CommentKind::Pascal),
+            _ => None,
+        };
+        if let Some(kind) = kind {
+            found.push(Comment {
+                range: node.range(),
+                kind,
+            });
+        } else if holds_a_start(node) && cursor.goto_first_child() {
+            continue;
+        }
+        while !cursor.goto_next_sibling() {
+            if !cursor.goto_parent() {
+                return found;
+            }
+        }
+    }
 }
 
 /// The error nodes under `node`, worded as auto-lsp words them: a node with

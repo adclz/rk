@@ -8,24 +8,22 @@ use ariadne::CharSet;
 use ariadne::Config;
 use ariadne::FnCache;
 use ariadne::Source;
-use auto_lsp::default::db::BaseDatabase;
 use auto_lsp::lsp_types::DiagnosticSeverity;
 use auto_lsp::tree_sitter::Range;
-use auto_lsp::{
-    default::db::{FileManager, file::File},
-    lsp_types::Url,
-};
+use auto_lsp::{default::db::file::File, lsp_types::Url};
 use db::RootDatabase;
 use db::WorkspaceDataBase;
 use hir::HasName;
 use hir::HirNodeInfo;
-use hir::check::diagnostics_for_file;
+use hir::check::check_file;
 use hir::hir_def::interned::identifier::Ident;
 use hir::hir_def::namespace::NamespaceDecl;
 use hir::hir_def::pous::pou::Pou;
 use hir::hir_def::semantic_index::semantic_index;
+use hir::hir_ty::calls::CallGraph;
 use hir::hir_ty::oop::MethodRef;
 use hir::hir_ty::resolver::name::{PouResolution, pou_names_res};
+use ide_diagnostic::report::Sources;
 use ide_diagnostic::{IdeDiagnostic, Related};
 use ide_proto::handlers::references::ReferenceLocation;
 use ide_proto::hir_node::HirNode;
@@ -73,10 +71,10 @@ pub fn no_color_and_ascii() -> Config {
 /// `codegen`'s single-source helpers. Lowering a source the compiler rejects
 /// measures code no user can run — see `compile_to_wasm`.
 pub fn assert_workspace_is_clean(db: &RootDatabase) {
-    use auto_lsp::default::db::BaseDatabase;
     let mut reported = Vec::new();
-    for file in db.get_files().iter().map(|f| *f) {
-        reported.extend(diagnostics_for_file(db, file).iter().map(diagnostic_line));
+    let graph = CallGraph::of_files(db, db.get_files().iter().copied());
+    for file in db.get_files().iter().copied() {
+        reported.extend(check_file(db, &graph, file).iter().map(diagnostic_line));
     }
     assert!(
         reported.is_empty(),
@@ -198,7 +196,7 @@ pub fn add_library_sources(db: &mut RootDatabase, sources: &[&str]) {
             .source(source.to_string())
             .call()
             .unwrap();
-        db.insert_library_file(url, file);
+        db.insert_library_file(file);
     }
 }
 
@@ -224,27 +222,22 @@ pub fn test_library_diagnostics<'db>(
 ) -> String {
     add_library_sources(db, libs);
     add_sources(db, source);
-    let mut library_files = db
-        .get_library_files()
-        .iter()
-        .map(|e| *e.value())
-        .collect::<Vec<_>>();
+    let mut library_files = db.get_library_files().to_vec();
     library_files.sort_by_key(|file| file.url(db).to_string());
-    let file_sources = library_files
-        .iter()
-        .map(|file| (file.url(db).as_str(), file.document(db).as_str()))
-        .collect::<Vec<_>>();
+    let graph = CallGraph::of_files(db, library_files.iter().copied());
+    let mut sources = Sources::default();
     let mut cache = vec![];
     for file in &library_files {
-        diagnostics_for_file(db, *file).iter().for_each(|d| {
+        check_file(db, &graph, *file).iter().for_each(|d| {
             d.create_report(
                 db,
                 file.url(db),
                 file.document(db).as_str(),
+                &mut sources,
                 Some(no_color_and_ascii()),
                 false,
             )
-            .write(sources(file_sources.clone()), &mut cache)
+            .write(&mut sources, &mut cache)
             .unwrap();
         });
     }
@@ -264,9 +257,11 @@ pub fn test_library_diagnostics<'db>(
 pub fn test_diagnostics<'db>(db: &'db mut RootDatabase, source: &'db [&'db str]) -> String {
     add_sources(db, source);
     let db: &'db RootDatabase = db;
+    let files = workspace_files(db);
+    let graph = CallGraph::of_files(db, files.iter().copied());
     let mut out = vec![];
-    for file in workspace_files(db) {
-        write_reports(db, file, diagnostics_for_file(db, file), &mut out);
+    for file in files {
+        write_reports(db, file, &check_file(db, &graph, file), &mut out);
     }
     assert_accepted_workspace_compiles(db);
     trimmed(out)
@@ -276,8 +271,9 @@ pub fn test_diagnostics<'db>(db: &'db mut RootDatabase, source: &'db [&'db str])
 /// file (library ones included) has an error.
 fn assert_accepted_workspace_compiles(db: &RootDatabase) {
     let files = rk::file_order::ordered_files_with_libraries(db);
+    let graph = CallGraph::of_files(db, files.iter().copied());
     let rejected = files.iter().any(|file| {
-        diagnostics_for_file(db, *file).iter().any(|d| {
+        check_file(db, &graph, *file).iter().any(|d| {
             matches!(
                 d.diagnostic.severity,
                 Some(DiagnosticSeverity::ERROR) | None
@@ -337,8 +333,10 @@ pub(crate) fn test_lint_diagnostics_with_config<'db>(
     linter_config: &db::config_file::LinterConfig,
 ) -> String {
     test_snapshot(db, source, |db, file| {
-        let mut all = diagnostics_for_file(db, file).as_ref().clone();
-        linter::lint_file(db, file, linter_config, &mut all);
+        let graph = CallGraph::of_files(db, [file]);
+        let mut all = check_file(db, &graph, file);
+        let pass = linter::Pass::new(db, linter_config, &graph);
+        linter::lint_file(db, file, linter_config, &pass, &mut all);
         all
     })
 }
@@ -346,7 +344,7 @@ pub(crate) fn test_lint_diagnostics_with_config<'db>(
 /// The workspace's files in the order [`add_sources`] registered them
 /// (`test0.st`, `test1.st`, ...), which is the order their reports render in.
 fn workspace_files(db: &RootDatabase) -> Vec<File> {
-    let mut files = db.get_files().iter().map(|file| *file).collect::<Vec<_>>();
+    let mut files = db.get_files().to_vec();
     files.sort_by_key(|file| {
         // Extract number from "file:///testN.st" format
         file.url(db)
@@ -361,34 +359,25 @@ fn workspace_files(db: &RootDatabase) -> Vec<File> {
 
 /// The library's files, by url: a stable order, whatever the map's is.
 fn library_files(db: &RootDatabase) -> Vec<File> {
-    let mut files = db
-        .get_library_files()
-        .iter()
-        .map(|e| *e.value())
-        .collect::<Vec<_>>();
+    let mut files = db.get_library_files().to_vec();
     files.sort_by_key(|file| file.url(db).to_string());
     files
 }
 
 /// Write the reports of `diags`, all reported on `file`. A related span may
-/// point into any other file, so every source goes along: the workspace's,
-/// then the library's.
+/// point into any other file, whose source the report adds.
 fn write_reports(db: &RootDatabase, file: File, diags: &[IdeDiagnostic], out: &mut Vec<u8>) {
-    let file_sources = workspace_files(db)
-        .into_iter()
-        .chain(library_files(db))
-        .map(|file| (file.url(db).as_str(), file.document(db).as_str()))
-        .collect::<Vec<_>>();
-
+    let mut sources = Sources::default();
     for d in diags {
         d.create_report(
             db,
             file.url(db),
             file.document(db).as_str(),
+            &mut sources,
             Some(no_color_and_ascii()),
             false,
         )
-        .write(sources(file_sources.clone()), &mut *out)
+        .write(&mut sources, &mut *out)
         .unwrap();
     }
 }
@@ -457,12 +446,6 @@ pub fn render_references(db: &RootDatabase, refs: &[ReferenceLocation], name: &s
             .then(a.span.start_byte.cmp(&b.span.start_byte))
     });
 
-    let all_files: Vec<File> = db.get_files().iter().map(|f| *f).collect();
-    let file_sources: Vec<_> = all_files
-        .iter()
-        .map(|f| (f.url(db).as_str(), f.document(db).as_str()))
-        .collect();
-
     let first = sorted[0];
     let mut diag = ide_diagnostic::diag()
         .range(hir::denormalize(db, first.file, &first.span).unwrap_or_default())
@@ -475,14 +458,16 @@ pub fn render_references(db: &RootDatabase, refs: &[ReferenceLocation], name: &s
     }
 
     let mut output = vec![];
+    let mut sources = Sources::default();
     diag.create_report(
         db,
         first.file.url(db),
         first.file.document(db).as_str(),
+        &mut sources,
         Some(no_color_and_ascii()),
         false,
     )
-    .write(sources(file_sources), &mut output)
+    .write(&mut sources, &mut output)
     .unwrap();
 
     // Strip trailing whitespace from each line for clean inline snapshots

@@ -6,14 +6,11 @@
 // Public for the fuzzer (crates/fuzz), which sends each request the way
 // the server does.
 pub mod capabilties;
+mod file_events;
 
-use ast::RK_PARSER;
 use auto_lsp::anyhow;
 use auto_lsp::default::server::capabilities::TEXT_DOCUMENT_SYNC;
 use auto_lsp::default::server::capabilities::WORKSPACE_PROVIDER;
-use auto_lsp::default::server::file_events::change_text_document;
-use auto_lsp::default::server::file_events::changed_watched_files;
-use auto_lsp::default::server::file_events::open_text_document;
 use auto_lsp::lsp_server;
 use auto_lsp::lsp_server::Connection;
 use auto_lsp::lsp_server::Message;
@@ -28,6 +25,7 @@ use auto_lsp::lsp_types::DiagnosticServerCapabilities;
 use auto_lsp::lsp_types::DidChangeWatchedFilesClientCapabilities;
 use auto_lsp::lsp_types::DidChangeWatchedFilesRegistrationOptions;
 use auto_lsp::lsp_types::DocumentLinkOptions;
+use auto_lsp::lsp_types::FileChangeType;
 use auto_lsp::lsp_types::FileSystemWatcher;
 use auto_lsp::lsp_types::FoldingRangeProviderCapability;
 use auto_lsp::lsp_types::GlobPattern;
@@ -140,6 +138,23 @@ pub fn boot() -> Result<(), Box<dyn Error + Send + Sync>> {
     log::info!("Starting IEC LSP");
 
     let (connection, io_threads) = Connection::stdio();
+    serve(connection)?;
+    io_threads.join()?;
+
+    // Shut down gracefully.
+    eprintln!("Shutting down server");
+    Ok(())
+}
+
+/// Serves the client at the other end of `connection` until it shuts the
+/// server down: over stdio from [`boot`], in memory in the tests.
+fn serve(connection: Connection) -> Result<(), Box<dyn Error + Send + Sync>> {
+    // The pool the workspace pull checks and lints on, with the stack the
+    // queries need; once per process, so the tests' second server keeps the
+    // first's.
+    let _ = rayon::ThreadPoolBuilder::new()
+        .stack_size(db::STACK_SIZE)
+        .build_global();
     let db = RootDatabase::default();
     let mut request_registry = RequestRegistry::<RootDatabase>::default();
     let mut notification_registry = NotificationRegistry::<RootDatabase>::default();
@@ -256,10 +271,6 @@ pub fn boot() -> Result<(), Box<dyn Error + Send + Sync>> {
         on_requests(&mut request_registry),
         on_notifications(&mut notification_registry),
     )?;
-    io_threads.join()?;
-
-    // Shut down gracefully.
-    eprintln!("Shutting down server");
     Ok(())
 }
 
@@ -307,44 +318,56 @@ fn is_rk_document(uri: &Url) -> bool {
     db::loader::is_st_file(std::path::Path::new(uri.path()))
 }
 
+/// Whether the editor's document is the workspace's. The editor hands the
+/// server documents from anywhere, so it asks before adding one: a `file:`
+/// one is when the loader reads it, and one with no file, `untitled:`,
+/// always is.
+fn is_workspace_document(db: &RootDatabase, uri: &Url) -> bool {
+    is_rk_document(uri)
+        && match uri.scheme() {
+            "file" => uri
+                .to_file_path()
+                .is_ok_and(|path| db::loader::is_workspace_file(db, &path)),
+            _ => true,
+        }
+}
+
 fn on_notifications(
     registry: &mut NotificationRegistry<RootDatabase>,
 ) -> &mut NotificationRegistry<RootDatabase> {
     registry
-        .on_mut::<DidOpenTextDocument, _>(|s, p| match is_rk_document(&p.text_document.uri) {
-            true => {
-                if s.db.get_library_files().contains_key(&p.text_document.uri) {
-                    return Ok(());
-                }
-                Ok(open_text_document(s, p, &RK_PARSER)?)
+        .on_mut::<DidOpenTextDocument, _>(|s, p| {
+            if is_workspace_document(&s.db, &p.text_document.uri) {
+                file_events::open_text_document(s, p)?;
             }
-            false => Ok(()),
+            Ok(())
         })
-        .on_mut::<DidChangeTextDocument, _>(|s, p| match is_rk_document(&p.text_document.uri) {
-            true => {
-                if s.db.get_library_files().contains_key(&p.text_document.uri) {
-                    return Ok(());
-                }
-                Ok(change_text_document(s, p)?)
-            }
-            false => Ok(()),
+        // A document left out when it was opened stays out.
+        .on_mut::<DidChangeTextDocument, _>(|s, p| match s.db.get_file(&p.text_document.uri) {
+            Some(_) => Ok(file_events::change_text_document(s, p)?),
+            None => Ok(()),
         })
-        .on_mut::<DidChangeWatchedFiles, _>(|s, p| {
+        .on_mut::<DidChangeWatchedFiles, _>(|s, mut p| {
             let config_changed = Workspace::try_get(&s.db)
                 .and_then(|c| c.workspace_folder(&s.db).cloned())
                 .and_then(|ws| Url::from_file_path(ws.join("config.toml")).ok())
                 .is_some_and(|url| p.changes.iter().any(|e| e.uri == url));
 
+            // A configuration read again reads the workspace and the libraries
+            // again: what the batch created or deleted is in them then, and
+            // what it changed in a file held already is read below. A batch
+            // with the configuration in it dropped its other changes.
             if config_changed {
                 let workspace =
                     Workspace::try_get(&s.db).and_then(|c| c.workspace_folder(&s.db).cloned());
                 refresh_configuration(s, workspace.as_deref())?;
-            } else {
-                changed_watched_files(s, p, |url| {
-                    let path = url.to_file_path().ok()?;
-                    db::loader::rk_parser(&path)
-                })?;
             }
+            // A file created is taken when the workspace reads it; one changed
+            // or deleted is the workspace's when it holds it.
+            p.changes.retain(|change| {
+                change.typ != FileChangeType::CREATED || is_workspace_document(&s.db, &change.uri)
+            });
+            file_events::changed_watched_files(s, p)?;
 
             send_request::<lsp_types::request::WorkspaceDiagnosticRefresh>(s, ())?;
             Ok(())
@@ -547,6 +570,15 @@ fn setup_file_watcher_if_necessary(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use auto_lsp::lsp_types::notification::{Exit, Initialized};
+    use auto_lsp::lsp_types::request::{Initialize, Shutdown};
+    use auto_lsp::lsp_types::{
+        DidChangeTextDocumentParams, DidChangeWatchedFilesParams, DidOpenTextDocumentParams,
+        FileEvent, InitializeParams, InitializedParams, TextDocumentContentChangeEvent,
+        TextDocumentItem, VersionedTextDocumentIdentifier, WorkspaceDiagnosticParams,
+        WorkspaceFolder,
+    };
+    use auto_lsp::lsp_types::{DocumentDiagnosticParams, TextDocumentIdentifier};
 
     /// A document is rk's by its extension, in any case, as the workspace's
     /// loader reads it: `MAIN.ST` was loaded from disk and its edits were
@@ -560,5 +592,468 @@ mod tests {
         assert!(!is_rk("file:///plant/config.toml"));
         assert!(!is_rk("file:///plant/main.st.bak"));
         assert!(!is_rk("file:///plant/st"));
+    }
+
+    /// The client's end of an in-memory connection to the server.
+    struct Client {
+        connection: Connection,
+        id: i32,
+        /// The errors the server showed, as it does for a notification it
+        /// failed to handle.
+        errors: Vec<String>,
+    }
+
+    impl Client {
+        /// A server serving the workspace folder `workspace`, once its files
+        /// are loaded, and the client's end of its connection.
+        fn start(workspace: Url) -> (Client, std::thread::JoinHandle<()>) {
+            let (server, connection) = Connection::memory();
+            let server = std::thread::spawn(move || serve(server).unwrap());
+            let mut client = Client {
+                connection,
+                id: 0,
+                errors: vec![],
+            };
+            client.request::<Initialize>(InitializeParams {
+                workspace_folders: Some(vec![WorkspaceFolder {
+                    uri: workspace,
+                    name: "ws".into(),
+                }]),
+                ..Default::default()
+            });
+            client.notify::<Initialized>(InitializedParams {});
+            (client, server)
+        }
+
+        fn stop(mut self, server: std::thread::JoinHandle<()>) {
+            self.request::<Shutdown>(());
+            self.notify::<Exit>(());
+            server.join().unwrap();
+        }
+
+        /// Sends a request and waits for its answer.
+        fn request<R: lsp_types::request::Request>(
+            &mut self,
+            params: R::Params,
+        ) -> serde_json::Value {
+            self.id += 1;
+            let id = lsp_server::RequestId::from(self.id);
+            let request = lsp_server::Request::new(id.clone(), R::METHOD.to_string(), params);
+            self.connection
+                .sender
+                .send(Message::Request(request))
+                .unwrap();
+            let error = serde_json::json!(lsp_types::MessageType::ERROR);
+            loop {
+                let timeout = std::time::Duration::from_secs(60);
+                match self.connection.receiver.recv_timeout(timeout).unwrap() {
+                    Message::Response(response) if response.id == id => {
+                        assert!(response.error.is_none(), "{:?}", response.error);
+                        return response.result.unwrap_or_default();
+                    }
+                    Message::Notification(shown)
+                        if shown.method == ShowMessage::METHOD && shown.params["type"] == error =>
+                    {
+                        self.errors.push(shown.params["message"].to_string());
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        fn notify<N: Notification>(&self, params: N::Params) {
+            let notification = lsp_server::Notification::new(N::METHOD.to_string(), params);
+            self.connection
+                .sender
+                .send(Message::Notification(notification))
+                .unwrap();
+        }
+
+        /// The files the server reports, each with the number of its errors.
+        fn report(&mut self) -> Vec<(String, usize)> {
+            let report = self.request::<WorkspaceDiagnosticRequest>(WorkspaceDiagnosticParams {
+                identifier: None,
+                previous_result_ids: vec![],
+                work_done_progress_params: Default::default(),
+                partial_result_params: Default::default(),
+            });
+            let mut files: Vec<(String, usize)> = report["items"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|file| {
+                    let items = file["items"].as_array().unwrap();
+                    let errors = items.iter().filter(|item| item["severity"] == 1).count();
+                    (file["uri"].as_str().unwrap().to_string(), errors)
+                })
+                .collect();
+            files.sort();
+            files
+        }
+    }
+
+    /// A document outside the workspace folder is left out, opened, edited or
+    /// reported created, and a file created in the folder is taken. An older
+    /// copy of the standard library in the cache, opened again from the
+    /// editor's history, was read as the workspace's and declared every POU
+    /// of the library a second time.
+    #[test]
+    fn a_document_outside_the_workspace_is_left_out() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().canonicalize().unwrap();
+        let write = |path: &str, text: &str| {
+            let path = root.join(path);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, text).unwrap();
+        };
+        let run = "FUNCTION Run : INT\n    Run := 1;\nEND_FUNCTION\n";
+        let later = "FUNCTION Later : INT\n    Later := 1;\nEND_FUNCTION\n";
+        write(
+            "ws/config.toml",
+            "[project]\nname = \"app\"\nversion = \"1\"\n",
+        );
+        // No standard library: the test reads none of the developer's.
+        write("ws/.env", "RK_STDLIB_PATH=\n");
+        write("ws/main.st", run);
+        // The workspace's file again, elsewhere, as the old copy was.
+        write("elsewhere/main.st", run);
+        write("elsewhere/other.st", later);
+        let url = |path: &str| Url::from_file_path(root.join(path)).unwrap();
+
+        let (mut client, server) = Client::start(url("ws"));
+        // Answered once the folder is loaded, which a file written before
+        // that would be part of.
+        assert_eq!(client.report(), [(url("ws/main.st").to_string(), 0)]);
+
+        let outside = url("elsewhere/main.st");
+        client.notify::<DidOpenTextDocument>(DidOpenTextDocumentParams {
+            text_document: TextDocumentItem::new(outside.clone(), "st".into(), 1, run.into()),
+        });
+        client.notify::<DidChangeTextDocument>(DidChangeTextDocumentParams {
+            text_document: VersionedTextDocumentIdentifier::new(outside, 2),
+            content_changes: vec![TextDocumentContentChangeEvent {
+                range: None,
+                range_length: None,
+                text: run.into(),
+            }],
+        });
+        write("elsewhere/later.st", later);
+        write("ws/later.st", later);
+        client.notify::<DidChangeWatchedFiles>(DidChangeWatchedFilesParams {
+            changes: vec![
+                // A file the workspace does not hold: rereading it failed,
+                // and the changes after it were dropped.
+                FileEvent::new(url("elsewhere/other.st"), FileChangeType::CHANGED),
+                FileEvent::new(url("elsewhere/later.st"), FileChangeType::CREATED),
+                FileEvent::new(url("ws/later.st"), FileChangeType::CREATED),
+            ],
+        });
+
+        assert_eq!(
+            client.report(),
+            [
+                (url("ws/later.st").to_string(), 0),
+                (url("ws/main.st").to_string(), 0)
+            ]
+        );
+        assert_eq!(client.errors, [] as [String; 0]);
+        client.stop(server);
+    }
+
+    /// What the editor and the watcher add, change and remove is what the
+    /// other files resolve: the server keeps the files in rk's file set,
+    /// which salsa sees, where auto-lsp's handlers kept them in a map of
+    /// their own. A change that fails leaves the rest of its batch applied.
+    #[test]
+    fn the_files_follow_the_editor_and_the_watcher() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().canonicalize().unwrap();
+        std::fs::create_dir_all(root.join("ws")).unwrap();
+        let write = |path: &str, text: &str| std::fs::write(root.join(path), text).unwrap();
+        let remove = |path: &str| std::fs::remove_file(root.join(path)).unwrap();
+        let declaring =
+            |name: &str| format!("FUNCTION {name} : INT\n    {name} := 1;\nEND_FUNCTION\n");
+        let run = "FUNCTION Run : INT\n    Run := Helper();\nEND_FUNCTION\n";
+        write(
+            "ws/config.toml",
+            "[project]\nname = \"app\"\nversion = \"1\"\n",
+        );
+        // No standard library: the test reads none of the developer's.
+        write("ws/.env", "RK_STDLIB_PATH=\n");
+        write("ws/main.st", run);
+        let url = |path: &str| Url::from_file_path(root.join(path)).unwrap();
+        let main = url("ws/main.st").to_string();
+        let helper = url("ws/helper.st").to_string();
+        let watched = |client: &Client, changes: &[(&str, FileChangeType)]| {
+            client.notify::<DidChangeWatchedFiles>(DidChangeWatchedFilesParams {
+                changes: changes
+                    .iter()
+                    .map(|(path, typ)| FileEvent::new(url(path), *typ))
+                    .collect(),
+            });
+        };
+
+        let (mut client, server) = Client::start(url("ws"));
+        assert_eq!(client.report(), [(main.clone(), 1)]);
+        // A document of the workspace, opened: its file takes the version.
+        client.notify::<DidOpenTextDocument>(DidOpenTextDocumentParams {
+            text_document: TextDocumentItem::new(url("ws/main.st"), "st".into(), 1, run.into()),
+        });
+        assert_eq!(client.report(), [(main.clone(), 1)]);
+
+        write("ws/helper.st", &declaring("Helper"));
+        watched(&client, &[("ws/helper.st", FileChangeType::CREATED)]);
+        assert_eq!(client.report(), [(helper.clone(), 0), (main.clone(), 0)]);
+
+        write("ws/helper.st", &declaring("Other"));
+        watched(&client, &[("ws/helper.st", FileChangeType::CHANGED)]);
+        assert_eq!(client.report(), [(helper.clone(), 0), (main.clone(), 1)]);
+
+        remove("ws/helper.st");
+        watched(&client, &[("ws/helper.st", FileChangeType::DELETED)]);
+        assert_eq!(client.report(), [(main.clone(), 1)]);
+
+        // A document no file holds, opened, then edited.
+        let draft = Url::parse("untitled:/draft.st").unwrap();
+        client.notify::<DidOpenTextDocument>(DidOpenTextDocumentParams {
+            text_document: TextDocumentItem::new(
+                draft.clone(),
+                "st".into(),
+                1,
+                declaring("Helper"),
+            ),
+        });
+        assert_eq!(client.report(), [(main.clone(), 0), (draft.to_string(), 0)]);
+        client.notify::<DidChangeTextDocument>(DidChangeTextDocumentParams {
+            text_document: VersionedTextDocumentIdentifier::new(draft.clone(), 2),
+            content_changes: vec![TextDocumentContentChangeEvent {
+                range: None,
+                range_length: None,
+                text: declaring("Other"),
+            }],
+        });
+        assert_eq!(client.report(), [(main.clone(), 1), (draft.to_string(), 0)]);
+
+        // The file read again is gone from disk, and the file created after
+        // it in the batch is added all the same.
+        write("ws/gone.st", &declaring("Gone"));
+        watched(&client, &[("ws/gone.st", FileChangeType::CREATED)]);
+        // Answered once the server read the file.
+        assert_eq!(
+            client.report(),
+            [
+                (url("ws/gone.st").to_string(), 0),
+                (main.clone(), 1),
+                (draft.to_string(), 0)
+            ]
+        );
+        remove("ws/gone.st");
+        write("ws/helper.st", &declaring("Helper"));
+        watched(
+            &client,
+            &[
+                ("ws/gone.st", FileChangeType::CHANGED),
+                ("ws/helper.st", FileChangeType::CREATED),
+            ],
+        );
+        assert_eq!(
+            client.report(),
+            [
+                (url("ws/gone.st").to_string(), 0),
+                (helper, 0),
+                (main, 0),
+                (draft.to_string(), 0)
+            ]
+        );
+        assert_eq!(client.errors.len(), 1, "{:?}", client.errors);
+        client.stop(server);
+    }
+
+    /// The frame of a recursive call is reported by both pulls. Which bodies
+    /// may call themselves is the call graph's, which each pull builds: no
+    /// part of a file's own check, which a pull that read only that check
+    /// would miss.
+    #[test]
+    fn both_pulls_report_the_frame_of_a_recursive_call() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().canonicalize().unwrap();
+        std::fs::create_dir_all(root.join("ws")).unwrap();
+        let write = |path: &str, text: &str| std::fs::write(root.join(path), text).unwrap();
+        write(
+            "ws/config.toml",
+            "[project]\nname = \"app\"\nversion = \"1\"\n",
+        );
+        // No standard library: the test reads none of the developer's.
+        write("ws/.env", "RK_STDLIB_PATH=\n");
+        // Each local fits, and a call takes them both.
+        write(
+            "ws/deep.st",
+            "FUNCTION Deep : DINT\nVAR_INPUT n : DINT; END_VAR\nVAR\n    \
+             a : ARRAY[0..299999999] OF LINT;\n    b : ARRAY[0..299999999] OF LINT;\n\
+             END_VAR\n    IF n > 0 THEN\n        Deep := Deep(n - 1);\n    END_IF;\n\
+             END_FUNCTION\n",
+        );
+        let url = |path: &str| Url::from_file_path(root.join(path)).unwrap();
+
+        let (mut client, server) = Client::start(url("ws"));
+        assert_eq!(client.report(), [(url("ws/deep.st").to_string(), 1)]);
+        let report = client.request::<DocumentDiagnosticRequest>(DocumentDiagnosticParams {
+            text_document: TextDocumentIdentifier::new(url("ws/deep.st")),
+            identifier: None,
+            previous_result_id: None,
+            work_done_progress_params: Default::default(),
+            partial_result_params: Default::default(),
+        });
+        let errors: Vec<&str> = report["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|item| item["severity"] == 1)
+            .filter_map(|item| item["code"].as_str())
+            .collect();
+        assert_eq!(errors, ["E0322"]);
+        client.stop(server);
+    }
+
+    /// A workspace in a fresh folder: `files` written under it, no standard
+    /// library, and a server serving it.
+    fn workspace(
+        files: &[(&str, &str)],
+    ) -> (
+        tempfile::TempDir,
+        std::path::PathBuf,
+        Client,
+        std::thread::JoinHandle<()>,
+    ) {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().canonicalize().unwrap();
+        for (path, text) in files {
+            let path = root.join(path);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, text).unwrap();
+        }
+        // No standard library: the test reads none of the developer's.
+        std::fs::write(root.join("ws/.env"), "RK_STDLIB_PATH=\n").unwrap();
+        let (client, server) = Client::start(Url::from_file_path(root.join("ws")).unwrap());
+        (dir, root, client, server)
+    }
+
+    /// The watcher's batch of changes, each a path under `root` and what
+    /// became of it.
+    fn watched(client: &Client, root: &std::path::Path, changes: &[(&str, FileChangeType)]) {
+        client.notify::<DidChangeWatchedFiles>(DidChangeWatchedFilesParams {
+            changes: changes
+                .iter()
+                .map(|(path, typ)| {
+                    FileEvent::new(Url::from_file_path(root.join(path)).unwrap(), *typ)
+                })
+                .collect(),
+        });
+    }
+
+    fn config(name: &str, dependencies: &str) -> String {
+        format!("[project]\nname = \"{name}\"\nversion = \"1\"\n\n[dependencies]\n{dependencies}")
+    }
+
+    /// A batch with the configuration in it reads the configuration again,
+    /// and applies the rest of the batch: its other changes were dropped.
+    #[test]
+    fn a_configuration_change_keeps_the_rest_of_its_batch() {
+        let (_dir, root, mut client, server) = workspace(&[
+            ("ws/config.toml", &config("app", "")),
+            (
+                "ws/main.st",
+                "FUNCTION Run : INT\n    Run := 1;\nEND_FUNCTION\n",
+            ),
+        ]);
+        let main = Url::from_file_path(root.join("ws/main.st"))
+            .unwrap()
+            .to_string();
+        assert_eq!(client.report(), [(main.clone(), 0)]);
+
+        std::fs::write(
+            root.join("ws/main.st"),
+            "FUNCTION Run : INT\n    Run := Missing();\nEND_FUNCTION\n",
+        )
+        .unwrap();
+        watched(
+            &client,
+            &root,
+            &[
+                ("ws/config.toml", FileChangeType::CHANGED),
+                ("ws/main.st", FileChangeType::CHANGED),
+            ],
+        );
+        assert_eq!(client.report(), [(main, 1)]);
+        client.stop(server);
+    }
+
+    /// The configuration read again reads the workspace again: a folder
+    /// that became a project of its own leaves it. The loader added the
+    /// files it found and let none go.
+    #[test]
+    fn a_configuration_change_lets_go_of_the_files_the_workspace_left() {
+        let run = "FUNCTION Run : INT\n    Run := 1;\nEND_FUNCTION\n";
+        let other = "FUNCTION Other : INT\n    Other := 1;\nEND_FUNCTION\n";
+        let (_dir, root, mut client, server) = workspace(&[
+            ("ws/config.toml", &config("app", "")),
+            ("ws/main.st", run),
+            ("ws/sub/other.st", other),
+        ]);
+        let url = |path: &str| Url::from_file_path(root.join(path)).unwrap().to_string();
+        assert_eq!(
+            client.report(),
+            [(url("ws/main.st"), 0), (url("ws/sub/other.st"), 0)]
+        );
+
+        std::fs::write(root.join("ws/sub/config.toml"), config("sub", "")).unwrap();
+        watched(
+            &client,
+            &root,
+            &[("ws/config.toml", FileChangeType::CHANGED)],
+        );
+        assert_eq!(client.report(), [(url("ws/main.st"), 0)]);
+        client.stop(server);
+    }
+
+    /// A dependency taken out of the configuration reads the libraries
+    /// again: its files are let go, and each other file is of the library
+    /// it is found in now. A file kept the library it was first read in:
+    /// with `a` gone, `b`'s file was of no library's name.
+    #[test]
+    fn a_dependency_edit_moves_the_files_to_their_library() {
+        let (_dir, root, mut client, server) = workspace(&[
+            (
+                "ws/config.toml",
+                &config("app", "a = { path = \"../a\" }\nb = { path = \"../b\" }\n"),
+            ),
+            (
+                "ws/main.st",
+                "FUNCTION Run : INT\n    Run := A.FA() + B.FB();\nEND_FUNCTION\n",
+            ),
+            ("a/config.toml", &config("a", "")),
+            ("a/A.st", "FUNCTION FA : INT\n    FA := 1;\nEND_FUNCTION\n"),
+            ("b/config.toml", &config("b", "")),
+            ("b/B.st", "FUNCTION FB : INT\n    FB := 2;\nEND_FUNCTION\n"),
+        ]);
+        let main = Url::from_file_path(root.join("ws/main.st"))
+            .unwrap()
+            .to_string();
+        assert_eq!(client.report(), [(main.clone(), 0)]);
+
+        // `A.FA` is no library's any more, and `B.FB` still is.
+        std::fs::write(
+            root.join("ws/config.toml"),
+            config("app", "b = { path = \"../b\" }\n"),
+        )
+        .unwrap();
+        watched(
+            &client,
+            &root,
+            &[("ws/config.toml", FileChangeType::CHANGED)],
+        );
+        assert_eq!(client.report(), [(main, 1)]);
+        assert_eq!(client.errors, [] as [String; 0]);
+        client.stop(server);
     }
 }

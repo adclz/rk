@@ -3,8 +3,8 @@
 
 use std::ops::ControlFlow;
 
-use auto_lsp::default::db::BaseDatabase;
 use db::RootDatabase;
+use db::WorkspaceDataBase;
 use hir::hir_def::semantic_index::semantic_index;
 use ide_proto::{handlers::CodeLensHandler, walk::WalkHir};
 use rstest::rstest;

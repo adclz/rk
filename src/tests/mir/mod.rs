@@ -9,6 +9,7 @@ mod extern_pragma;
 mod function_blocks;
 mod library_scope;
 mod namespaces;
+mod references;
 mod symbols;
 mod test_discovery;
 mod wasm_pragma;

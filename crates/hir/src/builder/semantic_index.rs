@@ -20,7 +20,7 @@ use crate::hir_def::program::ProgramDecl;
 use crate::hir_def::scope::{Scope, ScopeId, ScopeKind};
 use crate::hir_def::semantic_index::{NodeKey, SemanticIndex};
 use crate::hir_def::using::Using;
-use crate::{AstId, HirNodeInfo};
+use crate::{AstId, HasName, HirNodeInfo};
 
 /// What a front-end builds a file's index with: the nodes made so far, the
 /// scope being read, and the faults found on the way.
@@ -38,6 +38,11 @@ pub struct SemanticIndexBuilder<'db> {
 
     /// The current scope ID being processed (by default, the global scope).
     pub current_scope: ScopeId<'db>,
+
+    /// The file's global scope, made once: a tracked struct made twice in one
+    /// query is two structs, and the top-level scopes' parent has to be the
+    /// one the index registers.
+    pub global_scope: ScopeId<'db>,
 
     /// `Some` while an instance's declarations are built (a PROGRAM): its
     /// inputs are members, and a pack among them is E0029, named after it.
@@ -70,6 +75,7 @@ pub struct SemanticIndexBuilder<'db> {
 
 impl<'db> SemanticIndexBuilder<'db> {
     pub fn new(db: &'db dyn WorkspaceDataBase, file: File, ast: &'db ParsedAst) -> Self {
+        let global_scope = ScopeId::global(db, file);
         Self {
             db,
             file,
@@ -82,7 +88,8 @@ impl<'db> SemanticIndexBuilder<'db> {
             global_pous: vec![],
             located: vec![],
             scope_ctr: 0,
-            current_scope: ScopeId::global(db, file),
+            current_scope: global_scope,
+            global_scope,
             instance_inputs: None,
             errors: vec![],
         }
@@ -337,7 +344,7 @@ impl<'db> SemanticIndexBuilder<'db> {
     #[tracing::instrument(level = "debug", skip_all, name = "build HIR")]
     pub fn build(mut self, source: &ast::generated::SourceFile) -> SemanticIndex<'db> {
         let mut usings = vec![];
-        let global_scope = ScopeId::global(self.db, self.file);
+        let global_scope = self.global_scope;
 
         for child in source.children.iter() {
             type SourceFileDecl = ast::generated::ClassDecl_ConfigDecl_DataTypeDecl_FbDecl_FuncDecl_InterfaceDecl_NamespaceDecl_ProgDecl_UsingDirective;
@@ -415,7 +422,7 @@ impl<'db> SemanticIndexBuilder<'db> {
     pub fn finish(mut self, usings: Vec<Using<'db>>) -> SemanticIndex<'db> {
         // The file's own scope, wherever the last declaration read left
         // the current one.
-        let global_scope = ScopeId::global(self.db, self.file);
+        let global_scope = self.global_scope;
         let scope = Scope::new(self.file, ScopeKind::Global, usings, global_scope, None);
 
         self.scope_keys
@@ -433,6 +440,23 @@ impl<'db> SemanticIndexBuilder<'db> {
                 .entry(ns.absolute_path(self.db))
                 .or_default()
                 .push(*ns);
+        }
+
+        // Keyed by the folded name, in declaration order: what a lookup by
+        // name compares.
+        let mut pou_map: rustc_hash::FxHashMap<_, Vec<_>> = Default::default();
+        for pou in &self.global_pous {
+            pou_map
+                .entry(pou.get_name_ident(self.db))
+                .or_default()
+                .push(*pou);
+        }
+        let mut program_map: rustc_hash::FxHashMap<_, Vec<_>> = Default::default();
+        for program in &self.programs {
+            program_map
+                .entry(program.get_name_ident(self.db))
+                .or_default()
+                .push(*program);
         }
 
         // Each address the file mentions, with the declarations located at
@@ -456,6 +480,8 @@ impl<'db> SemanticIndexBuilder<'db> {
             namespaces: Arc::new(self.namespaces),
             namespace_map: Arc::new(namespace_map),
             global_pous: Arc::new(self.global_pous),
+            pou_map: Arc::new(pou_map),
+            program_map: Arc::new(program_map),
             located: Arc::new(located),
             errors: self.errors,
         }

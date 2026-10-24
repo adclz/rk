@@ -186,7 +186,7 @@ fn globals_used(
 ) -> rustc_hash::FxHashSet<hir::hir_def::interned::identifier::Ident> {
     use hir::hir_def::{pous::pou::Pou, semantic_index::semantic_index};
     let mut used = rustc_hash::FxHashSet::default();
-    for file in db.get_files().iter().map(|entry| *entry) {
+    for file in db.get_files().iter().copied() {
         let sema = semantic_index(db, file);
         let mut scopes: Vec<ScopeId> = Vec::new();
         let pous = sema.global_pous.iter().copied().chain(

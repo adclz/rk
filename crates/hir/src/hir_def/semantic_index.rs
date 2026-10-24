@@ -10,6 +10,7 @@ use db::WorkspaceDataBase;
 use ide_diagnostic::IdeDiagnostic;
 use rustc_hash::FxHashMap;
 
+use crate::hir_def::interned::identifier::Ident;
 use crate::hir_def::interned::namespace::NamespacePath;
 use tracing::info_span;
 
@@ -38,9 +39,9 @@ pub fn semantic_index<'db>(db: &'db dyn WorkspaceDataBase, file: File) -> Semant
     // A node the generated AST had no place for leaves ids pointing at the
     // wrong nodes, and the first cast panicked. The file is analyzed as
     // empty; its E0001 says why. The builder accumulates these on `parse`.
-    if db::syntax::parse::accumulated::<auto_lsp::core::errors::ParseErrorAccumulator>(db, file)
+    if db::syntax::unbuilt_nodes(db, file)
         .iter()
-        .any(|e| matches!(e.0, auto_lsp::core::errors::ParseError::AstError { .. }))
+        .any(|e| matches!(e, auto_lsp::core::errors::ParseError::AstError { .. }))
     {
         return SemanticIndex::empty(db, file, ast.nodes.clone());
     }
@@ -98,6 +99,12 @@ pub struct SemanticIndex<'db> {
 
     /// All *global* POU declarations in the file
     pub global_pous: Arc<Vec<Pou<'db>>>,
+    /// The same POUs keyed by case-folded name, in declaration order: a
+    /// lookup by name is one probe per file rather than a fold and a
+    /// compare per POU.
+    pub pou_map: Arc<FxHashMap<Ident, Vec<Pou<'db>>>>,
+    /// The file's PROGRAMs keyed by case-folded name, likewise.
+    pub program_map: Arc<FxHashMap<Ident, Vec<ProgramDecl<'db>>>>,
 
     /// Every I/O address the file mentions, with the declarations located
     /// at it: a CONFIGURATION's VAR_GLOBALs and a PROGRAM's VARs, in source
@@ -144,6 +151,8 @@ impl<'db> SemanticIndex<'db> {
             namespaces: Arc::new(vec![]),
             namespace_map: Arc::new(FxHashMap::default()),
             global_pous: Arc::new(vec![]),
+            pou_map: Arc::new(FxHashMap::default()),
+            program_map: Arc::new(FxHashMap::default()),
             located: Arc::new(Default::default()),
             errors: vec![],
         }

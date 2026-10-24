@@ -4,7 +4,7 @@
 use db::RootDatabase;
 use rk::file_order::ordered_files;
 
-use auto_lsp::{default::db::FileManager, lsp_types::Url};
+use auto_lsp::lsp_types::Url;
 
 /// Inserting files in one order and getting them back in another is the
 /// whole defect, so insert them deliberately out of order.

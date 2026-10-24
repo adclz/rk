@@ -8,10 +8,7 @@ use ast::generated::{ExternalVarKind, GlobalVarKind};
 use auto_lsp::core::ast::AstNode;
 use auto_lsp::lsp_types::{self, Position};
 use auto_lsp::tree_sitter::{self, Point};
-use auto_lsp::{
-    anyhow,
-    default::db::{BaseDatabase, file::File},
-};
+use auto_lsp::{anyhow, default::db::file::File};
 use salsa::Accumulator;
 
 use crate::builder::expression::ParseDirectVariable;

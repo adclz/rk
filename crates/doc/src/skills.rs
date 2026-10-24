@@ -25,11 +25,11 @@
 use std::path::{Path, PathBuf};
 
 use auto_lsp::{
-    default::db::{FileManager, file::File},
+    default::db::file::File,
     lsp_types::{DiagnosticSeverity, NumberOrString, Url},
 };
 use db::RootDatabase;
-use hir::check::diagnostics_for_file;
+use hir::check::check_file;
 
 use crate::highlight::StHighlighter;
 use crate::markdown::{self, Fence};
@@ -191,8 +191,8 @@ fn stdlib_dir() -> Option<PathBuf> {
 }
 
 /// Every diagnostic code the compiler reports for `source`, with whether it
-/// is an error. A fresh database per call: the workspace file set is read
-/// untracked, so one database cannot be reused across sources.
+/// is an error. A fresh database per call, so that no source sees the
+/// files of another.
 fn codes(source: &str, stdlib: &[(Url, String)]) -> Vec<(String, bool)> {
     let mut db = RootDatabase::default();
     for (url, text) in stdlib {
@@ -203,7 +203,7 @@ fn codes(source: &str, stdlib: &[(Url, String)]) -> Vec<(String, bool)> {
             .source(text.clone())
             .call()
             .unwrap();
-        db.insert_library_file(url.clone(), file);
+        db.insert_library_file(file);
     }
     let url = Url::parse("file:///fence.st").unwrap();
     let file = File::from_string()
@@ -215,7 +215,8 @@ fn codes(source: &str, stdlib: &[(Url, String)]) -> Vec<(String, bool)> {
         .unwrap();
     db.add_file(file).unwrap();
 
-    diagnostics_for_file(&db, file)
+    let graph = hir::hir_ty::calls::CallGraph::of_files(&db, [file]);
+    check_file(&db, &graph, file)
         .iter()
         .filter_map(|d| {
             let code = match d.diagnostic.code.as_ref()? {

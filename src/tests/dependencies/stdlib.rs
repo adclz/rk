@@ -4,15 +4,13 @@
 //! The standard library built into the compiler: what it holds, its copy
 //! in the cache, and the workspaces that read it.
 
-use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
-
-use auto_lsp::default::db::BaseDatabase;
 use auto_lsp::lsp_types::PositionEncodingKind;
 use db::cache::Entry;
 use db::dependencies::{cached_dir, packages_dir};
 use db::stdlib::{Standard, bundle, install, locate};
 use db::{RootDatabase, WorkspaceDataBase};
+use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
 
 use super::{Expected, expected_hash, package_files};
 
@@ -204,10 +202,15 @@ fn a_workspace_reads_the_standard_library_from_the_cache() {
     let mut files: Vec<String> = db
         .get_library_files()
         .iter()
-        .map(|entry| {
+        .map(|file| {
             // Canonical, as `copy` is: a file URL gives a Windows path back
             // without its `\\?\`.
-            let path = entry.key().to_file_path().unwrap().canonicalize().unwrap();
+            let path = file
+                .url(&db)
+                .to_file_path()
+                .unwrap()
+                .canonicalize()
+                .unwrap();
             let name = path.strip_prefix(&copy).unwrap();
             name.to_string_lossy().into_owned()
         })
@@ -229,13 +232,68 @@ fn a_workspace_reads_the_standard_library_from_the_cache() {
     let urls: Vec<_> = db
         .get_library_files()
         .iter()
-        .map(|entry| entry.key().to_file_path().unwrap().canonicalize().unwrap())
+        .map(|file| {
+            file.url(&db)
+                .to_file_path()
+                .unwrap()
+                .canonicalize()
+                .unwrap()
+        })
         .collect();
     assert_eq!(urls, [other.join("Std.st")]);
 
     unsafe { std::env::set_var(db::stdlib::PATH_ENV, "") };
     let (db, _) = open(&ws);
     assert!(db.get_library_files().is_empty());
+}
+
+/// A copy of the standard library an earlier build left in the cache,
+/// under the hash its files had then, is no file of the workspace, with a
+/// folder open or none. The editor opens it again from its history: read
+/// as the workspace's, it declared every POU of the library a second time.
+#[test]
+fn an_older_copy_of_the_standard_library_is_no_file_of_the_workspace() {
+    let t = tempfile::tempdir().unwrap();
+    let root = t.path().canonicalize().unwrap();
+    let cache = root.join("cache");
+    let ws = root.join("ws");
+    std::fs::create_dir(&ws).unwrap();
+    std::fs::write(
+        ws.join("config.toml"),
+        "[project]\nname = \"app\"\nversion = \"1\"\n",
+    )
+    .unwrap();
+    std::fs::write(ws.join("main.st"), "FUNCTION main : INT\nEND_FUNCTION\n").unwrap();
+    let elsewhere = root.join("Far.st");
+    std::fs::write(&elsewhere, "FUNCTION far : INT\nEND_FUNCTION\n").unwrap();
+
+    built_in(&cache);
+    let (db, _) = open(&ws);
+    let copy = cached_dir(&cache, &bundle().hash).join("Strings.st");
+    let older = packages_dir(&cache).join("0".repeat(64)).join("Strings.st");
+    std::fs::create_dir_all(older.parent().unwrap()).unwrap();
+    std::fs::copy(&copy, &older).unwrap();
+    let is_workspace_file = db::loader::is_workspace_file;
+    assert!(is_workspace_file(&db, &ws.join("main.st")));
+    assert!(!is_workspace_file(&db, &copy));
+    assert!(!is_workspace_file(&db, &older));
+    assert!(!is_workspace_file(&db, &elsewhere));
+
+    // No folder open: any file is the workspace's, but none in the cache.
+    let mut db = RootDatabase::default();
+    db::loader::open_workspace(
+        &mut db,
+        None,
+        PositionEncodingKind::UTF8,
+        db::loader::rk_parser,
+        None,
+        &mut vec![],
+        &mut vec![],
+    );
+    assert!(!db.get_library_files().is_empty());
+    assert!(is_workspace_file(&db, &elsewhere));
+    assert!(!is_workspace_file(&db, &copy));
+    assert!(!is_workspace_file(&db, &older));
 }
 
 /// The standard library's own workspace reads no copy of itself: its

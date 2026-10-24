@@ -6,12 +6,9 @@
 //! what it parses to, is code. Line comments on consecutive lines are one
 //! comment, so a block commented out line by line is reported once.
 
-use std::sync::LazyLock;
-
-use auto_lsp::core::document::Document;
 use auto_lsp::default::db::file::File;
 use auto_lsp::lsp_types::DiagnosticSeverity;
-use auto_lsp::tree_sitter::{self, StreamingIterator};
+use auto_lsp::tree_sitter;
 use db::WorkspaceDataBase;
 use ide_diagnostic::{ErrorCode, IdeDiagnostic, diag};
 
@@ -25,14 +22,6 @@ impl ErrorCode for CommentedOutCode {
         "L0318"
     }
 }
-
-static COMMENTS: LazyLock<tree_sitter::Query> = LazyLock::new(|| {
-    tree_sitter::Query::new(
-        &tree_sitter_rk::LANGUAGE.into(),
-        "(line_comment) @line (c_style_comment) @block (pascal_style_comment) @block",
-    )
-    .expect("a valid comment query")
-});
 
 /// The statement kinds of the grammar: what makes a parsed text code.
 const STATEMENTS: &[&str] = &[
@@ -58,9 +47,16 @@ pub fn check(db: &dyn WorkspaceDataBase, file: File, diagnostics: &mut Vec<IdeDi
     if !db::loader::is_rk_parser(file.parsers(db)) {
         return;
     }
-    let document = file.document(db);
-    for comment in comments(document) {
-        if !is_code(&comment.text) {
+    // One parser for the file's comments.
+    let mut parser = tree_sitter::Parser::new();
+    if parser
+        .set_language(&tree_sitter_rk::LANGUAGE.into())
+        .is_err()
+    {
+        return;
+    }
+    for comment in comments(db, file) {
+        if !is_code(&mut parser, &comment.text) {
             continue;
         }
         let mut d = diag()
@@ -75,27 +71,16 @@ pub fn check(db: &dyn WorkspaceDataBase, file: File, diagnostics: &mut Vec<IdeDi
     }
 }
 
-fn comments(document: &Document) -> Vec<Comment> {
-    let source = document.as_bytes();
-    let mut cursor = tree_sitter::QueryCursor::new();
-    let mut captures = cursor.captures(&COMMENTS, document.tree.root_node(), source);
+fn comments(db: &dyn WorkspaceDataBase, file: File) -> Vec<Comment> {
+    let source = file.document(db).as_bytes();
     let mut out: Vec<Comment> = Vec::new();
-    // A comment inside another is part of it.
-    let mut outer_end = 0;
     // Whether the last comment was a line comment, which the next one on
     // the following line continues.
     let mut last_was_line = false;
-    while let Some((capture, index)) = captures.next() {
-        let capture = capture.captures[*index];
-        let node = capture.node;
-        let range = node.range();
-        if range.start_byte < outer_end {
-            continue;
-        }
-        outer_end = range.end_byte;
-        let raw = &source[range.start_byte..range.end_byte];
-        let raw = String::from_utf8_lossy(raw);
-        let line = COMMENTS.capture_names()[capture.index as usize] == "line";
+    for comment in db::syntax::comments(db, file) {
+        let line = comment.kind == db::syntax::CommentKind::Line;
+        let range = comment.range;
+        let raw = String::from_utf8_lossy(&source[range.start_byte..range.end_byte]);
         let text = if line {
             raw.strip_prefix("//").unwrap_or(&raw).to_string()
         } else {
@@ -122,15 +107,11 @@ fn comments(document: &Document) -> Vec<Comment> {
 }
 
 /// Whether `text` parses as statements, one of them at least.
-fn is_code(text: &str) -> bool {
-    if !text.contains(';') {
-        return false;
-    }
-    let mut parser = tree_sitter::Parser::new();
-    if parser
-        .set_language(&tree_sitter_rk::LANGUAGE.into())
-        .is_err()
-    {
+fn is_code(parser: &mut tree_sitter::Parser, text: &str) -> bool {
+    // A statement has a `;`, and a backtick is no token of the language: a
+    // comment with a markdown fence is documentation, which the parser
+    // would only fail on, slowly, recovering from every line of prose.
+    if !text.contains(';') || text.contains('`') {
         return false;
     }
     let source = format!("FUNCTION rk_comment\n{text}\nEND_FUNCTION\n");

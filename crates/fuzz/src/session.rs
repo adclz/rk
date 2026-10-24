@@ -4,10 +4,9 @@
 //! One source in a fresh database, as `rk check` sees a single file, read
 //! beside one library.
 
-use auto_lsp::default::db::{BaseDatabase, FileManager, file::File};
+use auto_lsp::default::db::file::File;
 use auto_lsp::lsp_types::{DiagnosticSeverity, PositionEncodingKind, Url};
 use db::{RootDatabase, WorkspaceDataBase};
-use hir::check::diagnostics_for_file;
 use hir::hir_def::semantic_index::semantic_index;
 use ide_diagnostic::IdeDiagnostic;
 
@@ -86,7 +85,7 @@ pub(crate) fn load(source: &str) -> Option<(RootDatabase, File)> {
         .source(LIBRARY.to_string())
         .call()
         .ok()?;
-    db.insert_library_file(library_url, library);
+    db.insert_library_file(library);
 
     let url = url();
     let file = File::from_string()
@@ -110,7 +109,7 @@ pub(crate) fn lower(
     let mut indices: Vec<_> = db
         .get_library_files()
         .iter()
-        .map(|entry| semantic_index(db, *entry.value()))
+        .map(|file| semantic_index(db, *file))
         .collect();
     indices.push(semantic_index(db, file));
     mir::lower::lower_module::lower_modules(db, &indices)
@@ -124,17 +123,24 @@ pub(crate) fn is_error(diagnostic: &IdeDiagnostic) -> bool {
     )
 }
 
+/// What `rk check` reports on `file`: its own check, and the frames of
+/// its recursive calls.
+pub(crate) fn diagnostics(db: &RootDatabase, file: File) -> Vec<IdeDiagnostic> {
+    let graph = hir::hir_ty::calls::CallGraph::of_files(db, [file]);
+    hir::check::check_file(db, &graph, file)
+}
+
 /// Whether `rk compile` would go on to lower this file.
 pub(crate) fn compiles(db: &RootDatabase, file: File) -> bool {
-    !diagnostics_for_file(db, file).iter().any(is_error)
+    !diagnostics(db, file).iter().any(is_error)
 }
 
 /// The diagnostics as the editor shows them, positions included, in a
 /// stable order.
 pub(crate) fn positioned_diagnostics(db: &RootDatabase, file: File) -> Vec<String> {
-    let mut out: Vec<String> = diagnostics_for_file(db, file)
+    let mut out: Vec<String> = diagnostics(db, file)
         .iter()
-        .map(|d| format!("{:?}", d.to_lsp_diagnostic(db as &dyn BaseDatabase)))
+        .map(|d| format!("{:?}", d.to_lsp_diagnostic(db)))
         .collect();
     out.sort();
     out
@@ -143,7 +149,7 @@ pub(crate) fn positioned_diagnostics(db: &RootDatabase, file: File) -> Vec<Strin
 /// What the diagnostics SAY, without where: formatting moves every span, and
 /// only the set of problems must survive it.
 pub(crate) fn diagnostic_identities(db: &RootDatabase, file: File) -> Vec<String> {
-    let mut out: Vec<String> = diagnostics_for_file(db, file)
+    let mut out: Vec<String> = diagnostics(db, file)
         .iter()
         .map(|d| {
             let inner = &d.diagnostic;

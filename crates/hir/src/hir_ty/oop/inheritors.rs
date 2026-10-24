@@ -16,8 +16,9 @@ use crate::hir_ty::index_graphs::{all_files, file_global_pous, file_namespaces};
 
 /// A file's POUs keyed by each base they name: the FUNCTION_BLOCK or CLASS
 /// they extend, the INTERFACEs they implement or extend. Per file, like
-/// `file_namespace_map`, so it invalidates with the file it describes and a
-/// lookup is one probe per file.
+/// `file_namespace_map`, so a lookup is one probe per file. The bases are
+/// resolved by name, in whatever file declares them, so it also runs again
+/// when what those names find changes.
 #[salsa::tracked(returns(ref))]
 pub fn file_inheritors<'db>(
     db: &'db dyn WorkspaceDataBase,

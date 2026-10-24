@@ -6,7 +6,8 @@ use auto_lsp::{
     lsp_types::{CodeActionOrCommand, CodeActionParams},
 };
 use db::{WorkspaceDataBase, config_file::get_config};
-use hir::check::diagnostics_for_file;
+use hir::check::check_file;
+use hir::hir_ty::calls::CallGraph;
 
 pub fn code_actions(
     db: &impl WorkspaceDataBase,
@@ -20,9 +21,11 @@ pub fn code_actions(
         None => return Ok(None),
     };
 
-    let mut all = diagnostics_for_file(db, file).as_ref().clone();
+    let graph = CallGraph::of_files(db, [file]);
+    let mut all = check_file(db, &graph, file);
     let linter_config = get_config(db).linter.clone().unwrap_or_default();
-    linter::lint_file(db, file, &linter_config, &mut all);
+    let pass = linter::Pass::new(db, &linter_config, &graph);
+    linter::lint_file(db, file, &linter_config, &pass, &mut all);
 
     let mut results = vec![];
 

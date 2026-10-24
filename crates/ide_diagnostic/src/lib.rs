@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 use auto_lsp::{
-    default::db::{BaseDatabase, file::File},
+    default::db::file::File,
     lsp_types::{
         self, CodeAction, CodeActionKind, CodeDescription, Diagnostic,
         DiagnosticRelatedInformation, DiagnosticSeverity, DiagnosticTag, Location, NumberOrString,
@@ -52,7 +52,7 @@ impl IdeDiagnostic {
         self.code_desc
     }
 
-    pub fn to_lsp_diagnostic(&self, db: &dyn BaseDatabase) -> Diagnostic {
+    pub fn to_lsp_diagnostic(&self, db: &dyn auto_lsp::salsa::Database) -> Diagnostic {
         let related = self
             .related
             .iter()

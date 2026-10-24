@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Clauzel Adrien
 // SPDX-License-Identifier: AGPL-3.0-only
 
-use auto_lsp::default::db::BaseDatabase;
 use db::WorkspaceDataBase;
 use fst::{Automaton, Streamer, raw::IndexedValue};
 use rayon::prelude::*;
@@ -117,7 +116,7 @@ impl Query {
 
     pub fn search<'sym, T>(
         &self,
-        db: &'sym dyn BaseDatabase,
+        db: &'sym dyn WorkspaceDataBase,
         indices: &[SymbolIndex<'sym>],
         cb: impl FnMut(&NamedSymbol<'sym>) -> ControlFlow<T>,
     ) -> Option<T> {
@@ -175,7 +174,7 @@ impl Query {
 
     fn search_maps<'sym, T>(
         &self,
-        db: &'sym dyn BaseDatabase,
+        db: &'sym dyn WorkspaceDataBase,
         indices: &[SymbolIndex<'sym>],
         mut stream: fst::map::Union<'_>,
         mut cb: impl FnMut(&NamedSymbol<'sym>) -> ControlFlow<T>,

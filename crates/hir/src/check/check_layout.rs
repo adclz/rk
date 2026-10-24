@@ -20,14 +20,14 @@ use crate::{
         namespace::NamespaceDecl,
         pous::{
             pou::Pou,
-            variable::{StorageClass, VariableKind},
+            variable::{StorageClass, VariableDecl, VariableKind},
         },
         scope::{ScopeId, ScopeKind},
         semantic_index::{SemanticIndex, get_scope},
     },
     hir_ty::{
         body::{ResolvedCall, ScopeInference},
-        calls::{CallNode, is_recursive},
+        calls::{CallGraph, CallNode},
         frame::{self, Shapes},
         infer::Infer,
         layout,
@@ -160,9 +160,11 @@ fn oversized<'db>(db: &'db dyn WorkspaceDataBase, spec: Spec<'db>) -> Option<(Sp
 /// The frames of recursive calls `scope` decides: its own body's, when it
 /// may call itself, and those of the copies its calls create of a body with
 /// `ARRAY[*]` parameters. One larger than the stack `stack_size` sets is
-/// E1430, and one past what a module addresses E0322.
+/// E1430, and one past what a module addresses E0322. `graph` says which
+/// bodies may call themselves: one the roots of `scope`'s file reach.
 pub fn check_frames<'db>(
     db: &'db dyn WorkspaceDataBase,
+    graph: &CallGraph<'db>,
     scope: ScopeId<'db>,
     errors: &mut Vec<IdeDiagnostic>,
 ) {
@@ -203,7 +205,7 @@ pub fn check_frames<'db>(
     };
     // A part too large on its own is reported where it is declared.
     if let Some((node, name)) = node
-        && is_recursive(db, node)
+        && graph.is_recursive(node)
         && frame::parts(db, node, &Shapes::default())
             .iter()
             .all(|part| part.fits())
@@ -221,7 +223,7 @@ pub fn check_frames<'db>(
     let mut calls: Vec<_> = inference.resolved_calls().collect();
     calls.sort_by_key(|(call, _)| call.path(db).get_span(db).start_byte);
     for (call, resolved) in calls {
-        let copy = copies(db, inference, resolved)
+        let copy = copies(db, graph, inference, resolved)
             .into_iter()
             .find(|(node, size)| !fits(*size) && fits(frame::frame(db, *node, &Shapes::default())));
         if let Some((node, size)) = copy {
@@ -243,6 +245,7 @@ pub fn check_frames<'db>(
 /// body's own arrays decide is checked where that body is written.
 fn copies<'db>(
     db: &'db dyn WorkspaceDataBase,
+    graph: &CallGraph<'db>,
     inference: ScopeInference<'db>,
     call: &ResolvedCall<'db>,
 ) -> Vec<(CallNode<'db>, u64)> {
@@ -255,7 +258,7 @@ fn copies<'db>(
         if seen.iter().any(|(n, s)| *n == node && *s == shapes) {
             continue;
         }
-        if is_recursive(db, node) {
+        if graph.is_recursive(node) {
             found.push((node, frame::frame(db, node, &shapes)));
         }
         let inner = node.scope(db).inference(db);
@@ -275,21 +278,24 @@ fn copies<'db>(
 pub struct TypeDependencyGraph<'db> {
     db: &'db dyn WorkspaceDataBase,
 
-    /// POU -> directly referenced POUs
-    edges: FxHashMap<Pou<'db>, FxHashSet<Pou<'db>>>,
+    /// POU -> directly referenced POUs, in the order they are written.
+    edges: FxHashMap<Pou<'db>, Vec<Pou<'db>>>,
 
-    /// (from, to) -> callsites
-    callsites: FxHashMap<(Pou<'db>, Pou<'db>), Vec<CallSite<'db>>>,
+    /// (from, to) -> the specs that name `to` in `from`. The spec, not where
+    /// it is: its position is a `no_eq` field, which a check reading it for
+    /// a POU of another file ran again for every edit of that file. Only a
+    /// cycle's specs are placed, when it is reported.
+    callsites: FxHashMap<(Pou<'db>, Pou<'db>), Vec<Spec<'db>>>,
 }
 
 impl<'db> TypeDependencyGraph<'db> {
     pub fn new(db: &'db dyn WorkspaceDataBase, semantic_index: &SemanticIndex<'db>) -> Self {
-        let mut edges = FxHashMap::default();
+        let mut edges: FxHashMap<Pou<'db>, Vec<Pou<'db>>> = FxHashMap::default();
         let callsites = FxHashMap::default();
 
         // Seed graph with file-local POUs only
         for &pou in semantic_index.global_pous.iter() {
-            edges.entry(pou).or_insert_with(FxHashSet::default);
+            edges.entry(pou).or_default();
         }
 
         // The namespace list is FLAT (nested included), so each namespace
@@ -310,11 +316,11 @@ impl<'db> TypeDependencyGraph<'db> {
     /// Lazily ensure that `pou` has its dependencies extracted
     fn ensure_edges(&mut self, pou: Pou<'db>) {
         // Already expanded
-        if !self.edges.get(&pou).is_none_or(FxHashSet::is_empty) {
+        if !self.edges.get(&pou).is_none_or(Vec::is_empty) {
             return;
         }
 
-        let mut deps = FxHashSet::default();
+        let mut deps = Vec::new();
         Self::extract_type_dependencies(self.db, pou, &mut deps, &mut self.callsites);
 
         // Insert outgoing edges
@@ -329,47 +335,40 @@ impl<'db> TypeDependencyGraph<'db> {
     fn extract_type_dependencies(
         db: &'db dyn WorkspaceDataBase,
         pou: Pou<'db>,
-        deps: &mut FxHashSet<Pou<'db>>,
-        callsites: &mut FxHashMap<(Pou<'db>, Pou<'db>), Vec<CallSite<'db>>>,
+        deps: &mut Vec<Pou<'db>>,
+        callsites: &mut FxHashMap<(Pou<'db>, Pou<'db>), Vec<Spec<'db>>>,
     ) {
-        let def_map = pou.get_scope_id(db).def_map(db);
-
-        // The members an instance holds by value. A VAR_IN_OUT member is the
-        // address of the caller's instance, like a REF_TO, and VAR_TEMP and
-        // VAR_EXTERNAL are no part of the instance at all.
-        let mut contained: Vec<_> = def_map
-            .global_variables
-            .values()
-            .filter(|var| {
-                var.storage_class(db) == StorageClass::InstanceMember
-                    && var.kind(db) != VariableKind::InOut
-            })
-            .collect();
-        // In the order they are written, so that the reference a cycle
-        // cites is the first one. The map is keyed by interned names: its
-        // order is the one the names were first met in, which changes from
-        // one session to the next, and the editor then disagreed with a
-        // fresh check on which member to cite.
-        contained.sort_by_key(|var| var.spec(db).get_id(db).0);
+        // The members an instance holds by value, in the order they are
+        // written, so that the reference a cycle cites is the first one. A
+        // VAR_IN_OUT member is the address of the caller's instance, like a
+        // REF_TO, and VAR_TEMP and VAR_EXTERNAL are no part of the instance
+        // at all.
+        let variables: &[VariableDecl<'db>] = match pou {
+            Pou::Function(f) => f.variables(db),
+            Pou::FunctionBlock(fb) => fb.variables(db),
+            Pou::Class(class) => class.variables(db),
+            _ => &[],
+        };
+        let contained = variables.iter().filter(|var| {
+            var.storage_class(db) == StorageClass::InstanceMember
+                && var.kind(db) != VariableKind::InOut
+        });
         for var in contained {
             let typ = var.spec(db).infer(db);
-            let callsite = CallSite::from_scoped(db, &var.spec(db));
-            Self::extract_pou_from_type(db, pou, typ, deps, callsites, callsite);
+            Self::extract_pou_from_type(db, pou, typ, deps, callsites, var.spec(db));
         }
 
         // check inheritance
         for base in crate::hir_ty::oop::written_bases(db, pou) {
             if let Some(target) = base.target {
                 let typ = Type::new_pou(db, target);
-                let callsite = CallSite::from_scoped(db, &base.spec);
-                Self::extract_pou_from_type(db, pou, typ, deps, callsites, callsite);
+                Self::extract_pou_from_type(db, pou, typ, deps, callsites, base.spec);
             }
         }
 
         if let Pou::DataType(dt) = pou {
             let typ = dt.spec(db).infer(db);
-            let callsite = CallSite::from_scoped(db, &dt.spec(db));
-            Self::extract_pou_from_type(db, pou, typ, deps, callsites, callsite);
+            Self::extract_pou_from_type(db, pou, typ, deps, callsites, dt.spec(db));
         }
     }
 
@@ -377,9 +376,9 @@ impl<'db> TypeDependencyGraph<'db> {
         db: &'db dyn WorkspaceDataBase,
         from: Pou<'db>,
         typ: Type<'db>,
-        deps: &mut FxHashSet<Pou<'db>>,
-        callsites: &mut FxHashMap<(Pou<'db>, Pou<'db>), Vec<CallSite<'db>>>,
-        callsite: CallSite<'db>,
+        deps: &mut Vec<Pou<'db>>,
+        callsites: &mut FxHashMap<(Pou<'db>, Pou<'db>), Vec<Spec<'db>>>,
+        callsite: Spec<'db>,
     ) {
         match typ {
             Type::Struct(s) => {
@@ -391,44 +390,47 @@ impl<'db> TypeDependencyGraph<'db> {
                         field_ty,
                         deps,
                         callsites,
-                        CallSite::from_scoped(db, &field.spec(db)),
+                        field.spec(db),
                     );
                 }
             }
             Type::Array(a) => {
                 let elem = a.of_type(db).infer(db);
-                Self::extract_pou_from_type(
-                    db,
-                    from,
-                    elem,
-                    deps,
-                    callsites,
-                    CallSite::from_scoped(db, &a.of_type(db)),
-                );
+                Self::extract_pou_from_type(db, from, elem, deps, callsites, a.of_type(db));
             }
             Type::DataType(dt) => {
                 let to = Pou::DataType(dt);
-                deps.insert(to);
+                if !deps.contains(&to) {
+                    deps.push(to);
+                }
                 callsites.entry((from, to)).or_default().push(callsite);
             }
             Type::Function(func) => {
                 let to = Pou::Function(func);
-                deps.insert(to);
+                if !deps.contains(&to) {
+                    deps.push(to);
+                }
                 callsites.entry((from, to)).or_default().push(callsite);
             }
             Type::FunctionBlock(fb) => {
                 let to = Pou::FunctionBlock(fb);
-                deps.insert(to);
+                if !deps.contains(&to) {
+                    deps.push(to);
+                }
                 callsites.entry((from, to)).or_default().push(callsite);
             }
             Type::Class(class) => {
                 let to = Pou::Class(class);
-                deps.insert(to);
+                if !deps.contains(&to) {
+                    deps.push(to);
+                }
                 callsites.entry((from, to)).or_default().push(callsite);
             }
             Type::Interface(interface) => {
                 let to = Pou::Interface(interface);
-                deps.insert(to);
+                if !deps.contains(&to) {
+                    deps.push(to);
+                }
                 callsites.entry((from, to)).or_default().push(callsite);
             }
             _ => {}
@@ -493,34 +495,32 @@ impl<'db> TypeDependencyGraph<'db> {
         stack.push(node);
         stack_set.insert(node);
 
-        // What `node` references, in the order it first writes each: the
-        // set's own order is the one of interned ids, and the cycle found
-        // first, the one reported, followed it.
-        let mut deps: Vec<Pou<'db>> = self
-            .edges
-            .get(&node)
-            .map(|deps| deps.iter().copied().collect())
-            .unwrap_or_default();
-        deps.sort_by_key(|dep| {
-            self.callsites
-                .get(&(node, *dep))
-                .and_then(|sites| sites.first())
-                .map(|site| site.id.0)
-        });
+        // What `node` references, in the order it writes each: the cycle
+        // found first, the one reported, follows it.
+        let deps: Vec<Pou<'db>> = self.edges.get(&node).cloned().unwrap_or_default();
         for dep in deps {
             if dep == node {
-                // direct recursion anchored to file-local root
-                errors.push(
-                    RecursionError::DirectRecursion {
-                        pou: node,
-                        callsite: self
-                            .callsites
-                            .get(&(node, node))
-                            .and_then(|v| v.first())
-                            .copied(),
-                    }
-                    .to_diagnostic(self.db, node.get_scope_id(self.db).file(self.db)),
-                );
+                // Reported in the file that declares it, whose own check
+                // finds it: a block of another workspace file holding it
+                // would report it again, at that file's lines. A library's
+                // own report is never shown, so a library's type is still
+                // reported where it is held.
+                let file = node.get_scope_id(self.db).file(self.db);
+                if file == root.get_scope_id(self.db).file(self.db)
+                    || self.db.library_of(file).is_some()
+                {
+                    errors.push(
+                        RecursionError::DirectRecursion {
+                            pou: node,
+                            callsite: self
+                                .callsites
+                                .get(&(node, node))
+                                .and_then(|v| v.first())
+                                .map(|spec| CallSite::from_scoped(self.db, spec)),
+                        }
+                        .to_diagnostic(self.db, file),
+                    );
+                }
                 continue;
             }
 
@@ -535,7 +535,12 @@ impl<'db> TypeDependencyGraph<'db> {
                         callsite: self
                             .callsites
                             .get(&(node, dep))
-                            .cloned()
+                            .map(|specs| {
+                                specs
+                                    .iter()
+                                    .map(|spec| CallSite::from_scoped(self.db, spec))
+                                    .collect()
+                            })
                             .unwrap_or_default(),
                     }
                     .to_diagnostic(self.db, root.get_scope_id(self.db).file(self.db)),

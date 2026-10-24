@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 use ariadne::{Label, Report, ReportKind};
-use auto_lsp::default::db::BaseDatabase;
 use auto_lsp::lsp_types::Url;
 use db::RootDatabase;
+use db::WorkspaceDataBase;
 use ide_proto::handlers::document_links::document_links;
 use insta::assert_snapshot;
 use rstest::rstest;

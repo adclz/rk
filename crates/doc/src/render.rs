@@ -1,13 +1,14 @@
 // SPDX-FileCopyrightText: 2026 Clauzel Adrien
 // SPDX-License-Identifier: AGPL-3.0-only
 
-use ariadne::{CharSet, Config, FnCache, Source};
+use ariadne::{CharSet, Config};
 use auto_lsp::{
-    default::db::{BaseDatabase, FileManager, file::File},
+    default::db::file::File,
     lsp_types::{DiagnosticSeverity, NumberOrString, Url},
 };
-use db::RootDatabase;
-use hir::check::diagnostics_for_file;
+use db::{RootDatabase, WorkspaceDataBase};
+use hir::check::check_file;
+use ide_diagnostic::report::Sources;
 
 /// One diagnostic the compiler reported on an example, located so the page
 /// can mark the exact source range.
@@ -75,7 +76,7 @@ pub fn compile_and_render(
     let mut output = Vec::new();
     let mut spans = Vec::new();
 
-    let mut files: Vec<File> = db.get_files().iter().map(|entry| *entry.value()).collect();
+    let mut files: Vec<File> = db.get_files().to_vec();
     let index_of = |file: &File| -> usize {
         file.url(db)
             .as_str()
@@ -85,11 +86,6 @@ pub fn compile_and_render(
             .unwrap_or(0)
     };
     files.sort_by_key(index_of);
-
-    let file_sources: Vec<(&str, &str)> = files
-        .iter()
-        .map(|file: &File| (file.url(db).as_str(), file.document(db).as_str()))
-        .collect();
 
     let config = Config::default()
         .with_color(true)
@@ -108,14 +104,19 @@ pub fn compile_and_render(
         }
     });
 
+    let graph = hir::hir_ty::calls::CallGraph::of_files(db, files.iter().copied());
+    let pass = linter_config
+        .as_ref()
+        .map(|config| linter::Pass::new(db, config, &graph));
+    let mut sources = Sources::default();
     for file in files.iter() {
         let source_idx = index_of(file);
         let source_text = file.document(db);
         let src = source_text.as_str();
 
-        let mut all = diagnostics_for_file(db, *file).as_ref().clone();
-        if let Some(ref linter_config) = linter_config {
-            linter::lint_file(db, *file, linter_config, &mut all);
+        let mut all = check_file(db, &graph, *file);
+        if let (Some(linter_config), Some(pass)) = (&linter_config, &pass) {
+            linter::lint_file(db, *file, linter_config, pass, &mut all);
         }
         for d in all.iter() {
             let range = d.range();
@@ -155,20 +156,8 @@ pub fn compile_and_render(
                     .collect(),
             });
 
-            d.create_report(db, file.url(db), src, Some(config), true)
-                .write(
-                    FnCache::new(
-                        (move |id: &&str| Err(format!("Failed to fetch source '{id}'")))
-                            as fn(&&str) -> _,
-                    )
-                    .with_sources(
-                        file_sources
-                            .iter()
-                            .map(|(id, s)| (*id, Source::from(*s)))
-                            .collect(),
-                    ),
-                    &mut output,
-                )
+            d.create_report(db, file.url(db), src, &mut sources, Some(config), true)
+                .write(&mut sources, &mut output)
                 .unwrap();
         }
     }

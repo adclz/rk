@@ -14,7 +14,7 @@ use rk_benchmark::{
     setup_db, signatures_all,
 };
 
-const CORPORA: &[&str] = &["stdlib"];
+const CORPORA: &[&str] = &["stdlib", "generated_1k"];
 
 #[divan::bench(args = CORPORA, sample_count = 10, sample_size = 1)]
 fn semantic_index(bencher: Bencher, name: &str) {

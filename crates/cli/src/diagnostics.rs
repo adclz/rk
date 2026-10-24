@@ -12,9 +12,8 @@ use auto_lsp::default::db::file::File;
 use auto_lsp::lsp_types::{DiagnosticSeverity, Url};
 use db::RootDatabase;
 use ide_diagnostic::IdeDiagnostic;
-use rayon::iter::{IntoParallelIterator, ParallelIterator};
-
-use crate::reports::sources;
+use ide_diagnostic::report::Sources;
+use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
 
 /// Collect diagnostics for every workspace file, in parallel; `with_linter`
 /// runs the configured passes too (`rk check`, not codegen).
@@ -30,19 +29,11 @@ pub fn collect_diagnostics(
             .clone()
             .unwrap_or_default()
     });
-
-    // Ordered, so the diagnostics come out in the same sequence every run —
-    // rayon's collect preserves the input order, it just cannot invent one.
-    crate::file_order::ordered_files(db)
-        .into_par_iter()
-        .map_with(db.clone(), |db, file| {
-            let mut diagnostics = hir::check::diagnostics_for_file(db, file).as_ref().clone();
-            if let Some(ref linter_config) = linter_config {
-                linter::lint_file(db, file, linter_config, &mut diagnostics);
-            }
-            (file, diagnostics)
-        })
-        .collect()
+    check(
+        db,
+        crate::file_order::ordered_files(db),
+        linter_config.as_ref(),
+    )
 }
 
 /// The ERRORS of the library files, and only the errors: the editor hides
@@ -50,22 +41,61 @@ pub fn collect_diagnostics(
 /// library lowers into an invalid module with no message naming the
 /// cause.
 pub fn collect_library_errors(db: &RootDatabase) -> Vec<(File, Vec<IdeDiagnostic>)> {
-    crate::file_order::ordered_library_files(db)
-        .into_par_iter()
-        .map_with(db.clone(), |db, file| {
-            let errors: Vec<IdeDiagnostic> = hir::check::diagnostics_for_file(db, file)
-                .iter()
+    check(db, crate::file_order::ordered_library_files(db), None)
+        .into_iter()
+        .map(|(file, diagnostics)| {
+            let errors: Vec<IdeDiagnostic> = diagnostics
+                .into_iter()
                 .filter(|d| {
                     matches!(
                         d.diagnostic.severity,
                         Some(DiagnosticSeverity::ERROR) | None
                     )
                 })
-                .cloned()
                 .collect();
             (file, errors)
         })
         .filter(|(_, errors)| !errors.is_empty())
+        .collect()
+}
+
+/// Every diagnostic of `files`, in their order, linted with `linter_config`
+/// when there is one. Every file is checked before the call graph is built
+/// and any is linted: the graph, and a lint that looks across the
+/// workspace, at the members other bodies name or at what the
+/// configuration reaches, then read what the check computed. Built or
+/// linted with one file, they computed the other files' inference on one
+/// thread, while the threads checking them waited.
+fn check(
+    db: &RootDatabase,
+    files: Vec<File>,
+    linter_config: Option<&db::config_file::LinterConfig>,
+) -> Vec<(File, Vec<IdeDiagnostic>)> {
+    // Every file is indexed before any is checked, the libraries' too: a
+    // name is looked up in every file's index, in the order of the files, so
+    // a check that reached a file no thread had indexed yet indexed it
+    // while the other threads reaching it waited, one file after the other.
+    crate::file_order::ordered_files_with_libraries(db)
+        .par_iter()
+        .for_each_with(db.clone(), |db, file| {
+            hir::hir_def::semantic_index::semantic_index(db, *file);
+        });
+    files.par_iter().for_each_with(db.clone(), |db, file| {
+        hir::check::diagnostics_for_file(db, *file);
+    });
+    let graph = hir::hir_ty::calls::CallGraph::of_files(db, files.iter().copied());
+    let pass = linter_config.map(|config| (config, linter::Pass::new(db, config, &graph)));
+    // Ordered, so the diagnostics come out in the same sequence every run:
+    // rayon's collect preserves the input order, it just cannot invent one.
+    files
+        .into_par_iter()
+        .map_with(db.clone(), |db, file| {
+            let mut diagnostics = hir::check::check_file(db, &graph, file);
+            if let Some((config, pass)) = &pass {
+                linter::lint_file(db, file, config, pass, &mut diagnostics);
+            }
+            (file, diagnostics)
+        })
         .collect()
 }
 
@@ -154,20 +184,15 @@ impl<'db> DiagnosticReporter<'db> {
         self
     }
 
-    /// Render every file's diagnostics to `out`, returning the tallies; the
-    /// source cache spans all files so cross-file related info renders.
+    /// Render every file's diagnostics to `out`, returning the tallies. One
+    /// set of sources serves every report, a library's too when a related
+    /// span points into one.
     pub fn report_files(
         &self,
         per_file: &[(File, Vec<IdeDiagnostic>)],
         out: &mut dyn Write,
     ) -> DiagnosticCounts {
-        // Library sources ride along: a workspace diagnostic may point its
-        // related span into a library.
-        let caches: Vec<(&str, &str)> = crate::file_order::ordered_files_with_libraries(self.db)
-            .into_iter()
-            .map(|file| (file.url(self.db).as_str(), file.document(self.db).as_str()))
-            .collect();
-
+        let mut sources = Sources::default();
         let mut counts = DiagnosticCounts::default();
         for (file, diagnostics) in per_file {
             if diagnostics.is_empty() {
@@ -177,7 +202,7 @@ impl<'db> DiagnosticReporter<'db> {
                 file.url(self.db),
                 &file.document(self.db).texter.text,
                 diagnostics,
-                &caches,
+                &mut sources,
                 out,
             ));
         }
@@ -193,17 +218,16 @@ impl<'db> DiagnosticReporter<'db> {
         diagnostics: &[IdeDiagnostic],
         out: &mut dyn Write,
     ) -> DiagnosticCounts {
-        let caches = [(url.as_str(), content)];
-        self.render(url, content, diagnostics, &caches, out)
+        self.render(url, content, diagnostics, &mut Sources::default(), out)
     }
 
-    /// Render one source's diagnostics against `caches`, tallying counts.
-    fn render(
-        &self,
-        url: &Url,
-        content: &str,
+    /// Render one source's diagnostics against `sources`, tallying counts.
+    fn render<'s>(
+        &'s self,
+        url: &'s Url,
+        content: &'s str,
         diagnostics: &[IdeDiagnostic],
-        caches: &[(&str, &str)],
+        sources: &mut Sources<'s>,
         out: &mut dyn Write,
     ) -> DiagnosticCounts {
         let url_str = url.as_str();
@@ -215,11 +239,17 @@ impl<'db> DiagnosticReporter<'db> {
 
             match self.format {
                 OutputFormat::Full => {
-                    let report =
-                        diagnostic.create_report(self.db, url, content, Some(self.config), true);
+                    let report = diagnostic.create_report(
+                        self.db,
+                        url,
+                        content,
+                        sources,
+                        Some(self.config),
+                        true,
+                    );
                     let mut buffer = vec![];
                     report
-                        .write(sources(caches.iter().copied()), &mut buffer)
+                        .write(&mut *sources, &mut buffer)
                         .expect("failed to write report");
 
                     let output = String::from_utf8_lossy(&buffer);

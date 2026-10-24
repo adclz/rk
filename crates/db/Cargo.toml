@@ -11,8 +11,8 @@ publish = false
 auto-lsp = { workspace = true }
 ast = { workspace = true }
 ide_diagnostic = { workspace = true }
-dashmap = { workspace = true, features = ["rayon"] }
 salsa = { workspace = true }
+rustc-hash = { workspace = true }
 rayon = { workspace = true }
 serde = { workspace = true }
 toml = { workspace = true }

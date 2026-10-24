@@ -110,20 +110,16 @@ pub fn root_named(db: &dyn WorkspaceDataBase, name: Ident) -> Option<Root> {
         .copied()
 }
 
-/// The files of the library whose root is `root`: the top level of each is
-/// a block of that namespace. Not memoized: the file set is read outside
-/// salsa, as [`crate::hir_ty::index_graphs::namespace_index`] reads it.
+/// The files of the library whose root is `root`, in the order of their
+/// URLs: the top level of each is a block of that namespace.
 pub fn library_files_of_root(db: &dyn WorkspaceDataBase, root: Root) -> Vec<File> {
     let Some(id) = library_roots(db).iter().position(|other| *other == root) else {
         return Vec::new();
     };
-    let mut files: Vec<File> = db
-        .get_library_files()
+    db::FileSet::get(db)
+        .libraries(db)
         .iter()
-        .map(|entry| *entry.value())
+        .copied()
         .filter(|file| db.library_of(*file) == Some(id as db::dependencies::LibraryId))
-        .collect();
-    // A stable order: the maps hand files out in theirs.
-    files.sort_by_key(|file| file.url(db).to_string());
-    files
+        .collect()
 }

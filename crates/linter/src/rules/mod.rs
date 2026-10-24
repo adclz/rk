@@ -15,6 +15,7 @@ use hir::{
         semantic_index::{get_scope, semantic_index},
         using::Using,
     },
+    hir_ty::calls::CallGraph,
 };
 use ide_diagnostic::IdeDiagnostic;
 
@@ -213,13 +214,42 @@ pub const ALL_RULE_NAMES: &[&str] = &[
     yoda_condition::NAME,
 ];
 
+/// What a lint pass works out once for all the files it lints, rather than
+/// again for each: the call graph they reach, and what the application
+/// reaches when the unused-POU rule asks.
+pub struct Pass<'p, 'db> {
+    /// One the roots of every file the pass lints reach
+    /// ([`CallGraph::of_files`]).
+    pub graph: &'p CallGraph<'db>,
+    /// The scopes the application reaches, for L0216: `None` when the rule is
+    /// off, or the workspace has no configuration.
+    pub(crate) reached: Option<rustc_hash::FxHashSet<ScopeId<'db>>>,
+}
+
+impl<'p, 'db> Pass<'p, 'db> {
+    /// A pass linting with `config`, over the files `graph` was built from.
+    pub fn new(
+        db: &'db dyn WorkspaceDataBase,
+        config: &LinterConfig,
+        graph: &'p CallGraph<'db>,
+    ) -> Self {
+        let reached = is_enabled(config, unused_pou::NAME)
+            .then(|| unused_pou::reached_by_the_application(db))
+            .flatten();
+        Pass { graph, reached }
+    }
+}
+
 /// Run all lint rules on a file, appending warnings to `diagnostics`.
-pub fn lint_file(
-    db: &dyn WorkspaceDataBase,
+/// `pass` is one over the file and the others linted with it.
+pub fn lint_file<'db>(
+    db: &'db dyn WorkspaceDataBase,
     file: File,
     config: &LinterConfig,
+    pass: &Pass<'_, 'db>,
     diagnostics: &mut Vec<IdeDiagnostic>,
 ) {
+    let graph = pass.graph;
     // File-level lints
     run_lint(duplicate_var_section::NAME, diagnostics, |d| {
         duplicate_var_section::check(db, file, config, d)
@@ -263,7 +293,7 @@ pub fn lint_file(
 
     if is_enabled(config, unused_pou::NAME) {
         run_lint(unused_pou::NAME, diagnostics, |d| {
-            unused_pou::check(db, file, d)
+            unused_pou::check(db, pass, file, d)
         });
     }
 
@@ -284,20 +314,27 @@ pub fn lint_file(
     // Global usings
     all_usings.extend_from_slice(sema.scope.usings(db));
 
-    lint_scope(db, config, sema.scope, &mut body_scopes, diagnostics);
+    lint_scope(db, config, graph, sema.scope, &mut body_scopes, diagnostics);
 
     for pou in sema.global_pous.iter() {
         let scope = pou.get_scope_id(db);
         all_usings.extend_from_slice(scope.usings(db));
         all_scopes.push(scope);
-        lint_scope(db, config, scope, &mut body_scopes, diagnostics);
+        lint_scope(db, config, graph, scope, &mut body_scopes, diagnostics);
 
         if let Some(methods) = scope.method_declarations(db) {
             for method in methods {
                 let method_scope = method.get_scope_id(db);
                 all_usings.extend_from_slice(method_scope.usings(db));
                 all_scopes.push(method_scope);
-                lint_scope(db, config, method_scope, &mut body_scopes, diagnostics);
+                lint_scope(
+                    db,
+                    config,
+                    graph,
+                    method_scope,
+                    &mut body_scopes,
+                    diagnostics,
+                );
             }
         }
 
@@ -315,6 +352,7 @@ pub fn lint_file(
         collect_namespace_scopes(
             db,
             config,
+            graph,
             *ns,
             &mut all_scopes,
             &mut body_scopes,
@@ -327,7 +365,7 @@ pub fn lint_file(
         let scope = program.get_scope_id(db);
         all_usings.extend_from_slice(scope.usings(db));
         all_scopes.push(scope);
-        lint_scope(db, config, scope, &mut body_scopes, diagnostics);
+        lint_scope(db, config, graph, scope, &mut body_scopes, diagnostics);
     }
 
     // File-level lint: unused imports (needs all scopes collected)
@@ -348,6 +386,7 @@ pub fn lint_file(
 fn collect_namespace_scopes<'db>(
     db: &'db dyn WorkspaceDataBase,
     config: &LinterConfig,
+    graph: &CallGraph<'db>,
     ns: NamespaceDecl<'db>,
     all_scopes: &mut Vec<ScopeId<'db>>,
     body_scopes: &mut Vec<ScopeId<'db>>,
@@ -360,14 +399,14 @@ fn collect_namespace_scopes<'db>(
         let scope = pou.get_scope_id(db);
         all_usings.extend_from_slice(scope.usings(db));
         all_scopes.push(scope);
-        lint_scope(db, config, scope, body_scopes, diagnostics);
+        lint_scope(db, config, graph, scope, body_scopes, diagnostics);
 
         if let Some(methods) = scope.method_declarations(db) {
             for method in methods {
                 let method_scope = method.get_scope_id(db);
                 all_usings.extend_from_slice(method_scope.usings(db));
                 all_scopes.push(method_scope);
-                lint_scope(db, config, method_scope, body_scopes, diagnostics);
+                lint_scope(db, config, graph, method_scope, body_scopes, diagnostics);
             }
         }
     }
@@ -411,6 +450,7 @@ pub(crate) fn run_lint(
 fn lint_scope<'db>(
     db: &'db dyn WorkspaceDataBase,
     config: &LinterConfig,
+    graph: &CallGraph<'db>,
     scope: ScopeId<'db>,
     body_scopes: &mut Vec<ScopeId<'db>>,
     diagnostics: &mut Vec<IdeDiagnostic>,
@@ -505,7 +545,7 @@ fn lint_scope<'db>(
     }
     if is_enabled(config, recursion::NAME) {
         run_lint(recursion::NAME, diagnostics, |d| {
-            recursion::check(db, scope, d)
+            recursion::check(db, graph, scope, d)
         });
     }
     if is_enabled(config, single_element_array::NAME) {

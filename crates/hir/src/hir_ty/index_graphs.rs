@@ -64,6 +64,22 @@
 // is NOT re-executed.
 //
 // Confirmed by the incremental test suite (`src/tests/incremental.rs`).
+//
+// ## 2026-10-22 — What still ran again, and the file set
+//
+// The suite above did not exist, and the firewall stopped nothing:
+// `semantic_index` read `parse::accumulated`, which salsa counts as a read
+// it cannot track, so every file's index ran again in every revision, and
+// every query that read one with it. It reads the Eq `unbuilt_nodes` now.
+// Name resolution also read other files' indexes directly (the namespaces
+// around a scope, a library's global scope, a global scope's POUs); those
+// go through Eq queries too. `src/tests/incremental.rs` lists what an edit
+// runs again, so the next such read shows in a snapshot.
+//
+// The set of files was a map outside salsa: a file added after a check
+// opened no revision, and what the check computed stayed. It is the input
+// `db::FileSet` now, in the order of the URLs, so the lookups below also go
+// through the files in the same order on every run.
 
 use rustc_hash::FxHashMap;
 use std::sync::Arc;
@@ -99,6 +115,39 @@ use crate::{
 #[salsa::tracked(returns(ref))]
 pub fn file_global_pous<'db>(db: &'db dyn WorkspaceDataBase, file: File) -> Arc<Vec<Pou<'db>>> {
     Arc::clone(&semantic_index(db, file).global_pous)
+}
+
+/// A file's global POUs keyed by case-folded name, built with the file's
+/// semantic index. Per file for the reason [`file_namespace_map`] is, and
+/// with Eq: an edit that leaves the file's POUs and their names as they
+/// were backdates it.
+#[salsa::tracked(returns(ref))]
+pub fn file_pou_map<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    file: File,
+) -> Arc<FxHashMap<Ident, Vec<Pou<'db>>>> {
+    Arc::clone(&semantic_index(db, file).pou_map)
+}
+
+/// A file's PROGRAMs keyed by case-folded name, as [`file_pou_map`].
+#[salsa::tracked(returns(ref))]
+pub fn file_program_map<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    file: File,
+) -> Arc<FxHashMap<Ident, Vec<ProgramDecl<'db>>>> {
+    Arc::clone(&semantic_index(db, file).program_map)
+}
+
+/// A file's global scope. The index holds it: made once, when the file was
+/// read, as a tracked struct has to be. A query of its own, so that a lookup
+/// through the top level of another file reads this and not that file's
+/// whole index.
+#[salsa::tracked]
+pub fn file_scope<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    file: File,
+) -> crate::hir_def::scope::ScopeId<'db> {
+    semantic_index(db, file).scope
 }
 
 /// Extracts namespace declarations from a file's semantic index.
@@ -293,12 +342,15 @@ pub fn located_view(db: &dyn WorkspaceDataBase, address: &LocatedAddress) -> Opt
 // Helpers
 // ---------------------------------------------------------------------------
 
-/// Helper to iterate over all workspace + library files.
+/// Every file, the workspace's and then the libraries', each in the order of
+/// their URLs: read from the [`db::FileSet`], so a file added or removed is a
+/// change to what read them.
 pub(crate) fn all_files<'db>(db: &'db dyn WorkspaceDataBase) -> impl Iterator<Item = File> + 'db {
-    db.get_files()
+    let set = db::FileSet::get(db);
+    set.workspace(db)
         .iter()
-        .map(|e| *e)
-        .chain(db.get_library_files().iter().map(|e| *e))
+        .chain(set.libraries(db).iter())
+        .copied()
 }
 
 /// The workspace's OWN files, without the library's.
@@ -308,8 +360,10 @@ pub(crate) fn all_files<'db>(db: &'db dyn WorkspaceDataBase) -> impl Iterator<It
 /// author was building, not this one. Counted as the workspace's, it spent the
 /// single configuration a workspace may have before the user had written a
 /// line, and E1402 then refused them their own.
-fn workspace_files<'db>(db: &'db dyn WorkspaceDataBase) -> impl Iterator<Item = File> + 'db {
-    db.get_files().iter().map(|e| *e)
+pub(crate) fn workspace_files<'db>(
+    db: &'db dyn WorkspaceDataBase,
+) -> impl Iterator<Item = File> + 'db {
+    db::FileSet::get(db).workspace(db).iter().copied()
 }
 
 // ---------------------------------------------------------------------------
@@ -317,10 +371,10 @@ fn workspace_files<'db>(db: &'db dyn WorkspaceDataBase) -> impl Iterator<Item = 
 // ---------------------------------------------------------------------------
 
 /// A file's namespace declarations keyed by case-folded path, built with
-/// the file's semantic index. Per file on purpose: the file set is read
-/// outside salsa, so a workspace-wide map would not learn about a file added
-/// after it was built, while this one invalidates with the file it describes
-/// and, like [`file_namespaces`], backdates when the file changed elsewhere.
+/// the file's semantic index. Per file on purpose: a workspace-wide map would
+/// run again for an edit in any file, while this one runs again with the
+/// file it describes and, like [`file_namespaces`], backdates when the file
+/// changed elsewhere.
 #[salsa::tracked(returns(ref))]
 pub fn file_namespace_map<'db>(
     db: &'db dyn WorkspaceDataBase,
@@ -362,12 +416,10 @@ pub fn namespace_scopes<'db>(
     if let [name] = path.fragments(db).as_slice()
         && let Some(root) = crate::hir_ty::library::root_named(db, *name)
     {
-        // The index holds a file's global scope: made once, when the file
-        // was read, as a tracked struct has to be.
         scopes.extend(
             crate::hir_ty::library::library_files_of_root(db, root)
                 .into_iter()
-                .map(|file| semantic_index(db, file).scope),
+                .map(|file| file_scope(db, file)),
         );
     }
     scopes
@@ -481,14 +533,7 @@ pub fn namespace_pou_index<'db>(
 /// as the path.
 #[tracing::instrument(level = "trace", skip(db))]
 pub fn pou_index<'db>(db: &'db dyn WorkspaceDataBase, name: Ident) -> Option<Pou<'db>> {
-    for file in workspace_files(db) {
-        for p in file_global_pous(db, file).iter() {
-            if p.get_name_ident(db) == name {
-                return Some(*p);
-            }
-        }
-    }
-    None
+    workspace_files(db).find_map(|file| file_pou_map(db, file).get(&name)?.first().copied())
 }
 
 /// Returns EVERY POU declared at the top level of the WORKSPACE with the
@@ -500,10 +545,8 @@ pub fn pou_index<'db>(db: &'db dyn WorkspaceDataBase, name: Ident) -> Option<Pou
 pub fn pou_candidates<'db>(db: &'db dyn WorkspaceDataBase, name: Ident) -> Vec<Pou<'db>> {
     let mut result = Vec::new();
     for file in workspace_files(db) {
-        for p in file_global_pous(db, file).iter() {
-            if p.get_name_ident(db) == name {
-                result.push(*p);
-            }
+        if let Some(found) = file_pou_map(db, file).get(&name) {
+            result.extend(found.iter().copied());
         }
     }
     result
@@ -532,14 +575,7 @@ pub fn namespace_pou_candidates<'db>(
 /// Finds a globally declared program by name across all files.
 #[tracing::instrument(level = "trace", skip(db))]
 pub fn program_index<'db>(db: &'db dyn WorkspaceDataBase, name: Ident) -> Option<ProgramDecl<'db>> {
-    for file in all_files(db) {
-        for p in file_programs(db, file).iter() {
-            if p.get_name_ident(db) == name {
-                return Some(*p);
-            }
-        }
-    }
-    None
+    all_files(db).find_map(|file| file_program_map(db, file).get(&name)?.first().copied())
 }
 
 /// Every CONFIGURATION the workspace declares — for reporting that it

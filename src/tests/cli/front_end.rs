@@ -13,7 +13,6 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use ast::generated::SourceFile;
 use auto_lsp::core::ast::AstNode;
-use auto_lsp::default::db::BaseDatabase;
 use auto_lsp::default::db::file::File;
 use auto_lsp::default::db::tracked::ParsedAst;
 use auto_lsp::lsp_types::{NumberOrString, PositionEncodingKind, Url};
@@ -22,7 +21,6 @@ use hir::builder::semantic_index::SemanticIndexBuilder;
 use hir::check::errors::ToIdeDiagnostic;
 use hir::check::errors::e00_syntax::SyntaxError;
 use hir::front_end::FrontEnd;
-use hir::hir_def::scope::ScopeId;
 use hir::hir_def::semantic_index::{SemanticIndex, semantic_index};
 use rk::cli::{Command, OutputFormat};
 
@@ -65,7 +63,7 @@ fn read<'db>(
         .expect("an index function is given a tree with its root");
     let mut sema = SemanticIndexBuilder::new(db, file, ast);
     for declaration in source.children.iter() {
-        sema.current_scope = ScopeId::global(db, file);
+        sema.current_scope = sema.global_scope;
         match declaration.cast(sema.ast) {
             Declaration::FuncDecl(function) => match sema.parse_function(function) {
                 Ok(function) => sema.global_pous.push(function),
@@ -357,7 +355,7 @@ fn a_library_holds_files_of_the_second_kind() {
     let (db, files) = open(&root);
     assert_eq!(files.len(), 1, "the workspace's own file");
     let lib = Url::from_file_path(library_root.join("Lib.two")).unwrap();
-    assert!(db.get_library_files().contains_key(&lib));
+    assert!(db.get_library_file(&lib).is_some());
     assert_eq!(
         codes(&db, file_named(&db, &root, "main.st")),
         Vec::<String>::new()

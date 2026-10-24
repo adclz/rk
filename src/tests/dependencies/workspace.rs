@@ -5,15 +5,13 @@
 //! `config.toml`, read from a folder or fetched into the cache, each
 //! library closed to the others as it is to the workspace.
 
-use std::path::{Path, PathBuf};
-
-use auto_lsp::default::db::BaseDatabase;
 use auto_lsp::lsp_types::{PositionEncodingKind, Url};
 use db::dependencies::ContentHash;
 use db::{RootDatabase, WorkspaceDataBase};
 use insta::assert_snapshot;
 use rk::cli::OutputFormat;
 use rk::diagnostics::DiagnosticReporter;
+use std::path::{Path, PathBuf};
 
 /// Writes `files` under `root`, each a path and its text.
 fn write(root: &Path, files: &[(&str, &str)]) {
@@ -104,11 +102,11 @@ fn origins(db: &RootDatabase) -> Vec<(String, Option<String>)> {
         .get_files()
         .iter()
         .chain(db.get_library_files().iter())
-        .map(|entry| {
+        .map(|file| {
             let library = db
-                .library_of(*entry.value())
+                .library_of(*file)
                 .map(|id| libraries[id as usize].name.clone());
-            (name(entry.key()), library)
+            (name(file.url(db)), library)
         })
         .collect();
     origins.sort();
@@ -181,6 +179,53 @@ fn a_workspace_reads_the_libraries_it_names() {
             ("main.st".to_string(), None),
         ]
     );
+}
+
+/// A file is the workspace's where the loader reads it: under the folder,
+/// in no folder with a `config.toml` of its own, and not a library's. The
+/// language server asks it of what the editor opens and the watcher
+/// reports, a file the library gains once the workspace is open among them.
+#[test]
+fn a_file_is_the_workspace_s_where_the_loader_reads_it() {
+    let (_dir, root) = sandbox();
+    let pou = |name: &str| format!("FUNCTION {name} : INT\n    {name} := 1;\nEND_FUNCTION\n");
+    write(
+        &root,
+        &[
+            (
+                "ws/config.toml",
+                &config("ws", "local = { path = \"libs/local\" }\n"),
+            ),
+            ("ws/main.st", &pou("Run")),
+            ("ws/src/More.st", &pou("More")),
+            ("ws/libs/local/config.toml", &config("local", "")),
+            ("ws/libs/local/Local.st", &pou("Seven")),
+            ("ws/other/config.toml", &config("other", "")),
+            ("ws/other/Other.st", &pou("Other")),
+            ("elsewhere/Far.st", &pou("Far")),
+        ],
+    );
+    let ws = root.join("ws");
+    let (db, reported) = open(&ws);
+    assert_eq!(reported, "");
+    assert_eq!(
+        origins(&db),
+        [
+            ("Local.st".to_string(), Some("local".to_string())),
+            ("More.st".to_string(), None),
+            ("main.st".to_string(), None),
+        ]
+    );
+    write(&ws, &[("libs/local/Later.st", &pou("Later"))]);
+
+    let is_workspace_file = |path: &str| db::loader::is_workspace_file(&db, &root.join(path));
+    assert!(is_workspace_file("ws/main.st"));
+    assert!(is_workspace_file("ws/src/More.st"));
+    assert!(!is_workspace_file("ws/libs/local/Local.st"));
+    assert!(!is_workspace_file("ws/libs/local/Later.st"));
+    assert!(!is_workspace_file("ws/other/Other.st"));
+    assert!(!is_workspace_file("elsewhere/Far.st"));
+    assert!(!is_workspace_file("ws/missing.st"));
 }
 
 /// `INTERNAL` stops at the library: what one library keeps to itself is

@@ -49,7 +49,8 @@ use auto_lsp::lsp_types::{
     WorkspaceUnchangedDocumentDiagnosticReport,
 };
 use db::{WorkspaceDataBase, config_file::get_config};
-use hir::check::diagnostics_for_file;
+use hir::check::{check_file, diagnostics_for_file};
+use hir::hir_ty::calls::CallGraph;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
 /// Compute a fingerprint hash for a list of diagnostics.
@@ -91,9 +92,13 @@ pub fn diagnostics<Db: WorkspaceDataBase + Clone + RefUnwindSafe>(
         }
     };
 
-    let mut all = diagnostics_for_file(db, file).as_ref().clone();
+    // What the file's bodies reach: the frames of its recursive calls and
+    // the recursion lint ask it.
+    let graph = CallGraph::of_files(db, [file]);
+    let mut all = check_file(db, &graph, file);
     let linter_config = get_config(db).linter.clone().unwrap_or_default();
-    linter::lint_file(db, file, &linter_config, &mut all);
+    let pass = linter::Pass::new(db, &linter_config, &graph);
+    linter::lint_file(db, file, &linter_config, &pass, &mut all);
 
     let items: Vec<_> = all.iter().map(|d| d.to_lsp_diagnostic(db)).collect();
     let new_id = fingerprint(&items);
@@ -143,37 +148,92 @@ pub fn workspace_diagnostics<Db: WorkspaceDataBase + Clone + RefUnwindSafe>(
         })
         .collect();
 
-    // Compute diagnostics for all current files.
-    let computed: Vec<_> = db
+    // Every file is indexed before any is checked, the libraries' too, as
+    // `rk check` does: a name is looked up in every file's index, so a check
+    // reaching a file no thread had indexed yet indexed it while the other
+    // threads reaching it waited. A file a write cancels is checked below,
+    // and found cancelled there.
+    db.get_files()
+        .iter()
+        .chain(db.get_library_files())
+        .copied()
+        .collect::<Vec<_>>()
+        .into_par_iter()
+        .for_each_with(db.clone(), |db, file| {
+            let _ = salsa::Cancelled::catch(|| {
+                hir::hir_def::semantic_index::semantic_index(db, file);
+            });
+        });
+    // Every file is checked before the call graph is built and any is
+    // linted, as `rk check` does: the graph, and a lint that looks across
+    // the workspace, then read what the check computed, instead of
+    // computing the other files' inference on one thread.
+    let checked: Vec<_> = db
         .get_files()
         .into_par_iter()
         .map_with(db.clone(), |db, file| {
             let file = *file;
+            let checked = salsa::Cancelled::catch(|| {
+                diagnostics_for_file(db, file);
+            })
+            .is_ok();
+            (file, checked)
+        })
+        .collect();
+    // `None` when a write cancelled it.
+    let graph =
+        salsa::Cancelled::catch(|| CallGraph::of_files(db, db.get_files().iter().copied())).ok();
+    let pass = graph.as_ref().and_then(|graph| {
+        salsa::Cancelled::catch(|| linter::Pass::new(db, &linter_config, graph)).ok()
+    });
+    let computed: Vec<_> = checked
+        .into_par_iter()
+        .map_with(db.clone(), |db, (file, checked)| {
             let uri = file.url(db).clone();
 
-            let items = salsa::Cancelled::catch(|| {
-                let mut all = diagnostics_for_file(db, file).as_ref().clone();
-                linter::lint_file(db, file, &linter_config, &mut all);
-                all.iter()
-                    .map(|d| d.to_lsp_diagnostic(db))
-                    .collect::<Vec<_>>()
-            })
-            .unwrap_or_default();
+            let db = &*db;
+            let linter_config = &linter_config;
+            // `None` when a write cancelled the file's check.
+            let items = pass.as_ref().filter(|_| checked).and_then(|pass| {
+                salsa::Cancelled::catch(move || {
+                    let mut all = check_file(db, pass.graph, file);
+                    linter::lint_file(db, file, linter_config, pass, &mut all);
+                    all.iter()
+                        .map(|d| d.to_lsp_diagnostic(db))
+                        .collect::<Vec<_>>()
+                })
+                .ok()
+            });
 
-            let new_id = fingerprint(&items);
             let version: Option<i64> = file.version(db).map(|i| i as i64);
 
-            (uri, items, new_id, version)
+            (uri, items, version)
         })
         .collect();
 
     // Build reports, comparing against client's cached result IDs.
     let mut result: Vec<WorkspaceDocumentDiagnosticReport> = computed
         .into_iter()
-        .map(|(uri, items, new_id, version)| {
+        .filter_map(|(uri, items, version)| {
             let previous_id = previous.remove(&uri);
+            // A file whose check a write cancelled is no clean file: what the
+            // client holds for it stands until the next pull, and a file it
+            // holds nothing for waits for that pull.
+            let Some(items) = items else {
+                return previous_id.map(|result_id| {
+                    WorkspaceDocumentDiagnosticReport::Unchanged(
+                        WorkspaceUnchangedDocumentDiagnosticReport {
+                            version,
+                            unchanged_document_diagnostic_report:
+                                UnchangedDocumentDiagnosticReport { result_id },
+                            uri,
+                        },
+                    )
+                });
+            };
+            let new_id = fingerprint(&items);
 
-            if previous_id.as_deref() == Some(&new_id) {
+            Some(if previous_id.as_deref() == Some(&new_id) {
                 // Client already has this — skip resending.
                 WorkspaceDocumentDiagnosticReport::Unchanged(
                     WorkspaceUnchangedDocumentDiagnosticReport {
@@ -194,7 +254,7 @@ pub fn workspace_diagnostics<Db: WorkspaceDataBase + Clone + RefUnwindSafe>(
                     },
                     uri,
                 })
-            }
+            })
         })
         .collect();
 

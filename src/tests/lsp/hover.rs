@@ -3,10 +3,10 @@
 
 use std::ops::ControlFlow;
 
-use auto_lsp::default::db::BaseDatabase;
 use auto_lsp::lsp_types::HoverContents;
 use auto_lsp::lsp_types::MarkedString;
 use db::RootDatabase;
+use db::WorkspaceDataBase;
 use hir::HasName;
 use hir::HirNodeInfo;
 use hir::hir_def::hir_node::HirNode;
@@ -1365,5 +1365,75 @@ END_PROGRAM
     ```iecst
     (VAR) h: Holder
     ```
+    ");
+}
+
+/// An overloaded FUNCTION is documented once, above its first declaration:
+/// an overload with no comment of its own shows that one, on its
+/// declaration and where it is called. One with its own shows its own.
+#[rstest]
+fn an_overload_shows_the_comment_at_the_top(mut with_db: RootDatabase) {
+    let source = r#"
+(* Doubles a number. *)
+FUNCTION Twice : INT
+VAR_INPUT n : INT; END_VAR
+    Twice := n * 2;
+END_FUNCTION
+
+FUNCTION Twice : REAL
+VAR_INPUT n : REAL; END_VAR
+    Twice := n * 2.0;
+END_FUNCTION
+
+(* Doubles a long real. *)
+FUNCTION Twice : LREAL
+VAR_INPUT n : LREAL; END_VAR
+    Twice := n * 2.0;
+END_FUNCTION
+
+FUNCTION Run : REAL
+VAR x : REAL; END_VAR
+    Run := Twice(n := x);
+END_FUNCTION
+"#;
+    let file = add_source(&mut with_db, source);
+    let hover_at = |offset: usize| {
+        let node = ide_proto::walk::descendant_at(&with_db, file, offset).unwrap();
+        hover_markup(node.hover(&with_db, offset).unwrap().contents).unwrap()
+    };
+    let mut offsets: Vec<usize> = source
+        .match_indices("FUNCTION Twice")
+        .map(|(at, _)| at + "FUNCTION ".len())
+        .collect();
+    offsets.push(source.find("Twice(n := x)").unwrap());
+    let hovers: Vec<String> = offsets.into_iter().map(hover_at).collect();
+    assert_snapshot!(hovers.join("\n\n"), @r"
+    ```iecst
+    FUNCTION Twice: INT
+    ```
+
+    ---
+    Doubles a number.
+
+    ```iecst
+    FUNCTION Twice: REAL
+    ```
+
+    ---
+    Doubles a number.
+
+    ```iecst
+    FUNCTION Twice: LREAL
+    ```
+
+    ---
+    Doubles a long real.
+
+    ```iecst
+    FUNCTION Twice: REAL
+    ```
+
+    ---
+    Doubles a number.
     ");
 }

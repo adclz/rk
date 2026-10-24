@@ -13,7 +13,7 @@ use hir::{
     HasName, HasQualifiers, HirNodeInfo, Qualifier,
     hir_def::{
         expressions::{
-            expression::{PathExprKind, VariableAccess, VariableAccessKind},
+            expression::{VariableAccess, VariableAccessKind},
             statement::{Stmt, StmtKind},
         },
         pous::{
@@ -108,7 +108,6 @@ pub fn check<'db>(
     if blocks.is_empty() {
         return;
     }
-    let outside = named_through_a_path(db);
     for (scope, variables, statements) in blocks {
         // A `{wasm}` statement names variables the walk does not see.
         if contains_wasm(db, statements) {
@@ -144,7 +143,7 @@ pub fn check<'db>(
                 || !walk.written.contains(var)
                 || walk.stale.contains(var)
                 || methods_use.contains(var)
-                || outside.contains(var)
+                || hir::hir_ty::calls::named_through_a_path(db, *var)
             {
                 continue;
             }
@@ -211,45 +210,6 @@ fn contains_wasm<'db>(db: &'db dyn WorkspaceDataBase, stmts: &[Stmt<'db>]) -> bo
         visit(&list, &mut stack);
     }
     found
-}
-
-/// Every member a body of the workspace names through a path, `f.inner`
-/// or `THIS.inner`, the configuration's included: a variable read from
-/// outside its block keeps a value someone reads.
-fn named_through_a_path<'db>(db: &'db dyn WorkspaceDataBase) -> FxHashSet<VariableDecl<'db>> {
-    let mut named = FxHashSet::default();
-    for file in db.get_files().iter().map(|entry| *entry) {
-        let sema = semantic_index(db, file);
-        let mut scopes: Vec<ScopeId<'db>> = Vec::new();
-        let pous = sema.global_pous.iter().copied().chain(
-            sema.namespaces
-                .iter()
-                .flat_map(|ns| ns.pous(db).iter().copied()),
-        );
-        for pou in pous {
-            if matches!(pou, Pou::DataType(_) | Pou::Interface(_)) {
-                continue;
-            }
-            let scope = pou.get_scope_id(db);
-            scopes.push(scope);
-            if let Some(methods) = scope.method_declarations(db) {
-                scopes.extend(methods.iter().map(|m| m.get_scope_id(db)));
-            }
-        }
-        scopes.extend(sema.programs.iter().map(|program| program.scope_id(db)));
-        scopes.extend(sema.configs.iter().map(|config| config.scope_id(db)));
-        for scope in scopes {
-            let body = scope.inference(db);
-            for (path, _) in body.typed_path_exprs() {
-                if let PathExprKind::Field(_) = path.expr(db)
-                    && let Some(var) = body.variable_for_path_expr(path)
-                {
-                    named.insert(var);
-                }
-            }
-        }
-    }
-    named
 }
 
 impl<'db> Walk<'db> {

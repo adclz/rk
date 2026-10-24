@@ -86,7 +86,7 @@ impl<'db> HirNodeInfo<'db> for SpanIdent<'db> {
 }
 
 /// Interned identifier
-#[salsa::interned(debug, no_lifetime)]
+#[salsa::interned(debug, no_lifetime, revisions = crate::hir_def::interned::REVISIONS)]
 #[derive(PartialOrd, Ord)]
 pub struct Ident {
     #[returns(ref)]

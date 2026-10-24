@@ -1,10 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Clauzel Adrien
 // SPDX-License-Identifier: AGPL-3.0-only
 
-use auto_lsp::default::db::BaseDatabase;
 use auto_lsp::lsp_types::{FoldingRange, FoldingRangeKind, FoldingRangeParams};
 use auto_lsp::tree_sitter::StreamingIterator;
 use auto_lsp::{anyhow, tree_sitter};
+use db::WorkspaceDataBase;
 use std::sync::LazyLock;
 
 static FOLD: &str = r#"
@@ -50,7 +50,7 @@ pub static FOLD_QUERY: LazyLock<tree_sitter::Query> = LazyLock::new(|| {
 
 /// Request for folding ranges
 pub fn folding_ranges(
-    db: &impl BaseDatabase,
+    db: &impl WorkspaceDataBase,
     params: FoldingRangeParams,
 ) -> anyhow::Result<Option<Vec<FoldingRange>>> {
     let uri = params.text_document.uri;
@@ -99,7 +99,7 @@ pub fn folding_ranges(
 
 #[cfg(test)]
 mod tests {
-    use auto_lsp::default::db::{FileManager, file::File};
+    use auto_lsp::default::db::file::File;
     use auto_lsp::lsp_types::{
         PartialResultParams, PositionEncodingKind, TextDocumentIdentifier, Url,
         WorkDoneProgressParams,

@@ -32,7 +32,10 @@ pub fn check(source: &str) -> Result<Verdict, Finding> {
     // Every rule, on every input: the editor lints code that does not
     // compile, and a lint that panics takes the request down with it.
     let mut lints = Vec::new();
-    linter::lint_file(&db, file, &every_lint(), &mut lints);
+    let graph = hir::hir_ty::calls::CallGraph::of_files(&db, [file]);
+    let config = every_lint();
+    let pass = linter::Pass::new(&db, &config, &graph);
+    linter::lint_file(&db, file, &config, &pass, &mut lints);
 
     if !session::compiles(&db, file) {
         return Ok(Verdict::Rejected);

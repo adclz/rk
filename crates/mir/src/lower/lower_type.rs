@@ -14,6 +14,8 @@ use hir::{
 use compact_str::CompactString;
 use std::cell::RefCell;
 
+use rustc_hash::{FxHashMap, FxHashSet};
+
 use crate::types::{
     MirArrayType, MirElementary, MirEnumType, MirStructField, MirStructType, MirSubrangeType,
     MirType,
@@ -250,11 +252,25 @@ pub fn lower_struct_type_named<'db>(
     name: Option<Ident>,
 ) -> Result<MirType, LowerTypeError> {
     // A named STRUCT reached again while it is being lowered: only a
-    // `REF_TO` to itself gets here, a member by value being E1302.
-    let _laying_out = match name {
-        Some(name) => Some(LayingOut::enter(db, name)?),
-        None => None,
-    };
+    // `REF_TO` to itself gets here, a member by value being E1301.
+    match name {
+        Some(name) => lowered_once(db, salsa::plumbing::AsId::as_id(&struct_type), name, || {
+            lower_struct_fields(db, struct_type, name)
+        }),
+        None => lower_struct_fields(
+            db,
+            struct_type,
+            Ident::new(db, CompactString::from("<anon_struct>")),
+        ),
+    }
+}
+
+/// The STRUCT `struct_type`, as HIR laid it out, named `name`.
+fn lower_struct_fields<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    struct_type: Struct<'db>,
+    name: Ident,
+) -> Result<MirType, LowerTypeError> {
     let layout = hir::hir_ty::layout::struct_layout(db, struct_type)
         .as_ref()
         .ok_or_else(|| no_layout("a STRUCT"))?;
@@ -268,11 +284,8 @@ pub fn lower_struct_type_named<'db>(
         });
     }
 
-    // Use provided name or create an anonymous one
-    let struct_name = name.unwrap_or_else(|| Ident::new(db, CompactString::from("<anon_struct>")));
-
     Ok(MirType::Struct(MirStructType {
-        name: struct_name,
+        name,
         fields,
         size: narrow(layout.whole.size)?,
         align: layout.whole.align,
@@ -431,30 +444,128 @@ pub fn lower_fb_type<'db>(
 }
 
 thread_local! {
-    /// The instances and the named STRUCTs whose layout is being built,
-    /// innermost last.
-    static LAYING_OUT: RefCell<Vec<Ident>> = const { RefCell::new(Vec::new()) };
+    /// The instances and the named STRUCTs being lowered on this thread,
+    /// and those the pass lowered already.
+    static LOWERED: RefCell<Lowered> = RefCell::new(Lowered::default());
 }
 
-/// `name` on [`LAYING_OUT`] for as long as this lives.
+/// What one pass of lowering knows of the instances and the named STRUCTs
+/// it lowers, by their salsa id.
+#[derive(Default)]
+struct Lowered {
+    /// The ones being lowered, innermost last: its id, its name, and the
+    /// ids of the ones its lowering reached so far.
+    open: Vec<(salsa::Id, Ident, FxHashSet<salsa::Id>)>,
+    /// The ones lowered already, each with the ids its lowering reached;
+    /// `None` outside a pass. Each is lowered once per pass: lowered again
+    /// under each instance holding one, a chain of blocks each holding the
+    /// next cost the square of its length.
+    done: Option<FxHashMap<salsa::Id, (MirType, FxHashSet<salsa::Id>)>>,
+}
+
+/// One pass of lowering, for as long as this lives: the instances it
+/// lowers are kept for its next use of them.
+pub(crate) struct LoweringPass;
+
+impl LoweringPass {
+    pub(crate) fn begin() -> Self {
+        LOWERED.with(|lowered| lowered.borrow_mut().done = Some(FxHashMap::default()));
+        LoweringPass
+    }
+}
+
+impl Drop for LoweringPass {
+    fn drop(&mut self) {
+        LOWERED.with(|lowered| lowered.borrow_mut().done = None);
+    }
+}
+
+/// `name` on the open list for as long as this lives.
 struct LayingOut;
 
 impl LayingOut {
-    /// Refused when `name` is being laid out already: its layout reached
-    /// back to itself.
-    fn enter(db: &dyn WorkspaceDataBase, name: Ident) -> Result<Self, LowerTypeError> {
-        if LAYING_OUT.with(|stack| stack.borrow().contains(&name)) {
-            return Err(LowerTypeError::InstanceCycle(name.text(db).to_string()));
-        }
-        LAYING_OUT.with(|stack| stack.borrow_mut().push(name));
-        Ok(LayingOut)
+    /// Refused when `id` is being laid out already: its layout reached
+    /// back to itself, which the one that reached it notes.
+    fn enter(
+        db: &dyn WorkspaceDataBase,
+        id: salsa::Id,
+        name: Ident,
+    ) -> Result<Self, LowerTypeError> {
+        LOWERED.with(|lowered| {
+            let mut lowered = lowered.borrow_mut();
+            if lowered.open.iter().any(|(open, _, _)| *open == id) {
+                if let Some((_, _, reached)) = lowered.open.last_mut() {
+                    reached.insert(id);
+                }
+                return Err(LowerTypeError::InstanceCycle(name.text(db).to_string()));
+            }
+            lowered.open.push((id, name, FxHashSet::default()));
+            Ok(LayingOut)
+        })
     }
 }
 
 impl Drop for LayingOut {
     fn drop(&mut self) {
-        LAYING_OUT.with(|stack| stack.borrow_mut().pop());
+        LOWERED.with(|lowered| {
+            let mut lowered = lowered.borrow_mut();
+            let (id, _, reached) = lowered.open.pop().expect("the one entered");
+            // What it reached, its holder reached.
+            if let Some((_, _, holder)) = lowered.open.last_mut() {
+                holder.insert(id);
+                holder.extend(reached);
+            }
+        });
     }
+}
+
+/// The type of the instance or the named STRUCT `id`, lowered by `lower`
+/// once per pass. The pass's copy serves again only when nothing its
+/// lowering reached is being lowered now: a `REF_TO` back to one of those
+/// is named instead of lowered, so the type then differs.
+fn lowered_once(
+    db: &dyn WorkspaceDataBase,
+    id: salsa::Id,
+    name: Ident,
+    lower: impl FnOnce() -> Result<MirType, LowerTypeError>,
+) -> Result<MirType, LowerTypeError> {
+    let kept = LOWERED.with(|lowered| {
+        let lowered = lowered.borrow();
+        let (ty, reached) = lowered.done.as_ref()?.get(&id)?;
+        let under_one_reached = lowered
+            .open
+            .iter()
+            .any(|(open, _, _)| reached.contains(open));
+        (!under_one_reached).then(|| (ty.clone(), reached.clone()))
+    });
+    if let Some((ty, reached)) = kept {
+        LOWERED.with(|lowered| {
+            if let Some((_, _, holder)) = lowered.borrow_mut().open.last_mut() {
+                holder.insert(id);
+                holder.extend(reached);
+            }
+        });
+        return Ok(ty);
+    }
+    let laying_out = LayingOut::enter(db, id, name)?;
+    let ty = lower()?;
+    // Kept when lowered under none of what it reached: the type is the one
+    // a pass lowering it on its own would build.
+    LOWERED.with(|lowered| {
+        let lowered_ref = lowered.borrow();
+        let (_, _, reached) = lowered_ref.open.last().expect("the one entered");
+        let holders = &lowered_ref.open[..lowered_ref.open.len() - 1];
+        let keep = !holders
+            .iter()
+            .any(|(holder, _, _)| reached.contains(holder));
+        let reached = keep.then(|| reached.clone());
+        drop(lowered_ref);
+        if let (Some(reached), Some(done)) = (reached, lowered.borrow_mut().done.as_mut()) {
+            done.insert(id, (ty.clone(), reached));
+        }
+    });
+    drop(laying_out);
+    Ok(ty)
 }
 
 /// An FB/CLASS instance as HIR laid it out ([`instance_layout`]): its
@@ -469,12 +580,12 @@ fn lower_instance_struct<'db>(
 ) -> Result<MirType, LowerTypeError> {
     // Two FBs holding each other through VAR_IN_OUT members, or through a
     // `REF_TO`, come back here while the first is still being laid out.
-    let _laying_out = LayingOut::enter(db, name)?;
-
-    let layout = hir::hir_ty::layout::instance_layout(db, pou)
-        .as_ref()
-        .ok_or_else(|| no_layout("an instance"))?;
-    instance_struct(db, name, layout)
+    lowered_once(db, salsa::plumbing::AsId::as_id(&pou), name, || {
+        let layout = hir::hir_ty::layout::instance_layout(db, pou)
+            .as_ref()
+            .ok_or_else(|| no_layout("an instance"))?;
+        instance_struct(db, name, layout)
+    })
 }
 
 /// The struct of an instance HIR laid out: each part named and typed as the

@@ -43,7 +43,7 @@ use crate::{
         HoverHandler,
         completions::{resolve_namespace_prefix, try_build_namespace_path},
     },
-    hir_node::{HasComment, MaybeHirNode, get_param_start_pos},
+    hir_node::{HasComment, MaybeHirNode, function_comment, get_param_start_pos},
 };
 
 /// What a value takes in memory, the way rust-analyzer shows it: `size =
@@ -254,7 +254,12 @@ impl<'db> HoverHandler<'db> for Pou<'db> {
             return None;
         }
 
-        let comment = self.get_comment(db).unwrap_or_default();
+        let comment = match self {
+            // An overloaded name is documented once, above its first
+            // declaration.
+            Pou::Function(function) => function_comment(db, *function),
+            _ => self.get_comment(db).unwrap_or_default(),
+        };
         let kind = match self {
             Pou::Function(_) => "FUNCTION",
             Pou::FunctionBlock(_) => "FUNCTION_BLOCK",

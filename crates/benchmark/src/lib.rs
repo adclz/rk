@@ -3,40 +3,40 @@
 
 //! Benchmark helpers for the IEC 61131-3 compiler.
 //!
-//! The fixture is a real corpus tracked in this repository: `stdlib/` (the
+//! Two fixtures: a real corpus tracked in this repository, `stdlib/` (the
 //! standard library — 11 files, ~9k lines, checks clean and compiles to
-//! WASM). Every benchmark asserts its diagnostic count against the baselines
-//! below, so a benchmark can never silently drift into measuring an empty or
-//! error-flooded analysis. `cargo test -p rk-benchmark` verifies the
-//! baselines without running the benchmarks.
+//! WASM), and a workspace of 1,000 POUs in 40 files, [`generated`], for what
+//! grows faster than the workspace. Every benchmark asserts its diagnostic
+//! count against the baselines below, so a benchmark can never silently
+//! drift into measuring an empty or error-flooded analysis. `cargo test -p
+//! rk-benchmark` verifies the baselines without running the benchmarks.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use auto_lsp::{
-    core::document::Document,
-    default::db::{FileManager, file::File},
-    lsp_types::Url,
-    salsa::Setter,
-};
+use auto_lsp::{core::document::Document, default::db::file::File, lsp_types::Url, salsa::Setter};
 use db::RootDatabase;
 use hir::{
     HirNodeInfo,
-    check::diagnostics_for_file,
     hir_def::{namespace::NamespaceDecl, scope::ScopeId, semantic_index::semantic_index},
     hir_ty::head::{init_inference::infer_initialization, signature::infer_signature},
 };
+
+pub mod generated;
 
 // ---------------------------------------------------------------------------
 // Diagnostic baselines
 //
 // The expected number of HIR diagnostics (`diagnostics_for_file`) and lint
 // diagnostics per corpus. When a corpus source changes legitimately, update
-// the constant — the `corpus_baselines` test states the fresh value.
+// the constant — `corpus_baselines` and `generated_baselines` state the
+// fresh value.
 // ---------------------------------------------------------------------------
 
 pub const STDLIB_EXPECTED_DIAGNOSTICS: usize = 0;
 pub const STDLIB_EXPECTED_LINTS: usize = 208;
+pub const GENERATED_1K_EXPECTED_DIAGNOSTICS: usize = 0;
+pub const GENERATED_1K_EXPECTED_LINTS: usize = 452;
 
 // ---------------------------------------------------------------------------
 // Corpora
@@ -119,6 +119,7 @@ pub fn stdlib_corpus() -> Corpus {
 pub fn load_corpus(name: &str) -> Corpus {
     match name {
         "stdlib" => stdlib_corpus(),
+        "generated_1k" => generated::generated_corpus("generated_1k", 40),
         other => panic!("unknown corpus {other}"),
     }
 }
@@ -126,6 +127,7 @@ pub fn load_corpus(name: &str) -> Corpus {
 pub fn expected_diagnostics(corpus: &str) -> usize {
     match corpus {
         "stdlib" => STDLIB_EXPECTED_DIAGNOSTICS,
+        "generated_1k" => GENERATED_1K_EXPECTED_DIAGNOSTICS,
         other => panic!("unknown corpus {other}"),
     }
 }
@@ -133,6 +135,7 @@ pub fn expected_diagnostics(corpus: &str) -> usize {
 pub fn expected_lints(corpus: &str) -> usize {
     match corpus {
         "stdlib" => STDLIB_EXPECTED_LINTS,
+        "generated_1k" => GENERATED_1K_EXPECTED_LINTS,
         other => panic!("unknown corpus {other}"),
     }
 }
@@ -255,11 +258,13 @@ pub fn bodies_all(db: &dyn db::WorkspaceDataBase, files: &[File]) {
     }
 }
 
-/// Full HIR diagnostics for the whole workspace; returns the total count.
+/// Full HIR diagnostics for the whole workspace, the frames of recursive
+/// calls included, as `rk check` finds them; returns the total count.
 pub fn check_all(db: &dyn db::WorkspaceDataBase, files: &[File]) -> usize {
+    let graph = hir::hir_ty::calls::CallGraph::of_files(db, files.iter().copied());
     files
         .iter()
-        .map(|file| diagnostics_for_file(db, *file).len())
+        .map(|file| hir::check::check_file(db, &graph, *file).len())
         .sum()
 }
 
@@ -281,10 +286,12 @@ pub fn lint_all(
     files: &[File],
     config: &db::config_file::LinterConfig,
 ) -> usize {
+    let graph = hir::hir_ty::calls::CallGraph::of_files(db, files.iter().copied());
+    let pass = linter::Pass::new(db, config, &graph);
     let mut total = 0;
     for file in files {
         let mut lints = Vec::new();
-        linter::lint_file(db, *file, config, &mut lints);
+        linter::lint_file(db, *file, config, &pass, &mut lints);
         total += lints.len();
     }
     total
@@ -334,6 +341,36 @@ impl std::fmt::Display for Edit {
     }
 }
 
+/// The edits benchmarked on the generated workspace, in its first file,
+/// whose FUNCTIONs and blocks 23 of the 39 other files use.
+pub static GENERATED_EDITS: &[Edit] = &[
+    // A statement in a leaf FUNCTION changes: its callers in other files
+    // must keep what they inferred.
+    Edit {
+        name: "body_edit",
+        file: "generated/f0000.st",
+        needle: "y := x * 2;",
+        replacement: "y := x * 9;",
+    },
+    // A FUNCTION appears: the file's name map changes, and every lookup
+    // that probed it is asked again.
+    Edit {
+        name: "add_pou",
+        file: "generated/f0000.st",
+        needle: "END_PROGRAM\n",
+        replacement: "END_PROGRAM\n\nFUNCTION BenchProbe : INT\n    BenchProbe := 1;\nEND_FUNCTION\n",
+    },
+];
+
+/// The edits a corpus is benchmarked with.
+pub fn edits_of(corpus: &str) -> &'static [Edit] {
+    match corpus {
+        "stdlib" => EDITS,
+        "generated_1k" => GENERATED_EDITS,
+        _ => &[],
+    }
+}
+
 pub static EDITS: &[Edit] = &[
     // A statement inside R_TRIG's body changes. Signatures are untouched, so
     // dependent files must NOT re-infer — this is the cheap common case.
@@ -372,37 +409,41 @@ pub static EDITS: &[Edit] = &[
 mod tests {
     use super::*;
 
+    /// The corpus checks and lints to its baselines, formats, and takes the
+    /// edits benchmarked on it.
+    fn assert_baselines(name: &str) {
+        let corpus = load_corpus(name);
+        let (db, files) = setup_db(&corpus);
+        assert_eq!(
+            check_all(&db, &files),
+            expected_diagnostics(name),
+            "HIR diagnostic baseline drifted for corpus `{name}` — update the constant"
+        );
+        assert_eq!(
+            lint_all(&db, &files, &all_rules_config()),
+            expected_lints(name),
+            "lint baseline drifted for corpus `{name}` — update the constant"
+        );
+        for file in &files {
+            formatter::format(&db, *file).expect("corpus file must format");
+        }
+        // Every edit scenario's needle, checked HERE and not only under the
+        // benchmark runner: `apply` asserts the needle matches exactly
+        // once, so corpus drift silently changes what the incremental
+        // benchmark measures, and nothing but a benchmark run says so.
+        for edit in edits_of(name) {
+            edit.apply(&corpus);
+        }
+        let scopes: usize = files.iter().map(|f| all_pou_scopes(&db, *f).len()).sum();
+        assert!(
+            scopes > 100,
+            "stage helpers see only {scopes} POU scopes in `{name}` — namespace recursion broken?"
+        );
+    }
+
     #[test]
     fn corpus_baselines() {
-        for name in ["stdlib"] {
-            let corpus = load_corpus(name);
-            let (db, files) = setup_db(&corpus);
-            assert_eq!(
-                check_all(&db, &files),
-                expected_diagnostics(name),
-                "HIR diagnostic baseline drifted for corpus `{name}` — update the constant"
-            );
-            assert_eq!(
-                lint_all(&db, &files, &all_rules_config()),
-                expected_lints(name),
-                "lint baseline drifted for corpus `{name}` — update the constant"
-            );
-            for file in &files {
-                formatter::format(&db, *file).expect("corpus file must format");
-            }
-            // Every edit scenario's needle, checked HERE and not only under the
-            // benchmark runner: `apply` asserts the needle matches exactly
-            // once, so corpus drift silently changes what the incremental
-            // benchmark measures, and nothing but a benchmark run says so.
-            for edit in EDITS {
-                edit.apply(&corpus);
-            }
-            let scopes: usize = files.iter().map(|f| all_pou_scopes(&db, *f).len()).sum();
-            assert!(
-                scopes > 100,
-                "stage helpers see only {scopes} POU scopes in `{name}` — namespace recursion broken?"
-            );
-        }
+        assert_baselines("stdlib");
 
         // The codegen benchmarks require the stdlib to lower end-to-end.
         let corpus = stdlib_corpus();
@@ -415,6 +456,13 @@ mod tests {
             .expect("stdlib must lower to MIR");
         let wasm = wasm_codegen::generate_wasm(&db, &module).finish();
         assert!(!wasm.is_empty());
+    }
+
+    /// A test of its own, so that it runs beside the standard library's: a
+    /// debug build takes about 25 s to check the generated workspace.
+    #[test]
+    fn generated_baselines() {
+        assert_baselines("generated_1k");
     }
 
     #[test]

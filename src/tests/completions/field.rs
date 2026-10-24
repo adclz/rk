@@ -310,10 +310,7 @@ END_PROGRAM
 END_CLASS
 "#
 )]
-pub fn a_trailing_dot_completes_the_receiver_in_every_body(
-    with_db: RootDatabase,
-    #[case] body: &str,
-) {
+pub fn a_trailing_dot_completes_the_receiver_in_every_body(#[case] body: &str) {
     const HEAD: &str = r#"TYPE Engine : STRUCT
     oil : REAL;
 END_STRUCT
@@ -336,7 +333,8 @@ END_NAMESPACE
 
     for (probe, expected) in [("s.", "oil"), ("mot.", "rpm"), ("Std.", "Maths")] {
         let source = format!("{HEAD}{}", body.replace("{probe}", probe));
-        let mut db = with_db.clone();
+        // A database of its own for each probe: a clone shares the files.
+        let mut db = with_db();
         let file = add_source(&mut db, &source);
 
         // The cursor sits right after the dot.

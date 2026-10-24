@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use auto_lsp::{core::errors::ParseErrorAccumulator, default::db::file::File};
+use auto_lsp::default::db::file::File;
 use db::{WorkspaceDataBase, workspace::Workspace};
 use ide_diagnostic::IdeDiagnostic;
 
@@ -17,7 +17,9 @@ use crate::{
         errors::{ToIdeDiagnostic, e00_syntax::SyntaxError},
     },
     hir_def::semantic_index::semantic_index,
-    hir_ty::{config::infer_config_result, head::init_inference::infer_initialization},
+    hir_ty::{
+        calls::CallGraph, config::infer_config_result, head::init_inference::infer_initialization,
+    },
 };
 
 use crate::check::errors::e14_config::ConfigError;
@@ -50,11 +52,10 @@ pub fn diagnostics_for_file(db: &dyn WorkspaceDataBase, file: File) -> Arc<Vec<I
     // tree-sitter's errors, the nodes the builder had no place for, then why
     // no AST was built at all: the order auto-lsp accumulated them in.
     let parsed = db::syntax::parse(db, file);
-    let unbuilt = db::syntax::parse::accumulated::<ParseErrorAccumulator>(db, file);
     let lexer_errors: Vec<IdeDiagnostic> = parsed
         .syntax_errors
         .iter()
-        .chain(unbuilt.iter().map(|e| &e.0))
+        .chain(db::syntax::unbuilt_nodes(db, file))
         .chain(&parsed.failure)
         .map(|e| SyntaxError::from_parse_error(db, file, e).to_diagnostic(db, file))
         .chain(parsed.unknown_pragmas.iter().map(|pragma| {
@@ -77,6 +78,57 @@ pub fn diagnostics_for_file(db: &dyn WorkspaceDataBase, file: File) -> Arc<Vec<I
     all_diagnostics.sort_by_key(|d| (d.diagnostic.range.start, d.diagnostic.range.end));
 
     Arc::new(all_diagnostics)
+}
+
+/// Every diagnostic of `file`: what [`diagnostics_for_file`] finds, and the
+/// frames of the recursive calls the file decides, in the order of the
+/// source. `graph` is one the file's roots reach
+/// ([`CallGraph::of_files`]).
+pub fn check_file<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    graph: &CallGraph<'db>,
+    file: File,
+) -> Vec<IdeDiagnostic> {
+    let mut all = diagnostics_for_file(db, file).as_ref().clone();
+    all.extend(frame_diagnostics(db, graph, file));
+    all.sort_by_key(|d| (d.diagnostic.range.start, d.diagnostic.range.end));
+    all
+}
+
+/// The frames of the recursive calls `file` decides: E1430 for one larger
+/// than the stack, E0322 for one past what a module addresses. Which bodies
+/// may call themselves is the call graph's, which crosses files, so these
+/// are no part of [`diagnostics_for_file`]: a pass builds the graph once
+/// and asks it for each file.
+pub fn frame_diagnostics<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    graph: &CallGraph<'db>,
+    file: File,
+) -> Vec<IdeDiagnostic> {
+    let index = semantic_index(db, file);
+    let mut errors = Vec::new();
+    let pous = index.global_pous.iter().copied().chain(
+        index
+            .namespaces
+            .iter()
+            .flat_map(|ns| ns.pous(db).iter().copied()),
+    );
+    for pou in pous {
+        let scope = pou.get_scope_id(db);
+        check_frames(db, graph, scope, &mut errors);
+        if let Some(methods) = scope.method_declarations(db) {
+            for method in methods {
+                check_frames(db, graph, method.get_scope_id(db), &mut errors);
+            }
+        }
+    }
+    for program in index.programs.iter() {
+        check_frames(db, graph, program.get_scope_id(db), &mut errors);
+    }
+    for config in index.configs.iter() {
+        check_frames(db, graph, config.get_scope_id(db), &mut errors);
+    }
+    errors
 }
 
 impl<'db> SemanticIndex<'db> {
@@ -120,7 +172,6 @@ impl<'db> ScopeId<'db> {
                 errors.push(err.clone());
             });
         check_storage(db, *self, errors);
-        check_frames(db, *self, errors);
 
         infer_body(db, *self).errors.iter().for_each(|err| {
             errors.push(err.clone());

@@ -165,7 +165,7 @@ impl<'db> From<(&dyn WorkspaceDataBase, &Vec<SpanIdent<'db>>, ScopeId<'db>)>
 }
 
 /// Interned namespace path
-#[salsa::interned(debug, no_lifetime)]
+#[salsa::interned(debug, no_lifetime, revisions = crate::hir_def::interned::REVISIONS)]
 pub struct NamespacePath {
     #[returns(ref)]
     pub fragments: Vec<Ident>,

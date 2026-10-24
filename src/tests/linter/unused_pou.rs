@@ -80,11 +80,7 @@ END_CONFIGURATION
         |          ^^^^|^^^^
         |              `------ 'Forgotten' is never used
         |
-        | Help: remove 'Forgotten'
-        |
-        | Note 1: no program, {export} FUNCTION or {test} uses it, directly or through others
-        |
-        | Note 2: lint rule: unused-pou
+        | Note: lint rule: unused-pou
     ----'
     [L0216] Info: unused POU
         ,-[ file:///test0.st:38:16 ]
@@ -93,11 +89,7 @@ END_CONFIGURATION
         |                ^^|^^
         |                  `---- 'Spare' is never used
         |
-        | Help: remove 'Spare'
-        |
-        | Note 1: no program, {export} FUNCTION or {test} uses it, directly or through others
-        |
-        | Note 2: lint rule: unused-pou
+        | Note: lint rule: unused-pou
     ----'
     [L0216] Info: unused POU
         ,-[ file:///test0.st:51:9 ]
@@ -106,11 +98,7 @@ END_CONFIGURATION
         |         ^^|^^
         |           `---- 'Unrun' is never used
         |
-        | Help: remove 'Unrun'
-        |
-        | Note 1: no program, {export} FUNCTION or {test} uses it, directly or through others
-        |
-        | Note 2: lint rule: unused-pou
+        | Note: lint rule: unused-pou
     ----'
     ");
 }

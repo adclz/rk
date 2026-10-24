@@ -9,7 +9,6 @@
 //! identifiers are case-insensitive, so accepting `CLASS` wrote a class the
 //! compiler then refused.
 
-use db::RootDatabase;
 use ide_proto::handlers::completions_utils::static_snippets as snip;
 use rstest::rstest;
 
@@ -43,7 +42,7 @@ fn expand(snippet: &str) -> String {
 /// offered. A syntax error means the item writes something the compiler
 /// cannot read.
 #[rstest]
-fn a_snippet_writes_what_the_compiler_reads(with_db: RootDatabase) {
+fn a_snippet_writes_what_the_compiler_reads() {
     let at_file_level = |item: String| item;
     let in_a_pou = |item: String| format!("FUNCTION_BLOCK holder\n{item}\nEND_FUNCTION_BLOCK\n");
     let in_a_body = |item: String| format!("FUNCTION holder : INT\n{item}\nEND_FUNCTION\n");
@@ -102,7 +101,8 @@ fn a_snippet_writes_what_the_compiler_reads(with_db: RootDatabase) {
     ];
 
     for (label, source) in cases {
-        let mut db = with_db.clone();
+        // A database of its own for each case: a clone shares the files.
+        let mut db = with_db();
         let rendered = test_diagnostics(&mut db, &[&source]);
         let syntax: Vec<&str> = rendered
             .lines()

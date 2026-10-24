@@ -10,8 +10,8 @@ pub mod strings;
 pub mod time;
 pub mod tod;
 
-use auto_lsp::default::db::BaseDatabase;
 use db::RootDatabase;
+use db::WorkspaceDataBase;
 use hir::hir_def::expressions::expression::{Elementary, ExprKind, InitExprKind, PrimaryExpr};
 use hir::hir_def::interned::identifier::Ident;
 use hir::hir_def::pous::pou::Pou;

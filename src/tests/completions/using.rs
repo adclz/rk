@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Clauzel Adrien
 // SPDX-License-Identifier: AGPL-3.0-only
 
-use auto_lsp::default::db::BaseDatabase;
 use db::RootDatabase;
+use db::WorkspaceDataBase;
 use hir::hir_def::semantic_index::semantic_index;
 use ide_proto::handlers::completions::complete;
 use ide_proto::handlers::{CompletionHandler, CompletionRequest};
@@ -239,7 +239,7 @@ USING ns;
     add_sources(&mut with_db, &[ns_source, using_source]);
     // Cursor on the blank line after "USING ns;" in the second file
     let offset = using_source.find("USING ns;").unwrap() + "USING ns;\n".len() + 1;
-    let files: Vec<_> = with_db.get_files().iter().map(|f| *f).collect();
+    let files: Vec<_> = with_db.get_files().to_vec();
     let file = files[1]; // second file
     let result = completion_descendant_at(&with_db, file, offset);
 

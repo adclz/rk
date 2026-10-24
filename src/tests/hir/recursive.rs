@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Clauzel Adrien
 // SPDX-License-Identifier: AGPL-3.0-only
 
-use crate::tests::utils::{test_diagnostics, with_db};
+use crate::tests::utils::{add_library_sources, test_diagnostics, with_db};
 use db::RootDatabase;
 use insta::assert_snapshot;
 use rstest::rstest;
@@ -511,5 +511,117 @@ END_FUNCTION_BLOCK
        |         ^^|^^
        |           `---- 'Inner' references itself here
     ---'
+    ");
+}
+
+/// A type that contains itself is reported once, in its own file: a block
+/// of another file that holds it does not report it again, at the other
+/// file's lines.
+#[rstest]
+fn a_self_containing_type_is_reported_in_its_own_file_only(mut with_db: RootDatabase) {
+    let holder = r#"
+FUNCTION_BLOCK holder
+VAR
+    inner : fb;
+END_VAR
+END_FUNCTION_BLOCK
+"#;
+    let fb = r#"
+FUNCTION_BLOCK fb
+VAR
+    invalid : fb;
+END_VAR
+END_FUNCTION_BLOCK
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[holder, fb]), @r"
+    [E1301] Error: type contains itself
+       ,-[ file:///test1.st:2:16 ]
+       |
+     2 | FUNCTION_BLOCK fb
+       |                ^|
+       |                 `-- type 'fb' contains itself
+       |
+     4 |     invalid : fb;
+       |               ^|
+       |                `-- 'fb' references itself here
+    ---'
+    ");
+}
+
+/// A library's type that contains itself is still reported where a block of
+/// the workspace holds it: nothing shows the library's own report, and the
+/// workspace would check clean.
+#[rstest]
+fn a_library_s_self_containing_type_is_reported_where_it_is_held(mut with_db: RootDatabase) {
+    add_library_sources(
+        &mut with_db,
+        &["FUNCTION_BLOCK fb\nVAR\n    invalid : fb;\nEND_VAR\nEND_FUNCTION_BLOCK\n"],
+    );
+    let holder = "FUNCTION_BLOCK holder\nVAR\n    inner : Std.fb;\nEND_VAR\nEND_FUNCTION_BLOCK\n";
+    let report = test_diagnostics(&mut with_db, &[holder]);
+    assert!(report.contains("[E1301]"), "{report}");
+}
+
+/// Two blocks holding each other have no layout, and each lists its own
+/// located members: a layout, and a list of them, are queries that reach
+/// themselves through the other block, which salsa settles with a value for
+/// every POU on the cycle. The layout is none, as neither block has a
+/// size; the list is the block's own members, so a VAR_CONFIG locating one
+/// of them still finds it.
+#[rstest]
+fn blocks_holding_each_other_keep_their_own_located_members(mut with_db: RootDatabase) {
+    use hir::HasName;
+    use hir::hir_ty::head::instances::partly_located_members;
+    use hir::hir_ty::layout::instance_layout;
+    let source = r#"
+FUNCTION_BLOCK a
+VAR
+    bb : b;
+    level AT %I* : INT;
+END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK b
+VAR
+    aa : a;
+END_VAR
+END_FUNCTION_BLOCK
+"#;
+    let file = crate::tests::utils::add_source(&mut with_db, source);
+    let located = |name: &str| -> Vec<Vec<String>> {
+        let pou = crate::tests::utils::find_pou_with_name(&with_db, file, name).unwrap();
+        assert!(
+            instance_layout(&with_db, pou).is_none(),
+            "{name} has a layout: {:?}",
+            instance_layout(&with_db, pou)
+        );
+        partly_located_members(&with_db, pou)
+            .iter()
+            .map(|path| {
+                path.iter()
+                    .map(|var| var.get_name_with_case(&with_db).text(&with_db).to_string())
+                    .collect()
+            })
+            .collect()
+    };
+    assert_eq!(located("a"), [["level"]]);
+    assert_eq!(located("b"), [] as [[&str; 0]; 0]);
+    assert_snapshot!(test_diagnostics(&mut with_db, &[]), @r"
+    [E1302] Error: types contain each other
+        ,-[ file:///test0.st:2:16 ]
+        |
+      2 | FUNCTION_BLOCK a
+        |                |
+        |                `-- type 'a' is recursive
+        |
+     11 |     aa : a;
+        |          |
+        |          `-- the cycle passes here
+        |
+        | Note: cycle goes
+        |       -> a
+        |       -> b
+        |       ... and back to a
+    ----'
     ");
 }

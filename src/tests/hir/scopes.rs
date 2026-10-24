@@ -1,10 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Clauzel Adrien
 // SPDX-License-Identifier: AGPL-3.0-only
 
-use auto_lsp::{
-    default::db::{BaseDatabase, FileManager, file::File},
-    lsp_types,
-};
+use auto_lsp::{default::db::file::File, lsp_types};
 
 use hir::{
     HasName, HirNodeInfo,

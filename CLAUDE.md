@@ -188,7 +188,7 @@ cli (binary `rk`) — check, compile, test, fmt, fetch, explain, env
 | `wasm_codegen`            | `crates/wasm_codegen`   | Emits the core WASM module from MIR, with the builtin bundle and the debug/test custom sections.                        |
 | `debug_format`            | `crates/debug_format`   | The custom-section formats (debug symbols, lines, schedule, retain map, test manifest) and their decoder.               |
 | `linter`                  | `crates/linter`         | Lint rules (L-codes) over HIR.                                                                                          |
-| `benchmark`               | `crates/benchmark`      | Divan benchmarks over the stdlib corpus, with diagnostic baselines.                                                     |
+| `benchmark`               | `crates/benchmark`      | Divan benchmarks over the stdlib corpus and a generated workspace of 1,000 POUs, with diagnostic baselines.             |
 | `doc`                     | `crates/doc`            | Site generator's front half: verifies `skills/`, `crates/doc/examples/`, `docs/` and `site/pages/` against the compiler, pre-renders their code, and writes what Zola (`site/`) renders. |
 | `fuzz`                    | `crates/fuzz`           | Fuzz targets (compiler, formatter, incremental edits, generated programs' values, LSP requests), their oracles, `repro`. |
 | `vscode-lsp-server`       | `vscode/server`         | VSCode extension LSP server binary (thin wrapper over `server` crate).                                                  |

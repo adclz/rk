@@ -8,7 +8,6 @@ pub mod diagnostics;
 pub mod duration;
 pub mod error;
 pub mod file_order;
-pub mod reports;
 pub mod spawn;
 pub mod test_host;
 pub mod test_runner;
@@ -36,7 +35,20 @@ use error::CliResult;
 /// ```
 pub fn main() -> std::process::ExitCode {
     restore_sigpipe();
-    exit_code(run_args(std::env::args_os()))
+    // On a thread with the stack the queries need: the main thread's is the
+    // system's, 8 MiB on Linux.
+    let args: Vec<std::ffi::OsString> = std::env::args_os().collect();
+    let ran = std::thread::Builder::new()
+        .stack_size(db::STACK_SIZE)
+        .spawn(move || run_args(args))
+        .expect("a thread for the command")
+        .join();
+    match ran {
+        Ok(result) => exit_code(result),
+        // The command panicked: the panic was printed, as on the main
+        // thread, and the process fails as it did.
+        Err(_) => std::process::ExitCode::from(101),
+    }
 }
 
 /// [`main`] on arguments given: the program's name first, as a process
@@ -85,6 +97,11 @@ pub fn run(
     command: Command,
 ) -> CliResult<()> {
     use commands::{check, compile, env, explain, fetch, fmt, test};
+    // The pool the commands check and lint on, with the stack the queries
+    // need; once per process, so a second run keeps the first's.
+    let _ = rayon::ThreadPoolBuilder::new()
+        .stack_size(db::STACK_SIZE)
+        .build_global();
     match command {
         Command::Check { watch } => check::run_check(workspace, watch, verbose, format),
         Command::Env { keys } => env::run_env(workspace, &keys, format),

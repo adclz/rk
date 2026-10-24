@@ -14,7 +14,6 @@
 //! untouched.
 
 use debug_format::VarValue;
-use hir::check::diagnostics_for_file;
 
 use crate::{Finding, session, wasm};
 
@@ -57,7 +56,7 @@ pub fn check(source: &str) -> Result<(), Finding> {
     // The program is well-typed by construction: a refusal is a bug in
     // the checker, or in the generator, and either wants a look.
     if !session::compiles(&db, file) {
-        let errors: Vec<String> = diagnostics_for_file(&db, file)
+        let errors: Vec<String> = session::diagnostics(&db, file)
             .iter()
             .filter(|d| session::is_error(d))
             .map(|d| format!("{:?} {}", d.diagnostic.code, d.diagnostic.message))

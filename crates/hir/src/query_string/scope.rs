@@ -267,10 +267,8 @@ fn search_file_indexes<'db>(
     search_result: &mut SearchResult<'db>,
 ) {
     // Collect per-file symbol indexes for workspace files + single library index
-    let mut indexes: Vec<_> = db
-        .get_files()
-        .iter()
-        .map(|file| file_symbol_index(db, *file))
+    let mut indexes: Vec<_> = crate::hir_ty::index_graphs::workspace_files(db)
+        .map(|file| file_symbol_index(db, file))
         .collect();
     indexes.push(library_symbol_index(db));
 

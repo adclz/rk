@@ -3,9 +3,9 @@
 
 //! FUNCTION_BLOCKs, CLASSes and INTERFACEs, and how they relate, shaped
 //! after ty's classes: each POU's bases are resolved once
-//! ([`explicit_bases`]), its [`ancestry`] is built from its bases' cached
-//! ancestry, and every other question about inheritance is answered from
-//! those results rather than by walking headers again.
+//! ([`explicit_bases`]), its [`ancestry`] is walked up from those, and every
+//! other question about inheritance is answered from those results rather
+//! than by walking headers again.
 
 mod ancestors;
 mod bases;

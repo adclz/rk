@@ -1,9 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Clauzel Adrien
 // SPDX-License-Identifier: AGPL-3.0-only
 
-use std::sync::{Arc, LazyLock};
-
-use auto_lsp::lsp_types::Url;
 use db::WorkspaceDataBase;
 
 use crate::{
@@ -17,22 +14,8 @@ use crate::{
             variable::{DirectVariable, VariableDecl},
         },
         scope::ScopeId,
-        semantic_index::semantic_index,
     },
 };
-
-pub static MAIN_FILE_URL: LazyLock<Arc<Url>> =
-    LazyLock::new(|| Arc::new(Url::parse("file:///main.st").unwrap()));
-
-#[salsa::tracked(returns(as_ref))]
-pub fn get_programs<'db>(db: &'db dyn WorkspaceDataBase) -> Option<Arc<Vec<ProgramDecl<'db>>>> {
-    db.get_file(&MAIN_FILE_URL)
-        .map(|file| {
-            let semantic_index = semantic_index(db, file);
-            Some(semantic_index.programs.clone())
-        })
-        .unwrap_or_default()
-}
 
 #[salsa::tracked(debug)]
 pub struct ProgramDecl<'db> {

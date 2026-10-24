@@ -8,8 +8,7 @@ use crate::hir_def::pous::{interface::Interface, pou::Pou};
 use super::explicit_bases;
 
 /// Where a POU sits in the inheritance graph: what it extends and what it
-/// implements, through all its bases. Built from its bases' own ancestry,
-/// which salsa caches, as ty builds a class's MRO from its bases'.
+/// implements, through all its bases.
 #[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
 pub struct Ancestry<'db> {
     /// The POU, then the FB or CLASS it extends, then that one's base,
@@ -25,18 +24,6 @@ pub struct Ancestry<'db> {
 }
 
 impl<'db> Ancestry<'db> {
-    /// `pou` before its bases are added.
-    fn alone(pou: Pou<'db>) -> Self {
-        Ancestry {
-            chain: vec![pou],
-            interfaces: match pou {
-                Pou::Interface(iface) => vec![iface],
-                _ => Vec::new(),
-            },
-            cyclic: false,
-        }
-    }
-
     /// The FB or CLASS `SUPER` reaches: the nearest base.
     pub fn base(&self) -> Option<Pou<'db>> {
         self.chain.get(1).copied()
@@ -51,51 +38,57 @@ impl<'db> Ancestry<'db> {
     pub fn implements(&self, iface: Interface<'db>) -> bool {
         self.interfaces.contains(&iface)
     }
-
-    fn inherit(&mut self, base: &Ancestry<'db>, chain: bool) {
-        self.cyclic |= base.cyclic;
-        if chain {
-            for pou in &base.chain {
-                if self.chain.contains(pou) {
-                    self.cyclic = true;
-                    break;
-                }
-                self.chain.push(*pou);
-            }
-        }
-        for iface in &base.interfaces {
-            if !self.interfaces.contains(iface) {
-                self.interfaces.push(*iface);
-            }
-        }
-    }
 }
 
-/// The ancestry of `pou`: its bases' ancestry, merged. A cyclic `EXTENDS` is
-/// a salsa cycle here, which starts from [`cyclic_ancestry`] and settles on
-/// the same result whichever POU it was entered from; a valid program never
-/// forms one.
-#[salsa::tracked(returns(ref), cycle_initial = cyclic_ancestry)]
+/// The ancestry of `pou`, walked up its bases within this one query: every
+/// base is read through [`explicit_bases`], and no ancestry asks another's.
+/// A cyclic `EXTENDS` is then a POU met twice on the way up, cut there,
+/// rather than a salsa cycle: a fixpoint panics when anything under it
+/// accumulated a value, which a file the builder could not read does.
+#[salsa::tracked(returns(ref))]
 pub fn ancestry<'db>(db: &'db dyn WorkspaceDataBase, pou: Pou<'db>) -> Ancestry<'db> {
-    let mut ancestry = Ancestry::alone(pou);
-    let bases = explicit_bases(db, pou);
-    if let Some(base) = bases.extends {
-        ancestry.inherit(self::ancestry(db, base), true);
-    }
-    for iface in &bases.interfaces {
-        ancestry.inherit(self::ancestry(db, Pou::Interface(*iface)), false);
-    }
+    let mut ancestry = Ancestry {
+        chain: Vec::new(),
+        interfaces: Vec::new(),
+        cyclic: false,
+    };
+    walk(db, pou, true, &mut Vec::new(), &mut ancestry);
     ancestry
 }
 
-/// Where a cycle starts: the POU alone, marked cyclic.
-fn cyclic_ancestry<'db>(
-    _db: &'db dyn WorkspaceDataBase,
-    _id: salsa::Id,
+/// Adds `pou` and what it inherits to `ancestry`, in the order the bases are
+/// written: the POU, its base and that one's bases, then the INTERFACEs it
+/// implements or extends. `chain` while on the `EXTENDS` chain of FBs and
+/// CLASSes. `path` is the walk from the POU asked about: meeting a POU on it
+/// again is a cyclic `EXTENDS`, and inside such a cycle the order is the one
+/// of this walk. An INTERFACE met before was walked then.
+fn walk<'db>(
+    db: &'db dyn WorkspaceDataBase,
     pou: Pou<'db>,
-) -> Ancestry<'db> {
-    Ancestry {
-        cyclic: true,
-        ..Ancestry::alone(pou)
+    chain: bool,
+    path: &mut Vec<Pou<'db>>,
+    ancestry: &mut Ancestry<'db>,
+) {
+    if path.contains(&pou) {
+        ancestry.cyclic = true;
+        return;
     }
+    if let Pou::Interface(iface) = pou {
+        if ancestry.interfaces.contains(&iface) {
+            return;
+        }
+        ancestry.interfaces.push(iface);
+    }
+    if chain {
+        ancestry.chain.push(pou);
+    }
+    path.push(pou);
+    let bases = explicit_bases(db, pou);
+    if let Some(base) = bases.extends {
+        walk(db, base, chain, path, ancestry);
+    }
+    for iface in &bases.interfaces {
+        walk(db, Pou::Interface(*iface), false, path, ancestry);
+    }
+    path.pop();
 }
