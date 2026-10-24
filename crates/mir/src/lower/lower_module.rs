@@ -210,6 +210,8 @@ fn lower_module_from_pous<'db>(
     let type_indices = FxHashMap::default();
     let mut instance_types = Vec::new();
     let mut memory_layout = MirMemoryLayout::new();
+    // The instances lowered here are kept for the pass, until it ends.
+    let _pass = super::lower_type::LoweringPass::begin();
     // The bodies lowered here, and what they call: which may call itself
     // decides which have a frame.
     let graph = hir::hir_ty::calls::CallGraph::new(
