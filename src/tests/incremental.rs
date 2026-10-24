@@ -302,3 +302,77 @@ fn a_new_name_leaves_the_names_of_the_other_files_alone() {
     unbuilt_nodes(b.st)
     ");
 }
+
+/// b.st's block holds a.st's. An edit in the held block's body leaves the
+/// holder's file alone: a layout reads the members of the blocks it holds,
+/// through their own layout queries, and nothing of their bodies. The
+/// check of a type that contains itself read where each member of the held
+/// block was written, a position that changes with every edit of its file,
+/// and b.st was checked again for each.
+#[test]
+fn a_body_edit_in_a_held_block_keeps_the_holder_s_layout() {
+    const HELD: &str = "FUNCTION_BLOCK FA\nVAR x : INT; END_VAR\n    x := 1;\nEND_FUNCTION_BLOCK\n";
+    const HOLDER: &str = "FUNCTION_BLOCK FB\nVAR inner : FA; END_VAR\nEND_FUNCTION_BLOCK\n";
+    let mut recorder = Recorder::new();
+    let a = recorder.add("a.st", HELD);
+    recorder.add("b.st", HOLDER);
+    recorder.check();
+    recorder.edit(a, &HELD.replace("x := 1;", "x := 2;"));
+    assert_snapshot!(recorder.executed_by_check(), @r"
+    Integer::as_i16_(_)
+    diagnostics_for_file(a.st)
+    enclosing_namespaces(FA)
+    file_global_pous(a.st)
+    file_namespaces(a.st)
+    file_pou_map(a.st)
+    file_program_map(a.st)
+    get_scope(FA)
+    get_scope(_)
+    infer_body(FA)
+    library_roots(_)
+    parse(a.st)
+    semantic_index(a.st)
+    unbuilt_nodes(a.st)
+    unbuilt_nodes(b.st)
+    ");
+}
+
+/// A member added to the held block changes its size: the holder is laid
+/// out again, and only its layout, not its inference.
+#[test]
+fn a_member_added_to_a_held_block_lays_out_the_holder_again() {
+    const HELD: &str = "FUNCTION_BLOCK FA\nVAR x : INT; END_VAR\n    x := 1;\nEND_FUNCTION_BLOCK\n";
+    const HOLDER: &str = "FUNCTION_BLOCK FB\nVAR inner : FA; END_VAR\nEND_FUNCTION_BLOCK\n";
+    let mut recorder = Recorder::new();
+    let a = recorder.add("a.st", HELD);
+    recorder.add("b.st", HOLDER);
+    recorder.check();
+    recorder.edit(a, &HELD.replace("x : INT;", "x : INT; y : INT;"));
+    assert_snapshot!(recorder.executed_by_check(), @r"
+    Ident::folded_(_)
+    PathExpr < 'db >::flatten_(_)
+    ScopeId < 'db >::def_map_(FA)
+    class_members(FA)
+    diagnostics_for_file(a.st)
+    diagnostics_for_file(b.st)
+    enclosing_namespaces(FA)
+    file_global_pous(a.st)
+    file_namespaces(a.st)
+    file_pou_map(a.st)
+    file_program_map(a.st)
+    get_scope(FA)
+    get_scope(_)
+    infer_body(FA)
+    infer_initialization(FA)
+    infer_signature(FA)
+    instance_layout(FA)
+    instance_layout(FB)
+    instance_members(FA)
+    library_roots(_)
+    parse(a.st)
+    partly_located_members(FA)
+    semantic_index(a.st)
+    unbuilt_nodes(a.st)
+    unbuilt_nodes(b.st)
+    ");
+}
