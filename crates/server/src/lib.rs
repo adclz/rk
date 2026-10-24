@@ -149,6 +149,12 @@ pub fn boot() -> Result<(), Box<dyn Error + Send + Sync>> {
 /// Serves the client at the other end of `connection` until it shuts the
 /// server down: over stdio from [`boot`], in memory in the tests.
 fn serve(connection: Connection) -> Result<(), Box<dyn Error + Send + Sync>> {
+    // The pool the workspace pull checks and lints on, with the stack the
+    // queries need; once per process, so the tests' second server keeps the
+    // first's.
+    let _ = rayon::ThreadPoolBuilder::new()
+        .stack_size(db::STACK_SIZE)
+        .build_global();
     let db = RootDatabase::default();
     let mut request_registry = RequestRegistry::<RootDatabase>::default();
     let mut notification_registry = NotificationRegistry::<RootDatabase>::default();

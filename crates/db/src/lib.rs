@@ -9,6 +9,15 @@ use salsa::{Database, Durability, Event, Setter};
 
 pub mod cache;
 pub mod config_file;
+
+/// The stack of a thread that runs the compiler's queries. A query nests
+/// one deeper for each aggregate inside another, each call that leads to
+/// another, each type cycle check one level down: a chain of 1,200 blocks
+/// each holding the next overflowed a thread's 8 MiB, and the 2 MiB of a
+/// pool's, in a debug build. The CLI runs on a thread of this size, and
+/// both the CLI's and the server's pools make theirs so. Reserved, not
+/// used: a thread touches only the pages it needs.
+pub const STACK_SIZE: usize = 64 << 20;
 pub mod dependencies;
 pub mod loader;
 pub mod stdlib;
