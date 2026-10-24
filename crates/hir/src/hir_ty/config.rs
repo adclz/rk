@@ -1784,14 +1784,12 @@ fn check_partly_located_coverage<'db>(
             // it is declared) and a VAR_EXTERNAL is a global's.
             crate::hir_ty::head::instances::collect_partly_located(
                 db,
-                &mut program
+                program
                     .variables(db)
                     .iter()
                     .copied()
                     .filter(|v| !v.is_temp(db) && !v.is_external(db)),
-                &mut Vec::new(),
                 &mut paths,
-                &mut Vec::new(),
             );
             for path in paths {
                 let located = all.iter().any(|e| {

@@ -87,13 +87,13 @@ pub fn string(capacity: u64) -> Layout {
 /// bounds each call gives) or one that does not resolve, which is reported
 /// where it is written.
 pub fn of_spec<'db>(db: &'db dyn WorkspaceDataBase, spec: Spec<'db>) -> Option<Layout> {
-    spec_layout(db, spec, &mut Vec::new())
+    spec_layout(db, spec)
 }
 
 /// What a value of `ty` takes. A STRING the type no longer says the length
 /// of is at the default capacity: prefer [`of_spec`] for a declaration.
 pub fn of_type<'db>(db: &'db dyn WorkspaceDataBase, ty: Type<'db>) -> Option<Layout> {
-    type_layout(db, ty, &mut Vec::new())
+    type_layout(db, ty)
 }
 
 /// The elements of a STRUCT, in declaration order.
@@ -104,12 +104,34 @@ pub struct StructLayout {
     pub whole: Layout,
 }
 
-#[salsa::tracked(returns(ref))]
+/// A STRUCT's layout, and each element's offset in it. Each aggregate's
+/// layout is a query of its own, so one laid out inside another is laid
+/// out once: laid out again under each aggregate that held it, a chain of
+/// blocks each holding the next cost the square of its length. An
+/// aggregate that contains itself, which E1301 reports, is a cycle of these
+/// queries, and every aggregate on the cycle has no layout.
+#[salsa::tracked(returns(ref), cycle_result = no_struct_layout)]
 pub fn struct_layout<'db>(
     db: &'db dyn WorkspaceDataBase,
     strukt: Struct<'db>,
 ) -> Option<StructLayout> {
-    struct_parts(db, strukt, &mut Vec::new())
+    let mut cursor = Cursor::default();
+    let mut offsets = Vec::new();
+    for element in strukt.elements(db) {
+        offsets.push(cursor.place(spec_layout(db, element.spec(db))?));
+    }
+    Some(StructLayout {
+        offsets,
+        whole: cursor.close(),
+    })
+}
+
+fn no_struct_layout<'db>(
+    _db: &'db dyn WorkspaceDataBase,
+    _id: salsa::Id,
+    _strukt: Struct<'db>,
+) -> Option<StructLayout> {
+    None
 }
 
 /// An array: its element, repeated over its dimensions, row by row.
@@ -146,9 +168,38 @@ impl ArrayLayout {
     }
 }
 
-#[salsa::tracked(returns(ref))]
+/// An array's layout: see [`struct_layout`] for why it is a query, and
+/// what a cycle of them is.
+#[salsa::tracked(returns(ref), cycle_result = no_array_layout)]
 pub fn array_layout<'db>(db: &'db dyn WorkspaceDataBase, array: Array<'db>) -> Option<ArrayLayout> {
-    array_parts(db, array, &mut Vec::new())
+    let element = spec_layout(db, array.of_type(db))?;
+    let mut dimensions = Vec::new();
+    let mut count = 1u64;
+    // The dimensions inference folded; one that does not fold is E0501
+    // or E0502.
+    for (lower, upper) in crate::hir_ty::infer::const_eval::array_dimensions(db, array) {
+        let (lower, upper) = (lower?, upper?);
+        dimensions.push((lower, upper));
+        let length = u64::try_from(i128::from(upper) - i128::from(lower) + 1).unwrap_or(0);
+        count = count.saturating_mul(length);
+    }
+    Some(ArrayLayout {
+        element,
+        dimensions,
+        count,
+        whole: Layout {
+            size: element.size.saturating_mul(count),
+            align: element.align,
+        },
+    })
+}
+
+fn no_array_layout<'db>(
+    _db: &'db dyn WorkspaceDataBase,
+    _id: salsa::Id,
+    _array: Array<'db>,
+) -> Option<ArrayLayout> {
+    None
 }
 
 /// The parts of an instance: an FB's, a CLASS's or a PROGRAM's.
@@ -186,13 +237,23 @@ pub enum Part {
 }
 
 /// An FB's or a CLASS's instance: its own members after its bases', so a
-/// derived instance is laid out as its base where they overlap.
-#[salsa::tracked(returns(ref))]
+/// derived instance is laid out as its base where they overlap. See
+/// [`struct_layout`] for why it is a query, and what a cycle of them is.
+#[salsa::tracked(returns(ref), cycle_result = no_instance_layout)]
 pub fn instance_layout<'db>(
     db: &'db dyn WorkspaceDataBase,
     pou: Pou<'db>,
 ) -> Option<InstanceLayout<'db>> {
-    instance_parts(db, pou, &mut Vec::new())
+    let members = crate::hir_ty::oop::instance_members(db, pou);
+    fields_of(db, members.iter().map(|member| member.var), Binding::Called)
+}
+
+fn no_instance_layout<'db>(
+    _db: &'db dyn WorkspaceDataBase,
+    _id: salsa::Id,
+    _pou: Pou<'db>,
+) -> Option<InstanceLayout<'db>> {
+    None
 }
 
 /// A PROGRAM's instance: its variables but the ones that live elsewhere (a
@@ -207,7 +268,7 @@ pub fn program_layout<'db>(
         .variables(db)
         .iter()
         .filter(|var| !var.is_external(db) && !var.is_temp(db) && !var.is_program_located(db));
-    fields_of(db, vars.copied(), Binding::Scheduled, &mut Vec::new())
+    fields_of(db, vars.copied(), Binding::Scheduled)
 }
 
 /// The variables whose address `scope` takes, in its statements and in its
@@ -258,20 +319,7 @@ pub fn address_taken<'db>(db: &'db dyn WorkspaceDataBase, scope: ScopeId<'db>) -
     result
 }
 
-/// An aggregate being laid out, innermost last: one met again contains
-/// itself, which E1302 refuses, and has no layout.
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Open<'db> {
-    Struct(Struct<'db>),
-    Array(Array<'db>),
-    Instance(Pou<'db>),
-}
-
-fn spec_layout<'db>(
-    db: &'db dyn WorkspaceDataBase,
-    spec: Spec<'db>,
-    open: &mut Vec<Open<'db>>,
-) -> Option<Layout> {
+fn spec_layout<'db>(db: &'db dyn WorkspaceDataBase, spec: Spec<'db>) -> Option<Layout> {
     // A STRING's length is its declaration's, which its type forgets.
     if matches!(
         spec.infer(db).normalize(db),
@@ -283,18 +331,14 @@ fn spec_layout<'db>(
         return Some(string(capacity));
     }
     match spec.kind(db) {
-        SpecKind::Struct(strukt) => struct_parts(db, *strukt, open).map(|s| s.whole),
-        SpecKind::Array(array) => array_parts(db, *array, open).map(|a| a.whole),
+        SpecKind::Struct(strukt) => struct_layout(db, *strukt).as_ref().map(|s| s.whole),
+        SpecKind::Array(array) => array_layout(db, *array).as_ref().map(|a| a.whole),
         SpecKind::ArrayConformand(_) => None,
-        _ => type_layout(db, spec.infer(db), open),
+        _ => type_layout(db, spec.infer(db)),
     }
 }
 
-fn type_layout<'db>(
-    db: &'db dyn WorkspaceDataBase,
-    ty: Type<'db>,
-    open: &mut Vec<Open<'db>>,
-) -> Option<Layout> {
+fn type_layout<'db>(db: &'db dyn WorkspaceDataBase, ty: Type<'db>) -> Option<Layout> {
     if let Type::DataType(dt) = ty {
         // A name that is its own alias, `TYPE A : B; B : A;`, has no
         // identity and no layout. `normalize` answers `Never` for it,
@@ -305,102 +349,26 @@ fn type_layout<'db>(
             return None;
         }
         // A named type keeps its declaration's STRING length.
-        return spec_layout(db, dt.spec(db), open);
+        return spec_layout(db, dt.spec(db));
     }
     match ty.normalize(db) {
         Type::Elementary(spec) => Some(elementary(spec)),
         Type::RefTo(_) | Type::Null => Some(POINTER),
-        Type::Struct(strukt) => struct_parts(db, strukt, open).map(|s| s.whole),
-        Type::Array(array) => array_parts(db, array, open).map(|a| a.whole),
+        Type::Struct(strukt) => struct_layout(db, strukt).as_ref().map(|s| s.whole),
+        Type::Array(array) => array_layout(db, array).as_ref().map(|a| a.whole),
         Type::Enum(e) => match e.typ(db) {
-            Some(base) => type_layout(db, base.infer(db), open),
+            Some(base) => type_layout(db, base.infer(db)),
             None => Some(elementary(ElementarySpec::DInt)),
         },
-        Type::SubRange(range) => type_layout(db, range._type(db).infer(db), open),
-        Type::FunctionBlock(fb) => {
-            instance_parts(db, Pou::FunctionBlock(fb), open).map(|i| i.whole)
-        }
-        Type::Class(class) => instance_parts(db, Pou::Class(class), open).map(|i| i.whole),
+        Type::SubRange(range) => type_layout(db, range._type(db).infer(db)),
+        Type::FunctionBlock(fb) => instance_layout(db, Pou::FunctionBlock(fb))
+            .as_ref()
+            .map(|i| i.whole),
+        Type::Class(class) => instance_layout(db, Pou::Class(class))
+            .as_ref()
+            .map(|i| i.whole),
         _ => None,
     }
-}
-
-/// Run `lay_out` on `aggregate`, unless it is already being laid out.
-fn enter<'db, T>(
-    open: &mut Vec<Open<'db>>,
-    aggregate: Open<'db>,
-    lay_out: impl FnOnce(&mut Vec<Open<'db>>) -> Option<T>,
-) -> Option<T> {
-    if open.contains(&aggregate) {
-        return None;
-    }
-    open.push(aggregate);
-    let laid_out = lay_out(open);
-    open.pop();
-    laid_out
-}
-
-fn struct_parts<'db>(
-    db: &'db dyn WorkspaceDataBase,
-    strukt: Struct<'db>,
-    open: &mut Vec<Open<'db>>,
-) -> Option<StructLayout> {
-    enter(open, Open::Struct(strukt), |open| {
-        let mut cursor = Cursor::default();
-        let mut offsets = Vec::new();
-        for element in strukt.elements(db) {
-            offsets.push(cursor.place(spec_layout(db, element.spec(db), open)?));
-        }
-        Some(StructLayout {
-            offsets,
-            whole: cursor.close(),
-        })
-    })
-}
-
-fn array_parts<'db>(
-    db: &'db dyn WorkspaceDataBase,
-    array: Array<'db>,
-    open: &mut Vec<Open<'db>>,
-) -> Option<ArrayLayout> {
-    enter(open, Open::Array(array), |open| {
-        let element = spec_layout(db, array.of_type(db), open)?;
-        let mut dimensions = Vec::new();
-        let mut count = 1u64;
-        // The dimensions inference folded; one that does not fold is E0501
-        // or E0502.
-        for (lower, upper) in crate::hir_ty::infer::const_eval::array_dimensions(db, array) {
-            let (lower, upper) = (lower?, upper?);
-            dimensions.push((lower, upper));
-            let length = u64::try_from(i128::from(upper) - i128::from(lower) + 1).unwrap_or(0);
-            count = count.saturating_mul(length);
-        }
-        Some(ArrayLayout {
-            element,
-            dimensions,
-            count,
-            whole: Layout {
-                size: element.size.saturating_mul(count),
-                align: element.align,
-            },
-        })
-    })
-}
-
-fn instance_parts<'db>(
-    db: &'db dyn WorkspaceDataBase,
-    pou: Pou<'db>,
-    open: &mut Vec<Open<'db>>,
-) -> Option<InstanceLayout<'db>> {
-    enter(open, Open::Instance(pou), |open| {
-        let members = crate::hir_ty::oop::instance_members(db, pou);
-        fields_of(
-            db,
-            members.iter().map(|member| member.var),
-            Binding::Called,
-            open,
-        )
-    })
 }
 
 /// How an instance's VAR_IN_OUT is bound.
@@ -418,7 +386,6 @@ fn fields_of<'db>(
     db: &'db dyn WorkspaceDataBase,
     vars: impl Iterator<Item = VariableDecl<'db>>,
     binding: Binding,
-    open: &mut Vec<Open<'db>>,
 ) -> Option<InstanceLayout<'db>> {
     let mut cursor = Cursor::default();
     let mut fields = Vec::new();
@@ -458,7 +425,7 @@ fn fields_of<'db>(
                 &mut cursor,
                 var,
                 Part::Value,
-                spec_layout(db, var.spec(db), open)?,
+                spec_layout(db, var.spec(db))?,
             );
         }
         if var.is_edge_input(db) {

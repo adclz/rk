@@ -117,7 +117,13 @@ pub fn instance_initializers<'db>(
 /// element, and E1425 refuses the array where it is declared. Nor is a
 /// VAR_IN_OUT, which points at an instance located where it is declared, or
 /// a VAR_INPUT, a copy of one, refused where it is declared.
-#[salsa::tracked(returns(ref))]
+///
+/// An instance a member holds adds that instance's own list, each path after
+/// the member: a list is a query of its own, read by every POU holding an
+/// instance of it, where it was walked again under each. An instance that
+/// holds itself, which E1301 reports, is a cycle of these queries: each POU
+/// on it lists its own members and none of what it holds.
+#[salsa::tracked(returns(ref), cycle_result = own_partly_located_members)]
 pub fn partly_located_members<'db>(
     db: &'db dyn WorkspaceDataBase,
     pou: Pou<'db>,
@@ -125,12 +131,23 @@ pub fn partly_located_members<'db>(
     let mut out = Vec::new();
     collect_partly_located(
         db,
-        &mut instance_members(db, pou).iter().map(|m| m.var),
-        &mut Vec::new(),
+        instance_members(db, pou).iter().map(|m| m.var),
         &mut out,
-        &mut vec![pou],
     );
     out
+}
+
+fn own_partly_located_members<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    _id: salsa::Id,
+    pou: Pou<'db>,
+) -> Vec<Vec<VariableDecl<'db>>> {
+    instance_members(db, pou)
+        .iter()
+        .map(|m| m.var)
+        .filter(|var| var.is_partly_located(db))
+        .map(|var| vec![var])
+        .collect()
 }
 
 /// A member declared `AT %I*`, `%Q*` or `%M*` held by an instance in a
@@ -233,33 +250,20 @@ pub fn retained_reference<'db>(
 /// start it as a POU's members do.
 pub fn collect_partly_located<'db>(
     db: &'db dyn WorkspaceDataBase,
-    members: &mut dyn Iterator<Item = VariableDecl<'db>>,
-    prefix: &mut Vec<VariableDecl<'db>>,
+    members: impl Iterator<Item = VariableDecl<'db>>,
     out: &mut Vec<Vec<VariableDecl<'db>>>,
-    visited: &mut Vec<Pou<'db>>,
 ) {
     for var in members {
-        prefix.push(var);
         if var.is_partly_located(db) {
-            out.push(prefix.clone());
+            out.push(vec![var]);
         } else if !var.is_in_out(db)
             && !var.is_input(db)
             && let Some(inner) = pou_of_type(db, var.spec(db).infer(db).normalize(db))
-            && !visited.contains(&inner)
         {
-            // `visited` is the current path, as for the initializers: a type
-            // reached through itself is a cycle, refused elsewhere.
-            visited.push(inner);
-            collect_partly_located(
-                db,
-                &mut instance_members(db, inner).iter().map(|m| m.var),
-                prefix,
-                out,
-                visited,
-            );
-            visited.pop();
+            for path in partly_located_members(db, inner) {
+                out.push(std::iter::once(var).chain(path.iter().copied()).collect());
+            }
         }
-        prefix.pop();
     }
 }
 
