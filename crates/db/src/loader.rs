@@ -204,8 +204,16 @@ pub fn is_workspace_file(db: &RootDatabase, path: &Path) -> bool {
     }
 }
 
+/// The URL of the file at `path`, as [`read_and_parse`] gives it.
+fn url_of(path: &Path) -> Option<Url> {
+    std::fs::canonicalize(path)
+        .ok()
+        .and_then(|path| Url::from_file_path(path).ok())
+}
+
 /// Discovers and loads the source files under `path`: I/O and parsing in
-/// parallel, Salsa inputs created sequentially.
+/// parallel, Salsa inputs created sequentially. The workspace is then the
+/// files found, which a configuration changed in the editor reads again.
 pub fn load_workspace(
     db: &mut RootDatabase,
     path: &Path,
@@ -216,29 +224,52 @@ pub fn load_workspace(
     // itself and the whole library reads as duplicated (E0102), which is what
     // opening the rk checkout in an editor used to report. The library is
     // loaded first, so the ones it claimed are not this workspace's.
-    let paths: Vec<_> = find_files(path, parser_of)
+    //
+    // A file the database holds already keeps its input: the editor, or the
+    // watcher, keeps its text, and what was computed from it stays. Read
+    // again, it was a new file, and a document open with changes not saved
+    // lost them.
+    let found: Vec<_> = find_files(path, parser_of)
         .into_iter()
         .filter(|(path, _)| !is_library_file(db, path))
-        .collect();
-
-    let parsed: Vec<_> = paths
-        .into_par_iter()
-        .map(|(p, parsers)| (read_and_parse(&p, parsers), p, parsers))
-        .collect();
-
-    let files: Vec<Result<File, String>> = parsed
-        .into_iter()
-        .map(|(result, path, parsers)| match result {
-            Ok((url, document)) => Ok(File::builder(url, parsers, document, None).new(db)),
-            // The path travels with the error: a workspace of many files
-            // cannot otherwise tell which one it could not read.
-            Err(e) => Err(format!("{}: {e}", path.display())),
+        .map(|(path, parsers)| {
+            let held = url_of(&path).and_then(|url| db.get_file(&url));
+            (path, parsers, held)
         })
         .collect();
-    db.insert_workspace_files(
+
+    let read: Vec<_> = found
+        .par_iter()
+        .map(|(path, parsers, held)| held.is_none().then(|| read_and_parse(path, parsers)))
+        .collect();
+
+    let files: Vec<Result<File, String>> = found
+        .into_iter()
+        .zip(read)
+        .map(|((path, parsers, held), read)| match (held, read) {
+            (Some(file), _) => Ok(file),
+            (None, Some(Ok((url, document)))) => {
+                Ok(File::builder(url, parsers, document, None).new(db))
+            }
+            // The path travels with the error: a workspace of many files
+            // cannot otherwise tell which one it could not read.
+            (None, Some(Err(e))) => Err(format!("{}: {e}", path.display())),
+            (None, None) => unreachable!("a file not held is read"),
+        })
+        .collect();
+    // A file the workspace held that is not found any more is let go. A
+    // document with no file, `untitled:`, is the editor's alone.
+    let documents: Vec<File> = db
+        .get_files()
+        .iter()
+        .copied()
+        .filter(|file| file.url(db).scheme() != "file")
+        .collect();
+    db.set_workspace_files(
         files
             .iter()
             .filter_map(|file| file.as_ref().ok().copied())
+            .chain(documents)
             .collect(),
     );
     files
@@ -247,7 +278,9 @@ pub fn load_workspace(
 /// Loads the source files of each library with HIGH durability: libraries
 /// rarely change, so salsa can skip re-validating queries that only touched
 /// them. A file is its library's alone: a library whose folder holds
-/// another one's, or the workspace's, does not read theirs.
+/// another one's, or the workspace's, does not read theirs. The libraries
+/// are then the files found, each of the library it was found in: a
+/// dependency changed in the editor reads them again.
 pub fn load_libraries(db: &mut RootDatabase, parser_of: ParserOf) {
     let Some(config) = Workspace::try_get(db) else {
         return;
@@ -256,6 +289,8 @@ pub fn load_libraries(db: &mut RootDatabase, parser_of: ParserOf) {
     let canonical = |dir: &Path| dir.canonicalize().unwrap_or_else(|_| dir.to_path_buf());
     let workspace = config.workspace_folder(db).map(|dir| canonical(dir));
 
+    let mut files = Vec::new();
+    let mut found = rustc_hash::FxHashSet::default();
     for (id, library) in libraries.iter().enumerate() {
         let except: Vec<PathBuf> = libraries
             .iter()
@@ -269,23 +304,27 @@ pub fn load_libraries(db: &mut RootDatabase, parser_of: ParserOf) {
             .map(|(p, parsers)| (read_and_parse(&p, parsers), parsers))
             .collect();
 
-        let mut files = Vec::new();
         for (result, parsers) in parsed {
             match result {
-                Ok((url, _)) if db.get_library_file(&url).is_some() => {}
+                Ok((url, _)) if found.contains(&url) => {}
                 Ok((url, document)) => {
-                    let file = File::builder(url, parsers, document, None)
-                        .durability(Durability::HIGH)
-                        .new(db);
+                    // A file read before keeps its input when its text is
+                    // the same, and what was computed from it.
+                    let file = match db.get_library_file(&url) {
+                        Some(held) if held.document(db).as_str() == document.as_str() => held,
+                        _ => File::builder(url.clone(), parsers, document, None)
+                            .durability(Durability::HIGH)
+                            .new(db),
+                    };
+                    found.insert(url);
                     files.push((file, id as crate::dependencies::LibraryId));
                 }
                 Err(e) => eprintln!("failed to load library file: {}", e),
             }
         }
-        // One write per library: the next library's files are told from
-        // this one's.
-        db.insert_library_files(files);
     }
+    // A file of a library no longer configured is let go.
+    db.set_library_files(files);
 }
 
 #[cfg(test)]

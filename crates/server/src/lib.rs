@@ -347,19 +347,21 @@ fn on_notifications(
                 .and_then(|ws| Url::from_file_path(ws.join("config.toml")).ok())
                 .is_some_and(|url| p.changes.iter().any(|e| e.uri == url));
 
+            // A configuration read again reads the workspace and the libraries
+            // again: what the batch created or deleted is in them then, and
+            // what it changed in a file held already is read below. A batch
+            // with the configuration in it dropped its other changes.
             if config_changed {
                 let workspace =
                     Workspace::try_get(&s.db).and_then(|c| c.workspace_folder(&s.db).cloned());
                 refresh_configuration(s, workspace.as_deref())?;
-            } else {
-                // A file created is taken when the workspace reads it; one
-                // changed or deleted is the workspace's when it holds it.
-                p.changes.retain(|change| {
-                    change.typ != FileChangeType::CREATED
-                        || is_workspace_document(&s.db, &change.uri)
-                });
-                file_events::changed_watched_files(s, p)?;
             }
+            // A file created is taken when the workspace reads it; one changed
+            // or deleted is the workspace's when it holds it.
+            p.changes.retain(|change| {
+                change.typ != FileChangeType::CREATED || is_workspace_document(&s.db, &change.uri)
+            });
+            file_events::changed_watched_files(s, p)?;
 
             send_request::<lsp_types::request::WorkspaceDiagnosticRefresh>(s, ())?;
             Ok(())
@@ -904,6 +906,148 @@ mod tests {
             .filter_map(|item| item["code"].as_str())
             .collect();
         assert_eq!(errors, ["E0322"]);
+        client.stop(server);
+    }
+
+    /// A workspace in a fresh folder: `files` written under it, no standard
+    /// library, and a server serving it.
+    fn workspace(
+        files: &[(&str, &str)],
+    ) -> (
+        tempfile::TempDir,
+        std::path::PathBuf,
+        Client,
+        std::thread::JoinHandle<()>,
+    ) {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().canonicalize().unwrap();
+        for (path, text) in files {
+            let path = root.join(path);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, text).unwrap();
+        }
+        // No standard library: the test reads none of the developer's.
+        std::fs::write(root.join("ws/.env"), "RK_STDLIB_PATH=\n").unwrap();
+        let (client, server) = Client::start(Url::from_file_path(root.join("ws")).unwrap());
+        (dir, root, client, server)
+    }
+
+    /// The watcher's batch of changes, each a path under `root` and what
+    /// became of it.
+    fn watched(client: &Client, root: &std::path::Path, changes: &[(&str, FileChangeType)]) {
+        client.notify::<DidChangeWatchedFiles>(DidChangeWatchedFilesParams {
+            changes: changes
+                .iter()
+                .map(|(path, typ)| {
+                    FileEvent::new(Url::from_file_path(root.join(path)).unwrap(), *typ)
+                })
+                .collect(),
+        });
+    }
+
+    fn config(name: &str, dependencies: &str) -> String {
+        format!("[project]\nname = \"{name}\"\nversion = \"1\"\n\n[dependencies]\n{dependencies}")
+    }
+
+    /// A batch with the configuration in it reads the configuration again,
+    /// and applies the rest of the batch: its other changes were dropped.
+    #[test]
+    fn a_configuration_change_keeps_the_rest_of_its_batch() {
+        let (_dir, root, mut client, server) = workspace(&[
+            ("ws/config.toml", &config("app", "")),
+            (
+                "ws/main.st",
+                "FUNCTION Run : INT\n    Run := 1;\nEND_FUNCTION\n",
+            ),
+        ]);
+        let main = Url::from_file_path(root.join("ws/main.st"))
+            .unwrap()
+            .to_string();
+        assert_eq!(client.report(), [(main.clone(), 0)]);
+
+        std::fs::write(
+            root.join("ws/main.st"),
+            "FUNCTION Run : INT\n    Run := Missing();\nEND_FUNCTION\n",
+        )
+        .unwrap();
+        watched(
+            &client,
+            &root,
+            &[
+                ("ws/config.toml", FileChangeType::CHANGED),
+                ("ws/main.st", FileChangeType::CHANGED),
+            ],
+        );
+        assert_eq!(client.report(), [(main, 1)]);
+        client.stop(server);
+    }
+
+    /// The configuration read again reads the workspace again: a folder
+    /// that became a project of its own leaves it. The loader added the
+    /// files it found and let none go.
+    #[test]
+    fn a_configuration_change_lets_go_of_the_files_the_workspace_left() {
+        let run = "FUNCTION Run : INT\n    Run := 1;\nEND_FUNCTION\n";
+        let other = "FUNCTION Other : INT\n    Other := 1;\nEND_FUNCTION\n";
+        let (_dir, root, mut client, server) = workspace(&[
+            ("ws/config.toml", &config("app", "")),
+            ("ws/main.st", run),
+            ("ws/sub/other.st", other),
+        ]);
+        let url = |path: &str| Url::from_file_path(root.join(path)).unwrap().to_string();
+        assert_eq!(
+            client.report(),
+            [(url("ws/main.st"), 0), (url("ws/sub/other.st"), 0)]
+        );
+
+        std::fs::write(root.join("ws/sub/config.toml"), config("sub", "")).unwrap();
+        watched(
+            &client,
+            &root,
+            &[("ws/config.toml", FileChangeType::CHANGED)],
+        );
+        assert_eq!(client.report(), [(url("ws/main.st"), 0)]);
+        client.stop(server);
+    }
+
+    /// A dependency taken out of the configuration reads the libraries
+    /// again: its files are let go, and each other file is of the library
+    /// it is found in now. A file kept the library it was first read in:
+    /// with `a` gone, `b`'s file was of no library's name.
+    #[test]
+    fn a_dependency_edit_moves_the_files_to_their_library() {
+        let (_dir, root, mut client, server) = workspace(&[
+            (
+                "ws/config.toml",
+                &config("app", "a = { path = \"../a\" }\nb = { path = \"../b\" }\n"),
+            ),
+            (
+                "ws/main.st",
+                "FUNCTION Run : INT\n    Run := A.FA() + B.FB();\nEND_FUNCTION\n",
+            ),
+            ("a/config.toml", &config("a", "")),
+            ("a/A.st", "FUNCTION FA : INT\n    FA := 1;\nEND_FUNCTION\n"),
+            ("b/config.toml", &config("b", "")),
+            ("b/B.st", "FUNCTION FB : INT\n    FB := 2;\nEND_FUNCTION\n"),
+        ]);
+        let main = Url::from_file_path(root.join("ws/main.st"))
+            .unwrap()
+            .to_string();
+        assert_eq!(client.report(), [(main.clone(), 0)]);
+
+        // `A.FA` is no library's any more, and `B.FB` still is.
+        std::fs::write(
+            root.join("ws/config.toml"),
+            config("app", "b = { path = \"../b\" }\n"),
+        )
+        .unwrap();
+        watched(
+            &client,
+            &root,
+            &[("ws/config.toml", FileChangeType::CHANGED)],
+        );
+        assert_eq!(client.report(), [(main, 1)]);
+        assert_eq!(client.errors, [] as [String; 0]);
         client.stop(server);
     }
 }

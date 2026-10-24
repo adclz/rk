@@ -114,12 +114,33 @@ impl RootDatabase {
         }
     }
 
-    /// Adds `files` to the workspace, each in place of the file at its URL,
-    /// in one write: what the loader read.
-    pub(crate) fn insert_workspace_files(&mut self, files: Vec<File>) {
+    /// Makes `files` the workspace's, in place of the ones it had: what the
+    /// loader found.
+    pub(crate) fn set_workspace_files(&mut self, files: Vec<File>) {
         let set = FileSet::get(self);
-        let files = merged(self, set.workspace(self), files);
-        set.set_workspace(self).to(files);
+        let files = merged(self, &[], files);
+        if *set.workspace(self) != files {
+            set.set_workspace(self).to(files);
+        }
+    }
+
+    /// Makes `files` the libraries', each of the library it is paired with,
+    /// in place of the ones they had: what the loader found.
+    pub(crate) fn set_library_files(&mut self, files: Vec<(File, dependencies::LibraryId)>) {
+        let set = FileSet::get(self);
+        let library_ids: FxHashMap<File, dependencies::LibraryId> = files.iter().copied().collect();
+        let libraries = merged(self, &[], files.into_iter().map(|(file, _)| file));
+        // Libraries rarely change, as their files' durability says.
+        if *set.libraries(self) != libraries {
+            set.set_libraries(self)
+                .with_durability(Durability::HIGH)
+                .to(libraries);
+        }
+        if *set.library_ids(self) != library_ids {
+            set.set_library_ids(self)
+                .with_durability(Durability::HIGH)
+                .to(library_ids);
+        }
     }
 
     /// Register `file` as a LIBRARY file: analyzed like workspace code,
