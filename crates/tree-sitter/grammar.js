@@ -327,8 +327,12 @@ module.exports = grammar({
 
     // Missing ':' before =
     ERR_missing_dot_in_assignment: ($) => seq("=", $._expression),
-    // Missing '=' after ':'
-    ERR_missing_equal_in_assignment: ($) => prec(-1, seq(":", $._expression)),
+    // Missing '=' after ':'. Ranked below every other reading: in a CASE,
+    // `GREEN: g(a := 2);` is the value `GREEN` and a statement, and read the
+    // other way it is `GREEN : g(a := 2)` with its `=` lost, which refused a
+    // valid program (E0007).
+    ERR_missing_equal_in_assignment: ($) =>
+      prec.dynamic(-2, prec(-1, seq(":", $._expression))),
 
     // Missing ':' before =
     ERR_missing_dot_in_for_control: ($) => "=",
