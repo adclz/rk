@@ -107,21 +107,21 @@ impl<'db> SemanticIndexBuilder<'db> {
                 Error::ERRExtendsMultipleTimes(err) => {
                     self.errors.push(OopError::MultipleExtends {
                         location: err.get_range().to_owned(),
-                        first_extend_span: class.extends.as_ref().unwrap().cast(self.ast).get_range().to_owned(),
+                        first_extend_span: class.extends.as_ref().map(|clause| clause.cast(self.ast).get_range().to_owned()),
                         file: self.file,
                     }.to_diagnostic(self.db, self.file));
                 },
                 Error::ERRImplementsBeforeExtends(err) => {
                     self.errors.push(OopError::ImplementsBeforeExtends {
                         implements_span: err.get_range().to_owned(),
-                        extends_span: class.extends.as_ref().unwrap().cast(self.ast).get_range().to_owned(),
+                        extends_span: class.extends.as_ref().map(|clause| clause.cast(self.ast).get_range().to_owned()),
                         file: self.file,
                     }.to_diagnostic(self.db, self.file));
                 },
                 Error::ERRImplementsMultipleTimes(err) => {
                     self.errors.push(OopError::MultipleImplements {
                         location: err.get_range().to_owned(),
-                        first_implements_span: class.implements.as_ref().unwrap().cast(self.ast).get_range().to_owned(),
+                        first_implements_span: class.implements.as_ref().map(|clause| clause.cast(self.ast).get_range().to_owned()),
                         file: self.file,
                     }.to_diagnostic(self.db, self.file));
                 },
