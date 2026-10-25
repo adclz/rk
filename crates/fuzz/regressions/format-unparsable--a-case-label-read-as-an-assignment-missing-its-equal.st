@@ -1,0 +1,9 @@
+
+TYPE STATE: INT(A, B, C) END_TYPE
+FUNCTION test : INT
+VAR x : STATE; END_VAR
+    CASE x OF
+        STATE#A: test z:= 10;
+        STATE#B: test :CONTINUE+EMENTSTATE#A: test := 02;
+ABSTRACT    END_CASE;
+END_FUNCTION

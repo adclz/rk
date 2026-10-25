@@ -1091,3 +1091,75 @@ END_CONFIGURATION
                     (int_literal
                       (signed_int
                         (unsigned_int)))))))))))))
+
+================================================================================
+A CASE value followed by a statement is no assignment missing its equal
+================================================================================
+
+FUNCTION fn
+  VAR x : INT; END_VAR
+  CASE x OF
+    K: g(a := 2);
+    L: CONTINUE;
+  END_CASE;
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (func_decl
+    (identifier)
+    (var_decls
+      (var_decl_init_list
+        (variable_list
+          (identifier))
+        (var_decl_init
+          (simple_type_spec
+            (numeric_type_name
+              (int_type_name
+                (sign_int_type_name
+                  (int_name))))))))
+    (func_body
+      (stmt_list
+        (case_stmt
+          (variable_access
+            (variable
+              (begin_path_expression
+                (path_expression
+                  (var_access
+                    (field))))))
+          (case_selection
+            (case_list
+              (case_list_elem
+                (constant_expr
+                  (variable_access
+                    (variable
+                      (begin_path_expression
+                        (path_expression
+                          (var_access
+                            (field)))))))))
+            (stmt_list
+              (func_call
+                (begin_path_expression
+                  (path_expression
+                    (var_access
+                      (field))))
+                (param_assign
+                  (param_assign_input
+                    (identifier)
+                    (constant
+                      (numeric_literal
+                        (int_literal
+                          (signed_int
+                            (unsigned_int))))))))))
+          (case_selection
+            (case_list
+              (case_list_elem
+                (constant_expr
+                  (variable_access
+                    (variable
+                      (begin_path_expression
+                        (path_expression
+                          (var_access
+                            (field)))))))))
+            (stmt_list)))))))

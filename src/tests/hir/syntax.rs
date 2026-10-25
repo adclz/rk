@@ -290,6 +290,63 @@ END_FUNCTION_BLOCK"#;
     ");
 }
 
+/// A CASE value followed by a call is a value and a statement, not an
+/// assignment that lost its `=`: `K : g(a := 2)` read that way refused a
+/// valid program with E0007, and the formatter's output for one such CASE
+/// no longer parsed.
+#[rstest]
+fn a_case_value_followed_by_a_statement_is_no_lost_equal(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION g : INT
+VAR_INPUT a : INT; END_VAR
+    g := a;
+END_FUNCTION
+
+FUNCTION f : INT
+VAR CONSTANT K : INT := 1; L : INT := 2; END_VAR
+VAR x : INT; END_VAR
+    CASE x OF
+        K: g(a := 2);
+        L: f := g(a := 3);
+    END_CASE;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+/// `IMPLEMENTS a EXTENDS` followed by what is no base: the misplaced
+/// IMPLEMENTS is reported, with nowhere to move it to, and the base that
+/// does not parse is a syntax error. The builder unwrapped the EXTENDS
+/// clause the error rule does not guarantee, and panicked.
+#[rstest]
+fn implements_before_an_extends_with_no_base(mut with_db: RootDatabase) {
+    let source = r#"
+INTERFACE a
+    METHOD m END_METHOD
+END_INTERFACE
+
+FUNCTION_BLOCK fb IMPLEMENTS a
+    EXTENDS METHOD m END_METHOD
+END_FUNCTION_BLOCK
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1103] Error: IMPLEMENTS before EXTENDS
+       ,-[ file:///test0.st:6:19 ]
+       |
+     6 | FUNCTION_BLOCK fb IMPLEMENTS a
+       |                   ^^^^^^|^^^^^
+       |                         `------- IMPLEMENTS comes after EXTENDS
+    ---'
+    [E0001] Error: syntax error
+       ,-[ file:///test0.st:7:5 ]
+       |
+     7 |     EXTENDS METHOD m END_METHOD
+       |     ^^^|^^^
+       |        `----- unexpected token(s): 'EXTENDS'
+    ---'
+    ");
+}
+
 #[rstest]
 fn missing_dot_in_for_list(mut with_db: RootDatabase) {
     let source = r#"

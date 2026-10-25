@@ -63,24 +63,27 @@ pub enum OopError<'db> {
     MultipleExtends {
         /// Span of the second (duplicate) EXTENDS clause
         location: Range,
-        /// Span of the first EXTENDS clause
-        first_extend_span: Range,
+        /// Span of the first EXTENDS clause, which the grammar's error rule
+        /// does not guarantee: `EXTENDS` with nothing it can read, then a
+        /// second one, has only the second.
+        first_extend_span: Option<Range>,
         /// File containing both clauses
         file: File,
     },
     MultipleImplements {
         /// Span of the second (duplicate) IMPLEMENTS clause
         location: Range,
-        /// Span of the first IMPLEMENTS clause
-        first_implements_span: Range,
+        /// Span of the first IMPLEMENTS clause, when it parsed.
+        first_implements_span: Option<Range>,
         /// File containing both clauses
         file: File,
     },
     ImplementsBeforeExtends {
         /// Span of the misplaced IMPLEMENTS clause
         implements_span: Range,
-        /// Span of the EXTENDS clause
-        extends_span: Range,
+        /// Span of the EXTENDS clause, when it parsed: `IMPLEMENTS a EXTENDS`
+        /// followed by what is no base has none.
+        extends_span: Option<Range>,
         file: File,
     },
     /// FINAL says the type is complete and closed. The method-level rule was
@@ -357,7 +360,6 @@ impl<'db> ToIdeDiagnostic<'db> for OopError<'db> {
                         .to_string()
                 };
                 let second = extract(location);
-                let first = extract(first_extend_span);
 
                 let mut diag = diag()
                     .message("second EXTENDS clause".into())
@@ -366,11 +368,14 @@ impl<'db> ToIdeDiagnostic<'db> for OopError<'db> {
                     .range(crate::denormalize(db, file, location).unwrap_or_default())
                     .call();
 
-                diag.with_related(Related::new(
-                    format!("merge into single clause: 'EXTENDS {first}, {second}'"),
-                    *file,
-                    *first_extend_span,
-                ));
+                if let Some(first_extend_span) = first_extend_span {
+                    let first = extract(first_extend_span);
+                    diag.with_related(Related::new(
+                        format!("merge into single clause: 'EXTENDS {first}, {second}'"),
+                        *file,
+                        *first_extend_span,
+                    ));
+                }
                 diag
             }
             Self::MultipleImplements {
@@ -389,7 +394,6 @@ impl<'db> ToIdeDiagnostic<'db> for OopError<'db> {
                         .to_string()
                 };
                 let second = extract(location);
-                let first = extract(first_implements_span);
 
                 let mut diag = diag()
                     .message("second IMPLEMENTS clause".into())
@@ -398,11 +402,14 @@ impl<'db> ToIdeDiagnostic<'db> for OopError<'db> {
                     .range(crate::denormalize(db, file, location).unwrap_or_default())
                     .call();
 
-                diag.with_related(Related::new(
-                    format!("merge into single clause: 'IMPLEMENTS {first}, {second}'"),
-                    *file,
-                    *first_implements_span,
-                ));
+                if let Some(first_implements_span) = first_implements_span {
+                    let first = extract(first_implements_span);
+                    diag.with_related(Related::new(
+                        format!("merge into single clause: 'IMPLEMENTS {first}, {second}'"),
+                        *file,
+                        *first_implements_span,
+                    ));
+                }
                 diag
             }
             Self::ImplementsBeforeExtends {
@@ -428,11 +435,13 @@ impl<'db> ToIdeDiagnostic<'db> for OopError<'db> {
                     .range(crate::denormalize(db, file, implements_span).unwrap_or_default())
                     .call();
 
-                diag.with_related(Related::new(
-                    format!("move '{implements_text}' here"),
-                    *file,
-                    *extends_span,
-                ));
+                if let Some(extends_span) = extends_span {
+                    diag.with_related(Related::new(
+                        format!("move '{implements_text}' here"),
+                        *file,
+                        *extends_span,
+                    ));
+                }
                 diag
             }
             Self::ExtendsFinalPou {
