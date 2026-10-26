@@ -400,6 +400,16 @@ pub struct TestPlc {
 impl TestPlc {
     /// Instantiate `wasm`, run `__init`, and locate the memory bands.
     pub fn load(wasm: &[u8]) -> Result<Self> {
+        Self::load_with_host(wasm, |_| Ok(()))
+    }
+
+    /// [`TestPlc::load`] with `wire` defining host imports of the test's
+    /// own after the clocks, in their place when it names one of them: a
+    /// clock the test moves by hand, for one.
+    pub fn load_with_host(
+        wasm: &[u8],
+        wire: impl FnOnce(&mut Linker<()>) -> Result<()>,
+    ) -> Result<Self> {
         let engine = test_engine();
         let module = Module::new(&engine, wasm).ctx("compiling the module")?;
         let mut store = Store::new(&engine, ());
@@ -419,6 +429,9 @@ impl TestPlc {
             .define(&store, "env", "memory", memory)
             .ctx("defining env.memory")?;
         rk::test_host::wire_clocks(&mut linker, &module, memory).context("wiring the clocks")?;
+        linker.allow_shadowing(true);
+        wire(&mut linker)?;
+        linker.allow_shadowing(false);
         // An `{extern}` a test never calls must not stop the module loading.
         linker
             .define_unknown_imports_as_traps(&module)

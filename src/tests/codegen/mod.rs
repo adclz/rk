@@ -9,6 +9,7 @@ mod arrays;
 mod bit_access;
 mod bytes;
 mod classes;
+mod clocks;
 mod conformands;
 mod constant_folding;
 mod control_flow;

@@ -7,6 +7,10 @@ timer is as precise as the scan that calls it.
 
 `TP`, `TON` and `TOF` measure in `TIME`. The `_LTIME` blocks are the same
 timers in `LTIME`.
+
+A timer decides on `CURRENT_TIME - START_TIME`, a difference, which wraps
+with the clock where `START_TIME + PT` would not: the host picks where the
+monotonic clock starts, and `PLC_TIME` cycles every 49.7 days in any case.
 */
 NAMESPACE Std.Timers
 	USING Std.Convert;
@@ -70,7 +74,7 @@ NAMESPACE Std.Timers
 			Q := TRUE;
 			START_TIME := CURRENT_TIME;
 		ELSIF (STATE = 1) THEN
-			IF ((START_TIME + PT) <= CURRENT_TIME) THEN
+			IF (CURRENT_TIME - START_TIME >= PT) THEN
 				STATE := 2;
 				Q := FALSE;
 				ET := PT;
@@ -111,7 +115,7 @@ NAMESPACE Std.Timers
 			Q := TRUE;
 			START_TIME := CURRENT_TIME;
 		ELSIF (STATE = 1) THEN
-			IF ((START_TIME + PT) <= CURRENT_TIME) THEN
+			IF (CURRENT_TIME - START_TIME >= PT) THEN
 				STATE := 2;
 				Q := FALSE;
 				ET := PT;
@@ -172,7 +176,7 @@ NAMESPACE Std.Timers
 				Q := FALSE;
 				STATE := 0;
 			ELSIF (STATE = 1) THEN
-				IF ((START_TIME + PT) <= CURRENT_TIME) THEN
+				IF (CURRENT_TIME - START_TIME >= PT) THEN
 					STATE := 2;
 					Q := TRUE;
 					ET := PT;
@@ -215,7 +219,7 @@ NAMESPACE Std.Timers
 				Q := FALSE;
 				STATE := 0;
 			ELSIF (STATE = 1) THEN
-				IF ((START_TIME + PT) <= CURRENT_TIME) THEN
+				IF (CURRENT_TIME - START_TIME >= PT) THEN
 					STATE := 2;
 					Q := TRUE;
 					ET := PT;
@@ -269,7 +273,7 @@ NAMESPACE Std.Timers
 				ET := T#0s;
 				STATE := 0;
 			ELSIF (STATE = 1) THEN
-				IF ((START_TIME + PT) <= CURRENT_TIME) THEN
+				IF (CURRENT_TIME - START_TIME >= PT) THEN
 					STATE := 2;
 					ET := PT;
 				ELSE
@@ -310,7 +314,7 @@ NAMESPACE Std.Timers
 				ET := LTIME#0s;
 				STATE := 0;
 			ELSIF (STATE = 1) THEN
-				IF ((START_TIME + PT) <= CURRENT_TIME) THEN
+				IF (CURRENT_TIME - START_TIME >= PT) THEN
 					STATE := 2;
 					ET := PT;
 				ELSE
