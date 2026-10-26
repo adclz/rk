@@ -36,6 +36,12 @@ pub enum Ambiguity<'db> {
     /// No argument the call passes tells them apart: they differ in inputs
     /// it leaves to their defaults.
     Defaults,
+    /// They take the same parameters and differ in outputs the call does not
+    /// write into a variable: the first of those, as written.
+    Outputs { output: Ident },
+    /// An output widens into the variable the call writes it into, from
+    /// each of them.
+    OutputWidening,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
@@ -133,6 +139,12 @@ pub enum CallError<'db> {
         /// As the overloads write it.
         name: Ident,
         arg_types: Vec<Type<'db>>,
+        /// Each `=>` binding: the output as the call names it, and the type
+        /// of the variable it is written into.
+        outputs: Vec<(Ident, Type<'db>)>,
+        /// Whether the call writes an output, by `=>` or by position: each
+        /// overload's label then lists its outputs.
+        writes_outputs: bool,
         candidates: Vec<Function<'db>>,
     },
     /// Only elementary types can be variadic.
@@ -548,11 +560,11 @@ impl<'db> ToIdeDiagnostic<'db> for CallError<'db> {
                     Ambiguity::Return => (
                         "the overloads differ only in their return type, and nothing here expects one"
                             .to_string(),
-                        Some("assign the call to a variable of that type"),
+                        Some("assign the call to a variable of that type".to_string()),
                     ),
                     Ambiguity::Null => (
                         "NULL is a reference of any type".to_string(),
-                        Some("pass a variable of the reference type"),
+                        Some("pass a variable of the reference type".to_string()),
                     ),
                     Ambiguity::Implementer { instance } => (
                         format!(
@@ -563,12 +575,23 @@ impl<'db> ToIdeDiagnostic<'db> for CallError<'db> {
                     ),
                     Ambiguity::Widening => (
                         "an argument widens to each overload".to_string(),
-                        Some("pick one with a typed literal or a conversion, such as `DINT#5` or `INT_TO_DINT(x)`"),
+                        Some("pick one with a typed literal or a conversion, such as `DINT#5` or `INT_TO_DINT(x)`".to_string()),
                     ),
                     Ambiguity::Defaults => (
                         "the overloads differ only in inputs this call leaves to their defaults"
                             .to_string(),
-                        Some("pass one of those inputs to pick an overload"),
+                        Some("pass one of those inputs to pick an overload".to_string()),
+                    ),
+                    Ambiguity::Outputs { output } => (
+                        "the overloads differ in outputs this call does not bind".to_string(),
+                        Some(format!(
+                            "bind '{}' to a variable of the type you want",
+                            output.text(db)
+                        )),
+                    ),
+                    Ambiguity::OutputWidening => (
+                        "an output widens into its variable from each overload".to_string(),
+                        Some("bind it to a variable of the type you want".to_string()),
                     ),
                 };
                 diag.with_advice(Some(note), help);
@@ -598,6 +621,8 @@ impl<'db> ToIdeDiagnostic<'db> for CallError<'db> {
                 func_call,
                 name,
                 arg_types,
+                outputs,
+                writes_outputs,
                 candidates,
             } => {
                 let names = |types: &[Type<'db>]| {
@@ -613,11 +638,26 @@ impl<'db> ToIdeDiagnostic<'db> for CallError<'db> {
                         .collect::<Vec<_>>()
                         .join(", ")
                 };
+                // The outputs a call writes are listed after its arguments,
+                // as the call writes them: `(DINT, HI => INT)`. An overload's
+                // are listed only when the call writes some, by `=>` or by
+                // position.
+                let list = |types: &[Type<'db>], outputs: &[(Ident, Type<'db>)]| {
+                    let outputs = outputs
+                        .iter()
+                        .map(|(output, ty)| format!("{} => {}", output.text(db), names(&[*ty])));
+                    let types = (!types.is_empty()).then(|| names(types));
+                    types
+                        .into_iter()
+                        .chain(outputs)
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                };
                 let mut diag = diag()
                     .message(format!(
                         "no overload of '{}' accepts ({})",
                         name.text(db),
-                        names(arg_types)
+                        list(arg_types, outputs)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
@@ -628,9 +668,22 @@ impl<'db> ToIdeDiagnostic<'db> for CallError<'db> {
                     .call();
 
                 for c in candidates {
-                    let params = crate::hir_ty::head::signature::function_signature(db, *c).params;
+                    let signature = crate::hir_ty::head::signature::function_signature(db, *c);
+                    let declared: Vec<(Ident, Type<'db>)> = match writes_outputs {
+                        false => Vec::new(),
+                        true => c
+                            .variables(db)
+                            .iter()
+                            .filter(|v| v.is_output(db))
+                            .map(|v| v.name_with_case(db))
+                            .zip(signature.outputs.iter().copied())
+                            .collect(),
+                    };
                     diag.with_related(Related::new(
-                        format!("overload accepting ({})", names(&params)),
+                        format!(
+                            "overload accepting ({})",
+                            list(&signature.params, &declared)
+                        ),
                         c.get_scope_id(db).file(db),
                         c.get_name_span(db),
                     ));

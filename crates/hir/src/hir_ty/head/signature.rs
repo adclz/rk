@@ -35,16 +35,19 @@ pub fn infer_signature<'db>(db: &'db dyn WorkspaceDataBase, scope: ScopeId<'db>)
 
 /// The signature of a FUNCTION — what identifies a declaration among
 /// same-named ones. Equal signatures are a duplicate (E0102); a difference
-/// anywhere, params or return, makes a legal overload.
+/// anywhere, params, outputs or return, makes a legal overload.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FunctionSignature<'db> {
     /// The ordered types of the parameters a caller supplies positionally:
-    /// `VAR_INPUT` and `VAR_IN_OUT` (pure `VAR_OUTPUT` `=>` bindings don't
-    /// participate in selection, so they're excluded). What argument matching
-    /// selects an overload by.
+    /// `VAR_INPUT` and `VAR_IN_OUT`. What argument matching selects an
+    /// overload by.
     pub params: Vec<Type<'db>>,
+    /// The ordered types of the `VAR_OUTPUT`s: what the variables a call
+    /// writes its outputs into pick by, among the overloads its arguments
+    /// fit alike.
+    pub outputs: Vec<Type<'db>>,
     /// The normalized return type, `None` for a void FUNCTION. What a
-    /// RETURN-directed overload set (same params) is picked by.
+    /// RETURN-directed overload set (same params, same outputs) is picked by.
     pub ret: Option<Type<'db>>,
 }
 
@@ -53,22 +56,30 @@ impl<'db> FunctionSignature<'db> {
     /// `REF_TO INT` or `ARRAY [0..3] OF INT` written in two declarations are
     /// one type, though not one `Type`.
     pub fn same_params(&self, db: &'db dyn WorkspaceDataBase, other: &Self) -> bool {
-        self.params.len() == other.params.len()
-            && self
-                .params
-                .iter()
-                .zip(&other.params)
-                .all(|(a, b)| crate::hir_ty::infer::coerce::same_type(db, *a, *b))
+        same_types(db, &self.params, &other.params)
     }
 
-    /// The same signature: the same parameters and the same return.
+    /// Each output the same type, compared as the parameters are.
+    pub fn same_outputs(&self, db: &'db dyn WorkspaceDataBase, other: &Self) -> bool {
+        same_types(db, &self.outputs, &other.outputs)
+    }
+
+    /// The same signature: the same parameters, outputs and return.
     pub fn same_as(&self, db: &'db dyn WorkspaceDataBase, other: &Self) -> bool {
         self.same_params(db, other)
+            && self.same_outputs(db, other)
             && match (self.ret, other.ret) {
                 (Some(a), Some(b)) => crate::hir_ty::infer::coerce::same_type(db, a, b),
                 (a, b) => a == b,
             }
     }
+}
+
+fn same_types<'db>(db: &'db dyn WorkspaceDataBase, a: &[Type<'db>], b: &[Type<'db>]) -> bool {
+    a.len() == b.len()
+        && a.iter()
+            .zip(b)
+            .all(|(a, b)| crate::hir_ty::infer::coerce::same_type(db, *a, *b))
 }
 
 /// Every FUNCTION the call could name: the declarations `name` resolves to,
@@ -120,37 +131,51 @@ pub fn function_signature<'db>(
     db: &'db dyn WorkspaceDataBase,
     f: Function<'db>,
 ) -> FunctionSignature<'db> {
-    let (params, ret) = declared_types(db, f);
+    let declared = declared_types(db, f);
     FunctionSignature {
-        params: params.iter().map(|t| t.normalize(db)).collect(),
-        ret: ret.map(|t| t.normalize(db)),
+        params: declared.params.iter().map(|t| t.normalize(db)).collect(),
+        outputs: declared.outputs.iter().map(|t| t.normalize(db)).collect(),
+        ret: declared.ret.map(|t| t.normalize(db)),
     }
 }
 
 /// The types [`function_signature`] normalizes, as the declaration names
 /// them: `IN : Int5` is the DataType `Int5`, not the array it stands for.
 /// A function's symbol is spelled from these, since two aliases of
-/// different arrays normalize to two unnamed ARRAYs. The same cycle hazard
-/// applies.
+/// different arrays normalize to two unnamed ARRAYs.
+pub(crate) struct DeclaredTypes<'db> {
+    /// The `VAR_INPUT` and `VAR_IN_OUT` types, in order.
+    pub params: Vec<Type<'db>>,
+    /// The `VAR_OUTPUT` types, in order.
+    pub outputs: Vec<Type<'db>>,
+    pub ret: Option<Type<'db>>,
+}
+
+/// The [`DeclaredTypes`] of `f`. The same cycle hazard as
+/// [`function_signature`] applies.
 pub(crate) fn declared_types<'db>(
     db: &'db dyn WorkspaceDataBase,
     f: Function<'db>,
-) -> (Vec<Type<'db>>, Option<Type<'db>>) {
+) -> DeclaredTypes<'db> {
     use crate::hir_ty::infer::Infer;
     let sig = infer_signature(db, f.scope_id(db));
-    let params = f
-        .variables(db)
-        .iter()
-        .filter(|v| matches!(v.kind(db), VariableKind::Input | VariableKind::InOut))
-        .map(|v| {
-            sig.type_of_specs
-                .get(&v.spec(db))
-                .copied()
-                .unwrap_or(Type::Never)
-        })
-        .collect();
-    let ret = f.return_type(db).map(|spec| spec.infer(db));
-    (params, ret)
+    let types_of = |keep: fn(&VariableKind) -> bool| -> Vec<Type<'db>> {
+        f.variables(db)
+            .iter()
+            .filter(|v| keep(&v.kind(db)))
+            .map(|v| {
+                sig.type_of_specs
+                    .get(&v.spec(db))
+                    .copied()
+                    .unwrap_or(Type::Never)
+            })
+            .collect()
+    };
+    DeclaredTypes {
+        params: types_of(|kind| matches!(kind, VariableKind::Input | VariableKind::InOut)),
+        outputs: types_of(|kind| matches!(kind, VariableKind::Output)),
+        ret: f.return_type(db).map(|spec| spec.infer(db)),
+    }
 }
 
 /// The minimum number of positional arguments a call to `f` must supply: the

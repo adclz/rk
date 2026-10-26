@@ -101,7 +101,8 @@ pub fn resolve_func_call<'db>(
     // (`select_overload`); this call says how its arguments fit a candidate,
     // bound as it binds them itself, and handles an ambiguous result.
     let arg_types = call_input_arg_types(db, resolver, func_call, callable, ctx);
-    let unresolved_argument = arg_types.iter().any(|t| t.is_never());
+    let unresolved_argument = arg_types.inputs.iter().any(|t| t.is_never())
+        || arg_types.outputs.iter().any(|(_, t)| t.is_never());
     let pick = select_overload(db, callable, expected, unresolved_argument, |f| {
         candidate_fit(db, resolver, func_call, f, ctx)
     });
@@ -143,11 +144,18 @@ pub fn resolve_func_call<'db>(
                 Some(f) => f.name_with_case(db),
                 None => return,
             };
+            // A positional argument in an output's place writes it too.
+            let writes_outputs = !arg_types.outputs.is_empty()
+                || candidates
+                    .iter()
+                    .any(|f| writes_positional_output(db, func_call, *f));
             ctx.errors.push(
                 CallError::NoMatchingOverload {
                     func_call,
                     name,
-                    arg_types: arg_types.clone(),
+                    arg_types: arg_types.inputs.clone(),
+                    outputs: arg_types.outputs.clone(),
+                    writes_outputs,
                     candidates,
                 }
                 .to_diagnostic(db, ctx.scope.file(db)),
@@ -349,11 +357,20 @@ pub fn resolve_func_call<'db>(
     }
 }
 
-/// The types of a call's value arguments (VAR_INPUT / VAR_IN_OUT), in call
-/// order — the arguments that drive overload selection. Pure `=>` output
-/// bindings are skipped (they don't participate); a positional argument in an
-/// output's place is typed with the others, as the variable it names, and
-/// skipped by the overload fit. Each argument is inferred here
+/// The types a call's arguments select an overload by.
+struct CallArgTypes<'db> {
+    /// The value arguments (VAR_INPUT / VAR_IN_OUT), in call order. A
+    /// positional argument in an output's place is typed with them, as the
+    /// variable it names.
+    inputs: Vec<Type<'db>>,
+    /// Each `=>` binding: the output as the call names it, and the type of
+    /// the variable it is written into.
+    outputs: Vec<(Ident, Type<'db>)>,
+}
+
+/// The types of a call's arguments, in call order: the value arguments,
+/// which drive overload selection, and the variables its outputs are written
+/// into, which break the ties the arguments leave. Each argument is inferred here
 /// and cached in `ctx.type_of_expr`, so the later coercion pass reuses it rather
 /// than re-resolving (see the guard in `coerce_with_var_target`).
 ///
@@ -367,7 +384,7 @@ fn call_input_arg_types<'db>(
     func_call: FuncCall<'db>,
     callable: CallableType<'db>,
     ctx: &mut BodyInferenceResult<'db>,
-) -> Vec<Type<'db>> {
+) -> CallArgTypes<'db> {
     let overloaded = matches!(
         callable,
         CallableType::Function(f) if crate::hir_ty::head::signature::overload_set(db, f).len() > 1
@@ -394,16 +411,23 @@ fn call_input_arg_types<'db>(
         .collect(),
     };
     let mut types = Vec::new();
+    let mut outputs = Vec::new();
     for p in func_call.params(db) {
         let value = match p.kind(db) {
             ParamAssignKind::NonFormal { value } | ParamAssignKind::FormalInput { value, .. } => {
                 value
             }
-            // Typed too, for the overload fit of `a => x` on an input.
-            ParamAssignKind::FormalOutput { value, .. } => {
+            // Typed too: the variable an output is written into breaks a
+            // tie the arguments leave, and `a => x` on an input picks as an
+            // argument does.
+            ParamAssignKind::FormalOutput { value, param, .. } => {
                 if !ctx.type_of_expr.contains_key(&value) {
                     InferExprCtx::new(resolver).resolve_expr(db, value, ctx);
                 }
+                outputs.push((
+                    param.with_case,
+                    ctx.type_of_expr_with_adjustments(db, value),
+                ));
                 continue;
             }
         };
@@ -425,7 +449,10 @@ fn call_input_arg_types<'db>(
         // overload (`ASSERT_EQ(arr[0], 5)` selected the CHAR one).
         types.push(ctx.type_of_expr_with_adjustments(db, value));
     }
-    types
+    CallArgTypes {
+        inputs: types,
+        outputs,
+    }
 }
 
 /// How this call's arguments fit the overload `f`, bound as the call binds
@@ -466,22 +493,26 @@ fn candidate_fit<'db>(
     }
 
     let mut args = Vec::new();
+    let mut outputs = Vec::new();
     for m in &matches {
         let (pa, var) = match m {
             ParamMatch::Matched(pa, var) | ParamMatch::Variadic(pa, var, _) => (*pa, *var),
             ParamMatch::Error => return CandidateFit::Unbound,
         };
         let value = match pa.kind(db) {
-            // Where the output goes, by `=>` or by position. `o := x` is
-            // refused on the overload picked (E0818), not by every overload.
-            _ if var.is_output(db) => continue,
+            // `o := x` is refused on the overload picked (E0818), not by
+            // every overload.
+            ParamAssignKind::FormalInput { .. } if var.is_output(db) => continue,
             // `a => x` on an input or an in-out is refused on the overload
             // picked (E0807): `x` picks it as an argument would.
             ParamAssignKind::NonFormal { value }
             | ParamAssignKind::FormalInput { value, .. }
             | ParamAssignKind::FormalOutput { value, .. } => value,
         };
-        let fit = if let Some(conformand) = var.conformand(db) {
+        let fit = if var.is_output(db) {
+            // Where the output goes, by `=>` or by position.
+            output_fit(db, resolver, var, value, ctx)
+        } else if let Some(conformand) = var.conformand(db) {
             conformand_fit(db, conformand, var, value, ctx)
         } else if var.is_in_out(db) {
             in_out_fit(db, resolver, var, value, ctx)
@@ -499,10 +530,15 @@ fn candidate_fit<'db>(
         };
         match fit {
             ArgMatch::No => return CandidateFit::Mismatch,
+            fit if var.is_output(db) => outputs.push(fit),
             fit => args.push(fit),
         }
     }
-    CandidateFit::Fits { args, padded }
+    CandidateFit::Fits {
+        args,
+        outputs,
+        padded,
+    }
 }
 
 /// Why the call fits the tied overloads alike, and the names they give the
@@ -520,10 +556,9 @@ fn ambiguity<'db>(
         return (Ambiguity::Defaults, Vec::new());
     };
     let first = function_signature(db, *first);
-    if rest
-        .iter()
-        .all(|f| function_signature(db, *f).same_params(db, &first))
-    {
+    let rest: Vec<_> = rest.iter().map(|f| function_signature(db, *f)).collect();
+    let same_params = rest.iter().all(|s| s.same_params(db, &first));
+    if same_params && rest.iter().all(|s| s.same_outputs(db, &first)) {
         return (Ambiguity::Return, Vec::new());
     }
 
@@ -551,8 +586,8 @@ fn ambiguity<'db>(
     for pa in func_call.params(db) {
         let (value, positional) = match pa.kind(db) {
             ParamAssignKind::NonFormal { value } => (value, true),
-            ParamAssignKind::FormalInput { value, .. } => (value, false),
-            ParamAssignKind::FormalOutput { .. } => continue,
+            ParamAssignKind::FormalInput { value, .. }
+            | ParamAssignKind::FormalOutput { value, .. } => (value, false),
         };
         let vars: Vec<VariableDecl<'db>> =
             bindings.iter().filter_map(|b| b.get(pa).copied()).collect();
@@ -566,6 +601,16 @@ fn ambiguity<'db>(
             .all(|w| crate::hir_ty::infer::coerce::same_type(db, w[0], w[1]))
         {
             continue;
+        }
+        // Where an output goes: the variable it is written into takes each
+        // overload's output. `o := x` says nothing of the output (E0818),
+        // nor does what is no variable (E0805).
+        if vars.iter().any(|v| v.is_output(db)) {
+            match pa.kind(db) {
+                ParamAssignKind::FormalInput { .. } => continue,
+                _ if value.variable_access(db).is_none() => continue,
+                _ => return (Ambiguity::OutputWidening, Vec::new()),
+            }
         }
 
         let mut names: Vec<(Ident, Ident)> = Vec::new();
@@ -593,7 +638,68 @@ fn ambiguity<'db>(
         };
         return (why, by_name);
     }
-    (Ambiguity::Defaults, Vec::new())
+    match first_differing_output(db, candidates) {
+        Some(output) if same_params => (Ambiguity::Outputs { output }, Vec::new()),
+        _ => (Ambiguity::Defaults, Vec::new()),
+    }
+}
+
+/// Whether the call hands `f` an output by position: an argument in the
+/// place of one of its VAR_OUTPUTs.
+fn writes_positional_output<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    func_call: FuncCall<'db>,
+    f: Function<'db>,
+) -> bool {
+    let callable = CallableType::Function(f);
+    resolve_params(
+        db,
+        func_call.params(db),
+        callable,
+        &call_site_params(db, callable),
+        &mut Vec::new(),
+    )
+    .iter()
+    .any(|m| {
+        matches!(m, ParamMatch::Matched(pa, var)
+            if var.is_output(db) && matches!(pa.kind(db), ParamAssignKind::NonFormal { .. }))
+    })
+}
+
+/// The first output the overloads type differently, or one declares and
+/// another does not, as the first to declare it writes it.
+fn first_differing_output<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    candidates: &[Function<'db>],
+) -> Option<Ident> {
+    let outputs: Vec<Vec<VariableDecl<'db>>> = candidates
+        .iter()
+        .map(|f| {
+            f.variables(db)
+                .iter()
+                .filter(|v| v.is_output(db))
+                .copied()
+                .collect()
+        })
+        .collect();
+    let longest = outputs.iter().map(Vec::len).max().unwrap_or(0);
+    (0..longest).find_map(|i| {
+        let at: Vec<Option<VariableDecl<'db>>> =
+            outputs.iter().map(|o| o.get(i).copied()).collect();
+        let alike = at.iter().all(Option::is_some)
+            && at.windows(2).all(|w| match (w[0], w[1]) {
+                (Some(a), Some(b)) => crate::hir_ty::infer::coerce::same_type(
+                    db,
+                    Type::new_var(db, a).normalize(db),
+                    Type::new_var(db, b).normalize(db),
+                ),
+                _ => false,
+            });
+        match alike {
+            true => None,
+            false => at.iter().flatten().next().map(|v| v.name_with_case(db)),
+        }
+    })
 }
 
 /// A VAR_IN_OUT binds the caller's own storage: a variable (not a slice of
@@ -630,6 +736,35 @@ fn conformand_fit<'db>(
         (true, Some(_)) => ArgMatch::Bounds,
         (true, None) => ArgMatch::Widen,
     }
+}
+
+/// How the variable a call writes the output `var` into fits it: the output
+/// converts into it as [`bind_output`] checks it, exactly when it is of the
+/// output's own type. What is no variable (E0805 on the overload picked)
+/// tells no overload apart.
+fn output_fit<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    resolver: Resolver<'db>,
+    var: VariableDecl<'db>,
+    value: Expr<'db>,
+    ctx: &BodyInferenceResult<'db>,
+) -> ArgMatch {
+    let Some(variable) = value
+        .variable_access(db)
+        .filter(|access| access.multibits(db).is_none())
+    else {
+        return ArgMatch::Exact;
+    };
+    if let Some(conformand) = var.conformand(db) {
+        return conformand_fit(db, conformand, var, value, ctx);
+    }
+    classify_arg(
+        db,
+        resolver,
+        Type::new_var(db, var),
+        None,
+        ctx.type_of_variable_access_with_adjustments(db, variable),
+    )
 }
 
 fn in_out_fit<'db>(
