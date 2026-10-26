@@ -49,7 +49,7 @@ jobs:
           sudo docker image prune --all --force
           df -h
       - uses: ./.github/actions/rust-toolchain
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
       - name: Install nextest
         uses: taiki-e/install-action@2ab4414e29d1e7bb31565858e4b05de5d3713b61 # nextest
       # The tests that optimize a module skip where no wasm-opt is installed,
@@ -75,7 +75,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/rust-toolchain
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
       - name: Run Clippy
         run: cargo clippy --all-targets --all-features
 
@@ -108,7 +108,7 @@ jobs:
           sudo docker image prune --all --force
           df -h
       - uses: ./.github/actions/rust-toolchain
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
       - name: Build the rk CLI
         run: cargo build -p rk --release
       # The bundled `wasm-opt` crate is pinned to Binaryen 116, which predates
@@ -162,7 +162,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/rust-toolchain
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
       # Fails when a diagnostics example disagrees with the compiler, or a
       # skill's example no longer holds, naming every one at fault. Writes
       # nothing in that case, so the committed reference is never replaced
