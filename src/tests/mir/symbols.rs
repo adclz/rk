@@ -231,3 +231,37 @@ fn an_output_directed_set_marks_its_outputs(mut with_db: RootDatabase) {
     g$INT$:REAL
     ");
 }
+
+// Inputs alike, told apart by their outputs, their return or both, beside an
+// input list that spells like inputs and an output, and outputs of named and
+// composite types: every overload has a symbol of its own.
+#[rstest]
+fn output_symbols_stay_apart(mut with_db: RootDatabase) {
+    let source = r#"
+        TYPE Color : (Red, Green); END_TYPE
+        FUNCTION f VAR_INPUT a : INT; END_VAR END_FUNCTION
+        FUNCTION f VAR_INPUT a : INT; END_VAR VAR_OUTPUT q : INT; END_VAR q := 1; END_FUNCTION
+        FUNCTION f VAR_INPUT a : INT; END_VAR VAR_OUTPUT q : DINT; END_VAR q := 2; END_FUNCTION
+        FUNCTION f VAR_INPUT a : INT; END_VAR VAR_OUTPUT q, r : INT; END_VAR q := 3; END_FUNCTION
+        FUNCTION f : BOOL VAR_INPUT a : INT; END_VAR VAR_OUTPUT q : INT; END_VAR f := TRUE; END_FUNCTION
+        FUNCTION f : BOOL VAR_INPUT a : INT; END_VAR VAR_OUTPUT q : DINT; END_VAR f := TRUE; END_FUNCTION
+        FUNCTION f : REAL VAR_INPUT a : INT; END_VAR VAR_OUTPUT q : DINT; END_VAR f := 1.0; END_FUNCTION
+        FUNCTION f VAR_INPUT a : INT; b : INT; END_VAR END_FUNCTION
+        FUNCTION g VAR_OUTPUT q : Color; END_VAR q := Color#Red; END_FUNCTION
+        FUNCTION g VAR_OUTPUT q : ARRAY[0..1] OF INT; END_VAR q[0] := 1; END_FUNCTION
+        FUNCTION g VAR_OUTPUT q : REF_TO INT; END_VAR q := NULL; END_FUNCTION
+    "#;
+    assert_snapshot!(symbols(&mut with_db, source), @r"
+    f$INT
+    f$INT$=>DINT
+    f$INT$=>DINT$:BOOL
+    f$INT$=>DINT$:REAL
+    f$INT$=>INT
+    f$INT$=>INT$:BOOL
+    f$INT$=>INT$=>INT
+    f$INT$INT
+    g$=>ARRAY[0..1](INT)
+    g$=>Color
+    g$=>REF_TO(INT)
+    ");
+}
