@@ -10,6 +10,9 @@ fn fmt_ty(t: &mir::types::MirType, db: &dyn WorkspaceDataBase) -> String {
     match t {
         mir::types::MirType::Elementary(e) => format!("{:?}", e),
         mir::types::MirType::Pointer(inner) => format!("*{}", fmt_ty(inner, db)),
+        mir::types::MirType::RefTarget(mir::types::MirRefTarget::Type(target)) => {
+            fmt_ty(target, db)
+        }
         mir::types::MirType::Struct(s) => format!("struct({})", s.name.text(db)),
         mir::types::MirType::Void => "void".into(),
         other => format!("{:?}", other),
