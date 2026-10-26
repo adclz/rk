@@ -377,11 +377,32 @@ pub enum CandidateFit {
     /// The arguments do not bind: a name it does not declare, too many or too
     /// few of them.
     Unbound,
-    /// They bind, and an argument's type does not fit its parameter.
+    /// They bind, and an argument's type does not fit its parameter, or an
+    /// output does not convert into the variable it is written into.
     Mismatch,
-    /// Each argument's match, in call order, and whether an omitted input was
-    /// filled with its default.
-    Fits { args: Vec<ArgMatch>, padded: bool },
+    /// Each argument's match and each output's, in call order, and whether
+    /// an omitted input was filled with its default.
+    Fits {
+        args: Vec<ArgMatch>,
+        outputs: Vec<ArgMatch>,
+        padded: bool,
+    },
+}
+
+/// A candidate the call fits, as [`CandidateFit::Fits`] says it does.
+struct Viable<'db> {
+    f: Function<'db>,
+    args: Vec<ArgMatch>,
+    outputs: Vec<ArgMatch>,
+    padded: bool,
+}
+
+/// `b` DOMINATES `a`: at least as good a match at every position, strictly
+/// better at one.
+fn dominates(b: &[ArgMatch], a: &[ArgMatch]) -> bool {
+    a.len() == b.len()
+        && a.iter().zip(b).all(|(x, y)| y.at_least(x))
+        && a.iter().zip(b).any(|(x, y)| y.better(x))
 }
 
 /// What tells an overloaded FUNCTION's symbol apart from its siblings'.
@@ -391,16 +412,20 @@ pub enum CandidateFit {
 pub struct OverloadDiscriminant<'db> {
     /// The `VAR_INPUT` and `VAR_IN_OUT` types, in order.
     pub params: Vec<Type<'db>>,
-    /// The return type, only when a sibling ties on parameters (a
-    /// RETURN-directed set): kept apart from `params`, since `f(INT) : INT`
-    /// and `f(INT, INT)` would otherwise read the same.
+    /// The `VAR_OUTPUT` types, only when a sibling ties on parameters and
+    /// differs in its outputs: kept apart from `params` as the return is.
+    pub outputs: Option<Vec<Type<'db>>>,
+    /// The return type, only when a sibling ties on parameters and outputs
+    /// (a RETURN-directed set): kept apart from `params`, since
+    /// `f(INT) : INT` and `f(INT, INT)` would otherwise read the same.
     pub ret: Option<Type<'db>>,
 }
 
 /// The types that DISCRIMINATE this function's symbol among its overloads:
-/// its parameter signature, plus its return type when a same-name sibling
-/// ties on parameters (a RETURN-directed set — params alone would give two
-/// functions one symbol). `None` when the name is not overloaded at all.
+/// its parameter signature, plus its outputs when a same-name sibling ties
+/// on parameters and not on outputs, plus its return type when one ties on
+/// both (a RETURN-directed set — params alone would give two functions one
+/// symbol). `None` when the name is not overloaded at all.
 ///
 /// This is resolution's knowledge — which declarations share a name and how
 /// they differ — exposed so the code generator renders symbols without
@@ -429,13 +454,19 @@ pub fn overload_discriminant<'db>(
         return None;
     }
     let sig = function_signature(db, f);
-    let params_tied = siblings
+    let params_tied: Vec<_> = siblings
         .iter()
-        .any(|other| *other != f && function_signature(db, *other).same_params(db, &sig));
-    let (params, ret) = crate::hir_ty::head::signature::declared_types(db, f);
+        .filter(|other| **other != f)
+        .map(|other| function_signature(db, *other))
+        .filter(|other| other.same_params(db, &sig))
+        .collect();
+    let outputs_differ = params_tied.iter().any(|o| !o.same_outputs(db, &sig));
+    let outputs_tied = params_tied.iter().any(|o| o.same_outputs(db, &sig));
+    let declared = crate::hir_ty::head::signature::declared_types(db, f);
     Some(OverloadDiscriminant {
-        params,
-        ret: ret.filter(|_| params_tied),
+        params: declared.params,
+        outputs: outputs_differ.then_some(declared.outputs),
+        ret: declared.ret.filter(|_| outputs_tied),
     })
 }
 
@@ -457,7 +488,11 @@ pub fn overload_discriminant<'db>(
 /// arguments, since exact beats widened on the first and they tie on the
 /// second. Incomparable candidates — each better somewhere, as with
 /// `f(INT, REAL)` vs `f(REAL, INT)` on two widening arguments — stay
-/// [`OverloadPick::Ambiguous`]: dominance never picks by majority. None
+/// [`OverloadPick::Ambiguous`]: dominance never picks by majority. The
+/// variables the call writes the outputs into rank the same way, but only
+/// among candidates the arguments leave tied: a call the arguments decide is
+/// decided as if the outputs were not there, and an output that does not
+/// convert into its variable only rules its candidate out. None
 /// viable ⇒ [`OverloadPick::None`] when some candidate binds the arguments,
 /// since the TYPES are what failed; the first-match used to stand in and
 /// report its own parameter mismatch, naming a type nobody wrote. When no
@@ -490,22 +525,31 @@ pub fn select_overload<'db>(
         return OverloadPick::Unresolved;
     }
 
-    let mut exact: Vec<(Function<'db>, bool)> = Vec::new();
-    let mut viable: Vec<(Function<'db>, Vec<ArgMatch>, bool)> = Vec::new();
+    let mut viable: Vec<Viable<'db>> = Vec::new();
     let mut binds = false;
     for f in functions.iter().copied() {
         match fit(f) {
             CandidateFit::Unbound => {}
             CandidateFit::Mismatch => binds = true,
-            CandidateFit::Fits { args, padded } => {
+            CandidateFit::Fits {
+                args,
+                outputs,
+                padded,
+            } => {
                 binds = true;
-                if args.iter().all(|m| matches!(m, ArgMatch::Exact)) {
-                    exact.push((f, padded));
-                }
-                viable.push((f, args, padded));
+                viable.push(Viable {
+                    f,
+                    args,
+                    outputs,
+                    padded,
+                });
             }
         }
     }
+    let exact: Vec<&Viable<'db>> = viable
+        .iter()
+        .filter(|v| v.args.iter().all(|m| matches!(m, ArgMatch::Exact)))
+        .collect();
 
     // An all-exact match wins when it is UNIQUE. Two distinct signatures
     // cannot both exactly equal a non-empty argument tuple, but the EMPTY
@@ -513,9 +557,9 @@ pub fn select_overload<'db>(
     // to be a single `Option` slot each candidate overwrote, so the last one
     // in discovery order silently won a zero-arg call.
     match exact.len() {
-        1 => return OverloadPick::One(CallableType::Function(exact[0].0)),
+        1 => return OverloadPick::One(CallableType::Function(exact[0].f)),
         0 => {}
-        _ => return pick_by_defaults_then_return(db, exact, expected),
+        _ => return pick_by_outputs(db, &exact, expected),
     }
 
     // Dominance: drop every candidate that another candidate beats — at least
@@ -523,21 +567,36 @@ pub fn select_overload<'db>(
     // set of candidates no one is uniformly better than; only a singleton is
     // an answer, anything else is genuinely incomparable. The arguments are
     // the call's own, in its order, so each position compares one argument.
-    let dominated = |a: &[ArgMatch], b: &[ArgMatch]| -> bool {
-        // `b` dominates `a`
-        a.len() == b.len()
-            && a.iter().zip(b).all(|(x, y)| y.at_least(x))
-            && a.iter().zip(b).any(|(x, y)| y.better(x))
-    };
-    let undominated: Vec<(Function<'db>, bool)> = viable
+    let undominated: Vec<&Viable<'db>> = viable
         .iter()
-        .filter(|(_, m, _)| !viable.iter().any(|(_, other, _)| dominated(m, other)))
-        .map(|(f, _, padded)| (*f, *padded))
+        .filter(|v| !viable.iter().any(|other| dominates(&other.args, &v.args)))
         .collect();
 
     match undominated.len() {
         0 if binds => OverloadPick::None(functions),
         0 => OverloadPick::One(callable),
+        1 => OverloadPick::One(CallableType::Function(undominated[0].f)),
+        _ => pick_by_outputs(db, &undominated, expected),
+    }
+}
+
+/// Break a tie the arguments leave by OUTPUTS: the variables the call writes
+/// them into rank the tied candidates as the arguments ranked them all.
+/// What they leave tied goes to the defaults, then the return.
+fn pick_by_outputs<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    tie: &[&Viable<'db>],
+    expected: Option<Type<'db>>,
+) -> OverloadPick<'db> {
+    let undominated: Vec<(Function<'db>, bool)> = tie
+        .iter()
+        .filter(|v| {
+            !tie.iter()
+                .any(|other| dominates(&other.outputs, &v.outputs))
+        })
+        .map(|v| (v.f, v.padded))
+        .collect();
+    match undominated.len() {
         1 => OverloadPick::One(CallableType::Function(undominated[0].0)),
         _ => pick_by_defaults_then_return(db, undominated, expected),
     }
@@ -630,7 +689,8 @@ impl ArgMatch {
 /// adjustments (`REF(x)` is a reference to `x`), so what selection accepts
 /// is what the call then accepts. The same type, compared structurally (two
 /// `REF_TO INT` written apart are one type), is exact; anything else the
-/// coercion takes is a widening.
+/// coercion takes is a widening. An output of type `arg` matches the
+/// variable of type `param` it is written into by the same rule.
 pub fn classify_arg<'db>(
     db: &'db dyn WorkspaceDataBase,
     resolver: crate::hir_ty::resolver::Resolver<'db>,

@@ -317,3 +317,29 @@ END_NAMESPACE
     ---'
     ");
 }
+
+/// An import used only in an argument of a call that names nothing callable
+/// is used.
+#[rstest]
+fn an_import_in_the_arguments_of_a_failed_call_is_used(mut with_db: RootDatabase) {
+    let source = r#"
+        NAMESPACE Lib
+            FUNCTION Twice : INT VAR_INPUT v : INT; END_VAR Twice := v * 2; END_FUNCTION
+        END_NAMESPACE
+
+        USING Lib;
+
+        FUNCTION caller : INT
+            caller := NOT_IMPORTED(Twice(1));
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "unused-import"), @r"
+    [E0201] Error: unknown name
+       ,-[ file:///test0.st:9:23 ]
+       |
+     9 |             caller := NOT_IMPORTED(Twice(1));
+       |                       ^^^^^^|^^^^^
+       |                             `------- no item 'NOT_IMPORTED' found in scope
+    ---'
+    ");
+}

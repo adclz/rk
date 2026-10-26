@@ -32,7 +32,7 @@ MyFn(1.0) <-- Will pick the second overload
 ```
 
 > [!CAUTION]
-> **Return type** affects the signature of overloads.
+> **Return type** and **output types** affect the signature of overloads.
 
 If a call site can fit multiple overloads, this will trigger an error:
 
@@ -75,3 +75,38 @@ END_FUNCTION
     │ Note: an argument widens to each overload
 ────╯
 ```
+
+## Outputs
+
+Overloads can also differ only in the types of their `VAR_OUTPUT`s.
+When the arguments fit several overloads alike, the variables a call writes the outputs into pick one:
+
+```iecst
+USING Std.Convert;
+
+FUNCTION Split
+VAR_INPUT IN : DINT; END_VAR
+VAR_OUTPUT HIGH, LOW : INT; END_VAR
+    HIGH := DINT_TO_INT(IN / 1000);
+    LOW := DINT_TO_INT(IN MOD 1000);
+END_FUNCTION
+
+FUNCTION Split
+VAR_INPUT IN : DINT; END_VAR
+VAR_OUTPUT HIGH, LOW : DINT; END_VAR
+    HIGH := IN / 1000;
+    LOW := IN MOD 1000;
+END_FUNCTION
+
+FUNCTION Example : DINT
+VAR small : INT; large : DINT; END_VAR
+    Split(IN := 70000, LOW => small);  // the INT overload
+    Split(IN := 70000, LOW => large);  // the DINT overload
+    Example := small + large;
+END_FUNCTION
+```
+
+An output of the variable's own type is an exact match.
+An output that widens into the variable is a widening, as for an argument.
+An overload whose output does not convert into the variable is not a candidate.
+A call that writes none of the outputs the overloads differ in is ambiguous (`E0809`).

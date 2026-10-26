@@ -53,8 +53,9 @@ pub fn mangle_generic_name(db: &dyn WorkspaceDataBase, base: Ident, parts: &[&st
 }
 
 /// The MIR symbol of a FUNCTION: its qualified name, with the signature
-/// appended as discriminant when it is overloaded (`SHL$BYTE`). Definition
-/// and call compute it the same way.
+/// appended as discriminant when it is overloaded (`SHL$BYTE`, an output
+/// `split$DINT$=>INT`, a return `f$INT$:REAL`). Definition and call compute
+/// it the same way.
 pub fn mir_function_symbol<'db>(db: &'db dyn WorkspaceDataBase, f: Function<'db>) -> Ident {
     let base = qualified_pou_ident(db, Type::Function(f));
     // What discriminates the symbol is resolution's decision.
@@ -65,6 +66,9 @@ pub fn mir_function_symbol<'db>(db: &'db dyn WorkspaceDataBase, f: Function<'db>
                 .iter()
                 .map(|t| type_fragment(db, *t))
                 .collect();
+            for output in discriminant.outputs.iter().flatten() {
+                parts.push(format!("=>{}", type_fragment(db, *output)));
+            }
             if let Some(ret) = discriminant.ret {
                 parts.push(format!(":{}", type_fragment(db, ret)));
             }
