@@ -1340,3 +1340,24 @@ END_PROGRAM
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
+
+/// A call that names nothing reports that, once: its arguments are typed for
+/// what they read, and what they would report waits for a callee, since an
+/// argument means what the parameter it lands on makes of it.
+#[rstest]
+fn a_failed_call_reports_only_its_callee(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION caller : INT
+    caller := NOT_IMPORTED(nope);
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0201] Error: unknown name
+       ,-[ file:///test0.st:3:15 ]
+       |
+     3 |     caller := NOT_IMPORTED(nope);
+       |               ^^^^^^|^^^^^
+       |                     `------- no item 'NOT_IMPORTED' found in scope
+    ---'
+    ");
+}

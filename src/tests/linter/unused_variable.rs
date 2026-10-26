@@ -344,3 +344,36 @@ END_CONFIGURATION
     ----'
     ");
 }
+
+/// An argument of a call that names nothing callable still reads its
+/// variables: the callee is the error, reported where it is.
+#[rstest]
+fn the_arguments_of_a_failed_call_are_read(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION unknown_callee : INT
+        VAR_INPUT IN : INT; END_VAR
+            unknown_callee := NOT_IMPORTED(IN);
+        END_FUNCTION
+
+        FUNCTION not_callable : INT
+        VAR v, x : INT; END_VAR
+            not_callable := v(IN := x);
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "unused-variable"), @r"
+    [E0201] Error: unknown name
+       ,-[ file:///test0.st:4:31 ]
+       |
+     4 |             unknown_callee := NOT_IMPORTED(IN);
+       |                               ^^^^^^|^^^^^
+       |                                     `------- no item 'NOT_IMPORTED' found in scope
+    ---'
+    [E0808] Error: call of a non-callable type
+       ,-[ file:///test0.st:9:29 ]
+       |
+     9 |             not_callable := v(IN := x);
+       |                             |
+       |                             `-- 'INT' is not a callable type
+    ---'
+    ");
+}

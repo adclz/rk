@@ -65,6 +65,7 @@ pub fn resolve_func_call<'db>(
         .normalize(db);
 
     if access_typ.is_never() || target_typ.is_never() {
+        type_orphan_arguments(db, resolver, func_call, ctx);
         return;
     }
 
@@ -78,6 +79,7 @@ pub fn resolve_func_call<'db>(
             }
             .to_diagnostic(db, ctx.scope.file(db)),
         );
+        type_orphan_arguments(db, resolver, func_call, ctx);
         return;
     }
 
@@ -91,6 +93,7 @@ pub fn resolve_func_call<'db>(
                 }
                 .to_diagnostic(db, ctx.scope.file(db)),
             );
+            type_orphan_arguments(db, resolver, func_call, ctx);
             return;
         }
     };
@@ -355,6 +358,31 @@ pub fn resolve_func_call<'db>(
             .to_diagnostic(db, ctx.scope.file(db)),
         );
     }
+}
+
+/// The arguments of a call that names nothing callable, which was reported
+/// where it failed: typed for the variables they read and the imports they
+/// use, which the lints and the editor ask. What typing them reports is
+/// dropped, since what an argument means depends on the parameter it lands
+/// on, and none is named.
+fn type_orphan_arguments<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    resolver: Resolver<'db>,
+    func_call: FuncCall<'db>,
+    ctx: &mut BodyInferenceResult<'db>,
+) {
+    let reported = ctx.errors.len();
+    for p in func_call.params(db) {
+        let value = match p.kind(db) {
+            ParamAssignKind::NonFormal { value }
+            | ParamAssignKind::FormalInput { value, .. }
+            | ParamAssignKind::FormalOutput { value, .. } => value,
+        };
+        if !ctx.type_of_expr.contains_key(&value) {
+            InferExprCtx::new(resolver).resolve_expr(db, value, ctx);
+        }
+    }
+    ctx.errors.truncate(reported);
 }
 
 /// The types a call's arguments select an overload by.
