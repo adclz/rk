@@ -431,6 +431,89 @@ fn an_output_binding_goes_with_the_overload(mut with_db: db::RootDatabase) {
     assert_eq!(result, 1, "INT then REAL, each writing its own output");
 }
 
+/// Overloads that differ only in their outputs: each call runs the one its
+/// variables pick, and that one writes the outputs.
+#[rstest]
+fn each_output_overload_writes_its_own_outputs(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION split VAR_INPUT IN : DINT; END_VAR VAR_OUTPUT HI, LO : INT; END_VAR
+            HI := 1; LO := 2;
+        END_FUNCTION
+        FUNCTION split VAR_INPUT IN : DINT; END_VAR VAR_OUTPUT HI, LO : DINT; END_VAR
+            HI := IN / 1000; LO := IN MOD 1000;
+        END_FUNCTION
+
+        FUNCTION test : DINT
+        VAR a, b : INT; c, d : DINT; END_VAR
+            split(IN := 70000, HI => a, LO => b);
+            split(IN := 70123, HI => c, LO => d);
+            test := a * DINT#1000000 + b * DINT#100000 + c * 1000 + d;
+        END_FUNCTION
+    "#;
+    let result: i32 = super::run(&mut with_db, source, "test", ());
+    assert_eq!(
+        result, 1_270_123,
+        "the INT overload writes 1 and 2, the DINT one 70 and 123"
+    );
+}
+
+/// The arguments decide first: the INT overload runs for an INT argument
+/// though its output widens into the DINT. An overload whose output cannot be
+/// written into the variable is ruled out: the DINT one runs for an INT
+/// argument when only its BOOL output goes into a BOOL.
+#[rstest]
+fn the_arguments_decide_and_an_unwritable_output_rules_out(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION same VAR_INPUT IN : INT; END_VAR VAR_OUTPUT Q : INT; END_VAR
+            Q := 1;
+        END_FUNCTION
+        FUNCTION same VAR_INPUT IN : DINT; END_VAR VAR_OUTPUT Q : DINT; END_VAR
+            Q := 2;
+        END_FUNCTION
+        FUNCTION flag VAR_INPUT IN : INT; END_VAR VAR_OUTPUT Q : INT; END_VAR
+            Q := 1;
+        END_FUNCTION
+        FUNCTION flag VAR_INPUT IN : DINT; END_VAR VAR_OUTPUT Q : BOOL; END_VAR
+            Q := TRUE;
+        END_FUNCTION
+
+        FUNCTION test : DINT
+        VAR i : INT; d : DINT; b : BOOL; END_VAR
+            same(IN := i, Q => d);
+            flag(IN := i, Q => b);
+            test := d * 10 + BOOL_TO_DINT(b);
+        END_FUNCTION
+
+        FUNCTION BOOL_TO_DINT : DINT VAR_INPUT IN : BOOL; END_VAR
+            IF IN THEN BOOL_TO_DINT := 1; END_IF;
+        END_FUNCTION
+    "#;
+    let result: i32 = super::run(&mut with_db, source, "test", ());
+    assert_eq!(result, 11, "same(INT) writes 1, flag(DINT) writes TRUE");
+}
+
+/// The standard library's MOVE writes its input's own type: an INT moved
+/// into a DINT runs the INT overload, a literal its default type's.
+#[rstest]
+fn move_into_a_wider_variable(mut with_db: db::RootDatabase) {
+    let source = r#"
+        USING Std.Memory;
+        FUNCTION test : DINT
+        VAR i : INT := 7; a, b : DINT; END_VAR
+            MOVE(IN := i, OUT => a);
+            MOVE(IN := 5, OUT => b);
+            test := a * 10 + b;
+        END_FUNCTION
+    "#;
+    let wasm = crate::tests::codegen::compile_with_libraries(
+        &mut with_db,
+        &[include_str!("../../../stdlib/Memory.st")],
+        source,
+    );
+    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(result, 75);
+}
+
 /// An untyped literal matches its default type exactly only when its value
 /// fits it: 70000 is no INT, so the DINT overload takes it.
 #[rstest]

@@ -1212,3 +1212,309 @@ END_FUNCTION_BLOCK
     ----'
     ");
 }
+
+// -- Overloads that differ in their outputs ---------------------------------
+
+/// The pair every output test below starts from: the same input, outputs of
+/// two widths.
+const SPLIT: &str = r#"
+FUNCTION split
+VAR_INPUT IN : DINT; END_VAR
+VAR_OUTPUT HI, LO : INT; END_VAR
+    HI := 1;
+    LO := 2;
+END_FUNCTION
+
+FUNCTION split
+VAR_INPUT IN : DINT; END_VAR
+VAR_OUTPUT HI, LO : DINT; END_VAR
+    HI := IN / 1000;
+    LO := IN MOD 1000;
+END_FUNCTION
+"#;
+
+/// The variables a call writes the outputs into pick the overload, by `=>`
+/// or by position, one output being enough.
+#[rstest]
+fn valid_outputs_pick_the_overload(mut with_db: RootDatabase) {
+    let caller = r#"
+FUNCTION caller : DINT
+VAR n : DINT; a, b : INT; c, d : DINT; END_VAR
+    split(IN := n, HI => a, LO => b);  // INT
+    split(IN := n, HI => c, LO => d);  // DINT
+    split(IN := n, LO => d);           // DINT
+    split(n, a, b);                    // INT
+    caller := a + b + c + d;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[SPLIT, caller]), @r"");
+}
+
+/// A call that writes none of the outputs the overloads differ in cannot
+/// pick one, as a call whose return nothing takes cannot.
+#[rstest]
+fn invalid_unbound_outputs_stay_ambiguous(mut with_db: RootDatabase) {
+    let caller = r#"
+FUNCTION caller : DINT
+VAR n : DINT; END_VAR
+    split(IN := n);
+    caller := n;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[SPLIT, caller]), @r"
+    [E0809] Error: ambiguous overloaded call
+       ,-[ file:///test1.st:4:5 ]
+       |
+     4 |     split(IN := n);
+       |     ^^|^^
+       |       `---- call to 'split' is ambiguous: 2 overloads accept these arguments
+       |
+       |-[ file:///test0.st:2:10 ]
+       |
+     2 | FUNCTION split
+       |          ^^|^^
+       |            `---- a candidate is declared here
+       |
+     9 | FUNCTION split
+       |          ^^|^^
+       |            `---- a candidate is declared here
+       |
+       | Help: bind 'HI' to a variable of the type you want
+       |
+       | Note: the overloads differ in outputs this call does not bind
+    ---'
+    ");
+}
+
+/// An output a call does not write is named, when the overloads differ in
+/// how many outputs they have.
+#[rstest]
+fn invalid_a_missing_output_is_named(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION read
+VAR_OUTPUT HI : INT; END_VAR
+    HI := 1;
+END_FUNCTION
+
+FUNCTION read
+VAR_OUTPUT HI, LO : INT; END_VAR
+    HI := 2;
+    LO := 3;
+END_FUNCTION
+
+FUNCTION caller : INT
+VAR x, y : INT; END_VAR
+    read(HI => x, LO => y);
+    read(HI => x);
+    caller := x + y;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0809] Error: ambiguous overloaded call
+        ,-[ file:///test0.st:16:5 ]
+        |
+      2 | FUNCTION read
+        |          ^^|^
+        |            `--- a candidate is declared here
+        |
+      7 | FUNCTION read
+        |          ^^|^
+        |            `--- a candidate is declared here
+        |
+     16 |     read(HI => x);
+        |     ^^|^
+        |       `--- call to 'read' is ambiguous: 2 overloads accept these arguments
+        |
+        | Help: bind 'LO' to a variable of the type you want
+        |
+        | Note: the overloads differ in outputs this call does not bind
+    ----'
+    ");
+}
+
+/// An output that widens into its variable from each overload picks none of
+/// them, as an argument that widens to each does not.
+#[rstest]
+fn invalid_an_output_widening_from_each_stays_ambiguous(mut with_db: RootDatabase) {
+    let caller = r#"
+FUNCTION caller : DINT
+VAR n : DINT; wide : LINT; END_VAR
+    split(IN := n, HI => wide);
+    caller := n;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[SPLIT, caller]), @r"
+    [E0809] Error: ambiguous overloaded call
+       ,-[ file:///test1.st:4:5 ]
+       |
+     4 |     split(IN := n, HI => wide);
+       |     ^^|^^
+       |       `---- call to 'split' is ambiguous: 2 overloads accept these arguments
+       |
+       |-[ file:///test0.st:2:10 ]
+       |
+     2 | FUNCTION split
+       |          ^^|^^
+       |            `---- a candidate is declared here
+       |
+     9 | FUNCTION split
+       |          ^^|^^
+       |            `---- a candidate is declared here
+       |
+       | Help: bind it to a variable of the type you want
+       |
+       | Note: an output widens into its variable from each overload
+    ---'
+    ");
+}
+
+/// A variable no output converts into: E0810 lists what the call writes the
+/// outputs into, and what each overload's outputs are.
+#[rstest]
+fn no_overload_writes_into_the_variable(mut with_db: RootDatabase) {
+    let caller = r#"
+FUNCTION caller : DINT
+VAR n : DINT; text : STRING; END_VAR
+    split(IN := n, HI => text);
+    caller := n;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[SPLIT, caller]), @r"
+    [E0810] Error: no matching overload
+       ,-[ file:///test1.st:4:5 ]
+       |
+     4 |     split(IN := n, HI => text);
+       |     ^^|^^
+       |       `---- no overload of 'split' accepts (DINT, HI => STRING)
+       |
+       |-[ file:///test0.st:2:10 ]
+       |
+     2 | FUNCTION split
+       |          ^^|^^
+       |            `---- overload accepting (DINT, HI => INT, LO => INT)
+       |
+     9 | FUNCTION split
+       |          ^^|^^
+       |            `---- overload accepting (DINT, HI => DINT, LO => DINT)
+    ---'
+    ");
+}
+
+/// A variable that is not found was reported there: the set picks nothing
+/// on it, and reports nothing more.
+#[rstest]
+fn an_unresolved_output_selects_nothing(mut with_db: RootDatabase) {
+    let caller = r#"
+FUNCTION caller : DINT
+VAR n : DINT; END_VAR
+    split(IN := n, HI => nowhere);
+    caller := n;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[SPLIT, caller]), @r"
+    [E0201] Error: unknown name
+       ,-[ file:///test1.st:4:26 ]
+       |
+     4 |     split(IN := n, HI => nowhere);
+       |                          ^^^|^^^
+       |                             `----- no item 'nowhere' found in scope
+    ---'
+    ");
+}
+
+/// The outputs count by their types, in order, as the inputs do: other
+/// names, or an alias of the same type, make no overload.
+#[rstest]
+fn outputs_that_do_not_make_an_overload(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE Count : INT; END_TYPE
+
+FUNCTION Renamed VAR_OUTPUT a : INT; END_VAR a := 1; END_FUNCTION
+FUNCTION Renamed VAR_OUTPUT b : INT; END_VAR b := 2; END_FUNCTION
+
+FUNCTION Aliased VAR_OUTPUT q : INT; END_VAR q := 1; END_FUNCTION
+FUNCTION Aliased VAR_OUTPUT q : Count; END_VAR q := 2; END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0102] Error: duplicate POU
+       ,-[ file:///test0.st:5:10 ]
+       |
+     4 | FUNCTION Renamed VAR_OUTPUT a : INT; END_VAR a := 1; END_FUNCTION
+       |          ^^^|^^^
+       |             `----- POU 'Renamed' is already declared here
+     5 | FUNCTION Renamed VAR_OUTPUT b : INT; END_VAR b := 2; END_FUNCTION
+       |          ^^^|^^^
+       |             `----- duplicate POU 'Renamed'
+    ---'
+    [E0102] Error: duplicate POU
+       ,-[ file:///test0.st:8:10 ]
+       |
+     7 | FUNCTION Aliased VAR_OUTPUT q : INT; END_VAR q := 1; END_FUNCTION
+       |          ^^^|^^^
+       |             `----- POU 'Aliased' is already declared here
+     8 | FUNCTION Aliased VAR_OUTPUT q : Count; END_VAR q := 2; END_FUNCTION
+       |          ^^^|^^^
+       |             `----- duplicate POU 'Aliased'
+    ---'
+    ");
+}
+
+/// The arguments decide first, as if the outputs were not there: an INT
+/// argument picks the INT overload, whose output then widens into the DINT,
+/// as `MOVE(IN := i, OUT => d)` always has.
+#[rstest]
+fn valid_the_arguments_decide_before_the_outputs(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION same
+VAR_INPUT IN : INT; END_VAR
+VAR_OUTPUT Q : INT; END_VAR
+    Q := IN;
+END_FUNCTION
+
+FUNCTION same
+VAR_INPUT IN : DINT; END_VAR
+VAR_OUTPUT Q : DINT; END_VAR
+    Q := IN;
+END_FUNCTION
+
+FUNCTION caller : DINT
+VAR i : INT; d : DINT; END_VAR
+    same(IN := i, Q => d);
+    same(IN := 5, Q => d);
+    caller := d;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
+
+/// An output bound by position is written as the call writes it, among the
+/// arguments, and each overload's label still lists its outputs.
+#[rstest]
+fn no_overload_writes_into_the_positional_variable(mut with_db: RootDatabase) {
+    let caller = r#"
+FUNCTION caller : DINT
+VAR n : DINT; text : STRING; END_VAR
+    split(n, text);
+    caller := n;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[SPLIT, caller]), @r"
+    [E0810] Error: no matching overload
+       ,-[ file:///test1.st:4:5 ]
+       |
+     4 |     split(n, text);
+       |     ^^|^^
+       |       `---- no overload of 'split' accepts (DINT, STRING)
+       |
+       |-[ file:///test0.st:2:10 ]
+       |
+     2 | FUNCTION split
+       |          ^^|^^
+       |            `---- overload accepting (DINT, HI => INT, LO => INT)
+       |
+     9 | FUNCTION split
+       |          ^^|^^
+       |            `---- overload accepting (DINT, HI => DINT, LO => DINT)
+    ---'
+    ");
+}

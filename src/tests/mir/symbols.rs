@@ -208,3 +208,26 @@ fn two_functions_under_one_symbol_stop_lowering(mut with_db: RootDatabase) {
         .expect_err("two bodies under one symbol");
     assert_snapshot!(error, @"two functions lower to the symbol `Which$ARRAY[0..4](INT)$:INT`");
 }
+
+// The outputs of an output-directed set are marked, and the return is added
+// only beside a sibling with the same outputs too: `f(INT) => INT` does not
+// read like `f(INT, INT)`, and a return-directed pair keeps its symbols.
+#[rstest]
+fn an_output_directed_set_marks_its_outputs(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION f VAR_INPUT a : INT; END_VAR VAR_OUTPUT q : INT; END_VAR q := 1; END_FUNCTION
+        FUNCTION f VAR_INPUT a : INT; END_VAR VAR_OUTPUT q : DINT; END_VAR q := 2; END_FUNCTION
+        FUNCTION f : BOOL VAR_INPUT a : INT; END_VAR VAR_OUTPUT q : INT; END_VAR q := 3; f := TRUE; END_FUNCTION
+        FUNCTION f : INT VAR_INPUT a : INT; b : INT; END_VAR f := 4; END_FUNCTION
+        FUNCTION g : INT VAR_INPUT a : INT; END_VAR VAR_OUTPUT q : INT; END_VAR g := 1; END_FUNCTION
+        FUNCTION g : REAL VAR_INPUT a : INT; END_VAR VAR_OUTPUT q : INT; END_VAR g := 2.0; END_FUNCTION
+    "#;
+    assert_snapshot!(symbols(&mut with_db, source), @r"
+    f$INT$=>DINT
+    f$INT$=>INT
+    f$INT$=>INT$:BOOL
+    f$INT$INT
+    g$INT$:INT
+    g$INT$:REAL
+    ");
+}
