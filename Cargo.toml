@@ -126,6 +126,8 @@ wasm_codegen = { workspace = true }
 compact_str = { workspace = true }
 
 [dev-dependencies]
+# The host zone's offset the clock tests compare `Std.Timers.LOCAL_OFFSET` to.
+jiff = "0.2"
 rstest = { workspace = true }
 insta = { workspace = true }
 ariadne = { workspace = true }

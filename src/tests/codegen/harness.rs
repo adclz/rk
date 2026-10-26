@@ -230,7 +230,7 @@ pub fn instantiate_with_memory(
 
 /// The `env.memory` a host gives `module`: as many pages as it asks for, the
 /// stack of recursive calls included.
-fn env_memory(store: &mut wasmtime::Store<()>, module: &wasmtime::Module) -> wasmtime::Memory {
+pub fn env_memory(store: &mut wasmtime::Store<()>, module: &wasmtime::Module) -> wasmtime::Memory {
     let pages = module
         .imports()
         .find_map(|import| match import.ty() {
@@ -400,6 +400,16 @@ pub struct TestPlc {
 impl TestPlc {
     /// Instantiate `wasm`, run `__init`, and locate the memory bands.
     pub fn load(wasm: &[u8]) -> Result<Self> {
+        Self::load_with_host(wasm, |_| Ok(()))
+    }
+
+    /// [`TestPlc::load`] with `wire` defining host imports of the test's
+    /// own after the clocks, in their place when it names one of them: a
+    /// clock the test moves by hand, for one.
+    pub fn load_with_host(
+        wasm: &[u8],
+        wire: impl FnOnce(&mut Linker<()>) -> Result<()>,
+    ) -> Result<Self> {
         let engine = test_engine();
         let module = Module::new(&engine, wasm).ctx("compiling the module")?;
         let mut store = Store::new(&engine, ());
@@ -418,16 +428,10 @@ impl TestPlc {
         linker
             .define(&store, "env", "memory", memory)
             .ctx("defining env.memory")?;
-        let clock_start = std::time::Instant::now();
-        for import in module.imports() {
-            if import.name() == "now" && import.module().contains("monotonic-clock") {
-                linker
-                    .func_wrap(import.module(), import.name(), move || {
-                        clock_start.elapsed().as_nanos() as i64
-                    })
-                    .ctx("wiring the monotonic clock")?;
-            }
-        }
+        rk::test_host::wire_clocks(&mut linker, &module, memory).context("wiring the clocks")?;
+        linker.allow_shadowing(true);
+        wire(&mut linker)?;
+        linker.allow_shadowing(false);
         // An `{extern}` a test never calls must not stop the module loading.
         linker
             .define_unknown_imports_as_traps(&module)

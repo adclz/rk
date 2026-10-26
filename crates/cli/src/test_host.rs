@@ -13,15 +13,15 @@
 //! with the frames still there.
 
 use std::cell::OnceCell;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result};
 use debug_format::DebugInfo;
 use debug_format::test_manifest::{TEST_MANIFEST_SECTION, TestEntry, TestManifest};
 use debug_format::test_report::{Frame, Status, TestRecord};
 use wasmtime::{
-    DebugEvent, DebugHandler, Engine, ExternType, Linker, Memory, MemoryType, Module, Store,
-    StoreContextMut,
+    Caller, DebugEvent, DebugHandler, Engine, ExternType, Linker, Memory, MemoryType, Module,
+    Store, StoreContextMut,
 };
 
 /// How long one test may run before the watchdog stops it, unless
@@ -213,20 +213,77 @@ fn link<T: 'static>(store: &mut Store<T>, module: &Module) -> Result<(Linker<T>,
     linker
         .define(&*store, "env", "memory", memory)
         .ctx("defining env.memory")?;
-    let clock_start = Instant::now();
-    for import in module.imports() {
-        if import.name() == "now" && import.module().contains("monotonic-clock") {
-            linker
-                .func_wrap(import.module(), import.name(), move || {
-                    clock_start.elapsed().as_nanos() as i64
-                })
-                .ctx("wiring the monotonic clock")?;
-        }
-    }
+    wire_clocks(&mut linker, module, memory)?;
     linker
         .define_unknown_imports_as_traps(module)
         .ctx("stubbing unwired host imports as traps")?;
     Ok((linker, memory))
+}
+
+/// Wires the clocks a module imports, by the names WASI gives them and in
+/// their core forms: the monotonic clock, which starts at zero here; the
+/// wall clock, whose `now` writes its record, the seconds since 1970 and
+/// the nanoseconds, where the module points; and the zone's `utc-offset`
+/// at an instant. A module reads them through `Std.Timers`, and a debug
+/// module imports every `{extern}` of the libraries it reads, so each is
+/// wired whether a test reads it or not.
+pub fn wire_clocks<T: 'static>(
+    linker: &mut Linker<T>,
+    module: &Module,
+    memory: Memory,
+) -> Result<()> {
+    let clock_start = Instant::now();
+    for import in module.imports() {
+        let (module_name, name) = (import.module(), import.name());
+        if name == "now" && module_name.contains("monotonic-clock") {
+            linker
+                .func_wrap(module_name, name, move || {
+                    clock_start.elapsed().as_nanos() as i64
+                })
+                .ctx("wiring the monotonic clock")?;
+        } else if name == "now" && module_name.contains("wall-clock") {
+            linker
+                .func_wrap(
+                    module_name,
+                    name,
+                    move |mut caller: Caller<'_, T>, ret: i32| -> wasmtime::Result<()> {
+                        let since = SystemTime::now()
+                            .duration_since(UNIX_EPOCH)
+                            .unwrap_or_default();
+                        let mut datetime = [0u8; 16];
+                        datetime[..8].copy_from_slice(&since.as_secs().to_le_bytes());
+                        datetime[8..12].copy_from_slice(&since.subsec_nanos().to_le_bytes());
+                        memory
+                            .write(&mut caller, ret as usize, &datetime)
+                            .map_err(|e| {
+                                wasmtime::Error::msg(format!(
+                                    "writing the wall clock where the module points: {e}"
+                                ))
+                            })
+                    },
+                )
+                .ctx("wiring the wall clock")?;
+        } else if name == "utc-offset" && module_name.contains("timezone") {
+            linker
+                .func_wrap(module_name, name, |seconds: i64, nanoseconds: i32| -> i32 {
+                    utc_offset(seconds, nanoseconds)
+                })
+                .ctx("wiring the time zone")?;
+        }
+    }
+    Ok(())
+}
+
+/// How many seconds east of UTC the host's zone is at an instant, daylight
+/// saving included. An instant past what the zone's rules cover takes the
+/// nearest they do.
+fn utc_offset(seconds: i64, nanoseconds: i32) -> i32 {
+    let at = jiff::Timestamp::new(seconds, nanoseconds).unwrap_or(if seconds < 0 {
+        jiff::Timestamp::MIN
+    } else {
+        jiff::Timestamp::MAX
+    });
+    jiff::tz::TimeZone::system().to_offset(at).seconds()
 }
 
 /// One test on a fresh instance: a pass, a failure or a trap. `Err` is a

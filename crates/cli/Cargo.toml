@@ -39,6 +39,8 @@ wasmtime = "45.0.1"
 anyhow = "1"
 # `--timeout` and the watcher's hold times.
 time = { workspace = true, features = ["local-offset"] }
+# The zone's offset at an instant, for the `utc-offset` the test host wires.
+jiff = "0.2"
 # wasm optimizer: an external binary, downloaded and verified (see src/wasm_opt.rs)
 flate2 = "1"
 tar = "0.4"

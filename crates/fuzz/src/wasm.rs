@@ -10,8 +10,8 @@ use std::sync::{Arc, LazyLock};
 use debug_format::{LocatedArea, LocatedMap, RetainMap, ScheduleManifest};
 use wasmparser::Payload;
 use wasmtime::{
-    Engine, ExternType, Func, Instance, Linker, Memory, MemoryType, Module, Store, Trap, Val,
-    ValType,
+    Caller, Engine, ExternType, Func, Instance, Linker, Memory, MemoryType, Module, Store, Trap,
+    Val, ValType,
 };
 
 use crate::Finding;
@@ -219,6 +219,9 @@ const FUEL: u64 = 2_000_000;
 /// under test, and a 1 GiB array is a legal program.
 const MAX_PAGES: u64 = 1024;
 
+/// Where the wall clock starts, in seconds since 1970: 2026-01-01 00:00:00 UTC.
+const WALL_CLOCK_START: u64 = 1_767_225_600;
+
 /// How many scans a program gets. More than one, so a second scan starts
 /// from the state the first left, which is where RETAIN and FB instances
 /// keep their state.
@@ -330,17 +333,44 @@ impl Host {
             .define(&store, "env", "memory", memory)
             .map_err(|e| Finding::new("module-shape", format!("{e:#}")))?;
         // The clock moves a millisecond a call, so timers run and the run
-        // reproduces.
+        // reproduces. The wall clock is the same count from a fixed instant,
+        // and the zone is one hour east of UTC, so a program reading them
+        // reproduces too.
         let clock = Arc::new(AtomicI64::new(0));
         for import in module.imports() {
-            if import.name() == "now" && import.module().contains("monotonic-clock") {
+            let (module_name, name) = (import.module(), import.name());
+            let wired = if name == "now" && module_name.contains("monotonic-clock") {
                 let clock = clock.clone();
-                linker
-                    .func_wrap(import.module(), import.name(), move || {
-                        clock.fetch_add(1_000_000, Ordering::Relaxed)
-                    })
-                    .map_err(|e| Finding::new("module-shape", format!("{e:#}")))?;
-            }
+                linker.func_wrap(module_name, name, move || {
+                    clock.fetch_add(1_000_000, Ordering::Relaxed)
+                })
+            } else if name == "now" && module_name.contains("wall-clock") {
+                let clock = clock.clone();
+                linker.func_wrap(
+                    module_name,
+                    name,
+                    move |mut caller: Caller<'_, ()>, ret: i32| -> wasmtime::Result<()> {
+                        let elapsed = clock.fetch_add(1_000_000, Ordering::Relaxed);
+                        let seconds = WALL_CLOCK_START + (elapsed / 1_000_000_000) as u64;
+                        let nanoseconds = (elapsed % 1_000_000_000) as u32;
+                        let mut datetime = [0u8; 16];
+                        datetime[..8].copy_from_slice(&seconds.to_le_bytes());
+                        datetime[8..12].copy_from_slice(&nanoseconds.to_le_bytes());
+                        memory
+                            .write(&mut caller, ret as usize, &datetime)
+                            .map_err(|e| wasmtime::Error::msg(format!("{e}")))
+                    },
+                )
+            } else if name == "utc-offset" && module_name.contains("timezone") {
+                linker.func_wrap(
+                    module_name,
+                    name,
+                    |_seconds: i64, _nanoseconds: i32| -> i32 { 3600 },
+                )
+            } else {
+                continue;
+            };
+            wired.map_err(|e| Finding::new("module-shape", format!("{e:#}")))?;
         }
         linker
             .define_unknown_imports_as_traps(&module)
