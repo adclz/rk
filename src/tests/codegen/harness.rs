@@ -230,7 +230,7 @@ pub fn instantiate_with_memory(
 
 /// The `env.memory` a host gives `module`: as many pages as it asks for, the
 /// stack of recursive calls included.
-fn env_memory(store: &mut wasmtime::Store<()>, module: &wasmtime::Module) -> wasmtime::Memory {
+pub fn env_memory(store: &mut wasmtime::Store<()>, module: &wasmtime::Module) -> wasmtime::Memory {
     let pages = module
         .imports()
         .find_map(|import| match import.ty() {
@@ -418,16 +418,7 @@ impl TestPlc {
         linker
             .define(&store, "env", "memory", memory)
             .ctx("defining env.memory")?;
-        let clock_start = std::time::Instant::now();
-        for import in module.imports() {
-            if import.name() == "now" && import.module().contains("monotonic-clock") {
-                linker
-                    .func_wrap(import.module(), import.name(), move || {
-                        clock_start.elapsed().as_nanos() as i64
-                    })
-                    .ctx("wiring the monotonic clock")?;
-            }
-        }
+        rk::test_host::wire_clocks(&mut linker, &module, memory).context("wiring the clocks")?;
         // An `{extern}` a test never calls must not stop the module loading.
         linker
             .define_unknown_imports_as_traps(&module)
