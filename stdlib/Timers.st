@@ -1,5 +1,5 @@
 /*
-Timers.
+Timers, and the clocks they read.
 
 Each takes `IN` and a duration `PT`, and gives `Q` and the elapsed time
 `ET`, which stops at `PT`. They read the clock when they are called, so a
@@ -7,6 +7,10 @@ timer is as precise as the scan that calls it.
 
 `TP`, `TON` and `TOF` measure in `TIME`. The `_LTIME` blocks are the same
 timers in `LTIME`.
+
+`PLC_TIME` and `PLC_LTIME` read the monotonic clock, for the time between
+two readings. `WALL_LDT`, `WALL_DT`, `LOCAL_LDT` and `LOCAL_OFFSET` read
+the wall clock and the host's zone.
 
 A timer decides on `CURRENT_TIME - START_TIME`, a difference, which wraps
 with the clock where `START_TIME + PT` would not: the host picks where the
@@ -33,6 +37,87 @@ NAMESPACE Std.Timers
 	/* Returns the monotonic clock as an `LTIME`. Only the difference between two readings means something. */
 	FUNCTION PLC_LTIME: LTIME
 		PLC_LTIME := MONOTONIC_LTIME();
+	END_FUNCTION
+
+	/* An instant as the WASI wall clock gives it: the seconds since
+	   1970-01-01 in UTC, and the nanoseconds within that second. */
+	TYPE WASI_DATETIME : STRUCT
+		seconds : LINT;
+		nanoseconds : DINT;
+	END_STRUCT;
+	END_TYPE
+
+	/* Writes the host's wall clock at `ret`.
+
+	   This is the `now` of the WASI
+	   [wall clock](https://github.com/WebAssembly/WASI/blob/main/proposals/clocks/README.md),
+	   whose result is a record, which the canonical ABI writes where the
+	   caller points instead of returning it.
+	*/
+	{extern 'wasi:clocks/wall-clock@0.2.6' 'now'}
+	FUNCTION PRIVATE WASI_WALL_NOW
+		VAR_INPUT
+			ret : REF_TO WASI_DATETIME;
+		END_VAR
+	END_FUNCTION
+
+	/* Returns the seconds the host's zone is east of UTC at an instant,
+	   daylight saving included.
+
+	   This is the `utc-offset` of the WASI
+	   [time zone](https://github.com/WebAssembly/WASI/blob/main/proposals/clocks/README.md),
+	   which takes the instant as its seconds and its nanoseconds.
+	*/
+	{extern 'wasi:clocks/timezone@0.2.6' 'utc-offset'}
+	FUNCTION PRIVATE WASI_UTC_OFFSET : DINT
+		VAR_INPUT
+			seconds : LINT;
+			nanoseconds : DINT;
+		END_VAR
+	END_FUNCTION
+
+	/* Returns the host's wall clock as an `LDT`, in UTC. */
+	FUNCTION WALL_LDT : LDT
+		VAR
+			now : WASI_DATETIME;
+		END_VAR
+		WASI_WALL_NOW(ret := REF(now));
+		WALL_LDT := LINT_TO_LDT(now.seconds * LINT#1000000000 + now.nanoseconds);
+	END_FUNCTION
+
+	/* Returns the host's wall clock as a `DT`, in UTC. */
+	FUNCTION WALL_DT : DT
+		WALL_DT := LDT_TO_DT(WALL_LDT());
+	END_FUNCTION
+
+	/* Returns how far east of UTC the host's zone is at `IN`, daylight
+	   saving included: `LT#1h` in Paris in winter, `LT#2h` in summer,
+	   `LT#-5h` in New York in winter. An instant before 1970 takes the
+	   offset at 1970-01-01, the first the host's clock can name. */
+	FUNCTION LOCAL_OFFSET : LTIME
+		VAR_INPUT
+			IN : LDT;
+		END_VAR
+		VAR
+			ns : LINT;
+		END_VAR
+		// WASI counts the seconds from 1970 in an unsigned number.
+		ns := LDT_TO_LINT(IN);
+		IF ns < LINT#0 THEN
+			ns := LINT#0;
+		END_IF;
+		LOCAL_OFFSET := LINT_TO_LTIME(LINT#1000000000 * WASI_UTC_OFFSET(seconds := ns / LINT#1000000000, nanoseconds := LINT_TO_DINT(ns MOD LINT#1000000000)));
+	END_FUNCTION
+
+	/* Returns the host's wall clock as an `LDT` in the host's zone: the
+	   instant `WALL_LDT` returns, shifted by `LOCAL_OFFSET`, in the same
+	   encoding. What a clock on the wall shows. */
+	FUNCTION LOCAL_LDT : LDT
+		VAR
+			utc : LDT;
+		END_VAR
+		utc := WALL_LDT();
+		LOCAL_LDT := LINT_TO_LDT(LDT_TO_LINT(utc) + LTIME_TO_LINT(LOCAL_OFFSET(IN := utc)));
 	END_FUNCTION
 
 	/* A pulse of a fixed length.
@@ -626,6 +711,40 @@ NAMESPACE Std.Timers
 			t1 := PLC_LTIME();
 			t2 := PLC_LTIME();
 			ASSERT(t2 >= t1, 'PLC_LTIME must be monotonic');
+		END_FUNCTION
+
+		// -- The wall clock ------------------------------------------
+
+		{test}
+		FUNCTION test_wall_clock_is_after_2026
+			ASSERT(WALL_LDT() > LDT#2026-01-01-00:00:00, 'WALL_LDT is before 2026');
+			ASSERT(WALL_DT() > DT#2026-01-01-00:00:00, 'WALL_DT is before 2026');
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_wall_clock_never_goes_back
+			VAR
+				first, second : LDT;
+			END_VAR
+			first := WALL_LDT();
+			second := WALL_LDT();
+			ASSERT(second >= first, 'WALL_LDT went back');
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_local_clock_is_the_wall_clock_shifted
+			VAR
+				wall, local : LDT;
+				offset : LTIME;
+				shift : LINT;
+			END_VAR
+			wall := WALL_LDT();
+			offset := LOCAL_OFFSET(IN := wall);
+			local := LOCAL_LDT();
+			ASSERT(offset >= LT#-18h AND offset <= LT#18h, 'the zone is more than a day from UTC');
+			// `local` was read after `wall`: the readings are a moment apart.
+			shift := LDT_TO_LINT(local) - LDT_TO_LINT(wall) - LTIME_TO_LINT(offset);
+			ASSERT(shift >= LINT#0 AND shift < LINT#1000000000, 'LOCAL_LDT is not WALL_LDT shifted by LOCAL_OFFSET');
 		END_FUNCTION
 	END_NAMESPACE
 END_NAMESPACE

@@ -60,3 +60,25 @@ Everything else is a function of `Std.Convert`, like `DT_TO_DATE` or `LTIME_TO_T
 `TIME_TO_STRING` and its siblings print the literal form: `TIME_TO_STRING(T#90s)` is `'T#1m30s'`.
 
 The timers `TON`, `TOF` and `TP` are in `Std.Timers`.
+
+## Reading the clock
+
+`Std.Timers` reads the host's clocks:
+
+| Function | Returns |
+|---|---|
+| `PLC_TIME()`, `PLC_LTIME()` | the monotonic clock: only the difference between two readings means something |
+| `WALL_LDT()`, `WALL_DT()` | the wall clock, in UTC |
+| `LOCAL_LDT()` | the wall clock in the host's zone, daylight saving included: what a clock on the wall shows, as an `LDT` |
+| `LOCAL_OFFSET(IN)` | how far east of UTC the host's zone is at the instant `IN`, as an `LTIME` |
+
+```iecst
+USING Std.Convert;
+USING Std.Timers;
+
+FUNCTION AfterTen : BOOL
+    AfterTen := LDT_TO_LTOD(LOCAL_LDT()) > LTOD#22:00:00;
+END_FUNCTION
+```
+
+The host provides them, as WASI's clocks: the [WASM ABI](wasm-abi.md) lists the imports. A host that exposes no zone answers an offset of 0, and `LOCAL_LDT` is then UTC.

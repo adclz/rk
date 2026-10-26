@@ -9,7 +9,7 @@ stdlib/                             one file per namespace
 ├─ Std.Strings                      LEN, CONCAT, CHAR_AT, …
 ├─ Std.Convert                      DINT_TO_REAL and every other cast
 ├─ Std.Selection                    MIN, MAX, LIMIT, SEL, MUX
-├─ Std.Timers                       TON, TOF, TP
+├─ Std.Timers                       TON, TOF, TP, WALL_LDT, LOCAL_LDT, …
 ├─ Std.Counters                     CTU, CTD, CTUD
 ├─ Std.Edge                         R_TRIG, F_TRIG
 ├─ Std.Bistable                     SR, RS
