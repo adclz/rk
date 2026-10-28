@@ -327,7 +327,9 @@ fn is_retain_field<'db>(
     prog.variables(db).iter().any(|v| {
         v.name(db) == name
             && v.kind(db) != VariableKind::Temp
-            && !v.qualifier(db).contains(Qualifier::NON_RETAIN)
+            && !v
+                .qualifier(db)
+                .intersects(Qualifier::NON_RETAIN | Qualifier::CONSTANT)
             && (v.qualifier(db).contains(Qualifier::RETAIN)
                 || type_has_retain(db, v.spec(db).infer(db), &mut FxHashSet::default()))
     })
@@ -335,8 +337,10 @@ fn is_retain_field<'db>(
 
 /// Does this type declare RETAIN state anywhere in its nesting? Members
 /// come from [`instance_members`], the flattened `EXTENDS` view, so
-/// inherited retain state counts; NON_RETAIN members prune their subtree.
-fn type_has_retain<'db>(
+/// inherited retain state counts; NON_RETAIN members prune their subtree,
+/// and a CONSTANT is no state to keep. A struct's elements carry the
+/// qualifier a member does.
+pub(crate) fn type_has_retain<'db>(
     db: &'db dyn WorkspaceDataBase,
     ty: Type<'db>,
     visited: &mut FxHashSet<Ident>,
@@ -357,13 +361,22 @@ fn type_has_retain<'db>(
         Type::Array(arr) => {
             return type_has_retain(db, arr.of_type(db).infer(db), visited);
         }
+        Type::Struct(st) => {
+            return st.elements(db).iter().any(|e| {
+                let q = e.qualifier(db);
+                !q.contains(Qualifier::NON_RETAIN)
+                    && (q.contains(Qualifier::RETAIN)
+                        || type_has_retain(db, e.spec(db).infer(db), visited))
+            });
+        }
         _ => return false,
     };
     // `instance_members` already excludes VAR_TEMP and VAR_EXTERNAL — the
     // sections that are not instance state.
     hir::hir_ty::oop::instance_members(db, pou).iter().any(|m| {
         let v = m.var;
-        !v.qualifier(db).contains(Qualifier::NON_RETAIN)
+        !v.qualifier(db)
+            .intersects(Qualifier::NON_RETAIN | Qualifier::CONSTANT)
             && (v.qualifier(db).contains(Qualifier::RETAIN)
                 || type_has_retain(db, v.spec(db).infer(db), visited))
     })
