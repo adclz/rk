@@ -25,7 +25,7 @@ use crate::{AstId, HirNodeInfo, Qualifier};
 use ide_diagnostic::IdeDiagnostic;
 
 /// Convert a RETAIN/NON_RETAIN AST token to a `Qualifier`.
-fn retain_qualifier(
+pub(super) fn retain_qualifier(
     retain: &Option<auto_lsp::core::ast::AstNodeId<ast::generated::Operators_3>>,
     ast: &auto_lsp::default::db::tracked::ParsedAst,
 ) -> Qualifier {

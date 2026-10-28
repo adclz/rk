@@ -220,15 +220,26 @@ pub fn retained_reference<'db>(
     let fields: Vec<(Ident, Type<'db>)> = match ty {
         Type::RefTo(_) | Type::Interface(_) => return Some(Vec::new()),
         Type::Array(array) => return retained_reference(db, array.of_type(db).infer(db), visited),
+        // A `NON_RETAIN` element is never restored, whatever holds it, and
+        // a `RETAIN` one is reported where its struct is declared, once.
         Type::Struct(strukt) => strukt
             .elements(db)
             .iter()
+            .filter(|element| {
+                !element
+                    .qualifier(db)
+                    .intersects(crate::Qualifier::NON_RETAIN | crate::Qualifier::RETAIN)
+            })
             .map(|element| (element.name_with_case(db), element.spec(db).infer(db)))
             .collect(),
+        // A member declared `RETAIN` is reported where it is declared, once.
         Type::FunctionBlock(_) | Type::Class(_) => instance_members(db, pou_of_type(db, ty)?)
             .iter()
             .map(|member| member.var)
-            .filter(|var| retained_with_instance(db, *var))
+            .filter(|var| {
+                retained_with_instance(db, *var)
+                    && !var.qualifier(db).contains(crate::Qualifier::RETAIN)
+            })
             .map(|var| (var.name_with_case(db), var.spec(db).infer(db)))
             .collect(),
         _ => return None,

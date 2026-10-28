@@ -655,6 +655,7 @@ impl<'db> ParseSpec<'db> for ast::generated::StructTypeSpec {
             elements.push(sema.new_struct_element(
                 name,
                 elem.cast(sema.ast).name.cast(sema.ast).into(),
+                super::variables::retain_qualifier(&elem.cast(sema.ast).retain, sema.ast),
                 located,
                 multibits,
                 spec,

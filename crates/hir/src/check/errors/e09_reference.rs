@@ -55,6 +55,13 @@ pub enum ReferenceError<'db> {
         /// declaration is not RETAIN.
         instance: Option<crate::hir_def::interned::identifier::SpanIdent<'db>>,
     },
+    /// A `RETAIN` struct element holding a reference, itself or in a field
+    /// or member: it persists on its own, whatever variable holds it.
+    RetainedReferenceElement {
+        element: crate::hir_def::expressions::spec::StructElement<'db>,
+        /// The fields and members from the element to the reference.
+        route: Vec<crate::hir_def::interned::identifier::Ident>,
+    },
     /// `REF()` of what names no variable: a literal, an expression or a
     /// call result has no storage of its own, and a direct address or a bit
     /// is not the named variable or instance a reference points at.
@@ -69,7 +76,7 @@ impl<'db> ErrorCode for ReferenceError<'db> {
             Self::DerefNonRefType { .. } => "E0901",
             Self::DerefPossiblyNull { .. } => "E0902",
             Self::ReturnsReferenceToLocal { .. } | Self::StoresReferenceToLocal { .. } => "E0903",
-            Self::RetainedReference { .. } => "E0904",
+            Self::RetainedReference { .. } | Self::RetainedReferenceElement { .. } => "E0904",
             Self::RefArgumentNotAVariable { .. } => "E0905",
         }
     }
@@ -264,6 +271,51 @@ impl<'db> ToIdeDiagnostic<'db> for ReferenceError<'db> {
                     "keep references out of RETAIN (NON_RETAIN on a member) and set them in the first scan"
                         .into(),
                 );
+                diag
+            }
+            Self::RetainedReferenceElement { element, route } => {
+                let name = element.name_with_case(db).text(db).to_string();
+                let held = std::iter::once(element.name_with_case(db))
+                    .chain(route.iter().copied())
+                    .map(|name| name.text(db).to_string())
+                    .collect::<Vec<_>>()
+                    .join(".");
+                // The element is the reference, or it holds one down a
+                // struct of its own: the advice names the fix that keeps
+                // the rest of what it holds.
+                let (message, help) = match route.last() {
+                    None => (
+                        format!(
+                            "'{held}' is a reference marked RETAIN: its address does not survive a new build"
+                        ),
+                        format!(
+                            "leave the qualifier off '{name}' and set the reference in the first scan"
+                        ),
+                    ),
+                    Some(last) => (
+                        format!(
+                            "'{name}' is marked RETAIN and holds the reference '{held}': its address does not survive a new build"
+                        ),
+                        format!(
+                            "mark '{}' NON_RETAIN in the struct that declares it and set it in the first scan",
+                            last.text(db)
+                        ),
+                    ),
+                };
+                let mut diag = diag()
+                    .message(message)
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(
+                        crate::denormalize(db, file, &element.get_name_span(db))
+                            .unwrap_or_default(),
+                    )
+                    .call();
+                diag.with_note(
+                    "a warm start restores the address even where a new build moved its target"
+                        .into(),
+                );
+                diag.with_help(help);
                 diag
             }
         }
