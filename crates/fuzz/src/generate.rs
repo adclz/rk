@@ -22,7 +22,9 @@
 //! - STRING[n], ASCII only: a variable longer than its destination is cut
 //!   to its capacity, a literal never is (that is a compile error), and
 //!   comparison is byte-lexicographic (docs/strings.md).
-//! - BOOL, arrays, and STRUCTs with defaults in their TYPE.
+//! - BOOL, arrays, and STRUCTs with defaults in their TYPE. An array's
+//!   initializer writes its elements in order, at their index (`[i] := v`)
+//!   or not at all, left at the default (docs/arrays.md).
 //! - IF, CASE (integers and strings), FOR with EXIT and CONTINUE, RETURN.
 //! - FUNCTIONs, some taking STRUCTs, some overloaded: an overload takes an
 //!   earlier FUNCTION's name and parameters, with one retyped (a STRUCT for
@@ -477,11 +479,25 @@ struct Var {
     role: Role,
 }
 
+/// How an element of a program array is written in its initializer.
+#[derive(Clone, Copy)]
+enum Written {
+    /// In order, after the one before it.
+    Next,
+    /// At its index, `[i] := v`.
+    AtIndex,
+    /// Not at all: it keeps the type's default, and the next one written
+    /// is at its index.
+    Default,
+}
+
 struct Array {
     name: String,
     ty: Ty,
     lo: i128,
     init: Vec<Val>,
+    /// Each element, as the initializer writes it.
+    written: Vec<Written>,
 }
 
 struct Function {
@@ -594,6 +610,8 @@ struct Matrix {
     len: [usize; 2],
     /// Row by row.
     init: Vec<Val>,
+    /// Each element, as the initializer writes it.
+    written: Vec<Written>,
 }
 
 /// What a call binds to an `ARRAY[*]` parameter.
@@ -902,6 +920,29 @@ impl Generator<'_> {
             }
             t => zero(t),
         }
+    }
+
+    /// `count` elements of a program array, each as the initializer writes
+    /// it: a value in order, one at its index, or none, left at the default.
+    fn elements(&mut self, ty: Ty, count: usize) -> (Vec<Val>, Vec<Written>) {
+        let mut init = Vec::with_capacity(count);
+        let mut written = Vec::with_capacity(count);
+        let mut gap = false;
+        for _ in 0..count {
+            let how = match self.choices.below(4) {
+                0 => Written::Default,
+                1 => Written::AtIndex,
+                _ if gap => Written::AtIndex,
+                _ => Written::Next,
+            };
+            gap = matches!(how, Written::Default);
+            init.push(match how {
+                Written::Default => self.default_of(ty),
+                _ => self.literal(ty),
+            });
+            written.push(how);
+        }
+        (init, written)
     }
 
     /// A divisor: never 0, which traps. -1 is one: the minimum divided by it
@@ -2191,12 +2232,14 @@ pub fn program(bytes: &[u8]) -> String {
     for k in 0..g.choices.below(3) {
         let ty = g.var_type(true);
         let lo = g.choices.below(6) as i128 - 3;
-        let init = (0..1 + g.choices.below(5)).map(|_| g.literal(ty)).collect();
+        let count = 1 + g.choices.below(5);
+        let (init, written) = g.elements(ty, count);
         g.d.arrays.push(Array {
             name: format!("arr{k}"),
             ty,
             lo,
             init,
+            written,
         });
     }
     if !g.d.blocks.is_empty() {
@@ -2238,13 +2281,14 @@ pub fn program(bytes: &[u8]) -> String {
         let ty = g.var_type(true);
         let lo = [0, 1].map(|_| g.choices.below(6) as i128 - 3);
         let len = [1 + g.choices.below(3), 1 + g.choices.below(4)];
-        let init = (0..len[0] * len[1]).map(|_| g.literal(ty)).collect();
+        let (init, written) = g.elements(ty, len[0] * len[1]);
         g.d.matrices.push(Matrix {
             name: format!("mat{k}"),
             ty,
             lo,
             len,
             init,
+            written,
         });
     }
     for n in 0..g.choices.below(4) {
@@ -2603,13 +2647,15 @@ fn write_program(vars: &[Var], d: &Decls, body: &[Stmt], state: &State) -> Strin
                 let _ = writeln!(out, "    {} : ARRAY[{range}] OF {};", a.name, a.ty.name());
             }
             _ => {
-                let values: Vec<String> = a.init.iter().map(|v| literal(a.ty, v)).collect();
+                let values = written_elements(a.ty, &a.init, &a.written, |i| {
+                    (a.lo + i as i128).to_string()
+                });
                 let _ = writeln!(
                     out,
-                    "    {} : ARRAY[{range}] OF {} := [{}];",
+                    "    {} : ARRAY[{range}] OF {}{};",
                     a.name,
                     a.ty.name(),
-                    values.join(", ")
+                    values
                 );
             }
         }
@@ -2635,13 +2681,19 @@ fn write_program(vars: &[Var], d: &Decls, body: &[Stmt], state: &State) -> Strin
         let _ = match m.ty {
             Ty::Struct(_) => writeln!(out, "    {} : ARRAY[{ranges}] OF {};", m.name, m.ty.name()),
             _ => {
-                let values: Vec<String> = m.init.iter().map(|v| literal(m.ty, v)).collect();
+                let values = written_elements(m.ty, &m.init, &m.written, |i| {
+                    format!(
+                        "{}, {}",
+                        m.lo[0] + (i / m.len[1]) as i128,
+                        m.lo[1] + (i % m.len[1]) as i128
+                    )
+                });
                 writeln!(
                     out,
-                    "    {} : ARRAY[{ranges}] OF {} := [{}];",
+                    "    {} : ARRAY[{ranges}] OF {}{};",
                     m.name,
                     m.ty.name(),
-                    values.join(", ")
+                    values
                 )
             }
         };
@@ -3046,6 +3098,32 @@ fn shown(ty: Ty, v: &Val) -> String {
         (_, Val::F64(v)) => format!("{v:?}"),
         (_, Val::Str(s)) => format!("'{}'", String::from_utf8_lossy(s)),
         (_, Val::Struct(_)) => unreachable!("a STRUCT is shown by field"),
+    }
+}
+
+/// The initializer of a program array, ` := [...]` with each element as
+/// it is written: in order, at its index (`index` names an element's), or
+/// left out. No initializer at all when every element is left out.
+fn written_elements(
+    ty: Ty,
+    init: &[Val],
+    written: &[Written],
+    index: impl Fn(usize) -> String,
+) -> String {
+    let values: Vec<String> = init
+        .iter()
+        .zip(written)
+        .enumerate()
+        .filter_map(|(i, (v, how))| match how {
+            Written::Default => None,
+            Written::Next => Some(literal(ty, v)),
+            Written::AtIndex => Some(format!("[{}] := {}", index(i), literal(ty, v))),
+        })
+        .collect();
+    if values.is_empty() {
+        String::new()
+    } else {
+        format!(" := [{}]", values.join(", "))
     }
 }
 

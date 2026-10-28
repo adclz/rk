@@ -22,6 +22,9 @@ Elements can be of any type: structs, strings and function block instances inclu
 
 The elements go in brackets.
 `N(x)` repeats `x` N times, `N(a, b)` repeats the whole group, and `N()` leaves N elements at their default.
+`[3] := 7` sets the element at index 3, one index per dimension, and what follows it starts at 4.
+The elements nothing names keep their default, whichever form names the others.
+IEC 61131-3 has no element at its index: this is an rk extension.
 
 ```iecst
 FUNCTION Demo
@@ -29,8 +32,10 @@ VAR
     a : ARRAY[0..9] OF INT := [1, 2, 3, 7(0)];          // 1, 2, 3, then seven 0
     b : ARRAY[0..5] OF INT := [2(1, 2, 3)];             // 1, 2, 3, 1, 2, 3
     c : ARRAY[0..3] OF INT := [1, 2(), 4];              // 1, 0, 0, 4
+    d : ARRAY[0..3] OF INT := [[2] := 7, 8];            // 0, 0, 7, 8
     m : ARRAY[0..1, 0..2] OF INT := [1, 2, 3, 4, 5, 6];
     n : ARRAY[0..1, 0..1] OF INT := [[1, 2], [3, 4]];
+    o : ARRAY[0..1, 0..2] OF INT := [[1, 2] := 7];      // 7 at o[1, 2]
 END_VAR
 END_FUNCTION
 ```
@@ -52,7 +57,7 @@ index         ├─────┼─────┼─────┤
 A bracket inside the brackets is one row, and a short row leaves the rest of it at the default: `[[1, 2], [3, 4, 5]]` fills the rows of `m` with 1, 2, 0 and 3, 4, 5.
 When the element is itself an array, declared through a `TYPE`, a bracket is one element.
 
-More elements than the array holds is `E0507`.
+More elements than the array holds is `E0507`, an index outside the bounds `E0506`, and an element written twice `E0116`.
 
 ## Indexing
 

@@ -269,6 +269,9 @@ module.exports = grammar({
     [$.case_selection],
     [$.case_body],
     [$.unary, $.param_assign_output],
+    // In an array bracket, `[3` opens a row or an element at its index;
+    // the `:=` after the `]` decides.
+    [$.init_elem, $.index_value],
   ],
 
   word: ($) => $.identifier,
@@ -879,7 +882,7 @@ module.exports = grammar({
           kw("OF"),
           useSpec(["simple", "subrange", "ref"])($),
         ),
-      ($) => seq(":=", "[", commaSep($.init_elem), "]"),
+      ($) => seq(":=", "[", commaSep($._array_item), "]"),
     ),
 
     ranges: ($) => commaSep1($.subrange),
@@ -907,19 +910,44 @@ module.exports = grammar({
         $.constant_expr,
       ),
 
+    // What an array bracket holds: its elements in order, or one at its
+    // index. Only a bracket takes `[3] := 7`: a repeat group would write
+    // the cell once per repeat, and a struct element's value is a value.
+    _array_item: ($) => choice($.element_at, $.init_elem),
+
     array_init: ($) => seq("[", field("values", $.array_values), "]"),
+
+    // `[3] := 7` sets the element at index 3, one index per dimension, and
+    // what follows it starts at 4.
+    element_at: ($) =>
+      seq(
+        "[",
+        field("index", $.index_value),
+        "]",
+        ":=",
+        field("value", $._element_value),
+      ),
+
+    _element_value: ($) =>
+      choice(
+        $.struct_init,
+        $.array_init,
+        $.ERR_func_call_in_init,
+        $.constant_expr,
+      ),
 
     // `n()` repeats no value: n elements keep their default.
     array_index_elem: ($) =>
       seq(
         field("index", $.unsigned_int),
         "(",
-        optional(field("values", $.array_values)),
+        optional(field("values", $.repeat_values)),
         ")",
       ),
 
-    // Placeholder for array values
-    array_values: ($) => commaSep1($.init_elem),
+    array_values: ($) => commaSep1($._array_item),
+
+    repeat_values: ($) => commaSep1($.init_elem),
 
     struct_init: ($) => seq("(", commaSep($.struct_elem), ")"),
 

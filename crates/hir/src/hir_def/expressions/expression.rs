@@ -634,9 +634,16 @@ pub enum InitExprKind<'db> {
     ArrayInit {
         values: Vec<InitExpr<'db>>,
     },
+    /// A repeat group, `size(values)`.
     ArrayIndexedElement {
         size: SpanIdent<'db>,
         values: Vec<InitExpr<'db>>,
+    },
+    /// An element at its index, `[3] := 7`: one subscript per dimension
+    /// of the array the bracket fills.
+    ElementAt {
+        index: Vec<Expr<'db>>,
+        value: Box<InitExpr<'db>>,
     },
     StructInit {
         values: Vec<InitExpr<'db>>,

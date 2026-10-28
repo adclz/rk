@@ -179,6 +179,7 @@
 "STRING[4]"
 "ARRAY[0..9] OF INT"
 "ARRAY[*] OF INT"
+"[3] := "
 "REF("
 "THIS^."
 "SUPER^."

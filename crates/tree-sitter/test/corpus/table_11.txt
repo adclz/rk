@@ -223,7 +223,7 @@ END_TYPE
         (init_elem
           (array_index_elem
             (unsigned_int)
-            (array_values
+            (repeat_values
               (init_elem
                 (constant_expr
                   (constant
@@ -233,7 +233,7 @@ END_TYPE
         (init_elem
           (array_index_elem
             (unsigned_int)
-            (array_values
+            (repeat_values
               (init_elem
                 (constant_expr
                   (constant
@@ -278,7 +278,7 @@ END_TYPE
         (init_elem
           (array_index_elem
             (unsigned_int)
-            (array_values
+            (repeat_values
               (init_elem
                 (struct_elem
                   (identifier)
@@ -812,3 +812,210 @@ END_TYPE
                 (int_literal
                   (signed_int
                     (unsigned_int)))))))))))
+
+================================================================================
+An element at its index in an array initializer
+================================================================================
+
+TYPE
+    Row : ARRAY[0..3] OF INT := [[3] := 7, 8];
+    Grid : ARRAY[0..1, 0..2] OF INT := [[1, 2] := 7];
+END_TYPE
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (data_type_decl
+    (type_decl
+      (identifier)
+      (array_type_spec
+        (ranges
+          (subrange
+            (constant_expr
+              (constant
+                (numeric_literal
+                  (int_literal
+                    (signed_int
+                      (unsigned_int))))))
+            (constant_expr
+              (constant
+                (numeric_literal
+                  (int_literal
+                    (signed_int
+                      (unsigned_int))))))))
+        (simple_type_spec
+          (numeric_type_name
+            (int_type_name
+              (sign_int_type_name
+                (int_name))))))
+      (array_type_init
+        (element_at
+          (index_value
+            (constant_expr
+              (constant
+                (numeric_literal
+                  (int_literal
+                    (signed_int
+                      (unsigned_int)))))))
+          (constant_expr
+            (constant
+              (numeric_literal
+                (int_literal
+                  (signed_int
+                    (unsigned_int)))))))
+        (init_elem
+          (constant_expr
+            (constant
+              (numeric_literal
+                (int_literal
+                  (signed_int
+                    (unsigned_int)))))))))
+    (type_decl
+      (identifier)
+      (array_type_spec
+        (ranges
+          (subrange
+            (constant_expr
+              (constant
+                (numeric_literal
+                  (int_literal
+                    (signed_int
+                      (unsigned_int))))))
+            (constant_expr
+              (constant
+                (numeric_literal
+                  (int_literal
+                    (signed_int
+                      (unsigned_int)))))))
+          (subrange
+            (constant_expr
+              (constant
+                (numeric_literal
+                  (int_literal
+                    (signed_int
+                      (unsigned_int))))))
+            (constant_expr
+              (constant
+                (numeric_literal
+                  (int_literal
+                    (signed_int
+                      (unsigned_int))))))))
+        (simple_type_spec
+          (numeric_type_name
+            (int_type_name
+              (sign_int_type_name
+                (int_name))))))
+      (array_type_init
+        (element_at
+          (index_value
+            (constant_expr
+              (constant
+                (numeric_literal
+                  (int_literal
+                    (signed_int
+                      (unsigned_int))))))
+            (constant_expr
+              (constant
+                (numeric_literal
+                  (int_literal
+                    (signed_int
+                      (unsigned_int)))))))
+          (constant_expr
+            (constant
+              (numeric_literal
+                (int_literal
+                  (signed_int
+                    (unsigned_int)))))))))))
+
+================================================================================
+A row of one element and an element at its index
+================================================================================
+
+TYPE
+    Rows : ARRAY[0..2] OF One := [[1], [2]];
+    Idx : ARRAY[0..2] OF One := [[1] := [2]];
+END_TYPE
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (data_type_decl
+    (type_decl
+      (identifier)
+      (array_type_spec
+        (ranges
+          (subrange
+            (constant_expr
+              (constant
+                (numeric_literal
+                  (int_literal
+                    (signed_int
+                      (unsigned_int))))))
+            (constant_expr
+              (constant
+                (numeric_literal
+                  (int_literal
+                    (signed_int
+                      (unsigned_int))))))))
+        (simple_type_spec
+          (namespace_access
+            (identifier))))
+      (array_type_init
+        (init_elem
+          (array_init
+            (array_values
+              (init_elem
+                (constant_expr
+                  (constant
+                    (numeric_literal
+                      (int_literal
+                        (signed_int
+                          (unsigned_int))))))))))
+        (init_elem
+          (array_init
+            (array_values
+              (init_elem
+                (constant_expr
+                  (constant
+                    (numeric_literal
+                      (int_literal
+                        (signed_int
+                          (unsigned_int))))))))))))
+    (type_decl
+      (identifier)
+      (array_type_spec
+        (ranges
+          (subrange
+            (constant_expr
+              (constant
+                (numeric_literal
+                  (int_literal
+                    (signed_int
+                      (unsigned_int))))))
+            (constant_expr
+              (constant
+                (numeric_literal
+                  (int_literal
+                    (signed_int
+                      (unsigned_int))))))))
+        (simple_type_spec
+          (namespace_access
+            (identifier))))
+      (array_type_init
+        (element_at
+          (index_value
+            (constant_expr
+              (constant
+                (numeric_literal
+                  (int_literal
+                    (signed_int
+                      (unsigned_int)))))))
+          (array_init
+            (array_values
+              (init_elem
+                (constant_expr
+                  (constant
+                    (numeric_literal
+                      (int_literal
+                        (signed_int
+                          (unsigned_int))))))))))))))

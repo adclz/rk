@@ -449,17 +449,27 @@ impl<'db> InitExprInferenceResult<'db> {
         if self.errors.len() > errors_before {
             return;
         }
-        let mut leaves = Vec::new();
-        resolve_leaves(
-            db,
-            expr,
-            &self.type_of_init_expr,
-            &ctx.roles,
-            &mut Vec::new(),
-            &mut leaves,
-        );
-        if !leaves.is_empty() {
-            self.resolved.insert(expr, leaves);
+        let mut leaves = Leaves {
+            types: &self.type_of_init_expr,
+            roles: &ctx.roles,
+            offsets: &ctx.offsets,
+            path: Vec::new(),
+            out: Vec::new(),
+            claimed: Vec::new(),
+            duplicates: Vec::new(),
+        };
+        resolve_leaves(db, expr, &mut leaves);
+        let Leaves {
+            out, duplicates, ..
+        } = leaves;
+        if !duplicates.is_empty() {
+            let file = self.scope.file(db);
+            self.errors
+                .extend(duplicates.iter().map(|d| d.to_diagnostic(db, file)));
+            return;
+        }
+        if !out.is_empty() {
+            self.resolved.insert(expr, out);
         }
     }
 
@@ -573,8 +583,13 @@ impl<'db> InitExprInferenceResult<'db> {
                                 // `2([1,2,3])`, two rows, not a row. It counts
                                 // and descends on its own; opening a dimension
                                 // around it would measure its rows against the
-                                // width of one.
-                                if matches!(child, InitExprWalkStep::SizedIndex { .. }) {
+                                // width of one. An element at its index names
+                                // its cell from this dimension down the same way.
+                                if matches!(
+                                    child,
+                                    InitExprWalkStep::SizedIndex { .. }
+                                        | InitExprWalkStep::ElementAt { .. }
+                                ) {
                                     self.resolve_step(
                                         db,
                                         expected,
@@ -746,7 +761,135 @@ impl<'db> InitExprInferenceResult<'db> {
                 ctx.advance(1);
                 self.check_bounds(db, *expr, ctx, ctx.current_pos());
             }
+            InitExprWalkStep::ElementAt { expr, index, value } => {
+                let Some(offset) = self.element_offset(db, *expr, index, body_ctx, ctx) else {
+                    return;
+                };
+                ctx.offsets.insert(*expr, offset);
+                ctx.set_pos(offset);
+                // One element of the array the bracket fills, whatever
+                // dimension the bracket is at: the index named it whole.
+                let element = match ctx.array_root.map(|root| root.normalize(db)) {
+                    Some(Type::Array(array)) => array.of_type(db).infer(db),
+                    _ => expected,
+                };
+                self.resolve_elements(
+                    db,
+                    element,
+                    place,
+                    body_ctx,
+                    ctx,
+                    std::slice::from_ref(&**value),
+                );
+            }
         }
+    }
+
+    /// The cell an element at its index lands in, from the start of the
+    /// bracket that holds it: one subscript per dimension from the
+    /// bracket's own down, each typed and folded as a subscript in a body
+    /// is. `None` once the index is refused, or the bracket was: an index in
+    /// a bracket that is no array's is nothing to place (E0508).
+    fn element_offset(
+        &mut self,
+        db: &'db dyn WorkspaceDataBase,
+        expr: InitExpr<'db>,
+        index: &'db [Expr<'db>],
+        body_ctx: &mut BodyInferenceResult<'db>,
+        ctx: &InitContext<'db>,
+    ) -> Option<usize> {
+        use crate::hir_def::expressions::spec::ElementarySpec;
+        use crate::hir_ty::infer::const_eval::{array_dimensions, const_int};
+        use crate::hir_ty::infer::table::InferenceTable;
+
+        let file = self.scope.file(db);
+        let mut values = Vec::with_capacity(index.len());
+        for sub in index {
+            let resolver = Resolver::for_scope(db, self.scope);
+            let mut infer = InferExprCtx::new(resolver);
+            infer.resolve_expr(db, *sub, body_ctx);
+            infer.check_expr(db, *sub, body_ctx);
+            // An untyped literal is DINT, the width a subscript runs at.
+            let raw = body_ctx.type_of_expr_with_adjustments(db, *sub);
+            if raw.has_infer() {
+                let mut table = InferenceTable::new();
+                table.set_target_type(db, None, Type::Elementary(ElementarySpec::DInt));
+                table.add_type(db, *sub, raw, resolver);
+                table.resolve_completly(db, resolver, body_ctx);
+            }
+            let ty = body_ctx
+                .type_of_expr_with_adjustments(db, *sub)
+                .normalize(db);
+            // `Never` already carries its own diagnostic.
+            if ty.is_never() {
+                return None;
+            }
+            if !ty.is_signed_integer() && !ty.is_unsigned_integer() {
+                self.errors
+                    .push(ArrayError::NonIntegerIndex { expr: *sub, ty }.to_diagnostic(db, file));
+                return None;
+            }
+            let Some(value) = const_int(db, *sub, body_ctx) else {
+                self.errors
+                    .push(ArrayError::IndexNotConstant { expr: *sub }.to_diagnostic(db, file));
+                return None;
+            };
+            values.push(value);
+        }
+
+        let Some(Type::Array(array)) = ctx.array_root.map(|root| root.normalize(db)) else {
+            return None;
+        };
+        let dims = array_dimensions(db, array);
+        let first = ctx.current_dim();
+        let rest = dims.get(first..).unwrap_or_default();
+        if values.len() < rest.len() {
+            self.errors.push(
+                ArrayError::IncompleteSubscript {
+                    expr: *index.last()?,
+                    rank: rest.len(),
+                    named: values.len(),
+                }
+                .to_diagnostic(db, file),
+            );
+            return None;
+        }
+        if values.len() > rest.len() {
+            // The subscripts past the last dimension index the element.
+            self.errors.push(
+                ArrayError::IndexNonArrayTypeInitExpr {
+                    expr,
+                    ty: array.of_type(db).infer(db),
+                }
+                .to_diagnostic(db, file),
+            );
+            return None;
+        }
+        // Row-major: each subscript counts from its lower bound, in the
+        // cells of the dimensions below it. A bound that does not fold was
+        // refused at the declaration (E0501, E0502).
+        let mut offset = 0usize;
+        for (k, ((lower, upper), value)) in rest.iter().zip(&values).enumerate() {
+            let (Some(lower), Some(upper)) = (*lower, *upper) else {
+                return None;
+            };
+            if *value < i128::from(lower) || *value > i128::from(upper) {
+                self.errors.push(
+                    ArrayError::IndexOutOfBounds {
+                        expr: index[k],
+                        dimension: first + k,
+                        index: *value,
+                        min: lower,
+                        max: upper,
+                    }
+                    .to_diagnostic(db, file),
+                );
+                return None;
+            }
+            let below = Self::cells_from(db, ctx.array_root, first + k + 1).unwrap_or(1);
+            offset += (*value - i128::from(lower)) as usize * below;
+        }
+        Some(offset)
     }
 
     /// Cells reachable from `dimension` downwards — the product of that
@@ -855,6 +998,9 @@ struct InitContext<'db> {
     seen_fields: FxHashMap<Ident, InitExpr<'db>>,
     /// How each nested bracket is placed ([`BracketRole`]).
     roles: FxHashMap<InitExpr<'db>, BracketRole>,
+    /// The cell each element at its index lands in, from the start of the
+    /// bracket that holds it, which the leaves follow.
+    offsets: FxHashMap<InitExpr<'db>, usize>,
 }
 
 impl<'db> InitContext<'db> {
@@ -865,6 +1011,7 @@ impl<'db> InitContext<'db> {
             overflow_reported: vec![false],
             seen_fields: FxHashMap::default(),
             roles: FxHashMap::default(),
+            offsets: FxHashMap::default(),
         }
     }
 
@@ -879,6 +1026,13 @@ impl<'db> InitContext<'db> {
     fn advance(&mut self, count: usize) {
         let dim = self.current_dim();
         self.positions[dim] += count;
+    }
+
+    /// An element at its index moves the cursor there: what follows it
+    /// starts after it.
+    fn set_pos(&mut self, cell: usize) {
+        let dim = self.current_dim();
+        self.positions[dim] = cell;
     }
 
     fn push_dimension(&mut self) {
@@ -926,19 +1080,68 @@ impl<'db> InitContext<'db> {
 // type-mismatch handling. MIR consumes `ResolvedInit` leaves directly instead
 // of re-walking the InitExpr tree.
 
+/// What the leaves pass carries while it flattens one initializer.
+struct Leaves<'a, 'db> {
+    types: &'a FxHashMap<InitExpr<'db>, Type<'db>>,
+    roles: &'a FxHashMap<InitExpr<'db>, BracketRole>,
+    /// The cell of each element at its index, from its bracket's start.
+    offsets: &'a FxHashMap<InitExpr<'db>, usize>,
+    path: Vec<InitPathStep>,
+    out: Vec<ResolvedInit<'db>>,
+    /// The array being filled, innermost last: its cells claimed so far.
+    claimed: Vec<Claimed<'db>>,
+    /// A cell written twice. The walk counts cells and cannot see an index
+    /// land on one a value before it filled; the placement here is exact.
+    duplicates: Vec<DuplicateError<'db>>,
+}
+
+/// One array's cells, by the element that wrote each.
+struct Claimed<'db> {
+    /// Its dimensions, to name a cell by its subscript.
+    dims: Vec<(i64, i64)>,
+    by_cell: FxHashMap<u32, InitExpr<'db>>,
+}
+
+impl<'db> Claimed<'db> {
+    /// The subscript of `cell`, one value per dimension.
+    fn subscript(&self, cell: u32) -> Vec<i64> {
+        let mut rest = u64::from(cell);
+        let mut index = vec![0; self.dims.len()];
+        for (k, (lower, upper)) in self.dims.iter().enumerate().rev() {
+            let len = (upper - lower + 1).max(1) as u64;
+            index[k] = lower + (rest % len) as i64;
+            rest /= len;
+        }
+        index
+    }
+}
+
+impl<'db> Leaves<'_, 'db> {
+    /// `elem` writes `cell` of the innermost array.
+    fn claim(&mut self, cell: u32, elem: InitExpr<'db>) {
+        let Some(claimed) = self.claimed.last_mut() else {
+            return;
+        };
+        if let Some(first) = claimed.by_cell.insert(cell, elem) {
+            self.duplicates.push(DuplicateError::InitExprElement {
+                element1: elem,
+                element2: first,
+                index: claimed.subscript(cell),
+            });
+        }
+    }
+}
+
 /// Flatten an initializer into row-major (path, value) leaves at `path`.
 fn resolve_leaves<'db>(
     db: &'db dyn WorkspaceDataBase,
     init: InitExpr<'db>,
-    types: &FxHashMap<InitExpr<'db>, Type<'db>>,
-    roles: &FxHashMap<InitExpr<'db>, BracketRole>,
-    path: &mut Vec<InitPathStep>,
-    out: &mut Vec<ResolvedInit<'db>>,
+    leaves: &mut Leaves<'_, 'db>,
 ) {
     match init.kind(db) {
         InitExprKind::ConstantExpr(value) => {
-            out.push(ResolvedInit {
-                path: path.clone(),
+            leaves.out.push(ResolvedInit {
+                path: leaves.path.clone(),
                 value,
             });
         }
@@ -953,14 +1156,16 @@ fn resolve_leaves<'db>(
             // CLASS instance, an array's element.
             for v in &values {
                 if let InitExprKind::StructElement { name, value } = v.kind(db) {
-                    let declared = match types.get(v) {
+                    let declared = match leaves.types.get(v) {
                         Some(Type::StructElement(field)) => Some(field.name(db)),
                         Some(Type::Variable((var, _))) => Some(var.name(db)),
                         _ => None,
                     };
-                    path.push(InitPathStep::Field(declared.unwrap_or(name.ident(db))));
-                    resolve_leaves(db, *value, types, roles, path, out);
-                    path.pop();
+                    leaves
+                        .path
+                        .push(InitPathStep::Field(declared.unwrap_or(name.ident(db))));
+                    resolve_leaves(db, *value, leaves);
+                    leaves.path.pop();
                 }
             }
         }
@@ -968,26 +1173,42 @@ fn resolve_leaves<'db>(
             // A fresh row-major flat index for each array (nested/sub-arrays
             // restart at 0 — MIR offsets each by its own element_size).
             let mut flat = 0u32;
-            resolve_array_into(db, init, types, roles, path, &mut flat, out);
+            // A bound that does not fold was refused at the declaration.
+            let dims = match leaves.types.get(&init).map(|ty| ty.normalize(db)) {
+                Some(Type::Array(array)) => {
+                    crate::hir_ty::infer::const_eval::array_dimensions(db, array)
+                        .into_iter()
+                        .map(|(lower, upper)| (lower.unwrap_or(0), upper.unwrap_or(0)))
+                        .collect()
+                }
+                _ => Vec::new(),
+            };
+            leaves.claimed.push(Claimed {
+                dims,
+                by_cell: FxHashMap::default(),
+            });
+            resolve_array_into(db, init, leaves, 0, &mut flat);
+            leaves.claimed.pop();
         }
-        // StructElement / ArrayIndexedElement only ever appear nested above.
+        // StructElement / ArrayIndexedElement / ElementAt only ever appear
+        // nested above.
         _ => {}
     }
 }
 
 /// Place each element of an array bracket at the next flat (row-major) index.
+/// `base` is the bracket's first cell, which an element at its index counts
+/// from: 0 for the array's own bracket, a row's start for a row.
 fn resolve_array_into<'db>(
     db: &'db dyn WorkspaceDataBase,
     bracket: InitExpr<'db>,
-    types: &FxHashMap<InitExpr<'db>, Type<'db>>,
-    roles: &FxHashMap<InitExpr<'db>, BracketRole>,
-    path: &mut Vec<InitPathStep>,
+    leaves: &mut Leaves<'_, 'db>,
+    base: u32,
     flat: &mut u32,
-    out: &mut Vec<ResolvedInit<'db>>,
 ) {
     if let InitExprKind::ArrayInit { values } = bracket.kind(db) {
         for child in &values {
-            array_element(db, *child, types, roles, path, flat, out);
+            array_element(db, *child, leaves, base, flat);
         }
     }
 }
@@ -1000,27 +1221,24 @@ fn resolve_array_into<'db>(
 fn array_element<'db>(
     db: &'db dyn WorkspaceDataBase,
     elem: InitExpr<'db>,
-    types: &FxHashMap<InitExpr<'db>, Type<'db>>,
-    roles: &FxHashMap<InitExpr<'db>, BracketRole>,
-    path: &mut Vec<InitPathStep>,
+    leaves: &mut Leaves<'_, 'db>,
+    base: u32,
     flat: &mut u32,
-    out: &mut Vec<ResolvedInit<'db>>,
 ) {
-    match (elem.kind(db), roles.get(&elem)) {
+    match (elem.kind(db), leaves.roles.get(&elem)) {
         (InitExprKind::ArrayInit { .. }, Some(BracketRole::Element)) => {
-            path.push(InitPathStep::ArrayElem(*flat));
+            leaves.claim(*flat, elem);
+            leaves.path.push(InitPathStep::ArrayElem(*flat));
             *flat += 1;
-            resolve_leaves(db, elem, types, roles, path, out);
-            path.pop();
+            resolve_leaves(db, elem, leaves);
+            leaves.path.pop();
         }
         (InitExprKind::ArrayInit { .. }, Some(BracketRole::Row { cells })) => {
             let start = *flat;
-            resolve_array_into(db, elem, types, roles, path, flat, out);
+            resolve_array_into(db, elem, leaves, start, flat);
             *flat = start + *cells as u32;
         }
-        (InitExprKind::ArrayInit { .. }, None) => {
-            resolve_array_into(db, elem, types, roles, path, flat, out)
-        }
+        (InitExprKind::ArrayInit { .. }, None) => resolve_array_into(db, elem, leaves, base, flat),
         (InitExprKind::ArrayIndexedElement { size, values }, _) => {
             let n = size.with_case.as_u64(db).unwrap_or(0);
             // `n()` repeats no value: n elements keep their default, and
@@ -1030,15 +1248,29 @@ fn array_element<'db>(
             }
             for _ in 0..n {
                 for v in &values {
-                    array_element(db, *v, types, roles, path, flat, out);
+                    array_element(db, *v, leaves, base, flat);
                 }
             }
         }
-        _ => {
-            path.push(InitPathStep::ArrayElem(*flat));
+        // An element at its index: the walk placed it from the bracket's
+        // start, and what follows it starts after it. Its value is one
+        // element, a bracket of an array element included.
+        (InitExprKind::ElementAt { value, .. }, _) => {
+            if let Some(offset) = leaves.offsets.get(&elem) {
+                *flat = base + *offset as u32;
+            }
+            leaves.claim(*flat, elem);
+            leaves.path.push(InitPathStep::ArrayElem(*flat));
             *flat += 1;
-            resolve_leaves(db, elem, types, roles, path, out);
-            path.pop();
+            resolve_leaves(db, *value, leaves);
+            leaves.path.pop();
+        }
+        _ => {
+            leaves.claim(*flat, elem);
+            leaves.path.push(InitPathStep::ArrayElem(*flat));
+            *flat += 1;
+            resolve_leaves(db, elem, leaves);
+            leaves.path.pop();
         }
     }
 }

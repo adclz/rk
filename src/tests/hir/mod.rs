@@ -3,6 +3,7 @@
 
 pub mod ambiguous_scopes;
 pub mod array;
+pub mod array_init_index;
 pub mod array_init_multi_dim;
 pub mod assignment;
 pub mod bit_access;

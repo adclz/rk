@@ -149,6 +149,12 @@ pub enum InitExprWalkStep<'db> {
         name: SpanIdent<'db>,
         value: Box<InitExprWalkStep<'db>>,
     },
+    /// An element at its index, `[3] := 7`.
+    ElementAt {
+        expr: InitExpr<'db>,
+        index: Vec<Expr<'db>>,
+        value: Box<InitExprWalkStep<'db>>,
+    },
     ConstantExpr {
         // A constant expression (evaluated by the body inference)
         expr: InitExpr<'db>,
@@ -163,6 +169,7 @@ impl InitExprWalkStep<'_> {
             InitExprWalkStep::FieldInit { expr, .. } => expr,
             InitExprWalkStep::SizedIndex { expr, .. } => expr,
             InitExprWalkStep::Field { expr, .. } => expr,
+            InitExprWalkStep::ElementAt { expr, .. } => expr,
             InitExprWalkStep::ConstantExpr { expr, .. } => expr,
         }
     }
@@ -173,6 +180,7 @@ impl InitExprWalkStep<'_> {
             InitExprWalkStep::FieldInit { values, .. } => values,
             InitExprWalkStep::SizedIndex { values, .. } => values,
             InitExprWalkStep::Field { value, .. } => std::slice::from_ref(value),
+            InitExprWalkStep::ElementAt { value, .. } => std::slice::from_ref(value),
             InitExprWalkStep::ConstantExpr { .. } => &[],
         }
     }
@@ -240,6 +248,13 @@ impl<'db> InitExpr<'db> {
                 result.push(InitExprWalkStep::Field {
                     expr: *self,
                     name,
+                    value: Box::new(value.flat(db).pop().unwrap()),
+                });
+            }
+            InitExprKind::ElementAt { index, value } => {
+                result.push(InitExprWalkStep::ElementAt {
+                    expr: *self,
+                    index,
                     value: Box::new(value.flat(db).pop().unwrap()),
                 });
             }

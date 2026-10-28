@@ -40,6 +40,11 @@ pub enum ArrayError<'db> {
     InvalidIndex {
         size: SpanIdent<'db>,
     },
+    /// The index of an element in an initializer, `[i] := 7`, that does
+    /// not fold to an integer.
+    IndexNotConstant {
+        expr: Expr<'db>,
+    },
     IndexOutOfBounds {
         expr: Expr<'db>,
         dimension: usize,
@@ -99,6 +104,7 @@ impl<'db> ErrorCode for ArrayError<'db> {
             Self::InferiorUpperBound { .. } => "E0503",
             Self::NonIntegerIndex { .. } => "E0504",
             Self::InvalidIndex { .. } => "E0505",
+            Self::IndexNotConstant { .. } => "E0514",
             Self::IndexOutOfBounds { .. } => "E0506",
             Self::TooManyElements { .. } => "E0507",
             Self::IndexNonArrayTypeInitExpr { .. } => "E0508",
@@ -207,6 +213,20 @@ impl<'db> ToIdeDiagnostic<'db> for ArrayError<'db> {
                     ))
                 }
 
+                diag
+            }
+            Self::IndexNotConstant { expr } => {
+                let mut diag = diag()
+                    .message("the index is not a constant".to_string())
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &expr.get_span(db)).unwrap_or_default())
+                    .call();
+                diag.with_note(
+                    "an element's index in an initializer is resolved before the program runs"
+                        .to_string(),
+                );
+                diag.with_help("write a literal or a named CONSTANT".to_string());
                 diag
             }
             Self::IndexNonArrayTypeInitExpr { expr, ty } => ide_diagnostic::diag()

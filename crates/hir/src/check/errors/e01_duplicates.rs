@@ -53,6 +53,14 @@ pub enum DuplicateError<'db> {
         /// As the second one writes it.
         name: Ident,
     },
+    /// An array initializer writes one element twice: `[[3] := 7, [3] := 8]`,
+    /// or `[1, 2, [0] := 9]` back over the first. `index` is the element's
+    /// subscript, one value per dimension.
+    InitExprElement {
+        element1: InitExpr<'db>,
+        element2: InitExpr<'db>,
+        index: Vec<i64>,
+    },
     /// A variable named like the enclosing callable. Inside a FUNCTION or
     /// METHOD that name IS the return value, so the local is a second
     /// declaration of it — one the body then binds to, at the local's type,
@@ -124,6 +132,7 @@ impl<'db> ErrorCode for DuplicateError<'db> {
             Self::StructField { .. } => "E0104",
             Self::EnumVariant { .. } => "E0105",
             Self::InitExprField { .. } => "E0106",
+            Self::InitExprElement { .. } => "E0116",
             Self::VariableIsReturnValue { .. } => "E0107",
             Self::MethodDecl { .. } => "E0108",
             Self::MethodProt { .. } => "E0109",
@@ -309,6 +318,33 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
                     format!("field '{}' is already initialized here", name.text(db)),
                     field2.get_scope_id(db).file(db),
                     field2.get_span(db),
+                ));
+
+                diag
+            }
+            Self::InitExprElement {
+                element1,
+                element2,
+                index,
+            } => {
+                let index = index
+                    .iter()
+                    .map(|i| i.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let mut diag = diag()
+                    .message(format!(
+                        "duplicate element [{index}] in initializer expression"
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &element1.get_span(db)).unwrap_or_default())
+                    .call();
+
+                diag.with_related(Related::new(
+                    format!("element [{index}] is already initialized here"),
+                    element2.get_scope_id(db).file(db),
+                    element2.get_span(db),
                 ));
 
                 diag
