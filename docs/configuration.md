@@ -254,12 +254,14 @@ A part counter should survive a power cut.
 A sequence should start again from its first step.
 
 Inside a program, `VAR RETAIN` marks the variables to keep.
+A struct can mark its own fields, see [Structs](structs.md).
 To decide for the whole instance, write the qualifier in the configuration:
 
 - **`PROGRAM RETAIN C1 WITH Fast : Counter;`** keeps every variable of `C1`.
 - **`PROGRAM NON_RETAIN C1 WITH Fast : Counter;`** keeps none of them.
 
 A variable that holds a reference is not kept (`E0904`): a new build may move what it points at.
+A `CONSTANT` is not kept either: it takes the value of the build.
 
 ### Run one of its function blocks at another rate
 
