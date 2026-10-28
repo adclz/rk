@@ -806,6 +806,7 @@ impl<'db> InitInference<'db> {
                     self.check_string_init(db, spec, value);
                 }
             }
+            InitExprKind::ElementAt { value, .. } => self.check_string_init(db, spec, *value),
             InitExprKind::StructInit { values } => {
                 let holder = innermost_element(db, spec);
                 for value in values {

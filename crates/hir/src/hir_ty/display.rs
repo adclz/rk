@@ -492,6 +492,7 @@ impl<'db> InitExpr<'db> {
             InitExprKind::StructInit { .. } => "STRUCT init",
             InitExprKind::ArrayInit { .. } => "ARRAY init",
             InitExprKind::ArrayIndexedElement { size, .. } => "ARRAY element",
+            InitExprKind::ElementAt { .. } => "ARRAY element",
             InitExprKind::StructElement { name, .. } => "STRUCT field",
             InitExprKind::ConstantExpr(expr) => "<expression>",
         }

@@ -904,9 +904,9 @@ impl<'db> Type<'db> {
                 self.walk_init_field(db, *expr, name, place, ctx);
             }
 
-            InitExprWalkStep::ConstantExpr { .. } | InitExprWalkStep::SizedIndex { .. } => {
-                /* handled by the inference layer */
-            }
+            InitExprWalkStep::ConstantExpr { .. }
+            | InitExprWalkStep::SizedIndex { .. }
+            | InitExprWalkStep::ElementAt { .. } => { /* handled by the inference layer */ }
         }
     }
 

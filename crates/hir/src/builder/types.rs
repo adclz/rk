@@ -450,6 +450,58 @@ impl<'db> Parse<'db> for ast::generated::ArrayInit {
     }
 }
 
+impl<'db> Parse<'db> for ast::generated::ElementAt_InitElem {
+    type Output = InitExpr<'db>;
+
+    fn parse(
+        &self,
+        sema: &mut SemanticIndexBuilder<'db>,
+    ) -> anyhow::Result<Self::Output, IdeDiagnostic> {
+        match self {
+            Self::ElementAt(elem) => elem.parse(sema),
+            Self::InitElem(elem) => elem.parse(sema),
+        }
+    }
+}
+
+impl<'db> Parse<'db> for ast::generated::ElementAt {
+    type Output = InitExpr<'db>;
+
+    fn parse(
+        &self,
+        sema: &mut SemanticIndexBuilder<'db>,
+    ) -> anyhow::Result<Self::Output, IdeDiagnostic> {
+        type Value = ast::generated::ERRFuncCallInInit_ArrayInit_ConstantExpr_StructInit;
+        let index = self
+            .index
+            .cast(sema.ast)
+            .children
+            .iter()
+            .map(|i| i.cast(sema.ast).children.cast(sema.ast).parse(sema))
+            .collect::<Result<Vec<_>, IdeDiagnostic>>()?;
+        let value = match self.value.cast(sema.ast) {
+            Value::ArrayInit(expr) => expr.parse(sema)?,
+            Value::StructInit(struct_type_init) => struct_type_init.parse(sema)?,
+            Value::ConstantExpr(expr) => {
+                let kind = InitExprKind::ConstantExpr(expr.children.cast(sema.ast).parse(sema)?);
+                sema.new_init_expr(kind, expr.into(), sema.current_scope)
+            }
+            Value::ERRFuncCallInInit(err) => {
+                return Err(
+                    InitError::FunctionCallInInitExpression(err.get_range().to_owned())
+                        .to_diagnostic(sema.db, sema.file),
+                );
+            }
+        };
+
+        let kind = InitExprKind::ElementAt {
+            index,
+            value: Box::new(value),
+        };
+        Ok(sema.new_init_expr(kind, self.into(), sema.current_scope))
+    }
+}
+
 impl<'db> Parse<'db> for ast::generated::ArrayIndexElem {
     type Output = InitExpr<'db>;
 
