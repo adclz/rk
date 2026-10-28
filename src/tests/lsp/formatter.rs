@@ -2681,3 +2681,20 @@ END_FUNCTION
     let again = add_source(&mut with_db, &formatted).document(&with_db);
     assert_eq!(fmt(again), formatted, "a fixed point");
 }
+
+/// `[3] := 7` is written as read: the index against its brackets, the
+/// `:=` spaced.
+#[rstest]
+pub fn an_element_at_its_index(mut with_db: RootDatabase) {
+    let source = "FUNCTION f\nVAR\na : ARRAY[0..9] OF INT := [ [ 3 ]:=7,8,[ 5 ] := 1 ];\nEND_VAR\nEND_FUNCTION\n";
+
+    let document = add_source(&mut with_db, source).document(&with_db);
+
+    assert_snapshot!(fmt(document), @r"
+    FUNCTION f
+    	VAR
+    		a: ARRAY[0..9] OF INT := [[3] := 7, 8, [5] := 1];
+    	END_VAR
+    END_FUNCTION
+    ");
+}

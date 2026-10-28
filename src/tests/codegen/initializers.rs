@@ -1474,3 +1474,180 @@ fn method_local_initializer_calls_as_the_body_does(mut with_db: db::RootDatabase
     let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 0);
 }
+
+/// `[3] := 7` lands at index 3 from any lower bound, one index per
+/// dimension, and what follows it starts after it, into the next row when
+/// the form is flat.
+#[rstest]
+fn an_element_at_its_index_lands_in_its_cell(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE Grid : ARRAY[0..1, 0..2] OF DINT; END_TYPE
+
+        PROGRAM P
+        VAR RETAIN
+            a : ARRAY[-2..2] OF DINT := [[-1] := 7, 8, [2] := 9];
+            g : Grid := [[1, 1] := 5, 6, [0, 2] := 3];
+            h : Grid := [[1, 2, 3], [1, 2] := 9];
+            c : Grid := [[0, 2] := 1, 2];
+        END_VAR
+            ;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+
+    // The band is `a`, `g`, `h` then `c`, row-major.
+    let plc = TestPlc::load(&wasm).expect("load");
+    let r = plc.read_retain();
+    let vals: Vec<i32> = (0..23)
+        .map(|i| i32::from_le_bytes(r[i * 4..i * 4 + 4].try_into().unwrap()))
+        .collect();
+    assert_eq!(
+        vals,
+        vec![
+            0, 7, 8, 0, 9, 0, 0, 3, 0, 5, 6, 1, 2, 3, 0, 0, 9, 0, 0, 1, 2, 0, 0
+        ]
+    );
+}
+
+/// The value at an index is placed as any element's: a struct, an element
+/// that is itself an array, and one inside a row of a two-dimensional array.
+#[rstest]
+fn the_value_at_an_index_is_placed_as_any_elements(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE
+            Pt : STRUCT x : DINT; y : DINT; END_STRUCT;
+            Row : ARRAY[0..1] OF DINT;
+        END_TYPE
+
+        PROGRAM P
+        VAR RETAIN seen : DINT; END_VAR
+        VAR
+            r : ARRAY[0..3] OF Row := [[1] := [5, 6], [3] := [7]];
+            s : ARRAY[0..3] OF Pt := [[2] := (x := 1, y := 2)];
+            m : ARRAY[0..1, 0..2] OF DINT := [[1, 2, 3], [[1] := 9]];
+        END_VAR
+            // One decimal digit per cell, so no two outcomes add up the same.
+            seen := r[1][0] + 10 * r[1][1] + 100 * r[3][0] + 1000 * s[2].x
+                + 10000 * s[2].y + 100000 * m[1, 1] + 1000000 * m[1, 0];
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+
+    let mut plc = TestPlc::load(&wasm).expect("load");
+    plc.run(1).expect("scan");
+    assert_eq!(
+        read_first_i32(&plc),
+        5 + 60 + 700 + 1_000 + 20_000 + 900_000,
+        "5, 6 in r[1], 7 in r[3], (1, 2) in s[2], 9 at m[1, 1], m[1, 0] left at 0"
+    );
+}
+
+/// The cells an index leaves out keep what any cell starts with: the
+/// element type's default, a STRUCT's field defaults or a subrange's lower
+/// limit, and an array type's own initializer. The positional form answers
+/// the same, so one ruling covers both.
+#[rstest]
+fn the_cells_an_index_leaves_out_keep_their_defaults(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE
+            Pt : STRUCT x : DINT := 4; y : DINT := 5; END_STRUCT;
+            Grid : ARRAY[0..1, 0..2] OF DINT := [1, 1, 1, 1, 1, 1];
+        END_TYPE
+
+        // One bit per array whose other cells dropped to 0.
+        FUNCTION test : INT
+        VAR
+            sp : ARRAY[0..2] OF Pt := [[1] := (x := 1)];
+            pp : ARRAY[0..2] OF Pt := [(x := 1)];
+            sub : ARRAY[0..2] OF INT(10..20) := [[1] := 15];
+            gi : Grid := [[1, 1] := 5];
+            gp : Grid := [5];
+        END_VAR
+            IF sp[0].x <> 4 OR sp[0].y <> 5 OR sp[1].x <> 1 OR sp[1].y <> 5 OR sp[2].x <> 4 THEN
+                test := test + 1;
+            END_IF;
+            IF pp[0].x <> 1 OR pp[0].y <> 5 OR pp[1].x <> 4 OR pp[2].y <> 5 THEN
+                test := test + 2;
+            END_IF;
+            IF sub[0] <> 10 OR sub[1] <> 15 OR sub[2] <> 10 THEN test := test + 4; END_IF;
+            IF gi[0, 0] <> 1 OR gi[1, 1] <> 5 OR gi[1, 2] <> 1 THEN test := test + 8; END_IF;
+            IF gp[0, 0] <> 5 OR gp[0, 1] <> 1 OR gp[1, 2] <> 1 THEN test := test + 16; END_IF;
+        END_FUNCTION
+    "#;
+    let result: i32 = super::run(&mut with_db, source, "test", ());
+    assert_eq!(result, 0);
+}
+
+/// An element at its index lowers in every initializer path: a METHOD
+/// local, a recursive FUNCTION's frame local, written per call rather than
+/// as static data, a type's default, a STRUCT field's, an FB input's and a
+/// global's.
+#[rstest]
+fn an_element_at_its_index_in_every_initializer_path(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE
+            Row4 : ARRAY[0..3] OF DINT := [[3] := 9];
+            Holder : STRUCT f : ARRAY[0..3] OF DINT := [[2] := 7]; END_STRUCT;
+        END_TYPE
+
+        FUNCTION_BLOCK Fb
+        VAR_INPUT inp : ARRAY[0..3] OF DINT := [[2] := 8]; END_VAR
+            METHOD PUBLIC m : DINT
+            VAR loc : ARRAY[0..3] OF DINT := [[1] := 3, 4]; END_VAR
+                m := loc[0] * 1000 + loc[1] * 100 + loc[2] * 10 + loc[3];
+            END_METHOD
+        END_FUNCTION_BLOCK
+
+        // Each frame starts as 0, 0, 5, 0 and zeroes its cell before it
+        // returns, so a frame reused without its initializer adds nothing.
+        FUNCTION rec : DINT
+        VAR_INPUT n : DINT; END_VAR
+        VAR fl : ARRAY[0..3] OF DINT := [[2] := 5]; END_VAR
+            rec := fl[0] + fl[1] + fl[2] + fl[3];
+            IF n > 0 THEN rec := rec + rec(n - 1); END_IF;
+            fl[2] := 0;
+        END_FUNCTION
+
+        // One bit per path that dropped the element.
+        PROGRAM P
+        VAR RETAIN seen : DINT; END_VAR
+        VAR
+            fb : Fb;
+            h : Holder;
+            r4 : Row4;
+        END_VAR
+            IF fb.m() <> 340 THEN seen := seen + 1; END_IF;
+            IF rec(2) <> 15 OR rec(2) <> 15 THEN seen := seen + 2; END_IF;
+            IF r4[3] <> 9 OR r4[2] <> 0 THEN seen := seen + 4; END_IF;
+            IF h.f[2] <> 7 OR h.f[3] <> 0 THEN seen := seen + 8; END_IF;
+            IF fb.inp[2] <> 8 OR fb.inp[3] <> 0 THEN seen := seen + 16; END_IF;
+            IF gl[1] <> 6 OR gl[0] <> 0 THEN seen := seen + 32; END_IF;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+        VAR_GLOBAL gl : ARRAY[0..3] OF DINT := [[1] := 6]; END_VAR
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    let mut plc = TestPlc::load(&wasm).expect("load");
+    plc.run(1).expect("scan");
+    assert_eq!(read_first_i32(&plc), 0);
+}
