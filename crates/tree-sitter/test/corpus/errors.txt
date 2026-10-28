@@ -408,7 +408,7 @@ END_FUNCTION_BLOCK
             (init_elem
               (array_index_elem
                 (unsigned_int)
-                (array_values
+                (repeat_values
                   (init_elem
                     (ERR_func_call_in_init
                       (func_call

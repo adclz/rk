@@ -1641,7 +1641,7 @@
         "required": false,
         "types": [
           {
-            "type": "array_values",
+            "type": "repeat_values",
             "named": true
           }
         ]
@@ -1672,6 +1672,10 @@
       "multiple": true,
       "required": false,
       "types": [
+        {
+          "type": "element_at",
+          "named": true
+        },
         {
           "type": "init_elem",
           "named": true
@@ -1721,6 +1725,10 @@
       "multiple": true,
       "required": true,
       "types": [
+        {
+          "type": "element_at",
+          "named": true
+        },
         {
           "type": "init_elem",
           "named": true
@@ -2563,6 +2571,44 @@
         "types": [
           {
             "type": "data_type_access",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "element_at",
+    "named": true,
+    "fields": {
+      "index": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "index_value",
+            "named": true
+          }
+        ]
+      },
+      "value": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "ERR_func_call_in_init",
+            "named": true
+          },
+          {
+            "type": "array_init",
+            "named": true
+          },
+          {
+            "type": "constant_expr",
+            "named": true
+          },
+          {
+            "type": "struct_init",
             "named": true
           }
         ]
@@ -5625,6 +5671,21 @@
           }
         ]
       }
+    }
+  },
+  {
+    "type": "repeat_values",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "init_elem",
+          "named": true
+        }
+      ]
     }
   },
   {

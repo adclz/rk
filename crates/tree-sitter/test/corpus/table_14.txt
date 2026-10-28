@@ -212,7 +212,7 @@ END_PROGRAM
             (init_elem
               (array_index_elem
                 (unsigned_int)
-                (array_values
+                (repeat_values
                   (init_elem
                     (constant_expr
                       (constant
@@ -260,7 +260,7 @@ END_PROGRAM
             (init_elem
               (array_index_elem
                 (unsigned_int)
-                (array_values
+                (repeat_values
                   (init_elem
                     (constant_expr
                       (constant
