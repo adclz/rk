@@ -956,8 +956,12 @@ module.exports = grammar({
 
     // Struct_Elem_Decl : Struct_Elem_Name ( Located_At Multibit_Part_Access ? )? ':'
     // ( Simple_Spec_Init | Subrange_Spec_Init | Enum_Spec_Init | Array_Spec_Init | Struct_Spec_Init );
+    // `RETAIN x : INT;` keeps that element across a power cycle where the
+    // struct's own declaration says nothing (docs/structs.md). An rk
+    // extension: the standard's element has no qualifier.
     struct_elem_decl: ($) =>
       seq(
+        field("retain", optional(choice(kw("RETAIN"), kw("NON_RETAIN")))),
         field("name", $.identifier),
         field("attributes", optional($.struct_elem_decl_attributes)),
         useSpecInit(

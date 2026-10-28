@@ -6181,6 +6181,20 @@
           }
         ]
       },
+      "retain": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "NON_RETAIN",
+            "named": false
+          },
+          {
+            "type": "RETAIN",
+            "named": false
+          }
+        ]
+      },
       "spec": {
         "multiple": false,
         "required": true,
