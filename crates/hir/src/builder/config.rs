@@ -277,11 +277,21 @@ impl<'db> SemanticIndexBuilder<'db> {
         // Tri-state: RETAIN => Some(true), NON_RETAIN => Some(false), absent
         // => None. (`is_some()` here was a latent bug — it read `PROGRAM
         // NON_RETAIN` as retained.)
-        let retain = pc.retain.as_ref().map(|r| {
-            matches!(
-                r.cast(self.ast),
-                ast::generated::Operators_0::Token_RETAIN(_)
-            )
+        type Retain = ast::generated::ERRDoubledQualifier_NONRETAIN_RETAIN;
+        let retain = pc.retain.as_ref().map(|r| match r.cast(self.ast) {
+            Retain::Token_RETAIN(_) => true,
+            Retain::Token_NON_RETAIN(_) => false,
+            // Both written: reported on the instance (E0031), the first kept.
+            Retain::ERRDoubledQualifier(err) => {
+                let first = err.first.cast(self.ast);
+                crate::builder::variables::report_doubled_qualifier(
+                    self,
+                    auto_lsp::core::ast::AstNode::get_range(pc.name.cast(self.ast)).to_owned(),
+                    auto_lsp::core::ast::AstNode::get_range(first).to_owned(),
+                    &err.extra,
+                );
+                matches!(first, ast::generated::Operators_2::Token_RETAIN(_))
+            }
         });
 
         let task = pc.task.iter().find_map(|wid| match wid.cast(self.ast) {

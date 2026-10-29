@@ -26,26 +26,66 @@ use ide_diagnostic::IdeDiagnostic;
 
 /// Convert a RETAIN/NON_RETAIN AST token to a `Qualifier`.
 /// `RETAIN` or `NON_RETAIN` as a qualifier.
-pub(super) fn token_qualifier(token: &ast::generated::Operators_0) -> Qualifier {
+pub(super) fn token_qualifier(token: &ast::generated::Operators_2) -> Qualifier {
     match token {
-        ast::generated::Operators_0::Token_RETAIN(_) => Qualifier::RETAIN,
-        ast::generated::Operators_0::Token_NON_RETAIN(_) => Qualifier::NON_RETAIN,
+        ast::generated::Operators_2::Token_RETAIN(_) => Qualifier::RETAIN,
+        ast::generated::Operators_2::Token_NON_RETAIN(_) => Qualifier::NON_RETAIN,
     }
 }
 
-pub(super) fn retain_qualifier(
-    retain: &Option<auto_lsp::core::ast::AstNodeId<ast::generated::Operators_0>>,
-    ast: &auto_lsp::default::db::tracked::ParsedAst,
+/// The qualifier written on a section, a struct element or a program
+/// instance, `on` being the span that names it. Both written is E0031, and
+/// the first is kept.
+pub(super) fn retain_qualifier<'db>(
+    sema: &mut SemanticIndexBuilder<'db>,
+    retain: &Option<
+        auto_lsp::core::ast::AstNodeId<ast::generated::ERRDoubledQualifier_NONRETAIN_RETAIN>,
+    >,
+    on: tree_sitter::Range,
 ) -> Qualifier {
-    retain
-        .as_ref()
-        .map(|r| token_qualifier(r.cast(ast)))
-        .unwrap_or(Qualifier::empty())
+    type Retain = ast::generated::ERRDoubledQualifier_NONRETAIN_RETAIN;
+    match retain.as_ref().map(|r| r.cast(sema.ast)) {
+        Some(Retain::Token_RETAIN(_)) => Qualifier::RETAIN,
+        Some(Retain::Token_NON_RETAIN(_)) => Qualifier::NON_RETAIN,
+        Some(Retain::ERRDoubledQualifier(err)) => {
+            let first = err.first.cast(sema.ast);
+            report_doubled_qualifier(sema, on, first.get_range().to_owned(), &err.extra);
+            token_qualifier(first)
+        }
+        None => Qualifier::empty(),
+    }
+}
+
+/// E0031 on the qualifier after the first, `on` naming what is qualified.
+pub(super) fn report_doubled_qualifier<'db, T: AstNode>(
+    sema: &mut SemanticIndexBuilder<'db>,
+    on: tree_sitter::Range,
+    first: tree_sitter::Range,
+    extra: &[auto_lsp::core::ast::AstNodeId<T>],
+) {
+    if let Some(second) = extra.first() {
+        sema.errors.push(
+            SyntaxError::DoubledQualifier {
+                on,
+                first,
+                second: second.cast(sema.ast).get_range().to_owned(),
+            }
+            .to_diagnostic(sema.db, sema.file),
+        );
+    }
+}
+
+/// The keyword opening a section, for a report on the section.
+pub(super) fn section_keyword<'db>(
+    sema: &SemanticIndexBuilder<'db>,
+    node: &impl AstNode,
+) -> tree_sitter::Range {
+    crate::check::errors::first_word(sema.db, sema.file, node.get_range())
 }
 
 impl<'db> ParseVarSection<'db> for ast::generated::InputDecls {
     fn parse(&self, sema: &mut SemanticIndexBuilder<'db>, section: &mut Vec<VariableDecl<'db>>) {
-        let qualifier = retain_qualifier(&self.retain, sema.ast);
+        let qualifier = retain_qualifier(sema, &self.retain, section_keyword(sema, self));
         for child in self.children.iter() {
             match child.cast(sema.ast) {
                 ast::generated::ERRVariableWithNoSpec_InputVar::ERRVariableWithNoSpec(child) => {
@@ -176,7 +216,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::InputDecls {
 
 impl<'db> ParseVarSection<'db> for ast::generated::FbInputDecls {
     fn parse(&self, sema: &mut SemanticIndexBuilder<'db>, section: &mut Vec<VariableDecl<'db>>) {
-        let qualifier = retain_qualifier(&self.retain, sema.ast);
+        let qualifier = retain_qualifier(sema, &self.retain, section_keyword(sema, self));
         for child in self.children.iter() {
             match child.cast(sema.ast) {
                 ast::generated::ERRVariableWithNoSpec_FbInputVar::ERRVariableWithNoSpec(child) => {
@@ -280,7 +320,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::FbInputDecls {
 
 impl<'db> ParseVarSection<'db> for ast::generated::OutputDecls {
     fn parse(&self, sema: &mut SemanticIndexBuilder<'db>, section: &mut Vec<VariableDecl<'db>>) {
-        let qualifier = retain_qualifier(&self.retain, sema.ast);
+        let qualifier = retain_qualifier(sema, &self.retain, section_keyword(sema, self));
         for child in self.children.iter() {
             match child.cast(sema.ast) {
                 ast::generated::ERRVariableWithNoSpec_OutputVar::ERRVariableWithNoSpec(child) => {
@@ -349,7 +389,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::OutputDecls {
 
 impl<'db> ParseVarSection<'db> for ast::generated::FbOutputDecls {
     fn parse(&self, sema: &mut SemanticIndexBuilder<'db>, section: &mut Vec<VariableDecl<'db>>) {
-        let qualifier = retain_qualifier(&self.retain, sema.ast);
+        let qualifier = retain_qualifier(sema, &self.retain, section_keyword(sema, self));
         for child in self.children.iter() {
             match child.cast(sema.ast) {
                 ast::generated::ERRVariableWithNoSpec_FbOutputVar::ERRVariableWithNoSpec(child) => {
@@ -685,6 +725,12 @@ fn push_located_var<'db>(
 
 impl<'db> ParseVarSection<'db> for ast::generated::VarDecls {
     fn parse(&self, sema: &mut SemanticIndexBuilder<'db>, section: &mut Vec<VariableDecl<'db>>) {
+        if let Some(ast::generated::CONSTANT_ERRDoubledConstant::ERRDoubledConstant(err)) =
+            self.constant.as_ref().map(|c| c.cast(sema.ast))
+        {
+            let first = err.first.cast(sema.ast).get_range().to_owned();
+            report_doubled_qualifier(sema, section_keyword(sema, self), first, &err.extra);
+        }
         let qualifier = if self.constant.is_some() {
             Qualifier::CONSTANT
         } else {
@@ -740,6 +786,12 @@ impl<'db> ParseVarSection<'db> for ast::generated::VarDecls {
 
 impl<'db> ParseVarSection<'db> for ast::generated::RetainVarDecls {
     fn parse(&self, sema: &mut SemanticIndexBuilder<'db>, section: &mut Vec<VariableDecl<'db>>) {
+        if let ast::generated::ERRDoubledRetain_RETAIN::ERRDoubledRetain(err) =
+            self.retain.cast(sema.ast)
+        {
+            let first = err.first.cast(sema.ast).get_range().to_owned();
+            report_doubled_qualifier(sema, section_keyword(sema, self), first, &err.extra);
+        }
         for child in self.children.iter() {
             match child.cast(sema.ast) {
                 ast::generated::ERRVariableWithNoSpec_LocVarDecl_VarDeclInitList::ERRVariableWithNoSpec(
@@ -790,6 +842,12 @@ impl<'db> ParseVarSection<'db> for ast::generated::RetainVarDecls {
 
 impl<'db> ParseVarSection<'db> for ast::generated::NoRetainVarDecls {
     fn parse(&self, sema: &mut SemanticIndexBuilder<'db>, section: &mut Vec<VariableDecl<'db>>) {
+        if let ast::generated::ERRDoubledNonRetain_NONRETAIN::ERRDoubledNonRetain(err) =
+            self.retain.cast(sema.ast)
+        {
+            let first = err.first.cast(sema.ast).get_range().to_owned();
+            report_doubled_qualifier(sema, section_keyword(sema, self), first, &err.extra);
+        }
         for child in self.children.iter() {
             match child.cast(sema.ast) {
                 ast::generated::ERRVariableWithNoSpec_LocVarDecl_VarDeclInitList::ERRVariableWithNoSpec(
@@ -840,7 +898,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::NoRetainVarDecls {
 
 impl<'db> ParseVarSection<'db> for ast::generated::LocPartlyVarDecl {
     fn parse(&self, sema: &mut SemanticIndexBuilder<'db>, section: &mut Vec<VariableDecl<'db>>) {
-        let qualifier = retain_qualifier(&self.retain, sema.ast);
+        let qualifier = retain_qualifier(sema, &self.retain, section_keyword(sema, self));
         for child in self.children.iter() {
             let r = Ident::from_node(
                 sema.db,
@@ -948,9 +1006,20 @@ impl<'db> ParseProgDecl<'db> for ast::generated::ProgAccessDecls {
 
 impl<'db> ParseVarSection<'db> for ast::generated::GlobalVarDecls {
     fn parse(&self, sema: &mut SemanticIndexBuilder<'db>, section: &mut Vec<VariableDecl<'db>>) {
+        type Qual = ast::generated::CONSTANT_ERRDoubledGlobalQualifier_RETAIN;
         let qualifier = match self.constant_or_retain.as_ref().map(|c| c.cast(sema.ast)) {
-            Some(ast::generated::Operators_4::Token_CONSTANT(_)) => Qualifier::CONSTANT,
-            Some(ast::generated::Operators_4::Token_RETAIN(_)) => Qualifier::RETAIN,
+            Some(Qual::Token_CONSTANT(_)) => Qualifier::CONSTANT,
+            Some(Qual::Token_RETAIN(_)) => Qualifier::RETAIN,
+            // Both written: reported on the section (E0031), the first kept.
+            Some(Qual::ERRDoubledGlobalQualifier(err)) => {
+                let first = err.first.cast(sema.ast);
+                let span = first.get_range().to_owned();
+                report_doubled_qualifier(sema, section_keyword(sema, self), span, &err.extra);
+                match first {
+                    ast::generated::Operators_1::Token_CONSTANT(_) => Qualifier::CONSTANT,
+                    ast::generated::Operators_1::Token_RETAIN(_) => Qualifier::RETAIN,
+                }
+            }
             None => Qualifier::empty(),
         };
         for child in self.children.iter() {

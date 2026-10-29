@@ -666,23 +666,18 @@ impl<'db> ParseSpec<'db> for ast::generated::StructTypeSpec {
                 Some(Retain::ERRDoubledQualifier(err)) => {
                     use auto_lsp::core::ast::AstNode;
                     let first = err.first.cast(sema.ast);
-                    if let Some(second) = err.extra.first() {
-                        sema.errors
-                            .push(crate::check::errors::ToIdeDiagnostic::to_diagnostic(
-                                &crate::check::errors::e00_syntax::SyntaxError::DoubledQualifier {
-                                    name_span: elem
-                                        .cast(sema.ast)
-                                        .name
-                                        .cast(sema.ast)
-                                        .get_range()
-                                        .to_owned(),
-                                    first: first.get_range().to_owned(),
-                                    second: second.cast(sema.ast).get_range().to_owned(),
-                                },
-                                sema.db,
-                                sema.file,
-                            ));
-                    }
+                    let name = elem
+                        .cast(sema.ast)
+                        .name
+                        .cast(sema.ast)
+                        .get_range()
+                        .to_owned();
+                    super::variables::report_doubled_qualifier(
+                        sema,
+                        name,
+                        first.get_range().to_owned(),
+                        &err.extra,
+                    );
                     super::variables::token_qualifier(first)
                 }
                 None => crate::Qualifier::empty(),
