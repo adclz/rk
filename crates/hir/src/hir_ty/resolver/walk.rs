@@ -931,17 +931,18 @@ impl<'db> Type<'db> {
                 // its pointer, a VAR_TEMP or a VAR_EXTERNAL would drop it, and
                 // a CONSTANT's reads would not see it.
                 use crate::check::errors::e04_init::UninitializableMember;
-                let uninitializable = if var.is_in_out(db) {
-                    Some(UninitializableMember::InOut)
-                } else if var.is_temp(db) {
-                    Some(UninitializableMember::Temp)
-                } else if var.is_external(db) {
-                    Some(UninitializableMember::External)
-                } else if var.qualifier(db).contains(crate::Qualifier::CONSTANT) {
-                    Some(UninitializableMember::Constant)
-                } else {
-                    None
-                };
+                let uninitializable =
+                    if var.is_in_out(db) && !crate::hir_ty::layout::in_out_is_member(db, var) {
+                        Some(UninitializableMember::InOut)
+                    } else if var.is_temp(db) {
+                        Some(UninitializableMember::Temp)
+                    } else if var.is_external(db) {
+                        Some(UninitializableMember::External)
+                    } else if var.qualifier(db).contains(crate::Qualifier::CONSTANT) {
+                        Some(UninitializableMember::Constant)
+                    } else {
+                        None
+                    };
                 if let Some(kind) = uninitializable {
                     ctx.errors.push(
                         InitError::UninitializableMember { expr, var, kind }

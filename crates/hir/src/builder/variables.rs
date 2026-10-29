@@ -526,6 +526,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::TempVarDecls {
 
 impl<'db> ParseVarSection<'db> for ast::generated::InOutDecls {
     fn parse(&self, sema: &mut SemanticIndexBuilder<'db>, section: &mut Vec<VariableDecl<'db>>) {
+        let qualifier = retain_qualifier(sema, &self.retain, section_keyword(sema, self));
         for child in self.children.iter() {
             match child.cast(sema.ast) {
                 ast::generated::ERRVariableWithNoSpec_InOutVar::ERRVariableWithNoSpec(child) => {
@@ -552,7 +553,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::InOutDecls {
                                     var_name,
                                     variable.cast(sema.ast).into(),
                                     VariableKind::InOut,
-                                    Qualifier::empty(),
+                                    qualifier,
                                     false,
                                     spec,
                                     None,
@@ -568,7 +569,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::InOutDecls {
                                 let Some(var_name) = sema.try_parse(r) else {
                                     continue;
                                 };
-                                let r = var_decl.to_spec_init(sema);
+                                let r = var_decl_spec_init(var_decl, sema, true);
                                 let Some(result) = sema.try_parse(r) else {
                                     continue;
                                 };
@@ -576,7 +577,7 @@ impl<'db> ParseVarSection<'db> for ast::generated::InOutDecls {
                                     var_name,
                                     variable.cast(sema.ast).into(),
                                     VariableKind::InOut,
-                                    Qualifier::empty(),
+                                    qualifier,
                                     false,
                                     result.spec,
                                     result.init,
@@ -1170,46 +1171,62 @@ impl<'db> ParseSpecInit<'db> for ast::generated::VarDecl {
         &self,
         sema: &mut SemanticIndexBuilder<'db>,
     ) -> anyhow::Result<SpecInitResult<'db>, IdeDiagnostic> {
-        type Spec = ast::generated::ArrayTypeSpec_SimpleTypeSpec_StructTypeSpec_SubrangeTypeSpec;
+        var_decl_spec_init(self, sema, false)
+    }
+}
 
-        let spec = match self.spec.cast(sema.ast) {
-            Spec::ArrayTypeSpec(a) => a.to_spec(sema),
-            Spec::SimpleTypeSpec(a) => a.to_spec(sema),
-            Spec::StructTypeSpec(a) => a.to_spec(sema),
-            // `VAR x : INT (0..100); END_VAR` — a subrange declared inline
-            // rather than through a TYPE alias (IEC allows it).
-            Spec::SubrangeTypeSpec(a) => a.to_spec(sema),
-        };
+/// A VAR_IN_OUT's or a VAR_TEMP's declaration. A VAR_IN_OUT keeps its initial
+/// value, which the head refuses unless the variable is a member of a
+/// FUNCTION_BLOCK (E0004); a VAR_TEMP never takes one.
+pub(super) fn var_decl_spec_init<'db>(
+    decl: &ast::generated::VarDecl,
+    sema: &mut SemanticIndexBuilder<'db>,
+    keep_init: bool,
+) -> anyhow::Result<SpecInitResult<'db>, IdeDiagnostic> {
+    type Spec = ast::generated::ArrayTypeSpec_SimpleTypeSpec_StructTypeSpec_SubrangeTypeSpec;
 
-        type Init = ast::generated::ArrayTypeInit_SimpleTypeInit_StructTypeInit;
+    let spec = match decl.spec.cast(sema.ast) {
+        Spec::ArrayTypeSpec(a) => a.to_spec(sema),
+        Spec::SimpleTypeSpec(a) => a.to_spec(sema),
+        Spec::StructTypeSpec(a) => a.to_spec(sema),
+        // `VAR x : INT (0..100); END_VAR` — a subrange declared inline
+        // rather than through a TYPE alias (IEC allows it).
+        Spec::SubrangeTypeSpec(a) => a.to_spec(sema),
+    };
 
-        let init = match self.init.as_ref().map(|i| i.cast(sema.ast)) {
-            Some(Init::ArrayTypeInit(a)) => {
-                let r = a.parse(sema);
-                sema.try_parse(r)
-            }
-            Some(Init::SimpleTypeInit(a)) => {
-                let r = a.parse(sema);
-                sema.try_parse(r)
-            }
-            Some(Init::StructTypeInit(a)) => {
-                let r = a.parse(sema);
-                sema.try_parse(r)
-            }
-            None => None,
-        };
+    type Init = ast::generated::ArrayTypeInit_SimpleTypeInit_StructTypeInit;
 
-        if let Some(init) = &self.init {
-            sema.errors.push(
-                SyntaxError::UnexpectedVarInit(init.cast(sema.ast).get_range().to_owned())
-                    .to_diagnostic(sema.db, sema.file),
-            );
+    let init = match decl.init.as_ref().map(|i| i.cast(sema.ast)) {
+        Some(Init::ArrayTypeInit(a)) => {
+            let r = a.parse(sema);
+            sema.try_parse(r)
         }
-
-        match spec {
-            Ok(spec) => Ok(SpecInitResult::new(spec, None)),
-            Err(err) => Err(err),
+        Some(Init::SimpleTypeInit(a)) => {
+            let r = a.parse(sema);
+            sema.try_parse(r)
         }
+        Some(Init::StructTypeInit(a)) => {
+            let r = a.parse(sema);
+            sema.try_parse(r)
+        }
+        None => None,
+    };
+
+    if let Some(init) = &decl.init
+        && !keep_init
+    {
+        sema.errors.push(
+            SyntaxError::UnexpectedVarInit(init.cast(sema.ast).get_range().to_owned())
+                .to_diagnostic(sema.db, sema.file),
+        );
+    }
+
+    match spec {
+        Ok(spec) => Ok(SpecInitResult::new(
+            spec,
+            if keep_init { init } else { None },
+        )),
+        Err(err) => Err(err),
     }
 }
 

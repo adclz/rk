@@ -64,6 +64,41 @@ impl<'db> InitInference<'db> {
         true
     }
 
+    /// A VAR_IN_OUT bound to the caller's variable at each call, a FUNCTION's
+    /// or a METHOD's, or one of an aggregate type, takes no initial value
+    /// (E0004): there is nothing of its own to give it. In a FUNCTION_BLOCK,
+    /// where a scalar one is a member and its section takes `RETAIN` or
+    /// `NON_RETAIN`, an aggregate one in such a section is E0906; E0208
+    /// refuses the qualifier where nothing is kept at all.
+    fn check_in_out_binding(
+        &mut self,
+        db: &'db dyn WorkspaceDataBase,
+        var: &VariableDecl<'db>,
+        in_function_block: bool,
+    ) {
+        if !var.is_in_out(db) || crate::hir_ty::layout::in_out_is_member(db, *var) {
+            return;
+        }
+        if let Some(init) = var.init(db) {
+            self.errors.push(
+                crate::check::errors::e00_syntax::SyntaxError::UnexpectedVarInit(init.get_span(db))
+                    .to_diagnostic(db, self.scope.file(db)),
+            );
+        }
+        if in_function_block
+            && var
+                .qualifier(db)
+                .intersects(crate::Qualifier::RETAIN | crate::Qualifier::NON_RETAIN)
+        {
+            self.errors.push(
+                crate::check::errors::e09_reference::ReferenceError::QualifiedInOutReference {
+                    var: *var,
+                }
+                .to_diagnostic(db, self.scope.file(db)),
+            );
+        }
+    }
+
     /// E1425: an instance whose type holds a variable declared `AT %I*`,
     /// held where no VAR_CONFIG path can name it, or where a call copies over
     /// it: an array's element, a STRUCT's field, a VAR_GLOBAL, an instance
@@ -414,6 +449,11 @@ impl<'db> InitInference<'db> {
             }
             self.check_edge(db, var, stateless_pou);
             self.check_conformand(db, var, scope_kind);
+            self.check_in_out_binding(
+                db,
+                var,
+                matches!(scope_kind, ScopeKind::Pou(Pou::FunctionBlock(_))),
+            );
             if let ScopeKind::Pou(Pou::Function(f)) = scope_kind
                 && f.is_test(db)
                 && var.conformand(db).is_some()

@@ -322,7 +322,7 @@ impl<'db> ToIdeDiagnostic<'db> for CallError<'db> {
                 }
                 if any_in_out {
                     diag.with_note(
-                        "VAR_IN_OUT parameters bind to caller-side l-values and must always be supplied"
+                        "a VAR_IN_OUT of a FUNCTION or a METHOD, or of an aggregate type, is bound to the caller's variable at each call"
                             .to_string(),
                     );
                 }

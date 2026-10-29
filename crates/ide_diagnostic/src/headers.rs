@@ -142,6 +142,7 @@ pub const HEADERS: &[(&str, &str)] = &[
     ("E0903", "reference outlives its storage"),
     ("E0904", "reference in RETAIN storage"),
     ("E0905", "REF() argument not a variable"),
+    ("E0906", "qualifier on a VAR_IN_OUT bound by reference"),
     ("E1001", "access to a PRIVATE item"),
     ("E1002", "access to a PROTECTED item"),
     ("E1003", "access to an INTERNAL item"),

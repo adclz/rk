@@ -847,8 +847,10 @@ fn is_param_required<'db>(
     callable: CallableType<'db>,
     var: VariableDecl<'db>,
 ) -> bool {
+    // A FUNCTION_BLOCK keeps a scalar VAR_IN_OUT as a member; any other
+    // is bound at each call.
     if var.is_in_out(db) {
-        return true;
+        return !crate::hir_ty::layout::in_out_is_member(db, var);
     }
     // The bounds of an `ARRAY[*]` come from what the call binds to it.
     if var.conformand(db).is_some() {
