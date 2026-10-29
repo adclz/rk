@@ -206,20 +206,75 @@ pub fn retained_with_instance<'db>(db: &'db dyn WorkspaceDataBase, var: Variable
         )
 }
 
+/// One step of the route to a reference.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, salsa::Update)]
+pub enum RouteStep {
+    /// A STRUCT field or an instance member, as written.
+    Field(Ident),
+    /// An element of an array of that many dimensions: any of them.
+    Element(usize),
+}
+
 /// The reference a retained value holds, which no warm start can restore:
 /// where it is, and where to mark it `NON_RETAIN`.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub struct RetainedRef {
-    /// The STRUCT fields and instance members from the value to the
-    /// reference, as written: empty when the value is one. Array elements
-    /// add no name.
-    pub route: Vec<Ident>,
-    /// The TYPE or POU declaring the last of them, as written, when it has
-    /// a name: a struct written in place has none.
+    /// The fields, members and array elements from the value to the
+    /// reference: empty when the value is one.
+    pub route: Vec<RouteStep>,
+    /// The TYPE or POU declaring the last field on the route, as written,
+    /// when it has a name: a struct written in place has none.
     pub declared_in: Option<Ident>,
+}
+
+impl RetainedRef {
     /// The value at the end of the route is a reference (a REF_TO or an
     /// interface), not an array of them.
-    pub direct: bool,
+    pub fn direct(&self) -> bool {
+        !matches!(self.route.last(), Some(RouteStep::Element(_)))
+    }
+
+    /// The last field on the route: where the reference is declared.
+    pub fn last_field(&self) -> Option<Ident> {
+        self.route.iter().rev().find_map(|step| match step {
+            RouteStep::Field(name) => Some(*name),
+            RouteStep::Element(_) => None,
+        })
+    }
+
+    /// The route from `root` as a path, `root.a[i].b[j, k].c`, with an
+    /// index letter per dimension of each array crossed. An array of
+    /// references at the end is named as the array: its elements are what
+    /// it holds.
+    pub fn path(&self, db: &dyn WorkspaceDataBase, root: Ident) -> String {
+        let mut path = root.text(db).to_string();
+        let named = self
+            .route
+            .iter()
+            .rposition(|step| matches!(step, RouteStep::Field(_)))
+            .map_or(0, |last| last + 1);
+        let mut index = b'i';
+        for step in &self.route[..named] {
+            match step {
+                RouteStep::Field(name) => {
+                    path.push('.');
+                    path.push_str(name.text(db));
+                }
+                RouteStep::Element(dimensions) => {
+                    path.push('[');
+                    for dimension in 0..(*dimensions).max(1) {
+                        if dimension > 0 {
+                            path.push_str(", ");
+                        }
+                        path.push(index as char);
+                        index = (index + 1).min(b'z');
+                    }
+                    path.push(']');
+                }
+            }
+        }
+        path
+    }
 }
 
 /// The reference a retained value of type `ty` holds, down to the first one
@@ -247,14 +302,13 @@ pub fn retained_reference<'db>(
             return Some(RetainedRef {
                 route: Vec::new(),
                 declared_in: None,
-                direct: true,
             });
         }
         Type::Array(array) => {
             let mut found = retained_reference(db, array.of_type(db).infer(db), visited)?;
-            if found.route.is_empty() {
-                found.direct = false;
-            }
+            found
+                .route
+                .insert(0, RouteStep::Element(array.subranges(db).len()));
             return Some(found);
         }
         // A `NON_RETAIN` element is never restored, whatever holds it, and
@@ -287,10 +341,10 @@ pub fn retained_reference<'db>(
     visited.push(ty);
     let found = fields.into_iter().find_map(|(name, field)| {
         let mut found = retained_reference(db, field, visited)?;
-        if found.route.is_empty() {
+        if found.last_field().is_none() {
             found.declared_in = declared;
         }
-        found.route.insert(0, name);
+        found.route.insert(0, RouteStep::Field(name));
         Some(found)
     });
     visited.pop();

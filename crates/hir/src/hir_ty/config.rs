@@ -318,7 +318,7 @@ fn infer_config<'db>(
             ) {
                 // The variable itself is the reference the instance keeps:
                 // the program declaring it is where to mark it.
-                if found.route.is_empty() {
+                if found.last_field().is_none() {
                     found.declared_in = Some(program.get_name_with_case(db));
                 }
                 result.errors.push(

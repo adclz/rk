@@ -71,6 +71,28 @@ pub enum ReferenceError<'db> {
     },
 }
 
+/// What a part access names: a bit of the variable, or a byte, word or
+/// double word of it, which has an address of its own and is still no
+/// variable.
+fn part_of_one(
+    db: &dyn WorkspaceDataBase,
+    access: crate::hir_def::expressions::expression::VariableAccess<'_>,
+) -> &'static str {
+    use crate::hir_def::expressions::spec::ElementarySpec;
+    use crate::hir_ty::ty::Type;
+    match access.multibits(db) {
+        Some(part)
+            if matches!(
+                crate::hir_ty::infer::normalize::multibits_to_type(db, part),
+                Type::Elementary(ElementarySpec::Bool)
+            ) =>
+        {
+            "a bit of one"
+        }
+        _ => "a part of one",
+    }
+}
+
 /// Where the last of a route's names is declared, for the advice: the TYPE
 /// or POU by name, or the struct written in place.
 fn declared_in(
@@ -112,7 +134,7 @@ impl<'db> ToIdeDiagnostic<'db> for ReferenceError<'db> {
                 };
                 let (what, note, help) = match access {
                     Some(access) if access.multibits(db).is_some() => (
-                        "a bit of one",
+                        part_of_one(db, access),
                         "a reference points at a named variable or instance",
                         None,
                     ),
@@ -243,12 +265,8 @@ impl<'db> ToIdeDiagnostic<'db> for ReferenceError<'db> {
                 found,
                 instance,
             } => {
-                let held = std::iter::once(var.name_with_case(db))
-                    .chain(found.route.iter().copied())
-                    .map(|name| name.text(db).to_string())
-                    .collect::<Vec<_>>()
-                    .join(".");
-                let (message, range) = match (instance, found.direct) {
+                let held = found.path(db, var.name_with_case(db));
+                let (message, range) = match (instance, found.direct()) {
                     (Some(instance), true) => (
                         format!(
                             "PROGRAM RETAIN '{}' keeps '{held}', a reference: its address does not survive a new build",
@@ -279,15 +297,15 @@ impl<'db> ToIdeDiagnostic<'db> for ReferenceError<'db> {
                 // A member kept by what holds it is marked NON_RETAIN where
                 // it is declared; the variable itself, when it is the
                 // reference and its own section is RETAIN, leaves it.
-                let set = if found.direct { "set it" } else { "set them" };
-                let help = match (found.route.last(), instance) {
+                let set = if found.direct() { "set it" } else { "set them" };
+                let help = match (found.last_field(), instance) {
                     (None, None) => format!(
                         "move '{}' out of RETAIN and {set} in the first scan",
                         var.name_with_case(db).text(db)
                     ),
                     (last, _) => format!(
                         "mark '{}' NON_RETAIN in {} and {set} in the first scan",
-                        last.copied().unwrap_or(var.name_with_case(db)).text(db),
+                        last.unwrap_or(var.name_with_case(db)).text(db),
                         declared_in(db, found)
                     ),
                 };
@@ -313,15 +331,11 @@ impl<'db> ToIdeDiagnostic<'db> for ReferenceError<'db> {
             }
             Self::RetainedReferenceElement { element, found } => {
                 let name = element.name_with_case(db).text(db).to_string();
-                let held = std::iter::once(element.name_with_case(db))
-                    .chain(found.route.iter().copied())
-                    .map(|name| name.text(db).to_string())
-                    .collect::<Vec<_>>()
-                    .join(".");
+                let held = found.path(db, element.name_with_case(db));
                 // The element is the reference, an array of them, or holds
                 // one down a struct of its own: the advice names the fix
                 // that keeps the rest of what it holds.
-                let (message, help) = match (found.route.last(), found.direct) {
+                let (message, help) = match (found.last_field(), found.direct()) {
                     (None, true) => (
                         format!(
                             "'{held}' is a reference marked RETAIN: its address does not survive a new build"
