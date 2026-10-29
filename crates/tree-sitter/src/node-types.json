@@ -790,6 +790,112 @@
     }
   },
   {
+    "type": "ERR_doubled_constant",
+    "named": true,
+    "fields": {
+      "extra": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "CONSTANT",
+            "named": false
+          },
+          {
+            "type": "NON_RETAIN",
+            "named": false
+          },
+          {
+            "type": "RETAIN",
+            "named": false
+          }
+        ]
+      },
+      "first": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "CONSTANT",
+            "named": false
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "ERR_doubled_global_qualifier",
+    "named": true,
+    "fields": {
+      "extra": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "CONSTANT",
+            "named": false
+          },
+          {
+            "type": "NON_RETAIN",
+            "named": false
+          },
+          {
+            "type": "RETAIN",
+            "named": false
+          }
+        ]
+      },
+      "first": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "CONSTANT",
+            "named": false
+          },
+          {
+            "type": "RETAIN",
+            "named": false
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "ERR_doubled_non_retain",
+    "named": true,
+    "fields": {
+      "extra": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "CONSTANT",
+            "named": false
+          },
+          {
+            "type": "NON_RETAIN",
+            "named": false
+          },
+          {
+            "type": "RETAIN",
+            "named": false
+          }
+        ]
+      },
+      "first": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "NON_RETAIN",
+            "named": false
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "ERR_doubled_qualifier",
     "named": true,
     "fields": {
@@ -815,6 +921,40 @@
             "type": "NON_RETAIN",
             "named": false
           },
+          {
+            "type": "RETAIN",
+            "named": false
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "ERR_doubled_retain",
+    "named": true,
+    "fields": {
+      "extra": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "CONSTANT",
+            "named": false
+          },
+          {
+            "type": "NON_RETAIN",
+            "named": false
+          },
+          {
+            "type": "RETAIN",
+            "named": false
+          }
+        ]
+      },
+      "first": {
+        "multiple": false,
+        "required": true,
+        "types": [
           {
             "type": "RETAIN",
             "named": false
@@ -3100,6 +3240,10 @@
         "required": false,
         "types": [
           {
+            "type": "ERR_doubled_qualifier",
+            "named": true
+          },
+          {
             "type": "NON_RETAIN",
             "named": false
           },
@@ -3159,6 +3303,10 @@
         "multiple": false,
         "required": false,
         "types": [
+          {
+            "type": "ERR_doubled_qualifier",
+            "named": true
+          },
           {
             "type": "NON_RETAIN",
             "named": false
@@ -3634,6 +3782,10 @@
             "named": false
           },
           {
+            "type": "ERR_doubled_global_qualifier",
+            "named": true
+          },
+          {
             "type": "RETAIN",
             "named": false
           }
@@ -3875,6 +4027,10 @@
         "multiple": false,
         "required": false,
         "types": [
+          {
+            "type": "ERR_doubled_qualifier",
+            "named": true
+          },
           {
             "type": "NON_RETAIN",
             "named": false
@@ -4152,6 +4308,10 @@
         "multiple": false,
         "required": false,
         "types": [
+          {
+            "type": "ERR_doubled_qualifier",
+            "named": true
+          },
           {
             "type": "NON_RETAIN",
             "named": false
@@ -4758,6 +4918,20 @@
     "type": "no_retain_var_decls",
     "named": true,
     "fields": {
+      "retain": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "ERR_doubled_non_retain",
+            "named": true
+          },
+          {
+            "type": "NON_RETAIN",
+            "named": false
+          }
+        ]
+      },
       "spec": {
         "multiple": false,
         "required": false,
@@ -4916,6 +5090,10 @@
         "multiple": false,
         "required": false,
         "types": [
+          {
+            "type": "ERR_doubled_qualifier",
+            "named": true
+          },
           {
             "type": "NON_RETAIN",
             "named": false
@@ -5322,6 +5500,10 @@
         "multiple": false,
         "required": false,
         "types": [
+          {
+            "type": "ERR_doubled_qualifier",
+            "named": true
+          },
           {
             "type": "NON_RETAIN",
             "named": false
@@ -5786,6 +5968,10 @@
         "multiple": false,
         "required": true,
         "types": [
+          {
+            "type": "ERR_doubled_retain",
+            "named": true
+          },
           {
             "type": "RETAIN",
             "named": false
@@ -7092,6 +7278,10 @@
           {
             "type": "CONSTANT",
             "named": false
+          },
+          {
+            "type": "ERR_doubled_constant",
+            "named": true
           }
         ]
       }

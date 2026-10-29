@@ -256,6 +256,9 @@ module.exports = grammar({
   ],
 
   conflicts: ($) => [
+    // `VAR RETAIN NON_RETAIN`: a plain or a partly located section until its
+    // content says which; the doubled qualifier is reported either way.
+    [$.ERR_doubled_qualifier, $.ERR_doubled_retain],
     [$.constant_expr, $.parenthesized_expression],
     [$.begin_path_expression, $.field_expression],
     [$.any_invocation_kind, $.field_expression],
@@ -310,15 +313,52 @@ module.exports = grammar({
     ERR_extends_multiple_times: ($) =>
       prec(-1, seq(kw("EXTENDS"), $.namespace_access)),
 
-    // `RETAIN NON_RETAIN x : INT;` on a struct element: parsed whole so the
-    // report labels both qualifiers, where recovery blamed whichever the
-    // parser dropped. The element keeps the first.
+    // `RETAIN NON_RETAIN x : INT;` on a struct element, a section or a
+    // program instance: parsed whole so the report labels both qualifiers,
+    // where recovery blamed whichever the parser dropped. The declaration
+    // keeps the first. `VAR RETAIN` and `VAR NON_RETAIN` are rules of their
+    // own, so each gets the form starting with its keyword.
     ERR_doubled_qualifier: ($) =>
       prec(
         -1,
         seq(
           field("first", choice(kw("RETAIN"), kw("NON_RETAIN"))),
           field("extra", repeat1(choice(kw("RETAIN"), kw("NON_RETAIN")))),
+        ),
+      ),
+    ERR_doubled_retain: ($) =>
+      prec(
+        -1,
+        seq(
+          field("first", kw("RETAIN")),
+          field("extra", repeat1(choice(kw("RETAIN"), kw("NON_RETAIN"), kw("CONSTANT")))),
+        ),
+      ),
+    ERR_doubled_non_retain: ($) =>
+      prec(
+        -1,
+        seq(
+          field("first", kw("NON_RETAIN")),
+          field("extra", repeat1(choice(kw("RETAIN"), kw("NON_RETAIN"), kw("CONSTANT")))),
+        ),
+      ),
+    // `VAR CONSTANT RETAIN`, and `VAR_GLOBAL CONSTANT RETAIN` or
+    // `VAR_GLOBAL RETAIN CONSTANT`: the same mistake where CONSTANT is a
+    // qualifier too.
+    ERR_doubled_constant: ($) =>
+      prec(
+        -1,
+        seq(
+          field("first", kw("CONSTANT")),
+          field("extra", repeat1(choice(kw("RETAIN"), kw("NON_RETAIN"), kw("CONSTANT")))),
+        ),
+      ),
+    ERR_doubled_global_qualifier: ($) =>
+      prec(
+        -1,
+        seq(
+          field("first", choice(kw("CONSTANT"), kw("RETAIN"))),
+          field("extra", repeat1(choice(kw("RETAIN"), kw("NON_RETAIN"), kw("CONSTANT")))),
         ),
       ),
 
@@ -1077,7 +1117,10 @@ module.exports = grammar({
       prec.right(
         seq(
           kw("VAR_INPUT"),
-          field("retain", optional(choice(kw("RETAIN"), kw("NON_RETAIN")))),
+          field(
+            "retain",
+            optional(choice(kw("RETAIN"), kw("NON_RETAIN"), $.ERR_doubled_qualifier)),
+          ),
           repeat(
             seq(choice($.input_var, $.ERR_variable_with_no_spec), optional(";")),
           ),
@@ -1165,7 +1208,10 @@ module.exports = grammar({
       prec.right(
         seq(
           kw("VAR_OUTPUT"),
-          field("retain", optional(choice(kw("RETAIN"), kw("NON_RETAIN")))),
+          field(
+            "retain",
+            optional(choice(kw("RETAIN"), kw("NON_RETAIN"), $.ERR_doubled_qualifier)),
+          ),
           repeat(
             seq(choice($.output_var, $.ERR_variable_with_no_spec), optional(";")),
           ),
@@ -1206,7 +1252,7 @@ module.exports = grammar({
       prec.right(
         seq(
           kw("VAR"),
-          field("constant", optional(kw("CONSTANT"))),
+          field("constant", optional(choice(kw("CONSTANT"), $.ERR_doubled_constant))),
           field("access", optional($.access_spec)),
           repeat(
             seq(
@@ -1227,7 +1273,7 @@ module.exports = grammar({
       prec.right(
         seq(
           kw("VAR"),
-          field("retain", kw("RETAIN")),
+          field("retain", choice(kw("RETAIN"), $.ERR_doubled_retain)),
           field("access", optional($.access_spec)),
           repeat(
             seq(
@@ -1297,7 +1343,10 @@ module.exports = grammar({
       prec.right(
         seq(
           kw("VAR_GLOBAL"),
-          field("constant_or_retain", optional(choice(kw("CONSTANT"), kw("RETAIN")))),
+          field(
+            "constant_or_retain",
+            optional(choice(kw("CONSTANT"), kw("RETAIN"), $.ERR_doubled_global_qualifier)),
+          ),
           repeat(seq($.global_var_decl, optional(";"))),
           kw("END_VAR"),
           optional(";"),
@@ -1336,7 +1385,10 @@ module.exports = grammar({
       prec.right(
         seq(
           kw("VAR"),
-          field("retain", optional(choice(kw("RETAIN"), kw("NON_RETAIN")))),
+          field(
+            "retain",
+            optional(choice(kw("RETAIN"), kw("NON_RETAIN"), $.ERR_doubled_qualifier)),
+          ),
           repeat1(seq($.loc_partly_var, optional(";"))),
           kw("END_VAR"),
           optional(";"),
@@ -1423,7 +1475,10 @@ module.exports = grammar({
       prec.right(
         seq(
           kw("VAR_INPUT"),
-          field("retain", optional(choice(kw("RETAIN"), kw("NON_RETAIN")))),
+          field(
+            "retain",
+            optional(choice(kw("RETAIN"), kw("NON_RETAIN"), $.ERR_doubled_qualifier)),
+          ),
           repeat(
             seq(
               choice($.fb_input_var, $.ERR_variable_with_no_spec),
@@ -1453,7 +1508,10 @@ module.exports = grammar({
       prec.right(
         seq(
           kw("VAR_OUTPUT"),
-          field("retain", optional(choice(kw("RETAIN"), kw("NON_RETAIN")))),
+          field(
+            "retain",
+            optional(choice(kw("RETAIN"), kw("NON_RETAIN"), $.ERR_doubled_qualifier)),
+          ),
           repeat(
             seq(
               choice($.fb_output_var, $.ERR_variable_with_no_spec),
@@ -1477,7 +1535,7 @@ module.exports = grammar({
       prec.right(
         seq(
           kw("VAR"),
-          kw("NON_RETAIN"),
+          field("retain", choice(kw("NON_RETAIN"), $.ERR_doubled_non_retain)),
           field("spec", optional($.access_spec)),
           repeat(
             seq(
@@ -1848,7 +1906,10 @@ module.exports = grammar({
     prog_config: ($) =>
       seq(
         kw("PROGRAM"),
-        field("retain", optional(choice(kw("RETAIN"), kw("NON_RETAIN")))),
+        field(
+          "retain",
+          optional(choice(kw("RETAIN"), kw("NON_RETAIN"), $.ERR_doubled_qualifier)),
+        ),
         field("name", $.identifier),
         field("task", optional(seq(kw("WITH"), $.identifier))),
         ":",
