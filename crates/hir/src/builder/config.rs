@@ -280,7 +280,7 @@ impl<'db> SemanticIndexBuilder<'db> {
         let retain = pc.retain.as_ref().map(|r| {
             matches!(
                 r.cast(self.ast),
-                ast::generated::Operators_3::Token_RETAIN(_)
+                ast::generated::Operators_0::Token_RETAIN(_)
             )
         });
 

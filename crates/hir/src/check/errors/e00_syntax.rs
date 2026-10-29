@@ -102,6 +102,16 @@ pub enum SyntaxError {
     MethodDeclInBody(Range),
     /// `__ENDTRY`, where a `__TRY` is closed by `__END_TRY`.
     EndTrySpelling(Range),
+    /// `RETAIN NON_RETAIN x : INT;`: a struct element takes one qualifier.
+    /// The element keeps the first.
+    DoubledQualifier {
+        /// The element's name.
+        name_span: Range,
+        /// The qualifier kept.
+        first: Range,
+        /// The one after it.
+        second: Range,
+    },
 }
 
 impl ErrorCode for SyntaxError {
@@ -137,6 +147,7 @@ impl ErrorCode for SyntaxError {
             Self::MethodDeclInBody(_) => "E0028",
             Self::VariadicNotAllowed { .. } => "E0029",
             Self::EndTrySpelling(_) => "E0030",
+            Self::DoubledQualifier { .. } => "E0031",
         }
     }
 }
@@ -685,6 +696,33 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                     crate::denormalize(db, file, &first_word(db, file, span)).unwrap_or_default(),
                 )
                 .call(),
+            Self::DoubledQualifier {
+                name_span,
+                first,
+                second,
+            } => {
+                let doc = file.document(db);
+                let src = doc.as_str();
+                let text = |span: &Range| src.get(span.start_byte..span.end_byte).unwrap_or("");
+                let mut diag = diag()
+                    .message(format!(
+                        "'{}' is a second qualifier on '{}'",
+                        text(second),
+                        text(name_span)
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, second).unwrap_or_default())
+                    .call();
+                diag.with_related(Related::new(
+                    format!("'{}' is the first", text(first)),
+                    file,
+                    *first,
+                ));
+                diag.with_note("a struct element takes one qualifier, RETAIN or NON_RETAIN".into());
+                diag.with_help("keep the one you mean".into());
+                diag
+            }
             Self::EndTrySpelling(span) => {
                 let range = crate::denormalize(db, file, span).unwrap_or_default();
                 let mut diag = diag()

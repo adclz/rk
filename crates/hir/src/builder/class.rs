@@ -47,10 +47,10 @@ impl<'db> SemanticIndexBuilder<'db> {
         let mut modifiers = Modifier::empty();
         if let Some(class_mod) = &class.modifier {
             match class_mod.cast(self.ast) {
-                ast::generated::Operators_2::Token_ABSTRACT(_) => {
+                ast::generated::Operators_3::Token_ABSTRACT(_) => {
                     modifiers.insert(Modifier::ABSTRACT)
                 }
-                ast::generated::Operators_2::Token_FINAL(_) => modifiers.insert(Modifier::FINAL),
+                ast::generated::Operators_3::Token_FINAL(_) => modifiers.insert(Modifier::FINAL),
             }
         }
 
@@ -188,8 +188,8 @@ impl<'db> SemanticIndexBuilder<'db> {
         ))?;
 
         let mut modifiers = match method.modifier.as_ref().map(|m| m.cast(self.ast)) {
-            Some(ast::generated::Operators_2::Token_ABSTRACT(_)) => Modifier::ABSTRACT,
-            Some(ast::generated::Operators_2::Token_FINAL(_)) => Modifier::FINAL,
+            Some(ast::generated::Operators_3::Token_ABSTRACT(_)) => Modifier::ABSTRACT,
+            Some(ast::generated::Operators_3::Token_FINAL(_)) => Modifier::FINAL,
             _ => Modifier::empty(),
         };
 

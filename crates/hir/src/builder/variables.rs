@@ -25,15 +25,22 @@ use crate::{AstId, HirNodeInfo, Qualifier};
 use ide_diagnostic::IdeDiagnostic;
 
 /// Convert a RETAIN/NON_RETAIN AST token to a `Qualifier`.
+/// `RETAIN` or `NON_RETAIN` as a qualifier.
+pub(super) fn token_qualifier(token: &ast::generated::Operators_0) -> Qualifier {
+    match token {
+        ast::generated::Operators_0::Token_RETAIN(_) => Qualifier::RETAIN,
+        ast::generated::Operators_0::Token_NON_RETAIN(_) => Qualifier::NON_RETAIN,
+    }
+}
+
 pub(super) fn retain_qualifier(
-    retain: &Option<auto_lsp::core::ast::AstNodeId<ast::generated::Operators_3>>,
+    retain: &Option<auto_lsp::core::ast::AstNodeId<ast::generated::Operators_0>>,
     ast: &auto_lsp::default::db::tracked::ParsedAst,
 ) -> Qualifier {
-    match retain.as_ref().map(|r| r.cast(ast)) {
-        Some(ast::generated::Operators_3::Token_RETAIN(_)) => Qualifier::RETAIN,
-        Some(ast::generated::Operators_3::Token_NON_RETAIN(_)) => Qualifier::NON_RETAIN,
-        None => Qualifier::empty(),
-    }
+    retain
+        .as_ref()
+        .map(|r| token_qualifier(r.cast(ast)))
+        .unwrap_or(Qualifier::empty())
 }
 
 impl<'db> ParseVarSection<'db> for ast::generated::InputDecls {

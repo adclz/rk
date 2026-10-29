@@ -103,10 +103,10 @@ impl<'db> SemanticIndexBuilder<'db> {
         let mut modifiers = Modifier::empty();
         if let Some(func_mod) = &func.qualifier {
             match func_mod.cast(self.ast) {
-                ast::generated::Operators_2::Token_ABSTRACT(_) => {
+                ast::generated::Operators_3::Token_ABSTRACT(_) => {
                     modifiers.insert(Modifier::ABSTRACT)
                 }
-                ast::generated::Operators_2::Token_FINAL(_) => modifiers.insert(Modifier::FINAL),
+                ast::generated::Operators_3::Token_FINAL(_) => modifiers.insert(Modifier::FINAL),
             }
         }
 

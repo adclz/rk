@@ -652,10 +652,46 @@ impl<'db> ParseSpec<'db> for ast::generated::StructTypeSpec {
                 (None, None)
             };
 
+            // `RETAIN` or `NON_RETAIN` before the name; both written is
+            // E0031, and the element keeps the first.
+            type Retain = ast::generated::ERRDoubledQualifier_NONRETAIN_RETAIN;
+            let qualifier = match elem
+                .cast(sema.ast)
+                .retain
+                .as_ref()
+                .map(|r| r.cast(sema.ast))
+            {
+                Some(Retain::Token_RETAIN(_)) => crate::Qualifier::RETAIN,
+                Some(Retain::Token_NON_RETAIN(_)) => crate::Qualifier::NON_RETAIN,
+                Some(Retain::ERRDoubledQualifier(err)) => {
+                    use auto_lsp::core::ast::AstNode;
+                    let first = err.first.cast(sema.ast);
+                    if let Some(second) = err.extra.first() {
+                        sema.errors
+                            .push(crate::check::errors::ToIdeDiagnostic::to_diagnostic(
+                                &crate::check::errors::e00_syntax::SyntaxError::DoubledQualifier {
+                                    name_span: elem
+                                        .cast(sema.ast)
+                                        .name
+                                        .cast(sema.ast)
+                                        .get_range()
+                                        .to_owned(),
+                                    first: first.get_range().to_owned(),
+                                    second: second.cast(sema.ast).get_range().to_owned(),
+                                },
+                                sema.db,
+                                sema.file,
+                            ));
+                    }
+                    super::variables::token_qualifier(first)
+                }
+                None => crate::Qualifier::empty(),
+            };
+
             elements.push(sema.new_struct_element(
                 name,
                 elem.cast(sema.ast).name.cast(sema.ast).into(),
-                super::variables::retain_qualifier(&elem.cast(sema.ast).retain, sema.ast),
+                qualifier,
                 located,
                 multibits,
                 spec,
