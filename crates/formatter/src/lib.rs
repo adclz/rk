@@ -144,7 +144,6 @@ static SURROUND_SPACES: &str = r##"
 static NEW_LINES: &str = r##"
 ; VAR sections that never have qualifiers
 [
-    "VAR_IN_OUT"
     "VAR_TEMP"
     "VAR_ACCESS"
 ] @prepend_hardline @append_hardline
@@ -155,6 +154,7 @@ static NEW_LINES: &str = r##"
     "VAR"
     "VAR_INPUT"
     "VAR_OUTPUT"
+    "VAR_IN_OUT"
     "VAR_EXTERNAL"
     "VAR_GLOBAL"
     "VAR_CONFIG"
