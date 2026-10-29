@@ -277,7 +277,8 @@ fn invalid_a_retained_reference_to_a_marked_struct(mut with_db: RootDatabase) {
     ");
 }
 
-/// A second qualifier on an element is a syntax error.
+/// A second qualifier is E0031, both labeled, and the first is kept: on a
+/// struct element, on a section of any kind, and on a program instance.
 #[rstest]
 fn invalid_a_doubled_qualifier(mut with_db: RootDatabase) {
     let source = r#"
@@ -287,9 +288,36 @@ fn invalid_a_doubled_qualifier(mut with_db: RootDatabase) {
                 RETAIN RETAIN y : DINT;
             END_STRUCT;
         END_TYPE
+
+        FUNCTION_BLOCK Fb
+        VAR_INPUT RETAIN NON_RETAIN
+            a : INT;
+        END_VAR
+        VAR RETAIN NON_RETAIN
+            b : INT;
+        END_VAR
+        VAR NON_RETAIN RETAIN
+            c : INT;
+        END_VAR
+            c := a + b;
+        END_FUNCTION_BLOCK
+
+        PROGRAM P
+        VAR_OUTPUT NON_RETAIN RETAIN
+            o : INT;
+        END_VAR
+            o := 1;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM RETAIN NON_RETAIN P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0031] Error: two qualifiers on a struct element
+    [E0031] Error: two qualifiers on a declaration
        ,-[ file:///test0.st:4:24 ]
        |
      4 |                 RETAIN NON_RETAIN x : DINT;
@@ -300,9 +328,9 @@ fn invalid_a_doubled_qualifier(mut with_db: RootDatabase) {
        |
        | Help: keep the one you mean
        |
-       | Note: a struct element takes one qualifier, RETAIN or NON_RETAIN
+       | Note: a declaration takes one qualifier, CONSTANT, RETAIN or NON_RETAIN
     ---'
-    [E0031] Error: two qualifiers on a struct element
+    [E0031] Error: two qualifiers on a declaration
        ,-[ file:///test0.st:5:24 ]
        |
      5 |                 RETAIN RETAIN y : DINT;
@@ -313,8 +341,73 @@ fn invalid_a_doubled_qualifier(mut with_db: RootDatabase) {
        |
        | Help: keep the one you mean
        |
-       | Note: a struct element takes one qualifier, RETAIN or NON_RETAIN
+       | Note: a declaration takes one qualifier, CONSTANT, RETAIN or NON_RETAIN
     ---'
+    [E0031] Error: two qualifiers on a declaration
+        ,-[ file:///test0.st:10:26 ]
+        |
+     10 |         VAR_INPUT RETAIN NON_RETAIN
+        |                   ^^^|^^ ^^^^^|^^^^
+        |                      `--------------- 'RETAIN' is the first
+        |                               |
+        |                               `------ 'NON_RETAIN' is a second qualifier on 'VAR_INPUT'
+        |
+        | Help: keep the one you mean
+        |
+        | Note: a declaration takes one qualifier, CONSTANT, RETAIN or NON_RETAIN
+    ----'
+    [E0031] Error: two qualifiers on a declaration
+        ,-[ file:///test0.st:13:20 ]
+        |
+     13 |         VAR RETAIN NON_RETAIN
+        |             ^^^|^^ ^^^^^|^^^^
+        |                `--------------- 'RETAIN' is the first
+        |                         |
+        |                         `------ 'NON_RETAIN' is a second qualifier on 'VAR'
+        |
+        | Help: keep the one you mean
+        |
+        | Note: a declaration takes one qualifier, CONSTANT, RETAIN or NON_RETAIN
+    ----'
+    [E0031] Error: two qualifiers on a declaration
+        ,-[ file:///test0.st:16:24 ]
+        |
+     16 |         VAR NON_RETAIN RETAIN
+        |             ^^^^^|^^^^ ^^^|^^
+        |                  `------------- 'NON_RETAIN' is the first
+        |                           |
+        |                           `---- 'RETAIN' is a second qualifier on 'VAR'
+        |
+        | Help: keep the one you mean
+        |
+        | Note: a declaration takes one qualifier, CONSTANT, RETAIN or NON_RETAIN
+    ----'
+    [E0031] Error: two qualifiers on a declaration
+        ,-[ file:///test0.st:23:31 ]
+        |
+     23 |         VAR_OUTPUT NON_RETAIN RETAIN
+        |                    ^^^^^|^^^^ ^^^|^^
+        |                         `------------- 'NON_RETAIN' is the first
+        |                                  |
+        |                                  `---- 'RETAIN' is a second qualifier on 'VAR_OUTPUT'
+        |
+        | Help: keep the one you mean
+        |
+        | Note: a declaration takes one qualifier, CONSTANT, RETAIN or NON_RETAIN
+    ----'
+    [E0031] Error: two qualifiers on a declaration
+        ,-[ file:///test0.st:32:32 ]
+        |
+     32 |                 PROGRAM RETAIN NON_RETAIN P1 WITH T : P;
+        |                         ^^^|^^ ^^^^^|^^^^
+        |                            `--------------- 'RETAIN' is the first
+        |                                     |
+        |                                     `------ 'NON_RETAIN' is a second qualifier on 'P1'
+        |
+        | Help: keep the one you mean
+        |
+        | Note: a declaration takes one qualifier, CONSTANT, RETAIN or NON_RETAIN
+    ----'
     ");
 }
 
@@ -359,7 +452,8 @@ fn invalid_a_reference_in_a_block_a_retained_instance_holds(mut with_db: RootDat
 /// The advice names where to mark the reference `NON_RETAIN`: the TYPE or
 /// the block declaring it, the program itself under `PROGRAM RETAIN`, or
 /// the struct written in place. An array of references is said to hold
-/// them, wherever it is.
+/// them, wherever it is, and an array crossed on the way is written with
+/// an index letter per dimension.
 #[rstest]
 fn invalid_a_retained_reference_is_told_where_to_mark_it(mut with_db: RootDatabase) {
     let source = r#"
@@ -368,6 +462,7 @@ fn invalid_a_retained_reference_is_told_where_to_mark_it(mut with_db: RootDataba
             Several : STRUCT
                 a : ARRAY[0..1] OF PInt;
             END_STRUCT;
+            Row : ARRAY[0..1] OF Several;
             Marked : STRUCT
                 RETAIN many : Several;
                 RETAIN inner : STRUCT
@@ -390,6 +485,8 @@ fn invalid_a_retained_reference_is_told_where_to_mark_it(mut with_db: RootDataba
         VAR
             r : PInt;
             held : ARRAY[0..1] OF PInt;
+            grid : ARRAY[0..1] OF Row;
+            plane : ARRAY[0..1, 0..1] OF Several;
             y : INT;
         END_VAR
             y := 1;
@@ -405,9 +502,9 @@ fn invalid_a_retained_reference_is_told_where_to_mark_it(mut with_db: RootDataba
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     [E0904] Error: reference in RETAIN storage
-       ,-[ file:///test0.st:8:24 ]
+       ,-[ file:///test0.st:9:24 ]
        |
-     8 |                 RETAIN many : Several;
+     9 |                 RETAIN many : Several;
        |                        ^^|^
        |                          `--- 'many' is marked RETAIN and holds references in 'many.a': their addresses do not survive a new build
        |
@@ -416,20 +513,20 @@ fn invalid_a_retained_reference_is_told_where_to_mark_it(mut with_db: RootDataba
        | Note: a warm start restores the address even where a new build moved its target
     ---'
     [E0904] Error: reference in RETAIN storage
-       ,-[ file:///test0.st:9:24 ]
-       |
-     9 |                 RETAIN inner : STRUCT
-       |                        ^^|^^
-       |                          `---- 'inner' is marked RETAIN and holds the reference 'inner.r': its address does not survive a new build
-       |
-       | Help: mark 'r' NON_RETAIN in the struct that declares it and set it in the first scan
-       |
-       | Note: a warm start restores the address even where a new build moved its target
-    ---'
-    [E0904] Error: reference in RETAIN storage
-        ,-[ file:///test0.st:17:13 ]
+        ,-[ file:///test0.st:10:24 ]
         |
-     17 |             arr : ARRAY[0..1] OF PInt;
+     10 |                 RETAIN inner : STRUCT
+        |                        ^^|^^
+        |                          `---- 'inner' is marked RETAIN and holds the reference 'inner.r': its address does not survive a new build
+        |
+        | Help: mark 'r' NON_RETAIN in the struct that declares it and set it in the first scan
+        |
+        | Note: a warm start restores the address even where a new build moved its target
+    ----'
+    [E0904] Error: reference in RETAIN storage
+        ,-[ file:///test0.st:18:13 ]
+        |
+     18 |             arr : ARRAY[0..1] OF PInt;
         |             ^|^
         |              `--- 'arr' holds references in RETAIN storage: their addresses do not survive a new build
         |
@@ -438,13 +535,13 @@ fn invalid_a_retained_reference_is_told_where_to_mark_it(mut with_db: RootDataba
         | Note: a warm start restores the address even where a new build moved its target
     ----'
     [E0904] Error: reference in RETAIN storage
-        ,-[ file:///test0.st:38:32 ]
+        ,-[ file:///test0.st:41:32 ]
         |
-     27 |             r : PInt;
+     28 |             r : PInt;
         |             |
         |             `-- 'r' is declared here
         |
-     38 |                 PROGRAM RETAIN Q1 WITH T : Q;
+     41 |                 PROGRAM RETAIN Q1 WITH T : Q;
         |                                ^|
         |                                 `-- PROGRAM RETAIN 'Q1' keeps 'r', a reference: its address does not survive a new build
         |
@@ -453,17 +550,47 @@ fn invalid_a_retained_reference_is_told_where_to_mark_it(mut with_db: RootDataba
         | Note: a warm start restores the address even where a new build moved its target
     ----'
     [E0904] Error: reference in RETAIN storage
-        ,-[ file:///test0.st:38:32 ]
+        ,-[ file:///test0.st:41:32 ]
         |
-     28 |             held : ARRAY[0..1] OF PInt;
+     29 |             held : ARRAY[0..1] OF PInt;
         |             ^^|^
         |               `--- 'held' is declared here
         |
-     38 |                 PROGRAM RETAIN Q1 WITH T : Q;
+     41 |                 PROGRAM RETAIN Q1 WITH T : Q;
         |                                ^|
         |                                 `-- PROGRAM RETAIN 'Q1' keeps 'held', which holds references: their addresses do not survive a new build
         |
         | Help: mark 'held' NON_RETAIN in 'Q' and set them in the first scan
+        |
+        | Note: a warm start restores the address even where a new build moved its target
+    ----'
+    [E0904] Error: reference in RETAIN storage
+        ,-[ file:///test0.st:41:32 ]
+        |
+     30 |             grid : ARRAY[0..1] OF Row;
+        |             ^^|^
+        |               `--- 'grid' is declared here
+        |
+     41 |                 PROGRAM RETAIN Q1 WITH T : Q;
+        |                                ^|
+        |                                 `-- PROGRAM RETAIN 'Q1' keeps 'grid[i][j].a', which holds references: their addresses do not survive a new build
+        |
+        | Help: mark 'a' NON_RETAIN in 'Several' and set them in the first scan
+        |
+        | Note: a warm start restores the address even where a new build moved its target
+    ----'
+    [E0904] Error: reference in RETAIN storage
+        ,-[ file:///test0.st:41:32 ]
+        |
+     31 |             plane : ARRAY[0..1, 0..1] OF Several;
+        |             ^^|^^
+        |               `---- 'plane' is declared here
+        |
+     41 |                 PROGRAM RETAIN Q1 WITH T : Q;
+        |                                ^|
+        |                                 `-- PROGRAM RETAIN 'Q1' keeps 'plane[i, j].a', which holds references: their addresses do not survive a new build
+        |
+        | Help: mark 'a' NON_RETAIN in 'Several' and set them in the first scan
         |
         | Note: a warm start restores the address even where a new build moved its target
     ----'
@@ -516,6 +643,131 @@ fn invalid_a_retained_instance_reports_the_plain_reference_only(mut with_db: Roo
         | Help: mark 'q' NON_RETAIN in 'Fb' and set it in the first scan
         |
         | Note: a warm start restores the address even where a new build moved its target
+    ----'
+    ");
+}
+
+/// `CONSTANT` is a qualifier too: with a second one on a `VAR` or a
+/// `VAR_GLOBAL`, E0031 keeps the first, where a `RETAIN` after `CONSTANT`
+/// would otherwise keep nothing in silence.
+#[rstest]
+fn invalid_a_constant_with_a_second_qualifier(mut with_db: RootDatabase) {
+    let source = r#"
+        PROGRAM P
+        VAR CONSTANT RETAIN
+            a : INT := 1;
+        END_VAR
+        VAR RETAIN CONSTANT
+            b : INT := 1;
+        END_VAR
+        VAR CONSTANT CONSTANT
+            c : INT := 1;
+        END_VAR
+        VAR_EXTERNAL CONSTANT
+            g : INT;
+        END_VAR
+        VAR_EXTERNAL
+            h : INT;
+            i : INT;
+        END_VAR
+        VAR x : INT; END_VAR
+            x := a + b + c + g + h + i;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+        VAR_GLOBAL CONSTANT RETAIN
+            g : INT := 1;
+        END_VAR
+        VAR_GLOBAL RETAIN CONSTANT
+            h : INT := 1;
+        END_VAR
+        VAR_GLOBAL RETAIN NON_RETAIN
+            i : INT := 1;
+        END_VAR
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0031] Error: two qualifiers on a declaration
+       ,-[ file:///test0.st:3:22 ]
+       |
+     3 |         VAR CONSTANT RETAIN
+       |             ^^^^|^^^ ^^^|^^
+       |                 `------------ 'CONSTANT' is the first
+       |                         |
+       |                         `---- 'RETAIN' is a second qualifier on 'VAR'
+       |
+       | Help: keep the one you mean
+       |
+       | Note: a declaration takes one qualifier, CONSTANT, RETAIN or NON_RETAIN
+    ---'
+    [E0031] Error: two qualifiers on a declaration
+       ,-[ file:///test0.st:6:20 ]
+       |
+     6 |         VAR RETAIN CONSTANT
+       |             ^^^|^^ ^^^^|^^^
+       |                `------------- 'RETAIN' is the first
+       |                        |
+       |                        `----- 'CONSTANT' is a second qualifier on 'VAR'
+       |
+       | Help: keep the one you mean
+       |
+       | Note: a declaration takes one qualifier, CONSTANT, RETAIN or NON_RETAIN
+    ---'
+    [E0031] Error: two qualifiers on a declaration
+       ,-[ file:///test0.st:9:22 ]
+       |
+     9 |         VAR CONSTANT CONSTANT
+       |             ^^^^|^^^ ^^^^|^^^
+       |                 `-------------- 'CONSTANT' is the first
+       |                          |
+       |                          `----- 'CONSTANT' is a second qualifier on 'VAR'
+       |
+       | Help: keep the one you mean
+       |
+       | Note: a declaration takes one qualifier, CONSTANT, RETAIN or NON_RETAIN
+    ---'
+    [E0031] Error: two qualifiers on a declaration
+        ,-[ file:///test0.st:24:29 ]
+        |
+     24 |         VAR_GLOBAL CONSTANT RETAIN
+        |                    ^^^^|^^^ ^^^|^^
+        |                        `------------ 'CONSTANT' is the first
+        |                                |
+        |                                `---- 'RETAIN' is a second qualifier on 'VAR_GLOBAL'
+        |
+        | Help: keep the one you mean
+        |
+        | Note: a declaration takes one qualifier, CONSTANT, RETAIN or NON_RETAIN
+    ----'
+    [E0031] Error: two qualifiers on a declaration
+        ,-[ file:///test0.st:27:27 ]
+        |
+     27 |         VAR_GLOBAL RETAIN CONSTANT
+        |                    ^^^|^^ ^^^^|^^^
+        |                       `------------- 'RETAIN' is the first
+        |                               |
+        |                               `----- 'CONSTANT' is a second qualifier on 'VAR_GLOBAL'
+        |
+        | Help: keep the one you mean
+        |
+        | Note: a declaration takes one qualifier, CONSTANT, RETAIN or NON_RETAIN
+    ----'
+    [E0031] Error: two qualifiers on a declaration
+        ,-[ file:///test0.st:30:27 ]
+        |
+     30 |         VAR_GLOBAL RETAIN NON_RETAIN
+        |                    ^^^|^^ ^^^^^|^^^^
+        |                       `--------------- 'RETAIN' is the first
+        |                                |
+        |                                `------ 'NON_RETAIN' is a second qualifier on 'VAR_GLOBAL'
+        |
+        | Help: keep the one you mean
+        |
+        | Note: a declaration takes one qualifier, CONSTANT, RETAIN or NON_RETAIN
     ----'
     ");
 }
