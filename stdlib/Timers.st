@@ -18,7 +18,9 @@ monotonic clock starts, and `PLC_TIME` cycles every 49.7 days in any case.
 
 A timer's step and clock readings are `NON_RETAIN`: held by a retained
 instance, it starts over after a warm start instead of measuring from a
-reading of the previous run's clock.
+reading of the previous run's clock. `Q` and `ET` follow the step on every
+call, so the first call after the warm start ends what the step no longer
+runs.
 */
 NAMESPACE Std.Timers
 	USING Std.Convert;
@@ -160,21 +162,21 @@ NAMESPACE Std.Timers
 		CURRENT_TIME := PLC_TIME();
 		IF ((STATE = 0) AND NOT (PREV_IN) AND IN) THEN
 			STATE := 1;
-			Q := TRUE;
 			START_TIME := CURRENT_TIME;
-		ELSIF (STATE = 1) THEN
-			IF (CURRENT_TIME - START_TIME >= PT) THEN
-				STATE := 2;
-				Q := FALSE;
-				ET := PT;
-			ELSE
-				ET := CURRENT_TIME - START_TIME;
-			END_IF;
+		ELSIF ((STATE = 1) AND (CURRENT_TIME - START_TIME >= PT)) THEN
+			STATE := 2;
 		END_IF;
 		IF ((STATE = 2) AND NOT (IN)) THEN
-			ET := T#0s;
 			STATE := 0;
 		END_IF;
+		IF (STATE = 1) THEN
+			ET := CURRENT_TIME - START_TIME;
+		ELSIF (STATE = 2) THEN
+			ET := PT;
+		ELSE
+			ET := T#0s;
+		END_IF;
+		Q := (STATE = 1);
 		PREV_IN := IN;
 	END_FUNCTION_BLOCK
 
@@ -201,21 +203,21 @@ NAMESPACE Std.Timers
 		CURRENT_TIME := PLC_LTIME();
 		IF ((STATE = 0) AND NOT (PREV_IN) AND IN) THEN
 			STATE := 1;
-			Q := TRUE;
 			START_TIME := CURRENT_TIME;
-		ELSIF (STATE = 1) THEN
-			IF (CURRENT_TIME - START_TIME >= PT) THEN
-				STATE := 2;
-				Q := FALSE;
-				ET := PT;
-			ELSE
-				ET := CURRENT_TIME - START_TIME;
-			END_IF;
+		ELSIF ((STATE = 1) AND (CURRENT_TIME - START_TIME >= PT)) THEN
+			STATE := 2;
 		END_IF;
 		IF ((STATE = 2) AND NOT (IN)) THEN
-			ET := LTIME#0s;
 			STATE := 0;
 		END_IF;
+		IF (STATE = 1) THEN
+			ET := CURRENT_TIME - START_TIME;
+		ELSIF (STATE = 2) THEN
+			ET := PT;
+		ELSE
+			ET := LTIME#0s;
+		END_IF;
+		Q := (STATE = 1);
 		PREV_IN := IN;
 	END_FUNCTION_BLOCK
 
@@ -255,25 +257,22 @@ NAMESPACE Std.Timers
 		END_VAR
 
 		CURRENT_TIME := PLC_TIME();
-		IF ((STATE = 0) AND NOT (PREV_IN) AND IN) THEN
+		IF (NOT (IN)) THEN
+			STATE := 0;
+		ELSIF ((STATE = 0) AND NOT (PREV_IN)) THEN
 			STATE := 1;
-			Q := FALSE;
 			START_TIME := CURRENT_TIME;
-		ELSE
-			IF (NOT (IN)) THEN
-				ET := T#0s;
-				Q := FALSE;
-				STATE := 0;
-			ELSIF (STATE = 1) THEN
-				IF (CURRENT_TIME - START_TIME >= PT) THEN
-					STATE := 2;
-					Q := TRUE;
-					ET := PT;
-				ELSE
-					ET := CURRENT_TIME - START_TIME;
-				END_IF;
-			END_IF;
+		ELSIF ((STATE = 1) AND (CURRENT_TIME - START_TIME >= PT)) THEN
+			STATE := 2;
 		END_IF;
+		IF (STATE = 1) THEN
+			ET := CURRENT_TIME - START_TIME;
+		ELSIF (STATE = 2) THEN
+			ET := PT;
+		ELSE
+			ET := T#0s;
+		END_IF;
+		Q := (STATE = 2);
 		PREV_IN := IN;
 	END_FUNCTION_BLOCK
 
@@ -298,25 +297,22 @@ NAMESPACE Std.Timers
 		END_VAR
 
 		CURRENT_TIME := PLC_LTIME();
-		IF ((STATE = 0) AND NOT (PREV_IN) AND IN) THEN
+		IF (NOT (IN)) THEN
+			STATE := 0;
+		ELSIF ((STATE = 0) AND NOT (PREV_IN)) THEN
 			STATE := 1;
-			Q := FALSE;
 			START_TIME := CURRENT_TIME;
-		ELSE
-			IF (NOT (IN)) THEN
-				ET := LTIME#0s;
-				Q := FALSE;
-				STATE := 0;
-			ELSIF (STATE = 1) THEN
-				IF (CURRENT_TIME - START_TIME >= PT) THEN
-					STATE := 2;
-					Q := TRUE;
-					ET := PT;
-				ELSE
-					ET := CURRENT_TIME - START_TIME;
-				END_IF;
-			END_IF;
+		ELSIF ((STATE = 1) AND (CURRENT_TIME - START_TIME >= PT)) THEN
+			STATE := 2;
 		END_IF;
+		IF (STATE = 1) THEN
+			ET := CURRENT_TIME - START_TIME;
+		ELSIF (STATE = 2) THEN
+			ET := PT;
+		ELSE
+			ET := LTIME#0s;
+		END_IF;
+		Q := (STATE = 2);
 		PREV_IN := IN;
 	END_FUNCTION_BLOCK
 
@@ -354,21 +350,20 @@ NAMESPACE Std.Timers
 		END_VAR
 
 		CURRENT_TIME := PLC_TIME();
-		IF ((STATE = 0) AND PREV_IN AND NOT (IN)) THEN
+		IF (IN) THEN
+			STATE := 0;
+		ELSIF ((STATE = 0) AND PREV_IN) THEN
 			STATE := 1;
 			START_TIME := CURRENT_TIME;
+		ELSIF ((STATE = 1) AND (CURRENT_TIME - START_TIME >= PT)) THEN
+			STATE := 2;
+		END_IF;
+		IF (STATE = 1) THEN
+			ET := CURRENT_TIME - START_TIME;
+		ELSIF (STATE = 2) THEN
+			ET := PT;
 		ELSE
-			IF (IN) THEN
-				ET := T#0s;
-				STATE := 0;
-			ELSIF (STATE = 1) THEN
-				IF (CURRENT_TIME - START_TIME >= PT) THEN
-					STATE := 2;
-					ET := PT;
-				ELSE
-					ET := CURRENT_TIME - START_TIME;
-				END_IF;
-			END_IF;
+			ET := T#0s;
 		END_IF;
 		Q := IN OR (STATE = 1);
 		PREV_IN := IN;
@@ -395,21 +390,20 @@ NAMESPACE Std.Timers
 		END_VAR
 
 		CURRENT_TIME := PLC_LTIME();
-		IF ((STATE = 0) AND PREV_IN AND NOT (IN)) THEN
+		IF (IN) THEN
+			STATE := 0;
+		ELSIF ((STATE = 0) AND PREV_IN) THEN
 			STATE := 1;
 			START_TIME := CURRENT_TIME;
+		ELSIF ((STATE = 1) AND (CURRENT_TIME - START_TIME >= PT)) THEN
+			STATE := 2;
+		END_IF;
+		IF (STATE = 1) THEN
+			ET := CURRENT_TIME - START_TIME;
+		ELSIF (STATE = 2) THEN
+			ET := PT;
 		ELSE
-			IF (IN) THEN
-				ET := LTIME#0s;
-				STATE := 0;
-			ELSIF (STATE = 1) THEN
-				IF (CURRENT_TIME - START_TIME >= PT) THEN
-					STATE := 2;
-					ET := PT;
-				ELSE
-					ET := CURRENT_TIME - START_TIME;
-				END_IF;
-			END_IF;
+			ET := LTIME#0s;
 		END_IF;
 		Q := IN OR (STATE = 1);
 		PREV_IN := IN;

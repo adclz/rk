@@ -34,7 +34,7 @@ pub mod generated;
 // ---------------------------------------------------------------------------
 
 pub const STDLIB_EXPECTED_DIAGNOSTICS: usize = 0;
-pub const STDLIB_EXPECTED_LINTS: usize = 210;
+pub const STDLIB_EXPECTED_LINTS: usize = 208;
 pub const GENERATED_1K_EXPECTED_DIAGNOSTICS: usize = 0;
 pub const GENERATED_1K_EXPECTED_LINTS: usize = 452;
 
