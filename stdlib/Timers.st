@@ -15,6 +15,10 @@ the wall clock and the host's zone.
 A timer decides on `CURRENT_TIME - START_TIME`, a difference, which wraps
 with the clock where `START_TIME + PT` would not: the host picks where the
 monotonic clock starts, and `PLC_TIME` cycles every 49.7 days in any case.
+
+A timer's step and clock readings are `NON_RETAIN`: held by a retained
+instance, it starts over after a warm start instead of measuring from a
+reading of the previous run's clock.
 */
 NAMESPACE Std.Timers
 	USING Std.Convert;
@@ -147,7 +151,7 @@ NAMESPACE Std.Timers
 			Q: BOOL := FALSE;
 			ET: TIME
 		END_VAR
-		VAR
+		VAR NON_RETAIN
 			STATE: SINT := 0;
 			PREV_IN: BOOL := FALSE;
 			CURRENT_TIME, START_TIME: TIME;
@@ -188,7 +192,7 @@ NAMESPACE Std.Timers
 			Q: BOOL := FALSE;
 			ET: LTIME
 		END_VAR
-		VAR
+		VAR NON_RETAIN
 			STATE: SINT := 0;
 			PREV_IN: BOOL := FALSE;
 			CURRENT_TIME, START_TIME: LTIME;
@@ -244,7 +248,7 @@ NAMESPACE Std.Timers
 			Q: BOOL := FALSE;
 			ET: TIME;
 		END_VAR
-		VAR
+		VAR NON_RETAIN
 			STATE: SINT := 0;
 			PREV_IN: BOOL := FALSE;
 			CURRENT_TIME, START_TIME: TIME;
@@ -287,7 +291,7 @@ NAMESPACE Std.Timers
 			Q: BOOL := FALSE;
 			ET: LTIME;
 		END_VAR
-		VAR
+		VAR NON_RETAIN
 			STATE: SINT := 0;
 			PREV_IN: BOOL := FALSE;
 			CURRENT_TIME, START_TIME: LTIME;
@@ -343,7 +347,7 @@ NAMESPACE Std.Timers
 			Q: BOOL := FALSE;
 			ET: TIME;
 		END_VAR
-		VAR
+		VAR NON_RETAIN
 			STATE: SINT := 0;
 			PREV_IN: BOOL := FALSE;
 			CURRENT_TIME, START_TIME: TIME;
@@ -384,7 +388,7 @@ NAMESPACE Std.Timers
 			Q: BOOL := FALSE;
 			ET: LTIME;
 		END_VAR
-		VAR
+		VAR NON_RETAIN
 			STATE: SINT := 0;
 			PREV_IN: BOOL := FALSE;
 			CURRENT_TIME, START_TIME: LTIME;
