@@ -311,15 +311,20 @@ fn infer_config<'db>(
             {
                 continue;
             }
-            if let Some(route) = crate::hir_ty::head::instances::retained_reference(
+            if let Some(mut found) = crate::hir_ty::head::instances::retained_reference(
                 db,
                 var.spec(db).infer(db),
                 &mut Vec::new(),
             ) {
+                // The variable itself is the reference the instance keeps:
+                // the program declaring it is where to mark it.
+                if found.last_field().is_none() {
+                    found.declared_in = Some(program.get_name_with_case(db));
+                }
                 result.errors.push(
                     crate::check::errors::e09_reference::ReferenceError::RetainedReference {
                         var: *var,
-                        route,
+                        found,
                         instance: Some(p.name(db)),
                     }
                     .to_diagnostic(db, config.scope_id(db).file(db)),

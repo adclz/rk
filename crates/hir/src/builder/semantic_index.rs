@@ -274,6 +274,7 @@ impl<'db> SemanticIndexBuilder<'db> {
         &mut self,
         name: crate::hir_def::interned::identifier::Ident,
         name_id: AstId,
+        qualifier: crate::Qualifier,
         located: Option<crate::hir_def::expressions::expression::VariableAccess<'db>>,
         multibits: Option<crate::hir_def::expressions::expression::MultibitsPart>,
         spec: crate::hir_def::expressions::spec::Spec<'db>,
@@ -282,7 +283,7 @@ impl<'db> SemanticIndexBuilder<'db> {
         scope_id: ScopeId<'db>,
     ) -> crate::hir_def::expressions::spec::StructElement<'db> {
         let elem = crate::hir_def::expressions::spec::StructElement::new(
-            self.db, name, name_id, located, multibits, spec, init, id, scope_id,
+            self.db, name, name_id, qualifier, located, multibits, spec, init, id, scope_id,
         );
         self.register_node(id, HirNode::StructElement(elem));
         elem

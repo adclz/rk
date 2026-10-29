@@ -56,11 +56,22 @@ pub fn compile_to_wasm_as_built(db: &mut RootDatabase, source: &str) -> Vec<u8> 
 /// with the source, as `rk` builds a workspace with the stdlib: for a test
 /// calling a library FUNCTION.
 pub fn compile_with_libraries(db: &mut RootDatabase, libraries: &[&str], source: &str) -> Vec<u8> {
+    compile_to_mir_and_wasm_with_libraries(db, libraries, source).1
+}
+
+/// [`compile_with_libraries`] returning the MIR too, for a test that reads
+/// the retain map or a layout of a program built against a library.
+pub fn compile_to_mir_and_wasm_with_libraries(
+    db: &mut RootDatabase,
+    libraries: &[&str],
+    source: &str,
+) -> (mir::MirModule, Vec<u8>) {
     crate::tests::utils::add_library_sources(db, libraries);
     let file = add_source(db, source);
     check_diagnostics(db, file, Expectation::Clean);
     let module = crate::tests::utils::lower_workspace(db);
-    wasm_codegen::generate_wasm(db, &export_everything(&module)).finish()
+    let wasm = wasm_codegen::generate_wasm(db, &export_everything(&module)).finish();
+    (module, wasm)
 }
 
 /// Lower IEC source to MIR and WASM in a single pass, returning both. Use this

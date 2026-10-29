@@ -1019,3 +1019,42 @@ END_TYPE
                       (int_literal
                         (signed_int
                           (unsigned_int))))))))))))))
+
+================================================================================
+Structure elements kept across a power cycle
+================================================================================
+
+TYPE
+    Counter : STRUCT
+        RETAIN count : DINT;
+        NON_RETAIN scratch : INT;
+        name : STRING;
+    END_STRUCT;
+END_TYPE
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (data_type_decl
+    (type_decl
+      (identifier)
+      (struct_type_spec
+        (struct_elem_decl
+          (identifier)
+          (simple_type_spec
+            (numeric_type_name
+              (int_type_name
+                (sign_int_type_name
+                  (dint_name))))))
+        (struct_elem_decl
+          (identifier)
+          (simple_type_spec
+            (numeric_type_name
+              (int_type_name
+                (sign_int_type_name
+                  (int_name))))))
+        (struct_elem_decl
+          (identifier)
+          (simple_type_spec
+            (string_type_name
+              (string_name))))))))

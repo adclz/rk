@@ -1163,3 +1163,200 @@ END_FUNCTION
                           (var_access
                             (field)))))))))
             (stmt_list)))))))
+
+================================================================================
+Doubled qualifier on a struct element, a section and a program instance
+================================================================================
+
+TYPE
+    S : STRUCT
+        RETAIN NON_RETAIN x : DINT;
+        RETAIN RETAIN y : DINT;
+    END_STRUCT;
+END_TYPE
+
+FUNCTION_BLOCK Fb
+VAR_INPUT RETAIN NON_RETAIN
+    a : INT;
+END_VAR
+VAR RETAIN NON_RETAIN
+    b : INT;
+END_VAR
+VAR NON_RETAIN RETAIN
+    c : INT;
+END_VAR
+VAR CONSTANT RETAIN
+    d : INT := 1;
+END_VAR
+VAR RETAIN CONSTANT
+    e : INT := 1;
+END_VAR
+END_FUNCTION_BLOCK
+
+CONFIGURATION Cfg
+VAR_GLOBAL CONSTANT RETAIN
+    g : INT := 1;
+END_VAR
+VAR_GLOBAL RETAIN CONSTANT
+    h : INT := 1;
+END_VAR
+    RESOURCE Res ON CPU
+        TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM RETAIN NON_RETAIN P1 WITH T : P;
+    END_RESOURCE
+END_CONFIGURATION
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (data_type_decl
+    (type_decl
+      (identifier)
+      (struct_type_spec
+        (struct_elem_decl
+          (ERR_doubled_qualifier)
+          (identifier)
+          (simple_type_spec
+            (numeric_type_name
+              (int_type_name
+                (sign_int_type_name
+                  (dint_name))))))
+        (struct_elem_decl
+          (ERR_doubled_qualifier)
+          (identifier)
+          (simple_type_spec
+            (numeric_type_name
+              (int_type_name
+                (sign_int_type_name
+                  (dint_name)))))))))
+  (fb_decl
+    (identifier)
+    (fb_input_decls
+      (ERR_doubled_qualifier)
+      (fb_input_var
+        (variable_list
+          (identifier))
+        (var_decl_init
+          (simple_type_spec
+            (numeric_type_name
+              (int_type_name
+                (sign_int_type_name
+                  (int_name))))))))
+    (retain_var_decls
+      (ERR_doubled_retain)
+      (var_decl_init_list
+        (variable_list
+          (identifier))
+        (var_decl_init
+          (simple_type_spec
+            (numeric_type_name
+              (int_type_name
+                (sign_int_type_name
+                  (int_name))))))))
+    (no_retain_var_decls
+      (ERR_doubled_non_retain)
+      (var_decl_init_list
+        (variable_list
+          (identifier))
+        (var_decl_init
+          (simple_type_spec
+            (numeric_type_name
+              (int_type_name
+                (sign_int_type_name
+                  (int_name))))))))
+    (var_decls
+      (ERR_doubled_constant)
+      (var_decl_init_list
+        (variable_list
+          (identifier))
+        (var_decl_init
+          (simple_type_spec
+            (numeric_type_name
+              (int_type_name
+                (sign_int_type_name
+                  (int_name)))))
+          (simple_type_init
+            (constant_expr
+              (constant
+                (numeric_literal
+                  (int_literal
+                    (signed_int
+                      (unsigned_int))))))))))
+    (retain_var_decls
+      (ERR_doubled_retain)
+      (var_decl_init_list
+        (variable_list
+          (identifier))
+        (var_decl_init
+          (simple_type_spec
+            (numeric_type_name
+              (int_type_name
+                (sign_int_type_name
+                  (int_name)))))
+          (simple_type_init
+            (constant_expr
+              (constant
+                (numeric_literal
+                  (int_literal
+                    (signed_int
+                      (unsigned_int)))))))))))
+  (config_decl
+    (identifier)
+    (global_var_decls
+      (ERR_doubled_global_qualifier)
+      (global_var_decl
+        (global_var_spec
+          (identifier))
+        (loc_var_spec_init
+          (simple_type_spec
+            (numeric_type_name
+              (int_type_name
+                (sign_int_type_name
+                  (int_name)))))
+          (simple_type_init
+            (constant_expr
+              (constant
+                (numeric_literal
+                  (int_literal
+                    (signed_int
+                      (unsigned_int))))))))))
+    (global_var_decls
+      (ERR_doubled_global_qualifier)
+      (global_var_decl
+        (global_var_spec
+          (identifier))
+        (loc_var_spec_init
+          (simple_type_spec
+            (numeric_type_name
+              (int_type_name
+                (sign_int_type_name
+                  (int_name)))))
+          (simple_type_init
+            (constant_expr
+              (constant
+                (numeric_literal
+                  (int_literal
+                    (signed_int
+                      (unsigned_int))))))))))
+    (resource_decl
+      (identifier)
+      (identifier)
+      (single_resource_decl
+        (task_config
+          (identifier)
+          (task_init
+            (data_source
+              (constant
+                (time_literal
+                  (duration
+                    (time
+                      (time_type_name)
+                      (time_value))))))
+            (unsigned_int))))
+      (single_resource_decl
+        (prog_config
+          (ERR_doubled_qualifier)
+          (identifier)
+          (identifier)
+          (namespace_access
+            (identifier)))))))

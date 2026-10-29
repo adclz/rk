@@ -42,6 +42,7 @@ pub mod program;
 pub mod recovery;
 pub mod recursive;
 pub mod references;
+pub mod retain_structs;
 pub mod return_value;
 pub mod scopes;
 pub mod shadowing;

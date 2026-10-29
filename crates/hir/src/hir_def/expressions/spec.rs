@@ -6,7 +6,7 @@ use crate::hir_def::interned::namespace::SpanNamespaceAccess;
 use db::WorkspaceDataBase;
 
 use crate::hir_def::expressions::expression::{InitExpr, VariableAccess};
-use crate::{AstId, HasName};
+use crate::{AstId, HasName, HasQualifiers, Qualifier};
 use crate::{
     HirNodeInfo,
     hir_def::{
@@ -115,6 +115,12 @@ pub struct StructElement<'db> {
     #[no_eq]
     pub name_id: AstId,
 
+    /// `RETAIN` or `NON_RETAIN` written before the name, else empty. Read
+    /// as a member's is where a value of the struct persists: a `RETAIN`
+    /// element keeps its subtree, an unqualified one lets a nested `RETAIN`
+    /// through, `NON_RETAIN` prunes.
+    pub qualifier: Qualifier,
+
     pub located: Option<VariableAccess<'db>>,
     pub multibits: Option<MultibitsPart>,
     pub spec: Spec<'db>,
@@ -151,6 +157,12 @@ impl<'db> HasName<'db> for StructElement<'db> {
 
     fn get_name_id(&self, db: &'db dyn WorkspaceDataBase) -> AstId {
         self.name_id(db)
+    }
+}
+
+impl<'db> HasQualifiers<'db> for StructElement<'db> {
+    fn get_qualifiers(&self, db: &'db dyn WorkspaceDataBase) -> Qualifier {
+        self.qualifier(db)
     }
 }
 

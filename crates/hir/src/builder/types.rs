@@ -652,9 +652,41 @@ impl<'db> ParseSpec<'db> for ast::generated::StructTypeSpec {
                 (None, None)
             };
 
+            // `RETAIN` or `NON_RETAIN` before the name; both written is
+            // E0031, and the element keeps the first.
+            type Retain = ast::generated::ERRDoubledQualifier_NONRETAIN_RETAIN;
+            let qualifier = match elem
+                .cast(sema.ast)
+                .retain
+                .as_ref()
+                .map(|r| r.cast(sema.ast))
+            {
+                Some(Retain::Token_RETAIN(_)) => crate::Qualifier::RETAIN,
+                Some(Retain::Token_NON_RETAIN(_)) => crate::Qualifier::NON_RETAIN,
+                Some(Retain::ERRDoubledQualifier(err)) => {
+                    use auto_lsp::core::ast::AstNode;
+                    let first = err.first.cast(sema.ast);
+                    let name = elem
+                        .cast(sema.ast)
+                        .name
+                        .cast(sema.ast)
+                        .get_range()
+                        .to_owned();
+                    super::variables::report_doubled_qualifier(
+                        sema,
+                        name,
+                        first.get_range().to_owned(),
+                        &err.extra,
+                    );
+                    super::variables::token_qualifier(first)
+                }
+                None => crate::Qualifier::empty(),
+            };
+
             elements.push(sema.new_struct_element(
                 name,
                 elem.cast(sema.ast).name.cast(sema.ast).into(),
+                qualifier,
                 located,
                 multibits,
                 spec,

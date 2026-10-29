@@ -9,6 +9,7 @@ use crate::{
     check::errors::{
         ToIdeDiagnostic,
         e01_duplicates::DuplicateError,
+        e09_reference::ReferenceError,
         e14_config::{ConfigError, UnlocatableAddress},
     },
     hir_def::expressions::{
@@ -68,6 +69,24 @@ impl<'db> InitInference<'db> {
             self.check_spec(db, field.spec(db));
 
             let element_type = field.spec(db).infer(db);
+
+            // A `RETAIN` element persists on its own, so a reference in it
+            // is refused as one in a RETAIN variable is (E0904).
+            if field.qualifier(db).contains(crate::Qualifier::RETAIN)
+                && let Some(found) = crate::hir_ty::head::instances::retained_reference(
+                    db,
+                    element_type,
+                    &mut Vec::new(),
+                )
+            {
+                self.errors.push(
+                    ReferenceError::RetainedReferenceElement {
+                        element: *field,
+                        found,
+                    }
+                    .to_diagnostic(db, self.scope.file(db)),
+                );
+            }
             if let Some(init_expr) = field.init(db) {
                 self.init_expr_result.resolve_init_expr(
                     db,

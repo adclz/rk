@@ -979,7 +979,13 @@ fn lower_module_from_pous<'db>(
         stack: None,
     };
 
-    // The per-field retain map from the same final addresses.
+    // The per-field retain map from the same final addresses. A global's
+    // declaration says what its parts inherit.
+    let global_decls: FxHashMap<_, _> = config
+        .iter()
+        .flat_map(|c| c.variables(db).iter().map(|v| (v.name(db), *v)))
+        .chain(program_located(db, all_programs).map(|v| (global_key(db, v), v)))
+        .collect();
     module.retain_map = crate::retain_map::build_retain_map(
         db,
         module.schedule.as_ref(),
@@ -987,7 +993,7 @@ fn lower_module_from_pous<'db>(
         &bands.retain_globals,
         &global_table
             .iter()
-            .map(|(name, (_, ty))| (*name, ty.clone()))
+            .map(|(name, (_, ty))| (*name, (ty.clone(), global_decls.get(name).copied())))
             .collect(),
         bands.retain_base,
         bands.retain_size,
@@ -1358,8 +1364,17 @@ fn add_global<'db>(
         Some(entry) => memory_layout.record_located(entry),
         None => {
             // RETAIN globals are flagged so the globals band overlaps the
-            // retain band on them.
-            let retain = v.qualifier(db).contains(hir::Qualifier::RETAIN);
+            // retain band on them, and so is one whose type keeps something
+            // of its own: the retain map says which part. A constant is
+            // never flagged: it takes the value of the build.
+            let q = v.qualifier(db);
+            let retain = !q.contains(hir::Qualifier::CONSTANT)
+                && (q.contains(hir::Qualifier::RETAIN)
+                    || crate::schedule::type_has_retain(
+                        db,
+                        v.spec(db).infer(db),
+                        &mut rustc_hash::FxHashSet::default(),
+                    ));
             memory_layout.record_global(key, addr, size, align, retain);
         }
     }

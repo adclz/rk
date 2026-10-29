@@ -67,3 +67,33 @@ VAR p : Point; q : Point; END_VAR
     Demo := p.x;
 END_FUNCTION
 ```
+
+## Retain
+
+`RETAIN` before a field keeps it across a power cycle.
+It applies where the variable's own declaration says nothing: a `VAR` of a program or a function block, a `VAR_GLOBAL`.
+`VAR RETAIN` keeps every field, `NON_RETAIN` none, and `NON_RETAIN` on a field keeps it out of a struct that is retained.
+
+```iecst
+TYPE
+    Counter : STRUCT
+        RETAIN count : DINT;        // kept
+        NON_RETAIN scratch : INT;   // never kept
+        name : STRING[8];           // kept when the variable is RETAIN
+    END_STRUCT;
+END_TYPE
+
+PROGRAM Press
+VAR
+    c : Counter;                    // keeps c.count
+END_VAR
+VAR RETAIN
+    r : Counter;                    // keeps r.count and r.name
+END_VAR
+    c.count := c.count + 1;
+    r.count := r.count + 1;
+END_PROGRAM
+```
+
+The `retain-map` section names the fields that persist, see [Memory bands](memory-bands.md).
+IEC 61131-3 has no qualifier on a field: this is an rk extension.

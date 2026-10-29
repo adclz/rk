@@ -1106,7 +1106,7 @@ END_CONFIGURATION
         |            |
         |            `-- 'q' is a reference in RETAIN storage: its address does not survive a new build
         |
-        | Help: keep references out of RETAIN (NON_RETAIN on a member) and set them in the first scan
+        | Help: move 'q' out of RETAIN and set it in the first scan
         |
         | Note: a warm start restores the address even where a new build moved its target
     ----'
@@ -1117,7 +1117,7 @@ END_CONFIGURATION
         |     |
         |     `-- 'r' is a reference in RETAIN storage: its address does not survive a new build
         |
-        | Help: keep references out of RETAIN (NON_RETAIN on a member) and set them in the first scan
+        | Help: move 'r' out of RETAIN and set it in the first scan
         |
         | Note: a warm start restores the address even where a new build moved its target
     ----'
@@ -1128,7 +1128,7 @@ END_CONFIGURATION
         |     |
         |     `-- 's.p' is a reference in RETAIN storage: its address does not survive a new build
         |
-        | Help: keep references out of RETAIN (NON_RETAIN on a member) and set them in the first scan
+        | Help: mark 'p' NON_RETAIN in 'S' and set it in the first scan
         |
         | Note: a warm start restores the address even where a new build moved its target
     ----'
@@ -1137,9 +1137,9 @@ END_CONFIGURATION
         |
      23 |     arr : ARRAY[0..1] OF H;
         |     ^|^
-        |      `--- 'arr.p' is a reference in RETAIN storage: its address does not survive a new build
+        |      `--- 'arr[i].p' is a reference in RETAIN storage: its address does not survive a new build
         |
-        | Help: keep references out of RETAIN (NON_RETAIN on a member) and set them in the first scan
+        | Help: mark 'p' NON_RETAIN in 'H' and set it in the first scan
         |
         | Note: a warm start restores the address even where a new build moved its target
     ----'
@@ -1150,7 +1150,7 @@ END_CONFIGURATION
         |                   |
         |                   `-- 'g' is a reference in RETAIN storage: its address does not survive a new build
         |
-        | Help: keep references out of RETAIN (NON_RETAIN on a member) and set them in the first scan
+        | Help: move 'g' out of RETAIN and set it in the first scan
         |
         | Note: a warm start restores the address even where a new build moved its target
     ----'
@@ -1165,7 +1165,7 @@ END_CONFIGURATION
         |                        ^|
         |                         `-- PROGRAM RETAIN 'Q1' keeps 'h.p', a reference: its address does not survive a new build
         |
-        | Help: keep references out of RETAIN (NON_RETAIN on a member) and set them in the first scan
+        | Help: mark 'p' NON_RETAIN in 'H' and set it in the first scan
         |
         | Note: a warm start restores the address even where a new build moved its target
     ----'
@@ -1189,6 +1189,7 @@ VAR
     r : REF_TO INT;
     s : REF_TO STRING;
     b : REF_TO BOOL;
+    pb : REF_TO BYTE;
     first : REF_TO INT := REF(5);
 END_VAR
     s := REF('ab');
@@ -1196,15 +1197,16 @@ END_VAR
     r := REF(G());
     r := REF(%MW10);
     b := REF(w.%X3);
+    pb := REF(w.%B1);
     r := REF(i);
 END_FUNCTION_BLOCK
 "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     [E0905] Error: REF() argument not a variable
-        ,-[ file:///test0.st:13:31 ]
+        ,-[ file:///test0.st:14:31 ]
         |
-     13 |     first : REF_TO INT := REF(5);
+     14 |     first : REF_TO INT := REF(5);
         |                               |
         |                               `-- REF() takes a variable, not a value
         |
@@ -1213,9 +1215,9 @@ END_FUNCTION_BLOCK
         | Note: a literal, an expression or a call result has no storage to point at
     ----'
     [E0905] Error: REF() argument not a variable
-        ,-[ file:///test0.st:15:14 ]
+        ,-[ file:///test0.st:16:14 ]
         |
-     15 |     s := REF('ab');
+     16 |     s := REF('ab');
         |              ^^|^
         |                `--- REF() takes a variable, not a value
         |
@@ -1224,9 +1226,9 @@ END_FUNCTION_BLOCK
         | Note: a literal, an expression or a call result has no storage to point at
     ----'
     [E0905] Error: REF() argument not a variable
-        ,-[ file:///test0.st:16:14 ]
+        ,-[ file:///test0.st:17:14 ]
         |
-     16 |     r := REF(i + 1);
+     17 |     r := REF(i + 1);
         |              ^^|^^
         |                `---- REF() takes a variable, not a value
         |
@@ -1235,9 +1237,9 @@ END_FUNCTION_BLOCK
         | Note: a literal, an expression or a call result has no storage to point at
     ----'
     [E0905] Error: REF() argument not a variable
-        ,-[ file:///test0.st:17:14 ]
+        ,-[ file:///test0.st:18:14 ]
         |
-     17 |     r := REF(G());
+     18 |     r := REF(G());
         |              ^|^
         |               `--- REF() takes a variable, not a value
         |
@@ -1246,9 +1248,9 @@ END_FUNCTION_BLOCK
         | Note: a literal, an expression or a call result has no storage to point at
     ----'
     [E0905] Error: REF() argument not a variable
-        ,-[ file:///test0.st:18:14 ]
+        ,-[ file:///test0.st:19:14 ]
         |
-     18 |     r := REF(%MW10);
+     19 |     r := REF(%MW10);
         |              ^^|^^
         |                `---- REF() takes a variable, not a direct address
         |
@@ -1257,11 +1259,20 @@ END_FUNCTION_BLOCK
         | Note: a reference points at a named variable or instance
     ----'
     [E0905] Error: REF() argument not a variable
-        ,-[ file:///test0.st:19:14 ]
+        ,-[ file:///test0.st:20:14 ]
         |
-     19 |     b := REF(w.%X3);
+     20 |     b := REF(w.%X3);
         |              ^^|^^
         |                `---- REF() takes a variable, not a bit of one
+        |
+        | Note: a reference points at a named variable or instance
+    ----'
+    [E0905] Error: REF() argument not a variable
+        ,-[ file:///test0.st:21:15 ]
+        |
+     21 |     pb := REF(w.%B1);
+        |               ^^|^^
+        |                 `---- REF() takes a variable, not a part of one
         |
         | Note: a reference points at a named variable or instance
     ----'
@@ -1343,4 +1354,86 @@ END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
+
+/// A reference to what has an address of its own: a variable located at a
+/// word, one located at a bit with no wider variable over it, and a place
+/// reached through a reference.
+#[rstest]
+fn valid_a_reference_to_a_located_variable_or_through_a_reference(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE Pt : STRUCT x : REAL; y : REAL; END_STRUCT; END_TYPE
+
+PROGRAM P
+VAR
+    m AT %MW10 : INT;
+    flag AT %MX0.3 : BOOL;
+    point : Pt;
+    pm : REF_TO INT;
+    pf : REF_TO BOOL;
+    pp : REF_TO Pt;
+    px : REF_TO REAL;
+END_VAR
+    pm := REF(m);
+    pf := REF(flag);
+    pp := REF(point);
+    px := REF(pp^.x);
+END_PROGRAM
+
+CONFIGURATION Cfg
+    RESOURCE Res ON CPU
+        TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM P1 WITH T : P;
+    END_RESOURCE
+END_CONFIGURATION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+/// Two references are compared only when they point at the same type, and
+/// a reference is not compared with a number.
+#[rstest]
+fn invalid_references_to_different_types_are_not_comparable(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE Pt : STRUCT x : REAL; y : REAL; END_STRUCT; END_TYPE
+
+FUNCTION Same : BOOL
+VAR
+    point : Pt;
+    n : INT;
+    rp : REF_TO Pt;
+    rx : REF_TO REAL;
+    ri : REF_TO INT;
+END_VAR
+    rp := REF(point);
+    rx := REF(point.x);
+    ri := REF(n);
+    Same := rp = rx;
+    Same := ri = 0;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0302] Error: types not comparable
+        ,-[ file:///test0.st:15:18 ]
+        |
+      8 |     rp : REF_TO Pt;
+        |     ^|
+        |      `-- 'rp' is declared here
+        |
+     15 |     Same := rp = rx;
+        |                  ^|
+        |                   `-- cannot compare 'REF_TO Pt' with 'REF_TO REAL'
+    ----'
+    [E0302] Error: types not comparable
+        ,-[ file:///test0.st:16:18 ]
+        |
+     10 |     ri : REF_TO INT;
+        |     ^|
+        |      `-- 'ri' is declared here
+        |
+     16 |     Same := ri = 0;
+        |                  |
+        |                  `-- cannot compare 'REF_TO INT' with 'INT'
+    ----'
+    ");
 }

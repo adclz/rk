@@ -5,14 +5,16 @@
 //! band survive a power cycle. Relocation is whole-instance, persistence is
 //! per-field. Rules (matching `schedule::is_retain_field`): `RETAIN` retains
 //! the subtree, an absent qualifier lets nested `RETAIN` through,
-//! `NON_RETAIN` prunes the subtree, `VAR_TEMP` and by-ref pointer fields
-//! never persist, `PROGRAM RETAIN` retains every non-pruned field.
+//! `NON_RETAIN` prunes the subtree, `CONSTANT`, `VAR_TEMP` and by-ref
+//! pointer fields never persist, `PROGRAM RETAIN` retains every non-pruned
+//! field.
 
 use db::WorkspaceDataBase;
 use debug_format::{RetainMap, RetainRange};
 use hir::{
     Qualifier,
     hir_def::{
+        expressions::spec::StructElement,
         interned::identifier::Ident,
         pous::variable::{VariableDecl, VariableKind},
     },
@@ -33,22 +35,48 @@ pub fn build_retain_map<'db>(
     schedule: Option<&MirSchedule>,
     program_infos: &FxHashMap<Ident, ProgramInfo<'db>>,
     retain_globals: &[RetainEntry],
-    global_types: &FxHashMap<Ident, MirType>,
+    globals: &FxHashMap<Ident, (MirType, Option<VariableDecl<'db>>)>,
     retain_base: u32,
     retain_size: u32,
 ) -> Result<RetainMap, crate::lower::lower_type::LowerTypeError> {
     let mut ranges = Vec::new();
 
-    // Retained VAR_GLOBALs are already per-variable — one range each.
+    // A retained VAR_GLOBAL is one range, unless its type carries retention
+    // of its own (a struct with a qualified element, an FB with `VAR
+    // RETAIN`): then its parts are walked as a program's members are, and
+    // inherit the global's own `RETAIN` when it has one.
     for g in retain_globals {
+        let (ty, decl) = match globals.get(&g.name) {
+            Some((ty, decl)) => (Some(ty), *decl),
+            None => (None, None),
+        };
+        if let (Some(ty), Some(decl)) = (ty, decl) {
+            let hir_ty = decl.spec(db).infer(db);
+            if carries_retain(db, hir_ty) {
+                let field = MirStructField {
+                    name_with_case: g.name,
+                    ty: ty.clone(),
+                    offset: 0,
+                    by_ref: false,
+                };
+                let root = g.name.text(db).to_string();
+                walk_value(
+                    db,
+                    &root,
+                    g.address,
+                    &field,
+                    hir_ty,
+                    decl.qualifier(db).contains(Qualifier::RETAIN),
+                    &mut ranges,
+                );
+                continue;
+            }
+        }
         ranges.push(RetainRange {
             path: g.name.text(db).to_string(),
             addr: g.address,
             size: g.size,
-            type_key: global_types
-                .get(&g.name)
-                .map(|ty| type_key(db, ty))
-                .unwrap_or(0),
+            type_key: ty.map(|ty| type_key(db, ty)).unwrap_or(0),
         });
     }
 
@@ -107,6 +135,9 @@ fn walk_members<'db>(
         if q.contains(Qualifier::NON_RETAIN) {
             continue; // explicit NON_RETAIN prunes the subtree
         }
+        if q.contains(Qualifier::CONSTANT) {
+            continue; // a constant takes the value of the build, never a restored one
+        }
         if v.kind(db) == VariableKind::Temp {
             continue; // temps are per-scan state, never persisted
         }
@@ -142,8 +173,72 @@ fn walk_members<'db>(
     }
 }
 
-/// One value at `addr`: FB/class instances recurse, plain data is a single
-/// range when retained.
+/// The instance members of a POU, bases first: the POU's own `variables`
+/// miss what `EXTENDS` brings in, and the instance holds those too.
+fn pou_members<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    pou: hir::hir_def::pous::pou::Pou<'db>,
+) -> Vec<VariableDecl<'db>> {
+    hir::hir_ty::oop::instance_members(db, pou)
+        .iter()
+        .map(|m| m.var)
+        .collect()
+}
+
+/// Does this type carry retention of its own: a POU's members, a struct
+/// element written `RETAIN` or `NON_RETAIN`, or an array or struct holding
+/// one? A value of such a type is walked; any other follows its
+/// declaration whole.
+fn carries_retain<'db>(db: &'db dyn WorkspaceDataBase, ty: Type<'db>) -> bool {
+    match ty.normalize(db) {
+        Type::FunctionBlock(_) | Type::Class(_) => true,
+        Type::Array(arr) => carries_retain(db, arr.of_type(db).infer(db)),
+        Type::Struct(st) => st.elements(db).iter().any(|e| {
+            e.qualifier(db)
+                .intersects(Qualifier::RETAIN | Qualifier::NON_RETAIN)
+                || carries_retain(db, e.spec(db).infer(db))
+        }),
+        _ => false,
+    }
+}
+
+/// Walk one struct level: pair each MIR field with its element (by name)
+/// and apply the member rules, which an element's qualifier follows.
+fn walk_struct<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    root: &str,
+    base: u32,
+    fields: &[MirStructField],
+    elements: &[StructElement<'db>],
+    inherited_retain: bool,
+    out: &mut Vec<RetainRange>,
+) {
+    let by_name: FxHashMap<Ident, StructElement<'db>> =
+        elements.iter().map(|e| (e.name(db), *e)).collect();
+    for f in fields {
+        let Some(e) = by_name.get(&f.name(db)) else {
+            continue;
+        };
+        let q = e.qualifier(db);
+        if q.contains(Qualifier::NON_RETAIN) {
+            continue; // explicit NON_RETAIN prunes the subtree
+        }
+        let retained = inherited_retain || q.contains(Qualifier::RETAIN);
+        let path = crate::debug_symbols::join_path(db, root, f.name_with_case);
+        walk_value(
+            db,
+            &path,
+            base + f.offset,
+            f,
+            e.spec(db).infer(db),
+            retained,
+            out,
+        );
+    }
+}
+
+/// One value at `addr`: FB/class instances and structs with qualified
+/// elements recurse, plain data is a single range when retained.
 fn walk_value<'db>(
     db: &'db dyn WorkspaceDataBase,
     path: &str,
@@ -154,20 +249,21 @@ fn walk_value<'db>(
     out: &mut Vec<RetainRange>,
 ) {
     match (&field.ty, hir_ty.normalize(db)) {
-        // FB/class instance: members carry their own qualifiers — recurse.
+        // FB/class instance: members carry their own qualifiers — recurse
+        // over the flattened `EXTENDS` view the instance is laid out from,
+        // so a member a base declares `RETAIN` is found.
         (MirType::Struct(s), Type::FunctionBlock(fb)) => {
-            walk_members(db, path, addr, &s.fields, fb.variables(db), retained, out);
+            let vars = pou_members(db, hir::hir_def::pous::pou::Pou::FunctionBlock(fb));
+            walk_members(db, path, addr, &s.fields, &vars, retained, out);
         }
         (MirType::Struct(s), Type::Class(class)) => {
-            walk_members(
-                db,
-                path,
-                addr,
-                &s.fields,
-                class.variables(db),
-                retained,
-                out,
-            );
+            let vars = pou_members(db, hir::hir_def::pous::pou::Pou::Class(class));
+            walk_members(db, path, addr, &s.fields, &vars, retained, out);
+        }
+        // A struct with a qualified element somewhere in it: its elements
+        // carry the qualifiers a member does. One without stays one value.
+        (MirType::Struct(s), Type::Struct(st)) if carries_retain(db, Type::Struct(st)) => {
+            walk_struct(db, path, addr, &s.fields, &st.elements(db), retained, out);
         }
         // Arrays: one range when possible; per-element when the element type
         // needs recursion.
@@ -176,11 +272,8 @@ fn walk_value<'db>(
                 Type::Array(arr) => arr.of_type(db).infer(db),
                 _ => hir_ty,
             };
-            let elem_is_pou = matches!(
-                elem_hir.normalize(db),
-                Type::FunctionBlock(_) | Type::Class(_)
-            );
-            if retained && !elem_is_pou && !type_has_pointer_holes(&a.element_type) {
+            let elem_walks = carries_retain(db, elem_hir);
+            if retained && !elem_walks && !type_has_pointer_holes(&a.element_type) {
                 out.push(RetainRange {
                     path: path.to_string(),
                     addr,
@@ -189,7 +282,7 @@ fn walk_value<'db>(
                 });
                 return;
             }
-            if !elem_is_pou {
+            if !elem_walks {
                 // Plain data, not retained: nothing can shine through.
                 if retained {
                     // Pointer holes outside a POU context are not expressible: a whole
@@ -203,8 +296,8 @@ fn walk_value<'db>(
                 }
                 return;
             }
-            // POU elements: recurse each element so member qualifiers and
-            // pointer holes apply per element.
+            // Elements with qualifiers of their own: recurse each so they
+            // and the pointer holes apply per element.
             let elem_field = MirStructField {
                 name_with_case: field.name_with_case,
                 ty: (*a.element_type).clone(),

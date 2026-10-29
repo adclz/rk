@@ -129,6 +129,7 @@ env.memory
 
 The host reads and writes a global by name.
 A retained global is in the retain band and the globals band.
+So is a global whose struct has a `RETAIN` field or whose function block has a `VAR RETAIN`: the `retain-map` section names the fields that persist.
 
 A located `VAR_GLOBAL`, like `level AT %IW0 : INT`, is in its area's band, not in the globals band.
 

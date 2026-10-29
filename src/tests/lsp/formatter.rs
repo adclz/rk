@@ -2698,3 +2698,52 @@ pub fn an_element_at_its_index(mut with_db: RootDatabase) {
     END_FUNCTION
     ");
 }
+
+/// A struct element's `RETAIN` keeps its space from the name.
+#[rstest]
+pub fn a_retained_struct_element(mut with_db: RootDatabase) {
+    let source = "TYPE\nCounter : STRUCT\nRETAIN count:DINT;\nNON_RETAIN   scratch : INT;\nEND_STRUCT;\nEND_TYPE\n";
+
+    let document = add_source(&mut with_db, source).document(&with_db);
+
+    assert_snapshot!(fmt(document), @r"
+    TYPE
+    	Counter: STRUCT
+    		RETAIN count: DINT;
+    		NON_RETAIN scratch: INT;
+    	END_STRUCT;
+    END_TYPE
+    ");
+}
+
+/// The qualifier on an element of a struct written in place, on one
+/// holding a struct of its own, and split from its name.
+#[rstest]
+pub fn a_retained_element_of_a_struct_written_in_place(mut with_db: RootDatabase) {
+    let source = "TYPE\nA : STRUCT\nRETAIN e : STRUCT x : DINT; NON_RETAIN y : DINT; END_STRUCT;\nRETAIN\ni : DINT;\nEND_STRUCT;\nEND_TYPE\nCONFIGURATION Cfg\nVAR_GLOBAL\nk : STRUCT RETAIN a : DINT; b : DINT; END_STRUCT;\nEND_VAR\nRESOURCE Res ON CPU\nTASK T(INTERVAL := T#10ms, PRIORITY := 1);\nEND_RESOURCE\nEND_CONFIGURATION\n";
+
+    let document = add_source(&mut with_db, source).document(&with_db);
+
+    assert_snapshot!(fmt(document), @r"
+    TYPE
+    	A: STRUCT
+    		RETAIN e: STRUCT
+    			x: DINT;
+    			NON_RETAIN y: DINT;
+    		END_STRUCT;
+    		RETAIN i: DINT;
+    	END_STRUCT;
+    END_TYPE
+    CONFIGURATION Cfg
+    	VAR_GLOBAL
+    		k: STRUCT
+    			RETAIN a: DINT;
+    			b: DINT;
+    		END_STRUCT;
+    	END_VAR
+    	RESOURCE Res ON CPU
+    		TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+    	END_RESOURCE
+    END_CONFIGURATION
+    ");
+}
