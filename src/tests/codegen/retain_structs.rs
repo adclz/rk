@@ -819,3 +819,128 @@ fn a_timer_in_a_retained_instance_starts_over(mut with_db: db::RootDatabase) {
     warm.scan().expect("one second after the warm start");
     assert_eq!(read(&warm, "P1.m.q"), VarValue::Bool(true));
 }
+
+/// A warm start resets a timer's step but brings its outputs back: a
+/// pulse that was running comes back with `Q` `TRUE`, an off-delay with
+/// its `ET`. The first call sets both from the step again, so the pulse
+/// is over and the delay at zero, and the next rising edge starts them
+/// as a fresh timer would.
+#[rstest]
+fn a_pulse_and_an_off_delay_in_a_retained_instance_start_over(mut with_db: db::RootDatabase) {
+    use crate::tests::codegen::compile_to_mir_and_wasm_with_libraries;
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicI64, Ordering};
+
+    let source = r#"
+        USING Std.Timers;
+
+        FUNCTION_BLOCK Machine
+        VAR_INPUT run : BOOL; END_VAR
+        VAR p : TP; f : TOF; END_VAR
+        VAR_OUTPUT pq, fq : BOOL; END_VAR
+            p(IN := run, PT := T#1s);
+            f(IN := run, PT := T#1s);
+            pq := p.Q;
+            fq := f.Q;
+        END_FUNCTION_BLOCK
+
+        PROGRAM P
+        VAR run : BOOL; END_VAR
+        VAR RETAIN m : Machine; END_VAR
+            m(run := run);
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (mir, wasm) = compile_to_mir_and_wasm_with_libraries(
+        &mut with_db,
+        &[
+            include_str!("../../../stdlib/Timers.st"),
+            include_str!("../../../stdlib/Convert.st"),
+            include_str!("../../../stdlib/Strings.st"),
+        ],
+        source,
+    );
+
+    // A PLC on a clock the test moves by hand, in milliseconds.
+    let boot = |now_ms: i64| -> (TestPlc, Arc<AtomicI64>) {
+        let clock = Arc::new(AtomicI64::new(now_ms * 1_000_000));
+        let moved = Arc::clone(&clock);
+        let plc = TestPlc::load_with_host(&wasm, move |linker| {
+            linker.func_wrap("wasi:clocks/monotonic-clock@0.2.6", "now", move || {
+                moved.load(Ordering::Relaxed)
+            })?;
+            Ok(())
+        })
+        .expect("load");
+        (plc, clock)
+    };
+    let info = DebugInfo::from_wasm(&wasm);
+    let read = |plc: &TestPlc, path: &str| {
+        let loc = info.resolve(path).expect(path);
+        loc.decode(&plc.read_bytes(loc.address, loc.size as usize).unwrap())
+    };
+    let elapsed_ms = |plc: &TestPlc, path: &str| match read(plc, path) {
+        VarValue::I32(ms) => i64::from(ms),
+        VarValue::U32(ms) => i64::from(ms),
+        other => panic!("{path} decoded as {other:?}"),
+    };
+    let run = |plc: &mut TestPlc, on: bool| {
+        let loc = info.resolve("P1.run").expect("P1.run");
+        plc.write_bytes(loc.address, &[u8::from(on)]).expect("run");
+    };
+
+    // The pulse starts at 500 ms; `run` drops at 800 ms, which starts the
+    // off-delay; the snapshot is taken at 1000 ms, with both running.
+    let (mut plc, clock) = boot(500);
+    run(&mut plc, true);
+    plc.scan().expect("the pulse starts");
+    assert_eq!(read(&plc, "P1.m.pq"), VarValue::Bool(true));
+    clock.store(800 * 1_000_000, Ordering::Relaxed);
+    run(&mut plc, false);
+    plc.scan().expect("the off-delay starts");
+    clock.store(1000 * 1_000_000, Ordering::Relaxed);
+    plc.scan().expect("both running");
+    assert_eq!(read(&plc, "P1.m.pq"), VarValue::Bool(true));
+    assert_eq!(elapsed_ms(&plc, "P1.m.p.ET"), 500);
+    assert_eq!(read(&plc, "P1.m.fq"), VarValue::Bool(true));
+    assert_eq!(elapsed_ms(&plc, "P1.m.f.ET"), 200);
+    let saved: Vec<Vec<u8>> = mir
+        .retain_map
+        .ranges
+        .iter()
+        .map(|r| plc.read_bytes(r.addr, r.size as usize).expect("snapshot"))
+        .collect();
+
+    // A power cycle with `run` low: the first scan ends the pulse and the
+    // delay, since the step they came from is gone.
+    let (mut warm, clock) = boot(100);
+    for (range, bytes) in mir.retain_map.ranges.iter().zip(&saved) {
+        warm.write_bytes(range.addr, bytes).expect("restore");
+    }
+    warm.scan().expect("the first scan after the warm start");
+    assert_eq!(
+        read(&warm, "P1.m.pq"),
+        VarValue::Bool(false),
+        "the pulse does not outlive the step that started it"
+    );
+    assert_eq!(elapsed_ms(&warm, "P1.m.p.ET"), 0);
+    assert_eq!(read(&warm, "P1.m.fq"), VarValue::Bool(false));
+    assert_eq!(elapsed_ms(&warm, "P1.m.f.ET"), 0);
+
+    // A rising edge after the warm start starts a full pulse.
+    run(&mut warm, true);
+    warm.scan().expect("a new pulse");
+    assert_eq!(read(&warm, "P1.m.pq"), VarValue::Bool(true));
+    assert_eq!(elapsed_ms(&warm, "P1.m.p.ET"), 0);
+    assert_eq!(read(&warm, "P1.m.fq"), VarValue::Bool(true));
+    clock.store(1200 * 1_000_000, Ordering::Relaxed);
+    warm.scan().expect("1100 ms after the new pulse");
+    assert_eq!(read(&warm, "P1.m.pq"), VarValue::Bool(false));
+    assert_eq!(elapsed_ms(&warm, "P1.m.p.ET"), 1000);
+}
