@@ -310,6 +310,18 @@ module.exports = grammar({
     ERR_extends_multiple_times: ($) =>
       prec(-1, seq(kw("EXTENDS"), $.namespace_access)),
 
+    // `RETAIN NON_RETAIN x : INT;` on a struct element: parsed whole so the
+    // report labels both qualifiers, where recovery blamed whichever the
+    // parser dropped. The element keeps the first.
+    ERR_doubled_qualifier: ($) =>
+      prec(
+        -1,
+        seq(
+          field("first", choice(kw("RETAIN"), kw("NON_RETAIN"))),
+          field("extra", repeat1(choice(kw("RETAIN"), kw("NON_RETAIN")))),
+        ),
+      ),
+
     // Variable declaration errors
     ERR_variable_with_no_spec: ($) => prec(-1, $.identifier),
     // A VAR_CONFIG entry repeats its variable's type: a path with nothing
@@ -961,7 +973,10 @@ module.exports = grammar({
     // extension: the standard's element has no qualifier.
     struct_elem_decl: ($) =>
       seq(
-        field("retain", optional(choice(kw("RETAIN"), kw("NON_RETAIN")))),
+        field(
+          "retain",
+          optional(choice(kw("RETAIN"), kw("NON_RETAIN"), $.ERR_doubled_qualifier)),
+        ),
         field("name", $.identifier),
         field("attributes", optional($.struct_elem_decl_attributes)),
         useSpecInit(

@@ -790,6 +790,40 @@
     }
   },
   {
+    "type": "ERR_doubled_qualifier",
+    "named": true,
+    "fields": {
+      "extra": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "NON_RETAIN",
+            "named": false
+          },
+          {
+            "type": "RETAIN",
+            "named": false
+          }
+        ]
+      },
+      "first": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "NON_RETAIN",
+            "named": false
+          },
+          {
+            "type": "RETAIN",
+            "named": false
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "ERR_empty_right_hand_assignment",
     "named": true,
     "fields": {}
@@ -6185,6 +6219,10 @@
         "multiple": false,
         "required": false,
         "types": [
+          {
+            "type": "ERR_doubled_qualifier",
+            "named": true
+          },
           {
             "type": "NON_RETAIN",
             "named": false
