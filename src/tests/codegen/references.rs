@@ -218,3 +218,58 @@ fn test_var_in_out_with_var_input(mut with_db: db::RootDatabase) {
     assert_eq!(value, 125, "Should add increment to VAR_IN_OUT target");
     assert_eq!(result, 125, "Should return updated value");
 }
+
+/// A BOOL located at a bit with no wider variable over it has a cell of
+/// its own: a reference to it, and a VAR_IN_OUT bound to it, write that
+/// cell, and the bit next to it keeps its value.
+#[rstest]
+fn a_reference_to_a_lone_bit_writes_its_own_cell(mut with_db: db::RootDatabase) {
+    use crate::tests::codegen::TestPlc;
+    use debug_format::{DebugInfo, VarValue};
+
+    let source = r#"
+        FUNCTION_BLOCK Set
+        VAR_IN_OUT b : BOOL; END_VAR
+            b := TRUE;
+        END_FUNCTION_BLOCK
+
+        PROGRAM P
+        VAR
+            x AT %MX0.3 : BOOL;
+            z AT %MX0.4 : BOOL;
+            y AT %MX2.3 : BOOL;
+            w AT %MX2.4 : BOOL;
+            r : REF_TO BOOL;
+            set : Set;
+            seen_x, seen_z, seen_y, seen_w : BOOL;
+        END_VAR
+            r := REF(x);
+            r^ := TRUE;
+            set(b := y);
+            seen_x := x; seen_z := z; seen_y := y; seen_w := w;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let info = DebugInfo::from_wasm(&wasm);
+    let mut plc = TestPlc::load(&wasm).expect("load");
+    plc.run(1).expect("scan");
+    for (name, value) in [
+        ("seen_x", true),
+        ("seen_z", false),
+        ("seen_y", true),
+        ("seen_w", false),
+    ] {
+        assert_eq!(
+            plc.read_var(&info, &format!("P1.{name}")),
+            Some(VarValue::Bool(value)),
+            "{name}"
+        );
+    }
+}

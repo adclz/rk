@@ -398,12 +398,12 @@ fn a_variable_keeps_by_its_own_row(mut with_db: db::RootDatabase) {
     );
 }
 
-/// A nested instance follows its own block: under a `VAR RETAIN`, its
-/// `NON_RETAIN` member is dropped and the rest kept, a `NON_RETAIN`
+/// A `VAR RETAIN` holder reaches into the blocks it holds: a nested
+/// instance keeps everything but its `NON_RETAIN` members, a `NON_RETAIN`
 /// instance at any level keeps nothing, and a plain holder keeps what the
 /// nested block marks `RETAIN` and nothing else.
 #[rstest]
-fn a_nested_instance_follows_its_own_block(mut with_db: db::RootDatabase) {
+fn a_retained_instance_reaches_into_the_blocks_it_holds(mut with_db: db::RootDatabase) {
     let source = r#"
         FUNCTION_BLOCK Inner
         VAR RETAIN kept : DINT; END_VAR
@@ -702,4 +702,120 @@ fn a_redundant_qualifier_splits_the_range_today(mut with_db: db::RootDatabase) {
         ranges(&mir),
         vec![("P1.r.x".to_string(), 4), ("P1.r.y".to_string(), 4)]
     );
+}
+
+/// A timer held by a retained instance starts over after a warm start: its
+/// step and clock readings are `NON_RETAIN` in the standard library, so a
+/// TON that was running when the snapshot was taken is not measured from a
+/// reading of the previous run's clock, which started over too.
+#[rstest]
+fn a_timer_in_a_retained_instance_starts_over(mut with_db: db::RootDatabase) {
+    use crate::tests::codegen::compile_to_mir_and_wasm_with_libraries;
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicI64, Ordering};
+
+    let source = r#"
+        USING Std.Timers;
+
+        FUNCTION_BLOCK Machine
+        VAR t : TON; END_VAR
+        VAR_OUTPUT q : BOOL; END_VAR
+            t(IN := TRUE, PT := T#1s);
+            q := t.Q;
+        END_FUNCTION_BLOCK
+
+        PROGRAM P
+        VAR RETAIN m : Machine; END_VAR
+            m();
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (mir, wasm) = compile_to_mir_and_wasm_with_libraries(
+        &mut with_db,
+        &[
+            include_str!("../../../stdlib/Timers.st"),
+            include_str!("../../../stdlib/Convert.st"),
+            include_str!("../../../stdlib/Strings.st"),
+        ],
+        source,
+    );
+    let paths: Vec<&str> = mir
+        .retain_map
+        .ranges
+        .iter()
+        .map(|r| r.path.as_str())
+        .collect();
+    assert!(
+        paths.contains(&"P1.m.t.IN"),
+        "the timer's inputs are kept: {paths:?}"
+    );
+    assert!(
+        !paths
+            .iter()
+            .any(|p| p.ends_with(".STATE") || p.ends_with("_TIME") || p.ends_with(".PREV_IN")),
+        "its step and clock readings are not: {paths:?}"
+    );
+
+    // A PLC on a clock the test moves by hand, in milliseconds.
+    let boot = |now_ms: i64| -> (TestPlc, Arc<AtomicI64>) {
+        let clock = Arc::new(AtomicI64::new(now_ms * 1_000_000));
+        let moved = Arc::clone(&clock);
+        let plc = TestPlc::load_with_host(&wasm, move |linker| {
+            linker.func_wrap("wasi:clocks/monotonic-clock@0.2.6", "now", move || {
+                moved.load(Ordering::Relaxed)
+            })?;
+            Ok(())
+        })
+        .expect("load");
+        (plc, clock)
+    };
+    let info = DebugInfo::from_wasm(&wasm);
+    let read = |plc: &TestPlc, path: &str| {
+        let loc = info.resolve(path).expect(path);
+        loc.decode(&plc.read_bytes(loc.address, loc.size as usize).unwrap())
+    };
+    let elapsed_ms = |plc: &TestPlc| match read(plc, "P1.m.t.ET") {
+        VarValue::I32(ms) => i64::from(ms),
+        VarValue::U32(ms) => i64::from(ms),
+        other => panic!("ET decoded as {other:?}"),
+    };
+
+    // The timer starts at 500 ms and has run 300 ms when the snapshot is taken.
+    let (mut plc, clock) = boot(500);
+    plc.scan().expect("the timer starts");
+    clock.store(800 * 1_000_000, Ordering::Relaxed);
+    plc.scan().expect("running");
+    assert_eq!(elapsed_ms(&plc), 300);
+    assert_eq!(read(&plc, "P1.m.q"), VarValue::Bool(false));
+    let saved: Vec<Vec<u8>> = mir
+        .retain_map
+        .ranges
+        .iter()
+        .map(|r| plc.read_bytes(r.addr, r.size as usize).expect("snapshot"))
+        .collect();
+
+    // A power cycle: the clock starts over, the ranges come back.
+    let (mut warm, clock) = boot(100);
+    for (range, bytes) in mir.retain_map.ranges.iter().zip(&saved) {
+        warm.write_bytes(range.addr, bytes).expect("restore");
+    }
+    warm.scan().expect("the first scan after the warm start");
+    assert_eq!(read(&warm, "P1.m.q"), VarValue::Bool(false));
+    clock.store(1000 * 1_000_000, Ordering::Relaxed);
+    warm.scan().expect("900 ms after the warm start");
+    assert_eq!(
+        elapsed_ms(&warm),
+        900,
+        "measured from the warm start, not from the previous run's reading"
+    );
+    assert_eq!(read(&warm, "P1.m.q"), VarValue::Bool(false));
+    clock.store(1100 * 1_000_000, Ordering::Relaxed);
+    warm.scan().expect("one second after the warm start");
+    assert_eq!(read(&warm, "P1.m.q"), VarValue::Bool(true));
 }
