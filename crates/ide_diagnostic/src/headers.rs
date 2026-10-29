@@ -38,6 +38,7 @@ pub const HEADERS: &[(&str, &str)] = &[
     ("E0028", "METHOD declared in a body"),
     ("E0029", "variadic parameter outside a FUNCTION or METHOD"),
     ("E0030", "__ENDTRY for __END_TRY"),
+    ("E0031", "two qualifiers on a struct element"),
     ("E0101", "duplicate variable"),
     ("E0102", "duplicate POU"),
     ("E0103", "duplicate parameter"),

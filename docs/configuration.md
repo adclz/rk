@@ -260,6 +260,9 @@ To decide for the whole instance, write the qualifier in the configuration:
 - **`PROGRAM RETAIN C1 WITH Fast : Counter;`** keeps every variable of `C1`.
 - **`PROGRAM NON_RETAIN C1 WITH Fast : Counter;`** keeps none of them.
 
+IEC 61131-3 keeps a variable the block itself declares `RETAIN` inside a `NON_RETAIN` instance.
+rk keeps none of it: a variable with no qualifier is never kept, so `NON_RETAIN` on an instance would otherwise change nothing.
+
 A variable that holds a reference is not kept (`E0904`): a new build may move what it points at.
 A `CONSTANT` is not kept either: it takes the value of the build.
 
