@@ -1106,7 +1106,7 @@ END_CONFIGURATION
         |            |
         |            `-- 'q' is a reference in RETAIN storage: its address does not survive a new build
         |
-        | Help: keep references out of RETAIN (NON_RETAIN on a member) and set them in the first scan
+        | Help: move 'q' out of RETAIN and set it in the first scan
         |
         | Note: a warm start restores the address even where a new build moved its target
     ----'
@@ -1117,7 +1117,7 @@ END_CONFIGURATION
         |     |
         |     `-- 'r' is a reference in RETAIN storage: its address does not survive a new build
         |
-        | Help: keep references out of RETAIN (NON_RETAIN on a member) and set them in the first scan
+        | Help: move 'r' out of RETAIN and set it in the first scan
         |
         | Note: a warm start restores the address even where a new build moved its target
     ----'
@@ -1128,7 +1128,7 @@ END_CONFIGURATION
         |     |
         |     `-- 's.p' is a reference in RETAIN storage: its address does not survive a new build
         |
-        | Help: keep references out of RETAIN (NON_RETAIN on a member) and set them in the first scan
+        | Help: mark 'p' NON_RETAIN in 'S' and set it in the first scan
         |
         | Note: a warm start restores the address even where a new build moved its target
     ----'
@@ -1139,7 +1139,7 @@ END_CONFIGURATION
         |     ^|^
         |      `--- 'arr.p' is a reference in RETAIN storage: its address does not survive a new build
         |
-        | Help: keep references out of RETAIN (NON_RETAIN on a member) and set them in the first scan
+        | Help: mark 'p' NON_RETAIN in 'H' and set it in the first scan
         |
         | Note: a warm start restores the address even where a new build moved its target
     ----'
@@ -1150,7 +1150,7 @@ END_CONFIGURATION
         |                   |
         |                   `-- 'g' is a reference in RETAIN storage: its address does not survive a new build
         |
-        | Help: keep references out of RETAIN (NON_RETAIN on a member) and set them in the first scan
+        | Help: move 'g' out of RETAIN and set it in the first scan
         |
         | Note: a warm start restores the address even where a new build moved its target
     ----'
@@ -1165,7 +1165,7 @@ END_CONFIGURATION
         |                        ^|
         |                         `-- PROGRAM RETAIN 'Q1' keeps 'h.p', a reference: its address does not survive a new build
         |
-        | Help: keep references out of RETAIN (NON_RETAIN on a member) and set them in the first scan
+        | Help: mark 'p' NON_RETAIN in 'H' and set it in the first scan
         |
         | Note: a warm start restores the address even where a new build moved its target
     ----'

@@ -399,8 +399,9 @@ fn a_variable_keeps_by_its_own_row(mut with_db: db::RootDatabase) {
 }
 
 /// A nested instance follows its own block: under a `VAR RETAIN`, its
-/// `NON_RETAIN` member is dropped and the rest kept, and a `NON_RETAIN`
-/// instance at any level keeps nothing.
+/// `NON_RETAIN` member is dropped and the rest kept, a `NON_RETAIN`
+/// instance at any level keeps nothing, and a plain holder keeps what the
+/// nested block marks `RETAIN` and nothing else.
 #[rstest]
 fn a_nested_instance_follows_its_own_block(mut with_db: db::RootDatabase) {
     let source = r#"
@@ -420,7 +421,8 @@ fn a_nested_instance_follows_its_own_block(mut with_db: db::RootDatabase) {
         PROGRAM P
         VAR RETAIN w : Wrapper; END_VAR
         VAR NON_RETAIN nw : Wrapper; END_VAR
-            w(); nw();
+        VAR w2 : Wrapper; END_VAR
+            w(); nw(); w2();
         END_PROGRAM
 
         CONFIGURATION Cfg
@@ -436,6 +438,7 @@ fn a_nested_instance_follows_its_own_block(mut with_db: db::RootDatabase) {
         vec![
             ("P1.w.inner.kept".to_string(), 4),
             ("P1.w.inner.plain".to_string(), 4),
+            ("P1.w2.inner.kept".to_string(), 4),
         ]
     );
 
@@ -454,6 +457,8 @@ fn a_nested_instance_follows_its_own_block(mut with_db: db::RootDatabase) {
         ("P1.w.inner.lost", 1),
         ("P1.w.ni.kept", 1),
         ("P1.nw.inner.kept", 1),
+        ("P1.w2.inner.kept", 4),
+        ("P1.w2.inner.plain", 1),
     ];
     for (path, value) in after {
         assert_eq!(read(&warm, path), VarValue::I32(value), "{path}");
@@ -610,4 +615,91 @@ fn a_marked_element_alone_puts_its_program_in_the_band(mut with_db: db::RootData
     warm.run(1).expect("scan");
     assert_eq!(read(&warm, "P1.c.count"), VarValue::I32(4));
     assert_eq!(read(&warm, "P1.c.total"), VarValue::I32(1));
+}
+
+/// `PROGRAM NON_RETAIN` at the configuration keeps nothing of the
+/// instance, a marked element included, and leaves it out of the band; a
+/// plain instance of the same program beside it keeps what its type marks.
+#[rstest]
+fn a_non_retain_instance_keeps_nothing(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE Counter : STRUCT RETAIN count : DINT; total : DINT; END_STRUCT; END_TYPE
+
+        PROGRAM P
+        VAR c : Counter; END_VAR
+        VAR RETAIN r : DINT; END_VAR
+            c.count := c.count + 1; r := r + 1;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+                PROGRAM NON_RETAIN P2 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    assert_eq!(
+        ranges(&mir),
+        vec![("P1.c.count".to_string(), 4), ("P1.r".to_string(), 4)]
+    );
+    let band = mir.retain_base..mir.retain_base + mir.retain_size;
+    for inst in mir
+        .schedule
+        .as_ref()
+        .expect("a schedule")
+        .tasks
+        .iter()
+        .flat_map(|t| &t.programs)
+    {
+        let name = inst.inst_name_with_case.text(&with_db);
+        assert_eq!(band.contains(&inst.instance_addr), name == "P1", "{name}");
+    }
+
+    let info = DebugInfo::from_wasm(&wasm);
+    let read = |plc: &TestPlc, path: &str| {
+        let loc = info.resolve(path).expect(path);
+        loc.decode(&plc.read_bytes(loc.address, loc.size as usize).unwrap())
+    };
+    let mut plc = TestPlc::load(&wasm).expect("load");
+    plc.run(3).expect("scans");
+    let mut warm = warm_start(&mir, &wasm, &plc);
+    warm.run(1).expect("scan");
+    for (path, value) in [
+        ("P1.c.count", 4),
+        ("P1.r", 4),
+        ("P2.c.count", 1),
+        ("P2.r", 1),
+    ] {
+        assert_eq!(read(&warm, path), VarValue::I32(value), "{path}");
+    }
+}
+
+/// Pinned, not promised: a `RETAIN` element inside a `VAR RETAIN` splits
+/// the struct into one range per element, where the same struct with no
+/// qualifier is one range. The follow-up that lists every leaf and strides
+/// arrays flips this assertion instead of changing maps silently.
+#[rstest]
+fn a_redundant_qualifier_splits_the_range_today(mut with_db: db::RootDatabase) {
+    let source = r#"
+        PROGRAM P
+        VAR RETAIN
+            r : STRUCT RETAIN x : DINT; y : DINT; END_STRUCT;
+        END_VAR
+            r.x := r.x + 1;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (mir, _wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    assert_eq!(
+        ranges(&mir),
+        vec![("P1.r.x".to_string(), 4), ("P1.r.y".to_string(), 4)]
+    );
 }
