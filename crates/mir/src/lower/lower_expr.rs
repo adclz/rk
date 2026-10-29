@@ -2657,8 +2657,22 @@ impl<'db> ExprLowerCtx<'db> {
                             continue;
                         }
                         // Plain VAR_INPUT: scalars and STRINGs carry the value, aggregates carry
-                        // the source address for a `memory.copy`.
+                        // the source address for a `memory.copy`. A scalar VAR_IN_OUT is
+                        // a member, copied in the same way and back into its argument
+                        // after the body: in declaration order, so of two bound to one
+                        // variable the last declared is what the variable keeps.
                         let expr = self.lower_expr(value)?;
+                        let written_back = match (&expr, var.is_in_out(self.db)) {
+                            (_, false) => None,
+                            // E0806 refused everything but a variable upstream.
+                            (MirExpr::Load(place, _), true) => Some(place.clone()),
+                            (other, true) => {
+                                return Err(LowerTypeError::UnsupportedType(format!(
+                                    "a VAR_IN_OUT argument needs a variable to copy back \
+                                     into; this one lowered to {other:?}"
+                                )));
+                            }
+                        };
                         let expr = match &field.ty {
                             MirType::Struct(_) | MirType::Array(_) => match expr {
                                 MirExpr::Load(place, _) => MirExpr::AddrOf(place),
@@ -2698,6 +2712,9 @@ impl<'db> ExprLowerCtx<'db> {
                             _ => expr,
                         };
                         input_writes.push((field.offset, expr, field.ty.clone()));
+                        if let Some(place) = written_back {
+                            output_reads.push((field.offset, place, field.ty.clone(), None));
+                        }
                     }
                 }
                 hir::hir_ty::body::ParamBinding::Output { variable, not } => {
