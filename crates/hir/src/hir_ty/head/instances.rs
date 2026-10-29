@@ -206,20 +206,57 @@ pub fn retained_with_instance<'db>(db: &'db dyn WorkspaceDataBase, var: Variable
         )
 }
 
-/// The reference a retained value of type `ty` holds, as the route to it:
-/// empty when the value is one (a REF_TO or an interface), else the STRUCT
-/// fields and instance members, as written, down to the first one found.
-/// Array elements add no name.
+/// The reference a retained value holds, which no warm start can restore:
+/// where it is, and where to mark it `NON_RETAIN`.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
+pub struct RetainedRef {
+    /// The STRUCT fields and instance members from the value to the
+    /// reference, as written: empty when the value is one. Array elements
+    /// add no name.
+    pub route: Vec<Ident>,
+    /// The TYPE or POU declaring the last of them, as written, when it has
+    /// a name: a struct written in place has none.
+    pub declared_in: Option<Ident>,
+    /// The value at the end of the route is a reference (a REF_TO or an
+    /// interface), not an array of them.
+    pub direct: bool,
+}
+
+/// The reference a retained value of type `ty` holds, down to the first one
+/// found.
 pub fn retained_reference<'db>(
     db: &'db dyn WorkspaceDataBase,
     ty: crate::hir_ty::ty::Type<'db>,
     visited: &mut Vec<crate::hir_ty::ty::Type<'db>>,
-) -> Option<Vec<Ident>> {
+) -> Option<RetainedRef> {
+    use crate::HasName;
     use crate::hir_ty::ty::Type;
+    // The name a TYPE gives a struct, read before normalizing loses it.
+    let declared = match ty {
+        Type::DataType(dt) => Some(dt.get_name_with_case(db)),
+        _ => None,
+    };
     let ty = ty.normalize(db);
+    let declared = match ty {
+        Type::FunctionBlock(fb) => Some(fb.get_name_with_case(db)),
+        Type::Class(class) => Some(class.get_name_with_case(db)),
+        _ => declared,
+    };
     let fields: Vec<(Ident, Type<'db>)> = match ty {
-        Type::RefTo(_) | Type::Interface(_) => return Some(Vec::new()),
-        Type::Array(array) => return retained_reference(db, array.of_type(db).infer(db), visited),
+        Type::RefTo(_) | Type::Interface(_) => {
+            return Some(RetainedRef {
+                route: Vec::new(),
+                declared_in: None,
+                direct: true,
+            });
+        }
+        Type::Array(array) => {
+            let mut found = retained_reference(db, array.of_type(db).infer(db), visited)?;
+            if found.route.is_empty() {
+                found.direct = false;
+            }
+            return Some(found);
+        }
         // A `NON_RETAIN` element is never restored, whatever holds it, and
         // a `RETAIN` one is reported where its struct is declared, once.
         Type::Struct(strukt) => strukt
@@ -249,9 +286,12 @@ pub fn retained_reference<'db>(
     }
     visited.push(ty);
     let found = fields.into_iter().find_map(|(name, field)| {
-        let mut route = retained_reference(db, field, visited)?;
-        route.insert(0, name);
-        Some(route)
+        let mut found = retained_reference(db, field, visited)?;
+        if found.route.is_empty() {
+            found.declared_in = declared;
+        }
+        found.route.insert(0, name);
+        Some(found)
     });
     visited.pop();
     found

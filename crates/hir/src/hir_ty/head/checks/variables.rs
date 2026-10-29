@@ -185,7 +185,7 @@ impl<'db> InitInference<'db> {
         {
             return;
         }
-        if let Some(route) = crate::hir_ty::head::instances::retained_reference(
+        if let Some(found) = crate::hir_ty::head::instances::retained_reference(
             db,
             var.spec(db).infer(db),
             &mut Vec::new(),
@@ -193,7 +193,7 @@ impl<'db> InitInference<'db> {
             self.errors.push(
                 crate::check::errors::e09_reference::ReferenceError::RetainedReference {
                     var: *var,
-                    route,
+                    found,
                     instance: None,
                 }
                 .to_diagnostic(db, self.scope.file(db)),

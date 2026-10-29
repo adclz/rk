@@ -49,8 +49,9 @@ pub enum ReferenceError<'db> {
     /// that target.
     RetainedReference {
         var: VariableDecl<'db>,
-        /// The fields and members from `var` to the reference, as written.
-        route: Vec<crate::hir_def::interned::identifier::Ident>,
+        /// The reference `var` holds: the route to it and where it is
+        /// declared.
+        found: crate::hir_ty::head::instances::RetainedRef,
         /// The `PROGRAM RETAIN` instance keeping `var`, when its own
         /// declaration is not RETAIN.
         instance: Option<crate::hir_def::interned::identifier::SpanIdent<'db>>,
@@ -59,8 +60,8 @@ pub enum ReferenceError<'db> {
     /// or member: it persists on its own, whatever variable holds it.
     RetainedReferenceElement {
         element: crate::hir_def::expressions::spec::StructElement<'db>,
-        /// The fields and members from the element to the reference.
-        route: Vec<crate::hir_def::interned::identifier::Ident>,
+        /// The reference the element holds.
+        found: crate::hir_ty::head::instances::RetainedRef,
     },
     /// `REF()` of what names no variable: a literal, an expression or a
     /// call result has no storage of its own, and a direct address or a bit
@@ -68,6 +69,18 @@ pub enum ReferenceError<'db> {
     RefArgumentNotAVariable {
         expr: crate::hir_def::expressions::expression::Expr<'db>,
     },
+}
+
+/// Where the last of a route's names is declared, for the advice: the TYPE
+/// or POU by name, or the struct written in place.
+fn declared_in(
+    db: &dyn WorkspaceDataBase,
+    found: &crate::hir_ty::head::instances::RetainedRef,
+) -> String {
+    match found.declared_in {
+        Some(name) => format!("'{}'", name.text(db)),
+        None => "the struct that declares it".to_string(),
+    }
 }
 
 impl<'db> ErrorCode for ReferenceError<'db> {
@@ -227,27 +240,55 @@ impl<'db> ToIdeDiagnostic<'db> for ReferenceError<'db> {
             }
             Self::RetainedReference {
                 var,
-                route,
+                found,
                 instance,
             } => {
                 let held = std::iter::once(var.name_with_case(db))
-                    .chain(route.iter().copied())
+                    .chain(found.route.iter().copied())
                     .map(|name| name.text(db).to_string())
                     .collect::<Vec<_>>()
                     .join(".");
-                let (message, range) = match instance {
-                    Some(instance) => (
+                let (message, range) = match (instance, found.direct) {
+                    (Some(instance), true) => (
                         format!(
                             "PROGRAM RETAIN '{}' keeps '{held}', a reference: its address does not survive a new build",
                             instance.with_case.text(db)
                         ),
                         instance.get_span(db),
                     ),
-                    None => (
+                    (Some(instance), false) => (
+                        format!(
+                            "PROGRAM RETAIN '{}' keeps '{held}', which holds references: their addresses do not survive a new build",
+                            instance.with_case.text(db)
+                        ),
+                        instance.get_span(db),
+                    ),
+                    (None, true) => (
                         format!(
                             "'{held}' is a reference in RETAIN storage: its address does not survive a new build"
                         ),
                         var.get_name_span(db),
+                    ),
+                    (None, false) => (
+                        format!(
+                            "'{held}' holds references in RETAIN storage: their addresses do not survive a new build"
+                        ),
+                        var.get_name_span(db),
+                    ),
+                };
+                // A member kept by what holds it is marked NON_RETAIN where
+                // it is declared; the variable itself, when it is the
+                // reference and its own section is RETAIN, leaves it.
+                let set = if found.direct { "set it" } else { "set them" };
+                let help = match (found.route.last(), instance) {
+                    (None, None) => format!(
+                        "move '{}' out of RETAIN and {set} in the first scan",
+                        var.name_with_case(db).text(db)
+                    ),
+                    (last, _) => format!(
+                        "mark '{}' NON_RETAIN in {} and {set} in the first scan",
+                        last.copied().unwrap_or(var.name_with_case(db)).text(db),
+                        declared_in(db, found)
                     ),
                 };
                 let mut diag = diag()
@@ -267,24 +308,21 @@ impl<'db> ToIdeDiagnostic<'db> for ReferenceError<'db> {
                     "a warm start restores the address even where a new build moved its target"
                         .into(),
                 );
-                diag.with_help(
-                    "keep references out of RETAIN (NON_RETAIN on a member) and set them in the first scan"
-                        .into(),
-                );
+                diag.with_help(help);
                 diag
             }
-            Self::RetainedReferenceElement { element, route } => {
+            Self::RetainedReferenceElement { element, found } => {
                 let name = element.name_with_case(db).text(db).to_string();
                 let held = std::iter::once(element.name_with_case(db))
-                    .chain(route.iter().copied())
+                    .chain(found.route.iter().copied())
                     .map(|name| name.text(db).to_string())
                     .collect::<Vec<_>>()
                     .join(".");
-                // The element is the reference, or it holds one down a
-                // struct of its own: the advice names the fix that keeps
-                // the rest of what it holds.
-                let (message, help) = match route.last() {
-                    None => (
+                // The element is the reference, an array of them, or holds
+                // one down a struct of its own: the advice names the fix
+                // that keeps the rest of what it holds.
+                let (message, help) = match (found.route.last(), found.direct) {
+                    (None, true) => (
                         format!(
                             "'{held}' is a reference marked RETAIN: its address does not survive a new build"
                         ),
@@ -292,13 +330,30 @@ impl<'db> ToIdeDiagnostic<'db> for ReferenceError<'db> {
                             "leave the qualifier off '{name}' and set the reference in the first scan"
                         ),
                     ),
-                    Some(last) => (
+                    (None, false) => (
+                        format!(
+                            "'{held}' is marked RETAIN and holds references: their addresses do not survive a new build"
+                        ),
+                        format!("leave the qualifier off '{name}' and set them in the first scan"),
+                    ),
+                    (Some(last), true) => (
                         format!(
                             "'{name}' is marked RETAIN and holds the reference '{held}': its address does not survive a new build"
                         ),
                         format!(
-                            "mark '{}' NON_RETAIN in the struct that declares it and set it in the first scan",
-                            last.text(db)
+                            "mark '{}' NON_RETAIN in {} and set it in the first scan",
+                            last.text(db),
+                            declared_in(db, found)
+                        ),
+                    ),
+                    (Some(last), false) => (
+                        format!(
+                            "'{name}' is marked RETAIN and holds references in '{held}': their addresses do not survive a new build"
+                        ),
+                        format!(
+                            "mark '{}' NON_RETAIN in {} and set them in the first scan",
+                            last.text(db),
+                            declared_in(db, found)
                         ),
                     ),
                 };

@@ -73,7 +73,7 @@ impl<'db> InitInference<'db> {
             // A `RETAIN` element persists on its own, so a reference in it
             // is refused as one in a RETAIN variable is (E0904).
             if field.qualifier(db).contains(crate::Qualifier::RETAIN)
-                && let Some(route) = crate::hir_ty::head::instances::retained_reference(
+                && let Some(found) = crate::hir_ty::head::instances::retained_reference(
                     db,
                     element_type,
                     &mut Vec::new(),
@@ -82,7 +82,7 @@ impl<'db> InitInference<'db> {
                 self.errors.push(
                     ReferenceError::RetainedReferenceElement {
                         element: *field,
-                        route,
+                        found,
                     }
                     .to_diagnostic(db, self.scope.file(db)),
                 );
