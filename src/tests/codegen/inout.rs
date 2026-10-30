@@ -634,8 +634,10 @@ fn an_early_return_copies_back(mut with_db: db::RootDatabase) {
 }
 
 /// `REF()` of a member points at the member, not at the caller's variable:
-/// a write through it changes what the instance holds, and the caller's
-/// variable only at the next copy back.
+/// a write through it changes what the instance holds. The caller's
+/// variable never sees it, since the next call that binds the member
+/// copies the variable in first; only a write during a call, before its
+/// copy back, reaches the variable.
 #[rstest]
 fn a_reference_to_a_member_points_at_the_member(mut with_db: db::RootDatabase) {
     let source = r#"
@@ -688,5 +690,140 @@ fn a_bit_of_a_word_bound_to_a_member(mut with_db: db::RootDatabase) {
     assert_eq!(
         result, 11,
         "16#F8 after the first call and 16#F0 after the second: bit 3 only"
+    );
+}
+
+/// A member of eight bytes, an LINT, is copied whole, in and back.
+#[rstest]
+fn an_eight_byte_member_is_copied_whole(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK bump
+            VAR_IN_OUT v : LINT; END_VAR
+            v := v + 1;
+        END_FUNCTION_BLOCK
+
+        FUNCTION test : INT
+        VAR b : bump; x : LINT := 16#1_0000_0001; END_VAR
+            b(v := x);
+            IF x = 16#1_0000_0002 AND b.v = 16#1_0000_0002 THEN
+                test := 1;
+            END_IF;
+        END_FUNCTION
+    "#;
+    let result: i32 = super::run(&mut with_db, source, "test", ());
+    assert_eq!(result, 1, "the high word came back with the low one");
+}
+
+/// The next call that binds the member copies the caller's variable in
+/// first, so a write through `REF()` of the member between calls never
+/// reaches that variable: the 9 is gone when `x` is copied in again.
+#[rstest]
+fn a_write_to_the_member_between_calls_is_copied_over(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK keeper
+            VAR_IN_OUT io : INT; END_VAR
+
+            METHOD PUBLIC poke
+            VAR p : REF_TO INT; END_VAR
+                p := REF(io);
+                p^ := 9;
+            END_METHOD
+
+            io := io + 1;
+        END_FUNCTION_BLOCK
+
+        FUNCTION test : INT
+        VAR k : keeper; x : INT := 4; END_VAR
+            k(io := x);
+            k.poke();
+            k(io := x);
+            test := x * 100 + k.io;
+        END_FUNCTION
+    "#;
+    let result: i32 = super::run(&mut with_db, source, "test", ());
+    assert_eq!(result, 606, "x came in at 5 over the 9, and left at 6");
+}
+
+/// A write through `REF()` of the member during a call, before its copy
+/// back, does reach the caller's variable.
+#[rstest]
+fn a_write_through_a_reference_during_the_call_comes_back(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK keeper
+            VAR_IN_OUT io : INT; END_VAR
+
+            METHOD PUBLIC poke
+            VAR p : REF_TO INT; END_VAR
+                p := REF(io);
+                p^ := 9;
+            END_METHOD
+
+            io := io + 1;
+            poke();
+        END_FUNCTION_BLOCK
+
+        FUNCTION test : INT
+        VAR k : keeper; x : INT := 4; END_VAR
+            k(io := x);
+            test := x * 100 + k.io;
+        END_FUNCTION
+    "#;
+    let result: i32 = super::run(&mut with_db, source, "test", ());
+    assert_eq!(result, 909, "the 9 written during the call was copied back");
+}
+
+/// An inherited scalar VAR_IN_OUT is a member of the derived block, bound
+/// and copied back by a call of it.
+#[rstest]
+fn an_inherited_member_is_copied_back(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Base
+            VAR_IN_OUT io : INT; END_VAR
+            io := io + 1;
+        END_FUNCTION_BLOCK
+
+        FUNCTION_BLOCK Derived EXTENDS Base
+            io := io + 10;
+        END_FUNCTION_BLOCK
+
+        FUNCTION test : INT
+        VAR d : Derived; x : INT := 1; END_VAR
+            d(io := x);
+            test := x * 100 + d.io;
+        END_FUNCTION
+    "#;
+    let result: i32 = super::run(&mut with_db, source, "test", ());
+    assert_eq!(
+        result, 1111,
+        "the derived body wrote the inherited member, and x got it back"
+    );
+}
+
+/// `SUPER()` runs the base body on the same instance, with no copy of its
+/// own: the derived body's write and the base body's both reach the
+/// caller's variable at the one copy back.
+#[rstest]
+fn super_runs_the_base_body_on_the_same_member(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Base
+            VAR_IN_OUT io : INT; END_VAR
+            io := io + 1;
+        END_FUNCTION_BLOCK
+
+        FUNCTION_BLOCK Derived EXTENDS Base
+            io := io + 10;
+            SUPER();
+        END_FUNCTION_BLOCK
+
+        FUNCTION test : INT
+        VAR d : Derived; x : INT := 1; END_VAR
+            d(io := x);
+            test := x * 100 + d.io;
+        END_FUNCTION
+    "#;
+    let result: i32 = super::run(&mut with_db, source, "test", ());
+    assert_eq!(
+        result, 1212,
+        "1, plus 10 in the derived body, plus 1 in the base body"
     );
 }

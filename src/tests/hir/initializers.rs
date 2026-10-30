@@ -479,7 +479,7 @@ END_PROGRAM
        |
        | Help: pass the variable in the call, as 'io := x'
        |
-       | Note: a VAR_IN_OUT is bound to its argument at each call
+       | Note: a VAR_IN_OUT of a STRING, a reference or an aggregate is bound to its argument at each call, where a scalar one is a member and takes a value
     ---'
     [E0405] Error: initializer for a member that takes none
         ,-[ file:///test0.st:13:19 ]
@@ -494,7 +494,7 @@ END_PROGRAM
         |
         | Help: pass the variable in the call, as 'io := x'
         |
-        | Note: a VAR_IN_OUT is bound to its argument at each call
+        | Note: a VAR_IN_OUT of a STRING, a reference or an aggregate is bound to its argument at each call, where a scalar one is a member and takes a value
     ----'
     ");
 }

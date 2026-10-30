@@ -988,3 +988,81 @@ fn an_in_out_member_follows_its_section(mut with_db: db::RootDatabase) {
     warm.run(1).expect("a scan after the warm start");
     assert_eq!(warm.read_var(&info, "P1.n"), Some(VarValue::I16(7)));
 }
+
+/// A member of eight bytes, an LINT, has a range of its own size and comes
+/// back whole.
+#[rstest]
+fn an_eight_byte_member_keeps_its_whole_range(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Counter
+        VAR_IN_OUT RETAIN big : LINT := 16#1_0000_0000; END_VAR
+            big := big + 1;
+        END_FUNCTION_BLOCK
+
+        PROGRAM P
+        VAR c : Counter; END_VAR
+            c();
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    assert_eq!(ranges(&mir), vec![("P1.c.big".to_string(), 8)]);
+
+    let mut plc = TestPlc::load(&wasm).expect("load");
+    plc.run(2).expect("two scans");
+    let info = DebugInfo::from_wasm(&wasm);
+    assert_eq!(
+        plc.read_var(&info, "P1.c.big"),
+        Some(VarValue::I64(0x1_0000_0002))
+    );
+
+    let mut warm = warm_start(&mir, &wasm, &plc);
+    assert_eq!(
+        warm.read_var(&info, "P1.c.big"),
+        Some(VarValue::I64(0x1_0000_0002))
+    );
+    warm.run(1).expect("a scan after the warm start");
+    assert_eq!(
+        warm.read_var(&info, "P1.c.big"),
+        Some(VarValue::I64(0x1_0000_0003))
+    );
+}
+
+/// A VAR_CONFIG entry gives a member its starting value in one instance,
+/// as an instance initializer does: the first call starts from it.
+#[rstest]
+fn a_var_config_value_starts_a_member(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Counter
+        VAR_IN_OUT count : INT; END_VAR
+            count := count + 1;
+        END_FUNCTION_BLOCK
+
+        PROGRAM P
+        VAR c : Counter; n : INT; END_VAR
+            c();
+            n := c.count;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+        VAR_CONFIG
+            Res.P1.c.count : INT := 5;
+        END_VAR
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    let mut plc = TestPlc::load(&wasm).expect("load");
+    plc.run(1).expect("scan");
+    let info = DebugInfo::from_wasm(&wasm);
+    assert_eq!(plc.read_var(&info, "P1.n"), Some(VarValue::I16(6)));
+}

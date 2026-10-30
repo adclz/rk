@@ -1266,18 +1266,18 @@ END_FUNCTION_BLOCK
         |
      20 |     b := REF(w.%X3);
         |              ^^|^^
-        |                `---- REF() takes a variable, not a bit of one
+        |                `---- REF() takes a variable, not a slice of one
         |
-        | Note: a reference points at a named variable or instance
+        | Note: a slice of a variable has no address of its own, where a variable declared at whole bytes of an address has
     ----'
     [E0905] Error: REF() argument not a variable
         ,-[ file:///test0.st:21:15 ]
         |
      21 |     pb := REF(w.%B1);
         |               ^^|^^
-        |                 `---- REF() takes a variable, not a part of one
+        |                 `---- REF() takes a variable, not a slice of one
         |
-        | Note: a reference points at a named variable or instance
+        | Note: a slice of a variable has no address of its own, where a variable declared at whole bytes of an address has
     ----'
     ");
 }

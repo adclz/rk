@@ -163,7 +163,7 @@ fn invalid_a_qualifier_on_an_in_out_bound_by_reference(mut with_db: RootDatabase
        |
        | Help: drop the RETAIN
        |
-       | Note: a FUNCTION_BLOCK keeps a VAR_IN_OUT of a scalar type as a member, and nothing of one of an aggregate type
+       | Note: a FUNCTION_BLOCK keeps a VAR_IN_OUT of a scalar type as a member, and nothing of a STRING, a reference or an aggregate
     ---'
     [E0906] Error: qualifier on a VAR_IN_OUT bound by reference
         ,-[ file:///test0.st:10:13 ]
@@ -174,7 +174,7 @@ fn invalid_a_qualifier_on_an_in_out_bound_by_reference(mut with_db: RootDatabase
         |
         | Help: drop the NON_RETAIN
         |
-        | Note: a FUNCTION_BLOCK keeps a VAR_IN_OUT of a scalar type as a member, and nothing of one of an aggregate type
+        | Note: a FUNCTION_BLOCK keeps a VAR_IN_OUT of a scalar type as a member, and nothing of a STRING, a reference or an aggregate
     ----'
     [E0906] Error: qualifier on a VAR_IN_OUT bound by reference
         ,-[ file:///test0.st:11:13 ]
@@ -185,7 +185,7 @@ fn invalid_a_qualifier_on_an_in_out_bound_by_reference(mut with_db: RootDatabase
         |
         | Help: drop the NON_RETAIN
         |
-        | Note: a FUNCTION_BLOCK keeps a VAR_IN_OUT of a scalar type as a member, and nothing of one of an aggregate type
+        | Note: a FUNCTION_BLOCK keeps a VAR_IN_OUT of a scalar type as a member, and nothing of a STRING, a reference or an aggregate
     ----'
     [E0031] Error: two qualifiers on a declaration
         ,-[ file:///test0.st:13:27 ]
@@ -213,20 +213,23 @@ fn invalid_a_qualifier_on_an_in_out_bound_by_reference(mut with_db: RootDatabase
 }
 
 /// A call binds every VAR_IN_OUT bound by reference: a FUNCTION_BLOCK's
-/// aggregate one and a FUNCTION's scalar one. The member still takes a
-/// variable (E0806), since the value comes back into it.
+/// aggregate and reference ones and a FUNCTION's scalar one. The member
+/// still takes a variable (E0806), since the value comes back into it.
 #[rstest]
 fn invalid_a_call_binds_every_in_out_bound_by_reference(mut with_db: RootDatabase) {
     let source = r#"
         TYPE Pt : STRUCT x : INT; y : INT; END_STRUCT; END_TYPE
+        TYPE PInt : REF_TO INT; END_TYPE
 
         FUNCTION_BLOCK Counter
         VAR_IN_OUT
             count : INT;
             pos : Pt;
+            r : PInt;
         END_VAR
             count := count + 1;
             pos.x := count;
+            r^ := count;
         END_FUNCTION_BLOCK
 
         FUNCTION Bump : INT
@@ -242,51 +245,55 @@ fn invalid_a_call_binds_every_in_out_bound_by_reference(mut with_db: RootDatabas
             c : Counter;
             n : INT;
             p : Pt;
+            pr : PInt;
         END_VAR
             c(count := n);
-            c(count := n + 1, pos := p);
+            c(count := n + 1, pos := p, r := pr);
             n := Bump();
         END_FUNCTION_BLOCK
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     [E0802] Error: missing required parameter
-        ,-[ file:///test0.st:27:13 ]
+        ,-[ file:///test0.st:31:13 ]
         |
-      7 |             pos : Pt;
+      8 |             pos : Pt;
         |             ^|^
         |              `--- parameter 'pos' is declared here
-        |
-     27 |             c(count := n);
+      9 |             r : PInt;
         |             |
-        |             `-- call to 'Counter' is missing 1 required parameter: 'pos'
+        |             `-- parameter 'r' is declared here
         |
-        | Note: a VAR_IN_OUT of a FUNCTION or a METHOD, or of an aggregate type, is bound to the caller's variable at each call
+     31 |             c(count := n);
+        |             |
+        |             `-- call to 'Counter' is missing 2 required parameters: 'pos', 'r'
+        |
+        | Note: a VAR_IN_OUT of a FUNCTION or a METHOD, or of a STRING, a reference or an aggregate, is bound to the caller's variable at each call
     ----'
     [E0806] Error: VAR_IN_OUT argument not a variable
-        ,-[ file:///test0.st:28:24 ]
+        ,-[ file:///test0.st:32:24 ]
         |
-      6 |             count : INT;
+      7 |             count : INT;
         |             ^^|^^
         |               `---- parameter 'count' is declared here
         |
-     28 |             c(count := n + 1, pos := p);
+     32 |             c(count := n + 1, pos := p, r := pr);
         |                        ^^|^^
         |                          `---- VAR_IN_OUT parameter 'count' of 'Counter' requires a variable, not a value
         |
-        | Note: a literal, an expression or a call result has no address for a VAR_IN_OUT to bind
+        | Note: a FUNCTION_BLOCK copies a scalar VAR_IN_OUT back into its argument when the call ends, and a literal, an expression or a call result has nowhere to receive it
     ----'
     [E0802] Error: missing required parameter
-        ,-[ file:///test0.st:29:18 ]
+        ,-[ file:///test0.st:33:18 ]
         |
-     15 |             v : INT;
+     18 |             v : INT;
         |             |
         |             `-- parameter 'v' is declared here
         |
-     29 |             n := Bump();
+     33 |             n := Bump();
         |                  ^^|^
         |                    `--- call to 'Bump' is missing 1 required parameter: 'v'
         |
-        | Note: a VAR_IN_OUT of a FUNCTION or a METHOD, or of an aggregate type, is bound to the caller's variable at each call
+        | Note: a VAR_IN_OUT of a FUNCTION or a METHOD, or of a STRING, a reference or an aggregate, is bound to the caller's variable at each call
     ----'
     ");
 }
@@ -329,5 +336,33 @@ fn invalid_a_constant_bound_to_a_member(mut with_db: RootDatabase) {
         |
         | Note: a VAR_IN_OUT could change it
     ----'
+    ");
+}
+
+/// An input location bound to a member: the copy back would write it, as
+/// an assignment to it would (E1419).
+#[rstest]
+fn invalid_an_input_location_bound_to_a_member(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Flip
+        VAR_IN_OUT v : BOOL; END_VAR
+            v := NOT v;
+        END_FUNCTION_BLOCK
+
+        PROGRAM P
+        VAR f : Flip; END_VAR
+            f(v := %IX0.3);
+        END_PROGRAM
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1419] Error: write to an input location
+       ,-[ file:///test0.st:9:20 ]
+       |
+     9 |             f(v := %IX0.3);
+       |                    ^^^|^^
+       |                       `---- '%IX0.3' is an input: it is written by the host, not by the program
+       |
+       | Note: the host copies the input image in before each scan: the rest of this scan would read a value the input never had, and the next scan overwrites it
+    ---'
     ");
 }

@@ -933,7 +933,7 @@ END_FUNCTION_BLOCK"#;
         |     ^|
         |      `-- call to 'fn' is missing 1 required parameter: 'a'
         |
-        | Note: a VAR_IN_OUT of a FUNCTION or a METHOD, or of an aggregate type, is bound to the caller's variable at each call
+        | Note: a VAR_IN_OUT of a FUNCTION or a METHOD, or of a STRING, a reference or an aggregate, is bound to the caller's variable at each call
     ----'
     ");
 }
@@ -966,7 +966,7 @@ END_FUNCTION_BLOCK"#;
         |     |
         |     `-- call to 'driver' is missing 1 required parameter: 'target'
         |
-        | Note: a VAR_IN_OUT of a FUNCTION or a METHOD, or of an aggregate type, is bound to the caller's variable at each call
+        | Note: a VAR_IN_OUT of a FUNCTION or a METHOD, or of a STRING, a reference or an aggregate, is bound to the caller's variable at each call
     ----'
     ");
 }
@@ -1100,7 +1100,7 @@ END_FUNCTION_BLOCK"#;
         |                 ^|
         |                  `-- VAR_IN_OUT parameter 'target' of 'driver' requires a variable, not a value
         |
-        | Note: a literal, an expression or a call result has no address for a VAR_IN_OUT to bind
+        | Note: a FUNCTION_BLOCK copies a scalar VAR_IN_OUT back into its argument when the call ends, and a literal, an expression or a call result has nowhere to receive it
     ----'
     ");
 }
@@ -1231,9 +1231,11 @@ END_FUNCTION"#;
         |
      14 |     SetIt(io := b.%X1);
         |                 ^^|^^
-        |                   `---- VAR_IN_OUT parameter 'io' of 'SetIt' requires a variable, not a value
+        |                   `---- VAR_IN_OUT parameter 'io' of 'SetIt' requires a variable, not a slice of one
         |
-        | Note: a literal, an expression or a call result has no address for a VAR_IN_OUT to bind
+        | Help: copy it into a variable, pass that, and assign it back
+        |
+        | Note: a VAR_IN_OUT of a FUNCTION or a METHOD binds the argument's address, and a slice of a variable has none of its own, where a variable declared at whole bytes of an address has
     ----'
     ");
 }

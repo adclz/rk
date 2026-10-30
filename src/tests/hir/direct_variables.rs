@@ -498,7 +498,7 @@ END_FUNCTION_BLOCK"#;
        |     ^^^|^^
        |        `---- '%IX0.1' is an input: it is written by the host, not by the program
        |
-       | Note: the host copies the input image in before each scan, so this write is overwritten before anything can read it
+       | Note: the host copies the input image in before each scan: the rest of this scan would read a value the input never had, and the next scan overwrites it
     ---'
     ");
 }
@@ -633,7 +633,7 @@ END_CONFIGURATION
        |     ^^^|^^
        |        `---- '%IX0.0' is an input: it is written by the host, not by the program
        |
-       | Note: the host copies the input image in before each scan, so this write is overwritten before anything can read it
+       | Note: the host copies the input image in before each scan: the rest of this scan would read a value the input never had, and the next scan overwrites it
     ---'
     ");
 }
@@ -670,7 +670,7 @@ END_CONFIGURATION
         |            ^^^|^^
         |               `---- '%IW0' is an input: it is written by the host, not by the program
         |
-        | Note: the host copies the input image in before each scan, so this write is overwritten before anything can read it
+        | Note: the host copies the input image in before each scan: the rest of this scan would read a value the input never had, and the next scan overwrites it
     ----'
     ");
 }
@@ -944,22 +944,7 @@ END_CONFIGURATION
         |
         | Help: declare the address once and name that variable
         |
-        | Note: each declaration gets storage of its own, so the two would never see each other's value
-    ----'
-    [E1421] Error: duplicate location
-        ,-[ file:///test0.st:14:21 ]
-        |
-      9 |     twin   AT %QW4 : WORD;
-        |               ^^|^
-        |                 `--- 'twin' is located here
-        |
-     14 | VAR_GLOBAL valve AT %QW4 : WORD; END_VAR
-        |                     ^^|^
-        |                       `--- 'valve' and 'twin' are both located at '%QW4'
-        |
-        | Help: declare the address once and name that variable
-        |
-        | Note: each declaration gets storage of its own, so the two would never see each other's value
+        | Note: each declaration gets storage of its own, so a write through one is invisible through the others
     ----'
     ");
 }
@@ -1137,17 +1122,9 @@ END_CONFIGURATION
      16 |     Res.P1.d.run   AT %QX0.0 : BOOL;
         |              ^|^
         |               `--- 'run' is located at '%QX0.0' here and at '%QX0.1' by another entry
-        |
-        | Help: keep one of the entries
-        |
-        | Note: an instance's variable has one address
-    ----'
-    [E1424] Error: location refused
-        ,-[ file:///test0.st:17:14 ]
-        |
      17 |     Res.P1.d.run   AT %QX0.1 : BOOL;
         |              ^|^
-        |               `--- 'run' is located at '%QX0.1' here and at '%QX0.0' by another entry
+        |               `--- 'run' is located at '%QX0.1' here
         |
         | Help: keep one of the entries
         |
@@ -1713,7 +1690,7 @@ END_CONFIGURATION
         |            ^^^|^^
         |               `---- '%IW0' is an input: it is written by the host, not by the program
         |
-        | Note: the host copies the input image in before each scan, so this write is overwritten before anything can read it
+        | Note: the host copies the input image in before each scan: the rest of this scan would read a value the input never had, and the next scan overwrites it
     ----'
     [E1419] Error: write to an input location
         ,-[ file:///test0.st:11:9 ]
@@ -1722,7 +1699,7 @@ END_CONFIGURATION
         |         ^^^|^^
         |            `---- '%IW0' is an input: it is written by the host, not by the program
         |
-        | Note: the host copies the input image in before each scan, so this write is overwritten before anything can read it
+        | Note: the host copies the input image in before each scan: the rest of this scan would read a value the input never had, and the next scan overwrites it
     ----'
     [E1419] Error: write to an input location
         ,-[ file:///test0.st:12:5 ]
@@ -1731,7 +1708,7 @@ END_CONFIGURATION
         |     ^^^|^^
         |        `---- '%IW2' is an input: it is written by the host, not by the program
         |
-        | Note: the host copies the input image in before each scan, so this write is overwritten before anything can read it
+        | Note: the host copies the input image in before each scan: the rest of this scan would read a value the input never had, and the next scan overwrites it
     ----'
     ");
 }
@@ -1837,21 +1814,7 @@ END_CONFIGURATION
         |
         | Help: declare the address once and name that variable
         |
-        | Note: each declaration gets storage of its own, so the two would never see each other's value
-    ----'
-    [E1421] Error: duplicate location
-        ,-[ file:///test0.st:11:10 ]
-        |
-     10 |     a AT %IW0 : INT;
-        |          ^^|^
-        |            `--- 'a' is located here
-     11 |     b AT %IW0 : INT;
-        |          ^^|^
-        |            `--- 'b' and 'a' are both located at '%IW0'
-        |
-        | Help: declare the address once and name that variable
-        |
-        | Note: each declaration gets storage of its own, so the two would never see each other's value
+        | Note: each declaration gets storage of its own, so a write through one is invisible through the others
     ----'
     ");
 }
@@ -2166,8 +2129,7 @@ END_CONFIGURATION
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
 
-/// A FUNCTION's VAR_IN_OUT takes an address, and three bits of a word have
-/// none.
+/// A FUNCTION's VAR_IN_OUT takes an address, and bit 3 of a word has none.
 #[rstest]
 fn invalid_part_of_a_wider_address_passed_to_an_in_out(mut with_db: RootDatabase) {
     let source = r#"
@@ -2187,13 +2149,14 @@ END_PROGRAM
     [E1423] Error: part of a wider address
         ,-[ file:///test0.st:11:20 ]
         |
+     10 |     w := %QW0;
+        |          ^^|^
+        |            `--- '%QW0' is mentioned here
      11 |     b := Flip(v := %QX0.3);
         |                    ^^^|^^
         |                       `---- '%QX0.3' is part of '%QW0' and has no address of its own to pass to a VAR_IN_OUT
         |
         | Help: copy it into a variable, pass that, and assign it back
-        |
-        | Note: a VAR_IN_OUT of a FUNCTION or a METHOD binds the argument's address, where a FUNCTION_BLOCK copies a scalar one in and back
     ----'
     ");
 }
@@ -2240,11 +2203,14 @@ END_CONFIGURATION
     [E1423] Error: part of a wider address
        ,-[ file:///test0.st:6:14 ]
        |
+     5 |     w := %QW0;
+       |          ^^|^
+       |            `--- '%QW0' is mentioned here
      6 |     p := REF(named);
        |              ^^|^^
        |                `---- '%QX0.5' is part of '%QW0' and has no address of its own to take a reference to
        |
-       | Help: take the reference of '%QW0' as a whole
+       | Help: declare a variable AT '%QW0' and take the reference of it
     ---'
     ");
 }
@@ -2302,11 +2268,15 @@ END_CONFIGURATION
     [E1423] Error: part of a wider address
         ,-[ file:///test0.st:14:13 ]
         |
+      9 |     whole AT %MW0 : WORD;
+        |     ^^|^^
+        |       `---- 'whole' is declared here
+        |
      14 |     keep AT %MX0.2 : BOOL;
         |             ^^^|^^
         |                `---- '%MX0.2' is part of '%MW0' and cannot be RETAIN on its own
         |
-        | Help: declare the variable located at '%MW0' RETAIN
+        | Help: declare 'whole' RETAIN instead
     ----'
     ");
 }
@@ -2368,11 +2338,14 @@ END_CONFIGURATION
     [E1423] Error: part of a wider address
         ,-[ file:///test0.st:10:14 ]
         |
+      9 |     lamps AT %QW0   : WORD := 16#00F0;
+        |     ^^|^^
+        |       `---- 'lamps' is declared here
      10 |     lamp  AT %QX0.3 : BOOL := TRUE;
         |              ^^^|^^
         |                 `---- '%QX0.3' is part of '%QW0' and cannot have an initial value of its own
         |
-        | Help: give the variable located at '%QW0' an initial value with this part set in it
+        | Help: give 'lamps' an initial value with this part set in it
     ----'
     ");
 }
@@ -2417,12 +2390,16 @@ END_CONFIGURATION
         |          ^^|^
         |            `--- '%QB0' is part of '%QW0' and cannot have an initial value of its own
         |
-        | Help: declare a VAR_GLOBAL located at '%QW0' with this part set in its initial value
+        | Help: give the VAR_CONFIG entry for '%QW0' a starting value with this part set in it
         |
         | Note: VAR_CONFIG gives '%QW0' to a variable that takes no initial value
     ----'
     [E1423] Error: part of a wider address
         ,-[ file:///test0.st:14:10 ]
+        |
+      8 |     %QW4 := 1;
+        |     ^^|^
+        |       `--- '%QW4' is mentioned here
         |
      14 |     h AT %QB8 : BYTE := 16#34;
         |          ^^|^
@@ -2482,22 +2459,7 @@ END_CONFIGURATION
         |
         | Help: declare the address once and name that variable
         |
-        | Note: each declaration gets storage of its own, so the two would never see each other's value
-    ----'
-    [E1421] Error: duplicate location
-        ,-[ file:///test0.st:12:21 ]
-        |
-      8 | VAR lamp AT %QW0 : WORD; END_VAR
-        |             ^^|^
-        |               `--- 'lamp' is located here
-        |
-     12 | VAR_GLOBAL panel AT %QW0 : WORD; END_VAR
-        |                     ^^|^
-        |                       `--- 'panel' and 'lamp' are both located at '%QW0'
-        |
-        | Help: declare the address once and name that variable
-        |
-        | Note: each declaration gets storage of its own, so the two would never see each other's value
+        | Note: each declaration gets storage of its own, so a write through one is invisible through the others
     ----'
     ");
 }
@@ -2525,4 +2487,251 @@ END_VAR
 END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+/// A variable declared at a bit is bits of the wider address the workspace
+/// mentions, by a declaration or by a bare mention in a body: a reference
+/// to it is refused as one to the bare bit is, and the owner's declaration
+/// is pointed at when there is one.
+#[rstest]
+fn invalid_a_reference_to_a_named_bit_of_a_wider_address(mut with_db: RootDatabase) {
+    let source = r#"
+PROGRAM P
+VAR wide AT %MB0 : BYTE; flag AT %MX0.3 : BOOL; r : REF_TO BOOL; END_VAR
+VAR lamp AT %QX1.2 : BOOL; w : WORD; q : REF_TO BOOL; END_VAR
+    r := REF(flag);
+    wide := 1;
+    q := REF(lamp);
+    w := %QW0;
+END_PROGRAM
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1423] Error: part of a wider address
+       ,-[ file:///test0.st:5:14 ]
+       |
+     3 | VAR wide AT %MB0 : BYTE; flag AT %MX0.3 : BOOL; r : REF_TO BOOL; END_VAR
+       |     ^^|^
+       |       `--- 'wide' is declared here
+       |
+     5 |     r := REF(flag);
+       |              ^^|^
+       |                `--- '%MX0.3' is part of '%MB0' and has no address of its own to take a reference to
+       |
+       | Help: take the reference of 'wide'
+    ---'
+    [E1423] Error: part of a wider address
+       ,-[ file:///test0.st:7:14 ]
+       |
+     7 |     q := REF(lamp);
+       |              ^^|^
+       |                `--- '%QX1.2' is part of '%QW0' and has no address of its own to take a reference to
+     8 |     w := %QW0;
+       |          ^^|^
+       |            `--- '%QW0' is mentioned here
+       |
+       | Help: declare a variable AT '%QW0' and take the reference of it
+    ---'
+    ");
+}
+
+/// A variable declared at a bit passed to a FUNCTION's VAR_IN_OUT, as the
+/// bare bit is.
+#[rstest]
+fn invalid_a_named_bit_passed_to_a_functions_in_out(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION Flip : BOOL
+VAR_IN_OUT v : BOOL; END_VAR
+    v := NOT v;
+    Flip := v;
+END_FUNCTION
+
+PROGRAM P
+VAR x AT %QX0.3 : BOOL; w : WORD; b : BOOL; END_VAR
+    w := %QW0;
+    b := Flip(v := x);
+END_PROGRAM
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1423] Error: part of a wider address
+        ,-[ file:///test0.st:11:20 ]
+        |
+     10 |     w := %QW0;
+        |          ^^|^
+        |            `--- '%QW0' is mentioned here
+     11 |     b := Flip(v := x);
+        |                    |
+        |                    `-- '%QX0.3' is part of '%QW0' and has no address of its own to pass to a VAR_IN_OUT
+        |
+        | Help: copy it into a variable, pass that, and assign it back
+    ----'
+    ");
+}
+
+/// `REF()` of a bare bit that is part of a wider address is the part's
+/// fault (E1423), not the bare address's (E0905), whose help would lead
+/// straight back to this case.
+#[rstest]
+fn invalid_a_reference_to_a_bare_part(mut with_db: RootDatabase) {
+    let source = r#"
+PROGRAM P
+VAR r : REF_TO BOOL; b : BYTE; END_VAR
+    r := REF(%MX0.3);
+    b := %MB0;
+END_PROGRAM
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1423] Error: part of a wider address
+       ,-[ file:///test0.st:4:14 ]
+       |
+     4 |     r := REF(%MX0.3);
+       |              ^^^|^^
+       |                 `---- '%MX0.3' is part of '%MB0' and has no address of its own to take a reference to
+     5 |     b := %MB0;
+       |          ^^|^
+       |            `--- '%MB0' is mentioned here
+       |
+       | Help: declare a variable AT '%MB0' and take the reference of it
+    ---'
+    ");
+}
+
+/// A variable declared at whole bytes of a wider address has an address of
+/// its own: a reference to it and a FUNCTION's VAR_IN_OUT take it, where a
+/// slice written as one (`w.%B1`) is refused (E0905, E0806).
+#[rstest]
+fn valid_a_declared_byte_part_has_an_address(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION Bump : INT
+VAR_IN_OUT v : BYTE; END_VAR
+    v := v + 1;
+    Bump := 0;
+END_FUNCTION
+
+PROGRAM P
+VAR lo AT %MB1 : BYTE; w : WORD; r : REF_TO BYTE; n : INT; END_VAR
+    w := %MW0;
+    r := REF(lo);
+    n := Bump(v := lo);
+END_PROGRAM
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+/// NON_RETAIN on a part is refused as RETAIN is: the owner's range restores
+/// the part or not, whatever the part says. The owner's declaration or its
+/// mention is pointed at.
+#[rstest]
+fn invalid_non_retain_on_a_part(mut with_db: RootDatabase) {
+    let source = r#"
+PROGRAM P
+VAR RETAIN whole AT %MW0 : WORD; END_VAR
+VAR NON_RETAIN keep AT %MX0.2 : BOOL; lamp AT %QX0.3 : BOOL; END_VAR
+VAR w : WORD; END_VAR
+    whole := whole + 1;
+    keep := NOT keep;
+    lamp := NOT lamp;
+    w := %QW0;
+END_PROGRAM
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1423] Error: part of a wider address
+       ,-[ file:///test0.st:4:24 ]
+       |
+     3 | VAR RETAIN whole AT %MW0 : WORD; END_VAR
+       |            ^^|^^
+       |              `---- 'whole' is declared here
+     4 | VAR NON_RETAIN keep AT %MX0.2 : BOOL; lamp AT %QX0.3 : BOOL; END_VAR
+       |                        ^^^|^^
+       |                           `---- '%MX0.2' is part of '%MW0' and cannot be NON_RETAIN on its own
+       |
+       | Help: drop the NON_RETAIN: 'whole' decides what comes back
+       |
+       | Note: a part is restored with its owner or not at all
+    ---'
+    [E1423] Error: part of a wider address
+       ,-[ file:///test0.st:4:47 ]
+       |
+     4 | VAR NON_RETAIN keep AT %MX0.2 : BOOL; lamp AT %QX0.3 : BOOL; END_VAR
+       |                                               ^^^|^^
+       |                                                  `---- '%QX0.3' is part of '%QW0' and cannot be NON_RETAIN on its own
+       |
+     9 |     w := %QW0;
+       |          ^^|^
+       |            `--- '%QW0' is mentioned here
+       |
+       | Help: drop the NON_RETAIN
+       |
+       | Note: a part is restored with its owner or not at all
+    ---'
+    ");
+}
+
+/// Two ways of writing an input through a call or a reference are refused
+/// where the binding is made (E1419): a FUNCTION's VAR_IN_OUT bound to an
+/// input, and a reference taken to one. Both refuse a read as well, since
+/// nothing tracks what the callee or the code behind the reference does.
+#[rstest]
+fn invalid_an_input_bound_to_a_functions_in_out_or_referenced(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION Bump : INT
+VAR_IN_OUT v : BOOL; END_VAR
+    v := NOT v;
+    Bump := 0;
+END_FUNCTION
+
+PROGRAM P
+VAR n : INT; sensor AT %IX0.4 : BOOL; r : REF_TO BOOL; END_VAR
+    n := Bump(v := %IX0.3);
+    r := REF(sensor);
+END_PROGRAM
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1419] Error: write to an input location
+        ,-[ file:///test0.st:10:20 ]
+        |
+     10 |     n := Bump(v := %IX0.3);
+        |                    ^^^|^^
+        |                       `---- '%IX0.3' is an input: it is written by the host, not by the program
+        |
+        | Note: the host copies the input image in before each scan: the rest of this scan would read a value the input never had, and the next scan overwrites it
+    ----'
+    [E1419] Error: write to an input location
+        ,-[ file:///test0.st:11:14 ]
+        |
+     11 |     r := REF(sensor);
+        |              ^^^|^^
+        |                 `---- '%IX0.4' is an input, so a writable reference to it cannot be taken
+        |
+        | Note: a REF_TO is a writable pointer and nothing tracks what is stored through it, so the reference is refused where it is taken
+    ----'
+    ");
+}
+
+/// Three declarations at one address are one E1421, reported by the first
+/// in file order and pointing at the others.
+#[rstest]
+fn invalid_three_declarations_at_one_address(mut with_db: RootDatabase) {
+    let source = r#"
+PROGRAM P
+VAR a AT %QW0 : WORD; b AT %QW0 : WORD; c AT %QW0 : WORD; END_VAR
+    a := b + c;
+END_PROGRAM
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1421] Error: duplicate location
+       ,-[ file:///test0.st:3:10 ]
+       |
+     3 | VAR a AT %QW0 : WORD; b AT %QW0 : WORD; c AT %QW0 : WORD; END_VAR
+       |          ^^|^              ^^|^              ^^|^
+       |            `--------------------------------------- 'a' and 2 other declarations are located at '%QW0'
+       |                              |                 |
+       |                              `--------------------- 'b' is located here
+       |                                                |
+       |                                                `--- 'c' is located here
+       |
+       | Help: declare the address once and name that variable
+       |
+       | Note: each declaration gets storage of its own, so a write through one is invisible through the others
+    ---'
+    ");
 }

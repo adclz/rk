@@ -2182,8 +2182,8 @@ fn an_fb_in_out_member_bound_to_a_view_flips_its_bit(mut with_db: db::RootDataba
     "#;
     let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
     let read = |plc: &TestPlc| {
-        i32::from_le_bytes(
-            plc.read_located("%QW0").expect("read")[..4]
+        u16::from_le_bytes(
+            plc.read_located("%QW0").expect("read")[..2]
                 .try_into()
                 .unwrap(),
         )

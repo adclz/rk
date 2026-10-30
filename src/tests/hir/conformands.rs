@@ -389,7 +389,7 @@ END_FUNCTION
        |     |
        |     `-- call to 'Sum' is missing 1 required parameter: 'values'
        |
-       | Note: a VAR_IN_OUT of a FUNCTION or a METHOD, or of an aggregate type, is bound to the caller's variable at each call
+       | Note: a VAR_IN_OUT of a FUNCTION or a METHOD, or of a STRING, a reference or an aggregate, is bound to the caller's variable at each call
     ---'
     ");
 }

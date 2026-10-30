@@ -614,7 +614,7 @@ END_PROGRAM
         |     |
         |     `-- call to 'DerivedIO' is missing 1 required parameter: 'io'
         |
-        | Note: a VAR_IN_OUT of a FUNCTION or a METHOD, or of an aggregate type, is bound to the caller's variable at each call
+        | Note: a VAR_IN_OUT of a FUNCTION or a METHOD, or of a STRING, a reference or an aggregate, is bound to the caller's variable at each call
     ----'
     ");
 }

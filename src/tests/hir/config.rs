@@ -510,17 +510,9 @@ END_CONFIGURATION
      19 |     Res.P1.n : INT := 1;
         |            |
         |            `-- 'n' is given a value here and by another entry
-        |
-        | Help: keep one of the entries
-        |
-        | Note: an instance's variable has one starting value
-    ----'
-    [E1426] Error: configuration entry refused
-        ,-[ file:///test0.st:20:12 ]
-        |
      20 |     Res.P1.n : INT := 2;
         |            |
-        |            `-- 'n' is given a value here and by another entry
+        |            `-- 'n' is given a value here
         |
         | Help: keep one of the entries
         |
@@ -539,7 +531,7 @@ END_CONFIGURATION
         |
         | Help: pass the variable in the call, as 'io := x'
         |
-        | Note: a VAR_IN_OUT is bound to its argument at each call
+        | Note: a VAR_IN_OUT of a STRING, a reference or an aggregate is bound to its argument at each call, where a scalar one is a member and takes a value
     ----'
     [E0405] Error: initializer for a member that takes none
         ,-[ file:///test0.st:22:22 ]
@@ -568,6 +560,10 @@ END_CONFIGURATION
     [E1426] Error: configuration entry refused
         ,-[ file:///test0.st:24:14 ]
         |
+     17 | VAR_GLOBAL panel AT %QW4 : INT := 3; END_VAR
+        |            ^^|^^
+        |              `---- 'panel' is declared here
+        |
      24 |     Res.P1.d.out AT %QW4 : INT := 6;
         |              ^|^
         |               `--- 'out' is at '%QW4', where a declaration gives its starting value
@@ -576,6 +572,10 @@ END_CONFIGURATION
     ----'
     [E1426] Error: configuration entry refused
         ,-[ file:///test0.st:25:12 ]
+        |
+     13 | VAR d : Drive; pump : Pump; n : INT; lamp AT %QW8 : INT; END_VAR
+        |                                      ^^|^
+        |                                        `--- 'lamp' is declared here
         |
      25 |     Res.P1.lamp : INT := 7;
         |            ^^|^
@@ -586,11 +586,15 @@ END_CONFIGURATION
     [E1423] Error: part of a wider address
         ,-[ file:///test0.st:26:14 ]
         |
+     17 | VAR_GLOBAL panel AT %QW4 : INT := 3; END_VAR
+        |            ^^|^^
+        |              `---- 'panel' is declared here
+        |
      26 |     Res.P1.d.b AT %QB9 : BYTE := 8;
         |              |
         |              `-- '%QB9' is part of '%QW4' and cannot have an initial value of its own
         |
-        | Help: give the variable located at '%QW4' an initial value with this part set in it
+        | Help: give 'panel' an initial value with this part set in it
     ----'
     [E1426] Error: configuration entry refused
         ,-[ file:///test0.st:27:12 ]
@@ -598,17 +602,9 @@ END_CONFIGURATION
      27 |     Res.P1.pump : Pump := (k := 9);
         |            ^^|^
         |              `--- 'pump' is given a value here and by another entry
-        |
-        | Help: keep one of the entries
-        |
-        | Note: an instance's variable has one starting value
-    ----'
-    [E1426] Error: configuration entry refused
-        ,-[ file:///test0.st:28:17 ]
-        |
      28 |     Res.P1.pump.k : INT := 10;
         |                 |
-        |                 `-- 'k' is given a value here and by another entry
+        |                 `-- 'pump' is given a value here
         |
         | Help: keep one of the entries
         |
@@ -721,19 +717,10 @@ END_CONFIGURATION
         ,-[ file:///test0.st:22:58 ]
         |
      22 |         PROGRAM P1 WITH T : F(y1 := 1, x1 => w, x2 := w, x1 := TRUE, x1 := FALSE, y1 => %IW0);
-        |                                                          ^|
-        |                                                           `-- 'x1' is connected here and by another element
-        |
-        | Help: keep one of the elements
-        |
-        | Note: an input has one source
-    ----'
-    [E1428] Error: program configuration element refused
-        ,-[ file:///test0.st:22:70 ]
-        |
-     22 |         PROGRAM P1 WITH T : F(y1 := 1, x1 => w, x2 := w, x1 := TRUE, x1 := FALSE, y1 => %IW0);
-        |                                                                      ^|
-        |                                                                       `-- 'x1' is connected here and by another element
+        |                                                          ^|          ^|
+        |                                                           `-------------- 'x1' is connected here and by another element
+        |                                                                       |
+        |                                                                       `-- 'x1' is connected here
         |
         | Help: keep one of the elements
         |
@@ -746,7 +733,7 @@ END_CONFIGURATION
         |                                                                                   ^|
         |                                                                                    `-- '%IW0' is an input: it is written by the host, not by the program
         |
-        | Note: the host copies the input image in before each scan, so this write is overwritten before anything can read it
+        | Note: the host copies the input image in before each scan: the rest of this scan would read a value the input never had, and the next scan overwrites it
     ----'
     [E1428] Error: program configuration element refused
         ,-[ file:///test0.st:23:31 ]
@@ -776,30 +763,23 @@ END_CONFIGURATION
         ,-[ file:///test0.st:23:53 ]
         |
      23 |         PROGRAM P2 WITH T : F(b WITH T, fb2 WITH T, fb1 WITH T, fb1 WITH T, nosuch := 1);
-        |                                                     ^|^
-        |                                                      `--- 'fb1' is associated with a task here and by another element
+        |                                                     ^|^         ^|^
+        |                                                      `--------------- 'fb1' is associated with a task here and by another element
+        |                                                                  |
+        |                                                                  `--- 'fb1' is associated with a task here
         |
         | Help: keep one of the elements
         |
         | Note: a function block runs under one task
     ----'
     [E1428] Error: program configuration element refused
-        ,-[ file:///test0.st:23:65 ]
-        |
-     23 |         PROGRAM P2 WITH T : F(b WITH T, fb2 WITH T, fb1 WITH T, fb1 WITH T, nosuch := 1);
-        |                                                                 ^|^
-        |                                                                  `--- 'fb1' is associated with a task here and by another element
-        |
-        | Help: keep one of the elements
-        |
-        | Note: a function block runs under one task
-    ----'
-    [E1414] Error: unknown field in VAR_CONFIG
         ,-[ file:///test0.st:23:77 ]
         |
      23 |         PROGRAM P2 WITH T : F(b WITH T, fb2 WITH T, fb1 WITH T, fb1 WITH T, nosuch := 1);
         |                                                                             ^^^|^^
-        |                                                                                `---- 'F' has no field named 'nosuch'
+        |                                                                                `---- 'nosuch' is not a variable of 'F'
+        |
+        | Note: an element names a VAR_INPUT, a VAR_OUTPUT or a function block instance of the program
     ----'
     ");
 }
@@ -1582,12 +1562,14 @@ fn a_program_connection_names_a_variable_of_the_program(mut with_db: RootDatabas
         END_CONFIGURATION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1414] Error: unknown field in VAR_CONFIG
+    [E1428] Error: program configuration element refused
         ,-[ file:///test0.st:12:65 ]
         |
      12 |                 PROGRAM PA WITH T : A (inp := src, outp => snk, ghost := nosuch);
         |                                                                 ^^|^^
-        |                                                                   `---- 'A' has no field named 'ghost'
+        |                                                                   `---- 'ghost' is not a variable of 'A'
+        |
+        | Note: an element names a VAR_INPUT, a VAR_OUTPUT or a function block instance of the program
     ----'
     ");
 }
