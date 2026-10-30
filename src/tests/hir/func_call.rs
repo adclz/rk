@@ -1196,10 +1196,12 @@ END_FUNCTION_BLOCK"#;
 }
 
 /// A partial access (`b.%X1`) is a VariableAccess syntactically but names a
-/// SLICE of a variable — a slice has no address, and VAR_IN_OUT is an
-/// address. This used to pass the checker; the argument then reached the
-/// callee as a bit VALUE standing where a pointer belongs, and the callee's
-/// writes corrupted memory near address zero.
+/// SLICE of a variable — a slice has no address, and a FUNCTION's VAR_IN_OUT
+/// is an address. This used to pass the checker; the argument then reached
+/// the callee as a bit VALUE standing where a pointer belongs, and the
+/// callee's writes corrupted memory near address zero. A FUNCTION_BLOCK's
+/// scalar VAR_IN_OUT is a member, copied in and back, and takes the slice
+/// (pinned in codegen: `a_bit_of_a_word_bound_to_a_member`).
 #[rstest]
 fn invalid_in_out_partial_access(mut with_db: RootDatabase) {
     let source = r#"
@@ -1230,19 +1232,6 @@ END_FUNCTION"#;
      14 |     SetIt(io := b.%X1);
         |                 ^^|^^
         |                   `---- VAR_IN_OUT parameter 'io' of 'SetIt' requires a variable, not a value
-        |
-        | Note: a literal, an expression or a call result has no address for a VAR_IN_OUT to bind
-    ----'
-    [E0806] Error: VAR_IN_OUT argument not a variable
-        ,-[ file:///test0.st:15:13 ]
-        |
-      8 | VAR_IN_OUT io : BOOL; END_VAR
-        |            ^|
-        |             `-- parameter 'io' is declared here
-        |
-     15 |     f(io := b.%X1);
-        |             ^^|^^
-        |               `---- VAR_IN_OUT parameter 'io' of 'FBSet' requires a variable, not a value
         |
         | Note: a literal, an expression or a call result has no address for a VAR_IN_OUT to bind
     ----'

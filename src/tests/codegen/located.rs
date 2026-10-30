@@ -2150,3 +2150,52 @@ fn the_module_exports_what_hir_reserves(mut with_db: db::RootDatabase) {
     reserved.sort();
     assert_eq!(exported, reserved);
 }
+
+/// The same idiom on a VAR_IN_OUT the block keeps as a member
+/// (`f(v := %QX0.3)`): the bit is copied in, and the body's result is
+/// written back into the word after the call, the other bits kept.
+#[rstest]
+fn an_fb_in_out_member_bound_to_a_view_flips_its_bit(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Flip
+        VAR_IN_OUT v : BOOL; END_VAR
+            v := NOT v;
+        END_FUNCTION_BLOCK
+
+        PROGRAM P
+        VAR_EXTERNAL lamps : WORD; END_VAR
+        VAR f : Flip; first : BOOL := TRUE; END_VAR
+            IF first THEN
+                lamps := 16#00F0;
+                first := FALSE;
+            END_IF;
+            f(v := %QX0.3);
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+        VAR_GLOBAL lamps AT %QW0 : WORD; END_VAR
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    let read = |plc: &TestPlc| {
+        i32::from_le_bytes(
+            plc.read_located("%QW0").expect("read")[..4]
+                .try_into()
+                .unwrap(),
+        )
+    };
+
+    let mut plc = TestPlc::load(&wasm).expect("load");
+    plc.run(1).expect("scan");
+    assert_eq!(
+        read(&plc),
+        0x00F8,
+        "bit 3 set from FALSE, the preset bits kept"
+    );
+    plc.run(1).expect("scan");
+    assert_eq!(read(&plc), 0x00F0, "bit 3 cleared from TRUE, the rest kept");
+}

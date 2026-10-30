@@ -947,7 +947,9 @@ fn a_pulse_and_an_off_delay_in_a_retained_instance_start_over(mut with_db: db::R
 
 /// A scalar VAR_IN_OUT of a block is a member: the retain map lists it by
 /// its section, `RETAIN` kept and `NON_RETAIN` not, and a warm start brings
-/// the kept one back into the instance.
+/// the kept one back into the instance and the other to its start value:
+/// three scans leave `count` 6 and `step` 4, and the scan after the warm
+/// start gives 7, not 10.
 #[rstest]
 fn an_in_out_member_follows_its_section(mut with_db: db::RootDatabase) {
     let source = r#"
@@ -955,6 +957,7 @@ fn an_in_out_member_follows_its_section(mut with_db: db::RootDatabase) {
         VAR_IN_OUT RETAIN count : INT; END_VAR
         VAR_IN_OUT NON_RETAIN step : INT := 1; END_VAR
             count := count + step;
+            step := step + 1;
         END_FUNCTION_BLOCK
 
         PROGRAM P
@@ -976,10 +979,12 @@ fn an_in_out_member_follows_its_section(mut with_db: db::RootDatabase) {
     let mut plc = TestPlc::load(&wasm).expect("load");
     plc.run(3).expect("three scans");
     let info = DebugInfo::from_wasm(&wasm);
-    assert_eq!(plc.read_var(&info, "P1.n"), Some(VarValue::I16(3)));
+    assert_eq!(plc.read_var(&info, "P1.n"), Some(VarValue::I16(6)));
+    assert_eq!(plc.read_var(&info, "P1.c.step"), Some(VarValue::I16(4)));
 
     let mut warm = warm_start(&mir, &wasm, &plc);
-    assert_eq!(warm.read_var(&info, "P1.c.count"), Some(VarValue::I16(3)));
+    assert_eq!(warm.read_var(&info, "P1.c.count"), Some(VarValue::I16(6)));
+    assert_eq!(warm.read_var(&info, "P1.c.step"), Some(VarValue::I16(1)));
     warm.run(1).expect("a scan after the warm start");
-    assert_eq!(warm.read_var(&info, "P1.n"), Some(VarValue::I16(4)));
+    assert_eq!(warm.read_var(&info, "P1.n"), Some(VarValue::I16(7)));
 }

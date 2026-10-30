@@ -111,6 +111,7 @@ A `FUNCTION_BLOCK` keeps a `VAR_IN_OUT` of a scalar type as a member: a fixed-si
 A call that binds it copies the argument in before the body and back after it, in the order the members are declared.
 A call may leave it out, and the body then reads what the member holds: its initial value, or what the last call left.
 The section takes `RETAIN` or `NON_RETAIN` like a `VAR`.
+The member goes beyond the standard, which binds every `VAR_IN_OUT` at each call.
 
 ```iecst
 FUNCTION_BLOCK Counter
@@ -131,4 +132,5 @@ END_PROGRAM
 ```
 
 A `STRING`, a `STRUCT`, an `ARRAY`, an instance or a reference stays bound to the caller's variable at each call, as every `VAR_IN_OUT` of a `FUNCTION` or a `METHOD` is: a call supplies it (`E0802`), and it takes no initial value (`E0004`) and no qualifier (`E0906`).
-The copy lands when the call ends: a body that raises writes nothing back, and a variable bound to two members keeps the one declared last.
+The copy lands when the call ends, a `RETURN` included: a body that raises writes nothing back, a variable bound to two members keeps the one declared last, and `REF()` of a member points at the member.
+A bit, `%QX0.3` beside a `%QW0` or `w.%X3`, can be bound to a member as to an output; a `VAR_IN_OUT` bound by reference takes no bit (`E1423`).

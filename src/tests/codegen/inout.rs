@@ -83,16 +83,10 @@ fn fb_inout_field_target(mut with_db: db::RootDatabase) {
     assert_eq!(result, 47, "writes p.n=42, leaves p.other=5 -> 47");
 }
 
-/// The behavioral discriminator between by-reference and copy-in/copy-out:
-/// the SAME caller variable is bound to two VAR_IN_OUT params. The body writes
-/// through the first (`a := 100`) and then reads the second (`b`). Under
-/// by-reference both params alias the one variable, so `b` observes 100 live.
-/// Under copy-in/copy-out each param would be an independent snapshot and `b`
-/// would still read the original value — this test can only pass if the
-/// binding is a real reference.
-/// Two scalar VAR_IN_OUTs bound to one variable are two members, each a
-/// copy: a write to `a` is not seen through `b` in the body, and the
-/// variable keeps what the member declared last copies back.
+/// Two scalar VAR_IN_OUTs of a block bound to one variable are two members,
+/// each a copy: a write to `a` is not seen through `b` in the body, and the
+/// variable keeps what the member declared last copies back. A FUNCTION's
+/// two alias it: the test after this one.
 #[rstest]
 fn two_members_bound_to_one_variable_are_copies(mut with_db: db::RootDatabase) {
     let source = r#"
@@ -534,5 +528,165 @@ fn a_member_is_not_written_back_after_a_raise(mut with_db: db::RootDatabase) {
     assert_eq!(
         result, 1002,
         "x stays 1 and is multiplied in the catch; the member holds 2"
+    );
+}
+
+/// The split, on record: two VAR_IN_OUTs of a FUNCTION bound to one
+/// variable alias it, so `b` sees the 20 written through `a`, where a
+/// block's two members are copies.
+#[rstest]
+fn two_in_outs_of_a_function_bound_to_one_variable_alias_it(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION aliaser : INT
+            VAR_IN_OUT a : INT; b : INT; END_VAR
+            a := 20;
+            aliaser := b;
+        END_FUNCTION
+
+        FUNCTION test : INT
+        VAR x : INT := 7; seen : INT; END_VAR
+            seen := aliaser(a := x, b := x);
+            test := seen * 1000 + x;
+        END_FUNCTION
+    "#;
+    let result: i32 = super::run(&mut with_db, source, "test", ());
+    assert_eq!(result, 20020, "`b` is `x`, which `a` wrote 20 into");
+}
+
+/// Both models in one call: `s` is a reference to `box`, `io` a copy of
+/// `box.v`. The body's write to `io` is not seen through `s`, and `io`'s
+/// copy back, after the body, lands over what `s` wrote.
+#[rstest]
+fn a_member_and_a_reference_in_one_call(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE Box : STRUCT v : INT; END_STRUCT; END_TYPE
+
+        FUNCTION_BLOCK bump
+            VAR_IN_OUT s : Box; io : INT; END_VAR
+            VAR_OUTPUT seen : INT; END_VAR
+            io := io + 1;
+            seen := s.v;
+            s.v := s.v + 10;
+        END_FUNCTION_BLOCK
+
+        FUNCTION test : INT
+        VAR b : bump; box : Box := (v := 1); END_VAR
+            b(s := box, io := box.v);
+            test := b.seen * 100 + box.v;
+        END_FUNCTION
+    "#;
+    let result: i32 = super::run(&mut with_db, source, "test", ());
+    assert_eq!(
+        result, 102,
+        "seen is 1, and io's copy back puts 2 over the 11 that s wrote"
+    );
+}
+
+/// The copy back lands where the call bound it: `v` was bound to `arr[0]`,
+/// and stays bound to it after `k`'s copy back has put 1 into `i`.
+#[rstest]
+fn the_copy_back_lands_where_the_call_bound_it(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK pick
+            VAR_IN_OUT k : INT; v : INT; END_VAR
+            k := 1;
+            v := 99;
+        END_FUNCTION_BLOCK
+
+        FUNCTION test : INT
+        VAR p : pick; i : INT; arr : ARRAY[0..1] OF INT := [10, 20]; END_VAR
+            p(k := i, v := arr[i]);
+            test := arr[0] * 100 + arr[1];
+        END_FUNCTION
+    "#;
+    let result: i32 = super::run(&mut with_db, source, "test", ());
+    assert_eq!(
+        result, 9920,
+        "arr[0] took the 99; 1099 would mean arr[i] was read again after i became 1"
+    );
+}
+
+/// A RETURN ends the call as the last statement does, and the copy back
+/// follows it.
+#[rstest]
+fn an_early_return_copies_back(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK early
+            VAR_IN_OUT v : INT; END_VAR
+            v := v + 1;
+            IF v > 0 THEN
+                RETURN;
+            END_IF;
+            v := v + 100;
+        END_FUNCTION_BLOCK
+
+        FUNCTION test : INT
+        VAR e : early; x : INT := 1; END_VAR
+            e(v := x);
+            test := x;
+        END_FUNCTION
+    "#;
+    let result: i32 = super::run(&mut with_db, source, "test", ());
+    assert_eq!(
+        result, 2,
+        "the +1 came back; the +100 after the RETURN did not run"
+    );
+}
+
+/// `REF()` of a member points at the member, not at the caller's variable:
+/// a write through it changes what the instance holds, and the caller's
+/// variable only at the next copy back.
+#[rstest]
+fn a_reference_to_a_member_points_at_the_member(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK keeper
+            VAR_IN_OUT io : INT; END_VAR
+
+            METHOD PUBLIC poke
+            VAR p : REF_TO INT; END_VAR
+                p := REF(io);
+                p^ := 9;
+            END_METHOD
+
+            io := io + 1;
+        END_FUNCTION_BLOCK
+
+        FUNCTION test : INT
+        VAR k : keeper; x : INT := 4; END_VAR
+            k(io := x);
+            k.poke();
+            test := x * 100 + k.io;
+        END_FUNCTION
+    "#;
+    let result: i32 = super::run(&mut with_db, source, "test", ());
+    assert_eq!(
+        result, 509,
+        "x took 5 at the copy back; the 9 went into the member"
+    );
+}
+
+/// A bit of a bit string, `w.%X3`, bound to a member: the copy brings the
+/// bit in, and the copy back changes that bit of `w` and no other. A
+/// reference binds no bit (E1423 on a FUNCTION's VAR_IN_OUT).
+#[rstest]
+fn a_bit_of_a_word_bound_to_a_member(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK flip
+            VAR_IN_OUT v : BOOL; END_VAR
+            v := NOT v;
+        END_FUNCTION_BLOCK
+
+        FUNCTION test : INT
+        VAR f : flip; w : WORD := 16#00F0; END_VAR
+            f(v := w.%X3);
+            IF w = 16#00F8 THEN test := 1; END_IF;
+            f(v := w.%X3);
+            IF w = 16#00F0 THEN test := test + 10; END_IF;
+        END_FUNCTION
+    "#;
+    let result: i32 = super::run(&mut with_db, source, "test", ());
+    assert_eq!(
+        result, 11,
+        "16#F8 after the first call and 16#F0 after the second: bit 3 only"
     );
 }

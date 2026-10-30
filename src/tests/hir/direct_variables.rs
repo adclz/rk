@@ -2166,9 +2166,42 @@ END_CONFIGURATION
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
 
-/// A VAR_IN_OUT takes an address, and three bits of a word have none.
+/// A FUNCTION's VAR_IN_OUT takes an address, and three bits of a word have
+/// none.
 #[rstest]
 fn invalid_part_of_a_wider_address_passed_to_an_in_out(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION Flip : BOOL
+VAR_IN_OUT v : BOOL; END_VAR
+    v := NOT v;
+    Flip := v;
+END_FUNCTION
+
+PROGRAM P
+VAR w : WORD; b : BOOL; END_VAR
+    w := %QW0;
+    b := Flip(v := %QX0.3);
+END_PROGRAM
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1423] Error: part of a wider address
+        ,-[ file:///test0.st:11:20 ]
+        |
+     11 |     b := Flip(v := %QX0.3);
+        |                    ^^^|^^
+        |                       `---- '%QX0.3' is part of '%QW0' and has no address of its own to pass to a VAR_IN_OUT
+        |
+        | Help: copy it into a variable, pass that, and assign it back
+        |
+        | Note: a VAR_IN_OUT of a FUNCTION or a METHOD binds the argument's address, where a FUNCTION_BLOCK copies a scalar one in and back
+    ----'
+    ");
+}
+
+/// A FUNCTION_BLOCK's scalar VAR_IN_OUT is a member, copied in and back,
+/// and a bit is copied as any value is.
+#[rstest]
+fn valid_part_of_a_wider_address_bound_to_a_member(mut with_db: RootDatabase) {
     let source = r#"
 FUNCTION_BLOCK Flip
 VAR_IN_OUT v : BOOL; END_VAR
@@ -2181,17 +2214,7 @@ VAR f : Flip; w : WORD; END_VAR
     f(v := %QX0.3);
 END_PROGRAM
 "#;
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1423] Error: part of a wider address
-        ,-[ file:///test0.st:10:12 ]
-        |
-     10 |     f(v := %QX0.3);
-        |            ^^^|^^
-        |               `---- '%QX0.3' is part of '%QW0' and has no address of its own to pass to a VAR_IN_OUT
-        |
-        | Help: copy it into a variable, pass that, and assign it back
-    ----'
-    ");
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
 
 /// `REF()` takes an address too, for a declared part as for a bare one.

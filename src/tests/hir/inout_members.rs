@@ -120,12 +120,14 @@ fn invalid_a_start_value_on_an_in_out_bound_by_reference(mut with_db: RootDataba
 }
 
 /// `RETAIN` or `NON_RETAIN` on an in-out section: a FUNCTION_BLOCK's
-/// aggregate or STRING is bound by reference (E0906), a FUNCTION keeps
-/// nothing at all (E0208), and two qualifiers are E0031 here as anywhere.
+/// aggregate, STRING or REF_TO is bound by reference (E0906), a FUNCTION
+/// keeps nothing at all (E0208), and two qualifiers are E0031 here as
+/// anywhere.
 #[rstest]
 fn invalid_a_qualifier_on_an_in_out_bound_by_reference(mut with_db: RootDatabase) {
     let source = r#"
         TYPE Pt : STRUCT x : INT; y : INT; END_STRUCT; END_TYPE
+        TYPE PInt : REF_TO INT; END_TYPE
 
         FUNCTION_BLOCK Fb
         VAR_IN_OUT RETAIN
@@ -133,12 +135,14 @@ fn invalid_a_qualifier_on_an_in_out_bound_by_reference(mut with_db: RootDatabase
         END_VAR
         VAR_IN_OUT NON_RETAIN
             s : STRING;
+            r : PInt;
         END_VAR
         VAR_IN_OUT RETAIN NON_RETAIN
             n : INT;
         END_VAR
             p.x := p.x + 1;
             s := 'b';
+            r^ := n;
             n := n + 1;
         END_FUNCTION_BLOCK
 
@@ -151,9 +155,9 @@ fn invalid_a_qualifier_on_an_in_out_bound_by_reference(mut with_db: RootDatabase
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     [E0906] Error: qualifier on a VAR_IN_OUT bound by reference
-       ,-[ file:///test0.st:6:13 ]
+       ,-[ file:///test0.st:7:13 ]
        |
-     6 |             p : Pt;
+     7 |             p : Pt;
        |             |
        |             `-- 'p' is bound to the caller's variable at each call
        |
@@ -162,20 +166,31 @@ fn invalid_a_qualifier_on_an_in_out_bound_by_reference(mut with_db: RootDatabase
        | Note: a FUNCTION_BLOCK keeps a VAR_IN_OUT of a scalar type as a member, and nothing of one of an aggregate type
     ---'
     [E0906] Error: qualifier on a VAR_IN_OUT bound by reference
-       ,-[ file:///test0.st:9:13 ]
-       |
-     9 |             s : STRING;
-       |             |
-       |             `-- 's' is bound to the caller's variable at each call
-       |
-       | Help: drop the NON_RETAIN
-       |
-       | Note: a FUNCTION_BLOCK keeps a VAR_IN_OUT of a scalar type as a member, and nothing of one of an aggregate type
-    ---'
-    [E0031] Error: two qualifiers on a declaration
-        ,-[ file:///test0.st:11:27 ]
+        ,-[ file:///test0.st:10:13 ]
         |
-     11 |         VAR_IN_OUT RETAIN NON_RETAIN
+     10 |             s : STRING;
+        |             |
+        |             `-- 's' is bound to the caller's variable at each call
+        |
+        | Help: drop the NON_RETAIN
+        |
+        | Note: a FUNCTION_BLOCK keeps a VAR_IN_OUT of a scalar type as a member, and nothing of one of an aggregate type
+    ----'
+    [E0906] Error: qualifier on a VAR_IN_OUT bound by reference
+        ,-[ file:///test0.st:11:13 ]
+        |
+     11 |             r : PInt;
+        |             |
+        |             `-- 'r' is bound to the caller's variable at each call
+        |
+        | Help: drop the NON_RETAIN
+        |
+        | Note: a FUNCTION_BLOCK keeps a VAR_IN_OUT of a scalar type as a member, and nothing of one of an aggregate type
+    ----'
+    [E0031] Error: two qualifiers on a declaration
+        ,-[ file:///test0.st:13:27 ]
+        |
+     13 |         VAR_IN_OUT RETAIN NON_RETAIN
         |                    ^^^|^^ ^^^^^|^^^^
         |                       `--------------- 'RETAIN' is the first
         |                                |
@@ -186,9 +201,9 @@ fn invalid_a_qualifier_on_an_in_out_bound_by_reference(mut with_db: RootDatabase
         | Note: a declaration takes one qualifier, CONSTANT, RETAIN or NON_RETAIN
     ----'
     [E0208] Error: RETAIN in a stateless POU
-        ,-[ file:///test0.st:21:13 ]
+        ,-[ file:///test0.st:24:13 ]
         |
-     21 |             x : INT;
+     24 |             x : INT;
         |             |
         |             `-- 'x' cannot be RETAIN: a FUNCTION is stateless
         |
@@ -272,6 +287,47 @@ fn invalid_a_call_binds_every_in_out_bound_by_reference(mut with_db: RootDatabas
         |                    `--- call to 'Bump' is missing 1 required parameter: 'v'
         |
         | Note: a VAR_IN_OUT of a FUNCTION or a METHOD, or of an aggregate type, is bound to the caller's variable at each call
+    ----'
+    ");
+}
+
+/// A CONSTANT bound to a member is refused as it is for any VAR_IN_OUT: the
+/// copy back would write it.
+#[rstest]
+fn invalid_a_constant_bound_to_a_member(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Counter
+        VAR_IN_OUT
+            count : INT;
+        END_VAR
+            count := count + 1;
+        END_FUNCTION_BLOCK
+
+        FUNCTION_BLOCK Holder
+        VAR
+            c : Counter;
+        END_VAR
+        VAR CONSTANT
+            k : INT := 1;
+        END_VAR
+            c(count := k);
+        END_FUNCTION_BLOCK
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0404] Error: write to a constant
+        ,-[ file:///test0.st:16:24 ]
+        |
+     14 |             k : INT := 1;
+        |             |
+        |             `-- 'k' is declared CONSTANT here
+        |
+     16 |             c(count := k);
+        |                        |
+        |                        `-- cannot pass constant 'k' to a VAR_IN_OUT
+        |
+        | Help: pass it to a VAR_INPUT, or copy it into a variable and pass that
+        |
+        | Note: a VAR_IN_OUT could change it
     ----'
     ");
 }
