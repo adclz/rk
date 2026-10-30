@@ -487,7 +487,10 @@ impl WiderAddressUse {
         let bare = format!("no variable is located at '{owner}'");
         match self {
             Self::InOut => (
-                None,
+                Some(
+                    "a VAR_IN_OUT of a FUNCTION or a METHOD binds the argument's address, where a FUNCTION_BLOCK copies a scalar one in and back"
+                        .to_string(),
+                ),
                 Some("copy it into a variable, pass that, and assign it back".to_string()),
             ),
             Self::Reference => (

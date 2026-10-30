@@ -77,8 +77,8 @@ bit  15 14 13 12 11 10  9  8  7  6  5  4  3  2  1  0
                   %QX1.2               %QX0.3
 ```
 
-A part can be read, assigned, and bound to an output.
-A bit cannot be passed to a `VAR_IN_OUT` or referenced with `REF()`, and no part can be `RETAIN` or have an initial value (`E1423`).
+A part can be read, assigned, bound to an output, and bound to a `VAR_IN_OUT` a `FUNCTION_BLOCK` keeps as a member, which is copied in and back.
+A bit cannot be passed to a `VAR_IN_OUT` of a `FUNCTION` or a `METHOD`, which binds its address, or referenced with `REF()`, and no part can be `RETAIN` or have an initial value (`E1423`).
 
 ## In function blocks
 

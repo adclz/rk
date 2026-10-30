@@ -923,8 +923,10 @@ fn check_in_out_lvalue<'db>(
         ctx.get_type_of_expr(value),
         Type::Variable((_, Some(_))) | Type::DirectVariable((_, Some(_)))
     );
+    // A member is copied in and back, and a slice of a variable can be:
+    // `f(v := w.%X3)`. A reference binds the whole variable or nothing.
     if var.is_in_out(db)
-        && (is_partial_access
+        && ((is_partial_access && !crate::hir_ty::layout::in_out_is_member(db, var))
             || !matches!(
                 value.expr(db),
                 ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess(_))
@@ -1097,7 +1099,11 @@ fn apply_param_coercion<'db>(
             if var.is_in_out(db) || var.is_output(db) {
                 refuse_input_location_target(db, value, ctx);
             }
+            // A member is copied in and back, and a part is read and written
+            // like any variable; a reference needs an address, which a bit
+            // has not.
             if var.is_in_out(db)
+                && !crate::hir_ty::layout::in_out_is_member(db, var)
                 && let Some(err) = crate::hir_ty::index_graphs::refuse_part_of_wider(
                     db,
                     CallSite::from_scoped(db, &value),
@@ -1159,7 +1165,11 @@ fn apply_param_coercion<'db>(
             if var.is_in_out(db) || var.is_output(db) {
                 refuse_input_location_target(db, value, ctx);
             }
+            // A member is copied in and back, and a part is read and written
+            // like any variable; a reference needs an address, which a bit
+            // has not.
             if var.is_in_out(db)
+                && !crate::hir_ty::layout::in_out_is_member(db, var)
                 && let Some(err) = crate::hir_ty::index_graphs::refuse_part_of_wider(
                     db,
                     CallSite::from_scoped(db, &value),
