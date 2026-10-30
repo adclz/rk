@@ -397,13 +397,25 @@ impl<'db> InferExprCtx<'db> {
             PrimaryExpr::RefValue { value } => match value {
                 // Typed for the editor: there is no storage to point at.
                 RefValue::Value(value) => {
-                    if !self.resolve_expr(db, *value, inference_result).is_never() {
-                        inference_result.errors.push(
-                            crate::check::errors::e09_reference::ReferenceError::RefArgumentNotAVariable {
+                    let ty = self.resolve_expr(db, *value, inference_result);
+                    if !ty.is_never() {
+                        // A bare address that is part of a wider one is the
+                        // part's fault, E1423: E0905's help, declare a variable
+                        // AT the address, would lead straight back here.
+                        let file = inference_result.scope.file(db);
+                        let err = match crate::hir_ty::index_graphs::refuse_part_of_wider(
+                            db,
+                            CallSite::from_scoped(db, value),
+                            ty,
+                            crate::check::errors::e14_config::WiderAddressUse::Reference,
+                        ) {
+                            Some(err) => err.to_diagnostic(db, file),
+                            None => crate::check::errors::e09_reference::ReferenceError::RefArgumentNotAVariable {
                                 expr: *value,
                             }
-                            .to_diagnostic(db, inference_result.scope.file(db)),
-                        );
+                            .to_diagnostic(db, file),
+                        };
+                        inference_result.errors.push(err);
                     }
                     Type::Never
                 }

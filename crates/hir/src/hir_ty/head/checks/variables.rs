@@ -550,25 +550,32 @@ impl<'db> InitInference<'db> {
                         // to it each get storage of their own, so a write
                         // through one is invisible through the other and a
                         // host binding by address finds it twice. They may be
-                        // a VAR_GLOBAL and a PROGRAM's VAR, in two files, which
-                        // have no order: each is reported, like E1402, and
-                        // points at the smallest of the others.
-                        let other = crate::hir_def::pous::variable::LocatedAddress::of(db, dv)
-                            .map(|a| crate::hir_ty::index_graphs::located_declarations_at(db, &a))
-                            .unwrap_or_default()
-                            .into_iter()
-                            .filter(|other| other != var)
-                            .min_by_key(|other| {
-                                (
-                                    other.get_scope_id(db).file(db).url(db).to_string(),
-                                    other.get_name_span(db).start_byte,
-                                )
-                            });
-                        if let Some(other) = other {
+                        // a VAR_GLOBAL and a PROGRAM's VAR, in two files: the
+                        // first in file order reports once for all of them,
+                        // and points at each of the others.
+                        let position = |v: &crate::hir_def::pous::variable::VariableDecl<'db>| {
+                            (
+                                v.get_scope_id(db).file(db).url(db).to_string(),
+                                v.get_name_span(db).start_byte,
+                            )
+                        };
+                        let mut others: Vec<_> =
+                            crate::hir_def::pous::variable::LocatedAddress::of(db, dv)
+                                .map(|a| {
+                                    crate::hir_ty::index_graphs::located_declarations_at(db, &a)
+                                })
+                                .unwrap_or_default()
+                                .into_iter()
+                                .filter(|other| other != var)
+                                .collect();
+                        others.sort_by_key(|other| position(other));
+                        if !others.is_empty()
+                            && others.iter().all(|other| position(other) > position(var))
+                        {
                             self.errors.push(
                                 ConfigError::DuplicateLocation {
                                     var: *var,
-                                    other,
+                                    others,
                                     address: address.clone(),
                                 }
                                 .to_diagnostic(db, self.scope.file(db)),
@@ -649,6 +656,15 @@ impl<'db> InitInference<'db> {
                                         site: dv.as_call_site(db),
                                         address: located.text.clone(),
                                         owner: view.owner.text.clone(),
+                                        owner_decl:
+                                            crate::hir_ty::index_graphs::located_declaration(
+                                                db,
+                                                &view.owner,
+                                            ),
+                                        owner_mention: crate::hir_ty::index_graphs::located_mention(
+                                            db,
+                                            &view.owner,
+                                        ),
                                         usage,
                                     }
                                     .to_diagnostic(db, self.scope.file(db)),
@@ -657,6 +673,11 @@ impl<'db> InitInference<'db> {
                             // Only `%M` gets here RETAIN: E1420 took `%I`/`%Q`.
                             if var.qualifier(db).contains(crate::Qualifier::RETAIN) {
                                 refuse(WiderAddressUse::Retain(owner));
+                            }
+                            // The owner's range restores the part or not,
+                            // whatever the part says.
+                            if var.qualifier(db).contains(crate::Qualifier::NON_RETAIN) {
+                                refuse(WiderAddressUse::NonRetain);
                             }
                             // On an input E1419 below says it.
                             if var.init(db).is_some()

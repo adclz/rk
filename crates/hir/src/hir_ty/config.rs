@@ -1228,19 +1228,31 @@ pub fn prog_elements<'db>(
                     .count()
                     > 1
             };
+            // One report per input or block, from its first element,
+            // pointing at the others.
             for (var, path, fb) in &named {
-                if twice(var, *fb) {
-                    let var = var.name_with_case(db);
-                    let why = if *fb {
-                        ProgElementRefusal::AssociatedTwice { var }
-                    } else {
-                        ProgElementRefusal::ConnectedTwice { var }
-                    };
-                    out.errors.push(
-                        ConfigError::ProgElementRefused { expr: *path, why }
-                            .to_diagnostic(db, file),
-                    );
+                if !twice(var, *fb) {
+                    continue;
                 }
+                let start = |p: &PathExpr<'db>| p.get_span(db).start_byte;
+                let mut others: Vec<_> = named
+                    .iter()
+                    .filter(|(v, p, f)| v == var && f == fb && p != path)
+                    .map(|(_, p, _)| *p)
+                    .collect();
+                if others.iter().any(|o| start(o) < start(path)) {
+                    continue;
+                }
+                others.sort_by_key(start);
+                let var = var.name_with_case(db);
+                let why = if *fb {
+                    ProgElementRefusal::AssociatedTwice { var, others }
+                } else {
+                    ProgElementRefusal::ConnectedTwice { var, others }
+                };
+                out.errors.push(
+                    ConfigError::ProgElementRefused { expr: *path, why }.to_diagnostic(db, file),
+                );
             }
             resolved.inputs.retain(|(var, _)| !twice(var, false));
             resolved
@@ -1326,9 +1338,12 @@ fn program_member<'db>(
     let var = instance_member(db, Type::Program(program), ident.ident(db));
     if var.is_none() {
         errors.push(
-            ConfigError::ConfigInstInitFieldNotFound {
-                field: *ident,
-                parent_type: Type::Program(program),
+            ConfigError::ProgElementRefused {
+                expr: path,
+                why: ProgElementRefusal::NoSuchVariable {
+                    var: ident.with_case,
+                    program: program.name_with_case(db),
+                },
             }
             .to_diagnostic(db, file),
         );
@@ -1542,9 +1557,16 @@ fn check_config_entries<'db>(
             let refusal = match located {
                 EntryLocation::Refused(why) => Some(why.clone()),
                 EntryLocation::Given(address) => {
-                    // Located twice: every entry is reported, pointing at the
-                    // smallest of the others, since fragments have no order.
-                    let other = all
+                    // Located twice: one report per variable, from the first
+                    // entry in file order, pointing at the others; none of
+                    // them locates it.
+                    let position = |p: &PathExpr<'db>| {
+                        (
+                            p.get_scope_id(db).file(db).url(db).to_string(),
+                            p.get_span(db).start_byte,
+                        )
+                    };
+                    let mut others: Vec<_> = all
                         .iter()
                         .filter(|o| {
                             o.path != entry.path
@@ -1552,19 +1574,29 @@ fn check_config_entries<'db>(
                                 && o.instance == entry.instance
                                 && o.members == entry.members
                         })
-                        .min_by_key(|o| {
-                            (
-                                o.path.get_scope_id(db).file(db).url(db).to_string(),
-                                o.path.get_span(db).start_byte,
-                            )
-                        });
-                    if let Some(other) = other {
+                        .collect();
+                    if others
+                        .iter()
+                        .any(|o| position(&o.path) < position(&entry.path))
+                    {
+                        continue;
+                    }
+                    others.sort_by_key(|o| position(&o.path));
+                    if !others.is_empty() {
                         Some(Refusal::LocatedTwice {
-                            other: other
-                                .location
-                                .as_ref()
-                                .map(|(dv, _)| compact_str::CompactString::from(dv.to_address(db)))
-                                .unwrap_or_default(),
+                            others: others
+                                .iter()
+                                .map(|o| crate::check::errors::e14_config::OtherLocation {
+                                    path: o.path,
+                                    address: o
+                                        .location
+                                        .as_ref()
+                                        .map(|(dv, _)| {
+                                            compact_str::CompactString::from(dv.to_address(db))
+                                        })
+                                        .unwrap_or_default(),
+                                })
+                                .collect(),
                         })
                     } else if address.width < 8
                         && let Some(view) = crate::hir_ty::index_graphs::located_view(db, address)
@@ -1637,15 +1669,32 @@ fn check_config_value<'db>(
     };
     let var_name = var.name_with_case(db);
     let same_instance = |o: &ConfigEntry<'db>| o.instance == entry.instance;
-    // Every such entry is reported, since fragments have no order.
-    let twice = all.iter().any(|o| {
-        o.path != entry.path
-            && o.init.is_some()
-            && same_instance(o)
-            && (o.members.starts_with(&entry.members) || entry.members.starts_with(&o.members))
-    });
-    if twice {
-        errors.push(refuse(ConfigEntryRefusal::ValueTwice { var: var_name }));
+    // One report per conflict, from the first entry in file order, pointing
+    // at the others; the later ones give no value either.
+    let position = |p: &PathExpr<'db>| {
+        (
+            p.get_scope_id(db).file(db).url(db).to_string(),
+            p.get_span(db).start_byte,
+        )
+    };
+    let mut others: Vec<_> = all
+        .iter()
+        .filter(|o| {
+            o.path != entry.path
+                && o.init.is_some()
+                && same_instance(o)
+                && (o.members.starts_with(&entry.members) || entry.members.starts_with(&o.members))
+        })
+        .map(|o| o.path)
+        .collect();
+    if !others.is_empty() {
+        if others.iter().all(|o| position(o) > position(&entry.path)) {
+            others.sort_by_key(position);
+            errors.push(refuse(ConfigEntryRefusal::ValueTwice {
+                var: var_name,
+                others,
+            }));
+        }
         return None;
     }
     // A PROGRAM's VAR located in full is its channel, and its declaration
@@ -1657,6 +1706,7 @@ fn check_config_value<'db>(
                 .location(db)
                 .map(|dv| compact_str::CompactString::from(dv.to_address(db)))
                 .unwrap_or_default(),
+            decl: Some(*var),
         }));
         return None;
     }
@@ -1702,6 +1752,8 @@ fn check_config_value<'db>(
             ConfigError::PartOfWiderAddress {
                 site: crate::CallSite::from_scoped(db, &entry.path),
                 address: channel.text.clone(),
+                owner_decl: crate::hir_ty::index_graphs::located_declaration(db, &view.owner),
+                owner_mention: crate::hir_ty::index_graphs::located_mention(db, &view.owner),
                 owner: view.owner.text,
                 usage: WiderAddressUse::Initializer(owner),
             }
@@ -1709,10 +1761,11 @@ fn check_config_value<'db>(
         );
         return None;
     }
-    if located_declaration(db, &channel).is_some() {
+    if let Some(decl) = located_declaration(db, &channel) {
         errors.push(refuse(ConfigEntryRefusal::ChannelDeclared {
             var: var_name,
             address: channel.text.clone(),
+            decl: Some(decl),
         }));
         return None;
     }

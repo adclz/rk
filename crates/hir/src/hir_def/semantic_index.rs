@@ -115,6 +115,11 @@ pub struct SemanticIndex<'db> {
             Vec<crate::hir_def::pous::variable::VariableDecl<'db>>,
         >,
     >,
+    /// The first mention of each address the file makes outside a
+    /// declaration: written bare in a body, or given by a VAR_CONFIG entry.
+    /// What a report about a part of the address points at when no variable
+    /// is declared at it.
+    pub located_mentions: Arc<std::collections::BTreeMap<LocatedAddress, crate::CallSite<'db>>>,
 
     /// A list of errors encountered during semantic analysis
     pub errors: Vec<IdeDiagnostic>,
@@ -154,6 +159,7 @@ impl<'db> SemanticIndex<'db> {
             pou_map: Arc::new(FxHashMap::default()),
             program_map: Arc::new(FxHashMap::default()),
             located: Arc::new(Default::default()),
+            located_mentions: Arc::new(Default::default()),
             errors: vec![],
         }
     }
