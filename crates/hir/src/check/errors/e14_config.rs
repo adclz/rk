@@ -82,13 +82,12 @@ pub enum ConfigError<'db> {
     ConfigInstInitUnknownInstance {
         instance_name: SpanIdent<'db>,
     },
-    /// A VAR_CONFIG path names what an instance of the type does not hold:
-    /// nothing of that name, or a VAR_TEMP or a VAR_EXTERNAL it declares.
+    /// A VAR_CONFIG path names a member the type does not declare. One it
+    /// declares and no instance holds, a VAR_TEMP or a VAR_EXTERNAL, is
+    /// [`ConfigEntryRefusal::NotHeld`].
     ConfigInstInitFieldNotFound {
         field: SpanIdent<'db>,
         parent_type: Type<'db>,
-        /// The VAR_TEMP or VAR_EXTERNAL of that name the type declares.
-        declared: Option<VariableDecl<'db>>,
     },
     /// A VAR_ACCESS declaration's type does not match the referenced variable's actual type.
     AccessDeclTypeMismatch {
@@ -307,6 +306,15 @@ pub enum ConfigEntryRefusal<'db> {
     },
     /// A value for the PROGRAM instance itself rather than a variable of it.
     ProgramValue,
+    /// `Res.P1.f.scratch`: the type declares a VAR_TEMP or a VAR_EXTERNAL
+    /// of that name, and no instance holds it. A VAR_TEMP is made for each
+    /// call, a VAR_EXTERNAL is the VAR_GLOBAL it names.
+    NotHeld {
+        field: SpanIdent<'db>,
+        parent_type: Type<'db>,
+        /// The VAR_TEMP or VAR_EXTERNAL, pointed at.
+        decl: VariableDecl<'db>,
+    },
 }
 
 /// Another VAR_CONFIG entry giving a value to the same variable, or to an
@@ -1049,52 +1057,16 @@ impl<'db> ToIdeDiagnostic<'db> for ConfigError<'db> {
                     crate::denormalize(db, file, &instance_name.get_span(db)).unwrap_or_default(),
                 )
                 .call(),
-            Self::ConfigInstInitFieldNotFound {
-                field,
-                parent_type,
-                declared,
-            } => {
-                let name = field.as_str(db);
-                let ty = parent_type.type_name(db);
-                let message = match declared {
-                    Some(var) if var.is_temp(db) => {
-                        format!("'{name}' is a VAR_TEMP of '{ty}', made for each call")
-                    }
-                    Some(var) if var.is_external(db) => {
-                        format!("'{name}' is a VAR_EXTERNAL of '{ty}', the VAR_GLOBAL '{name}'")
-                    }
-                    _ => format!("'{ty}' has no field named '{name}'"),
-                };
-                let mut diag = diag()
-                    .message(message)
-                    .severity(DiagnosticSeverity::ERROR)
-                    .desc(self)
-                    .range(crate::denormalize(db, file, &field.get_span(db)).unwrap_or_default())
-                    .call();
-                if let Some(var) = declared {
-                    diag.with_related(Related::new(
-                        format!("'{name}' is declared here"),
-                        var.scope_id(db).file(db),
-                        var.get_name_span(db),
-                    ));
-                    diag.with_note("a VAR_CONFIG entry names what an instance holds".to_string());
-                    if var.is_external(db) {
-                        if let Some(global) =
-                            crate::hir_ty::index_graphs::external_var_lookup(db, var.name(db))
-                        {
-                            diag.with_related(Related::new(
-                                format!("the VAR_GLOBAL '{name}' is declared here"),
-                                global.scope_id(db).file(db),
-                                global.get_name_span(db),
-                            ));
-                        }
-                        diag.with_help(format!(
-                            "give the VAR_GLOBAL '{name}' its address or value where it is declared"
-                        ));
-                    }
-                }
-                diag
-            }
+            Self::ConfigInstInitFieldNotFound { field, parent_type } => diag()
+                .message(format!(
+                    "'{}' has no field named '{}'",
+                    parent_type.type_name(db),
+                    field.as_str(db)
+                ))
+                .severity(DiagnosticSeverity::ERROR)
+                .desc(self)
+                .range(crate::denormalize(db, file, &field.get_span(db)).unwrap_or_default())
+                .call(),
             Self::AccessDeclTypeMismatch {
                 var_origin,
                 spec,
@@ -1680,12 +1652,36 @@ impl<'db> ToIdeDiagnostic<'db> for ConfigError<'db> {
                         None,
                         Some("give each variable its value in an entry of its own"),
                     ),
+                    ConfigEntryRefusal::NotHeld {
+                        field,
+                        parent_type,
+                        decl,
+                    } => (
+                        {
+                            let name = field.as_str(db);
+                            let ty = parent_type.type_name(db);
+                            if decl.is_temp(db) {
+                                format!("'{name}' is a VAR_TEMP of '{ty}', made for each call")
+                            } else {
+                                format!(
+                                    "'{name}' is a VAR_EXTERNAL of '{ty}', the VAR_GLOBAL '{name}'"
+                                )
+                            }
+                        },
+                        Some("a VAR_CONFIG entry names what an instance holds"),
+                        None,
+                    ),
+                };
+                // The caret is on the segment that fails, when one does.
+                let span = match why {
+                    ConfigEntryRefusal::NotHeld { field, .. } => field.get_span(db),
+                    _ => expr.get_span(db),
                 };
                 let mut diag = diag()
                     .message(message)
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(crate::denormalize(db, file, &expr.get_span(db)).unwrap_or_default())
+                    .range(crate::denormalize(db, file, &span).unwrap_or_default())
                     .call();
                 match why {
                     ConfigEntryRefusal::ValueTwice { others, .. } => {
@@ -1706,6 +1702,28 @@ impl<'db> ToIdeDiagnostic<'db> for ConfigError<'db> {
                             decl.scope_id(db).file(db),
                             decl.get_name_span(db),
                         ));
+                    }
+                    ConfigEntryRefusal::NotHeld { field, decl, .. } => {
+                        let name = field.as_str(db);
+                        diag.with_related(Related::new(
+                            format!("'{name}' is declared here"),
+                            decl.scope_id(db).file(db),
+                            decl.get_name_span(db),
+                        ));
+                        if decl.is_external(db) {
+                            if let Some(global) =
+                                crate::hir_ty::index_graphs::external_var_lookup(db, decl.name(db))
+                            {
+                                diag.with_related(Related::new(
+                                    format!("the VAR_GLOBAL '{name}' is declared here"),
+                                    global.scope_id(db).file(db),
+                                    global.get_name_span(db),
+                                ));
+                            }
+                            diag.with_help(format!(
+                                "give the VAR_GLOBAL '{name}' its address or value where it is declared"
+                            ));
+                        }
                     }
                     _ => {}
                 }

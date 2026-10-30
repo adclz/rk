@@ -975,14 +975,21 @@ pub fn resolve_config_entries<'db>(
                     members.push(var);
                 }
                 None => {
-                    out.errors.push(
-                        ConfigError::ConfigInstInitFieldNotFound {
+                    let error = match declared_but_not_held(db, current_type, ident.ident(db)) {
+                        Some(held) => ConfigError::ConfigEntryRefused {
+                            expr: decl.path,
+                            why: ConfigEntryRefusal::NotHeld {
+                                field: *ident,
+                                parent_type: current_type,
+                                decl: held,
+                            },
+                        },
+                        None => ConfigError::ConfigInstInitFieldNotFound {
                             field: *ident,
                             parent_type: current_type,
-                            declared: declared_but_not_held(db, current_type, ident.ident(db)),
-                        }
-                        .to_diagnostic(db, file),
-                    );
+                        },
+                    };
+                    out.errors.push(error.to_diagnostic(db, file));
                     resolved = false;
                     break;
                 }
@@ -1047,7 +1054,7 @@ fn instance_member<'db>(
 }
 
 /// The VAR_TEMP or VAR_EXTERNAL named `name` that `ty` declares: what a
-/// VAR_CONFIG path can name and no instance holds, said as such (E1414).
+/// VAR_CONFIG path can name and no instance holds, said as such (E1426).
 fn declared_but_not_held<'db>(
     db: &'db dyn WorkspaceDataBase,
     ty: Type<'db>,
