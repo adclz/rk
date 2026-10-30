@@ -937,6 +937,8 @@ fn check_in_out_lvalue<'db>(
                 func: callable,
                 var,
                 expr: value,
+                slice: is_partial_access,
+                member: crate::hir_ty::layout::in_out_is_member(db, var),
             }
             .to_diagnostic(db, ctx.scope.file(db)),
         );

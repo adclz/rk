@@ -94,9 +94,9 @@ fn part_of_one(
                 Type::Elementary(ElementarySpec::Bool)
             ) =>
         {
-            "a bit of one"
+            "a slice of one"
         }
-        _ => "a part of one",
+        _ => "a slice of one",
     }
 }
 
@@ -143,7 +143,7 @@ impl<'db> ToIdeDiagnostic<'db> for ReferenceError<'db> {
                 let (what, note, help) = match access {
                     Some(access) if access.multibits(db).is_some() => (
                         part_of_one(db, access),
-                        "a reference points at a named variable or instance",
+                        "a slice of a variable has no address of its own, where a variable declared at whole bytes of an address has",
                         None,
                     ),
                     Some(access) if matches!(access.kind(db), VariableAccessKind::Direct(_)) => (
@@ -185,7 +185,7 @@ impl<'db> ToIdeDiagnostic<'db> for ReferenceError<'db> {
                     .range(crate::denormalize(db, file, &var.get_name_span(db)).unwrap_or_default())
                     .call();
                 diag.with_note(
-                    "a FUNCTION_BLOCK keeps a VAR_IN_OUT of a scalar type as a member, and nothing of one of an aggregate type"
+                    "a FUNCTION_BLOCK keeps a VAR_IN_OUT of a scalar type as a member, and nothing of a STRING, a reference or an aggregate"
                         .to_string(),
                 );
                 diag.with_help(format!("drop the {word}"));

@@ -103,6 +103,12 @@ pub enum CallError<'db> {
         func: CallableType<'db>,
         var: VariableDecl<'db>,
         expr: Expr<'db>,
+        /// A slice of a variable, `b.%X1`: a variable in form, with no
+        /// address of its own.
+        slice: bool,
+        /// A FUNCTION_BLOCK's scalar VAR_IN_OUT, which is copied back into
+        /// its argument rather than bound to its address.
+        member: bool,
     },
     /// A VAR_INPUT or a VAR_IN_OUT bound with `=>`, which names where an
     /// output goes: an input takes a value with `:=`, and an in-out is bound
@@ -322,7 +328,7 @@ impl<'db> ToIdeDiagnostic<'db> for CallError<'db> {
                 }
                 if any_in_out {
                     diag.with_note(
-                        "a VAR_IN_OUT of a FUNCTION or a METHOD, or of an aggregate type, is bound to the caller's variable at each call"
+                        "a VAR_IN_OUT of a FUNCTION or a METHOD, or of a STRING, a reference or an aggregate, is bound to the caller's variable at each call"
                             .to_string(),
                     );
                 }
@@ -456,10 +462,35 @@ impl<'db> ToIdeDiagnostic<'db> for CallError<'db> {
                 ));
                 diag
             }
-            Self::InOutParameterRequiresLValue { func, var, expr } => {
+            Self::InOutParameterRequiresLValue {
+                func,
+                var,
+                expr,
+                slice,
+                member,
+            } => {
+                let (what, note, help) = if *slice {
+                    (
+                        "a slice of one",
+                        "a VAR_IN_OUT of a FUNCTION or a METHOD binds the argument's address, and a slice of a variable has none of its own, where a variable declared at whole bytes of an address has",
+                        Some("copy it into a variable, pass that, and assign it back".to_string()),
+                    )
+                } else if *member {
+                    (
+                        "a value",
+                        "a FUNCTION_BLOCK copies a scalar VAR_IN_OUT back into its argument when the call ends, and a literal, an expression or a call result has nowhere to receive it",
+                        None,
+                    )
+                } else {
+                    (
+                        "a value",
+                        "a literal, an expression or a call result has no address for a VAR_IN_OUT to bind",
+                        None,
+                    )
+                };
                 let mut diag = diag()
                     .message(format!(
-                        "VAR_IN_OUT parameter '{}' of '{}' requires a variable, not a value",
+                        "VAR_IN_OUT parameter '{}' of '{}' requires a variable, not {what}",
                         var.name_with_case(db).text(db),
                         func.get_name_with_case(db).text(db),
                     ))
@@ -467,10 +498,7 @@ impl<'db> ToIdeDiagnostic<'db> for CallError<'db> {
                     .desc(self)
                     .range(crate::denormalize(db, file, &expr.get_span(db)).unwrap_or_default())
                     .call();
-                diag.with_note(
-                    "a literal, an expression or a call result has no address for a VAR_IN_OUT to bind"
-                        .to_string(),
-                );
+                diag.with_advice(Some(note.to_string()), help);
                 diag.with_related(Related::new(
                     format!(
                         "parameter '{}' is declared here",
