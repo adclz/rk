@@ -195,3 +195,42 @@ END_FUNCTION
     ----'
     ");
 }
+
+/// A VAR_IN_OUT the block keeps as a member is an input written back, and
+/// the caller sets it the way it sets an input: `fb.io := 42; fb();`. One
+/// bound by reference, a STRING, is written through the last call's
+/// binding, and is reported.
+#[rstest]
+fn in_out_member_written_from_outside_not_flagged(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK MyFB
+VAR_IN_OUT
+    io : INT;
+    s : STRING;
+END_VAR
+    io := io + 1;
+    s := 'x';
+END_FUNCTION_BLOCK
+
+FUNCTION caller : INT
+VAR
+    fb : MyFB;
+    t : STRING;
+END_VAR
+    fb.io := 42;
+    fb(s := t);
+    fb.s := 'y';
+END_FUNCTION
+"#;
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "external-mutation"), @r"
+    [L0117] Warning: external instance mutation
+        ,-[ file:///test0.st:18:5 ]
+        |
+     18 |     fb.s := 'y';
+        |     ^^|^
+        |       `--- 'fb.s' is written from outside its instance
+        |
+        | Note: lint rule: external-mutation
+    ----'
+    ");
+}

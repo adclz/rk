@@ -51,9 +51,11 @@ pub fn check_assignment<'db>(
     };
 
     // An input is the caller's to set: `fb.x := 42; fb();` passes it the way
-    // `fb(x := 42)` does.
+    // `fb(x := 42)` does. A VAR_IN_OUT the block keeps as a member is an
+    // input written back, and the caller's to set the same way.
     if let Type::Variable((member, _)) = body.type_of_path_expr(outer_path)
-        && member.kind(db) == VariableKind::Input
+        && (member.kind(db) == VariableKind::Input
+            || hir::hir_ty::layout::in_out_is_member(db, member))
     {
         return;
     }
