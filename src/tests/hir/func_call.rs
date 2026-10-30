@@ -504,6 +504,110 @@ END_FUNCTION
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
 
+/// An output bound to a slice writes the variable the slice is of, so the
+/// checks on a write apply: a bit of a variable located in `%I` is E1419
+/// and a bit of a CONSTANT is E0404, on a FUNCTION's output and on a
+/// block's, by `=>` and negated.
+#[rstest]
+fn invalid_output_bound_to_a_slice_of_an_input_or_a_constant(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION G : INT
+VAR_OUTPUT o : BOOL; END_VAR
+    G := 1; o := TRUE;
+END_FUNCTION
+
+FUNCTION_BLOCK Fb
+VAR_OUTPUT q : BOOL; END_VAR
+    q := TRUE;
+END_FUNCTION_BLOCK
+
+PROGRAM P
+VAR sensor AT %IW0 : WORD; f : Fb; n : INT; END_VAR
+VAR CONSTANT k : WORD := 16#0001; END_VAR
+    n := G(o => sensor.%X3);
+    n := G(o => k.%X3);
+    f(q => sensor.%X3);
+    f(q => k.%X3);
+    f(NOT q => sensor.%X4);
+    f(NOT q => k.%X4);
+END_PROGRAM
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1419] Error: write to an input location
+        ,-[ file:///test0.st:15:17 ]
+        |
+     15 |     n := G(o => sensor.%X3);
+        |                 ^^^^^|^^^^
+        |                      `------ '%IW0' is an input: it is written by the host, not by the program
+        |
+        | Note: the host copies the input image in before each scan: the rest of this scan would read a value the input never had, and the next scan overwrites it
+    ----'
+    [E0404] Error: write to a constant
+        ,-[ file:///test0.st:16:17 ]
+        |
+     14 | VAR CONSTANT k : WORD := 16#0001; END_VAR
+        |              |
+        |              `-- 'k' is declared CONSTANT here
+        |
+     16 |     n := G(o => k.%X3);
+        |                 ^^|^^
+        |                   `---- cannot write to 'k.%X3' in constant 'k'
+        |
+        | Help: copy it into a variable to change the copy
+        |
+        | Note: a CONSTANT keeps the value it is declared with
+    ----'
+    [E1419] Error: write to an input location
+        ,-[ file:///test0.st:17:12 ]
+        |
+     17 |     f(q => sensor.%X3);
+        |            ^^^^^|^^^^
+        |                 `------ '%IW0' is an input: it is written by the host, not by the program
+        |
+        | Note: the host copies the input image in before each scan: the rest of this scan would read a value the input never had, and the next scan overwrites it
+    ----'
+    [E0404] Error: write to a constant
+        ,-[ file:///test0.st:18:12 ]
+        |
+     14 | VAR CONSTANT k : WORD := 16#0001; END_VAR
+        |              |
+        |              `-- 'k' is declared CONSTANT here
+        |
+     18 |     f(q => k.%X3);
+        |            ^^|^^
+        |              `---- cannot write to 'k.%X3' in constant 'k'
+        |
+        | Help: copy it into a variable to change the copy
+        |
+        | Note: a CONSTANT keeps the value it is declared with
+    ----'
+    [E1419] Error: write to an input location
+        ,-[ file:///test0.st:19:16 ]
+        |
+     19 |     f(NOT q => sensor.%X4);
+        |                ^^^^^|^^^^
+        |                     `------ '%IW0' is an input: it is written by the host, not by the program
+        |
+        | Note: the host copies the input image in before each scan: the rest of this scan would read a value the input never had, and the next scan overwrites it
+    ----'
+    [E0404] Error: write to a constant
+        ,-[ file:///test0.st:20:16 ]
+        |
+     14 | VAR CONSTANT k : WORD := 16#0001; END_VAR
+        |              |
+        |              `-- 'k' is declared CONSTANT here
+        |
+     20 |     f(NOT q => k.%X4);
+        |                ^^|^^
+        |                  `---- cannot write to 'k.%X4' in constant 'k'
+        |
+        | Help: copy it into a variable to change the copy
+        |
+        | Note: a CONSTANT keeps the value it is declared with
+    ----'
+    ");
+}
+
 /// `=>` names where an output goes: refused on an input of a FUNCTION, of an
 /// overloaded one (on the overload the variable picks) and of a block.
 #[rstest]

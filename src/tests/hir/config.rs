@@ -2306,7 +2306,7 @@ VAR f : Fb; END_VAR
 END_PROGRAM
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1414] Error: unknown field in VAR_CONFIG
+    [E1426] Error: configuration entry refused
         ,-[ file:///test0.st:9:18 ]
         |
       3 | VAR_GLOBAL g : INT := 5; END_VAR
@@ -2325,7 +2325,7 @@ END_PROGRAM
         |
         | Note: a VAR_CONFIG entry names what an instance holds
     ----'
-    [E1414] Error: unknown field in VAR_CONFIG
+    [E1426] Error: configuration entry refused
         ,-[ file:///test0.st:10:18 ]
         |
      10 |         Res.P1.f.scratch : INT := 5;
