@@ -1,10 +1,12 @@
 // SPDX-FileCopyrightText: 2026 Clauzel Adrien
 // SPDX-License-Identifier: AGPL-3.0-only
 
-//! VAR_IN_OUT semantics at FB call sites: by-reference binding (a pointer
-//! field in the instance struct, stored once per call, auto-dereferenced in the
-//! body), aliasing, aggregates, nesting/passthrough, STRING, and the E0806
-//! l-value requirement.
+//! VAR_IN_OUT at FB call sites. A scalar one is a member of the instance:
+//! the call copies the argument in before the body and back after it. A
+//! STRING, a reference or an aggregate is bound by reference: a pointer
+//! field in the instance, stored once per call and auto-dereferenced in the
+//! body. Aliasing, nesting and passthrough, the E0806 variable requirement,
+//! and the split between the two models.
 
 use crate::tests::codegen::TestPlc;
 use crate::tests::codegen::{compile_to_mir_and_wasm, with_db};
@@ -17,9 +19,9 @@ fn read_retain_string(plc: &TestPlc) -> String {
     String::from_utf8_lossy(&r[4..4 + len]).to_string()
 }
 
-/// The caller's variable receives the callee's mutation. `d(v := x)` with x=21
-/// and `v := v * 2` must leave x = 42. (Regression: with the old value-field
-/// model only the copy-in was emitted, so x silently kept 21.)
+/// The caller's variable receives what the body wrote: `d(v := x)` with
+/// x=21 and `v := v * 2` leaves x = 42, copied back after the body. (A
+/// member once copied in and never back, so x silently kept 21.)
 #[rstest]
 fn fb_inout_basic(mut with_db: db::RootDatabase) {
     let source = r#"
@@ -35,11 +37,11 @@ fn fb_inout_basic(mut with_db: db::RootDatabase) {
         END_FUNCTION
     "#;
     let result: i32 = super::run(&mut with_db, source, "test", ());
-    assert_eq!(result, 42, "FB inout by-ref: x becomes 42");
+    assert_eq!(result, 42, "the member is copied back: x becomes 42");
 }
 
 /// The positional (non-formal) arg form `d(x)` binds the inout too, and the
-/// reference round-trips across two calls (42 -> 84).
+/// copy in and back round-trips across two calls (42 -> 84).
 #[rstest]
 fn fb_inout_positional(mut with_db: db::RootDatabase) {
     let source = r#"
@@ -194,8 +196,8 @@ fn fb_inout_aggregate(mut with_db: db::RootDatabase) {
 
 /// A nested FB (an instance that is itself a member of the calling FB) bound
 /// to an inout arg that is another member of the outer FB: the call site runs
-/// through the dynamic `this + offset` FbCall branch and must store the
-/// member's address, not its value.
+/// through the dynamic `this + offset` FbCall branch, and the copy back
+/// lands in the outer's member.
 #[rstest]
 fn fb_inout_nested(mut with_db: db::RootDatabase) {
     let source = r#"
@@ -223,10 +225,9 @@ fn fb_inout_nested(mut with_db: db::RootDatabase) {
 }
 
 /// Inout PASSTHROUGH: an FB forwards its OWN VAR_IN_OUT param to a nested FB's
-/// VAR_IN_OUT. The outer's field holds a pointer to the original caller's
-/// variable; forwarding must pass that stored pointer along (not the address
-/// of the pointer slot), so the innermost mutation reaches the original
-/// variable two frames up.
+/// VAR_IN_OUT. Two members, two copies: the inner copies the outer's member
+/// in and back, and the outer copies its own back into the original
+/// variable two frames up, so the innermost write reaches it.
 #[rstest]
 fn fb_inout_passthrough(mut with_db: db::RootDatabase) {
     let source = r#"
@@ -282,9 +283,9 @@ fn fb_inout_string(mut with_db: db::RootDatabase) {
     assert_eq!(read_retain_string(&plc), "hi-fb-inout");
 }
 
-/// E0806: a VAR_IN_OUT argument must be an l-value. A literal or expression
-/// has no address to bind — previously this compiled silently and the callee
-/// dereferenced a garbage address.
+/// E0806: a VAR_IN_OUT argument must be a variable. A literal or an
+/// expression has nowhere to receive the copy back — previously this
+/// compiled silently and the callee dereferenced a garbage address.
 #[rstest]
 fn fb_inout_non_lvalue_rejected(mut with_db: db::RootDatabase) {
     let source = r#"
@@ -392,8 +393,9 @@ fn fn_inout_array(mut with_db: db::RootDatabase) {
     assert_eq!(result, 14, "array inout on a FUNCTION: 6 + 8");
 }
 
-/// E0807: binding a VAR_IN_OUT with `=>` is rejected — under by-ref it would
-/// leave the pointer field unbound (the body would deref address 0).
+/// E0807: binding a VAR_IN_OUT with `=>` is rejected — a member would run
+/// the body on what it holds and copy nothing in, and a reference would be
+/// left unbound (the body would deref address 0).
 #[rstest]
 fn fb_inout_arrow_binding_rejected(mut with_db: db::RootDatabase) {
     let source = r#"
@@ -452,30 +454,36 @@ fn fb_inout_method_this_access(mut with_db: db::RootDatabase) {
 }
 
 /// The by_ref discriminator: an FB with BOTH a REF_TO input (a Pointer field
-/// the user derefs explicitly with `^`) and a VAR_IN_OUT (a Pointer field
-/// that auto-derefs). Only `MirStructField.by_ref` tells them apart — a
-/// regression here would auto-deref REF members or stop auto-dereffing
-/// inouts.
+/// the user derefs explicitly with `^`) and a REF_TO VAR_IN_OUT (a Pointer
+/// field to the caller's reference, auto-dereferenced once, then `^` for
+/// the INT). Only `MirStructField.by_ref` tells them apart — a regression
+/// here would auto-deref REF members or stop auto-dereffing inouts. The
+/// body also re-points the in-out, which re-points the caller's reference.
 #[rstest]
 fn fb_ref_to_member_not_auto_dereffed(mut with_db: db::RootDatabase) {
     let source = r#"
+        TYPE PInt : REF_TO INT; END_TYPE
+
         FUNCTION_BLOCK mixer
-            VAR_IN_OUT io : INT; END_VAR
+            VAR_IN_OUT io : PInt; END_VAR
             VAR_INPUT target : REF_TO INT; END_VAR
-            io := io + 1;
+            io^ := io^ + 1;
             target^ := target^ + 100;
+            io := target;
         END_FUNCTION_BLOCK
 
         FUNCTION test : INT
-        VAR m : mixer; a : INT := 1; b : INT := 2; END_VAR
-            m(io := a, target := REF(b));
+        VAR m : mixer; a : INT := 1; b : INT := 2; r : PInt; END_VAR
+            r := REF(a);
+            m(io := r, target := REF(b));
+            r^ := 7;
             test := a * 1000 + b;
         END_FUNCTION
     "#;
     let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(
-        result, 2102,
-        "io auto-deref: a=2; REF explicit deref: b=102"
+        result, 2007,
+        "io auto-deref then ^: a=2; REF explicit deref: b=102; r re-pointed at b, which the 7 overwrites"
     );
 }
 
@@ -668,8 +676,10 @@ fn a_reference_to_a_member_points_at_the_member(mut with_db: db::RootDatabase) {
 }
 
 /// A bit of a bit string, `w.%X3`, bound to a member: the copy brings the
-/// bit in, and the copy back changes that bit of `w` and no other. A
-/// reference binds no bit (E1423 on a FUNCTION's VAR_IN_OUT).
+/// bit in, and the copy back changes that bit of `w` and no other. The word
+/// is reset between the calls, so a copy in that skipped the bit (the
+/// member's TRUE from the first call would be flipped back) fails the
+/// second. A reference binds no bit (E1423 on a FUNCTION's VAR_IN_OUT).
 #[rstest]
 fn a_bit_of_a_word_bound_to_a_member(mut with_db: db::RootDatabase) {
     let source = r#"
@@ -682,14 +692,15 @@ fn a_bit_of_a_word_bound_to_a_member(mut with_db: db::RootDatabase) {
         VAR f : flip; w : WORD := 16#00F0; END_VAR
             f(v := w.%X3);
             IF w = 16#00F8 THEN test := 1; END_IF;
+            w := 16#00F0;
             f(v := w.%X3);
-            IF w = 16#00F0 THEN test := test + 10; END_IF;
+            IF w = 16#00F8 THEN test := test + 10; END_IF;
         END_FUNCTION
     "#;
     let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(
         result, 11,
-        "16#F8 after the first call and 16#F0 after the second: bit 3 only"
+        "16#F8 after each call: bit 3 only, copied in from the reset word"
     );
 }
 

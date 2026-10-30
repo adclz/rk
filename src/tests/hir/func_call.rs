@@ -429,8 +429,8 @@ END_FUNCTION_BLOCK"#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
 
-/// An output is written into a variable: not into a literal, an expression,
-/// a call's result or a bit of a variable, bound by `=>` or by its place.
+/// An output is written into a variable: not into a literal, an expression
+/// or a call's result, bound by `=>` or by its place.
 #[rstest]
 fn invalid_output_bound_to_a_value(mut with_db: RootDatabase) {
     let source = r#"
@@ -441,54 +441,67 @@ VAR_OUTPUT o : BOOL; END_VAR
 END_FUNCTION
 
 FUNCTION Caller : INT
-VAR w : WORD; END_VAR
     Caller := G(a := 1, o => TRUE);
-    Caller := G(1, w.%X3);
     Caller := G(1, G(2));
 END_FUNCTION
 "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     [E0805] Error: VAR_OUTPUT argument not a variable
-        ,-[ file:///test0.st:10:30 ]
-        |
-      4 | VAR_OUTPUT o : BOOL; END_VAR
-        |            |
-        |            `-- parameter 'o' is declared here
-        |
-     10 |     Caller := G(a := 1, o => TRUE);
-        |                              ^^|^
-        |                                `--- VAR_OUTPUT parameter 'o' of 'G' requires a variable, not a value
-        |
-        | Note: the call writes the output into the variable bound to it
-    ----'
+       ,-[ file:///test0.st:9:30 ]
+       |
+     4 | VAR_OUTPUT o : BOOL; END_VAR
+       |            |
+       |            `-- parameter 'o' is declared here
+       |
+     9 |     Caller := G(a := 1, o => TRUE);
+       |                              ^^|^
+       |                                `--- VAR_OUTPUT parameter 'o' of 'G' requires a variable, not a value
+       |
+       | Note: the call writes the output into the variable bound to it
+    ---'
     [E0805] Error: VAR_OUTPUT argument not a variable
-        ,-[ file:///test0.st:11:20 ]
+        ,-[ file:///test0.st:10:20 ]
         |
       4 | VAR_OUTPUT o : BOOL; END_VAR
         |            |
         |            `-- parameter 'o' is declared here
         |
-     11 |     Caller := G(1, w.%X3);
-        |                    ^^|^^
-        |                      `---- VAR_OUTPUT parameter 'o' of 'G' requires a variable, not a value
-        |
-        | Note: the call writes the output into the variable bound to it
-    ----'
-    [E0805] Error: VAR_OUTPUT argument not a variable
-        ,-[ file:///test0.st:12:20 ]
-        |
-      4 | VAR_OUTPUT o : BOOL; END_VAR
-        |            |
-        |            `-- parameter 'o' is declared here
-        |
-     12 |     Caller := G(1, G(2));
+     10 |     Caller := G(1, G(2));
         |                    ^^|^
         |                      `--- VAR_OUTPUT parameter 'o' of 'G' requires a variable, not a value
         |
         | Note: the call writes the output into the variable bound to it
     ----'
     ");
+}
+
+/// A slice of a variable is a place, written as an assignment to it is: an
+/// output of a FUNCTION or of a FUNCTION_BLOCK lands in `w.%X3`, by `=>`
+/// or by its place, negated or not, and a byte's worth in `d.%B1`.
+#[rstest]
+fn valid_output_bound_to_a_slice(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION G : INT
+VAR_INPUT a : INT; END_VAR
+VAR_OUTPUT o : BOOL; b : BYTE; END_VAR
+    G := a; o := TRUE; b := 16#AB;
+END_FUNCTION
+
+FUNCTION_BLOCK Fb
+VAR_OUTPUT q : BOOL; END_VAR
+    q := TRUE;
+END_FUNCTION_BLOCK
+
+FUNCTION Caller : INT
+VAR w : WORD; d : DWORD; f : Fb; END_VAR
+    Caller := G(a := 1, o => w.%X3, b => d.%B1);
+    Caller := G(1, w.%X4, d.%B2);
+    f(q => w.%X5);
+    f(NOT q => w.%X6);
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
 
 /// `=>` names where an output goes: refused on an input of a FUNCTION, of an

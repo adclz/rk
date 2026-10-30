@@ -446,8 +446,10 @@ END_FUNCTION_BLOCK
 }
 
 /// A VAR_IN_OUT is bound to its argument by each call, so an instance's
-/// initializer cannot give it a value. The value used to be written into
-/// the pointer the binding lives in, and `__init` failed to validate.
+/// initializer cannot give it a value: a STRING here, as a reference or an
+/// aggregate. The value used to be written into the pointer the binding
+/// lives in, and `__init` failed to validate. A scalar VAR_IN_OUT is a
+/// member and takes one (`inout_members.rs`).
 #[rstest]
 fn invalid_in_out_named_in_an_instance_initializer(mut with_db: RootDatabase) {
     let source = r#"

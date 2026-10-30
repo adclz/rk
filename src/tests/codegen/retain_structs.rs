@@ -745,21 +745,17 @@ fn a_timer_in_a_retained_instance_starts_over(mut with_db: db::RootDatabase) {
         ],
         source,
     );
-    let paths: Vec<&str> = mir
+    let mut paths: Vec<&str> = mir
         .retain_map
         .ranges
         .iter()
         .map(|r| r.path.as_str())
         .collect();
-    assert!(
-        paths.contains(&"P1.m.t.IN"),
-        "the timer's inputs are kept: {paths:?}"
-    );
-    assert!(
-        !paths
-            .iter()
-            .any(|p| p.ends_with(".STATE") || p.ends_with("_TIME") || p.ends_with(".PREV_IN")),
-        "its step and clock readings are not: {paths:?}"
+    paths.sort_unstable();
+    assert_eq!(
+        paths,
+        ["P1.m.q", "P1.m.t.ET", "P1.m.t.IN", "P1.m.t.PT", "P1.m.t.Q"],
+        "the timer's inputs and outputs are kept, its step and clock readings are not"
     );
 
     // A PLC on a clock the test moves by hand, in milliseconds.
