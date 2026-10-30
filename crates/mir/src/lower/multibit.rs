@@ -301,6 +301,17 @@ impl<'db> ExprLowerCtx<'db> {
         let sliced = self.resolve_slice(&place, var_access, hir_ty)?;
         Ok(slice_write(place, sliced, value))
     }
+
+    /// The type a partial access of a plain variable reads and is written
+    /// as: BOOL for `w.%X3`, BYTE for `w.%B1`.
+    pub(crate) fn multibit_elementary(
+        &self,
+        place: &MirPlace,
+        var_access: VariableAccess<'db>,
+        hir_ty: Type<'db>,
+    ) -> Result<MirElementary, LowerTypeError> {
+        Ok(self.resolve_slice(place, var_access, hir_ty)?.elem)
+    }
 }
 
 /// Where a view is in its owner's cell (`ExprLowerCtx::view`).
