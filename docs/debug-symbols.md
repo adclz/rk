@@ -29,7 +29,7 @@ The reader also accepts `m[1][2]`.
 `debug-symbols` lists each pointer with the type it points at:
 
 - **A `REF_TO`** variable or member.
-- **A `VAR_IN_OUT`** member of an instance.
+- **A `VAR_IN_OUT`** member of an instance, of an aggregate type. A scalar one is a value the instance holds.
 
 Write `^` to go through a pointer, as in the program:
 
@@ -39,7 +39,7 @@ P1.a.next^.next^.value
 ```
 
 A `VAR_IN_OUT` reads as the variable it is bound to.
-`P1.m.speed` and `P1.m.speed^` are the same.
+`P1.m.pos` and `P1.m.pos^` are the same.
 
 An `ARRAY[*]` member keeps the address of the array it is bound to, and no bounds.
 Two arrays can start at one address: a matrix and its first row, or an array of STRUCTs and the array its first element begins with.
