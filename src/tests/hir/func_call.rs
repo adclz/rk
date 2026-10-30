@@ -429,8 +429,8 @@ END_FUNCTION_BLOCK"#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
 
-/// An output is written into a variable: not into a literal, an expression,
-/// a call's result or a bit of a variable, bound by `=>` or by its place.
+/// An output is written into a variable: not into a literal, an expression
+/// or a call's result, bound by `=>` or by its place.
 #[rstest]
 fn invalid_output_bound_to_a_value(mut with_db: RootDatabase) {
     let source = r#"
@@ -441,52 +441,169 @@ VAR_OUTPUT o : BOOL; END_VAR
 END_FUNCTION
 
 FUNCTION Caller : INT
-VAR w : WORD; END_VAR
     Caller := G(a := 1, o => TRUE);
-    Caller := G(1, w.%X3);
     Caller := G(1, G(2));
 END_FUNCTION
 "#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     [E0805] Error: VAR_OUTPUT argument not a variable
-        ,-[ file:///test0.st:10:30 ]
-        |
-      4 | VAR_OUTPUT o : BOOL; END_VAR
-        |            |
-        |            `-- parameter 'o' is declared here
-        |
-     10 |     Caller := G(a := 1, o => TRUE);
-        |                              ^^|^
-        |                                `--- VAR_OUTPUT parameter 'o' of 'G' requires a variable, not a value
-        |
-        | Note: the call writes the output into the variable bound to it
-    ----'
+       ,-[ file:///test0.st:9:30 ]
+       |
+     4 | VAR_OUTPUT o : BOOL; END_VAR
+       |            |
+       |            `-- parameter 'o' is declared here
+       |
+     9 |     Caller := G(a := 1, o => TRUE);
+       |                              ^^|^
+       |                                `--- VAR_OUTPUT parameter 'o' of 'G' requires a variable, not a value
+       |
+       | Note: the call writes the output into the variable bound to it
+    ---'
     [E0805] Error: VAR_OUTPUT argument not a variable
-        ,-[ file:///test0.st:11:20 ]
+        ,-[ file:///test0.st:10:20 ]
         |
       4 | VAR_OUTPUT o : BOOL; END_VAR
         |            |
         |            `-- parameter 'o' is declared here
         |
-     11 |     Caller := G(1, w.%X3);
-        |                    ^^|^^
-        |                      `---- VAR_OUTPUT parameter 'o' of 'G' requires a variable, not a value
-        |
-        | Note: the call writes the output into the variable bound to it
-    ----'
-    [E0805] Error: VAR_OUTPUT argument not a variable
-        ,-[ file:///test0.st:12:20 ]
-        |
-      4 | VAR_OUTPUT o : BOOL; END_VAR
-        |            |
-        |            `-- parameter 'o' is declared here
-        |
-     12 |     Caller := G(1, G(2));
+     10 |     Caller := G(1, G(2));
         |                    ^^|^
         |                      `--- VAR_OUTPUT parameter 'o' of 'G' requires a variable, not a value
         |
         | Note: the call writes the output into the variable bound to it
+    ----'
+    ");
+}
+
+/// A slice of a variable is a place, written as an assignment to it is: an
+/// output of a FUNCTION or of a FUNCTION_BLOCK lands in `w.%X3`, by `=>`
+/// or by its place, negated or not, and a byte's worth in `d.%B1`.
+#[rstest]
+fn valid_output_bound_to_a_slice(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION G : INT
+VAR_INPUT a : INT; END_VAR
+VAR_OUTPUT o : BOOL; b : BYTE; END_VAR
+    G := a; o := TRUE; b := 16#AB;
+END_FUNCTION
+
+FUNCTION_BLOCK Fb
+VAR_OUTPUT q : BOOL; END_VAR
+    q := TRUE;
+END_FUNCTION_BLOCK
+
+FUNCTION Caller : INT
+VAR w : WORD; d : DWORD; f : Fb; END_VAR
+    Caller := G(a := 1, o => w.%X3, b => d.%B1);
+    Caller := G(1, w.%X4, d.%B2);
+    f(q => w.%X5);
+    f(NOT q => w.%X6);
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+/// An output bound to a slice writes the variable the slice is of, so the
+/// checks on a write apply: a bit of a variable located in `%I` is E1419
+/// and a bit of a CONSTANT is E0404, on a FUNCTION's output and on a
+/// block's, by `=>` and negated.
+#[rstest]
+fn invalid_output_bound_to_a_slice_of_an_input_or_a_constant(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION G : INT
+VAR_OUTPUT o : BOOL; END_VAR
+    G := 1; o := TRUE;
+END_FUNCTION
+
+FUNCTION_BLOCK Fb
+VAR_OUTPUT q : BOOL; END_VAR
+    q := TRUE;
+END_FUNCTION_BLOCK
+
+PROGRAM P
+VAR sensor AT %IW0 : WORD; f : Fb; n : INT; END_VAR
+VAR CONSTANT k : WORD := 16#0001; END_VAR
+    n := G(o => sensor.%X3);
+    n := G(o => k.%X3);
+    f(q => sensor.%X3);
+    f(q => k.%X3);
+    f(NOT q => sensor.%X4);
+    f(NOT q => k.%X4);
+END_PROGRAM
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1419] Error: write to an input location
+        ,-[ file:///test0.st:15:17 ]
+        |
+     15 |     n := G(o => sensor.%X3);
+        |                 ^^^^^|^^^^
+        |                      `------ '%IW0' is an input: it is written by the host, not by the program
+        |
+        | Note: the host copies the input image in before each scan: the rest of this scan would read a value the input never had, and the next scan overwrites it
+    ----'
+    [E0404] Error: write to a constant
+        ,-[ file:///test0.st:16:17 ]
+        |
+     14 | VAR CONSTANT k : WORD := 16#0001; END_VAR
+        |              |
+        |              `-- 'k' is declared CONSTANT here
+        |
+     16 |     n := G(o => k.%X3);
+        |                 ^^|^^
+        |                   `---- cannot write to 'k.%X3' in constant 'k'
+        |
+        | Help: copy it into a variable to change the copy
+        |
+        | Note: a CONSTANT keeps the value it is declared with
+    ----'
+    [E1419] Error: write to an input location
+        ,-[ file:///test0.st:17:12 ]
+        |
+     17 |     f(q => sensor.%X3);
+        |            ^^^^^|^^^^
+        |                 `------ '%IW0' is an input: it is written by the host, not by the program
+        |
+        | Note: the host copies the input image in before each scan: the rest of this scan would read a value the input never had, and the next scan overwrites it
+    ----'
+    [E0404] Error: write to a constant
+        ,-[ file:///test0.st:18:12 ]
+        |
+     14 | VAR CONSTANT k : WORD := 16#0001; END_VAR
+        |              |
+        |              `-- 'k' is declared CONSTANT here
+        |
+     18 |     f(q => k.%X3);
+        |            ^^|^^
+        |              `---- cannot write to 'k.%X3' in constant 'k'
+        |
+        | Help: copy it into a variable to change the copy
+        |
+        | Note: a CONSTANT keeps the value it is declared with
+    ----'
+    [E1419] Error: write to an input location
+        ,-[ file:///test0.st:19:16 ]
+        |
+     19 |     f(NOT q => sensor.%X4);
+        |                ^^^^^|^^^^
+        |                     `------ '%IW0' is an input: it is written by the host, not by the program
+        |
+        | Note: the host copies the input image in before each scan: the rest of this scan would read a value the input never had, and the next scan overwrites it
+    ----'
+    [E0404] Error: write to a constant
+        ,-[ file:///test0.st:20:16 ]
+        |
+     14 | VAR CONSTANT k : WORD := 16#0001; END_VAR
+        |              |
+        |              `-- 'k' is declared CONSTANT here
+        |
+     20 |     f(NOT q => k.%X4);
+        |                ^^|^^
+        |                  `---- cannot write to 'k.%X4' in constant 'k'
+        |
+        | Help: copy it into a variable to change the copy
+        |
+        | Note: a CONSTANT keeps the value it is declared with
     ----'
     ");
 }
@@ -933,7 +1050,7 @@ END_FUNCTION_BLOCK"#;
         |     ^|
         |      `-- call to 'fn' is missing 1 required parameter: 'a'
         |
-        | Note: VAR_IN_OUT parameters bind to caller-side l-values and must always be supplied
+        | Note: a VAR_IN_OUT of a FUNCTION or a METHOD, or of a STRING, a reference or an aggregate, is bound to the caller's variable at each call
     ----'
     ");
 }
@@ -943,7 +1060,7 @@ fn missing_fb_var_in_out(mut with_db: RootDatabase) {
     let source = r#"
 FUNCTION_BLOCK driver
     VAR_IN_OUT
-        target: INT;
+        target: STRING;
     END_VAR
 END_FUNCTION_BLOCK
 
@@ -958,7 +1075,7 @@ END_FUNCTION_BLOCK"#;
     [E0802] Error: missing required parameter
         ,-[ file:///test0.st:12:5 ]
         |
-      4 |         target: INT;
+      4 |         target: STRING;
         |         ^^^|^^
         |            `---- parameter 'target' is declared here
         |
@@ -966,7 +1083,7 @@ END_FUNCTION_BLOCK"#;
         |     |
         |     `-- call to 'driver' is missing 1 required parameter: 'target'
         |
-        | Note: VAR_IN_OUT parameters bind to caller-side l-values and must always be supplied
+        | Note: a VAR_IN_OUT of a FUNCTION or a METHOD, or of a STRING, a reference or an aggregate, is bound to the caller's variable at each call
     ----'
     ");
 }
@@ -1100,7 +1217,7 @@ END_FUNCTION_BLOCK"#;
         |                 ^|
         |                  `-- VAR_IN_OUT parameter 'target' of 'driver' requires a variable, not a value
         |
-        | Note: a literal, an expression or a call result has no address for a VAR_IN_OUT to bind
+        | Note: a FUNCTION_BLOCK copies a scalar VAR_IN_OUT back into its argument when the call ends, and a literal, an expression or a call result has nowhere to receive it
     ----'
     ");
 }
@@ -1196,10 +1313,12 @@ END_FUNCTION_BLOCK"#;
 }
 
 /// A partial access (`b.%X1`) is a VariableAccess syntactically but names a
-/// SLICE of a variable — a slice has no address, and VAR_IN_OUT is an
-/// address. This used to pass the checker; the argument then reached the
-/// callee as a bit VALUE standing where a pointer belongs, and the callee's
-/// writes corrupted memory near address zero.
+/// SLICE of a variable — a slice has no address, and a FUNCTION's VAR_IN_OUT
+/// is an address. This used to pass the checker; the argument then reached
+/// the callee as a bit VALUE standing where a pointer belongs, and the
+/// callee's writes corrupted memory near address zero. A FUNCTION_BLOCK's
+/// scalar VAR_IN_OUT is a member, copied in and back, and takes the slice
+/// (pinned in codegen: `a_bit_of_a_word_bound_to_a_member`).
 #[rstest]
 fn invalid_in_out_partial_access(mut with_db: RootDatabase) {
     let source = r#"
@@ -1229,22 +1348,11 @@ END_FUNCTION"#;
         |
      14 |     SetIt(io := b.%X1);
         |                 ^^|^^
-        |                   `---- VAR_IN_OUT parameter 'io' of 'SetIt' requires a variable, not a value
+        |                   `---- VAR_IN_OUT parameter 'io' of 'SetIt' requires a variable, not a slice of one
         |
-        | Note: a literal, an expression or a call result has no address for a VAR_IN_OUT to bind
-    ----'
-    [E0806] Error: VAR_IN_OUT argument not a variable
-        ,-[ file:///test0.st:15:13 ]
+        | Help: copy it into a variable, pass that, and assign it back
         |
-      8 | VAR_IN_OUT io : BOOL; END_VAR
-        |            ^|
-        |             `-- parameter 'io' is declared here
-        |
-     15 |     f(io := b.%X1);
-        |             ^^|^^
-        |               `---- VAR_IN_OUT parameter 'io' of 'FBSet' requires a variable, not a value
-        |
-        | Note: a literal, an expression or a call result has no address for a VAR_IN_OUT to bind
+        | Note: a VAR_IN_OUT of a FUNCTION or a METHOD binds the argument's address, and a slice of a variable has none of its own, where a variable declared at whole bytes of an address has
     ----'
     ");
 }

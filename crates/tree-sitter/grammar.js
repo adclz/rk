@@ -1232,6 +1232,10 @@ module.exports = grammar({
       prec.right(
         seq(
           kw("VAR_IN_OUT"),
+          field(
+            "retain",
+            optional(choice(kw("RETAIN"), kw("NON_RETAIN"), $.ERR_doubled_qualifier)),
+          ),
           repeat(
             seq(choice($.in_out_var, $.ERR_variable_with_no_spec), optional(";")),
           ),

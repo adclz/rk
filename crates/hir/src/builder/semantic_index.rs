@@ -463,10 +463,15 @@ impl<'db> SemanticIndexBuilder<'db> {
         // Each address the file mentions, with the declarations located at
         // it; one written only bare has none.
         let mut located: std::collections::BTreeMap<_, Vec<_>> = Default::default();
+        let mut located_mentions = std::collections::BTreeMap::new();
         for (address, node) in self.located {
-            let declarations = located.entry(address).or_default();
+            let declarations = located.entry(address.clone()).or_default();
             if let HirNode::VariableDecl(var) = node {
                 declarations.push(var);
+            } else {
+                located_mentions
+                    .entry(address)
+                    .or_insert_with(|| crate::CallSite::from_scoped(self.db, &node));
             }
         }
 
@@ -484,6 +489,7 @@ impl<'db> SemanticIndexBuilder<'db> {
             pou_map: Arc::new(pou_map),
             program_map: Arc::new(program_map),
             located: Arc::new(located),
+            located_mentions: Arc::new(located_mentions),
             errors: self.errors,
         }
     }

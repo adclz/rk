@@ -404,7 +404,7 @@ impl<'db> ToIdeDiagnostic<'db> for InitError<'db> {
                 let (what, note, help) = match kind {
                     UninitializableMember::InOut => (
                         "a VAR_IN_OUT",
-                        "a VAR_IN_OUT is bound to its argument at each call",
+                        "a VAR_IN_OUT of a STRING, a reference or an aggregate is bound to its argument at each call, where a scalar one is a member and takes a value",
                         format!("pass the variable in the call, as '{name} := x'"),
                     ),
                     UninitializableMember::Temp => (

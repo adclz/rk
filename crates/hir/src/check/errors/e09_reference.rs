@@ -56,6 +56,13 @@ pub enum ReferenceError<'db> {
         /// declaration is not RETAIN.
         instance: Option<crate::hir_def::interned::identifier::SpanIdent<'db>>,
     },
+    /// `RETAIN` or `NON_RETAIN` on a FUNCTION_BLOCK's VAR_IN_OUT of an
+    /// aggregate type, which is bound to the caller's variable at each call:
+    /// the instance keeps nothing of it. A scalar one is a member, and its
+    /// section takes the qualifier.
+    QualifiedInOutReference {
+        var: VariableDecl<'db>,
+    },
     /// A `RETAIN` struct element holding a reference, itself or in a field
     /// or member: it persists on its own, whatever variable holds it.
     RetainedReferenceElement {
@@ -87,9 +94,9 @@ fn part_of_one(
                 Type::Elementary(ElementarySpec::Bool)
             ) =>
         {
-            "a bit of one"
+            "a slice of one"
         }
-        _ => "a part of one",
+        _ => "a slice of one",
     }
 }
 
@@ -113,6 +120,7 @@ impl<'db> ErrorCode for ReferenceError<'db> {
             Self::ReturnsReferenceToLocal { .. } | Self::StoresReferenceToLocal { .. } => "E0903",
             Self::RetainedReference { .. } | Self::RetainedReferenceElement { .. } => "E0904",
             Self::RefArgumentNotAVariable { .. } => "E0905",
+            Self::QualifiedInOutReference { .. } => "E0906",
         }
     }
 }
@@ -135,7 +143,7 @@ impl<'db> ToIdeDiagnostic<'db> for ReferenceError<'db> {
                 let (what, note, help) = match access {
                     Some(access) if access.multibits(db).is_some() => (
                         part_of_one(db, access),
-                        "a reference points at a named variable or instance",
+                        "a slice of a variable has no address of its own, where a variable declared at whole bytes of an address has",
                         None,
                     ),
                     Some(access) if matches!(access.kind(db), VariableAccessKind::Direct(_)) => (
@@ -159,6 +167,28 @@ impl<'db> ToIdeDiagnostic<'db> for ReferenceError<'db> {
                 if let Some(help) = help {
                     diag.with_help(help.to_string());
                 }
+                diag
+            }
+            Self::QualifiedInOutReference { var } => {
+                let name = var.get_name_with_case(db).text(db);
+                let word = if var.qualifier(db).contains(crate::Qualifier::RETAIN) {
+                    "RETAIN"
+                } else {
+                    "NON_RETAIN"
+                };
+                let mut diag = diag()
+                    .message(format!(
+                        "'{name}' is bound to the caller's variable at each call"
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &var.get_name_span(db)).unwrap_or_default())
+                    .call();
+                diag.with_note(
+                    "a FUNCTION_BLOCK keeps a VAR_IN_OUT of a scalar type as a member, and nothing of a STRING, a reference or an aggregate"
+                        .to_string(),
+                );
+                diag.with_help(format!("declare '{name}' in a section without {word}"));
                 diag
             }
             Self::DerefNonRefType { expr, ty } => diag()

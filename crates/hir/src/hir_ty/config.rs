@@ -560,6 +560,11 @@ fn report_unschedulable_bound_tasks<'db>(
         let Some(&reason) = result.unschedulable.get(&task) else {
             continue;
         };
+        // A name that resolves to nothing is reported where it is written
+        // (E0201), whether the task is bound or not.
+        if reason == UnschedulableReason::UnknownName {
+            continue;
+        }
         reported.push(task);
         result.errors.push(
             ConfigError::UnschedulableTask {
@@ -702,16 +707,49 @@ fn resolve_task_intervals<'db>(
             }
         }
 
-        let reason = match (task.interval(db), task.single(db)) {
-            (Some(ds), _) => match interval_nanos(db, &ds) {
-                None => Some(UnschedulableReason::NonLiteralInterval),
-                Some(0) => Some(UnschedulableReason::ZeroInterval),
-                Some(ns) => {
-                    result.task_interval_ns.insert(*task, ns);
-                    None
+        // A parameter that names something names a VAR_GLOBAL, used or not:
+        // one that resolves to nothing is a mistake of its own (E0201),
+        // whatever the task does with it.
+        let mut unresolved = |ds: &crate::hir_def::config::DataSource<'db>| match ds {
+            crate::hir_def::config::DataSource::Path(path) => {
+                if crate::hir_ty::index_graphs::external_var_lookup(db, path.ident(db).ident(db))
+                    .is_some()
+                {
+                    return false;
                 }
-            },
-            (None, Some(_)) => Some(UnschedulableReason::EventDriven),
+                result.errors.push(
+                    crate::check::errors::e02_resolve::ResolveError::NoItemInScope {
+                        expr: *path,
+                        scope: task.get_scope_id(db),
+                    }
+                    .to_diagnostic(db, task.get_scope_id(db).file(db)),
+                );
+                true
+            }
+            _ => false,
+        };
+        let reason = match (task.interval(db), task.single(db)) {
+            (Some(ds), single) => {
+                if let Some(single) = single {
+                    unresolved(&single);
+                }
+                if unresolved(&ds) {
+                    Some(UnschedulableReason::UnknownName)
+                } else {
+                    match interval_nanos(db, &ds) {
+                        None => Some(UnschedulableReason::NonLiteralInterval),
+                        Some(0) => Some(UnschedulableReason::ZeroInterval),
+                        Some(ns) => {
+                            result.task_interval_ns.insert(*task, ns);
+                            None
+                        }
+                    }
+                }
+            }
+            (None, Some(single)) => {
+                unresolved(&single);
+                Some(UnschedulableReason::EventDriven)
+            }
             (None, None) => Some(UnschedulableReason::NoTrigger),
         };
         if let Some(reason) = reason {
@@ -937,13 +975,21 @@ pub fn resolve_config_entries<'db>(
                     members.push(var);
                 }
                 None => {
-                    out.errors.push(
-                        ConfigError::ConfigInstInitFieldNotFound {
+                    let error = match declared_but_not_held(db, current_type, ident.ident(db)) {
+                        Some(held) => ConfigError::ConfigEntryRefused {
+                            expr: decl.path,
+                            why: ConfigEntryRefusal::NotHeld {
+                                field: *ident,
+                                parent_type: current_type,
+                                decl: held,
+                            },
+                        },
+                        None => ConfigError::ConfigInstInitFieldNotFound {
                             field: *ident,
                             parent_type: current_type,
-                        }
-                        .to_diagnostic(db, file),
-                    );
+                        },
+                    };
+                    out.errors.push(error.to_diagnostic(db, file));
                     resolved = false;
                     break;
                 }
@@ -1005,6 +1051,28 @@ fn instance_member<'db>(
 ) -> Option<VariableDecl<'db>> {
     let fold = name;
     members_of(db, ty).into_iter().find(|v| v.name(db) == fold)
+}
+
+/// The VAR_TEMP or VAR_EXTERNAL named `name` that `ty` declares: what a
+/// VAR_CONFIG path can name and no instance holds, said as such (E1426).
+fn declared_but_not_held<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    ty: Type<'db>,
+    name: Ident,
+) -> Option<VariableDecl<'db>> {
+    use crate::hir_def::pous::pou::Pou;
+    let declared: &[VariableDecl<'db>] = match ty {
+        Type::Program(p) => p.variables(db),
+        _ => match crate::hir_ty::head::instances::pou_of_type(db, ty) {
+            Some(Pou::FunctionBlock(fb)) => fb.variables(db),
+            Some(Pou::Class(cl)) => cl.variables(db),
+            _ => &[],
+        },
+    };
+    declared
+        .iter()
+        .find(|v| v.name(db) == name && (v.is_temp(db) || v.is_external(db)))
+        .copied()
 }
 
 /// Every member an instance of `ty` holds: a PROGRAM's instance state, or
@@ -1208,9 +1276,13 @@ pub fn prog_elements<'db>(
                             resolved.function_blocks.push((var, *task, path));
                             None
                         } else {
-                            Some(ProgElementRefusal::UnknownTask {
-                                task: fb.task.with_case,
-                            })
+                            // The one code for a WITH naming no TASK, after a
+                            // program or after a block.
+                            out.errors.push(
+                                ConfigError::UnknownTaskRef { task: fb.task }
+                                    .to_diagnostic(db, file),
+                            );
+                            None
                         }
                     }
                 };
@@ -1228,19 +1300,31 @@ pub fn prog_elements<'db>(
                     .count()
                     > 1
             };
+            // One report per input or block, from its first element,
+            // pointing at the others.
             for (var, path, fb) in &named {
-                if twice(var, *fb) {
-                    let var = var.name_with_case(db);
-                    let why = if *fb {
-                        ProgElementRefusal::AssociatedTwice { var }
-                    } else {
-                        ProgElementRefusal::ConnectedTwice { var }
-                    };
-                    out.errors.push(
-                        ConfigError::ProgElementRefused { expr: *path, why }
-                            .to_diagnostic(db, file),
-                    );
+                if !twice(var, *fb) {
+                    continue;
                 }
+                let start = |p: &PathExpr<'db>| p.get_span(db).start_byte;
+                let mut others: Vec<_> = named
+                    .iter()
+                    .filter(|(v, p, f)| v == var && f == fb && p != path)
+                    .map(|(_, p, _)| *p)
+                    .collect();
+                if others.iter().any(|o| start(o) < start(path)) {
+                    continue;
+                }
+                others.sort_by_key(start);
+                let var = var.name_with_case(db);
+                let why = if *fb {
+                    ProgElementRefusal::AssociatedTwice { var, others }
+                } else {
+                    ProgElementRefusal::ConnectedTwice { var, others }
+                };
+                out.errors.push(
+                    ConfigError::ProgElementRefused { expr: *path, why }.to_diagnostic(db, file),
+                );
             }
             resolved.inputs.retain(|(var, _)| !twice(var, false));
             resolved
@@ -1326,9 +1410,12 @@ fn program_member<'db>(
     let var = instance_member(db, Type::Program(program), ident.ident(db));
     if var.is_none() {
         errors.push(
-            ConfigError::ConfigInstInitFieldNotFound {
-                field: *ident,
-                parent_type: Type::Program(program),
+            ConfigError::ProgElementRefused {
+                expr: path,
+                why: ProgElementRefusal::NoSuchVariable {
+                    var: ident.with_case,
+                    program: program.name_with_case(db),
+                },
             }
             .to_diagnostic(db, file),
         );
@@ -1542,9 +1629,16 @@ fn check_config_entries<'db>(
             let refusal = match located {
                 EntryLocation::Refused(why) => Some(why.clone()),
                 EntryLocation::Given(address) => {
-                    // Located twice: every entry is reported, pointing at the
-                    // smallest of the others, since fragments have no order.
-                    let other = all
+                    // Located twice: one report per variable, from the first
+                    // entry in file order, pointing at the others; none of
+                    // them locates it.
+                    let position = |p: &PathExpr<'db>| {
+                        (
+                            p.get_scope_id(db).file(db).url(db).to_string(),
+                            p.get_span(db).start_byte,
+                        )
+                    };
+                    let mut others: Vec<_> = all
                         .iter()
                         .filter(|o| {
                             o.path != entry.path
@@ -1552,19 +1646,29 @@ fn check_config_entries<'db>(
                                 && o.instance == entry.instance
                                 && o.members == entry.members
                         })
-                        .min_by_key(|o| {
-                            (
-                                o.path.get_scope_id(db).file(db).url(db).to_string(),
-                                o.path.get_span(db).start_byte,
-                            )
-                        });
-                    if let Some(other) = other {
+                        .collect();
+                    if others
+                        .iter()
+                        .any(|o| position(&o.path) < position(&entry.path))
+                    {
+                        continue;
+                    }
+                    others.sort_by_key(|o| position(&o.path));
+                    if !others.is_empty() {
                         Some(Refusal::LocatedTwice {
-                            other: other
-                                .location
-                                .as_ref()
-                                .map(|(dv, _)| compact_str::CompactString::from(dv.to_address(db)))
-                                .unwrap_or_default(),
+                            others: others
+                                .iter()
+                                .map(|o| crate::check::errors::e14_config::OtherLocation {
+                                    path: o.path,
+                                    address: o
+                                        .location
+                                        .as_ref()
+                                        .map(|(dv, _)| {
+                                            compact_str::CompactString::from(dv.to_address(db))
+                                        })
+                                        .unwrap_or_default(),
+                                })
+                                .collect(),
                         })
                     } else if address.width < 8
                         && let Some(view) = crate::hir_ty::index_graphs::located_view(db, address)
@@ -1637,26 +1741,66 @@ fn check_config_value<'db>(
     };
     let var_name = var.name_with_case(db);
     let same_instance = |o: &ConfigEntry<'db>| o.instance == entry.instance;
-    // Every such entry is reported, since fragments have no order.
-    let twice = all.iter().any(|o| {
-        o.path != entry.path
-            && o.init.is_some()
-            && same_instance(o)
-            && (o.members.starts_with(&entry.members) || entry.members.starts_with(&o.members))
-    });
-    if twice {
-        errors.push(refuse(ConfigEntryRefusal::ValueTwice { var: var_name }));
+    // One report per conflict, from the first entry in file order, pointing
+    // at the others; the later ones give no value either.
+    let position = |p: &PathExpr<'db>| {
+        (
+            p.get_scope_id(db).file(db).url(db).to_string(),
+            p.get_span(db).start_byte,
+        )
+    };
+    let mut others: Vec<_> = all
+        .iter()
+        .filter(|o| {
+            o.path != entry.path
+                && o.init.is_some()
+                && same_instance(o)
+                && (o.members.starts_with(&entry.members) || entry.members.starts_with(&o.members))
+        })
+        .collect();
+    if !others.is_empty() {
+        if others
+            .iter()
+            .all(|o| position(&o.path) > position(&entry.path))
+        {
+            others.sort_by_key(|o| position(&o.path));
+            // Each other entry is labelled by what it names: `pump.k`.
+            let others = others
+                .into_iter()
+                .map(|o| crate::check::errors::e14_config::OtherValue {
+                    path: o.path,
+                    name: o
+                        .members
+                        .iter()
+                        .map(|m| m.name_with_case(db).text(db).as_str())
+                        .collect::<Vec<_>>()
+                        .join(".")
+                        .into(),
+                })
+                .collect();
+            errors.push(refuse(ConfigEntryRefusal::ValueTwice {
+                var: var_name,
+                others,
+            }));
+        }
         return None;
     }
-    // A PROGRAM's VAR located in full is its channel, and its declaration
-    // gives that channel its value.
+    // A PROGRAM's VAR located in full is its channel, one cell for every
+    // instance of the program.
     if var.is_program_located(db) {
-        errors.push(refuse(ConfigEntryRefusal::ChannelDeclared {
+        let program = match crate::hir_def::semantic_index::get_scope(db, var.get_scope_id(db)).kind
+        {
+            crate::hir_def::scope::ScopeKind::Program(p) => p.name_with_case(db),
+            _ => Ident::new(db, compact_str::CompactString::default()),
+        };
+        errors.push(refuse(ConfigEntryRefusal::ChannelShared {
             var: var_name,
             address: var
                 .location(db)
                 .map(|dv| compact_str::CompactString::from(dv.to_address(db)))
                 .unwrap_or_default(),
+            program,
+            decl: *var,
         }));
         return None;
     }
@@ -1702,6 +1846,8 @@ fn check_config_value<'db>(
             ConfigError::PartOfWiderAddress {
                 site: crate::CallSite::from_scoped(db, &entry.path),
                 address: channel.text.clone(),
+                owner_decl: crate::hir_ty::index_graphs::located_declaration(db, &view.owner),
+                owner_mention: crate::hir_ty::index_graphs::located_mention(db, &view.owner),
                 owner: view.owner.text,
                 usage: WiderAddressUse::Initializer(owner),
             }
@@ -1709,10 +1855,11 @@ fn check_config_value<'db>(
         );
         return None;
     }
-    if located_declaration(db, &channel).is_some() {
+    if let Some(decl) = located_declaration(db, &channel) {
         errors.push(refuse(ConfigEntryRefusal::ChannelDeclared {
             var: var_name,
             address: channel.text.clone(),
+            decl: Some(decl),
         }));
         return None;
     }
@@ -1803,16 +1950,41 @@ fn check_partly_located_coverage<'db>(
                 if located {
                     continue;
                 }
-                let address = path
-                    .last()
-                    .and_then(|v| v.location(db))
-                    .map(|dv| dv.to_address(db))
-                    .unwrap_or_default();
+                let location = path.last().and_then(|v| v.location(db));
+                let address = location.map(|dv| dv.to_address(db)).unwrap_or_default();
+                // The entry to write, from the variable itself: its path, a
+                // complete address in its area as wide as its type, its type.
+                let example = path.last().and_then(|v| {
+                    let ty = Type::resolve_spec(db, v.spec(db));
+                    let bits =
+                        crate::hir_ty::head::checks::variables::located_width(ty.normalize(db))?;
+                    let (size, offset) = match bits {
+                        1 => ('X', "0.0"),
+                        8 => ('B', "0"),
+                        16 => ('W', "0"),
+                        32 => ('D', "0"),
+                        64 => ('L', "0"),
+                        _ => return None,
+                    };
+                    let area = location?.area(db)?.prefix();
+                    let members = path
+                        .iter()
+                        .map(|v| v.name_with_case(db).text(db).as_str())
+                        .collect::<Vec<_>>()
+                        .join(".");
+                    Some(compact_str::CompactString::from(format!(
+                        "{}.{}.{members} AT {area}{size}{offset} : {};",
+                        resource.name(db).with_case.text(db),
+                        instance.with_case.text(db),
+                        ty.type_name(db)
+                    )))
+                });
                 result.errors.push(
                     ConfigError::PartlyLocatedUnlocated(PartlyUnlocated::Missing {
                         instance,
                         path: path.iter().map(|v| v.name_with_case(db)).collect(),
                         address: compact_str::CompactString::from(address),
+                        example,
                     })
                     .to_diagnostic(db, config.get_scope_id(db).file(db)),
                 );

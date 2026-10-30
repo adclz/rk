@@ -48,6 +48,8 @@ pub enum ConfigError<'db> {
         /// Every resource name across the configuration's fragments, sorted.
         names: Vec<compact_str::CompactString>,
         span: tree_sitter::Range,
+        /// Every other RESOURCE across the fragments, pointed at.
+        others: Vec<SpanIdent<'db>>,
     },
     /// A TASK or PROGRAM declared directly in a CONFIGURATION.
     TaskOrProgramOutsideResource(Range),
@@ -80,7 +82,9 @@ pub enum ConfigError<'db> {
     ConfigInstInitUnknownInstance {
         instance_name: SpanIdent<'db>,
     },
-    /// A VAR_CONFIG path references a field that doesn't exist on the resolved type.
+    /// A VAR_CONFIG path names a member the type does not declare. One it
+    /// declares and no instance holds, a VAR_TEMP or a VAR_EXTERNAL, is
+    /// [`ConfigEntryRefusal::NotHeld`].
     ConfigInstInitFieldNotFound {
         field: SpanIdent<'db>,
         parent_type: Type<'db>,
@@ -175,10 +179,11 @@ pub enum ConfigError<'db> {
     /// a host binding by address finds the same address twice and has to
     /// write both, and a write through one is invisible through the other.
     DuplicateLocation {
+        /// The first declaration at the address in file order, which
+        /// reports for all of them.
         var: VariableDecl<'db>,
-        /// Another declaration at the address: each of them is reported,
-        /// since the files they are in have no order.
-        other: VariableDecl<'db>,
+        /// The other declarations at the address, each pointed at.
+        others: Vec<VariableDecl<'db>>,
         /// The address AS WRITTEN, by `var`.
         address: compact_str::CompactString,
     },
@@ -209,6 +214,12 @@ pub enum ConfigError<'db> {
         address: compact_str::CompactString,
         /// The address it is part of.
         owner: compact_str::CompactString,
+        /// The variable declared at the owner, when one is: the mention can
+        /// be far from the part, in another POU or file.
+        owner_decl: Option<crate::hir_def::pous::variable::VariableDecl<'db>>,
+        /// Where the owner is mentioned outside a declaration, when no
+        /// variable is declared at it.
+        owner_mention: Option<CallSite<'db>>,
         usage: WiderAddressUse,
     },
     /// A VAR_CONFIG entry's `AT`, which cannot locate the variable it names.
@@ -271,16 +282,55 @@ pub enum ConfigEntryRefusal<'db> {
         declared: Type<'db>,
     },
     /// Another entry gives the same variable a value too, or the instance
-    /// holding it.
-    ValueTwice { var: Ident },
+    /// holding it: the first in file order reports, and points at the others.
+    ValueTwice {
+        var: Ident,
+        others: Vec<OtherValue<'db>>,
+    },
     /// A value for a variable at an address a declaration names: the
     /// declaration gives that channel its starting value.
     ChannelDeclared {
         var: Ident,
         address: compact_str::CompactString,
+        /// The declaration, pointed at.
+        decl: Option<VariableDecl<'db>>,
+    },
+    /// A value for a PROGRAM's variable located in full: one cell for every
+    /// instance of the program, so none of them starts it at a value of its
+    /// own.
+    ChannelShared {
+        var: Ident,
+        address: compact_str::CompactString,
+        program: Ident,
+        decl: VariableDecl<'db>,
     },
     /// A value for the PROGRAM instance itself rather than a variable of it.
     ProgramValue,
+    /// `Res.P1.f.scratch`: the type declares a VAR_TEMP or a VAR_EXTERNAL
+    /// of that name, and no instance holds it. A VAR_TEMP is made for each
+    /// call, a VAR_EXTERNAL is the VAR_GLOBAL it names.
+    NotHeld {
+        field: SpanIdent<'db>,
+        parent_type: Type<'db>,
+        /// The VAR_TEMP or VAR_EXTERNAL, pointed at.
+        decl: VariableDecl<'db>,
+    },
+}
+
+/// Another VAR_CONFIG entry giving a value to the same variable, or to an
+/// instance holding it, and the members it names: `pump.k`.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, salsa::Update)]
+pub struct OtherValue<'db> {
+    pub path: PathExpr<'db>,
+    pub name: compact_str::CompactString,
+}
+
+/// Another VAR_CONFIG entry locating the same variable, and the address it
+/// gives.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, salsa::Update)]
+pub struct OtherLocation<'db> {
+    pub path: PathExpr<'db>,
+    pub address: compact_str::CompactString,
 }
 
 /// Why a VAR_CONFIG entry cannot give the variable it names this address.
@@ -304,7 +354,9 @@ pub enum ConfigLocationRefusal<'db> {
     /// of its own for the variable to point at.
     BitOfWider { owner: compact_str::CompactString },
     /// Another entry locates the same instance's variable.
-    LocatedTwice { other: compact_str::CompactString },
+    /// Another entry locates it too: the first in file order reports, and
+    /// points at the others, each with the address it gives.
+    LocatedTwice { others: Vec<OtherLocation<'db>> },
 }
 
 impl<'db> ConfigLocationRefusal<'db> {
@@ -350,9 +402,15 @@ impl<'db> ConfigLocationRefusal<'db> {
             Self::BitOfWider { owner } => {
                 format!("'{address}' is a bit of '{owner}', with no address to locate '{var}' at")
             }
-            Self::LocatedTwice { other } => {
-                format!("'{var}' is located at '{address}' here and at '{other}' by another entry")
-            }
+            Self::LocatedTwice { others } => match others.as_slice() {
+                [OtherLocation { address: other, .. }] => format!(
+                    "'{var}' is located at '{address}' here and at '{other}' by another entry"
+                ),
+                _ => format!(
+                    "'{var}' is located at '{address}' here and by {} other entries",
+                    others.len()
+                ),
+            },
         }
     }
 
@@ -401,6 +459,9 @@ pub enum PartlyUnlocated<'db> {
         path: Vec<Ident>,
         /// `%I*`, `%Q*` or `%M*`.
         address: compact_str::CompactString,
+        /// The entry to write, built from the variable: `Res.P1.fb.x AT
+        /// %IX0.0 : BOOL;`. None when its type names no width.
+        example: Option<compact_str::CompactString>,
     },
     /// A FUNCTION's or METHOD's result, made for each call.
     Returned {
@@ -448,6 +509,9 @@ pub enum WiderAddressUse {
     Reference,
     /// Declared RETAIN: persistence belongs to storage, and this has none.
     Retain(OwnerDeclaration),
+    /// Declared NON_RETAIN: the owner's range restores it or not, whatever
+    /// the part says.
+    NonRetain,
     /// Given an initial value: `__init` writes storage, and this has none,
     /// so the value was silently dropped.
     Initializer(OwnerDeclaration),
@@ -473,18 +537,27 @@ impl WiderAddressUse {
             Self::InOut => format!("{is} and has no address of its own to pass to a VAR_IN_OUT"),
             Self::Reference => format!("{is} and has no address of its own to take a reference to"),
             Self::Retain(_) => format!("{is} and cannot be RETAIN on its own"),
+            Self::NonRetain => format!("{is} and cannot be NON_RETAIN on its own"),
             Self::Initializer(_) => format!("{is} and cannot have an initial value of its own"),
         }
     }
 
-    /// The rule behind the refusal, and what to write instead.
-    fn advice(&self, owner: &str) -> (Option<String>, Option<String>) {
+    /// The rule behind the refusal, and what to write instead: the owner by
+    /// its name when a variable is declared at it, so that the help can be
+    /// followed as written.
+    fn advice(
+        &self,
+        owner: &str,
+        owner_name: Option<&str>,
+        owner_retained: bool,
+    ) -> (Option<String>, Option<String>) {
         let persist =
             format!("to persist this part, declare a VAR_GLOBAL located at '{owner}', RETAIN");
         let initialize = format!(
             "declare a VAR_GLOBAL located at '{owner}' with this part set in its initial value"
         );
         let bare = format!("no variable is located at '{owner}'");
+        let named = owner_name.unwrap_or(owner);
         match self {
             Self::InOut => (
                 None,
@@ -492,11 +565,18 @@ impl WiderAddressUse {
             ),
             Self::Reference => (
                 None,
-                Some(format!("take the reference of '{owner}' as a whole")),
+                Some(match owner_name {
+                    Some(name) => format!("take the reference of '{name}'"),
+                    None => format!("declare a variable AT '{owner}' and take the reference of it"),
+                }),
             ),
             Self::Retain(OwnerDeclaration::Declared) => (
                 None,
-                Some(format!("declare the variable located at '{owner}' RETAIN")),
+                Some(if owner_retained {
+                    format!("drop the RETAIN: '{named}', RETAIN, brings this part back")
+                } else {
+                    format!("declare '{named}' RETAIN instead")
+                }),
             ),
             Self::Retain(OwnerDeclaration::Configured) => (
                 Some(format!(
@@ -505,17 +585,26 @@ impl WiderAddressUse {
                 Some(persist),
             ),
             Self::Retain(OwnerDeclaration::Bare) => (Some(bare), Some(persist)),
+            Self::NonRetain => (
+                Some("a part is restored with its owner or not at all".to_string()),
+                Some(match owner_name {
+                    Some(name) => format!("drop the NON_RETAIN: '{name}' decides what comes back"),
+                    None => "drop the NON_RETAIN".to_string(),
+                }),
+            ),
             Self::Initializer(OwnerDeclaration::Declared) => (
                 None,
                 Some(format!(
-                    "give the variable located at '{owner}' an initial value with this part set in it"
+                    "give '{named}' an initial value with this part set in it"
                 )),
             ),
             Self::Initializer(OwnerDeclaration::Configured) => (
                 Some(format!(
                     "VAR_CONFIG gives '{owner}' to a variable that takes no initial value"
                 )),
-                Some(initialize),
+                Some(format!(
+                    "give the VAR_CONFIG entry for '{owner}' a starting value with this part set in it"
+                )),
             ),
             Self::Initializer(OwnerDeclaration::Bare) => (Some(bare), Some(initialize)),
         }
@@ -655,16 +744,24 @@ pub enum ProgElementRefusal<'db> {
     },
     /// A source or sink that names no VAR_GLOBAL.
     NoSuchGlobal { name: Ident },
-    /// An input connected twice.
-    ConnectedTwice { var: Ident },
+    /// An input connected twice: the first element reports, and points at
+    /// the others.
+    ConnectedTwice {
+        var: Ident,
+        others: Vec<PathExpr<'db>>,
+    },
+    /// An element naming no variable of the program.
+    NoSuchVariable { var: Ident, program: Ident },
     /// An element that names more than a variable of the program.
     NotAVariable,
     /// `fb WITH task` on a variable that is not a FUNCTION_BLOCK instance.
     NotAFunctionBlock { var: Ident },
-    /// A function block associated with a task twice.
-    AssociatedTwice { var: Ident },
-    /// `fb WITH task` naming no task of the resource.
-    UnknownTask { task: Ident },
+    /// A function block associated with a task twice: the first element
+    /// reports, and points at the others.
+    AssociatedTwice {
+        var: Ident,
+        others: Vec<PathExpr<'db>>,
+    },
     /// `fb WITH task` on an instance with an `ARRAY[*]` VAR_IN_OUT, which
     /// only a call binds.
     UnboundConformand { var: Ident, param: Ident },
@@ -692,6 +789,9 @@ pub enum UnschedulableReason {
     NonLiteralInterval,
     /// INTERVAL is zero, which describes no cadence at all.
     ZeroInterval,
+    /// INTERVAL names nothing: reported where it is written (E0201), so the
+    /// task is left out of the schedule with no report of its own.
+    UnknownName,
 }
 
 impl UnschedulableReason {
@@ -703,6 +803,7 @@ impl UnschedulableReason {
                 "INTERVAL must be a TIME literal or a CONSTANT global holding one"
             }
             Self::ZeroInterval => "INTERVAL must be greater than zero",
+            Self::UnknownName => "INTERVAL names nothing",
         }
     }
 
@@ -716,7 +817,7 @@ impl UnschedulableReason {
             // CONSTANT — the value looks fixed right there in the source, so
             // without this the rejection reads as arbitrary.
             Self::NonLiteralInterval => Some("declare the global `VAR_GLOBAL CONSTANT`"),
-            Self::ZeroInterval => None,
+            Self::ZeroInterval | Self::UnknownName => None,
         }
     }
 }
@@ -821,6 +922,7 @@ impl<'db> ToIdeDiagnostic<'db> for ConfigError<'db> {
                 config,
                 names,
                 span,
+                others,
             } => {
                 let list = names
                     .iter()
@@ -837,6 +939,13 @@ impl<'db> ToIdeDiagnostic<'db> for ConfigError<'db> {
                     .desc(self)
                     .range(crate::denormalize(db, file, span).unwrap_or_default())
                     .call();
+                for other in others {
+                    diag.with_related(Related::new(
+                        format!("'{}' is declared here", other.with_case.text(db)),
+                        other.get_scope_id(db).file(db),
+                        other.get_span(db),
+                    ));
+                }
                 diag.with_note("a deployment drives one RESOURCE".to_string());
                 diag.with_help("deploy one RESOURCE per runtime".to_string());
                 diag
@@ -924,15 +1033,19 @@ impl<'db> ToIdeDiagnostic<'db> for ConfigError<'db> {
                 .desc(self)
                 .range(crate::denormalize(db, file, &task.get_span(db)).unwrap_or_default())
                 .call(),
-            Self::ProgramWithoutTask { instance } => diag()
-                .message(format!(
-                    "program instance '{}' has no WITH <task>, so it will never run",
-                    instance.with_case.text(db)
-                ))
-                .severity(DiagnosticSeverity::ERROR)
-                .desc(self)
-                .range(crate::denormalize(db, file, &instance.get_span(db)).unwrap_or_default())
-                .call(),
+            Self::ProgramWithoutTask { instance } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "program instance '{}' has no WITH <task>",
+                        instance.with_case.text(db)
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &instance.get_span(db)).unwrap_or_default())
+                    .call();
+                diag.with_note("rk runs a program only under a TASK".to_string());
+                diag
+            }
             Self::ConfigInstInitUnknownInstance { instance_name } => diag()
                 .message(format!(
                     "no PROGRAM instance is named '{}' in this configuration",
@@ -983,6 +1096,10 @@ impl<'db> ToIdeDiagnostic<'db> for ConfigError<'db> {
                 diag
             }
             Self::ProgElementRefused { expr, why } => {
+                let elements = |n: usize| match n {
+                    1 => "another element".to_string(),
+                    n => format!("{n} other elements"),
+                };
                 let (message, note, help) = match why {
                     ProgElementRefusal::NotAnInput { var } => (
                         format!(
@@ -1038,13 +1155,25 @@ impl<'db> ToIdeDiagnostic<'db> for ConfigError<'db> {
                         ),
                         None,
                     ),
-                    ProgElementRefusal::ConnectedTwice { var } => (
+                    ProgElementRefusal::ConnectedTwice { var, others } => (
                         format!(
-                            "'{}' is connected here and by another element",
-                            var.text(db)
+                            "'{}' is connected here and by {}",
+                            var.text(db),
+                            elements(others.len())
                         ),
                         Some("an input has one source"),
                         Some("keep one of the elements"),
+                    ),
+                    ProgElementRefusal::NoSuchVariable { var, program } => (
+                        format!(
+                            "'{}' is not a variable of '{}'",
+                            var.text(db),
+                            program.text(db)
+                        ),
+                        Some(
+                            "an element names a VAR_INPUT, a VAR_OUTPUT or a function block instance of the program",
+                        ),
+                        None,
                     ),
                     ProgElementRefusal::NotAVariable => (
                         "an element names a variable by its name alone".to_string(),
@@ -1061,18 +1190,14 @@ impl<'db> ToIdeDiagnostic<'db> for ConfigError<'db> {
                         Some("a CLASS has no body for a task to run"),
                         None,
                     ),
-                    ProgElementRefusal::AssociatedTwice { var } => (
+                    ProgElementRefusal::AssociatedTwice { var, others } => (
                         format!(
-                            "'{}' is associated with a task here and by another element",
-                            var.text(db)
+                            "'{}' is associated with a task here and by {}",
+                            var.text(db),
+                            elements(others.len())
                         ),
                         Some("a function block runs under one task"),
                         Some("keep one of the elements"),
-                    ),
-                    ProgElementRefusal::UnknownTask { task } => (
-                        format!("no TASK is named '{}' in this resource", task.text(db)),
-                        None,
-                        Some("associate the function block with a TASK the resource declares"),
                     ),
                     ProgElementRefusal::UnboundConformand { var, param } => (
                         format!(
@@ -1099,12 +1224,33 @@ impl<'db> ToIdeDiagnostic<'db> for ConfigError<'db> {
                     .desc(self)
                     .range(crate::denormalize(db, file, &expr.get_span(db)).unwrap_or_default())
                     .call();
-                if let ProgElementRefusal::CalledByProgram { var, call, .. } = why {
-                    diag.with_related(ide_diagnostic::Related::new(
-                        format!("'{}' is called here", var.text(db)),
-                        call.get_scope_id(db).file(db),
-                        call.get_span(db),
-                    ));
+                match why {
+                    ProgElementRefusal::CalledByProgram { var, call, .. } => {
+                        diag.with_related(ide_diagnostic::Related::new(
+                            format!("'{}' is called here", var.text(db)),
+                            call.get_scope_id(db).file(db),
+                            call.get_span(db),
+                        ));
+                    }
+                    ProgElementRefusal::ConnectedTwice { var, others } => {
+                        for other in others {
+                            diag.with_related(ide_diagnostic::Related::new(
+                                format!("'{}' is connected here", var.text(db)),
+                                other.get_scope_id(db).file(db),
+                                other.get_span(db),
+                            ));
+                        }
+                    }
+                    ProgElementRefusal::AssociatedTwice { var, others } => {
+                        for other in others {
+                            diag.with_related(ide_diagnostic::Related::new(
+                                format!("'{}' is associated with a task here", var.text(db)),
+                                other.get_scope_id(db).file(db),
+                                other.get_span(db),
+                            ));
+                        }
+                    }
+                    _ => {}
                 }
                 diag.with_advice(note, help);
                 diag
@@ -1261,7 +1407,7 @@ impl<'db> ToIdeDiagnostic<'db> for ConfigError<'db> {
                 diag.with_note(
                     match via {
                         InputWriteRoute::Assignment => {
-                            "the host copies the input image in before each scan, so this write is overwritten before anything can read it"
+                            "the host copies the input image in before each scan: the rest of this scan would read a value the input never had, and the next scan overwrites it"
                         }
                         InputWriteRoute::Reference => {
                             "a REF_TO is a writable pointer and nothing tracks what is stored through it, so the reference is refused where it is taken"
@@ -1294,31 +1440,39 @@ impl<'db> ToIdeDiagnostic<'db> for ConfigError<'db> {
             }
             Self::DuplicateLocation {
                 var,
-                other,
+                others,
                 address,
             } => {
-                let mut diag = diag()
-                    .message(format!(
+                let name = |v: &VariableDecl<'db>| v.get_name_with_case(db).text(db).to_string();
+                let message = match others.as_slice() {
+                    [other] => format!(
                         "'{}' and '{}' are both located at '{address}'",
-                        var.get_name_with_case(db).text(db),
-                        other.get_name_with_case(db).text(db)
-                    ))
+                        name(var),
+                        name(other)
+                    ),
+                    _ => format!(
+                        "'{}' and {} other declarations are located at '{address}'",
+                        name(var),
+                        others.len()
+                    ),
+                };
+                let mut diag = diag()
+                    .message(message)
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
                     .range(
                         crate::denormalize(db, file, &location_span(db, var)).unwrap_or_default(),
                     )
                     .call();
-                diag.with_related(Related::new(
-                    format!(
-                        "'{}' is located here",
-                        other.get_name_with_case(db).text(db)
-                    ),
-                    other.get_scope_id(db).file(db),
-                    location_span(db, other),
-                ));
+                for other in others {
+                    diag.with_related(Related::new(
+                        format!("'{}' is located here", name(other)),
+                        other.get_scope_id(db).file(db),
+                        location_span(db, other),
+                    ));
+                }
                 diag.with_note(
-                    "each declaration gets storage of its own, so the two would never see each other's value".to_string(),
+                    "each declaration gets storage of its own, so a write through one is invisible through the others".to_string(),
                 );
                 diag.with_help("declare the address once and name that variable".to_string());
                 diag
@@ -1375,6 +1529,8 @@ impl<'db> ToIdeDiagnostic<'db> for ConfigError<'db> {
                 site,
                 address,
                 owner,
+                owner_decl,
+                owner_mention,
                 usage,
             } => {
                 let mut diag = diag()
@@ -1383,8 +1539,25 @@ impl<'db> ToIdeDiagnostic<'db> for ConfigError<'db> {
                     .desc(self)
                     .range(crate::denormalize(db, file, &site.get_span(db)).unwrap_or_default())
                     .call();
-                let (note, help) = usage.advice(owner);
+                let owner_name =
+                    owner_decl.map(|decl| decl.name_with_case(db).text(db).to_string());
+                let owner_retained = owner_decl
+                    .is_some_and(|decl| decl.qualifier(db).contains(crate::Qualifier::RETAIN));
+                let (note, help) = usage.advice(owner, owner_name.as_deref(), owner_retained);
                 diag.with_advice(note, help);
+                if let Some(decl) = owner_decl {
+                    diag.with_related(Related::new(
+                        format!("'{}' is declared here", decl.name_with_case(db).text(db)),
+                        decl.scope_id(db).file(db),
+                        decl.get_name_span(db),
+                    ));
+                } else if let Some(mention) = owner_mention {
+                    diag.with_related(Related::new(
+                        format!("'{owner}' is mentioned here"),
+                        mention.scope.file(db),
+                        mention.get_span(db),
+                    ));
+                }
                 diag
             }
             Self::ConfigLocationRefused {
@@ -1399,6 +1572,19 @@ impl<'db> ToIdeDiagnostic<'db> for ConfigError<'db> {
                     .desc(self)
                     .range(crate::denormalize(db, file, &expr.get_span(db)).unwrap_or_default())
                     .call();
+                if let ConfigLocationRefusal::LocatedTwice { others } = why {
+                    for OtherLocation {
+                        path,
+                        address: other,
+                    } in others
+                    {
+                        diag.with_related(Related::new(
+                            format!("'{}' is located at '{other}' here", var.text(db)),
+                            path.get_scope_id(db).file(db),
+                            path.get_span(db),
+                        ));
+                    }
+                }
                 let (note, help) = why.advice();
                 diag.with_advice(note, help);
                 diag
@@ -1420,34 +1606,127 @@ impl<'db> ToIdeDiagnostic<'db> for ConfigError<'db> {
                         Some("the entry repeats the variable's type"),
                         Some("write the declared type"),
                     ),
-                    ConfigEntryRefusal::ValueTwice { var } => (
+                    ConfigEntryRefusal::ValueTwice { var, others } => (
                         format!(
-                            "'{}' is given a value here and by another entry",
-                            var.text(db)
+                            "'{}' is given a value here and by {}",
+                            var.text(db),
+                            match others.len() {
+                                1 => "another entry".to_string(),
+                                n => format!("{n} other entries"),
+                            }
                         ),
                         Some("an instance's variable has one starting value"),
                         Some("keep one of the entries"),
                     ),
-                    ConfigEntryRefusal::ChannelDeclared { var, address } => (
-                        format!(
-                            "'{}' is at '{address}', where a declaration gives its starting value",
-                            var.text(db)
-                        ),
-                        None,
+                    ConfigEntryRefusal::ChannelDeclared { var, address, decl } => (
+                        match decl {
+                            Some(decl) => format!(
+                                "'{}' is at '{address}', the cell '{}' is declared at",
+                                var.text(db),
+                                decl.name_with_case(db).text(db)
+                            ),
+                            None => format!(
+                                "'{}' is at '{address}', a cell a declaration names",
+                                var.text(db)
+                            ),
+                        },
+                        Some("a declared cell starts at the value its declaration gives"),
                         Some("give the value in that declaration"),
+                    ),
+                    ConfigEntryRefusal::ChannelShared {
+                        var,
+                        address,
+                        program,
+                        ..
+                    } => (
+                        format!(
+                            "'{}' is at '{address}', one cell for every instance of '{}'",
+                            var.text(db),
+                            program.text(db)
+                        ),
+                        Some("a PROGRAM's variable located in full is its channel, whatever the instance"),
+                        Some("give the value in its declaration"),
                     ),
                     ConfigEntryRefusal::ProgramValue => (
                         "a VAR_CONFIG value is given to a variable of an instance, not to the PROGRAM instance itself".to_string(),
                         None,
                         Some("give each variable its value in an entry of its own"),
                     ),
+                    ConfigEntryRefusal::NotHeld {
+                        field,
+                        parent_type,
+                        decl,
+                    } => (
+                        {
+                            let name = field.as_str(db);
+                            let ty = parent_type.type_name(db);
+                            if decl.is_temp(db) {
+                                format!("'{name}' is a VAR_TEMP of '{ty}', made for each call")
+                            } else {
+                                format!(
+                                    "'{name}' is a VAR_EXTERNAL of '{ty}', the VAR_GLOBAL '{name}'"
+                                )
+                            }
+                        },
+                        Some("a VAR_CONFIG entry names what an instance holds"),
+                        None,
+                    ),
+                };
+                // The caret is on the segment that fails, when one does.
+                let span = match why {
+                    ConfigEntryRefusal::NotHeld { field, .. } => field.get_span(db),
+                    _ => expr.get_span(db),
                 };
                 let mut diag = diag()
                     .message(message)
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(crate::denormalize(db, file, &expr.get_span(db)).unwrap_or_default())
+                    .range(crate::denormalize(db, file, &span).unwrap_or_default())
                     .call();
+                match why {
+                    ConfigEntryRefusal::ValueTwice { others, .. } => {
+                        for other in others {
+                            diag.with_related(Related::new(
+                                format!("'{}' is given a value here", other.name),
+                                other.path.get_scope_id(db).file(db),
+                                other.path.get_span(db),
+                            ));
+                        }
+                    }
+                    ConfigEntryRefusal::ChannelDeclared {
+                        decl: Some(decl), ..
+                    }
+                    | ConfigEntryRefusal::ChannelShared { decl, .. } => {
+                        diag.with_related(Related::new(
+                            format!("'{}' is declared here", decl.name_with_case(db).text(db)),
+                            decl.scope_id(db).file(db),
+                            decl.get_name_span(db),
+                        ));
+                    }
+                    ConfigEntryRefusal::NotHeld { field, decl, .. } => {
+                        let name = field.as_str(db);
+                        diag.with_related(Related::new(
+                            format!("'{name}' is declared here"),
+                            decl.scope_id(db).file(db),
+                            decl.get_name_span(db),
+                        ));
+                        if decl.is_external(db) {
+                            if let Some(global) =
+                                crate::hir_ty::index_graphs::external_var_lookup(db, decl.name(db))
+                            {
+                                diag.with_related(Related::new(
+                                    format!("the VAR_GLOBAL '{name}' is declared here"),
+                                    global.scope_id(db).file(db),
+                                    global.get_name_span(db),
+                                ));
+                            }
+                            diag.with_help(format!(
+                                "give the VAR_GLOBAL '{name}' its address or value where it is declared"
+                            ));
+                        }
+                    }
+                    _ => {}
+                }
                 diag.with_advice(note, help);
                 diag
             }
@@ -1455,6 +1734,7 @@ impl<'db> ToIdeDiagnostic<'db> for ConfigError<'db> {
                 instance,
                 path,
                 address,
+                example,
             }) => {
                 let path = dotted(
                     db,
@@ -1468,9 +1748,12 @@ impl<'db> ToIdeDiagnostic<'db> for ConfigError<'db> {
                     .desc(self)
                     .range(crate::denormalize(db, file, &instance.get_span(db)).unwrap_or_default())
                     .call();
-                diag.with_help(
-                    "give each instance its address in VAR_CONFIG, as in 'Res.P1.fb.x AT %IX0.0 : BOOL;'".to_string(),
-                );
+                diag.with_help(match example {
+                    Some(example) => {
+                        format!("give it its address in VAR_CONFIG, as in '{example}'")
+                    }
+                    None => "give each instance its address in VAR_CONFIG, as in 'Res.P1.fb.x AT %IX0.0 : BOOL;'".to_string(),
+                });
                 diag
             }
             Self::PartlyLocatedUnlocated(PartlyUnlocated::Returned {

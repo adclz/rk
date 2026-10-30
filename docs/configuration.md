@@ -141,8 +141,8 @@ Slow   ●                                                 ●
 
 When both are due on the same tick, the one with the lower `PRIORITY` runs first.
 
-- `INTERVAL` is a `TIME` or `LTIME` literal, or a `VAR_GLOBAL CONSTANT` holding one. It cannot be zero (`E1410`).
-- `PRIORITY` is required (`E1405`). `0` is the most urgent.
+- `INTERVAL` is a `TIME` or `LTIME` literal, or a `VAR_GLOBAL CONSTANT` holding one. It cannot be zero (`E1410`). The standard takes a `TIME` only.
+- `PRIORITY` is required (`E1405`), an unsigned integer of up to 32 bits where the standard takes a `UINT`. `0` is the most urgent.
 - A run that starts late happens once: the ticks it missed are dropped, never replayed.
 
 The module carries the schedule in its `rk.schedule` section.
@@ -167,7 +167,8 @@ In code the instance sits in the resource, beside the tasks: `WITH` is what puts
 
 Each instance has its own variables: `Belt1.speed` and `Belt2.speed` are two different variables.
 
-An instance without `WITH` never runs:
+An instance needs a `WITH`.
+The standard runs one without at the lowest priority; rk runs a program only under a task (`E1412`):
 
 ```iecst expect=E1412
 PROGRAM Conveyor
@@ -264,6 +265,7 @@ IEC 61131-3 keeps a variable the block itself declares `RETAIN` inside a `NON_RE
 rk keeps none of it: a variable with no qualifier is never kept, so `NON_RETAIN` on an instance would otherwise change nothing.
 IEC 61131-3 also stops the qualifier at a block the instance holds, which then follows its own declarations.
 rk reaches into it: `RETAIN` on an instance keeps the blocks inside too, and a block marks `NON_RETAIN` what must not come back, as the timers do with their clock readings.
+A `VAR_IN_OUT` of a scalar type is a member of the block and follows its section like a `VAR`; one of an aggregate type is bound by the call and nothing of it is kept.
 
 A variable that holds a reference is not kept (`E0904`): a new build may move what it points at.
 A `CONSTANT` is not kept either: it takes the value of the build.

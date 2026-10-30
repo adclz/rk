@@ -507,10 +507,12 @@ fn lower_stmts_inner<'db>(
     let mut result = Vec::new();
     for stmt in stmts {
         let mut lowered = lower_stmt(ctx, *stmt)?;
+        let mut before = std::mem::take(&mut *ctx.before_stmt.borrow_mut());
         if !lowered.is_empty() {
             result.push(MirStmt::DebugTrap {
                 location: stmt_location(ctx.db, *stmt),
             });
+            result.append(&mut before);
             result.append(&mut lowered);
         }
         result.append(&mut ctx.after_stmt.borrow_mut());

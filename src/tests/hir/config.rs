@@ -13,9 +13,9 @@ use rstest::rstest;
 
 use crate::tests::utils::{add_source, add_sources, test_diagnostics, with_db};
 
-/// A valid CONFIGURATION with a single bare TASK and PROGRAM.
+/// A `PROGRAM RETAIN` instance is accepted.
 #[rstest]
-fn valid_config_single_resource(mut with_db: RootDatabase) {
+fn valid_config_retain_instance(mut with_db: RootDatabase) {
     let source = r#"
 PROGRAM MyProg
 END_PROGRAM
@@ -459,7 +459,6 @@ END_PROGRAM
 
 // ── VAR_CONFIG tests ────────────────────────────────────────────────────
 
-/// A valid VAR_CONFIG overriding an INT variable in a program instance.
 /// A VAR_CONFIG value is refused where it cannot be the variable's starting
 /// value: a second one for the same variable, or for an instance holding it
 /// (E1426), a member with no value of its own (E0405), and, by the rules a
@@ -471,7 +470,7 @@ fn invalid_var_config_values(mut with_db: RootDatabase) {
     let source = r#"
 FUNCTION_BLOCK Drive
 VAR out AT %Q* : INT; level AT %I* : INT; b AT %Q* : BYTE; END_VAR
-VAR_IN_OUT io : INT; END_VAR
+VAR_IN_OUT io : STRING; END_VAR
 VAR CONSTANT c : INT := 1; END_VAR
 END_FUNCTION_BLOCK
 
@@ -488,7 +487,7 @@ VAR_GLOBAL panel AT %QW4 : INT := 3; END_VAR
 VAR_CONFIG
     Res.P1.n : INT := 1;
     Res.P1.n : INT := 2;
-    Res.P1.d.io : INT := 3;
+    Res.P1.d.io : STRING := 'x';
     Res.P1.d.c : INT := 4;
     Res.P1.d.level AT %IW0 : INT := 5;
     Res.P1.d.out AT %QW4 : INT := 6;
@@ -510,36 +509,28 @@ END_CONFIGURATION
      19 |     Res.P1.n : INT := 1;
         |            |
         |            `-- 'n' is given a value here and by another entry
-        |
-        | Help: keep one of the entries
-        |
-        | Note: an instance's variable has one starting value
-    ----'
-    [E1426] Error: configuration entry refused
-        ,-[ file:///test0.st:20:12 ]
-        |
      20 |     Res.P1.n : INT := 2;
         |            |
-        |            `-- 'n' is given a value here and by another entry
+        |            `-- 'n' is given a value here
         |
         | Help: keep one of the entries
         |
         | Note: an instance's variable has one starting value
     ----'
     [E0405] Error: initializer for a member that takes none
-        ,-[ file:///test0.st:21:23 ]
+        ,-[ file:///test0.st:21:26 ]
         |
-      4 | VAR_IN_OUT io : INT; END_VAR
+      4 | VAR_IN_OUT io : STRING; END_VAR
         |            ^|
         |             `-- 'io' is declared here
         |
-     21 |     Res.P1.d.io : INT := 3;
-        |                       ^^|^
-        |                         `--- an initializer cannot set 'io', a VAR_IN_OUT
+     21 |     Res.P1.d.io : STRING := 'x';
+        |                          ^^^|^^
+        |                             `---- an initializer cannot set 'io', a VAR_IN_OUT
         |
         | Help: pass the variable in the call, as 'io := x'
         |
-        | Note: a VAR_IN_OUT is bound to its argument at each call
+        | Note: a VAR_IN_OUT of a STRING, a reference or an aggregate is bound to its argument at each call, where a scalar one is a member and takes a value
     ----'
     [E0405] Error: initializer for a member that takes none
         ,-[ file:///test0.st:22:22 ]
@@ -568,29 +559,45 @@ END_CONFIGURATION
     [E1426] Error: configuration entry refused
         ,-[ file:///test0.st:24:14 ]
         |
+     17 | VAR_GLOBAL panel AT %QW4 : INT := 3; END_VAR
+        |            ^^|^^
+        |              `---- 'panel' is declared here
+        |
      24 |     Res.P1.d.out AT %QW4 : INT := 6;
         |              ^|^
-        |               `--- 'out' is at '%QW4', where a declaration gives its starting value
+        |               `--- 'out' is at '%QW4', the cell 'panel' is declared at
         |
         | Help: give the value in that declaration
+        |
+        | Note: a declared cell starts at the value its declaration gives
     ----'
     [E1426] Error: configuration entry refused
         ,-[ file:///test0.st:25:12 ]
         |
+     13 | VAR d : Drive; pump : Pump; n : INT; lamp AT %QW8 : INT; END_VAR
+        |                                      ^^|^
+        |                                        `--- 'lamp' is declared here
+        |
      25 |     Res.P1.lamp : INT := 7;
         |            ^^|^
-        |              `--- 'lamp' is at '%QW8', where a declaration gives its starting value
+        |              `--- 'lamp' is at '%QW8', one cell for every instance of 'P'
         |
-        | Help: give the value in that declaration
+        | Help: give the value in its declaration
+        |
+        | Note: a PROGRAM's variable located in full is its channel, whatever the instance
     ----'
     [E1423] Error: part of a wider address
         ,-[ file:///test0.st:26:14 ]
+        |
+     17 | VAR_GLOBAL panel AT %QW4 : INT := 3; END_VAR
+        |            ^^|^^
+        |              `---- 'panel' is declared here
         |
      26 |     Res.P1.d.b AT %QB9 : BYTE := 8;
         |              |
         |              `-- '%QB9' is part of '%QW4' and cannot have an initial value of its own
         |
-        | Help: give the variable located at '%QW4' an initial value with this part set in it
+        | Help: give 'panel' an initial value with this part set in it
     ----'
     [E1426] Error: configuration entry refused
         ,-[ file:///test0.st:27:12 ]
@@ -598,17 +605,9 @@ END_CONFIGURATION
      27 |     Res.P1.pump : Pump := (k := 9);
         |            ^^|^
         |              `--- 'pump' is given a value here and by another entry
-        |
-        | Help: keep one of the entries
-        |
-        | Note: an instance's variable has one starting value
-    ----'
-    [E1426] Error: configuration entry refused
-        ,-[ file:///test0.st:28:17 ]
-        |
      28 |     Res.P1.pump.k : INT := 10;
         |                 |
-        |                 `-- 'k' is given a value here and by another entry
+        |                 `-- 'pump.k' is given a value here
         |
         | Help: keep one of the entries
         |
@@ -617,11 +616,11 @@ END_CONFIGURATION
     ");
 }
 
-/// A task association names a TASK of the resource, and one that can run: a
-/// function block bound to one that cannot would never run, as a program
-/// would not (E1410).
+/// A task association names a TASK of the resource (E1411, as a program's
+/// WITH), and one that can run: a function block bound to one that cannot
+/// would never run, as a program would not (E1410).
 #[rstest]
-#[case::unknown_task("fb1 WITH Nope", "[E1428]")]
+#[case::unknown_task("fb1 WITH Nope", "[E1411]")]
 #[case::task_that_cannot_run("fb1 WITH Ev", "[E1410]")]
 fn invalid_task_for_a_function_block(
     mut with_db: RootDatabase,
@@ -721,19 +720,10 @@ END_CONFIGURATION
         ,-[ file:///test0.st:22:58 ]
         |
      22 |         PROGRAM P1 WITH T : F(y1 := 1, x1 => w, x2 := w, x1 := TRUE, x1 := FALSE, y1 => %IW0);
-        |                                                          ^|
-        |                                                           `-- 'x1' is connected here and by another element
-        |
-        | Help: keep one of the elements
-        |
-        | Note: an input has one source
-    ----'
-    [E1428] Error: program configuration element refused
-        ,-[ file:///test0.st:22:70 ]
-        |
-     22 |         PROGRAM P1 WITH T : F(y1 := 1, x1 => w, x2 := w, x1 := TRUE, x1 := FALSE, y1 => %IW0);
-        |                                                                      ^|
-        |                                                                       `-- 'x1' is connected here and by another element
+        |                                                          ^|          ^|
+        |                                                           `-------------- 'x1' is connected here and by another element
+        |                                                                       |
+        |                                                                       `-- 'x1' is connected here
         |
         | Help: keep one of the elements
         |
@@ -746,7 +736,7 @@ END_CONFIGURATION
         |                                                                                   ^|
         |                                                                                    `-- '%IW0' is an input: it is written by the host, not by the program
         |
-        | Note: the host copies the input image in before each scan, so this write is overwritten before anything can read it
+        | Note: the host copies the input image in before each scan: the rest of this scan would read a value the input never had, and the next scan overwrites it
     ----'
     [E1428] Error: program configuration element refused
         ,-[ file:///test0.st:23:31 ]
@@ -776,30 +766,23 @@ END_CONFIGURATION
         ,-[ file:///test0.st:23:53 ]
         |
      23 |         PROGRAM P2 WITH T : F(b WITH T, fb2 WITH T, fb1 WITH T, fb1 WITH T, nosuch := 1);
-        |                                                     ^|^
-        |                                                      `--- 'fb1' is associated with a task here and by another element
+        |                                                     ^|^         ^|^
+        |                                                      `--------------- 'fb1' is associated with a task here and by another element
+        |                                                                  |
+        |                                                                  `--- 'fb1' is associated with a task here
         |
         | Help: keep one of the elements
         |
         | Note: a function block runs under one task
     ----'
     [E1428] Error: program configuration element refused
-        ,-[ file:///test0.st:23:65 ]
-        |
-     23 |         PROGRAM P2 WITH T : F(b WITH T, fb2 WITH T, fb1 WITH T, fb1 WITH T, nosuch := 1);
-        |                                                                 ^|^
-        |                                                                  `--- 'fb1' is associated with a task here and by another element
-        |
-        | Help: keep one of the elements
-        |
-        | Note: a function block runs under one task
-    ----'
-    [E1414] Error: unknown field in VAR_CONFIG
         ,-[ file:///test0.st:23:77 ]
         |
      23 |         PROGRAM P2 WITH T : F(b WITH T, fb2 WITH T, fb1 WITH T, fb1 WITH T, nosuch := 1);
         |                                                                             ^^^|^^
-        |                                                                                `---- 'F' has no field named 'nosuch'
+        |                                                                                `---- 'nosuch' is not a variable of 'F'
+        |
+        | Note: an element names a VAR_INPUT, a VAR_OUTPUT or a function block instance of the program
     ----'
     ");
 }
@@ -1347,6 +1330,7 @@ fn event_driven_task_is_rejected(mut with_db: db::RootDatabase) {
     let source = r#"
         PROGRAM P VAR n : DINT; END_VAR n := n + 1; END_PROGRAM
         CONFIGURATION Cfg
+            VAR_GLOBAL go : BOOL; END_VAR
             RESOURCE R ON CPU
                 TASK T(SINGLE := go, PRIORITY := 1);
                 PROGRAM P1 WITH T : P;
@@ -1355,9 +1339,9 @@ fn event_driven_task_is_rejected(mut with_db: db::RootDatabase) {
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     [E1410] Error: unschedulable TASK
-       ,-[ file:///test0.st:5:22 ]
+       ,-[ file:///test0.st:6:22 ]
        |
-     5 |                 TASK T(SINGLE := go, PRIORITY := 1);
+     6 |                 TASK T(SINGLE := go, PRIORITY := 1);
        |                      |
        |                      `-- task 'T' cannot be scheduled: event-driven tasks (SINGLE) are not supported
        |
@@ -1388,7 +1372,9 @@ fn zero_interval_task_is_rejected(mut with_db: db::RootDatabase) {
     ");
 }
 
-/// A name that resolves to nothing cannot supply a period.
+/// A name that resolves to nothing is a mistake of its own, reported where
+/// it is written (E0201) and not as a task that cannot be scheduled: the
+/// likely cause is a typo, and the task is left out of the schedule.
 #[rstest]
 fn non_literal_interval_is_rejected(mut with_db: db::RootDatabase) {
     let source = r#"
@@ -1401,14 +1387,12 @@ fn non_literal_interval_is_rejected(mut with_db: db::RootDatabase) {
         END_CONFIGURATION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1410] Error: unschedulable TASK
-       ,-[ file:///test0.st:5:22 ]
+    [E0201] Error: unknown name
+       ,-[ file:///test0.st:5:36 ]
        |
      5 |                 TASK T(INTERVAL := someName, PRIORITY := 1);
-       |                      |
-       |                      `-- task 'T' cannot be scheduled: INTERVAL must be a TIME literal or a CONSTANT global holding one
-       |
-       | Help: declare the global `VAR_GLOBAL CONSTANT`
+       |                                    ^^^^|^^^
+       |                                        `----- no item 'someName' found in scope
     ---'
     ");
 }
@@ -1475,7 +1459,9 @@ fn program_instance_without_a_task_is_rejected(mut with_db: db::RootDatabase) {
        |
      6 |                 PROGRAM P1 : P;
        |                         ^|
-       |                          `-- program instance 'P1' has no WITH <task>, so it will never run
+       |                          `-- program instance 'P1' has no WITH <task>
+       |
+       | Note: rk runs a program only under a TASK
     ---'
     ");
 }
@@ -1533,6 +1519,7 @@ fn an_unused_unschedulable_task_is_accepted(mut with_db: db::RootDatabase) {
     let source = r#"
         PROGRAM P VAR n : DINT; END_VAR n := n + 1; END_PROGRAM
         CONFIGURATION Cfg
+            VAR_GLOBAL go : BOOL; END_VAR
             RESOURCE R ON CPU
                 TASK Later(SINGLE := go, PRIORITY := 9);
                 TASK Fast(INTERVAL := T#10ms, PRIORITY := 1);
@@ -1541,6 +1528,42 @@ fn an_unused_unschedulable_task_is_accepted(mut with_db: db::RootDatabase) {
         END_CONFIGURATION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
+
+/// A TASK's SINGLE or INTERVAL names a VAR_GLOBAL, used or not: a name that
+/// resolves to nothing is E0201 at the name, whether or not a program is
+/// bound to the task. The bound task is reported once, as that, and not as
+/// unschedulable too.
+#[rstest]
+fn a_task_parameter_names_a_global(mut with_db: db::RootDatabase) {
+    let source = r#"
+        PROGRAM P VAR n : DINT; END_VAR n := n + 1; END_PROGRAM
+        CONFIGURATION Cfg
+            RESOURCE R ON CPU
+                TASK Later(SINGLE := nope, PRIORITY := 9);
+                TASK Slow(INTERVAL := missing, PRIORITY := 8);
+                TASK Fast(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH Fast : P;
+                PROGRAM P2 WITH Slow : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0201] Error: unknown name
+       ,-[ file:///test0.st:5:38 ]
+       |
+     5 |                 TASK Later(SINGLE := nope, PRIORITY := 9);
+       |                                      ^^|^
+       |                                        `--- no item 'nope' found in scope
+    ---'
+    [E0201] Error: unknown name
+       ,-[ file:///test0.st:6:39 ]
+       |
+     6 |                 TASK Slow(INTERVAL := missing, PRIORITY := 8);
+       |                                       ^^^|^^^
+       |                                          `----- no item 'missing' found in scope
+    ---'
+    ");
 }
 
 /// The ordinary shape stays clean — these checks reject what cannot run, not
@@ -1582,12 +1605,14 @@ fn a_program_connection_names_a_variable_of_the_program(mut with_db: RootDatabas
         END_CONFIGURATION
     "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1414] Error: unknown field in VAR_CONFIG
+    [E1428] Error: program configuration element refused
         ,-[ file:///test0.st:12:65 ]
         |
      12 |                 PROGRAM PA WITH T : A (inp := src, outp => snk, ghost := nosuch);
         |                                                                 ^^|^^
-        |                                                                   `---- 'A' has no field named 'ghost'
+        |                                                                   `---- 'ghost' is not a variable of 'A'
+        |
+        | Note: an element names a VAR_INPUT, a VAR_OUTPUT or a function block instance of the program
     ----'
     ");
 }
@@ -1690,16 +1715,20 @@ fn var_global_in_a_resource_is_rejected(mut with_db: RootDatabase) {
        |                                `-- no VAR_GLOBAL is named 'g'
     ---'
     [E1403] Error: more than one RESOURCE
-       ,-[ file:///test0.st:5:22 ]
-       |
-     5 |             RESOURCE R1 ON CPU
-       |                      ^|
-       |                       `-- the configuration declares 2 RESOURCEs (R1, R2)
-       |
-       | Help: deploy one RESOURCE per runtime
-       |
-       | Note: a deployment drives one RESOURCE
-    ---'
+        ,-[ file:///test0.st:5:22 ]
+        |
+      5 |             RESOURCE R1 ON CPU
+        |                      ^|
+        |                       `-- the configuration declares 2 RESOURCEs (R1, R2)
+        |
+     10 |             RESOURCE R2 ON CPU
+        |                      ^|
+        |                       `-- 'R2' is declared here
+        |
+        | Help: deploy one RESOURCE per runtime
+        |
+        | Note: a deployment drives one RESOURCE
+    ----'
     [E0021] Error: VAR_GLOBAL not allowed in this context
        ,-[ file:///test0.st:6:17 ]
        |
@@ -1755,21 +1784,6 @@ fn more_than_one_configuration_is_rejected(mut with_db: RootDatabase) {
      11 |         CONFIGURATION Second
         |                       ^^^|^^
         |                          `---- 'Second' is declared here
-        |
-        | Help: describe another PLC in its own workspace
-        |
-        | Note: a workspace has one CONFIGURATION
-    ----'
-    [E1402] Error: more than one CONFIGURATION
-        ,-[ file:///test0.st:11:23 ]
-        |
-      4 |         CONFIGURATION First
-        |                       ^^|^^
-        |                         `---- 'First' is declared here
-        |
-     11 |         CONFIGURATION Second
-        |                       ^^^|^^
-        |                          `---- the workspace declares 2 CONFIGURATIONs
         |
         | Help: describe another PLC in its own workspace
         |
@@ -1846,6 +1860,8 @@ fn resolved_schedule(db: &RootDatabase) -> String {
 /// Every value lowering needs is resolved here: the resource and its `ON` type,
 /// the interval in nanoseconds, the priority as a number, and the instances
 /// bound to each task. Nothing downstream re-derives or re-parses any of it.
+/// Two RESOURCEs, which E1403 refuses: the schedule is read on its own here,
+/// for the day a configuration may have more than one.
 #[rstest]
 fn resolved_schedule_carries_resources_tasks_and_instances(mut with_db: RootDatabase) {
     let source = r#"
@@ -1915,10 +1931,13 @@ fn resolved_schedule_omits_what_cannot_run(mut with_db: RootDatabase) {
 PROGRAM P VAR n : INT; END_VAR n := n + 1; END_PROGRAM
 
 CONFIGURATION Cfg
+    VAR_GLOBAL go : BOOL; END_VAR
     RESOURCE R ON CPU
         TASK Bound(INTERVAL := T#10ms, PRIORITY := 1);
         TASK Orphan(INTERVAL := T#10ms, PRIORITY := 2);
+        TASK Ev(SINGLE := go, PRIORITY := 3);
         PROGRAM PA WITH Bound : P;
+        PROGRAM PB WITH Ev : P;
     END_RESOURCE
 END_CONFIGURATION
 "#;
@@ -1931,7 +1950,9 @@ END_CONFIGURATION
 }
 
 /// A RESOURCE whose tasks all fail to resolve contributes nothing rather than
-/// an empty group, so a consumer never has to skip blanks.
+/// an empty group, so a consumer never has to skip blanks. Two RESOURCEs,
+/// which E1403 refuses: the schedule is read on its own here, for the day a
+/// configuration may have more than one.
 #[rstest]
 fn resolved_schedule_drops_empty_resources(mut with_db: RootDatabase) {
     let source = r#"
@@ -2000,8 +2021,8 @@ END_CONFIGURATION
     ");
 }
 
-/// A global spec is a NAME LIST or a single located name — never one bare
-/// identifier
+/// A global spec is a NAME LIST, `ga, gb : INT`, or one name, located or
+/// not: every name declares a global.
 #[rstest]
 fn a_global_name_list_declares_every_name(mut with_db: RootDatabase) {
     let source = r#"
@@ -2073,6 +2094,10 @@ END_CONFIGURATION
        |              ^^|^^
        |                `---- the configuration declares 2 RESOURCEs (Core0, Core1)
        |
+     9 |     RESOURCE Core1 ON CPU
+       |              ^^|^^
+       |                `---- 'Core1' is declared here
+       |
        | Help: deploy one RESOURCE per runtime
        |
        | Note: a deployment drives one RESOURCE
@@ -2108,6 +2133,12 @@ END_CONFIGURATION
        |              ^^|^^
        |                `---- the configuration declares 2 RESOURCEs (Core0, Core1)
        |
+       |-[ file:///test1.st:3:14 ]
+       |
+     3 |     RESOURCE Core1 ON CPU
+       |              ^^|^^
+       |                `---- 'Core1' is declared here
+       |
        | Help: deploy one RESOURCE per runtime
        |
        | Note: a deployment drives one RESOURCE
@@ -2119,10 +2150,61 @@ END_CONFIGURATION
        |              ^^|^^
        |                `---- the configuration declares 2 RESOURCEs (Core0, Core1)
        |
+       |-[ file:///test0.st:5:14 ]
+       |
+     5 |     RESOURCE Core0 ON CPU
+       |              ^^|^^
+       |                `---- 'Core0' is declared here
+       |
        | Help: deploy one RESOURCE per runtime
        |
        | Note: a deployment drives one RESOURCE
     ---'
+    ");
+}
+
+/// A VAR_CONFIG entry repeats the variable's type, or an alias of the same
+/// storage: `INT` for a `Tally` declared `INT := 5`. Another storage is
+/// E1426, however wide.
+#[rstest]
+fn a_var_config_entry_repeats_the_variables_storage(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE Tally : INT := 5; END_TYPE
+
+FUNCTION_BLOCK Motor
+VAR seen AT %M* : Tally; END_VAR
+    seen := seen + 1;
+END_FUNCTION_BLOCK
+
+PROGRAM P
+VAR a : Motor; b : Motor; c : Motor; END_VAR
+    a(); b(); c();
+END_PROGRAM
+
+CONFIGURATION Cfg
+VAR_CONFIG
+    Res.P1.a.seen AT %MW0 : Tally;
+    Res.P1.b.seen AT %MW1 : INT;
+    Res.P1.c.seen AT %MW2 : UINT;
+END_VAR
+    RESOURCE Res ON CPU
+        TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM P1 WITH T : P;
+    END_RESOURCE
+END_CONFIGURATION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1426] Error: configuration entry refused
+        ,-[ file:///test0.st:18:14 ]
+        |
+     18 |     Res.P1.c.seen AT %MW2 : UINT;
+        |              ^^|^
+        |                `--- the entry says 'UINT', but 'seen' is declared 'Tally'
+        |
+        | Help: write the declared type
+        |
+        | Note: the entry repeats the variable's type
+    ----'
     ");
 }
 
@@ -2172,14 +2254,14 @@ END_CONFIGURATION
        |
      9 |     Res.P1.k;
        |     ^^^^|^^^
-       |         `----- the variable has no type
+       |         `----- the entry gives no type
     ---'
     [E0003] Error: missing variable type
         ,-[ file:///test0.st:10:5 ]
         |
      10 |     Res.P1.x AT %QW0;
         |     ^^^^^^^^|^^^^^^^
-        |             `--------- the variable has no type
+        |             `--------- the entry gives no type
     ----'
     [E1425] Error: variable not located
         ,-[ file:///test0.st:14:17 ]
@@ -2188,13 +2270,15 @@ END_CONFIGURATION
         |                 ^|
         |                  `-- no VAR_CONFIG entry locates 'P1.x', declared AT %Q*
         |
-        | Help: give each instance its address in VAR_CONFIG, as in 'Res.P1.fb.x AT %IX0.0 : BOOL;'
+        | Help: give it its address in VAR_CONFIG, as in 'Res.P1.x AT %QW0 : INT;'
     ----'
     ");
 }
 
 /// VAR_CONFIG reaches an instance's members, and a VAR_TEMP or a
-/// VAR_EXTERNAL is none: neither takes an address or a value there.
+/// VAR_EXTERNAL is none: neither takes an address or a value there. The
+/// report says what each is, and points at the VAR_GLOBAL an external
+/// names.
 #[rstest]
 fn invalid_config_entry_on_a_temp_or_external(mut with_db: RootDatabase) {
     let source = r#"
@@ -2222,19 +2306,37 @@ VAR f : Fb; END_VAR
 END_PROGRAM
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1414] Error: unknown field in VAR_CONFIG
-       ,-[ file:///test0.st:9:18 ]
-       |
-     9 |         Res.P1.f.g AT %QW0 : INT;
-       |                  |
-       |                  `-- 'Fb' has no field named 'g'
-    ---'
-    [E1414] Error: unknown field in VAR_CONFIG
+    [E1426] Error: configuration entry refused
+        ,-[ file:///test0.st:9:18 ]
+        |
+      3 | VAR_GLOBAL g : INT := 5; END_VAR
+        |            |
+        |            `-- the VAR_GLOBAL 'g' is declared here
+        |
+      9 |         Res.P1.f.g AT %QW0 : INT;
+        |                  |
+        |                  `-- 'g' is a VAR_EXTERNAL of 'Fb', the VAR_GLOBAL 'g'
+        |
+     16 | VAR_EXTERNAL g : INT; END_VAR
+        |              |
+        |              `-- 'g' is declared here
+        |
+        | Help: give the VAR_GLOBAL 'g' its address or value where it is declared
+        |
+        | Note: a VAR_CONFIG entry names what an instance holds
+    ----'
+    [E1426] Error: configuration entry refused
         ,-[ file:///test0.st:10:18 ]
         |
      10 |         Res.P1.f.scratch : INT := 5;
         |                  ^^^|^^^
-        |                     `----- 'Fb' has no field named 'scratch'
+        |                     `----- 'scratch' is a VAR_TEMP of 'Fb', made for each call
+        |
+     15 | VAR_TEMP scratch : INT; END_VAR
+        |          ^^^|^^^
+        |             `----- 'scratch' is declared here
+        |
+        | Note: a VAR_CONFIG entry names what an instance holds
     ----'
     ");
 }

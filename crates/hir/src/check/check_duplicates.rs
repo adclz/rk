@@ -186,15 +186,26 @@ pub fn check_single_configuration<'db>(
     let all = crate::hir_ty::index_graphs::declared_configs(db);
     let names: rustc_hash::FxHashSet<_> = all.iter().map(|c| c.get_name_ident(db)).collect();
     if names.len() > 1 {
+        // One report per file, from its first configuration: a second one
+        // in the same file is labelled, as every other file's is.
+        let file = config.get_scope_id(db).file(db);
+        let first_in_file = all
+            .iter()
+            .filter(|c| c.get_scope_id(db).file(db) == file)
+            .any(|c| c.get_name_span(db).start_byte < config.get_name_span(db).start_byte);
+        if first_in_file {
+            return;
+        }
         // Carry the others so they can be reached from here: deciding which to
         // keep means looking at all of them.
-        let mut others: Vec<_> = all
-            .iter()
-            .filter(|c| c.get_name_ident(db) != config.get_name_ident(db))
-            .copied()
-            .collect();
+        let mut others: Vec<_> = all.iter().filter(|c| **c != config).copied().collect();
         // The file maps have no order, so sort for a stable list.
-        others.sort_by_key(|c| c.get_name_with_case(db).text(db).to_string());
+        others.sort_by_key(|c| {
+            (
+                c.get_scope_id(db).file(db).url(db).to_string(),
+                c.get_name_span(db).start_byte,
+            )
+        });
         errors.push(
             ConfigError::MultipleConfigurations { config, others }
                 .to_diagnostic(db, config.get_scope_id(db).file(db)),
@@ -214,8 +225,9 @@ pub fn check_single_configuration<'db>(
 ///
 /// Counts DISTINCT resource names across the configuration's FRAGMENTS —
 /// same-named blocks merge, so the resources may be split across files.
-/// Reported at every fragment that declares a resource, symmetrically, like
-/// E1402: the file maps have no order, so there is no first to privilege.
+/// Reported once per file, at its first RESOURCE, with every other RESOURCE
+/// of every fragment labelled, like E1402: the file maps have no order, so
+/// there is no first file to privilege.
 pub fn check_single_resource<'db>(
     db: &'db dyn WorkspaceDataBase,
     config: ConfigDecl<'db>,
@@ -236,19 +248,44 @@ pub fn check_single_resource<'db>(
     if names.len() <= 1 {
         return;
     }
-    // The caret goes on THIS fragment's first resource; a fragment declaring
-    // none (a globals-only file) has nothing to point at and stays silent.
+    // The caret goes on THIS fragment's first resource, when it is the
+    // file's first; a fragment declaring none (a globals-only file) has
+    // nothing to point at and stays silent.
     let Some(first) = config.resources(db).iter().next() else {
         return;
     };
+    let file = config.get_scope_id(db).file(db);
+    let position = |r: &crate::hir_def::config::ResourceDecl<'db>| {
+        (
+            r.name(db).get_scope_id(db).file(db).url(db).to_string(),
+            r.name(db).get_span(db).start_byte,
+        )
+    };
+    let mut all: Vec<_> = fragments
+        .iter()
+        .flat_map(|c| c.resources(db).iter())
+        .collect();
+    all.sort_by_key(|r| position(r));
+    if all
+        .iter()
+        .any(|r| r.name(db).get_scope_id(db).file(db) == file && position(r) < position(first))
+    {
+        return;
+    }
+    let others = all
+        .iter()
+        .filter(|r| position(r) != position(first))
+        .map(|r| r.name(db))
+        .collect();
     let span = first.name(db).get_span(db);
     errors.push(
         ConfigError::MultipleResources {
             config,
             names,
             span,
+            others,
         }
-        .to_diagnostic(db, config.get_scope_id(db).file(db)),
+        .to_diagnostic(db, file),
     );
 }
 

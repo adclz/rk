@@ -3882,7 +3882,26 @@
   {
     "type": "in_out_decls",
     "named": true,
-    "fields": {},
+    "fields": {
+      "retain": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "ERR_doubled_qualifier",
+            "named": true
+          },
+          {
+            "type": "NON_RETAIN",
+            "named": false
+          },
+          {
+            "type": "RETAIN",
+            "named": false
+          }
+        ]
+      }
+    },
     "children": {
       "multiple": true,
       "required": false,

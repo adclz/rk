@@ -200,7 +200,14 @@ fn no_located_variable_exports_no_band(mut with_db: db::RootDatabase) {
         (mir.input_size, mir.output_size, mir.marker_size),
         (0, 0, 0)
     );
-    for name in ["input_base", "input_size", "output_base", "marker_base"] {
+    for name in [
+        "input_base",
+        "input_size",
+        "output_base",
+        "output_size",
+        "marker_base",
+        "marker_size",
+    ] {
         assert!(!exports(&wasm, name), "{name} must not be exported");
     }
 
@@ -580,7 +587,8 @@ fn a_transient_marker_leaves_the_retain_band_alone(mut with_db: db::RootDatabase
     assert_eq!(mir.marker_size, 4);
     assert_eq!(
         mir.retain_base, mir.globals_base,
-        "with nothing retained in %M, the band opens on the retained globals,          which are what the globals band opens on too"
+        "with nothing retained in %M, the band opens on the retained globals, \
+         which are what the globals band opens on too"
     );
     assert!(
         mir.retain_base > flag.addr,
@@ -1336,7 +1344,8 @@ fn a_function_output_bound_to_a_part_lands_as_the_call_returns(mut with_db: db::
 
 /// A declared part has a debug symbol under its own name: the owner's cell
 /// and the bits it is. A debugger reads it and forces it through them, and
-/// forcing it leaves the rest of the cell alone.
+/// forcing it leaves the rest of the cell alone. The force clears what the
+/// preset had set, so only the program's own write can bring it back.
 #[rstest]
 fn a_debugger_reads_and_forces_a_part_by_its_name(mut with_db: db::RootDatabase) {
     use debug_format::{DebugInfo, VarValue};
@@ -1361,7 +1370,7 @@ fn a_debugger_reads_and_forces_a_part_by_its_name(mut with_db: db::RootDatabase)
     let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
     let info = DebugInfo::from_wasm(&wasm);
     let mut plc = TestPlc::load(&wasm).expect("load");
-    plc.write_located("%QW0", &0x8001i32.to_le_bytes())
+    plc.write_located("%QW0", &0x8005i32.to_le_bytes())
         .expect("preset the word");
 
     let read = |plc: &TestPlc, path: &str| {
@@ -1373,21 +1382,25 @@ fn a_debugger_reads_and_forces_a_part_by_its_name(mut with_db: db::RootDatabase)
         VarValue::I8(-128),
         "the high byte, signed"
     );
-    assert_eq!(read(&plc, "ready"), VarValue::Bool(false));
+    assert_eq!(
+        read(&plc, "ready"),
+        VarValue::Bool(true),
+        "bit 2 of the preset"
+    );
 
     let (address, bytes) = info
-        .encode_var_over("ready", VarValue::Bool(true), |a, n| {
+        .encode_var_over("ready", VarValue::Bool(false), |a, n| {
             plc.read_bytes(a, n as usize).ok()
         })
         .expect("force ready");
     plc.write_bytes(address, &bytes).expect("write");
     assert_eq!(
         read(&plc, "status"),
-        VarValue::U16(0x8005),
-        "bit 2 set, the rest kept"
+        VarValue::U16(0x8001),
+        "bit 2 cleared, the rest kept"
     );
     assert_eq!(
-        info.encode_var("ready", VarValue::Bool(true)),
+        info.encode_var("ready", VarValue::Bool(false)),
         None,
         "a part is not forced without the bytes it is written into"
     );
@@ -1396,7 +1409,12 @@ fn a_debugger_reads_and_forces_a_part_by_its_name(mut with_db: db::RootDatabase)
     assert_eq!(
         read(&plc, "ready"),
         VarValue::Bool(true),
-        "the program saw -128"
+        "the program saw -128 and set the bit the force had cleared"
+    );
+    assert_eq!(
+        read(&plc, "status"),
+        VarValue::U16(0x8005),
+        "through the bit alone"
     );
 }
 
@@ -1430,9 +1448,10 @@ fn a_bare_address_is_the_bits_of_its_cell(mut with_db: db::RootDatabase) {
     assert_eq!(word, 2.5f32.to_bits(), "the REAL's bits");
 }
 
-/// A part of a byte or more is whole bytes of its owner's cell, passed to a
-/// VAR_IN_OUT and referenced by their address. Each write lands in its own
-/// bytes only: `%QD1`, the next cell in the band, keeps what it held.
+/// A part of a byte or more is whole bytes of its owner's cell: a FUNCTION's
+/// VAR_IN_OUT binds their address, as a reference does, and a block's member
+/// copies them in and back. Each write lands in its own bytes only: `%QD1`,
+/// the next cell in the band, keeps what it held.
 #[rstest]
 fn a_part_of_a_byte_or_more_is_passed_and_referenced_by_address(mut with_db: db::RootDatabase) {
     let source = r#"
@@ -2081,7 +2100,8 @@ fn an_output_starts_at_its_initial_value(mut with_db: db::RootDatabase) {
 
 /// A bit may leave out its size character (Table 16 row 4b), and is then the
 /// same address with `X`: `%Q0.3` is bit 3 of a `%QW0` beside it, and `%I1`
-/// is `%IX1`, a cell of its own.
+/// is `%IX1`, a cell of its own, which the located map lists with the
+/// letter: the spelling a host binds.
 #[rstest]
 fn an_address_without_a_width_letter_is_a_bit(mut with_db: db::RootDatabase) {
     let source = r#"
@@ -2102,7 +2122,11 @@ fn an_address_without_a_width_letter_is_a_bit(mut with_db: db::RootDatabase) {
     let (mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
     assert_eq!(mir.output_size, 4, "`%Q0.3` and `%Q0.0` are `lamps`'s bits");
     let mut plc = TestPlc::load(&wasm).expect("load");
-    plc.write_located("%I1", &1i32.to_le_bytes())
+    assert!(
+        plc.located("%I1").is_err() && plc.located("%IX1").is_ok(),
+        "listed as `%IX1`"
+    );
+    plc.write_located("%IX1", &1i32.to_le_bytes())
         .expect("input bit");
     plc.run(1).expect("scan");
     let lamps = i32::from_le_bytes(
@@ -2149,4 +2173,175 @@ fn the_module_exports_what_hir_reserves(mut with_db: db::RootDatabase) {
     let mut reserved = hir::hir_def::pous::pragma::MODULE_EXPORTS.to_vec();
     reserved.sort();
     assert_eq!(exported, reserved);
+}
+
+/// The same idiom on a VAR_IN_OUT the block keeps as a member
+/// (`f(v := %QX0.3)`): the bit is copied in, and the body's result is
+/// written back into the word after the call, the other bits kept. The
+/// word is reset every scan, so the bit comes in FALSE each time: a copy in
+/// that skipped it would flip the member's TRUE back and fail the second.
+#[rstest]
+fn an_fb_in_out_member_bound_to_a_view_flips_its_bit(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Flip
+        VAR_IN_OUT v : BOOL; END_VAR
+            v := NOT v;
+        END_FUNCTION_BLOCK
+
+        PROGRAM P
+        VAR_EXTERNAL lamps : WORD; END_VAR
+        VAR f : Flip; END_VAR
+            lamps := 16#00F0;
+            f(v := %QX0.3);
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+        VAR_GLOBAL lamps AT %QW0 : WORD; END_VAR
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    let read = |plc: &TestPlc| {
+        u16::from_le_bytes(
+            plc.read_located("%QW0").expect("read")[..2]
+                .try_into()
+                .unwrap(),
+        )
+    };
+
+    let mut plc = TestPlc::load(&wasm).expect("load");
+    plc.run(1).expect("scan");
+    assert_eq!(
+        read(&plc),
+        0x00F8,
+        "bit 3 set from FALSE, the preset bits kept"
+    );
+    plc.run(1).expect("scan");
+    assert_eq!(
+        read(&plc),
+        0x00F8,
+        "set from FALSE again: the bit was copied in from the reset word"
+    );
+}
+
+/// An output of a FUNCTION or of a FUNCTION_BLOCK bound to a slice of a
+/// plain variable, `o => w.%X3`, lands in those bits once the call returns,
+/// the rest of the variable kept; a byte's worth lands in its byte, and
+/// `NOT q => w.%X6` lands negated. (A part of a wider address: the test
+/// above.)
+#[rstest]
+fn an_output_bound_to_a_slice_lands_in_its_bits(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION Pair : BOOL
+        VAR_OUTPUT flag : BOOL; octet : BYTE; END_VAR
+            flag := TRUE;
+            octet := 16#AB;
+            Pair := TRUE;
+        END_FUNCTION
+
+        FUNCTION_BLOCK Fbp
+        VAR_OUTPUT q : BOOL; END_VAR
+            q := TRUE;
+        END_FUNCTION_BLOCK
+
+        FUNCTION test : INT
+        VAR w : WORD := 16#00F0; d : DWORD := 16#11223344; f : Fbp; ok : BOOL; END_VAR
+            ok := Pair(flag => w.%X3, octet => d.%B2);
+            f(q => w.%X8);
+            f(NOT q => w.%X4);
+            IF w.%X3 THEN test := test + 1; END_IF;
+            IF w.%X8 THEN test := test + 2; END_IF;
+            IF NOT w.%X4 THEN test := test + 4; END_IF;
+            IF d.%B2 = 16#AB THEN test := test + 8; END_IF;
+            IF (w AND 16#FEE7) = 16#00E0 THEN test := test + 16; END_IF;
+            IF (d AND 16#FF00FFFF) = 16#11003344 THEN test := test + 32; END_IF;
+        END_FUNCTION
+    "#;
+    let result: i32 = crate::tests::codegen::run(&mut with_db, source, "test", ());
+    assert_eq!(
+        result, 63,
+        "1: bit 3 set, 2: bit 8 set, 4: bit 4 cleared by NOT, 8: byte 2 of d replaced, 16 and 32: the rest kept"
+    );
+}
+
+/// A PROGRAM's located variable is one cell for every instance, so an
+/// instance's `RETAIN` or `NON_RETAIN` does not reach it: the cell follows
+/// its own declaration. `kept`, declared RETAIN, is in the retain map under
+/// `PROGRAM NON_RETAIN P2` as under `PROGRAM RETAIN P1`; `count`, declared
+/// without, is not, whatever `P1` says; and `start`, an input, is neither
+/// kept nor refused under `P1` (E1420 is for the declaration).
+#[rstest]
+fn a_programs_located_cell_follows_its_own_declaration(mut with_db: db::RootDatabase) {
+    let source = r#"
+        PROGRAM P
+        VAR RETAIN kept AT %MW1 : INT; END_VAR
+        VAR
+            count AT %MW0   : INT;
+            start AT %IX0.0 : BOOL;
+        END_VAR
+            count := count + 1;
+            kept := count;
+            IF start THEN count := 0; END_IF;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM RETAIN P1 WITH T : P;
+                PROGRAM NON_RETAIN P2 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (mir, _wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    assert_eq!(
+        mir.retain_map
+            .ranges
+            .iter()
+            .map(|r| r.path.as_str())
+            .collect::<Vec<_>>(),
+        ["P.kept"],
+        "the declaration's RETAIN, and only it"
+    );
+}
+
+/// A bit may leave its size letter out: `%Q1` written in a body is the cell
+/// `lamp AT %QX1` declares, and the located map lists it once, with the
+/// letter, which is the spelling a host binds.
+#[rstest]
+fn a_bit_without_its_size_letter_is_the_declared_cell(mut with_db: db::RootDatabase) {
+    let source = r#"
+        PROGRAM P
+        VAR_EXTERNAL lamp : BOOL; END_VAR
+            %Q1 := TRUE;
+            IF lamp THEN %QX2 := TRUE; END_IF;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+        VAR_GLOBAL lamp AT %QX1 : BOOL; END_VAR
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    let mut plc = TestPlc::load(&wasm).expect("load");
+    let addresses: Vec<&str> = plc
+        .located_map()
+        .entries
+        .iter()
+        .map(|e| e.address.as_str())
+        .collect();
+    assert_eq!(
+        addresses,
+        ["%QX1", "%QX2"],
+        "one cell, listed with its letter"
+    );
+    plc.run(1).expect("scan");
+    let bit = |plc: &TestPlc, a: &str| plc.read_located(a).expect("read")[0] & 1 == 1;
+    assert!(bit(&plc, "%QX1"), "`%Q1 := TRUE` wrote `lamp`'s cell");
+    assert!(bit(&plc, "%QX2"), "and the program read it back as `lamp`");
 }

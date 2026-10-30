@@ -85,7 +85,7 @@ fn binop(op: MirBinOp, lhs: MirExpr, rhs: MirExpr, ty: MirElementary) -> MirExpr
 impl<'db> ExprLowerCtx<'db> {
     /// Resolve the base type and slice geometry; `hir_ty` is the
     /// unnormalized type, which still carries the base width.
-    fn resolve_slice(
+    pub(crate) fn resolve_slice(
         &self,
         place: &MirPlace,
         var_access: VariableAccess<'db>,
@@ -300,6 +300,17 @@ impl<'db> ExprLowerCtx<'db> {
     ) -> Result<MirExpr, LowerTypeError> {
         let sliced = self.resolve_slice(&place, var_access, hir_ty)?;
         Ok(slice_write(place, sliced, value))
+    }
+
+    /// The type a partial access of a plain variable reads and is written
+    /// as: BOOL for `w.%X3`, BYTE for `w.%B1`.
+    pub(crate) fn multibit_elementary(
+        &self,
+        place: &MirPlace,
+        var_access: VariableAccess<'db>,
+        hir_ty: Type<'db>,
+    ) -> Result<MirElementary, LowerTypeError> {
+        Ok(self.resolve_slice(place, var_access, hir_ty)?.elem)
     }
 }
 

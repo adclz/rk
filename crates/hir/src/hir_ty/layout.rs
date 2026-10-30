@@ -371,6 +371,31 @@ fn type_layout<'db>(db: &'db dyn WorkspaceDataBase, ty: Type<'db>) -> Option<Lay
     }
 }
 
+/// A FUNCTION_BLOCK's VAR_IN_OUT of a scalar type is a member the instance
+/// keeps: a call that binds it copies the argument in before the body and
+/// back after it, a call may leave it out, and it takes an initial value
+/// and the section's `RETAIN` or `NON_RETAIN` like any member. Every other
+/// VAR_IN_OUT, a FUNCTION's or a METHOD's, or one of an aggregate type, is
+/// bound to the caller's variable at each call. A scalar is a fixed-size
+/// elementary type, an enumeration or a subrange: a STRING stays bound,
+/// as does a reference.
+pub fn in_out_is_member<'db>(db: &'db dyn WorkspaceDataBase, var: VariableDecl<'db>) -> bool {
+    use crate::hir_def::{scope::ScopeKind, semantic_index::get_scope};
+    if !var.is_in_out(db)
+        || !matches!(
+            get_scope(db, var.scope_id(db)).kind,
+            ScopeKind::Pou(Pou::FunctionBlock(_))
+        )
+    {
+        return false;
+    }
+    match var.spec(db).infer(db).normalize(db) {
+        Type::Elementary(spec) => spec != ElementarySpec::String,
+        Type::Enum(_) | Type::SubRange(_) => true,
+        _ => false,
+    }
+}
+
 /// How an instance's VAR_IN_OUT is bound.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Binding {
@@ -402,7 +427,7 @@ fn fields_of<'db>(
         // member declared `AT %I*` the address of its channel. Neither is
         // laid out by what it points at, so a block that two VAR_IN_OUTs
         // hold through each other still has a layout.
-        let in_out = var.is_in_out(db) && binding == Binding::Called;
+        let in_out = var.is_in_out(db) && binding == Binding::Called && !in_out_is_member(db, var);
         if in_out || var.is_partly_located(db) {
             push(&mut cursor, var, Part::Address, POINTER);
             // A STRING VAR_IN_OUT also keeps the bound buffer's capacity:

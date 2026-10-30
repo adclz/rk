@@ -25,6 +25,7 @@ pub mod inference;
 pub mod inheritance;
 pub mod init_expr;
 pub mod initializers;
+pub mod inout_members;
 pub mod invocation;
 pub mod layout;
 pub mod library_root;

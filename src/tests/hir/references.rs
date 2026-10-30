@@ -875,10 +875,12 @@ END_FUNCTION
 
 #[rstest]
 fn a_var_in_out_does_not_widen_the_callers_slot(mut with_db: RootDatabase) {
-    // A VAR_IN_OUT aliases the caller's storage; a REAL parameter over an INT
-    // variable wrote four bytes over two and read garbage back (executed:
-    // x was not 4 after `io := io + 1.0`). Interface-typed parameters are
-    // exempt — pinned by the two tests that follow.
+    // A FUNCTION's VAR_IN_OUT aliases the caller's storage: a REAL parameter
+    // over an INT variable wrote four bytes over two and read garbage back
+    // (executed: x was not 4 after `io := io + 1.0`). A block's scalar one is
+    // a member, whose copy back would narrow a REAL to the INT, so the type
+    // has to match there too. Interface-typed parameters are exempt — pinned
+    // by the two tests that follow.
     let source = r#"
 FUNCTION g : REAL
     VAR_IN_OUT io : REAL; END_VAR
@@ -1053,8 +1055,9 @@ END_FUNCTION
 
 /// A reference in RETAIN storage is refused: a warm start restores its
 /// address, and a new build may have moved what it pointed at. Whether a
-/// member is kept follows the retain map: NON_RETAIN, VAR_TEMP and
-/// VAR_IN_OUT are not.
+/// member is kept follows the retain map: NON_RETAIN, VAR_TEMP and a
+/// VAR_IN_OUT bound by reference are not, and a block's scalar VAR_IN_OUT,
+/// a member, is kept as a VAR is.
 #[rstest]
 fn a_reference_in_retain_storage_is_refused(mut with_db: RootDatabase) {
     let source = r#"
@@ -1263,18 +1266,18 @@ END_FUNCTION_BLOCK
         |
      20 |     b := REF(w.%X3);
         |              ^^|^^
-        |                `---- REF() takes a variable, not a bit of one
+        |                `---- REF() takes a variable, not a slice of one
         |
-        | Note: a reference points at a named variable or instance
+        | Note: a slice of a variable has no address of its own, where a variable declared at whole bytes of an address has
     ----'
     [E0905] Error: REF() argument not a variable
         ,-[ file:///test0.st:21:15 ]
         |
      21 |     pb := REF(w.%B1);
         |               ^^|^^
-        |                 `---- REF() takes a variable, not a part of one
+        |                 `---- REF() takes a variable, not a slice of one
         |
-        | Note: a reference points at a named variable or instance
+        | Note: a slice of a variable has no address of its own, where a variable declared at whole bytes of an address has
     ----'
     ");
 }

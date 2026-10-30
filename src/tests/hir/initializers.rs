@@ -446,55 +446,57 @@ END_FUNCTION_BLOCK
 }
 
 /// A VAR_IN_OUT is bound to its argument by each call, so an instance's
-/// initializer cannot give it a value. The value used to be written into
-/// the pointer the binding lives in, and `__init` failed to validate.
+/// initializer cannot give it a value: a STRING here, as a reference or an
+/// aggregate. The value used to be written into the pointer the binding
+/// lives in, and `__init` failed to validate. A scalar VAR_IN_OUT is a
+/// member and takes one (`inout_members.rs`).
 #[rstest]
 fn invalid_in_out_named_in_an_instance_initializer(mut with_db: RootDatabase) {
     let source = r#"
 FUNCTION_BLOCK Drive
-VAR_IN_OUT io : INT; END_VAR
+VAR_IN_OUT io : STRING; END_VAR
 VAR k : INT; END_VAR
-    k := io;
+    IF io = '' THEN k := 1; END_IF;
 END_FUNCTION_BLOCK
 
 FUNCTION_BLOCK Outer
-VAR inner : Drive := (io := 5); END_VAR
+VAR inner : Drive := (io := 'a'); END_VAR
 END_FUNCTION_BLOCK
 
 PROGRAM P
-VAR d : Drive := (io := 30, k := 2); o : Outer; END_VAR
+VAR d : Drive := (io := 'b', k := 2); o : Outer; END_VAR
 END_PROGRAM
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     [E0405] Error: initializer for a member that takes none
        ,-[ file:///test0.st:9:23 ]
        |
-     3 | VAR_IN_OUT io : INT; END_VAR
+     3 | VAR_IN_OUT io : STRING; END_VAR
        |            ^|
        |             `-- 'io' is declared here
        |
-     9 | VAR inner : Drive := (io := 5); END_VAR
-       |                       ^^^|^^^
-       |                          `----- an initializer cannot set 'io', a VAR_IN_OUT
+     9 | VAR inner : Drive := (io := 'a'); END_VAR
+       |                       ^^^^|^^^^
+       |                           `------ an initializer cannot set 'io', a VAR_IN_OUT
        |
        | Help: pass the variable in the call, as 'io := x'
        |
-       | Note: a VAR_IN_OUT is bound to its argument at each call
+       | Note: a VAR_IN_OUT of a STRING, a reference or an aggregate is bound to its argument at each call, where a scalar one is a member and takes a value
     ---'
     [E0405] Error: initializer for a member that takes none
         ,-[ file:///test0.st:13:19 ]
         |
-      3 | VAR_IN_OUT io : INT; END_VAR
+      3 | VAR_IN_OUT io : STRING; END_VAR
         |            ^|
         |             `-- 'io' is declared here
         |
-     13 | VAR d : Drive := (io := 30, k := 2); o : Outer; END_VAR
-        |                   ^^^^|^^^
-        |                       `----- an initializer cannot set 'io', a VAR_IN_OUT
+     13 | VAR d : Drive := (io := 'b', k := 2); o : Outer; END_VAR
+        |                   ^^^^|^^^^
+        |                       `------ an initializer cannot set 'io', a VAR_IN_OUT
         |
         | Help: pass the variable in the call, as 'io := x'
         |
-        | Note: a VAR_IN_OUT is bound to its argument at each call
+        | Note: a VAR_IN_OUT of a STRING, a reference or an aggregate is bound to its argument at each call, where a scalar one is a member and takes a value
     ----'
     ");
 }
@@ -505,18 +507,20 @@ END_PROGRAM
 /// VAR_GLOBAL, so their value was silently dropped; a CONSTANT's reads fold
 /// to its declared value while `__init` wrote the new one.
 #[rstest]
-#[case::in_out("VAR_IN_OUT m : INT; END_VAR", "", "a VAR_IN_OUT")]
-#[case::temp("VAR_TEMP m : INT; END_VAR", "", "a VAR_TEMP")]
+#[case::in_out("VAR_IN_OUT m : STRING; END_VAR", "", "'x'", "a VAR_IN_OUT")]
+#[case::temp("VAR_TEMP m : INT; END_VAR", "", "30", "a VAR_TEMP")]
 #[case::external(
     "VAR_EXTERNAL m : INT; END_VAR",
     "VAR_GLOBAL m : INT; END_VAR",
+    "30",
     "a VAR_EXTERNAL"
 )]
-#[case::constant("VAR CONSTANT m : INT := 1; END_VAR", "", "a CONSTANT")]
+#[case::constant("VAR CONSTANT m : INT := 1; END_VAR", "", "30", "a CONSTANT")]
 fn invalid_member_an_instance_initializer_cannot_set(
     mut with_db: RootDatabase,
     #[case] decl: &str,
     #[case] global: &str,
+    #[case] value: &str,
     #[case] what: &str,
 ) {
     let source = format!(
@@ -524,11 +528,11 @@ fn invalid_member_an_instance_initializer_cannot_set(
 FUNCTION_BLOCK Drive
 {decl}
 VAR k : INT; END_VAR
-    k := m;
+    k := k + 1;
 END_FUNCTION_BLOCK
 
 PROGRAM P
-VAR d : Drive := (m := 30, k := 2); END_VAR
+VAR d : Drive := (m := {value}, k := 2); END_VAR
 END_PROGRAM
 
 CONFIGURATION Cfg

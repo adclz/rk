@@ -2747,3 +2747,30 @@ pub fn a_retained_element_of_a_struct_written_in_place(mut with_db: RootDatabase
     END_CONFIGURATION
     ");
 }
+
+#[rstest]
+pub fn in_out_section_with_a_qualifier(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK Counter
+VAR_IN_OUT RETAIN count: INT := 0; END_VAR
+VAR_IN_OUT NON_RETAIN
+step: INT := 1;
+END_VAR
+count := count + step;
+END_FUNCTION_BLOCK
+"#;
+
+    let document = add_source(&mut with_db, source).document(&with_db);
+
+    assert_snapshot!(fmt(document), @r"
+    FUNCTION_BLOCK Counter
+    	VAR_IN_OUT RETAIN
+    		count: INT := 0;
+    	END_VAR
+    	VAR_IN_OUT NON_RETAIN
+    		step: INT := 1;
+    	END_VAR
+    	count := count + step;
+    END_FUNCTION_BLOCK
+    ");
+}

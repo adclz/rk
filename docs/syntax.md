@@ -34,7 +34,8 @@ Where a variable is declared decides what its initial value can be.
 | a `TYPE`, a STRUCT field, an FB or CLASS member, a `PROGRAM`, a `VAR_GLOBAL` | a constant |
 | a `FUNCTION` or `METHOD` `VAR` or `VAR_OUTPUT` | any expression, computed at every call, naming only variables declared before it |
 | a `FUNCTION` or `METHOD` `VAR_INPUT` | a constant, which the caller passes when the argument is omitted |
-| a `VAR_TEMP`, `VAR_IN_OUT` or `VAR_EXTERNAL` | none |
+| a `FUNCTION_BLOCK` `VAR_IN_OUT` of a scalar type | a constant, as a member |
+| a `VAR_TEMP`, a `VAR_EXTERNAL`, or any other `VAR_IN_OUT` | none |
 
 A constant is a literal, an enum value, `NULL`, a `CONSTANT` declared beside it or imported with `VAR_EXTERNAL CONSTANT`, arithmetic over those, or `REF()` of a global.
 A member can also point at a member beside it, in its own instance: `p : REF_TO INT := REF(x)`.
@@ -103,3 +104,33 @@ An input held `TRUE` through the restart then reads as a rising edge on the firs
 
 Inside its block, an edge input cannot be written, referenced or passed to a `VAR_IN_OUT` (`E0211`).
 A `FUNCTION` or a `METHOD` keeps nothing between calls and cannot declare an edge input (`E0210`).
+
+## VAR_IN_OUT in a function block
+
+A `FUNCTION_BLOCK` keeps a `VAR_IN_OUT` of a scalar type as a member: a fixed-size elementary type, an enum or a subrange.
+A call that binds it copies the argument in before the body and back after it, in the order the members are declared.
+A call may leave it out, and the body then reads what the member holds: its initial value, or what the last call left.
+The section takes `RETAIN` or `NON_RETAIN` like a `VAR`.
+The member goes beyond the standard, which binds every `VAR_IN_OUT` at each call.
+
+```iecst
+FUNCTION_BLOCK Counter
+VAR_IN_OUT RETAIN
+    count : INT := 0;
+END_VAR
+    count := count + 1;
+END_FUNCTION_BLOCK
+
+PROGRAM P
+VAR
+    c : Counter;
+    n : INT;
+END_VAR
+    c();            // counts in the member
+    c(count := n);  // n comes in, and takes the count back
+END_PROGRAM
+```
+
+A `STRING`, a `STRUCT`, an `ARRAY`, an instance or a reference stays bound to the caller's variable at each call, as every `VAR_IN_OUT` of a `FUNCTION` or a `METHOD` is: a call supplies it (`E0802`), and it takes no initial value (`E0004`) and no qualifier (`E0906`).
+The copy lands when the call ends, a `RETURN` included: a body that raises writes nothing back, a variable bound to two members keeps the one declared last, and `REF()` of a member points at the member.
+A bit, `%QX0.3` beside a `%QW0` or `w.%X3`, can be bound to a member as to an output; a `VAR_IN_OUT` bound by reference takes no bit (`E1423`).

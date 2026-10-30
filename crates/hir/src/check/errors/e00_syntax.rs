@@ -34,6 +34,8 @@ pub enum SyntaxError {
         grammar_name: &'static str,
     },
     MissingVarType(Range),
+    /// A VAR_CONFIG entry with no type after its path or its location.
+    MissingEntryType(Range),
     UnexpectedVarInit(Range),
     EmptyRightHandSide(Range),
     MissingDotInAssignment {
@@ -120,7 +122,7 @@ impl ErrorCode for SyntaxError {
         match self {
             Self::SyntaxError { .. } => "E0001",
             Self::MissingNode { .. } => "E0002",
-            Self::MissingVarType(_) => "E0003",
+            Self::MissingVarType(_) | Self::MissingEntryType(_) => "E0003",
             Self::UnexpectedVarInit(_) => "E0004",
             Self::EmptyRightHandSide(_) => "E0005",
             Self::MissingDotInAssignment { .. } => "E0006",
@@ -256,6 +258,12 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
             }
             Self::MissingVarType(span) => diag()
                 .message("the variable has no type".into())
+                .severity(DiagnosticSeverity::ERROR)
+                .desc(self)
+                .range(crate::denormalize(db, file, span).unwrap_or_default())
+                .call(),
+            Self::MissingEntryType(span) => diag()
+                .message("the entry gives no type".into())
                 .severity(DiagnosticSeverity::ERROR)
                 .desc(self)
                 .range(crate::denormalize(db, file, span).unwrap_or_default())

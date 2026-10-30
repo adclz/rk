@@ -295,17 +295,18 @@ impl<'db> InitInference<'db> {
             let (Some(init), Some(var)) = (entry.init, entry.members.last()) else {
                 continue;
             };
-            let uninitializable = if var.is_in_out(db) {
-                Some(UninitializableMember::InOut)
-            } else if var.is_temp(db) {
-                Some(UninitializableMember::Temp)
-            } else if var.is_external(db) {
-                Some(UninitializableMember::External)
-            } else if var.qualifier(db).contains(crate::Qualifier::CONSTANT) {
-                Some(UninitializableMember::Constant)
-            } else {
-                None
-            };
+            let uninitializable =
+                if var.is_in_out(db) && !crate::hir_ty::layout::in_out_is_member(db, *var) {
+                    Some(UninitializableMember::InOut)
+                } else if var.is_temp(db) {
+                    Some(UninitializableMember::Temp)
+                } else if var.is_external(db) {
+                    Some(UninitializableMember::External)
+                } else if var.qualifier(db).contains(crate::Qualifier::CONSTANT) {
+                    Some(UninitializableMember::Constant)
+                } else {
+                    None
+                };
             if let Some(kind) = uninitializable {
                 self.errors.push(
                     InitError::UninitializableMember {

@@ -188,6 +188,26 @@ pub fn file_located<'db>(
     Arc::clone(&semantic_index(db, file).located)
 }
 
+/// The first mention of each address a file makes outside a declaration:
+/// written bare in a body, or given by a VAR_CONFIG entry.
+#[salsa::tracked(returns(ref))]
+pub fn file_located_mentions<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    file: File,
+) -> Arc<std::collections::BTreeMap<LocatedAddress, crate::CallSite<'db>>> {
+    Arc::clone(&semantic_index(db, file).located_mentions)
+}
+
+/// Where `address` is mentioned outside a declaration, in the first of the
+/// workspace's files that does: what a report about a part of it points at
+/// when no variable is declared at it. One probe per file.
+pub fn located_mention<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    address: &LocatedAddress,
+) -> Option<crate::CallSite<'db>> {
+    workspace_files(db).find_map(|file| file_located_mentions(db, file).get(address).cloned())
+}
+
 /// Each of the workspace's own files' [`file_located`], borrowed: nothing is
 /// collected or copied. A library's do not count, since a library describes
 /// no machine.
@@ -270,6 +290,8 @@ pub fn refuse_part_of_wider<'db>(
         crate::check::errors::e14_config::ConfigError::PartOfWiderAddress {
             site,
             address: address.text,
+            owner_decl: located_declaration(db, &view.owner),
+            owner_mention: located_mention(db, &view.owner),
             owner: view.owner.text,
             usage,
         },

@@ -59,6 +59,10 @@ pub struct ExprLowerCtx<'db> {
     /// the statement loop after each statement, so a nested body keeps its
     /// own in place.
     pub after_stmt: std::cell::RefCell<Vec<crate::stmt::MirStmt>>,
+    /// Statements that must run right before the one being lowered: the
+    /// address a member VAR_IN_OUT's copy back lands at, taken before the
+    /// body when the place can move. Drained with `after_stmt`.
+    pub before_stmt: std::cell::RefCell<Vec<crate::stmt::MirStmt>>,
     /// Set while a constant is lowered (`lower_leaf_value`): a CONSTANT it
     /// names is its value, lowered where it is declared, which means the same
     /// in any frame, the caller's for an omitted input's default.
@@ -134,6 +138,7 @@ impl<'db> ExprLowerCtx<'db> {
             variadic_expansion: None,
             call_scratch: Default::default(),
             after_stmt: Default::default(),
+            before_stmt: Default::default(),
             this_pou: None,
             fold_constants: Default::default(),
         }
@@ -153,6 +158,7 @@ impl<'db> ExprLowerCtx<'db> {
             variadic_expansion: None,
             call_scratch: Default::default(),
             after_stmt: Default::default(),
+            before_stmt: Default::default(),
             this_pou: None,
             fold_constants: Default::default(),
         }
@@ -2326,6 +2332,57 @@ impl<'db> ExprLowerCtx<'db> {
                             });
                             continue;
                         }
+                        // A slice of a plain variable, `o => w.%X3`, is
+                        // received the same way, and `w` is put back whole
+                        // with those bits replaced once the call returns.
+                        None if variable.multibits(self.db).is_some() => {
+                            let base = self.lower_variable_access(*variable)?;
+                            let hir_ty = variable.infer(self.db);
+                            let sliced = self.resolve_slice(&base, *variable, hir_ty)?;
+                            let scratch = if is_extern {
+                                let scratch = self.extern_result_scratch(ty.clone());
+                                extern_results.push(crate::expr::ExternResultBind {
+                                    scratch,
+                                    dest: None,
+                                    ty: ty.clone(),
+                                    target_lane: None,
+                                });
+                                scratch
+                            } else {
+                                let scratch = hir::hir_def::interned::identifier::Ident::new(
+                                    self.db,
+                                    compact_str::CompactString::from(format!(
+                                        "$outcopy${}",
+                                        self.call_scratch.borrow().memory.len()
+                                    )),
+                                );
+                                self.call_scratch
+                                    .borrow_mut()
+                                    .memory
+                                    .push((scratch, ty.clone()));
+                                args.push(MirCallArg {
+                                    value: MirExpr::AddrOf(MirPlace::Local(scratch)),
+                                    kind: MirArgKind::ByRef,
+                                });
+                                scratch
+                            };
+                            let mut value = negated(MirExpr::Load(MirPlace::Local(scratch), ty));
+                            if let (Some(from), Some(to)) = (out_lane, target_lane) {
+                                value = MirExpr::Cast {
+                                    expr: Box::new(value),
+                                    from,
+                                    to,
+                                };
+                            }
+                            let value =
+                                self.lower_multibit_write(base.clone(), *variable, hir_ty, value)?;
+                            output_bindings.push(crate::expr::MirOutputBinding {
+                                target: base,
+                                value,
+                                ty: sliced.base,
+                            });
+                            continue;
+                        }
                         None => self.lower_variable_access(*variable)?,
                     };
                     if is_extern && *not {
@@ -2657,8 +2714,28 @@ impl<'db> ExprLowerCtx<'db> {
                             continue;
                         }
                         // Plain VAR_INPUT: scalars and STRINGs carry the value, aggregates carry
-                        // the source address for a `memory.copy`.
+                        // the source address for a `memory.copy`. A scalar VAR_IN_OUT is
+                        // a member, copied in the same way and back into its argument
+                        // after the body: in declaration order, so of two bound to one
+                        // variable the last declared is what the variable keeps.
                         let expr = self.lower_expr(value)?;
+                        let written_back = match (value.expr(self.db), var.is_in_out(self.db)) {
+                            (_, false) => None,
+                            // E0806 refused everything but a variable upstream.
+                            // A part of a wider address is written back as an
+                            // output bound to it is, and a place that can move
+                            // before the copy back is taken at the call.
+                            (ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess(access)), true) => {
+                                let place = self.place_written_after_call(*access)?;
+                                Some(self.place_bound_at_call(place, &field.ty))
+                            }
+                            (_, true) => {
+                                return Err(LowerTypeError::UnsupportedType(
+                                    "a VAR_IN_OUT argument needs a variable to copy back into"
+                                        .to_string(),
+                                ));
+                            }
+                        };
                         let expr = match &field.ty {
                             MirType::Struct(_) | MirType::Array(_) => match expr {
                                 MirExpr::Load(place, _) => MirExpr::AddrOf(place),
@@ -2698,6 +2775,9 @@ impl<'db> ExprLowerCtx<'db> {
                             _ => expr,
                         };
                         input_writes.push((field.offset, expr, field.ty.clone()));
+                        if let Some(place) = written_back {
+                            output_reads.push((field.offset, place, field.ty.clone(), None));
+                        }
                     }
                 }
                 hir::hir_ty::body::ParamBinding::Output { variable, not } => {
@@ -2762,9 +2842,22 @@ impl<'db> ExprLowerCtx<'db> {
                                 to,
                             };
                         }
-                        let (target, value) = match self.view(*variable, variable.infer(self.db))? {
+                        let hir_ty = variable.infer(self.db);
+                        let (target, value) = match self.view(*variable, hir_ty)? {
                             Some(super::multibit::View::Bytes(place)) => (place, value),
                             Some(view) => view.write(value),
+                            // A slice of a plain `w`, `NOT q => w.%X4`: the
+                            // whole of `w` is put back with that bit replaced.
+                            None if variable.multibits(self.db).is_some() => {
+                                let place = self.lower_variable_access(*variable)?;
+                                let value = self.lower_multibit_write(
+                                    place.clone(),
+                                    *variable,
+                                    hir_ty,
+                                    value,
+                                )?;
+                                (place, value)
+                            }
                             None => (self.lower_variable_access(*variable)?, value),
                         };
                         self.after_stmt
@@ -2781,32 +2874,7 @@ impl<'db> ExprLowerCtx<'db> {
                     // A view has no storage of its own: the output lands in a
                     // scratch, and the statement after the call rewrites the
                     // owner with those bits (`Q => %QX0.3` beside a `%QW0`).
-                    let place = match self.view(*variable, variable.infer(self.db))? {
-                        // Whole bytes of the cell are memory the copy can
-                        // store to like any other.
-                        Some(super::multibit::View::Bytes(place)) => place,
-                        Some(view) => {
-                            let scratch = hir::hir_def::interned::identifier::Ident::new(
-                                self.db,
-                                compact_str::CompactString::from(format!(
-                                    "$viewout${}",
-                                    self.call_scratch.borrow().memory.len()
-                                )),
-                            );
-                            let ty = MirType::Elementary(view.ty());
-                            self.call_scratch
-                                .borrow_mut()
-                                .memory
-                                .push((scratch, ty.clone()));
-                            let (target, value) =
-                                view.write(MirExpr::Load(MirPlace::Local(scratch), ty));
-                            self.after_stmt
-                                .borrow_mut()
-                                .push(crate::stmt::MirStmt::Assign { target, value });
-                            MirPlace::Local(scratch)
-                        }
-                        None => self.lower_variable_access(*variable)?,
-                    };
+                    let place = self.place_written_after_call(*variable)?;
                     output_reads.push((field.offset, place, field.ty.clone(), target_lane));
                 }
             }
@@ -3299,4 +3367,119 @@ pub struct VariadicExpansion {
     pub pack: hir::hir_def::interned::identifier::Ident,
     pub params: Vec<hir::hir_def::interned::identifier::Ident>,
     pub elem: MirElementary,
+}
+
+impl<'db> ExprLowerCtx<'db> {
+    /// The place a call's result is stored to after the body, for the
+    /// variable `access` names: its own storage, whole bytes of a view, or
+    /// a scratch that the statement after the call writes into the view's
+    /// owner (`Q => %QX0.3` beside a `%QW0`), inside the body the call is
+    /// in, so an IF's branch keeps its own.
+    fn place_written_after_call(
+        &self,
+        access: VariableAccess<'db>,
+    ) -> Result<MirPlace, LowerTypeError> {
+        let hir_ty = access.infer(self.db);
+        let scratch_in_memory = |ty: &MirType| {
+            let scratch = hir::hir_def::interned::identifier::Ident::new(
+                self.db,
+                compact_str::CompactString::from(format!(
+                    "$viewout${}",
+                    self.call_scratch.borrow().memory.len()
+                )),
+            );
+            self.call_scratch
+                .borrow_mut()
+                .memory
+                .push((scratch, ty.clone()));
+            scratch
+        };
+        match self.view(access, hir_ty)? {
+            // Whole bytes of the cell are memory the copy can store to
+            // like any other.
+            Some(super::multibit::View::Bytes(place)) => return Ok(place),
+            Some(view) => {
+                let ty = MirType::Elementary(view.ty());
+                let scratch = scratch_in_memory(&ty);
+                let (target, value) = view.write(MirExpr::Load(MirPlace::Local(scratch), ty));
+                self.after_stmt
+                    .borrow_mut()
+                    .push(crate::stmt::MirStmt::Assign { target, value });
+                return Ok(MirPlace::Local(scratch));
+            }
+            None => {}
+        }
+        let place = self.lower_variable_access(access)?;
+        if access.multibits(self.db).is_none() {
+            return Ok(place);
+        }
+        // A member VAR_IN_OUT or an output bound to a slice of a plain `w`,
+        // `f(v := w.%X3)` or `f(q => w.%X3)`: the result lands in a scratch
+        // too, and the statement after the call puts the whole of `w` back
+        // with those bits replaced, reading and writing `w` once each.
+        let ty = MirType::Elementary(self.multibit_elementary(&place, access, hir_ty)?);
+        let scratch = scratch_in_memory(&ty);
+        let (pin, place) = self.pin_place(place);
+        let value = self.lower_multibit_write(
+            place.clone(),
+            access,
+            hir_ty,
+            MirExpr::Load(MirPlace::Local(scratch), ty),
+        )?;
+        let mut after = self.after_stmt.borrow_mut();
+        after.extend(pin);
+        after.push(crate::stmt::MirStmt::Assign {
+            target: place,
+            value,
+        });
+        Ok(MirPlace::Local(scratch))
+    }
+
+    /// Where a member VAR_IN_OUT's copy back lands: the place the call
+    /// bound. One that can move before the copy back, an element whose
+    /// index another member's copy back rewrites (`p(k := i, v := arr[i])`)
+    /// or a pointee the body re-points, is taken by its address before the
+    /// body and written through it after. A place that cannot move is
+    /// written as it is.
+    fn place_bound_at_call(&self, place: MirPlace, ty: &MirType) -> MirPlace {
+        if !place_can_move(&place) {
+            return place;
+        }
+        let scratch = hir::hir_def::interned::identifier::Ident::new(
+            self.db,
+            compact_str::CompactString::from(format!(
+                "$inoutat${}",
+                self.call_scratch.borrow().scalar.len()
+            )),
+        );
+        self.call_scratch
+            .borrow_mut()
+            .scalar
+            .push((scratch, MirType::Pointer(Box::new(ty.clone()))));
+        self.before_stmt
+            .borrow_mut()
+            .push(crate::stmt::MirStmt::Assign {
+                target: MirPlace::Local(scratch),
+                value: MirExpr::AddrOf(place),
+            });
+        MirPlace::Deref {
+            base: Box::new(MirPlace::Local(scratch)),
+            pointee_type: ty.clone(),
+            checked: false,
+            capacity: None,
+        }
+    }
+}
+
+/// Whether `place` can name another address later than now: an element at
+/// an index that is not a constant, or anything through a pointer.
+fn place_can_move(place: &MirPlace) -> bool {
+    match place {
+        MirPlace::Local(_) | MirPlace::ThisField { .. } | MirPlace::Global { .. } => false,
+        MirPlace::Field { base, .. } => place_can_move(base),
+        MirPlace::Index { base, index, .. } => {
+            !matches!(**index, MirExpr::Constant(_)) || place_can_move(base)
+        }
+        MirPlace::Deref { .. } => true,
+    }
 }

@@ -777,10 +777,7 @@ fn output_fit<'db>(
     value: Expr<'db>,
     ctx: &BodyInferenceResult<'db>,
 ) -> ArgMatch {
-    let Some(variable) = value
-        .variable_access(db)
-        .filter(|access| access.multibits(db).is_none())
-    else {
+    let Some(variable) = value.variable_access(db) else {
         return ArgMatch::Exact;
     };
     if let Some(conformand) = var.conformand(db) {
@@ -847,8 +844,10 @@ fn is_param_required<'db>(
     callable: CallableType<'db>,
     var: VariableDecl<'db>,
 ) -> bool {
+    // A FUNCTION_BLOCK keeps a scalar VAR_IN_OUT as a member; any other
+    // is bound at each call.
     if var.is_in_out(db) {
-        return true;
+        return !crate::hir_ty::layout::in_out_is_member(db, var);
     }
     // The bounds of an `ARRAY[*]` come from what the call binds to it.
     if var.conformand(db).is_some() {
@@ -921,8 +920,10 @@ fn check_in_out_lvalue<'db>(
         ctx.get_type_of_expr(value),
         Type::Variable((_, Some(_))) | Type::DirectVariable((_, Some(_)))
     );
+    // A member is copied in and back, and a slice of a variable can be:
+    // `f(v := w.%X3)`. A reference binds the whole variable or nothing.
     if var.is_in_out(db)
-        && (is_partial_access
+        && ((is_partial_access && !crate::hir_ty::layout::in_out_is_member(db, var))
             || !matches!(
                 value.expr(db),
                 ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess(_))
@@ -933,6 +934,8 @@ fn check_in_out_lvalue<'db>(
                 func: callable,
                 var,
                 expr: value,
+                slice: is_partial_access,
+                member: crate::hir_ty::layout::in_out_is_member(db, var),
             }
             .to_diagnostic(db, ctx.scope.file(db)),
         );
@@ -1095,7 +1098,11 @@ fn apply_param_coercion<'db>(
             if var.is_in_out(db) || var.is_output(db) {
                 refuse_input_location_target(db, value, ctx);
             }
+            // A member is copied in and back, and a part is read and written
+            // like any variable; a reference needs an address, which a bit
+            // has not.
             if var.is_in_out(db)
+                && !crate::hir_ty::layout::in_out_is_member(db, var)
                 && let Some(err) = crate::hir_ty::index_graphs::refuse_part_of_wider(
                     db,
                     CallSite::from_scoped(db, &value),
@@ -1157,7 +1164,11 @@ fn apply_param_coercion<'db>(
             if var.is_in_out(db) || var.is_output(db) {
                 refuse_input_location_target(db, value, ctx);
             }
+            // A member is copied in and back, and a part is read and written
+            // like any variable; a reference needs an address, which a bit
+            // has not.
             if var.is_in_out(db)
+                && !crate::hir_ty::layout::in_out_is_member(db, var)
                 && let Some(err) = crate::hir_ty::index_graphs::refuse_part_of_wider(
                     db,
                     CallSite::from_scoped(db, &value),
@@ -1245,11 +1256,9 @@ fn bind_output<'db>(
     if ctx.get_type_of_expr(value).is_never() {
         return;
     }
-    // A bit of a variable is not one: `w.%X3`, as for a VAR_IN_OUT (E0806).
-    let variable = value
-        .variable_access(db)
-        .filter(|access| access.multibits(db).is_none());
-    let Some(variable) = variable else {
+    // A slice of a variable is a place the output is written into, as an
+    // assignment writes it: `o => w.%X3` lands in bit 3 of `w`.
+    let Some(variable) = value.variable_access(db) else {
         ctx.errors.push(
             CallError::OutputRequiresVariable {
                 func: callable,

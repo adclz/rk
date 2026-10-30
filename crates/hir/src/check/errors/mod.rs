@@ -52,7 +52,7 @@ E15xx = Pragmas
 /// The first word of `span`: the keyword a misplaced section or declaration
 /// opens with, so that a report underlines `VAR_TEMP` and not the block down
 /// to its `END_VAR`. The span itself when it opens with anything else.
-pub(crate) fn first_word(
+pub fn first_word(
     db: &dyn WorkspaceDataBase,
     file: File,
     span: &tree_sitter::Range,

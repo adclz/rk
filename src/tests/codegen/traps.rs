@@ -862,17 +862,18 @@ fn a_valid_dereference_does_not_fault(mut with_db: db::RootDatabase) {
     assert_eq!(result, 7);
 }
 
-/// An FB's VAR_IN_OUT is null until a call binds it; a method reaching it
-/// first faults instead of writing address 0.
+/// An FB's VAR_IN_OUT bound by reference, a STRING here, is null until a
+/// call binds it; a method reaching it first faults instead of writing
+/// address 0. A scalar one is a member, with storage of its own.
 #[rstest]
 fn an_unbound_fb_in_out_faults(mut with_db: db::RootDatabase) {
     let source = r#"
         FUNCTION_BLOCK Acc
-        VAR_IN_OUT x : DINT; END_VAR
+        VAR_IN_OUT x : STRING; END_VAR
             METHOD poke
-                x := 123456;
+                x := 'poked';
             END_METHOD
-            x := x + 1;
+            x := 'run';
         END_FUNCTION_BLOCK
 
         FUNCTION run : DINT
