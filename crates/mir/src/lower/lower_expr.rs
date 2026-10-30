@@ -2332,6 +2332,57 @@ impl<'db> ExprLowerCtx<'db> {
                             });
                             continue;
                         }
+                        // A slice of a plain variable, `o => w.%X3`, is
+                        // received the same way, and `w` is put back whole
+                        // with those bits replaced once the call returns.
+                        None if variable.multibits(self.db).is_some() => {
+                            let base = self.lower_variable_access(*variable)?;
+                            let hir_ty = variable.infer(self.db);
+                            let sliced = self.resolve_slice(&base, *variable, hir_ty)?;
+                            let scratch = if is_extern {
+                                let scratch = self.extern_result_scratch(ty.clone());
+                                extern_results.push(crate::expr::ExternResultBind {
+                                    scratch,
+                                    dest: None,
+                                    ty: ty.clone(),
+                                    target_lane: None,
+                                });
+                                scratch
+                            } else {
+                                let scratch = hir::hir_def::interned::identifier::Ident::new(
+                                    self.db,
+                                    compact_str::CompactString::from(format!(
+                                        "$outcopy${}",
+                                        self.call_scratch.borrow().memory.len()
+                                    )),
+                                );
+                                self.call_scratch
+                                    .borrow_mut()
+                                    .memory
+                                    .push((scratch, ty.clone()));
+                                args.push(MirCallArg {
+                                    value: MirExpr::AddrOf(MirPlace::Local(scratch)),
+                                    kind: MirArgKind::ByRef,
+                                });
+                                scratch
+                            };
+                            let mut value = negated(MirExpr::Load(MirPlace::Local(scratch), ty));
+                            if let (Some(from), Some(to)) = (out_lane, target_lane) {
+                                value = MirExpr::Cast {
+                                    expr: Box::new(value),
+                                    from,
+                                    to,
+                                };
+                            }
+                            let value =
+                                self.lower_multibit_write(base.clone(), *variable, hir_ty, value)?;
+                            output_bindings.push(crate::expr::MirOutputBinding {
+                                target: base,
+                                value,
+                                ty: sliced.base,
+                            });
+                            continue;
+                        }
                         None => self.lower_variable_access(*variable)?,
                     };
                     if is_extern && *not {
@@ -2791,9 +2842,22 @@ impl<'db> ExprLowerCtx<'db> {
                                 to,
                             };
                         }
-                        let (target, value) = match self.view(*variable, variable.infer(self.db))? {
+                        let hir_ty = variable.infer(self.db);
+                        let (target, value) = match self.view(*variable, hir_ty)? {
                             Some(super::multibit::View::Bytes(place)) => (place, value),
                             Some(view) => view.write(value),
+                            // A slice of a plain `w`, `NOT q => w.%X4`: the
+                            // whole of `w` is put back with that bit replaced.
+                            None if variable.multibits(self.db).is_some() => {
+                                let place = self.lower_variable_access(*variable)?;
+                                let value = self.lower_multibit_write(
+                                    place.clone(),
+                                    *variable,
+                                    hir_ty,
+                                    value,
+                                )?;
+                                (place, value)
+                            }
                             None => (self.lower_variable_access(*variable)?, value),
                         };
                         self.after_stmt
@@ -3349,11 +3413,10 @@ impl<'db> ExprLowerCtx<'db> {
         if access.multibits(self.db).is_none() {
             return Ok(place);
         }
-        // A member VAR_IN_OUT bound to a slice of a plain `w`,
-        // `f(v := w.%X3)`: the result lands in a scratch too, and the
-        // statement after the call puts the whole of `w` back with those
-        // bits replaced, reading and writing `w` once each. (An output
-        // binds no slice: E0805.)
+        // A member VAR_IN_OUT or an output bound to a slice of a plain `w`,
+        // `f(v := w.%X3)` or `f(q => w.%X3)`: the result lands in a scratch
+        // too, and the statement after the call puts the whole of `w` back
+        // with those bits replaced, reading and writing `w` once each.
         let ty = MirType::Elementary(self.multibit_elementary(&place, access, hir_ty)?);
         let scratch = scratch_in_memory(&ty);
         let (pin, place) = self.pin_place(place);

@@ -777,10 +777,7 @@ fn output_fit<'db>(
     value: Expr<'db>,
     ctx: &BodyInferenceResult<'db>,
 ) -> ArgMatch {
-    let Some(variable) = value
-        .variable_access(db)
-        .filter(|access| access.multibits(db).is_none())
-    else {
+    let Some(variable) = value.variable_access(db) else {
         return ArgMatch::Exact;
     };
     if let Some(conformand) = var.conformand(db) {
@@ -1259,11 +1256,9 @@ fn bind_output<'db>(
     if ctx.get_type_of_expr(value).is_never() {
         return;
     }
-    // A bit of a variable is not one: `w.%X3`, as for a VAR_IN_OUT (E0806).
-    let variable = value
-        .variable_access(db)
-        .filter(|access| access.multibits(db).is_none());
-    let Some(variable) = variable else {
+    // A slice of a variable is a place the output is written into, as an
+    // assignment writes it: `o => w.%X3` lands in bit 3 of `w`.
+    let Some(variable) = value.variable_access(db) else {
         ctx.errors.push(
             CallError::OutputRequiresVariable {
                 func: callable,

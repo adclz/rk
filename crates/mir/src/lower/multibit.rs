@@ -85,7 +85,7 @@ fn binop(op: MirBinOp, lhs: MirExpr, rhs: MirExpr, ty: MirElementary) -> MirExpr
 impl<'db> ExprLowerCtx<'db> {
     /// Resolve the base type and slice geometry; `hir_ty` is the
     /// unnormalized type, which still carries the base width.
-    fn resolve_slice(
+    pub(crate) fn resolve_slice(
         &self,
         place: &MirPlace,
         var_access: VariableAccess<'db>,
