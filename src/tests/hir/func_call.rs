@@ -933,7 +933,7 @@ END_FUNCTION_BLOCK"#;
         |     ^|
         |      `-- call to 'fn' is missing 1 required parameter: 'a'
         |
-        | Note: VAR_IN_OUT parameters bind to caller-side l-values and must always be supplied
+        | Note: a VAR_IN_OUT of a FUNCTION or a METHOD, or of an aggregate type, is bound to the caller's variable at each call
     ----'
     ");
 }
@@ -943,7 +943,7 @@ fn missing_fb_var_in_out(mut with_db: RootDatabase) {
     let source = r#"
 FUNCTION_BLOCK driver
     VAR_IN_OUT
-        target: INT;
+        target: STRING;
     END_VAR
 END_FUNCTION_BLOCK
 
@@ -958,7 +958,7 @@ END_FUNCTION_BLOCK"#;
     [E0802] Error: missing required parameter
         ,-[ file:///test0.st:12:5 ]
         |
-      4 |         target: INT;
+      4 |         target: STRING;
         |         ^^^|^^
         |            `---- parameter 'target' is declared here
         |
@@ -966,7 +966,7 @@ END_FUNCTION_BLOCK"#;
         |     |
         |     `-- call to 'driver' is missing 1 required parameter: 'target'
         |
-        | Note: VAR_IN_OUT parameters bind to caller-side l-values and must always be supplied
+        | Note: a VAR_IN_OUT of a FUNCTION or a METHOD, or of an aggregate type, is bound to the caller's variable at each call
     ----'
     ");
 }

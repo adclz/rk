@@ -471,7 +471,7 @@ fn invalid_var_config_values(mut with_db: RootDatabase) {
     let source = r#"
 FUNCTION_BLOCK Drive
 VAR out AT %Q* : INT; level AT %I* : INT; b AT %Q* : BYTE; END_VAR
-VAR_IN_OUT io : INT; END_VAR
+VAR_IN_OUT io : STRING; END_VAR
 VAR CONSTANT c : INT := 1; END_VAR
 END_FUNCTION_BLOCK
 
@@ -488,7 +488,7 @@ VAR_GLOBAL panel AT %QW4 : INT := 3; END_VAR
 VAR_CONFIG
     Res.P1.n : INT := 1;
     Res.P1.n : INT := 2;
-    Res.P1.d.io : INT := 3;
+    Res.P1.d.io : STRING := 'x';
     Res.P1.d.c : INT := 4;
     Res.P1.d.level AT %IW0 : INT := 5;
     Res.P1.d.out AT %QW4 : INT := 6;
@@ -527,15 +527,15 @@ END_CONFIGURATION
         | Note: an instance's variable has one starting value
     ----'
     [E0405] Error: initializer for a member that takes none
-        ,-[ file:///test0.st:21:23 ]
+        ,-[ file:///test0.st:21:26 ]
         |
-      4 | VAR_IN_OUT io : INT; END_VAR
+      4 | VAR_IN_OUT io : STRING; END_VAR
         |            ^|
         |             `-- 'io' is declared here
         |
-     21 |     Res.P1.d.io : INT := 3;
-        |                       ^^|^
-        |                         `--- an initializer cannot set 'io', a VAR_IN_OUT
+     21 |     Res.P1.d.io : STRING := 'x';
+        |                          ^^^|^^
+        |                             `---- an initializer cannot set 'io', a VAR_IN_OUT
         |
         | Help: pass the variable in the call, as 'io := x'
         |

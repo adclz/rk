@@ -38,23 +38,16 @@ END_FUNCTION_BLOCK"#;
 // to the caller's storage has no state of its own to retain). The grammar
 // enforces this structurally: `in_out_decls` has no retain field.
 #[rstest]
-fn invalid_var_in_out_retain(mut with_db: RootDatabase) {
+fn valid_var_in_out_retain(mut with_db: RootDatabase) {
     let source = r#"
 FUNCTION_BLOCK fb1
     VAR_IN_OUT RETAIN
         io: INT;
     END_VAR
+    io := io + 1;
 END_FUNCTION_BLOCK"#;
 
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0001] Error: syntax error
-       ,-[ file:///test0.st:3:16 ]
-       |
-     3 |     VAR_IN_OUT RETAIN
-       |                ^^^|^^
-       |                   `---- unexpected token(s): 'RETAIN'
-    ---'
-    ");
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
 
 // The legal placements from the same clause: RETAIN on VAR_INPUT, VAR_OUTPUT,

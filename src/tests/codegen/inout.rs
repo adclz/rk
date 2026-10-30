@@ -90,8 +90,11 @@ fn fb_inout_field_target(mut with_db: db::RootDatabase) {
 /// Under copy-in/copy-out each param would be an independent snapshot and `b`
 /// would still read the original value — this test can only pass if the
 /// binding is a real reference.
+/// Two scalar VAR_IN_OUTs bound to one variable are two members, each a
+/// copy: a write to `a` is not seen through `b` in the body, and the
+/// variable keeps what the member declared last copies back.
 #[rstest]
-fn fb_inout_aliasing(mut with_db: db::RootDatabase) {
+fn two_members_bound_to_one_variable_are_copies(mut with_db: db::RootDatabase) {
     let source = r#"
         FUNCTION_BLOCK aliaser
             VAR_IN_OUT a : INT; b : INT; END_VAR
@@ -103,14 +106,69 @@ fn fb_inout_aliasing(mut with_db: db::RootDatabase) {
         FUNCTION test : INT
         VAR fb : aliaser; x : INT := 7; END_VAR
             fb(a := x, b := x);
-            test := fb.seen;
+            test := fb.seen * 1000 + x;
         END_FUNCTION
     "#;
     let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(
-        result, 100,
-        "by-reference: writing through `a` is visible via `b` (same var); \
-         copy-in/copy-out would report 7"
+        result, 7007,
+        "`b` copied 7 in before the body wrote `a`, and `b` copied 7 back after `a` copied 100"
+    );
+}
+
+/// A call that leaves a scalar VAR_IN_OUT out runs the body on the member:
+/// its start value first, then what the last call left. A call that binds
+/// it copies the argument in and the result back.
+#[rstest]
+fn an_omitted_member_keeps_its_value(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK acc
+            VAR_IN_OUT total : INT := 5; END_VAR
+            total := total + 1;
+        END_FUNCTION_BLOCK
+
+        FUNCTION test : INT
+        VAR a : acc; x : INT := 20; END_VAR
+            a();
+            a();
+            a(total := x);
+            a();
+            test := a.total * 100 + x;
+        END_FUNCTION
+    "#;
+    let result: i32 = super::run(&mut with_db, source, "test", ());
+    assert_eq!(
+        result, 2221,
+        "5 + 1 + 1, then 20 + 1 back into x, then 21 + 1 in the member"
+    );
+}
+
+/// An enum and a subrange are scalars too: members, copied in and back,
+/// with a start value.
+#[rstest]
+fn an_enum_and_a_subrange_in_out_are_members(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE Gear : (Low, Mid, High); END_TYPE
+
+        FUNCTION_BLOCK shifter
+            VAR_IN_OUT gear : Gear := Gear#Mid; pct : INT (0..100) := 50; END_VAR
+            gear := Gear#High;
+            pct := pct + 1;
+        END_FUNCTION_BLOCK
+
+        FUNCTION test : INT
+        VAR s : shifter; g : Gear; p : INT (0..100) := 10; END_VAR
+            s();
+            s(gear := g, pct := p);
+            IF g = Gear#High AND s.gear = Gear#High THEN
+                test := p * 100 + s.pct;
+            END_IF;
+        END_FUNCTION
+    "#;
+    let result: i32 = super::run(&mut with_db, source, "test", ());
+    assert_eq!(
+        result, 1111,
+        "p is 11 back from the member, which holds 11 too"
     );
 }
 
@@ -365,10 +423,11 @@ fn fb_inout_arrow_binding_rejected(mut with_db: db::RootDatabase) {
     assert_eq!(e0807, 1, "inout bound via => must be rejected: {diags:?}");
 }
 
-/// A METHOD accessing the FB's VAR_IN_OUT member — both as bare `v`
-/// (root_place) and explicit `THIS.v` (lower_this_path): each must
-/// auto-dereference the stored pointer. The FB body call binds the pointer
-/// first; the method then mutates the caller's variable through it.
+/// A METHOD accessing the FB's scalar VAR_IN_OUT, as bare `v` and as
+/// `THIS.v`: it reads and writes the member. The call of the block copies
+/// the argument in and back; a method call binds nothing, so what the
+/// method writes stays in the member until a call of the block copies it
+/// back.
 #[rstest]
 fn fb_inout_method_this_access(mut with_db: db::RootDatabase) {
     let source = r#"
@@ -388,11 +447,14 @@ fn fb_inout_method_this_access(mut with_db: db::RootDatabase) {
         VAR d : counter; x : INT := 5; END_VAR
             d(v := x);
             d.bump();
-            test := x;
+            test := x * 100 + d.v;
         END_FUNCTION
     "#;
     let result: i32 = super::run(&mut with_db, source, "test", ());
-    assert_eq!(result, 17, "body +1, method bare +1 and THIS +10: 5 -> 17");
+    assert_eq!(
+        result, 617,
+        "the call copies 6 back into x; the method's +1 and +10 stay in the member"
+    );
 }
 
 /// The by_ref discriminator: an FB with BOTH a REF_TO input (a Pointer field
@@ -445,4 +507,32 @@ fn in_out_argument_in_a_subscript(mut with_db: db::RootDatabase) {
     "#;
     let result: i32 = crate::tests::codegen::run(&mut with_db, source, "test", ());
     assert_eq!(result, 752, "read a[1] = 7, wrote a[1] := 5, two calls");
+}
+
+/// The copy back lands when the call ends: a body that raises writes
+/// nothing back, and the variable keeps what it had.
+#[rstest]
+fn a_member_is_not_written_back_after_a_raise(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK thrower
+            VAR_IN_OUT v : INT; END_VAR
+            v := v + 1;
+            __RAISE('boom');
+        END_FUNCTION_BLOCK
+
+        FUNCTION test : INT
+        VAR t : thrower; x : INT := 1; e : STRING; END_VAR
+            __TRY
+                t(v := x);
+            __CATCH(e)
+                x := x * 10;
+            __END_TRY;
+            test := x * 100 + t.v;
+        END_FUNCTION
+    "#;
+    let result: i32 = super::run(&mut with_db, source, "test", ());
+    assert_eq!(
+        result, 1002,
+        "x stays 1 and is multiplied in the catch; the member holds 2"
+    );
 }

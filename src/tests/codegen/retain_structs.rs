@@ -944,3 +944,42 @@ fn a_pulse_and_an_off_delay_in_a_retained_instance_start_over(mut with_db: db::R
     assert_eq!(read(&warm, "P1.m.pq"), VarValue::Bool(false));
     assert_eq!(elapsed_ms(&warm, "P1.m.p.ET"), 1000);
 }
+
+/// A scalar VAR_IN_OUT of a block is a member: the retain map lists it by
+/// its section, `RETAIN` kept and `NON_RETAIN` not, and a warm start brings
+/// the kept one back into the instance.
+#[rstest]
+fn an_in_out_member_follows_its_section(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Counter
+        VAR_IN_OUT RETAIN count : INT; END_VAR
+        VAR_IN_OUT NON_RETAIN step : INT := 1; END_VAR
+            count := count + step;
+        END_FUNCTION_BLOCK
+
+        PROGRAM P
+        VAR c : Counter; n : INT; END_VAR
+            c();
+            n := c.count;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    assert_eq!(ranges(&mir), vec![("P1.c.count".to_string(), 4)]);
+
+    let mut plc = TestPlc::load(&wasm).expect("load");
+    plc.run(3).expect("three scans");
+    let info = DebugInfo::from_wasm(&wasm);
+    assert_eq!(plc.read_var(&info, "P1.n"), Some(VarValue::I16(3)));
+
+    let mut warm = warm_start(&mir, &wasm, &plc);
+    assert_eq!(warm.read_var(&info, "P1.c.count"), Some(VarValue::I16(3)));
+    warm.run(1).expect("a scan after the warm start");
+    assert_eq!(warm.read_var(&info, "P1.n"), Some(VarValue::I16(4)));
+}

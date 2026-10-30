@@ -585,11 +585,12 @@ END_PROGRAM
 
 #[rstest]
 fn omitted_inherited_var_in_out_is_reported(mut with_db: RootDatabase) {
-    // An inherited VAR_IN_OUT is as required as an own one; omitting it used
-    // to pass silently and the base body's writes vanished.
+    // An inherited VAR_IN_OUT bound by reference is as required as an own
+    // one; omitting it used to pass silently and the base body's writes
+    // vanished.
     let source = r#"
 FUNCTION_BLOCK BaseIO
-    VAR_IN_OUT io : INT; END_VAR
+    VAR_IN_OUT io : STRING; END_VAR
 END_FUNCTION_BLOCK
 
 FUNCTION_BLOCK DerivedIO EXTENDS BaseIO
@@ -605,7 +606,7 @@ END_PROGRAM
     [E0802] Error: missing required parameter
         ,-[ file:///test0.st:12:5 ]
         |
-      3 |     VAR_IN_OUT io : INT; END_VAR
+      3 |     VAR_IN_OUT io : STRING; END_VAR
         |                ^|
         |                 `-- parameter 'io' is declared here
         |
@@ -613,7 +614,7 @@ END_PROGRAM
         |     |
         |     `-- call to 'DerivedIO' is missing 1 required parameter: 'io'
         |
-        | Note: VAR_IN_OUT parameters bind to caller-side l-values and must always be supplied
+        | Note: a VAR_IN_OUT of a FUNCTION or a METHOD, or of an aggregate type, is bound to the caller's variable at each call
     ----'
     ");
 }

@@ -1353,8 +1353,9 @@ fn wasm_with_debug_symbols(payload: &[u8]) -> Vec<u8> {
 }
 
 /// A program with every kind of pointer: a `REF_TO` variable, a `REF_TO`
-/// member of a STRUCT that points at itself, a VAR_IN_OUT and a `REF_TO`
-/// member of an instance, an array of `REF_TO`.
+/// member of a STRUCT that points at itself, an aggregate VAR_IN_OUT and a
+/// `REF_TO` member of an instance, an array of `REF_TO`. The scalar
+/// VAR_IN_OUT beside them is a member, not a pointer.
 const POINTERS: &str = r#"
     TYPE Node : STRUCT
         value : INT;
@@ -1364,10 +1365,11 @@ const POINTERS: &str = r#"
     TYPE Pt : STRUCT x : REAL; y : REAL; END_STRUCT; END_TYPE
 
     FUNCTION_BLOCK Motor
-    VAR_IN_OUT speed : INT; END_VAR
+    VAR_IN_OUT speed : INT; pos : Pt; END_VAR
     VAR_EXTERNAL hold : Pt; END_VAR
     VAR target : REF_TO Pt; count : INT; END_VAR
         speed := speed + 1;
+        pos.x := pos.x + 1.0;
         count := count + 1;
         target := REF(hold);
     END_FUNCTION_BLOCK
@@ -1405,7 +1407,7 @@ const POINTERS: &str = r#"
         rp := REF(pt);
         ri := REF(n);
         refs[1] := REF(n);
-        m(speed := n);
+        m(speed := n, pos := pt);
         n := Bump(n, pt, ri);
     END_PROGRAM
 
@@ -1463,12 +1465,14 @@ fn pointers_are_listed_with_their_targets(mut with_db: db::RootDatabase) {
     assert_eq!(struct_name(pointer("P1.head").target), "Node");
     assert_eq!(struct_name(pointer("P1.rp").target), "Pt");
 
-    // An instance's VAR_IN_OUT reads through, its REF_TO does not.
-    let speed = pointer("P1.m.speed");
-    assert!(speed.by_ref);
-    assert_eq!(
-        table.types[speed.target.unwrap() as usize],
-        debug_format::TypeDesc::Scalar(SymType::Int)
+    // An instance's aggregate VAR_IN_OUT reads through, its REF_TO does
+    // not, and its scalar VAR_IN_OUT is a value of its own.
+    let pos = pointer("P1.m.pos");
+    assert!(pos.by_ref);
+    assert_eq!(struct_name(pos.target), "Pt");
+    assert!(
+        table.symbols.iter().any(|s| s.path == "P1.m.speed"),
+        "a scalar VAR_IN_OUT is a member the instance holds"
     );
     let target = pointer("P1.m.target");
     assert!(!target.by_ref);
@@ -1653,7 +1657,7 @@ fn a_function_s_pointers_and_a_recursive_frame_are_described(mut with_db: db::Ro
 }
 
 /// Pointers followed on a running module: `head^.value` through the
-/// `REF_TO`, `m.speed` through the VAR_IN_OUT, an element of an array of
+/// `REF_TO`, `m.pos` through the VAR_IN_OUT, an element of an array of
 /// `REF_TO`, and a pointer's own value as the variable it points at.
 #[rstest]
 fn pointers_are_followed_on_a_running_module(mut with_db: db::RootDatabase) {
@@ -1688,7 +1692,21 @@ fn pointers_are_followed_on_a_running_module(mut with_db: db::RootDatabase) {
         }),
         "b.next is null"
     );
-    assert_eq!(value(info.follow("P1.m.speed", live)), n, "bound to n");
+    assert_eq!(
+        value(info.follow("P1.m.speed", live)),
+        VarValue::I16(1),
+        "the member: n was 0 when the call copied it in, and the body added one"
+    );
+    assert_eq!(
+        value(info.follow("P1.m.pos^.y", live)),
+        VarValue::F32(2.5),
+        "through the VAR_IN_OUT"
+    );
+    assert_eq!(
+        value(info.follow("P1.m.pos.y", live)),
+        VarValue::F32(2.5),
+        "the same without the caret"
+    );
     assert_eq!(value(info.follow("P1.ri^", live)), n);
     assert_eq!(value(info.follow("P1.refs[1]^", live)), n);
     assert_eq!(

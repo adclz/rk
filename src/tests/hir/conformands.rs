@@ -389,7 +389,7 @@ END_FUNCTION
        |     |
        |     `-- call to 'Sum' is missing 1 required parameter: 'values'
        |
-       | Note: VAR_IN_OUT parameters bind to caller-side l-values and must always be supplied
+       | Note: a VAR_IN_OUT of a FUNCTION or a METHOD, or of an aggregate type, is bound to the caller's variable at each call
     ---'
     ");
 }
