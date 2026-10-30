@@ -188,7 +188,7 @@ impl<'db> ToIdeDiagnostic<'db> for ReferenceError<'db> {
                     "a FUNCTION_BLOCK keeps a VAR_IN_OUT of a scalar type as a member, and nothing of a STRING, a reference or an aggregate"
                         .to_string(),
                 );
-                diag.with_help(format!("drop the {word}"));
+                diag.with_help(format!("declare '{name}' in a section without {word}"));
                 diag
             }
             Self::DerefNonRefType { expr, ty } => diag()

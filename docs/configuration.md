@@ -141,8 +141,8 @@ Slow   ●                                                 ●
 
 When both are due on the same tick, the one with the lower `PRIORITY` runs first.
 
-- `INTERVAL` is a `TIME` or `LTIME` literal, or a `VAR_GLOBAL CONSTANT` holding one. It cannot be zero (`E1410`).
-- `PRIORITY` is required (`E1405`). `0` is the most urgent.
+- `INTERVAL` is a `TIME` or `LTIME` literal, or a `VAR_GLOBAL CONSTANT` holding one. It cannot be zero (`E1410`). The standard takes a `TIME` only.
+- `PRIORITY` is required (`E1405`), an unsigned integer of up to 32 bits where the standard takes a `UINT`. `0` is the most urgent.
 - A run that starts late happens once: the ticks it missed are dropped, never replayed.
 
 The module carries the schedule in its `rk.schedule` section.
@@ -167,7 +167,8 @@ In code the instance sits in the resource, beside the tasks: `WITH` is what puts
 
 Each instance has its own variables: `Belt1.speed` and `Belt2.speed` are two different variables.
 
-An instance without `WITH` never runs:
+An instance needs a `WITH`.
+The standard runs one without at the lowest priority; rk runs a program only under a task (`E1412`):
 
 ```iecst expect=E1412
 PROGRAM Conveyor

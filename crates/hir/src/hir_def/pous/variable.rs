@@ -354,9 +354,9 @@ pub struct LocatedAddress {
 impl LocatedAddress {
     /// The bits of its area the address covers, read as a byte-addressed
     /// image: each size counts in its own units, so `%IWn` is bytes 2n and
-    /// 2n+1 and `%IDn` bytes 4n to 4n+3, and `%IXn.b` is bit b of byte n.
-    /// That is CODESYS's numbering, where every narrower address lies inside
-    /// exactly one wider one and two of the same size never overlap.
+    /// 2n+1 and `%IDn` bytes 4n to 4n+3, and `%IXn.b` is bit b of byte n:
+    /// every narrower address lies inside exactly one wider one, and two of
+    /// the same size never overlap.
     ///
     /// `None` for an address with no such reading — one level for a bit, two
     /// for anything wider, three or more, or a bit past 7 — which is a cell
@@ -377,15 +377,25 @@ impl LocatedAddress {
     }
 
     /// The address `dv` names, or `None` when it names no band (E1417).
+    ///
+    /// `text` is the spelling every address is known by: upper-cased, and
+    /// with the size letter a bit may leave out written in, so `%i1` and
+    /// `%IX1` are one cell, listed as `%IX1`.
     pub fn of<'db>(db: &'db dyn WorkspaceDataBase, dv: DirectVariable<'db>) -> Option<Self> {
         if !crate::hir_ty::infer::normalize::names_a_band(db, dv) {
             return None;
         }
-        let (_, bits) = dv
-            .size_letter(db)
-            .and_then(crate::hir_ty::infer::normalize::access_size)?;
+        let size = dv.size_letter(db)?;
+        let (_, bits) = crate::hir_ty::infer::normalize::access_size(size)?;
+        let area = dv.area(db)?;
+        let levels: Vec<&str> = dv
+            .offset(db)
+            .iter()
+            .map(|part| part.ident(db).text(db).as_str())
+            .collect();
+        let text = format!("{}{size}{}", area.prefix(), levels.join(".")).to_ascii_uppercase();
         Some(Self {
-            area: dv.area(db)?,
+            area,
             width: bits as u8,
             levels: dv
                 .offset(db)
@@ -398,7 +408,7 @@ impl LocatedAddress {
                         .unwrap_or(u32::MAX)
                 })
                 .collect(),
-            text: compact_str::CompactString::from(dv.to_address(db).to_ascii_uppercase()),
+            text: compact_str::CompactString::from(text),
         })
     }
 }

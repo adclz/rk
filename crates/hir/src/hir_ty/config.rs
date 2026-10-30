@@ -560,6 +560,11 @@ fn report_unschedulable_bound_tasks<'db>(
         let Some(&reason) = result.unschedulable.get(&task) else {
             continue;
         };
+        // A name that resolves to nothing is reported where it is written
+        // (E0201), whether the task is bound or not.
+        if reason == UnschedulableReason::UnknownName {
+            continue;
+        }
         reported.push(task);
         result.errors.push(
             ConfigError::UnschedulableTask {
@@ -702,16 +707,49 @@ fn resolve_task_intervals<'db>(
             }
         }
 
-        let reason = match (task.interval(db), task.single(db)) {
-            (Some(ds), _) => match interval_nanos(db, &ds) {
-                None => Some(UnschedulableReason::NonLiteralInterval),
-                Some(0) => Some(UnschedulableReason::ZeroInterval),
-                Some(ns) => {
-                    result.task_interval_ns.insert(*task, ns);
-                    None
+        // A parameter that names something names a VAR_GLOBAL, used or not:
+        // one that resolves to nothing is a mistake of its own (E0201),
+        // whatever the task does with it.
+        let mut unresolved = |ds: &crate::hir_def::config::DataSource<'db>| match ds {
+            crate::hir_def::config::DataSource::Path(path) => {
+                if crate::hir_ty::index_graphs::external_var_lookup(db, path.ident(db).ident(db))
+                    .is_some()
+                {
+                    return false;
                 }
-            },
-            (None, Some(_)) => Some(UnschedulableReason::EventDriven),
+                result.errors.push(
+                    crate::check::errors::e02_resolve::ResolveError::NoItemInScope {
+                        expr: *path,
+                        scope: task.get_scope_id(db),
+                    }
+                    .to_diagnostic(db, task.get_scope_id(db).file(db)),
+                );
+                true
+            }
+            _ => false,
+        };
+        let reason = match (task.interval(db), task.single(db)) {
+            (Some(ds), single) => {
+                if let Some(single) = single {
+                    unresolved(&single);
+                }
+                if unresolved(&ds) {
+                    Some(UnschedulableReason::UnknownName)
+                } else {
+                    match interval_nanos(db, &ds) {
+                        None => Some(UnschedulableReason::NonLiteralInterval),
+                        Some(0) => Some(UnschedulableReason::ZeroInterval),
+                        Some(ns) => {
+                            result.task_interval_ns.insert(*task, ns);
+                            None
+                        }
+                    }
+                }
+            }
+            (None, Some(single)) => {
+                unresolved(&single);
+                Some(UnschedulableReason::EventDriven)
+            }
             (None, None) => Some(UnschedulableReason::NoTrigger),
         };
         if let Some(reason) = reason {
@@ -941,6 +979,7 @@ pub fn resolve_config_entries<'db>(
                         ConfigError::ConfigInstInitFieldNotFound {
                             field: *ident,
                             parent_type: current_type,
+                            declared: declared_but_not_held(db, current_type, ident.ident(db)),
                         }
                         .to_diagnostic(db, file),
                     );
@@ -1005,6 +1044,28 @@ fn instance_member<'db>(
 ) -> Option<VariableDecl<'db>> {
     let fold = name;
     members_of(db, ty).into_iter().find(|v| v.name(db) == fold)
+}
+
+/// The VAR_TEMP or VAR_EXTERNAL named `name` that `ty` declares: what a
+/// VAR_CONFIG path can name and no instance holds, said as such (E1414).
+fn declared_but_not_held<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    ty: Type<'db>,
+    name: Ident,
+) -> Option<VariableDecl<'db>> {
+    use crate::hir_def::pous::pou::Pou;
+    let declared: &[VariableDecl<'db>] = match ty {
+        Type::Program(p) => p.variables(db),
+        _ => match crate::hir_ty::head::instances::pou_of_type(db, ty) {
+            Some(Pou::FunctionBlock(fb)) => fb.variables(db),
+            Some(Pou::Class(cl)) => cl.variables(db),
+            _ => &[],
+        },
+    };
+    declared
+        .iter()
+        .find(|v| v.name(db) == name && (v.is_temp(db) || v.is_external(db)))
+        .copied()
 }
 
 /// Every member an instance of `ty` holds: a PROGRAM's instance state, or
@@ -1208,9 +1269,13 @@ pub fn prog_elements<'db>(
                             resolved.function_blocks.push((var, *task, path));
                             None
                         } else {
-                            Some(ProgElementRefusal::UnknownTask {
-                                task: fb.task.with_case,
-                            })
+                            // The one code for a WITH naming no TASK, after a
+                            // program or after a block.
+                            out.errors.push(
+                                ConfigError::UnknownTaskRef { task: fb.task }
+                                    .to_diagnostic(db, file),
+                            );
+                            None
                         }
                     }
                 };
@@ -1685,11 +1750,27 @@ fn check_config_value<'db>(
                 && same_instance(o)
                 && (o.members.starts_with(&entry.members) || entry.members.starts_with(&o.members))
         })
-        .map(|o| o.path)
         .collect();
     if !others.is_empty() {
-        if others.iter().all(|o| position(o) > position(&entry.path)) {
-            others.sort_by_key(position);
+        if others
+            .iter()
+            .all(|o| position(&o.path) > position(&entry.path))
+        {
+            others.sort_by_key(|o| position(&o.path));
+            // Each other entry is labelled by what it names: `pump.k`.
+            let others = others
+                .into_iter()
+                .map(|o| crate::check::errors::e14_config::OtherValue {
+                    path: o.path,
+                    name: o
+                        .members
+                        .iter()
+                        .map(|m| m.name_with_case(db).text(db).as_str())
+                        .collect::<Vec<_>>()
+                        .join(".")
+                        .into(),
+                })
+                .collect();
             errors.push(refuse(ConfigEntryRefusal::ValueTwice {
                 var: var_name,
                 others,
@@ -1697,16 +1778,22 @@ fn check_config_value<'db>(
         }
         return None;
     }
-    // A PROGRAM's VAR located in full is its channel, and its declaration
-    // gives that channel its value.
+    // A PROGRAM's VAR located in full is its channel, one cell for every
+    // instance of the program.
     if var.is_program_located(db) {
-        errors.push(refuse(ConfigEntryRefusal::ChannelDeclared {
+        let program = match crate::hir_def::semantic_index::get_scope(db, var.get_scope_id(db)).kind
+        {
+            crate::hir_def::scope::ScopeKind::Program(p) => p.name_with_case(db),
+            _ => Ident::new(db, compact_str::CompactString::default()),
+        };
+        errors.push(refuse(ConfigEntryRefusal::ChannelShared {
             var: var_name,
             address: var
                 .location(db)
                 .map(|dv| compact_str::CompactString::from(dv.to_address(db)))
                 .unwrap_or_default(),
-            decl: Some(*var),
+            program,
+            decl: *var,
         }));
         return None;
     }
@@ -1856,16 +1943,41 @@ fn check_partly_located_coverage<'db>(
                 if located {
                     continue;
                 }
-                let address = path
-                    .last()
-                    .and_then(|v| v.location(db))
-                    .map(|dv| dv.to_address(db))
-                    .unwrap_or_default();
+                let location = path.last().and_then(|v| v.location(db));
+                let address = location.map(|dv| dv.to_address(db)).unwrap_or_default();
+                // The entry to write, from the variable itself: its path, a
+                // complete address in its area as wide as its type, its type.
+                let example = path.last().and_then(|v| {
+                    let ty = Type::resolve_spec(db, v.spec(db));
+                    let bits =
+                        crate::hir_ty::head::checks::variables::located_width(ty.normalize(db))?;
+                    let (size, offset) = match bits {
+                        1 => ('X', "0.0"),
+                        8 => ('B', "0"),
+                        16 => ('W', "0"),
+                        32 => ('D', "0"),
+                        64 => ('L', "0"),
+                        _ => return None,
+                    };
+                    let area = location?.area(db)?.prefix();
+                    let members = path
+                        .iter()
+                        .map(|v| v.name_with_case(db).text(db).as_str())
+                        .collect::<Vec<_>>()
+                        .join(".");
+                    Some(compact_str::CompactString::from(format!(
+                        "{}.{}.{members} AT {area}{size}{offset} : {};",
+                        resource.name(db).with_case.text(db),
+                        instance.with_case.text(db),
+                        ty.type_name(db)
+                    )))
+                });
                 result.errors.push(
                     ConfigError::PartlyLocatedUnlocated(PartlyUnlocated::Missing {
                         instance,
                         path: path.iter().map(|v| v.name_with_case(db)).collect(),
                         address: compact_str::CompactString::from(address),
+                        example,
                     })
                     .to_diagnostic(db, config.get_scope_id(db).file(db)),
                 );

@@ -119,7 +119,7 @@ impl<'db> SemanticIndexBuilder<'db> {
                         err,
                     ) => {
                         self.errors.push(
-                            SyntaxError::MissingVarType(err.get_range().to_owned())
+                            SyntaxError::MissingEntryType(err.get_range().to_owned())
                                 .to_diagnostic(self.db, self.file),
                         );
                         let r = err.path.cast(self.ast).parse(self);

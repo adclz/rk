@@ -61,6 +61,7 @@ A declaration's type is an elementary type as wide as the address (`E1422`): `%I
 - **Inputs are read-only.** A write to `%I` is `E1419`, and so is an initial value.
 - **Only markers can be `RETAIN`.** `%I` and `%Q` are refused (`E1420`).
 - **An address is declared once.** A second declaration is `E1421`.
+- **A located variable of a `PROGRAM` follows its own `RETAIN`.** Its cell is one for every instance of the program, so `PROGRAM RETAIN` or `NON_RETAIN` on an instance does not reach it.
 
 ## Parts of a wider address
 
