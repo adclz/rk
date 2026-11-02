@@ -56,6 +56,43 @@ END_VAR
 END_CONFIGURATION
 "#;
 
+/// A configuration whose tasks read everything a SINGLE can name.
+pub(crate) const TRIGGERED: &str = r#"
+TYPE Flags : STRUCT go : BOOL; END_STRUCT; END_TYPE
+
+FUNCTION_BLOCK Fb
+VAR_OUTPUT q : BOOL; END_VAR
+    q := NOT q;
+END_FUNCTION_BLOCK
+
+PROGRAM Prog
+VAR_OUTPUT done : BOOL; bits : ARRAY[1..3] OF BOOL; END_VAR
+    done := NOT done;
+END_PROGRAM
+
+CONFIGURATION Cfg
+VAR_GLOBAL flags : Flags; start : BOOL; timer : Fb; END_VAR
+VAR_GLOBAL CONSTANT which : INT := 2; END_VAR
+    RESOURCE Res ON CPU
+        TASK A(SINGLE := start, INTERVAL := T#10ms, PRIORITY := 1);
+        TASK B(SINGLE := Res.flags.go, PRIORITY := 2);
+        TASK C(SINGLE := inst.done, PRIORITY := 3);
+        TASK D(SINGLE := inst.bits[which], PRIORITY := 4);
+        TASK E(SINGLE := %IX0.0, PRIORITY := 5);
+        TASK F(SINGLE := timer.q, PRIORITY := 6);
+        PROGRAM inst WITH A : Prog;
+        PROGRAM other WITH B : Prog;
+    END_RESOURCE
+END_CONFIGURATION
+"#;
+
+/// Where `needle` is written in [`TRIGGERED`], searching from the
+/// CONFIGURATION.
+pub(crate) fn triggered_at(needle: &str) -> usize {
+    let from = TRIGGERED.find("CONFIGURATION").unwrap();
+    from + TRIGGERED[from..].find(needle).expect(needle)
+}
+
 /// Where `needle` is written in [`CONNECTED`], searching from the
 /// CONFIGURATION when `in_config`.
 pub(crate) fn connected_at(needle: &str, in_config: bool) -> usize {

@@ -692,6 +692,32 @@ fn a_configuration_colours_the_names_it_writes(mut with_db: RootDatabase) {
     ");
 }
 
+/// What a task's SINGLE reads is coloured as what it is too.
+#[rstest]
+fn a_single_colours_the_names_it_reads(mut with_db: RootDatabase) {
+    let tokens = rendered(&mut with_db, crate::tests::lsp::TRIGGERED);
+    // From the first global on.
+    let config = &tokens[tokens.find("flags variable").unwrap()..];
+    assert_snapshot!(config, @r"
+    flags variable
+    Flags struct
+    start variable
+    timer variable
+    Fb function
+    which variable
+    start variable
+    flags variable
+    go property
+    done parameter
+    bits parameter
+    which variable
+    timer variable
+    q parameter
+    Prog function
+    Prog function
+    ");
+}
+
 /// A cycle of aliases is E1302 and nothing else: asked for the identity of
 /// such a type, semantic tokens followed the cycle until the stack ran out
 /// and took the language server down.

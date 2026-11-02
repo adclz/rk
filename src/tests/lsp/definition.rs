@@ -613,6 +613,39 @@ END_FUNCTION_BLOCK
     assert_eq!(format_definition_response(&def), expected);
 }
 
+/// Each name a task's SINGLE writes goes where it is declared, the names of a
+/// path one by one. A STRUCT variable goes to its type, as it does in a body.
+#[rstest]
+#[case::global("start, INTERVAL", 0, "start : BOOL")]
+#[case::resource("Res.flags", 0, "Res ON CPU")]
+#[case::global_in_a_path("flags.go", 0, "Flags : STRUCT")]
+#[case::element("flags.go", 6, "go : BOOL")]
+#[case::instance("inst.done", 0, "inst WITH A")]
+#[case::output("inst.done", 5, "done : BOOL")]
+#[case::output_of_an_instance("timer.q", 6, "q : BOOL")]
+pub fn definition_on_what_a_single_reads(
+    mut with_db: RootDatabase,
+    #[case] at: &str,
+    #[case] into: usize,
+    #[case] declared: &str,
+) {
+    use crate::tests::lsp::{TRIGGERED, triggered_at};
+    let file = add_source(&mut with_db, TRIGGERED);
+
+    let offset = triggered_at(at) + into;
+    let node = descendant_at(&with_db, file, offset).expect("a node");
+    let def = node.definition(&with_db, offset).expect("a definition");
+
+    let decl = TRIGGERED.find(declared).expect(declared);
+    let line = TRIGGERED[..decl].matches('\n').count();
+    let col = decl - TRIGGERED[..decl].rfind('\n').map_or(0, |n| n + 1);
+    assert!(
+        format_definition_response(&def).starts_with(&format!("/test0.st:{line}:{col}-")),
+        "{}",
+        format_definition_response(&def)
+    );
+}
+
 /// Each name in a program configuration goes where it is declared: a variable
 /// of the program, a VAR_GLOBAL, the TASK a function block runs under, and a
 /// member a VAR_CONFIG path names. A function block instance goes to its

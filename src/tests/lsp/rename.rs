@@ -473,6 +473,31 @@ fn rename_in_a_program_configuration(
     }
 }
 
+/// A rename reaches what a task's SINGLE reads, at each name of its path.
+#[rstest]
+#[case::global("start : BOOL", "begin", &["VAR_GLOBAL flags : Flags; begin : BOOL", "TASK A(SINGLE := begin, INTERVAL"])]
+#[case::global_in_a_path("flags : Flags", "state", &["VAR_GLOBAL state : Flags", "TASK B(SINGLE := Res.state.go,"])]
+#[case::output("done : BOOL", "ready", &["VAR_OUTPUT ready : BOOL", "TASK C(SINGLE := inst.ready,"])]
+#[case::element("go : BOOL", "run", &["STRUCT run : BOOL", "TASK B(SINGLE := Res.flags.run,"])]
+#[case::output_of_an_instance("q : BOOL", "out", &["VAR_OUTPUT out : BOOL", "TASK F(SINGLE := timer.out,"])]
+fn rename_in_what_a_single_reads(
+    mut with_db: RootDatabase,
+    #[case] at: &str,
+    #[case] new_name: &str,
+    #[case] expected: &[&str],
+) {
+    use crate::tests::lsp::TRIGGERED;
+    let file = add_source(&mut with_db, TRIGGERED);
+
+    let offset = TRIGGERED.find(at).expect(at);
+    let node = descendant_at(&with_db, file, offset).unwrap();
+    let edit = node.rename(&with_db, offset, new_name).expect("an edit");
+    let renamed = apply_rename(&with_db, &edit, &[TRIGGERED]);
+    for text in expected {
+        assert!(renamed.contains(text), "missing `{text}`:\n{renamed}");
+    }
+}
+
 /// A rename edits names and nothing else. A binding `in := x` names its
 /// parameter, so renaming the parameter edits `in`; a positional argument
 /// names nothing and is left alone. Each used to be replaced whole, so
