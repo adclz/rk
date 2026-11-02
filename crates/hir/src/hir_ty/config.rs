@@ -12,8 +12,11 @@ use crate::{
     HasName, HirNodeInfo,
     check::errors::{ToIdeDiagnostic, e01_duplicates::DuplicateError},
     hir_def::{
-        config::{ConfigDecl, ProgConfig, ResourceDecl, TaskConfig},
-        expressions::{expression::PathExpr, spec::SpecKind},
+        config::{ConfigDecl, DataSource, ProgConfig, ResourceDecl, TaskConfig},
+        expressions::{
+            expression::{Elementary, Expr, ExprKind, PathExpr, PathExprKind, PrimaryExpr},
+            spec::{ElementarySpec, SpecKind},
+        },
         interned::identifier::{Ident, SpanIdent},
         program::ProgramDecl,
     },
@@ -54,13 +57,92 @@ pub struct ResolvedTask<'db> {
     pub decl: TaskConfig<'db>,
     /// As written, for what is shown; `decl` is its identity.
     pub name: Ident,
-    /// Scan period in nanoseconds. A task that cannot run is absent from this
-    /// model entirely — see `unschedulable` for why.
-    pub interval_ns: u64,
+    /// What runs it. A task that cannot run is absent from this model
+    /// entirely — see `unschedulable` for why.
+    pub trigger: TaskTrigger<'db>,
     pub priority: Option<u32>,
     pub programs: Vec<ResolvedProgram<'db>>,
     /// Function blocks this task runs instead of the programs holding them.
     pub function_blocks: Vec<ResolvedTaskFb<'db>>,
+}
+
+/// What runs a TASK: a period, a rising edge, or both. It has at least one of
+/// them; a task with neither cannot run and has no trigger.
+#[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
+pub struct TaskTrigger<'db> {
+    /// The period in nanoseconds. `None` for no periodic runs, which an
+    /// INTERVAL left out or zero both say.
+    pub interval_ns: Option<u64>,
+    /// The bit whose rising edge runs the task. `None` for no edge, which a
+    /// SINGLE left out or FALSE both say.
+    pub single: Option<SingleRead<'db>>,
+}
+
+/// What a task's SINGLE reads.
+#[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
+pub struct SingleRead<'db> {
+    pub source: SingleSource<'db>,
+    /// Where the bit sits in what `source` names: above zero for a bit of a
+    /// wider variable, `status.%X3`.
+    pub shift: u32,
+}
+
+/// The BOOL a task's SINGLE reads, at a place fixed when the module is built:
+/// a host reads it without running anything.
+#[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
+pub enum SingleSource<'db> {
+    /// A VAR_GLOBAL, or what is reached inside one: `go`, `Res.go`, `flags.go`,
+    /// `timer.q`.
+    Global {
+        global: VariableDecl<'db>,
+        elements: Vec<SourceStep>,
+    },
+    /// A VAR_OUTPUT of a program instance, or what is reached inside one:
+    /// `P1.done`, `P1.status.done`, `P1.flags[2]`.
+    Output {
+        /// The instance's name, as written where it is declared.
+        instance: Ident,
+        output: VariableDecl<'db>,
+        elements: Vec<SourceStep>,
+    },
+    /// An address: `%IX2`, or the one a VAR_GLOBAL named is located at.
+    Address(LocatedAddress),
+}
+
+/// A step from a variable to what a task parameter reads inside it.
+#[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
+pub enum SourceStep {
+    /// A STRUCT element or a function block's output, by its name as names
+    /// are matched.
+    Element(Ident),
+    /// One bracket of subscripts, each folded.
+    Index(Vec<i64>),
+}
+
+/// What a path in a task parameter reaches.
+#[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
+pub struct ReachedPath<'db> {
+    /// A [`SingleSource::Global`] or a [`SingleSource::Output`].
+    pub source: SingleSource<'db>,
+    pub ty: Type<'db>,
+}
+
+/// The paths a fragment's task parameters write, resolved for a SINGLE and an
+/// INTERVAL alike.
+#[derive(Debug, Default, PartialEq, Eq, salsa::Update)]
+pub struct TaskPaths<'db> {
+    /// What each path reaches, or why it reaches nothing a task can read.
+    pub reached: FxHashMap<PathExpr<'db>, Result<ReachedPath<'db>, UnschedulableReason>>,
+    /// The variable each step that names one names.
+    pub names: FxHashMap<PathExpr<'db>, VariableDecl<'db>>,
+    /// The type of each step inside a variable.
+    pub elements: FxHashMap<PathExpr<'db>, Type<'db>>,
+    /// The steps that name no variable: a resource, a program instance.
+    pub steps: FxHashMap<PathExpr<'db>, ConfigPathStep<'db>>,
+    /// The step of a refused path that is at fault, by the whole path, when
+    /// it is not the last one.
+    pub refused_at: FxHashMap<PathExpr<'db>, PathExpr<'db>>,
+    pub errors: Vec<IdeDiagnostic>,
 }
 
 /// A VAR_CONFIG entry that locates a variable declared `AT %I*`, `%Q*` or
@@ -169,10 +251,9 @@ pub struct ConfigInferenceResult<'db> {
     /// unusable (E1406) — either way consumers get a number or nothing
     pub task_priority: FxHashMap<TaskConfig<'db>, u32>,
 
-    /// Scan period in nanoseconds for each TASK that can actually be scheduled.
-    /// A task missing from this map cannot run; consumers skip it without
-    /// needing to re-derive why.
-    pub task_interval_ns: FxHashMap<TaskConfig<'db>, u64>,
+    /// What runs each TASK that can actually be scheduled. A task missing from
+    /// this map cannot run; consumers skip it without needing to re-derive why.
+    pub task_triggers: FxHashMap<TaskConfig<'db>, TaskTrigger<'db>>,
 
     /// Why each unschedulable TASK cannot run. Held rather than reported on
     /// sight: a task nothing is bound to harms nobody, so only the ones a
@@ -199,7 +280,7 @@ pub fn infer_config_result<'db>(
     let mut result = ConfigInferenceResult {
         schedule: ResolvedSchedule::default(),
         task_priority: FxHashMap::default(),
-        task_interval_ns: FxHashMap::default(),
+        task_triggers: FxHashMap::default(),
         unschedulable: FxHashMap::default(),
         task_of_prog: FxHashMap::default(),
         prog_instance: FxHashMap::default(),
@@ -257,12 +338,17 @@ fn infer_config<'db>(
             .iter()
             .map(|t| (t.name(db).ident(db), *t))
             .collect();
-        resolve_task_intervals(db, &resource_tasks, result);
+        resolve_task_triggers(db, config, &resource_tasks, result);
         for p in r.programs(db).iter() {
             validate_prog_config(db, p, &resource_tasks, result);
             resolve_prog_instance(db, p, &mut result.prog_instance);
         }
     }
+
+    // What the task parameters name.
+    result
+        .errors
+        .extend(task_paths(db, config).errors.iter().cloned());
 
     // Phase 2c: the program configurations' element lists.
     result
@@ -566,27 +652,28 @@ fn report_unschedulable_bound_tasks<'db>(
             continue;
         }
         reported.push(task);
+        // At what SINGLE is given when the fault is there.
+        let site = match task.single(db).filter(|_| reason.is_in_single()) {
+            Some(DataSource::Constant(value)) => value.as_call_site(db),
+            Some(DataSource::Path(path, _)) => task_paths(db, config)
+                .refused_at
+                .get(&path)
+                .unwrap_or(&path)
+                .as_call_site(db),
+            Some(DataSource::Direct(dv)) => dv.as_call_site(db),
+            None => task.name(db).as_call_site(db),
+        };
         result.errors.push(
             ConfigError::UnschedulableTask {
                 task: task.name(db),
                 reason,
+                site,
             }
             .to_diagnostic(db, task.get_scope_id(db).file(db)),
         );
     }
 }
 
-/// Resolve each TASK's scan period, recording the ones that cannot be honoured.
-///
-/// Only a cyclic task with a literal, non-zero INTERVAL is schedulable. Every
-/// other shape used to be dropped by a bare `continue` in MIR with no
-/// diagnostic anywhere: `rk check` reported nothing, `rk compile` succeeded,
-/// and the core came out with no schedule — which the runtime then rejected
-/// with an unrelated complaint about the program's body export.
-///
-/// Resolving it here rather than in MIR also means the answer is published
-/// once: the scheduler reads `task_interval_ns` instead of parsing intervals
-/// a second time.
 /// Assembles [`ResolvedSchedule`] from the per-node resolutions above.
 ///
 /// Order is meaning here: resources and programs keep declaration order, and
@@ -604,23 +691,24 @@ fn build_resolved_schedule<'db>(
         // they were declared in.
         let mut tasks: Vec<ResolvedTask<'db>> = Vec::new();
         // The task's entry, made the first time something runs under it.
-        let task_entry =
-            |tasks: &mut Vec<ResolvedTask<'db>>, task: TaskConfig<'db>, interval_ns: u64| {
-                tasks
-                    .iter()
-                    .position(|t| t.decl == task)
-                    .unwrap_or_else(|| {
-                        tasks.push(ResolvedTask {
-                            decl: task,
-                            name: task.name(db).with_case,
-                            interval_ns,
-                            priority: result.task_priority.get(&task).copied(),
-                            programs: Vec::new(),
-                            function_blocks: Vec::new(),
-                        });
-                        tasks.len() - 1
-                    })
-            };
+        let task_entry = |tasks: &mut Vec<ResolvedTask<'db>>,
+                          task: TaskConfig<'db>,
+                          trigger: &TaskTrigger<'db>| {
+            tasks
+                .iter()
+                .position(|t| t.decl == task)
+                .unwrap_or_else(|| {
+                    tasks.push(ResolvedTask {
+                        decl: task,
+                        name: task.name(db).with_case,
+                        trigger: trigger.clone(),
+                        priority: result.task_priority.get(&task).copied(),
+                        programs: Vec::new(),
+                        function_blocks: Vec::new(),
+                    });
+                    tasks.len() - 1
+                })
+        };
         for p in r.programs(db).iter() {
             let Some(task) = result.task_of_prog.get(p).copied() else {
                 continue; // no resolvable WITH <task> — already diagnosed
@@ -629,7 +717,7 @@ fn build_resolved_schedule<'db>(
                 continue; // program type did not resolve — already diagnosed
             };
             // A task that cannot run contributes nothing to run.
-            let Some(&interval_ns) = result.task_interval_ns.get(&task) else {
+            let Some(trigger) = result.task_triggers.get(&task) else {
                 continue;
             };
             let connections = elements
@@ -643,8 +731,8 @@ fn build_resolved_schedule<'db>(
                 .function_blocks
                 .iter()
                 .filter_map(|(member, fb_task, _)| {
-                    let &interval_ns = result.task_interval_ns.get(fb_task)?;
-                    Some((*member, *fb_task, interval_ns))
+                    let trigger = result.task_triggers.get(fb_task)?;
+                    Some((*member, *fb_task, trigger))
                 })
                 .collect();
             let resolved = ResolvedProgram {
@@ -654,10 +742,10 @@ fn build_resolved_schedule<'db>(
                 retain: p.retain(db),
                 connections,
             };
-            let at = task_entry(&mut tasks, task, interval_ns);
+            let at = task_entry(&mut tasks, task, trigger);
             tasks[at].programs.push(resolved);
-            for (member, fb_task, interval_ns) in function_blocks {
-                let at = task_entry(&mut tasks, fb_task, interval_ns);
+            for (member, fb_task, trigger) in function_blocks {
+                let at = task_entry(&mut tasks, fb_task, trigger);
                 tasks[at].function_blocks.push(ResolvedTaskFb {
                     instance_name: p.name(db).with_case,
                     member,
@@ -680,8 +768,20 @@ fn build_resolved_schedule<'db>(
     result.schedule = ResolvedSchedule { resources };
 }
 
-fn resolve_task_intervals<'db>(
+/// Resolve what runs each TASK, recording the ones that cannot be honoured.
+///
+/// A task runs on a rising edge of its SINGLE and on its INTERVAL. A shape that
+/// gives it neither used to be dropped by a bare `continue` in MIR with no
+/// diagnostic anywhere: `rk check` reported nothing, `rk compile` succeeded,
+/// and the core came out with no schedule — which the runtime then rejected
+/// with an unrelated complaint about the program's body export.
+///
+/// Resolving it here rather than in MIR also means the answer is published
+/// once: the scheduler reads `task_triggers` instead of parsing intervals a
+/// second time.
+fn resolve_task_triggers<'db>(
     db: &'db dyn WorkspaceDataBase,
+    config: ConfigDecl<'db>,
     tasks: &FxHashMap<Ident, TaskConfig<'db>>,
     result: &mut ConfigInferenceResult<'db>,
 ) {
@@ -707,58 +807,158 @@ fn resolve_task_intervals<'db>(
             }
         }
 
-        // A parameter that names something names a VAR_GLOBAL, used or not:
-        // one that resolves to nothing is a mistake of its own (E0201),
-        // whatever the task does with it.
-        let mut unresolved = |ds: &crate::hir_def::config::DataSource<'db>| match ds {
-            crate::hir_def::config::DataSource::Path(path) => {
-                if crate::hir_ty::index_graphs::external_var_lookup(db, path.ident(db).ident(db))
-                    .is_some()
-                {
-                    return false;
-                }
-                result.errors.push(
-                    crate::check::errors::e02_resolve::ResolveError::NoItemInScope {
-                        expr: *path,
-                        scope: task.get_scope_id(db),
-                    }
-                    .to_diagnostic(db, task.get_scope_id(db).file(db)),
-                );
-                true
+        let single = task_single(db, config, *task, &mut result.errors);
+        let interval = task_interval(db, config, *task);
+        match (single, interval) {
+            (Err(reason), _) | (_, Err(reason)) => {
+                result.unschedulable.insert(*task, reason);
             }
-            _ => false,
-        };
-        let reason = match (task.interval(db), task.single(db)) {
-            (Some(ds), single) => {
-                if let Some(single) = single {
-                    unresolved(&single);
-                }
-                if unresolved(&ds) {
-                    Some(UnschedulableReason::UnknownName)
+            // A period, with or without an edge.
+            (Ok(single), Ok(Some(ns))) if ns > 0 => {
+                let trigger = TaskTrigger {
+                    interval_ns: Some(ns),
+                    single,
+                };
+                result.task_triggers.insert(*task, trigger);
+            }
+            // An edge alone: an INTERVAL of zero is the one the standard
+            // gives a task by default, which schedules nothing periodically.
+            (Ok(Some(single)), Ok(_)) => {
+                let trigger = TaskTrigger {
+                    interval_ns: None,
+                    single: Some(single),
+                };
+                result.task_triggers.insert(*task, trigger);
+            }
+            (Ok(None), Ok(interval)) => {
+                let reason = if task.single(db).is_some() {
+                    // FALSE, with no period to leave running.
+                    UnschedulableReason::ConstantSingle
+                } else if interval.is_some() {
+                    UnschedulableReason::ZeroInterval
                 } else {
-                    match interval_nanos(db, &ds) {
-                        None => Some(UnschedulableReason::NonLiteralInterval),
-                        Some(0) => Some(UnschedulableReason::ZeroInterval),
-                        Some(ns) => {
-                            result.task_interval_ns.insert(*task, ns);
-                            None
-                        }
-                    }
-                }
+                    UnschedulableReason::NoTrigger
+                };
+                result.unschedulable.insert(*task, reason);
             }
-            (None, Some(single)) => {
-                unresolved(&single);
-                Some(UnschedulableReason::EventDriven)
-            }
-            (None, None) => Some(UnschedulableReason::NoTrigger),
-        };
-        if let Some(reason) = reason {
-            result.unschedulable.insert(*task, reason);
         }
     }
 }
 
-/// A TASK's INTERVAL in nanoseconds.
+/// What a task's SINGLE reads, `None` for no rising edge to wait for: one
+/// left out, or a constant FALSE.
+///
+/// A constant FALSE stands at FALSE, which leaves an INTERVAL running as if
+/// nothing had been written. A constant TRUE would run the task once, at its
+/// first reading, and stop its INTERVAL, which is no way to schedule a task.
+fn task_single<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    config: ConfigDecl<'db>,
+    task: TaskConfig<'db>,
+    errors: &mut Vec<IdeDiagnostic>,
+) -> Result<Option<SingleRead<'db>>, UnschedulableReason> {
+    let Some(source) = task.single(db) else {
+        return Ok(None);
+    };
+    match source {
+        DataSource::Constant(value) => match bool_literal(db, value) {
+            Some(value) => constant_single(db, task, Some(value)),
+            None => Err(UnschedulableReason::SingleNotBool),
+        },
+        DataSource::Direct(dv) => {
+            let address = LocatedAddress::of(db, dv).ok_or_else(|| {
+                use crate::check::errors::e14_config::UnlocatableAddress;
+                errors.push(
+                    ConfigError::DirectVariableUnsupported {
+                        site: dv.as_call_site(db),
+                        address: dv.to_address(db).into(),
+                        why: if dv.partly(db) {
+                            UnlocatableAddress::Incomplete
+                        } else {
+                            UnlocatableAddress::Malformed
+                        },
+                    }
+                    .to_diagnostic(db, task.get_scope_id(db).file(db)),
+                );
+                UnschedulableReason::UnknownName
+            })?;
+            if address.width != 1 {
+                return Err(UnschedulableReason::SingleNotBool);
+            }
+            Ok(Some(SingleRead {
+                source: SingleSource::Address(address),
+                shift: 0,
+            }))
+        }
+        DataSource::Path(path, part) => {
+            let reached = reached_path(db, config, path)?;
+            if reached.ty.is_never() {
+                return Err(UnschedulableReason::UnknownName); // already diagnosed
+            }
+            // A part of what the path reaches, read as it is in a body.
+            let (ty, shift) = match part {
+                None => (reached.ty, 0),
+                Some(part) => {
+                    let file = task.get_scope_id(db).file(db);
+                    if let Some(fault) = crate::hir_ty::resolver::walk::multibits_fault(
+                        db, path, reached.ty, None, part,
+                    ) {
+                        errors.push(fault.to_diagnostic(db, file));
+                        return Err(UnschedulableReason::UnknownName);
+                    }
+                    let slice = crate::hir_ty::infer::normalize::multibits_slice(db, part)
+                        .ok_or(UnschedulableReason::UnknownName)?;
+                    (Type::Elementary(slice.spec), slice.shift as u32)
+                }
+            };
+            if ty.normalize(db) != Type::Elementary(ElementarySpec::Bool) {
+                return Err(UnschedulableReason::SingleNotBool);
+            }
+            let source = match &reached.source {
+                SingleSource::Global { global, elements }
+                    if global.qualifier(db).contains(crate::Qualifier::CONSTANT) =>
+                {
+                    // A CONSTANT is as fixed as a literal; one with no value
+                    // starts at its type's, FALSE.
+                    let value = match (elements.as_slice(), part, global.init(db)) {
+                        ([], None, None) => Some(false),
+                        ([], None, Some(_)) => {
+                            crate::hir_ty::infer::const_eval::constant_init(db, *global)
+                                .and_then(|init| bool_literal(db, init))
+                        }
+                        _ => None,
+                    };
+                    return constant_single(db, task, value);
+                }
+                SingleSource::Global { global, elements } if elements.is_empty() => {
+                    located_at(db, *global)
+                        .map_or_else(|| reached.source.clone(), SingleSource::Address)
+                }
+                source => source.clone(),
+            };
+            Ok(Some(SingleRead { source, shift }))
+        }
+    }
+}
+
+/// What a constant SINGLE comes to, given its value when it is known.
+fn constant_single<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    task: TaskConfig<'db>,
+    value: Option<bool>,
+) -> Result<Option<SingleRead<'db>>, UnschedulableReason> {
+    match value {
+        Some(false) => Ok(None),
+        Some(true) if task.interval(db).is_some() => {
+            Err(UnschedulableReason::SingleAlwaysTrueBesideInterval)
+        }
+        Some(true) => Err(UnschedulableReason::SingleAlwaysTrue),
+        None => Err(UnschedulableReason::ConstantSingle),
+    }
+}
+
+/// A task's INTERVAL in nanoseconds, `None` when it has none. Zero stays zero:
+/// what it means depends on the task's SINGLE.
 ///
 /// The period is baked into the emitted schedule, so it must be known at
 /// compile time — but "known at compile time" is wider than "written as a
@@ -766,27 +966,485 @@ fn resolve_task_intervals<'db>(
 /// as `T#10ms`, and rejecting it would be stating a language rule to cover a
 /// missing resolution. A directly represented variable (`%MW0`) is the only
 /// source that genuinely cannot supply one.
-fn interval_nanos<'db>(
+fn task_interval<'db>(
     db: &'db dyn WorkspaceDataBase,
-    ds: &crate::hir_def::config::DataSource<'db>,
-) -> Option<u64> {
-    use crate::hir_def::config::DataSource;
-
-    match ds {
-        DataSource::Constant(expr) => time_literal_nanos(db, *expr),
-        DataSource::Path(path) => {
+    config: ConfigDecl<'db>,
+    task: TaskConfig<'db>,
+) -> Result<Option<u64>, UnschedulableReason> {
+    let not_fixed = UnschedulableReason::NonLiteralInterval;
+    let Some(source) = task.interval(db) else {
+        return Ok(None);
+    };
+    match source {
+        DataSource::Constant(value) => time_literal_nanos(db, value).map(Some).ok_or(not_fixed),
+        DataSource::Path(path, part) => {
             // Only a CONSTANT can be trusted: an ordinary VAR_GLOBAL may be
             // written at runtime, and the schedule cannot follow it. Which
             // declaration is fixed, and where its value lives, is the same
             // question a CASE label asks — so it is asked in one place.
-            let var =
-                crate::hir_ty::index_graphs::external_var_lookup(db, path.ident(db).ident(db))?;
-            let init = crate::hir_ty::infer::const_eval::constant_init(db, var)?;
-            time_literal_nanos(db, init)
+            let reached = reached_path(db, config, path).map_err(|why| {
+                if why == UnschedulableReason::UnknownName {
+                    why
+                } else {
+                    not_fixed
+                }
+            })?;
+            let SingleSource::Global { global, elements } = reached.source else {
+                return Err(not_fixed);
+            };
+            if !elements.is_empty() || part.is_some() {
+                return Err(not_fixed);
+            }
+            crate::hir_ty::infer::const_eval::constant_init(db, global)
+                .and_then(|init| time_literal_nanos(db, init))
+                .map(Some)
+                .ok_or(not_fixed)
         }
         // `%MW0` and friends: a period read from process memory is not a
         // compile-time fact at all.
-        DataSource::Direct(_) => None,
+        DataSource::Direct(_) => Err(not_fixed),
+    }
+}
+
+/// What a task parameter's path reaches, as [`task_paths`] resolved it.
+fn reached_path<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    config: ConfigDecl<'db>,
+    path: PathExpr<'db>,
+) -> Result<ReachedPath<'db>, UnschedulableReason> {
+    task_paths(db, config)
+        .reached
+        .get(&path)
+        .cloned()
+        .unwrap_or(Err(UnschedulableReason::UnknownName))
+}
+
+/// The address a variable is declared at, when it is a complete one.
+fn located_at<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    var: VariableDecl<'db>,
+) -> Option<LocatedAddress> {
+    LocatedAddress::of(
+        db,
+        crate::hir_ty::index_graphs::effective_location(db, var)?,
+    )
+}
+
+/// The value of a BOOL literal: `TRUE`, `FALSE`, `BOOL#1`, `BOOL#0`, or a bare
+/// `1` or `0`, which is a BOOL's as much as an integer's.
+fn bool_literal<'db>(db: &'db dyn WorkspaceDataBase, value: Expr<'db>) -> Option<bool> {
+    let ExprKind::PrimaryExpr(PrimaryExpr::Literal(literal)) = value.expr(db) else {
+        return None;
+    };
+    if let Some(value) = literal.as_bool(db) {
+        return Some(value);
+    }
+    let Elementary::InferInteger(integer) = literal else {
+        return None;
+    };
+    match integer.as_i128(db).ok()? {
+        0 => Some(false),
+        1 => Some(true),
+        _ => None,
+    }
+}
+
+/// What each path in `config`'s task parameters names: a SINGLE's and an
+/// INTERVAL's alike, which the standard gives one form.
+///
+/// A query of its own, apart from [`infer_config_result`], so the
+/// configuration's body inference records these names for the IDE and the
+/// linter without reading the whole configuration. Nothing here infers an
+/// expression.
+#[salsa::tracked(returns(ref))]
+pub fn task_paths<'db>(db: &'db dyn WorkspaceDataBase, config: ConfigDecl<'db>) -> TaskPaths<'db> {
+    let mut out = TaskPaths::default();
+    for r in config.resources(db).iter() {
+        for task in r.tasks(db).iter() {
+            for source in [task.interval(db), task.single(db)].into_iter().flatten() {
+                if let DataSource::Path(path, _) = source {
+                    let reached = read_task_path(db, config, *r, path, &mut out);
+                    out.reached.insert(path, reached);
+                }
+            }
+        }
+    }
+    out
+}
+
+/// The path of a task parameter, walked from what it starts at: a VAR_GLOBAL of
+/// the configuration or a program instance of the task's resource, after the
+/// name of a resource if it is written.
+///
+/// A resource may share its name with either of them, and `flags.go` then reads
+/// two ways. It is the variable or the instance when the next name is inside
+/// it, and the resource otherwise, so a path written without its resource means
+/// what it says, and one written with it still resolves.
+fn read_task_path<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    config: ConfigDecl<'db>,
+    resource: ResourceDecl<'db>,
+    path: PathExpr<'db>,
+    out: &mut TaskPaths<'db>,
+) -> Result<ReachedPath<'db>, UnschedulableReason> {
+    use crate::check::errors::e02_resolve::ResolveError;
+    let file = path.get_scope_id(db).file(db);
+    let steps = path.flatten(db).as_slice();
+    let fragments = crate::hir_ty::index_graphs::config_fragments(db, config.get_name_ident(db));
+    let global_named = |name: Ident| {
+        fragments
+            .iter()
+            .flat_map(|f| f.variables(db).iter())
+            .find(|v| v.get_name_ident(db) == name)
+    };
+    let instance_named = |name: Ident| {
+        resource
+            .programs(db)
+            .iter()
+            .find(|p| p.name(db).ident(db) == name)
+    };
+    let holds = |name: Ident, next: Ident| match global_named(name) {
+        Some(global) => match global.spec(db).infer(db).normalize(db) {
+            Type::Struct(st) => st.struct_elements(db).contains_key(&next),
+            base @ (Type::FunctionBlock(_) | Type::Class(_)) => {
+                instance_member(db, base, next).is_some()
+            }
+            _ => false,
+        },
+        None => instance_named(name)
+            .and_then(|instance| program_of_instance(db, instance))
+            .is_some_and(|program| program.variables(db).iter().any(|v| v.name(db) == next)),
+    };
+
+    let mut at = 0;
+    if let [
+        PathExprWalkStep::Field { ident, expr },
+        PathExprWalkStep::Field { ident: next, .. },
+        ..,
+    ] = steps
+        && let Some(written) = fragments
+            .iter()
+            .flat_map(|f| f.resources(db).iter())
+            .find(|r| r.name(db).ident(db) == ident.ident(db))
+        && !holds(ident.ident(db), next.ident(db))
+    {
+        out.steps.insert(*expr, ConfigPathStep::Resource(*written));
+        at = 1;
+    }
+    let Some(PathExprWalkStep::Field { ident, expr }) = steps.get(at) else {
+        return Err(UnschedulableReason::SingleNotFixed);
+    };
+    let name = ident.ident(db);
+
+    if let Some(global) = global_named(name) {
+        out.names.insert(*expr, *global);
+        let (elements, ty) = walk_source_steps(
+            db,
+            &fragments,
+            path,
+            global.spec(db).infer(db),
+            &steps[at + 1..],
+            out,
+        )?;
+        return Ok(ReachedPath {
+            source: SingleSource::Global {
+                global: *global,
+                elements,
+            },
+            ty,
+        });
+    }
+
+    let Some(instance) = instance_named(name) else {
+        out.errors.push(
+            ResolveError::NoItemInScope {
+                expr: *expr,
+                scope: path.get_scope_id(db),
+            }
+            .to_diagnostic(db, file),
+        );
+        return Err(UnschedulableReason::UnknownName);
+    };
+    out.steps.insert(*expr, ConfigPathStep::Instance(*instance));
+    let Some(program) = program_of_instance(db, instance) else {
+        return Err(UnschedulableReason::UnknownName); // already diagnosed
+    };
+    let (member, member_expr) = match steps.get(at + 1) {
+        Some(PathExprWalkStep::Field { ident, expr }) => (ident, expr),
+        // The instance itself.
+        None => return Err(UnschedulableReason::SingleNotBool),
+        // A bracket or a dereference of it, reported as a body reports one.
+        Some(step) => {
+            out.errors.push(not_indexed_or_dereferenced(
+                db,
+                step,
+                Type::Program(program),
+            ));
+            return Err(UnschedulableReason::UnknownName);
+        }
+    };
+    let Some(var) = program
+        .variables(db)
+        .iter()
+        .find(|v| v.name(db) == member.ident(db))
+    else {
+        out.errors.push(
+            ResolveError::NoSuchFieldPathExpr {
+                expr: *member_expr,
+                ident: member.with_case,
+                ty: Type::Program(program),
+            }
+            .to_diagnostic(db, file),
+        );
+        return Err(UnschedulableReason::UnknownName);
+    };
+    out.names.insert(*member_expr, *var);
+    if !var.is_output(db) {
+        out.refused_at.insert(path, *member_expr);
+        return Err(UnschedulableReason::SingleNotOutput);
+    }
+    let (elements, ty) = walk_source_steps(
+        db,
+        &fragments,
+        path,
+        var.spec(db).infer(db),
+        &steps[at + 2..],
+        out,
+    )?;
+    Ok(ReachedPath {
+        source: SingleSource::Output {
+            instance: instance.name(db).with_case,
+            output: *var,
+            elements,
+        },
+        ty,
+    })
+}
+
+/// The value of a subscript in a task parameter's path. A bare name binds
+/// through the scope chain, which is one fragment's: a CONSTANT of another is
+/// looked up here, and a name no fragment declares is reported as a name of
+/// the path is.
+fn source_subscript<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    fragments: &[ConfigDecl<'db>],
+    subscript: Expr<'db>,
+    out: &mut TaskPaths<'db>,
+) -> Result<i64, UnschedulableReason> {
+    use crate::hir_def::expressions::expression::VariableAccessKind;
+    use crate::hir_ty::infer::const_eval::{bare_access_name, constant_init, spec_bound};
+    let not_fixed = UnschedulableReason::SingleNotFixed;
+    if let Some(value) = spec_bound(db, subscript) {
+        return Ok(value);
+    }
+    let file = subscript.get_scope_id(db).file(db);
+    let not_an_integer = |ty: Type<'db>| {
+        crate::check::errors::e05_array::ArrayError::NonIntegerIndex {
+            expr: subscript,
+            ty,
+        }
+        .to_diagnostic(db, file)
+    };
+    let access = match subscript.expr(db) {
+        ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess(access)) => access,
+        // An integer literal folds, unless it is too wide for any index.
+        ExprKind::PrimaryExpr(PrimaryExpr::Literal(literal)) => {
+            let ty = match Type::from(*literal) {
+                Type::Infer(infer) => infer.to_ty(db),
+                ty => ty,
+            };
+            if ty.is_signed_integer() || ty.is_unsigned_integer() {
+                return Err(not_fixed);
+            }
+            out.errors.push(not_an_integer(ty));
+            return Err(UnschedulableReason::UnknownName);
+        }
+        _ => return Err(not_fixed),
+    };
+    let Some(name) = bare_access_name(db, *access) else {
+        return Err(not_fixed);
+    };
+    let global = fragments
+        .iter()
+        .flat_map(|f| f.variables(db).iter())
+        .find(|v| v.get_name_ident(db) == name);
+    if let Some(global) = global {
+        let ty = global.spec(db).infer(db);
+        let base = ty.normalize(db);
+        if !base.is_never() && !base.is_signed_integer() && !base.is_unsigned_integer() {
+            out.errors.push(not_an_integer(ty));
+            return Err(UnschedulableReason::UnknownName);
+        }
+        return constant_init(db, *global)
+            .and_then(|init| spec_bound(db, init))
+            .ok_or(not_fixed);
+    }
+    if let VariableAccessKind::Symbolic(begin) = access.kind(db)
+        && let Some(path) = begin.expr(db)
+    {
+        out.errors.push(
+            crate::check::errors::e02_resolve::ResolveError::NoItemInScope {
+                expr: path,
+                scope: subscript.get_scope_id(db),
+            }
+            .to_diagnostic(db, subscript.get_scope_id(db).file(db)),
+        );
+    }
+    Err(UnschedulableReason::UnknownName)
+}
+
+/// The program a program configuration instantiates, when its type resolves.
+fn program_of_instance<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    instance: &ProgConfig<'db>,
+) -> Option<ProgramDecl<'db>> {
+    let mut program = FxHashMap::default();
+    resolve_prog_instance(db, instance, &mut program);
+    program.into_values().next()
+}
+
+/// The steps from a variable of type `ty` to what a task parameter reads
+/// inside it, and the type it ends at. A step is a STRUCT element, a function
+/// block's output, or a bracket of subscripts that fold, which keeps the place
+/// fixed.
+fn walk_source_steps<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    fragments: &[ConfigDecl<'db>],
+    path: PathExpr<'db>,
+    mut ty: Type<'db>,
+    steps: &[PathExprWalkStep<'db>],
+    out: &mut TaskPaths<'db>,
+) -> Result<(Vec<SourceStep>, Type<'db>), UnschedulableReason> {
+    use crate::check::errors::{e02_resolve::ResolveError, e05_array::ArrayError};
+    let mut walked = Vec::new();
+    // The array whose dimensions the brackets so far stop short of, `m[i]` of
+    // `m[i][j]`, and how many they took.
+    let mut row: Option<(crate::hir_def::expressions::spec::Array<'db>, usize)> = None;
+    for step in steps {
+        if ty.is_never() {
+            return Err(UnschedulableReason::UnknownName); // already diagnosed
+        }
+        match step {
+            PathExprWalkStep::Field { ident, expr } => {
+                let file = expr.get_scope_id(db).file(db);
+                let no_field = |ty| {
+                    ResolveError::NoSuchFieldPathExpr {
+                        expr: *expr,
+                        ident: ident.with_case,
+                        ty,
+                    }
+                    .to_diagnostic(db, file)
+                };
+                let base = ty.normalize(db);
+                let next = match base {
+                    Type::Struct(st) => {
+                        st.struct_elements(db).get(&ident.ident(db)).map(|element| {
+                            out.elements.insert(*expr, Type::StructElement(*element));
+                            element.spec(db).infer(db)
+                        })
+                    }
+                    Type::FunctionBlock(_) | Type::Class(_) => {
+                        match instance_member(db, base, ident.ident(db)) {
+                            Some(var) => {
+                                out.names.insert(*expr, var);
+                                if !var.is_output(db) {
+                                    out.refused_at.insert(path, *expr);
+                                    return Err(UnschedulableReason::SingleNotOutput);
+                                }
+                                Some(var.spec(db).infer(db))
+                            }
+                            None => None,
+                        }
+                    }
+                    _ => None,
+                };
+                let Some(next) = next else {
+                    out.errors.push(no_field(ty));
+                    return Err(UnschedulableReason::UnknownName);
+                };
+                ty = next;
+                walked.push(SourceStep::Element(ident.ident(db)));
+            }
+            PathExprWalkStep::Index { expr } => {
+                let file = expr.get_scope_id(db).file(db);
+                let not_an_array = || {
+                    ArrayError::IndexNonArrayTypePathExpr { expr: *expr, ty }
+                        .to_diagnostic(db, file)
+                };
+                let (array, first) = match (row.take(), ty.normalize(db)) {
+                    (Some(row), _) => row,
+                    (None, Type::Array(array)) => (array, 0),
+                    _ => {
+                        out.errors.push(not_an_array());
+                        return Err(UnschedulableReason::UnknownName);
+                    }
+                };
+                let PathExprKind::Index(bracket) = expr.expr(db) else {
+                    return Err(UnschedulableReason::SingleNotFixed);
+                };
+                let dimensions = crate::hir_ty::infer::const_eval::array_dimensions(db, array);
+                let through = first + bracket.index.len();
+                if through > dimensions.len() {
+                    out.errors.push(not_an_array());
+                    return Err(UnschedulableReason::UnknownName);
+                }
+                let mut subscripts = Vec::with_capacity(bracket.index.len());
+                for (k, subscript) in bracket.index.iter().enumerate() {
+                    let value = source_subscript(db, fragments, *subscript, out)?;
+                    let dimension = first + k;
+                    if let (Some(min), Some(max)) = dimensions[dimension]
+                        && !(min..=max).contains(&value)
+                    {
+                        out.errors.push(
+                            ArrayError::IndexOutOfBounds {
+                                expr: *subscript,
+                                dimension,
+                                index: i128::from(value),
+                                min,
+                                max,
+                            }
+                            .to_diagnostic(db, file),
+                        );
+                        return Err(UnschedulableReason::UnknownName);
+                    }
+                    subscripts.push(value);
+                }
+                if through == dimensions.len() {
+                    ty = array.of_type(db).infer(db);
+                    out.elements.insert(*expr, ty);
+                } else {
+                    row = Some((array, through));
+                }
+                walked.push(SourceStep::Index(subscripts));
+            }
+            // A reference has no fixed target. Anything else cannot be
+            // dereferenced, wherever it is.
+            PathExprWalkStep::Deref { .. } => {
+                if matches!(ty.normalize(db), Type::RefTo(_)) {
+                    return Err(UnschedulableReason::SingleNotFixed);
+                }
+                out.errors.push(not_indexed_or_dereferenced(db, step, ty));
+                return Err(UnschedulableReason::UnknownName);
+            }
+        }
+    }
+    Ok((walked, ty))
+}
+
+/// What a body reports for a bracket or a dereference of what takes neither.
+fn not_indexed_or_dereferenced<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    step: &PathExprWalkStep<'db>,
+    ty: Type<'db>,
+) -> IdeDiagnostic {
+    use crate::check::errors::{e05_array::ArrayError, e09_reference::ReferenceError};
+    let expr = step.get_expr(db);
+    let file = expr.get_scope_id(db).file(db);
+    match step {
+        PathExprWalkStep::Deref { .. } => {
+            ReferenceError::DerefNonRefType { expr, ty }.to_diagnostic(db, file)
+        }
+        _ => ArrayError::IndexNonArrayTypePathExpr { expr, ty }.to_diagnostic(db, file),
     }
 }
 
@@ -914,7 +1572,14 @@ pub fn resolve_config_entries<'db>(
         // segment naming one of the configuration's resources is skipped.
         let instance_at = match &steps[0] {
             PathExprWalkStep::Field { ident, expr } if steps.len() > 1 => {
-                match resource_named(ident) {
+                let next = match &steps[1] {
+                    PathExprWalkStep::Field { ident, .. } => Some(ident.ident(db)),
+                    _ => None,
+                };
+                let resource = resource_named(ident).filter(|_| {
+                    config_path_starts_at_resource(db, &fragments, ident.ident(db), next)
+                });
+                match resource {
                     Some(resource) => {
                         out.steps.insert(*expr, ConfigPathStep::Resource(resource));
                         1
@@ -1043,6 +1708,32 @@ pub fn resolve_config_entries<'db>(
     out
 }
 
+/// Whether a VAR_CONFIG path starting `first.next` starts at a resource. A
+/// resource may share its name with a program instance, as `RESOURCE Main` and
+/// `PROGRAM Main` do: `first` is then the instance, unless `next` is none of its
+/// variables and names an instance itself, as in `Main.Main.x`.
+fn config_path_starts_at_resource<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    fragments: &[ConfigDecl<'db>],
+    first: Ident,
+    next: Option<Ident>,
+) -> bool {
+    let resources = || fragments.iter().flat_map(|f| f.resources(db).iter());
+    if !resources().any(|r| r.name(db).ident(db) == first) {
+        return false;
+    }
+    let instances = || resources().flat_map(|r| r.programs(db).iter());
+    let Some(instance) = instances().find(|p| p.name(db).ident(db) == first) else {
+        return true;
+    };
+    let Some(next) = next else {
+        return false;
+    };
+    let holds = program_of_instance(db, instance)
+        .is_some_and(|program| program.variables(db).iter().any(|v| v.name(db) == next));
+    !holds && instances().any(|p| p.name(db).ident(db) == next)
+}
+
 /// The member `name` among [`members_of`] `ty`.
 fn instance_member<'db>(
     db: &'db dyn WorkspaceDataBase,
@@ -1103,7 +1794,8 @@ pub fn members_of<'db>(db: &'db dyn WorkspaceDataBase, ty: Type<'db>) -> Vec<Var
 pub enum ConfigPathPrefix<'db> {
     /// Nothing yet: a resource or a program instance comes next.
     Start,
-    /// A resource: one of its program instances comes next.
+    /// A resource: one of its program instances comes next, or a variable of
+    /// the instance it shares its name with.
     Resource(ResourceDecl<'db>),
     /// A program instance, or a member of one: what an instance of `ty`
     /// holds comes next. `member` is the last step when it is a member.
@@ -1130,7 +1822,7 @@ pub fn config_path_prefix<'db>(
         .iter()
         .flat_map(|f| f.resources(db).iter().copied())
         .collect();
-    let mut steps = steps.iter();
+    let mut steps = steps.iter().peekable();
     let Some(first) = steps.next() else {
         return Some(ConfigPathPrefix::Start);
     };
@@ -1138,16 +1830,19 @@ pub fn config_path_prefix<'db>(
         .iter()
         .find(|r| r.name(db).ident(db) == *first)
         .copied();
+    let next = steps.peek().map(|name| **name);
+    if let (Some(r), None) = (resource, next) {
+        return Some(ConfigPathPrefix::Resource(r));
+    }
     let instance = match resource {
-        Some(r) => match steps.next() {
-            None => return Some(ConfigPathPrefix::Resource(r)),
-            Some(name) => r
-                .programs(db)
+        Some(r) if config_path_starts_at_resource(db, &fragments, *first, next) => {
+            let name = steps.next()?;
+            r.programs(db)
                 .iter()
                 .find(|p| p.name(db).ident(db) == *name)
-                .copied(),
-        },
-        None => resources
+                .copied()
+        }
+        _ => resources
             .iter()
             .flat_map(|r| r.programs(db).iter())
             .find(|p| p.name(db).ident(db) == *first)
@@ -1368,16 +2063,12 @@ pub(crate) fn record_config_paths<'db>(
                 .zip(entry.members.iter().rev().copied()),
         );
     }
-    // A task's INTERVAL or SINGLE may name a VAR_GLOBAL.
-    for task in config.resources(db).iter().flat_map(|r| r.tasks(db).iter()) {
-        for source in [task.interval(db), task.single(db)].into_iter().flatten() {
-            if let crate::hir_def::config::DataSource::Path(path) = source
-                && let Some(global) =
-                    crate::hir_ty::index_graphs::external_var_lookup(db, path.ident(db).ident(db))
-            {
-                named.push((path, global));
-            }
-        }
+    // A task's INTERVAL or SINGLE may name a VAR_GLOBAL or a program's output,
+    // and go on inside it.
+    let paths = task_paths(db, config);
+    named.extend(paths.names.iter().map(|(path, var)| (*path, *var)));
+    for (path, ty) in &paths.elements {
+        result.type_of_path_expr.insert(*path, *ty);
     }
     for (path, var) in named {
         result
@@ -1537,7 +2228,7 @@ fn check_source<'db>(
     };
     let end = match source {
         DataSource::Constant(expr) => ConnectionEnd::Constant(*expr),
-        DataSource::Path(global) => {
+        DataSource::Path(global, _) => {
             ConnectionEnd::Global(connected_global(db, *global, names).map_err(refused)?)
         }
         DataSource::Direct(dv) => ConnectionEnd::Address(connected_address(db, *dv, path)?),

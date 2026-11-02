@@ -300,6 +300,55 @@ fn named_by_the_configuration_not_reported(mut with_db: RootDatabase) {
     ");
 }
 
+/// A global a task's SINGLE reads is used, by its element and its subscript
+/// too. One only a task reads is what the task waits for.
+#[rstest]
+fn a_global_a_single_reads_is_used(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE Flags : STRUCT go : BOOL; END_STRUCT; END_TYPE
+PROGRAM Main
+VAR_OUTPUT bits : ARRAY[0..2] OF BOOL; END_VAR
+VAR x : INT; END_VAR
+    x := x + 1;
+    bits[0] := x > 1;
+END_PROGRAM
+
+CONFIGURATION Plant
+VAR_GLOBAL
+    start : BOOL;
+    flags : Flags;
+    spare : BOOL;
+END_VAR
+VAR_GLOBAL CONSTANT which : INT := 1; END_VAR
+    RESOURCE Res ON CPU
+        TASK Fast(INTERVAL := T#10ms, PRIORITY := 1);
+        TASK A(SINGLE := start, PRIORITY := 2);
+        TASK B(SINGLE := Res.flags.go, PRIORITY := 3);
+        TASK C(SINGLE := M.bits[which], PRIORITY := 4);
+        PROGRAM M WITH Fast : Main;
+        PROGRAM MA WITH A : Main;
+        PROGRAM MB WITH B : Main;
+        PROGRAM MC WITH C : Main;
+    END_RESOURCE
+END_CONFIGURATION
+"#;
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "unused-variable"), @r"
+    [L0201] Info: unused variable
+        ,-[ file:///test0.st:14:5 ]
+        |
+     14 |     spare : BOOL;
+        |     ^^|^^
+        |       `---- unused variable 'spare'
+        |
+        | Help: remove 'spare'
+        |
+        | Note 1: no POU of the workspace reads or writes it
+        |
+        | Note 2: lint rule: unused-variable
+    ----'
+    ");
+}
+
 /// A global of the configuration no POU uses is unused. One read through a
 /// VAR_EXTERNAL, one by its own name and one the configuration connects are
 /// used, and a name starting with an underscore is kept on purpose.

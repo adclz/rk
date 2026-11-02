@@ -141,12 +141,62 @@ Slow   ●                                                 ●
 
 When both are due on the same tick, the one with the lower `PRIORITY` runs first.
 
-- `INTERVAL` is a `TIME` or `LTIME` literal, or a `VAR_GLOBAL CONSTANT` holding one. It cannot be zero (`E1410`). The standard takes a `TIME` only.
+- `INTERVAL` is a `TIME` or `LTIME` literal, or a `VAR_GLOBAL CONSTANT` holding one. The standard takes a `TIME` only. Zero means no periodic runs, so a task with nothing else is `E1410`.
 - `PRIORITY` is required (`E1405`), an unsigned integer of up to 32 bits where the standard takes a `UINT`. `0` is the most urgent.
 - A run that starts late happens once: the ticks it missed are dropped, never replayed.
 
 The module carries the schedule in its `rk.schedule` section.
 The host needs nothing else to run it.
+
+### Run it on a rising edge
+
+`SINGLE` runs a task each time a `BOOL` goes from `FALSE` to `TRUE`.
+A fault to log or a batch to start does not need a task checking for it every 10 ms:
+
+```iecst
+PROGRAM Logger
+VAR
+    faults : UDINT;
+END_VAR
+    faults := faults + 1;
+END_PROGRAM
+
+CONFIGURATION Plant
+VAR_GLOBAL
+    fault AT %IX0.3 : BOOL;
+END_VAR
+    RESOURCE Main ON Cpu
+        TASK OnFault(SINGLE := fault, PRIORITY := 0);
+        PROGRAM Log WITH OnFault : Logger;
+    END_RESOURCE
+END_CONFIGURATION
+```
+
+`SINGLE` reads a `BOOL` that has a place in memory:
+
+- a `VAR_GLOBAL`, with the name of its resource if you want it: `fault`, `Main.fault`.
+- a `VAR_OUTPUT` of a program in the same resource: `Belt.done`.
+- what is inside either of them: a `STRUCT` element, an array element at constant subscripts, a function block's `VAR_OUTPUT`, a bit: `flags.fault`, `Belt.bits[2]`, `timer.Q`, `status.%X3`.
+- the address of a bit: `%IX0.3`.
+
+Anything else is `E1410`, and so is a constant: it never rises.
+The standard is narrower: a `VAR_GLOBAL` takes one `STRUCT` element at most, and a variable has no bit. The rest is rk's.
+
+A task can have both. It then runs on each rising edge, and on its `INTERVAL` only while `SINGLE` stands at `FALSE`:
+
+```diagram
+ms       0   10   20   30   40   50   60   70   80
+SINGLE   F    F    F    T    T    T    F    F    T
+Both     ●         ●    ●              ●         ●
+```
+
+Here `Both` has an `INTERVAL` of 20 ms, on ticks of 10 ms.
+It runs at 30 on the edge, skips 40 because `SINGLE` stands at `TRUE`, and at 80 the edge and the period are one run.
+
+- `INTERVAL := T#0s` beside a `SINGLE` means no periodic runs, like no `INTERVAL` at all.
+- `SINGLE := FALSE` beside an `INTERVAL` changes nothing. `TRUE` would run the task once and stop its `INTERVAL`, so it is `E1410`.
+- A `SINGLE` already `TRUE` the first time it is read counts as a rising edge, as an `R_TRIG` input does. A restart with it held `TRUE` runs the task once.
+- The host reads the bit when the task's turn comes, the most urgent task first, so a task ahead can raise it for the same tick. A rise and a fall between two readings is not seen.
 
 ## PROGRAM
 

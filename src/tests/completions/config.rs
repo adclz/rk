@@ -294,6 +294,57 @@ END_CONFIGURATION
     }
 }
 
+/// A resource may share its name with a program instance. After the shared name
+/// come the resource's instances and that instance's variables, and a whole
+/// path reads as a value's does: `Main.x` gets the type of the instance's `x`.
+#[rstest]
+#[case::after_the_shared_name("Main.|", &["Main", "Other", "x", "d"], &["Res", "out"])]
+#[case::after_the_instance_through_the_resource("Main.Main.|", &["x", "d"], &["Main", "Other"])]
+#[case::after_the_other_instance("Main.Other.|", &["x", "d"], &["Main", "Other"])]
+#[case::through_a_member("Main.d.|", &["out"], &["x", "d"])]
+#[case::the_type("Main.x AT %QW0 : |", &["INT"], &["x", "VAR_GLOBAL"])]
+#[case::the_type_through_the_resource("Main.Main.x AT %QW0 : |", &["INT"], &["x", "VAR_GLOBAL"])]
+pub fn completion_in_var_config_with_a_resource_named_like_an_instance(
+    mut with_db: RootDatabase,
+    #[case] entry: &str,
+    #[case] offered: &[&str],
+    #[case] not_offered: &[&str],
+) {
+    let source = format!(
+        r#"
+FUNCTION_BLOCK Drive
+VAR out AT %Q* : INT; END_VAR
+END_FUNCTION_BLOCK
+
+PROGRAM F
+VAR x AT %Q* : INT; END_VAR
+VAR d : Drive; END_VAR
+END_PROGRAM
+
+CONFIGURATION Cfg
+VAR_CONFIG
+    {entry}
+END_VAR
+    RESOURCE Main ON CPU
+        TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM Main WITH T : F;
+        PROGRAM Other WITH T : F;
+    END_RESOURCE
+END_CONFIGURATION
+"#
+    );
+    let (file, offset) = add_marked_source(&mut with_db, &source);
+
+    let items = ide_proto::handlers::completions::complete(&with_db, file, offset, None);
+    let labels: Vec<&str> = items.iter().map(|c| c.label.as_str()).collect();
+    for label in offered {
+        assert!(labels.contains(label), "missing `{label}`: {labels:?}");
+    }
+    for label in not_offered {
+        assert!(!labels.contains(label), "offered `{label}`: {labels:?}");
+    }
+}
+
 /// Inside VAR_CONFIG, the entry being written: a resource or a program
 /// instance where a path starts, the instances of a resource after it, the
 /// members of whatever the path reached, and the variable's own type after

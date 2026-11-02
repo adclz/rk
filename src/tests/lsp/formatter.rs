@@ -26,6 +26,36 @@ pub fn fmt(document: &Document) -> String {
     String::from_utf8(output).unwrap()
 }
 
+/// A task's parameters keep their paths and addresses whole.
+#[rstest]
+pub fn task_with_a_single(mut with_db: RootDatabase) {
+    let source = r#"
+CONFIGURATION Cfg
+RESOURCE Res ON CPU
+TASK A(SINGLE:=Res.flags.go,INTERVAL:=T#10ms,PRIORITY:=1);
+TASK B(SINGLE:=inst.bits[ 2 ],PRIORITY:=2);
+TASK C(SINGLE:=%IX0.1,PRIORITY:=3);
+TASK D(SINGLE:=FALSE,INTERVAL:=T#10ms,PRIORITY:=4);
+TASK E(SINGLE:=status.%X3,PRIORITY:=5);
+TASK F(SINGLE:=inst.word.3,PRIORITY:=6);
+END_RESOURCE
+END_CONFIGURATION
+"#;
+    let file = add_source(&mut with_db, source);
+    assert_snapshot!(fmt(file.document(&with_db)), @r"
+    CONFIGURATION Cfg
+    	RESOURCE Res ON CPU
+    		TASK A(SINGLE := Res.flags.go, INTERVAL := T#10ms, PRIORITY := 1);
+    		TASK B(SINGLE := inst.bits[2], PRIORITY := 2);
+    		TASK C(SINGLE := %IX0.1, PRIORITY := 3);
+    		TASK D(SINGLE := FALSE, INTERVAL := T#10ms, PRIORITY := 4);
+    		TASK E(SINGLE := status.%X3, PRIORITY := 5);
+    		TASK F(SINGLE := inst.word.3, PRIORITY := 6);
+    	END_RESOURCE
+    END_CONFIGURATION
+    ");
+}
+
 #[rstest]
 pub fn declaration_of_variables(mut with_db: RootDatabase) {
     let source = r#"

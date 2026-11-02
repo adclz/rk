@@ -5,7 +5,7 @@ use db::WorkspaceDataBase;
 
 use crate::hir_def::{
     expressions::{
-        expression::{Expr, InitExpr, PathExpr},
+        expression::{Expr, InitExpr, MultibitsPart, PathExpr},
         spec::Spec,
     },
     interned::identifier::{Ident, SpanIdent},
@@ -183,7 +183,9 @@ pub enum ProgCnxn<'db> {
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum DataSource<'db> {
     Constant(Expr<'db>),
-    Path(PathExpr<'db>),
+    /// A path, and the part of it a task parameter reads (`status.%X3`). A
+    /// connection's source has no part.
+    Path(PathExpr<'db>, Option<MultibitsPart>),
     Direct(DirectVariable<'db>),
 }
 

@@ -1,6 +1,6 @@
 ---
 name: programming-config
-description: Declare how a program actually runs — CONFIGURATION, RESOURCE, TASK, intervals, priorities, VAR_GLOBAL, program connections, VAR_CONFIG and the direct variables (%I, %Q, %M). Use when wiring a PROGRAM to a task or to inputs and outputs, setting a scan interval, sharing globals between POUs, or giving one instance its own values or addresses.
+description: Declare how a program actually runs — CONFIGURATION, RESOURCE, TASK, intervals, SINGLE and its rising edges, priorities, VAR_GLOBAL, program connections, VAR_CONFIG and the direct variables (%I, %Q, %M). Use when wiring a PROGRAM to a task or to inputs and outputs, setting a scan interval, running a task on an event, sharing globals between POUs, or giving one instance its own values or addresses.
 ---
 
 ## Summary
@@ -122,6 +122,13 @@ It is a warning, not an error.
 `INTERVAL := <TIME or LTIME literal>` or `INTERVAL := <name of a VAR_GLOBAL CONSTANT holding one>`.
 The period is baked into the emitted schedule, so it must be fixed at compile time; a CONSTANT global qualifies, a plain `VAR_GLOBAL` does not because it may be written while the PLC runs.
 
+`SINGLE := <a BOOL>` runs the task once on each rising edge of that BOOL.
+It names a `VAR_GLOBAL`, with its resource if wanted (`go`, `Res.go`), a `VAR_OUTPUT` of a program in the same resource (`P1.done`), what is inside either of them through STRUCT elements, constant subscripts, a function block's `VAR_OUTPUT` and a partial access to one bit (`flags.go`, `P1.bits[2]`, `timer.Q`, `status.%X3`), or a bit address (`%IX2.1`).
+Beside an `INTERVAL`, the periodic runs happen only while it stands at FALSE, and an edge on a due tick is one run.
+`INTERVAL := T#0ms` beside a `SINGLE` means no periodic runs.
+`SINGLE := FALSE` beside an `INTERVAL` changes nothing.
+A `SINGLE` already TRUE the first time it is read is a rising edge, so a restart with it held TRUE runs the task once.
+
 `PRIORITY := <unsigned int>` is mandatory.
 Lower is more urgent, `0` is the most urgent, and the value must fit in a 32-bit unsigned integer.
 Omitting it is E1405; a value that does not parse is E1406.
@@ -133,11 +140,26 @@ What is refused:
 `TASK T(PRIORITY := 1)` A task with neither SINGLE nor INTERVAL triggers nothing.
 E1410.
 
-`INTERVAL := T#0ms` A zero period describes no cadence.
+`INTERVAL := T#0ms` with no `SINGLE`: a zero period schedules nothing.
 E1410.
 
-`INTERVAL := <mutable global, %MW0, or an unknown name>` Not a compile-time period.
+`INTERVAL := <mutable global or %MW0>` Not a compile-time period.
 E1410.
+
+`SINGLE := TRUE`: the task would run once, at the first reading, and its `INTERVAL` never. `SINGLE := FALSE` with no `INTERVAL`: it never rises. A CONSTANT global counts as the constant it holds.
+E1410.
+
+`SINGLE := <INT, %IW0, a whole STRUCT, status.%B0>` Not a BOOL.
+E1410.
+
+`SINGLE := P1.local`, `P1.fb.Q` A program's input or internal variable, or a function block one holds in `VAR`: only a `VAR_OUTPUT` can be read.
+E1410.
+
+`SINGLE := P1.r^`, `P1.bits[i]` No fixed place in memory: a dereference, a subscript that is not constant.
+E1410.
+
+A name in `SINGLE` or `INTERVAL` that resolves to nothing is E0201 or E0202, whether the task is bound or not.
+A bracket or a dereference of what takes neither is what it is in a body, E0508 or E0901, and so is a bit out of range, E1429.
 
 `PROGRAM P1 : Prog;` No `WITH <task>`, so the instance would never run.
 E1412.
@@ -270,11 +292,17 @@ E1426 when that type differs, when the path indexes an array or dereferences a r
 ## How the schedule reaches the runtime
 
 Context, not API.
-`rk compile` writes the resolved schedule into the module as an `rk.schedule` custom section: the base tick, and for each task its resource, name, period in ticks, priority, and the program instances it runs with their state addresses.
+`rk compile` writes the resolved schedule into the module as an `rk.schedule` custom section: the base tick, and for each task its resource, name, period in ticks, priority, the program instances it runs with their state addresses, and the bit its `SINGLE` reads.
 
 The base tick (`common_ticktime_ns`) is the GCD of every task interval, and each task's `period_ticks` is its interval divided by that base — `T#10ms` and `T#20ms` give a 10 ms base with 1 and 2 ticks.
+A task with no period has `period_ticks` 0, and the base tick is 0 when no task has one.
 
 Tasks are ordered most urgent first.
+
+The bit is `single`, an `addr` and a `bit`, read as `(memory[addr] >> bit) & 1`.
+The host keeps its last value, FALSE before the first reading, and reads it when the task's turn comes.
+The task runs when the bit rose, or when `tick % period_ticks == 0` and the bit is FALSE: that is `task_due` in `debug_format`.
+The compiler generates nothing for it, so a host is free to poll or to take an interrupt.
 A module with no CONFIGURATION carries no such section at all.
 
 At run time the tick index is the wall clock's, not a count of the scans that ran: a wakeup that comes late runs one scan and the ticks it slept through are dropped, never replayed on stale inputs, so a late tick shifts no task's phase.

@@ -138,50 +138,58 @@ pub(crate) fn check_multibits_bounds<'db>(
     multibits: MultibitsPart,
     ctx: &mut BodyInferenceResult<'db>,
 ) {
+    if let Some(fault) = multibits_fault(db, expr, base_type, var, multibits) {
+        ctx.errors.push(fault.to_diagnostic(db, ctx.scope.file(db)));
+    }
+}
+
+/// What is wrong with a partial access of a `base_type`, if anything: what
+/// [`check_multibits_bounds`] reports, for a task parameter too, which no
+/// body reads.
+pub(crate) fn multibits_fault<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    expr: PathExpr<'db>,
+    base_type: Type<'db>,
+    var: Option<VariableDecl<'db>>,
+    multibits: MultibitsPart,
+) -> Option<ConfigError<'db>> {
     // As declared, to be shown: normalized, a STRUCT's name reads 'STRUCT'.
     let declared = base_type;
     let base_type = base_type.normalize(db);
     if base_type.is_never() {
-        return;
+        return None;
     }
     let (MultibitsPart::Offset(offset) | MultibitsPart::AccessOffset { offset, .. }) = multibits;
     if offset.ident(db).text(db).is_empty() {
         // `b.%Xi`: the position is missing, and the syntax error says so.
-        return;
+        return None;
     }
 
     let Some(slice) = crate::hir_ty::infer::normalize::multibits_slice(db, multibits) else {
         // A size naming no slice reaches lowering as a BOOL that lowering
         // cannot emit, so it is refused here instead. `%BX1` is one too: the
         // size is one letter, and reading only the first took it for `%B1`.
-        if let MultibitsPart::AccessOffset { access, .. } = multibits {
-            ctx.errors.push(
-                ConfigError::UnknownMultibitsAccess {
-                    expr,
-                    access: access.text(db).clone(),
-                }
-                .to_diagnostic(db, ctx.scope.file(db)),
-            );
-        }
-        return;
+        let MultibitsPart::AccessOffset { access, .. } = multibits else {
+            return None;
+        };
+        return Some(ConfigError::UnknownMultibitsAccess {
+            expr,
+            access: access.text(db).clone(),
+        });
     };
 
     // Only a bit string, an integer or a BOOL has parts. The others passed
     // here unchecked: a REAL's or an ARRAY's reached lowering, which emitted
     // an invalid module or stopped with an internal compiler error.
     if !base_type.takes_partial_access() {
-        ctx.errors.push(
-            ConfigError::PartialAccessWithoutParts {
-                expr,
-                var,
-                base_type: declared,
-            }
-            .to_diagnostic(db, ctx.scope.file(db)),
-        );
-        return;
+        return Some(ConfigError::PartialAccessWithoutParts {
+            expr,
+            var,
+            base_type: declared,
+        });
     }
     let Size::Size(base_bits) = base_type.get_size() else {
-        return;
+        return None;
     };
     let (access_bits, offset_val) = (slice.width, slice.index);
 
@@ -189,18 +197,16 @@ pub(crate) fn check_multibits_bounds<'db>(
     // Valid when: (offset_val + 1) * access_bits <= base_bits
     if (offset_val + 1) * access_bits > base_bits {
         let max_offset = (access_bits <= base_bits).then(|| base_bits / access_bits - 1);
-        ctx.errors.push(
-            ConfigError::MultibitsOutOfRange {
-                expr,
-                var,
-                offset: offset_val,
-                access_bits,
-                max_offset,
-                base_type,
-            }
-            .to_diagnostic(db, ctx.scope.file(db)),
-        );
+        return Some(ConfigError::MultibitsOutOfRange {
+            expr,
+            var,
+            offset: offset_val,
+            access_bits,
+            max_offset,
+            base_type,
+        });
     }
+    None
 }
 
 /// The FB/Class that declares a method — its enclosing POU, reached via the

@@ -676,9 +676,26 @@ fn lower_module_from_pous<'db>(
                 .iter()
         })
         .collect();
+    // An address a task's SINGLE reads needs its cell too: the host looks there
+    // whether a body names it or not.
+    let single_addresses = config
+        .iter()
+        .flat_map(|c| {
+            hir::hir_ty::config::infer_config_result(db, *c)
+                .schedule
+                .resources
+                .iter()
+        })
+        .flat_map(|r| r.tasks.iter())
+        .filter_map(|t| match &t.trigger.single.as_ref()?.source {
+            hir::hir_ty::config::SingleSource::Address(address) => Some(address),
+            _ => None,
+        });
     let config_cells: Vec<hir::hir_def::pous::variable::LocatedAddress> = config_locations
         .iter()
-        .map(|loc| config_cell(db, &loc.address).0)
+        .map(|loc| &loc.address)
+        .chain(single_addresses)
+        .map(|address| config_cell(db, address).0)
         .collect();
     synthesize_bare_addresses(
         db,
@@ -690,7 +707,13 @@ fn lower_module_from_pous<'db>(
 
     // Build the CONFIGURATION's schedule: allocate one instance per program
     // configuration (recording its RETAIN fields) and resolve task periods.
-    let schedule = crate::schedule::lower_schedule(db, config, &mut memory_layout, &program_infos)?;
+    let schedule = crate::schedule::lower_schedule(
+        db,
+        config,
+        &mut memory_layout,
+        &program_infos,
+        &global_table,
+    )?;
     // The host calls the body of a function block a task runs.
     if let Some(sched) = &schedule {
         let run: FxHashSet<_> = sched
@@ -763,6 +786,11 @@ fn lower_module_from_pous<'db>(
                     if let Some(&new_addr) = bands.remap.get(&fb.program_addr) {
                         fb.program_addr = new_addr;
                     }
+                }
+                if let Some(single) = &mut task.single
+                    && let Some(&new_addr) = bands.remap.get(&single.base)
+                {
+                    single.base = new_addr;
                 }
             }
         }
@@ -1213,7 +1241,7 @@ fn collect_source_files(
 // VAR_GLOBAL lowering
 // ---------------------------------------------------------------------------
 
-type GlobalTable<'db> =
+pub(crate) type GlobalTable<'db> =
     FxHashMap<hir::hir_def::interned::identifier::Ident, (u32, crate::types::MirType)>;
 
 /// The address whose cell holds `address`, and where in it: the wider

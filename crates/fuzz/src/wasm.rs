@@ -84,10 +84,14 @@ pub(crate) fn decode_sections(wasm: &[u8]) -> Result<Sections, Finding> {
                     format!("version {}", m.version),
                 ));
             }
-            if let Some(t) = m.tasks.iter().find(|t| t.period_ticks == 0) {
+            if let Some(t) = m
+                .tasks
+                .iter()
+                .find(|t| t.period_ticks == 0 && t.single.is_none())
+            {
                 return Err(bad(
                     debug_format::SCHEDULE_SECTION,
-                    format!("task `{}` has a period of 0 ticks", t.name),
+                    format!("task `{}` has neither a period nor a SINGLE", t.name),
                 ));
             }
             Some(m)
@@ -253,7 +257,11 @@ pub(crate) fn execute(wasm: &[u8], sections: &Sections) -> Result<(), Finding> {
         ..
     } = host;
     let scans = scan_entries(&mut store, &instance, &module, sections)?;
-    let scanned: Vec<&str> = scans.iter().map(|(n, ..)| n.as_str()).collect();
+    let scanned: Vec<&str> = scans
+        .iter()
+        .flat_map(|t| &t.entries)
+        .map(|(n, ..)| n.as_str())
+        .collect();
     let others: Vec<(String, Func)> = module
         .exports()
         .filter(|e| matches!(e.ty(), ExternType::Func(_)))
@@ -423,16 +431,27 @@ impl Host {
                 return Ok(Some(self.message(why)));
             }
         }
-        let entries = scan_entries(&mut self.store, &self.instance, &self.module, sections)?;
+        let tasks = scan_entries(&mut self.store, &self.instance, &self.module, sections)?;
+        // Each task's SINGLE at the last look, which starts at FALSE.
+        let mut levels = vec![false; tasks.len()];
         for tick in 0..scans {
-            for (name, func, this, period) in &entries {
-                if tick % period != 0 {
+            for (task, last) in tasks.iter().zip(&mut levels) {
+                // Read at the task's turn: a task ahead of it may have just
+                // raised it.
+                let level = task
+                    .single
+                    .and_then(|s| s.read(self.memory.data(&self.store)))
+                    .unwrap_or(false);
+                let previous = std::mem::replace(last, level);
+                if !debug_format::task_due(task.period_ticks, tick, level, previous) {
                     continue;
                 }
-                self.store.set_fuel(FUEL).expect("fuel is enabled");
-                let args: Vec<Val> = this.iter().map(|a| Val::I32(*a)).collect();
-                if let Some(why) = ended(func.call(&mut self.store, &args, &mut []), name)? {
-                    return Ok(Some(self.message(why)));
+                for (name, func, this) in &task.entries {
+                    self.store.set_fuel(FUEL).expect("fuel is enabled");
+                    let args: Vec<Val> = this.iter().map(|a| Val::I32(*a)).collect();
+                    if let Some(why) = ended(func.call(&mut self.store, &args, &mut []), name)? {
+                        return Ok(Some(self.message(why)));
+                    }
                 }
             }
         }
@@ -450,9 +469,17 @@ fn zero(ty: &ValType) -> Option<Val> {
     })
 }
 
-/// A scan entry: its name, the function, its `this` argument when it is a
-/// program instance, and the period it runs at.
-type ScanEntry = (String, Func, Option<i32>, u64);
+/// A scan entry: its name, the function, and its `this` argument when it is
+/// a program instance.
+type ScanEntry = (String, Func, Option<i32>);
+
+/// What runs together, and when: a task, or an export a module without a
+/// CONFIGURATION runs at each scan.
+struct ScanTask {
+    period_ticks: u64,
+    single: Option<debug_format::SingleBit>,
+    entries: Vec<ScanEntry>,
+}
 
 /// What a scan runs: the tasks of the `rk.schedule` section, whose every
 /// binding must resolve, or without one each `() -> ()` export, as a
@@ -462,10 +489,11 @@ fn scan_entries(
     instance: &Instance,
     module: &Module,
     sections: &Sections,
-) -> Result<Vec<ScanEntry>, Finding> {
-    let mut entries = Vec::new();
+) -> Result<Vec<ScanTask>, Finding> {
+    let mut tasks = Vec::new();
     if let Some(schedule) = &sections.schedule {
         for task in &schedule.tasks {
+            let mut entries = Vec::new();
             for program in &task.programs {
                 let func = instance
                     .get_typed_func::<i32, ()>(&mut *store, &program.export)
@@ -482,21 +510,29 @@ fn scan_entries(
                     program.export.clone(),
                     *func.func(),
                     Some(program.instance_addr as i32),
-                    task.period_ticks,
                 ));
             }
+            tasks.push(ScanTask {
+                period_ticks: task.period_ticks,
+                single: task.single,
+                entries,
+            });
         }
-        return Ok(entries);
+        return Ok(tasks);
     }
     for export in module.exports() {
         if export.name() == "__init" {
             continue;
         }
         if let Ok(f) = instance.get_typed_func::<(), ()>(&mut *store, export.name()) {
-            entries.push((export.name().to_string(), *f.func(), None, 1));
+            tasks.push(ScanTask {
+                period_ticks: 1,
+                single: None,
+                entries: vec![(export.name().to_string(), *f.func(), None)],
+            });
         }
     }
-    Ok(entries)
+    Ok(tasks)
 }
 
 /// The retain and located maps name addresses in bands the module exports;
@@ -604,6 +640,17 @@ fn check_bands(
                         ),
                     ));
                 }
+            }
+            if let Some(single) = task.single
+                && (single.addr as u64 >= size || single.bit > 7)
+            {
+                return Err(Finding::new(
+                    "memory-layout",
+                    format!(
+                        "task `{}` reads SINGLE at byte {} bit {}, beyond the {size}-byte memory",
+                        task.name, single.addr, single.bit
+                    ),
+                ));
             }
         }
     }

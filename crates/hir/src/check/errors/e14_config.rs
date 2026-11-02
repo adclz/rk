@@ -65,10 +65,13 @@ pub enum ConfigError<'db> {
     SingleAfterInterval(Range),
     SingleAfterPriority(Range),
     /// A TASK the scheduler cannot honour. `reason` says which rule it broke,
-    /// so the four causes do not collapse into one message.
+    /// so the causes do not collapse into one message.
     UnschedulableTask {
         task: SpanIdent<'db>,
         reason: UnschedulableReason,
+        /// What the report points at: the task's name, or what its SINGLE
+        /// is given when the fault is there.
+        site: CallSite<'db>,
     },
     /// The task name referenced in a `WITH <task>` clause does not exist in the config.
     UnknownTaskRef {
@@ -773,13 +776,11 @@ pub enum ProgElementRefusal<'db> {
     },
 }
 
-/// Why a TASK cannot be scheduled. Only cyclic tasks with a literal, non-zero
-/// INTERVAL are; each other shape gets its own message rather than a shared
-/// "unsupported", because the fix differs in every case.
+/// Why a TASK cannot be scheduled. A task runs on a rising edge of its SINGLE
+/// and on its INTERVAL; each shape that gives it neither gets its own message
+/// rather than a shared "unsupported", because the fix differs in every case.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, salsa::Update)]
 pub enum UnschedulableReason {
-    /// `SINGLE := <event>` — event-driven tasks are not implemented.
-    EventDriven,
     /// Neither SINGLE nor INTERVAL. Nothing triggers the task, so a program
     /// bound to it never runs.
     NoTrigger,
@@ -787,23 +788,65 @@ pub enum UnschedulableReason {
     /// non-CONSTANT global, a directly represented variable, an unknown name.
     /// A CONSTANT global IS accepted; the period just has to be knowable.
     NonLiteralInterval,
-    /// INTERVAL is zero, which describes no cadence at all.
+    /// INTERVAL is zero, which schedules nothing, and no SINGLE runs the task
+    /// instead.
     ZeroInterval,
-    /// INTERVAL names nothing: reported where it is written (E0201), so the
-    /// task is left out of the schedule with no report of its own.
+    /// SINGLE is a constant, so it never rises: FALSE with no period to leave
+    /// running, or one whose value is not read here. FALSE beside a period
+    /// changes nothing and is not refused.
+    ConstantSingle,
+    /// SINGLE is always TRUE and the task has no INTERVAL: it would run once,
+    /// the first reading being a rising edge.
+    SingleAlwaysTrue,
+    /// SINGLE is always TRUE beside an INTERVAL: the task would run once, and
+    /// the INTERVAL never, since it runs while SINGLE stands at FALSE.
+    SingleAlwaysTrueBesideInterval,
+    /// SINGLE reads something that is not a BOOL.
+    SingleNotBool,
+    /// SINGLE names a variable of a program or a function block that is not a
+    /// VAR_OUTPUT.
+    SingleNotOutput,
+    /// SINGLE goes through what has no fixed place in memory: a dereference,
+    /// a subscript that does not fold.
+    SingleNotFixed,
+    /// A parameter names nothing: reported where it is written (E0201, E0202),
+    /// so the task is left out of the schedule with no report of its own.
     UnknownName,
 }
 
 impl UnschedulableReason {
     fn message(self) -> &'static str {
         match self {
-            Self::EventDriven => "event-driven tasks (SINGLE) are not supported",
-            Self::NoTrigger => "a TASK needs an INTERVAL to run its programs",
+            Self::NoTrigger => "a TASK needs an INTERVAL or a SINGLE to run its programs",
             Self::NonLiteralInterval => {
                 "INTERVAL must be a TIME literal or a CONSTANT global holding one"
             }
-            Self::ZeroInterval => "INTERVAL must be greater than zero",
-            Self::UnknownName => "INTERVAL names nothing",
+            Self::ZeroInterval => "a zero INTERVAL schedules no periodic run",
+            Self::ConstantSingle => "SINGLE is a constant, which never rises",
+            Self::SingleAlwaysTrue => "SINGLE is always TRUE, so the task would run once",
+            Self::SingleAlwaysTrueBesideInterval => {
+                "SINGLE is always TRUE, so the task would run once and its INTERVAL never"
+            }
+            Self::SingleNotBool => "SINGLE must be a BOOL",
+            Self::SingleNotOutput => "SINGLE reads a VAR_OUTPUT, not this variable",
+            Self::SingleNotFixed => "SINGLE must have a fixed place in memory",
+            Self::UnknownName => "a parameter names nothing",
+        }
+    }
+
+    /// The rule the refusal rests on.
+    fn note(self) -> Option<&'static str> {
+        match self {
+            Self::ZeroInterval | Self::ConstantSingle => Some(
+                "a task runs on each rising edge of SINGLE, and on its INTERVAL while SINGLE stands at FALSE",
+            ),
+            Self::SingleAlwaysTrue | Self::SingleAlwaysTrueBesideInterval => Some(
+                "a SINGLE already TRUE at its first reading is a rising edge, and an INTERVAL runs while SINGLE stands at FALSE",
+            ),
+            Self::SingleNotFixed => {
+                Some("a host reads SINGLE from memory, without running the program")
+            }
+            _ => None,
         }
     }
 
@@ -811,14 +854,37 @@ impl UnschedulableReason {
     /// wrong; this says what to write instead.
     fn help(self) -> Option<&'static str> {
         match self {
-            Self::EventDriven => Some("use a cyclic period, e.g. `INTERVAL := T#10ms`"),
-            Self::NoTrigger => Some("add `INTERVAL := T#10ms`"),
+            Self::NoTrigger => Some(
+                "add `INTERVAL := T#10ms` to run on a period, or `SINGLE := go` to run on a rising edge",
+            ),
+            Self::ZeroInterval => Some(
+                "set `INTERVAL := T#10ms` to run on a period, or add `SINGLE := go` to run on a rising edge",
+            ),
             // The likeliest cause is a global that is simply not marked
             // CONSTANT — the value looks fixed right there in the source, so
             // without this the rejection reads as arbitrary.
             Self::NonLiteralInterval => Some("declare the global `VAR_GLOBAL CONSTANT`"),
-            Self::ZeroInterval | Self::UnknownName => None,
+            Self::ConstantSingle
+            | Self::SingleAlwaysTrue
+            | Self::SingleAlwaysTrueBesideInterval => Some("name a BOOL variable or a bit address"),
+            Self::SingleNotFixed => Some(
+                "name a VAR_GLOBAL or a program's VAR_OUTPUT, or an element at constant subscripts",
+            ),
+            Self::SingleNotBool | Self::SingleNotOutput | Self::UnknownName => None,
         }
+    }
+
+    /// Whether the fault is in what SINGLE is given: what the report points at.
+    pub fn is_in_single(self) -> bool {
+        matches!(
+            self,
+            Self::ConstantSingle
+                | Self::SingleAlwaysTrue
+                | Self::SingleAlwaysTrueBesideInterval
+                | Self::SingleNotBool
+                | Self::SingleNotOutput
+                | Self::SingleNotFixed
+        )
     }
 }
 
@@ -1008,7 +1074,7 @@ impl<'db> ToIdeDiagnostic<'db> for ConfigError<'db> {
                 .desc(self)
                 .range(crate::denormalize(db, file, span).unwrap_or_default())
                 .call(),
-            Self::UnschedulableTask { task, reason } => {
+            Self::UnschedulableTask { task, reason, site } => {
                 let mut diag = diag()
                     .message(format!(
                         "task '{}' cannot be scheduled: {}",
@@ -1017,11 +1083,9 @@ impl<'db> ToIdeDiagnostic<'db> for ConfigError<'db> {
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(crate::denormalize(db, file, &task.get_span(db)).unwrap_or_default())
+                    .range(crate::denormalize(db, file, &site.get_span(db)).unwrap_or_default())
                     .call();
-                if let Some(help) = reason.help() {
-                    diag.with_help(help.to_string());
-                }
+                diag.with_advice(reason.note(), reason.help());
                 diag
             }
             Self::UnknownTaskRef { task } => diag()

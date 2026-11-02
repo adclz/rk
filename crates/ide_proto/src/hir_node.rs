@@ -139,7 +139,8 @@ pub fn element_task_at<'db>(
         .copied()
 }
 
-/// The resource or the program instance a step of a VAR_CONFIG path names.
+/// The resource or the program instance a step of a VAR_CONFIG path or of a
+/// task parameter's path names.
 pub fn config_path_step<'db>(
     db: &'db dyn WorkspaceDataBase,
     path: hir::hir_def::expressions::expression::PathExpr<'db>,
@@ -151,5 +152,6 @@ pub fn config_path_step<'db>(
     hir::hir_ty::config::resolve_config_entries(db, config)
         .steps
         .get(&path)
+        .or_else(|| hir::hir_ty::config::task_paths(db, config).steps.get(&path))
         .copied()
 }

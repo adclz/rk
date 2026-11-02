@@ -10,7 +10,7 @@ All these tables are stored as custom sections, encoded with [MessagePack](https
 | `debug-functions` | debug only | wasm function index → POU name |
 | `debug-lines` | debug only | code offset → file, line, column |
 | `debug-locals` | debug only | wasm local slot → variable name and type |
-| `rk.schedule` | every build | tasks, periods, priorities, instance addresses |
+| `rk.schedule` | every build | tasks, periods, the bit each `SINGLE` reads, priorities, instance addresses |
 | `retain-map` | every build | the byte ranges a power cycle must preserve |
 | `test-manifest` | debug only, when there are tests | the exports `rk test` calls |
 

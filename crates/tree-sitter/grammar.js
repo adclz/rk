@@ -1904,8 +1904,14 @@ module.exports = grammar({
       return seq("(", optional(choice(from_single, from_interval, from_priority)), ")");
     },
 
+    // A bit of a variable (`status.%X3`) is rk's: the standard's Data_Source
+    // has no partial access. It reads as it does in a body.
     data_source: ($) =>
-      choice($.constant, $.path_expression, $.direct_variable),
+      choice(
+        $.constant,
+        seq($.path_expression, field("access", optional($.multibit_part_access))),
+        $.direct_variable,
+      ),
 
     prog_config: ($) =>
       seq(

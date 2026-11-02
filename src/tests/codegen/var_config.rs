@@ -9,6 +9,38 @@ use crate::tests::codegen::{compile_to_mir_and_wasm, with_db};
 use debug_format::{DebugInfo, VarValue};
 use rstest::*;
 
+/// A resource may share its name with a program instance. `Main.x` is that
+/// instance's variable, and `Main.Main.y` and `Main.Other.x` go through the
+/// resource: each value lands on the variable it names, and no other.
+#[rstest]
+fn a_value_through_a_resource_named_like_an_instance(mut with_db: db::RootDatabase) {
+    let source = r#"
+        PROGRAM P
+        VAR x : INT := 1; y : INT := 2; END_VAR
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+        VAR_CONFIG
+            Main.x       : INT := 10;
+            Main.Main.y  : INT := 20;
+            Main.Other.x : INT := 30;
+        END_VAR
+            RESOURCE Main ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM Main WITH T : P;
+                PROGRAM Other WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    let info = DebugInfo::from_wasm(&wasm);
+    let plc = TestPlc::load(&wasm).expect("load");
+    assert_eq!(plc.read_var(&info, "Main.x"), Some(VarValue::I16(10)));
+    assert_eq!(plc.read_var(&info, "Main.y"), Some(VarValue::I16(20)));
+    assert_eq!(plc.read_var(&info, "Other.x"), Some(VarValue::I16(30)));
+    assert_eq!(plc.read_var(&info, "Other.y"), Some(VarValue::I16(2)));
+}
+
 /// A value overrides the declaration's for that instance only, whether it
 /// names a variable, a member of an instance the program holds, or the
 /// instance as a whole. A value for the instance sets the members it names

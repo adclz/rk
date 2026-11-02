@@ -1174,6 +1174,75 @@ END_CONFIGURATION
     assert!(markup.contains(shown), "{markup}");
 }
 
+/// A name a resource shares with a program instance shows what the path reads
+/// it as: the instance when a variable of it follows, and the resource when an
+/// instance does.
+#[rstest]
+#[case::the_instance("Main.x", 0, "PROGRAM Main WITH T : Prog")]
+#[case::the_resource("Main.Main.y", 0, "RESOURCE Main ON CPU")]
+#[case::the_instance_through_the_resource("Main.Main.y", 5, "PROGRAM Main WITH T : Prog")]
+pub fn hover_on_a_resource_named_like_an_instance(
+    mut with_db: RootDatabase,
+    #[case] at: &str,
+    #[case] into: usize,
+    #[case] shown: &str,
+) {
+    let source = r#"
+PROGRAM Prog
+VAR x : INT; y : INT; END_VAR
+END_PROGRAM
+
+CONFIGURATION Cfg
+VAR_CONFIG
+    Main.x : INT := 1;
+    Main.Main.y : INT := 2;
+END_VAR
+    RESOURCE Main ON CPU
+        TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM Main WITH T : Prog;
+    END_RESOURCE
+END_CONFIGURATION
+"#;
+    let file = add_source(&mut with_db, source);
+
+    let offset = source.find(at).unwrap() + into;
+    let node = ide_proto::walk::descendant_at(&with_db, file, offset).expect("a node");
+    let hover = node.hover(&with_db, offset).expect("a hover");
+    let markup = hover_markup(hover.contents).unwrap();
+    assert!(markup.contains(shown), "{markup}");
+}
+
+/// What a task's SINGLE writes shows what it is, each name of a path on its
+/// own: the resource and the instance it starts with, the global or the
+/// output, the element, and the address.
+#[rstest]
+#[case::global("start, INTERVAL", 0, "(GLOBAL) start: BOOL")]
+#[case::resource("Res.flags", 0, "RESOURCE Res ON CPU")]
+#[case::global_in_a_path("flags.go", 0, "(GLOBAL) flags: Flags")]
+#[case::element("flags.go", 6, "go: BOOL")]
+#[case::instance("inst.done", 0, "PROGRAM inst WITH A : Prog")]
+#[case::output("inst.done", 5, "(OUTPUT) done: BOOL")]
+#[case::array_output("inst.bits", 5, "(OUTPUT) bits: ARRAY [1..3] OF BOOL")]
+#[case::subscript("which]", 0, "(GLOBAL) which: INT")]
+#[case::output_of_an_instance("timer.q", 6, "(OUTPUT) q: BOOL")]
+#[case::variable_with_a_bit("status.%X3", 0, "(GLOBAL) status: WORD")]
+#[case::address("%IX0.0", 1, "%IX0.0 : BOOL")]
+pub fn hover_on_what_a_single_reads(
+    mut with_db: RootDatabase,
+    #[case] at: &str,
+    #[case] into: usize,
+    #[case] shown: &str,
+) {
+    use crate::tests::lsp::{TRIGGERED, triggered_at};
+    let file = add_source(&mut with_db, TRIGGERED);
+
+    let offset = triggered_at(at) + into;
+    let node = ide_proto::walk::descendant_at(&with_db, file, offset).expect("a node");
+    let hover = node.hover(&with_db, offset).expect("a hover");
+    let markup = hover_markup(hover.contents).unwrap();
+    assert!(markup.contains(shown), "{markup}");
+}
+
 /// A declaration's hover shows what it takes in memory, as rust-analyzer
 /// does: `size`, and `offset` where it sits in a STRUCT or an instance. A
 /// VAR_IN_OUT member holds an address, a STRING its length and capacity, a

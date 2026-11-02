@@ -680,8 +680,10 @@ impl DebugLocals {
 /// release optimization must keep it.
 pub const SCHEDULE_SECTION: &str = "rk.schedule";
 
-/// On-wire format version for [`ScheduleManifest`].
-pub const SCHEDULE_VERSION: u16 = 1;
+/// On-wire format version for [`ScheduleManifest`]. Version 2 added
+/// [`TaskEntry::single`] and the task with no period: a reader of version 1
+/// would run such a task wrong, so it refuses the module instead.
+pub const SCHEDULE_VERSION: u16 = 2;
 
 /// What runs, and when: policy as data, so a task keeps its name,
 /// priority and RESOURCE. MessagePack encodes positionally: new fields go
@@ -690,7 +692,9 @@ pub const SCHEDULE_VERSION: u16 = 1;
 pub struct ScheduleManifest {
     pub version: u16,
     /// The base tick: the greatest common divisor of every task interval, in
-    /// nanoseconds. Each task's period is a whole number of these.
+    /// nanoseconds. Each task's period is a whole number of these. Zero when
+    /// no task has an interval: only a [`TaskEntry::single`] runs them, and
+    /// the host decides how often it looks.
     pub common_ticktime_ns: u64,
     /// Dispatch order — most urgent first. A consumer runs the due tasks in
     /// slice order and is correct without re-sorting.
@@ -705,11 +709,50 @@ pub struct TaskEntry {
     /// execution unit.
     pub resource: String,
     /// Base ticks between runs: the task is due when `tick % period_ticks == 0`.
+    /// Zero for a task with no periodic runs. [`task_due`] is the whole rule.
     pub period_ticks: u64,
     /// IEC priority, lower is more urgent. `None` when PRIORITY was omitted.
     pub priority: Option<u32>,
     /// Program instances, in declaration order.
     pub programs: Vec<ProgramEntry>,
+    /// The bit whose rising edge runs the task, for one declared with a
+    /// `SINGLE`. A host reads it when the task's turn comes, or takes an
+    /// interrupt on it: what the task does on it is [`task_due`].
+    #[serde(default)]
+    pub single: Option<SingleBit>,
+}
+
+/// One bit of the module's memory: the value of a task's `SINGLE`. Final,
+/// written after any retain relocation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SingleBit {
+    /// The byte holding it.
+    pub addr: u32,
+    /// Its place in that byte, 0 being the lowest.
+    pub bit: u8,
+}
+
+impl SingleBit {
+    /// The bit's value in `memory`: `(memory[addr] >> bit) & 1`. `None` when
+    /// it is outside it.
+    pub fn read(self, memory: &[u8]) -> Option<bool> {
+        let byte = *memory.get(self.addr as usize)?;
+        let shifted = byte.checked_shr(u32::from(self.bit))?;
+        Some((shifted & 1) == 1)
+    }
+}
+
+/// Whether a task runs now. A task runs once on each rising edge of its
+/// `SINGLE`, and on each `tick` its period divides while `SINGLE` stands at
+/// FALSE, so an edge and a period falling on the same tick are one run.
+///
+/// `level` is the bit's value now and `previous` the value at the last look,
+/// FALSE before the first one: a `SINGLE` already TRUE at the first look is a
+/// rising edge. Both stay FALSE for a task with no `SINGLE`.
+pub fn task_due(period_ticks: u64, tick: u64, level: bool, previous: bool) -> bool {
+    let edge = level && !previous;
+    let periodic = period_ticks != 0 && tick.is_multiple_of(period_ticks) && !level;
+    edge || periodic
 }
 
 /// One PROGRAM instance bound to a task.
