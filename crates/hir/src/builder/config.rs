@@ -235,6 +235,14 @@ impl<'db> SemanticIndexBuilder<'db> {
             .as_ref()
             .map(|ds| self.parse_data_source(ds.cast(self.ast)));
         let single = single.and_then(|r| self.try_parse(r));
+        // A bit a SINGLE reads is mentioned like one in a body, and gets a cell
+        // the same way. Anything wider is no SINGLE at all (E1410).
+        if let Some(DataSource::Direct(dv)) = single
+            && let Some(address) = crate::hir_def::pous::variable::LocatedAddress::of(self.db, dv)
+            && address.width == 1
+        {
+            self.located.push((address, HirNode::DirectVariable(dv)));
+        }
 
         let interval = init
             .interval

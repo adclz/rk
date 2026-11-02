@@ -328,21 +328,38 @@ impl<'db> InitInference<'db> {
     }
 
     /// A task's INTERVAL and SINGLE written as constants, typed as they are
-    /// written.
+    /// written, and the subscripts of a path they write.
     fn check_task_constants(&mut self, db: &'db dyn WorkspaceDataBase) {
         use crate::hir_def::config::DataSource;
+        use crate::hir_def::expressions::expression::PathExprKind;
+        use crate::hir_ty::expr_store::PathExprWalkStep;
         let ScopeKind::Config(config) = get_scope(db, self.scope).kind else {
             return;
         };
         for task in config.resources(db).iter().flat_map(|r| r.tasks(db).iter()) {
             for source in [task.interval(db), task.single(db)].into_iter().flatten() {
-                let DataSource::Constant(value) = source else {
-                    continue;
+                let values: Vec<_> = match source {
+                    DataSource::Constant(value) => vec![value],
+                    DataSource::Path(path) => path
+                        .flatten(db)
+                        .iter()
+                        .filter_map(|step| match step {
+                            PathExprWalkStep::Index { expr } => match expr.expr(db) {
+                                PathExprKind::Index(bracket) => Some(bracket.index.clone()),
+                                _ => None,
+                            },
+                            _ => None,
+                        })
+                        .flatten()
+                        .collect(),
+                    DataSource::Direct(_) => Vec::new(),
                 };
-                let body = &mut self.body_infer_result;
-                let mut infer_ctx = InferExprCtx::new(Resolver::for_scope(db, self.scope));
-                infer_ctx.resolve_expr_expecting(db, value, body, None);
-                infer_ctx.check_expr(db, value, body);
+                for value in values {
+                    let body = &mut self.body_infer_result;
+                    let mut infer_ctx = InferExprCtx::new(Resolver::for_scope(db, self.scope));
+                    infer_ctx.resolve_expr_expecting(db, value, body, None);
+                    infer_ctx.check_expr(db, value, body);
+                }
             }
         }
     }
