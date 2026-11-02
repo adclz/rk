@@ -2566,7 +2566,18 @@
   {
     "type": "data_source",
     "named": true,
-    "fields": {},
+    "fields": {
+      "access": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "multibit_part_access",
+            "named": true
+          }
+        ]
+      }
+    },
     "children": {
       "multiple": false,
       "required": true,

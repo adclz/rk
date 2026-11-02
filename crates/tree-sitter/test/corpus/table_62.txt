@@ -816,3 +816,106 @@ END_CONFIGURATION
                   (int_literal
                     (signed_int
                       (unsigned_int))))))))))))
+
+================================================================================
+Task parameters read a path, a bit of one, an address or a constant
+================================================================================
+
+CONFIGURATION cfg
+	RESOURCE res ON cpu
+		TASK a(SINGLE := status.%X3, PRIORITY := 1);
+		TASK b(SINGLE := p1.word.3, INTERVAL := t#10ms, PRIORITY := 2);
+		TASK c(SINGLE := flags.go, PRIORITY := 3);
+		TASK d(SINGLE := %IX0.3, PRIORITY := 4);
+		TASK e(SINGLE := FALSE, INTERVAL := period, PRIORITY := 5);
+		PROGRAM p1 WITH a : f;
+	END_RESOURCE
+END_CONFIGURATION
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (config_decl
+    (identifier)
+    (resource_decl
+      (identifier)
+      (identifier)
+      (single_resource_decl
+        (task_config
+          (identifier)
+          (task_init
+            (data_source
+              (path_expression
+                (var_access
+                  (field)))
+              (multibit_part_access
+                (multibit
+                  (adress_identifier)
+                  (unsigned_int))))
+            (unsigned_int))))
+      (single_resource_decl
+        (task_config
+          (identifier)
+          (task_init
+            (data_source
+              (path_expression
+                (field_expression
+                  (path_expression
+                    (var_access
+                      (field)))
+                  (var_access
+                    (field))))
+              (multibit_part_access
+                (multibit
+                  (unsigned_int))))
+            (data_source
+              (constant
+                (time_literal
+                  (duration
+                    (time
+                      (time_type_name)
+                      (time_value))))))
+            (unsigned_int))))
+      (single_resource_decl
+        (task_config
+          (identifier)
+          (task_init
+            (data_source
+              (path_expression
+                (field_expression
+                  (path_expression
+                    (var_access
+                      (field)))
+                  (var_access
+                    (field)))))
+            (unsigned_int))))
+      (single_resource_decl
+        (task_config
+          (identifier)
+          (task_init
+            (data_source
+              (direct_variable
+                (adress_identifier)
+                (offset
+                  (unsigned_int)
+                  (unsigned_int))))
+            (unsigned_int))))
+      (single_resource_decl
+        (task_config
+          (identifier)
+          (task_init
+            (data_source
+              (constant
+                (bool_literal
+                  (bool_literal_with_string))))
+            (data_source
+              (path_expression
+                (var_access
+                  (field))))
+            (unsigned_int))))
+      (single_resource_decl
+        (prog_config
+          (identifier)
+          (identifier)
+          (namespace_access
+            (identifier)))))))

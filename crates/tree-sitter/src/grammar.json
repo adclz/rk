@@ -10385,8 +10385,29 @@
           "name": "constant"
         },
         {
-          "type": "SYMBOL",
-          "name": "path_expression"
+          "type": "SEQ",
+          "members": [
+            {
+              "type": "SYMBOL",
+              "name": "path_expression"
+            },
+            {
+              "type": "FIELD",
+              "name": "access",
+              "content": {
+                "type": "CHOICE",
+                "members": [
+                  {
+                    "type": "SYMBOL",
+                    "name": "multibit_part_access"
+                  },
+                  {
+                    "type": "BLANK"
+                  }
+                ]
+              }
+            }
+          ]
         },
         {
           "type": "SYMBOL",
