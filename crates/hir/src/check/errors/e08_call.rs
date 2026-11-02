@@ -153,7 +153,7 @@ pub enum CallError<'db> {
         writes_outputs: bool,
         candidates: Vec<Function<'db>>,
     },
-    /// Only elementary types can be variadic.
+    /// A type a pack cannot hold ([`Type::can_be_variadic`]).
     NonVariadicTypeForVariable {
         var: VariableDecl<'db>,
         typ: Type<'db>,
@@ -738,7 +738,7 @@ impl<'db> ToIdeDiagnostic<'db> for CallError<'db> {
                     )
                     .call();
 
-                diag.with_note("only an elementary type can be variadic".into());
+                diag.with_note("only an elementary type other than STRING can be variadic".into());
                 diag
             }
             Self::MultipleVariadicVariables { first, second } => {

@@ -129,7 +129,7 @@ pub const HEADERS: &[(&str, &str)] = &[
     ("E0808", "call of a non-callable type"),
     ("E0809", "ambiguous overloaded call"),
     ("E0810", "no matching overload"),
-    ("E0811", "variadic parameter of a composite type"),
+    ("E0811", "type that cannot be variadic"),
     ("E0812", "more than one variadic parameter"),
     ("E0813", "variadic call without arguments"),
     ("E0814", "not a variadic parameter"),

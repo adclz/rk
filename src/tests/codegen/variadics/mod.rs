@@ -191,6 +191,35 @@ fn assert_fold_reports_a_wrong_value(mut with_db: db::RootDatabase) {
     );
 }
 
+/// A pack of an alias folds at the type it names, through any number of aliases.
+#[rstest]
+#[case::int("TYPE T : INT; END_TYPE", "1", "3", "2")]
+#[case::alias_of_an_alias("TYPE U : DINT; END_TYPE TYPE T : U; END_TYPE", "1", "3", "2")]
+#[case::real("TYPE T : REAL; END_TYPE", "1.5", "3.5", "2.5")]
+#[case::time("TYPE T : TIME; END_TYPE", "T#1s", "T#3s", "T#2s")]
+#[case::bool_("TYPE T : BOOL; END_TYPE", "FALSE", "TRUE", "FALSE")]
+#[case::char_("TYPE T : CHAR; END_TYPE", "CHAR#'a'", "CHAR#'c'", "CHAR#'b'")]
+fn a_pack_of_an_alias(
+    mut with_db: db::RootDatabase,
+    #[case] declarations: &str,
+    #[case] low: &str,
+    #[case] high: &str,
+    #[case] mid: &str,
+) {
+    let source = format!(
+        "{declarations}\n\
+         FUNCTION Hi : T\nVAR_INPUT v : T...; END_VAR\n    Hi := ...v MAX;\nEND_FUNCTION\n\
+         FUNCTION Same : BOOL\nVAR_INPUT v : T...; END_VAR\n    Same := ...v=;\nEND_FUNCTION\n\
+         FUNCTION test : DINT\n\
+         IF Hi({low}, {high}, {mid}) <> {high} THEN test := 1; END_IF;\n\
+         IF NOT Same({low}, {low}) THEN test := test + 2; END_IF;\n\
+         IF Same({low}, {high}) THEN test := test + 4; END_IF;\n\
+         END_FUNCTION\n"
+    );
+    let result: i32 = run(&mut with_db, &source, "test", ());
+    assert_eq!(result, 0, "each wrong call sets its own bit");
+}
+
 /// The same variadic function called at three arities: three specializations,
 /// each folding over exactly its own parameters.
 #[rstest]

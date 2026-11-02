@@ -256,7 +256,8 @@ impl<'db> InferExprCtx<'db> {
                         // this every variadic parameter reads as unused (L0201).
                         inference_results.variables_used.insert(var);
 
-                        let var_ty = var.spec(db).infer(db).normalize(db);
+                        let declared = var.spec(db).infer(db);
+                        let var_ty = declared.normalize(db);
 
                         // Check operator-type compatibility
                         let supported = match operator {
@@ -280,7 +281,10 @@ impl<'db> InferExprCtx<'db> {
                             | FoldOperatorKind::Max => var_ty.supports_comparison(db),
                         };
 
-                        if !supported && !var_ty.is_never() {
+                        // A pack its type cannot be was refused where it is
+                        // declared (E0811), and a type that failed to resolve
+                        // where it is written.
+                        if !supported && declared.can_be_variadic(db) {
                             inference_results.errors.push(
                                 TypeError::UnsupportedOperator {
                                     call_site: curr_expr.as_call_site(db),

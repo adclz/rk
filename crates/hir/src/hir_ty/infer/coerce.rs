@@ -100,8 +100,16 @@ impl<'db> Type<'db> {
         matches!(self, Type::Elementary(_))
     }
 
+    /// Each argument of a pack is one plain parameter of its copy. A STRING is
+    /// passed as a pointer and a length, and a subrange checks what it stores, so
+    /// neither lowers to one. Asked of the type as declared: normalizing peels a
+    /// subrange down to its base.
     pub fn can_be_variadic(&self, db: &'db dyn WorkspaceDataBase) -> bool {
-        matches!(self, Type::Elementary(_))
+        self.as_subrange(db).is_none()
+            && matches!(
+                self.normalize(db),
+                Type::Elementary(e) if !matches!(e, crate::hir_def::expressions::spec::ElementarySpec::String)
+            )
     }
 
     // Type coercion check

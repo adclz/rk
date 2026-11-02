@@ -31,7 +31,7 @@ With a single argument, an arithmetic fold, `MIN` and `MAX` give that argument, 
 
 ## Rules
 
-- The type must be elementary, or an alias of one (`E0811`).
+- The type must be elementary, or an alias of one, and neither a `STRING` nor a subrange (`E0811`).
 - A FUNCTION or METHOD has one variadic parameter (`E0812`), and it is its only `VAR_INPUT` (`E0815`).
 - A PROGRAM or a FUNCTION_BLOCK takes none (`E0029`).
 - A call passes it at least one argument (`E0813`).

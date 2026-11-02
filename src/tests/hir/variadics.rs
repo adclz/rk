@@ -25,15 +25,155 @@ FUNCTION sum_all : INT
 END_FUNCTION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0811] Error: variadic parameter of a composite type
+    [E0811] Error: type that cannot be variadic
         ,-[ file:///test0.st:10:15 ]
         |
      10 |         args: MyStruct...
         |               ^^^^|^^^
         |                   `----- 'MyStruct' cannot be variadic
         |
-        | Note: only an elementary type can be variadic
+        | Note: only an elementary type other than STRING can be variadic
     ----'
+    ");
+}
+
+/// Each argument of a pack is one plain parameter of its copy, which a STRING and
+/// a subrange are not. `rk check` took both, called or not, and the build stopped
+/// on an internal compiler error at the first call.
+#[rstest]
+fn invalid_variadic_string(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION F : BOOL
+VAR_INPUT v : STRING...; END_VAR
+    F := ...v=;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0811] Error: type that cannot be variadic
+       ,-[ file:///test0.st:3:15 ]
+       |
+     3 | VAR_INPUT v : STRING...; END_VAR
+       |               ^^^|^^
+       |                  `---- 'STRING' cannot be variadic
+       |
+       | Note: only an elementary type other than STRING can be variadic
+    ---'
+    ");
+}
+
+#[rstest]
+fn invalid_variadic_subrange(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE Small : INT (0..5); END_TYPE
+
+FUNCTION F : BOOL
+VAR_INPUT v : Small...; END_VAR
+    F := ...v=;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0811] Error: type that cannot be variadic
+       ,-[ file:///test0.st:5:15 ]
+       |
+     5 | VAR_INPUT v : Small...; END_VAR
+       |               ^^|^^
+       |                 `---- 'Small' cannot be variadic
+       |
+       | Note: only an elementary type other than STRING can be variadic
+    ---'
+    ");
+}
+
+/// E0811 alone, however the type is spelled, in each POU a pack can stand in,
+/// with a call and a fold that report nothing more.
+#[rstest]
+#[case::string("", "STRING", "'a'")]
+#[case::string_with_a_capacity("", "STRING[10]", "'a'")]
+#[case::alias_of_a_string("TYPE T : STRING; END_TYPE", "T", "'a'")]
+#[case::alias_of_a_string_with_a_capacity("TYPE T : STRING[10]; END_TYPE", "T", "'a'")]
+#[case::alias_of_an_alias_of_a_string("TYPE U : STRING; END_TYPE TYPE T : U; END_TYPE", "T", "'a'")]
+#[case::subrange("TYPE T : INT (0..5); END_TYPE", "T", "1")]
+#[case::alias_of_a_subrange("TYPE U : INT (0..5); END_TYPE TYPE T : U; END_TYPE", "T", "1")]
+fn invalid_variadic_of_a_type_a_pack_cannot_hold(
+    #[case] declarations: &str,
+    #[case] ty: &str,
+    #[case] argument: &str,
+) {
+    let count_codes = |source: String| {
+        let report = test_diagnostics(&mut RootDatabase::default(), &[&source]);
+        let codes: Vec<String> = report
+            .lines()
+            .filter(|l| l.starts_with('['))
+            .map(|l| l[1..6].to_string())
+            .collect();
+        (codes, report)
+    };
+    let function = format!(
+        "{declarations}\n\
+         FUNCTION F : BOOL\nVAR_INPUT v : {ty}...; END_VAR\n    F := ...v=;\nEND_FUNCTION\n\
+         FUNCTION G : BOOL\n    G := F({argument}, {argument});\nEND_FUNCTION\n"
+    );
+    let (codes, report) = count_codes(function);
+    assert_eq!(codes, ["E0811"], "{report}");
+
+    let method = format!(
+        "{declarations}\n\
+         FUNCTION_BLOCK B\n\
+         METHOD M : BOOL\nVAR_INPUT v : {ty}...; END_VAR\n    M := ...v=;\nEND_METHOD\n\
+         END_FUNCTION_BLOCK\n\
+         FUNCTION G : BOOL\nVAR b : B; END_VAR\n    G := b.M({argument}, {argument});\nEND_FUNCTION\n"
+    );
+    let (codes, report) = count_codes(method);
+    assert_eq!(codes, ["E0811"], "{report}");
+
+    let uncalled =
+        format!("{declarations}\nFUNCTION F : INT\nVAR_INPUT v : {ty}...; END_VAR\nEND_FUNCTION\n");
+    let (codes, report) = count_codes(uncalled);
+    assert_eq!(codes, ["E0811"], "{report}");
+}
+
+/// A composite pack is refused where it is declared, and its fold says no more.
+#[rstest]
+fn invalid_variadic_of_a_composite_type_reports_nothing_at_its_fold(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE S : STRUCT x : INT; END_STRUCT; END_TYPE
+
+FUNCTION F : BOOL
+VAR_INPUT v : S...; END_VAR
+    F := ...v=;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0811] Error: type that cannot be variadic
+       ,-[ file:///test0.st:5:15 ]
+       |
+     5 | VAR_INPUT v : S...; END_VAR
+       |               |
+       |               `-- 'S' cannot be variadic
+       |
+       | Note: only an elementary type other than STRING can be variadic
+    ---'
+    ");
+}
+
+/// A type that does not resolve is reported where it is written, and nothing is
+/// said of what a pack can hold, or of its fold.
+#[rstest]
+fn invalid_variadic_of_an_unknown_type_reports_the_name_alone(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION F : BOOL
+VAR_INPUT v : Nothing...; END_VAR
+    F := ...v=;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0203] Error: unknown name in a namespace
+       ,-[ file:///test0.st:3:15 ]
+       |
+     3 | VAR_INPUT v : Nothing...; END_VAR
+       |               ^^^|^^^
+       |                  `----- no item found for path 'Nothing'
+    ---'
     ");
 }
 

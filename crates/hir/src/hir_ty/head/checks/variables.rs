@@ -766,7 +766,7 @@ impl<'db> InitInference<'db> {
             let var_type = var.spec(db).infer(db);
 
             if var.variadic(db) {
-                if !var_type.normalize(db).can_be_variadic(db) {
+                if !var_type.is_never() && !var_type.can_be_variadic(db) {
                     self.errors.push(
                         CallError::NonVariadicTypeForVariable {
                             var: *var,
