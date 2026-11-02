@@ -26,7 +26,7 @@ pub const NAME: &str = "negative-radix-literal";
 /// INT and -128 in a SINT. Written for 128 or 255, it is negative with no
 /// error. A typed literal, `SINT#16#80`, says the pattern is meant and is not
 /// reported. Neither is one under a minus, which reads as a number
-/// (`-(16#80)` is minus 128), nor an operand of AND, OR or XOR, where the
+/// (`-16#80` is minus 128), nor an operand of AND, OR or XOR, where the
 /// bits are the point.
 struct NegativeRadixLiteral;
 
