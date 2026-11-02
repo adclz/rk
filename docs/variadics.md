@@ -25,8 +25,9 @@ A METHOD gets its copies the same way, per argument count and per instance type 
 - **Arithmetic** `+ - * / % **` combines the arguments from left to right: `...values-` on `10, 3, 2` is `(10 - 3) - 2`.
 - **Logic** `& | ^` is the AND, OR or XOR of every argument, on `BOOL` and bit strings.
 - **Comparison** `= <> < > <= >=` tests each adjacent pair and gives a `BOOL`: `...values<` is `TRUE` when the arguments are in ascending order.
+- **Extremes** `MIN MAX` gives the smallest or the largest argument: `...values MIN`, with a space, since the operator is a word. Each step keeps the value so far when it is `<=` the next argument, or `>=` for `MAX`, and takes that argument otherwise.
 
-With a single argument, an arithmetic fold gives that argument and a comparison fold gives `TRUE`.
+With a single argument, an arithmetic fold, `MIN` and `MAX` give that argument, and a comparison fold gives `TRUE`.
 
 ## Rules
 

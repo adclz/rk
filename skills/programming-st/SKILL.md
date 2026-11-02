@@ -278,7 +278,7 @@ FUNCTION Use : INT
 END_FUNCTION
 ```
 
-The fold operators are `+ - * / % **` (left to right), `& | ^`, and `= <> < > <= >=`, which test each adjacent pair and give a `BOOL`.
+The fold operators are `+ - * / % **` (left to right), `& | ^`, `= <> < > <= >=`, which test each adjacent pair and give a `BOOL`, and `MIN` and `MAX`, written after a space (`...values MAX`), which give the smallest or the largest argument.
 The variadic parameter must be elementary (E0811) and the only `VAR_INPUT` (E0812, E0815); pass anything else as `VAR_OUTPUT` or `VAR_IN_OUT`, by name. `...` folds that parameter and nothing else (E0814).
 A call passes it at least one argument (E0813).
 
