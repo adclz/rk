@@ -867,7 +867,20 @@ fn var_config_completion<'db>(
                 .chain(r.programs(db).iter().map(instance))
             })
             .collect(),
-        ConfigPathPrefix::Resource(r) => r.programs(db).iter().map(instance).collect(),
+        ConfigPathPrefix::Resource(r) => {
+            // The name may be an instance's too, and its variables come next.
+            let shared = r
+                .programs(db)
+                .iter()
+                .find(|p| p.name(db).ident(db) == r.name(db).ident(db));
+            let members =
+                shared.map_or_else(Vec::new, |p| members_of(db, p.prog_type(db).infer(db)));
+            r.programs(db)
+                .iter()
+                .map(instance)
+                .chain(members.iter().map(|var| builder.build_variable(db, var)))
+                .collect()
+        }
         ConfigPathPrefix::Holder { ty, .. } => members_of(db, ty)
             .iter()
             .map(|var| builder.build_variable(db, var))

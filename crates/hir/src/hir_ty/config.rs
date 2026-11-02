@@ -1572,7 +1572,14 @@ pub fn resolve_config_entries<'db>(
         // segment naming one of the configuration's resources is skipped.
         let instance_at = match &steps[0] {
             PathExprWalkStep::Field { ident, expr } if steps.len() > 1 => {
-                match resource_named(ident) {
+                let next = match &steps[1] {
+                    PathExprWalkStep::Field { ident, .. } => Some(ident.ident(db)),
+                    _ => None,
+                };
+                let resource = resource_named(ident).filter(|_| {
+                    config_path_starts_at_resource(db, &fragments, ident.ident(db), next)
+                });
+                match resource {
                     Some(resource) => {
                         out.steps.insert(*expr, ConfigPathStep::Resource(resource));
                         1
@@ -1701,6 +1708,32 @@ pub fn resolve_config_entries<'db>(
     out
 }
 
+/// Whether a VAR_CONFIG path starting `first.next` starts at a resource. A
+/// resource may share its name with a program instance, as `RESOURCE Main` and
+/// `PROGRAM Main` do: `first` is then the instance, unless `next` is none of its
+/// variables and names an instance itself, as in `Main.Main.x`.
+fn config_path_starts_at_resource<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    fragments: &[ConfigDecl<'db>],
+    first: Ident,
+    next: Option<Ident>,
+) -> bool {
+    let resources = || fragments.iter().flat_map(|f| f.resources(db).iter());
+    if !resources().any(|r| r.name(db).ident(db) == first) {
+        return false;
+    }
+    let instances = || resources().flat_map(|r| r.programs(db).iter());
+    let Some(instance) = instances().find(|p| p.name(db).ident(db) == first) else {
+        return true;
+    };
+    let Some(next) = next else {
+        return false;
+    };
+    let holds = program_of_instance(db, instance)
+        .is_some_and(|program| program.variables(db).iter().any(|v| v.name(db) == next));
+    !holds && instances().any(|p| p.name(db).ident(db) == next)
+}
+
 /// The member `name` among [`members_of`] `ty`.
 fn instance_member<'db>(
     db: &'db dyn WorkspaceDataBase,
@@ -1761,7 +1794,8 @@ pub fn members_of<'db>(db: &'db dyn WorkspaceDataBase, ty: Type<'db>) -> Vec<Var
 pub enum ConfigPathPrefix<'db> {
     /// Nothing yet: a resource or a program instance comes next.
     Start,
-    /// A resource: one of its program instances comes next.
+    /// A resource: one of its program instances comes next, or a variable of
+    /// the instance it shares its name with.
     Resource(ResourceDecl<'db>),
     /// A program instance, or a member of one: what an instance of `ty`
     /// holds comes next. `member` is the last step when it is a member.
@@ -1788,7 +1822,7 @@ pub fn config_path_prefix<'db>(
         .iter()
         .flat_map(|f| f.resources(db).iter().copied())
         .collect();
-    let mut steps = steps.iter();
+    let mut steps = steps.iter().peekable();
     let Some(first) = steps.next() else {
         return Some(ConfigPathPrefix::Start);
     };
@@ -1796,16 +1830,19 @@ pub fn config_path_prefix<'db>(
         .iter()
         .find(|r| r.name(db).ident(db) == *first)
         .copied();
+    let next = steps.peek().map(|name| **name);
+    if let (Some(r), None) = (resource, next) {
+        return Some(ConfigPathPrefix::Resource(r));
+    }
     let instance = match resource {
-        Some(r) => match steps.next() {
-            None => return Some(ConfigPathPrefix::Resource(r)),
-            Some(name) => r
-                .programs(db)
+        Some(r) if config_path_starts_at_resource(db, &fragments, *first, next) => {
+            let name = steps.next()?;
+            r.programs(db)
                 .iter()
                 .find(|p| p.name(db).ident(db) == *name)
-                .copied(),
-        },
-        None => resources
+                .copied()
+        }
+        _ => resources
             .iter()
             .flat_map(|r| r.programs(db).iter())
             .find(|p| p.name(db).ident(db) == *first)

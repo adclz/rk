@@ -1174,6 +1174,44 @@ END_CONFIGURATION
     assert!(markup.contains(shown), "{markup}");
 }
 
+/// A name a resource shares with a program instance shows what the path reads
+/// it as: the instance when a variable of it follows, and the resource when an
+/// instance does.
+#[rstest]
+#[case::the_instance("Main.x", 0, "PROGRAM Main WITH T : Prog")]
+#[case::the_resource("Main.Main.y", 0, "RESOURCE Main ON CPU")]
+#[case::the_instance_through_the_resource("Main.Main.y", 5, "PROGRAM Main WITH T : Prog")]
+pub fn hover_on_a_resource_named_like_an_instance(
+    mut with_db: RootDatabase,
+    #[case] at: &str,
+    #[case] into: usize,
+    #[case] shown: &str,
+) {
+    let source = r#"
+PROGRAM Prog
+VAR x : INT; y : INT; END_VAR
+END_PROGRAM
+
+CONFIGURATION Cfg
+VAR_CONFIG
+    Main.x : INT := 1;
+    Main.Main.y : INT := 2;
+END_VAR
+    RESOURCE Main ON CPU
+        TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM Main WITH T : Prog;
+    END_RESOURCE
+END_CONFIGURATION
+"#;
+    let file = add_source(&mut with_db, source);
+
+    let offset = source.find(at).unwrap() + into;
+    let node = ide_proto::walk::descendant_at(&with_db, file, offset).expect("a node");
+    let hover = node.hover(&with_db, offset).expect("a hover");
+    let markup = hover_markup(hover.contents).unwrap();
+    assert!(markup.contains(shown), "{markup}");
+}
+
 /// What a task's SINGLE writes shows what it is, each name of a path on its
 /// own: the resource and the instance it starts with, the global or the
 /// output, the element, and the address.

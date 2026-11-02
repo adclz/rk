@@ -898,6 +898,151 @@ END_CONFIGURATION
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
 
+/// A resource may share its name with a program instance, as `RESOURCE Main`
+/// and `PROGRAM Main` do. `Main.x` is the instance's variable, and `Main.Main.x`
+/// and `Main.Other.x` still go through the resource. `Main.x` used to be read
+/// as the resource first, and was E1413 on `x`.
+#[rstest]
+#[case::the_instance("Main.x : INT := 42;")]
+#[case::the_instance_through_the_resource("Main.Main.x : INT := 42;")]
+#[case::a_member_of_the_instance("Main.fb1.param : BOOL := TRUE;")]
+#[case::a_member_through_the_resource("Main.Main.fb1.param : BOOL := TRUE;")]
+#[case::the_other_instance("Other.x : INT := 42;")]
+#[case::the_other_instance_through_the_resource("Main.Other.x : INT := 42;")]
+#[case::caseless("MAIN.X : INT := 42;")]
+fn valid_config_entry_with_a_resource_named_like_an_instance(
+    mut with_db: RootDatabase,
+    #[case] entry: &str,
+) {
+    let source = resource_named_like_an_instance(entry);
+    assert_eq!(test_diagnostics(&mut with_db, &[&source]), "", "{entry}");
+}
+
+/// What a shared name cannot reach is reported as the instance's, whose name it
+/// is: the member it does not have, or one it declares and does not hold.
+#[rstest]
+#[case::no_such_member("Main.nope : INT := 1;", "[E1414]", "'Prog' has no field named 'nope'")]
+#[case::no_such_step(
+    "Main.Nope.x : INT := 1;",
+    "[E1414]",
+    "'Prog' has no field named 'Nope'"
+)]
+#[case::a_temp(
+    "Main.scratch : INT := 1;",
+    "[E1426]",
+    "'scratch' is a VAR_TEMP of 'Prog'"
+)]
+#[case::through_the_resource_no_such_member(
+    "Main.Main.nope : INT := 1;",
+    "[E1414]",
+    "'Prog' has no field named 'nope'"
+)]
+#[case::the_wrong_type("Main.x : UINT := 1;", "[E1426]", "the entry says 'UINT'")]
+fn invalid_config_entry_with_a_resource_named_like_an_instance(
+    mut with_db: RootDatabase,
+    #[case] entry: &str,
+    #[case] code: &str,
+    #[case] message: &str,
+) {
+    let source = resource_named_like_an_instance(entry);
+    let diagnostics = test_diagnostics(&mut with_db, &[&source]);
+    assert!(diagnostics.starts_with(code), "{diagnostics}");
+    assert_eq!(diagnostics.matches("Error:").count(), 1, "{diagnostics}");
+    assert!(diagnostics.contains(message), "{diagnostics}");
+}
+
+/// A configuration whose resource and first program instance are both `Main`,
+/// with one VAR_CONFIG `entry`.
+fn resource_named_like_an_instance(entry: &str) -> String {
+    format!(
+        r#"
+FUNCTION_BLOCK Inner
+VAR param : BOOL; END_VAR
+END_FUNCTION_BLOCK
+
+PROGRAM Prog
+VAR x : INT; fb1 : Inner; END_VAR
+VAR_TEMP scratch : INT; END_VAR
+    scratch := x;
+END_PROGRAM
+
+CONFIGURATION Cfg
+    VAR_CONFIG
+        {entry}
+    END_VAR
+    RESOURCE Main ON CPU
+        TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM Main WITH T : Prog;
+        PROGRAM Other WITH T : Prog;
+    END_RESOURCE
+END_CONFIGURATION
+"#
+    )
+}
+
+/// An address VAR_CONFIG gives goes through a shared name as a value does, and
+/// the instance's variable counts as located, so no E1425 follows.
+#[rstest]
+#[case::the_instance("Main.q AT %QW0 : INT;")]
+#[case::through_the_resource("Main.Main.q AT %QW0 : INT;")]
+fn valid_config_location_with_a_resource_named_like_an_instance(
+    mut with_db: RootDatabase,
+    #[case] entry: &str,
+) {
+    let source = format!(
+        r#"
+PROGRAM Prog
+VAR q AT %Q* : INT; END_VAR
+    q := q + 1;
+END_PROGRAM
+
+CONFIGURATION Cfg
+    VAR_CONFIG
+        {entry}
+    END_VAR
+    RESOURCE Main ON CPU
+        TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM Main WITH T : Prog;
+    END_RESOURCE
+END_CONFIGURATION
+"#
+    );
+    assert_eq!(test_diagnostics(&mut with_db, &[&source]), "", "{entry}");
+}
+
+/// After a resource that names no instance, the next name is the instance a
+/// path needs, and E1413 is about that one.
+#[rstest]
+fn invalid_config_entry_unknown_instance_after_its_resource(mut with_db: RootDatabase) {
+    let source = r#"
+PROGRAM MyProg
+    VAR
+        x : INT;
+    END_VAR
+END_PROGRAM
+
+CONFIGURATION MyCfg
+    RESOURCE Res ON CPU
+        TASK t1(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM inst1 WITH t1 : MyProg;
+    END_RESOURCE
+
+    VAR_CONFIG
+        Res.Nope.x : INT := 42;
+    END_VAR
+END_CONFIGURATION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1413] Error: unknown instance in VAR_CONFIG
+        ,-[ file:///test0.st:15:13 ]
+        |
+     15 |         Res.Nope.x : INT := 42;
+        |             ^^|^
+        |               `--- no PROGRAM instance is named 'Nope' in this configuration
+    ----'
+    ");
+}
+
 /// A leading segment that names neither a resource nor an instance is still
 /// the instance error it always was.
 #[rstest]
