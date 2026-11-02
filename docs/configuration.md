@@ -176,11 +176,11 @@ END_CONFIGURATION
 
 - a `VAR_GLOBAL`, with the name of its resource if you want it: `fault`, `Main.fault`.
 - a `VAR_OUTPUT` of a program in the same resource: `Belt.done`.
-- what is inside either of them: a `STRUCT` element, an array element at constant subscripts, a function block's `VAR_OUTPUT`: `flags.fault`, `Belt.bits[2]`, `timer.Q`.
+- what is inside either of them: a `STRUCT` element, an array element at constant subscripts, a function block's `VAR_OUTPUT`, a bit: `flags.fault`, `Belt.bits[2]`, `timer.Q`, `status.%X3`.
 - the address of a bit: `%IX0.3`.
 
 Anything else is `E1410`, and so is a constant: it never rises.
-The standard is narrower: a `VAR_GLOBAL` takes one `STRUCT` element at most. The rest is rk's.
+The standard is narrower: a `VAR_GLOBAL` takes one `STRUCT` element at most, and a variable has no bit. The rest is rk's.
 
 A task can have both. It then runs on each rising edge, and on its `INTERVAL` only while `SINGLE` stands at `FALSE`:
 

@@ -123,7 +123,7 @@ It is a warning, not an error.
 The period is baked into the emitted schedule, so it must be fixed at compile time; a CONSTANT global qualifies, a plain `VAR_GLOBAL` does not because it may be written while the PLC runs.
 
 `SINGLE := <a BOOL>` runs the task once on each rising edge of that BOOL.
-It names a `VAR_GLOBAL`, with its resource if wanted (`go`, `Res.go`), a `VAR_OUTPUT` of a program in the same resource (`P1.done`), what is inside either of them through STRUCT elements, constant subscripts and a function block's `VAR_OUTPUT` (`flags.go`, `P1.bits[2]`, `timer.Q`), or a bit address (`%IX2.1`).
+It names a `VAR_GLOBAL`, with its resource if wanted (`go`, `Res.go`), a `VAR_OUTPUT` of a program in the same resource (`P1.done`), what is inside either of them through STRUCT elements, constant subscripts, a function block's `VAR_OUTPUT` and a partial access to one bit (`flags.go`, `P1.bits[2]`, `timer.Q`, `status.%X3`), or a bit address (`%IX2.1`).
 Beside an `INTERVAL`, the periodic runs happen only while it stands at FALSE, and an edge on a due tick is one run.
 `INTERVAL := T#0ms` beside a `SINGLE` means no periodic runs.
 `SINGLE := FALSE` beside an `INTERVAL` changes nothing.
@@ -149,7 +149,7 @@ E1410.
 `SINGLE := TRUE`: the task would run once, at the first reading, and its `INTERVAL` never. `SINGLE := FALSE` with no `INTERVAL`: it never rises. A CONSTANT global counts as the constant it holds.
 E1410.
 
-`SINGLE := <INT, %IW0, a whole STRUCT>` Not a BOOL.
+`SINGLE := <INT, %IW0, a whole STRUCT, status.%B0>` Not a BOOL.
 E1410.
 
 `SINGLE := P1.local`, `P1.fb.Q` A program's input or internal variable, or a function block one holds in `VAR`: only a `VAR_OUTPUT` can be read.
@@ -159,7 +159,7 @@ E1410.
 E1410.
 
 A name in `SINGLE` or `INTERVAL` that resolves to nothing is E0201 or E0202, whether the task is bound or not.
-A bracket or a dereference of what takes neither is what it is in a body, E0508 or E0901.
+A bracket or a dereference of what takes neither is what it is in a body, E0508 or E0901, and so is a bit out of range, E1429.
 
 `PROGRAM P1 : Prog;` No `WITH <task>`, so the instance would never run.
 E1412.
