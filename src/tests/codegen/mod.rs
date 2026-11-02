@@ -10,6 +10,7 @@ mod bit_access;
 mod bytes;
 mod classes;
 mod clocks;
+mod comparison;
 mod conformands;
 mod constant_folding;
 mod control_flow;

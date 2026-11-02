@@ -13,6 +13,7 @@ use insta::assert_snapshot;
 use rstest::rstest;
 
 use crate::tests::utils::test_diagnostics;
+use crate::tests::utils::test_diagnostics_with_library;
 use crate::tests::utils::with_db;
 
 // A 2-arg call binds to the 2-arg overload even though the 1-arg overload is
@@ -1659,4 +1660,34 @@ fn no_matching_type_lists_a_few_of_many_overloads(mut with_db: RootDatabase) {
         | Note: 8 of its 10 overloads are listed
     ----'
     ");
+}
+
+/// What `Std.Comparison` refuses: `NE` takes two inputs, the others at least one,
+/// and each input has to reach an overload's type.
+#[rstest]
+fn what_comparison_refuses(mut with_db: RootDatabase) {
+    let source = r#"
+USING Std.Comparison;
+
+TYPE R : STRUCT x : INT; END_STRUCT; END_TYPE
+
+PROGRAM P
+VAR a : INT; b : BOOL; r : R; END_VAR
+    b := NE(a, a, a);
+    b := NE(a);
+    b := GT();
+    b := LT(r, r);
+END_PROGRAM
+"#;
+    let report = test_diagnostics_with_library(
+        &mut with_db,
+        &[include_str!("../../../stdlib/Comparison.st")],
+        &[source],
+    );
+    let codes: Vec<&str> = report
+        .lines()
+        .filter(|l| l.starts_with('['))
+        .map(|l| &l[1..6])
+        .collect();
+    assert_eq!(codes, ["E0801", "E0802", "E0813", "E0810"], "{report}");
 }
