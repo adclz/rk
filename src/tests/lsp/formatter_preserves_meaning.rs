@@ -136,6 +136,28 @@ END_FUNCTION_BLOCK
     );
 }
 
+/// A sign before a based literal: `- 16#10` reads as `-16#10` does.
+#[rstest]
+fn a_sign_before_a_based_literal_survives_formatting(#[allow(unused)] with_db: RootDatabase) {
+    assert_meaning_preserved(
+        "a sign before a based literal",
+        r#"
+TYPE Narrow : INT (-16#10 .. +16#10); END_TYPE
+FUNCTION F : INT
+VAR
+    a : INT := -16#10;
+    b : ARRAY[-16#1 .. 16#1] OF INT := [-16#1, 2(-2#1)];
+    c : SINT := -16#81;
+END_VAR
+    a := a - -16#10;
+    CASE a OF
+        -16#10: F := b[-16#1];
+    END_CASE;
+END_FUNCTION
+"#,
+    );
+}
+
 /// VAR_ACCESS directions: the case the suite used to pin BACKWARDS.
 #[rstest]
 fn access_directions_survive_formatting(#[allow(unused)] with_db: RootDatabase) {

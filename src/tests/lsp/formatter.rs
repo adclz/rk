@@ -2567,6 +2567,32 @@ END_FUNCTION_BLOCK
     ");
 }
 
+/// A sign before a based literal is the unary operator and is spaced as one,
+/// where the sign of `-16` is part of its token. Either spelling formats to the
+/// same text, which parses again.
+#[rstest]
+#[case::written_together("-16#10")]
+#[case::written_apart("- 16#10")]
+fn a_sign_before_a_based_literal_is_spaced_as_an_operator(#[case] literal: &str) {
+    let source = format!(
+        "PROGRAM m\nVAR a : INT := {literal}; END_VAR\na := a - {literal};\na := -16;\nCASE a OF\n{literal}: a := 1;\nEND_CASE;\nEND_PROGRAM\n"
+    );
+    let once = formatter::format_source(&source).expect("formats");
+    assert_snapshot!(once, @r"
+    PROGRAM m
+    	VAR
+    		a: INT := - 16#10;
+    	END_VAR
+    	a := a - - 16#10;
+    	a := -16;
+    	CASE a OF
+    		- 16#10: a := 1;
+    	END_CASE;
+    END_PROGRAM
+    ");
+    assert_eq!(formatter::format_source(&once).expect("formats"), once);
+}
+
 /// A terminator behind a comment or a pragma is seen, in every section, and
 /// one missing there goes before the comment. The guard looked at the next
 /// node only, so `x : INT (* c *);` was given a second `;`, which TYPE,
