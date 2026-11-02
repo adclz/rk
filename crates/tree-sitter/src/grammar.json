@@ -11775,6 +11775,24 @@
           {
             "type": "ALIAS",
             "content": {
+              "type": "SYMBOL",
+              "name": "_minus_before_base"
+            },
+            "named": false,
+            "value": "-"
+          },
+          {
+            "type": "ALIAS",
+            "content": {
+              "type": "SYMBOL",
+              "name": "_plus_before_base"
+            },
+            "named": false,
+            "value": "+"
+          },
+          {
+            "type": "ALIAS",
+            "content": {
               "type": "TOKEN",
               "content": {
                 "type": "PREC",
@@ -13823,6 +13841,14 @@
     {
       "type": "SYMBOL",
       "name": "pragma"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "_minus_before_base"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "_plus_before_base"
     }
   ],
   "inline": [],

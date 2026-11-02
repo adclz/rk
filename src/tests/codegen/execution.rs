@@ -112,6 +112,104 @@ fn test_execute_radix_literal_is_a_bit_pattern(mut with_db: db::RootDatabase) {
     );
 }
 
+/// A sign before a based literal is the unary operator on it, and after a value
+/// the `-` is still a subtraction. The decimal forms that start like a base
+/// stay signed literals.
+#[rstest]
+#[case::hex("-16#10", -16)]
+#[case::hex_digits("-16#FF", -255)]
+#[case::binary("-2#101", -5)]
+#[case::octal("-8#17", -15)]
+#[case::underscore("-16#1_0", -16)]
+#[case::plus("+16#10", 16)]
+#[case::spaced("- 16#10", -16)]
+#[case::parenthesized("-(16#10)", -16)]
+#[case::after_a_minus("100 - -16#10", 116)]
+#[case::after_a_times("2 * -16#10", -32)]
+#[case::twice("- -16#10", 16)]
+#[case::in_a_sum("-16#10 + 1", -15)]
+#[case::subtraction("100-16#10", 84)]
+#[case::subtraction_spaced("100 -16#10", 84)]
+#[case::decimal("-16", -16)]
+#[case::decimal_two("-2", -2)]
+#[case::decimal_eight("-8", -8)]
+#[case::decimal_longer("-162", -162)]
+fn test_execute_sign_before_a_based_literal(
+    mut with_db: db::RootDatabase,
+    #[case] expression: &str,
+    #[case] expected: i32,
+) {
+    let source = format!("FUNCTION test : DINT\n    test := {expression};\nEND_FUNCTION");
+    let result: i32 = super::run(&mut with_db, &source, "test", ());
+    assert_eq!(result, expected, "{expression}");
+}
+
+/// The same literal where a constant stands, and at the edge of each type:
+/// under a minus it is a plain number, so `-16#80` is the SINT -128. Each wrong
+/// value sets a bit of its own.
+#[rstest]
+fn test_execute_sign_before_a_based_literal_in_each_position(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE Narrow : INT (-16#10 .. -16#1); END_TYPE
+        TYPE Level : INT (Low := -16#10, High := 16#10); END_TYPE
+
+        FUNCTION Take : INT
+        VAR_INPUT p : INT := -16#10; END_VAR
+            Take := p;
+        END_FUNCTION
+
+        FUNCTION test : DINT
+        VAR
+            a : INT := -16#10;
+            s : SINT := -16#80;
+            i : INT := -16#8000;
+            l : LINT := -16#8000_0000_0000_0000;
+            r : REAL := -16#10;
+            n : Narrow := -16#10;
+            v : Level := Level#Low;
+            row : ARRAY[-16#1 .. 16#1] OF INT := [-16#1, 2(-2#10)];
+            k : INT := -16;
+            m : INT := -5;
+            arm : INT;
+            loops : INT;
+            j : INT;
+        END_VAR
+            IF a <> -16 THEN test := test + 1; END_IF;
+            IF s <> -128 THEN test := test + 2; END_IF;
+            IF i <> -32768 THEN test := test + 4; END_IF;
+            IF l <> LINT#-9223372036854775808 THEN test := test + 8; END_IF;
+            IF r <> -16.0 THEN test := test + 16; END_IF;
+            IF n <> -16 THEN test := test + 32; END_IF;
+            CASE v OF
+                Level#Low: arm := 1;
+                Level#High: arm := 2;
+            END_CASE;
+            IF arm <> 1 THEN test := test + 64; END_IF;
+            IF row[-1] <> -1 OR row[0] <> -2 OR row[1] <> -2 THEN test := test + 128; END_IF;
+            IF Take() <> -16 THEN test := test + 256; END_IF;
+            CASE k OF
+                -16#10: arm := 3;
+            ELSE
+                arm := 4;
+            END_CASE;
+            IF arm <> 3 THEN test := test + 512; END_IF;
+            CASE m OF
+                -16#F..-16#1: arm := 5;
+            ELSE
+                arm := 6;
+            END_CASE;
+            IF arm <> 5 THEN test := test + 1024; END_IF;
+            FOR j := 3 TO 1 BY -16#1 DO
+                loops := loops + 1;
+            END_FOR;
+            IF loops <> 3 THEN test := test + 2048; END_IF;
+        END_FUNCTION
+    "#;
+
+    let result: i32 = super::run(&mut with_db, source, "test", ());
+    assert_eq!(result, 0, "each wrong value sets its own bit");
+}
+
 #[rstest]
 /// A subrange-typed FOR control variable executes: `Small : INT (0..10)`
 /// normalizes to INT everywhere the loop machinery looks. This was an ICE —

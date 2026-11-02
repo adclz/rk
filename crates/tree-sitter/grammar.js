@@ -202,7 +202,13 @@ module.exports = grammar({
   // reused token could take the whitespace before it, and the tree no
   // longer matched a fresh parse of the text. A `//` inside a pragma also
   // started a line comment that ate its `}`.
-  externals: ($) => [$.c_style_comment, $.pascal_style_comment, $.pragma],
+  externals: ($) => [
+    $.c_style_comment,
+    $.pascal_style_comment,
+    $.pragma,
+    $._minus_before_base,
+    $._plus_before_base,
+  ],
 
   extras: ($) => [
     /\s/, // Whitespace
@@ -576,6 +582,7 @@ module.exports = grammar({
     // token() prevents whitespace between sign and digits:
     // -42 is a signed literal, - 42 is unary minus on 42.
     // No precedence needed - token boundary disambiguates.
+    // -16#10 is unary minus on 16#10: see `unary`.
     signed_int: ($) =>
       choice(
         $._explicit_signed_int,
@@ -2141,7 +2148,20 @@ module.exports = grammar({
     unary_operator: ($) =>
       prec.left(RK_PREC.unary, seq(field("operator", $.unary), field("expr", $._expression))),
 
-    unary: ($) => prec(RK_PREC.unary, choice("-", "+", kw("NOT"))),
+    // A based literal has no sign, so `-16#10` is this operator on `16#10`. The
+    // lexer would take `-16` as the longest token there: src/scanner.c reads
+    // the sign alone when a base follows.
+    unary: ($) =>
+      prec(
+        RK_PREC.unary,
+        choice(
+          "-",
+          "+",
+          alias($._minus_before_base, "-"),
+          alias($._plus_before_base, "+"),
+          kw("NOT"),
+        ),
+      ),
 
     // A constant expression must evaluate to a constant value at compile time
     constant_expr: ($) => $._expression,

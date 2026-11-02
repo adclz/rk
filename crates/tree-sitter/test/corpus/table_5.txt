@@ -609,3 +609,226 @@ END_FUNCTION
                       (int_literal
                         (signed_int
                           (unsigned_int))))))))))))))
+
+================================================================================
+A sign before a based literal
+================================================================================
+
+FUNCTION fn
+
+a := -16#FF
+a := +16#FF
+a := -2#101
+a := -8#17
+a := -16#1_0
+a := b - -16#10
+a := b-16#10
+a := -16#10 + 1
+a := -16
+a := -2
+a := - 16#10
+a := -16.5
+
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (func_decl
+    (identifier)
+    (func_body
+      (stmt_list
+        (assign
+          (variable_access
+            (variable
+              (begin_path_expression
+                (path_expression
+                  (var_access
+                    (field))))))
+          (assignment
+            (unary_operator
+              (constant
+                (numeric_literal
+                  (int_literal
+                    (hex_int)))))))
+        (assign
+          (variable_access
+            (variable
+              (begin_path_expression
+                (path_expression
+                  (var_access
+                    (field))))))
+          (assignment
+            (unary_operator
+              (constant
+                (numeric_literal
+                  (int_literal
+                    (hex_int)))))))
+        (assign
+          (variable_access
+            (variable
+              (begin_path_expression
+                (path_expression
+                  (var_access
+                    (field))))))
+          (assignment
+            (unary_operator
+              (constant
+                (numeric_literal
+                  (int_literal
+                    (binary_int)))))))
+        (assign
+          (variable_access
+            (variable
+              (begin_path_expression
+                (path_expression
+                  (var_access
+                    (field))))))
+          (assignment
+            (unary_operator
+              (constant
+                (numeric_literal
+                  (int_literal
+                    (octal_int)))))))
+        (assign
+          (variable_access
+            (variable
+              (begin_path_expression
+                (path_expression
+                  (var_access
+                    (field))))))
+          (assignment
+            (unary_operator
+              (constant
+                (numeric_literal
+                  (int_literal
+                    (hex_int)))))))
+        (assign
+          (variable_access
+            (variable
+              (begin_path_expression
+                (path_expression
+                  (var_access
+                    (field))))))
+          (assignment
+            (add_operator
+              (variable_access
+                (variable
+                  (begin_path_expression
+                    (path_expression
+                      (var_access
+                        (field))))))
+              (unary_operator
+                (constant
+                  (numeric_literal
+                    (int_literal
+                      (hex_int))))))))
+        (assign
+          (variable_access
+            (variable
+              (begin_path_expression
+                (path_expression
+                  (var_access
+                    (field))))))
+          (assignment
+            (add_operator
+              (variable_access
+                (variable
+                  (begin_path_expression
+                    (path_expression
+                      (var_access
+                        (field))))))
+              (constant
+                (numeric_literal
+                  (int_literal
+                    (hex_int)))))))
+        (assign
+          (variable_access
+            (variable
+              (begin_path_expression
+                (path_expression
+                  (var_access
+                    (field))))))
+          (assignment
+            (add_operator
+              (unary_operator
+                (constant
+                  (numeric_literal
+                    (int_literal
+                      (hex_int)))))
+              (constant
+                (numeric_literal
+                  (int_literal
+                    (signed_int
+                      (unsigned_int))))))))
+        (assign
+          (variable_access
+            (variable
+              (begin_path_expression
+                (path_expression
+                  (var_access
+                    (field))))))
+          (assignment
+            (constant
+              (numeric_literal
+                (int_literal
+                  (signed_int))))))
+        (assign
+          (variable_access
+            (variable
+              (begin_path_expression
+                (path_expression
+                  (var_access
+                    (field))))))
+          (assignment
+            (constant
+              (numeric_literal
+                (int_literal
+                  (signed_int))))))
+        (assign
+          (variable_access
+            (variable
+              (begin_path_expression
+                (path_expression
+                  (var_access
+                    (field))))))
+          (assignment
+            (unary_operator
+              (constant
+                (numeric_literal
+                  (int_literal
+                    (hex_int)))))))
+        (assign
+          (variable_access
+            (variable
+              (begin_path_expression
+                (path_expression
+                  (var_access
+                    (field))))))
+          (assignment
+            (constant
+              (numeric_literal
+                (real_literal
+                  (signed_real_value))))))))))
+
+================================================================================
+No literal has a base of ten
+:error
+================================================================================
+
+FUNCTION fn
+a := -10#5
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+================================================================================
+A typed based literal takes no sign
+:error
+================================================================================
+
+FUNCTION fn
+a := INT#-16#10
+END_FUNCTION
+
+--------------------------------------------------------------------------------
