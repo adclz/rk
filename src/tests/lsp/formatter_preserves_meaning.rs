@@ -158,6 +158,25 @@ END_FUNCTION
     );
 }
 
+/// A fold by a word: `...valuesMIN` is a name and no fold at all.
+#[rstest]
+fn a_fold_by_a_word_survives_formatting(#[allow(unused)] with_db: RootDatabase) {
+    assert_meaning_preserved(
+        "a fold by a word",
+        r#"
+FUNCTION F : INT
+VAR_INPUT values : INT...; END_VAR
+    F := ...values MIN + ...values max;
+END_FUNCTION
+
+FUNCTION G : BOOL
+VAR_INPUT values : INT...; END_VAR
+    G := ...values MIN;
+END_FUNCTION
+"#,
+    );
+}
+
 /// VAR_ACCESS directions: the case the suite used to pin BACKWARDS.
 #[rstest]
 fn access_directions_survive_formatting(#[allow(unused)] with_db: RootDatabase) {
