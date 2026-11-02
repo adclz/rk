@@ -73,9 +73,18 @@ pub struct TaskTrigger<'db> {
     /// The period in nanoseconds. `None` for no periodic runs, which an
     /// INTERVAL left out or zero both say.
     pub interval_ns: Option<u64>,
-    /// The BOOL whose rising edge runs the task. `None` for no edge, which a
+    /// The bit whose rising edge runs the task. `None` for no edge, which a
     /// SINGLE left out or FALSE both say.
-    pub single: Option<SingleSource<'db>>,
+    pub single: Option<SingleRead<'db>>,
+}
+
+/// What a task's SINGLE reads.
+#[derive(Debug, Clone, PartialEq, Eq, salsa::Update)]
+pub struct SingleRead<'db> {
+    pub source: SingleSource<'db>,
+    /// Where the bit sits in what `source` names: above zero for a bit of a
+    /// wider variable, `status.%X3`.
+    pub shift: u32,
 }
 
 /// The BOOL a task's SINGLE reads, at a place fixed when the module is built:
@@ -646,7 +655,7 @@ fn report_unschedulable_bound_tasks<'db>(
         // At what SINGLE is given when the fault is there.
         let site = match task.single(db).filter(|_| reason.is_in_single()) {
             Some(DataSource::Constant(value)) => value.as_call_site(db),
-            Some(DataSource::Path(path)) => task_paths(db, config)
+            Some(DataSource::Path(path, _)) => task_paths(db, config)
                 .refused_at
                 .get(&path)
                 .unwrap_or(&path)
@@ -836,7 +845,7 @@ fn resolve_task_triggers<'db>(
     }
 }
 
-/// The source of a task's SINGLE, `None` for no rising edge to wait for: one
+/// What a task's SINGLE reads, `None` for no rising edge to wait for: one
 /// left out, or a constant FALSE.
 ///
 /// A constant FALSE stands at FALSE, which leaves an INTERVAL running as if
@@ -847,7 +856,7 @@ fn task_single<'db>(
     config: ConfigDecl<'db>,
     task: TaskConfig<'db>,
     errors: &mut Vec<IdeDiagnostic>,
-) -> Result<Option<SingleSource<'db>>, UnschedulableReason> {
+) -> Result<Option<SingleRead<'db>>, UnschedulableReason> {
     let Some(source) = task.single(db) else {
         return Ok(None);
     };
@@ -876,14 +885,33 @@ fn task_single<'db>(
             if address.width != 1 {
                 return Err(UnschedulableReason::SingleNotBool);
             }
-            Ok(Some(SingleSource::Address(address)))
+            Ok(Some(SingleRead {
+                source: SingleSource::Address(address),
+                shift: 0,
+            }))
         }
-        DataSource::Path(path) => {
+        DataSource::Path(path, part) => {
             let reached = reached_path(db, config, path)?;
             if reached.ty.is_never() {
                 return Err(UnschedulableReason::UnknownName); // already diagnosed
             }
-            if reached.ty.normalize(db) != Type::Elementary(ElementarySpec::Bool) {
+            // A part of what the path reaches, read as it is in a body.
+            let (ty, shift) = match part {
+                None => (reached.ty, 0),
+                Some(part) => {
+                    let file = task.get_scope_id(db).file(db);
+                    if let Some(fault) = crate::hir_ty::resolver::walk::multibits_fault(
+                        db, path, reached.ty, None, part,
+                    ) {
+                        errors.push(fault.to_diagnostic(db, file));
+                        return Err(UnschedulableReason::UnknownName);
+                    }
+                    let slice = crate::hir_ty::infer::normalize::multibits_slice(db, part)
+                        .ok_or(UnschedulableReason::UnknownName)?;
+                    (Type::Elementary(slice.spec), slice.shift as u32)
+                }
+            };
+            if ty.normalize(db) != Type::Elementary(ElementarySpec::Bool) {
                 return Err(UnschedulableReason::SingleNotBool);
             }
             let source = match &reached.source {
@@ -892,9 +920,9 @@ fn task_single<'db>(
                 {
                     // A CONSTANT is as fixed as a literal; one with no value
                     // starts at its type's, FALSE.
-                    let value = match (elements.as_slice(), global.init(db)) {
-                        ([], None) => Some(false),
-                        ([], Some(_)) => {
+                    let value = match (elements.as_slice(), part, global.init(db)) {
+                        ([], None, None) => Some(false),
+                        ([], None, Some(_)) => {
                             crate::hir_ty::infer::const_eval::constant_init(db, *global)
                                 .and_then(|init| bool_literal(db, init))
                         }
@@ -908,7 +936,7 @@ fn task_single<'db>(
                 }
                 source => source.clone(),
             };
-            Ok(Some(source))
+            Ok(Some(SingleRead { source, shift }))
         }
     }
 }
@@ -918,7 +946,7 @@ fn constant_single<'db>(
     db: &'db dyn WorkspaceDataBase,
     task: TaskConfig<'db>,
     value: Option<bool>,
-) -> Result<Option<SingleSource<'db>>, UnschedulableReason> {
+) -> Result<Option<SingleRead<'db>>, UnschedulableReason> {
     match value {
         Some(false) => Ok(None),
         Some(true) if task.interval(db).is_some() => {
@@ -949,7 +977,7 @@ fn task_interval<'db>(
     };
     match source {
         DataSource::Constant(value) => time_literal_nanos(db, value).map(Some).ok_or(not_fixed),
-        DataSource::Path(path) => {
+        DataSource::Path(path, part) => {
             // Only a CONSTANT can be trusted: an ordinary VAR_GLOBAL may be
             // written at runtime, and the schedule cannot follow it. Which
             // declaration is fixed, and where its value lives, is the same
@@ -964,7 +992,7 @@ fn task_interval<'db>(
             let SingleSource::Global { global, elements } = reached.source else {
                 return Err(not_fixed);
             };
-            if !elements.is_empty() {
+            if !elements.is_empty() || part.is_some() {
                 return Err(not_fixed);
             }
             crate::hir_ty::infer::const_eval::constant_init(db, global)
@@ -1034,7 +1062,7 @@ pub fn task_paths<'db>(db: &'db dyn WorkspaceDataBase, config: ConfigDecl<'db>) 
     for r in config.resources(db).iter() {
         for task in r.tasks(db).iter() {
             for source in [task.interval(db), task.single(db)].into_iter().flatten() {
-                if let DataSource::Path(path) = source {
+                if let DataSource::Path(path, _) = source {
                     let reached = read_task_path(db, config, *r, path, &mut out);
                     out.reached.insert(path, reached);
                 }
@@ -2133,7 +2161,7 @@ fn check_source<'db>(
     };
     let end = match source {
         DataSource::Constant(expr) => ConnectionEnd::Constant(*expr),
-        DataSource::Path(global) => {
+        DataSource::Path(global, _) => {
             ConnectionEnd::Global(connected_global(db, *global, names).map_err(refused)?)
         }
         DataSource::Direct(dv) => ConnectionEnd::Address(connected_address(db, *dv, path)?),

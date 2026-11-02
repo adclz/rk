@@ -428,7 +428,12 @@ impl<'db> SemanticIndexBuilder<'db> {
                 Ok(DataSource::Direct(dv.to_direct_variable(self)?))
             }
             ast::generated::Constant_DirectVariable_PathExpression::PathExpression(pe) => {
-                Ok(DataSource::Path(pe.parse(self)?))
+                let part = ds
+                    .access
+                    .as_ref()
+                    .map(|part| part.cast(self.ast).parse(self));
+                let part = part.and_then(|r| self.try_parse(r));
+                Ok(DataSource::Path(pe.parse(self)?, part))
             }
         }
     }
@@ -445,7 +450,7 @@ impl<'db> SemanticIndexBuilder<'db> {
                 Ok(DataSource::Direct(dv.to_direct_variable(self)?))
             }
             ast::generated::Constant_DirectVariable_PathExpression::PathExpression(pe) => {
-                Ok(DataSource::Path(pe.parse(self)?))
+                Ok(DataSource::Path(pe.parse(self)?, None))
             }
         }
     }

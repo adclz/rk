@@ -340,7 +340,7 @@ impl<'db> InitInference<'db> {
             for source in [task.interval(db), task.single(db)].into_iter().flatten() {
                 let values: Vec<_> = match source {
                     DataSource::Constant(value) => vec![value],
-                    DataSource::Path(path) => path
+                    DataSource::Path(path, _) => path
                         .flatten(db)
                         .iter()
                         .filter_map(|step| match step {
