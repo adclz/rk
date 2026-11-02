@@ -16,14 +16,27 @@ use wasm_encoder::{Instruction, MemArg};
 
 use crate::{LocalInfo, mir_cast::emit_cast_instructions};
 
-/// The `(dividend, divisor)` scratch pairs of a wrapping division, i32 then
-/// i64, each allocated for a body with one ([`needs_wrapping_div`]).
-pub(crate) type DivScratch = (Option<(u32, u32)>, Option<(u32, u32)>);
+/// The scratch pairs of an operator that reads each operand twice, one per
+/// value type, each allocated for a body with one ([`needs_operand_pair`]).
+#[derive(Clone, Copy)]
+pub(crate) struct PairScratch {
+    pub(crate) i32: Option<(u32, u32)>,
+    pub(crate) i64: Option<(u32, u32)>,
+    pub(crate) f32: Option<(u32, u32)>,
+    pub(crate) f64: Option<(u32, u32)>,
+}
 
 thread_local! {
-    /// The current body's [`DivScratch`].
-    pub(crate) static DIV_TMP: std::cell::Cell<DivScratch> =
-        const { std::cell::Cell::new((None, None)) };
+    /// The current body's [`PairScratch`].
+    pub(crate) static PAIR_TMP: std::cell::Cell<PairScratch> =
+        const {
+            std::cell::Cell::new(PairScratch {
+                i32: None,
+                i64: None,
+                f32: None,
+                f64: None,
+            })
+        };
 
     /// An i32 scratch holding a STRING's header address while its `(ptr,
     /// len)` is read, allocated for a body that reaches a place whose path
@@ -707,17 +720,55 @@ pub(crate) fn needs_wrapping_div(expr: &MirExpr) -> bool {
     !ty.is_float() && ty.is_signed() && full_lane && !safe_divisor
 }
 
+/// Whether `expr` reads each of its operands twice, from a scratch pair: a
+/// wrapping division, or a minimum or a maximum, which is a `select`.
+pub(crate) fn needs_operand_pair(expr: &MirExpr) -> bool {
+    needs_wrapping_div(expr)
+        || matches!(
+            expr,
+            MirExpr::BinOp {
+                op: MirBinOp::Min | MirBinOp::Max,
+                ..
+            }
+        )
+}
+
+/// The scratch pair of an operator at `ty`.
+fn operand_pair(ty: MirElementary) -> (u32, u32) {
+    let pairs = PAIR_TMP.with(|c| c.get());
+    match (ty.is_float(), ty.is_64bit()) {
+        (false, false) => pairs.i32,
+        (false, true) => pairs.i64,
+        (true, false) => pairs.f32,
+        (true, true) => pairs.f64,
+    }
+    .expect(
+        "an operator reading its operands twice needs its scratch pair: \
+         the body scan and needs_operand_pair disagree",
+    )
+}
+
+/// The left operand when `test` holds of the two on the stack, and the right
+/// one otherwise: a NaN on either side gives the right one.
+fn emit_extreme(func: &mut wasm_encoder::Function, test: MirBinOp, ty: MirElementary) {
+    let (left, right) = operand_pair(ty);
+    func.instruction(&Instruction::LocalSet(right));
+    func.instruction(&Instruction::LocalSet(left));
+    func.instruction(&Instruction::LocalGet(left));
+    func.instruction(&Instruction::LocalGet(right));
+    func.instruction(&Instruction::LocalGet(left));
+    func.instruction(&Instruction::LocalGet(right));
+    emit_binop(func, test, ty);
+    func.instruction(&Instruction::Select);
+}
+
 /// Signed division that wraps like every other overflow: a divisor of -1
 /// negates, which `div_s` would trap on for the minimum; any other divisor,
 /// zero included, divides. Both operands are on the stack, and move to the
 /// scratch pair since each is read twice.
 fn emit_wrapping_div(func: &mut wasm_encoder::Function, ty: MirElementary) {
     let is_64 = ty.is_64bit();
-    let (i32_tmp, i64_tmp) = DIV_TMP.with(|c| c.get());
-    let (dividend, divisor) = if is_64 { i64_tmp } else { i32_tmp }.expect(
-        "a wrapping division needs its scratch pair: \
-         the body scan and needs_wrapping_div disagree",
-    );
+    let (dividend, divisor) = operand_pair(ty);
     func.instruction(&Instruction::LocalSet(divisor));
     func.instruction(&Instruction::LocalSet(dividend));
     func.instruction(&Instruction::LocalGet(divisor));
@@ -757,6 +808,8 @@ fn emit_binop(func: &mut wasm_encoder::Function, op: MirBinOp, ty: MirElementary
     let is_signed = ty.is_signed();
 
     match op {
+        MirBinOp::Min => emit_extreme(func, MirBinOp::Le, ty),
+        MirBinOp::Max => emit_extreme(func, MirBinOp::Ge, ty),
         MirBinOp::Add => match (is_float, is_64) {
             (true, true) => {
                 func.instruction(&Instruction::F64Add);

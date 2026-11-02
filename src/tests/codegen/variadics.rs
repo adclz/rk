@@ -378,3 +378,215 @@ fn a_variadic_function_or_method_on_an_interface(mut with_db: db::RootDatabase) 
     let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 1013, "(7 + 3) * 100 + 7 + 6");
 }
+
+/// `MIN` and `MAX` on each elementary type but STRING, with the extreme in each
+/// place: three values, then two and four, at the edges of the type where it has
+/// edges, so that an unsigned type compared as signed fails. Each wrong call sets
+/// a bit of its own.
+#[rstest]
+#[case::bool_("BOOL", "FALSE", "TRUE", "TRUE")]
+#[case::sint("SINT", "SINT#-128", "SINT#0", "SINT#127")]
+#[case::int("INT", "INT#-32768", "INT#0", "INT#32767")]
+#[case::dint("DINT", "DINT#-2147483648", "DINT#0", "DINT#2147483647")]
+#[case::lint(
+    "LINT",
+    "LINT#-9223372036854775808",
+    "LINT#0",
+    "LINT#9223372036854775807"
+)]
+#[case::usint("USINT", "USINT#0", "USINT#100", "USINT#200")]
+#[case::uint("UINT", "UINT#0", "UINT#100", "UINT#60000")]
+#[case::udint("UDINT", "UDINT#0", "UDINT#100", "UDINT#4000000000")]
+#[case::ulint("ULINT", "ULINT#0", "ULINT#100", "ULINT#18000000000000000000")]
+#[case::byte("BYTE", "BYTE#0", "BYTE#16#7F", "BYTE#16#FF")]
+#[case::word("WORD", "WORD#0", "WORD#16#7FFF", "WORD#16#FFFF")]
+#[case::dword("DWORD", "DWORD#0", "DWORD#16#7FFF_FFFF", "DWORD#16#FFFF_FFFF")]
+#[case::lword(
+    "LWORD",
+    "LWORD#0",
+    "LWORD#16#7FFF_FFFF_FFFF_FFFF",
+    "LWORD#16#FFFF_FFFF_FFFF_FFFF"
+)]
+#[case::real("REAL", "REAL#-1.5", "REAL#0.5", "REAL#2.5")]
+#[case::lreal("LREAL", "LREAL#-1.5", "LREAL#0.5", "LREAL#2.5")]
+#[case::time("TIME", "T#-1s", "T#0s", "T#1s")]
+#[case::ltime("LTIME", "LT#-1s", "LT#0s", "LT#1s")]
+#[case::date("DATE", "D#2020-01-01", "D#2020-01-02", "D#2020-01-03")]
+#[case::ldate("LDATE", "LD#2020-01-01", "LD#2020-01-02", "LD#2020-01-03")]
+#[case::tod("TOD", "TOD#01:00:00", "TOD#02:00:00", "TOD#03:00:00")]
+#[case::ltod("LTOD", "LTOD#01:00:00", "LTOD#02:00:00", "LTOD#03:00:00")]
+#[case::dt(
+    "DT",
+    "DT#2020-01-01-01:00:00",
+    "DT#2020-01-02-01:00:00",
+    "DT#2020-01-03-01:00:00"
+)]
+#[case::ldt(
+    "LDT",
+    "LDT#2020-01-01-01:00:00",
+    "LDT#2020-01-02-01:00:00",
+    "LDT#2020-01-03-01:00:00"
+)]
+#[case::char_("CHAR", "CHAR#'a'", "CHAR#'b'", "CHAR#'c'")]
+fn fold_min_max_on_each_type(
+    mut with_db: db::RootDatabase,
+    #[case] ty: &str,
+    #[case] low: &str,
+    #[case] mid: &str,
+    #[case] high: &str,
+) {
+    let calls = [
+        (format!("Lo({low}, {mid}, {high})"), low),
+        (format!("Lo({mid}, {low}, {high})"), low),
+        (format!("Lo({mid}, {high}, {low})"), low),
+        (format!("Hi({high}, {mid}, {low})"), high),
+        (format!("Hi({mid}, {high}, {low})"), high),
+        (format!("Hi({low}, {mid}, {high})"), high),
+        (format!("Lo({high}, {low})"), low),
+        (format!("Hi({low}, {high})"), high),
+        (format!("Lo({high}, {mid}, {mid}, {low})"), low),
+        (format!("Hi({low}, {mid}, {mid}, {high})"), high),
+        (format!("Lo({mid})"), mid),
+        (format!("Hi({mid})"), mid),
+    ];
+    let mut body = String::new();
+    for (i, (call, want)) in calls.iter().enumerate() {
+        body += &format!(
+            "    IF {call} <> {want} THEN test := test + {}; END_IF;\n",
+            1 << i
+        );
+    }
+    let source = format!(
+        "FUNCTION Lo : {ty}\nVAR_INPUT v : {ty}...; END_VAR\n    Lo := ...v MIN;\nEND_FUNCTION\n\
+         FUNCTION Hi : {ty}\nVAR_INPUT v : {ty}...; END_VAR\n    Hi := ...v MAX;\nEND_FUNCTION\n\
+         FUNCTION test : DINT\n{body}END_FUNCTION\n"
+    );
+    let result: i32 = super::run(&mut with_db, &source, "test", ());
+    assert_eq!(result, 0, "{ty}: each wrong call sets its own bit");
+}
+
+/// Each step keeps the value so far when `<=` (`>=`) holds of it and the next
+/// argument, and takes that argument otherwise. A NaN compares false, so it gives
+/// way when it is the value so far, and takes over when it is the next argument.
+#[rstest]
+#[case::min_nan_first("Lo(n, 1.0, 2.0) = 1.0")]
+#[case::min_nan_between("Lo(1.0, n, 2.0) = 2.0")]
+#[case::min_nan_last("Lo(1.0, 2.0, n) <> Lo(1.0, 2.0, n)")]
+#[case::max_nan_first("Hi(n, 1.0, 2.0) = 2.0")]
+#[case::max_nan_between("Hi(1.0, n, 2.0) = 2.0")]
+#[case::max_nan_last("Hi(2.0, 1.0, n) <> Hi(2.0, 1.0, n)")]
+fn fold_min_max_on_a_nan(mut with_db: db::RootDatabase, #[case] holds: &str) {
+    let source = format!(
+        r#"
+        FUNCTION Lo : REAL
+        VAR_INPUT v : REAL...; END_VAR
+            Lo := ...v MIN;
+        END_FUNCTION
+
+        FUNCTION Hi : REAL
+        VAR_INPUT v : REAL...; END_VAR
+            Hi := ...v MAX;
+        END_FUNCTION
+
+        FUNCTION test : BOOL
+        VAR zero : REAL := 0.0; n : REAL; END_VAR
+            n := zero / zero;
+            test := {holds};
+        END_FUNCTION
+    "#
+    );
+    let result: i32 = super::run(&mut with_db, &source, "test", ());
+    assert_eq!(result, 1, "{holds}");
+}
+
+/// A step reads the value so far once per argument. Written as a nested `select`
+/// it would read it twice, and forty arguments would take 2^40 loads.
+#[rstest]
+fn fold_min_max_of_many_arguments_stays_small(mut with_db: db::RootDatabase) {
+    let arguments = (0..40)
+        .map(|i| (100 - i).to_string())
+        .collect::<Vec<_>>()
+        .join(", ");
+    let source = format!(
+        r#"
+        FUNCTION Lo : INT
+        VAR_INPUT v : INT...; END_VAR
+            Lo := ...v MIN;
+        END_FUNCTION
+
+        FUNCTION Hi : INT
+        VAR_INPUT v : INT...; END_VAR
+            Hi := ...v MAX;
+        END_FUNCTION
+
+        FUNCTION test : INT
+            test := Lo({arguments}) * 100 + Hi({arguments});
+        END_FUNCTION
+    "#
+    );
+    let wasm = crate::tests::codegen::compile_to_wasm(&mut with_db, &source);
+    assert!(wasm.len() < 30_000, "{} bytes", wasm.len());
+    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(result, 61 * 100 + 100);
+}
+
+/// The scratch pair a step sets its operands aside in is the one a wrapping
+/// division takes: each sets it once both operands are on the stack, so one
+/// nested in the other reads its own.
+#[rstest]
+fn fold_min_max_beside_a_division(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION Mix : DINT
+        VAR_INPUT v : DINT...; END_VAR
+            Mix := 1000 / ...v MIN + ...v MAX / 2;
+        END_FUNCTION
+
+        FUNCTION Wrap : DINT
+        VAR_INPUT v : DINT...; END_VAR
+            Wrap := ...v MIN / ...v MAX;
+        END_FUNCTION
+
+        FUNCTION test : DINT
+            IF Mix(10, 20, 5) <> 210 THEN test := test + 1; END_IF;
+            IF Wrap(DINT#-2147483648, -1) <> DINT#-2147483648 THEN test := test + 2; END_IF;
+        END_FUNCTION
+    "#;
+    let result: i32 = super::run(&mut with_db, source, "test", ());
+    assert_eq!(result, 0, "each wrong call sets its own bit");
+}
+
+/// Wherever an expression stands in the body: a local's initial value, an
+/// argument, a condition, and a METHOD, copied per argument count like a FUNCTION.
+#[rstest]
+fn fold_min_max_in_each_place(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION Twice : INT
+        VAR_INPUT x : INT; END_VAR
+            Twice := x * 2;
+        END_FUNCTION
+
+        FUNCTION Places : INT
+        VAR_INPUT v : INT...; END_VAR
+        VAR low : INT := ...v MIN; END_VAR
+            Places := low + Twice(...v MAX);
+            IF ...v MIN > 100 THEN
+                Places := -1;
+            END_IF;
+        END_FUNCTION
+
+        FUNCTION_BLOCK Block
+        METHOD Range : INT
+        VAR_INPUT v : INT...; END_VAR
+            Range := ...v MAX - ...v MIN;
+        END_METHOD
+        END_FUNCTION_BLOCK
+
+        FUNCTION test : INT
+        VAR b : Block; END_VAR
+            test := Places(3, 1, 2) * 100 + b.Range(5, 9, 7) * 10 + b.Range(4, 6);
+        END_FUNCTION
+    "#;
+    let result: i32 = super::run(&mut with_db, source, "test", ());
+    // (1 + 3 * 2) * 100 + 4 * 10 + 2
+    assert_eq!(result, 742);
+}

@@ -71,23 +71,27 @@ fn alloc_for_scratch(
         .collect()
 }
 
-/// The scratch pairs of the wrapping divisions in `body`
-/// ([`crate::emit_expr::needs_wrapping_div`]).
-fn alloc_div_scratch(
+/// The scratch pairs of the operators in `body` that read their operands twice
+/// ([`crate::emit_expr::needs_operand_pair`]).
+fn alloc_pair_scratch(
     body: &[MirStmt],
     params_len: u32,
     extra_locals: &mut Vec<(u32, ValType)>,
-) -> crate::emit_expr::DivScratch {
-    let (mut narrow, mut wide) = (false, false);
+) -> crate::emit_expr::PairScratch {
+    let (mut int32, mut int64, mut float32, mut float64) = (false, false, false, false);
     for stmt in body {
         stmt.any_expr(&mut |e| {
-            if crate::emit_expr::needs_wrapping_div(e) {
-                match e {
-                    MirExpr::BinOp { ty, .. } if ty.is_64bit() => wide = true,
-                    _ => narrow = true,
+            if crate::emit_expr::needs_operand_pair(e)
+                && let MirExpr::BinOp { ty, .. } = e
+            {
+                match (ty.is_float(), ty.is_64bit()) {
+                    (false, false) => int32 = true,
+                    (false, true) => int64 = true,
+                    (true, false) => float32 = true,
+                    (true, true) => float64 = true,
                 }
             }
-            narrow && wide
+            int32 && int64 && float32 && float64
         });
     }
     let mut take = |need: bool, vt: ValType| {
@@ -97,7 +101,12 @@ fn alloc_div_scratch(
             (idx, idx + 1)
         })
     };
-    (take(narrow, ValType::I32), take(wide, ValType::I64))
+    crate::emit_expr::PairScratch {
+        i32: take(int32, ValType::I32),
+        i64: take(int64, ValType::I64),
+        f32: take(float32, ValType::F32),
+        f64: take(float64, ValType::F64),
+    }
 }
 
 /// Whether any function assigns to a buffer-backed STRING field or global;
@@ -1358,8 +1367,8 @@ impl<'a> WasmGen<'a> {
             None
         };
 
-        // The scratch pairs of a wrapping division (`DIV_TMP`).
-        let div_tmp = alloc_div_scratch(&func.body, params.len() as u32, &mut extra_locals);
+        // The scratch pairs of the operators reading their operands twice (`PAIR_TMP`).
+        let pair_tmp = alloc_pair_scratch(&func.body, params.len() as u32, &mut extra_locals);
 
         // What a `__CATCH` lands with, and the stack pointer it puts back.
         let try_scratch = crate::emit_stmt::alloc_try_scratch(
@@ -1403,7 +1412,7 @@ impl<'a> WasmGen<'a> {
         let prev_floor_tmp =
             crate::mir_cast::DATETIME_FLOOR_TMP.with(|cell| cell.replace(datetime_floor_tmp));
         let prev_addr_tmp = crate::emit_expr::STR_ADDR_TMP.with(|cell| cell.replace(str_addr_tmp));
-        let prev_div_tmp = crate::emit_expr::DIV_TMP.with(|cell| cell.replace(div_tmp));
+        let prev_pair_tmp = crate::emit_expr::PAIR_TMP.with(|cell| cell.replace(pair_tmp));
         let frame = frame_base.zip(self.stack.map(|stack| stack.sp_global));
         let prev_frame = crate::emit_stmt::FRAME.with(|cell| cell.replace(frame));
 
@@ -1471,7 +1480,7 @@ impl<'a> WasmGen<'a> {
         // Restore the prior context.
         crate::mir_cast::DATETIME_FLOOR_TMP.with(|cell| cell.replace(prev_floor_tmp));
         crate::emit_expr::STR_ADDR_TMP.with(|cell| cell.replace(prev_addr_tmp));
-        crate::emit_expr::DIV_TMP.with(|cell| cell.replace(prev_div_tmp));
+        crate::emit_expr::PAIR_TMP.with(|cell| cell.replace(prev_pair_tmp));
         crate::emit_stmt::FRAME.with(|cell| cell.replace(prev_frame));
 
         // Push return value at function end — the same shapes a mid-body
@@ -1584,7 +1593,7 @@ impl<'a> WasmGen<'a> {
         };
 
         // Wrapping division scratch, as in `emit_function` (no params).
-        let div_tmp = alloc_div_scratch(&func.body, 0, &mut extra_locals);
+        let pair_tmp = alloc_pair_scratch(&func.body, 0, &mut extra_locals);
 
         let frame_size = frame_base.map(|_| frame_bytes(func));
 
@@ -1601,7 +1610,7 @@ impl<'a> WasmGen<'a> {
         let prev_floor_tmp =
             crate::mir_cast::DATETIME_FLOOR_TMP.with(|cell| cell.replace(datetime_floor_tmp));
         let prev_addr_tmp = crate::emit_expr::STR_ADDR_TMP.with(|cell| cell.replace(str_addr_tmp));
-        let prev_div_tmp = crate::emit_expr::DIV_TMP.with(|cell| cell.replace(div_tmp));
+        let prev_pair_tmp = crate::emit_expr::PAIR_TMP.with(|cell| cell.replace(pair_tmp));
         // A RETURN in a test leaves the wrapper, whose next call starts the
         // stack over: no frame to pop.
         let prev_frame = crate::emit_stmt::FRAME.with(|cell| cell.replace(None));
@@ -1649,7 +1658,7 @@ impl<'a> WasmGen<'a> {
 
         crate::mir_cast::DATETIME_FLOOR_TMP.with(|cell| cell.replace(prev_floor_tmp));
         crate::emit_expr::STR_ADDR_TMP.with(|cell| cell.replace(prev_addr_tmp));
-        crate::emit_expr::DIV_TMP.with(|cell| cell.replace(prev_div_tmp));
+        crate::emit_expr::PAIR_TMP.with(|cell| cell.replace(prev_pair_tmp));
         crate::emit_stmt::FRAME.with(|cell| cell.replace(prev_frame));
 
         // end try_table — only reached on the success (no-throw) path.
