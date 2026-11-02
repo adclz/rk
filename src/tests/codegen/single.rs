@@ -671,6 +671,35 @@ fn a_task_ahead_raises_a_single_for_the_same_scan(mut with_db: db::RootDatabase)
     assert_eq!(count(&plc, &info, "Last.n"), 1, "one edge, one run");
 }
 
+/// A resource named like a global does not hide the global's element, and the
+/// global named like the element is another bit: raising it runs nothing.
+#[rstest]
+fn a_resource_named_like_a_global_reads_the_element(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE Flags : STRUCT other : BOOL; go : BOOL; END_STRUCT; END_TYPE
+        PROGRAM Count VAR n : DINT; END_VAR n := n + 1; END_PROGRAM
+        CONFIGURATION Cfg
+            VAR_GLOBAL flags : Flags; go : BOOL; END_VAR
+            RESOURCE flags ON CPU
+                TASK Ev(SINGLE := flags.go, PRIORITY := 1);
+                PROGRAM Runs WITH Ev : Count;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_wasm, manifest, info, mut plc) = load(&mut with_db, source);
+    assert_eq!(
+        task(&manifest, "Ev").single.map(|s| s.addr),
+        Some(info.resolve("flags.go").expect("flags.go").address)
+    );
+    plc.write_var(&info, "go", VarValue::Bool(true)).unwrap();
+    plc.run(2).expect("scans");
+    assert_eq!(count(&plc, &info, "Runs.n"), 0, "the other bit");
+    plc.write_var(&info, "flags.go", VarValue::Bool(true))
+        .unwrap();
+    plc.scan().expect("scan");
+    assert_eq!(count(&plc, &info, "Runs.n"), 1, "the element");
+}
+
 /// A task keeps its own look at what it reads: two tasks on one bit each run
 /// once for its edge, each with its period.
 #[rstest]

@@ -1864,6 +1864,120 @@ fn valid_an_interval_through_the_resource(mut with_db: RootDatabase) {
     assert_eq!(task.trigger.single, None);
 }
 
+/// A resource may share its name with a global. `flags.go` reads the global's
+/// element when it has one, and the name is the resource's when it does not.
+/// It used to be the resource's first, which silently read the global `go`,
+/// and failed with no global `go` at all.
+#[rstest]
+fn resolved_schedule_reads_a_resource_named_like_a_global(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE Flags : STRUCT go : BOOL; END_STRUCT; END_TYPE
+PROGRAM Run VAR n : DINT; END_VAR n := n + 1; END_PROGRAM
+
+CONFIGURATION Cfg
+    VAR_GLOBAL flags : Flags; go : BOOL; other : BOOL; END_VAR
+    RESOURCE flags ON CPU
+        TASK Element(SINGLE := flags.go, PRIORITY := 0);
+        TASK Global(SINGLE := go, PRIORITY := 1);
+        TASK WithTheResource(SINGLE := flags.flags.go, PRIORITY := 2);
+        TASK GlobalOfTheResource(SINGLE := flags.other, PRIORITY := 3);
+        PROGRAM A WITH Element : Run;
+        PROGRAM B WITH Global : Run;
+        PROGRAM C WITH WithTheResource : Run;
+        PROGRAM D WITH GlobalOfTheResource : Run;
+    END_RESOURCE
+END_CONFIGURATION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+    assert_snapshot!(resolved_schedule(&with_db), @r"
+    RESOURCE flags ON CPU
+      TASK Element on the rising edge of flags.go, priority 0
+        PROGRAM A : Run
+      TASK Global on the rising edge of go, priority 1
+        PROGRAM B : Run
+      TASK WithTheResource on the rising edge of flags.go, priority 2
+        PROGRAM C : Run
+      TASK GlobalOfTheResource on the rising edge of other, priority 3
+        PROGRAM D : Run
+    ");
+}
+
+/// A resource may share its name with a program instance, as `RESOURCE Main`
+/// and `PROGRAM Main` do. `Main.done` reads the instance's output, and `Main.go`
+/// the global, the name being the resource's there. Both used to depend on
+/// which of the two was tried first.
+#[rstest]
+fn resolved_schedule_reads_a_resource_named_like_an_instance(mut with_db: RootDatabase) {
+    let source = r#"
+PROGRAM Source VAR_OUTPUT done : BOOL; END_VAR done := NOT done; END_PROGRAM
+PROGRAM Run VAR n : DINT; END_VAR n := n + 1; END_PROGRAM
+
+CONFIGURATION Cfg
+    VAR_GLOBAL go : BOOL; END_VAR
+    VAR_GLOBAL CONSTANT period : TIME := T#25ms; END_VAR
+    RESOURCE Main ON CPU
+        TASK Base(INTERVAL := Main.period, PRIORITY := 0);
+        TASK Output(SINGLE := Main.done, PRIORITY := 1);
+        TASK WithTheResource(SINGLE := Main.Main.done, PRIORITY := 2);
+        TASK Global(SINGLE := Main.go, PRIORITY := 3);
+        PROGRAM Main WITH Base : Source;
+        PROGRAM B WITH Output : Run;
+        PROGRAM C WITH WithTheResource : Run;
+        PROGRAM D WITH Global : Run;
+    END_RESOURCE
+END_CONFIGURATION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+    assert_snapshot!(resolved_schedule(&with_db), @r"
+    RESOURCE Main ON CPU
+      TASK Base every 25ms, priority 0
+        PROGRAM Main : Source
+      TASK Output on the rising edge of Main.done, priority 1
+        PROGRAM B : Run
+      TASK WithTheResource on the rising edge of Main.done, priority 2
+        PROGRAM C : Run
+      TASK Global on the rising edge of go, priority 3
+        PROGRAM D : Run
+    ");
+}
+
+/// A name no reading of a path can use is reported at that name, and a variable
+/// a shared name reaches keeps its own reports.
+#[rstest]
+#[case::nothing_after_a_shared_name("SINGLE := Main.nope", "[E0201]", "no item 'nope'")]
+#[case::a_local_of_the_instance("SINGLE := Main.hidden", "[E1410]", "reads a VAR_OUTPUT")]
+#[case::a_non_bool_output("SINGLE := Main.count", "[E1410]", "SINGLE must be a BOOL")]
+fn invalid_a_path_through_a_resource_named_like_an_instance(
+    mut with_db: RootDatabase,
+    #[case] params: &str,
+    #[case] code: &str,
+    #[case] message: &str,
+) {
+    let source = format!(
+        r#"
+PROGRAM Source
+VAR_OUTPUT done : BOOL; count : INT; END_VAR
+VAR hidden : BOOL; END_VAR
+    done := NOT hidden;
+END_PROGRAM
+PROGRAM Run VAR n : DINT; END_VAR n := n + 1; END_PROGRAM
+
+CONFIGURATION Cfg
+    RESOURCE Main ON CPU
+        TASK Base(INTERVAL := T#10ms, PRIORITY := 0);
+        TASK T({params}, PRIORITY := 1);
+        PROGRAM Main WITH Base : Source;
+        PROGRAM B WITH T : Run;
+    END_RESOURCE
+END_CONFIGURATION
+"#
+    );
+    let diagnostics = test_diagnostics(&mut with_db, &[&source]);
+    assert!(diagnostics.starts_with(code), "{diagnostics}");
+    assert_eq!(diagnostics.matches("Error:").count(), 1, "{diagnostics}");
+    assert!(diagnostics.contains(message), "{diagnostics}");
+}
+
 /// A task's program in another resource is out of reach, as the standard's
 /// `Prog_Output_Access` has no resource in it. Two RESOURCEs, which E1403
 /// refuses: this is read on its own, for the day a configuration may have

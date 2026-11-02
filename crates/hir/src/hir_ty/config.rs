@@ -1074,7 +1074,12 @@ pub fn task_paths<'db>(db: &'db dyn WorkspaceDataBase, config: ConfigDecl<'db>) 
 
 /// The path of a task parameter, walked from what it starts at: a VAR_GLOBAL of
 /// the configuration or a program instance of the task's resource, after the
-/// name of a resource if it is written, as a VAR_CONFIG path's is.
+/// name of a resource if it is written.
+///
+/// A resource may share its name with either of them, and `flags.go` then reads
+/// two ways. It is the variable or the instance when the next name is inside
+/// it, and the resource otherwise, so a path written without its resource means
+/// what it says, and one written with it still resolves.
 fn read_task_path<'db>(
     db: &'db dyn WorkspaceDataBase,
     config: ConfigDecl<'db>,
@@ -1086,17 +1091,42 @@ fn read_task_path<'db>(
     let file = path.get_scope_id(db).file(db);
     let steps = path.flatten(db).as_slice();
     let fragments = crate::hir_ty::index_graphs::config_fragments(db, config.get_name_ident(db));
+    let global_named = |name: Ident| {
+        fragments
+            .iter()
+            .flat_map(|f| f.variables(db).iter())
+            .find(|v| v.get_name_ident(db) == name)
+    };
+    let instance_named = |name: Ident| {
+        resource
+            .programs(db)
+            .iter()
+            .find(|p| p.name(db).ident(db) == name)
+    };
+    let holds = |name: Ident, next: Ident| match global_named(name) {
+        Some(global) => match global.spec(db).infer(db).normalize(db) {
+            Type::Struct(st) => st.struct_elements(db).contains_key(&next),
+            base @ (Type::FunctionBlock(_) | Type::Class(_)) => {
+                instance_member(db, base, next).is_some()
+            }
+            _ => false,
+        },
+        None => instance_named(name)
+            .and_then(|instance| program_of_instance(db, instance))
+            .is_some_and(|program| program.variables(db).iter().any(|v| v.name(db) == next)),
+    };
 
     let mut at = 0;
     if let [
         PathExprWalkStep::Field { ident, expr },
-        PathExprWalkStep::Field { .. },
+        PathExprWalkStep::Field { ident: next, .. },
         ..,
     ] = steps
         && let Some(written) = fragments
             .iter()
             .flat_map(|f| f.resources(db).iter())
             .find(|r| r.name(db).ident(db) == ident.ident(db))
+        && !holds(ident.ident(db), next.ident(db))
     {
         out.steps.insert(*expr, ConfigPathStep::Resource(*written));
         at = 1;
@@ -1106,11 +1136,7 @@ fn read_task_path<'db>(
     };
     let name = ident.ident(db);
 
-    let global = fragments
-        .iter()
-        .flat_map(|f| f.variables(db).iter())
-        .find(|v| v.get_name_ident(db) == name);
-    if let Some(global) = global {
+    if let Some(global) = global_named(name) {
         out.names.insert(*expr, *global);
         let (elements, ty) = walk_source_steps(
             db,
@@ -1129,11 +1155,7 @@ fn read_task_path<'db>(
         });
     }
 
-    let Some(instance) = resource
-        .programs(db)
-        .iter()
-        .find(|p| p.name(db).ident(db) == name)
-    else {
+    let Some(instance) = instance_named(name) else {
         out.errors.push(
             ResolveError::NoItemInScope {
                 expr: *expr,
@@ -1144,9 +1166,7 @@ fn read_task_path<'db>(
         return Err(UnschedulableReason::UnknownName);
     };
     out.steps.insert(*expr, ConfigPathStep::Instance(*instance));
-    let mut program = FxHashMap::default();
-    resolve_prog_instance(db, instance, &mut program);
-    let Some(program) = program.into_values().next() else {
+    let Some(program) = program_of_instance(db, instance) else {
         return Err(UnschedulableReason::UnknownName); // already diagnosed
     };
     let (member, member_expr) = match steps.get(at + 1) {
@@ -1271,6 +1291,16 @@ fn source_subscript<'db>(
         );
     }
     Err(UnschedulableReason::UnknownName)
+}
+
+/// The program a program configuration instantiates, when its type resolves.
+fn program_of_instance<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    instance: &ProgConfig<'db>,
+) -> Option<ProgramDecl<'db>> {
+    let mut program = FxHashMap::default();
+    resolve_prog_instance(db, instance, &mut program);
+    program.into_values().next()
 }
 
 /// The steps from a variable of type `ty` to what a task parameter reads
