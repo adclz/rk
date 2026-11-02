@@ -346,3 +346,148 @@ END_FUNCTION
               (identifier)
               (fold_operator
                 (fold_ge)))))))))
+
+================================================================================
+min and max fold operators, and the same words as names
+================================================================================
+
+FUNCTION MIN : INT
+VAR_INPUT
+  args : INT...
+END_VAR
+  test := ...args MIN
+  test := ...args MAX
+  test := ...args min
+  test := ...args max + 1
+  max := MIN(a, b)
+  min := max
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (func_decl
+    (identifier)
+    (numeric_type_name
+      (int_type_name
+        (sign_int_type_name
+          (int_name))))
+    (input_decls
+      (input_var
+        (variable_list
+          (identifier))
+        (variadic_decl
+          (numeric_type_name
+            (int_type_name
+              (sign_int_type_name
+                (int_name)))))))
+    (func_body
+      (stmt_list
+        (assign
+          (variable_access
+            (variable
+              (begin_path_expression
+                (path_expression
+                  (var_access
+                    (field))))))
+          (assignment
+            (fold_expression
+              (identifier)
+              (fold_operator
+                (fold_min)))))
+        (assign
+          (variable_access
+            (variable
+              (begin_path_expression
+                (path_expression
+                  (var_access
+                    (field))))))
+          (assignment
+            (fold_expression
+              (identifier)
+              (fold_operator
+                (fold_max)))))
+        (assign
+          (variable_access
+            (variable
+              (begin_path_expression
+                (path_expression
+                  (var_access
+                    (field))))))
+          (assignment
+            (fold_expression
+              (identifier)
+              (fold_operator
+                (fold_min)))))
+        (assign
+          (variable_access
+            (variable
+              (begin_path_expression
+                (path_expression
+                  (var_access
+                    (field))))))
+          (assignment
+            (add_operator
+              (fold_expression
+                (identifier)
+                (fold_operator
+                  (fold_max)))
+              (constant
+                (numeric_literal
+                  (int_literal
+                    (signed_int
+                      (unsigned_int))))))))
+        (assign
+          (variable_access
+            (variable
+              (begin_path_expression
+                (path_expression
+                  (var_access
+                    (field))))))
+          (assignment
+            (func_call
+              (begin_path_expression
+                (path_expression
+                  (var_access
+                    (field))))
+              (param_assign
+                (param_assign_input
+                  (variable_access
+                    (variable
+                      (begin_path_expression
+                        (path_expression
+                          (var_access
+                            (field))))))))
+              (param_assign
+                (param_assign_input
+                  (variable_access
+                    (variable
+                      (begin_path_expression
+                        (path_expression
+                          (var_access
+                            (field)))))))))))
+        (assign
+          (variable_access
+            (variable
+              (begin_path_expression
+                (path_expression
+                  (var_access
+                    (field))))))
+          (assignment
+            (variable_access
+              (variable
+                (begin_path_expression
+                  (path_expression
+                    (var_access
+                      (field))))))))))))
+
+================================================================================
+A fold by a word needs its space
+:error
+================================================================================
+
+FUNCTION fn
+  test := ...argsMIN
+END_FUNCTION
+
+--------------------------------------------------------------------------------

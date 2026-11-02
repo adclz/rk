@@ -11269,6 +11269,38 @@
           },
           "named": true,
           "value": "fold_ge"
+        },
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "TOKEN",
+            "content": {
+              "type": "PREC",
+              "value": 0,
+              "content": {
+                "type": "PATTERN",
+                "value": "[mM][iI][nN]"
+              }
+            }
+          },
+          "named": true,
+          "value": "fold_min"
+        },
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "TOKEN",
+            "content": {
+              "type": "PREC",
+              "value": 0,
+              "content": {
+                "type": "PATTERN",
+                "value": "[mM][aA][xX]"
+              }
+            }
+          },
+          "named": true,
+          "value": "fold_max"
         }
       ]
     },

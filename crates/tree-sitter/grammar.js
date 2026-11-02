@@ -2053,6 +2053,10 @@ module.exports = grammar({
         alias(">", $.fold_gt),
         alias("<=", $.fold_le),
         alias(">=", $.fold_ge),
+        // Extremes. Words, so a space sets them apart from the name, and no
+        // keywords: `MIN` is a name everywhere else, as the FUNCTION MIN is.
+        alias(token(prec(0, caseInsensitive("MIN"))), $.fold_min),
+        alias(token(prec(0, caseInsensitive("MAX"))), $.fold_max),
       ),
 
     // Primary_Expr : Constant | Enum_Value | Variable_Access | Func_Call | Ref_Value| '(' Expression ')';
