@@ -470,338 +470,214 @@ NAMESPACE Std.Selection
 	END_FUNCTION
 
 
-	/* Returns the smaller of `IN1` and `IN2`.
-
-	   Nest the calls for more than two values.
+	/* Returns the smallest of its inputs, however many there are.
 
 	   # Examples
 
 	   ```iecst
-	   n := MIN(3, 5);          // 3
-	   n := MIN(7, MIN(9, 4));  // 4
+	   n := MIN(3, 5);     // 3
+	   n := MIN(7, 9, 4);  // 4
 	   ```
 	*/
 	FUNCTION MIN: SINT
 		VAR_INPUT
-			IN1: SINT;
-			IN2: SINT;
+			IN: SINT...;
 		END_VAR
 
-		IF IN1 <= IN2 THEN
-			MIN := IN1;
-		ELSE
-			MIN := IN2;
-		END_IF;
+		MIN := ...IN MIN;
 	END_FUNCTION
 
 	FUNCTION MIN: INT
 		VAR_INPUT
-			IN1: INT;
-			IN2: INT;
+			IN: INT...;
 		END_VAR
 
-		IF IN1 <= IN2 THEN
-			MIN := IN1;
-		ELSE
-			MIN := IN2;
-		END_IF;
+		MIN := ...IN MIN;
 	END_FUNCTION
 
 	FUNCTION MIN: DINT
 		VAR_INPUT
-			IN1: DINT;
-			IN2: DINT;
+			IN: DINT...;
 		END_VAR
 
-		IF IN1 <= IN2 THEN
-			MIN := IN1;
-		ELSE
-			MIN := IN2;
-		END_IF;
+		MIN := ...IN MIN;
 	END_FUNCTION
 
 	FUNCTION MIN: LINT
 		VAR_INPUT
-			IN1: LINT;
-			IN2: LINT;
+			IN: LINT...;
 		END_VAR
 
-		IF IN1 <= IN2 THEN
-			MIN := IN1;
-		ELSE
-			MIN := IN2;
-		END_IF;
+		MIN := ...IN MIN;
 	END_FUNCTION
 
 	FUNCTION MIN: USINT
 		VAR_INPUT
-			IN1: USINT;
-			IN2: USINT;
+			IN: USINT...;
 		END_VAR
 
-		IF IN1 <= IN2 THEN
-			MIN := IN1;
-		ELSE
-			MIN := IN2;
-		END_IF;
+		MIN := ...IN MIN;
 	END_FUNCTION
 
 	FUNCTION MIN: UINT
 		VAR_INPUT
-			IN1: UINT;
-			IN2: UINT;
+			IN: UINT...;
 		END_VAR
 
-		IF IN1 <= IN2 THEN
-			MIN := IN1;
-		ELSE
-			MIN := IN2;
-		END_IF;
+		MIN := ...IN MIN;
 	END_FUNCTION
 
 	FUNCTION MIN: UDINT
 		VAR_INPUT
-			IN1: UDINT;
-			IN2: UDINT;
+			IN: UDINT...;
 		END_VAR
 
-		IF IN1 <= IN2 THEN
-			MIN := IN1;
-		ELSE
-			MIN := IN2;
-		END_IF;
+		MIN := ...IN MIN;
 	END_FUNCTION
 
 	FUNCTION MIN: ULINT
 		VAR_INPUT
-			IN1: ULINT;
-			IN2: ULINT;
+			IN: ULINT...;
 		END_VAR
 
-		IF IN1 <= IN2 THEN
-			MIN := IN1;
-		ELSE
-			MIN := IN2;
-		END_IF;
+		MIN := ...IN MIN;
 	END_FUNCTION
 
 	FUNCTION MIN: REAL
 		VAR_INPUT
-			IN1: REAL;
-			IN2: REAL;
+			IN: REAL...;
 		END_VAR
 
-		IF IN1 <= IN2 THEN
-			MIN := IN1;
-		ELSE
-			MIN := IN2;
-		END_IF;
+		MIN := ...IN MIN;
 	END_FUNCTION
 
 	FUNCTION MIN: LREAL
 		VAR_INPUT
-			IN1: LREAL;
-			IN2: LREAL;
+			IN: LREAL...;
 		END_VAR
 
-		IF IN1 <= IN2 THEN
-			MIN := IN1;
-		ELSE
-			MIN := IN2;
-		END_IF;
+		MIN := ...IN MIN;
 	END_FUNCTION
 
 	FUNCTION MIN: TIME
 		VAR_INPUT
-			IN1: TIME;
-			IN2: TIME;
+			IN: TIME...;
 		END_VAR
 
-		IF IN1 <= IN2 THEN
-			MIN := IN1;
-		ELSE
-			MIN := IN2;
-		END_IF;
+		MIN := ...IN MIN;
 	END_FUNCTION
 
 	FUNCTION MIN: LTIME
 		VAR_INPUT
-			IN1: LTIME;
-			IN2: LTIME;
+			IN: LTIME...;
 		END_VAR
 
-		IF IN1 <= IN2 THEN
-			MIN := IN1;
-		ELSE
-			MIN := IN2;
-		END_IF;
+		MIN := ...IN MIN;
 	END_FUNCTION
 
-	/* Returns the larger of `IN1` and `IN2`.
-
-	   Nest the calls for more than two values.
+	/* Returns the largest of its inputs, however many there are.
 
 	   # Examples
 
 	   ```iecst
-	   n := MAX(3, 5);          // 5
-	   n := MAX(7, MAX(9, 4));  // 9
+	   n := MAX(3, 5);     // 5
+	   n := MAX(7, 9, 4);  // 9
 	   ```
 	*/
 	FUNCTION MAX: SINT
 		VAR_INPUT
-			IN1: SINT;
-			IN2: SINT;
+			IN: SINT...;
 		END_VAR
 
-		IF IN1 >= IN2 THEN
-			MAX := IN1;
-		ELSE
-			MAX := IN2;
-		END_IF;
+		MAX := ...IN MAX;
 	END_FUNCTION
 
 	FUNCTION MAX: INT
 		VAR_INPUT
-			IN1: INT;
-			IN2: INT;
+			IN: INT...;
 		END_VAR
 
-		IF IN1 >= IN2 THEN
-			MAX := IN1;
-		ELSE
-			MAX := IN2;
-		END_IF;
+		MAX := ...IN MAX;
 	END_FUNCTION
 
 	FUNCTION MAX: DINT
 		VAR_INPUT
-			IN1: DINT;
-			IN2: DINT;
+			IN: DINT...;
 		END_VAR
 
-		IF IN1 >= IN2 THEN
-			MAX := IN1;
-		ELSE
-			MAX := IN2;
-		END_IF;
+		MAX := ...IN MAX;
 	END_FUNCTION
 
 	FUNCTION MAX: LINT
 		VAR_INPUT
-			IN1: LINT;
-			IN2: LINT;
+			IN: LINT...;
 		END_VAR
 
-		IF IN1 >= IN2 THEN
-			MAX := IN1;
-		ELSE
-			MAX := IN2;
-		END_IF;
+		MAX := ...IN MAX;
 	END_FUNCTION
 
 	FUNCTION MAX: USINT
 		VAR_INPUT
-			IN1: USINT;
-			IN2: USINT;
+			IN: USINT...;
 		END_VAR
 
-		IF IN1 >= IN2 THEN
-			MAX := IN1;
-		ELSE
-			MAX := IN2;
-		END_IF;
+		MAX := ...IN MAX;
 	END_FUNCTION
 
 	FUNCTION MAX: UINT
 		VAR_INPUT
-			IN1: UINT;
-			IN2: UINT;
+			IN: UINT...;
 		END_VAR
 
-		IF IN1 >= IN2 THEN
-			MAX := IN1;
-		ELSE
-			MAX := IN2;
-		END_IF;
+		MAX := ...IN MAX;
 	END_FUNCTION
 
 	FUNCTION MAX: UDINT
 		VAR_INPUT
-			IN1: UDINT;
-			IN2: UDINT;
+			IN: UDINT...;
 		END_VAR
 
-		IF IN1 >= IN2 THEN
-			MAX := IN1;
-		ELSE
-			MAX := IN2;
-		END_IF;
+		MAX := ...IN MAX;
 	END_FUNCTION
 
 	FUNCTION MAX: ULINT
 		VAR_INPUT
-			IN1: ULINT;
-			IN2: ULINT;
+			IN: ULINT...;
 		END_VAR
 
-		IF IN1 >= IN2 THEN
-			MAX := IN1;
-		ELSE
-			MAX := IN2;
-		END_IF;
+		MAX := ...IN MAX;
 	END_FUNCTION
 
 	FUNCTION MAX: REAL
 		VAR_INPUT
-			IN1: REAL;
-			IN2: REAL;
+			IN: REAL...;
 		END_VAR
 
-		IF IN1 >= IN2 THEN
-			MAX := IN1;
-		ELSE
-			MAX := IN2;
-		END_IF;
+		MAX := ...IN MAX;
 	END_FUNCTION
 
 	FUNCTION MAX: LREAL
 		VAR_INPUT
-			IN1: LREAL;
-			IN2: LREAL;
+			IN: LREAL...;
 		END_VAR
 
-		IF IN1 >= IN2 THEN
-			MAX := IN1;
-		ELSE
-			MAX := IN2;
-		END_IF;
+		MAX := ...IN MAX;
 	END_FUNCTION
 
 	FUNCTION MAX: TIME
 		VAR_INPUT
-			IN1: TIME;
-			IN2: TIME;
+			IN: TIME...;
 		END_VAR
 
-		IF IN1 >= IN2 THEN
-			MAX := IN1;
-		ELSE
-			MAX := IN2;
-		END_IF;
+		MAX := ...IN MAX;
 	END_FUNCTION
 
 	FUNCTION MAX: LTIME
 		VAR_INPUT
-			IN1: LTIME;
-			IN2: LTIME;
+			IN: LTIME...;
 		END_VAR
 
-		IF IN1 >= IN2 THEN
-			MAX := IN1;
-		ELSE
-			MAX := IN2;
-		END_IF;
+		MAX := ...IN MAX;
 	END_FUNCTION
 
 	/* Returns the input that `K` selects, counting from 0.
@@ -1372,6 +1248,28 @@ NAMESPACE Std.Selection
 		FUNCTION test_min_max_time
 			ASSERT_EQ(MIN(T#1s, T#2s), T#1s);
 			ASSERT_EQ(MAX(T#1s, T#2s), T#2s);
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_min_max_any_number_of_inputs
+			ASSERT_EQ(MIN(5), 5);
+			ASSERT_EQ(MAX(5), 5);
+			ASSERT_EQ(MIN(3, 1, 2), 1);
+			ASSERT_EQ(MAX(1, 3, 2), 3);
+			ASSERT_EQ(MIN(8, 6, 7, 5, 3, 0, 9), 0);
+			ASSERT_EQ(MAX(8, 6, 7, 5, 3, 0, 9), 9);
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_min_max_widen_to_the_wider_type
+			VAR
+				i: INT := 1;
+				d: DINT := 70000;
+				r: REAL := 2.5;
+			END_VAR
+			ASSERT_EQ(MAX(i, d), DINT#70000);
+			ASSERT_EQ(MIN(d, i, d), DINT#1);
+			ASSERT_EQ(MIN(i, r), REAL#1.0);
 		END_FUNCTION
 
 		{test}
