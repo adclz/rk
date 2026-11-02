@@ -7,8 +7,9 @@
 //! Each program configuration allocates its own instance and runs
 //! `Type$__body__(&inst)`, or `Inst$__scan__(&inst)` when it has
 //! connections. A function block a task runs on its own is an entry of that
-//! task: `FB$__body__` on its place in the program instance. Only cyclic
-//! (INTERVAL) tasks are scheduled.
+//! task: `FB$__body__` on its place in the program instance. A task runs on
+//! its period, on a rising edge of its SINGLE, or on both: the host reads the
+//! bit the schedule names, so nothing here runs on its behalf.
 
 use db::WorkspaceDataBase;
 use hir::{
@@ -17,11 +18,19 @@ use hir::{
         config::ConfigDecl, interned::identifier::Ident, pous::variable::VariableKind,
         program::ProgramDecl,
     },
-    hir_ty::{config::infer_config_result, infer::Infer, ty::Type},
+    hir_ty::{
+        config::{SingleSource, SourceStep, infer_config_result},
+        infer::Infer,
+        ty::Type,
+    },
 };
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::{memory::MirAllocKind, memory::MirMemoryLayout, types::MirStructType};
+use crate::{
+    lower::{lower_module::GlobalTable, lower_type::LowerTypeError},
+    memory::{MirAllocKind, MirMemoryLayout},
+    types::{MirStructType, MirType},
+};
 
 /// What `lower_module` hands the scheduler about each lowered PROGRAM type.
 #[derive(Debug, Clone)]
@@ -67,7 +76,7 @@ impl MirProgInstance {
     }
 }
 
-/// One cyclic TASK and the program instances it runs each time it fires.
+/// One TASK and the program instances it runs each time it fires.
 #[derive(Debug, Clone)]
 pub struct MirTask {
     /// The RESOURCE that declares this task: the group a deployment binds to
@@ -76,14 +85,29 @@ pub struct MirTask {
 
     pub name: Ident,
     /// How often the task fires, as a count of base ticks
-    /// (`interval / common_ticktime`). Always >= 1.
+    /// (`interval / common_ticktime`). Zero for no periodic runs: only its
+    /// `single` runs it then.
     pub period_ticks: u64,
+    /// The bit whose rising edge runs the task.
+    pub single: Option<MirSingle>,
     /// IEC priority (lower number = more urgent). `None` when PRIORITY is omitted.
     pub priority: Option<u32>,
     /// Program instances this task runs, in declaration order.
     pub programs: Vec<MirProgInstance>,
     /// Function blocks this task runs on their own, after the programs.
     pub function_blocks: Vec<MirFbInstance>,
+}
+
+/// The bit a task's SINGLE reads.
+#[derive(Debug, Clone, Copy)]
+pub struct MirSingle {
+    /// The base of what holds it, which a relocation moves: a program
+    /// instance, a VAR_GLOBAL or the cell of an address.
+    pub base: u32,
+    /// Where its byte sits from that base.
+    pub offset: u32,
+    /// Its place in that byte.
+    pub bit: u8,
 }
 
 /// A function block a task runs instead of the program instance holding it.
@@ -103,7 +127,8 @@ pub struct MirFbInstance {
 /// The resolved schedule of the module's single CONFIGURATION.
 #[derive(Debug, Clone)]
 pub struct MirSchedule {
-    /// Base tick period in nanoseconds — the GCD of all task intervals.
+    /// Base tick period in nanoseconds — the GCD of all task intervals. Zero
+    /// when no task has one.
     pub common_ticktime_ns: u64,
     /// Tasks, sorted most-urgent-first (lowest priority number).
     pub tasks: Vec<MirTask>,
@@ -142,6 +167,10 @@ impl MirSchedule {
                                 }),
                         )
                         .collect(),
+                    single: t.single.map(|s| debug_format::SingleBit {
+                        addr: s.base + s.offset,
+                        bit: s.bit,
+                    }),
                 })
                 .collect(),
         }
@@ -150,13 +179,14 @@ impl MirSchedule {
 
 /// Lower the CONFIGURATION (every fragment of it) into a schedule,
 /// allocating each program instance and registering its RETAIN fields.
-/// `None` without a cyclic task.
+/// `None` without a task that runs anything.
 pub fn lower_schedule<'db>(
     db: &'db dyn WorkspaceDataBase,
     config: &[ConfigDecl<'db>],
     memory_layout: &mut MirMemoryLayout,
     program_infos: &FxHashMap<Ident, ProgramInfo<'db>>,
-) -> Result<Option<MirSchedule>, crate::lower::lower_type::LowerTypeError> {
+    globals: &GlobalTable<'db>,
+) -> Result<Option<MirSchedule>, LowerTypeError> {
     // HIR resolved what runs; lowering gives each instance memory and
     // expresses periods against one tick counter.
     let mut pending: Vec<(
@@ -245,13 +275,12 @@ pub fn lower_schedule<'db>(
     }
 
     // One tick counter drives every task, so the base period is the GCD of the
-    // intervals and each task's period is its multiple of that.
-    let Some(common) = pending.iter().map(|(_, t, _)| t.interval_ns).reduce(gcd) else {
-        return Ok(None);
-    };
-    if common == 0 {
-        return Ok(None);
-    }
+    // intervals and each task's period is its multiple of that. A task with no
+    // interval has no say in it, and with none at all there is no tick.
+    let common = pending
+        .iter()
+        .filter_map(|(_, t, _)| t.trigger.interval_ns)
+        .fold(0, gcd);
 
     let mut tasks: Vec<MirTask> = Vec::new();
     for (resource, task, programs) in pending {
@@ -302,7 +331,13 @@ pub fn lower_schedule<'db>(
             resource,
             name: task.name,
             // As wide as the interval itself: a period never needs narrowing.
-            period_ticks: task.interval_ns / common,
+            period_ticks: task.trigger.interval_ns.map_or(0, |ns| ns / common),
+            single: task
+                .trigger
+                .single
+                .as_ref()
+                .map(|source| lower_single(db, source, &bases, globals))
+                .transpose()?,
             priority: task.priority,
             programs,
             function_blocks,
@@ -313,6 +348,109 @@ pub fn lower_schedule<'db>(
         common_ticktime_ns: common,
         tasks,
     }))
+}
+
+/// The bit a SINGLE reads. Where a variable or an address is kept was decided
+/// before the schedule was, and a relocation moves only the base.
+fn lower_single<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    source: &SingleSource<'db>,
+    bases: &FxHashMap<Ident, (u32, &ProgramInfo<'db>)>,
+    globals: &GlobalTable<'db>,
+) -> Result<MirSingle, LowerTypeError> {
+    let no_place = |what: &str| {
+        LowerTypeError::UnsupportedType(format!("SINGLE reads '{what}', which has no place"))
+    };
+    // The base of what holds it, the bytes from there, and the bits past them.
+    let (base, bytes, bits) = match source {
+        // A bit of its own cell, or of the wider address that holds it.
+        SingleSource::Address(address) => {
+            let (cell, shift) = match hir::hir_ty::index_graphs::located_view(db, address) {
+                Some(view) => (view.owner, view.shift),
+                None => (address.clone(), 0),
+            };
+            let key = Ident::new(db, cell.text.clone());
+            let (base, _) = globals
+                .get(&key)
+                .ok_or_else(|| no_place(address.text.as_str()))?;
+            (*base, 0, shift)
+        }
+        SingleSource::Global { global, elements } => {
+            let key = crate::lower::lower_module::global_key(db, *global);
+            let (base, ty) = globals.get(&key).ok_or_else(|| no_place(key.text(db)))?;
+            (*base, place_inside(db, ty, elements)?, 0)
+        }
+        SingleSource::Output {
+            instance,
+            output,
+            elements,
+        } => {
+            let name = output.name_with_case(db);
+            let (base, info) = bases
+                .get(instance)
+                .ok_or_else(|| no_place(instance.text(db)))?;
+            let field = info
+                .struct_type
+                .fields
+                .iter()
+                .find(|f| f.name(db) == output.name(db))
+                .ok_or_else(|| no_place(name.text(db)))?;
+            let bytes = field.offset + place_inside(db, &field.ty, elements)?;
+            (*base, bytes, 0)
+        }
+    };
+    // Memory holds a value little-endian, so a bit counts up through its bytes.
+    Ok(MirSingle {
+        base,
+        offset: bytes + bits / 8,
+        bit: (bits % 8) as u8,
+    })
+}
+
+/// The byte offset of what `steps` reach inside a value of type `ty`, HIR
+/// having checked each of them against it. An array is laid out row by row.
+fn place_inside(
+    db: &dyn WorkspaceDataBase,
+    ty: &MirType,
+    steps: &[SourceStep],
+) -> Result<u32, LowerTypeError> {
+    let disagree = || {
+        LowerTypeError::UnsupportedType(
+            "a SINGLE's path does not fit the layout of what it reads".to_string(),
+        )
+    };
+    let mut ty = ty.clone();
+    let mut offset = 0;
+    for step in steps {
+        ty = match (step, &ty) {
+            (SourceStep::Element(name), MirType::Struct(st)) => {
+                let field = st
+                    .fields
+                    .iter()
+                    .find(|f| f.name(db) == *name)
+                    .ok_or_else(disagree)?;
+                offset += field.offset;
+                field.ty.clone()
+            }
+            (SourceStep::Index(subscripts), MirType::Array(array)) => {
+                let row = array.row(subscripts.len()).ok_or_else(disagree)?;
+                let mut stride = i64::from(row.size);
+                let dimensions = array.dimensions.iter().take(subscripts.len());
+                for (subscript, (lower, upper)) in subscripts.iter().zip(dimensions).rev() {
+                    offset +=
+                        u32::try_from((subscript - lower) * stride).map_err(|_| disagree())?;
+                    stride *= upper - lower + 1;
+                }
+                if row.dimensions.is_empty() {
+                    (*array.element_type).clone()
+                } else {
+                    MirType::Array(row)
+                }
+            }
+            _ => return Err(disagree()),
+        };
+    }
+    Ok(offset)
 }
 
 /// Whether a program field is persistent: `RETAIN` itself, or an FB/class
