@@ -695,7 +695,16 @@ impl<'db> ToIdeDiagnostic<'db> for CallError<'db> {
                     )
                     .call();
 
-                for c in candidates {
+                // A set over every elementary type runs to scores of overloads:
+                // a few say what the set takes.
+                const LISTED: usize = 8;
+                if candidates.len() > LISTED {
+                    diag.with_note(format!(
+                        "{LISTED} of its {} overloads are listed",
+                        candidates.len()
+                    ));
+                }
+                for c in candidates.iter().take(LISTED) {
                     let signature = crate::hir_ty::head::signature::function_signature(db, *c);
                     let declared: Vec<(Ident, Type<'db>)> = match writes_outputs {
                         false => Vec::new(),

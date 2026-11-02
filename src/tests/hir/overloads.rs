@@ -1602,3 +1602,61 @@ END_PROGRAM
     ----'
     ");
 }
+
+/// A set over every elementary type runs to scores of overloads, and E0810 listed
+/// each one, with its line: a few say what the set takes, and the count says the
+/// rest are there.
+#[rstest]
+fn no_matching_type_lists_a_few_of_many_overloads(mut with_db: RootDatabase) {
+    let mut source = String::new();
+    for ty in [
+        "SINT", "INT", "DINT", "LINT", "USINT", "UINT", "UDINT", "ULINT", "REAL", "LREAL",
+    ] {
+        source += &format!("FUNCTION take : BOOL\nVAR_INPUT v : {ty}; END_VAR\nEND_FUNCTION\n\n");
+    }
+    source += "FUNCTION test : BOOL\n    test := take(TRUE);\nEND_FUNCTION\n";
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[&source]), @r"
+    [E0810] Error: no matching overload
+        ,-[ file:///test0.st:42:13 ]
+        |
+      1 | FUNCTION take : BOOL
+        |          ^^|^
+        |            `--- overload accepting (SINT)
+        |
+      5 | FUNCTION take : BOOL
+        |          ^^|^
+        |            `--- overload accepting (INT)
+        |
+      9 | FUNCTION take : BOOL
+        |          ^^|^
+        |            `--- overload accepting (DINT)
+        |
+     13 | FUNCTION take : BOOL
+        |          ^^|^
+        |            `--- overload accepting (LINT)
+        |
+     17 | FUNCTION take : BOOL
+        |          ^^|^
+        |            `--- overload accepting (USINT)
+        |
+     21 | FUNCTION take : BOOL
+        |          ^^|^
+        |            `--- overload accepting (UINT)
+        |
+     25 | FUNCTION take : BOOL
+        |          ^^|^
+        |            `--- overload accepting (UDINT)
+        |
+     29 | FUNCTION take : BOOL
+        |          ^^|^
+        |            `--- overload accepting (ULINT)
+        |
+     42 |     test := take(TRUE);
+        |             ^^|^
+        |               `--- no overload of 'take' accepts (BOOL)
+        |
+        | Note: 8 of its 10 overloads are listed
+    ----'
+    ");
+}
