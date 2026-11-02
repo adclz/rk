@@ -49,6 +49,7 @@ mod references;
 mod retain_structs;
 mod return_value;
 mod schedule;
+mod single;
 mod starting_values;
 mod strings;
 mod structs;

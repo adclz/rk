@@ -380,6 +380,8 @@ enum Driver {
 struct ScheduledTask {
     name: String,
     period_ticks: u64,
+    /// The bit whose rising edge runs the task.
+    single: Option<debug_format::SingleBit>,
     /// Program instances in declaration order: (instance name, body, `this`).
     programs: Vec<(String, TypedFunc<i32, ()>, i32)>,
 }
@@ -389,8 +391,9 @@ struct ScheduledTask {
 /// The host owns the linear memory (`env.memory`), calls `__init` once, and
 /// finds the retained and global bands through the exported `retain_base`,
 /// `retain_size`, `globals_base` and `globals_size`. A module with an
-/// `rk.schedule` section runs every task whose period divides the tick, in
-/// manifest order; a module without one runs its sole function export.
+/// `rk.schedule` section takes each task in manifest order and runs the ones
+/// due (`debug_format::task_due`); a module without one runs its sole function
+/// export.
 pub struct TestPlc {
     store: Store<()>,
     memory: Memory,
@@ -406,6 +409,8 @@ pub struct TestPlc {
     /// when the module declares no located variable.
     located: debug_format::LocatedMap,
     tick: u64,
+    /// Each task's SINGLE at the last look, FALSE before the first.
+    single_levels: Vec<bool>,
 }
 
 impl TestPlc {
@@ -498,6 +503,7 @@ impl TestPlc {
             marker,
             located,
             tick: 0,
+            single_levels: Vec::new(),
         })
     }
 
@@ -508,7 +514,8 @@ impl TestPlc {
     }
 
     /// One scan cycle: every task due at this tick in manifest order, or the
-    /// single program. The tick advances however the cycle ended, so a fault
+    /// single program. A task's SINGLE is read at its turn, so a task ahead of
+    /// it can raise it. The tick advances however the cycle ended, so a fault
     /// does not replay the tasks that already ran.
     pub fn scan(&mut self) -> Result<()> {
         enum Due {
@@ -519,13 +526,7 @@ impl TestPlc {
         let due = match &self.driver {
             Driver::None(why) => bail!("this module has no scan entry: {why}"),
             Driver::Single(f) => Due::Single(f.clone()),
-            Driver::Scheduled(tasks) => Due::Tasks(
-                tasks
-                    .iter()
-                    .filter(|t| tick.is_multiple_of(t.period_ticks))
-                    .cloned()
-                    .collect(),
-            ),
+            Driver::Scheduled(tasks) => Due::Tasks(tasks.clone()),
         };
         let mut result = Ok(());
         match due {
@@ -535,7 +536,16 @@ impl TestPlc {
                 }
             }
             Due::Tasks(tasks) => {
-                'cycle: for task in tasks {
+                self.single_levels.resize(tasks.len(), false);
+                'cycle: for (at, task) in tasks.into_iter().enumerate() {
+                    let level = task
+                        .single
+                        .and_then(|s| s.read(self.memory.data(&self.store)))
+                        .unwrap_or(false);
+                    let previous = std::mem::replace(&mut self.single_levels[at], level);
+                    if !debug_format::task_due(task.period_ticks, tick, level, previous) {
+                        continue;
+                    }
                     for (instance, body, this) in task.programs {
                         if let Err(e) = body.call(&mut self.store, this) {
                             let unit =
@@ -847,8 +857,8 @@ fn resolve_tasks(
 ) -> Result<Vec<ScheduledTask>> {
     let mut tasks = Vec::new();
     for t in &manifest.tasks {
-        if t.period_ticks == 0 {
-            bail!("task `{}` has a period of 0 ticks", t.name);
+        if t.period_ticks == 0 && t.single.is_none() {
+            bail!("task `{}` has neither a period nor a SINGLE", t.name);
         }
         let mut programs = Vec::new();
         for prog in &t.programs {
@@ -863,6 +873,7 @@ fn resolve_tasks(
         tasks.push(ScheduledTask {
             name: t.name.clone(),
             period_ticks: t.period_ticks,
+            single: t.single,
             programs,
         });
     }
