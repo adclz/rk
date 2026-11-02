@@ -495,6 +495,138 @@ fn invalid_radix_literal_without_digits(mut with_db: RootDatabase) {
     ");
 }
 
+// A sign stands before a based literal: not inside a typed one, and not
+// before a base no literal has.
+#[rstest]
+fn invalid_sign_around_a_based_literal(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION F : INT
+            F := INT#-16#10;
+            F := -10#5;
+            F := -16#;
+            F := -2#2;
+            F := -8#8;
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0001] Error: syntax error
+       ,-[ file:///test0.st:3:25 ]
+       |
+     3 |             F := INT#-16#10;
+       |                         ^|^
+       |                          `--- unexpected token(s): '# 1 0'
+    ---'
+    [E0001] Error: syntax error
+       ,-[ file:///test0.st:4:21 ]
+       |
+     4 |             F := -10#5;
+       |                     ^|
+       |                      `-- unexpected token(s): '# 5'
+    ---'
+    [E0001] Error: syntax error
+       ,-[ file:///test0.st:5:21 ]
+       |
+     5 |             F := -16#;
+       |                     |
+       |                     `-- unexpected token(s): '#'
+    ---'
+    [E0001] Error: syntax error
+       ,-[ file:///test0.st:6:20 ]
+       |
+     6 |             F := -2#2;
+       |                    ^|
+       |                     `-- unexpected token(s): '# 2'
+    ---'
+    [E0001] Error: syntax error
+       ,-[ file:///test0.st:7:20 ]
+       |
+     7 |             F := -8#8;
+       |                    ^|
+       |                     `-- unexpected token(s): '# 8'
+    ---'
+    ");
+}
+
+// Under a sign a based literal is a plain number, as it is in parentheses: it
+// has to fit the type, and an unsigned type takes no minus.
+#[rstest]
+fn invalid_value_under_a_sign_before_a_based_literal(mut with_db: RootDatabase) {
+    let source = r#"
+        PROGRAM P
+        VAR s : SINT; u : UINT; w : WORD; b : BOOL; t : TIME; END_VAR
+            s := -16#81;
+            u := -16#10;
+            w := -16#10;
+            b := -2#1;
+            t := -16#10;
+        END_PROGRAM
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0306] Error: literal out of range
+       ,-[ file:///test0.st:4:18 ]
+       |
+     3 |         VAR s : SINT; u : UINT; w : WORD; b : BOOL; t : TIME; END_VAR
+       |             |
+       |             `-- 's' is declared here
+     4 |             s := -16#81;
+       |                  ^^^|^^
+       |                     `---- the value does not fit in SINT
+       |
+       | Note: SINT holds -128 to 127
+    ---'
+    [E0307] Error: negative literal for an unsigned type
+       ,-[ file:///test0.st:5:18 ]
+       |
+     3 |         VAR s : SINT; u : UINT; w : WORD; b : BOOL; t : TIME; END_VAR
+       |                       |
+       |                       `-- 'u' is declared here
+       |
+     5 |             u := -16#10;
+       |                  ^^^|^^
+       |                     `---- the value is negative and UINT is unsigned
+       |
+       | Help: use INT, or drop the sign
+    ---'
+    [E0307] Error: negative literal for an unsigned type
+       ,-[ file:///test0.st:6:18 ]
+       |
+     3 |         VAR s : SINT; u : UINT; w : WORD; b : BOOL; t : TIME; END_VAR
+       |                                 |
+       |                                 `-- 'w' is declared here
+       |
+     6 |             w := -16#10;
+       |                  ^^^|^^
+       |                     `---- the value is negative and WORD is unsigned
+       |
+       | Help: drop the sign
+    ---'
+    [E0308] Error: literal of the wrong kind
+       ,-[ file:///test0.st:7:18 ]
+       |
+     3 |         VAR s : SINT; u : UINT; w : WORD; b : BOOL; t : TIME; END_VAR
+       |                                           |
+       |                                           `-- 'b' is declared here
+       |
+     7 |             b := -2#1;
+       |                  ^^|^
+       |                    `--- invalid boolean literal
+       |
+       | Note: BOOL is TRUE or FALSE
+    ---'
+    [E0301] Error: type mismatch
+       ,-[ file:///test0.st:8:18 ]
+       |
+     3 |         VAR s : SINT; u : UINT; w : WORD; b : BOOL; t : TIME; END_VAR
+       |                                                     |
+       |                                                     `-- 't' is declared here
+       |
+     8 |             t := -16#10;
+       |                  ^^^|^^
+       |                     `---- expected 'TIME', got 'INT'
+    ---'
+    ");
+}
+
 // A REAL or an LREAL too large for its type parsed to infinity.
 #[rstest]
 fn invalid_real_literal_past_its_range(mut with_db: RootDatabase) {
