@@ -348,6 +348,15 @@ impl<'db> InferExprCtx<'db> {
             }
             PrimaryExpr::FuncCall(call) => {
                 resolve_func_call(db, self.resolver, *call, inference_result, expected);
+                // No overload binds the call, which was reported: it has no
+                // value, and the result of the one standing in is nobody's.
+                if inference_result
+                    .resolved_calls
+                    .get(call)
+                    .is_some_and(|c| c.stand_in)
+                {
+                    return Type::Never;
+                }
                 let ty = inference_result.get_type_of_begin_path_expr(db, call.path(db));
                 ty.normalize(db)
             }

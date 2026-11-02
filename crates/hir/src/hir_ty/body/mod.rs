@@ -1322,6 +1322,9 @@ pub struct ResolvedCall<'db> {
     /// One entry per declared parameter (inputs, outputs, inouts), in the
     /// callee's declaration order.
     pub params: Vec<(VariableDecl<'db>, ParamBinding<'db>)>,
+    /// No overload binds this call: `callable` is the first of them, for what
+    /// the editor shows and the binding error, and the call has no value.
+    pub stand_in: bool,
 }
 
 /// What a call site binds to one declared parameter.

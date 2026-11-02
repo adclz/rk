@@ -1518,3 +1518,87 @@ END_FUNCTION
     ---'
     ");
 }
+
+/// When no overload binds the arguments, one stands in so that the binding error
+/// surfaces, and that error is all the call reports. An argument or a result
+/// checked against the stand-in named a type nobody wrote, as `a := G(a, a, a)`
+/// reported "expected 'INT', got 'LREAL'".
+#[rstest]
+fn an_overload_standing_in_reports_the_binding_alone(mut with_db: RootDatabase) {
+    let source = r#"
+NAMESPACE X
+    FUNCTION G : INT
+    VAR_INPUT x : INT; y : INT; END_VAR
+        G := x + y;
+    END_FUNCTION
+
+    FUNCTION G : LREAL
+    VAR_INPUT x : LREAL; y : LREAL; END_VAR
+        G := x + y;
+    END_FUNCTION
+END_NAMESPACE
+
+USING X;
+
+PROGRAM P
+VAR a : INT; s : STRING; END_VAR
+    a := G(a, a, a);
+    a := G(nope := a);
+    a := G(x := a, x := a);
+    a := G(a);
+    a := G(s);
+END_PROGRAM
+"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0801] Error: wrong number of arguments
+        ,-[ file:///test0.st:18:10 ]
+        |
+     18 |     a := G(a, a, a);
+        |          |
+        |          `-- no overload of 'G' takes 3 parameters
+    ----'
+    [E0803] Error: unknown input parameter
+        ,-[ file:///test0.st:19:12 ]
+        |
+     19 |     a := G(nope := a);
+        |            ^^|^
+        |              `--- unknown input parameter 'nope'
+    ----'
+    [E0103] Error: duplicate parameter
+        ,-[ file:///test0.st:20:20 ]
+        |
+     20 |     a := G(x := a, x := a);
+        |            ^^^|^^  ^^^|^^
+        |               `------------ already passed here
+        |                       |
+        |                       `---- duplicate parameter 'x'
+    ----'
+    [E0802] Error: missing required parameter
+        ,-[ file:///test0.st:21:10 ]
+        |
+      9 |     VAR_INPUT x : LREAL; y : LREAL; END_VAR
+        |                          |
+        |                          `-- parameter 'y' is declared here
+        |
+     21 |     a := G(a);
+        |          |
+        |          `-- call to 'G' is missing 1 required parameter: 'y'
+        |
+        | Note: a FUNCTION or METHOD call supplies every VAR_INPUT without a default
+    ----'
+    [E0802] Error: missing required parameter
+        ,-[ file:///test0.st:22:10 ]
+        |
+      9 |     VAR_INPUT x : LREAL; y : LREAL; END_VAR
+        |                          |
+        |                          `-- parameter 'y' is declared here
+        |
+     22 |     a := G(s);
+        |          |
+        |          `-- call to 'G' is missing 1 required parameter: 'y'
+        |
+        | Note: a FUNCTION or METHOD call supplies every VAR_INPUT without a default
+    ----'
+    ");
+}

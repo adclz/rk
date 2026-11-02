@@ -359,7 +359,7 @@ fn pick<'db>(matches: Vec<Import<'db>>) -> PouResolution<'db> {
 /// Outcome of overload selection.
 pub enum OverloadPick<'db> {
     /// A unique callable to use — either the resolved overload, or the input
-    /// unchanged when the name isn't an overload set or nothing better matched.
+    /// unchanged when the name isn't an overload set.
     One(CallableType<'db>),
     /// Several overloads fit the arguments alike (E0809); the call site says
     /// why, since what would pick one depends on it.
@@ -370,6 +370,10 @@ pub enum OverloadPick<'db> {
     /// An argument failed to resolve, which was reported where it failed: an
     /// overload set picks nothing on it, and reports nothing more.
     Unresolved,
+    /// An overload set in which no overload binds the arguments: the first
+    /// one, which stands in so that the binding error surfaces. It is not the
+    /// overload the call picked, so nothing else is read from it.
+    Unbound(CallableType<'db>),
 }
 
 /// How a call's arguments fit one overload, as the call site binds them.
@@ -574,7 +578,7 @@ pub fn select_overload<'db>(
 
     match undominated.len() {
         0 if binds => OverloadPick::None(functions),
-        0 => OverloadPick::One(callable),
+        0 => OverloadPick::Unbound(callable),
         1 => OverloadPick::One(CallableType::Function(undominated[0].f)),
         _ => pick_by_outputs(db, &undominated, expected),
     }
