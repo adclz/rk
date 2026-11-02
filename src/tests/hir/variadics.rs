@@ -846,3 +846,38 @@ END_FUNCTION
     ---'
     ");
 }
+
+/// What each fold refuses, a type at a time. What each one takes runs in
+/// `tests::codegen::variadics`, a module per operator.
+#[rstest]
+#[case::add("+", &["BOOL", "DATE", "LDATE", "TOD", "LTOD", "DT", "LDT", "CHAR"])]
+#[case::sub("-", &["BOOL", "DATE", "LDATE", "TOD", "LTOD", "DT", "LDT", "CHAR"])]
+#[case::mul("*", &["BOOL", "TIME", "LTIME", "DATE", "LDATE", "TOD", "LTOD", "DT", "LDT", "CHAR"])]
+#[case::div("/", &["BOOL", "TIME", "LTIME", "DATE", "LDATE", "TOD", "LTOD", "DT", "LDT", "CHAR"])]
+#[case::modulo(
+    "%",
+    &[
+        "BOOL", "BYTE", "WORD", "DWORD", "LWORD", "REAL", "LREAL", "TIME", "LTIME",
+        "DATE", "LDATE", "TOD", "LTOD", "DT", "LDT", "CHAR",
+    ]
+)]
+#[case::power(
+    "**",
+    &[
+        "BOOL", "SINT", "INT", "DINT", "LINT", "USINT", "UINT", "UDINT", "ULINT", "BYTE", "WORD",
+        "DWORD", "LWORD", "TIME", "LTIME", "DATE", "LDATE", "TOD", "LTOD", "DT", "LDT", "CHAR",
+    ]
+)]
+#[case::and("&", &["REAL", "LREAL", "TIME", "LTIME", "DATE", "LDATE", "TOD", "LTOD", "DT", "LDT", "CHAR"])]
+#[case::or("|", &["REAL", "LREAL", "TIME", "LTIME", "DATE", "LDATE", "TOD", "LTOD", "DT", "LDT", "CHAR"])]
+#[case::xor("^", &["REAL", "LREAL", "TIME", "LTIME", "DATE", "LDATE", "TOD", "LTOD", "DT", "LDT", "CHAR"])]
+fn invalid_fold_on_a_type_its_operator_refuses(#[case] op: &str, #[case] refused: &[&str]) {
+    for ty in refused {
+        let mut db = RootDatabase::default();
+        let source = format!(
+            "FUNCTION F : {ty}\nVAR_INPUT v : {ty}...; END_VAR\n    F := ...v{op};\nEND_FUNCTION\n"
+        );
+        let report = test_diagnostics(&mut db, &[&source]);
+        assert!(report.contains("[E0305]"), "...v{op} on {ty}: {report}");
+    }
+}
