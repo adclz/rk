@@ -19,7 +19,7 @@ use hir::{
         program::ProgramDecl,
     },
     hir_ty::{
-        config::{SingleSource, SourceStep, infer_config_result},
+        config::{SingleRead, SingleSource, SourceStep, infer_config_result},
         infer::Infer,
         ty::Type,
     },
@@ -336,7 +336,7 @@ pub fn lower_schedule<'db>(
                 .trigger
                 .single
                 .as_ref()
-                .map(|source| lower_single(db, source, &bases, globals))
+                .map(|read| lower_single(db, read, &bases, globals))
                 .transpose()?,
             priority: task.priority,
             programs,
@@ -354,7 +354,7 @@ pub fn lower_schedule<'db>(
 /// before the schedule was, and a relocation moves only the base.
 fn lower_single<'db>(
     db: &'db dyn WorkspaceDataBase,
-    source: &SingleSource<'db>,
+    read: &SingleRead<'db>,
     bases: &FxHashMap<Ident, (u32, &ProgramInfo<'db>)>,
     globals: &GlobalTable<'db>,
 ) -> Result<MirSingle, LowerTypeError> {
@@ -362,7 +362,7 @@ fn lower_single<'db>(
         LowerTypeError::UnsupportedType(format!("SINGLE reads '{what}', which has no place"))
     };
     // The base of what holds it, the bytes from there, and the bits past them.
-    let (base, bytes, bits) = match source {
+    let (base, bytes, bits) = match &read.source {
         // A bit of its own cell, or of the wider address that holds it.
         SingleSource::Address(address) => {
             let (cell, shift) = match hir::hir_ty::index_graphs::located_view(db, address) {
@@ -400,6 +400,7 @@ fn lower_single<'db>(
         }
     };
     // Memory holds a value little-endian, so a bit counts up through its bytes.
+    let bits = bits + read.shift;
     Ok(MirSingle {
         base,
         offset: bytes + bits / 8,

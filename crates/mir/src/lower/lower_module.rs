@@ -687,8 +687,8 @@ fn lower_module_from_pous<'db>(
                 .iter()
         })
         .flat_map(|r| r.tasks.iter())
-        .filter_map(|t| match &t.trigger.single {
-            Some(hir::hir_ty::config::SingleSource::Address(address)) => Some(address),
+        .filter_map(|t| match &t.trigger.single.as_ref()?.source {
+            hir::hir_ty::config::SingleSource::Address(address) => Some(address),
             _ => None,
         });
     let config_cells: Vec<hir::hir_def::pous::variable::LocatedAddress> = config_locations
