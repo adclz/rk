@@ -704,6 +704,7 @@ fn a_single_colours_the_names_it_reads(mut with_db: RootDatabase) {
     start variable
     timer variable
     Fb function
+    status variable
     which variable
     start variable
     flags variable
@@ -713,6 +714,7 @@ fn a_single_colours_the_names_it_reads(mut with_db: RootDatabase) {
     which variable
     timer variable
     q parameter
+    status variable
     Prog function
     Prog function
     ");

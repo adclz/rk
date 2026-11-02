@@ -1187,6 +1187,7 @@ END_CONFIGURATION
 #[case::array_output("inst.bits", 5, "(OUTPUT) bits: ARRAY [1..3] OF BOOL")]
 #[case::subscript("which]", 0, "(GLOBAL) which: INT")]
 #[case::output_of_an_instance("timer.q", 6, "(OUTPUT) q: BOOL")]
+#[case::variable_with_a_bit("status.%X3", 0, "(GLOBAL) status: WORD")]
 #[case::address("%IX0.0", 1, "%IX0.0 : BOOL")]
 pub fn hover_on_what_a_single_reads(
     mut with_db: RootDatabase,

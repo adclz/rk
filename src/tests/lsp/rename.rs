@@ -480,6 +480,7 @@ fn rename_in_a_program_configuration(
 #[case::output("done : BOOL", "ready", &["VAR_OUTPUT ready : BOOL", "TASK C(SINGLE := inst.ready,"])]
 #[case::element("go : BOOL", "run", &["STRUCT run : BOOL", "TASK B(SINGLE := Res.flags.run,"])]
 #[case::output_of_an_instance("q : BOOL", "out", &["VAR_OUTPUT out : BOOL", "TASK F(SINGLE := timer.out,"])]
+#[case::variable_with_a_bit("status : WORD", "state", &["state : WORD", "TASK G(SINGLE := state.%X3,"])]
 fn rename_in_what_a_single_reads(
     mut with_db: RootDatabase,
     #[case] at: &str,

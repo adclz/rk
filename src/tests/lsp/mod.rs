@@ -71,7 +71,7 @@ VAR_OUTPUT done : BOOL; bits : ARRAY[1..3] OF BOOL; END_VAR
 END_PROGRAM
 
 CONFIGURATION Cfg
-VAR_GLOBAL flags : Flags; start : BOOL; timer : Fb; END_VAR
+VAR_GLOBAL flags : Flags; start : BOOL; timer : Fb; status : WORD; END_VAR
 VAR_GLOBAL CONSTANT which : INT := 2; END_VAR
     RESOURCE Res ON CPU
         TASK A(SINGLE := start, INTERVAL := T#10ms, PRIORITY := 1);
@@ -80,6 +80,7 @@ VAR_GLOBAL CONSTANT which : INT := 2; END_VAR
         TASK D(SINGLE := inst.bits[which], PRIORITY := 4);
         TASK E(SINGLE := %IX0.0, PRIORITY := 5);
         TASK F(SINGLE := timer.q, PRIORITY := 6);
+        TASK G(SINGLE := status.%X3, PRIORITY := 7);
         PROGRAM inst WITH A : Prog;
         PROGRAM other WITH B : Prog;
     END_RESOURCE

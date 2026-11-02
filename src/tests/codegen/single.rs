@@ -390,6 +390,139 @@ fn a_single_reads_a_bit_of_a_wider_address(
     assert_eq!(count(&plc, &info, "Runs.n"), 2, "the address raised it");
 }
 
+/// A bit of a variable is the one name besides a part of an address whose bit
+/// is not the first of its byte. Memory holds a value little-endian, so the
+/// bit counts up through its bytes, whatever holds the variable: a host
+/// raising only that bit runs the task, and every other bit set does not.
+#[rstest]
+#[case::first_bit("status.%X0", "status", 0, 0, 0x0001)]
+#[case::low_byte("status.%X3", "status", 0, 3, 0x0008)]
+#[case::written_bare("status.3", "status", 0, 3, 0x0008)]
+#[case::high_byte("status.%X11", "status", 1, 3, 0x0800)]
+#[case::last_bit("status.%X15", "status", 1, 7, 0x8000)]
+#[case::caseless("STATUS.%x3", "status", 0, 3, 0x0008)]
+#[case::through_the_resource("Res.status.%X3", "status", 0, 3, 0x0008)]
+#[case::a_byte("small.%X7", "small", 0, 7, 0x80)]
+#[case::a_dword("wide.%X26", "wide", 3, 2, 0x0400_0000)]
+#[case::an_lword("long.%X40", "long", 5, 0, 0x0100_0000_0000)]
+#[case::an_lword_last("long.63", "long", 7, 7, 0x8000_0000_0000_0000)]
+#[case::an_integer("level.%X15", "level", 1, 7, 0x8000)]
+#[case::an_element("flags.word.%X9", "flags.word", 1, 1, 0x0200)]
+#[case::an_array_element("list[1].%X12", "list[1]", 1, 4, 0x1000)]
+#[case::an_output("P1.word.%X9", "P1.word", 1, 1, 0x0200)]
+#[case::an_output_written_bare("P1.word.2", "P1.word", 0, 2, 0x0004)]
+#[case::an_output_element("P1.status.word.%X10", "P1.status.word", 1, 2, 0x0400)]
+#[case::a_function_blocks_output("timer.word.%X8", "timer.word", 1, 0, 0x0100)]
+#[case::a_retained_global("kept.%X5", "kept", 0, 5, 0x0020)]
+#[case::a_retained_output("Held.word.%X13", "Held.word", 1, 5, 0x2000)]
+#[case::a_located_global("sensors.%X10", "sensors", 1, 2, 0x0400)]
+fn a_single_reads_a_bit_of_a_variable(
+    mut with_db: db::RootDatabase,
+    #[case] written: &str,
+    #[case] symbol: &str,
+    #[case] offset: u32,
+    #[case] bit: u8,
+    #[case] raised: u64,
+) {
+    let source = format!(
+        r#"
+        TYPE Flags : STRUCT pad : LREAL; word : WORD; END_STRUCT; END_TYPE
+
+        FUNCTION_BLOCK Fb
+        VAR_OUTPUT pad : DINT; word : WORD; END_VAR
+        END_FUNCTION_BLOCK
+
+        PROGRAM Source
+        VAR_OUTPUT done : BOOL; word : WORD; status : Flags; END_VAR
+        END_PROGRAM
+
+        PROGRAM Retained
+        VAR_OUTPUT RETAIN word : WORD; END_VAR
+        END_PROGRAM
+
+        PROGRAM Count VAR n : DINT; END_VAR n := n + 1; END_PROGRAM
+
+        CONFIGURATION Cfg
+            VAR_GLOBAL
+                status : WORD;
+                small : BYTE;
+                wide : DWORD;
+                long : LWORD;
+                level : INT;
+                flags : Flags;
+                list : ARRAY[0..1] OF WORD;
+                timer : Fb;
+                sensors AT %IW4 : WORD;
+            END_VAR
+            VAR_GLOBAL RETAIN kept : WORD; END_VAR
+            RESOURCE Res ON CPU
+                TASK Base(INTERVAL := T#10ms, PRIORITY := 0);
+                TASK Ev(SINGLE := {written}, PRIORITY := 1);
+                PROGRAM P1 WITH Base : Source;
+                PROGRAM Held WITH Base : Retained;
+                PROGRAM Runs WITH Ev : Count;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#
+    );
+    let (_wasm, manifest, info, mut plc) = load(&mut with_db, &source);
+    let loc = info.resolve(symbol).expect(symbol);
+    assert_eq!(
+        task(&manifest, "Ev").single,
+        Some(SingleBit {
+            addr: loc.address + offset,
+            bit
+        }),
+        "{written}"
+    );
+
+    let size = loc.size as usize;
+    let others = (!raised).to_le_bytes();
+    plc.write_bytes(loc.address, &others[..size]).unwrap();
+    plc.run(2).expect("scans");
+    assert_eq!(
+        count(&plc, &info, "Runs.n"),
+        0,
+        "{written}: every other bit"
+    );
+
+    plc.write_bytes(loc.address, &raised.to_le_bytes()[..size])
+        .unwrap();
+    plc.run(2).expect("scans");
+    assert_eq!(count(&plc, &info, "Runs.n"), 1, "{written}: this bit alone");
+}
+
+/// A bit of a variable located inside a wider address counts up from that
+/// address's cell, the variable's place in it and the bit together.
+#[rstest]
+fn a_single_reads_a_bit_of_a_variable_in_a_wider_address(mut with_db: db::RootDatabase) {
+    let source = r#"
+        PROGRAM Count VAR n : DINT; END_VAR n := n + 1; END_PROGRAM
+        CONFIGURATION Cfg
+            VAR_GLOBAL
+                d AT %MD0 : DWORD;
+                inner AT %MW1 : WORD;
+            END_VAR
+            RESOURCE Res ON CPU
+                TASK Ev(SINGLE := inner.%X9, PRIORITY := 1);
+                PROGRAM Runs WITH Ev : Count;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_wasm, manifest, info, mut plc) = load(&mut with_db, source);
+    assert_eq!(
+        task(&manifest, "Ev").single,
+        Some(SingleBit {
+            addr: info.resolve("d").expect("d").address + 3,
+            bit: 1
+        })
+    );
+    plc.write_located("%MD0", &0x0200_0000u32.to_le_bytes())
+        .unwrap();
+    plc.scan().expect("scan");
+    assert_eq!(count(&plc, &info, "Runs.n"), 1);
+}
+
 /// A VAR_GLOBAL located at an address, and the address itself, are one cell,
 /// whichever a SINGLE names.
 #[rstest]

@@ -623,6 +623,7 @@ END_FUNCTION_BLOCK
 #[case::instance("inst.done", 0, "inst WITH A")]
 #[case::output("inst.done", 5, "done : BOOL")]
 #[case::output_of_an_instance("timer.q", 6, "q : BOOL")]
+#[case::variable_with_a_bit("status.%X3", 0, "status : WORD")]
 pub fn definition_on_what_a_single_reads(
     mut with_db: RootDatabase,
     #[case] at: &str,

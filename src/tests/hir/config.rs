@@ -4,7 +4,7 @@
 use db::RootDatabase;
 use db::WorkspaceDataBase;
 use hir::hir_def::semantic_index::semantic_index;
-use hir::hir_ty::config::{SingleSource, SourceStep, infer_config_result};
+use hir::hir_ty::config::{SingleRead, SingleSource, SourceStep, infer_config_result};
 use hir::hir_ty::index_graphs::config_fragments;
 use hir::hir_ty::infer::Infer;
 use hir::hir_ty::ty::Type;
@@ -1394,9 +1394,12 @@ VAR_GLOBAL
     plain : TIME;
     located AT %IX4.0 : BOOL;
     list : ARRAY[0..1] OF BOOL;
+    status : WORD;
+    level : INT;
     rate : REAL;
 END_VAR
 VAR_GLOBAL CONSTANT
+    mask : WORD := 8;
     ratio : REAL := 1.5;
     off : BOOL := FALSE;
     on : BOOL := TRUE;
@@ -1452,8 +1455,9 @@ END_CONFIGURATION
 /// a constant, a VAR_GLOBAL with or without its resource and a STRUCT element,
 /// a program's output and a direct variable. A path may go on through the
 /// elements and the constant subscripts of an output, which the standard's
-/// `Symbolic_Variable` allows. Names are caseless, and `test_diagnostics` also
-/// builds each one.
+/// `Symbolic_Variable` allows. It may end in a bit of what it reaches, which
+/// is rk's: the standard's `Data_Source` has no partial access. Names are
+/// caseless, and `test_diagnostics` also builds each one.
 #[rstest]
 #[case::global("SINGLE := go")]
 #[case::global_caseless("SINGLE := GO")]
@@ -1483,6 +1487,16 @@ END_CONFIGURATION
 #[case::output_of_a_global_instance("SINGLE := gfb.q")]
 #[case::inherited_output_of_a_global_instance("SINGLE := gsub.q")]
 #[case::output_of_an_output_instance("SINGLE := P1.made.q")]
+#[case::bit_of_a_global("SINGLE := status.%X3")]
+#[case::bit_written_bare("SINGLE := status.3")]
+#[case::bit_caseless("SINGLE := STATUS.%x3")]
+#[case::bit_through_the_resource("SINGLE := Res.status.%X3")]
+#[case::bit_of_an_integer("SINGLE := level.%X15")]
+#[case::bit_of_an_element("SINGLE := flags.count.%X1")]
+#[case::bit_of_a_bool("SINGLE := go.0")]
+#[case::bit_of_an_output("SINGLE := P1.word.%X3")]
+#[case::bit_of_an_output_written_bare("SINGLE := P1.word.3")]
+#[case::bit_beside_a_period("SINGLE := status.%X3, INTERVAL := T#20ms")]
 #[case::address("SINGLE := %IX2")]
 #[case::address_bit("SINGLE := %IX2.1")]
 #[case::address_caseless("SINGLE := %ix3.1")]
@@ -1525,6 +1539,7 @@ fn valid_what_a_single_can_read(mut with_db: RootDatabase, #[case] params: &str)
 )]
 #[case::constant_computed("SINGLE := computed", "SINGLE is a constant, which never rises")]
 #[case::constant_element("SINGLE := settings.go", "SINGLE is a constant, which never rises")]
+#[case::bit_of_a_constant("SINGLE := mask.%X3", "SINGLE is a constant, which never rises")]
 #[case::constant_with_no_value("SINGLE := unset", "SINGLE is a constant, which never rises")]
 #[case::false_alone("SINGLE := FALSE", "SINGLE is a constant, which never rises")]
 #[case::zero_alone("SINGLE := 0", "SINGLE is a constant, which never rises")]
@@ -1549,6 +1564,8 @@ fn valid_what_a_single_can_read(mut with_db: RootDatabase, #[case] params: &str)
 #[case::wide_output("SINGLE := %QB0", "SINGLE must be a BOOL")]
 #[case::wide_marker("SINGLE := %MD0", "SINGLE must be a BOOL")]
 #[case::wide_with_two_levels("SINGLE := %IW0.3", "SINGLE must be a BOOL")]
+#[case::byte_of_a_global("SINGLE := status.%B0", "SINGLE must be a BOOL")]
+#[case::word_of_an_output("SINGLE := P1.word.%W0", "SINGLE must be a BOOL")]
 #[case::an_input("SINGLE := P1.start", "reads a VAR_OUTPUT")]
 #[case::a_local("SINGLE := P1.hidden", "reads a VAR_OUTPUT")]
 #[case::a_temp("SINGLE := P1.scratch", "reads a VAR_OUTPUT")]
@@ -1556,6 +1573,7 @@ fn valid_what_a_single_can_read(mut with_db: RootDatabase, #[case] params: &str)
 #[case::a_local_of_an_instance("SINGLE := gfb.inner", "reads a VAR_OUTPUT")]
 #[case::a_local_of_an_output_instance("SINGLE := P1.made.inner", "reads a VAR_OUTPUT")]
 #[case::a_member_of_a_class("SINGLE := gcl.x", "reads a VAR_OUTPUT")]
+#[case::bit_of_a_local("SINGLE := P1.hidden.0", "reads a VAR_OUTPUT")]
 #[case::dereference("SINGLE := P1.r^", "must have a fixed place")]
 #[case::subscript_not_constant("SINGLE := P1.bits[n]", "must have a fixed place")]
 #[case::zero_interval_alone("INTERVAL := T#0s", "a zero INTERVAL schedules no periodic run")]
@@ -1563,6 +1581,7 @@ fn valid_what_a_single_can_read(mut with_db: RootDatabase, #[case] params: &str)
 #[case::interval_of_an_address("SINGLE := go, INTERVAL := %MD0", "INTERVAL must be a TIME literal")]
 #[case::interval_of_an_element("INTERVAL := flags.go", "INTERVAL must be a TIME literal")]
 #[case::interval_of_an_output("INTERVAL := P1.done", "INTERVAL must be a TIME literal")]
+#[case::interval_of_a_bit("INTERVAL := status.%X3", "INTERVAL must be a TIME literal")]
 fn invalid_what_a_task_cannot_be_given(
     mut with_db: RootDatabase,
     #[case] params: &str,
@@ -1702,6 +1721,23 @@ END_CONFIGURATION
     ");
 }
 
+/// A bit of an address is an address of its own, `%IX0.3`: a part of one is
+/// not read here, and the syntax error says so where it is written.
+#[rstest]
+fn invalid_a_part_of_an_address_in_a_single(mut with_db: RootDatabase) {
+    let source = r#"
+PROGRAM P VAR n : DINT; END_VAR n := n + 1; END_PROGRAM
+CONFIGURATION Cfg
+    RESOURCE R ON CPU
+        TASK T(SINGLE := %IW0.%X3, PRIORITY := 1);
+        PROGRAM P1 WITH T : P;
+    END_RESOURCE
+END_CONFIGURATION
+"#;
+    let diagnostics = test_diagnostics(&mut with_db, &[source]);
+    assert!(diagnostics.contains("[E0001]"), "{diagnostics}");
+}
+
 /// Each name of a task parameter's path is looked up, the last one no more
 /// than the first: `nothing.period` used to read the global `period` and go
 /// unreported, whatever `nothing` was. A name that resolves to nothing is
@@ -1755,6 +1791,14 @@ END_CONFIGURATION
 #[case::subscript_is_a_real_global("SINGLE := P1.bits[rate]", "[E0504]", "the index is 'REAL'")]
 #[case::subscript_is_a_real_constant("SINGLE := P1.bits[ratio]", "[E0504]", "the index is 'REAL'")]
 #[case::incomplete_address("SINGLE := %I*", "[E1417]", "'%I*' is not a complete address")]
+#[case::bit_past_the_end("SINGLE := status.%X16", "[E1429]", "out of range")]
+#[case::bit_past_the_end_written_bare("SINGLE := status.16", "[E1429]", "out of range")]
+#[case::bit_past_a_bool("SINGLE := go.1", "[E1429]", "out of range")]
+#[case::bit_of_what_has_none("SINGLE := flags.%X0", "[E1431]", "")]
+#[case::bit_of_a_real("SINGLE := rate.%X0", "[E1431]", "")]
+#[case::part_of_no_size("SINGLE := status.%Z1", "[E1418]", "'%Z' names no access size")]
+#[case::bit_of_nothing("SINGLE := nothing.%X3", "[E0201]", "no item 'nothing'")]
+#[case::bit_of_a_dotted_interval("INTERVAL := nothing.%X3", "[E0201]", "no item 'nothing'")]
 fn invalid_a_task_parameter_names_nothing(
     mut with_db: RootDatabase,
     #[case] params: &str,
@@ -2344,10 +2388,15 @@ fn resolved_schedule(db: &RootDatabase) -> String {
         format!("{ns}ns")
     }
 
-    /// What a task's SINGLE reads, as a reader would write it.
-    fn single_source(db: &RootDatabase, source: &SingleSource) -> String {
-        let (mut text, elements) = match source {
-            SingleSource::Address(address) => return address.text.to_string(),
+    /// What a task's SINGLE reads, as a reader would write it, with the bit
+    /// it is when that is not the first.
+    fn single_read(db: &RootDatabase, read: &SingleRead) -> String {
+        let at = match read.shift {
+            0 => String::new(),
+            shift => format!(" bit {shift}"),
+        };
+        let (mut text, elements) = match &read.source {
+            SingleSource::Address(address) => return format!("{}{at}", address.text),
             SingleSource::Global { global, elements } => {
                 (global.name_with_case(db).text(db).to_string(), elements)
             }
@@ -2374,7 +2423,7 @@ fn resolved_schedule(db: &RootDatabase) -> String {
                 }
             }
         }
-        text
+        text + &at
     }
 
     let file = *db.get_files().iter().last().unwrap();
@@ -2406,7 +2455,7 @@ fn resolved_schedule(db: &RootDatabase) -> String {
                 .trigger
                 .single
                 .as_ref()
-                .map(|single| format!("on the rising edge of {}", single_source(db, single)));
+                .map(|single| format!("on the rising edge of {}", single_read(db, single)));
             let trigger = [period, edge].into_iter().flatten().collect::<Vec<_>>();
             let _ = writeln!(
                 out,
@@ -2535,6 +2584,8 @@ CONFIGURATION Cfg
         go : BOOL;
         flags : Flags;
         located AT %IX4.0 : BOOL;
+        status : WORD;
+        image AT %IW4 : WORD;
     END_VAR
     RESOURCE R ON CPU
         TASK Edge(SINGLE := go, PRIORITY := 0);
@@ -2548,6 +2599,8 @@ CONFIGURATION Cfg
         TASK OutputBit(SINGLE := P1.bits[2], PRIORITY := 8);
         TASK Bit(SINGLE := %IX2.1, PRIORITY := 9);
         TASK Located(SINGLE := located, PRIORITY := 10);
+        TASK Part(SINGLE := status.%X3, PRIORITY := 11);
+        TASK LocatedPart(SINGLE := image.3, PRIORITY := 12);
         PROGRAM P1 WITH Edge : P;
         PROGRAM P2 WITH Both : P;
         PROGRAM P3 WITH NoPeriod : P;
@@ -2559,6 +2612,8 @@ CONFIGURATION Cfg
         PROGRAM P9 WITH OutputBit : P;
         PROGRAM P10 WITH Bit : P;
         PROGRAM P11 WITH Located : P;
+        PROGRAM P12 WITH Part : P;
+        PROGRAM P13 WITH LocatedPart : P;
     END_RESOURCE
 END_CONFIGURATION
 "#;
@@ -2587,6 +2642,10 @@ END_CONFIGURATION
         PROGRAM P10 : P
       TASK Located on the rising edge of %IX4.0, priority 10
         PROGRAM P11 : P
+      TASK Part on the rising edge of status bit 3, priority 11
+        PROGRAM P12 : P
+      TASK LocatedPart on the rising edge of %IW4 bit 3, priority 12
+        PROGRAM P13 : P
     ");
 }
 
