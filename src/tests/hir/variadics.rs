@@ -672,3 +672,177 @@ END_FUNCTION_BLOCK
     ---'
     ");
 }
+
+/// `MIN` and `MAX` fold to the pack's own type, in any case, wherever an
+/// expression stands.
+#[rstest]
+fn valid_fold_min_max(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION Take : INT
+VAR_INPUT x : INT; END_VAR
+    Take := x;
+END_FUNCTION
+
+FUNCTION Lo : INT
+VAR_INPUT v : INT...; END_VAR
+VAR m : INT := ...v MIN; END_VAR
+    Lo := m + ...v min * 2 + Take(...v MAX) + Take(x := ...v max);
+    IF ...v MIN > 0 AND ...v MAX < 9 THEN
+        Lo := 0;
+    END_IF;
+END_FUNCTION
+
+FUNCTION Hi : REAL
+VAR_INPUT v : REAL...; END_VAR
+    Hi := ...v MAX;
+END_FUNCTION
+
+FUNCTION Use : INT
+    Use := Lo(1, 2, 3);
+    IF Hi(1.5, 2.5) > 2.0 THEN
+        Use := Lo(4);
+    END_IF;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+/// `MIN` and `MAX` are no keywords: a FUNCTION, a pack, a variable and a call
+/// take the same words.
+#[rstest]
+fn min_and_max_stay_names(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION MIN : INT
+VAR_INPUT v : INT...; END_VAR
+    MIN := ...v MIN;
+END_FUNCTION
+
+FUNCTION MAX : INT
+VAR_INPUT v : INT...; END_VAR
+    MAX := ...v MAX;
+END_FUNCTION
+
+FUNCTION Both : INT
+VAR_INPUT min : INT...; END_VAR
+    Both := ...min MIN + ...min max;
+END_FUNCTION
+
+FUNCTION Locals : INT
+VAR min : INT := 1; max : INT := 2; END_VAR
+    Locals := min + max;
+END_FUNCTION
+
+FUNCTION Calls : INT
+    Calls := MIN(1, 2) + max(3, 4, 5) + Both(6, 7);
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+/// A `MIN` or `MAX` fold gives the pack's type, where a comparison fold gives a
+/// BOOL.
+#[rstest]
+fn invalid_fold_min_max_gives_the_type_of_the_pack(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION Lo : BOOL
+VAR_INPUT v : INT...; END_VAR
+    Lo := ...v MIN;
+END_FUNCTION
+
+FUNCTION Hi : INT
+VAR_INPUT v : LINT...; END_VAR
+    Hi := ...v MAX;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0301] Error: type mismatch
+       ,-[ file:///test0.st:4:11 ]
+       |
+     2 | FUNCTION Lo : BOOL
+       |          ^|
+       |           `-- FUNCTION 'Lo' is declared here, with return type 'BOOL'
+       |
+     4 |     Lo := ...v MIN;
+       |           ^^^^|^^^
+       |               `----- expected 'BOOL', got 'INT'
+    ---'
+    [E0301] Error: type mismatch
+       ,-[ file:///test0.st:9:11 ]
+       |
+     7 | FUNCTION Hi : INT
+       |          ^|
+       |           `-- FUNCTION 'Hi' is declared here, with return type 'INT'
+       |
+     9 |     Hi := ...v MAX;
+       |           ^^^^|^^^
+       |               `----- expected 'INT', got 'LINT'
+       |
+       | Help: insert explicit cast 'LINT_TO_INT(...v MAX)'
+    ---'
+    ");
+}
+
+/// `MIN` and `MAX` read the POU's own pack and nothing else, as every fold does,
+/// and the word needs its space, or it is part of the name.
+#[rstest]
+fn invalid_fold_min_max_over_something_else(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION F : INT
+VAR_INPUT v : INT...; END_VAR
+VAR x : INT; END_VAR
+    F := ...x MIN;
+    F := ...nothing MAX;
+    F := ...vMIN;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0814] Error: not a variadic parameter
+       ,-[ file:///test0.st:5:10 ]
+       |
+     3 | VAR_INPUT v : INT...; END_VAR
+       |           |
+       |           `-- the variadic parameter here is 'v'
+       |
+     5 |     F := ...x MIN;
+       |          ^^^^|^^^
+       |              `----- 'x' is not a variadic parameter
+       |
+       | Note: a fold reads it: `...v+` adds every argument the call passed
+    ---'
+    [E0814] Error: not a variadic parameter
+       ,-[ file:///test0.st:6:10 ]
+       |
+     3 | VAR_INPUT v : INT...; END_VAR
+       |           |
+       |           `-- the variadic parameter here is 'v'
+       |
+     6 |     F := ...nothing MAX;
+       |          ^^^^^^^|^^^^^^
+       |                 `-------- 'nothing' is not a variadic parameter
+       |
+       | Note: a fold reads it: `...v+` adds every argument the call passed
+    ---'
+    [E0814] Error: not a variadic parameter
+       ,-[ file:///test0.st:7:10 ]
+       |
+     3 | VAR_INPUT v : INT...; END_VAR
+       |           |
+       |           `-- the variadic parameter here is 'v'
+       |
+     7 |     F := ...vMIN;
+       |          ^^^|^^^
+       |             `----- 'vMIN' is not a variadic parameter
+       |
+       | Note: a fold reads it: `...v+` adds every argument the call passed
+    ---'
+    [E0002] Error: missing element
+       ,-[ file:///test0.st:7:17 ]
+       |
+     7 |     F := ...vMIN;
+       |                 |
+       |                 `- missing '='
+       |
+       | Help: insert missing '='
+    ---'
+    ");
+}

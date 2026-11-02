@@ -275,7 +275,9 @@ impl<'db> InferExprCtx<'db> {
                             | FoldOperatorKind::Lt
                             | FoldOperatorKind::Gt
                             | FoldOperatorKind::Le
-                            | FoldOperatorKind::Ge => var_ty.supports_comparison(db),
+                            | FoldOperatorKind::Ge
+                            | FoldOperatorKind::Min
+                            | FoldOperatorKind::Max => var_ty.supports_comparison(db),
                         };
 
                         if !supported && !var_ty.is_never() {

@@ -191,7 +191,7 @@ impl<'db> Parse<'db> for ast::generated::Expression {
             ast::generated::Expression::FoldExpression(fold) => {
                 let param_id = SpanIdent::from_node(sema.db, sema, fold.param.cast(sema.ast))?;
 
-                use ast::generated::FoldAnd_FoldDiv_FoldEq_FoldGe_FoldGt_FoldLe_FoldLt_FoldMinus_FoldMod_FoldMul_FoldNe_FoldOr_FoldPlus_FoldPower_FoldXor as FoldOp;
+                use ast::generated::FoldAnd_FoldDiv_FoldEq_FoldGe_FoldGt_FoldLe_FoldLt_FoldMax_FoldMin_FoldMinus_FoldMod_FoldMul_FoldNe_FoldOr_FoldPlus_FoldPower_FoldXor as FoldOp;
                 let operator = match fold.operator.cast(sema.ast).children.cast(sema.ast) {
                     FoldOp::FoldPlus(_) => FoldOperatorKind::Plus,
                     FoldOp::FoldMinus(_) => FoldOperatorKind::Minus,
@@ -208,6 +208,8 @@ impl<'db> Parse<'db> for ast::generated::Expression {
                     FoldOp::FoldGt(_) => FoldOperatorKind::Gt,
                     FoldOp::FoldLe(_) => FoldOperatorKind::Le,
                     FoldOp::FoldGe(_) => FoldOperatorKind::Ge,
+                    FoldOp::FoldMin(_) => FoldOperatorKind::Min,
+                    FoldOp::FoldMax(_) => FoldOperatorKind::Max,
                 };
 
                 Ok(sema.new_expr(
