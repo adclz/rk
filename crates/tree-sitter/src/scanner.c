@@ -11,6 +11,11 @@
 // compiler reports it (E1510). A pragma whose first word is one of rk's
 // is left to the grammar, which parses it, or refuses it where it cannot
 // stand.
+//
+// The sign before a based literal is a token here too. A based literal has
+// no sign, so `-16#10` is the unary operator on `16#10`, but the lexer takes
+// the longest token it can, and `-16` is longer than `-`. Only a look past
+// the digits for the `#` tells them apart. `-16` with no `#` is no token.
 
 #include "tree_sitter/parser.h"
 
@@ -23,6 +28,8 @@ enum TokenType {
   C_STYLE_COMMENT,
   PASCAL_STYLE_COMMENT,
   PRAGMA,
+  MINUS_BEFORE_BASE,
+  PLUS_BEFORE_BASE,
 };
 
 // The first words of the pragmas the grammar has a rule for.
@@ -84,6 +91,27 @@ static bool scan_unknown_pragma(TSLexer *lexer) {
   return false;
 }
 
+// At a sign: the sign alone when `2#`, `8#` or `16#` follows. The base is only
+// looked at, it starts the next token.
+static bool scan_sign_before_base(TSLexer *lexer, enum TokenType token) {
+  lexer->advance(lexer, false);
+  lexer->mark_end(lexer);
+  if (lexer->lookahead == '1') {
+    lexer->advance(lexer, false);
+    if (lexer->lookahead != '6') {
+      return false;
+    }
+  } else if (lexer->lookahead != '2' && lexer->lookahead != '8') {
+    return false;
+  }
+  lexer->advance(lexer, false);
+  if (lexer->lookahead != '#') {
+    return false;
+  }
+  lexer->result_symbol = token;
+  return true;
+}
+
 void *tree_sitter_rk_external_scanner_create(void) { return NULL; }
 
 void tree_sitter_rk_external_scanner_destroy(void *payload) { (void)payload; }
@@ -106,7 +134,8 @@ bool tree_sitter_rk_external_scanner_scan(void *payload, TSLexer *lexer,
                                           const bool *valid_symbols) {
   (void)payload;
   if (!valid_symbols[C_STYLE_COMMENT] && !valid_symbols[PASCAL_STYLE_COMMENT] &&
-      !valid_symbols[PRAGMA]) {
+      !valid_symbols[PRAGMA] && !valid_symbols[MINUS_BEFORE_BASE] &&
+      !valid_symbols[PLUS_BEFORE_BASE]) {
     return false;
   }
 
@@ -116,6 +145,12 @@ bool tree_sitter_rk_external_scanner_scan(void *payload, TSLexer *lexer,
 
   if (lexer->lookahead == '{') {
     return valid_symbols[PRAGMA] && scan_unknown_pragma(lexer);
+  }
+  if (lexer->lookahead == '-') {
+    return valid_symbols[MINUS_BEFORE_BASE] && scan_sign_before_base(lexer, MINUS_BEFORE_BASE);
+  }
+  if (lexer->lookahead == '+') {
+    return valid_symbols[PLUS_BEFORE_BASE] && scan_sign_before_base(lexer, PLUS_BEFORE_BASE);
   }
 
   // `(` for `(* *)`, `/` for `/* */`: the character before the `*` that
