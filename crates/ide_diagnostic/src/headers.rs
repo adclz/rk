@@ -133,7 +133,7 @@ pub const HEADERS: &[(&str, &str)] = &[
     ("E0812", "more than one variadic parameter"),
     ("E0813", "variadic call without arguments"),
     ("E0814", "not a variadic parameter"),
-    ("E0815", "variadic parameter beside other inputs"),
+    ("E0815", "input after a variadic parameter"),
     ("E0816", "variadic parameter used as a variable"),
     ("E0817", "ARRAY[*] argument not a variable"),
     ("E0818", "VAR_OUTPUT bound with :="),

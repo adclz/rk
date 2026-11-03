@@ -186,8 +186,9 @@ pub enum CallError<'db> {
         expr: crate::hir_def::expressions::expression::PathExpr<'db>,
         var: VariableDecl<'db>,
     },
-    /// Variadic parameter must be the only VAR_INPUT parameter.
-    VariadicMixedWithOtherInputs {
+    /// An input declared after the variadic parameter, which takes the
+    /// arguments left in the call.
+    InputAfterVariadic {
         variadic_var: VariableDecl<'db>,
         other_var: VariableDecl<'db>,
     },
@@ -214,7 +215,7 @@ impl<'db> ErrorCode for CallError<'db> {
             Self::MultipleVariadicVariables { .. } => "E0812",
             Self::EmptyVariadicCall { .. } => "E0813",
             Self::NotVariadicParameter { .. } => "E0814",
-            Self::VariadicMixedWithOtherInputs { .. } => "E0815",
+            Self::InputAfterVariadic { .. } => "E0815",
             Self::VariadicAsVariable { .. } => "E0816",
             Self::NonIntegerPackIndex { .. } => "E0819",
         }
@@ -228,13 +229,13 @@ impl<'db> ToIdeDiagnostic<'db> for CallError<'db> {
         file: auto_lsp::default::db::file::File,
     ) -> IdeDiagnostic {
         match self {
-            Self::VariadicMixedWithOtherInputs {
+            Self::InputAfterVariadic {
                 variadic_var,
                 other_var,
             } => {
                 let mut diag = diag()
                     .message(format!(
-                        "'{}' is declared beside the variadic parameter '{}'",
+                        "'{}' is declared after the variadic parameter '{}'",
                         other_var.name_with_case(db).text(db),
                         variadic_var.name_with_case(db).text(db),
                     ))
@@ -254,7 +255,7 @@ impl<'db> ToIdeDiagnostic<'db> for CallError<'db> {
                     variadic_var.scope_id(db).file(db),
                     variadic_var.get_name_span(db),
                 ));
-                diag.with_note("a variadic parameter takes every argument of the call".into());
+                diag.with_note("a variadic parameter takes the arguments left in the call".into());
                 diag
             }
             Self::IncorrectNumberOfParameters {
