@@ -491,3 +491,74 @@ FUNCTION fn
 END_FUNCTION
 
 --------------------------------------------------------------------------------
+
+
+
+======================================================================
+A variadic parameter read by position
+======================================================================
+
+FUNCTION fn
+  test := ...args[i]
+  test := ...args[...args[0]] * 2
+END_FUNCTION
+
+----------------------------------------------------------------------
+
+(source_file
+  (func_decl
+    (identifier)
+    (func_body
+      (stmt_list
+        (assign
+          (variable_access
+            (variable
+              (begin_path_expression
+                (path_expression
+                  (var_access
+                    (field))))))
+          (assignment
+            (pack_element
+              (identifier)
+              (variable_access
+                (variable
+                  (begin_path_expression
+                    (path_expression
+                      (var_access
+                        (field)))))))))
+        (assign
+          (variable_access
+            (variable
+              (begin_path_expression
+                (path_expression
+                  (var_access
+                    (field))))))
+          (assignment
+            (mult_operator
+              (pack_element
+                (identifier)
+                (pack_element
+                  (identifier)
+                  (constant
+                    (numeric_literal
+                      (int_literal
+                        (signed_int
+                          (unsigned_int)))))))
+              (constant
+                (numeric_literal
+                  (int_literal
+                    (signed_int
+                      (unsigned_int))))))))))))
+
+======================================================================
+An argument read by position is no place
+:error
+======================================================================
+
+FUNCTION fn
+  ...args[0] := 1
+END_FUNCTION
+
+----------------------------------------------------------------------
+
+
