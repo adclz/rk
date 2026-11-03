@@ -4266,8 +4266,31 @@ fn eval(e: &Expr, st: &State, d: &Decls) -> Val {
 mod tests {
     use super::*;
 
-    /// The generator writes every fold, and for each the module computes what the
-    /// evaluator does. `/`, `%` and `**` were written by nothing for a long time.
+    /// A program of random bytes, enough of them for its body to call what it
+    /// declares: 96 bytes declare FUNCTIONs and run out before the body.
+    fn random_program(seed: &mut u64) -> String {
+        let bytes: Vec<u8> = (0..2048)
+            .map(|_| {
+                *seed ^= *seed << 13;
+                *seed ^= *seed >> 7;
+                *seed ^= *seed << 17;
+                (*seed >> 24) as u8
+            })
+            .collect();
+        program(&bytes)
+    }
+
+    /// Whether `text` calls the FUNCTION whose result `line` assigns. One that is
+    /// only declared computes nothing the evaluator could disagree with.
+    fn calls(text: &str, line: &str) -> bool {
+        let call = format!("{}(", line.trim().split(' ').next().unwrap_or_default());
+        text.lines()
+            .any(|l| !l.starts_with("FUNCTION") && l.contains(&call))
+    }
+
+    /// The generator writes every fold, calls it, and for each the module computes
+    /// what the evaluator does. `/`, `%` and `**` were written by nothing for a long
+    /// time.
     #[test]
     fn every_fold_is_written_and_computes() {
         const FOLDS: [&str; 17] = [
@@ -4277,15 +4300,7 @@ mod tests {
         let mut seed = 0x9E37_79B9_7F4A_7C15u64;
         let mut seen: std::collections::BTreeSet<&str> = Default::default();
         for _ in 0..20_000 {
-            let bytes: Vec<u8> = (0..96)
-                .map(|_| {
-                    seed ^= seed << 13;
-                    seed ^= seed >> 7;
-                    seed ^= seed << 17;
-                    (seed >> 24) as u8
-                })
-                .collect();
-            let text = program(&bytes);
+            let text = random_program(&mut seed);
             let fresh: Vec<&str> = FOLDS
                 .iter()
                 .copied()
@@ -4297,6 +4312,7 @@ mod tests {
                             && !line.trim_end().ends_with(&format!("*{fold}"))
                             && !line.trim_end().ends_with(&format!("<{fold}"))
                             && !line.trim_end().ends_with(&format!(">{fold}"))
+                            && calls(&text, line)
                     })
                 })
                 .collect();
@@ -4313,6 +4329,31 @@ mod tests {
         }
         let missing: Vec<_> = FOLDS.iter().filter(|fold| !seen.contains(*fold)).collect();
         panic!("no program folds with {missing:?}");
+    }
+
+    /// The generator reads a pack by position and calls it, and the module selects
+    /// the argument the evaluator does, past either end included.
+    #[test]
+    fn a_read_by_position_is_written_and_computes() {
+        let mut seed = 0x9E37_79B9_7F4A_7C15u64;
+        let mut checked = 0;
+        for _ in 0..20_000 {
+            let text = random_program(&mut seed);
+            if !text
+                .lines()
+                .any(|line| line.contains(":= ...a1[a0];") && calls(&text, line))
+            {
+                continue;
+            }
+            if let Err(finding) = crate::check_generated(&text) {
+                panic!("{finding}\n--- the program ---\n{text}");
+            }
+            checked += 1;
+            if checked == 8 {
+                return;
+            }
+        }
+        panic!("{checked} programs read a pack by position");
     }
 
     /// `**` computes in the evaluator with the `libm` it computes with in a module,
