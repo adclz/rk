@@ -302,3 +302,36 @@ END_FUNCTION
     ----'
     ");
 }
+
+/// A condition reads what its index reads: the first loop moves it, the second
+/// does not.
+#[rstest]
+fn condition_on_an_index(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION test : INT
+VAR_INPUT values : INT...; END_VAR
+VAR i : INT; j : INT; x : INT; END_VAR
+    WHILE ...values[i] > 0 DO
+        i := i + 1;
+    END_WHILE;
+    WHILE ...values[j] > 0 DO
+        x := x + 1;
+    END_WHILE;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "endless-loop"), @r"
+    [L0126] Warning: loop that never ends
+       ,-[ file:///test0.st:8:11 ]
+       |
+     8 |     WHILE ...values[j] > 0 DO
+       |           ^^^^^^^^|^^^^^^^
+       |                   `--------- the loop never changes 'j'
+       |
+       | Help: change 'j' in the loop, or leave it with EXIT
+       |
+       | Note 1: its condition never changes, so once the loop starts it never ends
+       |
+       | Note 2: lint rule: endless-loop
+    ---'
+    ");
+}

@@ -349,3 +349,25 @@ END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "division-by-zero"), @r"");
 }
+
+/// An index is walked as any operand.
+#[rstest]
+fn division_by_zero_in_an_index(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION test : INT
+VAR_INPUT values : INT...; END_VAR
+    test := ...values[1 / 0];
+END_FUNCTION
+"#;
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "division-by-zero"), @r"
+    [L0102] Warning: division by zero
+       ,-[ file:///test0.st:4:27 ]
+       |
+     4 |     test := ...values[1 / 0];
+       |                           |
+       |                           `-- division by zero: right-hand side of '/' is 0
+       |
+       | Note: lint rule: division-by-zero
+    ---'
+    ");
+}
