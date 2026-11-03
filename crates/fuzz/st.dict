@@ -207,3 +207,5 @@
 "...args>="
 "...args MIN"
 "...args MAX"
+"...args[0]"
+"...args[i]"

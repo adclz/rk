@@ -266,6 +266,9 @@ enum Expr {
     Call(usize, Vec<Expr>),
     /// A variadic FUNCTION's body: its pack, of this type, folded.
     Fold(Fold, Ty),
+    /// A variadic FUNCTION's body: the argument of its pack, its second input,
+    /// that its first selects.
+    Element,
     /// Bit `n` of an integer place of type `ty`, as a BOOL: `p.%Xn`, or
     /// `p.n` when bare.
     Bit(Box<Place>, Ty, u32, bool),
@@ -514,7 +517,7 @@ struct Function {
     body: Expr,
     /// Parts of an integer result written after `body` is assigned.
     slices: Vec<ResultSlice>,
-    /// One input, the pack, which `body` folds: a call passes it any
+    /// The last input is a pack, which `body` reads: a call passes it any
     /// number of arguments, positionally.
     variadic: bool,
 }
@@ -1339,22 +1342,28 @@ impl Generator<'_> {
     /// exact type, if there is a STRUCT for each STRUCT parameter.
     fn args(&mut self, f: usize, depth: u32, readable: &[usize]) -> Option<Vec<Expr>> {
         if self.d.functions[f].variadic {
-            // One to four arguments, each of the pack's type. An integer divided by
-            // zero faults, so what a fold divides by is a literal, as for `/`.
-            let pack = self.d.functions[f].inputs[0].ty;
+            // One for each input before the pack, then one to four, each of the
+            // pack's type. An integer divided by zero faults, so what a fold divides
+            // by is a literal, as for `/`.
+            let inputs = self.d.functions[f].inputs.clone();
+            let (pack, before) = inputs.split_last().expect("a variadic FUNCTION's pack");
+            let pack = pack.ty;
             let divides = matches!(
                 self.d.functions[f].body,
                 Expr::Fold(Fold::Arith(Arith::Div | Arith::Mod), _)
             );
+            let mut args: Vec<Expr> = before
+                .iter()
+                .map(|v| self.expr(v.ty, depth, readable))
+                .collect();
             let n = 1 + self.choices.below(4);
-            return Some(
-                (0..n)
-                    .map(|i| match divides && i > 0 {
-                        true => Expr::Lit(pack, self.divisor(pack)),
-                        false => self.expr(pack, depth, readable),
-                    })
-                    .collect(),
-            );
+            for i in 0..n {
+                args.push(match divides && i > 0 {
+                    true => Expr::Lit(pack, self.divisor(pack)),
+                    false => self.expr(pack, depth, readable),
+                });
+            }
+            return Some(args);
         }
         let inputs: Vec<Ty> = self.d.functions[f].inputs.iter().map(|v| v.ty).collect();
         let mut args = Vec::new();
@@ -2021,6 +2030,25 @@ pub fn program(bytes: &[u8]) -> String {
         // One in four is variadic: a name of its own, never an overload, and
         // not a program variable's (`v0`).
         if g.choices.percent(25) {
+            // One in four of those reads an argument by position, at an index of
+            // any integer type, so past either end as well.
+            if g.choices.percent(25) {
+                let index = INTEGERS[g.choices.below(INTEGERS.len())];
+                let pack = match g.choices.below(4) {
+                    0 => Ty::Bool,
+                    1 => [Ty::Real, Ty::Lreal][g.choices.below(2)],
+                    _ => INTEGERS[g.choices.below(INTEGERS.len())],
+                };
+                g.d.functions.push(Function {
+                    name: format!("pick{k}"),
+                    ty: pack,
+                    inputs: vec![input(0, index), input(1, pack)],
+                    body: Expr::Element,
+                    slices: Vec::new(),
+                    variadic: true,
+                });
+                continue;
+            }
             let (fold, pack, ty) = g.fold();
             g.d.functions.push(Function {
                 name: format!("fold{k}"),
@@ -2498,8 +2526,8 @@ fn write_program(vars: &[Var], d: &Decls, body: &[Stmt], state: &State) -> Strin
     }
     for f in &d.functions {
         let _ = writeln!(out, "FUNCTION {} : {}\nVAR_INPUT", f.name, f.ty.name());
-        for v in &f.inputs {
-            match f.variadic {
+        for (i, v) in f.inputs.iter().enumerate() {
+            match f.variadic && i + 1 == f.inputs.len() {
                 true => {
                     let _ = writeln!(out, "    {} : {}...;", v.name, v.ty.name());
                 }
@@ -3254,6 +3282,7 @@ impl Names<'_> {
                 format!("{}({})", f.spelled(*form), args.join(", "))
             }
             Expr::Fold(op, _) => format!("...{}{}", self.vars[0], op.symbol()),
+            Expr::Element => format!("...{}[{}]", self.vars[1], self.vars[0]),
             Expr::Bit(p, _, bit, bare) => match bare {
                 true => format!("{}.{bit}", self.place(p)),
                 false => format!("{}.%X{bit}", self.place(p)),
@@ -4121,8 +4150,15 @@ fn eval(e: &Expr, st: &State, d: &Decls) -> Val {
         Expr::Call(f, args) => {
             let f = &d.functions[*f];
             let inputs = match f.variadic {
-                // The pack: every argument, at its type.
-                true => args.iter().map(|a| store(f.inputs[0].ty, ev(a))).collect(),
+                // Each input before the pack, then the pack: every argument left,
+                // at its type.
+                true => {
+                    let (pack, before) = f.inputs.split_last().expect("a pack");
+                    args.iter()
+                        .enumerate()
+                        .map(|(i, a)| store(before.get(i).unwrap_or(pack).ty, ev(a)))
+                        .collect()
+                }
                 false => f
                     .inputs
                     .iter()
@@ -4164,6 +4200,12 @@ fn eval(e: &Expr, st: &State, d: &Decls) -> Val {
                 LibFn::Clamp0 => (args[0].int() as i32).max(0) as i128,
                 LibFn::Both => (args[0].truthy() && args[1].truthy()) as i128,
             })
+        }
+        // The frame holds the index, then the pack, one value per argument. An
+        // index below 0 reads the first, and one past the last reads the last.
+        Expr::Element => {
+            let last = st.vars.len() as i128 - 2;
+            st.vars[1 + st.vars[0].int().clamp(0, last) as usize].clone()
         }
         Expr::Fold(op, ty) => match op {
             Fold::Arith(op) => Val::Int(
