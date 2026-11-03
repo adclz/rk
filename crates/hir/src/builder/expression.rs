@@ -218,6 +218,16 @@ impl<'db> Parse<'db> for ast::generated::Expression {
                     sema.current_scope,
                 ))
             }
+            ast::generated::Expression::PackElement(element) => {
+                let param_id = SpanIdent::from_node(sema.db, sema, element.param.cast(sema.ast))?;
+                let index = element.index.cast(sema.ast).parse(sema)?;
+
+                Ok(sema.new_expr(
+                    ExprKind::PackElement { param_id, index },
+                    element.into(),
+                    sema.current_scope,
+                ))
+            }
         }
     }
 }

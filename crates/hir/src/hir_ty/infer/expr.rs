@@ -12,6 +12,8 @@ use crate::{
             ComparisonOperatorKind, Expr, ExprKind, FoldOperatorKind, MultOperatorKind,
             PrimaryExpr, RefValue, UnaryOperatorKind, VariableAccess,
         },
+        expressions::spec::ElementarySpec,
+        interned::identifier::SpanIdent,
         pous::variable::VariableDecl,
     },
     hir_ty::{
@@ -24,6 +26,44 @@ use crate::{
 
 pub struct InferExprCtx<'db> {
     pub resolver: Resolver<'db>,
+}
+
+/// The POU's own variadic parameter, which is what `...` reads and nothing
+/// else: another local, a member, a name that is nothing, or a POU without a
+/// pack is E0814. Left as a silent `Never`, each reached MIR as an internal
+/// compiler error.
+fn own_pack<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    expr: Expr<'db>,
+    param_id: SpanIdent<'db>,
+    inference_results: &mut BodyInferenceResult<'db>,
+) -> Option<VariableDecl<'db>> {
+    let def_map = expr.scope_id(db).def_map(db);
+    let named = def_map.local_variables.get(&param_id.ident(db)).copied();
+    // `...` is the ONLY way to consume a pack, so without this every variadic
+    // parameter reads as unused (L0201).
+    if let Some(var) = named {
+        inference_results.variables_used.insert(var);
+    }
+    match named {
+        Some(var) if var.variadic(db) => Some(var),
+        _ => {
+            let pack = def_map
+                .local_variables
+                .values()
+                .find(|var| var.variadic(db))
+                .copied();
+            inference_results.errors.push(
+                CallError::NotVariadicParameter {
+                    call_site: expr.as_call_site(db),
+                    name: param_id.with_case,
+                    pack,
+                }
+                .to_diagnostic(db, inference_results.scope.file(db)),
+            );
+            None
+        }
+    }
 }
 
 impl<'db> InferExprCtx<'db> {
@@ -238,24 +278,8 @@ impl<'db> InferExprCtx<'db> {
                 inference_results.type_of_expr[&curr_expr]
             }
             ExprKind::FoldExpr { param_id, operator } => {
-                // The fold reads the POU's own variadic parameter and nothing
-                // else: another local, a member, a name that is nothing, or a
-                // POU without a pack is E0814. Left as a silent `Never`, each
-                // reached MIR as an internal compiler error.
-                let scope = curr_expr.scope_id(db);
-                let def_map = scope.def_map(db);
-                let pack = def_map
-                    .local_variables
-                    .values()
-                    .find(|var| var.variadic(db))
-                    .copied();
-                let named = def_map.local_variables.get(&param_id.ident(db)).copied();
-                let ty = match named {
-                    Some(var) if var.variadic(db) => {
-                        // A fold is the ONLY way to consume a pack, so without
-                        // this every variadic parameter reads as unused (L0201).
-                        inference_results.variables_used.insert(var);
-
+                let ty = match own_pack(db, curr_expr, *param_id, inference_results) {
+                    Some(var) => {
                         let declared = var.spec(db).infer(db);
                         let var_ty = declared.normalize(db);
 
@@ -301,20 +325,45 @@ impl<'db> InferExprCtx<'db> {
                             Type::new_var(db, var)
                         }
                     }
-                    _ => {
-                        if let Some(var) = named {
-                            inference_results.variables_used.insert(var);
+                    None => Type::Never,
+                };
+                inference_results.type_of_expr.insert(curr_expr, ty);
+                ty
+            }
+            ExprKind::PackElement { param_id, index } => {
+                self.resolve_expr(db, *index, inference_results);
+                self.check_expr(db, *index, inference_results);
+
+                // An untyped literal is pinned to DINT, as a subscript's is.
+                let raw = inference_results.type_of_expr_with_adjustments(db, *index);
+                if raw.has_infer() {
+                    let mut table = InferenceTable::new();
+                    table.set_target_type(db, None, Type::Elementary(ElementarySpec::DInt));
+                    table.add_type(db, *index, raw, self.resolver);
+                    table.resolve_completly(db, self.resolver, inference_results);
+                }
+
+                // Any integer type, as a subscript. `Never` already carries
+                // its own diagnostic.
+                let index_ty = inference_results
+                    .type_of_expr_with_adjustments(db, *index)
+                    .normalize(db);
+                if !index_ty.is_never()
+                    && !index_ty.is_signed_integer()
+                    && !index_ty.is_unsigned_integer()
+                {
+                    inference_results.errors.push(
+                        CallError::NonIntegerPackIndex {
+                            expr: *index,
+                            ty: index_ty,
                         }
-                        inference_results.errors.push(
-                            CallError::NonVariadicFoldParameter {
-                                call_site: curr_expr.as_call_site(db),
-                                name: param_id.with_case,
-                                pack,
-                            }
-                            .to_diagnostic(db, inference_results.scope.file(db)),
-                        );
-                        Type::Never
-                    }
+                        .to_diagnostic(db, inference_results.scope.file(db)),
+                    );
+                }
+
+                let ty = match own_pack(db, curr_expr, *param_id, inference_results) {
+                    Some(var) => Type::new_var(db, var),
+                    None => Type::Never,
                 };
                 inference_results.type_of_expr.insert(curr_expr, ty);
                 ty
@@ -568,7 +617,8 @@ impl<'db> InferExprCtx<'db> {
                 let inner_ty = inference_results.type_of_expr_with_adjustments(db, *inner_expr);
                 inference_results.type_of_expr.insert(expr, inner_ty);
             }
-            ExprKind::PrimaryExpr(_) | ExprKind::FoldExpr { .. } => {}
+            ExprKind::PrimaryExpr(_) | ExprKind::FoldExpr { .. } | ExprKind::PackElement { .. } => {
+            }
         }
 
         // The node itself: an arm below binds its operand as `expr`.
@@ -773,7 +823,7 @@ impl<'db> InferExprCtx<'db> {
                     }
                 }
             }
-            ExprKind::PrimaryExpr(_) | ExprKind::FoldExpr { .. } => { /* already checked in infer_expr */
+            ExprKind::PrimaryExpr(_) | ExprKind::FoldExpr { .. } | ExprKind::PackElement { .. } => { /* already checked in infer_expr */
             }
         }
     }
