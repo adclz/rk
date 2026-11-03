@@ -28,12 +28,13 @@ use hir::check::diagnostics_for_file;
 use crate::{Finding, session};
 
 pub fn check(target: &str) -> Result<(), Finding> {
-    // LSP counts a lone `\r` as a line break and this harness does not
-    // model it; neither does any editor produce one.
-    if target.is_empty() || target.replace("\r\n", "").contains('\r') {
+    if target.is_empty() {
         return Ok(());
     }
     let plan = Plan::new(target);
+    if !plan.positions_can_say_it() {
+        return Ok(());
+    }
     let Some((mut db, file)) = session::load(&plan.start) else {
         return Ok(());
     };
@@ -193,6 +194,23 @@ struct Plan {
 }
 
 impl Plan {
+    /// LSP counts a lone `\r` as a line break, and has no position between the two
+    /// bytes of a `\r\n`. This harness models neither, and no editor produces
+    /// either, but a slice of the text can cut a `\r\n` in two: junk ending on its
+    /// `\r` left the plan's first text with a lone one, and the edit that restores
+    /// the input removed the wrong bytes.
+    fn positions_can_say_it(&self) -> bool {
+        let mut text = self.start.clone();
+        for change in &self.changes {
+            let end = change.at + change.remove;
+            if has_lone_cr(&text) || inside_crlf(&text, change.at) || inside_crlf(&text, end) {
+                return false;
+            }
+            text.replace_range(change.at..end, &change.insert);
+        }
+        !has_lone_cr(&text)
+    }
+
     fn new(target: &str) -> Self {
         let mut bits = fnv1a(target.as_bytes());
         let mut take = |n: u64| {
@@ -258,6 +276,15 @@ impl Plan {
     }
 }
 
+fn has_lone_cr(text: &str) -> bool {
+    text.replace("\r\n", "").contains('\r')
+}
+
+fn inside_crlf(text: &str, offset: usize) -> bool {
+    let bytes = text.as_bytes();
+    offset > 0 && bytes[offset - 1] == b'\r' && bytes.get(offset) == Some(&b'\n')
+}
+
 fn floor(s: &str, mut i: usize) -> usize {
     while !s.is_char_boundary(i) {
         i -= 1;
@@ -300,6 +327,54 @@ mod tests {
                     t.replace_range(c.at..c.at + c.remove, &c.insert);
                 }
                 assert_eq!(t, target, "plan {:?}", plan.changes);
+            }
+        }
+    }
+
+    /// What no position can say: a text with a lone `\r`, at the start or after
+    /// a piece typed, and an edit between the two bytes of a `\r\n`.
+    #[test]
+    fn a_plan_no_position_can_say_is_left_out() {
+        let plan = |start: &str, changes: &[(usize, usize, &str)]| Plan {
+            start: start.to_string(),
+            changes: changes
+                .iter()
+                .map(|(at, remove, insert)| Change {
+                    at: *at,
+                    remove: *remove,
+                    insert: insert.to_string(),
+                })
+                .collect(),
+        };
+        // The night's crash: junk ending on the `\r` of a `\r\n`, pasted and deleted.
+        assert!(!plan("ab: INT\rcd", &[(2, 6, "")]).positions_can_say_it());
+        // Typed in two pieces, with the `\r` standing alone between them.
+        assert!(!plan("abcd", &[(2, 0, "\r"), (3, 0, "\n")]).positions_can_say_it());
+        // A `\r` left alone at the end.
+        assert!(!plan("abcd", &[(2, 0, "\r")]).positions_can_say_it());
+        // Between the two bytes, at either end of the edit.
+        assert!(!plan("ab\r\ncd", &[(3, 1, "")]).positions_can_say_it());
+        assert!(!plan("ab\r\ncd", &[(1, 2, "")]).positions_can_say_it());
+
+        // A `\r\n` kept whole, typed whole or deleted whole is what editors send.
+        assert!(plan("ab\r\ncd", &[(4, 2, "xy")]).positions_can_say_it());
+        assert!(plan("abcd", &[(2, 0, "\r\n")]).positions_can_say_it());
+        assert!(plan("ab\r\ncd", &[(2, 2, "")]).positions_can_say_it());
+        assert!(plan("abcd", &[(1, 1, "x")]).positions_can_say_it());
+    }
+
+    /// Whatever the plan cuts, a text with `\r\n` line ends reads back as itself.
+    /// The harness reported the wrong bytes removed when a cut left a lone `\r`.
+    #[test]
+    fn a_text_with_crlf_line_ends_is_no_finding() {
+        for salt in 0..24 {
+            let target = format!(
+                "FUNCTION f : INT\r\nVAR x : INT; END_VAR\r\n    f := x;\r\nEND_FUNCTION\r\n{}",
+                " ".repeat(salt)
+            );
+            let plan = Plan::new(&target);
+            if let Err(finding) = check(&target) {
+                panic!("{finding} (plan {:?})", plan.changes);
             }
         }
     }
