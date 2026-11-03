@@ -146,6 +146,39 @@ END_FUNCTION
     "#);
 }
 
+/// Past the inputs before a variadic parameter, every argument lands in it.
+#[rstest]
+fn signature_help_stays_on_a_variadic(mut with_db: RootDatabase) {
+    let source = r#"FUNCTION Pick : INT
+VAR_INPUT
+    k : LINT;
+    values : INT...;
+END_VAR
+END_FUNCTION
+
+FUNCTION caller
+VAR x : INT; END_VAR
+    x := Pick(0, 1, 2, 3);
+END_FUNCTION
+"#;
+
+    let file = add_source(&mut with_db, source);
+    let call = source.find("Pick(0").unwrap();
+    let active = |written: &str| {
+        let help = find_signature_help(&with_db, file, call + written.len()).expect("help");
+        assert_eq!(
+            help.signatures[0].label,
+            "Pick(k := LINT, values := INT...) : INT"
+        );
+        help.signatures[0].active_parameter
+    };
+
+    assert_eq!(active("Pick("), Some(0));
+    assert_eq!(active("Pick(0, "), Some(1));
+    assert_eq!(active("Pick(0, 1, "), Some(1));
+    assert_eq!(active("Pick(0, 1, 2, "), Some(1));
+}
+
 #[rstest]
 fn signature_help_formal_params(mut with_db: RootDatabase) {
     let source = r#"FUNCTION my_func

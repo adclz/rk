@@ -184,6 +184,26 @@ END_FUNCTION
     assert_snapshot!(format_definition_response(&def.unwrap()), @"/test0.st:1:10-1:16");
 }
 
+/// An index is an expression like any other: what it reads is reached from it.
+#[rstest]
+pub fn definition_in_the_index_of_a_read_by_position(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION Pick : INT
+VAR_INPUT
+    k : LINT;
+    values : INT...;
+END_VAR
+    Pick := ...values[k];
+END_FUNCTION
+"#;
+
+    let file = add_source(&mut with_db, source);
+    let offset = source.find("...values[k]").unwrap() + "...values[".len();
+    let node = descendant_at(&with_db, file, offset).expect("a node at the index");
+    let def = node.definition(&with_db, offset).expect("its definition");
+    assert_snapshot!(format_definition_response(&def), @"/test0.st:3:4-3:5");
+}
+
 #[rstest]
 pub fn definition_variable_ref_elementary_type(mut with_db: RootDatabase) {
     let source = r#"
