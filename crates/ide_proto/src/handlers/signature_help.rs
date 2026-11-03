@@ -234,7 +234,8 @@ fn param_info<'db>(
                 .get(&var.spec(db))
                 .map(|t| t.type_name(db))
                 .unwrap_or_default();
-            Some((name, kind_str, type_name))
+            let dots = if var.variadic(db) { "..." } else { "" };
+            Some((name, kind_str, format!("{type_name}{dots}")))
         }
         _ => None,
     }
@@ -344,6 +345,15 @@ fn signature_of<'db>(
 
     label.push(')');
     label.push_str(&return_suffix);
+
+    // Every argument past the inputs before a pack lands in it.
+    let pack = scope
+        .def_map(db)
+        .local_variables
+        .values()
+        .filter(|var| param_info(db, var, signature).is_some())
+        .position(|var| var.variadic(db));
+    let active_parameter = pack.map_or(active_parameter, |pack| active_parameter.min(pack as u32));
 
     SignatureInformation {
         label,

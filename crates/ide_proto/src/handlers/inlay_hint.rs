@@ -95,10 +95,11 @@ impl<'db> InlayHintHandler<'db> for ParamAssign<'db> {
 
         let inference = self.scope_id(db).inference(db);
         inference.variable_for_param(*self).map(|var| {
-            // A variadic argument is named by position, which is not written
-            // anywhere; a formal one links to the parameter it fills.
+            // A variadic argument is named by the position `...` reads it at,
+            // which is not written anywhere; a formal one links to the
+            // parameter it fills.
             let label = if var.variadic(db) {
-                let pos = inference.variadic_position(*self).unwrap_or(0);
+                let pos = inference.variadic_position(*self).unwrap_or(1) - 1;
                 InlayHintLabel::String(format!("({pos}):"))
             } else {
                 InlayHintLabel::LabelParts(vec![part(
