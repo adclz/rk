@@ -310,12 +310,14 @@ impl LibFn {
 
 /// What a variadic FUNCTION folds its pack with: `+`, `-` and `*` from
 /// left to right, `&`, `|` and `^` over BOOLs, a comparison of each
-/// adjacent pair (docs/variadics.md).
+/// adjacent pair, the smallest or the largest integer (docs/variadics.md).
 #[derive(Clone, Copy, Debug)]
 enum Fold {
     Arith(Arith),
     Logic(Logic),
     Cmp(Cmp),
+    Min,
+    Max,
 }
 
 impl Fold {
@@ -335,6 +337,8 @@ impl Fold {
             Fold::Cmp(Cmp::Gt) => ">",
             Fold::Cmp(Cmp::Le) => "<=",
             Fold::Cmp(Cmp::Ge) => ">=",
+            Fold::Min => " MIN",
+            Fold::Max => " MAX",
         }
     }
 }
@@ -1261,10 +1265,11 @@ impl Generator<'_> {
 
     /// A fold, the type of the pack it folds and the type it gives: integers
     /// added, subtracted or multiplied (wrapping at each step), BOOLs
-    /// combined, integers compared pair by pair into a BOOL.
+    /// combined, integers compared pair by pair into a BOOL, the smallest or
+    /// the largest integer.
     fn fold(&mut self) -> (Fold, Ty, Ty) {
         let integer = INTEGERS[self.choices.below(INTEGERS.len())];
-        match self.choices.below(3) {
+        match self.choices.below(4) {
             0 => {
                 let op = [Arith::Add, Arith::Sub, Arith::Mul][self.choices.below(3)];
                 (Fold::Arith(op), integer, integer)
@@ -1273,10 +1278,14 @@ impl Generator<'_> {
                 let op = [Logic::And, Logic::Or, Logic::Xor][self.choices.below(3)];
                 (Fold::Logic(op), Ty::Bool, Ty::Bool)
             }
-            _ => {
+            2 => {
                 let op =
                     [Cmp::Eq, Cmp::Ne, Cmp::Lt, Cmp::Gt, Cmp::Le, Cmp::Ge][self.choices.below(6)];
                 (Fold::Cmp(op), integer, Ty::Bool)
+            }
+            _ => {
+                let op = [Fold::Min, Fold::Max][self.choices.below(2)];
+                (op, integer, integer)
             }
         }
     }
@@ -4173,6 +4182,8 @@ fn eval(e: &Expr, st: &State, d: &Decls) -> Val {
                     Cmp::Ge => a >= b,
                 }
             }) as i128),
+            Fold::Min => Val::Int(st.vars.iter().map(Val::int).min().unwrap_or(0)),
+            Fold::Max => Val::Int(st.vars.iter().map(Val::int).max().unwrap_or(0)),
         },
     }
 }

@@ -278,8 +278,8 @@ FUNCTION Use : INT
 END_FUNCTION
 ```
 
-The fold operators are `+ - * / % **` (left to right), `& | ^`, and `= <> < > <= >=`, which test each adjacent pair and give a `BOOL`.
-The variadic parameter must be elementary (E0811) and the only `VAR_INPUT` (E0812, E0815); pass anything else as `VAR_OUTPUT` or `VAR_IN_OUT`, by name. `...` folds that parameter and nothing else (E0814).
+The fold operators are `+ - * / % **` (left to right), `& | ^`, `= <> < > <= >=`, which test each adjacent pair and give a `BOOL`, and `MIN` and `MAX`, written after a space (`...values MAX`), which give the smallest or the largest argument.
+The variadic parameter must be elementary, not a `STRING` nor a subrange (E0811), and the only `VAR_INPUT` (E0812, E0815); pass anything else as `VAR_OUTPUT` or `VAR_IN_OUT`, by name. `...` folds that parameter and nothing else (E0814).
 A call passes it at least one argument (E0813).
 
 ## Gotchas
@@ -309,7 +309,7 @@ Date and time comparisons are signed, matching the encodings: `T#-5s < T#0s`, an
 `Std.Math` has no `ADD`/`SUB`/`MUL`/`DIV`/`MOD` — those are operators.
 It has `ABS`, `SQRT`, `LN`, `LOG`, `EXP`, `EXPT`, the trig functions, and `IS_NAN`/`NOT_OK` to test a REAL before converting it.
 `Std.Strings` has `LEN`/`FIND`/`LEFT`/`RIGHT`/`MID`/`INSERT`/`DELETE`/`REPLACE`/`CONCAT` counting bytes and their `CHAR_` twins counting characters (plus `CHAR_AT`, `IS_UTF8`).
-`Std.Convert` holds the `X_TO_Y` casts and `TRUNC`, `Std.Selection` has `SEL`/`MIN`/`MAX`/`LIMIT`/`MUX`, `Std.Bits` has `SHL`/`SHR`/`ROL`/`ROR`, `Std.Bytes` `TO_BIG_ENDIAN`/`FROM_BIG_ENDIAN`/`TO_LITTLE_ENDIAN`/`FROM_LITTLE_ENDIAN` and the BCD conversions (`WORD_BCD_TO_UINT`/`UINT_TO_BCD_WORD` and their siblings, `IS_VALID_BCD`), `Std.Timers` has `TP_TIME`/`TON_TIME`/`TOF_TIME` (and `_LTIME` variants), `Std.Counters` `CTU`/`CTD`/`CTUD`, `Std.Edge` `R_TRIG`/`F_TRIG`, `Std.Bistable` `SR`/`RS`/`SEMA`, `Std.Memory` `MOVE`, `Std.Arrays` `LOWER_BOUND`/`UPPER_BOUND` and `GET_DWORD_BE`/`PUT_DWORD_LE` and their siblings (a WORD, DWORD, LWORD, REAL or LREAL read from or written to an `ARRAY[*] OF BYTE` at a subscript, in either byte order), `Std.Unit` `ASSERT`/`ASSERT_EQ`/`ASSERT_NEQ`.
+`Std.Convert` holds the `X_TO_Y` casts and `TRUNC`, `Std.Selection` has `SEL`/`MIN`/`MAX`/`LIMIT`/`MUX`, `Std.Comparison` has `GT`/`GE`/`EQ`/`LE`/`LT`/`NE`, `Std.Bits` has `SHL`/`SHR`/`ROL`/`ROR`, `Std.Bytes` `TO_BIG_ENDIAN`/`FROM_BIG_ENDIAN`/`TO_LITTLE_ENDIAN`/`FROM_LITTLE_ENDIAN` and the BCD conversions (`WORD_BCD_TO_UINT`/`UINT_TO_BCD_WORD` and their siblings, `IS_VALID_BCD`), `Std.Timers` has `TP_TIME`/`TON_TIME`/`TOF_TIME` (and `_LTIME` variants), `Std.Counters` `CTU`/`CTD`/`CTUD`, `Std.Edge` `R_TRIG`/`F_TRIG`, `Std.Bistable` `SR`/`RS`/`SEMA`, `Std.Memory` `MOVE`, `Std.Arrays` `LOWER_BOUND`/`UPPER_BOUND` and `GET_DWORD_BE`/`PUT_DWORD_LE` and their siblings (a WORD, DWORD, LWORD, REAL or LREAL read from or written to an `ARRAY[*] OF BYTE` at a subscript, in either byte order), `Std.Unit` `ASSERT`/`ASSERT_EQ`/`ASSERT_NEQ`.
 
 ## Reference files
 

@@ -161,6 +161,9 @@ pub enum FoldOperatorKind {
     Gt, // >
     Le, // <=
     Ge, // >=
+    // Extremes
+    Min, // MIN
+    Max, // MAX
 }
 
 impl FoldOperatorKind {
@@ -193,6 +196,8 @@ impl FoldOperatorKind {
             FoldOperatorKind::Gt => ">",
             FoldOperatorKind::Le => "<=",
             FoldOperatorKind::Ge => ">=",
+            FoldOperatorKind::Min => "MIN",
+            FoldOperatorKind::Max => "MAX",
         }
     }
 }
@@ -215,6 +220,8 @@ impl std::fmt::Display for FoldOperatorKind {
             FoldOperatorKind::Gt => write!(f, ">"),
             FoldOperatorKind::Le => write!(f, "<="),
             FoldOperatorKind::Ge => write!(f, ">="),
+            FoldOperatorKind::Min => write!(f, "MIN"),
+            FoldOperatorKind::Max => write!(f, "MAX"),
         }
     }
 }

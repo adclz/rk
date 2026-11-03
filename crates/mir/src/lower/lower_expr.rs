@@ -379,6 +379,8 @@ impl<'db> ExprLowerCtx<'db> {
             F::And => Some(MirBinOp::And),
             F::Or => Some(MirBinOp::Or),
             F::Xor => Some(MirBinOp::Xor),
+            F::Min => Some(MirBinOp::Min),
+            F::Max => Some(MirBinOp::Max),
             F::Power | F::Eq | F::Ne | F::Lt | F::Gt | F::Le | F::Ge => None,
         };
 

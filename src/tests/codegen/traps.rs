@@ -13,7 +13,7 @@ use rstest::*;
 /// text a user would see — the decoded `$rk_exception` payload, or the
 /// trap's own words. A subrange fault and a division trap must stay
 /// distinguishable, or the diagnostic value collapses.
-fn expect_fault(with_db: &mut db::RootDatabase, source: &str, why: &str) -> String {
+pub(super) fn expect_fault(with_db: &mut db::RootDatabase, source: &str, why: &str) -> String {
     let wasm = compile_to_wasm(with_db, source);
     let engine = crate::tests::codegen::test_engine();
     let module = wasmtime::Module::new(&engine, &wasm).unwrap();

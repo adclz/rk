@@ -153,7 +153,7 @@ pub enum CallError<'db> {
         writes_outputs: bool,
         candidates: Vec<Function<'db>>,
     },
-    /// Only elementary types can be variadic.
+    /// A type a pack cannot hold ([`Type::can_be_variadic`]).
     NonVariadicTypeForVariable {
         var: VariableDecl<'db>,
         typ: Type<'db>,
@@ -695,7 +695,16 @@ impl<'db> ToIdeDiagnostic<'db> for CallError<'db> {
                     )
                     .call();
 
-                for c in candidates {
+                // A set over every elementary type runs to scores of overloads:
+                // a few say what the set takes.
+                const LISTED: usize = 8;
+                if candidates.len() > LISTED {
+                    diag.with_note(format!(
+                        "{LISTED} of its {} overloads are listed",
+                        candidates.len()
+                    ));
+                }
+                for c in candidates.iter().take(LISTED) {
                     let signature = crate::hir_ty::head::signature::function_signature(db, *c);
                     let declared: Vec<(Ident, Type<'db>)> = match writes_outputs {
                         false => Vec::new(),
@@ -729,7 +738,7 @@ impl<'db> ToIdeDiagnostic<'db> for CallError<'db> {
                     )
                     .call();
 
-                diag.with_note("only an elementary type can be variadic".into());
+                diag.with_note("only an elementary type other than STRING can be variadic".into());
                 diag
             }
             Self::MultipleVariadicVariables { first, second } => {

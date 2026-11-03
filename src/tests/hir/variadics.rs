@@ -25,15 +25,155 @@ FUNCTION sum_all : INT
 END_FUNCTION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0811] Error: variadic parameter of a composite type
+    [E0811] Error: type that cannot be variadic
         ,-[ file:///test0.st:10:15 ]
         |
      10 |         args: MyStruct...
         |               ^^^^|^^^
         |                   `----- 'MyStruct' cannot be variadic
         |
-        | Note: only an elementary type can be variadic
+        | Note: only an elementary type other than STRING can be variadic
     ----'
+    ");
+}
+
+/// Each argument of a pack is one plain parameter of its copy, which a STRING and
+/// a subrange are not. `rk check` took both, called or not, and the build stopped
+/// on an internal compiler error at the first call.
+#[rstest]
+fn invalid_variadic_string(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION F : BOOL
+VAR_INPUT v : STRING...; END_VAR
+    F := ...v=;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0811] Error: type that cannot be variadic
+       ,-[ file:///test0.st:3:15 ]
+       |
+     3 | VAR_INPUT v : STRING...; END_VAR
+       |               ^^^|^^
+       |                  `---- 'STRING' cannot be variadic
+       |
+       | Note: only an elementary type other than STRING can be variadic
+    ---'
+    ");
+}
+
+#[rstest]
+fn invalid_variadic_subrange(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE Small : INT (0..5); END_TYPE
+
+FUNCTION F : BOOL
+VAR_INPUT v : Small...; END_VAR
+    F := ...v=;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0811] Error: type that cannot be variadic
+       ,-[ file:///test0.st:5:15 ]
+       |
+     5 | VAR_INPUT v : Small...; END_VAR
+       |               ^^|^^
+       |                 `---- 'Small' cannot be variadic
+       |
+       | Note: only an elementary type other than STRING can be variadic
+    ---'
+    ");
+}
+
+/// E0811 alone, however the type is spelled, in each POU a pack can stand in,
+/// with a call and a fold that report nothing more.
+#[rstest]
+#[case::string("", "STRING", "'a'")]
+#[case::string_with_a_capacity("", "STRING[10]", "'a'")]
+#[case::alias_of_a_string("TYPE T : STRING; END_TYPE", "T", "'a'")]
+#[case::alias_of_a_string_with_a_capacity("TYPE T : STRING[10]; END_TYPE", "T", "'a'")]
+#[case::alias_of_an_alias_of_a_string("TYPE U : STRING; END_TYPE TYPE T : U; END_TYPE", "T", "'a'")]
+#[case::subrange("TYPE T : INT (0..5); END_TYPE", "T", "1")]
+#[case::alias_of_a_subrange("TYPE U : INT (0..5); END_TYPE TYPE T : U; END_TYPE", "T", "1")]
+fn invalid_variadic_of_a_type_a_pack_cannot_hold(
+    #[case] declarations: &str,
+    #[case] ty: &str,
+    #[case] argument: &str,
+) {
+    let count_codes = |source: String| {
+        let report = test_diagnostics(&mut RootDatabase::default(), &[&source]);
+        let codes: Vec<String> = report
+            .lines()
+            .filter(|l| l.starts_with('['))
+            .map(|l| l[1..6].to_string())
+            .collect();
+        (codes, report)
+    };
+    let function = format!(
+        "{declarations}\n\
+         FUNCTION F : BOOL\nVAR_INPUT v : {ty}...; END_VAR\n    F := ...v=;\nEND_FUNCTION\n\
+         FUNCTION G : BOOL\n    G := F({argument}, {argument});\nEND_FUNCTION\n"
+    );
+    let (codes, report) = count_codes(function);
+    assert_eq!(codes, ["E0811"], "{report}");
+
+    let method = format!(
+        "{declarations}\n\
+         FUNCTION_BLOCK B\n\
+         METHOD M : BOOL\nVAR_INPUT v : {ty}...; END_VAR\n    M := ...v=;\nEND_METHOD\n\
+         END_FUNCTION_BLOCK\n\
+         FUNCTION G : BOOL\nVAR b : B; END_VAR\n    G := b.M({argument}, {argument});\nEND_FUNCTION\n"
+    );
+    let (codes, report) = count_codes(method);
+    assert_eq!(codes, ["E0811"], "{report}");
+
+    let uncalled =
+        format!("{declarations}\nFUNCTION F : INT\nVAR_INPUT v : {ty}...; END_VAR\nEND_FUNCTION\n");
+    let (codes, report) = count_codes(uncalled);
+    assert_eq!(codes, ["E0811"], "{report}");
+}
+
+/// A composite pack is refused where it is declared, and its fold says no more.
+#[rstest]
+fn invalid_variadic_of_a_composite_type_reports_nothing_at_its_fold(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE S : STRUCT x : INT; END_STRUCT; END_TYPE
+
+FUNCTION F : BOOL
+VAR_INPUT v : S...; END_VAR
+    F := ...v=;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0811] Error: type that cannot be variadic
+       ,-[ file:///test0.st:5:15 ]
+       |
+     5 | VAR_INPUT v : S...; END_VAR
+       |               |
+       |               `-- 'S' cannot be variadic
+       |
+       | Note: only an elementary type other than STRING can be variadic
+    ---'
+    ");
+}
+
+/// A type that does not resolve is reported where it is written, and nothing is
+/// said of what a pack can hold, or of its fold.
+#[rstest]
+fn invalid_variadic_of_an_unknown_type_reports_the_name_alone(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION F : BOOL
+VAR_INPUT v : Nothing...; END_VAR
+    F := ...v=;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0203] Error: unknown name in a namespace
+       ,-[ file:///test0.st:3:15 ]
+       |
+     3 | VAR_INPUT v : Nothing...; END_VAR
+       |               ^^^|^^^
+       |                  `----- no item found for path 'Nothing'
+    ---'
     ");
 }
 
@@ -671,4 +811,213 @@ END_FUNCTION_BLOCK
        | Note: the inputs of a FUNCTION_BLOCK are members of one instance
     ---'
     ");
+}
+
+/// `MIN` and `MAX` fold to the pack's own type, in any case, wherever an
+/// expression stands.
+#[rstest]
+fn valid_fold_min_max(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION Take : INT
+VAR_INPUT x : INT; END_VAR
+    Take := x;
+END_FUNCTION
+
+FUNCTION Lo : INT
+VAR_INPUT v : INT...; END_VAR
+VAR m : INT := ...v MIN; END_VAR
+    Lo := m + ...v min * 2 + Take(...v MAX) + Take(x := ...v max);
+    IF ...v MIN > 0 AND ...v MAX < 9 THEN
+        Lo := 0;
+    END_IF;
+END_FUNCTION
+
+FUNCTION Hi : REAL
+VAR_INPUT v : REAL...; END_VAR
+    Hi := ...v MAX;
+END_FUNCTION
+
+FUNCTION Use : INT
+    Use := Lo(1, 2, 3);
+    IF Hi(1.5, 2.5) > 2.0 THEN
+        Use := Lo(4);
+    END_IF;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+/// `MIN` and `MAX` are no keywords: a FUNCTION, a pack, a variable and a call
+/// take the same words.
+#[rstest]
+fn min_and_max_stay_names(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION MIN : INT
+VAR_INPUT v : INT...; END_VAR
+    MIN := ...v MIN;
+END_FUNCTION
+
+FUNCTION MAX : INT
+VAR_INPUT v : INT...; END_VAR
+    MAX := ...v MAX;
+END_FUNCTION
+
+FUNCTION Both : INT
+VAR_INPUT min : INT...; END_VAR
+    Both := ...min MIN + ...min max;
+END_FUNCTION
+
+FUNCTION Locals : INT
+VAR min : INT := 1; max : INT := 2; END_VAR
+    Locals := min + max;
+END_FUNCTION
+
+FUNCTION Calls : INT
+    Calls := MIN(1, 2) + max(3, 4, 5) + Both(6, 7);
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+/// A `MIN` or `MAX` fold gives the pack's type, where a comparison fold gives a
+/// BOOL.
+#[rstest]
+fn invalid_fold_min_max_gives_the_type_of_the_pack(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION Lo : BOOL
+VAR_INPUT v : INT...; END_VAR
+    Lo := ...v MIN;
+END_FUNCTION
+
+FUNCTION Hi : INT
+VAR_INPUT v : LINT...; END_VAR
+    Hi := ...v MAX;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0301] Error: type mismatch
+       ,-[ file:///test0.st:4:11 ]
+       |
+     2 | FUNCTION Lo : BOOL
+       |          ^|
+       |           `-- FUNCTION 'Lo' is declared here, with return type 'BOOL'
+       |
+     4 |     Lo := ...v MIN;
+       |           ^^^^|^^^
+       |               `----- expected 'BOOL', got 'INT'
+    ---'
+    [E0301] Error: type mismatch
+       ,-[ file:///test0.st:9:11 ]
+       |
+     7 | FUNCTION Hi : INT
+       |          ^|
+       |           `-- FUNCTION 'Hi' is declared here, with return type 'INT'
+       |
+     9 |     Hi := ...v MAX;
+       |           ^^^^|^^^
+       |               `----- expected 'INT', got 'LINT'
+       |
+       | Help: insert explicit cast 'LINT_TO_INT(...v MAX)'
+    ---'
+    ");
+}
+
+/// `MIN` and `MAX` read the POU's own pack and nothing else, as every fold does,
+/// and the word needs its space, or it is part of the name.
+#[rstest]
+fn invalid_fold_min_max_over_something_else(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION F : INT
+VAR_INPUT v : INT...; END_VAR
+VAR x : INT; END_VAR
+    F := ...x MIN;
+    F := ...nothing MAX;
+    F := ...vMIN;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0814] Error: not a variadic parameter
+       ,-[ file:///test0.st:5:10 ]
+       |
+     3 | VAR_INPUT v : INT...; END_VAR
+       |           |
+       |           `-- the variadic parameter here is 'v'
+       |
+     5 |     F := ...x MIN;
+       |          ^^^^|^^^
+       |              `----- 'x' is not a variadic parameter
+       |
+       | Note: a fold reads it: `...v+` adds every argument the call passed
+    ---'
+    [E0814] Error: not a variadic parameter
+       ,-[ file:///test0.st:6:10 ]
+       |
+     3 | VAR_INPUT v : INT...; END_VAR
+       |           |
+       |           `-- the variadic parameter here is 'v'
+       |
+     6 |     F := ...nothing MAX;
+       |          ^^^^^^^|^^^^^^
+       |                 `-------- 'nothing' is not a variadic parameter
+       |
+       | Note: a fold reads it: `...v+` adds every argument the call passed
+    ---'
+    [E0814] Error: not a variadic parameter
+       ,-[ file:///test0.st:7:10 ]
+       |
+     3 | VAR_INPUT v : INT...; END_VAR
+       |           |
+       |           `-- the variadic parameter here is 'v'
+       |
+     7 |     F := ...vMIN;
+       |          ^^^|^^^
+       |             `----- 'vMIN' is not a variadic parameter
+       |
+       | Note: a fold reads it: `...v+` adds every argument the call passed
+    ---'
+    [E0002] Error: missing element
+       ,-[ file:///test0.st:7:17 ]
+       |
+     7 |     F := ...vMIN;
+       |                 |
+       |                 `- missing '='
+       |
+       | Help: insert missing '='
+    ---'
+    ");
+}
+
+/// What each fold refuses, a type at a time. What each one takes runs in
+/// `tests::codegen::variadics`, a module per operator.
+#[rstest]
+#[case::add("+", &["BOOL", "DATE", "LDATE", "TOD", "LTOD", "DT", "LDT", "CHAR"])]
+#[case::sub("-", &["BOOL", "DATE", "LDATE", "TOD", "LTOD", "DT", "LDT", "CHAR"])]
+#[case::mul("*", &["BOOL", "TIME", "LTIME", "DATE", "LDATE", "TOD", "LTOD", "DT", "LDT", "CHAR"])]
+#[case::div("/", &["BOOL", "TIME", "LTIME", "DATE", "LDATE", "TOD", "LTOD", "DT", "LDT", "CHAR"])]
+#[case::modulo(
+    "%",
+    &[
+        "BOOL", "BYTE", "WORD", "DWORD", "LWORD", "REAL", "LREAL", "TIME", "LTIME",
+        "DATE", "LDATE", "TOD", "LTOD", "DT", "LDT", "CHAR",
+    ]
+)]
+#[case::power(
+    "**",
+    &[
+        "BOOL", "SINT", "INT", "DINT", "LINT", "USINT", "UINT", "UDINT", "ULINT", "BYTE", "WORD",
+        "DWORD", "LWORD", "TIME", "LTIME", "DATE", "LDATE", "TOD", "LTOD", "DT", "LDT", "CHAR",
+    ]
+)]
+#[case::and("&", &["REAL", "LREAL", "TIME", "LTIME", "DATE", "LDATE", "TOD", "LTOD", "DT", "LDT", "CHAR"])]
+#[case::or("|", &["REAL", "LREAL", "TIME", "LTIME", "DATE", "LDATE", "TOD", "LTOD", "DT", "LDT", "CHAR"])]
+#[case::xor("^", &["REAL", "LREAL", "TIME", "LTIME", "DATE", "LDATE", "TOD", "LTOD", "DT", "LDT", "CHAR"])]
+fn invalid_fold_on_a_type_its_operator_refuses(#[case] op: &str, #[case] refused: &[&str]) {
+    for ty in refused {
+        let mut db = RootDatabase::default();
+        let source = format!(
+            "FUNCTION F : {ty}\nVAR_INPUT v : {ty}...; END_VAR\n    F := ...v{op};\nEND_FUNCTION\n"
+        );
+        let report = test_diagnostics(&mut db, &[&source]);
+        assert!(report.contains("[E0305]"), "...v{op} on {ty}: {report}");
+    }
 }

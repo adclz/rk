@@ -2593,6 +2593,31 @@ fn a_sign_before_a_based_literal_is_spaced_as_an_operator(#[case] literal: &str)
     assert_eq!(formatter::format_source(&once).expect("formats"), once);
 }
 
+/// A fold by a word keeps its space, where `valuesMIN` would be another name.
+#[rstest]
+fn a_fold_by_a_word_keeps_its_space() {
+    let source = r#"
+FUNCTION F : INT
+VAR_INPUT values : INT...; END_VAR
+F := ...values MIN;
+F := ...values   max   + 1;
+F := ...values+;
+END_FUNCTION
+"#;
+    let once = formatter::format_source(source).expect("formats");
+    assert_snapshot!(once, @r"
+    FUNCTION F: INT
+    	VAR_INPUT
+    		values: INT...;
+    	END_VAR
+    	F := ... values MIN;
+    	F := ... values max + 1;
+    	F := ... values+;
+    END_FUNCTION
+    ");
+    assert_eq!(formatter::format_source(&once).expect("formats"), once);
+}
+
 /// A terminator behind a comment or a pragma is seen, in every section, and
 /// one missing there goes before the comment. The guard looked at the next
 /// node only, so `x : INT (* c *);` was given a second `;`, which TYPE,

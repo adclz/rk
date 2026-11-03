@@ -109,8 +109,9 @@ pub fn resolve_func_call<'db>(
     let pick = select_overload(db, callable, expected, unresolved_argument, |f| {
         candidate_fit(db, resolver, func_call, f, ctx)
     });
-    let callable = match pick {
-        OverloadPick::One(c) => c,
+    let (callable, stand_in) = match pick {
+        OverloadPick::One(c) => (c, false),
+        OverloadPick::Unbound(c) => (c, true),
         // Reported where the argument failed; no overload is named here.
         OverloadPick::Unresolved => {
             if let Some(expr) = func_call.path(db).expr(db) {
@@ -186,6 +187,7 @@ pub fn resolve_func_call<'db>(
         );
     }
 
+    let reported = ctx.errors.len();
     let len = func_call.params(db).len();
     let formals = call_site_params(db, callable);
     let has_variadic = formals.values().any(|v| v.variadic(db));
@@ -232,17 +234,26 @@ pub fn resolve_func_call<'db>(
         &mut ctx.errors,
     );
 
-    // Apply coercion and body-level checks on matched parameters
-    for m in &matches {
-        match m {
-            ParamMatch::Matched(param, var) => {
-                apply_param_coercion(db, resolver, callable, *param, *var, ctx);
+    let binding_failed = ctx.errors.len() > reported;
+
+    // The overload standing in for a call none binds says what is wrong with
+    // the binding, and nothing else: an argument checked against it would name
+    // a type nobody wrote.
+    if stand_in {
+        type_orphan_arguments(db, resolver, func_call, ctx);
+    } else {
+        // Apply coercion and body-level checks on matched parameters
+        for m in &matches {
+            match m {
+                ParamMatch::Matched(param, var) => {
+                    apply_param_coercion(db, resolver, callable, *param, *var, ctx);
+                }
+                ParamMatch::Variadic(param, var, pos) => {
+                    ctx.variadic_position.insert(*param, *pos);
+                    apply_param_coercion(db, resolver, callable, *param, *var, ctx);
+                }
+                ParamMatch::Error => {}
             }
-            ParamMatch::Variadic(param, var, pos) => {
-                ctx.variadic_position.insert(*param, *pos);
-                apply_param_coercion(db, resolver, callable, *param, *var, ctx);
-            }
-            ParamMatch::Error => {}
         }
     }
 
@@ -345,10 +356,15 @@ pub fn resolve_func_call<'db>(
     }
     ctx.resolved_calls.insert(
         func_call,
-        crate::hir_ty::body::ResolvedCall { callable, params },
+        crate::hir_ty::body::ResolvedCall {
+            callable,
+            params,
+            stand_in,
+        },
     );
 
-    if !missing.is_empty() {
+    // What a stand-in misses says nothing once the binding itself failed.
+    if !missing.is_empty() && !(stand_in && binding_failed) {
         ctx.errors.push(
             CallError::MissingRequiredParameter {
                 func: callable,

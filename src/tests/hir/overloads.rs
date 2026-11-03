@@ -13,6 +13,7 @@ use insta::assert_snapshot;
 use rstest::rstest;
 
 use crate::tests::utils::test_diagnostics;
+use crate::tests::utils::test_diagnostics_with_library;
 use crate::tests::utils::with_db;
 
 // A 2-arg call binds to the 2-arg overload even though the 1-arg overload is
@@ -1517,4 +1518,176 @@ END_FUNCTION
        |            `---- overload accepting (DINT, HI => DINT, LO => DINT)
     ---'
     ");
+}
+
+/// When no overload binds the arguments, one stands in so that the binding error
+/// surfaces, and that error is all the call reports. An argument or a result
+/// checked against the stand-in named a type nobody wrote, as `a := G(a, a, a)`
+/// reported "expected 'INT', got 'LREAL'".
+#[rstest]
+fn an_overload_standing_in_reports_the_binding_alone(mut with_db: RootDatabase) {
+    let source = r#"
+NAMESPACE X
+    FUNCTION G : INT
+    VAR_INPUT x : INT; y : INT; END_VAR
+        G := x + y;
+    END_FUNCTION
+
+    FUNCTION G : LREAL
+    VAR_INPUT x : LREAL; y : LREAL; END_VAR
+        G := x + y;
+    END_FUNCTION
+END_NAMESPACE
+
+USING X;
+
+PROGRAM P
+VAR a : INT; s : STRING; END_VAR
+    a := G(a, a, a);
+    a := G(nope := a);
+    a := G(x := a, x := a);
+    a := G(a);
+    a := G(s);
+END_PROGRAM
+"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0801] Error: wrong number of arguments
+        ,-[ file:///test0.st:18:10 ]
+        |
+     18 |     a := G(a, a, a);
+        |          |
+        |          `-- no overload of 'G' takes 3 parameters
+    ----'
+    [E0803] Error: unknown input parameter
+        ,-[ file:///test0.st:19:12 ]
+        |
+     19 |     a := G(nope := a);
+        |            ^^|^
+        |              `--- unknown input parameter 'nope'
+    ----'
+    [E0103] Error: duplicate parameter
+        ,-[ file:///test0.st:20:20 ]
+        |
+     20 |     a := G(x := a, x := a);
+        |            ^^^|^^  ^^^|^^
+        |               `------------ already passed here
+        |                       |
+        |                       `---- duplicate parameter 'x'
+    ----'
+    [E0802] Error: missing required parameter
+        ,-[ file:///test0.st:21:10 ]
+        |
+      9 |     VAR_INPUT x : LREAL; y : LREAL; END_VAR
+        |                          |
+        |                          `-- parameter 'y' is declared here
+        |
+     21 |     a := G(a);
+        |          |
+        |          `-- call to 'G' is missing 1 required parameter: 'y'
+        |
+        | Note: a FUNCTION or METHOD call supplies every VAR_INPUT without a default
+    ----'
+    [E0802] Error: missing required parameter
+        ,-[ file:///test0.st:22:10 ]
+        |
+      9 |     VAR_INPUT x : LREAL; y : LREAL; END_VAR
+        |                          |
+        |                          `-- parameter 'y' is declared here
+        |
+     22 |     a := G(s);
+        |          |
+        |          `-- call to 'G' is missing 1 required parameter: 'y'
+        |
+        | Note: a FUNCTION or METHOD call supplies every VAR_INPUT without a default
+    ----'
+    ");
+}
+
+/// A set over every elementary type runs to scores of overloads, and E0810 listed
+/// each one, with its line: a few say what the set takes, and the count says the
+/// rest are there.
+#[rstest]
+fn no_matching_type_lists_a_few_of_many_overloads(mut with_db: RootDatabase) {
+    let mut source = String::new();
+    for ty in [
+        "SINT", "INT", "DINT", "LINT", "USINT", "UINT", "UDINT", "ULINT", "REAL", "LREAL",
+    ] {
+        source += &format!("FUNCTION take : BOOL\nVAR_INPUT v : {ty}; END_VAR\nEND_FUNCTION\n\n");
+    }
+    source += "FUNCTION test : BOOL\n    test := take(TRUE);\nEND_FUNCTION\n";
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[&source]), @r"
+    [E0810] Error: no matching overload
+        ,-[ file:///test0.st:42:13 ]
+        |
+      1 | FUNCTION take : BOOL
+        |          ^^|^
+        |            `--- overload accepting (SINT)
+        |
+      5 | FUNCTION take : BOOL
+        |          ^^|^
+        |            `--- overload accepting (INT)
+        |
+      9 | FUNCTION take : BOOL
+        |          ^^|^
+        |            `--- overload accepting (DINT)
+        |
+     13 | FUNCTION take : BOOL
+        |          ^^|^
+        |            `--- overload accepting (LINT)
+        |
+     17 | FUNCTION take : BOOL
+        |          ^^|^
+        |            `--- overload accepting (USINT)
+        |
+     21 | FUNCTION take : BOOL
+        |          ^^|^
+        |            `--- overload accepting (UINT)
+        |
+     25 | FUNCTION take : BOOL
+        |          ^^|^
+        |            `--- overload accepting (UDINT)
+        |
+     29 | FUNCTION take : BOOL
+        |          ^^|^
+        |            `--- overload accepting (ULINT)
+        |
+     42 |     test := take(TRUE);
+        |             ^^|^
+        |               `--- no overload of 'take' accepts (BOOL)
+        |
+        | Note: 8 of its 10 overloads are listed
+    ----'
+    ");
+}
+
+/// What `Std.Comparison` refuses: `NE` takes two inputs, the others at least one,
+/// and each input has to reach an overload's type.
+#[rstest]
+fn what_comparison_refuses(mut with_db: RootDatabase) {
+    let source = r#"
+USING Std.Comparison;
+
+TYPE R : STRUCT x : INT; END_STRUCT; END_TYPE
+
+PROGRAM P
+VAR a : INT; b : BOOL; r : R; END_VAR
+    b := NE(a, a, a);
+    b := NE(a);
+    b := GT();
+    b := LT(r, r);
+END_PROGRAM
+"#;
+    let report = test_diagnostics_with_library(
+        &mut with_db,
+        &[include_str!("../../../stdlib/Comparison.st")],
+        &[source],
+    );
+    let codes: Vec<&str> = report
+        .lines()
+        .filter(|l| l.starts_with('['))
+        .map(|l| &l[1..6])
+        .collect();
+    assert_eq!(codes, ["E0801", "E0802", "E0813", "E0810"], "{report}");
 }

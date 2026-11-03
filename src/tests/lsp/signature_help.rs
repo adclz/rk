@@ -637,6 +637,7 @@ END_FUNCTION
 #[case::the_real_overload("    x := f(1.0, 2.0|);", 1, 1)]
 #[case::still_on_its_first_argument("    x := f(1.0|, 2.0);", 1, 0)]
 #[case::nothing_written_yet("    r := f(|);", 0, 0)]
+#[case::past_every_overload("    r := f(1, 2, 3|);", 0, 2)]
 fn an_overloaded_name_lists_every_candidate(
     mut with_db: RootDatabase,
     #[case] call: &str,

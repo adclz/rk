@@ -3501,6 +3501,14 @@
           "named": true
         },
         {
+          "type": "fold_max",
+          "named": true
+        },
+        {
+          "type": "fold_min",
+          "named": true
+        },
+        {
           "type": "fold_minus",
           "named": true
         },
@@ -8244,6 +8252,14 @@
   },
   {
     "type": "fold_lt",
+    "named": true
+  },
+  {
+    "type": "fold_max",
+    "named": true
+  },
+  {
+    "type": "fold_min",
     "named": true
   },
   {

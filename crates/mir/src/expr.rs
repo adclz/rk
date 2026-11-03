@@ -402,6 +402,10 @@ pub enum MirBinOp {
     Le,
     Gt,
     Ge,
+    /// The left operand when `lhs <= rhs` holds and the right one otherwise.
+    Min,
+    /// The left operand when `lhs >= rhs` holds and the right one otherwise.
+    Max,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

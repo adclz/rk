@@ -256,7 +256,8 @@ impl<'db> InferExprCtx<'db> {
                         // this every variadic parameter reads as unused (L0201).
                         inference_results.variables_used.insert(var);
 
-                        let var_ty = var.spec(db).infer(db).normalize(db);
+                        let declared = var.spec(db).infer(db);
+                        let var_ty = declared.normalize(db);
 
                         // Check operator-type compatibility
                         let supported = match operator {
@@ -275,10 +276,15 @@ impl<'db> InferExprCtx<'db> {
                             | FoldOperatorKind::Lt
                             | FoldOperatorKind::Gt
                             | FoldOperatorKind::Le
-                            | FoldOperatorKind::Ge => var_ty.supports_comparison(db),
+                            | FoldOperatorKind::Ge
+                            | FoldOperatorKind::Min
+                            | FoldOperatorKind::Max => var_ty.supports_comparison(db),
                         };
 
-                        if !supported && !var_ty.is_never() {
+                        // A pack its type cannot be was refused where it is
+                        // declared (E0811), and a type that failed to resolve
+                        // where it is written.
+                        if !supported && declared.can_be_variadic(db) {
                             inference_results.errors.push(
                                 TypeError::UnsupportedOperator {
                                     call_site: curr_expr.as_call_site(db),
@@ -348,6 +354,15 @@ impl<'db> InferExprCtx<'db> {
             }
             PrimaryExpr::FuncCall(call) => {
                 resolve_func_call(db, self.resolver, *call, inference_result, expected);
+                // No overload binds the call, which was reported: it has no
+                // value, and the result of the one standing in is nobody's.
+                if inference_result
+                    .resolved_calls
+                    .get(call)
+                    .is_some_and(|c| c.stand_in)
+                {
+                    return Type::Never;
+                }
                 let ty = inference_result.get_type_of_begin_path_expr(db, call.path(db));
                 ty.normalize(db)
             }
