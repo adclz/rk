@@ -145,7 +145,7 @@ END_FUNCTION
         |             ^^|^
         |               `--- call to 'pick' is ambiguous: 2 overloads accept these arguments
         |
-        | Help: pick one with a typed literal or a conversion, such as `DINT#5` or `INT_TO_DINT(x)`
+        | Help: pick one with a typed literal, such as `DINT#5`, or a variable of that type
         |
         | Note: an argument widens to each overload
     ----'
@@ -382,7 +382,7 @@ END_FUNCTION
         |               ^|^
         |                `--- call to 'mix' is ambiguous: 2 overloads accept these arguments
         |
-        | Help: pick one with a typed literal or a conversion, such as `DINT#5` or `INT_TO_DINT(x)`
+        | Help: pick one with a typed literal, such as `DINT#5`, or a variable of that type
         |
         | Note: an argument widens to each overload
     ----'
@@ -425,7 +425,7 @@ END_FUNCTION
         |               ^|
         |                `-- call to 'up' is ambiguous: 2 overloads accept these arguments
         |
-        | Help: pick one with a typed literal or a conversion, such as `DINT#5` or `INT_TO_DINT(x)`
+        | Help: pick one with a typed literal, such as `DINT#5`, or a variable of that type
         |
         | Note: an argument widens to each overload
     ----'
@@ -786,7 +786,7 @@ fn invalid_literal_with_only_promoted_candidates(mut with_db: RootDatabase) {
         |                    ^^|^
         |                      `--- call to 'conv' is ambiguous: 2 overloads accept these arguments
         |
-        | Help: pick one with a typed literal or a conversion, such as `DINT#5` or `INT_TO_DINT(x)`
+        | Help: pick one with a typed literal, such as `DINT#5`, or a variable of that type
         |
         | Note: an argument widens to each overload
     ----'
@@ -863,7 +863,7 @@ fn invalid_three_way_incomparable_names_all(mut with_db: RootDatabase) {
         |                    ^|^
         |                     `--- call to 'mix' is ambiguous: 3 overloads accept these arguments
         |
-        | Help: pick one with a typed literal or a conversion, such as `DINT#5` or `INT_TO_DINT(x)`
+        | Help: pick one with a typed literal, such as `DINT#5`, or a variable of that type
         |
         | Note: an argument widens to each overload
     ----'
@@ -1128,7 +1128,7 @@ END_FUNCTION
        |               ^|^
        |                `--- call to 'Lit' is ambiguous: 2 overloads accept these arguments
        |
-       | Help: pick one with a typed literal or a conversion, such as `DINT#5` or `INT_TO_DINT(x)`
+       | Help: pick one with a typed literal, such as `DINT#5`, or a variable of that type
        |
        | Note: an argument widens to each overload
     ---'
@@ -1660,6 +1660,54 @@ fn no_matching_type_lists_a_few_of_many_overloads(mut with_db: RootDatabase) {
         | Note: 8 of its 10 overloads are listed
     ----'
     ");
+}
+
+/// What `MUX` refuses: every input of one type an overload reaches, a selector of
+/// an integer type a LINT holds, at least one input, four `STRING`s at most and
+/// no input by name.
+#[rstest]
+fn what_mux_refuses(mut with_db: RootDatabase) {
+    let source = r#"
+USING Std.Selection;
+
+PROGRAM P
+VAR
+    k : INT; n : INT; u : UINT; x : BOOL; bb : BYTE; ul : ULINT; s : STRING[255];
+END_VAR
+    n := MUX(k);
+    n := MUX();
+    n := MUX(k, n, x);
+    n := MUX(k, n, u);
+    n := MUX(k, bb, n);
+    n := MUX(ul, n, n);
+    n := MUX(bb, n, n);
+    n := MUX(k, IN0 := n, IN1 := n);
+    s := MUX(k, s, s, s, s, s);
+END_PROGRAM
+"#;
+    let report = test_diagnostics_with_library(
+        &mut with_db,
+        &[include_str!("../../../stdlib/Selection.st")],
+        &[source],
+    );
+    let codes: Vec<&str> = report
+        .lines()
+        .filter(|l| l.starts_with('['))
+        .map(|l| &l[1..6])
+        .collect();
+    assert_eq!(
+        codes,
+        [
+            "E0813", "E0813", "E0802", "E0810", "E0809", "E0810", "E0810", "E0810", "E0810",
+            "E0810"
+        ],
+        "{report}"
+    );
+    // The call short of inputs is told about the inputs, not a STRING overload's.
+    assert!(
+        report.contains("passes no argument to the variadic parameter 'IN'"),
+        "{report}"
+    );
 }
 
 /// What `Std.Comparison` refuses: `NE` takes two inputs, the others at least one,
