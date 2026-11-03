@@ -607,7 +607,7 @@ impl<'db> ToIdeDiagnostic<'db> for CallError<'db> {
                     ),
                     Ambiguity::Widening => (
                         "an argument widens to each overload".to_string(),
-                        Some("pick one with a typed literal or a conversion, such as `DINT#5` or `INT_TO_DINT(x)`".to_string()),
+                        Some("pick one with a typed literal, such as `DINT#5`, or a variable of that type".to_string()),
                     ),
                     Ambiguity::Defaults => (
                         "the overloads differ only in inputs this call leaves to their defaults"
