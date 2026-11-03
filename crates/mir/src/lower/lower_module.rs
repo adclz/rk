@@ -1723,7 +1723,9 @@ fn rewrite_globals_expr(
             rewrite_globals_expr(lhs, globals, missing);
             rewrite_globals_expr(rhs, globals, missing);
         }
-        MirExpr::UnaryOp { expr, .. } | MirExpr::Cast { expr, .. } => {
+        MirExpr::UnaryOp { expr, .. }
+        | MirExpr::Cast { expr, .. }
+        | MirExpr::PackElement { index: expr, .. } => {
             rewrite_globals_expr(expr, globals, missing);
         }
         MirExpr::Call(call) => {

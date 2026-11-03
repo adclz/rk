@@ -6,7 +6,7 @@
 //! a variadic METHOD per arity on the instance type a call runs it on
 //! (`Acc#Sum$3`); the call site appends the arity to the symbol it resolved.
 //! Inside, the pack is that many ordinary parameters and `...args+` folds
-//! over them. No worklist: a pack can only be consumed by a fold, so one pass
+//! over them. No worklist: a pack can only be consumed by `...`, so one pass
 //! over every body and every local initializer finds every arity.
 //! The arity is HIR's `ParamBinding::Values` on the variadic parameter.
 
