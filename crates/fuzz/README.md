@@ -13,7 +13,7 @@ Fuzzing infrastructure for testing the IEC ST compiler using [libfuzzer](https:/
 > [!NOTE]  
 > The parser and lexer are fuzzed separately through the tree-sitter CLI (via `tree-sitter fuzz`[https://tree-sitter.github.io/tree-sitter/cli/fuzz.html]).
 
-The nightly [fuzzing workflow](../../.github/workflows/fuzzing.yml) runs each target for 30 minutes.
+The nightly [fuzzing workflow](../../.github/workflows/fuzzing.yml) runs each target for an hour.
 
 ## Quick Start
 
@@ -82,8 +82,8 @@ The codegen tests' programs compile and run, so they are the seeds that reach th
 The seeds an earlier run left in the directory are removed first.
 A seed the directory already holds is not written again, and a source over 4 KB is left out, or removed if an earlier night kept it.
 
-The nightly run replays the kept corpus before it mutates anything, and that replay is taken from the 30 minutes.
-The run summary says how long it took, warns past half of them and fails when nothing was fuzzed.
+The nightly run replays the kept corpus before it mutates anything, and that replay is taken from the hour.
+The run summary says how long it took, warns past half of it and fails when nothing was fuzzed.
 
 ## References
 

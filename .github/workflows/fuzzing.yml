@@ -1,7 +1,7 @@
 # Nightly fuzzing of the compiler, the formatter, the editor's incremental
 # path, the language server's requests and the values generated programs
 # compute (crates/fuzz). Each target
-# gets its own runner for 30 minutes, starting from the corpus the previous
+# gets its own runner for an hour, starting from the corpus the previous
 # nights grew, and every crash is replayed by `repro`, which groups them by
 # cause in the run summary. A crash fails the run; GitHub's notification is
 # the alert.
@@ -24,13 +24,13 @@ permissions:
 env:
   CARGO_TERM_COLOR: always
   # Seconds a target is given, the replay of its kept corpus included.
-  BUDGET: 1800
+  BUDGET: 3600
 
 jobs:
   fuzz:
     name: fuzz (${{ matrix.target }})
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 180
     strategy:
       fail-fast: false
       matrix:
@@ -53,11 +53,9 @@ jobs:
       - uses: ./.github/actions/rust-toolchain
       - name: Install Rust nightly
         run: rustup toolchain install nightly --profile minimal --target wasm32-unknown-unknown
-      # One cache for every target, which share every dependency.
-      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
-        with:
-          shared-key: fuzz
-          save-if: ${{ matrix.target == 'fuzz_compiler' }}
+      # No build cache. Its key changed most nights: one hit in eight, for a cold
+      # build of a quarter of an hour, and each miss saved 1 GB of the repository's
+      # 10, which evicts the corpus.
       - name: Install cargo-fuzz
         uses: taiki-e/install-action@26e9283f268b880168bdbd2c545dfcd60ec2c6ab # v2
         with:
@@ -115,7 +113,7 @@ jobs:
       # libFuzzer exits with its last job's status, 77 for a crash and 70
       # for a timeout. Those are findings, for the triage job to report;
       # cargo-fuzz would turn them into a failure of this one.
-      - name: Fuzz for 30 minutes
+      - name: Fuzz for an hour
         run: |
           artifacts="crates/fuzz/artifacts/${{ matrix.target }}"
           mkdir -p "$artifacts"
@@ -231,11 +229,6 @@ jobs:
           [ "$count" -gt 0 ] || echo "No crash tonight." >> "$GITHUB_STEP_SUMMARY"
       - if: steps.found.outputs.count != '0'
         uses: ./.github/actions/rust-toolchain
-      - if: steps.found.outputs.count != '0'
-        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
-        with:
-          shared-key: fuzz
-          save-if: false
       # A fuzz_semantics crash may be in the optimized build.
       - name: Install Binaryen (for wasm-opt)
         if: steps.found.outputs.count != '0'
