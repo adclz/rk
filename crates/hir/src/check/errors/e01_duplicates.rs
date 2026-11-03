@@ -78,6 +78,7 @@ pub enum DuplicateError<'db> {
         method2: MethodPrototype<'db>,
     },
     InheritedMethod {
+        pou: Pou<'db>,
         method1: ClassMember<'db>,
         method2: ClassMember<'db>,
     },
@@ -408,7 +409,11 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
 
                 diag
             }
-            Self::InheritedMethod { method1, method2 } => {
+            Self::InheritedMethod {
+                pou,
+                method1,
+                method2,
+            } => {
                 let mut diag = diag()
                     .message(format!(
                         "duplicate method '{}'",
@@ -416,12 +421,17 @@ impl<'db> ToIdeDiagnostic<'db> for DuplicateError<'db> {
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(
-                        crate::denormalize(db, file, &method1.method.get_name_span(db))
-                            .unwrap_or_default(),
-                    )
+                    .range(crate::denormalize(db, file, &pou.get_name_span(db)).unwrap_or_default())
                     .call();
 
+                diag.with_related(Related::new(
+                    format!(
+                        "method '{}' is declared here",
+                        method1.method.get_name_with_case(db).text(db)
+                    ),
+                    method1.method.get_scope_id(db).file(db),
+                    method1.method.get_name_span(db),
+                ));
                 diag.with_related(Related::new(
                     format!(
                         "method '{}' is already declared here",
