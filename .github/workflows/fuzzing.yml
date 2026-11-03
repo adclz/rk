@@ -1,7 +1,7 @@
 # Nightly fuzzing of the compiler, the formatter, the editor's incremental
 # path, the language server's requests and the values generated programs
 # compute (crates/fuzz). Each target
-# gets its own runner for 30 minutes, starting from the corpus the previous
+# gets its own runner for an hour, starting from the corpus the previous
 # nights grew, and every crash is replayed by `repro`, which groups them by
 # cause in the run summary. A crash fails the run; GitHub's notification is
 # the alert.
@@ -24,13 +24,13 @@ permissions:
 env:
   CARGO_TERM_COLOR: always
   # Seconds a target is given, the replay of its kept corpus included.
-  BUDGET: 1800
+  BUDGET: 3600
 
 jobs:
   fuzz:
     name: fuzz (${{ matrix.target }})
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 180
     strategy:
       fail-fast: false
       matrix:
@@ -53,11 +53,9 @@ jobs:
       - uses: ./.github/actions/rust-toolchain
       - name: Install Rust nightly
         run: rustup toolchain install nightly --profile minimal --target wasm32-unknown-unknown
-      # One cache for every target, which share every dependency.
-      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
-        with:
-          shared-key: fuzz
-          save-if: ${{ matrix.target == 'fuzz_compiler' }}
+      # No build cache. Its key changed most nights: one hit in eight, for a cold
+      # build of a quarter of an hour, and each miss saved 1 GB of the repository's
+      # 10, which evicts the corpus.
       - name: Install cargo-fuzz
         uses: taiki-e/install-action@26e9283f268b880168bdbd2c545dfcd60ec2c6ab # v2
         with:
@@ -84,7 +82,9 @@ jobs:
       # codegen tests compile and run: the seeds closest to the code
       # generator's oracles. The seeds of the night before are removed
       # first. fuzz_semantics reads no ST: its input is the choices its
-      # generator makes, and corpus_gen writes it strings of bytes.
+      # generator makes, and corpus_gen writes it strings of bytes. A seed the
+      # kept corpus already holds is not written again, and no source over 4 KB
+      # stays, seed or kept, because the replay comes out of the night's budget.
       - name: Seed the corpus
         run: |
           cargo run --release -p rk-fuzz --bin corpus_gen -- \
@@ -105,23 +105,30 @@ jobs:
       # and checks it again, and the stdlib's 27 KB Strings.st, 5 s
       # natively, went past 60 s there as a timeout that was no hang.
       #
+      # `-max_len` is the size corpus_gen keeps a source to, so that what the
+      # fuzzer grows is no slower to replay. Left to libFuzzer for fuzz_debug_format,
+      # whose inputs are modules, and which replays in seconds.
+      #
       # The binary runs directly, not through `cargo fuzz run`: in fork mode
       # libFuzzer exits with its last job's status, 77 for a crash and 70
       # for a timeout. Those are findings, for the triage job to report;
       # cargo-fuzz would turn them into a failure of this one.
-      - name: Fuzz for 30 minutes
+      - name: Fuzz for an hour
         run: |
           artifacts="crates/fuzz/artifacts/${{ matrix.target }}"
           mkdir -p "$artifacts"
           log="$RUNNER_TEMP/fuzz.log"
           limit=60
           [ "${{ matrix.target }}" = fuzz_incremental ] && limit=120
+          max_len=4096
+          [ "${{ matrix.target }}" = fuzz_debug_format ] && max_len=0
           set +e
           ./target/x86_64-unknown-linux-gnu/release/${{ matrix.target }} "$CORPUS" \
             -artifact_prefix="$artifacts/" \
             -max_total_time="$BUDGET" -fork=3 \
             -ignore_crashes=1 -ignore_timeouts=1 -ignore_ooms=1 \
             -timeout="$limit" -report_slow_units="$limit" -rss_limit_mb=4096 -detect_leaks=0 \
+            -max_len="$max_len" \
             -dict=crates/fuzz/st.dict 2>&1 | tee "$log"
           status=${PIPESTATUS[0]}
           set -e
@@ -222,11 +229,6 @@ jobs:
           [ "$count" -gt 0 ] || echo "No crash tonight." >> "$GITHUB_STEP_SUMMARY"
       - if: steps.found.outputs.count != '0'
         uses: ./.github/actions/rust-toolchain
-      - if: steps.found.outputs.count != '0'
-        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
-        with:
-          shared-key: fuzz
-          save-if: false
       # A fuzz_semantics crash may be in the optimized build.
       - name: Install Binaryen (for wasm-opt)
         if: steps.found.outputs.count != '0'

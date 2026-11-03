@@ -21,7 +21,11 @@
 //! [`crate::generate::program`] draws its choices from, where a program's
 //! text is noise that still costs a compilation, a run and a formatting
 //! each night. It starts from strings of bytes instead.
+//!
+//! Replaying the corpus comes out of the night's budget, so the corpus holds an
+//! input once, and no source past [`MAX_SOURCE_LEN`].
 
+use std::collections::HashSet;
 use std::path::Path;
 
 /// Load all files from a corpus directory.
@@ -60,9 +64,41 @@ pub fn create_seed_corpus(source: &Path, output_dir: &Path, start: usize) -> any
     if matches!(seeds, Seeds::Choices) {
         return Ok(0);
     }
+    let mut present = contents(&output_dir)?;
     let mut count = start;
-    walk(source, &output_dir, &mut count, seeds)?;
+    walk(source, &output_dir, &mut count, seeds, &mut present)?;
     Ok(count - start)
+}
+
+/// What `dir` holds, file by file.
+fn contents(dir: &Path) -> anyhow::Result<HashSet<Vec<u8>>> {
+    let mut present = HashSet::new();
+    for entry in std::fs::read_dir(dir)? {
+        let path = entry?.path();
+        if path.is_file() {
+            present.insert(std::fs::read(&path)?);
+        }
+    }
+    Ok(present)
+}
+
+/// Write seed number `count`, unless `output_dir` holds it already. What a merge
+/// of the corpus keeps it names by hash, so a seed it kept came back the next
+/// night beside its copy, and each night started from every seed on top of what
+/// the merge had just cut.
+fn save_seed(
+    bytes: &[u8],
+    extension: &str,
+    output_dir: &Path,
+    count: &mut usize,
+    present: &mut HashSet<Vec<u8>>,
+) -> anyhow::Result<()> {
+    if present.insert(bytes.to_vec()) {
+        let path = output_dir.join(format!("{SEED_PREFIX}{:06}.{extension}", *count));
+        std::fs::write(&path, bytes)?;
+    }
+    *count += 1;
+    Ok(())
 }
 
 /// Remove the seeds an earlier run wrote into `output_dir`; returns how
@@ -88,6 +124,29 @@ pub fn remove_seeds(output_dir: &Path) -> anyhow::Result<usize> {
     Ok(removed)
 }
 
+/// Remove what the corpus kept of a source past [`MAX_SOURCE_LEN`]; returns how
+/// many. A target's debug modules stay: they replay in seconds, whatever they hold.
+/// It deletes files, and the directory comes from a command line, so only one
+/// named after a target counts as a corpus.
+pub fn remove_oversized(output_dir: &Path) -> anyhow::Result<usize> {
+    let names_a_target = output_dir
+        .file_name()
+        .and_then(|n| n.to_str())
+        .is_some_and(|n| n.starts_with("fuzz_"));
+    if !names_a_target || !output_dir.exists() || !matches!(Seeds::of(output_dir), Seeds::Sources) {
+        return Ok(0);
+    }
+    let mut removed = 0;
+    for entry in std::fs::read_dir(output_dir)? {
+        let entry = entry?;
+        if entry.path().is_file() && entry.metadata()?.len() > MAX_SOURCE_LEN as u64 {
+            std::fs::remove_file(entry.path())?;
+            removed += 1;
+        }
+    }
+    Ok(removed)
+}
+
 /// Write the seeds of a target that reads no source; returns how many.
 /// `None` for a target that reads programs, which has none of the kind.
 pub fn create_choice_seeds(output_dir: &Path) -> anyhow::Result<Option<usize>> {
@@ -96,15 +155,23 @@ pub fn create_choice_seeds(output_dir: &Path) -> anyhow::Result<Option<usize>> {
     if !matches!(Seeds::of(&output_dir), Seeds::Choices) {
         return Ok(None);
     }
+    let mut present = contents(&output_dir)?;
+    let mut count = 0;
     for seed in 0..CHOICE_SEEDS {
-        let path = output_dir.join(format!("{SEED_PREFIX}{seed:06}.bin"));
-        std::fs::write(&path, choices(seed as u64))?;
+        let bytes = choices(seed as u64);
+        save_seed(&bytes, "bin", &output_dir, &mut count, &mut present)?;
     }
     Ok(Some(CHOICE_SEEDS))
 }
 
 /// What every seed's file name starts with.
 const SEED_PREFIX: &str = "seed-";
+
+/// The longest source the corpus holds, in bytes, which the nightly workflow also
+/// passes as `-max_len`. The time a replay takes goes with the size of its inputs:
+/// the thirteen largest seeds, nearly all of them whole files of the standard
+/// library, took 44% of the time of the 3,807 seeds there were.
+const MAX_SOURCE_LEN: usize = 4096;
 
 /// How many strings of choices `fuzz_semantics` starts from. Each is
 /// replayed at the start of every night, a compilation and a run apiece.
@@ -198,7 +265,13 @@ fn custom_sections_only(wasm: &[u8]) -> Vec<u8> {
     module
 }
 
-fn walk(path: &Path, output_dir: &Path, count: &mut usize, seeds: Seeds) -> anyhow::Result<()> {
+fn walk(
+    path: &Path,
+    output_dir: &Path,
+    count: &mut usize,
+    seeds: Seeds,
+    present: &mut HashSet<Vec<u8>>,
+) -> anyhow::Result<()> {
     if path.is_dir() {
         // Build outputs are not sources, and an output directory inside the
         // tree would feed on itself.
@@ -213,7 +286,7 @@ fn walk(path: &Path, output_dir: &Path, count: &mut usize, seeds: Seeds) -> anyh
             .collect();
         entries.sort();
         for entry in entries {
-            walk(&entry, output_dir, count, seeds)?;
+            walk(&entry, output_dir, count, seeds, present)?;
         }
         return Ok(());
     }
@@ -232,12 +305,14 @@ fn walk(path: &Path, output_dir: &Path, count: &mut usize, seeds: Seeds) -> anyh
             continue;
         }
         match seeds {
-            Seeds::Sources => save_corpus_entry(&source, output_dir, count)?,
+            Seeds::Sources => {
+                if source.len() <= MAX_SOURCE_LEN {
+                    save_seed(source.as_bytes(), "st", output_dir, count, present)?;
+                }
+            }
             Seeds::DebugModules => {
                 if let Some(module) = debug_module(&source) {
-                    let path = output_dir.join(format!("{SEED_PREFIX}{:06}.wasm", *count));
-                    std::fs::write(&path, &module)?;
-                    *count += 1;
+                    save_seed(&module, "wasm", output_dir, count, present)?;
                 }
             }
             // `create_seed_corpus` walks nothing for it.
@@ -377,13 +452,6 @@ fn extract_all_sources_from_corpus(content: &str) -> Vec<String> {
     results
 }
 
-fn save_corpus_entry(source: &str, output_dir: &Path, count: &mut usize) -> anyhow::Result<()> {
-    let path = output_dir.join(format!("{SEED_PREFIX}{:06}.st", *count));
-    std::fs::write(&path, source.as_bytes())?;
-    *count += 1;
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -469,6 +537,121 @@ mod tests {
             std::fs::read_to_string(dir.join("seed-000000.st")).unwrap(),
             "FUNCTION f : INT\nEND_FUNCTION\n"
         );
+        std::fs::remove_dir_all(dir.parent().unwrap()).unwrap();
+    }
+
+    /// A night, a merge and the next night, as the workflow runs them: the merge
+    /// names what it keeps by hash. Each night started from every seed on top of
+    /// what the merge had just cut, 6,327 inputs and then 10,087, for good.
+    #[test]
+    fn a_merge_is_not_undone_by_the_next_night() {
+        let dir = corpus_of("fuzz_compiler", "merged");
+        let sources = dir.parent().unwrap().join("sources");
+        std::fs::create_dir_all(&sources).unwrap();
+        for (name, text) in [
+            ("kept", "PROGRAM kept\nEND_PROGRAM\n"),
+            ("cut", "PROGRAM cut\nEND_PROGRAM\n"),
+        ] {
+            std::fs::write(sources.join(format!("{name}.st")), text).unwrap();
+        }
+        let night = |dir: &Path| {
+            remove_seeds(dir).unwrap();
+            remove_oversized(dir).unwrap();
+            create_seed_corpus(&sources, dir, 0).unwrap()
+        };
+
+        assert_eq!(night(&dir), 2);
+        assert_eq!(names(&dir), ["seed-000000.st", "seed-000001.st"]);
+
+        // The merge keeps one seed and one input the fuzzer found.
+        let kept = std::fs::read(dir.join("seed-000001.st")).unwrap();
+        assert_eq!(kept, b"PROGRAM kept\nEND_PROGRAM\n");
+        std::fs::remove_file(dir.join("seed-000000.st")).unwrap();
+        std::fs::remove_file(dir.join("seed-000001.st")).unwrap();
+        std::fs::write(dir.join("aaaa"), &kept).unwrap();
+        std::fs::write(dir.join("bbbb"), "PROGRAM found\nEND_PROGRAM\n").unwrap();
+
+        // Both seeds still count, and only the one it cut comes back.
+        assert_eq!(night(&dir), 2);
+        assert_eq!(names(&dir), ["aaaa", "bbbb", "seed-000000.st"]);
+        assert_eq!(
+            std::fs::read_to_string(dir.join("seed-000000.st")).unwrap(),
+            "PROGRAM cut\nEND_PROGRAM\n"
+        );
+        std::fs::remove_dir_all(dir.parent().unwrap()).unwrap();
+    }
+
+    /// The same program in two places is one seed, within a source and across
+    /// the sources of a night.
+    #[test]
+    fn a_program_written_twice_is_one_seed() {
+        let dir = corpus_of("fuzz_compiler", "twice");
+        let root = dir.parent().unwrap();
+        let (first, second) = (root.join("first.st"), root.join("second.st"));
+        std::fs::write(&first, "PROGRAM p\nEND_PROGRAM\n").unwrap();
+        std::fs::write(&second, "PROGRAM p\nEND_PROGRAM\n").unwrap();
+
+        assert_eq!(create_seed_corpus(&first, &dir, 0).unwrap(), 1);
+        assert_eq!(create_seed_corpus(&second, &dir, 1).unwrap(), 1);
+        assert_eq!(names(&dir), ["seed-000000.st"]);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    /// A string of choices the corpus kept under its hash is not written again.
+    #[test]
+    fn a_string_of_choices_already_kept_is_not_written_again() {
+        let dir = corpus_of("fuzz_semantics", "kept_choices");
+        std::fs::write(dir.join("aaaa"), choices(3)).unwrap();
+
+        assert_eq!(create_choice_seeds(&dir).unwrap(), Some(CHOICE_SEEDS));
+        let names = names(&dir);
+        assert_eq!(names.len(), CHOICE_SEEDS, "{names:?}");
+        assert!(!names.contains(&"seed-000003.bin".to_string()), "{names:?}");
+        std::fs::remove_dir_all(dir.parent().unwrap()).unwrap();
+    }
+
+    /// No source past the cap is written, and what the corpus kept past it goes,
+    /// at the cap exactly neither.
+    #[test]
+    fn a_source_past_the_cap_leaves_the_corpus() {
+        let dir = corpus_of("fuzz_compiler", "capped");
+        let root = dir.parent().unwrap();
+        let sources = root.join("sources");
+        std::fs::create_dir_all(&sources).unwrap();
+        std::fs::write(sources.join("fits.st"), "a".repeat(MAX_SOURCE_LEN)).unwrap();
+        std::fs::write(sources.join("past.st"), "b".repeat(MAX_SOURCE_LEN + 1)).unwrap();
+        std::fs::write(dir.join("kept"), "c".repeat(MAX_SOURCE_LEN)).unwrap();
+        std::fs::write(dir.join("past"), "d".repeat(MAX_SOURCE_LEN + 1)).unwrap();
+
+        assert_eq!(remove_oversized(&dir).unwrap(), 1);
+        assert_eq!(create_seed_corpus(&sources, &dir, 0).unwrap(), 1);
+        assert_eq!(names(&dir), ["kept", "seed-000000.st"]);
+        assert_eq!(
+            std::fs::read(dir.join("seed-000000.st")).unwrap().len(),
+            MAX_SOURCE_LEN
+        );
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    /// A directory named after no target is no corpus: what it holds stays, big or
+    /// not, whatever a mistyped command line says.
+    #[test]
+    fn a_directory_no_target_owns_keeps_its_files() {
+        let dir = corpus_of("sources", "mistyped");
+        std::fs::write(dir.join("large.st"), "a".repeat(MAX_SOURCE_LEN + 1)).unwrap();
+        assert_eq!(remove_oversized(&dir).unwrap(), 0);
+        assert_eq!(names(&dir), ["large.st"]);
+        std::fs::remove_dir_all(dir.parent().unwrap()).unwrap();
+    }
+
+    /// The cap is about sources: a debug module replays in seconds whatever it
+    /// holds, and the target's corpus keeps the large ones.
+    #[test]
+    fn a_debug_module_past_the_cap_stays() {
+        let dir = corpus_of("fuzz_debug_format", "debug");
+        std::fs::write(dir.join("large"), vec![0u8; MAX_SOURCE_LEN + 1]).unwrap();
+        assert_eq!(remove_oversized(&dir).unwrap(), 0);
+        assert_eq!(names(&dir), ["large"]);
         std::fs::remove_dir_all(dir.parent().unwrap()).unwrap();
     }
 

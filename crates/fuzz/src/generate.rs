@@ -308,9 +308,10 @@ impl LibFn {
     }
 }
 
-/// What a variadic FUNCTION folds its pack with: `+`, `-` and `*` from
+/// What a variadic FUNCTION folds its pack with: `+`, `-`, `*`, `/` and `%` from
 /// left to right, `&`, `|` and `^` over BOOLs, a comparison of each
-/// adjacent pair, the smallest or the largest integer (docs/variadics.md).
+/// adjacent pair, the smallest or the largest integer, `**` from the left over
+/// REALs and LREALs (docs/variadics.md).
 #[derive(Clone, Copy, Debug)]
 enum Fold {
     Arith(Arith),
@@ -318,6 +319,7 @@ enum Fold {
     Cmp(Cmp),
     Min,
     Max,
+    Power,
 }
 
 impl Fold {
@@ -339,6 +341,7 @@ impl Fold {
             Fold::Cmp(Cmp::Ge) => ">=",
             Fold::Min => " MIN",
             Fold::Max => " MAX",
+            Fold::Power => "**",
         }
     }
 }
@@ -1264,14 +1267,15 @@ impl Generator<'_> {
     }
 
     /// A fold, the type of the pack it folds and the type it gives: integers
-    /// added, subtracted or multiplied (wrapping at each step), BOOLs
+    /// added, subtracted, multiplied or divided (wrapping at each step), BOOLs
     /// combined, integers compared pair by pair into a BOOL, the smallest or
-    /// the largest integer.
+    /// the largest integer, floats raised to a power.
     fn fold(&mut self) -> (Fold, Ty, Ty) {
         let integer = INTEGERS[self.choices.below(INTEGERS.len())];
-        match self.choices.below(4) {
+        match self.choices.below(5) {
             0 => {
-                let op = [Arith::Add, Arith::Sub, Arith::Mul][self.choices.below(3)];
+                let ops = [Arith::Add, Arith::Sub, Arith::Mul, Arith::Div, Arith::Mod];
+                let op = ops[self.choices.below(ops.len())];
                 (Fold::Arith(op), integer, integer)
             }
             1 => {
@@ -1283,9 +1287,13 @@ impl Generator<'_> {
                     [Cmp::Eq, Cmp::Ne, Cmp::Lt, Cmp::Gt, Cmp::Le, Cmp::Ge][self.choices.below(6)];
                 (Fold::Cmp(op), integer, Ty::Bool)
             }
-            _ => {
+            3 => {
                 let op = [Fold::Min, Fold::Max][self.choices.below(2)];
                 (op, integer, integer)
+            }
+            _ => {
+                let float = [Ty::Real, Ty::Lreal][self.choices.below(2)];
+                (Fold::Power, float, float)
             }
         }
     }
@@ -1331,10 +1339,22 @@ impl Generator<'_> {
     /// exact type, if there is a STRUCT for each STRUCT parameter.
     fn args(&mut self, f: usize, depth: u32, readable: &[usize]) -> Option<Vec<Expr>> {
         if self.d.functions[f].variadic {
-            // One to four arguments, each of the pack's type.
+            // One to four arguments, each of the pack's type. An integer divided by
+            // zero faults, so what a fold divides by is a literal, as for `/`.
             let pack = self.d.functions[f].inputs[0].ty;
+            let divides = matches!(
+                self.d.functions[f].body,
+                Expr::Fold(Fold::Arith(Arith::Div | Arith::Mod), _)
+            );
             let n = 1 + self.choices.below(4);
-            return Some((0..n).map(|_| self.expr(pack, depth, readable)).collect());
+            return Some(
+                (0..n)
+                    .map(|i| match divides && i > 0 {
+                        true => Expr::Lit(pack, self.divisor(pack)),
+                        false => self.expr(pack, depth, readable),
+                    })
+                    .collect(),
+            );
         }
         let inputs: Vec<Ty> = self.d.functions[f].inputs.iter().map(|v| v.ty).collect();
         let mut args = Vec::new();
@@ -4155,7 +4175,8 @@ fn eval(e: &Expr, st: &State, d: &Decls) -> Val {
                             Arith::Add => a.wrapping_add(b),
                             Arith::Sub => a.wrapping_sub(b),
                             Arith::Mul => a.wrapping_mul(b),
-                            Arith::Div | Arith::Mod => unreachable!("no `/` or `%` fold"),
+                            Arith::Div => a / b,
+                            Arith::Mod => a % b,
                         })
                     })
                     .unwrap_or(0),
@@ -4184,6 +4205,17 @@ fn eval(e: &Expr, st: &State, d: &Decls) -> Val {
             }) as i128),
             Fold::Min => Val::Int(st.vars.iter().map(Val::int).min().unwrap_or(0)),
             Fold::Max => Val::Int(st.vars.iter().map(Val::int).max().unwrap_or(0)),
+            // The `libm` a module's `**` runs (crates/wasm_builtins).
+            Fold::Power => st
+                .vars
+                .iter()
+                .cloned()
+                .reduce(|a, b| match (a, b) {
+                    (Val::F32(a), Val::F32(b)) => Val::F32(libm::powf(a, b)),
+                    (Val::F64(a), Val::F64(b)) => Val::F64(libm::pow(a, b)),
+                    _ => unreachable!("`**` folds REALs and LREALs"),
+                })
+                .unwrap_or(Val::F32(0.0)),
         },
     }
 }
@@ -4192,13 +4224,17 @@ fn eval(e: &Expr, st: &State, d: &Decls) -> Val {
 mod tests {
     use super::*;
 
-    /// Programs from a spread of seeds, kept when one declares a pack: the
-    /// compiler and the runtime agree with the folds this evaluator does.
+    /// The generator writes every fold, and for each the module computes what the
+    /// evaluator does. `/`, `%` and `**` were written by nothing for a long time.
     #[test]
-    fn variadic_functions_compute_their_folds() {
-        let mut seed = 0x2545_F491_4F6C_DD1Du64;
-        let mut checked = 0;
-        for _ in 0..200 {
+    fn every_fold_is_written_and_computes() {
+        const FOLDS: [&str; 17] = [
+            "+;", "-;", "*;", "/;", "%;", "**;", "&;", "|;", "^;", "=;", "<>;", "<;", ">;", "<=;",
+            ">=;", " MIN;", " MAX;",
+        ];
+        let mut seed = 0x9E37_79B9_7F4A_7C15u64;
+        let mut seen: std::collections::BTreeSet<&str> = Default::default();
+        for _ in 0..20_000 {
             let bytes: Vec<u8> = (0..96)
                 .map(|_| {
                     seed ^= seed << 13;
@@ -4208,18 +4244,51 @@ mod tests {
                 })
                 .collect();
             let text = program(&bytes);
-            if !text.contains("...") {
+            let fresh: Vec<&str> = FOLDS
+                .iter()
+                .copied()
+                .filter(|fold| !seen.contains(fold))
+                .filter(|fold| {
+                    text.lines().any(|line| {
+                        line.contains(":= ...")
+                            && line.trim_end().ends_with(fold)
+                            && !line.trim_end().ends_with(&format!("*{fold}"))
+                            && !line.trim_end().ends_with(&format!("<{fold}"))
+                            && !line.trim_end().ends_with(&format!(">{fold}"))
+                    })
+                })
+                .collect();
+            if fresh.is_empty() {
                 continue;
             }
             if let Err(finding) = crate::check_generated(&text) {
                 panic!("{finding}\n--- the program ---\n{text}");
             }
-            checked += 1;
-            if checked == 6 {
-                break;
+            seen.extend(fresh);
+            if seen.len() == FOLDS.len() {
+                return;
             }
         }
-        assert!(checked >= 3, "only {checked} seeds declared a pack");
+        let missing: Vec<_> = FOLDS.iter().filter(|fold| !seen.contains(*fold)).collect();
+        panic!("no program folds with {missing:?}");
+    }
+
+    /// `**` computes in the evaluator with the `libm` it computes with in a module,
+    /// which is crates/wasm_builtins' own lockfile. A release that moves a result by
+    /// the last bit would report a bug in nothing.
+    #[test]
+    fn the_evaluator_powers_with_the_libm_of_a_module() {
+        let lock = include_str!("../../wasm_builtins/Cargo.lock");
+        let manifest = include_str!("../Cargo.toml");
+        let version = lock
+            .split("name = \"libm\"\nversion = \"")
+            .nth(1)
+            .and_then(|rest| rest.split('"').next())
+            .expect("crates/wasm_builtins locks libm");
+        assert!(
+            manifest.contains(&format!("libm = \"={version}\"")),
+            "crates/fuzz/Cargo.toml must pin libm to {version}, as crates/wasm_builtins does"
+        );
     }
 
     /// Programs from a spread of seeds: the generator writes a call to the

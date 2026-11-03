@@ -18,6 +18,9 @@ path = "src/lib.rs"
 
 [dependencies]
 anyhow = "1.0"
+# The version crates/wasm_builtins locks: `**` has to compute here what it computes
+# in a module, to the last bit.
+libm = "=0.2.16"
 ast = { workspace = true }
 hir = { workspace = true }
 db = { workspace = true }

@@ -7,7 +7,7 @@
 //! Each source is a file or a directory walked recursively; see
 //! `rk_fuzz::corpus` for what is taken from which kind of file.
 
-use rk_fuzz::corpus::{create_choice_seeds, remove_seeds};
+use rk_fuzz::corpus::{create_choice_seeds, remove_oversized, remove_seeds};
 use rk_fuzz::create_seed_corpus;
 use std::path::PathBuf;
 
@@ -36,8 +36,12 @@ fn main() {
     let output_dir = PathBuf::from(&output[0]);
 
     // The directory is a corpus kept between runs: its seeds are written
-    // again, and the ones nothing writes any more go.
-    match remove_seeds(&output_dir).and_then(|_| create_choice_seeds(&output_dir)) {
+    // again, the ones nothing writes any more go, and so does what it kept past
+    // the size a source may have.
+    match remove_seeds(&output_dir)
+        .and_then(|_| remove_oversized(&output_dir))
+        .and_then(|_| create_choice_seeds(&output_dir))
+    {
         Ok(Some(count)) => {
             eprintln!(
                 "{count:>6} entries in {}: strings of choices, this target reads no source",

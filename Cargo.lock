@@ -2944,6 +2944,7 @@ dependencies = [
  "hir",
  "ide_diagnostic",
  "libfuzzer-sys",
+ "libm",
  "linter",
  "log",
  "mir",
