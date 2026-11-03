@@ -161,7 +161,7 @@ fn check_expr<'db>(
             check_expr(db, left, diagnostics);
             check_expr(db, right, diagnostics);
         }
-        ExprKind::UnaryOperator { expr, .. } => {
+        ExprKind::UnaryOperator { expr, .. } | ExprKind::PackElement { index: expr, .. } => {
             check_expr(db, expr, diagnostics);
         }
         ExprKind::PrimaryExpr(PrimaryExpr::ParenthesizedExpr { expr }) => {

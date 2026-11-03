@@ -140,7 +140,9 @@ fn condition_reads<'db>(
                 walk(db, body, left, read)?;
                 walk(db, body, right, read)
             }
-            ExprKind::UnaryOperator { expr, .. } => walk(db, body, expr, read),
+            ExprKind::UnaryOperator { expr, .. } | ExprKind::PackElement { index: expr, .. } => {
+                walk(db, body, expr, read)
+            }
             ExprKind::PrimaryExpr(PrimaryExpr::ParenthesizedExpr { expr }) => {
                 walk(db, body, expr, read)
             }
@@ -354,6 +356,7 @@ fn expression<'db>(
             expression(db, body, right, effects);
         }
         ExprKind::UnaryOperator { expr, .. }
+        | ExprKind::PackElement { index: expr, .. }
         | ExprKind::PrimaryExpr(PrimaryExpr::ParenthesizedExpr { expr }) => {
             expression(db, body, expr, effects)
         }

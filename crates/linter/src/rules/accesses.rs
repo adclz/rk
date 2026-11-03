@@ -64,6 +64,7 @@ pub(crate) fn expression<'db>(
             RefValue::Value(expr) => expression(db, *expr, f),
             RefValue::Null => {}
         },
+        ExprKind::PackElement { index, .. } => expression(db, *index, f),
         ExprKind::PrimaryExpr(PrimaryExpr::Literal(_) | PrimaryExpr::EnumValue { .. })
         | ExprKind::FoldExpr { .. } => {}
     }
