@@ -137,6 +137,38 @@ pub(crate) fn emit_expr(
             }
         }
 
+        // Each parameter pushed, then each `select` from the last pair back:
+        // the first parameter if the position is at most 0, or else the
+        // second if it is at most 1, and so on to the last. The position is
+        // in the scratch only here, past any evaluation that could use it.
+        MirExpr::PackElement {
+            index,
+            index_ty,
+            params,
+            ty,
+        } => {
+            emit_expr(func, index, locals, fn_indices);
+            let (position, _) = operand_pair(MirElementary::LInt);
+            func.instruction(&Instruction::LocalSet(position));
+            for param in params {
+                let load = MirExpr::Load(
+                    mir::expr::MirPlace::Local(*param),
+                    mir::types::MirType::Elementary(*ty),
+                );
+                emit_expr(func, &load, locals, fn_indices);
+            }
+            for last in (0..params.len().saturating_sub(1)).rev() {
+                func.instruction(&Instruction::LocalGet(position));
+                func.instruction(&Instruction::I64Const(last as i64));
+                func.instruction(&if index_ty.is_signed() {
+                    Instruction::I64LeS
+                } else {
+                    Instruction::I64LeU
+                });
+                func.instruction(&Instruction::Select);
+            }
+        }
+
         MirExpr::Call(call) => emit_call(func, call, locals, fn_indices),
 
         MirExpr::AddrOf(place) => emit_addr_of(func, place, locals, fn_indices),
