@@ -1565,6 +1565,8 @@ pub fn resolve_params<'db>(
         .collect();
 
     for parameter in params {
+        // Where the call is written, which need not be where the callee is.
+        let file = parameter.scope_id(db).file(db);
         match parameter.kind(db) {
             ParamAssignKind::NonFormal { value } => {
                 // Skip parameters already filled by named arguments
@@ -1613,7 +1615,7 @@ pub fn resolve_params<'db>(
                             param_2: *parameter,
                             name: param.with_case,
                         }
-                        .to_diagnostic(db, callable.get_scope_id(db).file(db)),
+                        .to_diagnostic(db, file),
                     );
                     results.push(ParamMatch::Error);
                     continue;
@@ -1627,7 +1629,7 @@ pub fn resolve_params<'db>(
                             func: callable,
                             param,
                         }
-                        .to_diagnostic(db, callable.get_scope_id(db).file(db)),
+                        .to_diagnostic(db, file),
                     );
                     results.push(ParamMatch::Error);
                 }
@@ -1640,7 +1642,7 @@ pub fn resolve_params<'db>(
                             param_2: *parameter,
                             name: param.with_case,
                         }
-                        .to_diagnostic(db, callable.get_scope_id(db).file(db)),
+                        .to_diagnostic(db, file),
                     );
                     results.push(ParamMatch::Error);
                     continue;
@@ -1654,7 +1656,7 @@ pub fn resolve_params<'db>(
                             func: callable,
                             param,
                         }
-                        .to_diagnostic(db, callable.get_scope_id(db).file(db)),
+                        .to_diagnostic(db, file),
                     );
                     results.push(ParamMatch::Error);
                 }

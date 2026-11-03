@@ -98,7 +98,10 @@ impl<'db> InitInference<'db> {
 
         for (m1, m2) in &members.duplicates {
             self.errors.push(
+                // Neither INTERFACE is at fault, and either may be in another
+                // file: what inherits both is what shows.
                 DuplicateError::InheritedMethod {
+                    pou: implementer,
                     method1: *m1,
                     method2: *m2,
                 }

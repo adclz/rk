@@ -354,13 +354,150 @@ END_CLASS
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     [E0110] Error: duplicate inherited method
-       ,-[ file:///test0.st:3:12 ]
+        ,-[ file:///test0.st:10:7 ]
+        |
+      3 |     METHOD m1 END_METHOD
+        |            ^|
+        |             `-- method 'm1' is declared here
+        |
+      7 |     METHOD m1 END_METHOD
+        |            ^|
+        |             `-- method 'm1' is already declared here
+        |
+     10 | CLASS it1 IMPLEMENTS I1, I2
+        |       ^|^
+        |        `--- duplicate method 'm1'
+        |
+        | Note: interfaces 'I1' and 'I2' both declare a method 'm1'
+    ----'
+    ");
+}
+
+#[rstest]
+fn a_duplicate_inherited_method_is_reported_in_the_file_of_what_inherits_it(
+    mut with_db: RootDatabase,
+) {
+    let first = r#"
+// The file of the first INTERFACE is
+// longer than the ones of the POUs.
+//
+//
+//
+//
+INTERFACE I1
+    METHOD m1 END_METHOD
+END_INTERFACE
+"#;
+    let second = r#"
+INTERFACE I2
+    METHOD m1 END_METHOD
+END_INTERFACE
+"#;
+    let class = r#"
+CLASS c IMPLEMENTS I1, I2
+    METHOD OVERRIDE m1 END_METHOD
+END_CLASS
+"#;
+    let block = r#"
+
+FUNCTION_BLOCK b IMPLEMENTS I1, I2
+    METHOD OVERRIDE m1 END_METHOD
+END_FUNCTION_BLOCK
+"#;
+    let interface = r#"
+
+
+INTERFACE I3 EXTENDS I1, I2
+END_INTERFACE
+"#;
+    let derived = r#"
+
+
+
+CLASS d EXTENDS c
+END_CLASS
+"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[first, second, class, block, interface, derived]), @r"
+    [E0110] Error: duplicate inherited method
+       ,-[ file:///test2.st:2:7 ]
+       |
+     2 | CLASS c IMPLEMENTS I1, I2
+       |       |
+       |       `-- duplicate method 'm1'
+       |
+       |-[ file:///test0.st:9:12 ]
+       |
+     9 |     METHOD m1 END_METHOD
+       |            ^|
+       |             `-- method 'm1' is declared here
+       |
+       |-[ file:///test1.st:3:12 ]
        |
      3 |     METHOD m1 END_METHOD
        |            ^|
-       |             `-- duplicate method 'm1'
+       |             `-- method 'm1' is already declared here
        |
-     7 |     METHOD m1 END_METHOD
+       | Note: interfaces 'I1' and 'I2' both declare a method 'm1'
+    ---'
+    [E0110] Error: duplicate inherited method
+       ,-[ file:///test3.st:3:16 ]
+       |
+     3 | FUNCTION_BLOCK b IMPLEMENTS I1, I2
+       |                |
+       |                `-- duplicate method 'm1'
+       |
+       |-[ file:///test0.st:9:12 ]
+       |
+     9 |     METHOD m1 END_METHOD
+       |            ^|
+       |             `-- method 'm1' is declared here
+       |
+       |-[ file:///test1.st:3:12 ]
+       |
+     3 |     METHOD m1 END_METHOD
+       |            ^|
+       |             `-- method 'm1' is already declared here
+       |
+       | Note: interfaces 'I1' and 'I2' both declare a method 'm1'
+    ---'
+    [E0110] Error: duplicate inherited method
+       ,-[ file:///test4.st:4:11 ]
+       |
+     4 | INTERFACE I3 EXTENDS I1, I2
+       |           ^|
+       |            `-- duplicate method 'm1'
+       |
+       |-[ file:///test0.st:9:12 ]
+       |
+     9 |     METHOD m1 END_METHOD
+       |            ^|
+       |             `-- method 'm1' is declared here
+       |
+       |-[ file:///test1.st:3:12 ]
+       |
+     3 |     METHOD m1 END_METHOD
+       |            ^|
+       |             `-- method 'm1' is already declared here
+       |
+       | Note: interfaces 'I1' and 'I2' both declare a method 'm1'
+    ---'
+    [E0110] Error: duplicate inherited method
+       ,-[ file:///test5.st:5:7 ]
+       |
+     5 | CLASS d EXTENDS c
+       |       |
+       |       `-- duplicate method 'm1'
+       |
+       |-[ file:///test0.st:9:12 ]
+       |
+     9 |     METHOD m1 END_METHOD
+       |            ^|
+       |             `-- method 'm1' is declared here
+       |
+       |-[ file:///test1.st:3:12 ]
+       |
+     3 |     METHOD m1 END_METHOD
        |            ^|
        |             `-- method 'm1' is already declared here
        |
