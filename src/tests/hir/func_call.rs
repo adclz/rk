@@ -6,6 +6,7 @@ use insta::assert_snapshot;
 use rstest::rstest;
 
 use crate::tests::utils::test_diagnostics;
+use crate::tests::utils::test_diagnostics_with_library;
 use crate::tests::utils::with_db;
 
 #[rstest]
@@ -1468,4 +1469,225 @@ END_FUNCTION
        |                     `------- no item 'NOT_IMPORTED' found in scope
     ---'
     ");
+}
+
+const CALLEE: &str = r#"FUNCTION Take : INT
+VAR_INPUT first : INT; END_VAR
+VAR_OUTPUT done : BOOL; END_VAR
+    Take := first;
+END_FUNCTION
+"#;
+
+/// What is wrong with an argument is reported where the call is written, which
+/// need not be the file declaring what it calls. Placed against the callee's
+/// file, the caret landed on another line of the caller.
+#[rstest]
+fn an_argument_is_reported_in_the_file_of_the_call(mut with_db: RootDatabase) {
+    let caller = r#"(* A caller longer than what it calls. *)
+(* 2 *)
+(* 3 *)
+(* 4 *)
+(* 5 *)
+(* 6 *)
+(* 7 *)
+(* 8 *)
+PROGRAM Main
+VAR x : INT; b : BOOL; END_VAR
+    x := Take(first := 1, firsty := 2);
+    x := Take(first := 1, gone => b);
+    x := Take(first := 1, first := 2);
+    x := Take(first := 1, done => b, done => b);
+END_PROGRAM
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[CALLEE, caller]), @r"
+    [E0803] Error: unknown input parameter
+        ,-[ file:///test1.st:11:27 ]
+        |
+     11 |     x := Take(first := 1, firsty := 2);
+        |                           ^^^|^^
+        |                              `---- unknown input parameter 'firsty'
+        |
+        | Note: 'Take' has a parameter with a similar name:
+        |       - first
+    ----'
+    [E0804] Error: unknown output parameter
+        ,-[ file:///test1.st:12:27 ]
+        |
+     12 |     x := Take(first := 1, gone => b);
+        |                           ^^|^
+        |                             `--- unknown output parameter 'gone'
+        |
+        | Note: 'Take' has a parameter with a similar name:
+        |       - done
+    ----'
+    [E0103] Error: duplicate parameter
+        ,-[ file:///test1.st:13:27 ]
+        |
+     13 |     x := Take(first := 1, first := 2);
+        |               ^^^^^|^^^^  ^^^^^|^^^^
+        |                    `------------------ already passed here
+        |                                |
+        |                                `------ duplicate parameter 'first'
+    ----'
+    [E0801] Error: wrong number of arguments
+        ,-[ file:///test1.st:14:10 ]
+        |
+     14 |     x := Take(first := 1, done => b, done => b);
+        |          ^^|^
+        |            `--- 'Take' expects 2 parameters, but got 3
+    ----'
+    [E0103] Error: duplicate parameter
+        ,-[ file:///test1.st:14:38 ]
+        |
+     14 |     x := Take(first := 1, done => b, done => b);
+        |                           ^^^^|^^^^  ^^^^|^^^^
+        |                               `----------------- already passed here
+        |                                          |
+        |                                          `------ duplicate parameter 'done'
+    ----'
+    ");
+}
+
+/// The same when what is called is the longer file, where the callee's lines
+/// name a place that exists in neither reading of the caller.
+#[rstest]
+fn an_argument_is_reported_in_the_file_of_the_call_when_the_callee_is_longer(
+    mut with_db: RootDatabase,
+) {
+    let callee = format!("{}{CALLEE}", "(* a line *)\n".repeat(20));
+    let caller = r#"PROGRAM Main
+VAR x : INT; END_VAR
+    x := Take(first := 1, firsty := 2);
+END_PROGRAM
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[&callee, caller]), @r"
+    [E0803] Error: unknown input parameter
+       ,-[ file:///test1.st:3:27 ]
+       |
+     3 |     x := Take(first := 1, firsty := 2);
+       |                           ^^^|^^
+       |                              `---- unknown input parameter 'firsty'
+       |
+       | Note: 'Take' has a parameter with a similar name:
+       |       - first
+    ---'
+    ");
+}
+
+/// A block's input and a method's, with the block in another file.
+#[rstest]
+fn an_argument_of_a_block_or_a_method_is_reported_in_the_file_of_the_call(
+    mut with_db: RootDatabase,
+) {
+    let block = r#"FUNCTION_BLOCK Block
+VAR_INPUT first : INT; END_VAR
+METHOD Run : INT
+VAR_INPUT second : INT; END_VAR
+    Run := second;
+END_METHOD
+END_FUNCTION_BLOCK
+"#;
+    let caller = r#"(* 1 *)
+(* 2 *)
+(* 3 *)
+(* 4 *)
+(* 5 *)
+(* 6 *)
+(* 7 *)
+(* 8 *)
+(* 9 *)
+PROGRAM Main
+VAR b : Block; x : INT; END_VAR
+    b(firsty := 1);
+    x := b.Run(secondy := 2);
+END_PROGRAM
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[block, caller]), @r"
+    [E0803] Error: unknown input parameter
+        ,-[ file:///test1.st:12:7 ]
+        |
+     12 |     b(firsty := 1);
+        |       ^^^|^^
+        |          `---- unknown input parameter 'firsty'
+        |
+        | Note: 'Block' has a parameter with a similar name:
+        |       - first
+    ----'
+    [E0802] Error: missing required parameter
+        ,-[ file:///test1.st:13:10 ]
+        |
+     13 |     x := b.Run(secondy := 2);
+        |          ^^|^^
+        |            `---- call to 'Run' is missing 1 required parameter: 'second'
+        |
+        |-[ file:///test0.st:4:11 ]
+        |
+      4 | VAR_INPUT second : INT; END_VAR
+        |           ^^^|^^
+        |              `---- parameter 'second' is declared here
+        |
+        | Note: a FUNCTION or METHOD call supplies every VAR_INPUT without a default
+    ----'
+    [E0803] Error: unknown input parameter
+        ,-[ file:///test1.st:13:16 ]
+        |
+     13 |     x := b.Run(secondy := 2);
+        |                ^^^|^^^
+        |                   `----- unknown input parameter 'secondy'
+        |
+        | Note: 'Run' has a parameter with a similar name:
+        |       - second
+    ----'
+    ");
+}
+
+/// What a library declares: the caller's file holds the error, and the library's
+/// is never reported on.
+#[rstest]
+fn an_argument_of_a_library_function_is_reported_in_the_file_of_the_call(
+    mut with_db: RootDatabase,
+) {
+    let caller = r#"(* 1 *)
+(* 2 *)
+(* 3 *)
+(* 4 *)
+(* 5 *)
+(* 6 *)
+(* 7 *)
+(* 8 *)
+PROGRAM Main
+VAR x : INT; END_VAR
+    x := Take(firsty := 2);
+END_PROGRAM
+"#;
+    assert_snapshot!(
+        test_diagnostics_with_library(&mut with_db, &[CALLEE], &[caller]),
+        @r"
+    [E0802] Error: missing required parameter
+        ,-[ file:///test0.st:11:10 ]
+        |
+     11 |     x := Take(firsty := 2);
+        |          ^^|^
+        |            `--- call to 'Take' is missing 1 required parameter: 'first'
+        |
+        |-[ file:///lib0.st:2:11 ]
+        |
+      2 | VAR_INPUT first : INT; END_VAR
+        |           ^^|^^
+        |             `---- parameter 'first' is declared here
+        |
+        | Note: a FUNCTION or METHOD call supplies every VAR_INPUT without a default
+    ----'
+    [E0803] Error: unknown input parameter
+        ,-[ file:///test0.st:11:15 ]
+        |
+     11 |     x := Take(firsty := 2);
+        |               ^^^|^^
+        |                  `---- unknown input parameter 'firsty'
+        |
+        | Note: 'Take' has a parameter with a similar name:
+        |       - first
+    ----'
+    "
+    );
 }
