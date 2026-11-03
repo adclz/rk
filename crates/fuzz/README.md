@@ -80,6 +80,7 @@ When you fix a bug, its test fails and tells you to move the file to `regression
 The codegen tests' programs compile and run, so they are the seeds that reach the code generator.
 `fuzz_semantics` reads no ST: its input is the choices its generator makes, and `corpus_gen` writes it 64 strings of bytes instead.
 The seeds an earlier run left in the directory are removed first.
+A seed the directory already holds is not written again, and a source over 4 KB is left out, or removed if an earlier night kept it.
 
 The nightly run replays the kept corpus before it mutates anything, and that replay is taken from the 30 minutes.
 The run summary says how long it took, warns past half of them and fails when nothing was fuzzed.

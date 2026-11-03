@@ -84,7 +84,9 @@ jobs:
       # codegen tests compile and run: the seeds closest to the code
       # generator's oracles. The seeds of the night before are removed
       # first. fuzz_semantics reads no ST: its input is the choices its
-      # generator makes, and corpus_gen writes it strings of bytes.
+      # generator makes, and corpus_gen writes it strings of bytes. A seed the
+      # kept corpus already holds is not written again, and no source over 4 KB
+      # stays, seed or kept, because the replay comes out of the night's budget.
       - name: Seed the corpus
         run: |
           cargo run --release -p rk-fuzz --bin corpus_gen -- \
@@ -105,6 +107,10 @@ jobs:
       # and checks it again, and the stdlib's 27 KB Strings.st, 5 s
       # natively, went past 60 s there as a timeout that was no hang.
       #
+      # `-max_len` is the size corpus_gen keeps a source to, so that what the
+      # fuzzer grows is no slower to replay. Left to libFuzzer for fuzz_debug_format,
+      # whose inputs are modules, and which replays in seconds.
+      #
       # The binary runs directly, not through `cargo fuzz run`: in fork mode
       # libFuzzer exits with its last job's status, 77 for a crash and 70
       # for a timeout. Those are findings, for the triage job to report;
@@ -116,12 +122,15 @@ jobs:
           log="$RUNNER_TEMP/fuzz.log"
           limit=60
           [ "${{ matrix.target }}" = fuzz_incremental ] && limit=120
+          max_len=4096
+          [ "${{ matrix.target }}" = fuzz_debug_format ] && max_len=0
           set +e
           ./target/x86_64-unknown-linux-gnu/release/${{ matrix.target }} "$CORPUS" \
             -artifact_prefix="$artifacts/" \
             -max_total_time="$BUDGET" -fork=3 \
             -ignore_crashes=1 -ignore_timeouts=1 -ignore_ooms=1 \
             -timeout="$limit" -report_slow_units="$limit" -rss_limit_mb=4096 -detect_leaks=0 \
+            -max_len="$max_len" \
             -dict=crates/fuzz/st.dict 2>&1 | tee "$log"
           status=${PIPESTATUS[0]}
           set -e
