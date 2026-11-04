@@ -199,9 +199,9 @@ END_FUNCTION"#;
          |          ^^^^^^|^^^^^^
          |                `-------- narrowing conversion, possible loss of value
          |
-         |-[ file:///lib0.st:369:2 ]
+         |-[ file:///lib0.st:370:2 ]
          |
-     369 |     {info = 'narrowing conversion, possible loss of value'}
+     370 |     {info = 'narrowing conversion, possible loss of value'}
          |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^|^^^^^^^^^^^^^^^^^^^^^^^^^^^
          |                                `----------------------------- the pragma is declared here
          |
