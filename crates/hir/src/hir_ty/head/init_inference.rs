@@ -322,7 +322,7 @@ impl<'db> InitInference<'db> {
                 db,
                 init,
                 &mut self.body_infer_result,
-                var.spec(db).infer(db),
+                crate::hir_ty::config::spec_of_place(db, *var, &entry.elements).infer(db),
             );
         }
     }

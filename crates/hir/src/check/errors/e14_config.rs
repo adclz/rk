@@ -276,8 +276,11 @@ pub enum ConfigError<'db> {
 /// Why a VAR_CONFIG entry cannot be taken as written.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, salsa::Update)]
 pub enum ConfigEntryRefusal<'db> {
-    /// `Res.P1.arr[0]`, `Res.P1.p^.x`: a path names instances and variables.
+    /// `Res.P1.arr[0]`, `Res.P1.p^.x`: a path names instances, variables and
+    /// the fields of a STRUCT.
     PathStep,
+    /// `Res.P1.s.fb.x`: a path does not go on through an instance a field holds.
+    ThroughFieldInstance,
     /// The type the entry repeats is not the variable's.
     TypeMismatch {
         var: Ident,
@@ -1656,9 +1659,14 @@ impl<'db> ToIdeDiagnostic<'db> for ConfigError<'db> {
             Self::ConfigEntryRefused { expr, why } => {
                 let (message, note, help) = match why {
                     ConfigEntryRefusal::PathStep => (
-                        "a VAR_CONFIG path names instances and variables, not an element or what a reference points at".to_string(),
+                        "a VAR_CONFIG path names instances, variables and STRUCT fields, not an array's element or what a reference points at".to_string(),
                         None,
                         Some("name the variable itself"),
+                    ),
+                    ConfigEntryRefusal::ThroughFieldInstance => (
+                        "a VAR_CONFIG path does not go on through an instance a STRUCT holds".to_string(),
+                        None,
+                        Some("give that instance its value whole"),
                     ),
                     ConfigEntryRefusal::TypeMismatch { var, written, declared } => (
                         format!(
