@@ -311,3 +311,155 @@ END_FUNCTION
         "the host reads the string the function built"
     );
 }
+
+/// A `RETURN` leaves a test as reaching its end does, wherever it stands and whatever
+/// the test's result, through the optimizer too. It built an invalid module: the
+/// wrapper returns the address of its result area, and a RETURN left nothing.
+#[rstest]
+fn test_e2e_a_return_ends_a_test(mut with_db: db::RootDatabase) {
+    use crate::tests::utils::{skip_without_wasm_opt, wasm_opt_installed};
+
+    let source = r#"
+TYPE Pair : STRUCT a : INT; b : INT; END_STRUCT; END_TYPE
+
+FUNCTION recurse : INT
+VAR_INPUT n : INT; END_VAR
+    IF n = 0 THEN
+        recurse := 0;
+        RETURN;
+    END_IF;
+    recurse := recurse(n - 1) + 1;
+END_FUNCTION
+
+{test} FUNCTION at_once
+    RETURN;
+END_FUNCTION
+
+{test} FUNCTION before_a_raise
+VAR i : INT; END_VAR
+    IF i = 0 THEN
+        RETURN;
+    END_IF;
+    __RAISE('not reached');
+END_FUNCTION
+
+{test} FUNCTION with_an_int_result : INT
+    with_an_int_result := 1;
+    RETURN;
+END_FUNCTION
+
+{test} FUNCTION with_a_real_result : REAL
+    with_a_real_result := 1.5;
+    RETURN;
+END_FUNCTION
+
+{test} FUNCTION with_a_string_result : STRING
+    with_a_string_result := 'text';
+    RETURN;
+END_FUNCTION
+
+{test} FUNCTION with_a_struct_result : Pair
+    with_a_struct_result.a := 1;
+    RETURN;
+END_FUNCTION
+
+{test} FUNCTION in_a_try
+    __TRY
+        RETURN;
+    __CATCH
+        __RAISE('not reached');
+    __END_TRY;
+    __RAISE('not reached');
+END_FUNCTION
+
+{test} FUNCTION in_a_catch
+    __TRY
+        __RAISE('caught');
+    __CATCH
+        RETURN;
+    __END_TRY;
+    __RAISE('not reached');
+END_FUNCTION
+
+{test} FUNCTION through_a_finally
+    __TRY
+        RETURN;
+    __FINALLY
+        ;
+    __END_TRY;
+    __RAISE('not reached');
+END_FUNCTION
+
+{test} FUNCTION in_a_loop
+VAR i : INT; END_VAR
+    FOR i := 0 TO 3 DO
+        IF i = 2 THEN
+            RETURN;
+        END_IF;
+    END_FOR;
+    __RAISE('not reached');
+END_FUNCTION
+
+{test} FUNCTION in_a_while_in_a_case
+VAR i : INT; END_VAR
+    CASE i OF
+        0:
+            WHILE TRUE DO
+                RETURN;
+            END_WHILE;
+    END_CASE;
+    __RAISE('not reached');
+END_FUNCTION
+
+{test} FUNCTION after_a_recursive_call
+    IF recurse(3) = 3 THEN
+        RETURN;
+    END_IF;
+    __RAISE('not reached');
+END_FUNCTION
+
+{test} FUNCTION fails_before_its_return
+    __RAISE('reached');
+    RETURN;
+END_FUNCTION
+
+{test} FUNCTION fails_in_its_finally
+    __TRY
+        RETURN;
+    __FINALLY
+        __RAISE('from the finally');
+    __END_TRY;
+END_FUNCTION
+"#;
+    let assert_results = |wasm: &[u8], built: &str| {
+        let results = crate::tests::codegen::run_tests(wasm, None).expect("run tests");
+        assert_eq!(results.len(), 14, "{built}");
+        let mut failed: Vec<_> = results
+            .iter()
+            .filter(|r| !r.passed())
+            .map(|r| (r.name.as_str(), reported_failure(r)))
+            .collect();
+        failed.sort_unstable();
+        assert_eq!(
+            failed,
+            [
+                ("fails_before_its_return", "reached"),
+                ("fails_in_its_finally", "from the finally"),
+            ],
+            "{built}"
+        );
+    };
+
+    let wasm = super::compile_to_wasm_as_built(&mut with_db, source);
+    assert_results(&wasm, "as built");
+
+    if !wasm_opt_installed() {
+        skip_without_wasm_opt("a RETURN in an optimized test");
+        return;
+    }
+    for level in ["1", "3", "4", "s", "z"] {
+        let optimized = rk::compiler::optimize_wasm_release(wasm.clone(), level, false)
+            .unwrap_or_else(|e| panic!("-O{level}: {e}"));
+        assert_results(&optimized, level);
+    }
+}
