@@ -113,6 +113,8 @@ fn check_case_label_constant<'db>(
     // An enum label's value is its variant's ordinal, which lowering reads
     // from the variant table; there is nothing to record here.
     match ctx.get_type_of_expr(label).normalize(db) {
+        // Reported where it failed to resolve.
+        Type::Never => return,
         Type::Enum(_) | Type::EnumVariant(..) if allow_non_integer => return,
         // The label is evaluated BEFORE it coerces to the selector, so a bare
         // literal is still untyped here.
