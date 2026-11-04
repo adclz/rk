@@ -29,6 +29,9 @@ pub enum ExternForbiddenKind {
     /// An `ARRAY[*]` `VAR_INPUT` has the size of each call's array, and an
     /// import's copies have one size.
     Conformand,
+    /// A variadic `VAR_INPUT` has one copy per argument count, and an import
+    /// has one signature: a call looked for a copy no module holds.
+    Variadic,
 }
 
 impl ExternForbiddenKind {
@@ -36,7 +39,7 @@ impl ExternForbiddenKind {
         match self {
             Self::InOut => "VAR_IN_OUT",
             Self::AggregateOutput => "VAR_OUTPUT",
-            Self::Conformand => "VAR_INPUT",
+            Self::Conformand | Self::Variadic => "VAR_INPUT",
         }
     }
 
@@ -46,6 +49,9 @@ impl ExternForbiddenKind {
             Self::AggregateOutput => "cannot be a WASM result: only scalar outputs cross an import",
             Self::Conformand => {
                 "cannot cross a WASM import: an ARRAY[*] has the size of each call's array"
+            }
+            Self::Variadic => {
+                "cannot cross a WASM import: a variadic parameter has the argument count of each call"
             }
         }
     }
@@ -58,6 +64,7 @@ impl ExternForbiddenKind {
             }
             Self::AggregateOutput => "return scalars, or split the aggregate into scalar outputs",
             Self::Conformand => "an extern FUNCTION receives VAR_INPUT copies of a fixed size",
+            Self::Variadic => "a WASM import has one signature",
         }
     }
 }

@@ -721,6 +721,7 @@ impl<'db> InitInference<'db> {
                     VariableKind::Input if var.conformand(db).is_some() => {
                         Some(ExternForbiddenKind::Conformand)
                     }
+                    VariableKind::Input if var.variadic(db) => Some(ExternForbiddenKind::Variadic),
                     VariableKind::Output if !extern_scalar(db, var.spec(db).infer(db)) => {
                         Some(ExternForbiddenKind::AggregateOutput)
                     }
