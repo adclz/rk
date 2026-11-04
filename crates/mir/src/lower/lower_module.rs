@@ -1266,6 +1266,7 @@ fn config_member<'db>(
     db: &'db dyn WorkspaceDataBase,
     instance: hir::hir_def::interned::identifier::Ident,
     members: &[hir::hir_def::pous::variable::VariableDecl<'db>],
+    elements: &[hir::hir_def::expressions::spec::StructElement<'db>],
     schedule: &Option<crate::schedule::MirSchedule>,
     program_infos: &FxHashMap<
         hir::hir_def::interned::identifier::Ident,
@@ -1289,8 +1290,19 @@ fn config_member<'db>(
         };
         fields = &inner.fields;
     }
-    let field = fields.iter().find(|f| f.name(db) == last.name(db))?;
-    Some(address + field.offset)
+    let mut field = fields.iter().find(|f| f.name(db) == last.name(db))?;
+    address += field.offset;
+    for element in elements {
+        let MirType::Struct(inner) = &field.ty else {
+            return None;
+        };
+        field = inner
+            .fields
+            .iter()
+            .find(|f| f.name(db) == element.name(db))?;
+        address += field.offset;
+    }
+    Some(address)
 }
 
 /// The name a static cell is known by in the global table, the located map
@@ -1988,7 +2000,8 @@ fn collect_const_inits<'db>(
     // value, and that one stands.
     for c in config {
         for loc in &hir::hir_ty::config::infer_config_result(db, *c).locations {
-            let Some(slot) = config_member(db, loc.instance, &loc.members, schedule, program_infos)
+            let Some(slot) =
+                config_member(db, loc.instance, &loc.members, &[], schedule, program_infos)
             else {
                 continue;
             };
@@ -2046,15 +2059,21 @@ fn collect_const_inits<'db>(
                     cell + offset
                 }
                 None => {
-                    let Some(address) =
-                        config_member(db, value.instance, &value.members, schedule, program_infos)
-                    else {
+                    let Some(address) = config_member(
+                        db,
+                        value.instance,
+                        &value.members,
+                        &value.elements,
+                        schedule,
+                        program_infos,
+                    ) else {
                         continue;
                     };
                     address
                 }
             };
-            let ty = super::lower_type::lower_spec(db, var.spec(db))?;
+            let spec = hir::hir_ty::config::spec_of_place(db, *var, &value.elements);
+            let ty = super::lower_type::lower_spec(db, spec)?;
             super::lower_func::lower_resolved_init_into(
                 db,
                 base,
