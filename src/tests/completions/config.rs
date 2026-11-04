@@ -358,6 +358,15 @@ END_CONFIGURATION
 #[case::through_a_member("Res.P1.d.|", &["out"], &["x", "d"])]
 #[case::a_member_being_typed("Res.P1.o|", &["x", "d"], &["P1"])]
 #[case::the_type("Res.P1.x AT %QW0 : |", &["INT"], &["x", "VAR_GLOBAL"])]
+#[case::a_struct("Res.P1.s.|", &["a", "inner"], &["x", "d", "b"])]
+#[case::a_nested_struct("Res.P1.s.inner.|", &["b"], &["a", "inner"])]
+#[case::a_field_being_typed("Res.P1.s.in|", &["a", "inner"], &["x", "b"])]
+#[case::the_type_of_a_struct("Res.P1.s : |", &["Pair"], &["INT", "a"])]
+#[case::the_type_of_a_field("Res.P1.s.a : |", &["INT"], &["Pair", "a"])]
+#[case::the_type_of_a_nested_field("Res.P1.s.inner.b : |", &["REAL"], &["Pair", "INT"])]
+#[case::past_an_elementary_field("Res.P1.s.a.|", &[], &["a", "inner", "x", "out"])]
+#[case::an_instance_a_field_holds("Res.P1.s.held.|", &[], &["out", "a"])]
+#[case::through_an_instance_a_field_holds("Res.P1.s.held.out.|", &[], &["out", "a"])]
 pub fn completion_in_var_config(
     mut with_db: RootDatabase,
     #[case] entry: &str,
@@ -366,13 +375,18 @@ pub fn completion_in_var_config(
 ) {
     let source = format!(
         r#"
+TYPE
+    Inner : STRUCT b : REAL; END_STRUCT;
+    Pair : STRUCT a : INT; inner : Inner; held : Drive; END_STRUCT;
+END_TYPE
+
 FUNCTION_BLOCK Drive
 VAR out AT %Q* : INT; END_VAR
 END_FUNCTION_BLOCK
 
 PROGRAM F
 VAR x AT %Q* : INT; END_VAR
-VAR d : Drive; END_VAR
+VAR d : Drive; s : Pair; END_VAR
 END_PROGRAM
 
 CONFIGURATION Cfg
