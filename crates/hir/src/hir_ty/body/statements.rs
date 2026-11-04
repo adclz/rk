@@ -821,7 +821,15 @@ impl<'db> StmtsResolverCtx<'db> {
                         Type::CallableType(ct) => Some(ct),
                         _ => typ.as_callable(db),
                     };
+                    // A call binding an output is made for it, by `=>` or by
+                    // position, and its result may go unread.
+                    let binds_an_output = ctx.resolved_calls.get(call).is_some_and(|resolved| {
+                        resolved.params.iter().any(|(_, binding)| {
+                            matches!(binding, crate::hir_ty::body::ParamBinding::Output { .. })
+                        })
+                    });
                     if let Some(callable) = callable
+                        && !binds_an_output
                         && callable.inner_callable().with_return_type(db).is_some()
                     {
                         ctx.unused_return_types.push((*stmt, typ));
