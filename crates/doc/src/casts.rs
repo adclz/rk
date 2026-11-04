@@ -98,6 +98,7 @@ fn hand_kept(text: &str) -> Option<(usize, usize)> {
 pub fn tables(convert_st: &str) -> String {
     let functions = convert_functions(convert_st);
     check_hints_exist(&functions);
+    check_widenings_exist(&functions);
 
     // Each table folds under a `<details>`, as GitHub draws one. The blank
     // line after `</summary>` is load-bearing: it ends the HTML block, and
@@ -179,6 +180,24 @@ fn check_hints_exist(functions: &BTreeSet<(String, String)>) {
     assert!(
         missing.is_empty(),
         "the compiler suggests casts that Std.Convert does not define: {}",
+        missing.join(", ")
+    );
+}
+
+/// Everything an assignment widens on its own has its function too, so that a
+/// program that writes the conversion out finds it.
+fn check_widenings_exist(functions: &BTreeSet<(String, String)>) {
+    let missing: Vec<String> = TYPES
+        .iter()
+        .flat_map(|from| TYPES.iter().map(move |to| (*from, *to)))
+        .filter(|(from, to)| from != to && to.implicit_cast(*from).is_some())
+        .map(|(from, to)| (from.type_name().to_string(), to.type_name().to_string()))
+        .filter(|pair| !functions.contains(pair))
+        .map(|(from, to)| format!("{from}_TO_{to}"))
+        .collect();
+    assert!(
+        missing.is_empty(),
+        "an assignment widens where Std.Convert defines no function: {}",
         missing.join(", ")
     );
 }
