@@ -60,7 +60,9 @@ pub fn check_outputs<'db>(
     diagnostics: &mut Vec<IdeDiagnostic>,
 ) {
     let def_map = scope.def_map(db);
-    let missing: Vec<_> = def_map
+    // In the order written: this map has none, and its order changes with the
+    // interned ids, so an edit moved the caret and reordered the message.
+    let mut missing: Vec<_> = def_map
         .global_variables
         .values()
         .filter(|var| var.kind(db) == VariableKind::Output)
@@ -68,6 +70,7 @@ pub fn check_outputs<'db>(
         .filter(|var| !assigned.contains(*var))
         .copied()
         .collect();
+    missing.sort_by_key(|var| var.get_name_span(db).start_byte);
 
     if missing.is_empty() {
         return;
