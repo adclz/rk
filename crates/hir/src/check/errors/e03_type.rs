@@ -443,6 +443,9 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                             call.get_scope_id(db).file(db),
                             call.get_span(db),
                         )),
+                        InferSource::Default => diag.with_note(format!(
+                            "a literal with nothing typed beside it is {target_name}"
+                        )),
                     }
                 }
 

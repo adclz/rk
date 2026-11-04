@@ -43,6 +43,8 @@ pub struct InferenceTable<'db> {
 pub enum InferSource<'db> {
     Type(Type<'db>),
     CallSite(CallSite<'db>),
+    /// Nothing gave the type: the literals in play took their default.
+    Default,
 }
 
 impl<'db> From<Type<'db>> for InferSource<'db> {
@@ -67,7 +69,6 @@ pub enum InferMode<'db> {
     // Resolved to an infer type
     ResolvedInfer {
         ty: Type<'db>,
-        expr: Option<InferSource<'db>>,
     },
     // Fully resolved type
     // Resolved has a priority over ResolvedInfer
@@ -125,7 +126,6 @@ impl<'db> InferenceTable<'db> {
                     InferMode::NoInfer | InferMode::Unresolved => {
                         self.current_mode = InferMode::ResolvedInfer {
                             ty: infer.to_ty(db),
-                            expr: Some(CallSite::from_scoped(db, &expr).into()),
                         };
                     }
                     // inferred types have no priority over already resolved types
@@ -198,7 +198,7 @@ impl<'db> InferenceTable<'db> {
         // Determine the final concrete type we substitute with
         let (final_ty, source) = match self.current_mode {
             InferMode::Resolved { ty, expr } => (ty.normalize(db), expr),
-            InferMode::ResolvedInfer { ty, expr } => (ty.normalize(db), expr),
+            InferMode::ResolvedInfer { ty } => (ty.normalize(db), Some(InferSource::Default)),
             _ => {
                 // no inference to resolve
                 // therefore all types are left as is
