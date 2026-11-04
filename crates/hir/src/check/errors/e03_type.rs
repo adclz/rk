@@ -539,7 +539,7 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
     }
 }
 
-fn adjustment_to_string(
+pub(crate) fn adjustment_to_string(
     db: &dyn WorkspaceDataBase,
     value: Type,
     adj: &Option<Adjustment>,
@@ -764,7 +764,7 @@ impl std::fmt::Display for InferLiteralError {
     }
 }
 
-fn explicit_cast_suggestion(
+pub(crate) fn explicit_cast_suggestion(
     db: &dyn WorkspaceDataBase,
     expected: Type,
     actual: Type,

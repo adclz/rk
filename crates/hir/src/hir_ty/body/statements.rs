@@ -708,10 +708,11 @@ impl<'db> StmtsResolverCtx<'db> {
                     if let Err(err) =
                         infer.coerce_var_access_compared_with_expr(db, *control_variable, *end, ctx)
                     {
-                        ctx.errors.push(err.into_non_comparable(
+                        ctx.errors.push(err.into_for_bound(
                             db,
                             ctx.get_type_of_variable_access(db, *control_variable),
                             CallSite::from_scoped(db, end),
+                            "final value",
                         ));
                     }
 
@@ -724,10 +725,11 @@ impl<'db> StmtsResolverCtx<'db> {
                             *step,
                             ctx,
                         ) {
-                            ctx.errors.push(err.into_non_comparable(
+                            ctx.errors.push(err.into_for_bound(
                                 db,
                                 ctx.get_type_of_variable_access(db, *control_variable),
                                 CallSite::from_scoped(db, step),
+                                "step",
                             ));
                         }
 

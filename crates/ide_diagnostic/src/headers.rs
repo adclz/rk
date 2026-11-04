@@ -199,6 +199,7 @@ pub const HEADERS: &[(&str, &str)] = &[
     ("E1211", "__CATCH after __FINALLY"),
     ("E1212", "clause of a __TRY written twice"),
     ("E1213", "__CATCH, __FINALLY or __END_TRY without a __TRY"),
+    ("E1214", "FOR bound of another type"),
     ("E1301", "type contains itself"),
     ("E1302", "types contain each other"),
     ("E1401", "no project configuration"),

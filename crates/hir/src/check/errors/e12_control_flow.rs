@@ -64,6 +64,19 @@ pub enum ControlFlowError<'db> {
         access: CallSite<'db>,
         ty: crate::hir_ty::ty::Type<'db>,
     },
+    /// A FOR's final value or step of another type than its counter. They are
+    /// compared with the counter at its type, so reading a wider one there
+    /// would drop its upper part.
+    ForBoundOfAnotherType {
+        bound: CallSite<'db>,
+        /// "final value" or "step".
+        what: &'static str,
+        /// The counter's declared type, which names its declaration.
+        base_target: crate::hir_ty::ty::Type<'db>,
+        counter: crate::hir_ty::ty::Type<'db>,
+        actual: crate::hir_ty::ty::Type<'db>,
+        adjustment: Option<crate::hir_ty::body::Adjustment<'db>>,
+    },
     /// A FOR step whose value the compiler cannot fix at compile time, or a
     /// zero one. The sign decides the loop's exit comparison, so both are
     /// loops whose direction is unknowable.
@@ -113,6 +126,7 @@ impl<'db> ErrorCode for ControlFlowError<'db> {
             Self::ClauseOutsideTry { .. } => "E1213",
             Self::ForControlNotAVariable { .. } => "E1203",
             Self::ForControlNotInteger { .. } => "E1206",
+            Self::ForBoundOfAnotherType { .. } => "E1214",
             Self::ForStepInvalid { .. } => "E1204",
             Self::CaseLabelNotConstant { .. } => "E1205",
             Self::CaseSelectorNotSupported { .. } => "E1207",
@@ -254,6 +268,36 @@ impl<'db> ToIdeDiagnostic<'db> for ControlFlowError<'db> {
                 diag.with_help(
                     "declare the counter as SINT, INT, DINT or LINT, or an unsigned one"
                         .to_string(),
+                );
+                diag
+            }
+            Self::ForBoundOfAnotherType {
+                bound,
+                what,
+                base_target,
+                counter,
+                actual,
+                adjustment,
+            } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "the {what} is '{}', where the counter is '{}'",
+                        crate::check::errors::e03_type::adjustment_to_string(
+                            db, *actual, adjustment,
+                        ),
+                        counter.type_name(db),
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &bound.get_span(db)).unwrap_or_default())
+                    .call();
+                base_target.with_location(db, &mut diag);
+                diag.with_note(
+                    "a FOR reads its final value and its step at the type of its counter"
+                        .to_string(),
+                );
+                crate::check::errors::e03_type::explicit_cast_suggestion(
+                    db, *counter, *actual, *bound, &mut diag,
                 );
                 diag
             }

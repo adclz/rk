@@ -511,6 +511,26 @@ impl<'db> CoerceError<'db> {
         .to_diagnostic(db, call_site.get_scope_id(db).file(db))
     }
 
+    /// A FOR's final value or step (`what`) that the counter cannot be
+    /// compared with.
+    pub fn into_for_bound(
+        self,
+        db: &'db dyn WorkspaceDataBase,
+        base_target: Type<'db>,
+        call_site: CallSite<'db>,
+        what: &'static str,
+    ) -> IdeDiagnostic {
+        crate::check::errors::e12_control_flow::ControlFlowError::ForBoundOfAnotherType {
+            bound: call_site,
+            what,
+            base_target,
+            counter: self.expected,
+            actual: self.actual,
+            adjustment: self.adjustment,
+        }
+        .to_diagnostic(db, call_site.get_scope_id(db).file(db))
+    }
+
     pub fn into_non_addable(
         self,
         db: &'db dyn WorkspaceDataBase,
