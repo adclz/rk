@@ -218,3 +218,48 @@ END_FUNCTION_BLOCK
     ----'
     ");
 }
+
+/// A call binding an output is made for it, by `=>` or by position, and its result
+/// may go unread. One that binds none is reported, with an output left out too.
+#[rstest]
+#[case::by_name("Both(a := 1, o => x);", false)]
+#[case::by_position("Both(1, x);", false)]
+#[case::negated("Flag(a := 1, NOT o => b);", false)]
+#[case::no_output("Both(a := 1);", true)]
+#[case::an_input_alone("Both(1);", true)]
+#[case::no_output_declared("One(1);", true)]
+fn a_call_binding_an_output_uses_it(
+    mut with_db: RootDatabase,
+    #[case] call: &str,
+    #[case] reported: bool,
+) {
+    let source = format!(
+        r#"
+FUNCTION Both : INT
+VAR_INPUT a : INT; END_VAR
+VAR_OUTPUT o : INT; END_VAR
+    o := a;
+    Both := a;
+END_FUNCTION
+
+FUNCTION Flag : INT
+VAR_INPUT a : INT; END_VAR
+VAR_OUTPUT o : BOOL; END_VAR
+    o := a > 0;
+    Flag := a;
+END_FUNCTION
+
+FUNCTION One : INT
+VAR_INPUT a : INT; END_VAR
+    One := a;
+END_FUNCTION
+
+FUNCTION test
+VAR x : INT; b : BOOL; END_VAR
+    {call}
+END_FUNCTION
+"#
+    );
+    let report = test_single_lint(&mut with_db, &[&source], "unused-return-type");
+    assert_eq!(report.contains("[L0207]"), reported, "{report}");
+}
