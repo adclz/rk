@@ -13,11 +13,14 @@ use hir::{
             spec::{Spec, SpecKind},
         },
         hir_node::HirNode,
-        interned::{identifier::SpanIdent, namespace::NamespacePath},
+        interned::{
+            identifier::SpanIdent,
+            namespace::{NamespacePath, SpanNamespacePath},
+        },
         semantic_index::semantic_index,
     },
     hir_ty::{
-        index_graphs::{absolute_namespace_path, namespace_index},
+        index_graphs::absolute_namespace_path,
         infer::Infer,
         ty::{CallableType, Type},
     },
@@ -46,7 +49,8 @@ impl<'db> ReferencesHandler<'db> for HirNode<'db> {
     }
 
     fn locations(&self, db: &'db dyn WorkspaceDataBase) -> Option<Vec<ReferenceLocation>> {
-        // Namespace references: declarations via namespace_index + USING statements via walk
+        // A namespace is named by its declarations, its USINGs and the names
+        // qualified with it.
         let ns_path = match self {
             HirNode::Namespace(ns) => Some(ns.path(db)),
             HirNode::Using(u) => Some(absolute_namespace_path(
@@ -54,6 +58,7 @@ impl<'db> ReferencesHandler<'db> for HirNode<'db> {
                 u.scope_id(db),
                 u.path(db).path(db),
             )),
+            HirNode::PathExpr(p) => namespace_of_step(db, *p),
             _ => None,
         };
         if let Some(path) = ns_path {
@@ -286,37 +291,126 @@ fn find_references_in_file<'db>(
     });
 }
 
-fn find_namespace_references<'db>(
+/// The namespace a path step names: `Lib` and `Lib.Sub` of `Lib.Sub.G()`.
+fn namespace_of_step<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    p: PathExpr<'db>,
+) -> Option<NamespacePath> {
+    let scope = p.scope_id(db);
+    if !scope.inference(db).path_expr_is_namespace(p) {
+        return None;
+    }
+    let (access, _) = p.to_namespace_access(db).as_ref()?;
+    let mut fragments = match &access.namespace {
+        Some(namespace) => namespace.path(db).fragments(db).clone(),
+        None => vec![],
+    };
+    fragments.push(access.target.ident(db));
+    Some(absolute_namespace_path(
+        db,
+        scope,
+        NamespacePath::new(db, fragments),
+    ))
+}
+
+/// The namespace named by the segment of `x : Lib.T` the cursor is on, when it
+/// is on one: past them, the cursor is on the type.
+pub(crate) fn namespace_at<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    spec: Spec<'db>,
+    offset: usize,
+) -> Option<NamespacePath> {
+    let SpecKind::Target(access) = spec.kind(db) else {
+        return None;
+    };
+    let written = access.path.namespace.as_ref()?;
+    let fragments = written.path(db).fragments(db);
+    (0..fragments.len()).find_map(|index| {
+        let span = written.fragment_span(db, index);
+        (span.start_byte <= offset && offset <= span.end_byte).then(|| {
+            absolute_namespace_path(
+                db,
+                written.scope_id,
+                NamespacePath::new(db, fragments[..=index].to_vec()),
+            )
+        })
+    })
+}
+
+/// Each segment of a written path that names `path`: `App` and `Motors` of
+/// `USING App.Motors` each name a namespace, relative to where it is written.
+fn segments_naming<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    written: &SpanNamespacePath<'db>,
+    path: NamespacePath,
+    locations: &mut Vec<ReferenceLocation>,
+) {
+    let fragments = written.path(db).fragments(db);
+    for index in 0..fragments.len() {
+        let prefix = NamespacePath::new(db, fragments[..=index].to_vec());
+        if absolute_namespace_path(db, written.scope_id, prefix) == path {
+            locations.push(ReferenceLocation {
+                file: written.scope_id.file(db),
+                span: written.fragment_span(db, index),
+            });
+        }
+    }
+}
+
+/// Where `path` is written: what declares it, or a namespace in it with a dotted
+/// name (`App` of `NAMESPACE App.Motors`), the USINGs, and the types and values
+/// qualified with it.
+pub(crate) fn find_namespace_references<'db>(
     db: &'db dyn WorkspaceDataBase,
     path: NamespacePath,
 ) -> Option<Vec<ReferenceLocation>> {
     let mut locations = vec![];
+    let target = path.fragments(db);
 
-    // All namespace declarations with this path. A namespace is named by
-    // the last segment of what declares it: `Motors` of `NAMESPACE
-    // App.Motors`, the whole name of a nested `NAMESPACE Motors`. The
-    // segments before it name its parents.
-    for ns in namespace_index(db, path).iter() {
-        let file = ns.scope_id(db).file(db);
-        locations.push(ReferenceLocation {
-            file,
-            span: last_segment(db, file, ns.name_span(db)),
-        });
-    }
-
-    // All USING statements with this path
     for file in db.get_files().iter() {
         let sema = semantic_index(db, *file);
-        let _ = sema.walk_hir(db, &mut |node: HirNode<'db>| {
-            // A USING's path is relative to where it is written.
-            if let HirNode::Using(u) = &node
-                && absolute_namespace_path(db, u.scope_id(db), u.path(db).path(db)) == path
+
+        // The written name ends the declaration's path, and what comes before
+        // is the enclosing namespaces: `Motors` nested in `NAMESPACE App` writes
+        // one segment of two, and does not name `App`.
+        for ns in sema.namespaces.iter() {
+            let declared = ns.path(db);
+            let declared = declared.fragments(db);
+            let span = ns.name_span(db);
+            let written = file
+                .document(db)
+                .as_str()
+                .get(span.start_byte..span.end_byte)
+                .map_or(1, |text| text.split('.').count());
+            let enclosing = declared.len().saturating_sub(written);
+            if target.len() > enclosing
+                && target.len() <= declared.len()
+                && declared[..target.len()] == target[..]
             {
-                let file = u.scope_id(db).file(db);
                 locations.push(ReferenceLocation {
-                    file,
-                    span: last_segment(db, file, u.get_span(db)),
+                    file: *file,
+                    span: nth_segment(db, *file, span, target.len() - enclosing - 1),
                 });
+            }
+        }
+
+        let _ = sema.walk_hir(db, &mut |node: HirNode<'db>| {
+            match &node {
+                HirNode::Using(u) => segments_naming(db, &u.path(db), path, &mut locations),
+                HirNode::Spec(spec) => {
+                    if let SpecKind::Target(access) = spec.kind(db)
+                        && let Some(written) = &access.path.namespace
+                    {
+                        segments_naming(db, written, path, &mut locations);
+                    }
+                }
+                HirNode::PathExpr(p) if namespace_of_step(db, *p) == Some(path) => {
+                    locations.push(ReferenceLocation {
+                        file: p.scope_id(db).file(db),
+                        span: p.ident(db).get_span(db),
+                    });
+                }
+                _ => {}
             }
             ControlFlow::Continue(())
         });
@@ -327,6 +421,47 @@ fn find_namespace_references<'db>(
     } else {
         Some(locations)
     }
+}
+
+/// The segment at `index` of the dotted name at `span`: `App` of `App.Motors` at
+/// 0. A rename edit replaces one identifier.
+fn nth_segment(
+    db: &dyn WorkspaceDataBase,
+    file: File,
+    span: tree_sitter::Range,
+    index: usize,
+) -> tree_sitter::Range {
+    let source = file.document(db).as_str();
+    let Some(text) = source.get(span.start_byte..span.end_byte) else {
+        return span;
+    };
+    let mut start = 0;
+    for (at, part) in text.split('.').enumerate() {
+        if at == index {
+            let begin = start + (part.len() - part.trim_start().len());
+            let end = begin + part.trim().len();
+            let point_at = |bytes: &str| {
+                let mut point = span.start_point;
+                for byte in bytes.bytes() {
+                    if byte == b'\n' {
+                        point.row += 1;
+                        point.column = 0;
+                    } else {
+                        point.column += 1;
+                    }
+                }
+                point
+            };
+            return tree_sitter::Range {
+                start_byte: span.start_byte + begin,
+                end_byte: span.start_byte + end,
+                start_point: point_at(&text[..begin]),
+                end_point: point_at(&text[..end]),
+            };
+        }
+        start += part.len() + 1;
+    }
+    span
 }
 
 /// The last segment of the dotted name at `span`: `Motors` of `App.Motors`,

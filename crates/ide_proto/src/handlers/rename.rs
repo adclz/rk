@@ -38,10 +38,23 @@ impl<'db> RenameHandler<'db> for HirNode<'db> {
             return None;
         }
 
-        let locations = self.locations(db)?;
+        // On `Lib` of `x : Lib.T` the cursor is on the namespace, not the type.
+        let namespace = match self {
+            HirNode::Spec(spec) => super::references::namespace_at(db, *spec, offset),
+            _ => None,
+        };
+        let locations = match namespace {
+            Some(path) => super::references::find_namespace_references(db, path)?,
+            None => self.locations(db)?,
+        };
 
         let mut changes: HashMap<_, Vec<TextEdit>> = HashMap::new();
         for loc in locations {
+            // A namespace can be spread over files, and a library's are not the
+            // workspace's to edit.
+            if db.get_library_file(loc.file.url(db)).is_some() {
+                return None;
+            }
             // An edit replaces a name and nothing else. A located variable
             // declared without one, `AT %QB4 : INT`, has its address where
             // a name would be, and a declaration whose name the parser had
