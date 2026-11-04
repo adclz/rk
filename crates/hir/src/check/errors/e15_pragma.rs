@@ -160,9 +160,12 @@ pub enum PragmaError<'db> {
         anchor: SpanIdent<'db>,
         pou_kind: &'static str,
     },
-    /// A `{test}` FUNCTION taking an `ARRAY[*]`: the runner calls a test with
-    /// no arguments, and an `ARRAY[*]` takes its bounds from the call.
-    TestWithConformand { var: VariableDecl<'db> },
+    /// A `{test}` FUNCTION with a `VAR_INPUT`, a `VAR_OUTPUT` or a `VAR_IN_OUT`:
+    /// the runner calls a test with no arguments, so nothing can bind it. Its
+    /// wrapper has no parameters to read: a scalar read a scratch local, what
+    /// goes by address wrote near address 0, a REAL made the module invalid, and
+    /// a test taking a variadic or an interface had no copy, so it never ran.
+    TestWithParameter { var: VariableDecl<'db> },
     /// `{export}` on something other than a FUNCTION. A PROGRAM is already
     /// exported for the schedule; an FB, a CLASS or a METHOD needs an
     /// instance the host does not have.
@@ -235,7 +238,7 @@ impl<'db> ErrorCode for PragmaError<'db> {
             Self::ExportOutsideFunction { .. } => "E1508",
             Self::ExportForbidden { .. } => "E1509",
             Self::UnknownPragma { .. } => "E1510",
-            Self::TestWithConformand { .. } => "E1511",
+            Self::TestWithParameter { .. } => "E1511",
         }
     }
 }
@@ -303,21 +306,20 @@ impl<'db> ToIdeDiagnostic<'db> for PragmaError<'db> {
                 .desc(self)
                 .range(crate::denormalize(db, file, &anchor.get_span(db)).unwrap_or_default())
                 .call(),
-            Self::TestWithConformand { var } => {
+            Self::TestWithParameter { var } => {
                 let mut diag = diag()
                     .message(format!(
-                        "the {{test}} FUNCTION cannot take the ARRAY[*] '{}'",
+                        "the {{test}} FUNCTION cannot take the parameter '{}'",
                         var.name_with_case(db).text(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
                     .range(crate::denormalize(db, file, &var.get_name_span(db)).unwrap_or_default())
                     .call();
-                diag.with_note(
-                    "the runner calls a test with no arguments, and an ARRAY[*] takes its bounds from the call"
-                        .to_string(),
+                diag.with_note("the runner calls a test with no arguments".to_string());
+                diag.with_help(
+                    "declare it in VAR, or call a FUNCTION taking it from the test".to_string(),
                 );
-                diag.with_help("call a FUNCTION taking the ARRAY[*] from the test".to_string());
                 diag
             }
             Self::ExportOutsideFunction { anchor, pou_kind } => {
