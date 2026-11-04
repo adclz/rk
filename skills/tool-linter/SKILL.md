@@ -140,7 +140,7 @@ L0118 accepts the code, which compiles; strict IEC 61131-3 wants the global impo
 | L0204 | `single-element-array` | info | an array dimension whose lower and upper bounds are equal |
 | L0205 | `aggregate-copy` | info | an assignment or a call binding that copies an ARRAY, a STRUCT or a FUNCTION_BLOCK or CLASS instance whole, which costs as much as the type is large; a STRING copies its text only and is not reported |
 | L0206 | `unused-import` | info | a USING directive that nothing in the file resolves through |
-| L0207 | `unused-return-type` | info | a call whose return value is discarded |
+| L0207 | `unused-return-type` | info | a call whose return value is discarded, unless it binds an output |
 | L0208 | `missing-input-param` | info | a FUNCTION_BLOCK or PROGRAM call that does not pass every declared VAR_INPUT; an input the body writes through the same instance, `inst.x := 1`, counts as passed |
 | L0209 | `case-without-else` | info | a CASE statement with no ELSE branch, unless its labels take every variant of the selector's enum or its whole integer or subrange range; on an enum it names the variants left out |
 | L0210 | `empty-body` | info | a FUNCTION, FUNCTION_BLOCK, METHOD or PROGRAM with no statements |
