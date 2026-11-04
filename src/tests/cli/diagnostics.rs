@@ -170,3 +170,30 @@ fn full_still_renders_ariadne_reports() {
     assert!(out.contains("main.st"), "workspace-relative path: {out}");
     assert!(out.contains("ULINT#5"), "source excerpt shown");
 }
+
+/// A label in another file is written under its short name, as the report's own
+/// file is: it printed its whole `file:///` URL.
+#[test]
+fn a_label_in_another_file_has_its_short_name() {
+    let (_ws, root) = temp_workspace(&[
+        (
+            "base.st",
+            "INTERFACE I\n    METHOD M : INT\n        VAR_INPUT a : INT; END_VAR\n    END_METHOD\nEND_INTERFACE\n",
+        ),
+        (
+            "derived.st",
+            "CLASS C IMPLEMENTS I\n    METHOD PUBLIC M : INT\n        VAR_INPUT a : REAL; END_VAR\n        M := 0;\n    END_METHOD\nEND_CLASS\n",
+        ),
+    ]);
+    disable_stdlib();
+    let db = init_db(&root, false, true).expect("init db");
+    let per_file = collect_diagnostics(&db, false);
+    let mut out = Vec::new();
+    DiagnosticReporter::new(&db, &root)
+        .with_format(OutputFormat::Full)
+        .report_files(&per_file, &mut out);
+    let out = String::from_utf8(out).unwrap();
+    assert!(out.contains("derived.st:"), "the report's own file: {out}");
+    assert!(out.contains("base.st:"), "the label's file: {out}");
+    assert!(!out.contains("file:"), "no URL: {out}");
+}
