@@ -92,6 +92,46 @@ END_FUNCTION
     );
 }
 
+/// A test may have a result: it is a local of the test, which reads it back
+/// whatever its type, and nothing else reads it.
+#[rstest]
+fn test_e2e_a_test_reads_its_own_result(mut with_db: db::RootDatabase) {
+    let source = r#"
+TYPE Pair : STRUCT a : INT; b : REAL; END_STRUCT; END_TYPE
+TYPE Row : ARRAY[0..3] OF INT; END_TYPE
+
+{test}
+FUNCTION t_real : REAL
+    t_real := 1.5;
+    IF t_real <= 1.0 THEN __RAISE('real'); END_IF;
+END_FUNCTION
+
+{test}
+FUNCTION t_struct : Pair
+    t_struct.a := 7;
+    t_struct.b := 1.5;
+    IF t_struct.a <> 7 OR t_struct.b <= 1.0 THEN __RAISE('struct'); END_IF;
+END_FUNCTION
+
+{test}
+FUNCTION t_string : STRING
+    t_string := 'abc';
+    IF t_string <> 'abc' THEN __RAISE('string'); END_IF;
+END_FUNCTION
+
+{test}
+FUNCTION t_array : Row
+    t_array[1] := 7;
+    IF t_array[1] <> 7 THEN __RAISE('array'); END_IF;
+END_FUNCTION
+    "#;
+
+    let core_bytes = super::compile_to_wasm_as_built(&mut with_db, source);
+    let results = crate::tests::codegen::run_tests(&core_bytes, None).expect("run tests");
+    assert_eq!(results.len(), 4);
+    assert!(results.iter().all(|r| r.passed()), "{results:?}");
+}
+
 /// A `__RAISE` message reaches the report intact.
 ///
 /// The message is written into the test's 12-byte result area as a pointer and

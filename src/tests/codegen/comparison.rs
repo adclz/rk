@@ -27,6 +27,25 @@ const COMPARISON: &str = include_str!("../../../stdlib/Comparison.st");
 #[case::lreal("LREAL#-1.5", "LREAL#0.5", "LREAL#2.5")]
 #[case::time("T#-1s", "T#0s", "T#1s")]
 #[case::ltime("LT#-1s", "LT#0s", "LT#1s")]
+#[case::byte("BYTE#0", "BYTE#100", "BYTE#255")]
+#[case::word("WORD#0", "WORD#100", "WORD#65535")]
+#[case::dword("DWORD#0", "DWORD#100", "DWORD#4294967295")]
+#[case::lword("LWORD#0", "LWORD#100", "LWORD#18446744073709551615")]
+#[case::date("D#2020-01-01", "D#2020-01-02", "D#2020-01-03")]
+#[case::ldate("LD#2020-01-01", "LD#2020-01-02", "LD#2020-01-03")]
+#[case::tod("TOD#01:00:00", "TOD#02:00:00", "TOD#03:00:00")]
+#[case::ltod("LTOD#01:00:00", "LTOD#02:00:00", "LTOD#03:00:00")]
+#[case::dt(
+    "DT#2020-01-01-01:00:00",
+    "DT#2020-01-02-01:00:00",
+    "DT#2020-01-03-01:00:00"
+)]
+#[case::ldt(
+    "LDT#2020-01-01-01:00:00",
+    "LDT#2020-01-02-01:00:00",
+    "LDT#2020-01-03-01:00:00"
+)]
+#[case::char("CHAR#'a'", "CHAR#'b'", "CHAR#'c'")]
 fn each_function_on_each_type(
     mut with_db: db::RootDatabase,
     #[case] low: &str,
@@ -61,6 +80,12 @@ fn each_function_on_each_type(
         format!("NOT NE({mid}, {mid})"),
         format!("NE(IN1 := {low}, IN2 := {high})"),
     ];
+    assert_each_holds(&mut with_db, &calls);
+}
+
+/// Each call answers TRUE, in a program of its own that reports the first which
+/// does not.
+fn assert_each_holds(db: &mut db::RootDatabase, calls: &[String]) {
     let mut source = String::from("USING Std.Comparison;\nFUNCTION test : DINT\n");
     for (i, call) in calls.iter().enumerate() {
         source += &format!(
@@ -70,11 +95,68 @@ fn each_function_on_each_type(
     }
     source += "END_FUNCTION\n";
 
-    let wasm = crate::tests::codegen::compile_with_libraries(&mut with_db, &[COMPARISON], &source);
+    let wasm = crate::tests::codegen::compile_with_libraries(db, &[COMPARISON], &source);
     let failed: i32 = super::execute_wasm(&wasm, "test", ());
     if failed != 0 {
         panic!("{} is false", calls[failed as usize - 1]);
     }
+}
+
+/// A BOOL has two values, and FALSE is the smaller.
+#[rstest]
+fn on_bool(mut with_db: db::RootDatabase) {
+    let calls = [
+        "GT(TRUE, FALSE)",
+        "NOT GT(FALSE, TRUE)",
+        "NOT GT(TRUE, TRUE, FALSE)",
+        "GE(TRUE, TRUE, FALSE)",
+        "NOT GE(FALSE, TRUE)",
+        "EQ(TRUE, TRUE, TRUE)",
+        "NOT EQ(TRUE, TRUE, FALSE)",
+        "LE(FALSE, FALSE, TRUE)",
+        "NOT LE(TRUE, FALSE)",
+        "LT(FALSE, TRUE)",
+        "NOT LT(FALSE, TRUE, TRUE)",
+        "NE(TRUE, FALSE)",
+        "NOT NE(TRUE, TRUE)",
+    ]
+    .map(str::to_string);
+    assert_each_holds(&mut with_db, &calls);
+}
+
+/// A STRING takes two, three or four inputs, each named too, and compares as an
+/// operator does: a shorter one is less than a longer one it starts.
+#[rstest]
+fn on_strings(mut with_db: db::RootDatabase) {
+    let calls = [
+        "GT('b', 'a')",
+        "GT('c', 'b', 'a')",
+        "GT('d', 'c', 'b', 'a')",
+        "NOT GT('d', 'c', 'c', 'a')",
+        "GT('ab', 'a')",
+        "GT(IN1 := 'b', IN2 := 'a')",
+        "GE('b', 'b')",
+        "GE('c', 'b', 'b')",
+        "GE('d', 'c', 'c', 'a')",
+        "NOT GE('a', 'b', 'b')",
+        "EQ('a', 'a')",
+        "EQ('a', 'a', 'a')",
+        "EQ('a', 'a', 'a', 'a')",
+        "NOT EQ('a', 'a', 'a', 'b')",
+        "LE('a', 'a')",
+        "LE('a', 'a', 'b')",
+        "LE('a', 'b', 'b', 'c')",
+        "NOT LE('b', 'a', 'a')",
+        "LT('a', 'b')",
+        "LT('a', 'b', 'c')",
+        "LT('a', 'b', 'c', 'd')",
+        "NOT LT('a', 'b', 'b', 'd')",
+        "NE('a', 'b')",
+        "NOT NE('a', 'a')",
+        "NE(IN1 := 'a', IN2 := 'b')",
+    ]
+    .map(str::to_string);
+    assert_each_holds(&mut with_db, &calls);
 }
 
 /// How the calls pick an overload: literals, and two types landing on the wider

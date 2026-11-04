@@ -51,6 +51,7 @@ mod retain_structs;
 mod return_value;
 mod schedule;
 mod single;
+mod standard_names;
 mod starting_values;
 mod strings;
 mod structs;
@@ -62,6 +63,7 @@ mod unary_ops;
 mod var_config;
 mod variadics;
 mod wasm_pragma;
+mod widening;
 
 pub use crate::tests::utils::with_db;
 

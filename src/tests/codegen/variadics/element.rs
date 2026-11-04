@@ -331,3 +331,29 @@ END_FUNCTION
         .collect();
     assert_calls(&mut with_db, declarations, &calls);
 }
+
+/// A variadic parameter named in a call takes that one argument, beside the ones
+/// passed by position.
+#[rstest]
+fn a_pack_named_in_a_call_takes_one_argument(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION Sum : INT
+        VAR_INPUT values : INT...; END_VAR
+            Sum := ...values+;
+        END_FUNCTION
+
+        FUNCTION Pick : INT
+        VAR_INPUT k : INT; values : INT...; END_VAR
+            Pick := ...values[k];
+        END_FUNCTION
+
+        FUNCTION test : DINT
+            IF Sum(values := 5) <> 5 THEN test := 1; RETURN; END_IF;
+            IF Sum(1, values := 7) <> 8 THEN test := 2; RETURN; END_IF;
+            IF Pick(k := 0, values := 7) <> 7 THEN test := 3; RETURN; END_IF;
+            IF Pick(values := 7, k := 0) <> 7 THEN test := 4; RETURN; END_IF;
+        END_FUNCTION
+    "#;
+    let result: i32 = run(&mut with_db, source, "test", ());
+    assert_eq!(result, 0, "the call that went wrong");
+}

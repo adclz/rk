@@ -22,7 +22,12 @@ fn selection() -> String {
 
 /// Each expression holds, in a function with `locals`, in a program of
 /// `declarations`.
-fn assert_holds(db: &mut RootDatabase, declarations: &str, locals: &str, holds: &[String]) {
+pub(super) fn assert_holds(
+    db: &mut RootDatabase,
+    declarations: &str,
+    locals: &str,
+    holds: &[String],
+) {
     let mut source = format!(
         "USING Std.Selection;\n{declarations}\nFUNCTION test : DINT\nVAR {locals} END_VAR\n"
     );
