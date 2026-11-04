@@ -703,3 +703,43 @@ pub fn definition_in_a_program_configuration(
         format_definition_response(&def)
     );
 }
+
+/// A VAR_CONFIG path that goes on into a STRUCT: its field leads to its declaration,
+/// and a variable of a named type to that type, as it does in a body.
+#[rstest]
+#[case::the_variable("e.fuel", "Engine : STRUCT")]
+#[case::the_field("fuel : INT := 2", "fuel : INT;")]
+pub fn definition_in_a_var_config_path_into_a_struct(
+    mut with_db: RootDatabase,
+    #[case] at: &str,
+    #[case] declared: &str,
+) {
+    let source = r#"TYPE Engine : STRUCT fuel : INT; END_STRUCT; END_TYPE
+
+PROGRAM Main
+VAR e : Engine; END_VAR
+END_PROGRAM
+
+CONFIGURATION Cfg
+RESOURCE Res ON CPU
+    TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+    PROGRAM P1 WITH T : Main;
+END_RESOURCE
+VAR_CONFIG
+    Res.P1.e.fuel : INT := 2;
+END_VAR
+END_CONFIGURATION
+"#;
+    let file = add_source(&mut with_db, source);
+    let offset = source.find(at).unwrap();
+    let node = ide_proto::walk::descendant_at(&with_db, file, offset).unwrap();
+    let response = node.definition(&with_db, offset).expect("a definition");
+    let target = source.find(declared).unwrap();
+    let line = source[..target].matches('\n').count();
+    let column = target - source[..target].rfind('\n').map_or(0, |n| n + 1);
+    assert!(
+        format_definition_response(&response).contains(&format!(":{line}:{column}-")),
+        "{}",
+        format_definition_response(&response)
+    );
+}

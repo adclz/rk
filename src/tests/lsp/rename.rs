@@ -863,3 +863,34 @@ END_FUNCTION
     END_FUNCTION
     ");
 }
+
+/// A VAR_CONFIG path goes on into a STRUCT, and its last step names the field.
+#[rstest]
+#[case::from_the_declaration("fuel : INT;")]
+#[case::from_the_path("fuel : INT := 2")]
+fn rename_a_field_named_in_a_var_config_path(mut with_db: RootDatabase, #[case] at: &str) {
+    let source = r#"TYPE Engine : STRUCT fuel : INT; END_STRUCT; END_TYPE
+
+PROGRAM Main
+VAR e : Engine; END_VAR
+END_PROGRAM
+
+CONFIGURATION Cfg
+RESOURCE Res ON CPU
+    TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+    PROGRAM P1 WITH T : Main;
+END_RESOURCE
+VAR_CONFIG
+    Res.P1.e.fuel : INT := 2;
+END_VAR
+END_CONFIGURATION
+"#;
+    let file = add_source(&mut with_db, source);
+    let offset = source.find(at).unwrap();
+    let node = descendant_at(&with_db, file, offset).unwrap();
+    let edit = node.rename(&with_db, offset, "gas").unwrap();
+    assert_eq!(
+        apply_rename(&with_db, &edit, &[source]),
+        source.replace("fuel", "gas")
+    );
+}
