@@ -71,6 +71,8 @@ END_VAR
 `Belt2` runs the same program as `Belt1`, and only this value differs.
 Every other instance keeps the value of the declaration, see [Configuration](configuration.md).
 
+The path can go on into a `STRUCT`, to give one of its fields a value, and the other fields keep theirs: `Main.Belt2.gains.p : REAL := 0.5;`.
+
 ## In a library
 
 A library is code for any machine: it names no address.

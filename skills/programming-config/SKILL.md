@@ -252,7 +252,7 @@ The program only reads the block's outputs: a program that also calls the block 
 
 ## VAR_CONFIG
 
-`VAR_CONFIG` gives one instance its own starting values, by the variable's path from the resource, through the instances the program holds:
+`VAR_CONFIG` gives one instance its own starting values, by the variable's path from the resource, through the instances the program holds and into the fields of a `STRUCT`:
 
 ```iecst
 FUNCTION_BLOCK Motor
