@@ -823,18 +823,26 @@ fn var_config_completion<'db>(
     if written.contains(":=") {
         return Some(vec![]);
     }
-    // The type, which the entry repeats: the variable's own.
+    // The type, which the entry repeats: the variable's own, or the field's.
     if let Some((path, _)) = written.split_once(':') {
         let path = path.split_whitespace().next().unwrap_or_default();
         return Some(match config_path_prefix(db, config, &path_steps(path)) {
             Some(ConfigPathPrefix::Holder {
-                member: Some(var), ..
-            }) => vec![CompletionItem {
-                label: var.spec(db).infer(db).type_name(db),
-                kind: Some(CompletionItemKind::TYPE_PARAMETER),
-                detail: Some(format!("the type of {}", var.name_with_case(db).text(db))),
-                ..Default::default()
-            }],
+                member: Some(var),
+                element,
+                ..
+            }) => {
+                let (spec, name) = match element {
+                    Some(field) => (field.spec(db), field.name_with_case(db)),
+                    None => (var.spec(db), var.name_with_case(db)),
+                };
+                vec![CompletionItem {
+                    label: spec.infer(db).type_name(db),
+                    kind: Some(CompletionItemKind::TYPE_PARAMETER),
+                    detail: Some(format!("the type of {}", name.text(db))),
+                    ..Default::default()
+                }]
+            }
             _ => static_snippets::var_section_items(false),
         });
     }
@@ -881,6 +889,23 @@ fn var_config_completion<'db>(
                 .chain(members.iter().map(|var| builder.build_variable(db, var)))
                 .collect()
         }
+        // The fields of a STRUCT, where a value can go.
+        ConfigPathPrefix::Holder {
+            ty: hir::hir_ty::ty::Type::Struct(strukt),
+            ..
+        } => strukt
+            .elements(db)
+            .iter()
+            .map(|element| CompletionItem {
+                label: element.name_with_case(db).text(db).to_string(),
+                kind: Some(CompletionItemKind::FIELD),
+                ..Default::default()
+            })
+            .collect(),
+        // Past a field, only another field: an instance it holds has no path.
+        ConfigPathPrefix::Holder {
+            element: Some(_), ..
+        } => vec![],
         ConfigPathPrefix::Holder { ty, .. } => members_of(db, ty)
             .iter()
             .map(|var| builder.build_variable(db, var))
