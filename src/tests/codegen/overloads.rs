@@ -514,6 +514,26 @@ fn move_into_a_wider_variable(mut with_db: db::RootDatabase) {
     assert_eq!(result, 75);
 }
 
+/// MOVE's output bound by position, with its result beside it.
+#[rstest]
+fn move_binds_its_output_by_position(mut with_db: db::RootDatabase) {
+    let source = r#"
+        USING Std.Memory;
+        FUNCTION test : DINT
+        VAR x, y : INT; END_VAR
+            x := MOVE(8, y);
+            test := x * 10 + y;
+        END_FUNCTION
+    "#;
+    let wasm = crate::tests::codegen::compile_with_libraries(
+        &mut with_db,
+        &[include_str!("../../../stdlib/Memory.st")],
+        source,
+    );
+    let result: i32 = super::execute_wasm(&wasm, "test", ());
+    assert_eq!(result, 88);
+}
+
 /// An untyped literal matches its default type exactly only when its value
 /// fits it: 70000 is no INT, so the DINT overload takes it.
 #[rstest]
