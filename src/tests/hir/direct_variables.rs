@@ -1146,7 +1146,7 @@ END_CONFIGURATION
         |
      19 |     Res.P1.r^.run  AT %QX1.0 : BOOL;
         |               ^|^
-        |                `--- a VAR_CONFIG path names instances and variables, not an element or what a reference points at
+        |                `--- a VAR_CONFIG path names instances, variables and STRUCT fields, not an array's element or what a reference points at
         |
         | Help: name the variable itself
     ----'
