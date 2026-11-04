@@ -264,6 +264,12 @@ pub enum ExprKind<'db> {
         param_id: SpanIdent<'db>,
         operator: FoldOperatorKind,
     },
+    // One argument of a variadic parameter: ...param[index]
+    PackElement {
+        /// The pack, as written; matched by its `ident(db)`.
+        param_id: SpanIdent<'db>,
+        index: Expr<'db>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]

@@ -2,7 +2,7 @@
 
 A FUNCTION or a METHOD can take any number of arguments of one type, collected in a variadic parameter.
 
-Declare it with `...` after its type, and read it with a fold: `...values+` adds every argument.
+Declare it with `...` after its type, and read it with a fold or by position: `...values+` adds every argument, `...values[0]` reads the first.
 
 ```iecst
 FUNCTION Sum : INT
@@ -29,14 +29,35 @@ A METHOD gets its copies the same way, per argument count and per instance type 
 
 With a single argument, an arithmetic fold, `MIN` and `MAX` give that argument, and a comparison fold gives `TRUE`.
 
+## By position
+
+`...values[i]` reads one argument, counting from 0. The index is any integer: one below 0 reads the first argument, and one past the last reads the last.
+
+```iecst
+FUNCTION Pick : INT
+VAR_INPUT
+    i : LINT;
+    values : INT...;
+END_VAR
+    Pick := ...values[i];
+END_FUNCTION
+
+FUNCTION Demo : INT
+    Demo := Pick(1, 10, 20, 30) + Pick(9, 10, 20, 30);   // 20 + 30
+END_FUNCTION
+```
+
+The inputs declared before the variadic parameter take their arguments first, here `i`.
+
 ## Rules
 
 - The type must be elementary, or an alias of one, and neither a `STRING` nor a subrange (`E0811`).
-- A FUNCTION or METHOD has one variadic parameter (`E0812`), and it is its only `VAR_INPUT` (`E0815`).
+- A FUNCTION or METHOD has one variadic parameter (`E0812`), and it is its last `VAR_INPUT` (`E0815`).
 - A PROGRAM or a FUNCTION_BLOCK takes none (`E0029`).
 - A call passes it at least one argument (`E0813`).
-- `...` folds the POU's own variadic parameter and nothing else (`E0814`).
-- A fold is the only way to read it: `First := values`, `values := 0` or `Other(values)` is `E0816`.
+- `...` reads the POU's own variadic parameter and nothing else (`E0814`).
+- `...` is the only way to read it: `First := values`, `values := 0` or `Other(values)` is `E0816`.
+- An index has an integer type (`E0819`).
 - An `{export}` FUNCTION cannot be variadic, since each argument count is a function of its own (`E1509`).
 
 Each argument converts to the parameter's type as any input does, see [Strict casts](strict-casts.md).

@@ -154,6 +154,10 @@
         "named": true
       },
       {
+        "type": "pack_element",
+        "named": true
+      },
+      {
         "type": "power_operator",
         "named": true
       },
@@ -5178,6 +5182,32 @@
         "types": [
           {
             "type": "variable_list",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "pack_element",
+    "named": true,
+    "fields": {
+      "index": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "_expression",
+            "named": true
+          }
+        ]
+      },
+      "param": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "identifier",
             "named": true
           }
         ]

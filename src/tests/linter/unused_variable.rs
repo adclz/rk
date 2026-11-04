@@ -426,3 +426,18 @@ fn the_arguments_of_a_failed_call_are_read(mut with_db: RootDatabase) {
     ---'
     ");
 }
+
+/// What an index reads is used, and so is the pack it reads from.
+#[rstest]
+fn an_index_reads_its_variable(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION test : INT
+VAR_INPUT
+    k : INT;
+    values : INT...;
+END_VAR
+    test := ...values[k];
+END_FUNCTION
+"#;
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "unused-variable"), @"");
+}

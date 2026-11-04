@@ -624,16 +624,13 @@ impl<'db> Type<'db> {
                     place.current_path = expr;
                     return;
                 }
-                // A pack is read by a fold and by nothing else: it is as many
+                // A pack is read by `...` and by nothing else: it is as many
                 // parameters as the call passed, which no single read, write
                 // or argument can be, and lowering has no cell for it.
                 if var.variadic(db) {
                     ctx.errors.push(
-                        crate::check::errors::e08_call::CallError::VariadicOutsideFold {
-                            expr,
-                            var,
-                        }
-                        .to_diagnostic(db, ctx.scope.file(db)),
+                        crate::check::errors::e08_call::CallError::VariadicAsVariable { expr, var }
+                            .to_diagnostic(db, ctx.scope.file(db)),
                     );
                     ctx.variables_used.insert(var);
                     ctx.type_of_path_expr.insert(expr, Type::Never);

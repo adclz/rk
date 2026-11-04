@@ -72,7 +72,8 @@ fn alloc_for_scratch(
 }
 
 /// The scratch pairs of the operators in `body` that read their operands twice
-/// ([`crate::emit_expr::needs_operand_pair`]).
+/// ([`crate::emit_expr::needs_operand_pair`]). A pack element keeps its position
+/// in the first of the 64-bit pair.
 fn alloc_pair_scratch(
     body: &[MirStmt],
     params_len: u32,
@@ -81,6 +82,9 @@ fn alloc_pair_scratch(
     let (mut int32, mut int64, mut float32, mut float64) = (false, false, false, false);
     for stmt in body {
         stmt.any_expr(&mut |e| {
+            if matches!(e, MirExpr::PackElement { .. }) {
+                int64 = true;
+            }
             if crate::emit_expr::needs_operand_pair(e)
                 && let MirExpr::BinOp { ty, .. } = e
             {
@@ -866,9 +870,9 @@ impl<'a> WasmGen<'a> {
                     walk_expr(db, lhs, found);
                     walk_expr(db, rhs, found);
                 }
-                MirExpr::UnaryOp { expr, .. } | MirExpr::Cast { expr, .. } => {
-                    walk_expr(db, expr, found)
-                }
+                MirExpr::UnaryOp { expr, .. }
+                | MirExpr::Cast { expr, .. }
+                | MirExpr::PackElement { index: expr, .. } => walk_expr(db, expr, found),
                 MirExpr::Load(place, _)
                 | MirExpr::AddrOf(place)
                 | MirExpr::StringCapacity(place) => walk_place(db, place, found),

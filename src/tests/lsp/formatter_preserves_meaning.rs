@@ -177,6 +177,20 @@ END_FUNCTION
     );
 }
 
+/// A read by position, with an expression for an index.
+#[rstest]
+fn a_read_by_position_survives_formatting(#[allow(unused)] with_db: RootDatabase) {
+    assert_meaning_preserved(
+        "a read by position",
+        r#"
+FUNCTION F : INT
+VAR_INPUT k : LINT; values : INT...; END_VAR
+    F := ...values[k + 1] * 2 + ...values[...values[0]];
+END_FUNCTION
+"#,
+    );
+}
+
 /// VAR_ACCESS directions: the case the suite used to pin BACKWARDS.
 #[rstest]
 fn access_directions_survive_formatting(#[allow(unused)] with_db: RootDatabase) {

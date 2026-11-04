@@ -103,3 +103,25 @@ END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "unnecessary-parens"), @r"");
 }
+
+/// An index is linted as any expression.
+#[rstest]
+fn parens_in_an_index(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION test : INT
+VAR_INPUT values : INT...; END_VAR
+    test := ...values[(1)];
+END_FUNCTION
+"#;
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "unnecessary-parens"), @r"
+    [L0310] Hint: unnecessary parentheses
+       ,-[ file:///test0.st:4:23 ]
+       |
+     4 |     test := ...values[(1)];
+       |                       ^|^
+       |                        `--- unnecessary parentheses around '1'
+       |
+       | Note: lint rule: unnecessary-parens
+    ---'
+    ");
+}

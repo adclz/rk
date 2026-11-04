@@ -818,12 +818,13 @@ impl<'db> InitInference<'db> {
             }
         }
 
-        // If there's a variadic parameter, it must be the only VAR_INPUT parameter
+        // A variadic parameter takes the arguments left in the call, so no
+        // input follows it.
         if let Some(variadic_var) = first_variadic {
-            for var in variables {
+            for var in variables.iter().skip_while(|var| **var != variadic_var) {
                 if var.is_input(db) && !var.variadic(db) {
                     self.errors.push(
-                        CallError::VariadicMixedWithOtherInputs {
+                        CallError::InputAfterVariadic {
                             variadic_var,
                             other_var: *var,
                         }

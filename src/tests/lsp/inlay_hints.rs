@@ -173,9 +173,9 @@ END_FUNCTION_BLOCK"#;
     // Non-variadic shows name, variadic shows position
     assert_snapshot!(render(&result), @r"
     10:7  param1:  -> 4:8
-    10:10  (1):
-    10:13  (2):
-    10:16  (3):
+    10:10  (0):
+    10:13  (1):
+    10:16  (2):
     ");
 }
 

@@ -682,8 +682,9 @@ NAMESPACE Std.Selection
 
 	/* Returns the input that `K` selects, counting from 0.
 
-	   There are overloads for two, three and four inputs. A `K` below 0 selects
-	   the first, and a `K` past the last selects the last.
+	   A `K` below 0 selects the first input, and a `K` past the last selects the
+	   last. Every elementary type takes any number of inputs, except `STRING`,
+	   which takes two, three or four.
 
 	   # Examples
 
@@ -695,364 +696,142 @@ NAMESPACE Std.Selection
 	*/
 	FUNCTION MUX: BOOL
 		VAR_INPUT
-			K: INT;
-			IN0: BOOL;
-			IN1: BOOL;
+			K: LINT;
+			IN: BOOL...;
 		END_VAR
 
-		IF K <= 0 THEN
-			MUX := IN0;
-		ELSE
-			MUX := IN1;
-		END_IF;
+		MUX := ...IN[K];
 	END_FUNCTION
 
-	FUNCTION MUX: BOOL
+	FUNCTION MUX: SINT
 		VAR_INPUT
-			K: INT;
-			IN0: BOOL;
-			IN1: BOOL;
-			IN2: BOOL;
+			K: LINT;
+			IN: SINT...;
 		END_VAR
 
-		IF K <= 0 THEN
-			MUX := IN0;
-		ELSIF K = 1 THEN
-			MUX := IN1;
-		ELSE
-			MUX := IN2;
-		END_IF;
-	END_FUNCTION
-
-	FUNCTION MUX: BOOL
-		VAR_INPUT
-			K: INT;
-			IN0: BOOL;
-			IN1: BOOL;
-			IN2: BOOL;
-			IN3: BOOL;
-		END_VAR
-
-		IF K <= 0 THEN
-			MUX := IN0;
-		ELSIF K = 1 THEN
-			MUX := IN1;
-		ELSIF K = 2 THEN
-			MUX := IN2;
-		ELSE
-			MUX := IN3;
-		END_IF;
+		MUX := ...IN[K];
 	END_FUNCTION
 
 	FUNCTION MUX: INT
 		VAR_INPUT
-			K: INT;
-			IN0: INT;
-			IN1: INT;
+			K: LINT;
+			IN: INT...;
 		END_VAR
 
-		IF K <= 0 THEN
-			MUX := IN0;
-		ELSE
-			MUX := IN1;
-		END_IF;
-	END_FUNCTION
-
-	FUNCTION MUX: INT
-		VAR_INPUT
-			K: INT;
-			IN0: INT;
-			IN1: INT;
-			IN2: INT;
-		END_VAR
-
-		IF K <= 0 THEN
-			MUX := IN0;
-		ELSIF K = 1 THEN
-			MUX := IN1;
-		ELSE
-			MUX := IN2;
-		END_IF;
-	END_FUNCTION
-
-	FUNCTION MUX: INT
-		VAR_INPUT
-			K: INT;
-			IN0: INT;
-			IN1: INT;
-			IN2: INT;
-			IN3: INT;
-		END_VAR
-
-		IF K <= 0 THEN
-			MUX := IN0;
-		ELSIF K = 1 THEN
-			MUX := IN1;
-		ELSIF K = 2 THEN
-			MUX := IN2;
-		ELSE
-			MUX := IN3;
-		END_IF;
+		MUX := ...IN[K];
 	END_FUNCTION
 
 	FUNCTION MUX: DINT
 		VAR_INPUT
-			K: INT;
-			IN0: DINT;
-			IN1: DINT;
+			K: LINT;
+			IN: DINT...;
 		END_VAR
 
-		IF K <= 0 THEN
-			MUX := IN0;
-		ELSE
-			MUX := IN1;
-		END_IF;
-	END_FUNCTION
-
-	FUNCTION MUX: DINT
-		VAR_INPUT
-			K: INT;
-			IN0: DINT;
-			IN1: DINT;
-			IN2: DINT;
-		END_VAR
-
-		IF K <= 0 THEN
-			MUX := IN0;
-		ELSIF K = 1 THEN
-			MUX := IN1;
-		ELSE
-			MUX := IN2;
-		END_IF;
-	END_FUNCTION
-
-	FUNCTION MUX: DINT
-		VAR_INPUT
-			K: INT;
-			IN0: DINT;
-			IN1: DINT;
-			IN2: DINT;
-			IN3: DINT;
-		END_VAR
-
-		IF K <= 0 THEN
-			MUX := IN0;
-		ELSIF K = 1 THEN
-			MUX := IN1;
-		ELSIF K = 2 THEN
-			MUX := IN2;
-		ELSE
-			MUX := IN3;
-		END_IF;
+		MUX := ...IN[K];
 	END_FUNCTION
 
 	FUNCTION MUX: LINT
 		VAR_INPUT
-			K: INT;
-			IN0: LINT;
-			IN1: LINT;
+			K: LINT;
+			IN: LINT...;
 		END_VAR
 
-		IF K <= 0 THEN
-			MUX := IN0;
-		ELSE
-			MUX := IN1;
-		END_IF;
+		MUX := ...IN[K];
 	END_FUNCTION
 
-	FUNCTION MUX: LINT
+	FUNCTION MUX: USINT
 		VAR_INPUT
-			K: INT;
-			IN0: LINT;
-			IN1: LINT;
-			IN2: LINT;
+			K: LINT;
+			IN: USINT...;
 		END_VAR
 
-		IF K <= 0 THEN
-			MUX := IN0;
-		ELSIF K = 1 THEN
-			MUX := IN1;
-		ELSE
-			MUX := IN2;
-		END_IF;
+		MUX := ...IN[K];
 	END_FUNCTION
 
-	FUNCTION MUX: LINT
+	FUNCTION MUX: UINT
 		VAR_INPUT
-			K: INT;
-			IN0: LINT;
-			IN1: LINT;
-			IN2: LINT;
-			IN3: LINT;
+			K: LINT;
+			IN: UINT...;
 		END_VAR
 
-		IF K <= 0 THEN
-			MUX := IN0;
-		ELSIF K = 1 THEN
-			MUX := IN1;
-		ELSIF K = 2 THEN
-			MUX := IN2;
-		ELSE
-			MUX := IN3;
-		END_IF;
+		MUX := ...IN[K];
+	END_FUNCTION
+
+	FUNCTION MUX: UDINT
+		VAR_INPUT
+			K: LINT;
+			IN: UDINT...;
+		END_VAR
+
+		MUX := ...IN[K];
+	END_FUNCTION
+
+	FUNCTION MUX: ULINT
+		VAR_INPUT
+			K: LINT;
+			IN: ULINT...;
+		END_VAR
+
+		MUX := ...IN[K];
+	END_FUNCTION
+
+	FUNCTION MUX: BYTE
+		VAR_INPUT
+			K: LINT;
+			IN: BYTE...;
+		END_VAR
+
+		MUX := ...IN[K];
+	END_FUNCTION
+
+	FUNCTION MUX: WORD
+		VAR_INPUT
+			K: LINT;
+			IN: WORD...;
+		END_VAR
+
+		MUX := ...IN[K];
+	END_FUNCTION
+
+	FUNCTION MUX: DWORD
+		VAR_INPUT
+			K: LINT;
+			IN: DWORD...;
+		END_VAR
+
+		MUX := ...IN[K];
+	END_FUNCTION
+
+	FUNCTION MUX: LWORD
+		VAR_INPUT
+			K: LINT;
+			IN: LWORD...;
+		END_VAR
+
+		MUX := ...IN[K];
 	END_FUNCTION
 
 	FUNCTION MUX: REAL
 		VAR_INPUT
-			K: INT;
-			IN0: REAL;
-			IN1: REAL;
+			K: LINT;
+			IN: REAL...;
 		END_VAR
 
-		IF K <= 0 THEN
-			MUX := IN0;
-		ELSE
-			MUX := IN1;
-		END_IF;
-	END_FUNCTION
-
-	FUNCTION MUX: REAL
-		VAR_INPUT
-			K: INT;
-			IN0: REAL;
-			IN1: REAL;
-			IN2: REAL;
-		END_VAR
-
-		IF K <= 0 THEN
-			MUX := IN0;
-		ELSIF K = 1 THEN
-			MUX := IN1;
-		ELSE
-			MUX := IN2;
-		END_IF;
-	END_FUNCTION
-
-	FUNCTION MUX: REAL
-		VAR_INPUT
-			K: INT;
-			IN0: REAL;
-			IN1: REAL;
-			IN2: REAL;
-			IN3: REAL;
-		END_VAR
-
-		IF K <= 0 THEN
-			MUX := IN0;
-		ELSIF K = 1 THEN
-			MUX := IN1;
-		ELSIF K = 2 THEN
-			MUX := IN2;
-		ELSE
-			MUX := IN3;
-		END_IF;
+		MUX := ...IN[K];
 	END_FUNCTION
 
 	FUNCTION MUX: LREAL
 		VAR_INPUT
-			K: INT;
-			IN0: LREAL;
-			IN1: LREAL;
+			K: LINT;
+			IN: LREAL...;
 		END_VAR
 
-		IF K <= 0 THEN
-			MUX := IN0;
-		ELSE
-			MUX := IN1;
-		END_IF;
-	END_FUNCTION
-
-	FUNCTION MUX: LREAL
-		VAR_INPUT
-			K: INT;
-			IN0: LREAL;
-			IN1: LREAL;
-			IN2: LREAL;
-		END_VAR
-
-		IF K <= 0 THEN
-			MUX := IN0;
-		ELSIF K = 1 THEN
-			MUX := IN1;
-		ELSE
-			MUX := IN2;
-		END_IF;
-	END_FUNCTION
-
-	FUNCTION MUX: LREAL
-		VAR_INPUT
-			K: INT;
-			IN0: LREAL;
-			IN1: LREAL;
-			IN2: LREAL;
-			IN3: LREAL;
-		END_VAR
-
-		IF K <= 0 THEN
-			MUX := IN0;
-		ELSIF K = 1 THEN
-			MUX := IN1;
-		ELSIF K = 2 THEN
-			MUX := IN2;
-		ELSE
-			MUX := IN3;
-		END_IF;
-	END_FUNCTION
-
-	FUNCTION MUX: TIME
-		VAR_INPUT
-			K: INT;
-			IN0: TIME;
-			IN1: TIME;
-		END_VAR
-
-		IF K <= 0 THEN
-			MUX := IN0;
-		ELSE
-			MUX := IN1;
-		END_IF;
-	END_FUNCTION
-
-	FUNCTION MUX: TIME
-		VAR_INPUT
-			K: INT;
-			IN0: TIME;
-			IN1: TIME;
-			IN2: TIME;
-		END_VAR
-
-		IF K <= 0 THEN
-			MUX := IN0;
-		ELSIF K = 1 THEN
-			MUX := IN1;
-		ELSE
-			MUX := IN2;
-		END_IF;
-	END_FUNCTION
-
-	FUNCTION MUX: TIME
-		VAR_INPUT
-			K: INT;
-			IN0: TIME;
-			IN1: TIME;
-			IN2: TIME;
-			IN3: TIME;
-		END_VAR
-
-		IF K <= 0 THEN
-			MUX := IN0;
-		ELSIF K = 1 THEN
-			MUX := IN1;
-		ELSIF K = 2 THEN
-			MUX := IN2;
-		ELSE
-			MUX := IN3;
-		END_IF;
+		MUX := ...IN[K];
 	END_FUNCTION
 
 	FUNCTION MUX: STRING[255]
 		VAR_INPUT
-			K: INT;
+			K: LINT;
 			IN0: STRING[255];
 			IN1: STRING[255];
 		END_VAR
@@ -1066,7 +845,7 @@ NAMESPACE Std.Selection
 
 	FUNCTION MUX: STRING[255]
 		VAR_INPUT
-			K: INT;
+			K: LINT;
 			IN0: STRING[255];
 			IN1: STRING[255];
 			IN2: STRING[255];
@@ -1083,7 +862,7 @@ NAMESPACE Std.Selection
 
 	FUNCTION MUX: STRING[255]
 		VAR_INPUT
-			K: INT;
+			K: LINT;
 			IN0: STRING[255];
 			IN1: STRING[255];
 			IN2: STRING[255];
@@ -1099,6 +878,87 @@ NAMESPACE Std.Selection
 		ELSE
 			MUX := IN3;
 		END_IF;
+	END_FUNCTION
+
+	FUNCTION MUX: TIME
+		VAR_INPUT
+			K: LINT;
+			IN: TIME...;
+		END_VAR
+
+		MUX := ...IN[K];
+	END_FUNCTION
+
+	FUNCTION MUX: LTIME
+		VAR_INPUT
+			K: LINT;
+			IN: LTIME...;
+		END_VAR
+
+		MUX := ...IN[K];
+	END_FUNCTION
+
+	FUNCTION MUX: DATE
+		VAR_INPUT
+			K: LINT;
+			IN: DATE...;
+		END_VAR
+
+		MUX := ...IN[K];
+	END_FUNCTION
+
+	FUNCTION MUX: LDATE
+		VAR_INPUT
+			K: LINT;
+			IN: LDATE...;
+		END_VAR
+
+		MUX := ...IN[K];
+	END_FUNCTION
+
+	FUNCTION MUX: TOD
+		VAR_INPUT
+			K: LINT;
+			IN: TOD...;
+		END_VAR
+
+		MUX := ...IN[K];
+	END_FUNCTION
+
+	FUNCTION MUX: LTOD
+		VAR_INPUT
+			K: LINT;
+			IN: LTOD...;
+		END_VAR
+
+		MUX := ...IN[K];
+	END_FUNCTION
+
+	FUNCTION MUX: DT
+		VAR_INPUT
+			K: LINT;
+			IN: DT...;
+		END_VAR
+
+		MUX := ...IN[K];
+	END_FUNCTION
+
+	FUNCTION MUX: LDT
+		VAR_INPUT
+			K: LINT;
+			IN: LDT...;
+		END_VAR
+
+		MUX := ...IN[K];
+	END_FUNCTION
+
+	FUNCTION MUX: CHAR
+		VAR_INPUT
+			K: LINT;
+			IN: CHAR...;
+		END_VAR
+
+		MUX := ...IN[K];
 	END_FUNCTION
 
 	NAMESPACE Test
@@ -1287,6 +1147,12 @@ NAMESPACE Std.Selection
 			ASSERT_EQ(MUX(1, 10, 20, 30), 20);
 			ASSERT_EQ(MUX(2, 10, 20, 30), 30);
 			ASSERT_EQ(MUX(3, 10, 20, 30, 40), 40);
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_mux_any_number_of_inputs
+			ASSERT_EQ(MUX(0, 10), 10);
+			ASSERT_EQ(MUX(5, 10, 20, 30, 40, 50, 60, 70), 60);
 		END_FUNCTION
 
 		{test}

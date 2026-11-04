@@ -1828,7 +1828,9 @@ fn rebase_this(expr: &mut crate::expr::MirExpr, instance: &crate::expr::MirPlace
             rebase_this(lhs, instance);
             rebase_this(rhs, instance);
         }
-        MirExpr::UnaryOp { expr, .. } | MirExpr::Cast { expr, .. } => rebase_this(expr, instance),
+        MirExpr::UnaryOp { expr, .. }
+        | MirExpr::Cast { expr, .. }
+        | MirExpr::PackElement { index: expr, .. } => rebase_this(expr, instance),
         MirExpr::CopyIntoScratch { src, .. } | MirExpr::StringSnapshot { src, .. } => {
             rebase_this(src, instance)
         }
@@ -2266,6 +2268,7 @@ fn is_const_value(e: &crate::expr::MirExpr) -> bool {
         | MirExpr::AddrOf(_)
         | MirExpr::StringCapacity(_)
         | MirExpr::CopyIntoScratch { .. }
-        | MirExpr::StringSnapshot { .. } => false,
+        | MirExpr::StringSnapshot { .. }
+        | MirExpr::PackElement { .. } => false,
     }
 }

@@ -70,7 +70,7 @@ END_FUNCTION
     │               ──┬─  
     │                 ╰─── call to 'pick' is ambiguous: 2 overloads accept these arguments
     │ 
-    │ Help: pick one with a typed literal or a conversion, such as `DINT#5` or `INT_TO_DINT(x)`
+    │ Help: pick one with a typed literal, such as `DINT#5`, or a variable of that type
     │ 
     │ Note: an argument widens to each overload
 ────╯

@@ -171,26 +171,29 @@ pub enum CallError<'db> {
         var: VariableDecl<'db>,
         func_call: FuncCall<'db>,
     },
-    /// A fold names something other than the POU's variadic parameter: a
+    /// `...` names something other than the POU's variadic parameter: a
     /// variable that is not variadic, a member, a name that is nothing.
-    NonVariadicFoldParameter {
+    NotVariadicParameter {
         call_site: CallSite<'db>,
         /// As written.
         name: Ident,
         /// The POU's variadic parameter, when it has one.
         pack: Option<VariableDecl<'db>>,
     },
-    /// A variadic parameter read, written or passed as a whole: only a
-    /// fold consumes it.
-    VariadicOutsideFold {
+    /// A variadic parameter read, written or passed as a whole: only `...`
+    /// consumes it.
+    VariadicAsVariable {
         expr: crate::hir_def::expressions::expression::PathExpr<'db>,
         var: VariableDecl<'db>,
     },
-    /// Variadic parameter must be the only VAR_INPUT parameter.
-    VariadicMixedWithOtherInputs {
+    /// An input declared after the variadic parameter, which takes the
+    /// arguments left in the call.
+    InputAfterVariadic {
         variadic_var: VariableDecl<'db>,
         other_var: VariableDecl<'db>,
     },
+    /// `...values[i]` where `i` is no integer.
+    NonIntegerPackIndex { expr: Expr<'db>, ty: Type<'db> },
 }
 
 impl<'db> ErrorCode for CallError<'db> {
@@ -211,9 +214,10 @@ impl<'db> ErrorCode for CallError<'db> {
             Self::NonVariadicTypeForVariable { .. } => "E0811",
             Self::MultipleVariadicVariables { .. } => "E0812",
             Self::EmptyVariadicCall { .. } => "E0813",
-            Self::NonVariadicFoldParameter { .. } => "E0814",
-            Self::VariadicMixedWithOtherInputs { .. } => "E0815",
-            Self::VariadicOutsideFold { .. } => "E0816",
+            Self::NotVariadicParameter { .. } => "E0814",
+            Self::InputAfterVariadic { .. } => "E0815",
+            Self::VariadicAsVariable { .. } => "E0816",
+            Self::NonIntegerPackIndex { .. } => "E0819",
         }
     }
 }
@@ -225,13 +229,13 @@ impl<'db> ToIdeDiagnostic<'db> for CallError<'db> {
         file: auto_lsp::default::db::file::File,
     ) -> IdeDiagnostic {
         match self {
-            Self::VariadicMixedWithOtherInputs {
+            Self::InputAfterVariadic {
                 variadic_var,
                 other_var,
             } => {
                 let mut diag = diag()
                     .message(format!(
-                        "'{}' is declared beside the variadic parameter '{}'",
+                        "'{}' is declared after the variadic parameter '{}'",
                         other_var.name_with_case(db).text(db),
                         variadic_var.name_with_case(db).text(db),
                     ))
@@ -251,7 +255,7 @@ impl<'db> ToIdeDiagnostic<'db> for CallError<'db> {
                     variadic_var.scope_id(db).file(db),
                     variadic_var.get_name_span(db),
                 ));
-                diag.with_note("a variadic parameter takes every argument of the call".into());
+                diag.with_note("a variadic parameter takes the arguments left in the call".into());
                 diag
             }
             Self::IncorrectNumberOfParameters {
@@ -603,7 +607,7 @@ impl<'db> ToIdeDiagnostic<'db> for CallError<'db> {
                     ),
                     Ambiguity::Widening => (
                         "an argument widens to each overload".to_string(),
-                        Some("pick one with a typed literal or a conversion, such as `DINT#5` or `INT_TO_DINT(x)`".to_string()),
+                        Some("pick one with a typed literal, such as `DINT#5`, or a variable of that type".to_string()),
                     ),
                     Ambiguity::Defaults => (
                         "the overloads differ only in inputs this call leaves to their defaults"
@@ -794,7 +798,7 @@ impl<'db> ToIdeDiagnostic<'db> for CallError<'db> {
 
                 diag
             }
-            Self::NonVariadicFoldParameter {
+            Self::NotVariadicParameter {
                 call_site,
                 name,
                 pack,
@@ -816,7 +820,7 @@ impl<'db> ToIdeDiagnostic<'db> for CallError<'db> {
                             pack.get_name_span(db),
                         ));
                         diag.with_note(format!(
-                            "a fold reads it: `...{pack_name}+` adds every argument the call passed"
+                            "`...{pack_name}+` adds every argument the call passed, `...{pack_name}[0]` reads the first"
                         ));
                     }
                     None => {
@@ -828,12 +832,19 @@ impl<'db> ToIdeDiagnostic<'db> for CallError<'db> {
                 }
                 diag
             }
-            Self::VariadicOutsideFold { expr, var } => {
+            Self::NonIntegerPackIndex { expr, ty } => diag()
+                .message(format!(
+                    "the index is '{}', not an integer",
+                    ty.type_name(db)
+                ))
+                .severity(DiagnosticSeverity::ERROR)
+                .desc(self)
+                .range(crate::denormalize(db, file, &expr.get_span(db)).unwrap_or_default())
+                .call(),
+            Self::VariadicAsVariable { expr, var } => {
                 let name = var.name_with_case(db).text(db);
                 let mut diag = diag()
-                    .message(format!(
-                        "variadic parameter '{name}' is used outside a fold"
-                    ))
+                    .message(format!("variadic parameter '{name}' is used as a variable"))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
                     .range(crate::denormalize(db, file, &expr.get_span(db)).unwrap_or_default())
@@ -847,7 +858,7 @@ impl<'db> ToIdeDiagnostic<'db> for CallError<'db> {
                     "a pack stands for as many parameters as the call passed".to_string(),
                 );
                 diag.with_help(format!(
-                    "read it with a fold: `...{name}+` adds them, `...{name}=` compares them"
+                    "read one with `...{name}[0]`, or all of them with a fold: `...{name}+` adds them"
                 ));
                 diag
             }

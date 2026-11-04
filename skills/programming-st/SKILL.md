@@ -265,7 +265,7 @@ A workspace file that reopens a library namespace and redeclares one of its over
 
 ## Variadics
 
-A `FUNCTION` or `METHOD` input declared `name : T...` collects every positional argument of the call, and a fold is the only way to read it (E0816); a `PROGRAM` or `FUNCTION_BLOCK` takes none (E0029).
+A `FUNCTION` or `METHOD` input declared `name : T...` collects the positional arguments left in the call, and `...` is the only way to read it (E0816): a fold, or `...name[i]` for one argument, counting from 0 (E0819); a `PROGRAM` or `FUNCTION_BLOCK` takes none (E0029).
 
 ```iecst
 FUNCTION Sum : INT
@@ -279,7 +279,7 @@ END_FUNCTION
 ```
 
 The fold operators are `+ - * / % **` (left to right), `& | ^`, `= <> < > <= >=`, which test each adjacent pair and give a `BOOL`, and `MIN` and `MAX`, written after a space (`...values MAX`), which give the smallest or the largest argument.
-The variadic parameter must be elementary, not a `STRING` nor a subrange (E0811), and the only `VAR_INPUT` (E0812, E0815); pass anything else as `VAR_OUTPUT` or `VAR_IN_OUT`, by name. `...` folds that parameter and nothing else (E0814).
+The variadic parameter must be elementary, not a `STRING` nor a subrange (E0811), and the last `VAR_INPUT` (E0812, E0815); an input before it takes its argument first, and anything else goes in `VAR_OUTPUT` or `VAR_IN_OUT`, by name. `...` folds that parameter and nothing else (E0814).
 A call passes it at least one argument (E0813).
 
 ## Gotchas

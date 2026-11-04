@@ -31,6 +31,17 @@ pub enum MirExpr {
         ty: MirElementary,
     },
 
+    /// One of a pack's parameters, by position from 0: the first below that,
+    /// the last past the end. `index` is read once, and reading a parameter
+    /// has no effect.
+    PackElement {
+        /// At `LInt`, or at `ULInt`, which a `LInt` does not hold.
+        index: Box<MirExpr>,
+        index_ty: MirElementary,
+        params: Vec<Ident>,
+        ty: MirElementary,
+    },
+
     /// Explicit type cast (inserted by lowering for implicit casts).
     Cast {
         expr: Box<MirExpr>,
@@ -208,7 +219,9 @@ impl MirExpr {
                 place.has_call()
             }
             MirExpr::BinOp { lhs, rhs, .. } => lhs.has_call() || rhs.has_call(),
-            MirExpr::UnaryOp { expr, .. } | MirExpr::Cast { expr, .. } => expr.has_call(),
+            MirExpr::UnaryOp { expr, .. }
+            | MirExpr::Cast { expr, .. }
+            | MirExpr::PackElement { index: expr, .. } => expr.has_call(),
             MirExpr::CopyIntoScratch { src, .. } | MirExpr::StringSnapshot { src, .. } => {
                 src.has_call()
             }
@@ -228,9 +241,9 @@ impl MirExpr {
             MirExpr::BinOp { lhs, rhs, .. } => {
                 lhs.reaches_place_with_call() || rhs.reaches_place_with_call()
             }
-            MirExpr::UnaryOp { expr, .. } | MirExpr::Cast { expr, .. } => {
-                expr.reaches_place_with_call()
-            }
+            MirExpr::UnaryOp { expr, .. }
+            | MirExpr::Cast { expr, .. }
+            | MirExpr::PackElement { index: expr, .. } => expr.reaches_place_with_call(),
             MirExpr::CopyIntoScratch { src, .. } | MirExpr::StringSnapshot { src, .. } => {
                 src.reaches_place_with_call()
             }
@@ -252,7 +265,9 @@ impl MirExpr {
             }
             MirExpr::Call(call) => call.any_expr(f),
             MirExpr::BinOp { lhs, rhs, .. } => lhs.any(f) || rhs.any(f),
-            MirExpr::UnaryOp { expr, .. } | MirExpr::Cast { expr, .. } => expr.any(f),
+            MirExpr::UnaryOp { expr, .. }
+            | MirExpr::Cast { expr, .. }
+            | MirExpr::PackElement { index: expr, .. } => expr.any(f),
             MirExpr::CopyIntoScratch { src, .. } | MirExpr::StringSnapshot { src, .. } => {
                 src.any(f)
             }
@@ -275,7 +290,9 @@ impl MirExpr {
                 lhs.exprs_mut(f);
                 rhs.exprs_mut(f);
             }
-            MirExpr::UnaryOp { expr, .. } | MirExpr::Cast { expr, .. } => expr.exprs_mut(f),
+            MirExpr::UnaryOp { expr, .. }
+            | MirExpr::Cast { expr, .. }
+            | MirExpr::PackElement { index: expr, .. } => expr.exprs_mut(f),
             MirExpr::CopyIntoScratch { src, .. } | MirExpr::StringSnapshot { src, .. } => {
                 src.exprs_mut(f)
             }

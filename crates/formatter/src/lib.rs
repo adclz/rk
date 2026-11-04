@@ -66,6 +66,10 @@ static SURROUND_SPACES: &str = r##"
 ; A fold by a symbol stays against its name.
 [(fold_min) (fold_max)] @prepend_space
 
+; `...` stays against the name it reads.
+(fold_expression "..." @append_antispace)
+(pack_element "..." @append_antispace)
+
 ; A line comment ends its line: a space after it went before the line
 ; break and was written as an indented blank line.
 (line_comment) @prepend_space

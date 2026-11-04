@@ -2015,6 +2015,7 @@ module.exports = grammar({
     _expression: ($) =>
       choice(
         $.fold_expression,
+        $.pack_element,
         $.boolean_operator,
         $.comparison_operator,
         $.add_operator,
@@ -2031,6 +2032,16 @@ module.exports = grammar({
         "...",
         field("param", $.identifier),
         field("operator", $.fold_operator),
+      ),
+
+    // One argument of a variadic parameter, counted from 0: ...IN[K]
+    pack_element: ($) =>
+      seq(
+        "...",
+        field("param", $.identifier),
+        "[",
+        field("index", $._expression),
+        "]",
       ),
 
     fold_operator: ($) =>

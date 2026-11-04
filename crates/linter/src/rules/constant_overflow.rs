@@ -209,6 +209,7 @@ fn operations<'db>(db: &'db dyn WorkspaceDataBase, expr: Expr<'db>, f: &mut impl
             operations(db, *right, f);
         }
         ExprKind::UnaryOperator { expr, .. }
+        | ExprKind::PackElement { index: expr, .. }
         | ExprKind::PrimaryExpr(PrimaryExpr::ParenthesizedExpr { expr }) => {
             operations(db, *expr, f)
         }

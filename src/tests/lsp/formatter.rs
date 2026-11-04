@@ -2610,9 +2610,38 @@ END_FUNCTION
     	VAR_INPUT
     		values: INT...;
     	END_VAR
-    	F := ... values MIN;
-    	F := ... values max + 1;
-    	F := ... values+;
+    	F := ...values MIN;
+    	F := ...values max + 1;
+    	F := ...values+;
+    END_FUNCTION
+    ");
+    assert_eq!(formatter::format_source(&once).expect("formats"), once);
+}
+
+/// A read by position stays together, `...` against its name and the index
+/// against its brackets.
+#[rstest]
+fn a_read_by_position_stays_together() {
+    let source = r#"
+FUNCTION F : INT
+VAR_INPUT k : INT; values : INT...; END_VAR
+F := ...values[k];
+F := ... values [ k + 1 ] ;
+F := ...values[...values[0]] + ...values[1] * 2;
+F := - ...values[0];
+END_FUNCTION
+"#;
+    let once = formatter::format_source(source).expect("formats");
+    assert_snapshot!(once, @r"
+    FUNCTION F: INT
+    	VAR_INPUT
+    		k: INT;
+    		values: INT...;
+    	END_VAR
+    	F := ...values[k];
+    	F := ...values[k + 1];
+    	F := ...values[...values[0]] + ...values[1] * 2;
+    	F := - ...values[0];
     END_FUNCTION
     ");
     assert_eq!(formatter::format_source(&once).expect("formats"), once);

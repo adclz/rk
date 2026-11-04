@@ -296,7 +296,60 @@ impl<'db> ExprLowerCtx<'db> {
             ExprKind::FoldExpr { param_id, operator } => {
                 self.lower_fold_expr(param_id.ident(self.db), *operator)
             }
+            ExprKind::PackElement { param_id, index } => {
+                self.lower_pack_element(param_id.ident(self.db), *index)
+            }
         }
+    }
+
+    /// The expansion of the pack `...` reads, inside an arity specialization.
+    fn pack_expansion(
+        &self,
+        param: hir::hir_def::interned::identifier::Ident,
+    ) -> Result<&VariadicExpansion, LowerTypeError> {
+        let expansion = self.variadic_expansion.as_ref().ok_or_else(|| {
+            LowerTypeError::UnsupportedType(
+                "a variadic parameter read outside an arity specialization".to_string(),
+            )
+        })?;
+        if expansion.pack != param {
+            return Err(LowerTypeError::UnsupportedType(format!(
+                "'{}' read but the pack in scope is '{}'",
+                param.text(self.db),
+                expansion.pack.text(self.db)
+            )));
+        }
+        Ok(expansion)
+    }
+
+    /// Lower `...pack[index]` inside an arity specialization. The index is
+    /// compared at 64 bits, where every integer type but a ULINT holds as a
+    /// LINT.
+    fn lower_pack_element(
+        &self,
+        param: hir::hir_def::interned::identifier::Ident,
+        index: Expr<'db>,
+    ) -> Result<MirExpr, LowerTypeError> {
+        let expansion = self.pack_expansion(param)?;
+        let lane = self.expr_to_mir_elementary(index)?;
+        let value = self.lower_expr(index)?;
+        let (index, index_ty) = match lane {
+            MirElementary::LInt | MirElementary::ULInt => (value, lane),
+            from => (
+                MirExpr::Cast {
+                    expr: Box::new(value),
+                    from,
+                    to: MirElementary::LInt,
+                },
+                MirElementary::LInt,
+            ),
+        };
+        Ok(MirExpr::PackElement {
+            index: Box::new(index),
+            index_ty,
+            params: expansion.params.clone(),
+            ty: expansion.elem,
+        })
     }
 
     /// Lower `...pack<op>` inside an arity specialization: the pack is N
@@ -311,19 +364,7 @@ impl<'db> ExprLowerCtx<'db> {
     ) -> Result<MirExpr, LowerTypeError> {
         use hir::hir_def::expressions::expression::FoldOperatorKind as F;
 
-        let expansion = self.variadic_expansion.as_ref().ok_or_else(|| {
-            LowerTypeError::UnsupportedType(
-                "a fold expression outside an arity specialization".to_string(),
-            )
-        })?;
-        if expansion.pack != param {
-            return Err(LowerTypeError::UnsupportedType(format!(
-                "fold over '{}' but the pack in scope is '{}'",
-                param.text(self.db),
-                expansion.pack.text(self.db)
-            )));
-        }
-
+        let expansion = self.pack_expansion(param)?;
         let elem = expansion.elem;
         let load = |name: &hir::hir_def::interned::identifier::Ident| {
             MirExpr::Load(

@@ -319,7 +319,7 @@ fn check_expr_lints<'db>(
             check_expr_lints(db, body, ctx, left, diagnostics);
             check_expr_lints(db, body, ctx, right, diagnostics);
         }
-        ExprKind::UnaryOperator { expr, .. } => {
+        ExprKind::UnaryOperator { expr, .. } | ExprKind::PackElement { index: expr, .. } => {
             check_expr_lints(db, body, ctx, expr, diagnostics);
         }
         ExprKind::PrimaryExpr(PrimaryExpr::ParenthesizedExpr { expr }) => {
