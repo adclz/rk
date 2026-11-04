@@ -56,7 +56,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0302] Error: types not comparable
+    [E1214] Error: FOR bound of another type
        ,-[ file:///test0.st:8:20 ]
        |
      4 |         I: INT;
@@ -65,9 +65,11 @@ END_FUNCTION_BLOCK"#;
        |
      8 |     FOR I := 10 TO O DO
        |                    |
-       |                    `-- cannot compare 'INT' with 'BOOL'
+       |                    `-- the final value is 'BOOL', where the counter is 'INT'
        |
        | Help: insert explicit cast 'BOOL_TO_INT(O)'
+       |
+       | Note: a FOR reads its final value and its step at the type of its counter
     ---'
     ");
 }
@@ -88,7 +90,7 @@ FUNCTION_BLOCK fb1
 END_FUNCTION_BLOCK"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0302] Error: types not comparable
+    [E1214] Error: FOR bound of another type
        ,-[ file:///test0.st:8:25 ]
        |
      4 |         I: INT;
@@ -97,9 +99,11 @@ END_FUNCTION_BLOCK"#;
        |
      8 |     FOR I := 0 TO 10 BY O DO
        |                         |
-       |                         `-- cannot compare 'INT' with 'BOOL'
+       |                         `-- the step is 'BOOL', where the counter is 'INT'
        |
        | Help: insert explicit cast 'BOOL_TO_INT(O)'
+       |
+       | Note: a FOR reads its final value and its step at the type of its counter
     ---'
     [E1204] Error: FOR step not a nonzero constant
        ,-[ file:///test0.st:8:25 ]
@@ -518,4 +522,81 @@ fn invalid_negative_step_through_a_sign(mut with_db: RootDatabase) {
        | Help: use DINT, or drop the sign
     ---'
     ");
+}
+
+/// The message is about the loop, not about a comparison the program never wrote.
+#[rstest]
+fn invalid_for_bound_of_another_type(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION F : INT
+VAR i : INT; last : DINT; text : STRING; END_VAR
+    FOR i := 1 TO last DO
+        F := i;
+    END_FOR;
+    FOR i := 1 TO 10 BY DINT#2 DO
+        F := i;
+    END_FOR;
+    FOR i := 1 TO text DO
+        F := i;
+    END_FOR;
+END_FUNCTION"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1214] Error: FOR bound of another type
+       ,-[ file:///test0.st:4:19 ]
+       |
+     3 | VAR i : INT; last : DINT; text : STRING; END_VAR
+       |     |
+       |     `-- 'i' is declared here
+     4 |     FOR i := 1 TO last DO
+       |                   ^^|^
+       |                     `--- the final value is 'DINT', where the counter is 'INT'
+       |
+       | Help: insert explicit cast 'DINT_TO_INT(last)'
+       |
+       | Note: a FOR reads its final value and its step at the type of its counter
+    ---'
+    [E1214] Error: FOR bound of another type
+       ,-[ file:///test0.st:7:25 ]
+       |
+     3 | VAR i : INT; last : DINT; text : STRING; END_VAR
+       |     |
+       |     `-- 'i' is declared here
+       |
+     7 |     FOR i := 1 TO 10 BY DINT#2 DO
+       |                         ^^^|^^
+       |                            `---- the step is 'DINT', where the counter is 'INT'
+       |
+       | Help: insert explicit cast 'DINT_TO_INT(DINT#2)'
+       |
+       | Note: a FOR reads its final value and its step at the type of its counter
+    ---'
+    [E1214] Error: FOR bound of another type
+        ,-[ file:///test0.st:10:19 ]
+        |
+      3 | VAR i : INT; last : DINT; text : STRING; END_VAR
+        |     |
+        |     `-- 'i' is declared here
+        |
+     10 |     FOR i := 1 TO text DO
+        |                   ^^|^
+        |                     `--- the final value is 'STRING', where the counter is 'INT'
+        |
+        | Note: a FOR reads its final value and its step at the type of its counter
+    ----'
+    ");
+}
+
+/// What widens to the counter's type is read at that type.
+#[rstest]
+fn valid_for_bounds_narrower_than_the_counter(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION F : DINT
+VAR i : DINT; last : INT; END_VAR
+    FOR i := INT#1 TO last BY SINT#2 DO
+        F := i;
+    END_FOR;
+END_FUNCTION"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
 }

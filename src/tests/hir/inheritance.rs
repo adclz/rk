@@ -1951,3 +1951,97 @@ END_FUNCTION_BLOCK
     ----'
     ");
 }
+
+/// `INT...` is not `INT`: it has one copy per argument count, so a plain
+/// parameter in its place left a call through the interface with no copy, and
+/// the build panicked.
+#[rstest]
+fn method_signature_variadic_mismatch(mut with_db: RootDatabase) {
+    let source = r#"
+        INTERFACE Itf
+            METHOD Sum : INT
+                VAR_INPUT values : INT...; END_VAR
+            END_METHOD
+        END_INTERFACE
+
+        FUNCTION_BLOCK Impl IMPLEMENTS Itf
+            METHOD PUBLIC Sum : INT
+                VAR_INPUT values : INT; END_VAR
+                Sum := values;
+            END_METHOD
+        END_FUNCTION_BLOCK
+
+        FUNCTION_BLOCK Base
+            METHOD PUBLIC Sum : INT
+                VAR_INPUT values : INT; END_VAR
+                Sum := values;
+            END_METHOD
+        END_FUNCTION_BLOCK
+
+        FUNCTION_BLOCK Derived EXTENDS Base
+            METHOD PUBLIC OVERRIDE Sum : INT
+                VAR_INPUT values : INT...; END_VAR
+                Sum := ...values+;
+            END_METHOD
+        END_FUNCTION_BLOCK
+        "#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1126] Error: method parameter type mismatch
+        ,-[ file:///test0.st:10:36 ]
+        |
+      4 |                 VAR_INPUT values : INT...; END_VAR
+        |                                    ^|^
+        |                                     `--- the interface method declares 'values' as 'INT...' here
+        |
+     10 |                 VAR_INPUT values : INT; END_VAR
+        |                                    ^|^
+        |                                     `--- parameter 'values' of method 'Sum' has an incompatible type: expected 'INT...', got 'INT'
+        |
+        | Note: parameter types must match those of the interface method
+    ----'
+    [E1126] Error: method parameter type mismatch
+        ,-[ file:///test0.st:24:36 ]
+        |
+     17 |                 VAR_INPUT values : INT; END_VAR
+        |                                    ^|^
+        |                                     `--- the base method declares 'values' as 'INT' here
+        |
+     24 |                 VAR_INPUT values : INT...; END_VAR
+        |                                    ^|^
+        |                                     `--- parameter 'values' of method 'Sum' has an incompatible type: expected 'INT', got 'INT...'
+        |
+        | Note: parameter types must match those of the base method
+    ----'
+    ");
+}
+
+#[rstest]
+fn valid_method_signature_both_variadic(mut with_db: RootDatabase) {
+    let source = r#"
+        INTERFACE Itf
+            METHOD Sum : INT
+                VAR_INPUT values : INT...; END_VAR
+            END_METHOD
+        END_INTERFACE
+
+        FUNCTION_BLOCK Impl IMPLEMENTS Itf
+            METHOD PUBLIC Sum : INT
+                VAR_INPUT values : INT...; END_VAR
+                Sum := ...values+;
+            END_METHOD
+        END_FUNCTION_BLOCK
+
+        FUNCTION Through : INT
+            VAR_INPUT i : Itf; END_VAR
+            Through := i.Sum(1, 2);
+        END_FUNCTION
+
+        PROGRAM Main
+            VAR block : Impl; x : INT; END_VAR
+            x := Through(block);
+        END_PROGRAM
+        "#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
