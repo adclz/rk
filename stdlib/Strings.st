@@ -14,9 +14,8 @@ one well-formed UTF-8 sequence. A byte that belongs to none counts as a
 character on its own, its Latin-1 code point, like `CHAR#'$E9'`.
 
 Positions start at 1 in both families. A function that returns a `STRING`
-returns up to 255 bytes, as in CODESYS and TwinCAT, and cuts a longer result
-there. It is also cut, without an error, when it does not fit where it is
-stored.
+returns up to 255 bytes, and cuts a longer result there. It is also cut,
+without an error, when it does not fit where it is stored.
 */
 NAMESPACE Std.Strings
 

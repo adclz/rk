@@ -1653,7 +1653,7 @@ fn written_input_persists_when_the_next_call_omits_it(mut with_db: db::RootDatab
     );
 }
 
-/// Bug 2: a member and a METHOD share a name, as CODESYS and TwinCAT allow.
+/// Bug 2: a member and a METHOD share a name.
 /// Inside the POU the name is the member (`step()` calls the Inner
 /// instance); from outside the method, since a VAR is the POU's own there.
 #[rstest]

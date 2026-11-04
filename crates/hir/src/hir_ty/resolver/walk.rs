@@ -258,8 +258,8 @@ impl<'db> Type<'db> {
     /// Resolve a named field on this (concrete) type, as the POU's own code
     /// sees it: its variables, its own then the inherited ones, before its
     /// methods, its own then the inherited ones. A variable and a method may
-    /// share a name, as in CODESYS and TwinCAT, and inside the POU the
-    /// variable is the one found (`THIS` included); L0120 warns.
+    /// share a name, and inside the POU the variable is the one found (`THIS`
+    /// included); L0120 warns.
     pub(crate) fn resolve_field(
         &self,
         db: &'db dyn WorkspaceDataBase,
@@ -326,9 +326,9 @@ impl<'db> Type<'db> {
     /// [`Self::resolve_field`] for a member named through an instance from
     /// outside its POU (`o.STEP()`). A variable the POU keeps to itself
     /// (VAR, VAR_TEMP, VAR_EXTERNAL) gives way to a method of the same name:
-    /// CODESYS and TwinCAT do not show such a variable outside the POU, so
-    /// there the name is the method. rk shows it (an unspecified member is
-    /// PUBLIC), and it stays reachable where no method takes its name.
+    /// outside the POU the name is the method. Such a variable is still shown
+    /// (an unspecified member is PUBLIC), and stays reachable where no method
+    /// takes its name.
     pub(crate) fn resolve_member_from_outside(
         &self,
         db: &'db dyn WorkspaceDataBase,

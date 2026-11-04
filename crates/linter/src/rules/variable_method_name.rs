@@ -17,10 +17,10 @@ use ide_diagnostic::{ErrorCode, IdeDiagnostic, Related, diag};
 pub const NAME: &str = "variable-method-name";
 
 /// L0120: a variable and a method of an FB or class share a name, here or
-/// across EXTENDS. It is legal, as in CODESYS and TwinCAT: inside the block
-/// the name is the variable (`THIS` included), and from outside an instance
-/// it is the method when the variable is the block's own (VAR, VAR_TEMP,
-/// VAR_EXTERNAL). Both vendors advise against it, so warn.
+/// across EXTENDS. It is legal: inside the block the name is the variable
+/// (`THIS` included), and from outside an instance it is the method when the
+/// variable is the block's own (VAR, VAR_TEMP, VAR_EXTERNAL). One name reads as
+/// two things depending on where it is written, so warn.
 struct VariableMethodName;
 
 impl ErrorCode for VariableMethodName {
