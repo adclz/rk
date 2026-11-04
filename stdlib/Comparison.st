@@ -4,7 +4,8 @@ Comparison functions: the comparison operators under a name.
 `GT`, `GE`, `EQ`, `LE` and `LT` compare each input with the next, however many
 there are. `NE` compares two.
 
-Each has one overload per type it applies to.
+Each has one overload per elementary type. A `STRING` takes two, three or four
+inputs, compared as the operators do.
 */
 NAMESPACE Std.Comparison
 
@@ -17,6 +18,14 @@ NAMESPACE Std.Comparison
 	   b := GT(3, 3, 1);  // FALSE
 	   ```
 	*/
+	FUNCTION GT: BOOL
+		VAR_INPUT
+			IN: BOOL...;
+		END_VAR
+
+		GT := ...IN>;
+	END_FUNCTION
+
 	FUNCTION GT: BOOL
 		VAR_INPUT
 			IN: SINT...;
@@ -83,6 +92,38 @@ NAMESPACE Std.Comparison
 
 	FUNCTION GT: BOOL
 		VAR_INPUT
+			IN: BYTE...;
+		END_VAR
+
+		GT := ...IN>;
+	END_FUNCTION
+
+	FUNCTION GT: BOOL
+		VAR_INPUT
+			IN: WORD...;
+		END_VAR
+
+		GT := ...IN>;
+	END_FUNCTION
+
+	FUNCTION GT: BOOL
+		VAR_INPUT
+			IN: DWORD...;
+		END_VAR
+
+		GT := ...IN>;
+	END_FUNCTION
+
+	FUNCTION GT: BOOL
+		VAR_INPUT
+			IN: LWORD...;
+		END_VAR
+
+		GT := ...IN>;
+	END_FUNCTION
+
+	FUNCTION GT: BOOL
+		VAR_INPUT
 			IN: REAL...;
 		END_VAR
 
@@ -99,6 +140,36 @@ NAMESPACE Std.Comparison
 
 	FUNCTION GT: BOOL
 		VAR_INPUT
+			IN1: STRING[255];
+			IN2: STRING[255];
+		END_VAR
+
+		GT := IN1 > IN2;
+	END_FUNCTION
+
+	FUNCTION GT: BOOL
+		VAR_INPUT
+			IN1: STRING[255];
+			IN2: STRING[255];
+			IN3: STRING[255];
+		END_VAR
+
+		GT := IN1 > IN2 AND IN2 > IN3;
+	END_FUNCTION
+
+	FUNCTION GT: BOOL
+		VAR_INPUT
+			IN1: STRING[255];
+			IN2: STRING[255];
+			IN3: STRING[255];
+			IN4: STRING[255];
+		END_VAR
+
+		GT := IN1 > IN2 AND IN2 > IN3 AND IN3 > IN4;
+	END_FUNCTION
+
+	FUNCTION GT: BOOL
+		VAR_INPUT
 			IN: TIME...;
 		END_VAR
 
@@ -108,6 +179,62 @@ NAMESPACE Std.Comparison
 	FUNCTION GT: BOOL
 		VAR_INPUT
 			IN: LTIME...;
+		END_VAR
+
+		GT := ...IN>;
+	END_FUNCTION
+
+	FUNCTION GT: BOOL
+		VAR_INPUT
+			IN: DATE...;
+		END_VAR
+
+		GT := ...IN>;
+	END_FUNCTION
+
+	FUNCTION GT: BOOL
+		VAR_INPUT
+			IN: LDATE...;
+		END_VAR
+
+		GT := ...IN>;
+	END_FUNCTION
+
+	FUNCTION GT: BOOL
+		VAR_INPUT
+			IN: TOD...;
+		END_VAR
+
+		GT := ...IN>;
+	END_FUNCTION
+
+	FUNCTION GT: BOOL
+		VAR_INPUT
+			IN: LTOD...;
+		END_VAR
+
+		GT := ...IN>;
+	END_FUNCTION
+
+	FUNCTION GT: BOOL
+		VAR_INPUT
+			IN: DT...;
+		END_VAR
+
+		GT := ...IN>;
+	END_FUNCTION
+
+	FUNCTION GT: BOOL
+		VAR_INPUT
+			IN: LDT...;
+		END_VAR
+
+		GT := ...IN>;
+	END_FUNCTION
+
+	FUNCTION GT: BOOL
+		VAR_INPUT
+			IN: CHAR...;
 		END_VAR
 
 		GT := ...IN>;
@@ -124,6 +251,14 @@ NAMESPACE Std.Comparison
 	*/
 	FUNCTION GE: BOOL
 		VAR_INPUT
+			IN: BOOL...;
+		END_VAR
+
+		GE := ...IN>=;
+	END_FUNCTION
+
+	FUNCTION GE: BOOL
+		VAR_INPUT
 			IN: SINT...;
 		END_VAR
 
@@ -188,6 +323,38 @@ NAMESPACE Std.Comparison
 
 	FUNCTION GE: BOOL
 		VAR_INPUT
+			IN: BYTE...;
+		END_VAR
+
+		GE := ...IN>=;
+	END_FUNCTION
+
+	FUNCTION GE: BOOL
+		VAR_INPUT
+			IN: WORD...;
+		END_VAR
+
+		GE := ...IN>=;
+	END_FUNCTION
+
+	FUNCTION GE: BOOL
+		VAR_INPUT
+			IN: DWORD...;
+		END_VAR
+
+		GE := ...IN>=;
+	END_FUNCTION
+
+	FUNCTION GE: BOOL
+		VAR_INPUT
+			IN: LWORD...;
+		END_VAR
+
+		GE := ...IN>=;
+	END_FUNCTION
+
+	FUNCTION GE: BOOL
+		VAR_INPUT
 			IN: REAL...;
 		END_VAR
 
@@ -204,6 +371,36 @@ NAMESPACE Std.Comparison
 
 	FUNCTION GE: BOOL
 		VAR_INPUT
+			IN1: STRING[255];
+			IN2: STRING[255];
+		END_VAR
+
+		GE := IN1 >= IN2;
+	END_FUNCTION
+
+	FUNCTION GE: BOOL
+		VAR_INPUT
+			IN1: STRING[255];
+			IN2: STRING[255];
+			IN3: STRING[255];
+		END_VAR
+
+		GE := IN1 >= IN2 AND IN2 >= IN3;
+	END_FUNCTION
+
+	FUNCTION GE: BOOL
+		VAR_INPUT
+			IN1: STRING[255];
+			IN2: STRING[255];
+			IN3: STRING[255];
+			IN4: STRING[255];
+		END_VAR
+
+		GE := IN1 >= IN2 AND IN2 >= IN3 AND IN3 >= IN4;
+	END_FUNCTION
+
+	FUNCTION GE: BOOL
+		VAR_INPUT
 			IN: TIME...;
 		END_VAR
 
@@ -213,6 +410,62 @@ NAMESPACE Std.Comparison
 	FUNCTION GE: BOOL
 		VAR_INPUT
 			IN: LTIME...;
+		END_VAR
+
+		GE := ...IN>=;
+	END_FUNCTION
+
+	FUNCTION GE: BOOL
+		VAR_INPUT
+			IN: DATE...;
+		END_VAR
+
+		GE := ...IN>=;
+	END_FUNCTION
+
+	FUNCTION GE: BOOL
+		VAR_INPUT
+			IN: LDATE...;
+		END_VAR
+
+		GE := ...IN>=;
+	END_FUNCTION
+
+	FUNCTION GE: BOOL
+		VAR_INPUT
+			IN: TOD...;
+		END_VAR
+
+		GE := ...IN>=;
+	END_FUNCTION
+
+	FUNCTION GE: BOOL
+		VAR_INPUT
+			IN: LTOD...;
+		END_VAR
+
+		GE := ...IN>=;
+	END_FUNCTION
+
+	FUNCTION GE: BOOL
+		VAR_INPUT
+			IN: DT...;
+		END_VAR
+
+		GE := ...IN>=;
+	END_FUNCTION
+
+	FUNCTION GE: BOOL
+		VAR_INPUT
+			IN: LDT...;
+		END_VAR
+
+		GE := ...IN>=;
+	END_FUNCTION
+
+	FUNCTION GE: BOOL
+		VAR_INPUT
+			IN: CHAR...;
 		END_VAR
 
 		GE := ...IN>=;
@@ -229,6 +482,14 @@ NAMESPACE Std.Comparison
 	*/
 	FUNCTION EQ: BOOL
 		VAR_INPUT
+			IN: BOOL...;
+		END_VAR
+
+		EQ := ...IN=;
+	END_FUNCTION
+
+	FUNCTION EQ: BOOL
+		VAR_INPUT
 			IN: SINT...;
 		END_VAR
 
@@ -293,6 +554,38 @@ NAMESPACE Std.Comparison
 
 	FUNCTION EQ: BOOL
 		VAR_INPUT
+			IN: BYTE...;
+		END_VAR
+
+		EQ := ...IN=;
+	END_FUNCTION
+
+	FUNCTION EQ: BOOL
+		VAR_INPUT
+			IN: WORD...;
+		END_VAR
+
+		EQ := ...IN=;
+	END_FUNCTION
+
+	FUNCTION EQ: BOOL
+		VAR_INPUT
+			IN: DWORD...;
+		END_VAR
+
+		EQ := ...IN=;
+	END_FUNCTION
+
+	FUNCTION EQ: BOOL
+		VAR_INPUT
+			IN: LWORD...;
+		END_VAR
+
+		EQ := ...IN=;
+	END_FUNCTION
+
+	FUNCTION EQ: BOOL
+		VAR_INPUT
 			IN: REAL...;
 		END_VAR
 
@@ -309,6 +602,36 @@ NAMESPACE Std.Comparison
 
 	FUNCTION EQ: BOOL
 		VAR_INPUT
+			IN1: STRING[255];
+			IN2: STRING[255];
+		END_VAR
+
+		EQ := IN1 = IN2;
+	END_FUNCTION
+
+	FUNCTION EQ: BOOL
+		VAR_INPUT
+			IN1: STRING[255];
+			IN2: STRING[255];
+			IN3: STRING[255];
+		END_VAR
+
+		EQ := IN1 = IN2 AND IN2 = IN3;
+	END_FUNCTION
+
+	FUNCTION EQ: BOOL
+		VAR_INPUT
+			IN1: STRING[255];
+			IN2: STRING[255];
+			IN3: STRING[255];
+			IN4: STRING[255];
+		END_VAR
+
+		EQ := IN1 = IN2 AND IN2 = IN3 AND IN3 = IN4;
+	END_FUNCTION
+
+	FUNCTION EQ: BOOL
+		VAR_INPUT
 			IN: TIME...;
 		END_VAR
 
@@ -318,6 +641,62 @@ NAMESPACE Std.Comparison
 	FUNCTION EQ: BOOL
 		VAR_INPUT
 			IN: LTIME...;
+		END_VAR
+
+		EQ := ...IN=;
+	END_FUNCTION
+
+	FUNCTION EQ: BOOL
+		VAR_INPUT
+			IN: DATE...;
+		END_VAR
+
+		EQ := ...IN=;
+	END_FUNCTION
+
+	FUNCTION EQ: BOOL
+		VAR_INPUT
+			IN: LDATE...;
+		END_VAR
+
+		EQ := ...IN=;
+	END_FUNCTION
+
+	FUNCTION EQ: BOOL
+		VAR_INPUT
+			IN: TOD...;
+		END_VAR
+
+		EQ := ...IN=;
+	END_FUNCTION
+
+	FUNCTION EQ: BOOL
+		VAR_INPUT
+			IN: LTOD...;
+		END_VAR
+
+		EQ := ...IN=;
+	END_FUNCTION
+
+	FUNCTION EQ: BOOL
+		VAR_INPUT
+			IN: DT...;
+		END_VAR
+
+		EQ := ...IN=;
+	END_FUNCTION
+
+	FUNCTION EQ: BOOL
+		VAR_INPUT
+			IN: LDT...;
+		END_VAR
+
+		EQ := ...IN=;
+	END_FUNCTION
+
+	FUNCTION EQ: BOOL
+		VAR_INPUT
+			IN: CHAR...;
 		END_VAR
 
 		EQ := ...IN=;
@@ -334,6 +713,14 @@ NAMESPACE Std.Comparison
 	*/
 	FUNCTION LE: BOOL
 		VAR_INPUT
+			IN: BOOL...;
+		END_VAR
+
+		LE := ...IN<=;
+	END_FUNCTION
+
+	FUNCTION LE: BOOL
+		VAR_INPUT
 			IN: SINT...;
 		END_VAR
 
@@ -398,6 +785,38 @@ NAMESPACE Std.Comparison
 
 	FUNCTION LE: BOOL
 		VAR_INPUT
+			IN: BYTE...;
+		END_VAR
+
+		LE := ...IN<=;
+	END_FUNCTION
+
+	FUNCTION LE: BOOL
+		VAR_INPUT
+			IN: WORD...;
+		END_VAR
+
+		LE := ...IN<=;
+	END_FUNCTION
+
+	FUNCTION LE: BOOL
+		VAR_INPUT
+			IN: DWORD...;
+		END_VAR
+
+		LE := ...IN<=;
+	END_FUNCTION
+
+	FUNCTION LE: BOOL
+		VAR_INPUT
+			IN: LWORD...;
+		END_VAR
+
+		LE := ...IN<=;
+	END_FUNCTION
+
+	FUNCTION LE: BOOL
+		VAR_INPUT
 			IN: REAL...;
 		END_VAR
 
@@ -414,6 +833,36 @@ NAMESPACE Std.Comparison
 
 	FUNCTION LE: BOOL
 		VAR_INPUT
+			IN1: STRING[255];
+			IN2: STRING[255];
+		END_VAR
+
+		LE := IN1 <= IN2;
+	END_FUNCTION
+
+	FUNCTION LE: BOOL
+		VAR_INPUT
+			IN1: STRING[255];
+			IN2: STRING[255];
+			IN3: STRING[255];
+		END_VAR
+
+		LE := IN1 <= IN2 AND IN2 <= IN3;
+	END_FUNCTION
+
+	FUNCTION LE: BOOL
+		VAR_INPUT
+			IN1: STRING[255];
+			IN2: STRING[255];
+			IN3: STRING[255];
+			IN4: STRING[255];
+		END_VAR
+
+		LE := IN1 <= IN2 AND IN2 <= IN3 AND IN3 <= IN4;
+	END_FUNCTION
+
+	FUNCTION LE: BOOL
+		VAR_INPUT
 			IN: TIME...;
 		END_VAR
 
@@ -423,6 +872,62 @@ NAMESPACE Std.Comparison
 	FUNCTION LE: BOOL
 		VAR_INPUT
 			IN: LTIME...;
+		END_VAR
+
+		LE := ...IN<=;
+	END_FUNCTION
+
+	FUNCTION LE: BOOL
+		VAR_INPUT
+			IN: DATE...;
+		END_VAR
+
+		LE := ...IN<=;
+	END_FUNCTION
+
+	FUNCTION LE: BOOL
+		VAR_INPUT
+			IN: LDATE...;
+		END_VAR
+
+		LE := ...IN<=;
+	END_FUNCTION
+
+	FUNCTION LE: BOOL
+		VAR_INPUT
+			IN: TOD...;
+		END_VAR
+
+		LE := ...IN<=;
+	END_FUNCTION
+
+	FUNCTION LE: BOOL
+		VAR_INPUT
+			IN: LTOD...;
+		END_VAR
+
+		LE := ...IN<=;
+	END_FUNCTION
+
+	FUNCTION LE: BOOL
+		VAR_INPUT
+			IN: DT...;
+		END_VAR
+
+		LE := ...IN<=;
+	END_FUNCTION
+
+	FUNCTION LE: BOOL
+		VAR_INPUT
+			IN: LDT...;
+		END_VAR
+
+		LE := ...IN<=;
+	END_FUNCTION
+
+	FUNCTION LE: BOOL
+		VAR_INPUT
+			IN: CHAR...;
 		END_VAR
 
 		LE := ...IN<=;
@@ -439,6 +944,14 @@ NAMESPACE Std.Comparison
 	*/
 	FUNCTION LT: BOOL
 		VAR_INPUT
+			IN: BOOL...;
+		END_VAR
+
+		LT := ...IN<;
+	END_FUNCTION
+
+	FUNCTION LT: BOOL
+		VAR_INPUT
 			IN: SINT...;
 		END_VAR
 
@@ -503,6 +1016,38 @@ NAMESPACE Std.Comparison
 
 	FUNCTION LT: BOOL
 		VAR_INPUT
+			IN: BYTE...;
+		END_VAR
+
+		LT := ...IN<;
+	END_FUNCTION
+
+	FUNCTION LT: BOOL
+		VAR_INPUT
+			IN: WORD...;
+		END_VAR
+
+		LT := ...IN<;
+	END_FUNCTION
+
+	FUNCTION LT: BOOL
+		VAR_INPUT
+			IN: DWORD...;
+		END_VAR
+
+		LT := ...IN<;
+	END_FUNCTION
+
+	FUNCTION LT: BOOL
+		VAR_INPUT
+			IN: LWORD...;
+		END_VAR
+
+		LT := ...IN<;
+	END_FUNCTION
+
+	FUNCTION LT: BOOL
+		VAR_INPUT
 			IN: REAL...;
 		END_VAR
 
@@ -515,6 +1060,36 @@ NAMESPACE Std.Comparison
 		END_VAR
 
 		LT := ...IN<;
+	END_FUNCTION
+
+	FUNCTION LT: BOOL
+		VAR_INPUT
+			IN1: STRING[255];
+			IN2: STRING[255];
+		END_VAR
+
+		LT := IN1 < IN2;
+	END_FUNCTION
+
+	FUNCTION LT: BOOL
+		VAR_INPUT
+			IN1: STRING[255];
+			IN2: STRING[255];
+			IN3: STRING[255];
+		END_VAR
+
+		LT := IN1 < IN2 AND IN2 < IN3;
+	END_FUNCTION
+
+	FUNCTION LT: BOOL
+		VAR_INPUT
+			IN1: STRING[255];
+			IN2: STRING[255];
+			IN3: STRING[255];
+			IN4: STRING[255];
+		END_VAR
+
+		LT := IN1 < IN2 AND IN2 < IN3 AND IN3 < IN4;
 	END_FUNCTION
 
 	FUNCTION LT: BOOL
@@ -533,6 +1108,62 @@ NAMESPACE Std.Comparison
 		LT := ...IN<;
 	END_FUNCTION
 
+	FUNCTION LT: BOOL
+		VAR_INPUT
+			IN: DATE...;
+		END_VAR
+
+		LT := ...IN<;
+	END_FUNCTION
+
+	FUNCTION LT: BOOL
+		VAR_INPUT
+			IN: LDATE...;
+		END_VAR
+
+		LT := ...IN<;
+	END_FUNCTION
+
+	FUNCTION LT: BOOL
+		VAR_INPUT
+			IN: TOD...;
+		END_VAR
+
+		LT := ...IN<;
+	END_FUNCTION
+
+	FUNCTION LT: BOOL
+		VAR_INPUT
+			IN: LTOD...;
+		END_VAR
+
+		LT := ...IN<;
+	END_FUNCTION
+
+	FUNCTION LT: BOOL
+		VAR_INPUT
+			IN: DT...;
+		END_VAR
+
+		LT := ...IN<;
+	END_FUNCTION
+
+	FUNCTION LT: BOOL
+		VAR_INPUT
+			IN: LDT...;
+		END_VAR
+
+		LT := ...IN<;
+	END_FUNCTION
+
+	FUNCTION LT: BOOL
+		VAR_INPUT
+			IN: CHAR...;
+		END_VAR
+
+		LT := ...IN<;
+	END_FUNCTION
+
 	/* Returns `TRUE` when `IN1` and `IN2` differ.
 
 	   # Examples
@@ -542,6 +1173,15 @@ NAMESPACE Std.Comparison
 	   b := NE(2, 2);  // FALSE
 	   ```
 	*/
+	FUNCTION NE: BOOL
+		VAR_INPUT
+			IN1: BOOL;
+			IN2: BOOL;
+		END_VAR
+
+		NE := IN1 <> IN2;
+	END_FUNCTION
+
 	FUNCTION NE: BOOL
 		VAR_INPUT
 			IN1: SINT;
@@ -614,6 +1254,42 @@ NAMESPACE Std.Comparison
 		NE := IN1 <> IN2;
 	END_FUNCTION
 
+	FUNCTION NE: BOOL
+		VAR_INPUT
+			IN1: BYTE;
+			IN2: BYTE;
+		END_VAR
+
+		NE := IN1 <> IN2;
+	END_FUNCTION
+
+	FUNCTION NE: BOOL
+		VAR_INPUT
+			IN1: WORD;
+			IN2: WORD;
+		END_VAR
+
+		NE := IN1 <> IN2;
+	END_FUNCTION
+
+	FUNCTION NE: BOOL
+		VAR_INPUT
+			IN1: DWORD;
+			IN2: DWORD;
+		END_VAR
+
+		NE := IN1 <> IN2;
+	END_FUNCTION
+
+	FUNCTION NE: BOOL
+		VAR_INPUT
+			IN1: LWORD;
+			IN2: LWORD;
+		END_VAR
+
+		NE := IN1 <> IN2;
+	END_FUNCTION
+
 	{allow 'float-equality'}
 	FUNCTION NE: BOOL
 		VAR_INPUT
@@ -647,6 +1323,78 @@ NAMESPACE Std.Comparison
 		VAR_INPUT
 			IN1: LTIME;
 			IN2: LTIME;
+		END_VAR
+
+		NE := IN1 <> IN2;
+	END_FUNCTION
+
+	FUNCTION NE: BOOL
+		VAR_INPUT
+			IN1: DATE;
+			IN2: DATE;
+		END_VAR
+
+		NE := IN1 <> IN2;
+	END_FUNCTION
+
+	FUNCTION NE: BOOL
+		VAR_INPUT
+			IN1: LDATE;
+			IN2: LDATE;
+		END_VAR
+
+		NE := IN1 <> IN2;
+	END_FUNCTION
+
+	FUNCTION NE: BOOL
+		VAR_INPUT
+			IN1: TOD;
+			IN2: TOD;
+		END_VAR
+
+		NE := IN1 <> IN2;
+	END_FUNCTION
+
+	FUNCTION NE: BOOL
+		VAR_INPUT
+			IN1: LTOD;
+			IN2: LTOD;
+		END_VAR
+
+		NE := IN1 <> IN2;
+	END_FUNCTION
+
+	FUNCTION NE: BOOL
+		VAR_INPUT
+			IN1: DT;
+			IN2: DT;
+		END_VAR
+
+		NE := IN1 <> IN2;
+	END_FUNCTION
+
+	FUNCTION NE: BOOL
+		VAR_INPUT
+			IN1: LDT;
+			IN2: LDT;
+		END_VAR
+
+		NE := IN1 <> IN2;
+	END_FUNCTION
+
+	FUNCTION NE: BOOL
+		VAR_INPUT
+			IN1: CHAR;
+			IN2: CHAR;
+		END_VAR
+
+		NE := IN1 <> IN2;
+	END_FUNCTION
+
+	FUNCTION NE: BOOL
+		VAR_INPUT
+			IN1: STRING[255];
+			IN2: STRING[255];
 		END_VAR
 
 		NE := IN1 <> IN2;
