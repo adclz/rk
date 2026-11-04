@@ -13,6 +13,7 @@ END_FUNCTION
 ```
 
 `rk test` compiles the workspace and runs all of them, showing a summary at the end.
+It calls a test with no arguments, so a test has no `VAR_INPUT`, `VAR_OUTPUT` or `VAR_IN_OUT` (`E1511`).
 
 ```sh
     // ...

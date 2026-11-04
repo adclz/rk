@@ -4,6 +4,7 @@ Only the pragmas below are recognised.
 Anything else in braces is a syntax error, so `{attribute '…'}` and similar annotations from other toolchains must not be copied in.
 
 `{test}` marks a `FUNCTION` as a test entry point for `rk test`.
+The runner calls it with no arguments, so it has no `VAR_INPUT`, `VAR_OUTPUT` or `VAR_IN_OUT` (E1511).
 Not valid on other POU kinds.
 
 `{once}` marks a `FUNCTION`, `FUNCTION_BLOCK` or `METHOD` that should be called at most once per body.
@@ -107,7 +108,7 @@ END_FUNCTION
 
 What may cross: scalar `VAR_INPUT` by value, a `STRING` input as a `(ptr, len)` pair, a struct or array input as a pointer to a call-entry copy, scalar `VAR_OUTPUT` as results, and a scalar return type as the last result.
 
-What is refused with E1502: `VAR_IN_OUT` ("an extern takes copies, not references"), any aggregate or `STRING` `VAR_OUTPUT` ("only scalar outputs cross an import"), and any statement in the body ("an extern FUNCTION has no statements").
+What is refused with E1502: `VAR_IN_OUT` ("an extern takes copies, not references"), a variadic `VAR_INPUT` ("a variadic parameter has the argument count of each call"), any aggregate or `STRING` `VAR_OUTPUT` ("only scalar outputs cross an import"), and any statement in the body ("an extern FUNCTION has no statements").
 Putting `{extern}` on anything other than a `FUNCTION` is E1501.
 
 A `STRING` **return type** is refused the same way: "the return type of 'f' can only be a scalar".

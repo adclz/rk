@@ -89,5 +89,5 @@ A namespaced POU is exported under its path, `Ns.Name`, and a FUNCTION_BLOCK bod
 ## Imports
 
 A host import declared with `{extern}` is the same convention in reverse: the `VAR_INPUT` are the parameters, the scalar `VAR_OUTPUT` are the results, and the return type comes last.
-It takes copies, so `VAR_IN_OUT`, aggregate outputs and a `STRING` return are refused (`E1502`).
+It takes copies, so `VAR_IN_OUT`, a variadic input, aggregate outputs and a `STRING` return are refused (`E1502`).
 The `programming-st` skill's `references/pragmas.md` has the full contract.
