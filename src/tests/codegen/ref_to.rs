@@ -805,3 +805,195 @@ fn test_deref_reads_and_writes_the_pointee_type(
     };
     assert_eq!(got, expected);
 }
+
+/// A type that comes back to itself through a reference, by every route a name
+/// gives it. Lowering one followed the reference until the stack ran out, and a value
+/// of `P : REF_TO P` could not be given to a variable of `P`: "expected 'P', got 'P'".
+/// Each row runs its steps in a function with these variables, and then holds.
+#[rstest]
+// Through the cycle.
+#[case::an_array_read_back("a1[0] := REF(a2); a1[0]^[1] := REF(a1); ra := REF(a1);", "a2[1] = ra")]
+#[case::an_array_round_and_round(
+    "a1[0] := REF(a1); a1[0]^[0]^[0]^[1] := REF(a2); ra := REF(a2);",
+    "a1[1] = ra"
+)]
+#[case::null_to_start_with("", "a1[0] = NULL AND p1 = NULL")]
+#[case::a_reference_held_by_another("p1 := REF(p2); p2 := REF(p1); rp := REF(p1);", "p1^ = rp")]
+#[case::a_reference_twice_through("p1 := REF(p2); p2 := REF(p1); rp := REF(p2);", "p1^^ = rp")]
+#[case::a_reference_to_itself("p1 := REF(p1);", "p1^ = p1 AND p1^^^^ = p1")]
+#[case::two_names_holding_each_other("pa := REF(qa); qa := REF(pa);", "pa^ = qa AND pa^^ = pa")]
+#[case::through_a_second_name(
+    "b1[0] := REF(b2); b1[0]^[1] := REF(b1); rb := REF(b1);",
+    "b2[1] = rb"
+)]
+#[case::through_an_alias("c1[0] := REF(c2); c1[0]^[1] := REF(c1); rc := REF(c1);", "c2[1] = rc")]
+#[case::an_array_of_arrays(
+    "e1[0][0] := REF(e2); e1[0][0]^[1][1] := REF(e1); re := REF(e1);",
+    "e2[1][1] = re"
+)]
+#[case::a_struct_with_a_name("g1[0].again := REF(g2); g1[0].again^[1].n := 3;", "g2[1].n = 3")]
+#[case::two_dimensions(
+    "t1[1, 0] := REF(t2); t1[1, 0]^[0, 1] := REF(t1); rt := REF(t1);",
+    "t2[0, 1] = rt"
+)]
+#[case::a_reference_to_the_array("ra := REF(a1); ra^[0] := ra;", "a1[0] = ra AND a1[0]^[0] = ra")]
+#[case::written_through_a_reference(
+    "p2 := REF(p3); rp := REF(p1); rp^ := p2;",
+    "p1 = p2 AND p1 <> NULL"
+)]
+// One type, two values.
+#[case::a_reference_assigned("p1 := REF(p2); p3 := p1; rp := REF(p2);", "p3 = rp")]
+#[case::a_reference_compared("p1 := REF(p2);", "p1 = p1 AND p1 <> p2")]
+#[case::an_array_copied("a1[0] := REF(a2); a2 := a1; ra := REF(a2);", "a2[0] = ra")]
+#[case::an_element_compared("a1[0] := REF(a2);", "a1[0] = a1[0]")]
+#[case::an_alias_copied("c1[0] := REF(c2); c2 := c1; rc := REF(c2);", "c2[0] = rc")]
+#[case::an_array_of_them(
+    "aa[1][0] := REF(aa[0]); aa[1][0]^[1] := REF(aa[1]); ra := REF(aa[1]);",
+    "aa[0][1] = ra"
+)]
+#[case::an_element_copied("aa[1] := a1;", "aa[1][0] = NULL")]
+#[case::an_alias_and_what_it_names("d1[0] := REF(c1); c1 := d1; rc := REF(c1);", "c1[0] = rc")]
+// Through calls.
+#[case::by_value("p1 := REF(p2);", "id_p(p1) = p1")]
+#[case::an_output("p1 := REF(p2); out_p(p1, o => p3);", "p3 = p1")]
+#[case::an_in_out("p1 := REF(p2); io_p(p3, p1);", "p3 = p1")]
+#[case::an_array_by_value("a1[0] := REF(a2); ra := REF(a2);", "first(a1) = ra")]
+#[case::an_array_in_out("set_first(a1, REF(a2)); ra := REF(a2);", "a1[0] = ra")]
+#[case::an_array_returned("a1 := ret_a();", "a1[0] = NULL")]
+#[case::overloads("", "over(p1) = 1 AND over(pa) = 2 AND over(a1) = 3 AND over(b1) = 4")]
+// Held elsewhere.
+#[case::a_block_member("fb();", "fb.q")]
+#[case::a_class_member("", "cl.Me()")]
+#[case::a_global("gp := REF(gp);", "gp^ = gp")]
+#[case::a_global_array("ga[0] := REF(ga); ra := ga[0];", "ra^[0] = ra")]
+fn a_type_that_comes_back_through_a_reference(
+    mut with_db: db::RootDatabase,
+    #[case] steps: &str,
+    #[case] holds: &str,
+) {
+    let source = format!(
+        r#"
+        TYPE
+            A : ARRAY[0..1] OF REF_TO A;
+            P : REF_TO P;
+            Pa : REF_TO Qa;
+            Qa : REF_TO Pa;
+            B : ARRAY[0..1] OF Qb;
+            Qb : REF_TO B;
+            C : D;
+            D : ARRAY[0..1] OF REF_TO C;
+            E : ARRAY[0..1] OF F;
+            F : ARRAY[0..1] OF REF_TO E;
+            G : ARRAY[0..1] OF H;
+            H : STRUCT again : REF_TO G; n : INT; END_STRUCT;
+            Two : ARRAY[0..1, 0..1] OF REF_TO Two;
+            Ra : REF_TO A;
+        END_TYPE
+
+        CONFIGURATION Cfg
+            VAR_GLOBAL gp : P; ga : A; END_VAR
+        END_CONFIGURATION
+
+        FUNCTION id_p : P
+        VAR_INPUT x : P; END_VAR
+            id_p := x;
+        END_FUNCTION
+
+        FUNCTION first : Ra
+        VAR_INPUT x : A; END_VAR
+            first := x[0];
+        END_FUNCTION
+
+        FUNCTION set_first
+        VAR_IN_OUT x : A; END_VAR
+        VAR_INPUT t : REF_TO A; END_VAR
+            x[0] := t;
+        END_FUNCTION
+
+        FUNCTION out_p
+        VAR_INPUT x : P; END_VAR
+        VAR_OUTPUT o : P; END_VAR
+            o := x;
+        END_FUNCTION
+
+        FUNCTION io_p
+        VAR_IN_OUT x : P; END_VAR
+        VAR_INPUT t : P; END_VAR
+            x := t;
+        END_FUNCTION
+
+        FUNCTION ret_a : A
+        VAR x : A; END_VAR
+            x[1] := REF(x);
+            ret_a := x;
+        END_FUNCTION
+
+        FUNCTION_BLOCK Fb
+        VAR a : A; p : P; END_VAR
+        VAR_OUTPUT q : BOOL; END_VAR
+            a[0] := REF(a);
+            p := REF(p);
+            q := a[0]^[0] = a[0] AND p^ = p;
+        END_FUNCTION_BLOCK
+
+        CLASS Cl
+        VAR PUBLIC a : A; END_VAR
+            METHOD PUBLIC Me : BOOL
+            VAR r : REF_TO A; END_VAR
+                THIS.a[0] := REF(THIS.a);
+                r := REF(a);
+                Me := a[0]^[0] = r;
+            END_METHOD
+        END_CLASS
+
+        FUNCTION over : INT
+        VAR_INPUT x : P; END_VAR
+            over := 1;
+        END_FUNCTION
+
+        FUNCTION over : INT
+        VAR_INPUT x : Pa; END_VAR
+            over := 2;
+        END_FUNCTION
+
+        FUNCTION over : INT
+        VAR_INPUT x : A; END_VAR
+            over := 3;
+        END_FUNCTION
+
+        FUNCTION over : INT
+        VAR_INPUT x : B; END_VAR
+            over := 4;
+        END_FUNCTION
+
+        FUNCTION test : BOOL
+        VAR_EXTERNAL gp : P; ga : A; END_VAR
+        VAR
+            a1, a2 : A;
+            p1, p2, p3 : P;
+            pa : Pa;
+            qa : Qa;
+            b1, b2 : B;
+            c1, c2 : C;
+            d1 : D;
+            e1, e2 : E;
+            g1, g2 : G;
+            t1, t2 : Two;
+            aa : ARRAY[0..1] OF A;
+            fb : Fb;
+            cl : Cl;
+            ra : REF_TO A;
+            rb : REF_TO B;
+            rc : REF_TO C;
+            re : REF_TO E;
+            rt : REF_TO Two;
+            rp : REF_TO P;
+        END_VAR
+            {steps}
+            test := {holds};
+        END_FUNCTION
+    "#
+    );
+    let result: i32 = crate::tests::codegen::run(&mut with_db, &source, "test", ());
+    assert_eq!(result, 1, "{steps} {holds}");
+}
