@@ -679,28 +679,10 @@ impl<'db> Resolver<'db> {
             current = ctx.type_of_path_expr_with_adjustments(step.get_expr(db));
         }
 
-        // For multi-step paths with multibit access (e.g. SX[SN].0), apply
-        // multibit to the final resolved type now that indexing/deref is done.
-        if !single_step
-            && let Some(mb) = multibits
-            && let Some(last_step) = steps.last()
-        {
-            let last_expr = last_step.get_expr(db);
-            // `current` is what the walk landed on — the ELEMENT of `arr[k]`,
-            // the FIELD of `s.fld` — which is what the slice applies to, and
-            // so what its offset has to fit inside.
-            crate::hir_ty::resolver::walk::check_multibits_bounds(
-                db, last_expr, current, None, mb, ctx,
+        if !single_step {
+            crate::hir_ty::resolver::walk::slice_the_end_of_a_path(
+                db, steps, current, multibits, ctx,
             );
-            let mb_type = crate::hir_ty::infer::normalize::multibits_to_type(db, mb);
-            // Update type_of_path_expr and also replace the last adjustment
-            // target (e.g. array index target) with the multibit type.
-            ctx.type_of_path_expr.insert(last_expr, mb_type);
-            if let Some(adjustments) = ctx.path_expr_adjustments.get_mut(&last_expr)
-                && let Some(last_adj) = adjustments.last_mut()
-            {
-                last_adj.target = mb_type;
-            }
         }
     }
 }
