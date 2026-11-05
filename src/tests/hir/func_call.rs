@@ -1691,3 +1691,145 @@ END_PROGRAM
     "
     );
 }
+
+/// What the slice tables below call and hold.
+const SLICES: &str = r#"
+TYPE
+    RecW : STRUCT f : WORD; a : ARRAY[0..1] OF WORD; END_STRUCT;
+    Flags : WORD (FA := 1, FB := 2);
+    Rec : STRUCT f : Flags; END_STRUCT;
+    Nest : STRUCT inner : RecW; END_STRUCT;
+END_TYPE
+
+FUNCTION io_bool
+VAR_IN_OUT v : BOOL; END_VAR
+    v := TRUE;
+END_FUNCTION
+
+FUNCTION io_byte
+VAR_IN_OUT v : BYTE; END_VAR
+    v := 1;
+END_FUNCTION
+
+FUNCTION over_io
+VAR_IN_OUT v : BOOL; END_VAR
+    v := TRUE;
+END_FUNCTION
+
+FUNCTION over_io
+VAR_IN_OUT v : INT; END_VAR
+    v := 1;
+END_FUNCTION
+
+CLASS Cl
+    METHOD PUBLIC Me
+    VAR_IN_OUT v : BOOL; END_VAR
+        v := TRUE;
+    END_METHOD
+END_CLASS
+
+CONFIGURATION Cfg
+VAR_GLOBAL g : WORD; END_VAR
+END_CONFIGURATION
+"#;
+
+/// A slice has no address to bind, whatever its path runs through. Past a bare
+/// variable these passed the check, and lowering stopped with an internal compiler
+/// error.
+#[rstest]
+#[case::a_bare_variable("io_bool(w.2);")]
+#[case::a_member("io_bool(rw.f.2);")]
+#[case::an_element("io_bool(lw[1].2);")]
+#[case::a_reference("rd := REF(w); io_bool(rd^.2);")]
+#[case::an_element_of_a_member("io_bool(rw.a[1].2);")]
+#[case::a_member_of_a_member("io_bool(n.inner.f.2);")]
+#[case::a_reference_to_a_struct("rr := REF(rw); io_bool(rr^.f.2);")]
+#[case::bound_by_name("io_bool(v := rw.f.2);")]
+#[case::written_with_its_size("io_bool(rw.f.%X2);")]
+#[case::of_a_byte("io_byte(rw.f.%B1);")]
+#[case::a_global("io_bool(g.2);")]
+#[case::a_type_with_named_values("io_bool(rc.f.2);")]
+#[case::an_element_with_named_values("io_bool(lf[1].2);")]
+#[case::a_reference_with_named_values("rf := REF(fl); io_bool(rf^.2);")]
+#[case::to_a_method("cl.Me(w.2);")]
+#[case::a_member_to_a_method("cl.Me(rw.f.2);")]
+#[case::an_element_to_a_method("cl.Me(lw[1].2);")]
+fn invalid_a_slice_bound_to_an_in_out(mut with_db: RootDatabase, #[case] body: &str) {
+    let source = format!(
+        r#"{SLICES}
+FUNCTION F
+VAR_EXTERNAL g : WORD; END_VAR
+VAR
+    w : WORD;
+    fl : Flags;
+    rw : RecW;
+    rc : Rec;
+    n : Nest;
+    lw : ARRAY[0..1] OF WORD;
+    lf : ARRAY[0..1] OF Flags;
+    rd : REF_TO WORD;
+    rf : REF_TO Flags;
+    rr : REF_TO RecW;
+    cl : Cl;
+END_VAR
+    {body}
+END_FUNCTION
+"#
+    );
+    let report = test_diagnostics(&mut with_db, &[&source]);
+    assert!(report.contains("[E0806]"), "{report}");
+    assert!(
+        report.contains("requires a variable, not a slice of one"),
+        "{report}"
+    );
+}
+
+/// The same from inside a POU, on what only a POU has.
+#[rstest]
+#[case::its_own_result("FUNCTION own : WORD io_bool(own.2); END_FUNCTION")]
+#[case::its_own_result_with_named_values("FUNCTION own : Flags io_bool(own.2); END_FUNCTION")]
+#[case::a_block_member("FUNCTION_BLOCK B VAR s : RecW; END_VAR io_bool(s.f.2); END_FUNCTION_BLOCK")]
+#[case::a_block_in_out(
+    "FUNCTION_BLOCK B VAR_IN_OUT w : WORD; END_VAR io_bool(w.2); END_FUNCTION_BLOCK"
+)]
+#[case::an_in_out_struct("FUNCTION F VAR_IN_OUT s : RecW; END_VAR io_bool(s.f.2); END_FUNCTION")]
+#[case::an_element_of_a_conformand(
+    "FUNCTION F VAR_IN_OUT w : ARRAY[*] OF WORD; END_VAR io_bool(w[0].2); END_FUNCTION"
+)]
+#[case::a_class_member(
+    "CLASS C VAR w : WORD; END_VAR
+     METHOD PUBLIC M VAR_IN_OUT v : BOOL; END_VAR v := TRUE; END_METHOD
+     METHOD PUBLIC I M(w.2); END_METHOD END_CLASS"
+)]
+#[case::a_member_of_a_class_member(
+    "CLASS C VAR s : RecW; END_VAR
+     METHOD PUBLIC M VAR_IN_OUT v : BOOL; END_VAR v := TRUE; END_METHOD
+     METHOD PUBLIC I M(s.f.2); END_METHOD END_CLASS"
+)]
+fn invalid_a_slice_bound_to_an_in_out_inside_a_pou(mut with_db: RootDatabase, #[case] pou: &str) {
+    let source = format!("{SLICES}\n{pou}\n");
+    let report = test_diagnostics(&mut with_db, &[&source]);
+    assert!(report.contains("[E0806]"), "{report}");
+}
+
+/// Among overloads a slice fits no in-out, whatever its path runs through.
+#[rstest]
+#[case::a_bare_variable("over_io(w.2);")]
+#[case::a_member("over_io(rw.f.2);")]
+#[case::an_element("over_io(lw[1].2);")]
+fn invalid_a_slice_among_in_out_overloads(mut with_db: RootDatabase, #[case] body: &str) {
+    let source = format!(
+        r#"{SLICES}
+FUNCTION F
+VAR
+    w : WORD;
+    rw : RecW;
+    lw : ARRAY[0..1] OF WORD;
+END_VAR
+    {body}
+END_FUNCTION
+"#
+    );
+    let report = test_diagnostics(&mut with_db, &[&source]);
+    assert!(report.contains("[E0810]"), "{report}");
+}
