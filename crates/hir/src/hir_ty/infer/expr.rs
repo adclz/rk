@@ -104,9 +104,11 @@ impl<'db> InferExprCtx<'db> {
                 // Use adjusted types to account for array indexing, deref, etc.
                 // Kept UNPEELED so a diagnostic can still point at the operand's
                 // declaration; subranges are peeled only where the decision
-                // needs the base type.
-                let lhs = inference_results.type_of_expr_with_adjustments(db, *left);
-                let rhs = inference_results.type_of_expr_with_adjustments(db, *right);
+                // needs the base type. A type with named values calculates as
+                // its base: `Light#Red + 1` is an INT.
+                let operand = |ty: Type<'db>| ty.named_values_base(db).unwrap_or(ty);
+                let lhs = operand(inference_results.type_of_expr_with_adjustments(db, *left));
+                let rhs = operand(inference_results.type_of_expr_with_adjustments(db, *right));
 
                 let mut ty = match (lhs.has_infer(), rhs.has_infer()) {
                     (true, false) => rhs,
@@ -253,8 +255,10 @@ impl<'db> InferExprCtx<'db> {
                 // The operand's type after its subscript or dereference:
                 // `-a[1]` is a DINT, not the array. Recorded bare, the
                 // unary read as its operand's base and `x := -a[1]` was a
-                // mismatch with 'ARRAY [0..2] OF DINT'.
+                // mismatch with 'ARRAY [0..2] OF DINT'. A type with named values
+                // calculates as its base.
                 let ty = inference_results.type_of_expr_with_adjustments(db, *expr);
+                let ty = ty.named_values_base(db).unwrap_or(ty);
                 inference_results.type_of_expr.insert(curr_expr, ty);
                 ty
             }
@@ -347,7 +351,7 @@ impl<'db> InferExprCtx<'db> {
                 // its own diagnostic.
                 let index_ty = inference_results
                     .type_of_expr_with_adjustments(db, *index)
-                    .normalize(db);
+                    .calculates_as(db);
                 if !index_ty.is_never()
                     && !index_ty.is_signed_integer()
                     && !index_ty.is_unsigned_integer()
@@ -629,7 +633,7 @@ impl<'db> InferExprCtx<'db> {
                 operator,
                 right,
             } => {
-                if let Err(err) = self.coerce_expressions(db, *left, *right, inference_results) {
+                if let Err(err) = self.coerce_numbers(db, *left, *right, inference_results) {
                     inference_results.errors.push(err.into_non_addable(
                         db,
                         inference_results.type_of_expr[left],
@@ -643,7 +647,7 @@ impl<'db> InferExprCtx<'db> {
                 operator,
                 right,
             } => {
-                if let Err(err) = self.coerce_expressions(db, *left, *right, inference_results) {
+                if let Err(err) = self.coerce_numbers(db, *left, *right, inference_results) {
                     inference_results.errors.push(err.into_non_multiplicable(
                         db,
                         inference_results.type_of_expr[left],
@@ -658,7 +662,7 @@ impl<'db> InferExprCtx<'db> {
                 // this rejects.
                 let rhs = inference_results
                     .type_of_expr_with_adjustments(db, *right)
-                    .normalize(db);
+                    .calculates_as(db);
                 if !rhs.has_infer() && !rhs.is_never() && !rhs.is_numeric() {
                     inference_results.errors.push(
                         TypeError::UnsupportedOperator {
@@ -675,7 +679,7 @@ impl<'db> InferExprCtx<'db> {
                 operator,
                 right,
             } => {
-                if let Err(err) = self.coerce_expressions(db, *left, *right, inference_results) {
+                if let Err(err) = self.coerce_numbers(db, *left, *right, inference_results) {
                     inference_results.errors.push(err.into_non_comparable(
                         db,
                         inference_results.type_of_expr[left],
@@ -768,7 +772,7 @@ impl<'db> InferExprCtx<'db> {
                             inference_results.type_of_expr.contains_key(expr).then(|| {
                                 inference_results
                                     .type_of_expr_with_adjustments(db, *expr)
-                                    .normalize(db)
+                                    .calculates_as(db)
                             });
                         let is_bit_string = matches!(
                             operand_ty,
@@ -804,7 +808,7 @@ impl<'db> InferExprCtx<'db> {
                         // strings and durations. An untyped literal is
                         // checked once its context types it.
                         let declared = inference_results.type_of_expr_with_adjustments(db, *expr);
-                        let operand = declared.normalize(db);
+                        let operand = declared.calculates_as(db);
                         if !operand.has_infer() && !operand.is_never() && !operand.supports_add(db)
                         {
                             inference_results.errors.push(
@@ -967,6 +971,23 @@ impl<'db> InferExprCtx<'db> {
             inference_results.adjustments_of_expr(db, rhs),
             self.resolver,
         )
+    }
+
+    /// The operands of a calculation, where two types with named values are two
+    /// numbers: `Light#Red + Colour#Blue` adds two INTs.
+    fn coerce_numbers(
+        &self,
+        db: &'db dyn WorkspaceDataBase,
+        left: Expr<'db>,
+        right: Expr<'db>,
+        inference_results: &mut BodyInferenceResult<'db>,
+    ) -> CoerceResult<'db> {
+        let types = [left, right]
+            .map(|operand| inference_results.type_of_expr_with_adjustments(db, operand));
+        if types.iter().all(|ty| ty.named_values_base(db).is_some()) {
+            return Ok(());
+        }
+        self.coerce_expressions(db, left, right, inference_results)
     }
 
     fn coerce_expressions(

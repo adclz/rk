@@ -174,6 +174,33 @@ impl<'db> Type<'db> {
             }
         }
 
+        // A number and a type with named values: each reads as the other. Two
+        // such types are still two types, whose values the rules below compare.
+        let named = |ty: Type<'db>| matches!(ty, Type::Enum(_) | Type::EnumVariant(..));
+        if named(lhs)
+            && !named(to)
+            && let Some(base) = lhs.named_values_base(db)
+        {
+            return base
+                .coerce_with_type(db, written, adjustments, resolver)
+                .map_err(|err| CoerceError {
+                    expected: *self,
+                    ..err
+                });
+        }
+        if named(to)
+            && !named(lhs)
+            && let Some(base) = to.named_values_base(db)
+        {
+            return lhs
+                .coerce_with_type(db, base, adjustments, resolver)
+                .map_err(|err| CoerceError {
+                    expected: *self,
+                    actual: written,
+                    adjustment: err.adjustment,
+                });
+        }
+
         match (lhs, &to) {
             // A variant belongs to exactly one enum, and the type says which
             // TYPE it was written through: normalize peels that down to the
@@ -187,6 +214,12 @@ impl<'db> Type<'db> {
                     adjustment: None,
                 }),
             },
+            // Two names of one enum, on the two sides of a comparison.
+            (Type::EnumVariant(ty1, _), Type::EnumVariant(ty2, _))
+                if Type::DataType(ty1).normalize(db) == Type::DataType(*ty2).normalize(db) =>
+            {
+                Ok(())
+            }
             (Type::Enum(e1), Type::Enum(e2)) => {
                 if e1.eq(e2) {
                     Ok(())

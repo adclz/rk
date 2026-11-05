@@ -95,6 +95,7 @@ impl<'db> InferenceTable<'db> {
     ) {
         // only elementary types can be used to resolve the inference
         // the inference table will only attempt to resolve infer variants, it does not check coercion
+        let ty = ty.named_values_base(db).unwrap_or(ty);
         let normalized = ty.normalize(db);
         let ty = match normalized {
             Type::SubRange(sub) => sub._type(db).infer(db),
@@ -118,7 +119,7 @@ impl<'db> InferenceTable<'db> {
         value: Type<'db>,
         resolver: Resolver<'db>,
     ) {
-        let value = value.normalize(db);
+        let value = value.calculates_as(db);
         match value {
             Type::Infer(infer) => {
                 match self.current_mode {

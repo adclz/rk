@@ -155,7 +155,7 @@ pub(crate) fn multibits_fault<'db>(
 ) -> Option<ConfigError<'db>> {
     // As declared, to be shown: normalized, a STRUCT's name reads 'STRUCT'.
     let declared = base_type;
-    let base_type = base_type.normalize(db);
+    let base_type = base_type.calculates_as(db);
     if base_type.is_never() {
         return None;
     }

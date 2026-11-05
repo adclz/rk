@@ -675,10 +675,10 @@ impl<'db> StmtsResolverCtx<'db> {
                         CallSite::from_scoped(db, control_variable),
                         ctx,
                     );
-                    // IEC counts in ANY_INT; a subrange or an alias of an
-                    // integer normalizes to it. A bit of a wider address is a
-                    // BOOL, so this refuses it too.
-                    let counted = control_typ.normalize(db);
+                    // IEC counts in ANY_INT; a subrange, an alias or a type
+                    // with named values of an integer calculates as it. A bit
+                    // of a wider address is a BOOL, so this refuses it too.
+                    let counted = control_typ.calculates_as(db);
                     if !control_typ.is_never()
                         && !counted.is_never()
                         && !(counted.is_signed_integer() || counted.is_unsigned_integer())

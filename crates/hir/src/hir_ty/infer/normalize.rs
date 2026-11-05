@@ -80,6 +80,30 @@ impl<'db> Type<'db> {
         ty
     }
 
+    /// The base of a type with named values, `INT` of `INT (Red := 1)`, or one
+    /// of its values. The names do not limit what it holds: another value can
+    /// be assigned and can come of a calculation, so it reads and writes as its
+    /// base. An enum written with no base holds its names only.
+    pub fn named_values_base(self, db: &'db dyn WorkspaceDataBase) -> Option<Type<'db>> {
+        match self.normalize(db) {
+            Type::Enum(values) => values.typ(db).map(|base| base.infer(db)),
+            Type::EnumVariant(ty, _) => Type::DataType(ty).named_values_base(db),
+            _ => None,
+        }
+    }
+
+    /// What a value of this type calculates as, normalized: the base of a type
+    /// with named values, and otherwise the type itself.
+    pub fn calculates_as(self, db: &'db dyn WorkspaceDataBase) -> Type<'db> {
+        let ty = self.normalize(db);
+        match ty {
+            Type::Enum(_) | Type::EnumVariant(..) => ty
+                .named_values_base(db)
+                .map_or(ty, |base| base.normalize(db)),
+            _ => ty,
+        }
+    }
+
     /// Through every name to the identity behind it: a variable's declared
     /// type, an alias's target, a callable's return type. The chain is
     /// walked twice over, the second walker two names at a time: they meet
