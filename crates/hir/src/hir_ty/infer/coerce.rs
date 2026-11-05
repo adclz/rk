@@ -537,6 +537,7 @@ impl<'db> CoerceError<'db> {
         TypeError::NotComparable {
             base_target,
             lhs: self.expected,
+            lhs_adjustment: None,
             rhs: self.actual,
             adjustment: self.adjustment,
             expr: call_site,

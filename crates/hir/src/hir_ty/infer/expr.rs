@@ -347,6 +347,8 @@ impl<'db> InferExprCtx<'db> {
                     table.resolve_completly(db, self.resolver, inference_results);
                 }
 
+                self.refuse_ref_as_value(db, *index, inference_results);
+
                 // Any integer type, as a subscript. `Never` already carries
                 // its own diagnostic.
                 let index_ty = inference_results.type_of_expr_with_adjustments(db, *index);
@@ -622,6 +624,33 @@ impl<'db> InferExprCtx<'db> {
 
         // The node itself: an arm below binds its operand as `expr`.
         let node = expr;
+
+        // A `REF()` is no operand. Reported already (`**` on what it points at),
+        // the operator says no more.
+        let operands = match expr.expr(db) {
+            ExprKind::AddOperator { left, right, .. }
+            | ExprKind::MultOperator { left, right, .. }
+            | ExprKind::PowerOperator { left, right }
+            | ExprKind::BooleanOperator { left, right, .. } => [Some(*left), Some(*right)],
+            ExprKind::UnaryOperator { expr, .. } => [Some(*expr), None],
+            _ => [None, None],
+        };
+        let reported = inference_results
+            .type_of_expr
+            .get(&node)
+            .is_some_and(Type::is_never);
+        let refused = !reported
+            && operands
+                .into_iter()
+                .flatten()
+                .fold(false, |refused, operand| {
+                    self.refuse_ref_as_value(db, operand, inference_results) | refused
+                });
+        if refused {
+            inference_results.type_of_expr.insert(node, Type::Never);
+            return;
+        }
+
         match expr.expr(db) {
             ExprKind::AddOperator {
                 left,
@@ -686,8 +715,32 @@ impl<'db> InferExprCtx<'db> {
                 left,
                 right,
                 operator,
+            } if matches!(
+                operator,
+                ComparisonOperatorKind::Eq | ComparisonOperatorKind::Ne
+            ) && self.compares_references(db, *left, *right, inference_results) =>
+            {
+                inference_results
+                    .type_of_expr
+                    .insert(expr, Type::new_bool());
+            }
+            ExprKind::ComparisonOperator {
+                left,
+                right,
+                operator,
             } => {
-                if let Err(err) = self.coerce_expressions(db, *left, *right, inference_results) {
+                if let (Some(a), Some(b)) = (written_ref(db, *left), written_ref(db, *right)) {
+                    self.refuse_two_refs(
+                        db,
+                        expr,
+                        (*left, a),
+                        (*right, b),
+                        operator,
+                        inference_results,
+                    );
+                } else if let Err(err) =
+                    self.coerce_expressions(db, *left, *right, inference_results)
+                {
                     inference_results.errors.push(err.into_non_comparable(
                         db,
                         inference_results.type_of_expr[left],
@@ -968,6 +1021,104 @@ impl<'db> InferExprCtx<'db> {
         )
     }
 
+    /// `REF(x)` where a value belongs. It is typed as what it points at, with the
+    /// reference in its adjustment, and it is no value of that type: `REF(i) + 1`
+    /// was address arithmetic. Reports it, and says whether it did.
+    pub(crate) fn refuse_ref_as_value(
+        &self,
+        db: &'db dyn WorkspaceDataBase,
+        expr: Expr<'db>,
+        inference_results: &mut BodyInferenceResult<'db>,
+    ) -> bool {
+        let Some(reference) = written_ref(db, expr) else {
+            return false;
+        };
+        let target = inference_results.type_of_expr_with_adjustments(db, reference);
+        if !target.is_never() {
+            inference_results.errors.push(
+                TypeError::RefAsValue { expr, target }
+                    .to_diagnostic(db, inference_results.scope.file(db)),
+            );
+        }
+        true
+    }
+
+    /// Whether `=` or `<>` compares a `REF()` with a reference to the same type,
+    /// `NULL` or another `REF()`. A `REF()` is typed as what it points at, with
+    /// the reference in its adjustment, so the rules for two values do not read
+    /// it: `REF(x) = r` was refused on an array, and `REF(x) = REF(y)` on anything.
+    fn compares_references(
+        &self,
+        db: &'db dyn WorkspaceDataBase,
+        left: Expr<'db>,
+        right: Expr<'db>,
+        inference_results: &BodyInferenceResult<'db>,
+    ) -> bool {
+        let (reference, other) = match (written_ref(db, left), written_ref(db, right)) {
+            (Some(a), Some(b)) => return same_target(db, a, b, inference_results),
+            (Some(reference), None) => (reference, right),
+            (None, Some(reference)) => (reference, left),
+            (None, None) => return false,
+        };
+        let held = inference_results.type_of_expr_with_adjustments(db, other);
+        match held.normalize(db) {
+            Type::Null => true,
+            Type::RefTo(_) => held
+                .coerce_with_type(
+                    db,
+                    inference_results.type_of_expr_with_adjustments(db, reference),
+                    inference_results.adjustments_of_expr(db, reference),
+                    self.resolver,
+                )
+                .is_ok(),
+            _ => false,
+        }
+    }
+
+    /// `REF(a)` against `REF(b)` where [`Self::compares_references`] did not take
+    /// them: they point at two types, or the operator is an order, which no
+    /// reference has. Each is typed as what it points at, so the report says
+    /// what it is.
+    fn refuse_two_refs(
+        &self,
+        db: &'db dyn WorkspaceDataBase,
+        comparison: Expr<'db>,
+        (left, a): (Expr<'db>, Expr<'db>),
+        (right, b): (Expr<'db>, Expr<'db>),
+        operator: &ComparisonOperatorKind,
+        inference_results: &mut BodyInferenceResult<'db>,
+    ) {
+        let written = |expr| inference_results.type_of_expr_with_adjustments(db, expr);
+        let (lhs, rhs) = (written(a), written(b));
+        if lhs.is_never() || rhs.is_never() {
+            return;
+        }
+        let error = if same_target(db, a, b, inference_results) {
+            TypeError::RefUnordered {
+                target: lhs,
+                operator: operator.as_str(),
+                call_site: comparison.as_call_site(db),
+            }
+        } else {
+            let last = |expr| {
+                inference_results
+                    .adjustments_of_expr(db, expr)
+                    .and_then(|adjustments| adjustments.last().cloned())
+            };
+            TypeError::NotComparable {
+                base_target: inference_results.type_of_expr[&left],
+                lhs,
+                lhs_adjustment: last(a),
+                rhs,
+                adjustment: last(b),
+                expr: CallSite::from_scoped(db, &right),
+            }
+        };
+        inference_results
+            .errors
+            .push(error.to_diagnostic(db, inference_results.scope.file(db)));
+    }
+
     /// The operands of a calculation, where two types with named values are two
     /// numbers: `Light#Red + Colour#Blue` adds two INTs.
     fn coerce_numbers(
@@ -1004,6 +1155,28 @@ impl<'db> InferExprCtx<'db> {
         let l = inference_results.type_of_expr_with_adjustments(db, left);
         let r = inference_results.type_of_expr_with_adjustments(db, right);
 
+        // A `REF()` is a reference, one way: read back as a value of what it
+        // points at, the other way round, `i = REF(i)` compared the two.
+        match (written_ref(db, left), written_ref(db, right)) {
+            (None, Some(reference)) => {
+                return l.coerce_with_type(
+                    db,
+                    r,
+                    inference_results.adjustments_of_expr(db, reference),
+                    self.resolver,
+                );
+            }
+            (Some(reference), None) => {
+                return r.coerce_with_type(
+                    db,
+                    l,
+                    inference_results.adjustments_of_expr(db, reference),
+                    self.resolver,
+                );
+            }
+            _ => {}
+        }
+
         // The two operands of a binary operator are commutative for coercion:
         // they are compatible iff EITHER widens to the other (they share a
         // common type in the widening lattice). Coercing only `right -> left`
@@ -1026,6 +1199,34 @@ impl<'db> InferExprCtx<'db> {
                 Ok(()) => Ok(()),
                 Err(_) => Err(err),
             },
+        }
+    }
+}
+
+/// Whether two `REF()`s point at one type, a STRING's capacity included, as a
+/// reference bound to a `REF()` must.
+fn same_target<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    a: Expr<'db>,
+    b: Expr<'db>,
+    inference_results: &BodyInferenceResult<'db>,
+) -> bool {
+    use crate::hir_ty::infer::{coerce::same_type, normalize::declared_capacity_of};
+    let written = |expr| inference_results.type_of_expr_with_adjustments(db, expr);
+    let (a, b) = (written(a), written(b));
+    same_type(db, a.normalize(db), b.normalize(db))
+        && declared_capacity_of(db, a) == declared_capacity_of(db, b)
+}
+
+/// The `REF()` written at `expr`, through its parentheses.
+fn written_ref<'db>(db: &'db dyn WorkspaceDataBase, mut expr: Expr<'db>) -> Option<Expr<'db>> {
+    loop {
+        match expr.expr(db) {
+            ExprKind::PrimaryExpr(PrimaryExpr::ParenthesizedExpr { expr: inner }) => expr = *inner,
+            ExprKind::PrimaryExpr(PrimaryExpr::RefValue {
+                value: RefValue::Address(_),
+            }) => return Some(expr),
+            _ => return None,
         }
     }
 }
