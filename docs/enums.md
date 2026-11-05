@@ -43,6 +43,28 @@ A value without one continues from the value before it.
 An explicit value must be a constant, and arithmetic over constants is fine (`E0604`).
 Every value fits the base type, a continued one too: in `SINT (A := 127, B)`, `B` would be 128 (`E0605`).
 
+## Named values
+
+An enum written with a base type holds the values of that type, and its names only name some of them.
+So it takes a number, reads as one, can be calculated with, and has the parts of its base: `f.2` on a `WORD` base is that bit.
+
+```iecst
+TYPE Light : INT (Red := 1, Amber := 2, Green := 3); END_TYPE
+
+FUNCTION Next : Light
+VAR_INPUT
+    now : Light;
+END_VAR
+    Next := now + 1;
+    IF Next > Light#Green THEN
+        Next := Light#Red;
+    END_IF;
+END_FUNCTION
+```
+
+An enum with no base type holds its names and nothing else: `c := 1` on one is `E0301`.
+Two enums are two types, with or without a base.
+
 ## CASE
 
 `CASE` takes the values as labels, each written with its type:
