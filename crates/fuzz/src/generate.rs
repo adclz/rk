@@ -65,6 +65,18 @@
 //!   member. A FUNCTION writes part of its own result after assigning it.
 //!   The evaluator works on the two's-complement bits of the place's width.
 //!
+//! - A member of a FUNCTION_BLOCK or a CLASS named through `THIS` in its body
+//!   and its methods, for reads, writes and partial access, one per block or
+//!   class. `THIS.s.f0.%X3` is a bit of `f0`.
+//!
+//! - References compared, by where they point: `r = REF(x)`, `REF(x) <> r`,
+//!   `REF(x) = REF(y)`, `r = q`, `r <> NULL`, a `REF()` in parentheses, on any
+//!   type a program reference has.
+//!
+//! - Types that come back to themselves through a reference, by each route a
+//!   name gives them, in a FUNCTION that goes round and says so
+//!   ([`CYCLES`]).
+//!
 //! - `__TRY … __CATCH(e) … __FINALLY … __END_TRY`, the body raising a
 //!   literal message after some statements: the ones after the raise are
 //!   left out, the message is cut to the capacity of the STRING the
@@ -275,6 +287,20 @@ enum Expr {
     /// A FUNCTION of the library every program is read with
     /// ([`crate::session::LIBRARY`]), spelled one of its two ways.
     LibCall(LibFn, Vec<Expr>, u8),
+    /// `a = b`, or `a <> b` when not set: two references, by where they point.
+    SameRef(bool, RefSide, RefSide),
+    /// `cycle{k}(n)`: goes round the type and answers `n + 1` ([`CYCLES`]).
+    Cycle(usize, Box<Expr>),
+}
+
+/// One side of a comparison of references.
+#[derive(Clone, Debug)]
+enum RefSide {
+    /// A program reference.
+    Held(usize),
+    /// `REF(place)`, in parentheses when set.
+    Of(Place, bool),
+    Null,
 }
 
 /// The FUNCTIONs of the library, each with its semantics here.
@@ -546,6 +572,8 @@ struct Block {
     members: Vec<Var>,
     body: Vec<Stmt>,
     implements: Option<usize>,
+    /// Its body and methods name its members through `THIS`.
+    through_this: bool,
     /// In the interface's order when it implements one.
     methods: Vec<Method>,
 }
@@ -585,6 +613,8 @@ struct Instance {
 struct Class {
     name: String,
     parent: Option<usize>,
+    /// Its methods name the variables they see through `THIS`.
+    through_this: bool,
     /// Its own variables; the inherited ones come first in an instance.
     vars: Vec<Var>,
     /// Every method it has, `m{j}`: its parent's, then its own.
@@ -773,6 +803,8 @@ struct Recurse {
 /// A program's declarations, which the evaluator and the printer read.
 #[derive(Default)]
 struct Decls {
+    /// Which of [`CYCLES`] each `cycle{k}` goes round.
+    cycles: Vec<usize>,
     /// The fields of `S{k}`.
     structs: Vec<Vec<Var>>,
     functions: Vec<Function>,
@@ -1110,6 +1142,11 @@ impl Generator<'_> {
         }
         let d = depth - 1;
         if ty == Ty::Bool {
+            if self.choices.percent(15)
+                && let Some(same) = self.reference_comparison()
+            {
+                return same;
+            }
             let pick = self.choices.below(5);
             if pick == 4
                 && let Some(bit) = self.bit_read(readable)
@@ -1301,11 +1338,54 @@ impl Generator<'_> {
         }
     }
 
+    /// Two references of one type compared. Only a program holds them, and each
+    /// is set before anything can read it.
+    fn reference_comparison(&mut self) -> Option<Expr> {
+        if !self.in_program || self.d.refs.is_empty() {
+            return None;
+        }
+        let r = self.choices.below(self.d.refs.len());
+        let mut a = self.ref_side(r);
+        let b = self.ref_side(r);
+        // No reference is on either side of this one: `NULL = NULL` is refused.
+        if matches!((&a, &b), (RefSide::Null, RefSide::Null)) {
+            a = RefSide::Held(r);
+        }
+        Some(Expr::SameRef(self.choices.percent(50), a, b))
+    }
+
+    /// A side that compares with the program reference `r`.
+    fn ref_side(&mut self, r: usize) -> RefSide {
+        let target = self.d.refs[r].target;
+        match self.choices.below(5) {
+            0 => RefSide::Null,
+            1 => {
+                let same: Vec<usize> = (0..self.d.refs.len())
+                    .filter(|&q| self.d.refs[q].target == target)
+                    .collect();
+                RefSide::Held(same[self.choices.below(same.len())])
+            }
+            2 => RefSide::Held(r),
+            _ => {
+                let places = self.addressable(target);
+                match self.pick(places) {
+                    Some(place) => RefSide::Of(place, self.choices.percent(25)),
+                    None => RefSide::Held(r),
+                }
+            }
+        }
+    }
+
     /// A call to a FUNCTION returning `ty` (any string, for a string), if
     /// there is one and calls are allowed here.
     fn call(&mut self, ty: Ty, depth: u32, readable: &[usize]) -> Option<Expr> {
         if !self.in_program || depth == 0 {
             return None;
+        }
+        if ty == Ty::Dint && !self.d.cycles.is_empty() && self.choices.percent(25) {
+            let k = self.choices.below(self.d.cycles.len());
+            let n = self.expr(Ty::Dint, depth - 1, readable);
+            return Some(Expr::Cycle(k, Box::new(n)));
         }
         // Some calls go to the library every program is read with.
         let library = match ty {
@@ -1941,6 +2021,21 @@ impl Generator<'_> {
 
     /// Scalar variables for a signature or a declaration: numbers, BOOLs
     /// and strings, each with a literal to start from.
+    /// A STRUCT a block or a class may hold in its state, for a path of several
+    /// steps from `THIS`: `THIS.t0.f1.%X3`.
+    fn struct_member(&mut self) -> Option<Var> {
+        if self.d.structs.is_empty() || !self.choices.percent(50) {
+            return None;
+        }
+        let ty = Ty::Struct(self.choices.below(self.d.structs.len()));
+        Some(Var {
+            name: "t0".to_string(),
+            ty,
+            init: self.default_of(ty),
+            role: Role::Plain,
+        })
+    }
+
     fn vars_named(&mut self, prefix: &str, count: usize, role: Role) -> Vec<Var> {
         (0..count)
             .map(|i| {
@@ -2024,6 +2119,11 @@ pub fn program(bytes: &[u8]) -> String {
         let n = 1 + g.choices.below(3);
         let fields = g.vars_named("f", n, Role::Plain);
         g.d.structs.push(fields);
+    }
+
+    for _ in 0..g.choices.below(3) {
+        let cycle = g.choices.below(CYCLES.len());
+        g.d.cycles.push(cycle);
     }
 
     for k in 0..g.choices.below(5) {
@@ -2124,6 +2224,9 @@ pub fn program(bytes: &[u8]) -> String {
                 members.push(v);
             }
         }
+        if let Some(held) = g.struct_member() {
+            members.push(held);
+        }
         let implements = match g.d.interfaces.is_empty() || g.choices.percent(30) {
             true => None,
             false => Some(g.choices.below(g.d.interfaces.len())),
@@ -2163,7 +2266,9 @@ pub fn program(bytes: &[u8]) -> String {
         let readable: Vec<usize> = (0..members.len()).collect();
         g.budget = 10;
         let (members, body) = g.with_frame(members, |g| g.block(2, &readable, &[], false, true));
+        let through_this = g.choices.percent(50);
         g.d.blocks.push(Block {
+            through_this,
             name: format!("fb{k}"),
             members,
             body,
@@ -2219,7 +2324,7 @@ pub fn program(bytes: &[u8]) -> String {
         let inherited = families.len();
         let n = g.choices.below(3);
         let taken = g.d.classes.iter().map(|c| c.vars.len()).sum::<usize>();
-        let vars: Vec<Var> = g
+        let mut vars: Vec<Var> = g
             .vars_named("z", n, Role::Plain)
             .into_iter()
             .enumerate()
@@ -2228,6 +2333,10 @@ pub fn program(bytes: &[u8]) -> String {
                 ..v
             })
             .collect();
+        if let Some(mut held) = g.struct_member() {
+            held.name = format!("z{}", taken + vars.len());
+            vars.push(held);
+        }
         let new = 1 + g.choices.below(2);
         for j in inherited..inherited + new {
             let mut sig = g.signatures(1).remove(0);
@@ -2263,7 +2372,9 @@ pub fn program(bytes: &[u8]) -> String {
                 result,
             }));
         }
+        let through_this = g.choices.percent(50);
         g.d.classes.push(Class {
+            through_this,
             name: format!("C{k}"),
             parent,
             vars,
@@ -2494,6 +2605,18 @@ fn write_program(vars: &[Var], d: &Decls, body: &[Stmt], state: &State) -> Strin
         vars: vars.iter().map(|v| v.name.clone()).collect(),
         d,
     };
+    // A method's frame: what its instance holds, then its own parameters.
+    let framed = |members: &[Var], through_this: bool, params: &[Var]| Names {
+        vars: members
+            .iter()
+            .map(|v| match through_this {
+                true => format!("THIS.{}", v.name),
+                false => v.name.clone(),
+            })
+            .chain(params.iter().map(|v| v.name.clone()))
+            .collect(),
+        d,
+    };
     let decl = |out: &mut String, v: &Var, with_init: bool| {
         let _ = match with_init {
             true => writeln!(
@@ -2620,16 +2743,20 @@ fn write_program(vars: &[Var], d: &Decls, body: &[Stmt], state: &State) -> Strin
             }
             let _ = writeln!(out, "{section}");
             for m in members {
-                // A reference has no initial value of its own.
-                decl(&mut out, &b.members[m], role != Role::InOut);
+                // A reference has no initial value of its own, and a STRUCT
+                // has its TYPE's.
+                let member = &b.members[m];
+                decl(
+                    &mut out,
+                    member,
+                    role != Role::InOut && !matches!(member.ty, Ty::Struct(_)),
+                );
             }
             out.push_str("END_VAR\n");
         }
         for m in &b.methods {
             signature(&mut out, &m.sig);
-            let mut frame = b.members.clone();
-            frame.extend(m.sig.params.iter().cloned());
-            let n = names(&frame);
+            let n = framed(&b.members, b.through_this, &m.sig.params);
             n.block(&mut out, &m.body, 2);
             let _ = writeln!(
                 out,
@@ -2638,7 +2765,7 @@ fn write_program(vars: &[Var], d: &Decls, body: &[Stmt], state: &State) -> Strin
                 n.expr(&m.result)
             );
         }
-        names(&b.members).block(&mut out, &b.body, 1);
+        framed(&b.members, b.through_this, &[]).block(&mut out, &b.body, 1);
         out.push_str("END_FUNCTION_BLOCK\n\n");
     }
     for (k, c) in d.classes.iter().enumerate() {
@@ -2653,7 +2780,7 @@ fn write_program(vars: &[Var], d: &Decls, body: &[Stmt], state: &State) -> Strin
         if !c.vars.is_empty() {
             out.push_str("VAR\n");
             for v in &c.vars {
-                decl(&mut out, v, true);
+                decl(&mut out, v, !matches!(v.ty, Ty::Struct(_)));
             }
             out.push_str("END_VAR\n");
         }
@@ -2670,9 +2797,7 @@ fn write_program(vars: &[Var], d: &Decls, body: &[Stmt], state: &State) -> Strin
                 false => sig.clone(),
             };
             signature(&mut out, &head);
-            let mut frame = visible.clone();
-            frame.extend(sig.params.iter().cloned());
-            let n = names(&frame);
+            let n = framed(&visible, c.through_this, &sig.params);
             n.block(&mut out, &def.body, 2);
             let _ = writeln!(
                 out,
@@ -2691,6 +2816,9 @@ fn write_program(vars: &[Var], d: &Decls, body: &[Stmt], state: &State) -> Strin
     }
     for (k, r) in d.recursions.iter().enumerate() {
         write_recursion(&mut out, k, r);
+    }
+    for (k, cycle) in d.cycles.iter().enumerate() {
+        write_cycle(&mut out, k, *cycle);
     }
     out.push_str("PROGRAM P\nVAR\n");
     for v in vars {
@@ -3208,6 +3336,62 @@ fn exact(x: f64) -> String {
     }
 }
 
+/// Types that come back to themselves through a reference, and what a FUNCTION
+/// does with them: `K` is its number. It answers `n + 1` when the statements hold
+/// what they should, and `n` when not, so a wrong read shows in a value.
+const CYCLES: [(&str, &str, &str, &str); 7] = [
+    (
+        "ca_K : ARRAY[0..1] OF REF_TO ca_K;",
+        "a, b : ca_K; r : REF_TO ca_K;",
+        "a[0] := REF(b); a[0]^[1] := REF(a); r := REF(a);",
+        "b[1] = r AND a[0]^[1]^[0] = a[0]",
+    ),
+    (
+        "cp_K : REF_TO cp_K;",
+        "a, b, c : cp_K; r : REF_TO cp_K;",
+        "a := REF(b); b := REF(a); c := a; r := REF(b);",
+        "c = r AND a^ = REF(a) AND a^^ = r",
+    ),
+    (
+        "cp_K : REF_TO cq_K; cq_K : REF_TO cp_K;",
+        "a : cp_K; b : cq_K;",
+        "a := REF(b); b := REF(a);",
+        "a^ = b AND a^^ = a",
+    ),
+    (
+        "ca_K : cb_K; cb_K : ARRAY[0..1] OF REF_TO ca_K;",
+        "a : ca_K; b : cb_K; r : REF_TO ca_K;",
+        "a[0] := REF(a); b := a; r := REF(a);",
+        "b[0] = r",
+    ),
+    (
+        "ca_K : ARRAY[0..1] OF cr_K; cr_K : REF_TO ca_K;",
+        "a, b : ca_K; r : cr_K;",
+        "a[0] := REF(b); a[0]^[1] := REF(a); r := REF(a);",
+        "b[1] = r",
+    ),
+    (
+        "ca_K : ARRAY[0..1] OF cb_K; cb_K : ARRAY[0..1] OF REF_TO ca_K;",
+        "a, b : ca_K; r : REF_TO ca_K;",
+        "a[0][0] := REF(b); a[0][0]^[1][1] := REF(a); r := REF(a);",
+        "b[1][1] = r",
+    ),
+    (
+        "ca_K : ARRAY[0..1] OF cs_K; cs_K : STRUCT again : REF_TO ca_K; m : DINT; END_STRUCT;",
+        "a, b : ca_K;",
+        "a[0].again := REF(b); a[0].again^[1].m := n;",
+        "b[1].m = n",
+    ),
+];
+
+fn write_cycle(out: &mut String, k: usize, cycle: usize) {
+    let (types, vars, statements, holds) = CYCLES[cycle];
+    let text = format!(
+        "TYPE\n    {types}\nEND_TYPE\n\nFUNCTION cycle{k} : DINT\nVAR_INPUT\n    n : DINT;\nEND_VAR\nVAR\n    {vars}\nEND_VAR\n    {statements}\n    IF {holds} THEN\n        cycle{k} := n + 1;\n    ELSE\n        cycle{k} := n;\n    END_IF;\nEND_FUNCTION\n\n"
+    );
+    out.push_str(&text.replace("_K", &k.to_string()));
+}
+
 /// What the names in a frame's code refer to.
 struct Names<'a> {
     vars: Vec<String>,
@@ -3215,6 +3399,12 @@ struct Names<'a> {
 }
 
 impl Names<'_> {
+    /// A variable's name where only a name goes: a FOR's counter, a `__CATCH`.
+    fn bare(&self, v: usize) -> &str {
+        let name = &self.vars[v];
+        name.strip_prefix("THIS.").unwrap_or(name)
+    }
+
     fn place(&self, p: &Place) -> String {
         match p {
             Place::Var(v) => self.vars[*v].clone(),
@@ -3281,6 +3471,17 @@ impl Names<'_> {
                 let args: Vec<String> = args.iter().map(|a| self.expr(a)).collect();
                 format!("{}({})", f.spelled(*form), args.join(", "))
             }
+            Expr::SameRef(equal, a, b) => {
+                let side = |s: &RefSide| match s {
+                    RefSide::Held(r) => self.d.refs[*r].name.clone(),
+                    RefSide::Of(p, false) => format!("REF({})", self.place(p)),
+                    RefSide::Of(p, true) => format!("(REF({}))", self.place(p)),
+                    RefSide::Null => "NULL".to_string(),
+                };
+                let op = if *equal { "=" } else { "<>" };
+                format!("({} {op} {})", side(a), side(b))
+            }
+            Expr::Cycle(k, n) => format!("cycle{k}({})", self.expr(n)),
             Expr::Fold(op, _) => format!("...{}{}", self.vars[0], op.symbol()),
             Expr::Element => format!("...{}[{}]", self.vars[1], self.vars[0]),
             Expr::Bit(p, _, bit, bare) => match bare {
@@ -3486,7 +3687,7 @@ impl Names<'_> {
                     let _ = writeln!(
                         out,
                         "{pad}FOR {} := {from} TO {to} BY {by} DO",
-                        self.vars[*v]
+                        self.bare(*v)
                     );
                     self.block(out, body, level + 1);
                     let _ = writeln!(out, "{pad}END_FOR;");
@@ -3510,7 +3711,7 @@ impl Names<'_> {
                     );
                     match t.variable {
                         Some(v) => {
-                            let _ = writeln!(out, "{pad}__CATCH({})", self.vars[v]);
+                            let _ = writeln!(out, "{pad}__CATCH({})", self.bare(v));
                         }
                         None => {
                             let _ = writeln!(out, "{pad}__CATCH");
@@ -3572,7 +3773,7 @@ struct This {
 }
 
 /// Where a reference points, its indexes fixed.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 enum Loc {
     Var(usize),
     Elem(usize, usize),
@@ -4189,6 +4390,15 @@ fn eval(e: &Expr, st: &State, d: &Decls) -> Val {
             }
             result
         }
+        Expr::SameRef(equal, a, b) => {
+            let side = |s: &RefSide| match s {
+                RefSide::Held(r) => Some(st.refs[*r].clone()),
+                RefSide::Of(p, _) => Some(loc_of(p, st, d)),
+                RefSide::Null => None,
+            };
+            Val::Int(((side(a) == side(b)) == *equal) as i128)
+        }
+        Expr::Cycle(_, n) => Val::Int(Ty::Dint.wrap(ev(n).int() + 1)),
         Expr::Bit(p, ty, bit, _) => Val::Int(get_slice(raw(*ty, &read(p, st, d)), *bit, 1) as i128),
         // The frame holds the pack, one value per argument. An arithmetic
         // fold wraps at the pack's type at each step, a single argument is
@@ -4509,6 +4719,79 @@ mod tests {
             }
         }
         assert_eq!(reached.len(), markers.len(), "routes reached: {reached:?}");
+    }
+
+    /// Each form of what compares references, of what goes through `THIS`, and of
+    /// a type that comes back through a reference is written, called, and computes.
+    #[test]
+    fn references_and_this_are_written_and_compute() {
+        // A part of a member, or of a field of one: `THIS.v0.f1.%X3`, `THIS.v0.3`.
+        let this_part = |text: &str, steps: usize| {
+            text.match_indices("THIS.").any(|(at, _)| {
+                let rest = &text[at + "THIS.".len()..];
+                let end = rest
+                    .find(|c: char| !(c.is_ascii_alphanumeric() || "_.%".contains(c)))
+                    .unwrap_or(rest.len());
+                let path: Vec<&str> = rest[..end].split('.').collect();
+                path.len() == steps + 1
+                    && path.iter().take(steps).all(|s| {
+                        s.starts_with(|c: char| c.is_ascii_alphabetic()) && !s.starts_with('m')
+                    })
+                    && path[steps].starts_with(|c: char| c == '%' || c.is_ascii_digit())
+            })
+        };
+        type Form = (String, Box<dyn Fn(&str) -> bool>);
+        let mut forms: Vec<Form> = vec![
+            ("r = REF(x)".into(), Box::new(|t| t.contains(" = REF("))),
+            ("r <> REF(x)".into(), Box::new(|t| t.contains(" <> REF("))),
+            (
+                "REF(x) = r".into(),
+                Box::new(|t| t.contains("(REF(") && t.contains(") = ")),
+            ),
+            (
+                "(REF(x))".into(),
+                Box::new(|t| t.contains("((REF(") || t.contains(" (REF(")),
+            ),
+            ("r <> NULL".into(), Box::new(|t| t.contains(" <> NULL"))),
+            ("NULL = r".into(), Box::new(|t| t.contains("(NULL = "))),
+            (
+                "one step through THIS".into(),
+                Box::new(move |t| this_part(t, 1)),
+            ),
+            (
+                "a field through THIS".into(),
+                Box::new(move |t| this_part(t, 2)),
+            ),
+        ];
+        for (k, (types, ..)) in CYCLES.iter().enumerate() {
+            // By its own declaration, and only when its FUNCTION is called.
+            let declared = types.replace("_K", "0");
+            forms.push((
+                format!("cycle {k}"),
+                Box::new(move |t| t.contains(&declared) && t.contains(" cycle0(")),
+            ));
+        }
+        let mut seed = 0x9E37_79B9_7F4A_7C15u64;
+        let mut reached: Vec<String> = Vec::new();
+        for _ in 0..4000 {
+            let text = random_program(&mut seed);
+            let fresh: Vec<String> = forms
+                .iter()
+                .filter(|(name, has)| has(&text) && !reached.contains(name))
+                .map(|(name, _)| name.clone())
+                .collect();
+            if fresh.is_empty() {
+                continue;
+            }
+            if let Err(finding) = crate::check_generated(&text) {
+                panic!("{finding}\n--- the program ---\n{text}");
+            }
+            reached.extend(fresh);
+            if reached.len() == forms.len() {
+                break;
+            }
+        }
+        assert_eq!(reached.len(), forms.len(), "forms reached: {reached:?}");
     }
 
     #[test]
