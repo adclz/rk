@@ -52,9 +52,10 @@ pub enum MirType {
 #[derive(Debug, Clone)]
 pub enum MirRefTarget {
     Type(Box<MirType>),
-    /// A STRUCT or an instance that was being lowered when the reference to
-    /// it was (`next : REF_TO Node`, in `Node`), by its name: lowering it
-    /// again would not end.
+    /// A named type or an instance that was being lowered when the reference
+    /// to it was (`next : REF_TO Node`, in `Node`), by its name: lowering it
+    /// again would not end. The debug tables have no entry for one that is no
+    /// STRUCT's or instance's, and show the address alone.
     Enclosing(Ident),
     /// What an `ARRAY[*]` VAR_IN_OUT member is bound to: an array of this
     /// many dimensions and this element, whose bounds each copy of the body
