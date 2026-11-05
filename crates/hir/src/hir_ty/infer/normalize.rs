@@ -92,6 +92,13 @@ impl<'db> Type<'db> {
         }
     }
 
+    /// Whether a value of this type can index: an integer, or what calculates
+    /// as one. `Never` already carries its own diagnostic.
+    pub fn indexes(self, db: &'db dyn WorkspaceDataBase) -> bool {
+        let ty = self.calculates_as(db);
+        ty.is_never() || ty.is_signed_integer() || ty.is_unsigned_integer()
+    }
+
     /// What a value of this type calculates as, normalized: the base of a type
     /// with named values, and otherwise the type itself.
     pub fn calculates_as(self, db: &'db dyn WorkspaceDataBase) -> Type<'db> {

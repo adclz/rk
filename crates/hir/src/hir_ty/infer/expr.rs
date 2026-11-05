@@ -349,13 +349,8 @@ impl<'db> InferExprCtx<'db> {
 
                 // Any integer type, as a subscript. `Never` already carries
                 // its own diagnostic.
-                let index_ty = inference_results
-                    .type_of_expr_with_adjustments(db, *index)
-                    .calculates_as(db);
-                if !index_ty.is_never()
-                    && !index_ty.is_signed_integer()
-                    && !index_ty.is_unsigned_integer()
-                {
+                let index_ty = inference_results.type_of_expr_with_adjustments(db, *index);
+                if !index_ty.indexes(db) {
                     inference_results.errors.push(
                         CallError::NonIntegerPackIndex {
                             expr: *index,

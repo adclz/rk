@@ -1272,8 +1272,7 @@ fn source_subscript<'db>(
         .find(|v| v.get_name_ident(db) == name);
     if let Some(global) = global {
         let ty = global.spec(db).infer(db);
-        let base = ty.normalize(db);
-        if !base.is_never() && !base.is_signed_integer() && !base.is_unsigned_integer() {
+        if !ty.indexes(db) {
             out.errors.push(not_an_integer(ty));
             return Err(UnschedulableReason::UnknownName);
         }
