@@ -818,10 +818,7 @@ fn in_out_fit<'db>(
     let ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess(va)) = value.expr(db) else {
         return ArgMatch::No;
     };
-    if matches!(
-        ctx.get_type_of_expr(value),
-        Type::Variable((_, Some(_))) | Type::DirectVariable((_, Some(_)))
-    ) {
+    if va.multibits(db).is_some() {
         return ArgMatch::No;
     }
     let param = Type::new_var(db, var);
@@ -928,13 +925,12 @@ fn check_in_out_lvalue<'db>(
     value: Expr<'db>,
     ctx: &mut BodyInferenceResult<'db>,
 ) {
-    // The RAW recorded type, not the adjusted view: adjustments apply the
-    // slice and would answer BOOL for `b.%X1`, hiding exactly the marker
-    // this check needs. (And never `Expr::infer` here — this runs INSIDE
-    // `infer_body`, and the query would cycle into itself.)
+    // What the access says, whatever its path runs through: `b.%X1`, `s.b.1`,
+    // `a[1].1`, `p^.1`.
     let is_partial_access = matches!(
-        ctx.get_type_of_expr(value),
-        Type::Variable((_, Some(_))) | Type::DirectVariable((_, Some(_)))
+        value.expr(db),
+        ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess(access))
+            if access.multibits(db).is_some()
     );
     // A member is copied in and back, and a slice of a variable can be:
     // `f(v := w.%X3)`. A reference binds the whole variable or nothing.
