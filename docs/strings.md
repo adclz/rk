@@ -47,7 +47,7 @@ All char operations agree on ASCII.
 
 Write operations:
 
-- `CONCAT` concatenates 2 STRING together, if the result is too large, the final STRING is truncated.
+- `CONCAT` concatenates 2 to 8 STRING together, if the result is too large, the final STRING is truncated.
 - `INSERT` inserts a STRING after a given byte position.
 - `DELETE` removes n bytes starting at a 1-indexed byte position.
 - `REPLACE` replaces n bytes at a 1-indexed byte position with a STRING.

@@ -3338,3 +3338,145 @@ END_CONFIGURATION
     ---'
     ");
 }
+
+/// What a VAR_CONFIG entry says of a STRUCT's field is checked as of a variable: its
+/// type, its value, and that two entries do not give one place two values.
+#[rstest]
+#[case::the_struct_and_a_field(
+    "Res.I.s : S := (a := 1); Res.I.s.a : INT := 3;",
+    "[E1426]",
+    "'s' is given a value"
+)]
+#[case::one_field_twice(
+    "Res.I.s.a : INT := 3; Res.I.s.a : INT := 4;",
+    "[E1426]",
+    "'a' is given a value"
+)]
+#[case::a_field_and_what_holds_it(
+    "Res.I.s.inner : Inner := (b := 5); Res.I.s.inner.b : INT := 3;",
+    "[E1426]",
+    "'inner' is given a value"
+)]
+#[case::an_unknown_field("Res.I.s.zz : INT := 3;", "[E1414]", "'S' has no field named 'zz'")]
+#[case::an_unknown_field_of_a_field(
+    "Res.I.s.inner.zz : INT := 3;",
+    "[E1414]",
+    "'Inner' has no field named 'zz'"
+)]
+#[case::past_an_elementary_field(
+    "Res.I.s.a.b : INT := 3;",
+    "[E1414]",
+    "'INT' has no field named 'b'"
+)]
+#[case::past_a_reference(
+    "Res.I.p.a : INT := 3;",
+    "[E1414]",
+    "'REF_TO S' has no field named 'a'"
+)]
+#[case::another_type(
+    "Res.I.s.a : REAL := 3.0;",
+    "[E1426]",
+    "the entry says 'REAL', but 'a' is declared 'INT'"
+)]
+#[case::another_value(
+    "Res.I.s.a : INT := 'x';",
+    "[E0308]",
+    "cannot use string literal as INT"
+)]
+#[case::an_address("Res.I.s.a AT %IW0 : INT;", "[E1424]", "'a' is not declared AT %I*")]
+#[case::an_address_of_a_nested_field(
+    "Res.I.s.inner.b AT %IW0 : INT;",
+    "[E1424]",
+    "'b' is not declared AT %I*"
+)]
+#[case::through_an_instance(
+    "Res.I.h.m.k : INT := 3;",
+    "[E1426]",
+    "does not go on through an instance a STRUCT holds"
+)]
+#[case::an_array_element_of_a_field(
+    "Res.I.s.list[0] : INT := 3;",
+    "[E1426]",
+    "not an array's element or what a reference points at"
+)]
+#[case::through_an_array_element(
+    "Res.I.v[0].a : INT := 3;",
+    "[E1426]",
+    "not an array's element or what a reference points at"
+)]
+#[case::through_a_dereference(
+    "Res.I.p^.a : INT := 3;",
+    "[E1426]",
+    "not an array's element or what a reference points at"
+)]
+#[case::a_constant(
+    "Res.I.k.a : INT := 3;",
+    "[E0405]",
+    "an initializer cannot set 'k', a CONSTANT"
+)]
+#[case::an_in_out_of_an_instance(
+    "Res.I.f.io.a : INT := 3;",
+    "[E0405]",
+    "an initializer cannot set 'io', a VAR_IN_OUT"
+)]
+fn invalid_a_value_for_a_field_of_a_struct(
+    mut with_db: RootDatabase,
+    #[case] entries: &str,
+    #[case] code: &str,
+    #[case] message: &str,
+) {
+    let source = struct_fields_config(entries);
+    let report = test_diagnostics(&mut with_db, &[&source]);
+    assert!(report.contains(code), "{report}");
+    assert!(report.contains(message), "{report}");
+}
+
+/// Each field is a place of its own, and a field holding an instance takes its value
+/// whole. In any case, as a name is everywhere.
+#[rstest]
+fn valid_values_for_the_fields_of_a_struct(mut with_db: RootDatabase) {
+    let source = struct_fields_config(
+        "Res.I.s.a : INT := 3; Res.I.s.c : INT := 4; Res.I.s.inner.b : INT := 5; Res.I.s.list : ARRAY[0..1] OF INT := [1, 2]; Res.I.h.m : Fb := (k := 1); RES.i.INP.A : INT := 6; Res.I.out.a : INT := 7; Res.I.in_place.x : INT := 8;",
+    );
+    assert_snapshot!(test_diagnostics(&mut with_db, &[&source]), @r"");
+}
+
+fn struct_fields_config(entries: &str) -> String {
+    format!(
+        r#"TYPE
+    Inner : STRUCT b : INT; END_STRUCT;
+    S : STRUCT a : INT; c : INT; inner : Inner; list : ARRAY[0..1] OF INT; END_STRUCT;
+    H : STRUCT m : Fb; END_STRUCT;
+END_TYPE
+
+FUNCTION_BLOCK Fb
+VAR k : INT; END_VAR
+VAR_IN_OUT io : S; END_VAR
+END_FUNCTION_BLOCK
+
+PROGRAM Prog
+VAR_INPUT inp : S; END_VAR
+VAR_OUTPUT out : S; END_VAR
+VAR
+    s : S;
+    h : H;
+    p : REF_TO S;
+    v : ARRAY[0..1] OF S;
+    f : Fb;
+    in_place : STRUCT x : INT; END_STRUCT;
+END_VAR
+VAR CONSTANT k : S; END_VAR
+END_PROGRAM
+
+CONFIGURATION Cfg
+RESOURCE Res ON CPU
+    TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+    PROGRAM I WITH T : Prog;
+END_RESOURCE
+VAR_CONFIG
+    {entries}
+END_VAR
+END_CONFIGURATION
+"#
+    )
+}

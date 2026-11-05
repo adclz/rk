@@ -113,6 +113,8 @@ fn check_case_label_constant<'db>(
     // An enum label's value is its variant's ordinal, which lowering reads
     // from the variant table; there is nothing to record here.
     match ctx.get_type_of_expr(label).normalize(db) {
+        // Reported where it failed to resolve.
+        Type::Never => return,
         Type::Enum(_) | Type::EnumVariant(..) if allow_non_integer => return,
         // The label is evaluated BEFORE it coerces to the selector, so a bare
         // literal is still untyped here.
@@ -673,10 +675,10 @@ impl<'db> StmtsResolverCtx<'db> {
                         CallSite::from_scoped(db, control_variable),
                         ctx,
                     );
-                    // IEC counts in ANY_INT; a subrange or an alias of an
-                    // integer normalizes to it. A bit of a wider address is a
-                    // BOOL, so this refuses it too.
-                    let counted = control_typ.normalize(db);
+                    // IEC counts in ANY_INT; a subrange, an alias or a type
+                    // with named values of an integer calculates as it. A bit
+                    // of a wider address is a BOOL, so this refuses it too.
+                    let counted = control_typ.calculates_as(db);
                     if !control_typ.is_never()
                         && !counted.is_never()
                         && !(counted.is_signed_integer() || counted.is_unsigned_integer())
@@ -706,10 +708,11 @@ impl<'db> StmtsResolverCtx<'db> {
                     if let Err(err) =
                         infer.coerce_var_access_compared_with_expr(db, *control_variable, *end, ctx)
                     {
-                        ctx.errors.push(err.into_non_comparable(
+                        ctx.errors.push(err.into_for_bound(
                             db,
                             ctx.get_type_of_variable_access(db, *control_variable),
                             CallSite::from_scoped(db, end),
+                            "final value",
                         ));
                     }
 
@@ -722,10 +725,11 @@ impl<'db> StmtsResolverCtx<'db> {
                             *step,
                             ctx,
                         ) {
-                            ctx.errors.push(err.into_non_comparable(
+                            ctx.errors.push(err.into_for_bound(
                                 db,
                                 ctx.get_type_of_variable_access(db, *control_variable),
                                 CallSite::from_scoped(db, step),
+                                "step",
                             ));
                         }
 
@@ -817,7 +821,15 @@ impl<'db> StmtsResolverCtx<'db> {
                         Type::CallableType(ct) => Some(ct),
                         _ => typ.as_callable(db),
                     };
+                    // A call binding an output is made for it, by `=>` or by
+                    // position, and its result may go unread.
+                    let binds_an_output = ctx.resolved_calls.get(call).is_some_and(|resolved| {
+                        resolved.params.iter().any(|(_, binding)| {
+                            matches!(binding, crate::hir_ty::body::ParamBinding::Output { .. })
+                        })
+                    });
                     if let Some(callable) = callable
+                        && !binds_an_output
                         && callable.inner_callable().with_return_type(db).is_some()
                     {
                         ctx.unused_return_types.push((*stmt, typ));

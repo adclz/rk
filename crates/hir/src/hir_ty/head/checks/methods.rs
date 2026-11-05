@@ -424,11 +424,15 @@ fn check_signature<'db>(
             );
             continue;
         }
-        if !crate::hir_ty::infer::coerce::same_type(
-            db,
-            var1_typ.normalize(db),
-            var2_typ.normalize(db),
-        ) {
+        // A variadic parameter is compiled once per argument count, so a call
+        // through the base looks for a copy a plain parameter never gets.
+        if var1.variadic(db) != var2.variadic(db)
+            || !crate::hir_ty::infer::coerce::same_type(
+                db,
+                var1_typ.normalize(db),
+                var2_typ.normalize(db),
+            )
+        {
             errors.push(
                 OopError::SignatureTypeMismatch {
                     expected: var1_typ,

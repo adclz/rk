@@ -239,6 +239,118 @@ NAMESPACE Std.Selection
 		END_IF;
 	END_FUNCTION
 
+	FUNCTION SEL: LTIME
+		VAR_INPUT
+			G: BOOL;
+			IN0: LTIME;
+			IN1: LTIME;
+		END_VAR
+
+		IF G THEN
+			SEL := IN1;
+		ELSE
+			SEL := IN0;
+		END_IF;
+	END_FUNCTION
+
+	FUNCTION SEL: DATE
+		VAR_INPUT
+			G: BOOL;
+			IN0: DATE;
+			IN1: DATE;
+		END_VAR
+
+		IF G THEN
+			SEL := IN1;
+		ELSE
+			SEL := IN0;
+		END_IF;
+	END_FUNCTION
+
+	FUNCTION SEL: LDATE
+		VAR_INPUT
+			G: BOOL;
+			IN0: LDATE;
+			IN1: LDATE;
+		END_VAR
+
+		IF G THEN
+			SEL := IN1;
+		ELSE
+			SEL := IN0;
+		END_IF;
+	END_FUNCTION
+
+	FUNCTION SEL: TOD
+		VAR_INPUT
+			G: BOOL;
+			IN0: TOD;
+			IN1: TOD;
+		END_VAR
+
+		IF G THEN
+			SEL := IN1;
+		ELSE
+			SEL := IN0;
+		END_IF;
+	END_FUNCTION
+
+	FUNCTION SEL: LTOD
+		VAR_INPUT
+			G: BOOL;
+			IN0: LTOD;
+			IN1: LTOD;
+		END_VAR
+
+		IF G THEN
+			SEL := IN1;
+		ELSE
+			SEL := IN0;
+		END_IF;
+	END_FUNCTION
+
+	FUNCTION SEL: DT
+		VAR_INPUT
+			G: BOOL;
+			IN0: DT;
+			IN1: DT;
+		END_VAR
+
+		IF G THEN
+			SEL := IN1;
+		ELSE
+			SEL := IN0;
+		END_IF;
+	END_FUNCTION
+
+	FUNCTION SEL: LDT
+		VAR_INPUT
+			G: BOOL;
+			IN0: LDT;
+			IN1: LDT;
+		END_VAR
+
+		IF G THEN
+			SEL := IN1;
+		ELSE
+			SEL := IN0;
+		END_IF;
+	END_FUNCTION
+
+	FUNCTION SEL: CHAR
+		VAR_INPUT
+			G: BOOL;
+			IN0: CHAR;
+			IN1: CHAR;
+		END_VAR
+
+		IF G THEN
+			SEL := IN1;
+		ELSE
+			SEL := IN0;
+		END_IF;
+	END_FUNCTION
+
 	FUNCTION SEL: STRING[255]
 		VAR_INPUT
 			G: BOOL;
@@ -265,6 +377,23 @@ NAMESPACE Std.Selection
 	   n := LIMIT(0, 5, 10);   // 5
 	   ```
 	*/
+	FUNCTION LIMIT: BOOL
+		VAR_INPUT
+			MN: BOOL;
+			IN: BOOL;
+			MX: BOOL;
+		END_VAR
+
+		(* IEC 61131-3 Table 32.5: OUT := MIN(MAX(IN, MN), MX), so MX wins when MN > MX. *)
+		LIMIT := IN;
+		IF LIMIT < MN THEN
+			LIMIT := MN;
+		END_IF;
+		IF LIMIT > MX THEN
+			LIMIT := MX;
+		END_IF;
+	END_FUNCTION
+
 	FUNCTION LIMIT: SINT
 		VAR_INPUT
 			MN: SINT;
@@ -401,6 +530,74 @@ NAMESPACE Std.Selection
 		END_IF;
 	END_FUNCTION
 
+	FUNCTION LIMIT: BYTE
+		VAR_INPUT
+			MN: BYTE;
+			IN: BYTE;
+			MX: BYTE;
+		END_VAR
+
+		(* IEC 61131-3 Table 32.5: OUT := MIN(MAX(IN, MN), MX), so MX wins when MN > MX. *)
+		LIMIT := IN;
+		IF LIMIT < MN THEN
+			LIMIT := MN;
+		END_IF;
+		IF LIMIT > MX THEN
+			LIMIT := MX;
+		END_IF;
+	END_FUNCTION
+
+	FUNCTION LIMIT: WORD
+		VAR_INPUT
+			MN: WORD;
+			IN: WORD;
+			MX: WORD;
+		END_VAR
+
+		(* IEC 61131-3 Table 32.5: OUT := MIN(MAX(IN, MN), MX), so MX wins when MN > MX. *)
+		LIMIT := IN;
+		IF LIMIT < MN THEN
+			LIMIT := MN;
+		END_IF;
+		IF LIMIT > MX THEN
+			LIMIT := MX;
+		END_IF;
+	END_FUNCTION
+
+	FUNCTION LIMIT: DWORD
+		VAR_INPUT
+			MN: DWORD;
+			IN: DWORD;
+			MX: DWORD;
+		END_VAR
+
+		(* IEC 61131-3 Table 32.5: OUT := MIN(MAX(IN, MN), MX), so MX wins when MN > MX. *)
+		LIMIT := IN;
+		IF LIMIT < MN THEN
+			LIMIT := MN;
+		END_IF;
+		IF LIMIT > MX THEN
+			LIMIT := MX;
+		END_IF;
+	END_FUNCTION
+
+	FUNCTION LIMIT: LWORD
+		VAR_INPUT
+			MN: LWORD;
+			IN: LWORD;
+			MX: LWORD;
+		END_VAR
+
+		(* IEC 61131-3 Table 32.5: OUT := MIN(MAX(IN, MN), MX), so MX wins when MN > MX. *)
+		LIMIT := IN;
+		IF LIMIT < MN THEN
+			LIMIT := MN;
+		END_IF;
+		IF LIMIT > MX THEN
+			LIMIT := MX;
+		END_IF;
+	END_FUNCTION
+
 	FUNCTION LIMIT: REAL
 		VAR_INPUT
 			MN: REAL;
@@ -469,8 +666,146 @@ NAMESPACE Std.Selection
 		END_IF;
 	END_FUNCTION
 
+	FUNCTION LIMIT: DATE
+		VAR_INPUT
+			MN: DATE;
+			IN: DATE;
+			MX: DATE;
+		END_VAR
+
+		(* IEC 61131-3 Table 32.5: OUT := MIN(MAX(IN, MN), MX), so MX wins when MN > MX. *)
+		LIMIT := IN;
+		IF LIMIT < MN THEN
+			LIMIT := MN;
+		END_IF;
+		IF LIMIT > MX THEN
+			LIMIT := MX;
+		END_IF;
+	END_FUNCTION
+
+	FUNCTION LIMIT: LDATE
+		VAR_INPUT
+			MN: LDATE;
+			IN: LDATE;
+			MX: LDATE;
+		END_VAR
+
+		(* IEC 61131-3 Table 32.5: OUT := MIN(MAX(IN, MN), MX), so MX wins when MN > MX. *)
+		LIMIT := IN;
+		IF LIMIT < MN THEN
+			LIMIT := MN;
+		END_IF;
+		IF LIMIT > MX THEN
+			LIMIT := MX;
+		END_IF;
+	END_FUNCTION
+
+	FUNCTION LIMIT: TOD
+		VAR_INPUT
+			MN: TOD;
+			IN: TOD;
+			MX: TOD;
+		END_VAR
+
+		(* IEC 61131-3 Table 32.5: OUT := MIN(MAX(IN, MN), MX), so MX wins when MN > MX. *)
+		LIMIT := IN;
+		IF LIMIT < MN THEN
+			LIMIT := MN;
+		END_IF;
+		IF LIMIT > MX THEN
+			LIMIT := MX;
+		END_IF;
+	END_FUNCTION
+
+	FUNCTION LIMIT: LTOD
+		VAR_INPUT
+			MN: LTOD;
+			IN: LTOD;
+			MX: LTOD;
+		END_VAR
+
+		(* IEC 61131-3 Table 32.5: OUT := MIN(MAX(IN, MN), MX), so MX wins when MN > MX. *)
+		LIMIT := IN;
+		IF LIMIT < MN THEN
+			LIMIT := MN;
+		END_IF;
+		IF LIMIT > MX THEN
+			LIMIT := MX;
+		END_IF;
+	END_FUNCTION
+
+	FUNCTION LIMIT: DT
+		VAR_INPUT
+			MN: DT;
+			IN: DT;
+			MX: DT;
+		END_VAR
+
+		(* IEC 61131-3 Table 32.5: OUT := MIN(MAX(IN, MN), MX), so MX wins when MN > MX. *)
+		LIMIT := IN;
+		IF LIMIT < MN THEN
+			LIMIT := MN;
+		END_IF;
+		IF LIMIT > MX THEN
+			LIMIT := MX;
+		END_IF;
+	END_FUNCTION
+
+	FUNCTION LIMIT: LDT
+		VAR_INPUT
+			MN: LDT;
+			IN: LDT;
+			MX: LDT;
+		END_VAR
+
+		(* IEC 61131-3 Table 32.5: OUT := MIN(MAX(IN, MN), MX), so MX wins when MN > MX. *)
+		LIMIT := IN;
+		IF LIMIT < MN THEN
+			LIMIT := MN;
+		END_IF;
+		IF LIMIT > MX THEN
+			LIMIT := MX;
+		END_IF;
+	END_FUNCTION
+
+	FUNCTION LIMIT: CHAR
+		VAR_INPUT
+			MN: CHAR;
+			IN: CHAR;
+			MX: CHAR;
+		END_VAR
+
+		(* IEC 61131-3 Table 32.5: OUT := MIN(MAX(IN, MN), MX), so MX wins when MN > MX. *)
+		LIMIT := IN;
+		IF LIMIT < MN THEN
+			LIMIT := MN;
+		END_IF;
+		IF LIMIT > MX THEN
+			LIMIT := MX;
+		END_IF;
+	END_FUNCTION
+
+	FUNCTION LIMIT: STRING[255]
+		VAR_INPUT
+			MN: STRING[255];
+			IN: STRING[255];
+			MX: STRING[255];
+		END_VAR
+
+		(* IEC 61131-3 Table 32.5: OUT := MIN(MAX(IN, MN), MX), so MX wins when MN > MX. *)
+		LIMIT := IN;
+		IF LIMIT < MN THEN
+			LIMIT := MN;
+		END_IF;
+		IF LIMIT > MX THEN
+			LIMIT := MX;
+		END_IF;
+	END_FUNCTION
+
 
 	/* Returns the smallest of its inputs, however many there are.
+
+	   A `STRING` takes two, three or four.
 
 	   # Examples
 
@@ -479,6 +814,14 @@ NAMESPACE Std.Selection
 	   n := MIN(7, 9, 4);  // 4
 	   ```
 	*/
+	FUNCTION MIN: BOOL
+		VAR_INPUT
+			IN: BOOL...;
+		END_VAR
+
+		MIN := ...IN MIN;
+	END_FUNCTION
+
 	FUNCTION MIN: SINT
 		VAR_INPUT
 			IN: SINT...;
@@ -543,6 +886,38 @@ NAMESPACE Std.Selection
 		MIN := ...IN MIN;
 	END_FUNCTION
 
+	FUNCTION MIN: BYTE
+		VAR_INPUT
+			IN: BYTE...;
+		END_VAR
+
+		MIN := ...IN MIN;
+	END_FUNCTION
+
+	FUNCTION MIN: WORD
+		VAR_INPUT
+			IN: WORD...;
+		END_VAR
+
+		MIN := ...IN MIN;
+	END_FUNCTION
+
+	FUNCTION MIN: DWORD
+		VAR_INPUT
+			IN: DWORD...;
+		END_VAR
+
+		MIN := ...IN MIN;
+	END_FUNCTION
+
+	FUNCTION MIN: LWORD
+		VAR_INPUT
+			IN: LWORD...;
+		END_VAR
+
+		MIN := ...IN MIN;
+	END_FUNCTION
+
 	FUNCTION MIN: REAL
 		VAR_INPUT
 			IN: REAL...;
@@ -557,6 +932,54 @@ NAMESPACE Std.Selection
 		END_VAR
 
 		MIN := ...IN MIN;
+	END_FUNCTION
+
+	FUNCTION MIN: STRING[255]
+		VAR_INPUT
+			IN1: STRING[255];
+			IN2: STRING[255];
+		END_VAR
+
+		MIN := IN1;
+		IF IN2 < MIN THEN
+			MIN := IN2;
+		END_IF;
+	END_FUNCTION
+
+	FUNCTION MIN: STRING[255]
+		VAR_INPUT
+			IN1: STRING[255];
+			IN2: STRING[255];
+			IN3: STRING[255];
+		END_VAR
+
+		MIN := IN1;
+		IF IN2 < MIN THEN
+			MIN := IN2;
+		END_IF;
+		IF IN3 < MIN THEN
+			MIN := IN3;
+		END_IF;
+	END_FUNCTION
+
+	FUNCTION MIN: STRING[255]
+		VAR_INPUT
+			IN1: STRING[255];
+			IN2: STRING[255];
+			IN3: STRING[255];
+			IN4: STRING[255];
+		END_VAR
+
+		MIN := IN1;
+		IF IN2 < MIN THEN
+			MIN := IN2;
+		END_IF;
+		IF IN3 < MIN THEN
+			MIN := IN3;
+		END_IF;
+		IF IN4 < MIN THEN
+			MIN := IN4;
+		END_IF;
 	END_FUNCTION
 
 	FUNCTION MIN: TIME
@@ -575,7 +998,65 @@ NAMESPACE Std.Selection
 		MIN := ...IN MIN;
 	END_FUNCTION
 
+	FUNCTION MIN: DATE
+		VAR_INPUT
+			IN: DATE...;
+		END_VAR
+
+		MIN := ...IN MIN;
+	END_FUNCTION
+
+	FUNCTION MIN: LDATE
+		VAR_INPUT
+			IN: LDATE...;
+		END_VAR
+
+		MIN := ...IN MIN;
+	END_FUNCTION
+
+	FUNCTION MIN: TOD
+		VAR_INPUT
+			IN: TOD...;
+		END_VAR
+
+		MIN := ...IN MIN;
+	END_FUNCTION
+
+	FUNCTION MIN: LTOD
+		VAR_INPUT
+			IN: LTOD...;
+		END_VAR
+
+		MIN := ...IN MIN;
+	END_FUNCTION
+
+	FUNCTION MIN: DT
+		VAR_INPUT
+			IN: DT...;
+		END_VAR
+
+		MIN := ...IN MIN;
+	END_FUNCTION
+
+	FUNCTION MIN: LDT
+		VAR_INPUT
+			IN: LDT...;
+		END_VAR
+
+		MIN := ...IN MIN;
+	END_FUNCTION
+
+	FUNCTION MIN: CHAR
+		VAR_INPUT
+			IN: CHAR...;
+		END_VAR
+
+		MIN := ...IN MIN;
+	END_FUNCTION
+
 	/* Returns the largest of its inputs, however many there are.
+
+	   A `STRING` takes two, three or four.
 
 	   # Examples
 
@@ -584,6 +1065,14 @@ NAMESPACE Std.Selection
 	   n := MAX(7, 9, 4);  // 9
 	   ```
 	*/
+	FUNCTION MAX: BOOL
+		VAR_INPUT
+			IN: BOOL...;
+		END_VAR
+
+		MAX := ...IN MAX;
+	END_FUNCTION
+
 	FUNCTION MAX: SINT
 		VAR_INPUT
 			IN: SINT...;
@@ -648,6 +1137,38 @@ NAMESPACE Std.Selection
 		MAX := ...IN MAX;
 	END_FUNCTION
 
+	FUNCTION MAX: BYTE
+		VAR_INPUT
+			IN: BYTE...;
+		END_VAR
+
+		MAX := ...IN MAX;
+	END_FUNCTION
+
+	FUNCTION MAX: WORD
+		VAR_INPUT
+			IN: WORD...;
+		END_VAR
+
+		MAX := ...IN MAX;
+	END_FUNCTION
+
+	FUNCTION MAX: DWORD
+		VAR_INPUT
+			IN: DWORD...;
+		END_VAR
+
+		MAX := ...IN MAX;
+	END_FUNCTION
+
+	FUNCTION MAX: LWORD
+		VAR_INPUT
+			IN: LWORD...;
+		END_VAR
+
+		MAX := ...IN MAX;
+	END_FUNCTION
+
 	FUNCTION MAX: REAL
 		VAR_INPUT
 			IN: REAL...;
@@ -662,6 +1183,54 @@ NAMESPACE Std.Selection
 		END_VAR
 
 		MAX := ...IN MAX;
+	END_FUNCTION
+
+	FUNCTION MAX: STRING[255]
+		VAR_INPUT
+			IN1: STRING[255];
+			IN2: STRING[255];
+		END_VAR
+
+		MAX := IN1;
+		IF IN2 > MAX THEN
+			MAX := IN2;
+		END_IF;
+	END_FUNCTION
+
+	FUNCTION MAX: STRING[255]
+		VAR_INPUT
+			IN1: STRING[255];
+			IN2: STRING[255];
+			IN3: STRING[255];
+		END_VAR
+
+		MAX := IN1;
+		IF IN2 > MAX THEN
+			MAX := IN2;
+		END_IF;
+		IF IN3 > MAX THEN
+			MAX := IN3;
+		END_IF;
+	END_FUNCTION
+
+	FUNCTION MAX: STRING[255]
+		VAR_INPUT
+			IN1: STRING[255];
+			IN2: STRING[255];
+			IN3: STRING[255];
+			IN4: STRING[255];
+		END_VAR
+
+		MAX := IN1;
+		IF IN2 > MAX THEN
+			MAX := IN2;
+		END_IF;
+		IF IN3 > MAX THEN
+			MAX := IN3;
+		END_IF;
+		IF IN4 > MAX THEN
+			MAX := IN4;
+		END_IF;
 	END_FUNCTION
 
 	FUNCTION MAX: TIME
@@ -680,11 +1249,70 @@ NAMESPACE Std.Selection
 		MAX := ...IN MAX;
 	END_FUNCTION
 
+	FUNCTION MAX: DATE
+		VAR_INPUT
+			IN: DATE...;
+		END_VAR
+
+		MAX := ...IN MAX;
+	END_FUNCTION
+
+	FUNCTION MAX: LDATE
+		VAR_INPUT
+			IN: LDATE...;
+		END_VAR
+
+		MAX := ...IN MAX;
+	END_FUNCTION
+
+	FUNCTION MAX: TOD
+		VAR_INPUT
+			IN: TOD...;
+		END_VAR
+
+		MAX := ...IN MAX;
+	END_FUNCTION
+
+	FUNCTION MAX: LTOD
+		VAR_INPUT
+			IN: LTOD...;
+		END_VAR
+
+		MAX := ...IN MAX;
+	END_FUNCTION
+
+	FUNCTION MAX: DT
+		VAR_INPUT
+			IN: DT...;
+		END_VAR
+
+		MAX := ...IN MAX;
+	END_FUNCTION
+
+	FUNCTION MAX: LDT
+		VAR_INPUT
+			IN: LDT...;
+		END_VAR
+
+		MAX := ...IN MAX;
+	END_FUNCTION
+
+	FUNCTION MAX: CHAR
+		VAR_INPUT
+			IN: CHAR...;
+		END_VAR
+
+		MAX := ...IN MAX;
+	END_FUNCTION
+
 	/* Returns the input that `K` selects, counting from 0.
 
 	   A `K` below 0 selects the first input, and a `K` past the last selects the
 	   last. Every elementary type takes any number of inputs, except `STRING`,
 	   which takes two, three or four.
+
+	   `K` is any integer type but `ULINT`. Convert a `ULINT` or a bit string first,
+	   with [Std.Convert.ULINT_TO_LINT] or [Std.Convert.WORD_TO_LINT].
 
 	   # Examples
 

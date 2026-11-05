@@ -159,15 +159,14 @@ fn overflow_in_an_index(mut with_db: RootDatabase) {
     let source = r#"
 FUNCTION test : INT
 VAR_INPUT values : INT...; END_VAR
-VAR i : INT; END_VAR
     test := ...values[INT#32767 + INT#1];
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "constant-overflow"), @r"
     [L0128] Warning: constant operation out of range
-       ,-[ file:///test0.st:5:23 ]
+       ,-[ file:///test0.st:4:23 ]
        |
-     5 |     test := ...values[INT#32767 + INT#1];
+     4 |     test := ...values[INT#32767 + INT#1];
        |                       ^^^^^^^^|^^^^^^^^
        |                               `---------- the result, 32768, does not fit in INT
        |

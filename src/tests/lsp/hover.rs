@@ -1506,3 +1506,36 @@ END_FUNCTION
     Doubles a number.
     ");
 }
+
+/// Each step of a VAR_CONFIG path that goes on into a STRUCT shows what it names.
+#[rstest]
+#[case::the_variable("e.fuel", "e: Engine")]
+#[case::the_field("fuel : INT := 2", "fuel: INT")]
+pub fn hover_in_a_var_config_path_into_a_struct(
+    mut with_db: RootDatabase,
+    #[case] at: &str,
+    #[case] shown: &str,
+) {
+    let source = r#"TYPE Engine : STRUCT fuel : INT; END_STRUCT; END_TYPE
+
+PROGRAM Main
+VAR e : Engine; END_VAR
+END_PROGRAM
+
+CONFIGURATION Cfg
+RESOURCE Res ON CPU
+    TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+    PROGRAM P1 WITH T : Main;
+END_RESOURCE
+VAR_CONFIG
+    Res.P1.e.fuel : INT := 2;
+END_VAR
+END_CONFIGURATION
+"#;
+    let file = add_source(&mut with_db, source);
+    let offset = source.find(at).unwrap();
+    let node = ide_proto::walk::descendant_at(&with_db, file, offset).expect("a node");
+    let hover = node.hover(&with_db, offset).expect("a hover");
+    let markup = hover_markup(hover.contents).unwrap();
+    assert!(markup.contains(shown), "{markup}");
+}

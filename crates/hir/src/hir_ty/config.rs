@@ -15,7 +15,7 @@ use crate::{
         config::{ConfigDecl, DataSource, ProgConfig, ResourceDecl, TaskConfig},
         expressions::{
             expression::{Elementary, Expr, ExprKind, PathExpr, PathExprKind, PrimaryExpr},
-            spec::{ElementarySpec, SpecKind},
+            spec::{ElementarySpec, SpecKind, StructElement},
         },
         interned::identifier::{Ident, SpanIdent},
         program::ProgramDecl,
@@ -225,6 +225,8 @@ pub struct ConfigValue<'db> {
     pub instance: Ident,
     /// The members walked from the instance, the valued one last.
     pub members: Vec<VariableDecl<'db>>,
+    /// The STRUCT members walked past the last of them, `a` of `s.a`.
+    pub elements: Vec<StructElement<'db>>,
     /// Resolved with the configuration's initializers.
     pub init: crate::hir_def::expressions::expression::InitExpr<'db>,
     /// The address the variable is located at, for one declared `AT %I*`,
@@ -1270,8 +1272,7 @@ fn source_subscript<'db>(
         .find(|v| v.get_name_ident(db) == name);
     if let Some(global) = global {
         let ty = global.spec(db).infer(db);
-        let base = ty.normalize(db);
-        if !base.is_never() && !base.is_signed_integer() && !base.is_unsigned_integer() {
+        if !ty.indexes(db) {
             out.errors.push(not_an_integer(ty));
             return Err(UnschedulableReason::UnknownName);
         }
@@ -1484,6 +1485,9 @@ pub struct ConfigEntry<'db> {
     /// The members walked from the instance, the named variable last; empty
     /// for an entry naming the instance itself.
     pub members: Vec<VariableDecl<'db>>,
+    /// The STRUCT members walked past the last of them: `a` of `s.a`, where
+    /// the entry's value goes.
+    pub elements: Vec<StructElement<'db>>,
     /// The `AT` it gives, with how it stands.
     pub location: Option<(
         crate::hir_def::pous::variable::DirectVariable<'db>,
@@ -1620,7 +1624,10 @@ pub fn resolve_config_entries<'db>(
         // Each step names a member of the instance reached so far, inherited
         // ones included: `instance_members` is what an instance holds.
         let mut current_type = Type::Program(prog);
+        // As declared, for a report: `Pt`, not the STRUCT behind it.
+        let mut declared_type = current_type;
         let mut members: Vec<VariableDecl<'db>> = Vec::new();
+        let mut elements: Vec<StructElement<'db>> = Vec::new();
         let mut resolved = true;
         for step in &steps[instance_at + 1..] {
             let PathExprWalkStep::Field { ident, .. } = step else {
@@ -1634,9 +1641,36 @@ pub fn resolve_config_entries<'db>(
                 resolved = false;
                 break;
             };
+            // A field of a STRUCT takes a value as a variable does.
+            if let Type::Struct(strukt) = current_type
+                && let Some(element) = strukt
+                    .elements(db)
+                    .iter()
+                    .find(|element| element.name(db) == ident.ident(db))
+            {
+                declared_type = element.spec(db).infer(db);
+                current_type = declared_type.normalize(db);
+                elements.push(*element);
+                continue;
+            }
+            // An instance a field holds has no path of its own (E1425).
+            if !elements.is_empty()
+                && crate::hir_ty::head::instances::pou_of_type(db, current_type).is_some()
+            {
+                out.errors.push(
+                    ConfigError::ConfigEntryRefused {
+                        expr: decl.path,
+                        why: ConfigEntryRefusal::ThroughFieldInstance,
+                    }
+                    .to_diagnostic(db, file),
+                );
+                resolved = false;
+                break;
+            }
             match instance_member(db, current_type, ident.ident(db)) {
                 Some(var) => {
-                    current_type = var.spec(db).infer(db).normalize(db);
+                    declared_type = var.spec(db).infer(db);
+                    current_type = declared_type.normalize(db);
                     members.push(var);
                 }
                 None => {
@@ -1651,7 +1685,7 @@ pub fn resolve_config_entries<'db>(
                         },
                         None => ConfigError::ConfigInstInitFieldNotFound {
                             field: *ident,
-                            parent_type: current_type,
+                            parent_type: declared_type,
                         },
                     };
                     out.errors.push(error.to_diagnostic(db, file));
@@ -1668,7 +1702,7 @@ pub fn resolve_config_entries<'db>(
         // wrong about the variable, whatever else it gives it.
         if let (Some(var), Some(written)) = (members.last(), decl.spec) {
             let written = Type::resolve_spec(db, written);
-            let declared = Type::resolve_spec(db, var.spec(db));
+            let declared = Type::resolve_spec(db, spec_of_place(db, *var, &elements));
             if !written.is_never()
                 && !declared.is_never()
                 && !crate::hir_ty::head::checks::variables::same_storage_type(db, written, declared)
@@ -1677,7 +1711,7 @@ pub fn resolve_config_entries<'db>(
                     ConfigError::ConfigEntryRefused {
                         expr: decl.path,
                         why: ConfigEntryRefusal::TypeMismatch {
-                            var: var.name_with_case(db),
+                            var: name_of_place(db, *var, &elements),
                             written,
                             declared,
                         },
@@ -1688,6 +1722,13 @@ pub fn resolve_config_entries<'db>(
         }
 
         let location = match (decl.located_at, members.last()) {
+            // A field is part of its variable, and has no address of its own.
+            (Some(dv), Some(_)) if !elements.is_empty() => Some((
+                dv,
+                EntryLocation::Refused(
+                    crate::check::errors::e14_config::ConfigLocationRefusal::NotPartlyLocated,
+                ),
+            )),
             (Some(dv), Some(var)) => Some((
                 dv,
                 match check_config_location(db, *var, dv) {
@@ -1701,11 +1742,36 @@ pub fn resolve_config_entries<'db>(
             path: decl.path,
             instance: first_ident.ident(db),
             members,
+            elements,
             location,
             init: decl.init,
         });
     }
     out
+}
+
+/// What a path ending in `elements` past `var` is declared as: its last field,
+/// or else the variable.
+pub fn spec_of_place<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    var: VariableDecl<'db>,
+    elements: &[StructElement<'db>],
+) -> crate::hir_def::expressions::spec::Spec<'db> {
+    elements
+        .last()
+        .map_or_else(|| var.spec(db), |element| element.spec(db))
+}
+
+/// The name of what a path ending in `elements` past `var` ends at, as written.
+fn name_of_place<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    var: VariableDecl<'db>,
+    elements: &[StructElement<'db>],
+) -> Ident {
+    elements.last().map_or_else(
+        || var.name_with_case(db),
+        |element| element.name_with_case(db),
+    )
 }
 
 /// Whether a VAR_CONFIG path starting `first.next` starts at a resource. A
@@ -1798,10 +1864,12 @@ pub enum ConfigPathPrefix<'db> {
     /// the instance it shares its name with.
     Resource(ResourceDecl<'db>),
     /// A program instance, or a member of one: what an instance of `ty`
-    /// holds comes next. `member` is the last step when it is a member.
+    /// holds comes next, or the fields of a STRUCT. `member` is the last
+    /// variable walked, and `element` the field walked past it, if any.
     Holder {
         ty: Type<'db>,
         member: Option<VariableDecl<'db>>,
+        element: Option<StructElement<'db>>,
     },
 }
 
@@ -1850,12 +1918,28 @@ pub fn config_path_prefix<'db>(
     }?;
     let mut ty = instance.prog_type(db).infer(db);
     let mut member = None;
+    let mut element = None;
     for name in steps {
+        if let Type::Struct(strukt) = ty {
+            let elements = strukt.elements(db);
+            let field = elements.iter().find(|field| field.name(db) == *name)?;
+            ty = field.spec(db).infer(db).normalize(db);
+            element = Some(*field);
+            continue;
+        }
+        // An instance a field holds has no path of its own (E1425).
+        if element.is_some() {
+            return None;
+        }
         let var = instance_member(db, ty, *name)?;
         ty = var.spec(db).infer(db).normalize(db);
         member = Some(var);
     }
-    Some(ConfigPathPrefix::Holder { ty, member })
+    Some(ConfigPathPrefix::Holder {
+        ty,
+        member,
+        element,
+    })
 }
 
 /// Each program configuration's element list in `config`, resolved against
@@ -2056,12 +2140,15 @@ pub(crate) fn record_config_paths<'db>(
                 _ => None,
             })
             .collect();
-        named.extend(
-            steps
-                .into_iter()
-                .rev()
-                .zip(entry.members.iter().rev().copied()),
-        );
+        let mut steps = steps.into_iter().rev();
+        // `take`, so that `zip` asks for no step past the last element.
+        let elements = entry.elements.iter().rev();
+        for (path, element) in steps.by_ref().take(entry.elements.len()).zip(elements) {
+            result
+                .type_of_path_expr
+                .insert(path, Type::StructElement(*element));
+        }
+        named.extend(steps.zip(entry.members.iter().rev().copied()));
     }
     // A task's INTERVAL or SINGLE may name a VAR_GLOBAL or a program's output,
     // and go on inside it.
@@ -2378,7 +2465,7 @@ fn check_config_entries<'db>(
                 (Some(why), _) => errors.push(
                     ConfigError::ConfigLocationRefused {
                         expr: entry.path,
-                        var: var.name_with_case(db),
+                        var: name_of_place(db, *var, &entry.elements),
                         address: compact_str::CompactString::from(dv.to_address(db)),
                         why,
                     }
@@ -2430,7 +2517,7 @@ fn check_config_value<'db>(
         errors.push(refuse(ConfigEntryRefusal::ProgramValue));
         return None;
     };
-    let var_name = var.name_with_case(db);
+    let var_name = name_of_place(db, *var, &entry.elements);
     let same_instance = |o: &ConfigEntry<'db>| o.instance == entry.instance;
     // One report per conflict, from the first entry in file order, pointing
     // at the others; the later ones give no value either.
@@ -2443,10 +2530,7 @@ fn check_config_value<'db>(
     let mut others: Vec<_> = all
         .iter()
         .filter(|o| {
-            o.path != entry.path
-                && o.init.is_some()
-                && same_instance(o)
-                && (o.members.starts_with(&entry.members) || entry.members.starts_with(&o.members))
+            o.path != entry.path && o.init.is_some() && same_instance(o) && overlaps(o, entry)
         })
         .collect();
     if !others.is_empty() {
@@ -2464,6 +2548,11 @@ fn check_config_value<'db>(
                         .members
                         .iter()
                         .map(|m| m.name_with_case(db).text(db).as_str())
+                        .chain(
+                            o.elements
+                                .iter()
+                                .map(|e| e.name_with_case(db).text(db).as_str()),
+                        )
                         .collect::<Vec<_>>()
                         .join(".")
                         .into(),
@@ -2499,6 +2588,7 @@ fn check_config_value<'db>(
         return Some(ConfigValue {
             instance: entry.instance,
             members: entry.members.clone(),
+            elements: entry.elements.clone(),
             init,
             channel: None,
         });
@@ -2557,9 +2647,21 @@ fn check_config_value<'db>(
     Some(ConfigValue {
         instance: entry.instance,
         members: entry.members.clone(),
+        elements: entry.elements.clone(),
         init,
         channel: Some(channel),
     })
+}
+
+/// Whether one entry's place holds the other's: `s` and `s.a`, not `s.a` and
+/// `s.b`. A STRUCT's members come last in a path, so only a path that ends at
+/// the variable can hold a member of it.
+fn overlaps<'db>(a: &ConfigEntry<'db>, b: &ConfigEntry<'db>) -> bool {
+    if a.members == b.members {
+        return a.elements.starts_with(&b.elements) || b.elements.starts_with(&a.elements);
+    }
+    (a.members.starts_with(&b.members) && b.elements.is_empty())
+        || (b.members.starts_with(&a.members) && a.elements.is_empty())
 }
 
 /// Whether `dv` is an address VAR_CONFIG can give `var`, as far as the entry

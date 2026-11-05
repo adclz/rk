@@ -19,8 +19,8 @@ fn needs_cast<'db>(
     from: hir::hir_ty::ty::Type<'db>,
     to: hir::hir_ty::ty::Type<'db>,
 ) -> bool {
-    let from = from.normalize(db);
-    let to = to.normalize(db);
+    let from = from.calculates_as(db);
+    let to = to.calculates_as(db);
     match (&from, &to) {
         (hir::hir_ty::ty::Type::Elementary(f), hir::hir_ty::ty::Type::Elementary(t)) => f != t,
         _ => false,
@@ -320,7 +320,7 @@ fn lower_stmt<'db>(
 
             // Determine the control variable type
             let control_type = control_variable.infer(ctx.db);
-            let control_elem = match control_type.normalize(ctx.db) {
+            let control_elem = match control_type.calculates_as(ctx.db) {
                 hir::hir_ty::ty::Type::Elementary(spec) => elementary_spec_to_mir(spec)?,
                 _ => {
                     return Err(LowerTypeError::UnsupportedType(

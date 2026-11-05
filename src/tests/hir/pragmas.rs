@@ -1003,3 +1003,167 @@ END_FUNCTION
     ---'
     ");
 }
+
+/// A variadic parameter has one copy per argument count, and an import has one
+/// signature: this passed `rk check`, and the build looked for a copy.
+#[rstest]
+fn invalid_extern_variadic(mut with_db: RootDatabase) {
+    let source = r#"
+{extern 'host' 'sum'}
+FUNCTION sum : INT
+VAR_INPUT values : INT...; END_VAR
+END_FUNCTION
+
+PROGRAM Main
+VAR x : INT; END_VAR
+    x := sum(1, 2);
+END_PROGRAM"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1502] Error: not representable on an extern FUNCTION
+       ,-[ file:///test0.st:4:11 ]
+       |
+     4 | VAR_INPUT values : INT...; END_VAR
+       |           ^^^|^^
+       |              `---- VAR_INPUT 'values' cannot cross a WASM import: a variadic parameter has the argument count of each call
+       |
+       | Note: a WASM import has one signature
+    ---'
+    ");
+}
+
+/// The runner calls a test with no arguments, and its wrapper has no parameters
+/// to read. A scalar read a scratch local, what goes by address wrote near address
+/// 0, a REAL made the module invalid, and a test taking a variadic or an interface
+/// had no copy, so it never ran.
+#[rstest]
+fn invalid_test_with_a_parameter(mut with_db: RootDatabase) {
+    let source = r#"
+INTERFACE Itf
+    METHOD Run : INT
+    END_METHOD
+END_INTERFACE
+
+{test}
+FUNCTION scalar
+VAR_INPUT a : INT; END_VAR
+END_FUNCTION
+
+{test}
+FUNCTION float
+VAR_INPUT a : REAL; END_VAR
+END_FUNCTION
+
+{test}
+FUNCTION by_address
+VAR_IN_OUT a : INT; END_VAR
+END_FUNCTION
+
+{test}
+FUNCTION output
+VAR_OUTPUT a : REAL; END_VAR
+END_FUNCTION
+
+{test}
+FUNCTION pack
+VAR_INPUT a : INT...; END_VAR
+END_FUNCTION
+
+{test}
+FUNCTION implementation
+VAR_INPUT a : Itf; END_VAR
+END_FUNCTION"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1511] Error: test FUNCTION with a parameter
+       ,-[ file:///test0.st:9:11 ]
+       |
+     9 | VAR_INPUT a : INT; END_VAR
+       |           |
+       |           `-- the {test} FUNCTION cannot take the parameter 'a'
+       |
+       | Help: declare it in VAR, or call a FUNCTION taking it from the test
+       |
+       | Note: the runner calls a test with no arguments
+    ---'
+    [E1511] Error: test FUNCTION with a parameter
+        ,-[ file:///test0.st:14:11 ]
+        |
+     14 | VAR_INPUT a : REAL; END_VAR
+        |           |
+        |           `-- the {test} FUNCTION cannot take the parameter 'a'
+        |
+        | Help: declare it in VAR, or call a FUNCTION taking it from the test
+        |
+        | Note: the runner calls a test with no arguments
+    ----'
+    [E1511] Error: test FUNCTION with a parameter
+        ,-[ file:///test0.st:19:12 ]
+        |
+     19 | VAR_IN_OUT a : INT; END_VAR
+        |            |
+        |            `-- the {test} FUNCTION cannot take the parameter 'a'
+        |
+        | Help: declare it in VAR, or call a FUNCTION taking it from the test
+        |
+        | Note: the runner calls a test with no arguments
+    ----'
+    [E1511] Error: test FUNCTION with a parameter
+        ,-[ file:///test0.st:24:12 ]
+        |
+     24 | VAR_OUTPUT a : REAL; END_VAR
+        |            |
+        |            `-- the {test} FUNCTION cannot take the parameter 'a'
+        |
+        | Help: declare it in VAR, or call a FUNCTION taking it from the test
+        |
+        | Note: the runner calls a test with no arguments
+    ----'
+    [E1511] Error: test FUNCTION with a parameter
+        ,-[ file:///test0.st:29:11 ]
+        |
+     29 | VAR_INPUT a : INT...; END_VAR
+        |           |
+        |           `-- the {test} FUNCTION cannot take the parameter 'a'
+        |
+        | Help: declare it in VAR, or call a FUNCTION taking it from the test
+        |
+        | Note: the runner calls a test with no arguments
+    ----'
+    [E1511] Error: test FUNCTION with a parameter
+        ,-[ file:///test0.st:34:11 ]
+        |
+     34 | VAR_INPUT a : Itf; END_VAR
+        |           |
+        |           `-- the {test} FUNCTION cannot take the parameter 'a'
+        |
+        | Help: declare it in VAR, or call a FUNCTION taking it from the test
+        |
+        | Note: the runner calls a test with no arguments
+    ----'
+    ");
+}
+
+/// A result is a local of the test, which nothing reads.
+#[rstest]
+fn valid_test_with_a_result(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE Pair : STRUCT a : INT; b : REAL; END_STRUCT; END_TYPE
+
+{test}
+FUNCTION float : REAL
+    float := 1.0;
+END_FUNCTION
+
+{test}
+FUNCTION aggregate : Pair
+    aggregate.b := 1.0;
+END_FUNCTION
+
+{test}
+FUNCTION text : STRING
+    text := 'a';
+END_FUNCTION"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}

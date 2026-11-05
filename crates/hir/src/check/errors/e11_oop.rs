@@ -925,13 +925,20 @@ impl<'db> ToIdeDiagnostic<'db> for OopError<'db> {
                 base_param,
                 param,
             } => {
+                let declared = |var: &VariableDecl<'db>, ty: &Type<'db>| {
+                    format!(
+                        "{}{}",
+                        ty.type_name(db),
+                        if var.variadic(db) { "..." } else { "" }
+                    )
+                };
                 let mut diag = diag()
                     .message(format!(
                         "parameter '{}' of method '{}' has an incompatible type: expected '{}', got '{}'",
                         param.name_with_case(db).text(db),
                         method.get_name_with_case(db).text(db),
-                        expected.type_name(db),
-                        got.type_name(db),
+                        declared(base_param, expected),
+                        declared(param, got),
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
@@ -945,7 +952,7 @@ impl<'db> ToIdeDiagnostic<'db> for OopError<'db> {
                     format!(
                         "the {base} declares '{}' as '{}' here",
                         base_param.name_with_case(db).text(db),
-                        expected.type_name(db),
+                        declared(base_param, expected),
                     ),
                     base_param.get_scope_id(db).file(db),
                     base_param.spec(db).get_span(db),

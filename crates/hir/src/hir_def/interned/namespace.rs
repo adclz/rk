@@ -95,6 +95,15 @@ impl<'db> SpanNamespacePath<'db> {
     ) -> &'db dyn AstNode {
         &*db::syntax::parse(db, self.scope_id.file(db)).ast[self.spans[index].0]
     }
+
+    /// Where the fragment at `index` is written.
+    pub fn fragment_span(
+        &self,
+        db: &'db dyn WorkspaceDataBase,
+        index: usize,
+    ) -> auto_lsp::tree_sitter::Range {
+        *self.get_fragment_ast_node(db, index).get_range()
+    }
 }
 
 impl<'db> From<(&dyn WorkspaceDataBase, &SpanIdent<'db>)> for SpanNamespacePath<'db> {

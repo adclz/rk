@@ -609,6 +609,150 @@ END_FUNCTION
     );
 }
 
+/// A name qualified with a namespace is a use of it, in a type, a base, a value,
+/// a call and an initializer. Left out, the next check reported E0203 on code the
+/// reader had not touched.
+#[rstest]
+fn rename_a_namespace_edits_the_names_qualified_with_it(mut with_db: RootDatabase) {
+    let source1 = r#"NAMESPACE Lib
+    FUNCTION F : INT
+    END_FUNCTION
+    TYPE T : STRUCT a : INT; END_STRUCT; END_TYPE
+    FUNCTION_BLOCK Base
+    END_FUNCTION_BLOCK
+    NAMESPACE Sub
+        FUNCTION G : INT
+            G := Lib.F();
+        END_FUNCTION
+    END_NAMESPACE
+END_NAMESPACE
+"#;
+    let source2 = r#"USING Lib.Sub;
+FUNCTION_BLOCK Block EXTENDS Lib.Base
+VAR x : Lib.T; r : REF_TO Lib.T; a : ARRAY[0..1] OF Lib.T; END_VAR
+    x.a := Lib.F() + Lib.Sub.G();
+END_FUNCTION_BLOCK
+"#;
+    add_sources(&mut with_db, &[source1, source2]);
+    let file1 = with_db
+        .get_file(&Url::parse("file:///test0.st").unwrap())
+        .unwrap();
+
+    let offset = source1.find("Lib").unwrap();
+    let node = descendant_at(&with_db, file1, offset).unwrap();
+    let edit = node.rename(&with_db, offset, "Drives").unwrap();
+    assert_snapshot!(apply_rename(&with_db, &edit, &[source1, source2]), @r"
+    NAMESPACE Drives
+        FUNCTION F : INT
+        END_FUNCTION
+        TYPE T : STRUCT a : INT; END_STRUCT; END_TYPE
+        FUNCTION_BLOCK Base
+        END_FUNCTION_BLOCK
+        NAMESPACE Sub
+            FUNCTION G : INT
+                G := Drives.F();
+            END_FUNCTION
+        END_NAMESPACE
+    END_NAMESPACE
+    ---
+    USING Drives.Sub;
+    FUNCTION_BLOCK Block EXTENDS Drives.Base
+    VAR x : Drives.T; r : REF_TO Drives.T; a : ARRAY[0..1] OF Drives.T; END_VAR
+        x.a := Drives.F() + Drives.Sub.G();
+    END_FUNCTION_BLOCK
+    ");
+}
+
+/// The same from any place that names it: a step of a qualified call, the
+/// namespace of a qualified type, and a parent reached from a dotted USING.
+#[rstest]
+#[case::a_step_of_a_call("Lib.F()")]
+#[case::a_qualified_type("Lib.T;")]
+fn rename_a_namespace_from_a_name_qualified_with_it(
+    mut with_db: RootDatabase,
+    #[case] written: &str,
+) {
+    let source = r#"NAMESPACE Lib
+    FUNCTION F : INT
+    END_FUNCTION
+    TYPE T : STRUCT a : INT; END_STRUCT; END_TYPE
+END_NAMESPACE
+FUNCTION H : INT
+VAR x : Lib.T; END_VAR
+    x.a := Lib.F();
+END_FUNCTION
+"#;
+    add_sources(&mut with_db, &[source]);
+    let file = with_db
+        .get_file(&Url::parse("file:///test0.st").unwrap())
+        .unwrap();
+    let offset = source.find(written).unwrap();
+    let node = descendant_at(&with_db, file, offset).unwrap();
+    let edit = node.rename(&with_db, offset, "Drives").unwrap();
+    assert_eq!(
+        apply_rename(&with_db, &edit, &[source]),
+        source.replace("Lib", "Drives"),
+    );
+}
+
+/// A parent is edited where a dotted name writes it, and a child with its name
+/// nested in another namespace is left alone.
+#[rstest]
+fn rename_a_parent_namespace_in_a_dotted_name(mut with_db: RootDatabase) {
+    let source = r#"NAMESPACE App
+    FUNCTION F : INT
+    END_FUNCTION
+END_NAMESPACE
+
+NAMESPACE App.Motors
+    FUNCTION G : INT
+    END_FUNCTION
+END_NAMESPACE
+
+NAMESPACE Other
+    NAMESPACE App
+        FUNCTION H : INT
+        END_FUNCTION
+    END_NAMESPACE
+END_NAMESPACE
+
+USING App.Motors;
+FUNCTION I : INT
+    I := App.Motors.G();
+END_FUNCTION
+"#;
+    add_sources(&mut with_db, &[source]);
+    let file = with_db
+        .get_file(&Url::parse("file:///test0.st").unwrap())
+        .unwrap();
+    let offset = source.find("App").unwrap();
+    let node = descendant_at(&with_db, file, offset).unwrap();
+    let edit = node.rename(&with_db, offset, "Plant").unwrap();
+    assert_snapshot!(apply_rename(&with_db, &edit, &[source]), @r"
+    NAMESPACE Plant
+        FUNCTION F : INT
+        END_FUNCTION
+    END_NAMESPACE
+
+    NAMESPACE Plant.Motors
+        FUNCTION G : INT
+        END_FUNCTION
+    END_NAMESPACE
+
+    NAMESPACE Other
+        NAMESPACE App
+            FUNCTION H : INT
+            END_FUNCTION
+        END_NAMESPACE
+    END_NAMESPACE
+
+    USING Plant.Motors;
+    FUNCTION I : INT
+        I := Plant.Motors.G();
+    END_FUNCTION
+    ");
+}
+
 /// A qualified type reference, `x : Lib.T`, is edited at its name: the
 /// whole path was replaced, and the namespace went with it. A located
 /// variable declared without a name, `AT %QB4 : INT`, has its address
@@ -718,4 +862,35 @@ END_FUNCTION
         __END_TRY;
     END_FUNCTION
     ");
+}
+
+/// A VAR_CONFIG path goes on into a STRUCT, and its last step names the field.
+#[rstest]
+#[case::from_the_declaration("fuel : INT;")]
+#[case::from_the_path("fuel : INT := 2")]
+fn rename_a_field_named_in_a_var_config_path(mut with_db: RootDatabase, #[case] at: &str) {
+    let source = r#"TYPE Engine : STRUCT fuel : INT; END_STRUCT; END_TYPE
+
+PROGRAM Main
+VAR e : Engine; END_VAR
+END_PROGRAM
+
+CONFIGURATION Cfg
+RESOURCE Res ON CPU
+    TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+    PROGRAM P1 WITH T : Main;
+END_RESOURCE
+VAR_CONFIG
+    Res.P1.e.fuel : INT := 2;
+END_VAR
+END_CONFIGURATION
+"#;
+    let file = add_source(&mut with_db, source);
+    let offset = source.find(at).unwrap();
+    let node = descendant_at(&with_db, file, offset).unwrap();
+    let edit = node.rename(&with_db, offset, "gas").unwrap();
+    assert_eq!(
+        apply_rename(&with_db, &edit, &[source]),
+        source.replace("fuel", "gas")
+    );
 }

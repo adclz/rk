@@ -29,6 +29,7 @@ mod mux;
 mod ne;
 mod or;
 mod power;
+mod selection;
 mod sub;
 mod xor;
 

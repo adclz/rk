@@ -114,6 +114,8 @@ fn coverage<'db>(
                 .map(|variant| format!("'{owner}#{}'", variant.name.with_case.text(db)))
                 .collect();
             match missing.is_empty() {
+                // A base holds more than the names of its values.
+                true if enm.typ(db).is_some() => Coverage::Partial,
                 true => Coverage::Complete,
                 false => Coverage::Variants(missing),
             }

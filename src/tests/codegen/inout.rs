@@ -704,6 +704,171 @@ fn a_bit_of_a_word_bound_to_a_member(mut with_db: db::RootDatabase) {
     );
 }
 
+/// A part reached through a path goes where a part of a plain variable goes: to a
+/// block's in-out member, copied in and back, and to an output, copied back. Each row
+/// holds after it. The word is reset between two calls to the member, as above, and
+/// only bit 3 of it changes. The whole of each stays bound by reference.
+#[rstest]
+#[case::a_member_to_a_member(
+    "rw.f := START; m(v := rw.f.3); rw.f := START; m(v := rw.f.3);",
+    "rw.f = DONE"
+)]
+#[case::an_element_to_a_member(
+    "lw[1] := START; m(v := lw[1].3); lw[1] := START; m(v := lw[1].3);",
+    "lw[1] = DONE"
+)]
+#[case::a_reference_to_a_member(
+    "rd := REF(w); w := START; m(v := rd^.3); w := START; m(v := rd^.3);",
+    "w = DONE"
+)]
+#[case::an_element_of_a_member_to_a_member(
+    "rw.a[1] := START; m(v := rw.a[1].3); rw.a[1] := START; m(v := rw.a[1].3);",
+    "rw.a[1] = DONE"
+)]
+#[case::a_member_of_a_member_to_a_member(
+    "n.inner.f := START; m(v := n.inner.f.3); n.inner.f := START; m(v := n.inner.f.3);",
+    "n.inner.f = DONE"
+)]
+#[case::a_reference_to_a_struct_to_a_member(
+    "rr := REF(rw); rw.f := START; m(v := rr^.f.3); rw.f := START; m(v := rr^.f.3);",
+    "rw.f = DONE"
+)]
+#[case::a_global_to_a_member("g := START; m(v := g.3); g := START; m(v := g.3);", "g = DONE")]
+#[case::named_values_to_a_member(
+    "fl := START; m(v := fl.3); fl := START; m(v := fl.3);",
+    "fl = DONE"
+)]
+#[case::a_member_with_named_values_to_a_member(
+    "rc.f := START; m(v := rc.f.3); rc.f := START; m(v := rc.f.3);",
+    "rc.f = DONE"
+)]
+#[case::an_element_with_named_values_to_a_member(
+    "lf[1] := START; m(v := lf[1].3); lf[1] := START; m(v := lf[1].3);",
+    "lf[1] = DONE"
+)]
+#[case::a_reference_with_named_values_to_a_member(
+    "rf := REF(fl); fl := START; m(v := rf^.3); fl := START; m(v := rf^.3);",
+    "fl = DONE"
+)]
+#[case::an_output_into_a_variable("w := START; out_bool(o => w.3);", "w = DONE")]
+#[case::an_output_into_a_member("rw.f := START; out_bool(o => rw.f.3);", "rw.f = DONE")]
+#[case::an_output_into_an_element("lw[1] := START; out_bool(o => lw[1].3);", "lw[1] = DONE")]
+#[case::an_output_through_a_reference(
+    "rd := REF(w); w := START; out_bool(o => rd^.3);",
+    "w = DONE"
+)]
+#[case::an_output_into_an_element_of_a_member(
+    "rw.a[1] := START; out_bool(o => rw.a[1].3);",
+    "rw.a[1] = DONE"
+)]
+#[case::an_output_into_a_global("g := START; out_bool(o => g.3);", "g = DONE")]
+#[case::an_output_by_position("w := START; out_bool(w.3);", "w = DONE")]
+#[case::a_member_by_position("rw.f := START; out_bool(rw.f.3);", "rw.f = DONE")]
+#[case::an_element_by_position("lw[1] := START; out_bool(lw[1].3);", "lw[1] = DONE")]
+#[case::a_reference_by_position("rd := REF(w); w := START; out_bool(rd^.3);", "w = DONE")]
+#[case::a_blocks_output("rw.f := START; m(v := b, q => rw.f.3);", "rw.f = DONE")]
+#[case::a_methods_output("rw.f := START; cl.MeOut(o => rw.f.3);", "rw.f = DONE")]
+#[case::a_methods_output_by_position("rw.f := START; cl.MeOut(rw.f.3);", "rw.f = DONE")]
+#[case::an_input_from_a_member("rw.f := DONE;", "in_bool(rw.f.3)")]
+#[case::an_input_from_a_reference("rd := REF(w); w := DONE;", "in_bool(rd^.3)")]
+#[case::a_whole_member("io_word(rw.f);", "rw.f = 4")]
+#[case::a_whole_element("io_word(lw[1]);", "lw[1] = 4")]
+#[case::a_whole_reference("rd := REF(w); io_word(rd^);", "w = 4")]
+#[case::a_whole_element_of_a_member("io_word(rw.a[1]);", "rw.a[1] = 4")]
+#[case::a_bool("io_bool(b);", "b")]
+#[case::a_bool_among_overloads("over_io(b);", "b")]
+fn a_part_through_a_path_goes_where_a_part_goes(
+    mut with_db: db::RootDatabase,
+    #[case] steps: &str,
+    #[case] holds: &str,
+) {
+    let source = format!(
+        r#"
+        TYPE
+            RecW : STRUCT f : WORD; a : ARRAY[0..1] OF WORD; END_STRUCT;
+            Flags : WORD (FA := 1, FB := 2);
+            Rec : STRUCT f : Flags; END_STRUCT;
+            Nest : STRUCT inner : RecW; END_STRUCT;
+        END_TYPE
+
+        CONFIGURATION Cfg
+            VAR_GLOBAL g : WORD; END_VAR
+        END_CONFIGURATION
+
+        FUNCTION_BLOCK Flip
+            VAR_IN_OUT v : BOOL; END_VAR
+            VAR_OUTPUT q : BOOL; END_VAR
+            v := NOT v;
+            q := TRUE;
+        END_FUNCTION_BLOCK
+
+        CLASS Cl
+            METHOD PUBLIC MeOut
+            VAR_OUTPUT o : BOOL; END_VAR
+                o := TRUE;
+            END_METHOD
+        END_CLASS
+
+        FUNCTION io_bool
+        VAR_IN_OUT v : BOOL; END_VAR
+            v := TRUE;
+        END_FUNCTION
+
+        FUNCTION io_word
+        VAR_IN_OUT v : WORD; END_VAR
+            v := 4;
+        END_FUNCTION
+
+        FUNCTION over_io
+        VAR_IN_OUT v : BOOL; END_VAR
+            v := TRUE;
+        END_FUNCTION
+
+        FUNCTION over_io
+        VAR_IN_OUT v : INT; END_VAR
+            v := 1;
+        END_FUNCTION
+
+        FUNCTION out_bool
+        VAR_OUTPUT o : BOOL; END_VAR
+            o := TRUE;
+        END_FUNCTION
+
+        FUNCTION in_bool : BOOL
+        VAR_INPUT p : BOOL; END_VAR
+            in_bool := p;
+        END_FUNCTION
+
+        FUNCTION test : BOOL
+        VAR_EXTERNAL g : WORD; END_VAR
+        VAR CONSTANT
+            START : WORD := 16#00F0;
+            DONE : WORD := 16#00F8;
+        END_VAR
+        VAR
+            w : WORD;
+            b : BOOL;
+            fl : Flags;
+            rw : RecW;
+            rc : Rec;
+            n : Nest;
+            lw : ARRAY[0..1] OF WORD;
+            lf : ARRAY[0..1] OF Flags;
+            rd : REF_TO WORD;
+            rf : REF_TO Flags;
+            rr : REF_TO RecW;
+            m : Flip;
+            cl : Cl;
+        END_VAR
+            {steps}
+            test := {holds};
+        END_FUNCTION
+    "#
+    );
+    let result: i32 = super::run(&mut with_db, &source, "test", ());
+    assert_eq!(result, 1, "{steps} {holds}");
+}
+
 /// A member of eight bytes, an LINT, is copied whole, in and back.
 #[rstest]
 fn an_eight_byte_member_is_copied_whole(mut with_db: db::RootDatabase) {

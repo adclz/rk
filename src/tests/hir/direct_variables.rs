@@ -1146,7 +1146,7 @@ END_CONFIGURATION
         |
      19 |     Res.P1.r^.run  AT %QX1.0 : BOOL;
         |               ^|^
-        |                `--- a VAR_CONFIG path names instances and variables, not an element or what a reference points at
+        |                `--- a VAR_CONFIG path names instances, variables and STRUCT fields, not an array's element or what a reference points at
         |
         | Help: name the variable itself
     ----'
@@ -1954,9 +1954,8 @@ END_CONFIGURATION
 }
 
 /// A located variable holds one value as wide as its address, so it is an
-/// elementary type of that width — as matiec requires, and as every vendor
-/// accepts. An enum, a subrange, an aggregate and a STRING have no single
-/// width and are refused rather than guessed at.
+/// elementary type of that width. An enum, a subrange, an aggregate and a STRING
+/// have no single width and are refused rather than guessed at.
 #[rstest]
 fn invalid_located_variable_without_an_elementary_type(mut with_db: RootDatabase) {
     let source = r#"

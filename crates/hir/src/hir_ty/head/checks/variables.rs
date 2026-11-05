@@ -456,10 +456,10 @@ impl<'db> InitInference<'db> {
             );
             if let ScopeKind::Pou(Pou::Function(f)) = scope_kind
                 && f.is_test(db)
-                && var.conformand(db).is_some()
+                && (var.is_input(db) || var.is_output(db) || var.is_in_out(db))
             {
                 self.errors.push(
-                    PragmaError::TestWithConformand { var: *var }
+                    PragmaError::TestWithParameter { var: *var }
                         .to_diagnostic(db, self.scope.file(db)),
                 );
             }
@@ -721,6 +721,7 @@ impl<'db> InitInference<'db> {
                     VariableKind::Input if var.conformand(db).is_some() => {
                         Some(ExternForbiddenKind::Conformand)
                     }
+                    VariableKind::Input if var.variadic(db) => Some(ExternForbiddenKind::Variadic),
                     VariableKind::Output if !extern_scalar(db, var.spec(db).infer(db)) => {
                         Some(ExternForbiddenKind::AggregateOutput)
                     }

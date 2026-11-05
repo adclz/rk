@@ -1756,6 +1756,43 @@ fn a_code_offset_resolves_to_its_function(mut with_db: db::RootDatabase) {
     assert_eq!(info.function_at(0), None);
 }
 
+/// A type with named values holds numbers that have no name: such a value reads
+/// as that number, of that type.
+#[rstest]
+fn a_number_with_no_name_reads_as_its_value(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE Light : INT (Red := 1, Amber := 2); END_TYPE
+
+        PROGRAM P
+        VAR
+            named, unnamed : Light;
+        END_VAR
+            named := Light#Amber;
+            unnamed := 27;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    let mut plc = TestPlc::load(&wasm).expect("load");
+    plc.run(1).expect("scan");
+    let info = DebugInfo::from_wasm(&wasm);
+    let read = |variant: Option<&str>, raw: i64| {
+        Some(VarValue::Enum {
+            type_name: "Light".to_string(),
+            variant: variant.map(str::to_string),
+            raw,
+        })
+    };
+    assert_eq!(plc.read_var(&info, "P1.named"), read(Some("Amber"), 2));
+    assert_eq!(plc.read_var(&info, "P1.unnamed"), read(None, 27));
+}
+
 /// An enumeration reached through an element or a field reads by its
 /// variant: the descriptor and the field name their entry, which carries
 /// the variants. It read as its integer, where a plain variable read `On`.

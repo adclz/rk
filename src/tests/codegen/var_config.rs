@@ -178,3 +178,136 @@ fn a_value_for_a_retained_variable_is_the_cold_start(mut with_db: db::RootDataba
     warm.run(1).expect("scan");
     assert_eq!(read(&warm), VarValue::I16(104), "a warm start resumes");
 }
+
+/// A value can go to a field of a STRUCT: this instance's, over the defaults of the
+/// type and over the variable's own initializer, which its other fields keep.
+#[rstest]
+fn a_value_starts_a_field_of_a_struct(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE
+            Inner : STRUCT b : INT := 2; c : INT := 7; END_STRUCT;
+            S : STRUCT
+                a : INT := 1;
+                keep : INT := 1;
+                inner : Inner;
+                whole : Inner;
+                list : ARRAY[0..1] OF INT;
+                text : STRING[8];
+            END_STRUCT;
+            Holder : STRUCT m : Fb; END_STRUCT;
+        END_TYPE
+
+        FUNCTION_BLOCK Fb
+        VAR k : INT := 1; l : INT := 1; s : S; END_VAR
+        END_FUNCTION_BLOCK
+
+        PROGRAM Prog
+        VAR_INPUT i : S; END_VAR
+        VAR_OUTPUT o : S; END_VAR
+        VAR
+            s : S;
+            set : S := (a := 21, keep := 22);
+            place : STRUCT x : INT := 1; y : INT := 1; END_STRUCT;
+            f : Fb;
+            h : Holder;
+        END_VAR
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM One WITH T : Prog;
+                PROGRAM Two WITH T : Prog;
+            END_RESOURCE
+            VAR_CONFIG
+                Res.One.s.a : INT := 3;
+                Res.One.s.inner.b : INT := 4;
+                Res.One.s.whole : Inner := (b := 5);
+                Res.One.s.list : ARRAY[0..1] OF INT := [6, 7];
+                Res.One.s.text : STRING[8] := 'ab';
+                Res.One.set.a : INT := 23;
+                Res.One.place.x : INT := 8;
+                Res.One.f.s.a : INT := 9;
+                Res.One.i.a : INT := 10;
+                Res.One.o.a : INT := 11;
+                Res.One.h.m : Fb := (k := 12);
+            END_VAR
+        END_CONFIGURATION
+    "#;
+    let (_, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    let info = DebugInfo::from_wasm(&wasm);
+    let plc = TestPlc::load(&wasm).expect("load");
+    for (name, expected) in [
+        ("One.s.a", 3),
+        ("One.s.keep", 1),
+        ("One.s.inner.b", 4),
+        ("One.s.inner.c", 7),
+        ("One.s.whole.b", 5),
+        ("One.s.whole.c", 7),
+        ("One.s.list[0]", 6),
+        ("One.s.list[1]", 7),
+        ("One.set.a", 23),
+        ("One.set.keep", 22),
+        ("One.place.x", 8),
+        ("One.place.y", 1),
+        ("One.f.s.a", 9),
+        ("One.f.s.keep", 1),
+        ("One.i.a", 10),
+        ("One.i.keep", 1),
+        ("One.o.a", 11),
+        ("One.h.m.k", 12),
+        ("One.h.m.l", 1),
+        ("Two.s.a", 1),
+        ("Two.s.inner.b", 2),
+        ("Two.set.a", 21),
+        ("Two.place.x", 1),
+        ("Two.f.s.a", 1),
+        ("Two.h.m.k", 1),
+    ] {
+        assert_eq!(
+            plc.read_var(&info, name),
+            Some(VarValue::I16(expected)),
+            "{name}"
+        );
+    }
+    assert_eq!(
+        plc.read_var(&info, "One.s.text"),
+        Some(VarValue::String("ab".to_string()))
+    );
+    assert_eq!(
+        plc.read_var(&info, "Two.s.text"),
+        Some(VarValue::String(String::new()))
+    );
+}
+
+/// A value for a field of a RETAIN variable is the cold start, as for the variable.
+#[rstest]
+fn a_value_for_a_retained_field_is_the_cold_start(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE S : STRUCT count : INT; other : INT := 5; END_STRUCT; END_TYPE
+
+        PROGRAM P
+        VAR RETAIN s : S; END_VAR
+            s.count := s.count + 1;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+        VAR_CONFIG
+            Res.P1.s.count : INT := 100;
+        END_VAR
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    let info = DebugInfo::from_wasm(&wasm);
+
+    let mut plc = TestPlc::load(&wasm).expect("load");
+    assert_eq!(plc.read_var(&info, "P1.s.count"), Some(VarValue::I16(100)));
+    assert_eq!(plc.read_var(&info, "P1.s.other"), Some(VarValue::I16(5)));
+    plc.run(3).expect("scans");
+    assert_eq!(plc.read_var(&info, "P1.s.count"), Some(VarValue::I16(103)));
+    assert_eq!(mir.retain_map.ranges.len(), 1);
+}

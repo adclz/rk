@@ -663,6 +663,10 @@ pub enum ArgMatch {
     /// An array bound to an `ARRAY[*]` of its element type: exact but for
     /// the bounds, which a parameter declaring them matches better.
     Bounds,
+    /// A value of a type with named values bound to a parameter of its base:
+    /// exact but for the names, which a parameter of its own type matches
+    /// better, and before anything the base widens to.
+    Base,
     Widen,
     No,
 }
@@ -671,7 +675,7 @@ impl ArgMatch {
     fn rank(&self) -> u8 {
         match self {
             ArgMatch::Exact => 3,
-            ArgMatch::Bounds => 2,
+            ArgMatch::Bounds | ArgMatch::Base => 2,
             ArgMatch::Widen => 1,
             ArgMatch::No => 0,
         }
@@ -714,12 +718,31 @@ pub fn classify_arg<'db>(
     // `'a'` a valid CHAR, which no INT->BYTE or STRING->CHAR entry says (nor
     // should). `70000` is no INT, so the INT overload is not its exact match.
     if let Type::Infer(it) = arg_n {
+        // A number reaches a type with named values through its base, behind
+        // an overload of that base.
+        if let Type::Enum(_) = param_n {
+            return match param.calculates_as(db) {
+                Type::Elementary(p) if it.check_as(db, p).is_ok() => ArgMatch::Widen,
+                _ => ArgMatch::No,
+            };
+        }
         return match param_n {
             Type::Elementary(p) if it.check_as(db, p).is_ok() => match it.to_spec(db) == p {
                 true => ArgMatch::Exact,
                 false => ArgMatch::Widen,
             },
             _ => ArgMatch::No,
+        };
+    }
+    // A value of a type with named values is a number to a parameter that is
+    // one. To a parameter of such a type it is what it is, below.
+    if !matches!(param_n, Type::Enum(_))
+        && adjustments.and_then(|a| a.as_reference()).is_none()
+        && let Some(base) = arg.named_values_base(db)
+    {
+        return match classify_arg(db, resolver, base, adjustments, param) {
+            ArgMatch::Exact => ArgMatch::Base,
+            other => other,
         };
     }
     // The coercion takes resolved types only; a value still partly untyped
@@ -731,10 +754,15 @@ pub fn classify_arg<'db>(
     {
         return ArgMatch::No;
     }
+    // A name of an enum is of that enum.
+    let own = match arg_n {
+        Type::EnumVariant(ty, _) => Type::DataType(ty).normalize(db),
+        other => other,
+    };
     // A reference binds invariantly: the coercion took it only if the
     // pointee is the parameter's own.
     if adjustments.and_then(|a| a.as_reference()).is_some()
-        || crate::hir_ty::infer::coerce::same_type(db, param_n, arg_n)
+        || crate::hir_ty::infer::coerce::same_type(db, param_n, own)
     {
         return ArgMatch::Exact;
     }

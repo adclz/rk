@@ -279,7 +279,7 @@ END_FUNCTION
 ```
 
 The fold operators are `+ - * / % **` (left to right), `& | ^`, `= <> < > <= >=`, which test each adjacent pair and give a `BOOL`, and `MIN` and `MAX`, written after a space (`...values MAX`), which give the smallest or the largest argument.
-The variadic parameter must be elementary, not a `STRING` nor a subrange (E0811), and the last `VAR_INPUT` (E0812, E0815); an input before it takes its argument first, and anything else goes in `VAR_OUTPUT` or `VAR_IN_OUT`, by name. `...` folds that parameter and nothing else (E0814).
+The variadic parameter must be elementary, not a `STRING` nor a subrange (E0811), and the last `VAR_INPUT` (E0812, E0815); an input before it takes its argument first, and anything else goes in `VAR_OUTPUT` or `VAR_IN_OUT`, by name. `...` reads that parameter and nothing else (E0814), with a fold or by position: `...values[i]` counts from 0, and an index out of range reads the first or the last argument.
 A call passes it at least one argument (E0813).
 
 ## Gotchas

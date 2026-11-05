@@ -50,20 +50,20 @@ The two tables below are written by the site generator from the compiler's own r
 
 | from | to |
 |---|---|
-| `BOOL` | `SINT`, `INT`, `DINT`, `LINT`, `USINT`, `UINT`, `UDINT`, `ULINT`, `STRING` |
-| `BYTE` | `SINT`, `INT`, `DINT`, `LINT`, `USINT`, `UINT`, `UDINT`, `ULINT`, `CHAR`, `STRING` |
-| `WORD` | `BYTE`, `SINT`, `INT`, `DINT`, `LINT`, `USINT`, `UINT`, `UDINT`, `ULINT`, `STRING` |
-| `DWORD` | `BYTE`, `WORD`, `SINT`, `INT`, `DINT`, `LINT`, `USINT`, `UINT`, `UDINT`, `ULINT`, `REAL`, `STRING` |
+| `BOOL` | `BYTE`, `WORD`, `DWORD`, `LWORD`, `SINT`, `INT`, `DINT`, `LINT`, `USINT`, `UINT`, `UDINT`, `ULINT`, `STRING` |
+| `BYTE` | `WORD`, `DWORD`, `LWORD`, `SINT`, `INT`, `DINT`, `LINT`, `USINT`, `UINT`, `UDINT`, `ULINT`, `CHAR`, `STRING` |
+| `WORD` | `BYTE`, `DWORD`, `LWORD`, `SINT`, `INT`, `DINT`, `LINT`, `USINT`, `UINT`, `UDINT`, `ULINT`, `STRING` |
+| `DWORD` | `BYTE`, `WORD`, `LWORD`, `SINT`, `INT`, `DINT`, `LINT`, `USINT`, `UINT`, `UDINT`, `ULINT`, `REAL`, `STRING` |
 | `LWORD` | `BYTE`, `WORD`, `DWORD`, `SINT`, `INT`, `DINT`, `LINT`, `USINT`, `UINT`, `UDINT`, `ULINT`, `LREAL`, `STRING` |
-| `SINT` | `BYTE`, `WORD`, `DWORD`, `LWORD`, `USINT`, `UINT`, `UDINT`, `ULINT`, `STRING` |
-| `INT` | `BYTE`, `WORD`, `DWORD`, `LWORD`, `SINT`, `USINT`, `UINT`, `UDINT`, `ULINT`, `STRING` |
-| `DINT` | `BYTE`, `WORD`, `DWORD`, `LWORD`, `SINT`, `INT`, `USINT`, `UINT`, `UDINT`, `ULINT`, `REAL`, `STRING`, `TIME`, `DATE`, `TOD` |
+| `SINT` | `BYTE`, `WORD`, `DWORD`, `LWORD`, `INT`, `DINT`, `LINT`, `USINT`, `UINT`, `UDINT`, `ULINT`, `REAL`, `LREAL`, `STRING` |
+| `INT` | `BYTE`, `WORD`, `DWORD`, `LWORD`, `SINT`, `DINT`, `LINT`, `USINT`, `UINT`, `UDINT`, `ULINT`, `REAL`, `LREAL`, `STRING` |
+| `DINT` | `BYTE`, `WORD`, `DWORD`, `LWORD`, `SINT`, `INT`, `LINT`, `USINT`, `UINT`, `UDINT`, `ULINT`, `REAL`, `LREAL`, `STRING`, `TIME`, `DATE`, `TOD` |
 | `LINT` | `BYTE`, `WORD`, `DWORD`, `LWORD`, `SINT`, `INT`, `DINT`, `USINT`, `UINT`, `UDINT`, `ULINT`, `REAL`, `LREAL`, `STRING`, `LTIME`, `LDATE`, `LTOD`, `DT`, `LDT` |
-| `USINT` | `BYTE`, `WORD`, `DWORD`, `LWORD`, `SINT`, `STRING` |
-| `UINT` | `BYTE`, `WORD`, `DWORD`, `LWORD`, `SINT`, `INT`, `USINT`, `STRING` |
-| `UDINT` | `BYTE`, `WORD`, `DWORD`, `LWORD`, `SINT`, `INT`, `DINT`, `USINT`, `UINT`, `REAL`, `STRING` |
+| `USINT` | `BYTE`, `WORD`, `DWORD`, `LWORD`, `SINT`, `INT`, `DINT`, `LINT`, `UINT`, `UDINT`, `ULINT`, `REAL`, `LREAL`, `STRING` |
+| `UINT` | `BYTE`, `WORD`, `DWORD`, `LWORD`, `SINT`, `INT`, `DINT`, `LINT`, `USINT`, `UDINT`, `ULINT`, `REAL`, `LREAL`, `STRING` |
+| `UDINT` | `BYTE`, `WORD`, `DWORD`, `LWORD`, `SINT`, `INT`, `DINT`, `LINT`, `USINT`, `UINT`, `ULINT`, `REAL`, `LREAL`, `STRING` |
 | `ULINT` | `BYTE`, `WORD`, `DWORD`, `LWORD`, `SINT`, `INT`, `DINT`, `LINT`, `USINT`, `UINT`, `UDINT`, `REAL`, `LREAL`, `STRING` |
-| `REAL` | `DWORD`, `SINT`, `INT`, `DINT`, `LINT`, `USINT`, `UINT`, `UDINT`, `ULINT`, `STRING` |
+| `REAL` | `DWORD`, `SINT`, `INT`, `DINT`, `LINT`, `USINT`, `UINT`, `UDINT`, `ULINT`, `LREAL`, `STRING` |
 | `LREAL` | `LWORD`, `SINT`, `INT`, `DINT`, `LINT`, `USINT`, `UINT`, `UDINT`, `ULINT`, `REAL`, `STRING` |
 | `CHAR` | `BYTE`, `STRING` |
 | `STRING` | — |
@@ -172,6 +172,9 @@ END_TYPE
 Enum values are **qualified only**: write `Color#Green`, never a bare `Green`.
 A bare variant is E0201 "no item found in scope".
 This holds in initializers, expressions and `CASE` labels alike.
+
+An enum with a base type, `Light: INT (Red := 1, Green := 2)`, holds that type's values: it takes a number, reads as one, is calculated with and has the parts of its base (`f.2`).
+One with no base type holds its names only, and two enums are two types either way.
 
 Initializers:
 

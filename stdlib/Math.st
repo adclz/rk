@@ -304,10 +304,10 @@ NAMESPACE Std.Math
 		{wasm IN 'atan' (params IN) (result ATAN)}
 	END_FUNCTION
 
-	/* Returns the angle of the point (`IN2`, `IN`), in radians.
+	/* Returns the angle of the point (`X`, `Y`), in radians.
 
 	   This is the arc tangent of `IN / IN2`, with the signs of both used to pick
-	   the quadrant. `IN` is the y coordinate and `IN2` the x.
+	   the quadrant. `Y` is the y coordinate and `X` the x.
 
 	   # Examples
 
@@ -319,24 +319,24 @@ NAMESPACE Std.Math
 	*/
 	FUNCTION ATAN2: REAL
 		VAR_INPUT
-			IN: REAL
-			IN2: REAL
+			Y: REAL
+			X: REAL
 		END_VAR
-		{wasm IN 'atan2' (params IN IN2) (result ATAN2)}
+		{wasm Y 'atan2' (params Y X) (result ATAN2)}
 	END_FUNCTION
 
 	FUNCTION ATAN2: LREAL
 		VAR_INPUT
-			IN: LREAL
-			IN2: LREAL
+			Y: LREAL
+			X: LREAL
 		END_VAR
-		{wasm IN 'atan2' (params IN IN2) (result ATAN2)}
+		{wasm Y 'atan2' (params Y X) (result ATAN2)}
 	END_FUNCTION
 
-	/* Returns `IN` raised to the power of `IN2`.
+	/* Returns `IN1` raised to the power of `IN2`.
 
 	   This is the `**` operator as a function. `IN2` may be an integer, and the
-	   result has the type of `IN`.
+	   result has the type of `IN1`.
 
 	   # Examples
 
@@ -347,18 +347,18 @@ NAMESPACE Std.Math
 	*/
 	FUNCTION EXPT: REAL
 		VAR_INPUT
-			IN: REAL
+			IN1: REAL
 			IN2: REAL
 		END_VAR
-		{wasm IN 'pow' (params IN IN2) (result EXPT)}
+		{wasm IN1 'pow' (params IN1 IN2) (result EXPT)}
 	END_FUNCTION
 
 	FUNCTION EXPT: LREAL
 		VAR_INPUT
-			IN: LREAL
+			IN1: LREAL
 			IN2: LREAL
 		END_VAR
-		{wasm IN 'pow' (params IN IN2) (result EXPT)}
+		{wasm IN1 'pow' (params IN1 IN2) (result EXPT)}
 	END_FUNCTION
 
 	/* Returns `TRUE` if `IN` is not a number.

@@ -252,10 +252,15 @@ impl<'db> DiagnosticReporter<'db> {
                         .write(&mut *sources, &mut buffer)
                         .expect("failed to write report");
 
-                    let output = String::from_utf8_lossy(&buffer);
+                    // A label in another file is written under that file's URL.
+                    let mut output = String::from_utf8_lossy(&buffer).replace(url_str, &rel_path);
+                    for related in diagnostic.related() {
+                        let url = related.file.url(self.db);
+                        output = output.replace(url.as_str(), &self.rel_path(url));
+                    }
                     // Render to the caller's sink: stderr for CLI commands, or an
                     // in-memory buffer for a tool whose stdout is a transport.
-                    let _ = write!(out, "{}", output.replace(url_str, &rel_path));
+                    let _ = write!(out, "{output}");
                 }
                 OutputFormat::Concise => self.render_concise(&rel_path, diagnostic, out),
                 OutputFormat::JsonLines => self.render_json_line(&rel_path, diagnostic, out),

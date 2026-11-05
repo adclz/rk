@@ -614,3 +614,100 @@ END_TYPE
     ---'
     ");
 }
+
+/// A report names an index's type as it was declared, at each place an index is
+/// checked. Normalized, an enum read 'ENUM', a struct 'STRUCT' and an alias its target.
+#[rstest]
+#[case::an_enum("", "a[c] := 1;", "[E0504]", "the index is 'Color', not an integer")]
+#[case::a_struct("", "a[s] := 1;", "[E0504]", "the index is 'Pt', not an integer")]
+#[case::an_alias("", "a[r] := 1;", "[E0504]", "the index is 'Ratio', not an integer")]
+#[case::an_array_type("", "a[g] := 1;", "[E0504]", "the index is 'Grid', not an integer")]
+#[case::a_name(
+    "",
+    "a[Color#Red] := 1;",
+    "[E0504]",
+    "the index is 'Color#Red', not an integer"
+)]
+#[case::a_bit_string_base("", "a[fl] := 1;", "[E0504]", "the index is 'Flags', not an integer")]
+#[case::a_pack_by_an_enum("", "F := ...v[c];", "[E0819]", "the index is 'Color', not an integer")]
+#[case::a_pack_by_a_struct("", "F := ...v[s];", "[E0819]", "the index is 'Pt', not an integer")]
+#[case::a_pack_by_an_alias("", "F := ...v[r];", "[E0819]", "the index is 'Ratio', not an integer")]
+#[case::a_pack_by_a_name(
+    "",
+    "F := ...v[Color#Red];",
+    "[E0819]",
+    "the index is 'Color#Red', not an integer"
+)]
+#[case::an_initial_by_an_enum(
+    "b : ARRAY[0..3] OF INT := [[kc] := 7];",
+    "",
+    "[E0504]",
+    "the index is 'Color', not an integer"
+)]
+#[case::an_initial_by_a_struct(
+    "b : ARRAY[0..3] OF INT := [[ks] := 7];",
+    "",
+    "[E0504]",
+    "the index is 'Pt', not an integer"
+)]
+#[case::an_initial_by_an_alias(
+    "b : ARRAY[0..3] OF INT := [[kr] := 7];",
+    "",
+    "[E0504]",
+    "the index is 'Ratio', not an integer"
+)]
+#[case::an_initial_by_a_name(
+    "b : ARRAY[0..3] OF INT := [[Color#Red] := 7];",
+    "",
+    "[E0504]",
+    "the index is 'Color#Red', not an integer"
+)]
+// An integer to each of them: what is wrong with this one is that it is no constant.
+#[case::an_initial_by_a_number_base(
+    "b : ARRAY[0..3] OF INT := [[m] := 7];",
+    "",
+    "[E0514]",
+    "the index is not a constant"
+)]
+fn invalid_an_index_is_named_as_declared(
+    mut with_db: RootDatabase,
+    #[case] decl: &str,
+    #[case] body: &str,
+    #[case] code: &str,
+    #[case] message: &str,
+) {
+    let source = format!(
+        r#"TYPE
+    Color : (Red, Green);
+    Pt : STRUCT x : INT; END_STRUCT;
+    Ratio : REAL;
+    Grid : ARRAY[0..1] OF INT;
+    Flags : WORD (FA := 1);
+    Light : INT (Stop := 1);
+END_TYPE
+
+FUNCTION F : INT
+VAR_INPUT v : INT...; END_VAR
+VAR CONSTANT
+    kc : Color := Color#Red;
+    ks : Pt := (x := 1);
+    kr : Ratio := 1.0;
+END_VAR
+VAR
+    a : ARRAY[0..3] OF INT;
+    c : Color;
+    s : Pt;
+    r : Ratio;
+    g : Grid;
+    fl : Flags;
+    m : Light;
+    {decl}
+END_VAR
+    {body}
+END_FUNCTION
+"#
+    );
+    let report = test_diagnostics(&mut with_db, &[&source]);
+    assert!(report.contains(code), "{report}");
+    assert!(report.contains(message), "{report}");
+}

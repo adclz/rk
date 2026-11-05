@@ -1,8 +1,9 @@
 /*
 Type conversions, named `<SOURCE>_TO_<TARGET>`.
 
-These are the conversions the compiler does not make on its own, because
-each can lose something: range, precision or sign. None of them can fail.
+Most are the conversions the compiler does not make on its own, because each
+can lose something: range, precision or sign. The others name a widening an
+assignment does anyway, such as `INT_TO_DINT`. None of them can fail.
 
 An integer converted to a narrower one keeps its low bits, so
 `DINT_TO_INT(70000)` is 4464. Between a signed and an unsigned type of the
@@ -1559,6 +1560,320 @@ NAMESPACE Std.Convert
 		{wasm 'cast' (params IN) (result DT_TO_LDT)}
 	END_FUNCTION
 
+	// Widening: what an assignment does on its own, under its name
+
+	FUNCTION BOOL_TO_BYTE: BYTE
+		VAR_INPUT
+			IN: BOOL;
+		END_VAR
+
+		BOOL_TO_BYTE := IN;
+	END_FUNCTION
+
+	FUNCTION BOOL_TO_WORD: WORD
+		VAR_INPUT
+			IN: BOOL;
+		END_VAR
+
+		BOOL_TO_WORD := IN;
+	END_FUNCTION
+
+	FUNCTION BOOL_TO_DWORD: DWORD
+		VAR_INPUT
+			IN: BOOL;
+		END_VAR
+
+		BOOL_TO_DWORD := IN;
+	END_FUNCTION
+
+	FUNCTION BOOL_TO_LWORD: LWORD
+		VAR_INPUT
+			IN: BOOL;
+		END_VAR
+
+		BOOL_TO_LWORD := IN;
+	END_FUNCTION
+
+	FUNCTION BYTE_TO_WORD: WORD
+		VAR_INPUT
+			IN: BYTE;
+		END_VAR
+
+		BYTE_TO_WORD := IN;
+	END_FUNCTION
+
+	FUNCTION BYTE_TO_DWORD: DWORD
+		VAR_INPUT
+			IN: BYTE;
+		END_VAR
+
+		BYTE_TO_DWORD := IN;
+	END_FUNCTION
+
+	FUNCTION BYTE_TO_LWORD: LWORD
+		VAR_INPUT
+			IN: BYTE;
+		END_VAR
+
+		BYTE_TO_LWORD := IN;
+	END_FUNCTION
+
+	FUNCTION WORD_TO_DWORD: DWORD
+		VAR_INPUT
+			IN: WORD;
+		END_VAR
+
+		WORD_TO_DWORD := IN;
+	END_FUNCTION
+
+	FUNCTION WORD_TO_LWORD: LWORD
+		VAR_INPUT
+			IN: WORD;
+		END_VAR
+
+		WORD_TO_LWORD := IN;
+	END_FUNCTION
+
+	FUNCTION DWORD_TO_LWORD: LWORD
+		VAR_INPUT
+			IN: DWORD;
+		END_VAR
+
+		DWORD_TO_LWORD := IN;
+	END_FUNCTION
+
+	FUNCTION SINT_TO_INT: INT
+		VAR_INPUT
+			IN: SINT;
+		END_VAR
+
+		SINT_TO_INT := IN;
+	END_FUNCTION
+
+	FUNCTION SINT_TO_DINT: DINT
+		VAR_INPUT
+			IN: SINT;
+		END_VAR
+
+		SINT_TO_DINT := IN;
+	END_FUNCTION
+
+	FUNCTION SINT_TO_LINT: LINT
+		VAR_INPUT
+			IN: SINT;
+		END_VAR
+
+		SINT_TO_LINT := IN;
+	END_FUNCTION
+
+	FUNCTION SINT_TO_REAL: REAL
+		VAR_INPUT
+			IN: SINT;
+		END_VAR
+
+		SINT_TO_REAL := IN;
+	END_FUNCTION
+
+	FUNCTION SINT_TO_LREAL: LREAL
+		VAR_INPUT
+			IN: SINT;
+		END_VAR
+
+		SINT_TO_LREAL := IN;
+	END_FUNCTION
+
+	FUNCTION INT_TO_DINT: DINT
+		VAR_INPUT
+			IN: INT;
+		END_VAR
+
+		INT_TO_DINT := IN;
+	END_FUNCTION
+
+	FUNCTION INT_TO_LINT: LINT
+		VAR_INPUT
+			IN: INT;
+		END_VAR
+
+		INT_TO_LINT := IN;
+	END_FUNCTION
+
+	FUNCTION INT_TO_REAL: REAL
+		VAR_INPUT
+			IN: INT;
+		END_VAR
+
+		INT_TO_REAL := IN;
+	END_FUNCTION
+
+	FUNCTION INT_TO_LREAL: LREAL
+		VAR_INPUT
+			IN: INT;
+		END_VAR
+
+		INT_TO_LREAL := IN;
+	END_FUNCTION
+
+	FUNCTION DINT_TO_LINT: LINT
+		VAR_INPUT
+			IN: DINT;
+		END_VAR
+
+		DINT_TO_LINT := IN;
+	END_FUNCTION
+
+	FUNCTION DINT_TO_LREAL: LREAL
+		VAR_INPUT
+			IN: DINT;
+		END_VAR
+
+		DINT_TO_LREAL := IN;
+	END_FUNCTION
+
+	FUNCTION USINT_TO_INT: INT
+		VAR_INPUT
+			IN: USINT;
+		END_VAR
+
+		USINT_TO_INT := IN;
+	END_FUNCTION
+
+	FUNCTION USINT_TO_DINT: DINT
+		VAR_INPUT
+			IN: USINT;
+		END_VAR
+
+		USINT_TO_DINT := IN;
+	END_FUNCTION
+
+	FUNCTION USINT_TO_LINT: LINT
+		VAR_INPUT
+			IN: USINT;
+		END_VAR
+
+		USINT_TO_LINT := IN;
+	END_FUNCTION
+
+	FUNCTION USINT_TO_UINT: UINT
+		VAR_INPUT
+			IN: USINT;
+		END_VAR
+
+		USINT_TO_UINT := IN;
+	END_FUNCTION
+
+	FUNCTION USINT_TO_UDINT: UDINT
+		VAR_INPUT
+			IN: USINT;
+		END_VAR
+
+		USINT_TO_UDINT := IN;
+	END_FUNCTION
+
+	FUNCTION USINT_TO_ULINT: ULINT
+		VAR_INPUT
+			IN: USINT;
+		END_VAR
+
+		USINT_TO_ULINT := IN;
+	END_FUNCTION
+
+	FUNCTION USINT_TO_REAL: REAL
+		VAR_INPUT
+			IN: USINT;
+		END_VAR
+
+		USINT_TO_REAL := IN;
+	END_FUNCTION
+
+	FUNCTION USINT_TO_LREAL: LREAL
+		VAR_INPUT
+			IN: USINT;
+		END_VAR
+
+		USINT_TO_LREAL := IN;
+	END_FUNCTION
+
+	FUNCTION UINT_TO_DINT: DINT
+		VAR_INPUT
+			IN: UINT;
+		END_VAR
+
+		UINT_TO_DINT := IN;
+	END_FUNCTION
+
+	FUNCTION UINT_TO_LINT: LINT
+		VAR_INPUT
+			IN: UINT;
+		END_VAR
+
+		UINT_TO_LINT := IN;
+	END_FUNCTION
+
+	FUNCTION UINT_TO_UDINT: UDINT
+		VAR_INPUT
+			IN: UINT;
+		END_VAR
+
+		UINT_TO_UDINT := IN;
+	END_FUNCTION
+
+	FUNCTION UINT_TO_ULINT: ULINT
+		VAR_INPUT
+			IN: UINT;
+		END_VAR
+
+		UINT_TO_ULINT := IN;
+	END_FUNCTION
+
+	FUNCTION UINT_TO_REAL: REAL
+		VAR_INPUT
+			IN: UINT;
+		END_VAR
+
+		UINT_TO_REAL := IN;
+	END_FUNCTION
+
+	FUNCTION UINT_TO_LREAL: LREAL
+		VAR_INPUT
+			IN: UINT;
+		END_VAR
+
+		UINT_TO_LREAL := IN;
+	END_FUNCTION
+
+	FUNCTION UDINT_TO_LINT: LINT
+		VAR_INPUT
+			IN: UDINT;
+		END_VAR
+
+		UDINT_TO_LINT := IN;
+	END_FUNCTION
+
+	FUNCTION UDINT_TO_ULINT: ULINT
+		VAR_INPUT
+			IN: UDINT;
+		END_VAR
+
+		UDINT_TO_ULINT := IN;
+	END_FUNCTION
+
+	FUNCTION UDINT_TO_LREAL: LREAL
+		VAR_INPUT
+			IN: UDINT;
+		END_VAR
+
+		UDINT_TO_LREAL := IN;
+	END_FUNCTION
+
+	FUNCTION REAL_TO_LREAL: LREAL
+		VAR_INPUT
+			IN: REAL;
+		END_VAR
+
+		REAL_TO_LREAL := IN;
+	END_FUNCTION
+
 	// Dates and times as numbers
 
 	/* Returns `IN` in milliseconds. */
@@ -1665,7 +1980,7 @@ NAMESPACE Std.Convert
 		VAR s: STRING; END_VAR
 		s := LINT_TO_STRING(IN := n);
 		WHILE LEN(IN := s) < width DO
-			s := CONCAT(A := '0', B := s);
+			s := CONCAT(IN1 := '0', IN2 := s);
 		END_WHILE
 		PAD_MIN := s;
 	END_FUNCTION
@@ -1697,14 +2012,14 @@ NAMESPACE Std.Convert
 			y := y + LINT#1;
 		END_IF
 		IF y < LINT#0 THEN
-			s := CONCAT(A := '-', B := PAD_MIN(n := -y, width := UDINT#4));
+			s := CONCAT(IN1 := '-', IN2 := PAD_MIN(n := -y, width := UDINT#4));
 		ELSE
 			s := PAD_MIN(n := y, width := UDINT#4);
 		END_IF
-		s := CONCAT(A := s, B := '-');
-		s := CONCAT(A := s, B := PAD_MIN(n := mm, width := UDINT#2));
-		s := CONCAT(A := s, B := '-');
-		CIVIL_YMD := CONCAT(A := s, B := PAD_MIN(n := dd, width := UDINT#2));
+		s := CONCAT(IN1 := s, IN2 := '-');
+		s := CONCAT(IN1 := s, IN2 := PAD_MIN(n := mm, width := UDINT#2));
+		s := CONCAT(IN1 := s, IN2 := '-');
+		CIVIL_YMD := CONCAT(IN1 := s, IN2 := PAD_MIN(n := dd, width := UDINT#2));
 	END_FUNCTION
 
 	/* Returns `sod` seconds since midnight as `'HH:MM:SS'`. */
@@ -1712,10 +2027,10 @@ NAMESPACE Std.Convert
 		VAR_INPUT sod: LINT; END_VAR
 		VAR s: STRING; END_VAR
 		s := PAD_MIN(n := sod / LINT#3600, width := UDINT#2);
-		s := CONCAT(A := s, B := ':');
-		s := CONCAT(A := s, B := PAD_MIN(n := (sod / LINT#60) MOD LINT#60, width := UDINT#2));
-		s := CONCAT(A := s, B := ':');
-		HMS := CONCAT(A := s, B := PAD_MIN(n := sod MOD LINT#60, width := UDINT#2));
+		s := CONCAT(IN1 := s, IN2 := ':');
+		s := CONCAT(IN1 := s, IN2 := PAD_MIN(n := (sod / LINT#60) MOD LINT#60, width := UDINT#2));
+		s := CONCAT(IN1 := s, IN2 := ':');
+		HMS := CONCAT(IN1 := s, IN2 := PAD_MIN(n := sod MOD LINT#60, width := UDINT#2));
 	END_FUNCTION
 
 	/* Returns `IN` as the literal that reads back to it.
@@ -1736,7 +2051,7 @@ NAMESPACE Std.Convert
 		s := 'T#';
 		t := TIME_TO_DINT(IN := IN);
 		IF t < LINT#0 THEN
-			s := CONCAT(A := s, B := '-');
+			s := CONCAT(IN1 := s, IN2 := '-');
 			t := -t;
 		END_IF
 		d := t / LINT#86400000;
@@ -1748,27 +2063,27 @@ NAMESPACE Std.Convert
 		sec := t / LINT#1000;
 		ms := t MOD LINT#1000;
 		IF d > LINT#0 THEN
-			s := CONCAT(A := s, B := CONCAT(A := LINT_TO_STRING(IN := d), B := 'd'));
+			s := CONCAT(IN1 := s, IN2 := CONCAT(IN1 := LINT_TO_STRING(IN := d), IN2 := 'd'));
 			any := TRUE;
 		END_IF
 		IF h > LINT#0 THEN
-			s := CONCAT(A := s, B := CONCAT(A := LINT_TO_STRING(IN := h), B := 'h'));
+			s := CONCAT(IN1 := s, IN2 := CONCAT(IN1 := LINT_TO_STRING(IN := h), IN2 := 'h'));
 			any := TRUE;
 		END_IF
 		IF m > LINT#0 THEN
-			s := CONCAT(A := s, B := CONCAT(A := LINT_TO_STRING(IN := m), B := 'm'));
+			s := CONCAT(IN1 := s, IN2 := CONCAT(IN1 := LINT_TO_STRING(IN := m), IN2 := 'm'));
 			any := TRUE;
 		END_IF
 		IF sec > LINT#0 THEN
-			s := CONCAT(A := s, B := CONCAT(A := LINT_TO_STRING(IN := sec), B := 's'));
+			s := CONCAT(IN1 := s, IN2 := CONCAT(IN1 := LINT_TO_STRING(IN := sec), IN2 := 's'));
 			any := TRUE;
 		END_IF
 		IF ms > LINT#0 THEN
-			s := CONCAT(A := s, B := CONCAT(A := LINT_TO_STRING(IN := ms), B := 'ms'));
+			s := CONCAT(IN1 := s, IN2 := CONCAT(IN1 := LINT_TO_STRING(IN := ms), IN2 := 'ms'));
 			any := TRUE;
 		END_IF
 		IF NOT any THEN
-			s := CONCAT(A := s, B := '0s');
+			s := CONCAT(IN1 := s, IN2 := '0s');
 		END_IF
 		TIME_TO_STRING := s;
 	END_FUNCTION
@@ -1793,7 +2108,7 @@ NAMESPACE Std.Convert
 		END_IF
 		s := 'LT#';
 		IF t < LINT#0 THEN
-			s := CONCAT(A := s, B := '-');
+			s := CONCAT(IN1 := s, IN2 := '-');
 			t := -t;
 		END_IF
 		d := t / LINT#86400000000000;
@@ -1809,35 +2124,35 @@ NAMESPACE Std.Convert
 		us := t / LINT#1000;
 		ns := t MOD LINT#1000;
 		IF d > LINT#0 THEN
-			s := CONCAT(A := s, B := CONCAT(A := LINT_TO_STRING(IN := d), B := 'd'));
+			s := CONCAT(IN1 := s, IN2 := CONCAT(IN1 := LINT_TO_STRING(IN := d), IN2 := 'd'));
 			any := TRUE;
 		END_IF
 		IF h > LINT#0 THEN
-			s := CONCAT(A := s, B := CONCAT(A := LINT_TO_STRING(IN := h), B := 'h'));
+			s := CONCAT(IN1 := s, IN2 := CONCAT(IN1 := LINT_TO_STRING(IN := h), IN2 := 'h'));
 			any := TRUE;
 		END_IF
 		IF m > LINT#0 THEN
-			s := CONCAT(A := s, B := CONCAT(A := LINT_TO_STRING(IN := m), B := 'm'));
+			s := CONCAT(IN1 := s, IN2 := CONCAT(IN1 := LINT_TO_STRING(IN := m), IN2 := 'm'));
 			any := TRUE;
 		END_IF
 		IF sec > LINT#0 THEN
-			s := CONCAT(A := s, B := CONCAT(A := LINT_TO_STRING(IN := sec), B := 's'));
+			s := CONCAT(IN1 := s, IN2 := CONCAT(IN1 := LINT_TO_STRING(IN := sec), IN2 := 's'));
 			any := TRUE;
 		END_IF
 		IF ms > LINT#0 THEN
-			s := CONCAT(A := s, B := CONCAT(A := LINT_TO_STRING(IN := ms), B := 'ms'));
+			s := CONCAT(IN1 := s, IN2 := CONCAT(IN1 := LINT_TO_STRING(IN := ms), IN2 := 'ms'));
 			any := TRUE;
 		END_IF
 		IF us > LINT#0 THEN
-			s := CONCAT(A := s, B := CONCAT(A := LINT_TO_STRING(IN := us), B := 'us'));
+			s := CONCAT(IN1 := s, IN2 := CONCAT(IN1 := LINT_TO_STRING(IN := us), IN2 := 'us'));
 			any := TRUE;
 		END_IF
 		IF ns > LINT#0 THEN
-			s := CONCAT(A := s, B := CONCAT(A := LINT_TO_STRING(IN := ns), B := 'ns'));
+			s := CONCAT(IN1 := s, IN2 := CONCAT(IN1 := LINT_TO_STRING(IN := ns), IN2 := 'ns'));
 			any := TRUE;
 		END_IF
 		IF NOT any THEN
-			s := CONCAT(A := s, B := '0s');
+			s := CONCAT(IN1 := s, IN2 := '0s');
 		END_IF
 		LTIME_TO_STRING := s;
 	END_FUNCTION
@@ -1852,13 +2167,13 @@ NAMESPACE Std.Convert
 	*/
 	FUNCTION DATE_TO_STRING: STRING
 		VAR_INPUT IN: DATE; END_VAR
-		DATE_TO_STRING := CONCAT(A := 'D#', B := CIVIL_YMD(days := DATE_TO_DINT(IN := IN)));
+		DATE_TO_STRING := CONCAT(IN1 := 'D#', IN2 := CIVIL_YMD(days := DATE_TO_DINT(IN := IN)));
 	END_FUNCTION
 
 	/* Returns `IN` as the literal that reads back to it, like [Std.Convert.DATE_TO_STRING]. */
 	FUNCTION LDATE_TO_STRING: STRING
 		VAR_INPUT IN: LDATE; END_VAR
-		LDATE_TO_STRING := CONCAT(A := 'LD#', B := CIVIL_YMD(days := LDATE_TO_LINT(IN := IN)));
+		LDATE_TO_STRING := CONCAT(IN1 := 'LD#', IN2 := CIVIL_YMD(days := LDATE_TO_LINT(IN := IN)));
 	END_FUNCTION
 
 	/* Returns `IN` as the literal that reads back to it.
@@ -1878,13 +2193,13 @@ NAMESPACE Std.Convert
 		s := 'TOD#';
 		t := TOD_TO_DINT(IN := IN);
 		IF t < LINT#0 THEN
-			s := CONCAT(A := s, B := '-');
+			s := CONCAT(IN1 := s, IN2 := '-');
 			t := -t;
 		END_IF
 		ms := t MOD LINT#1000;
-		s := CONCAT(A := s, B := HMS(sod := t / LINT#1000));
+		s := CONCAT(IN1 := s, IN2 := HMS(sod := t / LINT#1000));
 		IF ms > LINT#0 THEN
-			s := CONCAT(A := s, B := CONCAT(A := '.', B := PAD_MIN(n := ms, width := UDINT#3)));
+			s := CONCAT(IN1 := s, IN2 := CONCAT(IN1 := '.', IN2 := PAD_MIN(n := ms, width := UDINT#3)));
 		END_IF
 		TOD_TO_STRING := s;
 	END_FUNCTION
@@ -1896,13 +2211,13 @@ NAMESPACE Std.Convert
 		s := 'LTOD#';
 		t := LTOD_TO_LINT(IN := IN);
 		IF t < LINT#0 THEN
-			s := CONCAT(A := s, B := '-');
+			s := CONCAT(IN1 := s, IN2 := '-');
 			t := -t;
 		END_IF
 		ns := t MOD LINT#1000000000;
-		s := CONCAT(A := s, B := HMS(sod := t / LINT#1000000000));
+		s := CONCAT(IN1 := s, IN2 := HMS(sod := t / LINT#1000000000));
 		IF ns > LINT#0 THEN
-			s := CONCAT(A := s, B := CONCAT(A := '.', B := PAD_MIN(n := ns, width := UDINT#9)));
+			s := CONCAT(IN1 := s, IN2 := CONCAT(IN1 := '.', IN2 := PAD_MIN(n := ns, width := UDINT#9)));
 		END_IF
 		LTOD_TO_STRING := s;
 	END_FUNCTION
@@ -1926,9 +2241,9 @@ NAMESPACE Std.Convert
 			days := days - LINT#1;
 			sod := sod + LINT#86400;
 		END_IF
-		s := CONCAT(A := 'DT#', B := CIVIL_YMD(days := days));
-		s := CONCAT(A := s, B := '-');
-		DT_TO_STRING := CONCAT(A := s, B := HMS(sod := sod));
+		s := CONCAT(IN1 := 'DT#', IN2 := CIVIL_YMD(days := days));
+		s := CONCAT(IN1 := s, IN2 := '-');
+		DT_TO_STRING := CONCAT(IN1 := s, IN2 := HMS(sod := sod));
 	END_FUNCTION
 
 	/* Returns `IN` as the literal that reads back to it, with all nine digits of its fraction. */
@@ -1943,11 +2258,11 @@ NAMESPACE Std.Convert
 			nsod := nsod + LINT#86400000000000;
 		END_IF
 		ns := nsod MOD LINT#1000000000;
-		s := CONCAT(A := 'LDT#', B := CIVIL_YMD(days := days));
-		s := CONCAT(A := s, B := '-');
-		s := CONCAT(A := s, B := HMS(sod := nsod / LINT#1000000000));
+		s := CONCAT(IN1 := 'LDT#', IN2 := CIVIL_YMD(days := days));
+		s := CONCAT(IN1 := s, IN2 := '-');
+		s := CONCAT(IN1 := s, IN2 := HMS(sod := nsod / LINT#1000000000));
 		IF ns > LINT#0 THEN
-			s := CONCAT(A := s, B := CONCAT(A := '.', B := PAD_MIN(n := ns, width := UDINT#9)));
+			s := CONCAT(IN1 := s, IN2 := CONCAT(IN1 := '.', IN2 := PAD_MIN(n := ns, width := UDINT#9)));
 		END_IF
 		LDT_TO_STRING := s;
 	END_FUNCTION

@@ -14,9 +14,8 @@ one well-formed UTF-8 sequence. A byte that belongs to none counts as a
 character on its own, its Latin-1 code point, like `CHAR#'$E9'`.
 
 Positions start at 1 in both families. A function that returns a `STRING`
-returns up to 255 bytes, as in CODESYS and TwinCAT, and cuts a longer result
-there. It is also cut, without an error, when it does not fit where it is
-stored.
+returns up to 255 bytes, and cuts a longer result there. It is also cut,
+without an error, when it does not fit where it is stored.
 */
 NAMESPACE Std.Strings
 
@@ -60,10 +59,10 @@ NAMESPACE Std.Strings
 		{wasm 'str.is_utf8' (params IN) (result IS_UTF8)}
 	END_FUNCTION
 
-	/* Returns the byte position of the first occurrence of `NEEDLE` in
-	   `HAYSTACK`, or 0 if there is none.
+	/* Returns the byte position of the first occurrence of `IN2` in
+	   `IN1`, or 0 if there is none.
 
-	   Positions start at 1. An empty `NEEDLE` is found at position 1.
+	   Positions start at 1. An empty `IN2` is found at position 1.
 
 	   To look for a single `CHAR`, convert it with [Std.Convert.CHAR_TO_STRING].
 
@@ -76,13 +75,13 @@ NAMESPACE Std.Strings
 	*/
 	FUNCTION FIND: UDINT
 		VAR_INPUT
-			HAYSTACK: STRING[255];
-			NEEDLE: STRING[255];
+			IN1: STRING[255];
+			IN2: STRING[255];
 		END_VAR
-		{wasm 'str.byte_find' (params HAYSTACK NEEDLE) (result FIND)}
+		{wasm 'str.byte_find' (params IN1 IN2) (result FIND)}
 	END_FUNCTION
 
-	/* Returns `A` followed by `B`.
+	/* Returns its inputs one after the other, from two inputs up to eight.
 
 	   To append a single `CHAR`, convert it with [Std.Convert.CHAR_TO_STRING].
 
@@ -90,19 +89,116 @@ NAMESPACE Std.Strings
 
 	   ```iecst
 	   s := CONCAT('hello ', 'world');  // 'hello world'
+	   s := CONCAT('a', 'b', 'c');      // 'abc'
 	   ```
 	*/
 	FUNCTION CONCAT: STRING[255]
 		VAR_INPUT
-			A: STRING[255];
-			B: STRING[255];
+			IN1: STRING[255];
+			IN2: STRING[255];
 		END_VAR
-		{wasm 'str.concat' (params A B) (result CONCAT)}
+		{wasm 'str.concat' (params IN1 IN2) (result CONCAT)}
 	END_FUNCTION
 
-	/* Returns the first `N` bytes of `S`.
+	FUNCTION CONCAT: STRING[255]
+		VAR_INPUT
+			IN1: STRING[255];
+			IN2: STRING[255];
+			IN3: STRING[255];
+		END_VAR
 
-	   Returns all of `S` when `N` is greater than its length.
+		CONCAT := CONCAT(IN1, IN2);
+		CONCAT := CONCAT(CONCAT, IN3);
+	END_FUNCTION
+
+	FUNCTION CONCAT: STRING[255]
+		VAR_INPUT
+			IN1: STRING[255];
+			IN2: STRING[255];
+			IN3: STRING[255];
+			IN4: STRING[255];
+		END_VAR
+
+		CONCAT := CONCAT(IN1, IN2);
+		CONCAT := CONCAT(CONCAT, IN3);
+		CONCAT := CONCAT(CONCAT, IN4);
+	END_FUNCTION
+
+	FUNCTION CONCAT: STRING[255]
+		VAR_INPUT
+			IN1: STRING[255];
+			IN2: STRING[255];
+			IN3: STRING[255];
+			IN4: STRING[255];
+			IN5: STRING[255];
+		END_VAR
+
+		CONCAT := CONCAT(IN1, IN2);
+		CONCAT := CONCAT(CONCAT, IN3);
+		CONCAT := CONCAT(CONCAT, IN4);
+		CONCAT := CONCAT(CONCAT, IN5);
+	END_FUNCTION
+
+	FUNCTION CONCAT: STRING[255]
+		VAR_INPUT
+			IN1: STRING[255];
+			IN2: STRING[255];
+			IN3: STRING[255];
+			IN4: STRING[255];
+			IN5: STRING[255];
+			IN6: STRING[255];
+		END_VAR
+
+		CONCAT := CONCAT(IN1, IN2);
+		CONCAT := CONCAT(CONCAT, IN3);
+		CONCAT := CONCAT(CONCAT, IN4);
+		CONCAT := CONCAT(CONCAT, IN5);
+		CONCAT := CONCAT(CONCAT, IN6);
+	END_FUNCTION
+
+	FUNCTION CONCAT: STRING[255]
+		VAR_INPUT
+			IN1: STRING[255];
+			IN2: STRING[255];
+			IN3: STRING[255];
+			IN4: STRING[255];
+			IN5: STRING[255];
+			IN6: STRING[255];
+			IN7: STRING[255];
+		END_VAR
+
+		CONCAT := CONCAT(IN1, IN2);
+		CONCAT := CONCAT(CONCAT, IN3);
+		CONCAT := CONCAT(CONCAT, IN4);
+		CONCAT := CONCAT(CONCAT, IN5);
+		CONCAT := CONCAT(CONCAT, IN6);
+		CONCAT := CONCAT(CONCAT, IN7);
+	END_FUNCTION
+
+	FUNCTION CONCAT: STRING[255]
+		VAR_INPUT
+			IN1: STRING[255];
+			IN2: STRING[255];
+			IN3: STRING[255];
+			IN4: STRING[255];
+			IN5: STRING[255];
+			IN6: STRING[255];
+			IN7: STRING[255];
+			IN8: STRING[255];
+		END_VAR
+
+		CONCAT := CONCAT(IN1, IN2);
+		CONCAT := CONCAT(CONCAT, IN3);
+		CONCAT := CONCAT(CONCAT, IN4);
+		CONCAT := CONCAT(CONCAT, IN5);
+		CONCAT := CONCAT(CONCAT, IN6);
+		CONCAT := CONCAT(CONCAT, IN7);
+		CONCAT := CONCAT(CONCAT, IN8);
+	END_FUNCTION
+
+	/* Returns the first `L` bytes of `IN`.
+
+	   Returns all of `IN` when `L` is greater than its length.
 
 	   # Examples
 
@@ -113,15 +209,15 @@ NAMESPACE Std.Strings
 	*/
 	FUNCTION LEFT: STRING[255]
 		VAR_INPUT
-			S: STRING[255];
-			N: UDINT;
+			IN: STRING[255];
+			L: UDINT;
 		END_VAR
-		{wasm 'str.byte_left' (params S N) (result LEFT)}
+		{wasm 'str.byte_left' (params IN L) (result LEFT)}
 	END_FUNCTION
 
-	/* Returns the last `N` bytes of `S`.
+	/* Returns the last `L` bytes of `IN`.
 
-	   Returns all of `S` when `N` is greater than its length.
+	   Returns all of `IN` when `L` is greater than its length.
 
 	   # Examples
 
@@ -132,15 +228,15 @@ NAMESPACE Std.Strings
 	*/
 	FUNCTION RIGHT: STRING[255]
 		VAR_INPUT
-			S: STRING[255];
-			N: UDINT;
+			IN: STRING[255];
+			L: UDINT;
 		END_VAR
-		{wasm 'str.byte_right' (params S N) (result RIGHT)}
+		{wasm 'str.byte_right' (params IN L) (result RIGHT)}
 	END_FUNCTION
 
-	/* Returns `N` bytes of `S`, starting at byte position `P`.
+	/* Returns `L` bytes of `IN`, starting at byte position `P`.
 
-	   Returns fewer when `S` ends first, and an empty string when `P` is 0 or
+	   Returns fewer when `IN` ends first, and an empty string when `P` is 0 or
 	   past the end.
 
 	   # Examples
@@ -153,14 +249,14 @@ NAMESPACE Std.Strings
 	*/
 	FUNCTION MID: STRING[255]
 		VAR_INPUT
-			S: STRING[255];
-			N: UDINT;
+			IN: STRING[255];
+			L: UDINT;
 			P: UDINT;
 		END_VAR
-		{wasm 'str.byte_mid' (params S N P) (result MID)}
+		{wasm 'str.byte_mid' (params IN L P) (result MID)}
 	END_FUNCTION
 
-	/* Returns `S` with `INS` inserted after byte position `P`.
+	/* Returns `IN1` with `IN2` inserted after byte position `P`.
 
 	   A `P` of 0 inserts at the front.
 
@@ -175,16 +271,16 @@ NAMESPACE Std.Strings
 	*/
 	FUNCTION INSERT: STRING[255]
 		VAR_INPUT
-			S: STRING[255];
-			INS: STRING[255];
+			IN1: STRING[255];
+			IN2: STRING[255];
 			P: UDINT;
 		END_VAR
-		{wasm 'str.byte_insert' (params S INS P) (result INSERT)}
+		{wasm 'str.byte_insert' (params IN1 IN2 P) (result INSERT)}
 	END_FUNCTION
 
-	/* Returns `S` without the `N` bytes that start at byte position `P`.
+	/* Returns `IN` without the `L` bytes that start at byte position `P`.
 
-	   Removes fewer when `S` ends first, and nothing when `P` is past the end.
+	   Removes fewer when `IN` ends first, and nothing when `P` is past the end.
 
 	   # Examples
 
@@ -196,17 +292,17 @@ NAMESPACE Std.Strings
 	*/
 	FUNCTION DELETE: STRING[255]
 		VAR_INPUT
-			S: STRING[255];
-			N: UDINT;
+			IN: STRING[255];
+			L: UDINT;
 			P: UDINT;
 		END_VAR
-		{wasm 'str.byte_delete' (params S N P) (result DELETE)}
+		{wasm 'str.byte_delete' (params IN L P) (result DELETE)}
 	END_FUNCTION
 
-	/* Returns `S` with the `N` bytes that start at byte position `P` replaced
-	   by `INS`.
+	/* Returns `IN1` with the `L` bytes that start at byte position `P` replaced
+	   by `IN2`.
 
-	   `INS` does not have to be `N` bytes long.
+	   `IN2` does not have to be `L` bytes long.
 
 	   To replace with a single `CHAR`, convert it with [Std.Convert.CHAR_TO_STRING].
 
@@ -219,12 +315,12 @@ NAMESPACE Std.Strings
 	*/
 	FUNCTION REPLACE: STRING[255]
 		VAR_INPUT
-			S: STRING[255];
-			INS: STRING[255];
-			N: UDINT;
+			IN1: STRING[255];
+			IN2: STRING[255];
+			L: UDINT;
 			P: UDINT;
 		END_VAR
-		{wasm 'str.byte_replace' (params S INS N P) (result REPLACE)}
+		{wasm 'str.byte_replace' (params IN1 IN2 L P) (result REPLACE)}
 	END_FUNCTION
 
 	/* Returns the number of characters in `IN`.
@@ -262,10 +358,10 @@ NAMESPACE Std.Strings
 		{wasm 'str.char_at' (params IN P) (result CHAR_AT)}
 	END_FUNCTION
 
-	/* Returns the character position of the first occurrence of `NEEDLE` in
-	   `HAYSTACK`, or 0 if there is none.
+	/* Returns the character position of the first occurrence of `IN2` in
+	   `IN1`, or 0 if there is none.
 
-	   An empty `NEEDLE` is found at position 1, as with [Std.Strings.FIND].
+	   An empty `IN2` is found at position 1, as with [Std.Strings.FIND].
 
 	   # Examples
 
@@ -276,15 +372,15 @@ NAMESPACE Std.Strings
 	*/
 	FUNCTION CHAR_FIND: UDINT
 		VAR_INPUT
-			HAYSTACK: STRING[255];
-			NEEDLE: STRING[255];
+			IN1: STRING[255];
+			IN2: STRING[255];
 		END_VAR
-		{wasm 'str.char_find' (params HAYSTACK NEEDLE) (result CHAR_FIND)}
+		{wasm 'str.char_find' (params IN1 IN2) (result CHAR_FIND)}
 	END_FUNCTION
 
-	/* Returns the first `N` characters of `S`.
+	/* Returns the first `L` characters of `IN`.
 
-	   Returns all of `S` when `N` is greater than its character count.
+	   Returns all of `IN` when `L` is greater than its character count.
 
 	   # Examples
 
@@ -295,15 +391,15 @@ NAMESPACE Std.Strings
 	*/
 	FUNCTION CHAR_LEFT: STRING[255]
 		VAR_INPUT
-			S: STRING[255];
-			N: UDINT;
+			IN: STRING[255];
+			L: UDINT;
 		END_VAR
-		{wasm 'str.char_left' (params S N) (result CHAR_LEFT)}
+		{wasm 'str.char_left' (params IN L) (result CHAR_LEFT)}
 	END_FUNCTION
 
-	/* Returns the last `N` characters of `S`.
+	/* Returns the last `L` characters of `IN`.
 
-	   Returns all of `S` when `N` is greater than its character count.
+	   Returns all of `IN` when `L` is greater than its character count.
 
 	   # Examples
 
@@ -314,15 +410,15 @@ NAMESPACE Std.Strings
 	*/
 	FUNCTION CHAR_RIGHT: STRING[255]
 		VAR_INPUT
-			S: STRING[255];
-			N: UDINT;
+			IN: STRING[255];
+			L: UDINT;
 		END_VAR
-		{wasm 'str.char_right' (params S N) (result CHAR_RIGHT)}
+		{wasm 'str.char_right' (params IN L) (result CHAR_RIGHT)}
 	END_FUNCTION
 
-	/* Returns `N` characters of `S`, starting at character position `P`.
+	/* Returns `L` characters of `IN`, starting at character position `P`.
 
-	   Returns fewer when `S` ends first, and an empty string when `P` is 0 or
+	   Returns fewer when `IN` ends first, and an empty string when `P` is 0 or
 	   past the end.
 
 	   # Examples
@@ -334,14 +430,14 @@ NAMESPACE Std.Strings
 	*/
 	FUNCTION CHAR_MID: STRING[255]
 		VAR_INPUT
-			S: STRING[255];
-			N: UDINT;
+			IN: STRING[255];
+			L: UDINT;
 			P: UDINT;
 		END_VAR
-		{wasm 'str.char_mid' (params S N P) (result CHAR_MID)}
+		{wasm 'str.char_mid' (params IN L P) (result CHAR_MID)}
 	END_FUNCTION
 
-	/* Returns `S` with `INS` inserted after character position `P`.
+	/* Returns `IN1` with `IN2` inserted after character position `P`.
 
 	   A `P` of 0 inserts at the front, and a `P` past the end appends.
 
@@ -355,17 +451,17 @@ NAMESPACE Std.Strings
 	*/
 	FUNCTION CHAR_INSERT: STRING[255]
 		VAR_INPUT
-			S: STRING[255];
-			INS: STRING[255];
+			IN1: STRING[255];
+			IN2: STRING[255];
 			P: UDINT;
 		END_VAR
-		{wasm 'str.char_insert' (params S INS P) (result CHAR_INSERT)}
+		{wasm 'str.char_insert' (params IN1 IN2 P) (result CHAR_INSERT)}
 	END_FUNCTION
 
-	/* Returns `S` without the `N` characters that start at character
+	/* Returns `IN` without the `L` characters that start at character
 	   position `P`.
 
-	   Returns `S` unchanged when `P` is 0 or past the end.
+	   Returns `IN` unchanged when `P` is 0 or past the end.
 
 	   # Examples
 
@@ -376,17 +472,17 @@ NAMESPACE Std.Strings
 	*/
 	FUNCTION CHAR_DELETE: STRING[255]
 		VAR_INPUT
-			S: STRING[255];
-			N: UDINT;
+			IN: STRING[255];
+			L: UDINT;
 			P: UDINT;
 		END_VAR
-		{wasm 'str.char_delete' (params S N P) (result CHAR_DELETE)}
+		{wasm 'str.char_delete' (params IN L P) (result CHAR_DELETE)}
 	END_FUNCTION
 
-	/* Returns `S` with the `N` characters that start at character position
-	   `P` replaced by `INS`.
+	/* Returns `IN1` with the `L` characters that start at character position
+	   `P` replaced by `IN2`.
 
-	   Returns `S` unchanged when `P` is 0 or past the end.
+	   Returns `IN1` unchanged when `P` is 0 or past the end.
 
 	   # Examples
 
@@ -397,12 +493,12 @@ NAMESPACE Std.Strings
 	*/
 	FUNCTION CHAR_REPLACE: STRING[255]
 		VAR_INPUT
-			S: STRING[255];
-			INS: STRING[255];
-			N: UDINT;
+			IN1: STRING[255];
+			IN2: STRING[255];
+			L: UDINT;
 			P: UDINT;
 		END_VAR
-		{wasm 'str.char_replace' (params S INS N P) (result CHAR_REPLACE)}
+		{wasm 'str.char_replace' (params IN1 IN2 L P) (result CHAR_REPLACE)}
 	END_FUNCTION
 
 	NAMESPACE Test

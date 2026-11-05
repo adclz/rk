@@ -577,21 +577,21 @@ END_FUNCTION"#;
      5 |     CASE 100000 OF 100000: F := 2; END_CASE;
        |          ^^^|^^
        |             `---- the value does not fit in INT
-       |             |
-       |             `---- 'INT' is expected due to this
        |
-       | Note: INT holds -32768 to 32767
+       | Note 1: INT holds -32768 to 32767
+       |
+       | Note 2: a literal with nothing typed beside it is INT
     ---'
     [E0306] Error: literal out of range
        ,-[ file:///test0.st:5:20 ]
        |
      5 |     CASE 100000 OF 100000: F := 2; END_CASE;
-       |          ^^^|^^    ^^^|^^
-       |             `-------------- 'INT' is expected due to this
-       |                       |
+       |                    ^^^|^^
        |                       `---- the value does not fit in INT
        |
-       | Note: INT holds -32768 to 32767
+       | Note 1: INT holds -32768 to 32767
+       |
+       | Note 2: a literal with nothing typed beside it is INT
     ---'
     [E0302] Error: types not comparable
        ,-[ file:///test0.st:6:15 ]
@@ -599,6 +599,38 @@ END_FUNCTION"#;
      6 |     CASE 5 OF Color#Red: F := 3; END_CASE;
        |               ^^^^|^^^^
        |                   `------ cannot compare 'INT' with 'Color#Red'
+    ---'
+    ");
+}
+
+/// A label that does not resolve is reported there, and is no "not constant" too.
+#[rstest]
+fn an_unknown_label_is_reported_once(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION F : INT
+VAR x : INT; END_VAR
+    CASE x OF
+        nowhere: F := 1;
+        1..elsewhere: F := 2;
+    ELSE
+        F := 3;
+    END_CASE;
+END_FUNCTION"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0201] Error: unknown name
+       ,-[ file:///test0.st:5:9 ]
+       |
+     5 |         nowhere: F := 1;
+       |         ^^^|^^^
+       |            `----- no item 'nowhere' found in scope
+    ---'
+    [E0201] Error: unknown name
+       ,-[ file:///test0.st:6:12 ]
+       |
+     6 |         1..elsewhere: F := 2;
+       |            ^^^^|^^^^
+       |                `------ no item 'elsewhere' found in scope
     ---'
     ");
 }

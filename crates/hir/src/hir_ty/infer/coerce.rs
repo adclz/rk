@@ -174,6 +174,33 @@ impl<'db> Type<'db> {
             }
         }
 
+        // A number and a type with named values: each reads as the other. Two
+        // such types are still two types, whose values the rules below compare.
+        let named = |ty: Type<'db>| matches!(ty, Type::Enum(_) | Type::EnumVariant(..));
+        if named(lhs)
+            && !named(to)
+            && let Some(base) = lhs.named_values_base(db)
+        {
+            return base
+                .coerce_with_type(db, written, adjustments, resolver)
+                .map_err(|err| CoerceError {
+                    expected: *self,
+                    ..err
+                });
+        }
+        if named(to)
+            && !named(lhs)
+            && let Some(base) = to.named_values_base(db)
+        {
+            return lhs
+                .coerce_with_type(db, base, adjustments, resolver)
+                .map_err(|err| CoerceError {
+                    expected: *self,
+                    actual: written,
+                    adjustment: err.adjustment,
+                });
+        }
+
         match (lhs, &to) {
             // A variant belongs to exactly one enum, and the type says which
             // TYPE it was written through: normalize peels that down to the
@@ -187,6 +214,12 @@ impl<'db> Type<'db> {
                     adjustment: None,
                 }),
             },
+            // Two names of one enum, on the two sides of a comparison.
+            (Type::EnumVariant(ty1, _), Type::EnumVariant(ty2, _))
+                if Type::DataType(ty1).normalize(db) == Type::DataType(*ty2).normalize(db) =>
+            {
+                Ok(())
+            }
             (Type::Enum(e1), Type::Enum(e2)) => {
                 if e1.eq(e2) {
                     Ok(())
@@ -507,6 +540,26 @@ impl<'db> CoerceError<'db> {
             rhs: self.actual,
             adjustment: self.adjustment,
             expr: call_site,
+        }
+        .to_diagnostic(db, call_site.get_scope_id(db).file(db))
+    }
+
+    /// A FOR's final value or step (`what`) that the counter cannot be
+    /// compared with.
+    pub fn into_for_bound(
+        self,
+        db: &'db dyn WorkspaceDataBase,
+        base_target: Type<'db>,
+        call_site: CallSite<'db>,
+        what: &'static str,
+    ) -> IdeDiagnostic {
+        crate::check::errors::e12_control_flow::ControlFlowError::ForBoundOfAnotherType {
+            bound: call_site,
+            what,
+            base_target,
+            counter: self.expected,
+            actual: self.actual,
+            adjustment: self.adjustment,
         }
         .to_diagnostic(db, call_site.get_scope_id(db).file(db))
     }

@@ -322,7 +322,7 @@ impl<'db> InitInference<'db> {
                 db,
                 init,
                 &mut self.body_infer_result,
-                var.spec(db).infer(db),
+                crate::hir_ty::config::spec_of_place(db, *var, &entry.elements).infer(db),
             );
         }
     }
@@ -835,14 +835,12 @@ impl<'db> InitExprInferenceResult<'db> {
                 table.add_type(db, *sub, raw, resolver);
                 table.resolve_completly(db, resolver, body_ctx);
             }
-            let ty = body_ctx
-                .type_of_expr_with_adjustments(db, *sub)
-                .normalize(db);
+            let ty = body_ctx.type_of_expr_with_adjustments(db, *sub);
             // `Never` already carries its own diagnostic.
-            if ty.is_never() {
+            if ty.normalize(db).is_never() {
                 return None;
             }
-            if !ty.is_signed_integer() && !ty.is_unsigned_integer() {
+            if !ty.indexes(db) {
                 self.errors
                     .push(ArrayError::NonIntegerIndex { expr: *sub, ty }.to_diagnostic(db, file));
                 return None;

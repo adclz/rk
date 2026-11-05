@@ -443,6 +443,9 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                             call.get_scope_id(db).file(db),
                             call.get_span(db),
                         )),
+                        InferSource::Default => diag.with_note(format!(
+                            "a literal with nothing typed beside it is {target_name}"
+                        )),
                     }
                 }
 
@@ -536,7 +539,7 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
     }
 }
 
-fn adjustment_to_string(
+pub(crate) fn adjustment_to_string(
     db: &dyn WorkspaceDataBase,
     value: Type,
     adj: &Option<Adjustment>,
@@ -761,7 +764,7 @@ impl std::fmt::Display for InferLiteralError {
     }
 }
 
-fn explicit_cast_suggestion(
+pub(crate) fn explicit_cast_suggestion(
     db: &dyn WorkspaceDataBase,
     expected: Type,
     actual: Type,

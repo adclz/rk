@@ -1640,14 +1640,17 @@ impl<'a> WasmGen<'a> {
             }]),
         ));
 
-        // The body has no scalar return slot: tests are void at the MIR level.
+        // A RETURN leaves with what normal completion leaves: the result area,
+        // its Ok still in place. The test's own result is a local of the test.
         let lines = emit_stmts_with_return(
             &mut wasm_func,
             &func.body,
             &local_map,
             &self.call_indices,
             &self.builtin_indices,
-            None,
+            Some(crate::emit_stmt::ReturnValue::AggregateMem(
+                MemAddr::Static(result_area),
+            )),
             self.rk_exception_tag_idx,
             fb_recv_tmp,
             for_scratch,

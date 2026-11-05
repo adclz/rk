@@ -105,3 +105,33 @@ END_FUNCTION_BLOCK
     ---'
     ");
 }
+
+/// In the order written, with the caret on the first. The map they are read from
+/// has no order, and its order moves with the interned ids, so an edit moved the
+/// caret and reordered the message.
+#[rstest]
+fn outputs_are_listed_in_the_order_written(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION test : INT
+VAR_OUTPUT
+    zeta : INT;
+    alpha : INT;
+    mid : INT;
+    beta : INT;
+    omega : INT;
+    gamma : INT;
+    delta : INT;
+    kappa : INT;
+END_VAR
+    test := 0;
+END_FUNCTION
+"#;
+    let report = test_single_lint(&mut with_db, &[source], "uninitialized-output");
+    assert!(
+        report.contains(
+            "8 VAR_OUTPUT are never assigned in the body: 'zeta', 'alpha', 'mid', 'beta', 'omega', 'gamma', 'delta', 'kappa'"
+        ),
+        "{report}"
+    );
+    assert!(report.contains("file:///test0.st:4:5"), "{report}");
+}
