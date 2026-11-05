@@ -297,3 +297,150 @@ fn invalid_value_past_the_storage(mut with_db: RootDatabase) {
     ---'
     ");
 }
+
+/// A type with named values takes its base's values, as the base would: no other
+/// type, and no value that does not fit. An enum with no base holds its names only,
+/// and two types with named values stay two types.
+#[rstest]
+#[case::a_plain_enum_from_a_number("c := 1;", "[E0301]", "expected 'Plain', got 'INT'")]
+#[case::a_plain_enum_as_a_number("i := c;", "[E0301]", "expected 'INT', got 'Plain'")]
+#[case::a_plain_enum_from_a_variable("c := i;", "[E0301]", "expected 'Plain', got 'INT'")]
+#[case::a_plain_enum_against_a_number(
+    "b := c = 1;",
+    "[E0302]",
+    "cannot compare 'Plain' with 'INT'"
+)]
+#[case::a_plain_name_in_a_calculation(
+    "i := Plain#One + 1;",
+    "[E0305]",
+    "cannot be applied to type 'Plain#One'"
+)]
+#[case::values_with_no_base_from_a_number("st := 5;", "[E0301]", "expected 'Stepped', got 'INT'")]
+#[case::values_with_no_base_as_a_number("i := st;", "[E0301]", "expected 'INT', got 'Stepped'")]
+#[case::another_type("m := p;", "[E0301]", "expected 'Light', got 'Paint'")]
+#[case::a_name_of_another_type("m := Paint#Blue;", "[E0301]", "expected 'Light', got 'Paint#Blue'")]
+#[case::against_another_type("b := m = p;", "[E0302]", "cannot compare 'Light' with 'Paint'")]
+#[case::against_a_name_of_another_type(
+    "b := m = Paint#Blue;",
+    "[E0302]",
+    "cannot compare 'Light' with 'Paint#Blue'"
+)]
+#[case::a_string("m := 'x';", "[E0308]", "cannot use string literal as INT")]
+#[case::a_real_literal("m := 1.5;", "[E0308]", "invalid INT literal")]
+#[case::a_bool("m := TRUE;", "[E0301]", "expected 'Light', got 'BOOL'")]
+#[case::as_a_bool("b := m;", "[E0301]", "expected 'BOOL', got 'Light'")]
+#[case::a_real_variable("m := x;", "[E0301]", "expected 'Light', got 'REAL'")]
+#[case::past_its_base("s := 300;", "[E0306]", "does not fit in SINT")]
+#[case::a_wider_variable("s := i;", "[E0301]", "expected 'Small', got 'INT'")]
+#[case::negative_on_an_unsigned_base("rt := -1;", "[E0307]", "UINT is unsigned")]
+#[case::an_in_out_of_the_base("inout_int(m);", "[E0301]", "expected 'INT', got 'Light'")]
+#[case::an_in_out_from_the_base("inout_light(i);", "[E0301]", "expected 'Light', got 'INT'")]
+#[case::a_reference_to_the_base(
+    "ri := REF(m);",
+    "[E0301]",
+    "expected 'REF_TO INT', got 'REF_TO Light'"
+)]
+#[case::a_reference_from_the_base(
+    "r := REF(i);",
+    "[E0301]",
+    "expected 'REF_TO Light', got 'REF_TO INT'"
+)]
+#[case::raised_to_a_power("x := m ** 2;", "[E0305]", "cannot be applied to type 'Light'")]
+#[case::a_label_of_another_type(
+    "CASE m OF Paint#Blue: i := 1; END_CASE;",
+    "[E0302]",
+    "cannot compare 'Light' with 'Paint#Blue'"
+)]
+#[case::a_plain_enum_as_a_subscript("list[c] := 1;", "[E0504]", "not an integer")]
+#[case::a_plain_enum_as_a_counter(
+    "FOR c := 1 TO 3 DO i := 1; END_FOR;",
+    "[E1206]",
+    "'c' is 'Plain', not an integer"
+)]
+#[case::not_on_a_number_base("b := NOT m;", "[E0301]", "expected 'BOOL', got 'INT'")]
+#[case::not_on_a_plain_enum("b := NOT c;", "[E0301]", "expected 'BOOL', got 'Plain'")]
+#[case::a_part_of_a_plain_enum("b := c.0;", "[E1431]", "type 'Plain' has no parts to access")]
+#[case::a_part_past_its_base("b := m.16;", "[E1429]", "out of range for type 'INT'")]
+#[case::a_literal_between_two_types("i := both(5);", "[E0809]", "call to 'both' is ambiguous")]
+#[case::a_variable_between_two_types("i := both(i);", "[E0809]", "call to 'both' is ambiguous")]
+fn invalid_what_named_values_do_not_take(
+    mut with_db: RootDatabase,
+    #[case] body: &str,
+    #[case] code: &str,
+    #[case] message: &str,
+) {
+    let source = format!(
+        r#"TYPE
+    Light : INT (Red := 1, Amber := 2);
+    Paint : INT (Rouge := 1, Blue := 4);
+    Small : SINT (Lo := 1, Hi := 2);
+    Plain : (One, Two);
+    Stepped : (Five := 5, Six);
+    Rate : UINT (Slow := 60000, Fast := 2);
+END_TYPE
+
+FUNCTION inout_int
+VAR_IN_OUT v : INT; END_VAR
+    v := 1;
+END_FUNCTION
+
+FUNCTION inout_light
+VAR_IN_OUT v : Light; END_VAR
+    v := 1;
+END_FUNCTION
+
+FUNCTION both : INT
+VAR_INPUT v : Light; END_VAR
+    both := 1;
+END_FUNCTION
+
+FUNCTION both : INT
+VAR_INPUT v : Paint; END_VAR
+    both := 2;
+END_FUNCTION
+
+FUNCTION F
+VAR
+    m : Light;
+    p : Paint;
+    s : Small;
+    c : Plain;
+    st : Stepped;
+    rt : Rate;
+    i : INT;
+    x : REAL;
+    b : BOOL;
+    list : ARRAY[0..4] OF INT;
+    r : REF_TO Light;
+    ri : REF_TO INT;
+END_VAR
+    {body}
+END_FUNCTION
+"#
+    );
+    let report = test_diagnostics(&mut with_db, &[&source]);
+    assert!(report.contains(code), "{report}");
+    assert!(report.contains(message), "{report}");
+}
+
+/// Names of two enums are no more comparable than the enums.
+#[rstest]
+fn invalid_two_names_of_two_enums(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE
+    Color : (Red, Green);
+    Size : (Big, Small);
+END_TYPE
+
+FUNCTION F
+VAR b : BOOL; END_VAR
+    b := Color#Red = Size#Big;
+END_FUNCTION
+"#;
+    let report = test_diagnostics(&mut with_db, &[source]);
+    assert!(report.contains("[E0302]"), "{report}");
+    assert!(
+        report.contains("cannot compare 'Color#Red' with 'Size#Big'"),
+        "{report}"
+    );
+}
