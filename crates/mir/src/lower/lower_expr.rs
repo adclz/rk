@@ -1230,6 +1230,7 @@ impl<'db> ExprLowerCtx<'db> {
                 Ok(
                     declared @ (MirType::String { .. }
                     | MirType::Subrange(_)
+                    | MirType::Enum(_)
                     | MirType::Elementary(_)),
                 ) => declared,
                 _ => pointee,

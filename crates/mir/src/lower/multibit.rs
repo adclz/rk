@@ -51,6 +51,7 @@ fn place_elementary(place: &MirPlace) -> Option<MirElementary> {
     match ty {
         MirType::Elementary(e) => Some(*e),
         MirType::Subrange(sub) => Some(sub.base),
+        MirType::Enum(values) => Some(values.storage),
         _ => None,
     }
 }
