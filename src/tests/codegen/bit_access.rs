@@ -676,3 +676,211 @@ fn slices_in_a_method(mut with_db: db::RootDatabase) {
     let result: i32 = run(&mut with_db, source, "get", ());
     assert_eq!(result as u32, 0x1234_5678);
 }
+
+/// What the rows of [`a_partial_access_through_this`] hold and call, and each row
+/// runs in a method of a CLASS and in the body of a FUNCTION_BLOCK.
+const THROUGH_THIS: &str = r#"
+    TYPE
+        Flags : WORD (FA := 1, FB := 2);
+        Deep : STRUCT w : WORD; x : REAL; END_STRUCT;
+        Nest : STRUCT
+            w : WORD;
+            d : Deep;
+            a : ARRAY[0..1] OF WORD;
+            rows : ARRAY[0..1] OF Deep;
+            f : Flags;
+            l : LWORD;
+            i : INT;
+        END_STRUCT;
+    END_TYPE
+
+    FUNCTION in_bool : BOOL
+    VAR_INPUT p : BOOL; END_VAR
+        in_bool := p;
+    END_FUNCTION
+
+    FUNCTION out_bool
+    VAR_OUTPUT o : BOOL; END_VAR
+        o := TRUE;
+    END_FUNCTION
+
+    FUNCTION_BLOCK Mem
+    VAR_IN_OUT v : BOOL; END_VAR
+        v := TRUE;
+    END_FUNCTION_BLOCK
+
+    CLASS Inner
+    VAR PUBLIC v : WORD; END_VAR
+    END_CLASS
+"#;
+
+/// A partial access through `THIS` is of the end of the path, wherever the path goes:
+/// through fields, elements, references and instances. Each step was given it, so
+/// `THIS.n.w.2` asked for a bit of `n` and a valid program was refused.
+#[rstest]
+#[case::one_step_read("w := 4; M := THIS.w.2;")]
+#[case::one_step_written("THIS.w.2 := TRUE; M := w = 4;")]
+#[case::a_field_read("n.w := 4; M := THIS.n.w.2;")]
+#[case::a_field_read_through_a_caret("n.w := 4; M := THIS^.n.w.2;")]
+#[case::a_field_written("THIS.n.w.2 := TRUE; M := n.w = 4;")]
+#[case::a_field_written_through_a_caret("THIS^.n.w.2 := TRUE; M := n.w = 4;")]
+#[case::bytes_read("n.w := 16#0102; M := THIS.n.w.%B1 = 1 AND THIS.n.w.%B0 = 2;")]
+#[case::a_byte_written("THIS.n.w.%B1 := 1; M := n.w = 16#0100;")]
+#[case::a_nested_field_read("n.d.w := 4; M := THIS.n.d.w.2;")]
+#[case::a_nested_field_written("THIS.n.d.w.2 := TRUE; M := n.d.w = 4;")]
+#[case::an_element_read("a[1] := 4; M := THIS.a[1].2;")]
+#[case::an_element_written("THIS.a[1].2 := TRUE; M := a[1] = 4;")]
+#[case::an_element_written_by_a_variable("THIS^.a[i].2 := TRUE; M := a[1] = 4;")]
+#[case::an_element_of_a_field_read("n.a[1] := 4; M := THIS.n.a[1].2;")]
+#[case::an_element_of_a_field_written("THIS.n.a[i].2 := TRUE; M := n.a[1] = 4;")]
+#[case::a_field_of_an_element_read("n.rows[1].w := 4; M := THIS.n.rows[1].w.2;")]
+#[case::a_field_of_an_element_written("THIS.n.rows[i].w.2 := TRUE; M := n.rows[1].w = 4;")]
+#[case::named_values_read("n.f := 4; M := THIS.n.f.2;")]
+#[case::named_values_written("THIS.n.f.0 := FALSE; M := n.f = 0;")]
+#[case::the_last_bit_of_an_lword("n.l := LWORD#16#8000000000000000; M := THIS.n.l.63;")]
+#[case::an_integer("n.i := 4; M := THIS.n.i.2;")]
+#[case::through_a_reference_read("r := REF(n); n.w := 4; M := THIS.r^.w.2;")]
+#[case::through_a_reference_written("r := REF(n); THIS.r^.w.2 := TRUE; M := n.w = 4;")]
+#[case::a_referenced_word_read("rw := REF(w); w := 4; M := THIS.rw^.2;")]
+#[case::a_referenced_word_written("rw := REF(w); THIS.rw^.2 := TRUE; M := w = 4;")]
+#[case::an_instance_read("t.v := 4; M := THIS.t.v.2;")]
+#[case::an_instance_written("THIS.t.v.2 := TRUE; M := t.v = 4;")]
+#[case::to_an_input("n.w := 4; M := in_bool(THIS.n.w.2);")]
+#[case::from_an_output("out_bool(o => THIS.n.w.2); M := n.w = 4;")]
+#[case::from_an_output_by_position("out_bool(THIS.n.w.2); M := n.w = 4;")]
+#[case::to_an_in_out_member("mem(v := THIS.n.w.2); M := n.w = 4;")]
+fn a_partial_access_through_this(
+    mut with_db: db::RootDatabase,
+    #[case] body: &str,
+    #[values(true, false)] in_a_class: bool,
+) {
+    let vars = r#"
+        n : Nest;
+        w : WORD;
+        a : ARRAY[0..1] OF WORD;
+        r : REF_TO Nest;
+        rw : REF_TO WORD;
+        t : Inner;
+        mem : Mem;
+        i : INT := 1;
+    "#;
+    let holder = if in_a_class {
+        format!(
+            r#"
+            CLASS C
+            VAR PUBLIC {vars} END_VAR
+                METHOD PUBLIC M : BOOL
+                    {body}
+                END_METHOD
+            END_CLASS
+
+            FUNCTION test : BOOL
+            VAR c : C; END_VAR
+                test := c.M();
+            END_FUNCTION
+            "#
+        )
+    } else {
+        format!(
+            r#"
+            FUNCTION_BLOCK C
+            VAR_OUTPUT M : BOOL; END_VAR
+            VAR {vars} END_VAR
+                {body}
+            END_FUNCTION_BLOCK
+
+            FUNCTION test : BOOL
+            VAR c : C; END_VAR
+                c();
+                test := c.M;
+            END_FUNCTION
+            "#
+        )
+    };
+    let source = format!("{THROUGH_THIS}{holder}");
+    let result: i32 = run(&mut with_db, &source, "test", ());
+    assert_eq!(result, 1, "{body}");
+}
+
+/// Through `THIS` to what a block or a class holds by other routes: a member it
+/// inherits, its input, its in-out members.
+#[rstest]
+#[case::a_field_inherited_by_a_class(
+    "CLASS B VAR PUBLIC n : Deep; END_VAR END_CLASS
+     CLASS K EXTENDS B
+         METHOD PUBLIC M : BOOL
+             THIS.n.w.2 := TRUE;
+             M := THIS.n.w.2 AND n.w = 4;
+         END_METHOD
+     END_CLASS",
+    "VAR k : K; END_VAR test := k.M();"
+)]
+#[case::a_word_inherited_by_a_class(
+    "CLASS B VAR PUBLIC w : WORD; END_VAR END_CLASS
+     CLASS K EXTENDS B
+         METHOD PUBLIC M : BOOL
+             THIS.w.2 := TRUE;
+             M := THIS.w.2 AND w = 4;
+         END_METHOD
+     END_CLASS",
+    "VAR k : K; END_VAR test := k.M();"
+)]
+#[case::a_field_inherited_by_a_block(
+    "FUNCTION_BLOCK B VAR n : Deep; END_VAR END_FUNCTION_BLOCK
+     FUNCTION_BLOCK K EXTENDS B
+     VAR_OUTPUT q : BOOL; END_VAR
+         THIS.n.w.2 := TRUE;
+         q := THIS.n.w.2 AND n.w = 4;
+     END_FUNCTION_BLOCK",
+    "VAR k : K; END_VAR k(); test := k.q;"
+)]
+#[case::written_by_a_method_called_through_this(
+    "CLASS K
+     VAR PUBLIC n : Deep; END_VAR
+         METHOD PUBLIC Set
+             THIS.n.w.3 := TRUE;
+         END_METHOD
+         METHOD PUBLIC M : BOOL
+             THIS.Set();
+             M := n.w = 8;
+         END_METHOD
+     END_CLASS",
+    "VAR k : K; END_VAR test := k.M();"
+)]
+#[case::an_input(
+    "FUNCTION_BLOCK K
+     VAR_INPUT n : Deep; END_VAR
+     VAR_OUTPUT q : BOOL; END_VAR
+         q := THIS.n.w.2;
+     END_FUNCTION_BLOCK",
+    "VAR k : K; d : Deep; END_VAR d.w := 4; k(n := d); test := k.q;"
+)]
+#[case::an_in_out_member(
+    "FUNCTION_BLOCK K
+     VAR_IN_OUT w : WORD; END_VAR
+         THIS.w.2 := TRUE;
+     END_FUNCTION_BLOCK",
+    "VAR k : K; x : WORD; END_VAR k(w := x); test := x = 4;"
+)]
+#[case::a_field_of_an_in_out(
+    "FUNCTION_BLOCK K
+     VAR_IN_OUT d : Deep; END_VAR
+         THIS.d.w.2 := TRUE;
+     END_FUNCTION_BLOCK",
+    "VAR k : K; x : Deep; END_VAR k(d := x); test := x.w = 4;"
+)]
+fn a_partial_access_through_this_to_what_it_holds(
+    mut with_db: db::RootDatabase,
+    #[case] declarations: &str,
+    #[case] test: &str,
+) {
+    let source = format!(
+        "TYPE Deep : STRUCT w : WORD; END_STRUCT; END_TYPE
+         {declarations}
+         FUNCTION test : BOOL
+             {test}
+         END_FUNCTION"
+    );
+    let result: i32 = run(&mut with_db, &source, "test", ());
+    assert_eq!(result, 1);
+}
