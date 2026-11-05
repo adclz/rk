@@ -68,5 +68,9 @@ Copying a STRUCT, or passing an instance to a `VAR_INPUT`, gives a copy whose `p
 
 Two references are compared with `=` and `<>` only.
 `<` and `>` are refused (`E0305`), since they would compare where the variables happen to sit in memory.
+`REF(x)` compares like any other reference, on either side and with another `REF()`.
+
+`REF(x)` gives a reference, not the value of `x`: `REF(i) + 1` and `a[REF(j)]` are refused (`E0301`).
+`^` reads what a reference points at.
 
 A reference cannot be `RETAIN` (`E0904`): a new build may move what it points at.

@@ -453,6 +453,9 @@ impl<'db> Resolver<'db> {
                 // subranges included (they index like their base). `Never`
                 // already carries its own diagnostic.
                 let ty = ctx.type_of_expr_with_adjustments(db, *sub);
+                if infer.refuse_ref_as_value(db, *sub, ctx) {
+                    continue;
+                }
                 if !ty.indexes(db) {
                     ctx.errors.push(
                         ArrayError::NonIntegerIndex { expr: *sub, ty }
