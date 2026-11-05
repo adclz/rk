@@ -624,13 +624,15 @@ fn same_type_within<'db>(
     }
     match (a, b) {
         (Type::Elementary(x), Type::Elementary(y)) => x == y,
+        // One declaration is one type, however far `TYPE P : REF_TO P` is followed.
         (Type::RefTo(x), Type::RefTo(y)) => {
-            same_type_within(
-                db,
-                x.infer(db).normalize(db),
-                y.infer(db).normalize(db),
-                depth + 1,
-            ) && string_capacity(db, x) == string_capacity(db, y)
+            x.eq(&y)
+                || (same_type_within(
+                    db,
+                    x.infer(db).normalize(db),
+                    y.infer(db).normalize(db),
+                    depth + 1,
+                ) && string_capacity(db, x) == string_capacity(db, y))
         }
         (Type::Array(x), Type::Array(y)) => {
             if x.eq(&y) {
