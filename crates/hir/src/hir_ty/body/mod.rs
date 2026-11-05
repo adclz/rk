@@ -1085,6 +1085,18 @@ impl<'db> BodyInferenceResult<'db> {
             ExprKind::PrimaryExpr(PrimaryExpr::RefValue {
                 value: RefValue::Address(address),
             }) => self.adjustments_of_begin_path_expr(db, *address),
+            // `(REF(x))` is the reference. A value in parentheses already has
+            // its adjustments in its type.
+            ExprKind::PrimaryExpr(PrimaryExpr::ParenthesizedExpr { expr: inner })
+                if matches!(
+                    inner.expr(db),
+                    ExprKind::PrimaryExpr(
+                        PrimaryExpr::RefValue { .. } | PrimaryExpr::ParenthesizedExpr { .. }
+                    )
+                ) =>
+            {
+                self.adjustments_of_expr(db, *inner)
+            }
             _ => None,
         }
     }

@@ -1440,3 +1440,392 @@ END_FUNCTION
     ----'
     ");
 }
+
+/// A `REF()` of another type is refused on either side, and a reference has no order.
+#[rstest]
+fn invalid_comparisons_of_a_ref(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION F
+VAR
+    i : INT;
+    x : REAL;
+    r : REF_TO INT;
+    b : BOOL;
+END_VAR
+    b := r = REF(x);
+    b := REF(x) = r;
+    b := REF(i) = REF(x);
+    b := i = REF(i);
+    b := r < REF(i);
+    b := REF(i) < r;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0302] Error: types not comparable
+       ,-[ file:///test0.st:9:14 ]
+       |
+     6 |     r : REF_TO INT;
+       |     |
+       |     `-- 'r' is declared here
+       |
+     9 |     b := r = REF(x);
+       |              ^^^|^^
+       |                 `---- cannot compare 'REF_TO INT' with 'REF_TO REAL'
+    ---'
+    [E0302] Error: types not comparable
+        ,-[ file:///test0.st:10:19 ]
+        |
+      5 |     x : REAL;
+        |     |
+        |     `-- 'x' is declared here
+        |
+     10 |     b := REF(x) = r;
+        |                   |
+        |                   `-- cannot compare 'REF_TO INT' with 'REF_TO REAL'
+    ----'
+    [E0302] Error: types not comparable
+        ,-[ file:///test0.st:11:19 ]
+        |
+      4 |     i : INT;
+        |     |
+        |     `-- 'i' is declared here
+        |
+     11 |     b := REF(i) = REF(x);
+        |                   ^^^|^^
+        |                      `---- cannot compare 'REF_TO INT' with 'REF_TO REAL'
+    ----'
+    [E0302] Error: types not comparable
+        ,-[ file:///test0.st:12:14 ]
+        |
+      4 |     i : INT;
+        |     |
+        |     `-- 'i' is declared here
+        |
+     12 |     b := i = REF(i);
+        |              ^^^|^^
+        |                 `---- cannot compare 'INT' with 'REF_TO INT'
+    ----'
+    [E0305] Error: operator not supported by the type
+        ,-[ file:///test0.st:13:10 ]
+        |
+      6 |     r : REF_TO INT;
+        |     |
+        |     `-- 'r' is declared here
+        |
+     13 |     b := r < REF(i);
+        |          ^^^^^|^^^^
+        |               `------ operator '<' cannot be applied to type 'REF_TO INT'
+        |
+        | Note: references can only be compared with '=' or '<>'
+    ----'
+    [E0305] Error: operator not supported by the type
+        ,-[ file:///test0.st:14:10 ]
+        |
+      6 |     r : REF_TO INT;
+        |     |
+        |     `-- 'r' is declared here
+        |
+     14 |     b := REF(i) < r;
+        |          ^^^^^|^^^^
+        |               `------ operator '<' cannot be applied to type 'REF_TO INT'
+        |
+        | Note: references can only be compared with '=' or '<>'
+    ----'
+    ");
+}
+
+/// A `REF()` is typed as what it points at, and it is no value of that type. These
+/// passed the check: address arithmetic for an INT, and for a REAL an invalid module.
+#[rstest]
+#[case::added_on_the_left("i := REF(i) + 1;", "REF_TO INT")]
+#[case::added_on_the_right("i := 1 + REF(i);", "REF_TO INT")]
+#[case::added_to_a_variable("i := i + REF(j);", "REF_TO INT")]
+#[case::subtracted("i := REF(i) - 1;", "REF_TO INT")]
+#[case::multiplied("i := REF(i) * 2;", "REF_TO INT")]
+#[case::divided("x := REF(x) / 2.0;", "REF_TO REAL")]
+#[case::modulo("i := REF(i) MOD 2;", "REF_TO INT")]
+#[case::an_exponent("x := 2.0 ** REF(i);", "REF_TO INT")]
+#[case::a_base("x := REF(x) ** 2;", "REF_TO REAL")]
+#[case::negated("i := -REF(i);", "REF_TO INT")]
+#[case::signed("i := +REF(i);", "REF_TO INT")]
+#[case::inverted("b := NOT REF(b);", "REF_TO BOOL")]
+#[case::anded("b := REF(b) AND TRUE;", "REF_TO BOOL")]
+#[case::ored("b := TRUE OR REF(b);", "REF_TO BOOL")]
+#[case::xored("b := REF(b) XOR b;", "REF_TO BOOL")]
+#[case::a_selector("CASE REF(i) OF 1: j := 1; END_CASE;", "REF_TO INT")]
+#[case::a_subscript("i := a[REF(j)];", "REF_TO INT")]
+#[case::in_parentheses("i := (REF(i)) + 1;", "REF_TO INT")]
+#[case::a_bit_string("w := REF(w) AND 16#FF;", "REF_TO WORD")]
+#[case::inverted_in_a_condition("IF NOT REF(b) THEN i := 1; END_IF;", "REF_TO BOOL")]
+#[case::a_written_subscript("a[REF(j)] := 1;", "REF_TO INT")]
+#[case::beside_a_read("r := REF(j); i := r^ + REF(i);", "REF_TO INT")]
+#[case::an_enum_selector("CASE REF(c) OF Color#Red: j := 1; END_CASE;", "REF_TO Color")]
+#[case::a_type_with_named_values("i := REF(k) + 1;", "REF_TO Light")]
+fn invalid_a_ref_as_a_value(mut with_db: RootDatabase, #[case] body: &str, #[case] got: &str) {
+    let source = format!(
+        "TYPE Color : (Red, Green); Light : INT (Stop := 1); END_TYPE\nFUNCTION F\nVAR i, j : INT; x : REAL; b : BOOL; a : ARRAY[0..1] OF INT; w : WORD; r : REF_TO INT; c : Color; k : Light; END_VAR\n{body}\nEND_FUNCTION\n"
+    );
+    let report = test_diagnostics(&mut with_db, &[&source]);
+    assert_eq!(report.matches(" Error: ").count(), 1, "{report}");
+    assert!(
+        report.contains(&format!("expected a value, got '{got}'")),
+        "{report}"
+    );
+}
+
+/// In parentheses it is a reference all the same, and nothing else.
+#[rstest]
+fn a_ref_in_parentheses_is_a_reference(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION F
+VAR
+    i : INT;
+    r : REF_TO INT;
+    q : REF_TO INT := (REF(i));
+END_VAR
+    r := (REF(i));
+    r := ((REF(i)));
+    i := (REF(i));
+    r := (REF(r));
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0301] Error: type mismatch
+        ,-[ file:///test0.st:10:10 ]
+        |
+      4 |     i : INT;
+        |     |
+        |     `-- 'i' is declared here
+        |
+     10 |     i := (REF(i));
+        |          ^^^^|^^^
+        |              `----- expected 'INT', got 'REF_TO INT'
+    ----'
+    [E0301] Error: type mismatch
+        ,-[ file:///test0.st:11:10 ]
+        |
+      5 |     r : REF_TO INT;
+        |     |
+        |     `-- 'r' is declared here
+        |
+     11 |     r := (REF(r));
+        |          ^^^^|^^^
+        |              `----- expected 'REF_TO INT', got 'REF_TO REF_TO INT'
+    ----'
+    ");
+}
+
+/// A `REF()` in an initial value is held to the same rule as in a body.
+#[rstest]
+#[case::added("k : INT := REF(i) + 1;", "expected a value, got 'REF_TO INT'")]
+#[case::negated("k : INT := -REF(i);", "expected a value, got 'REF_TO INT'")]
+#[case::inverted("k : BOOL := NOT REF(b);", "expected a value, got 'REF_TO BOOL'")]
+#[case::in_a_struct("p : Pt := (a := REF(i) + 1);", "expected a value, got 'REF_TO INT'")]
+#[case::in_an_array(
+    "l : ARRAY[0..1] OF INT := [REF(i) + 1];",
+    "expected a value, got 'REF_TO INT'"
+)]
+#[case::in_parentheses("k : INT := (REF(i));", "expected 'INT', got 'REF_TO INT'")]
+#[case::against_a_value("k : BOOL := REF(i) = i;", "cannot compare 'INT' with 'REF_TO INT'")]
+fn invalid_a_ref_in_an_initial_value(
+    mut with_db: RootDatabase,
+    #[case] decl: &str,
+    #[case] message: &str,
+) {
+    let source = format!(
+        "TYPE Pt : STRUCT a : INT; END_STRUCT; END_TYPE\nFUNCTION F\nVAR i : INT; b : BOOL; {decl} END_VAR\nEND_FUNCTION\n"
+    );
+    let report = test_diagnostics(&mut with_db, &[&source]);
+    assert!(report.contains(message), "{report}");
+}
+
+/// A pack is read by an integer, as an array is.
+#[rstest]
+fn invalid_a_ref_reading_a_pack(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION F : INT
+VAR_INPUT v : INT...; END_VAR
+VAR i : INT; END_VAR
+    F := ...v[REF(i)];
+END_FUNCTION
+"#;
+    let report = test_diagnostics(&mut with_db, &[source]);
+    assert!(
+        report.contains("expected a value, got 'REF_TO INT'"),
+        "{report}"
+    );
+}
+
+/// What each place says of a `REF()` it has no use for, and two `REF()`s that do
+/// not compare: named as references, with no order between them.
+#[rstest]
+#[case::a_variable("i := REF(j);", "[E0301]", "expected 'INT', got 'REF_TO INT'")]
+#[case::a_variable_in_parentheses("i := (REF(j));", "[E0301]", "expected 'INT', got 'REF_TO INT'")]
+#[case::a_struct("pt := REF(pt);", "[E0301]", "expected 'Pt', got 'REF_TO Pt'")]
+#[case::a_condition(
+    "IF REF(b) THEN i := 1; END_IF;",
+    "[E0301]",
+    "expected 'BOOL', got 'REF_TO BOOL'"
+)]
+#[case::a_while(
+    "WHILE REF(b) DO EXIT; END_WHILE;",
+    "[E0301]",
+    "expected 'BOOL', got 'REF_TO BOOL'"
+)]
+#[case::a_repeat(
+    "REPEAT i := 1; UNTIL REF(b) END_REPEAT;",
+    "[E0301]",
+    "expected 'BOOL', got 'REF_TO BOOL'"
+)]
+#[case::a_start(
+    "FOR i := REF(j) TO 3 DO j := 1; END_FOR;",
+    "[E0301]",
+    "expected 'INT', got 'REF_TO INT'"
+)]
+#[case::a_final_value(
+    "FOR i := 1 TO REF(j) DO j := 1; END_FOR;",
+    "[E1214]",
+    "the final value is 'REF_TO INT'"
+)]
+#[case::a_step(
+    "FOR i := 1 TO 3 BY REF(j) DO j := 1; END_FOR;",
+    "[E1214]",
+    "the step is 'REF_TO INT'"
+)]
+#[case::a_label(
+    "CASE i OF REF(j): j := 1; END_CASE;",
+    "[E1205]",
+    "the label is not a compile-time constant"
+)]
+#[case::an_argument(
+    "i := takes_int(REF(i));",
+    "[E0301]",
+    "expected 'INT', got 'REF_TO INT'"
+)]
+#[case::a_named_argument(
+    "i := takes_int(p := REF(i));",
+    "[E0301]",
+    "expected 'INT', got 'REF_TO INT'"
+)]
+#[case::a_variadic("i := sum(REF(i), 1);", "[E0301]", "expected 'INT', got 'REF_TO INT'")]
+#[case::a_blocks_input("fb(in := REF(i));", "[E0301]", "expected 'INT', got 'REF_TO INT'")]
+#[case::an_in_out("io_int(REF(i));", "[E0806]", "requires a variable, not a value")]
+#[case::a_message(
+    "__RAISE(REF(s));",
+    "[E0301]",
+    "expected 'STRING', got 'REF_TO STRING'"
+)]
+#[case::written_through("r^ := REF(i);", "[E0301]", "expected 'INT', got 'REF_TO INT'")]
+#[case::a_value_on_the_left(
+    "b := i = REF(i);",
+    "[E0302]",
+    "cannot compare 'INT' with 'REF_TO INT'"
+)]
+#[case::a_value_on_the_right(
+    "b := REF(i) = i;",
+    "[E0302]",
+    "cannot compare 'INT' with 'REF_TO INT'"
+)]
+#[case::a_number(
+    "b := REF(i) = 5;",
+    "[E0302]",
+    "cannot compare 'INT' with 'REF_TO INT'"
+)]
+#[case::two_types(
+    "b := REF(i) = REF(x);",
+    "[E0302]",
+    "cannot compare 'REF_TO INT' with 'REF_TO REAL'"
+)]
+#[case::two_types_ordered(
+    "b := REF(i) < REF(x);",
+    "[E0302]",
+    "cannot compare 'REF_TO INT' with 'REF_TO REAL'"
+)]
+#[case::two_capacities(
+    "b := REF(s) = REF(s4);",
+    "[E0302]",
+    "cannot compare 'REF_TO STRING' with 'REF_TO STRING[4]'"
+)]
+#[case::a_capacity_and_a_reference("b := rs4 = REF(s);", "[E0302]", "with 'REF_TO STRING'")]
+#[case::named_values_and_a_number(
+    "b := REF(k) = REF(i);",
+    "[E0302]",
+    "cannot compare 'REF_TO Light' with 'REF_TO INT'"
+)]
+#[case::in_order(
+    "b := REF(i) < REF(j);",
+    "[E0305]",
+    "operator '<' cannot be applied to type 'REF_TO INT'"
+)]
+#[case::in_order_of_or_equal(
+    "b := REF(i) >= REF(j);",
+    "[E0305]",
+    "operator '>=' cannot be applied to type 'REF_TO INT'"
+)]
+#[case::in_order_in_parentheses(
+    "b := (REF(i)) < (REF(j));",
+    "[E0305]",
+    "operator '<' cannot be applied to type 'REF_TO INT'"
+)]
+#[case::in_order_of_elements(
+    "b := REF(a[0]) < REF(a[1]);",
+    "[E0305]",
+    "operator '<' cannot be applied to type 'REF_TO INT'"
+)]
+#[case::of_a_ref("r := REF(REF(i));", "[E0905]", "")]
+#[case::of_a_literal("r := REF(1);", "[E0905]", "")]
+#[case::of_a_calculation("r := REF(i + 1);", "[E0905]", "")]
+fn invalid_a_ref_where_it_has_no_use(
+    mut with_db: RootDatabase,
+    #[case] body: &str,
+    #[case] code: &str,
+    #[case] message: &str,
+) {
+    let source = format!(
+        r#"
+TYPE
+    Pt : STRUCT a : INT; END_STRUCT;
+    Light : INT (Stop := 1);
+END_TYPE
+
+FUNCTION_BLOCK Fb
+VAR_INPUT in : INT; END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION takes_int : INT
+VAR_INPUT p : INT; END_VAR
+    takes_int := p;
+END_FUNCTION
+
+FUNCTION io_int
+VAR_IN_OUT p : INT; END_VAR
+    p := 1;
+END_FUNCTION
+
+FUNCTION sum : INT
+VAR_INPUT v : INT...; END_VAR
+    sum := ...v +;
+END_FUNCTION
+
+FUNCTION F
+VAR
+    i, j : INT;
+    k : Light;
+    x : REAL;
+    b : BOOL;
+    s : STRING;
+    s4 : STRING[4];
+    a : ARRAY[0..1] OF INT;
+    pt : Pt;
+    fb : Fb;
+    r : REF_TO INT;
+    rs4 : REF_TO STRING[4];
+END_VAR
+    {body}
+END_FUNCTION
+"#
+    );
+    let report = test_diagnostics(&mut with_db, &[&source]);
+    assert!(report.contains(code), "{report}");
+    assert!(report.contains(message), "{report}");
+}

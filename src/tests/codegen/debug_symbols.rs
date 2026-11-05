@@ -1739,6 +1739,62 @@ fn pointers_are_followed_on_a_running_module(mut with_db: db::RootDatabase) {
     assert_eq!(info.variable_at(n_at).as_deref(), Some("P1.n"));
 }
 
+/// A reference back to a name no STRUCT or instance holds has no entry to name, so
+/// the tables list its address alone: a debugger reads where it points, and goes no
+/// further.
+#[rstest]
+fn a_reference_back_to_its_own_name_lists_its_address(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE
+            P : REF_TO P;
+            A : ARRAY[0..1] OF REF_TO A;
+        END_TYPE
+
+        PROGRAM Main
+        VAR
+            p1, p2 : P;
+            a1, a2 : A;
+        END_VAR
+            p1 := REF(p2);
+            a1[1] := REF(a2);
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : Main;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    let table = read_debug_symbols(&wasm);
+    let pointer = |path: &str| {
+        table
+            .pointers
+            .iter()
+            .find(|p| p.path == path)
+            .unwrap_or_else(|| panic!("no pointer {path} in {:?}", table.pointers))
+    };
+    assert_eq!(pointer("P1.p1").target, None);
+    let second = table
+        .arrays
+        .iter()
+        .find(|a| a.path == "P1.a2")
+        .expect("the array");
+
+    let mut plc = TestPlc::load(&wasm).expect("load");
+    plc.run(1).expect("scan");
+    let info = DebugInfo::from_wasm(&wasm);
+    assert!(info.problems().is_empty(), "{:?}", info.problems());
+    let live = &mut |address: u32, size: u32| plc.read_bytes(address, size as usize).ok();
+    let mut points_at = |path: &str| match info.follow(path, live) {
+        Some(debug_format::Place::Pointer(p)) => p.address,
+        other => panic!("not a pointer: {other:?}"),
+    };
+    assert_eq!(points_at("P1.p1"), pointer("P1.p2").address);
+    assert_eq!(points_at("P1.a1[1]"), second.address);
+}
+
 /// A bare code offset resolves to its function: the one `line_to_pc` places
 /// a line in, and nothing before the first body.
 #[rstest]

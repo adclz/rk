@@ -541,6 +541,18 @@ impl<'db> ExprLowerCtx<'db> {
         right: Expr<'db>,
         expr: Expr<'db>,
     ) -> Result<MirExpr, LowerTypeError> {
+        // A reference compares by the address it holds. `REF(x)` is typed as
+        // what it points at, so a cast would read the address as an `x`, and
+        // an array or a STRUCT has no scalar type to cast to.
+        if self.compares_as_an_address(left) || self.compares_as_an_address(right) {
+            return Ok(MirExpr::BinOp {
+                op,
+                lhs: Box::new(self.lower_expr(left)?),
+                rhs: Box::new(self.lower_expr(right)?),
+                ty: MirElementary::DInt,
+            });
+        }
+
         // STRING operands have no scalar representation: the comparison lowers to
         // `str_byte_cmp(a, b) OP 0`. Detected on the ADJUSTED type, before the
         // scalar conversion below.
@@ -581,6 +593,21 @@ impl<'db> ExprLowerCtx<'db> {
             // Comparison executes at the common type
             ty: common,
         })
+    }
+
+    /// Whether `expr` is a reference: `NULL`, a `REF_TO`, or a `REF()`, which
+    /// is typed as what it points at.
+    fn compares_as_an_address(&self, expr: Expr<'db>) -> bool {
+        match expr.expr(self.db) {
+            ExprKind::PrimaryExpr(PrimaryExpr::RefValue { .. }) => true,
+            ExprKind::PrimaryExpr(PrimaryExpr::ParenthesizedExpr { expr }) => {
+                self.compares_as_an_address(*expr)
+            }
+            _ => matches!(
+                expr.infer_adjusted(self.db).normalize(self.db),
+                hir::hir_ty::ty::Type::RefTo(_) | hir::hir_ty::ty::Type::Null
+            ),
+        }
     }
 
     /// Lower a STRING comparison as `str_byte_cmp(a, b) OP 0`; the builtin

@@ -860,6 +860,7 @@ impl<'db> StmtsResolverCtx<'db> {
                 } => {
                     // check condition
                     self.infer_and_check_expr(db, &mut infer, *condition, ctx);
+                    infer.refuse_ref_as_value(db, *condition, ctx);
 
                     // A literal selector, `CASE 5 OF` or `CASE 'bd' OF`, takes
                     // its type from the labels, as the two sides of `=` do:

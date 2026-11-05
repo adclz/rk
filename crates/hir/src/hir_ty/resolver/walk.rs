@@ -143,6 +143,32 @@ pub(crate) fn check_multibits_bounds<'db>(
     }
 }
 
+/// A partial access at the end of a path of several steps (`SX[SN].0`, `s.fld.0`,
+/// `THIS.s.fld.0`), applied once its indexing and dereferencing are done. `current`
+/// is what the walk landed on, the element of `arr[k]` or the field of `s.fld`,
+/// which is what the slice applies to and what its offset has to fit inside.
+pub(crate) fn slice_the_end_of_a_path<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    steps: &[PathExprWalkStep<'db>],
+    current: Type<'db>,
+    multibits: Option<MultibitsPart>,
+    ctx: &mut BodyInferenceResult<'db>,
+) {
+    let (Some(multibits), Some(last_step)) = (multibits, steps.last()) else {
+        return;
+    };
+    let last_expr = last_step.get_expr(db);
+    check_multibits_bounds(db, last_expr, current, None, multibits, ctx);
+    let slice = crate::hir_ty::infer::normalize::multibits_to_type(db, multibits);
+    // The step's type, and the last adjustment's target (an index's), are the slice.
+    ctx.type_of_path_expr.insert(last_expr, slice);
+    if let Some(adjustments) = ctx.path_expr_adjustments.get_mut(&last_expr)
+        && let Some(last_adj) = adjustments.last_mut()
+    {
+        last_adj.target = slice;
+    }
+}
+
 /// What is wrong with a partial access of a `base_type`, if anything: what
 /// [`check_multibits_bounds`] reports, for a task parameter too, which no
 /// body reads.
@@ -458,8 +484,12 @@ impl<'db> Type<'db> {
             current_path: path_expr,
         };
 
+        // A partial access is of the end of the path: `THIS.s.w.2` is a bit of `w`,
+        // and `s` has none. Past one step it is applied once the walk is done.
+        let single_step = steps.len() == 1;
         for step in steps {
-            current.walk_path_expr(db, true, false, step, multibits, &mut place, ctx);
+            let step_multibits = if single_step { multibits } else { None };
+            current.walk_path_expr(db, true, false, step, step_multibits, &mut place, ctx);
             // it is necessary to apply adjustments at each step
             current = ctx.type_of_path_expr_with_adjustments(step.get_expr(db));
         }
@@ -487,6 +517,10 @@ impl<'db> Type<'db> {
             // used to be an error, which rejected every valid THIS path that
             // did not end directly at an FB variable or method.)
             _ => {}
+        }
+
+        if !single_step {
+            slice_the_end_of_a_path(db, steps, current, multibits, ctx);
         }
     }
 

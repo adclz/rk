@@ -26,6 +26,17 @@ use std::collections::HashMap;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, salsa::Update)]
 pub enum TypeError<'db> {
+    /// `REF(x)` where a value belongs.
+    RefAsValue {
+        expr: Expr<'db>,
+        target: Type<'db>,
+    },
+    /// `REF(x) < REF(y)`, of one type: a reference has no order.
+    RefUnordered {
+        target: Type<'db>,
+        operator: &'static str,
+        call_site: CallSite<'db>,
+    },
     /// `REF(a[i])` bound to a `REF_TO STRING` whose capacity is not the
     /// element's: `capacity` is the element's, `None` for an element of an
     /// `ARRAY[*] OF STRING`, which has each call's.
@@ -47,6 +58,7 @@ pub enum TypeError<'db> {
     NotComparable {
         base_target: Type<'db>,
         lhs: Type<'db>,
+        lhs_adjustment: Option<Adjustment<'db>>,
         rhs: Type<'db>,
         adjustment: Option<Adjustment<'db>>,
         expr: CallSite<'db>,
@@ -221,6 +233,8 @@ impl<'db> ErrorCode for TypeError<'db> {
             Self::NotMultiplicable { .. } => "E0304",
             Self::UnsupportedOperator { .. } => "E0305",
             Self::InferLiteralError { err, .. } => err.code(),
+            Self::RefAsValue { .. } => "E0301",
+            Self::RefUnordered { .. } => "E0305",
             Self::StringLengthNotConstant { .. } => "E0315",
             Self::StringLengthNegative { .. } => "E0320",
             Self::EdgeNotBool { .. } => "E0321",
@@ -240,6 +254,39 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
         file: auto_lsp::default::db::file::File,
     ) -> IdeDiagnostic {
         match self {
+            Self::RefAsValue { expr, target } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "expected a value, got 'REF_TO {}'",
+                        target.type_name(db)
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &expr.get_span(db)).unwrap_or_default())
+                    .call();
+                diag.with_note("REF() gives a reference, and '^' reads what it points at".into());
+                diag.with_help("read the variable itself".into());
+                diag
+            }
+            Self::RefUnordered {
+                target,
+                operator,
+                call_site,
+            } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "operator '{operator}' cannot be applied to type 'REF_TO {}'",
+                        target.type_name(db)
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(
+                        crate::denormalize(db, file, &call_site.get_span(db)).unwrap_or_default(),
+                    )
+                    .call();
+                diag.with_note("references can only be compared with '=' or '<>'".to_string());
+                diag
+            }
             Self::ElementReferenceMismatch {
                 base_target,
                 expr,
@@ -320,6 +367,7 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
             Self::NotComparable {
                 base_target,
                 lhs,
+                lhs_adjustment,
                 rhs,
                 expr,
                 adjustment,
@@ -327,7 +375,7 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                 let mut diag = diag()
                     .message(format!(
                         "cannot compare '{}' with '{}'",
-                        lhs.type_name(db),
+                        adjustment_to_string(db, *lhs, lhs_adjustment),
                         adjustment_to_string(db, *rhs, adjustment),
                     ))
                     .severity(DiagnosticSeverity::ERROR)
@@ -336,7 +384,12 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                     .call();
 
                 base_target.with_location(db, &mut diag);
-                explicit_cast_suggestion(db, *lhs, *rhs, *expr, &mut diag);
+                if !adjustment
+                    .as_ref()
+                    .is_some_and(|adj| adj.kind == Adjust::Ref)
+                {
+                    explicit_cast_suggestion(db, *lhs, *rhs, *expr, &mut diag);
+                }
                 diag
             }
             Self::NotAddable {

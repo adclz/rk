@@ -805,3 +805,456 @@ fn test_deref_reads_and_writes_the_pointee_type(
     };
     assert_eq!(got, expected);
 }
+
+/// A type that comes back to itself through a reference, by every route a name
+/// gives it. Lowering one followed the reference until the stack ran out, and a value
+/// of `P : REF_TO P` could not be given to a variable of `P`: "expected 'P', got 'P'".
+/// Each row runs its steps in a function with these variables, and then holds.
+#[rstest]
+// Through the cycle.
+#[case::an_array_read_back("a1[0] := REF(a2); a1[0]^[1] := REF(a1); ra := REF(a1);", "a2[1] = ra")]
+#[case::an_array_round_and_round(
+    "a1[0] := REF(a1); a1[0]^[0]^[0]^[1] := REF(a2); ra := REF(a2);",
+    "a1[1] = ra"
+)]
+#[case::null_to_start_with("", "a1[0] = NULL AND p1 = NULL")]
+#[case::a_reference_held_by_another("p1 := REF(p2); p2 := REF(p1); rp := REF(p1);", "p1^ = rp")]
+#[case::a_reference_twice_through("p1 := REF(p2); p2 := REF(p1); rp := REF(p2);", "p1^^ = rp")]
+#[case::a_reference_to_itself("p1 := REF(p1);", "p1^ = p1 AND p1^^^^ = p1")]
+#[case::two_names_holding_each_other("pa := REF(qa); qa := REF(pa);", "pa^ = qa AND pa^^ = pa")]
+#[case::through_a_second_name(
+    "b1[0] := REF(b2); b1[0]^[1] := REF(b1); rb := REF(b1);",
+    "b2[1] = rb"
+)]
+#[case::through_an_alias("c1[0] := REF(c2); c1[0]^[1] := REF(c1); rc := REF(c1);", "c2[1] = rc")]
+#[case::an_array_of_arrays(
+    "e1[0][0] := REF(e2); e1[0][0]^[1][1] := REF(e1); re := REF(e1);",
+    "e2[1][1] = re"
+)]
+#[case::a_struct_with_a_name("g1[0].again := REF(g2); g1[0].again^[1].n := 3;", "g2[1].n = 3")]
+#[case::two_dimensions(
+    "t1[1, 0] := REF(t2); t1[1, 0]^[0, 1] := REF(t1); rt := REF(t1);",
+    "t2[0, 1] = rt"
+)]
+#[case::a_reference_to_the_array("ra := REF(a1); ra^[0] := ra;", "a1[0] = ra AND a1[0]^[0] = ra")]
+#[case::written_through_a_reference(
+    "p2 := REF(p3); rp := REF(p1); rp^ := p2;",
+    "p1 = p2 AND p1 <> NULL"
+)]
+// One type, two values.
+#[case::a_reference_assigned("p1 := REF(p2); p3 := p1; rp := REF(p2);", "p3 = rp")]
+#[case::a_reference_compared("p1 := REF(p2);", "p1 = p1 AND p1 <> p2")]
+#[case::an_array_copied("a1[0] := REF(a2); a2 := a1; ra := REF(a2);", "a2[0] = ra")]
+#[case::an_element_compared("a1[0] := REF(a2);", "a1[0] = a1[0]")]
+#[case::an_alias_copied("c1[0] := REF(c2); c2 := c1; rc := REF(c2);", "c2[0] = rc")]
+#[case::an_array_of_them(
+    "aa[1][0] := REF(aa[0]); aa[1][0]^[1] := REF(aa[1]); ra := REF(aa[1]);",
+    "aa[0][1] = ra"
+)]
+#[case::an_element_copied("aa[1] := a1;", "aa[1][0] = NULL")]
+#[case::an_alias_and_what_it_names("d1[0] := REF(c1); c1 := d1; rc := REF(c1);", "c1[0] = rc")]
+// Through calls.
+#[case::by_value("p1 := REF(p2);", "id_p(p1) = p1")]
+#[case::an_output("p1 := REF(p2); out_p(p1, o => p3);", "p3 = p1")]
+#[case::an_in_out("p1 := REF(p2); io_p(p3, p1);", "p3 = p1")]
+#[case::an_array_by_value("a1[0] := REF(a2); ra := REF(a2);", "first(a1) = ra")]
+#[case::an_array_in_out("set_first(a1, REF(a2)); ra := REF(a2);", "a1[0] = ra")]
+#[case::an_array_returned("a1 := ret_a();", "a1[0] = NULL")]
+#[case::overloads("", "over(p1) = 1 AND over(pa) = 2 AND over(a1) = 3 AND over(b1) = 4")]
+// Held elsewhere.
+#[case::a_block_member("fb();", "fb.q")]
+#[case::a_class_member("", "cl.Me()")]
+#[case::a_global("gp := REF(gp);", "gp^ = gp")]
+#[case::a_global_array("ga[0] := REF(ga); ra := ga[0];", "ra^[0] = ra")]
+fn a_type_that_comes_back_through_a_reference(
+    mut with_db: db::RootDatabase,
+    #[case] steps: &str,
+    #[case] holds: &str,
+) {
+    let source = format!(
+        r#"
+        TYPE
+            A : ARRAY[0..1] OF REF_TO A;
+            P : REF_TO P;
+            Pa : REF_TO Qa;
+            Qa : REF_TO Pa;
+            B : ARRAY[0..1] OF Qb;
+            Qb : REF_TO B;
+            C : D;
+            D : ARRAY[0..1] OF REF_TO C;
+            E : ARRAY[0..1] OF F;
+            F : ARRAY[0..1] OF REF_TO E;
+            G : ARRAY[0..1] OF H;
+            H : STRUCT again : REF_TO G; n : INT; END_STRUCT;
+            Two : ARRAY[0..1, 0..1] OF REF_TO Two;
+            Ra : REF_TO A;
+        END_TYPE
+
+        CONFIGURATION Cfg
+            VAR_GLOBAL gp : P; ga : A; END_VAR
+        END_CONFIGURATION
+
+        FUNCTION id_p : P
+        VAR_INPUT x : P; END_VAR
+            id_p := x;
+        END_FUNCTION
+
+        FUNCTION first : Ra
+        VAR_INPUT x : A; END_VAR
+            first := x[0];
+        END_FUNCTION
+
+        FUNCTION set_first
+        VAR_IN_OUT x : A; END_VAR
+        VAR_INPUT t : REF_TO A; END_VAR
+            x[0] := t;
+        END_FUNCTION
+
+        FUNCTION out_p
+        VAR_INPUT x : P; END_VAR
+        VAR_OUTPUT o : P; END_VAR
+            o := x;
+        END_FUNCTION
+
+        FUNCTION io_p
+        VAR_IN_OUT x : P; END_VAR
+        VAR_INPUT t : P; END_VAR
+            x := t;
+        END_FUNCTION
+
+        FUNCTION ret_a : A
+        VAR x : A; END_VAR
+            x[1] := REF(x);
+            ret_a := x;
+        END_FUNCTION
+
+        FUNCTION_BLOCK Fb
+        VAR a : A; p : P; END_VAR
+        VAR_OUTPUT q : BOOL; END_VAR
+            a[0] := REF(a);
+            p := REF(p);
+            q := a[0]^[0] = a[0] AND p^ = p;
+        END_FUNCTION_BLOCK
+
+        CLASS Cl
+        VAR PUBLIC a : A; END_VAR
+            METHOD PUBLIC Me : BOOL
+            VAR r : REF_TO A; END_VAR
+                THIS.a[0] := REF(THIS.a);
+                r := REF(a);
+                Me := a[0]^[0] = r;
+            END_METHOD
+        END_CLASS
+
+        FUNCTION over : INT
+        VAR_INPUT x : P; END_VAR
+            over := 1;
+        END_FUNCTION
+
+        FUNCTION over : INT
+        VAR_INPUT x : Pa; END_VAR
+            over := 2;
+        END_FUNCTION
+
+        FUNCTION over : INT
+        VAR_INPUT x : A; END_VAR
+            over := 3;
+        END_FUNCTION
+
+        FUNCTION over : INT
+        VAR_INPUT x : B; END_VAR
+            over := 4;
+        END_FUNCTION
+
+        FUNCTION test : BOOL
+        VAR_EXTERNAL gp : P; ga : A; END_VAR
+        VAR
+            a1, a2 : A;
+            p1, p2, p3 : P;
+            pa : Pa;
+            qa : Qa;
+            b1, b2 : B;
+            c1, c2 : C;
+            d1 : D;
+            e1, e2 : E;
+            g1, g2 : G;
+            t1, t2 : Two;
+            aa : ARRAY[0..1] OF A;
+            fb : Fb;
+            cl : Cl;
+            ra : REF_TO A;
+            rb : REF_TO B;
+            rc : REF_TO C;
+            re : REF_TO E;
+            rt : REF_TO Two;
+            rp : REF_TO P;
+        END_VAR
+            {steps}
+            test := {holds};
+        END_FUNCTION
+    "#
+    );
+    let result: i32 = crate::tests::codegen::run(&mut with_db, &source, "test", ());
+    assert_eq!(result, 1, "{steps} {holds}");
+}
+
+/// An array of references to its own type: the reference reads what it points at,
+/// and the debug tables describe all of it but where the type comes back.
+#[rstest]
+fn an_array_that_refers_to_itself(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE A : ARRAY[0..1] OF REF_TO A; END_TYPE
+
+        PROGRAM Main
+        VAR
+            first, second : A;
+            same : BOOL;
+        END_VAR
+            first[0] := REF(second);
+            second[1] := REF(first);
+            same := first[0]^[1] = REF(first);
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : Main;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_, wasm) = crate::tests::codegen::compile_to_mir_and_wasm(&mut with_db, source);
+    let mut plc = crate::tests::codegen::TestPlc::load(&wasm).expect("load");
+    plc.run(1).expect("a scan");
+    let info = debug_format::DebugInfo::from_wasm(&wasm);
+    assert!(info.problems().is_empty(), "{:?}", info.problems());
+    assert_eq!(
+        plc.read_var(&info, "P1.same").unwrap(),
+        debug_format::VarValue::Bool(true)
+    );
+}
+
+/// A reference compares by the address it holds, with `REF()` on either side or on
+/// both, whatever it points at. Compared at the type it points at, a 64-bit target
+/// or a REAL read the address as one, an array or a STRUCT did not build, and a
+/// STRING compared its bytes.
+#[rstest]
+#[case::bool("BOOL")]
+#[case::sint("SINT")]
+#[case::int("INT")]
+#[case::lint("LINT")]
+#[case::ulint("ULINT")]
+#[case::real("REAL")]
+#[case::lreal("LREAL")]
+#[case::word("WORD")]
+#[case::lword("LWORD")]
+#[case::time("TIME")]
+#[case::ltime("LTIME")]
+#[case::char("CHAR")]
+#[case::string("STRING")]
+#[case::sized_string("STRING[4]")]
+#[case::array("ARRAY[0..1] OF INT")]
+#[case::named_array("Row")]
+#[case::named_struct("Pt")]
+#[case::instance("Fb")]
+#[case::named_values("Color")]
+fn references_compare_by_address(mut with_db: db::RootDatabase, #[case] ty: &str) {
+    let source = format!(
+        r#"
+        TYPE
+            Pt : STRUCT a : INT; END_STRUCT;
+            Row : ARRAY[0..1] OF INT;
+            Color : (Red, Green);
+        END_TYPE
+
+        FUNCTION_BLOCK Fb
+        VAR v : INT; END_VAR
+        END_FUNCTION_BLOCK
+
+        FUNCTION test : DINT
+        VAR
+            x, y : {ty};
+            r : REF_TO {ty};
+        END_VAR
+            r := REF(x);
+            IF r = REF(x) THEN test := test + 1; END_IF;
+            IF r <> REF(y) THEN test := test + 2; END_IF;
+            IF REF(x) = r THEN test := test + 4; END_IF;
+            IF REF(y) <> r THEN test := test + 8; END_IF;
+            IF REF(x) = REF(x) THEN test := test + 16; END_IF;
+            IF REF(x) <> REF(y) THEN test := test + 32; END_IF;
+            IF r <> NULL THEN test := test + 64; END_IF;
+            IF NULL <> REF(x) THEN test := test + 128; END_IF;
+            IF (r) = (REF(x)) THEN test := test + 256; END_IF;
+            IF r = REF(y) THEN test := test + 512; END_IF;
+            IF REF(x) = NULL THEN test := test + 1024; END_IF;
+        END_FUNCTION
+    "#
+    );
+    let result: i32 = crate::tests::codegen::run(&mut with_db, &source, "test", ());
+    assert_eq!(result, 511);
+}
+
+/// A `REF()` in parentheses writes the same address, in a body and in an initializer.
+#[rstest]
+fn a_ref_in_parentheses_points_at_its_variable(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION test : DINT
+        VAR
+            x, y : DINT;
+            a : ARRAY[0..1] OF DINT;
+            r : REF_TO DINT := (REF(x));
+            e : REF_TO DINT;
+        END_VAR
+            r^ := 5;
+            e := ((REF(a[1])));
+            e^ := 7;
+            r := (REF(y));
+            r^ := 9;
+            test := x * 100 + a[1] * 10 + y;
+        END_FUNCTION
+    "#;
+    let result: i32 = crate::tests::codegen::run(&mut with_db, source, "test", ());
+    assert_eq!(result, 579);
+}
+
+/// A `REF()` compares with a reference held anywhere, and goes wherever a reference
+/// does. What a reference reads stays a value. Each row runs its steps in a function
+/// with these variables, and then holds.
+#[rstest]
+#[case::an_element(
+    "refs[1] := REF(i);",
+    "refs[1] = REF(i) AND REF(i) = refs[1] AND refs[0] <> REF(i)"
+)]
+#[case::a_field("h1.r := REF(i);", "h1.r = REF(i) AND REF(j) <> h1.r")]
+#[case::a_blocks_output("fb(p := REF(i));", "fb.q = REF(i) AND REF(j) <> fb.q")]
+#[case::through_a_reference(
+    "q := REF(i); pp := REF(q);",
+    "pp^ = REF(i) AND pp = REF(q) AND pp^^ = i"
+)]
+#[case::a_result(
+    "",
+    "make(REF(i)) = REF(i) AND REF(i) = make(REF(i)) AND make(REF(i)) <> REF(j)"
+)]
+#[case::a_global("rg := REF(g);", "rg = REF(g) AND rg <> REF(h) AND REF(g) <> REF(h)")]
+#[case::of_an_element(
+    "r := REF(a[1]);",
+    "r = REF(a[1]) AND REF(a[1]) <> REF(a[2]) AND REF(a[1]) = REF(a[1])"
+)]
+#[case::null(
+    "h1.r := NULL;",
+    "h1.r = NULL AND NULL = h1.r AND REF(i) <> NULL AND NULL <> REF(i)"
+)]
+#[case::in_a_calculation("b := REF(i) = REF(i) AND REF(j) = REF(j);", "b")]
+#[case::inverted("", "NOT (REF(i) = REF(j))")]
+#[case::in_parentheses(
+    "r := REF(i); q := REF(i);",
+    "(r) = (q) AND (REF(i)) = r AND r = (REF(i))"
+)]
+#[case::a_condition("r := REF(i); IF r = REF(i) THEN j := 5; END_IF;", "j = 5")]
+#[case::a_loop("r := REF(i); WHILE r = REF(i) DO r := NULL; END_WHILE;", "r = NULL")]
+#[case::named_values("rk := REF(k);", "rk = REF(k) AND REF(k) = rk AND REF(k) = REF(k)")]
+#[case::a_subrange(
+    "rsu := REF(su);",
+    "rsu = REF(su) AND REF(su) = rsu AND REF(su) <> REF(i)"
+)]
+#[case::a_capacity(
+    "rs4 := REF(s4);",
+    "rs4 = REF(s4) AND REF(s4) = rs4 AND REF(s4) = REF(s4)"
+)]
+#[case::an_instance(
+    "rfb := REF(fb);",
+    "rfb = REF(fb) AND REF(fb) = rfb AND REF(fb) <> REF(fb2)"
+)]
+#[case::as_an_argument("i := 7;", "takes_ref(REF(i)) = 7")]
+#[case::as_a_named_argument("i := 7;", "takes_ref(p := REF(i)) = 7")]
+#[case::as_an_argument_in_parentheses("i := 7;", "takes_ref((REF(i))) = 7")]
+#[case::bound_in_parentheses("r := ((REF(i))); r^ := 5;", "i = 5")]
+#[case::a_read_in_a_calculation("r := REF(i); i := 3; j := r^ + 1;", "j = 4")]
+#[case::a_read_as_a_condition("rb := REF(b); b := TRUE; IF rb^ THEN j := 5; END_IF;", "j = 5")]
+#[case::a_read_as_a_subscript("r := REF(i); i := 2; a[r^] := 9;", "a[2] = 9")]
+#[case::a_read_as_a_selector("r := REF(i); i := 2; CASE r^ OF 2: j := 8; END_CASE;", "j = 8")]
+fn a_ref_goes_where_a_reference_goes(
+    mut with_db: db::RootDatabase,
+    #[case] steps: &str,
+    #[case] holds: &str,
+) {
+    let source = format!(
+        r#"
+        TYPE
+            Sub : INT (0..9);
+            Light : INT (Stop := 1, Go := 2);
+            PInt : REF_TO INT;
+            PP : REF_TO PInt;
+            Holder : STRUCT r : REF_TO INT; n : INT; END_STRUCT;
+        END_TYPE
+
+        CONFIGURATION Cfg
+            VAR_GLOBAL g, h : INT; rg : PInt; END_VAR
+        END_CONFIGURATION
+
+        FUNCTION_BLOCK Fb
+        VAR_INPUT p : REF_TO INT; END_VAR
+        VAR_OUTPUT q : REF_TO INT; END_VAR
+            q := p;
+        END_FUNCTION_BLOCK
+
+        FUNCTION make : PInt
+        VAR_INPUT place : PInt; END_VAR
+            make := place;
+        END_FUNCTION
+
+        FUNCTION takes_ref : INT
+        VAR_INPUT p : REF_TO INT; END_VAR
+            takes_ref := p^;
+        END_FUNCTION
+
+        FUNCTION test : BOOL
+        VAR_EXTERNAL g : INT; h : INT; rg : PInt; END_VAR
+        VAR
+            i, j : INT := 1;
+            k : Light;
+            su : Sub;
+            b : BOOL;
+            s4 : STRING[4];
+            a : ARRAY[0..2] OF INT;
+            h1 : Holder;
+            fb, fb2 : Fb;
+            r, q : PInt;
+            pp : PP;
+            refs : ARRAY[0..1] OF REF_TO INT;
+            rb : REF_TO BOOL;
+            rk : REF_TO Light;
+            rsu : REF_TO Sub;
+            rs4 : REF_TO STRING[4];
+            rfb : REF_TO Fb;
+        END_VAR
+            {steps}
+            test := {holds};
+        END_FUNCTION
+    "#
+    );
+    let result: i32 = crate::tests::codegen::run(&mut with_db, &source, "test", ());
+    assert_eq!(result, 1, "{steps} {holds}");
+}
+
+/// A `REF()` in an initial value: in parentheses, in a struct or an array, and
+/// compared.
+#[rstest]
+fn a_ref_in_an_initial_value(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE Holder : STRUCT r : REF_TO INT; END_STRUCT; END_TYPE
+
+        FUNCTION test : BOOL
+        VAR
+            i, j : INT;
+            p : Holder := (r := (REF(i)));
+            a : ARRAY[0..1] OF REF_TO INT := [(REF(i)), NULL];
+            same : BOOL := REF(i) = REF(i);
+            other : BOOL := REF(i) = REF(j);
+        END_VAR
+            test := p.r = REF(i) AND a[0] = REF(i) AND a[1] = NULL AND same AND NOT other;
+        END_FUNCTION
+    "#;
+    let result: i32 = crate::tests::codegen::run(&mut with_db, source, "test", ());
+    assert_eq!(result, 1);
+}

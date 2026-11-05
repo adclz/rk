@@ -817,3 +817,94 @@ fn a_type_without_parts_is_refused_on_every_path(mut with_db: db::RootDatabase) 
     ----'
     ");
 }
+
+/// A partial access through `THIS` is of the end of the path, and refused for what
+/// that end is, once. Each step was given it: `THIS.n.w.2` asked for a bit of `n`.
+#[rstest]
+#[case::past_a_field(
+    "b := THIS.n.w.16;",
+    "[E1429]",
+    "offset 16 is out of range for type 'WORD'"
+)]
+#[case::past_an_element(
+    "b := THIS.a[1].16;",
+    "[E1429]",
+    "offset 16 is out of range for type 'WORD'"
+)]
+#[case::past_one_step(
+    "b := THIS.w.16;",
+    "[E1429]",
+    "offset 16 is out of range for type 'WORD'"
+)]
+#[case::of_a_struct("b := THIS.n.2;", "[E1431]", "type 'Nest' has no parts to access")]
+#[case::of_an_array(
+    "b := THIS.a.2;",
+    "[E1431]",
+    "type 'ARRAY [0..1] OF WORD' has no parts to access"
+)]
+#[case::of_a_real("b := THIS.n.d.x.0;", "[E1431]", "type 'REAL' has no parts to access")]
+#[case::of_an_element_with_none(
+    "b := THIS.n.rows[0].2;",
+    "[E1431]",
+    "type 'Deep' has no parts to access"
+)]
+#[case::of_no_size("b := THIS.n.w.%Z1;", "[E1418]", "'%Z' names no access size")]
+#[case::a_bit_into_an_int("i := THIS.n.w.2;", "[E0301]", "expected 'INT', got 'BOOL'")]
+#[case::past_an_unknown_field(
+    "b := THIS.n.nothing.2;",
+    "[E0202]",
+    "'Nest' has no field named 'nothing'"
+)]
+#[case::to_an_in_out(
+    "io_bool(THIS.n.w.2);",
+    "[E0806]",
+    "requires a variable, not a slice of one"
+)]
+#[case::to_an_in_out_in_one_step(
+    "io_bool(THIS.w.2);",
+    "[E0806]",
+    "requires a variable, not a slice of one"
+)]
+#[case::to_a_ref(
+    "rb := REF(THIS.n.w.2);",
+    "[E0905]",
+    "REF() takes a variable, not a slice of one"
+)]
+fn invalid_a_partial_access_through_this(
+    mut with_db: db::RootDatabase,
+    #[case] body: &str,
+    #[case] code: &str,
+    #[case] message: &str,
+) {
+    let source = format!(
+        r#"
+TYPE
+    Deep : STRUCT w : WORD; x : REAL; END_STRUCT;
+    Nest : STRUCT w : WORD; d : Deep; rows : ARRAY[0..1] OF Deep; END_STRUCT;
+END_TYPE
+
+FUNCTION io_bool
+VAR_IN_OUT v : BOOL; END_VAR
+    v := TRUE;
+END_FUNCTION
+
+CLASS C
+VAR PUBLIC
+    n : Nest;
+    w : WORD;
+    a : ARRAY[0..1] OF WORD;
+    i : INT;
+    b : BOOL;
+    rb : REF_TO BOOL;
+END_VAR
+    METHOD PUBLIC M
+        {body}
+    END_METHOD
+END_CLASS
+"#
+    );
+    let report = test_diagnostics(&mut with_db, &[&source]);
+    assert_eq!(report.matches(" Error: ").count(), 1, "{report}");
+    assert!(report.contains(code), "{report}");
+    assert!(report.contains(message), "{report}");
+}

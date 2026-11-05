@@ -49,7 +49,7 @@ pub enum LowerTypeError {
     )]
     MemoryTooLarge { size: u64, largest: String },
 
-    /// An instance's or a STRUCT's layout reached back to itself. Only a
+    /// An instance's or a named type's layout reached back to itself. Only a
     /// VAR_IN_OUT member or a `REF_TO` closes such a cycle, a by-value one
     /// being E1302, and the nearest one catches this: it holds an address
     /// whose pointee is typed where it is dereferenced, and named for the
@@ -134,13 +134,31 @@ pub fn lower_type<'db>(
         // to a struct or an array would read as a by-reference parameter,
         // which a REF_TO is not. Its target rides along for the debug
         // tables, where lowering does not look.
-        Type::RefTo(target) => Ok(MirType::Pointer(Box::new(MirType::RefTarget(ref_target(
-            db, target,
-        ))))),
+        Type::RefTo(target) => {
+            let pointer = || {
+                Ok(MirType::Pointer(Box::new(MirType::RefTarget(ref_target(
+                    db, target,
+                )))))
+            };
+            // `TYPE P : REF_TO P`: only the name stops it.
+            match type_name {
+                Some(name) => {
+                    lowered_once(db, salsa::plumbing::AsId::as_id(&target), name, pointer)
+                }
+                None => pointer(),
+            }
+        }
 
         Type::Struct(s) => lower_struct_type_named(db, s, type_name),
 
-        Type::Array(arr) => lower_array_type(db, arr),
+        // `TYPE A : ARRAY[0..1] OF REF_TO A`: only the name stops it, an
+        // array having no STRUCT's or instance's identity to come back to.
+        Type::Array(arr) => match type_name {
+            Some(name) => lowered_once(db, salsa::plumbing::AsId::as_id(&arr), name, || {
+                lower_array_type(db, arr)
+            }),
+            None => lower_array_type(db, arr),
+        },
 
         Type::Enum(e) => lower_enum_type_named(db, e, type_name),
 
@@ -228,8 +246,8 @@ fn apply_sized_string<'db>(
 }
 
 /// What a `REF_TO target` points at. A type that references itself comes
-/// back to the STRUCT or the instance being lowered, which is named instead
-/// of lowered again.
+/// back to the name or the instance being lowered, which is named instead of
+/// lowered again.
 fn ref_target<'db>(
     db: &'db dyn WorkspaceDataBase,
     target: hir::hir_def::expressions::spec::Spec<'db>,
@@ -519,8 +537,8 @@ impl Drop for LayingOut {
     }
 }
 
-/// The type of the instance or the named STRUCT `id`, lowered by `lower`
-/// once per pass. The pass's copy serves again only when nothing its
+/// The type of the instance or the named type `id`, lowered by `lower` once
+/// per pass. The pass's copy serves again only when nothing its
 /// lowering reached is being lowered now: a `REF_TO` back to one of those
 /// is named instead of lowered, so the type then differs.
 fn lowered_once(
