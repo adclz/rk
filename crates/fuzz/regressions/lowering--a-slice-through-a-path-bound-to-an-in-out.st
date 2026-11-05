@@ -1,0 +1,24 @@
+TYPE
+    Rec : STRUCT w : WORD; END_STRUCT;
+END_TYPE
+
+FUNCTION set_it
+VAR_IN_OUT v : BOOL; END_VAR
+    v := TRUE;
+END_FUNCTION
+
+PROGRAM Main
+VAR
+    rec : Rec;
+    list : ARRAY[0..1] OF WORD;
+END_VAR
+    set_it(rec.w.2);
+    set_it(list[1].2);
+END_PROGRAM
+
+CONFIGURATION Cfg
+    RESOURCE Res ON CPU
+        TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM P1 WITH T : Main;
+    END_RESOURCE
+END_CONFIGURATION
