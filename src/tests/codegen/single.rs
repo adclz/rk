@@ -416,6 +416,8 @@ fn a_single_reads_a_bit_of_a_wider_address(
 #[case::a_retained_global("kept.%X5", "kept", 0, 5, 0x0020)]
 #[case::a_retained_output("Held.word.%X13", "Held.word", 1, 5, 0x2000)]
 #[case::a_located_global("sensors.%X10", "sensors", 1, 2, 0x0400)]
+#[case::named_values("named.%X10", "named", 1, 2, 0x0400)]
+#[case::named_values_on_an_integer("light.3", "light", 0, 3, 0x0008)]
 fn a_single_reads_a_bit_of_a_variable(
     mut with_db: db::RootDatabase,
     #[case] written: &str,
@@ -427,6 +429,8 @@ fn a_single_reads_a_bit_of_a_variable(
     let source = format!(
         r#"
         TYPE Flags : STRUCT pad : LREAL; word : WORD; END_STRUCT; END_TYPE
+        TYPE Bits : WORD (A := 1, B := 2); END_TYPE
+        TYPE Light : INT (Red := 1, Green := 2); END_TYPE
 
         FUNCTION_BLOCK Fb
         VAR_OUTPUT pad : DINT; word : WORD; END_VAR
@@ -453,6 +457,8 @@ fn a_single_reads_a_bit_of_a_variable(
                 list : ARRAY[0..1] OF WORD;
                 timer : Fb;
                 sensors AT %IW4 : WORD;
+                named : Bits := 0;
+                light : Light := 0;
             END_VAR
             VAR_GLOBAL RETAIN kept : WORD; END_VAR
             RESOURCE Res ON CPU
