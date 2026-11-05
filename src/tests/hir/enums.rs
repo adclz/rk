@@ -351,7 +351,11 @@ fn invalid_value_past_the_storage(mut with_db: RootDatabase) {
     "[E0302]",
     "cannot compare 'Light' with 'Paint#Blue'"
 )]
-#[case::a_plain_enum_as_a_subscript("list[c] := 1;", "[E0504]", "not an integer")]
+#[case::a_plain_enum_as_a_subscript(
+    "list[c] := 1;",
+    "[E0504]",
+    "the index is 'Plain', not an integer"
+)]
 #[case::a_plain_enum_as_a_counter(
     "FOR c := 1 TO 3 DO i := 1; END_FOR;",
     "[E1206]",
