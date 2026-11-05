@@ -625,3 +625,71 @@ END_FUNCTION_BLOCK
     ----'
     ");
 }
+
+/// A name is all that stops these: an array has no identity of its own to come
+/// back to, and lowering one followed the reference until the stack ran out.
+#[rstest]
+#[case::an_array_of_references_to_itself("A : ARRAY[0..1] OF REF_TO A;", "A")]
+#[case::two_dimensions("A : ARRAY[0..1, 0..1] OF REF_TO A;", "A")]
+#[case::a_reference_to_itself("P : REF_TO P;", "P")]
+#[case::a_reference_to_a_reference("P : REF_TO Q; Q : REF_TO P;", "P")]
+#[case::through_a_second_name("A : ARRAY[0..1] OF Q; Q : REF_TO A;", "A")]
+#[case::through_an_alias("A : B; B : ARRAY[0..1] OF REF_TO A;", "A")]
+#[case::an_array_of_arrays("A : ARRAY[0..1] OF B; B : ARRAY[0..1] OF REF_TO A;", "A")]
+#[case::a_struct_with_a_name("A : ARRAY[0..1] OF E; E : STRUCT again : REF_TO A; END_STRUCT;", "A")]
+fn valid_a_name_a_reference_comes_back_to(
+    mut with_db: RootDatabase,
+    #[case] types: &str,
+    #[case] held: &str,
+) {
+    let source = format!(
+        "TYPE {types} END_TYPE\nPROGRAM Main\nVAR v : {held}; w : REF_TO {held}; END_VAR\nEND_PROGRAM\n"
+    );
+    assert_snapshot!(test_diagnostics(&mut with_db, &[&source]), @r"");
+}
+
+/// Types that come back to themselves are still compared: one declaration is one
+/// type, and two are two however alike they are.
+#[rstest]
+#[case::two_references("p1 := pa;", "[E0301]", "expected 'P', got 'Pa'")]
+#[case::two_that_hold_each_other("pa := qa;", "[E0301]", "expected 'Pa', got 'Qa'")]
+#[case::a_reference_to_an_array("p1 := REF(a1);", "[E0301]", "expected 'P', got 'REF_TO A'")]
+#[case::a_reference_to_a_reference("a1[0] := REF(p1);", "[E0301]", "got 'REF_TO P'")]
+#[case::two_arrays("a1 := b1;", "[E0301]", "expected 'A', got 'B'")]
+#[case::compared("b := p1 = pa;", "[E0302]", "cannot compare 'P' with 'Pa'")]
+#[case::an_array_of_them("aa[1][0] := REF(aa);", "[E0301]", "got 'REF_TO ARRAY")]
+fn invalid_two_types_that_come_back_to_themselves(
+    mut with_db: RootDatabase,
+    #[case] body: &str,
+    #[case] code: &str,
+    #[case] message: &str,
+) {
+    let source = format!(
+        r#"
+TYPE
+    A : ARRAY[0..1] OF REF_TO A;
+    P : REF_TO P;
+    Pa : REF_TO Qa;
+    Qa : REF_TO Pa;
+    B : ARRAY[0..1] OF Qb;
+    Qb : REF_TO B;
+END_TYPE
+
+FUNCTION F
+VAR
+    a1 : A;
+    p1 : P;
+    pa : Pa;
+    qa : Qa;
+    b1 : B;
+    aa : ARRAY[0..1] OF A;
+    b : BOOL;
+END_VAR
+    {body}
+END_FUNCTION
+"#
+    );
+    let report = test_diagnostics(&mut with_db, &[&source]);
+    assert!(report.contains(code), "{report}");
+    assert!(report.contains(message), "{report}");
+}
