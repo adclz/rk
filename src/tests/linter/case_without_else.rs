@@ -134,6 +134,66 @@ fn every_enum_variant_handled(mut with_db: RootDatabase) {
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "case-without-else"), @r"");
 }
 
+/// A type with a base holds more than the names of its values: naming them all
+/// leaves the other numbers with no branch.
+#[rstest]
+fn every_name_of_a_type_with_a_base_handled(mut with_db: RootDatabase) {
+    let source = r#"
+        TYPE Light : INT (Red := 1, Green := 2); END_TYPE
+
+        FUNCTION test : INT
+        VAR c : Light; END_VAR
+            CASE c OF
+                Light#Red: test := 1;
+                Light#Green: test := 2;
+            END_CASE;
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "case-without-else"), @r"
+    [L0209] Info: CASE without ELSE
+       ,-[ file:///test0.st:6:13 ]
+       |
+     6 | ,->             CASE c OF
+       : :
+     9 | |->             END_CASE;
+       | |
+       | `--------------------------- CASE statement has no ELSE branch
+       |
+       |     Note: lint rule: case-without-else
+    ---'
+    ");
+}
+
+/// The variants left out are named, on a type with a base too.
+#[rstest]
+fn missing_names_of_a_type_with_a_base_named(mut with_db: RootDatabase) {
+    let source = r#"
+        TYPE Light : INT (Red := 1, Green := 2); END_TYPE
+
+        FUNCTION test : INT
+        VAR c : Light; END_VAR
+            CASE c OF
+                Light#Red: test := 1;
+            END_CASE;
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "case-without-else"), @r"
+    [L0209] Info: CASE without ELSE
+       ,-[ file:///test0.st:6:13 ]
+       |
+     6 | ,->             CASE c OF
+       : :
+     8 | |->             END_CASE;
+       | |
+       | `--------------------------- CASE statement does not handle 'Light#Green'
+       |
+       |     Help: add a branch for it, or an ELSE branch
+       |
+       |     Note: lint rule: case-without-else
+    ---'
+    ");
+}
+
 /// The variants left out are named.
 #[rstest]
 fn missing_enum_variants_named(mut with_db: RootDatabase) {
