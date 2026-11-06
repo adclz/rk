@@ -78,7 +78,7 @@ pub fn const_int<'db>(
         Type::Variable((decl, None)) => Some(decl),
         _ => None,
     };
-    fold(db, expr, &bind, &mut Vec::new()).map(|folded| folded.value)
+    fold(db, expr, &bind, &mut Folds::default()).map(|folded| folded.value)
 }
 
 /// An operation on constants whose result the type it runs at cannot hold.
@@ -109,7 +109,7 @@ pub fn overflow<'db>(
     // An operand, or `None` when it does not fold or wrapped inside.
     let operand = |e| {
         let mut wrapped = false;
-        let folded = fold_tracking(db, e, bind, &mut Vec::new(), &mut wrapped)?;
+        let folded = fold_tracking(db, e, bind, &mut Folds::default(), &mut wrapped)?;
         (!wrapped).then_some(folded)
     };
     let fits = |operand: Folded, ty| {
@@ -170,7 +170,13 @@ pub fn overflow<'db>(
 /// query, so this is callable from anywhere — a diagnostic message rendered
 /// inside `infer_initialization` included.
 pub fn spec_value<'db>(db: &'db dyn WorkspaceDataBase, expr: Expr<'db>) -> Option<i128> {
-    fold(db, expr, &|va| spec_name_binding(db, va), &mut Vec::new()).map(|folded| folded.value)
+    fold(
+        db,
+        expr,
+        &|va| spec_name_binding(db, va),
+        &mut Folds::default(),
+    )
+    .map(|folded| folded.value)
 }
 
 /// [`spec_value`] in the 64 bits a bound is counted in. A ULINT above
@@ -274,32 +280,66 @@ fn integer_layout(ty: ElementarySpec) -> Option<(u32, bool)> {
     })
 }
 
-/// What a fold is in the middle of: a CONSTANT's initializer, or the value
-/// written for a named value (`Two := Step#One + 1`). Either reached again is
-/// a cycle, which does not fold.
-#[derive(Clone, Copy, PartialEq, Eq)]
+/// A CONSTANT, or the value written for a named value (`Two := Step#One + 1`):
+/// what a fold folds where it is written, wherever it is named.
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 enum Folding<'db> {
     Constant(VariableDecl<'db>),
     Value(Expr<'db>),
+}
+
+/// What one fold has met so far.
+#[derive(Default)]
+struct Folds<'db> {
+    /// Those it is in the middle of. One reached again is a cycle, which does
+    /// not fold: `k1 := k2; k2 := k1` recursed to a stack overflow.
+    pending: Vec<Folding<'db>>,
+    /// Those it has folded, each once however often it is named. Folded again
+    /// at each name, a chain of values that each name the two before them took
+    /// exponential time.
+    done: rustc_hash::FxHashMap<Folding<'db>, Option<Folded>>,
+}
+
+impl<'db> Folds<'db> {
+    /// What `what` is written as, folded. `None` when it does not fold, or
+    /// when it is a cycle: the fold is already in the middle of it.
+    fn written(&mut self, db: &'db dyn WorkspaceDataBase, what: Folding<'db>) -> Option<Folded> {
+        if let Some(done) = self.done.get(&what) {
+            return *done;
+        }
+        if self.pending.contains(&what) {
+            return None;
+        }
+        let written = match what {
+            Folding::Constant(decl) => constant_init(db, decl)?,
+            Folding::Value(value) => value,
+        };
+        self.pending.push(what);
+        // Its names bind where it is written, wherever it is named.
+        let folded = fold(db, written, &|va| spec_name_binding(db, va), self);
+        self.pending.pop();
+        // Kept when it is `None` too. A value that came back to one in progress
+        // is part of a cycle, or names one, and does not fold whichever is
+        // folded first.
+        self.done.insert(what, folded);
+        folded
+    }
 }
 
 fn fold<'db>(
     db: &'db dyn WorkspaceDataBase,
     expr: Expr<'db>,
     bind: &dyn Fn(VariableAccess<'db>) -> Option<VariableDecl<'db>>,
-    visited: &mut Vec<Folding<'db>>,
+    folds: &mut Folds<'db>,
 ) -> Option<Folded> {
-    fold_tracking(db, expr, bind, visited, &mut false)
+    fold_tracking(db, expr, bind, folds, &mut false)
 }
 
 fn fold_tracking<'db>(
     db: &'db dyn WorkspaceDataBase,
     expr: Expr<'db>,
     bind: &dyn Fn(VariableAccess<'db>) -> Option<VariableDecl<'db>>,
-    // The chain of CONSTANTs and named values already being evaluated:
-    // `k1 := k2; k2 := k1` used to recurse to a stack overflow (SIGABRT, no
-    // diagnostic) — a cycle simply does not fold.
-    visited: &mut Vec<Folding<'db>>,
+    folds: &mut Folds<'db>,
     // Set when an operation's exact result differs from what it holds.
     wrapped: &mut bool,
 ) -> Option<Folded> {
@@ -328,10 +368,10 @@ fn fold_tracking<'db>(
             }
         }
         ExprKind::PrimaryExpr(PrimaryExpr::ParenthesizedExpr { expr }) => {
-            fold_tracking(db, *expr, bind, visited, wrapped)
+            fold_tracking(db, *expr, bind, folds, wrapped)
         }
         ExprKind::UnaryOperator { expr, operator } => {
-            let operand = fold_tracking(db, *expr, bind, visited, wrapped)?;
+            let operand = fold_tracking(db, *expr, bind, folds, wrapped)?;
             match operator {
                 UnaryOperatorKind::Plus => Some(operand),
                 UnaryOperatorKind::Minus => noted(
@@ -347,23 +387,15 @@ fn fold_tracking<'db>(
         }
         ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess(va)) => {
             let decl = bind(*va)?;
-            let init = constant_init(db, decl)?;
-            if visited.contains(&Folding::Constant(decl)) {
-                return None;
-            }
-            visited.push(Folding::Constant(decl));
-            // The initializer is written where the CONSTANT is declared, and
-            // its names bind there, wherever the CONSTANT is used.
-            let value = fold(db, init, &|va| spec_name_binding(db, va), visited);
-            visited.pop();
+            let value = folds.written(db, Folding::Constant(decl))?;
             // At its declared type, as the program stores it.
-            Folded::at(value?.value, declared_integer(db, decl.spec(db), 0)?)
+            Folded::at(value.value, declared_integer(db, decl.spec(db), 0)?)
         }
         // A name of a type with named values is its number, at the type's base.
         // A plain enum's has none.
         ExprKind::PrimaryExpr(PrimaryExpr::EnumValue { name, variant }) => {
             let (values, base) = named_values_of(db, *name)?;
-            let value = named_value(db, values, variant.ident(db), visited)?;
+            let value = named_value(db, values, variant.ident(db), folds)?;
             Folded::at(i128::from(value), base)
         }
         ExprKind::AddOperator {
@@ -372,8 +404,8 @@ fn fold_tracking<'db>(
             right,
         } => {
             let (l, r) = (
-                fold_tracking(db, *left, bind, visited, wrapped)?,
-                fold_tracking(db, *right, bind, visited, wrapped)?,
+                fold_tracking(db, *left, bind, folds, wrapped)?,
+                fold_tracking(db, *right, bind, folds, wrapped)?,
             );
             let value = match operator {
                 AddOperatorKind::Plus => l.value.wrapping_add(r.value),
@@ -387,8 +419,8 @@ fn fold_tracking<'db>(
             right,
         } => {
             let (l, r) = (
-                fold_tracking(db, *left, bind, visited, wrapped)?,
-                fold_tracking(db, *right, bind, visited, wrapped)?,
+                fold_tracking(db, *left, bind, folds, wrapped)?,
+                fold_tracking(db, *right, bind, folds, wrapped)?,
             );
             let value = match operator {
                 MultOperatorKind::Mul => l.value.wrapping_mul(r.value),
@@ -405,8 +437,8 @@ fn fold_tracking<'db>(
             right,
         } => {
             let (l, r) = (
-                fold_tracking(db, *left, bind, visited, wrapped)?,
-                fold_tracking(db, *right, bind, visited, wrapped)?,
+                fold_tracking(db, *left, bind, folds, wrapped)?,
+                fold_tracking(db, *right, bind, folds, wrapped)?,
             );
             let value = match operator {
                 BooleanOperatorKind::And => l.value & r.value,
@@ -505,7 +537,7 @@ fn named_value<'db>(
     db: &'db dyn WorkspaceDataBase,
     values: crate::hir_def::expressions::spec::Enum<'db>,
     variant: crate::hir_def::interned::identifier::Ident,
-    visited: &mut Vec<Folding<'db>>,
+    folds: &mut Folds<'db>,
 ) -> Option<i64> {
     use crate::hir_ty::infer::Infer;
     let variants = values.variants(db);
@@ -521,13 +553,7 @@ fn named_value<'db>(
         // None written up to it: counted from 0.
         return i64::try_from(index).ok();
     };
-    if visited.contains(&Folding::Value(value)) {
-        return None;
-    }
-    visited.push(Folding::Value(value));
-    let folded = fold(db, value, &|va| spec_name_binding(db, va), visited);
-    visited.pop();
-    let folded = folded?.value;
+    let folded = folds.written(db, Folding::Value(value))?.value;
     let storage = values.typ(db).map(|spec| spec.infer(db));
     let folded = storage.map_or(folded, |ty| held_as(db, folded, ty));
     let after = i64::try_from(index - written).ok()?;
