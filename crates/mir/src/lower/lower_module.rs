@@ -1754,7 +1754,8 @@ fn rewrite_globals_expr(
                 }
             }
         }
-        MirExpr::Constant(_) | MirExpr::StringLiteral { .. } => {}
+        // A shared value is a constant: no place in it.
+        MirExpr::Constant(_) | MirExpr::StringLiteral { .. } | MirExpr::Shared(_) => {}
     }
 }
 

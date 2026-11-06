@@ -85,6 +85,22 @@ pub enum MirExpr {
         /// Length in bytes.
         len: u32,
     },
+
+    /// A CONSTANT's value, the same `Arc` wherever the value being folded
+    /// names it: codegen computes it into a local of the function the first
+    /// time it is reached, and reads that local after.
+    Shared(std::sync::Arc<MirShared>),
+}
+
+/// The value behind [`MirExpr::Shared`]: a constant, with no place and no
+/// call in it, so nothing rewrites it or looks in it for one. A walk that
+/// looks in it does so once ([`MirExpr::any`]): reached once per path to it,
+/// a chain of shared values is walked an exponential number of times.
+#[derive(Debug)]
+pub struct MirShared {
+    pub value: MirExpr,
+    /// The local's type.
+    pub ty: MirType,
 }
 
 /// A call expression (also usable as statement via MirStmt::Call).
@@ -225,6 +241,7 @@ impl MirExpr {
             MirExpr::CopyIntoScratch { src, .. } | MirExpr::StringSnapshot { src, .. } => {
                 src.has_call()
             }
+            MirExpr::Shared(_) => false,
         }
     }
 }
@@ -247,15 +264,25 @@ impl MirExpr {
             MirExpr::CopyIntoScratch { src, .. } | MirExpr::StringSnapshot { src, .. } => {
                 src.reaches_place_with_call()
             }
-            MirExpr::Constant(_) | MirExpr::StringLiteral { .. } => false,
+            MirExpr::Shared(_) | MirExpr::Constant(_) | MirExpr::StringLiteral { .. } => false,
         }
     }
 }
 
 impl MirExpr {
     /// Whether `f` holds for this expression or one inside it, the subscripts
-    /// of its places included.
+    /// of its places included. A shared value is looked in once, wherever
+    /// else it is reached.
     pub fn any<F: FnMut(&MirExpr) -> bool>(&self, f: &mut F) -> bool {
+        self.any_once(f, &mut rustc_hash::FxHashSet::default())
+    }
+
+    /// [`MirExpr::any`]; `seen` holds the shared values already looked in.
+    fn any_once<F: FnMut(&MirExpr) -> bool>(
+        &self,
+        f: &mut F,
+        seen: &mut rustc_hash::FxHashSet<*const MirShared>,
+    ) -> bool {
         if f(self) {
             return true;
         }
@@ -264,12 +291,15 @@ impl MirExpr {
                 place.any_expr(f)
             }
             MirExpr::Call(call) => call.any_expr(f),
-            MirExpr::BinOp { lhs, rhs, .. } => lhs.any(f) || rhs.any(f),
+            MirExpr::BinOp { lhs, rhs, .. } => lhs.any_once(f, seen) || rhs.any_once(f, seen),
             MirExpr::UnaryOp { expr, .. }
             | MirExpr::Cast { expr, .. }
-            | MirExpr::PackElement { index: expr, .. } => expr.any(f),
+            | MirExpr::PackElement { index: expr, .. } => expr.any_once(f, seen),
             MirExpr::CopyIntoScratch { src, .. } | MirExpr::StringSnapshot { src, .. } => {
-                src.any(f)
+                src.any_once(f, seen)
+            }
+            MirExpr::Shared(shared) => {
+                seen.insert(std::sync::Arc::as_ptr(shared)) && shared.value.any_once(f, seen)
             }
             MirExpr::Constant(_) | MirExpr::StringLiteral { .. } => false,
         }
@@ -296,7 +326,8 @@ impl MirExpr {
             MirExpr::CopyIntoScratch { src, .. } | MirExpr::StringSnapshot { src, .. } => {
                 src.exprs_mut(f)
             }
-            MirExpr::Constant(_) | MirExpr::StringLiteral { .. } => {}
+            // A constant: no place, no call, nothing to rewrite.
+            MirExpr::Shared(_) | MirExpr::Constant(_) | MirExpr::StringLiteral { .. } => {}
         }
         f(self);
     }

@@ -1820,7 +1820,8 @@ impl InitOwner {
 fn rebase_this(expr: &mut crate::expr::MirExpr, instance: &crate::expr::MirPlace) {
     use crate::expr::MirExpr;
     match expr {
-        MirExpr::Constant(_) | MirExpr::StringLiteral { .. } => {}
+        // A shared value is a constant: no place in it.
+        MirExpr::Constant(_) | MirExpr::StringLiteral { .. } | MirExpr::Shared(_) => {}
         MirExpr::Load(place, _) | MirExpr::AddrOf(place) | MirExpr::StringCapacity(place) => {
             rebase_this_place(place, instance)
         }
@@ -2263,6 +2264,8 @@ fn is_const_value(e: &crate::expr::MirExpr) -> bool {
         MirExpr::BinOp { lhs, rhs, .. } => is_const_value(lhs) && is_const_value(rhs),
         MirExpr::UnaryOp { expr, .. } => is_const_value(expr),
         MirExpr::Cast { expr, .. } => is_const_value(expr),
+        // A folded constant, with no load and no call (`lower_named_constant`).
+        MirExpr::Shared(_) => true,
         MirExpr::Load(..)
         | MirExpr::Call(_)
         | MirExpr::AddrOf(_)
