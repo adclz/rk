@@ -861,3 +861,125 @@ fn the_standard_functions_take_named_values(mut with_db: db::RootDatabase) {
         panic!("{} is false", holds[failed as usize - 1]);
     }
 }
+
+/// A name of a type with named values is a constant of its base, wherever a
+/// constant is needed. Each row is a program whose `test` holds. A name did not
+/// fold: these were refused, and a CASE label that is a CONSTANT of such a type
+/// stopped the compiler.
+#[rstest]
+#[case::a_constant(
+    "FUNCTION test : BOOL VAR CONSTANT k : INT := Light#Red + 1; END_VAR test := k = 2; END_FUNCTION"
+)]
+#[case::a_negated_constant(
+    "FUNCTION test : BOOL VAR CONSTANT k : INT := -Light#Green; END_VAR test := k = -3; END_FUNCTION"
+)]
+#[case::a_constant_of_the_type(
+    "FUNCTION test : BOOL VAR CONSTANT k : Light := Light#Green * 2; END_VAR test := k = 6; END_FUNCTION"
+)]
+#[case::through_an_alias(
+    "FUNCTION test : BOOL VAR CONSTANT k : INT := Alias#Amber + 1; END_VAR test := k = 3; END_FUNCTION"
+)]
+#[case::as_the_storage_holds_it(
+    "TYPE Small : SINT (Low := 16#FF); END_TYPE
+     FUNCTION test : BOOL VAR CONSTANT k : SINT := Small#Low; END_VAR test := k = -1; END_FUNCTION"
+)]
+#[case::an_array_bound(
+    "FUNCTION test : BOOL VAR a : ARRAY[Light#Red..Light#Green] OF INT; END_VAR
+         a[3] := 7; test := a[3] = 7;
+     END_FUNCTION"
+)]
+#[case::an_array_type_bound(
+    "TYPE Row : ARRAY[Light#Red..Light#Green] OF INT; END_TYPE
+     FUNCTION test : BOOL VAR a : Row; END_VAR a[1] := 7; test := a[1] = 7; END_FUNCTION"
+)]
+#[case::a_bound_from_a_constant_of_the_type(
+    "FUNCTION test : BOOL
+     VAR CONSTANT k : Light := 2; END_VAR
+     VAR a : ARRAY[0..k] OF INT; END_VAR
+         a[2] := 7; test := a[2] = 7;
+     END_FUNCTION"
+)]
+#[case::a_bound_from_a_global_constant(
+    "CONFIGURATION Cfg VAR_GLOBAL CONSTANT g : INT := Light#Red + 1; END_VAR END_CONFIGURATION
+     FUNCTION test : BOOL
+     VAR_EXTERNAL CONSTANT g : INT; END_VAR
+     VAR a : ARRAY[0..g] OF INT; END_VAR
+         a[2] := 7; test := a[2] = 7;
+     END_FUNCTION"
+)]
+#[case::a_strings_length(
+    "FUNCTION test : BOOL VAR s : STRING[Light#Green]; long : STRING := 'abcd'; END_VAR
+         s := long; test := s = 'abc';
+     END_FUNCTION"
+)]
+#[case::a_subranges_bounds(
+    "FUNCTION test : BOOL VAR r : INT (Light#Red..Light#Green); END_VAR r := 2; test := r = 2; END_FUNCTION"
+)]
+#[case::another_types_values(
+    "TYPE Next : INT (First := Light#Green, Second := Light#Green + 1, Third); END_TYPE
+     FUNCTION test : BOOL test := Next#First = 3 AND Next#Second = 4 AND Next#Third = 5; END_FUNCTION"
+)]
+#[case::its_own_values(
+    "TYPE Step : INT (One := 1, Two := Step#One + 1); END_TYPE
+     FUNCTION test : BOOL test := Step#Two = 2; END_FUNCTION"
+)]
+#[case::a_calculated_label(
+    "FUNCTION test : BOOL VAR m : Light := 2; END_VAR
+         CASE m OF Light#Red + 1: test := TRUE; END_CASE;
+     END_FUNCTION"
+)]
+#[case::a_range_of_labels(
+    "FUNCTION test : BOOL VAR m : Light := 2; END_VAR
+         CASE m OF Light#Red..Light#Green: test := TRUE; END_CASE;
+     END_FUNCTION"
+)]
+#[case::a_label_from_a_constant_of_the_type(
+    "FUNCTION test : BOOL
+     VAR CONSTANT k : Light := 2; END_VAR
+     VAR m : Light := 2; END_VAR
+         CASE m OF k: test := TRUE; END_CASE;
+     END_FUNCTION"
+)]
+#[case::a_step(
+    "FUNCTION test : BOOL VAR i, n : INT; END_VAR
+         FOR i := 1 TO 9 BY Light#Amber DO n := n + 1; END_FOR;
+         test := n = 5;
+     END_FUNCTION"
+)]
+#[case::an_initial_index(
+    "FUNCTION test : BOOL VAR a : ARRAY[0..4] OF INT := [[Light#Amber] := 7]; END_VAR test := a[2] = 7; END_FUNCTION"
+)]
+#[case::an_initial_index_from_a_constant_of_the_type(
+    "FUNCTION test : BOOL
+     VAR CONSTANT k : Light := 3; END_VAR
+     VAR a : ARRAY[0..4] OF INT := [[k] := 7]; END_VAR
+         test := a[3] = 7;
+     END_FUNCTION"
+)]
+#[case::initial_values_at_their_types(
+    "FUNCTION test : BOOL
+     VAR x : REAL := Light#Green; l : LINT := Light#Green; d : DINT := Light#Red + 1; m : Light := Light#Green; END_VAR
+         test := x = 3.0 AND l = 3 AND d = 2 AND m = 3;
+     END_FUNCTION"
+)]
+#[case::field_defaults_at_their_types(
+    "TYPE Held : STRUCT m : Light := Light#Green; x : REAL := Light#Amber; END_STRUCT; END_TYPE
+     FUNCTION test : BOOL VAR h : Held; END_VAR test := h.m = 3 AND h.x = 2.0; END_FUNCTION"
+)]
+#[case::elements_at_their_types(
+    "FUNCTION test : BOOL
+     VAR a : ARRAY[0..1] OF REAL := [Light#Red, Light#Green]; b : ARRAY[0..1] OF Light := [Light#Green, 7]; END_VAR
+         test := a[0] = 1.0 AND a[1] = 3.0 AND b[0] = 3 AND b[1] = 7;
+     END_FUNCTION"
+)]
+#[case::a_plain_enum_initial(
+    "TYPE Color : (Red, Green); END_TYPE
+     FUNCTION test : BOOL VAR c : Color := Color#Green; END_VAR test := c = Color#Green; END_FUNCTION"
+)]
+fn a_named_value_is_a_constant(mut with_db: db::RootDatabase, #[case] program: &str) {
+    let source = format!(
+        "TYPE Light : INT (Red := 1, Amber := 2, Green := 3); Alias : Light; END_TYPE\n{program}"
+    );
+    let result: i32 = crate::tests::codegen::run(&mut with_db, &source, "test", ());
+    assert_eq!(result, 1, "{program}");
+}
