@@ -94,3 +94,46 @@ fn invalid_negative_string_length(mut with_db: RootDatabase) {
     ---'
     ");
 }
+
+// A bit operation is checked as the value it folds to: a subscript past the
+// bounds, an upper bound below the lower. An untyped literal has no width, so
+// `NOT` flips every bit of the number: `NOT 16#FFF0` is -65521, a negative
+// length. None of them folded: the bounds and the length were refused as not
+// constant, and the subscript ran past the array.
+#[rstest]
+fn invalid_a_bit_operation_is_checked_as_its_value(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION fn1 : INT
+        VAR
+            a : ARRAY[0..9] OF INT;
+            b : ARRAY[1..(16#0F AND 16#F0)] OF INT;
+            s : STRING[NOT 16#FFF0];
+        END_VAR
+            a[16#F0 OR 16#0F] := 1;
+            fn1 := 1;
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0503] Error: upper bound below the lower bound
+       ,-[ file:///test0.st:5:26 ]
+       |
+     5 |             b : ARRAY[1..(16#0F AND 16#F0)] OF INT;
+       |                          ^^^^^^^^|^^^^^^^^
+       |                                  `---------- the upper bound 0 is below the lower bound 1
+    ---'
+    [E0320] Error: negative STRING length
+       ,-[ file:///test0.st:6:24 ]
+       |
+     6 |             s : STRING[NOT 16#FFF0];
+       |                        ^^^^^|^^^^^
+       |                             `------- the length is -65521: it cannot be negative
+    ---'
+    [E0506] Error: constant index out of bounds
+       ,-[ file:///test0.st:8:15 ]
+       |
+     8 |             a[16#F0 OR 16#0F] := 1;
+       |               ^^^^^^^|^^^^^^
+       |                      `-------- index 255 is out of bounds (the dimension is declared 0..9)
+    ---'
+    ");
+}
