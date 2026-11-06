@@ -3242,12 +3242,15 @@ impl<'db> ExprLowerCtx<'db> {
             })
     }
 
-    /// An initial value, stored in a slot of type `ty`. Folded in the
-    /// acceptance order of `init_leaf_is_constant`: integer arithmetic over
-    /// literals and CONSTANTs (an I64 under a Cast to the slot's lane), then
-    /// a pure CONSTANT chain, whose end is lowered. A constant names nothing
-    /// in a frame, so it lowers the same in the caller as in the callee:
-    /// this is also what an omitted input's default becomes.
+    /// An initial value, stored in a slot of type `ty`. Folded as
+    /// `init_leaf_is_constant` accepts it: integer arithmetic over literals
+    /// and CONSTANTs (an I64 under a Cast to the slot's lane), then REAL
+    /// arithmetic, each CONSTANT in it its value, then a pure CONSTANT chain,
+    /// whose end is lowered. REAL comes before the chain: a chain ending in
+    /// `k0 * 2.0` would lower `k0` as a read, which a value `__init` stores
+    /// may not hold. A constant names nothing in a frame, so it lowers the
+    /// same in the caller as in the callee: this is also what an omitted
+    /// input's default becomes.
     pub(crate) fn lower_leaf_value(
         &self,
         value: Expr<'db>,
@@ -3273,13 +3276,13 @@ impl<'db> ExprLowerCtx<'db> {
                 },
                 None => folded,
             }
-        } else if let Some(end) = const_eval::resolve_constant_ref(self.db, value) {
-            self.lower_expr(end)?
         } else if const_eval::real_folds(self.db, value) {
             let folding = self.fold_constants.replace(true);
             let lowered = self.lower_expr(value);
             self.fold_constants.set(folding);
             lowered?
+        } else if let Some(end) = const_eval::resolve_constant_ref(self.db, value) {
+            self.lower_expr(end)?
         } else {
             self.lower_expr(value)?
         };
