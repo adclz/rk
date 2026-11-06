@@ -447,12 +447,19 @@ END_FUNCTION
     );
 }
 
-/// A name folds as long as its value does: a value that names its own type, or a
-/// type naming it back, is no constant. An enum with no base type has no number to
-/// fold, and a folded name is held to the bounds it meets.
+/// A name folds as long as its value does: a value that comes back to itself,
+/// through a value counted from it or through another type, is no constant. An
+/// enum with no base type has no number to fold, and a folded name is held to the
+/// bounds it meets.
 #[rstest]
 #[case::two_values_naming_each_other(
     "TYPE Loop : INT (A := Loop#B, B := Loop#A); END_TYPE",
+    "[E0604]"
+)]
+// C is B plus one, so B is C plus ten is B plus eleven. It was accepted, and the
+// program held B as 16 and C as 17.
+#[case::a_value_naming_one_counted_from_it(
+    "TYPE Loop : INT (A := 5, B := Loop#C + 10, C); END_TYPE",
     "[E0604]"
 )]
 #[case::two_types_naming_each_other(
