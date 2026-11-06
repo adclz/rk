@@ -936,6 +936,12 @@ fn the_standard_functions_take_named_values(mut with_db: db::RootDatabase) {
     "TYPE Small : SINT (Low := 16#FF); END_TYPE
      FUNCTION test : BOOL VAR CONSTANT k : SINT := Small#Low; END_VAR test := k = -1; END_FUNCTION"
 )]
+#[case::above_the_largest_lint(
+    "TYPE Big : ULINT (Top := 16#FFFF_FFFF_FFFF_FFFF, Half := Big#Top / 2); END_TYPE
+     FUNCTION test : BOOL VAR u : Big := Big#Top; END_VAR
+         CASE u OF Big#Top: test := Big#Half = 16#7FFF_FFFF_FFFF_FFFF; END_CASE;
+     END_FUNCTION"
+)]
 #[case::an_array_bound(
     "FUNCTION test : BOOL VAR a : ARRAY[Light#Red..Light#Green] OF INT; END_VAR
          a[3] := 7; test := a[3] = 7;
