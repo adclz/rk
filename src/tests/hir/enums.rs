@@ -255,13 +255,11 @@ fn invalid_enum_type_default_of_another_enum(mut with_db: RootDatabase) {
     [E0301] Error: type mismatch
        ,-[ file:///test0.st:5:27 ]
        |
-     3 |             Color : (Red, Green, Blue);
-       |             ^^|^^
-       |               `---- 'Color' is declared here
-       |
      5 |             Shade : Color := Other#Red;
-       |                           ^^^^^^|^^^^^
-       |                                 `------- expected 'Color', got 'Other#Red'
+       |             ^^|^^         ^^^^^^|^^^^^
+       |               `------------------------- 'Shade' is declared here
+       |                                 |
+       |                                 `------- expected 'Shade', got 'Other#Red'
     ---'
     ");
 }

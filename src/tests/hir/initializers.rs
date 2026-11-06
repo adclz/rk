@@ -397,9 +397,9 @@ fn invalid_struct_alias_default_names_an_unknown_field(mut with_db: RootDatabase
        |
      7 |             Origin : Point := (z := 7);
        |                                ^^^|^^
-       |                                   `---- 'Point' has no field named 'z'
+       |                                   `---- 'Origin' has no field named 'z'
        |
-       | Note: 'Point' has fields with similar names:
+       | Note: 'Origin' has fields with similar names:
        |       - x
        |       - y
     ---'
@@ -1242,4 +1242,135 @@ END_FUNCTION_BLOCK
        |                           `------- this initial value must be a constant: it is fixed before the program runs
     ---'
     ");
+}
+
+/// A report on an initial value names the type as it is declared: the TYPE being
+/// given its default, and a field by its own type. Normalized, an enum written in
+/// place read 'ENUM', a STRUCT 'STRUCT' and an array type its elements.
+#[rstest]
+#[case::the_default_of_an_enum_in_place(
+    "x : INT;",
+    "TYPE Bad : (A, B) := 7; END_TYPE",
+    "expected 'Bad', got 'INT'"
+)]
+#[case::a_string_for_one(
+    "x : INT;",
+    "TYPE Bad : (A, B) := 'x'; END_TYPE",
+    "expected 'Bad', got 'STRING'"
+)]
+#[case::a_real_for_one(
+    "x : INT;",
+    "TYPE Bad : (A, B) := 1.5; END_TYPE",
+    "expected 'Bad', got 'REAL'"
+)]
+#[case::a_name_of_another_enum(
+    "x : INT;",
+    "TYPE Bad : (A, B) := Color#Red; END_TYPE",
+    "expected 'Bad', got 'Color#Red'"
+)]
+#[case::a_field_of_an_enum("h : Holder := (c := 1);", "", "expected 'Color', got 'INT'")]
+#[case::a_field_of_a_struct("h : Holder := (p := 2);", "", "expected 'Pt', got 'INT'")]
+#[case::a_field_of_an_array_type("h : Holder := (g := 3);", "", "expected 'Grid', got 'INT'")]
+#[case::a_field_of_a_field("n : Nest := (h := (c := 1));", "", "expected 'Color', got 'INT'")]
+#[case::a_field_of_an_element(
+    "hs : ARRAY[0..1] OF Holder := [(c := 1)];",
+    "",
+    "expected 'Color', got 'INT'"
+)]
+#[case::a_field_of_a_struct_in_place(
+    "s : STRUCT c : Color; END_STRUCT := (c := 1);",
+    "",
+    "expected 'Color', got 'INT'"
+)]
+fn invalid_an_initial_value_names_the_type_as_declared(
+    mut with_db: RootDatabase,
+    #[case] var: &str,
+    #[case] types: &str,
+    #[case] message: &str,
+) {
+    let source = format!(
+        "TYPE
+    Color : (Red, Green);
+    Pt : STRUCT x : INT; END_STRUCT;
+    Grid : ARRAY[0..1] OF INT;
+    Holder : STRUCT c : Color; p : Pt; g : Grid; END_STRUCT;
+    Nest : STRUCT h : Holder; END_STRUCT;
+END_TYPE
+{types}
+FUNCTION F
+VAR {var} END_VAR
+END_FUNCTION
+"
+    );
+    let report = test_diagnostics(&mut with_db, &[&source]);
+    assert!(report.contains("[E0301]"), "{report}");
+    assert!(report.contains(message), "{report}");
+}
+
+/// A field given by name keeps its bounds, as it does given its default in its
+/// TYPE: normalized, a subrange was its base, and `(s := 200)` went into a
+/// `0..100` field unreported.
+#[rstest]
+#[case::a_field_of_a_subrange(
+    "h : Holder := (s := 200);",
+    "value 200 is outside the subrange 0..100"
+)]
+#[case::a_field_of_a_subrange_type(
+    "h : Holder := (t := 300);",
+    "value 300 is outside the subrange 0..100"
+)]
+#[case::a_field_of_a_field(
+    "n : Nest := (h := (s := 200));",
+    "value 200 is outside the subrange 0..100"
+)]
+#[case::a_field_of_an_element(
+    "hs : ARRAY[0..1] OF Holder := [(t := 300)];",
+    "value 300 is outside the subrange 0..100"
+)]
+#[case::a_member_of_an_instance(
+    "b : Block := (m := 200);",
+    "value 200 is outside the subrange 0..100"
+)]
+#[case::below_the_bounds("h : Holder := (s := -1);", "value -1 is outside the subrange 0..100")]
+fn invalid_a_field_given_by_name_keeps_its_bounds(
+    mut with_db: RootDatabase,
+    #[case] var: &str,
+    #[case] message: &str,
+) {
+    let source = format!(
+        "TYPE
+    Small : INT (0..100);
+    Holder : STRUCT s : INT (0..100); t : Small; END_STRUCT;
+    Nest : STRUCT h : Holder; END_STRUCT;
+END_TYPE
+FUNCTION_BLOCK Block
+VAR m : INT (0..100); END_VAR
+END_FUNCTION_BLOCK
+FUNCTION F
+VAR {var} END_VAR
+END_FUNCTION
+"
+    );
+    let report = test_diagnostics(&mut with_db, &[&source]);
+    assert!(report.contains("[E0702]"), "{report}");
+    assert!(report.contains(message), "{report}");
+}
+
+/// Within the bounds, a field given by name is taken.
+#[rstest]
+fn valid_a_field_given_by_name_within_its_bounds(mut with_db: RootDatabase) {
+    let source = "TYPE
+    Small : INT (0..100);
+    Holder : STRUCT s : INT (0..100); t : Small; END_STRUCT;
+    Nest : STRUCT h : Holder; END_STRUCT;
+END_TYPE
+FUNCTION F
+VAR
+    h : Holder := (s := 100, t := 0);
+    n : Nest := (h := (s := 50, t := 50));
+    hs : ARRAY[0..1] OF Holder := [(s := 1), (t := 99)];
+END_VAR
+END_FUNCTION
+";
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
