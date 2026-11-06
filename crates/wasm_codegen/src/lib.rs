@@ -113,6 +113,31 @@ fn alloc_pair_scratch(
     }
 }
 
+/// A local for each value `body` shares ([`MirExpr::Shared`]), in the order
+/// they come, by the address of the value: none of them computed yet.
+fn alloc_shared_scratch(
+    body: &[MirStmt],
+    params_len: u32,
+    extra_locals: &mut Vec<(u32, ValType)>,
+) -> rustc_hash::FxHashMap<usize, (u32, bool)> {
+    let mut shared = rustc_hash::FxHashMap::default();
+    for stmt in body {
+        stmt.any_expr(&mut |e| {
+            if let MirExpr::Shared(value) = e
+                && let Some(vt) = mir_type_to_val_type(&value.ty)
+                && let std::collections::hash_map::Entry::Vacant(slot) =
+                    shared.entry(std::sync::Arc::as_ptr(value) as usize)
+            {
+                let idx = params_len + extra_locals.iter().map(|(c, _)| *c).sum::<u32>();
+                extra_locals.push((1, vt));
+                slot.insert((idx, false));
+            }
+            false
+        });
+    }
+    shared
+}
+
 /// Whether any function assigns to a buffer-backed STRING field or global;
 /// those need `rk.str_assign` grafted even without STRING locals.
 fn module_assigns_static_string(module: &MirModule) -> bool {
@@ -881,7 +906,8 @@ impl<'a> WasmGen<'a> {
                 MirExpr::CopyIntoScratch { src, .. } | MirExpr::StringSnapshot { src, .. } => {
                     walk_expr(db, src, found)
                 }
-                MirExpr::Constant(_) | MirExpr::StringLiteral { .. } => {}
+                // A constant: no call, no place.
+                MirExpr::Shared(_) | MirExpr::Constant(_) | MirExpr::StringLiteral { .. } => {}
             }
         }
         fn walk(
@@ -1374,6 +1400,9 @@ impl<'a> WasmGen<'a> {
         // The scratch pairs of the operators reading their operands twice (`PAIR_TMP`).
         let pair_tmp = alloc_pair_scratch(&func.body, params.len() as u32, &mut extra_locals);
 
+        // A local for each shared value (`SHARED_TMP`).
+        let shared_tmp = alloc_shared_scratch(&func.body, params.len() as u32, &mut extra_locals);
+
         // What a `__CATCH` lands with, and the stack pointer it puts back.
         let try_scratch = crate::emit_stmt::alloc_try_scratch(
             &func.body,
@@ -1417,6 +1446,7 @@ impl<'a> WasmGen<'a> {
             crate::mir_cast::DATETIME_FLOOR_TMP.with(|cell| cell.replace(datetime_floor_tmp));
         let prev_addr_tmp = crate::emit_expr::STR_ADDR_TMP.with(|cell| cell.replace(str_addr_tmp));
         let prev_pair_tmp = crate::emit_expr::PAIR_TMP.with(|cell| cell.replace(pair_tmp));
+        let prev_shared_tmp = crate::emit_expr::SHARED_TMP.with(|cell| cell.replace(shared_tmp));
         let frame = frame_base.zip(self.stack.map(|stack| stack.sp_global));
         let prev_frame = crate::emit_stmt::FRAME.with(|cell| cell.replace(frame));
 
@@ -1485,6 +1515,7 @@ impl<'a> WasmGen<'a> {
         crate::mir_cast::DATETIME_FLOOR_TMP.with(|cell| cell.replace(prev_floor_tmp));
         crate::emit_expr::STR_ADDR_TMP.with(|cell| cell.replace(prev_addr_tmp));
         crate::emit_expr::PAIR_TMP.with(|cell| cell.replace(prev_pair_tmp));
+        crate::emit_expr::SHARED_TMP.with(|cell| cell.replace(prev_shared_tmp));
         crate::emit_stmt::FRAME.with(|cell| cell.replace(prev_frame));
 
         // Push return value at function end — the same shapes a mid-body
@@ -1599,6 +1630,9 @@ impl<'a> WasmGen<'a> {
         // Wrapping division scratch, as in `emit_function` (no params).
         let pair_tmp = alloc_pair_scratch(&func.body, 0, &mut extra_locals);
 
+        // Shared values, as in `emit_function` (no params).
+        let shared_tmp = alloc_shared_scratch(&func.body, 0, &mut extra_locals);
+
         let frame_size = frame_base.map(|_| frame_bytes(func));
 
         // A `__TRY` of the test's own: what its `__CATCH` lands with.
@@ -1615,6 +1649,7 @@ impl<'a> WasmGen<'a> {
             crate::mir_cast::DATETIME_FLOOR_TMP.with(|cell| cell.replace(datetime_floor_tmp));
         let prev_addr_tmp = crate::emit_expr::STR_ADDR_TMP.with(|cell| cell.replace(str_addr_tmp));
         let prev_pair_tmp = crate::emit_expr::PAIR_TMP.with(|cell| cell.replace(pair_tmp));
+        let prev_shared_tmp = crate::emit_expr::SHARED_TMP.with(|cell| cell.replace(shared_tmp));
         // A RETURN in a test leaves the wrapper, whose next call starts the
         // stack over: no frame to pop.
         let prev_frame = crate::emit_stmt::FRAME.with(|cell| cell.replace(None));
@@ -1666,6 +1701,7 @@ impl<'a> WasmGen<'a> {
         crate::mir_cast::DATETIME_FLOOR_TMP.with(|cell| cell.replace(prev_floor_tmp));
         crate::emit_expr::STR_ADDR_TMP.with(|cell| cell.replace(prev_addr_tmp));
         crate::emit_expr::PAIR_TMP.with(|cell| cell.replace(prev_pair_tmp));
+        crate::emit_expr::SHARED_TMP.with(|cell| cell.replace(prev_shared_tmp));
         crate::emit_stmt::FRAME.with(|cell| cell.replace(prev_frame));
 
         // end try_table — only reached on the success (no-throw) path.

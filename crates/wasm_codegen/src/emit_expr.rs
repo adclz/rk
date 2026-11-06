@@ -38,6 +38,12 @@ thread_local! {
             })
         };
 
+    /// The current body's shared values ([`MirExpr::Shared`]), by the address
+    /// of their value: the local each is kept in, and whether it is computed
+    /// yet.
+    pub(crate) static SHARED_TMP: RefCell<FxHashMap<usize, (u32, bool)>> =
+        RefCell::new(FxHashMap::default());
+
     /// An i32 scratch holding a STRING's header address while its `(ptr,
     /// len)` is read, allocated for a body that reaches a place whose path
     /// runs a call ([`MirStmt::reaches_place_with_call`]).
@@ -104,6 +110,23 @@ pub(crate) fn emit_expr(
 ) {
     match expr {
         MirExpr::Constant(c) => emit_constant(func, c),
+
+        // Computed into its local where it is first reached, read from there
+        // after. MIR shares a value within one initial value, whose code has
+        // no branch, so the first place in the code is the first to run.
+        MirExpr::Shared(shared) => {
+            let key = std::sync::Arc::as_ptr(shared) as usize;
+            let (local, computed) = SHARED_TMP
+                .with(|table| table.borrow().get(&key).copied())
+                .expect("each shared value of a body has its local");
+            if computed {
+                func.instruction(&Instruction::LocalGet(local));
+            } else {
+                emit_expr(func, &shared.value, locals, fn_indices);
+                func.instruction(&Instruction::LocalTee(local));
+                SHARED_TMP.with(|table| table.borrow_mut().insert(key, (local, true)));
+            }
+        }
 
         MirExpr::Load(place, _ty) => emit_load(func, place, locals, fn_indices),
 
