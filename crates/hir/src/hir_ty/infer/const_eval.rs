@@ -540,24 +540,42 @@ fn named_value<'db>(
     folds: &mut Folds<'db>,
 ) -> Option<i64> {
     use crate::hir_ty::infer::Infer;
-    let variants = values.variants(db);
-    let index = variants
-        .iter()
-        .position(|declared| declared.name.ident(db) == variant)?;
-    let Some((written, value)) = variants[..=index]
-        .iter()
-        .enumerate()
-        .rev()
-        .find_map(|(at, declared)| Some((at, declared.value?)))
-    else {
+    let &(written, after) = counted_from(db, values).get(&variant)?;
+    let after = i64::try_from(after).ok()?;
+    let Some(value) = written else {
         // None written up to it: counted from 0.
-        return i64::try_from(index).ok();
+        return Some(after);
     };
     let folded = folds.written(db, Folding::Value(value))?.value;
     let storage = values.typ(db).map(|spec| spec.infer(db));
     let folded = storage.map_or(folded, |ty| held_as(db, folded, ty));
-    let after = i64::try_from(index - written).ok()?;
     Some(i64::try_from(folded).ok()?.wrapping_add(after))
+}
+
+/// Each of a type's named values by its name: the value written nearest at or
+/// before it, `None` when none is, and how far after that one it comes, from 0
+/// when none is. The first of two values of one name is the one kept. A fold
+/// asks it at each name: finding the value among the others each time made a
+/// chain of values cubic to check.
+#[salsa::tracked(returns(ref))]
+fn counted_from<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    values: crate::hir_def::expressions::spec::Enum<'db>,
+) -> rustc_hash::FxHashMap<crate::hir_def::interned::identifier::Ident, (Option<Expr<'db>>, usize)>
+{
+    let mut counted = rustc_hash::FxHashMap::default();
+    let mut written = None;
+    for (at, declared) in values.variants(db).iter().enumerate() {
+        if let Some(value) = declared.value {
+            written = Some((value, at));
+        }
+        let from = match written {
+            Some((value, start)) => (Some(value), at - start),
+            None => (None, at),
+        };
+        counted.entry(declared.name.ident(db)).or_insert(from);
+    }
+    counted
 }
 
 /// The declaration a bare name in a SPEC bound refers to, resolved through
