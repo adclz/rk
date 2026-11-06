@@ -712,8 +712,8 @@ impl<'db> ExprLowerCtx<'db> {
             PrimaryExpr::FuncCall(func_call) => self.lower_func_call(*func_call, Some(parent_expr)),
 
             PrimaryExpr::EnumValue { name, variant } => {
-                // An enum literal is its variant's ordinal in declaration order, at
-                // the enum's storage lane.
+                // An enum literal is its variant's ordinal, at the enum's storage
+                // lane: the value written for it, or the one before it plus one.
                 let enum_ty = name.infer(self.db).normalize(self.db);
                 let Type::Enum(e) = enum_ty else {
                     return Err(LowerTypeError::UnsupportedType(format!(
