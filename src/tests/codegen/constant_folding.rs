@@ -271,3 +271,25 @@ fn bit_operations_are_constants(mut with_db: db::RootDatabase, #[case] program: 
     let result: i32 = super::run(&mut with_db, program, "test", ());
     assert_eq!(result, 1, "{program}");
 }
+
+/// A CONSTANT folds once however often it is named. Each of these names the
+/// two before it: folded again at each name, 26 of them took 15 s to check, and
+/// these 60 would not have finished.
+#[test]
+fn a_constant_named_twice_folds_once() {
+    let chain: String = (2..=60)
+        .map(|k| format!("f{k} : LINT := f{} + f{};\n", k - 1, k - 2))
+        .collect();
+    let source = format!(
+        "FUNCTION test : BOOL
+         VAR CONSTANT f0 : LINT := 1; f1 : LINT := 2; {chain} END_VAR
+         VAR a : ARRAY[0..(f60 MOD 1000)] OF LINT; END_VAR
+             a[881] := f60;
+             test := a[f60 MOD 1000] = 4052739537881;
+         END_FUNCTION"
+    );
+    let result: i32 = crate::tests::utils::within(std::time::Duration::from_secs(30), move || {
+        super::run(&mut db::RootDatabase::default(), &source, "test", ())
+    });
+    assert_eq!(result, 1);
+}

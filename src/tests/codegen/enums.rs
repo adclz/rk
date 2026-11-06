@@ -1064,3 +1064,24 @@ fn a_named_value_is_a_constant(mut with_db: db::RootDatabase, #[case] program: &
     let result: i32 = crate::tests::codegen::run(&mut with_db, &source, "test", ());
     assert_eq!(result, 1, "{program}");
 }
+
+/// A named value folds once however often it is named. Each of these names the
+/// two before it: folded again at each name, 22 of them took 10 s to check, and
+/// these 60 would not have finished.
+#[test]
+fn a_named_value_named_twice_folds_once() {
+    let chain: String = (2..=60)
+        .map(|k| format!(", F{k} := Fib#F{} + Fib#F{}", k - 1, k - 2))
+        .collect();
+    let source = format!(
+        "TYPE Fib : LINT (F0 := 1, F1 := 2{chain}); END_TYPE
+         FUNCTION test : BOOL VAR a : ARRAY[0..(Fib#F60 MOD 1000)] OF LINT; END_VAR
+             a[881] := Fib#F60;
+             test := a[Fib#F60 MOD 1000] = 4052739537881;
+         END_FUNCTION"
+    );
+    let result: i32 = crate::tests::utils::within(std::time::Duration::from_secs(30), move || {
+        crate::tests::codegen::run(&mut db::RootDatabase::default(), &source, "test", ())
+    });
+    assert_eq!(result, 1);
+}

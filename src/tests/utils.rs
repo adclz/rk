@@ -35,6 +35,27 @@ pub fn with_db() -> RootDatabase {
     RootDatabase::default()
 }
 
+/// What `f` returns, when it returns within `limit`. A test of something that
+/// took exponential time fails here instead of holding up the suite.
+pub fn within<T: Send + 'static>(
+    limit: std::time::Duration,
+    f: impl FnOnce() -> T + Send + 'static,
+) -> T {
+    use std::sync::mpsc::RecvTimeoutError;
+    let (sent, received) = std::sync::mpsc::channel();
+    let thread = std::thread::spawn(move || {
+        let _ = sent.send(f());
+    });
+    match received.recv_timeout(limit) {
+        Ok(value) => value,
+        Err(RecvTimeoutError::Timeout) => panic!("did not finish within {limit:?}"),
+        // `f` panicked: its panic is the test's.
+        Err(RecvTimeoutError::Disconnected) => {
+            std::panic::resume_unwind(thread.join().unwrap_err())
+        }
+    }
+}
+
 /// Whether a wasm-opt is installed, on PATH or in rk's cache. A test never
 /// downloads one: it uses the one that is there.
 pub fn wasm_opt_installed() -> bool {
