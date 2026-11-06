@@ -137,3 +137,30 @@ fn invalid_a_bit_operation_is_checked_as_its_value(mut with_db: RootDatabase) {
     ---'
     ");
 }
+
+// The check of a REAL initial value walks each CONSTANT once, however often it
+// is named. Each of these names the two before it: walked again at each name,
+// 20 of them took 1 s to check, and these 60 would not have finished. Checked
+// only: lowering the value is another matter.
+#[test]
+fn a_real_constant_named_twice_is_walked_once() {
+    let chain: String = (2..=60)
+        .map(|k| format!("f{k} : REAL := f{} + f{};\n", k - 1, k - 2))
+        .collect();
+    let source = format!(
+        "FUNCTION_BLOCK Fb
+         VAR CONSTANT f0 : REAL := 0.5; f1 : REAL := 1.5; {chain} END_VAR
+         VAR m : REAL := f60; END_VAR
+         END_FUNCTION_BLOCK"
+    );
+    let report = crate::tests::utils::within(std::time::Duration::from_secs(30), move || {
+        crate::tests::utils::test_snapshot(&mut RootDatabase::default(), &[&source], |db, file| {
+            hir::check::check_file(
+                db,
+                &hir::hir_ty::calls::CallGraph::of_files(db, [file]),
+                file,
+            )
+        })
+    });
+    assert_snapshot!(report, @"");
+}
