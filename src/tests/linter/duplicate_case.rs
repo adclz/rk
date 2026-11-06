@@ -352,3 +352,32 @@ END_FUNCTION
     ---'
     ");
 }
+
+/// A name of a type with named values is the number it stands for: beside that
+/// number, inside a range of them, or calculated, it is the same label.
+#[rstest]
+#[case::a_name_and_its_number("Light#Red: F := 1; 1: F := 2;", "selector '1' is already used")]
+#[case::a_name_in_a_range(
+    "1..5: F := 1; Light#Red: F := 2;",
+    "selector 'Light#Red' is already covered by range '1..5'"
+)]
+#[case::a_name_and_a_calculation(
+    "Light#Red + 1: F := 1; Light#Amber: F := 2;",
+    "selector 'Light#Amber' is already used"
+)]
+#[case::a_range_of_names(
+    "Light#Red..Light#Green: F := 1; Light#Amber: F := 2;",
+    "selector 'Light#Amber' is already covered by range '1..3'"
+)]
+fn a_name_is_its_number(mut with_db: RootDatabase, #[case] labels: &str, #[case] message: &str) {
+    let source = format!(
+        "TYPE Light : INT (Red := 1, Amber := 2, Green := 3); END_TYPE
+FUNCTION F : INT
+VAR_INPUT m : Light; END_VAR
+    CASE m OF {labels} ELSE F := 9; END_CASE;
+END_FUNCTION
+"
+    );
+    let report = test_single_lint(&mut with_db, &[&source], "duplicate-case");
+    assert!(report.contains(message), "{report}");
+}
