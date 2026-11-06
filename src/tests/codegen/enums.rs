@@ -976,6 +976,17 @@ fn the_standard_functions_take_named_values(mut with_db: db::RootDatabase) {
     "TYPE Step : INT (One := 1, Two := Step#One + 1); END_TYPE
      FUNCTION test : BOOL test := Step#Two = 2; END_FUNCTION"
 )]
+#[case::a_chain_of_its_own_values(
+    "TYPE Step : INT (One := 1, Two := Step#One + 1, Ten := Step#Two * 5, Eleven); END_TYPE
+     FUNCTION test : BOOL VAR a : ARRAY[0..Step#Ten] OF INT; m : Step := Step#Eleven; END_VAR
+         a[10] := 7;
+         CASE m OF Step#Eleven: test := a[10] = 7 AND Step#Ten = 10; END_CASE;
+     END_FUNCTION"
+)]
+#[case::a_chain_through_another_type(
+    "TYPE Base : INT (X := 1, Y := Base#X + 1); Scaled : INT (A := Base#Y * 10, B); END_TYPE
+     FUNCTION test : BOOL test := Scaled#A = 20 AND Scaled#B = 21; END_FUNCTION"
+)]
 #[case::the_standards_colors(
     "TYPE Colors : DWORD (Red := 16#00FF0000, Green := 16#0000FF00, Blue := 16#000000FF,
          White := Colors#Red OR Colors#Green OR Colors#Blue,
