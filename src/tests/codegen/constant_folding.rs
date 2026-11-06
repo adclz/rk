@@ -293,3 +293,44 @@ fn a_constant_named_twice_folds_once() {
     });
     assert_eq!(result, 1);
 }
+
+/// A REAL CONSTANT computed from another is an initial value `__init` stores,
+/// each CONSTANT in it its value: a function block's member's and a global's.
+/// It stopped the compiler: the value was taken for a chain of CONSTANTs, and
+/// the chain's end, `k0 * 2.0`, lowered as a read of `k0`.
+#[rstest]
+fn a_real_constant_from_another_is_an_initial_value(mut with_db: db::RootDatabase) {
+    let source = r#"
+        CONFIGURATION Cfg
+        VAR_GLOBAL CONSTANT g0 : REAL := 1.5; g1 : REAL := g0 * 2.0; END_VAR
+        VAR_GLOBAL g : REAL := g1; END_VAR
+        END_CONFIGURATION
+
+        FUNCTION_BLOCK Fb
+        VAR CONSTANT k0 : REAL := 1.5; k1 : REAL := k0 * 2.0; END_VAR
+        VAR m : REAL := k1; END_VAR
+        END_FUNCTION_BLOCK
+
+        {test}
+        FUNCTION a_members
+        VAR f : Fb; END_VAR
+            IF f.m <> 3.0 THEN
+                __RAISE('the member is not 3.0');
+            END_IF;
+        END_FUNCTION
+
+        {test}
+        FUNCTION a_globals
+        VAR_EXTERNAL g : REAL; END_VAR
+            IF g <> 3.0 THEN
+                __RAISE('the global is not 3.0');
+            END_IF;
+        END_FUNCTION
+    "#;
+    let wasm = super::compile_to_wasm_as_built(&mut with_db, source);
+    let results = super::run_tests(&wasm, None).expect("run tests");
+    assert_eq!(results.len(), 2);
+    for result in &results {
+        assert!(result.passed(), "{}: {:?}", result.name, result.reason);
+    }
+}
