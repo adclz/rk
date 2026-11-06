@@ -78,7 +78,7 @@ pub fn const_int<'db>(
         Type::Variable((decl, None)) => Some(decl),
         _ => None,
     };
-    fold(db, expr, &bind, &mut Folds::default()).map(|folded| folded.value)
+    fold(db, expr, &bind).map(|folded| folded.value)
 }
 
 /// An operation on constants whose result the type it runs at cannot hold.
@@ -109,7 +109,7 @@ pub fn overflow<'db>(
     // An operand, or `None` when it does not fold or wrapped inside.
     let operand = |e| {
         let mut wrapped = false;
-        let folded = fold_tracking(db, e, bind, &mut Folds::default(), &mut wrapped)?;
+        let folded = fold_tracking(db, e, bind, &mut wrapped)?;
         (!wrapped).then_some(folded)
     };
     let fits = |operand: Folded, ty| {
@@ -170,13 +170,7 @@ pub fn overflow<'db>(
 /// query, so this is callable from anywhere — a diagnostic message rendered
 /// inside `infer_initialization` included.
 pub fn spec_value<'db>(db: &'db dyn WorkspaceDataBase, expr: Expr<'db>) -> Option<i128> {
-    fold(
-        db,
-        expr,
-        &|va| spec_name_binding(db, va),
-        &mut Folds::default(),
-    )
-    .map(|folded| folded.value)
+    fold(db, expr, &|va| spec_name_binding(db, va)).map(|folded| folded.value)
 }
 
 /// [`spec_value`] in the 64 bits a bound is counted in. A ULINT above
@@ -200,7 +194,7 @@ pub fn held_as<'db>(db: &'db dyn WorkspaceDataBase, value: i128, ty: Type<'db>) 
 }
 
 /// A folded integer and the type it is computed at.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct Folded {
     /// Exact: every integer type's values fit in 128 bits.
     value: i128,
@@ -280,66 +274,38 @@ fn integer_layout(ty: ElementarySpec) -> Option<(u32, bool)> {
     })
 }
 
-/// A CONSTANT, or the value written for a named value (`Two := Step#One + 1`):
-/// what a fold folds where it is written, wherever it is named.
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
-enum Folding<'db> {
-    Constant(VariableDecl<'db>),
-    Value(Expr<'db>),
+/// The value written for a CONSTANT or a named value (`Two := Step#One + 1`),
+/// folded where it is written, its names bound there. A query, so each is
+/// folded once, whoever names it and however often: folded again at each
+/// name, a chain of values naming each other took quadratic time to check,
+/// and exponential when each named the two before it. A cycle
+/// (`k1 := k2; k2 := k1`) does not fold.
+#[salsa::tracked(cycle_result = in_a_cycle)]
+fn written_value<'db>(db: &'db dyn WorkspaceDataBase, written: Expr<'db>) -> Option<Folded> {
+    fold(db, written, &|va| spec_name_binding(db, va))
 }
 
-/// What one fold has met so far.
-#[derive(Default)]
-struct Folds<'db> {
-    /// Those it is in the middle of. One reached again is a cycle, which does
-    /// not fold: `k1 := k2; k2 := k1` recursed to a stack overflow.
-    pending: Vec<Folding<'db>>,
-    /// Those it has folded, each once however often it is named. Folded again
-    /// at each name, a chain of values that each name the two before them took
-    /// exponential time.
-    done: rustc_hash::FxHashMap<Folding<'db>, Option<Folded>>,
-}
-
-impl<'db> Folds<'db> {
-    /// What `what` is written as, folded. `None` when it does not fold, or
-    /// when it is a cycle: the fold is already in the middle of it.
-    fn written(&mut self, db: &'db dyn WorkspaceDataBase, what: Folding<'db>) -> Option<Folded> {
-        if let Some(done) = self.done.get(&what) {
-            return *done;
-        }
-        if self.pending.contains(&what) {
-            return None;
-        }
-        let written = match what {
-            Folding::Constant(decl) => constant_init(db, decl)?,
-            Folding::Value(value) => value,
-        };
-        self.pending.push(what);
-        // Its names bind where it is written, wherever it is named.
-        let folded = fold(db, written, &|va| spec_name_binding(db, va), self);
-        self.pending.pop();
-        // Kept when it is `None` too. A value that came back to one in progress
-        // is part of a cycle, or names one, and does not fold whichever is
-        // folded first.
-        self.done.insert(what, folded);
-        folded
-    }
+/// What a value in a cycle folds to: none, each of them.
+fn in_a_cycle<'db>(
+    _db: &'db dyn WorkspaceDataBase,
+    _id: salsa::Id,
+    _written: Expr<'db>,
+) -> Option<Folded> {
+    None
 }
 
 fn fold<'db>(
     db: &'db dyn WorkspaceDataBase,
     expr: Expr<'db>,
     bind: &dyn Fn(VariableAccess<'db>) -> Option<VariableDecl<'db>>,
-    folds: &mut Folds<'db>,
 ) -> Option<Folded> {
-    fold_tracking(db, expr, bind, folds, &mut false)
+    fold_tracking(db, expr, bind, &mut false)
 }
 
 fn fold_tracking<'db>(
     db: &'db dyn WorkspaceDataBase,
     expr: Expr<'db>,
     bind: &dyn Fn(VariableAccess<'db>) -> Option<VariableDecl<'db>>,
-    folds: &mut Folds<'db>,
     // Set when an operation's exact result differs from what it holds.
     wrapped: &mut bool,
 ) -> Option<Folded> {
@@ -368,10 +334,10 @@ fn fold_tracking<'db>(
             }
         }
         ExprKind::PrimaryExpr(PrimaryExpr::ParenthesizedExpr { expr }) => {
-            fold_tracking(db, *expr, bind, folds, wrapped)
+            fold_tracking(db, *expr, bind, wrapped)
         }
         ExprKind::UnaryOperator { expr, operator } => {
-            let operand = fold_tracking(db, *expr, bind, folds, wrapped)?;
+            let operand = fold_tracking(db, *expr, bind, wrapped)?;
             match operator {
                 UnaryOperatorKind::Plus => Some(operand),
                 UnaryOperatorKind::Minus => noted(
@@ -387,7 +353,7 @@ fn fold_tracking<'db>(
         }
         ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess(va)) => {
             let decl = bind(*va)?;
-            let value = folds.written(db, Folding::Constant(decl))?;
+            let value = written_value(db, constant_init(db, decl)?)?;
             // At its declared type, as the program stores it.
             Folded::at(value.value, declared_integer(db, decl.spec(db), 0)?)
         }
@@ -395,7 +361,7 @@ fn fold_tracking<'db>(
         // A plain enum's has none.
         ExprKind::PrimaryExpr(PrimaryExpr::EnumValue { name, variant }) => {
             let (values, base) = named_values_of(db, *name)?;
-            let value = named_value(db, values, variant.ident(db), folds)?;
+            let value = named_value(db, values, variant.ident(db))?;
             Folded::at(i128::from(value), base)
         }
         ExprKind::AddOperator {
@@ -404,8 +370,8 @@ fn fold_tracking<'db>(
             right,
         } => {
             let (l, r) = (
-                fold_tracking(db, *left, bind, folds, wrapped)?,
-                fold_tracking(db, *right, bind, folds, wrapped)?,
+                fold_tracking(db, *left, bind, wrapped)?,
+                fold_tracking(db, *right, bind, wrapped)?,
             );
             let value = match operator {
                 AddOperatorKind::Plus => l.value.wrapping_add(r.value),
@@ -419,8 +385,8 @@ fn fold_tracking<'db>(
             right,
         } => {
             let (l, r) = (
-                fold_tracking(db, *left, bind, folds, wrapped)?,
-                fold_tracking(db, *right, bind, folds, wrapped)?,
+                fold_tracking(db, *left, bind, wrapped)?,
+                fold_tracking(db, *right, bind, wrapped)?,
             );
             let value = match operator {
                 MultOperatorKind::Mul => l.value.wrapping_mul(r.value),
@@ -437,8 +403,8 @@ fn fold_tracking<'db>(
             right,
         } => {
             let (l, r) = (
-                fold_tracking(db, *left, bind, folds, wrapped)?,
-                fold_tracking(db, *right, bind, folds, wrapped)?,
+                fold_tracking(db, *left, bind, wrapped)?,
+                fold_tracking(db, *right, bind, wrapped)?,
             );
             let value = match operator {
                 BooleanOperatorKind::And => l.value & r.value,
@@ -537,7 +503,6 @@ fn named_value<'db>(
     db: &'db dyn WorkspaceDataBase,
     values: crate::hir_def::expressions::spec::Enum<'db>,
     variant: crate::hir_def::interned::identifier::Ident,
-    folds: &mut Folds<'db>,
 ) -> Option<i64> {
     use crate::hir_ty::infer::Infer;
     let &(written, after) = counted_from(db, values).get(&variant)?;
@@ -546,7 +511,7 @@ fn named_value<'db>(
         // None written up to it: counted from 0.
         return Some(after);
     };
-    let folded = folds.written(db, Folding::Value(value))?.value;
+    let folded = written_value(db, value)?.value;
     let storage = values.typ(db).map(|spec| spec.infer(db));
     Some(ordinal(db, storage, folded)?.wrapping_add(after))
 }
@@ -789,63 +754,60 @@ fn is_literal_shaped<'db>(db: &'db dyn WorkspaceDataBase, expr: Expr<'db>) -> bo
 /// would compute it, at the expression's own type, each CONSTANT replaced
 /// by its value.
 pub fn real_folds<'db>(db: &'db dyn WorkspaceDataBase, expr: Expr<'db>) -> bool {
-    let mut real = false;
-    real_folds_guarded(db, expr, &mut Vec::new(), &mut real) && real
+    real_arithmetic(db, expr) == Some(true)
 }
 
-fn real_folds_guarded<'db>(
-    db: &'db dyn WorkspaceDataBase,
-    expr: Expr<'db>,
-    visited: &mut Vec<VariableDecl<'db>>,
-    real: &mut bool,
-) -> bool {
+/// Whether `expr` is arithmetic that folds, and whether a REAL is in it:
+/// `None` when it does not fold, `Some(real)` when it does.
+fn real_arithmetic<'db>(db: &'db dyn WorkspaceDataBase, expr: Expr<'db>) -> Option<bool> {
     use crate::hir_def::expressions::expression::{Elementary, UnaryOperatorKind};
     use crate::hir_def::expressions::spec::ElementarySpec;
     use crate::hir_ty::infer::Infer;
     match expr.expr(db) {
         ExprKind::PrimaryExpr(PrimaryExpr::Literal(literal)) => match literal {
-            Elementary::Real(_) | Elementary::LReal(_) | Elementary::InferFloat(_) => {
-                *real = true;
-                true
-            }
-            _ => expr.as_const_int(db).is_some(),
+            Elementary::Real(_) | Elementary::LReal(_) | Elementary::InferFloat(_) => Some(true),
+            _ => expr.as_const_int(db).map(|_| false),
         },
         ExprKind::PrimaryExpr(PrimaryExpr::ParenthesizedExpr { expr }) => {
-            real_folds_guarded(db, *expr, visited, real)
+            real_arithmetic(db, *expr)
         }
         ExprKind::UnaryOperator {
             expr,
             operator: UnaryOperatorKind::Minus | UnaryOperatorKind::Plus,
-        } => real_folds_guarded(db, *expr, visited, real),
+        } => real_arithmetic(db, *expr),
         ExprKind::AddOperator { left, right, .. }
         | ExprKind::MultOperator { left, right, .. }
         | ExprKind::PowerOperator { left, right } => {
-            real_folds_guarded(db, *left, visited, real)
-                && real_folds_guarded(db, *right, visited, real)
+            Some(real_arithmetic(db, *left)? | real_arithmetic(db, *right)?)
         }
         ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess(va)) => {
-            let Some(decl) = spec_name_binding(db, *va) else {
-                return false;
-            };
-            if visited.contains(&decl) {
-                return false;
-            }
-            let Some(init) = constant_init(db, decl) else {
-                return false;
-            };
-            if matches!(
+            let decl = spec_name_binding(db, *va)?;
+            let inside = written_real(db, constant_init(db, decl)?)?;
+            let declared = matches!(
                 decl.spec(db).infer(db).normalize(db),
                 Type::Elementary(ElementarySpec::Real | ElementarySpec::LReal)
-            ) {
-                *real = true;
-            }
-            visited.push(decl);
-            let folds = real_folds_guarded(db, init, visited, real);
-            visited.pop();
-            folds
+            );
+            Some(declared || inside)
         }
-        _ => false,
+        _ => None,
     }
+}
+
+/// [`real_arithmetic`] of the value written for a CONSTANT, where it is
+/// written: a query, as [`written_value`] is, so each CONSTANT is walked once
+/// however often it is named. A cycle does not fold.
+#[salsa::tracked(cycle_result = real_in_a_cycle)]
+fn written_real<'db>(db: &'db dyn WorkspaceDataBase, written: Expr<'db>) -> Option<bool> {
+    real_arithmetic(db, written)
+}
+
+/// What a value in a cycle is: arithmetic that does not fold, each of them.
+fn real_in_a_cycle<'db>(
+    _db: &'db dyn WorkspaceDataBase,
+    _id: salsa::Id,
+    _written: Expr<'db>,
+) -> Option<bool> {
+    None
 }
 
 /// The first part of `expr` that keeps it from being a constant: a name
