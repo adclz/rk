@@ -174,6 +174,7 @@ A bare variant is E0201 "no item found in scope".
 This holds in initializers, expressions and `CASE` labels alike.
 
 An enum with a base type, `Light: INT (Red := 1, Green := 2)`, holds that type's values: it takes a number, reads as one, is calculated with and has the parts of its base (`f.2`).
+Its names are constants of the base: `ARRAY[Light#Red..Light#Green]` and `CASE m OF Light#Red..Light#Green:` are fine.
 One with no base type holds its names only, and two enums are two types either way.
 
 Initializers:

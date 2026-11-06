@@ -62,6 +62,16 @@ END_VAR
 END_FUNCTION
 ```
 
+Its names are constants of the base type: they bound an array, size a `STRING`, label a `CASE`, and give another type its values.
+
+```iecst
+TYPE
+    Light : INT (Red := 1, Amber := 2, Green := 3);
+    Lamps : ARRAY[Light#Red..Light#Green] OF BOOL;
+    Next : INT (After := Light#Green + 1);
+END_TYPE
+```
+
 An enum with no base type holds its names and nothing else: `c := 1` on one is `E0301`.
 Two enums are two types, with or without a base.
 
