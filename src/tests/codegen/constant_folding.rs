@@ -334,3 +334,81 @@ fn a_real_constant_from_another_is_an_initial_value(mut with_db: db::RootDatabas
         assert!(result.passed(), "{}: {:?}", result.name, result.reason);
     }
 }
+
+/// A REAL CONSTANT that an initial value names is lowered once in it, however
+/// often the value reaches it. Each of these names the two before it: lowered
+/// again at each name, 16 of them made a module of 26 KB, and these 60 would
+/// not have finished. The test computes the same chain at run time.
+#[test]
+fn a_real_constant_named_twice_is_lowered_once() {
+    let chain: String = (2..=60)
+        .map(|k| format!("f{k} : REAL := f{} + f{};\n", k - 1, k - 2))
+        .collect();
+    let source = format!(
+        "CONFIGURATION Cfg
+         VAR_GLOBAL CONSTANT f0 : REAL := 0.5; f1 : REAL := 1.5; {chain} END_VAR
+         VAR_GLOBAL g : REAL := f60; END_VAR
+         END_CONFIGURATION
+
+         FUNCTION_BLOCK Fb
+         VAR_EXTERNAL CONSTANT f60 : REAL; END_VAR
+         VAR m : REAL := f60; END_VAR
+         END_FUNCTION_BLOCK
+
+         {{test}}
+         FUNCTION the_chain
+         VAR_EXTERNAL g : REAL; END_VAR
+         VAR f : Fb; a : REAL := 0.5; b : REAL := 1.5; c : REAL; i : INT; END_VAR
+             FOR i := 2 TO 60 DO
+                 c := b + a;
+                 a := b;
+                 b := c;
+             END_FOR;
+             IF g <> b THEN
+                 __RAISE('the global is not the chain');
+             END_IF;
+             IF f.m <> b THEN
+                 __RAISE('the member is not the chain');
+             END_IF;
+         END_FUNCTION"
+    );
+    let results = crate::tests::utils::within(std::time::Duration::from_secs(30), move || {
+        let wasm = super::compile_to_wasm_as_built(&mut db::RootDatabase::default(), &source);
+        super::run_tests(&wasm, None).expect("run tests")
+    });
+    assert_eq!(results.len(), 1);
+    assert!(results[0].passed(), "{:?}", results[0].reason);
+}
+
+/// A CONSTANT lowered once is computed where its value is first reached, in
+/// the function being built. An omitted input's default is lowered where the
+/// call is: inside a test, inside a loop, it still is the default.
+#[rstest]
+fn a_constant_lowered_once_in_a_default(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION scaled : REAL
+        VAR_INPUT x : REAL := k3; END_VAR
+        VAR CONSTANT
+            k0 : REAL := 0.5; k1 : REAL := 1.5; k2 : REAL := k1 + k0; k3 : REAL := k2 + k1;
+        END_VAR
+            scaled := x;
+        END_FUNCTION
+
+        {test}
+        FUNCTION in_a_loop
+        VAR i : INT; n : INT; END_VAR
+            FOR i := 1 TO 3 DO
+                IF scaled() = 3.5 THEN
+                    n := n + 1;
+                END_IF;
+            END_FOR;
+            IF n <> 3 THEN
+                __RAISE('the default is not 3.5');
+            END_IF;
+        END_FUNCTION
+    "#;
+    let wasm = super::compile_to_wasm_as_built(&mut with_db, source);
+    let results = super::run_tests(&wasm, None).expect("run tests");
+    assert_eq!(results.len(), 1);
+    assert!(results[0].passed(), "{:?}", results[0].reason);
+}
