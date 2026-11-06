@@ -183,3 +183,91 @@ fn an_inherited_constant_folds_in_the_derived_block(mut with_db: db::RootDatabas
     let result: i32 = super::run(&mut with_db, source, "run", ());
     assert_eq!(result, 47, "K is 4, and arr[3] + x + y is 40 + 3 + 4");
 }
+
+/// `AND`, `OR`, `XOR` and `NOT` fold bit by bit at the type their operands meet
+/// at, to what the program computes, wherever a constant is needed. Each row is a
+/// program whose `test` holds. They did not fold: each was refused.
+#[rstest]
+#[case::a_constant(
+    "FUNCTION test : BOOL VAR CONSTANT k : WORD := WORD#16#FF00 AND 16#0FF0; END_VAR test := k = 16#0F00; END_FUNCTION"
+)]
+#[case::every_operator(
+    "FUNCTION test : BOOL
+     VAR CONSTANT m : BYTE := 16#F0; k : BYTE := (m OR 16#0F) XOR NOT m; END_VAR
+     VAR x : BYTE := 16#F0; END_VAR
+         x := (x OR 16#0F) XOR NOT x;
+         test := k = x AND k = 16#F0;
+     END_FUNCTION"
+)]
+#[case::at_a_signed_type(
+    "FUNCTION test : BOOL
+     VAR CONSTANT k : INT := -1 XOR 16#00FF; END_VAR
+     VAR x : INT := -1; END_VAR
+         x := x XOR 16#00FF;
+         test := k = x AND k = -256;
+     END_FUNCTION"
+)]
+#[case::at_64_bits(
+    "FUNCTION test : BOOL
+     VAR CONSTANT k : LWORD := LWORD#16#FFFF_FFFF_0000_0000 OR 16#FFFF; END_VAR
+     VAR x : LWORD := LWORD#16#FFFF_FFFF_0000_0000; END_VAR
+         x := x OR 16#FFFF;
+         test := k = x AND k = LWORD#16#FFFF_FFFF_0000_FFFF;
+     END_FUNCTION"
+)]
+#[case::a_bound(
+    "FUNCTION test : BOOL VAR CONSTANT k : INT := 3 OR 4; END_VAR VAR a : ARRAY[0..k] OF INT; END_VAR
+         a[7] := 1; test := a[7] = 1;
+     END_FUNCTION"
+)]
+#[case::a_label(
+    "FUNCTION test : BOOL VAR x : INT := 7; END_VAR CASE x OF 3 OR 4: test := TRUE; END_CASE; END_FUNCTION"
+)]
+#[case::a_label_flipped_at_the_selectors_type(
+    "FUNCTION test : BOOL VAR w : WORD := 15; END_VAR CASE w OF NOT 16#FFF0: test := TRUE; END_CASE; END_FUNCTION"
+)]
+#[case::a_label_at_64_bits(
+    "FUNCTION test : BOOL VAR w : LWORD := LWORD#16#FFFF_FFFF_0000_FFFF; END_VAR
+         CASE w OF LWORD#16#FFFF_FFFF_0000_0000 OR 16#FFFF: test := TRUE; END_CASE;
+     END_FUNCTION"
+)]
+#[case::a_strings_length(
+    "FUNCTION test : BOOL VAR s : STRING[16#FF AND 16#0F]; long : STRING := 'abcdefghijklmnopqrs'; END_VAR
+         s := long; test := s = 'abcdefghijklmno';
+     END_FUNCTION"
+)]
+#[case::a_subranges_bounds(
+    "FUNCTION test : BOOL VAR r : INT (0..(16#F0 OR 16#0F)); END_VAR r := 255; test := r = 255; END_FUNCTION"
+)]
+#[case::a_step(
+    "FUNCTION test : BOOL VAR i, n : INT; END_VAR
+         FOR i := 0 TO 9 BY 7 AND 3 DO n := n + 1; END_FOR;
+         test := n = 4;
+     END_FUNCTION"
+)]
+#[case::an_initial_index(
+    "FUNCTION test : BOOL VAR a : ARRAY[0..9] OF INT := [[5 XOR 3] := 7]; END_VAR test := a[6] = 7; END_FUNCTION"
+)]
+#[case::a_members_initial_value(
+    "FUNCTION_BLOCK Fb
+     VAR CONSTANT m : WORD := 16#00F0; END_VAR
+     VAR x : WORD := m XOR 16#00FF; END_VAR
+     END_FUNCTION_BLOCK
+     FUNCTION test : BOOL VAR f : Fb; END_VAR test := f.x = 16#000F; END_FUNCTION"
+)]
+#[case::a_fields_initial_value(
+    "TYPE Pt : STRUCT x : DWORD := DWORD#16#FF00 OR 16#00FF; END_STRUCT; END_TYPE
+     FUNCTION test : BOOL VAR p : Pt; END_VAR test := p.x = 16#FFFF; END_FUNCTION"
+)]
+#[case::a_types_initial_value(
+    "TYPE Mask : WORD := WORD#16#FF00 AND 16#0FF0; END_TYPE
+     FUNCTION test : BOOL VAR m : Mask; END_VAR test := m = 16#0F00; END_FUNCTION"
+)]
+#[case::an_omitted_inputs_value(
+    "FUNCTION f : WORD VAR_INPUT w : WORD := WORD#16#FF00 OR 16#00FF; END_VAR f := w; END_FUNCTION
+     FUNCTION test : BOOL test := f() = 16#FFFF; END_FUNCTION"
+)]
+fn bit_operations_are_constants(mut with_db: db::RootDatabase, #[case] program: &str) {
+    let result: i32 = super::run(&mut with_db, program, "test", ());
+    assert_eq!(result, 1, "{program}");
+}

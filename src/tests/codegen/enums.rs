@@ -976,6 +976,23 @@ fn the_standard_functions_take_named_values(mut with_db: db::RootDatabase) {
     "TYPE Step : INT (One := 1, Two := Step#One + 1); END_TYPE
      FUNCTION test : BOOL test := Step#Two = 2; END_FUNCTION"
 )]
+#[case::the_standards_colors(
+    "TYPE Colors : DWORD (Red := 16#00FF0000, Green := 16#0000FF00, Blue := 16#000000FF,
+         White := Colors#Red OR Colors#Green OR Colors#Blue,
+         Black := Colors#Red AND Colors#Green AND Colors#Blue) := Colors#Green;
+     END_TYPE
+     FUNCTION test : BOOL VAR c : Colors; END_VAR
+         test := c = Colors#Green AND Colors#White = 16#00FFFFFF AND Colors#Black = 0
+             AND Colors#White = (Colors#Red OR Colors#Green OR Colors#Blue);
+     END_FUNCTION"
+)]
+#[case::its_values_by_bits(
+    "TYPE Flags : BYTE (A := 1, B := 2, AB := Flags#A OR Flags#B, NotA := NOT Flags#A, Odd := Flags#A XOR 16#FF);
+     END_TYPE
+     FUNCTION test : BOOL
+         test := Flags#AB = 3 AND Flags#NotA = 16#FE AND Flags#Odd = 16#FE AND Flags#NotA = NOT Flags#A;
+     END_FUNCTION"
+)]
 #[case::a_calculated_label(
     "FUNCTION test : BOOL VAR m : Light := 2; END_VAR
          CASE m OF Light#Red + 1: test := TRUE; END_CASE;
