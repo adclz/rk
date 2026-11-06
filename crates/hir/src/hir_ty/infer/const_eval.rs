@@ -30,8 +30,8 @@ use crate::{
     hir_def::{
         expressions::{
             expression::{
-                AddOperatorKind, Elementary, Expr, ExprKind, InitExprKind, MultOperatorKind,
-                PrimaryExpr, UnaryOperatorKind, VariableAccess,
+                AddOperatorKind, BooleanOperatorKind, Elementary, Expr, ExprKind, InitExprKind,
+                MultOperatorKind, PrimaryExpr, UnaryOperatorKind, VariableAccess,
             },
             spec::{ElementarySpec, Spec, SpecKind},
         },
@@ -338,7 +338,10 @@ fn fold_tracking<'db>(
                     operand.value.checked_neg(),
                     wrapped,
                 ),
-                _ => None,
+                // Each bit flipped at the operand's type: `NOT WORD#16#0F0F` is
+                // 16#F0F0. An untyped literal flips in 128 bits, which is its
+                // pattern at whatever width it meets.
+                UnaryOperatorKind::Not => operand.with(!operand.value),
             }
         }
         ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess(va)) => {
@@ -392,6 +395,24 @@ fn fold_tracking<'db>(
                 MultOperatorKind::Mod => l.value.checked_rem(r.value)?,
             };
             noted(Folded::at(value, l.join(r))?, Some(value), wrapped)
+        }
+        // At the type the two meet at, as arithmetic is. Each bit of the result
+        // comes from the two bits at its place, with no carry, so nothing wraps.
+        ExprKind::BooleanOperator {
+            left,
+            operator,
+            right,
+        } => {
+            let (l, r) = (
+                fold_tracking(db, *left, bind, visited, wrapped)?,
+                fold_tracking(db, *right, bind, visited, wrapped)?,
+            );
+            let value = match operator {
+                BooleanOperatorKind::And => l.value & r.value,
+                BooleanOperatorKind::Or => l.value | r.value,
+                BooleanOperatorKind::Xor => l.value ^ r.value,
+            };
+            Folded::at(value, l.join(r))
         }
         _ => None,
     }
@@ -795,9 +816,10 @@ pub fn non_constant_part<'db>(
 /// refuses what this rejects, and MIR folds what it accepts — the two agree
 /// BY CONSTRUCTION because they both call this.
 ///
-/// Accepted: anything [`spec_value`] folds (integer arithmetic over literals
-/// and CONSTANTs), REAL arithmetic [`real_folds`] accepts, any
-/// literal-shaped value, and a pure CONSTANT-reference chain ending in one.
+/// Accepted: anything [`spec_value`] folds (integer arithmetic and `AND`,
+/// `OR`, `XOR`, `NOT` over literals and CONSTANTs), REAL arithmetic
+/// [`real_folds`] accepts, any literal-shaped value, and a pure
+/// CONSTANT-reference chain ending in one.
 pub fn init_leaf_is_constant<'db>(db: &'db dyn WorkspaceDataBase, expr: Expr<'db>) -> bool {
     if spec_value(db, expr).is_some() || is_literal_shaped(db, expr) || real_folds(db, expr) {
         return true;
