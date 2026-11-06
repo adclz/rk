@@ -1959,7 +1959,7 @@ fn lower_init_leaves<'db>(
         // means check and lowering disagree. A REF() is an address, which
         // `__init` stores once the layout has placed what it names.
         if let InitTarget::Static { .. } = target
-            && !is_const_value(&value)
+            && !is_const_value(db, &value)
             && !matches!(value, crate::expr::MirExpr::AddrOf(_))
         {
             return Err(LowerTypeError::UnsupportedType(format!(
@@ -2256,16 +2256,22 @@ fn walk_init_path(
 }
 
 /// A value that can be baked into `__init`: a literal, a string literal,
-/// or arithmetic over literals. No variable loads or calls.
-fn is_const_value(e: &crate::expr::MirExpr) -> bool {
+/// or arithmetic over literals, `**` included. No variable loads, and no
+/// other calls.
+fn is_const_value(db: &dyn WorkspaceDataBase, e: &crate::expr::MirExpr) -> bool {
     use crate::expr::MirExpr;
     match e {
         MirExpr::Constant(_) | MirExpr::StringLiteral { .. } => true,
-        MirExpr::BinOp { lhs, rhs, .. } => is_const_value(lhs) && is_const_value(rhs),
-        MirExpr::UnaryOp { expr, .. } => is_const_value(expr),
-        MirExpr::Cast { expr, .. } => is_const_value(expr),
+        MirExpr::BinOp { lhs, rhs, .. } => is_const_value(db, lhs) && is_const_value(db, rhs),
+        MirExpr::UnaryOp { expr, .. } => is_const_value(db, expr),
+        MirExpr::Cast { expr, .. } => is_const_value(db, expr),
         // A folded constant, with no load and no call (`lower_named_constant`).
         MirExpr::Shared(_) => true,
+        // `**` is a call to a math builtin (`lower_power`), as constant as
+        // what it raises and to what.
+        MirExpr::Call(call) if matches!(call.callee.text(db).as_str(), "f32.pow" | "f64.pow") => {
+            call.args.iter().all(|arg| is_const_value(db, &arg.value))
+        }
         MirExpr::Load(..)
         | MirExpr::Call(_)
         | MirExpr::AddrOf(_)
