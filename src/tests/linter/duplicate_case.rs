@@ -369,6 +369,10 @@ END_FUNCTION
     "Light#Red..Light#Green: F := 1; Light#Amber: F := 2;",
     "selector 'Light#Amber' is already covered by range '1..3'"
 )]
+#[case::a_name_and_a_mask(
+    "Light#Green: F := 1; Light#Red OR Light#Amber: F := 2;",
+    "selector 'Light#Red OR Light#Amber' is already used"
+)]
 fn a_name_is_its_number(mut with_db: RootDatabase, #[case] labels: &str, #[case] message: &str) {
     let source = format!(
         "TYPE Light : INT (Red := 1, Amber := 2, Green := 3); END_TYPE
