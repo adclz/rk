@@ -38,6 +38,7 @@ Where a variable is declared decides what its initial value can be.
 | a `VAR_TEMP`, a `VAR_EXTERNAL`, or any other `VAR_IN_OUT` | none |
 
 A constant is a literal, an enum value, `NULL`, a `CONSTANT` declared beside it or imported with `VAR_EXTERNAL CONSTANT`, arithmetic over those, or `REF()` of a global.
+On integers, `AND`, `OR`, `XOR` and `NOT` count as arithmetic.
 A member can also point at a member beside it, in its own instance: `p : REF_TO INT := REF(x)`.
 Anything else is `E0401`.
 

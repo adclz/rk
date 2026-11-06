@@ -36,11 +36,12 @@ TYPE
     Small : SINT (Lo, Hi);                  // one byte
     Coded : INT (Off := 0, On := 10);       // explicit values
     Step : (A := 5, B, C);                  // B is 6 and C is 7
+    Masks : WORD (Low := 16#00FF, High := NOT Masks#Low);   // High is 16#FF00
 END_TYPE
 ```
 
 A value without one continues from the value before it.
-An explicit value must be a constant, and arithmetic over constants is fine (`E0604`).
+An explicit value must be a constant: arithmetic and `AND`, `OR`, `XOR` and `NOT` over constants are fine (`E0604`).
 Every value fits the base type, a continued one too: in `SINT (A := 127, B)`, `B` would be 128 (`E0605`).
 
 ## Named values
