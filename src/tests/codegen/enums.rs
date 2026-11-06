@@ -1,14 +1,46 @@
 // SPDX-FileCopyrightText: 2026 Clauzel Adrien
 // SPDX-License-Identifier: AGPL-3.0-only
 
-//! Enum codegen across contexts: literals resolve to declaration ordinals
-//! (DInt storage), through FB fields, function params/returns, initializers,
-//! CASE labels, arrays, and struct fields.
+//! Enum codegen across contexts: a name is the value its declaration gives it,
+//! stored at the enum's base type, or as a DINT when it has none, through FB
+//! fields, function parameters and results, initializers, CASE labels, arrays
+//! and struct fields. A type with named values holds its base's other values too.
 //! (Regression: `EnumValue` lowering was a stub emitting 0 for EVERY variant,
 //! and `Type::EnumVariant` had no elementary mapping.)
 
 use crate::tests::codegen::with_db;
 use rstest::*;
+
+/// A configuration that runs `Main` as `P1`.
+const RUNS_MAIN: &str = "
+    CONFIGURATION Cfg
+        RESOURCE Res ON CPU
+            TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+            PROGRAM P1 WITH T : Main;
+        END_RESOURCE
+    END_CONFIGURATION
+";
+
+/// What each of `paths` holds after one scan of `P1`, read from memory through the
+/// debug tables: an enum's value as stored, a DINT, a BOOL as 0 or 1. A CASE label
+/// and an argument agree under any numbering. Memory shows which numbering was used.
+fn stored(db: &mut db::RootDatabase, source: &str, paths: &[&str]) -> Vec<i64> {
+    use debug_format::VarValue;
+    let (_mir, wasm) =
+        crate::tests::codegen::compile_to_mir_and_wasm(db, &format!("{source}{RUNS_MAIN}"));
+    let mut plc = crate::tests::codegen::TestPlc::load(&wasm).expect("load");
+    plc.run(1).expect("scan");
+    let info = debug_format::DebugInfo::from_wasm(&wasm);
+    paths
+        .iter()
+        .map(|path| match plc.read_var(&info, path) {
+            Some(VarValue::Enum { raw, .. }) => raw,
+            Some(VarValue::I32(n)) => i64::from(n),
+            Some(VarValue::Bool(b)) => i64::from(b),
+            other => panic!("{path} is {other:?}"),
+        })
+        .collect()
+}
 
 /// Enum VAR_INPUT written at the FB call site, compared against a literal in
 /// the body, stored into enum instance state.
@@ -167,7 +199,8 @@ fn enum_struct_field(mut with_db: db::RootDatabase) {
 /// one continues from the previous value. MIR used to number variants by
 /// position and ignore `EnumVariant.value` entirely, so the declared values
 /// were silently replaced by 0, 1, 2 — wrong for any CASE dispatch, INT
-/// comparison, or value transmitted to a device.
+/// comparison, or value transmitted to a device. Memory holds the declared values,
+/// and a CASE dispatches on them.
 #[rstest]
 fn explicit_enum_values_are_honored(mut with_db: db::RootDatabase) {
     let source = r#"
@@ -184,19 +217,26 @@ fn explicit_enum_values_are_honored(mut with_db: db::RootDatabase) {
             END_CASE;
         END_FUNCTION
 
-        FUNCTION test : DINT
-            test := code(m := Mode#Run) * 100 + code(m := Mode#Halt);
-        END_FUNCTION
+        PROGRAM Main
+        VAR run, halt : Mode; dispatched : DINT; END_VAR
+            run := Mode#Run;
+            halt := Mode#Halt;
+            dispatched := code(m := run) * 100 + code(m := halt);
+        END_PROGRAM
     "#;
-    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(
-        result, 203,
-        "CASE must match on the declared values (Run -> 2, Halt -> 3), not positions"
+        stored(
+            &mut with_db,
+            source,
+            &["P1.run", "P1.halt", "P1.dispatched"]
+        ),
+        [20, 30, 203],
+        "the declared values are stored, not the positions, and CASE dispatches on them"
     );
 }
 
 /// Enumerators after an explicit value continue from it (`(A := 5, B, C)` is
-/// 5, 6, 7) — the IEC/C-style continuation rule.
+/// 5, 6, 7) — the IEC/C-style continuation rule, as memory holds them.
 #[rstest]
 fn enum_values_continue_after_an_explicit_one(mut with_db: db::RootDatabase) {
     let source = r#"
@@ -213,12 +253,23 @@ fn enum_values_continue_after_an_explicit_one(mut with_db: db::RootDatabase) {
             END_CASE;
         END_FUNCTION
 
-        FUNCTION test : DINT
-            test := code(s := Step#B) * 10 + code(s := Step#C);
-        END_FUNCTION
+        PROGRAM Main
+        VAR a, b, c : Step; dispatched : DINT; END_VAR
+            a := Step#A;
+            b := Step#B;
+            c := Step#C;
+            dispatched := code(s := b) * 10 + code(s := c);
+        END_PROGRAM
     "#;
-    let result: i32 = super::run(&mut with_db, source, "test", ());
-    assert_eq!(result, 23, "B and C continue from A's explicit 5 (6 and 7)");
+    assert_eq!(
+        stored(
+            &mut with_db,
+            source,
+            &["P1.a", "P1.b", "P1.c", "P1.dispatched"]
+        ),
+        [5, 6, 7, 23],
+        "B and C continue from A's explicit 5"
+    );
 }
 
 /// The declared base is the storage lane: an LINT-based enum is an 8-byte
@@ -248,8 +299,8 @@ fn typed_enum_storage_follows_the_declared_base(mut with_db: db::RootDatabase) {
         END_CONFIGURATION
     "#;
     let (mir, wasm) = super::compile_to_mir_and_wasm(&mut with_db, source);
-    // s: 1 byte at 0, w: 8 bytes aligned up to offset 8 — 16 in all. The
-    // hardcoded-DInt world packed both as 4-byte fields into 8.
+    // s: the 4-byte slot at 0 every type of 32 bits or less takes, w: 8 bytes at
+    // 8 — 16 in all. The hardcoded-DInt world packed both as 4-byte fields into 8.
     assert_eq!(mir.retain_size, 16, "storage widths must follow the bases");
 
     let mut plc = crate::tests::codegen::TestPlc::load(&wasm).expect("load");
@@ -291,23 +342,25 @@ fn wide_enum_compares_and_matches_at_its_lane(mut with_db: db::RootDatabase) {
     assert_eq!(result, 112, "equality 100 + Big 10 + Bigger 2");
 }
 
-/// A folding variant value drives the ordinals: Idle := 1 + 1 is 2, Run
-/// follows at 3. This shape used to abort lowering after a clean check.
+/// A value that folds is the value: Idle := 1 + 1 is 2, and Run follows at 3, as
+/// memory holds them. This shape used to abort lowering after a clean check.
 #[rstest]
 fn enum_value_folding_expression_runs(mut with_db: db::RootDatabase) {
     let source = r#"
         TYPE Mode : (Idle := 1 + 1, Run) END_TYPE
-        FUNCTION test : DINT
-        VAR m : Mode; END_VAR
-            m := Mode#Run;
-            test := 0;
-            IF m = Mode#Run THEN
-                test := 3;
-            END_IF;
-        END_FUNCTION
+
+        PROGRAM Main
+        VAR idle, run : Mode; same : BOOL; END_VAR
+            idle := Mode#Idle;
+            run := Mode#Run;
+            same := run = Mode#Run;
+        END_PROGRAM
     "#;
-    let r: i32 = super::run(&mut with_db, source, "test", ());
-    assert_eq!(r, 3, "Run's ordinal follows the folded 2");
+    assert_eq!(
+        stored(&mut with_db, source, &["P1.idle", "P1.run", "P1.same"]),
+        [2, 3, 1],
+        "Run follows the folded 2"
+    );
 }
 
 /// A variant at the edge of its storage survives a store: `B` is 127, the
