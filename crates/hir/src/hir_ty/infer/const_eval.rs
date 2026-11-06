@@ -548,8 +548,7 @@ fn named_value<'db>(
     };
     let folded = folds.written(db, Folding::Value(value))?.value;
     let storage = values.typ(db).map(|spec| spec.infer(db));
-    let folded = storage.map_or(folded, |ty| held_as(db, folded, ty));
-    Some(i64::try_from(folded).ok()?.wrapping_add(after))
+    Some(ordinal(db, storage, folded)?.wrapping_add(after))
 }
 
 /// Each of a type's named values by its name: the value written nearest at or
@@ -663,17 +662,23 @@ pub fn enum_ordinals<'db>(
     Option<i64>,
 )> {
     use crate::hir_ty::infer::Infer;
-    // A declared value as a declared storage holds it: `16#FF` on a SINT is
-    // -1, the bit pattern its check accepted. Under the default DINT a value
-    // stays as written, so E0605 sees one past the storage.
     let storage = enm.typ(db).map(|spec| spec.infer(db));
-    enum_ordinals_by(db, enm, |e| {
-        let value = spec_value(db, e)?;
-        let value = storage.map_or(value, |ty| held_as(db, value, ty));
-        (i128::from(i64::MIN)..=i128::from(u64::MAX))
-            .contains(&value)
-            .then_some(value as i64)
-    })
+    enum_ordinals_by(db, enm, |e| ordinal(db, storage, spec_value(db, e)?))
+}
+
+/// A value written for a named value, as its ordinal: as a declared storage
+/// holds it, so `16#FF` on a SINT is -1, the bit pattern its check accepted,
+/// and a ULINT above `i64::MAX` is its bit pattern too. Under the default DINT
+/// a value stays as written, so E0605 sees one past the storage.
+fn ordinal<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    storage: Option<Type<'db>>,
+    value: i128,
+) -> Option<i64> {
+    let value = storage.map_or(value, |ty| held_as(db, value, ty));
+    (i128::from(i64::MIN)..=i128::from(u64::MAX))
+        .contains(&value)
+        .then_some(value as i64)
 }
 
 fn enum_ordinals_by<'db>(
