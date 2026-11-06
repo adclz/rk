@@ -274,11 +274,19 @@ fn integer_layout(ty: ElementarySpec) -> Option<(u32, bool)> {
     })
 }
 
+/// What a fold is in the middle of: a CONSTANT's initializer, or the values of a
+/// type with named values. Either reached again is a cycle, which does not fold.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Folding<'db> {
+    Constant(VariableDecl<'db>),
+    Values(crate::hir_def::expressions::spec::Enum<'db>),
+}
+
 fn fold<'db>(
     db: &'db dyn WorkspaceDataBase,
     expr: Expr<'db>,
     bind: &dyn Fn(VariableAccess<'db>) -> Option<VariableDecl<'db>>,
-    visited: &mut Vec<VariableDecl<'db>>,
+    visited: &mut Vec<Folding<'db>>,
 ) -> Option<Folded> {
     fold_tracking(db, expr, bind, visited, &mut false)
 }
@@ -287,10 +295,10 @@ fn fold_tracking<'db>(
     db: &'db dyn WorkspaceDataBase,
     expr: Expr<'db>,
     bind: &dyn Fn(VariableAccess<'db>) -> Option<VariableDecl<'db>>,
-    // The chain of CONSTANTs already being evaluated: `k1 := k2; k2 := k1`
-    // used to recurse to a stack overflow (SIGABRT, no diagnostic) — a cycle
-    // simply does not fold.
-    visited: &mut Vec<VariableDecl<'db>>,
+    // The chain of CONSTANTs and named values already being evaluated:
+    // `k1 := k2; k2 := k1` used to recurse to a stack overflow (SIGABRT, no
+    // diagnostic) — a cycle simply does not fold.
+    visited: &mut Vec<Folding<'db>>,
     // Set when an operation's exact result differs from what it holds.
     wrapped: &mut bool,
 ) -> Option<Folded> {
@@ -336,16 +344,23 @@ fn fold_tracking<'db>(
         ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess(va)) => {
             let decl = bind(*va)?;
             let init = constant_init(db, decl)?;
-            if visited.contains(&decl) {
+            if visited.contains(&Folding::Constant(decl)) {
                 return None;
             }
-            visited.push(decl);
+            visited.push(Folding::Constant(decl));
             // The initializer is written where the CONSTANT is declared, and
             // its names bind there, wherever the CONSTANT is used.
             let value = fold(db, init, &|va| spec_name_binding(db, va), visited);
             visited.pop();
             // At its declared type, as the program stores it.
             Folded::at(value?.value, declared_integer(db, decl.spec(db), 0)?)
+        }
+        // A name of a type with named values is its number, at the type's base.
+        // A plain enum's has none.
+        ExprKind::PrimaryExpr(PrimaryExpr::EnumValue { name, variant }) => {
+            let (values, base) = named_values_of(db, *name)?;
+            let value = named_value(db, values, variant.ident(db), visited)?;
+            Folded::at(i128::from(value), base)
         }
         ExprKind::AddOperator {
             left,
@@ -407,6 +422,8 @@ fn declared_integer<'db>(
     match spec.kind(db) {
         SpecKind::Simple(ty) => integer_layout(*ty).map(|_| *ty),
         SpecKind::Subrange(sub) => declared_integer(db, sub._type(db), depth + 1),
+        // A type with named values holds its base's.
+        SpecKind::Enum(values) => declared_integer(db, values.typ(db)?, depth + 1),
         SpecKind::Target(target) => match resolve_name(db, &target.path, spec.scope_id(db)) {
             NameResolution::Pou(Pou::DataType(dt), _) => {
                 declared_integer(db, dt.spec(db), depth + 1)
@@ -415,6 +432,73 @@ fn declared_integer<'db>(
         },
         _ => None,
     }
+}
+
+/// The values a name like `Light#Red` is one of, and their base, when the type it
+/// names was written with one. Resolved as the signature resolves it, as
+/// [`declared_integer`] does.
+fn named_values_of<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    name: crate::hir_def::expressions::expression::BeginPathExpr<'db>,
+) -> Option<(crate::hir_def::expressions::spec::Enum<'db>, ElementarySpec)> {
+    use crate::HirNodeInfo;
+    use crate::hir_ty::resolver::name::{NameResolution, resolve_name};
+    fn of_spec<'db>(
+        db: &'db dyn WorkspaceDataBase,
+        spec: Spec<'db>,
+        depth: u32,
+    ) -> Option<(crate::hir_def::expressions::spec::Enum<'db>, ElementarySpec)> {
+        // A cyclic alias is refused elsewhere; stop regardless.
+        if depth > 16 {
+            return None;
+        }
+        match spec.kind(db) {
+            SpecKind::Enum(values) => {
+                Some((*values, declared_integer(db, values.typ(db)?, depth + 1)?))
+            }
+            SpecKind::Target(target) => match resolve_name(db, &target.path, spec.scope_id(db)) {
+                NameResolution::Pou(Pou::DataType(dt), _) => of_spec(db, dt.spec(db), depth + 1),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+    if name.invocation(db).is_some() {
+        return None;
+    }
+    let path = name.expr(db)?;
+    let (access, _) = path.to_namespace_access(db).as_ref()?;
+    match resolve_name(db, access, path.get_scope_id(db)) {
+        NameResolution::Pou(Pou::DataType(dt), _) => of_spec(db, dt.spec(db), 0),
+        _ => None,
+    }
+}
+
+/// The value `variant` of `values` stands for, as [`enum_ordinals`] gives it: its
+/// declared value, or the one before it plus one. A value that names the type
+/// being folded, its own or through another type, is a cycle.
+fn named_value<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    values: crate::hir_def::expressions::spec::Enum<'db>,
+    variant: crate::hir_def::interned::identifier::Ident,
+    visited: &mut Vec<Folding<'db>>,
+) -> Option<i64> {
+    use crate::hir_ty::infer::Infer;
+    if visited.contains(&Folding::Values(values)) {
+        return None;
+    }
+    visited.push(Folding::Values(values));
+    let storage = values.typ(db).map(|spec| spec.infer(db));
+    let ordinals = enum_ordinals_by(db, values, |e| {
+        let value = fold(db, e, &|va| spec_name_binding(db, va), visited)?.value;
+        let value = storage.map_or(value, |ty| held_as(db, value, ty));
+        i64::try_from(value).ok()
+    });
+    visited.pop();
+    ordinals
+        .into_iter()
+        .find(|(declared, _)| declared.name.ident(db) == variant)
+        .and_then(|(_, value)| value)
 }
 
 /// The declaration a bare name in a SPEC bound refers to, resolved through
@@ -518,7 +602,7 @@ pub fn enum_ordinals<'db>(
 fn enum_ordinals_by<'db>(
     db: &'db dyn WorkspaceDataBase,
     enm: crate::hir_def::expressions::spec::Enum<'db>,
-    fold: impl Fn(Expr<'db>) -> Option<i64>,
+    mut fold: impl FnMut(Expr<'db>) -> Option<i64>,
 ) -> Vec<(
     crate::hir_def::expressions::spec::EnumVariant<'db>,
     Option<i64>,
