@@ -299,3 +299,20 @@ END_FUNCTION
     ----'
     ");
 }
+
+/// The result is assigned by a chain, first or last.
+#[rstest]
+fn the_result_assigned_by_a_chain(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION first : INT
+VAR x : INT; END_VAR
+    first := x := 42;
+END_FUNCTION
+
+FUNCTION last : INT
+VAR x : INT; END_VAR
+    x := last := 42;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "missing-return"), @"");
+}

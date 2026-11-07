@@ -109,3 +109,28 @@ END_FUNCTION_BLOCK
     ---'
     ");
 }
+
+/// Each link of a chain is an assignment: `b := b` within it is one, and a
+/// chain of other places is none.
+#[rstest]
+fn self_assignment_in_a_chain(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION test : INT
+VAR a, b : INT; END_VAR
+    a := b := b := 1;
+    a := b := 1;
+    test := a;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "self-assignment"), @r"
+    [L0104] Warning: self-assignment
+       ,-[ file:///test0.st:4:10 ]
+       |
+     4 |     a := b := b := 1;
+       |          ^^^|^^
+       |             `---- variable 'b' is assigned to itself
+       |
+       | Note: lint rule: self-assignment
+    ---'
+    ");
+}

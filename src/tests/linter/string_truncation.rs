@@ -121,3 +121,32 @@ END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "string-truncation"), @r"");
 }
+
+/// A link of a chain cuts what the place to its right holds: `s80` into
+/// `s4`. Into the longer place, nothing is cut.
+#[rstest]
+fn a_chain_cuts_at_a_link(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION test : INT
+VAR s4 : STRING[4]; s80 : STRING; t : STRING; END_VAR
+    s4 := s80 := t;
+    s80 := s4 := 'abcd';
+    test := 0;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "string-truncation"), @r"
+    [L0127] Warning: STRING into a shorter STRING
+       ,-[ file:///test0.st:4:11 ]
+       |
+     4 |     s4 := s80 := t;
+       |           ^|^
+       |            `--- a STRING[80] is assigned to a STRING[4]
+       |
+       | Help: declare 's4' as STRING[80]
+       |
+       | Note 1: a text longer than 4 bytes is cut
+       |
+       | Note 2: lint rule: string-truncation
+    ---'
+    ");
+}

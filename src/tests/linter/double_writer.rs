@@ -137,3 +137,53 @@ END_CONFIGURATION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "double-writer"), @r"");
 }
+
+/// A chain writes each of its places: the output among them is written by
+/// both instances.
+#[rstest]
+fn an_output_written_by_a_chain(mut with_db: RootDatabase) {
+    let source = r#"
+PROGRAM Filling
+VAR_EXTERNAL valve : BOOL; END_VAR
+VAR seen : BOOL; END_VAR
+    valve := seen := TRUE;
+END_PROGRAM
+
+PROGRAM Draining
+VAR_EXTERNAL valve : BOOL; END_VAR
+    valve := FALSE;
+END_PROGRAM
+
+CONFIGURATION Plant
+VAR_GLOBAL valve AT %QX0.0 : BOOL; END_VAR
+    RESOURCE Main ON CPU
+        TASK Fast(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM Fill WITH Fast : Filling;
+        PROGRAM Drain WITH Fast : Draining;
+    END_RESOURCE
+END_CONFIGURATION
+"#;
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "double-writer"), @r"
+    [L0129] Warning: output written by several program instances
+        ,-[ file:///test0.st:18:9 ]
+        |
+      5 |     valve := seen := TRUE;
+        |     ^^|^^
+        |       `---- 'Fill' writes it here
+        |
+     10 |     valve := FALSE;
+        |     ^^|^^
+        |       `---- 'Drain' writes it here
+        |
+     18 |         PROGRAM Drain WITH Fast : Draining;
+        |         ^^^^^^^^^^^^^^^^^|^^^^^^^^^^^^^^^^
+        |                          `------------------ the output 'valve' at %QX0.0 is written by 2 program instances, 'Fill' and 'Drain'
+        |
+        | Help: write the output in one program, and send it the others' requests
+        |
+        | Note 1: at each scan the last instance to run sets the output, and the other writes are lost
+        |
+        | Note 2: lint rule: double-writer
+    ----'
+    ");
+}

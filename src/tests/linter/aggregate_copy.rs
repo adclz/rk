@@ -216,3 +216,31 @@ END_PROGRAM
     ---'
     ");
 }
+
+/// A chain copies one value into each place: one report says so.
+#[rstest]
+fn a_chain_is_reported_once(mut with_db: RootDatabase) {
+    let source = format!(
+        r#"{TYPES}
+PROGRAM P
+VAR p1 : Pt; p2 : Pt; p3 : Pt; END_VAR
+    p1 := p2 := p3;
+END_PROGRAM
+"#
+    );
+    assert_snapshot!(test_single_lint(&mut with_db, &[&source], "aggregate-copy"), @r"
+    [L0205] Info: aggregate copy
+        ,-[ file:///test0.st:12:5 ]
+        |
+     12 |     p1 := p2 := p3;
+        |     ^^^^^^^|^^^^^^
+        |            `-------- the assignment copies the whole 'Pt' structure
+        |
+        | Help: to share the value, pass it as a VAR_IN_OUT or keep a REF_TO it
+        |
+        | Note 1: a copy takes every element and field, nested ones included, and costs as much as the type is large
+        |
+        | Note 2: lint rule: aggregate-copy
+    ----'
+    ");
+}

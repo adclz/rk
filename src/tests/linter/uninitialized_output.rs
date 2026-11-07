@@ -135,3 +135,15 @@ END_FUNCTION
     );
     assert!(report.contains("file:///test0.st:4:5"), "{report}");
 }
+
+/// An output written by a chain is assigned.
+#[rstest]
+fn output_assigned_by_a_chain(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION test : INT
+VAR_OUTPUT result : INT; END_VAR
+    result := test := 42;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "uninitialized-output"), @"");
+}
