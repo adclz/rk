@@ -277,6 +277,7 @@ impl<'db> Parse<'db> for ast::generated::PrimaryExpression {
                                                 ParamAssignKind::NonFormal { value: p.value.cast(sema.ast).parse(sema)? }
                                             }
                                         };
+                                        sema.refuse_chain(p.chain.as_ref(), &p.value, "the call");
                                         parameters.push(sema.new_param(p.into(), sema.current_scope, kind))
                                     }
                                     ast::generated::ParamAssignInput_ParamAssignOutput::ParamAssignOutput(p) => {

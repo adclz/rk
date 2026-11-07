@@ -51,6 +51,7 @@ impl<'db> Parse<'db> for ast::generated::Stmt {
                                                 ParamAssignKind::NonFormal { value: p.value.cast(sema.ast).parse(sema)? }
                                             }
                                         };
+                                        sema.refuse_chain(p.chain.as_ref(), &p.value, "the call");
                                         parameters.push(sema.new_param(p.into(), sema.current_scope, kind))
                                     }
                                     ast::generated::ParamAssignInput_ParamAssignOutput::ParamAssignOutput(p) => {
@@ -158,6 +159,7 @@ impl<'db> Parse<'db> for ast::generated::Stmt {
                     }
                 }
 
+                sema.refuse_chain(for_list.chain.as_ref(), &for_list.initial_value, "the FOR");
                 let start = for_list.initial_value.cast(sema.ast).parse(sema)?;
 
                 let end = for_stmt
@@ -547,6 +549,30 @@ impl<'db> Parse<'db> for ast::generated::Assign {
                 sema.current_scope,
             )),
         }
+    }
+}
+
+impl<'db> SemanticIndexBuilder<'db> {
+    /// `F(a := b := 1)`, `FOR i := j := 0 TO 9`: a second `:=` where one
+    /// assignment stands (E0032). The value before it is kept, and checked as
+    /// if the chain were not there.
+    pub(crate) fn refuse_chain(
+        &mut self,
+        chain: Option<&auto_lsp::core::ast::AstNodeId<ast::generated::ERRChainOutsideStatement>>,
+        place: &auto_lsp::core::ast::AstNodeId<ast::generated::Expression>,
+        within: &'static str,
+    ) {
+        let Some(chain) = chain else {
+            return;
+        };
+        self.errors.push(
+            SyntaxError::ChainOutsideStatement {
+                span: chain.cast(self.ast).get_range().to_owned(),
+                place: place.cast(self.ast).get_range().to_owned(),
+                within,
+            }
+            .to_diagnostic(self.db, self.file),
+        );
     }
 }
 

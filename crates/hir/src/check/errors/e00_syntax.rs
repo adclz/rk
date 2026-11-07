@@ -104,6 +104,17 @@ pub enum SyntaxError {
     MethodDeclInBody(Range),
     /// `__ENDTRY`, where a `__TRY` is closed by `__END_TRY`.
     EndTrySpelling(Range),
+    /// `F(a := b := 1)`, `FOR i := j := 0 TO 9`: a second `:=` where one
+    /// assignment stands. A chain is a statement of its own; the value
+    /// before the `:=` is kept.
+    ChainOutsideStatement {
+        /// From the second `:=` to the end of the chain.
+        span: Range,
+        /// The place the chain would write, to assign before.
+        place: Range,
+        /// What the assignment is part of: "the call", "the FOR".
+        within: &'static str,
+    },
     /// `RETAIN NON_RETAIN x : INT;`: a struct element, a variable section
     /// or a program instance takes one qualifier. It keeps the first.
     DoubledQualifier {
@@ -151,6 +162,7 @@ impl ErrorCode for SyntaxError {
             Self::VariadicNotAllowed { .. } => "E0029",
             Self::EndTrySpelling(_) => "E0030",
             Self::DoubledQualifier { .. } => "E0031",
+            Self::ChainOutsideStatement { .. } => "E0032",
         }
     }
 }
@@ -728,6 +740,36 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                     "a declaration takes one qualifier, CONSTANT, RETAIN or NON_RETAIN".into(),
                 );
                 diag.with_help("keep the one you mean".into());
+                diag
+            }
+            Self::ChainOutsideStatement {
+                span,
+                place,
+                within,
+            } => {
+                // The `:=` the chain starts with: two bytes on one line.
+                let sign = Range {
+                    start_byte: span.start_byte,
+                    end_byte: span.start_byte + 2,
+                    start_point: span.start_point,
+                    end_point: tree_sitter::Point {
+                        row: span.start_point.row,
+                        column: span.start_point.column + 2,
+                    },
+                };
+                let doc = file.document(db);
+                let place = doc
+                    .as_str()
+                    .get(place.start_byte..place.end_byte)
+                    .unwrap_or("");
+                let mut diag = diag()
+                    .message("a second ':=' chains an assignment".into())
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &sign).unwrap_or_default())
+                    .call();
+                diag.with_note("a chain of assignments is a statement of its own".into());
+                diag.with_help(format!("assign '{place}' in a statement before {within}"));
                 diag
             }
             Self::EndTrySpelling(span) => {
