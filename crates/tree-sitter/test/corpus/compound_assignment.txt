@@ -1,0 +1,180 @@
+================================================================================
+Compound assignments
+================================================================================
+
+FUNCTION fn
+    x += 1;
+    a[i] -= f(2);
+    p^ *= 2;
+    s.f /= 4;
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (func_decl
+    (identifier)
+    (func_body
+      (stmt_list
+        (compound_assign
+          (variable_access
+            (variable
+              (begin_path_expression
+                (path_expression
+                  (var_access
+                    (field))))))
+          (compound_assignment
+            (constant
+              (numeric_literal
+                (int_literal
+                  (signed_int
+                    (unsigned_int)))))))
+        (compound_assign
+          (variable_access
+            (variable
+              (begin_path_expression
+                (path_expression
+                  (index_expression
+                    (path_expression
+                      (var_access
+                        (field)))
+                    (index_value
+                      (constant_expr
+                        (variable_access
+                          (variable
+                            (begin_path_expression
+                              (path_expression
+                                (var_access
+                                  (field)))))))))))))
+          (compound_assignment
+            (func_call
+              (begin_path_expression
+                (path_expression
+                  (var_access
+                    (field))))
+              (param_assign
+                (param_assign_input
+                  (constant
+                    (numeric_literal
+                      (int_literal
+                        (signed_int
+                          (unsigned_int))))))))))
+        (compound_assign
+          (variable_access
+            (variable
+              (begin_path_expression
+                (path_expression
+                  (deref_expression
+                    (path_expression
+                      (var_access
+                        (field)))
+                    (deref_sign))))))
+          (compound_assignment
+            (constant
+              (numeric_literal
+                (int_literal
+                  (signed_int
+                    (unsigned_int)))))))
+        (compound_assign
+          (variable_access
+            (variable
+              (begin_path_expression
+                (path_expression
+                  (field_expression
+                    (path_expression
+                      (var_access
+                        (field)))
+                    (var_access
+                      (field)))))))
+          (compound_assignment
+            (constant
+              (numeric_literal
+                (int_literal
+                  (signed_int
+                    (unsigned_int)))))))))))
+
+================================================================================
+A compound assignment where a value goes on, a chain after one, no value
+================================================================================
+
+FUNCTION fn
+    a := b += 1;
+    F(a += 1);
+    x += y := 1;
+    x += ;
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (func_decl
+    (identifier)
+    (func_body
+      (stmt_list
+        (assign
+          (variable_access
+            (variable
+              (begin_path_expression
+                (path_expression
+                  (var_access
+                    (field))))))
+          (chained_target
+            (variable_access
+              (variable
+                (begin_path_expression
+                  (path_expression
+                    (var_access
+                      (field)))))))
+          (ERR_compound_outside_statement
+            (constant
+              (numeric_literal
+                (int_literal
+                  (signed_int
+                    (unsigned_int)))))))
+        (func_call
+          (begin_path_expression
+            (path_expression
+              (var_access
+                (field))))
+          (param_assign
+            (param_assign_input
+              (variable_access
+                (variable
+                  (begin_path_expression
+                    (path_expression
+                      (var_access
+                        (field))))))
+              (ERR_compound_outside_statement
+                (constant
+                  (numeric_literal
+                    (int_literal
+                      (signed_int
+                        (unsigned_int)))))))))
+        (compound_assign
+          (variable_access
+            (variable
+              (begin_path_expression
+                (path_expression
+                  (var_access
+                    (field))))))
+          (compound_assignment
+            (variable_access
+              (variable
+                (begin_path_expression
+                  (path_expression
+                    (var_access
+                      (field))))))
+            (ERR_chain_outside_statement
+              (constant
+                (numeric_literal
+                  (int_literal
+                    (signed_int
+                      (unsigned_int))))))))
+        (compound_assign
+          (variable_access
+            (variable
+              (begin_path_expression
+                (path_expression
+                  (var_access
+                    (field))))))
+          (ERR_empty_compound_assignment))))))
