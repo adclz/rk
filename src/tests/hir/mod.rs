@@ -10,6 +10,7 @@ pub mod assignment_chains;
 pub mod bit_access;
 pub mod call_graph;
 pub mod case;
+pub mod compound_assignment;
 pub mod config;
 pub mod conformands;
 pub mod constant_folding;
