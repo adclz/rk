@@ -320,12 +320,16 @@ impl<'db> InitInference<'db> {
                 );
                 continue;
             }
+            let spec = crate::hir_ty::config::spec_of_place(db, *var, &entry.elements);
             self.init_expr_result.resolve_init_expr(
                 db,
                 init,
                 &mut self.body_infer_result,
-                crate::hir_ty::config::spec_of_place(db, *var, &entry.elements).infer(db),
+                spec.infer(db),
             );
+            // A STRING literal longer than the capacity, as a declaration's
+            // own value is checked: it was cut to fit at `__init`.
+            self.check_string_init(db, spec, init);
         }
     }
 
