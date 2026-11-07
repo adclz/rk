@@ -365,95 +365,68 @@ END_CONFIGURATION
 
 // ── VAR_ACCESS tests ──────────────────────────────────────────────────
 
-/// A valid PROGRAM with VAR_ACCESS referencing an existing variable with matching type.
+/// VAR_ACCESS is refused, once per section, in a PROGRAM and in a
+/// CONFIGURATION, empty or not, whatever its declarations say: no host of rk
+/// serves an access path. A CONFIGURATION's was accepted and never read, so
+/// `Res.P9.nothing` passed, and a PROGRAM's was checked by its last name only.
 #[rstest]
-fn valid_prog_access_decl(mut with_db: RootDatabase) {
+fn invalid_var_access(mut with_db: RootDatabase) {
     let source = r#"
-PROGRAM MyProg
-    VAR
-        x : INT;
-    END_VAR
-    VAR_ACCESS
-        ABLE : x : INT READ_ONLY;
-    END_VAR
+PROGRAM Main
+VAR count : INT; END_VAR
+VAR_ACCESS
+    mine : count : INT READ_ONLY;
+    odd : nothing : UnknownType;
+END_VAR
+    count := count + 1;
 END_PROGRAM
-"#;
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
-}
 
-/// A VAR_ACCESS declaration with an unknown spec type should report E0203.
-#[rstest]
-fn invalid_prog_access_unknown_type(mut with_db: RootDatabase) {
-    let source = r#"
-PROGRAM MyProg
-    VAR
-        x : INT;
-    END_VAR
+CONFIGURATION Plant
+    RESOURCE Res ON CPU
+        TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM P1 WITH T : Main;
+    END_RESOURCE
     VAR_ACCESS
-        ABLE : x : UnknownType READ_ONLY;
+        total : Res.P1.count : INT READ_ONLY;
+        wrong : Res.P9.nothing : BOOL READ_WRITE;
     END_VAR
-END_PROGRAM
+    VAR_ACCESS END_VAR
+END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0203] Error: unknown name in a namespace
-       ,-[ file:///test0.st:7:20 ]
+    [E1415] Error: VAR_ACCESS not supported
+       ,-[ file:///test0.st:4:1 ]
        |
-     7 |         ABLE : x : UnknownType READ_ONLY;
-       |                    ^^^^^|^^^^^
-       |                         `------- no item found for path 'UnknownType'
+     4 | VAR_ACCESS
+       | ^^^^^|^^^^
+       |      `------ VAR_ACCESS is not supported
+       |
+       | Help: remove the section
+       |
+       | Note: a host reads and writes a variable by its path, not through an access path
     ---'
-    ");
-}
-
-/// A VAR_ACCESS declaration referencing a nonexistent variable should report E0201.
-#[rstest]
-fn invalid_prog_access_unknown_var(mut with_db: RootDatabase) {
-    let source = r#"
-PROGRAM MyProg
-    VAR
-        x : INT;
-    END_VAR
-    VAR_ACCESS
-        ABLE : nonexistent : INT READ_ONLY;
-    END_VAR
-END_PROGRAM
-"#;
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0201] Error: unknown name
-       ,-[ file:///test0.st:7:16 ]
-       |
-     7 |         ABLE : nonexistent : INT READ_ONLY;
-       |                ^^^^^|^^^^^
-       |                     `------- no item 'nonexistent' found in scope
-    ---'
-    ");
-}
-
-/// A VAR_ACCESS declared type differs from the actual variable type should report E1415.
-#[rstest]
-fn invalid_prog_access_type_mismatch(mut with_db: RootDatabase) {
-    let source = r#"
-PROGRAM MyProg
-    VAR
-        x : INT;
-    END_VAR
-    VAR_ACCESS
-        ABLE : x : REAL READ_ONLY;
-    END_VAR
-END_PROGRAM
-"#;
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1415] Error: VAR_ACCESS type mismatch
-       ,-[ file:///test0.st:7:20 ]
-       |
-     4 |         x : INT;
-       |         |
-       |         `-- variable 'x' is declared here
-       |
-     7 |         ABLE : x : REAL READ_ONLY;
-       |                    ^^|^
-       |                      `--- access declaration expects 'REAL', but variable has type 'INT'
-    ---'
+    [E1415] Error: VAR_ACCESS not supported
+        ,-[ file:///test0.st:16:5 ]
+        |
+     16 |     VAR_ACCESS
+        |     ^^^^^|^^^^
+        |          `------ VAR_ACCESS is not supported
+        |
+        | Help: remove the section
+        |
+        | Note: a host reads and writes a variable by its path, not through an access path
+    ----'
+    [E1415] Error: VAR_ACCESS not supported
+        ,-[ file:///test0.st:20:5 ]
+        |
+     20 |     VAR_ACCESS END_VAR
+        |     ^^^^^|^^^^
+        |          `------ VAR_ACCESS is not supported
+        |
+        | Help: remove the section
+        |
+        | Note: a host reads and writes a variable by its path, not through an access path
+    ----'
     ");
 }
 
