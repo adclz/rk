@@ -6,6 +6,7 @@ pub mod array;
 pub mod array_init_index;
 pub mod array_init_multi_dim;
 pub mod assignment;
+pub mod assignment_chains;
 pub mod bit_access;
 pub mod call_graph;
 pub mod case;
