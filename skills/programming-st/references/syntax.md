@@ -24,6 +24,7 @@ Integer arithmetic wraps at the declared IEC width — `INT#32767 + 1` is `-3276
 
 ```iecst sketch
 x := expr;
+a := b := expr;   // a chain: b takes the value, then a takes b's
 
 IF a THEN … ELSIF b THEN … ELSE … END_IF;
 
@@ -54,6 +55,9 @@ __FINALLY             // always runs
 	…
 __END_TRY;
 ```
+
+A chain `a := b := e` is an rk extension and a statement only.
+It runs from right to left, each place taking the value of the place to its right, so the types must convert link by link (E0301 on the place that gives the value).
 
 `__RAISE`, `__TRY`, `__CATCH` and `__FINALLY` are rk extensions.
 A `__TRY` needs a `__CATCH`, a `__FINALLY` or both (E1209).
