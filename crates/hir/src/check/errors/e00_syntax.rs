@@ -115,6 +115,17 @@ pub enum SyntaxError {
         /// What the assignment is part of: "the call", "the FOR".
         within: &'static str,
     },
+    /// `a := b += 1`, `F(a += 1)`, `x += y += 1`: a compound assignment
+    /// where a value goes on. It is a statement of its own; the value before
+    /// the operator is kept.
+    CompoundOutsideStatement {
+        operator: Range,
+        value: Range,
+        /// The place the compound assignment would write.
+        place: Range,
+        /// What it is part of: "the call", "the chain", "the '+='".
+        within: &'static str,
+    },
     /// `RETAIN NON_RETAIN x : INT;`: a struct element, a variable section
     /// or a program instance takes one qualifier. It keeps the first.
     DoubledQualifier {
@@ -163,6 +174,7 @@ impl ErrorCode for SyntaxError {
             Self::EndTrySpelling(_) => "E0030",
             Self::DoubledQualifier { .. } => "E0031",
             Self::ChainOutsideStatement { .. } => "E0032",
+            Self::CompoundOutsideStatement { .. } => "E0033",
         }
     }
 }
@@ -770,6 +782,33 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                     .call();
                 diag.with_note("a chain of assignments is a statement of its own".into());
                 diag.with_help(format!("assign '{place}' in a statement before {within}"));
+                diag
+            }
+            Self::CompoundOutsideStatement {
+                operator,
+                value,
+                place,
+                within,
+            } => {
+                let doc = file.document(db);
+                let text = |span: &Range| {
+                    doc.as_str()
+                        .get(span.start_byte..span.end_byte)
+                        .unwrap_or("")
+                };
+                let op = text(operator);
+                let mut diag = diag()
+                    .message(format!("'{op}' is a compound assignment"))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, operator).unwrap_or_default())
+                    .call();
+                diag.with_note("a compound assignment is a statement of its own".into());
+                diag.with_help(format!(
+                    "write '{} {op} {};' in a statement before {within}",
+                    text(place),
+                    text(value)
+                ));
                 diag
             }
             Self::EndTrySpelling(span) => {

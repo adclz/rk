@@ -33,6 +33,7 @@ impl<'db> Parse<'db> for ast::generated::Stmt {
                 sema.current_scope,
             )),
             StmtType::Assign(assign) => assign.parse(sema),
+            StmtType::CompoundAssign(assign) => assign.parse(sema),
             StmtType::FuncCall(call) => {
                 let target = call.function.cast(sema.ast).parse(sema)?;
 
@@ -51,7 +52,7 @@ impl<'db> Parse<'db> for ast::generated::Stmt {
                                                 ParamAssignKind::NonFormal { value: p.value.cast(sema.ast).parse(sema)? }
                                             }
                                         };
-                                        sema.refuse_chain(p.chain.as_ref(), &p.value, "the call");
+                                        sema.refuse_after_value(p.chain.as_ref(), &p.value, "the call");
                                         parameters.push(sema.new_param(p.into(), sema.current_scope, kind))
                                     }
                                     ast::generated::ParamAssignInput_ParamAssignOutput::ParamAssignOutput(p) => {
@@ -512,8 +513,17 @@ impl<'db> Parse<'db> for ast::generated::Assign {
             );
         }
 
-        type TargetType = ast::generated::ERREmptyRightHandAssignment_ERRMissingDotInAssignment_ERRMissingEqualInAssignment_ERROutputAssignInAssignment_Assignment;
+        type TargetType = ast::generated::ERRCompoundOutsideStatement_ERREmptyRightHandAssignment_ERRMissingDotInAssignment_ERRMissingEqualInAssignment_ERROutputAssignInAssignment_Assignment;
         match self.target.cast(sema.ast) {
+            // `a := b += 1`: the place before the operator is the chain's
+            // last.
+            TargetType::ERRCompoundOutsideStatement(err) => {
+                let place = match self.chain.last() {
+                    Some(link) => link.cast(sema.ast).variable.cast(sema.ast).get_range(),
+                    None => self.variable.cast(sema.ast).get_range(),
+                };
+                Err(sema.compound_outside_statement(err, place.to_owned(), "the chain"))
+            }
             TargetType::ERREmptyRightHandAssignment(err) => {
                 Err(SyntaxError::EmptyRightHandSide(err.get_range().to_owned())
                     .to_diagnostic(sema.db, sema.file))
@@ -544,6 +554,7 @@ impl<'db> Parse<'db> for ast::generated::Assign {
                 StmtKind::Assignment {
                     vars,
                     target: assign.children.cast(sema.ast).parse(sema)?,
+                    compound: false,
                 },
                 self.into(),
                 sema.current_scope,
@@ -553,9 +564,9 @@ impl<'db> Parse<'db> for ast::generated::Assign {
 }
 
 impl<'db> SemanticIndexBuilder<'db> {
-    /// `F(a := b := 1)`, `FOR i := j := 0 TO 9`: a second `:=` where one
-    /// assignment stands (E0032). The value before it is kept, and checked as
-    /// if the chain were not there.
+    /// `FOR i := j := 0 TO 9`: a second `:=` where one assignment stands
+    /// (E0032). The value before it is kept, and checked as if the chain were
+    /// not there.
     pub(crate) fn refuse_chain(
         &mut self,
         chain: Option<&auto_lsp::core::ast::AstNodeId<ast::generated::ERRChainOutsideStatement>>,
@@ -573,6 +584,131 @@ impl<'db> SemanticIndexBuilder<'db> {
             }
             .to_diagnostic(self.db, self.file),
         );
+    }
+
+    /// What goes on after a value where one assignment stands, in an
+    /// argument or a compound assignment: a second `:=` (E0032), or a
+    /// compound operator (E0033). The value is kept, and checked as if
+    /// nothing followed it.
+    pub(crate) fn refuse_after_value(
+        &mut self,
+        after: Option<
+            &auto_lsp::core::ast::AstNodeId<
+                ast::generated::ERRChainOutsideStatement_ERRCompoundOutsideStatement,
+            >,
+        >,
+        place: &auto_lsp::core::ast::AstNodeId<ast::generated::Expression>,
+        within: &'static str,
+    ) {
+        let Some(after) = after else {
+            return;
+        };
+        type After = ast::generated::ERRChainOutsideStatement_ERRCompoundOutsideStatement;
+        let place_range = place.cast(self.ast).get_range().to_owned();
+        let error = match after.cast(self.ast) {
+            After::ERRChainOutsideStatement(chain) => SyntaxError::ChainOutsideStatement {
+                span: chain.get_range().to_owned(),
+                place: place_range,
+                within,
+            }
+            .to_diagnostic(self.db, self.file),
+            After::ERRCompoundOutsideStatement(err) => {
+                self.compound_outside_statement(err, place_range, within)
+            }
+        };
+        self.errors.push(error);
+    }
+
+    /// `x += e` where a value goes on, writing `place` (E0033).
+    fn compound_outside_statement(
+        &self,
+        err: &ast::generated::ERRCompoundOutsideStatement,
+        place: tree_sitter::Range,
+        within: &'static str,
+    ) -> IdeDiagnostic {
+        SyntaxError::CompoundOutsideStatement {
+            operator: err.operator.cast(self.ast).get_range().to_owned(),
+            value: err.value.cast(self.ast).get_range().to_owned(),
+            place,
+            within,
+        }
+        .to_diagnostic(self.db, self.file)
+    }
+}
+
+impl<'db> Parse<'db> for ast::generated::CompoundAssign {
+    type Output = Stmt<'db>;
+
+    /// `x += e` is `x := x + e`: the place is read and written, one access
+    /// for both, and the operation is built around it. Neither the read nor
+    /// the operation is in the node index, which holds what the tree has:
+    /// the place and the value.
+    fn parse(
+        &self,
+        sema: &mut SemanticIndexBuilder<'db>,
+    ) -> anyhow::Result<Stmt<'db>, IdeDiagnostic> {
+        use crate::hir_def::expressions::expression::{
+            AddOperatorKind, Expr, ExprKind, MultOperatorKind, PrimaryExpr,
+        };
+        let place = self.variable.cast(sema.ast);
+        let var = place.to_access(sema)?;
+        type Target = ast::generated::ERREmptyCompoundAssignment_CompoundAssignment;
+        let assignment = match self.target.cast(sema.ast) {
+            Target::ERREmptyCompoundAssignment(err) => {
+                return Err(SyntaxError::EmptyRightHandSide(err.get_range().to_owned())
+                    .to_diagnostic(sema.db, sema.file));
+            }
+            Target::CompoundAssignment(assignment) => assignment,
+        };
+        type Operator = ast::generated::CompoundOperator;
+        let operator = assignment.operator.cast(sema.ast);
+        // `x += y := 1`, `x += y += 1`: what follows the value is refused.
+        let within = match operator {
+            Operator::Token_PlusEqual(_) => "the '+='",
+            Operator::Token_MinusEqual(_) => "the '-='",
+            Operator::Token_StarEqual(_) => "the '*='",
+            Operator::Token_SlashEqual(_) => "the '/='",
+        };
+        sema.refuse_after_value(assignment.chain.as_ref(), &assignment.value, within);
+        let value = assignment.value.cast(sema.ast).parse(sema)?;
+        let read = Expr::new(
+            sema.db,
+            ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess(var)),
+            place.into(),
+            sema.current_scope,
+        );
+        let operation = match operator {
+            Operator::Token_PlusEqual(_) => ExprKind::AddOperator {
+                left: read,
+                operator: AddOperatorKind::Plus,
+                right: value,
+            },
+            Operator::Token_MinusEqual(_) => ExprKind::AddOperator {
+                left: read,
+                operator: AddOperatorKind::Minus,
+                right: value,
+            },
+            Operator::Token_StarEqual(_) => ExprKind::MultOperator {
+                left: read,
+                operator: MultOperatorKind::Mul,
+                right: value,
+            },
+            Operator::Token_SlashEqual(_) => ExprKind::MultOperator {
+                left: read,
+                operator: MultOperatorKind::Div,
+                right: value,
+            },
+        };
+        Ok(Stmt::new(
+            sema.db,
+            StmtKind::Assignment {
+                vars: vec![var],
+                target: Expr::new(sema.db, operation, self.into(), sema.current_scope),
+                compound: true,
+            },
+            self.into(),
+            sema.current_scope,
+        ))
     }
 }
 

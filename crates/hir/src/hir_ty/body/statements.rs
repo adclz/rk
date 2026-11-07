@@ -405,8 +405,14 @@ impl<'db> StmtsResolverCtx<'db> {
                     ctx.effectless_statements.push(*stmt);
                 }
 
-                StmtKind::Assignment { vars, target } => {
-                    self.check_assignment(db, resolver, &mut infer, *stmt, vars, *target, ctx);
+                StmtKind::Assignment {
+                    vars,
+                    target,
+                    compound,
+                } => {
+                    self.check_assignment(
+                        db, resolver, &mut infer, *stmt, vars, *target, *compound, ctx,
+                    );
                 }
 
                 StmtKind::If {
@@ -1206,6 +1212,7 @@ impl<'db> StmtsResolverCtx<'db> {
     /// `a := b := e` runs from right to left, as `b := e; a := b;` does: the
     /// last place is written the value, then each other the value of the
     /// place after it. Each link is checked as an assignment of its own.
+    /// `x += e`, `compound`, is checked as `x := x + e`.
     #[allow(clippy::too_many_arguments)]
     fn check_assignment(
         &self,
@@ -1215,6 +1222,7 @@ impl<'db> StmtsResolverCtx<'db> {
         stmt: Stmt<'db>,
         vars: &[VariableAccess<'db>],
         target: Expr<'db>,
+        compound: bool,
         ctx: &mut BodyInferenceResult<'db>,
     ) {
         let Some((&var, links)) = vars.split_last() else {
@@ -1224,16 +1232,19 @@ impl<'db> StmtsResolverCtx<'db> {
 
         // The target's type was resolved above, so it can DIRECT the
         // right-hand side: a RETURN-overloaded call picks the overload whose
-        // return the target expects.
+        // return the target expects. A compound assignment's operation reads
+        // the place just resolved, which is not resolved again.
+        infer.place_read = compound.then_some(var);
         infer.resolve_expr_expecting(db, target, ctx, Some(base_typ));
         infer.check_expr(db, target, ctx);
+        infer.place_read = None;
 
         if assignable && let Err(err) = infer.coerce_var_access_with_expr(db, var, target, ctx) {
-            ctx.errors.push(err.into_non_assignable(
-                db,
-                base_typ,
-                CallSite::from_scoped(db, &target),
-            ));
+            let diag = match compound {
+                true => compound_mismatch(db, err, base_typ, var, target),
+                false => err.into_non_assignable(db, base_typ, CallSite::from_scoped(db, &target)),
+            };
+            ctx.errors.push(diag);
         } else if assignable {
             // An instance is copied whole. One with a member declared
             // `AT %I*` holds the address of its channel there, and the copy
@@ -1473,6 +1484,54 @@ pub(crate) fn refuse_edge_input_as_storage<'db>(
             .to_diagnostic(db, ctx.scope.file(db)),
         );
     }
+}
+
+/// `i += 1.5` whose result its place cannot take: E0301 on the statement,
+/// which is the operation, with the operation written out in a note and in
+/// the fix, since no cast can be written around it.
+fn compound_mismatch<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    err: crate::hir_ty::infer::coerce::CoerceError<'db>,
+    base_typ: Type<'db>,
+    var: VariableAccess<'db>,
+    operation: Expr<'db>,
+) -> ide_diagnostic::IdeDiagnostic {
+    use crate::check::errors::e03_type::{TypeError, written_out_cast_suggestion};
+    let site = CallSite::from_scoped(db, &operation);
+    let mut diag = TypeError::NotAssignable {
+        base_target: base_typ,
+        lhs: err.expected,
+        rhs: err.actual,
+        adjustment: err.adjustment,
+        expr: site,
+        suggest_cast: false,
+    }
+    .to_diagnostic(db, site.get_scope_id(db).file(db));
+    let (operator, value) = match operation.expr(db) {
+        ExprKind::AddOperator {
+            operator, right, ..
+        } => (operator.as_str(), *right),
+        ExprKind::MultOperator {
+            operator, right, ..
+        } => (operator.as_str(), *right),
+        _ => return diag,
+    };
+    let place = CallSite::from_scoped(db, &var).to_string(db);
+    let value = CallSite::from_scoped(db, &value).to_string(db);
+    let written_out = format!("{place} {operator} {value}");
+    diag.with_note(format!(
+        "'{place} {operator}= {value}' is '{place} := {written_out}'"
+    ));
+    written_out_cast_suggestion(
+        db,
+        err.expected,
+        err.actual,
+        site,
+        &place,
+        &written_out,
+        &mut diag,
+    );
+    diag
 }
 
 /// Whether a FOR control access is a single bare identifier — no path steps
