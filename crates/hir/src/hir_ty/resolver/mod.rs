@@ -309,14 +309,16 @@ impl<'db> Resolver<'db> {
             }
             PathResolutionRoot::Namespace { .. } => {
                 // No value to walk from: a TYPE's or a CONFIGURATION's own
-                // initializer. A name here is a POU, the type of an enum
-                // value (`TYPE Color : (Red, Green) := Color#Green`), which
-                // nothing typed before, so every such default was E0602 on
-                // '{unknown}'. A local name is left to the once-per-type
-                // rule, which refuses it as not constant.
-                if let Some((pou, using)) = pou_named(db, path_expr) {
-                    record_pou(db, path_expr, pou, using, ctx);
-                } else if path_expr.invocation(db).is_none()
+                // initial values, and a task's subscripts. A name is first
+                // the value it names, as a body's own variables come before
+                // what its namespace names: names are caseless, and a type
+                // `Idx` hid the global `idx` of `P1.bits[idx]` (E0317). A
+                // name no value has is a POU: a FUNCTION called, or a type,
+                // which is no value. The type before a `#` is resolved
+                // before this, by `resolve_qualifier`. A local name is left
+                // to the once-per-type rule, which refuses it as not
+                // constant.
+                if path_expr.invocation(db).is_none()
                     && let Some(path) = path_expr.expr(db)
                     && let steps = path.flatten(db)
                     && let Some((first, rest)) = steps.split_first()
@@ -346,6 +348,8 @@ impl<'db> Resolver<'db> {
                         current = ctx.type_of_path_expr_with_adjustments(step.get_expr(db));
                     }
                     self.resolve_index_subscripts(db, path, ctx);
+                } else if let Some((pou, using)) = pou_named(db, path_expr) {
+                    record_pou(db, path_expr, pou, using, ctx);
                 }
             }
         };
