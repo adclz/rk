@@ -173,6 +173,32 @@ END_FUNCTION
     ");
 }
 
+/// A constant outside the last place's subrange is refused as it is in
+/// `sr := 20`. Through a place, `sr := i := 20`, the value is known only as
+/// it runs, and the store checks it then.
+#[rstest]
+fn invalid_a_value_outside_the_last_places_subrange(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION f : INT
+VAR sr : INT(0..10); i : INT; END_VAR
+    i := sr := 20;
+    sr := i := 20;
+    f := i;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0702] Error: value outside the subrange
+       ,-[ file:///test0.st:4:16 ]
+       |
+     4 |     i := sr := 20;
+       |                ^|
+       |                 `-- value 20 is outside the subrange 0..10
+       |
+       | Note: the declared range only admits values from 0 to 10
+    ---'
+    ");
+}
+
 /// A reference to a call's own storage is kept by every place of the chain:
 /// one that outlives the call is refused, and so is the result.
 #[rstest]
@@ -333,19 +359,27 @@ VAR a, b, i, j : INT; on, x, y : BOOL; END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0001] Error: syntax error
+    [E0032] Error: chain of assignments outside a statement
        ,-[ file:///test0.st:9:19 ]
        |
      9 |     f := g(a := b := 1);
-       |                   ^^|^
-       |                     `--- unexpected token(s): ':= 1'
+       |                   ^|
+       |                    `-- a second ':=' chains an assignment
+       |
+       | Help: assign 'b' in a statement before the call
+       |
+       | Note: a chain of assignments is a statement of its own
     ---'
-    [E0001] Error: syntax error
-        ,-[ file:///test0.st:10:11 ]
+    [E0032] Error: chain of assignments outside a statement
+        ,-[ file:///test0.st:10:16 ]
         |
      10 |     FOR i := j := 0 TO 10 DO END_FOR;
-        |           ^^|^
-        |             `--- unexpected token(s): ':= j'
+        |                ^|
+        |                 `-- a second ':=' chains an assignment
+        |
+        | Help: assign 'j' in a statement before the FOR
+        |
+        | Note: a chain of assignments is a statement of its own
     ----'
     [E0012] Error: assignment sign ':=' in a condition
         ,-[ file:///test0.st:11:8 ]
