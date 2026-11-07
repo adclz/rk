@@ -219,7 +219,11 @@ fn lower_stmt<'db>(
     stmt: Stmt<'db>,
 ) -> Result<Vec<MirStmt>, LowerTypeError> {
     match stmt.stmt(ctx.db) {
-        StmtKind::Assignment { vars, target } => {
+        StmtKind::Assignment {
+            vars,
+            target,
+            compound,
+        } => {
             // `a := b := e` runs from right to left: the last place is
             // written the value, then each other the value the place after it
             // holds, read back where it was stored.
@@ -227,7 +231,16 @@ fn lower_stmt<'db>(
                 return Ok(Vec::new());
             };
             let mut stmts = Vec::new();
-            let place = read_back_place(ctx, ctx.lower_variable_access(var)?, links, &mut stmts);
+            let place = ctx.lower_variable_access(var)?;
+            // `x += e` reads the place it stores to: found once, for both.
+            let place = match compound {
+                true => {
+                    let (pin, place) = ctx.pin_place_to_read_back(place);
+                    stmts.extend(pin);
+                    place
+                }
+                false => read_back_place(ctx, place, links, &mut stmts),
+            };
             // The conversion lane is inference's decision (`coercion_target`); the
             // fallback covers what HIR does not record.
             let var_type = match ctx
@@ -240,18 +253,22 @@ fn lower_stmt<'db>(
             // ADJUSTED: `a[i]` infers as the array, but the value read is the
             // element.
             let target_type = target.infer_adjusted(ctx.db).normalize(ctx.db);
+            if *compound {
+                *ctx.place_read.borrow_mut() = Some((var, place.clone()));
+            }
+            let inner = ctx.lower_expr(*target);
+            *ctx.place_read.borrow_mut() = None;
             let value = if needs_cast(ctx.db, target_type, var_type) {
                 // Insert cast from expression type to variable type
                 let from = ctx.type_to_mir_elementary_pub(target_type)?;
                 let to = ctx.type_to_mir_elementary_pub(var_type)?;
-                let inner = ctx.lower_expr(*target)?;
                 crate::expr::MirExpr::Cast {
-                    expr: Box::new(inner),
+                    expr: Box::new(inner?),
                     from,
                     to,
                 }
             } else {
-                ctx.lower_expr(*target)?
+                inner?
             };
             stmts.extend(lower_store(ctx, var, place.clone(), value)?);
 
