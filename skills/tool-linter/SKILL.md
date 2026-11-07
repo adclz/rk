@@ -151,7 +151,7 @@ L0118 accepts the code, which compiles; strict IEC 61131-3 wants the global impo
 | L0215 | `effectless-statement` | info | a bare expression used as a statement, such as `x;` |
 | L0216 | `unused-pou` | info | a FUNCTION, FUNCTION_BLOCK, CLASS or PROGRAM nothing the application reaches from what the configuration runs, the exports and the tests; nothing is reported in a workspace without a CONFIGURATION, nor in a library |
 
-Inside a POU, `unused-variable` never reports VAR_OUTPUT, VAR_IN_OUT, VAR_EXTERNAL, VAR_CONFIG or VAR_ACCESS, since those are read or written from outside the POU.
+Inside a POU, `unused-variable` never reports VAR_OUTPUT, VAR_IN_OUT, VAR_EXTERNAL or VAR_CONFIG, since those are read or written from outside the POU.
 A VAR_GLOBAL of the configuration is reported when no POU of the workspace uses it, through a VAR_EXTERNAL or by its own name, and the configuration does not connect it.
 It also skips the VAR_INPUT of a PROGRAM (written by the CONFIGURATION), the whole body of an `{extern}` FUNCTION, and any name starting with an underscore, which is the way to mark a declaration as deliberately unused.
 
