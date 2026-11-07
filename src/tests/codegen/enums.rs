@@ -1076,6 +1076,47 @@ fn a_named_value_is_a_constant(mut with_db: db::RootDatabase, #[case] program: &
     assert_eq!(result, 1, "{program}");
 }
 
+/// `Mode#Run` names the type `Mode`, whatever variable is named `mode`: names are
+/// caseless, and a `mode : Other` in scope made it `Other#Run`, 7 where the type
+/// says 2, or E0603 when `Other` has no `Run`. A value folded as a constant, an
+/// initial value or a bound, already read the type, and disagreed with the body.
+/// A variable `n` hid the namespace of `N.Step#Run` the same way (E0202).
+#[rstest]
+#[case::a_local("VAR mode : Other; END_VAR x := Mode#Run; test := x = 2;")]
+#[case::a_local_whose_type_lacks_the_value("VAR mode : Off; END_VAR x := Mode#Run; test := x = 2;")]
+#[case::an_initial_value("VAR mode : Other; y : INT := Mode#Run; END_VAR test := y = 2;")]
+#[case::a_bound_and_a_subscript(
+    "VAR mode : Other; a : ARRAY[0..Mode#Run] OF INT; b : ARRAY[0..2] OF INT; END_VAR
+     a[Mode#Run] := 5; b := a; test := b[2] = 5;"
+)]
+#[case::a_case_label(
+    "VAR mode : Other; m : Mode := Mode#Run; END_VAR
+     CASE m OF Mode#Idle: x := 1; Mode#Run: x := 2; END_CASE; test := x = 2;"
+)]
+#[case::an_input("test := WithInput(mode := Other#Run) = 2;")]
+#[case::a_member_and_a_method("VAR h : Holder; END_VAR h(); test := h.out = 2 AND h.Read() = 2;")]
+#[case::a_qualified_type("VAR n : Other; END_VAR x := N.Step#Run; test := x = 2;")]
+#[case::a_type_a_using_brings_in("VAR step : Other; END_VAR x := Step#Run; test := x = 2;")]
+fn a_type_name_is_not_hidden_by_a_variable(mut with_db: db::RootDatabase, #[case] body: &str) {
+    let source = format!(
+        "USING N;
+         NAMESPACE N TYPE Step : INT (Idle := 1, Run := 2); END_TYPE END_NAMESPACE
+         TYPE Mode : INT (Idle := 1, Run := 2); END_TYPE
+         TYPE Other : INT (Idle := 5, Run := 7); END_TYPE
+         TYPE Off : INT (Off := 9); END_TYPE
+         FUNCTION WithInput : INT VAR_INPUT mode : Other; END_VAR WithInput := Mode#Run; END_FUNCTION
+         FUNCTION_BLOCK Holder
+         VAR mode : Other; END_VAR
+         VAR_OUTPUT out : INT; END_VAR
+         METHOD Read : INT Read := Mode#Run; END_METHOD
+             out := Mode#Run;
+         END_FUNCTION_BLOCK
+         FUNCTION test : BOOL VAR x : INT; END_VAR {body} END_FUNCTION"
+    );
+    let result: i32 = crate::tests::codegen::run(&mut with_db, &source, "test", ());
+    assert_eq!(result, 1, "{body}");
+}
+
 /// A named value folds once however often it is named. Each of these names the
 /// two before it: folded again at each name, 22 of them took 10 s to check, and
 /// these 60 would not have finished.
