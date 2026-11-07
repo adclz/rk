@@ -409,6 +409,9 @@ enum Label {
 #[derive(Clone, Debug)]
 enum Stmt {
     Assign(Place, Expr),
+    /// `a := b := e`, the places as written: the last takes the value, then
+    /// each other what the place after it holds.
+    Chain(Vec<Place>, Expr),
     /// An FB instance called with its inputs, and the variable bound to
     /// its `VAR_IN_OUT` if it has one.
     CallFb(usize, Vec<Expr>, Option<usize>),
@@ -2131,6 +2134,16 @@ impl Generator<'_> {
                 self.expr(ty, 4, readable)
             }
         };
+        // Now and then a chain: one place or two more of the type, a STRING
+        // of any capacity, each written what the place to its right holds.
+        if self.choices.percent(15) {
+            let mut places = Vec::new();
+            for _ in 0..=self.choices.below(2) {
+                places.push(self.target(ty)?);
+            }
+            places.push(target);
+            return Some(Stmt::Chain(places, value));
+        }
         Some(Stmt::Assign(target, value))
     }
 
@@ -4110,6 +4123,10 @@ impl Names<'_> {
                 Stmt::Assign(p, e) => {
                     let _ = writeln!(out, "{pad}{} := {};", self.place(p), self.expr(e));
                 }
+                Stmt::Chain(places, e) => {
+                    let places: Vec<String> = places.iter().map(|p| self.place(p)).collect();
+                    let _ = writeln!(out, "{pad}{} := {};", places.join(" := "), self.expr(e));
+                }
                 Stmt::SetBit(p, _, bit, bare, e) => {
                     let part = match bare {
                         true => format!("{bit}"),
@@ -4552,6 +4569,17 @@ fn run_block(block: &[Stmt], st: &mut State, tys: &[Ty], d: &Decls) -> Flow {
             Stmt::Assign(p, e) => {
                 let v = eval(e, st, d);
                 write(p, v, st, tys, d);
+                Flow::Next
+            }
+            // From right to left, each place read back once written: a STRING
+            // passes on what its capacity kept. Nothing in a place has a side
+            // effect, so reading it again finds the slot just written.
+            Stmt::Chain(places, e) => {
+                let mut v = eval(e, st, d);
+                for p in places.iter().rev() {
+                    write(p, v, st, tys, d);
+                    v = read(p, st, d);
+                }
                 Flow::Next
             }
             Stmt::SetBit(p, ty, bit, _, e) => {
@@ -5415,6 +5443,89 @@ mod tests {
             }
         }
         assert_eq!(reached.len(), forms.len(), "forms reached: {reached:?}");
+    }
+
+    /// The generator writes chains, `a := b := e`, of two places and of three,
+    /// through a subscript and with a STRING, and for each the module computes
+    /// what the evaluator does: from right to left, each place taking what the
+    /// one to its right holds.
+    #[test]
+    fn chains_are_written_and_compute() {
+        // How many `:=` a statement line has outside brackets: two or more
+        // is a chain, a declaration or a FOR has one.
+        let links = |line: &str| {
+            let mut depth = 0i32;
+            let mut count = 0;
+            for (at, c) in line.char_indices() {
+                match c {
+                    '(' | '[' => depth += 1,
+                    ')' | ']' => depth -= 1,
+                    ':' if depth == 0 && line[at..].starts_with(":=") => count += 1,
+                    _ => {}
+                }
+            }
+            count
+        };
+        let chain = move |text: &str, has: &dyn Fn(&str, usize) -> bool| {
+            text.lines()
+                .map(str::trim_start)
+                .filter(|line| !line.starts_with("FOR "))
+                .any(|line| links(line) >= 2 && has(line, links(line)))
+        };
+        type Form = (&'static str, Box<dyn Fn(&str) -> bool>);
+        let forms: Vec<Form> = vec![
+            ("two places", Box::new(move |t| chain(t, &|_, n| n == 2))),
+            ("three places", Box::new(move |t| chain(t, &|_, n| n == 3))),
+            (
+                "a subscript",
+                Box::new(move |t| chain(t, &|l, _| l.contains('['))),
+            ),
+            (
+                "a STRING",
+                Box::new(move |t| chain(t, &|l, _| l.contains('\''))),
+            ),
+        ];
+        let mut seed = 0x2545_F491_4F6C_DD1Du64;
+        let mut reached: Vec<&str> = Vec::new();
+        for _ in 0..4000 {
+            let text = random_program(&mut seed);
+            let fresh: Vec<&str> = forms
+                .iter()
+                .filter(|(name, has)| has(&text) && !reached.contains(name))
+                .map(|(name, _)| *name)
+                .collect();
+            if fresh.is_empty() {
+                continue;
+            }
+            if let Err(finding) = crate::check_generated(&text) {
+                panic!("{finding}\n--- the program ---\n{text}");
+            }
+            reached.extend(fresh);
+            if reached.len() == forms.len() {
+                break;
+            }
+        }
+        assert_eq!(reached.len(), forms.len(), "forms reached: {reached:?}");
+    }
+
+    /// The evaluator runs a chain as the module does: each place takes what
+    /// the place to its right holds, so a STRING cut by a shorter place on
+    /// the right reaches the longer one cut. A generated chain has one type,
+    /// and few cut a STRING on the way, so the programs rarely tell this
+    /// apart from every place taking the value.
+    #[test]
+    fn a_chain_passes_on_what_each_place_holds() {
+        let tys = [Ty::Str(8), Ty::Str(3)];
+        let mut st = State::frame(vec![Val::Str(Vec::new()), Val::Str(Vec::new())]);
+        let chain = Stmt::Chain(
+            vec![Place::Var(0), Place::Var(1)],
+            Expr::Lit(Ty::Str(8), Val::Str(b"abcdefgh".to_vec())),
+        );
+        let _ = run_block(&[chain], &mut st, &tys, &Decls::default());
+        assert_eq!(
+            st.vars,
+            [Val::Str(b"abc".to_vec()), Val::Str(b"abc".to_vec())]
+        );
     }
 
     /// The generator writes CONSTANTs and types with named values, in each place
