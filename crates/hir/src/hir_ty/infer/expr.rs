@@ -417,8 +417,7 @@ impl<'db> InferExprCtx<'db> {
                 ty.normalize(db)
             }
             PrimaryExpr::EnumValue { name, variant } => {
-                self.resolver
-                    .resolve_begin_path_expr(db, *name, None, inference_result);
+                self.resolver.resolve_qualifier(db, *name, inference_result);
 
                 let find_enm = inference_result.type_of_begin_expr_with_adjustments(db, *name);
 
