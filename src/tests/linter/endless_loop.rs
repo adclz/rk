@@ -351,3 +351,18 @@ END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "endless-loop"), @"");
 }
+
+/// `i += 1` in the loop changes its condition.
+#[rstest]
+fn a_compound_assignment_changes_the_condition(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION test : INT
+VAR i : INT; END_VAR
+    WHILE i < 10 DO
+        i += 1;
+    END_WHILE;
+    test := i;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "endless-loop"), @"");
+}

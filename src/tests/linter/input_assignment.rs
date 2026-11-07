@@ -220,3 +220,29 @@ END_FUNCTION
     ---'
     ");
 }
+
+/// `x += 1` writes the input.
+#[rstest]
+fn an_input_written_by_a_compound_assignment(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION test : INT
+VAR_INPUT x : INT; END_VAR
+    x += 1;
+    test := x;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "input-assignment"), @r"
+    [L0113] Warning: assignment to input variable
+       ,-[ file:///test0.st:4:5 ]
+       |
+     3 | VAR_INPUT x : INT; END_VAR
+       |           |
+       |           `-- 'x' is declared here
+     4 |     x += 1;
+       |     |
+       |     `-- assignment to VAR_INPUT 'x'
+       |
+       | Note: lint rule: input-assignment
+    ---'
+    ");
+}

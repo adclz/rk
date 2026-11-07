@@ -237,3 +237,30 @@ END_FUNCTION
     ---'
     ");
 }
+
+/// `i += 2` writes the control variable.
+#[rstest]
+fn modification_by_a_compound_assignment(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION test : INT
+VAR i : INT; END_VAR
+    FOR i := 0 TO 10 DO
+        i += 2;
+    END_FOR;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "loop-var-modified"), @r"
+    [L0112] Warning: FOR control variable written
+       ,-[ file:///test0.st:5:9 ]
+       |
+     4 |     FOR i := 0 TO 10 DO
+       |         |
+       |         `-- 'i' is used here as control variable
+     5 |         i += 2;
+       |         |
+       |         `-- loop variable 'i' is modified inside the loop body
+       |
+       | Note: lint rule: loop-var-modified
+    ---'
+    ");
+}

@@ -196,3 +196,36 @@ END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "identity-operation"), @r"");
 }
+
+/// `y += 0` and `y *= 1` change nothing.
+#[rstest]
+fn compound_identity(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION test : INT
+VAR y : INT; END_VAR
+    y += 0;
+    y *= 1;
+    test := y;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "identity-operation"), @r"
+    [L0107] Warning: identity operation
+       ,-[ file:///test0.st:4:5 ]
+       |
+     4 |     y += 0;
+       |     ^^^|^^
+       |        `---- '+ 0' has no effect
+       |
+       | Note: lint rule: identity-operation
+    ---'
+    [L0107] Warning: identity operation
+       ,-[ file:///test0.st:5:5 ]
+       |
+     5 |     y *= 1;
+       |     ^^^|^^
+       |        `---- '* 1' has no effect
+       |
+       | Note: lint rule: identity-operation
+    ---'
+    ");
+}
