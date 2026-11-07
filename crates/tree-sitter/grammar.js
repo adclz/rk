@@ -382,6 +382,10 @@ module.exports = grammar({
 
     // Statements
     ERR_empty_right_hand_assignment: ($) => prec(-1, ":="), // a := ?
+    // A second `:=` where one assignment stands, in an argument or at the
+    // start of a FOR: `F(a := b := 1)`, `FOR i := j := 0 TO 9`. A chain is
+    // a statement of its own.
+    ERR_chain_outside_statement: ($) => prec(-1, repeat1(seq(":=", $._expression))),
 
     // Expressions
     ERR_assign_func_call: ($) => prec(-1, $.func_call), // A function call cannot be assigned
@@ -2279,10 +2283,13 @@ module.exports = grammar({
 
     param_assign: ($) => choice($.param_assign_input, $.param_assign_output),
 
+    // A name before `:=` is the input's: `F(b := 1)` names `b`, it is no
+    // value `b` with a chain after it.
     param_assign_input: ($) =>
       seq(
-        optional(seq(field("param", $.identifier), ":=")),
+        optional(prec(1, seq(field("param", $.identifier), ":="))),
         field("value", $._expression),
+        field("chain", optional($.ERR_chain_outside_statement)),
       ),
 
     // Any expression after `=>`: one that names no variable is refused by
@@ -2364,6 +2371,7 @@ module.exports = grammar({
           $.ERR_output_assign_in_for_control,
         ),
         field("initial_value", $._expression),
+        field("chain", optional($.ERR_chain_outside_statement)),
         kw("TO"),
         field("end_value", $._expression),
         optional(seq(kw("BY"), field("step", $._expression))),

@@ -177,3 +177,65 @@ END_FUNCTION
                     (int_literal
                       (signed_int
                         (unsigned_int)))))))))))))
+
+================================================================================
+A chain in an argument or at the start of a FOR
+================================================================================
+
+FUNCTION fn
+    F(a := b := 1);
+    FOR i := j := 0 TO 10 DO
+    END_FOR;
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (func_decl
+    (identifier)
+    (func_body
+      (stmt_list
+        (func_call
+          (begin_path_expression
+            (path_expression
+              (var_access
+                (field))))
+          (param_assign
+            (param_assign_input
+              (identifier)
+              (variable_access
+                (variable
+                  (begin_path_expression
+                    (path_expression
+                      (var_access
+                        (field))))))
+              (ERR_chain_outside_statement
+                (constant
+                  (numeric_literal
+                    (int_literal
+                      (signed_int
+                        (unsigned_int)))))))))
+        (for_stmt
+          (variable
+            (begin_path_expression
+              (path_expression
+                (var_access
+                  (field)))))
+          (for_list
+            (variable_access
+              (variable
+                (begin_path_expression
+                  (path_expression
+                    (var_access
+                      (field))))))
+            (ERR_chain_outside_statement
+              (constant
+                (numeric_literal
+                  (int_literal
+                    (signed_int
+                      (unsigned_int))))))
+            (constant
+              (numeric_literal
+                (int_literal
+                  (signed_int
+                    (unsigned_int)))))))))))
