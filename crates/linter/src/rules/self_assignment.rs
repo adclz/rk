@@ -57,8 +57,8 @@ fn check_statements<'db>(
 ) {
     for stmt in stmts {
         match stmt.stmt(db) {
-            StmtKind::Assignment { var, target } => {
-                check_assignment(db, body, *stmt, *var, *target, diagnostics);
+            StmtKind::Assignment { vars, target } => {
+                check_chain(db, body, *stmt, vars, *target, diagnostics);
             }
             StmtKind::If {
                 then,
@@ -107,6 +107,41 @@ fn check_statements<'db>(
     }
 }
 
+/// Each link of `a := b := e`: the last place with the value, and each other
+/// place with the place after it, whose value it takes.
+pub fn check_chain<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    body: ScopeInference<'db>,
+    stmt: Stmt<'db>,
+    vars: &[VariableAccess<'db>],
+    rhs: hir::hir_def::expressions::expression::Expr<'db>,
+    diagnostics: &mut Vec<IdeDiagnostic>,
+) {
+    let Some((&last, links)) = vars.split_last() else {
+        return;
+    };
+    check_assignment(db, body, stmt, last, rhs, diagnostics);
+    let mut source = last;
+    for &var in links.iter().rev() {
+        if let Some(name) = same_variable(db, body, var, source) {
+            // `b := b` within `a := b := b := 1`: from the place to the one it
+            // takes the value of.
+            let (from, to) = (var.get_span(db), source.get_span(db));
+            let span = auto_lsp::tree_sitter::Range {
+                start_byte: from.start_byte,
+                end_byte: to.end_byte,
+                start_point: from.start_point,
+                end_point: to.end_point,
+            };
+            diagnostics.push(report(
+                &name,
+                hir::denormalize(db, stmt.get_scope_id(db).file(db), &span),
+            ));
+        }
+        source = var;
+    }
+}
+
 pub fn check_assignment<'db>(
     db: &'db dyn WorkspaceDataBase,
     body: ScopeInference<'db>,
@@ -119,45 +154,52 @@ pub fn check_assignment<'db>(
     let ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess(rhs_var)) = rhs.expr(db) else {
         return;
     };
+    if let Some(name) = same_variable(db, body, lhs, *rhs_var) {
+        diagnostics.push(report(
+            &name,
+            hir::denormalize(db, stmt.get_scope_id(db).file(db), &stmt.get_span(db)),
+        ));
+    }
+}
 
+/// The name of the variable both accesses resolve to, when they do.
+fn same_variable<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    body: ScopeInference<'db>,
+    lhs: VariableAccess<'db>,
+    rhs_var: VariableAccess<'db>,
+) -> Option<String> {
     // Both sides must be symbolic (not direct %I/%Q addresses)
     let VariableAccessKind::Symbolic(lhs_begin) = lhs.kind(db) else {
-        return;
+        return None;
     };
     let VariableAccessKind::Symbolic(rhs_begin) = rhs_var.kind(db) else {
-        return;
+        return None;
     };
 
     // Both must have a path expression (not an invocation like THIS/SUPER)
-    let Some(lhs_path) = lhs_begin.expr(db) else {
-        return;
-    };
-    let Some(rhs_path) = rhs_begin.expr(db) else {
-        return;
-    };
+    let lhs_path = lhs_begin.expr(db)?;
+    let rhs_path = rhs_begin.expr(db)?;
 
     // Compare resolved types — both must resolve to the same variable
     let Type::Variable((lhs_var, _)) = body.type_of_path_expr(lhs_path) else {
-        return;
+        return None;
     };
     let Type::Variable((rhs_var, _)) = body.type_of_path_expr(rhs_path) else {
-        return;
+        return None;
     };
 
     if lhs_var != rhs_var {
-        return;
+        return None;
     }
+    Some(lhs_var.name_with_case(db).text(db).to_string())
+}
 
-    let name = lhs_var.name_with_case(db).text(db);
-    diagnostics.push(
-        diag()
-            .message(format!("variable '{name}' is assigned to itself"))
-            .desc(&SelfAssignment)
-            .range(
-                hir::denormalize(db, stmt.get_scope_id(db).file(db), &stmt.get_span(db))
-                    .unwrap_or_default(),
-            )
-            .severity(DiagnosticSeverity::WARNING)
-            .call(),
-    );
+fn report(name: &str, range: Option<auto_lsp::lsp_types::Range>) -> IdeDiagnostic {
+    diag()
+        .message(format!("variable '{name}' is assigned to itself"))
+        .desc(&SelfAssignment)
+        .range(range.unwrap_or_default())
+        .severity(DiagnosticSeverity::WARNING)
+        .call()
 }

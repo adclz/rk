@@ -57,8 +57,10 @@ fn check_statements<'db>(
 ) {
     for stmt in stmts {
         match stmt.stmt(db) {
-            StmtKind::Assignment { var, .. } => {
-                check_assignment(db, body, *var, diagnostics);
+            StmtKind::Assignment { vars, .. } => {
+                for var in vars {
+                    check_assignment(db, body, *var, diagnostics);
+                }
             }
             StmtKind::If {
                 then,

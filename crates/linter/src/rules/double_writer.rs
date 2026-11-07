@@ -191,7 +191,11 @@ fn statement_writes<'db>(
 ) {
     for stmt in stmts {
         match stmt.stmt(db) {
-            StmtKind::Assignment { var, .. } => place_write(db, body, *var, writes),
+            StmtKind::Assignment { vars, .. } => {
+                for var in vars {
+                    place_write(db, body, *var, writes);
+                }
+            }
             StmtKind::If {
                 then,
                 else_if,

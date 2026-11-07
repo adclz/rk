@@ -345,48 +345,69 @@ fn visit_statements<'db>(
 ) {
     for stmt in stmts {
         match stmt.stmt(db) {
-            StmtKind::Assignment { var, target } => {
+            // Every place of a chain is written: `a := b := e` is two
+            // assignments, `b := e` and `a := b`.
+            StmtKind::Assignment { vars, target } => {
                 check_expr_lints(db, body, ctx, target, diagnostics);
                 if ctx.input_assignment {
                     run_lint(input_assignment::NAME, diagnostics, |d| {
-                        input_assignment::check_assignment(db, body, *var, d)
+                        for var in vars {
+                            input_assignment::check_assignment(db, body, *var, d);
+                        }
                     });
                 }
                 if ctx.external_mutation {
                     run_lint(external_mutation::NAME, diagnostics, |d| {
-                        external_mutation::check_assignment(db, body, *var, d)
+                        for var in vars {
+                            external_mutation::check_assignment(db, body, *var, d);
+                        }
                     });
                 }
                 if ctx.self_assignment {
                     run_lint(self_assignment::NAME, diagnostics, |d| {
-                        self_assignment::check_assignment(db, body, *stmt, *var, *target, d)
+                        self_assignment::check_chain(db, body, *stmt, vars, *target, d)
                     });
                 }
-                if ctx.aggregate_copy {
+                // One value is copied into each place: one report says it.
+                if ctx.aggregate_copy
+                    && let Some(var) = vars.last()
+                {
                     run_lint(aggregate_copy::NAME, diagnostics, |d| {
                         aggregate_copy::check_assignment(db, body, *stmt, *var, d)
                     });
                 }
                 if ctx.string_truncation {
                     run_lint(string_truncation::NAME, diagnostics, |d| {
-                        string_truncation::check_assignment(db, body, *var, target, d)
+                        string_truncation::check_chain(db, body, vars, target, d)
                     });
                 }
                 if ctx.loop_var_modified {
                     run_lint(loop_var_modified::NAME, diagnostics, |d| {
-                        loop_var_modified::check_assignment(db, body, *var, active_loop_vars, d)
+                        for var in vars {
+                            loop_var_modified::check_assignment(
+                                db,
+                                body,
+                                *var,
+                                active_loop_vars,
+                                d,
+                            );
+                        }
                     });
                 }
                 if ctx.missing_return
                     && !*return_assigned
-                    && missing_return::check_assignment(body, *var)
+                    && vars
+                        .iter()
+                        .any(|var| missing_return::check_assignment(body, *var))
                 {
                     *return_assigned = true;
                 }
                 if ctx.uninitialized_output
                     && let Some(assigned) = assigned_vars.as_mut()
                 {
-                    uninitialized_output::collect_assigned(db, body, *var, assigned);
+                    for var in vars {
+                        uninitialized_output::collect_assigned(db, body, *var, assigned);
+                    }
                 }
             }
             StmtKind::If {

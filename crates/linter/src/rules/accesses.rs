@@ -150,9 +150,12 @@ fn statement<'db>(
     f: &mut dyn FnMut(Place<'db>, Use),
 ) {
     match stmt.stmt(db) {
-        StmtKind::Assignment { var, target } => {
+        // From right to left, as a chain runs: the value, then each place.
+        StmtKind::Assignment { vars, target } => {
             expression(db, *target, f);
-            place(db, *var, Use::Write, f);
+            for var in vars.iter().rev() {
+                place(db, *var, Use::Write, f);
+            }
         }
         StmtKind::FuncCall(call) => self::call(db, *call, f),
         StmtKind::EmptyPathExpression(begin) => {
