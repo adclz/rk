@@ -78,6 +78,24 @@ A place takes what the place to its right holds, so a `STRING` is cut to each ca
 A chain is a statement of its own: in a call's argument or at the start of a `FOR`, it is `E0032`.
 Chains go beyond the standard, which assigns one variable at a time.
 
+## Compound assignment
+
+`x += e;` is `x := x + e;`, with the place `x` found once: a call in its subscript runs once.
+`-=`, `*=` and `/=` do the same with `-`, `*` and `/`.
+The operation is checked as written out, so a result the place cannot take is refused:
+
+```iecst expect=E0301
+FUNCTION Total : INT
+VAR count : INT; extra : DINT; END_VAR
+    count += 1;      // INT + INT is an INT
+    count += extra;  // <-- E0301: INT + DINT is a DINT
+    Total := count;
+END_FUNCTION
+```
+
+A compound assignment is a statement of its own, and no link of a chain: elsewhere it is `E0033`.
+It goes beyond the standard too.
+
 ## CASE
 
 `CASE` branches on an integer, a bit string, a `CHAR`, an enum or a `STRING`, and each label is a constant.
