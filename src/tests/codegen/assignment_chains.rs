@@ -1,9 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Clauzel Adrien
 // SPDX-License-Identifier: AGPL-3.0-only
 
-//! `a := b := e` runs from right to left, as `b := e; a := b;` does: the
-//! last place is written the value, then each other the value of the place
-//! after it, and each place is reached once.
+//! `a := b := e` runs from right to left, as `b := e; a := b;` does with `b`
+//! read where it was stored: the last place is written the value, then each
+//! other the value of the place after it, and each place is reached once.
 
 use super::{TestPlc, compile_to_mir_and_wasm, with_db};
 use rstest::*;
