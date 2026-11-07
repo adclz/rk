@@ -345,6 +345,54 @@ END_FUNCTION_BLOCK"#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
 
+/// A VAR_CONFIG value is held to the capacity as a declaration's own is: of
+/// a variable, of a STRUCT field the entry names, and of a member in a value
+/// for a whole instance. It was accepted and cut to fit at `__init`.
+#[rstest]
+#[case::a_variable("Res.P1.t : STRING[4] := 'abcdefgh';", "")]
+#[case::a_field("Res.P1.s.name : STRING[4] := 'abcdefgh';", "")]
+#[case::a_member_of_an_instance("Res.P1.h : Holder := (label := 'abcdefgh');", "")]
+#[case::at_its_capacity("Res.P1.t : STRING[4] := 'abcd';", "fits")]
+fn a_configured_string_fits_its_capacity(
+    mut with_db: RootDatabase,
+    #[case] entry: &str,
+    #[case] fits: &str,
+) {
+    let source = format!(
+        r#"
+TYPE Rec : STRUCT name : STRING[4]; END_STRUCT END_TYPE
+
+FUNCTION_BLOCK Holder
+VAR PUBLIC label : STRING[4]; END_VAR
+END_FUNCTION_BLOCK
+
+PROGRAM P
+VAR t : STRING[4]; s : Rec; h : Holder; END_VAR
+    h();
+END_PROGRAM
+
+CONFIGURATION Cfg
+    RESOURCE Res ON CPU
+        TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM P1 WITH T : P;
+    END_RESOURCE
+    VAR_CONFIG {entry} END_VAR
+END_CONFIGURATION
+"#
+    );
+    let diagnostics = test_diagnostics(&mut with_db, &[&source]);
+    if fits.is_empty() {
+        assert!(diagnostics.starts_with("[E0314]"), "{diagnostics}");
+        assert_eq!(diagnostics.matches("Error:").count(), 1, "{diagnostics}");
+        assert!(
+            diagnostics.contains("the literal is 8 bytes, over the capacity of 4"),
+            "{diagnostics}"
+        );
+    } else {
+        assert_eq!(diagnostics, "", "{entry}");
+    }
+}
+
 /// A `STRING[K]` whose length names a CONSTANT: legal, and measured at K.
 ///
 /// The length is a constant EXPRESSION, as an array bound is — the grammar
