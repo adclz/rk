@@ -347,7 +347,7 @@ fn visit_statements<'db>(
         match stmt.stmt(db) {
             // Every place of a chain is written: `a := b := e` is two
             // assignments, `b := e` and `a := b`.
-            StmtKind::Assignment { vars, target } => {
+            StmtKind::Assignment { vars, target, .. } => {
                 check_expr_lints(db, body, ctx, target, diagnostics);
                 if ctx.input_assignment {
                     run_lint(input_assignment::NAME, diagnostics, |d| {

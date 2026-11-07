@@ -219,7 +219,7 @@ fn statements<'db>(
 ) {
     for stmt in stmts {
         match stmt.stmt(db) {
-            StmtKind::Assignment { vars, target } => {
+            StmtKind::Assignment { vars, target, .. } => {
                 for var in vars {
                     write(db, body, *var, effects);
                 }

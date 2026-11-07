@@ -151,7 +151,7 @@ fn statement<'db>(
 ) {
     match stmt.stmt(db) {
         // From right to left, as a chain runs: the value, then each place.
-        StmtKind::Assignment { vars, target } => {
+        StmtKind::Assignment { vars, target, .. } => {
             expression(db, *target, f);
             for var in vars.iter().rev() {
                 place(db, *var, Use::Write, f);
