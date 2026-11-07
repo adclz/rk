@@ -56,7 +56,7 @@ __FINALLY             // always runs
 __END_TRY;
 ```
 
-A chain `a := b := e` is an rk extension and a statement only.
+A chain `a := b := e` is an rk extension and a statement only: in an argument or a `FOR` start it is E0032.
 It runs from right to left, each place taking the value of the place to its right, so the types must convert link by link (E0301 on the place that gives the value).
 
 `__RAISE`, `__TRY`, `__CATCH` and `__FINALLY` are rk extensions.

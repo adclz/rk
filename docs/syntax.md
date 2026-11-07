@@ -61,7 +61,7 @@ Inputs, `VAR_EXTERNAL`s, `CONSTANT`s and `REF()` can be named in any order.
 ## Assignment chains
 
 `a := b := e;` writes one value to several places.
-It runs from right to left, as `b := e; a := b;` does: the last place takes the value, then each other place takes the value of the place to its right.
+It runs from right to left, as `b := e; a := b;` does with `b` read where it was stored: the last place takes the value, then each other place takes the value of the place to its right.
 Each link is checked as an assignment of its own, so the types have to convert from right to left:
 
 ```iecst expect=E0301
@@ -75,7 +75,7 @@ END_FUNCTION
 
 Each place is found once, when its link runs: `arr[i] := i := 3;` writes `arr[3]`, and a call in a subscript runs once.
 A place takes what the place to its right holds, so a `STRING` is cut to each capacity in turn.
-A chain is a statement, never a value.
+A chain is a statement of its own: in a call's argument or at the start of a `FOR`, it is `E0032`.
 Chains go beyond the standard, which assigns one variable at a time.
 
 ## CASE
