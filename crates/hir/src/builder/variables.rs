@@ -16,11 +16,9 @@ use crate::builder::semantic_index::SemanticIndexBuilder;
 use crate::builder::{Parse, ParseSpec, ParseSpecInit, ParseVarSection, SpecInitResult};
 use crate::check::errors::ToIdeDiagnostic;
 use crate::check::errors::e00_syntax::SyntaxError;
-use crate::hir_def::config::AccessDirection;
 use crate::hir_def::expressions::spec::{ElementarySpec, Spec, SpecKind};
 use crate::hir_def::interned::identifier::Ident;
 use crate::hir_def::pous::variable::{DirectVariable, LocatedVariable, VariableDecl, VariableKind};
-use crate::hir_def::program::ProgAccessDecl;
 use crate::{AstId, HirNodeInfo, Qualifier};
 use ide_diagnostic::IdeDiagnostic;
 
@@ -944,63 +942,6 @@ impl<'db> ParseVarSection<'db> for ast::generated::LocPartlyVarDecl {
                 child.cast(sema.ast).into(),
                 sema.current_scope,
             ));
-        }
-    }
-}
-
-pub trait ParseProgDecl<'db> {
-    fn parse(&self, sema: &mut SemanticIndexBuilder<'db>, section: &mut Vec<ProgAccessDecl<'db>>);
-}
-
-impl<'db> ParseProgDecl<'db> for ast::generated::ProgAccessDecls {
-    fn parse(&self, sema: &mut SemanticIndexBuilder<'db>, section: &mut Vec<ProgAccessDecl<'db>>) {
-        for child in self.children.iter() {
-            let decl = child.cast(sema.ast);
-            let r = decl.access.cast(sema.ast).to_spec(sema);
-            let Some(spec) = sema.try_parse(r) else {
-                continue;
-            };
-
-            let r = Ident::from_node(sema.db, sema.file, decl.name.cast(sema.ast));
-            let Some(name) = sema.try_parse(r) else {
-                continue;
-            };
-
-            let direct_variable = match &decl.children {
-                Some(v) => {
-                    let r = v.cast(sema.ast).to_direct_variable(sema);
-                    let Some(dv) = sema.try_parse(r) else {
-                        continue;
-                    };
-                    Some(dv)
-                }
-                _ => None,
-            };
-
-            let r = decl.variable.cast(sema.ast).parse(sema);
-            let Some(variable) = sema.try_parse(r) else {
-                continue;
-            };
-
-            let direction = match &decl.direction {
-                Some(direction) => match direction.cast(sema.ast).children.cast(sema.ast) {
-                    ast::generated::ReadOnly_ReadWrite::ReadOnly(_) => {
-                        Some(AccessDirection::ReadOnly)
-                    }
-                    ast::generated::ReadOnly_ReadWrite::ReadWrite(_) => {
-                        Some(AccessDirection::ReadWrite)
-                    }
-                },
-                None => None,
-            };
-
-            section.push(ProgAccessDecl {
-                spec,
-                name_with_case: name,
-                variable,
-                direct_variable,
-                direction,
-            })
         }
     }
 }

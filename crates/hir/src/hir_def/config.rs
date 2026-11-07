@@ -37,10 +37,6 @@ pub struct ConfigDecl<'db> {
 
     #[tracked]
     #[returns(ref)]
-    pub access_decls: Vec<AccessDecl<'db>>,
-
-    #[tracked]
-    #[returns(ref)]
     pub config_init: Vec<ConfigInstInit<'db>>,
 
     #[tracked]
@@ -204,32 +200,6 @@ pub struct FbTask<'db> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
-pub struct AccessDecl<'db> {
-    /// The name as the author wrote it. Matching reads `name(db)`.
-    pub name_with_case: Ident,
-
-    pub path: AccessPath<'db>,
-
-    pub access: Spec<'db>,
-
-    pub direction: AccessDirection,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
-pub struct AccessPath<'db> {
-    pub path: PathExpr<'db>,
-
-    /// Optional `direct_variable` (AT address) suffix on the access path.
-    pub direct: Option<DirectVariable<'db>>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
-pub enum AccessDirection {
-    ReadWrite,
-    ReadOnly,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub struct ConfigInstInit<'db> {
     pub path: PathExpr<'db>,
 
@@ -276,12 +246,5 @@ impl<'db> ConfigDecl<'db> {
     /// [`Self::name_with_case`].
     pub fn name(self, db: &'db dyn WorkspaceDataBase) -> Ident {
         self.name_with_case(db).folded(db)
-    }
-}
-
-impl<'db> AccessDecl<'db> {
-    /// The name, as names are matched: case folded.
-    pub fn name(&self, db: &'db dyn WorkspaceDataBase) -> Ident {
-        self.name_with_case.folded(db)
     }
 }

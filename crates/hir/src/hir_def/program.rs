@@ -6,13 +6,9 @@ use db::WorkspaceDataBase;
 use crate::{
     AstId, HasName, HasPragmas, HirNodeInfo,
     hir_def::{
-        config::AccessDirection,
-        expressions::{expression::PathExpr, spec::Spec, statement::Stmt},
+        expressions::statement::Stmt,
         interned::identifier::Ident,
-        pous::{
-            pragma::Pragma,
-            variable::{DirectVariable, VariableDecl},
-        },
+        pous::{pragma::Pragma, variable::VariableDecl},
         scope::ScopeId,
     },
 };
@@ -29,10 +25,6 @@ pub struct ProgramDecl<'db> {
     #[tracked]
     #[no_eq]
     pub name_id: AstId,
-
-    #[tracked]
-    #[returns(ref)]
-    pub prog_access_decls: Vec<ProgAccessDecl<'db>>,
 
     #[tracked]
     #[returns(ref)]
@@ -84,31 +76,10 @@ impl<'db> HasName<'db> for ProgramDecl<'db> {
     }
 }
 
-#[derive(Debug, Clone, Hash, salsa::Update)]
-pub struct ProgAccessDecl<'db> {
-    /// The name as the author wrote it. Matching reads `name(db)`.
-    pub name_with_case: Ident,
-
-    pub variable: PathExpr<'db>,
-
-    pub direct_variable: Option<DirectVariable<'db>>,
-
-    pub spec: Spec<'db>,
-
-    pub direction: Option<AccessDirection>,
-}
-
 impl<'db> ProgramDecl<'db> {
     /// The name, as names are matched: case folded. As written:
     /// [`Self::name_with_case`].
     pub fn name(self, db: &'db dyn WorkspaceDataBase) -> Ident {
         self.name_with_case(db).folded(db)
-    }
-}
-
-impl<'db> ProgAccessDecl<'db> {
-    /// The name, as names are matched: case folded.
-    pub fn name(&self, db: &'db dyn WorkspaceDataBase) -> Ident {
-        self.name_with_case.folded(db)
     }
 }

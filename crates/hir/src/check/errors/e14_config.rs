@@ -93,13 +93,11 @@ pub enum ConfigError<'db> {
         field: SpanIdent<'db>,
         parent_type: Type<'db>,
     },
-    /// A VAR_ACCESS declaration's type does not match the referenced variable's actual type.
-    AccessDeclTypeMismatch {
-        var_origin: VariableDecl<'db>,
-        spec: Spec<'db>,
-        expected: Type<'db>,
-        actual: Type<'db>,
-    },
+    /// A `VAR_ACCESS` section, in a PROGRAM or a CONFIGURATION. It names
+    /// variables for another device to read or write by name, which no host
+    /// of rk serves: a host reaches a variable by its path. Its declarations
+    /// are not read.
+    VarAccessUnsupported(Range),
     /// An element of a program configuration's list, `PROGRAM P1 WITH T :
     /// F(x1 := src, y1 => snk, fb1 WITH T2)`, that cannot hold.
     ProgElementRefused {
@@ -909,7 +907,7 @@ impl<'db> ErrorCode for ConfigError<'db> {
             Self::ProgramWithoutTask { .. } => "E1412",
             Self::ConfigInstInitUnknownInstance { .. } => "E1413",
             Self::ConfigInstInitFieldNotFound { .. } => "E1414",
-            Self::AccessDeclTypeMismatch { .. } => "E1415",
+            Self::VarAccessUnsupported(_) => "E1415",
             Self::DirectVariableUnsupported {
                 why: UnlocatableAddress::InLibrary,
                 ..
@@ -1135,32 +1133,25 @@ impl<'db> ToIdeDiagnostic<'db> for ConfigError<'db> {
                 .desc(self)
                 .range(crate::denormalize(db, file, &field.get_span(db)).unwrap_or_default())
                 .call(),
-            Self::AccessDeclTypeMismatch {
-                var_origin,
-                spec,
-                expected,
-                actual,
-            } => {
+            Self::VarAccessUnsupported(span) => {
                 let mut diag = diag()
-                    .message(format!(
-                        "access declaration expects '{}', but variable has type '{}'",
-                        expected.type_name(db),
-                        actual.type_name(db),
-                    ))
+                    .message("VAR_ACCESS is not supported".into())
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(crate::denormalize(db, file, &spec.get_span(db)).unwrap_or_default())
+                    .range(
+                        crate::denormalize(
+                            db,
+                            file,
+                            &crate::check::errors::first_word(db, file, span),
+                        )
+                        .unwrap_or_default(),
+                    )
                     .call();
-
-                diag.with_related(Related::new(
-                    format!(
-                        "variable '{}' is declared here",
-                        var_origin.name_with_case(db).text(db),
-                    ),
-                    var_origin.get_scope_id(db).file(db),
-                    var_origin.get_name_span(db),
-                ));
-
+                diag.with_note(
+                    "a host reads and writes a variable by its path, not through an access path"
+                        .into(),
+                );
+                diag.with_help("remove the section".into());
                 diag
             }
             Self::ProgElementRefused { expr, why } => {

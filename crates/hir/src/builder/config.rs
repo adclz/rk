@@ -15,8 +15,8 @@ use crate::{
     check::errors::{ToIdeDiagnostic, e00_syntax::SyntaxError},
     hir_def::{
         config::{
-            AccessDecl, AccessDirection, AccessPath, ConfigDecl, ConfigInstInit, DataSink,
-            DataSource, FbTask, ProgCnxn, ProgConfElement, ProgConfig, ResourceDecl, TaskConfig,
+            ConfigDecl, ConfigInstInit, DataSink, DataSource, FbTask, ProgCnxn, ProgConfElement,
+            ProgConfig, ResourceDecl, TaskConfig,
         },
         hir_node::HirNode,
         interned::identifier::{Ident, SpanIdent},
@@ -90,18 +90,19 @@ impl<'db> SemanticIndexBuilder<'db> {
             }
         }
 
-        // The sections may appear in any order and any number, so each kind is
-        // read as a list and flattened in declaration order.
-        let mut access_decls: Vec<AccessDecl<'db>> = vec![];
+        // A VAR_ACCESS section names variables for remote access, which no
+        // host serves (E1415). Its declarations are not read.
         for access_section in &config.access_decls {
-            for decl_id in &access_section.cast(self.ast).children {
-                let r = self.parse_access_decl(decl_id.cast(self.ast));
-                if let Some(d) = self.try_parse(r) {
-                    access_decls.push(d);
-                }
-            }
+            self.errors.push(
+                ConfigError::VarAccessUnsupported(
+                    access_section.cast(self.ast).get_range().to_owned(),
+                )
+                .to_diagnostic(self.db, self.file),
+            );
         }
 
+        // The sections may appear in any order and any number, so each kind is
+        // read as a list and flattened in declaration order.
         let mut config_init: Vec<ConfigInstInit<'db>> = vec![];
         for init_section in &config.config_init {
             for inst_id in &init_section.cast(self.ast).children {
@@ -144,7 +145,6 @@ impl<'db> SemanticIndexBuilder<'db> {
             config.into(),
             variables,
             resources,
-            access_decls,
             config_init,
             scope_id,
         );
@@ -467,42 +467,6 @@ impl<'db> SemanticIndexBuilder<'db> {
                 Ok(DataSink::Path(pe.parse(self)?))
             }
         }
-    }
-
-    fn parse_access_decl(
-        &mut self,
-        decl: &ast::generated::AccessDecl,
-    ) -> anyhow::Result<AccessDecl<'db>, IdeDiagnostic> {
-        let name = Ident::from_node(self.db, self.file, decl.name.cast(self.ast))?;
-
-        let path_node = decl.path.cast(self.ast);
-        let path_expr = path_node.path.cast(self.ast).parse(self)?;
-        let direct = path_node
-            .direct
-            .as_ref()
-            .map(|dv| dv.cast(self.ast).to_direct_variable(self));
-        let direct = direct.and_then(|r| self.try_parse(r));
-        let path = AccessPath {
-            path: path_expr,
-            direct,
-        };
-
-        let access = decl.access.cast(self.ast).to_spec(self)?;
-
-        let direction = match &decl.direction {
-            None => AccessDirection::ReadWrite,
-            Some(dir) => match dir.cast(self.ast).children.cast(self.ast) {
-                ast::generated::ReadOnly_ReadWrite::ReadOnly(_) => AccessDirection::ReadOnly,
-                ast::generated::ReadOnly_ReadWrite::ReadWrite(_) => AccessDirection::ReadWrite,
-            },
-        };
-
-        Ok(AccessDecl {
-            name_with_case: name,
-            path,
-            access,
-            direction,
-        })
     }
 
     fn parse_config_inst_init(

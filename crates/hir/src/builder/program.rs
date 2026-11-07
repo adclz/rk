@@ -5,16 +5,11 @@ use auto_lsp::core::ast::AstNode;
 use ide_diagnostic::IdeDiagnostic;
 
 use crate::{
-    builder::{
-        Parse, ParseVarSection, semantic_index::SemanticIndexBuilder, variables::ParseProgDecl,
-    },
-    check::errors::{ToIdeDiagnostic, e00_syntax::SyntaxError},
+    builder::{Parse, ParseVarSection, semantic_index::SemanticIndexBuilder},
+    check::errors::{ToIdeDiagnostic, e00_syntax::SyntaxError, e14_config::ConfigError},
     hir_def::{
-        hir_node::HirNode,
-        interned::identifier::Ident,
-        pous::variable::VariableDecl,
-        program::{ProgAccessDecl, ProgramDecl},
-        scope::ScopeKind,
+        hir_node::HirNode, interned::identifier::Ident, pous::variable::VariableDecl,
+        program::ProgramDecl, scope::ScopeKind,
     },
 };
 
@@ -27,7 +22,7 @@ impl<'db> SemanticIndexBuilder<'db> {
         let previous_scope = self.current_scope;
         self.current_scope = scope_id;
 
-        let (prog_access_decls, variables) = self.parse_prog_variables(program);
+        let variables = self.parse_prog_variables(program);
         // A PROGRAM's located VAR is the channel itself, shared by every
         // instance of the program, so it is storage like a VAR_GLOBAL's.
         for var in &variables {
@@ -59,7 +54,6 @@ impl<'db> SemanticIndexBuilder<'db> {
             name,
             pragmas,
             program.name.cast(self.ast).into(),
-            prog_access_decls,
             variables,
             statements,
             program.into(),
@@ -77,8 +71,7 @@ impl<'db> SemanticIndexBuilder<'db> {
     fn parse_prog_variables(
         &mut self,
         program: &ast::generated::ProgDecl,
-    ) -> (Vec<ProgAccessDecl<'db>>, Vec<VariableDecl<'db>>) {
-        let mut prog_decls = vec![];
+    ) -> Vec<VariableDecl<'db>> {
         let mut variables = vec![];
         // A pack among the inputs is E0029, as the inputs are parsed.
         self.instance_inputs = Some("PROGRAM");
@@ -86,7 +79,11 @@ impl<'db> SemanticIndexBuilder<'db> {
 
         for variable in program.declarations.iter() {
             match variable.cast(self.ast) {
-                ProgVariables::ProgAccessDecls(decls) => decls.parse(self, &mut prog_decls),
+                // Names for remote access, which no host serves (E1415).
+                ProgVariables::ProgAccessDecls(decls) => self.errors.push(
+                    ConfigError::VarAccessUnsupported(decls.get_range().to_owned())
+                        .to_diagnostic(self.db, self.file),
+                ),
                 // Globals are application-scoped: they belong to a
                 // CONFIGURATION, not to a POU.
                 ProgVariables::ERRVarGlobalNotAllowed(err) => {
@@ -114,6 +111,6 @@ impl<'db> SemanticIndexBuilder<'db> {
         }
 
         self.instance_inputs = None;
-        (prog_decls, variables)
+        variables
     }
 }
