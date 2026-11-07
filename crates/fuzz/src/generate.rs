@@ -2644,10 +2644,16 @@ pub fn program(bytes: &[u8]) -> String {
             let j = g.choices.below(g.d.named[k].numbers.len());
             g.d.member_inits
                 .push(((b, members.len()), Expr::Named(k, j)));
-            // Named apart from every type: rk reads `E0#n1` through a
-            // variable `e0` it finds first (to be fixed, then written here).
+            // Named like a type, another one than its own when there are
+            // two: names are caseless, and the block's `E1#n0` still names
+            // the type `E1`, not a member `e1 : E0`.
+            let types = g.d.named.len();
+            let like = match types {
+                1 => k,
+                _ => (k + 1 + g.choices.below(types - 1)) % types,
+            };
             members.push(Var {
-                name: "en0".into(),
+                name: format!("e{like}"),
                 ty,
                 init: Val::Int(g.d.named[k].numbers[j]),
                 role: Role::Plain,
@@ -5464,6 +5470,29 @@ mod tests {
                 line.ends_with(':') && !line.contains(":=") && has(line)
             })
         };
+        // A block member named like a type other than its own, `e1 : E0`,
+        // in a block whose statements name that type's values, `E1#n0`.
+        let named_like_another_type = |text: &str| {
+            text.split("FUNCTION_BLOCK fb").skip(1).any(|block| {
+                let block = block.split("END_FUNCTION_BLOCK").next().unwrap_or_default();
+                block.lines().any(|line| {
+                    let Some((name, ty)) = line.trim().split_once(" : ") else {
+                        return false;
+                    };
+                    let number = |s: &str| !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit());
+                    let ty = ty.split([' ', ';']).next().unwrap_or_default();
+                    match (name.strip_prefix('e'), ty.strip_prefix('E')) {
+                        (Some(a), Some(b)) if number(a) && number(b) && a != b => {
+                            let value = format!("E{a}#n");
+                            block
+                                .lines()
+                                .any(|line| line.contains(&value) && !line.contains(" : "))
+                        }
+                        _ => false,
+                    }
+                })
+            })
+        };
         type Form = (&'static str, Box<dyn Fn(&str) -> bool>);
         let forms: Vec<Form> = vec![
             (
@@ -5538,6 +5567,10 @@ mod tests {
             (
                 "a variable of a type with named values",
                 Box::new(move |t| declares(t, "v", &|l| l.contains(" : E") && l.contains("#n"))),
+            ),
+            (
+                "a member named like another type, whose values the block names",
+                Box::new(named_like_another_type),
             ),
         ];
         let mut seed = 0x9E37_79B9_7F4A_7C15u64;
