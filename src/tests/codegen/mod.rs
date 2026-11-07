@@ -12,6 +12,7 @@ mod bytes;
 mod classes;
 mod clocks;
 mod comparison;
+mod compound_assignment;
 mod conformands;
 mod constant_folding;
 mod control_flow;
