@@ -3250,6 +3250,117 @@ END_CONFIGURATION
     ");
 }
 
+/// A STRING's capacity is part of its type wherever a configuration repeats a
+/// type or joins two, as a VAR_EXTERNAL's is: a VAR_CONFIG entry and what it
+/// names, and the two ends of a connection. A plain `STRING` is `STRING[80]`,
+/// and an alias has the capacity it names.
+#[rstest]
+#[case::an_entry_of_its_capacity("Res.P1.t : STRING[4] := 'ab';", "")]
+#[case::an_entry_through_an_alias("Res.P1.w : Name := 'ab';", "")]
+#[case::a_plain_entry_for_a_plain_string("Res.P1.p : STRING := 'ab';", "")]
+#[case::a_plain_entry_for_its_capacity("Res.P1.d : STRING := 'ab';", "")]
+#[case::an_entry_into_a_field("Res.P1.s.name : STRING[4] := 'ab';", "")]
+#[case::an_input_of_its_capacity("", "(inp := narrow)")]
+#[case::an_output_of_its_capacity("", "(out => wide)")]
+fn valid_a_string_of_its_capacity(
+    mut with_db: RootDatabase,
+    #[case] entry: &str,
+    #[case] connections: &str,
+) {
+    let source = strings_configured(entry, connections);
+    assert_eq!(
+        test_diagnostics(&mut with_db, &[&source]),
+        "",
+        "{entry}{connections}"
+    );
+}
+
+/// The same places refuse another capacity. Each was accepted, and the
+/// program cut the value to the narrower capacity: an entry's at `__init`, a
+/// connection's at each scan.
+#[rstest]
+#[case::an_entry_wider(
+    "Res.P1.t : STRING[8] := 'ab';",
+    "",
+    "[E1426]",
+    "the entry says 'STRING[8]', but 't' is declared 'STRING[4]'"
+)]
+#[case::an_entry_narrower(
+    "Res.P1.w : STRING[4] := 'ab';",
+    "",
+    "[E1426]",
+    "the entry says 'STRING[4]', but 'w' is declared 'STRING[8]'"
+)]
+#[case::a_plain_entry(
+    "Res.P1.t : STRING := 'ab';",
+    "",
+    "[E1426]",
+    "the entry says 'STRING[80]', but 't' is declared 'STRING[4]'"
+)]
+#[case::an_entry_into_a_field(
+    "Res.P1.s.name : STRING[8] := 'ab';",
+    "",
+    "[E1426]",
+    "the entry says 'STRING[8]', but 'name' is declared 'STRING[4]'"
+)]
+#[case::an_input_from_a_wider_global(
+    "",
+    "(inp := wide)",
+    "[E1428]",
+    "'inp' is 'STRING[4]', while 'wide' is 'STRING[16]'"
+)]
+#[case::an_output_to_a_narrower_global(
+    "",
+    "(out => narrow)",
+    "[E1428]",
+    "'out' is 'STRING[16]', while 'narrow' is 'STRING[4]'"
+)]
+fn invalid_a_string_of_another_capacity(
+    mut with_db: RootDatabase,
+    #[case] entry: &str,
+    #[case] connections: &str,
+    #[case] code: &str,
+    #[case] message: &str,
+) {
+    let source = strings_configured(entry, connections);
+    let diagnostics = test_diagnostics(&mut with_db, &[&source]);
+    assert!(diagnostics.starts_with(code), "{diagnostics}");
+    assert_eq!(diagnostics.matches("Error:").count(), 1, "{diagnostics}");
+    assert!(diagnostics.contains(message), "{diagnostics}");
+}
+
+/// A program holding STRINGs of several capacities, run by a configuration
+/// with one VAR_CONFIG `entry`, if any, and the program's `connections`.
+fn strings_configured(entry: &str, connections: &str) -> String {
+    let entries = if entry.is_empty() {
+        String::new()
+    } else {
+        format!("VAR_CONFIG {entry} END_VAR")
+    };
+    format!(
+        r#"
+TYPE Name : STRING[8]; END_TYPE
+TYPE Rec : STRUCT name : STRING[4]; END_STRUCT END_TYPE
+
+PROGRAM F
+VAR_INPUT inp : STRING[4]; END_VAR
+VAR_OUTPUT out : STRING[16]; END_VAR
+VAR t : STRING[4]; w : STRING[8]; p : STRING; d : STRING[80]; s : Rec; END_VAR
+    out := inp;
+END_PROGRAM
+
+CONFIGURATION Cfg
+VAR_GLOBAL wide : STRING[16]; narrow : STRING[4]; END_VAR
+    RESOURCE Res ON CPU
+        TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM P1 WITH T : F{connections};
+    END_RESOURCE
+{entries}
+END_CONFIGURATION
+"#
+    )
+}
+
 // One RESOURCE with several TASKS is the supported shape and stays clean.
 #[rstest]
 fn one_resource_many_tasks_is_clean(mut with_db: RootDatabase) {
