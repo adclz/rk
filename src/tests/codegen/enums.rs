@@ -756,6 +756,11 @@ const NAMED_VALUES: &str = r#"
     "CASE j OF Light#Green: i := 10; ELSE i := 30; END_CASE;",
     "i = 10"
 )]
+// A name as the selector was typed as itself, which lowering had no type for.
+#[case::a_name_as_the_selector(
+    "CASE Light#Amber OF Light#Red: i := 10; Light#Amber: i := 20; ELSE i := 30; END_CASE;",
+    "i = 20"
+)]
 #[case::a_subscript("m := 2; list[m] := 8;", "list[2] = 8 AND list[Light#Amber] = 8")]
 fn a_value_with_named_values_goes_where_its_base_goes(
     mut with_db: db::RootDatabase,
