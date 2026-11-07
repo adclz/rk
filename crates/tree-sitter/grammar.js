@@ -2256,6 +2256,9 @@ module.exports = grammar({
     assign: ($) =>
       seq(
         field("variable", choice($.variable_access, $.ERR_assign_func_call)),
+        // `a := b := 1`: the targets after the first, each written the value
+        // of the one to its right.
+        field("chain", repeat($.chained_target)),
         field(
           "target",
           choice(
@@ -2269,6 +2272,10 @@ module.exports = grammar({
       ),
 
     assignment: ($) => seq(":=", $._expression),
+
+    // A target after the first of a chain. Ranked below an expression:
+    // `a := y = 3` compares, it is not `y` and a `:=` missing its `:`.
+    chained_target: ($) => prec(-1, seq(":=", field("variable", $.variable_access))),
 
     param_assign: ($) => choice($.param_assign_input, $.param_assign_output),
 

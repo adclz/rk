@@ -12179,6 +12179,17 @@
         },
         {
           "type": "FIELD",
+          "name": "chain",
+          "content": {
+            "type": "REPEAT",
+            "content": {
+              "type": "SYMBOL",
+              "name": "chained_target"
+            }
+          }
+        },
+        {
+          "type": "FIELD",
           "name": "target",
           "content": {
             "type": "CHOICE",
@@ -12220,6 +12231,27 @@
           "name": "_expression"
         }
       ]
+    },
+    "chained_target": {
+      "type": "PREC",
+      "value": -1,
+      "content": {
+        "type": "SEQ",
+        "members": [
+          {
+            "type": "STRING",
+            "value": ":="
+          },
+          {
+            "type": "FIELD",
+            "name": "variable",
+            "content": {
+              "type": "SYMBOL",
+              "name": "variable_access"
+            }
+          }
+        ]
+      }
     },
     "param_assign": {
       "type": "CHOICE",

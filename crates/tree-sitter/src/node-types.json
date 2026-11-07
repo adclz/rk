@@ -1918,6 +1918,16 @@
     "type": "assign",
     "named": true,
     "fields": {
+      "chain": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "chained_target",
+            "named": true
+          }
+        ]
+      },
       "target": {
         "multiple": false,
         "required": true,
@@ -2208,6 +2218,22 @@
       "variable": {
         "multiple": false,
         "required": false,
+        "types": [
+          {
+            "type": "variable_access",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "chained_target",
+    "named": true,
+    "fields": {
+      "variable": {
+        "multiple": false,
+        "required": true,
         "types": [
           {
             "type": "variable_access",

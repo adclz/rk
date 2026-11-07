@@ -1,0 +1,179 @@
+================================================================================
+A chain of assignments
+================================================================================
+
+FUNCTION fn
+    A := B := C := 0;
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (func_decl
+    (identifier)
+    (func_body
+      (stmt_list
+        (assign
+          (variable_access
+            (variable
+              (begin_path_expression
+                (path_expression
+                  (var_access
+                    (field))))))
+          (chained_target
+            (variable_access
+              (variable
+                (begin_path_expression
+                  (path_expression
+                    (var_access
+                      (field)))))))
+          (chained_target
+            (variable_access
+              (variable
+                (begin_path_expression
+                  (path_expression
+                    (var_access
+                      (field)))))))
+          (assignment
+            (constant
+              (numeric_literal
+                (int_literal
+                  (signed_int
+                    (unsigned_int)))))))))))
+
+================================================================================
+Any place a single assignment writes is a target of a chain
+================================================================================
+
+FUNCTION fn
+    x.%X3 := arr[i] := p^ := s.f := TRUE;
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (func_decl
+    (identifier)
+    (func_body
+      (stmt_list
+        (assign
+          (variable_access
+            (variable
+              (begin_path_expression
+                (path_expression
+                  (var_access
+                    (field)))))
+            (multibit_part_access
+              (multibit
+                (adress_identifier)
+                (unsigned_int))))
+          (chained_target
+            (variable_access
+              (variable
+                (begin_path_expression
+                  (path_expression
+                    (index_expression
+                      (path_expression
+                        (var_access
+                          (field)))
+                      (index_value
+                        (constant_expr
+                          (variable_access
+                            (variable
+                              (begin_path_expression
+                                (path_expression
+                                  (var_access
+                                    (field))))))))))))))
+          (chained_target
+            (variable_access
+              (variable
+                (begin_path_expression
+                  (path_expression
+                    (deref_expression
+                      (path_expression
+                        (var_access
+                          (field)))
+                      (deref_sign)))))))
+          (chained_target
+            (variable_access
+              (variable
+                (begin_path_expression
+                  (path_expression
+                    (field_expression
+                      (path_expression
+                        (var_access
+                          (field)))
+                      (var_access
+                        (field))))))))
+          (assignment
+            (constant
+              (bool_literal
+                (bool_literal_with_string)))))))))
+
+================================================================================
+A chain with nothing after its last :=
+================================================================================
+
+FUNCTION fn
+    A := B := ;
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (func_decl
+    (identifier)
+    (func_body
+      (stmt_list
+        (assign
+          (variable_access
+            (variable
+              (begin_path_expression
+                (path_expression
+                  (var_access
+                    (field))))))
+          (chained_target
+            (variable_access
+              (variable
+                (begin_path_expression
+                  (path_expression
+                    (var_access
+                      (field)))))))
+          (ERR_empty_right_hand_assignment))))))
+
+================================================================================
+A comparison after := is no chain
+================================================================================
+
+FUNCTION fn
+    A := Y = 3;
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (func_decl
+    (identifier)
+    (func_body
+      (stmt_list
+        (assign
+          (variable_access
+            (variable
+              (begin_path_expression
+                (path_expression
+                  (var_access
+                    (field))))))
+          (assignment
+            (comparison_operator
+              (eq_operator
+                (variable_access
+                  (variable
+                    (begin_path_expression
+                      (path_expression
+                        (var_access
+                          (field))))))
+                (constant
+                  (numeric_literal
+                    (int_literal
+                      (signed_int
+                        (unsigned_int)))))))))))))
