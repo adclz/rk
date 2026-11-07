@@ -499,6 +499,16 @@ impl<'db> Parse<'db> for ast::generated::Assign {
                 var.to_access(sema)
             }
         }?;
+        // `a := b := 1`: the other targets of a chain, in the order written.
+        let mut vars = vec![var];
+        for link in &self.chain {
+            vars.push(
+                link.cast(sema.ast)
+                    .variable
+                    .cast(sema.ast)
+                    .to_access(sema)?,
+            );
+        }
 
         type TargetType = ast::generated::ERREmptyRightHandAssignment_ERRMissingDotInAssignment_ERRMissingEqualInAssignment_ERROutputAssignInAssignment_Assignment;
         match self.target.cast(sema.ast) {
@@ -530,7 +540,7 @@ impl<'db> Parse<'db> for ast::generated::Assign {
             TargetType::Assignment(assign) => Ok(Stmt::new(
                 sema.db,
                 StmtKind::Assignment {
-                    var,
+                    vars,
                     target: assign.children.cast(sema.ast).parse(sema)?,
                 },
                 self.into(),

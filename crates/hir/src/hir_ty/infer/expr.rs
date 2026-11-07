@@ -928,6 +928,26 @@ impl<'db> InferExprCtx<'db> {
         self.coerce_var_access_impl(db, var, rhs, inference_results, true)
     }
 
+    /// A link of a chain `a := b := e`: `var` is written the value of the
+    /// place `source`, as `a := b` would write it. A place has its own type,
+    /// so nothing is left to infer, and its bounds are checked as it is
+    /// stored.
+    pub fn coerce_var_access_with_place(
+        &self,
+        db: &'db dyn WorkspaceDataBase,
+        var: VariableAccess<'db>,
+        source: VariableAccess<'db>,
+        inference_results: &BodyInferenceResult<'db>,
+    ) -> CoerceResult<'db> {
+        let lhs = inference_results.type_of_variable_access_with_adjustments(db, var);
+        lhs.coerce_with_type(
+            db,
+            inference_results.type_of_variable_access_with_adjustments(db, source),
+            inference_results.adjustments_of_var_access(db, source),
+            self.resolver,
+        )
+    }
+
     /// As [`Self::coerce_var_access_with_expr`], without the subrange bounds
     /// check: for an expression COMPARED with the variable rather than stored
     /// into it.

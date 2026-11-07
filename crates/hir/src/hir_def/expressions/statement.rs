@@ -38,8 +38,11 @@ impl<'db> HirNodeInfo<'db> for Stmt<'db> {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum StmtKind<'db> {
     EmptyPathExpression(BeginPathExpr<'db>),
+    /// `a := b := e`: the places written, in the order written, never empty.
+    /// The last is written `target`, the value, and each other the value of
+    /// the place after it, from right to left.
     Assignment {
-        var: VariableAccess<'db>,
+        vars: Vec<VariableAccess<'db>>,
         target: Expr<'db>,
     },
     FuncCall(FuncCall<'db>),

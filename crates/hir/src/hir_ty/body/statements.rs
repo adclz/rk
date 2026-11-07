@@ -405,122 +405,8 @@ impl<'db> StmtsResolverCtx<'db> {
                     ctx.effectless_statements.push(*stmt);
                 }
 
-                StmtKind::Assignment { var, target } => {
-                    let (base_typ, assignable) = self.check_written_place(db, resolver, *var, ctx);
-
-                    // The target's type was resolved above, so it can DIRECT
-                    // the right-hand side: a RETURN-overloaded call picks the
-                    // overload whose return the target expects.
-                    infer.resolve_expr_expecting(db, *target, ctx, Some(base_typ));
-                    infer.check_expr(db, *target, ctx);
-
-                    if assignable
-                        && let Err(err) = infer.coerce_var_access_with_expr(db, *var, *target, ctx)
-                    {
-                        ctx.errors.push(err.into_non_assignable(
-                            db,
-                            base_typ,
-                            CallSite::from_scoped(db, target),
-                        ));
-                    } else if assignable {
-                        // An instance is copied whole. One with a member
-                        // declared `AT %I*` holds the address of its channel
-                        // there, and the copy would write the other
-                        // instance's over it (E1427).
-                        check_copy_keeps_location(
-                            db,
-                            ctx.type_of_variable_access_with_adjustments(db, *var),
-                            CallSite::from_scoped(db, var),
-                            ctx,
-                        );
-                    }
-
-                    // A string literal must FIT the destination. The store
-                    // runs at the destination's capacity — 80 unless the spec
-                    // says otherwise — so an over-long literal was silently
-                    // cut there: a 149-byte literal read back as its first 80
-                    // bytes, from a compile that said nothing. The
-                    // initializer door has always refused this; the
-                    // assignment door now matches it.
-                    check_string_literal_fits(db, base_typ, *var, *target, ctx);
-                    if let Some(err) = ctx.ref_subrange_mismatch(db, base_typ, *target) {
-                        ctx.errors.push(err.to_diagnostic(db, ctx.scope.file(db)));
-                    }
-                    if let Some(err) = ctx.ref_capacity_mismatch(db, base_typ, *target) {
-                        ctx.errors.push(err.to_diagnostic(db, ctx.scope.file(db)));
-                    }
-
-                    // A reference to this call's own storage, handed back to
-                    // the caller or kept where it outlives the call. It does
-                    // not fault: an address-taken local sits at a fixed
-                    // address, so the reference quietly reads whatever the
-                    // NEXT call leaves in that slot.
-                    if let ExprKind::PrimaryExpr(PrimaryExpr::RefValue {
-                        value: RefValue::Address(path),
-                    }) = target.expr(db)
-                        && let Some(path_expr) = path.expr(db)
-                        && let Type::Variable((referenced, _)) =
-                            ctx.get_type_of_path_expr(db, path_expr)
-                        && per_call_storage(db, ctx.scope, referenced)
-                    {
-                        use crate::check::errors::e09_reference::ReferenceError;
-                        let site = CallSite::from_scoped(db, target);
-                        let error = if ctx.writes_result(db, *var) {
-                            Some(ReferenceError::ReturnsReferenceToLocal {
-                                var: referenced,
-                                site,
-                            })
-                        } else if outlives_the_call(db, ctx, *var) {
-                            Some(ReferenceError::StoresReferenceToLocal {
-                                var: referenced,
-                                site,
-                                kept: CallSite::from_scoped(db, var),
-                            })
-                        } else {
-                            None
-                        };
-                        if let Some(error) = error {
-                            ctx.errors.push(error.to_diagnostic(db, ctx.scope.file(db)));
-                        }
-                    }
-
-                    // Update null state for REF_TO variables
-                    if let Type::Variable((var_decl, _)) = base_typ
-                        && ctx.ref_null_state.contains_key(&var_decl)
-                    {
-                        // Only update if this is a direct assignment (no deref on the LHS)
-                        let has_deref =
-                            ctx.adjustments_of_var_access(db, *var).is_some_and(|adjs| {
-                                adjs.iter().any(|a| matches!(a.kind, Adjust::Deref))
-                            });
-                        if !has_deref {
-                            let rhs_type = ctx.get_type_of_expr(*target);
-                            let new_state = if matches!(rhs_type, Type::Null) {
-                                NullState::Null(crate::hir_ty::body::NullOrigin {
-                                    site: stmt.as_call_site(db),
-                                    var: var_decl,
-                                })
-                            } else if let Type::Variable((rhs_var, _)) = rhs_type {
-                                // Propagate null state from RHS variable
-                                ctx.ref_null_state
-                                    .get(&rhs_var)
-                                    .copied()
-                                    .unwrap_or(NullState::NonNull)
-                            } else {
-                                NullState::NonNull
-                            };
-                            ctx.ref_null_state.insert(var_decl, new_state);
-                            // A __TRY being checked keeps every state a
-                            // reference takes inside it: what its body
-                            // raises can come after any of them.
-                            for seen in &mut ctx.null_states_in_try {
-                                let state = seen
-                                    .get(&var_decl)
-                                    .map_or(new_state, |earlier| earlier.join(new_state));
-                                seen.insert(var_decl, state);
-                            }
-                        }
-                    }
+                StmtKind::Assignment { vars, target } => {
+                    self.check_assignment(db, resolver, &mut infer, *stmt, vars, *target, ctx);
                 }
 
                 StmtKind::If {
@@ -1315,6 +1201,178 @@ impl<'db> StmtsResolverCtx<'db> {
             );
         }
         (base_typ, assignable)
+    }
+
+    /// `a := b := e` runs from right to left, as `b := e; a := b;` does: the
+    /// last place is written the value, then each other the value of the
+    /// place after it. Each link is checked as an assignment of its own.
+    #[allow(clippy::too_many_arguments)]
+    fn check_assignment(
+        &self,
+        db: &'db dyn WorkspaceDataBase,
+        resolver: Resolver<'db>,
+        infer: &mut InferExprCtx<'db>,
+        stmt: Stmt<'db>,
+        vars: &[VariableAccess<'db>],
+        target: Expr<'db>,
+        ctx: &mut BodyInferenceResult<'db>,
+    ) {
+        let Some((&var, links)) = vars.split_last() else {
+            return;
+        };
+        let (base_typ, assignable) = self.check_written_place(db, resolver, var, ctx);
+
+        // The target's type was resolved above, so it can DIRECT the
+        // right-hand side: a RETURN-overloaded call picks the overload whose
+        // return the target expects.
+        infer.resolve_expr_expecting(db, target, ctx, Some(base_typ));
+        infer.check_expr(db, target, ctx);
+
+        if assignable && let Err(err) = infer.coerce_var_access_with_expr(db, var, target, ctx) {
+            ctx.errors.push(err.into_non_assignable(
+                db,
+                base_typ,
+                CallSite::from_scoped(db, &target),
+            ));
+        } else if assignable {
+            // An instance is copied whole. One with a member declared
+            // `AT %I*` holds the address of its channel there, and the copy
+            // would write the other instance's over it (E1427).
+            check_copy_keeps_location(
+                db,
+                ctx.type_of_variable_access_with_adjustments(db, var),
+                CallSite::from_scoped(db, &var),
+                ctx,
+            );
+        }
+
+        // A string literal must FIT the destination. The store runs at the
+        // destination's capacity — 80 unless the spec says otherwise — so an
+        // over-long literal was silently cut there: a 149-byte literal read
+        // back as its first 80 bytes, from a compile that said nothing. The
+        // initializer door has always refused this; the assignment door now
+        // matches it.
+        check_string_literal_fits(db, base_typ, var, target, ctx);
+        if let Some(err) = ctx.ref_subrange_mismatch(db, base_typ, target) {
+            ctx.errors.push(err.to_diagnostic(db, ctx.scope.file(db)));
+        }
+        if let Some(err) = ctx.ref_capacity_mismatch(db, base_typ, target) {
+            ctx.errors.push(err.to_diagnostic(db, ctx.scope.file(db)));
+        }
+
+        // The other places, from right to left, each written the value of
+        // the place after it: a mismatch there is the link's, and no cast
+        // can be written around a place.
+        let mut source = var;
+        for &link in links.iter().rev() {
+            let (base_typ, assignable) = self.check_written_place(db, resolver, link, ctx);
+            if assignable {
+                match infer.coerce_var_access_with_place(db, link, source, ctx) {
+                    Err(err) => {
+                        let file = ctx.scope.file(db);
+                        let mut diag = crate::check::errors::e03_type::TypeError::NotAssignable {
+                            base_target: base_typ,
+                            lhs: err.expected,
+                            rhs: err.actual,
+                            adjustment: err.adjustment,
+                            expr: CallSite::from_scoped(db, &source),
+                            suggest_cast: false,
+                        }
+                        .to_diagnostic(db, file);
+                        diag.with_note(
+                            "a place in a chain takes the value of the place to its right"
+                                .to_string(),
+                        );
+                        diag.with_help(format!(
+                            "assign '{}' in a statement of its own",
+                            CallSite::from_scoped(db, &link).to_string(db)
+                        ));
+                        ctx.errors.push(diag);
+                    }
+                    Ok(_) => check_copy_keeps_location(
+                        db,
+                        ctx.type_of_variable_access_with_adjustments(db, link),
+                        CallSite::from_scoped(db, &link),
+                        ctx,
+                    ),
+                }
+            }
+            source = link;
+        }
+
+        // A reference to this call's own storage, handed back to the caller
+        // or kept where it outlives the call, by any place of a chain. It does
+        // not fault: an address-taken local sits at a fixed address, so the
+        // reference quietly reads whatever the NEXT call leaves in that slot.
+        if let ExprKind::PrimaryExpr(PrimaryExpr::RefValue {
+            value: RefValue::Address(path),
+        }) = target.expr(db)
+            && let Some(path_expr) = path.expr(db)
+            && let Type::Variable((referenced, _)) = ctx.get_type_of_path_expr(db, path_expr)
+            && per_call_storage(db, ctx.scope, referenced)
+        {
+            use crate::check::errors::e09_reference::ReferenceError;
+            let site = CallSite::from_scoped(db, &target);
+            for &var in vars.iter().rev() {
+                let error = if ctx.writes_result(db, var) {
+                    Some(ReferenceError::ReturnsReferenceToLocal {
+                        var: referenced,
+                        site,
+                    })
+                } else if outlives_the_call(db, ctx, var) {
+                    Some(ReferenceError::StoresReferenceToLocal {
+                        var: referenced,
+                        site,
+                        kept: CallSite::from_scoped(db, &var),
+                    })
+                } else {
+                    None
+                };
+                if let Some(error) = error {
+                    ctx.errors.push(error.to_diagnostic(db, ctx.scope.file(db)));
+                }
+            }
+        }
+
+        // Update null state for REF_TO variables: every place of a chain
+        // holds the value.
+        for &var in vars.iter().rev() {
+            if let Type::Variable((var_decl, _)) = ctx.get_type_of_variable_access(db, var)
+                && ctx.ref_null_state.contains_key(&var_decl)
+            {
+                // Only update if this is a direct assignment (no deref on the LHS)
+                let has_deref = ctx
+                    .adjustments_of_var_access(db, var)
+                    .is_some_and(|adjs| adjs.iter().any(|a| matches!(a.kind, Adjust::Deref)));
+                if !has_deref {
+                    let rhs_type = ctx.get_type_of_expr(target);
+                    let new_state = if matches!(rhs_type, Type::Null) {
+                        NullState::Null(crate::hir_ty::body::NullOrigin {
+                            site: stmt.as_call_site(db),
+                            var: var_decl,
+                        })
+                    } else if let Type::Variable((rhs_var, _)) = rhs_type {
+                        // Propagate null state from RHS variable
+                        ctx.ref_null_state
+                            .get(&rhs_var)
+                            .copied()
+                            .unwrap_or(NullState::NonNull)
+                    } else {
+                        NullState::NonNull
+                    };
+                    ctx.ref_null_state.insert(var_decl, new_state);
+                    // A __TRY being checked keeps every state a reference
+                    // takes inside it: what its body raises can come after
+                    // any of them.
+                    for seen in &mut ctx.null_states_in_try {
+                        let state = seen
+                            .get(&var_decl)
+                            .map_or(new_state, |earlier| earlier.join(new_state));
+                        seen.insert(var_decl, state);
+                    }
+                }
+            }
+        }
     }
 
     /// The variable a `__CATCH` names is written the message of the
