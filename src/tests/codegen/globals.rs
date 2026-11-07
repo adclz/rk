@@ -6,6 +6,7 @@
 
 use crate::tests::codegen::TestPlc;
 use crate::tests::codegen::{compile_to_mir_and_wasm, with_db};
+use debug_format::{DebugInfo, VarValue};
 use rstest::*;
 
 /// Two programs share a config `VAR_GLOBAL`. `Inc` increments it (via
@@ -126,4 +127,39 @@ fn retain_global_overlaps_both_regions(mut with_db: db::RootDatabase) {
         i32::from_le_bytes(plc.read_globals()[0..4].try_into().unwrap()),
         55
     );
+}
+
+/// A CONFIGURATION's own names are its globals before they are types, as a
+/// body's variables come before what its namespace names. Names are caseless,
+/// and a CONSTANT `limit` beside a type `Limit` was E0317 wherever the
+/// configuration named it: here it starts a global and a program's variable,
+/// and is an array's last index.
+#[rstest]
+fn a_global_named_like_a_type_is_the_global(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE Limit : INT; END_TYPE
+
+        PROGRAM P
+        VAR_EXTERNAL a : ARRAY[0..4] OF INT; END_VAR
+        VAR x : INT; END_VAR
+            a[4] := x + 1;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+        VAR_GLOBAL CONSTANT limit : INT := 4; END_VAR
+        VAR_GLOBAL g : INT := limit; a : ARRAY[0..limit] OF INT; END_VAR
+        VAR_CONFIG Res.P1.x : INT := limit; END_VAR
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    let info = DebugInfo::from_wasm(&wasm);
+    let mut plc = TestPlc::load(&wasm).expect("load");
+    assert_eq!(plc.read_var(&info, "g"), Some(VarValue::I16(4)));
+    assert_eq!(plc.read_var(&info, "P1.x"), Some(VarValue::I16(4)));
+    plc.scan().expect("scan");
+    assert_eq!(plc.read_var(&info, "a[4]"), Some(VarValue::I16(5)));
 }
