@@ -269,17 +269,6 @@ pub fn var_global() -> CompletionItem {
 }
 
 #[inline]
-pub fn var_access() -> CompletionItem {
-    CompletionItem {
-        label: "VAR_ACCESS".into(),
-        kind: Some(lsp_types::CompletionItemKind::VARIABLE),
-        insert_text_format: Some(lsp_types::InsertTextFormat::SNIPPET),
-        insert_text: Some("VAR_ACCESS \n\nEND_VAR".into()),
-        ..Default::default()
-    }
-}
-
-#[inline]
 pub fn struct_() -> CompletionItem {
     CompletionItem {
         label: "STRUCT".into(),
