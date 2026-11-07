@@ -33,6 +33,16 @@ pub(crate) fn with_bounds<'db>(db: &'db dyn WorkspaceDataBase, ty: Type<'db>) ->
     }
 }
 
+/// A declaration's type as a report shows it: [`with_bounds`], and a STRING
+/// with the capacity it was declared with, which is what two otherwise equal
+/// STRINGs disagree about.
+pub(crate) fn declared_type_name<'db>(db: &'db dyn WorkspaceDataBase, spec: Spec<'db>) -> String {
+    match crate::hir_ty::infer::normalize::string_capacity(db, spec) {
+        Some(capacity) => format!("STRING[{capacity}]"),
+        None => with_bounds(db, Type::resolve_spec(db, spec)),
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum SubRangeError<'db> {
     // Subrange

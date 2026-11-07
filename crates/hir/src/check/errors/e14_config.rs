@@ -5,6 +5,7 @@ use crate::CallSite;
 use crate::HasName;
 use crate::HirNodeInfo;
 use crate::check::errors::ToIdeDiagnostic;
+use crate::check::errors::e07_subrange::declared_type_name;
 use crate::hir_def::config::ConfigDecl;
 use crate::hir_def::expressions::expression::PathExpr;
 use crate::hir_def::expressions::spec::Spec;
@@ -284,8 +285,8 @@ pub enum ConfigEntryRefusal<'db> {
     /// The type the entry repeats is not the variable's.
     TypeMismatch {
         var: Ident,
-        written: Type<'db>,
-        declared: Type<'db>,
+        written: Spec<'db>,
+        declared: Spec<'db>,
     },
     /// Another entry gives the same variable a value too, or the instance
     /// holding it: the first in file order reports, and points at the others.
@@ -737,9 +738,9 @@ pub enum ProgElementRefusal<'db> {
     /// A VAR_GLOBAL whose type is not the variable's.
     TypeMismatch {
         var: Ident,
-        declared: Type<'db>,
+        declared: Spec<'db>,
         global: Ident,
-        ty: Type<'db>,
+        ty: Spec<'db>,
     },
     /// An address whose width is not the variable's.
     WidthMismatch {
@@ -1193,9 +1194,9 @@ impl<'db> ToIdeDiagnostic<'db> for ConfigError<'db> {
                         format!(
                             "'{}' is '{}', while '{}' is '{}'",
                             var.text(db),
-                            declared.type_name(db),
+                            declared_type_name(db, *declared),
                             global.text(db),
-                            ty.type_name(db)
+                            declared_type_name(db, *ty)
                         ),
                         Some("a connection copies the value as it is"),
                         Some("connect a variable of the same type"),
@@ -1671,9 +1672,9 @@ impl<'db> ToIdeDiagnostic<'db> for ConfigError<'db> {
                     ConfigEntryRefusal::TypeMismatch { var, written, declared } => (
                         format!(
                             "the entry says '{}', but '{}' is declared '{}'",
-                            written.type_name(db),
+                            declared_type_name(db, *written),
                             var.text(db),
-                            declared.type_name(db)
+                            declared_type_name(db, *declared)
                         ),
                         Some("the entry repeats the variable's type"),
                         Some("write the declared type"),

@@ -493,25 +493,17 @@ impl<'db> InitInference<'db> {
                 && var.conformand(db).is_none()
                 && let Some(global) =
                     crate::hir_ty::index_graphs::external_var_lookup(db, var.get_name_ident(db))
+                && !Type::resolve_spec(db, var.spec(db)).is_never()
+                && !Type::resolve_spec(db, global.spec(db)).is_never()
+                && !same_declared_type(db, var.spec(db), global.spec(db))
             {
-                let ext_ty = Type::resolve_spec(db, var.spec(db));
-                let glob_ty = Type::resolve_spec(db, global.spec(db));
-                if !ext_ty.is_never()
-                    && !glob_ty.is_never()
-                    && (!same_storage_type(db, ext_ty, glob_ty)
-                        || string_capacity(db, var.spec(db))
-                            != string_capacity(db, global.spec(db)))
-                {
-                    self.errors.push(
-                        ResolveError::ExternalVarTypeMismatch {
-                            var: *var,
-                            external: ext_ty,
-                            global_var: global,
-                            global: glob_ty,
-                        }
-                        .to_diagnostic(db, self.scope.file(db)),
-                    );
-                }
+                self.errors.push(
+                    ResolveError::ExternalVarTypeMismatch {
+                        var: *var,
+                        global_var: global,
+                    }
+                    .to_diagnostic(db, self.scope.file(db)),
+                );
             }
             // A VAR_GLOBAL or a PROGRAM's VAR with an `AT` clause is storage
             // in one of the three I/O bands. Any other POU's variables are
@@ -1256,6 +1248,19 @@ pub(crate) fn same_storage_type<'db>(
     b: Type<'db>,
 ) -> bool {
     same_storage_type_within(db, a, b, 0)
+}
+
+/// Whether two declarations hold one type, as a VAR_EXTERNAL and its
+/// VAR_GLOBAL do, a VAR_CONFIG entry and what it names, and the two ends of a
+/// connection: one storage type, and for a STRING one capacity, which the
+/// type does not carry.
+pub(crate) fn same_declared_type<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    a: Spec<'db>,
+    b: Spec<'db>,
+) -> bool {
+    same_storage_type(db, Type::resolve_spec(db, a), Type::resolve_spec(db, b))
+        && string_capacity(db, a) == string_capacity(db, b)
 }
 
 /// [`same_storage_type`], `depth` elements in: past [`Type::NESTING_LIMIT`]

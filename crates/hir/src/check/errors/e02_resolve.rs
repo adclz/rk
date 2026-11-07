@@ -81,9 +81,7 @@ pub enum ResolveError<'db> {
     /// external over an `INT (0..10)` global goes around the range check.
     ExternalVarTypeMismatch {
         var: VariableDecl<'db>,
-        external: Type<'db>,
         global_var: VariableDecl<'db>,
-        global: Type<'db>,
     },
     /// A RETAIN/NON_RETAIN qualifier on a variable of a stateless POU
     /// (FUNCTION or METHOD). Retentive behavior requires instance storage —
@@ -479,26 +477,14 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                 .desc(self)
                 .range(crate::denormalize(db, file, &var.get_name_span(db)).unwrap_or_default())
                 .call(),
-            Self::ExternalVarTypeMismatch {
-                var,
-                external,
-                global_var,
-                global,
-            } => {
-                // A STRING shows the capacity it was declared with, which is
-                // what two otherwise equal STRINGs disagree about.
-                let shown = |decl: &VariableDecl<'db>, ty: Type<'db>| {
-                    match crate::hir_ty::infer::normalize::string_capacity(db, decl.spec(db)) {
-                        Some(capacity) => format!("STRING[{capacity}]"),
-                        None => crate::check::errors::e07_subrange::with_bounds(db, ty),
-                    }
-                };
+            Self::ExternalVarTypeMismatch { var, global_var } => {
+                use crate::check::errors::e07_subrange::declared_type_name;
                 let mut diag = diag()
                     .message(format!(
                         "'{}' is declared '{}' and its VAR_GLOBAL is '{}'",
                         var.name_with_case(db).text(db),
-                        shown(var, *external),
-                        shown(global_var, *global),
+                        declared_type_name(db, var.spec(db)),
+                        declared_type_name(db, global_var.spec(db)),
                     ))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
