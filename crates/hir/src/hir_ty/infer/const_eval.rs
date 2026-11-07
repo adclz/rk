@@ -30,8 +30,8 @@ use crate::{
     hir_def::{
         expressions::{
             expression::{
-                AddOperatorKind, Elementary, Expr, ExprKind, InitExprKind, MultOperatorKind,
-                PrimaryExpr, UnaryOperatorKind, VariableAccess,
+                AddOperatorKind, BooleanOperatorKind, Elementary, Expr, ExprKind, InitExprKind,
+                MultOperatorKind, PrimaryExpr, UnaryOperatorKind, VariableAccess,
             },
             spec::{ElementarySpec, Spec, SpecKind},
         },
@@ -78,7 +78,7 @@ pub fn const_int<'db>(
         Type::Variable((decl, None)) => Some(decl),
         _ => None,
     };
-    fold(db, expr, &bind, &mut Vec::new()).map(|folded| folded.value)
+    fold(db, expr, &bind).map(|folded| folded.value)
 }
 
 /// An operation on constants whose result the type it runs at cannot hold.
@@ -109,7 +109,7 @@ pub fn overflow<'db>(
     // An operand, or `None` when it does not fold or wrapped inside.
     let operand = |e| {
         let mut wrapped = false;
-        let folded = fold_tracking(db, e, bind, &mut Vec::new(), &mut wrapped)?;
+        let folded = fold_tracking(db, e, bind, &mut wrapped)?;
         (!wrapped).then_some(folded)
     };
     let fits = |operand: Folded, ty| {
@@ -170,7 +170,7 @@ pub fn overflow<'db>(
 /// query, so this is callable from anywhere — a diagnostic message rendered
 /// inside `infer_initialization` included.
 pub fn spec_value<'db>(db: &'db dyn WorkspaceDataBase, expr: Expr<'db>) -> Option<i128> {
-    fold(db, expr, &|va| spec_name_binding(db, va), &mut Vec::new()).map(|folded| folded.value)
+    fold(db, expr, &|va| spec_name_binding(db, va)).map(|folded| folded.value)
 }
 
 /// [`spec_value`] in the 64 bits a bound is counted in. A ULINT above
@@ -194,7 +194,7 @@ pub fn held_as<'db>(db: &'db dyn WorkspaceDataBase, value: i128, ty: Type<'db>) 
 }
 
 /// A folded integer and the type it is computed at.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct Folded {
     /// Exact: every integer type's values fit in 128 bits.
     value: i128,
@@ -274,23 +274,38 @@ fn integer_layout(ty: ElementarySpec) -> Option<(u32, bool)> {
     })
 }
 
+/// The value written for a CONSTANT or a named value (`Two := Step#One + 1`),
+/// folded where it is written, its names bound there. A query, so each is
+/// folded once, whoever names it and however often: folded again at each
+/// name, a chain of values naming each other took quadratic time to check,
+/// and exponential when each named the two before it. A cycle
+/// (`k1 := k2; k2 := k1`) does not fold.
+#[salsa::tracked(cycle_result = in_a_cycle)]
+fn written_value<'db>(db: &'db dyn WorkspaceDataBase, written: Expr<'db>) -> Option<Folded> {
+    fold(db, written, &|va| spec_name_binding(db, va))
+}
+
+/// What a value in a cycle folds to: none, each of them.
+fn in_a_cycle<'db>(
+    _db: &'db dyn WorkspaceDataBase,
+    _id: salsa::Id,
+    _written: Expr<'db>,
+) -> Option<Folded> {
+    None
+}
+
 fn fold<'db>(
     db: &'db dyn WorkspaceDataBase,
     expr: Expr<'db>,
     bind: &dyn Fn(VariableAccess<'db>) -> Option<VariableDecl<'db>>,
-    visited: &mut Vec<VariableDecl<'db>>,
 ) -> Option<Folded> {
-    fold_tracking(db, expr, bind, visited, &mut false)
+    fold_tracking(db, expr, bind, &mut false)
 }
 
 fn fold_tracking<'db>(
     db: &'db dyn WorkspaceDataBase,
     expr: Expr<'db>,
     bind: &dyn Fn(VariableAccess<'db>) -> Option<VariableDecl<'db>>,
-    // The chain of CONSTANTs already being evaluated: `k1 := k2; k2 := k1`
-    // used to recurse to a stack overflow (SIGABRT, no diagnostic) — a cycle
-    // simply does not fold.
-    visited: &mut Vec<VariableDecl<'db>>,
     // Set when an operation's exact result differs from what it holds.
     wrapped: &mut bool,
 ) -> Option<Folded> {
@@ -319,10 +334,10 @@ fn fold_tracking<'db>(
             }
         }
         ExprKind::PrimaryExpr(PrimaryExpr::ParenthesizedExpr { expr }) => {
-            fold_tracking(db, *expr, bind, visited, wrapped)
+            fold_tracking(db, *expr, bind, wrapped)
         }
         ExprKind::UnaryOperator { expr, operator } => {
-            let operand = fold_tracking(db, *expr, bind, visited, wrapped)?;
+            let operand = fold_tracking(db, *expr, bind, wrapped)?;
             match operator {
                 UnaryOperatorKind::Plus => Some(operand),
                 UnaryOperatorKind::Minus => noted(
@@ -330,22 +345,24 @@ fn fold_tracking<'db>(
                     operand.value.checked_neg(),
                     wrapped,
                 ),
-                _ => None,
+                // Each bit flipped at the operand's type: `NOT WORD#16#0F0F` is
+                // 16#F0F0. An untyped literal flips in 128 bits, which is its
+                // pattern at whatever width it meets.
+                UnaryOperatorKind::Not => operand.with(!operand.value),
             }
         }
         ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess(va)) => {
             let decl = bind(*va)?;
-            let init = constant_init(db, decl)?;
-            if visited.contains(&decl) {
-                return None;
-            }
-            visited.push(decl);
-            // The initializer is written where the CONSTANT is declared, and
-            // its names bind there, wherever the CONSTANT is used.
-            let value = fold(db, init, &|va| spec_name_binding(db, va), visited);
-            visited.pop();
+            let value = written_value(db, constant_init(db, decl)?)?;
             // At its declared type, as the program stores it.
-            Folded::at(value?.value, declared_integer(db, decl.spec(db), 0)?)
+            Folded::at(value.value, declared_integer(db, decl.spec(db), 0)?)
+        }
+        // A name of a type with named values is its number, at the type's base.
+        // A plain enum's has none.
+        ExprKind::PrimaryExpr(PrimaryExpr::EnumValue { name, variant }) => {
+            let (values, base) = named_values_of(db, *name)?;
+            let value = named_value(db, values, variant.ident(db))?;
+            Folded::at(i128::from(value), base)
         }
         ExprKind::AddOperator {
             left,
@@ -353,8 +370,8 @@ fn fold_tracking<'db>(
             right,
         } => {
             let (l, r) = (
-                fold_tracking(db, *left, bind, visited, wrapped)?,
-                fold_tracking(db, *right, bind, visited, wrapped)?,
+                fold_tracking(db, *left, bind, wrapped)?,
+                fold_tracking(db, *right, bind, wrapped)?,
             );
             let value = match operator {
                 AddOperatorKind::Plus => l.value.wrapping_add(r.value),
@@ -368,8 +385,8 @@ fn fold_tracking<'db>(
             right,
         } => {
             let (l, r) = (
-                fold_tracking(db, *left, bind, visited, wrapped)?,
-                fold_tracking(db, *right, bind, visited, wrapped)?,
+                fold_tracking(db, *left, bind, wrapped)?,
+                fold_tracking(db, *right, bind, wrapped)?,
             );
             let value = match operator {
                 MultOperatorKind::Mul => l.value.wrapping_mul(r.value),
@@ -377,6 +394,24 @@ fn fold_tracking<'db>(
                 MultOperatorKind::Mod => l.value.checked_rem(r.value)?,
             };
             noted(Folded::at(value, l.join(r))?, Some(value), wrapped)
+        }
+        // At the type the two meet at, as arithmetic is. Each bit of the result
+        // comes from the two bits at its place, with no carry, so nothing wraps.
+        ExprKind::BooleanOperator {
+            left,
+            operator,
+            right,
+        } => {
+            let (l, r) = (
+                fold_tracking(db, *left, bind, wrapped)?,
+                fold_tracking(db, *right, bind, wrapped)?,
+            );
+            let value = match operator {
+                BooleanOperatorKind::And => l.value & r.value,
+                BooleanOperatorKind::Or => l.value | r.value,
+                BooleanOperatorKind::Xor => l.value ^ r.value,
+            };
+            Folded::at(value, l.join(r))
         }
         _ => None,
     }
@@ -407,6 +442,8 @@ fn declared_integer<'db>(
     match spec.kind(db) {
         SpecKind::Simple(ty) => integer_layout(*ty).map(|_| *ty),
         SpecKind::Subrange(sub) => declared_integer(db, sub._type(db), depth + 1),
+        // A type with named values holds its base's.
+        SpecKind::Enum(values) => declared_integer(db, values.typ(db)?, depth + 1),
         SpecKind::Target(target) => match resolve_name(db, &target.path, spec.scope_id(db)) {
             NameResolution::Pou(Pou::DataType(dt), _) => {
                 declared_integer(db, dt.spec(db), depth + 1)
@@ -415,6 +452,94 @@ fn declared_integer<'db>(
         },
         _ => None,
     }
+}
+
+/// The values a name like `Light#Red` is one of, and their base, when the type it
+/// names was written with one. Resolved as the signature resolves it, as
+/// [`declared_integer`] does.
+fn named_values_of<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    name: crate::hir_def::expressions::expression::BeginPathExpr<'db>,
+) -> Option<(crate::hir_def::expressions::spec::Enum<'db>, ElementarySpec)> {
+    use crate::HirNodeInfo;
+    use crate::hir_ty::resolver::name::{NameResolution, resolve_name};
+    fn of_spec<'db>(
+        db: &'db dyn WorkspaceDataBase,
+        spec: Spec<'db>,
+        depth: u32,
+    ) -> Option<(crate::hir_def::expressions::spec::Enum<'db>, ElementarySpec)> {
+        // A cyclic alias is refused elsewhere; stop regardless.
+        if depth > 16 {
+            return None;
+        }
+        match spec.kind(db) {
+            SpecKind::Enum(values) => {
+                Some((*values, declared_integer(db, values.typ(db)?, depth + 1)?))
+            }
+            SpecKind::Target(target) => match resolve_name(db, &target.path, spec.scope_id(db)) {
+                NameResolution::Pou(Pou::DataType(dt), _) => of_spec(db, dt.spec(db), depth + 1),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+    if name.invocation(db).is_some() {
+        return None;
+    }
+    let path = name.expr(db)?;
+    let (access, _) = path.to_namespace_access(db).as_ref()?;
+    match resolve_name(db, access, path.get_scope_id(db)) {
+        NameResolution::Pou(Pou::DataType(dt), _) => of_spec(db, dt.spec(db), 0),
+        _ => None,
+    }
+}
+
+/// The value `variant` of `values` stands for, as [`enum_ordinals`] gives it: its
+/// declared value, or the nearest one declared before it plus how far it comes
+/// after that one. Only that value is folded, so a value may name the others of
+/// its type. One that comes back to itself, through a value counted from it or
+/// through another type, is a cycle.
+fn named_value<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    values: crate::hir_def::expressions::spec::Enum<'db>,
+    variant: crate::hir_def::interned::identifier::Ident,
+) -> Option<i64> {
+    use crate::hir_ty::infer::Infer;
+    let &(written, after) = counted_from(db, values).get(&variant)?;
+    let after = i64::try_from(after).ok()?;
+    let Some(value) = written else {
+        // None written up to it: counted from 0.
+        return Some(after);
+    };
+    let folded = written_value(db, value)?.value;
+    let storage = values.typ(db).map(|spec| spec.infer(db));
+    Some(ordinal(db, storage, folded)?.wrapping_add(after))
+}
+
+/// Each of a type's named values by its name: the value written nearest at or
+/// before it, `None` when none is, and how far after that one it comes, from 0
+/// when none is. The first of two values of one name is the one kept. A fold
+/// asks it at each name: finding the value among the others each time made a
+/// chain of values cubic to check.
+#[salsa::tracked(returns(ref))]
+fn counted_from<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    values: crate::hir_def::expressions::spec::Enum<'db>,
+) -> rustc_hash::FxHashMap<crate::hir_def::interned::identifier::Ident, (Option<Expr<'db>>, usize)>
+{
+    let mut counted = rustc_hash::FxHashMap::default();
+    let mut written = None;
+    for (at, declared) in values.variants(db).iter().enumerate() {
+        if let Some(value) = declared.value {
+            written = Some((value, at));
+        }
+        let from = match written {
+            Some((value, start)) => (Some(value), at - start),
+            None => (None, at),
+        };
+        counted.entry(declared.name.ident(db)).or_insert(from);
+    }
+    counted
 }
 
 /// The declaration a bare name in a SPEC bound refers to, resolved through
@@ -502,17 +627,23 @@ pub fn enum_ordinals<'db>(
     Option<i64>,
 )> {
     use crate::hir_ty::infer::Infer;
-    // A declared value as a declared storage holds it: `16#FF` on a SINT is
-    // -1, the bit pattern its check accepted. Under the default DINT a value
-    // stays as written, so E0605 sees one past the storage.
     let storage = enm.typ(db).map(|spec| spec.infer(db));
-    enum_ordinals_by(db, enm, |e| {
-        let value = spec_value(db, e)?;
-        let value = storage.map_or(value, |ty| held_as(db, value, ty));
-        (i128::from(i64::MIN)..=i128::from(u64::MAX))
-            .contains(&value)
-            .then_some(value as i64)
-    })
+    enum_ordinals_by(db, enm, |e| ordinal(db, storage, spec_value(db, e)?))
+}
+
+/// A value written for a named value, as its ordinal: as a declared storage
+/// holds it, so `16#FF` on a SINT is -1, the bit pattern its check accepted,
+/// and a ULINT above `i64::MAX` is its bit pattern too. Under the default DINT
+/// a value stays as written, so E0605 sees one past the storage.
+fn ordinal<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    storage: Option<Type<'db>>,
+    value: i128,
+) -> Option<i64> {
+    let value = storage.map_or(value, |ty| held_as(db, value, ty));
+    (i128::from(i64::MIN)..=i128::from(u64::MAX))
+        .contains(&value)
+        .then_some(value as i64)
 }
 
 fn enum_ordinals_by<'db>(
@@ -623,63 +754,60 @@ fn is_literal_shaped<'db>(db: &'db dyn WorkspaceDataBase, expr: Expr<'db>) -> bo
 /// would compute it, at the expression's own type, each CONSTANT replaced
 /// by its value.
 pub fn real_folds<'db>(db: &'db dyn WorkspaceDataBase, expr: Expr<'db>) -> bool {
-    let mut real = false;
-    real_folds_guarded(db, expr, &mut Vec::new(), &mut real) && real
+    real_arithmetic(db, expr) == Some(true)
 }
 
-fn real_folds_guarded<'db>(
-    db: &'db dyn WorkspaceDataBase,
-    expr: Expr<'db>,
-    visited: &mut Vec<VariableDecl<'db>>,
-    real: &mut bool,
-) -> bool {
+/// Whether `expr` is arithmetic that folds, and whether a REAL is in it:
+/// `None` when it does not fold, `Some(real)` when it does.
+fn real_arithmetic<'db>(db: &'db dyn WorkspaceDataBase, expr: Expr<'db>) -> Option<bool> {
     use crate::hir_def::expressions::expression::{Elementary, UnaryOperatorKind};
     use crate::hir_def::expressions::spec::ElementarySpec;
     use crate::hir_ty::infer::Infer;
     match expr.expr(db) {
         ExprKind::PrimaryExpr(PrimaryExpr::Literal(literal)) => match literal {
-            Elementary::Real(_) | Elementary::LReal(_) | Elementary::InferFloat(_) => {
-                *real = true;
-                true
-            }
-            _ => expr.as_const_int(db).is_some(),
+            Elementary::Real(_) | Elementary::LReal(_) | Elementary::InferFloat(_) => Some(true),
+            _ => expr.as_const_int(db).map(|_| false),
         },
         ExprKind::PrimaryExpr(PrimaryExpr::ParenthesizedExpr { expr }) => {
-            real_folds_guarded(db, *expr, visited, real)
+            real_arithmetic(db, *expr)
         }
         ExprKind::UnaryOperator {
             expr,
             operator: UnaryOperatorKind::Minus | UnaryOperatorKind::Plus,
-        } => real_folds_guarded(db, *expr, visited, real),
+        } => real_arithmetic(db, *expr),
         ExprKind::AddOperator { left, right, .. }
         | ExprKind::MultOperator { left, right, .. }
         | ExprKind::PowerOperator { left, right } => {
-            real_folds_guarded(db, *left, visited, real)
-                && real_folds_guarded(db, *right, visited, real)
+            Some(real_arithmetic(db, *left)? | real_arithmetic(db, *right)?)
         }
         ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess(va)) => {
-            let Some(decl) = spec_name_binding(db, *va) else {
-                return false;
-            };
-            if visited.contains(&decl) {
-                return false;
-            }
-            let Some(init) = constant_init(db, decl) else {
-                return false;
-            };
-            if matches!(
+            let decl = spec_name_binding(db, *va)?;
+            let inside = written_real(db, constant_init(db, decl)?)?;
+            let declared = matches!(
                 decl.spec(db).infer(db).normalize(db),
                 Type::Elementary(ElementarySpec::Real | ElementarySpec::LReal)
-            ) {
-                *real = true;
-            }
-            visited.push(decl);
-            let folds = real_folds_guarded(db, init, visited, real);
-            visited.pop();
-            folds
+            );
+            Some(declared || inside)
         }
-        _ => false,
+        _ => None,
     }
+}
+
+/// [`real_arithmetic`] of the value written for a CONSTANT, where it is
+/// written: a query, as [`written_value`] is, so each CONSTANT is walked once
+/// however often it is named. A cycle does not fold.
+#[salsa::tracked(cycle_result = real_in_a_cycle)]
+fn written_real<'db>(db: &'db dyn WorkspaceDataBase, written: Expr<'db>) -> Option<bool> {
+    real_arithmetic(db, written)
+}
+
+/// What a value in a cycle is: arithmetic that does not fold, each of them.
+fn real_in_a_cycle<'db>(
+    _db: &'db dyn WorkspaceDataBase,
+    _id: salsa::Id,
+    _written: Expr<'db>,
+) -> Option<bool> {
+    None
 }
 
 /// The first part of `expr` that keeps it from being a constant: a name
@@ -711,9 +839,10 @@ pub fn non_constant_part<'db>(
 /// refuses what this rejects, and MIR folds what it accepts — the two agree
 /// BY CONSTRUCTION because they both call this.
 ///
-/// Accepted: anything [`spec_value`] folds (integer arithmetic over literals
-/// and CONSTANTs), REAL arithmetic [`real_folds`] accepts, any
-/// literal-shaped value, and a pure CONSTANT-reference chain ending in one.
+/// Accepted: anything [`spec_value`] folds (integer arithmetic and `AND`,
+/// `OR`, `XOR`, `NOT` over literals and CONSTANTs), REAL arithmetic
+/// [`real_folds`] accepts, any literal-shaped value, and a pure
+/// CONSTANT-reference chain ending in one.
 pub fn init_leaf_is_constant<'db>(db: &'db dyn WorkspaceDataBase, expr: Expr<'db>) -> bool {
     if spec_value(db, expr).is_some() || is_literal_shaped(db, expr) || real_folds(db, expr) {
         return true;

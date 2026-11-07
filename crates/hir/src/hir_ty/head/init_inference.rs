@@ -65,7 +65,9 @@ impl<'db> InitInference<'db> {
         {
             self.check_spec(db, dt.spec(db));
 
-            let typ = dt.spec(db).infer(db);
+            // The TYPE itself, which a report names: an enum written in place
+            // there is `Mode`, not 'ENUM'.
+            let typ = Type::DataType(dt);
             if let Some(expr) = dt.init(db) {
                 self.init_expr_result
                     .resolve_init_expr(db, expr, &mut self.body_infer_result, typ);
@@ -712,12 +714,14 @@ impl<'db> InitExprInferenceResult<'db> {
             }
             InitExprWalkStep::Field { expr, value, name } => {
                 expected.walk_init_expr(db, step, place, self);
+                // As the field declares it: a report names it so, and a
+                // subrange keeps its bounds, which normalizing peeled off, so
+                // `(s := 200)` passed into a `0..100` field.
                 let field_type = self
                     .type_of_init_expr
                     .get(expr)
                     .copied()
-                    .unwrap_or_default()
-                    .normalize(db);
+                    .unwrap_or_default();
 
                 if let Some(prev) = ctx.seen_fields.insert(name.ident(db), *expr) {
                     self.errors.push(

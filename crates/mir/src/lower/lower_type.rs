@@ -106,6 +106,12 @@ pub fn lower_type<'db>(
     db: &'db dyn WorkspaceDataBase,
     ty: Type<'db>,
 ) -> Result<MirType, LowerTypeError> {
+    // A named value written alone, `Light#Red`, is typed as itself: it is
+    // held as its type, a CASE selector included.
+    let ty = match ty {
+        Type::EnumVariant(dt, _) => Type::DataType(dt),
+        ty => ty,
+    };
     // Capture a wrapping `TYPE Pt : STRUCT` name before normalize peels it,
     // so the struct carries "Pt" rather than "<anon_struct>". Display-only.
     let type_name = match ty {

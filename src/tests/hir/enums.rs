@@ -255,13 +255,11 @@ fn invalid_enum_type_default_of_another_enum(mut with_db: RootDatabase) {
     [E0301] Error: type mismatch
        ,-[ file:///test0.st:5:27 ]
        |
-     3 |             Color : (Red, Green, Blue);
-       |             ^^|^^
-       |               `---- 'Color' is declared here
-       |
      5 |             Shade : Color := Other#Red;
-       |                           ^^^^^^|^^^^^
-       |                                 `------- expected 'Color', got 'Other#Red'
+       |             ^^|^^         ^^^^^^|^^^^^
+       |               `------------------------- 'Shade' is declared here
+       |                                 |
+       |                                 `------- expected 'Shade', got 'Other#Red'
     ---'
     ");
 }
@@ -447,4 +445,64 @@ END_FUNCTION
         report.contains("cannot compare 'Color#Red' with 'Size#Big'"),
         "{report}"
     );
+}
+
+/// A name folds as long as its value does: a value that comes back to itself,
+/// through a value counted from it or through another type, is no constant. An
+/// enum with no base type has no number to fold, and a folded name is held to the
+/// bounds it meets.
+#[rstest]
+#[case::two_values_naming_each_other(
+    "TYPE Loop : INT (A := Loop#B, B := Loop#A); END_TYPE",
+    "[E0604]"
+)]
+// C is B plus one, so B is C plus ten is B plus eleven. It was accepted, and the
+// program held B as 16 and C as 17.
+#[case::a_value_naming_one_counted_from_it(
+    "TYPE Loop : INT (A := 5, B := Loop#C + 10, C); END_TYPE",
+    "[E0604]"
+)]
+#[case::two_types_naming_each_other(
+    "TYPE One : INT (A := Two#B); Two : INT (B := One#A); END_TYPE",
+    "[E0604]"
+)]
+#[case::a_value_naming_itself("TYPE Self : INT (A := Self#A + 1); END_TYPE", "[E0604]")]
+#[case::a_plain_enum_as_a_bound(
+    "TYPE Plain : (One, Two); END_TYPE
+     FUNCTION F VAR a : ARRAY[Plain#One..Plain#Two] OF INT; END_VAR END_FUNCTION",
+    "[E0501]"
+)]
+#[case::values_with_no_base_as_a_bound(
+    "TYPE Stepped : (Five := 5, Six); END_TYPE
+     FUNCTION F VAR a : ARRAY[Stepped#Five..Stepped#Six] OF INT; END_VAR END_FUNCTION",
+    "[E0501]"
+)]
+#[case::values_with_no_base_calculated(
+    "TYPE Stepped : (Five := 5, Six); END_TYPE
+     FUNCTION F VAR CONSTANT k : INT := Stepped#Five + 1; END_VAR END_FUNCTION",
+    "[E0305]"
+)]
+#[case::values_with_no_base_as_a_length(
+    "TYPE Stepped : (Five := 5, Six); END_TYPE
+     FUNCTION F VAR s : STRING[Stepped#Six]; END_VAR END_FUNCTION",
+    "[E0315]"
+)]
+#[case::a_range_of_plain_labels(
+    "TYPE Plain : (One, Two); END_TYPE
+     FUNCTION F VAR c : Plain; i : INT; END_VAR CASE c OF Plain#One..Plain#Two: i := 1; END_CASE; END_FUNCTION",
+    "[E1205]"
+)]
+#[case::past_an_arrays_bounds(
+    "TYPE Light : INT (Red := 1, Green := 3); END_TYPE
+     FUNCTION F VAR a : ARRAY[0..1] OF INT; END_VAR a[Light#Green] := 7; END_FUNCTION",
+    "[E0506]"
+)]
+#[case::past_a_subrange_it_bounds(
+    "TYPE Light : INT (Red := 1, Green := 3); END_TYPE
+     FUNCTION F VAR r : INT (Light#Red..Light#Green); END_VAR r := 5; END_FUNCTION",
+    "[E0702]"
+)]
+fn invalid_what_does_not_fold(mut with_db: RootDatabase, #[case] source: &str, #[case] code: &str) {
+    let report = test_diagnostics(&mut with_db, &[source]);
+    assert!(report.contains(code), "{report}");
 }

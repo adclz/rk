@@ -25,6 +25,7 @@ use crate::{
         pous::pou::Pou,
         scope::{ScopeId, ScopeKind},
         semantic_index::get_scope,
+        using::Using,
     },
     hir_ty::{
         body::{BodyInferenceResult, IndexedType},
@@ -264,6 +265,22 @@ impl<'db> Resolver<'db> {
         self.resolve_begin_path(db, path_expr, multibits, ctx, false);
     }
 
+    /// The type a named value is qualified with, `Mode` in `Mode#Run`. A
+    /// variable named like it does not hide it: names are caseless, and a
+    /// `mode : Other` in scope made `Mode#Run` read `Other#Run`. A name that
+    /// is no type resolves as any other path, which reports an unknown one.
+    pub fn resolve_qualifier(
+        &self,
+        db: &'db dyn WorkspaceDataBase,
+        path_expr: BeginPathExpr<'db>,
+        ctx: &mut BodyInferenceResult<'db>,
+    ) {
+        match pou_named(db, path_expr) {
+            Some((pou @ Pou::DataType(_), using)) => record_pou(db, path_expr, pou, using, ctx),
+            _ => self.resolve_begin_path_expr(db, path_expr, None, ctx),
+        }
+    }
+
     /// A call's callee: inside a FUNCTION or METHOD, its own name called is
     /// the callable (`F(n - 1)`), where read or written it is the result.
     pub fn resolve_callee(
@@ -297,26 +314,8 @@ impl<'db> Resolver<'db> {
                 // nothing typed before, so every such default was E0602 on
                 // '{unknown}'. A local name is left to the once-per-type
                 // rule, which refuses it as not constant.
-                if path_expr.invocation(db).is_none()
-                    && let Some(path) = path_expr.expr(db)
-                    && let Some((access, _)) = path.to_namespace_access(db)
-                    && let name::NameResolution::Pou(pou, using) =
-                        name::resolve_name(db, access, path.get_scope_id(db))
-                {
-                    let call_site = CallSite::new(path.scope_id(db), path.get_id(db));
-                    check_test_visibility(db, &call_site, pou.get_scope_id(db), &mut ctx.errors);
-                    match using {
-                        Some(using) => {
-                            ctx.usings_used.insert(using);
-                        }
-                        None => check_namespace_visibility(
-                            db,
-                            &call_site,
-                            pou.get_scope_id(db),
-                            &mut ctx.errors,
-                        ),
-                    }
-                    ctx.type_of_path_expr.insert(path, Type::new_pou(db, pou));
+                if let Some((pou, using)) = pou_named(db, path_expr) {
+                    record_pou(db, path_expr, pou, using, ctx);
                 } else if path_expr.invocation(db).is_none()
                     && let Some(path) = path_expr.expr(db)
                     && let steps = path.flatten(db)
@@ -685,6 +684,47 @@ impl<'db> Resolver<'db> {
             );
         }
     }
+}
+
+/// The POU a path names when it is a name alone, not called, with the USING
+/// it was imported through.
+fn pou_named<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    path_expr: BeginPathExpr<'db>,
+) -> Option<(Pou<'db>, Option<Using<'db>>)> {
+    if path_expr.invocation(db).is_some() {
+        return None;
+    }
+    let path = path_expr.expr(db)?;
+    let (access, _) = path.to_namespace_access(db).as_ref()?;
+    match name::resolve_name(db, access, path.get_scope_id(db)) {
+        name::NameResolution::Pou(pou, using) => Some((pou, using)),
+        _ => None,
+    }
+}
+
+/// Types a name as the POU it names, with the checks a reference to it takes:
+/// whether a `{test}` POU may be named here, and the namespace's visibility
+/// unless a USING brought it in, which is then marked used.
+fn record_pou<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    path_expr: BeginPathExpr<'db>,
+    pou: Pou<'db>,
+    using: Option<Using<'db>>,
+    ctx: &mut BodyInferenceResult<'db>,
+) {
+    let Some(path) = path_expr.expr(db) else {
+        return;
+    };
+    let call_site = CallSite::new(path.scope_id(db), path.get_id(db));
+    check_test_visibility(db, &call_site, pou.get_scope_id(db), &mut ctx.errors);
+    match using {
+        Some(using) => {
+            ctx.usings_used.insert(using);
+        }
+        None => check_namespace_visibility(db, &call_site, pou.get_scope_id(db), &mut ctx.errors),
+    }
+    ctx.type_of_path_expr.insert(path, Type::new_pou(db, pou));
 }
 
 /// What a name means as a value where no POU is walked, in a TYPE's or a

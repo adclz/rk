@@ -111,11 +111,17 @@ fn check_case_label_constant<'db>(
         return;
     }
     // An enum label's value is its variant's ordinal, which lowering reads
-    // from the variant table; there is nothing to record here.
-    match ctx.get_type_of_expr(label).normalize(db) {
+    // from the variant table; there is nothing to record here. A type with
+    // named values is a number: its label folds below, a range of them too.
+    let label_type = ctx.get_type_of_expr(label);
+    match label_type.normalize(db) {
         // Reported where it failed to resolve.
         Type::Never => return,
-        Type::Enum(_) | Type::EnumVariant(..) if allow_non_integer => return,
+        Type::Enum(_) | Type::EnumVariant(..)
+            if allow_non_integer && label_type.named_values_base(db).is_none() =>
+        {
+            return;
+        }
         // The label is evaluated BEFORE it coerces to the selector, so a bare
         // literal is still untyped here.
         Type::Elementary(ElementarySpec::String) | Type::Infer(InferType::String(_))

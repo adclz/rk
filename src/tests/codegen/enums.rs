@@ -1,14 +1,46 @@
 // SPDX-FileCopyrightText: 2026 Clauzel Adrien
 // SPDX-License-Identifier: AGPL-3.0-only
 
-//! Enum codegen across contexts: literals resolve to declaration ordinals
-//! (DInt storage), through FB fields, function params/returns, initializers,
-//! CASE labels, arrays, and struct fields.
+//! Enum codegen across contexts: a name is the value its declaration gives it,
+//! stored at the enum's base type, or as a DINT when it has none, through FB
+//! fields, function parameters and results, initializers, CASE labels, arrays
+//! and struct fields. A type with named values holds its base's other values too.
 //! (Regression: `EnumValue` lowering was a stub emitting 0 for EVERY variant,
 //! and `Type::EnumVariant` had no elementary mapping.)
 
 use crate::tests::codegen::with_db;
 use rstest::*;
+
+/// A configuration that runs `Main` as `P1`.
+const RUNS_MAIN: &str = "
+    CONFIGURATION Cfg
+        RESOURCE Res ON CPU
+            TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+            PROGRAM P1 WITH T : Main;
+        END_RESOURCE
+    END_CONFIGURATION
+";
+
+/// What each of `paths` holds after one scan of `P1`, read from memory through the
+/// debug tables: an enum's value as stored, a DINT, a BOOL as 0 or 1. A CASE label
+/// and an argument agree under any numbering. Memory shows which numbering was used.
+fn stored(db: &mut db::RootDatabase, source: &str, paths: &[&str]) -> Vec<i64> {
+    use debug_format::VarValue;
+    let (_mir, wasm) =
+        crate::tests::codegen::compile_to_mir_and_wasm(db, &format!("{source}{RUNS_MAIN}"));
+    let mut plc = crate::tests::codegen::TestPlc::load(&wasm).expect("load");
+    plc.run(1).expect("scan");
+    let info = debug_format::DebugInfo::from_wasm(&wasm);
+    paths
+        .iter()
+        .map(|path| match plc.read_var(&info, path) {
+            Some(VarValue::Enum { raw, .. }) => raw,
+            Some(VarValue::I32(n)) => i64::from(n),
+            Some(VarValue::Bool(b)) => i64::from(b),
+            other => panic!("{path} is {other:?}"),
+        })
+        .collect()
+}
 
 /// Enum VAR_INPUT written at the FB call site, compared against a literal in
 /// the body, stored into enum instance state.
@@ -167,7 +199,8 @@ fn enum_struct_field(mut with_db: db::RootDatabase) {
 /// one continues from the previous value. MIR used to number variants by
 /// position and ignore `EnumVariant.value` entirely, so the declared values
 /// were silently replaced by 0, 1, 2 — wrong for any CASE dispatch, INT
-/// comparison, or value transmitted to a device.
+/// comparison, or value transmitted to a device. Memory holds the declared values,
+/// and a CASE dispatches on them.
 #[rstest]
 fn explicit_enum_values_are_honored(mut with_db: db::RootDatabase) {
     let source = r#"
@@ -184,19 +217,26 @@ fn explicit_enum_values_are_honored(mut with_db: db::RootDatabase) {
             END_CASE;
         END_FUNCTION
 
-        FUNCTION test : DINT
-            test := code(m := Mode#Run) * 100 + code(m := Mode#Halt);
-        END_FUNCTION
+        PROGRAM Main
+        VAR run, halt : Mode; dispatched : DINT; END_VAR
+            run := Mode#Run;
+            halt := Mode#Halt;
+            dispatched := code(m := run) * 100 + code(m := halt);
+        END_PROGRAM
     "#;
-    let result: i32 = super::run(&mut with_db, source, "test", ());
     assert_eq!(
-        result, 203,
-        "CASE must match on the declared values (Run -> 2, Halt -> 3), not positions"
+        stored(
+            &mut with_db,
+            source,
+            &["P1.run", "P1.halt", "P1.dispatched"]
+        ),
+        [20, 30, 203],
+        "the declared values are stored, not the positions, and CASE dispatches on them"
     );
 }
 
 /// Enumerators after an explicit value continue from it (`(A := 5, B, C)` is
-/// 5, 6, 7) — the IEC/C-style continuation rule.
+/// 5, 6, 7) — the IEC/C-style continuation rule, as memory holds them.
 #[rstest]
 fn enum_values_continue_after_an_explicit_one(mut with_db: db::RootDatabase) {
     let source = r#"
@@ -213,12 +253,23 @@ fn enum_values_continue_after_an_explicit_one(mut with_db: db::RootDatabase) {
             END_CASE;
         END_FUNCTION
 
-        FUNCTION test : DINT
-            test := code(s := Step#B) * 10 + code(s := Step#C);
-        END_FUNCTION
+        PROGRAM Main
+        VAR a, b, c : Step; dispatched : DINT; END_VAR
+            a := Step#A;
+            b := Step#B;
+            c := Step#C;
+            dispatched := code(s := b) * 10 + code(s := c);
+        END_PROGRAM
     "#;
-    let result: i32 = super::run(&mut with_db, source, "test", ());
-    assert_eq!(result, 23, "B and C continue from A's explicit 5 (6 and 7)");
+    assert_eq!(
+        stored(
+            &mut with_db,
+            source,
+            &["P1.a", "P1.b", "P1.c", "P1.dispatched"]
+        ),
+        [5, 6, 7, 23],
+        "B and C continue from A's explicit 5"
+    );
 }
 
 /// The declared base is the storage lane: an LINT-based enum is an 8-byte
@@ -248,8 +299,8 @@ fn typed_enum_storage_follows_the_declared_base(mut with_db: db::RootDatabase) {
         END_CONFIGURATION
     "#;
     let (mir, wasm) = super::compile_to_mir_and_wasm(&mut with_db, source);
-    // s: 1 byte at 0, w: 8 bytes aligned up to offset 8 — 16 in all. The
-    // hardcoded-DInt world packed both as 4-byte fields into 8.
+    // s: the 4-byte slot at 0 every type of 32 bits or less takes, w: 8 bytes at
+    // 8 — 16 in all. The hardcoded-DInt world packed both as 4-byte fields into 8.
     assert_eq!(mir.retain_size, 16, "storage widths must follow the bases");
 
     let mut plc = crate::tests::codegen::TestPlc::load(&wasm).expect("load");
@@ -291,23 +342,25 @@ fn wide_enum_compares_and_matches_at_its_lane(mut with_db: db::RootDatabase) {
     assert_eq!(result, 112, "equality 100 + Big 10 + Bigger 2");
 }
 
-/// A folding variant value drives the ordinals: Idle := 1 + 1 is 2, Run
-/// follows at 3. This shape used to abort lowering after a clean check.
+/// A value that folds is the value: Idle := 1 + 1 is 2, and Run follows at 3, as
+/// memory holds them. This shape used to abort lowering after a clean check.
 #[rstest]
 fn enum_value_folding_expression_runs(mut with_db: db::RootDatabase) {
     let source = r#"
         TYPE Mode : (Idle := 1 + 1, Run) END_TYPE
-        FUNCTION test : DINT
-        VAR m : Mode; END_VAR
-            m := Mode#Run;
-            test := 0;
-            IF m = Mode#Run THEN
-                test := 3;
-            END_IF;
-        END_FUNCTION
+
+        PROGRAM Main
+        VAR idle, run : Mode; same : BOOL; END_VAR
+            idle := Mode#Idle;
+            run := Mode#Run;
+            same := run = Mode#Run;
+        END_PROGRAM
     "#;
-    let r: i32 = super::run(&mut with_db, source, "test", ());
-    assert_eq!(r, 3, "Run's ordinal follows the folded 2");
+    assert_eq!(
+        stored(&mut with_db, source, &["P1.idle", "P1.run", "P1.same"]),
+        [2, 3, 1],
+        "Run follows the folded 2"
+    );
 }
 
 /// A variant at the edge of its storage survives a store: `B` is 127, the
@@ -703,6 +756,11 @@ const NAMED_VALUES: &str = r#"
     "CASE j OF Light#Green: i := 10; ELSE i := 30; END_CASE;",
     "i = 10"
 )]
+// A name as the selector was typed as itself, which lowering had no type for.
+#[case::a_name_as_the_selector(
+    "CASE Light#Amber OF Light#Red: i := 10; Light#Amber: i := 20; ELSE i := 30; END_CASE;",
+    "i = 20"
+)]
 #[case::a_subscript("m := 2; list[m] := 8;", "list[2] = 8 AND list[Light#Amber] = 8")]
 fn a_value_with_named_values_goes_where_its_base_goes(
     mut with_db: db::RootDatabase,
@@ -860,4 +918,222 @@ fn the_standard_functions_take_named_values(mut with_db: db::RootDatabase) {
     if failed != 0 {
         panic!("{} is false", holds[failed as usize - 1]);
     }
+}
+
+/// A name of a type with named values is a constant of its base, wherever a
+/// constant is needed. Each row is a program whose `test` holds. A name did not
+/// fold: these were refused, and a CASE label that is a CONSTANT of such a type
+/// stopped the compiler.
+#[rstest]
+#[case::a_constant(
+    "FUNCTION test : BOOL VAR CONSTANT k : INT := Light#Red + 1; END_VAR test := k = 2; END_FUNCTION"
+)]
+#[case::a_negated_constant(
+    "FUNCTION test : BOOL VAR CONSTANT k : INT := -Light#Green; END_VAR test := k = -3; END_FUNCTION"
+)]
+#[case::a_constant_of_the_type(
+    "FUNCTION test : BOOL VAR CONSTANT k : Light := Light#Green * 2; END_VAR test := k = 6; END_FUNCTION"
+)]
+#[case::through_an_alias(
+    "FUNCTION test : BOOL VAR CONSTANT k : INT := Alias#Amber + 1; END_VAR test := k = 3; END_FUNCTION"
+)]
+#[case::as_the_storage_holds_it(
+    "TYPE Small : SINT (Low := 16#FF); END_TYPE
+     FUNCTION test : BOOL VAR CONSTANT k : SINT := Small#Low; END_VAR test := k = -1; END_FUNCTION"
+)]
+#[case::above_the_largest_lint(
+    "TYPE Big : ULINT (Top := 16#FFFF_FFFF_FFFF_FFFF, Half := Big#Top / 2); END_TYPE
+     FUNCTION test : BOOL VAR u : Big := Big#Top; END_VAR
+         CASE u OF Big#Top: test := Big#Half = 16#7FFF_FFFF_FFFF_FFFF; END_CASE;
+     END_FUNCTION"
+)]
+#[case::an_array_bound(
+    "FUNCTION test : BOOL VAR a : ARRAY[Light#Red..Light#Green] OF INT; END_VAR
+         a[3] := 7; test := a[3] = 7;
+     END_FUNCTION"
+)]
+#[case::an_array_type_bound(
+    "TYPE Row : ARRAY[Light#Red..Light#Green] OF INT; END_TYPE
+     FUNCTION test : BOOL VAR a : Row; END_VAR a[1] := 7; test := a[1] = 7; END_FUNCTION"
+)]
+#[case::a_bound_from_a_constant_of_the_type(
+    "FUNCTION test : BOOL
+     VAR CONSTANT k : Light := 2; END_VAR
+     VAR a : ARRAY[0..k] OF INT; END_VAR
+         a[2] := 7; test := a[2] = 7;
+     END_FUNCTION"
+)]
+#[case::a_bound_from_a_global_constant(
+    "CONFIGURATION Cfg VAR_GLOBAL CONSTANT g : INT := Light#Red + 1; END_VAR END_CONFIGURATION
+     FUNCTION test : BOOL
+     VAR_EXTERNAL CONSTANT g : INT; END_VAR
+     VAR a : ARRAY[0..g] OF INT; END_VAR
+         a[2] := 7; test := a[2] = 7;
+     END_FUNCTION"
+)]
+#[case::a_strings_length(
+    "FUNCTION test : BOOL VAR s : STRING[Light#Green]; long : STRING := 'abcd'; END_VAR
+         s := long; test := s = 'abc';
+     END_FUNCTION"
+)]
+#[case::a_subranges_bounds(
+    "FUNCTION test : BOOL VAR r : INT (Light#Red..Light#Green); END_VAR r := 2; test := r = 2; END_FUNCTION"
+)]
+#[case::another_types_values(
+    "TYPE Next : INT (First := Light#Green, Second := Light#Green + 1, Third); END_TYPE
+     FUNCTION test : BOOL test := Next#First = 3 AND Next#Second = 4 AND Next#Third = 5; END_FUNCTION"
+)]
+#[case::its_own_values(
+    "TYPE Step : INT (One := 1, Two := Step#One + 1); END_TYPE
+     FUNCTION test : BOOL test := Step#Two = 2; END_FUNCTION"
+)]
+#[case::a_chain_of_its_own_values(
+    "TYPE Step : INT (One := 1, Two := Step#One + 1, Ten := Step#Two * 5, Eleven); END_TYPE
+     FUNCTION test : BOOL VAR a : ARRAY[0..Step#Ten] OF INT; m : Step := Step#Eleven; END_VAR
+         a[10] := 7;
+         CASE m OF Step#Eleven: test := a[10] = 7 AND Step#Ten = 10; END_CASE;
+     END_FUNCTION"
+)]
+#[case::a_chain_through_another_type(
+    "TYPE Base : INT (X := 1, Y := Base#X + 1); Scaled : INT (A := Base#Y * 10, B); END_TYPE
+     FUNCTION test : BOOL test := Scaled#A = 20 AND Scaled#B = 21; END_FUNCTION"
+)]
+#[case::the_standards_colors(
+    "TYPE Colors : DWORD (Red := 16#00FF0000, Green := 16#0000FF00, Blue := 16#000000FF,
+         White := Colors#Red OR Colors#Green OR Colors#Blue,
+         Black := Colors#Red AND Colors#Green AND Colors#Blue) := Colors#Green;
+     END_TYPE
+     FUNCTION test : BOOL VAR c : Colors; END_VAR
+         test := c = Colors#Green AND Colors#White = 16#00FFFFFF AND Colors#Black = 0
+             AND Colors#White = (Colors#Red OR Colors#Green OR Colors#Blue);
+     END_FUNCTION"
+)]
+#[case::its_values_by_bits(
+    "TYPE Flags : BYTE (A := 1, B := 2, AB := Flags#A OR Flags#B, NotA := NOT Flags#A, Odd := Flags#A XOR 16#FF);
+     END_TYPE
+     FUNCTION test : BOOL
+         test := Flags#AB = 3 AND Flags#NotA = 16#FE AND Flags#Odd = 16#FE AND Flags#NotA = NOT Flags#A;
+     END_FUNCTION"
+)]
+#[case::a_calculated_label(
+    "FUNCTION test : BOOL VAR m : Light := 2; END_VAR
+         CASE m OF Light#Red + 1: test := TRUE; END_CASE;
+     END_FUNCTION"
+)]
+#[case::a_range_of_labels(
+    "FUNCTION test : BOOL VAR m : Light := 2; END_VAR
+         CASE m OF Light#Red..Light#Green: test := TRUE; END_CASE;
+     END_FUNCTION"
+)]
+#[case::a_label_from_a_constant_of_the_type(
+    "FUNCTION test : BOOL
+     VAR CONSTANT k : Light := 2; END_VAR
+     VAR m : Light := 2; END_VAR
+         CASE m OF k: test := TRUE; END_CASE;
+     END_FUNCTION"
+)]
+#[case::a_step(
+    "FUNCTION test : BOOL VAR i, n : INT; END_VAR
+         FOR i := 1 TO 9 BY Light#Amber DO n := n + 1; END_FOR;
+         test := n = 5;
+     END_FUNCTION"
+)]
+#[case::an_initial_index(
+    "FUNCTION test : BOOL VAR a : ARRAY[0..4] OF INT := [[Light#Amber] := 7]; END_VAR test := a[2] = 7; END_FUNCTION"
+)]
+#[case::an_initial_index_from_a_constant_of_the_type(
+    "FUNCTION test : BOOL
+     VAR CONSTANT k : Light := 3; END_VAR
+     VAR a : ARRAY[0..4] OF INT := [[k] := 7]; END_VAR
+         test := a[3] = 7;
+     END_FUNCTION"
+)]
+#[case::initial_values_at_their_types(
+    "FUNCTION test : BOOL
+     VAR x : REAL := Light#Green; l : LINT := Light#Green; d : DINT := Light#Red + 1; m : Light := Light#Green; END_VAR
+         test := x = 3.0 AND l = 3 AND d = 2 AND m = 3;
+     END_FUNCTION"
+)]
+#[case::field_defaults_at_their_types(
+    "TYPE Held : STRUCT m : Light := Light#Green; x : REAL := Light#Amber; END_STRUCT; END_TYPE
+     FUNCTION test : BOOL VAR h : Held; END_VAR test := h.m = 3 AND h.x = 2.0; END_FUNCTION"
+)]
+#[case::elements_at_their_types(
+    "FUNCTION test : BOOL
+     VAR a : ARRAY[0..1] OF REAL := [Light#Red, Light#Green]; b : ARRAY[0..1] OF Light := [Light#Green, 7]; END_VAR
+         test := a[0] = 1.0 AND a[1] = 3.0 AND b[0] = 3 AND b[1] = 7;
+     END_FUNCTION"
+)]
+#[case::a_plain_enum_initial(
+    "TYPE Color : (Red, Green); END_TYPE
+     FUNCTION test : BOOL VAR c : Color := Color#Green; END_VAR test := c = Color#Green; END_FUNCTION"
+)]
+fn a_named_value_is_a_constant(mut with_db: db::RootDatabase, #[case] program: &str) {
+    let source = format!(
+        "TYPE Light : INT (Red := 1, Amber := 2, Green := 3); Alias : Light; END_TYPE\n{program}"
+    );
+    let result: i32 = crate::tests::codegen::run(&mut with_db, &source, "test", ());
+    assert_eq!(result, 1, "{program}");
+}
+
+/// `Mode#Run` names the type `Mode`, whatever variable is named `mode`: names are
+/// caseless, and a `mode : Other` in scope made it `Other#Run`, 7 where the type
+/// says 2, or E0603 when `Other` has no `Run`. A value folded as a constant, an
+/// initial value or a bound, already read the type, and disagreed with the body.
+/// A variable `n` hid the namespace of `N.Step#Run` the same way (E0202).
+#[rstest]
+#[case::a_local("VAR mode : Other; END_VAR x := Mode#Run; test := x = 2;")]
+#[case::a_local_whose_type_lacks_the_value("VAR mode : Off; END_VAR x := Mode#Run; test := x = 2;")]
+#[case::an_initial_value("VAR mode : Other; y : INT := Mode#Run; END_VAR test := y = 2;")]
+#[case::a_bound_and_a_subscript(
+    "VAR mode : Other; a : ARRAY[0..Mode#Run] OF INT; b : ARRAY[0..2] OF INT; END_VAR
+     a[Mode#Run] := 5; b := a; test := b[2] = 5;"
+)]
+#[case::a_case_label(
+    "VAR mode : Other; m : Mode := Mode#Run; END_VAR
+     CASE m OF Mode#Idle: x := 1; Mode#Run: x := 2; END_CASE; test := x = 2;"
+)]
+#[case::an_input("test := WithInput(mode := Other#Run) = 2;")]
+#[case::a_member_and_a_method("VAR h : Holder; END_VAR h(); test := h.out = 2 AND h.Read() = 2;")]
+#[case::a_qualified_type("VAR n : Other; END_VAR x := N.Step#Run; test := x = 2;")]
+#[case::a_type_a_using_brings_in("VAR step : Other; END_VAR x := Step#Run; test := x = 2;")]
+fn a_type_name_is_not_hidden_by_a_variable(mut with_db: db::RootDatabase, #[case] body: &str) {
+    let source = format!(
+        "USING N;
+         NAMESPACE N TYPE Step : INT (Idle := 1, Run := 2); END_TYPE END_NAMESPACE
+         TYPE Mode : INT (Idle := 1, Run := 2); END_TYPE
+         TYPE Other : INT (Idle := 5, Run := 7); END_TYPE
+         TYPE Off : INT (Off := 9); END_TYPE
+         FUNCTION WithInput : INT VAR_INPUT mode : Other; END_VAR WithInput := Mode#Run; END_FUNCTION
+         FUNCTION_BLOCK Holder
+         VAR mode : Other; END_VAR
+         VAR_OUTPUT out : INT; END_VAR
+         METHOD Read : INT Read := Mode#Run; END_METHOD
+             out := Mode#Run;
+         END_FUNCTION_BLOCK
+         FUNCTION test : BOOL VAR x : INT; END_VAR {body} END_FUNCTION"
+    );
+    let result: i32 = crate::tests::codegen::run(&mut with_db, &source, "test", ());
+    assert_eq!(result, 1, "{body}");
+}
+
+/// A named value folds once however often it is named. Each of these names the
+/// two before it: folded again at each name, 22 of them took 10 s to check, and
+/// these 60 would not have finished.
+#[test]
+fn a_named_value_named_twice_folds_once() {
+    let chain: String = (2..=60)
+        .map(|k| format!(", F{k} := Fib#F{} + Fib#F{}", k - 1, k - 2))
+        .collect();
+    let source = format!(
+        "TYPE Fib : LINT (F0 := 1, F1 := 2{chain}); END_TYPE
+         FUNCTION test : BOOL VAR a : ARRAY[0..(Fib#F60 MOD 1000)] OF LINT; END_VAR
+             a[881] := Fib#F60;
+             test := a[Fib#F60 MOD 1000] = 4052739537881;
+         END_FUNCTION"
+    );
+    let result: i32 = crate::tests::utils::within(std::time::Duration::from_secs(30), move || {
+        crate::tests::codegen::run(&mut db::RootDatabase::default(), &source, "test", ())
+    });
+    assert_eq!(result, 1);
 }

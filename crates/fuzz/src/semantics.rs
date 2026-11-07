@@ -155,6 +155,8 @@ fn shown(value: &VarValue) -> Option<String> {
         VarValue::F32(v) => format!("{v:?}"),
         VarValue::F64(v) => format!("{v:?}"),
         VarValue::String(s) => format!("'{s}'"),
+        // A named value by its number: two names may share one.
+        VarValue::Enum { raw, .. } => raw.to_string(),
         _ => return None,
     })
 }

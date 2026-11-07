@@ -94,3 +94,73 @@ fn invalid_negative_string_length(mut with_db: RootDatabase) {
     ---'
     ");
 }
+
+// A bit operation is checked as the value it folds to: a subscript past the
+// bounds, an upper bound below the lower. An untyped literal has no width, so
+// `NOT` flips every bit of the number: `NOT 16#FFF0` is -65521, a negative
+// length. None of them folded: the bounds and the length were refused as not
+// constant, and the subscript ran past the array.
+#[rstest]
+fn invalid_a_bit_operation_is_checked_as_its_value(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION fn1 : INT
+        VAR
+            a : ARRAY[0..9] OF INT;
+            b : ARRAY[1..(16#0F AND 16#F0)] OF INT;
+            s : STRING[NOT 16#FFF0];
+        END_VAR
+            a[16#F0 OR 16#0F] := 1;
+            fn1 := 1;
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0503] Error: upper bound below the lower bound
+       ,-[ file:///test0.st:5:26 ]
+       |
+     5 |             b : ARRAY[1..(16#0F AND 16#F0)] OF INT;
+       |                          ^^^^^^^^|^^^^^^^^
+       |                                  `---------- the upper bound 0 is below the lower bound 1
+    ---'
+    [E0320] Error: negative STRING length
+       ,-[ file:///test0.st:6:24 ]
+       |
+     6 |             s : STRING[NOT 16#FFF0];
+       |                        ^^^^^|^^^^^
+       |                             `------- the length is -65521: it cannot be negative
+    ---'
+    [E0506] Error: constant index out of bounds
+       ,-[ file:///test0.st:8:15 ]
+       |
+     8 |             a[16#F0 OR 16#0F] := 1;
+       |               ^^^^^^^|^^^^^^
+       |                      `-------- index 255 is out of bounds (the dimension is declared 0..9)
+    ---'
+    ");
+}
+
+// The check of a REAL initial value walks each CONSTANT once, however often it
+// is named. Each of these names the two before it: walked again at each name,
+// 20 of them took 1 s to check, and these 60 would not have finished. Checked
+// only: lowering the value is another matter.
+#[test]
+fn a_real_constant_named_twice_is_walked_once() {
+    let chain: String = (2..=60)
+        .map(|k| format!("f{k} : REAL := f{} + f{};\n", k - 1, k - 2))
+        .collect();
+    let source = format!(
+        "FUNCTION_BLOCK Fb
+         VAR CONSTANT f0 : REAL := 0.5; f1 : REAL := 1.5; {chain} END_VAR
+         VAR m : REAL := f60; END_VAR
+         END_FUNCTION_BLOCK"
+    );
+    let report = crate::tests::utils::within(std::time::Duration::from_secs(30), move || {
+        crate::tests::utils::test_snapshot(&mut RootDatabase::default(), &[&source], |db, file| {
+            hir::check::check_file(
+                db,
+                &hir::hir_ty::calls::CallGraph::of_files(db, [file]),
+                file,
+            )
+        })
+    });
+    assert_snapshot!(report, @"");
+}

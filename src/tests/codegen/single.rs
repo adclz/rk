@@ -208,6 +208,7 @@ fn the_period_of_a_task_with_a_single(mut with_db: db::RootDatabase) {
 #[case::output_array_last("P1.bits[3]", "P1.bits[3]")]
 #[case::output_array_of_a_constant("P1.bits[K]", "P1.bits[2]")]
 #[case::output_array_of_a_constant_with_named_values("P1.bits[KN]", "P1.bits[2]")]
+#[case::output_array_of_a_named_value("P1.bits[Level#High]", "P1.bits[2]")]
 #[case::output_grid("P1.grid[1, 0]", "P1.grid[1,0]")]
 #[case::output_grid_second_dimension("P1.grid[0, 1]", "P1.grid[0,1]")]
 #[case::output_grid_two_brackets("P1.grid[1][1]", "P1.grid[1,1]")]

@@ -481,6 +481,29 @@ fn enum_variant_case_reaches_the_same_value(mut with_db: db::RootDatabase) {
     assert_eq!(result, 42, "color#green IS Color#GREEN");
 }
 
+/// A named value written in another case folds to the same number: in a
+/// bound, in a label, and in another value of its type.
+#[rstest]
+fn a_named_value_in_another_case_folds_the_same(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE Step : INT (One := 1, Two := step#ONE + 1, Three); END_TYPE
+
+        FUNCTION get : INT
+        VAR
+            a : ARRAY[0..STEP#three] OF INT;
+            s : Step := Step#Three;
+        END_VAR
+            a[3] := 42;
+            CASE s OF
+                step#THREE: get := a[3];
+            END_CASE;
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let result: i32 = execute_wasm(&wasm, "get", ());
+    assert_eq!(result, 42, "STEP#three IS Step#Three, 3");
+}
+
 /// A struct initializer naming its field in a different case still lands.
 ///
 /// The initializer's path steps carry the spelling as WRITTEN, and MIR walks

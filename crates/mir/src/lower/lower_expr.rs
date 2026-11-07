@@ -67,6 +67,17 @@ pub struct ExprLowerCtx<'db> {
     /// names is its value, lowered where it is declared, which means the same
     /// in any frame, the caller's for an omitted input's default.
     pub fold_constants: std::cell::Cell<bool>,
+    /// The CONSTANTs the value being folded has named, each lowered once and
+    /// shared wherever it is named again ([`MirExpr::Shared`]). Emptied when
+    /// the value is done: a shared value is computed where it is first
+    /// reached, and only within one value's code, which has no branch, is
+    /// that place sure to run first.
+    pub shared_constants: RefCell<
+        rustc_hash::FxHashMap<
+            hir::hir_def::expressions::expression::Expr<'db>,
+            std::sync::Arc<crate::expr::MirShared>,
+        >,
+    >,
     /// The POU this body is emitted for, which for an inherited method is the
     /// inheritor: `THIS.m()` inside it must reach the inheritor's `m`.
     pub this_pou: Option<hir::hir_def::pous::pou::Pou<'db>>,
@@ -141,6 +152,7 @@ impl<'db> ExprLowerCtx<'db> {
             before_stmt: Default::default(),
             this_pou: None,
             fold_constants: Default::default(),
+            shared_constants: Default::default(),
         }
     }
 
@@ -161,6 +173,7 @@ impl<'db> ExprLowerCtx<'db> {
             before_stmt: Default::default(),
             this_pou: None,
             fold_constants: Default::default(),
+            shared_constants: Default::default(),
         }
     }
 
@@ -690,7 +703,7 @@ impl<'db> ExprLowerCtx<'db> {
                     && let Some(init) = hir::hir_ty::infer::const_eval::constant_init(self.db, decl)
                 {
                     let ty = crate::lower::lower_func::lower_var_type(self.db, decl)?;
-                    return self.lower_leaf_value(init, &ty);
+                    return self.lower_named_constant(init, &ty);
                 }
                 // `%IX0.3` beside a `%IW0` is bits of that word's cell.
                 if let Some(view) = self.view(*var_access, parent_expr.infer(self.db))? {
@@ -712,8 +725,8 @@ impl<'db> ExprLowerCtx<'db> {
             PrimaryExpr::FuncCall(func_call) => self.lower_func_call(*func_call, Some(parent_expr)),
 
             PrimaryExpr::EnumValue { name, variant } => {
-                // An enum literal is its variant's ordinal in declaration order, at
-                // the enum's storage lane.
+                // An enum literal is its variant's ordinal, at the enum's storage
+                // lane: the value written for it, or the one before it plus one.
                 let enum_ty = name.infer(self.db).normalize(self.db);
                 let Type::Enum(e) = enum_ty else {
                     return Err(LowerTypeError::UnsupportedType(format!(
@@ -3242,12 +3255,15 @@ impl<'db> ExprLowerCtx<'db> {
             })
     }
 
-    /// An initial value, stored in a slot of type `ty`. Folded in the
-    /// acceptance order of `init_leaf_is_constant`: integer arithmetic over
-    /// literals and CONSTANTs (an I64 under a Cast to the slot's lane), then
-    /// a pure CONSTANT chain, whose end is lowered. A constant names nothing
-    /// in a frame, so it lowers the same in the caller as in the callee:
-    /// this is also what an omitted input's default becomes.
+    /// An initial value, stored in a slot of type `ty`. Folded as
+    /// `init_leaf_is_constant` accepts it: integer arithmetic over literals
+    /// and CONSTANTs (an I64 under a Cast to the slot's lane), then REAL
+    /// arithmetic, each CONSTANT in it its value, then a pure CONSTANT chain,
+    /// whose end is lowered. REAL comes before the chain: a chain ending in
+    /// `k0 * 2.0` would lower `k0` as a read, which a value `__init` stores
+    /// may not hold. A constant names nothing in a frame, so it lowers the
+    /// same in the caller as in the callee: this is also what an omitted
+    /// input's default becomes.
     pub(crate) fn lower_leaf_value(
         &self,
         value: Expr<'db>,
@@ -3273,13 +3289,16 @@ impl<'db> ExprLowerCtx<'db> {
                 },
                 None => folded,
             }
-        } else if let Some(end) = const_eval::resolve_constant_ref(self.db, value) {
-            self.lower_expr(end)?
         } else if const_eval::real_folds(self.db, value) {
             let folding = self.fold_constants.replace(true);
             let lowered = self.lower_expr(value);
             self.fold_constants.set(folding);
+            if !folding {
+                self.shared_constants.borrow_mut().clear();
+            }
             lowered?
+        } else if let Some(end) = const_eval::resolve_constant_ref(self.db, value) {
+            self.lower_expr(end)?
         } else {
             self.lower_expr(value)?
         };
@@ -3298,6 +3317,34 @@ impl<'db> ExprLowerCtx<'db> {
             };
         }
         Ok(lowered)
+    }
+
+    /// A CONSTANT that the value being folded names, written as `init` and
+    /// held at `ty`: lowered the first time it is named, and shared after.
+    /// Lowered again at each name, a chain of CONSTANTs that each name the
+    /// two before them made code that grew exponentially with their number.
+    /// A literal, or a value with a call in it, is lowered where it is named.
+    fn lower_named_constant(
+        &self,
+        init: Expr<'db>,
+        ty: &MirType,
+    ) -> Result<MirExpr, LowerTypeError> {
+        let named = self.shared_constants.borrow().get(&init).cloned();
+        if let Some(shared) = named {
+            return Ok(MirExpr::Shared(shared));
+        }
+        let value = self.lower_leaf_value(init, ty)?;
+        if is_literal(&value) || value.has_call() {
+            return Ok(value);
+        }
+        let shared = std::sync::Arc::new(crate::expr::MirShared {
+            value,
+            ty: ty.clone(),
+        });
+        self.shared_constants
+            .borrow_mut()
+            .insert(init, shared.clone());
+        Ok(MirExpr::Shared(shared))
     }
 
     /// What inference knows about `scope`: its statements and its
@@ -3389,6 +3436,15 @@ impl<'db> ExprLowerCtx<'db> {
                 normalized
             ))),
         }
+    }
+}
+
+/// A literal, through its casts and its sign.
+fn is_literal(expr: &MirExpr) -> bool {
+    match expr {
+        MirExpr::Constant(_) | MirExpr::StringLiteral { .. } => true,
+        MirExpr::Cast { expr, .. } | MirExpr::UnaryOp { expr, .. } => is_literal(expr),
+        _ => false,
     }
 }
 

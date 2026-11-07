@@ -83,3 +83,46 @@ fn power_of_lreal(mut with_db: db::RootDatabase) {
     let result: f64 = super::run(&mut with_db, source, "test", ());
     assert_eq!(result, 1024.0);
 }
+
+/// `**` over constants is a value `__init` stores: a global's, a member's of
+/// a program and of a function block that is a global, and a VAR_CONFIG
+/// value. Each is what the program computes in its body. `**` is a call to
+/// the math builtin, and a call in such a value stopped the compiler.
+#[rstest]
+fn a_power_is_a_value_init_stores(mut with_db: db::RootDatabase) {
+    let source = r#"
+        CONFIGURATION Cfg
+        VAR_GLOBAL CONSTANT k : REAL := 3.0; END_VAR
+        VAR_GLOBAL g : REAL := 2.0 ** k; gf : Fg; END_VAR
+        RESOURCE Res ON CPU
+            TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+            PROGRAM P1 WITH T : Main;
+        END_RESOURCE
+        VAR_CONFIG P1.b.v : REAL := 2.0 ** 3.0; END_VAR
+        END_CONFIGURATION
+
+        FUNCTION_BLOCK Fb
+        VAR v : REAL; END_VAR
+        END_FUNCTION_BLOCK
+
+        FUNCTION_BLOCK Fg
+        VAR_EXTERNAL CONSTANT k : REAL; END_VAR
+        VAR m : REAL := 2.0 ** k; END_VAR
+        END_FUNCTION_BLOCK
+
+        PROGRAM Main
+        VAR_EXTERNAL CONSTANT k : REAL; END_VAR
+        VAR_EXTERNAL g : REAL; gf : Fg; END_VAR
+        VAR p : REAL := 2.0 ** k; b : Fb; same : BOOL; END_VAR
+            same := p = 2.0 ** k AND g = 2.0 ** k AND gf.m = 2.0 ** k AND b.v = 2.0 ** k;
+        END_PROGRAM
+    "#;
+    let (_mir, wasm) = super::compile_to_mir_and_wasm(&mut with_db, source);
+    let mut plc = super::TestPlc::load(&wasm).expect("load");
+    plc.run(1).expect("scan");
+    let info = debug_format::DebugInfo::from_wasm(&wasm);
+    match plc.read_var(&info, "P1.same") {
+        Some(debug_format::VarValue::Bool(same)) => assert!(same, "a value differs from 2.0 ** k"),
+        other => panic!("P1.same is {other:?}"),
+    }
+}
