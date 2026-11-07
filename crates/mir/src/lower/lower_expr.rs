@@ -3121,7 +3121,28 @@ impl<'db> ExprLowerCtx<'db> {
     /// when a call in its path would run at each, the store of its address
     /// into a scratch (`$pin$N`), and the place through that address.
     pub fn pin_place(&self, place: MirPlace) -> (Option<crate::stmt::MirStmt>, MirPlace) {
-        let Some(ty) = place.ty().filter(|_| place.has_call()).cloned() else {
+        let pin = place.has_call();
+        self.pin_place_when(place, pin)
+    }
+
+    /// `place` stored into by a link of a chain and read back by the next
+    /// one (`a := b[i] := e`): its address is computed once, at the store,
+    /// whenever its path reads anything to find it, since the next link's
+    /// own place may change a subscript or a pointer before the read.
+    pub fn pin_place_to_read_back(
+        &self,
+        place: MirPlace,
+    ) -> (Option<crate::stmt::MirStmt>, MirPlace) {
+        let pin = place.reads_to_address();
+        self.pin_place_when(place, pin)
+    }
+
+    fn pin_place_when(
+        &self,
+        place: MirPlace,
+        pin: bool,
+    ) -> (Option<crate::stmt::MirStmt>, MirPlace) {
+        let Some(ty) = place.ty().filter(|_| pin).cloned() else {
             return (None, place);
         };
         let capacity = match &place {

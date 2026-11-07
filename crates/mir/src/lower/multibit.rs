@@ -285,7 +285,18 @@ impl<'db> ExprLowerCtx<'db> {
         var_access: VariableAccess<'db>,
         parent_expr: Expr<'db>,
     ) -> Result<MirExpr, LowerTypeError> {
-        let sliced = self.resolve_slice(&place, var_access, parent_expr.infer(self.db))?;
+        self.lower_multibit_read_as(place, var_access, parent_expr.infer(self.db))
+    }
+
+    /// As [`Self::lower_multibit_read`], where no expression stands for the
+    /// read: the place a link of a chain reads back (`a := w.%X3 := e`).
+    pub(crate) fn lower_multibit_read_as(
+        &self,
+        place: MirPlace,
+        var_access: VariableAccess<'db>,
+        hir_ty: Type<'db>,
+    ) -> Result<MirExpr, LowerTypeError> {
+        let sliced = self.resolve_slice(&place, var_access, hir_ty)?;
         Ok(slice_read(place, sliced))
     }
 
