@@ -412,6 +412,8 @@ enum Stmt {
     /// `a := b := e`, the places as written: the last takes the value, then
     /// each other what the place after it holds.
     Chain(Vec<Place>, Expr),
+    /// `x += e`, `x -= e`, `x *= e`, `x /= e`: the place read and written.
+    Compound(Place, Arith, Expr),
     /// An FB instance called with its inputs, and the variable bound to
     /// its `VAR_IN_OUT` if it has one.
     CallFb(usize, Vec<Expr>, Option<usize>),
@@ -2123,6 +2125,11 @@ impl Generator<'_> {
             false => self.var_type(true),
         };
         let target = self.target(ty)?;
+        if self.choices.percent(12)
+            && let Some(compound) = self.compound(&target, readable)
+        {
+            return Some(compound);
+        }
         let value = match ty {
             // A whole STRUCT copies from another of its type.
             Ty::Struct(_) => {
@@ -2145,6 +2152,27 @@ impl Generator<'_> {
             return Some(Stmt::Chain(places, value));
         }
         Some(Stmt::Assign(target, value))
+    }
+
+    /// `x += e` on a number: an operator its arithmetic takes, an integer
+    /// divided by a literal that is not 0, as `x / e` is written.
+    fn compound(&mut self, target: &Place, readable: &[usize]) -> Option<Stmt> {
+        let ty = self.place_ty(target);
+        if !ty.is_int() && !ty.is_float() {
+            return None;
+        }
+        let (op, value) = match ty.is_int() && self.choices.percent(25) {
+            true => (Arith::Div, Expr::Lit(ty, self.divisor(ty))),
+            false => {
+                let ops: &[Arith] = match ty.is_float() {
+                    true => &[Arith::Add, Arith::Sub, Arith::Mul, Arith::Div],
+                    false => &[Arith::Add, Arith::Sub, Arith::Mul],
+                };
+                let op = ops[self.choices.below(ops.len())];
+                (op, self.expr(ty, 3, readable))
+            }
+        };
+        Some(Stmt::Compound(target.clone(), op, value))
     }
 
     fn fb_call(&mut self, readable: &[usize]) -> Option<Stmt> {
@@ -4127,6 +4155,16 @@ impl Names<'_> {
                     let places: Vec<String> = places.iter().map(|p| self.place(p)).collect();
                     let _ = writeln!(out, "{pad}{} := {};", places.join(" := "), self.expr(e));
                 }
+                Stmt::Compound(p, op, e) => {
+                    let op = match op {
+                        Arith::Add => "+=",
+                        Arith::Sub => "-=",
+                        Arith::Mul => "*=",
+                        Arith::Div => "/=",
+                        Arith::Mod => unreachable!("no MOD= is generated"),
+                    };
+                    let _ = writeln!(out, "{pad}{} {op} {};", self.place(p), self.expr(e));
+                }
                 Stmt::SetBit(p, _, bit, bare, e) => {
                     let part = match bare {
                         true => format!("{bit}"),
@@ -4580,6 +4618,19 @@ fn run_block(block: &[Stmt], st: &mut State, tys: &[Ty], d: &Decls) -> Flow {
                     write(p, v, st, tys, d);
                     v = read(p, st, d);
                 }
+                Flow::Next
+            }
+            // The operation written out, at the place's type.
+            Stmt::Compound(p, op, e) => {
+                let ty = place_ty(p, tys, d);
+                let operation = Expr::Arith(
+                    *op,
+                    ty,
+                    Box::new(Expr::Read(p.clone())),
+                    Box::new(e.clone()),
+                );
+                let v = eval(&operation, st, d);
+                write(p, v, st, tys, d);
                 Flow::Next
             }
             Stmt::SetBit(p, ty, bit, _, e) => {
@@ -5486,6 +5537,55 @@ mod tests {
             ),
         ];
         let mut seed = 0x2545_F491_4F6C_DD1Du64;
+        let mut reached: Vec<&str> = Vec::new();
+        for _ in 0..4000 {
+            let text = random_program(&mut seed);
+            let fresh: Vec<&str> = forms
+                .iter()
+                .filter(|(name, has)| has(&text) && !reached.contains(name))
+                .map(|(name, _)| *name)
+                .collect();
+            if fresh.is_empty() {
+                continue;
+            }
+            if let Err(finding) = crate::check_generated(&text) {
+                panic!("{finding}\n--- the program ---\n{text}");
+            }
+            reached.extend(fresh);
+            if reached.len() == forms.len() {
+                break;
+            }
+        }
+        assert_eq!(reached.len(), forms.len(), "forms reached: {reached:?}");
+    }
+
+    /// The generator writes each compound operator, on an integer and on a
+    /// REAL, through a subscript, and for each the module computes what the
+    /// operation written out does.
+    #[test]
+    fn compound_assignments_are_written_and_compute() {
+        let statement =
+            |text: &str, has: &dyn Fn(&str) -> bool| text.lines().map(str::trim_start).any(has);
+        type Form = (&'static str, Box<dyn Fn(&str) -> bool>);
+        let mut forms: Vec<Form> = ["+=", "-=", "*=", "/="]
+            .into_iter()
+            .map(|op| {
+                let has = move |t: &str| statement(t, &|l| l.contains(&format!(" {op} ")));
+                (op, Box::new(has) as Box<dyn Fn(&str) -> bool>)
+            })
+            .collect();
+        forms.push((
+            "through a subscript",
+            Box::new(move |t| {
+                statement(t, &|l| {
+                    ["+=", "-=", "*=", "/="].iter().any(|op| {
+                        l.find(&format!(" {op} "))
+                            .is_some_and(|at| l[..at].contains('['))
+                    })
+                })
+            }),
+        ));
+        let mut seed = 0x5DEE_CE66_D1CE_4E5Bu64;
         let mut reached: Vec<&str> = Vec::new();
         for _ in 0..4000 {
             let text = random_program(&mut seed);
