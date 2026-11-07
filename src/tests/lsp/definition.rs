@@ -633,6 +633,36 @@ END_FUNCTION_BLOCK
     assert_eq!(format_definition_response(&def), expected);
 }
 
+/// The type half names the type even where a variable of that name, caseless,
+/// is in scope: both halves went to `Other`, the variable's type.
+#[rstest]
+#[case::the_type_half(1, "/test0.st:1:5-1:9")]
+#[case::the_variant_half(6, "/test0.st:1:19-1:26")]
+pub fn definition_on_a_qualified_enum_value_beside_a_variable_of_its_name(
+    mut with_db: RootDatabase,
+    #[case] into: usize,
+    #[case] expected: &str,
+) {
+    let source = r#"
+TYPE Mode : (Idle, Running); END_TYPE
+TYPE Other : (Running, Idle); END_TYPE
+
+FUNCTION_BLOCK fb
+VAR
+    mode : Other;
+    m : Mode;
+END_VAR
+    m := Mode#Running;
+END_FUNCTION_BLOCK
+"#;
+    let file = add_source(&mut with_db, source);
+    let offset = source.rfind("Mode#Running").expect("the value") + into;
+    let node = descendant_at(&with_db, file, offset).expect("a node");
+    let def = node.definition(&with_db, offset).expect("a definition");
+
+    assert_eq!(format_definition_response(&def), expected);
+}
+
 /// Each name a task's SINGLE writes goes where it is declared, the names of a
 /// path one by one. A STRUCT variable goes to its type, as it does in a body.
 #[rstest]
