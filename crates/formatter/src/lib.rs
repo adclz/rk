@@ -56,7 +56,7 @@ static SURROUND_SPACES: &str = r##"
     "AT" "R_EDGE" "F_EDGE" (ERR_invalid_edge_qualifier)
     (read_only) (read_write)
    
-    ":=" "=" "=>" "<=" "<" ">=" ">" "<>" "+" "-" "*" "/" 
+    ":=" "+=" "-=" "*=" "/=" "=" "=>" "<=" "<" ">=" ">" "<>" "+" "-" "*" "/" 
     "&" "AND" "OR" "XOR" "MOD" "NOT"
     (c_style_comment)
     (pascal_style_comment)
@@ -263,6 +263,7 @@ static NEW_LINES: &str = r##"
   .
   [
     (assign)
+    (compound_assign)
     (func_call)
     (begin_path_expression)
     (if_stmt)
@@ -595,6 +596,7 @@ const TERMINATED: &[&str] = &[
     "prog_access_decl",
     "config_inst_init",
     "assign",
+    "compound_assign",
     "if_stmt",
     "for_stmt",
     "case_stmt",
