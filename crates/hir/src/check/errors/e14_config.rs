@@ -5,6 +5,7 @@ use crate::CallSite;
 use crate::HasName;
 use crate::HirNodeInfo;
 use crate::check::errors::ToIdeDiagnostic;
+use crate::check::errors::e07_subrange::declared_type_name;
 use crate::hir_def::config::ConfigDecl;
 use crate::hir_def::expressions::expression::PathExpr;
 use crate::hir_def::expressions::spec::Spec;
@@ -92,13 +93,11 @@ pub enum ConfigError<'db> {
         field: SpanIdent<'db>,
         parent_type: Type<'db>,
     },
-    /// A VAR_ACCESS declaration's type does not match the referenced variable's actual type.
-    AccessDeclTypeMismatch {
-        var_origin: VariableDecl<'db>,
-        spec: Spec<'db>,
-        expected: Type<'db>,
-        actual: Type<'db>,
-    },
+    /// A `VAR_ACCESS` section, in a PROGRAM or a CONFIGURATION. It names
+    /// variables for another device to read or write by name, which no host
+    /// of rk serves: a host reaches a variable by its path. Its declarations
+    /// are not read.
+    VarAccessUnsupported(Range),
     /// An element of a program configuration's list, `PROGRAM P1 WITH T :
     /// F(x1 := src, y1 => snk, fb1 WITH T2)`, that cannot hold.
     ProgElementRefused {
@@ -284,8 +283,8 @@ pub enum ConfigEntryRefusal<'db> {
     /// The type the entry repeats is not the variable's.
     TypeMismatch {
         var: Ident,
-        written: Type<'db>,
-        declared: Type<'db>,
+        written: Spec<'db>,
+        declared: Spec<'db>,
     },
     /// Another entry gives the same variable a value too, or the instance
     /// holding it: the first in file order reports, and points at the others.
@@ -737,9 +736,9 @@ pub enum ProgElementRefusal<'db> {
     /// A VAR_GLOBAL whose type is not the variable's.
     TypeMismatch {
         var: Ident,
-        declared: Type<'db>,
+        declared: Spec<'db>,
         global: Ident,
-        ty: Type<'db>,
+        ty: Spec<'db>,
     },
     /// An address whose width is not the variable's.
     WidthMismatch {
@@ -908,7 +907,7 @@ impl<'db> ErrorCode for ConfigError<'db> {
             Self::ProgramWithoutTask { .. } => "E1412",
             Self::ConfigInstInitUnknownInstance { .. } => "E1413",
             Self::ConfigInstInitFieldNotFound { .. } => "E1414",
-            Self::AccessDeclTypeMismatch { .. } => "E1415",
+            Self::VarAccessUnsupported(_) => "E1415",
             Self::DirectVariableUnsupported {
                 why: UnlocatableAddress::InLibrary,
                 ..
@@ -1134,32 +1133,25 @@ impl<'db> ToIdeDiagnostic<'db> for ConfigError<'db> {
                 .desc(self)
                 .range(crate::denormalize(db, file, &field.get_span(db)).unwrap_or_default())
                 .call(),
-            Self::AccessDeclTypeMismatch {
-                var_origin,
-                spec,
-                expected,
-                actual,
-            } => {
+            Self::VarAccessUnsupported(span) => {
                 let mut diag = diag()
-                    .message(format!(
-                        "access declaration expects '{}', but variable has type '{}'",
-                        expected.type_name(db),
-                        actual.type_name(db),
-                    ))
+                    .message("VAR_ACCESS is not supported".into())
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(crate::denormalize(db, file, &spec.get_span(db)).unwrap_or_default())
+                    .range(
+                        crate::denormalize(
+                            db,
+                            file,
+                            &crate::check::errors::first_word(db, file, span),
+                        )
+                        .unwrap_or_default(),
+                    )
                     .call();
-
-                diag.with_related(Related::new(
-                    format!(
-                        "variable '{}' is declared here",
-                        var_origin.name_with_case(db).text(db),
-                    ),
-                    var_origin.get_scope_id(db).file(db),
-                    var_origin.get_name_span(db),
-                ));
-
+                diag.with_note(
+                    "a host reads and writes a variable by its path, not through an access path"
+                        .into(),
+                );
+                diag.with_help("remove the section".into());
                 diag
             }
             Self::ProgElementRefused { expr, why } => {
@@ -1193,9 +1185,9 @@ impl<'db> ToIdeDiagnostic<'db> for ConfigError<'db> {
                         format!(
                             "'{}' is '{}', while '{}' is '{}'",
                             var.text(db),
-                            declared.type_name(db),
+                            declared_type_name(db, *declared),
                             global.text(db),
-                            ty.type_name(db)
+                            declared_type_name(db, *ty)
                         ),
                         Some("a connection copies the value as it is"),
                         Some("connect a variable of the same type"),
@@ -1671,9 +1663,9 @@ impl<'db> ToIdeDiagnostic<'db> for ConfigError<'db> {
                     ConfigEntryRefusal::TypeMismatch { var, written, declared } => (
                         format!(
                             "the entry says '{}', but '{}' is declared '{}'",
-                            written.type_name(db),
+                            declared_type_name(db, *written),
                             var.text(db),
-                            declared.type_name(db)
+                            declared_type_name(db, *declared)
                         ),
                         Some("the entry repeats the variable's type"),
                         Some("write the declared type"),

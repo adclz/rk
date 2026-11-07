@@ -4449,6 +4449,10 @@
           {
             "type": "struct_type_spec",
             "named": true
+          },
+          {
+            "type": "subrange_type_spec",
+            "named": true
           }
         ]
       }

@@ -38,9 +38,10 @@ END_CONFIGURATION
         "missing VAR_GLOBAL: {labels:?}"
     );
     assert!(labels.contains(&"RESOURCE"), "missing RESOURCE: {labels:?}");
+    // VAR_ACCESS is refused (E1415).
     assert!(
-        labels.contains(&"VAR_ACCESS"),
-        "missing VAR_ACCESS: {labels:?}"
+        !labels.contains(&"VAR_ACCESS"),
+        "config should not offer VAR_ACCESS"
     );
 
     // Tasks and program instances live in a RESOURCE (E1404), so offering
@@ -106,7 +107,7 @@ END_CONFIGURATION
         !labels.contains(&"VAR_GLOBAL"),
         "resource should not offer VAR_GLOBAL"
     );
-    // VAR_ACCESS only in CONFIGURATION, not RESOURCE
+    // VAR_ACCESS is refused (E1415).
     assert!(
         !labels.contains(&"VAR_ACCESS"),
         "resource should not offer VAR_ACCESS"
@@ -145,8 +146,8 @@ END_CONFIGURATION
     // Should still offer all config-level items
     assert!(labels.contains(&"RESOURCE"), "missing RESOURCE: {labels:?}");
     assert!(
-        labels.contains(&"VAR_ACCESS"),
-        "missing VAR_ACCESS: {labels:?}"
+        !labels.contains(&"VAR_ACCESS"),
+        "config should not offer VAR_ACCESS"
     );
 }
 

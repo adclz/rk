@@ -207,6 +207,7 @@ END_CONFIGURATION
 ```
 
 The other end is an address as wide as the variable, a global of the same type, or, for an input, a constant.
+A STRING global has the variable's capacity, since the value is copied as it is.
 Anything else in the list is E1428.
 
 The task then runs the instance through `C1$__scan__`: the inputs copied in, the body, the outputs copied out.
@@ -284,7 +285,7 @@ END_CONFIGURATION
 `L1` starts with `x = 10` and `drive.speed = 20`, `L2` with its declarations' `1` and `2`.
 Two instances of one program that differ in a setting need no second program and no input connected to a constant.
 
-An entry repeats the variable's type.
+An entry repeats the variable's type, a STRING's capacity included.
 E1426 when that type differs, when the path indexes an array or dereferences a reference, when another entry already sets the variable or an instance holding it, when the variable sits at an address a declaration names (it starts at that declaration's value), or when the entry targets the PROGRAM instance itself.
 
 `VAR_CONFIG` also gives each instance its address for a variable declared `AT %I*`, `%Q*` or `%M*`: see `references/direct-variables.md`.

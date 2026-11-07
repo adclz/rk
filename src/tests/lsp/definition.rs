@@ -697,6 +697,42 @@ pub fn definition_on_what_a_single_reads(
     );
 }
 
+/// A global named like a type, caseless, goes to the global wherever the
+/// configuration names it: each went to the type.
+#[rstest]
+#[case::a_global_value("g : INT := limit")]
+#[case::a_single_subscript("bits[limit]")]
+#[case::a_var_config_value("x : INT := limit")]
+pub fn definition_on_a_global_named_like_a_type(mut with_db: RootDatabase, #[case] at: &str) {
+    let source = r#"
+TYPE Limit : INT; END_TYPE
+
+PROGRAM P
+VAR_OUTPUT bits : ARRAY[0..4] OF BOOL; END_VAR
+VAR x : INT; END_VAR
+    bits[0] := NOT bits[0];
+END_PROGRAM
+
+CONFIGURATION Cfg
+    VAR_GLOBAL CONSTANT limit : INT := 4; END_VAR
+    VAR_GLOBAL g : INT := limit; END_VAR
+    RESOURCE R ON CPU
+        TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+        TASK U(SINGLE := P1.bits[limit], PRIORITY := 2);
+        PROGRAM P1 WITH T : P;
+        PROGRAM P2 WITH U : P;
+    END_RESOURCE
+    VAR_CONFIG R.P1.x : INT := limit; END_VAR
+END_CONFIGURATION
+"#;
+    let file = add_source(&mut with_db, source);
+    let offset = source.find(at).expect(at) + at.rfind("limit").expect("the name");
+    let node = descendant_at(&with_db, file, offset).expect("a node");
+    let def = node.definition(&with_db, offset).expect("a definition");
+
+    assert_eq!(format_definition_response(&def), "/test0.st:10:24-10:29");
+}
+
 /// Each name in a program configuration goes where it is declared: a variable
 /// of the program, a VAR_GLOBAL, the TASK a function block runs under, and a
 /// member a VAR_CONFIG path names. A function block instance goes to its

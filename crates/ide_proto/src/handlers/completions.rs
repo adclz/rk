@@ -720,12 +720,12 @@ impl<'db> CompletionHandler<'db> for ConfigDecl<'db> {
         }
 
         // A CONFIGURATION holds globals and RESOURCEs; tasks and program
-        // instances go inside a RESOURCE (E1404), so offering them here would
-        // insert code the compiler rejects.
+        // instances go inside a RESOURCE (E1404), and VAR_ACCESS is refused
+        // (E1415), so offering them here would insert code the compiler
+        // rejects.
         Some(vec![
             static_snippets::var_global(),
             static_snippets::resource(),
-            static_snippets::var_access(),
         ])
     }
 }

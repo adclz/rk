@@ -771,3 +771,104 @@ END_PROGRAM
     ---'
     ");
 }
+
+/// A subrange written in place gives the type of a VAR_GLOBAL and of a
+/// VAR_CONFIG entry as it gives a VAR's: a VAR_EXTERNAL repeats it, and an
+/// entry repeats the subrange of the variable it names, or a named one of the
+/// same bounds. Both were E0001, so a variable declared with one could not be
+/// given a VAR_CONFIG value.
+#[rstest]
+fn valid_a_subrange_in_place_in_a_configuration(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE Small : INT (0..10); END_TYPE
+
+PROGRAM Main
+VAR x : INT (0..10); y : Small; END_VAR
+VAR_EXTERNAL g : INT (0..10); END_VAR
+    g := x;
+END_PROGRAM
+
+CONFIGURATION Cfg
+    VAR_GLOBAL g : INT (0..10) := 5; END_VAR
+    VAR_GLOBAL CONSTANT k : INT (0..10) := 3; END_VAR
+    RESOURCE R ON CPU
+        TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM P1 WITH T : Main;
+    END_RESOURCE
+    VAR_CONFIG
+        R.P1.x : INT (0..10) := 5;
+        R.P1.y : INT (0..10) := 7;
+    END_VAR
+END_CONFIGURATION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+/// What a subrange in place there still refuses, once each: a value outside
+/// it, an entry that repeats another type, its base included, since an entry
+/// repeats the variable's type, and an address, as a named subrange's.
+#[rstest]
+#[case::a_global_value_outside_it(
+    "VAR_GLOBAL g : INT (0..10) := 50; END_VAR",
+    "",
+    "[E0702]",
+    "value 50 is outside the subrange 0..10"
+)]
+#[case::an_entry_value_outside_it(
+    "",
+    "R.P1.x : INT (0..10) := 50;",
+    "[E0702]",
+    "value 50 is outside the subrange 0..10"
+)]
+#[case::an_entry_of_its_base(
+    "",
+    "R.P1.x : INT := 5;",
+    "[E1426]",
+    "the entry says 'INT', but 'x' is declared 'INT (0..10)'"
+)]
+#[case::an_entry_of_other_bounds(
+    "",
+    "R.P1.x : INT (0..20) := 5;",
+    "[E1426]",
+    "the entry says 'INT (0..20)', but 'x' is declared 'INT (0..10)'"
+)]
+#[case::a_located_global(
+    "VAR_GLOBAL g AT %MW0 : INT (0..10); END_VAR",
+    "",
+    "[E1422]",
+    "'g' is 'INT (0..10)', not an elementary type"
+)]
+fn invalid_a_subrange_in_place_in_a_configuration(
+    mut with_db: RootDatabase,
+    #[case] globals: &str,
+    #[case] entry: &str,
+    #[case] code: &str,
+    #[case] message: &str,
+) {
+    let entries = if entry.is_empty() {
+        String::new()
+    } else {
+        format!("VAR_CONFIG {entry} END_VAR")
+    };
+    let source = format!(
+        r#"
+PROGRAM Main
+VAR x : INT (0..10); END_VAR
+    x := 1;
+END_PROGRAM
+
+CONFIGURATION Cfg
+    {globals}
+    RESOURCE R ON CPU
+        TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM P1 WITH T : Main;
+    END_RESOURCE
+    {entries}
+END_CONFIGURATION
+"#
+    );
+    let diagnostics = test_diagnostics(&mut with_db, &[&source]);
+    assert!(diagnostics.starts_with(code), "{diagnostics}");
+    assert_eq!(diagnostics.matches("Error:").count(), 1, "{diagnostics}");
+    assert!(diagnostics.contains(message), "{diagnostics}");
+}

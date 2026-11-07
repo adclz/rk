@@ -187,7 +187,8 @@ fn the_period_of_a_task_with_a_single(mut with_db: db::RootDatabase) {
 /// Each place a SINGLE can read, by the symbol that is the same memory: what
 /// the schedule names is that symbol's byte, and setting it runs the task. A
 /// resource's name changes nothing, and a RETAIN variable is read where the
-/// retain band moved it.
+/// retain band moved it. A subscript naming the CONSTANT `level` reads it,
+/// not the type `Level`: names are caseless, and it was E0317.
 #[rstest]
 #[case::global("go", "go")]
 #[case::caseless("GO", "go")]
@@ -209,6 +210,7 @@ fn the_period_of_a_task_with_a_single(mut with_db: db::RootDatabase) {
 #[case::output_array_of_a_constant("P1.bits[K]", "P1.bits[2]")]
 #[case::output_array_of_a_constant_with_named_values("P1.bits[KN]", "P1.bits[2]")]
 #[case::output_array_of_a_named_value("P1.bits[Level#High]", "P1.bits[2]")]
+#[case::output_array_of_a_constant_named_like_a_type("P1.bits[level]", "P1.bits[2]")]
 #[case::output_grid("P1.grid[1, 0]", "P1.grid[1,0]")]
 #[case::output_grid_second_dimension("P1.grid[0, 1]", "P1.grid[0,1]")]
 #[case::output_grid_two_brackets("P1.grid[1][1]", "P1.grid[1,1]")]
@@ -278,7 +280,7 @@ fn a_single_reads_the_byte_of_what_it_names(
                 derived : Sub;
             END_VAR
             VAR_GLOBAL RETAIN kept : BOOL; END_VAR
-            VAR_GLOBAL CONSTANT K : INT := 2; KN : Level := 2; END_VAR
+            VAR_GLOBAL CONSTANT K : INT := 2; KN : Level := 2; level : Level := Level#High; END_VAR
             RESOURCE Res ON CPU
                 TASK Base(INTERVAL := T#10ms, PRIORITY := 0);
                 TASK Ev(SINGLE := {written}, PRIORITY := 1);

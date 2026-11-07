@@ -216,7 +216,7 @@ pub const HEADERS: &[(&str, &str)] = &[
     ("E1412", "program instance without a task"),
     ("E1413", "unknown instance in VAR_CONFIG"),
     ("E1414", "unknown field in VAR_CONFIG"),
-    ("E1415", "VAR_ACCESS type mismatch"),
+    ("E1415", "VAR_ACCESS not supported"),
     ("E1417", "address not locatable"),
     ("E1418", "unknown multibit access size"),
     ("E1419", "write to an input location"),

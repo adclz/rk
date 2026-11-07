@@ -1698,14 +1698,16 @@ pub fn resolve_config_entries<'db>(
             continue;
         }
 
-        // The entry repeats the variable's type; one that says another is
-        // wrong about the variable, whatever else it gives it.
+        // The entry repeats the variable's type, a STRING's capacity
+        // included; one that says another is wrong about the variable,
+        // whatever else it gives it.
         if let (Some(var), Some(written)) = (members.last(), decl.spec) {
-            let written = Type::resolve_spec(db, written);
-            let declared = Type::resolve_spec(db, spec_of_place(db, *var, &elements));
-            if !written.is_never()
-                && !declared.is_never()
-                && !crate::hir_ty::head::checks::variables::same_storage_type(db, written, declared)
+            let declared = spec_of_place(db, *var, &elements);
+            if !Type::resolve_spec(db, written).is_never()
+                && !Type::resolve_spec(db, declared).is_never()
+                && !crate::hir_ty::head::checks::variables::same_declared_type(
+                    db, written, declared,
+                )
             {
                 out.errors.push(
                     ConfigError::ConfigEntryRefused {
@@ -2237,15 +2239,14 @@ fn check_connected<'db>(
     match end {
         ConnectionEnd::Constant(_) => Ok(()),
         ConnectionEnd::Global(global) => {
-            let ty = global.spec(db).infer(db);
-            if ty.is_never() || global_connects(db, var, *global) {
+            if global.spec(db).infer(db).is_never() || global_connects(db, var, *global) {
                 return Ok(());
             }
             Err(ProgElementRefusal::TypeMismatch {
                 var: name,
-                declared,
+                declared: var.spec(db),
                 global: global.name_with_case(db),
-                ty,
+                ty: global.spec(db),
             })
         }
         ConnectionEnd::Address(address) => {
@@ -2265,17 +2266,14 @@ fn check_connected<'db>(
 }
 
 /// Whether a connection may join `var` and the VAR_GLOBAL `global`: they
-/// hold one type.
+/// hold one type, a STRING's capacity included, since the connection copies
+/// the value as it is.
 pub fn global_connects<'db>(
     db: &'db dyn WorkspaceDataBase,
     var: VariableDecl<'db>,
     global: VariableDecl<'db>,
 ) -> bool {
-    crate::hir_ty::head::checks::variables::same_storage_type(
-        db,
-        var.spec(db).infer(db),
-        global.spec(db).infer(db),
-    )
+    crate::hir_ty::head::checks::variables::same_declared_type(db, var.spec(db), global.spec(db))
 }
 
 /// An address a connection names, or why it names none (E1417).

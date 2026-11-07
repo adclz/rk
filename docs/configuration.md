@@ -291,6 +291,7 @@ END_CONFIGURATION
 
 `:=` copies a value into a `VAR_INPUT` before the program runs, and `=>` copies a `VAR_OUTPUT` out after it.
 The other end is an address as wide as the variable, a global of the same type, or, for an input, a constant (`E1428`).
+A `STRING` global has the variable's capacity, since the value is copied as it is.
 
 ### Keep its values across a power cycle
 

@@ -333,8 +333,9 @@ pub fn declared_string_length<'db>(
 /// The capacity a STRING spec lays out: its `N`, or
 /// [`DEFAULT_STRING_CAPACITY`] for a plain `STRING`. `None` for a spec that
 /// is no STRING. Where two layouts must be one — the elements of two arrays,
-/// the target of a reference, a VAR_EXTERNAL and its global — two capacities
-/// are two types.
+/// the target of a reference, a VAR_EXTERNAL and its global, a VAR_CONFIG
+/// entry and what it names, the two ends of a connection — two capacities are
+/// two types.
 pub fn string_capacity<'db>(
     db: &'db dyn WorkspaceDataBase,
     spec: crate::hir_def::expressions::spec::Spec<'db>,

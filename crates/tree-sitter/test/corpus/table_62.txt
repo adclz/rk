@@ -919,3 +919,122 @@ END_CONFIGURATION
           (identifier)
           (namespace_access
             (identifier)))))))
+
+================================================================================
+A subrange written in place in a located VAR, a VAR_GLOBAL and a VAR_CONFIG entry
+================================================================================
+
+PROGRAM P
+    VAR x AT %IW0 : INT (0..10); END_VAR
+END_PROGRAM
+
+CONFIGURATION cfg
+    VAR_GLOBAL g : INT (0..10) := 5; END_VAR
+    VAR_CONFIG
+        R.P1.x : INT (0..10) := 5;
+    END_VAR
+END_CONFIGURATION
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (prog_decl
+    (identifier)
+    (var_decls
+      (loc_var_decl
+        (identifier)
+        (located_at
+          (direct_variable
+            (adress_identifier)
+            (offset
+              (unsigned_int))))
+        (loc_var_spec_init
+          (subrange_type_spec
+            (numeric_type_name
+              (int_type_name
+                (sign_int_type_name
+                  (int_name))))
+            (subrange
+              (constant_expr
+                (constant
+                  (numeric_literal
+                    (int_literal
+                      (signed_int
+                        (unsigned_int))))))
+              (constant_expr
+                (constant
+                  (numeric_literal
+                    (int_literal
+                      (signed_int
+                        (unsigned_int))))))))))))
+  (config_decl
+    (identifier)
+    (global_var_decls
+      (global_var_decl
+        (global_var_spec
+          (identifier))
+        (loc_var_spec_init
+          (subrange_type_spec
+            (numeric_type_name
+              (int_type_name
+                (sign_int_type_name
+                  (int_name))))
+            (subrange
+              (constant_expr
+                (constant
+                  (numeric_literal
+                    (int_literal
+                      (signed_int
+                        (unsigned_int))))))
+              (constant_expr
+                (constant
+                  (numeric_literal
+                    (int_literal
+                      (signed_int
+                        (unsigned_int))))))))
+          (simple_type_init
+            (constant_expr
+              (constant
+                (numeric_literal
+                  (int_literal
+                    (signed_int
+                      (unsigned_int))))))))))
+    (config_init
+      (config_inst_init
+        (path_expression
+          (field_expression
+            (path_expression
+              (field_expression
+                (path_expression
+                  (var_access
+                    (field)))
+                (var_access
+                  (field))))
+            (var_access
+              (field))))
+        (loc_var_spec_init
+          (subrange_type_spec
+            (numeric_type_name
+              (int_type_name
+                (sign_int_type_name
+                  (int_name))))
+            (subrange
+              (constant_expr
+                (constant
+                  (numeric_literal
+                    (int_literal
+                      (signed_int
+                        (unsigned_int))))))
+              (constant_expr
+                (constant
+                  (numeric_literal
+                    (int_literal
+                      (signed_int
+                        (unsigned_int))))))))
+          (simple_type_init
+            (constant_expr
+              (constant
+                (numeric_literal
+                  (int_literal
+                    (signed_int
+                      (unsigned_int))))))))))))

@@ -365,95 +365,68 @@ END_CONFIGURATION
 
 // ── VAR_ACCESS tests ──────────────────────────────────────────────────
 
-/// A valid PROGRAM with VAR_ACCESS referencing an existing variable with matching type.
+/// VAR_ACCESS is refused, once per section, in a PROGRAM and in a
+/// CONFIGURATION, empty or not, whatever its declarations say: no host of rk
+/// serves an access path. A CONFIGURATION's was accepted and never read, so
+/// `Res.P9.nothing` passed, and a PROGRAM's was checked by its last name only.
 #[rstest]
-fn valid_prog_access_decl(mut with_db: RootDatabase) {
+fn invalid_var_access(mut with_db: RootDatabase) {
     let source = r#"
-PROGRAM MyProg
-    VAR
-        x : INT;
-    END_VAR
-    VAR_ACCESS
-        ABLE : x : INT READ_ONLY;
-    END_VAR
+PROGRAM Main
+VAR count : INT; END_VAR
+VAR_ACCESS
+    mine : count : INT READ_ONLY;
+    odd : nothing : UnknownType;
+END_VAR
+    count := count + 1;
 END_PROGRAM
-"#;
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
-}
 
-/// A VAR_ACCESS declaration with an unknown spec type should report E0203.
-#[rstest]
-fn invalid_prog_access_unknown_type(mut with_db: RootDatabase) {
-    let source = r#"
-PROGRAM MyProg
-    VAR
-        x : INT;
-    END_VAR
+CONFIGURATION Plant
+    RESOURCE Res ON CPU
+        TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM P1 WITH T : Main;
+    END_RESOURCE
     VAR_ACCESS
-        ABLE : x : UnknownType READ_ONLY;
+        total : Res.P1.count : INT READ_ONLY;
+        wrong : Res.P9.nothing : BOOL READ_WRITE;
     END_VAR
-END_PROGRAM
+    VAR_ACCESS END_VAR
+END_CONFIGURATION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0203] Error: unknown name in a namespace
-       ,-[ file:///test0.st:7:20 ]
+    [E1415] Error: VAR_ACCESS not supported
+       ,-[ file:///test0.st:4:1 ]
        |
-     7 |         ABLE : x : UnknownType READ_ONLY;
-       |                    ^^^^^|^^^^^
-       |                         `------- no item found for path 'UnknownType'
+     4 | VAR_ACCESS
+       | ^^^^^|^^^^
+       |      `------ VAR_ACCESS is not supported
+       |
+       | Help: remove the section
+       |
+       | Note: a host reads and writes a variable by its path, not through an access path
     ---'
-    ");
-}
-
-/// A VAR_ACCESS declaration referencing a nonexistent variable should report E0201.
-#[rstest]
-fn invalid_prog_access_unknown_var(mut with_db: RootDatabase) {
-    let source = r#"
-PROGRAM MyProg
-    VAR
-        x : INT;
-    END_VAR
-    VAR_ACCESS
-        ABLE : nonexistent : INT READ_ONLY;
-    END_VAR
-END_PROGRAM
-"#;
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E0201] Error: unknown name
-       ,-[ file:///test0.st:7:16 ]
-       |
-     7 |         ABLE : nonexistent : INT READ_ONLY;
-       |                ^^^^^|^^^^^
-       |                     `------- no item 'nonexistent' found in scope
-    ---'
-    ");
-}
-
-/// A VAR_ACCESS declared type differs from the actual variable type should report E1415.
-#[rstest]
-fn invalid_prog_access_type_mismatch(mut with_db: RootDatabase) {
-    let source = r#"
-PROGRAM MyProg
-    VAR
-        x : INT;
-    END_VAR
-    VAR_ACCESS
-        ABLE : x : REAL READ_ONLY;
-    END_VAR
-END_PROGRAM
-"#;
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1415] Error: VAR_ACCESS type mismatch
-       ,-[ file:///test0.st:7:20 ]
-       |
-     4 |         x : INT;
-       |         |
-       |         `-- variable 'x' is declared here
-       |
-     7 |         ABLE : x : REAL READ_ONLY;
-       |                    ^^|^
-       |                      `--- access declaration expects 'REAL', but variable has type 'INT'
-    ---'
+    [E1415] Error: VAR_ACCESS not supported
+        ,-[ file:///test0.st:16:5 ]
+        |
+     16 |     VAR_ACCESS
+        |     ^^^^^|^^^^
+        |          `------ VAR_ACCESS is not supported
+        |
+        | Help: remove the section
+        |
+        | Note: a host reads and writes a variable by its path, not through an access path
+    ----'
+    [E1415] Error: VAR_ACCESS not supported
+        ,-[ file:///test0.st:20:5 ]
+        |
+     20 |     VAR_ACCESS END_VAR
+        |     ^^^^^|^^^^
+        |          `------ VAR_ACCESS is not supported
+        |
+        | Help: remove the section
+        |
+        | Note: a host reads and writes a variable by its path, not through an access path
+    ----'
     ");
 }
 
@@ -2174,6 +2147,89 @@ END_CONFIGURATION
     assert_snapshot!(test_diagnostics(&mut with_db, &[tasks, globals]), @"");
 }
 
+/// A CONFIGURATION's own names are its globals before they are types, as a
+/// body's variables come before what its namespace names, whatever the
+/// global's type. Names are caseless, and a CONSTANT `limit` beside a type
+/// `Limit` was E0317 'Limit' is not a value in each of these places.
+#[rstest]
+#[case::of_that_type("Limit")]
+#[case::of_another_type("INT")]
+fn valid_a_global_named_like_a_type(mut with_db: RootDatabase, #[case] ty: &str) {
+    let source = format!(
+        r#"
+TYPE Limit : INT (0..9); END_TYPE
+
+PROGRAM P
+VAR_OUTPUT bits : ARRAY[0..4] OF BOOL; END_VAR
+VAR_EXTERNAL a : ARRAY[0..4] OF INT; END_VAR
+VAR x : INT; END_VAR
+    bits[0] := NOT bits[0];
+    a[4] := x;
+END_PROGRAM
+
+CONFIGURATION Cfg
+    VAR_GLOBAL CONSTANT limit : {ty} := 4; END_VAR
+    VAR_GLOBAL g : INT := limit; a : ARRAY[0..limit] OF INT; END_VAR
+    RESOURCE R ON CPU
+        TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+        TASK U(SINGLE := P1.bits[limit], PRIORITY := 2);
+        PROGRAM P1 WITH T : P;
+        PROGRAM P2 WITH U : P;
+    END_RESOURCE
+    VAR_CONFIG R.P1.x : INT := limit; END_VAR
+END_CONFIGURATION
+"#
+    );
+    assert_eq!(test_diagnostics(&mut with_db, &[&source]), "", "{ty}");
+}
+
+/// What stays refused beside a global named like a type. A type named where
+/// no global has its name is no value. A TYPE's default naming the global is
+/// not constant, and no longer E0317 as well. A call named like a global
+/// calls the global, 'INT' is not a callable type, as in a body.
+#[rstest]
+#[case::a_type_named_alone("TYPE Other : INT; END_TYPE", "g : INT := Other;", &["E0401", "E0317"])]
+#[case::a_type_default_naming_it("TYPE Sized : INT := limit; END_TYPE", "g : Sized;", &["E0401"])]
+#[case::a_call_named_like_it(
+    "FUNCTION Twice : INT VAR_INPUT x : INT; END_VAR Twice := x * 2; END_FUNCTION",
+    "twice : INT; g : INT := Twice(2);",
+    &["E0808", "E0401"]
+)]
+fn invalid_beside_a_global_named_like_a_type(
+    mut with_db: RootDatabase,
+    #[case] declared: &str,
+    #[case] globals: &str,
+    #[case] codes: &[&str],
+) {
+    let source = format!(
+        r#"
+TYPE Limit : INT; END_TYPE
+{declared}
+
+PROGRAM P
+VAR n : INT; END_VAR
+    n := n + 1;
+END_PROGRAM
+
+CONFIGURATION Cfg
+    VAR_GLOBAL CONSTANT limit : INT := 4; END_VAR
+    VAR_GLOBAL {globals} END_VAR
+    RESOURCE R ON CPU
+        TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM P1 WITH T : P;
+    END_RESOURCE
+END_CONFIGURATION
+"#
+    );
+    let diagnostics = test_diagnostics(&mut with_db, &[&source]);
+    let found: Vec<&str> = diagnostics
+        .lines()
+        .filter(|line| line.contains("] Error:"))
+        .map(|line| &line[1..6])
+        .collect();
+    assert_eq!(found, codes, "{diagnostics}");
+}
+
 /// A PROGRAM bound to a TASK the scheduler cannot honour is rejected at check
 /// time, not compiled into a core with no schedule: a zero INTERVAL schedules
 /// nothing, and no SINGLE runs this one instead.
@@ -3165,6 +3221,117 @@ END_CONFIGURATION
         | Note: the entry repeats the variable's type
     ----'
     ");
+}
+
+/// A STRING's capacity is part of its type wherever a configuration repeats a
+/// type or joins two, as a VAR_EXTERNAL's is: a VAR_CONFIG entry and what it
+/// names, and the two ends of a connection. A plain `STRING` is `STRING[80]`,
+/// and an alias has the capacity it names.
+#[rstest]
+#[case::an_entry_of_its_capacity("Res.P1.t : STRING[4] := 'ab';", "")]
+#[case::an_entry_through_an_alias("Res.P1.w : Name := 'ab';", "")]
+#[case::a_plain_entry_for_a_plain_string("Res.P1.p : STRING := 'ab';", "")]
+#[case::a_plain_entry_for_its_capacity("Res.P1.d : STRING := 'ab';", "")]
+#[case::an_entry_into_a_field("Res.P1.s.name : STRING[4] := 'ab';", "")]
+#[case::an_input_of_its_capacity("", "(inp := narrow)")]
+#[case::an_output_of_its_capacity("", "(out => wide)")]
+fn valid_a_string_of_its_capacity(
+    mut with_db: RootDatabase,
+    #[case] entry: &str,
+    #[case] connections: &str,
+) {
+    let source = strings_configured(entry, connections);
+    assert_eq!(
+        test_diagnostics(&mut with_db, &[&source]),
+        "",
+        "{entry}{connections}"
+    );
+}
+
+/// The same places refuse another capacity. Each was accepted, and the
+/// program cut the value to the narrower capacity: an entry's at `__init`, a
+/// connection's at each scan.
+#[rstest]
+#[case::an_entry_wider(
+    "Res.P1.t : STRING[8] := 'ab';",
+    "",
+    "[E1426]",
+    "the entry says 'STRING[8]', but 't' is declared 'STRING[4]'"
+)]
+#[case::an_entry_narrower(
+    "Res.P1.w : STRING[4] := 'ab';",
+    "",
+    "[E1426]",
+    "the entry says 'STRING[4]', but 'w' is declared 'STRING[8]'"
+)]
+#[case::a_plain_entry(
+    "Res.P1.t : STRING := 'ab';",
+    "",
+    "[E1426]",
+    "the entry says 'STRING[80]', but 't' is declared 'STRING[4]'"
+)]
+#[case::an_entry_into_a_field(
+    "Res.P1.s.name : STRING[8] := 'ab';",
+    "",
+    "[E1426]",
+    "the entry says 'STRING[8]', but 'name' is declared 'STRING[4]'"
+)]
+#[case::an_input_from_a_wider_global(
+    "",
+    "(inp := wide)",
+    "[E1428]",
+    "'inp' is 'STRING[4]', while 'wide' is 'STRING[16]'"
+)]
+#[case::an_output_to_a_narrower_global(
+    "",
+    "(out => narrow)",
+    "[E1428]",
+    "'out' is 'STRING[16]', while 'narrow' is 'STRING[4]'"
+)]
+fn invalid_a_string_of_another_capacity(
+    mut with_db: RootDatabase,
+    #[case] entry: &str,
+    #[case] connections: &str,
+    #[case] code: &str,
+    #[case] message: &str,
+) {
+    let source = strings_configured(entry, connections);
+    let diagnostics = test_diagnostics(&mut with_db, &[&source]);
+    assert!(diagnostics.starts_with(code), "{diagnostics}");
+    assert_eq!(diagnostics.matches("Error:").count(), 1, "{diagnostics}");
+    assert!(diagnostics.contains(message), "{diagnostics}");
+}
+
+/// A program holding STRINGs of several capacities, run by a configuration
+/// with one VAR_CONFIG `entry`, if any, and the program's `connections`.
+fn strings_configured(entry: &str, connections: &str) -> String {
+    let entries = if entry.is_empty() {
+        String::new()
+    } else {
+        format!("VAR_CONFIG {entry} END_VAR")
+    };
+    format!(
+        r#"
+TYPE Name : STRING[8]; END_TYPE
+TYPE Rec : STRUCT name : STRING[4]; END_STRUCT END_TYPE
+
+PROGRAM F
+VAR_INPUT inp : STRING[4]; END_VAR
+VAR_OUTPUT out : STRING[16]; END_VAR
+VAR t : STRING[4]; w : STRING[8]; p : STRING; d : STRING[80]; s : Rec; END_VAR
+    out := inp;
+END_PROGRAM
+
+CONFIGURATION Cfg
+VAR_GLOBAL wide : STRING[16]; narrow : STRING[4]; END_VAR
+    RESOURCE Res ON CPU
+        TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM P1 WITH T : F{connections};
+    END_RESOURCE
+{entries}
+END_CONFIGURATION
+"#
+    )
 }
 
 // One RESOURCE with several TASKS is the supported shape and stays clean.
