@@ -6,6 +6,7 @@
 // Test modules - only execution tests, no validation-only tests
 mod aggregate_returns;
 mod arrays;
+mod assignment_chains;
 mod bit_access;
 mod bytes;
 mod classes;
