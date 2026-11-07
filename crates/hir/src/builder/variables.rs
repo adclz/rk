@@ -1276,12 +1276,15 @@ impl<'db> ParseSpecInit<'db> for ast::generated::LocVarSpecInit {
         &self,
         sema: &mut SemanticIndexBuilder<'db>,
     ) -> anyhow::Result<SpecInitResult<'db>, IdeDiagnostic> {
-        type Spec = ast::generated::ArrayTypeSpec_SimpleTypeSpec_StructTypeSpec;
+        type Spec = ast::generated::ArrayTypeSpec_SimpleTypeSpec_StructTypeSpec_SubrangeTypeSpec;
 
         let spec = match self.spec.cast(sema.ast) {
             Spec::ArrayTypeSpec(a) => a.to_spec(sema),
             Spec::SimpleTypeSpec(a) => a.to_spec(sema),
             Spec::StructTypeSpec(a) => a.to_spec(sema),
+            // `g : INT (0..10)` in a VAR_GLOBAL, a located VAR or a
+            // VAR_CONFIG entry, as in a VAR.
+            Spec::SubrangeTypeSpec(a) => a.to_spec(sema),
         };
 
         type Init = ast::generated::ArrayTypeInit_SimpleTypeInit_StructTypeInit;
