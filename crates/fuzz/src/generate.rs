@@ -114,6 +114,9 @@ enum Ty {
     Str(u8),
     /// The STRUCT declared as `S{k}`.
     Struct(usize),
+    /// The type with named values declared as `E{k}`, held as its base,
+    /// `INTEGERS[base]`.
+    Named(usize, u8),
 }
 
 const INTEGERS: [Ty; 8] = [
@@ -143,6 +146,7 @@ impl Ty {
             Ty::Lreal => "LREAL".into(),
             Ty::Str(n) => format!("STRING[{n}]"),
             Ty::Struct(k) => format!("S{k}"),
+            Ty::Named(k, _) => format!("E{k}"),
         }
     }
 
@@ -154,16 +158,25 @@ impl Ty {
         matches!(self, Ty::Real | Ty::Lreal)
     }
 
+    /// The integer type a value of this one is held as: its own, or a named
+    /// values type's base.
+    fn held(self) -> Ty {
+        match self {
+            Ty::Named(_, base) => INTEGERS[base as usize],
+            t => t,
+        }
+    }
+
     /// Whether `-x` is allowed.
     fn signed(self) -> bool {
         matches!(
-            self,
+            self.held(),
             Ty::Sint | Ty::Int | Ty::Dint | Ty::Lint | Ty::Real | Ty::Lreal
         )
     }
 
     fn bits(self) -> u32 {
-        match self {
+        match self.held() {
             Ty::Sint | Ty::Usint => 8,
             Ty::Int | Ty::Uint => 16,
             Ty::Dint | Ty::Udint => 32,
@@ -291,6 +304,14 @@ enum Expr {
     SameRef(bool, RefSide, RefSide),
     /// `cycle{k}(n)`: goes round the type and answers `n + 1` ([`CYCLES`]).
     Cycle(usize, Box<Expr>),
+    /// A CONSTANT, by its place in [`Decls::constants`].
+    Const(usize),
+    /// `E{k}#n{j}`: a named value, its number at the type's base.
+    Named(usize, usize),
+    /// `AND`, `OR` or `XOR` of two integers of type `ty`, bit by bit.
+    Bits(Logic, Ty, Box<Expr>, Box<Expr>),
+    /// `a ** b`, of two REALs or two LREALs.
+    Pow(Box<Expr>, Box<Expr>),
 }
 
 /// One side of a comparison of references.
@@ -377,8 +398,11 @@ impl Fold {
 
 #[derive(Clone, Debug)]
 enum Label {
-    Int(i128),
-    Range(i128, i128),
+    /// A number, written as itself or as the constant expression that folds
+    /// to it.
+    Int(i128, Option<Expr>),
+    /// `a..b`, each end written as itself or as a constant expression.
+    Range(i128, i128, Option<(Expr, Expr)>),
     Str(Vec<u8>),
 }
 
@@ -406,7 +430,9 @@ enum Stmt {
     Recurse(Recurse),
     If(Vec<(Expr, Vec<Stmt>)>, Option<Vec<Stmt>>),
     Case(Expr, Vec<(Vec<Label>, Vec<Stmt>)>, Option<Vec<Stmt>>),
-    For(usize, i128, i128, i128, Vec<Stmt>),
+    /// `FOR v := from TO to BY step`, the step written as itself or as the
+    /// constant expression that folds to it.
+    For(usize, i128, i128, i128, Option<Expr>, Vec<Stmt>),
     /// `p.%Xn := cond`, or `p.n := cond` when bare, on an integer place of
     /// type `ty`.
     SetBit(Place, Ty, u32, bool, Expr),
@@ -531,6 +557,9 @@ struct Array {
     name: String,
     ty: Ty,
     lo: i128,
+    /// The bounds written as constant expressions that fold to them, or as
+    /// themselves when not set.
+    bounds: Option<(Expr, Expr)>,
     init: Vec<Val>,
     /// Each element, as the initializer writes it.
     written: Vec<Written>,
@@ -800,9 +829,49 @@ struct Recurse {
     seed: Expr,
 }
 
+/// A type with named values, `E{k} : base (n0 := ..., n1, ...)`.
+struct Named {
+    base: Ty,
+    /// What is written for each value, when anything is: a value with
+    /// nothing written is the one before it plus one, or 0 when it is first.
+    written: Vec<Option<Expr>>,
+    /// Each value's number, as the base holds it.
+    numbers: Vec<i128>,
+}
+
+/// A CONSTANT: `k{n}` of the PROGRAM, or `gk{n}` of the CONFIGURATION,
+/// which a POU naming it declares `VAR_EXTERNAL CONSTANT`.
+struct Constant {
+    name: String,
+    ty: Ty,
+    expr: Expr,
+    value: Val,
+    global: bool,
+}
+
+/// A `VAR_GLOBAL` of the CONFIGURATION, `gv{n}`, started by a constant
+/// expression. Nothing writes it, so it ends as it starts.
+struct Global {
+    name: String,
+    ty: Ty,
+    expr: Expr,
+    value: Val,
+}
+
 /// A program's declarations, which the evaluator and the printer read.
 #[derive(Default)]
 struct Decls {
+    /// The types with named values, `E{k}`.
+    named: Vec<Named>,
+    /// The CONSTANTs, the CONFIGURATION's and the PROGRAM's.
+    constants: Vec<Constant>,
+    globals: Vec<Global>,
+    /// Initial values written as constant expressions: a program variable's,
+    /// by its place in the program's variables; a field's of `S{k}`, by
+    /// `(k, field)`; a member's of `fb{b}`, by `(b, member)`.
+    var_inits: Vec<(usize, Expr)>,
+    field_inits: Vec<((usize, usize), Expr)>,
+    member_inits: Vec<((usize, usize), Expr)>,
     /// Which of [`CYCLES`] each `cycle{k}` goes round.
     cycles: Vec<usize>,
     /// The fields of `S{k}`.
@@ -935,6 +1004,10 @@ impl Generator<'_> {
                 Val::Str((0..len).map(|_| b"abcde"[self.choices.below(5)]).collect())
             }
             Ty::Struct(_) => self.default_of(ty),
+            Ty::Named(k, _) => {
+                let numbers = &self.d.named[k].numbers;
+                Val::Int(numbers[self.choices.below(numbers.len())])
+            }
             _ => Val::Int(match self.choices.below(8) {
                 0 => ty.min(),
                 1 => ty.max(),
@@ -960,7 +1033,210 @@ impl Generator<'_> {
             Ty::Struct(k) => {
                 Val::Struct(self.d.structs[k].iter().map(|f| f.init.clone()).collect())
             }
+            // A type with named values starts at its first.
+            Ty::Named(k, _) => Val::Int(self.d.named[k].numbers[0]),
             t => zero(t),
+        }
+    }
+
+    /// A constant expression of type `ty`, an integer type, REAL or LREAL:
+    /// typed literals, the CONSTANTs among `visible` of that type and the
+    /// named values held as `ty`, under arithmetic, `AND`, `OR` and `XOR` on
+    /// integers, and `**` on reals. An integer divisor is a literal other
+    /// than 0.
+    fn constant(&mut self, ty: Ty, depth: u32, visible: &[usize]) -> Expr {
+        if depth == 0 || self.choices.percent(35) {
+            let constants: Vec<usize> = visible
+                .iter()
+                .copied()
+                .filter(|&c| self.d.constants[c].ty == ty)
+                .collect();
+            let named = self.named_values(ty);
+            return match self.choices.below(3) {
+                0 if !constants.is_empty() => {
+                    Expr::Const(constants[self.choices.below(constants.len())])
+                }
+                1 if !named.is_empty() => {
+                    let (k, j) = named[self.choices.below(named.len())];
+                    Expr::Named(k, j)
+                }
+                _ => Expr::Lit(ty, self.literal(ty)),
+            };
+        }
+        let d = depth - 1;
+        let operand = |g: &mut Self| Box::new(g.constant(ty, d, visible));
+        if ty.is_float() {
+            return match self.choices.below(6) {
+                0 => Expr::Pow(operand(self), operand(self)),
+                1 => Expr::Neg(ty, operand(self)),
+                _ => {
+                    let op =
+                        [Arith::Add, Arith::Sub, Arith::Mul, Arith::Div][self.choices.below(4)];
+                    Expr::Arith(op, ty, operand(self), operand(self))
+                }
+            };
+        }
+        match self.choices.below(8) {
+            0 if ty.signed() => Expr::Neg(ty, operand(self)),
+            1 | 2 => {
+                let op = [Logic::And, Logic::Or, Logic::Xor][self.choices.below(3)];
+                Expr::Bits(op, ty, operand(self), operand(self))
+            }
+            3 => {
+                let op = [Arith::Div, Arith::Mod][self.choices.below(2)];
+                let divisor = self.divisor(ty);
+                Expr::Arith(op, ty, operand(self), Box::new(Expr::Lit(ty, divisor)))
+            }
+            _ => {
+                let op = [Arith::Add, Arith::Sub, Arith::Mul][self.choices.below(3)];
+                Expr::Arith(op, ty, operand(self), operand(self))
+            }
+        }
+    }
+
+    /// Every named value held as `ty`, as `(type, value)`: what a constant of
+    /// that type may name.
+    fn named_values(&self, ty: Ty) -> Vec<(usize, usize)> {
+        self.d
+            .named
+            .iter()
+            .enumerate()
+            .filter(|(_, n)| n.base == ty)
+            .flat_map(|(k, n)| (0..n.numbers.len()).map(move |j| (k, j)))
+            .collect()
+    }
+
+    /// The value of a constant expression.
+    fn folded(&self, ty: Ty, e: &Expr) -> Val {
+        store(ty, eval(e, &State::frame(Vec::new()), &self.d))
+    }
+
+    /// `E{k}`: two to five values held as an integer base. A value is
+    /// counted from the one before it, or written: a constant expression of
+    /// the base over literals, its type's values before it and the values
+    /// of the types before it of the same base.
+    fn named_type(&mut self) {
+        let base = self.choices.below(INTEGERS.len());
+        let ty = INTEGERS[base];
+        let k = self.d.named.len();
+        self.d.named.push(Named {
+            base: ty,
+            written: Vec::new(),
+            numbers: Vec::new(),
+        });
+        for _ in 0..2 + self.choices.below(4) {
+            let before = self.d.named[k].numbers.last().copied();
+            // A counted value the base does not hold is refused (E0605).
+            let counted = self.choices.percent(40) && before.is_none_or(|b| b < ty.max());
+            let (written, number) = match counted {
+                true => (None, before.map_or(0, |b| b + 1)),
+                false => {
+                    let e = self.constant(ty, 2, &[]);
+                    let number = self.folded(ty, &e).int();
+                    (Some(e), number)
+                }
+            };
+            let named = &mut self.d.named[k];
+            named.written.push(written);
+            named.numbers.push(number);
+        }
+    }
+
+    /// Up to three CONSTANTs, the CONFIGURATION's when `global`. Each names
+    /// literals, named values, the CONSTANTs of its kind before it and, in
+    /// the PROGRAM, the CONFIGURATION's. One in three is a DINT, for the
+    /// bounds, labels and steps that name them.
+    fn constants(&mut self, global: bool) {
+        for n in 0..self.choices.below(4) {
+            let ty = match self.choices.below(4) {
+                0 => [Ty::Real, Ty::Lreal][self.choices.below(2)],
+                1 => Ty::Dint,
+                _ => self.integer(),
+            };
+            let visible: Vec<usize> = (0..self.d.constants.len())
+                .filter(|&c| !global || self.d.constants[c].global)
+                .collect();
+            let expr = self.constant(ty, 3, &visible);
+            let value = self.folded(ty, &expr);
+            let name = match global {
+                true => format!("gk{n}"),
+                false => format!("k{n}"),
+            };
+            self.d.constants.push(Constant {
+                name,
+                ty,
+                expr,
+                value,
+                global,
+            });
+        }
+    }
+
+    /// Up to two `VAR_GLOBAL`s, each started by a constant expression over
+    /// the CONFIGURATION's CONSTANTs: a value `__init` computes.
+    fn globals(&mut self) {
+        let visible: Vec<usize> = (0..self.d.constants.len())
+            .filter(|&c| self.d.constants[c].global)
+            .collect();
+        for n in 0..self.choices.below(3) {
+            let ty = match self.choices.below(3) {
+                0 => [Ty::Real, Ty::Lreal][self.choices.below(2)],
+                _ => self.integer(),
+            };
+            let expr = self.constant(ty, 3, &visible);
+            let value = self.folded(ty, &expr);
+            self.d.globals.push(Global {
+                name: format!("gv{n}"),
+                ty,
+                expr,
+                value,
+            });
+        }
+    }
+
+    /// `value` as a DINT constant expression that folds to it: a DINT
+    /// CONSTANT `visible` lists, or a named value held as DINT, plus what
+    /// is left. `None` when there is neither, or by choice.
+    fn const_for(&mut self, value: i128, visible: &[usize]) -> Option<Expr> {
+        if !self.choices.percent(50) {
+            return None;
+        }
+        let mut sources: Vec<Expr> = visible
+            .iter()
+            .copied()
+            .filter(|&c| self.d.constants[c].ty == Ty::Dint)
+            .map(Expr::Const)
+            .collect();
+        sources.extend(
+            self.named_values(Ty::Dint)
+                .into_iter()
+                .map(|(k, j)| Expr::Named(k, j)),
+        );
+        let source = self.pick_expr(sources)?;
+        let at = self.folded(Ty::Dint, &source).int();
+        // Wrapping at DINT, as the fold does: any value has its rest.
+        let rest = Expr::Lit(Ty::Dint, Val::Int(Ty::Dint.wrap(value - at)));
+        Some(Expr::Arith(
+            Arith::Add,
+            Ty::Dint,
+            Box::new(source),
+            Box::new(rest),
+        ))
+    }
+
+    fn pick_expr(&mut self, mut exprs: Vec<Expr>) -> Option<Expr> {
+        match exprs.is_empty() {
+            true => None,
+            false => Some(exprs.swap_remove(self.choices.below(exprs.len()))),
+        }
+    }
+
+    /// The CONSTANTs a body may name: in the PROGRAM, all of them; anywhere
+    /// else, none, its named values only.
+    fn visible_constants(&self) -> Vec<usize> {
+        match self.in_program {
+            true => (0..self.d.constants.len()).collect(),
+            false => Vec::new(),
         }
     }
 
@@ -1120,10 +1396,49 @@ impl Generator<'_> {
         self.pick(places)
     }
 
+    /// A type with named values, when one is declared.
+    fn named_ty(&mut self) -> Option<Ty> {
+        match self.d.named.is_empty() {
+            true => None,
+            false => {
+                let k = self.choices.below(self.d.named.len());
+                let base = INTEGERS.iter().position(|&t| t == self.d.named[k].base)?;
+                Some(Ty::Named(k, base as u8))
+            }
+        }
+    }
+
+    /// A CONSTANT the frame sees, or a named value, of type `ty`.
+    fn constant_leaf(&mut self, ty: Ty) -> Option<Expr> {
+        let mut leaves: Vec<Expr> = self
+            .visible_constants()
+            .into_iter()
+            .filter(|&c| self.d.constants[c].ty == ty)
+            .map(Expr::Const)
+            .collect();
+        leaves.extend(
+            self.named_values(ty)
+                .into_iter()
+                .map(|(k, j)| Expr::Named(k, j)),
+        );
+        self.pick_expr(leaves)
+    }
+
     /// An expression of type `ty` over the variables in `readable`. A
     /// string expression reads a string of any capacity; a string literal
-    /// fits the capacity asked for.
+    /// fits the capacity asked for. A type with named values is read or
+    /// named: no operation keeps it.
     fn expr(&mut self, ty: Ty, depth: u32, readable: &[usize]) -> Expr {
+        if let Ty::Named(k, _) = ty {
+            let places = self.places(ty, readable, true);
+            if !self.choices.percent(40)
+                && let Some(place) = self.pick(places)
+            {
+                return Expr::Read(place);
+            }
+            let values = self.d.named[k].numbers.len();
+            return Expr::Named(k, self.choices.below(values));
+        }
         if depth == 0 || self.choices.percent(30) || matches!(ty, Ty::Str(_)) {
             if !self.choices.percent(35) {
                 let wanted = match ty {
@@ -1134,6 +1449,11 @@ impl Generator<'_> {
                 if let Some(place) = self.pick(places) {
                     return Expr::Read(place);
                 }
+            }
+            if self.choices.percent(20)
+                && let Some(leaf) = self.constant_leaf(ty)
+            {
+                return leaf;
             }
             if let Some(call) = self.call(ty, depth, readable) {
                 return call;
@@ -1164,9 +1484,16 @@ impl Generator<'_> {
                     )
                 }
                 _ => {
-                    let operands = match self.scalar_type() {
-                        Ty::Bool => Ty::Dint,
-                        t => t,
+                    let named = match self.choices.percent(15) {
+                        true => self.named_ty(),
+                        false => None,
+                    };
+                    let operands = match named {
+                        Some(named) => named,
+                        None => match self.scalar_type() {
+                            Ty::Bool => Ty::Dint,
+                            t => t,
+                        },
                     };
                     let op = [Cmp::Eq, Cmp::Ne, Cmp::Lt, Cmp::Gt, Cmp::Le, Cmp::Ge]
                         [self.choices.below(6)];
@@ -1178,12 +1505,25 @@ impl Generator<'_> {
                 }
             };
         }
-        match self.choices.below(10) {
+        match self.choices.below(12) {
             0 if ty.signed() => Expr::Neg(ty, Box::new(self.expr(ty, d, readable))),
             1 => match self.call(ty, depth, readable) {
                 Some(call) => call,
                 None => Expr::Lit(ty, self.literal(ty)),
             },
+            10 if ty.is_int() => {
+                let op = [Logic::And, Logic::Or, Logic::Xor][self.choices.below(3)];
+                Expr::Bits(
+                    op,
+                    ty,
+                    Box::new(self.expr(ty, d, readable)),
+                    Box::new(self.expr(ty, d, readable)),
+                )
+            }
+            11 if ty.is_float() => Expr::Pow(
+                Box::new(self.expr(ty, d, readable)),
+                Box::new(self.expr(ty, d, readable)),
+            ),
             2 | 3 if ty.is_int() => {
                 let op = [Arith::Div, Arith::Mod][self.choices.below(2)];
                 let divisor = self.divisor(ty);
@@ -1569,10 +1909,12 @@ impl Generator<'_> {
                     let from = self.choices.below(9) as i128 - 4;
                     let to = self.choices.below(9) as i128 - 4;
                     let by = [1, -1, 2, -2][self.choices.below(4)];
+                    let visible = self.visible_constants();
+                    let step = self.const_for(by, &visible);
                     let mut inner = readable.to_vec();
                     inner.push(counter);
                     let body = self.block(depth - 1, &inner, &free[1..], true, may_return);
-                    Stmt::For(counter, from, to, by, body)
+                    Stmt::For(counter, from, to, by, step, body)
                 }
                 4 if in_loop => match self.choices.percent(50) {
                     true => Stmt::Exit,
@@ -1686,6 +2028,33 @@ impl Generator<'_> {
         readable: &[usize],
         nested: impl Fn(&mut Self) -> Vec<Stmt>,
     ) -> Option<Stmt> {
+        // A selector of a type with named values, labelled by its names.
+        if self.choices.percent(15)
+            && let Some(Ty::Named(k, base)) = self.named_ty()
+        {
+            let places = self.places(Ty::Named(k, base), readable, true);
+            let selector = Expr::Read(self.pick(places)?);
+            let mut used: Vec<i128> = Vec::new();
+            let mut arms = Vec::new();
+            for _ in 0..1 + self.choices.below(3) {
+                let j = self.choices.below(self.d.named[k].numbers.len());
+                let number = self.d.named[k].numbers[j];
+                // Two names of one number are one label twice.
+                if used.contains(&number) {
+                    continue;
+                }
+                used.push(number);
+                arms.push((
+                    vec![Label::Int(number, Some(Expr::Named(k, j)))],
+                    nested(self),
+                ));
+            }
+            let otherwise = match self.choices.percent(50) {
+                true => Some(nested(self)),
+                false => None,
+            };
+            return Some(Stmt::Case(selector, arms, otherwise));
+        }
         // A string selector reads a string: rk refuses a literal one.
         let cap = 1 + self.choices.below(8) as u8;
         let strings = self.choices.percent(30);
@@ -1719,9 +2088,16 @@ impl Generator<'_> {
                     continue;
                 }
                 ints.push((lo, hi));
+                // Written as constant expressions where the frame sees some.
+                let visible = self.visible_constants();
                 labels.push(match lo == hi {
-                    true => Label::Int(lo),
-                    false => Label::Range(lo, hi),
+                    true => Label::Int(lo, self.const_for(lo, &visible)),
+                    false => {
+                        let ends = self
+                            .const_for(lo, &visible)
+                            .zip(self.const_for(hi, &visible));
+                        Label::Range(lo, hi, ends)
+                    }
                 });
             }
             if !labels.is_empty() {
@@ -1739,7 +2115,10 @@ impl Generator<'_> {
     }
 
     fn assign(&mut self, readable: &[usize]) -> Option<Stmt> {
-        let ty = self.var_type(true);
+        let ty = match self.choices.percent(15) {
+            true => self.named_ty()?,
+            false => self.var_type(true),
+        };
         let target = self.target(ty)?;
         let value = match ty {
             // A whole STRUCT copies from another of its type.
@@ -2115,9 +2494,26 @@ pub fn program(bytes: &[u8]) -> String {
         this: None,
     };
 
+    // Types with named values, then the CONFIGURATION's CONSTANTs and the
+    // VAR_GLOBALs they start: everything below may name them.
     for _ in 0..g.choices.below(3) {
+        g.named_type();
+    }
+    g.constants(true);
+    g.globals();
+
+    for k in 0..g.choices.below(3) {
         let n = 1 + g.choices.below(3);
-        let fields = g.vars_named("f", n, Role::Plain);
+        let mut fields = g.vars_named("f", n, Role::Plain);
+        // A field's default may be a constant expression: a TYPE sees no
+        // CONSTANT, only literals and named values.
+        for (f, field) in fields.iter_mut().enumerate() {
+            if (field.ty.is_int() || field.ty.is_float()) && g.choices.percent(25) {
+                let e = g.constant(field.ty, 2, &[]);
+                field.init = g.folded(field.ty, &e);
+                g.d.field_inits.push(((k, f), e));
+            }
+        }
         g.d.structs.push(fields);
     }
 
@@ -2224,6 +2620,39 @@ pub fn program(bytes: &[u8]) -> String {
                 members.push(v);
             }
         }
+        // A member's initial value may be a constant expression over the
+        // CONFIGURATION's CONSTANTs, which the block declares VAR_EXTERNAL,
+        // and named values. An instance of the program is `__init`'s to
+        // start, so these are values `__init` computes.
+        let global: Vec<usize> = (0..g.d.constants.len())
+            .filter(|&c| g.d.constants[c].global)
+            .collect();
+        let b = g.d.blocks.len();
+        for (m, member) in members.iter_mut().enumerate() {
+            if member.role != Role::InOut
+                && (member.ty.is_int() || member.ty.is_float())
+                && g.choices.percent(25)
+            {
+                let e = g.constant(member.ty, 2, &global);
+                member.init = g.folded(member.ty, &e);
+                g.d.member_inits.push(((b, m), e));
+            }
+        }
+        if g.choices.percent(30)
+            && let Some(ty @ Ty::Named(k, _)) = g.named_ty()
+        {
+            let j = g.choices.below(g.d.named[k].numbers.len());
+            g.d.member_inits
+                .push(((b, members.len()), Expr::Named(k, j)));
+            // Named apart from every type: rk reads `E0#n1` through a
+            // variable `e0` it finds first (to be fixed, then written here).
+            members.push(Var {
+                name: "en0".into(),
+                ty,
+                init: Val::Int(g.d.named[k].numbers[j]),
+                role: Role::Plain,
+            });
+        }
         if let Some(held) = g.struct_member() {
             members.push(held);
         }
@@ -2303,9 +2732,33 @@ pub fn program(bytes: &[u8]) -> String {
         });
     }
 
+    // The PROGRAM's CONSTANTs, then its variables: one may start at a
+    // constant expression, one of a type with named values at a name.
+    g.constants(false);
+    let constants: Vec<usize> = (0..g.d.constants.len()).collect();
     for k in 0..1 + g.choices.below(8) {
-        let ty = g.var_type(true);
-        let init = g.literal(ty);
+        let named = match g.choices.percent(15) {
+            true => g.named_ty(),
+            false => None,
+        };
+        let ty = match named {
+            Some(ty) => ty,
+            None => g.var_type(true),
+        };
+        let (init, written) = match ty {
+            Ty::Named(n, _) => {
+                let j = g.choices.below(g.d.named[n].numbers.len());
+                (Val::Int(g.d.named[n].numbers[j]), Some(Expr::Named(n, j)))
+            }
+            t if (t.is_int() || t.is_float()) && g.choices.percent(30) => {
+                let e = g.constant(t, 3, &constants);
+                (g.folded(t, &e), Some(e))
+            }
+            t => (g.literal(t), None),
+        };
+        if let Some(e) = written {
+            g.d.var_inits.push((g.vars.len(), e));
+        }
         g.vars.push(Var {
             name: format!("v{k}"),
             ty,
@@ -2402,10 +2855,13 @@ pub fn program(bytes: &[u8]) -> String {
         let lo = g.choices.below(6) as i128 - 3;
         let count = 1 + g.choices.below(5);
         let (init, written) = g.elements(ty, count);
+        let hi = lo + count as i128 - 1;
+        let bounds = g.const_for(lo, &constants).zip(g.const_for(hi, &constants));
         g.d.arrays.push(Array {
             name: format!("arr{k}"),
             ty,
             lo,
+            bounds,
             init,
             written,
         });
@@ -2599,6 +3055,9 @@ fn write_program(vars: &[Var], d: &Decls, body: &[Stmt], state: &State) -> Strin
         let ty = d.walkers[i.walker].result(d);
         expect(&mut out, d, &format!("Run.{}.acc", i.name), ty, value);
     }
+    for g in &d.globals {
+        expect(&mut out, d, &g.name, g.ty, &g.value);
+    }
     out.push_str("*)\n\n");
 
     let names = |vars: &[Var]| Names {
@@ -2640,13 +3099,58 @@ fn write_program(vars: &[Var], d: &Decls, body: &[Stmt], state: &State) -> Strin
         }
     };
 
+    // What a constant expression names is no variable: any frame writes it.
+    let constants = names(&[]);
+    // A declaration whose initial value is the constant expression `init`.
+    let start = |out: &mut String, v: &Var, init: &Expr| {
+        let _ = writeln!(
+            out,
+            "    {} : {} := {};",
+            v.name,
+            v.ty.name(),
+            constants.expr(init)
+        );
+    };
+    for (k, named) in d.named.iter().enumerate() {
+        let values: Vec<String> = named
+            .written
+            .iter()
+            .enumerate()
+            .map(|(j, written)| match written {
+                Some(e) => format!("n{j} := {}", constants.expr(e)),
+                None => format!("n{j}"),
+            })
+            .collect();
+        let _ = writeln!(
+            out,
+            "TYPE E{k} : {} ({});\nEND_TYPE\n",
+            named.base.name(),
+            values.join(", ")
+        );
+    }
     for (k, fields) in d.structs.iter().enumerate() {
         let _ = writeln!(out, "TYPE S{k} : STRUCT");
-        for f in fields {
-            decl(&mut out, f, true);
+        for (f, field) in fields.iter().enumerate() {
+            match d.field_inits.iter().find(|(at, _)| *at == (k, f)) {
+                Some((_, init)) => start(&mut out, field, init),
+                None => decl(&mut out, field, true),
+            }
         }
         out.push_str("END_STRUCT\nEND_TYPE\n\n");
     }
+    // Every CONSTANT of the CONFIGURATION, as a POU that names one declares
+    // them: when the block's starting values name one, and always in the
+    // PROGRAM. Written last first, so a CONSTANT names one declared after it.
+    let externals = |out: &mut String| {
+        let global: Vec<&Constant> = d.constants.iter().filter(|c| c.global).collect();
+        if !global.is_empty() {
+            out.push_str("VAR_EXTERNAL CONSTANT\n");
+            for c in global.iter().rev() {
+                let _ = writeln!(out, "    {} : {};", c.name, c.ty.name());
+            }
+            out.push_str("END_VAR\n");
+        }
+    };
     for f in &d.functions {
         let _ = writeln!(out, "FUNCTION {} : {}\nVAR_INPUT", f.name, f.ty.name());
         for (i, v) in f.inputs.iter().enumerate() {
@@ -2718,7 +3222,7 @@ fn write_program(vars: &[Var], d: &Decls, body: &[Stmt], state: &State) -> Strin
             names(&u.inputs).args(&method.params, &u.args)
         );
     }
-    for b in &d.blocks {
+    for (k, b) in d.blocks.iter().enumerate() {
         match b.implements {
             Some(i) => {
                 let _ = writeln!(
@@ -2730,6 +3234,14 @@ fn write_program(vars: &[Var], d: &Decls, body: &[Stmt], state: &State) -> Strin
             None => {
                 let _ = writeln!(out, "FUNCTION_BLOCK {}", b.name);
             }
+        }
+        let inits: Vec<&((usize, usize), Expr)> = d
+            .member_inits
+            .iter()
+            .filter(|((block, _), _)| *block == k)
+            .collect();
+        if inits.iter().any(|(_, e)| names_constant(e)) {
+            externals(&mut out);
         }
         for (section, role) in [
             ("VAR_INPUT", Role::Input),
@@ -2746,11 +3258,14 @@ fn write_program(vars: &[Var], d: &Decls, body: &[Stmt], state: &State) -> Strin
                 // A reference has no initial value of its own, and a STRUCT
                 // has its TYPE's.
                 let member = &b.members[m];
-                decl(
-                    &mut out,
-                    member,
-                    role != Role::InOut && !matches!(member.ty, Ty::Struct(_)),
-                );
+                match inits.iter().find(|((_, at), _)| *at == m) {
+                    Some((_, init)) => start(&mut out, member, init),
+                    None => decl(
+                        &mut out,
+                        member,
+                        role != Role::InOut && !matches!(member.ty, Ty::Struct(_)),
+                    ),
+                }
             }
             out.push_str("END_VAR\n");
         }
@@ -2820,12 +3335,34 @@ fn write_program(vars: &[Var], d: &Decls, body: &[Stmt], state: &State) -> Strin
     for (k, cycle) in d.cycles.iter().enumerate() {
         write_cycle(&mut out, k, *cycle);
     }
-    out.push_str("PROGRAM P\nVAR\n");
-    for v in vars {
-        decl(&mut out, v, !matches!(v.ty, Ty::Struct(_)));
+    out.push_str("PROGRAM P\n");
+    externals(&mut out);
+    let program: Vec<&Constant> = d.constants.iter().filter(|c| !c.global).collect();
+    if !program.is_empty() {
+        out.push_str("VAR CONSTANT\n");
+        for c in program.iter().rev() {
+            let _ = writeln!(
+                out,
+                "    {} : {} := {};",
+                c.name,
+                c.ty.name(),
+                constants.expr(&c.expr)
+            );
+        }
+        out.push_str("END_VAR\n");
+    }
+    out.push_str("VAR\n");
+    for (i, v) in vars.iter().enumerate() {
+        match d.var_inits.iter().find(|(at, _)| *at == i) {
+            Some((_, init)) => start(&mut out, v, init),
+            None => decl(&mut out, v, !matches!(v.ty, Ty::Struct(_))),
+        }
     }
     for a in &d.arrays {
-        let range = format!("{}..{}", a.lo, a.lo + a.init.len() as i128 - 1);
+        let range = match &a.bounds {
+            Some((lo, hi)) => format!("{}..{}", constants.expr(lo), constants.expr(hi)),
+            None => format!("{}..{}", a.lo, a.lo + a.init.len() as i128 - 1),
+        };
         match a.ty {
             // Elements of a STRUCT type take the TYPE's defaults.
             Ty::Struct(_) => {
@@ -2897,10 +3434,50 @@ fn write_program(vars: &[Var], d: &Decls, body: &[Stmt], state: &State) -> Strin
     }
     out.push_str("END_VAR\n");
     names(vars).block(&mut out, body, 1);
+    out.push_str("END_PROGRAM\n\nCONFIGURATION C\n");
+    let global: Vec<&Constant> = d.constants.iter().filter(|c| c.global).collect();
+    if !global.is_empty() {
+        out.push_str("    VAR_GLOBAL CONSTANT\n");
+        for c in global.iter().rev() {
+            let _ = writeln!(
+                out,
+                "        {} : {} := {};",
+                c.name,
+                c.ty.name(),
+                constants.expr(&c.expr)
+            );
+        }
+        out.push_str("    END_VAR\n");
+    }
+    if !d.globals.is_empty() {
+        out.push_str("    VAR_GLOBAL\n");
+        for g in &d.globals {
+            let _ = writeln!(
+                out,
+                "        {} : {} := {};",
+                g.name,
+                g.ty.name(),
+                constants.expr(&g.expr)
+            );
+        }
+        out.push_str("    END_VAR\n");
+    }
     out.push_str(
-        "END_PROGRAM\n\nCONFIGURATION C\n    RESOURCE R ON CPU\n        TASK T(INTERVAL := T#10ms, PRIORITY := 1);\n        PROGRAM Run WITH T : P;\n    END_RESOURCE\nEND_CONFIGURATION\n",
+        "    RESOURCE R ON CPU\n        TASK T(INTERVAL := T#10ms, PRIORITY := 1);\n        PROGRAM Run WITH T : P;\n    END_RESOURCE\nEND_CONFIGURATION\n",
     );
     out
+}
+
+/// Whether `e` names a CONSTANT, which its POU then declares.
+fn names_constant(e: &Expr) -> bool {
+    match e {
+        Expr::Const(_) => true,
+        Expr::Arith(_, _, a, b) | Expr::Bits(_, _, a, b) | Expr::Pow(a, b) => {
+            names_constant(a) || names_constant(b)
+        }
+        Expr::Neg(_, a) => names_constant(a),
+        _ => false,
+    }
 }
 
 /// The bounds every walker reads, as the standard library's `Std.Arrays`
@@ -3315,6 +3892,7 @@ fn written_elements(
 fn literal(ty: Ty, v: &Val) -> String {
     match (ty, v) {
         (Ty::Bool, _) => shown(ty, v),
+        (Ty::Named(..), _) => unreachable!("a named value is written by its name"),
         (Ty::Real, Val::F32(x)) => format!("REAL#{}", exact(*x as f64)),
         (Ty::Lreal, Val::F64(x)) => format!("LREAL#{}", exact(*x)),
         (_, Val::Str(s)) => format!("'{}'", String::from_utf8_lossy(s)),
@@ -3482,6 +4060,17 @@ impl Names<'_> {
                 format!("({} {op} {})", side(a), side(b))
             }
             Expr::Cycle(k, n) => format!("cycle{k}({})", self.expr(n)),
+            Expr::Const(c) => self.d.constants[*c].name.clone(),
+            Expr::Named(k, j) => format!("E{k}#n{j}"),
+            Expr::Bits(op, _, a, b) => {
+                let op = match op {
+                    Logic::And => "AND",
+                    Logic::Or => "OR",
+                    Logic::Xor => "XOR",
+                };
+                format!("({} {op} {})", self.expr(a), self.expr(b))
+            }
+            Expr::Pow(a, b) => format!("({} ** {})", self.expr(a), self.expr(b)),
             Expr::Fold(op, _) => format!("...{}{}", self.vars[0], op.symbol()),
             Expr::Element => format!("...{}[{}]", self.vars[1], self.vars[0]),
             Expr::Bit(p, _, bit, bare) => match bare {
@@ -3669,8 +4258,12 @@ impl Names<'_> {
                         let labels: Vec<String> = labels
                             .iter()
                             .map(|l| match l {
-                                Label::Int(v) => v.to_string(),
-                                Label::Range(a, b) => format!("{a}..{b}"),
+                                Label::Int(v, None) => v.to_string(),
+                                Label::Int(_, Some(e)) => self.expr(e),
+                                Label::Range(a, b, None) => format!("{a}..{b}"),
+                                Label::Range(_, _, Some((a, b))) => {
+                                    format!("{}..{}", self.expr(a), self.expr(b))
+                                }
                                 Label::Str(s) => format!("'{}'", String::from_utf8_lossy(s)),
                             })
                             .collect();
@@ -3683,7 +4276,11 @@ impl Names<'_> {
                     }
                     let _ = writeln!(out, "{pad}END_CASE;");
                 }
-                Stmt::For(v, from, to, by, body) => {
+                Stmt::For(v, from, to, by, step, body) => {
+                    let by = match step {
+                        Some(e) => self.expr(e),
+                        None => by.to_string(),
+                    };
                     let _ = writeln!(
                         out,
                         "{pad}FOR {} := {from} TO {to} BY {by} DO",
@@ -4105,8 +4702,8 @@ fn run_block(block: &[Stmt], st: &mut State, tys: &[Ty], d: &Decls) -> Flow {
                 let s = eval(selector, st, d);
                 let hit = arms.iter().find(|(labels, _)| {
                     labels.iter().any(|l| match (l, &s) {
-                        (Label::Int(v), Val::Int(x)) => x == v,
-                        (Label::Range(a, b), Val::Int(x)) => a <= x && x <= b,
+                        (Label::Int(v, _), Val::Int(x)) => x == v,
+                        (Label::Range(a, b, _), Val::Int(x)) => a <= x && x <= b,
                         (Label::Str(t), Val::Str(x)) => x == t,
                         _ => false,
                     })
@@ -4117,7 +4714,7 @@ fn run_block(block: &[Stmt], st: &mut State, tys: &[Ty], d: &Decls) -> Flow {
                     (None, None) => Flow::Next,
                 }
             }
-            Stmt::For(v, from, to, by, body) => {
+            Stmt::For(v, from, to, by, _, body) => {
                 st.vars[*v] = Val::Int(*from);
                 let mut flow = Flow::Next;
                 loop {
@@ -4399,6 +4996,24 @@ fn eval(e: &Expr, st: &State, d: &Decls) -> Val {
             Val::Int(((side(a) == side(b)) == *equal) as i128)
         }
         Expr::Cycle(_, n) => Val::Int(Ty::Dint.wrap(ev(n).int() + 1)),
+        Expr::Const(c) => d.constants[*c].value.clone(),
+        Expr::Named(k, j) => Val::Int(d.named[*k].numbers[*j]),
+        // Bit by bit on two's complement, which is the value's own bits at
+        // its type: nothing wraps.
+        Expr::Bits(op, ty, a, b) => {
+            let (a, b) = (ev(a).int(), ev(b).int());
+            Val::Int(ty.wrap(match op {
+                Logic::And => a & b,
+                Logic::Or => a | b,
+                Logic::Xor => a ^ b,
+            }))
+        }
+        // The `libm` a module's `**` runs (crates/wasm_builtins).
+        Expr::Pow(a, b) => match (ev(a), ev(b)) {
+            (Val::F32(a), Val::F32(b)) => Val::F32(libm::powf(a, b)),
+            (Val::F64(a), Val::F64(b)) => Val::F64(libm::pow(a, b)),
+            _ => unreachable!("`**` raises a REAL or an LREAL"),
+        },
         Expr::Bit(p, ty, bit, _) => Val::Int(get_slice(raw(*ty, &read(p, st, d)), *bit, 1) as i128),
         // The frame holds the pack, one value per argument. An arithmetic
         // fold wraps at the pack's type at each step, a single argument is
@@ -4601,7 +5216,9 @@ mod tests {
         let mut seed = 0x6C62_272E_07BB_0142u64;
         let mut seen: std::collections::BTreeSet<&str> = Default::default();
         let mut checked = 0;
-        for _ in 0..400 {
+        // The loop stops once every spelling is seen: the bound is only how
+        // far it may look, past the choices CONSTANTs and named values take.
+        for _ in 0..2000 {
             // Long enough that the choices are still the input's when the
             // calls are drawn: past the end, every choice is the first one,
             // which is the qualified spelling.
@@ -4792,6 +5409,163 @@ mod tests {
             }
         }
         assert_eq!(reached.len(), forms.len(), "forms reached: {reached:?}");
+    }
+
+    /// The generator writes CONSTANTs and types with named values, in each place
+    /// a constant goes, and for each the module computes what the evaluator does.
+    /// It wrote neither: a REAL CONSTANT computed from another, and `**` in a
+    /// value `__init` stores, stopped the compiler unseen.
+    #[test]
+    fn constants_and_named_values_are_written_and_compute() {
+        // A line of a declaration section, by what it declares.
+        let declares = |text: &str, prefix: &str, has: &dyn Fn(&str) -> bool| {
+            text.lines().any(|line| {
+                let line = line.trim_start();
+                line.starts_with(prefix) && has(line)
+            })
+        };
+        // A field of a STRUCT, by its declaration.
+        let field = |text: &str, has: &dyn Fn(&str) -> bool| {
+            let mut inside = false;
+            text.lines().any(|line| {
+                if line.starts_with("TYPE S") {
+                    inside = true;
+                } else if line.starts_with("END_STRUCT") {
+                    inside = false;
+                }
+                inside && has(line)
+            })
+        };
+        // A CONSTANT's name, `k{n}` or `gk{n}`, among the words of `text`.
+        let has_constant = |text: &str| {
+            text.split(|c: char| !c.is_ascii_alphanumeric())
+                .any(|word| {
+                    word.strip_prefix("gk")
+                        .or_else(|| word.strip_prefix('k'))
+                        .is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()))
+                })
+        };
+        let named_type = |text: &str, has: &dyn Fn(&str) -> bool| {
+            text.lines()
+                .any(|line| line.starts_with("TYPE E") && line.contains(" (") && has(line))
+        };
+        // The value of a CONSTANT, `k{n} : T := ...` or `gk{n} : T := ...`.
+        let constant = |text: &str, has: &dyn Fn(&str) -> bool| {
+            text.lines().any(|line| {
+                let line = line.trim_start();
+                (line.starts_with('k') || line.starts_with("gk"))
+                    && line.split_once(" := ").is_some_and(|(_, value)| has(value))
+            })
+        };
+        // A label written as a constant expression: a sum or a name.
+        let label = |text: &str, has: &dyn Fn(&str) -> bool| {
+            text.lines().any(|line| {
+                let line = line.trim();
+                line.ends_with(':') && !line.contains(":=") && has(line)
+            })
+        };
+        type Form = (&'static str, Box<dyn Fn(&str) -> bool>);
+        let forms: Vec<Form> = vec![
+            (
+                "a CONSTANT of the PROGRAM",
+                Box::new(|t| t.contains("VAR CONSTANT\n")),
+            ),
+            (
+                "a CONSTANT of the CONFIGURATION",
+                Box::new(|t| t.contains("VAR_GLOBAL CONSTANT\n")),
+            ),
+            (
+                "a VAR_GLOBAL started by a constant",
+                Box::new(|t| t.contains("    VAR_GLOBAL\n")),
+            ),
+            (
+                "a CONSTANT naming another",
+                Box::new(move |t| constant(t, &has_constant)),
+            ),
+            (
+                "a bit operation in a constant",
+                Box::new(move |t| {
+                    constant(t, &|v| {
+                        v.contains(" AND ") || v.contains(" OR ") || v.contains(" XOR ")
+                    })
+                }),
+            ),
+            (
+                "** in a constant",
+                Box::new(move |t| constant(t, &|v| v.contains(" ** "))),
+            ),
+            (
+                "a counted named value",
+                Box::new(move |t| {
+                    named_type(t, &|l| {
+                        l.split(['(', ',', ')'])
+                            .any(|v| v.trim().starts_with('n') && !v.contains(":="))
+                    })
+                }),
+            ),
+            (
+                "a named value naming another",
+                Box::new(move |t| {
+                    named_type(t, &|l| {
+                        l.split_once(" (").is_some_and(|(_, v)| v.contains("#n"))
+                    })
+                }),
+            ),
+            ("a constant bound", Box::new(|t| t.contains("ARRAY[("))),
+            (
+                "a constant label",
+                Box::new(move |t| label(t, &|l| l.starts_with('('))),
+            ),
+            (
+                "a named label",
+                Box::new(move |t| label(t, &|l| l.starts_with('E') && l.contains("#n"))),
+            ),
+            ("a constant step", Box::new(|t| t.contains(" BY ("))),
+            (
+                "a block member started by a CONSTANT",
+                Box::new(|t| {
+                    let lines: Vec<&str> = t.lines().collect();
+                    lines.windows(2).any(|pair| {
+                        pair[0].starts_with("FUNCTION_BLOCK fb")
+                            && pair[1] == "VAR_EXTERNAL CONSTANT"
+                    })
+                }),
+            ),
+            (
+                "a field started by a constant expression",
+                Box::new(move |t| field(t, &|l| l.contains(":= (") || l.contains(":= E"))),
+            ),
+            (
+                "a variable of a type with named values",
+                Box::new(move |t| declares(t, "v", &|l| l.contains(" : E") && l.contains("#n"))),
+            ),
+        ];
+        let mut seed = 0x9E37_79B9_7F4A_7C15u64;
+        let mut reached: Vec<&str> = Vec::new();
+        for _ in 0..4000 {
+            let text = random_program(&mut seed);
+            let fresh: Vec<&str> = forms
+                .iter()
+                .filter(|(name, has)| has(&text) && !reached.contains(name))
+                .map(|(name, _)| *name)
+                .collect();
+            if fresh.is_empty() {
+                continue;
+            }
+            if let Err(finding) = crate::check_generated(&text) {
+                panic!("{finding}\n--- the program ---\n{text}");
+            }
+            reached.extend(fresh);
+            if reached.len() == forms.len() {
+                break;
+            }
+        }
+        let missing: Vec<&str> = forms
+            .iter()
+            .map(|(name, _)| *name)
+            .filter(|name| !reached.contains(name))
+            .collect();
+        assert!(missing.is_empty(), "no program writes {missing:?}");
     }
 
     #[test]
