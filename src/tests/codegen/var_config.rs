@@ -311,3 +311,30 @@ fn a_value_for_a_retained_field_is_the_cold_start(mut with_db: db::RootDatabase)
     assert_eq!(plc.read_var(&info, "P1.s.count"), Some(VarValue::I16(103)));
     assert_eq!(mir.retain_map.ranges.len(), 1);
 }
+
+/// A subrange written in place types a VAR_GLOBAL and a VAR_CONFIG entry as
+/// it types a VAR: the entry's value starts the variable, and the global
+/// starts at its own.
+#[rstest]
+fn a_value_for_a_subrange_written_in_place(mut with_db: db::RootDatabase) {
+    let source = r#"
+        PROGRAM P
+        VAR x : INT (0..10); END_VAR
+        VAR_EXTERNAL g : INT (0..10); END_VAR
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+        VAR_GLOBAL g : INT (0..10) := 6; END_VAR
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        VAR_CONFIG Res.P1.x : INT (0..10) := 5; END_VAR
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    let info = DebugInfo::from_wasm(&wasm);
+    let plc = TestPlc::load(&wasm).expect("load");
+    assert_eq!(plc.read_var(&info, "P1.x"), Some(VarValue::I16(5)));
+    assert_eq!(plc.read_var(&info, "g"), Some(VarValue::I16(6)));
+}
