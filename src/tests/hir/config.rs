@@ -2174,6 +2174,89 @@ END_CONFIGURATION
     assert_snapshot!(test_diagnostics(&mut with_db, &[tasks, globals]), @"");
 }
 
+/// A CONFIGURATION's own names are its globals before they are types, as a
+/// body's variables come before what its namespace names, whatever the
+/// global's type. Names are caseless, and a CONSTANT `limit` beside a type
+/// `Limit` was E0317 'Limit' is not a value in each of these places.
+#[rstest]
+#[case::of_that_type("Limit")]
+#[case::of_another_type("INT")]
+fn valid_a_global_named_like_a_type(mut with_db: RootDatabase, #[case] ty: &str) {
+    let source = format!(
+        r#"
+TYPE Limit : INT (0..9); END_TYPE
+
+PROGRAM P
+VAR_OUTPUT bits : ARRAY[0..4] OF BOOL; END_VAR
+VAR_EXTERNAL a : ARRAY[0..4] OF INT; END_VAR
+VAR x : INT; END_VAR
+    bits[0] := NOT bits[0];
+    a[4] := x;
+END_PROGRAM
+
+CONFIGURATION Cfg
+    VAR_GLOBAL CONSTANT limit : {ty} := 4; END_VAR
+    VAR_GLOBAL g : INT := limit; a : ARRAY[0..limit] OF INT; END_VAR
+    RESOURCE R ON CPU
+        TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+        TASK U(SINGLE := P1.bits[limit], PRIORITY := 2);
+        PROGRAM P1 WITH T : P;
+        PROGRAM P2 WITH U : P;
+    END_RESOURCE
+    VAR_CONFIG R.P1.x : INT := limit; END_VAR
+END_CONFIGURATION
+"#
+    );
+    assert_eq!(test_diagnostics(&mut with_db, &[&source]), "", "{ty}");
+}
+
+/// What stays refused beside a global named like a type. A type named where
+/// no global has its name is no value. A TYPE's default naming the global is
+/// not constant, and no longer E0317 as well. A call named like a global
+/// calls the global, 'INT' is not a callable type, as in a body.
+#[rstest]
+#[case::a_type_named_alone("TYPE Other : INT; END_TYPE", "g : INT := Other;", &["E0401", "E0317"])]
+#[case::a_type_default_naming_it("TYPE Sized : INT := limit; END_TYPE", "g : Sized;", &["E0401"])]
+#[case::a_call_named_like_it(
+    "FUNCTION Twice : INT VAR_INPUT x : INT; END_VAR Twice := x * 2; END_FUNCTION",
+    "twice : INT; g : INT := Twice(2);",
+    &["E0808", "E0401"]
+)]
+fn invalid_beside_a_global_named_like_a_type(
+    mut with_db: RootDatabase,
+    #[case] declared: &str,
+    #[case] globals: &str,
+    #[case] codes: &[&str],
+) {
+    let source = format!(
+        r#"
+TYPE Limit : INT; END_TYPE
+{declared}
+
+PROGRAM P
+VAR n : INT; END_VAR
+    n := n + 1;
+END_PROGRAM
+
+CONFIGURATION Cfg
+    VAR_GLOBAL CONSTANT limit : INT := 4; END_VAR
+    VAR_GLOBAL {globals} END_VAR
+    RESOURCE R ON CPU
+        TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM P1 WITH T : P;
+    END_RESOURCE
+END_CONFIGURATION
+"#
+    );
+    let diagnostics = test_diagnostics(&mut with_db, &[&source]);
+    let found: Vec<&str> = diagnostics
+        .lines()
+        .filter(|line| line.contains("] Error:"))
+        .map(|line| &line[1..6])
+        .collect();
+    assert_eq!(found, codes, "{diagnostics}");
+}
+
 /// A PROGRAM bound to a TASK the scheduler cannot honour is rejected at check
 /// time, not compiled into a core with no schedule: a zero INTERVAL schedules
 /// nothing, and no SINGLE runs this one instead.
