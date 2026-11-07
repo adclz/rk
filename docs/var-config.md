@@ -52,7 +52,7 @@ END_CONFIGURATION
 ```
 
 - **The path** goes from the resource through the instances: `Main.L1.a.speed`.
-- **The type** is written again, and is the variable's own (`E1426`).
+- **The type** is written again, and is the variable's own, a `STRING`'s capacity included (`E1426`).
 - **The address** is complete, in the variable's area and as wide as its type (`E1424`).
 - **An instance left without an address** is `E1425`.
 
