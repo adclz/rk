@@ -56,6 +56,48 @@ END_CONFIGURATION
     ");
 }
 
+/// A subrange written in place in a located VAR, a VAR_GLOBAL and a
+/// VAR_CONFIG entry is laid out as a VAR's.
+#[rstest]
+pub fn subrange_in_place_in_a_configuration(mut with_db: RootDatabase) {
+    let source = r#"
+PROGRAM P
+VAR x : INT( 0 ..10 ); y AT %IW0 : INT( 0..10 ); END_VAR
+END_PROGRAM
+CONFIGURATION Cfg
+VAR_GLOBAL g:INT(0..10):=5; END_VAR
+RESOURCE Res ON CPU
+TASK T(INTERVAL:=T#10ms,PRIORITY:=1);
+PROGRAM P1 WITH T : P;
+END_RESOURCE
+VAR_CONFIG
+Res.P1.x:INT( 0 .. 10 ):=5;
+END_VAR
+END_CONFIGURATION
+"#;
+    let file = add_source(&mut with_db, source);
+    assert_snapshot!(fmt(file.document(&with_db)), @r"
+    PROGRAM P
+    	VAR
+    		x: INT(0..10);
+    		y AT %IW0: INT(0..10);
+    	END_VAR
+    END_PROGRAM
+    CONFIGURATION Cfg
+    	VAR_GLOBAL
+    		g: INT(0..10) := 5;
+    	END_VAR
+    	RESOURCE Res ON CPU
+    		TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+    		PROGRAM P1 WITH T: P;
+    	END_RESOURCE
+    	VAR_CONFIG
+    		Res.P1.x: INT(0..10) := 5;
+    	END_VAR
+    END_CONFIGURATION
+    ");
+}
+
 #[rstest]
 pub fn declaration_of_variables(mut with_db: RootDatabase) {
     let source = r#"
