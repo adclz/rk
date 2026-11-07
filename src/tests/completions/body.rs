@@ -496,3 +496,21 @@ END_FUNCTION
             .collect();
     assert!(labels.iter().any(|label| label == offered), "{labels:?}");
 }
+
+/// After a compound operator, the value completes as an assignment's does.
+#[rstest]
+pub fn completion_in_a_compound_assignment(mut with_db: RootDatabase) {
+    let marked = "
+FUNCTION f : INT
+VAR total : INT; step : INT; END_VAR
+    total += st|
+END_FUNCTION
+";
+    let (file, offset) = crate::tests::utils::add_marked_source(&mut with_db, marked);
+    let labels: Vec<String> =
+        ide_proto::handlers::completions::complete(&with_db, file, offset, None)
+            .into_iter()
+            .map(|item| item.label)
+            .collect();
+    assert!(labels.iter().any(|label| label == "step"), "{labels:?}");
+}
