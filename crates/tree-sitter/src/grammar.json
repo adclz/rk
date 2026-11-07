@@ -6256,6 +6256,10 @@
               },
               {
                 "type": "SYMBOL",
+                "name": "subrange_type_spec"
+              },
+              {
+                "type": "SYMBOL",
                 "name": "array_type_spec"
               },
               {

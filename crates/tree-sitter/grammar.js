@@ -1380,9 +1380,12 @@ module.exports = grammar({
       ),
 
     // Loc_Var_Spec_Init : Simple_Spec_Init | Array_Spec_Init | Struct_Spec_Init | S_Byte_Str_Spec | D_Byte_Str_Spec;
+    // and a subrange written in place, `INT (0..10)`, as `var_decl_init`
+    // takes one: a VAR_GLOBAL and a located VAR may be declared with it, and
+    // a VAR_CONFIG entry repeats the type of the variable it names.
     loc_var_spec_init: ($) =>
       useSpecInit(
-        ["simple", "array", "struct"],
+        ["simple", "subrange", "array", "struct"],
         [
           "simple",
           "array",
