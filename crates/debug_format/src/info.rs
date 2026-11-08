@@ -641,6 +641,17 @@ impl DebugInfo {
         frames: &[(u32, u32)],
         target: Option<&str>,
     ) -> Option<(usize, String)> {
+        self.frame_variable_at_as(address, frames, target.map(Aggregate::Struct))
+    }
+
+    /// [`frame_variable_at`](Self::frame_variable_at) for what a pointer
+    /// points at, an array by its shape as well as a STRUCT by its name.
+    fn frame_variable_at_as(
+        &self,
+        address: u32,
+        frames: &[(u32, u32)],
+        target: Option<Aggregate<'_>>,
+    ) -> Option<(usize, String)> {
         frames
             .iter()
             .enumerate()
@@ -693,21 +704,29 @@ impl DebugInfo {
     }
 
     /// [`variable_at`](Self::variable_at) for what a pointer points at: an
-    /// aggregate and its first leaf share a base, and the pointer's target,
-    /// in `types`, says which is meant.
-    fn variable_at_as(
-        &self,
-        address: u32,
-        target: Option<(&[crate::TypeDesc], crate::TypeId)>,
-    ) -> Option<String> {
-        let target = target.and_then(|(types, id)| types.get(id as usize));
-        if let Some(crate::TypeDesc::Struct { name, .. }) = target
-            && let Some(c) = self
-                .containers
-                .iter()
-                .find(|c| c.address == address && c.type_name == *name)
-        {
-            return Some(c.path.clone());
+    /// aggregate and its first part share a base, and the pointer's target
+    /// says which is meant.
+    fn variable_at_as(&self, address: u32, target: Option<Aggregate<'_>>) -> Option<String> {
+        match target {
+            Some(Aggregate::Struct(name)) => {
+                if let Some(c) = self
+                    .containers
+                    .iter()
+                    .find(|c| c.address == address && c.type_name == name)
+                {
+                    return Some(c.path.clone());
+                }
+            }
+            Some(Aggregate::Array(shape)) => {
+                if let Some(a) = self
+                    .arrays
+                    .iter()
+                    .find(|a| a.address == address && shape.is(a))
+                {
+                    return Some(a.path.clone());
+                }
+            }
+            None => {}
         }
         let leaf = || {
             let at = self.by_address.partition_point(|&(a, _)| a < address);
@@ -716,12 +735,13 @@ impl DebugInfo {
                 _ => None,
             }
         };
-        let aggregate = matches!(
-            target,
-            Some(crate::TypeDesc::Struct { .. } | crate::TypeDesc::Array { .. })
-        );
-        if !aggregate && let Some(path) = leaf() {
+        if target.is_none()
+            && let Some(path) = leaf()
+        {
             return Some(path);
+        }
+        if let Some(p) = self.pointers.iter().find(|p| p.address == address) {
+            return Some(p.path.clone());
         }
         if let Some(c) = self.containers.iter().find(|c| c.address == address) {
             return Some(c.path.clone());
@@ -1016,13 +1036,11 @@ impl DebugInfo {
                 if address == 0 {
                     return Some(Place::Null { pointer: path });
                 }
-                let variable = self.variable_at_as(address, target.map(|t| (types, t)));
+                let pointee = aggregate(types, target);
+                let variable = self.variable_at_as(address, pointee);
                 let in_frame = match variable {
                     Some(_) => None,
-                    None => {
-                        let frames = live.frames();
-                        self.frame_variable_at(address, &frames, struct_name(types, target))
-                    }
+                    None => self.frame_variable_at_as(address, &live.frames(), pointee),
                 };
                 Some(Place::Pointer(Pointee {
                     address,
@@ -1417,10 +1435,42 @@ pub struct Pointee {
     pub in_frame: Option<(usize, String)>,
 }
 
-/// The name of the STRUCT `id` is, in `types`; `None` for any other type.
-fn struct_name(types: &[crate::TypeDesc], id: Option<crate::TypeId>) -> Option<&str> {
+/// What a pointer points at, when that is an aggregate: a STRUCT by its
+/// name, an array by its shape. Its first part starts at the same address,
+/// and this says the aggregate is meant.
+#[derive(Clone, Copy)]
+enum Aggregate<'a> {
+    Struct(&'a str),
+    Array(ArrayShape<'a>),
+}
+
+/// The shape of an array a pointer's target gives.
+#[derive(Clone, Copy)]
+struct ArrayShape<'a> {
+    dimensions: &'a [(i64, i64)],
+    elem_size: u32,
+}
+
+impl ArrayShape<'_> {
+    /// Whether `array` has this shape: not one of its elements, which start
+    /// at its address too.
+    fn is(&self, array: &crate::ArraySym) -> bool {
+        array.dimensions == self.dimensions && array.elem_size == self.elem_size
+    }
+}
+
+/// The aggregate `id` is, in `types`; `None` for any other type.
+fn aggregate(types: &[crate::TypeDesc], id: Option<crate::TypeId>) -> Option<Aggregate<'_>> {
     match types.get(id? as usize)? {
-        crate::TypeDesc::Struct { name, .. } => Some(name),
+        crate::TypeDesc::Struct { name, .. } => Some(Aggregate::Struct(name)),
+        crate::TypeDesc::Array {
+            dimensions,
+            elem_size,
+            ..
+        } => Some(Aggregate::Array(ArrayShape {
+            dimensions,
+            elem_size: *elem_size,
+        })),
         _ => None,
     }
 }
@@ -1435,19 +1485,32 @@ struct Named<'a> {
 }
 
 impl Named<'_> {
-    /// The variable at `address`: the STRUCT named `target` based there,
-    /// else a leaf, a pointer, any aggregate based there, or an element of
-    /// an array. An aggregate and its first leaf share a base: the target
-    /// says which is meant, and without one the leaf is.
-    fn name_at(&self, address: u32, target: Option<&str>) -> Option<String> {
+    /// The variable at `address`: the STRUCT or the array `target` is,
+    /// based there, else a leaf, a pointer, any aggregate based there, or an
+    /// element of an array. An aggregate and its first leaf share a base:
+    /// the target says which is meant, and without one the leaf is.
+    fn name_at(&self, address: u32, target: Option<Aggregate<'_>>) -> Option<String> {
         let at = |c: &&crate::ContainerSym| c.address == address;
-        if let Some(name) = target
-            && let Some(c) = self
-                .containers
-                .iter()
-                .find(|c| at(c) && c.type_name == name)
-        {
-            return Some(c.path.clone());
+        match target {
+            Some(Aggregate::Struct(name)) => {
+                if let Some(c) = self
+                    .containers
+                    .iter()
+                    .find(|c| at(c) && c.type_name == name)
+                {
+                    return Some(c.path.clone());
+                }
+            }
+            Some(Aggregate::Array(shape)) => {
+                if let Some(a) = self
+                    .arrays
+                    .iter()
+                    .find(|a| a.address == address && shape.is(a))
+                {
+                    return Some(a.path.clone());
+                }
+            }
+            None => {}
         }
         if let Some(s) = self.memory.iter().find(|s| s.address == address) {
             return Some(s.path.clone());
@@ -3323,7 +3386,8 @@ mod follow_tests {
     /// An address in a recursive call's frame is named from the live frames:
     /// the frame it is in, by position, and the local there. A STRUCT and
     /// its first leaf share a base: a pointer to the STRUCT names it, one
-    /// to its first leaf, or to nothing in particular, names the leaf.
+    /// to its first leaf, or to nothing in particular, names the leaf. An
+    /// array and its first element too.
     #[test]
     fn an_address_in_a_frame_names_its_local() {
         let (info, _) = frame_module();
@@ -3335,6 +3399,22 @@ mod follow_tests {
         assert_eq!(at(1016, Some("Pt")), Some((1, "pt".to_string())));
         assert_eq!(at(1016, Some("Other")), Some((1, "pt.x".to_string())));
         assert_eq!(at(1008, None), Some((1, "link".to_string())));
+        assert_eq!(at(1000, None), Some((1, "trail[0]".to_string())));
+        let array = |dimensions: &'static [(i64, i64)], elem_size: u32| {
+            Some(Aggregate::Array(ArrayShape {
+                dimensions,
+                elem_size,
+            }))
+        };
+        assert_eq!(
+            info.frame_variable_at_as(1000, &frames, array(&[(0, 1)], 4)),
+            Some((1, "trail".to_string()))
+        );
+        assert_eq!(
+            info.frame_variable_at_as(1000, &frames, array(&[(0, 2)], 4)),
+            Some((1, "trail[0]".to_string())),
+            "another shape"
+        );
         assert_eq!(at(2020, None), Some((0, "pt.y".to_string())));
         assert_eq!(
             at(400, None),
