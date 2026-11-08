@@ -57,8 +57,13 @@ fn check_statements<'db>(
 ) {
     for stmt in stmts {
         match stmt.stmt(db) {
-            StmtKind::Assignment { vars, target, .. } => {
-                check_chain(db, body, *stmt, vars, *target, diagnostics);
+            StmtKind::Assignment {
+                vars,
+                target,
+                operations,
+                ..
+            } => {
+                check_chain(db, body, *stmt, vars, operations, *target, diagnostics);
             }
             StmtKind::If {
                 then,
@@ -108,12 +113,14 @@ fn check_statements<'db>(
 }
 
 /// Each link of `a := b := e`: the last place with the value, and each other
-/// place with the place after it, whose value it takes.
+/// place with the place after it, whose value it takes. A link with an
+/// operator, `a += b`, changes its place.
 pub fn check_chain<'db>(
     db: &'db dyn WorkspaceDataBase,
     body: ScopeInference<'db>,
     stmt: Stmt<'db>,
     vars: &[VariableAccess<'db>],
+    operations: &[Option<hir::hir_def::expressions::expression::Expr<'db>>],
     rhs: hir::hir_def::expressions::expression::Expr<'db>,
     diagnostics: &mut Vec<IdeDiagnostic>,
 ) {
@@ -122,8 +129,10 @@ pub fn check_chain<'db>(
     };
     check_assignment(db, body, stmt, last, rhs, diagnostics);
     let mut source = last;
-    for &var in links.iter().rev() {
-        if let Some(name) = same_variable(db, body, var, source) {
+    for (&var, operation) in links.iter().zip(operations).rev() {
+        if operation.is_none()
+            && let Some(name) = same_variable(db, body, var, source)
+        {
             // `b := b` within `a := b := b := 1`: from the place to the one it
             // takes the value of.
             let (from, to) = (var.get_span(db), source.get_span(db));

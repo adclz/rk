@@ -57,6 +57,7 @@ pub fn check_chain<'db>(
     db: &'db dyn WorkspaceDataBase,
     body: ScopeInference<'db>,
     vars: &[VariableAccess<'db>],
+    operations: &[Option<Expr<'db>>],
     value: &Expr<'db>,
     diagnostics: &mut Vec<IdeDiagnostic>,
 ) {
@@ -65,8 +66,10 @@ pub fn check_chain<'db>(
     };
     check_assignment(db, body, last, value, diagnostics);
     let mut source = last;
-    for &var in links.iter().rev() {
-        if let Some(capacity) = declared_capacity_of(db, body.type_of_variable_access(var))
+    // A link with an operator computes its value, which no STRING is.
+    for (&var, operation) in links.iter().zip(operations).rev() {
+        if operation.is_none()
+            && let Some(capacity) = declared_capacity_of(db, body.type_of_variable_access(var))
             && let Some(length) = declared_capacity_of(db, body.type_of_variable_access(source))
             && length > capacity
         {

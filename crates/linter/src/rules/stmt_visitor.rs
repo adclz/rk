@@ -337,9 +337,18 @@ fn visit_statements<'db>(
     for stmt in stmts {
         match stmt.stmt(db) {
             // Every place of a chain is written: `a := b := e` is two
-            // assignments, `b := e` and `a := b`.
-            StmtKind::Assignment { vars, target, .. } => {
+            // assignments, `b := e` and `a := b`, and `a += b := e` writes
+            // `a` the operation `a + b`.
+            StmtKind::Assignment {
+                vars,
+                target,
+                operations,
+                ..
+            } => {
                 check_expr_lints(db, body, ctx, target, diagnostics);
+                for operation in operations.iter().flatten() {
+                    check_expr_lints(db, body, ctx, operation, diagnostics);
+                }
                 if ctx.input_assignment {
                     run_lint(input_assignment::NAME, diagnostics, |d| {
                         for var in vars {
@@ -356,7 +365,7 @@ fn visit_statements<'db>(
                 }
                 if ctx.self_assignment {
                     run_lint(self_assignment::NAME, diagnostics, |d| {
-                        self_assignment::check_chain(db, body, *stmt, vars, *target, d)
+                        self_assignment::check_chain(db, body, *stmt, vars, operations, *target, d)
                     });
                 }
                 // One value is copied into each place: one report says it.
@@ -369,7 +378,7 @@ fn visit_statements<'db>(
                 }
                 if ctx.string_truncation {
                     run_lint(string_truncation::NAME, diagnostics, |d| {
-                        string_truncation::check_chain(db, body, vars, target, d)
+                        string_truncation::check_chain(db, body, vars, operations, target, d)
                     });
                 }
                 if ctx.loop_var_modified {

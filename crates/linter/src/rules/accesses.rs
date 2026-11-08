@@ -154,10 +154,24 @@ fn statement<'db>(
     f: &mut dyn FnMut(Place<'db>, Use),
 ) {
     match stmt.stmt(db) {
-        // From right to left, as a chain runs: the value, then each place.
-        StmtKind::Assignment { vars, target, .. } => {
+        // From right to left, as a chain runs: the value, then each place,
+        // after the operation it is written, `a + b` in `a += b := e`, which
+        // reads it and the place on its right.
+        StmtKind::Assignment {
+            vars,
+            target,
+            operations,
+            ..
+        } => {
             expression(db, *target, f);
-            for var in vars.iter().rev() {
+            let Some((last, links)) = vars.split_last() else {
+                return;
+            };
+            place(db, *last, Use::Write, f);
+            for (var, operation) in links.iter().zip(operations).rev() {
+                if let Some(operation) = operation {
+                    expression(db, *operation, f);
+                }
                 place(db, *var, Use::Write, f);
             }
         }
