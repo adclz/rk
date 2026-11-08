@@ -9,6 +9,7 @@ use db::WorkspaceDataBase;
 use hir::{
     HirNodeInfo,
     hir_def::{
+        expressions::expression::{PathExpr, PathExprKind},
         hir_node::HirNode,
         semantic_index::{NodeKey, SemanticIndex, semantic_index},
     },
@@ -84,6 +85,31 @@ pub fn descendant_at<'db>(
     best_match
 }
 
+/// Where a path ends in the source. Its node spans the last name alone, and a
+/// subscript or a `^` after that name is part of the path.
+fn path_end<'db>(db: &'db dyn WorkspaceDataBase, path: PathExpr<'db>, source: &str) -> usize {
+    let closed_by = |from: usize, closer: char| {
+        let rest = source.get(from..).unwrap_or_default();
+        let blank = rest.len() - rest.trim_start().len();
+        if rest[blank..].starts_with(closer) {
+            from + blank + closer.len_utf8()
+        } else {
+            from
+        }
+    };
+    match path.expr(db) {
+        PathExprKind::Index(index) => {
+            let inside = match index.index.last() {
+                Some(last) => last.get_span(db).end_byte,
+                None => path_end(db, index.path, source),
+            };
+            closed_by(inside, ']')
+        }
+        PathExprKind::Deref(deref) => closed_by(path_end(db, deref.path, source), '^'),
+        _ => path.get_span(db).end_byte,
+    }
+}
+
 pub fn completion_descendant_at<'db>(
     db: &'db dyn WorkspaceDataBase,
     file: File,
@@ -95,6 +121,10 @@ pub fn completion_descendant_at<'db>(
     // whitespace after a dot (e.g. `my_var.inner. |`).
     let mut last_before: Option<(HirNode<'db>, NodeKey, bool)> = None;
     let mut last_before_end: usize = 0;
+
+    // The path ending nearest before the cursor, which is not the last node
+    // before it: `0` of `rows[0].` comes after `rows[0]` and ends inside it.
+    let mut path_before: Option<(HirNode<'db>, NodeKey, usize)> = None;
 
     let sema = semantic_index(db, file);
     let document = file.document(db);
@@ -112,11 +142,23 @@ pub fn completion_descendant_at<'db>(
             last_before_end = range.end_byte;
             last_before = Some((node.clone(), idx, true));
         }
+        // `THIS^` and `SUPER^` start a path as a name does.
+        let end = match node {
+            HirNode::PathExpr(path) => Some(path_end(db, *path, source)),
+            HirNode::Invocation(_) => Some(range.end_byte),
+            _ => None,
+        };
+        if let Some(end) = end
+            && end <= offset
+            && path_before.as_ref().is_none_or(|(_, _, last)| end >= *last)
+        {
+            path_before = Some((node.clone(), idx, end));
+        }
     }
 
-    // Prefer last_before when it appeared later in the source (higher NodeKey),
-    // meaning it's more specific than the containing node (e.g. a Pou).
-    // Use last_before for PathExpr nodes (e.g. `my_var.inner.|`) and Using nodes
+    // Prefer a node before the cursor when it appeared later in the source
+    // (higher NodeKey), meaning it's more specific than the containing node
+    // (e.g. a Pou): a path the cursor is past (e.g. `my_var.inner.|`) and a Using
     // (e.g. `USING ns.|` where the dot is past the Using HIR span).
     // For Using, also use last_before when best_match is None (top-level USING).
     // A path only stands in for the cursor while the cursor is still ON it:
@@ -124,17 +166,19 @@ pub fn completion_descendant_at<'db>(
     // name of one POU's body answered for a blank line several declarations
     // later, which offered statements where a declaration goes.
     let reaches_the_cursor = |end: usize| {
-        source
-            .get(end..offset)
-            .is_some_and(|gap| gap.chars().all(|c| c == '.' || c == ' ' || c == '\t'))
+        source.get(end..offset).is_some_and(|gap| {
+            gap.contains('.') && gap.chars().all(|c| c == '.' || c == ' ' || c == '\t')
+        })
     };
 
+    if let (Some((_, best_idx, _)), Some((path, path_idx, end))) = (&best_match, &path_before)
+        && path_idx > best_idx
+        && reaches_the_cursor(*end)
+    {
+        return Some((path.clone(), *path_idx, true));
+    }
+
     match (&best_match, &last_before) {
-        (Some((_, best_idx, _)), Some((HirNode::PathExpr(_), last_idx, _)))
-            if last_idx > best_idx && reaches_the_cursor(last_before_end) =>
-        {
-            last_before
-        }
         (Some((_, best_idx, _)), Some((HirNode::Using(_), last_idx, _)))
             if last_idx > best_idx && offset.saturating_sub(last_before_end) <= 2 =>
         {
