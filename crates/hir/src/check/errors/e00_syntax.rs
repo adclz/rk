@@ -123,8 +123,11 @@ pub enum SyntaxError {
         value: Range,
         /// The place the compound assignment would write.
         place: Range,
-        /// What it is part of: "the call", "the chain", "the '+='".
-        within: &'static str,
+        /// Where its statement goes: "before the call", "of its own".
+        placement: String,
+        /// In a condition, where `/=` is most likely "not equal" as other
+        /// languages write it.
+        in_condition: bool,
     },
     /// `RETAIN NON_RETAIN x : INT;`: a struct element, a variable section
     /// or a program instance takes one qualifier. It keeps the first.
@@ -788,7 +791,8 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                 operator,
                 value,
                 place,
-                within,
+                placement,
+                in_condition,
             } => {
                 let doc = file.document(db);
                 let text = |span: &Range| {
@@ -797,18 +801,36 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                         .unwrap_or("")
                 };
                 let op = text(operator);
+                let range = crate::denormalize(db, file, operator).unwrap_or_default();
                 let mut diag = diag()
                     .message(format!("'{op}' is a compound assignment"))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
-                    .range(crate::denormalize(db, file, operator).unwrap_or_default())
+                    .range(range)
                     .call();
                 diag.with_note("a compound assignment is a statement of its own".into());
-                diag.with_help(format!(
-                    "write '{} {op} {};' in a statement before {within}",
-                    text(place),
-                    text(value)
-                ));
+                let statement = format!("'{} {op} {};'", text(place), text(value));
+                // In a condition, `/=` is most likely "not equal": comparing
+                // is the fix, and dividing is the note.
+                if *in_condition && op == "/=" {
+                    diag.with_note(format!(
+                        "to divide, write {statement} in a statement {placement}"
+                    ));
+                    diag.with_fix(
+                        action()
+                            .title("replace '/=' with '<>'".into())
+                            .kind(auto_lsp::lsp_types::CodeActionKind::QUICKFIX)
+                            .diagnostics(vec![diag.inner()])
+                            .is_preferred(true)
+                            .edit(WorkspaceEdit::new(HashMap::from([(
+                                file.url(db).clone(),
+                                vec![edit().new_text("<>".to_string()).range(range).call()],
+                            )])))
+                            .call(),
+                    );
+                } else {
+                    diag.with_help(format!("write {statement} in a statement {placement}"));
+                }
                 diag
             }
             Self::EndTrySpelling(span) => {

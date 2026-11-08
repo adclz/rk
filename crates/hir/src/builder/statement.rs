@@ -72,7 +72,8 @@ impl<'db> Parse<'db> for ast::generated::Stmt {
                 ))
             }
             StmtType::IfStmt(if_stmt) => {
-                let condition = parse_condition(sema, if_stmt.if_cond.cast(sema.ast))?;
+                let condition =
+                    parse_condition(sema, if_stmt.if_cond.cast(sema.ast), "before the IF")?;
                 let then = if_stmt
                     .if_body
                     .as_ref()
@@ -90,8 +91,11 @@ impl<'db> Parse<'db> for ast::generated::Stmt {
                     .iter()
                     .map(|else_if_stmt| {
                         let else_if_node = else_if_stmt.cast(sema.ast);
-                        let condition =
-                            parse_condition(sema, else_if_node.else_if_cond.cast(sema.ast))?;
+                        let condition = parse_condition(
+                            sema,
+                            else_if_node.else_if_cond.cast(sema.ast),
+                            "of its own",
+                        )?;
                         let then = else_if_node
                             .else_if_body
                             .as_ref()
@@ -284,7 +288,8 @@ impl<'db> Parse<'db> for ast::generated::Stmt {
                     .transpose()?
                     .unwrap_or_else(std::vec::Vec::new);
 
-                let condition = parse_condition(sema, repeat.repeat_cond.cast(sema.ast))?;
+                let condition =
+                    parse_condition(sema, repeat.repeat_cond.cast(sema.ast), "before the UNTIL")?;
                 Ok(Stmt::new(
                     sema.db,
                     StmtKind::Repeat { body, condition },
@@ -293,7 +298,11 @@ impl<'db> Parse<'db> for ast::generated::Stmt {
                 ))
             }
             StmtType::WhileStmt(while_stmt) => {
-                let condition = parse_condition(sema, while_stmt.while_cond.cast(sema.ast))?;
+                let condition = parse_condition(
+                    sema,
+                    while_stmt.while_cond.cast(sema.ast),
+                    "before the WHILE and at the end of its body",
+                )?;
                 let body = while_stmt
                     .while_body
                     .as_ref()
@@ -630,7 +639,8 @@ impl<'db> SemanticIndexBuilder<'db> {
             operator: err.operator.cast(self.ast).get_range().to_owned(),
             value: err.value.cast(self.ast).get_range().to_owned(),
             place,
-            within,
+            placement: format!("before {within}"),
+            in_condition: false,
         }
         .to_diagnostic(self.db, self.file)
     }
@@ -716,15 +726,34 @@ impl<'db> Parse<'db> for ast::generated::CompoundAssign {
 /// was meant. The grammar keeps both sides, and the left one is the condition
 /// the author was writing, so checking carries on from there rather than
 /// reporting the shape twice.
+///
+/// A compound assignment there, `IF x += 1 THEN`, is E0033: dropping its
+/// `+` would leave `IF x = 1`, which compiles and means something else.
+/// `placement` is where its statement goes instead: before an IF, before a
+/// WHILE and at the end of its body, as the condition is checked before
+/// each pass, and on its own for an ELSIF, since a statement before the IF
+/// would also run when an earlier branch is taken.
 fn parse_condition<'db>(
     sema: &mut SemanticIndexBuilder<'db>,
-    node: &ast::generated::ERRAssignInCondition_Expression,
+    node: &ast::generated::ERRAssignInCondition_ERRCompoundInCondition_Expression,
+    placement: &'static str,
 ) -> anyhow::Result<crate::hir_def::expressions::expression::Expr<'db>, IdeDiagnostic> {
+    type Condition = ast::generated::ERRAssignInCondition_ERRCompoundInCondition_Expression;
     let err = match node {
-        ast::generated::ERRAssignInCondition_Expression::Expression(expr) => {
+        Condition::Expression(expr) => {
             return expr.parse(sema);
         }
-        ast::generated::ERRAssignInCondition_Expression::ERRAssignInCondition(err) => err,
+        Condition::ERRCompoundInCondition(err) => {
+            return Err(SyntaxError::CompoundOutsideStatement {
+                operator: err.operator.cast(sema.ast).get_range().to_owned(),
+                value: err.value.cast(sema.ast).get_range().to_owned(),
+                place: err.place.cast(sema.ast).get_range().to_owned(),
+                placement: placement.to_string(),
+                in_condition: true,
+            }
+            .to_diagnostic(sema.db, sema.file));
+        }
+        Condition::ERRAssignInCondition(err) => err,
     };
 
     // Between the two sides is the `:=` and whatever spaces surround it,
