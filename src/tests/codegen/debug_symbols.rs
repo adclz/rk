@@ -1795,6 +1795,72 @@ fn a_reference_back_to_its_own_name_lists_its_address(mut with_db: db::RootDatab
     assert_eq!(points_at("P1.a1[1]"), second.address);
 }
 
+/// A pointer's value names what it points at when that is a reference, a
+/// whole array, or an array that is an element of another: the array, not
+/// its first element, which starts at the same address. A reference with
+/// no target, its type naming itself, names the reference it points at.
+#[rstest]
+fn a_pointer_names_a_reference_or_an_array(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE
+            PInt : REF_TO INT;
+            Row : ARRAY[0..2] OF INT;
+            Grid : ARRAY[0..1] OF Row;
+            Back : REF_TO Back;
+        END_TYPE
+
+        PROGRAM Main
+        VAR
+            n : INT := 5;
+            p : PInt;
+            pp : REF_TO PInt;
+            row : Row;
+            rrow : REF_TO Row;
+            rcell : REF_TO INT;
+            grid : Grid;
+            rgrid : REF_TO Grid;
+            rinner : REF_TO Row;
+            b1, b2 : Back;
+        END_VAR
+            p := REF(n);
+            pp := REF(p);
+            rrow := REF(row);
+            rcell := REF(row[0]);
+            rgrid := REF(grid);
+            rinner := REF(grid[1]);
+            b1 := REF(b2);
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : Main;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    let mut plc = TestPlc::load(&wasm).expect("load");
+    plc.run(1).expect("scan");
+    let info = DebugInfo::from_wasm(&wasm);
+    assert!(info.problems().is_empty(), "{:?}", info.problems());
+    let live = &mut |address: u32, size: u32| plc.read_bytes(address, size as usize).ok();
+    let mut points_at = |path: &str| match info.follow(path, live) {
+        Some(debug_format::Place::Pointer(p)) => p.variable,
+        other => panic!("not a pointer: {other:?}"),
+    };
+    assert_eq!(points_at("P1.p").as_deref(), Some("P1.n"));
+    assert_eq!(points_at("P1.pp").as_deref(), Some("P1.p"), "a reference");
+    assert_eq!(points_at("P1.rrow").as_deref(), Some("P1.row"), "the array");
+    assert_eq!(
+        points_at("P1.rcell").as_deref(),
+        Some("P1.row[0]"),
+        "its element"
+    );
+    assert_eq!(points_at("P1.rgrid").as_deref(), Some("P1.grid"));
+    assert_eq!(points_at("P1.rinner").as_deref(), Some("P1.grid[1]"));
+    assert_eq!(points_at("P1.b1").as_deref(), Some("P1.b2"), "no target");
+}
+
 /// A bare code offset resolves to its function: the one `line_to_pc` places
 /// a line in, and nothing before the first body.
 #[rstest]
