@@ -26,6 +26,7 @@ Integer arithmetic wraps at the declared IEC width — `INT#32767 + 1` is `-3276
 x := expr;
 a := b := expr;   // a chain: b takes the value, then a takes b's
 x += expr;        // x := x + expr, x's place found once; also -=, *=, /=
+a := b += expr;   // b += expr, then a takes b's
 
 IF a THEN … ELSIF b THEN … ELSE … END_IF;
 
@@ -59,7 +60,9 @@ __END_TRY;
 
 A chain `a := b := e` is an rk extension and a statement only: in an argument or a `FOR` start it is E0032.
 It runs from right to left, each place taking the value of the place to its right, so the types must convert link by link (E0301 on the place that gives the value).
-A compound assignment `x += e` (`-=`, `*=`, `/=`) is an rk extension too, checked as `x := x + e`, and a statement only (E0033 elsewhere).
+A compound assignment `x += e` (`-=`, `*=`, `/=`) is an rk extension too, checked as `x := x + e`.
+It is a statement or a place of a chain, checked and run as written out: `a += b := e` is `b := e; a += b;`.
+In an argument, a `FOR` start or a condition it is E0033.
 
 `__RAISE`, `__TRY`, `__CATCH` and `__FINALLY` are rk extensions.
 A `__TRY` needs a `__CATCH`, a `__FINALLY` or both (E1209).
