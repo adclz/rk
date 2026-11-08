@@ -28,6 +28,41 @@ END_FUNCTION
     ");
 }
 
+/// A place written with an operator is written its operation: `a -= a :=
+/// 5` takes `a` from itself, as `x -= x` does, and `b -= a := 5` does not.
+#[rstest]
+fn a_place_taken_from_itself_by_its_operator(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION test : INT
+VAR a, b, x : INT; END_VAR
+    a -= a := 5;
+    x -= x;
+    b -= a := 5;
+    test := a + b + x;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "sub-self"), @r"
+    [L0106] Warning: subtraction from self
+       ,-[ file:///test0.st:4:7 ]
+       |
+     4 |     a -= a := 5;
+       |       ^^|^
+       |         `--- 'a' is subtracted from itself: the result is always 0
+       |
+       | Note: lint rule: sub-self
+    ---'
+    [L0106] Warning: subtraction from self
+       ,-[ file:///test0.st:5:5 ]
+       |
+     5 |     x -= x;
+       |     ^^^|^^
+       |        `---- 'x' is subtracted from itself: the result is always 0
+       |
+       | Note: lint rule: sub-self
+    ---'
+    ");
+}
+
 #[rstest]
 fn nested_in_expression(mut with_db: RootDatabase) {
     let source = r#"

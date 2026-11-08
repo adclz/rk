@@ -262,8 +262,21 @@ impl<'db> SemanticIndexBuilder<'db> {
         scope_id: ScopeId<'db>,
         kind: crate::hir_def::expressions::expression::ParamAssignKind<'db>,
     ) -> crate::hir_def::expressions::expression::ParamAssign<'db> {
-        let param =
-            crate::hir_def::expressions::expression::ParamAssign::new(self.db, id, scope_id, kind);
+        self.new_argument(id, scope_id, kind, None)
+    }
+
+    /// A ParamAssign as `new_param` makes it, with the `/=` written after
+    /// its value: `g(a /= b)`.
+    pub fn new_argument(
+        &mut self,
+        id: AstId,
+        scope_id: ScopeId<'db>,
+        kind: crate::hir_def::expressions::expression::ParamAssignKind<'db>,
+        divided: Option<crate::hir_def::expressions::expression::DividedArgument>,
+    ) -> crate::hir_def::expressions::expression::ParamAssign<'db> {
+        let param = crate::hir_def::expressions::expression::ParamAssign::new(
+            self.db, id, scope_id, kind, divided,
+        );
         self.register_node(id, HirNode::Param(param));
         param
     }

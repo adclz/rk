@@ -94,7 +94,8 @@ VAR count : INT; extra : DINT; END_VAR
 END_FUNCTION
 ```
 
-A compound assignment is a statement of its own, and no link of a chain: elsewhere it is `E0033`.
+A link of a chain can be one too, run and checked as written out: `id := next += 1;` is `next += 1; id := next;`, and `total += last := n;` is `last := n; total += last;`.
+In a call's argument, at the start of a `FOR` or in a condition, a compound assignment is `E0033`.
 It goes beyond the standard too.
 
 ## CASE

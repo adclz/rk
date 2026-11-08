@@ -497,16 +497,22 @@ END_FUNCTION
     assert!(labels.iter().any(|label| label == offered), "{labels:?}");
 }
 
-/// After a compound operator, the value completes as an assignment's does.
+/// After a compound operator, the value completes as an assignment's does,
+/// in a chain too.
 #[rstest]
-pub fn completion_in_a_compound_assignment(mut with_db: RootDatabase) {
-    let marked = "
+#[case::alone("total += st|")]
+#[case::last_in_a_chain("last := total += st|")]
+#[case::after_a_place_with_an_operator("total += last := st|")]
+pub fn completion_in_a_compound_assignment(mut with_db: RootDatabase, #[case] statement: &str) {
+    let marked = format!(
+        "
 FUNCTION f : INT
-VAR total : INT; step : INT; END_VAR
-    total += st|
+VAR total : INT; last : INT; step : INT; END_VAR
+    {statement}
 END_FUNCTION
-";
-    let (file, offset) = crate::tests::utils::add_marked_source(&mut with_db, marked);
+"
+    );
+    let (file, offset) = crate::tests::utils::add_marked_source(&mut with_db, &marked);
     let labels: Vec<String> =
         ide_proto::handlers::completions::complete(&with_db, file, offset, None)
             .into_iter()

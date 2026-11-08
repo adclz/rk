@@ -896,7 +896,7 @@ END_CONFIGURATION
 }
 
 /// The place of a compound assignment, which is also what it reads, and the
-/// places of a chain are each renamed once.
+/// places of a chain are each renamed once, an operator among them too.
 #[rstest]
 fn rename_variable_in_compound_assignments_and_chains(mut with_db: RootDatabase) {
     let source = r#"FUNCTION fn1
@@ -906,6 +906,8 @@ END_VAR
     x += 2;
     y := x := 1;
     x *= x;
+    y += x -= 1;
+    x += y := x;
 END_FUNCTION
 "#;
 
@@ -923,6 +925,8 @@ END_FUNCTION
         counter += 2;
         y := counter := 1;
         counter *= counter;
+        y += counter -= 1;
+        counter += y := counter;
     END_FUNCTION
     ");
 }

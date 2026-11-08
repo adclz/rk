@@ -42,13 +42,19 @@ pub enum StmtKind<'db> {
     /// The last is written `target`, the value, and each other the value of
     /// the place after it, from right to left.
     ///
-    /// `x += e` is `compound`: its one place is written `target`, `x + e`,
-    /// whose left side reads that same place, found once for both. Neither
-    /// that operation nor its read has a node of its own in the tree.
+    /// A place written with an operator is written its operation, whose
+    /// left side reads that same place, found once for both. `x += e` is
+    /// `compound`: its place, the last, is written `target`, `x + e`. In
+    /// `a += b := e`, `a` is written its entry in `operations`, `a + b`,
+    /// whose right side reads the place after it. Neither an operation nor
+    /// its reads has a node of its own in the tree.
     Assignment {
         vars: Vec<VariableAccess<'db>>,
         target: Expr<'db>,
         compound: bool,
+        /// One for each place but the last, in the order written: its
+        /// operation, or `None` for `:=`.
+        operations: Vec<Option<Expr<'db>>>,
     },
     FuncCall(FuncCall<'db>),
     Return,

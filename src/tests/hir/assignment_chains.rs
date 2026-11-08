@@ -3,7 +3,8 @@
 
 //! `a := b := e`: the last place is written the value, then each other the
 //! value of the place to its right, and each link is checked as an
-//! assignment of its own.
+//! assignment of its own. A place written with an operator, `a += b := e`,
+//! is written its operation over that value, checked as written out.
 
 use db::RootDatabase;
 use insta::assert_snapshot;
@@ -47,6 +48,300 @@ END_FUNCTION
 "#
     );
     assert_snapshot!(test_diagnostics(&mut with_db, &[&source]), @"");
+}
+
+/// A place of a chain can be written with an operator: `id := next += 1`
+/// counts, `a += b := 1` adds what it wrote, and each such link accepts what
+/// it would written out alone.
+#[rstest]
+#[case::on_the_last_place("id := next += 1;")]
+#[case::on_the_first_place("a += b := 1;")]
+#[case::on_every_place("a += b -= c *= i /= 2;")]
+#[case::a_wider_place("d += i := 7;")]
+#[case::widened_after_it("r := i *= 2;")]
+#[case::reals("x *= y /= 2.0;")]
+#[case::an_element_and_a_field("arr[i] += p.x := 3;")]
+#[case::a_dereference("r1 := REF(a); r1^ += b := 2;")]
+#[case::a_duration("t1 += t2 := T#1s;")]
+#[case::the_result("f += a := 2;")]
+fn valid_chains_with_operators(#[case] chain: &str, mut with_db: RootDatabase) {
+    let source = format!(
+        r#"
+TYPE Pt : STRUCT x : INT; END_STRUCT; END_TYPE
+
+FUNCTION f : INT
+VAR
+    a, b, c, i : INT; d, id, next : DINT; r : LREAL; x, y : REAL;
+    arr : ARRAY[0..3] OF INT; p : Pt; r1 : REF_TO INT; t1, t2 : TIME;
+END_VAR
+    {chain}
+    f := a;
+END_FUNCTION
+"#
+    );
+    assert_snapshot!(test_diagnostics(&mut with_db, &[&source]), @"");
+}
+
+/// A link with an operator is checked as written out, `a := a + d` for
+/// `a += d`: a result its place cannot take is refused on the operator and
+/// the value, with the operation written out in a statement of its own, and
+/// so is an operator its type has not.
+#[rstest]
+fn invalid_a_link_with_an_operator(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION f : INT
+VAR a : INT; d : DINT; r : REAL; s, t : STRING; on, off : BOOL; END_VAR
+    a += d := 5;
+    d := a += r;
+    s += t := 'x';
+    on += off := TRUE;
+    f := a;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0301] Error: type mismatch
+       ,-[ file:///test0.st:4:7 ]
+       |
+     3 | VAR a : INT; d : DINT; r : REAL; s, t : STRING; on, off : BOOL; END_VAR
+       |     |
+       |     `-- 'a' is declared here
+     4 |     a += d := 5;
+       |       ^^|^
+       |         `--- expected 'INT', got 'DINT'
+       |
+       | Help: write 'a := DINT_TO_INT(a + d)' in a statement of its own
+       |
+       | Note: 'a += d' is 'a := a + d'
+    ---'
+    [E0301] Error: type mismatch
+       ,-[ file:///test0.st:5:12 ]
+       |
+     3 | VAR a : INT; d : DINT; r : REAL; s, t : STRING; on, off : BOOL; END_VAR
+       |     |
+       |     `-- 'a' is declared here
+       |
+     5 |     d := a += r;
+       |            ^^|^
+       |              `--- expected 'INT', got 'REAL'
+       |
+       | Help: write 'a := REAL_TO_INT(a + r)' in a statement of its own
+       |
+       | Note: 'a += r' is 'a := a + r'
+    ---'
+    [E0305] Error: operator not supported by the type
+       ,-[ file:///test0.st:6:7 ]
+       |
+     3 | VAR a : INT; d : DINT; r : REAL; s, t : STRING; on, off : BOOL; END_VAR
+       |                                  |
+       |                                  `-- 's' is declared here
+       |
+     6 |     s += t := 'x';
+       |       ^^|^
+       |         `--- operator '+=' cannot be applied to type 'STRING'
+    ---'
+    [E0305] Error: operator not supported by the type
+       ,-[ file:///test0.st:7:8 ]
+       |
+     3 | VAR a : INT; d : DINT; r : REAL; s, t : STRING; on, off : BOOL; END_VAR
+       |                                                 ^|
+       |                                                  `-- 'on' is declared here
+       |
+     7 |     on += off := TRUE;
+       |        ^^^|^^
+       |           `---- operator '+=' cannot be applied to type 'BOOL'
+    ---'
+    ");
+}
+
+/// A BOOL written a quotient, `flag := a /= b`, most likely meant `<>`,
+/// "not equal" as other languages write it: the fix compares, and a note
+/// says what `/=` does. Through another place the quotient was meant, and
+/// with a place after it, `a /= b := 3`, `<>` would leave no chain.
+#[rstest]
+fn invalid_a_quotient_into_a_bool(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION f : INT
+VAR a, b, q : INT; r : REAL; flag : BOOL; END_VAR
+    flag := a /= b;
+    flag := r /= 2.0;
+    flag := q := a /= b;
+    flag := a /= b := 3;
+    f := a;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0301] Error: type mismatch
+       ,-[ file:///test0.st:4:13 ]
+       |
+     3 | VAR a, b, q : INT; r : REAL; flag : BOOL; END_VAR
+       |                              ^^|^
+       |                                `--- 'flag' is declared here
+     4 |     flag := a /= b;
+       |             |
+       |             `-- expected 'BOOL', got 'INT'
+       |
+       | Help: replace '/=' with '<>'
+       |
+       | Note 1: a place in a chain takes the value of the place to its right
+       |
+       | Note 2: 'a /= b' is 'a := a / b'
+    ---'
+    [E0301] Error: type mismatch
+       ,-[ file:///test0.st:5:13 ]
+       |
+     3 | VAR a, b, q : INT; r : REAL; flag : BOOL; END_VAR
+       |                              ^^|^
+       |                                `--- 'flag' is declared here
+       |
+     5 |     flag := r /= 2.0;
+       |             |
+       |             `-- expected 'BOOL', got 'REAL'
+       |
+       | Help: replace '/=' with '<>'
+       |
+       | Note 1: a place in a chain takes the value of the place to its right
+       |
+       | Note 2: 'r /= 2.0' is 'r := r / 2.0'
+    ---'
+    [E0301] Error: type mismatch
+       ,-[ file:///test0.st:6:13 ]
+       |
+     3 | VAR a, b, q : INT; r : REAL; flag : BOOL; END_VAR
+       |                              ^^|^
+       |                                `--- 'flag' is declared here
+       |
+     6 |     flag := q := a /= b;
+       |             |
+       |             `-- expected 'BOOL', got 'INT'
+       |
+       | Help: assign 'flag' in a statement of its own
+       |
+       | Note: a place in a chain takes the value of the place to its right
+    ---'
+    [E0301] Error: type mismatch
+       ,-[ file:///test0.st:7:13 ]
+       |
+     3 | VAR a, b, q : INT; r : REAL; flag : BOOL; END_VAR
+       |                              ^^|^
+       |                                `--- 'flag' is declared here
+       |
+     7 |     flag := a /= b := 3;
+       |             |
+       |             `-- expected 'BOOL', got 'INT'
+       |
+       | Help: assign 'flag' in a statement of its own
+       |
+       | Note: a place in a chain takes the value of the place to its right
+    ---'
+    ");
+}
+
+/// BOOLs have no quotient, so `/=` between them can only mean "not equal":
+/// E0305 names the operator written, and as the last place of a chain the
+/// fix compares. Alone, `on /= off;` is no comparison to fix.
+#[rstest]
+fn invalid_a_quotient_of_bools(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION f : INT
+VAR ne, on, off, b : BOOL; END_VAR
+    ne := on /= off;
+    ne := b := on /= off;
+    on /= off;
+    f := 0;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0305] Error: operator not supported by the type
+       ,-[ file:///test0.st:4:14 ]
+       |
+     3 | VAR ne, on, off, b : BOOL; END_VAR
+       |         ^|
+       |          `-- 'on' is declared here
+     4 |     ne := on /= off;
+       |              ^^^|^^
+       |                 `---- operator '/=' cannot be applied to type 'BOOL'
+       |
+       | Help: replace '/=' with '<>'
+       |
+       | Note: 'on /= off' is 'on := on / off'
+    ---'
+    [E0305] Error: operator not supported by the type
+       ,-[ file:///test0.st:5:19 ]
+       |
+     3 | VAR ne, on, off, b : BOOL; END_VAR
+       |         ^|
+       |          `-- 'on' is declared here
+       |
+     5 |     ne := b := on /= off;
+       |                   ^^^|^^
+       |                      `---- operator '/=' cannot be applied to type 'BOOL'
+       |
+       | Help: replace '/=' with '<>'
+       |
+       | Note: 'on /= off' is 'on := on / off'
+    ---'
+    [E0305] Error: operator not supported by the type
+       ,-[ file:///test0.st:6:5 ]
+       |
+     3 | VAR ne, on, off, b : BOOL; END_VAR
+       |         ^|
+       |          `-- 'on' is declared here
+       |
+     6 |     on /= off;
+       |     ^^^^|^^^^
+       |         `------ operator '/=' cannot be applied to type 'BOOL'
+    ---'
+    ");
+}
+
+/// The fix for `flag := a /= b`, `flag := on /= off` and `g(a /= b)` into a
+/// BOOL input replaces the operator, and the statement then compares.
+#[rstest]
+#[case::a_bool_given_a_quotient("flag := a /= b;", "flag := a <> b;")]
+#[case::a_quotient_of_bools("flag := on /= off;", "flag := on <> off;")]
+#[case::a_bool_input("f := g(a /= b);", "f := g(a <> b);")]
+fn the_quotient_fix_compares(
+    #[case] written: &str,
+    #[case] fixed: &str,
+    mut with_db: RootDatabase,
+) {
+    let source = format!(
+        r#"
+FUNCTION g : INT
+VAR_INPUT on : BOOL; END_VAR
+    g := 0;
+END_FUNCTION
+
+FUNCTION f : INT
+VAR a, b : INT; flag, on, off : BOOL; END_VAR
+    {written}
+    f := a;
+END_FUNCTION
+"#
+    );
+    let file = crate::tests::utils::add_source(&mut with_db, &source);
+    let edits: Vec<_> = hir::check::diagnostics_for_file(&with_db, file)
+        .iter()
+        .flat_map(|d| d.fixes().to_vec())
+        .flat_map(|fix| {
+            let changes = fix.edit.and_then(|edit| edit.changes).unwrap_or_default();
+            changes.into_values().flatten()
+        })
+        .collect();
+    let [edit] = edits.as_slice() else {
+        panic!("one edit: {edits:?}");
+    };
+    assert_eq!(edit.range.start.line, edit.range.end.line);
+    let line = source
+        .lines()
+        .nth(edit.range.start.line as usize)
+        .expect("the line");
+    let (start, end) = (
+        edit.range.start.character as usize,
+        edit.range.end.character as usize,
+    );
+    let applied = format!("{}{}{}", &line[..start], edit.new_text, &line[end..]);
+    assert_eq!(applied, format!("    {fixed}"));
 }
 
 /// A link whose place cannot take the value of the place to its right is
@@ -97,7 +392,8 @@ END_FUNCTION
 }
 
 /// Each place of a chain is checked as written: a CONSTANT anywhere in it, a
-/// name that resolves to nothing (reported once).
+/// name that resolves to nothing, reported once, also where an operation
+/// reads it.
 #[rstest]
 fn invalid_a_place_that_cannot_be_written(mut with_db: RootDatabase) {
     let source = r#"
@@ -107,6 +403,9 @@ VAR CONSTANT K : INT := 1; END_VAR
     a := K := 1;
     K := a := 1;
     a := nope := 1;
+    K += a := 1;
+    a += nope := 1;
+    nope += a := 1;
     f := a;
 END_FUNCTION
 "#;
@@ -147,6 +446,35 @@ END_FUNCTION
        |          ^^|^
        |            `--- no item 'nope' found in scope
     ---'
+    [E0404] Error: write to a constant
+       ,-[ file:///test0.st:8:5 ]
+       |
+     4 | VAR CONSTANT K : INT := 1; END_VAR
+       |              |
+       |              `-- 'K' is declared CONSTANT here
+       |
+     8 |     K += a := 1;
+       |     |
+       |     `-- cannot write to constant 'K'
+       |
+       | Help: copy it into a variable to change the copy
+       |
+       | Note: a CONSTANT keeps the value it is declared with
+    ---'
+    [E0201] Error: unknown name
+       ,-[ file:///test0.st:9:10 ]
+       |
+     9 |     a += nope := 1;
+       |          ^^|^
+       |            `--- no item 'nope' found in scope
+    ---'
+    [E0201] Error: unknown name
+        ,-[ file:///test0.st:10:5 ]
+        |
+     10 |     nope += a := 1;
+        |     ^^|^
+        |       `--- no item 'nope' found in scope
+    ----'
     ");
 }
 
@@ -340,8 +668,11 @@ END_CONFIGURATION
     ");
 }
 
-/// A chain is a statement: not an argument, a FOR's start or a condition.
-/// With no value after its last `:=`, it is the empty right-hand side.
+/// A chain is a statement: not an argument, a FOR's start or a condition,
+/// and what follows the second `:=` is the chain's, operators included. In
+/// a condition the first `:=` is E0012, and the chain after it E0032 or
+/// E0033. With no value after its last `:=`, it is the empty right-hand
+/// side.
 #[rstest]
 fn invalid_a_chain_outside_a_statement(mut with_db: RootDatabase) {
     let source = r#"
@@ -351,11 +682,14 @@ VAR_INPUT a : INT; END_VAR
 END_FUNCTION
 
 FUNCTION f : INT
-VAR a, b, i, j : INT; on, x, y : BOOL; END_VAR
+VAR a, b, c, i, j, k : INT; on, y : BOOL; x : INT; END_VAR
     f := g(a := b := 1);
     FOR i := j := 0 TO 10 DO END_FOR;
     IF on := x := y THEN f := 1; END_IF;
     a := b := ;
+    f := g(a := b := c += 1);
+    FOR i := j := k += 1 TO 10 DO END_FOR;
+    WHILE on := x += 1 DO END_WHILE;
 END_FUNCTION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
@@ -390,12 +724,16 @@ END_FUNCTION
         |
         | Help: replace ':=' with '='
     ----'
-    [E0001] Error: syntax error
+    [E0032] Error: chain of assignments outside a statement
         ,-[ file:///test0.st:11:16 ]
         |
      11 |     IF on := x := y THEN f := 1; END_IF;
-        |                ^^|^
-        |                  `--- unexpected token(s): ':= y'
+        |                ^|
+        |                 `-- a second ':=' chains an assignment
+        |
+        | Help: assign 'x' in a statement before the IF
+        |
+        | Note: a chain of assignments is a statement of its own
     ----'
     [E0005] Error: empty right-hand side of assignment
         ,-[ file:///test0.st:12:12 ]
@@ -403,6 +741,48 @@ END_FUNCTION
      12 |     a := b := ;
         |            ^|
         |             `-- the assignment has no right-hand side
+    ----'
+    [E0032] Error: chain of assignments outside a statement
+        ,-[ file:///test0.st:13:19 ]
+        |
+     13 |     f := g(a := b := c += 1);
+        |                   ^|
+        |                    `-- a second ':=' chains an assignment
+        |
+        | Help: assign 'b' in a statement before the call
+        |
+        | Note: a chain of assignments is a statement of its own
+    ----'
+    [E0032] Error: chain of assignments outside a statement
+        ,-[ file:///test0.st:14:16 ]
+        |
+     14 |     FOR i := j := k += 1 TO 10 DO END_FOR;
+        |                ^|
+        |                 `-- a second ':=' chains an assignment
+        |
+        | Help: assign 'j' in a statement before the FOR
+        |
+        | Note: a chain of assignments is a statement of its own
+    ----'
+    [E0012] Error: assignment sign ':=' in a condition
+        ,-[ file:///test0.st:15:11 ]
+        |
+     15 |     WHILE on := x += 1 DO END_WHILE;
+        |           ^^^|^^^
+        |              `----- a condition compares with '=', not ':='
+        |
+        | Help: replace ':=' with '='
+    ----'
+    [E0033] Error: compound assignment outside a statement
+        ,-[ file:///test0.st:15:19 ]
+        |
+     15 |     WHILE on := x += 1 DO END_WHILE;
+        |                   ^|
+        |                    `-- '+=' is a compound assignment
+        |
+        | Help: write 'x += 1;' in a statement before the WHILE and at the end of its body
+        |
+        | Note: a compound assignment is a statement of its own
     ----'
     ");
 }

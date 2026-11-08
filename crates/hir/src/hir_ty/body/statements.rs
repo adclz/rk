@@ -7,7 +7,12 @@ use crate::check::errors::e04_init::InitError;
 use crate::check::errors::e15_pragma::PragmaError;
 use crate::{
     CallSite, HirNodeInfo,
-    check::errors::{ToIdeDiagnostic, e11_oop::OopError, e12_control_flow::ControlFlowError},
+    check::errors::{
+        ToIdeDiagnostic,
+        e03_type::{catch_variable_mismatch, chain_link_mismatch, compound_mismatch},
+        e11_oop::OopError,
+        e12_control_flow::ControlFlowError,
+    },
     hir_def::{
         expressions::{
             expression::{
@@ -23,7 +28,11 @@ use crate::{
     },
     hir_ty::{
         body::{Adjust, BodyInferenceResult, CaseLabelValue, NullState},
-        infer::{Infer, expr::InferExprCtx, table::InferenceTable},
+        infer::{
+            Infer,
+            expr::{CompoundOperation, InferExprCtx},
+            table::InferenceTable,
+        },
         resolver::{Resolver, func_call::resolve_func_call},
         ty::{InferType, Type},
     },
@@ -409,9 +418,20 @@ impl<'db> StmtsResolverCtx<'db> {
                     vars,
                     target,
                     compound,
+                    operations,
                 } => {
                     self.check_assignment(
-                        db, resolver, &mut infer, *stmt, vars, *target, *compound, ctx,
+                        db,
+                        resolver,
+                        &mut infer,
+                        *stmt,
+                        Chain {
+                            vars,
+                            target: *target,
+                            compound: *compound,
+                            operations,
+                        },
+                        ctx,
                     );
                 }
 
@@ -1211,20 +1231,24 @@ impl<'db> StmtsResolverCtx<'db> {
 
     /// `a := b := e` runs from right to left, as `b := e; a := b;` does: the
     /// last place is written the value, then each other the value of the
-    /// place after it. Each link is checked as an assignment of its own.
-    /// `x += e`, `compound`, is checked as `x := x + e`.
-    #[allow(clippy::too_many_arguments)]
+    /// place after it. Each link is checked as an assignment of its own, and
+    /// one with an operator as written out: `x += e` as `x := x + e`, and
+    /// `a += b` in `a += b := e` as `a := a + b`.
     fn check_assignment(
         &self,
         db: &'db dyn WorkspaceDataBase,
         resolver: Resolver<'db>,
         infer: &mut InferExprCtx<'db>,
         stmt: Stmt<'db>,
-        vars: &[VariableAccess<'db>],
-        target: Expr<'db>,
-        compound: bool,
+        chain: Chain<'_, 'db>,
         ctx: &mut BodyInferenceResult<'db>,
     ) {
+        let Chain {
+            vars,
+            target,
+            compound,
+            operations,
+        } = chain;
         let Some((&var, links)) = vars.split_last() else {
             return;
         };
@@ -1234,14 +1258,18 @@ impl<'db> StmtsResolverCtx<'db> {
         // right-hand side: a RETURN-overloaded call picks the overload whose
         // return the target expects. A compound assignment's operation reads
         // the place just resolved, which is not resolved again.
-        infer.place_read = compound.then_some(var);
+        infer.compound = compound.then(|| CompoundOperation {
+            operation: target,
+            reads: vec![var],
+            ends_a_chain: !links.is_empty(),
+        });
         infer.resolve_expr_expecting(db, target, ctx, Some(base_typ));
         infer.check_expr(db, target, ctx);
-        infer.place_read = None;
+        infer.compound = None;
 
         if assignable && let Err(err) = infer.coerce_var_access_with_expr(db, var, target, ctx) {
             let diag = match compound {
-                true => compound_mismatch(db, err, base_typ, var, target),
+                true => compound_mismatch(db, err, base_typ, var, target, !links.is_empty()),
                 false => err.into_non_assignable(db, base_typ, CallSite::from_scoped(db, &target)),
             };
             ctx.errors.push(diag);
@@ -1272,34 +1300,40 @@ impl<'db> StmtsResolverCtx<'db> {
         }
 
         // The other places, from right to left, each written the value of
-        // the place after it: a mismatch there is the link's, and no cast
-        // can be written around a place.
+        // the place after it, or its operation over that value: a mismatch
+        // there is the link's, and no cast can be written around a place.
         let mut source = var;
-        for &link in links.iter().rev() {
+        // What the last place was written with an operator, for the link on
+        // its left.
+        let mut source_operation = compound.then_some(target);
+        for (&link, &operation) in links.iter().zip(operations).rev() {
             let (base_typ, assignable) = self.check_written_place(db, resolver, link, ctx);
-            if assignable {
+            if let Some(operation) = operation {
+                // Both places it reads were resolved already.
+                infer.compound = Some(CompoundOperation {
+                    operation,
+                    reads: vec![link, source],
+                    ends_a_chain: false,
+                });
+                infer.resolve_expr_expecting(db, operation, ctx, Some(base_typ));
+                infer.check_expr(db, operation, ctx);
+                infer.compound = None;
+                if assignable
+                    && let Err(err) = infer.coerce_var_access_with_expr(db, link, operation, ctx)
+                {
+                    let diag = compound_mismatch(db, err, base_typ, link, operation, true);
+                    ctx.errors.push(diag);
+                }
+            } else if assignable {
                 match infer.coerce_var_access_with_place(db, link, source, ctx) {
-                    Err(err) => {
-                        let file = ctx.scope.file(db);
-                        let mut diag = crate::check::errors::e03_type::TypeError::NotAssignable {
-                            base_target: base_typ,
-                            lhs: err.expected,
-                            rhs: err.actual,
-                            adjustment: err.adjustment,
-                            expr: CallSite::from_scoped(db, &source),
-                            suggest_cast: false,
-                        }
-                        .to_diagnostic(db, file);
-                        diag.with_note(
-                            "a place in a chain takes the value of the place to its right"
-                                .to_string(),
-                        );
-                        diag.with_help(format!(
-                            "assign '{}' in a statement of its own",
-                            CallSite::from_scoped(db, &link).to_string(db)
-                        ));
-                        ctx.errors.push(diag);
-                    }
+                    Err(err) => ctx.errors.push(chain_link_mismatch(
+                        db,
+                        err,
+                        base_typ,
+                        link,
+                        source,
+                        source_operation,
+                    )),
                     Ok(_) => check_copy_keeps_location(
                         db,
                         ctx.type_of_variable_access_with_adjustments(db, link),
@@ -1309,6 +1343,9 @@ impl<'db> StmtsResolverCtx<'db> {
                 }
             }
             source = link;
+            // Only the last place's operation can take `<>`: a place follows
+            // any other's, `a /= b := 3`.
+            source_operation = None;
         }
 
         // A reference to this call's own storage, handed back to the caller
@@ -1400,19 +1437,8 @@ impl<'db> StmtsResolverCtx<'db> {
         let place = ctx.type_of_variable_access_with_adjustments(db, var);
         let message = Type::Elementary(ElementarySpec::String);
         if assignable && let Err(err) = place.coerce_with_type(db, message, None, resolver) {
-            let mut diag = crate::check::errors::e03_type::TypeError::NotAssignable {
-                base_target: base_typ,
-                lhs: err.expected,
-                rhs: err.actual,
-                adjustment: err.adjustment,
-                expr: CallSite::from_scoped(db, &var),
-                suggest_cast: false,
-            }
-            .to_diagnostic(db, ctx.scope.file(db));
-            diag.with_note(
-                "the variable of a __CATCH receives the message as a STRING".to_string(),
-            );
-            ctx.errors.push(diag);
+            ctx.errors
+                .push(catch_variable_mismatch(db, err, base_typ, var));
         }
     }
 
@@ -1486,52 +1512,13 @@ pub(crate) fn refuse_edge_input_as_storage<'db>(
     }
 }
 
-/// `i += 1.5` whose result its place cannot take: E0301 on the statement,
-/// which is the operation, with the operation written out in a note and in
-/// the fix, since no cast can be written around it.
-fn compound_mismatch<'db>(
-    db: &'db dyn WorkspaceDataBase,
-    err: crate::hir_ty::infer::coerce::CoerceError<'db>,
-    base_typ: Type<'db>,
-    var: VariableAccess<'db>,
-    operation: Expr<'db>,
-) -> ide_diagnostic::IdeDiagnostic {
-    use crate::check::errors::e03_type::{TypeError, written_out_cast_suggestion};
-    let site = CallSite::from_scoped(db, &operation);
-    let mut diag = TypeError::NotAssignable {
-        base_target: base_typ,
-        lhs: err.expected,
-        rhs: err.actual,
-        adjustment: err.adjustment,
-        expr: site,
-        suggest_cast: false,
-    }
-    .to_diagnostic(db, site.get_scope_id(db).file(db));
-    let (operator, value) = match operation.expr(db) {
-        ExprKind::AddOperator {
-            operator, right, ..
-        } => (operator.as_str(), *right),
-        ExprKind::MultOperator {
-            operator, right, ..
-        } => (operator.as_str(), *right),
-        _ => return diag,
-    };
-    let place = CallSite::from_scoped(db, &var).to_string(db);
-    let value = CallSite::from_scoped(db, &value).to_string(db);
-    let written_out = format!("{place} {operator} {value}");
-    diag.with_note(format!(
-        "'{place} {operator}= {value}' is '{place} := {written_out}'"
-    ));
-    written_out_cast_suggestion(
-        db,
-        err.expected,
-        err.actual,
-        site,
-        &place,
-        &written_out,
-        &mut diag,
-    );
-    diag
+/// An assignment as `StmtKind::Assignment` holds it: its places, the value
+/// of the last, and the operations of the places written with an operator.
+struct Chain<'a, 'db> {
+    vars: &'a [VariableAccess<'db>],
+    target: Expr<'db>,
+    compound: bool,
+    operations: &'a [Option<Expr<'db>>],
 }
 
 /// Whether a FOR control access is a single bare identifier — no path steps

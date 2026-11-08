@@ -103,3 +103,37 @@ END_PROGRAM
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "var-could-be-temp"), @r"");
 }
+
+/// A place written with an operator in a chain reads itself when its link
+/// runs: `total` keeps its value between runs, and `last`, written before
+/// `total` reads it, does not.
+#[rstest]
+fn a_chain_with_an_operator(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK Acc
+VAR_INPUT step : INT; END_VAR
+VAR_OUTPUT sum : INT; END_VAR
+VAR
+    total : INT;
+    last : INT;
+END_VAR
+    total += last := step;
+    sum := total;
+END_FUNCTION_BLOCK
+"#;
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "var-could-be-temp"), @r"
+    [L0317] Hint: VAR that could be a VAR_TEMP
+       ,-[ file:///test0.st:7:5 ]
+       |
+     7 |     last : INT;
+       |     ^^|^
+       |       `--- 'last' is written before it is read each time the body runs
+       |
+       | Help: declare 'last' in a VAR_TEMP section
+       |
+       | Note 1: the value 'last' keeps from one call to the next is never read
+       |
+       | Note 2: lint rule: var-could-be-temp
+    ---'
+    ");
+}

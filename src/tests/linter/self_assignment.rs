@@ -135,6 +135,31 @@ END_FUNCTION
     ");
 }
 
+/// A place written with an operator changes: `x += x := 1` doubles `x`. A
+/// link after it, `x := x += 1`, writes `x` what it holds.
+#[rstest]
+fn self_assignment_beside_an_operator(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION test : INT
+VAR x : INT; END_VAR
+    x += x := 1;
+    x := x += 1;
+    test := x;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "self-assignment"), @r"
+    [L0104] Warning: self-assignment
+       ,-[ file:///test0.st:5:5 ]
+       |
+     5 |     x := x += 1;
+       |     ^^^|^^
+       |        `---- variable 'x' is assigned to itself
+       |
+       | Note: lint rule: self-assignment
+    ---'
+    ");
+}
+
 /// One variable is not yet one place: an element copied to another, a bit
 /// to another, is no self-assignment, in a chain as alone.
 #[rstest]

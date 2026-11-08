@@ -26,7 +26,6 @@ impl ErrorCode for CommentedOutCode {
 /// The statement kinds of the grammar: what makes a parsed text code.
 const STATEMENTS: &[&str] = &[
     "assign",
-    "compound_assign",
     "func_call",
     "if_stmt",
     "case_stmt",

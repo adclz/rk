@@ -1,8 +1,11 @@
 // SPDX-FileCopyrightText: 2026 Clauzel Adrien
 // SPDX-License-Identifier: AGPL-3.0-only
 
+use crate::CallSite;
+use crate::HirNodeInfo;
 use crate::check::errors::ToIdeDiagnostic;
 use crate::check::errors::first_word;
+use crate::hir_def::expressions::expression::DividedArgument;
 use auto_lsp::core::errors::LexerError;
 use auto_lsp::core::errors::ParseError;
 use auto_lsp::default::db::file::File;
@@ -104,30 +107,33 @@ pub enum SyntaxError {
     MethodDeclInBody(Range),
     /// `__ENDTRY`, where a `__TRY` is closed by `__END_TRY`.
     EndTrySpelling(Range),
-    /// `F(a := b := 1)`, `FOR i := j := 0 TO 9`: a second `:=` where one
-    /// assignment stands. A chain is a statement of its own; the value
-    /// before the `:=` is kept.
+    /// `F(a := b := 1)`, `FOR i := j := 0 TO 9`, `IF on := x := y THEN`: a
+    /// second `:=` where one assignment stands or a condition compares. A
+    /// chain is a statement of its own; the value before the `:=` is kept.
     ChainOutsideStatement {
         /// From the second `:=` to the end of the chain.
         span: Range,
         /// The place the chain would write, to assign before.
         place: Range,
-        /// What the assignment is part of: "the call", "the FOR".
-        within: &'static str,
+        /// Where its statement goes: "before the call", "of its own".
+        placement: String,
     },
-    /// `a := b += 1`, `F(a += 1)`, `x += y += 1`: a compound assignment
-    /// where a value goes on. It is a statement of its own; the value before
-    /// the operator is kept.
+    /// `F(a += 1)`, `FOR i := j += 1 TO 9`, `IF x += 1 THEN`: a compound
+    /// assignment where one assignment stands or a condition compares. It is
+    /// a statement of its own, or a place of a chain; the value before the
+    /// operator is kept.
     CompoundOutsideStatement {
         operator: Range,
+        /// The value, and the rest of the chain after it: `b := 1` in
+        /// `F(a += b := 1)`.
         value: Range,
         /// The place the compound assignment would write.
         place: Range,
         /// Where its statement goes: "before the call", "of its own".
         placement: String,
-        /// In a condition, where `/=` is most likely "not equal" as other
-        /// languages write it.
-        in_condition: bool,
+        /// Where a BOOL is expected, in a condition or for a BOOL input:
+        /// `/=` is then most likely "not equal", as other languages write it.
+        compares: bool,
     },
     /// `RETAIN NON_RETAIN x : INT;`: a struct element, a variable section
     /// or a program instance takes one qualifier. It keeps the first.
@@ -180,6 +186,42 @@ impl ErrorCode for SyntaxError {
             Self::CompoundOutsideStatement { .. } => "E0033",
         }
     }
+}
+
+/// `g(a /= b)`, refused once the input the argument binds is known
+/// (E0033): `compares` for a BOOL input, where the fix is `<>`.
+pub(crate) fn divided_argument<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    divided: DividedArgument,
+    place: CallSite<'db>,
+    compares: bool,
+) -> IdeDiagnostic {
+    let scope = place.get_scope_id(db);
+    let run = CallSite::new(scope, divided.run).get_span(db);
+    let value = CallSite::new(scope, divided.value).get_span(db);
+    SyntaxError::CompoundOutsideStatement {
+        // The `/=` the run starts with: two bytes on one line.
+        operator: Range {
+            start_byte: run.start_byte,
+            end_byte: run.start_byte + 2,
+            start_point: run.start_point,
+            end_point: tree_sitter::Point {
+                row: run.start_point.row,
+                column: run.start_point.column + 2,
+            },
+        },
+        // The value and the rest of the chain after it.
+        value: Range {
+            start_byte: value.start_byte,
+            start_point: value.start_point,
+            end_byte: run.end_byte,
+            end_point: run.end_point,
+        },
+        place: place.get_span(db),
+        placement: "before the call".to_string(),
+        compares,
+    }
+    .to_diagnostic(db, scope.file(db))
 }
 
 impl SyntaxError {
@@ -760,7 +802,7 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
             Self::ChainOutsideStatement {
                 span,
                 place,
-                within,
+                placement,
             } => {
                 // The `:=` the chain starts with: two bytes on one line.
                 let sign = Range {
@@ -784,7 +826,7 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                     .range(crate::denormalize(db, file, &sign).unwrap_or_default())
                     .call();
                 diag.with_note("a chain of assignments is a statement of its own".into());
-                diag.with_help(format!("assign '{place}' in a statement before {within}"));
+                diag.with_help(format!("assign '{place}' in a statement {placement}"));
                 diag
             }
             Self::CompoundOutsideStatement {
@@ -792,7 +834,7 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                 value,
                 place,
                 placement,
-                in_condition,
+                compares,
             } => {
                 let doc = file.document(db);
                 let text = |span: &Range| {
@@ -810,9 +852,9 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                     .call();
                 diag.with_note("a compound assignment is a statement of its own".into());
                 let statement = format!("'{} {op} {};'", text(place), text(value));
-                // In a condition, `/=` is most likely "not equal": comparing
-                // is the fix, and dividing is the note.
-                if *in_condition && op == "/=" {
+                // Where a BOOL is expected, `/=` is most likely "not equal":
+                // comparing is the fix, and dividing is the note.
+                if *compares && op == "/=" {
                     diag.with_note(format!(
                         "to divide, write {statement} in a statement {placement}"
                     ));
