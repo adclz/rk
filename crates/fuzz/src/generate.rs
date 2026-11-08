@@ -409,9 +409,10 @@ enum Label {
 #[derive(Clone, Debug)]
 enum Stmt {
     Assign(Place, Expr),
-    /// `a := b := e`, the places as written: the last takes the value, then
-    /// each other what the place after it holds.
-    Chain(Vec<Place>, Expr),
+    /// `a := b += e`, the places as written, each with its operator, `None`
+    /// for `:=`: the last is written the value, then each other what the
+    /// place after it holds, or its operation over that.
+    Chain(Vec<(Place, Option<Arith>)>, Expr),
     /// `x += e`, `x -= e`, `x *= e`, `x /= e`: the place read and written.
     Compound(Place, Arith, Expr),
     /// An FB instance called with its inputs, and the variable bound to
@@ -2142,16 +2143,35 @@ impl Generator<'_> {
             }
         };
         // Now and then a chain: one place or two more of the type, a STRING
-        // of any capacity, each written what the place to its right holds.
+        // of any capacity, each written what the place to its right holds,
+        // or with an operator its operation over that.
         if self.choices.percent(15) {
             let mut places = Vec::new();
             for _ in 0..=self.choices.below(2) {
-                places.push(self.target(ty)?);
+                let place = self.target(ty)?;
+                let operator = self.chain_operator(&place);
+                places.push((place, operator));
             }
-            places.push(target);
+            let operator = self.chain_operator(&target);
+            places.push((target, operator));
             return Some(Stmt::Chain(places, value));
         }
         Some(Stmt::Assign(target, value))
+    }
+
+    /// The operator a place of a chain is written with: `:=` mostly, and now
+    /// and then one its arithmetic takes. An integer is not divided: what it
+    /// would be divided by is a place or a value, which may be 0.
+    fn chain_operator(&mut self, place: &Place) -> Option<Arith> {
+        let ty = self.place_ty(place);
+        if !(ty.is_int() || ty.is_float()) || !self.choices.percent(25) {
+            return None;
+        }
+        let ops: &[Arith] = match ty.is_float() {
+            true => &[Arith::Add, Arith::Sub, Arith::Mul, Arith::Div],
+            false => &[Arith::Add, Arith::Sub, Arith::Mul],
+        };
+        Some(ops[self.choices.below(ops.len())])
     }
 
     /// `x += e` on a number: an operator its arithmetic takes, an integer
@@ -4152,17 +4172,15 @@ impl Names<'_> {
                     let _ = writeln!(out, "{pad}{} := {};", self.place(p), self.expr(e));
                 }
                 Stmt::Chain(places, e) => {
-                    let places: Vec<String> = places.iter().map(|p| self.place(p)).collect();
-                    let _ = writeln!(out, "{pad}{} := {};", places.join(" := "), self.expr(e));
+                    let _ = write!(out, "{pad}");
+                    for (p, op) in places {
+                        let op = op.map_or(":=", compound_operator);
+                        let _ = write!(out, "{} {op} ", self.place(p));
+                    }
+                    let _ = writeln!(out, "{};", self.expr(e));
                 }
                 Stmt::Compound(p, op, e) => {
-                    let op = match op {
-                        Arith::Add => "+=",
-                        Arith::Sub => "-=",
-                        Arith::Mul => "*=",
-                        Arith::Div => "/=",
-                        Arith::Mod => unreachable!("no MOD= is generated"),
-                    };
+                    let op = compound_operator(*op);
                     let _ = writeln!(out, "{pad}{} {op} {};", self.place(p), self.expr(e));
                 }
                 Stmt::SetBit(p, _, bit, bare, e) => {
@@ -4601,6 +4619,17 @@ fn call_class(
     result
 }
 
+/// The token of a compound assignment's operator.
+fn compound_operator(op: Arith) -> &'static str {
+    match op {
+        Arith::Add => "+=",
+        Arith::Sub => "-=",
+        Arith::Mul => "*=",
+        Arith::Div => "/=",
+        Arith::Mod => unreachable!("no MOD= is generated"),
+    }
+}
+
 fn run_block(block: &[Stmt], st: &mut State, tys: &[Ty], d: &Decls) -> Flow {
     for stmt in block {
         let flow = match stmt {
@@ -4611,12 +4640,26 @@ fn run_block(block: &[Stmt], st: &mut State, tys: &[Ty], d: &Decls) -> Flow {
             }
             // From right to left, each place read back once written: a STRING
             // passes on what its capacity kept. Nothing in a place has a side
-            // effect, so reading it again finds the slot just written.
+            // effect, so reading it again finds the slot just written. A place
+            // with an operator is written its operation, the place read first.
             Stmt::Chain(places, e) => {
-                let mut v = eval(e, st, d);
-                for p in places.iter().rev() {
+                let mut value = e.clone();
+                for (p, op) in places.iter().rev() {
+                    let v = match op {
+                        Some(op) => {
+                            let ty = place_ty(p, tys, d);
+                            let operation = Expr::Arith(
+                                *op,
+                                ty,
+                                Box::new(Expr::Read(p.clone())),
+                                Box::new(value),
+                            );
+                            eval(&operation, st, d)
+                        }
+                        None => eval(&value, st, d),
+                    };
                     write(p, v, st, tys, d);
-                    v = read(p, st, d);
+                    value = Expr::Read(p.clone());
                 }
                 Flow::Next
             }
@@ -5497,36 +5540,53 @@ mod tests {
     }
 
     /// The generator writes chains, `a := b := e`, of two places and of three,
-    /// through a subscript and with a STRING, and for each the module computes
-    /// what the evaluator does: from right to left, each place taking what the
-    /// one to its right holds.
+    /// through a subscript, with a STRING, and with an operator on the last
+    /// place and on another, and for each the module computes what the
+    /// evaluator does: from right to left, each place taking what the one to
+    /// its right holds, or its operation over that.
     #[test]
     fn chains_are_written_and_compute() {
-        // How many `:=` a statement line has outside brackets: two or more
-        // is a chain, a declaration or a FOR has one.
-        let links = |line: &str| {
+        // The assignment operators a statement line has outside brackets, in
+        // order: two or more is a chain, a declaration or a FOR has one.
+        let operators = |line: &str| {
             let mut depth = 0i32;
-            let mut count = 0;
+            let mut found = Vec::new();
             for (at, c) in line.char_indices() {
                 match c {
                     '(' | '[' => depth += 1,
                     ')' | ']' => depth -= 1,
-                    ':' if depth == 0 && line[at..].starts_with(":=") => count += 1,
+                    _ if depth == 0 => {
+                        if let Some(op) = [":=", "+=", "-=", "*=", "/="]
+                            .into_iter()
+                            .find(|op| line[at..].starts_with(op))
+                        {
+                            found.push(op);
+                        }
+                    }
                     _ => {}
                 }
             }
-            count
+            found
         };
-        let chain = move |text: &str, has: &dyn Fn(&str, usize) -> bool| {
+        let chain = move |text: &str, has: &dyn Fn(&str, &[&str]) -> bool| {
             text.lines()
                 .map(str::trim_start)
                 .filter(|line| !line.starts_with("FOR "))
-                .any(|line| links(line) >= 2 && has(line, links(line)))
+                .any(|line| {
+                    let ops = operators(line);
+                    ops.len() >= 2 && has(line, &ops)
+                })
         };
         type Form = (&'static str, Box<dyn Fn(&str) -> bool>);
         let forms: Vec<Form> = vec![
-            ("two places", Box::new(move |t| chain(t, &|_, n| n == 2))),
-            ("three places", Box::new(move |t| chain(t, &|_, n| n == 3))),
+            (
+                "two places",
+                Box::new(move |t| chain(t, &|_, ops| ops.len() == 2)),
+            ),
+            (
+                "three places",
+                Box::new(move |t| chain(t, &|_, ops| ops.len() == 3)),
+            ),
             (
                 "a subscript",
                 Box::new(move |t| chain(t, &|l, _| l.contains('['))),
@@ -5534,6 +5594,18 @@ mod tests {
             (
                 "a STRING",
                 Box::new(move |t| chain(t, &|l, _| l.contains('\''))),
+            ),
+            (
+                "an operator on the last place",
+                Box::new(move |t| chain(t, &|_, ops| ops.last() != Some(&":="))),
+            ),
+            (
+                "an operator on another place",
+                Box::new(move |t| {
+                    chain(t, &|_, ops| {
+                        ops[..ops.len() - 1].iter().any(|op| *op != ":=")
+                    })
+                }),
             ),
         ];
         let mut seed = 0x2545_F491_4F6C_DD1Du64;
@@ -5618,7 +5690,7 @@ mod tests {
         let tys = [Ty::Str(8), Ty::Str(3)];
         let mut st = State::frame(vec![Val::Str(Vec::new()), Val::Str(Vec::new())]);
         let chain = Stmt::Chain(
-            vec![Place::Var(0), Place::Var(1)],
+            vec![(Place::Var(0), None), (Place::Var(1), None)],
             Expr::Lit(Ty::Str(8), Val::Str(b"abcdefgh".to_vec())),
         );
         let _ = run_block(&[chain], &mut st, &tys, &Decls::default());
@@ -5626,6 +5698,30 @@ mod tests {
             st.vars,
             [Val::Str(b"abc".to_vec()), Val::Str(b"abc".to_vec())]
         );
+    }
+
+    /// The evaluator writes a place with an operator its operation over what
+    /// the place to its right holds, the place read first: `a += b := 5`
+    /// writes `b` 5 and `a` 1 + 5, then `a := b *= 3` writes `b` 15 and `a`
+    /// what `b` holds.
+    #[test]
+    fn a_place_with_an_operator_is_written_its_operation() {
+        let tys = [Ty::Int, Ty::Int];
+        let mut st = State::frame(vec![Val::Int(1), Val::Int(0)]);
+        let five = Expr::Lit(Ty::Int, Val::Int(5));
+        let chain = Stmt::Chain(
+            vec![(Place::Var(0), Some(Arith::Add)), (Place::Var(1), None)],
+            five,
+        );
+        let _ = run_block(&[chain], &mut st, &tys, &Decls::default());
+        assert_eq!(st.vars, [Val::Int(6), Val::Int(5)]);
+        let three = Expr::Lit(Ty::Int, Val::Int(3));
+        let chain = Stmt::Chain(
+            vec![(Place::Var(0), None), (Place::Var(1), Some(Arith::Mul))],
+            three,
+        );
+        let _ = run_block(&[chain], &mut st, &tys, &Decls::default());
+        assert_eq!(st.vars, [Val::Int(15), Val::Int(15)]);
     }
 
     /// The generator writes CONSTANTs and types with named values, in each place
