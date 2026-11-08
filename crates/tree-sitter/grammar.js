@@ -425,8 +425,9 @@ module.exports = grammar({
     // Missing '=' after ':'
     ERR_missing_equal_in_for_control: ($) => ":",
 
-    // A compound assignment where a condition compares: `IF x += 1 THEN`.
-    // It is a statement of its own.
+    // A compound assignment where a condition compares: `IF x += 1 THEN`,
+    // with the rest of its chain, `IF x += y := 1 THEN`. It is a statement of
+    // its own.
     ERR_compound_in_condition: ($) =>
       prec(
         -1,
@@ -434,12 +435,25 @@ module.exports = grammar({
           field("place", $._expression),
           field("operator", $.compound_operator),
           field("value", $._expression),
+          repeat(seq(choice(":=", "+=", "-=", "*=", "/="), $._expression)),
         ),
       ),
 
-    // Using ':=' (assignment) where a condition compares with '='
+    // Using ':=' (assignment) where a condition compares with '=', and a
+    // chain after it, `IF on := x := y THEN`, which is a statement of its own.
     ERR_assign_in_condition: ($) =>
-      prec(-1, seq($._expression, ":=", $._expression)),
+      prec(
+        -1,
+        seq(
+          $._expression,
+          ":=",
+          $._expression,
+          field(
+            "chain",
+            optional(choice($.ERR_chain_outside_statement, $.ERR_compound_outside_statement)),
+          ),
+        ),
+      ),
 
     // Using '=>' (output assign) instead of ':='
     ERR_output_assign_in_assignment: ($) => seq("=>", $._expression),

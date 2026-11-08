@@ -239,3 +239,63 @@ END_FUNCTION
                 (int_literal
                   (signed_int
                     (unsigned_int)))))))))))
+
+================================================================================
+A chain in a condition
+================================================================================
+
+FUNCTION fn
+    IF on := x := y THEN
+    END_IF;
+    WHILE on := x += 1 DO
+    END_WHILE;
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (func_decl
+    (identifier)
+    (func_body
+      (stmt_list
+        (if_stmt
+          (ERR_assign_in_condition
+            (variable_access
+              (variable
+                (begin_path_expression
+                  (path_expression
+                    (var_access
+                      (field))))))
+            (variable_access
+              (variable
+                (begin_path_expression
+                  (path_expression
+                    (var_access
+                      (field))))))
+            (ERR_chain_outside_statement
+              (variable_access
+                (variable
+                  (begin_path_expression
+                    (path_expression
+                      (var_access
+                        (field)))))))))
+        (while_stmt
+          (ERR_assign_in_condition
+            (variable_access
+              (variable
+                (begin_path_expression
+                  (path_expression
+                    (var_access
+                      (field))))))
+            (variable_access
+              (variable
+                (begin_path_expression
+                  (path_expression
+                    (var_access
+                      (field))))))
+            (ERR_compound_outside_statement
+              (constant
+                (numeric_literal
+                  (int_literal
+                    (signed_int
+                      (unsigned_int))))))))))))

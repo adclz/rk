@@ -377,3 +377,39 @@ END_FUNCTION
                 (int_literal
                   (signed_int
                     (unsigned_int)))))))))))
+
+================================================================================
+A compound assignment in a condition, with the rest of its chain
+================================================================================
+
+FUNCTION fn
+    IF x += y := 1 THEN
+    END_IF;
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (func_decl
+    (identifier)
+    (func_body
+      (stmt_list
+        (if_stmt
+          (ERR_compound_in_condition
+            (variable_access
+              (variable
+                (begin_path_expression
+                  (path_expression
+                    (var_access
+                      (field))))))
+            (variable_access
+              (variable
+                (begin_path_expression
+                  (path_expression
+                    (var_access
+                      (field))))))
+            (constant
+              (numeric_literal
+                (int_literal
+                  (signed_int
+                    (unsigned_int)))))))))))

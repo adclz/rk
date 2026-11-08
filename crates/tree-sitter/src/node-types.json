@@ -742,7 +742,22 @@
   {
     "type": "ERR_assign_in_condition",
     "named": true,
-    "fields": {},
+    "fields": {
+      "chain": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "ERR_chain_outside_statement",
+            "named": true
+          },
+          {
+            "type": "ERR_compound_outside_statement",
+            "named": true
+          }
+        ]
+      }
+    },
     "children": {
       "multiple": true,
       "required": true,
@@ -823,6 +838,16 @@
           }
         ]
       }
+    },
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "_expression",
+          "named": true
+        }
+      ]
     }
   },
   {
