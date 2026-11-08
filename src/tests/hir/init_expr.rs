@@ -191,7 +191,7 @@ fn unexpected_struct_field(mut with_db: RootDatabase) {
        |
      8 |                 Base : Engine := [2(param1 := 0)];
        |                                     ^^^^^|^^^^^
-       |                                          `------- 'Engine' has no field named 'param1'
+       |                                          `------- 'INT' has no field named 'param1'
     ---'
     ");
 }
