@@ -18,9 +18,9 @@ fn all_pass(db: &mut db::RootDatabase, source: &str, count: usize) {
 }
 
 /// Each operator computes what its operation written out does, at the
-/// place's type: an integer division truncates, an integer wraps at its
-/// width, an operand of a narrower type widens, and REALs and durations
-/// compute as theirs.
+/// place's type: an integer division truncates toward zero, an integer
+/// wraps at its width, the lowest DINT divided by -1 included, an operand of
+/// a narrower type widens, and REALs and durations compute as theirs.
 #[rstest]
 fn each_operator_computes_its_operation(mut with_db: db::RootDatabase) {
     let source = r#"
@@ -30,15 +30,17 @@ fn each_operator_computes_its_operation(mut with_db: db::RootDatabase) {
             i += 5; IF i <> 15 THEN __RAISE('+='); END_IF;
             i -= 20; IF i <> -5 THEN __RAISE('-='); END_IF;
             i *= -3; IF i <> 15 THEN __RAISE('*='); END_IF;
-            i /= 4; IF i <> 3 THEN __RAISE('/= truncates'); END_IF;
+            i /= 4; IF i <> 3 THEN __RAISE('/='); END_IF;
+            i := -15; i /= 4; IF i <> -3 THEN __RAISE('/= truncates'); END_IF;
         END_FUNCTION
 
         {test}
         FUNCTION wraps_at_the_width
-        VAR i : INT := 32767; s : SINT := -128; u : USINT := 0; END_VAR
+        VAR i : INT := 32767; s : SINT := -128; u : USINT := 0; d : DINT := DINT#-2147483648; END_VAR
             i += 1; IF i <> -32768 THEN __RAISE('INT wraps'); END_IF;
             s -= 1; IF s <> 127 THEN __RAISE('SINT wraps'); END_IF;
             u -= 1; IF u <> 255 THEN __RAISE('USINT wraps'); END_IF;
+            d /= -1; IF d <> DINT#-2147483648 THEN __RAISE('MIN /= -1 wraps'); END_IF;
         END_FUNCTION
 
         {test}
@@ -136,6 +138,35 @@ fn the_place_is_found_once(mut with_db: db::RootDatabase) {
             r := REF(x);
             r^ += aim(r := r, target := y);
             IF x <> 11 OR y <> 100 THEN __RAISE('x read and written'); END_IF;
+        END_FUNCTION
+    "#;
+    all_pass(&mut with_db, source, 2);
+}
+
+/// The place is read before the value is computed, as `x := x + e` reads it
+/// left to right: a call in the value that changes the place adds to what
+/// the place held, 10 + 11, not to what it left.
+#[rstest]
+fn the_place_is_read_before_the_value(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION bump : INT
+        VAR_IN_OUT k : INT; END_VAR
+            k += 1;
+            bump := k;
+        END_FUNCTION
+
+        {test}
+        FUNCTION compound
+        VAR x : INT := 10; END_VAR
+            x += bump(k := x);
+            IF x <> 21 THEN __RAISE('x read first'); END_IF;
+        END_FUNCTION
+
+        {test}
+        FUNCTION written_out
+        VAR x : INT := 10; END_VAR
+            x := x + bump(k := x);
+            IF x <> 21 THEN __RAISE('x read first'); END_IF;
         END_FUNCTION
     "#;
     all_pass(&mut with_db, source, 2);
