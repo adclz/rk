@@ -347,7 +347,9 @@ impl<'db> Signature<'db> {
             None => return,
         };
 
+        let since = self.errors.len();
         for var in variables {
+            let reported = self.errors.len();
             let _ = self.infer_spec(db, var.spec(db));
 
             // An ABSTRACT type has no implementation of its own, so a
@@ -401,6 +403,8 @@ impl<'db> Signature<'db> {
                     );
                 }
             }
+            // A name list's type is reported for its first name.
+            super::drop_repeated(&mut self.errors, since, reported);
 
             if var.kind(db) == VariableKind::External {
                 let var_name = var.get_name_ident(db);
