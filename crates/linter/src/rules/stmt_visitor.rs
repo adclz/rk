@@ -101,12 +101,6 @@ pub fn check<'db>(
         ctx.written_inputs = missing_input_param::written_inputs(db, body, statements);
     }
 
-    let mut assigned_vars = if ctx.uninitialized_output {
-        Some(rustc_hash::FxHashSet::default())
-    } else {
-        None
-    };
-
     let mut return_assigned = false;
 
     let mut active_loop_vars: Vec<(VariableDecl<'db>, VariableAccess<'db>)> = Vec::new();
@@ -117,7 +111,6 @@ pub fn check<'db>(
         scope,
         statements,
         diagnostics,
-        &mut assigned_vars,
         &mut active_loop_vars,
         &mut return_assigned,
     );
@@ -129,9 +122,10 @@ pub fn check<'db>(
         });
     }
 
-    if let Some(assigned) = assigned_vars {
+    if ctx.uninitialized_output {
+        let written = uninitialized_output::written(db, body, statements);
         run_lint(uninitialized_output::NAME, diagnostics, |d| {
-            uninitialized_output::check_outputs(db, scope, &assigned, d)
+            uninitialized_output::check_outputs(db, scope, &written, d)
         });
     }
 }
@@ -337,9 +331,6 @@ fn visit_statements<'db>(
     scope: ScopeId<'db>,
     stmts: &[Stmt<'db>],
     diagnostics: &mut Vec<IdeDiagnostic>,
-    assigned_vars: &mut Option<
-        rustc_hash::FxHashSet<hir::hir_def::pous::variable::VariableDecl<'db>>,
-    >,
     active_loop_vars: &mut Vec<(VariableDecl<'db>, VariableAccess<'db>)>,
     return_assigned: &mut bool,
 ) {
@@ -402,13 +393,6 @@ fn visit_statements<'db>(
                 {
                     *return_assigned = true;
                 }
-                if ctx.uninitialized_output
-                    && let Some(assigned) = assigned_vars.as_mut()
-                {
-                    for var in vars {
-                        uninitialized_output::collect_assigned(db, body, *var, assigned);
-                    }
-                }
             }
             StmtKind::If {
                 condition,
@@ -430,7 +414,6 @@ fn visit_statements<'db>(
                         scope,
                         stmts,
                         diagnostics,
-                        assigned_vars,
                         active_loop_vars,
                         return_assigned,
                     );
@@ -449,7 +432,6 @@ fn visit_statements<'db>(
                         scope,
                         stmts,
                         diagnostics,
-                        assigned_vars,
                         active_loop_vars,
                         return_assigned,
                     );
@@ -462,7 +444,6 @@ fn visit_statements<'db>(
                         scope,
                         stmts,
                         diagnostics,
-                        assigned_vars,
                         active_loop_vars,
                         return_assigned,
                     );
@@ -515,7 +496,6 @@ fn visit_statements<'db>(
                     scope,
                     loop_body,
                     diagnostics,
-                    assigned_vars,
                     active_loop_vars,
                     return_assigned,
                 );
@@ -546,7 +526,6 @@ fn visit_statements<'db>(
                     scope,
                     loop_body,
                     diagnostics,
-                    assigned_vars,
                     active_loop_vars,
                     return_assigned,
                 );
@@ -601,7 +580,6 @@ fn visit_statements<'db>(
                     scope,
                     loop_body,
                     diagnostics,
-                    assigned_vars,
                     active_loop_vars,
                     return_assigned,
                 );
@@ -635,11 +613,6 @@ fn visit_statements<'db>(
                     {
                         *return_assigned = true;
                     }
-                    if ctx.uninitialized_output
-                        && let Some(assigned) = assigned_vars.as_mut()
-                    {
-                        uninitialized_output::collect_assigned(db, body, var, assigned);
-                    }
                 }
                 let bodies = [
                     Some(stmts),
@@ -654,7 +627,6 @@ fn visit_statements<'db>(
                         scope,
                         stmts,
                         diagnostics,
-                        assigned_vars,
                         active_loop_vars,
                         return_assigned,
                     );
@@ -684,7 +656,6 @@ fn visit_statements<'db>(
                         scope,
                         stmts,
                         diagnostics,
-                        assigned_vars,
                         active_loop_vars,
                         return_assigned,
                     );
@@ -697,7 +668,6 @@ fn visit_statements<'db>(
                         scope,
                         stmts,
                         diagnostics,
-                        assigned_vars,
                         active_loop_vars,
                         return_assigned,
                     );

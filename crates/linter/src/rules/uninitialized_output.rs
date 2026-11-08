@@ -6,14 +6,21 @@ use db::WorkspaceDataBase;
 use hir::{
     HasName, HirNodeInfo,
     hir_def::{
-        expressions::expression::VariableAccessKind,
+        expressions::{
+            expression::{
+                BeginPathExpr, ExprKind, PrimaryExpr, VariableAccess, VariableAccessKind,
+            },
+            statement::Stmt,
+        },
         pous::variable::{VariableDecl, VariableKind},
         scope::ScopeId,
     },
-    hir_ty::{body::ScopeInference, ty::Type},
+    hir_ty::{body::ScopeInference, expr_store::PathExprWalkStep},
 };
 use ide_diagnostic::{ErrorCode, IdeDiagnostic, Related, diag};
 use rustc_hash::FxHashSet;
+
+use super::accesses::{self, Place, Use};
 
 pub const NAME: &str = "uninitialized-output";
 
@@ -32,23 +39,57 @@ impl ErrorCode for UninitializedOutput {
     }
 }
 
-/// Collect the variable assigned by a single assignment LHS.
-/// Called by the unified visitor for each assignment statement.
-pub fn collect_assigned<'db>(
+/// The variables `statements` may write: assigned whole or in part, a counter,
+/// bound to a call's output or in-out, or handed out by `REF()`.
+pub fn written<'db>(
     db: &'db dyn WorkspaceDataBase,
     body: ScopeInference<'db>,
-    var: hir::hir_def::expressions::expression::VariableAccess<'db>,
-    assigned: &mut FxHashSet<VariableDecl<'db>>,
-) {
-    let VariableAccessKind::Symbolic(begin) = var.kind(db) else {
-        return;
+    statements: &[Stmt<'db>],
+) -> FxHashSet<VariableDecl<'db>> {
+    let symbolic = |access: VariableAccess<'db>| match access.kind(db) {
+        VariableAccessKind::Symbolic(begin) => Some(begin),
+        _ => None,
     };
-    let Some(path_expr) = begin.expr(db) else {
-        return;
-    };
-    if let Type::Variable((var_decl, _)) = body.type_of_path_expr(path_expr) {
-        assigned.insert(var_decl);
+    let mut written = FxHashSet::default();
+    accesses::statements(db, statements, &mut |place, how| {
+        let begin = match (place, how) {
+            (Place::Access(access), Use::Write) => symbolic(access),
+            (Place::Referenced(begin), _) => Some(begin),
+            (Place::Argument(param), _)
+                if body
+                    .variable_for_param(param)
+                    .is_some_and(|parameter| parameter.is_in_out(db)) =>
+            {
+                match param.kind(db).value().expr(db) {
+                    ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess(access)) => symbolic(*access),
+                    _ => None,
+                }
+            }
+            _ => None,
+        };
+        if let Some(variable) = begin.and_then(|begin| root_variable(db, body, begin)) {
+            written.insert(variable);
+        }
+    });
+    written
+}
+
+/// The variable a path starts from. Past a `^`, what it writes is what the
+/// reference points at, and the reference is only read.
+fn root_variable<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    body: ScopeInference<'db>,
+    begin: BeginPathExpr<'db>,
+) -> Option<VariableDecl<'db>> {
+    let path = begin.expr(db)?;
+    let steps = path.flatten(db);
+    if steps
+        .iter()
+        .any(|step| matches!(step, PathExprWalkStep::Deref { .. }))
+    {
+        return None;
     }
+    body.variable_for_path_expr(steps.first()?.get_expr(db))
 }
 
 /// Check VAR_OUTPUT variables against the set of assigned variables.
