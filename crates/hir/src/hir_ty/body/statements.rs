@@ -409,9 +409,20 @@ impl<'db> StmtsResolverCtx<'db> {
                     vars,
                     target,
                     compound,
+                    operations,
                 } => {
                     self.check_assignment(
-                        db, resolver, &mut infer, *stmt, vars, *target, *compound, ctx,
+                        db,
+                        resolver,
+                        &mut infer,
+                        *stmt,
+                        Chain {
+                            vars,
+                            target: *target,
+                            compound: *compound,
+                            operations,
+                        },
+                        ctx,
                     );
                 }
 
@@ -1211,20 +1222,24 @@ impl<'db> StmtsResolverCtx<'db> {
 
     /// `a := b := e` runs from right to left, as `b := e; a := b;` does: the
     /// last place is written the value, then each other the value of the
-    /// place after it. Each link is checked as an assignment of its own.
-    /// `x += e`, `compound`, is checked as `x := x + e`.
-    #[allow(clippy::too_many_arguments)]
+    /// place after it. Each link is checked as an assignment of its own, and
+    /// one with an operator as written out: `x += e` as `x := x + e`, and
+    /// `a += b` in `a += b := e` as `a := a + b`.
     fn check_assignment(
         &self,
         db: &'db dyn WorkspaceDataBase,
         resolver: Resolver<'db>,
         infer: &mut InferExprCtx<'db>,
         stmt: Stmt<'db>,
-        vars: &[VariableAccess<'db>],
-        target: Expr<'db>,
-        compound: bool,
+        chain: Chain<'_, 'db>,
         ctx: &mut BodyInferenceResult<'db>,
     ) {
+        let Chain {
+            vars,
+            target,
+            compound,
+            operations,
+        } = chain;
         let Some((&var, links)) = vars.split_last() else {
             return;
         };
@@ -1234,14 +1249,14 @@ impl<'db> StmtsResolverCtx<'db> {
         // right-hand side: a RETURN-overloaded call picks the overload whose
         // return the target expects. A compound assignment's operation reads
         // the place just resolved, which is not resolved again.
-        infer.place_read = compound.then_some(var);
+        infer.place_reads = compound.then_some(var).into_iter().collect();
         infer.resolve_expr_expecting(db, target, ctx, Some(base_typ));
         infer.check_expr(db, target, ctx);
-        infer.place_read = None;
+        infer.place_reads.clear();
 
         if assignable && let Err(err) = infer.coerce_var_access_with_expr(db, var, target, ctx) {
             let diag = match compound {
-                true => compound_mismatch(db, err, base_typ, var, target),
+                true => compound_mismatch(db, err, base_typ, var, target, !links.is_empty()),
                 false => err.into_non_assignable(db, base_typ, CallSite::from_scoped(db, &target)),
             };
             ctx.errors.push(diag);
@@ -1272,12 +1287,26 @@ impl<'db> StmtsResolverCtx<'db> {
         }
 
         // The other places, from right to left, each written the value of
-        // the place after it: a mismatch there is the link's, and no cast
-        // can be written around a place.
+        // the place after it, or its operation over that value: a mismatch
+        // there is the link's, and no cast can be written around a place.
         let mut source = var;
-        for &link in links.iter().rev() {
+        // What the place on the right was written with an operator.
+        let mut source_operation = compound.then_some(target);
+        for (&link, &operation) in links.iter().zip(operations).rev() {
             let (base_typ, assignable) = self.check_written_place(db, resolver, link, ctx);
-            if assignable {
+            if let Some(operation) = operation {
+                // Both places it reads were resolved already.
+                infer.place_reads = vec![link, source];
+                infer.resolve_expr_expecting(db, operation, ctx, Some(base_typ));
+                infer.check_expr(db, operation, ctx);
+                infer.place_reads.clear();
+                if assignable
+                    && let Err(err) = infer.coerce_var_access_with_expr(db, link, operation, ctx)
+                {
+                    let diag = compound_mismatch(db, err, base_typ, link, operation, true);
+                    ctx.errors.push(diag);
+                }
+            } else if assignable {
                 match infer.coerce_var_access_with_place(db, link, source, ctx) {
                     Err(err) => {
                         let file = ctx.scope.file(db);
@@ -1294,10 +1323,23 @@ impl<'db> StmtsResolverCtx<'db> {
                             "a place in a chain takes the value of the place to its right"
                                 .to_string(),
                         );
-                        diag.with_help(format!(
-                            "assign '{}' in a statement of its own",
-                            CallSite::from_scoped(db, &link).to_string(db)
-                        ));
+                        match source_operation.filter(|_| {
+                            matches!(
+                                err.expected.normalize(db),
+                                Type::Elementary(ElementarySpec::Bool)
+                            )
+                        }) {
+                            // `flag := a /= b`: a BOOL is not divided into,
+                            // and '/=' is "not equal" as other languages
+                            // write it.
+                            Some(operation) if divides(db, operation) => {
+                                compare_instead(db, source, operation, &mut diag)
+                            }
+                            _ => diag.with_help(format!(
+                                "assign '{}' in a statement of its own",
+                                CallSite::from_scoped(db, &link).to_string(db)
+                            )),
+                        }
                         ctx.errors.push(diag);
                     }
                     Ok(_) => check_copy_keeps_location(
@@ -1309,6 +1351,7 @@ impl<'db> StmtsResolverCtx<'db> {
                 }
             }
             source = link;
+            source_operation = operation;
         }
 
         // A reference to this call's own storage, handed back to the caller
@@ -1486,15 +1529,26 @@ pub(crate) fn refuse_edge_input_as_storage<'db>(
     }
 }
 
-/// `i += 1.5` whose result its place cannot take: E0301 on the statement,
-/// which is the operation, with the operation written out in a note and in
-/// the fix, since no cast can be written around it.
+/// An assignment as `StmtKind::Assignment` holds it: its places, the value
+/// of the last, and the operations of the places written with an operator.
+struct Chain<'a, 'db> {
+    vars: &'a [VariableAccess<'db>],
+    target: Expr<'db>,
+    compound: bool,
+    operations: &'a [Option<Expr<'db>>],
+}
+
+/// `i += 1.5` whose result its place cannot take: E0301 on the operation,
+/// written out in a note and in the fix, since no cast can be written around
+/// it. Alone, the operation is the statement, which the fix replaces; `in_chain`,
+/// the help writes it in a statement of its own.
 fn compound_mismatch<'db>(
     db: &'db dyn WorkspaceDataBase,
     err: crate::hir_ty::infer::coerce::CoerceError<'db>,
     base_typ: Type<'db>,
     var: VariableAccess<'db>,
     operation: Expr<'db>,
+    in_chain: bool,
 ) -> ide_diagnostic::IdeDiagnostic {
     use crate::check::errors::e03_type::{TypeError, written_out_cast_suggestion};
     let site = CallSite::from_scoped(db, &operation);
@@ -1529,9 +1583,64 @@ fn compound_mismatch<'db>(
         site,
         &place,
         &written_out,
+        in_chain,
         &mut diag,
     );
     diag
+}
+
+/// Whether an operation of a chain divides: `a /= b`.
+fn divides<'db>(db: &'db dyn WorkspaceDataBase, operation: Expr<'db>) -> bool {
+    use crate::hir_def::expressions::expression::MultOperatorKind;
+    matches!(
+        operation.expr(db),
+        ExprKind::MultOperator {
+            operator: MultOperatorKind::Div,
+            ..
+        }
+    )
+}
+
+/// `flag := a /= b`, where a BOOL takes the quotient: '/=' is "not equal" as
+/// other languages write it, so the fix compares, and a note says what
+/// '/=' does. The operation of a link in a chain is marked from its
+/// operator, which the fix replaces.
+fn compare_instead<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    place: VariableAccess<'db>,
+    operation: Expr<'db>,
+    diag: &mut ide_diagnostic::IdeDiagnostic,
+) {
+    use auto_lsp::lsp_types::{CodeAction, TextEdit, WorkspaceEdit};
+    let ExprKind::MultOperator { right, .. } = operation.expr(db) else {
+        return;
+    };
+    let place = CallSite::from_scoped(db, &place).to_string(db);
+    let value = CallSite::from_scoped(db, right).to_string(db);
+    diag.with_note(format!(
+        "'{place} /= {value}' is '{place} := {place} / {value}'"
+    ));
+    let site = CallSite::from_scoped(db, &operation);
+    let file = site.get_scope_id(db).file(db);
+    let mut span = site.get_span(db);
+    span.end_byte = span.start_byte + "/=".len();
+    span.end_point = auto_lsp::tree_sitter::Point {
+        row: span.start_point.row,
+        column: span.start_point.column + "/=".len(),
+    };
+    let range = crate::denormalize(db, file, &span).unwrap_or_default();
+    diag.with_fix(CodeAction {
+        title: "replace '/=' with '<>'".to_string(),
+        edit: Some(WorkspaceEdit::new(std::collections::HashMap::from([(
+            file.url(db).clone(),
+            vec![TextEdit {
+                range,
+                new_text: "<>".to_string(),
+            }],
+        )]))),
+        is_preferred: Some(true),
+        ..Default::default()
+    });
 }
 
 /// Whether a FOR control access is a single bare identifier — no path steps

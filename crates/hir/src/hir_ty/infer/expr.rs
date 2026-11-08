@@ -26,10 +26,11 @@ use crate::{
 
 pub struct InferExprCtx<'db> {
     pub resolver: Resolver<'db>,
-    /// The place of a compound assignment, `x += e`, while its operation is
-    /// inferred: written, it was resolved and checked already, and its read
-    /// takes that type rather than being resolved and reported again.
-    pub place_read: Option<VariableAccess<'db>>,
+    /// The places an operation of a chain reads while it is inferred: the
+    /// one `x += e` writes, and in `a += b := e` also `b`, on the right.
+    /// Written, each was resolved and checked already, and its read takes
+    /// that type rather than being resolved and reported again.
+    pub place_reads: Vec<VariableAccess<'db>>,
 }
 
 /// The POU's own variadic parameter, which is what `...` reads and nothing
@@ -74,7 +75,7 @@ impl<'db> InferExprCtx<'db> {
     pub fn new(resolver: Resolver<'db>) -> Self {
         Self {
             resolver,
-            place_read: None,
+            place_reads: Vec::new(),
         }
     }
 
@@ -395,7 +396,7 @@ impl<'db> InferExprCtx<'db> {
     ) -> Type<'db> {
         match to {
             PrimaryExpr::Literal(prim) => (*prim).into(),
-            PrimaryExpr::VariableAccess(v) if self.place_read == Some(*v) => {
+            PrimaryExpr::VariableAccess(v) if self.place_reads.contains(v) => {
                 inference_result.get_type_of_variable_access(db, *v)
             }
             PrimaryExpr::VariableAccess(v) => {
