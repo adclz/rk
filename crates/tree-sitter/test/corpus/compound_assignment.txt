@@ -178,3 +178,33 @@ END_FUNCTION
                   (var_access
                     (field))))))
           (ERR_empty_compound_assignment))))))
+
+================================================================================
+A compound assignment in a condition
+================================================================================
+
+FUNCTION fn
+    IF x += 1 THEN
+    END_IF;
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (func_decl
+    (identifier)
+    (func_body
+      (stmt_list
+        (if_stmt
+          (ERR_compound_in_condition
+            (variable_access
+              (variable
+                (begin_path_expression
+                  (path_expression
+                    (var_access
+                      (field))))))
+            (constant
+              (numeric_literal
+                (int_literal
+                  (signed_int
+                    (unsigned_int)))))))))))

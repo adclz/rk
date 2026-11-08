@@ -411,6 +411,18 @@ module.exports = grammar({
     // Missing '=' after ':'
     ERR_missing_equal_in_for_control: ($) => ":",
 
+    // A compound assignment where a condition compares: `IF x += 1 THEN`.
+    // It is a statement of its own.
+    ERR_compound_in_condition: ($) =>
+      prec(
+        -1,
+        seq(
+          field("place", $._expression),
+          field("operator", $.compound_operator),
+          field("value", $._expression),
+        ),
+      ),
+
     // Using ':=' (assignment) where a condition compares with '='
     ERR_assign_in_condition: ($) =>
       prec(-1, seq($._expression, ":=", $._expression)),
@@ -2342,7 +2354,10 @@ module.exports = grammar({
     if_stmt: ($) =>
       seq(
         kw("IF"),
-        field("if_cond", choice($._expression, $.ERR_assign_in_condition)),
+        field(
+          "if_cond",
+          choice($._expression, $.ERR_assign_in_condition, $.ERR_compound_in_condition),
+        ),
         kw("THEN"),
         field("if_body", optional($.stmt_list)),
         field("else_if", repeat($.else_if_stmt)),
@@ -2353,7 +2368,10 @@ module.exports = grammar({
     else_if_stmt: ($) =>
       seq(
         kw("ELSIF"),
-        field("else_if_cond", choice($._expression, $.ERR_assign_in_condition)),
+        field(
+          "else_if_cond",
+          choice($._expression, $.ERR_assign_in_condition, $.ERR_compound_in_condition),
+        ),
         kw("THEN"),
         field("else_if_body", optional($.stmt_list)),
       ),
@@ -2412,7 +2430,10 @@ module.exports = grammar({
     while_stmt: ($) =>
       seq(
         kw("WHILE"),
-        field("while_cond", choice($._expression, $.ERR_assign_in_condition)),
+        field(
+          "while_cond",
+          choice($._expression, $.ERR_assign_in_condition, $.ERR_compound_in_condition),
+        ),
         kw("DO"),
         field("while_body", optional($.stmt_list)),
         kw("END_WHILE"),
@@ -2423,7 +2444,10 @@ module.exports = grammar({
         kw("REPEAT"),
         field("repeat_body", optional($.stmt_list)),
         kw("UNTIL"),
-        field("repeat_cond", choice($._expression, $.ERR_assign_in_condition)),
+        field(
+          "repeat_cond",
+          choice($._expression, $.ERR_assign_in_condition, $.ERR_compound_in_condition),
+        ),
         kw("END_REPEAT"),
       ),
 

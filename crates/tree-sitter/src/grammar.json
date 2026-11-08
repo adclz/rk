@@ -765,6 +765,39 @@
       "type": "STRING",
       "value": ":"
     },
+    "ERR_compound_in_condition": {
+      "type": "PREC",
+      "value": -1,
+      "content": {
+        "type": "SEQ",
+        "members": [
+          {
+            "type": "FIELD",
+            "name": "place",
+            "content": {
+              "type": "SYMBOL",
+              "name": "_expression"
+            }
+          },
+          {
+            "type": "FIELD",
+            "name": "operator",
+            "content": {
+              "type": "SYMBOL",
+              "name": "compound_operator"
+            }
+          },
+          {
+            "type": "FIELD",
+            "name": "value",
+            "content": {
+              "type": "SYMBOL",
+              "name": "_expression"
+            }
+          }
+        ]
+      }
+    },
     "ERR_assign_in_condition": {
       "type": "PREC",
       "value": -1,
@@ -12580,6 +12613,10 @@
               {
                 "type": "SYMBOL",
                 "name": "ERR_assign_in_condition"
+              },
+              {
+                "type": "SYMBOL",
+                "name": "ERR_compound_in_condition"
               }
             ]
           }
@@ -12722,6 +12759,10 @@
               {
                 "type": "SYMBOL",
                 "name": "ERR_assign_in_condition"
+              },
+              {
+                "type": "SYMBOL",
+                "name": "ERR_compound_in_condition"
               }
             ]
           }
@@ -13209,6 +13250,10 @@
               {
                 "type": "SYMBOL",
                 "name": "ERR_assign_in_condition"
+              },
+              {
+                "type": "SYMBOL",
+                "name": "ERR_compound_in_condition"
               }
             ]
           }
@@ -13327,6 +13372,10 @@
               {
                 "type": "SYMBOL",
                 "name": "ERR_assign_in_condition"
+              },
+              {
+                "type": "SYMBOL",
+                "name": "ERR_compound_in_condition"
               }
             ]
           }

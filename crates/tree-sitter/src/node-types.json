@@ -794,6 +794,42 @@
     "fields": {}
   },
   {
+    "type": "ERR_compound_in_condition",
+    "named": true,
+    "fields": {
+      "operator": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "compound_operator",
+            "named": true
+          }
+        ]
+      },
+      "place": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "_expression",
+            "named": true
+          }
+        ]
+      },
+      "value": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "_expression",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "ERR_compound_outside_statement",
     "named": true,
     "fields": {
@@ -3009,6 +3045,10 @@
             "named": true
           },
           {
+            "type": "ERR_compound_in_condition",
+            "named": true
+          },
+          {
             "type": "_expression",
             "named": true
           }
@@ -4084,6 +4124,10 @@
         "types": [
           {
             "type": "ERR_assign_in_condition",
+            "named": true
+          },
+          {
+            "type": "ERR_compound_in_condition",
             "named": true
           },
           {
@@ -6160,6 +6204,10 @@
             "named": true
           },
           {
+            "type": "ERR_compound_in_condition",
+            "named": true
+          },
+          {
             "type": "_expression",
             "named": true
           }
@@ -7785,6 +7833,10 @@
         "types": [
           {
             "type": "ERR_assign_in_condition",
+            "named": true
+          },
+          {
+            "type": "ERR_compound_in_condition",
             "named": true
           },
           {
