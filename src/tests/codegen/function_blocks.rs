@@ -1812,3 +1812,50 @@ fn function_blocks_holding_each_other_through_in_outs(mut with_db: db::RootDatab
     let result: i32 = crate::tests::codegen::run(&mut with_db, source, "test", ());
     assert_eq!(result, 14, "7 through motor.drive, 7 through motor.seen");
 }
+
+/// A caller names an instance's inputs and outputs between its calls: an
+/// input read is the value the last call passed, an input written is passed
+/// by the next call, and an output written holds until the next call.
+#[rstest]
+fn an_instance_from_outside(mut with_db: db::RootDatabase) {
+    let source = r#"
+        FUNCTION_BLOCK Blk
+        VAR_INPUT IN : BOOL; PT : INT; END_VAR
+        VAR_OUTPUT Q : BOOL; ET : INT; END_VAR
+            Q := IN;
+            ET := PT;
+        END_FUNCTION_BLOCK
+
+        {test}
+        FUNCTION an_input_read
+        VAR t : Blk; END_VAR
+            t(IN := TRUE, PT := 5);
+            IF NOT t.IN OR t.PT <> 5 THEN __RAISE('the values last passed'); END_IF;
+        END_FUNCTION
+
+        {test}
+        FUNCTION an_input_written
+        VAR t : Blk; END_VAR
+            t(IN := TRUE, PT := 5);
+            t.IN := FALSE;
+            t.PT := 8;
+            t();
+            IF t.Q OR t.ET <> 8 THEN __RAISE('passed by the next call'); END_IF;
+        END_FUNCTION
+
+        {test}
+        FUNCTION an_output_written
+        VAR t : Blk; END_VAR
+            t.Q := TRUE;
+            IF NOT t.Q THEN __RAISE('held until the call'); END_IF;
+            t(IN := FALSE, PT := 0);
+            IF t.Q THEN __RAISE('written over by the call'); END_IF;
+        END_FUNCTION
+    "#;
+    let wasm = crate::tests::codegen::compile_to_wasm_as_built(&mut with_db, source);
+    let results = crate::tests::codegen::run_tests(&wasm, None).expect("run tests");
+    assert_eq!(results.len(), 3);
+    for result in &results {
+        assert!(result.passed(), "{}: {:?}", result.name, result.reason);
+    }
+}
