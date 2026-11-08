@@ -9,7 +9,7 @@ use hir::{
     HasName, HirNodeInfo,
     hir_def::{
         expressions::{
-            expression::{ParamAssign, ParamAssignKind, PathExpr},
+            expression::{InitExpr, InitExprKind, ParamAssign, ParamAssignKind, PathExpr},
             spec::{Spec, SpecKind},
         },
         hir_node::HirNode,
@@ -160,7 +160,9 @@ fn resolve_cursor_target<'db>(
         HirNode::VariableAccess(v) => v.infer(db),
         HirNode::Expr(e) => e.infer(db),
         HirNode::Param(p) => p.infer(db),
-        HirNode::InitExpr(i) => i.infer(db),
+        // A field it names: its parentheses and brackets name nothing, and
+        // a rename from one renamed the type.
+        HirNode::InitExpr(i) => init_field_name(db, *i).map(|_| i.infer(db))?,
         HirNode::Invocation(i) => i.infer(db),
         _ => return None,
     };
@@ -188,7 +190,10 @@ fn resolve_walk_target<'db>(
         // parameter it reaches wrote the new name over the argument: `f(v)`
         // and `f(1.5)` came back as `f(renamed)`.
         HirNode::Param(p) => param_name(db, *p).map(|_| p.infer(db))?,
-        // Skip Expr, Invocation, InitExpr, VariableAccess — they wrap inner nodes
+        // A field named in an initializer, `fuel` of `(fuel := 1)`. The other
+        // initializer nodes hold their values, and name nothing themselves.
+        HirNode::InitExpr(i) => init_field_name(db, *i).map(|_| i.infer(db))?,
+        // Skip Expr, Invocation, VariableAccess — they wrap inner nodes
         // and would produce duplicate matches (PathExpr already covers variable accesses)
         _ => return None,
     };
@@ -205,6 +210,17 @@ fn param_name<'db>(db: &'db dyn WorkspaceDataBase, p: ParamAssign<'db>) -> Optio
     }
 }
 
+/// The field or member an initializer names, `fuel` of `(fuel := 1)`.
+fn init_field_name<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    i: InitExpr<'db>,
+) -> Option<SpanIdent<'db>> {
+    match i.kind(db) {
+        InitExprKind::StructElement { name, .. } => Some(name),
+        _ => None,
+    }
+}
+
 /// Extract the identifier text from a HirNode for reference matching.
 /// Returns None for nodes where ident comparison is not applicable.
 fn node_reference_ident<'db>(
@@ -218,6 +234,7 @@ fn node_reference_ident<'db>(
         HirNode::StructElement(st) => st.get_name_ident(db).text(db),
         HirNode::PathExpr(p) => p.ident(db).ident(db).text(db),
         HirNode::Param(p) => param_name(db, *p)?.ident(db).text(db),
+        HirNode::InitExpr(i) => init_field_name(db, *i)?.ident(db).text(db),
         HirNode::Spec(spec) => spec_target(db, *spec)?.ident(db).text(db),
         _ => return None,
     })
@@ -248,6 +265,11 @@ fn reference_span<'db>(
         // The name alone: the whole binding, `IN := 5`, used to be replaced
         // by the new name, value included.
         HirNode::Param(p) => match param_name(db, *p) {
+            Some(name) => name.get_span(db),
+            None => node.get_span(db),
+        },
+        // The name alone: the whole element, `fuel := 1`, is not the field's.
+        HirNode::InitExpr(i) => match init_field_name(db, *i) {
             Some(name) => name.get_span(db),
             None => node.get_span(db),
         },

@@ -335,6 +335,73 @@ fn a_real_constant_from_another_is_an_initial_value(mut with_db: db::RootDatabas
     }
 }
 
+/// `AND`, `&`, `OR`, `XOR` and `NOT` over BOOL literals and CONSTANTs are an
+/// initial value `__init` stores, each CONSTANT in it its value: a TYPE's
+/// fields, a function block's members, a global, and an omitted input's
+/// default. They were refused, `NOT TRUE` aside.
+#[rstest]
+fn bool_logic_over_constants_is_an_initial_value(mut with_db: db::RootDatabase) {
+    let source = r#"
+        CONFIGURATION Cfg
+        VAR_GLOBAL CONSTANT on : BOOL := TRUE; off : BOOL := NOT on; END_VAR
+        VAR_GLOBAL g : BOOL := on AND NOT off; END_VAR
+        END_CONFIGURATION
+
+        TYPE Flags : STRUCT
+            a : BOOL := TRUE AND FALSE;
+            b : BOOL := TRUE XOR FALSE;
+            c : BOOL := (FALSE OR TRUE) & NOT FALSE;
+        END_STRUCT; END_TYPE
+
+        FUNCTION_BLOCK Fb
+        VAR CONSTANT k0 : BOOL := TRUE; k1 : BOOL := k0 AND TRUE; END_VAR
+        VAR m : BOOL := k1 AND NOT FALSE; n : BOOL := NOT (k1 XOR k0); END_VAR
+        END_FUNCTION_BLOCK
+
+        FUNCTION pick : BOOL
+        VAR_INPUT x : BOOL := TRUE AND NOT FALSE; END_VAR
+            pick := x;
+        END_FUNCTION
+
+        {test}
+        FUNCTION a_types_fields
+        VAR f : Flags; END_VAR
+            IF f.a OR NOT f.b OR NOT f.c THEN
+                __RAISE('the fields are not FALSE, TRUE, TRUE');
+            END_IF;
+        END_FUNCTION
+
+        {test}
+        FUNCTION a_members
+        VAR f : Fb; END_VAR
+            IF NOT f.m OR NOT f.n THEN
+                __RAISE('the members are not TRUE, TRUE');
+            END_IF;
+        END_FUNCTION
+
+        {test}
+        FUNCTION a_globals
+        VAR_EXTERNAL g : BOOL; END_VAR
+            IF NOT g THEN
+                __RAISE('the global is not TRUE');
+            END_IF;
+        END_FUNCTION
+
+        {test}
+        FUNCTION an_inputs_default
+            IF NOT pick() THEN
+                __RAISE('the default is not TRUE');
+            END_IF;
+        END_FUNCTION
+    "#;
+    let wasm = super::compile_to_wasm_as_built(&mut with_db, source);
+    let results = super::run_tests(&wasm, None).expect("run tests");
+    assert_eq!(results.len(), 4);
+    for result in &results {
+        assert!(result.passed(), "{}: {:?}", result.name, result.reason);
+    }
+}
+
 /// A REAL CONSTANT that an initial value names is lowered once in it, however
 /// often the value reaches it. Each of these names the two before it: lowered
 /// again at each name, 16 of them made a module of 26 KB, and these 60 would

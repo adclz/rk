@@ -164,3 +164,68 @@ fn a_real_constant_named_twice_is_walked_once() {
     });
     assert_snapshot!(report, @"");
 }
+
+/// BOOL logic folds over BOOL literals and CONSTANTs only: a comparison, a
+/// variable and a CONSTANT that names itself through another are no
+/// constant, and the cycle ends.
+#[rstest]
+fn invalid_bool_logic_that_does_not_fold(mut with_db: RootDatabase) {
+    let source = r#"
+        PROGRAM P
+        VAR CONSTANT a : BOOL := b; b : BOOL := a; END_VAR
+        VAR
+            i : INT;
+            x : BOOL := a AND TRUE;
+            y : BOOL := TRUE AND (1 < 2);
+            z : BOOL := TRUE AND (i > 0);
+        END_VAR
+        END_PROGRAM
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0401] Error: initial value not constant
+       ,-[ file:///test0.st:3:34 ]
+       |
+     3 |         VAR CONSTANT a : BOOL := b; b : BOOL := a; END_VAR
+       |                                  |
+       |                                  `-- this initial value must be a constant: it is fixed before the program runs
+       |
+       | Note: 'b' is CONSTANT, but its own value does not fold (a reference cycle, or a non-constant initializer)
+    ---'
+    [E0401] Error: initial value not constant
+       ,-[ file:///test0.st:3:49 ]
+       |
+     3 |         VAR CONSTANT a : BOOL := b; b : BOOL := a; END_VAR
+       |                                                 |
+       |                                                 `-- this initial value must be a constant: it is fixed before the program runs
+       |
+       | Note: 'a' is CONSTANT, but its own value does not fold (a reference cycle, or a non-constant initializer)
+    ---'
+    [E0401] Error: initial value not constant
+       ,-[ file:///test0.st:6:25 ]
+       |
+     6 |             x : BOOL := a AND TRUE;
+       |                         ^^^^^|^^^^
+       |                              `------ this initial value must be a constant: it is fixed before the program runs
+       |
+       | Note: 'a' is CONSTANT, but its own value does not fold (a reference cycle, or a non-constant initializer)
+    ---'
+    [E0401] Error: initial value not constant
+       ,-[ file:///test0.st:7:25 ]
+       |
+     7 |             y : BOOL := TRUE AND (1 < 2);
+       |                         ^^^^^^^^|^^^^^^^
+       |                                 `--------- this initial value must be a constant: it is fixed before the program runs
+    ---'
+    [E0401] Error: initial value not constant
+       ,-[ file:///test0.st:8:25 ]
+       |
+     8 |             z : BOOL := TRUE AND (i > 0);
+       |                         ^^^^^^^^|^^^^^^^
+       |                                 `--------- this initial value must be a constant: it is fixed before the program runs
+       |
+       | Help: declare it CONSTANT if its value never changes
+       |
+       | Note: 'i' is not CONSTANT
+    ---'
+    ");
+}

@@ -21,8 +21,19 @@ pub mod variables;
 impl<'db> InitInference<'db> {
     pub fn check_spec(&mut self, db: &'db dyn WorkspaceDataBase, spec: Spec<'db>) {
         match spec.kind(db) {
+            // What an element is made of is checked as a variable's own type
+            // is, under a reference and an `ARRAY[*]` too.
             SpecKind::Array(arr) => {
                 self.check_array(db, *arr);
+                self.check_spec(db, arr.of_type(db));
+            }
+            SpecKind::ArrayConformand(conformand) => {
+                if let Some(of_type) = conformand.of_type(db) {
+                    self.check_spec(db, of_type);
+                }
+            }
+            SpecKind::Ref(target) => {
+                self.check_spec(db, *target);
             }
             SpecKind::Enum(enm) => {
                 self.check_enum(db, *enm);

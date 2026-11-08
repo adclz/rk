@@ -5,7 +5,7 @@ NAMESPACE Std.Memory
 
 	/* Returns `IN`, and copies it into `OUT`.
 
-	   There is one overload per elementary type, the dates and times of day aside.
+	   There is one overload per elementary type.
 
 	   # Examples
 
@@ -242,6 +242,78 @@ NAMESPACE Std.Memory
 		MOVE := IN;
 	END_FUNCTION
 
+	FUNCTION MOVE: DATE
+		VAR_INPUT
+			IN: DATE;
+		END_VAR
+		VAR_OUTPUT
+			OUT: DATE;
+		END_VAR
+
+		OUT := IN;
+		MOVE := IN;
+	END_FUNCTION
+
+	FUNCTION MOVE: LDATE
+		VAR_INPUT
+			IN: LDATE;
+		END_VAR
+		VAR_OUTPUT
+			OUT: LDATE;
+		END_VAR
+
+		OUT := IN;
+		MOVE := IN;
+	END_FUNCTION
+
+	FUNCTION MOVE: TOD
+		VAR_INPUT
+			IN: TOD;
+		END_VAR
+		VAR_OUTPUT
+			OUT: TOD;
+		END_VAR
+
+		OUT := IN;
+		MOVE := IN;
+	END_FUNCTION
+
+	FUNCTION MOVE: LTOD
+		VAR_INPUT
+			IN: LTOD;
+		END_VAR
+		VAR_OUTPUT
+			OUT: LTOD;
+		END_VAR
+
+		OUT := IN;
+		MOVE := IN;
+	END_FUNCTION
+
+	FUNCTION MOVE: DT
+		VAR_INPUT
+			IN: DT;
+		END_VAR
+		VAR_OUTPUT
+			OUT: DT;
+		END_VAR
+
+		OUT := IN;
+		MOVE := IN;
+	END_FUNCTION
+
+	FUNCTION MOVE: LDT
+		VAR_INPUT
+			IN: LDT;
+		END_VAR
+		VAR_OUTPUT
+			OUT: LDT;
+		END_VAR
+
+		OUT := IN;
+		MOVE := IN;
+	END_FUNCTION
+
 	NAMESPACE Test
 		USING Std.Unit
 		USING Std.Memory
@@ -357,6 +429,30 @@ NAMESPACE Std.Memory
 			END_VAR
 			MOVE(CHAR#'z', OUT => c);
 			ASSERT_EQ(c, CHAR#'z', 'MOVE CHAR');
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_move_dates_and_times_of_day
+			VAR
+				d: DATE;
+				ld: LDATE;
+				t: TOD;
+				lt: LTOD;
+				dt1: DT;
+				ldt1: LDT;
+			END_VAR
+			MOVE(D#2024-01-31, OUT => d);
+			ASSERT(d = D#2024-01-31, 'MOVE DATE');
+			ld := MOVE(LDATE#2024-02-29);
+			ASSERT(ld = LDATE#2024-02-29, 'MOVE LDATE');
+			MOVE(TOD#12:30:45.123, OUT => t);
+			ASSERT(t = TOD#12:30:45.123, 'MOVE TOD');
+			lt := MOVE(LTOD#23:59:59.999999999);
+			ASSERT(lt = LTOD#23:59:59.999999999, 'MOVE LTOD on the i64-ns lane');
+			MOVE(DT#2024-01-31-12:30:45, OUT => dt1);
+			ASSERT(dt1 = DT#2024-01-31-12:30:45, 'MOVE DT');
+			ldt1 := MOVE(LDT#2024-01-31-12:30:45.5);
+			ASSERT(ldt1 = LDT#2024-01-31-12:30:45.5, 'MOVE LDT');
 		END_FUNCTION
 
 		{test}

@@ -19,7 +19,7 @@ use hir::{
         pous::{pou::Pou, variable::VariableKind},
         program::ProgramDecl,
         scope::{Scope, ScopeKind},
-        semantic_index::{NodeKey, get_scope, semantic_index},
+        semantic_index::{get_scope, semantic_index},
         using::Using,
     },
     hir_ty::{index_graphs::namespace_path_candidates, infer::Infer, oop::MethodRef},
@@ -179,6 +179,27 @@ impl<'db> CompletionHandler<'db> for HirNode<'db> {
                     return Some(ctx.take_items());
                 }
 
+                // Past the path, what it evaluates to holds the members: the
+                // element of `rows[0].`, the target of `r^.`.
+                if req.is_last_before {
+                    let receiver = p.infer_adjusted(db);
+                    if !receiver.is_never() {
+                        let mut ctx = CompletionCtx::new(req.offset, QueryMode::Body);
+                        ctx.field_completion(receiver, p.get_scope_id(db), db);
+                        return Some(ctx.take_items());
+                    }
+                    // What did not resolve has none, and no namespace is
+                    // written with a subscript, or as a member of a value.
+                    let names_nothing = match p.expr(db) {
+                        PathExprKind::Index(_) | PathExprKind::Deref(_) => true,
+                        PathExprKind::Field(f) => !f.path.infer_adjusted(db).is_never(),
+                        PathExprKind::VarAccess(_) => false,
+                    };
+                    if names_nothing {
+                        return Some(vec![]);
+                    }
+                }
+
                 // For non-leaf path expressions (field/index/deref), derive the parent
                 // on-demand and use its completions (the current node is likely incomplete)
                 let child_req = req.with_query(p.ident(db).ident(db).text(db).to_string());
@@ -199,21 +220,30 @@ impl<'db> CompletionHandler<'db> for HirNode<'db> {
                         // Not a namespace → regular field delegation
                         Some(f.path.completion(db, &child_req).unwrap_or_default())
                     }
-                    PathExprKind::Index(i) => {
-                        Some(i.path.completion(db, &child_req).unwrap_or_default())
-                    }
-                    PathExprKind::Deref(d) => {
-                        Some(d.path.completion(db, &child_req).unwrap_or_default())
-                    }
+                    // ON the path, the cursor is on the name its subscripts and
+                    // `^` follow: the node of `rows[0]` spans `rows` alone.
+                    PathExprKind::Index(i) => HirNode::PathExpr(i.path).completion(db, req),
+                    PathExprKind::Deref(d) => HirNode::PathExpr(d.path).completion(db, req),
                     // A bare name with the cursor ON it is being TYPED: offer
                     // what is in scope, not the members of whatever the
                     // half-written name happens to resolve to. `f` on an
                     // `f : Engine` offered `oil`, which is not in scope there.
                     // Past the name (`f.`) the path is a receiver, and its
                     // members are exactly what is wanted.
-                    PathExprKind::VarAccess(_) if !req.is_last_before => Some(
-                        body_scope_completion(db, p.get_scope_id(db), &req.query, req.offset),
-                    ),
+                    PathExprKind::VarAccess(_) if !req.is_last_before => {
+                        // `ki` of `THIS^.ki` is a member of what `THIS^` reads.
+                        if let Some(invocation) = invocation_holding(db, p) {
+                            let mut ctx = CompletionCtx::new(req.offset, QueryMode::Body);
+                            ctx.invocation_completion(invocation, db);
+                            return Some(ctx.take_items());
+                        }
+                        Some(body_scope_completion(
+                            db,
+                            p.get_scope_id(db),
+                            &req.query,
+                            req.offset,
+                        ))
+                    }
                     PathExprKind::VarAccess(_) => p.completion(db, &child_req),
                 }
             }
@@ -538,34 +568,7 @@ impl<'db> CompletionHandler<'db> for PathExpr<'db> {
     ) -> Option<Vec<CompletionItem>> {
         let mut ctx = CompletionCtx::new(req.offset, QueryMode::Body);
 
-        if req.is_last_before {
-            let sema = semantic_index(db, self.get_scope_id(db).file(db));
-
-            // Current node can't resolve - check if node_index_pos points to
-            // a nearby PathExpr that did resolve, and use its type.
-            if let Some(key) = req.node_index_pos {
-                let mut last_path = None;
-                let mut key = key;
-                while let Some(node) = sema.node_index.get(key) {
-                    // checks this is both a PathExpr and that it resolved to a non-never type
-                    if let HirNode::PathExpr(p) = node
-                        && !p.infer(db).is_never()
-                    {
-                        last_path = Some(p);
-                        key = NodeKey::from_usize(key.index().saturating_add(1));
-                    } else {
-                        break;
-                    }
-                }
-
-                if let Some(p) = last_path {
-                    ctx.field_completion(p.infer(db), p.get_scope_id(db), db);
-                    return Some(ctx.take_items());
-                }
-            }
-        }
-
-        let ty = self.infer(db);
+        let ty = self.infer_adjusted(db);
 
         if !ty.is_never() {
             ctx.field_completion(ty, self.get_scope_id(db), db);
@@ -661,12 +664,7 @@ impl<'db> CompletionHandler<'db> for Invocation<'db> {
         req: &CompletionRequest,
     ) -> Option<Vec<CompletionItem>> {
         let mut ctx = CompletionCtx::new(req.offset, QueryMode::Body);
-
-        let ty = self.infer(db);
-
-        // Try field completion, fall back to scope if type is unavailable
-        ctx.field_completion(ty, self.get_scope_id(db), db);
-
+        ctx.invocation_completion(*self, db);
         Some(ctx.take_items())
     }
 }
@@ -916,6 +914,25 @@ fn var_config_completion<'db>(
 /// The steps of a path as written.
 fn path_steps(path: &str) -> Vec<&str> {
     path.split('.').map(str::trim).collect()
+}
+
+/// The `THIS^` or `SUPER^` a path goes on from, which holds it.
+fn invocation_holding<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    path: &PathExpr<'db>,
+) -> Option<Invocation<'db>> {
+    let span = path.get_span(db);
+    semantic_index(db, path.get_scope_id(db).file(db))
+        .node_index
+        .iter()
+        .find_map(|node| match node {
+            HirNode::Invocation(invocation) => {
+                let holder = invocation.get_span(db);
+                (holder.start_byte < span.start_byte && span.end_byte <= holder.end_byte)
+                    .then_some(*invocation)
+            }
+            _ => None,
+        })
 }
 
 /// The program configuration whose list holds `path`, a path of the

@@ -1169,3 +1169,127 @@ END_PROGRAM
     ---'
     ");
 }
+
+/// Each STRUCT written in place is a type of its own, and each name of a list has
+/// its own, which the types in the message cannot show. A mismatch that is about
+/// something else says nothing of it, and a TYPE named like one is a name all the same.
+#[rstest]
+fn invalid_copy_between_structs_in_place(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE Named : STRUCT a : INT; END_STRUCT; END_TYPE
+TYPE MY_STRUCT : STRUCT a : INT; END_STRUCT; END_TYPE
+
+FUNCTION F
+VAR
+    x, listed : STRUCT a : INT; END_STRUCT;
+    y : STRUCT a : INT; END_STRUCT;
+    holder : STRUCT inner : STRUCT a : INT; END_STRUCT; END_STRUCT;
+    n : Named;
+    m : MY_STRUCT;
+    i : INT;
+END_VAR
+    y := x;
+    listed := x;
+    n := x;
+    holder.inner := y;
+    i := x;
+    x := i;
+    n := m;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0301] Error: type mismatch
+        ,-[ file:///test0.st:14:10 ]
+        |
+      8 |     y : STRUCT a : INT; END_STRUCT;
+        |     |
+        |     `-- 'y' is declared here
+        |
+     14 |     y := x;
+        |          |
+        |          `-- expected 'STRUCT', got 'STRUCT'
+        |
+        | Help: declare it once in a TYPE, and use that name in both places
+        |
+        | Note: a STRUCT written in place is a type of its own, for each name of a list too
+    ----'
+    [E0301] Error: type mismatch
+        ,-[ file:///test0.st:15:15 ]
+        |
+      7 |     x, listed : STRUCT a : INT; END_STRUCT;
+        |        ^^^|^^
+        |           `---- 'listed' is declared here
+        |
+     15 |     listed := x;
+        |               |
+        |               `-- expected 'STRUCT', got 'STRUCT'
+        |
+        | Help: declare it once in a TYPE, and use that name in both places
+        |
+        | Note: a STRUCT written in place is a type of its own, for each name of a list too
+    ----'
+    [E0301] Error: type mismatch
+        ,-[ file:///test0.st:16:10 ]
+        |
+      2 | TYPE Named : STRUCT a : INT; END_STRUCT; END_TYPE
+        |      ^^|^^
+        |        `---- 'Named' is declared here
+        |
+     16 |     n := x;
+        |          |
+        |          `-- expected 'Named', got 'STRUCT'
+        |
+        | Help: declare it once in a TYPE, and use that name in both places
+        |
+        | Note: a STRUCT written in place is a type of its own, for each name of a list too
+    ----'
+    [E0301] Error: type mismatch
+        ,-[ file:///test0.st:17:21 ]
+        |
+      9 |     holder : STRUCT inner : STRUCT a : INT; END_STRUCT; END_STRUCT;
+        |                     ^^|^^
+        |                       `---- field 'inner' is declared here
+        |
+     17 |     holder.inner := y;
+        |                     |
+        |                     `-- expected 'STRUCT', got 'STRUCT'
+        |
+        | Help: declare it once in a TYPE, and use that name in both places
+        |
+        | Note: a STRUCT written in place is a type of its own, for each name of a list too
+    ----'
+    [E0301] Error: type mismatch
+        ,-[ file:///test0.st:18:10 ]
+        |
+     12 |     i : INT;
+        |     |
+        |     `-- 'i' is declared here
+        |
+     18 |     i := x;
+        |          |
+        |          `-- expected 'INT', got 'STRUCT'
+    ----'
+    [E0301] Error: type mismatch
+        ,-[ file:///test0.st:19:10 ]
+        |
+      7 |     x, listed : STRUCT a : INT; END_STRUCT;
+        |     |
+        |     `-- 'x' is declared here
+        |
+     19 |     x := i;
+        |          |
+        |          `-- expected 'STRUCT', got 'INT'
+    ----'
+    [E0301] Error: type mismatch
+        ,-[ file:///test0.st:20:10 ]
+        |
+      2 | TYPE Named : STRUCT a : INT; END_STRUCT; END_TYPE
+        |      ^^|^^
+        |        `---- 'Named' is declared here
+        |
+     20 |     n := m;
+        |          |
+        |          `-- expected 'Named', got 'MY_STRUCT'
+    ----'
+    ");
+}

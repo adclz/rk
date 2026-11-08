@@ -268,6 +268,8 @@ impl<'db> Walk<'db> {
                     }
                 }
                 // Handed out, it is read when nobody here knows.
+                // Its places were reported on their own.
+                Place::Argument(_) => {}
                 Place::Referenced(begin) => {
                     if let Some(var) = begin.expr(self.db).and_then(|p| self.path_named(p)) {
                         self.stale.insert(var);

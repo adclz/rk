@@ -8,8 +8,8 @@
 use db::WorkspaceDataBase;
 use hir::hir_def::expressions::{
     expression::{
-        BeginPathExpr, Expr, ExprKind, FuncCall, ParamAssignKind, PathExpr, PathExprKind,
-        PrimaryExpr, RefValue, VariableAccess, VariableAccessKind,
+        BeginPathExpr, Expr, ExprKind, FuncCall, ParamAssign, ParamAssignKind, PathExpr,
+        PathExprKind, PrimaryExpr, RefValue, VariableAccess, VariableAccessKind,
     },
     statement::{CaseKind, Stmt, StmtKind},
 };
@@ -28,6 +28,9 @@ pub(crate) enum Place<'db> {
     Access(VariableAccess<'db>),
     /// What `REF()` hands out.
     Referenced(BeginPathExpr<'db>),
+    /// An input or in-out argument of a call, once the places it names are
+    /// reported: what its parameter is decides what the call does to them.
+    Argument(ParamAssign<'db>),
 }
 
 /// Every place `expr` names. A call's argument is read, an in-out's
@@ -99,6 +102,7 @@ pub(crate) fn call<'db>(
     for param in params {
         if !matches!(param.kind(db), ParamAssignKind::FormalOutput { .. }) {
             expression(db, param.kind(db).value(), f);
+            f(Place::Argument(*param), Use::Read);
         }
     }
     for param in params {

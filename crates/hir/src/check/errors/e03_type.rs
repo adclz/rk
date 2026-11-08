@@ -337,6 +337,7 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                 if *suggest_cast {
                     explicit_cast_suggestion(db, *target, *value, *expr, &mut diag);
                 }
+                explain_struct_in_place(db, *target, *value, &mut diag);
                 // Arrays alike but for the bounds one of them has only in a
                 // call, or for bounds no DINT holds.
                 if let (Type::ArrayConformand(conformand), other)
@@ -853,6 +854,27 @@ pub(crate) fn written_out_cast_suggestion(
             is_preferred: Some(true),
             ..Default::default()
         });
+    }
+}
+
+/// Two STRUCTs that differ because one is written in place, which the types in
+/// the message cannot show: `expected 'STRUCT', got 'STRUCT'`.
+pub(crate) fn explain_struct_in_place<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    expected: Type<'db>,
+    actual: Type<'db>,
+    diag: &mut IdeDiagnostic,
+) {
+    let is_struct = |ty: Type<'db>| matches!(ty.normalize(db), Type::Struct(_));
+    if (expected.is_struct_in_place(db) || actual.is_struct_in_place(db))
+        && is_struct(expected)
+        && is_struct(actual)
+    {
+        diag.with_note(
+            "a STRUCT written in place is a type of its own, for each name of a list too"
+                .to_string(),
+        );
+        diag.with_help("declare it once in a TYPE, and use that name in both places".to_string());
     }
 }
 

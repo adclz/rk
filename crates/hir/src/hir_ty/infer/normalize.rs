@@ -80,6 +80,17 @@ impl<'db> Type<'db> {
         ty
     }
 
+    /// Whether this type is a STRUCT written in place. A name ends the walk,
+    /// since anyone can write that name.
+    pub fn is_struct_in_place(self, db: &'db dyn WorkspaceDataBase) -> bool {
+        match self {
+            Type::Struct(_) => true,
+            Type::Variable((var, _)) => var.spec(db).infer(db).is_struct_in_place(db),
+            Type::StructElement(element) => element.spec(db).infer(db).is_struct_in_place(db),
+            _ => false,
+        }
+    }
+
     /// The base of a type with named values, `INT` of `INT (Red := 1)`, or one
     /// of its values. The names do not limit what it holds: another value can
     /// be assigned and can come of a calculation, so it reads and writes as its

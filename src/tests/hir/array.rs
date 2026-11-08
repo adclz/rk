@@ -711,3 +711,196 @@ END_FUNCTION
     assert!(report.contains(code), "{report}");
     assert!(report.contains(message), "{report}");
 }
+
+/// What an element is made of is checked, under a reference and an `ARRAY[*]` too.
+/// These passed `rk check` and built, with the length or the range ignored.
+#[rstest]
+fn invalid_what_an_element_is_made_of(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE
+    Alias : ARRAY[0..1] OF STRING[-1];
+    Holder : STRUCT member : ARRAY[0..1] OF INT (5..1); END_STRUCT;
+END_TYPE
+
+FUNCTION F
+VAR_IN_OUT conformand : ARRAY[*] OF STRING[-1]; END_VAR
+VAR
+    n : INT;
+    range : ARRAY[0..1] OF INT (5..1);
+    length : ARRAY[0..1] OF STRING[-1];
+    not_constant : ARRAY[0..1] OF STRING[n];
+    reference : REF_TO ARRAY[5..1] OF INT;
+    referenced_element : REF_TO ARRAY[0..1] OF STRING[-1];
+END_VAR
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0320] Error: negative STRING length
+       ,-[ file:///test0.st:3:35 ]
+       |
+     3 |     Alias : ARRAY[0..1] OF STRING[-1];
+       |                                   ^|
+       |                                    `-- the length is -1: it cannot be negative
+    ---'
+    [E0705] Error: subrange bounds reversed
+       ,-[ file:///test0.st:4:53 ]
+       |
+     4 |     Holder : STRUCT member : ARRAY[0..1] OF INT (5..1); END_STRUCT;
+       |                                                     |
+       |                                                     `-- the upper bound 1 is below the lower bound 5
+    ---'
+    [E0320] Error: negative STRING length
+       ,-[ file:///test0.st:8:44 ]
+       |
+     8 | VAR_IN_OUT conformand : ARRAY[*] OF STRING[-1]; END_VAR
+       |                                            ^|
+       |                                             `-- the length is -1: it cannot be negative
+    ---'
+    [E0705] Error: subrange bounds reversed
+        ,-[ file:///test0.st:11:36 ]
+        |
+     11 |     range : ARRAY[0..1] OF INT (5..1);
+        |                                    |
+        |                                    `-- the upper bound 1 is below the lower bound 5
+    ----'
+    [E0320] Error: negative STRING length
+        ,-[ file:///test0.st:12:36 ]
+        |
+     12 |     length : ARRAY[0..1] OF STRING[-1];
+        |                                    ^|
+        |                                     `-- the length is -1: it cannot be negative
+    ----'
+    [E0315] Error: STRING length not constant
+        ,-[ file:///test0.st:13:42 ]
+        |
+     13 |     not_constant : ARRAY[0..1] OF STRING[n];
+        |                                          |
+        |                                          `-- the length is not a compile-time constant
+    ----'
+    [E0503] Error: upper bound below the lower bound
+        ,-[ file:///test0.st:14:33 ]
+        |
+     14 |     reference : REF_TO ARRAY[5..1] OF INT;
+        |                                 |
+        |                                 `-- the upper bound 1 is below the lower bound 5
+    ----'
+    [E0320] Error: negative STRING length
+        ,-[ file:///test0.st:15:55 ]
+        |
+     15 |     referenced_element : REF_TO ARRAY[0..1] OF STRING[-1];
+        |                                                       ^|
+        |                                                        `-- the length is -1: it cannot be negative
+    ----'
+    ");
+}
+
+/// A field an element lacks is missing from the element, wherever the initializer
+/// reaches it. Named after the array, it offered no field to correct it to.
+#[rstest]
+fn invalid_a_field_an_element_lacks(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE
+    Engine : STRUCT fuel : INT; END_STRUCT;
+    Holder : STRUCT rows : ARRAY[0..1] OF Engine := [(fuell := 1)]; END_STRUCT;
+END_TYPE
+
+FUNCTION_BLOCK Motor
+VAR_INPUT rpm : INT; END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK F
+VAR
+    list : ARRAY[0..1] OF Engine := [(fuell := 1)];
+    matrix : ARRAY[0..1, 0..1] OF Engine := [[(fuell := 1)]];
+    again : ARRAY[0..1] OF Engine := [2((fuell := 1))];
+    index : ARRAY[0..1] OF Engine := [[1] := (fuell := 1)];
+    motors : ARRAY[0..1] OF Motor := [(rpmm := 1)];
+    held : Holder := (rows := [(fuell := 1)]);
+    inner : STRUCT rows : ARRAY[0..1] OF Engine; END_STRUCT := (rows := [(fuell := 1)]);
+    right : ARRAY[0..1] OF Engine := [(fuel := 1)];
+END_VAR
+END_FUNCTION_BLOCK
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0202] Error: unknown field
+       ,-[ file:///test0.st:4:55 ]
+       |
+     4 |     Holder : STRUCT rows : ARRAY[0..1] OF Engine := [(fuell := 1)]; END_STRUCT;
+       |                                                       ^^^^^|^^^^
+       |                                                            `------ 'Engine' has no field named 'fuell'
+       |
+       | Note: 'Engine' has a field with a similar name:
+       |       - fuel
+    ---'
+    [E0202] Error: unknown field
+        ,-[ file:///test0.st:13:39 ]
+        |
+     13 |     list : ARRAY[0..1] OF Engine := [(fuell := 1)];
+        |                                       ^^^^^|^^^^
+        |                                            `------ 'Engine' has no field named 'fuell'
+        |
+        | Note: 'Engine' has a field with a similar name:
+        |       - fuel
+    ----'
+    [E0202] Error: unknown field
+        ,-[ file:///test0.st:14:48 ]
+        |
+     14 |     matrix : ARRAY[0..1, 0..1] OF Engine := [[(fuell := 1)]];
+        |                                                ^^^^^|^^^^
+        |                                                     `------ 'Engine' has no field named 'fuell'
+        |
+        | Note: 'Engine' has a field with a similar name:
+        |       - fuel
+    ----'
+    [E0202] Error: unknown field
+        ,-[ file:///test0.st:15:42 ]
+        |
+     15 |     again : ARRAY[0..1] OF Engine := [2((fuell := 1))];
+        |                                          ^^^^^|^^^^
+        |                                               `------ 'Engine' has no field named 'fuell'
+        |
+        | Note: 'Engine' has a field with a similar name:
+        |       - fuel
+    ----'
+    [E0202] Error: unknown field
+        ,-[ file:///test0.st:16:47 ]
+        |
+     16 |     index : ARRAY[0..1] OF Engine := [[1] := (fuell := 1)];
+        |                                               ^^^^^|^^^^
+        |                                                    `------ 'Engine' has no field named 'fuell'
+        |
+        | Note: 'Engine' has a field with a similar name:
+        |       - fuel
+    ----'
+    [E0202] Error: unknown field
+        ,-[ file:///test0.st:17:40 ]
+        |
+     17 |     motors : ARRAY[0..1] OF Motor := [(rpmm := 1)];
+        |                                        ^^^^|^^^^
+        |                                            `------ 'Motor' has no field named 'rpmm'
+        |
+        | Note: 'Motor' has a field with a similar name:
+        |       - rpm
+    ----'
+    [E0202] Error: unknown field
+        ,-[ file:///test0.st:18:33 ]
+        |
+     18 |     held : Holder := (rows := [(fuell := 1)]);
+        |                                 ^^^^^|^^^^
+        |                                      `------ 'Engine' has no field named 'fuell'
+        |
+        | Note: 'Engine' has a field with a similar name:
+        |       - fuel
+    ----'
+    [E0202] Error: unknown field
+        ,-[ file:///test0.st:19:75 ]
+        |
+     19 |     inner : STRUCT rows : ARRAY[0..1] OF Engine; END_STRUCT := (rows := [(fuell := 1)]);
+        |                                                                           ^^^^^|^^^^
+        |                                                                                `------ 'Engine' has no field named 'fuell'
+        |
+        | Note: 'Engine' has a field with a similar name:
+        |       - fuel
+    ----'
+    ");
+}

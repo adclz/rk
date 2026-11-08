@@ -926,3 +926,279 @@ END_FUNCTION
     END_FUNCTION
     ");
 }
+
+/// Renaming a field or a member edits the name an initializer gives it, wherever
+/// the initializer stands, from the declaration or from the initializer. The next
+/// check reported E0202 on what was left behind.
+#[rstest]
+#[case::from_the_declaration("fuel : INT")]
+#[case::from_a_use("x.fuel")]
+#[case::from_a_variable("(fuel := 1)")]
+#[case::from_an_element("[(fuel := 2)]")]
+#[case::from_a_repeat_group("[2((fuel := 3))]")]
+#[case::from_an_index("[[1] := (fuel := 4)]")]
+#[case::from_a_member("(fuel := 5)")]
+#[case::from_a_nested_initializer("(fuel := 6)")]
+#[case::from_a_default("(fuel := 7)")]
+fn rename_a_field_named_in_an_initializer(mut with_db: RootDatabase, #[case] at: &str) {
+    let source = r#"TYPE
+    Engine : STRUCT fuel : INT; oil : REAL; END_STRUCT;
+    Pair : STRUCT left : Engine := (fuel := 5); right : Engine; END_STRUCT;
+    Kept : Engine := (fuel := 7);
+END_TYPE
+
+FUNCTION_BLOCK Fb
+VAR
+    x : Engine := (fuel := 1);
+    rows : ARRAY[0..1] OF Engine := [(fuel := 2)];
+    many : ARRAY[0..1] OF Engine := [2((fuel := 3))];
+    one : ARRAY[0..1] OF Engine := [[1] := (fuel := 4)];
+    pair : Pair := (right := (fuel := 6));
+    fuel : INT;
+    other : STRUCT fuel : INT; END_STRUCT := (fuel := 8);
+END_VAR
+    x.fuel := fuel;
+END_FUNCTION_BLOCK
+"#;
+    let file = add_source(&mut with_db, source);
+    let offset = source.find(at).unwrap() + at.find("fuel").unwrap();
+    let node = descendant_at(&with_db, file, offset).unwrap();
+    let edit = node.rename(&with_db, offset, "gas").unwrap();
+    assert_eq!(
+        apply_rename(&with_db, &edit, &[source]),
+        r#"TYPE
+    Engine : STRUCT gas : INT; oil : REAL; END_STRUCT;
+    Pair : STRUCT left : Engine := (gas := 5); right : Engine; END_STRUCT;
+    Kept : Engine := (gas := 7);
+END_TYPE
+
+FUNCTION_BLOCK Fb
+VAR
+    x : Engine := (gas := 1);
+    rows : ARRAY[0..1] OF Engine := [(gas := 2)];
+    many : ARRAY[0..1] OF Engine := [2((gas := 3))];
+    one : ARRAY[0..1] OF Engine := [[1] := (gas := 4)];
+    pair : Pair := (right := (gas := 6));
+    fuel : INT;
+    other : STRUCT fuel : INT; END_STRUCT := (fuel := 8);
+END_VAR
+    x.gas := fuel;
+END_FUNCTION_BLOCK
+"#
+    );
+}
+
+/// A name on the left of `:=` is a field, one on the right a value, however alike.
+#[rstest]
+#[case::the_field(
+    "fuel : INT; END",
+    r#"TYPE Engine : STRUCT gas : INT; END_STRUCT; END_TYPE
+FUNCTION_BLOCK Fb
+VAR CONSTANT fuel : INT := 1; END_VAR
+VAR x : Engine := (gas := fuel); END_VAR
+END_FUNCTION_BLOCK
+"#
+)]
+#[case::the_variable(
+    "fuel : INT := 1",
+    r#"TYPE Engine : STRUCT fuel : INT; END_STRUCT; END_TYPE
+FUNCTION_BLOCK Fb
+VAR CONSTANT gas : INT := 1; END_VAR
+VAR x : Engine := (fuel := gas); END_VAR
+END_FUNCTION_BLOCK
+"#
+)]
+fn rename_tells_a_field_from_the_value_given_it(
+    mut with_db: RootDatabase,
+    #[case] at: &str,
+    #[case] renamed: &str,
+) {
+    let source = r#"TYPE Engine : STRUCT fuel : INT; END_STRUCT; END_TYPE
+FUNCTION_BLOCK Fb
+VAR CONSTANT fuel : INT := 1; END_VAR
+VAR x : Engine := (fuel := fuel); END_VAR
+END_FUNCTION_BLOCK
+"#;
+    let file = add_source(&mut with_db, source);
+    let offset = source.find(at).unwrap();
+    let node = descendant_at(&with_db, file, offset).unwrap();
+    let edit = node.rename(&with_db, offset, "gas").unwrap();
+    assert_eq!(apply_rename(&with_db, &edit, &[source]), renamed);
+}
+
+/// A member of an instance is named the same way, and an edit is made once where a
+/// name list lowers the initializer for each of its names.
+#[rstest]
+#[case::from_the_member("rpm : INT")]
+#[case::from_the_initializer("(rpm := 1)")]
+fn rename_a_member_named_in_an_instance_initializer(mut with_db: RootDatabase, #[case] at: &str) {
+    let source = r#"FUNCTION_BLOCK Motor
+VAR_INPUT rpm : INT; END_VAR
+END_FUNCTION_BLOCK
+
+PROGRAM Main
+VAR
+    a, b : Motor := (rpm := 1);
+END_VAR
+END_PROGRAM
+"#;
+    let file = add_source(&mut with_db, source);
+    let offset = source.find(at).unwrap() + at.find("rpm").unwrap();
+    let node = descendant_at(&with_db, file, offset).unwrap();
+    let edit = node.rename(&with_db, offset, "speed").unwrap();
+    assert_eq!(
+        apply_rename(&with_db, &edit, &[source]),
+        r#"FUNCTION_BLOCK Motor
+VAR_INPUT speed : INT; END_VAR
+END_FUNCTION_BLOCK
+
+PROGRAM Main
+VAR
+    a, b : Motor := (speed := 1);
+END_VAR
+END_PROGRAM
+"#
+    );
+}
+
+/// A field declared in a library is not renamed from where an initializer names it.
+#[rstest]
+fn a_library_field_is_not_renamed_from_an_initializer(mut with_db: RootDatabase) {
+    crate::tests::utils::add_library_sources(
+        &mut with_db,
+        &["TYPE LibEngine : STRUCT libfuel : INT; END_STRUCT; END_TYPE\n"],
+    );
+    let source = r#"
+FUNCTION_BLOCK Fb
+VAR x : LibEngine := (libfuel := 1); END_VAR
+END_FUNCTION_BLOCK
+"#;
+    let file = add_source(&mut with_db, source);
+    let offset = source.find("libfuel").unwrap();
+    let node = descendant_at(&with_db, file, offset).unwrap();
+    assert_eq!(node.rename(&with_db, offset, "gas"), None);
+}
+
+/// A global's initializer and a VAR_CONFIG entry's name a field the same way.
+#[rstest]
+#[case::from_the_declaration("fuel : INT")]
+#[case::from_a_global("(fuel := 1)")]
+#[case::from_a_configured_value("(fuel := 2)")]
+fn rename_a_field_named_in_a_configuration(mut with_db: RootDatabase, #[case] at: &str) {
+    let source = r#"TYPE Engine : STRUCT fuel : INT; END_STRUCT; END_TYPE
+
+PROGRAM Main
+VAR e : Engine; END_VAR
+END_PROGRAM
+
+CONFIGURATION Cfg
+VAR_GLOBAL g : Engine := (fuel := 1); END_VAR
+RESOURCE Res ON CPU
+    TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+    PROGRAM P1 WITH T : Main;
+END_RESOURCE
+VAR_CONFIG
+    Res.P1.e : Engine := (fuel := 2);
+END_VAR
+END_CONFIGURATION
+"#;
+    let file = add_source(&mut with_db, source);
+    let offset = source.find(at).unwrap() + at.find("fuel").unwrap();
+    let node = descendant_at(&with_db, file, offset).unwrap();
+    let edit = node.rename(&with_db, offset, "gas").unwrap();
+    assert_eq!(
+        apply_rename(&with_db, &edit, &[source]),
+        source.replace("fuel", "gas")
+    );
+}
+
+/// An initializer's parentheses and brackets name nothing to rename.
+#[rstest]
+#[case::a_struct("x : Engine := (fuel := 1 )", "1 )")]
+#[case::an_element("rows : ARRAY[0..1] OF Engine := [(fuel := 2 )]", "2 )")]
+#[case::an_array("rows : ARRAY[0..1] OF Engine := [(fuel := 2 ) ]", ") ]")]
+fn rename_finds_nothing_in_the_punctuation_of_an_initializer(
+    mut with_db: RootDatabase,
+    #[case] declaration: &str,
+    #[case] at: &str,
+) {
+    let source = format!(
+        "TYPE Engine : STRUCT fuel : INT; END_STRUCT; END_TYPE\nFUNCTION_BLOCK Fb\nVAR {declaration}; END_VAR\nEND_FUNCTION_BLOCK\n"
+    );
+    let file = add_source(&mut with_db, &source);
+    let offset = source.find(at).unwrap() + at.len() - 1;
+    let node = descendant_at(&with_db, file, offset).unwrap();
+    assert_eq!(node.rename(&with_db, offset, "gas"), None);
+}
+
+/// A field is named in other files, and in another case, as anywhere else.
+#[rstest]
+fn rename_a_field_named_in_an_initializer_of_another_file(mut with_db: RootDatabase) {
+    let sources = [
+        "TYPE Engine : STRUCT fuel : INT; END_STRUCT; END_TYPE\n",
+        r#"FUNCTION_BLOCK Fb
+VAR
+    x : Engine := (FUEL := 1);
+    rows : ARRAY[0..1] OF Engine := [(Fuel := 2)];
+END_VAR
+    x.fuel := 3;
+END_FUNCTION_BLOCK
+"#,
+    ];
+    add_sources(&mut with_db, &sources);
+    let url = Url::parse("file:///test0.st").unwrap();
+    let file = with_db.get_file(&url).unwrap();
+    let offset = sources[0].find("fuel").unwrap();
+    let node = descendant_at(&with_db, file, offset).unwrap();
+    let edit = node.rename(&with_db, offset, "gas").unwrap();
+    assert_eq!(
+        apply_rename(&with_db, &edit, &sources),
+        r#"TYPE Engine : STRUCT gas : INT; END_STRUCT; END_TYPE
+---
+FUNCTION_BLOCK Fb
+VAR
+    x : Engine := (gas := 1);
+    rows : ARRAY[0..1] OF Engine := [(gas := 2)];
+END_VAR
+    x.gas := 3;
+END_FUNCTION_BLOCK
+"#
+    );
+}
+
+/// A VAR_CONFIG path goes on into a STRUCT, and its last steps are the member's.
+#[rstest]
+#[case::from_the_declaration("fuel : INT")]
+#[case::from_the_path("fuel : INT := 2")]
+fn rename_a_member_of_a_struct_named_in_a_var_config_path(
+    mut with_db: RootDatabase,
+    #[case] at: &str,
+) {
+    let source = r#"TYPE Engine : STRUCT fuel : INT; END_STRUCT; END_TYPE
+
+PROGRAM Main
+VAR e : Engine; END_VAR
+END_PROGRAM
+
+CONFIGURATION Cfg
+RESOURCE Res ON CPU
+    TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+    PROGRAM P1 WITH T : Main;
+END_RESOURCE
+VAR_CONFIG
+    Res.P1.e.fuel : INT := 2;
+END_VAR
+END_CONFIGURATION
+"#;
+    let file = add_source(&mut with_db, source);
+    let offset = match at {
+        "fuel : INT" => source.find(at).unwrap(),
+        _ => source.rfind("fuel").unwrap(),
+    };
+    let node = descendant_at(&with_db, file, offset).unwrap();
+    let edit = node.rename(&with_db, offset, "gas").unwrap();
+    assert_eq!(
+        apply_rename(&with_db, &edit, &[source]),
+        source.replace("fuel", "gas")
+    );
+}

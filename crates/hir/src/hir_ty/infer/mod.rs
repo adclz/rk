@@ -96,6 +96,14 @@ impl<'db> Infer<'db> for PathExpr<'db> {
 }
 
 impl<'db> PathExpr<'db> {
+    /// The path's type WITH its adjustments applied, as
+    /// [`Expr::infer_adjusted`]: `arr[0]` is the element, `r^` the target.
+    pub fn infer_adjusted(&self, db: &'db dyn WorkspaceDataBase) -> Type<'db> {
+        self.get_scope_id(db)
+            .inference(db)
+            .type_of_path_expr_adjusted(*self)
+    }
+
     /// The array this bracket indexes and the dimensions of it consumed
     /// ([`IndexedArray`]), as the walk recorded them.
     ///

@@ -425,6 +425,7 @@ impl<'db> InitInference<'db> {
 
         let mut seen = FxHashMap::default();
         let mut first_variadic: Option<VariableDecl<'db>> = None;
+        let since = self.errors.len();
 
         for var in variables {
             if !self.check_unreachable_partly(db, var) {
@@ -754,7 +755,10 @@ impl<'db> InitInference<'db> {
                 }
             }
 
+            // A name list's type is reported for its first name.
+            let reported = self.errors.len();
             self.check_spec(db, var.spec(db));
+            crate::hir_ty::head::drop_repeated(&mut self.errors, since, reported);
 
             let var_type = var.spec(db).infer(db);
 

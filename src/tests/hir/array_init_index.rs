@@ -292,7 +292,7 @@ fn invalid_what_follows_an_index_is_counted(mut with_db: RootDatabase) {
        |
      5 |             b : ARRAY[0..9] OF INT := [[1] := [2]];
        |                                               ^|^
-       |                                                `--- cannot index into type 'ARRAY [0..9] OF INT'
+       |                                                `--- cannot index into type 'INT'
     ---'
     ");
 }
@@ -319,7 +319,7 @@ fn invalid_an_index_outside_an_array_bracket(mut with_db: RootDatabase) {
        |
      6 |             a : ARRAY[0..9] OF INT := [2([3] := 7)];
        |                                          ^|^
-       |                                           `--- cannot index into type 'ARRAY [0..9] OF INT'
+       |                                           `--- cannot index into type 'INT'
     ---'
     [E0001] Error: syntax error
        ,-[ file:///test0.st:6:46 ]

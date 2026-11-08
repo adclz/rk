@@ -368,6 +368,8 @@ impl<'db> Walk<'db> {
                     }
                 }
                 // `REF(i)` hands out the value the loop left.
+                // Its places were reported on their own.
+                (Place::Argument(_), _) => {}
                 (Place::Referenced(begin), _) => {
                     if let Some(root) = self.path_root(begin)
                         && let Some(origin) = left.remove(&root)

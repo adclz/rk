@@ -267,3 +267,94 @@ END_FUNCTION
     ----'
     ");
 }
+
+/// A part of a member is the member written: an element, a field, an input
+/// of an instance the block holds, a member of an element or of the instance
+/// a reference points at. A part of an input is the caller's to set, and
+/// what a member points at is not the instance.
+#[rstest]
+fn a_part_of_a_member_written_from_outside(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE Pair : STRUCT a : INT; b : INT; END_STRUCT; END_TYPE
+
+FUNCTION_BLOCK Inner
+VAR_INPUT x : INT; END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK MyFB
+VAR_INPUT inp : Pair; list : ARRAY[0..2] OF INT; END_VAR
+VAR
+    x : ARRAY[0..2] OF INT;
+    s : Pair;
+    inner : Inner;
+    r : REF_TO Pair;
+END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION caller : INT
+VAR
+    fb : MyFB;
+    fbs : ARRAY[0..1] OF MyFB;
+    p : REF_TO MyFB;
+    target : Pair;
+END_VAR
+    p := REF(fb);
+    fb.x[0] := 1;
+    fb.s.a := 1;
+    fb.inner.x := 1;
+    fbs[1].s.a := 1;
+    p^.s.b := 1;
+    fb.inp.a := 1;    // a part of an input
+    fb.list[1] := 1;  // a part of an input
+    fb.r^.a := 1;     // what a member points at
+    target.a := 1;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "external-mutation"), @r"
+    [L0117] Warning: external instance mutation
+        ,-[ file:///test0.st:26:5 ]
+        |
+     26 |     fb.x[0] := 1;
+        |     ^^^|^^^
+        |        `----- 'fb.x[0]' is written from outside its instance
+        |
+        | Note: lint rule: external-mutation
+    ----'
+    [L0117] Warning: external instance mutation
+        ,-[ file:///test0.st:27:5 ]
+        |
+     27 |     fb.s.a := 1;
+        |     ^^^|^^
+        |        `---- 'fb.s.a' is written from outside its instance
+        |
+        | Note: lint rule: external-mutation
+    ----'
+    [L0117] Warning: external instance mutation
+        ,-[ file:///test0.st:28:5 ]
+        |
+     28 |     fb.inner.x := 1;
+        |     ^^^^^|^^^^
+        |          `------ 'fb.inner.x' is written from outside its instance
+        |
+        | Note: lint rule: external-mutation
+    ----'
+    [L0117] Warning: external instance mutation
+        ,-[ file:///test0.st:29:5 ]
+        |
+     29 |     fbs[1].s.a := 1;
+        |     ^^^^^|^^^^
+        |          `------ 'fbs[1].s.a' is written from outside its instance
+        |
+        | Note: lint rule: external-mutation
+    ----'
+    [L0117] Warning: external instance mutation
+        ,-[ file:///test0.st:30:5 ]
+        |
+     30 |     p^.s.b := 1;
+        |     ^^^|^^
+        |        `---- 'p^.s.b' is written from outside its instance
+        |
+        | Note: lint rule: external-mutation
+    ----'
+    ");
+}

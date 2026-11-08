@@ -481,3 +481,42 @@ END_NAMESPACE
         "and so does the declaration: {starts:?}"
     );
 }
+
+/// A field's references hold the initializers that name it.
+#[rstest]
+fn field_references_in_initializers(mut with_db: RootDatabase) {
+    let source = r#"TYPE Engine : STRUCT fuel : INT; END_STRUCT; END_TYPE
+
+FUNCTION_BLOCK Fb
+VAR
+    x : Engine := (fuel := 1);
+    rows : ARRAY[0..1] OF Engine := [(fuel := 2)];
+END_VAR
+    x.fuel := 3;
+END_FUNCTION_BLOCK
+"#;
+    let file = add_source(&mut with_db, source);
+    let offset = source.find("fuel := 2").unwrap();
+    let node = descendant_at(&with_db, file, offset).unwrap();
+    let refs = node.locations(&with_db).unwrap();
+    assert_snapshot!(render_references(&with_db, &refs, "fuel"), @r"
+    Info: 4 reference(s) to 'fuel'
+       ,-[ file:///test0.st:1:22 ]
+       |
+     1 | TYPE Engine : STRUCT fuel : INT; END_STRUCT; END_TYPE
+       |                      ^^|^
+       |                        `--- 4 reference(s) to 'fuel'
+       |
+     5 |     x : Engine := (fuel := 1);
+       |                    ^^|^
+       |                      `--- reference
+     6 |     rows : ARRAY[0..1] OF Engine := [(fuel := 2)];
+       |                                       ^^|^
+       |                                         `--- reference
+       |
+     8 |     x.fuel := 3;
+       |       ^^|^
+       |         `--- reference
+    ---'
+    ");
+}

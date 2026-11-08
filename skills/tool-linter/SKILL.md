@@ -106,7 +106,7 @@ L0001 and L0002 share the rule name `warn-pragma`; disabling it silences both.
 | L0114 | `missing-return` | warning | a FUNCTION or METHOD with a return type that never assigns the return value; a `{wasm}` statement whose `(result)` is the FUNCTION counts |
 | L0115 | `self-shadowing` | warning | a variable with the same name as the POU or method it is declared in |
 | L0116 | `method-shadows-member` | warning | a method local or parameter with the same name as a member of its FUNCTION_BLOCK or CLASS |
-| L0117 | `external-mutation` | warning | writing a field of a function block or class instance from outside it, `inst.x := 42`; an input is not reported, writing it before the call is how it is passed |
+| L0117 | `external-mutation` | warning | writing a field of a function block or class instance from outside it, `inst.x := 42`, or a part of one, `inst.x[0] := 1`; an input is not reported, writing it before the call is how it is passed |
 | L0118 | `global-without-external` | warning | reading or writing a CONFIGURATION VAR_GLOBAL by bare name, with no matching VAR_EXTERNAL in the POU |
 | L0119 | `instance-in-function` | warning | a FUNCTION or METHOD holding or returning a FUNCTION_BLOCK or CLASS instance, which starts over at every call: a timer in it never expires |
 | L0120 | `variable-method-name` | warning | a variable and a method of a FUNCTION_BLOCK or CLASS, or of one it extends, with the same name: legal, the variable wins inside the block |

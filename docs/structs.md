@@ -68,6 +68,23 @@ VAR p : Point; q : Point; END_VAR
 END_FUNCTION
 ```
 
+## In place
+
+A `STRUCT` can also be written where its type is needed: on a variable or on a field.
+
+```iecst
+FUNCTION Demo
+VAR
+    point : STRUCT x : INT; y : INT; END_STRUCT;
+END_VAR
+    point.x := 1;
+END_FUNCTION
+```
+
+Each one is a type of its own, even when two are written alike, and each name of a list has its own.
+So one cannot be assigned to another or passed to a parameter (`E0301`), and a `VAR_EXTERNAL` cannot repeat one (`E0207`).
+To use a `STRUCT` in more than one place, declare it in a `TYPE`.
+
 ## Retain
 
 `RETAIN` before a field keeps it across a power cycle.

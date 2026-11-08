@@ -496,6 +496,12 @@ impl<'db> ToIdeDiagnostic<'db> for ResolveError<'db> {
                 diag.with_note(
                     "a VAR_EXTERNAL repeats the type of its VAR_GLOBAL exactly".to_string(),
                 );
+                crate::check::errors::e03_type::explain_struct_in_place(
+                    db,
+                    Type::new_var(db, *var),
+                    Type::new_var(db, *global_var),
+                    &mut diag,
+                );
                 diag
             }
             Self::RetainInStatelessPou { var, pou_kind } => {

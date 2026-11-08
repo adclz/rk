@@ -528,13 +528,15 @@ impl<'db> InitExprInferenceResult<'db> {
         let element_is_array = matches!(element.normalize(db), Type::Array(_));
         for step in values {
             let mut child_place = *place;
+            // What is written for an element is about the element: a field
+            // it lacks is missing from it, not from the array holding it.
+            child_place.current_init_typ = element;
             match step {
                 InitExprWalkStep::ArrayInit { expr, .. } if element_is_array => {
                     let saved_root = ctx.array_root;
                     let saved_positions = ctx.positions.clone();
                     let saved_overflow = ctx.overflow_reported.clone();
                     ctx.reset_for_new_array(Some(element));
-                    child_place.current_init_typ = element;
 
                     self.resolve_step(db, element, &mut child_place, body_ctx, ctx, step);
 
@@ -688,11 +690,6 @@ impl<'db> InitExprInferenceResult<'db> {
                     .copied()
                     .unwrap_or_default()
                     .normalize(db);
-
-                let expected = match expected {
-                    Type::Array(array) => array.of_type(db).infer(db),
-                    _ => expected,
-                };
 
                 // Clear seen fields for new struct
                 ctx.clear_fields();

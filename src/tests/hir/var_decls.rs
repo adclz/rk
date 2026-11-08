@@ -207,3 +207,55 @@ fn variable_named_like_its_callable_is_the_return_value(mut with_db: RootDatabas
     ---'
     ");
 }
+
+/// Each name of a list has the type written once for all of them: what is
+/// wrong with the type is reported once, at the type. What is wrong with a
+/// variable is reported at each name. Each fault was reported for each name.
+#[rstest]
+fn a_name_list_reports_its_type_once(mut with_db: RootDatabase) {
+    let source = r#"
+INTERFACE Itf END_INTERFACE
+FUNCTION_BLOCK ABSTRACT Abs END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK Fb
+VAR
+    x, y : ARRAY[5..1] OF INT;
+    u, v : Nowhere;
+    s1, s2 : STRING[-1];
+    r1, r2 : INT (5..1);
+    q1, q2 : STRUCT a : Elsewhere; END_STRUCT;
+    n1, n2 : ARRAY[0..1] OF Itf;
+    a1, a2 : Abs;
+    i1, i2 : Itf;
+END_VAR
+END_FUNCTION_BLOCK
+"#;
+    let report = test_diagnostics(&mut with_db, &[source]);
+    let mut lines = report.lines();
+    let mut reports = Vec::new();
+    while let Some(line) = lines.next() {
+        if let Some(code) = line.strip_prefix('[').and_then(|l| l.get(..5)) {
+            let place = lines
+                .next()
+                .and_then(|l| l.split("test0.st:").nth(1))
+                .and_then(|l| l.split(' ').next())
+                .unwrap_or_default();
+            reports.push(format!("{code} {place}"));
+        }
+    }
+    assert_eq!(
+        reports,
+        [
+            "E0503 7:21",
+            "E0203 8:12",
+            "E0320 9:21",
+            "E0705 10:22",
+            "E0203 11:25",
+            "E1123 12:14",
+            "E1118 13:14",
+            "E1121 14:5",
+            "E1121 14:9",
+        ],
+        "{report}"
+    );
+}

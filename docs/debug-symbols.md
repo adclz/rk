@@ -60,6 +60,7 @@ A null pointer stops the path.
 The result names the pointer.
 
 The value of a pointer is the address it holds and the variable at that address.
+A STRUCT or an array starts where its first part does: the type the pointer points at says which one it names, and a pointer with no type names the part.
 
 `debug-locals` lists the pointers a function holds in wasm locals:
 

@@ -38,7 +38,8 @@ Where a variable is declared decides what its initial value can be.
 | a `VAR_TEMP`, a `VAR_EXTERNAL`, or any other `VAR_IN_OUT` | none |
 
 A constant is a literal, an enum value, `NULL`, a `CONSTANT` declared beside it or imported with `VAR_EXTERNAL CONSTANT`, arithmetic over those, or `REF()` of a global.
-On integers, `AND`, `OR`, `XOR` and `NOT` count as arithmetic.
+On integers and on BOOLs, `AND`, `OR`, `XOR` and `NOT` count as arithmetic.
+A comparison does not.
 A member can also point at a member beside it, in its own instance: `p : REF_TO INT := REF(x)`.
 Anything else is `E0401`.
 
@@ -113,6 +114,15 @@ END_FUNCTION
 ```
 
 With only literals for labels, it is an `INT` or a `STRING`, like the operands of `200 * 200` in [Math operations](math-operations.md).
+
+## An instance's inputs and outputs
+
+A caller can name an instance's inputs and outputs between its calls:
+
+- `t.IN` reads the value the last call passed. `t.IN := start;` before `t();` passes `start`, as `t(IN := start);` does.
+- `t.Q := TRUE;` writes the output, which holds until the next call writes it. `L0117` warns of it.
+
+Both go beyond the standard, where a caller passes an input in the call and only reads an output.
 
 ## Edge inputs
 

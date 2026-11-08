@@ -875,3 +875,20 @@ END_FUNCTION
         format_definition_response(&def)
     );
 }
+
+/// A field an array's initializer names leads to its declaration.
+#[rstest]
+pub fn definition_of_a_field_in_an_array_initializer(mut with_db: RootDatabase) {
+    let source = r#"TYPE Engine : STRUCT oil : REAL; fuel : INT; END_STRUCT; END_TYPE
+FUNCTION F
+VAR
+    rows : ARRAY[0..1] OF Engine := [(fuel := 1)];
+END_VAR
+END_FUNCTION
+"#;
+    let file = add_source(&mut with_db, source);
+    let offset = source.rfind("fuel").unwrap();
+    let node = ide_proto::walk::descendant_at(&with_db, file, offset).unwrap();
+    let response = node.definition(&with_db, offset).unwrap();
+    assert_snapshot!(format_definition_response(&response), @"/test0.st:0:33-0:37");
+}

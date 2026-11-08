@@ -272,3 +272,32 @@ END_FUNCTION
     ---'
     ");
 }
+
+/// A STRUCT written in place is a type of its own, which a VAR_EXTERNAL cannot repeat.
+#[rstest]
+fn invalid_external_of_a_struct_in_place(mut with_db: RootDatabase) {
+    let source = r#"
+CONFIGURATION Cfg
+VAR_GLOBAL shared : STRUCT a : INT; END_STRUCT; END_VAR
+END_CONFIGURATION
+
+FUNCTION_BLOCK Reader
+VAR_EXTERNAL shared : STRUCT a : INT; END_STRUCT; END_VAR
+END_FUNCTION_BLOCK
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0207] Error: VAR_EXTERNAL type mismatch
+       ,-[ file:///test0.st:7:23 ]
+       |
+     7 | VAR_EXTERNAL shared : STRUCT a : INT; END_STRUCT; END_VAR
+       |                       ^^^^^^^^^^^^^|^^^^^^^^^^^^
+       |                                    `-------------- 'shared' is declared 'STRUCT' and its VAR_GLOBAL is 'STRUCT'
+       |
+       | Help: declare it once in a TYPE, and use that name in both places
+       |
+       | Note 1: a VAR_EXTERNAL repeats the type of its VAR_GLOBAL exactly
+       |
+       | Note 2: a STRUCT written in place is a type of its own, for each name of a list too
+    ---'
+    ");
+}

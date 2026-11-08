@@ -1739,3 +1739,112 @@ END_PROGRAM
         .collect();
     assert_eq!(codes, ["E0801", "E0802", "E0813", "E0810"], "{report}");
 }
+
+const TWO_OVERLOADS: &str = "
+    FUNCTION MX : INT VAR_INPUT a : INT; b : INT; END_VAR MX := a; END_FUNCTION
+    FUNCTION MX : REAL VAR_INPUT a : REAL; b : REAL; END_VAR MX := a; END_FUNCTION
+";
+
+/// A call with too many arguments is E0801 alone, and one with too few
+/// E0802 alone, wherever its overloads are declared and however the call
+/// names them: the arguments are not checked against an overload that
+/// takes none of them.
+#[rstest]
+#[case::at_the_top_level("", "", "INT", "a, b, c : INT", "MX(a, b, c)", "E0801")]
+#[case::in_a_namespace(
+    "NAMESPACE Lib",
+    "END_NAMESPACE USING Lib;",
+    "INT",
+    "a, b, c : INT",
+    "MX(a, b, c)",
+    "E0801"
+)]
+#[case::qualified(
+    "NAMESPACE Lib",
+    "END_NAMESPACE",
+    "INT",
+    "a, b, c : INT",
+    "Lib.MX(a, b, c)",
+    "E0801"
+)]
+#[case::too_few(
+    "NAMESPACE Lib",
+    "END_NAMESPACE USING Lib;",
+    "INT",
+    "a : INT",
+    "MX(a)",
+    "E0802"
+)]
+#[case::reals(
+    "NAMESPACE Lib",
+    "END_NAMESPACE USING Lib;",
+    "REAL",
+    "a, b, c : REAL",
+    "MX(a, b, c)",
+    "E0801"
+)]
+#[case::a_string(
+    "NAMESPACE Lib",
+    "END_NAMESPACE USING Lib;",
+    "INT",
+    "a : STRING",
+    "MX(a, a, a)",
+    "E0801"
+)]
+fn a_wrong_number_of_arguments_is_reported_once(
+    mut with_db: RootDatabase,
+    #[case] open: &str,
+    #[case] close: &str,
+    #[case] result: &str,
+    #[case] vars: &str,
+    #[case] call: &str,
+    #[case] expected: &str,
+) {
+    let source = format!(
+        "{open}{TWO_OVERLOADS}{close}
+FUNCTION F : {result}
+VAR {vars}; END_VAR
+    F := {call};
+END_FUNCTION
+"
+    );
+    let report = test_diagnostics(&mut with_db, &[&source]);
+    let codes: Vec<&str> = report
+        .lines()
+        .filter(|l| l.starts_with('['))
+        .map(|l| &l[1..6])
+        .collect();
+    assert_eq!(codes, [expected], "{report}");
+}
+
+/// The same from inside the namespace, and for a FUNCTION that is not
+/// overloaded.
+#[rstest]
+#[case::called_inside(&format!("NAMESPACE Lib{TWO_OVERLOADS}
+FUNCTION F : INT
+VAR a, b, c : INT; END_VAR
+    F := MX(a, b, c);
+END_FUNCTION
+END_NAMESPACE"))]
+#[case::not_overloaded(
+    "NAMESPACE Lib
+    FUNCTION ONE : INT VAR_INPUT a : INT; b : INT; END_VAR ONE := a; END_FUNCTION
+END_NAMESPACE
+USING Lib;
+FUNCTION F : INT
+VAR a, b, c : INT; END_VAR
+    F := ONE(a, b, c);
+END_FUNCTION"
+)]
+fn a_wrong_number_of_arguments_is_reported_once_anywhere(
+    mut with_db: RootDatabase,
+    #[case] source: &str,
+) {
+    let report = test_diagnostics(&mut with_db, &[source]);
+    let codes: Vec<&str> = report
+        .lines()
+        .filter(|l| l.starts_with('['))
+        .map(|l| &l[1..6])
+        .collect();
+    assert_eq!(codes, ["E0801"], "{report}");
+}

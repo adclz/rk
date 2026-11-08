@@ -810,6 +810,51 @@ fn real_in_a_cycle<'db>(
     None
 }
 
+/// Whether `expr` is BOOL logic that folds: `AND`, `&`, `OR`, `XOR`, `NOT`
+/// and parentheses over BOOL literals and BOOL CONSTANTs that fold (`on AND
+/// NOT off`). Integer logic is [`spec_value`]'s. The compiler lowers it as
+/// it lowers REAL arithmetic, each CONSTANT replaced by its value.
+pub fn bool_folds<'db>(db: &'db dyn WorkspaceDataBase, expr: Expr<'db>) -> bool {
+    use crate::hir_def::expressions::expression::{Elementary, UnaryOperatorKind};
+    use crate::hir_def::expressions::spec::ElementarySpec;
+    use crate::hir_ty::infer::Infer;
+    match expr.expr(db) {
+        ExprKind::PrimaryExpr(PrimaryExpr::Literal(Elementary::Bool(_))) => true,
+        ExprKind::PrimaryExpr(PrimaryExpr::ParenthesizedExpr { expr })
+        | ExprKind::UnaryOperator {
+            expr,
+            operator: UnaryOperatorKind::Not,
+        } => bool_folds(db, *expr),
+        ExprKind::BooleanOperator { left, right, .. } => {
+            bool_folds(db, *left) && bool_folds(db, *right)
+        }
+        ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess(va)) => spec_name_binding(db, *va)
+            .is_some_and(|decl| {
+                matches!(
+                    decl.spec(db).infer(db).normalize(db),
+                    Type::Elementary(ElementarySpec::Bool)
+                ) && constant_init(db, decl).is_some_and(|init| written_bool(db, init))
+            }),
+        _ => false,
+    }
+}
+
+/// [`bool_folds`] of the value written for a CONSTANT, where it is written:
+/// a query, as [`written_real`] is. A cycle does not fold.
+#[salsa::tracked(cycle_result = bool_in_a_cycle)]
+fn written_bool<'db>(db: &'db dyn WorkspaceDataBase, written: Expr<'db>) -> bool {
+    bool_folds(db, written)
+}
+
+/// What a value in a cycle is: logic that does not fold, each of them.
+fn bool_in_a_cycle<'db>(
+    _db: &'db dyn WorkspaceDataBase,
+    _id: salsa::Id,
+    _written: Expr<'db>,
+) -> bool {
+    false
+}
+
 /// The first part of `expr` that keeps it from being a constant: a name
 /// that does not fold, or a call. `None` when every name and call in it is
 /// constant, or it has none.
@@ -841,10 +886,14 @@ pub fn non_constant_part<'db>(
 ///
 /// Accepted: anything [`spec_value`] folds (integer arithmetic and `AND`,
 /// `OR`, `XOR`, `NOT` over literals and CONSTANTs), REAL arithmetic
-/// [`real_folds`] accepts, any literal-shaped value, and a pure
-/// CONSTANT-reference chain ending in one.
+/// [`real_folds`] accepts, BOOL logic [`bool_folds`] accepts, any
+/// literal-shaped value, and a pure CONSTANT-reference chain ending in one.
 pub fn init_leaf_is_constant<'db>(db: &'db dyn WorkspaceDataBase, expr: Expr<'db>) -> bool {
-    if spec_value(db, expr).is_some() || is_literal_shaped(db, expr) || real_folds(db, expr) {
+    if spec_value(db, expr).is_some()
+        || is_literal_shaped(db, expr)
+        || real_folds(db, expr)
+        || bool_folds(db, expr)
+    {
         return true;
     }
     matches!(resolve_constant_ref(db, expr), Some(end) if is_literal_shaped(db, end))
