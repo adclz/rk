@@ -102,6 +102,10 @@ END_FUNCTION
     [E0305] Error: operator not supported by the type
        ,-[ file:///test0.st:7:5 ]
        |
+     3 | VAR i : INT; d : DINT; s : STRING; on : BOOL; END_VAR
+       |                                    ^|
+       |                                     `-- 'on' is declared here
+       |
      7 |     on += TRUE;
        |     ^^^^^|^^^^
        |          `------ operator '+' cannot be applied to type 'BOOL'
@@ -147,9 +151,12 @@ END_FUNCTION
 }
 
 /// A compound assignment is a statement of its own: after a chain's place,
-/// in an argument or after another compound's value it is E0033, a chain
-/// after its value is E0032, and with no value it is the empty right-hand
-/// side. In a condition, `+=` is a syntax error.
+/// in an argument, after another compound's value or in a condition it is
+/// E0033, a chain after its value is E0032, and with no value it is the
+/// empty right-hand side. In a condition, the help says where the statement
+/// goes: before an IF, before a WHILE and at the end of its body, on its
+/// own for an ELSIF; and `/=` there most likely means "not equal", which is
+/// the help, dividing the note.
 #[rstest]
 fn invalid_a_compound_assignment_outside_a_statement(mut with_db: RootDatabase) {
     let source = r#"
@@ -166,6 +173,9 @@ VAR a, b, x, y : INT; END_VAR
     x += y := 1;
     x += ;
     IF x += 1 THEN f := 1; END_IF;
+    IF y = 0 THEN f := 1; ELSIF y -= 2 THEN f := 2; END_IF;
+    WHILE x -= 1 DO END_WHILE;
+    REPEAT f := 2; UNTIL x /= 2 END_REPEAT;
 END_FUNCTION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
@@ -220,12 +230,51 @@ END_FUNCTION
         |       ^|
         |        `-- the assignment has no right-hand side
     ----'
-    [E0001] Error: syntax error
+    [E0033] Error: compound assignment outside a statement
         ,-[ file:///test0.st:14:10 ]
         |
      14 |     IF x += 1 THEN f := 1; END_IF;
-        |          |
-        |          `-- unexpected token(s): '+'
+        |          ^|
+        |           `-- '+=' is a compound assignment
+        |
+        | Help: write 'x += 1;' in a statement before the IF
+        |
+        | Note: a compound assignment is a statement of its own
+    ----'
+    [E0033] Error: compound assignment outside a statement
+        ,-[ file:///test0.st:15:35 ]
+        |
+     15 |     IF y = 0 THEN f := 1; ELSIF y -= 2 THEN f := 2; END_IF;
+        |                                   ^|
+        |                                    `-- '-=' is a compound assignment
+        |
+        | Help: write 'y -= 2;' in a statement of its own
+        |
+        | Note: a compound assignment is a statement of its own
+    ----'
+    [E0033] Error: compound assignment outside a statement
+        ,-[ file:///test0.st:16:13 ]
+        |
+     16 |     WHILE x -= 1 DO END_WHILE;
+        |             ^|
+        |              `-- '-=' is a compound assignment
+        |
+        | Help: write 'x -= 1;' in a statement before the WHILE and at the end of its body
+        |
+        | Note: a compound assignment is a statement of its own
+    ----'
+    [E0033] Error: compound assignment outside a statement
+        ,-[ file:///test0.st:17:28 ]
+        |
+     17 |     REPEAT f := 2; UNTIL x /= 2 END_REPEAT;
+        |                            ^|
+        |                             `-- '/=' is a compound assignment
+        |
+        | Help: replace '/=' with '<>'
+        |
+        | Note 1: a compound assignment is a statement of its own
+        |
+        | Note 2: to divide, write 'x /= 2;' in a statement before the UNTIL
     ----'
     ");
 }

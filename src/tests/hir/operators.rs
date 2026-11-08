@@ -110,12 +110,19 @@ fn invalid_logic_on_floats(mut with_db: RootDatabase) {
     [E0305] Error: operator not supported by the type
        ,-[ file:///test0.st:4:18 ]
        |
+     3 |         VAR a : REAL; b : LREAL; END_VAR
+       |             |
+       |             `-- 'a' is declared here
      4 |             F := a AND a;
        |                  ^^^|^^^
        |                     `----- operator 'AND' cannot be applied to type 'REAL'
     ---'
     [E0305] Error: operator not supported by the type
        ,-[ file:///test0.st:5:18 ]
+       |
+     3 |         VAR a : REAL; b : LREAL; END_VAR
+       |                       |
+       |                       `-- 'b' is declared here
        |
      5 |             b := b XOR b;
        |                  ^^^|^^^

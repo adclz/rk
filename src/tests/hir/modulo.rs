@@ -53,6 +53,10 @@ fn invalid_mod_with_real_operands(mut with_db: RootDatabase) {
     [E0305] Error: operator not supported by the type
        ,-[ file:///test0.st:8:18 ]
        |
+     4 |             a : REAL := 7.5;
+       |             |
+       |             `-- 'a' is declared here
+       |
      8 |             r := a MOD b;
        |                  ^^^|^^^
        |                     `----- operator 'MOD' cannot be applied to type 'REAL'
