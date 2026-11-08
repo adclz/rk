@@ -26,11 +26,22 @@ use crate::{
 
 pub struct InferExprCtx<'db> {
     pub resolver: Resolver<'db>,
-    /// The places an operation of a chain reads while it is inferred: the
-    /// one `x += e` writes, and in `a += b := e` also `b`, on the right.
-    /// Written, each was resolved and checked already, and its read takes
-    /// that type rather than being resolved and reported again.
-    pub place_reads: Vec<VariableAccess<'db>>,
+    /// The operation of a place written with an operator, while it is
+    /// inferred.
+    pub compound: Option<CompoundOperation<'db>>,
+}
+
+/// `x + e` for `x += e`, and `a + b` for `a += b := e`.
+pub struct CompoundOperation<'db> {
+    pub operation: Expr<'db>,
+    /// The places it reads: the one written, and in `a += b := e` also `b`,
+    /// on the right. Written, each was resolved and checked already, and
+    /// its read takes that type rather than being resolved and reported
+    /// again.
+    pub reads: Vec<VariableAccess<'db>>,
+    /// The last place of a chain, whose value a place on its left takes:
+    /// `ne := on /= off`.
+    pub ends_a_chain: bool,
 }
 
 /// The POU's own variadic parameter, which is what `...` reads and nothing
@@ -75,7 +86,7 @@ impl<'db> InferExprCtx<'db> {
     pub fn new(resolver: Resolver<'db>) -> Self {
         Self {
             resolver,
-            place_reads: Vec::new(),
+            compound: None,
         }
     }
 
@@ -176,14 +187,24 @@ impl<'db> InferExprCtx<'db> {
                         Type::Elementary(_) if lhs.normalize(db) == ty => lhs,
                         _ => ty,
                     };
-                    inference_results.errors.push(
-                        TypeError::UnsupportedOperator {
+                    let error = match &self.compound {
+                        // `on /= off` names the operator written.
+                        Some(compound) if compound.operation == curr_expr => {
+                            TypeError::UnsupportedCompoundOperator {
+                                typ,
+                                operation: curr_expr,
+                                ends_a_chain: compound.ends_a_chain,
+                            }
+                        }
+                        _ => TypeError::UnsupportedOperator {
                             call_site: curr_expr.as_call_site(db),
                             typ,
                             operator,
-                        }
-                        .to_diagnostic(db, inference_results.scope.file(db)),
-                    );
+                        },
+                    };
+                    inference_results
+                        .errors
+                        .push(error.to_diagnostic(db, inference_results.scope.file(db)));
                     ty = Type::Never;
                 }
 
@@ -396,7 +417,12 @@ impl<'db> InferExprCtx<'db> {
     ) -> Type<'db> {
         match to {
             PrimaryExpr::Literal(prim) => (*prim).into(),
-            PrimaryExpr::VariableAccess(v) if self.place_reads.contains(v) => {
+            PrimaryExpr::VariableAccess(v)
+                if self
+                    .compound
+                    .as_ref()
+                    .is_some_and(|compound| compound.reads.contains(v)) =>
+            {
                 inference_result.get_type_of_variable_access(db, *v)
             }
             PrimaryExpr::VariableAccess(v) => {

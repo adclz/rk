@@ -28,7 +28,11 @@ use crate::{
     },
     hir_ty::{
         body::{Adjust, BodyInferenceResult, CaseLabelValue, NullState},
-        infer::{Infer, expr::InferExprCtx, table::InferenceTable},
+        infer::{
+            Infer,
+            expr::{CompoundOperation, InferExprCtx},
+            table::InferenceTable,
+        },
         resolver::{Resolver, func_call::resolve_func_call},
         ty::{InferType, Type},
     },
@@ -1254,10 +1258,14 @@ impl<'db> StmtsResolverCtx<'db> {
         // right-hand side: a RETURN-overloaded call picks the overload whose
         // return the target expects. A compound assignment's operation reads
         // the place just resolved, which is not resolved again.
-        infer.place_reads = compound.then_some(var).into_iter().collect();
+        infer.compound = compound.then(|| CompoundOperation {
+            operation: target,
+            reads: vec![var],
+            ends_a_chain: !links.is_empty(),
+        });
         infer.resolve_expr_expecting(db, target, ctx, Some(base_typ));
         infer.check_expr(db, target, ctx);
-        infer.place_reads.clear();
+        infer.compound = None;
 
         if assignable && let Err(err) = infer.coerce_var_access_with_expr(db, var, target, ctx) {
             let diag = match compound {
@@ -1295,16 +1303,21 @@ impl<'db> StmtsResolverCtx<'db> {
         // the place after it, or its operation over that value: a mismatch
         // there is the link's, and no cast can be written around a place.
         let mut source = var;
-        // What the place on the right was written with an operator.
+        // What the last place was written with an operator, for the link on
+        // its left.
         let mut source_operation = compound.then_some(target);
         for (&link, &operation) in links.iter().zip(operations).rev() {
             let (base_typ, assignable) = self.check_written_place(db, resolver, link, ctx);
             if let Some(operation) = operation {
                 // Both places it reads were resolved already.
-                infer.place_reads = vec![link, source];
+                infer.compound = Some(CompoundOperation {
+                    operation,
+                    reads: vec![link, source],
+                    ends_a_chain: false,
+                });
                 infer.resolve_expr_expecting(db, operation, ctx, Some(base_typ));
                 infer.check_expr(db, operation, ctx);
-                infer.place_reads.clear();
+                infer.compound = None;
                 if assignable
                     && let Err(err) = infer.coerce_var_access_with_expr(db, link, operation, ctx)
                 {
@@ -1330,7 +1343,9 @@ impl<'db> StmtsResolverCtx<'db> {
                 }
             }
             source = link;
-            source_operation = operation;
+            // Only the last place's operation can take `<>`: a place follows
+            // any other's, `a /= b := 3`.
+            source_operation = None;
         }
 
         // A reference to this call's own storage, handed back to the caller

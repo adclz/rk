@@ -88,6 +88,14 @@ pub enum TypeError<'db> {
         operator: &'static str,
         call_site: CallSite<'db>,
     },
+    /// `on /= off`: the operation of a place written with an operator, which
+    /// its type has not. It names the operator as written. As the last place
+    /// of a chain, `ne := on /= off`, a BOOL's `/=` most likely meant `<>`.
+    UnsupportedCompoundOperator {
+        typ: Type<'db>,
+        operation: Expr<'db>,
+        ends_a_chain: bool,
+    },
     InferLiteralError {
         expr: Expr<'db>,
         source: Option<InferSource<'db>>,
@@ -235,7 +243,7 @@ impl<'db> ErrorCode for TypeError<'db> {
             Self::NotComparable { .. } => "E0302",
             Self::NotAddable { .. } => "E0303",
             Self::NotMultiplicable { .. } => "E0304",
-            Self::UnsupportedOperator { .. } => "E0305",
+            Self::UnsupportedOperator { .. } | Self::UnsupportedCompoundOperator { .. } => "E0305",
             Self::InferLiteralError { err, .. } => err.code(),
             Self::RefAsValue { .. } => "E0301",
             Self::RefUnordered { .. } => "E0305",
@@ -474,6 +482,27 @@ impl<'db> ToIdeDiagnostic<'db> for TypeError<'db> {
                 // `<>` are what it has.
                 if matches!(typ.normalize(db), Type::RefTo(_) | Type::Null) {
                     diag.with_note("references can only be compared with '=' or '<>'".to_string());
+                }
+                diag
+            }
+            Self::UnsupportedCompoundOperator {
+                typ,
+                operation,
+                ends_a_chain,
+            } => {
+                let mut diag = Self::UnsupportedOperator {
+                    typ: *typ,
+                    operator: written_operator(db, *operation),
+                    call_site: CallSite::from_scoped(db, operation),
+                }
+                .to_diagnostic(db, file);
+                // `ne := on /= off`: a BOOL has no quotient, and '/=' is
+                // "not equal" as other languages write it.
+                if *ends_a_chain
+                    && divides(db, *operation)
+                    && matches!(typ.normalize(db), Type::Elementary(ElementarySpec::Bool))
+                {
+                    compare_instead(db, *operation, &mut diag);
                 }
                 diag
             }
@@ -950,7 +979,7 @@ pub(crate) fn chain_link_mismatch<'db>(
     match source_operation.filter(|operation| takes_a_bool && divides(db, *operation)) {
         // A BOOL is not divided into, and '/=' is "not equal" as other
         // languages write it.
-        Some(operation) => compare_instead(db, source, operation, &mut diag),
+        Some(operation) => compare_instead(db, operation, &mut diag),
         None => diag.with_help(format!(
             "assign '{}' in a statement of its own",
             CallSite::from_scoped(db, &link).to_string(db)
@@ -981,6 +1010,26 @@ pub(crate) fn catch_variable_mismatch<'db>(
     diag
 }
 
+/// The operator a compound assignment's operation was written with: `+=`
+/// for the `x + e` of `x += e`.
+fn written_operator<'db>(db: &'db dyn WorkspaceDataBase, operation: Expr<'db>) -> &'static str {
+    match operation.expr(db) {
+        ExprKind::AddOperator {
+            operator: AddOperatorKind::Plus,
+            ..
+        } => "+=",
+        ExprKind::AddOperator {
+            operator: AddOperatorKind::Minus,
+            ..
+        } => "-=",
+        ExprKind::MultOperator {
+            operator: MultOperatorKind::Div,
+            ..
+        } => "/=",
+        _ => "*=",
+    }
+}
+
 /// Whether an operation of a chain divides: `a /= b`.
 fn divides<'db>(db: &'db dyn WorkspaceDataBase, operation: Expr<'db>) -> bool {
     matches!(
@@ -992,19 +1041,18 @@ fn divides<'db>(db: &'db dyn WorkspaceDataBase, operation: Expr<'db>) -> bool {
     )
 }
 
-/// `flag := a /= b`: the fix compares, and a note says what '/=' does. The
-/// operation of a link in a chain is marked from its operator, which the fix
-/// replaces.
+/// `flag := a /= b`, `ne := on /= off`: the fix compares, and a note says
+/// what '/=' does. The operation of the last place of a chain is marked from
+/// its operator, which the fix replaces.
 fn compare_instead<'db>(
     db: &'db dyn WorkspaceDataBase,
-    place: VariableAccess<'db>,
     operation: Expr<'db>,
     diag: &mut IdeDiagnostic,
 ) {
-    let ExprKind::MultOperator { right, .. } = operation.expr(db) else {
+    let ExprKind::MultOperator { left, right, .. } = operation.expr(db) else {
         return;
     };
-    let place = CallSite::from_scoped(db, &place).to_string(db);
+    let place = CallSite::from_scoped(db, left).to_string(db);
     let value = CallSite::from_scoped(db, right).to_string(db);
     diag.with_note(format!(
         "'{place} /= {value}' is '{place} := {place} / {value}'"
