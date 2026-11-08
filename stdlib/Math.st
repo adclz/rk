@@ -10,7 +10,7 @@ with [Std.Math.IS_NAN] and [Std.Math.NOT_OK] where it matters.
 */
 NAMESPACE Std.Math
 
-	/* Returns the absolute value of `IN`.
+	/* Returns the absolute value of `IN`, which is `IN` itself on an unsigned type.
 
 	   The most negative value of a signed integer type has no positive
 	   counterpart, and is returned as it is: `ABS(SINT#-128)` is -128.
@@ -62,6 +62,34 @@ NAMESPACE Std.Math
 			IN: LREAL
 		END_VAR
 		{wasm IN 'abs' (params IN) (result ABS)}
+	END_FUNCTION
+
+	FUNCTION ABS: USINT
+		VAR_INPUT
+			IN: USINT
+		END_VAR
+		ABS := IN;
+	END_FUNCTION
+
+	FUNCTION ABS: UINT
+		VAR_INPUT
+			IN: UINT
+		END_VAR
+		ABS := IN;
+	END_FUNCTION
+
+	FUNCTION ABS: UDINT
+		VAR_INPUT
+			IN: UDINT
+		END_VAR
+		ABS := IN;
+	END_FUNCTION
+
+	FUNCTION ABS: ULINT
+		VAR_INPUT
+			IN: ULINT
+		END_VAR
+		ABS := IN;
 	END_FUNCTION
 
 	/* Returns the square root of `IN`.
@@ -361,6 +389,150 @@ NAMESPACE Std.Math
 		{wasm IN1 'pow' (params IN1 IN2) (result EXPT)}
 	END_FUNCTION
 
+	FUNCTION EXPT: REAL
+		VAR_INPUT
+			IN1: REAL
+			IN2: LREAL
+		END_VAR
+		EXPT := IN1 ** IN2;
+	END_FUNCTION
+
+	FUNCTION EXPT: REAL
+		VAR_INPUT
+			IN1: REAL
+			IN2: SINT
+		END_VAR
+		EXPT := IN1 ** IN2;
+	END_FUNCTION
+
+	FUNCTION EXPT: REAL
+		VAR_INPUT
+			IN1: REAL
+			IN2: INT
+		END_VAR
+		EXPT := IN1 ** IN2;
+	END_FUNCTION
+
+	FUNCTION EXPT: REAL
+		VAR_INPUT
+			IN1: REAL
+			IN2: DINT
+		END_VAR
+		EXPT := IN1 ** IN2;
+	END_FUNCTION
+
+	FUNCTION EXPT: REAL
+		VAR_INPUT
+			IN1: REAL
+			IN2: LINT
+		END_VAR
+		EXPT := IN1 ** IN2;
+	END_FUNCTION
+
+	FUNCTION EXPT: REAL
+		VAR_INPUT
+			IN1: REAL
+			IN2: USINT
+		END_VAR
+		EXPT := IN1 ** IN2;
+	END_FUNCTION
+
+	FUNCTION EXPT: REAL
+		VAR_INPUT
+			IN1: REAL
+			IN2: UINT
+		END_VAR
+		EXPT := IN1 ** IN2;
+	END_FUNCTION
+
+	FUNCTION EXPT: REAL
+		VAR_INPUT
+			IN1: REAL
+			IN2: UDINT
+		END_VAR
+		EXPT := IN1 ** IN2;
+	END_FUNCTION
+
+	FUNCTION EXPT: REAL
+		VAR_INPUT
+			IN1: REAL
+			IN2: ULINT
+		END_VAR
+		EXPT := IN1 ** IN2;
+	END_FUNCTION
+
+	FUNCTION EXPT: LREAL
+		VAR_INPUT
+			IN1: LREAL
+			IN2: REAL
+		END_VAR
+		EXPT := IN1 ** IN2;
+	END_FUNCTION
+
+	FUNCTION EXPT: LREAL
+		VAR_INPUT
+			IN1: LREAL
+			IN2: SINT
+		END_VAR
+		EXPT := IN1 ** IN2;
+	END_FUNCTION
+
+	FUNCTION EXPT: LREAL
+		VAR_INPUT
+			IN1: LREAL
+			IN2: INT
+		END_VAR
+		EXPT := IN1 ** IN2;
+	END_FUNCTION
+
+	FUNCTION EXPT: LREAL
+		VAR_INPUT
+			IN1: LREAL
+			IN2: DINT
+		END_VAR
+		EXPT := IN1 ** IN2;
+	END_FUNCTION
+
+	FUNCTION EXPT: LREAL
+		VAR_INPUT
+			IN1: LREAL
+			IN2: LINT
+		END_VAR
+		EXPT := IN1 ** IN2;
+	END_FUNCTION
+
+	FUNCTION EXPT: LREAL
+		VAR_INPUT
+			IN1: LREAL
+			IN2: USINT
+		END_VAR
+		EXPT := IN1 ** IN2;
+	END_FUNCTION
+
+	FUNCTION EXPT: LREAL
+		VAR_INPUT
+			IN1: LREAL
+			IN2: UINT
+		END_VAR
+		EXPT := IN1 ** IN2;
+	END_FUNCTION
+
+	FUNCTION EXPT: LREAL
+		VAR_INPUT
+			IN1: LREAL
+			IN2: UDINT
+		END_VAR
+		EXPT := IN1 ** IN2;
+	END_FUNCTION
+
+	FUNCTION EXPT: LREAL
+		VAR_INPUT
+			IN1: LREAL
+			IN2: ULINT
+		END_VAR
+		EXPT := IN1 ** IN2;
+	END_FUNCTION
+
 	/* Returns `TRUE` if `IN` is not a number.
 
 	   NaN comes from `0.0 / 0.0`, from the square root of a negative, and above
@@ -435,6 +607,19 @@ NAMESPACE Std.Math
 		FUNCTION test_expt_fractional ASSERT(EXPT(9.0, 0.5) = 3.0);
 		END_FUNCTION
 
+		// The result has the type of IN1, whatever the exponent's: a REAL
+		// raised to a DINT is stored in a REAL, which an LREAL result is not.
+		{test}
+		FUNCTION test_expt_keeps_the_base_type
+		VAR r: REAL; l: LREAL; n: DINT := 3; u: USINT := 10; END_VAR
+			r := EXPT(REAL#2.0, n);
+			ASSERT(r = 8.0);
+			r := EXPT(REAL#2.0, LREAL#0.5);
+			ASSERT(r > 1.41 AND r < 1.42);
+			l := EXPT(LREAL#2.0, u);
+			ASSERT(l = LREAL#1024.0);
+		END_FUNCTION
+
 		{test}
 		FUNCTION test_expt_integer_exponent
 		VAR x: REAL; n: INT; END_VAR
@@ -445,6 +630,82 @@ NAMESPACE Std.Math
 
 		{test}
 		FUNCTION test_expt_lreal ASSERT(EXPT(LREAL#2.0, LREAL#10.0) = LREAL#1024.0);
+		END_FUNCTION
+
+		// The result has the type of IN1, whatever the exponent: a REAL target
+		// refuses an LREAL.
+		{test}
+		FUNCTION test_expt_keeps_the_type_of_in1
+			VAR
+				r: REAL := 2.0;
+				l: LREAL := 2.0;
+				a: REAL;
+				b: LREAL;
+				si: SINT := 3;
+				i: INT := 3;
+				d: DINT := 3;
+				n: LINT := 3;
+				us: USINT := 3;
+				u: UINT := 3;
+				ud: UDINT := 3;
+				ul: ULINT := 3;
+				x: REAL := 3.0;
+				y: LREAL := 3.0;
+			END_VAR
+			a := EXPT(r, si); ASSERT(a = 8.0);
+			a := EXPT(r, i); ASSERT(a = 8.0);
+			a := EXPT(r, d); ASSERT(a = 8.0);
+			a := EXPT(r, n); ASSERT(a = 8.0);
+			a := EXPT(r, us); ASSERT(a = 8.0);
+			a := EXPT(r, u); ASSERT(a = 8.0);
+			a := EXPT(r, ud); ASSERT(a = 8.0);
+			a := EXPT(r, ul); ASSERT(a = 8.0);
+			a := EXPT(r, x); ASSERT(a = 8.0);
+			a := EXPT(r, y); ASSERT(a = 8.0);
+			b := EXPT(l, si); ASSERT(b = LREAL#8.0);
+			b := EXPT(l, i); ASSERT(b = LREAL#8.0);
+			b := EXPT(l, d); ASSERT(b = LREAL#8.0);
+			b := EXPT(l, n); ASSERT(b = LREAL#8.0);
+			b := EXPT(l, us); ASSERT(b = LREAL#8.0);
+			b := EXPT(l, u); ASSERT(b = LREAL#8.0);
+			b := EXPT(l, ud); ASSERT(b = LREAL#8.0);
+			b := EXPT(l, ul); ASSERT(b = LREAL#8.0);
+			b := EXPT(l, x); ASSERT(b = LREAL#8.0);
+			b := EXPT(l, y); ASSERT(b = LREAL#8.0);
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_expt_takes_literals
+			VAR
+				r: REAL := 2.0;
+				l: LREAL := 2.0;
+				a: REAL;
+				b: LREAL;
+			END_VAR
+			a := EXPT(2.0, 3.0); ASSERT(a = 8.0);
+			a := EXPT(r, 3.0); ASSERT(a = 8.0);
+			a := EXPT(r, 3); ASSERT(a = 8.0);
+			a := EXPT(2.0, 3); ASSERT(a = 8.0);
+			a := EXPT(r, DINT#3); ASSERT(a = 8.0);
+			a := EXPT(IN1 := r, IN2 := 3); ASSERT(a = 8.0);
+			b := EXPT(l, 3); ASSERT(b = LREAL#8.0);
+			b := EXPT(l, 3.0); ASSERT(b = LREAL#8.0);
+			b := EXPT(LREAL#2.0, 3); ASSERT(b = LREAL#8.0);
+			b := EXPT(l, -1); ASSERT(b = LREAL#0.5);
+		END_FUNCTION
+
+		{test}
+		FUNCTION test_abs_of_an_unsigned_is_itself
+			VAR
+				us: USINT := 200;
+				u: UINT := 60000;
+				ud: UDINT := 4000000000;
+				ul: ULINT := 18446744073709551615;
+			END_VAR
+			us := ABS(us); ASSERT(us = 200);
+			u := ABS(u); ASSERT(u = 60000);
+			ud := ABS(ud); ASSERT(ud = 4000000000);
+			ul := ABS(ul); ASSERT(ul = 18446744073709551615);
 		END_FUNCTION
 
 		{test}
@@ -477,6 +738,15 @@ NAMESPACE Std.Math
 
 		{test}
 		FUNCTION test_abs_with_message ASSERT(ABS(-7) = 7, 'ABS should return the positive value');
+		END_FUNCTION
+
+		// An unsigned value is its own absolute value, the largest included.
+		{test}
+		FUNCTION test_abs_unsigned
+			ASSERT(ABS(USINT#255) = USINT#255);
+			ASSERT(ABS(UINT#65535) = UINT#65535);
+			ASSERT(ABS(UDINT#4294967295) = UDINT#4294967295);
+			ASSERT(ABS(ULINT#18446744073709551615) = ULINT#18446744073709551615);
 		END_FUNCTION
 
 		// ----- SQRT (REAL/LREAL overloads) ----------------------------
