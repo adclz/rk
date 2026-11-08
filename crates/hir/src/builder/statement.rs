@@ -11,8 +11,8 @@ use crate::check::errors::ToIdeDiagnostic;
 use crate::check::errors::e00_syntax::SyntaxError;
 use crate::check::errors::e12_control_flow::ControlFlowError;
 use crate::hir_def::expressions::expression::{
-    AddOperatorKind, Expr, ExprKind, FuncCall, MultOperatorKind, ParamAssignKind, PrimaryExpr,
-    VariableAccess,
+    AddOperatorKind, DividedArgument, Expr, ExprKind, FuncCall, MultOperatorKind, ParamAssignKind,
+    PrimaryExpr, VariableAccess,
 };
 use crate::hir_def::expressions::statement::{CaseKind, Catch, Stmt, StmtKind};
 use crate::hir_def::interned::identifier::SpanIdent;
@@ -55,8 +55,8 @@ impl<'db> Parse<'db> for ast::generated::Stmt {
                                                 ParamAssignKind::NonFormal { value: p.value.cast(sema.ast).parse(sema)? }
                                             }
                                         };
-                                        sema.refuse_after_value(p.chain.as_ref(), &p.value, "the call");
-                                        parameters.push(sema.new_param(p.into(), sema.current_scope, kind))
+                                        let divided = sema.refuse_after_argument(p.chain.as_ref(), &p.value);
+                                        parameters.push(sema.new_argument(p.into(), sema.current_scope, kind, divided))
                                     }
                                     ast::generated::ParamAssignInput_ParamAssignOutput::ParamAssignOutput(p) => {
                                         let value = p.value.cast(sema.ast).parse(sema)?;
@@ -170,7 +170,7 @@ impl<'db> Parse<'db> for ast::generated::Stmt {
                 sema.refuse_after_value(
                     for_list.chain.as_ref(),
                     &for_list.initial_value,
-                    "the FOR",
+                    "before the FOR",
                 );
                 let start = for_list.initial_value.cast(sema.ast).parse(sema)?;
 
@@ -659,8 +659,9 @@ fn operation<'db>(
 
 impl<'db> SemanticIndexBuilder<'db> {
     /// What goes on after a value where one assignment stands, in an
-    /// argument or at the start of a FOR: a second `:=` (E0032), or a
-    /// compound operator (E0033), each with the rest of its chain. The value
+    /// argument, at the start of a FOR or after a condition's `:=`: a second
+    /// `:=` (E0032), or a compound operator (E0033), each with the rest of
+    /// its chain. `placement` is where its statement goes instead. The value
     /// is kept, and checked as if nothing followed it.
     pub(crate) fn refuse_after_value(
         &mut self,
@@ -670,7 +671,7 @@ impl<'db> SemanticIndexBuilder<'db> {
             >,
         >,
         place: &auto_lsp::core::ast::AstNodeId<ast::generated::Expression>,
-        within: &'static str,
+        placement: &str,
     ) {
         let Some(after) = after else {
             return;
@@ -681,14 +682,43 @@ impl<'db> SemanticIndexBuilder<'db> {
             After::ERRChainOutsideStatement(chain) => SyntaxError::ChainOutsideStatement {
                 span: chain.get_range().to_owned(),
                 place: place_range,
-                within,
+                placement: placement.to_string(),
             }
             .to_diagnostic(self.db, self.file),
             After::ERRCompoundOutsideStatement(err) => {
-                self.compound_outside_statement(err, place_range, within)
+                self.compound_outside_statement(err, place_range, placement)
             }
         };
         self.errors.push(error);
+    }
+
+    /// What goes on after an argument's value, refused as `refuse_after_value`
+    /// does, except `g(a /= b)`: that one is refused once the input it binds
+    /// is known, and is handed back to the argument.
+    pub(crate) fn refuse_after_argument(
+        &mut self,
+        after: Option<
+            &auto_lsp::core::ast::AstNodeId<
+                ast::generated::ERRChainOutsideStatement_ERRCompoundOutsideStatement,
+            >,
+        >,
+        place: &auto_lsp::core::ast::AstNodeId<ast::generated::Expression>,
+    ) -> Option<DividedArgument> {
+        type After = ast::generated::ERRChainOutsideStatement_ERRCompoundOutsideStatement;
+        if let Some(After::ERRCompoundOutsideStatement(err)) =
+            after.map(|after| after.cast(self.ast))
+            && matches!(
+                err.operator.cast(self.ast),
+                ast::generated::CompoundOperator::Token_SlashEqual(_)
+            )
+        {
+            return Some(DividedArgument {
+                run: AstId::from(err),
+                value: AstId::from(err.value.cast(self.ast)),
+            });
+        }
+        self.refuse_after_value(after, place, "before the call");
+        None
     }
 
     /// `x += e` where a value goes on, writing `place` (E0033).
@@ -696,7 +726,7 @@ impl<'db> SemanticIndexBuilder<'db> {
         &self,
         err: &ast::generated::ERRCompoundOutsideStatement,
         place: tree_sitter::Range,
-        within: &'static str,
+        placement: &str,
     ) -> IdeDiagnostic {
         // The value and the rest of the chain after it: `b := 1` in
         // `F(a += b := 1)`.
@@ -710,8 +740,8 @@ impl<'db> SemanticIndexBuilder<'db> {
                 end_point: end.end_point,
             },
             place,
-            placement: format!("before {within}"),
-            in_condition: false,
+            placement: placement.to_string(),
+            compares: false,
         }
         .to_diagnostic(self.db, self.file)
     }
@@ -739,34 +769,55 @@ fn parse_condition<'db>(
             return expr.parse(sema);
         }
         Condition::ERRCompoundInCondition(err) => {
+            // The value and the rest of the chain after it: `y := 1` in
+            // `IF x += y := 1 THEN`.
+            let (value, end) = (err.value.cast(sema.ast).get_range(), err.get_range());
             return Err(SyntaxError::CompoundOutsideStatement {
                 operator: err.operator.cast(sema.ast).get_range().to_owned(),
-                value: err.value.cast(sema.ast).get_range().to_owned(),
+                value: tree_sitter::Range {
+                    start_byte: value.start_byte,
+                    start_point: value.start_point,
+                    end_byte: end.end_byte,
+                    end_point: end.end_point,
+                },
                 place: err.place.cast(sema.ast).get_range().to_owned(),
                 placement: placement.to_string(),
-                in_condition: true,
+                compares: true,
             }
             .to_diagnostic(sema.db, sema.file));
         }
         Condition::ERRAssignInCondition(err) => err,
     };
+    // `IF on := x := y THEN`: a chain after the `:=` is a statement of its
+    // own.
+    if let Some(right) = err.children.get(1) {
+        sema.refuse_after_value(err.chain.as_ref(), right, placement);
+    }
 
     // Between the two sides is the `:=` and whatever spaces surround it,
     // which is all a fix should touch: replacing the whole condition would
-    // take both operands with it.
-    let span = err.get_range().to_owned();
-    let sign = match (err.children.first(), err.children.get(1)) {
+    // take both operands with it. The condition is the two sides, without
+    // the chain after them.
+    let (span, sign) = match (err.children.first(), err.children.get(1)) {
         (Some(left), Some(right)) => {
             let left = left.cast(sema.ast).get_range().to_owned();
             let right = right.cast(sema.ast).get_range().to_owned();
-            auto_lsp::tree_sitter::Range {
-                start_byte: left.end_byte,
-                end_byte: right.start_byte,
-                start_point: left.end_point,
-                end_point: right.start_point,
-            }
+            (
+                auto_lsp::tree_sitter::Range {
+                    start_byte: left.start_byte,
+                    end_byte: right.end_byte,
+                    start_point: left.start_point,
+                    end_point: right.end_point,
+                },
+                auto_lsp::tree_sitter::Range {
+                    start_byte: left.end_byte,
+                    end_byte: right.start_byte,
+                    start_point: left.end_point,
+                    end_point: right.start_point,
+                },
+            )
         }
-        _ => span,
+        _ => (err.get_range().to_owned(), err.get_range().to_owned()),
     };
 
     Err(SyntaxError::AssignInCondition {

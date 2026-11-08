@@ -416,6 +416,22 @@ pub struct ParamAssign<'db> {
     pub scope_id: ScopeId<'db>,
 
     pub kind: ParamAssignKind<'db>,
+
+    /// `g(a /= b)`: a `/=` after the value.
+    #[tracked]
+    #[no_eq]
+    pub divided: Option<DividedArgument>,
+}
+
+/// `g(a /= b)`: a `/=` after an argument's value, where no compound
+/// assignment can stand (E0033). Into a BOOL input it most likely meant
+/// `<>`, so it is refused once the input the argument binds is known.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, salsa::Update)]
+pub struct DividedArgument {
+    /// From the `/=` to the end of the chain it starts.
+    pub run: AstId,
+    /// The value after the `/=`.
+    pub value: AstId,
 }
 
 impl<'db> HirNodeInfo<'db> for ParamAssign<'db> {

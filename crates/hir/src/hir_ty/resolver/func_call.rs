@@ -5,11 +5,13 @@ use db::WorkspaceDataBase;
 use ide_diagnostic::IdeDiagnostic;
 use rustc_hash::{FxHashMap, FxHashSet};
 
+use crate::check::errors::e00_syntax::divided_argument;
 use crate::check::errors::e01_duplicates::DuplicateError;
 use crate::check::errors::e03_type::TypeError;
 use crate::check::errors::e04_init::InitError;
 use crate::check::errors::e08_call::{Ambiguity, CallError};
 use crate::hir_def::expressions::expression::{Expr, ExprKind, ParamAssign, PrimaryExpr};
+use crate::hir_def::expressions::spec::ElementarySpec;
 use crate::hir_def::interned::identifier::Ident;
 use crate::hir_def::pous::function::Function;
 use crate::hir_def::pous::variable::VariableDecl;
@@ -38,6 +40,40 @@ pub fn resolve_func_call<'db>(
     ctx: &mut BodyInferenceResult<'db>,
     // The type the call's value lands in when the consuming site knows it —
     // what a RETURN-directed overload set is picked by (`select_overload`).
+    expected: Option<Type<'db>>,
+) {
+    let first = !ctx.calls.contains(&func_call);
+    resolve_call(db, resolver, func_call, ctx, expected);
+    // `g(a /= b)` is refused once, whatever the call resolved to: knowing
+    // the input the argument binds, `<>` is the fix for a BOOL one.
+    if first {
+        for param in func_call.params(db) {
+            if let Some(divided) = param.divided(db) {
+                let compares = ctx
+                    .variable_of_param
+                    .get(param)
+                    .is_some_and(|var| takes_a_bool(db, *var));
+                let place = CallSite::from_scoped(db, &param.kind(db).value());
+                ctx.errors
+                    .push(divided_argument(db, divided, place, compares));
+            }
+        }
+    }
+}
+
+/// Whether a parameter is a BOOL.
+fn takes_a_bool<'db>(db: &'db dyn WorkspaceDataBase, var: VariableDecl<'db>) -> bool {
+    matches!(
+        Type::new_var(db, var).normalize(db),
+        Type::Elementary(ElementarySpec::Bool)
+    )
+}
+
+fn resolve_call<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    resolver: Resolver<'db>,
+    func_call: FuncCall<'db>,
+    ctx: &mut BodyInferenceResult<'db>,
     expected: Option<Type<'db>>,
 ) {
     // Re-entry happens (see the CallableType unwrap below), so record once.
@@ -1103,7 +1139,7 @@ fn apply_param_coercion<'db>(
             bind_output(db, resolver, callable, param, var, value, false, ctx);
         }
         ParamAssignKind::NonFormal { value } => {
-            coerce_with_var_target(db, resolver, value, var, ctx);
+            coerce_argument(db, resolver, param, value, var, ctx);
             check_string_argument(db, var, value, ctx);
 
             refuse_constant_argument(db, var, value, ctx);
@@ -1169,7 +1205,7 @@ fn apply_param_coercion<'db>(
             ctx.variable_of_param.insert(param, var);
         }
         ParamAssignKind::FormalInput { value, .. } => {
-            coerce_with_var_target(db, resolver, value, var, ctx);
+            coerce_argument(db, resolver, param, value, var, ctx);
             check_string_argument(db, var, value, ctx);
 
             refuse_constant_argument(db, var, value, ctx);
@@ -1378,6 +1414,27 @@ fn bind_output<'db>(
             crate::hir_ty::body::statements::check_copy_keeps_location(db, rhs_typ, call_site, ctx);
         }
     }
+}
+
+/// An argument's value converted to its input, except `g(a /= b)` for a
+/// BOOL one: E0033 offers `<>` there, and the value alone is no mismatch.
+fn coerce_argument<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    resolver: Resolver<'db>,
+    param: ParamAssign<'db>,
+    value: Expr<'db>,
+    var: VariableDecl<'db>,
+    ctx: &mut BodyInferenceResult<'db>,
+) {
+    if param.divided(db).is_some() && takes_a_bool(db, var) {
+        let mut infer = InferExprCtx::new(resolver);
+        if !ctx.type_of_expr.contains_key(&value) {
+            infer.resolve_expr(db, value, ctx);
+        }
+        infer.check_expr(db, value, ctx);
+        return;
+    }
+    coerce_with_var_target(db, resolver, value, var, ctx);
 }
 
 fn coerce_with_var_target<'db>(
