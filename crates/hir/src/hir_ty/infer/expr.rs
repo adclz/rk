@@ -168,10 +168,17 @@ impl<'db> InferExprCtx<'db> {
                 };
 
                 if !supported && !ty.is_never() {
+                    // Two operands of one type join into that type, which no
+                    // longer names a declaration: `on + TRUE` is reported on
+                    // `on`'s, as `s + 'x'` is on `s`'s.
+                    let typ = match ty {
+                        Type::Elementary(_) if lhs.normalize(db) == ty => lhs,
+                        _ => ty,
+                    };
                     inference_results.errors.push(
                         TypeError::UnsupportedOperator {
                             call_site: curr_expr.as_call_site(db),
-                            typ: ty,
+                            typ,
                             operator,
                         }
                         .to_diagnostic(db, inference_results.scope.file(db)),
