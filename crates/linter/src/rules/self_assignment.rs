@@ -167,13 +167,13 @@ fn same_variable<'db>(
     db: &'db dyn WorkspaceDataBase,
     body: ScopeInference<'db>,
     lhs: VariableAccess<'db>,
-    rhs_var: VariableAccess<'db>,
+    rhs: VariableAccess<'db>,
 ) -> Option<String> {
     // Both sides must be symbolic (not direct %I/%Q addresses)
     let VariableAccessKind::Symbolic(lhs_begin) = lhs.kind(db) else {
         return None;
     };
-    let VariableAccessKind::Symbolic(rhs_begin) = rhs_var.kind(db) else {
+    let VariableAccessKind::Symbolic(rhs_begin) = rhs.kind(db) else {
         return None;
     };
 
@@ -192,7 +192,32 @@ fn same_variable<'db>(
     if lhs_var != rhs_var {
         return None;
     }
+    // One variable is not yet one place: `arr[0] := arr[1]` and
+    // `w.%X3 := w.%X4` copy a part to another. The two accesses must be
+    // written alike.
+    if !written_alike(db, lhs, rhs) {
+        return None;
+    }
     Some(lhs_var.name_with_case(db).text(db).to_string())
+}
+
+/// Whether two accesses are written alike, spaces and case aside, as names
+/// are caseless: `arr[i]` and `ARR[ i ]`.
+fn written_alike<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    a: VariableAccess<'db>,
+    b: VariableAccess<'db>,
+) -> bool {
+    let text = |access: VariableAccess<'db>| -> String {
+        access
+            .as_call_site(db)
+            .to_string(db)
+            .chars()
+            .filter(|c| !c.is_whitespace())
+            .flat_map(char::to_lowercase)
+            .collect()
+    };
+    text(a) == text(b)
 }
 
 fn report(name: &str, range: Option<auto_lsp::lsp_types::Range>) -> IdeDiagnostic {
