@@ -132,7 +132,7 @@
 (param_assign_input param: (identifier) @variable)
 (param_assign_output param: (identifier) @variable)
 
-[ ":=" "=>" ":" "=" "<>" "<" "<=" ">" ">=" "+" "-" "*" "/" "**" "&" ] @operator
+[ ":=" "+=" "-=" "*=" "/=" "=>" ":" "=" "<>" "<" "<=" ">" ">=" "+" "-" "*" "/" "**" "&" ] @operator
 (deref_sign) @operator
 [ ";" "," "." ".." ] @punctuation.delimiter
 [ "(" ")" "[" "]" "{" "}" ] @punctuation.bracket

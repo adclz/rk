@@ -112,6 +112,105 @@ fn place_subrange(place: &crate::expr::MirPlace) -> Option<crate::types::MirSubr
     }
 }
 
+/// The place a link of a chain stores into, reached once when another link
+/// reads it back after (`links` is what is left of the chain to its left):
+/// the store of its address into a scratch goes to `stmts`.
+fn read_back_place<'db>(
+    ctx: &ExprLowerCtx<'db>,
+    place: crate::expr::MirPlace,
+    links: &[hir::hir_def::expressions::expression::VariableAccess<'db>],
+    stmts: &mut Vec<MirStmt>,
+) -> crate::expr::MirPlace {
+    if links.is_empty() {
+        return place;
+    }
+    let (pin, place) = ctx.pin_place_to_read_back(place);
+    stmts.extend(pin);
+    place
+}
+
+/// What the next link of a chain reads: the value `var` holds once stored,
+/// at `place`, read as an expression naming it reads it.
+fn read_back<'db>(
+    ctx: &ExprLowerCtx<'db>,
+    var: hir::hir_def::expressions::expression::VariableAccess<'db>,
+    place: crate::expr::MirPlace,
+) -> Result<crate::expr::MirExpr, LowerTypeError> {
+    let ty = var.infer(ctx.db);
+    // `%IX0.3` beside a `%IW0` is bits of that word's cell.
+    if let Some(view) = ctx.view(var, ty)? {
+        return Ok(view.read());
+    }
+    // `b.1` reads a slice of `b`, not `b` itself.
+    if var.multibits(ctx.db).is_some() {
+        return ctx.lower_multibit_read_as(place, var, ty);
+    }
+    // ADJUSTED: `arr[1]` reads the element, not the array.
+    let ty = ctx
+        .lower_type_resolved(
+            ctx.inference(var.scope_id(ctx.db))
+                .type_of_variable_access_adjusted(var),
+        )
+        .unwrap_or(crate::types::MirType::Void);
+    Ok(crate::expr::MirExpr::Load(place, ty))
+}
+
+/// `value`, already of `var`'s type, stored into `var` at `place`: checked
+/// against a subrange, and put back into its owner for a partial access or
+/// a view.
+fn lower_store<'db>(
+    ctx: &ExprLowerCtx<'db>,
+    var: hir::hir_def::expressions::expression::VariableAccess<'db>,
+    place: crate::expr::MirPlace,
+    value: crate::expr::MirExpr,
+) -> Result<Vec<MirStmt>, LowerTypeError> {
+    // A subrange target checks the value at the door; the place knows the
+    // slot's type where the access is an adjustment. A partial access stores
+    // bits: the word they go back into is checked below.
+    let value = if var.multibits(ctx.db).is_some() {
+        value
+    } else {
+        match place_subrange(&place) {
+            Some(sub) => ctx.checked_range_mir(value, &sub),
+            None => ctx.checked_range(value, var.infer(ctx.db)),
+        }
+    };
+    // `b.1 := x` names a slice of `b`; the store has to put back the whole
+    // of `b` with only those bits replaced. A view is the same store into
+    // its owner: `%QX0.3 := x` beside a `%QW0` rewrites the word with bit 3
+    // replaced.
+    let mut pin = None;
+    let (place, value) = if let Some(view) = ctx.view(var, var.infer(ctx.db))? {
+        view.write(value)
+    } else if var.multibits(ctx.db).is_some() {
+        // The store reads the cell it rewrites: a call in its subscript runs
+        // once, for both.
+        let (store, place) = ctx.pin_place(place);
+        pin = store;
+        let value = ctx.lower_multibit_write(place.clone(), var, var.infer(ctx.db), value)?;
+        // The word the bits go back into is a store of its owner, which a
+        // subrange checks: `p.7 := TRUE` made 228 of a (0..100).
+        let value = match place_subrange(&place) {
+            Some(sub) => ctx.checked_range_mir(value, &sub),
+            None => match var.infer(ctx.db) {
+                hir::hir_ty::ty::Type::Variable((owner, _)) => {
+                    ctx.checked_range(value, owner.spec(ctx.db).infer(ctx.db))
+                }
+                _ => value,
+            },
+        };
+        (place, value)
+    } else {
+        (place, value)
+    };
+    let mut stmts: Vec<MirStmt> = pin.into_iter().collect();
+    stmts.push(MirStmt::Assign {
+        target: place,
+        value,
+    });
+    Ok(stmts)
+}
+
 /// The MIR a statement lowers to: none for one that has no MIR equivalent
 /// (e.g., ExternPragma), and a scratch's store before one that must evaluate
 /// something once (a CASE selector, a place both read and stored).
@@ -120,8 +219,28 @@ fn lower_stmt<'db>(
     stmt: Stmt<'db>,
 ) -> Result<Vec<MirStmt>, LowerTypeError> {
     match stmt.stmt(ctx.db) {
-        StmtKind::Assignment { var, target } => {
-            let place = ctx.lower_variable_access(*var)?;
+        StmtKind::Assignment {
+            vars,
+            target,
+            compound,
+        } => {
+            // `a := b := e` runs from right to left: the last place is
+            // written the value, then each other the value the place after it
+            // holds, read back where it was stored.
+            let Some((&var, links)) = vars.split_last() else {
+                return Ok(Vec::new());
+            };
+            let mut stmts = Vec::new();
+            let place = ctx.lower_variable_access(var)?;
+            // `x += e` reads the place it stores to: found once, for both.
+            let place = match compound {
+                true => {
+                    let (pin, place) = ctx.pin_place_to_read_back(place);
+                    stmts.extend(pin);
+                    place
+                }
+                false => read_back_place(ctx, place, links, &mut stmts),
+            };
             // The conversion lane is inference's decision (`coercion_target`); the
             // fallback covers what HIR does not record.
             let var_type = match ctx
@@ -134,64 +253,53 @@ fn lower_stmt<'db>(
             // ADJUSTED: `a[i]` infers as the array, but the value read is the
             // element.
             let target_type = target.infer_adjusted(ctx.db).normalize(ctx.db);
+            if *compound {
+                *ctx.place_read.borrow_mut() = Some((var, place.clone()));
+            }
+            let inner = ctx.lower_expr(*target);
+            *ctx.place_read.borrow_mut() = None;
             let value = if needs_cast(ctx.db, target_type, var_type) {
                 // Insert cast from expression type to variable type
                 let from = ctx.type_to_mir_elementary_pub(target_type)?;
                 let to = ctx.type_to_mir_elementary_pub(var_type)?;
-                let inner = ctx.lower_expr(*target)?;
                 crate::expr::MirExpr::Cast {
-                    expr: Box::new(inner),
+                    expr: Box::new(inner?),
                     from,
                     to,
                 }
             } else {
-                ctx.lower_expr(*target)?
+                inner?
             };
-            // A subrange target checks the value at the door; the place knows the
-            // slot's type where the access is an adjustment. A partial access
-            // stores bits: the word they go back into is checked below.
-            let value = if var.multibits(ctx.db).is_some() {
-                value
-            } else {
-                match place_subrange(&place) {
-                    Some(sub) => ctx.checked_range_mir(value, &sub),
-                    None => ctx.checked_range(value, var.infer(ctx.db)),
-                }
-            };
-            // `b.1 := x` names a slice of `b`; the store has to put back the
-            // whole of `b` with only those bits replaced. A view is the same
-            // store into its owner: `%QX0.3 := x` beside a `%QW0` rewrites the
-            // word with bit 3 replaced.
-            let mut pin = None;
-            let (place, value) = if let Some(view) = ctx.view(*var, var.infer(ctx.db))? {
-                view.write(value)
-            } else if var.multibits(ctx.db).is_some() {
-                // The store reads the cell it rewrites: a call in its subscript
-                // runs once, for both.
-                let (store, place) = ctx.pin_place(place);
-                pin = store;
-                let value =
-                    ctx.lower_multibit_write(place.clone(), *var, var.infer(ctx.db), value)?;
-                // The word the bits go back into is a store of its owner, which
-                // a subrange checks: `p.7 := TRUE` made 228 of a (0..100).
-                let value = match place_subrange(&place) {
-                    Some(sub) => ctx.checked_range_mir(value, &sub),
-                    None => match var.infer(ctx.db) {
-                        hir::hir_ty::ty::Type::Variable((owner, _)) => {
-                            ctx.checked_range(value, owner.spec(ctx.db).infer(ctx.db))
-                        }
-                        _ => value,
-                    },
+            stmts.extend(lower_store(ctx, var, place.clone(), value)?);
+
+            let inference = ctx.inference(stmt.scope_id(ctx.db));
+            let (mut source, mut source_place) = (var, place);
+            for (i, &var) in links.iter().enumerate().rev() {
+                let read = read_back(ctx, source, source_place)?;
+                let from = inference
+                    .type_of_variable_access_adjusted(source)
+                    .normalize(ctx.db);
+                let to = inference
+                    .type_of_variable_access_adjusted(var)
+                    .normalize(ctx.db);
+                let value = if needs_cast(ctx.db, from, to) {
+                    crate::expr::MirExpr::Cast {
+                        expr: Box::new(read),
+                        from: ctx.type_to_mir_elementary_pub(from)?,
+                        to: ctx.type_to_mir_elementary_pub(to)?,
+                    }
+                } else {
+                    read
                 };
-                (place, value)
-            } else {
-                (place, value)
-            };
-            let mut stmts: Vec<MirStmt> = pin.into_iter().collect();
-            stmts.push(MirStmt::Assign {
-                target: place,
-                value,
-            });
+                let place = read_back_place(
+                    ctx,
+                    ctx.lower_variable_access(var)?,
+                    &links[..i],
+                    &mut stmts,
+                );
+                stmts.extend(lower_store(ctx, var, place.clone(), value)?);
+                (source, source_place) = (var, place);
+            }
             Ok(stmts)
         }
 

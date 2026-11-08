@@ -6,11 +6,13 @@
 // Test modules - only execution tests, no validation-only tests
 mod aggregate_returns;
 mod arrays;
+mod assignment_chains;
 mod bit_access;
 mod bytes;
 mod classes;
 mod clocks;
 mod comparison;
+mod compound_assignment;
 mod conformands;
 mod constant_folding;
 mod control_flow;

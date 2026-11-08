@@ -257,6 +257,7 @@ module.exports = grammar({
     $.mult,
     $.eq,
     $.ord,
+    $.compound_operator,
 
     $._stmt,
   ],
@@ -382,6 +383,16 @@ module.exports = grammar({
 
     // Statements
     ERR_empty_right_hand_assignment: ($) => prec(-1, ":="), // a := ?
+    // A second `:=` where one assignment stands, in an argument or at the
+    // start of a FOR: `F(a := b := 1)`, `FOR i := j := 0 TO 9`. A chain is
+    // a statement of its own.
+    ERR_chain_outside_statement: ($) => prec(-1, repeat1(seq(":=", $._expression))),
+    // A compound assignment where a value goes on: after a chain's place,
+    // `a := b += 1`, an argument's value or another compound's value. A
+    // compound assignment is a statement of its own.
+    ERR_compound_outside_statement: ($) =>
+      prec(-1, seq(field("operator", $.compound_operator), field("value", $._expression))),
+    ERR_empty_compound_assignment: ($) => prec(-1, $.compound_operator), // x += ?
 
     // Expressions
     ERR_assign_func_call: ($) => prec(-1, $.func_call), // A function call cannot be assigned
@@ -399,6 +410,18 @@ module.exports = grammar({
     ERR_missing_dot_in_for_control: ($) => "=",
     // Missing '=' after ':'
     ERR_missing_equal_in_for_control: ($) => ":",
+
+    // A compound assignment where a condition compares: `IF x += 1 THEN`.
+    // It is a statement of its own.
+    ERR_compound_in_condition: ($) =>
+      prec(
+        -1,
+        seq(
+          field("place", $._expression),
+          field("operator", $.compound_operator),
+          field("value", $._expression),
+        ),
+      ),
 
     // Using ':=' (assignment) where a condition compares with '='
     ERR_assign_in_condition: ($) =>
@@ -2220,6 +2243,7 @@ module.exports = grammar({
       choice(
         // assignments
         $.assign,
+        $.compound_assign,
         //$.empty_path_expression, // used for completions
         // subprog
         $.func_call,
@@ -2256,6 +2280,9 @@ module.exports = grammar({
     assign: ($) =>
       seq(
         field("variable", choice($.variable_access, $.ERR_assign_func_call)),
+        // `a := b := 1`: the targets after the first, each written the value
+        // of the one to its right.
+        field("chain", repeat($.chained_target)),
         field(
           "target",
           choice(
@@ -2264,18 +2291,49 @@ module.exports = grammar({
             $.ERR_missing_dot_in_assignment,
             $.ERR_missing_equal_in_assignment,
             $.ERR_output_assign_in_assignment,
+            $.ERR_compound_outside_statement,
           ),
         ),
       ),
 
     assignment: ($) => seq(":=", $._expression),
 
+    // `x += e` is `x := x + e`, with the place `x` found once, for the four
+    // arithmetic operators. It is no link of a chain.
+    compound_assign: ($) =>
+      seq(
+        field("variable", $.variable_access),
+        field("target", choice($.compound_assignment, $.ERR_empty_compound_assignment)),
+      ),
+
+    compound_assignment: ($) =>
+      seq(
+        field("operator", $.compound_operator),
+        field("value", $._expression),
+        field(
+          "chain",
+          optional(choice($.ERR_chain_outside_statement, $.ERR_compound_outside_statement)),
+        ),
+      ),
+
+    compound_operator: ($) => choice("+=", "-=", "*=", "/="),
+
+    // A target after the first of a chain. Ranked below an expression:
+    // `a := y = 3` compares, it is not `y` and a `:=` missing its `:`.
+    chained_target: ($) => prec(-1, seq(":=", field("variable", $.variable_access))),
+
     param_assign: ($) => choice($.param_assign_input, $.param_assign_output),
 
+    // A name before `:=` is the input's: `F(b := 1)` names `b`, it is no
+    // value `b` with a chain after it.
     param_assign_input: ($) =>
       seq(
-        optional(seq(field("param", $.identifier), ":=")),
+        optional(prec(1, seq(field("param", $.identifier), ":="))),
         field("value", $._expression),
+        field(
+          "chain",
+          optional(choice($.ERR_chain_outside_statement, $.ERR_compound_outside_statement)),
+        ),
       ),
 
     // Any expression after `=>`: one that names no variable is refused by
@@ -2296,7 +2354,10 @@ module.exports = grammar({
     if_stmt: ($) =>
       seq(
         kw("IF"),
-        field("if_cond", choice($._expression, $.ERR_assign_in_condition)),
+        field(
+          "if_cond",
+          choice($._expression, $.ERR_assign_in_condition, $.ERR_compound_in_condition),
+        ),
         kw("THEN"),
         field("if_body", optional($.stmt_list)),
         field("else_if", repeat($.else_if_stmt)),
@@ -2307,7 +2368,10 @@ module.exports = grammar({
     else_if_stmt: ($) =>
       seq(
         kw("ELSIF"),
-        field("else_if_cond", choice($._expression, $.ERR_assign_in_condition)),
+        field(
+          "else_if_cond",
+          choice($._expression, $.ERR_assign_in_condition, $.ERR_compound_in_condition),
+        ),
         kw("THEN"),
         field("else_if_body", optional($.stmt_list)),
       ),
@@ -2357,6 +2421,7 @@ module.exports = grammar({
           $.ERR_output_assign_in_for_control,
         ),
         field("initial_value", $._expression),
+        field("chain", optional($.ERR_chain_outside_statement)),
         kw("TO"),
         field("end_value", $._expression),
         optional(seq(kw("BY"), field("step", $._expression))),
@@ -2365,7 +2430,10 @@ module.exports = grammar({
     while_stmt: ($) =>
       seq(
         kw("WHILE"),
-        field("while_cond", choice($._expression, $.ERR_assign_in_condition)),
+        field(
+          "while_cond",
+          choice($._expression, $.ERR_assign_in_condition, $.ERR_compound_in_condition),
+        ),
         kw("DO"),
         field("while_body", optional($.stmt_list)),
         kw("END_WHILE"),
@@ -2376,7 +2444,10 @@ module.exports = grammar({
         kw("REPEAT"),
         field("repeat_body", optional($.stmt_list)),
         kw("UNTIL"),
-        field("repeat_cond", choice($._expression, $.ERR_assign_in_condition)),
+        field(
+          "repeat_cond",
+          choice($._expression, $.ERR_assign_in_condition, $.ERR_compound_in_condition),
+        ),
         kw("END_REPEAT"),
       ),
 

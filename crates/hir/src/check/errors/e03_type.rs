@@ -817,6 +817,45 @@ impl std::fmt::Display for InferLiteralError {
     }
 }
 
+/// `i += 1.5`, whose result its place cannot take: no cast can be written
+/// around the operation, which is the statement, so the fix writes it out,
+/// `i := REAL_TO_INT(i + 1.5)`. `written` is the statement, `place` the
+/// place's text and `operation` the operation's, `i + 1.5`.
+pub(crate) fn written_out_cast_suggestion(
+    db: &dyn WorkspaceDataBase,
+    expected: Type,
+    actual: Type,
+    written: CallSite,
+    place: &str,
+    operation: &str,
+    diag: &mut IdeDiagnostic,
+) {
+    if let (Type::Elementary(lhs), Type::Elementary(rhs)) =
+        (expected.normalize(db), actual.normalize(db))
+        && lhs.explicit_cast(rhs)
+    {
+        let file = written.get_scope_id(db).file(db);
+        let text = format!(
+            "{place} := {}_TO_{}({operation})",
+            rhs.type_name(),
+            lhs.type_name()
+        );
+        let range = crate::denormalize(db, file, &written.get_span(db)).unwrap_or_default();
+        diag.with_fix(CodeAction {
+            title: format!("write '{text}'"),
+            edit: Some(WorkspaceEdit::new(HashMap::from([(
+                file.url(db).clone(),
+                vec![auto_lsp::lsp_types::TextEdit {
+                    range,
+                    new_text: text,
+                }],
+            )]))),
+            is_preferred: Some(true),
+            ..Default::default()
+        });
+    }
+}
+
 pub(crate) fn explicit_cast_suggestion(
     db: &dyn WorkspaceDataBase,
     expected: Type,

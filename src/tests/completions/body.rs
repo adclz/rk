@@ -469,3 +469,48 @@ END_FUNCTION
         "cursor after END_FUNCTION should not resolve to any node"
     );
 }
+
+/// In a chain, the value and each place complete as an assignment's do.
+#[rstest]
+#[case::the_value("first := middle := va|", "value")]
+#[case::a_middle_place("first := mi| := value;", "middle")]
+#[case::the_last_place("first := middle := la| := value;", "last")]
+pub fn completion_in_a_chain(
+    mut with_db: RootDatabase,
+    #[case] chain: &str,
+    #[case] offered: &str,
+) {
+    let marked = format!(
+        "
+FUNCTION f : INT
+VAR first : INT; middle : INT; last : INT; value : INT; END_VAR
+    {chain}
+END_FUNCTION
+"
+    );
+    let (file, offset) = crate::tests::utils::add_marked_source(&mut with_db, &marked);
+    let labels: Vec<String> =
+        ide_proto::handlers::completions::complete(&with_db, file, offset, None)
+            .into_iter()
+            .map(|item| item.label)
+            .collect();
+    assert!(labels.iter().any(|label| label == offered), "{labels:?}");
+}
+
+/// After a compound operator, the value completes as an assignment's does.
+#[rstest]
+pub fn completion_in_a_compound_assignment(mut with_db: RootDatabase) {
+    let marked = "
+FUNCTION f : INT
+VAR total : INT; step : INT; END_VAR
+    total += st|
+END_FUNCTION
+";
+    let (file, offset) = crate::tests::utils::add_marked_source(&mut with_db, marked);
+    let labels: Vec<String> =
+        ide_proto::handlers::completions::complete(&with_db, file, offset, None)
+            .into_iter()
+            .map(|item| item.label)
+            .collect();
+    assert!(labels.iter().any(|label| label == "step"), "{labels:?}");
+}

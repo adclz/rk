@@ -39,6 +39,8 @@ pub const HEADERS: &[(&str, &str)] = &[
     ("E0029", "variadic parameter outside a FUNCTION or METHOD"),
     ("E0030", "__ENDTRY for __END_TRY"),
     ("E0031", "two qualifiers on a declaration"),
+    ("E0032", "chain of assignments outside a statement"),
+    ("E0033", "compound assignment outside a statement"),
     ("E0101", "duplicate variable"),
     ("E0102", "duplicate POU"),
     ("E0103", "duplicate parameter"),

@@ -809,3 +809,69 @@ END_CONFIGURATION
         format_definition_response(&response)
     );
 }
+
+/// Each place of a chain goes to its declaration, as an assignment's does,
+/// and so does the value.
+#[rstest]
+#[case::the_first("first := middle", "first : INT")]
+#[case::a_middle_one("middle := last", "middle : INT")]
+#[case::the_last("last := value", "last : INT")]
+#[case::the_value("value;", "value : INT")]
+pub fn definition_on_a_place_of_a_chain(
+    mut with_db: RootDatabase,
+    #[case] at: &str,
+    #[case] declared: &str,
+) {
+    let source = r#"
+FUNCTION f : INT
+VAR first : INT; middle : INT; last : INT; value : INT; END_VAR
+    first := middle := last := value;
+    f := first;
+END_FUNCTION
+"#;
+    let file = add_source(&mut with_db, source);
+    let offset = source.find(at).expect(at);
+    let node = descendant_at(&with_db, file, offset).expect("a node");
+    let def = node.definition(&with_db, offset).expect("a definition");
+
+    let decl = source.find(declared).expect(declared);
+    let line = source[..decl].matches('\n').count();
+    let col = decl - source[..decl].rfind('\n').map_or(0, |n| n + 1);
+    assert!(
+        format_definition_response(&def).starts_with(&format!("/test0.st:{line}:{col}-")),
+        "{}",
+        format_definition_response(&def)
+    );
+}
+
+/// The place of a compound assignment goes to its declaration, and so does
+/// the value.
+#[rstest]
+#[case::the_place("total += step", "total : INT")]
+#[case::the_value("step;", "step : INT")]
+pub fn definition_in_a_compound_assignment(
+    mut with_db: RootDatabase,
+    #[case] at: &str,
+    #[case] declared: &str,
+) {
+    let source = r#"
+FUNCTION f : INT
+VAR total : INT; step : INT; END_VAR
+    total += step;
+    f := total;
+END_FUNCTION
+"#;
+    let file = add_source(&mut with_db, source);
+    let offset = source.find(at).expect(at);
+    let node = descendant_at(&with_db, file, offset).expect("a node");
+    let def = node.definition(&with_db, offset).expect("a definition");
+
+    let decl = source.find(declared).expect(declared);
+    let line = source[..decl].matches('\n').count();
+    let col = decl - source[..decl].rfind('\n').map_or(0, |n| n + 1);
+    assert!(
+        format_definition_response(&def).starts_with(&format!("/test0.st:{line}:{col}-")),
+        "{}",
+        format_definition_response(&def)
+    );
+}

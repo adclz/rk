@@ -33,6 +33,7 @@ impl<'db> Parse<'db> for ast::generated::Stmt {
                 sema.current_scope,
             )),
             StmtType::Assign(assign) => assign.parse(sema),
+            StmtType::CompoundAssign(assign) => assign.parse(sema),
             StmtType::FuncCall(call) => {
                 let target = call.function.cast(sema.ast).parse(sema)?;
 
@@ -51,6 +52,7 @@ impl<'db> Parse<'db> for ast::generated::Stmt {
                                                 ParamAssignKind::NonFormal { value: p.value.cast(sema.ast).parse(sema)? }
                                             }
                                         };
+                                        sema.refuse_after_value(p.chain.as_ref(), &p.value, "the call");
                                         parameters.push(sema.new_param(p.into(), sema.current_scope, kind))
                                     }
                                     ast::generated::ParamAssignInput_ParamAssignOutput::ParamAssignOutput(p) => {
@@ -70,7 +72,8 @@ impl<'db> Parse<'db> for ast::generated::Stmt {
                 ))
             }
             StmtType::IfStmt(if_stmt) => {
-                let condition = parse_condition(sema, if_stmt.if_cond.cast(sema.ast))?;
+                let condition =
+                    parse_condition(sema, if_stmt.if_cond.cast(sema.ast), "before the IF")?;
                 let then = if_stmt
                     .if_body
                     .as_ref()
@@ -88,8 +91,11 @@ impl<'db> Parse<'db> for ast::generated::Stmt {
                     .iter()
                     .map(|else_if_stmt| {
                         let else_if_node = else_if_stmt.cast(sema.ast);
-                        let condition =
-                            parse_condition(sema, else_if_node.else_if_cond.cast(sema.ast))?;
+                        let condition = parse_condition(
+                            sema,
+                            else_if_node.else_if_cond.cast(sema.ast),
+                            "of its own",
+                        )?;
                         let then = else_if_node
                             .else_if_body
                             .as_ref()
@@ -158,6 +164,7 @@ impl<'db> Parse<'db> for ast::generated::Stmt {
                     }
                 }
 
+                sema.refuse_chain(for_list.chain.as_ref(), &for_list.initial_value, "the FOR");
                 let start = for_list.initial_value.cast(sema.ast).parse(sema)?;
 
                 let end = for_stmt
@@ -281,7 +288,8 @@ impl<'db> Parse<'db> for ast::generated::Stmt {
                     .transpose()?
                     .unwrap_or_else(std::vec::Vec::new);
 
-                let condition = parse_condition(sema, repeat.repeat_cond.cast(sema.ast))?;
+                let condition =
+                    parse_condition(sema, repeat.repeat_cond.cast(sema.ast), "before the UNTIL")?;
                 Ok(Stmt::new(
                     sema.db,
                     StmtKind::Repeat { body, condition },
@@ -290,7 +298,11 @@ impl<'db> Parse<'db> for ast::generated::Stmt {
                 ))
             }
             StmtType::WhileStmt(while_stmt) => {
-                let condition = parse_condition(sema, while_stmt.while_cond.cast(sema.ast))?;
+                let condition = parse_condition(
+                    sema,
+                    while_stmt.while_cond.cast(sema.ast),
+                    "before the WHILE and at the end of its body",
+                )?;
                 let body = while_stmt
                     .while_body
                     .as_ref()
@@ -499,9 +511,28 @@ impl<'db> Parse<'db> for ast::generated::Assign {
                 var.to_access(sema)
             }
         }?;
+        // `a := b := 1`: the other targets of a chain, in the order written.
+        let mut vars = vec![var];
+        for link in &self.chain {
+            vars.push(
+                link.cast(sema.ast)
+                    .variable
+                    .cast(sema.ast)
+                    .to_access(sema)?,
+            );
+        }
 
-        type TargetType = ast::generated::ERREmptyRightHandAssignment_ERRMissingDotInAssignment_ERRMissingEqualInAssignment_ERROutputAssignInAssignment_Assignment;
+        type TargetType = ast::generated::ERRCompoundOutsideStatement_ERREmptyRightHandAssignment_ERRMissingDotInAssignment_ERRMissingEqualInAssignment_ERROutputAssignInAssignment_Assignment;
         match self.target.cast(sema.ast) {
+            // `a := b += 1`: the place before the operator is the chain's
+            // last.
+            TargetType::ERRCompoundOutsideStatement(err) => {
+                let place = match self.chain.last() {
+                    Some(link) => link.cast(sema.ast).variable.cast(sema.ast).get_range(),
+                    None => self.variable.cast(sema.ast).get_range(),
+                };
+                Err(sema.compound_outside_statement(err, place.to_owned(), "the chain"))
+            }
             TargetType::ERREmptyRightHandAssignment(err) => {
                 Err(SyntaxError::EmptyRightHandSide(err.get_range().to_owned())
                     .to_diagnostic(sema.db, sema.file))
@@ -530,8 +561,9 @@ impl<'db> Parse<'db> for ast::generated::Assign {
             TargetType::Assignment(assign) => Ok(Stmt::new(
                 sema.db,
                 StmtKind::Assignment {
-                    var,
+                    vars,
                     target: assign.children.cast(sema.ast).parse(sema)?,
+                    compound: false,
                 },
                 self.into(),
                 sema.current_scope,
@@ -540,19 +572,188 @@ impl<'db> Parse<'db> for ast::generated::Assign {
     }
 }
 
+impl<'db> SemanticIndexBuilder<'db> {
+    /// `FOR i := j := 0 TO 9`: a second `:=` where one assignment stands
+    /// (E0032). The value before it is kept, and checked as if the chain were
+    /// not there.
+    pub(crate) fn refuse_chain(
+        &mut self,
+        chain: Option<&auto_lsp::core::ast::AstNodeId<ast::generated::ERRChainOutsideStatement>>,
+        place: &auto_lsp::core::ast::AstNodeId<ast::generated::Expression>,
+        within: &'static str,
+    ) {
+        let Some(chain) = chain else {
+            return;
+        };
+        self.errors.push(
+            SyntaxError::ChainOutsideStatement {
+                span: chain.cast(self.ast).get_range().to_owned(),
+                place: place.cast(self.ast).get_range().to_owned(),
+                within,
+            }
+            .to_diagnostic(self.db, self.file),
+        );
+    }
+
+    /// What goes on after a value where one assignment stands, in an
+    /// argument or a compound assignment: a second `:=` (E0032), or a
+    /// compound operator (E0033). The value is kept, and checked as if
+    /// nothing followed it.
+    pub(crate) fn refuse_after_value(
+        &mut self,
+        after: Option<
+            &auto_lsp::core::ast::AstNodeId<
+                ast::generated::ERRChainOutsideStatement_ERRCompoundOutsideStatement,
+            >,
+        >,
+        place: &auto_lsp::core::ast::AstNodeId<ast::generated::Expression>,
+        within: &'static str,
+    ) {
+        let Some(after) = after else {
+            return;
+        };
+        type After = ast::generated::ERRChainOutsideStatement_ERRCompoundOutsideStatement;
+        let place_range = place.cast(self.ast).get_range().to_owned();
+        let error = match after.cast(self.ast) {
+            After::ERRChainOutsideStatement(chain) => SyntaxError::ChainOutsideStatement {
+                span: chain.get_range().to_owned(),
+                place: place_range,
+                within,
+            }
+            .to_diagnostic(self.db, self.file),
+            After::ERRCompoundOutsideStatement(err) => {
+                self.compound_outside_statement(err, place_range, within)
+            }
+        };
+        self.errors.push(error);
+    }
+
+    /// `x += e` where a value goes on, writing `place` (E0033).
+    fn compound_outside_statement(
+        &self,
+        err: &ast::generated::ERRCompoundOutsideStatement,
+        place: tree_sitter::Range,
+        within: &'static str,
+    ) -> IdeDiagnostic {
+        SyntaxError::CompoundOutsideStatement {
+            operator: err.operator.cast(self.ast).get_range().to_owned(),
+            value: err.value.cast(self.ast).get_range().to_owned(),
+            place,
+            placement: format!("before {within}"),
+            in_condition: false,
+        }
+        .to_diagnostic(self.db, self.file)
+    }
+}
+
+impl<'db> Parse<'db> for ast::generated::CompoundAssign {
+    type Output = Stmt<'db>;
+
+    /// `x += e` is `x := x + e`: the place is read and written, one access
+    /// for both, and the operation is built around it. Neither the read nor
+    /// the operation is in the node index, which holds what the tree has:
+    /// the place and the value.
+    fn parse(
+        &self,
+        sema: &mut SemanticIndexBuilder<'db>,
+    ) -> anyhow::Result<Stmt<'db>, IdeDiagnostic> {
+        use crate::hir_def::expressions::expression::{
+            AddOperatorKind, Expr, ExprKind, MultOperatorKind, PrimaryExpr,
+        };
+        let place = self.variable.cast(sema.ast);
+        let var = place.to_access(sema)?;
+        type Target = ast::generated::ERREmptyCompoundAssignment_CompoundAssignment;
+        let assignment = match self.target.cast(sema.ast) {
+            Target::ERREmptyCompoundAssignment(err) => {
+                return Err(SyntaxError::EmptyRightHandSide(err.get_range().to_owned())
+                    .to_diagnostic(sema.db, sema.file));
+            }
+            Target::CompoundAssignment(assignment) => assignment,
+        };
+        type Operator = ast::generated::CompoundOperator;
+        let operator = assignment.operator.cast(sema.ast);
+        // `x += y := 1`, `x += y += 1`: what follows the value is refused.
+        let within = match operator {
+            Operator::Token_PlusEqual(_) => "the '+='",
+            Operator::Token_MinusEqual(_) => "the '-='",
+            Operator::Token_StarEqual(_) => "the '*='",
+            Operator::Token_SlashEqual(_) => "the '/='",
+        };
+        sema.refuse_after_value(assignment.chain.as_ref(), &assignment.value, within);
+        let value = assignment.value.cast(sema.ast).parse(sema)?;
+        let read = Expr::new(
+            sema.db,
+            ExprKind::PrimaryExpr(PrimaryExpr::VariableAccess(var)),
+            place.into(),
+            sema.current_scope,
+        );
+        let operation = match operator {
+            Operator::Token_PlusEqual(_) => ExprKind::AddOperator {
+                left: read,
+                operator: AddOperatorKind::Plus,
+                right: value,
+            },
+            Operator::Token_MinusEqual(_) => ExprKind::AddOperator {
+                left: read,
+                operator: AddOperatorKind::Minus,
+                right: value,
+            },
+            Operator::Token_StarEqual(_) => ExprKind::MultOperator {
+                left: read,
+                operator: MultOperatorKind::Mul,
+                right: value,
+            },
+            Operator::Token_SlashEqual(_) => ExprKind::MultOperator {
+                left: read,
+                operator: MultOperatorKind::Div,
+                right: value,
+            },
+        };
+        Ok(Stmt::new(
+            sema.db,
+            StmtKind::Assignment {
+                vars: vec![var],
+                target: Expr::new(sema.db, operation, self.into(), sema.current_scope),
+                compound: true,
+            },
+            self.into(),
+            sema.current_scope,
+        ))
+    }
+}
+
 /// A condition compares, so `:=` written in one is an assignment where `=`
 /// was meant. The grammar keeps both sides, and the left one is the condition
 /// the author was writing, so checking carries on from there rather than
 /// reporting the shape twice.
+///
+/// A compound assignment there, `IF x += 1 THEN`, is E0033: dropping its
+/// `+` would leave `IF x = 1`, which compiles and means something else.
+/// `placement` is where its statement goes instead: before an IF, before a
+/// WHILE and at the end of its body, as the condition is checked before
+/// each pass, and on its own for an ELSIF, since a statement before the IF
+/// would also run when an earlier branch is taken.
 fn parse_condition<'db>(
     sema: &mut SemanticIndexBuilder<'db>,
-    node: &ast::generated::ERRAssignInCondition_Expression,
+    node: &ast::generated::ERRAssignInCondition_ERRCompoundInCondition_Expression,
+    placement: &'static str,
 ) -> anyhow::Result<crate::hir_def::expressions::expression::Expr<'db>, IdeDiagnostic> {
+    type Condition = ast::generated::ERRAssignInCondition_ERRCompoundInCondition_Expression;
     let err = match node {
-        ast::generated::ERRAssignInCondition_Expression::Expression(expr) => {
+        Condition::Expression(expr) => {
             return expr.parse(sema);
         }
-        ast::generated::ERRAssignInCondition_Expression::ERRAssignInCondition(err) => err,
+        Condition::ERRCompoundInCondition(err) => {
+            return Err(SyntaxError::CompoundOutsideStatement {
+                operator: err.operator.cast(sema.ast).get_range().to_owned(),
+                value: err.value.cast(sema.ast).get_range().to_owned(),
+                place: err.place.cast(sema.ast).get_range().to_owned(),
+                placement: placement.to_string(),
+                in_condition: true,
+            }
+            .to_diagnostic(sema.db, sema.file));
+        }
+        Condition::ERRAssignInCondition(err) => err,
     };
 
     // Between the two sides is the `:=` and whatever spaces surround it,

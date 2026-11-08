@@ -234,3 +234,36 @@ END_FUNCTION
     ----'
     ");
 }
+
+/// A chain writes each of its places: a member of another instance among
+/// them is written from outside.
+#[rstest]
+fn fb_field_mutation_by_a_chain(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK MyFB
+VAR
+    x : INT;
+END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION caller : INT
+VAR
+    fb : MyFB;
+    y : INT;
+END_VAR
+    fb.x := y := 42;
+    caller := y;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "external-mutation"), @r"
+    [L0117] Warning: external instance mutation
+        ,-[ file:///test0.st:13:5 ]
+        |
+     13 |     fb.x := y := 42;
+        |     ^^|^
+        |       `--- 'fb.x' is written from outside its instance
+        |
+        | Note: lint rule: external-mutation
+    ----'
+    ");
+}

@@ -51,6 +51,38 @@ pub fn check_assignment<'db>(
     ));
 }
 
+/// Each link of `a := b := e`: the last place with the value, and each other
+/// place with the place after it, whose text it takes.
+pub fn check_chain<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    body: ScopeInference<'db>,
+    vars: &[VariableAccess<'db>],
+    value: &Expr<'db>,
+    diagnostics: &mut Vec<IdeDiagnostic>,
+) {
+    let Some((&last, links)) = vars.split_last() else {
+        return;
+    };
+    check_assignment(db, body, last, value, diagnostics);
+    let mut source = last;
+    for &var in links.iter().rev() {
+        if let Some(capacity) = declared_capacity_of(db, body.type_of_variable_access(var))
+            && let Some(length) = declared_capacity_of(db, body.type_of_variable_access(source))
+            && length > capacity
+        {
+            let target = var.as_call_site(db).to_string(db);
+            diagnostics.push(report(
+                db,
+                &source,
+                format!("a STRING[{length}] is assigned to a STRING[{capacity}]"),
+                capacity,
+                format!("declare '{target}' as STRING[{length}]"),
+            ));
+        }
+        source = var;
+    }
+}
+
 /// `f(name := long)` into a shorter input, `f(o => short)` from a longer
 /// output.
 pub fn check_calls<'db>(

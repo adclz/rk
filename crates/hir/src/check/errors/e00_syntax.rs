@@ -104,6 +104,31 @@ pub enum SyntaxError {
     MethodDeclInBody(Range),
     /// `__ENDTRY`, where a `__TRY` is closed by `__END_TRY`.
     EndTrySpelling(Range),
+    /// `F(a := b := 1)`, `FOR i := j := 0 TO 9`: a second `:=` where one
+    /// assignment stands. A chain is a statement of its own; the value
+    /// before the `:=` is kept.
+    ChainOutsideStatement {
+        /// From the second `:=` to the end of the chain.
+        span: Range,
+        /// The place the chain would write, to assign before.
+        place: Range,
+        /// What the assignment is part of: "the call", "the FOR".
+        within: &'static str,
+    },
+    /// `a := b += 1`, `F(a += 1)`, `x += y += 1`: a compound assignment
+    /// where a value goes on. It is a statement of its own; the value before
+    /// the operator is kept.
+    CompoundOutsideStatement {
+        operator: Range,
+        value: Range,
+        /// The place the compound assignment would write.
+        place: Range,
+        /// Where its statement goes: "before the call", "of its own".
+        placement: String,
+        /// In a condition, where `/=` is most likely "not equal" as other
+        /// languages write it.
+        in_condition: bool,
+    },
     /// `RETAIN NON_RETAIN x : INT;`: a struct element, a variable section
     /// or a program instance takes one qualifier. It keeps the first.
     DoubledQualifier {
@@ -151,6 +176,8 @@ impl ErrorCode for SyntaxError {
             Self::VariadicNotAllowed { .. } => "E0029",
             Self::EndTrySpelling(_) => "E0030",
             Self::DoubledQualifier { .. } => "E0031",
+            Self::ChainOutsideStatement { .. } => "E0032",
+            Self::CompoundOutsideStatement { .. } => "E0033",
         }
     }
 }
@@ -728,6 +755,82 @@ impl<'db> ToIdeDiagnostic<'db> for SyntaxError {
                     "a declaration takes one qualifier, CONSTANT, RETAIN or NON_RETAIN".into(),
                 );
                 diag.with_help("keep the one you mean".into());
+                diag
+            }
+            Self::ChainOutsideStatement {
+                span,
+                place,
+                within,
+            } => {
+                // The `:=` the chain starts with: two bytes on one line.
+                let sign = Range {
+                    start_byte: span.start_byte,
+                    end_byte: span.start_byte + 2,
+                    start_point: span.start_point,
+                    end_point: tree_sitter::Point {
+                        row: span.start_point.row,
+                        column: span.start_point.column + 2,
+                    },
+                };
+                let doc = file.document(db);
+                let place = doc
+                    .as_str()
+                    .get(place.start_byte..place.end_byte)
+                    .unwrap_or("");
+                let mut diag = diag()
+                    .message("a second ':=' chains an assignment".into())
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &sign).unwrap_or_default())
+                    .call();
+                diag.with_note("a chain of assignments is a statement of its own".into());
+                diag.with_help(format!("assign '{place}' in a statement before {within}"));
+                diag
+            }
+            Self::CompoundOutsideStatement {
+                operator,
+                value,
+                place,
+                placement,
+                in_condition,
+            } => {
+                let doc = file.document(db);
+                let text = |span: &Range| {
+                    doc.as_str()
+                        .get(span.start_byte..span.end_byte)
+                        .unwrap_or("")
+                };
+                let op = text(operator);
+                let range = crate::denormalize(db, file, operator).unwrap_or_default();
+                let mut diag = diag()
+                    .message(format!("'{op}' is a compound assignment"))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(range)
+                    .call();
+                diag.with_note("a compound assignment is a statement of its own".into());
+                let statement = format!("'{} {op} {};'", text(place), text(value));
+                // In a condition, `/=` is most likely "not equal": comparing
+                // is the fix, and dividing is the note.
+                if *in_condition && op == "/=" {
+                    diag.with_note(format!(
+                        "to divide, write {statement} in a statement {placement}"
+                    ));
+                    diag.with_fix(
+                        action()
+                            .title("replace '/=' with '<>'".into())
+                            .kind(auto_lsp::lsp_types::CodeActionKind::QUICKFIX)
+                            .diagnostics(vec![diag.inner()])
+                            .is_preferred(true)
+                            .edit(WorkspaceEdit::new(HashMap::from([(
+                                file.url(db).clone(),
+                                vec![edit().new_text("<>".to_string()).range(range).call()],
+                            )])))
+                            .call(),
+                    );
+                } else {
+                    diag.with_help(format!("write {statement} in a statement {placement}"));
+                }
                 diag
             }
             Self::EndTrySpelling(span) => {

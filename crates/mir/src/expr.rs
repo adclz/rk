@@ -390,6 +390,16 @@ impl MirPlace {
         }
     }
 
+    /// Whether finding this place's address reads something: a subscript or
+    /// a pointer, which a later step may change.
+    pub fn reads_to_address(&self) -> bool {
+        match self {
+            MirPlace::Local(_) | MirPlace::ThisField { .. } | MirPlace::Global { .. } => false,
+            MirPlace::Field { base, .. } => base.reads_to_address(),
+            MirPlace::Index { .. } | MirPlace::Deref { .. } => true,
+        }
+    }
+
     /// [`MirExpr::exprs_mut`] over the expressions in this place's path.
     pub fn exprs_mut(&mut self, f: &mut impl FnMut(&mut MirExpr)) {
         match self {

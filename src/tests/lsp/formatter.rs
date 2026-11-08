@@ -2926,3 +2926,58 @@ END_FUNCTION_BLOCK
     END_FUNCTION_BLOCK
     ");
 }
+
+#[rstest]
+pub fn assignment_chain(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION f : INT
+VAR a,b,c:INT; w : WORD; arr : ARRAY[0..3] OF BOOL; END_VAR
+a:=b:=c:=1;
+w.%X3:=arr[a]:=  TRUE;
+f:=a;
+END_FUNCTION
+"#;
+    let file = add_source(&mut with_db, source);
+    assert_snapshot!(fmt(file.document(&with_db)), @r"
+    FUNCTION f: INT
+    	VAR
+    		a, b, c: INT;
+    		w: WORD;
+    		arr: ARRAY[0..3] OF BOOL;
+    	END_VAR
+    	a := b := c := 1;
+    	w.%X3 := arr[a] := TRUE;
+    	f := a;
+    END_FUNCTION
+    ");
+}
+
+#[rstest]
+pub fn compound_assignment(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION f : INT
+VAR a,b:INT; arr : ARRAY[0..3] OF INT; END_VAR
+a+=1;arr[a]   -=b*2;
+b*=   3;a/=2;
+CASE a OF 1: b+=1; END_CASE
+f:=a;
+END_FUNCTION
+"#;
+    let file = add_source(&mut with_db, source);
+    assert_snapshot!(fmt(file.document(&with_db)), @r"
+    FUNCTION f: INT
+    	VAR
+    		a, b: INT;
+    		arr: ARRAY[0..3] OF INT;
+    	END_VAR
+    	a += 1;
+    	arr[a] -= b * 2;
+    	b *= 3;
+    	a /= 2;
+    	CASE a OF
+    		1: b += 1;
+    	END_CASE;
+    	f := a;
+    END_FUNCTION
+    ");
+}

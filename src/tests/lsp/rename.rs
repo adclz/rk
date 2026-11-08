@@ -894,3 +894,35 @@ END_CONFIGURATION
         source.replace("fuel", "gas")
     );
 }
+
+/// The place of a compound assignment, which is also what it reads, and the
+/// places of a chain are each renamed once.
+#[rstest]
+fn rename_variable_in_compound_assignments_and_chains(mut with_db: RootDatabase) {
+    let source = r#"FUNCTION fn1
+VAR
+    x, y : INT;
+END_VAR
+    x += 2;
+    y := x := 1;
+    x *= x;
+END_FUNCTION
+"#;
+
+    let file = add_source(&mut with_db, source);
+
+    let offset = source.find("x += 2").unwrap();
+    let node = descendant_at(&with_db, file, offset).unwrap();
+    let edit = node.rename(&with_db, offset, "counter").unwrap();
+
+    assert_snapshot!(apply_rename(&with_db, &edit, &[source]), @r"
+    FUNCTION fn1
+    VAR
+        counter, y : INT;
+    END_VAR
+        counter += 2;
+        y := counter := 1;
+        counter *= counter;
+    END_FUNCTION
+    ");
+}

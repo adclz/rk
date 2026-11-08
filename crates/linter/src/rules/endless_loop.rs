@@ -219,8 +219,10 @@ fn statements<'db>(
 ) {
     for stmt in stmts {
         match stmt.stmt(db) {
-            StmtKind::Assignment { var, target } => {
-                write(db, body, *var, effects);
+            StmtKind::Assignment { vars, target, .. } => {
+                for var in vars {
+                    write(db, body, *var, effects);
+                }
                 expression(db, body, target, effects);
             }
             StmtKind::FuncCall(call) => call_effects(db, body, *call, effects),

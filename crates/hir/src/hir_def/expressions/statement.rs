@@ -38,9 +38,17 @@ impl<'db> HirNodeInfo<'db> for Stmt<'db> {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub enum StmtKind<'db> {
     EmptyPathExpression(BeginPathExpr<'db>),
+    /// `a := b := e`: the places written, in the order written, never empty.
+    /// The last is written `target`, the value, and each other the value of
+    /// the place after it, from right to left.
+    ///
+    /// `x += e` is `compound`: its one place is written `target`, `x + e`,
+    /// whose left side reads that same place, found once for both. Neither
+    /// that operation nor its read has a node of its own in the tree.
     Assignment {
-        var: VariableAccess<'db>,
+        vars: Vec<VariableAccess<'db>>,
         target: Expr<'db>,
+        compound: bool,
     },
     FuncCall(FuncCall<'db>),
     Return,

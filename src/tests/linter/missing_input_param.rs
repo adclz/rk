@@ -270,3 +270,23 @@ END_FUNCTION_BLOCK
     ----'
     ");
 }
+
+/// An input a chain writes through the instance is passed.
+#[rstest]
+fn input_written_by_a_chain_is_passed(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK adder
+    VAR_INPUT
+        a : INT;
+        b : INT;
+    END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK caller
+    VAR inst : adder; END_VAR
+    inst.a := inst.b := 1;
+    inst();
+END_FUNCTION_BLOCK
+"#;
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "missing-input-param"), @r"");
+}

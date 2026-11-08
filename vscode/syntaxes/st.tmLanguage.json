@@ -199,7 +199,7 @@
         },
         {
           "name": "keyword.operator.assignment.st",
-          "match": "(:=|=>|S=|R=)"
+          "match": "(:=|\\+=|-=|\\*=|/=|=>|S=|R=)"
         },
         {
           "name": "keyword.operator.content.st",

@@ -81,6 +81,10 @@ pub struct ExprLowerCtx<'db> {
     /// The POU this body is emitted for, which for an inherited method is the
     /// inheritor: `THIS.m()` inside it must reach the inheritor's `m`.
     pub this_pou: Option<hir::hir_def::pous::pou::Pou<'db>>,
+    /// The place of a compound assignment, `x += e`, while its operation is
+    /// lowered: the read of `x` in it is the place the store goes to, found
+    /// once for both.
+    pub place_read: RefCell<Option<(VariableAccess<'db>, MirPlace)>>,
 }
 
 /// Scratch locals synthesized while lowering calls: `(name, type)`.
@@ -153,6 +157,7 @@ impl<'db> ExprLowerCtx<'db> {
             this_pou: None,
             fold_constants: Default::default(),
             shared_constants: Default::default(),
+            place_read: Default::default(),
         }
     }
 
@@ -174,6 +179,7 @@ impl<'db> ExprLowerCtx<'db> {
             this_pou: None,
             fold_constants: Default::default(),
             shared_constants: Default::default(),
+            place_read: Default::default(),
         }
     }
 
@@ -1061,6 +1067,11 @@ impl<'db> ExprLowerCtx<'db> {
         &self,
         var_access: VariableAccess<'db>,
     ) -> Result<MirPlace, LowerTypeError> {
+        if let Some((read, place)) = self.place_read.borrow().as_ref()
+            && *read == var_access
+        {
+            return Ok(place.clone());
+        }
         match var_access.kind(self.db) {
             VariableAccessKind::Symbolic(begin_path) => self.lower_begin_path_to_place(begin_path),
             // An address written bare declares nothing, so there is no
@@ -3121,7 +3132,28 @@ impl<'db> ExprLowerCtx<'db> {
     /// when a call in its path would run at each, the store of its address
     /// into a scratch (`$pin$N`), and the place through that address.
     pub fn pin_place(&self, place: MirPlace) -> (Option<crate::stmt::MirStmt>, MirPlace) {
-        let Some(ty) = place.ty().filter(|_| place.has_call()).cloned() else {
+        let pin = place.has_call();
+        self.pin_place_when(place, pin)
+    }
+
+    /// `place` stored into by a link of a chain and read back by the next
+    /// one (`a := b[i] := e`): its address is computed once, at the store,
+    /// whenever its path reads anything to find it, since the next link's
+    /// own place may change a subscript or a pointer before the read.
+    pub fn pin_place_to_read_back(
+        &self,
+        place: MirPlace,
+    ) -> (Option<crate::stmt::MirStmt>, MirPlace) {
+        let pin = place.reads_to_address();
+        self.pin_place_when(place, pin)
+    }
+
+    fn pin_place_when(
+        &self,
+        place: MirPlace,
+        pin: bool,
+    ) -> (Option<crate::stmt::MirStmt>, MirPlace) {
+        let Some(ty) = place.ty().filter(|_| pin).cloned() else {
             return (None, place);
         };
         let capacity = match &place {

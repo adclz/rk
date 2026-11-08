@@ -371,3 +371,26 @@ END_FUNCTION
     ---'
     ");
 }
+
+/// `y /= 0` divides by zero.
+#[rstest]
+fn compound_division_by_zero(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION test : INT
+VAR y : INT; END_VAR
+    y /= 0;
+    test := y;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "division-by-zero"), @r"
+    [L0102] Warning: division by zero
+       ,-[ file:///test0.st:4:10 ]
+       |
+     4 |     y /= 0;
+       |          |
+       |          `-- division by zero: right-hand side of '/' is 0
+       |
+       | Note: lint rule: division-by-zero
+    ---'
+    ");
+}

@@ -78,7 +78,11 @@ fn collect_written_inputs<'db>(
 ) {
     for stmt in stmts {
         match stmt.stmt(db) {
-            StmtKind::Assignment { var, .. } => written_input(db, body, *var, written),
+            StmtKind::Assignment { vars, .. } => {
+                for var in vars {
+                    written_input(db, body, *var, written);
+                }
+            }
             StmtKind::If {
                 then,
                 else_if,

@@ -26,6 +26,10 @@ use crate::{
 
 pub struct InferExprCtx<'db> {
     pub resolver: Resolver<'db>,
+    /// The place of a compound assignment, `x += e`, while its operation is
+    /// inferred: written, it was resolved and checked already, and its read
+    /// takes that type rather than being resolved and reported again.
+    pub place_read: Option<VariableAccess<'db>>,
 }
 
 /// The POU's own variadic parameter, which is what `...` reads and nothing
@@ -68,7 +72,10 @@ fn own_pack<'db>(
 
 impl<'db> InferExprCtx<'db> {
     pub fn new(resolver: Resolver<'db>) -> Self {
-        Self { resolver }
+        Self {
+            resolver,
+            place_read: None,
+        }
     }
 
     pub fn resolve_expr(
@@ -161,10 +168,17 @@ impl<'db> InferExprCtx<'db> {
                 };
 
                 if !supported && !ty.is_never() {
+                    // Two operands of one type join into that type, which no
+                    // longer names a declaration: `on + TRUE` is reported on
+                    // `on`'s, as `s + 'x'` is on `s`'s.
+                    let typ = match ty {
+                        Type::Elementary(_) if lhs.normalize(db) == ty => lhs,
+                        _ => ty,
+                    };
                     inference_results.errors.push(
                         TypeError::UnsupportedOperator {
                             call_site: curr_expr.as_call_site(db),
-                            typ: ty,
+                            typ,
                             operator,
                         }
                         .to_diagnostic(db, inference_results.scope.file(db)),
@@ -381,6 +395,9 @@ impl<'db> InferExprCtx<'db> {
     ) -> Type<'db> {
         match to {
             PrimaryExpr::Literal(prim) => (*prim).into(),
+            PrimaryExpr::VariableAccess(v) if self.place_read == Some(*v) => {
+                inference_result.get_type_of_variable_access(db, *v)
+            }
             PrimaryExpr::VariableAccess(v) => {
                 self.resolver
                     .resolve_variable_access(db, *v, inference_result);
@@ -926,6 +943,26 @@ impl<'db> InferExprCtx<'db> {
         inference_results: &mut BodyInferenceResult<'db>,
     ) -> CoerceResult<'db> {
         self.coerce_var_access_impl(db, var, rhs, inference_results, true)
+    }
+
+    /// A link of a chain `a := b := e`: `var` is written the value of the
+    /// place `source`, as `a := b` would write it. A place has its own type,
+    /// so nothing is left to infer, and its bounds are checked as it is
+    /// stored.
+    pub fn coerce_var_access_with_place(
+        &self,
+        db: &'db dyn WorkspaceDataBase,
+        var: VariableAccess<'db>,
+        source: VariableAccess<'db>,
+        inference_results: &BodyInferenceResult<'db>,
+    ) -> CoerceResult<'db> {
+        let lhs = inference_results.type_of_variable_access_with_adjustments(db, var);
+        lhs.coerce_with_type(
+            db,
+            inference_results.type_of_variable_access_with_adjustments(db, source),
+            inference_results.adjustments_of_var_access(db, source),
+            self.resolver,
+        )
     }
 
     /// As [`Self::coerce_var_access_with_expr`], without the subrange bounds
