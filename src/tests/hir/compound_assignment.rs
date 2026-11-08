@@ -48,8 +48,8 @@ END_FUNCTION
 
 /// The operation is checked as written out: a result the place cannot take
 /// is E0301 on the statement, which says what it is and writes it out
-/// converted; a literal of the wrong kind and an operator the type has not
-/// are what `i := i + e` reports.
+/// converted; a literal of the wrong kind is what `i := i + e` reports, and
+/// an operator the type has not is named as written, `+=`.
 #[rstest]
 fn invalid_an_operation_the_place_cannot_take(mut with_db: RootDatabase) {
     let source = r#"
@@ -97,7 +97,7 @@ END_FUNCTION
        |
      6 |     s += 'x';
        |     ^^^^|^^^
-       |         `----- operator '+' cannot be applied to type 'STRING'
+       |         `----- operator '+=' cannot be applied to type 'STRING'
     ---'
     [E0305] Error: operator not supported by the type
        ,-[ file:///test0.st:7:5 ]
@@ -108,7 +108,7 @@ END_FUNCTION
        |
      7 |     on += TRUE;
        |     ^^^^^|^^^^
-       |          `------ operator '+' cannot be applied to type 'BOOL'
+       |          `------ operator '+=' cannot be applied to type 'BOOL'
     ---'
     ");
 }
@@ -174,6 +174,7 @@ VAR a, b, i, j, x, y : INT; END_VAR
     x += ;
     a := b += ;
     IF x += 1 THEN f := 1; END_IF;
+    IF x += y := 1 THEN f := 1; END_IF;
     IF y = 0 THEN f := 1; ELSIF y -= 2 THEN f := 2; END_IF;
     WHILE x -= 1 DO END_WHILE;
     REPEAT f := 2; UNTIL x /= 2 END_REPEAT;
@@ -250,9 +251,20 @@ END_FUNCTION
         | Note: a compound assignment is a statement of its own
     ----'
     [E0033] Error: compound assignment outside a statement
-        ,-[ file:///test0.st:16:35 ]
+        ,-[ file:///test0.st:16:10 ]
         |
-     16 |     IF y = 0 THEN f := 1; ELSIF y -= 2 THEN f := 2; END_IF;
+     16 |     IF x += y := 1 THEN f := 1; END_IF;
+        |          ^|
+        |           `-- '+=' is a compound assignment
+        |
+        | Help: write 'x += y := 1;' in a statement before the IF
+        |
+        | Note: a compound assignment is a statement of its own
+    ----'
+    [E0033] Error: compound assignment outside a statement
+        ,-[ file:///test0.st:17:35 ]
+        |
+     17 |     IF y = 0 THEN f := 1; ELSIF y -= 2 THEN f := 2; END_IF;
         |                                   ^|
         |                                    `-- '-=' is a compound assignment
         |
@@ -261,9 +273,9 @@ END_FUNCTION
         | Note: a compound assignment is a statement of its own
     ----'
     [E0033] Error: compound assignment outside a statement
-        ,-[ file:///test0.st:17:13 ]
+        ,-[ file:///test0.st:18:13 ]
         |
-     17 |     WHILE x -= 1 DO END_WHILE;
+     18 |     WHILE x -= 1 DO END_WHILE;
         |             ^|
         |              `-- '-=' is a compound assignment
         |
@@ -272,9 +284,9 @@ END_FUNCTION
         | Note: a compound assignment is a statement of its own
     ----'
     [E0033] Error: compound assignment outside a statement
-        ,-[ file:///test0.st:18:28 ]
+        ,-[ file:///test0.st:19:28 ]
         |
-     18 |     REPEAT f := 2; UNTIL x /= 2 END_REPEAT;
+     19 |     REPEAT f := 2; UNTIL x /= 2 END_REPEAT;
         |                            ^|
         |                             `-- '/=' is a compound assignment
         |
@@ -283,6 +295,90 @@ END_FUNCTION
         | Note 1: a compound assignment is a statement of its own
         |
         | Note 2: to divide, write 'x /= 2;' in a statement before the UNTIL
+    ----'
+    ");
+}
+
+/// `g(a /= b)` is refused once the input it binds is known: into a BOOL
+/// input `<>` was most likely meant, which is the fix, and the value's own
+/// type is no mismatch to report. Into another input, or none, the help is
+/// to divide before the call.
+#[rstest]
+fn invalid_a_quotient_passed_to_an_input(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION g : INT
+VAR_INPUT on : BOOL; END_VAR
+    g := 0;
+END_FUNCTION
+
+FUNCTION h : INT
+VAR_INPUT n : INT; END_VAR
+    h := n;
+END_FUNCTION
+
+FUNCTION f : INT
+VAR a, b : INT; on, off : BOOL; END_VAR
+    f := g(a /= b);
+    f := g(on := on /= off);
+    f := h(a /= b);
+    f := nope(a /= b);
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0033] Error: compound assignment outside a statement
+        ,-[ file:///test0.st:14:14 ]
+        |
+     14 |     f := g(a /= b);
+        |              ^|
+        |               `-- '/=' is a compound assignment
+        |
+        | Help: replace '/=' with '<>'
+        |
+        | Note 1: a compound assignment is a statement of its own
+        |
+        | Note 2: to divide, write 'a /= b;' in a statement before the call
+    ----'
+    [E0033] Error: compound assignment outside a statement
+        ,-[ file:///test0.st:15:21 ]
+        |
+     15 |     f := g(on := on /= off);
+        |                     ^|
+        |                      `-- '/=' is a compound assignment
+        |
+        | Help: replace '/=' with '<>'
+        |
+        | Note 1: a compound assignment is a statement of its own
+        |
+        | Note 2: to divide, write 'on /= off;' in a statement before the call
+    ----'
+    [E0033] Error: compound assignment outside a statement
+        ,-[ file:///test0.st:16:14 ]
+        |
+     16 |     f := h(a /= b);
+        |              ^|
+        |               `-- '/=' is a compound assignment
+        |
+        | Help: write 'a /= b;' in a statement before the call
+        |
+        | Note: a compound assignment is a statement of its own
+    ----'
+    [E0201] Error: unknown name
+        ,-[ file:///test0.st:17:10 ]
+        |
+     17 |     f := nope(a /= b);
+        |          ^^|^
+        |            `--- no item 'nope' found in scope
+    ----'
+    [E0033] Error: compound assignment outside a statement
+        ,-[ file:///test0.st:17:17 ]
+        |
+     17 |     f := nope(a /= b);
+        |                 ^|
+        |                  `-- '/=' is a compound assignment
+        |
+        | Help: write 'a /= b;' in a statement before the call
+        |
+        | Note: a compound assignment is a statement of its own
     ----'
     ");
 }

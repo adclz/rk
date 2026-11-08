@@ -137,7 +137,7 @@ END_FUNCTION
        |
      6 |     s += t := 'x';
        |       ^^|^
-       |         `--- operator '+' cannot be applied to type 'STRING'
+       |         `--- operator '+=' cannot be applied to type 'STRING'
     ---'
     [E0305] Error: operator not supported by the type
        ,-[ file:///test0.st:7:8 ]
@@ -148,14 +148,15 @@ END_FUNCTION
        |
      7 |     on += off := TRUE;
        |        ^^^|^^
-       |           `---- operator '+' cannot be applied to type 'BOOL'
+       |           `---- operator '+=' cannot be applied to type 'BOOL'
     ---'
     ");
 }
 
 /// A BOOL written a quotient, `flag := a /= b`, most likely meant `<>`,
 /// "not equal" as other languages write it: the fix compares, and a note
-/// says what `/=` does. Through another place, the quotient was meant.
+/// says what `/=` does. Through another place the quotient was meant, and
+/// with a place after it, `a /= b := 3`, `<>` would leave no chain.
 #[rstest]
 fn invalid_a_quotient_into_a_bool(mut with_db: RootDatabase) {
     let source = r#"
@@ -164,6 +165,7 @@ VAR a, b, q : INT; r : REAL; flag : BOOL; END_VAR
     flag := a /= b;
     flag := r /= 2.0;
     flag := q := a /= b;
+    flag := a /= b := 3;
     f := a;
 END_FUNCTION
 "#;
@@ -216,21 +218,108 @@ END_FUNCTION
        |
        | Note: a place in a chain takes the value of the place to its right
     ---'
+    [E0301] Error: type mismatch
+       ,-[ file:///test0.st:7:13 ]
+       |
+     3 | VAR a, b, q : INT; r : REAL; flag : BOOL; END_VAR
+       |                              ^^|^
+       |                                `--- 'flag' is declared here
+       |
+     7 |     flag := a /= b := 3;
+       |             |
+       |             `-- expected 'BOOL', got 'INT'
+       |
+       | Help: assign 'flag' in a statement of its own
+       |
+       | Note: a place in a chain takes the value of the place to its right
+    ---'
     ");
 }
 
-/// The fix for `flag := a /= b` replaces the operator, and the statement
-/// then compares.
+/// BOOLs have no quotient, so `/=` between them can only mean "not equal":
+/// E0305 names the operator written, and as the last place of a chain the
+/// fix compares. Alone, `on /= off;` is no comparison to fix.
 #[rstest]
-fn the_quotient_fix_compares(mut with_db: RootDatabase) {
+fn invalid_a_quotient_of_bools(mut with_db: RootDatabase) {
     let source = r#"
 FUNCTION f : INT
-VAR a, b : INT; flag : BOOL; END_VAR
-    flag := a /= b;
-    f := a;
+VAR ne, on, off, b : BOOL; END_VAR
+    ne := on /= off;
+    ne := b := on /= off;
+    on /= off;
+    f := 0;
 END_FUNCTION
 "#;
-    let file = crate::tests::utils::add_source(&mut with_db, source);
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0305] Error: operator not supported by the type
+       ,-[ file:///test0.st:4:14 ]
+       |
+     3 | VAR ne, on, off, b : BOOL; END_VAR
+       |         ^|
+       |          `-- 'on' is declared here
+     4 |     ne := on /= off;
+       |              ^^^|^^
+       |                 `---- operator '/=' cannot be applied to type 'BOOL'
+       |
+       | Help: replace '/=' with '<>'
+       |
+       | Note: 'on /= off' is 'on := on / off'
+    ---'
+    [E0305] Error: operator not supported by the type
+       ,-[ file:///test0.st:5:19 ]
+       |
+     3 | VAR ne, on, off, b : BOOL; END_VAR
+       |         ^|
+       |          `-- 'on' is declared here
+       |
+     5 |     ne := b := on /= off;
+       |                   ^^^|^^
+       |                      `---- operator '/=' cannot be applied to type 'BOOL'
+       |
+       | Help: replace '/=' with '<>'
+       |
+       | Note: 'on /= off' is 'on := on / off'
+    ---'
+    [E0305] Error: operator not supported by the type
+       ,-[ file:///test0.st:6:5 ]
+       |
+     3 | VAR ne, on, off, b : BOOL; END_VAR
+       |         ^|
+       |          `-- 'on' is declared here
+       |
+     6 |     on /= off;
+       |     ^^^^|^^^^
+       |         `------ operator '/=' cannot be applied to type 'BOOL'
+    ---'
+    ");
+}
+
+/// The fix for `flag := a /= b`, `flag := on /= off` and `g(a /= b)` into a
+/// BOOL input replaces the operator, and the statement then compares.
+#[rstest]
+#[case::a_bool_given_a_quotient("flag := a /= b;", "flag := a <> b;")]
+#[case::a_quotient_of_bools("flag := on /= off;", "flag := on <> off;")]
+#[case::a_bool_input("f := g(a /= b);", "f := g(a <> b);")]
+fn the_quotient_fix_compares(
+    #[case] written: &str,
+    #[case] fixed: &str,
+    mut with_db: RootDatabase,
+) {
+    let source = format!(
+        r#"
+FUNCTION g : INT
+VAR_INPUT on : BOOL; END_VAR
+    g := 0;
+END_FUNCTION
+
+FUNCTION f : INT
+VAR a, b : INT; flag, on, off : BOOL; END_VAR
+    {written}
+    f := a;
+END_FUNCTION
+"#
+    );
+    let file = crate::tests::utils::add_source(&mut with_db, &source);
     let edits: Vec<_> = hir::check::diagnostics_for_file(&with_db, file)
         .iter()
         .flat_map(|d| d.fixes().to_vec())
@@ -251,8 +340,8 @@ END_FUNCTION
         edit.range.start.character as usize,
         edit.range.end.character as usize,
     );
-    let fixed = format!("{}{}{}", &line[..start], edit.new_text, &line[end..]);
-    assert_eq!(fixed, "    flag := a <> b;");
+    let applied = format!("{}{}{}", &line[..start], edit.new_text, &line[end..]);
+    assert_eq!(applied, format!("    {fixed}"));
 }
 
 /// A link whose place cannot take the value of the place to its right is
@@ -580,8 +669,10 @@ END_CONFIGURATION
 }
 
 /// A chain is a statement: not an argument, a FOR's start or a condition,
-/// and what follows the second `:=` is the chain's, operators included.
-/// With no value after its last `:=`, it is the empty right-hand side.
+/// and what follows the second `:=` is the chain's, operators included. In
+/// a condition the first `:=` is E0012, and the chain after it E0032 or
+/// E0033. With no value after its last `:=`, it is the empty right-hand
+/// side.
 #[rstest]
 fn invalid_a_chain_outside_a_statement(mut with_db: RootDatabase) {
     let source = r#"
@@ -591,13 +682,14 @@ VAR_INPUT a : INT; END_VAR
 END_FUNCTION
 
 FUNCTION f : INT
-VAR a, b, c, i, j, k : INT; on, x, y : BOOL; END_VAR
+VAR a, b, c, i, j, k : INT; on, y : BOOL; x : INT; END_VAR
     f := g(a := b := 1);
     FOR i := j := 0 TO 10 DO END_FOR;
     IF on := x := y THEN f := 1; END_IF;
     a := b := ;
     f := g(a := b := c += 1);
     FOR i := j := k += 1 TO 10 DO END_FOR;
+    WHILE on := x += 1 DO END_WHILE;
 END_FUNCTION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
@@ -632,12 +724,16 @@ END_FUNCTION
         |
         | Help: replace ':=' with '='
     ----'
-    [E0001] Error: syntax error
+    [E0032] Error: chain of assignments outside a statement
         ,-[ file:///test0.st:11:16 ]
         |
      11 |     IF on := x := y THEN f := 1; END_IF;
-        |                ^^|^
-        |                  `--- unexpected token(s): ':= y'
+        |                ^|
+        |                 `-- a second ':=' chains an assignment
+        |
+        | Help: assign 'x' in a statement before the IF
+        |
+        | Note: a chain of assignments is a statement of its own
     ----'
     [E0005] Error: empty right-hand side of assignment
         ,-[ file:///test0.st:12:12 ]
@@ -667,6 +763,26 @@ END_FUNCTION
         | Help: assign 'j' in a statement before the FOR
         |
         | Note: a chain of assignments is a statement of its own
+    ----'
+    [E0012] Error: assignment sign ':=' in a condition
+        ,-[ file:///test0.st:15:11 ]
+        |
+     15 |     WHILE on := x += 1 DO END_WHILE;
+        |           ^^^|^^^
+        |              `----- a condition compares with '=', not ':='
+        |
+        | Help: replace ':=' with '='
+    ----'
+    [E0033] Error: compound assignment outside a statement
+        ,-[ file:///test0.st:15:19 ]
+        |
+     15 |     WHILE on := x += 1 DO END_WHILE;
+        |                   ^|
+        |                    `-- '+=' is a compound assignment
+        |
+        | Help: write 'x += 1;' in a statement before the WHILE and at the end of its body
+        |
+        | Note: a compound assignment is a statement of its own
     ----'
     ");
 }
