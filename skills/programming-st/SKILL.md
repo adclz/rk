@@ -132,7 +132,8 @@ What an initial value can be depends on where it is declared:
 | `VAR_TEMP`, `VAR_IN_OUT`, `VAR_EXTERNAL` | none (E0004) |
 
 A constant is a literal, an enum value, `NULL`, a `CONSTANT` declared beside it or imported with `VAR_EXTERNAL CONSTANT`, arithmetic over those, or `REF()` of a global.
-On integers, `AND`, `OR`, `XOR` and `NOT` count as arithmetic.
+On integers and on BOOLs, `AND`, `OR`, `XOR` and `NOT` count as arithmetic.
+A comparison does not.
 A member or STRUCT field default may also be `REF()` of a member beside it: it points into the same instance.
 A call inside an array or STRUCT initializer is E0402.
 In a `FUNCTION` or `METHOD` the variables take their values at every call, in declaration order: an initial value can name another of them only if it is declared first, else E0406. Inputs, `VAR_EXTERNAL`s, `CONSTANT`s and `REF()` can be named in any order.
