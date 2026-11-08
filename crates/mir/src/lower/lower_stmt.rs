@@ -155,6 +155,44 @@ fn read_back<'db>(
     Ok(crate::expr::MirExpr::Load(place, ty))
 }
 
+/// `value`, the value or the operation a place of a chain is written,
+/// lowered and converted to `var`'s type, where inference says it goes. The
+/// places it reads in `reads` are read where they were found.
+fn lower_value<'db>(
+    ctx: &ExprLowerCtx<'db>,
+    var: hir::hir_def::expressions::expression::VariableAccess<'db>,
+    value: hir::hir_def::expressions::expression::Expr<'db>,
+    reads: Vec<(
+        hir::hir_def::expressions::expression::VariableAccess<'db>,
+        crate::expr::MirPlace,
+    )>,
+) -> Result<crate::expr::MirExpr, LowerTypeError> {
+    // The conversion lane is inference's decision (`coercion_target`); the
+    // fallback covers what HIR does not record.
+    let var_type = match ctx.inference(value.scope_id(ctx.db)).coercion_target(value) {
+        Some(ty) => ty,
+        None => var.infer(ctx.db).normalize(ctx.db),
+    };
+    // ADJUSTED: `a[i]` infers as the array, but the value read is the
+    // element.
+    let value_type = value.infer_adjusted(ctx.db).normalize(ctx.db);
+    *ctx.place_reads.borrow_mut() = reads;
+    let inner = ctx.lower_expr(value);
+    ctx.place_reads.borrow_mut().clear();
+    Ok(if needs_cast(ctx.db, value_type, var_type) {
+        // Insert cast from expression type to variable type
+        let from = ctx.type_to_mir_elementary_pub(value_type)?;
+        let to = ctx.type_to_mir_elementary_pub(var_type)?;
+        crate::expr::MirExpr::Cast {
+            expr: Box::new(inner?),
+            from,
+            to,
+        }
+    } else {
+        inner?
+    })
+}
+
 /// `value`, already of `var`'s type, stored into `var` at `place`: checked
 /// against a subrange, and put back into its owner for a partial access or
 /// a view.
@@ -223,10 +261,11 @@ fn lower_stmt<'db>(
             vars,
             target,
             compound,
+            operations,
         } => {
             // `a := b := e` runs from right to left: the last place is
             // written the value, then each other the value the place after it
-            // holds, read back where it was stored.
+            // holds, read back where it was stored, or its operation over it.
             let Some((&var, links)) = vars.split_last() else {
                 return Ok(Vec::new());
             };
@@ -241,62 +280,50 @@ fn lower_stmt<'db>(
                 }
                 false => read_back_place(ctx, place, links, &mut stmts),
             };
-            // The conversion lane is inference's decision (`coercion_target`); the
-            // fallback covers what HIR does not record.
-            let var_type = match ctx
-                .inference(target.scope_id(ctx.db))
-                .coercion_target(*target)
-            {
-                Some(ty) => ty,
-                None => var.infer(ctx.db).normalize(ctx.db),
-            };
-            // ADJUSTED: `a[i]` infers as the array, but the value read is the
-            // element.
-            let target_type = target.infer_adjusted(ctx.db).normalize(ctx.db);
-            if *compound {
-                *ctx.place_read.borrow_mut() = Some((var, place.clone()));
-            }
-            let inner = ctx.lower_expr(*target);
-            *ctx.place_read.borrow_mut() = None;
-            let value = if needs_cast(ctx.db, target_type, var_type) {
-                // Insert cast from expression type to variable type
-                let from = ctx.type_to_mir_elementary_pub(target_type)?;
-                let to = ctx.type_to_mir_elementary_pub(var_type)?;
-                crate::expr::MirExpr::Cast {
-                    expr: Box::new(inner?),
-                    from,
-                    to,
-                }
-            } else {
-                inner?
-            };
+            let reads = compound.then(|| (var, place.clone())).into_iter().collect();
+            let value = lower_value(ctx, var, *target, reads)?;
             stmts.extend(lower_store(ctx, var, place.clone(), value)?);
 
             let inference = ctx.inference(stmt.scope_id(ctx.db));
             let (mut source, mut source_place) = (var, place);
-            for (i, &var) in links.iter().enumerate().rev() {
-                let read = read_back(ctx, source, source_place)?;
-                let from = inference
-                    .type_of_variable_access_adjusted(source)
-                    .normalize(ctx.db);
-                let to = inference
-                    .type_of_variable_access_adjusted(var)
-                    .normalize(ctx.db);
-                let value = if needs_cast(ctx.db, from, to) {
-                    crate::expr::MirExpr::Cast {
-                        expr: Box::new(read),
-                        from: ctx.type_to_mir_elementary_pub(from)?,
-                        to: ctx.type_to_mir_elementary_pub(to)?,
+            for (i, (&var, operation)) in links.iter().zip(operations).enumerate().rev() {
+                let (place, value) = match operation {
+                    // `a += b` reads the place it stores to, found once for
+                    // both, and `b` where it was stored.
+                    Some(operation) => {
+                        let (pin, place) =
+                            ctx.pin_place_to_read_back(ctx.lower_variable_access(var)?);
+                        stmts.extend(pin);
+                        let reads = vec![(var, place.clone()), (source, source_place)];
+                        let value = lower_value(ctx, var, *operation, reads)?;
+                        (place, value)
                     }
-                } else {
-                    read
+                    None => {
+                        let read = read_back(ctx, source, source_place)?;
+                        let from = inference
+                            .type_of_variable_access_adjusted(source)
+                            .normalize(ctx.db);
+                        let to = inference
+                            .type_of_variable_access_adjusted(var)
+                            .normalize(ctx.db);
+                        let value = if needs_cast(ctx.db, from, to) {
+                            crate::expr::MirExpr::Cast {
+                                expr: Box::new(read),
+                                from: ctx.type_to_mir_elementary_pub(from)?,
+                                to: ctx.type_to_mir_elementary_pub(to)?,
+                            }
+                        } else {
+                            read
+                        };
+                        let place = read_back_place(
+                            ctx,
+                            ctx.lower_variable_access(var)?,
+                            &links[..i],
+                            &mut stmts,
+                        );
+                        (place, value)
+                    }
                 };
-                let place = read_back_place(
-                    ctx,
-                    ctx.lower_variable_access(var)?,
-                    &links[..i],
-                    &mut stmts,
-                );
                 stmts.extend(lower_store(ctx, var, place.clone(), value)?);
                 (source, source_place) = (var, place);
             }

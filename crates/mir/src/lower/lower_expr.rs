@@ -81,10 +81,11 @@ pub struct ExprLowerCtx<'db> {
     /// The POU this body is emitted for, which for an inherited method is the
     /// inheritor: `THIS.m()` inside it must reach the inheritor's `m`.
     pub this_pou: Option<hir::hir_def::pous::pou::Pou<'db>>,
-    /// The place of a compound assignment, `x += e`, while its operation is
-    /// lowered: the read of `x` in it is the place the store goes to, found
-    /// once for both.
-    pub place_read: RefCell<Option<(VariableAccess<'db>, MirPlace)>>,
+    /// The places an operation of a chain reads while it is lowered, each
+    /// where it was found once: in `x += e`, the read of `x` is the place the
+    /// store goes to, and in `a += b := e` the read of `b` is the place `b`
+    /// was stored into.
+    pub place_reads: RefCell<Vec<(VariableAccess<'db>, MirPlace)>>,
 }
 
 /// Scratch locals synthesized while lowering calls: `(name, type)`.
@@ -157,7 +158,7 @@ impl<'db> ExprLowerCtx<'db> {
             this_pou: None,
             fold_constants: Default::default(),
             shared_constants: Default::default(),
-            place_read: Default::default(),
+            place_reads: Default::default(),
         }
     }
 
@@ -179,7 +180,7 @@ impl<'db> ExprLowerCtx<'db> {
             this_pou: None,
             fold_constants: Default::default(),
             shared_constants: Default::default(),
-            place_read: Default::default(),
+            place_reads: Default::default(),
         }
     }
 
@@ -1067,8 +1068,11 @@ impl<'db> ExprLowerCtx<'db> {
         &self,
         var_access: VariableAccess<'db>,
     ) -> Result<MirPlace, LowerTypeError> {
-        if let Some((read, place)) = self.place_read.borrow().as_ref()
-            && *read == var_access
+        if let Some((_, place)) = self
+            .place_reads
+            .borrow()
+            .iter()
+            .find(|(read, _)| *read == var_access)
         {
             return Ok(place.clone());
         }
