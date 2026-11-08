@@ -2952,6 +2952,33 @@ END_FUNCTION
     ");
 }
 
+/// A chain with operators in it is laid out as one: each operator spaced,
+/// the `;` written in.
+#[rstest]
+pub fn assignment_chain_with_operators(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION f : INT
+VAR a,b,c:INT; arr : ARRAY[0..3] OF INT; END_VAR
+a:=b+=1;arr[a]+=c:=  2
+a+=b-=c*=2;
+f:=a;
+END_FUNCTION
+"#;
+    let file = add_source(&mut with_db, source);
+    assert_snapshot!(fmt(file.document(&with_db)), @r"
+    FUNCTION f: INT
+    	VAR
+    		a, b, c: INT;
+    		arr: ARRAY[0..3] OF INT;
+    	END_VAR
+    	a := b += 1;
+    	arr[a] += c := 2;
+    	a += b -= c *= 2;
+    	f := a;
+    END_FUNCTION
+    ");
+}
+
 #[rstest]
 pub fn compound_assignment(mut with_db: RootDatabase) {
     let source = r#"

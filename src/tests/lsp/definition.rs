@@ -845,10 +845,12 @@ END_FUNCTION
 }
 
 /// The place of a compound assignment goes to its declaration, and so does
-/// the value.
+/// the value, and each place of a chain with an operator in it.
 #[rstest]
 #[case::the_place("total += step", "total : INT")]
 #[case::the_value("step;", "step : INT")]
+#[case::a_place_with_an_operator_in_a_chain("total += last", "total : INT")]
+#[case::the_place_on_its_right("last := step", "last : INT")]
 pub fn definition_in_a_compound_assignment(
     mut with_db: RootDatabase,
     #[case] at: &str,
@@ -856,8 +858,9 @@ pub fn definition_in_a_compound_assignment(
 ) {
     let source = r#"
 FUNCTION f : INT
-VAR total : INT; step : INT; END_VAR
+VAR total : INT; step : INT; last : INT; END_VAR
     total += step;
+    total += last := step;
     f := total;
 END_FUNCTION
 "#;
