@@ -150,13 +150,13 @@ END_FUNCTION
     ");
 }
 
-/// A compound assignment is a statement of its own: after a chain's place,
-/// in an argument, after another compound's value or in a condition it is
-/// E0033, a chain after its value is E0032, and with no value it is the
-/// empty right-hand side. In a condition, the help says where the statement
-/// goes: before an IF, before a WHILE and at the end of its body, on its
-/// own for an ELSIF; and `/=` there most likely means "not equal", which is
-/// the help, dividing the note.
+/// A compound assignment is a statement of its own, or a place of a chain:
+/// in an argument, at the start of a FOR or in a condition it is E0033, with
+/// the rest of its chain, and with no value it is the empty right-hand side.
+/// In a condition, the help says where the statement goes: before an IF,
+/// before a WHILE and at the end of its body, on its own for an ELSIF; and
+/// `/=` there most likely means "not equal", which is the help, dividing the
+/// note.
 #[rstest]
 fn invalid_a_compound_assignment_outside_a_statement(mut with_db: RootDatabase) {
     let source = r#"
@@ -166,12 +166,13 @@ VAR_INPUT a : INT; END_VAR
 END_FUNCTION
 
 FUNCTION f : INT
-VAR a, b, x, y : INT; END_VAR
-    a := b += 1;
+VAR a, b, i, j, x, y : INT; END_VAR
     f := g(a += 1);
-    x += y += 1;
-    x += y := 1;
+    f := g(a += b := 1);
+    f := g(a := b += 1);
+    FOR i := j += 1 TO 3 DO END_FOR;
     x += ;
+    a := b += ;
     IF x += 1 THEN f := 1; END_IF;
     IF y = 0 THEN f := 1; ELSIF y -= 2 THEN f := 2; END_IF;
     WHILE x -= 1 DO END_WHILE;
@@ -180,48 +181,48 @@ END_FUNCTION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     [E0033] Error: compound assignment outside a statement
-       ,-[ file:///test0.st:9:12 ]
+       ,-[ file:///test0.st:9:14 ]
        |
-     9 |     a := b += 1;
-       |            ^|
-       |             `-- '+=' is a compound assignment
+     9 |     f := g(a += 1);
+       |              ^|
+       |               `-- '+=' is a compound assignment
        |
-       | Help: write 'b += 1;' in a statement before the chain
+       | Help: write 'a += 1;' in a statement before the call
        |
        | Note: a compound assignment is a statement of its own
     ---'
     [E0033] Error: compound assignment outside a statement
         ,-[ file:///test0.st:10:14 ]
         |
-     10 |     f := g(a += 1);
+     10 |     f := g(a += b := 1);
         |              ^|
         |               `-- '+=' is a compound assignment
         |
-        | Help: write 'a += 1;' in a statement before the call
+        | Help: write 'a += b := 1;' in a statement before the call
         |
         | Note: a compound assignment is a statement of its own
     ----'
     [E0033] Error: compound assignment outside a statement
-        ,-[ file:///test0.st:11:12 ]
+        ,-[ file:///test0.st:11:19 ]
         |
-     11 |     x += y += 1;
-        |            ^|
-        |             `-- '+=' is a compound assignment
+     11 |     f := g(a := b += 1);
+        |                   ^|
+        |                    `-- '+=' is a compound assignment
         |
-        | Help: write 'y += 1;' in a statement before the '+='
+        | Help: write 'b += 1;' in a statement before the call
         |
         | Note: a compound assignment is a statement of its own
     ----'
-    [E0032] Error: chain of assignments outside a statement
-        ,-[ file:///test0.st:12:12 ]
+    [E0033] Error: compound assignment outside a statement
+        ,-[ file:///test0.st:12:16 ]
         |
-     12 |     x += y := 1;
-        |            ^|
-        |             `-- a second ':=' chains an assignment
+     12 |     FOR i := j += 1 TO 3 DO END_FOR;
+        |                ^|
+        |                 `-- '+=' is a compound assignment
         |
-        | Help: assign 'y' in a statement before the '+='
+        | Help: write 'j += 1;' in a statement before the FOR
         |
-        | Note: a chain of assignments is a statement of its own
+        | Note: a compound assignment is a statement of its own
     ----'
     [E0005] Error: empty right-hand side of assignment
         ,-[ file:///test0.st:13:7 ]
@@ -230,10 +231,17 @@ END_FUNCTION
         |       ^|
         |        `-- the assignment has no right-hand side
     ----'
-    [E0033] Error: compound assignment outside a statement
-        ,-[ file:///test0.st:14:10 ]
+    [E0005] Error: empty right-hand side of assignment
+        ,-[ file:///test0.st:14:12 ]
         |
-     14 |     IF x += 1 THEN f := 1; END_IF;
+     14 |     a := b += ;
+        |            ^|
+        |             `-- the assignment has no right-hand side
+    ----'
+    [E0033] Error: compound assignment outside a statement
+        ,-[ file:///test0.st:15:10 ]
+        |
+     15 |     IF x += 1 THEN f := 1; END_IF;
         |          ^|
         |           `-- '+=' is a compound assignment
         |
@@ -242,9 +250,9 @@ END_FUNCTION
         | Note: a compound assignment is a statement of its own
     ----'
     [E0033] Error: compound assignment outside a statement
-        ,-[ file:///test0.st:15:35 ]
+        ,-[ file:///test0.st:16:35 ]
         |
-     15 |     IF y = 0 THEN f := 1; ELSIF y -= 2 THEN f := 2; END_IF;
+     16 |     IF y = 0 THEN f := 1; ELSIF y -= 2 THEN f := 2; END_IF;
         |                                   ^|
         |                                    `-- '-=' is a compound assignment
         |
@@ -253,9 +261,9 @@ END_FUNCTION
         | Note: a compound assignment is a statement of its own
     ----'
     [E0033] Error: compound assignment outside a statement
-        ,-[ file:///test0.st:16:13 ]
+        ,-[ file:///test0.st:17:13 ]
         |
-     16 |     WHILE x -= 1 DO END_WHILE;
+     17 |     WHILE x -= 1 DO END_WHILE;
         |             ^|
         |              `-- '-=' is a compound assignment
         |
@@ -264,9 +272,9 @@ END_FUNCTION
         | Note: a compound assignment is a statement of its own
     ----'
     [E0033] Error: compound assignment outside a statement
-        ,-[ file:///test0.st:17:28 ]
+        ,-[ file:///test0.st:18:28 ]
         |
-     17 |     REPEAT f := 2; UNTIL x /= 2 END_REPEAT;
+     18 |     REPEAT f := 2; UNTIL x /= 2 END_REPEAT;
         |                            ^|
         |                             `-- '/=' is a compound assignment
         |
