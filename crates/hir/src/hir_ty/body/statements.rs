@@ -7,7 +7,12 @@ use crate::check::errors::e04_init::InitError;
 use crate::check::errors::e15_pragma::PragmaError;
 use crate::{
     CallSite, HirNodeInfo,
-    check::errors::{ToIdeDiagnostic, e11_oop::OopError, e12_control_flow::ControlFlowError},
+    check::errors::{
+        ToIdeDiagnostic,
+        e03_type::{catch_variable_mismatch, chain_link_mismatch, compound_mismatch},
+        e11_oop::OopError,
+        e12_control_flow::ControlFlowError,
+    },
     hir_def::{
         expressions::{
             expression::{
@@ -1308,40 +1313,14 @@ impl<'db> StmtsResolverCtx<'db> {
                 }
             } else if assignable {
                 match infer.coerce_var_access_with_place(db, link, source, ctx) {
-                    Err(err) => {
-                        let file = ctx.scope.file(db);
-                        let mut diag = crate::check::errors::e03_type::TypeError::NotAssignable {
-                            base_target: base_typ,
-                            lhs: err.expected,
-                            rhs: err.actual,
-                            adjustment: err.adjustment,
-                            expr: CallSite::from_scoped(db, &source),
-                            suggest_cast: false,
-                        }
-                        .to_diagnostic(db, file);
-                        diag.with_note(
-                            "a place in a chain takes the value of the place to its right"
-                                .to_string(),
-                        );
-                        match source_operation.filter(|_| {
-                            matches!(
-                                err.expected.normalize(db),
-                                Type::Elementary(ElementarySpec::Bool)
-                            )
-                        }) {
-                            // `flag := a /= b`: a BOOL is not divided into,
-                            // and '/=' is "not equal" as other languages
-                            // write it.
-                            Some(operation) if divides(db, operation) => {
-                                compare_instead(db, source, operation, &mut diag)
-                            }
-                            _ => diag.with_help(format!(
-                                "assign '{}' in a statement of its own",
-                                CallSite::from_scoped(db, &link).to_string(db)
-                            )),
-                        }
-                        ctx.errors.push(diag);
-                    }
+                    Err(err) => ctx.errors.push(chain_link_mismatch(
+                        db,
+                        err,
+                        base_typ,
+                        link,
+                        source,
+                        source_operation,
+                    )),
                     Ok(_) => check_copy_keeps_location(
                         db,
                         ctx.type_of_variable_access_with_adjustments(db, link),
@@ -1443,19 +1422,8 @@ impl<'db> StmtsResolverCtx<'db> {
         let place = ctx.type_of_variable_access_with_adjustments(db, var);
         let message = Type::Elementary(ElementarySpec::String);
         if assignable && let Err(err) = place.coerce_with_type(db, message, None, resolver) {
-            let mut diag = crate::check::errors::e03_type::TypeError::NotAssignable {
-                base_target: base_typ,
-                lhs: err.expected,
-                rhs: err.actual,
-                adjustment: err.adjustment,
-                expr: CallSite::from_scoped(db, &var),
-                suggest_cast: false,
-            }
-            .to_diagnostic(db, ctx.scope.file(db));
-            diag.with_note(
-                "the variable of a __CATCH receives the message as a STRING".to_string(),
-            );
-            ctx.errors.push(diag);
+            ctx.errors
+                .push(catch_variable_mismatch(db, err, base_typ, var));
         }
     }
 
@@ -1536,111 +1504,6 @@ struct Chain<'a, 'db> {
     target: Expr<'db>,
     compound: bool,
     operations: &'a [Option<Expr<'db>>],
-}
-
-/// `i += 1.5` whose result its place cannot take: E0301 on the operation,
-/// written out in a note and in the fix, since no cast can be written around
-/// it. Alone, the operation is the statement, which the fix replaces; `in_chain`,
-/// the help writes it in a statement of its own.
-fn compound_mismatch<'db>(
-    db: &'db dyn WorkspaceDataBase,
-    err: crate::hir_ty::infer::coerce::CoerceError<'db>,
-    base_typ: Type<'db>,
-    var: VariableAccess<'db>,
-    operation: Expr<'db>,
-    in_chain: bool,
-) -> ide_diagnostic::IdeDiagnostic {
-    use crate::check::errors::e03_type::{TypeError, written_out_cast_suggestion};
-    let site = CallSite::from_scoped(db, &operation);
-    let mut diag = TypeError::NotAssignable {
-        base_target: base_typ,
-        lhs: err.expected,
-        rhs: err.actual,
-        adjustment: err.adjustment,
-        expr: site,
-        suggest_cast: false,
-    }
-    .to_diagnostic(db, site.get_scope_id(db).file(db));
-    let (operator, value) = match operation.expr(db) {
-        ExprKind::AddOperator {
-            operator, right, ..
-        } => (operator.as_str(), *right),
-        ExprKind::MultOperator {
-            operator, right, ..
-        } => (operator.as_str(), *right),
-        _ => return diag,
-    };
-    let place = CallSite::from_scoped(db, &var).to_string(db);
-    let value = CallSite::from_scoped(db, &value).to_string(db);
-    let written_out = format!("{place} {operator} {value}");
-    diag.with_note(format!(
-        "'{place} {operator}= {value}' is '{place} := {written_out}'"
-    ));
-    written_out_cast_suggestion(
-        db,
-        err.expected,
-        err.actual,
-        site,
-        &place,
-        &written_out,
-        in_chain,
-        &mut diag,
-    );
-    diag
-}
-
-/// Whether an operation of a chain divides: `a /= b`.
-fn divides<'db>(db: &'db dyn WorkspaceDataBase, operation: Expr<'db>) -> bool {
-    use crate::hir_def::expressions::expression::MultOperatorKind;
-    matches!(
-        operation.expr(db),
-        ExprKind::MultOperator {
-            operator: MultOperatorKind::Div,
-            ..
-        }
-    )
-}
-
-/// `flag := a /= b`, where a BOOL takes the quotient: '/=' is "not equal" as
-/// other languages write it, so the fix compares, and a note says what
-/// '/=' does. The operation of a link in a chain is marked from its
-/// operator, which the fix replaces.
-fn compare_instead<'db>(
-    db: &'db dyn WorkspaceDataBase,
-    place: VariableAccess<'db>,
-    operation: Expr<'db>,
-    diag: &mut ide_diagnostic::IdeDiagnostic,
-) {
-    use auto_lsp::lsp_types::{CodeAction, TextEdit, WorkspaceEdit};
-    let ExprKind::MultOperator { right, .. } = operation.expr(db) else {
-        return;
-    };
-    let place = CallSite::from_scoped(db, &place).to_string(db);
-    let value = CallSite::from_scoped(db, right).to_string(db);
-    diag.with_note(format!(
-        "'{place} /= {value}' is '{place} := {place} / {value}'"
-    ));
-    let site = CallSite::from_scoped(db, &operation);
-    let file = site.get_scope_id(db).file(db);
-    let mut span = site.get_span(db);
-    span.end_byte = span.start_byte + "/=".len();
-    span.end_point = auto_lsp::tree_sitter::Point {
-        row: span.start_point.row,
-        column: span.start_point.column + "/=".len(),
-    };
-    let range = crate::denormalize(db, file, &span).unwrap_or_default();
-    diag.with_fix(CodeAction {
-        title: "replace '/=' with '<>'".to_string(),
-        edit: Some(WorkspaceEdit::new(std::collections::HashMap::from([(
-            file.url(db).clone(),
-            vec![TextEdit {
-                range,
-                new_text: "<>".to_string(),
-            }],
-        )]))),
-        is_preferred: Some(true),
-        ..Default::default()
-    });
 }
 
 /// Whether a FOR control access is a single bare identifier — no path steps

@@ -115,11 +115,14 @@ pub enum SyntaxError {
         /// What the assignment is part of: "the call", "the FOR".
         within: &'static str,
     },
-    /// `a := b += 1`, `F(a += 1)`, `x += y += 1`: a compound assignment
-    /// where a value goes on. It is a statement of its own; the value before
-    /// the operator is kept.
+    /// `F(a += 1)`, `FOR i := j += 1 TO 9`, `IF x += 1 THEN`: a compound
+    /// assignment where one assignment stands or a condition compares. It is
+    /// a statement of its own, or a place of a chain; the value before the
+    /// operator is kept.
     CompoundOutsideStatement {
         operator: Range,
+        /// The value, and the rest of the chain after it: `b := 1` in
+        /// `F(a += b := 1)`.
         value: Range,
         /// The place the compound assignment would write.
         place: Range,

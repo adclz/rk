@@ -7,10 +7,14 @@ use crate::HirNodeInfo;
 use crate::check::errors::ToIdeDiagnostic;
 use crate::hir_def::expressions::expression::AddOperatorKind;
 use crate::hir_def::expressions::expression::Expr;
+use crate::hir_def::expressions::expression::ExprKind;
 use crate::hir_def::expressions::expression::MultOperatorKind;
+use crate::hir_def::expressions::expression::VariableAccess;
+use crate::hir_def::expressions::spec::ElementarySpec;
 use crate::hir_def::expressions::spec::Spec;
 use crate::hir_ty::body::Adjust;
 use crate::hir_ty::body::Adjustment;
+use crate::hir_ty::infer::coerce::CoerceError;
 use crate::hir_ty::infer::table::InferSource;
 use crate::hir_ty::ty::CallableType;
 use crate::hir_ty::ty::Type;
@@ -821,14 +825,18 @@ impl std::fmt::Display for InferLiteralError {
 /// `i += 1.5`, whose result its place cannot take: no cast can be written
 /// around the operation, which is the statement, so the fix writes it out,
 /// `i := REAL_TO_INT(i + 1.5)`. `written` is the statement, `place` the
-/// place's text and `operation` the operation's, `i + 1.5`.
-pub(crate) fn written_out_cast_suggestion(
+/// place's text and `operation` the operation's, `i + 1.5`. A link of a
+/// chain, `in_chain`, is no statement to replace: the help writes it out in
+/// a statement of its own.
+#[allow(clippy::too_many_arguments)]
+fn written_out_cast_suggestion(
     db: &dyn WorkspaceDataBase,
     expected: Type,
     actual: Type,
     written: CallSite,
     place: &str,
     operation: &str,
+    in_chain: bool,
     diag: &mut IdeDiagnostic,
 ) {
     if let (Type::Elementary(lhs), Type::Elementary(rhs)) =
@@ -841,6 +849,10 @@ pub(crate) fn written_out_cast_suggestion(
             rhs.type_name(),
             lhs.type_name()
         );
+        if in_chain {
+            diag.with_help(format!("write '{text}' in a statement of its own"));
+            return;
+        }
         let range = crate::denormalize(db, file, &written.get_span(db)).unwrap_or_default();
         diag.with_fix(CodeAction {
             title: format!("write '{text}'"),
@@ -855,6 +867,169 @@ pub(crate) fn written_out_cast_suggestion(
             ..Default::default()
         });
     }
+}
+
+/// `i += 1.5` whose result its place cannot take: E0301 on the operation,
+/// written out in a note and in the fix, since no cast can be written around
+/// it. Alone, the operation is the statement, which the fix replaces. In a
+/// chain, `in_chain`, the help writes it in a statement of its own.
+pub(crate) fn compound_mismatch<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    err: CoerceError<'db>,
+    base_typ: Type<'db>,
+    var: VariableAccess<'db>,
+    operation: Expr<'db>,
+    in_chain: bool,
+) -> IdeDiagnostic {
+    let site = CallSite::from_scoped(db, &operation);
+    let mut diag = TypeError::NotAssignable {
+        base_target: base_typ,
+        lhs: err.expected,
+        rhs: err.actual,
+        adjustment: err.adjustment,
+        expr: site,
+        suggest_cast: false,
+    }
+    .to_diagnostic(db, site.get_scope_id(db).file(db));
+    let (operator, value) = match operation.expr(db) {
+        ExprKind::AddOperator {
+            operator, right, ..
+        } => (operator.as_str(), *right),
+        ExprKind::MultOperator {
+            operator, right, ..
+        } => (operator.as_str(), *right),
+        _ => return diag,
+    };
+    let place = CallSite::from_scoped(db, &var).to_string(db);
+    let value = CallSite::from_scoped(db, &value).to_string(db);
+    let written_out = format!("{place} {operator} {value}");
+    diag.with_note(format!(
+        "'{place} {operator}= {value}' is '{place} := {written_out}'"
+    ));
+    written_out_cast_suggestion(
+        db,
+        err.expected,
+        err.actual,
+        site,
+        &place,
+        &written_out,
+        in_chain,
+        &mut diag,
+    );
+    diag
+}
+
+/// `count := total := 0`, a place of a chain that cannot take the value of
+/// the place to its right: E0301 on that place, whose value it is. No cast
+/// can be written around a place, so the help assigns the other in a
+/// statement of its own. A BOOL given a quotient, `flag := a /= b`, most
+/// likely meant `<>`: the place on the right was written `source_operation`.
+pub(crate) fn chain_link_mismatch<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    err: CoerceError<'db>,
+    base_typ: Type<'db>,
+    link: VariableAccess<'db>,
+    source: VariableAccess<'db>,
+    source_operation: Option<Expr<'db>>,
+) -> IdeDiagnostic {
+    let site = CallSite::from_scoped(db, &source);
+    let mut diag = TypeError::NotAssignable {
+        base_target: base_typ,
+        lhs: err.expected,
+        rhs: err.actual,
+        adjustment: err.adjustment,
+        expr: site,
+        suggest_cast: false,
+    }
+    .to_diagnostic(db, site.get_scope_id(db).file(db));
+    diag.with_note("a place in a chain takes the value of the place to its right".to_string());
+    let takes_a_bool = matches!(
+        err.expected.normalize(db),
+        Type::Elementary(ElementarySpec::Bool)
+    );
+    match source_operation.filter(|operation| takes_a_bool && divides(db, *operation)) {
+        // A BOOL is not divided into, and '/=' is "not equal" as other
+        // languages write it.
+        Some(operation) => compare_instead(db, source, operation, &mut diag),
+        None => diag.with_help(format!(
+            "assign '{}' in a statement of its own",
+            CallSite::from_scoped(db, &link).to_string(db)
+        )),
+    }
+    diag
+}
+
+/// `__CATCH(n)` with `n` no place for the message: E0301 on the variable,
+/// which receives a STRING.
+pub(crate) fn catch_variable_mismatch<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    err: CoerceError<'db>,
+    base_typ: Type<'db>,
+    var: VariableAccess<'db>,
+) -> IdeDiagnostic {
+    let site = CallSite::from_scoped(db, &var);
+    let mut diag = TypeError::NotAssignable {
+        base_target: base_typ,
+        lhs: err.expected,
+        rhs: err.actual,
+        adjustment: err.adjustment,
+        expr: site,
+        suggest_cast: false,
+    }
+    .to_diagnostic(db, site.get_scope_id(db).file(db));
+    diag.with_note("the variable of a __CATCH receives the message as a STRING".to_string());
+    diag
+}
+
+/// Whether an operation of a chain divides: `a /= b`.
+fn divides<'db>(db: &'db dyn WorkspaceDataBase, operation: Expr<'db>) -> bool {
+    matches!(
+        operation.expr(db),
+        ExprKind::MultOperator {
+            operator: MultOperatorKind::Div,
+            ..
+        }
+    )
+}
+
+/// `flag := a /= b`: the fix compares, and a note says what '/=' does. The
+/// operation of a link in a chain is marked from its operator, which the fix
+/// replaces.
+fn compare_instead<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    place: VariableAccess<'db>,
+    operation: Expr<'db>,
+    diag: &mut IdeDiagnostic,
+) {
+    let ExprKind::MultOperator { right, .. } = operation.expr(db) else {
+        return;
+    };
+    let place = CallSite::from_scoped(db, &place).to_string(db);
+    let value = CallSite::from_scoped(db, right).to_string(db);
+    diag.with_note(format!(
+        "'{place} /= {value}' is '{place} := {place} / {value}'"
+    ));
+    let site = CallSite::from_scoped(db, &operation);
+    let file = site.get_scope_id(db).file(db);
+    let mut span = site.get_span(db);
+    span.end_byte = span.start_byte + "/=".len();
+    span.end_point = auto_lsp::tree_sitter::Point {
+        row: span.start_point.row,
+        column: span.start_point.column + "/=".len(),
+    };
+    let range = crate::denormalize(db, file, &span).unwrap_or_default();
+    diag.with_fix(CodeAction {
+        title: "replace '/=' with '<>'".to_string(),
+        edit: Some(WorkspaceEdit::new(HashMap::from([(
+            file.url(db).clone(),
+            vec![auto_lsp::lsp_types::TextEdit {
+                range,
+                new_text: "<>".to_string(),
+            }],
+        )]))),
+        is_preferred: Some(true),
+        ..Default::default()
+    });
 }
 
 /// Two STRUCTs that differ because one is written in place, which the types in
