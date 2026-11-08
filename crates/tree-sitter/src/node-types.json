@@ -540,10 +540,6 @@
         "named": true
       },
       {
-        "type": "compound_assign",
-        "named": true
-      },
-      {
         "type": "for_stmt",
         "named": true
       },
@@ -853,6 +849,16 @@
           }
         ]
       }
+    },
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "_expression",
+          "named": true
+        }
+      ]
     }
   },
   {
@@ -2051,7 +2057,7 @@
         "required": true,
         "types": [
           {
-            "type": "ERR_compound_outside_statement",
+            "type": "ERR_empty_compound_assignment",
             "named": true
           },
           {
@@ -2072,6 +2078,10 @@
           },
           {
             "type": "assignment",
+            "named": true
+          },
+          {
+            "type": "compound_assignment",
             "named": true
           }
         ]
@@ -2353,6 +2363,16 @@
     "type": "chained_target",
     "named": true,
     "fields": {
+      "operator": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "compound_operator",
+            "named": true
+          }
+        ]
+      },
       "variable": {
         "multiple": false,
         "required": true,
@@ -2541,53 +2561,9 @@
     }
   },
   {
-    "type": "compound_assign",
-    "named": true,
-    "fields": {
-      "target": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "ERR_empty_compound_assignment",
-            "named": true
-          },
-          {
-            "type": "compound_assignment",
-            "named": true
-          }
-        ]
-      },
-      "variable": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "variable_access",
-            "named": true
-          }
-        ]
-      }
-    }
-  },
-  {
     "type": "compound_assignment",
     "named": true,
     "fields": {
-      "chain": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "ERR_chain_outside_statement",
-            "named": true
-          },
-          {
-            "type": "ERR_compound_outside_statement",
-            "named": true
-          }
-        ]
-      },
       "operator": {
         "multiple": false,
         "required": true,
@@ -3779,6 +3755,10 @@
         "types": [
           {
             "type": "ERR_chain_outside_statement",
+            "named": true
+          },
+          {
+            "type": "ERR_compound_outside_statement",
             "named": true
           }
         ]

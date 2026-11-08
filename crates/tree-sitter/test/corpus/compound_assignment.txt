@@ -16,7 +16,7 @@ END_FUNCTION
     (identifier)
     (func_body
       (stmt_list
-        (compound_assign
+        (assign
           (variable_access
             (variable
               (begin_path_expression
@@ -29,7 +29,7 @@ END_FUNCTION
                 (int_literal
                   (signed_int
                     (unsigned_int)))))))
-        (compound_assign
+        (assign
           (variable_access
             (variable
               (begin_path_expression
@@ -59,7 +59,7 @@ END_FUNCTION
                       (int_literal
                         (signed_int
                           (unsigned_int))))))))))
-        (compound_assign
+        (assign
           (variable_access
             (variable
               (begin_path_expression
@@ -75,7 +75,7 @@ END_FUNCTION
                 (int_literal
                   (signed_int
                     (unsigned_int)))))))
-        (compound_assign
+        (assign
           (variable_access
             (variable
               (begin_path_expression
@@ -94,14 +94,13 @@ END_FUNCTION
                     (unsigned_int)))))))))))
 
 ================================================================================
-A compound assignment where a value goes on, a chain after one, no value
+A chain with compound assignments in it
 ================================================================================
 
 FUNCTION fn
     a := b += 1;
-    F(a += 1);
     x += y := 1;
-    x += ;
+    a += b -= c *= d /= 2;
 END_FUNCTION
 
 --------------------------------------------------------------------------------
@@ -125,12 +124,88 @@ END_FUNCTION
                   (path_expression
                     (var_access
                       (field)))))))
-          (ERR_compound_outside_statement
+          (compound_assignment
             (constant
               (numeric_literal
                 (int_literal
                   (signed_int
                     (unsigned_int)))))))
+        (assign
+          (variable_access
+            (variable
+              (begin_path_expression
+                (path_expression
+                  (var_access
+                    (field))))))
+          (chained_target
+            (variable_access
+              (variable
+                (begin_path_expression
+                  (path_expression
+                    (var_access
+                      (field)))))))
+          (assignment
+            (constant
+              (numeric_literal
+                (int_literal
+                  (signed_int
+                    (unsigned_int)))))))
+        (assign
+          (variable_access
+            (variable
+              (begin_path_expression
+                (path_expression
+                  (var_access
+                    (field))))))
+          (chained_target
+            (variable_access
+              (variable
+                (begin_path_expression
+                  (path_expression
+                    (var_access
+                      (field)))))))
+          (chained_target
+            (variable_access
+              (variable
+                (begin_path_expression
+                  (path_expression
+                    (var_access
+                      (field)))))))
+          (chained_target
+            (variable_access
+              (variable
+                (begin_path_expression
+                  (path_expression
+                    (var_access
+                      (field)))))))
+          (compound_assignment
+            (constant
+              (numeric_literal
+                (int_literal
+                  (signed_int
+                    (unsigned_int)))))))))))
+
+================================================================================
+A compound assignment where one assignment stands, and one with no value
+================================================================================
+
+FUNCTION fn
+    F(a += 1);
+    F(a += b := 1);
+    F(a := b += 1);
+    FOR i := j += 1 TO 9 DO END_FOR;
+    FOR i := j := k += 1 TO 9 DO END_FOR;
+    x += ;
+    a := b += ;
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (func_decl
+    (identifier)
+    (func_body
+      (stmt_list
         (func_call
           (begin_path_expression
             (path_expression
@@ -150,14 +225,82 @@ END_FUNCTION
                     (int_literal
                       (signed_int
                         (unsigned_int)))))))))
-        (compound_assign
-          (variable_access
-            (variable
-              (begin_path_expression
-                (path_expression
-                  (var_access
-                    (field))))))
-          (compound_assignment
+        (func_call
+          (begin_path_expression
+            (path_expression
+              (var_access
+                (field))))
+          (param_assign
+            (param_assign_input
+              (variable_access
+                (variable
+                  (begin_path_expression
+                    (path_expression
+                      (var_access
+                        (field))))))
+              (ERR_compound_outside_statement
+                (variable_access
+                  (variable
+                    (begin_path_expression
+                      (path_expression
+                        (var_access
+                          (field))))))
+                (constant
+                  (numeric_literal
+                    (int_literal
+                      (signed_int
+                        (unsigned_int)))))))))
+        (func_call
+          (begin_path_expression
+            (path_expression
+              (var_access
+                (field))))
+          (param_assign
+            (param_assign_input
+              (identifier)
+              (variable_access
+                (variable
+                  (begin_path_expression
+                    (path_expression
+                      (var_access
+                        (field))))))
+              (ERR_compound_outside_statement
+                (constant
+                  (numeric_literal
+                    (int_literal
+                      (signed_int
+                        (unsigned_int)))))))))
+        (for_stmt
+          (variable
+            (begin_path_expression
+              (path_expression
+                (var_access
+                  (field)))))
+          (for_list
+            (variable_access
+              (variable
+                (begin_path_expression
+                  (path_expression
+                    (var_access
+                      (field))))))
+            (ERR_compound_outside_statement
+              (constant
+                (numeric_literal
+                  (int_literal
+                    (signed_int
+                      (unsigned_int))))))
+            (constant
+              (numeric_literal
+                (int_literal
+                  (signed_int
+                    (unsigned_int)))))))
+        (for_stmt
+          (variable
+            (begin_path_expression
+              (path_expression
+                (var_access
+                  (field)))))
+          (for_list
             (variable_access
               (variable
                 (begin_path_expression
@@ -165,18 +308,44 @@ END_FUNCTION
                     (var_access
                       (field))))))
             (ERR_chain_outside_statement
+              (variable_access
+                (variable
+                  (begin_path_expression
+                    (path_expression
+                      (var_access
+                        (field))))))
               (constant
                 (numeric_literal
                   (int_literal
                     (signed_int
-                      (unsigned_int))))))))
-        (compound_assign
+                      (unsigned_int))))))
+            (constant
+              (numeric_literal
+                (int_literal
+                  (signed_int
+                    (unsigned_int)))))))
+        (assign
           (variable_access
             (variable
               (begin_path_expression
                 (path_expression
                   (var_access
                     (field))))))
+          (ERR_empty_compound_assignment))
+        (assign
+          (variable_access
+            (variable
+              (begin_path_expression
+                (path_expression
+                  (var_access
+                    (field))))))
+          (chained_target
+            (variable_access
+              (variable
+                (begin_path_expression
+                  (path_expression
+                    (var_access
+                      (field)))))))
           (ERR_empty_compound_assignment))))))
 
 ================================================================================

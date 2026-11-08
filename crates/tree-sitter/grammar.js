@@ -384,14 +384,28 @@ module.exports = grammar({
     // Statements
     ERR_empty_right_hand_assignment: ($) => prec(-1, ":="), // a := ?
     // A second `:=` where one assignment stands, in an argument or at the
-    // start of a FOR: `F(a := b := 1)`, `FOR i := j := 0 TO 9`. A chain is
-    // a statement of its own.
-    ERR_chain_outside_statement: ($) => prec(-1, repeat1(seq(":=", $._expression))),
-    // A compound assignment where a value goes on: after a chain's place,
-    // `a := b += 1`, an argument's value or another compound's value. A
-    // compound assignment is a statement of its own.
+    // start of a FOR: `F(a := b := 1)`, `FOR i := j := 0 TO 9`, with the
+    // rest of its chain, `F(a := b += 1 := 2)`. A chain is a statement of its
+    // own. The operators after the first are tokens, so that the node's
+    // children are expressions alone.
+    ERR_chain_outside_statement: ($) =>
+      prec(
+        -1,
+        seq(":=", $._expression, repeat(seq(choice(":=", "+=", "-=", "*=", "/="), $._expression))),
+      ),
+    // A compound assignment where one assignment stands, in an argument or
+    // at the start of a FOR: `F(a += 1)`, `FOR i := j += 1 TO 9`, with the
+    // rest of its chain, `F(a += b := 1)`. A compound assignment is a
+    // statement of its own.
     ERR_compound_outside_statement: ($) =>
-      prec(-1, seq(field("operator", $.compound_operator), field("value", $._expression))),
+      prec(
+        -1,
+        seq(
+          field("operator", $.compound_operator),
+          field("value", $._expression),
+          repeat(seq(choice(":=", "+=", "-=", "*=", "/="), $._expression)),
+        ),
+      ),
     ERR_empty_compound_assignment: ($) => prec(-1, $.compound_operator), // x += ?
 
     // Expressions
@@ -2243,7 +2257,6 @@ module.exports = grammar({
       choice(
         // assignments
         $.assign,
-        $.compound_assign,
         //$.empty_path_expression, // used for completions
         // subprog
         $.func_call,
@@ -2277,21 +2290,24 @@ module.exports = grammar({
     //    ':=',
     //    choice($.ref_name, $.ref_deref, $.ref_value)
     //),
+    // `a := e`, `x += e`, and a chain of them, `a := b += 1`: each place is
+    // followed by its operator, and the last by the value.
     assign: ($) =>
       seq(
         field("variable", choice($.variable_access, $.ERR_assign_func_call)),
-        // `a := b := 1`: the targets after the first, each written the value
+        // `a := b := 1`: the places after the first, each written the value
         // of the one to its right.
         field("chain", repeat($.chained_target)),
         field(
           "target",
           choice(
             $.assignment,
+            $.compound_assignment,
             $.ERR_empty_right_hand_assignment,
+            $.ERR_empty_compound_assignment,
             $.ERR_missing_dot_in_assignment,
             $.ERR_missing_equal_in_assignment,
             $.ERR_output_assign_in_assignment,
-            $.ERR_compound_outside_statement,
           ),
         ),
       ),
@@ -2299,28 +2315,24 @@ module.exports = grammar({
     assignment: ($) => seq(":=", $._expression),
 
     // `x += e` is `x := x + e`, with the place `x` found once, for the four
-    // arithmetic operators. It is no link of a chain.
-    compound_assign: ($) =>
-      seq(
-        field("variable", $.variable_access),
-        field("target", choice($.compound_assignment, $.ERR_empty_compound_assignment)),
-      ),
-
+    // arithmetic operators.
     compound_assignment: ($) =>
-      seq(
-        field("operator", $.compound_operator),
-        field("value", $._expression),
-        field(
-          "chain",
-          optional(choice($.ERR_chain_outside_statement, $.ERR_compound_outside_statement)),
-        ),
-      ),
+      seq(field("operator", $.compound_operator), field("value", $._expression)),
 
     compound_operator: ($) => choice("+=", "-=", "*=", "/="),
 
-    // A target after the first of a chain. Ranked below an expression:
-    // `a := y = 3` compares, it is not `y` and a `:=` missing its `:`.
-    chained_target: ($) => prec(-1, seq(":=", field("variable", $.variable_access))),
+    // A place after the first of a chain, with the operator before it, which
+    // writes the place to its left: `+=` in `a += b := 1` writes `a`. Ranked
+    // below an expression: `a := y = 3` compares, it is not `y` and a `:=`
+    // missing its `:`.
+    chained_target: ($) =>
+      prec(
+        -1,
+        seq(
+          choice(":=", field("operator", $.compound_operator)),
+          field("variable", $.variable_access),
+        ),
+      ),
 
     param_assign: ($) => choice($.param_assign_input, $.param_assign_output),
 
@@ -2421,7 +2433,10 @@ module.exports = grammar({
           $.ERR_output_assign_in_for_control,
         ),
         field("initial_value", $._expression),
-        field("chain", optional($.ERR_chain_outside_statement)),
+        field(
+          "chain",
+          optional(choice($.ERR_chain_outside_statement, $.ERR_compound_outside_statement)),
+        ),
         kw("TO"),
         field("end_value", $._expression),
         optional(seq(kw("BY"), field("step", $._expression))),
