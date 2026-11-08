@@ -325,7 +325,8 @@ fn a_place_with_an_operator_is_written_its_operation(mut with_db: db::RootDataba
 /// A place with an operator is found and read when its link runs, after the
 /// links to its right: `arr[i] += i := 3` adds to `arr[3]`, and a call to
 /// its right that changes it has run when it is read, as `b := bump(k := a);
-/// a += b;` reads it.
+/// a += b;` reads it. The last place is read before its value, as alone:
+/// `y := x += bump(k := x)` adds to what `x` held, 10 + 11.
 #[rstest]
 fn a_place_with_an_operator_is_read_when_its_link_runs(mut with_db: db::RootDatabase) {
     let source = r#"
@@ -349,8 +350,15 @@ fn a_place_with_an_operator_is_read_when_its_link_runs(mut with_db: db::RootData
             a += b := bump(k := a);
             IF b <> 11 OR a <> 22 THEN __RAISE('11 + 11'); END_IF;
         END_FUNCTION
+
+        {test}
+        FUNCTION the_last_read_before_its_value
+        VAR x : INT := 10; y : INT; END_VAR
+            y := x += bump(k := x);
+            IF x <> 21 OR y <> 21 THEN __RAISE('10 + 11'); END_IF;
+        END_FUNCTION
     "#;
-    all_pass(&mut with_db, source, 2);
+    all_pass(&mut with_db, source, 3);
 }
 
 /// A place with an operator is reached once for its read and its store, and
