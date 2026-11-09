@@ -176,9 +176,9 @@ const TRAPPED: &str = r#"
         VAR_INPUT x : INT; END_VAR
         END_FUNCTION
 
-        FUNCTION Divide : INT
-        VAR_INPUT n : INT; d : INT; END_VAR
-            Divide := n / d;                // divides
+        FUNCTION Truncate : DINT
+        VAR_INPUT x : REAL; END_VAR
+            {wasm Truncate 'trunc_f32_s' (params x) (result Truncate)}   // truncates
         END_FUNCTION
 
         FUNCTION Spin : INT
@@ -189,9 +189,9 @@ const TRAPPED: &str = r#"
         END_FUNCTION
 
         {test}
-        FUNCTION test_divide
-        VAR r : INT; END_VAR
-            r := Divide(1, 0);              // call to Divide
+        FUNCTION test_truncate
+        VAR r : DINT; END_VAR
+            r := Truncate(1.0E30);          // call to Truncate
         END_FUNCTION
 
         {test}
@@ -217,12 +217,12 @@ fn assert_traps_are_placed(records: &[TestRecord]) {
             .unwrap_or_else(|| panic!("no record for {name}"))
     };
     assert_eq!(
-        calls(by_name("test_divide")),
+        calls(by_name("test_truncate")),
         [
-            ("Divide".to_string(), line_of(TRAPPED, "// divides")),
+            ("Truncate".to_string(), line_of(TRAPPED, "// truncates")),
             (
-                "test_divide".to_string(),
-                line_of(TRAPPED, "// call to Divide")
+                "test_truncate".to_string(),
+                line_of(TRAPPED, "// call to Truncate")
             ),
         ]
     );
@@ -360,23 +360,23 @@ fn a_backtrace_is_in_the_report(mut with_db: db::RootDatabase) {
 #[rstest]
 #[case::raise("__RAISE('boom');")]
 #[case::stopped("WHILE TRUE DO k := k + 1; END_WHILE;")]
-#[case::trap("k := 1 / z;")]
+#[case::trap("{wasm k 'trunc_f32_s' (params r) (result k)}")]
 fn a_caller_is_on_the_line_of_its_call(mut with_db: db::RootDatabase, #[case] fault: &str) {
     let source = format!(
         r#"
         FUNCTION Void
-        VAR k : INT; z : INT; END_VAR
+        VAR k : INT; r : REAL := 1.0E30; END_VAR
             {fault}
         END_FUNCTION
 
         FUNCTION Arg
         VAR_INPUT a : INT; END_VAR
-        VAR k : INT; z : INT; END_VAR
+        VAR k : INT; r : REAL := 1.0E30; END_VAR
             {fault}
         END_FUNCTION
 
         FUNCTION Res : INT
-        VAR k : INT; z : INT; END_VAR
+        VAR k : INT; r : REAL := 1.0E30; END_VAR
             {fault}
         END_FUNCTION
 
