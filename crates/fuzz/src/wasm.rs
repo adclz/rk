@@ -10,8 +10,8 @@ use std::sync::{Arc, LazyLock};
 use debug_format::{LocatedArea, LocatedMap, RetainMap, ScheduleManifest};
 use wasmparser::Payload;
 use wasmtime::{
-    Caller, Engine, ExternType, Func, Instance, Linker, Memory, MemoryType, Module, Store, Trap,
-    Val, ValType,
+    Caller, Engine, Extern, ExternType, Func, Instance, Linker, Memory, Module, Store, Trap, Val,
+    ValType,
 };
 
 use crate::Finding;
@@ -321,25 +321,20 @@ impl Host {
             .map_err(|e| Finding::new("wasmtime-compile", format!("{e:#}")))?;
         let mut store = Store::new(engine, ());
 
-        let Some(min_pages) = module.imports().find_map(|i| match i.ty() {
+        let Some(min_pages) = module.exports().find_map(|e| match e.ty() {
             ExternType::Memory(m) => Some(m.minimum()),
             _ => None,
         }) else {
             return Err(Finding::new(
                 "module-shape",
-                "the module does not import its linear memory from `env`",
+                "the module does not export its memory",
             ));
         };
         if min_pages > MAX_PAGES {
             return Ok(None);
         }
-        let memory = Memory::new(&mut store, MemoryType::new(min_pages as u32, None))
-            .map_err(|e| Finding::new("module-shape", format!("allocating memory: {e:#}")))?;
 
         let mut linker = Linker::new(engine);
-        linker
-            .define(&store, "env", "memory", memory)
-            .map_err(|e| Finding::new("module-shape", format!("{e:#}")))?;
         // The clock moves a millisecond a call, so timers run and the run
         // reproduces. The wall clock is the same count from a fixed instant,
         // and the zone is one hour east of UTC, so a program reading them
@@ -364,6 +359,10 @@ impl Host {
                         let mut datetime = [0u8; 16];
                         datetime[..8].copy_from_slice(&seconds.to_le_bytes());
                         datetime[8..12].copy_from_slice(&nanoseconds.to_le_bytes());
+                        let memory = caller
+                            .get_export("memory")
+                            .and_then(Extern::into_memory)
+                            .ok_or_else(|| wasmtime::Error::msg("the module exports no memory"))?;
                         memory
                             .write(&mut caller, ret as usize, &datetime)
                             .map_err(|e| wasmtime::Error::msg(format!("{e}")))
@@ -394,6 +393,9 @@ impl Host {
         let instance = linker
             .instantiate(&mut store, &module)
             .map_err(|e| Finding::new("instantiate", format!("{e:#}")))?;
+        let memory = instance
+            .get_memory(&mut store, "memory")
+            .ok_or_else(|| Finding::new("module-shape", "the module does not export its memory"))?;
         Ok(Some(Self {
             store,
             instance,
