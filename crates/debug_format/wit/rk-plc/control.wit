@@ -1,0 +1,32 @@
+// SPDX-License-Identifier: Apache-2.0
+package rk:plc@0.1.0;
+
+/// What a host calls to run a PLC compiled by rk.
+///
+/// A host reads the component's `rk.schedule` section to know which tasks
+/// are due, and calls `run-task` for each of them, in the order the section
+/// lists them.
+interface control {
+    /// Writes the starting value of every variable. Called once, before
+    /// anything else; a warm start then gives the retained values back with
+    /// `restore-retain`. The error is the message of an exception a starting
+    /// value raised.
+    init: func() -> result<_, string>;
+
+    /// Runs the task at that place in the `rk.schedule` section. `inputs` is
+    /// copied into the input area, as much of it as the area holds, then each
+    /// program instance of the task runs, in order. Returns the output area,
+    /// or the message of the exception that stopped the scan, or
+    /// "no such task".
+    run-task: func(task: u32, inputs: list<u8>) -> result<list<u8>, string>;
+
+    /// The retain area, to keep across a power cycle.
+    save-retain: func() -> list<u8>;
+
+    /// Gives the retain area back, as many bytes as it holds.
+    restore-retain: func(retained: list<u8>);
+
+    /// Runs the test at that place in the `test-manifest` section. Returns the
+    /// message it failed with, or "no such test". A release build runs none.
+    run-test: func(test: u32) -> result<_, string>;
+}

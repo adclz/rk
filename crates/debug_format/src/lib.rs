@@ -8,6 +8,7 @@ pub mod info;
 pub mod test_manifest;
 pub mod test_report;
 mod tolerant;
+pub mod wit;
 
 pub use info::{
     DebugInfo, Live, Place, Pointee, SourcePos, StackFrame, TypeMismatch, VarLoc, VarValue, decode,
