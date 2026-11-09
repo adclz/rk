@@ -3,6 +3,7 @@
 
 mod args;
 mod backtrace;
+mod component;
 mod diagnostics;
 mod duration;
 mod env;

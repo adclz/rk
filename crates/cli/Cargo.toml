@@ -36,6 +36,9 @@ wasmparser = { workspace = true }
 libc = "0.2"
 # `rk test` runs a module's `{test}` functions on a wasmtime host in-process.
 wasmtime = "50.0.1"
+# `rk compile` wraps the module into a component, with the WIT it is typed by.
+wit-component = { workspace = true }
+wit-parser = { workspace = true }
 anyhow = "1"
 # `--timeout` and the watcher's hold times.
 time = { workspace = true, features = ["local-offset"] }
