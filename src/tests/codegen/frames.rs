@@ -76,7 +76,7 @@ impl DebugHandler for AtRaise {
     type Data = Captured;
 
     async fn handle(&self, mut store: StoreContextMut<'_, Captured>, event: DebugEvent<'_>) {
-        if !matches!(event, DebugEvent::UncaughtExceptionThrown(_)) {
+        if !matches!(event, DebugEvent::Exception(_)) {
             return;
         }
         let info = &self.0;
@@ -168,7 +168,7 @@ impl DebugHandler for AtRaiseInACopy {
     type Data = Captured;
 
     async fn handle(&self, mut store: StoreContextMut<'_, Captured>, event: DebugEvent<'_>) {
-        if !matches!(event, DebugEvent::UncaughtExceptionThrown(_)) {
+        if !matches!(event, DebugEvent::Exception(_)) {
             return;
         }
         let info = &self.0;
