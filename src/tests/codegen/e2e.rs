@@ -291,10 +291,7 @@ END_FUNCTION
     let engine = super::test_engine();
     let module = wasmtime::Module::new(&engine, &wasm).expect("valid module");
     let mut store = wasmtime::Store::new(&engine, ());
-    let memory =
-        wasmtime::Memory::new(&mut store, wasmtime::MemoryType::new(1, None)).expect("memory");
-    let instance = wasmtime::Instance::new(&mut store, &module, &[memory.into()])
-        .expect("instantiate with host memory");
+    let (instance, memory) = super::instantiate_returning_memory(&mut store, &module);
 
     let greet = instance
         .get_typed_func::<(), (i32, i32)>(&mut store, "greet")

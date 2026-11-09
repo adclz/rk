@@ -13,7 +13,7 @@ use auto_lsp::default::db::file::File;
 use db::RootDatabase;
 use debug_format::{DebugInfo, StackFrame, VarValue};
 use hir::{check::diagnostics_for_file, hir_def::semantic_index::semantic_index};
-use wasmtime::{ExternType, Instance, Linker, Memory, MemoryType, Module, Store, TypedFunc};
+use wasmtime::{ExternType, Instance, Linker, Memory, Module, Store, TypedFunc};
 
 use crate::tests::utils::{add_source, diagnostic_code, diagnostic_line};
 
@@ -239,17 +239,15 @@ pub fn instantiate_with_memory(
     instantiate_returning_memory(store, module).0
 }
 
-/// The `env.memory` a host gives `module`: as many pages as it asks for, the
-/// stack of recursive calls included.
-pub fn env_memory(store: &mut wasmtime::Store<()>, module: &wasmtime::Module) -> wasmtime::Memory {
-    let pages = module
-        .imports()
-        .find_map(|import| match import.ty() {
-            wasmtime::ExternType::Memory(memory) => Some(memory.minimum()),
-            _ => None,
-        })
-        .unwrap_or(1);
-    wasmtime::Memory::new(store, wasmtime::MemoryType::new(pages as u32, None)).expect("memory")
+/// The memory `instance` defines and exports, as large as its module asked
+/// for, the stack of recursive calls included.
+pub fn exported_memory(
+    store: &mut wasmtime::Store<()>,
+    instance: &wasmtime::Instance,
+) -> wasmtime::Memory {
+    instance
+        .get_memory(store, "memory")
+        .expect("the module exports its memory")
 }
 
 /// As [`instantiate_with_memory`], keeping the memory handle — a fault test
@@ -258,9 +256,9 @@ pub fn instantiate_returning_memory(
     store: &mut wasmtime::Store<()>,
     module: &wasmtime::Module,
 ) -> (wasmtime::Instance, wasmtime::Memory) {
-    let memory = env_memory(store, module);
-    let instance = wasmtime::Instance::new(store, module, &[memory.into()])
-        .expect("Failed to instantiate with memory");
+    let instance =
+        wasmtime::Instance::new(&mut *store, module, &[]).expect("Failed to instantiate");
+    let memory = exported_memory(store, &instance);
     (instance, memory)
 }
 
@@ -336,13 +334,6 @@ where
     let module = wasmtime::Module::new(&engine, wasm_bytes).expect("Failed to create module");
     let mut store = wasmtime::Store::new(&engine, ());
     let mut linker = wasmtime::Linker::new(&engine);
-
-    // The core module imports its memory from `env`. Provide a host-owned memory
-    // that the module can load/store into during the test.
-    let memory = env_memory(&mut store, &module);
-    linker
-        .define(&store, "env", "memory", memory)
-        .expect("define env.memory");
 
     define_imports(&mut linker);
 
@@ -430,21 +421,8 @@ impl TestPlc {
         let module = Module::new(&engine, wasm).ctx("compiling the module")?;
         let mut store = Store::new(&engine, ());
 
-        let min_pages = module
-            .imports()
-            .find_map(|i| match i.ty() {
-                ExternType::Memory(mt) => Some(mt.minimum()),
-                _ => None,
-            })
-            .context("the module must import a linear memory from `env`")?;
-        let memory = Memory::new(&mut store, MemoryType::new(min_pages as u32, None))
-            .ctx("allocating linear memory")?;
-
         let mut linker = Linker::new(&engine);
-        linker
-            .define(&store, "env", "memory", memory)
-            .ctx("defining env.memory")?;
-        rk::test_host::wire_clocks(&mut linker, &module, memory).context("wiring the clocks")?;
+        rk::test_host::wire_clocks(&mut linker, &module).context("wiring the clocks")?;
         linker.allow_shadowing(true);
         wire(&mut linker)?;
         linker.allow_shadowing(false);
@@ -455,6 +433,7 @@ impl TestPlc {
         let instance = linker
             .instantiate(&mut store, &module)
             .ctx("instantiating the module")?;
+        let memory = rk::test_host::memory_of(&mut store, &instance)?;
 
         if let Ok(init) = instance.get_typed_func::<(), ()>(&mut store, "__init") {
             init.call(&mut store, ()).map_err(|e| {

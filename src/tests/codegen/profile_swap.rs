@@ -192,12 +192,7 @@ fn globals_bounds(wasm: &[u8]) -> (Option<i64>, Option<i64>) {
     let engine = crate::tests::codegen::test_engine();
     let module = wasmtime::Module::new(&engine, wasm).expect("valid module");
     let mut store = wasmtime::Store::new(&engine, ());
-    let memory =
-        wasmtime::Memory::new(&mut store, wasmtime::MemoryType::new(1, None)).expect("memory");
-    let mut linker = wasmtime::Linker::new(&engine);
-    linker
-        .define(&store, "env", "memory", memory)
-        .expect("define memory");
+    let linker = wasmtime::Linker::new(&engine);
     let instance = linker
         .instantiate(&mut store, &module)
         .expect("instantiate");

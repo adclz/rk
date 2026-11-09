@@ -7,6 +7,32 @@ use rstest::rstest;
 
 use super::{compile_to_wasm, execute_wasm_with_imports, validate_wasm, with_db};
 
+/// A module defines its own memory, growable and as large as its layout,
+/// and exports it as `memory`: a host gives it nothing, and a module that
+/// declares no `{extern}` imports nothing at all.
+#[rstest]
+fn a_module_owns_its_memory(mut with_db: db::RootDatabase) {
+    let source = r#"
+FUNCTION run : DINT
+    run := 1;
+END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let module = wasmtime::Module::new(&super::test_engine(), &wasm).expect("a valid module");
+    assert_eq!(module.imports().count(), 0, "the module imports nothing");
+    let memory = module
+        .exports()
+        .find(|export| export.name() == "memory")
+        .expect("the module exports its memory");
+    match memory.ty() {
+        wasmtime::ExternType::Memory(memory) => {
+            assert!(memory.minimum() >= 1, "{memory:?}");
+            assert_eq!(memory.maximum(), None, "it can grow");
+        }
+        other => panic!("`memory` is a {other:?}"),
+    }
+}
+
 #[rstest]
 fn test_extern_generates_valid_wasm(mut with_db: db::RootDatabase) {
     let source = r#"

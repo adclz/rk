@@ -717,10 +717,8 @@ END_FUNCTION
     };
     let module = Module::new(&engine, &wasm_bytes).unwrap();
     let mut store = Store::new(&engine, ());
-    let memory = wasmtime::Memory::new(&mut store, wasmtime::MemoryType::new(1, None)).unwrap();
     let linker = {
         let mut l = wasmtime::Linker::new(&engine);
-        l.define(&store, "env", "memory", memory).unwrap();
         l.func_wrap(
             "assert",
             "fail",

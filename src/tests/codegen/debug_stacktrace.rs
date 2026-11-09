@@ -47,9 +47,7 @@ fn trap_yields_source_level_stack_trace(mut with_db: db::RootDatabase) {
         .filter(|i| matches!(i.ty(), wasmtime::ExternType::Func(_)))
         .count() as u32;
     let mut store = wasmtime::Store::new(&engine, ());
-    let mut linker = wasmtime::Linker::new(&engine);
-    let memory = wasmtime::Memory::new(&mut store, wasmtime::MemoryType::new(1, None)).unwrap();
-    linker.define(&store, "env", "memory", memory).unwrap();
+    let linker = wasmtime::Linker::new(&engine);
     let instance = linker
         .instantiate(&mut store, &module)
         .expect("instantiate");

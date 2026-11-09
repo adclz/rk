@@ -13,7 +13,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use debug_format::{DebugInfo, VarValue};
 use rstest::rstest;
 
-use super::{TestPlc, compile_with_libraries, env_memory, test_engine, with_db};
+use super::{TestPlc, compile_with_libraries, test_engine, with_db};
 
 /// What the module reads, each a FUNCTION returning a LINT. Their names
 /// are not the stdlib's: names are caseless, and a `wall_ldt` here would be
@@ -79,10 +79,8 @@ impl Readings {
     /// `zone` in place of the host's `utc-offset` when one is given.
     fn on_host(&self, zone: Option<fn(i64, i32) -> i32>) -> Host {
         let mut store = wasmtime::Store::new(&self.engine, ());
-        let memory = env_memory(&mut store, &self.module);
         let mut linker = wasmtime::Linker::new(&self.engine);
-        linker.define(&store, "env", "memory", memory).unwrap();
-        rk::test_host::wire_clocks(&mut linker, &self.module, memory).unwrap();
+        rk::test_host::wire_clocks(&mut linker, &self.module).unwrap();
         if let Some(zone) = zone {
             linker.allow_shadowing(true);
             linker
