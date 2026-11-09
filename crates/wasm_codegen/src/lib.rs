@@ -10,6 +10,7 @@ pub mod emit_stmt;
 pub mod mir_cast;
 
 mod builtins;
+pub mod control;
 mod graft;
 
 use std::cell::Cell;
@@ -309,6 +310,7 @@ pub fn generate_wasm_profile(
     let mut wasm_gen = WasmGen::new(db, module);
     wasm_gen.profile = profile;
     wasm_gen.emit_all();
+    wasm_gen.emit_control(&control::control_area(module, tests_end(module)));
     wasm_gen.finish()
 }
 
@@ -449,6 +451,9 @@ struct WasmGen<'a> {
     /// is added once the graft has placed the bundle's.
     stack_bounds: Option<(u32, u32)>,
     stack: Option<Stack>,
+    /// The functions of the control interface, by index, for the `name`
+    /// section ([`control`]).
+    control_names: Vec<(u32, String)>,
 }
 
 /// A function's memory locals as `debug-locals` describes them: the leaves,
@@ -531,9 +536,14 @@ fn stack_bounds(module: &MirModule) -> Option<(u32, u32)> {
 
 /// Where the `{test}` result areas end, past the static data; each is
 /// 4-aligned, from the first on.
+fn tests_end(module: &MirModule) -> u32 {
+    static_data_end(module).next_multiple_of(4) + module_test_count(module) * TEST_RESULT_AREA_SIZE
+}
+
+/// Where the reserved areas end: the `{test}` result areas, then the runtime
+/// interface's ([`control::ControlArea`]). The stack starts past them.
 fn results_end(module: &MirModule) -> u64 {
-    u64::from(static_data_end(module)).next_multiple_of(4)
-        + u64::from(module_test_count(module)) * u64::from(TEST_RESULT_AREA_SIZE)
+    u64::from(control::control_area(module, tests_end(module)).end)
 }
 
 /// A stack that ends past the last address of the memory, after the `base`
@@ -647,6 +657,7 @@ impl<'a> WasmGen<'a> {
             local_type_table: mir::debug_symbols::TypeTable::new(),
             stack_bounds: stack_bounds(module),
             stack: None,
+            control_names: Vec::new(),
         }
     }
 
@@ -1696,8 +1707,16 @@ impl<'a> WasmGen<'a> {
         // end try_table — only reached on the success (no-throw) path.
         wasm_func.instruction(&Instruction::End);
 
-        // Success: leave the zero-initialized Ok discriminant in place,
-        // push the area's address as the i32 result, return early.
+        // Success: Ok, written so that a test run again in the same instance
+        // (`run-test`) does not read the Err of a run before; the area's
+        // address as the i32 result, returned early.
+        wasm_func.instruction(&Instruction::I32Const(result_area as i32));
+        wasm_func.instruction(&Instruction::I32Const(0));
+        wasm_func.instruction(&Instruction::I32Store8(wasm_encoder::MemArg {
+            offset: 0,
+            align: 0,
+            memory_index: 0,
+        }));
         wasm_func.instruction(&Instruction::I32Const(result_area as i32));
         wasm_func.instruction(&Instruction::Return);
 
@@ -1863,19 +1882,18 @@ impl<'a> WasmGen<'a> {
         module.section(&self.export_section);
         module.section(&self.code_section);
 
-        // IEC string data and grafted data segments both target memory 0 and
-        // never overlap (the IEC layout starts at `BUILTIN_RESERVED_FLOOR`).
-        let has_iec_data = !self.module.string_data.is_empty();
-        let has_builtin_data = !self.builtin_indices.is_empty();
-        if has_iec_data || has_builtin_data {
-            let mut data_section = self.extra_data_section;
-            for (offset, bytes) in &self.module.string_data {
-                data_section.active(
-                    0,
-                    &wasm_encoder::ConstExpr::i32_const(*offset as i32),
-                    bytes.iter().copied(),
-                );
-            }
+        // IEC string data, grafted data segments and the control interface's
+        // messages all target memory 0 and never overlap (the IEC layout
+        // starts at `BUILTIN_RESERVED_FLOOR`, the control area past it).
+        let mut data_section = self.extra_data_section;
+        for (offset, bytes) in &self.module.string_data {
+            data_section.active(
+                0,
+                &wasm_encoder::ConstExpr::i32_const(*offset as i32),
+                bytes.iter().copied(),
+            );
+        }
+        if !data_section.is_empty() {
             module.section(&data_section);
         }
 
@@ -1893,6 +1911,7 @@ impl<'a> WasmGen<'a> {
                 named.push((idx, func.name.text(self.db).to_string()));
             }
         }
+        named.extend(self.control_names.iter().cloned());
         named.sort_by_key(|(idx, _)| *idx);
         let mut fn_names = wasm_encoder::NameMap::new();
         for (idx, name) in &named {
