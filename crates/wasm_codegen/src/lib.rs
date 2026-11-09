@@ -612,20 +612,9 @@ pub(crate) const NULL_CHECK: &str = "rk.null_check";
 
 impl<'a> WasmGen<'a> {
     fn new(db: &'a dyn WorkspaceDataBase, module: &'a MirModule) -> Self {
-        // Memory is imported from `env`, first in the import section, so a host
-        // supplies it.
-        let mut import_section = wasm_encoder::ImportSection::new();
-        import_section.import(
-            "env",
-            "memory",
-            wasm_encoder::EntityType::Memory(wasm_encoder::MemoryType {
-                minimum: core_memory_pages(module),
-                maximum: None,
-                memory64: false,
-                shared: false,
-                page_size_log2: None,
-            }),
-        );
+        // The module defines its own memory (`finish`): a component cannot
+        // import one, so the host no longer supplies it.
+        let import_section = wasm_encoder::ImportSection::new();
 
         // Test result areas start past the MIR static layout.
         let test_result_floor = Cell::new(static_data_end(module));
@@ -1752,7 +1741,7 @@ impl<'a> WasmGen<'a> {
     }
 
     fn finish(mut self) -> wasm_encoder::Module {
-        // Re-export the imported memory, for tests and inspection tools.
+        // The module's own memory, exported for the host to read and write.
         self.export_section
             .export("memory", wasm_encoder::ExportKind::Memory, 0);
 
@@ -1848,6 +1837,16 @@ impl<'a> WasmGen<'a> {
         module.section(&self.type_section);
         module.section(&self.import_section);
         module.section(&self.fn_section);
+        // The one memory, as large as the layout needs, growable.
+        let mut memories = wasm_encoder::MemorySection::new();
+        memories.memory(wasm_encoder::MemoryType {
+            minimum: core_memory_pages(self.module),
+            maximum: None,
+            memory64: false,
+            shared: false,
+            page_size_log2: None,
+        });
+        module.section(&memories);
         // Tag section (per the exception-handling proposal, between Memory
         // and Global). Only emitted when the module actually `__RAISE`s.
         if let Some(type_idx) = self.rk_exception_tag_type_idx {
