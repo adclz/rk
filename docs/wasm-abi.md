@@ -36,8 +36,8 @@ Each band is exported as a `_base` and a `_size`, see [Memory bands](memory-band
 
 | ST | at a call boundary | in memory |
 |---|---|---|
-| `BOOL`, `SINT`…`DINT`, `USINT`…`UDINT`, `BYTE`, `WORD`, `DWORD`, `CHAR`, `TIME`, `DATE`, `TOD`, `DT` | `i32` | 4 bytes |
-| `LINT`, `ULINT`, `LWORD`, `LTIME`, `LDATE`, `LTOD`, `LDT` | `i64` | 8 bytes |
+| `BOOL`, `SINT`…`DINT`, `USINT`…`UDINT`, `BYTE`, `WORD`, `DWORD`, `CHAR`, `TIME`, `DATE`, `TOD` | `i32` | 4 bytes |
+| `LINT`, `ULINT`, `LWORD`, `LTIME`, `LDATE`, `LTOD`, `DT`, `LDT` | `i64` | 8 bytes |
 | `REAL` / `LREAL` | `f32` / `f64` | 4 / 8 bytes |
 | enum, subrange | the lane of its storage type | as its storage type |
 | `STRING` | `(ptr, len)`, two `i32` | 4-byte length, then `capacity` bytes of UTF-8 |
