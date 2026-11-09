@@ -1,8 +1,9 @@
 //! How a fault leaves a compiled PLC: every runtime check funnels through
 //! `__iec_raise`, which throws the module's `$rk_exception`, the same
 //! throw `__RAISE` lowers to. Wasm traps on its own for its instruction
-//! set's faults; a subscript landing on a neighbour or a value leaving its
-//! subrange is checked here, or not at all.
+//! set's faults; a divisor of 0, a subscript landing on a neighbour or a
+//! value leaving its subrange is checked here, before the instruction that
+//! would trap on it or not notice.
 
 /// `no_std` panic landing: re-throws any Rust panic as `$rk_exception`.
 /// `PanicMessage::as_str` answers for every compiler-generated panic that
@@ -60,6 +61,28 @@ pub extern "C" fn rk_idx_check_i64(index: i64, lower: i64, size: u32) -> i32 {
         unsafe { __iec_raise(MSG.as_ptr(), MSG.len() as u32) }
     }
     index as i32
+}
+
+/// Zero check for the divisor of an integer `/` or `MOD`: raises when it
+/// is 0, else returns it. A divisor of -1 is not this check's business: the
+/// minimum divided by it wraps, in the division itself.
+#[unsafe(no_mangle)]
+pub extern "C" fn rk_div_check(divisor: i32) -> i32 {
+    if divisor == 0 {
+        const MSG: &str = "division by zero";
+        unsafe { __iec_raise(MSG.as_ptr(), MSG.len() as u32) }
+    }
+    divisor
+}
+
+/// [`rk_div_check`] for a 64-bit divisor.
+#[unsafe(no_mangle)]
+pub extern "C" fn rk_div_check_i64(divisor: i64) -> i64 {
+    if divisor == 0 {
+        const MSG: &str = "division by zero";
+        unsafe { __iec_raise(MSG.as_ptr(), MSG.len() as u32) }
+    }
+    divisor
 }
 
 /// Null check for a runtime dereference: raises when the pointer is 0,
