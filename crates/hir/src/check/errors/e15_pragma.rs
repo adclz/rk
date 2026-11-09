@@ -126,7 +126,7 @@ impl ExportForbiddenKind {
                 "the module finds an export by its name, which several FUNCTIONs share"
             }
             Self::Reserved => {
-                "the module already exports `__init`, `memory` and the base and size of each memory band under these names"
+                "the module already exports `__init`, `memory`, `cabi_realloc` and the base and size of each memory band under these names"
             }
         }
     }
