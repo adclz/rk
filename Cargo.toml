@@ -92,6 +92,9 @@ divan = { package = "codspeed-divan-compat", version = "*" }
 # backends
 wasm-encoder = { version = "0.244.0", features = ["component-model"] }
 wasmparser = "0.244.0"
+# A built module wrapped into a component, at the versions wasmtime reads.
+wit-component = "0.261.0"
+wit-parser = "0.261.0"
 
 [package]
 name = "rk-tests"

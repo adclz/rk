@@ -60,7 +60,8 @@ pub enum Command {
     /// Compile the workspace to WebAssembly
     #[command(display_order = 2)]
     Compile {
-        /// Output file path (default: <workspace>/rk_build/<profile>/core.wasm)
+        /// Output file path (default: <workspace>/rk_build/<profile>/<project>.wasm),
+        /// with the component's WIT written in `wit/` beside it
         #[arg(short, long)]
         output: Option<PathBuf>,
 

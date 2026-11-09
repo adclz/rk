@@ -2916,6 +2916,8 @@ dependencies = [
  "wasm_codegen",
  "wasmparser 0.244.0",
  "wasmtime",
+ "wit-component",
+ "wit-parser",
  "yansi",
 ]
 

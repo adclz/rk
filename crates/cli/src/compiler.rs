@@ -272,18 +272,45 @@ fn validated(wasm: Vec<u8>) -> Result<Vec<u8>, String> {
     }
 }
 
-/// Where a build of `workspace` lands, by profile, the only axis there
-/// is. Every command writes this fresh before handing the path on;
-/// nothing reads it back expecting someone else to have filled it in.
-pub fn artifact_path(
-    workspace: &std::path::Path,
-    profile: wasm_codegen::Profile,
-) -> std::path::PathBuf {
+/// The folder a build of `workspace` lands in, by profile, the only axis
+/// there is.
+fn profile_dir(workspace: &std::path::Path, profile: wasm_codegen::Profile) -> std::path::PathBuf {
     let dir = match profile {
         wasm_codegen::Profile::Debug => "debug",
         wasm_codegen::Profile::Release => "release",
     };
-    workspace.join("rk_build").join(dir).join("core.wasm")
+    workspace.join("rk_build").join(dir)
+}
+
+/// Where the core module of a build lands: what `rk test` writes and runs.
+/// Every command writes this fresh before handing the path on; nothing
+/// reads it back expecting someone else to have filled it in.
+pub fn artifact_path(
+    workspace: &std::path::Path,
+    profile: wasm_codegen::Profile,
+) -> std::path::PathBuf {
+    profile_dir(workspace, profile).join("core.wasm")
+}
+
+/// Where `rk compile` writes the component of `workspace`: named after its
+/// project, with its WIT in `wit/` beside it.
+pub fn component_path(
+    workspace: &std::path::Path,
+    profile: wasm_codegen::Profile,
+    project: &str,
+) -> std::path::PathBuf {
+    let name: String = project
+        .chars()
+        .map(|c| match c {
+            'a'..='z' | 'A'..='Z' | '0'..='9' | '_' | '-' | '.' => c,
+            _ => '_',
+        })
+        .collect();
+    let name = match name.trim_matches('.') {
+        "" => "plc",
+        name => name,
+    };
+    profile_dir(workspace, profile).join(format!("{name}.wasm"))
 }
 
 /// The debug artifact — what `rk test` runs and a debugger steps.
