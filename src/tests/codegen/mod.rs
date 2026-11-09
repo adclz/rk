@@ -15,6 +15,7 @@ mod comparison;
 mod compound_assignment;
 mod conformands;
 mod constant_folding;
+mod control;
 mod control_flow;
 mod copies;
 mod debug_functions;
