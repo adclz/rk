@@ -394,24 +394,23 @@ pub(crate) fn find_namespace_references<'db>(
 
         // The written name ends the declaration's path, and what comes before
         // is the enclosing namespaces: `Motors` nested in `NAMESPACE App` writes
-        // one segment of two, and does not name `App`.
+        // one segment of two, and does not name `App`. The segments are the
+        // name's identifiers: counted off its text, the dots a recovered parse
+        // left in `NAMESPACE a ...args` nested in `b` made it seem to write `b`
+        // as well, and renaming `b` rewrote `a`.
         for ns in sema.namespaces.iter() {
             let declared = ns.path(db);
             let declared = declared.fragments(db);
-            let span = ns.name_span(db);
-            let written = file
-                .document(db)
-                .as_str()
-                .get(span.start_byte..span.end_byte)
-                .map_or(1, |text| text.split('.').count());
-            let enclosing = declared.len().saturating_sub(written);
+            let written = ns.name_segments(db);
+            let enclosing = declared.len().saturating_sub(written.len());
             if target.len() > enclosing
                 && target.len() <= declared.len()
                 && declared[..target.len()] == target[..]
+                && let Some(span) = written.get(target.len() - enclosing - 1)
             {
                 locations.push(ReferenceLocation {
                     file: *file,
-                    span: nth_segment(db, *file, span, target.len() - enclosing - 1),
+                    span: *span,
                 });
             }
         }
@@ -443,47 +442,6 @@ pub(crate) fn find_namespace_references<'db>(
     } else {
         Some(locations)
     }
-}
-
-/// The segment at `index` of the dotted name at `span`: `App` of `App.Motors` at
-/// 0. A rename edit replaces one identifier.
-fn nth_segment(
-    db: &dyn WorkspaceDataBase,
-    file: File,
-    span: tree_sitter::Range,
-    index: usize,
-) -> tree_sitter::Range {
-    let source = file.document(db).as_str();
-    let Some(text) = source.get(span.start_byte..span.end_byte) else {
-        return span;
-    };
-    let mut start = 0;
-    for (at, part) in text.split('.').enumerate() {
-        if at == index {
-            let begin = start + (part.len() - part.trim_start().len());
-            let end = begin + part.trim().len();
-            let point_at = |bytes: &str| {
-                let mut point = span.start_point;
-                for byte in bytes.bytes() {
-                    if byte == b'\n' {
-                        point.row += 1;
-                        point.column = 0;
-                    } else {
-                        point.column += 1;
-                    }
-                }
-                point
-            };
-            return tree_sitter::Range {
-                start_byte: span.start_byte + begin,
-                end_byte: span.start_byte + end,
-                start_point: point_at(&text[..begin]),
-                end_point: point_at(&text[..end]),
-            };
-        }
-        start += part.len() + 1;
-    }
-    span
 }
 
 /// The last segment of the dotted name at `span`: `Motors` of `App.Motors`,
