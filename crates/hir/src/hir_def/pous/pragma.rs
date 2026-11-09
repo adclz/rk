@@ -58,7 +58,7 @@ impl<'db> Pragma<'db> {
 /// restated, so nothing can disagree.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub struct ExternPragma {
-    /// The WASM import module (e.g. "wasi:clocks/monotonic-clock@0.2.6").
+    /// The WASM import module (e.g. "wasi:clocks/monotonic-clock@0.3.0").
     pub module: CompactString,
     /// The WASM import name (e.g. "now").
     pub name: CompactString,

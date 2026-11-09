@@ -4,7 +4,7 @@ A workspace compiles to one core WebAssembly module.
 It does not depend on the WASI Component model.
 
 It defines its own linear memory, and imports nothing unless the program uses the timers or declares an `{extern}` FUNCTION.
-That holds for a release build. A debug build is not optimized, so it always imports the clock the stdlib timers read, `wasi:clocks/monotonic-clock@0.2.6` `now`.
+That holds for a release build. A debug build is not optimized, so it always imports the clock the stdlib timers read, `wasi:clocks/monotonic-clock@0.3.0` `now`.
 It exports what a host calls:
 
 - `__init`, which sets the cold-start values.

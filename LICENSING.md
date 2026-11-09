@@ -33,8 +33,8 @@ vscode/syntaxes/
 
 The builtin bundle and the standard library are copied into every generated module, `debug_format` is what any host reads the module's sections with, and the two grammars, tree-sitter and TextMate, are what any editor parses the language with.
 
-Inside `crates/debug_format/`, `wit/wasi-clocks/` and `wit/wasi-io/` are WASI's own WIT files, copied unchanged.
-The `LICENSE.md` in each gives their terms, Apache-2.0 does not apply to them, and `rk compile` copies it with them into the `wit/` folder beside a component.
+Inside `crates/debug_format/`, `wit/wasi/` is WASI's own repository, a git submodule checked out at the release the standard library imports.
+Its `LICENSE.md` gives its terms, Apache-2.0 does not apply to it, and `rk compile` copies that file, with the WASI packages a component names, into the `wit/` folder beside the component.
 
 ## MIT
 

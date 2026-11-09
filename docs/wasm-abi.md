@@ -96,14 +96,14 @@ A host import declared with `{extern}` is the same convention in reverse:
 - scalar `VAR_OUTPUT` the results, the return type last; 
 
 it takes copies, so `VAR_IN_OUT`, aggregate outputs and a `STRING` return are refused.
-A `REF_TO` input is an address, which is how a record comes back: `Std.Timers` declares WASI's wall clock this way, whose `now` writes its `datetime` where the module points.
+A `REF_TO` input is an address, which is how a record comes back: `Std.Timers` declares WASI's system clock this way, whose `now` writes its `instant` where the module points, and the zone's `utc-offset`, whose `option<s64>` comes back the same way.
 
-The clocks a module imports are WASI's, in their core forms, and the host provides them:
+The clocks a module imports are WASI 0.3's, in their core forms, and the host provides them:
 
 | Import | Signature | What it does |
 |---|---|---|
-| `wasi:clocks/monotonic-clock@0.2.6` `now` | `() -> i64` | nanoseconds of a clock that never goes back |
-| `wasi:clocks/wall-clock@0.2.6` `now` | `(i32)` | writes 16 bytes at the address: the seconds since 1970-01-01 UTC as a `u64`, then the nanoseconds as a `u32` |
-| `wasi:clocks/timezone@0.2.6` `utc-offset` | `(i64, i32) -> i32` | the seconds the host's zone is east of UTC at the instant given as seconds and nanoseconds |
+| `wasi:clocks/monotonic-clock@0.3.0` `now` | `() -> i64` | nanoseconds of a clock that never goes back |
+| `wasi:clocks/system-clock@0.3.0` `now` | `(i32)` | writes at the address the seconds since 1970-01-01 UTC as an `s64`, negative before, then the nanoseconds as a `u32` |
+| `wasi:clocks/timezone@0.3.0` `utc-offset` | `(i64, i32, i32)` | takes an instant as its seconds and nanoseconds, and writes at the address whether the host has a zone, in one byte, and if it has, 8 bytes on, the nanoseconds the zone is east of UTC at that instant |
 
-A release build imports the ones the program reads; a debug build imports all three, so a host that has no zone still defines `utc-offset`, answering 0 as WASI allows, or the module does not instantiate. Where the monotonic clock starts is the host's choice, as WASI leaves it.
+A release build imports the ones the program reads; a debug build imports all three, so a host that has no zone still defines `utc-offset`, answering that it has none, or the module does not instantiate. Where the monotonic clock starts is the host's choice, as WASI leaves it.

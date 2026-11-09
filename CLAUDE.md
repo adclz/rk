@@ -16,6 +16,12 @@ The architecture follows **CST → AST → HIR → Type Checking → IDE feature
 # Build the entire workspace
 cargo build --workspace
 
+# crates/debug_format/wit/wasi is a git submodule: WASI's own repository, at
+# the release the stdlib's clocks import (v0.3.0). debug_format's build.rs
+# reads the WIT of the proposals it lists there, and stops with a message
+# when the folder is empty. A fresh clone checks it out with:
+git submodule update --init
+
 # Run all tests (uses cargo-nextest)
 cargo nextest run --workspace
 
@@ -186,7 +192,7 @@ cli (binary `rk`) — check, compile, test, fmt, fetch, explain, env
 | `fetch`                   | `crates/fetch`          | Fetches a library: an archive or a commit of a git repository (its own client, no git needed), unpacked, hashed and kept in the cache; writes its entry in `config.toml`. Its tests are in `src/tests/dependencies/`. |
 | `mir`                     | `crates/mir`            | Mid-level IR between HIR and WASM codegen: layouts, lowering, the task schedule and retain map.                          |
 | `wasm_codegen`            | `crates/wasm_codegen`   | Emits the core WASM module from MIR, with the builtin bundle and the debug/test custom sections.                        |
-| `debug_format`            | `crates/debug_format`   | The custom-section formats (debug symbols, lines, schedule, retain map, test manifest) and their decoder.               |
+| `debug_format`            | `crates/debug_format`   | The custom-section formats (debug symbols, lines, schedule, retain map, test manifest) and their decoder; the WIT a component refers to (`rk:plc/control`, and WASI's packages from the `wit/wasi` submodule). |
 | `linter`                  | `crates/linter`         | Lint rules (L-codes) over HIR.                                                                                          |
 | `benchmark`               | `crates/benchmark`      | Divan benchmarks over the stdlib corpus and a generated workspace of 1,000 POUs, with diagnostic baselines.             |
 | `doc`                     | `crates/doc`            | Site generator's front half: verifies `skills/`, `crates/doc/examples/`, `docs/` and `site/pages/` against the compiler, pre-renders their code, and writes what Zola (`site/`) renders. |

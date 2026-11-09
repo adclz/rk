@@ -81,4 +81,4 @@ FUNCTION AfterTen : BOOL
 END_FUNCTION
 ```
 
-The host provides them, as WASI's clocks: the [WASM ABI](wasm-abi.md) lists the imports. A host that exposes no zone answers an offset of 0, and `LOCAL_LDT` is then UTC.
+The host provides them, as WASI's clocks: the [WASM ABI](wasm-abi.md) lists the imports. A host that has no zone says so, and `LOCAL_LDT` and `LOCAL_OFFSET` then raise "the host has no time zone".

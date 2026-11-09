@@ -89,7 +89,7 @@ It carries only the import's module and name; the declaration itself is the sign
 `VAR_INPUT` become the parameters in declaration order, scalar `VAR_OUTPUT` become the results in declaration order, and the return type is the last result.
 
 ```iecst
-{extern 'wasi:clocks/monotonic-clock@0.2.6' 'now'}
+{extern 'wasi:clocks/monotonic-clock@0.3.0' 'now'}
 FUNCTION MONOTONIC_LTIME: LTIME
 END_FUNCTION
 
