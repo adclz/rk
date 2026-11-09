@@ -216,11 +216,12 @@ pub fn memory_of<T>(store: &mut Store<T>, instance: &Instance) -> Result<Memory>
 
 /// Wires the clocks a module imports, by the names WASI gives them and in
 /// their core forms: the monotonic clock, which starts at zero here; the
-/// wall clock, whose `now` writes its record, the seconds since 1970 and
+/// system clock, whose `now` writes its record, the seconds since 1970 and
 /// the nanoseconds, where the module points; and the zone's `utc-offset`
-/// at an instant. A module reads them through `Std.Timers`, and a debug
-/// module imports every `{extern}` of the libraries it reads, so each is
-/// wired whether a test reads it or not.
+/// at an instant ([`wire_zone`]), from the system's zone. A module reads
+/// them through `Std.Timers`, and a debug module imports every `{extern}`
+/// of the libraries it reads, so each is wired whether a test reads it or
+/// not.
 pub fn wire_clocks<T: 'static>(linker: &mut Linker<T>, module: &Module) -> Result<()> {
     let clock_start = Instant::now();
     for import in module.imports() {
@@ -231,7 +232,7 @@ pub fn wire_clocks<T: 'static>(linker: &mut Linker<T>, module: &Module) -> Resul
                     clock_start.elapsed().as_nanos() as i64
                 })
                 .ctx("wiring the monotonic clock")?;
-        } else if name == "now" && module_name.contains("wall-clock") {
+        } else if name == "now" && module_name.contains("system-clock") {
             linker
                 .func_wrap(
                     module_name,
@@ -240,44 +241,77 @@ pub fn wire_clocks<T: 'static>(linker: &mut Linker<T>, module: &Module) -> Resul
                         let since = SystemTime::now()
                             .duration_since(UNIX_EPOCH)
                             .unwrap_or_default();
-                        let mut datetime = [0u8; 16];
-                        datetime[..8].copy_from_slice(&since.as_secs().to_le_bytes());
-                        datetime[8..12].copy_from_slice(&since.subsec_nanos().to_le_bytes());
-                        let memory = caller
-                            .get_export("memory")
-                            .and_then(Extern::into_memory)
-                            .ok_or_else(|| wasmtime::Error::msg("the module exports no memory"))?;
-                        memory
-                            .write(&mut caller, ret as usize, &datetime)
-                            .map_err(|e| {
-                                wasmtime::Error::msg(format!(
-                                    "writing the wall clock where the module points: {e}"
-                                ))
-                            })
+                        // The record `instant`: an `s64`, then a `u32` 8 bytes on.
+                        let mut instant = [0u8; 12];
+                        instant[..8].copy_from_slice(&(since.as_secs() as i64).to_le_bytes());
+                        instant[8..].copy_from_slice(&since.subsec_nanos().to_le_bytes());
+                        write_at(&mut caller, ret as u32, &instant)
                     },
                 )
-                .ctx("wiring the wall clock")?;
+                .ctx("wiring the system clock")?;
         } else if name == "utc-offset" && module_name.contains("timezone") {
-            linker
-                .func_wrap(module_name, name, |seconds: i64, nanoseconds: i32| -> i32 {
-                    utc_offset(seconds, nanoseconds)
-                })
-                .ctx("wiring the time zone")?;
+            wire_zone(linker, module_name, system_zone)?;
         }
     }
     Ok(())
 }
 
-/// How many seconds east of UTC the host's zone is at an instant, daylight
-/// saving included. An instant past what the zone's rules cover takes the
-/// nearest they do.
-fn utc_offset(seconds: i64, nanoseconds: i32) -> i32 {
+/// Wires `zone` as the `utc-offset` of `module_name`. It is handed an
+/// instant as its seconds and nanoseconds, and gives the nanoseconds the
+/// zone is east of UTC there, or `None` for a host with no zone. The core
+/// form writes that `option<s64>` where the module points, as the
+/// canonical ABI lays it out and nothing more: a byte saying whether it
+/// holds a value, and the value 8 bytes on.
+pub fn wire_zone<T: 'static>(
+    linker: &mut Linker<T>,
+    module_name: &str,
+    zone: impl Fn(i64, i32) -> Option<i64> + Send + Sync + 'static,
+) -> Result<()> {
+    linker
+        .func_wrap(
+            module_name,
+            "utc-offset",
+            move |mut caller: Caller<'_, T>,
+                  seconds: i64,
+                  nanoseconds: i32,
+                  ret: i32|
+                  -> wasmtime::Result<()> {
+                let ret = ret as u32;
+                match zone(seconds, nanoseconds) {
+                    Some(offset) => {
+                        write_at(&mut caller, ret, &[1])?;
+                        write_at(&mut caller, ret.wrapping_add(8), &offset.to_le_bytes())
+                    }
+                    None => write_at(&mut caller, ret, &[0]),
+                }
+            },
+        )
+        .ctx("wiring the time zone")?;
+    Ok(())
+}
+
+/// Writes `bytes` in the calling module's memory at `address`.
+fn write_at<T>(caller: &mut Caller<'_, T>, address: u32, bytes: &[u8]) -> wasmtime::Result<()> {
+    let memory = caller
+        .get_export("memory")
+        .and_then(Extern::into_memory)
+        .ok_or_else(|| wasmtime::Error::msg("the module exports no memory"))?;
+    memory
+        .write(&mut *caller, address as usize, bytes)
+        .map_err(|e| wasmtime::Error::msg(format!("writing where the module points: {e}")))
+}
+
+/// How far east of UTC the system's zone is at an instant, in nanoseconds,
+/// daylight saving included, or `None` when the system has no zone. An
+/// instant past what the zone's rules cover takes the nearest they do.
+fn system_zone(seconds: i64, nanoseconds: i32) -> Option<i64> {
+    let zone = jiff::tz::TimeZone::try_system().ok()?;
     let at = jiff::Timestamp::new(seconds, nanoseconds).unwrap_or(if seconds < 0 {
         jiff::Timestamp::MIN
     } else {
         jiff::Timestamp::MAX
     });
-    jiff::tz::TimeZone::system().to_offset(at).seconds()
+    Some(i64::from(zone.to_offset(at).seconds()) * 1_000_000_000)
 }
 
 /// One test on a fresh instance: a pass, a failure or a trap. `Err` is a

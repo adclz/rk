@@ -11,7 +11,7 @@
 
 use std::collections::BTreeSet;
 
-use debug_format::wit::{self, Package};
+use debug_format::wit;
 
 /// The world every component exports its control interface from.
 pub const WORLD: &str = "plc";
@@ -28,14 +28,13 @@ pub struct Component {
 /// `project`. `Err` says what the module imports that rk cannot type.
 pub fn wrap(core: &[u8], project: &str) -> Result<Component, String> {
     let imports = imported_interfaces(core)?;
-    let mut packages: Vec<&'static Package> = vec![&wit::RK_PLC];
-    for interface in &imports {
-        let Some(package) = wit::package_of(interface) else {
-            return Err(format!(
-                "the module imports `{interface}`, which no WIT package rk carries describes"
-            ));
-        };
-        add_with_uses(&mut packages, package);
+    if let Some(interface) = imports
+        .iter()
+        .find(|interface| wit::package_of(interface).is_none())
+    {
+        return Err(format!(
+            "the module imports `{interface}`, which no WIT package rk carries describes"
+        ));
     }
 
     let world = world_text(project, &imports);
@@ -44,8 +43,7 @@ pub fn wrap(core: &[u8], project: &str) -> Result<Component, String> {
         all_features: true,
         ..Default::default()
     };
-    let deps = packages
-        .iter()
+    let deps = wit::packages()
         .map(|package| parse(package.dir, package.files))
         .collect::<Result<Vec<_>, _>>()?;
     let main = parse(".", &[("world.wit", world.as_str())])?;
@@ -71,8 +69,9 @@ pub fn wrap(core: &[u8], project: &str) -> Result<Component, String> {
         .and_then(|encoder| encoder.encode())
         .map_err(|e| format!("wrapping the module into a component: {e:#}"))?;
 
+    let named = named_packages(&resolve, package);
     let mut files = Vec::new();
-    for package in &packages {
+    for package in wit::packages().filter(|package| named.contains(package.id)) {
         for (file, text) in package.files {
             files.push((format!("deps/{}/{file}", package.dir), *text));
         }
@@ -103,17 +102,22 @@ fn imported_interfaces(core: &[u8]) -> Result<BTreeSet<String>, String> {
     Ok(interfaces)
 }
 
-/// `package`, after the packages it uses, each once.
-fn add_with_uses(packages: &mut Vec<&'static Package>, package: &'static Package) {
-    if packages.iter().any(|p| p.name == package.name) {
-        return;
-    }
-    packages.push(package);
-    for used in package.uses {
-        if let Some(used) = wit::PACKAGES.iter().copied().find(|p| p.name == *used) {
-            add_with_uses(packages, used);
+/// The packages `package` names, and those they name in turn, by name and
+/// version (`wasi:clocks@0.3.0`): what a tool reading the world needs.
+fn named_packages(
+    resolve: &wit_parser::Resolve,
+    package: wit_parser::PackageId,
+) -> BTreeSet<String> {
+    let mut named = BTreeSet::new();
+    let mut next = vec![package];
+    while let Some(id) = next.pop() {
+        for dep in resolve.package_direct_deps(id) {
+            if named.insert(resolve.packages[dep].name.to_string()) {
+                next.push(dep);
+            }
         }
     }
+    named
 }
 
 /// The world: what the component imports, and the control interface.
