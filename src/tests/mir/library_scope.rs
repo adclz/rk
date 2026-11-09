@@ -208,7 +208,11 @@ fn exports_and_sections(wasm: &[u8]) -> (Vec<String>, Vec<String>) {
             wasmparser::Payload::ExportSection(reader) => {
                 for export in reader {
                     let export = export.expect("an export");
-                    if export.kind == wasmparser::ExternalKind::Func {
+                    // Every module has the control interface's: what these
+                    // tests look at is what the workspace exports.
+                    if export.kind == wasmparser::ExternalKind::Func
+                        && !hir::hir_def::pous::pragma::MODULE_EXPORTS.contains(&export.name)
+                    {
                         exports.push(export.name.to_string());
                     }
                 }
