@@ -1,0 +1,3 @@
+[submodule "crates/debug_format/wit/wasi"]
+	path = crates/debug_format/wit/wasi
+	url = https://github.com/WebAssembly/WASI
