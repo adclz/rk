@@ -5,10 +5,13 @@
 //! it: through the control interface, with nothing but its typed functions
 //! to call.
 
+use debug_format::test_manifest::{TEST_MANIFEST_SECTION, TestManifest};
 use rstest::rstest;
 use wasmtime::component::{Component, Instance, Linker, TypedFunc};
 
-use crate::tests::codegen::{compile_to_wasm_as_built, with_db};
+use crate::tests::codegen::{
+    compile_to_wasm_as_built, compile_with_libraries, expect_section, with_db,
+};
 
 const CONTROL: &str = debug_format::wit::CONTROL_INTERFACE;
 
@@ -45,9 +48,16 @@ struct Plc {
 
 impl Plc {
     fn load(bytes: &[u8]) -> Self {
+        Self::load_with(bytes, |_| {})
+    }
+
+    /// [`Plc::load`] with `wire` defining host functions first: the
+    /// imports it leaves undefined trap.
+    fn load_with(bytes: &[u8], wire: impl FnOnce(&mut Linker<()>)) -> Self {
         let engine = engine();
         let component = Component::new(&engine, bytes).expect("a valid component");
         let mut linker = Linker::<()>::new(&engine);
+        wire(&mut linker);
         linker
             .define_unknown_imports_as_traps(&component)
             .expect("its imports stubbed");
@@ -183,7 +193,7 @@ fn the_component_is_named_after_the_project() {
 #[rstest]
 fn the_world_imports_what_the_module_calls(mut with_db: db::RootDatabase) {
     let source = r#"
-        {extern 'wasi:clocks/monotonic-clock@0.2.6' 'now'}
+        {extern 'wasi:clocks/monotonic-clock@0.3.0' 'now'}
         FUNCTION now : LINT
         END_FUNCTION
 
@@ -196,7 +206,7 @@ fn the_world_imports_what_the_module_calls(mut with_db: db::RootDatabase) {
     assert!(
         component
             .world
-            .contains("import wasi:clocks/monotonic-clock@0.2.6;"),
+            .contains("import wasi:clocks/monotonic-clock@0.3.0;"),
         "{}",
         component.world
     );
@@ -206,19 +216,165 @@ fn the_world_imports_what_the_module_calls(mut with_db: db::RootDatabase) {
         .iter()
         .map(|(path, _)| path.as_str())
         .collect();
-    for file in [
-        "deps/rk-plc/control.wit",
-        "deps/wasi-clocks/monotonic-clock.wit",
-        "deps/wasi-io/poll.wit",
-    ] {
-        assert!(files.contains(&file), "{file} in {files:?}");
-    }
+    assert_eq!(
+        files,
+        [
+            "deps/rk-plc/control.wit",
+            "deps/wasi-clocks/monotonic-clock.wit",
+            "deps/wasi-clocks/system-clock.wit",
+            "deps/wasi-clocks/timezone.wit",
+            "deps/wasi-clocks/types.wit",
+            "deps/wasi-clocks/world.wit",
+            "deps/wasi-clocks/LICENSE.md",
+        ]
+    );
 
     let engine = engine();
     let loaded = Component::new(&engine, &component.bytes).expect("a valid component");
     let ty = loaded.component_type();
     let imports: Vec<&str> = ty.imports(&engine).map(|(name, _)| name).collect();
-    assert_eq!(imports, ["wasi:clocks/monotonic-clock@0.2.6"]);
+    assert_eq!(imports, ["wasi:clocks/monotonic-clock@0.3.0"]);
     let exports: Vec<&str> = ty.exports(&engine).map(|(name, _)| name).collect();
     assert_eq!(exports, [CONTROL]);
+}
+
+/// A module whose import names an interface at a version rk carries no WIT
+/// for is refused, the interface named.
+#[rstest]
+fn an_import_at_another_version_is_refused(mut with_db: db::RootDatabase) {
+    let source = r#"
+        {extern 'wasi:clocks/monotonic-clock@0.2.6' 'now'}
+        FUNCTION now : LINT
+        END_FUNCTION
+
+        {export}
+        FUNCTION Stamp : LINT
+            Stamp := now();
+        END_FUNCTION
+    "#;
+    let refused = rk::component::wrap(&compile_to_wasm_as_built(&mut with_db, source), "plant")
+        .err()
+        .expect("the module is refused");
+    assert_eq!(
+        refused,
+        "the module imports `wasi:clocks/monotonic-clock@0.2.6`, \
+         which no WIT package rk carries describes"
+    );
+}
+
+/// WASI's `instant`, as the system clock gives it and the zone takes it.
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    PartialEq,
+    wasmtime::component::ComponentType,
+    wasmtime::component::Lift,
+    wasmtime::component::Lower,
+)]
+#[component(record)]
+struct Instant {
+    seconds: i64,
+    nanoseconds: u32,
+}
+
+/// The instant the system clock gives below: 2026-01-01 00:00:00.25 UTC.
+const WALL: Instant = Instant {
+    seconds: 1_767_225_600,
+    nanoseconds: 250_000_000,
+};
+
+/// `Std.Timers` reading WASI's clocks through a component host: the
+/// canonical ABI lifts and lowers them as WASI's WIT types them, the
+/// records the system clock and the zone write where the module points
+/// included.
+const CLOCKS: &str = r#"
+    USING Std.Timers;
+
+    {test}
+    FUNCTION test_monotonic
+        IF PLC_LTIME() <> LT#42ns THEN
+            __RAISE('the monotonic clock');
+        END_IF;
+    END_FUNCTION
+
+    {test}
+    FUNCTION test_wall
+        IF WALL_LDT() <> LDT#2026-01-01-00:00:00.25 THEN
+            __RAISE('the wall clock');
+        END_IF;
+    END_FUNCTION
+
+    {test}
+    FUNCTION test_offset
+        IF LOCAL_OFFSET(IN := WALL_LDT()) <> LT#1h THEN
+            __RAISE('the offset');
+        END_IF;
+    END_FUNCTION
+"#;
+
+#[rstest]
+fn the_stdlib_reads_wasi_s_clocks_through_a_component(mut with_db: db::RootDatabase) {
+    let wasm = compile_with_libraries(
+        &mut with_db,
+        &[
+            include_str!("../../../stdlib/Timers.st"),
+            include_str!("../../../stdlib/Convert.st"),
+            include_str!("../../../stdlib/Strings.st"),
+        ],
+        CLOCKS,
+    );
+    let manifest =
+        TestManifest::from_msgpack(expect_section(&wasm, TEST_MANIFEST_SECTION)).unwrap();
+    let test = |name: &str| {
+        manifest
+            .tests
+            .iter()
+            .position(|entry| entry.path == name)
+            .unwrap_or_else(|| panic!("{name} in the manifest")) as u32
+    };
+    let component = wrap(&wasm);
+    for clock in ["monotonic-clock", "system-clock", "timezone"] {
+        let import = format!("import wasi:clocks/{clock}@0.3.0;");
+        assert!(component.world.contains(&import), "{}", component.world);
+    }
+
+    // A zone an hour east of UTC at the instant the wall clock gave, and
+    // none anywhere else.
+    fn an_hour_east(when: Instant) -> Option<i64> {
+        (when == WALL).then_some(3_600 * 1_000_000_000)
+    }
+    fn no_zone(_: Instant) -> Option<i64> {
+        None
+    }
+    let wire = |zone: fn(Instant) -> Option<i64>| {
+        move |linker: &mut Linker<()>| {
+            let mut clock = linker
+                .instance("wasi:clocks/monotonic-clock@0.3.0")
+                .unwrap();
+            clock.func_wrap("now", |_, ()| Ok((42u64,))).unwrap();
+            let mut clock = linker.instance("wasi:clocks/system-clock@0.3.0").unwrap();
+            clock.func_wrap("now", |_, ()| Ok((WALL,))).unwrap();
+            let mut timezone = linker.instance("wasi:clocks/timezone@0.3.0").unwrap();
+            timezone
+                .func_wrap("utc-offset", move |_, (when,): (Instant,)| {
+                    Ok((zone(when),))
+                })
+                .unwrap();
+        }
+    };
+
+    let mut plc = Plc::load_with(&component.bytes, wire(an_hour_east));
+    plc.init().unwrap();
+    for name in ["test_monotonic", "test_wall", "test_offset"] {
+        assert_eq!(plc.run_test(test(name)), Ok(()), "{name}");
+    }
+
+    let mut plc = Plc::load_with(&component.bytes, wire(no_zone));
+    plc.init().unwrap();
+    assert_eq!(
+        plc.run_test(test("test_offset")),
+        Err("the host has no time zone".to_string())
+    );
+    assert_eq!(plc.run_test(test("test_wall")), Ok(()));
 }
