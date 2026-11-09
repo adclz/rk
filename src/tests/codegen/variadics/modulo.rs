@@ -54,7 +54,7 @@ fn on_each_signed_integer(mut with_db: RootDatabase, #[case] ty: &'static str) {
     );
 }
 
-/// A remainder by zero stops the machine, as the operator does.
+/// A remainder by zero raises, as the operator does.
 #[rstest]
 fn by_zero_faults(mut with_db: RootDatabase) {
     let source = r#"
@@ -68,5 +68,7 @@ fn by_zero_faults(mut with_db: RootDatabase) {
             run := F(1, zero);
         END_FUNCTION
     "#;
-    crate::tests::codegen::traps::expect_fault(&mut with_db, source, "1 % 0 must fault");
+    let fault =
+        crate::tests::codegen::traps::expect_fault(&mut with_db, source, "1 % 0 must fault");
+    assert_eq!(fault, "division by zero");
 }
