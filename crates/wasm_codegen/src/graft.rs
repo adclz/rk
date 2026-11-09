@@ -711,11 +711,15 @@ mod execute_tests {
             .get_typed_func::<(), ()>(&mut store, "wrapper")
             .unwrap();
         let err = f.call(&mut store, ()).expect_err("must trap on throw");
-        // Uncaught at the wasm level, wasmtime reports `Trap::UncaughtException`.
-        let msg = err.to_string();
+        // Uncaught at the wasm level, the call fails with a thrown exception,
+        // which waits on the store for the host to read its payload.
         assert!(
-            msg.to_lowercase().contains("exception") || msg.to_lowercase().contains("trap"),
-            "expected exception-trap error, got: {msg}"
+            err.downcast_ref::<wasmtime::ThrownException>().is_some(),
+            "expected a thrown exception, got: {err:#}"
+        );
+        assert!(
+            store.take_pending_exception().is_some(),
+            "the exception waits on the store"
         );
     }
 }
