@@ -314,6 +314,100 @@ END_FUNCTION
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
 }
 
+/// From its ninth value, a CASE whose values are names and whose branches
+/// start with a call was refused: each value was also read as an assignment
+/// that lost its `=`, `K8 : g(a := 8)`, which kept one more parse of the CASE
+/// open, and past eight the parser kept the wrong one (E0007).
+#[rstest]
+#[case::a_function("g(a := {});")]
+#[case::by_position("g({});")]
+#[case::an_instance("b(a := {});")]
+#[case::a_method("b.m(a := {});")]
+#[case::a_call_then_an_assignment("g(a := {}); x := 0;")]
+fn many_case_values_followed_by_calls(mut with_db: RootDatabase, #[case] branch: &str) {
+    let values: String = (0..12)
+        .map(|i| format!("    K{i} : INT := {i};\n"))
+        .collect();
+    let branches: String = (0..12)
+        .map(|i| format!("        K{i}: {}\n", branch.replace("{}", &i.to_string())))
+        .collect();
+    let source = format!(
+        "
+FUNCTION g : INT
+VAR_INPUT a : INT; END_VAR
+    g := a;
+END_FUNCTION
+
+FUNCTION_BLOCK B
+VAR_INPUT a : INT; END_VAR
+METHOD m : INT
+VAR_INPUT a : INT; END_VAR
+    m := a;
+END_METHOD
+END_FUNCTION_BLOCK
+
+FUNCTION f
+VAR CONSTANT
+{values}END_VAR
+VAR x : INT; b : B; END_VAR
+    CASE x OF
+{branches}    END_CASE;
+END_FUNCTION
+"
+    );
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source.as_str()]), @"");
+}
+
+/// In a CASE body, `x : 5;` is still an assignment that lost its `=`: a
+/// literal is no statement for a value `x` to label.
+#[rstest]
+fn a_lost_equal_in_a_case_body(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION f
+VAR x : INT; c : INT; END_VAR
+    CASE c OF
+        1: x : 5;
+    END_CASE;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0007] Error: invalid assignment sign ':'
+       ,-[ file:///test0.st:5:14 ]
+       |
+     5 |         1: x : 5;
+       |              |
+       |              `-- ':' is not a valid assignment sign
+       |
+       | Help: replace ':' with ':='
+    ---'
+    ");
+}
+
+/// In a statement nested in a CASE body, `x : 6;` is an assignment that
+/// lost its `=`, as anywhere else.
+#[rstest]
+fn a_lost_equal_in_a_statement_of_a_case_body(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION f
+VAR x : INT; c : INT; END_VAR
+    CASE c OF
+        1: IF c > 0 THEN x : 6; END_IF;
+    END_CASE;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E0007] Error: invalid assignment sign ':'
+       ,-[ file:///test0.st:5:28 ]
+       |
+     5 |         1: IF c > 0 THEN x : 6; END_IF;
+       |                            |
+       |                            `-- ':' is not a valid assignment sign
+       |
+       | Help: replace ':' with ':='
+    ---'
+    ");
+}
+
 /// `IMPLEMENTS a EXTENDS` followed by what is no base: the misplaced
 /// IMPLEMENTS is reported, with nowhere to move it to, and the base that
 /// does not parse is a syntax error. The builder unwrapped the EXTENDS

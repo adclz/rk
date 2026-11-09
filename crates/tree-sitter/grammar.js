@@ -100,6 +100,59 @@ const other_var_decls = ($) => [
   $.loc_partly_var_decl,
 ];
 
+// Stmt : Assign_Stmt | Subprog_Ctrl_Stmt | Selection_Stmt | Iteration_Stmt;
+// `assign` is the assignment the body takes.
+const statement = ($, assign) =>
+  choice(
+    // assignments
+    assign,
+    //$.empty_path_expression, // used for completions
+    // subprog
+    $.func_call,
+    // invocations (THIS, SUPER)
+    $.begin_path_expression,
+    kw("RETURN"),
+    // selection
+    $.if_stmt,
+    $.case_stmt,
+    // iteration
+    $.for_stmt,
+    $.while_stmt,
+    $.repeat_stmt,
+    kw("EXIT"),
+    kw("CONTINUE"),
+    // Throws a wasm-level exception with a STRING payload
+    $.raise_stmt,
+    $.try_stmt,
+    $.wasm_pragma,
+    $.allow_pragma,
+    $.ERR_method_decl_in_body,
+    $.ERR_clause_outside_try,
+  );
+
+// `a := e`, `x += e`, and a chain of them, `a := b += 1`: each place is
+// followed by its operator, and the last by the value. `errors` are the
+// misspellings it is read as besides the ones every assignment is.
+const assignment = ($, errors) =>
+  seq(
+    field("variable", choice($.variable_access, $.ERR_assign_func_call)),
+    // `a := b := 1`: the places after the first, each written the value
+    // of the one to its right.
+    field("chain", repeat($.chained_target)),
+    field(
+      "target",
+      choice(
+        $.assignment,
+        $.compound_assignment,
+        $.ERR_empty_right_hand_assignment,
+        $.ERR_empty_compound_assignment,
+        $.ERR_missing_dot_in_assignment,
+        ...errors,
+        $.ERR_output_assign_in_assignment,
+      ),
+    ),
+  );
+
 // Precedences from the standard
 const RK_PREC = {
   expression: 11,
@@ -272,10 +325,11 @@ module.exports = grammar({
     [$.any_invocation],
     [$.any_invocation_kind],
     [$.variable, $.func_call],
-    [$.func_call, $._stmt],
+    [$.func_call, $._case_stmt],
     // {allow} is a statement AND a POU pragma; before a METHOD only what
     // follows decides which parse survives.
     [$.pou_pragma, $._stmt],
+    [$.pou_pragma, $._case_stmt],
     [$.case_selection],
     [$.case_body],
     [$.unary, $.param_assign_output],
@@ -413,12 +467,8 @@ module.exports = grammar({
 
     // Missing ':' before =
     ERR_missing_dot_in_assignment: ($) => seq("=", $._expression),
-    // Missing '=' after ':'. Ranked below every other reading: in a CASE,
-    // `GREEN: g(a := 2);` is the value `GREEN` and a statement, and read the
-    // other way it is `GREEN : g(a := 2)` with its `=` lost, which refused a
-    // valid program (E0007).
-    ERR_missing_equal_in_assignment: ($) =>
-      prec.dynamic(-2, prec(-1, seq(":", $._expression))),
+    // Missing '=' after ':'. A CASE body's is `ERR_case_missing_equal`.
+    ERR_missing_equal_in_assignment: ($) => prec(-1, seq(":", $._expression)),
 
     // Missing ':' before =
     ERR_missing_dot_in_for_control: ($) => "=",
@@ -2266,34 +2316,13 @@ module.exports = grammar({
     // one.
     stmt_list: ($) => prec.left(repeat1(choice($._stmt, ";"))),
 
-    // Stmt : Assign_Stmt | Subprog_Ctrl_Stmt | Selection_Stmt | Iteration_Stmt;
-    _stmt: ($) =>
-      choice(
-        // assignments
-        $.assign,
-        //$.empty_path_expression, // used for completions
-        // subprog
-        $.func_call,
-        // invocations (THIS, SUPER)
-        $.begin_path_expression,
-        kw("RETURN"),
-        // selection
-        $.if_stmt,
-        $.case_stmt,
-        // iteration
-        $.for_stmt,
-        $.while_stmt,
-        $.repeat_stmt,
-        kw("EXIT"),
-        kw("CONTINUE"),
-        // Throws a wasm-level exception with a STRING payload
-        $.raise_stmt,
-        $.try_stmt,
-        $.wasm_pragma,
-        $.allow_pragma,
-        $.ERR_method_decl_in_body,
-        $.ERR_clause_outside_try
-      ),
+    _stmt: ($) => statement($, $.assign),
+
+    // A statement of a CASE body, where `V8: G(a := 8);` is a value and a
+    // call. Read as `V8 := G(a := 8)` with its `=` lost as well, each value
+    // kept one more parse of the CASE open, and from the ninth the parser
+    // dropped the right one (E0007). Its assignment is `case_assign`.
+    _case_stmt: ($) => statement($, alias($.case_assign, $.assign)),
 
     // assignment: $ => seq(
     //    $.variable,
@@ -2304,24 +2333,31 @@ module.exports = grammar({
     //    ':=',
     //    choice($.ref_name, $.ref_deref, $.ref_value)
     //),
-    // `a := e`, `x += e`, and a chain of them, `a := b += 1`: each place is
-    // followed by its operator, and the last by the value.
-    assign: ($) =>
-      seq(
-        field("variable", choice($.variable_access, $.ERR_assign_func_call)),
-        // `a := b := 1`: the places after the first, each written the value
-        // of the one to its right.
-        field("chain", repeat($.chained_target)),
-        field(
-          "target",
+    assign: ($) => assignment($, [$.ERR_missing_equal_in_assignment]),
+
+    // An assignment of a CASE body, see `_case_stmt`.
+    case_assign: ($) =>
+      assignment($, [
+        alias($.ERR_case_missing_equal, $.ERR_missing_equal_in_assignment),
+      ]),
+
+    // `x : 5` in a CASE body: an assignment that lost its `=` when what
+    // follows the `:` is no statement, as a literal or an operation. A call
+    // or a name there is the statement of the value before the `:`.
+    ERR_case_missing_equal: ($) =>
+      prec(
+        -1,
+        seq(
+          ":",
           choice(
-            $.assignment,
-            $.compound_assignment,
-            $.ERR_empty_right_hand_assignment,
-            $.ERR_empty_compound_assignment,
-            $.ERR_missing_dot_in_assignment,
-            $.ERR_missing_equal_in_assignment,
-            $.ERR_output_assign_in_assignment,
+            $.constant,
+            $.enum_value,
+            $.boolean_operator,
+            $.comparison_operator,
+            $.add_operator,
+            $.mult_operator,
+            $.power_operator,
+            $.unary_operator,
           ),
         ),
       ),
@@ -2419,7 +2455,7 @@ module.exports = grammar({
         field("case_do", optional(alias($.case_body, $.stmt_list))),
       ),
 
-    case_body: ($) => repeat1(choice($._stmt, ";")),
+    case_body: ($) => repeat1(choice($._case_stmt, ";")),
 
     //Case_List : Case_List_Elem ( ',' Case_List_Elem )*;
     case_list: ($) => commaSep1($.case_list_elem),

@@ -1360,3 +1360,259 @@ END_CONFIGURATION
           (identifier)
           (namespace_access
             (identifier)))))))
+
+================================================================================
+A ninth CASE value followed by a call is no assignment missing its equal
+================================================================================
+
+FUNCTION fn
+  VAR x : INT; END_VAR
+  CASE x OF
+    K1: g();
+    K2: g();
+    K3: g();
+    K4: g();
+    K5: g();
+    K6: g();
+    K7: g();
+    K8: g();
+    K9: g();
+  END_CASE;
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (func_decl
+    (identifier)
+    (var_decls
+      (var_decl_init_list
+        (variable_list
+          (identifier))
+        (var_decl_init
+          (simple_type_spec
+            (numeric_type_name
+              (int_type_name
+                (sign_int_type_name
+                  (int_name))))))))
+    (func_body
+      (stmt_list
+        (case_stmt
+          (variable_access
+            (variable
+              (begin_path_expression
+                (path_expression
+                  (var_access
+                    (field))))))
+          (case_selection
+            (case_list
+              (case_list_elem
+                (constant_expr
+                  (variable_access
+                    (variable
+                      (begin_path_expression
+                        (path_expression
+                          (var_access
+                            (field)))))))))
+            (stmt_list
+              (func_call
+                (begin_path_expression
+                  (path_expression
+                    (var_access
+                      (field)))))))
+          (case_selection
+            (case_list
+              (case_list_elem
+                (constant_expr
+                  (variable_access
+                    (variable
+                      (begin_path_expression
+                        (path_expression
+                          (var_access
+                            (field)))))))))
+            (stmt_list
+              (func_call
+                (begin_path_expression
+                  (path_expression
+                    (var_access
+                      (field)))))))
+          (case_selection
+            (case_list
+              (case_list_elem
+                (constant_expr
+                  (variable_access
+                    (variable
+                      (begin_path_expression
+                        (path_expression
+                          (var_access
+                            (field)))))))))
+            (stmt_list
+              (func_call
+                (begin_path_expression
+                  (path_expression
+                    (var_access
+                      (field)))))))
+          (case_selection
+            (case_list
+              (case_list_elem
+                (constant_expr
+                  (variable_access
+                    (variable
+                      (begin_path_expression
+                        (path_expression
+                          (var_access
+                            (field)))))))))
+            (stmt_list
+              (func_call
+                (begin_path_expression
+                  (path_expression
+                    (var_access
+                      (field)))))))
+          (case_selection
+            (case_list
+              (case_list_elem
+                (constant_expr
+                  (variable_access
+                    (variable
+                      (begin_path_expression
+                        (path_expression
+                          (var_access
+                            (field)))))))))
+            (stmt_list
+              (func_call
+                (begin_path_expression
+                  (path_expression
+                    (var_access
+                      (field)))))))
+          (case_selection
+            (case_list
+              (case_list_elem
+                (constant_expr
+                  (variable_access
+                    (variable
+                      (begin_path_expression
+                        (path_expression
+                          (var_access
+                            (field)))))))))
+            (stmt_list
+              (func_call
+                (begin_path_expression
+                  (path_expression
+                    (var_access
+                      (field)))))))
+          (case_selection
+            (case_list
+              (case_list_elem
+                (constant_expr
+                  (variable_access
+                    (variable
+                      (begin_path_expression
+                        (path_expression
+                          (var_access
+                            (field)))))))))
+            (stmt_list
+              (func_call
+                (begin_path_expression
+                  (path_expression
+                    (var_access
+                      (field)))))))
+          (case_selection
+            (case_list
+              (case_list_elem
+                (constant_expr
+                  (variable_access
+                    (variable
+                      (begin_path_expression
+                        (path_expression
+                          (var_access
+                            (field)))))))))
+            (stmt_list
+              (func_call
+                (begin_path_expression
+                  (path_expression
+                    (var_access
+                      (field)))))))
+          (case_selection
+            (case_list
+              (case_list_elem
+                (constant_expr
+                  (variable_access
+                    (variable
+                      (begin_path_expression
+                        (path_expression
+                          (var_access
+                            (field)))))))))
+            (stmt_list
+              (func_call
+                (begin_path_expression
+                  (path_expression
+                    (var_access
+                      (field))))))))))))
+
+================================================================================
+A literal after a value of a CASE body is an assignment missing its equal
+================================================================================
+
+FUNCTION fn
+  VAR x : INT; c : INT; END_VAR
+  CASE c OF
+    1: x : 5;
+  END_CASE;
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (func_decl
+    (identifier)
+    (var_decls
+      (var_decl_init_list
+        (variable_list
+          (identifier))
+        (var_decl_init
+          (simple_type_spec
+            (numeric_type_name
+              (int_type_name
+                (sign_int_type_name
+                  (int_name)))))))
+      (var_decl_init_list
+        (variable_list
+          (identifier))
+        (var_decl_init
+          (simple_type_spec
+            (numeric_type_name
+              (int_type_name
+                (sign_int_type_name
+                  (int_name))))))))
+    (func_body
+      (stmt_list
+        (case_stmt
+          (variable_access
+            (variable
+              (begin_path_expression
+                (path_expression
+                  (var_access
+                    (field))))))
+          (case_selection
+            (case_list
+              (case_list_elem
+                (constant_expr
+                  (constant
+                    (numeric_literal
+                      (int_literal
+                        (signed_int
+                          (unsigned_int))))))))
+            (stmt_list
+              (assign
+                (variable_access
+                  (variable
+                    (begin_path_expression
+                      (path_expression
+                        (var_access
+                          (field))))))
+                (ERR_missing_equal_in_assignment
+                  (constant
+                    (numeric_literal
+                      (int_literal
+                        (signed_int
+                          (unsigned_int))))))))))))))

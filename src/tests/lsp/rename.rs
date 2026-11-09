@@ -253,6 +253,30 @@ END_FUNCTION
     ");
 }
 
+/// Renaming a namespace around one whose name the parser recovered,
+/// `NAMESPACE a ...args`: the dots in that name's text were counted as
+/// segments of it, so it seemed to write `b` too, and its `a` was rewritten.
+#[rstest]
+fn rename_a_namespace_around_a_recovered_name(mut with_db: RootDatabase) {
+    let source = r#"NAMESPACE b
+    NAMESPACE a ...args
+    END_NAMESPACE
+END_NAMESPACE
+"#;
+    let file = add_source(&mut with_db, source);
+
+    let offset = source.find('b').unwrap();
+    let node = descendant_at(&with_db, file, offset).unwrap();
+    let edit = node.rename(&with_db, offset, "z").unwrap();
+
+    assert_snapshot!(apply_rename(&with_db, &edit, &[source]), @r"
+    NAMESPACE z
+        NAMESPACE a ...args
+        END_NAMESPACE
+    END_NAMESPACE
+    ");
+}
+
 #[rstest]
 fn rename_struct_field(mut with_db: RootDatabase) {
     let source = r#"TYPE

@@ -188,6 +188,51 @@ fn runtime_reads_and_writes_vars_by_name(mut with_db: db::RootDatabase) {
     );
 }
 
+/// A DT reached through the type table, a field of an array element, is 8
+/// bytes as every DT is: the table gave it 4, and reading it took 8 bytes
+/// out of those 4 and panicked.
+#[rstest]
+fn a_dt_in_an_array_element_is_read_whole(mut with_db: db::RootDatabase) {
+    let source = r#"
+        TYPE Stamp : STRUCT when : DT; n : DINT; END_STRUCT; END_TYPE
+
+        PROGRAM Main
+        VAR
+            b : ARRAY[0..1] OF Stamp;
+        END_VAR
+            b[1].when := DT#2024-01-02-03:04:05;
+            b[1].n := 9;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM Run WITH T : Main;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
+    let mut plc = TestPlc::load(&wasm).expect("load PLC");
+    let dbg = DebugInfo::from_wasm(&wasm);
+    plc.run(1).expect("scan");
+
+    assert_eq!(dbg.resolve("Run.b[1].when").map(|loc| loc.size), Some(8));
+    assert_eq!(
+        plc.read_var(&dbg, "Run.b[1].when"),
+        Some(VarValue::I64(1_704_164_645)),
+        "2024-01-02 03:04:05 UTC in seconds"
+    );
+
+    // Written whole, and only it: the DINT after it keeps its value.
+    plc.write_var(&dbg, "Run.b[1].when", VarValue::I64(86_400))
+        .expect("force when");
+    assert_eq!(
+        plc.read_var(&dbg, "Run.b[1].when"),
+        Some(VarValue::I64(86_400))
+    );
+    assert_eq!(plc.read_var(&dbg, "Run.b[1].n"), Some(VarValue::I32(9)));
+}
+
 /// Aggregates: an array is one descriptor, its elements resolved on demand
 /// by IEC subscript (1-D and row-major N-D); enums/subranges emit one
 /// underlying-integer leaf; a STRING is one leaf carrying its capacity.

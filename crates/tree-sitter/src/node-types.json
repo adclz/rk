@@ -1268,6 +1268,14 @@
         {
           "type": "_expression",
           "named": true
+        },
+        {
+          "type": "constant",
+          "named": true
+        },
+        {
+          "type": "enum_value",
+          "named": true
         }
       ]
     }

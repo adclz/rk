@@ -4566,6 +4566,18 @@ fn write(p: &Place, v: Val, st: &mut State, tys: &[Ty], d: &Decls) {
     *slot(p, st, d) = store(ty, v);
 }
 
+/// `p` with its subscripts evaluated: the slot it names now, whatever they
+/// read once something is written.
+fn found(p: &Place, st: &State, d: &Decls) -> Place {
+    match p {
+        Place::Index(a, index) => {
+            Place::Index(*a, Box::new(Expr::Lit(Ty::Dint, eval(index, st, d))))
+        }
+        Place::Field(base, f) => Place::Field(Box::new(found(base, st, d)), *f),
+        Place::Var(_) | Place::Member(..) | Place::Deref(_) => p.clone(),
+    }
+}
+
 /// Call `method` of instance `i` with `args`, already evaluated.
 fn run_method(i: usize, method: usize, args: Vec<Val>, st: &mut State, d: &Decls) -> Val {
     let block = &d.blocks[d.instances[i].block];
@@ -4638,28 +4650,34 @@ fn run_block(block: &[Stmt], st: &mut State, tys: &[Ty], d: &Decls) -> Flow {
                 write(p, v, st, tys, d);
                 Flow::Next
             }
-            // From right to left, each place read back once written: a STRING
-            // passes on what its capacity kept. Nothing in a place has a side
-            // effect, so reading it again finds the slot just written. A place
-            // with an operator is written its operation, the place read first.
+            // From right to left, each place found once, when its link runs,
+            // and read back from the slot it wrote: a STRING passes on what its
+            // capacity kept. Found again, a place whose subscript reads what
+            // the chain wrote names another slot. A place with an operator is
+            // written its operation, the place read first.
             Stmt::Chain(places, e) => {
                 let mut value = e.clone();
                 for (p, op) in places.iter().rev() {
-                    let v = match op {
+                    let (p, v) = match op {
                         Some(op) => {
-                            let ty = place_ty(p, tys, d);
+                            let p = found(p, st, d);
+                            let ty = place_ty(&p, tys, d);
                             let operation = Expr::Arith(
                                 *op,
                                 ty,
                                 Box::new(Expr::Read(p.clone())),
                                 Box::new(value),
                             );
-                            eval(&operation, st, d)
+                            let v = eval(&operation, st, d);
+                            (p, v)
                         }
-                        None => eval(&value, st, d),
+                        None => {
+                            let v = eval(&value, st, d);
+                            (found(p, st, d), v)
+                        }
                     };
-                    write(p, v, st, tys, d);
-                    value = Expr::Read(p.clone());
+                    write(&p, v, st, tys, d);
+                    value = Expr::Read(p);
                 }
                 Flow::Next
             }
@@ -5722,6 +5740,39 @@ mod tests {
         );
         let _ = run_block(&[chain], &mut st, &tys, &Decls::default());
         assert_eq!(st.vars, [Val::Int(15), Val::Int(15)]);
+    }
+
+    /// The evaluator finds each place of a chain once, when its link runs,
+    /// and passes on what that slot holds: with `a[0]` 0, `v := a[a[0]] := 1`
+    /// and `v := a[a[0]] += 1` both write `a[0]` 1 and `v` 1. Found again
+    /// after the write, `a[a[0]]` named `a[1]`, and `v` took its 7.
+    #[test]
+    fn a_chain_reads_back_the_slot_it_wrote() {
+        let mut d = Decls::default();
+        d.arrays.push(Array {
+            name: "a".to_string(),
+            ty: Ty::Dint,
+            lo: 0,
+            bounds: None,
+            init: Vec::new(),
+            written: Vec::new(),
+        });
+        let tys = [Ty::Dint];
+        let a_of_a0 = || {
+            let a0 = Place::Index(0, Box::new(Expr::Lit(Ty::Dint, Val::Int(0))));
+            Place::Index(0, Box::new(Expr::Read(a0)))
+        };
+        for op in [None, Some(Arith::Add)] {
+            let mut st = State::frame(vec![Val::Int(0)]);
+            st.arrays = vec![vec![Val::Int(0), Val::Int(7)]];
+            let chain = Stmt::Chain(
+                vec![(Place::Var(0), None), (a_of_a0(), op)],
+                Expr::Lit(Ty::Dint, Val::Int(1)),
+            );
+            let _ = run_block(&[chain], &mut st, &tys, &d);
+            assert_eq!(st.vars, [Val::Int(1)], "{op:?}");
+            assert_eq!(st.arrays[0], [Val::Int(1), Val::Int(7)], "{op:?}");
+        }
     }
 
     /// The generator writes CONSTANTs and types with named values, in each place

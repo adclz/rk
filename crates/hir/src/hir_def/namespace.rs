@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Clauzel Adrien
 // SPDX-License-Identifier: AGPL-3.0-only
 
+use auto_lsp::core::ast::AstNode;
 use auto_lsp::tree_sitter;
 use db::WorkspaceDataBase;
 
@@ -64,6 +65,24 @@ impl<'db> NamespaceDecl<'db> {
                 )
             })
             .get_range()
+    }
+
+    /// Where each segment of the name is written: `App` and `Motors` of
+    /// `NAMESPACE App.Motors`, the end of [`Self::path`] after the enclosing
+    /// namespaces. Read off the name's identifiers, as the path is: the text
+    /// between them can hold whatever a recovered parse left there.
+    pub fn name_segments(&'db self, db: &'db dyn WorkspaceDataBase) -> Vec<tree_sitter::Range> {
+        let ast = &semantic_index(db, self.get_scope_id(db).file(db)).ast;
+        let Some(name) = ast.get(self.name_id(db).0).and_then(|node| {
+            node.lower()
+                .downcast_ref::<ast::generated::NamespaceHName>()
+        }) else {
+            return Vec::new();
+        };
+        name.children
+            .iter()
+            .map(|identifier| *identifier.cast(ast).get_range())
+            .collect()
     }
 }
 

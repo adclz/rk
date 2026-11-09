@@ -404,6 +404,7 @@ impl SymType {
             | SymType::LTime
             | SymType::LDate
             | SymType::LTod
+            | SymType::DateAndTime
             | SymType::LDateTime => 8,
             _ => 4,
         }
