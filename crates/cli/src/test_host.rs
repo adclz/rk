@@ -20,8 +20,8 @@ use debug_format::DebugInfo;
 use debug_format::test_manifest::{TEST_MANIFEST_SECTION, TestEntry, TestManifest};
 use debug_format::test_report::{Frame, Status, TestRecord};
 use wasmtime::{
-    Caller, DebugEvent, DebugHandler, Engine, ExternType, Linker, Memory, MemoryType, Module,
-    Store, StoreContextMut,
+    Caller, DebugEvent, DebugHandler, Engine, Extern, Instance, Linker, Memory, Module, Store,
+    StoreContextMut,
 };
 
 /// How long one test may run before the watchdog stops it, unless
@@ -194,30 +194,24 @@ fn stack_of(backtrace: &wasmtime::WasmBacktrace) -> Vec<(u32, u32)> {
         .collect()
 }
 
-/// A linear memory for the module's `env.memory` import, and a linker with
-/// it, the monotonic clock, and every other import stubbed as a trap: a
+/// A linker with the clocks, and every other import stubbed as a trap: a
 /// user can declare any `{extern}` host function, so imports cannot be
-/// whitelisted, and an unwired one fails only if the test calls it.
-fn link<T: 'static>(store: &mut Store<T>, module: &Module) -> Result<(Linker<T>, Memory)> {
-    let min_pages = module
-        .imports()
-        .find_map(|i| match i.ty() {
-            ExternType::Memory(mt) => Some(mt.minimum()),
-            _ => None,
-        })
-        .context("the module must import a linear memory from `env`")?;
-    let memory = Memory::new(&mut *store, MemoryType::new(min_pages as u32, None))
-        .ctx("allocating linear memory")?;
-
+/// whitelisted, and an unwired one fails only if the test calls it. The
+/// memory is the module's own ([`memory_of`]).
+fn link<T: 'static>(module: &Module) -> Result<Linker<T>> {
     let mut linker = Linker::new(module.engine());
-    linker
-        .define(&*store, "env", "memory", memory)
-        .ctx("defining env.memory")?;
-    wire_clocks(&mut linker, module, memory)?;
+    wire_clocks(&mut linker, module)?;
     linker
         .define_unknown_imports_as_traps(module)
         .ctx("stubbing unwired host imports as traps")?;
-    Ok((linker, memory))
+    Ok(linker)
+}
+
+/// The memory a module defines and exports as `memory`.
+pub fn memory_of<T>(store: &mut Store<T>, instance: &Instance) -> Result<Memory> {
+    instance
+        .get_memory(&mut *store, "memory")
+        .context("the module must export its memory as `memory`")
 }
 
 /// Wires the clocks a module imports, by the names WASI gives them and in
@@ -227,11 +221,7 @@ fn link<T: 'static>(store: &mut Store<T>, module: &Module) -> Result<(Linker<T>,
 /// at an instant. A module reads them through `Std.Timers`, and a debug
 /// module imports every `{extern}` of the libraries it reads, so each is
 /// wired whether a test reads it or not.
-pub fn wire_clocks<T: 'static>(
-    linker: &mut Linker<T>,
-    module: &Module,
-    memory: Memory,
-) -> Result<()> {
+pub fn wire_clocks<T: 'static>(linker: &mut Linker<T>, module: &Module) -> Result<()> {
     let clock_start = Instant::now();
     for import in module.imports() {
         let (module_name, name) = (import.module(), import.name());
@@ -253,6 +243,10 @@ pub fn wire_clocks<T: 'static>(
                         let mut datetime = [0u8; 16];
                         datetime[..8].copy_from_slice(&since.as_secs().to_le_bytes());
                         datetime[8..12].copy_from_slice(&since.subsec_nanos().to_le_bytes());
+                        let memory = caller
+                            .get_export("memory")
+                            .and_then(Extern::into_memory)
+                            .ok_or_else(|| wasmtime::Error::msg("the module exports no memory"))?;
                         memory
                             .write(&mut caller, ret as usize, &datetime)
                             .map_err(|e| {
@@ -298,10 +292,11 @@ fn run_one(
     // A store with epoch interruption enabled starts at a deadline that has
     // always elapsed, so arm it before ANY wasm runs — instantiation included.
     store.set_epoch_deadline(ticks(budget));
-    let (linker, memory) = link(&mut store, module)?;
+    let linker = link(module)?;
     let instance = linker
         .instantiate(&mut store, module)
         .ctx("instantiating the module")?;
+    let memory = memory_of(&mut store, &instance)?;
 
     if let Ok(init) = instance.get_typed_func::<(), ()>(&mut store, "__init") {
         store.set_epoch_deadline(ticks(budget));
@@ -454,7 +449,7 @@ fn trace(module: &Module, entry: &TestEntry, budget: Duration) -> Vec<(u32, u32)
     store.set_debug_handler(AtFailure);
     store.set_epoch_deadline(ticks(budget));
     block_on(async {
-        let Ok((linker, _memory)) = link(&mut store, module) else {
+        let Ok(linker) = link(module) else {
             return;
         };
         let Ok(instance) = linker.instantiate_async(&mut store, module).await else {
