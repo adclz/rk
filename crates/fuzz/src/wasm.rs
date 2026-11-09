@@ -384,9 +384,13 @@ impl Host {
             .define_unknown_imports_as_traps(&module)
             .map_err(|e| Finding::new("module-shape", format!("{e:#}")))?;
 
-        // Nothing runs during instantiation (there is no start function), so
-        // a failure here is the module's own shape: typically a data segment
-        // beyond the memory it asked for.
+        // No code of the program runs during instantiation (there is no
+        // start function), so a failure here is the module's own shape:
+        // typically a data segment beyond the memory it asked for. Copying
+        // the data segments is metered wasm since wasmtime 46, and a store
+        // starts with no fuel; it is not what the budget bounds, which every
+        // call sets again.
+        store.set_fuel(u64::MAX).expect("fuel is enabled");
         let instance = linker
             .instantiate(&mut store, &module)
             .map_err(|e| Finding::new("instantiate", format!("{e:#}")))?;
