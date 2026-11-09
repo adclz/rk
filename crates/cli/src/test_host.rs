@@ -429,12 +429,11 @@ impl DebugHandler for AtFailure {
     async fn handle(&self, mut store: StoreContextMut<'_, Trace>, event: DebugEvent<'_>) {
         // A hostcall's error is a failure too: the watchdog's interrupt
         // comes from one, and so does a call to an import nothing wired.
+        // An exception is reported at its throw, before wasmtime looks for
+        // a handler: a caught one too.
         let failed = matches!(
             event,
-            DebugEvent::CaughtExceptionThrown(_)
-                | DebugEvent::UncaughtExceptionThrown(_)
-                | DebugEvent::Trap(_)
-                | DebugEvent::HostcallError(_)
+            DebugEvent::Exception(_) | DebugEvent::Trap(_) | DebugEvent::HostcallError(_)
         );
         if !failed {
             return;
