@@ -224,7 +224,10 @@ const FUEL: u64 = 2_000_000;
 const MAX_PAGES: u64 = 1024;
 
 /// Where the wall clock starts, in seconds since 1970: 2026-01-01 00:00:00 UTC.
-const WALL_CLOCK_START: u64 = 1_767_225_600;
+const WALL_CLOCK_START: i64 = 1_767_225_600;
+
+/// How far east of UTC the zone is, in nanoseconds: an hour.
+const ZONE_OFFSET: i64 = 3_600 * 1_000_000_000;
 
 /// How many scans a program gets. More than one, so a second scan starts
 /// from the state the first left, which is where RETAIN and FB instances
@@ -347,33 +350,32 @@ impl Host {
                 linker.func_wrap(module_name, name, move || {
                     clock.fetch_add(1_000_000, Ordering::Relaxed)
                 })
-            } else if name == "now" && module_name.contains("wall-clock") {
+            } else if name == "now" && module_name.contains("system-clock") {
                 let clock = clock.clone();
                 linker.func_wrap(
                     module_name,
                     name,
                     move |mut caller: Caller<'_, ()>, ret: i32| -> wasmtime::Result<()> {
                         let elapsed = clock.fetch_add(1_000_000, Ordering::Relaxed);
-                        let seconds = WALL_CLOCK_START + (elapsed / 1_000_000_000) as u64;
+                        let seconds = WALL_CLOCK_START + elapsed / 1_000_000_000;
                         let nanoseconds = (elapsed % 1_000_000_000) as u32;
-                        let mut datetime = [0u8; 16];
-                        datetime[..8].copy_from_slice(&seconds.to_le_bytes());
-                        datetime[8..12].copy_from_slice(&nanoseconds.to_le_bytes());
+                        // The record `instant`: an `s64`, then a `u32` 8 bytes on.
+                        let mut instant = [0u8; 12];
+                        instant[..8].copy_from_slice(&seconds.to_le_bytes());
+                        instant[8..].copy_from_slice(&nanoseconds.to_le_bytes());
                         let memory = caller
                             .get_export("memory")
                             .and_then(Extern::into_memory)
                             .ok_or_else(|| wasmtime::Error::msg("the module exports no memory"))?;
                         memory
-                            .write(&mut caller, ret as usize, &datetime)
+                            .write(&mut caller, ret as u32 as usize, &instant)
                             .map_err(|e| wasmtime::Error::msg(format!("{e}")))
                     },
                 )
             } else if name == "utc-offset" && module_name.contains("timezone") {
-                linker.func_wrap(
-                    module_name,
-                    name,
-                    |_seconds: i64, _nanoseconds: i32| -> i32 { 3600 },
-                )
+                rk::test_host::wire_zone(&mut linker, module_name, |_, _| Some(ZONE_OFFSET))
+                    .map_err(|e| Finding::new("module-shape", format!("{e:#}")))?;
+                continue;
             } else {
                 continue;
             };
