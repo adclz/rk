@@ -177,10 +177,10 @@ END_FUNCTION
 
 ## Division by zero
 
-Dividing an integer by zero is not an exception, it is a trap of the VM.
+Dividing an integer by zero raises `division by zero`, as `/` and `MOD` both do.
+A `__CATCH` takes it and a `__FINALLY` runs, like for any other exception.
 
-The call is stopped and neither `__CATCH` nor `__FINALLY` runs.
-Check the divisor first if it can be zero.
+A `REAL` divided by zero is no exception: it is an infinity, and the scan continues.
 
 ## WebAssembly
 
