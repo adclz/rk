@@ -5,7 +5,6 @@ A workspace compiles to one core module:
 ```schema
 core.wasm                           one module for the workspace
 ├─ IMPORT
-│  ├─ env.memory                    the memory you provide
 │  ├─ wasi:clocks now, utc-offset   the clocks a timer or Std.Timers reads, and always in debug
 │  └─ {extern} FUNCTION             the host's, when you declare some
 ├─ EXPORT                           what a host calls
@@ -15,7 +14,7 @@ core.wasm                           one module for the workspace
 │  ├─ Filter$__body__               a function block a task runs
 │  ├─ Scale                         a FUNCTION marked {export}
 │  ├─ test_scale                    a {test}, in the debug profile only
-│  ├─ memory                        the memory, exported back
+│  ├─ memory                        the module's own memory
 │  └─ input_base, input_size        each band, see Memory bands
 ├─ INTERNAL                         what only the module calls
 │  ├─ Motor$__body__                a function block a program calls
@@ -56,7 +55,7 @@ Calling an export:
   
   - the return type is the result, a `STRING` result is `(ptr, len)`, an aggregate result is a pointer to the callee's slot to copy out of.
   
-- Everything lives in the memory you provided; the first 16 KiB are reserved for the grafted builtins.
+- Everything lives in the module's memory, which it exports as `memory`; the first 16 KiB are reserved for the grafted builtins.
 
 So this function:
 

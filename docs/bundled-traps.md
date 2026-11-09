@@ -2,7 +2,7 @@
 
 Everything the compiler checks raises **one** exception, and it carries a message.
 
-A module declares a single exception tag, `(i32, i32)`: the pointer and length of a STRING in the memory you provided.
+A module declares a single exception tag, `(i32, i32)`: the pointer and length of a STRING in the module's memory.
 It is never exported, so a host reads it from the pending-exception slot.
 
 > [!TIP]

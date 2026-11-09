@@ -1,14 +1,13 @@
 # Memory bands
 
-A module has no memory of its own.
-It keeps all of its state in the memory the host gives it, imported as `env.memory`.
+A module keeps all of its state in its own memory, which it defines and exports as `memory`.
 What a host needs to reach is grouped into **bands**: contiguous ranges, each exported as two globals, where it starts (`_base`) and how long it is (`_size`).
 The input and output bands are copied whole: a host never needs to know the program's variables to run it.
 
 The whole memory, in order:
 
 ```schema
-env.memory                          the host's, from address 0
+memory                              the module's, from address 0
 ├─ builtins                         the first 16 KiB
 ├─ state                            every other variable
 ├─ %I                               input band
@@ -45,7 +44,7 @@ A module whose memory does not fit in 4 GiB, with its stack, stops the build, wh
 ## Inputs and outputs
 
 ```schema
-env.memory
+memory
 ├─ …
 ├─ %I                               input band                    ◄
 ├─ %Q                               output band                   ◄
@@ -77,7 +76,7 @@ The input, output and marker bands are exported only for an area the program use
 ## Markers
 
 ```schema
-env.memory
+memory
 ├─ …
 ├─ %I                               input band
 ├─ %Q                               output band
@@ -95,7 +94,7 @@ A retained marker is in the marker band and the retain band.
 ## Retention
 
 ```schema
-env.memory
+memory
 ├─ …
 ├─ %I                               input band
 ├─ %Q                               output band
@@ -115,7 +114,7 @@ A retained program can hold fields that are not `RETAIN`: the `retain-map` secti
 ## Globals
 
 ```schema
-env.memory
+memory
 ├─ …
 ├─ %I                               input band
 ├─ %Q                               output band

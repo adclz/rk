@@ -3,7 +3,7 @@
 A workspace compiles to one core WebAssembly module.
 It does not depend on the WASI Component model.
 
-It imports its linear memory as `env.memory`, and nothing else unless the program uses the timers or declares an `{extern}` FUNCTION.
+It defines its own linear memory, and imports nothing unless the program uses the timers or declares an `{extern}` FUNCTION.
 That holds for a release build. A debug build is not optimized, so it always imports the clock the stdlib timers read, `wasi:clocks/monotonic-clock@0.2.6` `now`.
 It exports what a host calls:
 
@@ -17,11 +17,11 @@ It exports what a host calls:
 Nothing else is exported: not a plain FUNCTION, not another FUNCTION_BLOCK body or a METHOD, not an `{extern}` import, and nothing of the stdlib.
 A library's `{test}` functions are not compiled at all.
 
-The memory is exported back as `memory`, and each band as a `_base` and a `_size` global: `retain`, `globals`, and `input`, `output` and `marker` for an area the program uses.
+The memory is exported as `memory`, and each band as a `_base` and a `_size` global: `retain`, `globals`, and `input`, `output` and `marker` for an area the program uses.
 The `programming-config` skill's `references/direct-variables.md` describes the areas.
 
 Nothing allocates and nothing calls `memory.grow`, so the footprint is settled at compile time.
-Everything lives in the memory the host provided; the first 16 KiB are reserved for the grafted builtins.
+Everything lives in the module's memory; the first 16 KiB are reserved for the grafted builtins.
 
 `__init` is only emitted when there is a constant initializer to write, so a host looks it up rather than assuming it.
 
