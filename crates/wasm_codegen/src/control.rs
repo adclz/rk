@@ -30,7 +30,7 @@ use crate::WasmGen;
 use crate::emit_expr::mem_arg;
 
 /// The interface the functions are exported under, with its version.
-pub const INTERFACE: &str = "rk:plc/control@0.1.0";
+pub const INTERFACE: &str = debug_format::wit::CONTROL_INTERFACE;
 
 /// What an unknown task or test answers.
 const NO_TASK: &[u8] = b"no such task";
