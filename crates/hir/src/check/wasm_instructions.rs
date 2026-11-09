@@ -137,6 +137,8 @@ pub const BUILTINS: &[(&str, &[Lane], &[Lane])] = &[
     ("f64.pow", &[Lane::F64, Lane::F64], &[Lane::F64]),
     ("f64.sin", &[Lane::F64], &[Lane::F64]),
     ("f64.tan", &[Lane::F64], &[Lane::F64]),
+    ("rk.div_check", &[Lane::I32], &[Lane::I32]),
+    ("rk.div_check_i64", &[Lane::I64], &[Lane::I64]),
     ("rk.div_i32_checked", &[Lane::I32, Lane::I32], &[Lane::I32]),
     (
         "rk.idx_check",
