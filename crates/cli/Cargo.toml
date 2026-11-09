@@ -35,7 +35,7 @@ wasmparser = { workspace = true }
 # Restoring SIGPIPE, so a closed pipe ends the process instead of panicking it.
 libc = "0.2"
 # `rk test` runs a module's `{test}` functions on a wasmtime host in-process.
-wasmtime = "45.0.1"
+wasmtime = "50.0.1"
 anyhow = "1"
 # `--timeout` and the watcher's hold times.
 time = { workspace = true, features = ["local-offset"] }
