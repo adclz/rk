@@ -830,7 +830,31 @@ END_FUNCTION
        | ^^^^|^^^
        |     `----- 'memory' cannot be exported: it has the name of an export the module makes
        |
-       | Note: the module already exports `__init`, `memory` and the base and size of each memory band under these names
+       | Note: the module already exports `__init`, `memory`, `cabi_realloc` and the base and size of each memory band under these names
+    ---'
+    ");
+}
+
+/// `cabi_realloc` is what a host places a list with when it calls the
+/// control interface: a FUNCTION exported under that name would be a second
+/// export of it.
+#[rstest]
+fn export_named_like_the_list_allocator_is_refused(mut with_db: RootDatabase) {
+    let source = r#"
+{export}
+FUNCTION cabi_realloc : INT
+    cabi_realloc := 1;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1509] Error: FUNCTION not exportable
+       ,-[ file:///test0.st:2:1 ]
+       |
+     2 | {export}
+       | ^^^^|^^^
+       |     `----- 'cabi_realloc' cannot be exported: it has the name of an export the module makes
+       |
+       | Note: the module already exports `__init`, `memory`, `cabi_realloc` and the base and size of each memory band under these names
     ---'
     ");
 }
@@ -851,7 +875,7 @@ END_FUNCTION
        | ^^^|^^
        |    `---- '__init' cannot be exported: it has the name of an export the module makes
        |
-       | Note: the module already exports `__init`, `memory` and the base and size of each memory band under these names
+       | Note: the module already exports `__init`, `memory`, `cabi_realloc` and the base and size of each memory band under these names
     ---'
     ");
 }
