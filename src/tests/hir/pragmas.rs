@@ -782,6 +782,32 @@ fn invalid_wasm_operand_count(mut with_db: RootDatabase) {
     ");
 }
 
+/// The writes to the standard output and error take a STRING and answer a
+/// BOOL.
+#[rstest]
+fn invalid_console_write_operand(mut with_db: RootDatabase) {
+    let source = r#"
+        FUNCTION Say : BOOL
+        VAR_INPUT IN : STRING[4096]; END_VAR
+            {wasm 'rk.stdout_write' (params IN) (result Say)}
+        END_FUNCTION
+
+        FUNCTION SayNumber : BOOL
+        VAR_INPUT IN : DINT; END_VAR
+            {wasm 'rk.stderr_write' (params IN) (result SayNumber)}
+        END_FUNCTION
+    "#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1507] Error: wasm operands of the wrong type
+       ,-[ file:///test0.st:9:19 ]
+       |
+     9 |             {wasm 'rk.stderr_write' (params IN) (result SayNumber)}
+       |                   ^^^^^^^^|^^^^^^^^
+       |                           `---------- 'rk.stderr_write' takes (i32, i32) -> i32, not (IN: DINT (i32)) -> SayNumber: BOOL (i32)
+    ---'
+    ");
+}
+
 /// A conversion's written instruction must be the one its lanes name, even
 /// though the cast road picks the op by the types: the text is what a
 /// reader trusts.
