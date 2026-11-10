@@ -30,9 +30,9 @@ pub fn run_test(
     // The tests run on the component a host runs, wrapped as `rk compile`
     // wraps it.
     let project = db::config_file::get_config(&db).project.name.clone();
-    let hosts = crate::component::host_functions(&db, &mir_module.extern_functions)
-        .map_err(CliError::msg)?;
-    let component = crate::component::wrap(&core_bytes, &project, &hosts).map_err(CliError::msg)?;
+    let interfaces = crate::component::interfaces(&db, &mir_module).map_err(CliError::msg)?;
+    let component =
+        crate::component::wrap(&core_bytes, &project, &interfaces).map_err(CliError::msg)?;
 
     // The artifact on disk is what ran, with its WIT beside it. `-O` is
     // neither profile (optimized, but carrying debug sections), so it keeps

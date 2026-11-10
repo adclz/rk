@@ -6,7 +6,9 @@
 //! The world is generated from the module at each build: it imports the
 //! WASI interfaces the module calls, as WASI declares them, the host's own
 //! interfaces, typed from the `{extern}` FUNCTIONs that import them, and
-//! exports the control interface every module has (`rk:plc/control`).
+//! exports the control interface every module has (`rk:plc/control`) and
+//! the workspace's `{export}` FUNCTIONs, in an interface named after the
+//! project.
 //! Binaryen reads core modules only, so the wrapping is the build's last
 //! step, after `wasm-opt`.
 
@@ -14,6 +16,7 @@ use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
 
 use debug_format::wit;
+pub use hir::hir_def::pous::pragma::wit_name;
 use hir::hir_def::pous::pragma::{ImportModule, import_module, is_wasi_module};
 use mir::function::MirExternFunction;
 use mir::types::{MirElementary, MirType};
@@ -44,9 +47,78 @@ pub struct HostFunction {
     pub result: Option<&'static str>,
 }
 
+/// A FUNCTION the component exports for a host to call, typed in WIT from
+/// its `{export}` declaration.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExportedFunction {
+    /// `scale`.
+    pub name: String,
+    /// Each parameter's WIT name and type.
+    pub params: Vec<(String, &'static str)>,
+    /// What it returns when nothing stops it: the function's result is a
+    /// `result` of it, or the message of what did.
+    pub result: Option<&'static str>,
+}
+
+/// What a module exchanges with its host besides WASI and the control
+/// interface, typed in WIT from its declarations.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Interfaces {
+    /// The functions it imports from modules other than WASI's.
+    pub imports: Vec<HostFunction>,
+    /// The interface its `{export}` FUNCTIONs are exported in: the
+    /// project's name, as the module's own exports spell it.
+    pub export_interface: String,
+    /// Its `{export}` FUNCTIONs.
+    pub exports: Vec<ExportedFunction>,
+}
+
+/// The interfaces of `module`, typed in WIT: what HIR accepts on an
+/// `{extern}` from a module other than WASI's, and on an `{export}`, has a
+/// WIT type and name.
+pub fn interfaces(
+    db: &dyn db::WorkspaceDataBase,
+    module: &mir::MirModule,
+) -> Result<Interfaces, String> {
+    let mut exports = Vec::new();
+    for func in &module.functions {
+        let Some(name) = &func.wit_export else {
+            continue;
+        };
+        let untyped = |what: &str| {
+            format!(
+                "internal compiler error: {what} of `{}` has no WIT type",
+                func.name.text(db)
+            )
+        };
+        let mut params = Vec::new();
+        for param in &func.params {
+            let declared = param.declared_name(db);
+            let wit_name = hir::hir_def::pous::pragma::wit_parameter_name(declared)
+                .ok_or_else(|| untyped(&format!("the name of `{declared}`")))?;
+            let ty = wit_type(&param.ty).ok_or_else(|| untyped(&format!("`{declared}`")))?;
+            params.push((wit_name, ty));
+        }
+        let result = match &func.return_type {
+            Some(ty) => Some(wit_type(ty).ok_or_else(|| untyped("the return type"))?),
+            None => None,
+        };
+        exports.push(ExportedFunction {
+            name: name.to_string(),
+            params,
+            result,
+        });
+    }
+    Ok(Interfaces {
+        imports: host_functions(db, &module.extern_functions)?,
+        export_interface: hir::hir_ty::exports::export_interface(db),
+        exports,
+    })
+}
+
 /// The functions `externs` import from modules other than WASI's, typed
 /// in WIT: what HIR accepts on such an import has a WIT type and name.
-pub fn host_functions(
+fn host_functions(
     db: &dyn db::WorkspaceDataBase,
     externs: &[MirExternFunction],
 ) -> Result<Vec<HostFunction>, String> {
@@ -117,9 +189,11 @@ fn wit_type(ty: &MirType) -> Option<&'static str> {
 }
 
 /// Wraps `core` into a component, its world in the package named after
-/// `project`, the functions it imports from modules other than WASI's typed
-/// by `hosts`. `Err` says what the module imports that rk cannot type.
-pub fn wrap(core: &[u8], project: &str, hosts: &[HostFunction]) -> Result<Component, String> {
+/// `project`, the functions it imports from modules other than WASI's and
+/// those it exports typed by `interfaces`. `Err` says what the module
+/// imports that rk cannot type.
+pub fn wrap(core: &[u8], project: &str, interfaces: &Interfaces) -> Result<Component, String> {
+    let hosts = &interfaces.imports;
     let imports = imported_functions(core)?;
     let mut carried = BTreeSet::new();
     let mut own: BTreeMap<&str, Vec<&HostFunction>> = BTreeMap::new();
@@ -141,7 +215,14 @@ pub fn wrap(core: &[u8], project: &str, hosts: &[HostFunction]) -> Result<Compon
     }
 
     let packages = own_packages(&own)?;
-    let world = world_text(project, &carried, &own);
+    if !interfaces.exports.is_empty() && own.contains_key(interfaces.export_interface.as_str()) {
+        return Err(format!(
+            "the module imports from `{0}`, and exports its FUNCTIONs in the interface `{0}`, \
+             named after the project",
+            interfaces.export_interface
+        ));
+    }
+    let world = world_text(project, &carried, &own, interfaces);
     let mut resolve = wit_parser::Resolve {
         // WASI's time zone is `@unstable(feature = clocks-timezone)`.
         all_features: true,
@@ -389,6 +470,7 @@ fn world_text(
     project: &str,
     carried: &BTreeSet<&str>,
     own: &BTreeMap<&str, Vec<&HostFunction>>,
+    interfaces: &Interfaces,
 ) -> String {
     let mut text = format!(
         "// The world of `{project}`, written by rk at each build.\npackage local:{};\n\nworld {WORLD} {{\n",
@@ -407,26 +489,46 @@ fn world_text(
             _ => text.push_str(&format!("    import {};\n", interface_path(module))),
         }
     }
-    text.push_str(&format!("    export {};\n}}\n", wit::CONTROL_INTERFACE));
+    text.push_str(&format!("    export {};\n", wit::CONTROL_INTERFACE));
+    if !interfaces.exports.is_empty() {
+        text.push_str(&format!(
+            "    export {}: interface {{\n",
+            wit_id(&interfaces.export_interface)
+        ));
+        for function in &interfaces.exports {
+            text.push_str(&format!(
+                "        {}: func({}) -> result<{}, string>;\n",
+                wit_id(&function.name),
+                params_text(&function.params),
+                function.result.unwrap_or("_")
+            ));
+        }
+        text.push_str("    }\n");
+    }
+    text.push_str("}\n");
     text
+}
+
+/// Parameters as WIT declares them.
+fn params_text(params: &[(String, &'static str)]) -> String {
+    let params: Vec<String> = params
+        .iter()
+        .map(|(name, ty)| format!("{}: {ty}", wit_id(name)))
+        .collect();
+    params.join(", ")
 }
 
 /// `functions` as WIT declares them, one a line.
 fn functions_text(functions: &[&HostFunction], indent: &str) -> String {
     let mut text = String::new();
     for function in functions {
-        let params: Vec<String> = function
-            .params
-            .iter()
-            .map(|(name, ty)| format!("{}: {ty}", wit_id(name)))
-            .collect();
         let result = function
             .result
             .map_or(String::new(), |ty| format!(" -> {ty}"));
         text.push_str(&format!(
             "{indent}{}: func({}){result};\n",
             wit_id(&function.name),
-            params.join(", ")
+            params_text(&function.params)
         ));
     }
     text
@@ -515,27 +617,6 @@ fn parse(dir: &str, files: &[(&str, &str)]) -> Result<wit_parser::UnresolvedPack
     }
     map.parse()
         .map_err(|(_, e)| format!("parsing the WIT in `{dir}`: {e}"))
-}
-
-/// `name` as a WIT name: its words lowercase, joined by `-`, a word that
-/// starts with a digit kept on the one before (WIT starts each word with a
-/// letter). A name that starts with a digit, or has no word, gives `plc`.
-pub fn wit_name(name: &str) -> String {
-    let mut words: Vec<String> = Vec::new();
-    for word in name
-        .split(|c: char| !c.is_ascii_alphanumeric())
-        .filter(|word| !word.is_empty())
-    {
-        let word = word.to_ascii_lowercase();
-        match words.last_mut() {
-            Some(last) if word.starts_with(|c: char| c.is_ascii_digit()) => last.push_str(&word),
-            _ => words.push(word),
-        }
-    }
-    match words.first() {
-        Some(first) if first.starts_with(|c: char| c.is_ascii_lowercase()) => words.join("-"),
-        _ => WORLD.to_string(),
-    }
 }
 
 #[cfg(test)]

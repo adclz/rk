@@ -72,10 +72,9 @@ fn compile_once(
 
     // Last, since wasm-opt reads core modules only: the module wrapped into a
     // component, with the WIT that types it.
-    let hosts = crate::component::host_functions(&db, &mir_module.extern_functions)
+    let interfaces = crate::component::interfaces(&db, &mir_module).map_err(CliError::msg)?;
+    let component = crate::component::wrap(&core_bytes, &config.project.name, &interfaces)
         .map_err(CliError::msg)?;
-    let component =
-        crate::component::wrap(&core_bytes, &config.project.name, &hosts).map_err(CliError::msg)?;
     let default_output = component_path(workspace, profile, &config.project.name);
     let output = opts.output.unwrap_or(&default_output);
     write_output(output, &component.bytes, label)?;
