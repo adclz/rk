@@ -8,6 +8,8 @@ Four checks are generated inside the module, and each raises with a message:
 | every subrange store | `value out of subrange bounds` |
 | every `^` | `dereference of a null reference` |
 | every integer `/` and `MOD` whose divisor may be 0 | `division by zero` |
+| every `STRING` passed to an `{extern}` FUNCTION, when it is not UTF-8 | `a STRING passed to the host is not UTF-8` |
+| every `CHAR` passed to an `{extern}` FUNCTION, when it is a surrogate or past U+10FFFF | `a CHAR passed to the host is not a character` |
 
 What the compiler can prove is refused at compile time instead, and costs nothing at runtime.
 

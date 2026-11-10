@@ -8,7 +8,7 @@ It is never exported, so a host reads it from the pending-exception slot.
 > [!TIP]
 > You can raise this exception yourself with `__RAISE` and catch it with `__TRY`, see [Exceptions](exceptions.md).
 
-Four checks are inserted by the compiler:
+Six checks are inserted by the compiler:
 
 | Inserted at | Message |
 |---|---|
@@ -16,6 +16,8 @@ Four checks are inserted by the compiler:
 | every subrange store | `value out of subrange bounds` |
 | every `^` you wrote | `dereference of a null reference` |
 | every integer `/` and `MOD` whose divisor may be 0 | `division by zero` |
+| every `STRING` passed to an `{extern}` FUNCTION | `a STRING passed to the host is not UTF-8` |
+| every `CHAR` passed to an `{extern}` FUNCTION | `a CHAR passed to the host is not a character` |
 
 What the compiler can prove is refused at compile time instead.
 A divisor it folds to a value other than 0, such as `x / 2` or `x / K` for a CONSTANT `K`, is not checked.

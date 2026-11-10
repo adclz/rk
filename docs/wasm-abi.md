@@ -91,11 +91,64 @@ Write `total` and read `clamped` back at the addresses you passed.
 `clamped` starts over at every call, so what you left at its address is overwritten.
 Declaring `VAR_OUTPUT` before `VAR_INPUT` moves it up the parameter list.
 
-A host import declared with `{extern}` is the same convention in reverse: 
-- `VAR_INPUT` are the parameters, 
-- scalar `VAR_OUTPUT` the results, the return type last; 
+A host function declared with `{extern 'module' 'name'}` is an import.
+Its module and its name are written as WIT writes them, and rk converts neither (`E1512`):
 
-it takes copies, so `VAR_IN_OUT`, aggregate outputs and a `STRING` return are refused.
+- the module is a WIT name, like `modbus`, or an interface, like `acme:modbus/rtu@1.0.0`;
+- the name is a WIT name, lowercase words and digits joined by `-`, like `read-coils`.
+
+An import from a module other than WASI's is typed in WIT from its declaration, in the `wit/` folder `rk compile` writes beside the component.
+A module named by a WIT name is an interface the world declares itself, and one named by an interface's name is a package under `wit/deps/`.
+Each `VAR_INPUT` is a parameter, named by its name in lowercase with each `_` written `-`, and the return type is the result:
+
+| ST | WIT |
+|---|---|
+| `BOOL` | `bool` |
+| `SINT`, `INT`, `DINT`, `LINT` | `s8`, `s16`, `s32`, `s64` |
+| `USINT`, `UINT`, `UDINT`, `ULINT` | `u8`, `u16`, `u32`, `u64` |
+| `BYTE`, `WORD`, `DWORD`, `LWORD` | `u8`, `u16`, `u32`, `u64` |
+| `REAL`, `LREAL` | `f32`, `f64` |
+| `CHAR` | `char` |
+| `STRING`, as an input | `string` |
+| `TIME`, `DATE`, `TOD` | `s32` |
+| `LTIME`, `LDATE`, `LTOD`, `DT`, `LDT` | `s64` |
+| enum, subrange | as the type it is stored as |
+
+So this declaration:
+
+```st
+{extern 'modbus' 'read-coils'}
+FUNCTION ReadCoils : UDINT
+	VAR_INPUT
+		start_address: UINT;
+		count: UINT;
+	END_VAR
+END_FUNCTION
+```
+
+is this import:
+
+```wit
+import modbus: interface {
+    read-coils: func(start-address: u16, count: u16) -> u32;
+}
+```
+
+The component model passes values, not addresses, and a WIT function returns one value.
+So such an import has no `VAR_IN_OUT`, `VAR_OUTPUT`, `REF_TO`, STRUCT, ARRAY or instance, and takes 16 values at most, a `STRING` counting two (`E1502`).
+
+The host reads a `STRING` as text, so it has to be UTF-8, and a `CHAR` has to be a Unicode character.
+Each call checks what it passes before the host is called:
+
+- a `STRING` that is not UTF-8 raises `a STRING passed to the host is not UTF-8`;
+- a `CHAR` that is a surrogate, or past U+10FFFF, raises `a CHAR passed to the host is not a character`.
+
+A `__TRY` catches them like any exception, see [Exceptions](exceptions.md).
+Unchecked, the component model would trap on them, and a trap stops the whole PLC.
+
+In the core module, a `STRING` input is `(ptr, len)` and a scalar is its lane, as in the first table.
+
+A WASI import keeps the types WASI's WIT gives it, in their core form: `VAR_INPUT` are the parameters and the return type the result.
 A `REF_TO` input is an address, which is how a record comes back: `Std.Timers` declares WASI's system clock this way, whose `now` writes its `instant` where the module points, and the zone's `utc-offset`, whose `option<s64>` comes back the same way.
 
 The clocks a module imports are WASI 0.3's, in their core forms, and the host provides them:

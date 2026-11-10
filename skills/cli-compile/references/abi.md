@@ -88,6 +88,8 @@ A namespaced POU is exported under its path, `Ns.Name`, and a FUNCTION_BLOCK bod
 
 ## Imports
 
-A host import declared with `{extern}` is the same convention in reverse: the `VAR_INPUT` are the parameters, the scalar `VAR_OUTPUT` are the results, and the return type comes last.
-It takes copies, so `VAR_IN_OUT`, a variadic input, aggregate outputs and a `STRING` return are refused (`E1502`).
+A host import declared with `{extern 'module' 'name'}` takes its `VAR_INPUT` as the parameters and returns its return type.
+Its module and name are written as WIT writes them (`'modbus' 'read-coils'`, `'acme:modbus/rtu@1.0.0'`), never converted (`E1512`).
+An import from a module other than WASI's is typed in WIT from its declaration, in the `wit/` folder beside the component: scalars and `STRING` inputs only, 16 values at most, no `VAR_OUTPUT` and no `REF_TO` (`E1502`).
+Each call checks a `STRING` for UTF-8 and a `CHAR` for a character before the host is called, and raises when one is not.
 The `programming-st` skill's `references/pragmas.md` has the full contract.

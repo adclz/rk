@@ -85,33 +85,36 @@ Export a plain FUNCTION that calls it instead.
 ## The extern contract
 
 `{extern}` sits **above** the `FUNCTION`, like `{test}`.
-It carries only the import's module and name; the declaration itself is the signature.
-`VAR_INPUT` become the parameters in declaration order, scalar `VAR_OUTPUT` become the results in declaration order, and the return type is the last result.
+It carries only the import's module and name; the declaration itself is the signature: `VAR_INPUT` become the parameters in declaration order, and the return type is the result.
+
+The module and the name are written as WIT writes them, never converted (E1512):
+the module is a WIT name (`'modbus'`) or an interface (`'acme:modbus/rtu@1.0.0'`, one namespace and one interface, no nested name), and the name is a WIT name, lowercase words and digits joined by `-` (`'read-coils'`, not `'read_coils'`).
 
 ```iecst
 {extern 'wasi:clocks/monotonic-clock@0.3.0' 'now'}
 FUNCTION MONOTONIC_LTIME: LTIME
 END_FUNCTION
 
-{extern 'rt' 'sample'}
-FUNCTION Sample: INT
+{extern 'modbus' 'read-coils'}
+FUNCTION ReadCoils: UDINT
 	VAR_INPUT
-		channel: INT;
-		label: STRING;
-	END_VAR
-	VAR_OUTPUT
-		value: LINT;
-		status: INT;
+		start_address: UINT;   // `start-address` in WIT
+		count: UINT;
 	END_VAR
 END_FUNCTION
 ```
 
-What may cross: scalar `VAR_INPUT` by value, a `STRING` input as a `(ptr, len)` pair, a struct or array input as a pointer to a call-entry copy, scalar `VAR_OUTPUT` as results, and a scalar return type as the last result.
+An import from a module other than WASI's is typed in WIT from its declaration, in the `wit/` folder `rk compile` writes beside the component.
+What may cross: a scalar `VAR_INPUT` (BOOL, the integers and bit strings, REAL, LREAL, CHAR, the durations and dates, an enum or a subrange), a `STRING` input as WIT's `string`, and a scalar return type, 16 values at most with a STRING counting two.
+Each `VAR_INPUT` is named in WIT by its name in lowercase, each `_` written `-`: a name with an empty word (`x_`, `a__b`), or a letter outside ASCII, is E1512, and so are two names that differ only by a `_` (`ab`, `a_b`).
 
-What is refused with E1502: `VAR_IN_OUT` ("an extern takes copies, not references"), a variadic `VAR_INPUT` ("a variadic parameter has the argument count of each call"), any aggregate or `STRING` `VAR_OUTPUT` ("only scalar outputs cross an import"), and any statement in the body ("an extern FUNCTION has no statements").
+Each call checks what it passes before the host is called: a `STRING` that is not UTF-8 raises "a STRING passed to the host is not UTF-8", and a `CHAR` that is a surrogate or past U+10FFFF raises "a CHAR passed to the host is not a character". The component model would trap on either, stopping the PLC; the exception is caught by `__TRY` like any other.
+
+What is refused with E1502 on every import: `VAR_IN_OUT` ("an extern takes copies, not references"), an `ARRAY[*]` or variadic `VAR_INPUT`, an aggregate or `STRING` `VAR_OUTPUT`, a `STRING` or aggregate return type ("the return type of 'f' can only be a scalar"), and any statement in the body ("an extern FUNCTION has no statements").
+On an import from a module other than WASI's, also: any `VAR_OUTPUT` ("a WIT function returns one value"), a `REF_TO` input ("an address in the module means nothing to the host"), a STRUCT, ARRAY or instance input, and a 17th value.
 Putting `{extern}` on anything other than a `FUNCTION` is E1501.
 
-A `STRING` **return type** is refused the same way: "the return type of 'f' can only be a scalar".
+A WASI import keeps the types WASI's WIT gives it, in their core form: a `REF_TO` input is the address where a record comes back, as `Std.Timers` reads the system clock.
 
 ### `{allow 'rule-name' ...}`
 

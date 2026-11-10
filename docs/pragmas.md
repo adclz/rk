@@ -17,7 +17,7 @@ A known pragma where it has no place, such as `{export}` inside a `VAR` section,
 
 - `{export}` marks a `FUNCTION` a host can call, see [WASM ABI](wasm-abi.md).
 
-- `{extern 'module' 'name'}` declares a `FUNCTION` as a WASM import; the declaration is the signature.
+- `{extern 'module' 'name'}` declares a `FUNCTION` as a WASM import; the declaration is the signature, typed in WIT, see [WASM ABI](wasm-abi.md).
 
 
 - `{wasm 'instruction' (params a b) (result r)}` is a statement that emits one WASM instruction on the named operands.
