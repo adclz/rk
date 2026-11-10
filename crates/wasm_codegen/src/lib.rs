@@ -421,6 +421,9 @@ struct WasmGen<'a> {
     rk_exception_tag_idx: Option<u32>,
     /// Type index of `(i32, i32) -> ()`, for the `TagSection`.
     rk_exception_tag_type_idx: Option<u32>,
+    /// Wasm index of the function each raise calls first, in the module
+    /// `rk test` builds ([`mir::raise_hook`]).
+    raise_hook: Option<u32>,
     /// Type index of `() -> (i32, i32)`, the `$on_catch` block signature of a
     /// `{test}` function: `catch $rk_exception` delivers `(ptr, len)` as its
     /// result.
@@ -655,6 +658,7 @@ impl<'a> WasmGen<'a> {
             call_indices: FxHashMap::default(),
             rk_exception_tag_idx: None,
             rk_exception_tag_type_idx: None,
+            raise_hook: None,
             test_catch_block_type_idx: None,
             test_result_floor,
             func_lines: FxHashMap::default(),
@@ -752,6 +756,9 @@ impl<'a> WasmGen<'a> {
             wasm_idx += 1;
         }
         let _ = n_imports;
+        // An import with no parameter has no wrapper: the hook is called as
+        // imported.
+        self.raise_hook = mir::raise_hook::hook(self.module).map(|ext| index_remap[&ext.index]);
         self.index_remap = index_remap;
 
         // 4. Emit imports.
@@ -788,6 +795,7 @@ impl<'a> WasmGen<'a> {
                 &mut self.next_type_idx,
                 /* base_fn_idx = */ self.module.extern_functions.len() as u32,
                 self.rk_exception_tag_idx,
+                self.raise_hook,
             );
             self.builtin_indices = plan.name_to_wasm_idx;
         }
@@ -1610,6 +1618,7 @@ impl<'a> WasmGen<'a> {
             &self.builtin_indices,
             return_value,
             self.rk_exception_tag_idx,
+            self.raise_hook,
             fb_recv_tmp,
             for_scratch,
             crate::emit_stmt::Catching {
@@ -1797,6 +1806,7 @@ impl<'a> WasmGen<'a> {
                 MemAddr::Static(result_area),
             )),
             self.rk_exception_tag_idx,
+            self.raise_hook,
             fb_recv_tmp,
             for_scratch,
             crate::emit_stmt::Catching {

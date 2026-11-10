@@ -58,6 +58,7 @@ pub(crate) fn graft_builtins<'a>(
     next_type_idx: &mut u32,
     base_fn_idx: u32,
     rk_exception_tag_idx: Option<u32>,
+    raise_hook: Option<u32>,
 ) -> GraftPlan {
     // Collect every bundle function that needs to ship in this output.
     let mut visit_order: Vec<u32> = Vec::new();
@@ -114,8 +115,12 @@ pub(crate) fn graft_builtins<'a>(
 
         fn_section.function(wasm_type_idx);
 
-        // Body: local.get 0; local.get 1; throw $rk_exception; unreachable
+        // Body: local.get 0; local.get 1; throw $rk_exception; unreachable,
+        // with the raise hook called first in the module `rk test` builds.
         let mut body = Function::new(Vec::new());
+        if let Some(hook) = raise_hook {
+            body.instruction(&Instruction::Call(hook));
+        }
         body.instruction(&Instruction::LocalGet(0));
         body.instruction(&Instruction::LocalGet(1));
         body.instruction(&Instruction::Throw(rk_exception_tag_idx.unwrap()));
@@ -290,6 +295,7 @@ mod tests {
             &mut next_type,
             /* base_fn_idx = */ 0,
             /* rk_exception_tag_idx = */ None,
+            /* raise_hook = */ None,
         );
         let sin_idx = plan.name_to_wasm_idx["f32.sin"];
         assert!(plan.rk_layout_floor > 0);
@@ -358,6 +364,7 @@ mod execute_tests {
             &mut data,
             &mut next_type,
             0,
+            None,
             None,
         );
         let target_idx = plan.name_to_wasm_idx[name];
@@ -471,6 +478,7 @@ mod execute_tests {
             &mut next_type,
             /* base_fn_idx = */ 0,
             Some(tag_idx),
+            None,
         );
         let div_idx = plan.name_to_wasm_idx["rk.div_i32_checked"];
 
@@ -639,6 +647,7 @@ mod execute_tests {
             &mut next_type,
             /* base_fn_idx = */ 0,
             Some(tag_idx),
+            None,
         );
         let target_idx = plan.name_to_wasm_idx["rk.raise_str"];
 
