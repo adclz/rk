@@ -206,6 +206,46 @@ pub fn wrap(core: &[u8], project: &str, hosts: &[HostFunction]) -> Result<Compon
     })
 }
 
+/// The component's WIT folder, `wit/` beside `output`: `world.wit`, and
+/// each package it names under `deps/`. A package's folder is written
+/// whole, so a file an earlier build left in it goes; nothing else in the
+/// folder is touched.
+pub fn write_wit(output: &std::path::Path, component: &Component) -> Result<(), String> {
+    let dir = output
+        .parent()
+        .unwrap_or_else(|| std::path::Path::new("."))
+        .join("wit");
+    let packages: BTreeSet<_> = component
+        .wit
+        .iter()
+        .filter_map(|(path, _)| std::path::Path::new(path).parent())
+        .collect();
+    for package in packages {
+        let package = dir.join(package);
+        match std::fs::remove_dir_all(&package) {
+            Err(e) if e.kind() != std::io::ErrorKind::NotFound => {
+                return Err(format!("removing {}: {e}", package.display()));
+            }
+            _ => {}
+        }
+    }
+    let files = std::iter::once(("world.wit".to_string(), component.world.as_str())).chain(
+        component
+            .wit
+            .iter()
+            .map(|(path, text)| (path.clone(), text.as_ref())),
+    );
+    for (path, text) in files {
+        let path = dir.join(path);
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| format!("creating directory {}: {e}", parent.display()))?;
+        }
+        std::fs::write(&path, text).map_err(|e| format!("writing {}: {e}", path.display()))?;
+    }
+    Ok(())
+}
+
 /// What `core` imports, by module: each function's name.
 fn imported_functions(core: &[u8]) -> Result<BTreeMap<String, BTreeSet<String>>, String> {
     let mut imports: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();

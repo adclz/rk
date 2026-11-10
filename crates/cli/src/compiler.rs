@@ -282,23 +282,33 @@ fn profile_dir(workspace: &std::path::Path, profile: wasm_codegen::Profile) -> s
     workspace.join("rk_build").join(dir)
 }
 
-/// Where the core module of a build lands: what `rk test` writes and runs.
-/// Every command writes this fresh before handing the path on; nothing
-/// reads it back expecting someone else to have filled it in.
-pub fn artifact_path(
-    workspace: &std::path::Path,
-    profile: wasm_codegen::Profile,
-) -> std::path::PathBuf {
-    profile_dir(workspace, profile).join("core.wasm")
-}
-
-/// Where `rk compile` writes the component of `workspace`: named after its
-/// project, with its WIT in `wit/` beside it.
+/// Where `rk compile` writes the component of `workspace`, and `rk test`
+/// the debug one it ran: named after its project, with its WIT in `wit/`
+/// beside it. Every command writes it fresh; nothing reads it back
+/// expecting another to have filled it in.
 pub fn component_path(
     workspace: &std::path::Path,
     profile: wasm_codegen::Profile,
     project: &str,
 ) -> std::path::PathBuf {
+    profile_dir(workspace, profile).join(component_file(project))
+}
+
+/// Where `rk test -O<level>` writes the component it ran: optimized, but
+/// carrying the debug sections, so neither profile's.
+pub fn test_component_path(
+    workspace: &std::path::Path,
+    level: &str,
+    project: &str,
+) -> std::path::PathBuf {
+    workspace
+        .join("rk_build")
+        .join(format!("test-O{level}"))
+        .join(component_file(project))
+}
+
+/// The file a component of `project` is: its name, as a file name.
+fn component_file(project: &str) -> String {
     let name: String = project
         .chars()
         .map(|c| match c {
@@ -310,12 +320,7 @@ pub fn component_path(
         "" => "plc",
         name => name,
     };
-    profile_dir(workspace, profile).join(format!("{name}.wasm"))
-}
-
-/// The debug artifact — what `rk test` runs and a debugger steps.
-pub fn debug_core_path(workspace: &std::path::Path) -> std::path::PathBuf {
-    artifact_path(workspace, wasm_codegen::Profile::Debug)
+    format!("{name}.wasm")
 }
 
 /// The post-MVP proposals this compiler's output uses. wasm-opt validates

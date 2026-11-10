@@ -1,28 +1,40 @@
 // SPDX-FileCopyrightText: 2026 Clauzel Adrien
 // SPDX-License-Identifier: AGPL-3.0-only
 
-//! Running a module's `{test}` functions in-process on a wasmtime host. A
-//! `{test}` export is `() -> i32`, the address of a 12-byte canonical-ABI
-//! `result<_, string>` the host decodes itself. Each test gets a fresh
-//! instance, since a test mutates the same statics a program does.
+//! Running a module's `{test}` functions in-process on a wasmtime host.
+//! `rk test` runs the component it builds, as a host runs it: through its
+//! control interface, `init` and then `run-test` with the test's place in
+//! the manifest, each a `result<_, string>`, with WASI's clocks. The codegen
+//! tests run a core module alone, whose `{test}` export is `() -> i32`, the
+//! address of a 12-byte canonical-ABI `result<_, string>` the host decodes
+//! itself. Each test gets a fresh instance, since a test mutates the same
+//! statics a program does.
 //!
-//! A test that fails is reported with the calls in progress where it did. A
-//! trap comes back with wasmtime's backtrace. A `RAISE` does not, and one a
-//! test's wrapper catches never reaches the host at all, so that test alone
-//! runs once more in a debug store, whose handler is called at the throw
-//! with the frames still there.
+//! A test that fails is reported with the calls in progress where it did,
+//! from the core module: the one given, or the one the component wraps. A
+//! trap comes back with wasmtime's backtrace, whose offsets count from the
+//! start of the file that ran: a component's are brought back to its
+//! module's. A `RAISE` brings none, and one a test's wrapper catches never
+//! reaches the host at all, so that test alone runs once more on the core
+//! module in a debug store, whose handler is called at the throw with the
+//! frames still there.
 
 use std::cell::OnceCell;
+use std::ops::Range;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result};
 use debug_format::DebugInfo;
 use debug_format::test_manifest::{TEST_MANIFEST_SECTION, TestEntry, TestManifest};
 use debug_format::test_report::{Frame, Status, TestRecord};
+use wasmtime::component::{Component, InstancePre};
 use wasmtime::{
     Caller, DebugEvent, DebugHandler, Engine, Extern, Instance, Linker, Memory, Module, Store,
     StoreContextMut,
 };
+use wasmtime_wasi::ResourceTable;
+use wasmtime_wasi::clocks::{WasiClocksCtx, WasiClocksCtxView, WasiClocksView};
+use wasmtime_wasi::p3::bindings::clocks::system_clock::Instant as WasiInstant;
 
 /// How long one test may run before the watchdog stops it, unless
 /// `--timeout` says otherwise.
@@ -57,23 +69,34 @@ pub fn discover(wasm: &[u8]) -> Vec<TestEntry> {
     Vec::new()
 }
 
-/// Run the module's tests, optionally filtered by a substring of their
+/// What a run's tests run on.
+#[derive(Clone, Copy)]
+pub enum Target<'a> {
+    /// The component `rk test` builds, run as a host runs it: through its
+    /// control interface, with WASI's clocks.
+    Component(&'a [u8]),
+    /// A core module alone, its `{test}` exports called directly: what the
+    /// codegen tests run.
+    Core(&'a [u8]),
+}
+
+/// Run the target's tests, optionally filtered by a substring of their
 /// path, calling `on_result` as each finishes. `budget` bounds each test
 /// (`None` = [`DEFAULT_BUDGET`]).
 pub fn run_each(
-    wasm: &[u8],
+    target: Target<'_>,
     filter: Option<&str>,
     budget: Option<Duration>,
     on_result: impl FnMut(&TestRecord),
 ) -> Result<Vec<TestRecord>> {
-    run_each_located(wasm, None, filter, budget, on_result)
+    run_each_located(target, None, filter, budget, on_result)
 }
 
-/// [`run_each`] for an optimized `wasm`, which has lost its line tables:
-/// `unoptimized` is the build it was made from, where a test that failed
-/// runs once more to say where.
+/// [`run_each`] for an optimized build, which has lost its line tables:
+/// `unoptimized` is the core module it was made from, where a test that
+/// failed runs once more to say where.
 pub fn run_each_located(
-    wasm: &[u8],
+    target: Target<'_>,
     unoptimized: Option<&[u8]>,
     filter: Option<&str>,
     budget: Option<Duration>,
@@ -81,25 +104,30 @@ pub fn run_each_located(
 ) -> Result<Vec<TestRecord>> {
     let budget = budget.unwrap_or(DEFAULT_BUDGET);
     let engine = engine(false)?;
-    let locator = Locator::new(wasm, unoptimized);
     // Compiled once: instantiation is per test, compilation is not.
-    let module = Module::new(&engine, wasm).ctx("compiling the module")?;
+    let runner = Runner::new(&engine, target)?;
+    let core = runner.core();
+    let locator = Locator::new(core, unoptimized);
     // A test's name is an identifier: `T_ADD` finds `t_add` (IEC 61131-3
-    // §6.1.2), with the same Unicode fold the compiler matches names in.
+    // §6.1.2), with the same Unicode fold the compiler matches names in. A
+    // test keeps its place in the manifest, which `run-test` takes.
     let filter = filter.map(str::to_lowercase);
-    let tests: Vec<TestEntry> = discover(wasm)
+    let tests: Vec<(u32, TestEntry)> = discover(core)
         .into_iter()
-        .filter(|t| {
+        .enumerate()
+        .filter(|(_, t)| {
             filter
                 .as_deref()
                 .is_none_or(|f| t.path.to_lowercase().contains(f))
         })
+        .map(|(place, entry)| (place as u32, entry))
         .collect();
 
     let mut results = Vec::with_capacity(tests.len());
-    for entry in tests {
+    for (place, entry) in tests {
         let start = Instant::now();
-        let outcome = run_one(&engine, &module, &entry, budget)
+        let outcome = runner
+            .run(&entry, place, budget)
             .with_context(|| format!("loading the module to run `{}`", entry.path))?;
         // Timed before the failure is located: that run is the report's, not
         // the test's.
@@ -135,6 +163,9 @@ pub fn run_each_located(
 fn engine(guest_debug: bool) -> Result<Engine> {
     let mut config = wasmtime::Config::new();
     config.wasm_exceptions(true);
+    // wasmtime-wasi's WASI 0.3 clocks: `wait-for` and `wait-until` are
+    // async, though a component that only reads `now` runs without them.
+    config.wasm_component_model_async(true);
     config.epoch_interruption(true);
     config.guest_debug(guest_debug);
     let engine = Engine::new(&config).ctx("creating the wasm engine")?;
@@ -181,6 +212,28 @@ impl Outcome {
             trap,
         }
     }
+
+    /// [`Outcome::trapped`] for a trap of a component, whose core module
+    /// is at `module` in the component's bytes. A frame's offset counts
+    /// from the start of the component: the frames of the module are kept,
+    /// at their offsets in it. Another module's, a shim of the wrapper's,
+    /// has nothing the tables name.
+    fn trapped_in(reason: String, err: &wasmtime::Error, module: &Range<usize>) -> Self {
+        let mut outcome = Self::trapped(reason, err);
+        outcome.trap = frames_of_module(outcome.trap, module);
+        outcome
+    }
+}
+
+/// The frames of `stack` that are in the module at `module` in a
+/// component, their offsets counted from the module's start instead of the
+/// component's.
+fn frames_of_module(stack: Vec<(u32, u32)>, module: &Range<usize>) -> Vec<(u32, u32)> {
+    stack
+        .into_iter()
+        .filter(|(_, offset)| module.contains(&(*offset as usize)))
+        .map(|(function, offset)| (function, offset - module.start as u32))
+        .collect()
 }
 
 /// A backtrace as `(function index, module offset)` pairs, innermost first.
@@ -359,6 +412,188 @@ fn run_one(
     })
 }
 
+/// A target compiled once, ready to run each test on a fresh instance.
+enum Runner<'a> {
+    Core(&'a [u8], Module),
+    Component {
+        /// The component's bytes, and where the core module it wraps is in
+        /// them.
+        bytes: &'a [u8],
+        module: Range<usize>,
+        pre: InstancePre<ComponentHost>,
+    },
+}
+
+impl<'a> Runner<'a> {
+    fn new(engine: &Engine, target: Target<'a>) -> Result<Self> {
+        Ok(match target {
+            Target::Core(wasm) => {
+                Runner::Core(wasm, Module::new(engine, wasm).ctx("compiling the module")?)
+            }
+            Target::Component(bytes) => {
+                let component = Component::new(engine, bytes).ctx("compiling the component")?;
+                let pre = link_component(engine, &component)?
+                    .instantiate_pre(&component)
+                    .ctx("linking the component")?;
+                Runner::Component {
+                    bytes,
+                    module: wrapped_module(bytes)?,
+                    pre,
+                }
+            }
+        })
+    }
+
+    /// The core module: the one given, or the one the component wraps,
+    /// which carries the test manifest and the line tables.
+    fn core(&self) -> &'a [u8] {
+        match self {
+            Runner::Core(wasm, _) => wasm,
+            Runner::Component { bytes, module, .. } => &bytes[module.clone()],
+        }
+    }
+
+    /// The test `entry`, at `place` in the manifest.
+    fn run(&self, entry: &TestEntry, place: u32, budget: Duration) -> Result<Outcome> {
+        match self {
+            Runner::Core(_, module) => run_one(module.engine(), module, entry, budget),
+            Runner::Component { module, pre, .. } => run_on_component(pre, module, place, budget),
+        }
+    }
+}
+
+/// What a component's store holds: the clocks wasmtime-wasi gives it.
+struct ComponentHost {
+    clocks: WasiClocksCtx,
+    table: ResourceTable,
+}
+
+impl WasiClocksView for ComponentHost {
+    fn clocks(&mut self) -> WasiClocksCtxView<'_> {
+        WasiClocksCtxView {
+            ctx: &mut self.clocks,
+            table: &mut self.table,
+        }
+    }
+}
+
+/// The zone's interface, at the version the standard library imports.
+const ZONE: &str = "wasi:clocks/timezone@0.3.0";
+
+/// A component's linker: WASI's monotonic and system clocks from
+/// wasmtime-wasi; the zone's `utc-offset` from the system's zone
+/// ([`system_zone`]), since WASI's time zone is unstable and wasmtime-wasi
+/// has none; and every other import a trap, as [`link`] stubs a module's.
+fn link_component(
+    engine: &Engine,
+    component: &Component,
+) -> Result<wasmtime::component::Linker<ComponentHost>> {
+    let mut linker = wasmtime::component::Linker::new(engine);
+    wasmtime_wasi::p3::clocks::add_to_linker(&mut linker).ctx("wiring WASI's clocks")?;
+    linker
+        .instance(ZONE)
+        .and_then(|mut zone| {
+            zone.func_wrap("utc-offset", |_, (when,): (WasiInstant,)| {
+                Ok((system_zone(when.seconds, when.nanoseconds as i32),))
+            })
+        })
+        .ctx("wiring the zone")?;
+    linker
+        .define_unknown_imports_as_traps(component)
+        .ctx("stubbing unwired host imports as traps")?;
+    Ok(linker)
+}
+
+/// One test on a fresh instance of the component: `init`, then `run-test`
+/// with the test's `place` in the manifest. A raise comes back as the
+/// error of a result, a trap as the call's, placed in the core module at
+/// `module` in the component.
+fn run_on_component(
+    pre: &InstancePre<ComponentHost>,
+    module: &Range<usize>,
+    place: u32,
+    budget: Duration,
+) -> Result<Outcome> {
+    let mut store = Store::new(
+        pre.engine(),
+        ComponentHost {
+            clocks: WasiClocksCtx::default(),
+            table: ResourceTable::new(),
+        },
+    );
+    // Armed before ANY wasm runs, instantiation included, as in `run_one`.
+    store.set_epoch_deadline(ticks(budget));
+    let instance = pre
+        .instantiate(&mut store)
+        .ctx("instantiating the component")?;
+    let control = instance
+        .get_export_index(&mut store, None, debug_format::wit::CONTROL_INTERFACE)
+        .context("the component exports no control interface")?;
+    let mut function = |name: &str| {
+        instance
+            .get_export_index(&mut store, Some(&control), name)
+            .with_context(|| format!("the control interface has no `{name}`"))
+    };
+    let (init, run_test) = (function("init")?, function("run-test")?);
+    let init = instance
+        .get_typed_func::<(), (std::result::Result<(), String>,)>(&mut store, &init)
+        .ctx("`init` must be a func() -> result<_, string>")?;
+    let run_test = instance
+        .get_typed_func::<(u32,), (std::result::Result<(), String>,)>(&mut store, &run_test)
+        .ctx("`run-test` must be a func(u32) -> result<_, string>")?;
+
+    store.set_epoch_deadline(ticks(budget));
+    match init.call(&mut store, ()) {
+        Ok((Ok(()),)) => {}
+        Ok((Err(message),)) => {
+            return Ok(Outcome::passed_or(Some(format!(
+                "raised in initialization: {message}"
+            ))));
+        }
+        Err(e) => {
+            let reason = format!("trapped in initialization: {}", stopped(&e, budget));
+            return Ok(Outcome::trapped_in(reason, &e, module));
+        }
+    }
+    store.set_epoch_deadline(ticks(budget));
+    Ok(match run_test.call(&mut store, (place,)) {
+        Ok((result,)) => Outcome::passed_or(result.err()),
+        Err(e) => {
+            let reason = format!("trapped: {}", stopped(&e, budget));
+            Outcome::trapped_in(reason, &e, module)
+        }
+    })
+}
+
+/// Where the core module `component` wraps is in its bytes: rk's own, the
+/// one that exports its memory. The component's other modules are the
+/// wrapper's (wit-component's shims), with neither the test manifest nor
+/// the line tables.
+fn wrapped_module(component: &[u8]) -> Result<Range<usize>> {
+    for payload in wasmparser::Parser::new(0).parse_all(component) {
+        if let wasmparser::Payload::ModuleSection {
+            unchecked_range, ..
+        } = payload.context("reading the component")?
+            && exports_memory(&component[unchecked_range.clone()])
+        {
+            return Ok(unchecked_range);
+        }
+    }
+    anyhow::bail!("the component wraps no module of rk's")
+}
+
+/// Whether `module` exports a memory named `memory`.
+fn exports_memory(module: &[u8]) -> bool {
+    for payload in wasmparser::Parser::new(0).parse_all(module) {
+        if let Ok(wasmparser::Payload::ExportSection(exports)) = payload {
+            return exports.into_iter().flatten().any(|export| {
+                export.name == "memory" && export.kind == wasmparser::ExternalKind::Memory
+            });
+        }
+    }
+    false
+}
+
 /// Where a failed test failed, for a report.
 ///
 /// `info` reads the line tables of the module that can tell: the one that
@@ -525,14 +760,8 @@ fn explain(
     err: &wasmtime::Error,
     budget: Duration,
 ) -> String {
-    if matches!(
-        err.downcast_ref::<wasmtime::Trap>(),
-        Some(wasmtime::Trap::Interrupt)
-    ) {
-        return format!(
-            "the watchdog stopped it after {}: it never returned",
-            describe(budget)
-        );
+    if let Some(words) = watchdog(err, budget) {
+        return words;
     }
     if let Some(exn) = store.take_pending_exception()
         && let (Ok(wasmtime::Val::I32(ptr)), Ok(wasmtime::Val::I32(len))) =
@@ -547,6 +776,27 @@ fn explain(
         return format!("uncaught IEC exception: {msg}");
     }
     trap_words(err)
+}
+
+/// A failed call to a component in a reader's words: the watchdog when it
+/// fired, else the trap's own words. An exception never leaves a component:
+/// its interface returns it as an error.
+fn stopped(err: &wasmtime::Error, budget: Duration) -> String {
+    watchdog(err, budget).unwrap_or_else(|| trap_words(err))
+}
+
+/// The watchdog's words, when it is what stopped the call.
+fn watchdog(err: &wasmtime::Error, budget: Duration) -> Option<String> {
+    matches!(
+        err.downcast_ref::<wasmtime::Trap>(),
+        Some(wasmtime::Trap::Interrupt)
+    )
+    .then(|| {
+        format!(
+            "the watchdog stopped it after {}: it never returned",
+            describe(budget)
+        )
+    })
 }
 
 /// A trap in plain words: the trap itself when there is one, otherwise the
@@ -597,4 +847,20 @@ fn decode_result(store: &Store<()>, memory: Memory, addr: i32) -> Option<String>
         Some(bytes) => String::from_utf8_lossy(bytes).into_owned(),
         None => "test failure message is outside linear memory".to_string(),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A component's frames are brought back to its module's offsets, and
+    /// a frame of another module, before or after it, is left out.
+    #[test]
+    fn a_component_s_frames_are_placed_in_its_module() {
+        let stack = vec![(0, 406), (1, 418), (7, 10), (3, 1083), (2, 11)];
+        assert_eq!(
+            frames_of_module(stack, &(11..1083)),
+            [(0, 395), (1, 407), (2, 0)]
+        );
+    }
 }

@@ -79,52 +79,7 @@ fn compile_once(
     let default_output = component_path(workspace, profile, &config.project.name);
     let output = opts.output.unwrap_or(&default_output);
     write_output(output, &component.bytes, label)?;
-    write_wit(output, &component)
-}
-
-/// The component's WIT folder, `wit/` beside `output`: `world.wit`, and
-/// each package it names under `deps/`. A package's folder is written
-/// whole, so a file an earlier build left in it goes; nothing else in the
-/// folder is touched.
-fn write_wit(output: &std::path::Path, component: &crate::component::Component) -> CliResult<()> {
-    let dir = output
-        .parent()
-        .unwrap_or_else(|| std::path::Path::new("."))
-        .join("wit");
-    let packages: std::collections::BTreeSet<_> = component
-        .wit
-        .iter()
-        .filter_map(|(path, _)| std::path::Path::new(path).parent())
-        .collect();
-    for package in packages {
-        let package = dir.join(package);
-        match std::fs::remove_dir_all(&package) {
-            Err(e) if e.kind() != std::io::ErrorKind::NotFound => {
-                return Err(CliError::msg(format!(
-                    "removing {}: {e}",
-                    package.display()
-                )));
-            }
-            _ => {}
-        }
-    }
-    let files = std::iter::once(("world.wit".to_string(), component.world.as_str())).chain(
-        component
-            .wit
-            .iter()
-            .map(|(path, text)| (path.clone(), text.as_ref())),
-    );
-    for (path, text) in files {
-        let path = dir.join(path);
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| {
-                CliError::msg(format!("creating directory {}: {e}", parent.display()))
-            })?;
-        }
-        std::fs::write(&path, text)
-            .map_err(|e| CliError::msg(format!("writing {}: {e}", path.display())))?;
-    }
-    Ok(())
+    crate::component::write_wit(output, &component).map_err(CliError::msg)
 }
 
 /// Write `bytes` to `output` (creating parent dirs), reporting success on stdout.
