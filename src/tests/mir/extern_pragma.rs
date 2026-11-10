@@ -11,12 +11,12 @@ use crate::tests::utils::with_db;
 #[rstest]
 fn extern_pragma_generates_import(mut with_db: RootDatabase) {
     let source = r#"
-{extern 'math' 'sqrt.REAL'}
+{extern 'math' 'sqrt-real'}
 FUNCTION my_sqrt : REAL
 VAR_INPUT IN : REAL; END_VAR
 END_FUNCTION
     "#;
-    assert_snapshot!(mir_exports(&mut with_db, &[source]), @"import math.sqrt.REAL(Real) -> Real");
+    assert_snapshot!(mir_exports(&mut with_db, &[source]), @"import math.sqrt-real(Real) -> Real");
 }
 
 #[rstest]
