@@ -1073,6 +1073,7 @@ fn lower_module_from_pous<'db>(
             linkage: crate::function::MirLinkage::Export,
             is_test: false,
             export_name: Some(compact_str::CompactString::from("__init")),
+            wit_export: None,
             frame: None,
             host_entry: true,
         };
