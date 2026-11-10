@@ -726,6 +726,16 @@ fn lower_module_from_pous<'db>(
         }
     }
 
+    // A module that writes to the host's standard output or error imports
+    // the stream it writes through, which no declaration names.
+    for output in crate::console::written(&functions) {
+        for import in crate::console::imports(db, output, next_fn_idx) {
+            function_indices.insert(import.name, import.index);
+            next_fn_idx += 1;
+            extern_functions.push(import);
+        }
+    }
+
     let mut module = MirModule {
         functions,
         extern_functions,
