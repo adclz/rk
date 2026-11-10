@@ -9,12 +9,14 @@ use crate::hir_def::expressions::spec::Spec;
 use crate::hir_def::interned::identifier::Ident;
 use crate::hir_def::interned::identifier::SpanIdent;
 use crate::hir_def::pous::function::Function;
+use crate::hir_def::pous::pragma::ModuleNameError;
 use crate::hir_def::pous::variable::VariableDecl;
 use auto_lsp::lsp_types::DiagnosticSeverity;
 use auto_lsp::tree_sitter;
 use db::WorkspaceDataBase;
 use ide_diagnostic::ErrorCode;
 use ide_diagnostic::IdeDiagnostic;
+use ide_diagnostic::Related;
 use ide_diagnostic::diag;
 
 /// Which declaration section an `{extern}` FUNCTION cannot carry, and why.
@@ -32,14 +34,32 @@ pub enum ExternForbiddenKind {
     /// A variadic `VAR_INPUT` has one copy per argument count, and an import
     /// has one signature: a call looked for a copy no module holds.
     Variadic,
+    /// A `VAR_OUTPUT` of an import from a module other than WASI's: the
+    /// import is typed in WIT, whose functions return one value at most.
+    Output,
+    /// A `REF_TO` `VAR_INPUT` of an import from a module other than WASI's:
+    /// an address in the module means nothing to a host that only receives
+    /// WIT values.
+    Reference,
+    /// A STRUCT, ARRAY or instance `VAR_INPUT` of an import from a module
+    /// other than WASI's, which would go as an address.
+    AggregateInput,
+    /// The `VAR_INPUT` that takes an import from a module other than WASI's
+    /// past 16 values, a STRING counting two: past them the component model
+    /// passes the values in memory, which the call does not.
+    TooManyValues,
 }
 
 impl ExternForbiddenKind {
     fn section(self) -> &'static str {
         match self {
             Self::InOut => "VAR_IN_OUT",
-            Self::AggregateOutput => "VAR_OUTPUT",
-            Self::Conformand | Self::Variadic => "VAR_INPUT",
+            Self::AggregateOutput | Self::Output => "VAR_OUTPUT",
+            Self::Conformand
+            | Self::Variadic
+            | Self::Reference
+            | Self::AggregateInput
+            | Self::TooManyValues => "VAR_INPUT",
         }
     }
 
@@ -53,18 +73,34 @@ impl ExternForbiddenKind {
             Self::Variadic => {
                 "cannot cross a WASM import: a variadic parameter has the argument count of each call"
             }
+            Self::Output => "cannot be a result of the import: a WIT function returns one value",
+            Self::Reference => {
+                "cannot cross a component import: an address in the module means nothing to the host"
+            }
+            Self::AggregateInput => {
+                "cannot cross a component import: only a scalar or a STRING can"
+            }
+            Self::TooManyValues => {
+                "cannot cross a component import: the import would take more than 16 values"
+            }
         }
     }
 
     fn note(self) -> &'static str {
         match self {
-            Self::InOut => {
-                "an extern FUNCTION receives VAR_INPUT copies and returns scalar \
-                 VAR_OUTPUT results (the return value last)"
-            }
+            Self::InOut => "an extern FUNCTION receives copies of its VAR_INPUT",
             Self::AggregateOutput => "return scalars, or split the aggregate into scalar outputs",
             Self::Conformand => "an extern FUNCTION receives VAR_INPUT copies of a fixed size",
             Self::Variadic => "a WASM import has one signature",
+            Self::Output => {
+                "an {extern} FUNCTION from a module other than WASI's returns its return value only"
+            }
+            Self::Reference | Self::AggregateInput => {
+                "an {extern} FUNCTION from a module other than WASI's takes scalars and STRINGs"
+            }
+            Self::TooManyValues => {
+                "a component import takes 16 values at most, a STRING counting two"
+            }
         }
     }
 }
@@ -153,6 +189,32 @@ pub enum PragmaError<'db> {
     ExternNonScalarReturn { func: Function<'db>, ret: Spec<'db> },
     /// An `{extern}` FUNCTION with statements — the import IS the body.
     ExternWithBody { site: CallSite<'db> },
+    /// An `{extern}`'s module the component model takes no import from: a
+    /// plain WIT name, `modbus`, or an interface, `acme:modbus/rtu@1.0.0`,
+    /// is. Written as WIT writes it, never converted: the host implements
+    /// the name the declaration gives.
+    ExternModuleName {
+        module: compact_str::CompactString,
+        span: tree_sitter::Range,
+        why: ModuleNameError,
+    },
+    /// An `{extern}`'s name that is not a WIT name.
+    ExternFunctionName {
+        name: compact_str::CompactString,
+        span: tree_sitter::Range,
+    },
+    /// A `VAR_INPUT` of an import from a module other than WASI's whose
+    /// name gives no WIT name ([`wit_parameter_name`]): the import's WIT
+    /// names each parameter.
+    ///
+    /// [`wit_parameter_name`]: crate::hir_def::pous::pragma::wit_parameter_name
+    ExternParameterName { var: VariableDecl<'db> },
+    /// Two `VAR_INPUT`s of such an import whose WIT names the component
+    /// model takes for one: it compares names without their `-`.
+    ExternParameterNamesCollide {
+        var: VariableDecl<'db>,
+        first: VariableDecl<'db>,
+    },
     /// `{test}` on something other than a FUNCTION. A test is a `()` entry the
     /// runner calls; an FB, PROGRAM or METHOD has no such entry, and a helper
     /// that only tests use is hidden with PRIVATE, not marked as a test.
@@ -230,6 +292,10 @@ impl<'db> ErrorCode for PragmaError<'db> {
             Self::ExternForbiddenSection { .. } => "E1502",
             Self::ExternNonScalarReturn { .. } => "E1502",
             Self::ExternWithBody { .. } => "E1502",
+            Self::ExternModuleName { .. }
+            | Self::ExternFunctionName { .. }
+            | Self::ExternParameterName { .. }
+            | Self::ExternParameterNamesCollide { .. } => "E1512",
             Self::TestOutsideFunction { .. } => "E1503",
             Self::WasmPragmaOutsideFunction { .. } => "E1504",
             Self::UnknownWasmInstruction { .. } => "E1505",
@@ -296,6 +362,102 @@ impl<'db> ToIdeDiagnostic<'db> for PragmaError<'db> {
                 diag.with_note(
                     "an {extern} FUNCTION is an import: the host has its body".to_string(),
                 );
+                diag
+            }
+            Self::ExternModuleName { module, span, why } => {
+                let message = match why {
+                    ModuleNameError::NotAName if module.contains(':') => {
+                        format!("'{module}' is not an interface's name")
+                    }
+                    ModuleNameError::NotAName => format!("'{module}' is not a WIT name"),
+                    ModuleNameError::Nested => format!("'{module}' is a nested name"),
+                    ModuleNameError::Version => format!(
+                        "'{}' is not a semantic version",
+                        module.split_once('@').map_or("", |(_, version)| version)
+                    ),
+                };
+                let mut diag = diag()
+                    .message(message)
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, span).unwrap_or_default())
+                    .call();
+                diag.with_note(
+                    match why {
+                        ModuleNameError::NotAName => {
+                            "an import's module is a WIT name, like `modbus`, or an \
+                             interface, like `acme:modbus/rtu@1.0.0`"
+                        }
+                        ModuleNameError::Nested => {
+                            "an interface is `namespace:package/interface`, and the \
+                             component model's tools take no nested name yet"
+                        }
+                        ModuleNameError::Version => {
+                            "an interface's version is `MAJOR.MINOR.PATCH`, like `1.0.0`"
+                        }
+                    }
+                    .to_string(),
+                );
+                if *why == ModuleNameError::NotAName
+                    && let Some(spelling) = crate::hir_def::pous::pragma::wit_spelling(module)
+                {
+                    diag.with_help(format!("write '{spelling}'"));
+                }
+                diag
+            }
+            Self::ExternFunctionName { name, span } => {
+                let mut diag = diag()
+                    .message(format!("'{name}' is not a WIT name"))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, span).unwrap_or_default())
+                    .call();
+                diag.with_note(
+                    "an import's name is written as WIT writes one, words of lowercase \
+                     letters and digits joined by '-'"
+                        .to_string(),
+                );
+                if let Some(spelling) = crate::hir_def::pous::pragma::wit_spelling(name) {
+                    diag.with_help(format!("write '{spelling}'"));
+                }
+                diag
+            }
+            Self::ExternParameterName { var } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "'{}' has no WIT name",
+                        var.name_with_case(db).text(db)
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &var.get_name_span(db)).unwrap_or_default())
+                    .call();
+                diag.with_note(
+                    "a parameter's WIT name is its name in lowercase with each '_' written \
+                     '-', and a WIT name has no empty word and no letter outside ASCII"
+                        .to_string(),
+                );
+                diag
+            }
+            Self::ExternParameterNamesCollide { var, first } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "'{}' cannot be told from '{}' in WIT",
+                        var.name_with_case(db).text(db),
+                        first.name_with_case(db).text(db)
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &var.get_name_span(db)).unwrap_or_default())
+                    .call();
+                diag.with_note(
+                    "the component model compares two names without their '-'".to_string(),
+                );
+                diag.with_related(Related::new(
+                    format!("'{}' is declared here", first.name_with_case(db).text(db)),
+                    first.get_scope_id(db).file(db),
+                    first.get_name_span(db),
+                ));
                 diag
             }
             Self::TestOutsideFunction { anchor, pou_kind } => diag()

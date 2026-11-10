@@ -95,6 +95,8 @@ wasmparser = "0.244.0"
 # A built module wrapped into a component, at the versions wasmtime reads.
 wit-component = "0.261.0"
 wit-parser = "0.261.0"
+# The version of an `{extern}`'s interface, checked as wasmparser checks it.
+semver = "1.0.28"
 
 [package]
 name = "rk-tests"

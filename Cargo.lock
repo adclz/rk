@@ -1557,6 +1557,7 @@ dependencies = [
  "rayon",
  "rustc-hash",
  "salsa",
+ "semver",
  "serde_json",
  "time",
  "tracing",
