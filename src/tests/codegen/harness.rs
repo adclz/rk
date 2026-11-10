@@ -52,6 +52,15 @@ pub fn compile_to_wasm_as_built(db: &mut RootDatabase, source: &str) -> Vec<u8> 
     compile(db, source, Expectation::Clean, Exports::AsBuilt).1
 }
 
+/// [`compile_to_wasm_as_built`] returning the MIR too: for a test that
+/// wraps the module into a component, whose own imports the MIR types.
+pub fn compile_to_mir_and_wasm_as_built(
+    db: &mut RootDatabase,
+    source: &str,
+) -> (mir::MirModule, Vec<u8>) {
+    compile(db, source, Expectation::Clean, Exports::AsBuilt)
+}
+
 /// [`compile_to_wasm`] with `libraries` loaded as library files and lowered
 /// with the source, as `rk` builds a workspace with the stdlib: for a test
 /// calling a library FUNCTION.

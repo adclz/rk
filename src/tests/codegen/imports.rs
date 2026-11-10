@@ -166,10 +166,11 @@ fn extern_struct_input_arrives_as_slot_layout_snapshot(mut with_db: db::RootData
     // snapshot, laid out in this compiler's 4-byte slots: every field of 32
     // bits or less occupies one i32 slot, so Pt{x: INT; y: INT} is x at +0
     // and y at +4 (NOT the IEC-packed 2-byte offsets a host might assume).
-    // This test IS the host-side contract for struct params.
+    // This test IS the host-side contract for struct params, which only a
+    // WASI import keeps: any other is typed in WIT, and refuses them (E1502).
     let source = r#"
 TYPE Pt : STRUCT x : INT; y : INT; END_STRUCT; END_TYPE
-{extern 'host' 'send-pt'}
+{extern 'wasi:test/host@0.1.0' 'send-pt'}
 FUNCTION send_pt : INT
 VAR_INPUT p : Pt; END_VAR
 END_FUNCTION
@@ -183,7 +184,7 @@ END_FUNCTION
     let r: i32 = execute_wasm_with_imports(&wasm_bytes, "drive", (), |linker| {
         linker
             .func_wrap(
-                "host",
+                "wasi:test/host@0.1.0",
                 "send-pt",
                 |mut caller: wasmtime::Caller<'_, ()>, p: i32| -> i32 {
                     let m = caller
@@ -208,8 +209,9 @@ fn extern_array_input_uses_slot_stride(mut with_db: db::RootDatabase) {
     // and ARRAY[0..3] OF BYTE is FOUR 4-byte slots (stride 4), not four
     // packed bytes: a host reads one i32 per element. (VAR_IN_OUT does not
     // exist on externs at all — E1502 — so a copy in is the only direction.)
+    // A WASI import only: any other is typed in WIT, and refuses it (E1502).
     let source = r#"
-{extern 'host' 'pick'}
+{extern 'wasi:test/host@0.1.0' 'pick'}
 FUNCTION pick : BYTE
 VAR_INPUT buf : ARRAY[0..3] OF BYTE; END_VAR
 END_FUNCTION
@@ -223,7 +225,7 @@ END_FUNCTION
     let r: i32 = execute_wasm_with_imports(&wasm_bytes, "drive2", (), |linker| {
         linker
             .func_wrap(
-                "host",
+                "wasi:test/host@0.1.0",
                 "pick",
                 |mut caller: wasmtime::Caller<'_, ()>, p: i32| -> i32 {
                     let m = caller
@@ -314,9 +316,10 @@ fn extern_outputs_return_as_results_return_last(mut with_db: db::RootDatabase) {
     // wasm results in declaration order, the return value LAST — so output
     // positions never shift when a return type is added. The host returns a
     // tuple; the caller sees the return value as the call's value and each
-    // `=>` binding filled, including a discarded output popping cleanly.
+    // `=>` binding filled, including a discarded output popping cleanly. A
+    // WASI import only: any other is typed in WIT, which returns one value.
     let source = r#"
-{extern 'rt' 'sample'}
+{extern 'wasi:test/rt@0.1.0' 'sample'}
 FUNCTION sample : INT
 VAR_INPUT channel : INT; END_VAR
 VAR_OUTPUT value : LINT; status : INT; END_VAR
@@ -340,10 +343,14 @@ END_FUNCTION
     let wasm_bytes = compile_to_wasm(&mut with_db, source);
     let host = |linker: &mut wasmtime::Linker<()>| {
         linker
-            .func_wrap("rt", "sample", |ch: i32| -> (i64, i32, i32) {
-                // (value, status, return): value=ch as i64, status=2, ret=3
-                (ch as i64, 2, 3)
-            })
+            .func_wrap(
+                "wasi:test/rt@0.1.0",
+                "sample",
+                |ch: i32| -> (i64, i32, i32) {
+                    // (value, status, return): value=ch as i64, status=2, ret=3
+                    (ch as i64, 2, 3)
+                },
+            )
             .unwrap();
     };
     let r: i64 = execute_wasm_with_imports(&wasm_bytes, "drive4", (), host);
@@ -356,9 +363,9 @@ END_FUNCTION
 fn extern_outputs_land_in_parts_of_a_wider_address(mut with_db: db::RootDatabase) {
     // `%MX0.3` and `%MB1` are bits of `%MW0`, so they have no address to pop
     // into: each result pops into its scratch, and the word is rebuilt from
-    // it once every result is off the stack.
+    // it once every result is off the stack. A WASI import, as above.
     let source = r#"
-{extern 'rt' 'probe'}
+{extern 'wasi:test/rt@0.1.0' 'probe'}
 FUNCTION probe : INT
 VAR_INPUT channel : INT; END_VAR
 VAR_OUTPUT seen : BOOL; level : BYTE; END_VAR
@@ -373,10 +380,167 @@ END_FUNCTION
     let wasm_bytes = compile_to_wasm(&mut with_db, source);
     let r: i32 = execute_wasm_with_imports(&wasm_bytes, "drive6", (), |linker| {
         linker
-            .func_wrap("rt", "probe", |_ch: i32| -> (i32, i32, i32) {
-                (1, 0xFD, 9)
-            })
+            .func_wrap(
+                "wasi:test/rt@0.1.0",
+                "probe",
+                |_ch: i32| -> (i32, i32, i32) { (1, 0xFD, 9) },
+            )
             .unwrap();
     });
     assert_eq!(r, 0xFD08, "bit 3 set, the high byte replaced");
+}
+
+/// A STRING passed to an import is checked for UTF-8 before the call: the
+/// component model traps on any other bytes, a trap that stops the whole
+/// PLC. The check raises instead, a `__TRY` catches it, and the host is not
+/// called. Valid text reaches the host as its bytes and their count.
+#[rstest]
+fn a_string_passed_to_an_import_is_checked_for_utf8(mut with_db: db::RootDatabase) {
+    let source = r#"
+{extern 'host' 'recv'}
+FUNCTION Recv : DINT
+VAR_INPUT s : STRING; END_VAR
+END_FUNCTION
+
+FUNCTION Send : DINT
+VAR_INPUT valid : BOOL; END_VAR
+VAR e : STRING; END_VAR
+    __TRY
+        IF valid THEN
+            Send := Recv('café');
+        ELSE
+            Send := Recv('caf$E9');
+        END_IF;
+    __CATCH(e)
+        IF e = 'a STRING passed to the host is not UTF-8' THEN
+            Send := -1;
+        END_IF;
+    __END_TRY;
+END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let received = std::sync::Arc::new(std::sync::Mutex::new(Vec::<Vec<u8>>::new()));
+    let host = |linker: &mut wasmtime::Linker<()>| {
+        let received = received.clone();
+        linker
+            .func_wrap(
+                "host",
+                "recv",
+                move |mut caller: wasmtime::Caller<'_, ()>, ptr: i32, len: i32| -> i32 {
+                    let memory = caller
+                        .get_export("memory")
+                        .and_then(|e| e.into_memory())
+                        .unwrap();
+                    let mut bytes = vec![0; len as usize];
+                    memory.read(&caller, ptr as usize, &mut bytes).unwrap();
+                    received.lock().unwrap().push(bytes);
+                    len
+                },
+            )
+            .unwrap();
+    };
+    let sent: i32 = execute_wasm_with_imports(&wasm, "Send", (1i32,), host);
+    assert_eq!(sent, 5, "'café' is 5 bytes");
+    let refused: i32 = execute_wasm_with_imports(&wasm, "Send", (0i32,), host);
+    assert_eq!(refused, -1, "the check raised, with its message");
+    assert_eq!(
+        *received.lock().unwrap(),
+        ["café".as_bytes()],
+        "the host was called with the valid text only"
+    );
+}
+
+/// A CHAR passed to an import is checked for a character before the call:
+/// WIT's `char` is a Unicode scalar value, and the component model traps on
+/// a surrogate or on a code past U+10FFFF.
+#[rstest]
+#[case::a_letter(0x78, 0x78)]
+#[case::the_last_one(0x10FFFF, 0x10FFFF)]
+#[case::a_surrogate(0xD800, -1)]
+#[case::past_the_last_one(0x110000, -1)]
+fn a_char_passed_to_an_import_is_checked(
+    mut with_db: db::RootDatabase,
+    #[case] code: u32,
+    #[case] expected: i32,
+) {
+    let source = r#"
+{extern 'host' 'put'}
+FUNCTION Put : DINT
+VAR_INPUT c : CHAR; END_VAR
+END_FUNCTION
+
+FUNCTION AS_CHAR : CHAR
+VAR_INPUT IN : DWORD; END_VAR
+    {wasm 'nop' (params IN) (result AS_CHAR)}
+END_FUNCTION
+
+FUNCTION Send : DINT
+VAR_INPUT code : DWORD; END_VAR
+VAR e : STRING; END_VAR
+    __TRY
+        Send := Put(AS_CHAR(code));
+    __CATCH(e)
+        IF e = 'a CHAR passed to the host is not a character' THEN
+            Send := -1;
+        END_IF;
+    __END_TRY;
+END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let sent: i32 = execute_wasm_with_imports(&wasm, "Send", (code as i32,), |linker| {
+        linker
+            .func_wrap("host", "put", |c: i32| -> i32 { c })
+            .unwrap();
+    });
+    assert_eq!(sent, expected);
+}
+
+/// Only an import passed a STRING or a CHAR is called through a wrapper,
+/// named after it in the `name` section; any other is called directly.
+#[rstest]
+fn only_an_import_passed_a_string_or_a_char_has_a_wrapper(mut with_db: db::RootDatabase) {
+    let source = r#"
+{extern 'host' 'recv'}
+FUNCTION Recv : DINT
+VAR_INPUT n : INT; s : STRING; END_VAR
+END_FUNCTION
+
+{extern 'host' 'put'}
+FUNCTION Put : DINT
+VAR_INPUT c : CHAR; END_VAR
+END_FUNCTION
+
+{extern 'math' 'abs'}
+FUNCTION Abs : INT
+VAR_INPUT x : INT; END_VAR
+END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let mut names = Vec::new();
+    for payload in wasmparser::Parser::new(0).parse_all(&wasm) {
+        if let Ok(wasmparser::Payload::CustomSection(section)) = payload
+            && let wasmparser::KnownCustom::Name(reader) = section.as_known()
+        {
+            for name in reader {
+                if let Ok(wasmparser::Name::Function(map)) = name {
+                    for naming in map {
+                        let naming = naming.unwrap();
+                        names.push((naming.index, naming.name.to_string()));
+                    }
+                }
+            }
+        }
+    }
+    let wrappers: Vec<&str> = names
+        .iter()
+        .map(|(_, name)| name.as_str())
+        .filter(|name| name.ends_with("$checked"))
+        .collect();
+    assert_eq!(wrappers, ["Recv$checked", "Put$checked"]);
+    let imports: Vec<(u32, &str)> = names
+        .iter()
+        .filter(|(index, _)| *index < 3)
+        .map(|(index, name)| (*index, name.as_str()))
+        .collect();
+    assert_eq!(imports, [(0, "Recv"), (1, "Put"), (2, "Abs")]);
 }
