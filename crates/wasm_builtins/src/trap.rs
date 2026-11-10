@@ -85,6 +85,30 @@ pub extern "C" fn rk_div_check_i64(divisor: i64) -> i64 {
     divisor
 }
 
+/// UTF-8 check for a STRING the module passes to an import: the host reads
+/// it as WIT's `string`, and the component model traps on bytes that are
+/// not UTF-8, a trap that stops the whole PLC. Raised here, a `__TRY` of
+/// the caller can catch it.
+#[unsafe(no_mangle)]
+pub extern "C" fn rk_utf8_check(ptr: *const u8, len: u32) {
+    let bytes = unsafe { core::slice::from_raw_parts(ptr, len as usize) };
+    if core::str::from_utf8(bytes).is_err() {
+        const MSG: &str = "a STRING passed to the host is not UTF-8";
+        unsafe { __iec_raise(MSG.as_ptr(), MSG.len() as u32) }
+    }
+}
+
+/// Character check for a CHAR the module passes to an import: WIT's `char`
+/// is a Unicode scalar value, and the component model traps on a surrogate
+/// or on a code past U+10FFFF.
+#[unsafe(no_mangle)]
+pub extern "C" fn rk_char_check(c: u32) {
+    if char::from_u32(c).is_none() {
+        const MSG: &str = "a CHAR passed to the host is not a character";
+        unsafe { __iec_raise(MSG.as_ptr(), MSG.len() as u32) }
+    }
+}
+
 /// Null check for a runtime dereference: raises when the pointer is 0,
 /// else returns it. Lowering wraps every user-written `^`; `rk.idx_check`
 /// validates the index and never sees the base.
