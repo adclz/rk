@@ -11,7 +11,7 @@ It exports what a host calls:
 - One body per PROGRAM, `Type$__body__`.
 - `Inst$__scan__` for a program instance with connections: it copies the inputs in, runs the body and copies the outputs out.
 - The body of a FUNCTION_BLOCK a task runs on its own (`fb1 WITH Fast`), `FB$__body__`.
-- Every FUNCTION marked `{export}`, under its qualified name.
+- Every FUNCTION marked `{export}`, as a function of the component typed in WIT (below).
 - In a debug build, the workspace's `{test}` functions, for `rk test`.
 
 Nothing else is exported: not a plain FUNCTION, not another FUNCTION_BLOCK body or a METHOD, not an `{extern}` import, and nothing of the stdlib.
@@ -45,44 +45,32 @@ Call `__init` first, `() -> ()`.
 
 A `PROGRAM` body takes its instance address and returns nothing: `(i32) -> ()`.
 
-A `FUNCTION` takes every parameter in the order it is declared:
-
-- A `VAR_INPUT` scalar by value, a `STRING` input as `(ptr, len)`.
-- One pointer per `VAR_IN_OUT` and `VAR_OUTPUT`; a `STRING` one is `(addr, capacity)`, so the callee's writes clamp.
-- The return type is the result. A `STRING` result is `(ptr, len)`, an aggregate result is a pointer to the callee's slot to copy out of.
-
-The order is the source order, not "inputs first": declaring `VAR_OUTPUT` before `VAR_INPUT` moves it up the parameter list.
+A `FUNCTION` marked `{export}` is a function of the component, typed in WIT from its declaration, in one interface named after the project (`Plant_A` is `plant-a`).
+Its name there is its namespaces' names and its own in lowercase, each `_` written `-`, joined by `-` (`Motion.Scale_Axis` is `motion-scale-axis`), or the one `{export 'name'}` gives.
+Each `VAR_INPUT` is a parameter and the return type the result: BOOL is `bool`, the integers and bit strings `s8` to `u64`, REAL and LREAL `f32` and `f64`, CHAR `char`, STRING `string`, a duration or a date the signed integer it is held in, an enum or a subrange the type it is stored as.
 
 ```iecst
+{export}
 FUNCTION Scale : REAL
 	VAR_INPUT
 		raw: INT;
 		gain: REAL;
 	END_VAR
-	VAR_IN_OUT
-		total: REAL;
-	END_VAR
-	VAR_OUTPUT
-		clamped: BOOL;
-	END_VAR
-	total := total + raw * gain;
-	clamped := total > REAL#100.0;
-	Scale := total;
+	Scale := raw * gain;
 END_FUNCTION
 ```
 
-exports this:
+is, in the project `plant`:
 
-```wat
-(func (export "Scale")
-	(param i32)   ;; raw      INT, by value
-	(param f32)   ;; gain     REAL, by value
-	(param i32)   ;; total    VAR_IN_OUT, address
-	(param i32)   ;; clamped  VAR_OUTPUT, address
-	(result f32)) ;; Scale    REAL
+```wit
+export plant: interface {
+    scale: func(raw: s16, gain: f32) -> result<f32, string>;
+}
 ```
 
-The host writes `total` and reads `clamped` back at the addresses it passed.
+The result is what the FUNCTION returns, or the message of what stopped it: an exception, a `STRING` passed longer than its parameter, a value outside its parameter's subrange, a `STRING` returned that is not UTF-8.
+None of them traps, so the host can call again.
+`VAR_OUTPUT`, `VAR_IN_OUT`, `REF_TO`, STRUCT, ARRAY and instances are refused on an export (`E1509`).
 
 A namespaced POU is exported under its path, `Ns.Name`, and a FUNCTION_BLOCK body as `Name$__body__`.
 

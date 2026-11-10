@@ -15,7 +15,7 @@ A known pragma where it has no place, such as `{export}` inside a `VAR` section,
 - `{allow 'rule' 'rule'}` silences lint rules: above a POU for the whole POU, as a statement for the next statement.
 
 
-- `{export}` marks a `FUNCTION` a host can call, see [WASM ABI](wasm-abi.md).
+- `{export}` marks a `FUNCTION` a host can call, under its own name or under the one `{export 'name'}` gives, see [WASM ABI](wasm-abi.md).
 
 - `{extern 'module' 'name'}` declares a `FUNCTION` as a WASM import; the declaration is the signature, typed in WIT, see [WASM ABI](wasm-abi.md).
 

@@ -49,57 +49,15 @@ Calling an export:
  
 - A `PROGRAM` body takes its instance address and does not have a return type: `(i32) -> ()`.
 
-- A `FUNCTION` marked `{export}` takes every parameter in the order it is declared: 
-  - `VAR_INPUT` scalars by value.
-  - One pointer per `VAR_IN_OUT` and `VAR_OUTPUT`.
-  
-  - the return type is the result, a `STRING` result is `(ptr, len)`, an aggregate result is a pointer to the callee's slot to copy out of.
-  
 - Everything lives in the module's memory, which it exports as `memory`; the first 16 KiB are reserved for the grafted builtins.
 
-So this function:
+A `FUNCTION` marked `{export}` is a function a host calls, typed in WIT from its declaration.
+The component exports them all in one interface named after the project: the project `Plant_A` exports `plant-a`.
 
-```st
-{export}
-FUNCTION Scale : REAL
-	VAR_INPUT
-		raw: INT;
-		gain: REAL;
-	END_VAR
-	VAR_IN_OUT
-		total: REAL;
-	END_VAR
-	VAR_OUTPUT
-		clamped: BOOL;
-	END_VAR
+A FUNCTION's name there is its namespaces' names and its own, in lowercase with each `_` written `-`, joined by `-`: `Motion.Scale_Axis` is `motion-scale-axis`.
+`{export 'name'}` gives it another name, and two exports cannot have one (`E1513`).
 
-END_FUNCTION
-```
-
-exports this:
-
-```wat
-(func (export "Scale")
-	(param i32)   ;; raw      INT, by value
-	(param f32)   ;; gain     REAL, by value
-	(param i32)   ;; total    VAR_IN_OUT, address
-	(param i32)   ;; clamped  VAR_OUTPUT, address
-	(result f32)) ;; Scale    REAL
-```
-
-Write `total` and read `clamped` back at the addresses you passed.
-`clamped` starts over at every call, so what you left at its address is overwritten.
-Declaring `VAR_OUTPUT` before `VAR_INPUT` moves it up the parameter list.
-
-A host function declared with `{extern 'module' 'name'}` is an import.
-Its module and its name are written as WIT writes them, and rk converts neither (`E1512`):
-
-- the module is a WIT name, like `modbus`, or an interface, like `acme:modbus/rtu@1.0.0`;
-- the name is a WIT name, lowercase words and digits joined by `-`, like `read-coils`.
-
-An import from a module other than WASI's is typed in WIT from its declaration, in the `wit/` folder `rk compile` writes beside the component.
-A module named by a WIT name is an interface the world declares itself, and one named by an interface's name is a package under `wit/deps/`.
-Each `VAR_INPUT` is a parameter, named by its name in lowercase with each `_` written `-`, and the return type is the result:
+Each `VAR_INPUT` is a parameter, named the same way, and the return type is the result:
 
 | ST | WIT |
 |---|---|
@@ -109,10 +67,53 @@ Each `VAR_INPUT` is a parameter, named by its name in lowercase with each `_` wr
 | `BYTE`, `WORD`, `DWORD`, `LWORD` | `u8`, `u16`, `u32`, `u64` |
 | `REAL`, `LREAL` | `f32`, `f64` |
 | `CHAR` | `char` |
-| `STRING`, as an input | `string` |
+| `STRING` | `string` |
 | `TIME`, `DATE`, `TOD` | `s32` |
 | `LTIME`, `LDATE`, `LTOD`, `DT`, `LDT` | `s64` |
 | enum, subrange | as the type it is stored as |
+
+So this function, in the project `plant`:
+
+```st
+{export}
+FUNCTION Scale : REAL
+	VAR_INPUT
+		raw: INT;
+		gain: REAL;
+	END_VAR
+	Scale := raw * gain;
+END_FUNCTION
+```
+
+is this export:
+
+```wit
+export plant: interface {
+    scale: func(raw: s16, gain: f32) -> result<f32, string>;
+}
+```
+
+The result is what the FUNCTION returns, or the message of the exception that stopped it.
+An exception never leaves the component, where it would be a trap, and a trap stops the whole PLC.
+What a host passes is checked the same way, before the FUNCTION runs:
+
+- a `STRING` longer than its parameter is the error `a STRING passed by the host is longer than its parameter`;
+- a value outside its parameter's subrange is the error `value out of subrange bounds`.
+
+And so is what it gets back: a `STRING` that is not UTF-8 and a `CHAR` that is no character are the errors an import raises, below.
+
+The component model passes values, not addresses, and a WIT function returns one value.
+So an export has no `VAR_OUTPUT`, `VAR_IN_OUT`, `REF_TO`, STRUCT, ARRAY or instance, and takes 16 values at most, a `STRING` counting two (`E1509`).
+
+A host function declared with `{extern 'module' 'name'}` is an import.
+Its module and its name are written as WIT writes them, and rk converts neither (`E1512`):
+
+- the module is a WIT name, like `modbus`, or an interface, like `acme:modbus/rtu@1.0.0`;
+- the name is a WIT name, lowercase words and digits joined by `-`, like `read-coils`.
+
+An import from a module other than WASI's is typed in WIT from its declaration, in the `wit/` folder `rk compile` writes beside the component.
+A module named by a WIT name is an interface the world declares itself, and one named by an interface's name is a package under `wit/deps/`.
+Each `VAR_INPUT` is a parameter and the return type is the result, named and typed as an export's are, except that an import returns no `STRING`.
 
 So this declaration:
 
@@ -134,8 +135,7 @@ import modbus: interface {
 }
 ```
 
-The component model passes values, not addresses, and a WIT function returns one value.
-So such an import has no `VAR_IN_OUT`, `VAR_OUTPUT`, `REF_TO`, STRUCT, ARRAY or instance, and takes 16 values at most, a `STRING` counting two (`E1502`).
+Like an export, such an import has no `VAR_IN_OUT`, `VAR_OUTPUT`, `REF_TO`, STRUCT, ARRAY or instance, and takes 16 values at most, a `STRING` counting two (`E1502`).
 
 The host reads a `STRING` as text, so it has to be UTF-8, and a `CHAR` has to be a Unicode character.
 Each call checks what it passes before the host is called:

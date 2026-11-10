@@ -16,8 +16,8 @@ Six checks are inserted by the compiler:
 | every subrange store | `value out of subrange bounds` |
 | every `^` you wrote | `dereference of a null reference` |
 | every integer `/` and `MOD` whose divisor may be 0 | `division by zero` |
-| every `STRING` passed to an `{extern}` FUNCTION | `a STRING passed to the host is not UTF-8` |
-| every `CHAR` passed to an `{extern}` FUNCTION | `a CHAR passed to the host is not a character` |
+| every `STRING` passed to an `{extern}` FUNCTION, or returned by an `{export}` one | `a STRING passed to the host is not UTF-8` |
+| every `CHAR` passed to an `{extern}` FUNCTION, or returned by an `{export}` one | `a CHAR passed to the host is not a character` |
 
 What the compiler can prove is refused at compile time instead.
 A divisor it folds to a value other than 0, such as `x / 2` or `x / K` for a CONSTANT `K`, is not checked.

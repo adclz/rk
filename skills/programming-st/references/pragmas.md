@@ -12,7 +12,7 @@ Not valid on other POU kinds.
 `{warn = 'message'}` and `{info = 'message'}` attach a diagnostic to every call site of the POU.
 Note the `=`.
 
-`{export}` marks a `FUNCTION` as a WASM export, under its name — see below.
+`{export}` marks a `FUNCTION` a host calls, under its WIT name — see below. `{export 'name'}` gives the name.
 
 `{extern 'module' 'name'}` declares the `FUNCTION` as a WASM import — see below.
 
@@ -60,8 +60,13 @@ See `tool-linter`.
 
 ## The export contract
 
-`{export}` sits **above** the `FUNCTION`, like `{test}`, and takes no argument.
-The FUNCTION is exported under its name, qualified by its namespace (`Plant.Reset`), and the declaration is the signature: the `cli-compile` skill's ABI reference gives what each parameter becomes.
+`{export}` sits **above** the `FUNCTION`, like `{test}`.
+The FUNCTION becomes a function a host calls, typed in WIT from its declaration: the `VAR_INPUT` are its parameters and the return type its result.
+The component exports them all in one interface named after the project (`Plant_A` is `plant-a`).
+
+The function's name is the FUNCTION's namespaces' names and its own, in lowercase with each `_` written `-`, joined by `-`: `Motion.Scale_Axis` is `motion-scale-axis`.
+`{export 'name'}` gives another, written as WIT writes one (`'read-coils'`).
+E1513 refuses a name that gives no WIT name (`_Reset`, a letter outside ASCII), a given name that is not one, and two exports with one name; the component model compares names without their `-`, so `ab-c` and `a-bc` are one.
 
 Nothing else a workspace declares is exported, apart from `__init`, the bodies the schedule runs (a PROGRAM's, a program instance's `Inst$__scan__`, a FUNCTION_BLOCK's a task runs on its own) and, in a debug build, the `{test}` functions.
 An export is a root for the optimizer, so a release build drops every FUNCTION that is neither exported nor called, the standard library's included.
@@ -75,11 +80,23 @@ FUNCTION Scale: REAL
 	END_VAR
 	Scale := raw * gain;
 END_FUNCTION
+
+{export 'set-recipe'}
+FUNCTION SetRecipe: BOOL
+	VAR_INPUT
+		name: STRING[32];
+	END_VAR
+	SetRecipe := name <> '';
+END_FUNCTION
 ```
+
+What may cross: scalar `VAR_INPUT` (BOOL, the integers and bit strings, REAL, LREAL, CHAR, the durations and dates, an enum or a subrange) and `STRING` inputs, 16 values at most with a STRING counting two, and a scalar or `STRING` return type.
+The host gets a `result`: what the FUNCTION returned, or the message of what stopped it. That is an exception, a `STRING` passed longer than its parameter ("a STRING passed by the host is longer than its parameter"), a value outside its parameter's subrange, or a `STRING` returned that is not UTF-8. None of them traps.
 
 Putting `{export}` on anything other than a `FUNCTION` is E1508: a PROGRAM is exported already, and a FUNCTION_BLOCK or a METHOD needs an instance the host does not have.
 
 What is refused with E1509, because there is no single function to export: an `{extern}` FUNCTION (an import has no body), a `{test}` FUNCTION (exported for the runner already), a FUNCTION that takes an interface (compiled once per implementation), a variadic FUNCTION (compiled once per arity) and an overloaded FUNCTION (the name belongs to several).
+Also E1509, because the host passes values and gets one back: a `VAR_OUTPUT`, a `VAR_IN_OUT`, a `REF_TO`, STRUCT, ARRAY or instance input, a return type that is one of those, and a 17th value.
 Export a plain FUNCTION that calls it instead.
 
 ## The extern contract
