@@ -108,6 +108,11 @@ const RK_PSEUDO: &[&str] = &[
 /// extended, so a signed one is narrowed after (`{wasm 'nop' ...}`).
 const RK_BYTE_SWAP: &[&str] = &["rk.bswap16", "rk.bswap32", "rk.bswap64"];
 
+/// The writes to the host's standard output and error, which the emitter
+/// synthesizes over WASI's streams: the bytes of a STRING handed to the
+/// host, and whether it took them all.
+pub const CONSOLE: &[&str] = &["rk.stdout_write", "rk.stderr_write"];
+
 /// Grafted Rust builtins, by their dotted export names, with the wasm
 /// signature each has in the bundle: what a pragma's operands must push and
 /// what it gets back. A STRING operand is its (ptr, len) pair, a STRING
@@ -365,6 +370,7 @@ pub fn known(name: &str) -> bool {
         || NATIVE.contains(&name)
         || RK_PSEUDO.contains(&name)
         || RK_BYTE_SWAP.contains(&name)
+        || CONSOLE.contains(&name)
         || ARRAY.contains(&name)
         || BUILTINS.iter().any(|(n, _, _)| *n == name)
 }
@@ -511,6 +517,10 @@ impl Signature {
 pub fn signature(name: &str) -> Option<Signature> {
     if let Some((_, params, results)) = BUILTINS.iter().find(|(n, _, _)| *n == name) {
         return Some(Signature::new(params, results.first().copied()));
+    }
+    // A STRING, as its `(ptr, len)`, and a BOOL.
+    if CONSOLE.contains(&name) {
+        return Some(Signature::new(&[Lane::I32, Lane::I32], Some(Lane::I32)));
     }
     if RK_BYTE_SWAP.contains(&name) {
         let lane = if name == "rk.bswap64" {
@@ -787,7 +797,12 @@ mod tests {
     /// never checked; every native and pseudo-op has one.
     #[test]
     fn every_native_and_pseudo_op_has_a_signature() {
-        for name in NATIVE.iter().chain(RK_PSEUDO).chain(RK_BYTE_SWAP) {
+        for name in NATIVE
+            .iter()
+            .chain(RK_PSEUDO)
+            .chain(RK_BYTE_SWAP)
+            .chain(CONSOLE)
+        {
             assert!(signature(name).is_some(), "`{name}` has no signature");
         }
     }
