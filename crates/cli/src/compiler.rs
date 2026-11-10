@@ -113,9 +113,40 @@ pub fn build_core_with_format(
 pub fn build_core_profile(
     db: &RootDatabase,
     workspace: &std::path::Path,
+    verbose: bool,
+    format: crate::cli::OutputFormat,
+    profile: wasm_codegen::Profile,
+) -> Result<(Vec<u8>, mir::MirModule), String> {
+    build(db, workspace, verbose, format, profile, false)
+}
+
+/// The module `rk test` runs: the debug build, which also tells its host
+/// where each raise is ([`mir::raise_hook`]). No other build does: a debug
+/// and a release build differ in their custom sections only.
+pub fn build_test_core(
+    db: &RootDatabase,
+    workspace: &std::path::Path,
+    verbose: bool,
+    format: crate::cli::OutputFormat,
+) -> Result<(Vec<u8>, mir::MirModule), String> {
+    build(
+        db,
+        workspace,
+        verbose,
+        format,
+        wasm_codegen::Profile::Debug,
+        true,
+    )
+}
+
+/// [`build_core_profile`], for `rk test` when `for_tests`.
+fn build(
+    db: &RootDatabase,
+    workspace: &std::path::Path,
     _verbose: bool,
     format: crate::cli::OutputFormat,
     profile: wasm_codegen::Profile,
+    for_tests: bool,
 ) -> Result<(Vec<u8>, mir::MirModule), String> {
     // Report into a buffer, so the text can be echoed to stderr and returned
     // to the caller.
@@ -196,6 +227,9 @@ pub fn build_core_profile(
     if let Err(message) = size_stack(db, &mut mir_module) {
         ui::failure("compilation failed:", &message);
         return Err(format!("compilation failed: {message}\n"));
+    }
+    if for_tests {
+        mir::raise_hook::add(db, &mut mir_module);
     }
 
     let wasm_module = wasm_codegen::generate_wasm_profile(db, &mir_module, profile);
@@ -282,10 +316,9 @@ fn profile_dir(workspace: &std::path::Path, profile: wasm_codegen::Profile) -> s
     workspace.join("rk_build").join(dir)
 }
 
-/// Where `rk compile` writes the component of `workspace`, and `rk test`
-/// the debug one it ran: named after its project, with its WIT in `wit/`
-/// beside it. Every command writes it fresh; nothing reads it back
-/// expecting another to have filled it in.
+/// Where `rk compile` writes the component of `workspace`: named after its
+/// project, with its WIT in `wit/` beside it. Every command writes it fresh;
+/// nothing reads it back expecting another to have filled it in.
 pub fn component_path(
     workspace: &std::path::Path,
     profile: wasm_codegen::Profile,
@@ -294,16 +327,20 @@ pub fn component_path(
     profile_dir(workspace, profile).join(component_file(project))
 }
 
-/// Where `rk test -O<level>` writes the component it ran: optimized, but
-/// carrying the debug sections, so neither profile's.
+/// Where `rk test` writes the component it ran, which no other command
+/// builds: `rk_build/test/`, and `rk_build/test-O<level>/` optimized.
 pub fn test_component_path(
     workspace: &std::path::Path,
-    level: &str,
+    level: Option<&str>,
     project: &str,
 ) -> std::path::PathBuf {
+    let dir = match level {
+        None => "test".to_string(),
+        Some(level) => format!("test-O{level}"),
+    };
     workspace
         .join("rk_build")
-        .join(format!("test-O{level}"))
+        .join(dir)
         .join(component_file(project))
 }
 

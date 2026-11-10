@@ -104,11 +104,9 @@ fn fmt_duration(d: Duration) -> String {
 }
 
 /// Run the tests of the component at `wasm_path` and report them. Returns
-/// the failure count. `unoptimized` is the core module an optimized build
-/// was made from: it has the line tables a failure is located with.
+/// the failure count.
 pub fn run_tests(
     wasm_path: &Path,
-    unoptimized: Option<&[u8]>,
     roots: &SourceRoots,
     filter: Option<&str>,
     timeout: Option<Duration>,
@@ -126,8 +124,7 @@ pub fn run_tests(
     let total_start = std::time::Instant::now();
     let mut failures = Vec::new();
     let mut passed = 0;
-    let target = crate::test_host::Target::Component(&wasm);
-    let run = crate::test_host::run_each_located(target, unoptimized, filter, timeout, |record| {
+    let run = crate::test_host::run_each(&wasm, filter, timeout, |record| {
         let record = roots.named(record);
         report_one(&record, format);
         if record.status == Status::Fail {

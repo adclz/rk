@@ -2,10 +2,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 use crate::cli::OutputFormat;
-use crate::compiler::build_core_with_format;
+use crate::compiler::build_test_core;
 use crate::error::{CliError, CliResult};
 use crate::workspace::init_db;
-use wasm_codegen::Profile;
 
 pub fn run_test(
     workspace: &std::path::Path,
@@ -19,12 +18,11 @@ pub fn run_test(
     let db = init_db(workspace, verbose, true).ok_or(CliError::Failed)?;
 
     // Tests default to the unoptimized build but honour `-O`, so an optimized
-    // build can be checked to compute the same answers.
+    // build can be checked to compute the same answers. An optimized build
+    // loses the line tables a failure is placed with: its failures are
+    // reported without the calls in progress.
     let (core_bytes, mir_module) =
-        build_core_with_format(&db, workspace, verbose, format).map_err(|_| CliError::Failed)?;
-    // An optimized build loses its line tables: the unoptimized one is kept
-    // to say where a test failed.
-    let unoptimized = opt_level.is_some().then(|| core_bytes.clone());
+        build_test_core(&db, workspace, verbose, format).map_err(|_| CliError::Failed)?;
     let core_bytes = crate::compiler::optimize_wasm(core_bytes, opt_level, verbose);
 
     // The tests run on the component a host runs, wrapped as `rk compile`
@@ -34,13 +32,9 @@ pub fn run_test(
     let component =
         crate::component::wrap(&core_bytes, &project, &interfaces).map_err(CliError::msg)?;
 
-    // The artifact on disk is what ran, with its WIT beside it. `-O` is
-    // neither profile (optimized, but carrying debug sections), so it keeps
-    // its own folder.
-    let wasm_path = match opt_level {
-        None => crate::compiler::component_path(workspace, Profile::Debug, &project),
-        Some(level) => crate::compiler::test_component_path(workspace, level, &project),
-    };
+    // The artifact on disk is what ran, with its WIT beside it, in a folder
+    // of its own: no other command builds it.
+    let wasm_path = crate::compiler::test_component_path(workspace, opt_level, &project);
     if let Some(dir) = wasm_path.parent() {
         std::fs::create_dir_all(dir).ok();
     }
@@ -67,14 +61,7 @@ pub fn run_test(
             })
             .collect(),
     };
-    let failures = crate::test_runner::run_tests(
-        &wasm_path,
-        unoptimized.as_deref(),
-        &roots,
-        filter,
-        timeout,
-        format,
-    );
+    let failures = crate::test_runner::run_tests(&wasm_path, &roots, filter, timeout, format);
     if failures > 0 {
         Err(CliError::Failed)
     } else {
