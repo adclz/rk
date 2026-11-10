@@ -10,6 +10,7 @@ pub mod emit_stmt;
 pub mod mir_cast;
 
 mod builtins;
+mod console;
 pub mod control;
 mod exports;
 mod graft;
@@ -459,6 +460,9 @@ struct WasmGen<'a> {
     /// passes ([`import_check`]): its place among the imports, and the
     /// wrapper's index.
     import_wrappers: Vec<(usize, u32)>,
+    /// The function that writes to each output the module writes to
+    /// ([`console`]), by index.
+    console: Vec<(mir::console::Output, u32)>,
 }
 
 /// A function's memory locals as `debug-locals` describes them: the leaves,
@@ -664,6 +668,7 @@ impl<'a> WasmGen<'a> {
             stack: None,
             control_names: Vec::new(),
             import_wrappers: Vec::new(),
+            console: Vec::new(),
         }
     }
 
@@ -740,6 +745,12 @@ impl<'a> WasmGen<'a> {
                 wasm_idx += 1;
             }
         }
+        // 3c. The function that writes to each output the module writes
+        //     to, after the wrappers.
+        for output in mir::console::outputs(self.module) {
+            self.console.push((output, wasm_idx));
+            wasm_idx += 1;
+        }
         let _ = n_imports;
         self.index_remap = index_remap;
 
@@ -812,6 +823,13 @@ impl<'a> WasmGen<'a> {
             });
         }
 
+        // 7.6. A `{wasm 'rk.stdout_write'}` calls the function step 3c
+        //      placed, as a builtin's pragma calls the builtin.
+        for (output, index) in &self.console {
+            self.builtin_indices
+                .insert(output.instruction().to_string(), *index);
+        }
+
         // 8. Emit user functions. The call indices are the same for each:
         //    rebuilt per function, they cost functions × functions.
         let call_indices = self.build_call_indices();
@@ -824,6 +842,17 @@ impl<'a> WasmGen<'a> {
         // 9. The import wrappers, at the indices step 3b gave them.
         for (at, index) in self.import_wrappers.clone() {
             self.emit_import_wrapper(at, index);
+        }
+
+        // 10. The writes to the standard output and error, at the indices
+        //     step 3c gave them, each with its buffer.
+        let area = control::control_area(self.module, tests_end(self.module));
+        for (output, index) in self.console.clone() {
+            let f = self.emit_console(output, area.console[output as usize]);
+            let placed = self.add_function(&[ValType::I32; 2], &[ValType::I32], &f);
+            debug_assert_eq!(placed, index, "the write lands where step 3c placed it");
+            self.control_names
+                .push((index, output.instruction().to_string()));
         }
     }
 
