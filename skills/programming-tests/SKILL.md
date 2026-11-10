@@ -45,6 +45,8 @@ Write what the code should have done, not "failed":
 ASSERT_EQ(value := c.CV, target := INT#1, message := 'one rising edge counted once');
 ```
 
+What a test writes with `Std.Console`'s `WRITE_STDOUT` or `WRITE_STDERR` is shown under its failure, both outputs in the order written (the first 64 KiB), and dropped when it passes, so a value written before an assertion helps read why it failed.
+
 ## Testing a stateful FUNCTION_BLOCK
 
 An FB keeps state between calls, so a test drives it the way a scan would — call it repeatedly and assert between calls.

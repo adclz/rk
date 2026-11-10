@@ -44,7 +44,8 @@ pub(crate) const PAYLOAD: u64 = 4;
 /// areas: a return area of 16 bytes, the messages, and the scratch what a
 /// host passes lands in (`cabi_realloc`), as large as the largest list the
 /// control interface takes and as the STRINGs any one `{export}` FUNCTION
-/// does.
+/// does. Past them, the buffer of each output the module writes to
+/// ([`crate::console`]).
 pub(crate) struct ControlArea {
     /// Where a result is written: a tag at 0, then its payload, at 4 or,
     /// holding a 64-bit value, at 8.
@@ -54,6 +55,9 @@ pub(crate) struct ControlArea {
     pub too_long: u32,
     pub scratch: u32,
     pub scratch_size: u32,
+    /// Where the text written to the standard output waits for the host,
+    /// then to the standard error: for an output the module writes to.
+    pub console: [u32; 2],
     /// The first byte past the area.
     pub end: u32,
 }
@@ -71,6 +75,12 @@ pub(crate) fn control_area(module: &MirModule, base: u32) -> ControlArea {
         .input_size
         .max(module.retain_size)
         .max(crate::exports::strings_passed(module));
+    let mut end = scratch + scratch_size;
+    let mut console = [0; 2];
+    for output in mir::console::outputs(module) {
+        console[output as usize] = end;
+        end += crate::console::CAPACITY;
+    }
     ControlArea {
         ret,
         no_task,
@@ -78,7 +88,8 @@ pub(crate) fn control_area(module: &MirModule, base: u32) -> ControlArea {
         too_long,
         scratch,
         scratch_size,
-        end: scratch + scratch_size,
+        console,
+        end,
     }
 }
 

@@ -22,6 +22,7 @@
   - [Subranges](subranges.md)
   - [Time and dates](time-and-dates.md)
 - Extras
+  - [Console](console.md)
   - [Tests](tests.md)
   - [Pragmas](pragmas.md)
   - [Dependencies](dependencies.md)

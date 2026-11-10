@@ -160,3 +160,19 @@ The clocks a module imports are WASI 0.3's, in their core forms, and the host pr
 | `wasi:clocks/timezone@0.3.0` `utc-offset` | `(i64, i32, i32)` | takes an instant as its seconds and nanoseconds, and writes at the address whether the host has a zone, in one byte, and if it has, 8 bytes on, the nanoseconds the zone is east of UTC at that instant |
 
 A release build imports the ones the program reads; a debug build imports all three, so a host that has no zone still defines `utc-offset`, answering that it has none, or the module does not instantiate. Where the monotonic clock starts is the host's choice, as WASI leaves it.
+
+[`Std.Console`](console.md) writes to WASI 0.3's standard output and error, `wasi:cli/stdout@0.3.0` and `wasi:cli/stderr@0.3.0`.
+Each is one function, `write-via-stream`, which takes a stream of bytes.
+The module makes the stream at its first write, hands its reading end to the host, keeps the other end, and writes to it with the component model's stream built-ins:
+
+| Import, beside `write-via-stream` | Signature | What it does |
+|---|---|---|
+| `[stream-new-0]write-via-stream` | `() -> i64` | a stream of bytes: its reading end in the low half, its writing end in the high half |
+| `write-via-stream` | `(i32) -> i32` | hands the reading end to the host, which answers with a future the module gives up |
+| `[future-drop-readable-1]write-via-stream` | `(i32)` | gives that future up |
+| `[async-lower][stream-write-0]write-via-stream` | `(i32, i32, i32) -> i32` | hands `len` bytes at `ptr` to the writing end, and returns at once |
+
+A component's host provides all four by providing WASI's command line interfaces, as wasmtime-wasi does.
+A function a host calls may not wait, so a write is never waited for: a host that takes none of the bytes leaves them pending in the module's memory, and the output closed.
+
+A release build imports an output when the program writes to it, and a debug build imports both.

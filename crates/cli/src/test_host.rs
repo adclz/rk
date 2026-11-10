@@ -18,9 +18,13 @@
 //! reaches the host at all, so that test alone runs once more on the core
 //! module in a debug store, whose handler is called at the throw with the
 //! frames still there.
+//!
+//! What a test writes to the standard output and error is kept, and
+//! reported with the test when it fails.
 
 use std::cell::OnceCell;
 use std::ops::Range;
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result};
@@ -32,13 +36,17 @@ use wasmtime::{
     Caller, DebugEvent, DebugHandler, Engine, Extern, Instance, Linker, Memory, Module, Store,
     StoreContextMut,
 };
-use wasmtime_wasi::ResourceTable;
-use wasmtime_wasi::clocks::{WasiClocksCtx, WasiClocksCtxView, WasiClocksView};
 use wasmtime_wasi::p3::bindings::clocks::system_clock::Instant as WasiInstant;
+use wasmtime_wasi::{ResourceTable, WasiCtx, WasiCtxBuilder, WasiCtxView, WasiView};
 
 /// How long one test may run before the watchdog stops it, unless
 /// `--timeout` says otherwise.
 pub const DEFAULT_BUDGET: Duration = Duration::from_secs(5);
+
+/// The most a test's output keeps, in bytes. What it writes past that is
+/// counted, so that a test writing in a loop until the watchdog stops it
+/// does not fill the host's memory.
+pub const OUTPUT_LIMIT: usize = 64 * 1024;
 
 /// The watchdog's resolution: the engine's epoch advances this often.
 const TICK: Duration = Duration::from_millis(10);
@@ -132,22 +140,21 @@ pub fn run_each_located(
         // Timed before the failure is located: that run is the report's, not
         // the test's.
         let duration_us = start.elapsed().as_micros() as u64;
-        let backtrace = match outcome.reason {
-            Some(_) => locator.locate(&entry, &outcome.trap, budget),
-            None => Vec::new(),
+        let failed = outcome.reason.is_some();
+        let backtrace = match failed {
+            true => locator.locate(&entry, &outcome.trap, budget),
+            false => Vec::new(),
         };
         let record = TestRecord {
             name: entry.path.clone(),
-            status: if outcome.reason.is_none() {
-                Status::Pass
-            } else {
-                Status::Fail
-            },
+            status: if failed { Status::Fail } else { Status::Pass },
             reason: outcome.reason,
             duration_us,
             file: (!entry.file.is_empty()).then(|| entry.file.clone()),
             line: (entry.line > 0).then_some(entry.line),
             backtrace,
+            // A pass keeps quiet, whatever it wrote.
+            output: (failed && !outcome.output.is_empty()).then_some(outcome.output),
         };
         on_result(&record);
         results.push(record);
@@ -188,10 +195,12 @@ fn ticks(budget: Duration) -> u64 {
 
 /// How one test went: `reason` is `None` on a pass, and `trap` the stack a
 /// trap came back with, as `(function index, module offset)` pairs, innermost
-/// first. A failure that is not a trap has none.
+/// first. A failure that is not a trap has none. `output` is what the test
+/// wrote, [`Stdio::text`].
 struct Outcome {
     reason: Option<String>,
     trap: Vec<(u32, u32)>,
+    output: String,
 }
 
 impl Outcome {
@@ -199,6 +208,7 @@ impl Outcome {
         Outcome {
             reason,
             trap: Vec::new(),
+            output: String::new(),
         }
     }
 
@@ -210,6 +220,7 @@ impl Outcome {
         Outcome {
             reason: Some(reason),
             trap,
+            output: String::new(),
         }
     }
 
@@ -247,13 +258,15 @@ fn stack_of(backtrace: &wasmtime::WasmBacktrace) -> Vec<(u32, u32)> {
         .collect()
 }
 
-/// A linker with the clocks, and every other import stubbed as a trap: a
-/// user can declare any `{extern}` host function, so imports cannot be
-/// whitelisted, and an unwired one fails only if the test calls it. The
-/// memory is the module's own ([`memory_of`]).
-fn link<T: 'static>(module: &Module) -> Result<Linker<T>> {
+/// A linker with the clocks, the standard output and error, which write to
+/// `stdio`, and every other import stubbed as a trap: a user can declare
+/// any `{extern}` host function, so imports cannot be whitelisted, and an
+/// unwired one fails only if the test calls it. The memory is the module's
+/// own ([`memory_of`]).
+fn link<T: 'static>(module: &Module, stdio: &Arc<Mutex<Stdio>>) -> Result<Linker<T>> {
     let mut linker = Linker::new(module.engine());
     wire_clocks(&mut linker, module)?;
+    wire_console(&mut linker, module, stdio)?;
     linker
         .define_unknown_imports_as_traps(module)
         .ctx("stubbing unwired host imports as traps")?;
@@ -367,19 +380,170 @@ fn system_zone(seconds: i64, nanoseconds: i32) -> Option<i64> {
     Some(i64::from(zone.to_offset(at).seconds()) * 1_000_000_000)
 }
 
-/// One test on a fresh instance: a pass, a failure or a trap. `Err` is a
-/// module this host could not load at all.
+/// One of the host's two outputs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Stream {
+    Stdout,
+    Stderr,
+}
+
+/// What a module wrote to the host's standard output and error.
+#[derive(Debug)]
+pub struct Stdio {
+    /// Each write, with its stream, in the order the module made them, as
+    /// far as `limit` keeps them.
+    writes: Vec<(Stream, Vec<u8>)>,
+    /// The most bytes kept. A write past it is only counted.
+    limit: usize,
+    kept: usize,
+    /// The bytes written past `limit`.
+    dropped: usize,
+}
+
+impl Stdio {
+    /// Keeps the first `limit` bytes written: 0 keeps none.
+    pub fn keeping(limit: usize) -> Self {
+        Stdio {
+            writes: Vec::new(),
+            limit,
+            kept: 0,
+            dropped: 0,
+        }
+    }
+
+    /// Each write kept, with its stream, in the order the module made them.
+    pub fn writes(&self) -> &[(Stream, Vec<u8>)] {
+        &self.writes
+    }
+
+    /// Both outputs as one text, in the order they were written. Bytes that
+    /// are not UTF-8 read as U+FFFD, and a last line says how many were
+    /// written past the limit. Empty when nothing was written.
+    pub fn text(&self) -> String {
+        let bytes: Vec<u8> = self
+            .writes
+            .iter()
+            .flat_map(|(_, bytes)| bytes.iter().copied())
+            .collect();
+        let mut text = String::from_utf8_lossy(&bytes).into_owned();
+        if self.dropped > 0 {
+            if !text.is_empty() && !text.ends_with('\n') {
+                text.push('\n');
+            }
+            text.push_str(&format!("[{} more bytes not kept]", self.dropped));
+        }
+        text
+    }
+
+    fn record(&mut self, stream: Stream, bytes: &[u8]) {
+        let kept = bytes.len().min(self.limit - self.kept);
+        if kept > 0 {
+            self.writes.push((stream, bytes[..kept].to_vec()));
+            self.kept += kept;
+        }
+        self.dropped += bytes.len() - kept;
+    }
+}
+
+fn lock(stdio: &Mutex<Stdio>) -> MutexGuard<'_, Stdio> {
+    stdio.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
+/// Wires the standard output and error a core module writes to, to `stdio`:
+/// the four functions [`mir::console`] imports for each, in their core
+/// forms. `stream.new` answers the two ends of a stream, `write-via-stream`
+/// takes the reading end and answers a future, `future.drop-readable` gives
+/// that up, and `stream.write` takes all the bytes it is handed, as a host
+/// that is ready does. A component gets these from its host's WASI and the
+/// component model; a core module run alone gets them here.
+pub fn wire_console<T: 'static>(
+    linker: &mut Linker<T>,
+    module: &Module,
+    stdio: &Arc<Mutex<Stdio>>,
+) -> Result<()> {
+    use mir::console::{Import, Output};
+    for (output, stream) in [
+        (Output::Stdout, Stream::Stdout),
+        (Output::Stderr, Stream::Stderr),
+    ] {
+        let interface = output.interface();
+        if !module.imports().any(|import| import.module() == interface) {
+            continue;
+        }
+        for import in Import::ALL {
+            let stdio = stdio.clone();
+            match import {
+                // The reading end is 1 and the writing end 2: no table here.
+                Import::NewStream => {
+                    linker.func_wrap(&interface, import.name(), || 1i64 | (2i64 << 32))
+                }
+                Import::WriteViaStream => {
+                    linker.func_wrap(&interface, import.name(), |_reading_end: i32| 1i32)
+                }
+                Import::DropFuture => {
+                    linker.func_wrap(&interface, import.name(), |_future: i32| {})
+                }
+                Import::Write => linker.func_wrap(
+                    &interface,
+                    import.name(),
+                    move |mut caller: Caller<'_, T>,
+                          _writing_end: i32,
+                          ptr: i32,
+                          len: i32|
+                          -> wasmtime::Result<i32> {
+                        let memory = caller
+                            .get_export("memory")
+                            .and_then(Extern::into_memory)
+                            .ok_or_else(|| wasmtime::Error::msg("the module exports no memory"))?;
+                        let (start, len) = (ptr as u32 as usize, len as u32 as usize);
+                        let bytes =
+                            memory
+                                .data(&caller)
+                                .get(start..start + len)
+                                .ok_or_else(|| {
+                                    wasmtime::Error::msg(
+                                        "a write of bytes outside the module's memory",
+                                    )
+                                })?;
+                        lock(&stdio).record(stream, bytes);
+                        // All of them taken, and the stream still open.
+                        Ok((len as i32) << 4)
+                    },
+                ),
+            }
+            .ctx("wiring the standard output and error")?;
+        }
+    }
+    Ok(())
+}
+
+/// One test on a fresh instance: a pass, a failure or a trap, with what it
+/// wrote. `Err` is a module this host could not load at all.
 fn run_one(
     engine: &Engine,
     module: &Module,
     entry: &TestEntry,
     budget: Duration,
 ) -> Result<Outcome> {
+    let stdio = Arc::new(Mutex::new(Stdio::keeping(OUTPUT_LIMIT)));
+    let mut outcome = run_one_with(engine, module, entry, budget, &stdio)?;
+    outcome.output = lock(&stdio).text();
+    Ok(outcome)
+}
+
+/// [`run_one`], its outputs written to `stdio`.
+fn run_one_with(
+    engine: &Engine,
+    module: &Module,
+    entry: &TestEntry,
+    budget: Duration,
+    stdio: &Arc<Mutex<Stdio>>,
+) -> Result<Outcome> {
     let mut store = Store::new(engine, ());
     // A store with epoch interruption enabled starts at a deadline that has
     // always elapsed, so arm it before ANY wasm runs — instantiation included.
     store.set_epoch_deadline(ticks(budget));
-    let linker = link(module)?;
+    let linker = link(module, stdio)?;
     let instance = linker
         .instantiate(&mut store, module)
         .ctx("instantiating the module")?;
@@ -462,26 +626,73 @@ impl<'a> Runner<'a> {
     }
 }
 
-/// What a component's store holds: the clocks wasmtime-wasi gives it.
+/// What a component's store holds: what wasmtime-wasi gives it, its clocks
+/// and its standard output and error.
 struct ComponentHost {
-    clocks: WasiClocksCtx,
+    ctx: WasiCtx,
     table: ResourceTable,
 }
 
-impl WasiClocksView for ComponentHost {
-    fn clocks(&mut self) -> WasiClocksCtxView<'_> {
-        WasiClocksCtxView {
-            ctx: &mut self.clocks,
+impl WasiView for ComponentHost {
+    fn ctx(&mut self) -> WasiCtxView<'_> {
+        WasiCtxView {
+            ctx: &mut self.ctx,
             table: &mut self.table,
         }
+    }
+}
+
+/// One of a component's two outputs, as wasmtime-wasi asks a host for it:
+/// what is written to it is kept in `stdio`, and always taken at once.
+#[derive(Clone)]
+struct Sink {
+    stream: Stream,
+    stdio: Arc<Mutex<Stdio>>,
+}
+
+impl tokio::io::AsyncWrite for Sink {
+    fn poll_write(
+        self: std::pin::Pin<&mut Self>,
+        _: &mut std::task::Context<'_>,
+        bytes: &[u8],
+    ) -> std::task::Poll<std::io::Result<usize>> {
+        lock(&self.stdio).record(self.stream, bytes);
+        std::task::Poll::Ready(Ok(bytes.len()))
+    }
+
+    fn poll_flush(
+        self: std::pin::Pin<&mut Self>,
+        _: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        std::task::Poll::Ready(Ok(()))
+    }
+
+    fn poll_shutdown(
+        self: std::pin::Pin<&mut Self>,
+        _: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        std::task::Poll::Ready(Ok(()))
+    }
+}
+
+impl wasmtime_wasi::cli::IsTerminal for Sink {
+    fn is_terminal(&self) -> bool {
+        false
+    }
+}
+
+impl wasmtime_wasi::cli::StdoutStream for Sink {
+    fn async_stream(&self) -> Box<dyn tokio::io::AsyncWrite + Send + Sync> {
+        Box::new(self.clone())
     }
 }
 
 /// The zone's interface, at the version the standard library imports.
 const ZONE: &str = "wasi:clocks/timezone@0.3.0";
 
-/// A component's linker: WASI's monotonic and system clocks from
-/// wasmtime-wasi; the zone's `utc-offset` from the system's zone
+/// A component's linker: WASI's monotonic and system clocks and its
+/// command line's interfaces, the standard output and error among them,
+/// from wasmtime-wasi; the zone's `utc-offset` from the system's zone
 /// ([`system_zone`]), since WASI's time zone is unstable and wasmtime-wasi
 /// has none; and every other import a trap, as [`link`] stubs a module's.
 fn link_component(
@@ -490,6 +701,8 @@ fn link_component(
 ) -> Result<wasmtime::component::Linker<ComponentHost>> {
     let mut linker = wasmtime::component::Linker::new(engine);
     wasmtime_wasi::p3::clocks::add_to_linker(&mut linker).ctx("wiring WASI's clocks")?;
+    wasmtime_wasi::p3::cli::add_to_linker(&mut linker)
+        .ctx("wiring WASI's standard output and error")?;
     linker
         .instance(ZONE)
         .and_then(|mut zone| {
@@ -514,10 +727,31 @@ fn run_on_component(
     place: u32,
     budget: Duration,
 ) -> Result<Outcome> {
+    let stdio = Arc::new(Mutex::new(Stdio::keeping(OUTPUT_LIMIT)));
+    let mut outcome = run_on_component_with(pre, module, place, budget, &stdio)?;
+    outcome.output = lock(&stdio).text();
+    Ok(outcome)
+}
+
+/// [`run_on_component`], its outputs written to `stdio`.
+fn run_on_component_with(
+    pre: &InstancePre<ComponentHost>,
+    module: &Range<usize>,
+    place: u32,
+    budget: Duration,
+    stdio: &Arc<Mutex<Stdio>>,
+) -> Result<Outcome> {
+    let sink = |stream| Sink {
+        stream,
+        stdio: stdio.clone(),
+    };
     let mut store = Store::new(
         pre.engine(),
         ComponentHost {
-            clocks: WasiClocksCtx::default(),
+            ctx: WasiCtxBuilder::new()
+                .stdout(sink(Stream::Stdout))
+                .stderr(sink(Stream::Stderr))
+                .build(),
             table: ResourceTable::new(),
         },
     );
@@ -717,8 +951,10 @@ fn trace(module: &Module, entry: &TestEntry, budget: Duration) -> Vec<(u32, u32)
     let mut store = Store::new(module.engine(), Trace::default());
     store.set_debug_handler(AtFailure);
     store.set_epoch_deadline(ticks(budget));
+    // What the test wrote was kept when it ran: this run is for its place.
+    let quiet = Arc::new(Mutex::new(Stdio::keeping(0)));
     block_on(async {
-        let Ok(linker) = link(module) else {
+        let Ok(linker) = link(module, &quiet) else {
             return;
         };
         let Ok(instance) = linker.instantiate_async(&mut store, module).await else {
