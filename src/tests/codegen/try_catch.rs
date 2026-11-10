@@ -10,8 +10,8 @@
 //! the optimizer, where a wasm-opt is installed.
 
 use crate::tests::codegen::{
-    TestPlc, compile_to_mir_and_wasm, compile_to_wasm, compile_with_libraries, execute_wasm,
-    run_tests, with_db,
+    TestPlc, compile_tests, compile_to_mir_and_wasm, compile_to_wasm, compile_with_libraries,
+    execute_wasm, run_tests, with_db,
 };
 use crate::tests::utils::{skip_without_wasm_opt, wasm_opt_installed};
 use debug_format::{DebugInfo, VarValue};
@@ -541,8 +541,8 @@ fn a_test_that_catches_its_failure_passes(mut with_db: db::RootDatabase) {
             __END_TRY;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let records = run_tests(&wasm, None).expect("the tests run");
+    let build = compile_tests(&mut with_db, source);
+    let records = run_tests(&build.component, None).expect("the tests run");
     let outcome: Vec<(&str, bool, Option<&str>)> = records
         .iter()
         .map(|r| (r.name.as_str(), r.passed(), r.reason.as_deref()))

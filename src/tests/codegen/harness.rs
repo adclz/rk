@@ -887,12 +887,53 @@ pub fn expect_section<'a>(wasm: &'a [u8], name: &str) -> &'a [u8] {
 /// The `{test}` functions a module carries, as `rk test` finds them.
 pub use rk::test_host::discover as discover_tests;
 
-/// Run the module's `{test}` functions on the host `rk test` runs them on,
-/// the core module called directly, so what passes here is what passes
-/// for a user. `filter` selects by a substring of the path.
+/// A source built as `rk test` builds it: the debug module, which tells its
+/// host where each raise is ([`mir::raise_hook`]), and the component `rk
+/// test` runs, which wraps it.
+pub struct TestBuild {
+    pub mir: mir::MirModule,
+    pub core: Vec<u8>,
+    pub component: Vec<u8>,
+    interfaces: rk::component::Interfaces,
+}
+
+impl TestBuild {
+    /// `core`, a module made from this one, wrapped as this one is: what
+    /// `rk test -O` runs.
+    pub fn wrap(&self, core: &[u8]) -> Vec<u8> {
+        rk::component::wrap(core, "plant", &self.interfaces)
+            .expect("the module wraps")
+            .bytes
+    }
+}
+
+/// `source` built as `rk test` builds it, refusing a source the compiler
+/// rejects.
+pub fn compile_tests(db: &mut RootDatabase, source: &str) -> TestBuild {
+    let file = add_source(db, source);
+    let sem_idx = semantic_index(db, file);
+    check_diagnostics(db, file, Expectation::Clean);
+    let mut mir = mir::lower::lower_module::lower_module(db, sem_idx).expect("MIR lowering failed");
+    mir::raise_hook::add(db, &mut mir);
+    let core = wasm_codegen::generate_wasm(db, &mir).finish();
+    let interfaces = rk::component::interfaces(db, &mir).expect("typed interfaces");
+    let component = rk::component::wrap(&core, "plant", &interfaces)
+        .expect("the module wraps")
+        .bytes;
+    TestBuild {
+        mir,
+        core,
+        component,
+        interfaces,
+    }
+}
+
+/// Run the `{test}` functions of `component` on the host `rk test` runs
+/// them on, so what passes here is what passes for a user. `filter` selects
+/// by a substring of the path.
 pub fn run_tests(
-    wasm: &[u8],
+    component: &[u8],
     filter: Option<&str>,
 ) -> Result<Vec<debug_format::test_report::TestRecord>> {
-    rk::test_host::run_each(rk::test_host::Target::Core(wasm), filter, None, |_| {})
+    rk::test_host::run_each(component, filter, None, |_| {})
 }

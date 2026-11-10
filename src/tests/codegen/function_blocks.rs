@@ -1852,8 +1852,8 @@ fn an_instance_from_outside(mut with_db: db::RootDatabase) {
             IF t.Q THEN __RAISE('written over by the call'); END_IF;
         END_FUNCTION
     "#;
-    let wasm = crate::tests::codegen::compile_to_wasm_as_built(&mut with_db, source);
-    let results = crate::tests::codegen::run_tests(&wasm, None).expect("run tests");
+    let build = crate::tests::codegen::compile_tests(&mut with_db, source);
+    let results = crate::tests::codegen::run_tests(&build.component, None).expect("run tests");
     assert_eq!(results.len(), 3);
     for result in &results {
         assert!(result.passed(), "{}: {:?}", result.name, result.reason);
