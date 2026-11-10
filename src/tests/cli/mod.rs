@@ -4,6 +4,7 @@
 mod args;
 mod backtrace;
 mod component;
+mod console;
 mod diagnostics;
 mod duration;
 mod env;
@@ -17,6 +18,7 @@ mod report;
 mod stack_size;
 mod test_filter;
 mod test_host;
+mod test_output;
 mod unit_assertions;
 mod validation;
 mod watcher;
