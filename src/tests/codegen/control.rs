@@ -281,29 +281,83 @@ fn a_release_runs_no_test(mut with_db: db::RootDatabase) {
     assert_eq!(plc.run_test(0), Err("no such test".to_string()));
 }
 
-/// `cabi_realloc` hands out the scratch, as large as the largest list a
-/// function of the interface takes, and traps on a larger one.
+/// `cabi_realloc` hands out the scratch piece by piece, as large as the
+/// largest list a function of the interface takes, and a function that
+/// takes a list starts it over. What does not fit lands past everything the
+/// module laid out, in memory grown once to take it: nothing traps.
 #[rstest]
-fn the_scratch_takes_the_largest_list(mut with_db: db::RootDatabase) {
+fn the_scratch_takes_what_a_host_passes(mut with_db: db::RootDatabase) {
     let wasm = compile_to_wasm(&mut with_db, COUNTER);
     let mut plc = Plc::load(&wasm);
     let realloc = plc.func::<(i32, i32, i32, i32), i32>("cabi_realloc");
     let scratch = realloc
-        .call(&mut plc.store, (0, 0, 1, 4))
-        .expect("4 bytes fit");
+        .call(&mut plc.store, (0, 0, 1, 3))
+        .expect("3 bytes fit");
     assert_eq!(scratch % 8, 0, "aligned for any list");
+    assert_eq!(
+        realloc.call(&mut plc.store, (0, 0, 1, 1)).ok(),
+        Some(scratch + 3),
+        "the next piece is past the first"
+    );
+    assert_eq!(
+        realloc.call(&mut plc.store, (0, 0, 4, 0)).ok(),
+        Some(scratch + 4),
+        "aligned as asked"
+    );
+
+    // A function that takes a list starts the scratch over.
+    plc.restore_retain(&[]);
     let largest = plc.save_retain().len().max(4) as i32;
     assert_eq!(
         realloc.call(&mut plc.store, (0, 0, 1, largest)).ok(),
         Some(scratch),
-        "the same scratch for each call"
+        "the largest list fits at its start"
     );
-    assert!(
-        realloc
-            .call(&mut plc.store, (0, 0, 1, largest + 1))
-            .is_err(),
-        "a list larger than any the interface takes traps"
+
+    // One byte more does not fit: it lands at the end of the memory, which
+    // grows to take it, once.
+    let size = |plc: &Plc| plc.memory.data_size(&plc.store);
+    let laid_out = size(&plc);
+    let long = 3 * 65536;
+    let spilled = realloc
+        .call(&mut plc.store, (0, 0, 1, long))
+        .expect("a list too long is no trap");
+    assert_eq!(spilled as usize, laid_out, "past what the module laid out");
+    assert_eq!(size(&plc), laid_out + long as usize, "grown to take it");
+    assert_eq!(
+        realloc.call(&mut plc.store, (0, 0, 1, long)).ok(),
+        Some(spilled),
+        "the same place"
     );
+    assert_eq!(size(&plc), laid_out + long as usize, "and no more memory");
+
+    // A block that moves keeps its bytes.
+    plc.restore_retain(&[]);
+    let first = realloc.call(&mut plc.store, (0, 0, 1, 1)).unwrap();
+    plc.memory
+        .write(&mut plc.store, first as usize, &[7])
+        .unwrap();
+    let moved = realloc.call(&mut plc.store, (first, 1, 1, 2)).unwrap();
+    assert_eq!(moved, first + 1);
+    assert_eq!(plc.read(moved as u32, 1), [7]);
+}
+
+/// A list longer than its band is no trap either: `run-task` and
+/// `restore-retain` take as much of it as the band holds.
+#[rstest]
+fn a_list_longer_than_its_band_is_cut(mut with_db: db::RootDatabase) {
+    let wasm = compile_to_wasm(&mut with_db, COUNTER);
+    let mut plc = Plc::load(&wasm);
+    plc.init().unwrap();
+    let retained = plc.save_retain();
+    assert!(!retained.is_empty(), "COUNTER retains something");
+    let mut long = retained.clone();
+    long[0] ^= 0xFF;
+    long.extend(std::iter::repeat_n(0xAA, 200_000));
+    plc.restore_retain(&long);
+    let restored = plc.save_retain();
+    assert_eq!(restored.len(), retained.len());
+    assert_eq!(restored[..], long[..retained.len()]);
 }
 
 /// The interface is there whatever the module declares: a module with no
