@@ -7,6 +7,7 @@ pub mod expr;
 pub mod function;
 pub mod located;
 pub mod memory;
+pub mod raise_hook;
 pub mod retain_map;
 pub mod schedule;
 pub mod stmt;
