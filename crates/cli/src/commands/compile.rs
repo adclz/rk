@@ -52,7 +52,6 @@ fn compile_once(
     let (core_bytes, mir_module) =
         build_core_profile(&db, workspace, verbose, opts.format, profile)
             .map_err(|_| CliError::Failed)?;
-    let _ = &mir_module;
     let config = db::config_file::get_config(&db);
 
     let (core_bytes, label) = if !opts.release {
@@ -73,8 +72,10 @@ fn compile_once(
 
     // Last, since wasm-opt reads core modules only: the module wrapped into a
     // component, with the WIT that types it.
+    let hosts = crate::component::host_functions(&db, &mir_module.extern_functions)
+        .map_err(CliError::msg)?;
     let component =
-        crate::component::wrap(&core_bytes, &config.project.name).map_err(CliError::msg)?;
+        crate::component::wrap(&core_bytes, &config.project.name, &hosts).map_err(CliError::msg)?;
     let default_output = component_path(workspace, profile, &config.project.name);
     let output = opts.output.unwrap_or(&default_output);
     write_output(output, &component.bytes, label)?;
@@ -111,7 +112,7 @@ fn write_wit(output: &std::path::Path, component: &crate::component::Component) 
         component
             .wit
             .iter()
-            .map(|(path, text)| (path.clone(), *text)),
+            .map(|(path, text)| (path.clone(), text.as_ref())),
     );
     for (path, text) in files {
         let path = dir.join(path);
