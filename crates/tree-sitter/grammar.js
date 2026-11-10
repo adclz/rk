@@ -640,11 +640,18 @@ module.exports = grammar({
     // {must_call}
     must_call_pragma: (_) => prec(1, token(seq("{", "must_call", "}"))),
 
-    // Export pragma - the annotated FUNCTION is a WASM export, under its name.
-    // {export}
+    // Export pragma - the annotated FUNCTION is a function a host calls,
+    // under the WIT name its own name gives, or under the one given.
+    // {export} or {export 'name'}
     // Nothing else a workspace declares is exported, so an optimizer may drop
     // what nothing calls.
-    export_pragma: (_) => prec(1, token(seq("{", "export", "}"))),
+    // `{export}` stays one token, as {test} and {once} are: out of place it
+    // is reported whole.
+    export_pragma: ($) =>
+      prec(1, choice(
+        token(seq("{", "export", "}")),
+        seq("{", "export", field("name", $.pragma_string), "}"),
+      )),
 
     // Unified POU pragma list - validated during HIR building
     // Covers: {test}, {once}, {must_call}, {export}, {warn = '...'},

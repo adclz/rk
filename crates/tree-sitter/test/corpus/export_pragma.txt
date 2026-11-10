@@ -56,3 +56,24 @@ END_FUNCTION_BLOCK
     pragmas: (pou_pragma
       (export_pragma))
     name: (identifier)))
+
+================================================================================
+Export pragma with the name it is exported under
+================================================================================
+
+{export 'read-coils'}
+FUNCTION ReadCoils : INT
+END_FUNCTION
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (func_decl
+    pragmas: (pou_pragma
+      (export_pragma
+        name: (pragma_string)))
+    name: (identifier)
+    return_type: (numeric_type_name
+      (int_type_name
+        (sign_int_type_name
+          (int_name))))))
