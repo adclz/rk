@@ -14,6 +14,9 @@ description: Compile a workspace and run its {test} functions with `rk test`. Us
 Runs every FUNCTION marked `{test}`.
 Writing them is the `programming-tests` skill.
 
+The tests run on the component `rk compile` writes, unoptimized, the way a host runs it: it is left in `rk_build/debug/<project>.wasm` with its WIT, or in `rk_build/test-O<level>/` with `-O`.
+The clocks are WASI's, as wasmtime gives them, and the time zone is the machine's.
+
 Exit code is `0` when all passed, `1` otherwise.
 That same `1` is also a workspace that failed to compile, so read the output to tell the two apart.
 
@@ -37,7 +40,7 @@ They need the standard library: if `rk env stdlib` prints nothing, the run stops
 A namespaced test is matched by its path, `Ns1.Ns2.TestName`.
 
 `-O, --opt-level <OPT_LEVEL>` 0-4, `s`, `z`.
-Tests default to the unoptimized core; this checks an optimized build computes the same thing.
+Tests default to the unoptimized build; this checks an optimized build computes the same thing.
 
 `--timeout <TIMEOUT>` How long one test may run, e.g. `30s`, `500ms`.
 A test waiting out a timer legitimately runs long; one that never returns must not hang the run.

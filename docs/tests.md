@@ -13,6 +13,8 @@ END_FUNCTION
 ```
 
 `rk test` compiles the workspace and runs all of them, showing a summary at the end.
+It runs them on the component `rk compile` writes, unoptimized, the way a host runs it, and leaves it in `rk_build/debug/` with its WIT.
+The clocks are WASI's, as wasmtime gives them, and the time zone is the machine's.
 It calls a test with no arguments, so a test has no `VAR_INPUT`, `VAR_OUTPUT` or `VAR_IN_OUT` (`E1511`).
 
 ```sh

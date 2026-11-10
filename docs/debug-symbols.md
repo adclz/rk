@@ -12,7 +12,7 @@ All these tables are stored as custom sections, encoded with [MessagePack](https
 | `debug-locals` | debug only | wasm local slot → variable name and type |
 | `rk.schedule` | every build | tasks, periods, the bit each `SINGLE` reads, priorities, instance addresses |
 | `retain-map` | every build | the byte ranges a power cycle must preserve |
-| `test-manifest` | debug only, when there are tests | the exports `rk test` calls |
+| `test-manifest` | debug only, when there are tests | the tests `rk test` runs, in the order `run-test` numbers them |
 
 > [!WARNING]
 > The last three are **not** debug information.

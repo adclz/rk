@@ -5,6 +5,7 @@ use crate::cli::OutputFormat;
 use crate::compiler::build_core_with_format;
 use crate::error::{CliError, CliResult};
 use crate::workspace::init_db;
+use wasm_codegen::Profile;
 
 pub fn run_test(
     workspace: &std::path::Path,
@@ -17,7 +18,7 @@ pub fn run_test(
     let timeout = timeout.map(crate::duration::parse).transpose()?;
     let db = init_db(workspace, verbose, true).ok_or(CliError::Failed)?;
 
-    // Tests default to the unoptimized core but honour `-O`, so an optimized
+    // Tests default to the unoptimized build but honour `-O`, so an optimized
     // build can be checked to compute the same answers.
     let (core_bytes, mir_module) =
         build_core_with_format(&db, workspace, verbose, format).map_err(|_| CliError::Failed)?;
@@ -25,22 +26,27 @@ pub fn run_test(
     // to say where a test failed.
     let unoptimized = opt_level.is_some().then(|| core_bytes.clone());
     let core_bytes = crate::compiler::optimize_wasm(core_bytes, opt_level, verbose);
-    let _ = &mir_module;
 
-    // The artifact on disk is what ran. `-O` is neither profile (optimized,
-    // but carrying debug sections), so it keeps its own path.
+    // The tests run on the component a host runs, wrapped as `rk compile`
+    // wraps it.
+    let project = db::config_file::get_config(&db).project.name.clone();
+    let hosts = crate::component::host_functions(&db, &mir_module.extern_functions)
+        .map_err(CliError::msg)?;
+    let component = crate::component::wrap(&core_bytes, &project, &hosts).map_err(CliError::msg)?;
+
+    // The artifact on disk is what ran, with its WIT beside it. `-O` is
+    // neither profile (optimized, but carrying debug sections), so it keeps
+    // its own folder.
     let wasm_path = match opt_level {
-        None => crate::compiler::debug_core_path(workspace),
-        Some(level) => workspace
-            .join("rk_build")
-            .join(format!("test-O{level}"))
-            .join("core.wasm"),
+        None => crate::compiler::component_path(workspace, Profile::Debug, &project),
+        Some(level) => crate::compiler::test_component_path(workspace, level, &project),
     };
     if let Some(dir) = wasm_path.parent() {
         std::fs::create_dir_all(dir).ok();
     }
-    std::fs::write(&wasm_path, &core_bytes)
-        .map_err(|e| CliError::msg(format!("writing test binary: {e}")))?;
+    std::fs::write(&wasm_path, &component.bytes)
+        .map_err(|e| CliError::msg(format!("writing the tested component: {e}")))?;
+    crate::component::write_wit(&wasm_path, &component).map_err(CliError::msg)?;
 
     // The roots the manifest named each test's file against.
     let layout = db::workspace::Workspace::try_get(&db);
