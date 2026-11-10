@@ -6,8 +6,11 @@
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
-/// The WASI proposals rk carries, by their folder under `proposals/`.
-const PROPOSALS: &[&str] = &["clocks"];
+/// The WASI proposals rk carries, by their folder under `proposals/`: the
+/// clocks `Std.Timers` reads and the command line's interfaces, whose
+/// standard output and error `Std.Console` writes to, with the packages the
+/// command line's own files name.
+const PROPOSALS: &[&str] = &["cli", "clocks", "filesystem", "random", "sockets"];
 
 fn main() {
     let manifest = PathBuf::from(std::env::var_os("CARGO_MANIFEST_DIR").expect("set by cargo"));
@@ -64,17 +67,20 @@ fn main() {
     std::fs::write(&out, table).unwrap_or_else(|e| panic!("writing {}: {e}", out.display()));
 }
 
-/// The package each of `files` declares, with its version, the same in
-/// every file: `wasi:clocks@0.3.0`.
+/// The package `files` declare, with its version, the same in every file
+/// that declares one: `wasi:clocks@0.3.0`. A package says its name in one
+/// file at least, not in each.
 fn declared_package(files: &[PathBuf]) -> String {
     let mut package: Option<String> = None;
     for file in files {
         let source = std::fs::read_to_string(file)
             .unwrap_or_else(|e| panic!("reading {}: {e}", file.display()));
-        let declared = source
+        let Some(declared) = source
             .lines()
             .find_map(|line| line.trim().strip_prefix("package ")?.strip_suffix(';'))
-            .unwrap_or_else(|| panic!("{} declares no package", file.display()));
+        else {
+            continue;
+        };
         match &package {
             None => package = Some(declared.to_string()),
             Some(first) => assert_eq!(
@@ -85,7 +91,7 @@ fn declared_package(files: &[PathBuf]) -> String {
             ),
         }
     }
-    package.expect("a proposal with WIT files")
+    package.expect("a proposal whose WIT files declare its package")
 }
 
 /// `path` as `include_str!` takes it.
