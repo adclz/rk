@@ -310,9 +310,18 @@ fn a_release_exports_no_test_and_lists_none(mut with_db: RootDatabase) {
             .finish();
 
     let (exports, sections) = exports_and_sections(&debug);
+    // Each `{export}` FUNCTION twice: under its own name, and as the
+    // component exports it, `<interface>#<WIT name>`.
     assert_eq!(
         exports,
-        ["Main$__body__", "Std.LibEntry", "Twice", "ws_test"]
+        [
+            "Main$__body__",
+            "Std.LibEntry",
+            "Twice",
+            "std#std-libentry",
+            "std#twice",
+            "ws_test"
+        ]
     );
     assert!(
         sections.contains(&"test-manifest".to_string()),
@@ -320,7 +329,16 @@ fn a_release_exports_no_test_and_lists_none(mut with_db: RootDatabase) {
     );
 
     let (exports, sections) = exports_and_sections(&release);
-    assert_eq!(exports, ["Main$__body__", "Std.LibEntry", "Twice"]);
+    assert_eq!(
+        exports,
+        [
+            "Main$__body__",
+            "Std.LibEntry",
+            "Twice",
+            "std#std-libentry",
+            "std#twice"
+        ]
+    );
     assert!(
         !sections.contains(&"test-manifest".to_string()),
         "{sections:?}"
@@ -346,5 +364,5 @@ END_FUNCTION
     let module = lower_with_library(&mut with_db, library, workspace);
     let wasm = wasm_codegen::generate_wasm(&with_db, &module).finish();
     let (exports, _) = exports_and_sections(&wasm);
-    assert_eq!(exports, ["Stamp"]);
+    assert_eq!(exports, ["Stamp", "std#stamp"]);
 }
