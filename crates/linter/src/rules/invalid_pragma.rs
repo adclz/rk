@@ -60,7 +60,7 @@ pub fn check<'db>(
             },
             // Position legality for {export} is a compiler ERROR (E1508):
             // an export the module does not carry must not merely warn.
-            Pragma::Export(_) => (false, ""),
+            Pragma::Export(_, _) => (false, ""),
             Pragma::Warn(_, _) => (false, ""),
             // Position legality for {extern} is a compiler ERROR (E1501),
             // not lint advice — a misplaced import must not merely warn.

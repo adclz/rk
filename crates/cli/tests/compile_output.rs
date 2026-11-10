@@ -164,3 +164,42 @@ END_FUNCTION
         "{package}"
     );
 }
+
+/// The `{export}` FUNCTIONs are in an interface named after the project,
+/// in the world `rk compile` writes.
+#[test]
+fn the_exported_functions_are_in_the_project_s_interface() {
+    let ws = workspace();
+    std::fs::write(
+        ws.path().join("api.st"),
+        r#"
+NAMESPACE Recipe
+    {export}
+    FUNCTION Set_Name : BOOL
+    VAR_INPUT name : STRING[32]; END_VAR
+        Set_Name := name <> '';
+    END_FUNCTION
+END_NAMESPACE
+"#,
+    )
+    .unwrap();
+    for args in [&["compile"][..], &["compile", "--release"][..]] {
+        let out = rk(args, ws.path());
+        assert!(
+            out.status.success(),
+            "{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+    for profile in ["debug", "release"] {
+        let wit = ws.path().join("rk_build").join(profile).join("wit");
+        let world = std::fs::read_to_string(wit.join("world.wit")).unwrap();
+        assert!(
+            world.contains(
+                "    export plant-a: interface {\n        \
+                 recipe-set-name: func(name: string) -> result<bool, string>;\n    }\n"
+            ),
+            "{profile}: {world}"
+        );
+    }
+}

@@ -43,6 +43,11 @@ pub struct MirFunction {
     /// When set, WASM codegen uses this instead of `name` for the export.
     pub export_name: Option<CompactString>,
 
+    /// The WIT name a host calls it by, for an `{export}` FUNCTION: the
+    /// component exports it under that name, typed from its parameters and
+    /// its return type.
+    pub wit_export: Option<CompactString>,
+
     /// The frame each call pushes on the stack for a function that may call
     /// itself, directly or through others: its memory-resident storage is
     /// [`MirStorage::Frame`]. `None` for every other function, whose storage
@@ -101,6 +106,16 @@ pub struct MirParam {
     pub name: Ident,
     pub ty: MirType,
     pub kind: MirParamKind,
+}
+
+impl MirParam {
+    /// The name the declaration gives the parameter. An input with storage
+    /// of its own, a STRING or one whose address the body takes, is
+    /// `x$arg` as a parameter and `x` as the local it fills.
+    pub fn declared_name<'db>(&self, db: &'db dyn db::WorkspaceDataBase) -> &'db str {
+        let name = self.name.text(db).as_str();
+        name.strip_suffix("$arg").unwrap_or(name)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
