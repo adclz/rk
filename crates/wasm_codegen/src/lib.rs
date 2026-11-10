@@ -11,6 +11,7 @@ pub mod mir_cast;
 
 mod builtins;
 pub mod control;
+mod exports;
 mod graft;
 
 use std::cell::Cell;
@@ -1067,6 +1068,10 @@ impl<'a> WasmGen<'a> {
         // A recursive function checks its frame against the stack's end.
         if self.stack_bounds.is_some() && crate::builtins::lookup("rk.stack_check").is_some() {
             found.insert("rk.stack_check".to_string());
+        }
+        // An export checks what a host passes it and what it hands back.
+        for check in crate::exports::builtins(self.module) {
+            found.insert(check.to_string());
         }
         // An import's wrapper checks what a STRING or a CHAR passes.
         for ext_fn in &self.module.extern_functions {
