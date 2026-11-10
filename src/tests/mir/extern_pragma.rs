@@ -85,3 +85,24 @@ END_FUNCTION
     import wasi:clocks/timezone@0.3.0.utc-offset(LInt, DInt, *struct(ZoneOffset))
     ");
 }
+
+/// A module that writes to the host's standard output imports the stream it
+/// writes through: WASI's `write-via-stream` and the component model's
+/// built-ins for its stream and its future, which no declaration names. One
+/// that writes to neither output imports none.
+#[rstest]
+fn a_module_that_writes_imports_its_output(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION Say : BOOL
+VAR_INPUT IN : STRING[4096]; END_VAR
+    {wasm 'rk.stdout_write' (params IN) (result Say)}
+END_FUNCTION
+    "#;
+    assert_snapshot!(mir_exports(&mut with_db, &[source]), @r"
+    func Say(String { capacity: 4096 }) -> Bool
+    import wasi:cli/stdout@0.3.0.[async-lower][stream-write-0]write-via-stream(DInt, DInt, DInt) -> DInt
+    import wasi:cli/stdout@0.3.0.[future-drop-readable-1]write-via-stream(DInt)
+    import wasi:cli/stdout@0.3.0.[stream-new-0]write-via-stream() -> LWord
+    import wasi:cli/stdout@0.3.0.write-via-stream(DInt) -> DInt
+    ");
+}
