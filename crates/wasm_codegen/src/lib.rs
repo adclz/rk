@@ -454,6 +454,10 @@ struct WasmGen<'a> {
     /// The functions of the control interface, by index, for the `name`
     /// section ([`control`]).
     control_names: Vec<(u32, String)>,
+    /// Each import a call reaches through a wrapper that checks what it
+    /// passes ([`import_check`]): its place among the imports, and the
+    /// wrapper's index.
+    import_wrappers: Vec<(usize, u32)>,
 }
 
 /// A function's memory locals as `debug-locals` describes them: the leaves,
@@ -658,6 +662,7 @@ impl<'a> WasmGen<'a> {
             stack_bounds: stack_bounds(module),
             stack: None,
             control_names: Vec::new(),
+            import_wrappers: Vec::new(),
         }
     }
 
@@ -724,6 +729,15 @@ impl<'a> WasmGen<'a> {
         for func in &self.module.functions {
             index_remap.insert(func.index, wasm_idx);
             wasm_idx += 1;
+        }
+        // 3b. An import passed a STRING or a CHAR is called through a
+        //     wrapper that checks them first, after the user functions.
+        for (at, ext_fn) in self.module.extern_functions.iter().enumerate() {
+            if ext_fn.params.iter().any(|p| import_check(&p.ty).is_some()) {
+                index_remap.insert(ext_fn.index, wasm_idx);
+                self.import_wrappers.push((at, wasm_idx));
+                wasm_idx += 1;
+            }
         }
         let _ = n_imports;
         self.index_remap = index_remap;
@@ -804,6 +818,11 @@ impl<'a> WasmGen<'a> {
         self.call_indices = call_indices;
         for func in &self.module.functions {
             self.emit_function(func);
+        }
+
+        // 9. The import wrappers, at the indices step 3b gave them.
+        for (at, index) in self.import_wrappers.clone() {
+            self.emit_import_wrapper(at, index);
         }
     }
 
@@ -1049,6 +1068,14 @@ impl<'a> WasmGen<'a> {
         if self.stack_bounds.is_some() && crate::builtins::lookup("rk.stack_check").is_some() {
             found.insert("rk.stack_check".to_string());
         }
+        // An import's wrapper checks what a STRING or a CHAR passes.
+        for ext_fn in &self.module.extern_functions {
+            for param in &ext_fn.params {
+                if let Some(check) = import_check(&param.ty) {
+                    found.insert(check.to_string());
+                }
+            }
+        }
 
         let mut v: Vec<String> = found.into_iter().collect();
         v.sort();
@@ -1092,9 +1119,9 @@ impl<'a> WasmGen<'a> {
         crate::builtins::closure_uses_import(&closure, "__iec_raise")
     }
 
-    fn emit_import(&mut self, ext_fn: &MirExternFunction) {
-        // Params from the declaration; results are the scalar VAR_OUTPUTs then
-        // the return type last.
+    /// An import's wasm signature. Params from the declaration; results are
+    /// the scalar VAR_OUTPUTs then the return type last.
+    fn import_signature(&self, ext_fn: &MirExternFunction) -> (Vec<ValType>, Vec<ValType>) {
         let (params, _) = build_signature(&ext_fn.params, &None);
         let results: Vec<ValType> = ext_fn
             .results()
@@ -1108,6 +1135,55 @@ impl<'a> WasmGen<'a> {
                 })
             })
             .collect();
+        (params, results)
+    }
+
+    /// The function a call to the import at `at` among the imports goes
+    /// through: it checks each STRING passed for UTF-8 and each CHAR for a
+    /// character, raising where the component model would trap and stop
+    /// the PLC, then calls the import with the same values and returns
+    /// what it returns.
+    fn emit_import_wrapper(&mut self, at: usize, index: u32) {
+        let ext_fn = &self.module.extern_functions[at];
+        let (params, results) = self.import_signature(ext_fn);
+        let mut f = wasm_encoder::Function::new([]);
+        let mut local = 0;
+        for param in &ext_fn.params {
+            let lanes = match param.ty {
+                MirType::String { .. } => 2,
+                _ => 1,
+            };
+            if let Some(check) = import_check(&param.ty) {
+                for lane in 0..lanes {
+                    f.instruction(&Instruction::LocalGet(local + lane));
+                }
+                let check = self.builtin_indices.get(check).copied().unwrap_or_else(|| {
+                    panic!("internal compiler error: `{check}` was not grafted")
+                });
+                f.instruction(&Instruction::Call(check));
+            }
+            local += lanes;
+        }
+        for local in 0..params.len() as u32 {
+            f.instruction(&Instruction::LocalGet(local));
+        }
+        f.instruction(&Instruction::Call(at as u32));
+        f.instruction(&Instruction::End);
+
+        let type_idx = self.next_type_idx;
+        self.type_section.ty().function(params, results);
+        self.next_type_idx += 1;
+        debug_assert_eq!(
+            index,
+            self.module.extern_functions.len() as u32 + self.fn_section.len(),
+            "the wrapper lands where step 3b placed it"
+        );
+        self.fn_section.function(type_idx);
+        self.code_section.function(&f);
+    }
+
+    fn emit_import(&mut self, ext_fn: &MirExternFunction) {
+        let (params, results) = self.import_signature(ext_fn);
 
         let type_idx = self.next_type_idx;
         self.type_section
@@ -1901,10 +1977,14 @@ impl<'a> WasmGen<'a> {
         // backtraces and tooling.
         let n_func_imports = self.module.extern_functions.len() as u32;
         let mut named: Vec<(u32, String)> = Vec::new();
-        for ext in &self.module.extern_functions {
-            if let Some(&idx) = self.index_remap.get(&ext.index) {
-                named.push((idx, ext.name.text(self.db).to_string()));
-            }
+        // An import is first among the functions, at its place; a call
+        // reaches its wrapper, if it has one, under the index remapped.
+        for (at, ext) in self.module.extern_functions.iter().enumerate() {
+            named.push((at as u32, ext.name.text(self.db).to_string()));
+        }
+        for &(at, idx) in &self.import_wrappers {
+            let ext = &self.module.extern_functions[at];
+            named.push((idx, format!("{}$checked", ext.name.text(self.db))));
         }
         for func in &self.module.functions {
             if let Some(&idx) = self.index_remap.get(&func.index) {
@@ -2126,6 +2206,17 @@ impl<'a> WasmGen<'a> {
 // =============================================================================
 
 /// Build WASM function signature from MIR params and return type.
+/// The builtin that checks a value of `ty` the module passes to an import,
+/// before the call: a STRING for UTF-8 and a CHAR for a character, as WIT's
+/// `string` and `char` must be, or the component model traps.
+fn import_check(ty: &MirType) -> Option<&'static str> {
+    match ty {
+        MirType::String { .. } => Some("rk.utf8_check"),
+        MirType::Elementary(MirElementary::Char) => Some("rk.char_check"),
+        _ => None,
+    }
+}
+
 fn build_signature(
     params: &[MirParam],
     return_type: &Option<MirType>,
