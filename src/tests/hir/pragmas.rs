@@ -1057,15 +1057,465 @@ END_FUNCTION
     ");
 }
 
-/// `{export}` makes a FUNCTION a WASM export, and nothing else does.
+/// An export is typed in WIT from its declaration: every scalar has a WIT
+/// type, an enum and a subrange the one they are stored as, a STRING goes
+/// both ways, and a name the pragma gives stands for the FUNCTION's own.
+#[rstest]
+fn valid_export_typed_in_wit(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE Mode : (Off, Slow, Fast); END_TYPE
+TYPE Percent : INT (0..100); END_TYPE
+
+{export}
+FUNCTION Take_Numbers : LREAL
+VAR_INPUT
+    flag : BOOL;
+    s8 : SINT; s16 : INT; s32 : DINT; s64 : LINT;
+    u8 : USINT; u16 : UINT; u32 : UDINT; u64 : ULINT;
+    f32 : REAL; f64 : LREAL;
+END_VAR
+    Take_Numbers := f64;
+END_FUNCTION
+
+{export 'take-the-rest'}
+FUNCTION TakeTheRest : STRING
+VAR_INPUT
+    b8 : BYTE; b16 : WORD; b32 : DWORD; b64 : LWORD;
+    letter : CHAR;
+    text : STRING[20];
+    mode : Mode;
+    level : Percent;
+    since : TIME;
+    stamp : LDT;
+END_VAR
+    TakeTheRest := text;
+END_FUNCTION
+
+NAMESPACE Motion.Axis
+    {export}
+    FUNCTION Level : Percent
+        Level := 50;
+    END_FUNCTION
+
+    {export}
+    FUNCTION Current : Mode
+        Current := Mode#Slow;
+    END_FUNCTION
+
+    {export}
+    FUNCTION Stop
+    END_FUNCTION
+END_NAMESPACE
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
+
+/// A WIT function returns one value and takes values: an export has no
+/// VAR_OUTPUT and no VAR_IN_OUT.
+#[rstest]
+fn invalid_export_output_and_in_out(mut with_db: RootDatabase) {
+    let source = r#"
+{export}
+FUNCTION Scale : REAL
+VAR_INPUT raw : INT; END_VAR
+VAR_IN_OUT total : REAL; END_VAR
+VAR_OUTPUT clamped : BOOL; END_VAR
+    Scale := raw;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1509] Error: FUNCTION not exportable
+       ,-[ file:///test0.st:5:12 ]
+       |
+     5 | VAR_IN_OUT total : REAL; END_VAR
+       |            ^^|^^
+       |              `---- VAR_IN_OUT 'total' cannot cross a component export: the host passes values, not references
+       |
+       | Note: an {export} FUNCTION takes scalars and STRINGs, as VAR_INPUT
+    ---'
+    [E1509] Error: FUNCTION not exportable
+       ,-[ file:///test0.st:6:12 ]
+       |
+     6 | VAR_OUTPUT clamped : BOOL; END_VAR
+       |            ^^^|^^^
+       |               `----- VAR_OUTPUT 'clamped' cannot be a result of the export: a WIT function returns one value
+       |
+       | Note: an {export} FUNCTION returns its return value only
+    ---'
+    ");
+}
+
+/// The host passes no address and gets none back: a REF_TO, a STRUCT, an
+/// ARRAY and an instance are refused as an export's inputs and as what it
+/// returns.
+#[rstest]
+fn invalid_export_reference_and_aggregate(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE Pt : STRUCT x : INT; y : INT; END_STRUCT; END_TYPE
+TYPE PInt : REF_TO INT; END_TYPE
+
+FUNCTION_BLOCK Counter
+VAR count : INT; END_VAR
+END_FUNCTION_BLOCK
+
+{export}
+FUNCTION Send : INT
+VAR_INPUT
+    r : REF_TO INT;
+    p : Pt;
+    a : ARRAY[0..3] OF BYTE;
+    c : Counter;
+END_VAR
+    Send := 0;
+END_FUNCTION
+
+{export}
+FUNCTION Origin : Pt
+END_FUNCTION
+
+{export}
+FUNCTION Nowhere : PInt
+    Nowhere := NULL;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1509] Error: FUNCTION not exportable
+        ,-[ file:///test0.st:12:5 ]
+        |
+     12 |     r : REF_TO INT;
+        |     |
+        |     `-- VAR_INPUT 'r' cannot cross a component export: the host has no address in the module to pass
+        |
+        | Note: an {export} FUNCTION takes scalars and STRINGs, as VAR_INPUT
+    ----'
+    [E1509] Error: FUNCTION not exportable
+        ,-[ file:///test0.st:13:5 ]
+        |
+     13 |     p : Pt;
+        |     |
+        |     `-- VAR_INPUT 'p' cannot cross a component export: only a scalar or a STRING can
+        |
+        | Note: an {export} FUNCTION takes scalars and STRINGs, as VAR_INPUT
+    ----'
+    [E1509] Error: FUNCTION not exportable
+        ,-[ file:///test0.st:14:5 ]
+        |
+     14 |     a : ARRAY[0..3] OF BYTE;
+        |     |
+        |     `-- VAR_INPUT 'a' cannot cross a component export: only a scalar or a STRING can
+        |
+        | Note: an {export} FUNCTION takes scalars and STRINGs, as VAR_INPUT
+    ----'
+    [E1509] Error: FUNCTION not exportable
+        ,-[ file:///test0.st:15:5 ]
+        |
+     15 |     c : Counter;
+        |     |
+        |     `-- VAR_INPUT 'c' cannot cross a component export: only a scalar or a STRING can
+        |
+        | Note: an {export} FUNCTION takes scalars and STRINGs, as VAR_INPUT
+    ----'
+    [E1509] Error: FUNCTION not exportable
+        ,-[ file:///test0.st:21:19 ]
+        |
+     21 | FUNCTION Origin : Pt
+        |                   ^|
+        |                    `-- the return type of 'Origin' can only be a scalar or a STRING
+        |
+        | Note: an {export} FUNCTION returns one WIT value
+    ----'
+    [E1509] Error: FUNCTION not exportable
+        ,-[ file:///test0.st:25:20 ]
+        |
+     25 | FUNCTION Nowhere : PInt
+        |                    ^^|^
+        |                      `--- the return type of 'Nowhere' can only be a scalar or a STRING
+        |
+        | Note: an {export} FUNCTION returns one WIT value
+    ----'
+    ");
+}
+
+/// An export takes 16 values, a STRING counting two.
+#[rstest]
+fn invalid_export_more_than_16_values(mut with_db: RootDatabase) {
+    let source = r#"
+{export}
+FUNCTION Sixteen : INT
+VAR_INPUT
+    s1 : STRING; s2 : STRING; s3 : STRING; s4 : STRING;
+    s5 : STRING; s6 : STRING; s7 : STRING; s8 : STRING;
+END_VAR
+    Sixteen := 0;
+END_FUNCTION
+
+{export}
+FUNCTION Seventeen : INT
+VAR_INPUT
+    s1 : STRING; s2 : STRING; s3 : STRING; s4 : STRING;
+    s5 : STRING; s6 : STRING; s7 : STRING; s8 : STRING;
+    n : INT;
+END_VAR
+    Seventeen := n;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1509] Error: FUNCTION not exportable
+        ,-[ file:///test0.st:16:5 ]
+        |
+     16 |     n : INT;
+        |     |
+        |     `-- VAR_INPUT 'n' cannot cross a component export: the export would take more than 16 values
+        |
+        | Note: a component export takes 16 values at most, a STRING counting two
+    ----'
+    ");
+}
+
+/// The name a pragma gives is written as WIT writes it.
+#[rstest]
+fn invalid_export_given_name(mut with_db: RootDatabase) {
+    let source = r#"
+{export 'Read_Coils'}
+FUNCTION A : INT
+    A := 0;
+END_FUNCTION
+
+{export ''}
+FUNCTION B : INT
+    B := 0;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1513] Error: export name not a WIT name
+       ,-[ file:///test0.st:2:9 ]
+       |
+     2 | {export 'Read_Coils'}
+       |         ^^^^^^|^^^^^
+       |               `------- 'Read_Coils' is not a WIT name
+       |
+       | Help: write 'read-coils'
+       |
+       | Note: an export's name is written as WIT writes one, words of lowercase letters and digits joined by '-'
+    ---'
+    [E1513] Error: export name not a WIT name
+       ,-[ file:///test0.st:7:9 ]
+       |
+     7 | {export ''}
+       |         ^|
+       |          `-- '' is not a WIT name
+       |
+       | Note: an export's name is written as WIT writes one, words of lowercase letters and digits joined by '-'
+    ---'
+    ");
+}
+
+/// An export is named by its namespaces' names and its own: one that
+/// leaves a word empty, or has a letter outside ASCII, gives no WIT name,
+/// and the pragma can give one.
+#[rstest]
+fn invalid_export_without_a_wit_name(mut with_db: RootDatabase) {
+    let source = r#"
+{export}
+FUNCTION _Reset : INT
+    _Reset := 0;
+END_FUNCTION
+
+NAMESPACE Été
+    {export}
+    FUNCTION Start : INT
+        Start := 0;
+    END_FUNCTION
+
+    {export 'summer-stop'}
+    FUNCTION Stop : INT
+        Stop := 0;
+    END_FUNCTION
+END_NAMESPACE
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1513] Error: export name not a WIT name
+       ,-[ file:///test0.st:3:10 ]
+       |
+     3 | FUNCTION _Reset : INT
+       |          ^^^|^^
+       |             `---- '_Reset' has no WIT name
+       |
+       | Help: name the export, {export 'name'}
+       |
+       | Note: an export's WIT name is its namespaces' names and its own in lowercase with each '_' written '-', and a WIT name has no empty word and no letter outside ASCII
+    ---'
+    [E1513] Error: export name not a WIT name
+       ,-[ file:///test0.st:9:14 ]
+       |
+     9 |     FUNCTION Start : INT
+       |              ^^|^^
+       |                `---- 'été' has no WIT name
+       |
+       | Help: name the export, {export 'name'}
+       |
+       | Note: an export's WIT name is its namespaces' names and its own in lowercase with each '_' written '-', and a WIT name has no empty word and no letter outside ASCII
+    ---'
+    ");
+}
+
+/// Two exports with one WIT name are one to a host: each is reported,
+/// with the other. `Motion.Scale_Axis`, `Motion_Scale.Axis` and
+/// `motionscale.axis` all come to `motion-scale-axis`, which the component
+/// model compares without its `-`. A name given by the pragma tells them
+/// apart.
+#[rstest]
+fn invalid_exports_with_one_wit_name(mut with_db: RootDatabase) {
+    let source = r#"
+NAMESPACE Motion
+    {export}
+    FUNCTION Scale_Axis : INT
+        Scale_Axis := 0;
+    END_FUNCTION
+END_NAMESPACE
+
+NAMESPACE Motion_Scale
+    {export}
+    FUNCTION Axis : INT
+        Axis := 0;
+    END_FUNCTION
+END_NAMESPACE
+
+NAMESPACE MotionScale
+    {export 'motion-scale-axis-2'}
+    FUNCTION Axis : INT
+        Axis := 0;
+    END_FUNCTION
+END_NAMESPACE
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1513] Error: export name not a WIT name
+        ,-[ file:///test0.st:4:14 ]
+        |
+      4 |     FUNCTION Scale_Axis : INT
+        |              ^^^^^|^^^^
+        |                   `------ 'Scale_Axis' is exported as 'motion-scale-axis', which cannot be told from the export of 'Axis'
+        |
+     11 |     FUNCTION Axis : INT
+        |              ^^|^
+        |                `--- 'Axis' is declared here
+        |
+        | Help: name one of them, {export 'name'}
+        |
+        | Note: an export's WIT name is its namespaces' names and its own, joined by '-', and the component model compares two names without their '-'
+    ----'
+    [E1513] Error: export name not a WIT name
+        ,-[ file:///test0.st:11:14 ]
+        |
+      4 |     FUNCTION Scale_Axis : INT
+        |              ^^^^^|^^^^
+        |                   `------ 'Scale_Axis' is declared here
+        |
+     11 |     FUNCTION Axis : INT
+        |              ^^|^
+        |                `--- 'Axis' is exported as 'motion-scale-axis', which cannot be told from the export of 'Scale_Axis'
+        |
+        | Help: name one of them, {export 'name'}
+        |
+        | Note: an export's WIT name is its namespaces' names and its own, joined by '-', and the component model compares two names without their '-'
+    ----'
+    ");
+}
+
+/// The two exports may be in two files: each file reports its own.
+#[rstest]
+fn invalid_exports_with_one_wit_name_in_two_files(mut with_db: RootDatabase) {
+    let first = r#"
+{export}
+FUNCTION Read_Coils : INT
+    Read_Coils := 0;
+END_FUNCTION
+"#;
+    let second = r#"
+{export 'read-coils'}
+FUNCTION Other : INT
+    Other := 0;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[first, second]), @r"
+    [E1513] Error: export name not a WIT name
+       ,-[ file:///test0.st:3:10 ]
+       |
+     3 | FUNCTION Read_Coils : INT
+       |          ^^^^^|^^^^
+       |               `------ 'Read_Coils' is exported as 'read-coils', which cannot be told from the export of 'Other'
+       |
+       |-[ file:///test1.st:3:10 ]
+       |
+     3 | FUNCTION Other : INT
+       |          ^^|^^
+       |            `---- 'Other' is declared here
+       |
+       | Help: name one of them, {export 'name'}
+       |
+       | Note: an export's WIT name is its namespaces' names and its own, joined by '-', and the component model compares two names without their '-'
+    ---'
+    [E1513] Error: export name not a WIT name
+       ,-[ file:///test1.st:3:10 ]
+       |
+     3 | FUNCTION Other : INT
+       |          ^^|^^
+       |            `---- 'Other' is exported as 'read-coils', which cannot be told from the export of 'Read_Coils'
+       |
+       |-[ file:///test0.st:3:10 ]
+       |
+     3 | FUNCTION Read_Coils : INT
+       |          ^^^^^|^^^^
+       |               `------ 'Read_Coils' is declared here
+       |
+       | Help: name one of them, {export 'name'}
+       |
+       | Note: an export's WIT name is its namespaces' names and its own, joined by '-', and the component model compares two names without their '-'
+    ---'
+    ");
+}
+
+/// An export's parameters are named in WIT as an import's are.
+#[rstest]
+fn invalid_export_parameter_names(mut with_db: RootDatabase) {
+    let source = r#"
+{export}
+FUNCTION Write : INT
+VAR_INPUT x_ : INT; ab : INT; a_b : INT; END_VAR
+    Write := 0;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1513] Error: export name not a WIT name
+       ,-[ file:///test0.st:4:11 ]
+       |
+     4 | VAR_INPUT x_ : INT; ab : INT; a_b : INT; END_VAR
+       |           ^|
+       |            `-- 'x_' has no WIT name
+       |
+       | Note: a parameter's WIT name is its name in lowercase with each '_' written '-', and a WIT name has no empty word and no letter outside ASCII
+    ---'
+    [E1513] Error: export name not a WIT name
+       ,-[ file:///test0.st:4:31 ]
+       |
+     4 | VAR_INPUT x_ : INT; ab : INT; a_b : INT; END_VAR
+       |                     ^|        ^|^
+       |                      `------------- 'ab' is declared here
+       |                                |
+       |                                `--- 'a_b' cannot be told from 'ab' in WIT
+       |
+       | Note: the component model compares two names without their '-'
+    ---'
+    ");
+}
+
+/// `{export}` makes a FUNCTION one a host calls, and nothing else does.
 #[rstest]
 fn valid_export_pragma(mut with_db: RootDatabase) {
     let source = r#"
 {export}
 FUNCTION Scale : REAL
 VAR_INPUT raw : INT; gain : REAL; END_VAR
-VAR_IN_OUT total : REAL; END_VAR
-VAR_OUTPUT clamped : BOOL; END_VAR
     Scale := raw * gain;
 END_FUNCTION
 
