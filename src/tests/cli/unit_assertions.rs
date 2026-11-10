@@ -127,8 +127,8 @@ fn every_assertion_fails_when_it_should_and_only_then() {
         rk::compiler::build_core_with_format(&db, &root, false, OutputFormat::Concise)
             .unwrap_or_else(|report| panic!("the workspace must compile:\n{report}"));
     // Run as `rk test` runs them: on the component, with WASI's clocks.
-    let hosts = rk::component::host_functions(&db, &mir.extern_functions).unwrap();
-    let component = rk::component::wrap(&wasm, "unit", &hosts).expect("the module wraps");
+    let interfaces = rk::component::interfaces(&db, &mir).unwrap();
+    let component = rk::component::wrap(&wasm, "unit", &interfaces).expect("the module wraps");
     let target = rk::test_host::Target::Component(&component.bytes);
 
     let records: BTreeMap<String, TestRecord> = rk::test_host::run_each(target, None, None, |_| {})

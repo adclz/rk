@@ -68,8 +68,8 @@ fn the_tests_read_wasi_s_clocks(mut with_db: db::RootDatabase) {
     "#
     );
     let (mir, core) = compile_to_mir_and_wasm_as_built(&mut with_db, &source);
-    let hosts = rk::component::host_functions(&with_db, &mir.extern_functions).unwrap();
-    let component = rk::component::wrap(&core, "plant", &hosts).unwrap();
+    let interfaces = rk::component::interfaces(&with_db, &mir).unwrap();
+    let component = rk::component::wrap(&core, "plant", &interfaces).unwrap();
     let records = rk::test_host::run_each(Target::Component(&component.bytes), None, None, |_| {})
         .expect("the tests run");
     let failed: Vec<_> = records
@@ -102,8 +102,8 @@ fn an_unwired_host_function_traps_the_test_that_calls_it(mut with_db: db::RootDa
         END_FUNCTION
     "#;
     let (mir, core) = compile_to_mir_and_wasm_as_built(&mut with_db, source);
-    let hosts = rk::component::host_functions(&with_db, &mir.extern_functions).unwrap();
-    let component = rk::component::wrap(&core, "plant", &hosts).unwrap();
+    let interfaces = rk::component::interfaces(&with_db, &mir).unwrap();
+    let component = rk::component::wrap(&core, "plant", &interfaces).unwrap();
     let records = rk::test_host::run_each(Target::Component(&component.bytes), None, None, |_| {})
         .expect("the tests run");
     let by_name = |name: &str| {
@@ -144,8 +144,10 @@ fn a_component_s_backtrace_counts_from_the_component_s_start(mut with_db: db::Ro
         END_FUNCTION
     "#;
     let (mir, core) = compile_to_mir_and_wasm_as_built(&mut with_db, source);
-    let hosts = rk::component::host_functions(&with_db, &mir.extern_functions).unwrap();
-    let component = rk::component::wrap(&core, "plant", &hosts).unwrap().bytes;
+    let interfaces = rk::component::interfaces(&with_db, &mir).unwrap();
+    let component = rk::component::wrap(&core, "plant", &interfaces)
+        .unwrap()
+        .bytes;
     let module_start = wasmparser::Parser::new(0)
         .parse_all(&component)
         .find_map(|payload| match payload {

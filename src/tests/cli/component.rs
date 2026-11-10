@@ -16,6 +16,10 @@ use crate::tests::codegen::{
 
 const CONTROL: &str = debug_format::wit::CONTROL_INTERFACE;
 
+/// The interface the `{export}` FUNCTIONs are in: the project's name, and
+/// `plc` for these tests, which have no project.
+const EXPORTS: &str = "plc";
+
 /// A task that divides by its input.
 const DIVIDER: &str = r#"
     PROGRAM P
@@ -74,17 +78,41 @@ impl Plc {
         P: wasmtime::component::ComponentNamedList + wasmtime::component::Lower,
         R: wasmtime::component::ComponentNamedList + wasmtime::component::Lift,
     {
-        let control = self
+        self.function_of(CONTROL, name)
+    }
+
+    /// The function `name` of the interface the component exports as
+    /// `interface`, typed as the caller says: a type the WIT does not give
+    /// it is refused here.
+    fn function_of<P, R>(&mut self, interface: &str, name: &str) -> TypedFunc<P, R>
+    where
+        P: wasmtime::component::ComponentNamedList + wasmtime::component::Lower,
+        R: wasmtime::component::ComponentNamedList + wasmtime::component::Lift,
+    {
+        let exported = self
             .instance
-            .get_export_index(&mut self.store, None, CONTROL)
-            .expect("the component exports the control interface");
+            .get_export_index(&mut self.store, None, interface)
+            .unwrap_or_else(|| panic!("the component exports `{interface}`"));
         let func = self
             .instance
-            .get_export_index(&mut self.store, Some(&control), name)
+            .get_export_index(&mut self.store, Some(&exported), name)
             .unwrap_or_else(|| panic!("the interface has `{name}`"));
         self.instance
             .get_typed_func::<P, R>(&mut self.store, &func)
             .unwrap_or_else(|e| panic!("`{name}`: {e}"))
+    }
+
+    /// Calls the `{export}` FUNCTION a host knows as `name`.
+    fn call<P, T>(&mut self, name: &str, params: P) -> Result<T, String>
+    where
+        P: wasmtime::component::ComponentNamedList + wasmtime::component::Lower,
+        (Result<T, String>,): wasmtime::component::ComponentNamedList + wasmtime::component::Lift,
+    {
+        let function = self.function_of::<P, (Result<T, String>,)>(EXPORTS, name);
+        function
+            .call(&mut self.store, params)
+            .unwrap_or_else(|e| panic!("`{name}` trapped: {e:#}"))
+            .0
     }
 
     fn init(&mut self) -> Result<(), String> {
@@ -108,14 +136,14 @@ impl Plc {
 }
 
 fn wrap(wasm: &[u8]) -> rk::component::Component {
-    rk::component::wrap(wasm, "plant", &[]).expect("the module wraps")
+    rk::component::wrap(wasm, "plant", &Default::default()).expect("the module wraps")
 }
 
 /// `source` built and wrapped, its own imports typed from its MIR.
 fn build(db: &mut db::RootDatabase, source: &str) -> Result<rk::component::Component, String> {
     let (mir, wasm) = compile_to_mir_and_wasm_as_built(db, source);
-    let hosts = rk::component::host_functions(db, &mir.extern_functions)?;
-    rk::component::wrap(&wasm, "plant", &hosts)
+    let interfaces = rk::component::interfaces(db, &mir)?;
+    rk::component::wrap(&wasm, "plant", &interfaces)
 }
 
 /// A scan through the component: the inputs in, the outputs out.
@@ -210,7 +238,7 @@ fn the_world_imports_what_the_module_calls(mut with_db: db::RootDatabase) {
             Stamp := now();
         END_FUNCTION
     "#;
-    let component = wrap(&compile_to_wasm_as_built(&mut with_db, source));
+    let component = build(&mut with_db, source).expect("the module wraps");
     assert!(
         component
             .world
@@ -243,7 +271,7 @@ fn the_world_imports_what_the_module_calls(mut with_db: db::RootDatabase) {
     let imports: Vec<&str> = ty.imports(&engine).map(|(name, _)| name).collect();
     assert_eq!(imports, ["wasi:clocks/monotonic-clock@0.3.0"]);
     let exports: Vec<&str> = ty.exports(&engine).map(|(name, _)| name).collect();
-    assert_eq!(exports, [CONTROL]);
+    assert_eq!(exports, [CONTROL, EXPORTS]);
 }
 
 /// A module whose import names an interface at a version rk carries no WIT
@@ -260,13 +288,9 @@ fn an_import_at_another_version_is_refused(mut with_db: db::RootDatabase) {
             Stamp := now();
         END_FUNCTION
     "#;
-    let refused = rk::component::wrap(
-        &compile_to_wasm_as_built(&mut with_db, source),
-        "plant",
-        &[],
-    )
-    .err()
-    .expect("the module is refused");
+    let refused = build(&mut with_db, source)
+        .err()
+        .expect("the module is refused");
     assert_eq!(
         refused,
         "the module imports `wasi:clocks/monotonic-clock@0.2.6`, \
@@ -469,6 +493,289 @@ fn a_name_spelled_like_a_wit_keyword_is_escaped(mut with_db: db::RootDatabase) {
     let ty = loaded.component_type();
     let imports: Vec<&str> = ty.imports(&engine).map(|(name, _)| name).collect();
     assert_eq!(imports, ["acme:list/stream@1.0.0", "record"]);
+}
+
+/// FUNCTIONs a host calls.
+const EXPORTED: &str = r#"
+    TYPE Mode : (Off, Slow := 5, Fast); END_TYPE
+    TYPE Percent : INT (0..100); END_TYPE
+
+    {export}
+    FUNCTION Scale : REAL
+    VAR_INPUT raw : INT; gain : REAL; END_VAR
+        Scale := raw * gain;
+    END_FUNCTION
+
+    {export}
+    FUNCTION Divide : LINT
+    VAR_INPUT a : LINT; b : LINT; END_VAR
+        Divide := a / b;
+    END_FUNCTION
+
+    {export}
+    FUNCTION Greet : STRING
+    VAR_INPUT who : STRING[10]; times : USINT; END_VAR
+        IF times = 0 THEN
+            Greet := 'nobody';
+        ELSE
+            Greet := who;
+        END_IF;
+    END_FUNCTION
+
+    {export}
+    FUNCTION Pick : STRING
+    VAR_INPUT left : STRING[4]; right : STRING[4]; END_VAR
+        IF left = right THEN
+            Pick := 'same';
+        ELSE
+            Pick := right;
+        END_IF;
+    END_FUNCTION
+
+    {export}
+    FUNCTION Latin : STRING
+        Latin := 'caf$E9';
+    END_FUNCTION
+
+    {export}
+    FUNCTION Half : Percent
+    VAR_INPUT level : Percent; END_VAR
+        Half := level / 2;
+    END_FUNCTION
+
+    {export 'next-mode'}
+    FUNCTION Next : Mode
+    VAR_INPUT mode : Mode; END_VAR
+        CASE mode OF
+            Mode#Off: Next := Mode#Slow;
+            Mode#Slow: Next := Mode#Fast;
+        ELSE
+            Next := Mode#Off;
+        END_CASE;
+    END_FUNCTION
+
+    {export}
+    FUNCTION Is_Even : BOOL
+    VAR_INPUT n : UDINT; END_VAR
+        Is_Even := n MOD 2 = 0;
+    END_FUNCTION
+
+    {export}
+    FUNCTION Upper : CHAR
+    VAR_INPUT c : CHAR; END_VAR
+        Upper := c;
+        IF c = 'a' THEN
+            Upper := 'A';
+        END_IF;
+    END_FUNCTION
+
+    {export}
+    FUNCTION Wide : LREAL
+    VAR_INPUT x : LREAL; small : SINT; count : UINT; END_VAR
+        Wide := x + small + count;
+    END_FUNCTION
+
+    {export}
+    FUNCTION Mask : WORD
+    VAR_INPUT bits : WORD; END_VAR
+        Mask := bits AND 16#00FF;
+    END_FUNCTION
+
+    {export}
+    FUNCTION Bump : INT
+    VAR_INPUT start_value : INT; END_VAR
+    VAR p : REF_TO INT; END_VAR
+        p := REF(start_value);
+        p^ := p^ + 1;
+        Bump := start_value;
+    END_FUNCTION
+
+    NAMESPACE Motion.Axis
+        {export}
+        FUNCTION Stop
+        END_FUNCTION
+
+        {export}
+        FUNCTION Halt
+        VAR_INPUT why : STRING; END_VAR
+            __RAISE(why);
+        END_FUNCTION
+    END_NAMESPACE
+"#;
+
+/// The world exports the `{export}` FUNCTIONs in one interface named after
+/// the project, each under its WIT name, typed from its declaration, and
+/// each a `result` of what it returns or of the message that stopped it.
+#[rstest]
+fn the_world_exports_the_functions_a_host_calls(mut with_db: db::RootDatabase) {
+    let component = build(&mut with_db, EXPORTED).expect("the module wraps");
+    assert_eq!(
+        component.world,
+        "// The world of `plant`, written by rk at each build.
+package local:plant;
+
+world plc {
+    export rk:plc/control@0.1.0;
+    export plc: interface {
+        scale: func(raw: s16, gain: f32) -> result<f32, string>;
+        divide: func(a: s64, b: s64) -> result<s64, string>;
+        greet: func(who: string, times: u8) -> result<string, string>;
+        pick: func(left: string, right: string) -> result<string, string>;
+        latin: func() -> result<string, string>;
+        half: func(level: s16) -> result<s16, string>;
+        next-mode: func(mode: s32) -> result<s32, string>;
+        is-even: func(n: u32) -> result<bool, string>;
+        upper: func(c: char) -> result<char, string>;
+        wide: func(x: f64, small: s8, count: u16) -> result<f64, string>;
+        mask: func(bits: u16) -> result<u16, string>;
+        bump: func(start-value: s16) -> result<s16, string>;
+        motion-axis-stop: func() -> result<_, string>;
+        motion-axis-halt: func(why: string) -> result<_, string>;
+    }
+}
+"
+    );
+    let engine = engine();
+    let loaded = Component::new(&engine, &component.bytes).expect("a valid component");
+    let ty = loaded.component_type();
+    let exports: Vec<&str> = ty.exports(&engine).map(|(name, _)| name).collect();
+    assert_eq!(exports, [CONTROL, EXPORTS]);
+}
+
+/// A host calls each of them through the types the world gives: what it
+/// passes arrives, and what the FUNCTION returns comes back, whatever its
+/// width.
+#[rstest]
+fn a_host_calls_the_exported_functions(mut with_db: db::RootDatabase) {
+    let component = build(&mut with_db, EXPORTED).expect("the module wraps");
+    let mut plc = Plc::load(&component.bytes);
+    plc.init().unwrap();
+    assert_eq!(plc.call("scale", (-12i16, 0.5f32)), Ok(-6.0f32));
+    assert_eq!(plc.call("divide", (1i64 << 40, 2i64)), Ok(1i64 << 39));
+    assert_eq!(plc.call("greet", ("café", 2u8)), Ok("café".to_string()));
+    assert_eq!(plc.call("greet", ("café", 0u8)), Ok("nobody".to_string()));
+    assert_eq!(plc.call("pick", ("ab", "cdef")), Ok("cdef".to_string()));
+    assert_eq!(plc.call("pick", ("ab", "ab")), Ok("same".to_string()));
+    assert_eq!(plc.call("half", (90i16,)), Ok(45i16));
+    assert_eq!(plc.call("next-mode", (5i32,)), Ok(6i32));
+    assert_eq!(plc.call("next-mode", (77i32,)), Ok(0i32));
+    assert_eq!(plc.call("is-even", (10u32,)), Ok(true));
+    assert_eq!(plc.call("is-even", (u32::MAX,)), Ok(false));
+    assert_eq!(plc.call("upper", ('a',)), Ok('A'));
+    assert_eq!(plc.call("upper", ('é',)), Ok('é'));
+    assert_eq!(plc.call("wide", (0.5f64, -3i8, 65535u16)), Ok(65532.5f64));
+    assert_eq!(plc.call("mask", (0xABCDu16,)), Ok(0x00CDu16));
+    assert_eq!(plc.call("bump", (-1i16,)), Ok(0i16));
+    assert_eq!(plc.call::<_, ()>("motion-axis-stop", ()), Ok(()));
+}
+
+/// What stops a FUNCTION is the error of its result, and the next call
+/// runs: an exception, a STRING longer than its parameter, however long, a
+/// value outside its subrange, and a STRING returned that is not UTF-8.
+/// Nothing traps, so the component's store is never locked.
+#[rstest]
+fn what_stops_an_exported_function_is_an_error(mut with_db: db::RootDatabase) {
+    let component = build(&mut with_db, EXPORTED).expect("the module wraps");
+    let mut plc = Plc::load(&component.bytes);
+    plc.init().unwrap();
+    let too_long = Err("a STRING passed by the host is longer than its parameter".to_string());
+
+    assert_eq!(
+        plc.call::<_, i64>("divide", (1i64, 0i64)),
+        Err("division by zero".to_string())
+    );
+    assert_eq!(plc.call("divide", (9i64, 3i64)), Ok(3i64));
+    assert_eq!(
+        plc.call::<_, ()>("motion-axis-halt", ("pump stuck",)),
+        Err("pump stuck".to_string())
+    );
+
+    // 10 bytes fit `who`, 11 do not: `é` is two.
+    assert_eq!(
+        plc.call("greet", ("abcdefghé", 1u8)),
+        Ok("abcdefghé".to_string())
+    );
+    assert_eq!(
+        plc.call::<_, String>("greet", ("abcdefghié", 1u8)),
+        too_long
+    );
+    let megabyte = "x".repeat(1 << 20);
+    assert_eq!(
+        plc.call::<_, String>("greet", (megabyte.as_str(), 1u8)),
+        too_long
+    );
+    assert_eq!(
+        plc.call::<_, String>("pick", ("ab", megabyte.as_str())),
+        too_long
+    );
+    assert_eq!(
+        plc.call::<_, String>("pick", (megabyte.as_str(), megabyte.as_str())),
+        too_long
+    );
+    assert_eq!(plc.call("pick", ("ab", "cd")), Ok("cd".to_string()));
+
+    assert_eq!(
+        plc.call::<_, i16>("half", (101i16,)),
+        Err("value out of subrange bounds".to_string())
+    );
+    assert_eq!(
+        plc.call::<_, String>("latin", ()),
+        Err("a STRING passed to the host is not UTF-8".to_string())
+    );
+    assert_eq!(plc.call("half", (100i16,)), Ok(50i16));
+}
+
+/// Only the host calls an exported function, so the stack of recursive
+/// calls starts empty at each call: the frames an exception left behind do
+/// not add up until the stack is full.
+#[rstest]
+fn an_exported_function_starts_the_stack_over(mut with_db: db::RootDatabase) {
+    let source = r#"
+        {export}
+        FUNCTION Dive : DINT
+        VAR_INPUT depth : DINT; END_VAR
+        VAR trail : ARRAY[0..15] OF DINT; END_VAR
+            trail[0] := depth;
+            IF depth = 0 THEN
+                __RAISE('bottom');
+            END_IF;
+            Dive := Dive(depth - 1) + trail[0];
+        END_FUNCTION
+    "#;
+    let component = build(&mut with_db, source).expect("the module wraps");
+    let mut plc = Plc::load(&component.bytes);
+    plc.init().unwrap();
+    for call in 0..2_000 {
+        assert_eq!(
+            plc.call::<_, i32>("dive", (40i32,)),
+            Err("bottom".to_string()),
+            "call {call}"
+        );
+    }
+}
+
+/// A project named like a module it imports from has one name for two
+/// interfaces of its world: the build says so.
+#[rstest]
+fn an_export_interface_named_like_an_import_is_refused(mut with_db: db::RootDatabase) {
+    let source = r#"
+        {extern 'plc' 'read'}
+        FUNCTION Read : INT
+        END_FUNCTION
+
+        {export}
+        FUNCTION Twice : INT
+            Twice := Read() * 2;
+        END_FUNCTION
+    "#;
+    assert_eq!(
+        build(&mut with_db, source).err(),
+        Some(
+            "the module imports from `plc`, and exports its FUNCTIONs in the interface `plc`, \
+             named after the project"
+                .to_string()
+        )
+    );
 }
 
 /// WASI's `instant`, as the system clock gives it and the zone takes it.

@@ -23,8 +23,8 @@ fn a_test_name_is_matched_in_any_case(mut with_db: db::RootDatabase) {
         END_FUNCTION
     "#;
     let (mir, core) = compile_to_mir_and_wasm_as_built(&mut with_db, source);
-    let hosts = rk::component::host_functions(&with_db, &mir.extern_functions).unwrap();
-    let component = rk::component::wrap(&core, "plant", &hosts).unwrap();
+    let interfaces = rk::component::interfaces(&with_db, &mir).unwrap();
+    let component = rk::component::wrap(&core, "plant", &interfaces).unwrap();
     let target = rk::test_host::Target::Component(&component.bytes);
     let records: Vec<(String, Option<String>)> =
         rk::test_host::run_each(target, Some("T_SUB"), None, |_| {})
