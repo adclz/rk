@@ -3,7 +3,7 @@
 
 //! `rk test NAME`: which tests a name selects.
 
-use crate::tests::codegen::{compile_to_mir_and_wasm_as_built, with_db};
+use crate::tests::codegen::{compile_tests, with_db};
 use rstest::rstest;
 
 /// A test's name is an identifier, so the filter matches it in any case:
@@ -22,12 +22,9 @@ fn a_test_name_is_matched_in_any_case(mut with_db: db::RootDatabase) {
             __RAISE('t_sub ran');
         END_FUNCTION
     "#;
-    let (mir, core) = compile_to_mir_and_wasm_as_built(&mut with_db, source);
-    let interfaces = rk::component::interfaces(&with_db, &mir).unwrap();
-    let component = rk::component::wrap(&core, "plant", &interfaces).unwrap();
-    let target = rk::test_host::Target::Component(&component.bytes);
+    let build = compile_tests(&mut with_db, source);
     let records: Vec<(String, Option<String>)> =
-        rk::test_host::run_each(target, Some("T_SUB"), None, |_| {})
+        rk::test_host::run_each(&build.component, Some("T_SUB"), None, |_| {})
             .expect("the tests run")
             .into_iter()
             .map(|record| (record.name, record.reason))

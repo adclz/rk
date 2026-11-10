@@ -221,6 +221,15 @@ fn the_component_is_named_after_the_project() {
         rk::compiler::component_path(ws, wasm_codegen::Profile::Release, "Plant_A"),
         built.join("release").join("Plant_A.wasm")
     );
+    // `rk test` builds a module of its own, which lands beside them.
+    assert_eq!(
+        rk::compiler::test_component_path(ws, None, "Plant_A"),
+        built.join("test").join("Plant_A.wasm")
+    );
+    assert_eq!(
+        rk::compiler::test_component_path(ws, Some("z"), "Plant_A"),
+        built.join("test-Oz").join("Plant_A.wasm")
+    );
 }
 
 /// The world imports each WASI interface the module calls, as WASI

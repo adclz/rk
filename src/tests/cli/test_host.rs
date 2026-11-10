@@ -5,8 +5,7 @@
 //! wasmtime-wasi, the zone from the host's own, and every other import a
 //! trap.
 
-use crate::tests::codegen::{compile_to_mir_and_wasm_as_built, with_db};
-use rk::test_host::Target;
+use crate::tests::codegen::{compile_tests, compile_to_mir_and_wasm_as_built, with_db};
 use rstest::rstest;
 
 /// The clocks, declared as `Std.Timers` declares them.
@@ -67,11 +66,9 @@ fn the_tests_read_wasi_s_clocks(mut with_db: db::RootDatabase) {
         END_FUNCTION
     "#
     );
-    let (mir, core) = compile_to_mir_and_wasm_as_built(&mut with_db, &source);
-    let interfaces = rk::component::interfaces(&with_db, &mir).unwrap();
-    let component = rk::component::wrap(&core, "plant", &interfaces).unwrap();
-    let records = rk::test_host::run_each(Target::Component(&component.bytes), None, None, |_| {})
-        .expect("the tests run");
+    let build = compile_tests(&mut with_db, &source);
+    let records =
+        rk::test_host::run_each(&build.component, None, None, |_| {}).expect("the tests run");
     let failed: Vec<_> = records
         .iter()
         .filter(|record| record.reason.is_some())
@@ -101,11 +98,9 @@ fn an_unwired_host_function_traps_the_test_that_calls_it(mut with_db: db::RootDa
         FUNCTION test_does_not
         END_FUNCTION
     "#;
-    let (mir, core) = compile_to_mir_and_wasm_as_built(&mut with_db, source);
-    let interfaces = rk::component::interfaces(&with_db, &mir).unwrap();
-    let component = rk::component::wrap(&core, "plant", &interfaces).unwrap();
-    let records = rk::test_host::run_each(Target::Component(&component.bytes), None, None, |_| {})
-        .expect("the tests run");
+    let build = compile_tests(&mut with_db, source);
+    let records =
+        rk::test_host::run_each(&build.component, None, None, |_| {}).expect("the tests run");
     let by_name = |name: &str| {
         records
             .iter()

@@ -17,8 +17,9 @@ fn rk(args: &[&str], ws: &std::path::Path) -> std::process::Output {
         .expect("run rk")
 }
 
-/// The tests run on the component, which is what lands in `rk_build/debug/`:
-/// the file `rk compile` writes, and no core module.
+/// The tests run on the component, which lands in `rk_build/test/` with no
+/// core module: the debug build, which also tells its host where each raise
+/// is, so no other command writes it.
 #[test]
 fn rk_test_writes_the_component_it_ran() {
     let ws = tempfile::tempdir().unwrap();
@@ -43,11 +44,16 @@ END_FUNCTION
         String::from_utf8_lossy(&out.stdout),
         String::from_utf8_lossy(&out.stderr)
     );
-    let built = ws.path().join("rk_build").join("debug");
+    let built = ws.path().join("rk_build").join("test");
     let component = std::fs::read(built.join("Plant_A.wasm")).expect("the component");
     assert!(wasmparser::Parser::is_component(&component));
     assert!(!built.join("core.wasm").exists(), "and no core module");
-    assert!(built.join("wit").join("world.wit").exists());
+    let world = std::fs::read_to_string(built.join("wit").join("world.wit")).unwrap();
+    assert!(world.contains("import rk:test/raise@0.1.0;"), "{world}");
+    assert!(
+        !ws.path().join("rk_build").join("debug").exists(),
+        "what `rk compile` writes is left alone"
+    );
 }
 
 /// What a failed test wrote is under its failure in the report, on its
