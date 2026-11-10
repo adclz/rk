@@ -887,12 +887,12 @@ pub fn expect_section<'a>(wasm: &'a [u8], name: &str) -> &'a [u8] {
 /// The `{test}` functions a module carries, as `rk test` finds them.
 pub use rk::test_host::discover as discover_tests;
 
-/// Run the module's `{test}` functions on the host `rk test` runs them on, so
-/// what passes here is what passes for a user. `filter` selects by a
-/// substring of the path.
+/// Run the module's `{test}` functions on the host `rk test` runs them on,
+/// the core module called directly, so what passes here is what passes
+/// for a user. `filter` selects by a substring of the path.
 pub fn run_tests(
     wasm: &[u8],
     filter: Option<&str>,
 ) -> Result<Vec<debug_format::test_report::TestRecord>> {
-    rk::test_host::run_each(wasm, filter, None, |_| {})
+    rk::test_host::run_each(rk::test_host::Target::Core(wasm), filter, None, |_| {})
 }
