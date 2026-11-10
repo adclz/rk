@@ -760,8 +760,8 @@ fn lower_module_from_pous<'db>(
         schedule,
         schedule_manifest: None,
         debug_symbols: crate::debug_symbols::DebugSymbols::new(),
-        retain_map: debug_format::RetainMap::new(Vec::new()),
-        located_map: debug_format::LocatedMap::new(Vec::new()),
+        retain_map: debug_format::RetainMap::new(Vec::new(), None),
+        located_map: debug_format::LocatedMap::new(Vec::new(), Vec::new()),
         source_files: Vec::new(),
         stack_size: None,
     };
@@ -822,7 +822,7 @@ fn lower_module_from_pous<'db>(
     module.output_size = bands.output_size;
     module.marker_base = bands.marker_base;
     module.marker_size = bands.marker_size;
-    module.located_map = build_located_map(db, &bands.located, &global_table, &config_locations);
+    module.located_map = build_located_map(db, &bands, &global_table, &config_locations);
 
     // The debug-symbol table, now that every address is final; sorted by
     // path.
@@ -1462,21 +1462,33 @@ fn located_entry<'db>(
 }
 
 /// The located map the module carries: every located variable at its FINAL
-/// address, paired with the address a host binds a channel to. The band
-/// exports say where the three areas are; this says which cell is which
-/// inside them.
+/// address, paired with the address a host binds a channel to, with where
+/// it sits in its area and how large each area is. A component's host has
+/// no band export to read: the offsets are how it finds a cell in the lists
+/// `run-task` takes and returns.
 fn build_located_map<'db>(
     db: &'db dyn WorkspaceDataBase,
-    located: &[crate::memory::LocatedEntry],
+    bands: &crate::memory::MemoryBands,
     globals: &GlobalTable<'db>,
     config_locations: &[&hir::hir_ty::config::ConfigLocation<'db>],
 ) -> debug_format::LocatedMap {
+    use debug_format::LocatedArea;
     use hir::hir_def::pous::variable::LocationArea;
+    let located = &bands.located;
     let area = |a: LocationArea| match a {
-        LocationArea::Input => debug_format::LocatedArea::Input,
-        LocationArea::Output => debug_format::LocatedArea::Output,
-        LocationArea::Marker => debug_format::LocatedArea::Marker,
+        LocationArea::Input => LocatedArea::Input,
+        LocationArea::Output => LocatedArea::Output,
+        LocationArea::Marker => LocatedArea::Marker,
     };
+    // Each area's band: its start, and how large it is.
+    let band = |a: LocatedArea| match a {
+        LocatedArea::Input => (bands.input_base, bands.input_size),
+        LocatedArea::Output => (bands.output_base, bands.output_size),
+        LocatedArea::Marker => (bands.marker_base, bands.marker_size),
+    };
+    // Where a cell is in its area: its place in the list a component's host
+    // exchanges with `run-task`.
+    let offset = |a: LocatedArea, addr: u32| addr.checked_sub(band(a).0);
     // An address no declaration names but VAR_CONFIG gives a variable is
     // typed as that variable is declared, not by its width.
     let configured_type = |address: &hir::hir_def::pous::variable::LocatedAddress| {
@@ -1507,6 +1519,7 @@ fn build_located_map<'db>(
                         .and_then(|(_, ty)| crate::debug_symbols::scalar_sym_ty(ty))
                 }),
             part_of: None,
+            offset: offset(area(e.located.area), e.address),
         })
         .collect();
 
@@ -1560,11 +1573,20 @@ fn build_located_map<'db>(
                     owner: owner.address.clone(),
                     shift: view.shift as u16,
                 }),
+                offset: owner.offset,
             });
         }
     }
     entries.append(&mut parts);
-    debug_format::LocatedMap::new(entries)
+    let areas = [LocatedArea::Input, LocatedArea::Output, LocatedArea::Marker]
+        .into_iter()
+        .filter(|a| entries.iter().any(|e| e.area == *a))
+        .map(|a| debug_format::AreaSize {
+            area: a,
+            size: band(a).1,
+        })
+        .collect();
+    debug_format::LocatedMap::new(entries, areas)
 }
 
 /// Fill in the address and type of each global a body referenced by
