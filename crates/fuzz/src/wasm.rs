@@ -111,7 +111,7 @@ pub(crate) fn decode_sections(wasm: &[u8]) -> Result<Sections, Finding> {
             }
             // The runtime compares the hash to decide whether a retain file
             // still fits: a stale one silently discards retained values.
-            if RetainMap::new(m.ranges.clone()).layout_hash != m.layout_hash {
+            if RetainMap::new(m.ranges.clone(), m.size).layout_hash != m.layout_hash {
                 return Err(bad(
                     debug_format::RETAIN_MAP_SECTION,
                     "layout_hash is not the hash of its own ranges".to_string(),
@@ -132,7 +132,7 @@ pub(crate) fn decode_sections(wasm: &[u8]) -> Result<Sections, Finding> {
                     format!("version {}", m.version),
                 ));
             }
-            if LocatedMap::new(m.entries.clone()).layout_hash != m.layout_hash {
+            if LocatedMap::new(m.entries.clone(), m.areas.clone()).layout_hash != m.layout_hash {
                 return Err(bad(
                     debug_format::LOCATED_MAP_SECTION,
                     "layout_hash is not the hash of its own entries".to_string(),
@@ -593,6 +593,18 @@ fn check_bands(
                 "the module has a retain map but exports no retain band",
             ));
         };
+        // A component's host finds a range in the list `save-retain` returns
+        // by its offset, and sizes that list by the map.
+        if map.size.map(u64::from) != Some(end - start) {
+            return Err(Finding::new(
+                "memory-layout",
+                format!(
+                    "the retain map says the band is {:?} bytes, the module exports {}",
+                    map.size,
+                    end - start
+                ),
+            ));
+        }
         for r in &map.ranges {
             let (a, z) = (r.addr as u64, r.addr as u64 + r.size as u64);
             if a < start || z > end {
@@ -601,6 +613,17 @@ fn check_bands(
                     format!(
                         "retained `{}` at [{a}, {z}) is outside the retain band [{start}, {end})",
                         r.path
+                    ),
+                ));
+            }
+            if r.offset.map(u64::from) != Some(a - start) {
+                return Err(Finding::new(
+                    "memory-layout",
+                    format!(
+                        "retained `{}` is {} bytes into the retain band, the map says {:?}",
+                        r.path,
+                        a - start,
+                        r.offset
                     ),
                 ));
             }
@@ -630,6 +653,29 @@ fn check_bands(
                     format!(
                         "`{}` ({}) at [{a}, {z}) is outside the {area} band [{start}, {end})",
                         v.address, v.name
+                    ),
+                ));
+            }
+            // A component's host finds a cell in the lists `run-task` takes
+            // and returns by its offset, and sizes them by the map.
+            if v.offset.map(u64::from) != Some(a - start) {
+                return Err(Finding::new(
+                    "memory-layout",
+                    format!(
+                        "`{}` is {} bytes into the {area} band, the map says {:?}",
+                        v.address,
+                        a - start,
+                        v.offset
+                    ),
+                ));
+            }
+            if map.area_size(v.area).map(u64::from) != Some(end - start) {
+                return Err(Finding::new(
+                    "memory-layout",
+                    format!(
+                        "the located map says the {area} band is {:?} bytes, the module exports {}",
+                        map.area_size(v.area),
+                        end - start
                     ),
                 ));
             }
