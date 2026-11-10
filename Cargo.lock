@@ -2912,6 +2912,7 @@ dependencies = [
  "tar",
  "tempfile",
  "time",
+ "tokio",
  "toml 0.8.23",
  "topiary-core",
  "wasm_codegen",
@@ -2995,12 +2996,14 @@ dependencies = [
  "static_assertions",
  "tar",
  "tempfile",
+ "tokio",
  "topiary-core",
  "tree-sitter-rk",
  "wasm-encoder 0.244.0",
  "wasm_codegen",
  "wasmparser 0.244.0",
  "wasmtime",
+ "wasmtime-wasi",
 ]
 
 [[package]]

@@ -152,5 +152,9 @@ clap = { workspace = true }
 serde_json = { workspace = true }
 debug_format = { workspace = true }
 wasmtime = "50.0.1"
+# The hosts the console tests build: WASI's standard output and error from
+# wasmtime-wasi, over sinks that are ready, stalled or closed.
+wasmtime-wasi = { version = "50.0.1", default-features = false, features = ["p3"] }
+tokio = { version = "1", default-features = false }
 wasm-encoder = { workspace = true }
 anyhow = "1"

@@ -36,9 +36,13 @@ wasmparser = { workspace = true }
 libc = "0.2"
 # `rk test` runs a module's `{test}` functions on a wasmtime host in-process.
 wasmtime = "50.0.1"
-# The WASI 0.3 clocks `rk test` gives the component it runs. WASI's time zone
-# is unstable, and wasmtime-wasi has none: the test host defines it.
+# The WASI 0.3 clocks and the standard output and error `rk test` gives the
+# component it runs. WASI's time zone is unstable, and wasmtime-wasi has none:
+# the test host defines it.
 wasmtime-wasi = { version = "50.0.1", default-features = false, features = ["p3"] }
+# The trait wasmtime-wasi takes a standard output by: `rk test` keeps what a
+# test writes. wasmtime-wasi builds tokio already.
+tokio = { version = "1", default-features = false }
 # `rk compile` wraps the module into a component, with the WIT it is typed by.
 wit-component = { workspace = true }
 wit-parser = { workspace = true }
