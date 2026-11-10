@@ -137,6 +137,7 @@ pub const BUILTINS: &[(&str, &[Lane], &[Lane])] = &[
     ("f64.pow", &[Lane::F64, Lane::F64], &[Lane::F64]),
     ("f64.sin", &[Lane::F64], &[Lane::F64]),
     ("f64.tan", &[Lane::F64], &[Lane::F64]),
+    ("rk.char_check", &[Lane::I32], &[]),
     ("rk.div_check", &[Lane::I32], &[Lane::I32]),
     ("rk.div_check_i64", &[Lane::I64], &[Lane::I64]),
     ("rk.div_i32_checked", &[Lane::I32, Lane::I32], &[Lane::I32]),
@@ -187,6 +188,7 @@ pub const BUILTINS: &[(&str, &[Lane], &[Lane])] = &[
     ("rk.str_from_i64", &[Lane::I64, Lane::I32, Lane::I32], &[]),
     ("rk.str_from_u32", &[Lane::I32, Lane::I32, Lane::I32], &[]),
     ("rk.str_from_u64", &[Lane::I64, Lane::I32, Lane::I32], &[]),
+    ("rk.utf8_check", &[Lane::I32, Lane::I32], &[]),
     (
         "str.byte_cmp",
         &[Lane::I32, Lane::I32, Lane::I32, Lane::I32],
