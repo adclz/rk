@@ -13,10 +13,10 @@ pub enum Pragma<'db> {
     /// `{must_call}` above a FUNCTION_BLOCK: every instance of it is to be
     /// called, at every scan.
     MustCall(SpanIdent<'db>),
-    /// `{export}` above a FUNCTION: it is a WASM export, under its name.
-    /// Nothing else a workspace declares is, so an optimizer may drop what
-    /// nothing calls.
-    Export(SpanIdent<'db>),
+    /// `{export}` above a FUNCTION: a host calls it, under its WIT name.
+    /// Nothing else a workspace declares is exported, so an optimizer may
+    /// drop what nothing calls.
+    Export(SpanIdent<'db>, ExportPragma),
     Warn(SpanIdent<'db>, WarnPragma),
     Extern(SpanIdent<'db>, ExternPragma),
     Allow(SpanIdent<'db>, AllowPragma),
@@ -29,7 +29,7 @@ impl<'db> Pragma<'db> {
             Pragma::Test(s) => s,
             Pragma::Once(s) => s,
             Pragma::MustCall(s) => s,
-            Pragma::Export(s) => s,
+            Pragma::Export(s, _) => s,
             Pragma::Warn(s, _) => s,
             Pragma::Extern(s, _) => s,
             Pragma::Allow(s, _) => s,
@@ -41,12 +41,21 @@ impl<'db> Pragma<'db> {
             Pragma::Test(_) => "{test}",
             Pragma::Once(_) => "{once}",
             Pragma::MustCall(_) => "{must_call}",
-            Pragma::Export(_) => "{export}",
+            Pragma::Export(_, _) => "{export}",
             Pragma::Warn(_, _) => "{warn}",
             Pragma::Extern(_, _) => "{extern}",
             Pragma::Allow(_, _) => "{allow}",
         }
     }
+}
+
+/// `{export}` or `{export 'name'}` above a FUNCTION.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
+pub struct ExportPragma {
+    /// The WIT name the pragma gives, `{export 'read-coils'}`, with its
+    /// string's span, quotes included. Without one the FUNCTION's own
+    /// names give it ([`crate::hir_ty::exports::export_wit_name`]).
+    pub name: Option<(CompactString, auto_lsp::tree_sitter::Range)>,
 }
 
 /// `{extern 'module' 'name'}` above a FUNCTION: the FUNCTION is a WASM
@@ -173,10 +182,11 @@ pub fn is_wit_name(name: &str) -> bool {
         })
 }
 
-/// A parameter's name as WIT writes it: its letters in lowercase, each `_`
-/// a `-`, as a WIT binding writes `start-address` in Rust or C as
-/// `start_address`. `None` when that is no WIT name: a word is empty
-/// (`x_`, `_x`, `a__b`), or a letter is not ASCII.
+/// A declared name as WIT writes it, a parameter's or an exported
+/// FUNCTION's: its letters in lowercase, each `_` a `-`, as a WIT binding
+/// writes `start-address` in Rust or C as `start_address`. `None` when that
+/// is no WIT name: a word is empty (`x_`, `_x`, `a__b`), or a letter is not
+/// ASCII.
 pub fn wit_parameter_name(name: &str) -> Option<String> {
     let wit: String = name
         .chars()
@@ -261,7 +271,7 @@ pub fn is_once(_db: &dyn WorkspaceDataBase, pragmas: &[Pragma<'_>]) -> bool {
 }
 
 pub fn is_export(_db: &dyn WorkspaceDataBase, pragmas: &[Pragma<'_>]) -> bool {
-    pragmas.iter().any(|p| matches!(p, Pragma::Export(_)))
+    pragmas.iter().any(|p| matches!(p, Pragma::Export(_, _)))
 }
 
 pub fn warn_pragma<'a>(pragmas: &'a [Pragma<'_>]) -> Option<&'a WarnPragma> {
@@ -287,4 +297,26 @@ pub fn extern_pragma<'a, 'db>(
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub struct AllowPragma {
     pub rules: Vec<(CompactString, auto_lsp::tree_sitter::Range)>,
+}
+
+/// `name` as a WIT name, for a project's: its words lowercase, joined by
+/// `-`, a word that starts with a digit kept on the one before (WIT starts
+/// each word with a letter). A name that starts with a digit, or has no
+/// word, gives `plc`.
+pub fn wit_name(name: &str) -> String {
+    let mut words: Vec<String> = Vec::new();
+    for word in name
+        .split(|c: char| !c.is_ascii_alphanumeric())
+        .filter(|word| !word.is_empty())
+    {
+        let word = word.to_ascii_lowercase();
+        match words.last_mut() {
+            Some(last) if word.starts_with(|c: char| c.is_ascii_digit()) => last.push_str(&word),
+            _ => words.push(word),
+        }
+    }
+    match words.first() {
+        Some(first) if first.starts_with(|c: char| c.is_ascii_lowercase()) => words.join("-"),
+        _ => "plc".to_string(),
+    }
 }

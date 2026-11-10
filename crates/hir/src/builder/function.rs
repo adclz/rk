@@ -72,7 +72,8 @@ impl<'db> SemanticIndexBuilder<'db> {
         };
         let spec_id = func.spec.as_ref().map(|spec| spec.cast(self.ast).into());
 
-        let result = Pou::Function(Function::new(
+        let exported = crate::hir_def::pous::pragma::is_export(self.db, &pragmas);
+        let function = Function::new(
             self.db,
             name,
             pragmas,
@@ -84,7 +85,11 @@ impl<'db> SemanticIndexBuilder<'db> {
             spec_id,
             func.into(),
             scope_id,
-        ));
+        );
+        if exported {
+            self.exports.push(function);
+        }
+        let result = Pou::Function(function);
 
         self.register_node(func.into(), HirNode::PouDecl(result));
         self.register_scope(ScopeKind::Pou(result), usings, scope_id, previous_scope);

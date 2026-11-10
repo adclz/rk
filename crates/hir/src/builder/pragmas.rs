@@ -33,8 +33,20 @@ impl<'db> SemanticIndexBuilder<'db> {
                 PragmaKind::MustCallPragma(_) => {
                     result.push(Pragma::MustCall(si));
                 }
-                PragmaKind::ExportPragma(_) => {
-                    result.push(Pragma::Export(si));
+                PragmaKind::ExportPragma(export) => {
+                    let doc = self.file.document(self.db).as_bytes();
+                    let name = export.name.as_ref().and_then(|name| {
+                        let name = name.cast(self.ast);
+                        let text = name.get_text(doc).ok()?;
+                        Some((
+                            compact_str::CompactString::from(&text[1..text.len() - 1]),
+                            name.get_range().to_owned(),
+                        ))
+                    });
+                    result.push(Pragma::Export(
+                        si,
+                        crate::hir_def::pous::pragma::ExportPragma { name },
+                    ));
                 }
                 PragmaKind::WarnPragma(warn) => {
                     if let Some(wp) = self.parse_warn_pragma(warn) {

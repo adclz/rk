@@ -82,6 +82,7 @@ impl<'db> InitInference<'db> {
         self.check_function_specifier(db);
         self.check_return_type(db);
         self.check_extern_import(db);
+        self.check_export_interface(db);
         self.check_config_values(db);
         self.check_connection_constants(db);
         self.check_task_constants(db);

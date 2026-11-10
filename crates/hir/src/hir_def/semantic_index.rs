@@ -106,6 +106,10 @@ pub struct SemanticIndex<'db> {
     /// The file's PROGRAMs keyed by case-folded name, likewise.
     pub program_map: Arc<FxHashMap<Ident, Vec<ProgramDecl<'db>>>>,
 
+    /// Every FUNCTION of the file under an `{export}`, in any namespace, in
+    /// source order.
+    pub exports: Arc<Vec<crate::hir_def::pous::function::Function<'db>>>,
+
     /// Every I/O address the file mentions, with the declarations located
     /// at it: a CONFIGURATION's VAR_GLOBALs and a PROGRAM's VARs, in source
     /// order. An address only written bare in a body has none.
@@ -158,6 +162,7 @@ impl<'db> SemanticIndex<'db> {
             global_pous: Arc::new(vec![]),
             pou_map: Arc::new(FxHashMap::default()),
             program_map: Arc::new(FxHashMap::default()),
+            exports: Arc::new(vec![]),
             located: Arc::new(Default::default()),
             located_mentions: Arc::new(Default::default()),
             errors: vec![],

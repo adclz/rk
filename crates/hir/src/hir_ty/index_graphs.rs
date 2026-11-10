@@ -150,6 +150,37 @@ pub fn file_scope<'db>(
     semantic_index(db, file).scope
 }
 
+/// A file's `{export}` FUNCTIONs keyed by the WIT name each is exported
+/// under, without its `-`: what the component model tells two names apart
+/// by. One with no WIT name is in none. Per file, as [`file_pou_map`] is.
+#[salsa::tracked(returns(ref))]
+pub fn file_export_map<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    file: File,
+) -> Arc<FxHashMap<String, Vec<Function<'db>>>> {
+    let mut map: FxHashMap<String, Vec<Function<'db>>> = FxHashMap::default();
+    for function in semantic_index(db, file).exports.iter() {
+        if let Ok(name) = crate::hir_ty::exports::export_wit_name(db, *function) {
+            map.entry(crate::hir_ty::exports::wit_key(&name))
+                .or_default()
+                .push(*function);
+        }
+    }
+    Arc::new(map)
+}
+
+/// Every `{export}` FUNCTION whose WIT name the component model takes for
+/// `key` ([`file_export_map`]), across all files: a probe per file.
+pub fn exports_named<'db>(db: &'db dyn WorkspaceDataBase, key: &str) -> Vec<Function<'db>> {
+    let mut result = Vec::new();
+    for file in all_files(db) {
+        if let Some(found) = file_export_map(db, file).get(key) {
+            result.extend(found.iter().copied());
+        }
+    }
+    result
+}
+
 /// Extracts namespace declarations from a file's semantic index.
 #[salsa::tracked(returns(ref))]
 pub fn file_namespaces<'db>(

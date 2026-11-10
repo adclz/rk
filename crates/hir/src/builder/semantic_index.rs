@@ -58,6 +58,8 @@ pub struct SemanticIndexBuilder<'db> {
     pub configs: Vec<ConfigDecl<'db>>,
     pub namespaces: Vec<NamespaceDecl<'db>>,
     pub global_pous: Vec<Pou<'db>>,
+    /// Every FUNCTION under an `{export}`, in any namespace.
+    pub exports: Vec<crate::hir_def::pous::function::Function<'db>>,
     /// Every mention of an I/O address, as the nodes are built.
     pub located: Vec<(crate::hir_def::pous::variable::LocatedAddress, HirNode<'db>)>,
 
@@ -86,6 +88,7 @@ impl<'db> SemanticIndexBuilder<'db> {
             configs: vec![],
             namespaces: vec![],
             global_pous: vec![],
+            exports: vec![],
             located: vec![],
             scope_ctr: 0,
             current_scope: global_scope,
@@ -501,6 +504,7 @@ impl<'db> SemanticIndexBuilder<'db> {
             global_pous: Arc::new(self.global_pous),
             pou_map: Arc::new(pou_map),
             program_map: Arc::new(program_map),
+            exports: Arc::new(self.exports),
             located: Arc::new(located),
             located_mentions: Arc::new(located_mentions),
             errors: self.errors,

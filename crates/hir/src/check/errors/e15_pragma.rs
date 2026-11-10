@@ -105,6 +105,66 @@ impl ExternForbiddenKind {
     }
 }
 
+/// What an `{export}` FUNCTION declared that a host cannot pass it or get
+/// back: its export is typed in WIT, whose functions take values and return
+/// one. One code (E1509), one message shape each.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, salsa::Update)]
+pub enum ExportForbiddenSection {
+    /// A `VAR_OUTPUT`: a WIT function returns one value.
+    Output,
+    /// A `VAR_IN_OUT`: the host passes values, not references.
+    InOut,
+    /// A `REF_TO` `VAR_INPUT`: the host has no address in the module.
+    Reference,
+    /// A STRUCT, ARRAY or instance `VAR_INPUT`, which would go as an
+    /// address.
+    AggregateInput,
+    /// The `VAR_INPUT` that takes the export past 16 values, a STRING
+    /// counting two: past them the component model passes the values in
+    /// memory, which the export does not read them from.
+    TooManyValues,
+}
+
+impl ExportForbiddenSection {
+    fn section(self) -> &'static str {
+        match self {
+            Self::Output => "VAR_OUTPUT",
+            Self::InOut => "VAR_IN_OUT",
+            Self::Reference | Self::AggregateInput | Self::TooManyValues => "VAR_INPUT",
+        }
+    }
+
+    fn message(self) -> &'static str {
+        match self {
+            Self::Output => "cannot be a result of the export: a WIT function returns one value",
+            Self::InOut => {
+                "cannot cross a component export: the host passes values, not references"
+            }
+            Self::Reference => {
+                "cannot cross a component export: the host has no address in the module to pass"
+            }
+            Self::AggregateInput => {
+                "cannot cross a component export: only a scalar or a STRING can"
+            }
+            Self::TooManyValues => {
+                "cannot cross a component export: the export would take more than 16 values"
+            }
+        }
+    }
+
+    fn note(self) -> &'static str {
+        match self {
+            Self::Output => "an {export} FUNCTION returns its return value only",
+            Self::InOut | Self::Reference | Self::AggregateInput => {
+                "an {export} FUNCTION takes scalars and STRINGs, as VAR_INPUT"
+            }
+            Self::TooManyValues => {
+                "a component export takes 16 values at most, a STRING counting two"
+            }
+        }
+    }
+}
+
 /// Why an `{export}` FUNCTION has no export to give. One code (E1509), one
 /// message shape each.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, salsa::Update)]
@@ -241,6 +301,42 @@ pub enum PragmaError<'db> {
         func: Function<'db>,
         kind: ExportForbiddenKind,
     },
+    /// What an `{export}` FUNCTION declared that a host cannot pass it or
+    /// get back.
+    ExportForbiddenSection {
+        var: VariableDecl<'db>,
+        kind: ExportForbiddenSection,
+    },
+    /// An `{export}` FUNCTION returning what WIT has no value for here: a
+    /// STRUCT, an ARRAY, an instance or a reference.
+    ExportReturn { func: Function<'db>, ret: Spec<'db> },
+    /// The name an `{export 'name'}` gives is not a WIT name.
+    ExportNameNotWit {
+        name: compact_str::CompactString,
+        span: tree_sitter::Range,
+    },
+    /// An `{export}` FUNCTION one of whose names gives no WIT name: `word`,
+    /// a namespace's or its own.
+    ExportWithoutWitName {
+        func: Function<'db>,
+        word: compact_str::CompactString,
+    },
+    /// Two `{export}` FUNCTIONs whose WIT names the component model takes
+    /// for one, `name`: reported at each, with the other.
+    ExportNamesCollide {
+        func: Function<'db>,
+        other: Function<'db>,
+        name: String,
+    },
+    /// A `VAR_INPUT` of an `{export}` FUNCTION whose name gives no WIT
+    /// name, as [`Self::ExternParameterName`].
+    ExportParameterName { var: VariableDecl<'db> },
+    /// Two `VAR_INPUT`s of an `{export}` FUNCTION with one WIT name, as
+    /// [`Self::ExternParameterNamesCollide`].
+    ExportParameterNamesCollide {
+        var: VariableDecl<'db>,
+        first: VariableDecl<'db>,
+    },
     /// A `{wasm}` pragma outside a FUNCTION body. Only FUNCTION bodies are
     /// scanned for one; anywhere else the statement was silently dropped and
     /// the surrounding body compiled as if it were not there.
@@ -302,7 +398,14 @@ impl<'db> ErrorCode for PragmaError<'db> {
             Self::UnknownWasmOperand { .. } => "E1506",
             Self::WasmSignatureMismatch { .. } => "E1507",
             Self::ExportOutsideFunction { .. } => "E1508",
-            Self::ExportForbidden { .. } => "E1509",
+            Self::ExportForbidden { .. }
+            | Self::ExportForbiddenSection { .. }
+            | Self::ExportReturn { .. } => "E1509",
+            Self::ExportNameNotWit { .. }
+            | Self::ExportWithoutWitName { .. }
+            | Self::ExportNamesCollide { .. }
+            | Self::ExportParameterName { .. }
+            | Self::ExportParameterNamesCollide { .. } => "E1513",
             Self::UnknownPragma { .. } => "E1510",
             Self::TestWithParameter { .. } => "E1511",
         }
@@ -422,7 +525,7 @@ impl<'db> ToIdeDiagnostic<'db> for PragmaError<'db> {
                 }
                 diag
             }
-            Self::ExternParameterName { var } => {
+            Self::ExternParameterName { var } | Self::ExportParameterName { var } => {
                 let mut diag = diag()
                     .message(format!(
                         "'{}' has no WIT name",
@@ -439,7 +542,8 @@ impl<'db> ToIdeDiagnostic<'db> for PragmaError<'db> {
                 );
                 diag
             }
-            Self::ExternParameterNamesCollide { var, first } => {
+            Self::ExternParameterNamesCollide { var, first }
+            | Self::ExportParameterNamesCollide { var, first } => {
                 let mut diag = diag()
                     .message(format!(
                         "'{}' cannot be told from '{}' in WIT",
@@ -508,6 +612,96 @@ impl<'db> ToIdeDiagnostic<'db> for PragmaError<'db> {
                     .range(crate::denormalize(db, file, &anchor.get_span(db)).unwrap_or_default())
                     .call();
                 diag.with_note(kind.note().to_string());
+                diag
+            }
+            Self::ExportForbiddenSection { var, kind } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "{} '{}' {}",
+                        kind.section(),
+                        var.name_with_case(db).text(db),
+                        kind.message(),
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &var.get_name_span(db)).unwrap_or_default())
+                    .call();
+                diag.with_note(kind.note().to_string());
+                diag
+            }
+            Self::ExportReturn { func, ret } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "the return type of '{}' can only be a scalar or a STRING",
+                        func.get_name_with_case(db).text(db),
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &ret.get_span(db)).unwrap_or_default())
+                    .call();
+                diag.with_note("an {export} FUNCTION returns one WIT value".to_string());
+                diag
+            }
+            Self::ExportNameNotWit { name, span } => {
+                let mut diag = diag()
+                    .message(format!("'{name}' is not a WIT name"))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, span).unwrap_or_default())
+                    .call();
+                diag.with_note(
+                    "an export's name is written as WIT writes one, words of lowercase \
+                     letters and digits joined by '-'"
+                        .to_string(),
+                );
+                if let Some(spelling) = crate::hir_def::pous::pragma::wit_spelling(name) {
+                    diag.with_help(format!("write '{spelling}'"));
+                }
+                diag
+            }
+            Self::ExportWithoutWitName { func, word } => {
+                let mut diag = diag()
+                    .message(format!("'{word}' has no WIT name"))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(
+                        crate::denormalize(db, file, &func.get_name_span(db)).unwrap_or_default(),
+                    )
+                    .call();
+                diag.with_note(
+                    "an export's WIT name is its namespaces' names and its own in lowercase \
+                     with each '_' written '-', and a WIT name has no empty word and no \
+                     letter outside ASCII"
+                        .to_string(),
+                );
+                diag.with_help("name the export, {export 'name'}".to_string());
+                diag
+            }
+            Self::ExportNamesCollide { func, other, name } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "'{}' is exported as '{name}', which cannot be told from the export of '{}'",
+                        func.get_name_with_case(db).text(db),
+                        other.get_name_with_case(db).text(db),
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &func.get_name_span(db)).unwrap_or_default())
+                    .call();
+                diag.with_note(
+                    "an export's WIT name is its namespaces' names and its own, joined by \
+                     '-', and the component model compares two names without their '-'"
+                        .to_string(),
+                );
+                diag.with_help("name one of them, {export 'name'}".to_string());
+                diag.with_related(Related::new(
+                    format!(
+                        "'{}' is declared here",
+                        other.get_name_with_case(db).text(db)
+                    ),
+                    other.get_scope_id(db).file(db),
+                    other.get_name_span(db),
+                ));
                 diag
             }
             Self::WasmPragmaOutsideFunction { span } => diag()
