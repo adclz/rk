@@ -133,6 +133,20 @@ impl Plc {
             .expect("run-test returns")
             .0
     }
+
+    fn save_retain(&mut self) -> Vec<u8> {
+        let save = self.func::<(), (Vec<u8>,)>("save-retain");
+        save.call(&mut self.store, ())
+            .expect("save-retain returns")
+            .0
+    }
+
+    fn restore_retain(&mut self, retained: &[u8]) {
+        let restore = self.func::<(&[u8],), ()>("restore-retain");
+        restore
+            .call(&mut self.store, (retained,))
+            .expect("restore-retain returns");
+    }
 }
 
 fn wrap(wasm: &[u8]) -> rk::component::Component {
@@ -154,6 +168,112 @@ fn a_component_runs_its_tasks(mut with_db: db::RootDatabase) {
     assert_eq!(plc.init(), Ok(()));
     let outputs = plc.run_task(0, &4i32.to_le_bytes()).expect("the scan runs");
     assert_eq!(outputs, 250i32.to_le_bytes());
+}
+
+/// A host that has only the component finds each address in the lists
+/// `run-task` takes and returns by the located map, which the component
+/// carries: a value written at an input's offset is the one the program
+/// reads, the one at an output's offset is the one it wrote, and the map
+/// says how long the inputs are. The addresses' numbers are not offsets.
+#[rstest]
+fn a_host_finds_each_address_in_the_lists_by_the_located_map(mut with_db: db::RootDatabase) {
+    let source = r#"
+        PROGRAM P
+        VAR_EXTERNAL a : DINT; b : DINT; total : DINT; big : BOOL; END_VAR
+            total := a + b;
+            big := total > 10;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+        VAR_GLOBAL
+            a     AT %ID8    : DINT;
+            b     AT %ID20   : DINT;
+            total AT %QD4    : DINT;
+            big   AT %QX12.0 : BOOL;
+        END_VAR
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let component = wrap(&compile_to_wasm_as_built(&mut with_db, source));
+    let map = debug_format::LocatedMap::from_msgpack(expect_section(
+        &component.bytes,
+        debug_format::LOCATED_MAP_SECTION,
+    ))
+    .expect("the map decodes");
+    let at = |address: &str| {
+        let entry = map
+            .entries
+            .iter()
+            .find(|e| e.address == address)
+            .unwrap_or_else(|| panic!("the map has {address}"));
+        entry.offset.expect("an offset") as usize..(entry.offset.unwrap() + entry.size) as usize
+    };
+    let size = |area| map.area_size(area).expect("the area's size") as usize;
+
+    let mut inputs = vec![0; size(debug_format::LocatedArea::Input)];
+    inputs[at("%ID8")].copy_from_slice(&7i32.to_le_bytes());
+    inputs[at("%ID20")].copy_from_slice(&5i32.to_le_bytes());
+    let mut plc = Plc::load(&component.bytes);
+    plc.init().unwrap();
+    let outputs = plc.run_task(0, &inputs).expect("the scan runs");
+    assert_eq!(outputs.len(), size(debug_format::LocatedArea::Output));
+    assert_eq!(outputs[at("%QD4")], 12i32.to_le_bytes());
+    assert_eq!(outputs[at("%QX12.0")][0], 1, "TRUE");
+}
+
+/// A host finds each retained value in the list `save-retain` returns by
+/// the retain map's offsets, and gives the list back whole to a new
+/// instance.
+#[rstest]
+fn a_host_finds_each_retained_value_by_the_retain_map(mut with_db: db::RootDatabase) {
+    let source = r#"
+        PROGRAM P
+        VAR RETAIN hours : DINT; starts : DINT; END_VAR
+            starts := starts + 1;
+            hours := 40;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let component = wrap(&compile_to_wasm_as_built(&mut with_db, source));
+    let map = debug_format::RetainMap::from_msgpack(expect_section(
+        &component.bytes,
+        debug_format::RETAIN_MAP_SECTION,
+    ))
+    .expect("the map decodes");
+    let value = |saved: &[u8], path: &str| {
+        let range = map
+            .ranges
+            .iter()
+            .find(|r| r.path == path)
+            .unwrap_or_else(|| panic!("the map has {path}"));
+        let at = range.offset.expect("an offset") as usize;
+        i32::from_le_bytes(saved[at..at + 4].try_into().unwrap())
+    };
+
+    let mut plc = Plc::load(&component.bytes);
+    plc.init().unwrap();
+    plc.run_task(0, &[]).unwrap();
+    plc.run_task(0, &[]).unwrap();
+    let saved = plc.save_retain();
+    assert_eq!(Some(saved.len() as u32), map.size);
+    assert_eq!(value(&saved, "P1.starts"), 2);
+    assert_eq!(value(&saved, "P1.hours"), 40);
+
+    // A power cycle: a new instance, the list given back, one more scan.
+    let mut warm = Plc::load(&component.bytes);
+    warm.init().unwrap();
+    warm.restore_retain(&saved);
+    warm.run_task(0, &[]).unwrap();
+    assert_eq!(value(&warm.save_retain(), "P1.starts"), 3);
 }
 
 /// A division by zero in a scan is an error the host reads, and the next
