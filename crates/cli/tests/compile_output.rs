@@ -130,3 +130,37 @@ fn the_wit_goes_beside_an_output_given() {
     ));
     assert!(ws.path().join("out").join("wit").join("world.wit").exists());
 }
+
+/// An interface of the host's own, named by an interface's name, is a
+/// package rk writes beside rk's own, from the `{extern}` FUNCTIONs that
+/// import it.
+#[test]
+fn the_host_s_own_package_is_written_beside_rk_s() {
+    let ws = workspace();
+    std::fs::write(
+        ws.path().join("display.st"),
+        r#"
+{extern 'acme:display/text@1.0.0' 'show'}
+FUNCTION Show : BOOL
+VAR_INPUT line : STRING; END_VAR
+END_FUNCTION
+"#,
+    )
+    .unwrap();
+    let out = rk(&["compile"], ws.path());
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let wit = ws.path().join("rk_build").join("debug").join("wit");
+    let world = std::fs::read_to_string(wit.join("world.wit")).unwrap();
+    assert!(world.contains("import acme:display/text@1.0.0;"), "{world}");
+    let package =
+        std::fs::read_to_string(wit.join("deps").join("acme-display").join("text.wit")).unwrap();
+    assert!(
+        package.contains("package acme:display@1.0.0;")
+            && package.contains("show: func(line: string) -> bool;"),
+        "{package}"
+    );
+}

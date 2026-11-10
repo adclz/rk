@@ -167,6 +167,35 @@ fn a_failed_check_is_placed_at_its_statement(
     );
 }
 
+/// What an import is passed is checked by a wrapper the tables do not name,
+/// before the host is called: a failed check is placed at the call, as an
+/// inserted check is, and the host is never reached.
+#[rstest]
+fn a_string_an_import_cannot_take_is_placed_at_the_call(mut with_db: db::RootDatabase) {
+    let source = r#"
+        {extern 'host' 'show'}
+        FUNCTION Show : INT
+        VAR_INPUT line : STRING; END_VAR
+        END_FUNCTION
+
+        {test}
+        FUNCTION test_show
+        VAR r : INT; END_VAR
+            r := Show('caf$E9');            // call
+        END_FUNCTION
+    "#;
+    let wasm = compile_to_wasm(&mut with_db, source);
+    let record = only(run(&wasm, None));
+    assert_eq!(
+        record.reason.as_deref(),
+        Some("a STRING passed to the host is not UTF-8")
+    );
+    assert_eq!(
+        calls(&record),
+        [("test_show".to_string(), line_of(source, "// call"))]
+    );
+}
+
 /// A trap is not an exception: it comes back with wasmtime's backtrace, read
 /// as it came, with no second run. Its function indices count the module's
 /// imports first, which the tables do not: one `{extern}` here shifts them.

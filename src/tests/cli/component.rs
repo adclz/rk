@@ -10,7 +10,8 @@ use rstest::rstest;
 use wasmtime::component::{Component, Instance, Linker, TypedFunc};
 
 use crate::tests::codegen::{
-    compile_to_wasm_as_built, compile_with_libraries, expect_section, with_db,
+    compile_to_mir_and_wasm_as_built, compile_to_wasm_as_built, compile_with_libraries,
+    expect_section, with_db,
 };
 
 const CONTROL: &str = debug_format::wit::CONTROL_INTERFACE;
@@ -107,7 +108,14 @@ impl Plc {
 }
 
 fn wrap(wasm: &[u8]) -> rk::component::Component {
-    rk::component::wrap(wasm, "plant").expect("the module wraps")
+    rk::component::wrap(wasm, "plant", &[]).expect("the module wraps")
+}
+
+/// `source` built and wrapped, its own imports typed from its MIR.
+fn build(db: &mut db::RootDatabase, source: &str) -> Result<rk::component::Component, String> {
+    let (mir, wasm) = compile_to_mir_and_wasm_as_built(db, source);
+    let hosts = rk::component::host_functions(db, &mir.extern_functions)?;
+    rk::component::wrap(&wasm, "plant", &hosts)
 }
 
 /// A scan through the component: the inputs in, the outputs out.
@@ -252,14 +260,215 @@ fn an_import_at_another_version_is_refused(mut with_db: db::RootDatabase) {
             Stamp := now();
         END_FUNCTION
     "#;
-    let refused = rk::component::wrap(&compile_to_wasm_as_built(&mut with_db, source), "plant")
-        .err()
-        .expect("the module is refused");
+    let refused = rk::component::wrap(
+        &compile_to_wasm_as_built(&mut with_db, source),
+        "plant",
+        &[],
+    )
+    .err()
+    .expect("the module is refused");
     assert_eq!(
         refused,
         "the module imports `wasi:clocks/monotonic-clock@0.2.6`, \
          which no WIT package rk carries describes"
     );
+}
+
+/// A task that calls the host's own interfaces: one named by a plain name,
+/// one by an interface's name. Its input picks the text it shows.
+const HOST_CALLS: &str = r#"
+    {extern 'modbus' 'read-coils'}
+    FUNCTION ReadCoils : UDINT
+    VAR_INPUT start_address : UINT; count : UINT; END_VAR
+    END_FUNCTION
+
+    {extern 'acme:display/text@1.0.0' 'show'}
+    FUNCTION Show : BOOL
+    VAR_INPUT line : STRING; marker : CHAR; delay : TIME; END_VAR
+    END_FUNCTION
+
+    PROGRAM P
+    VAR_EXTERNAL input : DINT; output : UDINT; END_VAR
+    VAR shown : BOOL; END_VAR
+        output := ReadCoils(start_address := 3, count := 8);
+        IF input = 1 THEN
+            shown := Show(line := 'café', marker := 'x', delay := T#1500ms);
+        ELSIF input = 2 THEN
+            shown := Show(line := 'caf$E9', marker := 'x', delay := T#0s);
+        END_IF;
+    END_PROGRAM
+
+    CONFIGURATION Cfg
+    VAR_GLOBAL
+        input AT %ID0 : DINT;
+        output AT %QD0 : UDINT;
+    END_VAR
+        RESOURCE Res ON CPU
+            TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+            PROGRAM Main WITH T : P;
+        END_RESOURCE
+    END_CONFIGURATION
+"#;
+
+/// The world imports the host's own interfaces as their `{extern}`
+/// FUNCTIONs type them: one named by a plain name is declared in the world,
+/// one named by an interface's name in a package rk writes under `deps/`.
+#[rstest]
+fn the_host_s_own_interfaces_are_typed_from_their_declarations(mut with_db: db::RootDatabase) {
+    let component = build(&mut with_db, HOST_CALLS).expect("the module wraps");
+    assert_eq!(
+        component.world,
+        "// The world of `plant`, written by rk at each build.
+package local:plant;
+
+world plc {
+    import acme:display/text@1.0.0;
+    import modbus: interface {
+        read-coils: func(start-address: u16, count: u16) -> u32;
+    }
+    export rk:plc/control@0.1.0;
+}
+"
+    );
+    let files: Vec<(&str, &str)> = component
+        .wit
+        .iter()
+        .map(|(path, text)| (path.as_str(), text.as_ref()))
+        .collect();
+    assert_eq!(files[0].0, "deps/rk-plc/control.wit");
+    assert_eq!(
+        files[1..],
+        [(
+            "deps/acme-display/text.wit",
+            "// What the module imports from `acme:display/text@1.0.0`, written by rk at each build.
+package acme:display@1.0.0;
+
+interface text {
+    show: func(line: string, marker: char, delay: s32) -> bool;
+}
+"
+        )]
+    );
+    let engine = engine();
+    let loaded = Component::new(&engine, &component.bytes).expect("a valid component");
+    let ty = loaded.component_type();
+    let imports: Vec<&str> = ty.imports(&engine).map(|(name, _)| name).collect();
+    assert_eq!(imports, ["acme:display/text@1.0.0", "modbus"]);
+}
+
+/// A host built on those types runs the component: what a call passes
+/// arrives as WIT values, and what the host returns comes back. A STRING
+/// that is not UTF-8 is an error of the scan, raised before the call, and
+/// the next scan runs: nothing trapped, the store is not locked.
+#[rstest]
+fn a_host_runs_the_component_on_its_own_interfaces(mut with_db: db::RootDatabase) {
+    let component = build(&mut with_db, HOST_CALLS).expect("the module wraps");
+    type Shown = std::sync::Arc<std::sync::Mutex<Vec<(String, char, i32)>>>;
+    let shown: Shown = Default::default();
+    let host = shown.clone();
+    let mut plc = Plc::load_with(&component.bytes, move |linker| {
+        let mut modbus = linker.instance("modbus").unwrap();
+        modbus
+            .func_wrap("read-coils", |_, (start, count): (u16, u16)| {
+                Ok((u32::from(start) * 100 + u32::from(count),))
+            })
+            .unwrap();
+        let mut display = linker.instance("acme:display/text@1.0.0").unwrap();
+        display
+            .func_wrap(
+                "show",
+                move |_, (line, marker, delay): (String, char, i32)| {
+                    host.lock().unwrap().push((line, marker, delay));
+                    Ok((true,))
+                },
+            )
+            .unwrap();
+    });
+    plc.init().unwrap();
+    assert_eq!(
+        plc.run_task(0, &1i32.to_le_bytes()),
+        Ok(308u32.to_le_bytes().to_vec())
+    );
+    assert_eq!(
+        plc.run_task(0, &2i32.to_le_bytes()),
+        Err("a STRING passed to the host is not UTF-8".to_string())
+    );
+    assert_eq!(
+        plc.run_task(0, &1i32.to_le_bytes()),
+        Ok(308u32.to_le_bytes().to_vec())
+    );
+    assert_eq!(
+        *shown.lock().unwrap(),
+        [
+            ("café".to_string(), 'x', 1500),
+            ("café".to_string(), 'x', 1500)
+        ]
+    );
+}
+
+/// Two FUNCTIONs may import one function of the host when they type it
+/// alike; typed two ways, the host could define it only one, and the build
+/// is refused with both named.
+#[rstest]
+fn one_function_imported_with_two_signatures_is_refused(mut with_db: db::RootDatabase) {
+    let source = r#"
+        {extern 'modbus' 'read'}
+        FUNCTION ReadInt : INT
+        VAR_INPUT address : UINT; END_VAR
+        END_FUNCTION
+
+        {extern 'modbus' 'read'}
+        FUNCTION ReadWord : WORD
+        VAR_INPUT address : UINT; END_VAR
+        END_FUNCTION
+
+        {extern 'modbus' 'write'}
+        FUNCTION WriteOne : BOOL
+        VAR_INPUT address : UINT; END_VAR
+        END_FUNCTION
+
+        {extern 'modbus' 'write'}
+        FUNCTION WriteAgain : BOOL
+        VAR_INPUT register : UINT; END_VAR
+        END_FUNCTION
+    "#;
+    assert_eq!(
+        build(&mut with_db, source).err(),
+        Some(
+            "`ReadInt` and `ReadWord` import `read` from `modbus` with two signatures, \
+             and the host has one function under that name"
+                .to_string()
+        )
+    );
+}
+
+/// A name spelled like a WIT keyword is written after a `%` in the WIT rk
+/// writes, wherever it stands, and the host finds it under its own name.
+#[rstest]
+fn a_name_spelled_like_a_wit_keyword_is_escaped(mut with_db: db::RootDatabase) {
+    let source = r#"
+        {extern 'acme:list/stream@1.0.0' 'type'}
+        FUNCTION Kind : INT
+        VAR_INPUT list : INT; END_VAR
+        END_FUNCTION
+
+        {extern 'record' 'use'}
+        FUNCTION UseIt : INT
+        END_FUNCTION
+    "#;
+    let component = build(&mut with_db, source).expect("the module wraps");
+    assert!(
+        component.world.contains("import acme:%list/%stream@1.0.0;")
+            && component.world.contains("import %record: interface {")
+            && component.world.contains("%use: func() -> s16;"),
+        "{}",
+        component.world
+    );
+    let engine = engine();
+    let loaded = Component::new(&engine, &component.bytes).expect("a valid component");
+    let ty = loaded.component_type();
+    let imports: Vec<&str> = ty.imports(&engine).map(|(name, _)| name).collect();
+    assert_eq!(imports, ["acme:list/stream@1.0.0", "record"]);
 }
 
 /// WASI's `instant`, as the system clock gives it and the zone takes it.
