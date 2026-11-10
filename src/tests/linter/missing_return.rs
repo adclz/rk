@@ -130,7 +130,7 @@ END_FUNCTION
 #[rstest]
 fn extern_function_is_exempt(mut with_db: RootDatabase) {
     let source = r#"
-        {extern 'acme:io@1' 'poll'}
+        {extern 'acme:io/modbus@1.0.0' 'poll'}
         FUNCTION MB_POLL : DINT
         VAR_INPUT
             id : DINT;
