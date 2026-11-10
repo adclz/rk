@@ -16,6 +16,7 @@ mod release;
 mod report;
 mod stack_size;
 mod test_filter;
+mod test_host;
 mod unit_assertions;
 mod validation;
 mod watcher;
