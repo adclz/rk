@@ -50,6 +50,7 @@ mod profile_swap;
 mod recursion;
 mod ref_to;
 mod references;
+mod retain_map;
 mod retain_structs;
 mod return_value;
 mod schedule;

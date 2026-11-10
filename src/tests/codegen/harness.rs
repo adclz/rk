@@ -808,7 +808,7 @@ fn sole_function_export(module: &Module) -> Result<String> {
 /// The `located-map` section, or an empty map when the module carries none.
 fn located_map(wasm: &[u8]) -> Result<debug_format::LocatedMap> {
     let Some(data) = custom_section(wasm, debug_format::LOCATED_MAP_SECTION) else {
-        return Ok(debug_format::LocatedMap::new(Vec::new()));
+        return Ok(debug_format::LocatedMap::new(Vec::new(), Vec::new()));
     };
     let map = debug_format::LocatedMap::from_msgpack(data)
         .context("decoding the `located-map` section")?;
