@@ -73,7 +73,13 @@ impl<'db> InitInference<'db> {
                 .to_diagnostic(db, file),
             );
         }
-        if !is_wit_name(&pragma.name) {
+        // A WASI import may also be a stream's or a future's built-in,
+        // under the name of the function it serves.
+        let builtin = match pragma.is_wasi() {
+            true => crate::hir_def::pous::pragma::builtin_name(&pragma.name),
+            false => None,
+        };
+        if !is_wit_name(&pragma.name) && builtin.is_none() {
             self.errors.push(
                 PragmaError::ExternFunctionName {
                     name: pragma.name.clone(),
@@ -81,6 +87,34 @@ impl<'db> InitInference<'db> {
                 }
                 .to_diagnostic(db, file),
             );
+        }
+        if let Some((builtin, _)) = builtin {
+            use crate::check::errors::e15_pragma::BuiltinMisfit;
+            use crate::hir_ty::async_import::{AsyncKind, async_import, stream_write_shaped};
+            let copies = crate::hir_def::pous::pragma::builtin_copies(builtin);
+            let why = match (block.is_some(), copies) {
+                (false, true) => Some(BuiltinMisfit::Waits),
+                (true, false) => Some(BuiltinMisfit::Instant),
+                (true, true) if builtin != "stream-write" => Some(BuiltinMisfit::NoBlock),
+                _ => None,
+            };
+            if let Some(why) = why {
+                self.errors.push(
+                    PragmaError::StreamBuiltin {
+                        name: pragma.name.clone(),
+                        span: pragma.name_span,
+                        why,
+                    }
+                    .to_diagnostic(db, file),
+                );
+            } else if let Some(block) = block
+                && let Some(import) = async_import(db, block)
+                && import.kind == AsyncKind::StreamWrite
+                && !stream_write_shaped(db, &import)
+            {
+                self.errors
+                    .push(PragmaError::StreamWriteVariables { block }.to_diagnostic(db, file));
+            }
         }
         // An async import's DONE.
         if let Some(block) = block

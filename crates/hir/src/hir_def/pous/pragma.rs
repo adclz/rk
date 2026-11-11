@@ -185,6 +185,46 @@ pub fn is_wit_name(name: &str) -> bool {
         })
 }
 
+/// The component model's built-ins for a stream or a future that a core
+/// module may import, each beside a function whose type has the stream or
+/// the future, under that function's name: `[stream-new-0]write-via-stream`
+/// is `stream.new` for the first stream or future of `write-via-stream`'s
+/// type. Its cancels are left out: without a flag wasmtime has off by
+/// default, a cancel blocks, which a scan may not.
+pub const STREAM_BUILTINS: &[&str] = &[
+    "stream-new",
+    "stream-read",
+    "stream-write",
+    "stream-drop-readable",
+    "stream-drop-writable",
+    "future-new",
+    "future-read",
+    "future-write",
+    "future-drop-readable",
+    "future-drop-writable",
+];
+
+/// A built-in's import name, `[stream-new-0]write-via-stream`, read as the
+/// built-in and the function it serves; `None` for any other name.
+pub fn builtin_name(name: &str) -> Option<(&str, &str)> {
+    let (inside, function) = name.strip_prefix('[')?.split_once(']')?;
+    let (builtin, place) = inside.rsplit_once('-')?;
+    (STREAM_BUILTINS.contains(&builtin)
+        && !place.is_empty()
+        && place.bytes().all(|b| b.is_ascii_digit())
+        && is_wit_name(function))
+    .then_some((builtin, function))
+}
+
+/// Whether a built-in copies into or out of its stream or future, and so
+/// waits for the other end: a read or a write.
+pub fn builtin_copies(builtin: &str) -> bool {
+    matches!(
+        builtin,
+        "stream-read" | "stream-write" | "future-read" | "future-write"
+    )
+}
+
 /// A declared name as WIT writes it, a parameter's or an exported
 /// FUNCTION's: its letters in lowercase, each `_` a `-`, as a WIT binding
 /// writes `start-address` in Rust or C as `start_address`. `None` when that

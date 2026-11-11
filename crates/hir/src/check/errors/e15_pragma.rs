@@ -20,6 +20,19 @@ use ide_diagnostic::IdeDiagnostic;
 use ide_diagnostic::Related;
 use ide_diagnostic::diag;
 
+/// Why a stream's or a future's built-in does not fit the POU its `{extern}`
+/// stands on (E1516).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, salsa::Update)]
+pub enum BuiltinMisfit {
+    /// A read or a write, which waits for the other end, on a FUNCTION.
+    Waits,
+    /// A built-in that returns at once on an `{extern async}` block.
+    Instant,
+    /// A read, or a future's write, on an `{extern async}` block: a block
+    /// imports a call or a stream's write.
+    NoBlock,
+}
+
 /// What an async import's FUNCTION_BLOCK declares besides its VAR_INPUTs and
 /// VAR_OUTPUTs (E1502).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, salsa::Update)]
@@ -311,6 +324,16 @@ pub enum PragmaError<'db> {
         span: tree_sitter::Range,
         why: ModuleNameError,
     },
+    /// A stream's or a future's built-in, `name`, imported where it does
+    /// not fit, anchored at the name.
+    StreamBuiltin {
+        name: compact_str::CompactString,
+        span: tree_sitter::Range,
+        why: BuiltinMisfit,
+    },
+    /// A stream write whose variables are not the built-in's, anchored at
+    /// the block's name ([`crate::hir_ty::async_import::stream_write_shaped`]).
+    StreamWriteVariables { block: FunctionBlock<'db> },
     /// An `{extern}`'s name that is not a WIT name.
     ExternFunctionName {
         name: compact_str::CompactString,
@@ -453,6 +476,7 @@ impl<'db> ErrorCode for PragmaError<'db> {
             Self::ExternWithBody { .. } | Self::ExternBlockMember { .. } => "E1502",
             Self::DoneOutput { .. } => "E1514",
             Self::AsyncImportInFrame { .. } => "E1515",
+            Self::StreamBuiltin { .. } | Self::StreamWriteVariables { .. } => "E1516",
             Self::ExternModuleName { .. }
             | Self::ExternFunctionName { .. }
             | Self::ExternParameterName { .. }
@@ -600,6 +624,64 @@ impl<'db> ToIdeDiagnostic<'db> for PragmaError<'db> {
                 {
                     diag.with_help(format!("write '{spelling}'"));
                 }
+                diag
+            }
+            Self::StreamBuiltin { name, span, why } => {
+                let (message, note, help) = match why {
+                    BuiltinMisfit::Waits => (
+                        format!("'{name}' waits for the other end"),
+                        "a read or a write of a stream or a future waits for the other end, \
+                         which only the calls of an {extern async} FUNCTION_BLOCK can",
+                        Some("import it with {extern async} on a FUNCTION_BLOCK"),
+                    ),
+                    BuiltinMisfit::Instant => (
+                        format!("'{name}' returns at once"),
+                        "an {extern async} FUNCTION_BLOCK imports a call that may not return \
+                         at once",
+                        Some("import it with {extern} on a FUNCTION"),
+                    ),
+                    BuiltinMisfit::NoBlock => (
+                        format!("'{name}' is no call and no stream write"),
+                        "an {extern async} FUNCTION_BLOCK imports the call of an async func \
+                         or the write of a stream",
+                        None,
+                    ),
+                };
+                let mut diag = diag()
+                    .message(message)
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, span).unwrap_or_default())
+                    .call();
+                diag.with_note(note.to_string());
+                if let Some(help) = help {
+                    diag.with_help(help.to_string());
+                }
+                diag
+            }
+            Self::StreamWriteVariables { block } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "'{}' does not declare a stream write's variables",
+                        block.name_with_case(db).text(db)
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(
+                        crate::denormalize(db, file, &block.get_name_span(db)).unwrap_or_default(),
+                    )
+                    .call();
+                diag.with_note(
+                    "a stream write takes the stream's writing end, a UDINT, then the bytes, \
+                     a STRING, and gives after DONE how many went, a UDINT, then whether the \
+                     reader left, a BOOL"
+                        .to_string(),
+                );
+                diag.with_help(
+                    "declare the VAR_INPUTs stream : UDINT and data : STRING, and the \
+                     VAR_OUTPUTs written : UDINT and closed : BOOL after DONE"
+                        .to_string(),
+                );
                 diag
             }
             Self::ExternFunctionName { name, span } => {

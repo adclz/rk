@@ -42,9 +42,35 @@ pub fn is_done<'db>(db: &'db dyn WorkspaceDataBase, var: VariableDecl<'db>) -> b
         )
 }
 
+/// What an async import's call is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, salsa::Update)]
+pub enum AsyncKind {
+    /// A call of the host's `async func`: a subtask, whose result is
+    /// written into the block's instance.
+    Call,
+    /// The component model's `stream.write`, imported as
+    /// `[stream-write-N]f` beside a function `f` whose type has the stream:
+    /// a copy of bytes into the stream's writing end, which ends when the
+    /// reader has taken some or left. It takes the end and the bytes, a
+    /// STRING, unchecked, and gives how many went and whether the reader
+    /// left.
+    StreamWrite,
+}
+
+impl AsyncKind {
+    /// The kind of the import an `{extern async}` names `name`.
+    pub fn of(name: &str) -> AsyncKind {
+        match crate::hir_def::pous::pragma::builtin_name(name) {
+            Some(("stream-write", _)) => AsyncKind::StreamWrite,
+            _ => AsyncKind::Call,
+        }
+    }
+}
+
 /// An async import's variables, each in its part.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, salsa::Update)]
 pub struct AsyncImport<'db> {
+    pub kind: AsyncKind,
     pub done: VariableDecl<'db>,
     /// The call's parameters: the VAR_INPUTs, in declaration order.
     pub params: Vec<VariableDecl<'db>>,
@@ -65,9 +91,10 @@ pub fn async_import<'db>(
     db: &'db dyn WorkspaceDataBase,
     fb: FunctionBlock<'db>,
 ) -> Option<AsyncImport<'db>> {
-    if !is_async_import(db, fb) {
-        return None;
-    }
+    let (_, pragma) = fb
+        .extern_pragma(db)
+        .filter(|(_, pragma)| pragma.asynchronous)?;
+    let kind = AsyncKind::of(&pragma.name);
     let variables = fb.variables(db);
     let done = variables.iter().copied().find(|var| is_done(db, *var))?;
     let of_kind = |kind: VariableKind| {
@@ -78,10 +105,27 @@ pub fn async_import<'db>(
             .collect::<Vec<_>>()
     };
     Some(AsyncImport {
+        kind,
         done,
         params: of_kind(VariableKind::Input),
         results: of_kind(VariableKind::Output),
     })
+}
+
+/// Whether `import`, a stream write, declares the built-in's variables:
+/// the stream's writing end, a UDINT, then the bytes, a STRING, and after
+/// DONE how many went, a UDINT, then whether the reader left, a BOOL.
+pub fn stream_write_shaped(db: &dyn WorkspaceDataBase, import: &AsyncImport<'_>) -> bool {
+    let is = |var: &VariableDecl<'_>, spec: ElementarySpec| {
+        var.spec(db).infer(db).normalize(db) == Type::Elementary(spec)
+    };
+    matches!(
+        import.params.as_slice(),
+        [end, data] if is(end, ElementarySpec::UDInt) && is(data, ElementarySpec::String)
+    ) && matches!(
+        import.results.as_slice(),
+        [written, closed] if is(written, ElementarySpec::UDInt) && is(closed, ElementarySpec::Bool)
+    )
 }
 
 /// How many values the call's parameters flatten to, a STRING counting
