@@ -254,8 +254,10 @@ END_PROGRAM
 - Its `DONE : BOOL` is its own and no part of the function's signature (`E1514`). It is TRUE in the call of the block that saw the call finish, and FALSE in every other.
 - Its other `VAR_OUTPUT` are the fields of the result, written when the call finishes, as an `{extern}` FUNCTION's are.
 - A block that is not called leaves its call running, and the next call of the block sees it finish before it starts another.
+- The block is its call: it has no statements, METHOD, EXTENDS or IMPLEMENTS (`E1502`).
 
 The host writes the result into the block's instance at a later scan, so the instance lives in a PROGRAM, a FUNCTION_BLOCK or a VAR_GLOBAL, never in a FUNCTION's or a METHOD's variables or a VAR_TEMP (`E1515`).
+A FUNCTION can still call one it does not hold: the caller's, handed over as VAR_IN_OUT, or a global's, through VAR_EXTERNAL.
 REQ, BUSY or any other control a block's users need is written in ST, by a block that calls it.
 A call that has started cannot be cancelled: the component model's cancel needs a flag wasmtime has off by default.
 
