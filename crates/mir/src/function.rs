@@ -83,8 +83,9 @@ pub struct MirExternFunction {
     /// Import field name.
     pub import_name: CompactString,
     pub params: Vec<MirParam>,
-    /// Scalar `VAR_OUTPUT` results, in declaration order; the wasm results
-    /// are these followed by `return_type` last.
+    /// Scalar `VAR_OUTPUT` results, in declaration order. The import returns
+    /// the record of these and `return_type` last: one value when it has one
+    /// field, and otherwise written at an address the call passes.
     pub out_results: Vec<(Ident, MirType)>,
     pub return_type: Option<MirType>,
     /// Whether the import is re-exported under its name.
@@ -92,7 +93,8 @@ pub struct MirExternFunction {
 }
 
 impl MirExternFunction {
-    /// The wasm results in wire order: outputs, then the return type last.
+    /// The fields of what the import returns: its outputs, then the return
+    /// type last.
     pub fn results(&self) -> impl Iterator<Item = &MirType> {
         self.out_results
             .iter()
