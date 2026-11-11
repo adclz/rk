@@ -253,6 +253,7 @@ pub const HEADERS: &[(&str, &str)] = &[
     ("E1513", "export name not a WIT name"),
     ("E1514", "async import without its DONE"),
     ("E1515", "async import in a call's frame"),
+    ("E1516", "stream built-in that does not fit its declaration"),
     ("L0001", "{info} notice"),
     ("L0002", "{warn} notice"),
     ("L0003", "pragma without effect on the POU"),
