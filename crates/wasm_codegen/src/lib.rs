@@ -9,6 +9,7 @@ pub mod emit_expr;
 pub mod emit_stmt;
 pub mod mir_cast;
 
+mod async_call;
 mod builtins;
 pub mod canonical;
 mod console;
@@ -748,8 +749,9 @@ impl<'a> WasmGen<'a> {
         }
         // 3b. An import passed a STRING or a CHAR is called through a
         //     wrapper that checks them first, after the user functions.
+        // An async call's block checks them itself, before the call.
         for (at, ext_fn) in self.module.extern_functions.iter().enumerate() {
-            if ext_fn.params.iter().any(|p| import_check(&p.ty).is_some()) {
+            if !ext_fn.asynchronous && ext_fn.params.iter().any(|p| import_check(&p.ty).is_some()) {
                 index_remap.insert(ext_fn.index, wasm_idx);
                 self.import_wrappers.push((at, wasm_idx));
                 wasm_idx += 1;
@@ -1174,6 +1176,18 @@ impl<'a> WasmGen<'a> {
     /// ([`canonical`]).
     fn import_signature(&self, ext_fn: &MirExternFunction) -> (Vec<ValType>, Vec<ValType>) {
         let (mut params, _) = build_signature(&ext_fn.params, &None);
+        // Lowered async: the parameters, or past 4 values the address of a
+        // tuple of them, the address the result is written at, and the
+        // call's status and handle back.
+        if ext_fn.asynchronous {
+            if params.len() > hir::hir_ty::async_import::MAX_FLAT_ASYNC_PARAMS {
+                params = vec![ValType::I32];
+            }
+            if ext_fn.results().next().is_some() {
+                params.push(ValType::I32);
+            }
+            return (params, vec![ValType::I32]);
+        }
         let results: Vec<ValType> = ext_fn
             .results()
             .map(|ty| {
@@ -1307,6 +1321,11 @@ impl<'a> WasmGen<'a> {
     }
 
     fn emit_function(&mut self, func: &MirFunction) {
+        // An async import's block: its body is the call's.
+        if let Some(call) = self.module.async_calls.get(&func.name).cloned() {
+            self.emit_async_body(func, &call);
+            return;
+        }
         if func.is_test {
             self.emit_test_function(func);
             return;
