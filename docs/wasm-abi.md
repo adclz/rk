@@ -93,6 +93,40 @@ export plant: interface {
 }
 ```
 
+A FUNCTION with `VAR_OUTPUT` returns a record, named as the function is with `-outputs` after it: each output, named as a parameter is, in the order they are declared, then the return value, named as the function is.
+So this function:
+
+```st
+{export}
+FUNCTION Measure : REAL
+	VAR_INPUT
+		raw: INT;
+	END_VAR
+	VAR_OUTPUT
+		unit: STRING[8];
+		clamped: BOOL;
+	END_VAR
+	unit := 'mbar';
+	clamped := raw > 1000;
+	Measure := raw;
+END_FUNCTION
+```
+
+is this export:
+
+```wit
+export plant: interface {
+    record measure-outputs {
+        unit: string,
+        clamped: bool,
+        measure: f32,
+    }
+    measure: func(raw: s16) -> result<measure-outputs, string>;
+}
+```
+
+A `VAR_OUTPUT` named as the function is would be a second field of that name (`E1513`), and a record named as another function of the interface would be a second item of that name, which the build refuses.
+
 The result is what the FUNCTION returns, or the message of the exception that stopped it.
 An exception never leaves the component, where it would be a trap, and a trap stops the whole PLC.
 What a host passes is checked the same way, before the FUNCTION runs:
@@ -102,8 +136,8 @@ What a host passes is checked the same way, before the FUNCTION runs:
 
 And so is what it gets back: a `STRING` that is not UTF-8 and a `CHAR` that is no character are the errors an import raises, below.
 
-The component model passes values, not addresses, and a WIT function returns one value.
-So an export has no `VAR_OUTPUT`, `VAR_IN_OUT`, `REF_TO`, STRUCT, ARRAY or instance, and takes 16 values at most, a `STRING` counting two (`E1509`).
+The component model passes values, not addresses.
+So an export has no `VAR_IN_OUT`, `REF_TO`, STRUCT, ARRAY or instance, and takes 16 values at most, a `STRING` counting two (`E1509`).
 
 A host function declared with `{extern 'module' 'name'}` is an import.
 Its module and its name are written as WIT writes them, and rk converts neither (`E1512`):
@@ -113,7 +147,7 @@ Its module and its name are written as WIT writes them, and rk converts neither 
 
 An import from a module other than WASI's is typed in WIT from its declaration, in the `wit/` folder `rk compile` writes beside the component.
 A module named by a WIT name is an interface the world declares itself, and one named by an interface's name is a package under `wit/deps/`.
-Each `VAR_INPUT` is a parameter and the return type is the result, named and typed as an export's are, except that an import returns no `STRING`.
+Each `VAR_INPUT` is a parameter, and the return type is the result, or the record of the `VAR_OUTPUT` and the return type, named and typed as an export's are, except that an import returns no `STRING`.
 
 So this declaration:
 
@@ -135,7 +169,7 @@ import modbus: interface {
 }
 ```
 
-Like an export, such an import has no `VAR_IN_OUT`, `VAR_OUTPUT`, `REF_TO`, STRUCT, ARRAY or instance, and takes 16 values at most, a `STRING` counting two (`E1502`).
+Like an export, such an import has no `VAR_IN_OUT`, `REF_TO`, STRUCT, ARRAY or instance, and takes 16 values at most, a `STRING` counting two (`E1502`).
 
 The host reads a `STRING` as text, so it has to be UTF-8, and a `CHAR` has to be a Unicode character.
 Each call checks what it passes before the host is called:
@@ -147,9 +181,12 @@ A `__TRY` catches them like any exception, see [Exceptions](exceptions.md).
 Unchecked, the component model would trap on them, and a trap stops the whole PLC.
 
 In the core module, a `STRING` input is `(ptr, len)` and a scalar is its lane, as in the first table.
+A record of one field is that field.
+A record of two fields or more is written by the host at an address the call passes last: each field at the next multiple of its size, a `BOOL` and an 8-bit integer in one byte, a 16-bit one in two.
 
-A WASI import keeps the types WASI's WIT gives it, in their core form: `VAR_INPUT` are the parameters and the return type the result.
+A WASI import keeps the types WASI's WIT gives it, in their core form: `VAR_INPUT` are the parameters, and the `VAR_OUTPUT` and the return type the result, as above.
 A `REF_TO` input is an address, which is how a record comes back: `Std.Timers` declares WASI's system clock this way, whose `now` writes its `instant` where the module points, and the zone's `utc-offset`, whose `option<s64>` comes back the same way.
+A record of scalars can come back in `VAR_OUTPUT` too, one for each of its fields in their order: `now` with `seconds: LINT` and `nanoseconds: UDINT`.
 
 The clocks a module imports are WASI 0.3's, in their core forms, and the host provides them:
 

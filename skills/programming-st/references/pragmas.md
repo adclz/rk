@@ -62,6 +62,7 @@ See `tool-linter`.
 
 `{export}` sits **above** the `FUNCTION`, like `{test}`.
 The FUNCTION becomes a function a host calls, typed in WIT from its declaration: the `VAR_INPUT` are its parameters and the return type its result.
+With `VAR_OUTPUT`, the result is a record named as the function is with `-outputs` after it (`measure-outputs`): each output in declaration order, then the return value, named as the function is.
 The component exports them all in one interface named after the project (`Plant_A` is `plant-a`).
 
 The function's name is the FUNCTION's namespaces' names and its own, in lowercase with each `_` written `-`, joined by `-`: `Motion.Scale_Axis` is `motion-scale-axis`.
@@ -90,19 +91,21 @@ FUNCTION SetRecipe: BOOL
 END_FUNCTION
 ```
 
-What may cross: scalar `VAR_INPUT` (BOOL, the integers and bit strings, REAL, LREAL, CHAR, the durations and dates, an enum or a subrange) and `STRING` inputs, 16 values at most with a STRING counting two, and a scalar or `STRING` return type.
+What may cross: scalar `VAR_INPUT` (BOOL, the integers and bit strings, REAL, LREAL, CHAR, the durations and dates, an enum or a subrange) and `STRING` inputs, 16 values at most with a STRING counting two, and scalar or `STRING` outputs and return type.
+Each `VAR_OUTPUT` is named in WIT as a parameter is; E1513 refuses one named as the function is, the return value's field, and the build refuses a record named as another function of the interface.
 The host gets a `result`: what the FUNCTION returned, or the message of what stopped it. That is an exception, a `STRING` passed longer than its parameter ("a STRING passed by the host is longer than its parameter"), a value outside its parameter's subrange, or a `STRING` returned that is not UTF-8. None of them traps.
 
 Putting `{export}` on anything other than a `FUNCTION` is E1508: a PROGRAM is exported already, and a FUNCTION_BLOCK or a METHOD needs an instance the host does not have.
 
 What is refused with E1509, because there is no single function to export: an `{extern}` FUNCTION (an import has no body), a `{test}` FUNCTION (exported for the runner already), a FUNCTION that takes an interface (compiled once per implementation), a variadic FUNCTION (compiled once per arity) and an overloaded FUNCTION (the name belongs to several).
-Also E1509, because the host passes values and gets one back: a `VAR_OUTPUT`, a `VAR_IN_OUT`, a `REF_TO`, STRUCT, ARRAY or instance input, a return type that is one of those, and a 17th value.
+Also E1509, because the host passes values and gets values back: a `VAR_IN_OUT`, a `REF_TO`, STRUCT, ARRAY or instance input, output or return type, and a 17th value.
 Export a plain FUNCTION that calls it instead.
 
 ## The extern contract
 
 `{extern}` sits **above** the `FUNCTION`, like `{test}`.
 It carries only the import's module and name; the declaration itself is the signature: `VAR_INPUT` become the parameters in declaration order, and the return type is the result.
+With `VAR_OUTPUT`, the result is the record of the outputs and the return value, named as an export's are (`read-register-outputs`, its last field `read-register`).
 
 The module and the name are written as WIT writes them, never converted (E1512):
 the module is a WIT name (`'modbus'`) or an interface (`'acme:modbus/rtu@1.0.0'`, one namespace and one interface, no nested name), and the name is a WIT name, lowercase words and digits joined by `-` (`'read-coils'`, not `'read_coils'`).
@@ -122,16 +125,16 @@ END_FUNCTION
 ```
 
 An import from a module other than WASI's is typed in WIT from its declaration, in the `wit/` folder `rk compile` writes beside the component.
-What may cross: a scalar `VAR_INPUT` (BOOL, the integers and bit strings, REAL, LREAL, CHAR, the durations and dates, an enum or a subrange), a `STRING` input as WIT's `string`, and a scalar return type, 16 values at most with a STRING counting two.
-Each `VAR_INPUT` is named in WIT by its name in lowercase, each `_` written `-`: a name with an empty word (`x_`, `a__b`), or a letter outside ASCII, is E1512, and so are two names that differ only by a `_` (`ab`, `a_b`).
+What may cross: a scalar `VAR_INPUT` (BOOL, the integers and bit strings, REAL, LREAL, CHAR, the durations and dates, an enum or a subrange), a `STRING` input as WIT's `string`, and scalar outputs and return type, 16 inputs at most with a STRING counting two.
+Each `VAR_INPUT` and `VAR_OUTPUT` is named in WIT by its name in lowercase, each `_` written `-`: a name with an empty word (`x_`, `a__b`), or a letter outside ASCII, is E1512, and so are two names that differ only by a `_` (`ab`, `a_b`) and an output named as the import is.
 
 Each call checks what it passes before the host is called: a `STRING` that is not UTF-8 raises "a STRING passed to the host is not UTF-8", and a `CHAR` that is a surrogate or past U+10FFFF raises "a CHAR passed to the host is not a character". The component model would trap on either, stopping the PLC; the exception is caught by `__TRY` like any other.
 
 What is refused with E1502 on every import: `VAR_IN_OUT` ("an extern takes copies, not references"), an `ARRAY[*]` or variadic `VAR_INPUT`, an aggregate or `STRING` `VAR_OUTPUT`, a `STRING` or aggregate return type ("the return type of 'f' can only be a scalar"), and any statement in the body ("an extern FUNCTION has no statements").
-On an import from a module other than WASI's, also: any `VAR_OUTPUT` ("a WIT function returns one value"), a `REF_TO` input ("an address in the module means nothing to the host"), a STRUCT, ARRAY or instance input, and a 17th value.
+On an import from a module other than WASI's, also: a `REF_TO` input ("an address in the module means nothing to the host"), a STRUCT, ARRAY or instance input, and a 17th value.
 Putting `{extern}` on anything other than a `FUNCTION` is E1501.
 
-A WASI import keeps the types WASI's WIT gives it, in their core form: a `REF_TO` input is the address where a record comes back, as `Std.Timers` reads the system clock.
+A WASI import keeps the types WASI's WIT gives it, in their core form: a `REF_TO` input is the address where a record comes back, as `Std.Timers` reads the system clock, and a record of scalars can come back in `VAR_OUTPUT` too, one for each field in order.
 
 ### `{allow 'rule-name' ...}`
 

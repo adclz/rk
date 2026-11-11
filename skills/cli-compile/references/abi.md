@@ -71,14 +71,16 @@ export plant: interface {
 
 The result is what the FUNCTION returns, or the message of what stopped it: an exception, a `STRING` passed longer than its parameter, a value outside its parameter's subrange, a `STRING` returned that is not UTF-8.
 None of them traps, so the host can call again.
-`VAR_OUTPUT`, `VAR_IN_OUT`, `REF_TO`, STRUCT, ARRAY and instances are refused on an export (`E1509`).
+With `VAR_OUTPUT`, the result holds a record named as the function is with `-outputs` after it: each output in declaration order, then the return value, named as the function is.
+`VAR_IN_OUT`, `REF_TO`, STRUCT, ARRAY and instances are refused on an export (`E1509`).
 
 A namespaced POU is exported under its path, `Ns.Name`, and a FUNCTION_BLOCK body as `Name$__body__`.
 
 ## Imports
 
-A host import declared with `{extern 'module' 'name'}` takes its `VAR_INPUT` as the parameters and returns its return type.
+A host import declared with `{extern 'module' 'name'}` takes its `VAR_INPUT` as the parameters and returns its return type, or the record of its `VAR_OUTPUT` and its return type, as an export does.
 Its module and name are written as WIT writes them (`'modbus' 'read-coils'`, `'acme:modbus/rtu@1.0.0'`), never converted (`E1512`).
-An import from a module other than WASI's is typed in WIT from its declaration, in the `wit/` folder beside the component: scalars and `STRING` inputs only, 16 values at most, no `VAR_OUTPUT` and no `REF_TO` (`E1502`).
+An import from a module other than WASI's is typed in WIT from its declaration, in the `wit/` folder beside the component: scalars and `STRING` inputs only, 16 values at most, scalar outputs, and no `REF_TO` (`E1502`).
+In the core module, a record of two fields or more is written by the host at an address the call passes last, laid out by the canonical ABI; a record of one field is that field.
 Each call checks a `STRING` for UTF-8 and a `CHAR` for a character before the host is called, and raises when one is not.
 The `programming-st` skill's `references/pragmas.md` has the full contract.
