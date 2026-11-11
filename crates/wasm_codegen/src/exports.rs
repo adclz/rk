@@ -191,7 +191,8 @@ impl WasmGen<'_> {
         {
             start_over(&mut f, area, arena);
         }
-        catching(&mut f, area, caught, message, payload, |f| {
+        let raised = crate::control::Raised::Message { payload };
+        catching(&mut f, area, caught, message, raised, |f| {
             let mut local = 0;
             for param in &func.params {
                 match &param.ty {

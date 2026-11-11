@@ -12,10 +12,16 @@
 //!
 //! interface control {
 //!     init: func() -> result<_, string>;
-//!     run-task: func(task: u32, inputs: list<u8>) -> result<list<u8>, string>;
+//!     variant scan-error { raised(string), no-such-task }
+//!     run-task: func(task: u32, inputs: list<u8>) -> result<list<u8>, scan-error>;
 //!     save-retain: func() -> list<u8>;
 //!     restore-retain: func(retained: list<u8>);
-//!     run-test: func(test: u32) -> result<_, string>;
+//!     record range { address: u32, size: u32 }
+//!     variant memory-error { outside-memory(u32), too-large, outside-variables }
+//!     read-memory: func(ranges: list<range>) -> result<list<u8>, memory-error>;
+//!     write-memory: func(address: u32, bytes: list<u8>) -> result<_, memory-error>;
+//!     variant test-error { failed(string), no-such-test }
+//!     run-test: func(test: u32) -> result<_, test-error>;
 //! }
 //! ```
 //!
@@ -32,16 +38,32 @@ use crate::emit_expr::mem_arg;
 /// The interface the functions are exported under, with its version.
 pub const INTERFACE: &str = debug_format::wit::CONTROL_INTERFACE;
 
-/// What an unknown task or test answers.
-const NO_TASK: &[u8] = b"no such task";
-const NO_TEST: &[u8] = b"no such test";
+/// The cases of the interface's errors, numbered in the order the WIT lists
+/// them: `scan-error`'s, `test-error`'s and `memory-error`'s.
+const RAISED: u8 = 0;
+const NO_SUCH_TASK: u8 = 1;
+const FAILED: u8 = 0;
+const NO_SUCH_TEST: u8 = 1;
+const OUTSIDE_MEMORY: u8 = 0;
+const TOO_LARGE: u8 = 1;
+const OUTSIDE_VARIABLES: u8 = 2;
 
 /// Where a result's payload is, past its tag, when nothing in it is wider
-/// than 4 bytes: every result of the control interface.
+/// than 4 bytes: every result of the control interface. An error that is a
+/// variant has its case there, and what the case holds 4 bytes on.
 pub(crate) const PAYLOAD: u64 = 4;
 
+/// What a raise caught at the interface becomes.
+#[derive(Clone, Copy)]
+pub(crate) enum Raised {
+    /// The error itself, a `string`, `payload` bytes into the result.
+    Message { payload: u64 },
+    /// The `string` of that case of the error's variant.
+    Case(u8),
+}
+
 /// The memory the functions a host calls need, past the `{test}` result
-/// areas: a return area of 16 bytes, the messages, and the scratch what a
+/// areas: a return area of 16 bytes, the message, and the scratch what a
 /// host passes lands in (`cabi_realloc`), as large as the largest list the
 /// control interface takes and as the STRINGs any one `{export}` FUNCTION
 /// does. Past them, the buffer of each output the module writes to
@@ -50,8 +72,6 @@ pub(crate) struct ControlArea {
     /// Where a result is written: a tag at 0, then its payload, at 4 or,
     /// holding a 64-bit value, at 8.
     pub ret: u32,
-    pub no_task: u32,
-    pub no_test: u32,
     pub too_long: u32,
     pub scratch: u32,
     pub scratch_size: u32,
@@ -66,10 +86,9 @@ pub(crate) struct ControlArea {
 /// result areas end.
 pub(crate) fn control_area(module: &MirModule, base: u32) -> ControlArea {
     let ret = base.next_multiple_of(8);
-    let no_task = ret + 16;
-    let no_test = no_task + NO_TASK.len() as u32;
-    let too_long = no_test + NO_TEST.len() as u32;
-    // A list of bytes and a string ask for an alignment of 1; 8 serves any.
+    let too_long = ret + 16;
+    // A list of bytes and a string ask for an alignment of 1, a list of
+    // ranges 4; 8 serves any.
     let scratch = (too_long + crate::exports::TOO_LONG.len() as u32).next_multiple_of(8);
     let scratch_size = module
         .input_size
@@ -83,8 +102,6 @@ pub(crate) fn control_area(module: &MirModule, base: u32) -> ControlArea {
     }
     ControlArea {
         ret,
-        no_task,
-        no_test,
         too_long,
         scratch,
         scratch_size,
@@ -95,19 +112,14 @@ pub(crate) fn control_area(module: &MirModule, base: u32) -> ControlArea {
 
 impl WasmGen<'_> {
     /// Emits the interface's functions after every other function, exports
-    /// them, and writes the two messages.
+    /// them, and writes the message an `{export}` FUNCTION refuses a long
+    /// STRING with.
     pub(crate) fn emit_control(&mut self, area: &ControlArea) {
-        for (at, message) in [
-            (area.no_task, NO_TASK),
-            (area.no_test, NO_TEST),
-            (area.too_long, crate::exports::TOO_LONG),
-        ] {
-            self.extra_data_section.active(
-                0,
-                &ConstExpr::i32_const(at as i32),
-                message.iter().copied(),
-            );
-        }
+        self.extra_data_section.active(
+            0,
+            &ConstExpr::i32_const(area.too_long as i32),
+            crate::exports::TOO_LONG.iter().copied(),
+        );
         // A catch hands its `(ptr, len)` to the block it branches out of.
         let caught = self.rk_exception_tag_idx.map(|tag| {
             let ty = match self.test_catch_block_type_idx {
@@ -151,12 +163,36 @@ impl WasmGen<'_> {
         let f = self.control_restore_retain(area, arena);
         self.add_control_function("restore-retain", &[ValType::I32, ValType::I32], &[], &f);
 
+        // Past everything the module laid out: where what does not fit in
+        // the scratch lands.
+        let spill = crate::core_memory_pages(self.module) * u64::from(crate::WASM_PAGE);
+        let f = control_read_memory(area, arena, spill);
+        self.add_control_function(
+            "read-memory",
+            &[ValType::I32, ValType::I32],
+            &[ValType::I32],
+            &f,
+        );
+
+        // The variables: past the builtins' memory, up to the string
+        // literals, which come after the static layout.
+        let variables = (
+            mir::memory::BUILTIN_RESERVED_FLOOR,
+            self.module.memory_layout.total_size(),
+        );
+        let f = control_write_memory(area, arena, variables);
+        self.add_control_function(
+            "write-memory",
+            &[ValType::I32, ValType::I32, ValType::I32],
+            &[ValType::I32],
+            &f,
+        );
+
         let f = self.control_run_test(area);
         self.add_control_function("run-test", &[ValType::I32], &[ValType::I32], &f);
 
         self.emit_exports(area, caught, arena);
 
-        let spill = crate::core_memory_pages(self.module) * u64::from(crate::WASM_PAGE);
         let f = control_realloc(area, arena, spill);
         let index = self.add_function(&[ValType::I32; 4], &[ValType::I32], &f);
         self.export_section
@@ -222,7 +258,8 @@ impl WasmGen<'_> {
     ) -> Function {
         let mut f = Function::new([(2, ValType::I32)]);
         let (ptr, len) = (0, 1);
-        catching(&mut f, area, caught, (ptr, len), PAYLOAD, |f| {
+        let raised = Raised::Message { payload: PAYLOAD };
+        catching(&mut f, area, caught, (ptr, len), raised, |f| {
             if let Some(init) = init {
                 f.instruction(&Instruction::Call(init));
             }
@@ -269,7 +306,7 @@ impl WasmGen<'_> {
             })
             .collect();
         let output = (self.module.output_base, self.module.output_size);
-        catching(&mut f, area, caught, (3, 4), PAYLOAD, |f| {
+        catching(&mut f, area, caught, (3, 4), Raised::Case(RAISED), |f| {
             for (index, programs) in tasks.iter().enumerate() {
                 f.instruction(&Instruction::LocalGet(task));
                 f.instruction(&Instruction::I32Const(index as i32));
@@ -284,7 +321,7 @@ impl WasmGen<'_> {
                 f.instruction(&Instruction::Return);
                 f.instruction(&Instruction::End);
             }
-            write_err_static(f, area, PAYLOAD, area.no_task, NO_TASK.len() as u32);
+            write_err_case(f, area, NO_SUCH_TASK);
             f.instruction(&Instruction::I32Const(area.ret as i32));
             f.instruction(&Instruction::Return);
         });
@@ -322,29 +359,290 @@ impl WasmGen<'_> {
     }
 
     /// `run-test`: the test at that place in the `test-manifest`, whose own
-    /// wrapper catches what it raises. A release runs none: its tests are
-    /// left for the optimizer to remove.
+    /// wrapper catches what it raises into a `result<_, string>` of its own,
+    /// read back here into the interface's. A release runs none: its tests
+    /// are left for the optimizer to remove.
     fn control_run_test(&self, area: &ControlArea) -> Function {
-        let mut f = Function::new([]);
+        // Param: the test 0; local: where the wrapper's result is 1.
+        let mut f = Function::new([(1, ValType::I32)]);
+        let (test, result) = (0, 1);
         if self.profile != crate::Profile::Release {
             for (index, entry) in self.module.test_manifest.tests.iter().enumerate() {
                 let Some(wrapper) = self.export_index(&entry.export) else {
                     continue;
                 };
-                f.instruction(&Instruction::LocalGet(0));
+                f.instruction(&Instruction::LocalGet(test));
                 f.instruction(&Instruction::I32Const(index as i32));
                 f.instruction(&Instruction::I32Eq);
                 f.instruction(&Instruction::If(BlockType::Empty));
                 f.instruction(&Instruction::Call(wrapper));
+                f.instruction(&Instruction::LocalTee(result));
+                f.instruction(&Instruction::I32Load8U(mem_arg(0, 0)));
+                f.instruction(&Instruction::If(BlockType::Empty));
+                write_err_case(&mut f, area, FAILED);
+                for offset in [4, 8] {
+                    f.instruction(&Instruction::I32Const(area.ret as i32));
+                    f.instruction(&Instruction::LocalGet(result));
+                    f.instruction(&Instruction::I32Load(mem_arg(offset, 2)));
+                    f.instruction(&Instruction::I32Store(mem_arg(PAYLOAD + offset, 2)));
+                }
+                f.instruction(&Instruction::Else);
+                write_ok(&mut f, area, None);
+                f.instruction(&Instruction::End);
+                f.instruction(&Instruction::I32Const(area.ret as i32));
                 f.instruction(&Instruction::Return);
                 f.instruction(&Instruction::End);
             }
         }
-        write_err_static(&mut f, area, PAYLOAD, area.no_test, NO_TEST.len() as u32);
+        write_err_case(&mut f, area, NO_SUCH_TEST);
         f.instruction(&Instruction::I32Const(area.ret as i32));
         f.instruction(&Instruction::End);
         f
     }
+}
+
+/// `read-memory`: the bytes of each range of the list `(ptr, count)`, one
+/// after the other, in a list of the module's that the host copies when the
+/// call returns. Each range of 8 bytes is an address, then a size.
+///
+/// The list goes after the ranges in the scratch when it fits there, and
+/// otherwise past everything the module laid out (`spill`), or past the
+/// ranges when they are there themselves, in memory grown to hold it: the
+/// buffers that follow the scratch are the outputs', which a pending write
+/// may still hold.
+fn control_read_memory(area: &ControlArea, arena: u32, spill: u64) -> Function {
+    // Params: the ranges 0 and their count 1; locals: the range at hand 2,
+    // its address 3 and size 4, where the list goes 5, where the next bytes
+    // go 6, the error's case 7, and in 64 bits the list's size 8, where the
+    // ranges end 9, and where the list starts past the scratch 10.
+    let mut f = Function::new([(6, ValType::I32), (3, ValType::I64)]);
+    let (ptr, count) = (0, 1);
+    let (i, address, size, out, cursor, why) = (2, 3, 4, 5, 6, 7);
+    let (total, ranges_end, start) = (8, 9, 10);
+    let scratch_end = u64::from(area.scratch) + u64::from(area.scratch_size);
+    let why_is = |f: &mut Function, case: u8| {
+        f.instruction(&Instruction::I32Const(i32::from(case)));
+        f.instruction(&Instruction::LocalSet(why));
+    };
+    // The range at `i`: its address, then its size.
+    let range_at = |f: &mut Function| {
+        f.instruction(&Instruction::LocalGet(ptr));
+        f.instruction(&Instruction::LocalGet(i));
+        f.instruction(&Instruction::I32Const(3));
+        f.instruction(&Instruction::I32Shl);
+        f.instruction(&Instruction::I32Add);
+        f.instruction(&Instruction::LocalTee(address));
+        f.instruction(&Instruction::I32Load(mem_arg(4, 2)));
+        f.instruction(&Instruction::LocalSet(size));
+        f.instruction(&Instruction::LocalGet(address));
+        f.instruction(&Instruction::I32Load(mem_arg(0, 2)));
+        f.instruction(&Instruction::LocalSet(address));
+    };
+
+    f.instruction(&Instruction::Block(BlockType::Empty));
+    // Each range in the memory, and the list's size.
+    why_is(&mut f, OUTSIDE_MEMORY);
+    f.instruction(&Instruction::Block(BlockType::Empty));
+    f.instruction(&Instruction::Loop(BlockType::Empty));
+    f.instruction(&Instruction::LocalGet(i));
+    f.instruction(&Instruction::LocalGet(count));
+    f.instruction(&Instruction::I32GeU);
+    f.instruction(&Instruction::BrIf(1));
+    range_at(&mut f);
+    // `address + size` past the memory's end.
+    f.instruction(&Instruction::LocalGet(address));
+    f.instruction(&Instruction::I64ExtendI32U);
+    f.instruction(&Instruction::LocalGet(size));
+    f.instruction(&Instruction::I64ExtendI32U);
+    f.instruction(&Instruction::I64Add);
+    f.instruction(&Instruction::MemorySize(0));
+    f.instruction(&Instruction::I64ExtendI32U);
+    f.instruction(&Instruction::I64Const(16));
+    f.instruction(&Instruction::I64Shl);
+    f.instruction(&Instruction::I64GtU);
+    f.instruction(&Instruction::BrIf(2));
+    f.instruction(&Instruction::LocalGet(total));
+    f.instruction(&Instruction::LocalGet(size));
+    f.instruction(&Instruction::I64ExtendI32U);
+    f.instruction(&Instruction::I64Add);
+    f.instruction(&Instruction::LocalSet(total));
+    f.instruction(&Instruction::LocalGet(i));
+    f.instruction(&Instruction::I32Const(1));
+    f.instruction(&Instruction::I32Add);
+    f.instruction(&Instruction::LocalSet(i));
+    f.instruction(&Instruction::Br(0));
+    f.instruction(&Instruction::End);
+    f.instruction(&Instruction::End);
+
+    // Where the list goes.
+    f.instruction(&Instruction::LocalGet(ptr));
+    f.instruction(&Instruction::I64ExtendI32U);
+    f.instruction(&Instruction::LocalGet(count));
+    f.instruction(&Instruction::I64ExtendI32U);
+    f.instruction(&Instruction::I64Const(3));
+    f.instruction(&Instruction::I64Shl);
+    f.instruction(&Instruction::I64Add);
+    f.instruction(&Instruction::LocalSet(ranges_end));
+    // After the ranges in the scratch, when they are there and it fits.
+    f.instruction(&Instruction::LocalGet(ptr));
+    f.instruction(&Instruction::I32Const(area.scratch as i32));
+    f.instruction(&Instruction::I32GeU);
+    f.instruction(&Instruction::LocalGet(ranges_end));
+    f.instruction(&Instruction::LocalGet(total));
+    f.instruction(&Instruction::I64Add);
+    f.instruction(&Instruction::I64Const(scratch_end as i64));
+    f.instruction(&Instruction::I64LeU);
+    f.instruction(&Instruction::I32And);
+    f.instruction(&Instruction::If(BlockType::Empty));
+    f.instruction(&Instruction::LocalGet(ranges_end));
+    f.instruction(&Instruction::I32WrapI64);
+    f.instruction(&Instruction::LocalSet(out));
+    f.instruction(&Instruction::Else);
+    // Otherwise past the spill, or past the ranges when they are there.
+    f.instruction(&Instruction::LocalGet(ranges_end));
+    f.instruction(&Instruction::I64Const(spill as i64));
+    f.instruction(&Instruction::LocalGet(ranges_end));
+    f.instruction(&Instruction::I64Const(spill as i64));
+    f.instruction(&Instruction::I64GtU);
+    f.instruction(&Instruction::Select);
+    f.instruction(&Instruction::LocalSet(start));
+    why_is(&mut f, TOO_LARGE);
+    f.instruction(&Instruction::LocalGet(start));
+    f.instruction(&Instruction::LocalGet(total));
+    f.instruction(&Instruction::I64Add);
+    f.instruction(&Instruction::I64Const(1 << 32));
+    f.instruction(&Instruction::I64GtU);
+    f.instruction(&Instruction::BrIf(1));
+    f.instruction(&Instruction::LocalGet(start));
+    f.instruction(&Instruction::I32WrapI64);
+    f.instruction(&Instruction::LocalSet(out));
+    // The pages `start + total` bytes take, less those the memory has.
+    f.instruction(&Instruction::LocalGet(start));
+    f.instruction(&Instruction::LocalGet(total));
+    f.instruction(&Instruction::I64Add);
+    f.instruction(&Instruction::I64Const(i64::from(crate::WASM_PAGE) - 1));
+    f.instruction(&Instruction::I64Add);
+    f.instruction(&Instruction::I64Const(16));
+    f.instruction(&Instruction::I64ShrU);
+    f.instruction(&Instruction::I32WrapI64);
+    f.instruction(&Instruction::MemorySize(0));
+    f.instruction(&Instruction::I32Sub);
+    f.instruction(&Instruction::LocalTee(size));
+    f.instruction(&Instruction::I32Const(0));
+    f.instruction(&Instruction::I32GtS);
+    f.instruction(&Instruction::If(BlockType::Empty));
+    f.instruction(&Instruction::LocalGet(size));
+    f.instruction(&Instruction::MemoryGrow(0));
+    f.instruction(&Instruction::I32Const(-1));
+    f.instruction(&Instruction::I32Eq);
+    f.instruction(&Instruction::If(BlockType::Empty));
+    f.instruction(&Instruction::Unreachable);
+    f.instruction(&Instruction::End);
+    f.instruction(&Instruction::End);
+    f.instruction(&Instruction::End);
+
+    // The bytes of each range, one after the other.
+    f.instruction(&Instruction::LocalGet(out));
+    f.instruction(&Instruction::LocalSet(cursor));
+    f.instruction(&Instruction::I32Const(0));
+    f.instruction(&Instruction::LocalSet(i));
+    f.instruction(&Instruction::Block(BlockType::Empty));
+    f.instruction(&Instruction::Loop(BlockType::Empty));
+    f.instruction(&Instruction::LocalGet(i));
+    f.instruction(&Instruction::LocalGet(count));
+    f.instruction(&Instruction::I32GeU);
+    f.instruction(&Instruction::BrIf(1));
+    range_at(&mut f);
+    f.instruction(&Instruction::LocalGet(cursor));
+    f.instruction(&Instruction::LocalGet(address));
+    f.instruction(&Instruction::LocalGet(size));
+    f.instruction(&Instruction::MemoryCopy {
+        src_mem: 0,
+        dst_mem: 0,
+    });
+    f.instruction(&Instruction::LocalGet(cursor));
+    f.instruction(&Instruction::LocalGet(size));
+    f.instruction(&Instruction::I32Add);
+    f.instruction(&Instruction::LocalSet(cursor));
+    f.instruction(&Instruction::LocalGet(i));
+    f.instruction(&Instruction::I32Const(1));
+    f.instruction(&Instruction::I32Add);
+    f.instruction(&Instruction::LocalSet(i));
+    f.instruction(&Instruction::Br(0));
+    f.instruction(&Instruction::End);
+    f.instruction(&Instruction::End);
+
+    // `Ok` with the list.
+    f.instruction(&Instruction::I32Const(area.ret as i32));
+    f.instruction(&Instruction::I32Const(0));
+    f.instruction(&Instruction::I32Store8(mem_arg(0, 0)));
+    f.instruction(&Instruction::I32Const(area.ret as i32));
+    f.instruction(&Instruction::LocalGet(out));
+    f.instruction(&Instruction::I32Store(mem_arg(PAYLOAD, 2)));
+    f.instruction(&Instruction::I32Const(area.ret as i32));
+    f.instruction(&Instruction::LocalGet(total));
+    f.instruction(&Instruction::I32WrapI64);
+    f.instruction(&Instruction::I32Store(mem_arg(PAYLOAD + 4, 2)));
+    start_over(&mut f, area, arena);
+    f.instruction(&Instruction::I32Const(area.ret as i32));
+    f.instruction(&Instruction::Return);
+    f.instruction(&Instruction::End);
+
+    // The case, and the place of the range at hand: the one outside the
+    // memory, for `outside-memory`.
+    f.instruction(&Instruction::I32Const(area.ret as i32));
+    f.instruction(&Instruction::I32Const(1));
+    f.instruction(&Instruction::I32Store8(mem_arg(0, 0)));
+    f.instruction(&Instruction::I32Const(area.ret as i32));
+    f.instruction(&Instruction::LocalGet(why));
+    f.instruction(&Instruction::I32Store8(mem_arg(PAYLOAD, 0)));
+    f.instruction(&Instruction::I32Const(area.ret as i32));
+    f.instruction(&Instruction::LocalGet(i));
+    f.instruction(&Instruction::I32Store(mem_arg(PAYLOAD + 4, 2)));
+    start_over(&mut f, area, arena);
+    f.instruction(&Instruction::I32Const(area.ret as i32));
+    f.instruction(&Instruction::End);
+    f
+}
+
+/// `write-memory`: the list `(ptr, len)` copied to `address`, when it lands
+/// in `variables`, `[start, end)`; an error otherwise.
+fn control_write_memory(area: &ControlArea, arena: u32, variables: (u32, u32)) -> Function {
+    // Params: the address 0, then the list 1, 2.
+    let mut f = Function::new([]);
+    let (address, ptr, len) = (0, 1, 2);
+    let (start, end) = variables;
+    // What the host passed stays where it is until the copy: nothing else
+    // lands in the scratch meanwhile.
+    start_over(&mut f, area, arena);
+    f.instruction(&Instruction::Block(BlockType::Empty));
+    f.instruction(&Instruction::LocalGet(address));
+    f.instruction(&Instruction::I32Const(start as i32));
+    f.instruction(&Instruction::I32LtU);
+    f.instruction(&Instruction::BrIf(0));
+    f.instruction(&Instruction::LocalGet(address));
+    f.instruction(&Instruction::I64ExtendI32U);
+    f.instruction(&Instruction::LocalGet(len));
+    f.instruction(&Instruction::I64ExtendI32U);
+    f.instruction(&Instruction::I64Add);
+    f.instruction(&Instruction::I64Const(i64::from(end)));
+    f.instruction(&Instruction::I64GtU);
+    f.instruction(&Instruction::BrIf(0));
+    f.instruction(&Instruction::LocalGet(address));
+    f.instruction(&Instruction::LocalGet(ptr));
+    f.instruction(&Instruction::LocalGet(len));
+    f.instruction(&Instruction::MemoryCopy {
+        src_mem: 0,
+        dst_mem: 0,
+    });
+    write_ok(&mut f, area, None);
+    f.instruction(&Instruction::I32Const(area.ret as i32));
+    f.instruction(&Instruction::Return);
+    f.instruction(&Instruction::End);
+    write_err_case(&mut f, area, OUTSIDE_VARIABLES);
+    f.instruction(&Instruction::I32Const(area.ret as i32));
+    f.instruction(&Instruction::End);
+    f
 }
 
 /// `cabi_realloc`, where what a host passes lands: the next free bytes of
@@ -468,14 +766,14 @@ fn copy_in(f: &mut Function, base: u32, size: u32, ptr: u32, len: u32) {
 
 /// Runs `body`, which returns, and when the module can raise, catches what
 /// it raises into an error: the message stashed in the locals `stash`, then
-/// written at the return area, `payload` bytes in, whose address the
-/// function returns.
+/// written at the return area as `raised` says, whose address the function
+/// returns.
 pub(crate) fn catching(
     f: &mut Function,
     area: &ControlArea,
     caught: Option<(u32, u32)>,
     stash: (u32, u32),
-    payload: u64,
+    raised: Raised,
     body: impl FnOnce(&mut Function),
 ) {
     let Some((tag, block_ty)) = caught else {
@@ -497,9 +795,30 @@ pub(crate) fn catching(
     let (ptr, len) = stash;
     f.instruction(&Instruction::LocalSet(len));
     f.instruction(&Instruction::LocalSet(ptr));
-    write_err(f, area, payload, ptr, len);
+    match raised {
+        Raised::Message { payload } => write_err(f, area, payload, ptr, len),
+        Raised::Case(case) => {
+            write_err_case(f, area, case);
+            for (offset, local) in [(PAYLOAD + 4, ptr), (PAYLOAD + 8, len)] {
+                f.instruction(&Instruction::I32Const(area.ret as i32));
+                f.instruction(&Instruction::LocalGet(local));
+                f.instruction(&Instruction::I32Store(mem_arg(offset, 2)));
+            }
+        }
+    }
     f.instruction(&Instruction::I32Const(area.ret as i32));
     f.instruction(&Instruction::End);
+}
+
+/// `Err` at the return area, of the case `case` of the error's variant: what
+/// the case holds, the caller writes 4 bytes on.
+fn write_err_case(f: &mut Function, area: &ControlArea, case: u8) {
+    f.instruction(&Instruction::I32Const(area.ret as i32));
+    f.instruction(&Instruction::I32Const(1));
+    f.instruction(&Instruction::I32Store8(mem_arg(0, 0)));
+    f.instruction(&Instruction::I32Const(area.ret as i32));
+    f.instruction(&Instruction::I32Const(i32::from(case)));
+    f.instruction(&Instruction::I32Store8(mem_arg(PAYLOAD, 0)));
 }
 
 /// `Ok` at the return area, with the list `(ptr, len)` it carries.
