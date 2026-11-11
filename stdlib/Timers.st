@@ -45,64 +45,54 @@ NAMESPACE Std.Timers
 		PLC_LTIME := MONOTONIC_LTIME();
 	END_FUNCTION
 
-	/* An instant as the WASI system clock gives it: the seconds since
-	   1970-01-01 in UTC, negative before, and the nanoseconds after them,
-	   from 0 to 999,999,999. */
-	TYPE WASI_INSTANT : STRUCT
-		seconds : LINT;
-		nanoseconds : DINT;
-	END_STRUCT;
-	END_TYPE
-
-	/* Writes the host's wall clock at `ret`.
+	/* Gives the host's wall clock: the seconds since 1970-01-01 in UTC,
+	   negative before, and the nanoseconds after them, from 0 to
+	   999,999,999.
 
 	   This is the `now` of the WASI
 	   [system clock](https://github.com/WebAssembly/WASI/blob/main/proposals/clocks/README.md),
-	   whose result is a record, which the canonical ABI writes where the
-	   caller points instead of returning it.
+	   whose result is an `instant`: a record of the seconds and the
+	   nanoseconds, in that order, which come back as the outputs.
 	*/
 	{extern 'wasi:clocks/system-clock@0.3.0' 'now'}
 	FUNCTION PRIVATE WASI_WALL_NOW
-		VAR_INPUT
-			ret : REF_TO WASI_INSTANT;
+		VAR_OUTPUT
+			seconds : LINT;
+			nanoseconds : UDINT;
 		END_VAR
 	END_FUNCTION
 
-	/* An offset as the WASI time zone gives it: whether the host has a
-	   zone, and if it does, the nanoseconds the zone is east of UTC. The
-	   canonical ABI writes `known` as one byte, and `nanoseconds` 8 bytes
-	   from the start. */
-	TYPE WASI_ZONE_OFFSET : STRUCT
-		known : BOOL;
-		nanoseconds : LINT;
-	END_STRUCT;
-	END_TYPE
-
-	/* Writes at `ret` how far east of UTC the host's zone is at an instant,
-	   daylight saving included, or that the host has no zone.
+	/* Gives how far east of UTC the host's zone is at an instant, daylight
+	   saving included, in nanoseconds, or that the host has no zone: then
+	   `known` is FALSE and `offset` means nothing.
 
 	   This is the `utc-offset` of the WASI
 	   [time zone](https://github.com/WebAssembly/WASI/blob/main/proposals/clocks/README.md),
 	   which takes the instant as its seconds and its nanoseconds. Its
-	   result is an `option<s64>`, which the canonical ABI writes where the
-	   caller points.
+	   result is an `option<s64>`, laid out as a record of a byte that says
+	   whether the value is there, then the value: they come back as the
+	   outputs.
 	*/
 	{extern 'wasi:clocks/timezone@0.3.0' 'utc-offset'}
 	FUNCTION PRIVATE WASI_UTC_OFFSET
 		VAR_INPUT
 			seconds : LINT;
-			nanoseconds : DINT;
-			ret : REF_TO WASI_ZONE_OFFSET;
+			nanoseconds : UDINT;
+		END_VAR
+		VAR_OUTPUT
+			known : BOOL;
+			offset : LINT;
 		END_VAR
 	END_FUNCTION
 
 	/* Returns the host's wall clock as an `LDT`, in UTC. */
 	FUNCTION WALL_LDT : LDT
 		VAR
-			now : WASI_INSTANT;
+			seconds : LINT;
+			nanoseconds : UDINT;
 		END_VAR
-		WASI_WALL_NOW(ret := REF(now));
-		WALL_LDT := LINT_TO_LDT(now.seconds * LINT#1000000000 + now.nanoseconds);
+		WASI_WALL_NOW(seconds => seconds, nanoseconds => nanoseconds);
+		WALL_LDT := LINT_TO_LDT(seconds * LINT#1000000000 + nanoseconds);
 	END_FUNCTION
 
 	/* Returns the host's wall clock as a `DT`, in UTC. */
@@ -120,8 +110,8 @@ NAMESPACE Std.Timers
 		END_VAR
 		VAR
 			seconds, nanoseconds : LINT;
-			// Starts at FALSE at each call: the host writes the first byte of `known` only.
-			offset : WASI_ZONE_OFFSET;
+			known : BOOL;
+			offset : LINT;
 		END_VAR
 		// WASI takes the whole seconds, rounded down, and the nanoseconds after them.
 		seconds := LDT_TO_LINT(IN) / LINT#1000000000;
@@ -130,11 +120,15 @@ NAMESPACE Std.Timers
 			seconds := seconds - LINT#1;
 			nanoseconds := nanoseconds + LINT#1000000000;
 		END_IF;
-		WASI_UTC_OFFSET(seconds := seconds, nanoseconds := LINT_TO_DINT(nanoseconds), ret := REF(offset));
-		IF NOT offset.known THEN
+		WASI_UTC_OFFSET(
+			seconds := seconds,
+			nanoseconds := LINT_TO_UDINT(nanoseconds),
+			known => known,
+			offset => offset);
+		IF NOT known THEN
 			__RAISE('the host has no time zone');
 		END_IF;
-		LOCAL_OFFSET := LINT_TO_LTIME(offset.nanoseconds);
+		LOCAL_OFFSET := LINT_TO_LTIME(offset);
 	END_FUNCTION
 
 	/* Returns the host's wall clock as an `LDT` in the host's zone: the
