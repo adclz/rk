@@ -8,6 +8,7 @@
 use rstest::rstest;
 
 use super::{compile_to_mir_and_wasm, compile_to_wasm, test_engine, with_db};
+use rk::control::{ScanError, TestError};
 
 const INTERFACE: &str = wasm_codegen::control::INTERFACE;
 
@@ -59,14 +60,21 @@ impl Plc {
         bytes
     }
 
-    /// The `result<list<u8>, string>` at `at`.
-    fn result(&self, at: i32) -> Result<Vec<u8>, String> {
-        let head = self.read(at as u32, 12);
+    /// The result at `at`, as the canonical ABI lays it out: its tag, then
+    /// at 4 a list's `(ptr, len)`, or an error variant's case with what the
+    /// case holds 4 bytes on: `(case, Some(text))` for a message.
+    fn result(&self, at: i32) -> Result<Vec<u8>, (u8, Option<String>)> {
+        let head = self.read(at as u32, 16);
         let word = |i: usize| u32::from_le_bytes(head[i..i + 4].try_into().unwrap());
-        let payload = self.read(word(4), word(8));
         match head[0] {
-            0 => Ok(payload),
-            _ => Err(String::from_utf8(payload).expect("a message is text")),
+            0 => Ok(self.read(word(4), word(8))),
+            _ => {
+                let case = head[4];
+                let text = (case == 0).then(|| {
+                    String::from_utf8(self.read(word(8), word(12))).expect("a message is text")
+                });
+                Err((case, text))
+            }
         }
     }
 
@@ -85,13 +93,17 @@ impl Plc {
         }
     }
 
-    fn run_task(&mut self, task: i32, inputs: &[u8]) -> Result<Vec<u8>, String> {
+    fn run_task(&mut self, task: i32, inputs: &[u8]) -> Result<Vec<u8>, ScanError> {
         let (ptr, len) = self.list(inputs);
         let run = self.func::<(i32, i32, i32), i32>(&format!("{INTERFACE}#run-task"));
         let at = run
             .call(&mut self.store, (task, ptr, len))
             .expect("run-task returns");
-        self.result(at)
+        self.result(at).map_err(|error| match error {
+            (0, Some(message)) => ScanError::Raised(message),
+            (1, None) => ScanError::NoSuchTask,
+            other => panic!("no such scan error: {other:?}"),
+        })
     }
 
     fn save_retain(&mut self) -> Vec<u8> {
@@ -110,10 +122,15 @@ impl Plc {
             .expect("restore-retain returns");
     }
 
-    fn run_test(&mut self, index: i32) -> Result<(), String> {
+    fn run_test(&mut self, index: i32) -> Result<(), TestError> {
         let run = self.func::<i32, i32>(&format!("{INTERFACE}#run-test"));
         let at = run.call(&mut self.store, index).expect("run-test returns");
-        self.result(at).map(|_| ())
+        match self.result(at) {
+            Ok(_) => Ok(()),
+            Err((0, Some(message))) => Err(TestError::Failed(message)),
+            Err((1, None)) => Err(TestError::NoSuchTest),
+            Err(other) => panic!("no such test error: {other:?}"),
+        }
     }
 }
 
@@ -167,7 +184,7 @@ fn what_stops_a_scan_is_an_error(mut with_db: db::RootDatabase) {
     let wasm = compile_to_wasm(&mut with_db, COUNTER);
     let mut plc = Plc::load(&wasm);
     assert_eq!(plc.init(), Ok(()));
-    assert_eq!(plc.run_task(1, &[0; 4]), Err("no such task".to_string()));
+    assert_eq!(plc.run_task(1, &[0; 4]), Err(ScanError::NoSuchTask));
 
     // A divisor of 0, written where the program reads it.
     let info = debug_format::DebugInfo::from_wasm(&wasm);
@@ -184,7 +201,7 @@ fn what_stops_a_scan_is_an_error(mut with_db: db::RootDatabase) {
     write(&mut plc, 0);
     assert_eq!(
         plc.run_task(0, &[0; 4]),
-        Err("division by zero".to_string())
+        Err(ScanError::Raised("division by zero".to_string()))
     );
     write(&mut plc, 1);
     let outputs = plc
@@ -260,9 +277,12 @@ fn a_test_runs_by_its_place_in_the_manifest(mut with_db: db::RootDatabase) {
 
     let mut plc = Plc::load(&wasm);
     assert_eq!(plc.run_test(passes), Ok(()));
-    assert_eq!(plc.run_test(first), Err("first run".to_string()));
+    assert_eq!(
+        plc.run_test(first),
+        Err(TestError::Failed("first run".to_string()))
+    );
     assert_eq!(plc.run_test(first), Ok(()), "the second run passes");
-    assert_eq!(plc.run_test(2), Err("no such test".to_string()));
+    assert_eq!(plc.run_test(2), Err(TestError::NoSuchTest));
 }
 
 /// A release runs no test: it keeps none.
@@ -278,7 +298,7 @@ fn a_release_runs_no_test(mut with_db: db::RootDatabase) {
         wasm_codegen::generate_wasm_profile(&with_db, &mir, wasm_codegen::Profile::Release)
             .finish();
     let mut plc = Plc::load(&release);
-    assert_eq!(plc.run_test(0), Err("no such test".to_string()));
+    assert_eq!(plc.run_test(0), Err(TestError::NoSuchTest));
 }
 
 /// `cabi_realloc` hands out the scratch piece by piece, as large as the
@@ -372,8 +392,8 @@ fn an_empty_module_answers_the_interface(mut with_db: db::RootDatabase) {
     let wasm = compile_to_wasm(&mut with_db, source);
     let mut plc = Plc::load(&wasm);
     assert_eq!(plc.init(), Ok(()));
-    assert_eq!(plc.run_task(0, &[]), Err("no such task".to_string()));
+    assert_eq!(plc.run_task(0, &[]), Err(ScanError::NoSuchTask));
     assert_eq!(plc.save_retain(), Vec::<u8>::new());
     plc.restore_retain(&[]);
-    assert_eq!(plc.run_test(0), Err("no such test".to_string()));
+    assert_eq!(plc.run_test(0), Err(TestError::NoSuchTest));
 }
