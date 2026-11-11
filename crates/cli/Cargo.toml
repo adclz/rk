@@ -41,8 +41,9 @@ wasmtime = "50.0.1"
 # the test host defines it.
 wasmtime-wasi = { version = "50.0.1", default-features = false, features = ["p3"] }
 # The trait wasmtime-wasi takes a standard output by: `rk test` keeps what a
-# test writes. wasmtime-wasi builds tokio already.
-tokio = { version = "1", default-features = false }
+# test writes. wasmtime-wasi builds tokio already. Its runtime runs each call
+# of a component: a host function that waits, WASI's `wait-for`, waits on it.
+tokio = { version = "1", default-features = false, features = ["rt", "time"] }
 # `rk compile` wraps the module into a component, with the WIT it is typed by.
 wit-component = { workspace = true }
 wit-parser = { workspace = true }
