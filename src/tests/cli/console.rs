@@ -168,14 +168,14 @@ impl Plc {
             .instantiate(&mut store, &component)
             .expect("the component instantiates");
         let mut plc = Plc { store, instance };
-        assert_eq!(plc.call::<(), ()>("init", ()), Ok(()));
+        assert_eq!(plc.call::<(), (), String>("init", ()), Ok(()));
         plc
     }
 
-    fn call<P, T>(&mut self, name: &str, params: P) -> Result<T, String>
+    fn call<P, T, E>(&mut self, name: &str, params: P) -> Result<T, E>
     where
         P: wasmtime::component::ComponentNamedList + wasmtime::component::Lower,
-        (Result<T, String>,): wasmtime::component::ComponentNamedList + wasmtime::component::Lift,
+        (Result<T, E>,): wasmtime::component::ComponentNamedList + wasmtime::component::Lift,
     {
         let control = self
             .instance
@@ -186,7 +186,7 @@ impl Plc {
             .get_export_index(&mut self.store, Some(&control), name)
             .unwrap_or_else(|| panic!("the interface has `{name}`"));
         self.instance
-            .get_typed_func::<P, (Result<T, String>,)>(&mut self.store, &function)
+            .get_typed_func::<P, (Result<T, E>,)>(&mut self.store, &function)
             .unwrap_or_else(|e| panic!("`{name}`: {e}"))
             .call(&mut self.store, params)
             .unwrap_or_else(|e| panic!("`{name}` trapped: {e:#}"))
@@ -195,8 +195,11 @@ impl Plc {
 
     /// A scan with `input`, and the task's output.
     fn scan(&mut self, input: i32) -> i32 {
-        let outputs: Vec<u8> = self
-            .call("run-task", (0u32, &input.to_le_bytes()[..]))
+        let outputs = self
+            .call::<_, Vec<u8>, rk::control::ScanError>(
+                "run-task",
+                (0u32, &input.to_le_bytes()[..]),
+            )
             .expect("the scan runs");
         i32::from_le_bytes(outputs[..4].try_into().expect("four bytes"))
     }

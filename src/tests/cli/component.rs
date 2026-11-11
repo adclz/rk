@@ -9,6 +9,8 @@ use debug_format::test_manifest::{TEST_MANIFEST_SECTION, TestManifest};
 use rstest::rstest;
 use wasmtime::component::{Component, Instance, Linker, TypedFunc};
 
+use rk::control::{MemoryError, Range, ScanError, TestError};
+
 use crate::tests::codegen::{
     compile_to_mir_and_wasm_as_built, compile_to_wasm_as_built, compile_with_libraries,
     expect_section, with_db,
@@ -120,15 +122,15 @@ impl Plc {
         init.call(&mut self.store, ()).expect("init returns").0
     }
 
-    fn run_task(&mut self, task: u32, inputs: &[u8]) -> Result<Vec<u8>, String> {
-        let run = self.func::<(u32, &[u8]), (Result<Vec<u8>, String>,)>("run-task");
+    fn run_task(&mut self, task: u32, inputs: &[u8]) -> Result<Vec<u8>, ScanError> {
+        let run = self.func::<(u32, &[u8]), (Result<Vec<u8>, ScanError>,)>("run-task");
         run.call(&mut self.store, (task, inputs))
             .expect("run-task returns")
             .0
     }
 
-    fn run_test(&mut self, test: u32) -> Result<(), String> {
-        let run = self.func::<(u32,), (Result<(), String>,)>("run-test");
+    fn run_test(&mut self, test: u32) -> Result<(), TestError> {
+        let run = self.func::<(u32,), (Result<(), TestError>,)>("run-test");
         run.call(&mut self.store, (test,))
             .expect("run-test returns")
             .0
@@ -147,7 +149,60 @@ impl Plc {
             .call(&mut self.store, (retained,))
             .expect("restore-retain returns");
     }
+
+    fn read_memory(&mut self, ranges: &[Range]) -> Result<Vec<u8>, MemoryError> {
+        let read = self.func::<(&[Range],), (Result<Vec<u8>, MemoryError>,)>("read-memory");
+        read.call(&mut self.store, (ranges,))
+            .expect("read-memory returns")
+            .0
+    }
+
+    fn write_memory(&mut self, address: u32, bytes: &[u8]) -> Result<(), MemoryError> {
+        let write = self.func::<(u32, &[u8]), (Result<(), MemoryError>,)>("write-memory");
+        write
+            .call(&mut self.store, (address, bytes))
+            .expect("write-memory returns")
+            .0
+    }
 }
+
+/// The range a variable takes, as `debug-symbols` gives it.
+fn range_of(info: &debug_format::DebugInfo, path: &str) -> Range {
+    let symbol = info
+        .symbol(path)
+        .unwrap_or_else(|| panic!("the symbols have {path}"));
+    Range {
+        address: symbol.address,
+        size: symbol.size,
+    }
+}
+
+/// A program that counts its scans, says when it passed a limit, and keeps
+/// a note of 64 bytes. Its sixteen bytes of inputs give the scratch area a
+/// size.
+const COUNTER: &str = r#"
+    PROGRAM P
+    VAR_EXTERNAL over : DINT; END_VAR
+    VAR count : DINT; limit : DINT := 3; note : STRING[60]; END_VAR
+        count := count + 1;
+        note := 'counting';
+        IF count > limit THEN over := 1; ELSE over := 0; END_IF;
+    END_PROGRAM
+
+    CONFIGURATION Cfg
+    VAR_GLOBAL
+        a AT %ID0 : DINT;
+        b AT %ID4 : DINT;
+        c AT %ID8 : DINT;
+        d AT %ID12 : DINT;
+        over AT %QD0 : DINT;
+    END_VAR
+        RESOURCE Res ON CPU
+            TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+            PROGRAM Main WITH T : P;
+        END_RESOURCE
+    END_CONFIGURATION
+"#;
 
 fn wrap(wasm: &[u8]) -> rk::component::Component {
     rk::component::wrap(wasm, "plant", &Default::default()).expect("the module wraps")
@@ -276,6 +331,128 @@ fn a_host_finds_each_retained_value_by_the_retain_map(mut with_db: db::RootDatab
     assert_eq!(value(&warm.save_retain(), "P1.starts"), 3);
 }
 
+/// A host reads any variable between two scans, at the address and size
+/// `debug-symbols` gives it, and forces one: the next scan finds the value
+/// it wrote. Several ranges come back one after the other.
+#[rstest]
+fn a_host_reads_and_forces_a_variable_between_scans(mut with_db: db::RootDatabase) {
+    let component = wrap(&compile_to_wasm_as_built(&mut with_db, COUNTER));
+    let info = debug_format::DebugInfo::from_wasm(&component.bytes);
+    let (count, limit) = (range_of(&info, "Main.count"), range_of(&info, "Main.limit"));
+    let mut plc = Plc::load(&component.bytes);
+    plc.init().unwrap();
+    let inputs = [0; 16];
+    plc.run_task(0, &inputs).unwrap();
+    assert_eq!(plc.run_task(0, &inputs).unwrap(), 0i32.to_le_bytes());
+
+    // One range fits beside itself in the scratch area; two do not, and come
+    // back from past it.
+    assert_eq!(plc.read_memory(&[count]), Ok(2i32.to_le_bytes().to_vec()));
+    assert_eq!(
+        plc.read_memory(&[count, limit]),
+        Ok([2i32.to_le_bytes(), 3i32.to_le_bytes()].concat())
+    );
+    assert_eq!(plc.read_memory(&[]), Ok(Vec::new()));
+
+    plc.write_memory(limit.address, &1i32.to_le_bytes())
+        .unwrap();
+    assert_eq!(
+        plc.run_task(0, &inputs).unwrap(),
+        1i32.to_le_bytes(),
+        "the third scan passed the limit the host wrote"
+    );
+    assert_eq!(plc.read_memory(&[limit]), Ok(1i32.to_le_bytes().to_vec()));
+}
+
+/// A read past the end of the memory and a write outside the variables are
+/// errors, which leave the component running. The variables end where the
+/// string literals start: their last byte can be written, the next cannot,
+/// and neither can the builtins' memory before them.
+#[rstest]
+fn what_a_host_may_not_read_or_write_is_an_error(mut with_db: db::RootDatabase) {
+    let (mir, wasm) = compile_to_mir_and_wasm_as_built(&mut with_db, COUNTER);
+    assert!(!mir.string_data.is_empty(), "the program has a literal");
+    let component = wrap(&wasm);
+    let info = debug_format::DebugInfo::from_wasm(&component.bytes);
+    let count = range_of(&info, "Main.count");
+    let mut plc = Plc::load(&component.bytes);
+    plc.init().unwrap();
+
+    let past_the_end = Range {
+        address: u32::MAX - 3,
+        size: 8,
+    };
+    assert_eq!(
+        plc.read_memory(&[count, past_the_end]),
+        Err(MemoryError::OutsideMemory(1)),
+        "the second range, by its place in the list"
+    );
+
+    let refused = Err(MemoryError::OutsideVariables);
+    let end = mir.memory_layout.total_size();
+    assert_eq!(plc.write_memory(end - 1, &[0]), Ok(()), "the last byte");
+    assert_eq!(plc.write_memory(end - 1, &[0, 0]), refused, "one past it");
+    assert_eq!(plc.write_memory(end, &[0]), refused, "a string literal");
+    assert_eq!(
+        plc.write_memory(mir::memory::BUILTIN_RESERVED_FLOOR - 1, &[0]),
+        refused,
+        "the builtins' memory"
+    );
+    assert_eq!(plc.write_memory(u32::MAX, &[0]), refused);
+
+    assert!(
+        plc.run_task(0, &[0; 16]).is_ok(),
+        "the component still runs"
+    );
+}
+
+/// A read too large for the scratch area lands past everything the module
+/// laid out, after its ranges when they landed there themselves, in memory
+/// grown to hold it. Each range of 4 and 64 bytes takes 8 of the list, so a
+/// list written over its own ranges would read garbage. The component goes
+/// on, and reads again.
+#[rstest]
+fn a_read_larger_than_the_scratch_area_lands_past_it(mut with_db: db::RootDatabase) {
+    let component = wrap(&compile_to_wasm_as_built(&mut with_db, COUNTER));
+    let info = debug_format::DebugInfo::from_wasm(&component.bytes);
+    let (count, note) = (range_of(&info, "Main.count"), range_of(&info, "Main.note"));
+    assert_eq!(note.size, 64, "a length of 4 bytes and 60 characters");
+    let mut plc = Plc::load(&component.bytes);
+    plc.init().unwrap();
+    plc.run_task(0, &[0; 16]).unwrap();
+    let alone = plc.read_memory(&[note]).expect("the note alone");
+    assert_eq!(&alone[4..12], b"counting");
+
+    let ranges: Vec<Range> = (0..5_000).flat_map(|_| [count, note]).collect();
+    let bytes = plc.read_memory(&ranges).expect("the read");
+    assert_eq!(bytes.len(), 5_000 * (4 + 64));
+    for pair in bytes.chunks(4 + 64) {
+        assert_eq!(&pair[..4], 1i32.to_le_bytes());
+        assert_eq!(&pair[4..], alone.as_slice());
+    }
+
+    plc.run_task(0, &[0; 16]).unwrap();
+    assert_eq!(plc.read_memory(&[count]), Ok(2i32.to_le_bytes().to_vec()));
+}
+
+/// A release build reads and writes its memory too: a production host
+/// watches its variables. Its addresses are the debug build's.
+#[rstest]
+fn a_release_build_reads_and_writes_its_memory(mut with_db: db::RootDatabase) {
+    let (mir, debug) = compile_to_mir_and_wasm_as_built(&mut with_db, COUNTER);
+    let release =
+        wasm_codegen::generate_wasm_profile(&with_db, &mir, wasm_codegen::Profile::Release)
+            .finish();
+    let info = debug_format::DebugInfo::from_wasm(&debug);
+    let limit = range_of(&info, "Main.limit");
+    let mut plc = Plc::load(&wrap(&release).bytes);
+    plc.init().unwrap();
+    plc.write_memory(limit.address, &0i32.to_le_bytes())
+        .unwrap();
+    assert_eq!(plc.run_task(0, &[0; 16]).unwrap(), 1i32.to_le_bytes());
+    assert_eq!(plc.read_memory(&[limit]), Ok(0i32.to_le_bytes().to_vec()));
+}
+
 /// A division by zero in a scan is an error the host reads, and the next
 /// scan runs: the exception stopped at the interface, nothing trapped, and
 /// the component's store is not locked.
@@ -286,13 +463,13 @@ fn a_raise_leaves_the_component_running(mut with_db: db::RootDatabase) {
     plc.init().unwrap();
     assert_eq!(
         plc.run_task(0, &0i32.to_le_bytes()),
-        Err("division by zero".to_string())
+        Err(ScanError::Raised("division by zero".to_string()))
     );
     assert_eq!(
         plc.run_task(0, &8i32.to_le_bytes()),
         Ok(125i32.to_le_bytes().to_vec())
     );
-    assert_eq!(plc.run_task(1, &[]), Err("no such task".to_string()));
+    assert_eq!(plc.run_task(1, &[]), Err(ScanError::NoSuchTask));
 }
 
 /// A module that cannot raise has no exception to catch, and runs the same.
@@ -319,8 +496,11 @@ fn a_component_runs_its_tests(mut with_db: db::RootDatabase) {
     "#;
     let component = wrap(&compile_to_wasm_as_built(&mut with_db, source));
     let mut plc = Plc::load(&component.bytes);
-    assert_eq!(plc.run_test(0), Err("pump stuck".to_string()));
-    assert_eq!(plc.run_test(1), Err("no such test".to_string()));
+    assert_eq!(
+        plc.run_test(0),
+        Err(TestError::Failed("pump stuck".to_string()))
+    );
+    assert_eq!(plc.run_test(1), Err(TestError::NoSuchTest));
 }
 
 /// The component is named after the project, as a file name: a character
@@ -544,7 +724,9 @@ fn a_host_runs_the_component_on_its_own_interfaces(mut with_db: db::RootDatabase
     );
     assert_eq!(
         plc.run_task(0, &2i32.to_le_bytes()),
-        Err("a STRING passed to the host is not UTF-8".to_string())
+        Err(ScanError::Raised(
+            "a STRING passed to the host is not UTF-8".to_string()
+        ))
     );
     assert_eq!(
         plc.run_task(0, &1i32.to_le_bytes()),
@@ -1019,7 +1201,7 @@ fn the_stdlib_reads_wasi_s_clocks_through_a_component(mut with_db: db::RootDatab
     plc.init().unwrap();
     assert_eq!(
         plc.run_test(test("test_offset")),
-        Err("the host has no time zone".to_string())
+        Err(TestError::Failed("the host has no time zone".to_string()))
     );
     assert_eq!(plc.run_test(test("test_wall")), Ok(()));
 }
