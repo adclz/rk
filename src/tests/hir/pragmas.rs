@@ -432,6 +432,105 @@ END_FUNCTION_BLOCK"#;
     ");
 }
 
+/// An async import's block is its call and nothing more: a METHOD, a base
+/// or an INTERFACE would be code the host has not. Each is refused at the
+/// METHOD's name or at the type named.
+#[rstest]
+fn invalid_async_import_with_members(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK Base
+VAR_INPUT extra : DINT; END_VAR
+END_FUNCTION_BLOCK
+
+INTERFACE Pollable
+END_INTERFACE
+
+{extern async 'host' 'tick'}
+FUNCTION_BLOCK Tick EXTENDS Base IMPLEMENTS Pollable
+VAR_OUTPUT DONE : BOOL; END_VAR
+METHOD Again : BOOL
+    Again := DONE;
+END_METHOD
+END_FUNCTION_BLOCK"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1502] Error: not representable on an import
+        ,-[ file:///test0.st:10:29 ]
+        |
+     10 | FUNCTION_BLOCK Tick EXTENDS Base IMPLEMENTS Pollable
+        |                             ^^|^
+        |                               `--- an extern FUNCTION_BLOCK extends nothing
+        |
+        | Help: extend the base in a FUNCTION_BLOCK that holds the import
+        |
+        | Note: an {extern} FUNCTION_BLOCK is an import: the host has its body
+    ----'
+    [E1502] Error: not representable on an import
+        ,-[ file:///test0.st:10:45 ]
+        |
+     10 | FUNCTION_BLOCK Tick EXTENDS Base IMPLEMENTS Pollable
+        |                                             ^^^^|^^^
+        |                                                 `----- an extern FUNCTION_BLOCK implements no INTERFACE
+        |
+        | Help: implement the INTERFACE in a FUNCTION_BLOCK that holds the import
+        |
+        | Note: an {extern} FUNCTION_BLOCK is an import: the host has its body
+    ----'
+    [E1502] Error: not representable on an import
+        ,-[ file:///test0.st:12:8 ]
+        |
+     12 | METHOD Again : BOOL
+        |        ^^|^^
+        |          `---- an extern FUNCTION_BLOCK has no METHOD
+        |
+        | Help: declare the METHOD in a FUNCTION_BLOCK that holds the import
+        |
+        | Note: an {extern} FUNCTION_BLOCK is an import: the host has its body
+    ----'
+    ");
+}
+
+/// A FUNCTION can move a block it does not hold: the caller's, handed as
+/// VAR_IN_OUT, and a global's, reached through VAR_EXTERNAL. Neither
+/// instance is in the FUNCTION's frame, so the call outlives the FUNCTION's
+/// own call safely. Accepted, and the module they build is valid.
+#[rstest]
+fn valid_async_import_reached_from_a_function(mut with_db: RootDatabase) {
+    let source = r#"
+{extern async 'wasi:clocks/monotonic-clock@0.3.0' 'wait-for'}
+FUNCTION_BLOCK WAIT_FOR
+VAR_INPUT how_long : LTIME; END_VAR
+VAR_OUTPUT DONE : BOOL; END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION Step : BOOL
+VAR_IN_OUT wait : WAIT_FOR; END_VAR
+    wait(how_long := LT#5ms);
+    Step := wait.DONE;
+END_FUNCTION
+
+FUNCTION StepShared : BOOL
+VAR_EXTERNAL shared : WAIT_FOR; END_VAR
+    shared(how_long := LT#7ms);
+    StepShared := shared.DONE;
+END_FUNCTION
+
+PROGRAM Main
+VAR mine : WAIT_FOR; both : BOOL; END_VAR
+    both := Step(wait := mine) AND StepShared();
+END_PROGRAM
+
+CONFIGURATION Cfg
+VAR_GLOBAL shared : WAIT_FOR; END_VAR
+    RESOURCE Res ON CPU
+        TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM P WITH T : Main;
+    END_RESOURCE
+END_CONFIGURATION"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
+
 /// Async imports from WASI and from a host's module: parameters, a STRING
 /// among them past the 4 values a call passes, and the fields of a result.
 /// Accepted, and the module they build is valid.
