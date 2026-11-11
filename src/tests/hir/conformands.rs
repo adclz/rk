@@ -537,7 +537,7 @@ VAR_INPUT values : ARRAY[*]; END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1502] Error: not representable on an extern FUNCTION
+    [E1502] Error: not representable on an import
        ,-[ file:///test0.st:4:11 ]
        |
      4 | VAR_INPUT values : ARRAY[*] OF INT; END_VAR
