@@ -762,22 +762,12 @@ fn lower_module_from_pous<'db>(
         }
     }
 
-    // A block's async call is checked with the component model's built-ins.
+    // A block's async call is checked with the component model's built-ins:
+    // the last imports, numbered from `next_fn_idx`.
     if !async_calls.is_empty() {
         for builtin in crate::async_call::builtins(db, next_fn_idx) {
             function_indices.insert(builtin.name, builtin.index);
-            next_fn_idx += 1;
             extern_functions.push(builtin);
-        }
-    }
-
-    // A module that writes to the host's standard output or error imports
-    // the stream it writes through, which no declaration names.
-    for output in crate::console::written(&functions) {
-        for import in crate::console::imports(db, output, next_fn_idx) {
-            function_indices.insert(import.name, import.index);
-            next_fn_idx += 1;
-            extern_functions.push(import);
         }
     }
 

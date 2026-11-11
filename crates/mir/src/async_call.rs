@@ -5,7 +5,9 @@
 //! ([`hir::hir_ty::async_import`]): the function, imported async-lowered,
 //! so that a call returns at once; the component model's built-ins the
 //! block checks the call with; and where each part of the call is in the
-//! block's instance, which codegen reads to emit the block's body.
+//! block's instance, which codegen reads to emit the block's body. A
+//! stream's write is imported the same way, `[async-lower][stream-write-N]f`,
+//! and checked on the stream's end instead of a subtask.
 
 use compact_str::CompactString;
 use db::WorkspaceDataBase;
@@ -13,7 +15,7 @@ use hir::hir_def::interned::identifier::Ident;
 use hir::hir_def::pous::function_block::FunctionBlock;
 use hir::hir_def::pous::pou::Pou;
 use hir::hir_def::pous::pragma::ExternPragma;
-use hir::hir_ty::async_import::AsyncImport;
+use hir::hir_ty::async_import::{AsyncImport, AsyncKind};
 use hir::hir_ty::layout::Part;
 
 use crate::MirModule;
@@ -25,6 +27,8 @@ use crate::types::{MirElementary, MirStructType, MirType};
 /// the block's instance.
 #[derive(Debug, Clone)]
 pub struct MirAsyncCall {
+    /// A call of the host's function, or a stream's write.
+    pub kind: AsyncKind,
     /// The import, async-lowered, by its symbol.
     pub import: Ident,
     /// Where DONE is.
@@ -146,12 +150,14 @@ pub fn call<'db>(
             .collect::<Result<Vec<_>, _>>()
     };
     Ok(MirAsyncCall {
+        kind: import.kind,
         import: import_symbol(db, fb),
         done: field(import.done.name(db))?.offset,
         params: typed(&import.params)?,
         results: typed(&import.results)?,
         state: part(Part::AsyncState)?.offset,
-        result_area: match import.results.is_empty() {
+        // A stream write's result is its event's.
+        result_area: match import.results.is_empty() || import.kind == AsyncKind::StreamWrite {
             true => None,
             false => Some(part(Part::AsyncResult)?.offset),
         },
@@ -184,12 +190,17 @@ pub fn import<'db>(
                 kind: MirParamKind::Input,
             })
             .collect(),
-        out_results: import
-            .results
-            .iter()
-            .zip(&call.results)
-            .map(|(var, (_, ty))| (var.name(db), ty.clone()))
-            .collect(),
+        // A stream write returns how the copy went, its results in the event
+        // that ends it: it is passed no address to write them at.
+        out_results: match import.kind {
+            AsyncKind::Call => import
+                .results
+                .iter()
+                .zip(&call.results)
+                .map(|(var, (_, ty))| (var.name(db), ty.clone()))
+                .collect(),
+            AsyncKind::StreamWrite => Vec::new(),
+        },
         return_type: None,
         linkage: MirLinkage::Internal,
         asynchronous: true,
