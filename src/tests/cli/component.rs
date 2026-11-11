@@ -1628,3 +1628,336 @@ fn a_wasi_record_comes_back_in_outputs(mut with_db: db::RootDatabase) {
         })
     );
 }
+
+/// A component whose host defines async functions, which wasmtime runs
+/// through its async API only: each call driven to its end here, the host's
+/// functions finishing when their test opens a [`Gate`].
+struct AsyncPlc {
+    store: wasmtime::Store<()>,
+    instance: Instance,
+}
+
+/// Polls `future` to its end on this thread: the futures these tests' hosts
+/// make wait on a [`Gate`], never on a clock or a socket.
+fn block_on<F: std::future::Future>(future: F) -> F::Output {
+    let mut future = std::pin::pin!(future);
+    let mut cx = std::task::Context::from_waker(std::task::Waker::noop());
+    loop {
+        if let std::task::Poll::Ready(value) = future.as_mut().poll(&mut cx) {
+            return value;
+        }
+        std::thread::yield_now();
+    }
+}
+
+impl AsyncPlc {
+    fn load_with(bytes: &[u8], wire: impl FnOnce(&mut Linker<()>)) -> Self {
+        let mut config = wasmtime::Config::new();
+        config.wasm_exceptions(true);
+        config.wasm_component_model_async(true);
+        let engine = wasmtime::Engine::new(&config).expect("an engine");
+        let component = Component::new(&engine, bytes).expect("a valid component");
+        let mut linker = Linker::<()>::new(&engine);
+        wire(&mut linker);
+        linker
+            .define_unknown_imports_as_traps(&component)
+            .expect("its imports stubbed");
+        let mut store = wasmtime::Store::new(&engine, ());
+        let instance = block_on(linker.instantiate_async(&mut store, &component))
+            .expect("the component instantiates");
+        Self { store, instance }
+    }
+
+    fn func<P, R>(&mut self, name: &str) -> TypedFunc<P, R>
+    where
+        P: wasmtime::component::ComponentNamedList + wasmtime::component::Lower,
+        R: wasmtime::component::ComponentNamedList + wasmtime::component::Lift,
+    {
+        let control = self
+            .instance
+            .get_export_index(&mut self.store, None, CONTROL)
+            .expect("the component exports its control interface");
+        let func = self
+            .instance
+            .get_export_index(&mut self.store, Some(&control), name)
+            .unwrap_or_else(|| panic!("the interface has `{name}`"));
+        self.instance
+            .get_typed_func::<P, R>(&mut self.store, &func)
+            .unwrap_or_else(|e| panic!("`{name}`: {e}"))
+    }
+
+    fn init(&mut self) -> Result<(), String> {
+        let init = self.func::<(), (Result<(), String>,)>("init");
+        block_on(init.call_async(&mut self.store, ()))
+            .expect("init returns")
+            .0
+    }
+
+    /// One scan of the task at `task`, its outputs as words.
+    fn scan(&mut self, task: u32) -> Result<Vec<i32>, ScanError> {
+        let run = self.func::<(u32, &[u8]), (Result<Vec<u8>, ScanError>,)>("run-task");
+        let outputs = block_on(run.call_async(&mut self.store, (task, &[] as &[u8])))
+            .expect("run-task returns")
+            .0?;
+        Ok(outputs
+            .chunks(4)
+            .map(|word| i32::from_le_bytes(word.try_into().unwrap()))
+            .collect())
+    }
+}
+
+/// What lets a host's async functions finish: opening it wakes each call
+/// waiting on it, as finished I/O wakes the call it was for.
+#[derive(Default)]
+struct Gate {
+    open: std::sync::atomic::AtomicBool,
+    wakers: std::sync::Mutex<Vec<std::task::Waker>>,
+}
+
+impl Gate {
+    fn open(&self) {
+        self.open.store(true, std::sync::atomic::Ordering::SeqCst);
+        for waker in self.wakers.lock().unwrap().drain(..) {
+            waker.wake();
+        }
+    }
+
+    /// A future that is ready once the gate is open, with `value`.
+    fn wait<T: Send + 'static>(
+        gate: std::sync::Arc<Gate>,
+        value: T,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = wasmtime::Result<T>> + Send>> {
+        let mut value = Some(value);
+        Box::pin(std::future::poll_fn(move |cx| {
+            if gate.open.load(std::sync::atomic::Ordering::SeqCst) {
+                std::task::Poll::Ready(Ok(value.take().expect("polled once ready")))
+            } else {
+                gate.wakers.lock().unwrap().push(cx.waker().clone());
+                std::task::Poll::Pending
+            }
+        }))
+    }
+}
+
+/// A task that calls WASI's `wait-for` through a block at every scan, and
+/// counts the scans and the calls that finished.
+const WAITING: &str = r#"
+    {extern async 'wasi:clocks/monotonic-clock@0.3.0' 'wait-for'}
+    FUNCTION_BLOCK WAIT_FOR
+    VAR_INPUT how_long : LTIME; END_VAR
+    VAR_OUTPUT DONE : BOOL; END_VAR
+    END_FUNCTION_BLOCK
+
+    PROGRAM P
+    VAR_EXTERNAL finished : DINT; scans : DINT; END_VAR
+    VAR wait : WAIT_FOR; END_VAR
+        wait(how_long := LT#5ms);
+        scans := scans + 1;
+        IF wait.DONE THEN
+            finished := finished + 1;
+        END_IF;
+    END_PROGRAM
+
+    CONFIGURATION Cfg
+    VAR_GLOBAL
+        finished AT %QD0 : DINT;
+        scans AT %QD4 : DINT;
+    END_VAR
+        RESOURCE Res ON CPU
+            TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+            PROGRAM Main WITH T : P;
+        END_RESOURCE
+    END_CONFIGURATION
+"#;
+
+/// A block's call is started by a scan and checked by the next ones, which
+/// never wait: until the host finishes, DONE stays FALSE. The scan after
+/// the host finished sees it, and a call the host finishes at once is DONE
+/// in the scan that made it. The host gets the call's parameter.
+#[rstest]
+fn a_block_starts_its_call_and_checks_it_at_each_scan(mut with_db: db::RootDatabase) {
+    let component = build(&mut with_db, WAITING).expect("the module wraps");
+    let gate = std::sync::Arc::new(Gate::default());
+    let asked = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let (host, seen) = (gate.clone(), asked.clone());
+    let mut plc = AsyncPlc::load_with(&component.bytes, move |linker| {
+        let mut clock = linker
+            .instance("wasi:clocks/monotonic-clock@0.3.0")
+            .unwrap();
+        clock
+            .func_wrap_concurrent("wait-for", move |_, (how_long,): (u64,)| {
+                seen.lock().unwrap().push(how_long);
+                Gate::wait(host.clone(), ())
+            })
+            .unwrap();
+    });
+    plc.init().unwrap();
+    for scan in 1..=3 {
+        assert_eq!(plc.scan(0), Ok(vec![0, scan]), "the host has not finished");
+    }
+    assert_eq!(*asked.lock().unwrap(), [5_000_000], "one call, of 5 ms");
+    gate.open();
+    let finished: Vec<i32> = (0..3).map(|_| plc.scan(0).unwrap()[0]).collect();
+    assert!(
+        finished[0] <= 1 && finished[1] == 1,
+        "the call is DONE once, within two scans of the host finishing: {finished:?}"
+    );
+    // The next calls the host finishes at once: DONE in the scan that made
+    // each of them, one a scan.
+    let before = plc.scan(0).unwrap()[0];
+    assert_eq!(plc.scan(0).unwrap()[0], before + 1);
+    assert_eq!(plc.scan(0).unwrap()[0], before + 2);
+}
+
+/// What `fetch` returns: the fields of its result, its DONE left out.
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    PartialEq,
+    wasmtime::component::ComponentType,
+    wasmtime::component::Lift,
+    wasmtime::component::Lower,
+)]
+#[component(record)]
+struct FetchOutputs {
+    value: u32,
+    ok: bool,
+}
+
+/// Two blocks of one async import from a host's module, each its own call:
+/// five values, a STRING among them, passed in memory, and a result of two
+/// fields, written into each block's VAR_OUTPUTs.
+const FETCHING: &str = r#"
+    {extern async 'probe' 'fetch'}
+    FUNCTION_BLOCK FETCH
+    VAR_INPUT a : DINT; b : DINT; c : DINT; label : STRING[8]; END_VAR
+    VAR_OUTPUT DONE : BOOL; value : UDINT; ok : BOOL; END_VAR
+    END_FUNCTION_BLOCK
+
+    PROGRAM P
+    VAR_EXTERNAL first : UDINT; second : UDINT; END_VAR
+    VAR one : FETCH; two : FETCH; END_VAR
+        one(a := 1, b := 2, c := 3, label := 'ab');
+        two(a := 10, b := 20, c := 30, label := 'xyz');
+        IF one.DONE AND one.ok THEN
+            first := one.value;
+        END_IF;
+        IF two.DONE AND two.ok THEN
+            second := two.value;
+        END_IF;
+    END_PROGRAM
+
+    CONFIGURATION Cfg
+    VAR_GLOBAL
+        first AT %QD0 : UDINT;
+        second AT %QD4 : UDINT;
+    END_VAR
+        RESOURCE Res ON CPU
+            TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+            PROGRAM Main WITH T : P;
+        END_RESOURCE
+    END_CONFIGURATION
+"#;
+
+/// The world declares the host's async function an `async func`, its
+/// result the record of the block's VAR_OUTPUTs but DONE.
+#[rstest]
+fn a_host_s_async_function_is_an_async_func(mut with_db: db::RootDatabase) {
+    let component = build(&mut with_db, FETCHING).expect("the module wraps");
+    assert!(
+        component.world.contains(
+            "    import probe: interface {
+        record fetch-outputs {
+            value: u32,
+            ok: bool,
+        }
+        fetch: async func(a: s32, b: s32, c: s32, label: string) -> fetch-outputs;
+    }"
+        ),
+        "{}",
+        component.world
+    );
+}
+
+/// Each block's call reaches the host with its own parameters, and its
+/// result lands in that block once the host finished.
+#[rstest]
+fn each_block_gets_its_own_call_s_result(mut with_db: db::RootDatabase) {
+    let component = build(&mut with_db, FETCHING).expect("the module wraps");
+    let gate = std::sync::Arc::new(Gate::default());
+    let labels = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let (host, seen) = (gate.clone(), labels.clone());
+    let mut plc = AsyncPlc::load_with(&component.bytes, move |linker| {
+        let mut probe = linker.instance("probe").unwrap();
+        probe
+            .func_wrap_concurrent(
+                "fetch",
+                move |_, (a, b, c, label): (i32, i32, i32, String)| {
+                    let value = (a + b + c) as u32 * 100 + label.len() as u32;
+                    seen.lock().unwrap().push(label);
+                    Gate::wait(host.clone(), (FetchOutputs { value, ok: true },))
+                },
+            )
+            .unwrap();
+    });
+    plc.init().unwrap();
+    assert_eq!(plc.scan(0), Ok(vec![0, 0]));
+    assert_eq!(plc.scan(0), Ok(vec![0, 0]));
+    assert_eq!(
+        *labels.lock().unwrap(),
+        ["ab", "xyz"],
+        "one call each, so far"
+    );
+    gate.open();
+    let outputs = (0..3).map(|_| plc.scan(0).unwrap()).last().unwrap();
+    assert_eq!(outputs, vec![602, 6003]);
+}
+
+/// The declaration says whether a function is async, and the build checks
+/// it against WASI's WIT: a block imports an `async func`, and a FUNCTION a
+/// `func`. A scan never waits for a FUNCTION's call.
+#[rstest]
+fn the_build_checks_async_against_wasi(mut with_db: db::RootDatabase) {
+    let block_of_a_func = r#"
+        {extern async 'wasi:clocks/monotonic-clock@0.3.0' 'now'}
+        FUNCTION_BLOCK NOW
+        VAR_OUTPUT DONE : BOOL; mark : ULINT; END_VAR
+        END_FUNCTION_BLOCK
+
+        PROGRAM P
+        VAR now : NOW; END_VAR
+            now();
+        END_PROGRAM
+    "#;
+    assert_eq!(
+        build(&mut with_db, block_of_a_func).err(),
+        Some(
+            "`now` of `wasi:clocks/monotonic-clock@0.3.0` is imported with {extern async}, and \
+             WASI's WIT declares it a `func`: import it with {extern} on a FUNCTION"
+                .to_string()
+        )
+    );
+
+    let function_of_an_async_func = r#"
+        {extern 'wasi:clocks/monotonic-clock@0.3.0' 'wait-for'}
+        FUNCTION WAIT_FOR
+        VAR_INPUT how_long : LTIME; END_VAR
+        END_FUNCTION
+
+        {export}
+        FUNCTION Pause
+            WAIT_FOR(how_long := LT#1s);
+        END_FUNCTION
+    "#;
+    let mut db = db::RootDatabase::default();
+    assert_eq!(
+        build(&mut db, function_of_an_async_func).err(),
+        Some(
+            "`wait-for` of `wasi:clocks/monotonic-clock@0.3.0` is imported with {extern}, and \
+             WASI's WIT declares it an `async func`: import it with {extern async} on a \
+             FUNCTION_BLOCK"
+                .to_string()
+        )
+    );
+}

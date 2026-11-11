@@ -416,6 +416,10 @@ struct Runner<'a> {
     bytes: &'a [u8],
     module: Range<usize>,
     pre: InstancePre<ComponentHost>,
+    /// What each call runs on: wasmtime calls a component that imports a
+    /// host function that waits, as WASI's `wait-for` does, through its
+    /// async API only, and wasmtime-wasi waits on tokio's clock.
+    runtime: tokio::runtime::Runtime,
 }
 
 impl<'a> Runner<'a> {
@@ -428,6 +432,10 @@ impl<'a> Runner<'a> {
             bytes,
             module: wrapped_module(bytes)?,
             pre,
+            runtime: tokio::runtime::Builder::new_current_thread()
+                .enable_time()
+                .build()
+                .context("starting the runtime the tests' calls run on")?,
         })
     }
 
@@ -441,7 +449,14 @@ impl<'a> Runner<'a> {
     /// taken at each raise, which only a module with line tables can name.
     fn run(&self, place: u32, budget: Duration, capture: bool) -> Result<Outcome> {
         let stdio = Arc::new(Mutex::new(Stdio::keeping(OUTPUT_LIMIT)));
-        let mut outcome = run_test(&self.pre, &self.module, place, budget, capture, &stdio)?;
+        let mut outcome = self.runtime.block_on(run_test(
+            &self.pre,
+            &self.module,
+            place,
+            budget,
+            capture,
+            &stdio,
+        ))?;
         outcome.output = lock(&stdio).text();
         Ok(outcome)
     }
@@ -568,7 +583,7 @@ fn link_component(
 /// A raise comes back as the error of a result, placed where the module
 /// last said it raised, a trap as the call's error, with its backtrace:
 /// both in the core module at `module` in the component.
-fn run_test(
+async fn run_test(
     pre: &InstancePre<ComponentHost>,
     module: &Range<usize>,
     place: u32,
@@ -596,7 +611,8 @@ fn run_test(
     // always elapsed, so arm it before ANY wasm runs, instantiation included.
     store.set_epoch_deadline(ticks(budget));
     let instance = pre
-        .instantiate(&mut store)
+        .instantiate_async(&mut store)
+        .await
         .ctx("instantiating the component")?;
     let control = instance
         .get_export_index(&mut store, None, debug_format::wit::CONTROL_INTERFACE)
@@ -615,7 +631,7 @@ fn run_test(
         .ctx("`run-test` must be a func(u32) -> result<_, test-error>")?;
 
     store.set_epoch_deadline(ticks(budget));
-    match init.call(&mut store, ()) {
+    match init.call_async(&mut store, ()).await {
         Ok((Ok(()),)) => {}
         Ok((Err(message),)) => {
             let stack = store.data_mut().raised.take();
@@ -631,7 +647,7 @@ fn run_test(
         }
     }
     store.set_epoch_deadline(ticks(budget));
-    Ok(match run_test.call(&mut store, (place,)) {
+    Ok(match run_test.call_async(&mut store, (place,)).await {
         Ok((Ok(()),)) => Outcome::passed(),
         Ok((Err(TestError::Failed(message)),)) => {
             let stack = store.data_mut().raised.take();
