@@ -11,10 +11,13 @@
 //! }
 //! ```
 //!
-//! A function's parameters are the FUNCTION's own, a STRING its bytes and
-//! their count. It returns the address of its result: what the FUNCTION
-//! returned, or the message of the exception that stopped it, caught here
-//! as the control interface catches one ([`crate::control`]).
+//! A function's parameters are the FUNCTION's VAR_INPUTs, a STRING its
+//! bytes and their count. It returns the address of its result: what the
+//! FUNCTION returned, or the message of the exception that stopped it,
+//! caught here as the control interface catches one ([`crate::control`]).
+//! A FUNCTION with VAR_OUTPUTs returns a record of them, its return value
+//! last under its own name: the FUNCTION writes each in a slot of the
+//! control area, and each is written in the record from there.
 //!
 //! What a host passes is checked before the FUNCTION runs: a STRING longer
 //! than its parameter is an error, and so is a value outside a subrange. A
@@ -22,11 +25,12 @@
 //! character, as what an import is passed is.
 
 use mir::MirModule;
-use mir::function::MirFunction;
+use mir::function::{MirFunction, MirParam, MirParamKind};
 use mir::types::{MirElementary, MirType};
 use wasm_encoder::{BlockType, Function, Instruction, ValType};
 
 use crate::WasmGen;
+use crate::canonical::{Canonical, canonical, record_layout, result_payload, store};
 use crate::control::{ControlArea, catching, start_over, write_err_static};
 use crate::emit_expr::mem_arg;
 
@@ -60,13 +64,85 @@ pub(crate) fn builtins(module: &MirModule) -> Vec<&'static str> {
     let mut names = Vec::new();
     for func in module.functions.iter().filter(|f| f.wit_export.is_some()) {
         names.extend(func.params.iter().filter_map(|p| range_check(&p.ty)));
-        match &func.return_type {
-            Some(MirType::String { .. }) => names.push("rk.utf8_check"),
-            Some(MirType::Elementary(MirElementary::Char)) => names.push("rk.char_check"),
-            _ => {}
+        for returned in outputs(func).into_iter().chain(func.return_type.as_ref()) {
+            match returned {
+                MirType::String { .. } => names.push("rk.utf8_check"),
+                MirType::Elementary(MirElementary::Char) => names.push("rk.char_check"),
+                _ => {}
+            }
         }
     }
     names
+}
+
+/// The VAR_OUTPUTs of `func`, by the type each holds.
+fn outputs(func: &MirFunction) -> Vec<&MirType> {
+    func.params
+        .iter()
+        .filter(|param| param.kind == MirParamKind::Output)
+        .map(|param| match &param.ty {
+            MirType::Pointer(held) => held.as_ref(),
+            other => other,
+        })
+        .collect()
+}
+
+/// What `func` returns to a host, as the canonical ABI lays it out: its
+/// VAR_OUTPUTs then its return value, a record when it has VAR_OUTPUTs.
+fn result_fields(func: &MirFunction) -> Vec<Canonical> {
+    outputs(func)
+        .into_iter()
+        .chain(func.return_type.as_ref())
+        .map(|ty| {
+            canonical(ty).unwrap_or_else(|| {
+                panic!(
+                    "internal compiler error: an export returns a scalar or a STRING, not {ty:?}"
+                )
+            })
+        })
+        .collect()
+}
+
+/// The size of the largest result an `{export}` FUNCTION of `module`
+/// writes, its tag and its payload, a message or what it returns.
+pub(crate) fn results_size(module: &MirModule) -> u32 {
+    module
+        .functions
+        .iter()
+        .filter(|func| func.wit_export.is_some())
+        .map(|func| {
+            let (_, size, align) = record_layout(&result_fields(func));
+            result_payload(align) as u32 + size.max(8)
+        })
+        .max()
+        .unwrap_or(0)
+}
+
+/// The slot a VAR_OUTPUT of `ty` takes, where its FUNCTION writes it as it
+/// holds it: a STRING its length and characters.
+fn slot_size(ty: &MirType) -> u32 {
+    ty.size_bytes().next_multiple_of(8)
+}
+
+/// The slots of the `{export}` FUNCTION of `module` with the most
+/// VAR_OUTPUTs, by size.
+pub(crate) fn output_slots_size(module: &MirModule) -> u32 {
+    module
+        .functions
+        .iter()
+        .filter(|func| func.wit_export.is_some())
+        .map(|func| outputs(func).into_iter().map(slot_size).sum())
+        .max()
+        .unwrap_or(0)
+}
+
+/// The VAR_INPUTs of `func`: what a host passes it.
+fn inputs(func: &MirFunction) -> Vec<MirParam> {
+    func.params
+        .iter()
+        .filter(|param| param.kind == MirParamKind::Input)
+        .cloned()
+        .collect()
 }
 
 /// The builtin that checks a value of `ty` a host passes: a subrange's
@@ -99,21 +175,6 @@ fn elementary(ty: &MirType) -> Option<MirElementary> {
     }
 }
 
-/// The store of a value of `elementary` at the return area, `payload`
-/// bytes in, as the canonical ABI lays it out: a BOOL and an 8-bit integer
-/// in one byte, a 16-bit one in two.
-fn store(elementary: MirElementary, payload: u64) -> Instruction<'static> {
-    use MirElementary::*;
-    match elementary {
-        Bool | SInt | USInt | Byte => Instruction::I32Store8(mem_arg(payload, 0)),
-        Int | UInt | Word => Instruction::I32Store16(mem_arg(payload, 1)),
-        Real => Instruction::F32Store(mem_arg(payload, 2)),
-        LReal => Instruction::F64Store(mem_arg(payload, 3)),
-        wide if wide.is_64bit() => Instruction::I64Store(mem_arg(payload, 3)),
-        _ => Instruction::I32Store(mem_arg(payload, 2)),
-    }
-}
-
 impl WasmGen<'_> {
     /// Emits a function for each `{export}` FUNCTION, exported as
     /// `<interface>#<name>`, the name a component takes it by.
@@ -130,7 +191,7 @@ impl WasmGen<'_> {
             else {
                 continue;
             };
-            let (params, _) = crate::build_signature(&func.params, &None);
+            let (params, _) = crate::build_signature(&inputs(func), &None);
             let f = self.export_function(area, caught, arena, func, callee, &params);
             let index = self.add_function(&params, &[ValType::I32], &f);
             let export = format!("{interface}#{name}");
@@ -169,12 +230,13 @@ impl WasmGen<'_> {
         let mut f = Function::new(locals);
         let count = params.len() as u32;
         let (message, result) = ((count, count + 1), count + 2);
-        // A 64-bit value sets the payload 8 bytes in, any other 4.
         let scalar = func.return_type.as_ref().and_then(elementary);
-        let payload = match scalar {
-            Some(scalar) if scalar.is_64bit() => 8,
-            _ => crate::control::PAYLOAD,
-        };
+        // The payload past the tag, as aligned as what it holds; then each
+        // VAR_OUTPUT, and the return value last.
+        let (fields, _, align) = record_layout(&result_fields(func));
+        let payload = result_payload(align);
+        let outputs = outputs(func);
+        let returned_at = payload + u64::from(fields.last().copied().unwrap_or(0));
 
         // Only the host calls it: the stack of recursive calls starts
         // empty, even after an exception left frames behind, as it does
@@ -194,7 +256,7 @@ impl WasmGen<'_> {
         let raised = crate::control::Raised::Message { payload };
         catching(&mut f, area, caught, message, raised, |f| {
             let mut local = 0;
-            for param in &func.params {
+            for param in &inputs(func) {
                 match &param.ty {
                     MirType::String { capacity } => {
                         f.instruction(&Instruction::LocalGet(local + 1));
@@ -224,26 +286,96 @@ impl WasmGen<'_> {
                     _ => local += 1,
                 }
             }
-            for local in 0..count {
-                f.instruction(&Instruction::LocalGet(local));
+            // The FUNCTION's own parameters: a VAR_INPUT from the host, a
+            // VAR_OUTPUT the slot it is written in.
+            let mut local = 0;
+            let mut slot = area.outputs;
+            let mut slots = Vec::new();
+            for param in &func.params {
+                match &param.ty {
+                    MirType::Pointer(held) if param.kind == MirParamKind::Output => {
+                        f.instruction(&Instruction::I32Const(slot as i32));
+                        if let MirType::String { capacity } = held.as_ref() {
+                            f.instruction(&Instruction::I32Const(*capacity as i32));
+                        }
+                        slots.push(slot);
+                        slot += slot_size(held);
+                    }
+                    MirType::String { .. } => {
+                        f.instruction(&Instruction::LocalGet(local));
+                        f.instruction(&Instruction::LocalGet(local + 1));
+                        local += 2;
+                    }
+                    _ => {
+                        f.instruction(&Instruction::LocalGet(local));
+                        local += 1;
+                    }
+                }
             }
             f.instruction(&Instruction::Call(callee));
 
-            match (&func.return_type, scalar) {
-                (Some(MirType::String { .. }), _) => {
+            // What it returned waits in its locals while each VAR_OUTPUT is
+            // written in the record, checked as a returned value is.
+            match &func.return_type {
+                Some(MirType::String { .. }) => {
                     f.instruction(&Instruction::LocalSet(result + 1));
                     f.instruction(&Instruction::LocalSet(result));
+                }
+                Some(_) => {
+                    f.instruction(&Instruction::LocalSet(result));
+                }
+                None => {}
+            }
+            for ((at, held), offset) in slots.iter().zip(&outputs).zip(&fields) {
+                let offset = payload + u64::from(*offset);
+                match held {
+                    MirType::String { .. } => {
+                        // Its characters past the length, and the length.
+                        f.instruction(&Instruction::I32Const(*at as i32 + 4));
+                        f.instruction(&Instruction::I32Const(*at as i32));
+                        f.instruction(&Instruction::I32Load(mem_arg(0, 2)));
+                        f.instruction(&Instruction::Call(builtin("rk.utf8_check")));
+                        f.instruction(&Instruction::I32Const(area.ret as i32));
+                        f.instruction(&Instruction::I32Const(*at as i32 + 4));
+                        f.instruction(&Instruction::I32Store(mem_arg(offset, 2)));
+                        f.instruction(&Instruction::I32Const(area.ret as i32));
+                        f.instruction(&Instruction::I32Const(*at as i32));
+                        f.instruction(&Instruction::I32Load(mem_arg(0, 2)));
+                        f.instruction(&Instruction::I32Store(mem_arg(offset + 4, 2)));
+                    }
+                    held => {
+                        let Some(elementary) = elementary(held) else {
+                            continue;
+                        };
+                        if elementary == MirElementary::Char {
+                            f.instruction(&Instruction::I32Const(*at as i32));
+                            crate::emit_expr::emit_typed_mem_load(f, held);
+                            f.instruction(&Instruction::Call(builtin("rk.char_check")));
+                        }
+                        f.instruction(&Instruction::I32Const(area.ret as i32));
+                        f.instruction(&Instruction::I32Const(*at as i32));
+                        crate::emit_expr::emit_typed_mem_load(f, held);
+                        if elementary == MirElementary::Bool {
+                            f.instruction(&Instruction::I32Const(0));
+                            f.instruction(&Instruction::I32Ne);
+                        }
+                        f.instruction(&store(elementary, offset));
+                    }
+                }
+            }
+
+            match (&func.return_type, scalar) {
+                (Some(MirType::String { .. }), _) => {
                     f.instruction(&Instruction::LocalGet(result));
                     f.instruction(&Instruction::LocalGet(result + 1));
                     f.instruction(&Instruction::Call(builtin("rk.utf8_check")));
-                    for (offset, part) in [(payload, result), (payload + 4, result + 1)] {
+                    for (offset, part) in [(returned_at, result), (returned_at + 4, result + 1)] {
                         f.instruction(&Instruction::I32Const(area.ret as i32));
                         f.instruction(&Instruction::LocalGet(part));
                         f.instruction(&Instruction::I32Store(mem_arg(offset, 2)));
                     }
                 }
                 (Some(_), Some(scalar)) => {
-                    f.instruction(&Instruction::LocalSet(result));
                     if scalar == MirElementary::Char {
                         f.instruction(&Instruction::LocalGet(result));
                         f.instruction(&Instruction::Call(builtin("rk.char_check")));
@@ -255,7 +387,7 @@ impl WasmGen<'_> {
                         f.instruction(&Instruction::I32Const(0));
                         f.instruction(&Instruction::I32Ne);
                     }
-                    f.instruction(&store(scalar, payload));
+                    f.instruction(&store(scalar, returned_at));
                 }
                 _ => {}
             }

@@ -10,6 +10,7 @@ pub mod emit_stmt;
 pub mod mir_cast;
 
 mod builtins;
+pub mod canonical;
 mod console;
 pub mod control;
 mod exports;
@@ -685,6 +686,11 @@ impl<'a> WasmGen<'a> {
         aligned
     }
     fn emit_all(&mut self) {
+        // Where an import that returns a record has it written.
+        crate::emit_expr::IMPORT_RECORD_AT.with(|at| {
+            at.set(control::control_area(self.module, tests_end(self.module)).import_record)
+        });
+
         // Where each string literal is, by the pool entry it names.
         crate::emit_expr::STRING_ADDRESSES.with(|cell| {
             *cell.borrow_mut() = self
@@ -1161,10 +1167,13 @@ impl<'a> WasmGen<'a> {
         crate::builtins::closure_uses_import(&closure, "__iec_raise")
     }
 
-    /// An import's wasm signature. Params from the declaration; results are
-    /// the scalar VAR_OUTPUTs then the return type last.
+    /// An import's wasm signature. Params from the declaration; the result
+    /// is the record of the scalar VAR_OUTPUTs and the return type last,
+    /// which the canonical ABI returns as one value when it has one field,
+    /// and otherwise writes in memory at the address the call passes last
+    /// ([`canonical`]).
     fn import_signature(&self, ext_fn: &MirExternFunction) -> (Vec<ValType>, Vec<ValType>) {
-        let (params, _) = build_signature(&ext_fn.params, &None);
+        let (mut params, _) = build_signature(&ext_fn.params, &None);
         let results: Vec<ValType> = ext_fn
             .results()
             .map(|ty| {
@@ -1177,6 +1186,10 @@ impl<'a> WasmGen<'a> {
                 })
             })
             .collect();
+        if results.len() > 1 {
+            params.push(ValType::I32);
+            return (params, Vec::new());
+        }
         (params, results)
     }
 

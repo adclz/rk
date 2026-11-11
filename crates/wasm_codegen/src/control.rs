@@ -63,18 +63,26 @@ pub(crate) enum Raised {
 }
 
 /// The memory the functions a host calls need, past the `{test}` result
-/// areas: a return area of 16 bytes, the message, and the scratch what a
-/// host passes lands in (`cabi_realloc`), as large as the largest list the
-/// control interface takes and as the STRINGs any one `{export}` FUNCTION
-/// does. Past them, the buffer of each output the module writes to
-/// ([`crate::console`]).
+/// areas: a return area, the message, and the scratch what a host passes
+/// lands in (`cabi_realloc`), as large as the largest list the control
+/// interface takes and as the STRINGs any one `{export}` FUNCTION does.
+/// Past them, where an import's record is written, where an `{export}`
+/// FUNCTION's VAR_OUTPUTs land before they are written in its record, and
+/// the buffer of each output the module writes to ([`crate::console`]).
 pub(crate) struct ControlArea {
     /// Where a result is written: a tag at 0, then its payload, at 4 or,
-    /// holding a 64-bit value, at 8.
+    /// holding a 64-bit value, at 8. 16 bytes at least, more for the record
+    /// of an `{export}` FUNCTION with VAR_OUTPUTs.
     pub ret: u32,
     pub too_long: u32,
     pub scratch: u32,
     pub scratch_size: u32,
+    /// Where an import that returns a record of two fields or more has it
+    /// written ([`crate::canonical`]).
+    pub import_record: u32,
+    /// Where an `{export}` FUNCTION's VAR_OUTPUTs are written by the
+    /// FUNCTION, one slot each ([`crate::exports`]).
+    pub outputs: u32,
     /// Where the text written to the standard output waits for the host,
     /// then to the standard error: for an output the module writes to.
     pub console: [u32; 2],
@@ -86,7 +94,7 @@ pub(crate) struct ControlArea {
 /// result areas end.
 pub(crate) fn control_area(module: &MirModule, base: u32) -> ControlArea {
     let ret = base.next_multiple_of(8);
-    let too_long = ret + 16;
+    let too_long = ret + crate::exports::results_size(module).max(16);
     // A list of bytes and a string ask for an alignment of 1, a list of
     // ranges 4; 8 serves any.
     let scratch = (too_long + crate::exports::TOO_LONG.len() as u32).next_multiple_of(8);
@@ -94,7 +102,9 @@ pub(crate) fn control_area(module: &MirModule, base: u32) -> ControlArea {
         .input_size
         .max(module.retain_size)
         .max(crate::exports::strings_passed(module));
-    let mut end = scratch + scratch_size;
+    let import_record = (scratch + scratch_size).next_multiple_of(8);
+    let outputs = (import_record + import_records_size(module)).next_multiple_of(8);
+    let mut end = outputs + crate::exports::output_slots_size(module);
     let mut console = [0; 2];
     for output in mir::console::outputs(module) {
         console[output as usize] = end;
@@ -105,9 +115,28 @@ pub(crate) fn control_area(module: &MirModule, base: u32) -> ControlArea {
         too_long,
         scratch,
         scratch_size,
+        import_record,
+        outputs,
         console,
         end,
     }
+}
+
+/// The largest record an import of `module` returns: its VAR_OUTPUTs and
+/// its return value, when it has two fields or more.
+fn import_records_size(module: &MirModule) -> u32 {
+    module
+        .extern_functions
+        .iter()
+        .filter_map(|ext| {
+            let fields: Vec<_> = ext
+                .results()
+                .filter_map(crate::canonical::canonical)
+                .collect();
+            (fields.len() > 1).then(|| crate::canonical::record_layout(&fields).1)
+        })
+        .max()
+        .unwrap_or(0)
 }
 
 impl WasmGen<'_> {
