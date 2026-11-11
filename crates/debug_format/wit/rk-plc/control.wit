@@ -13,12 +13,18 @@ interface control {
     /// value raised.
     init: func() -> result<_, string>;
 
+    /// Why a scan did not run to its end.
+    variant scan-error {
+        /// The message of the exception that stopped it.
+        raised(string),
+        /// No task is at that place in the `rk.schedule` section.
+        no-such-task,
+    }
+
     /// Runs the task at that place in the `rk.schedule` section. `inputs` is
     /// copied into the input area, as much of it as the area holds, then each
-    /// program instance of the task runs, in order. Returns the output area,
-    /// or the message of the exception that stopped the scan, or
-    /// "no such task".
-    run-task: func(task: u32, inputs: list<u8>) -> result<list<u8>, string>;
+    /// program instance of the task runs, in order. Returns the output area.
+    run-task: func(task: u32, inputs: list<u8>) -> result<list<u8>, scan-error>;
 
     /// The retain area, to keep across a power cycle.
     save-retain: func() -> list<u8>;
@@ -26,7 +32,42 @@ interface control {
     /// Gives the retain area back, as many bytes as it holds.
     restore-retain: func(retained: list<u8>);
 
-    /// Runs the test at that place in the `test-manifest` section. Returns the
-    /// message it failed with, or "no such test". A release build runs none.
-    run-test: func(test: u32) -> result<_, string>;
+    /// A run of bytes in the module's memory: a variable's address and size,
+    /// as the `debug-symbols` section gives them.
+    record range {
+        address: u32,
+        size: u32,
+    }
+
+    /// Why a host's read or write of the memory was refused.
+    variant memory-error {
+        /// The range at that place in the list is outside the memory.
+        outside-memory(u32),
+        /// The ranges together are more than the memory can hold.
+        too-large,
+        /// The bytes would not all land in the variables.
+        outside-variables,
+    }
+
+    /// The bytes of each range, one range after the other, as they stand
+    /// between two calls.
+    read-memory: func(ranges: list<range>) -> result<list<u8>, memory-error>;
+
+    /// Writes `bytes` at `address`, where the next scan finds them. Refused
+    /// anywhere but the variables: the module's own data, its string
+    /// literals and its stack are not a host's to write. The bytes must be a
+    /// value of the variable's type, which the module does not check.
+    write-memory: func(address: u32, bytes: list<u8>) -> result<_, memory-error>;
+
+    /// Why a test did not pass.
+    variant test-error {
+        /// The message it failed with.
+        failed(string),
+        /// No test is at that place in the `test-manifest` section. A release
+        /// build runs none.
+        no-such-test,
+    }
+
+    /// Runs the test at that place in the `test-manifest` section.
+    run-test: func(test: u32) -> result<_, test-error>;
 }
