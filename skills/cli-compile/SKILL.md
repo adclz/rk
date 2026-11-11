@@ -11,12 +11,12 @@ description: Compile a workspace to a WebAssembly module with `rk compile` — t
 
 ## Summary
 
-Compiles the workspace to one core WebAssembly module.
+Compiles the workspace to one WebAssembly component: a core module, wrapped with the WIT world that types what it imports and exports.
 
 A workspace with errors does not compile, and `rk check` reports the same diagnostics without writing anything.
 The linter does not run here, so a lint can never block a build.
 
-The module is written to `rk_build/debug/core.wasm`, or to `rk_build/release/core.wasm` with `--release`.
+The component is written to `rk_build/debug/<project>.wasm`, or to `rk_build/release/<project>.wasm` with `--release`, its WIT in `wit/` beside it.
 
 ## Usage
 
@@ -25,7 +25,7 @@ The module is written to `rk_build/debug/core.wasm`, or to `rk_build/release/cor
 `-O, --opt-level <OPT_LEVEL>` The optimization level of a release build: `0` to `4`, `s` (size) or `z` (aggressive size).
 Defaults to `2`, or to `opt_level` in `config.toml`; the flag wins.
 
-`-o, --output <OUTPUT>` Where to write the module.
+`-o, --output <OUTPUT>` Where to write the component; its WIT goes in `wit/` beside it.
 
 `-w, --watch` Re-compile on every file change.
 

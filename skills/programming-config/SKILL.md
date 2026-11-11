@@ -351,7 +351,7 @@ At most 4294967296, the 4 GiB a module can address.
 Without it, the stack holds the largest frame and 64 KiB more.
 A recursive function's frame larger than the stack is refused by `rk check` (`E1430`), and a stack that does not fit in 4 GiB after the rest of the memory stops the build with an error naming the setting.
 
-`[settings.output] directory` Accepted by the schema and currently ignored — artifacts always land in `rk_build/debug/core.wasm` or `rk_build/release/core.wasm`.
+`[settings.output] directory` Accepted by the schema and currently ignored — the component always lands in `rk_build/debug/<project>.wasm` or `rk_build/release/<project>.wasm`, its WIT in `wit/` beside it.
 
 `[linter]` Optional, and only for TUNING: the linter runs by default with its recommended rules whether or not this section exists.
 

@@ -95,7 +95,7 @@ Format and compile:
 
 ```sh
 rk fmt             # rewrites the .st files in place; --check only reports
-rk compile         # the WebAssembly module, under rk_build/debug/
+rk compile         # the component, rk_build/debug/<project>.wasm
 rk compile --release   # optimized, no stepping tables, under rk_build/release/
 ```
 

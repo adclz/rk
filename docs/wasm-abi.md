@@ -1,13 +1,47 @@
 # WASM ABI
 
-A workspace compiles to one core module:
+A workspace compiles to one component, named after the project: `rk compile` writes `rk_build/debug/plant.wasm` for the project `plant`, and `rk_build/release/plant.wasm` with `--release`.
+The WIT that types it is written in `wit/` beside it: `world.wit`, and each package the world names under `deps/`.
+
+The component imports the WASI interfaces the program uses, and the host's own, from its `{extern}` FUNCTIONs.
+It exports the workspace's `{export}` FUNCTIONs, in an interface named after the project, and the control interface every component has, `rk:plc/control@0.1.0`, through which a host runs the PLC:
+
+```wit
+interface control {
+    init: func() -> result<_, string>;
+    run-task: func(task: u32, inputs: list<u8>) -> result<list<u8>, scan-error>;
+    save-retain: func() -> list<u8>;
+    restore-retain: func(retained: list<u8>);
+    read-memory: func(ranges: list<range>) -> result<list<u8>, memory-error>;
+    write-memory: func(address: u32, bytes: list<u8>) -> result<_, memory-error>;
+    run-test: func(test: u32) -> result<_, test-error>;
+
+    variant scan-error { raised(string), no-such-task }
+    record range { address: u32, size: u32 }
+    variant memory-error { outside-memory(u32), too-large, outside-variables }
+    variant test-error { failed(string), no-such-test }
+}
+```
+
+- `init` writes the starting value of every variable. A host calls it once, before anything else. Its error is the message of an exception a starting value raised.
+- `save-retain` gives the retain area, to keep across a power cycle, and `restore-retain` gives it back after `init` on a warm start.
+- `run-task` runs the task at that place in the `rk.schedule` section: `inputs` is copied into the input area, each program instance of the task runs, and the output area comes back. A host calls it for each task the section says is due, in the order the section lists them. The `located-map` section says where each address is in the two lists.
+- `read-memory` reads ranges of the memory between two scans, and `write-memory` forces bytes into the variables, at the addresses the `debug-symbols` section gives. Writing anywhere but the variables is refused.
+- `run-test` runs the test at that place in the `test-manifest` section. A release build has none.
+
+No function of the interface waits.
+An exception never leaves the component, where it would be a trap that stops the whole PLC: it comes back as the error of the result, `raised` with its message for a scan.
+
+The WIT of the interface, with each case explained, is `wit/deps/rk-plc/control.wit`.
+
+Inside the component, one core module does the work:
 
 ```schema
-core.wasm                           one module for the workspace
+core module                         one for the workspace
 ├─ IMPORT
 │  ├─ wasi:clocks now, utc-offset   the clocks a timer or Std.Timers reads, and always in debug
 │  └─ {extern} FUNCTION             the host's, when you declare some
-├─ EXPORT                           what a host calls
+├─ EXPORT                           what the component calls
 │  ├─ __init                        every POU's starting values, called first
 │  ├─ Main$__body__                 a PROGRAM
 │  ├─ C1$__scan__                   a program instance with connections
@@ -26,7 +60,7 @@ core.wasm                           one module for the workspace
    └─ debug-symbols                 names, types and places
 ```
 
-Everything a host calls is exported, everything else stays internal, the stdlib included: a release build only keeps what you call.
+Everything the component calls is exported, everything else stays internal, the stdlib included: a release build only keeps what you call.
 
 `__init` writes the starting value of every variable, in every POU.
 Call it once, before anything else, then restore the retained values over it.
@@ -188,6 +222,7 @@ A WASI import keeps the types WASI's WIT gives it, in their core form: `VAR_INPU
 A record of scalars comes back in `VAR_OUTPUT`, one for each of its fields in their order.
 `Std.Timers` declares WASI's system clock this way, `now` with `seconds: LINT` and `nanoseconds: UDINT`, and the zone's `utc-offset` with `known: BOOL` and `offset: LINT`: its `option<s64>` is laid out as a record of a byte that says whether the value is there, then the value.
 A `REF_TO` input is an address, where a record can come back too.
+A STRUCT, an ARRAY or an instance input is refused (`E1502`): it would go as an address into rk's own layout, which no WASI function reads.
 
 The clocks a module imports are WASI 0.3's, in their core forms, and the host provides them:
 

@@ -130,8 +130,8 @@ Each `VAR_INPUT` and `VAR_OUTPUT` is named in WIT by its name in lowercase, each
 
 Each call checks what it passes before the host is called: a `STRING` that is not UTF-8 raises "a STRING passed to the host is not UTF-8", and a `CHAR` that is a surrogate or past U+10FFFF raises "a CHAR passed to the host is not a character". The component model would trap on either, stopping the PLC; the exception is caught by `__TRY` like any other.
 
-What is refused with E1502 on every import: `VAR_IN_OUT` ("an extern takes copies, not references"), an `ARRAY[*]` or variadic `VAR_INPUT`, an aggregate or `STRING` `VAR_OUTPUT`, a `STRING` or aggregate return type ("the return type of 'f' can only be a scalar"), and any statement in the body ("an extern FUNCTION has no statements").
-On an import from a module other than WASI's, also: a `REF_TO` input ("an address in the module means nothing to the host"), a STRUCT, ARRAY or instance input, and a 17th value.
+What is refused with E1502 on every import: `VAR_IN_OUT` ("an extern takes copies, not references"), a STRUCT, ARRAY or instance `VAR_INPUT` (on a WASI import, "no WASI function reads rk's own layout"), an `ARRAY[*]` or variadic `VAR_INPUT`, an aggregate or `STRING` `VAR_OUTPUT`, a `STRING` or aggregate return type ("the return type of 'f' can only be a scalar"), and any statement in the body ("an extern FUNCTION has no statements").
+On an import from a module other than WASI's, also: a `REF_TO` input ("an address in the module means nothing to the host") and a 17th value.
 Putting `{extern}` on anything other than a `FUNCTION` is E1501.
 
 A WASI import keeps the types WASI's WIT gives it, in their core form: a record of scalars comes back in `VAR_OUTPUT`, one for each field in order, as `Std.Timers` reads the system clock, and a `REF_TO` input is an address where a record can come back too.
