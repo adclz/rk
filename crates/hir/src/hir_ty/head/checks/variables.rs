@@ -712,19 +712,24 @@ impl<'db> InitInference<'db> {
             if let Some((_, wasi)) = extern_fn {
                 use crate::hir_def::pous::variable::VariableKind;
                 // A WASI function keeps WASI's types, which the module's
-                // core ABI matches; any other module's import is typed in
-                // WIT, which has no address. Either returns a record of its
-                // VAR_OUTPUTs and its return value.
+                // core ABI matches: a REF_TO is the address where a record
+                // comes back, and a STRUCT or an ARRAY, which would go as an
+                // address into rk's own layout, matches none. Any other
+                // module's import is typed in WIT, which has no address.
+                // Either returns a record of its VAR_OUTPUTs and its return
+                // value.
                 let forbidden = match var.kind(db) {
                     VariableKind::InOut => Some(ExternForbiddenKind::InOut),
                     VariableKind::Input if var.conformand(db).is_some() => {
                         Some(ExternForbiddenKind::Conformand)
                     }
                     VariableKind::Input if var.variadic(db) => Some(ExternForbiddenKind::Variadic),
-                    VariableKind::Input if !wasi => match var.spec(db).infer(db).normalize(db) {
-                        Type::RefTo(_) => Some(ExternForbiddenKind::Reference),
+                    VariableKind::Input => match var.spec(db).infer(db).normalize(db) {
                         Type::Elementary(_) | Type::Enum(_) | Type::SubRange(_) => None,
                         Type::Never => None,
+                        Type::RefTo(_) if wasi => None,
+                        Type::RefTo(_) => Some(ExternForbiddenKind::Reference),
+                        _ if wasi => Some(ExternForbiddenKind::WasiAggregateInput),
                         _ => Some(ExternForbiddenKind::AggregateInput),
                     },
                     VariableKind::Output if !extern_scalar(db, var.spec(db).infer(db)) => {

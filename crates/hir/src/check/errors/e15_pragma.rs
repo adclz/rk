@@ -42,6 +42,10 @@ pub enum ExternForbiddenKind {
     /// A STRUCT, ARRAY or instance `VAR_INPUT` of an import from a module
     /// other than WASI's, which would go as an address.
     AggregateInput,
+    /// A STRUCT, ARRAY or instance `VAR_INPUT` of a WASI import. It would go
+    /// as an address into rk's own layout, which no WASI function reads: WASI
+    /// takes a record as its fields' values, and a list as packed elements.
+    WasiAggregateInput,
     /// The `VAR_INPUT` that takes an import from a module other than WASI's
     /// past 16 values, a STRING counting two: past them the component model
     /// passes the values in memory, which the call does not.
@@ -57,6 +61,7 @@ impl ExternForbiddenKind {
             | Self::Variadic
             | Self::Reference
             | Self::AggregateInput
+            | Self::WasiAggregateInput
             | Self::TooManyValues => "VAR_INPUT",
         }
     }
@@ -77,6 +82,9 @@ impl ExternForbiddenKind {
             Self::AggregateInput => {
                 "cannot cross a component import: only a scalar or a STRING can"
             }
+            Self::WasiAggregateInput => {
+                "cannot cross a WASI import: no WASI function reads rk's own layout"
+            }
             Self::TooManyValues => {
                 "cannot cross a component import: the import would take more than 16 values"
             }
@@ -93,6 +101,9 @@ impl ExternForbiddenKind {
             Self::Variadic => "a WASM import has one signature",
             Self::Reference | Self::AggregateInput => {
                 "an {extern} FUNCTION from a module other than WASI's takes scalars and STRINGs"
+            }
+            Self::WasiAggregateInput => {
+                "a WASI import takes scalars, STRINGs, and a REF_TO where a record comes back"
             }
             Self::TooManyValues => {
                 "a component import takes 16 values at most, a STRING counting two"
