@@ -1089,6 +1089,368 @@ fn an_export_interface_named_like_an_import_is_refused(mut with_db: db::RootData
     );
 }
 
+/// What a host returns for `read-register`: its VAR_OUTPUTs, and its
+/// return value under the import's name.
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    PartialEq,
+    wasmtime::component::ComponentType,
+    wasmtime::component::Lift,
+    wasmtime::component::Lower,
+)]
+#[component(record)]
+struct ReadRegisterOutputs {
+    quality: i8,
+    value: i64,
+    #[component(name = "read-register")]
+    read_register: bool,
+}
+
+/// What a host returns for `position`: one VAR_OUTPUT, no return value.
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    PartialEq,
+    wasmtime::component::ComponentType,
+    wasmtime::component::Lift,
+    wasmtime::component::Lower,
+)]
+#[component(record)]
+struct PositionOutputs {
+    counts: i32,
+}
+
+/// What `measure` returns: its VAR_OUTPUTs, a STRING among them, and its
+/// return value under its own name.
+#[derive(
+    Clone,
+    Debug,
+    PartialEq,
+    wasmtime::component::ComponentType,
+    wasmtime::component::Lift,
+    wasmtime::component::Lower,
+)]
+#[component(record)]
+struct MeasureOutputs {
+    unit: String,
+    clamped: bool,
+    peak: i64,
+    mark: char,
+    measure: f32,
+}
+
+/// What `twice` returns: one VAR_OUTPUT, no return value.
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    PartialEq,
+    wasmtime::component::ComponentType,
+    wasmtime::component::Lift,
+    wasmtime::component::Lower,
+)]
+#[component(record)]
+struct TwiceOutputs {
+    doubled: u16,
+}
+
+/// What `echo` returns.
+#[derive(
+    Clone,
+    Debug,
+    PartialEq,
+    wasmtime::component::ComponentType,
+    wasmtime::component::Lift,
+    wasmtime::component::Lower,
+)]
+#[component(record)]
+struct EchoOutputs {
+    copy: String,
+}
+
+/// What `label` returns.
+#[derive(
+    Clone,
+    Debug,
+    PartialEq,
+    wasmtime::component::ComponentType,
+    wasmtime::component::Lift,
+    wasmtime::component::Lower,
+)]
+#[component(record)]
+struct LabelOutputs {
+    text: String,
+}
+
+/// A task that reads the VAR_OUTPUTs of two imports, and FUNCTIONs a host
+/// reads theirs from.
+const OUTPUTS: &str = r#"
+    {extern 'modbus' 'read-register'}
+    FUNCTION ReadRegister : BOOL
+    VAR_INPUT address : UINT; END_VAR
+    VAR_OUTPUT quality : SINT; value : LINT; END_VAR
+    END_FUNCTION
+
+    {extern 'acme:drive/axis@1.0.0' 'position'}
+    FUNCTION Position
+    VAR_OUTPUT counts : DINT; END_VAR
+    END_FUNCTION
+
+    {export}
+    FUNCTION Measure : REAL
+    VAR_INPUT raw : INT; END_VAR
+    VAR_OUTPUT unit : STRING[8]; clamped : BOOL; peak : LINT; mark : CHAR; END_VAR
+        IF raw < 0 THEN
+            __RAISE('negative');
+        END_IF;
+        unit := 'm³/h';
+        clamped := raw > 100;
+        peak := raw;
+        peak := peak * 1000000000;
+        mark := 'K';
+        IF clamped THEN
+            Measure := 100.0;
+        ELSE
+            Measure := raw;
+        END_IF;
+    END_FUNCTION
+
+    {export}
+    FUNCTION Twice
+    VAR_INPUT n : USINT; END_VAR
+    VAR_OUTPUT doubled : UINT; END_VAR
+        doubled := n;
+        doubled := doubled * 2;
+    END_FUNCTION
+
+    {export}
+    FUNCTION Label
+    VAR_OUTPUT text : STRING; END_VAR
+        text := 'caf$E9';
+    END_FUNCTION
+
+    {export}
+    FUNCTION Echo
+    VAR_INPUT text : STRING[4]; END_VAR
+    VAR_OUTPUT copy : STRING[4]; END_VAR
+        copy := text;
+    END_FUNCTION
+
+    PROGRAM P
+    VAR_EXTERNAL output : LINT; END_VAR
+    VAR ok : BOOL; v : LINT; q : SINT; c : DINT; END_VAR
+        ok := ReadRegister(address := 40, value => v, quality => q);
+        Position(counts => c);
+        output := v + q + c;
+        IF ok THEN
+            output := output + 1000;
+        END_IF;
+    END_PROGRAM
+
+    CONFIGURATION Cfg
+    VAR_GLOBAL
+        output AT %QL0 : LINT;
+    END_VAR
+        RESOURCE Res ON CPU
+            TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+            PROGRAM Main WITH T : P;
+        END_RESOURCE
+    END_CONFIGURATION
+"#;
+
+/// A function with VAR_OUTPUTs returns the record of them, its return value
+/// last under its own name, typed in the interface the function is in: an
+/// import's in the host's, an export's in the project's.
+#[rstest]
+fn a_function_with_outputs_returns_a_record(mut with_db: db::RootDatabase) {
+    let component = build(&mut with_db, OUTPUTS).expect("the module wraps");
+    assert_eq!(
+        component.world,
+        "// The world of `plant`, written by rk at each build.
+package local:plant;
+
+world plc {
+    import acme:drive/axis@1.0.0;
+    import modbus: interface {
+        record read-register-outputs {
+            quality: s8,
+            value: s64,
+            read-register: bool,
+        }
+        read-register: func(address: u16) -> read-register-outputs;
+    }
+    export rk:plc/control@0.1.0;
+    export plc: interface {
+        record measure-outputs {
+            unit: string,
+            clamped: bool,
+            peak: s64,
+            mark: char,
+            measure: f32,
+        }
+        measure: func(raw: s16) -> result<measure-outputs, string>;
+        record twice-outputs {
+            doubled: u16,
+        }
+        twice: func(n: u8) -> result<twice-outputs, string>;
+        record label-outputs {
+            text: string,
+        }
+        label: func() -> result<label-outputs, string>;
+        record echo-outputs {
+            copy: string,
+        }
+        echo: func(text: string) -> result<echo-outputs, string>;
+    }
+}
+"
+    );
+    let files: Vec<(&str, &str)> = component
+        .wit
+        .iter()
+        .map(|(path, text)| (path.as_str(), text.as_ref()))
+        .collect();
+    assert_eq!(
+        files[1..],
+        [(
+            "deps/acme-drive/axis.wit",
+            "// What the module imports from `acme:drive/axis@1.0.0`, written by rk at each build.
+package acme:drive@1.0.0;
+
+interface axis {
+    record position-outputs {
+        counts: s32,
+    }
+    position: func() -> position-outputs;
+}
+"
+        )]
+    );
+}
+
+/// A host built on those types runs the component: the record it returns
+/// for an import lands in the VAR_OUTPUTs, whatever each field's width and
+/// place, `value` 8 bytes in past the padding after `quality`, and the
+/// record an export returns holds the VAR_OUTPUTs it wrote,
+/// a STRING checked for UTF-8 as a returned one is. What stops the
+/// FUNCTION is the error of its result, and a record as large as
+/// `measure`'s leaves the message of a STRING too long whole.
+#[rstest]
+fn a_host_exchanges_records_with_the_component(mut with_db: db::RootDatabase) {
+    let component = build(&mut with_db, OUTPUTS).expect("the module wraps");
+    let mut plc = Plc::load_with(&component.bytes, |linker| {
+        let mut modbus = linker.instance("modbus").unwrap();
+        modbus
+            .func_wrap("read-register", |_, (address,): (u16,)| {
+                Ok((ReadRegisterOutputs {
+                    quality: -3,
+                    value: i64::from(address) << 33,
+                    read_register: true,
+                },))
+            })
+            .unwrap();
+        let mut axis = linker.instance("acme:drive/axis@1.0.0").unwrap();
+        axis.func_wrap("position", |_, ()| Ok((PositionOutputs { counts: -7 },)))
+            .unwrap();
+    });
+    plc.init().unwrap();
+    let scanned = (40i64 << 33) - 3 - 7 + 1000;
+    assert_eq!(plc.run_task(0, &[]), Ok(scanned.to_le_bytes().to_vec()));
+
+    let measured = |clamped: bool, raw: i64, measure: f32| MeasureOutputs {
+        unit: "m³/h".to_string(),
+        clamped,
+        peak: raw * 1_000_000_000,
+        mark: 'K',
+        measure,
+    };
+    assert_eq!(
+        plc.call("measure", (150i16,)),
+        Ok(measured(true, 150, 100.0))
+    );
+    assert_eq!(plc.call("measure", (42i16,)), Ok(measured(false, 42, 42.0)));
+    assert_eq!(
+        plc.call::<_, MeasureOutputs>("measure", (-1i16,)),
+        Err("negative".to_string())
+    );
+    assert_eq!(
+        plc.call("twice", (200u8,)),
+        Ok(TwiceOutputs { doubled: 400 })
+    );
+    assert_eq!(
+        plc.call::<_, LabelOutputs>("label", ()),
+        Err("a STRING passed to the host is not UTF-8".to_string())
+    );
+    assert_eq!(plc.call("measure", (7i16,)), Ok(measured(false, 7, 7.0)));
+    assert_eq!(
+        plc.call("echo", ("ab³",)),
+        Ok(EchoOutputs {
+            copy: "ab³".to_string()
+        })
+    );
+    assert_eq!(
+        plc.call::<_, EchoOutputs>("echo", ("abcde",)),
+        Err("a STRING passed by the host is longer than its parameter".to_string())
+    );
+}
+
+/// A record and a function of one interface are two of its names, which
+/// the component model compares without their `-`: a function whose record
+/// is named as another function of the interface is refused at the build,
+/// an export as an import.
+#[rstest]
+fn a_record_named_like_a_function_is_refused(mut with_db: db::RootDatabase) {
+    let exported = r#"
+        {export}
+        FUNCTION Read : INT
+        VAR_OUTPUT status : INT; END_VAR
+            Read := 1;
+        END_FUNCTION
+
+        {export}
+        FUNCTION ReadOutputs : INT
+            ReadOutputs := 2;
+        END_FUNCTION
+    "#;
+    assert_eq!(
+        build(&mut with_db, exported).err(),
+        Some(
+            "`read` returns its VAR_OUTPUTs as the record `read-outputs`, which cannot be \
+             told from the function `readoutputs` of `plc`"
+                .to_string()
+        )
+    );
+
+    let imported = r#"
+        {extern 'modbus' 'read'}
+        FUNCTION Read : INT
+        VAR_OUTPUT status : INT; END_VAR
+        END_FUNCTION
+
+        {extern 'modbus' 'read-outputs'}
+        FUNCTION ReadOutputs : INT
+        END_FUNCTION
+
+        {export}
+        FUNCTION Both : INT
+        VAR status : INT; END_VAR
+            Both := Read(status => status) + ReadOutputs();
+        END_FUNCTION
+    "#;
+    let mut db = db::RootDatabase::default();
+    assert_eq!(
+        build(&mut db, imported).err(),
+        Some(
+            "`read` returns its VAR_OUTPUTs as the record `read-outputs`, which cannot be \
+             told from the function `read-outputs` of `modbus`"
+                .to_string()
+        )
+    );
+}
+
 /// WASI's `instant`, as the system clock gives it and the zone takes it.
 #[derive(
     Clone,
@@ -1204,4 +1566,65 @@ fn the_stdlib_reads_wasi_s_clocks_through_a_component(mut with_db: db::RootDatab
         Err(TestError::Failed("the host has no time zone".to_string()))
     );
     assert_eq!(plc.run_test(test("test_wall")), Ok(()));
+}
+
+/// What `stamp` returns: its outputs, then the seconds under its own name.
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    PartialEq,
+    wasmtime::component::ComponentType,
+    wasmtime::component::Lift,
+    wasmtime::component::Lower,
+)]
+#[component(record)]
+struct StampOutputs {
+    calls: i32,
+    nanoseconds: u32,
+    stamp: i64,
+}
+
+/// A record of scalars a WASI function returns comes back in VAR_OUTPUT,
+/// one for each of its fields in order: the system clock's `instant`, its
+/// seconds then its nanoseconds, typed as WASI's WIT types `now`. What an
+/// export wrote before it called the import is still there after.
+#[rstest]
+fn a_wasi_record_comes_back_in_outputs(mut with_db: db::RootDatabase) {
+    let source = r#"
+        {extern 'wasi:clocks/system-clock@0.3.0' 'now'}
+        FUNCTION Now
+        VAR_OUTPUT seconds : LINT; nanoseconds : UDINT; END_VAR
+        END_FUNCTION
+
+        {export}
+        FUNCTION Stamp : LINT
+        VAR_OUTPUT calls : DINT; nanoseconds : UDINT; END_VAR
+        VAR seconds : LINT; END_VAR
+            calls := 1;
+            Now(seconds => seconds, nanoseconds => nanoseconds);
+            Stamp := seconds;
+        END_FUNCTION
+    "#;
+    let component = build(&mut with_db, source).expect("the module wraps");
+    assert!(
+        component
+            .world
+            .contains("import wasi:clocks/system-clock@0.3.0;"),
+        "{}",
+        component.world
+    );
+    let mut plc = Plc::load_with(&component.bytes, |linker| {
+        let mut clock = linker.instance("wasi:clocks/system-clock@0.3.0").unwrap();
+        clock.func_wrap("now", |_, ()| Ok((WALL,))).unwrap();
+    });
+    plc.init().unwrap();
+    assert_eq!(
+        plc.call("stamp", ()),
+        Ok(StampOutputs {
+            calls: 1,
+            nanoseconds: WALL.nanoseconds,
+            stamp: WALL.seconds,
+        })
+    );
 }
