@@ -55,29 +55,40 @@ An exception that went through a `__FINALLY` keeps its place, and one raised aga
 
 With `--output-format concise` the calls follow the reason on the same line, and with `json-lines` they are the record's `backtrace`.
 
-What a test writes to the standard output and error with [`Std.Console`](console.md) is shown under its calls, both outputs in the order written:
+What a test writes to the standard output and error with [`Std.Console`](console.md) is shown under its calls, both outputs in the order written.
+A test FUNCTION holds no block that writes (`E1515`), so it writes through blocks declared in a `VAR_GLOBAL`, which the host takes within the call:
 
 ```st
 USING Std.Console;
 USING Std.Unit;
 
+CONFIGURATION Plant
+	VAR_GLOBAL
+		out: STDOUT;
+		err: STDERR;
+	END_VAR
+END_CONFIGURATION
+
 {test}
 FUNCTION test_pressure
 	VAR
 		bar: REAL := 3.2;
-		written: BOOL;
 	END_VAR
-	written := WRITE_STDOUT('reading the sensor$N');
-	written := WRITE_STDERR('pressure is high$N');
+	VAR_EXTERNAL
+		out: STDOUT;
+		err: STDERR;
+	END_VAR
+	out(REQ := TRUE, IN := 'reading the sensor$N');
+	err(REQ := TRUE, IN := 'pressure is high$N');
 	ASSERT(bar < 3.0, 'pressure under 3 bar');
 END_FUNCTION
 ```
 
 ```sh
      Failures:
-        FAIL test_pressure (main.st:5): assertion failed: pressure under 3 bar
+        FAIL test_pressure (main.st:12): assertion failed: pressure under 3 bar
              at Std.Unit.ASSERT (<lib>/Unit.st:25:4)
-             at test_pressure (main.st:12:2)
+             at test_pressure (main.st:22:2)
              output:
                reading the sensor
                pressure is high

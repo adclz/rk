@@ -144,6 +144,10 @@ The block is its call: statements, a METHOD, an EXTENDS or an IMPLEMENTS on it a
 REQ and BUSY, where a block's users need them, are written in ST by a block that calls it.
 The build checks a WASI import against WASI's WIT: `{extern async}` names an `async func`, and `{extern}` a `func`.
 
+A WASI import may also be a stream's or a future's built-in, named after the function whose type has the stream (`[stream-new-0]write-via-stream`); elsewhere that name is E1512.
+`new` and the drops return at once and are `{extern}` FUNCTIONs; a stream's write, `[stream-write-N]f`, waits for the reader and is an `{extern async}` FUNCTION_BLOCK taking the writing end (`UDINT`) and the bytes (`STRING`, unchecked) and giving, after DONE, how many went (`UDINT`) and whether the reader left (`BOOL`); a built-in that does not fit its POU, a read, or other variables, is E1516.
+A call that checks a pending write passes no `data`: the host reads the bytes from the block while the copy runs.
+
 ### `{allow 'rule-name' ...}`
 
 Silences the named lint rules at one site: above a POU or METHOD, the whole POU; as a statement, the NEXT statement (nested bodies included).

@@ -268,6 +268,12 @@ In the core module, the block's call is the import lowered async, `[async-lower]
 The block checks the call with the component model's built-ins, imported from `$root`: `[waitable-set-new]`, `[waitable-join]`, `[waitable-set-poll]`, which never waits, and `[subtask-drop]`.
 A host that implements an async function asynchronously runs the component through wasmtime's async API, `instantiate_async` and `call_async`; the control interface's functions stay synchronous.
 
+A WASI import may also be a stream's or a future's built-in, under the name of the function whose type has the stream: `[stream-new-0]write-via-stream` makes the stream of `write-via-stream`'s type.
+A built-in that returns at once, a stream's or a future's `new` or one of their drops, is an `{extern}` FUNCTION.
+A stream's write waits for the reader, so it is an `{extern async}` FUNCTION_BLOCK, `[stream-write-N]f`: it takes the stream's writing end, a `UDINT`, and the bytes, a `STRING` whose length is passed as it is, unchecked, and after `DONE` gives how many went, a `UDINT`, and whether the reader left, a `BOOL` (`E1516` otherwise).
+Its call is a copy into the stream, which ends when the reader has taken some of the bytes or left: the block waits on the stream's end as it would on a call.
+The host reads the bytes from the block while the copy runs, so a call that checks it passes none.
+
 The clocks a module imports are WASI 0.3's, in their core forms, and the host provides them:
 
 | Import | Signature | What it does |
@@ -278,9 +284,9 @@ The clocks a module imports are WASI 0.3's, in their core forms, and the host pr
 
 A release build imports the ones the program reads; a debug build imports all three, so a host that has no zone still defines `utc-offset`, answering that it has none, or the module does not instantiate. Where the monotonic clock starts is the host's choice, as WASI leaves it.
 
-[`Std.Console`](console.md) writes to WASI 0.3's standard output and error, `wasi:cli/stdout@0.3.0` and `wasi:cli/stderr@0.3.0`.
+[`Std.Console`](console.md) writes to WASI 0.3's standard output and error, `wasi:cli/stdout@0.3.0` and `wasi:cli/stderr@0.3.0`, with the imports it declares.
 Each is one function, `write-via-stream`, which takes a stream of bytes.
-The module makes the stream at its first write, hands its reading end to the host, keeps the other end, and writes to it with the component model's stream built-ins:
+A block makes its stream at its first request, hands the reading end to the host, keeps the other end, and writes to it with the component model's stream built-ins:
 
 | Import, beside `write-via-stream` | Signature | What it does |
 |---|---|---|
@@ -290,6 +296,7 @@ The module makes the stream at its first write, hands its reading end to the hos
 | `[async-lower][stream-write-0]write-via-stream` | `(i32, i32, i32) -> i32` | hands `len` bytes at `ptr` to the writing end, and returns at once |
 
 A component's host provides all four by providing WASI's command line interfaces, as wasmtime-wasi does.
-A function a host calls may not wait, so a write is never waited for: a host that takes none of the bytes leaves them pending in the module's memory, and the output closed.
+A scan never waits for a write: one the host has not taken stays pending in the block, `BUSY`, and a later scan sees it end.
+The host's side of the stream runs while the host calls the component through wasmtime's async API; a synchronous call hands over only what the host takes within it.
 
-A release build imports an output when the program writes to it, and a debug build imports both.
+Both outputs are written with the one block `Std.Console` imports beside the standard output's function, so a program that writes to either imports the standard output's interface; a debug build imports both.
