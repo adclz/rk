@@ -129,7 +129,7 @@ memory
 └─ …
 ```
 
-The host reads and writes a global by name.
+The host reads and writes a global by name, a component's host with `read-memory` and `write-memory`, see [Debug Symbols](debug-symbols.md).
 A retained global is in the retain band and the globals band.
 So is a global whose struct has a `RETAIN` field or whose function block has a `VAR RETAIN`: the `retain-map` section names the fields that persist.
 

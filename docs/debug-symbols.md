@@ -1,6 +1,8 @@
 # Debug Symbols
 
 A module carries its own symbol table, so a host can read and write variables **by name** instead of by address.
+A component's host reads them with the control interface's `read-memory` and forces them with `write-memory`, at the address and size the symbols give, between two calls.
+A write outside the variables is refused, and the bytes must be a value of the variable's type: the module does not check them.
 
 All these tables are stored as custom sections, encoded with [MessagePack](https://msgpack.org/).
 
