@@ -39,12 +39,13 @@ impl<'db> InitInference<'db> {
     /// The import an `{extern}` FUNCTION is, as a component names and types
     /// it: its module a WIT name or an interface, its name a WIT name
     /// (E1512), and for a module other than WASI's, a WIT name for each
-    /// parameter (E1512) and 16 values at most (E1502). WASI's functions
-    /// keep the types WASI's WIT gives them.
+    /// parameter and each field of its result (E1512) and 16 values at most
+    /// (E1502). WASI's functions keep the types WASI's WIT gives them.
     pub(crate) fn check_extern_import(&mut self, db: &'db dyn WorkspaceDataBase) {
         use crate::check::errors::e15_pragma::{ExternForbiddenKind, PragmaError};
         use crate::hir_def::expressions::spec::ElementarySpec;
         use crate::hir_def::pous::pragma::{import_module, is_wit_name, wit_parameter_name};
+        use crate::hir_ty::exports::wit_key;
         use crate::hir_ty::ty::Type;
         let ScopeKind::Pou(Pou::Function(func)) = get_scope(db, self.scope).kind else {
             return;
@@ -113,14 +114,52 @@ impl<'db> InitInference<'db> {
             }
             values += taken;
         }
+
+        // Each VAR_OUTPUT is a field of the import's result, and the return
+        // value its last, under the import's own name.
+        let returned = func.return_type(db).map(|_| wit_key(&pragma.name));
+        let mut fields = rustc_hash::FxHashMap::default();
+        for var in func.variables(db).iter().filter(|var| var.is_output(db)) {
+            let Some(wit) = wit_parameter_name(var.name(db).text(db)) else {
+                self.errors
+                    .push(PragmaError::ExternParameterName { var: *var }.to_diagnostic(db, file));
+                continue;
+            };
+            let key = wit_key(&wit);
+            if returned.as_ref() == Some(&key) {
+                self.errors.push(
+                    PragmaError::OutputNamedLikeResult {
+                        var: *var,
+                        func,
+                        name: pragma.name.clone(),
+                        export: false,
+                    }
+                    .to_diagnostic(db, file),
+                );
+                continue;
+            }
+            match fields.entry(key) {
+                std::collections::hash_map::Entry::Occupied(first) => self.errors.push(
+                    PragmaError::ExternParameterNamesCollide {
+                        var: *var,
+                        first: *first.get(),
+                    }
+                    .to_diagnostic(db, file),
+                ),
+                std::collections::hash_map::Entry::Vacant(slot) => {
+                    slot.insert(*var);
+                }
+            }
+        }
     }
 
     /// The export an `{export}` FUNCTION is, as a component names and types
     /// it: a WIT name of its own that no other export has (E1513), a WIT
-    /// name for each parameter (E1513), scalar and STRING inputs worth 16
-    /// values at most, no output and no in-out, and a scalar or a STRING
-    /// returned (E1509). What has no single export to give is refused
-    /// where the pragma's place is checked (`check_export`).
+    /// name for each parameter and each field of its result (E1513), scalar
+    /// and STRING inputs worth 16 values at most, scalar and STRING outputs,
+    /// no in-out, and a scalar or a STRING returned (E1509). What has no
+    /// single export to give is refused where the pragma's place is checked
+    /// (`check_export`).
     pub(crate) fn check_export_interface(&mut self, db: &'db dyn WorkspaceDataBase) {
         use crate::check::errors::e15_pragma::{ExportForbiddenSection, PragmaError};
         use crate::hir_def::expressions::spec::ElementarySpec;
@@ -136,7 +175,8 @@ impl<'db> InitInference<'db> {
             return;
         }
         let file = self.scope.file(db);
-        match export_wit_name(db, func) {
+        let export_name = export_wit_name(db, func);
+        match export_name.clone() {
             Err(ExportNameError::Given(name, span)) => self
                 .errors
                 .push(PragmaError::ExportNameNotWit { name, span }.to_diagnostic(db, file)),
@@ -165,14 +205,61 @@ impl<'db> InitInference<'db> {
         }
 
         // By their WIT names without `-`: what the component model compares.
+        // The parameters are named apart from the fields of the result, the
+        // VAR_OUTPUTs, whose last is the return value under the export's name.
         let mut named = rustc_hash::FxHashMap::default();
+        let mut fields = rustc_hash::FxHashMap::default();
+        let returned = match (&export_name, func.return_type(db)) {
+            (Ok(name), Some(_)) => Some((wit_key(name), name.as_str())),
+            _ => None,
+        };
         let mut values = 0;
         for var in func.variables(db) {
             let refuse = |kind| {
                 PragmaError::ExportForbiddenSection { var: *var, kind }.to_diagnostic(db, file)
             };
             match var.kind(db) {
-                VariableKind::Output => self.errors.push(refuse(ExportForbiddenSection::Output)),
+                VariableKind::Output => {
+                    if !matches!(
+                        var.spec(db).infer(db).normalize(db),
+                        Type::Elementary(_) | Type::Enum(_) | Type::SubRange(_) | Type::Never
+                    ) {
+                        self.errors
+                            .push(refuse(ExportForbiddenSection::AggregateOutput));
+                        continue;
+                    }
+                    let Some(wit) = wit_parameter_name(var.name(db).text(db)) else {
+                        self.errors.push(
+                            PragmaError::ExportParameterName { var: *var }.to_diagnostic(db, file),
+                        );
+                        continue;
+                    };
+                    let key = wit_key(&wit);
+                    if let Some((_, name)) = returned.as_ref().filter(|(at, _)| *at == key) {
+                        self.errors.push(
+                            PragmaError::OutputNamedLikeResult {
+                                var: *var,
+                                func,
+                                name: compact_str::CompactString::from(*name),
+                                export: true,
+                            }
+                            .to_diagnostic(db, file),
+                        );
+                        continue;
+                    }
+                    match fields.entry(key) {
+                        std::collections::hash_map::Entry::Occupied(first) => self.errors.push(
+                            PragmaError::ExportParameterNamesCollide {
+                                var: *var,
+                                first: *first.get(),
+                            }
+                            .to_diagnostic(db, file),
+                        ),
+                        std::collections::hash_map::Entry::Vacant(slot) => {
+                            slot.insert(*var);
+                        }
+                    }
+                }
                 // An interface is refused with the pragma: one copy of the
                 // FUNCTION per implementation.
                 VariableKind::InOut

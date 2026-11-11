@@ -713,7 +713,8 @@ impl<'db> InitInference<'db> {
                 use crate::hir_def::pous::variable::VariableKind;
                 // A WASI function keeps WASI's types, which the module's
                 // core ABI matches; any other module's import is typed in
-                // WIT, which has no address and returns one value.
+                // WIT, which has no address. Either returns a record of its
+                // VAR_OUTPUTs and its return value.
                 let forbidden = match var.kind(db) {
                     VariableKind::InOut => Some(ExternForbiddenKind::InOut),
                     VariableKind::Input if var.conformand(db).is_some() => {
@@ -726,7 +727,6 @@ impl<'db> InitInference<'db> {
                         Type::Never => None,
                         _ => Some(ExternForbiddenKind::AggregateInput),
                     },
-                    VariableKind::Output if !wasi => Some(ExternForbiddenKind::Output),
                     VariableKind::Output if !extern_scalar(db, var.spec(db).infer(db)) => {
                         Some(ExternForbiddenKind::AggregateOutput)
                     }
@@ -1244,12 +1244,13 @@ impl<'db> InitInference<'db> {
 
 /// Can this type ride a WASM result? Scalars only: every elementary except
 /// STRING (memory-resident), plus enums and subranges, which store at a
-/// scalar lane. Aggregates have no result type to ride.
+/// scalar lane. Aggregates have no result type to ride. A type that does
+/// not resolve is reported where it is written.
 fn extern_scalar<'db>(db: &'db dyn WorkspaceDataBase, ty: Type<'db>) -> bool {
     use crate::hir_def::expressions::spec::ElementarySpec;
     match ty.normalize(db) {
         Type::Elementary(es) => es != ElementarySpec::String,
-        Type::Enum(_) | Type::SubRange(_) => true,
+        Type::Enum(_) | Type::SubRange(_) | Type::Never => true,
         _ => false,
     }
 }

@@ -26,7 +26,8 @@ pub enum ExternForbiddenKind {
     /// `VAR_IN_OUT` hands the host a pointer into caller storage with a
     /// mutation contract; an extern's interface is copies only.
     InOut,
-    /// A struct/array/STRING `VAR_OUTPUT` has no WASM result type to ride.
+    /// A STRUCT, ARRAY, instance, reference or STRING `VAR_OUTPUT`: the
+    /// import's result is a record of scalars.
     AggregateOutput,
     /// An `ARRAY[*]` `VAR_INPUT` has the size of each call's array, and an
     /// import's copies have one size.
@@ -34,9 +35,6 @@ pub enum ExternForbiddenKind {
     /// A variadic `VAR_INPUT` has one copy per argument count, and an import
     /// has one signature: a call looked for a copy no module holds.
     Variadic,
-    /// A `VAR_OUTPUT` of an import from a module other than WASI's: the
-    /// import is typed in WIT, whose functions return one value at most.
-    Output,
     /// A `REF_TO` `VAR_INPUT` of an import from a module other than WASI's:
     /// an address in the module means nothing to a host that only receives
     /// WIT values.
@@ -54,7 +52,7 @@ impl ExternForbiddenKind {
     fn section(self) -> &'static str {
         match self {
             Self::InOut => "VAR_IN_OUT",
-            Self::AggregateOutput | Self::Output => "VAR_OUTPUT",
+            Self::AggregateOutput => "VAR_OUTPUT",
             Self::Conformand
             | Self::Variadic
             | Self::Reference
@@ -66,14 +64,13 @@ impl ExternForbiddenKind {
     fn message(self) -> &'static str {
         match self {
             Self::InOut => "cannot cross a WASM import: an extern takes copies, not references",
-            Self::AggregateOutput => "cannot be a WASM result: only scalar outputs cross an import",
+            Self::AggregateOutput => "cannot be a field of the import's result: only a scalar can",
             Self::Conformand => {
                 "cannot cross a WASM import: an ARRAY[*] has the size of each call's array"
             }
             Self::Variadic => {
                 "cannot cross a WASM import: a variadic parameter has the argument count of each call"
             }
-            Self::Output => "cannot be a result of the import: a WIT function returns one value",
             Self::Reference => {
                 "cannot cross a component import: an address in the module means nothing to the host"
             }
@@ -89,12 +86,11 @@ impl ExternForbiddenKind {
     fn note(self) -> &'static str {
         match self {
             Self::InOut => "an extern FUNCTION receives copies of its VAR_INPUT",
-            Self::AggregateOutput => "return scalars, or split the aggregate into scalar outputs",
+            Self::AggregateOutput => {
+                "an {extern} FUNCTION returns its VAR_OUTPUTs and its return value as one record of scalars"
+            }
             Self::Conformand => "an extern FUNCTION receives VAR_INPUT copies of a fixed size",
             Self::Variadic => "a WASM import has one signature",
-            Self::Output => {
-                "an {extern} FUNCTION from a module other than WASI's returns its return value only"
-            }
             Self::Reference | Self::AggregateInput => {
                 "an {extern} FUNCTION from a module other than WASI's takes scalars and STRINGs"
             }
@@ -110,8 +106,9 @@ impl ExternForbiddenKind {
 /// one. One code (E1509), one message shape each.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, salsa::Update)]
 pub enum ExportForbiddenSection {
-    /// A `VAR_OUTPUT`: a WIT function returns one value.
-    Output,
+    /// A STRUCT, ARRAY, instance or reference `VAR_OUTPUT`: the export's
+    /// result is a record of scalars and STRINGs.
+    AggregateOutput,
     /// A `VAR_IN_OUT`: the host passes values, not references.
     InOut,
     /// A `REF_TO` `VAR_INPUT`: the host has no address in the module.
@@ -128,7 +125,7 @@ pub enum ExportForbiddenSection {
 impl ExportForbiddenSection {
     fn section(self) -> &'static str {
         match self {
-            Self::Output => "VAR_OUTPUT",
+            Self::AggregateOutput => "VAR_OUTPUT",
             Self::InOut => "VAR_IN_OUT",
             Self::Reference | Self::AggregateInput | Self::TooManyValues => "VAR_INPUT",
         }
@@ -136,7 +133,9 @@ impl ExportForbiddenSection {
 
     fn message(self) -> &'static str {
         match self {
-            Self::Output => "cannot be a result of the export: a WIT function returns one value",
+            Self::AggregateOutput => {
+                "cannot be a field of the export's result: only a scalar or a STRING can"
+            }
             Self::InOut => {
                 "cannot cross a component export: the host passes values, not references"
             }
@@ -154,7 +153,9 @@ impl ExportForbiddenSection {
 
     fn note(self) -> &'static str {
         match self {
-            Self::Output => "an {export} FUNCTION returns its return value only",
+            Self::AggregateOutput => {
+                "an {export} FUNCTION returns its VAR_OUTPUTs and its return value as one record of scalars and STRINGs"
+            }
             Self::InOut | Self::Reference | Self::AggregateInput => {
                 "an {export} FUNCTION takes scalars and STRINGs, as VAR_INPUT"
             }
@@ -263,14 +264,15 @@ pub enum PragmaError<'db> {
         name: compact_str::CompactString,
         span: tree_sitter::Range,
     },
-    /// A `VAR_INPUT` of an import from a module other than WASI's whose
-    /// name gives no WIT name ([`wit_parameter_name`]): the import's WIT
-    /// names each parameter.
+    /// A `VAR_INPUT` or a `VAR_OUTPUT` of an import from a module other
+    /// than WASI's whose name gives no WIT name ([`wit_parameter_name`]):
+    /// the import's WIT names each parameter and each field of its result.
     ///
     /// [`wit_parameter_name`]: crate::hir_def::pous::pragma::wit_parameter_name
     ExternParameterName { var: VariableDecl<'db> },
-    /// Two `VAR_INPUT`s of such an import whose WIT names the component
-    /// model takes for one: it compares names without their `-`.
+    /// Two `VAR_INPUT`s, or two `VAR_OUTPUT`s, of such an import whose WIT
+    /// names the component model takes for one: it compares names without
+    /// their `-`.
     ExternParameterNamesCollide {
         var: VariableDecl<'db>,
         first: VariableDecl<'db>,
@@ -328,14 +330,23 @@ pub enum PragmaError<'db> {
         other: Function<'db>,
         name: String,
     },
-    /// A `VAR_INPUT` of an `{export}` FUNCTION whose name gives no WIT
-    /// name, as [`Self::ExternParameterName`].
+    /// A `VAR_INPUT` or a `VAR_OUTPUT` of an `{export}` FUNCTION whose name
+    /// gives no WIT name, as [`Self::ExternParameterName`].
     ExportParameterName { var: VariableDecl<'db> },
-    /// Two `VAR_INPUT`s of an `{export}` FUNCTION with one WIT name, as
-    /// [`Self::ExternParameterNamesCollide`].
+    /// Two `VAR_INPUT`s, or two `VAR_OUTPUT`s, of an `{export}` FUNCTION
+    /// with one WIT name, as [`Self::ExternParameterNamesCollide`].
     ExportParameterNamesCollide {
         var: VariableDecl<'db>,
         first: VariableDecl<'db>,
+    },
+    /// A `VAR_OUTPUT` of an import or an export whose WIT name is the one
+    /// its result gives the return value, `name`: the import's name, or the
+    /// export's. E1512 for an import, E1513 for an export.
+    OutputNamedLikeResult {
+        var: VariableDecl<'db>,
+        func: Function<'db>,
+        name: compact_str::CompactString,
+        export: bool,
     },
     /// A `{wasm}` pragma outside a FUNCTION body. Only FUNCTION bodies are
     /// scanned for one; anywhere else the statement was silently dropped and
@@ -391,7 +402,8 @@ impl<'db> ErrorCode for PragmaError<'db> {
             Self::ExternModuleName { .. }
             | Self::ExternFunctionName { .. }
             | Self::ExternParameterName { .. }
-            | Self::ExternParameterNamesCollide { .. } => "E1512",
+            | Self::ExternParameterNamesCollide { .. }
+            | Self::OutputNamedLikeResult { export: false, .. } => "E1512",
             Self::TestOutsideFunction { .. } => "E1503",
             Self::WasmPragmaOutsideFunction { .. } => "E1504",
             Self::UnknownWasmInstruction { .. } => "E1505",
@@ -405,7 +417,8 @@ impl<'db> ErrorCode for PragmaError<'db> {
             | Self::ExportWithoutWitName { .. }
             | Self::ExportNamesCollide { .. }
             | Self::ExportParameterName { .. }
-            | Self::ExportParameterNamesCollide { .. } => "E1513",
+            | Self::ExportParameterNamesCollide { .. }
+            | Self::OutputNamedLikeResult { export: true, .. } => "E1513",
             Self::UnknownPragma { .. } => "E1510",
             Self::TestWithParameter { .. } => "E1511",
         }
@@ -561,6 +574,40 @@ impl<'db> ToIdeDiagnostic<'db> for PragmaError<'db> {
                     format!("'{}' is declared here", first.name_with_case(db).text(db)),
                     first.get_scope_id(db).file(db),
                     first.get_name_span(db),
+                ));
+                diag
+            }
+            Self::OutputNamedLikeResult {
+                var,
+                func,
+                name,
+                export,
+            } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "'{}' cannot be told from the return value '{name}' in WIT",
+                        var.name_with_case(db).text(db)
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &var.get_name_span(db)).unwrap_or_default())
+                    .call();
+                diag.with_note(match export {
+                    true => "an {export} FUNCTION returns its VAR_OUTPUTs and its return value \
+                             as one record, the return value named as the export is"
+                        .to_string(),
+                    false => "an {extern} FUNCTION returns its VAR_OUTPUTs and its return value \
+                              as one record, the return value named as the import is"
+                        .to_string(),
+                });
+                diag.with_help("rename the VAR_OUTPUT".to_string());
+                diag.with_related(Related::new(
+                    format!(
+                        "'{}' is declared here",
+                        func.get_name_with_case(db).text(db)
+                    ),
+                    func.get_scope_id(db).file(db),
+                    func.get_name_span(db),
                 ));
                 diag
             }
