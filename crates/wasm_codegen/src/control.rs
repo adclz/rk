@@ -66,9 +66,8 @@ pub(crate) enum Raised {
 /// areas: a return area, the message, and the scratch what a host passes
 /// lands in (`cabi_realloc`), as large as the largest list the control
 /// interface takes and as the STRINGs any one `{export}` FUNCTION does.
-/// Past them, where an import's record is written, where an `{export}`
-/// FUNCTION's VAR_OUTPUTs land before they are written in its record, and
-/// the buffer of each output the module writes to ([`crate::console`]).
+/// Past them, where an import's record is written, and where an `{export}`
+/// FUNCTION's VAR_OUTPUTs land before they are written in its record.
 pub(crate) struct ControlArea {
     /// Where a result is written: a tag at 0, then its payload, at 4 or,
     /// holding a 64-bit value, at 8. 16 bytes at least, more for the record
@@ -83,9 +82,6 @@ pub(crate) struct ControlArea {
     /// Where an `{export}` FUNCTION's VAR_OUTPUTs are written by the
     /// FUNCTION, one slot each ([`crate::exports`]).
     pub outputs: u32,
-    /// Where the text written to the standard output waits for the host,
-    /// then to the standard error: for an output the module writes to.
-    pub console: [u32; 2],
     /// The first byte past the area.
     pub end: u32,
 }
@@ -104,12 +100,7 @@ pub(crate) fn control_area(module: &MirModule, base: u32) -> ControlArea {
         .max(crate::exports::strings_passed(module));
     let import_record = (scratch + scratch_size).next_multiple_of(8);
     let outputs = (import_record + import_records_size(module)).next_multiple_of(8);
-    let mut end = outputs + crate::exports::output_slots_size(module);
-    let mut console = [0; 2];
-    for output in mir::console::outputs(module) {
-        console[output as usize] = end;
-        end += crate::console::CAPACITY;
-    }
+    let end = outputs + crate::exports::output_slots_size(module);
     ControlArea {
         ret,
         too_long,
@@ -117,7 +108,6 @@ pub(crate) fn control_area(module: &MirModule, base: u32) -> ControlArea {
         scratch_size,
         import_record,
         outputs,
-        console,
         end,
     }
 }

@@ -12,9 +12,14 @@
 //!   it returns at once. Returned already, the result is copied and DONE is
 //!   TRUE; otherwise the call joins the set and DONE is FALSE.
 //!
+//! A stream's write, `[stream-write-N]f`, is made the same way, on the
+//! stream's writing end instead of a subtask: the copy is started when none
+//! is pending and checked otherwise.
+//!
 //! A warm start restores no call: its handle went with the instance that
 //! made it, and is kept apart from the variables.
 
+use hir::hir_ty::async_import::AsyncKind;
 use mir::async_call::{
     Builtin, MirAsyncCall, STATE_EVENT, STATE_HANDLE, STATE_SET, builtin_at, import_at,
 };
@@ -31,6 +36,12 @@ use crate::emit_stmt::emit_typed_mem_store_pub as emit_typed_mem_store;
 const EVENT_SUBTASK: i32 = 1;
 const RETURNED: i32 = 2;
 
+/// A stream's write: its event, what it returns when the copy has not
+/// ended yet, and the result of a copy whose reader left.
+const EVENT_STREAM_WRITE: i32 = 3;
+const BLOCKED: i32 = -1;
+const DROPPED: i32 = 1;
+
 const THIS: u32 = 0;
 const STATUS: u32 = 1;
 
@@ -39,6 +50,10 @@ const BOOL: MirType = MirType::Elementary(MirElementary::Bool);
 impl WasmGen<'_> {
     /// Emits `func`, the body of the block that makes `call`.
     pub(crate) fn emit_async_body(&mut self, func: &MirFunction, call: &MirAsyncCall) {
+        if call.kind == AsyncKind::StreamWrite {
+            let f = self.stream_write_body(call);
+            return self.place_body(func, &f);
+        }
         let builtin = |builtin| {
             builtin_at(self.module, builtin).expect(
                 "internal compiler error: a module that makes an async call imports the built-ins",
@@ -139,10 +154,74 @@ impl WasmGen<'_> {
         f.instruction(&I::End);
         f.instruction(&I::End);
         f.instruction(&I::End);
+        self.place_body(func, &f);
+    }
 
+    /// The body of the block that writes to a stream, `call`: it starts the
+    /// copy when none is pending and checks it otherwise, on the stream's
+    /// writing end, which a copy that did not end at once joins the block's
+    /// set as a subtask does. The bytes are passed as they are, unchecked:
+    /// a stream carries bytes, not text.
+    fn stream_write_body(&self, call: &MirAsyncCall) -> Function {
+        let builtin = |builtin| {
+            builtin_at(self.module, builtin).expect(
+                "internal compiler error: a module that makes an async call imports the built-ins",
+            )
+        };
+        let import = import_at(self.module, call)
+            .expect("internal compiler error: a stream write's import is among the imports");
+        let (end, _) =
+            call.params.first().cloned().expect(
+                "internal compiler error: a stream write takes its stream's end first (E1516)",
+            );
+        let mut f = Function::new([(1, ValType::I32)]);
+        store_bool(&mut f, call.done, false);
+
+        // A copy pending: did it end?
+        word(&mut f, call.state + STATE_HANDLE);
+        f.instruction(&I::If(BlockType::Empty));
+        written_event(&mut f, call, builtin(Builtin::SetPoll));
+        f.instruction(&I::If(BlockType::Empty));
+        copy_ended(&mut f, call);
+        f.instruction(&I::End);
+
+        // None pending: the copy, started now.
+        f.instruction(&I::Else);
+        lower_params(&mut f, call);
+        f.instruction(&I::Call(import));
+        f.instruction(&I::LocalTee(STATUS));
+        f.instruction(&I::I32Const(BLOCKED));
+        f.instruction(&I::I32Ne);
+        f.instruction(&I::If(BlockType::Empty));
+        copied(&mut f, call, |f| {
+            f.instruction(&I::LocalGet(STATUS));
+        });
+        f.instruction(&I::Else);
+        // Pending: the stream's end is what the block checks.
+        set_word(&mut f, call.state + STATE_HANDLE, |f| {
+            word(f, end);
+        });
+        word(&mut f, call.state + STATE_SET);
+        f.instruction(&I::I32Eqz);
+        f.instruction(&I::If(BlockType::Empty));
+        set_word(&mut f, call.state + STATE_SET, |f| {
+            f.instruction(&I::Call(builtin(Builtin::SetNew)));
+        });
+        f.instruction(&I::End);
+        word(&mut f, call.state + STATE_HANDLE);
+        word(&mut f, call.state + STATE_SET);
+        f.instruction(&I::Call(builtin(Builtin::Join)));
+        f.instruction(&I::End);
+        f.instruction(&I::End);
+        f.instruction(&I::End);
+        f
+    }
+
+    /// Places `f`, the body of `func`, and exports it when `func` is.
+    fn place_body(&mut self, func: &MirFunction, f: &Function) {
         let ty = self.add_type(&[ValType::I32], &[]);
         self.fn_section.function(ty);
-        self.code_section.function(&f);
+        self.code_section.function(f);
         if func.linkage == MirLinkage::Export {
             let index = self
                 .index_remap
@@ -156,6 +235,57 @@ impl WasmGen<'_> {
             );
         }
     }
+}
+
+/// Whether the set's next event, from `waitable-set.poll`, is the end of
+/// the block's copy into its stream. The set holds the stream's end alone.
+fn written_event(f: &mut Function, call: &MirAsyncCall, poll: u32) {
+    word(f, call.state + STATE_SET);
+    address(f, call.state + STATE_EVENT);
+    f.instruction(&I::Call(poll));
+    f.instruction(&I::I32Const(EVENT_STREAM_WRITE));
+    f.instruction(&I::I32Eq);
+    word(f, call.state + STATE_EVENT);
+    word(f, call.state + STATE_HANDLE);
+    f.instruction(&I::I32Eq);
+    f.instruction(&I::I32And);
+}
+
+/// The copy's end, its outcome in the event: what [`copied`] writes, and no
+/// copy pending. The stream's end stays in the block's set: the next copy
+/// that does not end at once joins it there again, which moves nothing.
+fn copy_ended(f: &mut Function, call: &MirAsyncCall) {
+    copied(f, call, |f| {
+        word(f, call.state + STATE_EVENT + 4);
+    });
+    set_word(f, call.state + STATE_HANDLE, |f| {
+        f.instruction(&I::I32Const(0));
+    });
+}
+
+/// A copy's outcome, which `outcome` pushes, `count << 4 | result`: how many
+/// bytes went into the first VAR_OUTPUT after DONE, whether the reader left
+/// into the second, and DONE.
+fn copied(f: &mut Function, call: &MirAsyncCall, outcome: impl Fn(&mut Function)) {
+    let [(written, written_ty), (closed, closed_ty)] = call.results.as_slice() else {
+        panic!(
+            "internal compiler error: a stream write gives how many went and whether the reader \
+             left (E1516)"
+        );
+    };
+    address(f, *written);
+    outcome(f);
+    f.instruction(&I::I32Const(4));
+    f.instruction(&I::I32ShrU);
+    emit_typed_mem_store(f, written_ty);
+    address(f, *closed);
+    outcome(f);
+    f.instruction(&I::I32Const(0xf));
+    f.instruction(&I::I32And);
+    f.instruction(&I::I32Const(DROPPED));
+    f.instruction(&I::I32Eq);
+    emit_typed_mem_store(f, closed_ty);
+    store_bool(f, call.done, true);
 }
 
 /// `this + offset`.
