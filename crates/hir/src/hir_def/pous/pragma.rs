@@ -248,6 +248,8 @@ pub const MODULE_EXPORTS: &[&str] = &[
     "rk:plc/control@0.1.0#run-task",
     "rk:plc/control@0.1.0#save-retain",
     "rk:plc/control@0.1.0#restore-retain",
+    "rk:plc/control@0.1.0#read-memory",
+    "rk:plc/control@0.1.0#write-memory",
     "rk:plc/control@0.1.0#run-test",
     "retain_base",
     "retain_size",
