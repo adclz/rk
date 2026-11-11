@@ -127,6 +127,61 @@ END_FUNCTION"#;
     ");
 }
 
+/// A WASI import keeps WASI's types in their core form: a STRUCT, an ARRAY
+/// or an instance input would go as an address into rk's own layout, which
+/// no WASI function reads, so each is refused. A `REF_TO`, where a record
+/// comes back, and a STRING are not.
+#[rstest]
+fn invalid_wasi_extern_aggregate_input(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE Pt : STRUCT x : INT; y : INT; END_STRUCT; END_TYPE
+
+FUNCTION_BLOCK Counter
+VAR count : INT; END_VAR
+END_FUNCTION_BLOCK
+
+{extern 'wasi:test/host@0.1.0' 'send'}
+FUNCTION send : INT
+VAR_INPUT
+    p : Pt;
+    a : ARRAY[0..3] OF BYTE;
+    c : Counter;
+    r : REF_TO Pt;
+    s : STRING;
+END_VAR
+END_FUNCTION"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1502] Error: not representable on an extern FUNCTION
+        ,-[ file:///test0.st:11:5 ]
+        |
+     11 |     p : Pt;
+        |     |
+        |     `-- VAR_INPUT 'p' cannot cross a WASI import: no WASI function reads rk's own layout
+        |
+        | Note: a WASI import takes scalars, STRINGs, and a REF_TO where a record comes back
+    ----'
+    [E1502] Error: not representable on an extern FUNCTION
+        ,-[ file:///test0.st:12:5 ]
+        |
+     12 |     a : ARRAY[0..3] OF BYTE;
+        |     |
+        |     `-- VAR_INPUT 'a' cannot cross a WASI import: no WASI function reads rk's own layout
+        |
+        | Note: a WASI import takes scalars, STRINGs, and a REF_TO where a record comes back
+    ----'
+    [E1502] Error: not representable on an extern FUNCTION
+        ,-[ file:///test0.st:13:5 ]
+        |
+     13 |     c : Counter;
+        |     |
+        |     `-- VAR_INPUT 'c' cannot cross a WASI import: no WASI function reads rk's own layout
+        |
+        | Note: a WASI import takes scalars, STRINGs, and a REF_TO where a record comes back
+    ----'
+    ");
+}
+
 /// The import IS the body: statements on an extern FUNCTION are refused.
 #[rstest]
 fn invalid_extern_with_body(mut with_db: RootDatabase) {
