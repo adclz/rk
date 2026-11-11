@@ -90,6 +90,20 @@ END_FUNCTION
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "empty-body"), @r"");
 }
 
+/// An async import's block is its call: its body is empty by contract, as
+/// an extern FUNCTION's is.
+#[rstest]
+fn an_import_block_no_warning(mut with_db: RootDatabase) {
+    let source = r#"
+{extern async 'host' 'fetch'}
+FUNCTION_BLOCK FETCH
+VAR_INPUT x : DINT; END_VAR
+VAR_OUTPUT DONE : BOOL; y : DINT; END_VAR
+END_FUNCTION_BLOCK
+"#;
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "empty-body"), @r"");
+}
+
 #[rstest]
 fn function_with_vars_only(mut with_db: RootDatabase) {
     let source = r#"

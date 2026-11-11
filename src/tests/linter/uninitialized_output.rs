@@ -50,6 +50,19 @@ END_FUNCTION
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "uninitialized-output"), @r"");
 }
 
+/// An async import's DONE is written by its call, and its other VAR_OUTPUTs
+/// are the fields of the result the host writes: nothing is reported.
+#[rstest]
+fn an_import_block_s_outputs_are_not_reported(mut with_db: RootDatabase) {
+    let source = r#"
+{extern async 'host' 'fetch'}
+FUNCTION_BLOCK FETCH
+VAR_OUTPUT DONE : BOOL; value : UDINT; END_VAR
+END_FUNCTION_BLOCK
+"#;
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "uninitialized-output"), @r"");
+}
+
 #[rstest]
 fn output_assigned(mut with_db: RootDatabase) {
     let source = r#"

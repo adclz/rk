@@ -223,6 +223,20 @@ fn extern_pragma_param_counts_as_used(mut with_db: RootDatabase) {
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "unused-variable"), @"");
 }
 
+/// An async import's VAR_INPUTs are its call's parameters, used by
+/// definition, as an extern FUNCTION's are.
+#[rstest]
+fn an_import_block_s_inputs_count_as_used(mut with_db: RootDatabase) {
+    let source = r#"
+        {extern async 'host' 'fetch'}
+        FUNCTION_BLOCK FETCH
+        VAR_INPUT x : DINT; label : STRING[8]; END_VAR
+        VAR_OUTPUT DONE : BOOL; y : DINT; END_VAR
+        END_FUNCTION_BLOCK
+    "#;
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "unused-variable"), @"");
+}
+
 #[rstest]
 fn wasm_pragma_params_count_as_used(mut with_db: RootDatabase) {
     // `IN` and `N` are only referenced by the {wasm} pragma - both
