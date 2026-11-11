@@ -1338,6 +1338,22 @@
             "value": "extern"
           },
           {
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "FIELD",
+                "name": "asynchronous",
+                "content": {
+                  "type": "SYMBOL",
+                  "name": "async_keyword"
+                }
+              },
+              {
+                "type": "BLANK"
+              }
+            ]
+          },
+          {
             "type": "FIELD",
             "name": "module",
             "content": {
@@ -1359,6 +1375,10 @@
           }
         ]
       }
+    },
+    "async_keyword": {
+      "type": "STRING",
+      "value": "async"
     },
     "extern_param_list": {
       "type": "SEQ",

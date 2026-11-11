@@ -563,8 +563,10 @@ module.exports = grammar({
     // `pragma`, a pragma rk has no rule for, is read by the external
     // scanner as well; the compiler reports it (E1510).
 
-    // Extern pragma - declares the annotated FUNCTION as a WASM import.
-    // {extern 'module' 'name'}
+    // Extern pragma - declares the annotated FUNCTION as a WASM import, and
+    // with `async` the annotated FUNCTION_BLOCK as an async import, whose
+    // call the block's calls start and check, never waiting.
+    // {extern 'module' 'name'} or {extern async 'module' 'name'}
     // Sits ABOVE the FUNCTION like {test}. The import's signature IS the
     // declaration - VAR_INPUT -> params, scalar VAR_OUTPUT -> results, the
     // return type as the LAST result - so there is nothing else to state,
@@ -573,10 +575,14 @@ module.exports = grammar({
       prec(1, seq(
         "{",
         "extern",
+        optional(field("asynchronous", $.async_keyword)),
         field("module", $.pragma_string),
         field("name", $.pragma_string),
         "}",
       )),
+
+    // `async` in an {extern} pragma: the function is WIT's `async func`.
+    async_keyword: (_) => "async",
 
     extern_param_list: ($) =>
       seq("(", "params", repeat1(field("var", $.identifier)), ")"),
