@@ -43,7 +43,7 @@ serde_json = { workspace = true }
 rk = { path = "../cli" }
 # The same wasmtime as `rk test` and the codegen tests: the fuzzer runs what
 # the compiler emits on the host a user runs it on.
-wasmtime = "45.0.1"
+wasmtime = "50.0.1"
 
 # Fuzzing
 libfuzzer-sys = "0.4"

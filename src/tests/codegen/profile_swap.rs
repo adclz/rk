@@ -192,12 +192,7 @@ fn globals_bounds(wasm: &[u8]) -> (Option<i64>, Option<i64>) {
     let engine = crate::tests::codegen::test_engine();
     let module = wasmtime::Module::new(&engine, wasm).expect("valid module");
     let mut store = wasmtime::Store::new(&engine, ());
-    let memory =
-        wasmtime::Memory::new(&mut store, wasmtime::MemoryType::new(1, None)).expect("memory");
-    let mut linker = wasmtime::Linker::new(&engine);
-    linker
-        .define(&store, "env", "memory", memory)
-        .expect("define memory");
+    let linker = wasmtime::Linker::new(&engine);
     let instance = linker
         .instantiate(&mut store, &module)
         .expect("instantiate");
@@ -316,15 +311,17 @@ fn a_release_build_keeps_its_function_names(mut with_db: RootDatabase) {
     );
 }
 
-/// `caller` hands its input to `boom`, which divides by it.
+/// `caller` hands its input to `boom`, whose conversion traps on a REAL
+/// past DINT's range: the VM's own instruction, which no check of ours runs
+/// before.
 const TRAP_SRC: &str = r#"
-FUNCTION boom : INT
-VAR_INPUT n : INT; END_VAR
-    boom := 100 / n;
+FUNCTION boom : DINT
+VAR_INPUT n : REAL; END_VAR
+    {wasm boom 'trunc_f32_s' (params n) (result boom)}
 END_FUNCTION
 
-FUNCTION caller : INT
-VAR_INPUT m : INT; END_VAR
+FUNCTION caller : DINT
+VAR_INPUT m : REAL; END_VAR
     caller := boom(n := m);
 END_FUNCTION
 "#;
@@ -349,11 +346,11 @@ fn a_trap_in_a_release_build_names_its_function(mut with_db: RootDatabase, #[cas
     let mut store = wasmtime::Store::new(&engine, ());
     let instance = crate::tests::codegen::instantiate_with_memory(&mut store, &module);
     let caller = instance
-        .get_typed_func::<i32, i32>(&mut store, "caller")
+        .get_typed_func::<f32, i32>(&mut store, "caller")
         .expect("caller is exported");
     let err = caller
-        .call(&mut store, 0)
-        .expect_err("a division by zero traps");
+        .call(&mut store, 1.0e30)
+        .expect_err("a conversion out of range traps");
     let backtrace = err
         .downcast_ref::<wasmtime::WasmBacktrace>()
         .expect("the trap carries a backtrace");

@@ -10,6 +10,10 @@ pub mod emit_stmt;
 pub mod mir_cast;
 
 mod builtins;
+pub mod canonical;
+mod console;
+pub mod control;
+mod exports;
 mod graft;
 
 use std::cell::Cell;
@@ -309,6 +313,7 @@ pub fn generate_wasm_profile(
     let mut wasm_gen = WasmGen::new(db, module);
     wasm_gen.profile = profile;
     wasm_gen.emit_all();
+    wasm_gen.emit_control(&control::control_area(module, tests_end(module)));
     wasm_gen.finish()
 }
 
@@ -417,6 +422,9 @@ struct WasmGen<'a> {
     rk_exception_tag_idx: Option<u32>,
     /// Type index of `(i32, i32) -> ()`, for the `TagSection`.
     rk_exception_tag_type_idx: Option<u32>,
+    /// Wasm index of the function each raise calls first, in the module
+    /// `rk test` builds ([`mir::raise_hook`]).
+    raise_hook: Option<u32>,
     /// Type index of `() -> (i32, i32)`, the `$on_catch` block signature of a
     /// `{test}` function: `catch $rk_exception` delivers `(ptr, len)` as its
     /// result.
@@ -449,6 +457,16 @@ struct WasmGen<'a> {
     /// is added once the graft has placed the bundle's.
     stack_bounds: Option<(u32, u32)>,
     stack: Option<Stack>,
+    /// The functions of the control interface, by index, for the `name`
+    /// section ([`control`]).
+    control_names: Vec<(u32, String)>,
+    /// Each import a call reaches through a wrapper that checks what it
+    /// passes ([`import_check`]): its place among the imports, and the
+    /// wrapper's index.
+    import_wrappers: Vec<(usize, u32)>,
+    /// The function that writes to each output the module writes to
+    /// ([`console`]), by index.
+    console: Vec<(mir::console::Output, u32)>,
 }
 
 /// A function's memory locals as `debug-locals` describes them: the leaves,
@@ -531,9 +549,14 @@ fn stack_bounds(module: &MirModule) -> Option<(u32, u32)> {
 
 /// Where the `{test}` result areas end, past the static data; each is
 /// 4-aligned, from the first on.
+fn tests_end(module: &MirModule) -> u32 {
+    static_data_end(module).next_multiple_of(4) + module_test_count(module) * TEST_RESULT_AREA_SIZE
+}
+
+/// Where the reserved areas end: the `{test}` result areas, then the runtime
+/// interface's ([`control::ControlArea`]). The stack starts past them.
 fn results_end(module: &MirModule) -> u64 {
-    u64::from(static_data_end(module)).next_multiple_of(4)
-        + u64::from(module_test_count(module)) * u64::from(TEST_RESULT_AREA_SIZE)
+    u64::from(control::control_area(module, tests_end(module)).end)
 }
 
 /// A stack that ends past the last address of the memory, after the `base`
@@ -612,20 +635,9 @@ pub(crate) const NULL_CHECK: &str = "rk.null_check";
 
 impl<'a> WasmGen<'a> {
     fn new(db: &'a dyn WorkspaceDataBase, module: &'a MirModule) -> Self {
-        // Memory is imported from `env`, first in the import section, so a host
-        // supplies it.
-        let mut import_section = wasm_encoder::ImportSection::new();
-        import_section.import(
-            "env",
-            "memory",
-            wasm_encoder::EntityType::Memory(wasm_encoder::MemoryType {
-                minimum: core_memory_pages(module),
-                maximum: None,
-                memory64: false,
-                shared: false,
-                page_size_log2: None,
-            }),
-        );
+        // The module defines its own memory (`finish`): a component cannot
+        // import one, so the host no longer supplies it.
+        let import_section = wasm_encoder::ImportSection::new();
 
         // Test result areas start past the MIR static layout.
         let test_result_floor = Cell::new(static_data_end(module));
@@ -647,6 +659,7 @@ impl<'a> WasmGen<'a> {
             call_indices: FxHashMap::default(),
             rk_exception_tag_idx: None,
             rk_exception_tag_type_idx: None,
+            raise_hook: None,
             test_catch_block_type_idx: None,
             test_result_floor,
             func_lines: FxHashMap::default(),
@@ -658,6 +671,9 @@ impl<'a> WasmGen<'a> {
             local_type_table: mir::debug_symbols::TypeTable::new(),
             stack_bounds: stack_bounds(module),
             stack: None,
+            control_names: Vec::new(),
+            import_wrappers: Vec::new(),
+            console: Vec::new(),
         }
     }
 
@@ -670,6 +686,11 @@ impl<'a> WasmGen<'a> {
         aligned
     }
     fn emit_all(&mut self) {
+        // Where an import that returns a record has it written.
+        crate::emit_expr::IMPORT_RECORD_AT.with(|at| {
+            at.set(control::control_area(self.module, tests_end(self.module)).import_record)
+        });
+
         // Where each string literal is, by the pool entry it names.
         crate::emit_expr::STRING_ADDRESSES.with(|cell| {
             *cell.borrow_mut() = self
@@ -725,7 +746,25 @@ impl<'a> WasmGen<'a> {
             index_remap.insert(func.index, wasm_idx);
             wasm_idx += 1;
         }
+        // 3b. An import passed a STRING or a CHAR is called through a
+        //     wrapper that checks them first, after the user functions.
+        for (at, ext_fn) in self.module.extern_functions.iter().enumerate() {
+            if ext_fn.params.iter().any(|p| import_check(&p.ty).is_some()) {
+                index_remap.insert(ext_fn.index, wasm_idx);
+                self.import_wrappers.push((at, wasm_idx));
+                wasm_idx += 1;
+            }
+        }
+        // 3c. The function that writes to each output the module writes
+        //     to, after the wrappers.
+        for output in mir::console::outputs(self.module) {
+            self.console.push((output, wasm_idx));
+            wasm_idx += 1;
+        }
         let _ = n_imports;
+        // An import with no parameter has no wrapper: the hook is called as
+        // imported.
+        self.raise_hook = mir::raise_hook::hook(self.module).map(|ext| index_remap[&ext.index]);
         self.index_remap = index_remap;
 
         // 4. Emit imports.
@@ -762,6 +801,7 @@ impl<'a> WasmGen<'a> {
                 &mut self.next_type_idx,
                 /* base_fn_idx = */ self.module.extern_functions.len() as u32,
                 self.rk_exception_tag_idx,
+                self.raise_hook,
             );
             self.builtin_indices = plan.name_to_wasm_idx;
         }
@@ -797,6 +837,13 @@ impl<'a> WasmGen<'a> {
             });
         }
 
+        // 7.6. A `{wasm 'rk.stdout_write'}` calls the function step 3c
+        //      placed, as a builtin's pragma calls the builtin.
+        for (output, index) in &self.console {
+            self.builtin_indices
+                .insert(output.instruction().to_string(), *index);
+        }
+
         // 8. Emit user functions. The call indices are the same for each:
         //    rebuilt per function, they cost functions × functions.
         let call_indices = self.build_call_indices();
@@ -804,6 +851,22 @@ impl<'a> WasmGen<'a> {
         self.call_indices = call_indices;
         for func in &self.module.functions {
             self.emit_function(func);
+        }
+
+        // 9. The import wrappers, at the indices step 3b gave them.
+        for (at, index) in self.import_wrappers.clone() {
+            self.emit_import_wrapper(at, index);
+        }
+
+        // 10. The writes to the standard output and error, at the indices
+        //     step 3c gave them, each with its buffer.
+        let area = control::control_area(self.module, tests_end(self.module));
+        for (output, index) in self.console.clone() {
+            let f = self.emit_console(output, area.console[output as usize]);
+            let placed = self.add_function(&[ValType::I32; 2], &[ValType::I32], &f);
+            debug_assert_eq!(placed, index, "the write lands where step 3c placed it");
+            self.control_names
+                .push((index, output.instruction().to_string()));
         }
     }
 
@@ -1049,6 +1112,18 @@ impl<'a> WasmGen<'a> {
         if self.stack_bounds.is_some() && crate::builtins::lookup("rk.stack_check").is_some() {
             found.insert("rk.stack_check".to_string());
         }
+        // An export checks what a host passes it and what it hands back.
+        for check in crate::exports::builtins(self.module) {
+            found.insert(check.to_string());
+        }
+        // An import's wrapper checks what a STRING or a CHAR passes.
+        for ext_fn in &self.module.extern_functions {
+            for param in &ext_fn.params {
+                if let Some(check) = import_check(&param.ty) {
+                    found.insert(check.to_string());
+                }
+            }
+        }
 
         let mut v: Vec<String> = found.into_iter().collect();
         v.sort();
@@ -1092,10 +1167,13 @@ impl<'a> WasmGen<'a> {
         crate::builtins::closure_uses_import(&closure, "__iec_raise")
     }
 
-    fn emit_import(&mut self, ext_fn: &MirExternFunction) {
-        // Params from the declaration; results are the scalar VAR_OUTPUTs then
-        // the return type last.
-        let (params, _) = build_signature(&ext_fn.params, &None);
+    /// An import's wasm signature. Params from the declaration; the result
+    /// is the record of the scalar VAR_OUTPUTs and the return type last,
+    /// which the canonical ABI returns as one value when it has one field,
+    /// and otherwise writes in memory at the address the call passes last
+    /// ([`canonical`]).
+    fn import_signature(&self, ext_fn: &MirExternFunction) -> (Vec<ValType>, Vec<ValType>) {
+        let (mut params, _) = build_signature(&ext_fn.params, &None);
         let results: Vec<ValType> = ext_fn
             .results()
             .map(|ty| {
@@ -1108,6 +1186,59 @@ impl<'a> WasmGen<'a> {
                 })
             })
             .collect();
+        if results.len() > 1 {
+            params.push(ValType::I32);
+            return (params, Vec::new());
+        }
+        (params, results)
+    }
+
+    /// The function a call to the import at `at` among the imports goes
+    /// through: it checks each STRING passed for UTF-8 and each CHAR for a
+    /// character, raising where the component model would trap and stop
+    /// the PLC, then calls the import with the same values and returns
+    /// what it returns.
+    fn emit_import_wrapper(&mut self, at: usize, index: u32) {
+        let ext_fn = &self.module.extern_functions[at];
+        let (params, results) = self.import_signature(ext_fn);
+        let mut f = wasm_encoder::Function::new([]);
+        let mut local = 0;
+        for param in &ext_fn.params {
+            let lanes = match param.ty {
+                MirType::String { .. } => 2,
+                _ => 1,
+            };
+            if let Some(check) = import_check(&param.ty) {
+                for lane in 0..lanes {
+                    f.instruction(&Instruction::LocalGet(local + lane));
+                }
+                let check = self.builtin_indices.get(check).copied().unwrap_or_else(|| {
+                    panic!("internal compiler error: `{check}` was not grafted")
+                });
+                f.instruction(&Instruction::Call(check));
+            }
+            local += lanes;
+        }
+        for local in 0..params.len() as u32 {
+            f.instruction(&Instruction::LocalGet(local));
+        }
+        f.instruction(&Instruction::Call(at as u32));
+        f.instruction(&Instruction::End);
+
+        let type_idx = self.next_type_idx;
+        self.type_section.ty().function(params, results);
+        self.next_type_idx += 1;
+        debug_assert_eq!(
+            index,
+            self.module.extern_functions.len() as u32 + self.fn_section.len(),
+            "the wrapper lands where step 3b placed it"
+        );
+        self.fn_section.function(type_idx);
+        self.code_section.function(&f);
+    }
+
+    fn emit_import(&mut self, ext_fn: &MirExternFunction) {
+        let (params, results) = self.import_signature(ext_fn);
 
         let type_idx = self.next_type_idx;
         self.type_section
@@ -1500,6 +1631,7 @@ impl<'a> WasmGen<'a> {
             &self.builtin_indices,
             return_value,
             self.rk_exception_tag_idx,
+            self.raise_hook,
             fb_recv_tmp,
             for_scratch,
             crate::emit_stmt::Catching {
@@ -1687,6 +1819,7 @@ impl<'a> WasmGen<'a> {
                 MemAddr::Static(result_area),
             )),
             self.rk_exception_tag_idx,
+            self.raise_hook,
             fb_recv_tmp,
             for_scratch,
             crate::emit_stmt::Catching {
@@ -1707,8 +1840,16 @@ impl<'a> WasmGen<'a> {
         // end try_table — only reached on the success (no-throw) path.
         wasm_func.instruction(&Instruction::End);
 
-        // Success: leave the zero-initialized Ok discriminant in place,
-        // push the area's address as the i32 result, return early.
+        // Success: Ok, written so that a test run again in the same instance
+        // (`run-test`) does not read the Err of a run before; the area's
+        // address as the i32 result, returned early.
+        wasm_func.instruction(&Instruction::I32Const(result_area as i32));
+        wasm_func.instruction(&Instruction::I32Const(0));
+        wasm_func.instruction(&Instruction::I32Store8(wasm_encoder::MemArg {
+            offset: 0,
+            align: 0,
+            memory_index: 0,
+        }));
         wasm_func.instruction(&Instruction::I32Const(result_area as i32));
         wasm_func.instruction(&Instruction::Return);
 
@@ -1752,7 +1893,7 @@ impl<'a> WasmGen<'a> {
     }
 
     fn finish(mut self) -> wasm_encoder::Module {
-        // Re-export the imported memory, for tests and inspection tools.
+        // The module's own memory, exported for the host to read and write.
         self.export_section
             .export("memory", wasm_encoder::ExportKind::Memory, 0);
 
@@ -1848,6 +1989,16 @@ impl<'a> WasmGen<'a> {
         module.section(&self.type_section);
         module.section(&self.import_section);
         module.section(&self.fn_section);
+        // The one memory, as large as the layout needs, growable.
+        let mut memories = wasm_encoder::MemorySection::new();
+        memories.memory(wasm_encoder::MemoryType {
+            minimum: core_memory_pages(self.module),
+            maximum: None,
+            memory64: false,
+            shared: false,
+            page_size_log2: None,
+        });
+        module.section(&memories);
         // Tag section (per the exception-handling proposal, between Memory
         // and Global). Only emitted when the module actually `__RAISE`s.
         if let Some(type_idx) = self.rk_exception_tag_type_idx {
@@ -1864,19 +2015,18 @@ impl<'a> WasmGen<'a> {
         module.section(&self.export_section);
         module.section(&self.code_section);
 
-        // IEC string data and grafted data segments both target memory 0 and
-        // never overlap (the IEC layout starts at `BUILTIN_RESERVED_FLOOR`).
-        let has_iec_data = !self.module.string_data.is_empty();
-        let has_builtin_data = !self.builtin_indices.is_empty();
-        if has_iec_data || has_builtin_data {
-            let mut data_section = self.extra_data_section;
-            for (offset, bytes) in &self.module.string_data {
-                data_section.active(
-                    0,
-                    &wasm_encoder::ConstExpr::i32_const(*offset as i32),
-                    bytes.iter().copied(),
-                );
-            }
+        // IEC string data, grafted data segments and the control interface's
+        // messages all target memory 0 and never overlap (the IEC layout
+        // starts at `BUILTIN_RESERVED_FLOOR`, the control area past it).
+        let mut data_section = self.extra_data_section;
+        for (offset, bytes) in &self.module.string_data {
+            data_section.active(
+                0,
+                &wasm_encoder::ConstExpr::i32_const(*offset as i32),
+                bytes.iter().copied(),
+            );
+        }
+        if !data_section.is_empty() {
             module.section(&data_section);
         }
 
@@ -1884,16 +2034,21 @@ impl<'a> WasmGen<'a> {
         // backtraces and tooling.
         let n_func_imports = self.module.extern_functions.len() as u32;
         let mut named: Vec<(u32, String)> = Vec::new();
-        for ext in &self.module.extern_functions {
-            if let Some(&idx) = self.index_remap.get(&ext.index) {
-                named.push((idx, ext.name.text(self.db).to_string()));
-            }
+        // An import is first among the functions, at its place; a call
+        // reaches its wrapper, if it has one, under the index remapped.
+        for (at, ext) in self.module.extern_functions.iter().enumerate() {
+            named.push((at as u32, ext.name.text(self.db).to_string()));
+        }
+        for &(at, idx) in &self.import_wrappers {
+            let ext = &self.module.extern_functions[at];
+            named.push((idx, format!("{}$checked", ext.name.text(self.db))));
         }
         for func in &self.module.functions {
             if let Some(&idx) = self.index_remap.get(&func.index) {
                 named.push((idx, func.name.text(self.db).to_string()));
             }
         }
+        named.extend(self.control_names.iter().cloned());
         named.sort_by_key(|(idx, _)| *idx);
         let mut fn_names = wasm_encoder::NameMap::new();
         for (idx, name) in &named {
@@ -2108,6 +2263,17 @@ impl<'a> WasmGen<'a> {
 // =============================================================================
 
 /// Build WASM function signature from MIR params and return type.
+/// The builtin that checks a value of `ty` the module passes to an import,
+/// before the call: a STRING for UTF-8 and a CHAR for a character, as WIT's
+/// `string` and `char` must be, or the component model traps.
+fn import_check(ty: &MirType) -> Option<&'static str> {
+    match ty {
+        MirType::String { .. } => Some("rk.utf8_check"),
+        MirType::Elementary(MirElementary::Char) => Some("rk.char_check"),
+        _ => None,
+    }
+}
+
 fn build_signature(
     params: &[MirParam],
     return_type: &Option<MirType>,

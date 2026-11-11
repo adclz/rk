@@ -77,6 +77,7 @@ pub fn build_retain_map<'db>(
             addr: g.address,
             size: g.size,
             type_key: ty.map(|ty| type_key(db, ty)).unwrap_or(0),
+            offset: None,
         });
     }
 
@@ -111,7 +112,12 @@ pub fn build_retain_map<'db>(
         }
     }
 
-    Ok(RetainMap::new(ranges))
+    // Where each range is in the retain band: its place in the list
+    // `save-retain` returns.
+    for range in &mut ranges {
+        range.offset = range.addr.checked_sub(retain_base);
+    }
+    Ok(RetainMap::new(ranges, Some(retain_size)))
 }
 
 /// Walk one FB/class/program struct level: pair each MIR field with its HIR
@@ -168,6 +174,7 @@ fn walk_members<'db>(
                 addr: base + m.offset,
                 size: m.ty.size_bytes(),
                 type_key: type_key(db, &m.ty),
+                offset: None,
             });
         }
     }
@@ -279,6 +286,7 @@ fn walk_value<'db>(
                     addr,
                     size: field.ty.size_bytes(),
                     type_key: type_key(db, &field.ty),
+                    offset: None,
                 });
                 return;
             }
@@ -292,6 +300,7 @@ fn walk_value<'db>(
                         addr,
                         size: field.ty.size_bytes(),
                         type_key: type_key(db, &field.ty),
+                        offset: None,
                     });
                 }
                 return;
@@ -325,6 +334,7 @@ fn walk_value<'db>(
                     addr,
                     size: field.ty.size_bytes(),
                     type_key: type_key(db, &field.ty),
+                    offset: None,
                 });
             }
         }

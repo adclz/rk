@@ -144,7 +144,10 @@ static SURROUND_SPACES: &str = r##"
 ; keyword. Two may stand above one FUNCTION, and without this they glue
 ; onto each other.
 (test_pragma) @leaf @append_hardline
-(export_pragma) @leaf @append_hardline
+(export_pragma) @append_hardline
+(export_pragma "{" @append_antispace)
+(export_pragma "export" @append_space)
+(export_pragma "}" @prepend_antispace)
 (once_pragma) @leaf @append_hardline
 (must_call_pragma) @leaf @append_hardline
 "##;

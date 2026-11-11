@@ -327,8 +327,8 @@ fn a_real_constant_from_another_is_an_initial_value(mut with_db: db::RootDatabas
             END_IF;
         END_FUNCTION
     "#;
-    let wasm = super::compile_to_wasm_as_built(&mut with_db, source);
-    let results = super::run_tests(&wasm, None).expect("run tests");
+    let build = super::compile_tests(&mut with_db, source);
+    let results = super::run_tests(&build.component, None).expect("run tests");
     assert_eq!(results.len(), 2);
     for result in &results {
         assert!(result.passed(), "{}: {:?}", result.name, result.reason);
@@ -394,8 +394,8 @@ fn bool_logic_over_constants_is_an_initial_value(mut with_db: db::RootDatabase) 
             END_IF;
         END_FUNCTION
     "#;
-    let wasm = super::compile_to_wasm_as_built(&mut with_db, source);
-    let results = super::run_tests(&wasm, None).expect("run tests");
+    let build = super::compile_tests(&mut with_db, source);
+    let results = super::run_tests(&build.component, None).expect("run tests");
     assert_eq!(results.len(), 4);
     for result in &results {
         assert!(result.passed(), "{}: {:?}", result.name, result.reason);
@@ -440,8 +440,8 @@ fn a_real_constant_named_twice_is_lowered_once() {
          END_FUNCTION"
     );
     let results = crate::tests::utils::within(std::time::Duration::from_secs(30), move || {
-        let wasm = super::compile_to_wasm_as_built(&mut db::RootDatabase::default(), &source);
-        super::run_tests(&wasm, None).expect("run tests")
+        let build = super::compile_tests(&mut db::RootDatabase::default(), &source);
+        super::run_tests(&build.component, None).expect("run tests")
     });
     assert_eq!(results.len(), 1);
     assert!(results[0].passed(), "{:?}", results[0].reason);
@@ -474,8 +474,8 @@ fn a_constant_lowered_once_in_a_default(mut with_db: db::RootDatabase) {
             END_IF;
         END_FUNCTION
     "#;
-    let wasm = super::compile_to_wasm_as_built(&mut with_db, source);
-    let results = super::run_tests(&wasm, None).expect("run tests");
+    let build = super::compile_tests(&mut with_db, source);
+    let results = super::run_tests(&build.component, None).expect("run tests");
     assert_eq!(results.len(), 1);
     assert!(results[0].passed(), "{:?}", results[0].reason);
 }

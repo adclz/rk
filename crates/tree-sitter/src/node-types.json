@@ -3197,7 +3197,18 @@
   {
     "type": "export_pragma",
     "named": true,
-    "fields": {}
+    "fields": {
+      "name": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "pragma_string",
+            "named": true
+          }
+        ]
+      }
+    }
   },
   {
     "type": "extern_param_list",
@@ -8534,6 +8545,10 @@
   {
     "type": "dword_name",
     "named": true
+  },
+  {
+    "type": "export",
+    "named": false
   },
   {
     "type": "extern",

@@ -10,8 +10,8 @@
 //! the optimizer, where a wasm-opt is installed.
 
 use crate::tests::codegen::{
-    TestPlc, compile_to_mir_and_wasm, compile_to_wasm, compile_with_libraries, execute_wasm,
-    run_tests, with_db,
+    TestPlc, compile_tests, compile_to_mir_and_wasm, compile_to_wasm, compile_with_libraries,
+    execute_wasm, run_tests, with_db,
 };
 use crate::tests::utils::{skip_without_wasm_opt, wasm_opt_installed};
 use debug_format::{DebugInfo, VarValue};
@@ -231,39 +231,15 @@ fn what_is_not_caught_reaches_the_host(
     assert_eq!(fault(&mut with_db, &source), message);
 }
 
-/// An integer divided by zero is not an exception. The machine stops the
-/// call where it is: no `__CATCH` takes it, and no `__FINALLY` runs.
-#[rstest]
-#[case::division("run := 10 / zero;")]
-#[case::modulo("run := 10 MOD zero;")]
-fn a_division_by_zero_is_not_caught(mut with_db: db::RootDatabase, #[case] statement: &str) {
-    let source = format!(
-        r#"
-        FUNCTION run : DINT
-        VAR
-            zero : DINT;
-            e : STRING;
-        END_VAR
-            __TRY
-                {statement}
-            __CATCH(e)
-                run := 1;
-            __FINALLY
-                run := run + 10;
-            __END_TRY;
-        END_FUNCTION
-    "#
-    );
-    let fault = fault(&mut with_db, &source);
-    assert!(fault.contains("integer divide by zero"), "{fault}");
-}
-
 /// The checks the compiler inserts raise what a `__CATCH` takes: a
-/// subscript out of bounds, a value out of a subrange, a null reference.
+/// subscript out of bounds, a value out of a subrange, a null reference, a
+/// divisor of 0.
 #[rstest]
 #[case::subscript("a[i] := 1;", "array index out of bounds")]
 #[case::subrange("s := i;", "value out of subrange bounds")]
 #[case::null_reference("run := Deref(p);", "dereference of a null reference")]
+#[case::division("run := 10 / z;", "division by zero")]
+#[case::modulo("run := 10 MOD z;", "division by zero")]
 fn a_check_the_compiler_inserts_is_caught(
     mut with_db: db::RootDatabase,
     #[case] statement: &str,
@@ -282,6 +258,7 @@ fn a_check_the_compiler_inserts_is_caught(
             s : INT (0..10);
             p : REF_TO DINT;
             i : INT := 99;
+            z : DINT;
             e : STRING;
         END_VAR
             __TRY
@@ -564,8 +541,8 @@ fn a_test_that_catches_its_failure_passes(mut with_db: db::RootDatabase) {
             __END_TRY;
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let records = run_tests(&wasm, None).expect("the tests run");
+    let build = compile_tests(&mut with_db, source);
+    let records = run_tests(&build.component, None).expect("the tests run");
     let outcome: Vec<(&str, bool, Option<&str>)> = records
         .iter()
         .map(|r| (r.name.as_str(), r.passed(), r.reason.as_deref()))

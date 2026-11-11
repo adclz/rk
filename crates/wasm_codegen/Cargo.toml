@@ -21,4 +21,4 @@ wasm_builtins_generated = { path = "../wasm_builtins_generated" }
 [dev-dependencies]
 # graft.rs / builtins.rs in-crate #[cfg(test)] modules only; the integration
 # test suite lives in the root package's src/tests/codegen.
-wasmtime = "45.0.1"
+wasmtime = "50.0.1"

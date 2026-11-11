@@ -48,17 +48,17 @@ fn check(size: u64, source: &str) -> String {
     String::from_utf8(out).unwrap()
 }
 
-/// The pages of memory the module asks its host for.
+/// The pages of memory the module defines for itself.
 fn memory_pages(wasm: &[u8]) -> u64 {
     let engine = crate::tests::codegen::test_engine();
     let module = wasmtime::Module::new(&engine, wasm).expect("a valid module");
     module
-        .imports()
-        .find_map(|import| match import.ty() {
+        .exports()
+        .find_map(|export| match export.ty() {
             wasmtime::ExternType::Memory(memory) => Some(memory.minimum()),
             _ => None,
         })
-        .expect("the module imports its memory")
+        .expect("the module exports its memory")
 }
 
 #[test]

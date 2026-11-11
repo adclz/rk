@@ -1,0 +1,732 @@
+// SPDX-FileCopyrightText: 2026 Clauzel Adrien
+// SPDX-License-Identifier: AGPL-3.0-only
+
+//! A built module wrapped into a component, and the WIT that types it.
+//!
+//! The world is generated from the module at each build: it imports the
+//! WASI interfaces the module calls, as WASI declares them, the host's own
+//! interfaces, typed from the `{extern}` FUNCTIONs that import them, and
+//! exports the control interface every module has (`rk:plc/control`) and
+//! the workspace's `{export}` FUNCTIONs, in an interface named after the
+//! project.
+//! Binaryen reads core modules only, so the wrapping is the build's last
+//! step, after `wasm-opt`.
+
+use std::borrow::Cow;
+use std::collections::{BTreeMap, BTreeSet};
+
+use debug_format::wit;
+pub use hir::hir_def::pous::pragma::wit_name;
+use hir::hir_def::pous::pragma::{ImportModule, import_module, is_wasi_module};
+use hir::hir_ty::exports::wit_key;
+use mir::function::{MirExternFunction, MirParamKind};
+use mir::types::MirType;
+
+/// The world every component exports its control interface from.
+pub const WORLD: &str = "plc";
+
+/// A component, and the WIT folder that types it: `world.wit`, and under
+/// `deps/` each package the world names, by path in the folder.
+pub struct Component {
+    pub bytes: Vec<u8>,
+    pub wit: Vec<(String, Cow<'static, str>)>,
+    pub world: String,
+}
+
+/// A function the module imports from a module that is not WASI's, typed
+/// in WIT from the `{extern}` FUNCTION that declares it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HostFunction {
+    /// The FUNCTION, as the module names it.
+    pub declared_by: String,
+    /// `modbus`, or `acme:modbus/rtu@1.0.0`.
+    pub module: String,
+    /// `read-coils`.
+    pub name: String,
+    /// Each parameter's WIT name and type.
+    pub params: Vec<(String, &'static str)>,
+    /// Each VAR_OUTPUT's WIT name and type. With any, the function returns
+    /// the record of them and its return value ([`record_name`]).
+    pub outputs: Vec<(String, &'static str)>,
+    pub result: Option<&'static str>,
+}
+
+/// A FUNCTION the component exports for a host to call, typed in WIT from
+/// its `{export}` declaration.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExportedFunction {
+    /// `scale`.
+    pub name: String,
+    /// Each parameter's WIT name and type.
+    pub params: Vec<(String, &'static str)>,
+    /// Each VAR_OUTPUT's WIT name and type. With any, the function returns
+    /// the record of them and its return value ([`record_name`]).
+    pub outputs: Vec<(String, &'static str)>,
+    /// What it returns when nothing stops it: the function's result is a
+    /// `result` of it, or the message of what did.
+    pub result: Option<&'static str>,
+}
+
+/// What a module exchanges with its host besides WASI and the control
+/// interface, typed in WIT from its declarations.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Interfaces {
+    /// The functions it imports from modules other than WASI's.
+    pub imports: Vec<HostFunction>,
+    /// The interface its `{export}` FUNCTIONs are exported in: the
+    /// project's name, as the module's own exports spell it.
+    pub export_interface: String,
+    /// Its `{export}` FUNCTIONs.
+    pub exports: Vec<ExportedFunction>,
+}
+
+/// The interfaces of `module`, typed in WIT: what HIR accepts on an
+/// `{extern}` from a module other than WASI's, and on an `{export}`, has a
+/// WIT type and name.
+pub fn interfaces(
+    db: &dyn db::WorkspaceDataBase,
+    module: &mir::MirModule,
+) -> Result<Interfaces, String> {
+    let mut exports = Vec::new();
+    for func in &module.functions {
+        let Some(name) = &func.wit_export else {
+            continue;
+        };
+        let untyped = |what: &str| {
+            format!(
+                "internal compiler error: {what} of `{}` has no WIT type",
+                func.name.text(db)
+            )
+        };
+        let (mut params, mut outputs) = (Vec::new(), Vec::new());
+        for param in &func.params {
+            let declared = param.declared_name(db);
+            let wit_name = hir::hir_def::pous::pragma::wit_parameter_name(declared)
+                .ok_or_else(|| untyped(&format!("the name of `{declared}`")))?;
+            // An output is passed as the address it is written at.
+            let (held, list) = match (&param.kind, &param.ty) {
+                (MirParamKind::Output, MirType::Pointer(held)) => (held.as_ref(), &mut outputs),
+                (_, ty) => (ty, &mut params),
+            };
+            let ty = wit_type(held).ok_or_else(|| untyped(&format!("`{declared}`")))?;
+            list.push((wit_name, ty));
+        }
+        let result = match &func.return_type {
+            Some(ty) => Some(wit_type(ty).ok_or_else(|| untyped("the return type"))?),
+            None => None,
+        };
+        exports.push(ExportedFunction {
+            name: name.to_string(),
+            params,
+            outputs,
+            result,
+        });
+    }
+    Ok(Interfaces {
+        imports: host_functions(db, &module.extern_functions)?,
+        export_interface: hir::hir_ty::exports::export_interface(db),
+        exports,
+    })
+}
+
+/// The functions `externs` import from modules other than WASI's, typed
+/// in WIT: what HIR accepts on such an import has a WIT type and name.
+fn host_functions(
+    db: &dyn db::WorkspaceDataBase,
+    externs: &[MirExternFunction],
+) -> Result<Vec<HostFunction>, String> {
+    let mut functions = Vec::new();
+    for ext in externs.iter().filter(|ext| !is_wasi_module(&ext.module)) {
+        let declared_by = ext.name.text(db).to_string();
+        let untyped = |what: &str| {
+            format!("internal compiler error: {what} of `{declared_by}` has no WIT type")
+        };
+        let mut params = Vec::new();
+        for param in &ext.params {
+            let name = param.name.text(db);
+            let wit_name = hir::hir_def::pous::pragma::wit_parameter_name(name)
+                .ok_or_else(|| untyped(&format!("the name of `{name}`")))?;
+            let ty = wit_type(&param.ty).ok_or_else(|| untyped(&format!("`{name}`")))?;
+            params.push((wit_name, ty));
+        }
+        let mut outputs = Vec::new();
+        for (name, ty) in &ext.out_results {
+            let name = name.text(db);
+            let wit_name = hir::hir_def::pous::pragma::wit_parameter_name(name)
+                .ok_or_else(|| untyped(&format!("the name of `{name}`")))?;
+            let ty = wit_type(ty).ok_or_else(|| untyped(&format!("`{name}`")))?;
+            outputs.push((wit_name, ty));
+        }
+        let result = match &ext.return_type {
+            Some(ty) => Some(wit_type(ty).ok_or_else(|| untyped("the return type"))?),
+            None => None,
+        };
+        functions.push(HostFunction {
+            declared_by,
+            module: ext.module.to_string(),
+            name: ext.import_name.to_string(),
+            params,
+            outputs,
+            result,
+        });
+    }
+    Ok(functions)
+}
+
+/// The WIT type a value of `ty` crosses an import as: an integer as the
+/// integer of its width and sign, a duration or a date as the signed
+/// integer it is held in, an enum or a subrange as what it is stored as.
+/// The code that reads and writes it lays it out from the same table.
+fn wit_type(ty: &MirType) -> Option<&'static str> {
+    wasm_codegen::canonical::canonical(ty).map(|canonical| canonical.wit)
+}
+
+/// The record a function with VAR_OUTPUTs returns: its name, `-outputs`
+/// after it.
+pub fn record_name(function: &str) -> String {
+    format!("{function}-outputs")
+}
+
+/// Refuses an interface one of whose functions returns a record named as
+/// another of its functions is: a record and a function of one interface
+/// are two names of it, which the component model compares without their
+/// `-`.
+fn records_named_apart(interface: &str, functions: &[(&str, bool)]) -> Result<(), String> {
+    let names: BTreeMap<String, &str> = functions
+        .iter()
+        .map(|(name, _)| (wit_key(name), *name))
+        .collect();
+    for (name, _) in functions.iter().filter(|(_, outputs)| *outputs) {
+        let record = record_name(name);
+        if let Some(other) = names.get(&wit_key(&record)) {
+            return Err(format!(
+                "`{name}` returns its VAR_OUTPUTs as the record `{record}`, which cannot be \
+                 told from the function `{other}` of `{interface}`"
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// Wraps `core` into a component, its world in the package named after
+/// `project`, the functions it imports from modules other than WASI's and
+/// those it exports typed by `interfaces`. `Err` says what the module
+/// imports that rk cannot type.
+pub fn wrap(core: &[u8], project: &str, interfaces: &Interfaces) -> Result<Component, String> {
+    let hosts = &interfaces.imports;
+    let imports = imported_functions(core)?;
+    let mut carried = BTreeSet::new();
+    let mut own: BTreeMap<&str, Vec<&HostFunction>> = BTreeMap::new();
+    for (module, names) in &imports {
+        if wit::package_of(module).is_some() {
+            carried.insert(module.as_str());
+            continue;
+        }
+        if is_wasi_module(module) {
+            return Err(format!(
+                "the module imports `{module}`, which no WIT package rk carries describes"
+            ));
+        }
+        for name in names {
+            own.entry(module)
+                .or_default()
+                .push(host_function(hosts, module, name)?);
+        }
+    }
+
+    for (module, functions) in &own {
+        let named: Vec<(&str, bool)> = functions
+            .iter()
+            .map(|function| (function.name.as_str(), !function.outputs.is_empty()))
+            .collect();
+        records_named_apart(module, &named)?;
+    }
+    let exported: Vec<(&str, bool)> = interfaces
+        .exports
+        .iter()
+        .map(|function| (function.name.as_str(), !function.outputs.is_empty()))
+        .collect();
+    records_named_apart(&interfaces.export_interface, &exported)?;
+
+    let packages = own_packages(&own)?;
+    if !interfaces.exports.is_empty() && own.contains_key(interfaces.export_interface.as_str()) {
+        return Err(format!(
+            "the module imports from `{0}`, and exports its FUNCTIONs in the interface `{0}`, \
+             named after the project",
+            interfaces.export_interface
+        ));
+    }
+    let world = world_text(project, &carried, &own, interfaces);
+    let mut resolve = wit_parser::Resolve {
+        // WASI's time zone is `@unstable(feature = clocks-timezone)`.
+        all_features: true,
+        ..Default::default()
+    };
+    let mut deps = wit::packages()
+        .map(|package| parse(package.dir, package.files))
+        .collect::<Result<Vec<_>, _>>()?;
+    for package in &packages {
+        let files: Vec<(&str, &str)> = package
+            .files
+            .iter()
+            .map(|(file, text)| (file.as_str(), text.as_str()))
+            .collect();
+        deps.push(parse(&package.dir, &files)?);
+    }
+    let main = parse(".", &[("world.wit", world.as_str())])?;
+    let package = resolve
+        .push_groups(main, deps)
+        .map_err(|e| format!("resolving the component's WIT: {e:#}"))?;
+    let world_id = resolve
+        .select_world(&[package], Some(WORLD))
+        .map_err(|e| format!("selecting the component's world: {e:#}"))?;
+
+    let mut module = core.to_vec();
+    wit_component::embed_component_metadata(
+        &mut module,
+        &resolve,
+        world_id,
+        wit_component::StringEncoding::UTF8,
+        false,
+    )
+    .map_err(|e| format!("typing the module with its world: {e:#}"))?;
+    let bytes = wit_component::ComponentEncoder::default()
+        .validate(true)
+        .module(&module)
+        .and_then(|encoder| encoder.encode())
+        .map_err(|e| format!("wrapping the module into a component: {e:#}"))?;
+
+    let named = named_packages(&resolve, package);
+    let mut files = Vec::new();
+    for package in wit::packages().filter(|package| named.contains(package.id)) {
+        for (file, text) in package.files {
+            files.push((format!("deps/{}/{file}", package.dir), Cow::Borrowed(*text)));
+        }
+        if let Some(license) = package.license {
+            files.push((
+                format!("deps/{}/LICENSE.md", package.dir),
+                Cow::Borrowed(license),
+            ));
+        }
+    }
+    for package in packages {
+        for (file, text) in package.files {
+            files.push((format!("deps/{}/{file}", package.dir), Cow::Owned(text)));
+        }
+    }
+    Ok(Component {
+        bytes,
+        wit: files,
+        world,
+    })
+}
+
+/// The component's WIT folder, `wit/` beside `output`: `world.wit`, and
+/// each package it names under `deps/`. A package's folder is written
+/// whole, so a file an earlier build left in it goes; nothing else in the
+/// folder is touched.
+pub fn write_wit(output: &std::path::Path, component: &Component) -> Result<(), String> {
+    let dir = output
+        .parent()
+        .unwrap_or_else(|| std::path::Path::new("."))
+        .join("wit");
+    let packages: BTreeSet<_> = component
+        .wit
+        .iter()
+        .filter_map(|(path, _)| std::path::Path::new(path).parent())
+        .collect();
+    for package in packages {
+        let package = dir.join(package);
+        match std::fs::remove_dir_all(&package) {
+            Err(e) if e.kind() != std::io::ErrorKind::NotFound => {
+                return Err(format!("removing {}: {e}", package.display()));
+            }
+            _ => {}
+        }
+    }
+    let files = std::iter::once(("world.wit".to_string(), component.world.as_str())).chain(
+        component
+            .wit
+            .iter()
+            .map(|(path, text)| (path.clone(), text.as_ref())),
+    );
+    for (path, text) in files {
+        let path = dir.join(path);
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| format!("creating directory {}: {e}", parent.display()))?;
+        }
+        std::fs::write(&path, text).map_err(|e| format!("writing {}: {e}", path.display()))?;
+    }
+    Ok(())
+}
+
+/// What `core` imports, by module: each function's name.
+fn imported_functions(core: &[u8]) -> Result<BTreeMap<String, BTreeSet<String>>, String> {
+    let mut imports: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    for payload in wasmparser::Parser::new(0).parse_all(core) {
+        let payload = payload.map_err(|e| format!("reading the module: {e}"))?;
+        if let wasmparser::Payload::ImportSection(reader) = payload {
+            for import in reader.into_imports() {
+                let import = import.map_err(|e| format!("reading the module's imports: {e}"))?;
+                imports
+                    .entry(import.module.to_string())
+                    .or_default()
+                    .insert(import.name.to_string());
+            }
+        }
+    }
+    Ok(imports)
+}
+
+/// The function `module` exports as `name`, as `hosts` types it. Two
+/// FUNCTIONs may import one function, typed alike: the host has one.
+fn host_function<'a>(
+    hosts: &'a [HostFunction],
+    module: &str,
+    name: &str,
+) -> Result<&'a HostFunction, String> {
+    let mut declared = hosts
+        .iter()
+        .filter(|host| host.module == module && host.name == name);
+    let first = declared.next().ok_or_else(|| {
+        format!("internal compiler error: no FUNCTION declares `{module}` `{name}`")
+    })?;
+    let types = |host: &HostFunction| {
+        (
+            host.params.iter().map(|(_, ty)| *ty).collect::<Vec<_>>(),
+            host.outputs.iter().map(|(_, ty)| *ty).collect::<Vec<_>>(),
+            host.result,
+        )
+    };
+    match declared.find(|other| types(other) != types(first)) {
+        Some(other) => Err(format!(
+            "`{}` and `{}` import `{name}` from `{module}` with two signatures, and the \
+             host has one function under that name",
+            first.declared_by, other.declared_by
+        )),
+        None => Ok(first),
+    }
+}
+
+/// A package rk writes for the interfaces the module imports from it.
+struct OwnPackage {
+    /// Its folder under `deps/`.
+    dir: String,
+    /// One file per interface.
+    files: Vec<(String, String)>,
+}
+
+/// A package's interfaces the module imports, by version: each one's name,
+/// and the module that names it.
+type Versions<'a> = BTreeMap<Option<&'a str>, Vec<(&'a str, &'a str)>>;
+
+/// The packages of the interfaces in `own` named by an interface name,
+/// `acme:modbus/rtu@1.0.0`, each in its folder under `deps/`: the package
+/// folder, `acme-modbus`, with `@1.0.0` after it when the module imports
+/// from the package at two versions.
+fn own_packages(own: &BTreeMap<&str, Vec<&HostFunction>>) -> Result<Vec<OwnPackage>, String> {
+    let mut by_package: BTreeMap<(&str, &str), Versions> = BTreeMap::new();
+    for module in own.keys() {
+        if let Ok(ImportModule::Interface {
+            namespace,
+            package,
+            interface,
+            version,
+        }) = import_module(module)
+        {
+            if let Some(carried) = wit::packages().find(|carried| {
+                carried.id.split('@').next() == Some(&format!("{namespace}:{package}"))
+            }) {
+                return Err(format!(
+                    "the module imports `{module}`, from the package `{}` rk declares itself",
+                    carried.id
+                ));
+            }
+            by_package
+                .entry((namespace, package))
+                .or_default()
+                .entry(version)
+                .or_default()
+                .push((interface, module));
+        }
+    }
+    let mut packages = Vec::new();
+    for ((namespace, package), versions) in by_package {
+        let several = versions.len() > 1;
+        for (version, interfaces) in versions {
+            let mut dir = format!("{namespace}-{package}");
+            let mut name = format!("{}:{}", wit_id(namespace), wit_id(package));
+            if let Some(version) = version {
+                name.push_str(&format!("@{version}"));
+                if several {
+                    dir.push_str(&format!("@{version}"));
+                }
+            }
+            let files = interfaces
+                .into_iter()
+                .map(|(interface, module)| {
+                    let text = format!(
+                        "// What the module imports from `{module}`, written by rk at each build.\n\
+                         package {name};\n\ninterface {} {{\n{}}}\n",
+                        wit_id(interface),
+                        functions_text(&own[module], "    ")
+                    );
+                    (format!("{interface}.wit"), text)
+                })
+                .collect();
+            packages.push(OwnPackage { dir, files });
+        }
+    }
+    Ok(packages)
+}
+
+/// The packages `package` names, and those they name in turn, by name and
+/// version (`wasi:clocks@0.3.0`): what a tool reading the world needs.
+fn named_packages(
+    resolve: &wit_parser::Resolve,
+    package: wit_parser::PackageId,
+) -> BTreeSet<String> {
+    let mut named = BTreeSet::new();
+    let mut next = vec![package];
+    while let Some(id) = next.pop() {
+        for dep in resolve.package_direct_deps(id) {
+            if named.insert(resolve.packages[dep].name.to_string()) {
+                next.push(dep);
+            }
+        }
+    }
+    named
+}
+
+/// The world: what the component imports, and the control interface. An
+/// interface named by a plain name is declared in the world itself.
+fn world_text(
+    project: &str,
+    carried: &BTreeSet<&str>,
+    own: &BTreeMap<&str, Vec<&HostFunction>>,
+    interfaces: &Interfaces,
+) -> String {
+    let mut text = format!(
+        "// The world of `{project}`, written by rk at each build.\npackage local:{};\n\nworld {WORLD} {{\n",
+        wit_name(project)
+    );
+    for interface in carried {
+        text.push_str(&format!("    import {interface};\n"));
+    }
+    for (module, functions) in own {
+        match import_module(module) {
+            Ok(ImportModule::Plain(name)) => text.push_str(&format!(
+                "    import {}: interface {{\n{}    }}\n",
+                wit_id(name),
+                functions_text(functions, "        ")
+            )),
+            _ => text.push_str(&format!("    import {};\n", interface_path(module))),
+        }
+    }
+    text.push_str(&format!("    export {};\n", wit::CONTROL_INTERFACE));
+    if !interfaces.exports.is_empty() {
+        text.push_str(&format!(
+            "    export {}: interface {{\n",
+            wit_id(&interfaces.export_interface)
+        ));
+        for function in &interfaces.exports {
+            let result = match function.outputs.is_empty() {
+                true => function.result.unwrap_or("_").to_string(),
+                false => {
+                    text.push_str(&record_text(
+                        &function.name,
+                        &function.outputs,
+                        function.result,
+                        "        ",
+                    ));
+                    record_name(&function.name)
+                }
+            };
+            text.push_str(&format!(
+                "        {}: func({}) -> result<{result}, string>;\n",
+                wit_id(&function.name),
+                params_text(&function.params),
+            ));
+        }
+        text.push_str("    }\n");
+    }
+    text.push_str("}\n");
+    text
+}
+
+/// Parameters as WIT declares them.
+fn params_text(params: &[(String, &'static str)]) -> String {
+    let params: Vec<String> = params
+        .iter()
+        .map(|(name, ty)| format!("{}: {ty}", wit_id(name)))
+        .collect();
+    params.join(", ")
+}
+
+/// The record a function `name` with `outputs` returns, as WIT declares
+/// it: each output, and the return value last under the function's name.
+fn record_text(
+    name: &str,
+    outputs: &[(String, &'static str)],
+    result: Option<&'static str>,
+    indent: &str,
+) -> String {
+    let mut text = format!("{indent}record {} {{\n", record_name(name));
+    let fields = outputs
+        .iter()
+        .map(|(field, ty)| (field.as_str(), *ty))
+        .chain(result.map(|ty| (name, ty)));
+    for (field, ty) in fields {
+        text.push_str(&format!("{indent}    {}: {ty},\n", wit_id(field)));
+    }
+    text.push_str(&format!("{indent}}}\n"));
+    text
+}
+
+/// `functions` as WIT declares them, one a line, each after the record it
+/// returns when it has VAR_OUTPUTs.
+fn functions_text(functions: &[&HostFunction], indent: &str) -> String {
+    let mut text = String::new();
+    for function in functions {
+        let result = match (function.outputs.is_empty(), function.result) {
+            (true, None) => String::new(),
+            (true, Some(ty)) => format!(" -> {ty}"),
+            (false, _) => {
+                text.push_str(&record_text(
+                    &function.name,
+                    &function.outputs,
+                    function.result,
+                    indent,
+                ));
+                format!(" -> {}", record_name(&function.name))
+            }
+        };
+        text.push_str(&format!(
+            "{indent}{}: func({}){result};\n",
+            wit_id(&function.name),
+            params_text(&function.params)
+        ));
+    }
+    text
+}
+
+/// An interface name as a world imports it, each name in it written as
+/// WIT reads it.
+fn interface_path(module: &str) -> String {
+    match import_module(module) {
+        Ok(ImportModule::Interface {
+            namespace,
+            package,
+            interface,
+            version,
+        }) => format!(
+            "{}:{}/{}{}",
+            wit_id(namespace),
+            wit_id(package),
+            wit_id(interface),
+            version.map_or(String::new(), |version| format!("@{version}"))
+        ),
+        _ => module.to_string(),
+    }
+}
+
+/// WIT's keywords: a name spelled like one is written after a `%`.
+const KEYWORDS: &[&str] = &[
+    "as",
+    "async",
+    "bool",
+    "borrow",
+    "char",
+    "constructor",
+    "enum",
+    "error-context",
+    "export",
+    "f32",
+    "f64",
+    "flags",
+    "from",
+    "func",
+    "future",
+    "import",
+    "include",
+    "interface",
+    "list",
+    "map",
+    "option",
+    "own",
+    "package",
+    "record",
+    "resource",
+    "result",
+    "s16",
+    "s32",
+    "s64",
+    "s8",
+    "static",
+    "stream",
+    "string",
+    "tuple",
+    "type",
+    "u16",
+    "u32",
+    "u64",
+    "u8",
+    "use",
+    "variant",
+    "with",
+    "world",
+];
+
+/// `name` as WIT text writes it: after a `%` when it is a keyword.
+fn wit_id(name: &str) -> Cow<'_, str> {
+    match KEYWORDS.contains(&name) {
+        true => Cow::Owned(format!("%{name}")),
+        false => Cow::Borrowed(name),
+    }
+}
+
+/// A package written in `files`, parsed.
+fn parse(dir: &str, files: &[(&str, &str)]) -> Result<wit_parser::UnresolvedPackageGroup, String> {
+    let mut map = wit_parser::SourceMap::new();
+    for (file, text) in files {
+        map.push_str(&format!("{dir}/{file}"), text.to_string());
+    }
+    map.parse()
+        .map_err(|(_, e)| format!("parsing the WIT in `{dir}`: {e}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A project's name becomes the world's package name, in the words WIT
+    /// spells, or `plc` when it spells none.
+    #[test]
+    fn a_project_name_becomes_a_wit_name() {
+        assert_eq!(wit_name("plant"), "plant");
+        assert_eq!(wit_name("My_Plant"), "my-plant");
+        assert_eq!(wit_name("line 2"), "line2");
+        assert_eq!(wit_name("2nd"), "plc");
+        assert_eq!(wit_name("_"), "plc");
+    }
+
+    /// The keywords are wit-parser's: each one, as a function's name, only
+    /// parses after a `%`, and any other name parses bare.
+    #[test]
+    fn a_name_spelled_like_a_keyword_is_escaped() {
+        for keyword in KEYWORDS {
+            let bare = format!("package a:b;\ninterface i {{\n    {keyword}: func();\n}}\n");
+            assert!(
+                parse("k", &[("k.wit", &bare)]).is_err(),
+                "`{keyword}` is a keyword"
+            );
+            let escaped = format!(
+                "package a:b;\ninterface i {{\n    {}: func();\n}}\n",
+                wit_id(keyword)
+            );
+            parse("k", &[("k.wit", &escaped)]).unwrap_or_else(|e| panic!("{keyword}: {e}"));
+        }
+        assert_eq!(wit_id("read-coils"), "read-coils");
+    }
+}

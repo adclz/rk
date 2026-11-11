@@ -1,0 +1,11 @@
+// SPDX-License-Identifier: Apache-2.0
+package rk:test@0.1.0;
+
+/// What the module `rk test` builds asks of the host that runs its tests.
+/// No other build imports it.
+interface raise {
+    /// Called just before the module raises an exception, which then
+    /// unwinds the calls in progress: a host that wants them takes the call
+    /// stack here. A test that fails on a raise failed at the last one.
+    raised: func();
+}

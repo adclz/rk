@@ -101,6 +101,9 @@ struct Ctx<'a> {
     /// Index of the module-level `$rk_exception` tag, `Some` when any
     /// function contains `Raise`.
     rk_exception_tag_idx: Option<u32>,
+    /// The function a raise calls before it throws, in the module `rk test`
+    /// builds ([`mir::raise_hook`]).
+    raise_hook: Option<u32>,
     /// `(within-body offset, source location)` at each `DebugTrap`, for the
     /// `debug-lines` table.
     lines: &'a std::cell::RefCell<Vec<(u32, MirSourceLocation)>>,
@@ -298,6 +301,7 @@ pub(crate) fn emit_stmts_with_return(
     builtin_indices: &FxHashMap<String, u32>,
     return_value: Option<ReturnValue>,
     rk_exception_tag_idx: Option<u32>,
+    raise_hook: Option<u32>,
     fb_recv_tmp: Option<u32>,
     for_scratch: std::collections::VecDeque<(Option<u32>, Option<u32>)>,
     catching: Catching,
@@ -315,6 +319,7 @@ pub(crate) fn emit_stmts_with_return(
             return_value,
             builtin_indices,
             rk_exception_tag_idx,
+            raise_hook,
             lines: &lines,
             fb_recv_tmp,
             for_scratch: &for_scratch,
@@ -1074,10 +1079,15 @@ fn emit_stmt(func: &mut wasm_encoder::Function, stmt: &MirStmt, ctx: &Ctx) {
         MirStmt::Raise { message } => {
             // Push the STRING message as `(ptr, len)`, then throw `$rk_exception`
             // (`(i32, i32) -> ()`); the tag index is `Some` by the pre-pass.
+            // In the module `rk test` builds, the host is told first, while
+            // the calls in progress are still there.
             emit_expr(func, message, ctx.locals, ctx.fn_indices);
             let tag_idx = ctx
                 .rk_exception_tag_idx
                 .expect("MIR contains MirStmt::Raise but no $rk_exception tag was registered");
+            if let Some(hook) = ctx.raise_hook {
+                func.instruction(&Instruction::Call(hook));
+            }
             func.instruction(&Instruction::Throw(tag_idx));
         }
 

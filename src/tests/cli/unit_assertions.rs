@@ -123,14 +123,18 @@ fn every_assertion_fails_when_it_should_and_only_then() {
     unset_stdlib();
     let (_ws, root) = temp_workspace(&[("main.st", &workspace_source())]);
     let db = rk::workspace::init_db(&root, false, true).expect("the workspace loads");
-    let (wasm, _) = rk::compiler::build_core_with_format(&db, &root, false, OutputFormat::Concise)
+    let (wasm, mir) = rk::compiler::build_test_core(&db, &root, false, OutputFormat::Concise)
         .unwrap_or_else(|report| panic!("the workspace must compile:\n{report}"));
+    // Run as `rk test` runs them: on the component, with WASI's clocks.
+    let interfaces = rk::component::interfaces(&db, &mir).unwrap();
+    let component = rk::component::wrap(&wasm, "unit", &interfaces).expect("the module wraps");
 
-    let records: BTreeMap<String, TestRecord> = rk::test_host::run_each(&wasm, None, None, |_| {})
-        .expect("the tests run")
-        .into_iter()
-        .map(|record| (record.name.clone(), record))
-        .collect();
+    let records: BTreeMap<String, TestRecord> =
+        rk::test_host::run_each(&component.bytes, None, None, |_| {})
+            .expect("the tests run")
+            .into_iter()
+            .map(|record| (record.name.clone(), record))
+            .collect();
     assert_eq!(
         records.len(),
         SAMPLES.len() * 4 + 2,

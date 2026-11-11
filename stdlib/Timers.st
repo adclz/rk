@@ -31,7 +31,7 @@ NAMESPACE Std.Timers
 	   [monotonic clock](https://github.com/WebAssembly/WASI/blob/main/proposals/clocks/README.md),
 	   and the one import a module that uses a timer has.
 	*/
-	{extern 'wasi:clocks/monotonic-clock@0.2.6' 'now'}
+	{extern 'wasi:clocks/monotonic-clock@0.3.0' 'now'}
 	FUNCTION PRIVATE MONOTONIC_LTIME: LTIME
 	END_FUNCTION
 
@@ -45,50 +45,54 @@ NAMESPACE Std.Timers
 		PLC_LTIME := MONOTONIC_LTIME();
 	END_FUNCTION
 
-	/* An instant as the WASI wall clock gives it: the seconds since
-	   1970-01-01 in UTC, and the nanoseconds within that second. */
-	TYPE WASI_DATETIME : STRUCT
-		seconds : LINT;
-		nanoseconds : DINT;
-	END_STRUCT;
-	END_TYPE
-
-	/* Writes the host's wall clock at `ret`.
+	/* Gives the host's wall clock: the seconds since 1970-01-01 in UTC,
+	   negative before, and the nanoseconds after them, from 0 to
+	   999,999,999.
 
 	   This is the `now` of the WASI
-	   [wall clock](https://github.com/WebAssembly/WASI/blob/main/proposals/clocks/README.md),
-	   whose result is a record, which the canonical ABI writes where the
-	   caller points instead of returning it.
+	   [system clock](https://github.com/WebAssembly/WASI/blob/main/proposals/clocks/README.md),
+	   whose result is an `instant`: a record of the seconds and the
+	   nanoseconds, in that order, which come back as the outputs.
 	*/
-	{extern 'wasi:clocks/wall-clock@0.2.6' 'now'}
+	{extern 'wasi:clocks/system-clock@0.3.0' 'now'}
 	FUNCTION PRIVATE WASI_WALL_NOW
-		VAR_INPUT
-			ret : REF_TO WASI_DATETIME;
+		VAR_OUTPUT
+			seconds : LINT;
+			nanoseconds : UDINT;
 		END_VAR
 	END_FUNCTION
 
-	/* Returns the seconds the host's zone is east of UTC at an instant,
-	   daylight saving included.
+	/* Gives how far east of UTC the host's zone is at an instant, daylight
+	   saving included, in nanoseconds, or that the host has no zone: then
+	   `known` is FALSE and `offset` means nothing.
 
 	   This is the `utc-offset` of the WASI
 	   [time zone](https://github.com/WebAssembly/WASI/blob/main/proposals/clocks/README.md),
-	   which takes the instant as its seconds and its nanoseconds.
+	   which takes the instant as its seconds and its nanoseconds. Its
+	   result is an `option<s64>`, laid out as a record of a byte that says
+	   whether the value is there, then the value: they come back as the
+	   outputs.
 	*/
-	{extern 'wasi:clocks/timezone@0.2.6' 'utc-offset'}
-	FUNCTION PRIVATE WASI_UTC_OFFSET : DINT
+	{extern 'wasi:clocks/timezone@0.3.0' 'utc-offset'}
+	FUNCTION PRIVATE WASI_UTC_OFFSET
 		VAR_INPUT
 			seconds : LINT;
-			nanoseconds : DINT;
+			nanoseconds : UDINT;
+		END_VAR
+		VAR_OUTPUT
+			known : BOOL;
+			offset : LINT;
 		END_VAR
 	END_FUNCTION
 
 	/* Returns the host's wall clock as an `LDT`, in UTC. */
 	FUNCTION WALL_LDT : LDT
 		VAR
-			now : WASI_DATETIME;
+			seconds : LINT;
+			nanoseconds : UDINT;
 		END_VAR
-		WASI_WALL_NOW(ret := REF(now));
-		WALL_LDT := LINT_TO_LDT(now.seconds * LINT#1000000000 + now.nanoseconds);
+		WASI_WALL_NOW(seconds => seconds, nanoseconds => nanoseconds);
+		WALL_LDT := LINT_TO_LDT(seconds * LINT#1000000000 + nanoseconds);
 	END_FUNCTION
 
 	/* Returns the host's wall clock as a `DT`, in UTC. */
@@ -98,21 +102,33 @@ NAMESPACE Std.Timers
 
 	/* Returns how far east of UTC the host's zone is at `IN`, daylight
 	   saving included: `LT#1h` in Paris in winter, `LT#2h` in summer,
-	   `LT#-5h` in New York in winter. An instant before 1970 takes the
-	   offset at 1970-01-01, the first the host's clock can name. */
+	   `LT#-5h` in New York in winter. Raises "the host has no time zone"
+	   when the host has none. */
 	FUNCTION LOCAL_OFFSET : LTIME
 		VAR_INPUT
 			IN : LDT;
 		END_VAR
 		VAR
-			ns : LINT;
+			seconds, nanoseconds : LINT;
+			known : BOOL;
+			offset : LINT;
 		END_VAR
-		// WASI counts the seconds from 1970 in an unsigned number.
-		ns := LDT_TO_LINT(IN);
-		IF ns < LINT#0 THEN
-			ns := LINT#0;
+		// WASI takes the whole seconds, rounded down, and the nanoseconds after them.
+		seconds := LDT_TO_LINT(IN) / LINT#1000000000;
+		nanoseconds := LDT_TO_LINT(IN) MOD LINT#1000000000;
+		IF nanoseconds < LINT#0 THEN
+			seconds := seconds - LINT#1;
+			nanoseconds := nanoseconds + LINT#1000000000;
 		END_IF;
-		LOCAL_OFFSET := LINT_TO_LTIME(LINT#1000000000 * WASI_UTC_OFFSET(seconds := ns / LINT#1000000000, nanoseconds := LINT_TO_DINT(ns MOD LINT#1000000000)));
+		WASI_UTC_OFFSET(
+			seconds := seconds,
+			nanoseconds := LINT_TO_UDINT(nanoseconds),
+			known => known,
+			offset => offset);
+		IF NOT known THEN
+			__RAISE('the host has no time zone');
+		END_IF;
+		LOCAL_OFFSET := LINT_TO_LTIME(offset);
 	END_FUNCTION
 
 	/* Returns the host's wall clock as an `LDT` in the host's zone: the

@@ -1350,6 +1350,37 @@ END_NAMESPACE
     ");
 }
 
+/// `{export 'name'}` is spaced as `{extern}` is: one space before the
+/// name, none inside the braces.
+#[rstest]
+pub fn export_pragma_with_a_name_formatting(mut with_db: RootDatabase) {
+    let source = r#"
+{  export    'read-coils'  }   FUNCTION ReadCoils : INT
+ReadCoils := 0;
+END_FUNCTION
+
+{once} {export 'reset-all'}
+FUNCTION Reset : INT
+Reset := 0;
+END_FUNCTION
+"#;
+
+    let document = add_source(&mut with_db, source).document(&with_db);
+
+    assert_snapshot!(fmt(document), @r"
+    {export 'read-coils'}
+    FUNCTION ReadCoils: INT
+    	ReadCoils := 0;
+    END_FUNCTION
+
+    {once}
+    {export 'reset-all'}
+    FUNCTION Reset: INT
+    	Reset := 0;
+    END_FUNCTION
+    ");
+}
+
 #[rstest]
 pub fn test_pragma_on_program(mut with_db: RootDatabase) {
     let source = r#"

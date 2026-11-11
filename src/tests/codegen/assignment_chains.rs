@@ -11,8 +11,8 @@ use rstest::*;
 
 /// Compiles `source` and runs its `{test}` functions: each must pass.
 fn all_pass(db: &mut db::RootDatabase, source: &str, count: usize) {
-    let wasm = super::compile_to_wasm_as_built(db, source);
-    let results = super::run_tests(&wasm, None).expect("run tests");
+    let build = super::compile_tests(db, source);
+    let results = super::run_tests(&build.component, None).expect("run tests");
     assert_eq!(results.len(), count);
     for result in &results {
         assert!(result.passed(), "{}: {:?}", result.name, result.reason);
@@ -252,8 +252,8 @@ fn a_link_checks_its_subrange(mut with_db: db::RootDatabase) {
             sr := i := 20;
         END_FUNCTION
     "#;
-    let wasm = super::compile_to_wasm_as_built(&mut with_db, source);
-    let results = super::run_tests(&wasm, None).expect("run tests");
+    let build = super::compile_tests(&mut with_db, source);
+    let results = super::run_tests(&build.component, None).expect("run tests");
     let outcome = |name: &str| {
         results
             .iter()
@@ -460,8 +460,8 @@ fn a_place_with_an_operator_checks_its_subrange(mut with_db: db::RootDatabase) {
             sr += i := 5;
         END_FUNCTION
     "#;
-    let wasm = super::compile_to_wasm_as_built(&mut with_db, source);
-    let results = super::run_tests(&wasm, None).expect("run tests");
+    let build = super::compile_tests(&mut with_db, source);
+    let results = super::run_tests(&build.component, None).expect("run tests");
     let outcome = |name: &str| {
         results
             .iter()

@@ -33,8 +33,8 @@ END_FUNCTION
 /// failed check names what was wrong.
 fn copies_hold(db: &mut db::RootDatabase, source: &str) {
     let source = format!("{COUNTER}\n{source}");
-    let wasm = super::compile_to_wasm_as_built(db, &source);
-    let results = crate::tests::codegen::run_tests(&wasm, None).expect("run tests");
+    let build = super::compile_tests(db, &source);
+    let results = crate::tests::codegen::run_tests(&build.component, None).expect("run tests");
     assert!(!results.is_empty(), "the source declares no {{test}}");
     let failed: Vec<String> = results
         .iter()

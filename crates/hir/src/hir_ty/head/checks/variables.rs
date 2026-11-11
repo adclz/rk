@@ -352,7 +352,9 @@ impl<'db> InitInference<'db> {
         // aggregate outputs and statements are each refused where they are
         // declared. (E1502/E1501.)
         let extern_fn = match scope_kind {
-            ScopeKind::Pou(Pou::Function(f)) => f.extern_pragma(db).map(|(span, _)| (f, span)),
+            ScopeKind::Pou(Pou::Function(f)) => {
+                f.extern_pragma(db).map(|(_, pragma)| (f, pragma.is_wasi()))
+            }
             ScopeKind::Pou(Pou::FunctionBlock(fb)) => {
                 self.refuse_extern_on(db, fb.extern_pragma(db), "FUNCTION_BLOCK");
                 self.refuse_test_on(db, fb.test_pragma(db), "FUNCTION_BLOCK");
@@ -382,7 +384,7 @@ impl<'db> InitInference<'db> {
             ScopeKind::MethodDecl(m) => self.refuse_export_on(db, m.export_pragma(db), "METHOD"),
             _ => {}
         }
-        if let Some((f, _span)) = extern_fn
+        if let Some((f, _)) = extern_fn
             && let Some(first) = f.statements(db).first()
         {
             self.errors.push(
@@ -396,7 +398,7 @@ impl<'db> InitInference<'db> {
         // same scalar rule as VAR_OUTPUT. Checking only the sections left the
         // one aggregate an extern can still name — a STRING or STRUCT return —
         // to be caught by an assertion in codegen instead.
-        if let Some((f, _span)) = extern_fn
+        if let Some((f, _)) = extern_fn
             && let Some(ret) = f.return_type(db)
             && !extern_scalar(db, ret.infer(db))
         {
@@ -707,14 +709,29 @@ impl<'db> InitInference<'db> {
                     }
                 }
             }
-            if extern_fn.is_some() {
+            if let Some((_, wasi)) = extern_fn {
                 use crate::hir_def::pous::variable::VariableKind;
+                // A WASI function keeps WASI's types, which the module's
+                // core ABI matches: a REF_TO is the address where a record
+                // comes back, and a STRUCT or an ARRAY, which would go as an
+                // address into rk's own layout, matches none. Any other
+                // module's import is typed in WIT, which has no address.
+                // Either returns a record of its VAR_OUTPUTs and its return
+                // value.
                 let forbidden = match var.kind(db) {
                     VariableKind::InOut => Some(ExternForbiddenKind::InOut),
                     VariableKind::Input if var.conformand(db).is_some() => {
                         Some(ExternForbiddenKind::Conformand)
                     }
                     VariableKind::Input if var.variadic(db) => Some(ExternForbiddenKind::Variadic),
+                    VariableKind::Input => match var.spec(db).infer(db).normalize(db) {
+                        Type::Elementary(_) | Type::Enum(_) | Type::SubRange(_) => None,
+                        Type::Never => None,
+                        Type::RefTo(_) if wasi => None,
+                        Type::RefTo(_) => Some(ExternForbiddenKind::Reference),
+                        _ if wasi => Some(ExternForbiddenKind::WasiAggregateInput),
+                        _ => Some(ExternForbiddenKind::AggregateInput),
+                    },
                     VariableKind::Output if !extern_scalar(db, var.spec(db).infer(db)) => {
                         Some(ExternForbiddenKind::AggregateOutput)
                     }
@@ -1232,12 +1249,13 @@ impl<'db> InitInference<'db> {
 
 /// Can this type ride a WASM result? Scalars only: every elementary except
 /// STRING (memory-resident), plus enums and subranges, which store at a
-/// scalar lane. Aggregates have no result type to ride.
+/// scalar lane. Aggregates have no result type to ride. A type that does
+/// not resolve is reported where it is written.
 fn extern_scalar<'db>(db: &'db dyn WorkspaceDataBase, ty: Type<'db>) -> bool {
     use crate::hir_def::expressions::spec::ElementarySpec;
     match ty.normalize(db) {
         Type::Elementary(es) => es != ElementarySpec::String,
-        Type::Enum(_) | Type::SubRange(_) => true,
+        Type::Enum(_) | Type::SubRange(_) | Type::Never => true,
         _ => false,
     }
 }

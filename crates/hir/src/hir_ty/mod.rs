@@ -6,6 +6,7 @@ pub mod calls;
 pub mod config;
 pub mod def_map;
 pub mod display;
+pub mod exports;
 pub mod expr_store;
 pub mod frame;
 pub mod head;

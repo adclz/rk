@@ -1,9 +1,9 @@
 # Getting started
 
-This page takes you from an empty folder to a compiled module: you write a program, give it a task, check it, test it and compile it.
+This page takes you from an empty folder to a compiled component: you write a program, give it a task, check it, test it and compile it.
 
 ```diagram
- .st files ──► rk check ──► rk test ──► rk compile ──► core.wasm
+ .st files ──► rk check ──► rk test ──► rk compile ──► plant.wasm
 ```
 
 ## Install
@@ -97,9 +97,9 @@ rk test next
 
 ```sh
 rk fmt                 # formats every .st file in place
-rk compile             # rk_build/debug/core.wasm
-rk compile --release   # rk_build/release/core.wasm, optimized
+rk compile             # rk_build/debug/plant.wasm, its WIT in rk_build/debug/wit/
+rk compile --release   # rk_build/release/plant.wasm, optimized
 ```
 
-The module runs on any WebAssembly runtime.
-[WASM ABI](wasm-abi.md) shows how a host loads it and calls it, and [Profiles](profiles.md) what differs between the two builds.
+The component runs on a WebAssembly runtime that reads components, such as wasmtime.
+[WASM ABI](wasm-abi.md) shows what it imports and how a host runs it, and [Profiles](profiles.md) what differs between the two builds.

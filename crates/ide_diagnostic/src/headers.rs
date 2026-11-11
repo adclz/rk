@@ -246,6 +246,8 @@ pub const HEADERS: &[(&str, &str)] = &[
     ("E1509", "FUNCTION not exportable"),
     ("E1510", "unknown pragma"),
     ("E1511", "test FUNCTION with a parameter"),
+    ("E1512", "import name not a WIT name"),
+    ("E1513", "export name not a WIT name"),
     ("L0001", "{info} notice"),
     ("L0002", "{warn} notice"),
     ("L0003", "pragma without effect on the POU"),

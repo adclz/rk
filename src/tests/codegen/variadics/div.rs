@@ -91,7 +91,7 @@ fn on_each_float(
     );
 }
 
-/// An integer divided by zero stops the machine, as the operator does.
+/// An integer divided by zero raises, as the operator does.
 #[rstest]
 fn by_zero_faults(mut with_db: RootDatabase) {
     let source = r#"
@@ -107,5 +107,5 @@ fn by_zero_faults(mut with_db: RootDatabase) {
     "#;
     let fault =
         crate::tests::codegen::traps::expect_fault(&mut with_db, source, "1 / 0 must fault");
-    assert!(fault.contains("divide by zero"), "{fault}");
+    assert_eq!(fault, "division by zero");
 }

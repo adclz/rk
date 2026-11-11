@@ -12,8 +12,12 @@ use hir::{
             },
             statement::Stmt,
         },
-        pous::variable::{VariableDecl, VariableKind},
-        scope::ScopeId,
+        pous::{
+            pou::Pou,
+            variable::{VariableDecl, VariableKind},
+        },
+        scope::{ScopeId, ScopeKind},
+        semantic_index::get_scope,
     },
     hir_ty::{body::ScopeInference, expr_store::PathExprWalkStep},
 };
@@ -100,6 +104,15 @@ pub fn check_outputs<'db>(
     assigned: &FxHashSet<VariableDecl<'db>>,
     diagnostics: &mut Vec<IdeDiagnostic>,
 ) {
+    // An extern FUNCTION's outputs are fields of the import's result, which
+    // the host writes; its body is empty by contract (E1502 refuses
+    // statements).
+    if let ScopeKind::Pou(Pou::Function(f)) = get_scope(db, scope).kind {
+        use hir::HasPragmas;
+        if f.extern_pragma(db).is_some() {
+            return;
+        }
+    }
     let def_map = scope.def_map(db);
     // In the order written: this map has none, and its order changes with the
     // interned ids, so an edit moved the caret and reordered the message.

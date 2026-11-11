@@ -76,7 +76,7 @@ impl DebugHandler for AtRaise {
     type Data = Captured;
 
     async fn handle(&self, mut store: StoreContextMut<'_, Captured>, event: DebugEvent<'_>) {
-        if !matches!(event, DebugEvent::UncaughtExceptionThrown(_)) {
+        if !matches!(event, DebugEvent::Exception(_)) {
             return;
         }
         let info = &self.0;
@@ -168,7 +168,7 @@ impl DebugHandler for AtRaiseInACopy {
     type Data = Captured;
 
     async fn handle(&self, mut store: StoreContextMut<'_, Captured>, event: DebugEvent<'_>) {
-        if !matches!(event, DebugEvent::UncaughtExceptionThrown(_)) {
+        if !matches!(event, DebugEvent::Exception(_)) {
             return;
         }
         let info = &self.0;
@@ -231,8 +231,9 @@ impl DebugHandler for AtRaiseInACopy {
     }
 }
 
-/// A store with the memory `wasm` imports and `handler` called on its debug
-/// events, a linker with that memory defined, and the module.
+/// A store with `handler` called on its debug events, a linker for `wasm`,
+/// and the module. The memory is the instance's own, put in the store's
+/// data once instantiated ([`instantiated`]).
 fn debugged(
     wasm: &[u8],
     handler: impl DebugHandler<Data = Captured>,
@@ -248,27 +249,27 @@ fn debugged(
     let module = wasmtime::Module::new(&engine, wasm).expect("module");
     let mut store = wasmtime::Store::new(&engine, Captured::default());
     store.set_debug_handler(handler);
-    let min_pages = module
-        .imports()
-        .find_map(|i| match i.ty() {
-            wasmtime::ExternType::Memory(mt) => Some(mt.minimum()),
-            _ => None,
-        })
-        .expect("an imported memory");
-    let memory = Memory::new(
-        &mut store,
-        wasmtime::MemoryType::new(min_pages as u32, None),
-    )
-    .expect("memory");
-    store.data_mut().memory = Some(memory);
     let mut linker = wasmtime::Linker::new(&engine);
-    linker
-        .define(&store, "env", "memory", memory)
-        .expect("define");
     linker
         .define_unknown_imports_as_traps(&module)
         .expect("stubs");
     (store, linker, module)
+}
+
+/// `module` instantiated in `store`, whose data gets the memory the
+/// instance exports, for the handler to read.
+async fn instantiated(
+    store: &mut wasmtime::Store<Captured>,
+    linker: &wasmtime::Linker<Captured>,
+    module: &wasmtime::Module,
+) -> wasmtime::Instance {
+    let instance = linker
+        .instantiate_async(&mut *store, module)
+        .await
+        .expect("instantiate");
+    let memory = instance.get_memory(&mut *store, "memory");
+    store.data_mut().memory = memory;
+    instance
 }
 
 /// Drive a future that never waits on anything outside itself.
@@ -314,10 +315,7 @@ fn a_recursive_call_s_locals_are_read_in_its_frame(mut with_db: db::RootDatabase
 
     let (mut store, linker, module) = debugged(&wasm, AtRaise(info.clone()));
     let frames = block_on(async {
-        let instance = linker
-            .instantiate_async(&mut store, &module)
-            .await
-            .expect("instantiate");
+        let instance = instantiated(&mut store, &linker, &module).await;
         let depth = instance
             .get_typed_func::<i32, i32>(&mut store, "Depth")
             .expect("Depth is exported");
@@ -388,10 +386,7 @@ fn a_conformand_parameter_is_read_with_the_bounds_of_its_copy(mut with_db: db::R
 
     let (mut store, linker, module) = debugged(&wasm, AtRaiseInACopy(info.clone()));
     let copies = block_on(async {
-        let instance = linker
-            .instantiate_async(&mut store, &module)
-            .await
-            .expect("instantiate");
+        let instance = instantiated(&mut store, &linker, &module).await;
         let run = instance
             .get_typed_func::<(), i32>(&mut store, "run")
             .expect("run is exported");

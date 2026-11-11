@@ -84,7 +84,7 @@ fn extern_function_no_warning(mut with_db: RootDatabase) {
     let source = r#"
 {extern 'mod' 'fn'}
 FUNCTION fn1 : INT
-VAR_INPUT _x : INT; END_VAR
+VAR_INPUT x : INT; END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "empty-body"), @r"");

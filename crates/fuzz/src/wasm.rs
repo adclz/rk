@@ -10,8 +10,8 @@ use std::sync::{Arc, LazyLock};
 use debug_format::{LocatedArea, LocatedMap, RetainMap, ScheduleManifest};
 use wasmparser::Payload;
 use wasmtime::{
-    Caller, Engine, ExternType, Func, Instance, Linker, Memory, MemoryType, Module, Store, Trap,
-    Val, ValType,
+    Caller, Engine, Extern, ExternType, Func, Instance, Linker, Memory, Module, Store, Trap, Val,
+    ValType,
 };
 
 use crate::Finding;
@@ -111,7 +111,7 @@ pub(crate) fn decode_sections(wasm: &[u8]) -> Result<Sections, Finding> {
             }
             // The runtime compares the hash to decide whether a retain file
             // still fits: a stale one silently discards retained values.
-            if RetainMap::new(m.ranges.clone()).layout_hash != m.layout_hash {
+            if RetainMap::new(m.ranges.clone(), m.size).layout_hash != m.layout_hash {
                 return Err(bad(
                     debug_format::RETAIN_MAP_SECTION,
                     "layout_hash is not the hash of its own ranges".to_string(),
@@ -132,7 +132,7 @@ pub(crate) fn decode_sections(wasm: &[u8]) -> Result<Sections, Finding> {
                     format!("version {}", m.version),
                 ));
             }
-            if LocatedMap::new(m.entries.clone()).layout_hash != m.layout_hash {
+            if LocatedMap::new(m.entries.clone(), m.areas.clone()).layout_hash != m.layout_hash {
                 return Err(bad(
                     debug_format::LOCATED_MAP_SECTION,
                     "layout_hash is not the hash of its own entries".to_string(),
@@ -224,7 +224,10 @@ const FUEL: u64 = 2_000_000;
 const MAX_PAGES: u64 = 1024;
 
 /// Where the wall clock starts, in seconds since 1970: 2026-01-01 00:00:00 UTC.
-const WALL_CLOCK_START: u64 = 1_767_225_600;
+const WALL_CLOCK_START: i64 = 1_767_225_600;
+
+/// How far east of UTC the zone is, in nanoseconds: an hour.
+const ZONE_OFFSET: i64 = 3_600 * 1_000_000_000;
 
 /// How many scans a program gets. More than one, so a second scan starts
 /// from the state the first left, which is where RETAIN and FB instances
@@ -321,25 +324,20 @@ impl Host {
             .map_err(|e| Finding::new("wasmtime-compile", format!("{e:#}")))?;
         let mut store = Store::new(engine, ());
 
-        let Some(min_pages) = module.imports().find_map(|i| match i.ty() {
+        let Some(min_pages) = module.exports().find_map(|e| match e.ty() {
             ExternType::Memory(m) => Some(m.minimum()),
             _ => None,
         }) else {
             return Err(Finding::new(
                 "module-shape",
-                "the module does not import its linear memory from `env`",
+                "the module does not export its memory",
             ));
         };
         if min_pages > MAX_PAGES {
             return Ok(None);
         }
-        let memory = Memory::new(&mut store, MemoryType::new(min_pages as u32, None))
-            .map_err(|e| Finding::new("module-shape", format!("allocating memory: {e:#}")))?;
 
         let mut linker = Linker::new(engine);
-        linker
-            .define(&store, "env", "memory", memory)
-            .map_err(|e| Finding::new("module-shape", format!("{e:#}")))?;
         // The clock moves a millisecond a call, so timers run and the run
         // reproduces. The wall clock is the same count from a fixed instant,
         // and the zone is one hour east of UTC, so a program reading them
@@ -352,29 +350,32 @@ impl Host {
                 linker.func_wrap(module_name, name, move || {
                     clock.fetch_add(1_000_000, Ordering::Relaxed)
                 })
-            } else if name == "now" && module_name.contains("wall-clock") {
+            } else if name == "now" && module_name.contains("system-clock") {
                 let clock = clock.clone();
                 linker.func_wrap(
                     module_name,
                     name,
                     move |mut caller: Caller<'_, ()>, ret: i32| -> wasmtime::Result<()> {
                         let elapsed = clock.fetch_add(1_000_000, Ordering::Relaxed);
-                        let seconds = WALL_CLOCK_START + (elapsed / 1_000_000_000) as u64;
+                        let seconds = WALL_CLOCK_START + elapsed / 1_000_000_000;
                         let nanoseconds = (elapsed % 1_000_000_000) as u32;
-                        let mut datetime = [0u8; 16];
-                        datetime[..8].copy_from_slice(&seconds.to_le_bytes());
-                        datetime[8..12].copy_from_slice(&nanoseconds.to_le_bytes());
+                        // The record `instant`: an `s64`, then a `u32` 8 bytes on.
+                        let mut instant = [0u8; 12];
+                        instant[..8].copy_from_slice(&seconds.to_le_bytes());
+                        instant[8..].copy_from_slice(&nanoseconds.to_le_bytes());
+                        let memory = caller
+                            .get_export("memory")
+                            .and_then(Extern::into_memory)
+                            .ok_or_else(|| wasmtime::Error::msg("the module exports no memory"))?;
                         memory
-                            .write(&mut caller, ret as usize, &datetime)
+                            .write(&mut caller, ret as u32 as usize, &instant)
                             .map_err(|e| wasmtime::Error::msg(format!("{e}")))
                     },
                 )
             } else if name == "utc-offset" && module_name.contains("timezone") {
-                linker.func_wrap(
-                    module_name,
-                    name,
-                    |_seconds: i64, _nanoseconds: i32| -> i32 { 3600 },
-                )
+                rk::test_host::wire_zone(&mut linker, module_name, |_, _| Some(ZONE_OFFSET))
+                    .map_err(|e| Finding::new("module-shape", format!("{e:#}")))?;
+                continue;
             } else {
                 continue;
             };
@@ -384,12 +385,19 @@ impl Host {
             .define_unknown_imports_as_traps(&module)
             .map_err(|e| Finding::new("module-shape", format!("{e:#}")))?;
 
-        // Nothing runs during instantiation (there is no start function), so
-        // a failure here is the module's own shape: typically a data segment
-        // beyond the memory it asked for.
+        // No code of the program runs during instantiation (there is no
+        // start function), so a failure here is the module's own shape:
+        // typically a data segment beyond the memory it asked for. Copying
+        // the data segments is metered wasm since wasmtime 46, and a store
+        // starts with no fuel; it is not what the budget bounds, which every
+        // call sets again.
+        store.set_fuel(u64::MAX).expect("fuel is enabled");
         let instance = linker
             .instantiate(&mut store, &module)
             .map_err(|e| Finding::new("instantiate", format!("{e:#}")))?;
+        let memory = instance
+            .get_memory(&mut store, "memory")
+            .ok_or_else(|| Finding::new("module-shape", "the module does not export its memory"))?;
         Ok(Some(Self {
             store,
             instance,
@@ -585,6 +593,18 @@ fn check_bands(
                 "the module has a retain map but exports no retain band",
             ));
         };
+        // A component's host finds a range in the list `save-retain` returns
+        // by its offset, and sizes that list by the map.
+        if map.size.map(u64::from) != Some(end - start) {
+            return Err(Finding::new(
+                "memory-layout",
+                format!(
+                    "the retain map says the band is {:?} bytes, the module exports {}",
+                    map.size,
+                    end - start
+                ),
+            ));
+        }
         for r in &map.ranges {
             let (a, z) = (r.addr as u64, r.addr as u64 + r.size as u64);
             if a < start || z > end {
@@ -593,6 +613,17 @@ fn check_bands(
                     format!(
                         "retained `{}` at [{a}, {z}) is outside the retain band [{start}, {end})",
                         r.path
+                    ),
+                ));
+            }
+            if r.offset.map(u64::from) != Some(a - start) {
+                return Err(Finding::new(
+                    "memory-layout",
+                    format!(
+                        "retained `{}` is {} bytes into the retain band, the map says {:?}",
+                        r.path,
+                        a - start,
+                        r.offset
                     ),
                 ));
             }
@@ -622,6 +653,29 @@ fn check_bands(
                     format!(
                         "`{}` ({}) at [{a}, {z}) is outside the {area} band [{start}, {end})",
                         v.address, v.name
+                    ),
+                ));
+            }
+            // A component's host finds a cell in the lists `run-task` takes
+            // and returns by its offset, and sizes them by the map.
+            if v.offset.map(u64::from) != Some(a - start) {
+                return Err(Finding::new(
+                    "memory-layout",
+                    format!(
+                        "`{}` is {} bytes into the {area} band, the map says {:?}",
+                        v.address,
+                        a - start,
+                        v.offset
+                    ),
+                ));
+            }
+            if map.area_size(v.area).map(u64::from) != Some(end - start) {
+                return Err(Finding::new(
+                    "memory-layout",
+                    format!(
+                        "the located map says the {area} band is {:?} bytes, the module exports {}",
+                        map.area_size(v.area),
+                        end - start
                     ),
                 ));
             }

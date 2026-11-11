@@ -95,7 +95,7 @@ Format and compile:
 
 ```sh
 rk fmt             # rewrites the .st files in place; --check only reports
-rk compile         # the WebAssembly module, under rk_build/debug/
+rk compile         # the component, rk_build/debug/<project>.wasm
 rk compile --release   # optimized, no stepping tables, under rk_build/release/
 ```
 
@@ -105,7 +105,7 @@ The `programming-config` skill shows the three lines that do it.
 ## The module
 
 `rk compile` writes one core WebAssembly module.
-It imports its linear memory as `env.memory`, exports what a host calls (`__init`, the bodies its tasks run and every FUNCTION marked `{export}`), and carries its task schedule, retained-state map and debug symbols as custom sections.
+It defines its own linear memory and exports it as `memory`, with what a host calls (`__init`, the bodies its tasks run and every FUNCTION marked `{export}`), and carries its task schedule, retained-state map and debug symbols as custom sections.
 Any WebAssembly host can instantiate it; the ABI is documented in the repository, in `docs/wasm-abi.md`.
 
 ## Environment

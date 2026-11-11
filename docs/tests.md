@@ -13,6 +13,9 @@ END_FUNCTION
 ```
 
 `rk test` compiles the workspace and runs all of them, showing a summary at the end.
+It runs them on the component of the workspace, unoptimized, the way a host runs it, and leaves it in `rk_build/test/` with its WIT.
+That build tells `rk test` where each raise is (below), so no other command writes it.
+The clocks are WASI's, as wasmtime gives them, and the time zone is the machine's.
 It calls a test with no arguments, so a test has no `VAR_INPUT`, `VAR_OUTPUT` or `VAR_IN_OUT` (`E1511`).
 
 ```sh
@@ -44,10 +47,45 @@ The line after the test's name is where it is declared, and each `at` line a sta
 A file of the standard library is shown as `<lib>/Unit.st`.
 
 It works the same for a failed assertion, a `__RAISE`, a check the compiler inserted, a trap of the VM and a test the watchdog stopped.
-When an exception went through a `__FINALLY` or was raised again in a `__CATCH`, the report starts at that `__TRY`.
-`rk test -O` reports it too: an optimized build has lost its line tables, so the failed test is run once more on the unoptimized one.
+A trap comes back with the calls in progress.
+An exception does not, so the module `rk test` builds calls `rk test` just before each raise, through `rk:test/raise`, and the calls are taken there.
+An exception that went through a `__FINALLY` keeps its place, and one raised again in a `__CATCH` is placed at that `__RAISE`.
+
+`rk test -O` runs an optimized build, which has lost its line tables: a failure there shows its message and the line of its test, without the calls.
 
 With `--output-format concise` the calls follow the reason on the same line, and with `json-lines` they are the record's `backtrace`.
+
+What a test writes to the standard output and error with [`Std.Console`](console.md) is shown under its calls, both outputs in the order written:
+
+```st
+USING Std.Console;
+USING Std.Unit;
+
+{test}
+FUNCTION test_pressure
+	VAR
+		bar: REAL := 3.2;
+		written: BOOL;
+	END_VAR
+	written := WRITE_STDOUT('reading the sensor$N');
+	written := WRITE_STDERR('pressure is high$N');
+	ASSERT(bar < 3.0, 'pressure under 3 bar');
+END_FUNCTION
+```
+
+```sh
+     Failures:
+        FAIL test_pressure (main.st:5): assertion failed: pressure under 3 bar
+             at Std.Unit.ASSERT (<lib>/Unit.st:25:4)
+             at test_pressure (main.st:12:2)
+             output:
+               reading the sensor
+               pressure is high
+```
+
+What a passing test writes is not shown.
+A test keeps the first 64 KiB it writes, and a last line says how many bytes came after.
+In the concise format the output follows the calls, in quotes with its line breaks written `\n`, and in `json-lines` it is the record's `output`.
 
 The `Std.Unit` namespace contains three assertion FUNCTIONs, each one of them carries an optional **STRING** payload that the CLI or runtime should display in case of failure.
 

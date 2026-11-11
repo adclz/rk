@@ -55,10 +55,10 @@ FUNCTION test_add
 END_FUNCTION
     "#;
 
-    let core_bytes = super::compile_to_wasm_as_built(&mut with_db, source);
+    let build = super::compile_tests(&mut with_db, source);
 
     // The manifest is embedded in the module as a custom section — no sidecar.
-    let results = crate::tests::codegen::run_tests(&core_bytes, None).expect("run tests");
+    let results = crate::tests::codegen::run_tests(&build.component, None).expect("run tests");
     assert_eq!(results.len(), 2);
     assert!(
         results.iter().all(|r| r.passed()),
@@ -82,9 +82,9 @@ FUNCTION test_passes
 END_FUNCTION
     "#;
 
-    let core_bytes = super::compile_to_wasm_as_built(&mut with_db, source);
+    let build = super::compile_tests(&mut with_db, source);
 
-    let results = crate::tests::codegen::run_tests(&core_bytes, None).expect("run tests");
+    let results = crate::tests::codegen::run_tests(&build.component, None).expect("run tests");
     let failures = results.iter().filter(|r| !r.passed()).count();
     assert_eq!(
         failures, 1,
@@ -126,8 +126,8 @@ FUNCTION t_array : Row
 END_FUNCTION
     "#;
 
-    let core_bytes = super::compile_to_wasm_as_built(&mut with_db, source);
-    let results = crate::tests::codegen::run_tests(&core_bytes, None).expect("run tests");
+    let build = super::compile_tests(&mut with_db, source);
+    let results = crate::tests::codegen::run_tests(&build.component, None).expect("run tests");
     assert_eq!(results.len(), 4);
     assert!(results.iter().all(|r| r.passed()), "{results:?}");
 }
@@ -135,9 +135,9 @@ END_FUNCTION
 /// A `__RAISE` message reaches the report intact.
 ///
 /// The message is written into the test's 12-byte result area as a pointer and
-/// length; the runtime reads it out of the same linear memory it owns. That
-/// decode used to be the component wrapper's job, and it is the reason a
-/// failing test can say what went wrong rather than only that it did.
+/// length, and `run-test` hands it back as the error of its `result`: the
+/// reason a failing test can say what went wrong rather than only that it
+/// did.
 #[rstest]
 fn a_raise_message_survives_into_the_test_result(mut with_db: db::RootDatabase) {
     let source = r#"
@@ -147,9 +147,9 @@ FUNCTION test_fails_with_message
 END_FUNCTION
     "#;
 
-    let core_bytes = super::compile_to_wasm_as_built(&mut with_db, source);
+    let build = super::compile_tests(&mut with_db, source);
 
-    let results = crate::tests::codegen::run_tests(&core_bytes, None).expect("run tests");
+    let results = crate::tests::codegen::run_tests(&build.component, None).expect("run tests");
     assert_eq!(results.len(), 1);
     let reason = reported_failure(&results[0]);
     assert!(
@@ -158,11 +158,11 @@ END_FUNCTION
     );
 }
 
-/// The runtime runs `{test}` functions off the core module directly — no
-/// component, no second engine, no WASI world. Pass, explicit failure and trap
-/// must each be reported as themselves.
+/// `rk test` runs `{test}` functions through the component's control
+/// interface, found in the manifest of the module it wraps. A pass and an
+/// explicit failure are each reported as themselves.
 #[rstest]
-fn runtime_runs_tests_from_the_core_module(mut with_db: db::RootDatabase) {
+fn rk_test_runs_tests_through_the_component(mut with_db: db::RootDatabase) {
     let source = r#"
 FUNCTION add : INT
 VAR_INPUT a : INT; b : INT; END_VAR
@@ -187,16 +187,16 @@ FUNCTION test_that_fails
 END_FUNCTION
     "#;
 
-    let core = super::compile_to_wasm_as_built(&mut with_db, source);
+    let build = super::compile_tests(&mut with_db, source);
 
-    let found = crate::tests::codegen::discover_tests(&core);
+    let found = crate::tests::codegen::discover_tests(&build.core);
     assert_eq!(
         found.len(),
         2,
         "both tests are in the core module's manifest"
     );
 
-    let results = crate::tests::codegen::run_tests(&core, None).expect("run tests");
+    let results = crate::tests::codegen::run_tests(&build.component, None).expect("run tests");
     assert_eq!(results.len(), 2);
 
     let passed = results
@@ -216,7 +216,8 @@ END_FUNCTION
     );
 
     // A filter selects a subset by path.
-    let only = crate::tests::codegen::run_tests(&core, Some("passes")).expect("filtered run");
+    let only =
+        crate::tests::codegen::run_tests(&build.component, Some("passes")).expect("filtered run");
     assert_eq!(only.len(), 1);
 }
 
@@ -291,10 +292,7 @@ END_FUNCTION
     let engine = super::test_engine();
     let module = wasmtime::Module::new(&engine, &wasm).expect("valid module");
     let mut store = wasmtime::Store::new(&engine, ());
-    let memory =
-        wasmtime::Memory::new(&mut store, wasmtime::MemoryType::new(1, None)).expect("memory");
-    let instance = wasmtime::Instance::new(&mut store, &module, &[memory.into()])
-        .expect("instantiate with host memory");
+    let (instance, memory) = super::instantiate_returning_memory(&mut store, &module);
 
     let greet = instance
         .get_typed_func::<(), (i32, i32)>(&mut store, "greet")
@@ -450,16 +448,16 @@ END_FUNCTION
         );
     };
 
-    let wasm = super::compile_to_wasm_as_built(&mut with_db, source);
-    assert_results(&wasm, "as built");
+    let build = super::compile_tests(&mut with_db, source);
+    assert_results(&build.component, "as built");
 
     if !wasm_opt_installed() {
         skip_without_wasm_opt("a RETURN in an optimized test");
         return;
     }
     for level in ["1", "3", "4", "s", "z"] {
-        let optimized = rk::compiler::optimize_wasm_release(wasm.clone(), level, false)
+        let optimized = rk::compiler::optimize_wasm_release(build.core.clone(), level, false)
             .unwrap_or_else(|e| panic!("-O{level}: {e}"));
-        assert_results(&optimized, level);
+        assert_results(&build.wrap(&optimized), level);
     }
 }

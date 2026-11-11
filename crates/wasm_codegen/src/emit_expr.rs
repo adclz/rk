@@ -52,6 +52,14 @@ thread_local! {
     pub(crate) static STR_ADDR_TMP: std::cell::Cell<Option<u32>> =
         const { std::cell::Cell::new(None) };
 
+    /// Where an import that returns a record of two fields or more has it
+    /// written: the module's [`ControlArea::import_record`]. A call reads
+    /// the record back onto the stack, where its fields come back one by one
+    /// as before ([`crate::canonical`]).
+    ///
+    /// [`ControlArea::import_record`]: crate::control::ControlArea::import_record
+    pub(crate) static IMPORT_RECORD_AT: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+
     /// `Ident → text` for every function in the module, so the `emit_call`
     /// panic can name a missing callee without threading the db through.
     pub(crate) static FN_NAMES_FOR_DIAGNOSTIC: RefCell<FxHashMap<Ident, String>> =
@@ -586,6 +594,45 @@ pub(crate) fn emit_addr_of(
     }
 }
 
+/// Where a call to an import whose result is a record of two fields or
+/// more has it written, and each field's place in it and lane, the
+/// VAR_OUTPUTs then the return value; `None` for any other call.
+fn import_record(call: &MirCall) -> Option<(u32, Vec<(u32, MirElementary)>)> {
+    if call.extern_results.is_empty() {
+        return None;
+    }
+    let mut types: Vec<&MirType> = call.extern_results.iter().map(|bind| &bind.ty).collect();
+    if call.extern_ret_scratch.is_some() {
+        types.push(&call.return_type);
+    }
+    if types.len() < 2 {
+        return None;
+    }
+    let fields: Vec<crate::canonical::Canonical> = types
+        .iter()
+        .map(|ty| {
+            crate::canonical::canonical(ty).unwrap_or_else(|| {
+                panic!(
+                    "internal compiler error: an import's result is not scalar \
+                     (E1502 admits scalars only): {ty:?}"
+                )
+            })
+        })
+        .collect();
+    let (offsets, _, _) = crate::canonical::record_layout(&fields);
+    let lanes = offsets
+        .into_iter()
+        .zip(&fields)
+        .map(|(offset, field)| {
+            let elementary = field
+                .elementary
+                .expect("internal compiler error: an import returns no STRING");
+            (offset, elementary)
+        })
+        .collect();
+    Some((IMPORT_RECORD_AT.with(std::cell::Cell::get), lanes))
+}
+
 fn emit_call(
     func: &mut wasm_encoder::Function,
     call: &MirCall,
@@ -670,7 +717,20 @@ fn emit_call(
         })
     });
 
+    // An import's record of two fields or more is written in memory, at the
+    // address passed last, and read back: each field onto the stack, the
+    // return value last.
+    let record = import_record(call);
+    if let Some((at, _)) = &record {
+        func.instruction(&Instruction::I32Const(*at as i32));
+    }
     func.instruction(&Instruction::Call(idx));
+    if let Some((at, fields)) = &record {
+        for (offset, elementary) in fields {
+            func.instruction(&Instruction::I32Const(*at as i32));
+            func.instruction(&crate::canonical::load(*elementary, u64::from(*offset)));
+        }
+    }
 
     // Extern results pop in reverse wire order: the return value first (into
     // its scratch), then each output into its scratch, then the stores; the

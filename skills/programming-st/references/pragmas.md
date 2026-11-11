@@ -12,7 +12,7 @@ Not valid on other POU kinds.
 `{warn = 'message'}` and `{info = 'message'}` attach a diagnostic to every call site of the POU.
 Note the `=`.
 
-`{export}` marks a `FUNCTION` as a WASM export, under its name — see below.
+`{export}` marks a `FUNCTION` a host calls, under its WIT name — see below. `{export 'name'}` gives the name.
 
 `{extern 'module' 'name'}` declares the `FUNCTION` as a WASM import — see below.
 
@@ -60,8 +60,14 @@ See `tool-linter`.
 
 ## The export contract
 
-`{export}` sits **above** the `FUNCTION`, like `{test}`, and takes no argument.
-The FUNCTION is exported under its name, qualified by its namespace (`Plant.Reset`), and the declaration is the signature: the `cli-compile` skill's ABI reference gives what each parameter becomes.
+`{export}` sits **above** the `FUNCTION`, like `{test}`.
+The FUNCTION becomes a function a host calls, typed in WIT from its declaration: the `VAR_INPUT` are its parameters and the return type its result.
+With `VAR_OUTPUT`, the result is a record named as the function is with `-outputs` after it (`measure-outputs`): each output in declaration order, then the return value, named as the function is.
+The component exports them all in one interface named after the project (`Plant_A` is `plant-a`).
+
+The function's name is the FUNCTION's namespaces' names and its own, in lowercase with each `_` written `-`, joined by `-`: `Motion.Scale_Axis` is `motion-scale-axis`.
+`{export 'name'}` gives another, written as WIT writes one (`'read-coils'`).
+E1513 refuses a name that gives no WIT name (`_Reset`, a letter outside ASCII), a given name that is not one, and two exports with one name; the component model compares names without their `-`, so `ab-c` and `a-bc` are one.
 
 Nothing else a workspace declares is exported, apart from `__init`, the bodies the schedule runs (a PROGRAM's, a program instance's `Inst$__scan__`, a FUNCTION_BLOCK's a task runs on its own) and, in a debug build, the `{test}` functions.
 An export is a root for the optimizer, so a release build drops every FUNCTION that is neither exported nor called, the standard library's included.
@@ -75,43 +81,60 @@ FUNCTION Scale: REAL
 	END_VAR
 	Scale := raw * gain;
 END_FUNCTION
+
+{export 'set-recipe'}
+FUNCTION SetRecipe: BOOL
+	VAR_INPUT
+		name: STRING[32];
+	END_VAR
+	SetRecipe := name <> '';
+END_FUNCTION
 ```
+
+What may cross: scalar `VAR_INPUT` (BOOL, the integers and bit strings, REAL, LREAL, CHAR, the durations and dates, an enum or a subrange) and `STRING` inputs, 16 values at most with a STRING counting two, and scalar or `STRING` outputs and return type.
+Each `VAR_OUTPUT` is named in WIT as a parameter is; E1513 refuses one named as the function is, the return value's field, and the build refuses a record named as another function of the interface.
+The host gets a `result`: what the FUNCTION returned, or the message of what stopped it. That is an exception, a `STRING` passed longer than its parameter ("a STRING passed by the host is longer than its parameter"), a value outside its parameter's subrange, or a `STRING` returned that is not UTF-8. None of them traps.
 
 Putting `{export}` on anything other than a `FUNCTION` is E1508: a PROGRAM is exported already, and a FUNCTION_BLOCK or a METHOD needs an instance the host does not have.
 
 What is refused with E1509, because there is no single function to export: an `{extern}` FUNCTION (an import has no body), a `{test}` FUNCTION (exported for the runner already), a FUNCTION that takes an interface (compiled once per implementation), a variadic FUNCTION (compiled once per arity) and an overloaded FUNCTION (the name belongs to several).
+Also E1509, because the host passes values and gets values back: a `VAR_IN_OUT`, a `REF_TO`, STRUCT, ARRAY or instance input, output or return type, and a 17th value.
 Export a plain FUNCTION that calls it instead.
 
 ## The extern contract
 
 `{extern}` sits **above** the `FUNCTION`, like `{test}`.
-It carries only the import's module and name; the declaration itself is the signature.
-`VAR_INPUT` become the parameters in declaration order, scalar `VAR_OUTPUT` become the results in declaration order, and the return type is the last result.
+It carries only the import's module and name; the declaration itself is the signature: `VAR_INPUT` become the parameters in declaration order, and the return type is the result.
+With `VAR_OUTPUT`, the result is the record of the outputs and the return value, named as an export's are (`read-register-outputs`, its last field `read-register`).
+
+The module and the name are written as WIT writes them, never converted (E1512):
+the module is a WIT name (`'modbus'`) or an interface (`'acme:modbus/rtu@1.0.0'`, one namespace and one interface, no nested name), and the name is a WIT name, lowercase words and digits joined by `-` (`'read-coils'`, not `'read_coils'`).
 
 ```iecst
-{extern 'wasi:clocks/monotonic-clock@0.2.6' 'now'}
+{extern 'wasi:clocks/monotonic-clock@0.3.0' 'now'}
 FUNCTION MONOTONIC_LTIME: LTIME
 END_FUNCTION
 
-{extern 'rt' 'sample'}
-FUNCTION Sample: INT
+{extern 'modbus' 'read-coils'}
+FUNCTION ReadCoils: UDINT
 	VAR_INPUT
-		channel: INT;
-		label: STRING;
-	END_VAR
-	VAR_OUTPUT
-		value: LINT;
-		status: INT;
+		start_address: UINT;   // `start-address` in WIT
+		count: UINT;
 	END_VAR
 END_FUNCTION
 ```
 
-What may cross: scalar `VAR_INPUT` by value, a `STRING` input as a `(ptr, len)` pair, a struct or array input as a pointer to a call-entry copy, scalar `VAR_OUTPUT` as results, and a scalar return type as the last result.
+An import from a module other than WASI's is typed in WIT from its declaration, in the `wit/` folder `rk compile` writes beside the component.
+What may cross: a scalar `VAR_INPUT` (BOOL, the integers and bit strings, REAL, LREAL, CHAR, the durations and dates, an enum or a subrange), a `STRING` input as WIT's `string`, and scalar outputs and return type, 16 inputs at most with a STRING counting two.
+Each `VAR_INPUT` and `VAR_OUTPUT` is named in WIT by its name in lowercase, each `_` written `-`: a name with an empty word (`x_`, `a__b`), or a letter outside ASCII, is E1512, and so are two names that differ only by a `_` (`ab`, `a_b`) and an output named as the import is.
 
-What is refused with E1502: `VAR_IN_OUT` ("an extern takes copies, not references"), a variadic `VAR_INPUT` ("a variadic parameter has the argument count of each call"), any aggregate or `STRING` `VAR_OUTPUT` ("only scalar outputs cross an import"), and any statement in the body ("an extern FUNCTION has no statements").
+Each call checks what it passes before the host is called: a `STRING` that is not UTF-8 raises "a STRING passed to the host is not UTF-8", and a `CHAR` that is a surrogate or past U+10FFFF raises "a CHAR passed to the host is not a character". The component model would trap on either, stopping the PLC; the exception is caught by `__TRY` like any other.
+
+What is refused with E1502 on every import: `VAR_IN_OUT` ("an extern takes copies, not references"), a STRUCT, ARRAY or instance `VAR_INPUT` (on a WASI import, "no WASI function reads rk's own layout"), an `ARRAY[*]` or variadic `VAR_INPUT`, an aggregate or `STRING` `VAR_OUTPUT`, a `STRING` or aggregate return type ("the return type of 'f' can only be a scalar"), and any statement in the body ("an extern FUNCTION has no statements").
+On an import from a module other than WASI's, also: a `REF_TO` input ("an address in the module means nothing to the host") and a 17th value.
 Putting `{extern}` on anything other than a `FUNCTION` is E1501.
 
-A `STRING` **return type** is refused the same way: "the return type of 'f' can only be a scalar".
+A WASI import keeps the types WASI's WIT gives it, in their core form: a record of scalars comes back in `VAR_OUTPUT`, one for each field in order, as `Std.Timers` reads the system clock, and a `REF_TO` input is an address where a record can come back too.
 
 ### `{allow 'rule-name' ...}`
 

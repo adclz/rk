@@ -124,5 +124,6 @@ A library cannot name a complete address, since it is code for any machine (`E14
 
 ## On the host
 
-The module exports each area it uses as a band, and its `located-map` section lists every address with the place it takes in memory.
+The module exports each area it uses as a band, and its `located-map` section lists every address with the place it takes in memory and its offset in its area.
+A component's host finds an address by that offset in the lists `run-task` takes and returns.
 A host binds a channel by its address, see [Memory bands](memory-bands.md).

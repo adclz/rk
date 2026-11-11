@@ -223,8 +223,9 @@ fn no_located_variable_exports_no_band(mut with_db: db::RootDatabase) {
 }
 
 // ---------------------------------------------------------------------------
-// The `located-map` section: which address is which cell. The band exports
-// say where the three areas are; this says what lives inside them.
+// The `located-map` section: which address is which cell, where each cell is
+// in its area, and how large each area is. A core module's host also has the
+// band exports; a component's host has only the map.
 // ---------------------------------------------------------------------------
 
 /// Every located variable appears once, with the address as written, the
@@ -278,7 +279,8 @@ fn the_map_names_every_address(mut with_db: db::RootDatabase) {
     assert_eq!(lamp.area, debug_format::LocatedArea::Output);
     assert_eq!(lamp.addr, mir.output_base);
 
-    // Every entry lands inside the band its area names.
+    // Every entry lands inside the band its area names, at the offset the
+    // map gives it, and the map says how large each band is.
     for (entry, base, size) in [
         (start, mir.input_base, mir.input_size),
         (lamp, mir.output_base, mir.output_size),
@@ -289,6 +291,8 @@ fn the_map_names_every_address(mut with_db: db::RootDatabase) {
             "{} is outside its band",
             entry.address
         );
+        assert_eq!(entry.offset, Some(entry.addr - base), "{}", entry.address);
+        assert_eq!(map.area_size(entry.area), Some(size), "{}", entry.address);
     }
 }
 
@@ -386,6 +390,57 @@ fn the_layout_hash_ignores_rebasing(#[allow(unused)] with_db: db::RootDatabase) 
     assert_ne!(
         bare.located_map.layout_hash, grown.located_map.layout_hash,
         "a new address is a new layout"
+    );
+}
+
+/// A cell that moves in its area is a new layout, though the addresses, the
+/// names and the sizes are the same: a `%M` cell made `RETAIN` goes to the
+/// end of its area, and a host that bound the others by their offset would
+/// read the wrong bytes.
+#[rstest]
+fn a_cell_that_moves_in_its_area_is_another_layout(#[allow(unused)] with_db: db::RootDatabase) {
+    let program = |kept: &str| {
+        format!(
+            r#"
+        PROGRAM P
+        VAR_EXTERNAL first : INT; second : INT; END_VAR
+            second := first;
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+        VAR_GLOBAL {kept}
+            first AT %MW0 : INT;
+        END_VAR
+        VAR_GLOBAL
+            second AT %MW2 : INT;
+        END_VAR
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#
+        )
+    };
+    let compile = |kept: &str| {
+        let mut db = db::RootDatabase::default();
+        compile_to_mir_and_wasm(&mut db, &program(kept)).0
+    };
+    let plain = compile("");
+    let retained = compile("RETAIN");
+    let offset = |mir: &mir::MirModule, address: &str| {
+        mir.located_map
+            .entries
+            .iter()
+            .find(|e| e.address == address)
+            .and_then(|e| e.offset)
+    };
+    assert_eq!(offset(&plain, "%MW0"), Some(0));
+    assert_eq!(offset(&retained, "%MW0"), Some(4), "the retained cell last");
+    assert_eq!(offset(&retained, "%MW2"), Some(0));
+    assert_ne!(
+        plain.located_map.layout_hash, retained.located_map.layout_hash,
+        "the same addresses, moved"
     );
 }
 

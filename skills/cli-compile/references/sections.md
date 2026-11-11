@@ -10,8 +10,8 @@ They are stored as custom sections after the code, encoded with MessagePack; the
 | `debug-lines` | debug only | code offset → file, line, column |
 | `debug-locals` | debug only | wasm local slot → variable name and type |
 | `rk.schedule` | every build | tasks, periods, the bit each `SINGLE` reads, priorities, instance addresses |
-| `retain-map` | every build | the byte ranges a power cycle must preserve |
-| `located-map` | every build | each address: its cell, its width, its type, and for a part of a wider address the address that owns it and its bit |
+| `retain-map` | every build | the byte ranges a power cycle must preserve, each with its offset in the retain band, and the band's size |
+| `located-map` | every build | each address: its cell, its offset in its area, its width, its type, and for a part of a wider address the address that owns it and its bit; each area's size |
 | `test-manifest` | debug only, when there are tests | the exports `rk test` calls |
 
 `rk.schedule`, `retain-map`, `located-map` and `test-manifest` are not debug information.

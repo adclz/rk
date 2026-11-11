@@ -8,6 +8,7 @@ pub mod info;
 pub mod test_manifest;
 pub mod test_report;
 mod tolerant;
+pub mod wit;
 
 pub use info::{
     DebugInfo, Live, Place, Pointee, SourcePos, StackFrame, TypeMismatch, VarLoc, VarValue, decode,
@@ -790,8 +791,9 @@ pub const RETAIN_MAP_SECTION: &str = "retain-map";
 
 /// On-wire format version for [`RetainMap`]. 3: the ranges are sorted and
 /// hashed by their case-folded path, so a case-only rename is the same
-/// layout.
-pub const RETAIN_MAP_VERSION: u16 = 3;
+/// layout. 4: each range gives its offset in the retain band, the map the
+/// band's size, and the hash covers the offsets.
+pub const RETAIN_MAP_VERSION: u16 = 4;
 
 /// The retained byte ranges of a module, inside the retain band;
 /// everything in the band not covered is transient and keeps its
@@ -799,14 +801,21 @@ pub const RETAIN_MAP_VERSION: u16 = 3;
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RetainMap {
     pub version: u16,
-    /// Layout identity: FNV-1a over the sorted `(path, size, type_key)`
-    /// sequence, the path case-folded as IEC 61131-3 §6.1.2 matches names,
-    /// excluding addresses so the band may re-base between builds.
-    /// `type_key` is included because size alone does not identify a value.
+    /// Layout identity: FNV-1a over the sorted `(path, size, type_key,
+    /// offset)` sequence, the path case-folded as IEC 61131-3 §6.1.2 matches
+    /// names. `type_key` is included because size alone does not identify a
+    /// value, and the offset because the same ranges in another order are
+    /// another layout. Linear-memory addresses are not, so the band may
+    /// re-base between builds.
     pub layout_hash: u64,
     /// Retained ranges, sorted by case-folded `path` (deterministic; file
     /// payload order).
     pub ranges: Vec<RetainRange>,
+    /// The retain band's size in bytes: how long the list `save-retain`
+    /// returns, and `restore-retain` takes. `None` in a map written before
+    /// it was carried.
+    #[serde(default)]
+    pub size: Option<u32>,
 }
 
 /// One retained byte range.
@@ -822,21 +831,29 @@ pub struct RetainRange {
     /// Structural identity of the retained value's type (see
     /// [`RetainMap::layout_hash`]); the runtime only compares it.
     pub type_key: u32,
+    /// Where the range is in the retain band, in bytes: its place in the
+    /// list `save-retain` returns, `addr` less the band's start. `None` in a
+    /// map written before it was carried.
+    #[serde(default)]
+    pub offset: Option<u32>,
 }
 
 impl RetainMap {
-    /// Build from ranges: sorts by folded path and stamps the layout hash.
-    pub fn new(mut ranges: Vec<RetainRange>) -> Self {
+    /// Build from ranges and the retain band's size: sorts by folded path
+    /// and stamps the layout hash.
+    pub fn new(mut ranges: Vec<RetainRange>, size: Option<u32>) -> Self {
         ranges.sort_by_cached_key(|r| info::fold_path(&r.path));
         let layout_hash = Self::hash_layout(&ranges);
         RetainMap {
             version: RETAIN_MAP_VERSION,
             layout_hash,
             ranges,
+            size,
         }
     }
 
-    /// FNV-1a over the sorted `(folded path, size, type_key)` sequence.
+    /// FNV-1a over the sorted `(folded path, size, type_key, offset)`
+    /// sequence.
     fn hash_layout(ranges: &[RetainRange]) -> u64 {
         const FNV_OFFSET: u64 = 0xcbf29ce484222325;
         const FNV_PRIME: u64 = 0x100000001b3;
@@ -852,6 +869,9 @@ impl RetainMap {
             eat(&[0]); // separator
             eat(&r.size.to_le_bytes());
             eat(&r.type_key.to_le_bytes());
+            if let Some(offset) = r.offset {
+                eat(&offset.to_le_bytes());
+            }
         }
         h
     }
@@ -876,14 +896,16 @@ impl RetainMap {
 // Located map — which address is which cell
 // ---------------------------------------------------------------------------
 
-/// Custom wasm section carrying the [`LocatedMap`]. Load-bearing: the band
-/// exports say where the three areas are, and this says which variable sits
-/// where inside them. Without it a host can copy an image in and out but
-/// cannot bind a single channel.
+/// Custom wasm section carrying the [`LocatedMap`]. Load-bearing: it says
+/// which variable sits where in each area, and how large each area is.
+/// Without it a host can copy an image in and out but cannot bind a single
+/// channel.
 pub const LOCATED_MAP_SECTION: &str = "located-map";
 
-/// On-wire format version for [`LocatedMap`].
-pub const LOCATED_MAP_VERSION: u16 = 2;
+/// On-wire format version for [`LocatedMap`]. 3: each entry gives its
+/// offset in its area, the map each area's size, and the hash covers the
+/// offsets.
+pub const LOCATED_MAP_VERSION: u16 = 3;
 
 /// The area an address names. Each is one contiguous band, exported as
 /// `input_base`/`input_size` and its two siblings.
@@ -913,14 +935,29 @@ impl LocatedArea {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LocatedMap {
     pub version: u16,
-    /// Layout identity: FNV-1a over the sorted `(address, name, size)`
-    /// sequence, excluding linear-memory addresses so a band may re-base
-    /// between builds without invalidating a host's bindings. A host compares
-    /// it to know the set of addresses it bound is still this module's.
+    /// Layout identity: FNV-1a over the sorted `(address, name, size,
+    /// offset)` sequence. Linear-memory addresses are not in it, so a band
+    /// may re-base between builds without invalidating a host's bindings;
+    /// the offsets are, so a cell that moves in its area does. A host
+    /// compares it to know the addresses it bound are still where it bound
+    /// them.
     pub layout_hash: u64,
     /// The located variables, sorted by `address` (deterministic; file
     /// payload order).
     pub entries: Vec<LocatedVar>,
+    /// The size of each area the module has, in bytes: how long a list
+    /// `run-task` takes for `%I` and returns for `%Q`. Empty in a map
+    /// written before it was carried.
+    #[serde(default)]
+    pub areas: Vec<AreaSize>,
+}
+
+/// How large one area is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AreaSize {
+    pub area: LocatedArea,
+    /// In bytes.
+    pub size: u32,
 }
 
 /// One located variable.
@@ -956,6 +993,12 @@ pub struct LocatedVar {
     /// its own. A host reads it as `(cell >> shift) & mask(width)` and writes
     /// it by replacing those bits.
     pub part_of: Option<LocatedPart>,
+    /// Where the cell is in its area, in bytes, the owner's for a part: its
+    /// place in the list a component's host exchanges with `run-task`,
+    /// `addr` less the area's start. `None` in a map written before it was
+    /// carried.
+    #[serde(default)]
+    pub offset: Option<u32>,
 }
 
 /// Where a part sits in the address that owns its storage.
@@ -970,18 +1013,21 @@ pub struct LocatedPart {
 }
 
 impl LocatedMap {
-    /// Build from entries: sorts by address and stamps the layout hash.
-    pub fn new(mut entries: Vec<LocatedVar>) -> Self {
+    /// Build from entries and the size of each area: sorts by address and
+    /// stamps the layout hash.
+    pub fn new(mut entries: Vec<LocatedVar>, areas: Vec<AreaSize>) -> Self {
         entries.sort_by(|a, b| a.address.cmp(&b.address));
         let layout_hash = Self::hash_layout(&entries);
         LocatedMap {
             version: LOCATED_MAP_VERSION,
             layout_hash,
             entries,
+            areas,
         }
     }
 
-    /// FNV-1a over the sorted `(address, folded name, size)` sequence.
+    /// FNV-1a over the sorted `(address, folded name, size, offset)`
+    /// sequence.
     fn hash_layout(entries: &[LocatedVar]) -> u64 {
         const FNV_OFFSET: u64 = 0xcbf29ce484222325;
         const FNV_PRIME: u64 = 0x100000001b3;
@@ -1005,6 +1051,9 @@ impl LocatedMap {
                 eat(&[0]);
                 eat(&part.shift.to_le_bytes());
             }
+            if let Some(offset) = e.offset {
+                eat(&offset.to_le_bytes());
+            }
         }
         h
     }
@@ -1012,6 +1061,14 @@ impl LocatedMap {
     /// The entries of one area, in address order.
     pub fn area(&self, area: LocatedArea) -> impl Iterator<Item = &LocatedVar> {
         self.entries.iter().filter(move |e| e.area == area)
+    }
+
+    /// How large `area` is, in bytes, when the map says.
+    pub fn area_size(&self, area: LocatedArea) -> Option<u32> {
+        self.areas
+            .iter()
+            .find(|span| span.area == area)
+            .map(|span| span.size)
     }
 
     /// Serialize to MessagePack bytes.
@@ -1029,12 +1086,13 @@ impl LocatedMap {
 mod tests {
     use super::*;
 
-    /// The located map round-trips, and its hash covers the addresses rather
-    /// than where they landed: re-basing a band must not invalidate a host's
-    /// bindings, adding an address must.
+    /// The located map round-trips, and its hash covers the addresses and
+    /// where each sits in its area rather than where the area landed:
+    /// re-basing a band must not invalidate a host's bindings, adding an
+    /// address must, and so must a cell that moves in its area.
     #[test]
     fn located_map_round_trips_and_hashes_its_addresses() {
-        let var = |address: &str, name: &str, area, addr| LocatedVar {
+        let var = |address: &str, name: &str, area, addr, offset| LocatedVar {
             address: address.into(),
             name: name.into(),
             area,
@@ -1044,27 +1102,58 @@ mod tests {
             size: 4,
             ty: Some(SymType::Bool),
             part_of: None,
+            offset: Some(offset),
         };
-        let map = LocatedMap::new(vec![
-            var("%QX0.0", "lamp", LocatedArea::Output, 128),
-            var("%IX0.0", "start", LocatedArea::Input, 64),
-        ]);
+        let areas = vec![
+            AreaSize {
+                area: LocatedArea::Input,
+                size: 4,
+            },
+            AreaSize {
+                area: LocatedArea::Output,
+                size: 4,
+            },
+        ];
+        let map = LocatedMap::new(
+            vec![
+                var("%QX0.0", "lamp", LocatedArea::Output, 128, 0),
+                var("%IX0.0", "start", LocatedArea::Input, 64, 0),
+            ],
+            areas.clone(),
+        );
         assert_eq!(
             map.entries.iter().map(|e| &e.address).collect::<Vec<_>>(),
             ["%IX0.0", "%QX0.0"],
             "sorted by address, whatever order they arrived in"
         );
         assert_eq!(LocatedMap::from_msgpack(&map.to_msgpack()).unwrap(), map);
+        assert_eq!(map.area_size(LocatedArea::Input), Some(4));
+        assert_eq!(map.area_size(LocatedArea::Marker), None);
 
-        let rebased = LocatedMap::new(vec![
-            var("%IX0.0", "start", LocatedArea::Input, 4096),
-            var("%QX0.0", "lamp", LocatedArea::Output, 8192),
-        ]);
+        let rebased = LocatedMap::new(
+            vec![
+                var("%IX0.0", "start", LocatedArea::Input, 4096, 0),
+                var("%QX0.0", "lamp", LocatedArea::Output, 8192, 0),
+            ],
+            areas.clone(),
+        );
         assert_eq!(map.layout_hash, rebased.layout_hash);
 
         let mut grown = map.entries.clone();
-        grown.push(var("%IX0.1", "stop", LocatedArea::Input, 68));
-        assert_ne!(map.layout_hash, LocatedMap::new(grown).layout_hash);
+        grown.push(var("%IX0.1", "stop", LocatedArea::Input, 68, 4));
+        assert_ne!(
+            map.layout_hash,
+            LocatedMap::new(grown, areas.clone()).layout_hash
+        );
+
+        let moved = LocatedMap::new(
+            vec![
+                var("%IX0.0", "start", LocatedArea::Input, 68, 4),
+                var("%QX0.0", "lamp", LocatedArea::Output, 128, 0),
+            ],
+            areas,
+        );
+        assert_ne!(map.layout_hash, moved.layout_hash, "a cell that moved");
     }
 
     /// An address that becomes part of a wider one is read another way, so
@@ -1082,6 +1171,7 @@ mod tests {
             size: 4,
             ty: Some(SymType::Int),
             part_of,
+            offset: Some(0),
         };
         let owned = |shift| {
             Some(LocatedPart {
@@ -1089,11 +1179,109 @@ mod tests {
                 shift,
             })
         };
-        let alone = LocatedMap::new(vec![word(None)]).layout_hash;
-        let low = LocatedMap::new(vec![word(owned(0))]).layout_hash;
-        let high = LocatedMap::new(vec![word(owned(16))]).layout_hash;
+        let alone = LocatedMap::new(vec![word(None)], Vec::new()).layout_hash;
+        let low = LocatedMap::new(vec![word(owned(0))], Vec::new()).layout_hash;
+        let high = LocatedMap::new(vec![word(owned(16))], Vec::new()).layout_hash;
         assert_ne!(alone, low, "an owner");
         assert_ne!(low, high, "another place in it");
+    }
+
+    /// The same retained ranges in another order are another layout: a host
+    /// that restored the saved bytes because the hash matched would have
+    /// given each value to its neighbour. Where the band landed is not.
+    #[test]
+    fn a_retained_range_that_moves_is_another_layout() {
+        let range = |path: &str, addr, offset| RetainRange {
+            path: path.into(),
+            addr,
+            size: 4,
+            type_key: 7,
+            offset: Some(offset),
+        };
+        let first = RetainMap::new(
+            vec![range("P1.a", 16384, 0), range("P1.b", 16388, 4)],
+            Some(8),
+        );
+        let swapped = RetainMap::new(
+            vec![range("P1.a", 16388, 4), range("P1.b", 16384, 0)],
+            Some(8),
+        );
+        let rebased = RetainMap::new(
+            vec![range("P1.a", 32768, 0), range("P1.b", 32772, 4)],
+            Some(8),
+        );
+        assert_ne!(first.layout_hash, swapped.layout_hash);
+        assert_eq!(first.layout_hash, rebased.layout_hash);
+        assert_eq!(RetainMap::from_msgpack(&first.to_msgpack()).unwrap(), first);
+    }
+
+    /// A map an older build wrote reads without what it did not carry: no
+    /// offsets, and no sizes.
+    #[test]
+    fn an_older_map_reads_without_offsets() {
+        #[derive(Serialize)]
+        struct LocatedVarV2 {
+            address: String,
+            name: String,
+            area: LocatedArea,
+            path: Vec<u32>,
+            width: u16,
+            addr: u32,
+            size: u32,
+            ty: Option<SymType>,
+            part_of: Option<LocatedPart>,
+        }
+        #[derive(Serialize)]
+        struct LocatedMapV2 {
+            version: u16,
+            layout_hash: u64,
+            entries: Vec<LocatedVarV2>,
+        }
+        #[derive(Serialize)]
+        struct RetainRangeV3 {
+            path: String,
+            addr: u32,
+            size: u32,
+            type_key: u32,
+        }
+        #[derive(Serialize)]
+        struct RetainMapV3 {
+            version: u16,
+            layout_hash: u64,
+            ranges: Vec<RetainRangeV3>,
+        }
+        let located = LocatedMapV2 {
+            version: 2,
+            layout_hash: 1,
+            entries: vec![LocatedVarV2 {
+                address: "%IX0.0".into(),
+                name: "start".into(),
+                area: LocatedArea::Input,
+                path: vec![0, 0],
+                width: 1,
+                addr: 64,
+                size: 4,
+                ty: Some(SymType::Bool),
+                part_of: None,
+            }],
+        };
+        let read = LocatedMap::from_msgpack(&rmp_serde::to_vec(&located).unwrap()).unwrap();
+        assert_eq!(read.entries[0].offset, None);
+        assert!(read.areas.is_empty());
+
+        let retained = RetainMapV3 {
+            version: 3,
+            layout_hash: 1,
+            ranges: vec![RetainRangeV3 {
+                path: "P1.a".into(),
+                addr: 16384,
+                size: 4,
+                type_key: 7,
+            }],
+        };
+        let read = RetainMap::from_msgpack(&rmp_serde::to_vec(&retained).unwrap()).unwrap();
+        assert_eq!(read.ranges[0].offset, None);
+        assert_eq!(read.size, None);
     }
 
     /// A symbol without bits encodes exactly as a v7 one did; a part's

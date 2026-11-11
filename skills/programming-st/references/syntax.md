@@ -67,8 +67,7 @@ In an argument, a `FOR` start or a condition it is E0033.
 `__RAISE`, `__TRY`, `__CATCH` and `__FINALLY` are rk extensions.
 A `__TRY` needs a `__CATCH`, a `__FINALLY` or both (E1209).
 It can only have one of each (E1212), with `__CATCH` first (E1211).
-`__CATCH` catches a `__RAISE`, a failed assertion and the checks the compiler inserts, including in the functions the `__TRY` block calls.
-It does not catch an integer division by zero, which is a VM trap.
+`__CATCH` catches a `__RAISE`, a failed assertion and the checks the compiler inserts, an integer division by zero included, and in the functions the `__TRY` block calls too.
 An exception that is not caught stops the scan.
 The `__CATCH` variable must be a `STRING` (E0301) that can be written (E0404).
 `RETURN`, `EXIT` and `CONTINUE` cannot leave a `__FINALLY` (E1210).

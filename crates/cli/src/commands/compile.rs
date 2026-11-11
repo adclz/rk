@@ -4,7 +4,7 @@
 use std::path::PathBuf;
 
 use crate::cli::OutputFormat;
-use crate::compiler::{build_core_profile, debug_core_path, optimize_wasm_release};
+use crate::compiler::{build_core_profile, component_path, optimize_wasm_release};
 use crate::error::{CliError, CliResult};
 use crate::ui;
 use crate::workspace::init_db;
@@ -52,30 +52,33 @@ fn compile_once(
     let (core_bytes, mir_module) =
         build_core_profile(&db, workspace, verbose, opts.format, profile)
             .map_err(|_| CliError::Failed)?;
-    let _ = &mir_module;
+    let config = db::config_file::get_config(&db);
 
-    if !opts.release {
+    let (core_bytes, label) = if !opts.release {
         // The default: the debug artifact, all sections intact, never optimized
         // (that would orphan the line table).
-        let default_output = debug_core_path(workspace);
-        let output = opts.output.unwrap_or(&default_output);
-        return write_output(output, &core_bytes, "compiled debug core:");
-    }
+        (core_bytes, "compiled debug:")
+    } else {
+        // Release: wasm-opt is mandatory and its failure is the build's.
+        // Level: flag, else config.toml, else -O2.
+        let config_opt = config
+            .settings
+            .as_ref()
+            .and_then(|s| s.opt_level.as_deref());
+        let level = opts.opt_level.or(config_opt).unwrap_or("2");
+        let optimized = optimize_wasm_release(core_bytes, level, verbose).map_err(CliError::msg)?;
+        (optimized, "compiled release:")
+    };
 
-    // Release: wasm-opt is mandatory and its failure is the build's. Level:
-    // flag, else config.toml, else -O2.
-    let config = db::config_file::get_config(&db);
-    let config_opt = config
-        .settings
-        .as_ref()
-        .and_then(|s| s.opt_level.as_deref());
-    let level = opts.opt_level.or(config_opt).unwrap_or("2");
-
-    let optimized = optimize_wasm_release(core_bytes, level, verbose).map_err(CliError::msg)?;
-
-    let default_output = crate::compiler::artifact_path(workspace, profile);
+    // Last, since wasm-opt reads core modules only: the module wrapped into a
+    // component, with the WIT that types it.
+    let interfaces = crate::component::interfaces(&db, &mir_module).map_err(CliError::msg)?;
+    let component = crate::component::wrap(&core_bytes, &config.project.name, &interfaces)
+        .map_err(CliError::msg)?;
+    let default_output = component_path(workspace, profile, &config.project.name);
     let output = opts.output.unwrap_or(&default_output);
-    write_output(output, &optimized, "compiled release:")
+    write_output(output, &component.bytes, label)?;
+    crate::component::write_wit(output, &component).map_err(CliError::msg)
 }
 
 /// Write `bytes` to `output` (creating parent dirs), reporting success on stdout.

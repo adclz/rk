@@ -43,6 +43,11 @@ pub struct MirFunction {
     /// When set, WASM codegen uses this instead of `name` for the export.
     pub export_name: Option<CompactString>,
 
+    /// The WIT name a host calls it by, for an `{export}` FUNCTION: the
+    /// component exports it under that name, typed from its parameters and
+    /// its return type.
+    pub wit_export: Option<CompactString>,
+
     /// The frame each call pushes on the stack for a function that may call
     /// itself, directly or through others: its memory-resident storage is
     /// [`MirStorage::Frame`]. `None` for every other function, whose storage
@@ -78,8 +83,9 @@ pub struct MirExternFunction {
     /// Import field name.
     pub import_name: CompactString,
     pub params: Vec<MirParam>,
-    /// Scalar `VAR_OUTPUT` results, in declaration order; the wasm results
-    /// are these followed by `return_type` last.
+    /// Scalar `VAR_OUTPUT` results, in declaration order. The import returns
+    /// the record of these and `return_type` last: one value when it has one
+    /// field, and otherwise written at an address the call passes.
     pub out_results: Vec<(Ident, MirType)>,
     pub return_type: Option<MirType>,
     /// Whether the import is re-exported under its name.
@@ -87,7 +93,8 @@ pub struct MirExternFunction {
 }
 
 impl MirExternFunction {
-    /// The wasm results in wire order: outputs, then the return type last.
+    /// The fields of what the import returns: its outputs, then the return
+    /// type last.
     pub fn results(&self) -> impl Iterator<Item = &MirType> {
         self.out_results
             .iter()
@@ -101,6 +108,16 @@ pub struct MirParam {
     pub name: Ident,
     pub ty: MirType,
     pub kind: MirParamKind,
+}
+
+impl MirParam {
+    /// The name the declaration gives the parameter. An input with storage
+    /// of its own, a STRING or one whose address the body takes, is
+    /// `x$arg` as a parameter and `x` as the local it fills.
+    pub fn declared_name<'db>(&self, db: &'db dyn db::WorkspaceDataBase) -> &'db str {
+        let name = self.name.text(db).as_str();
+        name.strip_suffix("$arg").unwrap_or(name)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

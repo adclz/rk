@@ -763,7 +763,7 @@ fn a_timer_in_a_retained_instance_starts_over(mut with_db: db::RootDatabase) {
         let clock = Arc::new(AtomicI64::new(now_ms * 1_000_000));
         let moved = Arc::clone(&clock);
         let plc = TestPlc::load_with_host(&wasm, move |linker| {
-            linker.func_wrap("wasi:clocks/monotonic-clock@0.2.6", "now", move || {
+            linker.func_wrap("wasi:clocks/monotonic-clock@0.3.0", "now", move || {
                 moved.load(Ordering::Relaxed)
             })?;
             Ok(())
@@ -868,7 +868,7 @@ fn a_pulse_and_an_off_delay_in_a_retained_instance_start_over(mut with_db: db::R
         let clock = Arc::new(AtomicI64::new(now_ms * 1_000_000));
         let moved = Arc::clone(&clock);
         let plc = TestPlc::load_with_host(&wasm, move |linker| {
-            linker.func_wrap("wasi:clocks/monotonic-clock@0.2.6", "now", move || {
+            linker.func_wrap("wasi:clocks/monotonic-clock@0.3.0", "now", move || {
                 moved.load(Ordering::Relaxed)
             })?;
             Ok(())

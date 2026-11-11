@@ -208,7 +208,11 @@ fn exports_and_sections(wasm: &[u8]) -> (Vec<String>, Vec<String>) {
             wasmparser::Payload::ExportSection(reader) => {
                 for export in reader {
                     let export = export.expect("an export");
-                    if export.kind == wasmparser::ExternalKind::Func {
+                    // Every module has the control interface's: what these
+                    // tests look at is what the workspace exports.
+                    if export.kind == wasmparser::ExternalKind::Func
+                        && !hir::hir_def::pous::pragma::MODULE_EXPORTS.contains(&export.name)
+                    {
                         exports.push(export.name.to_string());
                     }
                 }
@@ -306,9 +310,18 @@ fn a_release_exports_no_test_and_lists_none(mut with_db: RootDatabase) {
             .finish();
 
     let (exports, sections) = exports_and_sections(&debug);
+    // Each `{export}` FUNCTION twice: under its own name, and as the
+    // component exports it, `<interface>#<WIT name>`.
     assert_eq!(
         exports,
-        ["Main$__body__", "Std.LibEntry", "Twice", "ws_test"]
+        [
+            "Main$__body__",
+            "Std.LibEntry",
+            "Twice",
+            "std#std-libentry",
+            "std#twice",
+            "ws_test"
+        ]
     );
     assert!(
         sections.contains(&"test-manifest".to_string()),
@@ -316,7 +329,16 @@ fn a_release_exports_no_test_and_lists_none(mut with_db: RootDatabase) {
     );
 
     let (exports, sections) = exports_and_sections(&release);
-    assert_eq!(exports, ["Main$__body__", "Std.LibEntry", "Twice"]);
+    assert_eq!(
+        exports,
+        [
+            "Main$__body__",
+            "Std.LibEntry",
+            "Twice",
+            "std#std-libentry",
+            "std#twice"
+        ]
+    );
     assert!(
         !sections.contains(&"test-manifest".to_string()),
         "{sections:?}"
@@ -342,5 +364,5 @@ END_FUNCTION
     let module = lower_with_library(&mut with_db, library, workspace);
     let wasm = wasm_codegen::generate_wasm(&with_db, &module).finish();
     let (exports, _) = exports_and_sections(&wasm);
-    assert_eq!(exports, ["Stamp"]);
+    assert_eq!(exports, ["Stamp", "std#stamp"]);
 }

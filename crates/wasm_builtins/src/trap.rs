@@ -1,8 +1,9 @@
 //! How a fault leaves a compiled PLC: every runtime check funnels through
 //! `__iec_raise`, which throws the module's `$rk_exception`, the same
 //! throw `__RAISE` lowers to. Wasm traps on its own for its instruction
-//! set's faults; a subscript landing on a neighbour or a value leaving its
-//! subrange is checked here, or not at all.
+//! set's faults; a divisor of 0, a subscript landing on a neighbour or a
+//! value leaving its subrange is checked here, before the instruction that
+//! would trap on it or not notice.
 
 /// `no_std` panic landing: re-throws any Rust panic as `$rk_exception`.
 /// `PanicMessage::as_str` answers for every compiler-generated panic that
@@ -60,6 +61,52 @@ pub extern "C" fn rk_idx_check_i64(index: i64, lower: i64, size: u32) -> i32 {
         unsafe { __iec_raise(MSG.as_ptr(), MSG.len() as u32) }
     }
     index as i32
+}
+
+/// Zero check for the divisor of an integer `/` or `MOD`: raises when it
+/// is 0, else returns it. A divisor of -1 is not this check's business: the
+/// minimum divided by it wraps, in the division itself.
+#[unsafe(no_mangle)]
+pub extern "C" fn rk_div_check(divisor: i32) -> i32 {
+    if divisor == 0 {
+        const MSG: &str = "division by zero";
+        unsafe { __iec_raise(MSG.as_ptr(), MSG.len() as u32) }
+    }
+    divisor
+}
+
+/// [`rk_div_check`] for a 64-bit divisor.
+#[unsafe(no_mangle)]
+pub extern "C" fn rk_div_check_i64(divisor: i64) -> i64 {
+    if divisor == 0 {
+        const MSG: &str = "division by zero";
+        unsafe { __iec_raise(MSG.as_ptr(), MSG.len() as u32) }
+    }
+    divisor
+}
+
+/// UTF-8 check for a STRING the module passes to an import: the host reads
+/// it as WIT's `string`, and the component model traps on bytes that are
+/// not UTF-8, a trap that stops the whole PLC. Raised here, a `__TRY` of
+/// the caller can catch it.
+#[unsafe(no_mangle)]
+pub extern "C" fn rk_utf8_check(ptr: *const u8, len: u32) {
+    let bytes = unsafe { core::slice::from_raw_parts(ptr, len as usize) };
+    if core::str::from_utf8(bytes).is_err() {
+        const MSG: &str = "a STRING passed to the host is not UTF-8";
+        unsafe { __iec_raise(MSG.as_ptr(), MSG.len() as u32) }
+    }
+}
+
+/// Character check for a CHAR the module passes to an import: WIT's `char`
+/// is a Unicode scalar value, and the component model traps on a surrogate
+/// or on a code past U+10FFFF.
+#[unsafe(no_mangle)]
+pub extern "C" fn rk_char_check(c: u32) {
+    if char::from_u32(c).is_none() {
+        const MSG: &str = "a CHAR passed to the host is not a character";
+        unsafe { __iec_raise(MSG.as_ptr(), MSG.len() as u32) }
+    }
 }
 
 /// Null check for a runtime dereference: raises when the pointer is 0,

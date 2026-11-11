@@ -39,6 +39,9 @@ jobs:
       CORPUS: crates/fuzz/corpus/${{ matrix.target }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # WASI's WIT, which debug_format's build reads.
+          submodules: true
       # An ASan build of the workspace, wasmtime included, and a release
       # build of the corpus generator do not fit in the runner's free space.
       - name: Free disk space
@@ -210,6 +213,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # WASI's WIT, which debug_format's build reads.
+          submodules: true
       - name: Download crashes
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:

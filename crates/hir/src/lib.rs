@@ -233,14 +233,25 @@ pub trait HasPragmas<'db>: HirNodeInfo<'db> {
         self.once_pragma(db).is_some()
     }
 
-    /// `{export}` - this FUNCTION is a WASM export. Only legal on a FUNCTION
+    /// `{export}` - a host calls this FUNCTION. Only legal on a FUNCTION
     /// (checked in `check_variables`); the check and MIR read the SAME fact.
     fn export_pragma(
         &self,
         db: &'db dyn WorkspaceDataBase,
     ) -> Option<&'db hir_def::interned::identifier::SpanIdent<'db>> {
         self.get_pragmas(db).iter().find_map(|p| match p {
-            hir_def::pous::pragma::Pragma::Export(s) => Some(s),
+            hir_def::pous::pragma::Pragma::Export(s, _) => Some(s),
+            _ => None,
+        })
+    }
+
+    /// The WIT name an `{export 'name'}` gives, with its string's span.
+    fn export_given_name(
+        &self,
+        db: &'db dyn WorkspaceDataBase,
+    ) -> Option<&'db (compact_str::CompactString, auto_lsp::tree_sitter::Range)> {
+        self.get_pragmas(db).iter().find_map(|p| match p {
+            hir_def::pous::pragma::Pragma::Export(_, export) => export.name.as_ref(),
             _ => None,
         })
     }

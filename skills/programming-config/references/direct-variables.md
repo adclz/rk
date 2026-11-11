@@ -108,12 +108,13 @@ END_CONFIGURATION
 ## On the host
 
 Each area the program uses is a band of the memory, exported as `input_base` / `input_size`, `output_base` / `output_size` and `marker_base` / `marker_size`.
+A component exports no globals: its host reads each area's size, and each address's offset in it, in the `located-map` section.
 The host writes the input band before every scan and reads the output band after it, a whole band at a time.
 
 A band is sorted by address, not by declaration order, so a new variable never moves the others.
 A cell takes the size of its declared type, and the numbers of an address order it without being byte offsets: `%IW2` and `%IW8` sit side by side.
 
-The `located-map` custom section gives each address its cell, its width, its type, and for a part of a wider address, the address that owns it and its bit.
+The `located-map` custom section gives each address its cell, its offset in its area, its width, its type, and for a part of a wider address, the address that owns it and its bit.
 A located `VAR_GLOBAL` is in its area's band, not in the globals band.
 
 A program instance with connections copies them through `Inst$__scan__`: see the `Connections` section of the skill.

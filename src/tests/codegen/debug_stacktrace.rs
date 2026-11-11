@@ -18,25 +18,26 @@ fn row_of(src: &str, needle: &str) -> u32 {
     src[..byte].bytes().filter(|&b| b == b'\n').count() as u32
 }
 
-/// A div-by-zero deep in a call chain traps; the backtrace resolves to a
-/// source-level stack: the right IEC function names and the right source lines.
+/// A conversion out of range deep in a call chain traps; the backtrace
+/// resolves to a source-level stack: the right IEC function names and the
+/// right source lines.
 #[rstest]
 fn trap_yields_source_level_stack_trace(mut with_db: db::RootDatabase) {
     let source = r#"
-        FUNCTION boom : INT
-        VAR_INPUT n : INT; END_VAR
-            boom := 100 / n;
+        FUNCTION boom : DINT
+        VAR_INPUT n : REAL; END_VAR
+            {wasm boom 'trunc_f32_s' (params n) (result boom)}
         END_FUNCTION
 
-        FUNCTION caller : INT
-        VAR_INPUT m : INT; END_VAR
+        FUNCTION caller : DINT
+        VAR_INPUT m : REAL; END_VAR
             caller := boom(n := m);
         END_FUNCTION
     "#;
     let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
     let dbg = DebugInfo::from_wasm(&wasm);
 
-    // Run `caller(0)` → boom(0) → 100/0 → div-by-zero trap.
+    // Run `caller(1e30)` → boom(1e30) → past DINT → the conversion traps.
     let engine = crate::tests::codegen::test_engine();
     let module = wasmtime::Module::new(&engine, &wasm).expect("module");
     // `defined_index = func_index - imported funcs` (a frame's func_index is
@@ -46,18 +47,16 @@ fn trap_yields_source_level_stack_trace(mut with_db: db::RootDatabase) {
         .filter(|i| matches!(i.ty(), wasmtime::ExternType::Func(_)))
         .count() as u32;
     let mut store = wasmtime::Store::new(&engine, ());
-    let mut linker = wasmtime::Linker::new(&engine);
-    let memory = wasmtime::Memory::new(&mut store, wasmtime::MemoryType::new(1, None)).unwrap();
-    linker.define(&store, "env", "memory", memory).unwrap();
+    let linker = wasmtime::Linker::new(&engine);
     let instance = linker
         .instantiate(&mut store, &module)
         .expect("instantiate");
     let caller = instance
-        .get_typed_func::<i32, i32>(&mut store, "caller")
+        .get_typed_func::<f32, i32>(&mut store, "caller")
         .expect("caller export");
     let err = caller
-        .call(&mut store, 0)
-        .expect_err("div-by-zero must trap");
+        .call(&mut store, 1.0e30)
+        .expect_err("a conversion out of range must trap");
 
     // The trap carries a WasmBacktrace; resolve every frame to IEC name + line.
     let bt = err
@@ -80,8 +79,8 @@ fn trap_yields_source_level_stack_trace(mut with_db: db::RootDatabase) {
     };
     assert_eq!(
         line_of("boom"),
-        Some(row_of(source, "100 / n")),
-        "boom frame points at the trapping div"
+        Some(row_of(source, "{wasm boom 'trunc_f32_s'")),
+        "boom frame points at the trapping conversion"
     );
     assert_eq!(
         line_of("caller"),

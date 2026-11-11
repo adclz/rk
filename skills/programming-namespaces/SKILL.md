@@ -150,7 +150,7 @@ Written at global scope it restricts nothing.
 
 ```iecst sketch
 NAMESPACE Std.Clock
-	{extern 'host:clock@1' 'now'}
+	{extern 'acme:clock/host@1.0.0' 'now'}
 	FUNCTION PRIVATE HOST_NOW : LINT      // the shim behind a public FB
 	END_FUNCTION
 END_NAMESPACE

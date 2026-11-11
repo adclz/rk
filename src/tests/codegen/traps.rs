@@ -670,10 +670,10 @@ fn a_for_over_the_whole_subrange_is_clean(mut with_db: db::RootDatabase) {
     assert_eq!(result, 55, "0..=10 sums to 55 without a fault");
 }
 
-/// Integer division by zero is the VM's own trap — no check of ours, but the
-/// contract (a fault, not a wrong answer) is the same and deserves a pin.
+/// An integer divided by zero raises the exception every inserted check
+/// raises, with its own message.
 #[rstest]
-fn integer_division_by_zero_faults(mut with_db: db::RootDatabase) {
+fn an_integer_divided_by_zero_raises(mut with_db: db::RootDatabase) {
     let source = r#"
         FUNCTION run : DINT
         VAR
@@ -686,10 +686,78 @@ fn integer_division_by_zero_faults(mut with_db: db::RootDatabase) {
         END_FUNCTION
     "#;
     let msg = expect_fault(&mut with_db, source, "10 / 0 must fault");
-    assert!(
-        msg.contains("divide by zero") && !msg.contains("subrange"),
-        "a division trap must not read like a range fault: {msg}"
+    assert_eq!(msg, "division by zero");
+}
+
+/// Every integer division checks its divisor, whatever its width, its
+/// signedness or its operator, and a literal 0 too, which L0102 warns about.
+#[rstest]
+#[case::sint("q : SINT; a : SINT := 1; z : SINT;", "q := a / z;")]
+#[case::int("q : INT; a : INT := 1; z : INT;", "q := a / z;")]
+#[case::dint_mod("q : DINT; a : DINT := 1; z : DINT;", "q := a MOD z;")]
+#[case::lint("q : LINT; a : LINT := 1; z : LINT;", "q := a / z;")]
+#[case::lint_mod("q : LINT; a : LINT := 1; z : LINT;", "q := a MOD z;")]
+#[case::usint("q : USINT; a : USINT := 1; z : USINT;", "q := a / z;")]
+#[case::uint_mod("q : UINT; a : UINT := 1; z : UINT;", "q := a MOD z;")]
+#[case::udint("q : UDINT; a : UDINT := 1; z : UDINT;", "q := a / z;")]
+#[case::ulint_mod("q : ULINT; a : ULINT := 1; z : ULINT;", "q := a MOD z;")]
+#[case::literal("q : DINT; a : DINT := 1;", "q := a / 0;")]
+#[case::compound("q : DINT := 1; z : DINT;", "q /= z;")]
+fn every_integer_division_checks_its_divisor(
+    mut with_db: db::RootDatabase,
+    #[case] vars: &str,
+    #[case] statement: &str,
+) {
+    let source = format!(
+        r#"
+        FUNCTION run : DINT
+        VAR {vars} END_VAR
+            {statement}
+        END_FUNCTION
+    "#
     );
+    let msg = expect_fault(&mut with_db, &source, "a division by 0 must fault");
+    assert_eq!(msg, "division by zero");
+}
+
+/// A divisor the compiler folds to a value other than 0 is not checked: a
+/// literal, a CONSTANT or arithmetic on them divides as before. One that
+/// folds to 0 is, and so is one only the running program knows.
+#[rstest]
+#[case::literal("x / 2", false)]
+#[case::minus_one("x / -1", false)]
+#[case::constant("x / K", false)]
+#[case::arithmetic("x MOD (K - 1)", false)]
+#[case::variable("x / y", true)]
+#[case::literal_zero("x / 0", true)]
+#[case::folds_to_zero("x / (K - 4)", true)]
+fn only_a_divisor_that_may_be_zero_is_checked(
+    mut with_db: db::RootDatabase,
+    #[case] division: &str,
+    #[case] checked: bool,
+) {
+    let source = format!(
+        r#"
+        FUNCTION run : DINT
+        VAR CONSTANT K : DINT := 4; END_VAR
+        VAR x : DINT := 12; y : DINT := 3; END_VAR
+            run := {division};
+        END_FUNCTION
+    "#
+    );
+    let (mir, _) = super::compile_to_mir_and_wasm(&mut with_db, &source);
+    let run = mir
+        .functions
+        .iter()
+        .find(|f| f.name.text(&with_db) == "run")
+        .expect("run is lowered");
+    let calls_check = run.body.iter().any(|stmt| {
+        stmt.any_expr(&mut |e| {
+            matches!(e, mir::expr::MirExpr::Call(call)
+                if call.callee.text(&with_db).starts_with("rk.div_check"))
+        })
+    });
+    assert_eq!(calls_check, checked, "{division}");
 }
 
 /// The one quotient that overflows, a lane's minimum divided by -1, wraps
@@ -749,9 +817,9 @@ fn a_64bit_subscript_is_checked_at_64_bits(mut with_db: db::RootDatabase) {
     assert!(msg.contains("array index out of bounds"), "{msg}");
 }
 
-/// MOD by zero traps the same way.
+/// MOD by zero raises the same way.
 #[rstest]
-fn integer_modulo_by_zero_faults(mut with_db: db::RootDatabase) {
+fn an_integer_modulo_by_zero_raises(mut with_db: db::RootDatabase) {
     let source = r#"
         FUNCTION run : DINT
         VAR
@@ -763,7 +831,8 @@ fn integer_modulo_by_zero_faults(mut with_db: db::RootDatabase) {
             run := a MOD b;
         END_FUNCTION
     "#;
-    expect_fault(&mut with_db, source, "10 MOD 0 must fault");
+    let msg = expect_fault(&mut with_db, source, "10 MOD 0 must fault");
+    assert_eq!(msg, "division by zero");
 }
 
 /// A null dereference FAULTS instead of accessing address 0.

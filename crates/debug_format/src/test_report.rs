@@ -45,6 +45,10 @@ pub struct TestRecord {
     /// tables to tell.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub backtrace: Vec<Frame>,
+    /// What the test wrote to the standard output and error, both in the
+    /// order written. Absent on a pass, and when it wrote nothing.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output: Option<String>,
 }
 
 /// One call in progress when a test failed.
@@ -89,6 +93,7 @@ mod tests {
             file: Some("math.st".into()),
             line: Some(42),
             backtrace: Vec::new(),
+            output: (status == Status::Fail).then(|| "pump started\n".to_string()),
         }
     }
 
@@ -117,6 +122,15 @@ mod tests {
         assert!(!json.contains("reason"), "{json}");
         let json = serde_json::to_string(&record(Status::Fail)).unwrap();
         assert!(json.contains(r#""reason":"expected 3, got 4""#), "{json}");
+    }
+
+    /// The output is a field only when there is one, as the reason is.
+    #[test]
+    fn a_pass_omits_the_output() {
+        let json = serde_json::to_string(&record(Status::Pass)).unwrap();
+        assert!(!json.contains("output"), "{json}");
+        let json = serde_json::to_string(&record(Status::Fail)).unwrap();
+        assert!(json.contains(r#""output":"pump started\n""#), "{json}");
     }
 
     /// Both sides are separate processes, so the round trip is the contract.

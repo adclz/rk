@@ -113,9 +113,40 @@ pub fn build_core_with_format(
 pub fn build_core_profile(
     db: &RootDatabase,
     workspace: &std::path::Path,
+    verbose: bool,
+    format: crate::cli::OutputFormat,
+    profile: wasm_codegen::Profile,
+) -> Result<(Vec<u8>, mir::MirModule), String> {
+    build(db, workspace, verbose, format, profile, false)
+}
+
+/// The module `rk test` runs: the debug build, which also tells its host
+/// where each raise is ([`mir::raise_hook`]). No other build does: a debug
+/// and a release build differ in their custom sections only.
+pub fn build_test_core(
+    db: &RootDatabase,
+    workspace: &std::path::Path,
+    verbose: bool,
+    format: crate::cli::OutputFormat,
+) -> Result<(Vec<u8>, mir::MirModule), String> {
+    build(
+        db,
+        workspace,
+        verbose,
+        format,
+        wasm_codegen::Profile::Debug,
+        true,
+    )
+}
+
+/// [`build_core_profile`], for `rk test` when `for_tests`.
+fn build(
+    db: &RootDatabase,
+    workspace: &std::path::Path,
     _verbose: bool,
     format: crate::cli::OutputFormat,
     profile: wasm_codegen::Profile,
+    for_tests: bool,
 ) -> Result<(Vec<u8>, mir::MirModule), String> {
     // Report into a buffer, so the text can be echoed to stderr and returned
     // to the caller.
@@ -197,6 +228,9 @@ pub fn build_core_profile(
         ui::failure("compilation failed:", &message);
         return Err(format!("compilation failed: {message}\n"));
     }
+    if for_tests {
+        mir::raise_hook::add(db, &mut mir_module);
+    }
 
     let wasm_module = wasm_codegen::generate_wasm_profile(db, &mir_module, profile);
     match validated(wasm_module.finish()) {
@@ -272,23 +306,58 @@ fn validated(wasm: Vec<u8>) -> Result<Vec<u8>, String> {
     }
 }
 
-/// Where a build of `workspace` lands, by profile, the only axis there
-/// is. Every command writes this fresh before handing the path on;
-/// nothing reads it back expecting someone else to have filled it in.
-pub fn artifact_path(
-    workspace: &std::path::Path,
-    profile: wasm_codegen::Profile,
-) -> std::path::PathBuf {
+/// The folder a build of `workspace` lands in, by profile, the only axis
+/// there is.
+fn profile_dir(workspace: &std::path::Path, profile: wasm_codegen::Profile) -> std::path::PathBuf {
     let dir = match profile {
         wasm_codegen::Profile::Debug => "debug",
         wasm_codegen::Profile::Release => "release",
     };
-    workspace.join("rk_build").join(dir).join("core.wasm")
+    workspace.join("rk_build").join(dir)
 }
 
-/// The debug artifact — what `rk test` runs and a debugger steps.
-pub fn debug_core_path(workspace: &std::path::Path) -> std::path::PathBuf {
-    artifact_path(workspace, wasm_codegen::Profile::Debug)
+/// Where `rk compile` writes the component of `workspace`: named after its
+/// project, with its WIT in `wit/` beside it. Every command writes it fresh;
+/// nothing reads it back expecting another to have filled it in.
+pub fn component_path(
+    workspace: &std::path::Path,
+    profile: wasm_codegen::Profile,
+    project: &str,
+) -> std::path::PathBuf {
+    profile_dir(workspace, profile).join(component_file(project))
+}
+
+/// Where `rk test` writes the component it ran, which no other command
+/// builds: `rk_build/test/`, and `rk_build/test-O<level>/` optimized.
+pub fn test_component_path(
+    workspace: &std::path::Path,
+    level: Option<&str>,
+    project: &str,
+) -> std::path::PathBuf {
+    let dir = match level {
+        None => "test".to_string(),
+        Some(level) => format!("test-O{level}"),
+    };
+    workspace
+        .join("rk_build")
+        .join(dir)
+        .join(component_file(project))
+}
+
+/// The file a component of `project` is: its name, as a file name.
+fn component_file(project: &str) -> String {
+    let name: String = project
+        .chars()
+        .map(|c| match c {
+            'a'..='z' | 'A'..='Z' | '0'..='9' | '_' | '-' | '.' => c,
+            _ => '_',
+        })
+        .collect();
+    let name = match name.trim_matches('.') {
+        "" => "plc",
+        name => name,
+    };
+    format!("{name}.wasm")
 }
 
 /// The post-MVP proposals this compiler's output uses. wasm-opt validates

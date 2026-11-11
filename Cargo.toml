@@ -92,6 +92,11 @@ divan = { package = "codspeed-divan-compat", version = "*" }
 # backends
 wasm-encoder = { version = "0.244.0", features = ["component-model"] }
 wasmparser = "0.244.0"
+# A built module wrapped into a component, at the versions wasmtime reads.
+wit-component = "0.261.0"
+wit-parser = "0.261.0"
+# The version of an `{extern}`'s interface, checked as wasmparser checks it.
+semver = "1.0.28"
 
 [package]
 name = "rk-tests"
@@ -146,6 +151,10 @@ fetch = { workspace = true }
 clap = { workspace = true }
 serde_json = { workspace = true }
 debug_format = { workspace = true }
-wasmtime = "45.0.1"
+wasmtime = "50.0.1"
+# The hosts the console tests build: WASI's standard output and error from
+# wasmtime-wasi, over sinks that are ready, stalled or closed.
+wasmtime-wasi = { version = "50.0.1", default-features = false, features = ["p3"] }
+tokio = { version = "1", default-features = false }
 wasm-encoder = { workspace = true }
 anyhow = "1"

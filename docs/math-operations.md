@@ -45,7 +45,7 @@ Converting a float to an integer never fails either:
 - NaN gives `0`.
 - A value too large gives the largest one the integer holds: `REAL_TO_INT` of `1.0E6` is `32767`.
 
-The one thing that stops the module is an integer divided by zero, see [Bundled traps](bundled-traps.md).
+An integer divided by zero raises `division by zero`, which a `__CATCH` takes, see [Bundled traps](bundled-traps.md).
 
 ## Powers
 

@@ -33,8 +33,8 @@ END_FUNCTION
 /// `count` passes: a failure says which check, by its message.
 fn run_all(db: &mut db::RootDatabase, source: &str, count: usize) {
     let source = format!("{PRELUDE}\n{source}");
-    let wasm = super::compile_to_wasm_as_built(db, &source);
-    let results = super::run_tests(&wasm, None).expect("run tests");
+    let build = super::compile_tests(db, &source);
+    let results = super::run_tests(&build.component, None).expect("run tests");
     let failed: Vec<String> = results
         .iter()
         .filter(|r| !r.passed())

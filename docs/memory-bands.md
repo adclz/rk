@@ -1,14 +1,14 @@
 # Memory bands
 
-A module has no memory of its own.
-It keeps all of its state in the memory the host gives it, imported as `env.memory`.
+A module keeps all of its state in its own memory, which it defines and exports as `memory`.
 What a host needs to reach is grouped into **bands**: contiguous ranges, each exported as two globals, where it starts (`_base`) and how long it is (`_size`).
+A component exports no globals: its host reads each band's size, and where each variable is in it, in the `located-map` and `retain-map` sections.
 The input and output bands are copied whole: a host never needs to know the program's variables to run it.
 
 The whole memory, in order:
 
 ```schema
-env.memory                          the host's, from address 0
+memory                              the module's, from address 0
 ├─ builtins                         the first 16 KiB
 ├─ state                            every other variable
 ├─ %I                               input band
@@ -45,7 +45,7 @@ A module whose memory does not fit in 4 GiB, with its stack, stops the build, wh
 ## Inputs and outputs
 
 ```schema
-env.memory
+memory
 ├─ …
 ├─ %I                               input band                    ◄
 ├─ %Q                               output band                   ◄
@@ -77,7 +77,7 @@ The input, output and marker bands are exported only for an area the program use
 ## Markers
 
 ```schema
-env.memory
+memory
 ├─ …
 ├─ %I                               input band
 ├─ %Q                               output band
@@ -95,7 +95,7 @@ A retained marker is in the marker band and the retain band.
 ## Retention
 
 ```schema
-env.memory
+memory
 ├─ …
 ├─ %I                               input band
 ├─ %Q                               output band
@@ -109,13 +109,15 @@ env.memory
 
 The retain band is restored at startup, before the first scan.
 A retained program can hold fields that are not `RETAIN`: the `retain-map` section lists the exact ranges that persist, and a host restores those.
+Each range gives its offset in the band, its place in the list `save-retain` returns, and the section gives the band's size.
+Its layout hash changes when a range moves, so a host gives saved bytes back only to a build with the same hash.
 
 `%I` and `%Q` are never retained: the first scan would run on the values of the last power cycle.
 
 ## Globals
 
 ```schema
-env.memory
+memory
 ├─ …
 ├─ %I                               input band
 ├─ %Q                               output band
@@ -127,7 +129,7 @@ env.memory
 └─ …
 ```
 
-The host reads and writes a global by name.
+The host reads and writes a global by name, a component's host with `read-memory` and `write-memory`, see [Debug Symbols](debug-symbols.md).
 A retained global is in the retain band and the globals band.
 So is a global whose struct has a `RETAIN` field or whose function block has a `VAR RETAIN`: the `retain-map` section names the fields that persist.
 
@@ -135,10 +137,12 @@ A located `VAR_GLOBAL`, like `level AT %IW0 : INT`, is in its area's band, not i
 
 ## Inside a band
 
-An area is sorted by address, not by the order the program declares it: a new variable never moves the others.
+An area is sorted by address, not by the order the program declares it: a cell moves only when the cells before it change.
 
 A cell takes the size of its declared type: `sensor AT %IX0.0 : BOOL` is one bit wide and takes four bytes.
 The numbers of an address order it, but they are not byte offsets: `%IW2` and `%IW8` sit side by side.
 
-The `located-map` section gives each address its place: the cell it lands in, its width, its type, and for a part of a wider address, which address owns it and at which bit.
+The `located-map` section gives each address its place: the cell it lands in, its offset in its area, its width, its type, and for a part of a wider address, which address owns it and at which bit.
+It also gives each area's size, and a layout hash that changes when a cell moves.
+A component's host finds each address by its offset in the lists `run-task` takes and returns.
 See [Direct variables](direct-variables.md).

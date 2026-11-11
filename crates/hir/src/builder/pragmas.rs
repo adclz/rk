@@ -33,8 +33,20 @@ impl<'db> SemanticIndexBuilder<'db> {
                 PragmaKind::MustCallPragma(_) => {
                     result.push(Pragma::MustCall(si));
                 }
-                PragmaKind::ExportPragma(_) => {
-                    result.push(Pragma::Export(si));
+                PragmaKind::ExportPragma(export) => {
+                    let doc = self.file.document(self.db).as_bytes();
+                    let name = export.name.as_ref().and_then(|name| {
+                        let name = name.cast(self.ast);
+                        let text = name.get_text(doc).ok()?;
+                        Some((
+                            compact_str::CompactString::from(&text[1..text.len() - 1]),
+                            name.get_range().to_owned(),
+                        ))
+                    });
+                    result.push(Pragma::Export(
+                        si,
+                        crate::hir_def::pous::pragma::ExportPragma { name },
+                    ));
                 }
                 PragmaKind::WarnPragma(warn) => {
                     if let Some(wp) = self.parse_warn_pragma(warn) {
@@ -61,9 +73,14 @@ impl<'db> SemanticIndexBuilder<'db> {
     ) -> Option<crate::hir_def::pous::pragma::ExternPragma> {
         let doc = self.file.document(self.db).as_bytes();
         let strip = |t: &str| compact_str::CompactString::from(&t[1..t.len() - 1]);
-        let module = strip(ext.module.cast(self.ast).get_text(doc).ok()?);
-        let name = strip(ext.name.cast(self.ast).get_text(doc).ok()?);
-        Some(crate::hir_def::pous::pragma::ExternPragma { module, name })
+        let module = ext.module.cast(self.ast);
+        let name = ext.name.cast(self.ast);
+        Some(crate::hir_def::pous::pragma::ExternPragma {
+            module: strip(module.get_text(doc).ok()?),
+            name: strip(name.get_text(doc).ok()?),
+            module_span: module.get_range().to_owned(),
+            name_span: name.get_range().to_owned(),
+        })
     }
 
     pub(crate) fn parse_allow_pragma(

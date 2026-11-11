@@ -18,6 +18,7 @@ stdlib/                             one file per namespace
 ├─ Std.Bytes                        TO_BIG_ENDIAN, WORD_BCD_TO_UINT, …
 ├─ Std.Memory                       MOVE
 ├─ Std.Arrays                       LOWER_BOUND, UPPER_BOUND, GET_DWORD_BE, …
+├─ Std.Console                      WRITE_STDOUT, WRITE_STDERR
 └─ Std.Unit                         ASSERT, ASSERT_EQ, ASSERT_NEQ
 ```
 

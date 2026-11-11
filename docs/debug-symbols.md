@@ -1,6 +1,8 @@
 # Debug Symbols
 
 A module carries its own symbol table, so a host can read and write variables **by name** instead of by address.
+A component's host reads them with the control interface's `read-memory` and forces them with `write-memory`, at the address and size the symbols give, between two calls.
+A write outside the variables is refused, and the bytes must be a value of the variable's type: the module does not check them.
 
 All these tables are stored as custom sections, encoded with [MessagePack](https://msgpack.org/).
 
@@ -12,7 +14,7 @@ All these tables are stored as custom sections, encoded with [MessagePack](https
 | `debug-locals` | debug only | wasm local slot → variable name and type |
 | `rk.schedule` | every build | tasks, periods, the bit each `SINGLE` reads, priorities, instance addresses |
 | `retain-map` | every build | the byte ranges a power cycle must preserve |
-| `test-manifest` | debug only, when there are tests | the exports `rk test` calls |
+| `test-manifest` | debug only, when there are tests | the tests `rk test` runs, in the order `run-test` numbers them |
 
 > [!WARNING]
 > The last three are **not** debug information.

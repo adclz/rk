@@ -1,11 +1,13 @@
 // SPDX-FileCopyrightText: 2026 Clauzel Adrien
 // SPDX-License-Identifier: AGPL-3.0-only
 
+pub mod console;
 pub mod debug_symbols;
 pub mod expr;
 pub mod function;
 pub mod located;
 pub mod memory;
+pub mod raise_hook;
 pub mod retain_map;
 pub mod schedule;
 pub mod stmt;

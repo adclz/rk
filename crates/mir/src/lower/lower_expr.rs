@@ -448,10 +448,14 @@ impl<'db> ExprLowerCtx<'db> {
         if let Some(op) = binop {
             let mut acc = load(&expansion.params[0]);
             for name in &expansion.params[1..] {
+                let operand = match divides_integers(op, elem) {
+                    true => self.div_check(load(name), elem),
+                    false => load(name),
+                };
                 acc = MirExpr::BinOp {
                     op,
                     lhs: Box::new(acc),
-                    rhs: Box::new(load(name)),
+                    rhs: Box::new(operand),
                     ty: elem,
                 };
             }
@@ -502,13 +506,57 @@ impl<'db> ExprLowerCtx<'db> {
         let result_elem = self.expr_to_mir_elementary(result_expr)?;
 
         let left_mir = self.lower_expr_with_cast(left, result_elem)?;
-        let right_mir = self.lower_expr_with_cast(right, result_elem)?;
+        let mut right_mir = self.lower_expr_with_cast(right, result_elem)?;
+        if divides_integers(op, result_elem) && !self.folds_to_nonzero(right, result_elem) {
+            right_mir = self.div_check(right_mir, result_elem);
+        }
 
         Ok(MirExpr::BinOp {
             op,
             lhs: Box::new(left_mir),
             rhs: Box::new(right_mir),
             ty: result_elem,
+        })
+    }
+
+    /// Whether `divisor` folds at compile time to a value other than 0 at
+    /// the `ty` the division runs at: `x / 2`, `x / K` for a CONSTANT `K`.
+    /// Such a divisor needs no check, and stays foldable.
+    fn folds_to_nonzero(&self, divisor: Expr<'db>, ty: MirElementary) -> bool {
+        let Some(value) = hir::hir_ty::infer::const_eval::spec_value(self.db, divisor) else {
+            return false;
+        };
+        // Held at the lane's width: what reaches the instruction.
+        let mask = 1u64
+            .checked_shl(ty.rk_bits())
+            .map_or(u64::MAX, |bit| bit - 1);
+        (value as u64) & mask != 0
+    }
+
+    /// `divisor` wrapped in `rk.div_check`, which raises "division by zero"
+    /// when it is 0 and yields it otherwise, at the lane of `ty`.
+    pub(crate) fn div_check(&self, divisor: MirExpr, ty: MirElementary) -> MirExpr {
+        let callee = if ty.is_64bit() {
+            "rk.div_check_i64"
+        } else {
+            "rk.div_check"
+        };
+        MirExpr::Call(MirCall {
+            callee: hir::hir_def::interned::identifier::Ident::new(
+                self.db,
+                compact_str::CompactString::from(callee),
+            ),
+            // Unused: `emit_call` resolves by name through `fn_indices`,
+            // where codegen registers the grafted builtin's index.
+            callee_index: u32::MAX,
+            args: vec![MirCallArg {
+                value: divisor,
+                kind: MirArgKind::ByValue,
+            }],
+            return_type: MirType::Elementary(ty),
+            output_bindings: Vec::new(),
+            extern_results: Vec::new(),
+            extern_ret_scratch: None,
         })
     }
 
@@ -3645,4 +3693,11 @@ fn place_can_move(place: &MirPlace) -> bool {
         }
         MirPlace::Deref { .. } => true,
     }
+}
+
+/// Whether `op` at `ty` divides integers, which a divisor of 0 stops: `/`
+/// and `MOD` at an integer, duration or date lane. A REAL divided by zero is
+/// an infinity, and needs no check.
+fn divides_integers(op: MirBinOp, ty: MirElementary) -> bool {
+    matches!(op, MirBinOp::Div | MirBinOp::Mod) && !ty.is_float()
 }

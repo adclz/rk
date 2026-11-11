@@ -70,7 +70,7 @@ t := f^.o;                   // REF_TO FB output
 
 A type may hold a reference to itself (`Node.next : REF_TO Node`), which is what makes a linked structure expressible.
 
-Pointing at the SCALAR — `REF(s.x)`, `REF(a[i])` — remains the right shape for an `{extern}` buffer argument, which wants one address.
+Pointing at the SCALAR — `REF(s.x)`, `REF(a[i])` — is the right shape where one address is wanted.
 Use `VAR_IN_OUT` when a whole struct or FB is shared with a callee that should not see a pointer.
 
 A return type is a type NAME, so a function cannot say `FUNCTION f : REF_TO INT` — declare the reference type and return that:
@@ -99,10 +99,11 @@ Hand out a reference to instance state, or to a `VAR_IN_OUT`, which names storag
 
 Both give the callee access to the caller's storage.
 `VAR_IN_OUT` is the one to reach for: the compiler passes the address, the callee writes the name with no `^`, and it cannot be null.
-Use `REF_TO` when the reference itself is DATA — stored in an instance, reseated between scans, compared to `NULL`, or handed to an `{extern}` host function as a buffer address.
+Use `REF_TO` when the reference itself is DATA — stored in an instance, reseated between scans, or compared to `NULL`.
 
-A `REF_TO` crossing an `{extern}` is a plain machine address, which is how a driver library hands a buffer to its host functions.
-Nothing carries a LENGTH with it, so a capacity always travels as its own argument.
+Only a WASI import takes a `REF_TO`: the address where its record comes back.
+An import from any other module is typed in WIT, which has no address, and a `REF_TO` input is E1502 there.
+Nothing carries a LENGTH with a reference, so a capacity always travels as its own argument.
 
 ## The possibly-null analysis (E0902)
 
@@ -143,7 +144,7 @@ Should a null one arrive anyway, the dereference faults with `dereference of a n
 
 ## Gotchas
 
-`REF(x)` where `x` is an element or a field (`REF(a[i])`, `REF(s.f)`) is legal and common; it is how a buffer's base address reaches an extern.
+`REF(x)` where `x` is an element or a field (`REF(a[i])`, `REF(s.f)`) is legal and common.
 
 Assigning a value where a reference is expected (`p := x` rather than `p := REF(x)`) is a type error (E0301), not a silent reinterpretation.
 

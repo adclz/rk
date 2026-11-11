@@ -78,6 +78,20 @@ fn frame_text(frame: &Frame) -> String {
     }
 }
 
+/// What a failed test wrote, as the recap shows it under the test: a
+/// heading, then each line indented under it.
+fn output_block(output: &str) -> Vec<String> {
+    let mut block = vec![format!("             {}", "output:".dim())];
+    block.extend(output.lines().map(|line| format!("               {line}")));
+    block
+}
+
+/// What a failed test wrote, on the line of its failure: in quotes, with
+/// the line breaks escaped.
+fn output_inline(output: &str) -> String {
+    format!(" [output: \"{}\"]", output.escape_debug())
+}
+
 fn fmt_duration(d: Duration) -> String {
     let us = d.as_micros();
     if us < 1_000 {
@@ -89,12 +103,10 @@ fn fmt_duration(d: Duration) -> String {
     }
 }
 
-/// Run a compiled module's tests and report them. Returns the failure count.
-/// `unoptimized` is the build an optimized module was made from: it has the
-/// line tables a failure is located with.
+/// Run the tests of the component at `wasm_path` and report them. Returns
+/// the failure count.
 pub fn run_tests(
     wasm_path: &Path,
-    unoptimized: Option<&[u8]>,
     roots: &SourceRoots,
     filter: Option<&str>,
     timeout: Option<Duration>,
@@ -112,7 +124,7 @@ pub fn run_tests(
     let total_start = std::time::Instant::now();
     let mut failures = Vec::new();
     let mut passed = 0;
-    let run = crate::test_host::run_each_located(&wasm, unoptimized, filter, timeout, |record| {
+    let run = crate::test_host::run_each(&wasm, filter, timeout, |record| {
         let record = roots.named(record);
         report_one(&record, format);
         if record.status == Status::Fail {
@@ -181,6 +193,9 @@ pub fn summarize(
                     );
                     for frame in &f.backtrace {
                         println!("             {} {}", "at".dim(), frame_text(frame));
+                    }
+                    for line in f.output.as_deref().map(output_block).unwrap_or_default() {
+                        println!("{line}");
                     }
                 }
                 println!("{}", rule.dim());
@@ -255,8 +270,9 @@ pub fn report_one(r: &TestRecord, format: OutputFormat) {
                     true => String::new(),
                     false => format!(" [at {}]", calls.join(" < ")),
                 };
+                let output = r.output.as_deref().map(output_inline).unwrap_or_default();
                 println!(
-                    "FAIL {name}{}: {}{at}",
+                    "FAIL {name}{}: {}{at}{output}",
                     loc_suffix(r),
                     reason.replace('\n', " ")
                 )
@@ -313,8 +329,29 @@ mod tests {
                 line: Some(7),
                 column: Some(5),
             }],
+            output: None,
         };
         let named = roots.named(&record);
         assert_eq!(frame_text(&named.backtrace[0]), "f (main.st:7:5)");
+    }
+
+    /// A failed test's output stands under its failure, one line of its own
+    /// for each it wrote, and on the failure's line in the concise format,
+    /// where a line break would end the record.
+    #[test]
+    fn a_failure_shows_what_the_test_wrote() {
+        yansi::disable();
+        assert_eq!(
+            output_block("pump started\nvalve \"A\" open\n"),
+            [
+                "             output:",
+                "               pump started",
+                "               valve \"A\" open",
+            ]
+        );
+        assert_eq!(
+            output_inline("pump started\nvalve \"A\" open\n"),
+            r#" [output: "pump started\nvalve \"A\" open\n"]"#
+        );
     }
 }

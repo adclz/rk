@@ -7,10 +7,11 @@ use rk::cli::{Command, OutputFormat};
 
 use super::{disable_stdlib, temp_workspace};
 
-/// A release build is taken at each level, `-O0` included. At that level
-/// wasm-opt hands a module with no library code back byte for byte, which
-/// read as "the optimizer did not run": the build was refused, and told to
-/// install the Binaryen it had just run.
+/// A release build is taken at each level, `-O0` included, and its
+/// component validates with rk's proposals and the component model. At
+/// that level wasm-opt hands a module with no library code back byte for
+/// byte, which read as "the optimizer did not run": the build was refused,
+/// and told to install the Binaryen it had just run.
 #[test]
 fn a_release_build_is_taken_at_each_level() {
     disable_stdlib();
@@ -48,7 +49,11 @@ END_CONFIGURATION
             },
         );
         assert!(built.is_ok(), "-O{level} builds");
-        let module = std::fs::read(&output).expect("the module is written");
-        wasm_codegen::validate(&module).unwrap_or_else(|e| panic!("-O{level} validates: {e}"));
+        let component = std::fs::read(&output).expect("the component is written");
+        wasmparser::Validator::new_with_features(
+            wasm_codegen::features() | wasmparser::WasmFeatures::COMPONENT_MODEL,
+        )
+        .validate_all(&component)
+        .unwrap_or_else(|e| panic!("-O{level} validates: {e}"));
     }
 }

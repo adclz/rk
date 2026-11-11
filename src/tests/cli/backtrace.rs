@@ -5,11 +5,12 @@
 //!
 //! A failure is reported with the calls in progress, innermost first. A trap
 //! brings wasmtime's backtrace. A `RAISE` brings none, and the wrapper of a
-//! test catches it inside the module, so the test runs once more in a debug
-//! store that is called at the throw. A failure was placed at the line the
-//! test was declared on, whatever it had called.
+//! test catches it inside the module, so the module `rk test` builds tells
+//! the host just before each raise, and the host takes the stack there. A
+//! failure was placed at the line the test was declared on, whatever it had
+//! called.
 
-use crate::tests::codegen::{compile_to_wasm, with_db};
+use crate::tests::codegen::{TestBuild, compile_tests, compile_to_mir_and_wasm_as_built, with_db};
 use debug_format::test_report::TestRecord;
 use rstest::rstest;
 use std::time::Duration;
@@ -39,8 +40,14 @@ fn calls(record: &TestRecord) -> Vec<(String, u32)> {
         .collect()
 }
 
-fn run(wasm: &[u8], budget: Option<Duration>) -> Vec<TestRecord> {
-    rk::test_host::run_each(wasm, None, budget, |_| {}).expect("the tests run")
+/// The tests of `component`, run as `rk test` runs them.
+fn run(component: &[u8], budget: Option<Duration>) -> Vec<TestRecord> {
+    rk::test_host::run_each(component, None, budget, |_| {}).expect("the tests run")
+}
+
+/// The tests of `build`'s component, run as `rk test` runs them.
+fn run_build(build: &TestBuild, budget: Option<Duration>) -> Vec<TestRecord> {
+    run(&build.component, budget)
 }
 
 fn only(records: Vec<TestRecord>) -> TestRecord {
@@ -102,8 +109,7 @@ const RAISED: &str = r#"
 
 #[rstest]
 fn a_raise_is_placed_with_its_callers(mut with_db: db::RootDatabase) {
-    let wasm = compile_to_wasm(&mut with_db, RAISED);
-    let record = only(run(&wasm, None));
+    let record = only(run_build(&compile_tests(&mut with_db, RAISED), None));
     assert_eq!(record.reason.as_deref(), Some("boom"));
     assert_eq!(
         calls(&record),
@@ -155,8 +161,7 @@ fn a_failed_check_is_placed_at_its_statement(
         END_FUNCTION
     "#
     );
-    let wasm = compile_to_wasm(&mut with_db, &source);
-    let record = only(run(&wasm, None));
+    let record = only(run_build(&compile_tests(&mut with_db, &source), None));
     assert_eq!(record.reason.as_deref(), Some(message));
     assert_eq!(
         calls(&record),
@@ -167,18 +172,48 @@ fn a_failed_check_is_placed_at_its_statement(
     );
 }
 
+/// What an import is passed is checked by a wrapper the tables do not name,
+/// before the host is called: a failed check is placed at the call, as an
+/// inserted check is, and the host is never reached.
+#[rstest]
+fn a_string_an_import_cannot_take_is_placed_at_the_call(mut with_db: db::RootDatabase) {
+    let source = r#"
+        {extern 'host' 'show'}
+        FUNCTION Show : INT
+        VAR_INPUT line : STRING; END_VAR
+        END_FUNCTION
+
+        {test}
+        FUNCTION test_show
+        VAR r : INT; END_VAR
+            r := Show('caf$E9');            // call
+        END_FUNCTION
+    "#;
+    let record = only(run_build(&compile_tests(&mut with_db, source), None));
+    assert_eq!(
+        record.reason.as_deref(),
+        Some("a STRING passed to the host is not UTF-8")
+    );
+    assert_eq!(
+        calls(&record),
+        [("test_show".to_string(), line_of(source, "// call"))]
+    );
+}
+
 /// A trap is not an exception: it comes back with wasmtime's backtrace, read
-/// as it came, with no second run. Its function indices count the module's
-/// imports first, which the tables do not: one `{extern}` here shifts them.
+/// as it came. Its function indices count the module's imports first, which
+/// the tables do not: one `{extern}` here shifts them. Its offsets count
+/// from the start of the component, where the module is not: the host
+/// brings them back to the module's.
 const TRAPPED: &str = r#"
         {extern 'host' 'absent'}
         FUNCTION Absent : INT
         VAR_INPUT x : INT; END_VAR
         END_FUNCTION
 
-        FUNCTION Divide : INT
-        VAR_INPUT n : INT; d : INT; END_VAR
-            Divide := n / d;                // divides
+        FUNCTION Truncate : DINT
+        VAR_INPUT x : REAL; END_VAR
+            {wasm Truncate 'trunc_f32_s' (params x) (result Truncate)}   // truncates
         END_FUNCTION
 
         FUNCTION Spin : INT
@@ -189,9 +224,9 @@ const TRAPPED: &str = r#"
         END_FUNCTION
 
         {test}
-        FUNCTION test_divide
-        VAR r : INT; END_VAR
-            r := Divide(1, 0);              // call to Divide
+        FUNCTION test_truncate
+        VAR r : DINT; END_VAR
+            r := Truncate(1.0E30);          // call to Truncate
         END_FUNCTION
 
         {test}
@@ -217,12 +252,12 @@ fn assert_traps_are_placed(records: &[TestRecord]) {
             .unwrap_or_else(|| panic!("no record for {name}"))
     };
     assert_eq!(
-        calls(by_name("test_divide")),
+        calls(by_name("test_truncate")),
         [
-            ("Divide".to_string(), line_of(TRAPPED, "// divides")),
+            ("Truncate".to_string(), line_of(TRAPPED, "// truncates")),
             (
-                "test_divide".to_string(),
-                line_of(TRAPPED, "// call to Divide")
+                "test_truncate".to_string(),
+                line_of(TRAPPED, "// call to Truncate")
             ),
         ]
     );
@@ -254,64 +289,36 @@ fn assert_traps_are_placed(records: &[TestRecord]) {
 
 #[rstest]
 fn a_trap_is_placed_from_its_backtrace(mut with_db: db::RootDatabase) {
-    let wasm = compile_to_wasm(&mut with_db, TRAPPED);
-    let records = run(&wasm, Some(Duration::from_millis(200)));
-    assert_traps_are_placed(&records);
+    let build = compile_tests(&mut with_db, TRAPPED);
+    assert_traps_are_placed(&run_build(&build, Some(Duration::from_millis(200))));
 }
 
-/// An optimized module has lost its line tables: a failure is placed by
-/// running its test on the build it was made from, a trap like a raise.
+/// An optimized module has lost its line tables: a failure, a trap like a
+/// raise, is reported with its message and the line its test is declared
+/// on, and without the calls, which nothing names.
 #[rstest]
-fn a_failure_of_an_optimized_module_is_placed_on_the_unoptimized_one(
+#[case::trap(TRAPPED)]
+#[case::raise(RAISED)]
+fn a_failure_of_an_optimized_module_has_no_calls(
     mut with_db: db::RootDatabase,
+    #[case] source: &str,
 ) {
-    let wasm = compile_to_wasm(&mut with_db, TRAPPED);
-    let optimized = without_line_tables(&wasm);
-
-    let alone = run(&optimized, Some(Duration::from_millis(200)));
-    assert_eq!(alone.len(), 3);
-    assert!(
-        alone.iter().all(|record| record.backtrace.is_empty()),
-        "nothing to place a failure with"
-    );
-
-    let located = rk::test_host::run_each_located(
-        &optimized,
-        Some(&wasm),
-        None,
-        Some(Duration::from_millis(200)),
-        |_| {},
-    )
-    .expect("the tests run");
-    assert_traps_are_placed(&located);
+    let build = compile_tests(&mut with_db, source);
+    let optimized = build.wrap(&without_line_tables(&build.core));
+    let records = run(&optimized, Some(Duration::from_millis(200)));
+    assert!(!records.is_empty());
+    for record in &records {
+        assert!(record.reason.is_some(), "{record:?}");
+        assert!(record.backtrace.is_empty(), "{record:?}");
+        assert_eq!(
+            record.line,
+            Some(line_of(source, &format!("FUNCTION {}", record.name))),
+            "{record:?}"
+        );
+    }
 }
 
-/// The same for a raise: three calls, from the unoptimized build.
-#[rstest]
-fn a_raise_of_an_optimized_module_is_placed_too(mut with_db: db::RootDatabase) {
-    let wasm = compile_to_wasm(&mut with_db, RAISED);
-    let located = rk::test_host::run_each_located(
-        &without_line_tables(&wasm),
-        Some(&wasm),
-        None,
-        None,
-        |_| {},
-    )
-    .expect("the tests run");
-    assert_eq!(
-        calls(&only(located)),
-        [
-            ("Fail".to_string(), line_of(RAISED, "// raise")),
-            (
-                "Motor.Start".to_string(),
-                line_of(RAISED, "// in the method")
-            ),
-            ("test_raise".to_string(), line_of(RAISED, "// in the test")),
-        ]
-    );
-}
-
-/// A test that passes has no backtrace, and is not run twice.
+/// A test that passes has no backtrace.
 #[rstest]
 fn a_pass_has_no_backtrace(mut with_db: db::RootDatabase) {
     let source = r#"
@@ -319,8 +326,7 @@ fn a_pass_has_no_backtrace(mut with_db: db::RootDatabase) {
         FUNCTION test_fine
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let record = only(run(&wasm, None));
+    let record = only(run_build(&compile_tests(&mut with_db, source), None));
     assert!(record.passed());
     assert!(record.backtrace.is_empty());
 }
@@ -329,8 +335,7 @@ fn a_pass_has_no_backtrace(mut with_db: db::RootDatabase) {
 /// before: a report from an older runner still parses.
 #[rstest]
 fn a_backtrace_is_in_the_report(mut with_db: db::RootDatabase) {
-    let wasm = compile_to_wasm(&mut with_db, RAISED);
-    let record = only(run(&wasm, None));
+    let record = only(run_build(&compile_tests(&mut with_db, RAISED), None));
     let json = serde_json::to_value(&record).unwrap();
     assert_eq!(json["backtrace"][0]["function"], "Fail");
     assert_eq!(
@@ -350,33 +355,30 @@ fn a_backtrace_is_in_the_report(mut with_db: db::RootDatabase) {
 /// A caller is on the line of its call, whatever follows the call: nothing
 /// (`Void();` and `Arg(5);` end their statement, with another after it) or a
 /// store (`n := Res();`), and whether the callee raised, trapped or was
-/// stopped. Each is placed twice, as the module ran and by running the test
-/// again on the build with the tables.
-///
-/// The debug frames wasmtime hands a handler do not hold: a caller's pc
-/// there is where it resumes, so the two calls that end their statement
-/// were placed on the line after. The handler takes a backtrace instead,
-/// the one a trap comes with.
+/// stopped. A caller's offset is its call instruction's, in the stack the
+/// host takes at a raise as in a trap's backtrace, not where it resumes,
+/// which would place the two calls that end their statement on the line
+/// after.
 #[rstest]
 #[case::raise("__RAISE('boom');")]
 #[case::stopped("WHILE TRUE DO k := k + 1; END_WHILE;")]
-#[case::trap("k := 1 / z;")]
+#[case::trap("{wasm k 'trunc_f32_s' (params r) (result k)}")]
 fn a_caller_is_on_the_line_of_its_call(mut with_db: db::RootDatabase, #[case] fault: &str) {
     let source = format!(
         r#"
         FUNCTION Void
-        VAR k : INT; z : INT; END_VAR
+        VAR k : INT; r : REAL := 1.0E30; END_VAR
             {fault}
         END_FUNCTION
 
         FUNCTION Arg
         VAR_INPUT a : INT; END_VAR
-        VAR k : INT; z : INT; END_VAR
+        VAR k : INT; r : REAL := 1.0E30; END_VAR
             {fault}
         END_FUNCTION
 
         FUNCTION Res : INT
-        VAR k : INT; z : INT; END_VAR
+        VAR k : INT; r : REAL := 1.0E30; END_VAR
             {fault}
         END_FUNCTION
 
@@ -417,35 +419,26 @@ fn a_caller_is_on_the_line_of_its_call(mut with_db: db::RootDatabase, #[case] fa
         END_FUNCTION
     "#
     );
-    let wasm = compile_to_wasm(&mut with_db, &source);
-    let budget = Some(Duration::from_millis(150));
-    let as_ran = run(&wasm, budget);
-    let again = rk::test_host::run_each_located(
-        &without_line_tables(&wasm),
-        Some(&wasm),
-        None,
-        budget,
-        |_| {},
-    )
-    .expect("the tests run");
-    for (path, records) in [("as it ran", as_ran), ("run again", again)] {
-        for (test, caller, marker) in [
-            ("t_void", "CallVoid", "// calls Void"),
-            ("t_arg", "CallArg", "// calls Arg"),
-            ("t_res", "CallRes", "// calls Res"),
-        ] {
-            let record = records
-                .iter()
-                .find(|record| record.name == test)
-                .unwrap_or_else(|| panic!("no record for {test}"));
-            let calls = calls(record);
-            assert_eq!(calls.len(), 3, "{path}, {test}: {calls:?}");
-            assert_eq!(
-                calls[1],
-                (caller.to_string(), line_of(&source, marker)),
-                "{path}, {test}"
-            );
-        }
+    let records = run_build(
+        &compile_tests(&mut with_db, &source),
+        Some(Duration::from_millis(150)),
+    );
+    for (test, caller, marker) in [
+        ("t_void", "CallVoid", "// calls Void"),
+        ("t_arg", "CallArg", "// calls Arg"),
+        ("t_res", "CallRes", "// calls Res"),
+    ] {
+        let record = records
+            .iter()
+            .find(|record| record.name == test)
+            .unwrap_or_else(|| panic!("no record for {test}"));
+        let calls = calls(record);
+        assert_eq!(calls.len(), 3, "{test}: {calls:?}");
+        assert_eq!(
+            calls[1],
+            (caller.to_string(), line_of(&source, marker)),
+            "{test}"
+        );
     }
 }
 
@@ -466,9 +459,8 @@ fn a_block_s_body_is_named_by_its_block(mut with_db: db::RootDatabase) {
             r(step := 50);                  // calls the block
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
     assert_eq!(
-        calls(&only(run(&wasm, None))),
+        calls(&only(run_build(&compile_tests(&mut with_db, source), None))),
         [
             ("Ramp".to_string(), line_of(source, "// stores")),
             (
@@ -495,11 +487,114 @@ fn a_caught_raise_is_not_where_the_test_failed(mut with_db: db::RootDatabase) {
             __RAISE('not handled');             // failed
         END_FUNCTION
     "#;
-    let wasm = compile_to_wasm(&mut with_db, source);
-    let record = only(run(&wasm, None));
+    let record = only(run_build(&compile_tests(&mut with_db, source), None));
     assert_eq!(record.reason.as_deref(), Some("not handled"));
     assert_eq!(
         calls(&record),
         [("test_twice".to_string(), line_of(source, "// failed"))]
     );
+}
+
+/// A raise that goes through a `__FINALLY` keeps its place: the finally
+/// throws it on, which says nothing to the host. One raised again in a
+/// `__CATCH` is a raise of its own, placed where it is.
+#[rstest]
+fn a_raise_keeps_its_place_through_a_finally(mut with_db: db::RootDatabase) {
+    let source = r#"
+        {test}
+        FUNCTION test_finally
+        VAR n : INT; END_VAR
+            __TRY
+                __RAISE('through');             // the raise
+            __FINALLY
+                n := 1;
+            __END_TRY;
+        END_FUNCTION
+
+        {test}
+        FUNCTION test_caught_and_raised
+        VAR e : STRING; END_VAR
+            __TRY
+                __RAISE('first');
+            __CATCH(e)
+                __RAISE('second');              // raised again
+            __END_TRY;
+        END_FUNCTION
+    "#;
+    let records = run_build(&compile_tests(&mut with_db, source), None);
+    let by_name = |name: &str| {
+        records
+            .iter()
+            .find(|record| record.name == name)
+            .unwrap_or_else(|| panic!("no record for {name}"))
+    };
+    let finally = by_name("test_finally");
+    assert_eq!(finally.reason.as_deref(), Some("through"));
+    assert_eq!(
+        calls(finally),
+        [("test_finally".to_string(), line_of(source, "// the raise"))]
+    );
+    let again = by_name("test_caught_and_raised");
+    assert_eq!(again.reason.as_deref(), Some("second"));
+    assert_eq!(
+        calls(again),
+        [(
+            "test_caught_and_raised".to_string(),
+            line_of(source, "// raised again")
+        )]
+    );
+}
+
+/// The functions `wasm` imports, by module and name.
+fn imports(wasm: &[u8]) -> Vec<(String, String)> {
+    let mut found = Vec::new();
+    for payload in wasmparser::Parser::new(0).parse_all(wasm) {
+        if let Ok(wasmparser::Payload::ImportSection(reader)) = payload {
+            for import in reader.into_imports() {
+                let import = import.expect("an import");
+                found.push((import.module.to_string(), import.name.to_string()));
+            }
+        }
+    }
+    found
+}
+
+/// The module `rk test` builds says where it raises: it imports
+/// `rk:test/raise`'s `raised`, which its world names. A module `rk compile`
+/// builds does not, debug or release: the two profiles differ in their
+/// custom sections only.
+#[rstest]
+fn only_the_module_rk_test_builds_says_where_it_raises(mut with_db: db::RootDatabase) {
+    let source = r#"
+        {test}
+        FUNCTION test_raise
+            __RAISE('boom');
+        END_FUNCTION
+    "#;
+    let hook = (
+        debug_format::wit::TEST_INTERFACE.to_string(),
+        mir::raise_hook::FUNCTION.to_string(),
+    );
+    let build = compile_tests(&mut with_db, source);
+    assert!(
+        imports(&build.core).contains(&hook),
+        "{:?}",
+        imports(&build.core)
+    );
+    let interfaces = rk::component::interfaces(&with_db, &build.mir).expect("typed interfaces");
+    let world = rk::component::wrap(&build.core, "plant", &interfaces)
+        .expect("the module wraps")
+        .world;
+    assert!(
+        world.contains(&format!("import {};", debug_format::wit::TEST_INTERFACE)),
+        "{world}"
+    );
+
+    let mut plain = db::RootDatabase::default();
+    let (mir, debug) = compile_to_mir_and_wasm_as_built(&mut plain, source);
+    let release =
+        wasm_codegen::generate_wasm_profile(&plain, &mir, wasm_codegen::Profile::Release).finish();
+    for (profile, wasm) in [("debug", debug), ("release", release)] {
+        assert!(!imports(&wasm).contains(&hook), "{profile}");
+    }
 }

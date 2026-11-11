@@ -429,6 +429,21 @@ fn lower_function_inner<'db>(
         }
     };
 
+    // The WIT name a host calls an `{export}` FUNCTION by. A copy made for
+    // an interface, an array type or an argument count has none: E1509
+    // refused its `{export}`.
+    let wit_export = {
+        use hir::HasPragmas;
+        (func.is_export(db)
+            && func.extern_pragma(db).is_none()
+            && !func.is_test(db)
+            && param_subs.is_none()
+            && variadic_arity.is_none())
+        .then(|| hir::hir_ty::exports::export_wit_name(db, func).ok())
+        .flatten()
+        .map(compact_str::CompactString::from)
+    };
+
     Ok(MirFunction {
         name: super::naming::mir_function_symbol(db, func),
         origin_name: func.name(db),
@@ -440,6 +455,7 @@ fn lower_function_inner<'db>(
         linkage,
         is_test: hir::hir_def::pous::pragma::is_test(db, func.pragmas(db)),
         export_name: None,
+        wit_export,
         frame: close_frame(
             db,
             hir::hir_ty::calls::CallNode::Function(func),
@@ -663,6 +679,7 @@ fn lower_function_block_inner<'db>(
             linkage: MirLinkage::Internal,
             is_test: false,
             export_name: None,
+            wit_export: None,
             frame: close_frame(
                 db,
                 hir::hir_ty::calls::CallNode::Method(method),
@@ -932,6 +949,7 @@ fn lower_fb_body<'db>(
         linkage: MirLinkage::Internal,
         is_test: false,
         export_name: None,
+        wit_export: None,
         frame: close_frame(
             db,
             hir::hir_ty::calls::CallNode::Body(body_of),
@@ -1150,6 +1168,7 @@ fn lower_class_inner<'db>(
             linkage: MirLinkage::Internal,
             is_test: false,
             export_name: None,
+            wit_export: None,
             frame: close_frame(
                 db,
                 hir::hir_ty::calls::CallNode::Method(method),
@@ -1264,6 +1283,7 @@ fn lower_program_inner<'db>(
         linkage: MirLinkage::Export,
         is_test: false,
         export_name: None,
+        wit_export: None,
         // Nothing calls a PROGRAM but the host.
         frame: None,
         host_entry: true,

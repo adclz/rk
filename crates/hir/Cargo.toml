@@ -31,3 +31,4 @@ serde_json = { workspace = true }
 indexmap = { workspace = true }
 macros = { workspace = true }
 index = { workspace = true }
+semver = { workspace = true }
