@@ -10,21 +10,19 @@ use rstest::rstest;
 
 /// The clocks, declared as `Std.Timers` declares them.
 const CLOCKS: &str = r#"
-    TYPE Instant : STRUCT seconds : LINT; nanoseconds : DINT; END_STRUCT; END_TYPE
-    TYPE ZoneOffset : STRUCT known : BOOL; nanoseconds : LINT; END_STRUCT; END_TYPE
-
     {extern 'wasi:clocks/monotonic-clock@0.3.0' 'now'}
     FUNCTION MonotonicNow : LINT
     END_FUNCTION
 
     {extern 'wasi:clocks/system-clock@0.3.0' 'now'}
     FUNCTION WallNow
-    VAR_INPUT ret : REF_TO Instant; END_VAR
+    VAR_OUTPUT seconds : LINT; nanoseconds : UDINT; END_VAR
     END_FUNCTION
 
     {extern 'wasi:clocks/timezone@0.3.0' 'utc-offset'}
     FUNCTION UtcOffset
-    VAR_INPUT seconds : LINT; nanoseconds : DINT; ret : REF_TO ZoneOffset; END_VAR
+    VAR_INPUT seconds : LINT; nanoseconds : UDINT; END_VAR
+    VAR_OUTPUT known : BOOL; offset : LINT; END_VAR
     END_FUNCTION
 "#;
 
@@ -37,9 +35,9 @@ fn the_tests_read_wasi_s_clocks(mut with_db: db::RootDatabase) {
         r#"{CLOCKS}
         {{test}}
         FUNCTION test_the_wall_clock_is_today
-        VAR i : Instant; END_VAR
-            WallNow(ret := REF(i));
-            IF i.seconds < LINT#1735689600 THEN
+        VAR seconds : LINT; END_VAR
+            WallNow(seconds => seconds);
+            IF seconds < LINT#1735689600 THEN
                 __RAISE('the wall clock is before 2025');
             END_IF;
         END_FUNCTION
@@ -56,11 +54,11 @@ fn the_tests_read_wasi_s_clocks(mut with_db: db::RootDatabase) {
 
         {{test}}
         FUNCTION test_the_zone_is_less_than_a_day_away
-        VAR i : Instant; z : ZoneOffset; END_VAR
-            WallNow(ret := REF(i));
-            UtcOffset(seconds := i.seconds, nanoseconds := i.nanoseconds, ret := REF(z));
-            IF z.known AND (z.nanoseconds >= LINT#86400000000000
-                OR z.nanoseconds <= LINT#-86400000000000) THEN
+        VAR seconds : LINT; nanoseconds : UDINT; known : BOOL; offset : LINT; END_VAR
+            WallNow(seconds => seconds, nanoseconds => nanoseconds);
+            UtcOffset(seconds := seconds, nanoseconds := nanoseconds, known => known, offset => offset);
+            IF known AND (offset >= LINT#86400000000000
+                OR offset <= LINT#-86400000000000) THEN
                 __RAISE('the zone is a day away');
             END_IF;
         END_FUNCTION
