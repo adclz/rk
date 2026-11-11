@@ -40,6 +40,7 @@ pub fn add(db: &dyn WorkspaceDataBase, module: &mut MirModule) {
         out_results: Vec::new(),
         return_type: None,
         linkage: MirLinkage::Internal,
+        asynchronous: false,
     });
     module.function_indices.insert(name, index);
 }

@@ -155,6 +155,7 @@ pub fn imports(db: &dyn WorkspaceDataBase, output: Output, index: u32) -> Vec<Mi
             out_results: Vec::new(),
             return_type: import.result().map(MirType::Elementary),
             linkage: MirLinkage::Internal,
+            asynchronous: false,
         })
         .collect()
 }

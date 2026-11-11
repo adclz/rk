@@ -301,6 +301,42 @@ fn lower_module_from_pous<'db>(
             extern_functions.push(mir_ext);
         }
     }
+    // An `{extern}` FUNCTION_BLOCK imports its function lowered async, and
+    // its body, which codegen emits, makes the call and checks it.
+    let mut async_calls = FxHashMap::default();
+    for (pou, _ns_prefix) in all_pous.iter() {
+        use hir::HasPragmas;
+        let Pou::FunctionBlock(fb) = pou else {
+            continue;
+        };
+        let (Some((_, pragma)), Some(import)) = (
+            fb.extern_pragma(db),
+            hir::hir_ty::async_import::async_import(db, *fb),
+        ) else {
+            continue;
+        };
+        let MirType::Struct(instance) = at_pou(db, *fb, super::lower_type::lower_fb_type(db, *fb))?
+        else {
+            continue;
+        };
+        let call = at_pou(
+            db,
+            *fb,
+            crate::async_call::call(db, *fb, &import, &instance),
+        )?;
+        let mir_ext = crate::async_call::import(db, *fb, &import, &call, pragma, next_fn_idx);
+        at_pou(
+            db,
+            *fb,
+            register_symbol(db, &mut function_indices, mir_ext.name, next_fn_idx),
+        )?;
+        next_fn_idx += 1;
+        extern_functions.push(mir_ext);
+        async_calls.insert(
+            super::naming::body_symbol(db, Pou::FunctionBlock(*fb), Pou::FunctionBlock(*fb)),
+            call,
+        );
+    }
 
     // Phase 2: Process local functions
     for (pou, _ns_prefix) in all_pous.iter() {
@@ -726,6 +762,15 @@ fn lower_module_from_pous<'db>(
         }
     }
 
+    // A block's async call is checked with the component model's built-ins.
+    if !async_calls.is_empty() {
+        for builtin in crate::async_call::builtins(db, next_fn_idx) {
+            function_indices.insert(builtin.name, builtin.index);
+            next_fn_idx += 1;
+            extern_functions.push(builtin);
+        }
+    }
+
     // A module that writes to the host's standard output or error imports
     // the stream it writes through, which no declaration names.
     for output in crate::console::written(&functions) {
@@ -739,6 +784,7 @@ fn lower_module_from_pous<'db>(
     let mut module = MirModule {
         functions,
         extern_functions,
+        async_calls,
         instance_types,
         function_indices,
         type_indices,
@@ -1184,6 +1230,7 @@ fn lower_extern_function<'db>(
         out_results,
         return_type,
         linkage: crate::function::MirLinkage::Internal,
+        asynchronous: false,
     })
 }
 

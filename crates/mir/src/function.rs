@@ -90,6 +90,11 @@ pub struct MirExternFunction {
     pub return_type: Option<MirType>,
     /// Whether the import is re-exported under its name.
     pub linkage: MirLinkage,
+    /// Whether the call is lowered async: it returns at once, its status
+    /// and the call's handle in one word, the parameters in memory past 4
+    /// values, and the result written at an address the call passes last
+    /// when the host finishes ([`crate::async_call`]).
+    pub asynchronous: bool,
 }
 
 impl MirExternFunction {

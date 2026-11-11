@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Clauzel Adrien
 // SPDX-License-Identifier: AGPL-3.0-only
 
+pub mod async_call;
 pub mod console;
 pub mod debug_symbols;
 pub mod expr;
@@ -86,6 +87,10 @@ pub struct MirModule {
     /// Debug-symbol table: every debuggable variable at its absolute address,
     /// emitted as the `debug-symbols` section.
     pub debug_symbols: DebugSymbols,
+
+    /// The call each async import's body makes, by the body's symbol: the
+    /// body codegen emits for an `{extern}` FUNCTION_BLOCK.
+    pub async_calls: FxHashMap<Ident, async_call::MirAsyncCall>,
 
     /// Per-field RETAIN map: which byte ranges of the retain band persist
     /// (see `retain_map`), emitted as the `retain-map` section.
