@@ -310,24 +310,40 @@ END_FUNCTION
     assert_eq!(r, 24, "both callers reach the one host function");
 }
 
+/// The memory a host function writes its record in.
+fn memory_of(caller: &mut wasmtime::Caller<'_, ()>) -> wasmtime::Memory {
+    caller
+        .get_export("memory")
+        .and_then(|export| export.into_memory())
+        .expect("the module exports its memory")
+}
+
+/// The whole result contract in one call: an import returns the record of
+/// its scalar VAR_OUTPUTs in declaration order, whatever order a call binds
+/// them in, the return value LAST, so an output's place never shifts when a
+/// return type is added. With two fields or more, the canonical ABI has the
+/// call pass the address the host writes the record at, last, as aligned as
+/// the record: here `value` at 0, `status` at 8, the return value at 10.
+/// The caller sees the return value as the call's value and each `=>`
+/// binding filled, a discarded output included, and a variable wider than
+/// its output takes the field with its sign.
 #[rstest]
-fn extern_outputs_return_as_results_return_last(mut with_db: db::RootDatabase) {
-    // The whole result contract in one call: scalar VAR_OUTPUTs come back as
-    // wasm results in declaration order, the return value LAST — so output
-    // positions never shift when a return type is added. The host returns a
-    // tuple; the caller sees the return value as the call's value and each
-    // `=>` binding filled, including a discarded output popping cleanly. A
-    // WASI import only: any other is typed in WIT, which returns one value.
+fn extern_outputs_return_as_a_record_return_last(mut with_db: db::RootDatabase) {
     let source = r#"
-{extern 'wasi:test/rt@0.1.0' 'sample'}
+{extern 'rt' 'sample'}
 FUNCTION sample : INT
 VAR_INPUT channel : INT; END_VAR
 VAR_OUTPUT value : LINT; status : INT; END_VAR
 END_FUNCTION
 FUNCTION drive4 : LINT
 VAR v : LINT; s : INT; r : INT; END_VAR
-    r := sample(channel := 7, value => v, status => s);
+    r := sample(status => s, channel := 7, value => v);
     drive4 := v * 1000 + TO_L(s) * 10 + TO_L(r);
+END_FUNCTION
+FUNCTION drive8 : LINT
+VAR wide : LINT; r : INT; END_VAR
+    r := sample(channel := 7, status => wide);
+    drive8 := wide;
 END_FUNCTION
 FUNCTION drive5 : LINT
 VAR v : LINT; r : INT; END_VAR
@@ -344,26 +360,63 @@ END_FUNCTION
     let host = |linker: &mut wasmtime::Linker<()>| {
         linker
             .func_wrap(
-                "wasi:test/rt@0.1.0",
+                "rt",
                 "sample",
-                |ch: i32| -> (i64, i32, i32) {
-                    // (value, status, return): value=ch as i64, status=2, ret=3
-                    (ch as i64, 2, 3)
+                |mut caller: wasmtime::Caller<'_, ()>, ch: i32, at: i32| {
+                    assert_eq!(at % 8, 0, "the record is as aligned as its LINT");
+                    let mut record = [0u8; 16];
+                    record[0..8].copy_from_slice(&i64::from(ch).to_le_bytes());
+                    record[8..10].copy_from_slice(&(-2i16).to_le_bytes());
+                    record[10..12].copy_from_slice(&3i16.to_le_bytes());
+                    memory_of(&mut caller)
+                        .write(&mut caller, at as usize, &record)
+                        .unwrap();
                 },
             )
             .unwrap();
     };
     let r: i64 = execute_wasm_with_imports(&wasm_bytes, "drive4", (), host);
-    assert_eq!(r, 7023, "value 7, status 2, return 3");
+    assert_eq!(r, 6983, "value 7, status -2, return 3");
     let r: i64 = execute_wasm_with_imports(&wasm_bytes, "drive5", (), host);
     assert_eq!(r, 703, "value 7 and return 3 survive a discarded status");
+    let r: i64 = execute_wasm_with_imports(&wasm_bytes, "drive8", (), host);
+    assert_eq!(r, -2, "an INT field read into a LINT keeps its sign");
 }
 
+/// A record of one field is that field: an import with one output and no
+/// return value returns the output, with no address to write it at.
+#[rstest]
+fn an_import_with_one_output_returns_it(mut with_db: db::RootDatabase) {
+    let source = r#"
+{extern 'rt' 'count'}
+FUNCTION count
+VAR_INPUT channel : INT; END_VAR
+VAR_OUTPUT seen : LINT; END_VAR
+END_FUNCTION
+FUNCTION drive7 : LINT
+VAR n : LINT; END_VAR
+    count(channel := 4, seen => n);
+    drive7 := n;
+END_FUNCTION
+    "#;
+    let wasm_bytes = compile_to_wasm(&mut with_db, source);
+    let r: i64 = execute_wasm_with_imports(&wasm_bytes, "drive7", (), |linker| {
+        linker
+            .func_wrap("rt", "count", |channel: i32| -> i64 {
+                i64::from(channel) << 40
+            })
+            .unwrap();
+    });
+    assert_eq!(r, 4 << 40);
+}
+
+/// `%MX0.3` and `%MB1` are bits of `%MW0`, so they have no address of their
+/// own: each field read from the record pops into its scratch, and the word
+/// is rebuilt from it once every field is off the stack. A WASI import
+/// returns its record as any other does: `seen` at 0, `level` at 1, the
+/// return value at 2.
 #[rstest]
 fn extern_outputs_land_in_parts_of_a_wider_address(mut with_db: db::RootDatabase) {
-    // `%MX0.3` and `%MB1` are bits of `%MW0`, so they have no address to pop
-    // into: each result pops into its scratch, and the word is rebuilt from
-    // it once every result is off the stack. A WASI import, as above.
     let source = r#"
 {extern 'wasi:test/rt@0.1.0' 'probe'}
 FUNCTION probe : INT
@@ -383,7 +436,12 @@ END_FUNCTION
             .func_wrap(
                 "wasi:test/rt@0.1.0",
                 "probe",
-                |_ch: i32| -> (i32, i32, i32) { (1, 0xFD, 9) },
+                |mut caller: wasmtime::Caller<'_, ()>, _ch: i32, at: i32| {
+                    let record = [1u8, 0xFD, 9, 0];
+                    memory_of(&mut caller)
+                        .write(&mut caller, at as usize, &record)
+                        .unwrap();
+                },
             )
             .unwrap();
     });
