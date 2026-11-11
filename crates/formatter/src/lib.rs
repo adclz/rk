@@ -109,6 +109,7 @@ static SURROUND_SPACES: &str = r##"
 ; Extern pragma: normalize spacing between children
 (extern_pragma "{" @append_antispace)
 (extern_pragma "extern" @append_space)
+(extern_pragma (async_keyword) @append_space)
 (extern_pragma module: (pragma_string) @append_space)
 (extern_pragma name: (pragma_string) @append_space)
 (extern_pragma "}" @prepend_antispace)
