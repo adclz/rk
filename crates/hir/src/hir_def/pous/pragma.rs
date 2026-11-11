@@ -77,6 +77,9 @@ pub struct ExternPragma {
     pub module_span: auto_lsp::tree_sitter::Range,
     /// The name's string, quotes included.
     pub name_span: auto_lsp::tree_sitter::Range,
+    /// `{extern async ...}`: the function is WIT's `async func`, which a
+    /// FUNCTION_BLOCK imports (`hir_ty::async_import`).
+    pub asynchronous: bool,
 }
 
 impl ExternPragma {

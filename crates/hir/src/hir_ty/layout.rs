@@ -234,6 +234,50 @@ pub enum Part {
     Edge,
     /// What an edge input's edge is computed against at the next call.
     EdgeMemory,
+    /// What an async import's instance keeps of its call, attached to its
+    /// DONE: the call's handle, the waitable set it is checked in, and the
+    /// set's last event (`async_import`).
+    AsyncState,
+    /// Where the host writes the result of an async import's call, laid out
+    /// as the canonical ABI lays a record out: 8 bytes a field at most.
+    AsyncResult,
+    /// The parameters of an async import's call, laid out as a tuple in
+    /// memory, when they take more than the 4 values a call passes.
+    AsyncArgs,
+}
+
+/// What [`Part::AsyncState`] holds: a word each for the call's handle and
+/// the set's, then the two words of the set's last event.
+pub const ASYNC_STATE: Layout = Layout { size: 16, align: 8 };
+
+/// The parts an async import's instance keeps besides its variables, after
+/// them: its state, the result's area and, past 4 values, the parameters'.
+fn async_parts<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    pou: Pou<'db>,
+) -> Vec<(VariableDecl<'db>, Part, Layout)> {
+    let Pou::FunctionBlock(fb) = pou else {
+        return Vec::new();
+    };
+    let Some(import) = crate::hir_ty::async_import::async_import(db, fb) else {
+        return Vec::new();
+    };
+    // A scalar and a STRING's address and length each take 8 bytes at most,
+    // aligned at 8 at most: the canonical record or tuple fits 8 a field.
+    let area = |fields: usize| Layout {
+        size: 8 * fields as u64,
+        align: 8,
+    };
+    let mut parts = vec![(import.done, Part::AsyncState, ASYNC_STATE)];
+    if !import.results.is_empty() {
+        parts.push((import.done, Part::AsyncResult, area(import.results.len())));
+    }
+    if crate::hir_ty::async_import::flat_params(db, &import)
+        > crate::hir_ty::async_import::MAX_FLAT_ASYNC_PARAMS
+    {
+        parts.push((import.done, Part::AsyncArgs, area(import.params.len())));
+    }
+    parts
 }
 
 /// An FB's or a CLASS's instance: its own members after its bases', so a
@@ -245,7 +289,12 @@ pub fn instance_layout<'db>(
     pou: Pou<'db>,
 ) -> Option<InstanceLayout<'db>> {
     let members = crate::hir_ty::oop::instance_members(db, pou);
-    fields_of(db, members.iter().map(|member| member.var), Binding::Called)
+    fields_of(
+        db,
+        members.iter().map(|member| member.var),
+        Binding::Called,
+        async_parts(db, pou),
+    )
 }
 
 fn no_instance_layout<'db>(
@@ -268,7 +317,7 @@ pub fn program_layout<'db>(
         .variables(db)
         .iter()
         .filter(|var| !var.is_external(db) && !var.is_temp(db) && !var.is_program_located(db));
-    fields_of(db, vars.copied(), Binding::Scheduled)
+    fields_of(db, vars.copied(), Binding::Scheduled, Vec::new())
 }
 
 /// The variables whose address `scope` takes, in its statements and in its
@@ -411,6 +460,7 @@ fn fields_of<'db>(
     db: &'db dyn WorkspaceDataBase,
     vars: impl Iterator<Item = VariableDecl<'db>>,
     binding: Binding,
+    extra: Vec<(VariableDecl<'db>, Part, Layout)>,
 ) -> Option<InstanceLayout<'db>> {
     let mut cursor = Cursor::default();
     let mut fields = Vec::new();
@@ -458,6 +508,9 @@ fn fields_of<'db>(
             push(&mut cursor, var, Part::Edge, bool);
             push(&mut cursor, var, Part::EdgeMemory, bool);
         }
+    }
+    for (var, part, layout) in extra {
+        push(&mut cursor, var, part, layout);
     }
     Some(InstanceLayout {
         fields,

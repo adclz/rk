@@ -36,22 +36,31 @@ impl<'db> InitInference<'db> {
         );
     }
 
-    /// The import an `{extern}` FUNCTION is, as a component names and types
-    /// it: its module a WIT name or an interface, its name a WIT name
-    /// (E1512), and for a module other than WASI's, a WIT name for each
-    /// parameter and each field of its result (E1512) and 16 values at most
-    /// (E1502). WASI's functions keep the types WASI's WIT gives them.
+    /// The import an `{extern}` FUNCTION or FUNCTION_BLOCK is, as a
+    /// component names and types it: its module a WIT name or an interface,
+    /// its name a WIT name (E1512), a block's `DONE` declared as it must be
+    /// (E1514), and for a module other than WASI's, a WIT name
+    /// for each parameter and each field of its result (E1512) and, for a
+    /// FUNCTION, 16 values at most (E1502): an async call passes more in
+    /// memory. WASI's functions keep the types WASI's WIT gives them.
     pub(crate) fn check_extern_import(&mut self, db: &'db dyn WorkspaceDataBase) {
         use crate::check::errors::e15_pragma::{ExternForbiddenKind, PragmaError};
         use crate::hir_def::expressions::spec::ElementarySpec;
         use crate::hir_def::pous::pragma::{import_module, is_wit_name, wit_parameter_name};
         use crate::hir_ty::exports::wit_key;
         use crate::hir_ty::ty::Type;
-        let ScopeKind::Pou(Pou::Function(func)) = get_scope(db, self.scope).kind else {
-            return;
-        };
-        let Some((_, pragma)) = func.extern_pragma(db) else {
-            return;
+        let (pragma, variables, function, block) = match get_scope(db, self.scope).kind {
+            ScopeKind::Pou(Pou::Function(func)) => match func.extern_pragma(db) {
+                Some((_, pragma)) => (pragma, func.variables(db), Some(func), None),
+                None => return,
+            },
+            ScopeKind::Pou(Pou::FunctionBlock(fb)) => match fb.extern_pragma(db) {
+                Some((_, pragma)) if pragma.asynchronous => {
+                    (pragma, fb.variables(db), None, Some(fb))
+                }
+                _ => return,
+            },
+            _ => return,
         };
         let file = self.scope.file(db);
         if let Err(why) = import_module(&pragma.module) {
@@ -73,13 +82,34 @@ impl<'db> InitInference<'db> {
                 .to_diagnostic(db, file),
             );
         }
+        // An async import's DONE.
+        if let Some(block) = block
+            && !variables
+                .iter()
+                .any(|var| crate::hir_ty::async_import::is_done(db, *var))
+        {
+            let found = variables
+                .iter()
+                .copied()
+                .find(|var| crate::hir_ty::async_import::named_done(db, *var));
+            self.errors
+                .push(PragmaError::DoneOutput { block, found }.to_diagnostic(db, file));
+        }
         if pragma.is_wasi() {
             return;
         }
+        // A block's DONE is no part of its call.
+        let in_call = |var: &&crate::hir_def::pous::variable::VariableDecl<'db>| {
+            block.is_none() || !crate::hir_ty::async_import::named_done(db, **var)
+        };
         // By their WIT names without `-`: what the component model compares.
         let mut named = rustc_hash::FxHashMap::default();
         let mut values = 0;
-        for var in func.variables(db).iter().filter(|var| var.is_input(db)) {
+        for var in variables
+            .iter()
+            .filter(|var| var.is_input(db))
+            .filter(in_call)
+        {
             match wit_parameter_name(var.name(db).text(db)) {
                 None => self
                     .errors
@@ -103,7 +133,7 @@ impl<'db> InitInference<'db> {
                 Type::Elementary(_) | Type::Enum(_) | Type::SubRange(_) => 1,
                 _ => 0,
             };
-            if taken > 0 && values <= 16 && values + taken > 16 {
+            if function.is_some() && taken > 0 && values <= 16 && values + taken > 16 {
                 self.errors.push(
                     PragmaError::ExternForbiddenSection {
                         var: *var,
@@ -117,20 +147,26 @@ impl<'db> InitInference<'db> {
 
         // Each VAR_OUTPUT is a field of the import's result, and the return
         // value its last, under the import's own name.
-        let returned = func.return_type(db).map(|_| wit_key(&pragma.name));
+        let returned = function
+            .filter(|func| func.return_type(db).is_some())
+            .map(|func| (func, wit_key(&pragma.name)));
         let mut fields = rustc_hash::FxHashMap::default();
-        for var in func.variables(db).iter().filter(|var| var.is_output(db)) {
+        for var in variables
+            .iter()
+            .filter(|var| var.is_output(db))
+            .filter(in_call)
+        {
             let Some(wit) = wit_parameter_name(var.name(db).text(db)) else {
                 self.errors
                     .push(PragmaError::ExternParameterName { var: *var }.to_diagnostic(db, file));
                 continue;
             };
             let key = wit_key(&wit);
-            if returned.as_ref() == Some(&key) {
+            if let Some((func, _)) = returned.as_ref().filter(|(_, name)| *name == key) {
                 self.errors.push(
                     PragmaError::OutputNamedLikeResult {
                         var: *var,
-                        func,
+                        func: *func,
                         name: pragma.name.clone(),
                         export: false,
                     }
