@@ -18,8 +18,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use debug_format::wit;
 pub use hir::hir_def::pous::pragma::wit_name;
 use hir::hir_def::pous::pragma::{ImportModule, import_module, is_wasi_module};
-use mir::function::MirExternFunction;
-use mir::types::{MirElementary, MirType};
+use hir::hir_ty::exports::wit_key;
+use mir::function::{MirExternFunction, MirParamKind};
+use mir::types::MirType;
 
 /// The world every component exports its control interface from.
 pub const WORLD: &str = "plc";
@@ -44,6 +45,9 @@ pub struct HostFunction {
     pub name: String,
     /// Each parameter's WIT name and type.
     pub params: Vec<(String, &'static str)>,
+    /// Each VAR_OUTPUT's WIT name and type. With any, the function returns
+    /// the record of them and its return value ([`record_name`]).
+    pub outputs: Vec<(String, &'static str)>,
     pub result: Option<&'static str>,
 }
 
@@ -55,6 +59,9 @@ pub struct ExportedFunction {
     pub name: String,
     /// Each parameter's WIT name and type.
     pub params: Vec<(String, &'static str)>,
+    /// Each VAR_OUTPUT's WIT name and type. With any, the function returns
+    /// the record of them and its return value ([`record_name`]).
+    pub outputs: Vec<(String, &'static str)>,
     /// What it returns when nothing stops it: the function's result is a
     /// `result` of it, or the message of what did.
     pub result: Option<&'static str>,
@@ -91,13 +98,18 @@ pub fn interfaces(
                 func.name.text(db)
             )
         };
-        let mut params = Vec::new();
+        let (mut params, mut outputs) = (Vec::new(), Vec::new());
         for param in &func.params {
             let declared = param.declared_name(db);
             let wit_name = hir::hir_def::pous::pragma::wit_parameter_name(declared)
                 .ok_or_else(|| untyped(&format!("the name of `{declared}`")))?;
-            let ty = wit_type(&param.ty).ok_or_else(|| untyped(&format!("`{declared}`")))?;
-            params.push((wit_name, ty));
+            // An output is passed as the address it is written at.
+            let (held, list) = match (&param.kind, &param.ty) {
+                (MirParamKind::Output, MirType::Pointer(held)) => (held.as_ref(), &mut outputs),
+                (_, ty) => (ty, &mut params),
+            };
+            let ty = wit_type(held).ok_or_else(|| untyped(&format!("`{declared}`")))?;
+            list.push((wit_name, ty));
         }
         let result = match &func.return_type {
             Some(ty) => Some(wit_type(ty).ok_or_else(|| untyped("the return type"))?),
@@ -106,6 +118,7 @@ pub fn interfaces(
         exports.push(ExportedFunction {
             name: name.to_string(),
             params,
+            outputs,
             result,
         });
     }
@@ -136,8 +149,13 @@ fn host_functions(
             let ty = wit_type(&param.ty).ok_or_else(|| untyped(&format!("`{name}`")))?;
             params.push((wit_name, ty));
         }
-        if !ext.out_results.is_empty() {
-            return Err(untyped("a VAR_OUTPUT"));
+        let mut outputs = Vec::new();
+        for (name, ty) in &ext.out_results {
+            let name = name.text(db);
+            let wit_name = hir::hir_def::pous::pragma::wit_parameter_name(name)
+                .ok_or_else(|| untyped(&format!("the name of `{name}`")))?;
+            let ty = wit_type(ty).ok_or_else(|| untyped(&format!("`{name}`")))?;
+            outputs.push((wit_name, ty));
         }
         let result = match &ext.return_type {
             Some(ty) => Some(wit_type(ty).ok_or_else(|| untyped("the return type"))?),
@@ -148,6 +166,7 @@ fn host_functions(
             module: ext.module.to_string(),
             name: ext.import_name.to_string(),
             params,
+            outputs,
             result,
         });
     }
@@ -157,35 +176,36 @@ fn host_functions(
 /// The WIT type a value of `ty` crosses an import as: an integer as the
 /// integer of its width and sign, a duration or a date as the signed
 /// integer it is held in, an enum or a subrange as what it is stored as.
+/// The code that reads and writes it lays it out from the same table.
 fn wit_type(ty: &MirType) -> Option<&'static str> {
-    let elementary = match ty {
-        MirType::String { .. } => return Some("string"),
-        MirType::Elementary(elementary) => *elementary,
-        MirType::Enum(enumeration) => enumeration.storage,
-        MirType::Subrange(subrange) => subrange.base,
-        _ => return None,
-    };
-    Some(match elementary {
-        MirElementary::Bool => "bool",
-        MirElementary::SInt => "s8",
-        MirElementary::Int => "s16",
-        MirElementary::DInt | MirElementary::Time | MirElementary::Date | MirElementary::Tod => {
-            "s32"
+    wasm_codegen::canonical::canonical(ty).map(|canonical| canonical.wit)
+}
+
+/// The record a function with VAR_OUTPUTs returns: its name, `-outputs`
+/// after it.
+pub fn record_name(function: &str) -> String {
+    format!("{function}-outputs")
+}
+
+/// Refuses an interface one of whose functions returns a record named as
+/// another of its functions is: a record and a function of one interface
+/// are two names of it, which the component model compares without their
+/// `-`.
+fn records_named_apart(interface: &str, functions: &[(&str, bool)]) -> Result<(), String> {
+    let names: BTreeMap<String, &str> = functions
+        .iter()
+        .map(|(name, _)| (wit_key(name), *name))
+        .collect();
+    for (name, _) in functions.iter().filter(|(_, outputs)| *outputs) {
+        let record = record_name(name);
+        if let Some(other) = names.get(&wit_key(&record)) {
+            return Err(format!(
+                "`{name}` returns its VAR_OUTPUTs as the record `{record}`, which cannot be \
+                 told from the function `{other}` of `{interface}`"
+            ));
         }
-        MirElementary::LInt
-        | MirElementary::LTime
-        | MirElementary::LDate
-        | MirElementary::LTod
-        | MirElementary::DateAndTime
-        | MirElementary::LDateTime => "s64",
-        MirElementary::USInt | MirElementary::Byte => "u8",
-        MirElementary::UInt | MirElementary::Word => "u16",
-        MirElementary::UDInt | MirElementary::DWord => "u32",
-        MirElementary::ULInt | MirElementary::LWord => "u64",
-        MirElementary::Real => "f32",
-        MirElementary::LReal => "f64",
-        MirElementary::Char => "char",
-    })
+    }
+    Ok(())
 }
 
 /// Wraps `core` into a component, its world in the package named after
@@ -213,6 +233,20 @@ pub fn wrap(core: &[u8], project: &str, interfaces: &Interfaces) -> Result<Compo
                 .push(host_function(hosts, module, name)?);
         }
     }
+
+    for (module, functions) in &own {
+        let named: Vec<(&str, bool)> = functions
+            .iter()
+            .map(|function| (function.name.as_str(), !function.outputs.is_empty()))
+            .collect();
+        records_named_apart(module, &named)?;
+    }
+    let exported: Vec<(&str, bool)> = interfaces
+        .exports
+        .iter()
+        .map(|function| (function.name.as_str(), !function.outputs.is_empty()))
+        .collect();
+    records_named_apart(&interfaces.export_interface, &exported)?;
 
     let packages = own_packages(&own)?;
     if !interfaces.exports.is_empty() && own.contains_key(interfaces.export_interface.as_str()) {
@@ -361,6 +395,7 @@ fn host_function<'a>(
     let types = |host: &HostFunction| {
         (
             host.params.iter().map(|(_, ty)| *ty).collect::<Vec<_>>(),
+            host.outputs.iter().map(|(_, ty)| *ty).collect::<Vec<_>>(),
             host.result,
         )
     };
@@ -496,11 +531,22 @@ fn world_text(
             wit_id(&interfaces.export_interface)
         ));
         for function in &interfaces.exports {
+            let result = match function.outputs.is_empty() {
+                true => function.result.unwrap_or("_").to_string(),
+                false => {
+                    text.push_str(&record_text(
+                        &function.name,
+                        &function.outputs,
+                        function.result,
+                        "        ",
+                    ));
+                    record_name(&function.name)
+                }
+            };
             text.push_str(&format!(
-                "        {}: func({}) -> result<{}, string>;\n",
+                "        {}: func({}) -> result<{result}, string>;\n",
                 wit_id(&function.name),
                 params_text(&function.params),
-                function.result.unwrap_or("_")
             ));
         }
         text.push_str("    }\n");
@@ -518,13 +564,44 @@ fn params_text(params: &[(String, &'static str)]) -> String {
     params.join(", ")
 }
 
-/// `functions` as WIT declares them, one a line.
+/// The record a function `name` with `outputs` returns, as WIT declares
+/// it: each output, and the return value last under the function's name.
+fn record_text(
+    name: &str,
+    outputs: &[(String, &'static str)],
+    result: Option<&'static str>,
+    indent: &str,
+) -> String {
+    let mut text = format!("{indent}record {} {{\n", record_name(name));
+    let fields = outputs
+        .iter()
+        .map(|(field, ty)| (field.as_str(), *ty))
+        .chain(result.map(|ty| (name, ty)));
+    for (field, ty) in fields {
+        text.push_str(&format!("{indent}    {}: {ty},\n", wit_id(field)));
+    }
+    text.push_str(&format!("{indent}}}\n"));
+    text
+}
+
+/// `functions` as WIT declares them, one a line, each after the record it
+/// returns when it has VAR_OUTPUTs.
 fn functions_text(functions: &[&HostFunction], indent: &str) -> String {
     let mut text = String::new();
     for function in functions {
-        let result = function
-            .result
-            .map_or(String::new(), |ty| format!(" -> {ty}"));
+        let result = match (function.outputs.is_empty(), function.result) {
+            (true, None) => String::new(),
+            (true, Some(ty)) => format!(" -> {ty}"),
+            (false, _) => {
+                text.push_str(&record_text(
+                    &function.name,
+                    &function.outputs,
+                    function.result,
+                    indent,
+                ));
+                format!(" -> {}", record_name(&function.name))
+            }
+        };
         text.push_str(&format!(
             "{indent}{}: func({}){result};\n",
             wit_id(&function.name),
