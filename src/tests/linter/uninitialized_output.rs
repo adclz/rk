@@ -32,6 +32,24 @@ END_FUNCTION
     ");
 }
 
+/// An import's VAR_OUTPUTs are fields of its result, which the host writes:
+/// its body is empty by contract, so nothing is reported, from WASI or not.
+#[rstest]
+fn an_import_s_outputs_are_not_reported(mut with_db: RootDatabase) {
+    let source = r#"
+{extern 'rt' 'sample'}
+FUNCTION sample : INT
+VAR_OUTPUT value : REAL; END_VAR
+END_FUNCTION
+
+{extern 'wasi:clocks/system-clock@0.3.0' 'now'}
+FUNCTION now
+VAR_OUTPUT seconds : LINT; nanoseconds : UDINT; END_VAR
+END_FUNCTION
+"#;
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "uninitialized-output"), @r"");
+}
+
 #[rstest]
 fn output_assigned(mut with_db: RootDatabase) {
     let source = r#"
