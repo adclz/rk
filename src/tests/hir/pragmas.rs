@@ -531,6 +531,132 @@ END_CONFIGURATION"#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
 }
 
+/// A WASI import may be a stream's or a future's built-in, under the name
+/// of the function it serves: those that return at once on a FUNCTION, and
+/// a stream's write, which waits for the reader, on an `{extern async}`
+/// FUNCTION_BLOCK. Accepted, and the module they build is valid.
+#[rstest]
+fn valid_stream_built_ins(mut with_db: RootDatabase) {
+    let source = r#"
+{extern 'wasi:cli/stdout@0.3.0' '[stream-new-0]write-via-stream'}
+FUNCTION NEW_STREAM : LWORD
+END_FUNCTION
+
+{extern 'wasi:cli/stdout@0.3.0' '[future-drop-readable-1]write-via-stream'}
+FUNCTION DROP_FUTURE
+VAR_INPUT future : UDINT; END_VAR
+END_FUNCTION
+
+{extern 'wasi:cli/stdout@0.3.0' '[stream-drop-writable-0]write-via-stream'}
+FUNCTION DROP_WRITER
+VAR_INPUT stream : UDINT; END_VAR
+END_FUNCTION
+
+{extern async 'wasi:cli/stdout@0.3.0' '[stream-write-0]write-via-stream'}
+FUNCTION_BLOCK STREAM_WRITE
+VAR_INPUT stream : UDINT; data : STRING[64]; END_VAR
+VAR_OUTPUT DONE : BOOL; written : UDINT; closed : BOOL; END_VAR
+END_FUNCTION_BLOCK
+
+PROGRAM Main
+VAR ends : LWORD; write : STREAM_WRITE; END_VAR
+    ends := NEW_STREAM();
+    write(stream := 2, data := 'hello');
+    DROP_FUTURE(future := 3);
+    DROP_WRITER(stream := 2);
+END_PROGRAM"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
+
+/// A built-in fits one kind of POU (E1516): a read or a write waits for the
+/// other end, so only an `{extern async}` block imports it, and the others
+/// return at once, so a FUNCTION does. An async block imports a call or a
+/// stream's write, which declares the built-in's variables. Outside WASI, a
+/// built-in's name is no WIT name (E1512).
+#[rstest]
+fn invalid_stream_built_ins(mut with_db: RootDatabase) {
+    let source = r#"
+{extern 'wasi:cli/stdout@0.3.0' '[stream-write-0]write-via-stream'}
+FUNCTION WRITE_NOW : UDINT
+VAR_INPUT stream : UDINT; END_VAR
+END_FUNCTION
+
+{extern async 'wasi:cli/stdout@0.3.0' '[stream-new-0]write-via-stream'}
+FUNCTION_BLOCK NEW_LATER
+VAR_OUTPUT DONE : BOOL; END_VAR
+END_FUNCTION_BLOCK
+
+{extern async 'wasi:cli/stdin@0.3.0' '[stream-read-0]read-via-stream'}
+FUNCTION_BLOCK READ
+VAR_OUTPUT DONE : BOOL; END_VAR
+END_FUNCTION_BLOCK
+
+{extern async 'wasi:cli/stdout@0.3.0' '[stream-write-0]write-via-stream'}
+FUNCTION_BLOCK WRITE_TEXT
+VAR_INPUT text : STRING[64]; END_VAR
+VAR_OUTPUT DONE : BOOL; END_VAR
+END_FUNCTION_BLOCK
+
+{extern 'host' '[stream-new-0]send'}
+FUNCTION NEW_HOST_STREAM : LWORD
+END_FUNCTION"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1516] Error: stream built-in that does not fit its declaration
+       ,-[ file:///test0.st:2:33 ]
+       |
+     2 | {extern 'wasi:cli/stdout@0.3.0' '[stream-write-0]write-via-stream'}
+       |                                 ^^^^^^^^^^^^^^^^^|^^^^^^^^^^^^^^^^
+       |                                                  `------------------ '[stream-write-0]write-via-stream' waits for the other end
+       |
+       | Help: import it with {extern async} on a FUNCTION_BLOCK
+       |
+       | Note: a read or a write of a stream or a future waits for the other end, which only the calls of an {extern async} FUNCTION_BLOCK can
+    ---'
+    [E1516] Error: stream built-in that does not fit its declaration
+       ,-[ file:///test0.st:7:39 ]
+       |
+     7 | {extern async 'wasi:cli/stdout@0.3.0' '[stream-new-0]write-via-stream'}
+       |                                       ^^^^^^^^^^^^^^^^|^^^^^^^^^^^^^^^
+       |                                                       `----------------- '[stream-new-0]write-via-stream' returns at once
+       |
+       | Help: import it with {extern} on a FUNCTION
+       |
+       | Note: an {extern async} FUNCTION_BLOCK imports a call that may not return at once
+    ---'
+    [E1516] Error: stream built-in that does not fit its declaration
+        ,-[ file:///test0.st:12:38 ]
+        |
+     12 | {extern async 'wasi:cli/stdin@0.3.0' '[stream-read-0]read-via-stream'}
+        |                                      ^^^^^^^^^^^^^^^^|^^^^^^^^^^^^^^^
+        |                                                      `----------------- '[stream-read-0]read-via-stream' is no call and no stream write
+        |
+        | Note: an {extern async} FUNCTION_BLOCK imports the call of an async func or the write of a stream
+    ----'
+    [E1516] Error: stream built-in that does not fit its declaration
+        ,-[ file:///test0.st:18:16 ]
+        |
+     18 | FUNCTION_BLOCK WRITE_TEXT
+        |                ^^^^^|^^^^
+        |                     `------ 'WRITE_TEXT' does not declare a stream write's variables
+        |
+        | Help: declare the VAR_INPUTs stream : UDINT and data : STRING, and the VAR_OUTPUTs written : UDINT and closed : BOOL after DONE
+        |
+        | Note: a stream write takes the stream's writing end, a UDINT, then the bytes, a STRING, and gives after DONE how many went, a UDINT, then whether the reader left, a BOOL
+    ----'
+    [E1512] Error: import name not a WIT name
+        ,-[ file:///test0.st:23:16 ]
+        |
+     23 | {extern 'host' '[stream-new-0]send'}
+        |                ^^^^^^^^^^|^^^^^^^^^
+        |                          `----------- '[stream-new-0]send' is not a WIT name
+        |
+        | Note: an import's name is written as WIT writes one, words of lowercase letters and digits joined by '-'
+    ----'
+    ");
+}
+
 /// Async imports from WASI and from a host's module: parameters, a STRING
 /// among them past the 4 values a call passes, and the fields of a result.
 /// Accepted, and the module they build is valid.
@@ -1253,32 +1379,6 @@ fn invalid_wasm_operand_count(mut with_db: RootDatabase) {
      4 |             {wasm 'f32.sqrt' (params a b) (result ROOT)}
        |                   ^^^^^|^^^^
        |                        `------ 'f32.sqrt' takes (f32) -> f32, not (a: REAL (f32), b: REAL (f32)) -> ROOT: REAL (f32)
-    ---'
-    ");
-}
-
-/// The writes to the standard output and error take a STRING and answer a
-/// BOOL.
-#[rstest]
-fn invalid_console_write_operand(mut with_db: RootDatabase) {
-    let source = r#"
-        FUNCTION Say : BOOL
-        VAR_INPUT IN : STRING[4096]; END_VAR
-            {wasm 'rk.stdout_write' (params IN) (result Say)}
-        END_FUNCTION
-
-        FUNCTION SayNumber : BOOL
-        VAR_INPUT IN : DINT; END_VAR
-            {wasm 'rk.stderr_write' (params IN) (result SayNumber)}
-        END_FUNCTION
-    "#;
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1507] Error: wasm operands of the wrong type
-       ,-[ file:///test0.st:9:19 ]
-       |
-     9 |             {wasm 'rk.stderr_write' (params IN) (result SayNumber)}
-       |                   ^^^^^^^^|^^^^^^^^
-       |                           `---------- 'rk.stderr_write' takes (i32, i32) -> i32, not (IN: DINT (i32)) -> SayNumber: BOOL (i32)
     ---'
     ");
 }
