@@ -101,7 +101,7 @@ Both give the callee access to the caller's storage.
 `VAR_IN_OUT` is the one to reach for: the compiler passes the address, the callee writes the name with no `^`, and it cannot be null.
 Use `REF_TO` when the reference itself is DATA — stored in an instance, reseated between scans, or compared to `NULL`.
 
-Only a WASI import takes a `REF_TO`: the address where its record comes back, as `Std.Timers` reads the system clock.
+Only a WASI import takes a `REF_TO`: the address where its record comes back.
 An import from any other module is typed in WIT, which has no address, and a `REF_TO` input is E1502 there.
 Nothing carries a LENGTH with a reference, so a capacity always travels as its own argument.
 

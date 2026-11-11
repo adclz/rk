@@ -134,7 +134,7 @@ What is refused with E1502 on every import: `VAR_IN_OUT` ("an extern takes copie
 On an import from a module other than WASI's, also: a `REF_TO` input ("an address in the module means nothing to the host"), a STRUCT, ARRAY or instance input, and a 17th value.
 Putting `{extern}` on anything other than a `FUNCTION` is E1501.
 
-A WASI import keeps the types WASI's WIT gives it, in their core form: a `REF_TO` input is the address where a record comes back, as `Std.Timers` reads the system clock, and a record of scalars can come back in `VAR_OUTPUT` too, one for each field in order.
+A WASI import keeps the types WASI's WIT gives it, in their core form: a record of scalars comes back in `VAR_OUTPUT`, one for each field in order, as `Std.Timers` reads the system clock, and a `REF_TO` input is an address where a record can come back too.
 
 ### `{allow 'rule-name' ...}`
 

@@ -185,8 +185,9 @@ A record of one field is that field.
 A record of two fields or more is written by the host at an address the call passes last: each field at the next multiple of its size, a `BOOL` and an 8-bit integer in one byte, a 16-bit one in two.
 
 A WASI import keeps the types WASI's WIT gives it, in their core form: `VAR_INPUT` are the parameters, and the `VAR_OUTPUT` and the return type the result, as above.
-A `REF_TO` input is an address, which is how a record comes back: `Std.Timers` declares WASI's system clock this way, whose `now` writes its `instant` where the module points, and the zone's `utc-offset`, whose `option<s64>` comes back the same way.
-A record of scalars can come back in `VAR_OUTPUT` too, one for each of its fields in their order: `now` with `seconds: LINT` and `nanoseconds: UDINT`.
+A record of scalars comes back in `VAR_OUTPUT`, one for each of its fields in their order.
+`Std.Timers` declares WASI's system clock this way, `now` with `seconds: LINT` and `nanoseconds: UDINT`, and the zone's `utc-offset` with `known: BOOL` and `offset: LINT`: its `option<s64>` is laid out as a record of a byte that says whether the value is there, then the value.
+A `REF_TO` input is an address, where a record can come back too.
 
 The clocks a module imports are WASI 0.3's, in their core forms, and the host provides them:
 
