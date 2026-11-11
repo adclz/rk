@@ -18,11 +18,12 @@ END_FUNCTION"#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
 }
 
-/// The core interface a WASI import keeps: inputs become params, scalar
-/// outputs become results (declaration order), the return type is the last
-/// result. Nothing is restated in the pragma, so nothing can disagree with
-/// the declaration. The interface is made up: any in the `wasi` namespace
-/// keeps the core rules, and WASI's WIT decides at the build.
+/// The core interface a WASI import keeps: inputs become params, and the
+/// scalar outputs in declaration order, the return type last, are the
+/// fields of the record it returns. Nothing is restated in the pragma, so
+/// nothing can disagree with the declaration. The interface is made up: any
+/// in the `wasi` namespace keeps the core rules, and WASI's WIT decides at
+/// the build.
 #[rstest]
 fn valid_wasi_extern_with_outputs_and_return(mut with_db: RootDatabase) {
     let source = r#"
@@ -58,8 +59,10 @@ END_FUNCTION"#;
     ");
 }
 
-/// A struct/array/STRING output has no WASM result type to ride, on a WASI
-/// import too, which keeps the core rules (the interface is made up).
+/// An import returns a record of scalars: a STRUCT or a STRING output is
+/// refused, on a WASI import too, which keeps the core rules (the interface
+/// is made up), and on any other. An output or a return type that does not
+/// resolve is reported where the type is written, and nowhere else.
 #[rstest]
 fn invalid_extern_aggregate_output(mut with_db: RootDatabase) {
     let source = r#"
@@ -68,6 +71,15 @@ TYPE Pt : STRUCT x : INT; y : INT; END_STRUCT; END_TYPE
 {extern 'wasi:test/host@0.1.0' 'point'}
 FUNCTION point : INT
 VAR_OUTPUT p : Pt; s : STRING; END_VAR
+END_FUNCTION
+
+{extern 'host' 'label'}
+FUNCTION label : INT
+VAR_OUTPUT text : STRING; u : Unknown; END_VAR
+END_FUNCTION
+
+{extern 'host' 'gone'}
+FUNCTION gone : Missing
 END_FUNCTION"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
@@ -76,19 +88,42 @@ END_FUNCTION"#;
        |
      6 | VAR_OUTPUT p : Pt; s : STRING; END_VAR
        |            |
-       |            `-- VAR_OUTPUT 'p' cannot be a WASM result: only scalar outputs cross an import
+       |            `-- VAR_OUTPUT 'p' cannot be a field of the import's result: only a scalar can
        |
-       | Note: return scalars, or split the aggregate into scalar outputs
+       | Note: an {extern} FUNCTION returns its VAR_OUTPUTs and its return value as one record of scalars
     ---'
     [E1502] Error: not representable on an extern FUNCTION
        ,-[ file:///test0.st:6:20 ]
        |
      6 | VAR_OUTPUT p : Pt; s : STRING; END_VAR
        |                    |
-       |                    `-- VAR_OUTPUT 's' cannot be a WASM result: only scalar outputs cross an import
+       |                    `-- VAR_OUTPUT 's' cannot be a field of the import's result: only a scalar can
        |
-       | Note: return scalars, or split the aggregate into scalar outputs
+       | Note: an {extern} FUNCTION returns its VAR_OUTPUTs and its return value as one record of scalars
     ---'
+    [E1502] Error: not representable on an extern FUNCTION
+        ,-[ file:///test0.st:11:12 ]
+        |
+     11 | VAR_OUTPUT text : STRING; u : Unknown; END_VAR
+        |            ^^|^
+        |              `--- VAR_OUTPUT 'text' cannot be a field of the import's result: only a scalar can
+        |
+        | Note: an {extern} FUNCTION returns its VAR_OUTPUTs and its return value as one record of scalars
+    ----'
+    [E0203] Error: unknown name in a namespace
+        ,-[ file:///test0.st:11:31 ]
+        |
+     11 | VAR_OUTPUT text : STRING; u : Unknown; END_VAR
+        |                               ^^^|^^^
+        |                                  `----- no item found for path 'Unknown'
+    ----'
+    [E0203] Error: unknown name in a namespace
+        ,-[ file:///test0.st:15:17 ]
+        |
+     15 | FUNCTION gone : Missing
+        |                 ^^^|^^^
+        |                    `----- no item found for path 'Missing'
+    ----'
     ");
 }
 
@@ -447,26 +482,78 @@ END_FUNCTION"#;
     ");
 }
 
-/// A WIT function returns one value: an import from a module other than
-/// WASI's has no VAR_OUTPUT, scalar or not.
+/// An import from a module other than WASI's returns the record of its
+/// VAR_OUTPUTs and its return value, typed in WIT: one output and no return
+/// value is a record of one field.
 #[rstest]
-fn invalid_extern_output_from_a_host_module(mut with_db: RootDatabase) {
+fn valid_extern_outputs_from_a_host_module(mut with_db: RootDatabase) {
     let source = r#"
+TYPE Mode : (Off, On); END_TYPE
+
 {extern 'rt' 'sample'}
 FUNCTION sample : INT
 VAR_INPUT channel : INT; END_VAR
-VAR_OUTPUT value : REAL; END_VAR
+VAR_OUTPUT value : REAL; mode : Mode; level : USINT (0..9); END_VAR
+END_FUNCTION
+
+{extern 'acme:rt/clock@1.0.0' 'tick'}
+FUNCTION tick
+VAR_OUTPUT count : ULINT; END_VAR
+END_FUNCTION"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
+
+/// Each VAR_OUTPUT of such an import is a field of its result, named in
+/// WIT: a name that gives no WIT name, two that WIT takes for one, and a
+/// name the return value has already, the import's own, are refused.
+#[rstest]
+fn invalid_extern_output_names(mut with_db: RootDatabase) {
+    let source = r#"
+{extern 'rt' 'sample'}
+FUNCTION ReadSample : INT
+VAR_OUTPUT x__y : INT; a_b : INT; ab : INT; Sample : REAL; END_VAR
+END_FUNCTION
+
+{extern 'rt' 'other'}
+FUNCTION Other
+VAR_OUTPUT other : INT; END_VAR
 END_FUNCTION"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1502] Error: not representable on an extern FUNCTION
-       ,-[ file:///test0.st:5:12 ]
+    [E1512] Error: import name not a WIT name
+       ,-[ file:///test0.st:4:12 ]
        |
-     5 | VAR_OUTPUT value : REAL; END_VAR
-       |            ^^|^^
-       |              `---- VAR_OUTPUT 'value' cannot be a result of the import: a WIT function returns one value
+     4 | VAR_OUTPUT x__y : INT; a_b : INT; ab : INT; Sample : REAL; END_VAR
+       |            ^^|^
+       |              `--- 'x__y' has no WIT name
        |
-       | Note: an {extern} FUNCTION from a module other than WASI's returns its return value only
+       | Note: a parameter's WIT name is its name in lowercase with each '_' written '-', and a WIT name has no empty word and no letter outside ASCII
+    ---'
+    [E1512] Error: import name not a WIT name
+       ,-[ file:///test0.st:4:35 ]
+       |
+     4 | VAR_OUTPUT x__y : INT; a_b : INT; ab : INT; Sample : REAL; END_VAR
+       |                        ^|^        ^|
+       |                         `------------- 'a_b' is declared here
+       |                                    |
+       |                                    `-- 'ab' cannot be told from 'a_b' in WIT
+       |
+       | Note: the component model compares two names without their '-'
+    ---'
+    [E1512] Error: import name not a WIT name
+       ,-[ file:///test0.st:4:45 ]
+       |
+     3 | FUNCTION ReadSample : INT
+       |          ^^^^^|^^^^
+       |               `------ 'ReadSample' is declared here
+     4 | VAR_OUTPUT x__y : INT; a_b : INT; ab : INT; Sample : REAL; END_VAR
+       |                                             ^^^|^^
+       |                                                `---- 'Sample' cannot be told from the return value 'sample' in WIT
+       |
+       | Help: rename the VAR_OUTPUT
+       |
+       | Note: an {extern} FUNCTION returns its VAR_OUTPUTs and its return value as one record, the return value named as the import is
     ---'
     ");
 }
@@ -1136,10 +1223,10 @@ END_NAMESPACE
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
 }
 
-/// A WIT function returns one value and takes values: an export has no
-/// VAR_OUTPUT and no VAR_IN_OUT.
+/// A host passes values: an export has no VAR_IN_OUT. Its VAR_OUTPUTs are
+/// fields of the record it returns.
 #[rstest]
-fn invalid_export_output_and_in_out(mut with_db: RootDatabase) {
+fn invalid_export_in_out(mut with_db: RootDatabase) {
     let source = r#"
 {export}
 FUNCTION Scale : REAL
@@ -1159,15 +1246,140 @@ END_FUNCTION
        |
        | Note: an {export} FUNCTION takes scalars and STRINGs, as VAR_INPUT
     ---'
+    ");
+}
+
+/// An export returns a record of scalars and STRINGs: a STRUCT, an ARRAY,
+/// an instance or a reference output is refused, and a STRING is not.
+#[rstest]
+fn invalid_export_aggregate_output(mut with_db: RootDatabase) {
+    let source = r#"
+TYPE Pt : STRUCT x : INT; y : INT; END_STRUCT; END_TYPE
+
+FUNCTION_BLOCK Counter
+VAR count : INT; END_VAR
+END_FUNCTION_BLOCK
+
+{export}
+FUNCTION Read : INT
+VAR_OUTPUT
+    p : Pt;
+    a : ARRAY[0..3] OF BYTE;
+    c : Counter;
+    r : REF_TO INT;
+    text : STRING[12];
+END_VAR
+    Read := 0;
+END_FUNCTION
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
     [E1509] Error: FUNCTION not exportable
-       ,-[ file:///test0.st:6:12 ]
+        ,-[ file:///test0.st:11:5 ]
+        |
+     11 |     p : Pt;
+        |     |
+        |     `-- VAR_OUTPUT 'p' cannot be a field of the export's result: only a scalar or a STRING can
+        |
+        | Note: an {export} FUNCTION returns its VAR_OUTPUTs and its return value as one record of scalars and STRINGs
+    ----'
+    [E1509] Error: FUNCTION not exportable
+        ,-[ file:///test0.st:12:5 ]
+        |
+     12 |     a : ARRAY[0..3] OF BYTE;
+        |     |
+        |     `-- VAR_OUTPUT 'a' cannot be a field of the export's result: only a scalar or a STRING can
+        |
+        | Note: an {export} FUNCTION returns its VAR_OUTPUTs and its return value as one record of scalars and STRINGs
+    ----'
+    [E1509] Error: FUNCTION not exportable
+        ,-[ file:///test0.st:13:5 ]
+        |
+     13 |     c : Counter;
+        |     |
+        |     `-- VAR_OUTPUT 'c' cannot be a field of the export's result: only a scalar or a STRING can
+        |
+        | Note: an {export} FUNCTION returns its VAR_OUTPUTs and its return value as one record of scalars and STRINGs
+    ----'
+    [E1509] Error: FUNCTION not exportable
+        ,-[ file:///test0.st:14:5 ]
+        |
+     14 |     r : REF_TO INT;
+        |     |
+        |     `-- VAR_OUTPUT 'r' cannot be a field of the export's result: only a scalar or a STRING can
+        |
+        | Note: an {export} FUNCTION returns its VAR_OUTPUTs and its return value as one record of scalars and STRINGs
+    ----'
+    ");
+}
+
+/// The VAR_OUTPUTs of an export are named in WIT as an import's are: the
+/// return value is the field named as the export is, `level` below.
+#[rstest]
+fn invalid_export_output_names(mut with_db: RootDatabase) {
+    let source = r#"
+{export 'level'}
+FUNCTION Read : INT
+VAR_OUTPUT x__y : INT; a_b : INT; ab : INT; Level : REAL; END_VAR
+    Read := 0;
+END_FUNCTION
+
+NAMESPACE Tank
+    {export}
+    FUNCTION Fill : INT
+    VAR_OUTPUT tank_fill : BOOL; END_VAR
+        Fill := 0;
+    END_FUNCTION
+END_NAMESPACE
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1513] Error: export name not a WIT name
+       ,-[ file:///test0.st:4:12 ]
        |
-     6 | VAR_OUTPUT clamped : BOOL; END_VAR
-       |            ^^^|^^^
-       |               `----- VAR_OUTPUT 'clamped' cannot be a result of the export: a WIT function returns one value
+     4 | VAR_OUTPUT x__y : INT; a_b : INT; ab : INT; Level : REAL; END_VAR
+       |            ^^|^
+       |              `--- 'x__y' has no WIT name
        |
-       | Note: an {export} FUNCTION returns its return value only
+       | Note: a parameter's WIT name is its name in lowercase with each '_' written '-', and a WIT name has no empty word and no letter outside ASCII
     ---'
+    [E1513] Error: export name not a WIT name
+       ,-[ file:///test0.st:4:35 ]
+       |
+     4 | VAR_OUTPUT x__y : INT; a_b : INT; ab : INT; Level : REAL; END_VAR
+       |                        ^|^        ^|
+       |                         `------------- 'a_b' is declared here
+       |                                    |
+       |                                    `-- 'ab' cannot be told from 'a_b' in WIT
+       |
+       | Note: the component model compares two names without their '-'
+    ---'
+    [E1513] Error: export name not a WIT name
+       ,-[ file:///test0.st:4:45 ]
+       |
+     3 | FUNCTION Read : INT
+       |          ^^|^
+       |            `--- 'Read' is declared here
+     4 | VAR_OUTPUT x__y : INT; a_b : INT; ab : INT; Level : REAL; END_VAR
+       |                                             ^^|^^
+       |                                               `---- 'Level' cannot be told from the return value 'level' in WIT
+       |
+       | Help: rename the VAR_OUTPUT
+       |
+       | Note: an {export} FUNCTION returns its VAR_OUTPUTs and its return value as one record, the return value named as the export is
+    ---'
+    [E1513] Error: export name not a WIT name
+        ,-[ file:///test0.st:11:16 ]
+        |
+     10 |     FUNCTION Fill : INT
+        |              ^^|^
+        |                `--- 'Fill' is declared here
+     11 |     VAR_OUTPUT tank_fill : BOOL; END_VAR
+        |                ^^^^|^^^^
+        |                    `------ 'tank_fill' cannot be told from the return value 'tank-fill' in WIT
+        |
+        | Help: rename the VAR_OUTPUT
+        |
+        | Note: an {export} FUNCTION returns its VAR_OUTPUTs and its return value as one record, the return value named as the export is
+    ----'
     ");
 }
 
