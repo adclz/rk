@@ -4,26 +4,16 @@
 //! `rk test`: what a test wrote to the standard output and error, kept and
 //! shown with the test when it fails.
 
-use crate::tests::codegen::{compile_tests, with_db};
+use crate::tests::codegen::{STD_CONSOLE, compile_tests_with_libraries, with_db};
 use debug_format::test_report::TestRecord;
 use rstest::rstest;
 
-/// The two writes, as `Std.Console` declares them.
-const WRITES: &str = r#"
-    FUNCTION Say : BOOL
-    VAR_INPUT IN : STRING[4096]; END_VAR
-        {wasm 'rk.stdout_write' (params IN) (result Say)}
-    END_FUNCTION
-
-    FUNCTION Warn : BOOL
-    VAR_INPUT IN : STRING[4096]; END_VAR
-        {wasm 'rk.stderr_write' (params IN) (result Warn)}
-    END_FUNCTION
-"#;
-
-/// The records of `source`'s tests, run as `rk test` runs them.
+/// The records of `source`'s tests, run as `rk test` runs them, with
+/// `Std.Console` to write with. A test, which runs once, writes through
+/// blocks held in a VAR_GLOBAL: a FUNCTION holds none (E1515), and the host
+/// takes what each writes within the call.
 fn run(db: &mut db::RootDatabase, source: &str) -> Vec<TestRecord> {
-    let build = compile_tests(db, source);
+    let build = compile_tests_with_libraries(db, STD_CONSOLE, source);
     rk::test_host::run_each(&build.component, None, None, |_| {}).expect("the tests run")
 }
 
@@ -39,30 +29,35 @@ fn record<'a>(records: &'a [TestRecord], name: &str) -> &'a TestRecord {
 /// that passes keeps quiet, whatever it wrote.
 #[rstest]
 fn a_failure_carries_what_the_test_wrote(mut with_db: db::RootDatabase) {
-    let source = format!(
-        r#"{WRITES}
-        {{test}}
+    let source = r#"
+        USING Std.Console;
+
+        CONFIGURATION Plant
+        VAR_GLOBAL out : STDOUT; err : STDERR; END_VAR
+        END_CONFIGURATION
+
+        {test}
         FUNCTION test_fails
-        VAR written : BOOL; END_VAR
-            written := Say('reading the sensor$N');
-            written := Warn('pressure is high$N');
-            written := Say('giving up$N');
+        VAR_EXTERNAL out : STDOUT; err : STDERR; END_VAR
+            out(REQ := TRUE, IN := 'reading the sensor$N');
+            err(REQ := TRUE, IN := 'pressure is high$N');
+            out(REQ := FALSE, IN := '');
+            out(REQ := TRUE, IN := 'giving up$N');
             __RAISE('pressure over 3 bar');     // raises
         END_FUNCTION
 
-        {{test}}
+        {test}
         FUNCTION test_passes
-        VAR written : BOOL; END_VAR
-            written := Say('all good$N');
+        VAR_EXTERNAL out : STDOUT; END_VAR
+            out(REQ := TRUE, IN := 'all good$N');
         END_FUNCTION
 
-        {{test}}
+        {test}
         FUNCTION test_fails_quietly
             __RAISE('nothing written');
         END_FUNCTION
-    "#
-    );
-    let records = run(&mut with_db, &source);
+    "#;
+    let records = run(&mut with_db, source);
     let failed = record(&records, "test_fails");
     assert_eq!(failed.reason.as_deref(), Some("pressure over 3 bar"));
     assert_eq!(
@@ -88,12 +83,20 @@ fn a_failure_carries_what_the_test_wrote(mut with_db: db::RootDatabase) {
 #[rstest]
 fn a_test_keeps_the_first_64_kib_it_writes(mut with_db: db::RootDatabase) {
     let source = format!(
-        r#"{WRITES}
+        r#"
+        USING Std.Console;
+
+        CONFIGURATION Plant
+        VAR_GLOBAL out : STDOUT; END_VAR
+        END_CONFIGURATION
+
         {{test}}
         FUNCTION test_floods
-        VAR i : INT; written : BOOL; END_VAR
+        VAR i : INT; END_VAR
+        VAR_EXTERNAL out : STDOUT; END_VAR
             FOR i := 1 TO 700 DO
-                written := Say('{}$N');
+                out(REQ := TRUE, IN := '{}$N');
+                out(REQ := FALSE, IN := '');
             END_FOR;
             __RAISE('flooded');
         END_FUNCTION
