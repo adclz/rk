@@ -5,6 +5,7 @@ pub mod cli;
 pub mod commands;
 pub mod compiler;
 pub mod component;
+pub mod control;
 pub mod diagnostics;
 pub mod duration;
 pub mod error;

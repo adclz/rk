@@ -26,6 +26,7 @@ use std::ops::Range;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+use crate::control::TestError;
 use anyhow::{Context, Result};
 use debug_format::DebugInfo;
 use debug_format::test_manifest::{TEST_MANIFEST_SECTION, TestEntry, TestManifest};
@@ -610,8 +611,8 @@ fn run_test(
         .get_typed_func::<(), (std::result::Result<(), String>,)>(&mut store, &init)
         .ctx("`init` must be a func() -> result<_, string>")?;
     let run_test = instance
-        .get_typed_func::<(u32,), (std::result::Result<(), String>,)>(&mut store, &run_test)
-        .ctx("`run-test` must be a func(u32) -> result<_, string>")?;
+        .get_typed_func::<(u32,), (std::result::Result<(), TestError>,)>(&mut store, &run_test)
+        .ctx("`run-test` must be a func(u32) -> result<_, test-error>")?;
 
     store.set_epoch_deadline(ticks(budget));
     match init.call(&mut store, ()) {
@@ -632,9 +633,13 @@ fn run_test(
     store.set_epoch_deadline(ticks(budget));
     Ok(match run_test.call(&mut store, (place,)) {
         Ok((Ok(()),)) => Outcome::passed(),
-        Ok((Err(message),)) => {
+        Ok((Err(TestError::Failed(message)),)) => {
             let stack = store.data_mut().raised.take();
             Outcome::raised(message, stack, module)
+        }
+        // The manifest's own place: only a release build answers this.
+        Ok((Err(TestError::NoSuchTest),)) => {
+            Outcome::raised("no such test".to_string(), None, module)
         }
         Err(e) => {
             let reason = format!("trapped: {}", stopped(&e, budget));
