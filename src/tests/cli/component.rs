@@ -1809,6 +1809,91 @@ fn a_block_starts_its_call_and_checks_it_at_each_scan(mut with_db: db::RootDatab
     assert_eq!(plc.scan(0).unwrap()[0], before + 2);
 }
 
+/// FUNCTIONs that move a block they do not hold: the PROGRAM's, handed as
+/// VAR_IN_OUT, and a global's, reached through VAR_EXTERNAL.
+const HANDED: &str = r#"
+    {extern async 'wasi:clocks/monotonic-clock@0.3.0' 'wait-for'}
+    FUNCTION_BLOCK WAIT_FOR
+    VAR_INPUT how_long : LTIME; END_VAR
+    VAR_OUTPUT DONE : BOOL; END_VAR
+    END_FUNCTION_BLOCK
+
+    FUNCTION Step : BOOL
+    VAR_IN_OUT wait : WAIT_FOR; END_VAR
+        wait(how_long := LT#5ms);
+        Step := wait.DONE;
+    END_FUNCTION
+
+    FUNCTION StepShared : BOOL
+    VAR_EXTERNAL shared : WAIT_FOR; END_VAR
+        shared(how_long := LT#7ms);
+        StepShared := shared.DONE;
+    END_FUNCTION
+
+    PROGRAM P
+    VAR_EXTERNAL mine_done : DINT; shared_done : DINT; END_VAR
+    VAR mine : WAIT_FOR; END_VAR
+        IF Step(wait := mine) THEN
+            mine_done := mine_done + 1;
+        END_IF;
+        IF StepShared() THEN
+            shared_done := shared_done + 1;
+        END_IF;
+    END_PROGRAM
+
+    CONFIGURATION Cfg
+    VAR_GLOBAL
+        shared : WAIT_FOR;
+        mine_done AT %QD0 : DINT;
+        shared_done AT %QD4 : DINT;
+    END_VAR
+        RESOURCE Res ON CPU
+            TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+            PROGRAM Main WITH T : P;
+        END_RESOURCE
+    END_CONFIGURATION
+"#;
+
+/// A FUNCTION moves a block one step per call wherever the block lives: the
+/// call is in the block's instance, not in the FUNCTION's frame, so it
+/// starts in one scan and finishes at a later one, as when the PROGRAM calls
+/// the block itself.
+#[rstest]
+fn a_function_moves_a_block_it_does_not_hold(mut with_db: db::RootDatabase) {
+    let component = build(&mut with_db, HANDED).expect("the module wraps");
+    let gate = std::sync::Arc::new(Gate::default());
+    let asked = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let (host, seen) = (gate.clone(), asked.clone());
+    let mut plc = AsyncPlc::load_with(&component.bytes, move |linker| {
+        let mut clock = linker
+            .instance("wasi:clocks/monotonic-clock@0.3.0")
+            .unwrap();
+        clock
+            .func_wrap_concurrent("wait-for", move |_, (how_long,): (u64,)| {
+                seen.lock().unwrap().push(how_long);
+                Gate::wait(host.clone(), ())
+            })
+            .unwrap();
+    });
+    plc.init().unwrap();
+    for _ in 0..3 {
+        assert_eq!(plc.scan(0), Ok(vec![0, 0]), "the host has not finished");
+    }
+    assert_eq!(
+        *asked.lock().unwrap(),
+        [5_000_000, 7_000_000],
+        "one call each, from its own block"
+    );
+    gate.open();
+    let finished = (0..3).map(|_| plc.scan(0).unwrap()).last().unwrap();
+    assert!(
+        finished[0] >= 1 && finished[1] >= 1,
+        "both calls finished, each in its block: {finished:?}"
+    );
+    // The host now finishes each call at once: DONE in every scan.
+    assert_eq!(plc.scan(0).unwrap(), vec![finished[0] + 1, finished[1] + 1]);
+}
+
 /// What `fetch` returns: the fields of its result, its DONE left out.
 #[derive(
     Clone,
