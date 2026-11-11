@@ -224,6 +224,48 @@ A record of scalars comes back in `VAR_OUTPUT`, one for each of its fields in th
 A `REF_TO` input is an address, where a record can come back too.
 A STRUCT, an ARRAY or an instance input is refused (`E1502`): it would go as an address into rk's own layout, which no WASI function reads.
 
+A host function WIT declares an `async func` is imported by a FUNCTION_BLOCK, with `{extern async 'module' 'name'}`.
+A scan never waits for it: each call of the block takes the call one step, starting it when none is running and checking it otherwise.
+
+```st
+{extern async 'wasi:clocks/monotonic-clock@0.3.0' 'wait-for'}
+FUNCTION_BLOCK WAIT_FOR
+	VAR_INPUT
+		how_long: LTIME;
+	END_VAR
+	VAR_OUTPUT
+		DONE: BOOL;
+	END_VAR
+END_FUNCTION_BLOCK
+
+PROGRAM Main
+	VAR
+		wait: WAIT_FOR;
+		ticks: DINT;
+	END_VAR
+	wait(how_long := LT#100ms);
+	IF wait.DONE THEN
+		ticks := ticks + 1;
+	END_IF;
+END_PROGRAM
+```
+
+- The block's `VAR_INPUT` are the call's parameters, read when the call starts.
+- Its `DONE : BOOL` is its own and no part of the function's signature (`E1514`). It is TRUE in the call of the block that saw the call finish, and FALSE in every other.
+- Its other `VAR_OUTPUT` are the fields of the result, written when the call finishes, as an `{extern}` FUNCTION's are.
+- A block that is not called leaves its call running, and the next call of the block sees it finish before it starts another.
+
+The host writes the result into the block's instance at a later scan, so the instance lives in a PROGRAM, a FUNCTION_BLOCK or a VAR_GLOBAL, never in a FUNCTION's or a METHOD's variables or a VAR_TEMP (`E1515`).
+REQ, BUSY or any other control a block's users need is written in ST, by a block that calls it.
+A call that has started cannot be cancelled: the component model's cancel needs a flag wasmtime has off by default.
+
+The declaration says the function is async, and the build checks it against WASI's WIT: `{extern async}` names an `async func`, and a plain `{extern}` a `func`, whose call a scan cannot wait for.
+For a host's own module, the WIT rk writes declares an `async func`, its result the record of the block's `VAR_OUTPUT` but `DONE`.
+
+In the core module, the block's call is the import lowered async, `[async-lower]wait-for`: the parameters, or past 4 values the address of a tuple of them, then the address the result is written at, and a word back, the call's state and handle.
+The block checks the call with the component model's built-ins, imported from `$root`: `[waitable-set-new]`, `[waitable-join]`, `[waitable-set-poll]`, which never waits, and `[subtask-drop]`.
+A host that implements an async function asynchronously runs the component through wasmtime's async API, `instantiate_async` and `call_async`; the control interface's functions stay synchronous.
+
 The clocks a module imports are WASI 0.3's, in their core forms, and the host provides them:
 
 | Import | Signature | What it does |

@@ -136,6 +136,13 @@ Putting `{extern}` on anything other than a `FUNCTION` is E1501.
 
 A WASI import keeps the types WASI's WIT gives it, in their core form: a record of scalars comes back in `VAR_OUTPUT`, one for each field in order, as `Std.Timers` reads the system clock, and a `REF_TO` input is an address where a record can come back too.
 
+A function WIT declares an `async func` is imported by a FUNCTION_BLOCK, with `{extern async 'module' 'name'}`; `{extern async}` on a FUNCTION, and `{extern}` without `async` on a FUNCTION_BLOCK, are E1501.
+Each call of the block takes the call one step: it starts the call when none is running and checks it otherwise, never waiting.
+The block declares `DONE : BOOL` in VAR_OUTPUT (E1514), TRUE in the call that saw the call finish; DONE is the block's own and no part of the signature, its other VAR_OUTPUTs are the result's fields, and its VAR_INPUTs the parameters, read when the call starts.
+Its instance lives in a PROGRAM, a FUNCTION_BLOCK or a VAR_GLOBAL, never in a FUNCTION's or METHOD's variables or a VAR_TEMP (E1515): the host writes the result into it at a later scan.
+REQ and BUSY, where a block's users need them, are written in ST by a block that calls it.
+The build checks a WASI import against WASI's WIT: `{extern async}` names an `async func`, and `{extern}` a `func`.
+
 ### `{allow 'rule-name' ...}`
 
 Silences the named lint rules at one site: above a POU or METHOD, the whole POU; as a statement, the NEXT statement (nested bodies included).

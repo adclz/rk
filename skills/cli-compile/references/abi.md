@@ -82,5 +82,6 @@ A host import declared with `{extern 'module' 'name'}` takes its `VAR_INPUT` as 
 Its module and name are written as WIT writes them (`'modbus' 'read-coils'`, `'acme:modbus/rtu@1.0.0'`), never converted (`E1512`).
 An import from a module other than WASI's is typed in WIT from its declaration, in the `wit/` folder beside the component: scalars and `STRING` inputs only, 16 values at most, scalar outputs, and no `REF_TO` (`E1502`).
 In the core module, a record of two fields or more is written by the host at an address the call passes last, laid out by the canonical ABI; a record of one field is that field.
+A FUNCTION_BLOCK declared `{extern async 'module' 'name'}` imports an `async func`: each call of the block starts the call or checks it, never waiting, and its `DONE : BOOL` output, no part of the signature, is TRUE in the call that saw it finish (`E1514`). The import is lowered async (`[async-lower]name`) and checked with the component model's built-ins from `$root`; a host implementing it asynchronously uses wasmtime's async API.
 Each call checks a `STRING` for UTF-8 and a `CHAR` for a character before the host is called, and raises when one is not.
 The `programming-st` skill's `references/pragmas.md` has the full contract.
