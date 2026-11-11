@@ -20,6 +20,15 @@ use ide_diagnostic::IdeDiagnostic;
 use ide_diagnostic::Related;
 use ide_diagnostic::diag;
 
+/// What an async import's FUNCTION_BLOCK declares besides its VAR_INPUTs and
+/// VAR_OUTPUTs (E1502).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, salsa::Update)]
+pub enum ImportMember {
+    Method,
+    Extends,
+    Implements,
+}
+
 /// Which declaration section an `{extern}` FUNCTION cannot carry, and why.
 /// One code (E1502), one message shape each — the fix differs per case.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, salsa::Update)]
@@ -266,6 +275,14 @@ pub enum PragmaError<'db> {
         site: CallSite<'db>,
         pou_kind: &'static str,
     },
+    /// An async import, an `{extern async}` FUNCTION_BLOCK, with a METHOD, a
+    /// base or an INTERFACE, anchored at the METHOD's name or at the type
+    /// named: the block is its call, and a METHOD, a base's body or an
+    /// INTERFACE's METHODs would be code of the import the host has not.
+    ExternBlockMember {
+        span: tree_sitter::Range,
+        member: ImportMember,
+    },
     /// An `{extern}` pragma whose `async` does not fit its POU: a FUNCTION's
     /// call returns before the scan goes on, and an async call is held by a
     /// FUNCTION_BLOCK's instance from one scan to the next. `block`: the POU
@@ -433,7 +450,7 @@ impl<'db> ErrorCode for PragmaError<'db> {
             Self::ExternOutsideFunction { .. } | Self::ExternAsync { .. } => "E1501",
             Self::ExternForbiddenSection { .. } => "E1502",
             Self::ExternNonScalarReturn { .. } => "E1502",
-            Self::ExternWithBody { .. } => "E1502",
+            Self::ExternWithBody { .. } | Self::ExternBlockMember { .. } => "E1502",
             Self::DoneOutput { .. } => "E1514",
             Self::AsyncImportInFrame { .. } => "E1515",
             Self::ExternModuleName { .. }
@@ -515,6 +532,33 @@ impl<'db> ToIdeDiagnostic<'db> for PragmaError<'db> {
                 diag.with_note(format!(
                     "an {{extern}} {pou_kind} is an import: the host has its body"
                 ));
+                diag
+            }
+            Self::ExternBlockMember { span, member } => {
+                let (message, help) = match member {
+                    ImportMember::Method => (
+                        "an extern FUNCTION_BLOCK has no METHOD",
+                        "declare the METHOD in a FUNCTION_BLOCK that holds the import",
+                    ),
+                    ImportMember::Extends => (
+                        "an extern FUNCTION_BLOCK extends nothing",
+                        "extend the base in a FUNCTION_BLOCK that holds the import",
+                    ),
+                    ImportMember::Implements => (
+                        "an extern FUNCTION_BLOCK implements no INTERFACE",
+                        "implement the INTERFACE in a FUNCTION_BLOCK that holds the import",
+                    ),
+                };
+                let mut diag = diag()
+                    .message(message.to_string())
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, span).unwrap_or_default())
+                    .call();
+                diag.with_note(
+                    "an {extern} FUNCTION_BLOCK is an import: the host has its body".to_string(),
+                );
+                diag.with_help(help.to_string());
                 diag
             }
             Self::ExternModuleName { module, span, why } => {

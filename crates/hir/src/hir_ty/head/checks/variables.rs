@@ -431,6 +431,32 @@ impl<'db> InitInference<'db> {
                 .to_diagnostic(db, self.scope.file(db)),
             );
         }
+        // An async import's block is its call, nothing more: a METHOD, a
+        // base or an INTERFACE would be code the host has not.
+        if let Some((fb, _)) = extern_block {
+            use crate::check::errors::e15_pragma::ImportMember;
+            let members = fb
+                .extends(db)
+                .iter()
+                .map(|base| (base.get_span(db), ImportMember::Extends))
+                .chain(
+                    fb.implements(db)
+                        .iter()
+                        .map(|itf| (itf.get_span(db), ImportMember::Implements)),
+                )
+                .chain(
+                    fb.methods(db)
+                        .iter()
+                        .map(|method| (method.get_name_span(db), ImportMember::Method)),
+                )
+                .collect::<Vec<_>>();
+            for (span, member) in members {
+                self.errors.push(
+                    PragmaError::ExternBlockMember { span, member }
+                        .to_diagnostic(db, self.scope.file(db)),
+                );
+            }
+        }
         // The return type is the import's LAST result, so it answers to the
         // same scalar rule as VAR_OUTPUT. Checking only the sections left the
         // one aggregate an extern can still name — a STRING or STRUCT return —
@@ -748,8 +774,14 @@ impl<'db> InitInference<'db> {
             }
             // The host writes an async call's result into its instance when
             // it finishes, at a later scan: an instance in a call's frame is
-            // gone by then (E1515).
+            // gone by then (E1515). A VAR_IN_OUT is the caller's instance and
+            // a VAR_EXTERNAL a global's: neither is in the frame.
             let frame = match (stateless_pou, var.kind(db)) {
+                (
+                    _,
+                    crate::hir_def::pous::variable::VariableKind::InOut
+                    | crate::hir_def::pous::variable::VariableKind::External,
+                ) => None,
                 (Some("METHOD prototype"), _) => None,
                 (Some(pou), _) => Some(pou),
                 (None, crate::hir_def::pous::variable::VariableKind::Temp) => Some("VAR_TEMP"),
