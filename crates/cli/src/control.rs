@@ -43,6 +43,21 @@ pub enum MemoryError {
     OutsideVariables,
 }
 
+/// `test-state`: where a test stands after a call of `run-test`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ComponentType, Lift, Lower)]
+#[component(enum)]
+#[repr(u8)]
+pub enum TestState {
+    /// It passed: a test FUNCTION when it returns, a test FUNCTION_BLOCK
+    /// when a cycle leaves its `DONE` TRUE.
+    #[component(name = "passed")]
+    Passed,
+    /// A test FUNCTION_BLOCK whose `DONE` is still FALSE: the next call runs
+    /// its next cycle.
+    #[component(name = "running")]
+    Running,
+}
+
 /// `test-error`: why a test did not pass.
 #[derive(Debug, Clone, PartialEq, Eq, ComponentType, Lift, Lower)]
 #[component(variant)]

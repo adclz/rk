@@ -1,10 +1,12 @@
 // SPDX-FileCopyrightText: 2026 Clauzel Adrien
 // SPDX-License-Identifier: AGPL-3.0-only
 
-//! Running a component's `{test}` functions in-process on a wasmtime host,
-//! as `rk test` does: through its control interface, `init` and then
-//! `run-test` with the test's place in the manifest, each a
-//! `result<_, string>`, with WASI's clocks and standard output and error.
+//! Running a component's tests in-process on a wasmtime host, as `rk test`
+//! does: through its control interface, `init` and then `run-test` with the
+//! test's place in the manifest, with WASI's clocks and standard output and
+//! error. A test FUNCTION runs in one call. A test FUNCTION_BLOCK runs a
+//! cycle per call, until a cycle leaves its DONE TRUE or the test's budget
+//! is spent.
 //! Each test gets a fresh instance, since a test mutates the same statics a
 //! program does.
 //!
@@ -26,7 +28,7 @@ use std::ops::Range;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use crate::control::TestError;
+use crate::control::{TestError, TestState};
 use anyhow::{Context, Result};
 use debug_format::DebugInfo;
 use debug_format::test_manifest::{TEST_MANIFEST_SECTION, TestEntry, TestManifest};
@@ -177,6 +179,15 @@ impl Outcome {
     fn passed() -> Self {
         Outcome {
             reason: None,
+            stack: Vec::new(),
+            output: String::new(),
+        }
+    }
+
+    /// A failure with no calls in progress to show.
+    fn failed(reason: String) -> Self {
+        Outcome {
+            reason: Some(reason),
             stack: Vec::new(),
             output: String::new(),
         }
@@ -579,7 +590,8 @@ fn link_component(
 }
 
 /// One test on a fresh instance of the component: `init`, then `run-test`
-/// with the test's `place` in the manifest, its outputs written to `stdio`.
+/// with the test's `place` in the manifest, once for a test FUNCTION and
+/// once per cycle for a test FUNCTION_BLOCK, its outputs written to `stdio`.
 /// A raise comes back as the error of a result, placed where the module
 /// last said it raised, a trap as the call's error, with its backtrace:
 /// both in the core module at `module` in the component.
@@ -627,8 +639,10 @@ async fn run_test(
         .get_typed_func::<(), (std::result::Result<(), String>,)>(&mut store, &init)
         .ctx("`init` must be a func() -> result<_, string>")?;
     let run_test = instance
-        .get_typed_func::<(u32,), (std::result::Result<(), TestError>,)>(&mut store, &run_test)
-        .ctx("`run-test` must be a func(u32) -> result<_, test-error>")?;
+        .get_typed_func::<(u32,), (std::result::Result<TestState, TestError>,)>(
+            &mut store, &run_test,
+        )
+        .ctx("`run-test` must be a func(u32) -> result<test-state, test-error>")?;
 
     store.set_epoch_deadline(ticks(budget));
     match init.call_async(&mut store, ()).await {
@@ -646,22 +660,39 @@ async fn run_test(
             return Ok(Outcome::trapped_in(reason, &e, module));
         }
     }
-    store.set_epoch_deadline(ticks(budget));
-    Ok(match run_test.call_async(&mut store, (place,)).await {
-        Ok((Ok(()),)) => Outcome::passed(),
-        Ok((Err(TestError::Failed(message)),)) => {
-            let stack = store.data_mut().raised.take();
-            Outcome::raised(message, stack, module)
+    // A test FUNCTION passes in one call. A test FUNCTION_BLOCK runs a cycle
+    // a call, `running` until one leaves its DONE TRUE: each call has the
+    // budget to return, and the test has it to pass.
+    let start = Instant::now();
+    let mut cycles: u64 = 0;
+    let outcome = loop {
+        store.set_epoch_deadline(ticks(budget));
+        match run_test.call_async(&mut store, (place,)).await {
+            Ok((Ok(TestState::Passed),)) => break Outcome::passed(),
+            Ok((Ok(TestState::Running),)) => {
+                cycles += 1;
+                if start.elapsed() >= budget {
+                    break Outcome::failed(format!(
+                        "the watchdog stopped it after {}: DONE was still FALSE after {cycles} cycles",
+                        describe(budget)
+                    ));
+                }
+            }
+            Ok((Err(TestError::Failed(message)),)) => {
+                let stack = store.data_mut().raised.take();
+                break Outcome::raised(message, stack, module);
+            }
+            // The manifest's own place: only a release build answers this.
+            Ok((Err(TestError::NoSuchTest),)) => {
+                break Outcome::raised("no such test".to_string(), None, module);
+            }
+            Err(e) => {
+                let reason = format!("trapped: {}", stopped(&e, budget));
+                break Outcome::trapped_in(reason, &e, module);
+            }
         }
-        // The manifest's own place: only a release build answers this.
-        Ok((Err(TestError::NoSuchTest),)) => {
-            Outcome::raised("no such test".to_string(), None, module)
-        }
-        Err(e) => {
-            let reason = format!("trapped: {}", stopped(&e, budget));
-            Outcome::trapped_in(reason, &e, module)
-        }
-    })
+    };
+    Ok(outcome)
 }
 
 /// Where the core module `component` wraps is in its bytes: rk's own, the
