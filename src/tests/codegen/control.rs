@@ -8,7 +8,7 @@
 use rstest::rstest;
 
 use super::{compile_to_mir_and_wasm, compile_to_wasm, test_engine, with_db};
-use rk::control::{ScanError, TestError};
+use rk::control::{ScanError, TestError, TestState};
 
 const INTERFACE: &str = wasm_codegen::control::INTERFACE;
 
@@ -122,14 +122,23 @@ impl Plc {
             .expect("restore-retain returns");
     }
 
-    fn run_test(&mut self, index: i32) -> Result<(), TestError> {
+    fn run_test(&mut self, index: i32) -> Result<TestState, TestError> {
         let run = self.func::<i32, i32>(&format!("{INTERFACE}#run-test"));
         let at = run.call(&mut self.store, index).expect("run-test returns");
+        // `result<test-state, test-error>`: the tag, and at 4 the state, a
+        // byte, or the error's case.
+        let head = self.read(at as u32, 4 + 1);
+        if head[0] == 0 {
+            return match head[4] {
+                0 => Ok(TestState::Passed),
+                1 => Ok(TestState::Running),
+                other => panic!("no such test state: {other}"),
+            };
+        }
         match self.result(at) {
-            Ok(_) => Ok(()),
             Err((0, Some(message))) => Err(TestError::Failed(message)),
             Err((1, None)) => Err(TestError::NoSuchTest),
-            Err(other) => panic!("no such test error: {other:?}"),
+            other => panic!("no such test error: {other:?}"),
         }
     }
 }
@@ -276,12 +285,16 @@ fn a_test_runs_by_its_place_in_the_manifest(mut with_db: db::RootDatabase) {
         .unwrap() as i32;
 
     let mut plc = Plc::load(&wasm);
-    assert_eq!(plc.run_test(passes), Ok(()));
+    assert_eq!(plc.run_test(passes), Ok(TestState::Passed));
     assert_eq!(
         plc.run_test(first),
         Err(TestError::Failed("first run".to_string()))
     );
-    assert_eq!(plc.run_test(first), Ok(()), "the second run passes");
+    assert_eq!(
+        plc.run_test(first),
+        Ok(TestState::Passed),
+        "the second run passes"
+    );
     assert_eq!(plc.run_test(2), Err(TestError::NoSuchTest));
 }
 
