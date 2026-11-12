@@ -293,53 +293,74 @@ NAMESPACE Std.Console
 		ERROR := output.ERROR;
 	END_FUNCTION_BLOCK
 
-	/* These tests hold a STDOUT, which a test FUNCTION cannot: they come
-	   back once a test can be a block that runs cycle by cycle.
-
 	NAMESPACE Test
 		USING Std.Unit;
 
-		{test async}
-		FUNCTION test_stdout_takes_a_text
+		{test}
+		FUNCTION_BLOCK test_stdout_takes_a_text
+			VAR_OUTPUT
+				DONE: BOOL;
+			END_VAR
 			VAR
 				out: STDOUT;
 			END_VAR
 			out(REQ := TRUE, IN := 'Std.Console writes to stdout$N');
-			ASSERT(out.DONE, 'STDOUT did not write');
-			ASSERT(NOT out.BUSY, 'STDOUT is still busy');
-		END_FUNCTION
+			ASSERT(NOT out.ERROR, 'STDOUT failed');
+			DONE := out.DONE;
+		END_FUNCTION_BLOCK
 
-		{test async}
-		FUNCTION test_stderr_takes_a_text
+		{test}
+		FUNCTION_BLOCK test_stderr_takes_a_text
+			VAR_OUTPUT
+				DONE: BOOL;
+			END_VAR
 			VAR
 				err: STDERR;
 			END_VAR
 			err(REQ := TRUE, IN := 'Std.Console writes to stderr$N');
-			ASSERT(err.DONE, 'STDERR did not write');
-		END_FUNCTION
+			ASSERT(NOT err.ERROR, 'STDERR failed');
+			DONE := err.DONE;
+		END_FUNCTION_BLOCK
 
-		{test async}
-		FUNCTION test_an_empty_text_is_done
+		{test}
+		FUNCTION_BLOCK test_an_empty_text_is_done_at_once
+			VAR_OUTPUT
+				DONE: BOOL;
+			END_VAR
 			VAR
 				out: STDOUT;
 			END_VAR
 			out(REQ := TRUE, IN := '');
-			ASSERT(out.DONE AND NOT out.ERROR, 'an empty text was not done');
-		END_FUNCTION
+			ASSERT(out.DONE AND NOT out.BUSY AND NOT out.ERROR, 'an empty text was not done at once');
+			DONE := TRUE;
+		END_FUNCTION_BLOCK
 
-		{test async}
-		FUNCTION test_each_rising_edge_writes_once
+		{test}
+		FUNCTION_BLOCK test_each_rising_edge_writes_once
+			VAR_OUTPUT
+				DONE: BOOL;
+			END_VAR
 			VAR
 				out: STDOUT;
+				step: INT;
 			END_VAR
-			out(REQ := TRUE, IN := 'one, ');
-			ASSERT(out.DONE, 'the first text was not taken');
-			out(REQ := TRUE, IN := 'not written');
-			ASSERT(NOT out.DONE AND NOT out.BUSY, 'REQ held wrote again');
-			out(REQ := FALSE, IN := '');
-			out(REQ := TRUE, IN := 'two$N');
-			ASSERT(out.DONE, 'the second text was not taken');
-		END_FUNCTION
+			IF step = 0 THEN
+				// The first text, until the host has all of it.
+				out(REQ := TRUE, IN := 'one, ');
+				IF out.DONE THEN
+					step := 1;
+				END_IF;
+			ELSIF step = 1 THEN
+				// REQ held: no second write.
+				out(REQ := TRUE, IN := 'not written');
+				ASSERT(NOT out.DONE AND NOT out.BUSY, 'REQ held wrote again');
+				out(REQ := FALSE, IN := '');
+				step := 2;
+			ELSE
+				// A new edge writes the second text.
+				out(REQ := TRUE, IN := 'two$N');
+				DONE := out.DONE;
+			END_IF;
+		END_FUNCTION_BLOCK
 	END_NAMESPACE
-	*/
 END_NAMESPACE
