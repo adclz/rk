@@ -54,7 +54,7 @@ Variables can still be read and written by name in a release build, because `deb
 
 About half of what a release build saves comes from the dropped tables.
 The other half is the stdlib: only what a host calls is exported (`__init`, the bodies the schedule runs and the `{export}` FUNCTIONs), so Binaryen removes every function nothing calls.
-A release build carries no test either: the `{test}` functions are compiled, so the layout does not move, but they are not exported and the `test-manifest` section is left out.
+A release build carries no test either: the tests are compiled, so the layout does not move, but they are not exported and the `test-manifest` section is left out.
 `rk test` always builds the debug module, and `rk test -O` optimizes that one.
 
 ## wasm-opt

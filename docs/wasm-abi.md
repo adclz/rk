@@ -14,12 +14,13 @@ interface control {
     restore-retain: func(retained: list<u8>);
     read-memory: func(ranges: list<range>) -> result<list<u8>, memory-error>;
     write-memory: func(address: u32, bytes: list<u8>) -> result<_, memory-error>;
-    run-test: func(test: u32) -> result<_, test-error>;
+    run-test: func(test: u32) -> result<test-state, test-error>;
 
     variant scan-error { raised(string), no-such-task }
     record range { address: u32, size: u32 }
     variant memory-error { outside-memory(u32), too-large, outside-variables }
     variant test-error { failed(string), no-such-test }
+    enum test-state { passed, running }
 }
 ```
 
@@ -27,7 +28,7 @@ interface control {
 - `save-retain` gives the retain area, to keep across a power cycle, and `restore-retain` gives it back after `init` on a warm start.
 - `run-task` runs the task at that place in the `rk.schedule` section: `inputs` is copied into the input area, each program instance of the task runs, and the output area comes back. A host calls it for each task the section says is due, in the order the section lists them. The `located-map` section says where each address is in the two lists.
 - `read-memory` reads ranges of the memory between two scans, and `write-memory` forces bytes into the variables, at the addresses the `debug-symbols` section gives. Writing anywhere but the variables is refused.
-- `run-test` runs the test at that place in the `test-manifest` section. A release build has none.
+- `run-test` runs the test at that place in the `test-manifest` section: a test FUNCTION whole, `passed` when it returns, or one cycle of a test FUNCTION_BLOCK, `running` until a cycle leaves its `DONE` TRUE. The block keeps its instance from one call to the next, and a host calls it again for its next cycle. A release build has no test.
 
 No function of the interface waits.
 An exception never leaves the component, where it would be a trap that stops the whole PLC: it comes back as the error of the result, `raised` with its message for a scan.
@@ -48,6 +49,7 @@ core module                         one for the workspace
 │  ├─ Filter$__body__               a function block a task runs
 │  ├─ Scale                         a FUNCTION marked {export}
 │  ├─ test_scale                    a {test}, in the debug profile only
+│  ├─ test_valve$__test__           a {test} FUNCTION_BLOCK, a cycle per call
 │  ├─ memory                        the module's own memory
 │  └─ input_base, input_size        each band, see Memory bands
 ├─ INTERNAL                         what only the module calls

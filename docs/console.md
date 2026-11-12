@@ -41,7 +41,8 @@ Two blocks hand the host two streams: each text comes out in its order, but a te
 
 ## In a test
 
-A test FUNCTION holds no block (`E1515`): it writes through blocks declared in a `VAR_GLOBAL`, which a host that is ready takes within the call.
+A test FUNCTION_BLOCK holds its own blocks, and runs cycle by cycle until its `DONE`: it can wait for a block's `DONE` as a program does.
+A test FUNCTION holds none (`E1515`): it writes through blocks declared in a `VAR_GLOBAL`, which a host that is ready takes within the call.
 `rk test` keeps what a test writes, and shows it under the test when it fails, see [Tests](tests.md).
 
 ## For a host

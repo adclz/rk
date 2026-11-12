@@ -5,7 +5,8 @@ Anything else in braces is a syntax error, so `{attribute '…'}` and similar an
 
 `{test}` marks a `FUNCTION` as a test entry point for `rk test`.
 The runner calls it with no arguments, so it has no `VAR_INPUT`, `VAR_OUTPUT` or `VAR_IN_OUT` (E1511).
-Not valid on other POU kinds.
+On a `FUNCTION_BLOCK` it marks a test that runs once per cycle, on an instance of its own, until a cycle leaves its `DONE` output TRUE: the block declares `DONE : BOOL` in `VAR_OUTPUT` (E1517), and no `VAR_INPUT` or `VAR_IN_OUT` (E1511).
+Not valid on other POU kinds (E1503).
 
 `{once}` marks a `FUNCTION`, `FUNCTION_BLOCK` or `METHOD` that should be called at most once per body.
 
