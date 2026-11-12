@@ -1831,12 +1831,29 @@ impl<'a> WasmGen<'a> {
         wasm_func.instruction(&Instruction::End);
 
         // Success: Ok, written so that a test run again in the same instance
-        // (`run-test`) does not read the Err of a run before; the area's
-        // address as the i32 result, returned early.
+        // (`run-test`) does not read the Err of a run before, with the
+        // test's `test-state` 4 bytes on: `passed` (0) for a FUNCTION, and
+        // for a FUNCTION_BLOCK `running` (1) until a cycle leaves its DONE
+        // TRUE. The area's address as the i32 result, returned early.
         wasm_func.instruction(&Instruction::I32Const(result_area as i32));
         wasm_func.instruction(&Instruction::I32Const(0));
         wasm_func.instruction(&Instruction::I32Store8(wasm_encoder::MemArg {
             offset: 0,
+            align: 0,
+            memory_index: 0,
+        }));
+        wasm_func.instruction(&Instruction::I32Const(result_area as i32));
+        match &func.test_done {
+            Some(done) => {
+                crate::emit_expr::emit_expr(&mut wasm_func, done, &local_map, &self.call_indices);
+                wasm_func.instruction(&Instruction::I32Eqz);
+            }
+            None => {
+                wasm_func.instruction(&Instruction::I32Const(0));
+            }
+        }
+        wasm_func.instruction(&Instruction::I32Store8(wasm_encoder::MemArg {
+            offset: 4,
             align: 0,
             memory_index: 0,
         }));
@@ -2053,10 +2070,14 @@ impl<'a> WasmGen<'a> {
         if self.profile == Profile::Debug {
             // `debug-functions`: DefinedFuncIndex → IEC name, keyed as `FrameHandle`
             // reports it (imports excluded).
+            // A test FUNCTION_BLOCK's test is the runner's, and nothing in
+            // the source: a backtrace ends at the block's body, as a test
+            // FUNCTION's ends at the FUNCTION.
             let mut func_entries: Vec<debug_format::FuncEntry> = self
                 .module
                 .functions
                 .iter()
+                .filter(|func| func.test_done.is_none())
                 .filter_map(|func| {
                     self.index_remap
                         .get(&func.index)

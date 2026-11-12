@@ -21,7 +21,8 @@
 //!     read-memory: func(ranges: list<range>) -> result<list<u8>, memory-error>;
 //!     write-memory: func(address: u32, bytes: list<u8>) -> result<_, memory-error>;
 //!     variant test-error { failed(string), no-such-test }
-//!     run-test: func(test: u32) -> result<_, test-error>;
+//!     enum test-state { passed, running }
+//!     run-test: func(test: u32) -> result<test-state, test-error>;
 //! }
 //! ```
 //!
@@ -378,9 +379,10 @@ impl WasmGen<'_> {
     }
 
     /// `run-test`: the test at that place in the `test-manifest`, whose own
-    /// wrapper catches what it raises into a `result<_, string>` of its own,
-    /// read back here into the interface's. A release runs none: its tests
-    /// are left for the optimizer to remove.
+    /// wrapper catches what it raises into a `result<test-state, string>` of
+    /// its own, read back here into the interface's: a test FUNCTION whole,
+    /// or a cycle of a test FUNCTION_BLOCK, `running` until its DONE is TRUE.
+    /// A release runs none: its tests are left for the optimizer to remove.
     fn control_run_test(&self, area: &ControlArea) -> Function {
         // Param: the test 0; local: where the wrapper's result is 1.
         let mut f = Function::new([(1, ValType::I32)]);
@@ -407,6 +409,11 @@ impl WasmGen<'_> {
                 }
                 f.instruction(&Instruction::Else);
                 write_ok(&mut f, area, None);
+                // The test's `test-state`, a byte.
+                f.instruction(&Instruction::I32Const(area.ret as i32));
+                f.instruction(&Instruction::LocalGet(result));
+                f.instruction(&Instruction::I32Load8U(mem_arg(4, 0)));
+                f.instruction(&Instruction::I32Store8(mem_arg(PAYLOAD, 0)));
                 f.instruction(&Instruction::End);
                 f.instruction(&Instruction::I32Const(area.ret as i32));
                 f.instruction(&Instruction::Return);
