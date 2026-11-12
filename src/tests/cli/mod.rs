@@ -16,6 +16,7 @@ mod nesting;
 mod release;
 mod report;
 mod stack_size;
+mod test_blocks;
 mod test_filter;
 mod test_host;
 mod test_output;

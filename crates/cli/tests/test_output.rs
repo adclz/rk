@@ -57,9 +57,16 @@ END_FUNCTION
 }
 
 /// `Std.Console`, for a workspace that has no standard library: the blocks
-/// a test writes with, as the stdlib has them. Its own tests are commented
-/// out until a test can be a block that runs cycle by cycle.
-const CONSOLE: &str = include_str!("../../../stdlib/Console.st");
+/// a test writes with, as the stdlib has them, without its own tests, which
+/// read `Std.Unit`.
+fn console() -> String {
+    let source = include_str!("../../../stdlib/Console.st");
+    let tests = "\tNAMESPACE Test\n";
+    let end = "\tEND_NAMESPACE\n";
+    let start = source.find(tests).expect("Console's tests");
+    let stop = source.rfind(end).expect("the end of Console's tests") + end.len();
+    format!("{}{}", &source[..start], &source[stop..])
+}
 
 /// What a failed test wrote is under its failure in the report, on its
 /// line in the concise format, and the record's `output` in `json-lines`.
@@ -72,7 +79,7 @@ fn rk_test_shows_what_a_failed_test_wrote() {
         "[project]\nname = \"plant\"\nversion = \"0.1.0\"\n",
     )
     .unwrap();
-    std::fs::write(ws.path().join("console.st"), CONSOLE).unwrap();
+    std::fs::write(ws.path().join("console.st"), console()).unwrap();
     std::fs::write(
         ws.path().join("main.st"),
         r#"

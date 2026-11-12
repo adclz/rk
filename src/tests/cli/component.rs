@@ -9,7 +9,7 @@ use debug_format::test_manifest::{TEST_MANIFEST_SECTION, TestManifest};
 use rstest::rstest;
 use wasmtime::component::{Component, Instance, Linker, TypedFunc};
 
-use rk::control::{MemoryError, Range, ScanError, TestError};
+use rk::control::{MemoryError, Range, ScanError, TestError, TestState};
 
 use crate::tests::codegen::{
     compile_to_mir_and_wasm_as_built, compile_to_wasm_as_built, compile_with_libraries,
@@ -129,8 +129,8 @@ impl Plc {
             .0
     }
 
-    fn run_test(&mut self, test: u32) -> Result<(), TestError> {
-        let run = self.func::<(u32,), (Result<(), TestError>,)>("run-test");
+    fn run_test(&mut self, test: u32) -> Result<TestState, TestError> {
+        let run = self.func::<(u32,), (Result<TestState, TestError>,)>("run-test");
         run.call(&mut self.store, (test,))
             .expect("run-test returns")
             .0
@@ -1556,7 +1556,7 @@ fn the_stdlib_reads_wasi_s_clocks_through_a_component(mut with_db: db::RootDatab
     let mut plc = Plc::load_with(&component.bytes, wire(an_hour_east));
     plc.init().unwrap();
     for name in ["test_monotonic", "test_wall", "test_offset"] {
-        assert_eq!(plc.run_test(test(name)), Ok(()), "{name}");
+        assert_eq!(plc.run_test(test(name)), Ok(TestState::Passed), "{name}");
     }
 
     let mut plc = Plc::load_with(&component.bytes, wire(no_zone));
@@ -1565,7 +1565,7 @@ fn the_stdlib_reads_wasi_s_clocks_through_a_component(mut with_db: db::RootDatab
         plc.run_test(test("test_offset")),
         Err(TestError::Failed("the host has no time zone".to_string()))
     );
-    assert_eq!(plc.run_test(test("test_wall")), Ok(()));
+    assert_eq!(plc.run_test(test("test_wall")), Ok(TestState::Passed));
 }
 
 /// What `stamp` returns: its outputs, then the seconds under its own name.

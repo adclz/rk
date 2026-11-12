@@ -189,7 +189,9 @@ fn a_component_s_backtrace_counts_from_the_component_s_start(mut with_db: db::Ro
         .get_export_index(&mut store, Some(&control), "run-test")
         .unwrap();
     let run_test = instance
-        .get_typed_func::<(u32,), (Result<(), rk::control::TestError>,)>(&mut store, &run_test)
+        .get_typed_func::<(u32,), (Result<rk::control::TestState, rk::control::TestError>,)>(
+            &mut store, &run_test,
+        )
         .unwrap();
     let wrapped = offsets(run_test.call(&mut store, (0,)).expect_err("the test traps"));
     // The innermost frames are the test's; the interface's own is past them.
