@@ -106,3 +106,46 @@ END_FUNCTION
     // Non-test namespaced function
     assert!(find_test(&with_db, "Std.Math.SQRT").is_none());
 }
+
+/// A test FUNCTION_BLOCK is a test as a test FUNCTION is: discovered at the
+/// top level and in a namespace, and found by its qualified name.
+#[rstest]
+fn discover_and_find_test_blocks(mut with_db: RootDatabase) {
+    let source = r#"
+{test}
+FUNCTION_BLOCK test_top
+VAR_OUTPUT DONE : BOOL; END_VAR
+    DONE := TRUE;
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK not_a_test
+END_FUNCTION_BLOCK
+
+NAMESPACE Plant
+    {test}
+    FUNCTION_BLOCK test_valve
+    VAR_OUTPUT DONE : BOOL; END_VAR
+        DONE := TRUE;
+    END_FUNCTION_BLOCK
+END_NAMESPACE
+"#;
+
+    add_sources(&mut with_db, &[source]);
+    let mut names: Vec<_> = discover_all_tests(&with_db)
+        .iter()
+        .map(|t| t.qualified_name().to_string())
+        .collect();
+    names.sort();
+    assert_eq!(names, ["Plant.test_valve", "test_top"]);
+
+    for name in ["test_top", "Plant.test_valve"] {
+        assert!(
+            matches!(
+                find_test(&with_db, name),
+                Some(hir::hir_ty::index_graphs::TestItem::Block(..))
+            ),
+            "{name}"
+        );
+    }
+    assert!(find_test(&with_db, "not_a_test").is_none());
+}

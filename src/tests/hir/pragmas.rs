@@ -1209,9 +1209,9 @@ END_FUNCTION"#;
        |          ^^^^^|^^^^^
        |               `------- cannot access test item 'test_helper'
        |
-       | Help: for code shared between tests, write a FUNCTION without the pragma
+       | Help: for code shared between tests, write a POU without the pragma
        |
-       | Note: a {test} FUNCTION is the test runner's entry point, not a callable
+       | Note: a {test} POU is the test runner's entry point, not a callable
     ---'
     ");
 }
@@ -1236,9 +1236,9 @@ END_FUNCTION"#;
        |          ^^^^|^^^^
        |              `------ cannot access test item 'test_only'
        |
-       | Help: for code shared between tests, write a FUNCTION without the pragma
+       | Help: for code shared between tests, write a POU without the pragma
        |
-       | Note: a {test} FUNCTION is the test runner's entry point, not a callable
+       | Note: a {test} POU is the test runner's entry point, not a callable
     ---'
     ");
 }
@@ -1607,14 +1607,23 @@ END_FUNCTION"#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
 }
 
-/// `{test}` is FUNCTION-only, like `{extern}`: the runner calls a `()` entry,
-/// which no other POU kind has. A helper that only tests use is hidden with
-/// `FUNCTION PRIVATE`, not marked as a test.
+/// `{test}` is on a FUNCTION, which the runner calls once, or on a
+/// FUNCTION_BLOCK, which it calls cycle by cycle on an instance of its own: a
+/// PROGRAM and a METHOD have no such entry, and an ABSTRACT or `{extern}`
+/// block no instance the runner can make. A helper that only tests use is
+/// hidden with `FUNCTION PRIVATE`, not marked as a test.
 #[rstest]
 fn invalid_test_pragma_outside_a_function(mut with_db: RootDatabase) {
     let source = r#"
 {test}
-FUNCTION_BLOCK fb
+FUNCTION_BLOCK ABSTRACT test_abstract
+VAR_OUTPUT DONE : BOOL; END_VAR
+END_FUNCTION_BLOCK
+
+{test}
+{extern async 'host' 'poll'}
+FUNCTION_BLOCK test_import
+VAR_OUTPUT DONE : BOOL; END_VAR
 END_FUNCTION_BLOCK
 
 {test}
@@ -1634,26 +1643,224 @@ FUNCTION t : INT
 END_FUNCTION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1503] Error: test pragma outside a FUNCTION
+    [E1503] Error: test pragma outside a FUNCTION or FUNCTION_BLOCK
        ,-[ file:///test0.st:2:1 ]
        |
      2 | {test}
        | ^^^|^^
-       |    `---- a {test} pragma cannot be placed on a FUNCTION_BLOCK
-    ---'
-    [E1503] Error: test pragma outside a FUNCTION
-       ,-[ file:///test0.st:6:1 ]
+       |    `---- a {test} pragma cannot be placed on a FUNCTION_BLOCK declared ABSTRACT
        |
-     6 | {test}
-       | ^^^|^^
-       |    `---- a {test} pragma cannot be placed on a PROGRAM
+       | Note: a test is a FUNCTION, which the runner calls once, or a FUNCTION_BLOCK, which it calls cycle by cycle on an instance of its own
     ---'
-    [E1503] Error: test pragma outside a FUNCTION
-        ,-[ file:///test0.st:11:5 ]
+    [E1503] Error: test pragma outside a FUNCTION or FUNCTION_BLOCK
+       ,-[ file:///test0.st:7:1 ]
+       |
+     7 | {test}
+       | ^^^|^^
+       |    `---- a {test} pragma cannot be placed on a FUNCTION_BLOCK declared {extern}
+       |
+       | Note: a test is a FUNCTION, which the runner calls once, or a FUNCTION_BLOCK, which it calls cycle by cycle on an instance of its own
+    ---'
+    [E1503] Error: test pragma outside a FUNCTION or FUNCTION_BLOCK
+        ,-[ file:///test0.st:13:1 ]
         |
-     11 |     {test}
+     13 | {test}
+        | ^^^|^^
+        |    `---- a {test} pragma cannot be placed on a PROGRAM
+        |
+        | Note: a test is a FUNCTION, which the runner calls once, or a FUNCTION_BLOCK, which it calls cycle by cycle on an instance of its own
+    ----'
+    [E1503] Error: test pragma outside a FUNCTION or FUNCTION_BLOCK
+        ,-[ file:///test0.st:18:5 ]
+        |
+     18 |     {test}
         |     ^^^|^^
         |        `---- a {test} pragma cannot be placed on a METHOD
+        |
+        | Note: a test is a FUNCTION, which the runner calls once, or a FUNCTION_BLOCK, which it calls cycle by cycle on an instance of its own
+    ----'
+    ");
+}
+
+/// A `{test}` FUNCTION_BLOCK runs cycle by cycle on an instance the runner
+/// makes, until a cycle leaves its DONE TRUE. It may declare other outputs,
+/// methods and a base, and hold an async import, which a test FUNCTION
+/// cannot.
+#[rstest]
+fn valid_test_block(mut with_db: RootDatabase) {
+    let source = r#"
+{extern async 'host' 'fetch'}
+FUNCTION_BLOCK FETCH
+VAR_OUTPUT DONE : BOOL; value : DINT; END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK Fixture
+VAR count : INT; END_VAR
+    count := count + 1;
+END_FUNCTION_BLOCK
+
+{test}
+FUNCTION_BLOCK test_fetches EXTENDS Fixture
+VAR_OUTPUT DONE : BOOL; seen : DINT; END_VAR
+VAR fetch : FETCH; END_VAR
+
+METHOD checked : BOOL
+    checked := count > 0;
+END_METHOD
+
+    SUPER();
+    fetch();
+    IF fetch.DONE THEN
+        seen := fetch.value;
+        DONE := THIS.checked();
+    END_IF;
+END_FUNCTION_BLOCK
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+/// A test block declares its DONE, a BOOL in VAR_OUTPUT: the runner reads it
+/// after each cycle.
+#[rstest]
+fn invalid_test_block_without_its_done(mut with_db: RootDatabase) {
+    let source = r#"
+{test}
+FUNCTION_BLOCK test_none
+VAR_OUTPUT finished : BOOL; END_VAR
+    finished := TRUE;
+END_FUNCTION_BLOCK
+
+{test}
+FUNCTION_BLOCK test_in_var
+VAR done : BOOL; END_VAR
+    done := TRUE;
+END_FUNCTION_BLOCK
+
+{test}
+FUNCTION_BLOCK test_not_bool
+VAR_OUTPUT DONE : INT; END_VAR
+    DONE := 1;
+END_FUNCTION_BLOCK
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1517] Error: test FUNCTION_BLOCK without its DONE
+       ,-[ file:///test0.st:3:16 ]
+       |
+     3 | FUNCTION_BLOCK test_none
+       |                ^^^^|^^^^
+       |                    `------ 'test_none' has no VAR_OUTPUT DONE
+       |
+       | Help: declare DONE : BOOL in VAR_OUTPUT
+       |
+       | Note: the runner calls a {test} FUNCTION_BLOCK once per cycle, until a cycle leaves its DONE TRUE
+    ---'
+    [E1517] Error: test FUNCTION_BLOCK without its DONE
+        ,-[ file:///test0.st:10:5 ]
+        |
+     10 | VAR done : BOOL; END_VAR
+        |     ^^|^
+        |       `--- 'done' is not a VAR_OUTPUT of type BOOL
+        |
+        | Help: declare DONE : BOOL in VAR_OUTPUT
+        |
+        | Note: the runner calls a {test} FUNCTION_BLOCK once per cycle, until a cycle leaves its DONE TRUE
+    ----'
+    [E1517] Error: test FUNCTION_BLOCK without its DONE
+        ,-[ file:///test0.st:16:12 ]
+        |
+     16 | VAR_OUTPUT DONE : INT; END_VAR
+        |            ^^|^
+        |              `--- 'DONE' is not a VAR_OUTPUT of type BOOL
+        |
+        | Help: declare DONE : BOOL in VAR_OUTPUT
+        |
+        | Note: the runner calls a {test} FUNCTION_BLOCK once per cycle, until a cycle leaves its DONE TRUE
+    ----'
+    ");
+}
+
+/// A test block takes no input: the runner passes none. Its VAR_OUTPUTs are
+/// its instance's, DONE among them.
+#[rstest]
+fn invalid_test_block_with_a_parameter(mut with_db: RootDatabase) {
+    let source = r#"
+{test}
+FUNCTION_BLOCK test_inputs
+VAR_INPUT limit : INT; END_VAR
+VAR_IN_OUT shared : INT; END_VAR
+VAR_OUTPUT DONE : BOOL; count : INT; END_VAR
+    count := count + shared;
+    DONE := count >= limit;
+END_FUNCTION_BLOCK
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1511] Error: test with a parameter
+       ,-[ file:///test0.st:4:11 ]
+       |
+     4 | VAR_INPUT limit : INT; END_VAR
+       |           ^^|^^
+       |             `---- the {test} FUNCTION_BLOCK cannot take the parameter 'limit'
+       |
+       | Help: declare it in VAR, or call a FUNCTION taking it from the test
+       |
+       | Note: the runner calls a test with no arguments
+    ---'
+    [E1511] Error: test with a parameter
+       ,-[ file:///test0.st:5:12 ]
+       |
+     5 | VAR_IN_OUT shared : INT; END_VAR
+       |            ^^^|^^
+       |               `---- the {test} FUNCTION_BLOCK cannot take the parameter 'shared'
+       |
+       | Help: declare it in VAR, or call a FUNCTION taking it from the test
+       |
+       | Note: the runner calls a test with no arguments
+    ---'
+    ");
+}
+
+/// Nothing names a test block, as nothing names a test FUNCTION: the runner
+/// makes its instance, and a library's test blocks are left out of its
+/// users' builds.
+#[rstest]
+fn invalid_reference_to_a_test_block(mut with_db: RootDatabase) {
+    let source = r#"
+{test}
+FUNCTION_BLOCK test_block
+VAR_OUTPUT DONE : BOOL; END_VAR
+    DONE := TRUE;
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK Derived EXTENDS test_block
+END_FUNCTION_BLOCK
+
+PROGRAM P
+VAR t : test_block; END_VAR
+    t();
+END_PROGRAM
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1007] Error: access to a test-only item
+       ,-[ file:///test0.st:8:32 ]
+       |
+     8 | FUNCTION_BLOCK Derived EXTENDS test_block
+       |                                ^^^^^|^^^^
+       |                                     `------ cannot access test item 'test_block'
+       |
+       | Help: for code shared between tests, write a POU without the pragma
+       |
+       | Note: a {test} POU is the test runner's entry point, not a callable
+    ---'
+    [E1007] Error: access to a test-only item
+        ,-[ file:///test0.st:12:9 ]
+        |
+     12 | VAR t : test_block; END_VAR
+        |         ^^^^^|^^^^
+        |              `------ cannot access test item 'test_block'
+        |
+        | Help: for code shared between tests, write a POU without the pragma
+        |
+        | Note: a {test} POU is the test runner's entry point, not a callable
     ----'
     ");
 }
@@ -2708,7 +2915,7 @@ VAR_INPUT a : Itf; END_VAR
 END_FUNCTION"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1511] Error: test FUNCTION with a parameter
+    [E1511] Error: test with a parameter
        ,-[ file:///test0.st:9:11 ]
        |
      9 | VAR_INPUT a : INT; END_VAR
@@ -2719,7 +2926,7 @@ END_FUNCTION"#;
        |
        | Note: the runner calls a test with no arguments
     ---'
-    [E1511] Error: test FUNCTION with a parameter
+    [E1511] Error: test with a parameter
         ,-[ file:///test0.st:14:11 ]
         |
      14 | VAR_INPUT a : REAL; END_VAR
@@ -2730,7 +2937,7 @@ END_FUNCTION"#;
         |
         | Note: the runner calls a test with no arguments
     ----'
-    [E1511] Error: test FUNCTION with a parameter
+    [E1511] Error: test with a parameter
         ,-[ file:///test0.st:19:12 ]
         |
      19 | VAR_IN_OUT a : INT; END_VAR
@@ -2741,7 +2948,7 @@ END_FUNCTION"#;
         |
         | Note: the runner calls a test with no arguments
     ----'
-    [E1511] Error: test FUNCTION with a parameter
+    [E1511] Error: test with a parameter
         ,-[ file:///test0.st:24:12 ]
         |
      24 | VAR_OUTPUT a : REAL; END_VAR
@@ -2752,7 +2959,7 @@ END_FUNCTION"#;
         |
         | Note: the runner calls a test with no arguments
     ----'
-    [E1511] Error: test FUNCTION with a parameter
+    [E1511] Error: test with a parameter
         ,-[ file:///test0.st:29:11 ]
         |
      29 | VAR_INPUT a : INT...; END_VAR
@@ -2763,7 +2970,7 @@ END_FUNCTION"#;
         |
         | Note: the runner calls a test with no arguments
     ----'
-    [E1511] Error: test FUNCTION with a parameter
+    [E1511] Error: test with a parameter
         ,-[ file:///test0.st:34:11 ]
         |
      34 | VAR_INPUT a : Itf; END_VAR

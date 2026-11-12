@@ -555,7 +555,7 @@ END_FUNCTION
        |
        | Note: it is compiled once per array type it is called with, so there is no single function to export
     ---'
-    [E1511] Error: test FUNCTION with a parameter
+    [E1511] Error: test with a parameter
         ,-[ file:///test0.st:14:11 ]
         |
      14 | VAR_INPUT values : ARRAY[*]; END_VAR

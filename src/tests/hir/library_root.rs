@@ -134,9 +134,7 @@ fn a_librarys_test_is_named_under_its_root(mut with_db: RootDatabase) {
     );
     let mut names: Vec<String> = hir::hir_ty::index_graphs::discover_all_tests(&with_db)
         .into_iter()
-        .map(|test| match test {
-            hir::hir_ty::index_graphs::TestItem::Function(_, name) => name,
-        })
+        .map(|test| test.qualified_name().to_string())
         .collect();
     names.sort();
     assert_eq!(names, ["Std.Inner.t_inner", "Std.t_root"]);
