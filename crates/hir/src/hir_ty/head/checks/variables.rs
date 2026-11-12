@@ -367,7 +367,7 @@ impl<'db> InitInference<'db> {
                 f.extern_pragma(db).map(|(_, pragma)| (f, pragma.is_wasi()))
             }
             ScopeKind::Pou(Pou::FunctionBlock(fb)) => {
-                self.refuse_test_on(db, fb.test_pragma(db), "FUNCTION_BLOCK");
+                self.check_test_block(db, fb);
                 None
             }
             // CLASS/INTERFACE take no pragmas in the grammar — `{extern}`
@@ -520,13 +520,23 @@ impl<'db> InitInference<'db> {
                 var,
                 matches!(scope_kind, ScopeKind::Pou(Pou::FunctionBlock(_))),
             );
-            if let ScopeKind::Pou(Pou::Function(f)) = scope_kind
-                && f.is_test(db)
-                && (var.is_input(db) || var.is_output(db) || var.is_in_out(db))
-            {
+            // A test block's VAR_OUTPUTs are its instance's, DONE among them.
+            let test_parameter = match scope_kind {
+                ScopeKind::Pou(Pou::Function(f)) => (f.is_test(db)
+                    && (var.is_input(db) || var.is_output(db) || var.is_in_out(db)))
+                .then_some("FUNCTION"),
+                ScopeKind::Pou(Pou::FunctionBlock(fb)) => (fb.is_test(db)
+                    && (var.is_input(db) || var.is_in_out(db)))
+                .then_some("FUNCTION_BLOCK"),
+                _ => None,
+            };
+            if let Some(pou_kind) = test_parameter {
                 self.errors.push(
-                    PragmaError::TestWithParameter { var: *var }
-                        .to_diagnostic(db, self.scope.file(db)),
+                    PragmaError::TestWithParameter {
+                        var: *var,
+                        pou_kind,
+                    }
+                    .to_diagnostic(db, self.scope.file(db)),
                 );
             }
             // An instance changes when it runs: its body and its methods
@@ -1210,10 +1220,9 @@ pub(crate) fn string_alias<'db>(db: &'db dyn WorkspaceDataBase, spec: Spec<'db>)
 }
 
 impl<'db> InitInference<'db> {
-    /// Push E1501 when `pragma` is present: `{extern}` on a POU kind that
-    /// cannot be an import.
-    /// `{test}` is FUNCTION-only, like `{extern}` (E1503): the runner calls
-    /// a `()` entry, which no other POU kind has.
+    /// Push E1503 when `pragma` is present: `{test}` on a POU the runner
+    /// cannot call, neither a FUNCTION, a `()` entry, nor a FUNCTION_BLOCK it
+    /// can make an instance of.
     fn refuse_test_on(
         &mut self,
         db: &'db dyn WorkspaceDataBase,
@@ -1227,6 +1236,41 @@ impl<'db> InitInference<'db> {
                     pou_kind,
                 }
                 .to_diagnostic(db, self.scope.file(db)),
+            );
+        }
+    }
+
+    /// A `{test}` FUNCTION_BLOCK runs cycle by cycle on an instance the
+    /// runner makes, until a cycle leaves its DONE TRUE: an ABSTRACT or
+    /// `{extern}` block has no instance to make (E1503), and the block
+    /// declares its DONE (E1517).
+    fn check_test_block(
+        &mut self,
+        db: &'db dyn WorkspaceDataBase,
+        fb: crate::hir_def::pous::function_block::FunctionBlock<'db>,
+    ) {
+        let Some(anchor) = fb.test_pragma(db) else {
+            return;
+        };
+        let refused = if fb.modifier(db).contains(crate::Modifier::ABSTRACT) {
+            Some("FUNCTION_BLOCK declared ABSTRACT")
+        } else if fb.extern_pragma(db).is_some() {
+            Some("FUNCTION_BLOCK declared {extern}")
+        } else {
+            None
+        };
+        if let Some(pou_kind) = refused {
+            self.refuse_test_on(db, Some(anchor), pou_kind);
+            return;
+        }
+        if crate::hir_ty::async_import::done_output(db, fb).is_none() {
+            let found = fb
+                .variables(db)
+                .iter()
+                .copied()
+                .find(|var| crate::hir_ty::async_import::named_done(db, *var));
+            self.errors.push(
+                PragmaError::TestDone { block: fb, found }.to_diagnostic(db, self.scope.file(db)),
             );
         }
     }
@@ -1317,6 +1361,8 @@ impl<'db> InitInference<'db> {
         );
     }
 
+    /// Push E1501 when `pragma` is present: `{extern}` on a POU kind that
+    /// cannot be an import.
     fn refuse_extern_on(
         &mut self,
         db: &'db dyn WorkspaceDataBase,

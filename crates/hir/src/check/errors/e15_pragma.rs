@@ -308,6 +308,14 @@ pub enum PragmaError<'db> {
         block: FunctionBlock<'db>,
         found: Option<VariableDecl<'db>>,
     },
+    /// A `{test}` FUNCTION_BLOCK without its `DONE`, anchored at the block's
+    /// name, or with a `DONE` declared in another section or with another
+    /// type than BOOL, `found`: the runner calls the block once per cycle
+    /// until a cycle leaves `DONE` TRUE.
+    TestDone {
+        block: FunctionBlock<'db>,
+        found: Option<VariableDecl<'db>>,
+    },
     /// A variable holding an async import's instance in a call's frame, a
     /// FUNCTION's, a METHOD's or a VAR_TEMP, `frame`: the host writes the
     /// call's result into the instance at a later scan.
@@ -352,19 +360,29 @@ pub enum PragmaError<'db> {
         var: VariableDecl<'db>,
         first: VariableDecl<'db>,
     },
-    /// `{test}` on something other than a FUNCTION. A test is a `()` entry the
-    /// runner calls; an FB, PROGRAM or METHOD has no such entry, and a helper
-    /// that only tests use is hidden with PRIVATE, not marked as a test.
+    /// `{test}` on something other than a FUNCTION or a FUNCTION_BLOCK the
+    /// runner can make an instance of. A test FUNCTION is a `()` entry the
+    /// runner calls once, a test FUNCTION_BLOCK one it calls cycle by cycle on
+    /// an instance of its own; a PROGRAM or a METHOD has no such entry, an
+    /// ABSTRACT or `{extern}` FUNCTION_BLOCK no instance the runner can make,
+    /// and a helper that only tests use is hidden with PRIVATE, not marked as
+    /// a test.
     TestOutsideFunction {
         anchor: SpanIdent<'db>,
         pou_kind: &'static str,
     },
-    /// A `{test}` FUNCTION with a `VAR_INPUT`, a `VAR_OUTPUT` or a `VAR_IN_OUT`:
-    /// the runner calls a test with no arguments, so nothing can bind it. Its
-    /// wrapper has no parameters to read: a scalar read a scratch local, what
-    /// goes by address wrote near address 0, a REAL made the module invalid, and
-    /// a test taking a variadic or an interface had no copy, so it never ran.
-    TestWithParameter { var: VariableDecl<'db> },
+    /// A `{test}` FUNCTION with a `VAR_INPUT`, a `VAR_OUTPUT` or a `VAR_IN_OUT`,
+    /// or a `{test}` FUNCTION_BLOCK with a `VAR_INPUT` or a `VAR_IN_OUT`: the
+    /// runner calls a test with no arguments, so nothing can bind it. A test
+    /// FUNCTION's wrapper has no parameters to read: a scalar read a scratch
+    /// local, what goes by address wrote near address 0, a REAL made the module
+    /// invalid, and a test taking a variadic or an interface had no copy, so it
+    /// never ran. A test FUNCTION_BLOCK's VAR_OUTPUTs are its instance's, its
+    /// `DONE` among them.
+    TestWithParameter {
+        var: VariableDecl<'db>,
+        pou_kind: &'static str,
+    },
     /// `{export}` on something other than a FUNCTION. A PROGRAM is already
     /// exported for the schedule; an FB, a CLASS or a METHOD needs an
     /// instance the host does not have.
@@ -475,6 +493,7 @@ impl<'db> ErrorCode for PragmaError<'db> {
             Self::ExternNonScalarReturn { .. } => "E1502",
             Self::ExternWithBody { .. } | Self::ExternBlockMember { .. } => "E1502",
             Self::DoneOutput { .. } => "E1514",
+            Self::TestDone { .. } => "E1517",
             Self::AsyncImportInFrame { .. } => "E1515",
             Self::StreamBuiltin { .. } | Self::StreamWriteVariables { .. } => "E1516",
             Self::ExternModuleName { .. }
@@ -799,7 +818,7 @@ impl<'db> ToIdeDiagnostic<'db> for PragmaError<'db> {
                 diag.with_help(help.to_string());
                 diag
             }
-            Self::DoneOutput { block, found } => {
+            Self::DoneOutput { block, found } | Self::TestDone { block, found } => {
                 let (message, range) = match found {
                     None => (
                         format!(
@@ -822,12 +841,18 @@ impl<'db> ToIdeDiagnostic<'db> for PragmaError<'db> {
                     .desc(self)
                     .range(crate::denormalize(db, file, &range).unwrap_or_default())
                     .call();
-                diag.with_note(
-                    "an {extern async} FUNCTION_BLOCK's DONE is its own and no part of the \
-                     function's signature: it is TRUE in the call of the block that saw the \
-                     call finish, and the other VAR_OUTPUTs are the result's fields"
-                        .to_string(),
-                );
+                let note = match self {
+                    Self::DoneOutput { .. } => {
+                        "an {extern async} FUNCTION_BLOCK's DONE is its own and no part of the \
+                         function's signature: it is TRUE in the call of the block that saw the \
+                         call finish, and the other VAR_OUTPUTs are the result's fields"
+                    }
+                    _ => {
+                        "the runner calls a {test} FUNCTION_BLOCK once per cycle, until a cycle \
+                         leaves its DONE TRUE"
+                    }
+                };
+                diag.with_note(note.to_string());
                 diag.with_help("declare DONE : BOOL in VAR_OUTPUT".to_string());
                 diag
             }
@@ -851,18 +876,26 @@ impl<'db> ToIdeDiagnostic<'db> for PragmaError<'db> {
                 );
                 diag
             }
-            Self::TestOutsideFunction { anchor, pou_kind } => diag()
-                .message(format!(
-                    "a {{test}} pragma cannot be placed on a {pou_kind}"
-                ))
-                .severity(DiagnosticSeverity::ERROR)
-                .desc(self)
-                .range(crate::denormalize(db, file, &anchor.get_span(db)).unwrap_or_default())
-                .call(),
-            Self::TestWithParameter { var } => {
+            Self::TestOutsideFunction { anchor, pou_kind } => {
                 let mut diag = diag()
                     .message(format!(
-                        "the {{test}} FUNCTION cannot take the parameter '{}'",
+                        "a {{test}} pragma cannot be placed on a {pou_kind}"
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &anchor.get_span(db)).unwrap_or_default())
+                    .call();
+                diag.with_note(
+                    "a test is a FUNCTION, which the runner calls once, or a FUNCTION_BLOCK, \
+                     which it calls cycle by cycle on an instance of its own"
+                        .to_string(),
+                );
+                diag
+            }
+            Self::TestWithParameter { var, pou_kind } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "the {{test}} {pou_kind} cannot take the parameter '{}'",
                         var.name_with_case(db).text(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)

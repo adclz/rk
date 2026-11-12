@@ -31,8 +31,8 @@ pub fn named_done(db: &dyn WorkspaceDataBase, var: VariableDecl<'_>) -> bool {
     var.name(db).text(db).as_str() == DONE.to_lowercase()
 }
 
-/// Whether `var` is `DONE` as an async import declares it: a VAR_OUTPUT of
-/// type BOOL.
+/// Whether `var` is `DONE` as an async import or a `{test}` FUNCTION_BLOCK
+/// declares it: a VAR_OUTPUT of type BOOL.
 pub fn is_done<'db>(db: &'db dyn WorkspaceDataBase, var: VariableDecl<'db>) -> bool {
     named_done(db, var)
         && var.kind(db) == VariableKind::Output
@@ -40,6 +40,18 @@ pub fn is_done<'db>(db: &'db dyn WorkspaceDataBase, var: VariableDecl<'db>) -> b
             var.spec(db).infer(db).normalize(db),
             Type::Elementary(ElementarySpec::Bool)
         )
+}
+
+/// `fb`'s `DONE`, when it declares one ([`is_done`]): an async import's, or
+/// a `{test}` FUNCTION_BLOCK's, which the runner reads after each cycle.
+pub fn done_output<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    fb: FunctionBlock<'db>,
+) -> Option<VariableDecl<'db>> {
+    fb.variables(db)
+        .iter()
+        .copied()
+        .find(|var| is_done(db, *var))
 }
 
 /// What an async import's call is.
@@ -96,7 +108,7 @@ pub fn async_import<'db>(
         .filter(|(_, pragma)| pragma.asynchronous)?;
     let kind = AsyncKind::of(&pragma.name);
     let variables = fb.variables(db);
-    let done = variables.iter().copied().find(|var| is_done(db, *var))?;
+    let done = done_output(db, fb)?;
     let of_kind = |kind: VariableKind| {
         variables
             .iter()
