@@ -12,3 +12,4 @@ pub mod mono_arity;
 pub mod mono_iface;
 pub mod multibit;
 pub mod naming;
+pub mod test_block;

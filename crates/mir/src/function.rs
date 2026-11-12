@@ -39,6 +39,11 @@ pub struct MirFunction {
     /// Whether this function is a test (marked with `{test}` pragma).
     pub is_test: bool,
 
+    /// A test FUNCTION_BLOCK's `DONE`, read after each call of its test: the
+    /// test is running until a call leaves it TRUE. `None` for a test
+    /// FUNCTION, which passes when it returns, and for every other function.
+    pub test_done: Option<MirExpr>,
+
     /// Optional qualified export name (e.g. "Std.Bits.Test.test_shl_byte").
     /// When set, WASM codegen uses this instead of `name` for the export.
     pub export_name: Option<CompactString>,

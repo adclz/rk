@@ -454,6 +454,7 @@ fn lower_function_inner<'db>(
         body,
         linkage,
         is_test: hir::hir_def::pous::pragma::is_test(db, func.pragmas(db)),
+        test_done: None,
         export_name: None,
         wit_export,
         frame: close_frame(
@@ -678,6 +679,7 @@ fn lower_function_block_inner<'db>(
             // A method needs an instance the host does not have.
             linkage: MirLinkage::Internal,
             is_test: false,
+            test_done: None,
             export_name: None,
             wit_export: None,
             frame: close_frame(
@@ -948,6 +950,7 @@ fn lower_fb_body<'db>(
         // Called by whoever holds an instance, never by the host.
         linkage: MirLinkage::Internal,
         is_test: false,
+        test_done: None,
         export_name: None,
         wit_export: None,
         frame: close_frame(
@@ -1167,6 +1170,7 @@ fn lower_class_inner<'db>(
             // A method needs an instance the host does not have.
             linkage: MirLinkage::Internal,
             is_test: false,
+            test_done: None,
             export_name: None,
             wit_export: None,
             frame: close_frame(
@@ -1282,6 +1286,7 @@ fn lower_program_inner<'db>(
         // The schedule names this export, and the host calls it every scan.
         linkage: MirLinkage::Export,
         is_test: false,
+        test_done: None,
         export_name: None,
         wit_export: None,
         // Nothing calls a PROGRAM but the host.

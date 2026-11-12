@@ -21,14 +21,15 @@ use crate::{
     types::MirType,
 };
 
-/// Workspace-relative file and 1-based line of a test FUNCTION, for the
-/// manifest; relative so the artifact is reproducible across machines.
-fn test_location<'db>(db: &'db dyn WorkspaceDataBase, func: Function<'db>) -> (String, u32) {
+/// Workspace-relative file and 1-based line of a test, a FUNCTION or a
+/// FUNCTION_BLOCK, for the manifest; relative so the artifact is
+/// reproducible across machines.
+fn test_location<'db>(db: &'db dyn WorkspaceDataBase, test: Pou<'db>) -> (String, u32) {
     use db::workspace::Workspace;
     use hir::{HasName, HirNodeInfo};
 
-    let file = func.get_scope_id(db).file(db);
-    let line = func.get_name_span(db).start_point.row as u32 + 1;
+    let file = test.get_scope_id(db).file(db);
+    let line = test.get_name_span(db).start_point.row as u32 + 1;
 
     let Ok(path) = file.url(db).to_file_path() else {
         return (String::new(), line);
@@ -471,7 +472,7 @@ fn lower_module_from_pous<'db>(
                         .as_ref()
                         .map(|s| s.to_string())
                         .unwrap_or_else(|| mir_func.name.text(db).to_string());
-                    let (file, line) = test_location(db, *func);
+                    let (file, line) = test_location(db, Pou::Function(*func));
                     test_entries.push(crate::test_manifest::TestEntry {
                         path: export_name.clone(),
                         export: export_name,
@@ -484,6 +485,13 @@ fn lower_module_from_pous<'db>(
             }
 
             Pou::FunctionBlock(fb) => {
+                // A library's test blocks are left out, as its test
+                // FUNCTIONs are: nothing names a test (E1007).
+                let is_test = hir::hir_def::pous::pragma::is_test(db, fb.pragmas(db));
+                if is_test && !is_workspace(db, *fb) {
+                    continue;
+                }
+
                 // Emit one set of (instance type + body + methods) per FB, keyed
                 // by its namespace-qualified name.
                 let fb_qualified = super::naming::qualified_pou_ident(
@@ -547,6 +555,36 @@ fn lower_module_from_pous<'db>(
                     )?;
                     next_fn_idx += 1;
                     functions.push(mf);
+                }
+
+                // A test block's test: a cycle of the block per call.
+                if is_test {
+                    let test = at_pou(
+                        db,
+                        *fb,
+                        super::test_block::lower_test_block(
+                            db,
+                            *fb,
+                            &fb_mir_type,
+                            next_fn_idx,
+                            &mut memory_layout,
+                            &string_pool,
+                        ),
+                    )?;
+                    at_pou(
+                        db,
+                        *fb,
+                        register_symbol(db, &mut function_indices, test.name, next_fn_idx),
+                    )?;
+                    next_fn_idx += 1;
+                    let (file, line) = test_location(db, Pou::FunctionBlock(*fb));
+                    test_entries.push(crate::test_manifest::TestEntry {
+                        path: fb_qualified.text(db).to_string(),
+                        export: test.name.text(db).to_string(),
+                        file,
+                        line,
+                    });
+                    functions.push(test);
                 }
             }
 
@@ -1118,6 +1156,7 @@ fn lower_module_from_pous<'db>(
             body: init_stmts,
             linkage: crate::function::MirLinkage::Export,
             is_test: false,
+            test_done: None,
             export_name: Some(compact_str::CompactString::from("__init")),
             wit_export: None,
             frame: None,
