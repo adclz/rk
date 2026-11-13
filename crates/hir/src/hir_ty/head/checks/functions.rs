@@ -114,6 +114,12 @@ impl<'db> InitInference<'db> {
             {
                 self.errors
                     .push(PragmaError::StreamWriteVariables { block }.to_diagnostic(db, file));
+            } else if let Some(func) = function
+                && crate::hir_def::pous::pragma::builtin_makes_ends(builtin)
+                && !ends_shaped(db, func)
+            {
+                self.errors
+                    .push(PragmaError::NewEnds { func }.to_diagnostic(db, file));
             }
         }
         // An async import's DONE.
@@ -443,4 +449,22 @@ impl<'db> InitInference<'db> {
             .to_diagnostic(db, self.scope.file(db)),
         );
     }
+}
+
+/// Whether `func`, a stream's or a future's `new`, declares the two ends it
+/// makes: a UDINT VAR_OUTPUT each, the reading end first, and nothing else.
+fn ends_shaped<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    func: crate::hir_def::pous::function::Function<'db>,
+) -> bool {
+    use crate::hir_def::expressions::spec::ElementarySpec;
+    use crate::hir_def::pous::variable::VariableKind;
+    use crate::hir_ty::infer::Infer;
+    use crate::hir_ty::ty::Type;
+    let end = |var: &crate::hir_def::pous::variable::VariableDecl<'db>| {
+        var.kind(db) == VariableKind::Output
+            && var.spec(db).infer(db).normalize(db) == Type::Elementary(ElementarySpec::UDInt)
+    };
+    func.return_type(db).is_none()
+        && matches!(func.variables(db).as_slice(), [readable, writable] if end(readable) && end(writable))
 }

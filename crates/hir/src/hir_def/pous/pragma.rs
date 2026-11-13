@@ -225,6 +225,13 @@ pub fn builtin_copies(builtin: &str) -> bool {
     )
 }
 
+/// Whether `builtin`, a built-in's name without its number, makes a stream
+/// or a future: `new`, which returns both ends in one 64-bit value, the
+/// reading end in its low half.
+pub fn builtin_makes_ends(builtin: &str) -> bool {
+    matches!(builtin, "stream-new" | "future-new")
+}
+
 /// A declared name as WIT writes it, a parameter's or an exported
 /// FUNCTION's: its letters in lowercase, each `_` a `-`, as a WIT binding
 /// writes `start-address` in Rust or C as `start_address`. `None` when that

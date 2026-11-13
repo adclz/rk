@@ -342,6 +342,11 @@ pub enum PragmaError<'db> {
     /// A stream write whose variables are not the built-in's, anchored at
     /// the block's name ([`crate::hir_ty::async_import::stream_write_shaped`]).
     StreamWriteVariables { block: FunctionBlock<'db> },
+    /// A stream's or a future's `new` not declared as the two ends it makes,
+    /// a UDINT VAR_OUTPUT each, the reading end first, anchored at the
+    /// FUNCTION's name: the built-in returns both in one 64-bit value, which
+    /// the call writes into the two outputs.
+    NewEnds { func: Function<'db> },
     /// An `{extern}`'s name that is not a WIT name.
     ExternFunctionName {
         name: compact_str::CompactString,
@@ -495,7 +500,9 @@ impl<'db> ErrorCode for PragmaError<'db> {
             Self::DoneOutput { .. } => "E1514",
             Self::TestDone { .. } => "E1517",
             Self::AsyncImportInFrame { .. } => "E1515",
-            Self::StreamBuiltin { .. } | Self::StreamWriteVariables { .. } => "E1516",
+            Self::StreamBuiltin { .. }
+            | Self::StreamWriteVariables { .. }
+            | Self::NewEnds { .. } => "E1516",
             Self::ExternModuleName { .. }
             | Self::ExternFunctionName { .. }
             | Self::ExternParameterName { .. }
@@ -699,6 +706,30 @@ impl<'db> ToIdeDiagnostic<'db> for PragmaError<'db> {
                 diag.with_help(
                     "declare the VAR_INPUTs stream : UDINT and data : STRING, and the \
                      VAR_OUTPUTs written : UDINT and closed : BOOL after DONE"
+                        .to_string(),
+                );
+                diag
+            }
+            Self::NewEnds { func } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "'{}' does not declare the two ends it makes",
+                        func.get_name_with_case(db).text(db)
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(
+                        crate::denormalize(db, file, &func.get_name_span(db)).unwrap_or_default(),
+                    )
+                    .call();
+                diag.with_note(
+                    "a stream's or a future's new gives its reading end, then its writing end, \
+                     each a UDINT"
+                        .to_string(),
+                );
+                diag.with_help(
+                    "declare the VAR_OUTPUTs readable : UDINT and writable : UDINT, and no \
+                     return type"
                         .to_string(),
                 );
                 diag
