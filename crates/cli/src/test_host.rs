@@ -253,12 +253,11 @@ pub fn memory_of<T>(store: &mut Store<T>, instance: &Instance) -> Result<Memory>
 /// Wires the clocks a core module imports, by the names WASI gives them and
 /// in their core forms, for a host that runs one alone, as the codegen tests
 /// and the fuzz host do: the monotonic clock, which starts at zero here;
-/// the system clock, whose `now` writes its record, the seconds since 1970
-/// and the nanoseconds, where the module points; and the zone's
-/// `utc-offset` at an instant ([`wire_zone`]), from the system's zone. A
-/// module reads them through `Std.Timers`, and a debug module imports every
-/// `{extern}` of the libraries it reads, so each is wired whether the
-/// program reads it or not.
+/// the system clock's `now` ([`wire_wall`]), from the system's clock; and
+/// the zone's `utc-offset` at an instant ([`wire_zone`]), from the system's
+/// zone. A module reads them through `Std.Timers`, and a debug module
+/// imports every `{extern}` of the libraries it reads, so each is wired
+/// whether the program reads it or not.
 pub fn wire_clocks<T: 'static>(linker: &mut Linker<T>, module: &Module) -> Result<()> {
     let clock_start = Instant::now();
     for import in module.imports() {
@@ -270,27 +269,47 @@ pub fn wire_clocks<T: 'static>(linker: &mut Linker<T>, module: &Module) -> Resul
                 })
                 .ctx("wiring the monotonic clock")?;
         } else if name == "now" && module_name.contains("system-clock") {
-            linker
-                .func_wrap(
-                    module_name,
-                    name,
-                    move |mut caller: Caller<'_, T>, ret: i32| -> wasmtime::Result<()> {
-                        let since = SystemTime::now()
-                            .duration_since(UNIX_EPOCH)
-                            .unwrap_or_default();
-                        // The record `instant`: an `s64`, then a `u32` 8 bytes on.
-                        let mut instant = [0u8; 12];
-                        instant[..8].copy_from_slice(&(since.as_secs() as i64).to_le_bytes());
-                        instant[8..].copy_from_slice(&since.subsec_nanos().to_le_bytes());
-                        write_at(&mut caller, ret as u32, &instant)
-                    },
-                )
-                .ctx("wiring the system clock")?;
+            wire_wall(linker, module_name, system_now)?;
         } else if name == "utc-offset" && module_name.contains("timezone") {
             wire_zone(linker, module_name, system_zone)?;
         }
     }
     Ok(())
+}
+
+/// Wires `now` as the `now` of `module_name`, a system clock. It gives an
+/// instant as WASI's `instant` counts it: the whole seconds since
+/// 1970-01-01, negative before, and the nanoseconds after them. The core
+/// form writes that record where the module points, as the canonical ABI
+/// lays it out: the `s64`, then the `u32` 8 bytes on.
+pub fn wire_wall<T: 'static>(
+    linker: &mut Linker<T>,
+    module_name: &str,
+    now: impl Fn() -> (i64, u32) + Send + Sync + 'static,
+) -> Result<()> {
+    linker
+        .func_wrap(
+            module_name,
+            "now",
+            move |mut caller: Caller<'_, T>, ret: i32| -> wasmtime::Result<()> {
+                let (seconds, nanoseconds) = now();
+                let mut instant = [0u8; 12];
+                instant[..8].copy_from_slice(&seconds.to_le_bytes());
+                instant[8..].copy_from_slice(&nanoseconds.to_le_bytes());
+                write_at(&mut caller, ret as u32, &instant)
+            },
+        )
+        .ctx("wiring the system clock")?;
+    Ok(())
+}
+
+/// The system's clock, as [`wire_wall`] hands it over. A clock set before
+/// 1970 reads 1970-01-01.
+fn system_now() -> (i64, u32) {
+    let since = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default();
+    (since.as_secs() as i64, since.subsec_nanos())
 }
 
 /// Wires `zone` as the `utc-offset` of `module_name`. It is handed an
