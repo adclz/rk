@@ -93,7 +93,8 @@ END_FUNCTION
 fn a_stream_s_built_ins_are_imported_as_declared(mut with_db: RootDatabase) {
     let source = r#"
 {extern 'wasi:cli/stdout@0.3.0' '[stream-new-0]write-via-stream'}
-FUNCTION NEW_STREAM : LWORD
+FUNCTION NEW_STREAM
+VAR_OUTPUT readable : UDINT; writable : UDINT; END_VAR
 END_FUNCTION
 
 {extern 'wasi:cli/stdout@0.3.0' 'write-via-stream'}
@@ -120,7 +121,7 @@ END_FUNCTION_BLOCK
     import $root.[waitable-set-poll](DInt, DInt) -> DInt
     import wasi:cli/stdout@0.3.0.[async-lower][stream-write-0]write-via-stream(UDInt, String { capacity: 64 })
     import wasi:cli/stdout@0.3.0.[future-drop-readable-1]write-via-stream(UDInt)
-    import wasi:cli/stdout@0.3.0.[stream-new-0]write-via-stream() -> LWord
+    import wasi:cli/stdout@0.3.0.[stream-new-0]write-via-stream()
     import wasi:cli/stdout@0.3.0.write-via-stream(UDInt) -> UDInt
     ");
 }
