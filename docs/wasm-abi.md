@@ -284,6 +284,11 @@ A stream's write waits for the reader, so it is an `{extern async}` FUNCTION_BLO
 Its call is a copy into the stream, which ends when the reader has taken some of the bytes or left: the block waits on the stream's end as it would on a call.
 The host reads the bytes from the block while the copy runs: a call made then checks the copy, and leaves the bytes as they are, whatever it passes.
 
+A stream's read, `[stream-read-N]f`, is the write the other way: an `{extern async}` FUNCTION_BLOCK that takes the stream's reading end, a `UDINT`, and after `DONE` gives the bytes, how many came, a `UDINT`, and whether the writer left, a `BOOL` (`E1516` otherwise).
+The bytes land in a `STRING`, whose length becomes how many came, or in an `ARRAY OF BYTE` of one dimension, a byte an element: either holds what a read takes at most, and the host writes into it while the read runs, so the bytes are whole in the call where `DONE` is `TRUE`.
+A future's read, `[future-read-N]f`, takes the future's reading end and gives after `DONE` the fields of its value, laid out as an async call's result is; a future's writer gives its value before it lets go, so a read always gets one.
+A future's write is not imported yet (`E1516`).
+
 The clocks a module imports are WASI 0.3's, in their core forms, and the host provides them:
 
 | Import | Signature | What it does |
