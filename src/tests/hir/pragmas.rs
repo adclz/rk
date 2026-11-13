@@ -539,7 +539,8 @@ END_CONFIGURATION"#;
 fn valid_stream_built_ins(mut with_db: RootDatabase) {
     let source = r#"
 {extern 'wasi:cli/stdout@0.3.0' '[stream-new-0]write-via-stream'}
-FUNCTION NEW_STREAM : LWORD
+FUNCTION NEW_STREAM
+VAR_OUTPUT readable : UDINT; writable : UDINT; END_VAR
 END_FUNCTION
 
 {extern 'wasi:cli/stdout@0.3.0' '[future-drop-readable-1]write-via-stream'}
@@ -559,9 +560,9 @@ VAR_OUTPUT DONE : BOOL; written : UDINT; closed : BOOL; END_VAR
 END_FUNCTION_BLOCK
 
 PROGRAM Main
-VAR ends : LWORD; write : STREAM_WRITE; END_VAR
-    ends := NEW_STREAM();
-    write(stream := 2, data := 'hello');
+VAR reading : UDINT; writing : UDINT; write : STREAM_WRITE; END_VAR
+    NEW_STREAM(readable => reading, writable => writing);
+    write(stream := writing, data := 'hello');
     DROP_FUTURE(future := 3);
     DROP_WRITER(stream := 2);
 END_PROGRAM"#;
@@ -572,7 +573,8 @@ END_PROGRAM"#;
 /// A built-in fits one kind of POU (E1516): a read or a write waits for the
 /// other end, so only an `{extern async}` block imports it, and the others
 /// return at once, so a FUNCTION does. An async block imports a call or a
-/// stream's write, which declares the built-in's variables. Outside WASI, a
+/// stream's write, which declares the built-in's variables, and a `new`
+/// declares the two ends it makes, a UDINT VAR_OUTPUT each. Outside WASI, a
 /// built-in's name is no WIT name (E1512).
 #[rstest]
 fn invalid_stream_built_ins(mut with_db: RootDatabase) {
@@ -600,6 +602,15 @@ END_FUNCTION_BLOCK
 
 {extern 'host' '[stream-new-0]send'}
 FUNCTION NEW_HOST_STREAM : LWORD
+END_FUNCTION
+
+{extern 'wasi:cli/stdout@0.3.0' '[stream-new-0]write-via-stream'}
+FUNCTION NEW_AS_ONE : LWORD
+END_FUNCTION
+
+{extern 'wasi:cli/stdout@0.3.0' '[future-new-1]write-via-stream'}
+FUNCTION NEW_FUTURE
+VAR_OUTPUT readable : UDINT; END_VAR
 END_FUNCTION"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
@@ -653,6 +664,28 @@ END_FUNCTION"#;
         |                          `----------- '[stream-new-0]send' is not a WIT name
         |
         | Note: an import's name is written as WIT writes one, words of lowercase letters and digits joined by '-'
+    ----'
+    [E1516] Error: stream built-in that does not fit its declaration
+        ,-[ file:///test0.st:28:10 ]
+        |
+     28 | FUNCTION NEW_AS_ONE : LWORD
+        |          ^^^^^|^^^^
+        |               `------ 'NEW_AS_ONE' does not declare the two ends it makes
+        |
+        | Help: declare the VAR_OUTPUTs readable : UDINT and writable : UDINT, and no return type
+        |
+        | Note: a stream's or a future's new gives its reading end, then its writing end, each a UDINT
+    ----'
+    [E1516] Error: stream built-in that does not fit its declaration
+        ,-[ file:///test0.st:32:10 ]
+        |
+     32 | FUNCTION NEW_FUTURE
+        |          ^^^^^|^^^^
+        |               `------ 'NEW_FUTURE' does not declare the two ends it makes
+        |
+        | Help: declare the VAR_OUTPUTs readable : UDINT and writable : UDINT, and no return type
+        |
+        | Note: a stream's or a future's new gives its reading end, then its writing end, each a UDINT
     ----'
     ");
 }
