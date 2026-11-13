@@ -107,6 +107,11 @@ cd site && npm run pages
 # function that exists. CI diffs docs/strict-casts.md after a run, like
 # diagnostics.json.
 
+# Write the ST declarations of the WASI interfaces in rk_bindgen::STD_WORLD
+# into stdlib/generated/, from the WIT rk carries (or into another folder,
+# given as an argument); a file no longer generated is removed.
+cargo run -p rk-bindgen
+
 # Regenerate THIRD-PARTY-NOTICES, the licenses of the crates compiled into
 # every generated module (run from crates/wasm_builtins/; needs
 # `cargo install cargo-about --locked --features cli`). CI diffs the result
@@ -197,6 +202,7 @@ cli (binary `rk`) — check, compile, test, fmt, fetch, explain, env
 | `benchmark`               | `crates/benchmark`      | Divan benchmarks over the stdlib corpus and a generated workspace of 1,000 POUs, with diagnostic baselines.             |
 | `doc`                     | `crates/doc`            | Site generator's front half: verifies `skills/`, `crates/doc/examples/`, `docs/` and `site/pages/` against the compiler, pre-renders their code, and writes what Zola (`site/`) renders. |
 | `fuzz`                    | `crates/fuzz`           | Fuzz targets (compiler, formatter, incremental edits, generated programs' values, LSP requests), their oracles, `repro`. |
+| `rk-bindgen`              | `crates/bindgen`        | ST declarations of the interfaces a WIT world imports, as wit-bindgen writes Rust: a FUNCTION per function, an `{extern async}` block per async one, typed enums, aliases, resource drops, and each stream's and future's built-ins once per type (`Wasi.Streams`, `Wasi.Futures`), all under `NAMESPACE INTERNAL Wasi`. What ST cannot pass yet is listed at the end of each file. |
 | `vscode-lsp-server`       | `vscode/server`         | VSCode extension LSP server binary (thin wrapper over `server` crate).                                                  |
 
 ### Root Package
@@ -328,6 +334,7 @@ All integration tests live in `src/tests/`:
 - `completions/` — Completion items: body, head, call signatures, fly imports, field, using, query scope
 - `codegen/` — WASM codegen + execution tests (compile IEC → MIR → wasm, run on the wasmtime harness): value passing, inout, retain bands, enums, strings, debug symbols, scheduling. Helpers (`compile_to_wasm`, `compile_to_mir_and_wasm`, `execute_wasm`, `TestPlc`, `compile_tests`, `run_tests`) live in `codegen/harness.rs`
 - `mir/` — MIR structure/lowering assertions (exports, extern pragmas)
+- `bindgen.rs` — rk-bindgen: each WIT snippet's ST, shown and taken by rk; Std's WASI interfaces generated and built into a component
 - `dependencies/` — `[dependencies]`: resolution, archives, the global cache, the git client (against a scripted server and against `git http-backend`, which needs git installed), the workspace end to end, the standard library built in (`stdlib.rs`), and what differs by system (`platforms.rs`: the tests marked for Windows or macOS only run in CI)
 
 Crates keep only in-crate `#[cfg(test)]` unit tests for crate-private machinery (e.g. `wasm_codegen`'s `graft.rs`/`builtins.rs`, `mir/src/memory.rs`).
