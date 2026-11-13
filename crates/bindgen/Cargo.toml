@@ -1,0 +1,20 @@
+[package]
+name = "rk-bindgen"
+version.workspace = true
+authors.workspace = true
+license.workspace = true
+edition.workspace = true
+publish = false
+
+[lib]
+name = "rk_bindgen"
+path = "src/lib.rs"
+
+# Writes `stdlib/generated/`: `cargo run -p rk-bindgen`.
+[[bin]]
+name = "rk-bindgen"
+path = "src/main.rs"
+
+[dependencies]
+debug_format = { workspace = true }
+wit-parser = { workspace = true }

@@ -2940,6 +2940,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "rk-bindgen"
+version = "0.1.0"
+dependencies = [
+ "debug_format",
+ "wit-parser",
+]
+
+[[package]]
 name = "rk-fuzz"
 version = "0.1.0"
 dependencies = [
@@ -2990,6 +2998,7 @@ dependencies = [
  "linter",
  "mir",
  "rk",
+ "rk-bindgen",
  "rstest 0.26.1",
  "serde_json",
  "sha2",
