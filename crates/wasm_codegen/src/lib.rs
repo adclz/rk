@@ -686,6 +686,25 @@ impl<'a> WasmGen<'a> {
         crate::emit_expr::IMPORT_RECORD_AT.with(|at| {
             at.set(control::control_area(self.module, tests_end(self.module)).import_record)
         });
+        // The imports that make a stream or a future.
+        crate::emit_expr::ENDS_IMPORTS.with(|ends| {
+            *ends.borrow_mut() = self
+                .module
+                .extern_functions
+                .iter()
+                .filter(|ext| ext.ends)
+                .map(|ext| ext.name)
+                .collect();
+        });
+        // Where each async import's block keeps its call's handle.
+        crate::emit_stmt::ASYNC_HANDLE_AT.with(|at| {
+            *at.borrow_mut() = self
+                .module
+                .async_calls
+                .iter()
+                .map(|(body, call)| (*body, call.state + mir::async_call::STATE_HANDLE))
+                .collect();
+        });
 
         // Where each string literal is, by the pool entry it names.
         crate::emit_expr::STRING_ADDRESSES.with(|cell| {
@@ -1158,6 +1177,10 @@ impl<'a> WasmGen<'a> {
                 params.push(ValType::I32);
             }
             return (params, vec![ValType::I32]);
+        }
+        // A stream's or a future's `new`: both ends in one value.
+        if ext_fn.ends {
+            return (params, vec![ValType::I64]);
         }
         let results: Vec<ValType> = ext_fn
             .results()
