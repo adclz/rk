@@ -287,6 +287,7 @@ The clocks a module imports are WASI 0.3's, in their core forms, and the host pr
 | `wasi:clocks/system-clock@0.3.0` `now` | `(i32)` | writes at the address the seconds since 1970-01-01 UTC as an `s64`, negative before, then the nanoseconds as a `u32` |
 | `wasi:clocks/timezone@0.3.0` `utc-offset` | `(i64, i32, i32)` | takes an instant as its seconds and nanoseconds, and writes at the address whether the host has a zone, in one byte, and if it has, 8 bytes on, the nanoseconds the zone is east of UTC at that instant |
 
+The time zone is still unstable in WASI 0.3, `@unstable(feature = clocks-timezone)`: a host has it only with that feature on, and its signature can change in a 0.3 release.
 A release build imports the ones the program reads; a debug build imports all three, so a host that has no zone still defines `utc-offset`, answering that it has none, or the module does not instantiate. Where the monotonic clock starts is the host's choice, as WASI leaves it.
 
 [`Std.Console`](console.md) writes to WASI 0.3's standard output and error, `wasi:cli/stdout@0.3.0` and `wasi:cli/stderr@0.3.0`, with the imports it declares.

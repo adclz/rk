@@ -68,7 +68,7 @@ The timers `TON`, `TOF` and `TP` are in `Std.Timers`.
 | Function | Returns |
 |---|---|
 | `PLC_TIME()`, `PLC_LTIME()` | the monotonic clock: only the difference between two readings means something |
-| `WALL_LDT()`, `WALL_DT()` | the wall clock, in UTC |
+| `WALL_LDT()`, `WALL_DT()` | the wall clock, in UTC: it goes back when the host's clock is set, so measure a duration with `PLC_TIME` |
 | `LOCAL_LDT()` | the wall clock in the host's zone, daylight saving included: what a clock on the wall shows, as an `LDT` |
 | `LOCAL_OFFSET(IN)` | how far east of UTC the host's zone is at the instant `IN`, as an `LTIME` |
 
@@ -81,4 +81,4 @@ FUNCTION AfterTen : BOOL
 END_FUNCTION
 ```
 
-The host provides them, as WASI's clocks: the [WASM ABI](wasm-abi.md) lists the imports. A host that has no zone says so, and `LOCAL_LDT` and `LOCAL_OFFSET` then raise "the host has no time zone".
+The host provides them, as WASI's clocks: the [WASM ABI](wasm-abi.md) lists the imports. A host that has no zone says so, and `LOCAL_LDT` and `LOCAL_OFFSET` then raise "the host has no time zone". WASI 0.3 marks the time zone unstable, so both warn where they are called (`L0002`).

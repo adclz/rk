@@ -4,7 +4,7 @@ Only these exist. Any other text in braces is refused (`E1510`),
 so `{attribute '…'}` from other toolchains cannot be copied in.
 A known pragma where it has no place, such as `{export}` inside a `VAR` section, is a syntax error.
 
-- `{test}` marks a `FUNCTION` the test runner calls.
+- `{test}` marks a `FUNCTION` the test runner calls once, or a `FUNCTION_BLOCK` it calls once per cycle until its `DONE` output is TRUE, see [Tests](tests.md).
 
 - `{once}` marks a `FUNCTION`, `FUNCTION_BLOCK` or `METHOD` that should be called at most once per body.
 
