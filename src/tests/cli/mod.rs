@@ -4,7 +4,7 @@
 mod args;
 mod backtrace;
 mod component;
-mod component_host;
+pub(crate) mod component_host;
 mod console;
 mod diagnostics;
 mod duration;

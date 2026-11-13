@@ -3013,6 +3013,7 @@ dependencies = [
  "wasmparser 0.244.0",
  "wasmtime",
  "wasmtime-wasi",
+ "wit-parser",
 ]
 
 [[package]]
