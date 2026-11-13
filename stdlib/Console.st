@@ -25,10 +25,14 @@ NAMESPACE Std.Console
 
 	/* WASI's standard output: `write-via-stream` takes the reading end of a
 	   stream of bytes, and the stream's built-ins are imported beside it,
-	   under its name. `[stream-new-0]` makes the stream: its reading end in
-	   the low half, its writing end in the high one. */
+	   under its name. `[stream-new-0]` makes the stream, and gives its
+	   reading end, then its writing end. */
 	{extern 'wasi:cli/stdout@0.3.0' '[stream-new-0]write-via-stream'}
-	FUNCTION PRIVATE NEW_STDOUT_STREAM: LWORD
+	FUNCTION PRIVATE NEW_STDOUT_STREAM
+		VAR_OUTPUT
+			readable: UDINT;
+			writable: UDINT;
+		END_VAR
 	END_FUNCTION
 
 	/* Hands the reading end to the host, which answers with a future of how
@@ -54,7 +58,11 @@ NAMESPACE Std.Console
 	   function but writes any stream of bytes: so a program writing to the
 	   standard error imports the standard output's interface too. */
 	{extern 'wasi:cli/stderr@0.3.0' '[stream-new-0]write-via-stream'}
-	FUNCTION PRIVATE NEW_STDERR_STREAM: LWORD
+	FUNCTION PRIVATE NEW_STDERR_STREAM
+		VAR_OUTPUT
+			readable: UDINT;
+			writable: UDINT;
+		END_VAR
 	END_FUNCTION
 
 	{extern 'wasi:cli/stderr@0.3.0' 'write-via-stream'}
@@ -71,27 +79,6 @@ NAMESPACE Std.Console
 		END_VAR
 	END_FUNCTION
 
-	/* The low half of `IN`: a new stream's reading end. */
-	FUNCTION PRIVATE LOW_HALF: UDINT
-		VAR_INPUT
-			IN: LWORD;
-		END_VAR
-		{wasm 'i32.wrap_i64' (params IN) (result LOW_HALF)}
-	END_FUNCTION
-
-	/* The high half of `IN`: a new stream's writing end. */
-	FUNCTION PRIVATE HIGH_HALF: UDINT
-		VAR_INPUT
-			IN: LWORD;
-		END_VAR
-		VAR
-			half: LWORD;
-			shift: UDINT := 32;
-		END_VAR
-		{wasm 'i64.shr_u' (params IN shift) (result half)}
-		{wasm 'i32.wrap_i64' (params half) (result HIGH_HALF)}
-	END_FUNCTION
-
 	/* What `STDOUT` and `STDERR` write with, which they alone reach. */
 	NAMESPACE INTERNAL Streams
 
@@ -99,7 +86,8 @@ NAMESPACE Std.Console
 		   into the stream's writing end `stream`, which ends when the host
 		   has taken some of the bytes, `written` of them, or has let go of
 		   its end, `closed`. The host reads the bytes from the block while
-		   the copy runs, so a call that checks it passes no `data`. */
+		   the copy runs: a call made then checks the copy, and leaves the
+		   block's inputs as they are, whatever it passes. */
 		{extern async 'wasi:cli/stdout@0.3.0' '[stream-write-0]write-via-stream'}
 		FUNCTION_BLOCK STREAM_WRITE
 			VAR_INPUT
@@ -152,7 +140,6 @@ NAMESPACE Std.Console
 				requested: BOOL;
 				closed: BOOL;
 				rest: STRING[4096];
-				start: BOOL;
 				write: STREAM_WRITE;
 			END_VAR
 			VAR_TEMP
@@ -171,7 +158,6 @@ NAMESPACE Std.Console
 					ELSE
 						rest := IN;
 						BUSY := TRUE;
-						start := TRUE;
 					END_IF;
 				END_IF;
 			END_IF;
@@ -182,15 +168,8 @@ NAMESPACE Std.Console
 				// the loop ends.
 				REPEAT
 					again := FALSE;
-					IF start THEN
-						write(stream := stream, data := rest);
-						start := FALSE;
-					ELSE
-						// The copy runs on the bytes the block holds: a check
-						// passes none.
-						{allow 'missing-input-param'}
-						write();
-					END_IF;
+					// Starts the copy of the rest, or checks the one running.
+					write(stream := stream, data := rest);
 					IF write.DONE THEN
 						IF write.closed THEN
 							closed := TRUE;
@@ -200,7 +179,6 @@ NAMESPACE Std.Console
 							// The host took a part: the rest goes next, at
 							// once while it takes some.
 							rest := TEXT_AFTER(rest, write.written);
-							start := TRUE;
 							again := write.written > 0;
 						ELSE
 							BUSY := FALSE;
@@ -237,17 +215,20 @@ NAMESPACE Std.Console
 		END_VAR
 		VAR
 			open: BOOL;
-			ends: LWORD;
+			writing: UDINT;
 			output: Streams.WRITER;
+		END_VAR
+		VAR_TEMP
+			reading: UDINT;
 		END_VAR
 
 		// The stream, made at the first request.
 		IF REQ AND NOT open THEN
-			ends := NEW_STDOUT_STREAM();
-			DROP_STDOUT_FUTURE(future := STDOUT_READS(data := LOW_HALF(ends)));
+			NEW_STDOUT_STREAM(readable => reading, writable => writing);
+			DROP_STDOUT_FUTURE(future := STDOUT_READS(data := reading));
 			open := TRUE;
 		END_IF;
-		output(REQ := REQ, IN := IN, stream := HIGH_HALF(ends));
+		output(REQ := REQ, IN := IN, stream := writing);
 		BUSY := output.BUSY;
 		DONE := output.DONE;
 		ERROR := output.ERROR;
@@ -277,17 +258,20 @@ NAMESPACE Std.Console
 		END_VAR
 		VAR
 			open: BOOL;
-			ends: LWORD;
+			writing: UDINT;
 			output: Streams.WRITER;
+		END_VAR
+		VAR_TEMP
+			reading: UDINT;
 		END_VAR
 
 		// The stream, made at the first request.
 		IF REQ AND NOT open THEN
-			ends := NEW_STDERR_STREAM();
-			DROP_STDERR_FUTURE(future := STDERR_READS(data := LOW_HALF(ends)));
+			NEW_STDERR_STREAM(readable => reading, writable => writing);
+			DROP_STDERR_FUTURE(future := STDERR_READS(data := reading));
 			open := TRUE;
 		END_IF;
-		output(REQ := REQ, IN := IN, stream := HIGH_HALF(ends));
+		output(REQ := REQ, IN := IN, stream := writing);
 		BUSY := output.BUSY;
 		DONE := output.DONE;
 		ERROR := output.ERROR;
@@ -347,6 +331,7 @@ NAMESPACE Std.Console
 			IF step = 0 THEN
 				// The first text, until the host has all of it.
 				out(REQ := TRUE, IN := 'one, ');
+				ASSERT(NOT out.ERROR, 'STDOUT failed');
 				IF out.DONE THEN
 					step := 1;
 				END_IF;
@@ -359,6 +344,7 @@ NAMESPACE Std.Console
 			ELSE
 				// A new edge writes the second text.
 				out(REQ := TRUE, IN := 'two$N');
+				ASSERT(NOT out.ERROR, 'STDOUT failed');
 				DONE := out.DONE;
 			END_IF;
 		END_FUNCTION_BLOCK
