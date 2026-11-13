@@ -614,7 +614,7 @@ VAR_OUTPUT readable : UDINT; END_VAR
 END_FUNCTION"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1516] Error: stream built-in that does not fit its declaration
+    [E1516] Error: built-in that does not fit its declaration
        ,-[ file:///test0.st:2:33 ]
        |
      2 | {extern 'wasi:cli/stdout@0.3.0' '[stream-write-0]write-via-stream'}
@@ -625,7 +625,7 @@ END_FUNCTION"#;
        |
        | Note: a read or a write of a stream or a future waits for the other end, which only the calls of an {extern async} FUNCTION_BLOCK can
     ---'
-    [E1516] Error: stream built-in that does not fit its declaration
+    [E1516] Error: built-in that does not fit its declaration
        ,-[ file:///test0.st:7:39 ]
        |
      7 | {extern async 'wasi:cli/stdout@0.3.0' '[stream-new-0]write-via-stream'}
@@ -636,7 +636,7 @@ END_FUNCTION"#;
        |
        | Note: an {extern async} FUNCTION_BLOCK imports a call that may not return at once
     ---'
-    [E1516] Error: stream built-in that does not fit its declaration
+    [E1516] Error: built-in that does not fit its declaration
         ,-[ file:///test0.st:12:38 ]
         |
      12 | {extern async 'wasi:cli/stdin@0.3.0' '[stream-read-0]read-via-stream'}
@@ -645,7 +645,7 @@ END_FUNCTION"#;
         |
         | Note: an {extern async} FUNCTION_BLOCK imports the call of an async func or the write of a stream
     ----'
-    [E1516] Error: stream built-in that does not fit its declaration
+    [E1516] Error: built-in that does not fit its declaration
         ,-[ file:///test0.st:18:16 ]
         |
      18 | FUNCTION_BLOCK WRITE_TEXT
@@ -665,7 +665,7 @@ END_FUNCTION"#;
         |
         | Note: an import's name is written as WIT writes one, words of lowercase letters and digits joined by '-'
     ----'
-    [E1516] Error: stream built-in that does not fit its declaration
+    [E1516] Error: built-in that does not fit its declaration
         ,-[ file:///test0.st:28:10 ]
         |
      28 | FUNCTION NEW_AS_ONE : LWORD
@@ -676,7 +676,7 @@ END_FUNCTION"#;
         |
         | Note: a stream's or a future's new gives its reading end, then its writing end, each a UDINT
     ----'
-    [E1516] Error: stream built-in that does not fit its declaration
+    [E1516] Error: built-in that does not fit its declaration
         ,-[ file:///test0.st:32:10 ]
         |
      32 | FUNCTION NEW_FUTURE
@@ -686,6 +686,134 @@ END_FUNCTION"#;
         | Help: declare the VAR_OUTPUTs readable : UDINT and writable : UDINT, and no return type
         |
         | Note: a stream's or a future's new gives its reading end, then its writing end, each a UDINT
+    ----'
+    ");
+}
+
+/// A WASI import may be a resource's function, named as WIT names it, its
+/// handle a UDINT: a method that returns at once on a FUNCTION, an async one
+/// on an `{extern async}` FUNCTION_BLOCK, the drop of a handle, and a
+/// stream's built-in under a method's name. Accepted, and the module they
+/// build is valid.
+#[rstest]
+fn valid_resource_functions(mut with_db: RootDatabase) {
+    let source = r#"
+{extern 'wasi:filesystem/types@0.3.0' '[method]descriptor.read-via-stream'}
+FUNCTION READ_VIA_STREAM
+VAR_INPUT dir : UDINT; offset : ULINT; END_VAR
+VAR_OUTPUT stream : UDINT; finished : UDINT; END_VAR
+END_FUNCTION
+
+{extern async 'wasi:filesystem/types@0.3.0' '[method]descriptor.open-at'}
+FUNCTION_BLOCK OPEN_AT
+VAR_INPUT dir : UDINT; path_flags : BYTE; path : STRING[255]; open_flags : BYTE; flags : BYTE; END_VAR
+VAR_OUTPUT DONE : BOOL; failed : BOOL; value : UDINT; END_VAR
+END_FUNCTION_BLOCK
+
+{extern 'wasi:filesystem/types@0.3.0' '[resource-drop]descriptor'}
+FUNCTION DROP_DESCRIPTOR
+VAR_INPUT handle : UDINT; END_VAR
+END_FUNCTION
+
+{extern 'wasi:filesystem/types@0.3.0' '[stream-drop-readable-0][method]descriptor.read-via-stream'}
+FUNCTION DROP_READER
+VAR_INPUT stream : UDINT; END_VAR
+END_FUNCTION
+
+PROGRAM Main
+VAR stream, finished : UDINT; open : OPEN_AT; END_VAR
+    READ_VIA_STREAM(dir := 1, offset := 0, stream => stream, finished => finished);
+    open(dir := 1, path_flags := 0, path := 'a.txt', open_flags := 0, flags := 1);
+    DROP_READER(stream := stream);
+    DROP_DESCRIPTOR(handle := 1);
+END_PROGRAM"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
+
+/// Only WASI's interfaces have resources: a host module's import naming a
+/// resource's function, or dropping a handle, is refused (E1512), and so is
+/// a resource's name with no function in it. A resource's drop returns at
+/// once and takes the one handle it drops (E1516).
+#[rstest]
+fn invalid_resource_names(mut with_db: RootDatabase) {
+    let source = r#"
+{extern 'files' '[method]descriptor.open-at'}
+FUNCTION OPEN_AT : UDINT
+VAR_INPUT dir : UDINT; END_VAR
+END_FUNCTION
+
+{extern 'files' '[resource-drop]descriptor'}
+FUNCTION DROP_FILE
+VAR_INPUT handle : UDINT; END_VAR
+END_FUNCTION
+
+{extern 'wasi:filesystem/types@0.3.0' '[method]descriptor'}
+FUNCTION NO_FUNCTION
+VAR_INPUT dir : UDINT; END_VAR
+END_FUNCTION
+
+{extern 'wasi:filesystem/types@0.3.0' '[resource-drop]descriptor'}
+FUNCTION DROP_TWO
+VAR_INPUT handle : UDINT; other : UDINT; END_VAR
+END_FUNCTION
+
+{extern async 'wasi:filesystem/types@0.3.0' '[resource-drop]descriptor'}
+FUNCTION_BLOCK DROP_LATER
+VAR_INPUT handle : UDINT; END_VAR
+VAR_OUTPUT DONE : BOOL; END_VAR
+END_FUNCTION_BLOCK
+"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1512] Error: import name not a WIT name
+       ,-[ file:///test0.st:2:17 ]
+       |
+     2 | {extern 'files' '[method]descriptor.open-at'}
+       |                 ^^^^^^^^^^^^^^|^^^^^^^^^^^^^
+       |                               `--------------- '[method]descriptor.open-at' names a resource's function
+       |
+       | Note: the WIT of a host module's interface is written from its declarations, which make no resource: only WASI's interfaces have resources
+    ---'
+    [E1512] Error: import name not a WIT name
+       ,-[ file:///test0.st:7:17 ]
+       |
+     7 | {extern 'files' '[resource-drop]descriptor'}
+       |                 ^^^^^^^^^^^^^|^^^^^^^^^^^^^
+       |                              `--------------- '[resource-drop]descriptor' drops a resource's handle
+       |
+       | Note: the WIT of a host module's interface is written from its declarations, which make no resource: only WASI's interfaces have resources
+    ---'
+    [E1512] Error: import name not a WIT name
+        ,-[ file:///test0.st:12:39 ]
+        |
+     12 | {extern 'wasi:filesystem/types@0.3.0' '[method]descriptor'}
+        |                                       ^^^^^^^^^^|^^^^^^^^^
+        |                                                 `----------- '[method]descriptor' is not a WIT name
+        |
+        | Note: an import's name is written as WIT writes one, words of lowercase letters and digits joined by '-'
+    ----'
+    [E1516] Error: built-in that does not fit its declaration
+        ,-[ file:///test0.st:18:10 ]
+        |
+     18 | FUNCTION DROP_TWO
+        |          ^^^^|^^^
+        |              `----- 'DROP_TWO' does not declare the handle it drops
+        |
+        | Help: declare one VAR_INPUT handle : UDINT, and no VAR_OUTPUT or return type
+        |
+        | Note: a resource's drop takes the handle, a UDINT, and gives nothing
+    ----'
+    [E1516] Error: built-in that does not fit its declaration
+        ,-[ file:///test0.st:22:45 ]
+        |
+     22 | {extern async 'wasi:filesystem/types@0.3.0' '[resource-drop]descriptor'}
+        |                                             ^^^^^^^^^^^^^|^^^^^^^^^^^^^
+        |                                                          `--------------- '[resource-drop]descriptor' returns at once
+        |
+        | Help: import it with {extern} on a FUNCTION
+        |
+        | Note: an {extern async} FUNCTION_BLOCK imports a call that may not return at once
     ----'
     ");
 }
