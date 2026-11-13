@@ -74,12 +74,31 @@ impl<'db> InitInference<'db> {
             );
         }
         // A WASI import may also be a stream's or a future's built-in,
-        // under the name of the function it serves.
+        // under the name of the function it serves, a resource's function,
+        // or the drop of a resource's handle: only WASI's interfaces have
+        // resources, since a host module's WIT is written from declarations.
         let builtin = match pragma.is_wasi() {
             true => crate::hir_def::pous::pragma::builtin_name(&pragma.name),
             false => None,
         };
-        if !is_wit_name(&pragma.name) && builtin.is_none() {
+        let resource_function =
+            crate::hir_def::pous::pragma::resource_function_name(&pragma.name).is_some();
+        let resource_drop =
+            crate::hir_def::pous::pragma::resource_drop_name(&pragma.name).is_some();
+        if (resource_function || resource_drop) && !pragma.is_wasi() {
+            self.errors.push(
+                PragmaError::ExternResourceName {
+                    name: pragma.name.clone(),
+                    span: pragma.name_span,
+                    drop: resource_drop,
+                }
+                .to_diagnostic(db, file),
+            );
+        } else if !is_wit_name(&pragma.name)
+            && builtin.is_none()
+            && !resource_function
+            && !resource_drop
+        {
             self.errors.push(
                 PragmaError::ExternFunctionName {
                     name: pragma.name.clone(),
@@ -87,6 +106,25 @@ impl<'db> InitInference<'db> {
                 }
                 .to_diagnostic(db, file),
             );
+        }
+        // A resource's drop returns at once, and takes the handle it drops.
+        if resource_drop && pragma.is_wasi() {
+            use crate::check::errors::e15_pragma::BuiltinMisfit;
+            if block.is_some() {
+                self.errors.push(
+                    PragmaError::StreamBuiltin {
+                        name: pragma.name.clone(),
+                        span: pragma.name_span,
+                        why: BuiltinMisfit::Instant,
+                    }
+                    .to_diagnostic(db, file),
+                );
+            } else if let Some(func) = function
+                && !drop_shaped(db, func)
+            {
+                self.errors
+                    .push(PragmaError::ResourceDropVariables { func }.to_diagnostic(db, file));
+            }
         }
         if let Some((builtin, _)) = builtin {
             use crate::check::errors::e15_pragma::BuiltinMisfit;
@@ -467,4 +505,20 @@ fn ends_shaped<'db>(
     };
     func.return_type(db).is_none()
         && matches!(func.variables(db).as_slice(), [readable, writable] if end(readable) && end(writable))
+}
+
+/// Whether `func`, a resource's drop, declares the handle it drops: one UDINT
+/// VAR_INPUT, and nothing else.
+fn drop_shaped<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    func: crate::hir_def::pous::function::Function<'db>,
+) -> bool {
+    use crate::hir_def::expressions::spec::ElementarySpec;
+    use crate::hir_def::pous::variable::VariableKind;
+    use crate::hir_ty::infer::Infer;
+    use crate::hir_ty::ty::Type;
+    func.return_type(db).is_none()
+        && matches!(func.variables(db).as_slice(), [handle]
+            if handle.kind(db) == VariableKind::Input
+                && handle.spec(db).infer(db).normalize(db) == Type::Elementary(ElementarySpec::UDInt))
 }

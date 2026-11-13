@@ -347,10 +347,23 @@ pub enum PragmaError<'db> {
     /// FUNCTION's name: the built-in returns both in one 64-bit value, which
     /// the call writes into the two outputs.
     NewEnds { func: Function<'db> },
+    /// A resource's drop, `[resource-drop]R`, not declared as the handle it
+    /// drops, one UDINT VAR_INPUT and nothing else, anchored at the
+    /// FUNCTION's name.
+    ResourceDropVariables { func: Function<'db> },
     /// An `{extern}`'s name that is not a WIT name.
     ExternFunctionName {
         name: compact_str::CompactString,
         span: tree_sitter::Range,
+    },
+    /// A resource's function, or the drop of a resource's handle, imported
+    /// from a module other than WASI's, anchored at the name: the WIT of a
+    /// host module's interface is written from its declarations, which make
+    /// no resource.
+    ExternResourceName {
+        name: compact_str::CompactString,
+        span: tree_sitter::Range,
+        drop: bool,
     },
     /// A `VAR_INPUT` or a `VAR_OUTPUT` of an import from a module other
     /// than WASI's whose name gives no WIT name ([`wit_parameter_name`]):
@@ -502,9 +515,11 @@ impl<'db> ErrorCode for PragmaError<'db> {
             Self::AsyncImportInFrame { .. } => "E1515",
             Self::StreamBuiltin { .. }
             | Self::StreamWriteVariables { .. }
-            | Self::NewEnds { .. } => "E1516",
+            | Self::NewEnds { .. }
+            | Self::ResourceDropVariables { .. } => "E1516",
             Self::ExternModuleName { .. }
             | Self::ExternFunctionName { .. }
+            | Self::ExternResourceName { .. }
             | Self::ExternParameterName { .. }
             | Self::ExternParameterNamesCollide { .. }
             | Self::OutputNamedLikeResult { export: false, .. } => "E1512",
@@ -730,6 +745,44 @@ impl<'db> ToIdeDiagnostic<'db> for PragmaError<'db> {
                 diag.with_help(
                     "declare the VAR_OUTPUTs readable : UDINT and writable : UDINT, and no \
                      return type"
+                        .to_string(),
+                );
+                diag
+            }
+            Self::ResourceDropVariables { func } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "'{}' does not declare the handle it drops",
+                        func.get_name_with_case(db).text(db)
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(
+                        crate::denormalize(db, file, &func.get_name_span(db)).unwrap_or_default(),
+                    )
+                    .call();
+                diag.with_note(
+                    "a resource's drop takes the handle, a UDINT, and gives nothing".to_string(),
+                );
+                diag.with_help(
+                    "declare one VAR_INPUT handle : UDINT, and no VAR_OUTPUT or return type"
+                        .to_string(),
+                );
+                diag
+            }
+            Self::ExternResourceName { name, span, drop } => {
+                let mut diag = diag()
+                    .message(match drop {
+                        true => format!("'{name}' drops a resource's handle"),
+                        false => format!("'{name}' names a resource's function"),
+                    })
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, span).unwrap_or_default())
+                    .call();
+                diag.with_note(
+                    "the WIT of a host module's interface is written from its declarations, \
+                     which make no resource: only WASI's interfaces have resources"
                         .to_string(),
                 );
                 diag
