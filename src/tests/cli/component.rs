@@ -2001,7 +2001,8 @@ fn each_block_gets_its_own_call_s_result(mut with_db: db::RootDatabase) {
 
 /// The declaration says whether a function is async, and the build checks
 /// it against WASI's WIT: a block imports an `async func`, and a FUNCTION a
-/// `func`. A scan never waits for a FUNCTION's call.
+/// `func`. A scan never waits for a FUNCTION's call. The error names the
+/// declaration.
 #[rstest]
 fn the_build_checks_async_against_wasi(mut with_db: db::RootDatabase) {
     let block_of_a_func = r#"
@@ -2018,8 +2019,8 @@ fn the_build_checks_async_against_wasi(mut with_db: db::RootDatabase) {
     assert_eq!(
         build(&mut with_db, block_of_a_func).err(),
         Some(
-            "`now` of `wasi:clocks/monotonic-clock@0.3.0` is imported with {extern async}, and \
-             WASI's WIT declares it a `func`: import it with {extern} on a FUNCTION"
+            "`NOW` imports `now` of `wasi:clocks/monotonic-clock@0.3.0` with {extern async}, \
+             and WASI's WIT declares it a `func`: import it with {extern} on a FUNCTION"
                 .to_string()
         )
     );
@@ -2039,10 +2040,160 @@ fn the_build_checks_async_against_wasi(mut with_db: db::RootDatabase) {
     assert_eq!(
         build(&mut db, function_of_an_async_func).err(),
         Some(
-            "`wait-for` of `wasi:clocks/monotonic-clock@0.3.0` is imported with {extern}, and \
-             WASI's WIT declares it an `async func`: import it with {extern async} on a \
-             FUNCTION_BLOCK"
+            "`WAIT_FOR` imports `wait-for` of `wasi:clocks/monotonic-clock@0.3.0` with \
+             {extern}, and WASI's WIT declares it an `async func`: import it with {extern \
+             async} on a FUNCTION_BLOCK"
                 .to_string()
         )
     );
+}
+
+/// The build checks each WASI import against WASI's WIT, and names the
+/// declaration: a function the interface has, and for a stream's or a
+/// future's built-in, a number that names one of the function's streams and
+/// futures, of the built-in's kind. wit-component refused all of these
+/// without pointing at a declaration, and the misspelled function not at all
+/// until then.
+#[rstest]
+#[case::number_past_the_last(
+    "{extern 'wasi:cli/stdout@0.3.0' '[future-drop-readable-2]write-via-stream'}
+     FUNCTION DROP_FUTURE
+     VAR_INPUT future : UDINT; END_VAR
+     END_FUNCTION",
+    "`DROP_FUTURE` imports `[future-drop-readable-2]write-via-stream` of \
+     `wasi:cli/stdout@0.3.0`, and the type of `write-via-stream` numbers its streams and \
+     futures from 0 to 1"
+)]
+#[case::other_kind(
+    "{extern 'wasi:cli/stdout@0.3.0' '[stream-drop-readable-1]write-via-stream'}
+     FUNCTION DROP_READER
+     VAR_INPUT stream : UDINT; END_VAR
+     END_FUNCTION",
+    "`DROP_READER` imports `[stream-drop-readable-1]write-via-stream` of \
+     `wasi:cli/stdout@0.3.0`, and number 1 of the streams and futures of \
+     `write-via-stream`'s type is a future"
+)]
+#[case::no_such_function(
+    "{extern 'wasi:cli/stdout@0.3.0' '[stream-new-0]write-to-stream'}
+     FUNCTION NEW_STREAM
+     VAR_OUTPUT readable : UDINT; writable : UDINT; END_VAR
+     END_FUNCTION",
+    "`NEW_STREAM` imports `[stream-new-0]write-to-stream` of `wasi:cli/stdout@0.3.0`, and \
+     WASI's WIT declares no function `write-to-stream` there"
+)]
+#[case::misspelled(
+    "{extern 'wasi:clocks/monotonic-clock@0.3.0' 'nwo'}
+     FUNCTION NOW : ULINT
+     END_FUNCTION",
+    "`NOW` imports `nwo` of `wasi:clocks/monotonic-clock@0.3.0`, and WASI's WIT declares no \
+     function `nwo` there"
+)]
+fn the_build_checks_wasi_imports_against_wasi_s_wit(
+    mut with_db: db::RootDatabase,
+    #[case] source: &str,
+    #[case] error: &str,
+) {
+    assert_eq!(build(&mut with_db, source).err().as_deref(), Some(error));
+}
+
+/// A task that calls a host's async function through a block at every
+/// scan, with an argument that changes at each, counted where it is
+/// evaluated; its output says what the block's input holds.
+const TAKING: &str = r#"
+    {extern async 'probe' 'take'}
+    FUNCTION_BLOCK TAKE
+    VAR_INPUT n : DINT; END_VAR
+    VAR_OUTPUT DONE : BOOL; got : DINT; END_VAR
+    END_FUNCTION_BLOCK
+
+    FUNCTION Count : DINT
+    VAR_INPUT n : DINT; END_VAR
+    VAR_EXTERNAL evaluated : DINT; END_VAR
+        evaluated := evaluated + 1;
+        Count := n;
+    END_FUNCTION
+
+    PROGRAM P
+    VAR_EXTERNAL held : DINT; evaluated : DINT; got : DINT; END_VAR
+    VAR taker : TAKE; scans : DINT; END_VAR
+        scans := scans + 1;
+        taker(n := Count(n := scans));
+        held := taker.n;
+        IF taker.DONE THEN
+            got := taker.got;
+        END_IF;
+    END_PROGRAM
+
+    CONFIGURATION Cfg
+    VAR_GLOBAL
+        held AT %QD0 : DINT;
+        evaluated AT %QD4 : DINT;
+        got AT %QD8 : DINT;
+    END_VAR
+        RESOURCE Res ON CPU
+            TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+            PROGRAM Main WITH T : P;
+        END_RESOURCE
+    END_CONFIGURATION
+"#;
+
+/// What `take` returns: the record of the block's VAR_OUTPUTs but DONE.
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    PartialEq,
+    wasmtime::component::ComponentType,
+    wasmtime::component::Lift,
+    wasmtime::component::Lower,
+)]
+#[component(record)]
+struct TakeOutputs {
+    got: i32,
+}
+
+/// A call reads its inputs from the block's instance: while it runs, a call
+/// of the block leaves them as they are, though it still evaluates what it
+/// passes. The next call starts with what the scan that starts it passes.
+#[rstest]
+fn a_running_call_keeps_the_inputs_it_started_with(mut with_db: db::RootDatabase) {
+    let component = build(&mut with_db, TAKING).expect("the module wraps");
+    let gate = std::sync::Arc::new(Gate::default());
+    let taken = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let (host, seen) = (gate.clone(), taken.clone());
+    let mut plc = AsyncPlc::load_with(&component.bytes, move |linker| {
+        let mut probe = linker.instance("probe").unwrap();
+        probe
+            .func_wrap_concurrent("take", move |_, (n,): (i32,)| {
+                seen.lock().unwrap().push(n);
+                Gate::wait(host.clone(), (TakeOutputs { got: n * 10 },))
+            })
+            .unwrap();
+    });
+    plc.init().unwrap();
+    let running: Vec<Vec<i32>> = (0..3).map(|_| plc.scan(0).unwrap()).collect();
+    assert_eq!(
+        running,
+        [vec![1, 1, 0], vec![1, 2, 0], vec![1, 3, 0]],
+        "the input the call started with, and each argument evaluated"
+    );
+    assert_eq!(*taken.lock().unwrap(), [1]);
+    gate.open();
+    let mut scans = 3;
+    let finished = loop {
+        let outputs = plc.scan(0).unwrap();
+        scans += 1;
+        if outputs[2] == 10 || scans == 6 {
+            break outputs;
+        }
+        assert_eq!(outputs[0], 1, "still the call's input");
+    };
+    assert_eq!(finished[2], 10, "the call's result");
+    let next = plc.scan(0).unwrap();
+    assert_eq!(
+        next[0],
+        scans + 1,
+        "the next call takes the scan's argument"
+    );
+    assert_eq!(*taken.lock().unwrap(), [1, scans + 1]);
 }
