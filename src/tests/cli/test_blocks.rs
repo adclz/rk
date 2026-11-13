@@ -125,6 +125,34 @@ fn a_test_block_that_never_sets_done_fails_when_its_budget_is_spent(mut with_db:
     assert!(record.backtrace.is_empty(), "no call was in progress");
 }
 
+/// A block that waits on the host's clock, through WASI's `wait-for`, ends:
+/// the runtime the host waits on has a turn between cycles, which a cycle
+/// that waits on nothing never gives it.
+#[rstest]
+fn a_test_block_waiting_on_the_host_s_clock_ends(mut with_db: db::RootDatabase) {
+    let source = r#"
+        {extern async 'wasi:clocks/monotonic-clock@0.3.0' 'wait-for'}
+        FUNCTION_BLOCK WAIT_FOR
+        VAR_INPUT how_long : ULINT; END_VAR
+        VAR_OUTPUT DONE : BOOL; END_VAR
+        END_FUNCTION_BLOCK
+
+        {test}
+        FUNCTION_BLOCK test_waits_a_millisecond
+        VAR_OUTPUT DONE : BOOL; END_VAR
+        VAR wait : WAIT_FOR; END_VAR
+            wait(how_long := ULINT#1000000);
+            DONE := wait.DONE;
+        END_FUNCTION_BLOCK
+    "#;
+    let build = compile_tests(&mut with_db, source);
+    let records = run(&build.component, Some(Duration::from_secs(5)));
+    let [record] = records.as_slice() else {
+        panic!("one test: {records:?}");
+    };
+    assert_eq!(record.status, Status::Pass, "{:?}", record.reason);
+}
+
 /// A test block holds what a test FUNCTION cannot, a `STDOUT`, whose write
 /// the host takes across cycles; a failure shows what it wrote.
 #[rstest]
