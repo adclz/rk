@@ -174,6 +174,62 @@ END_FUNCTION"#;
     ");
 }
 
+/// WASI 0.3 marks its time zone unstable, so the two functions of
+/// `Std.Timers` that read it warn where a program calls them. `LOCAL_LDT`
+/// reading `LOCAL_OFFSET` inside the library adds nothing.
+#[rstest]
+fn the_time_zone_warns_where_it_is_read(mut with_db: RootDatabase) {
+    add_library_sources(
+        &mut with_db,
+        &[
+            include_str!("../../../stdlib/Timers.st"),
+            include_str!("../../../stdlib/Convert.st"),
+            include_str!("../../../stdlib/Strings.st"),
+        ],
+    );
+    let source = r#"
+USING Std.Timers;
+
+FUNCTION caller : LDT
+VAR offset : LTIME; END_VAR
+    offset := LOCAL_OFFSET(IN := WALL_LDT());
+    caller := LOCAL_LDT();
+END_FUNCTION"#;
+
+    assert_snapshot!(test_single_lint(&mut with_db, &[source], "warn-pragma"), @r"
+    [L0002] Warning: {warn} notice
+         ,-[ file:///test0.st:6:15 ]
+         |
+       6 |     offset := LOCAL_OFFSET(IN := WALL_LDT());
+         |               ^^^^^^|^^^^^
+         |                     `------- reads the time zone, which WASI 0.3 marks unstable: a host has it only with its clocks-timezone feature on
+         |
+         |-[ file:///lib0.st:112:2 ]
+         |
+     112 |     {warn = 'reads the time zone, which WASI 0.3 marks unstable: a host has it only with its clocks-timezone feature on'}
+         |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^|^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+         |                                                               `------------------------------------------------------------ the pragma is declared here
+         |
+         | Note: lint rule: warn-pragma
+    -----'
+    [L0002] Warning: {warn} notice
+         ,-[ file:///test0.st:7:15 ]
+         |
+       7 |     caller := LOCAL_LDT();
+         |               ^^^^|^^^^
+         |                   `------ reads the time zone, which WASI 0.3 marks unstable: a host has it only with its clocks-timezone feature on
+         |
+         |-[ file:///lib0.st:144:2 ]
+         |
+     144 |     {warn = 'reads the time zone, which WASI 0.3 marks unstable: a host has it only with its clocks-timezone feature on'}
+         |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^|^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+         |                                                               `------------------------------------------------------------ the pragma is declared here
+         |
+         | Note: lint rule: warn-pragma
+    -----'
+    ");
+}
+
 /// `REAL_TO_DWORD` and `LREAL_TO_LWORD` copy the bits, and lose nothing: they
 /// carried the stdlib's narrowing notice, so every caller got an info, and
 /// E1431 now sends a REAL's partial access to them. A real narrowing keeps it.
