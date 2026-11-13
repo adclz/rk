@@ -460,3 +460,80 @@ fn a_module_that_writes_nothing_imports_no_output(mut with_db: db::RootDatabase)
         "no command line package beside it"
     );
 }
+
+/// A task with a stream of its own: its first scan makes the stream and
+/// writes 'first', and the next ones pass 'second' to the same block.
+const OWN_STREAM: &str = r#"
+    {extern 'wasi:cli/stdout@0.3.0' '[stream-new-0]write-via-stream'}
+    FUNCTION NEW_STREAM
+    VAR_OUTPUT readable : UDINT; writable : UDINT; END_VAR
+    END_FUNCTION
+
+    {extern 'wasi:cli/stdout@0.3.0' 'write-via-stream'}
+    FUNCTION READS : UDINT
+    VAR_INPUT data : UDINT; END_VAR
+    END_FUNCTION
+
+    {extern 'wasi:cli/stdout@0.3.0' '[future-drop-readable-1]write-via-stream'}
+    FUNCTION DROP_FUTURE
+    VAR_INPUT future : UDINT; END_VAR
+    END_FUNCTION
+
+    {extern async 'wasi:cli/stdout@0.3.0' '[stream-write-0]write-via-stream'}
+    FUNCTION_BLOCK STREAM_WRITE
+    VAR_INPUT stream : UDINT; data : STRING[16]; END_VAR
+    VAR_OUTPUT DONE : BOOL; written : UDINT; closed : BOOL; END_VAR
+    END_FUNCTION_BLOCK
+
+    PROGRAM P
+    VAR_EXTERNAL output : DINT; END_VAR
+    VAR open : BOOL; reading : UDINT; writing : UDINT; write : STREAM_WRITE; END_VAR
+        IF NOT open THEN
+            NEW_STREAM(readable => reading, writable => writing);
+            DROP_FUTURE(future := READS(data := reading));
+            open := TRUE;
+            write(stream := writing, data := 'first');
+        ELSE
+            write(stream := writing, data := 'second');
+        END_IF;
+        IF write.DONE THEN
+            output := output + 1;
+        END_IF;
+    END_PROGRAM
+
+    CONFIGURATION Cfg
+    VAR_GLOBAL output AT %QD0 : DINT; END_VAR
+        RESOURCE Res ON CPU
+            TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+            PROGRAM Main WITH T : P;
+        END_RESOURCE
+    END_CONFIGURATION
+"#;
+
+/// A new stream's two ends come back as the FUNCTION's two outputs, and a
+/// stream write copies the bytes it started with: while the host holds the
+/// copy, the calls of the block pass another text, which they leave in
+/// their arguments, and the host reads the first.
+#[rstest]
+fn a_stream_write_copies_the_bytes_it_started_with(mut with_db: db::RootDatabase) {
+    let bytes = component_alone(&mut with_db, OWN_STREAM).bytes;
+    let gate = Arc::new(Gate::default());
+    let written = Written::default();
+    let out = Sink::Gated {
+        gate: gate.clone(),
+        written: written.clone(),
+    };
+    let mut plc = Plc::load(&bytes, out, ready("err", &written));
+    let held: Vec<i32> = (0..3).map(|_| plc.scan(0)).collect();
+    assert_eq!(held, [0, 0, 0], "the host holds the copy");
+    gate.open();
+    for _ in 0..3 {
+        plc.scan(0);
+    }
+    let texts = text(&written);
+    assert_eq!(
+        texts.first(),
+        Some(&("out", "first".to_string())),
+        "{texts:?}"
+    );
+}
