@@ -696,6 +696,11 @@ async fn run_test(
                         describe(budget)
                     ));
                 }
+                // A cycle that waits on nothing never parks the runtime,
+                // whose timers fire only when it does: a host's `wait-for`
+                // would never end. The runtime has a turn between cycles,
+                // as it has one between a task's scans.
+                tokio::task::yield_now().await;
             }
             Ok((Err(TestError::Failed(message)),)) => {
                 let stack = store.data_mut().raised.take();
