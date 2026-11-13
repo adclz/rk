@@ -146,7 +146,9 @@ The block is its call: statements, a METHOD, an EXTENDS or an IMPLEMENTS on it a
 REQ and BUSY, where a block's users need them, are written in ST by a block that calls it.
 The build checks a WASI import against WASI's WIT, and names the declaration when it does not fit: the interface has the function, `{extern async}` names an `async func`, and `{extern}` a `func`.
 
-A WASI import may also be a stream's or a future's built-in, named after the function whose type has the stream (`[stream-new-0]write-via-stream`); elsewhere that name is E1512.
+A WASI import may be a resource's function, named as WIT names it: `[constructor]R`, `[method]R.f` (its first parameter the handle) or `[static]R.f`; a handle is a `UDINT`, and `[resource-drop]R` is an `{extern}` FUNCTION taking the one handle it drops (E1516 otherwise). A host module's import cannot name one (E1512): only WASI's interfaces have resources.
+
+A WASI import may also be a stream's or a future's built-in, named after the function whose type has the stream (`[stream-new-0]write-via-stream`, or `[stream-drop-readable-0][method]descriptor.read-via-stream` for a method); elsewhere that name is E1512.
 The number counts the function's streams and futures from 0, its parameters first, and the build checks that it names one of the built-in's kind.
 `new` and the drops return at once and are `{extern}` FUNCTIONs; `new` declares the two ends it makes as two `UDINT` VAR_OUTPUTs, the reading end first, and no return type.
 A stream's write, `[stream-write-N]f`, waits for the reader and is an `{extern async}` FUNCTION_BLOCK taking the writing end (`UDINT`) and the bytes (`STRING`, unchecked) and giving, after DONE, how many went (`UDINT`) and whether the reader left (`BOOL`); a built-in that does not fit its POU, a read, or other variables, is E1516.

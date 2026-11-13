@@ -271,7 +271,12 @@ In the core module, the block's call is the import lowered async, `[async-lower]
 The block checks the call with the component model's built-ins, imported from `$root`: `[waitable-set-new]`, `[waitable-join]`, `[waitable-set-poll]`, which never waits, and `[subtask-drop]`.
 A host that implements an async function asynchronously runs the component through wasmtime's async API, `instantiate_async` and `call_async`; the control interface's functions stay synchronous.
 
-A WASI import may also be a stream's or a future's built-in, under the name of the function whose type has the stream: `[stream-new-0]write-via-stream` makes the stream of `write-via-stream`'s type.
+A WASI import may be a resource's function, under the name WIT gives it: the constructor `[constructor]R`, a method `[method]R.f`, whose first parameter is the handle it is called on, and a static function `[static]R.f`.
+A handle is a `UDINT`, and `[resource-drop]R`, an `{extern}` FUNCTION taking one, lets go of a handle the host gave (`E1516` otherwise).
+Only WASI's interfaces have resources: a host module's WIT is written from its declarations, which make none (`E1512`).
+The build checks that WASI's WIT declares the function, or the resource a drop names.
+
+A WASI import may also be a stream's or a future's built-in, under the name of the function whose type has the stream: `[stream-new-0]write-via-stream` makes the stream of `write-via-stream`'s type, and `[stream-drop-readable-0][method]descriptor.read-via-stream` drops the reading end a method made.
 The number counts the streams and futures of the function's type from 0, its parameters first, as wit-component counts them, and the build checks that it names one of the built-in's kind.
 A built-in that returns at once, a stream's or a future's `new` or one of their drops, is an `{extern}` FUNCTION.
 A `new` declares the two ends it makes, a `UDINT` `VAR_OUTPUT` each, the reading end first, and no return type (`E1516`).
