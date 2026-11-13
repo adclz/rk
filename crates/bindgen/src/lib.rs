@@ -240,6 +240,8 @@ impl Generator<'_> {
             depth: 3,
         };
         let mut skipped = Vec::new();
+        // Each ST name the interface's namespace holds, by what it names.
+        let mut taken: HashMap<String, String> = HashMap::new();
         for (name, &ty) in &interface.types {
             let def = &resolve.types[ty];
             match &def.kind {
@@ -247,14 +249,19 @@ impl Generator<'_> {
                 TypeDefKind::Type(Type::Id(other)) if resolve.types[*other].owner != def.owner => {}
                 TypeDefKind::Type(inner) => match shapes::scalar(resolve, *inner, here) {
                     Some(st) => {
+                        let st_name = names::upper(name);
+                        claim(&mut taken, &st_name, &format!("the type `{name}`"), &module)?;
                         out.docs(&def.docs);
-                        out.line(&format!("TYPE {} : {st}; END_TYPE", names::upper(name)));
+                        out.line(&format!("TYPE {st_name} : {st}; END_TYPE"));
                         out.line("");
                     }
+                    // A string, or what is passed field by field: the
+                    // functions that take or give it say what they can.
+                    None if passed(resolve, *inner) => {}
                     None => skipped.push(Skipped {
                         item: format!("`{name}`"),
                         reason: format!(
-                            "it names {}, which ST has no scalar for",
+                            "it names {}, which ST has no type for yet",
                             shapes::what(resolve, *inner)
                         ),
                     }),
@@ -271,8 +278,10 @@ impl Generator<'_> {
                         .enumerate()
                         .map(|(at, case)| format!("{} := {at}", names::upper(&case.name)))
                         .collect();
+                    let st_name = names::upper(name);
+                    claim(&mut taken, &st_name, &format!("the enum `{name}`"), &module)?;
                     out.docs(&def.docs);
-                    out.line(&format!("TYPE {} : {base} (", names::upper(name)));
+                    out.line(&format!("TYPE {st_name} : {base} ("));
                     out.depth += 1;
                     let last = cases.len().saturating_sub(1);
                     for (at, case) in cases.iter().enumerate() {
@@ -283,11 +292,13 @@ impl Generator<'_> {
                     out.line("");
                 }
                 TypeDefKind::Resource => {
+                    let drop = names::upper(&format!("{name}-drop"));
+                    claim(&mut taken, &drop, &format!("the drop of `{name}`"), &module)?;
                     out.prose(&format!(
-                        "Lets go of a `{name}` the host gave, whose handle is `handle`."
+                        "Lets go of `handle`, a handle of `{name}` the host gave."
                     ));
                     out.line(&format!("{{extern '{module}' '[resource-drop]{name}'}}"));
-                    out.line(&format!("FUNCTION {}_DROP", names::upper(name)));
+                    out.line(&format!("FUNCTION {drop}"));
                     out.vars(
                         "VAR_INPUT",
                         &[Var {
@@ -317,11 +328,12 @@ impl Generator<'_> {
             }
         }
         for function in interface.functions.values() {
-            if let Err(reason) = self.function(&mut out, &module, function, here) {
-                skipped.push(Skipped {
+            match self.function(&mut out, &module, function, here) {
+                Ok(pou) => claim(&mut taken, &pou, &format!("`{}`", function.name), &module)?,
+                Err(reason) => skipped.push(Skipped {
                     item: format!("`{}`", function.name),
                     reason,
-                });
+                }),
             }
             self.built_ins(&module, &package.to_string(), function)?;
         }
@@ -359,31 +371,17 @@ impl Generator<'_> {
     }
 
     /// The declaration of `function`, imported from `module`, written to
-    /// `out`; `Err` says why it cannot be.
+    /// `out`, and its POU's name; `Err` says why it cannot be.
     fn function(
         &self,
         out: &mut Out,
         module: &str,
         function: &Function,
         here: Option<TypeOwner>,
-    ) -> Result<(), String> {
+    ) -> Result<String, String> {
         let resolve = self.resolve;
-        let pou = match &function.kind {
-            FunctionKind::Freestanding | FunctionKind::AsyncFreestanding => {
-                names::upper(&function.name)
-            }
-            FunctionKind::Method(resource)
-            | FunctionKind::AsyncMethod(resource)
-            | FunctionKind::Static(resource)
-            | FunctionKind::AsyncStatic(resource) => {
-                let resource = resolve.types[*resource].name.as_deref().unwrap_or_default();
-                names::upper(&format!("{resource}-{}", function.item_name()))
-            }
-            FunctionKind::Constructor(resource) => {
-                let resource = resolve.types[*resource].name.as_deref().unwrap_or_default();
-                names::upper(&format!("{resource}-new"))
-            }
-            _ => return Err("it is a property, which rk does not import".to_string()),
+        let Some(pou) = pou_name(resolve, function) else {
+            return Err("it is a property, which rk does not import".to_string());
         };
         let asynchronous = function.kind.is_async();
         let mut inputs = Vec::new();
@@ -414,6 +412,23 @@ impl Generator<'_> {
             shapes::result(resolve, function.result, asynchronous, here).map_err(|what| {
                 format!("its result holds {what}, which an import cannot give back yet")
             })?;
+        let mut variables: Vec<&str> = inputs.iter().map(|var| var.name.as_str()).collect();
+        if asynchronous {
+            variables.push("DONE");
+        }
+        if let Shape::Outputs(outputs) = &shape {
+            variables.extend(outputs.iter().map(|var| var.name.as_str()));
+        }
+        for (at, variable) in variables.iter().enumerate() {
+            if variables[..at]
+                .iter()
+                .any(|earlier| earlier.eq_ignore_ascii_case(variable))
+            {
+                return Err(format!(
+                    "two of its variables would be `{variable}`, which ST takes for one"
+                ));
+            }
+        }
 
         out.docs(&function.docs);
         let name = &function.name;
@@ -443,7 +458,7 @@ impl Generator<'_> {
             }
         }
         out.line("");
-        Ok(())
+        Ok(pou)
     }
 
     /// The built-ins of each stream and future `function` takes or gives
@@ -470,14 +485,14 @@ impl Generator<'_> {
                 continue;
             }
             let name = set_name(resolve, carrier, payload);
+            let described = described(resolve, payload);
             if let Some(other) = self
                 .set_names
-                .insert((carrier, name.clone()), key.1.clone())
+                .insert((carrier, name.clone()), described.clone())
             {
                 return Err(format!(
-                    "two {}s' built-ins would be named `{name}`: of `{other}` and of `{}`",
+                    "the {}s of `{other}` and of `{described}` would both have built-ins named `{name}`",
                     carrier.prefix(),
-                    key.1
                 ));
             }
             self.sets.insert(key, name.clone());
@@ -531,6 +546,66 @@ impl Generator<'_> {
             });
         }
         Ok(self.files)
+    }
+}
+
+/// The POU `function` is declared as: a function by its name, a resource's
+/// by the resource's name and its own, `DESCRIPTOR_READ_VIA_STREAM`, its
+/// constructor as `<resource>_NEW`. `None` for a property, which is not
+/// imported.
+fn pou_name(resolve: &Resolve, function: &Function) -> Option<String> {
+    let resource =
+        |resource: &wit_parser::TypeId| resolve.types[*resource].name.clone().unwrap_or_default();
+    match &function.kind {
+        FunctionKind::Freestanding | FunctionKind::AsyncFreestanding => {
+            Some(names::upper(&function.name))
+        }
+        FunctionKind::Method(id)
+        | FunctionKind::AsyncMethod(id)
+        | FunctionKind::Static(id)
+        | FunctionKind::AsyncStatic(id) => Some(names::upper(&format!(
+            "{}-{}",
+            resource(id),
+            function.item_name()
+        ))),
+        FunctionKind::Constructor(id) => Some(names::upper(&format!("{}-new", resource(id)))),
+        _ => None,
+    }
+}
+
+/// Records that the ST name `name` in `module`'s namespace stands for
+/// `what`, which another item cannot share: ST compares names without case,
+/// and two WIT names may be written alike, `x-new` and the constructor of
+/// `x`.
+fn claim(
+    taken: &mut HashMap<String, String>,
+    name: &str,
+    what: &str,
+    module: &str,
+) -> Result<(), String> {
+    match taken.insert(name.to_ascii_uppercase(), what.to_string()) {
+        Some(other) => Err(format!(
+            "{other} and {what} would both be `{name}` in `{module}`"
+        )),
+        None => Ok(()),
+    }
+}
+
+/// Whether what `ty` names is passed without a type of its own: a string,
+/// or field by field.
+fn passed(resolve: &Resolve, ty: Type) -> bool {
+    match shapes::resolved(resolve, ty) {
+        Type::String => true,
+        Type::Id(_) => matches!(
+            shapes::definition(resolve, ty),
+            Some(
+                TypeDefKind::Record(_)
+                    | TypeDefKind::Tuple(_)
+                    | TypeDefKind::Option(_)
+                    | TypeDefKind::Result(_)
+            )
+        ),
+        _ => false,
     }
 }
 
@@ -697,6 +772,21 @@ fn wit_text(resolve: &Resolve, ty: Option<Type>) -> String {
     }
 }
 
+/// `ty` as WIT writes it, a named type after the interface that defines
+/// it: `wasi:example/left.event`.
+fn described(resolve: &Resolve, ty: Option<Type>) -> String {
+    if let Some(Type::Id(id)) = ty.map(|ty| shapes::through_uses(resolve, ty)) {
+        let def = &resolve.types[id];
+        if let (Some(name), TypeOwner::Interface(interface)) = (&def.name, def.owner)
+            && let Some(interface) = resolve.id_of(interface)
+        {
+            let interface = interface.split('@').next().unwrap_or_default();
+            return format!("{interface}.{name}");
+        }
+    }
+    wit_text(resolve, ty)
+}
+
 /// A primitive type's name in WIT.
 fn wit_name(ty: Type) -> &'static str {
     match ty {
@@ -736,14 +826,14 @@ fn set_name(resolve: &Resolve, carrier: Carrier, payload: Option<Type>) -> Strin
                 }
                 TypeDefKind::Handle(
                     wit_parser::Handle::Own(resource) | wit_parser::Handle::Borrow(resource),
-                ) => names::upper(resolve.types[*resource].name.as_deref().unwrap_or("handle")),
+                ) => capitals(resolve.types[*resource].name.as_deref().unwrap_or("handle")),
                 TypeDefKind::Result(result) => {
                     let package = [result.err, result.ok]
                         .into_iter()
                         .flatten()
                         .find_map(|ty| package_of(resolve, ty));
                     let mut name = match package {
-                        Some(package) => format!("{}_RESULT", names::upper(&package)),
+                        Some(package) => format!("{}_RESULT", capitals(&package)),
                         None => "RESULT".to_string(),
                     };
                     if let Some(ok) = result.ok {
@@ -770,11 +860,17 @@ fn set_name(resolve: &Resolve, carrier: Carrier, payload: Option<Type>) -> Strin
                         .collect::<Vec<_>>()
                         .join("_")
                 ),
-                _ => names::upper(def.name.as_deref().unwrap_or("anonymous")),
+                _ => capitals(def.name.as_deref().unwrap_or("anonymous")),
             }
         }
-        primitive => names::upper(wit_name(primitive)),
+        primitive => capitals(wit_name(primitive)),
     }
+}
+
+/// `name` in capitals, its words joined by `_`, as part of a longer name:
+/// no keyword escape, which a whole name takes.
+fn capitals(name: &str) -> String {
+    name.to_ascii_uppercase().replace('-', "_")
 }
 
 /// The name of the package that defines the type `ty` names, if any.

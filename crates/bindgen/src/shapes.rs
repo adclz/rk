@@ -76,6 +76,19 @@ pub fn through_uses(resolve: &Resolve, ty: Type) -> Type {
     ty
 }
 
+/// The type `ty` names through every alias: a primitive, or a definition
+/// that is no alias.
+pub fn resolved(resolve: &Resolve, ty: Type) -> Type {
+    let mut ty = ty;
+    while let Type::Id(id) = ty {
+        match resolve.types[id].kind {
+            TypeDefKind::Type(inner) => ty = inner,
+            _ => break,
+        }
+    }
+    ty
+}
+
 /// The definition `ty` names, through every alias.
 pub fn definition(resolve: &Resolve, ty: Type) -> Option<&TypeDefKind> {
     let mut ty = ty;
@@ -90,7 +103,7 @@ pub fn definition(resolve: &Resolve, ty: Type) -> Option<&TypeDefKind> {
 
 /// What `ty` is, in words, when it has no scalar ST type.
 pub fn what(resolve: &Resolve, ty: Type) -> &'static str {
-    match ty {
+    match resolved(resolve, ty) {
         Type::Char => "a char",
         Type::String => "a string",
         Type::ErrorContext => "an error context",
@@ -165,7 +178,7 @@ pub fn input(
     here: Option<TypeOwner>,
 ) -> Result<Vec<Var>, &'static str> {
     let one = |name: String, ty: Type| -> Result<Var, &'static str> {
-        match ty {
+        match resolved(resolve, ty) {
             Type::String => Ok(Var {
                 name,
                 ty: string(),
