@@ -17,6 +17,7 @@ use super::{TestPlc, compile_with_libraries, fault_message, test_engine, with_db
 
 /// The interfaces `Std.Timers` imports its clocks from.
 const MONOTONIC_CLOCK: &str = "wasi:clocks/monotonic-clock@0.3.0";
+const SYSTEM_CLOCK: &str = "wasi:clocks/system-clock@0.3.0";
 const TIMEZONE: &str = "wasi:clocks/timezone@0.3.0";
 
 /// What the module reads, each a FUNCTION returning a LINT. Their names
@@ -80,13 +81,17 @@ impl Readings {
     }
 
     /// Instantiates the module on a host wired as `rk test` wires it, with
-    /// `zone` in place of the host's `utc-offset` when one is given.
-    fn on_host(&self, zone: Option<fn(i64, i32) -> Option<i64>>) -> Host {
+    /// a wall clock stopped at `wall`, WASI's `instant`, in place of the
+    /// host's, and `zone` in place of its `utc-offset`, when they are given.
+    fn on_host(&self, wall: Option<(i64, u32)>, zone: Option<fn(i64, i32) -> Option<i64>>) -> Host {
         let mut store = wasmtime::Store::new(&self.engine, ());
         let mut linker = wasmtime::Linker::new(&self.engine);
         rk::test_host::wire_clocks(&mut linker, &self.module).unwrap();
+        linker.allow_shadowing(true);
+        if let Some(instant) = wall {
+            rk::test_host::wire_wall(&mut linker, SYSTEM_CLOCK, move || instant).unwrap();
+        }
         if let Some(zone) = zone {
-            linker.allow_shadowing(true);
             rk::test_host::wire_zone(&mut linker, TIMEZONE, zone).unwrap();
         }
         let instance = linker.instantiate(&mut store, &self.module).unwrap();
@@ -153,7 +158,7 @@ fn the_clocks_read_the_host(mut with_db: db::RootDatabase) {
     // `WALL_LDT` is the instant the host's clock shows, read through the
     // `instant` record the import writes where the module points, and
     // `WALL_DT` the same instant in seconds.
-    let mut host = readings.on_host(None);
+    let mut host = readings.on_host(None, None);
     let before = host_now();
     let wall = host.read("read_wall_ldt");
     let after = host_now();
@@ -190,7 +195,7 @@ fn the_clocks_read_the_host(mut with_db: db::RootDatabase) {
         assert!((0..1_000_000_000).contains(&nanoseconds), "{nanoseconds}");
         Some(seconds * 1_000 + i64::from(nanoseconds) / 1_000_000)
     }
-    let mut host = readings.on_host(Some(echo));
+    let mut host = readings.on_host(None, Some(echo));
     for (instant, expected) in [
         (SECOND + 250_000_000, 1_250), // 1970-01-01 00:00:01.25
         (0, 0),
@@ -201,21 +206,43 @@ fn the_clocks_read_the_host(mut with_db: db::RootDatabase) {
         assert_eq!(host.offset_at(instant), expected, "{instant}");
     }
 
+    // A wall clock stopped at an instant reads it exactly: `WALL_LDT` to the
+    // nanosecond and `WALL_DT` to the second, rounded down. Before 1970 the
+    // seconds are negative and the nanoseconds still count forward.
+    let summer_noon_and_a_bit = (summer_noon, 123_456_789);
+    for (instant, ldt, dt) in [
+        (
+            summer_noon_and_a_bit,
+            summer_noon * SECOND + 123_456_789,
+            summer_noon,
+        ),
+        ((0, 0), 0, 0),
+        ((-1, 999_999_999), -1, -1), // 1969-12-31 23:59:59.999999999
+        ((-1, 0), -SECOND, -1),      // 1969-12-31 23:59:59
+    ] {
+        let mut host = readings.on_host(Some(instant), None);
+        assert_eq!(host.read("read_wall_ldt"), ldt, "{instant:?}");
+        assert_eq!(host.read("read_wall_dt"), dt, "{instant:?}");
+    }
+    // The zone is asked about the instant the wall clock shows, split back
+    // into WASI's seconds and nanoseconds: a nanosecond before 1970 is the
+    // second before, and 999,999,999 nanoseconds after it.
+    let mut host = readings.on_host(Some((-1, 999_999_999)), Some(echo));
+    assert_eq!(host.read("read_offset_now"), -1_000 + 999);
+
     // `LOCAL_LDT` is `WALL_LDT` shifted by the zone's offset, in the same
     // encoding: with a zone an hour east, an hour later.
     fn an_hour_east(_: i64, _: i32) -> Option<i64> {
         Some(3_600 * SECOND)
     }
-    let mut host = readings.on_host(Some(an_hour_east));
-    let shift = host.read("read_local_shift");
-    let hour = 3_600 * SECOND;
-    assert!((hour..hour + SECOND).contains(&shift), "{shift}");
+    let mut host = readings.on_host(Some(summer_noon_and_a_bit), Some(an_hour_east));
+    assert_eq!(host.read("read_local_shift"), 3_600 * SECOND);
 
     // A host with no zone answers none, and what needs the zone raises.
     fn no_zone(_: i64, _: i32) -> Option<i64> {
         None
     }
-    let mut host = readings.on_host(Some(no_zone));
+    let mut host = readings.on_host(Some(summer_noon_and_a_bit), Some(no_zone));
     for reading in ["read_offset_now", "read_local_shift"] {
         assert_eq!(
             host.raised(reading),
@@ -223,8 +250,9 @@ fn the_clocks_read_the_host(mut with_db: db::RootDatabase) {
             "{reading}"
         );
     }
-    assert!(
-        host.read("read_wall_ldt") > 0,
+    assert_eq!(
+        host.read("read_wall_ldt"),
+        summer_noon * SECOND + 123_456_789,
         "the wall clock needs no zone"
     );
 }
