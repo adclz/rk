@@ -252,7 +252,7 @@ PROGRAM Main
 END_PROGRAM
 ```
 
-- The block's `VAR_INPUT` are the call's parameters, read when the call starts.
+- The block's `VAR_INPUT` are the call's parameters, read when the call starts. While the call runs, a call of the block leaves them as they are: it evaluates what it passes, and drops it.
 - Its `DONE : BOOL` is its own and no part of the function's signature (`E1514`). It is TRUE in the call of the block that saw the call finish, and FALSE in every other.
 - Its other `VAR_OUTPUT` are the fields of the result, written when the call finishes, as an `{extern}` FUNCTION's are.
 - A block that is not called leaves its call running, and the next call of the block sees it finish before it starts another.
@@ -264,6 +264,7 @@ REQ, BUSY or any other control a block's users need is written in ST, by a block
 A call that has started cannot be cancelled: the component model's cancel needs a flag wasmtime has off by default.
 
 The declaration says the function is async, and the build checks it against WASI's WIT: `{extern async}` names an `async func`, and a plain `{extern}` a `func`, whose call a scan cannot wait for.
+The build also checks that WASI's interface has the function, and names the declaration when it does not.
 For a host's own module, the WIT rk writes declares an `async func`, its result the record of the block's `VAR_OUTPUT` but `DONE`.
 
 In the core module, the block's call is the import lowered async, `[async-lower]wait-for`: the parameters, or past 4 values the address of a tuple of them, then the address the result is written at, and a word back, the call's state and handle.
@@ -271,10 +272,12 @@ The block checks the call with the component model's built-ins, imported from `$
 A host that implements an async function asynchronously runs the component through wasmtime's async API, `instantiate_async` and `call_async`; the control interface's functions stay synchronous.
 
 A WASI import may also be a stream's or a future's built-in, under the name of the function whose type has the stream: `[stream-new-0]write-via-stream` makes the stream of `write-via-stream`'s type.
+The number counts the streams and futures of the function's type from 0, its parameters first, as wit-component counts them, and the build checks that it names one of the built-in's kind.
 A built-in that returns at once, a stream's or a future's `new` or one of their drops, is an `{extern}` FUNCTION.
+A `new` declares the two ends it makes, a `UDINT` `VAR_OUTPUT` each, the reading end first, and no return type (`E1516`).
 A stream's write waits for the reader, so it is an `{extern async}` FUNCTION_BLOCK, `[stream-write-N]f`: it takes the stream's writing end, a `UDINT`, and the bytes, a `STRING` whose length is passed as it is, unchecked, and after `DONE` gives how many went, a `UDINT`, and whether the reader left, a `BOOL` (`E1516` otherwise).
 Its call is a copy into the stream, which ends when the reader has taken some of the bytes or left: the block waits on the stream's end as it would on a call.
-The host reads the bytes from the block while the copy runs, so a call that checks it passes none.
+The host reads the bytes from the block while the copy runs: a call made then checks the copy, and leaves the bytes as they are, whatever it passes.
 
 The clocks a module imports are WASI 0.3's, in their core forms, and the host provides them:
 
@@ -292,7 +295,7 @@ A block makes its stream at its first request, hands the reading end to the host
 
 | Import, beside `write-via-stream` | Signature | What it does |
 |---|---|---|
-| `[stream-new-0]write-via-stream` | `() -> i64` | a stream of bytes: its reading end in the low half, its writing end in the high half |
+| `[stream-new-0]write-via-stream` | `() -> i64` | a stream of bytes: its reading end in the low half, its writing end in the high half, which the call writes into the FUNCTION's two outputs |
 | `write-via-stream` | `(i32) -> i32` | hands the reading end to the host, which answers with a future the module gives up |
 | `[future-drop-readable-1]write-via-stream` | `(i32)` | gives that future up |
 | `[async-lower][stream-write-0]write-via-stream` | `(i32, i32, i32) -> i32` | hands `len` bytes at `ptr` to the writing end, and returns at once |
