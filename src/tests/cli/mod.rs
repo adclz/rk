@@ -4,6 +4,7 @@
 mod args;
 mod backtrace;
 mod component;
+mod component_host;
 mod console;
 mod diagnostics;
 mod duration;
@@ -16,6 +17,7 @@ mod nesting;
 mod release;
 mod report;
 mod stack_size;
+mod stream_reads;
 mod test_blocks;
 mod test_filter;
 mod test_host;

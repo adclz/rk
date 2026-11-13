@@ -11,16 +11,15 @@ use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll};
 
 use rstest::rstest;
-use wasmtime::component::{Component, Linker};
+use wasmtime_wasi::WasiCtxBuilder;
 use wasmtime_wasi::cli::{IsTerminal, StdoutStream};
-use wasmtime_wasi::{ResourceTable, WasiCtx, WasiCtxBuilder, WasiCtxView, WasiView};
+
+use super::component_host::{Gate, Plc};
 
 use crate::tests::codegen::{
     STD_CONSOLE, compile_to_mir_and_wasm_as_built, compile_to_mir_and_wasm_as_built_with_libraries,
     with_db,
 };
-
-const CONTROL: &str = debug_format::wit::CONTROL_INTERFACE;
 
 /// A task that writes to both outputs with `Std.Console`: its input's bit
 /// 0 is the standard output's REQ, bit 1 the standard error's, and its
@@ -133,115 +132,12 @@ impl StdoutStream for Sink {
     }
 }
 
-/// What lets a gated sink take what it is given.
-#[derive(Default)]
-struct Gate {
-    open: std::sync::atomic::AtomicBool,
-    waker: Mutex<Option<std::task::Waker>>,
-}
-
-impl Gate {
-    fn open(&self) {
-        self.open.store(true, std::sync::atomic::Ordering::SeqCst);
-        if let Some(waker) = self.waker.lock().unwrap().take() {
-            waker.wake();
-        }
-    }
-}
-
-struct Host {
-    ctx: WasiCtx,
-    table: ResourceTable,
-}
-
-impl WasiView for Host {
-    fn ctx(&mut self) -> WasiCtxView<'_> {
-        WasiCtxView {
-            ctx: &mut self.ctx,
-            table: &mut self.table,
-        }
-    }
-}
-
-/// Polls `future` to its end on this thread, with a waker that does nothing.
-fn block_on<F: std::future::Future>(future: F) -> F::Output {
-    let mut future = std::pin::pin!(future);
-    let mut cx = Context::from_waker(std::task::Waker::noop());
-    loop {
-        if let Poll::Ready(value) = future.as_mut().poll(&mut cx) {
-            return value;
-        }
-        std::thread::yield_now();
-    }
-}
-
-/// A component on a host with the two outputs given, called through
-/// wasmtime's async API, as `rk test` calls it: each call runs the host's
-/// side of the streams, which a synchronous call does only for what the
-/// host takes within it.
-struct Plc {
-    store: wasmtime::Store<Host>,
-    instance: wasmtime::component::Instance,
-}
-
-impl Plc {
-    fn load(bytes: &[u8], stdout: Sink, stderr: Sink) -> Self {
-        let mut config = wasmtime::Config::new();
-        config.wasm_exceptions(true);
-        config.wasm_component_model_async(true);
-        let engine = wasmtime::Engine::new(&config).expect("an engine");
-        let component = Component::new(&engine, bytes).expect("a valid component");
-        let mut linker = Linker::<Host>::new(&engine);
-        wasmtime_wasi::p3::cli::add_to_linker(&mut linker).expect("WASI's command line");
-        linker
-            .define_unknown_imports_as_traps(&component)
-            .expect("its other imports stubbed");
-        let mut store = wasmtime::Store::new(
-            &engine,
-            Host {
-                ctx: WasiCtxBuilder::new().stdout(stdout).stderr(stderr).build(),
-                table: ResourceTable::new(),
-            },
-        );
-        let instance = block_on(linker.instantiate_async(&mut store, &component))
-            .expect("the component instantiates");
-        let mut plc = Plc { store, instance };
-        assert_eq!(plc.call::<(), (), String>("init", ()), Ok(()));
-        plc
-    }
-
-    fn call<P, T: 'static, E: 'static>(&mut self, name: &str, params: P) -> Result<T, E>
-    where
-        P: wasmtime::component::ComponentNamedList + wasmtime::component::Lower + Send + Sync,
-        (Result<T, E>,): wasmtime::component::ComponentNamedList + wasmtime::component::Lift,
-    {
-        let control = self
-            .instance
-            .get_export_index(&mut self.store, None, CONTROL)
-            .expect("the control interface");
-        let function = self
-            .instance
-            .get_export_index(&mut self.store, Some(&control), name)
-            .unwrap_or_else(|| panic!("the interface has `{name}`"));
-        let typed = self
-            .instance
-            .get_typed_func::<P, (Result<T, E>,)>(&mut self.store, &function)
-            .unwrap_or_else(|e| panic!("`{name}`: {e}"));
-        block_on(typed.call_async(&mut self.store, params))
-            .unwrap_or_else(|e| panic!("`{name}` trapped: {e:#}"))
-            .0
-    }
-
-    /// A scan with `input`, and the task's output.
-    fn scan(&mut self, input: i32) -> i32 {
-        let outputs = self
-            .call::<_, Vec<u8>, rk::control::ScanError>(
-                "run-task",
-                (0u32, &input.to_le_bytes()[..]),
-            )
-            .expect("the scan runs");
-        i32::from_le_bytes(outputs[..4].try_into().expect("four bytes"))
-    }
+/// A component on a host with the two outputs given ([`Plc`]).
+fn load(bytes: &[u8], stdout: Sink, stderr: Sink) -> Plc {
+    Plc::load(
+        bytes,
+        WasiCtxBuilder::new().stdout(stdout).stderr(stderr).build(),
+    )
 }
 
 fn ready(name: &'static str, written: &Written) -> Sink {
@@ -285,7 +181,7 @@ fn text(written: &Written) -> Vec<(&'static str, String)> {
 fn a_scan_writes_to_the_host_s_outputs(mut with_db: db::RootDatabase) {
     let bytes = component(&mut with_db, WRITER).bytes;
     let written = Written::default();
-    let mut plc = Plc::load(&bytes, ready("out", &written), ready("err", &written));
+    let mut plc = load(&bytes, ready("out", &written), ready("err", &written));
     let seen: Vec<i32> = [0, 1, 1, 3, 0, 1]
         .into_iter()
         .map(|input| plc.scan(input))
@@ -312,7 +208,7 @@ fn a_host_may_take_a_text_in_pieces(mut with_db: db::RootDatabase) {
         at_most: 5,
         written: written.clone(),
     };
-    let mut plc = Plc::load(&bytes, pieces, ready("err", &written));
+    let mut plc = load(&bytes, pieces, ready("err", &written));
     let seen: Vec<i32> = (0..4).map(|_| plc.scan(1)).collect();
     assert_eq!(seen, [OUT_DONE, 0, 0, 0], "all of it within the scan");
     let out: Vec<String> = text(&written)
@@ -329,7 +225,7 @@ fn a_host_may_take_a_text_in_pieces(mut with_db: db::RootDatabase) {
 fn a_host_that_is_not_ready_leaves_the_block_busy(mut with_db: db::RootDatabase) {
     let bytes = component(&mut with_db, WRITER).bytes;
     let written = Written::default();
-    let mut plc = Plc::load(&bytes, Sink::Stalled, ready("err", &written));
+    let mut plc = load(&bytes, Sink::Stalled, ready("err", &written));
     let seen: Vec<i32> = [1, 1, 1, 3]
         .into_iter()
         .map(|input| plc.scan(input))
@@ -349,7 +245,7 @@ fn an_edge_while_busy_is_ignored(mut with_db: db::RootDatabase) {
         gate: gate.clone(),
         written: written.clone(),
     };
-    let mut plc = Plc::load(&bytes, gated, ready("err", &written));
+    let mut plc = load(&bytes, gated, ready("err", &written));
     let held: Vec<i32> = [1, 0, 1].into_iter().map(|input| plc.scan(input)).collect();
     assert_eq!(
         held, [OUT_BUSY; 3],
@@ -367,7 +263,7 @@ fn an_edge_while_busy_is_ignored(mut with_db: db::RootDatabase) {
 fn a_host_that_lets_go_is_an_error(mut with_db: db::RootDatabase) {
     let bytes = component(&mut with_db, WRITER).bytes;
     let written = Written::default();
-    let mut plc = Plc::load(&bytes, Sink::Closed, ready("err", &written));
+    let mut plc = load(&bytes, Sink::Closed, ready("err", &written));
     let seen: Vec<i32> = [1, 1, 0, 1]
         .into_iter()
         .map(|input| plc.scan(input))
@@ -410,7 +306,7 @@ fn a_text_is_cut_at_4096_bytes(mut with_db: db::RootDatabase) {
     );
     let bytes = component(&mut with_db, &source).bytes;
     let written = Written::default();
-    let mut plc = Plc::load(&bytes, ready("out", &written), ready("err", &written));
+    let mut plc = load(&bytes, ready("out", &written), ready("err", &written));
     assert_eq!(plc.scan(1), OUT_DONE);
     let taken: usize = written.lock().unwrap().iter().map(|(_, b)| b.len()).sum();
     assert_eq!(taken, 4096, "what IN holds");
@@ -523,7 +419,7 @@ fn a_stream_write_copies_the_bytes_it_started_with(mut with_db: db::RootDatabase
         gate: gate.clone(),
         written: written.clone(),
     };
-    let mut plc = Plc::load(&bytes, out, ready("err", &written));
+    let mut plc = load(&bytes, out, ready("err", &written));
     let held: Vec<i32> = (0..3).map(|_| plc.scan(0)).collect();
     assert_eq!(held, [0, 0, 0], "the host holds the copy");
     gate.open();

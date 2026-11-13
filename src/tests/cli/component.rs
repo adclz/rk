@@ -2051,9 +2051,8 @@ fn the_build_checks_async_against_wasi(mut with_db: db::RootDatabase) {
 /// The build checks each WASI import against WASI's WIT, and names the
 /// declaration: a function the interface has, and for a stream's or a
 /// future's built-in, a number that names one of the function's streams and
-/// futures, of the built-in's kind. wit-component refused all of these
-/// without pointing at a declaration, and the misspelled function not at all
-/// until then.
+/// futures, of the built-in's kind. wit-component refuses each of these too,
+/// but names the import rather than the POU that declares it.
 #[rstest]
 #[case::number_past_the_last(
     "{extern 'wasi:cli/stdout@0.3.0' '[future-drop-readable-2]write-via-stream'}
