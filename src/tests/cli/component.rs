@@ -2088,12 +2088,98 @@ fn the_build_checks_async_against_wasi(mut with_db: db::RootDatabase) {
     "`NOW` imports `nwo` of `wasi:clocks/monotonic-clock@0.3.0`, and WASI's WIT declares no \
      function `nwo` there"
 )]
+#[case::no_such_method(
+    "{extern 'wasi:filesystem/types@0.3.0' '[method]descriptor.read-via-pipe'}
+     FUNCTION READ_VIA_PIPE
+     VAR_INPUT dir : UDINT; offset : ULINT; END_VAR
+     VAR_OUTPUT stream : UDINT; finished : UDINT; END_VAR
+     END_FUNCTION",
+    "`READ_VIA_PIPE` imports `[method]descriptor.read-via-pipe` of \
+     `wasi:filesystem/types@0.3.0`, and WASI's WIT declares no function \
+     `[method]descriptor.read-via-pipe` there"
+)]
+#[case::no_such_resource(
+    "{extern 'wasi:filesystem/types@0.3.0' '[resource-drop]directory'}
+     FUNCTION DROP_DIRECTORY
+     VAR_INPUT handle : UDINT; END_VAR
+     END_FUNCTION",
+    "`DROP_DIRECTORY` imports `[resource-drop]directory` of `wasi:filesystem/types@0.3.0`, \
+     and WASI's WIT declares no resource `directory` there"
+)]
+#[case::async_method_on_a_function(
+    "{extern 'wasi:filesystem/types@0.3.0' '[method]descriptor.open-at'}
+     FUNCTION OPEN_AT : UDINT
+     VAR_INPUT dir : UDINT; END_VAR
+     END_FUNCTION",
+    "`OPEN_AT` imports `[method]descriptor.open-at` of `wasi:filesystem/types@0.3.0` with \
+     {extern}, and WASI's WIT declares it an `async func`: import it with {extern async} on \
+     a FUNCTION_BLOCK"
+)]
+#[case::number_past_a_method_s_last(
+    "{extern 'wasi:filesystem/types@0.3.0' '[future-drop-readable-2][method]descriptor.read-via-stream'}
+     FUNCTION DROP_FUTURE
+     VAR_INPUT future : UDINT; END_VAR
+     END_FUNCTION",
+    "`DROP_FUTURE` imports `[future-drop-readable-2][method]descriptor.read-via-stream` of \
+     `wasi:filesystem/types@0.3.0`, and the type of `[method]descriptor.read-via-stream` \
+     numbers its streams and futures from 0 to 1"
+)]
 fn the_build_checks_wasi_imports_against_wasi_s_wit(
     mut with_db: db::RootDatabase,
     #[case] source: &str,
     #[case] error: &str,
 ) {
     assert_eq!(build(&mut with_db, source).err().as_deref(), Some(error));
+}
+
+/// A resource's functions are imported under the names WIT gives them, and
+/// wit-component takes their core forms: a method that returns its result
+/// where the module points, an async method lowered async, the drop of a
+/// handle, and a stream's built-in under a method's name. The component
+/// imports the interface that declares the resource.
+#[rstest]
+fn a_resource_s_functions_build_into_a_component(mut with_db: db::RootDatabase) {
+    let source = r#"
+        {extern 'wasi:filesystem/types@0.3.0' '[method]descriptor.read-via-stream'}
+        FUNCTION READ_VIA_STREAM
+        VAR_INPUT dir : UDINT; offset : ULINT; END_VAR
+        VAR_OUTPUT stream : UDINT; finished : UDINT; END_VAR
+        END_FUNCTION
+
+        {extern async 'wasi:filesystem/types@0.3.0' '[method]descriptor.open-at'}
+        FUNCTION_BLOCK OPEN_AT
+        VAR_INPUT
+            dir : UDINT; path_flags : BYTE; path : STRING[255]; open_flags : BYTE; flags : BYTE;
+        END_VAR
+        VAR_OUTPUT DONE : BOOL; failed : BOOL; value : UDINT; END_VAR
+        END_FUNCTION_BLOCK
+
+        {extern 'wasi:filesystem/types@0.3.0' '[resource-drop]descriptor'}
+        FUNCTION DROP_DESCRIPTOR
+        VAR_INPUT handle : UDINT; END_VAR
+        END_FUNCTION
+
+        {extern 'wasi:filesystem/types@0.3.0' '[stream-drop-readable-0][method]descriptor.read-via-stream'}
+        FUNCTION DROP_READER
+        VAR_INPUT stream : UDINT; END_VAR
+        END_FUNCTION
+
+        PROGRAM Main
+        VAR stream, finished : UDINT; open : OPEN_AT; END_VAR
+            READ_VIA_STREAM(dir := 1, offset := 0, stream => stream, finished => finished);
+            open(dir := 1, path_flags := 0, path := 'a.txt', open_flags := 0, flags := 1);
+            DROP_READER(stream := stream);
+            DROP_DESCRIPTOR(handle := 1);
+        END_PROGRAM
+    "#;
+    let component = build(&mut with_db, source).expect("the component builds");
+    assert!(
+        component
+            .world
+            .contains("import wasi:filesystem/types@0.3.0;"),
+        "{}",
+        component.world
+    );
 }
 
 /// A task that calls a host's async function through a block at every
