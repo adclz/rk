@@ -1,6 +1,6 @@
 ---
 name: cli-test
-description: Compile a workspace and run its {test} functions with `rk test`. Use when asked to run tests, verify a change, or narrow a run to one test.
+description: Compile a workspace and run its {test} FUNCTIONs and FUNCTION_BLOCKs with `rk test`. Use when asked to run tests, verify a change, or narrow a run to one test.
 ---
 
 > **Output format.** Every `rk` command takes `--output-format full|concise|json-lines`.
@@ -11,7 +11,7 @@ description: Compile a workspace and run its {test} functions with `rk test`. Us
 
 ## Summary
 
-Runs every FUNCTION marked `{test}`.
+Runs every FUNCTION marked `{test}`, once, and every FUNCTION_BLOCK marked `{test}`, cycle by cycle until a cycle leaves its `DONE` TRUE.
 Writing them is the `programming-tests` skill.
 
 The tests run on the component of the workspace, unoptimized, the way a host runs it: it is left in `rk_build/test/<project>.wasm` with its WIT, or in `rk_build/test-O<level>/` with `-O`.
@@ -44,7 +44,8 @@ A namespaced test is matched by its path, `Ns1.Ns2.TestName`.
 Tests default to the unoptimized build; this checks an optimized build computes the same thing.
 An optimized build has no line tables, so its failures are reported without the calls.
 
-`--timeout <TIMEOUT>` How long one test may run, e.g. `30s`, `500ms`.
+`--timeout <TIMEOUT>` How long one test may run, e.g. `30s`, `500ms`; 5 s by default.
+Each call of a test has that time to return, and a test FUNCTION_BLOCK that time to set its `DONE`: one still running then fails with the number of cycles it ran.
 A test waiting out a timer legitimately runs long; one that never returns must not hang the run.
 
 `--workspace <WORKSPACE>` Workspace path, `.` by default.

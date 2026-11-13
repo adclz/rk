@@ -21,14 +21,15 @@ use crate::{
     types::MirType,
 };
 
-/// Workspace-relative file and 1-based line of a test FUNCTION, for the
-/// manifest; relative so the artifact is reproducible across machines.
-fn test_location<'db>(db: &'db dyn WorkspaceDataBase, func: Function<'db>) -> (String, u32) {
+/// Workspace-relative file and 1-based line of a test, a FUNCTION or a
+/// FUNCTION_BLOCK, for the manifest; relative so the artifact is
+/// reproducible across machines.
+fn test_location<'db>(db: &'db dyn WorkspaceDataBase, test: Pou<'db>) -> (String, u32) {
     use db::workspace::Workspace;
     use hir::{HasName, HirNodeInfo};
 
-    let file = func.get_scope_id(db).file(db);
-    let line = func.get_name_span(db).start_point.row as u32 + 1;
+    let file = test.get_scope_id(db).file(db);
+    let line = test.get_name_span(db).start_point.row as u32 + 1;
 
     let Ok(path) = file.url(db).to_file_path() else {
         return (String::new(), line);
@@ -301,6 +302,42 @@ fn lower_module_from_pous<'db>(
             extern_functions.push(mir_ext);
         }
     }
+    // An `{extern}` FUNCTION_BLOCK imports its function lowered async, and
+    // its body, which codegen emits, makes the call and checks it.
+    let mut async_calls = FxHashMap::default();
+    for (pou, _ns_prefix) in all_pous.iter() {
+        use hir::HasPragmas;
+        let Pou::FunctionBlock(fb) = pou else {
+            continue;
+        };
+        let (Some((_, pragma)), Some(import)) = (
+            fb.extern_pragma(db),
+            hir::hir_ty::async_import::async_import(db, *fb),
+        ) else {
+            continue;
+        };
+        let MirType::Struct(instance) = at_pou(db, *fb, super::lower_type::lower_fb_type(db, *fb))?
+        else {
+            continue;
+        };
+        let call = at_pou(
+            db,
+            *fb,
+            crate::async_call::call(db, *fb, &import, &instance),
+        )?;
+        let mir_ext = crate::async_call::import(db, *fb, &import, &call, pragma, next_fn_idx);
+        at_pou(
+            db,
+            *fb,
+            register_symbol(db, &mut function_indices, mir_ext.name, next_fn_idx),
+        )?;
+        next_fn_idx += 1;
+        extern_functions.push(mir_ext);
+        async_calls.insert(
+            super::naming::body_symbol(db, Pou::FunctionBlock(*fb), Pou::FunctionBlock(*fb)),
+            call,
+        );
+    }
 
     // Phase 2: Process local functions
     for (pou, _ns_prefix) in all_pous.iter() {
@@ -435,7 +472,7 @@ fn lower_module_from_pous<'db>(
                         .as_ref()
                         .map(|s| s.to_string())
                         .unwrap_or_else(|| mir_func.name.text(db).to_string());
-                    let (file, line) = test_location(db, *func);
+                    let (file, line) = test_location(db, Pou::Function(*func));
                     test_entries.push(crate::test_manifest::TestEntry {
                         path: export_name.clone(),
                         export: export_name,
@@ -448,6 +485,13 @@ fn lower_module_from_pous<'db>(
             }
 
             Pou::FunctionBlock(fb) => {
+                // A library's test blocks are left out, as its test
+                // FUNCTIONs are: nothing names a test (E1007).
+                let is_test = hir::hir_def::pous::pragma::is_test(db, fb.pragmas(db));
+                if is_test && !is_workspace(db, *fb) {
+                    continue;
+                }
+
                 // Emit one set of (instance type + body + methods) per FB, keyed
                 // by its namespace-qualified name.
                 let fb_qualified = super::naming::qualified_pou_ident(
@@ -511,6 +555,36 @@ fn lower_module_from_pous<'db>(
                     )?;
                     next_fn_idx += 1;
                     functions.push(mf);
+                }
+
+                // A test block's test: a cycle of the block per call.
+                if is_test {
+                    let test = at_pou(
+                        db,
+                        *fb,
+                        super::test_block::lower_test_block(
+                            db,
+                            *fb,
+                            &fb_mir_type,
+                            next_fn_idx,
+                            &mut memory_layout,
+                            &string_pool,
+                        ),
+                    )?;
+                    at_pou(
+                        db,
+                        *fb,
+                        register_symbol(db, &mut function_indices, test.name, next_fn_idx),
+                    )?;
+                    next_fn_idx += 1;
+                    let (file, line) = test_location(db, Pou::FunctionBlock(*fb));
+                    test_entries.push(crate::test_manifest::TestEntry {
+                        path: fb_qualified.text(db).to_string(),
+                        export: test.name.text(db).to_string(),
+                        file,
+                        line,
+                    });
+                    functions.push(test);
                 }
             }
 
@@ -726,19 +800,19 @@ fn lower_module_from_pous<'db>(
         }
     }
 
-    // A module that writes to the host's standard output or error imports
-    // the stream it writes through, which no declaration names.
-    for output in crate::console::written(&functions) {
-        for import in crate::console::imports(db, output, next_fn_idx) {
-            function_indices.insert(import.name, import.index);
-            next_fn_idx += 1;
-            extern_functions.push(import);
+    // A block's async call is checked with the component model's built-ins:
+    // the last imports, numbered from `next_fn_idx`.
+    if !async_calls.is_empty() {
+        for builtin in crate::async_call::builtins(db, next_fn_idx) {
+            function_indices.insert(builtin.name, builtin.index);
+            extern_functions.push(builtin);
         }
     }
 
     let mut module = MirModule {
         functions,
         extern_functions,
+        async_calls,
         instance_types,
         function_indices,
         type_indices,
@@ -1082,6 +1156,7 @@ fn lower_module_from_pous<'db>(
             body: init_stmts,
             linkage: crate::function::MirLinkage::Export,
             is_test: false,
+            test_done: None,
             export_name: Some(compact_str::CompactString::from("__init")),
             wit_export: None,
             frame: None,
@@ -1184,6 +1259,11 @@ fn lower_extern_function<'db>(
         out_results,
         return_type,
         linkage: crate::function::MirLinkage::Internal,
+        asynchronous: false,
+        ends: extern_decl.is_wasi()
+            && hir::hir_def::pous::pragma::builtin_name(&extern_decl.name).is_some_and(
+                |(builtin, _)| hir::hir_def::pous::pragma::builtin_makes_ends(builtin),
+            ),
     })
 }
 

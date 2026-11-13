@@ -537,7 +537,7 @@ VAR_INPUT values : ARRAY[*]; END_VAR
 END_FUNCTION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1502] Error: not representable on an extern FUNCTION
+    [E1502] Error: not representable on an import
        ,-[ file:///test0.st:4:11 ]
        |
      4 | VAR_INPUT values : ARRAY[*] OF INT; END_VAR
@@ -555,7 +555,7 @@ END_FUNCTION
        |
        | Note: it is compiled once per array type it is called with, so there is no single function to export
     ---'
-    [E1511] Error: test FUNCTION with a parameter
+    [E1511] Error: test with a parameter
         ,-[ file:///test0.st:14:11 ]
         |
      14 | VAR_INPUT values : ARRAY[*]; END_VAR

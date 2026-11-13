@@ -14,12 +14,13 @@ interface control {
     restore-retain: func(retained: list<u8>);
     read-memory: func(ranges: list<range>) -> result<list<u8>, memory-error>;
     write-memory: func(address: u32, bytes: list<u8>) -> result<_, memory-error>;
-    run-test: func(test: u32) -> result<_, test-error>;
+    run-test: func(test: u32) -> result<test-state, test-error>;
 
     variant scan-error { raised(string), no-such-task }
     record range { address: u32, size: u32 }
     variant memory-error { outside-memory(u32), too-large, outside-variables }
     variant test-error { failed(string), no-such-test }
+    enum test-state { passed, running }
 }
 ```
 
@@ -27,7 +28,7 @@ interface control {
 - `save-retain` gives the retain area, to keep across a power cycle, and `restore-retain` gives it back after `init` on a warm start.
 - `run-task` runs the task at that place in the `rk.schedule` section: `inputs` is copied into the input area, each program instance of the task runs, and the output area comes back. A host calls it for each task the section says is due, in the order the section lists them. The `located-map` section says where each address is in the two lists.
 - `read-memory` reads ranges of the memory between two scans, and `write-memory` forces bytes into the variables, at the addresses the `debug-symbols` section gives. Writing anywhere but the variables is refused.
-- `run-test` runs the test at that place in the `test-manifest` section. A release build has none.
+- `run-test` runs the test at that place in the `test-manifest` section: a test FUNCTION whole, `passed` when it returns, or one cycle of a test FUNCTION_BLOCK, `running` until a cycle leaves its `DONE` TRUE. The block keeps its instance from one call to the next, and a host calls it again for its next cycle. A release build has no test.
 
 No function of the interface waits.
 An exception never leaves the component, where it would be a trap that stops the whole PLC: it comes back as the error of the result, `raised` with its message for a scan.
@@ -48,6 +49,7 @@ core module                         one for the workspace
 │  ├─ Filter$__body__               a function block a task runs
 │  ├─ Scale                         a FUNCTION marked {export}
 │  ├─ test_scale                    a {test}, in the debug profile only
+│  ├─ test_valve$__test__           a {test} FUNCTION_BLOCK, a cycle per call
 │  ├─ memory                        the module's own memory
 │  └─ input_base, input_size        each band, see Memory bands
 ├─ INTERNAL                         what only the module calls
@@ -224,6 +226,59 @@ A record of scalars comes back in `VAR_OUTPUT`, one for each of its fields in th
 A `REF_TO` input is an address, where a record can come back too.
 A STRUCT, an ARRAY or an instance input is refused (`E1502`): it would go as an address into rk's own layout, which no WASI function reads.
 
+A host function WIT declares an `async func` is imported by a FUNCTION_BLOCK, with `{extern async 'module' 'name'}`.
+A scan never waits for it: each call of the block takes the call one step, starting it when none is running and checking it otherwise.
+
+```st
+{extern async 'wasi:clocks/monotonic-clock@0.3.0' 'wait-for'}
+FUNCTION_BLOCK WAIT_FOR
+	VAR_INPUT
+		how_long: LTIME;
+	END_VAR
+	VAR_OUTPUT
+		DONE: BOOL;
+	END_VAR
+END_FUNCTION_BLOCK
+
+PROGRAM Main
+	VAR
+		wait: WAIT_FOR;
+		ticks: DINT;
+	END_VAR
+	wait(how_long := LT#100ms);
+	IF wait.DONE THEN
+		ticks := ticks + 1;
+	END_IF;
+END_PROGRAM
+```
+
+- The block's `VAR_INPUT` are the call's parameters, read when the call starts. While the call runs, a call of the block leaves them as they are: it evaluates what it passes, and drops it.
+- Its `DONE : BOOL` is its own and no part of the function's signature (`E1514`). It is TRUE in the call of the block that saw the call finish, and FALSE in every other.
+- Its other `VAR_OUTPUT` are the fields of the result, written when the call finishes, as an `{extern}` FUNCTION's are.
+- A block that is not called leaves its call running, and the next call of the block sees it finish before it starts another.
+- The block is its call: it has no statements, METHOD, EXTENDS or IMPLEMENTS (`E1502`).
+
+The host writes the result into the block's instance at a later scan, so the instance lives in a PROGRAM, a FUNCTION_BLOCK or a VAR_GLOBAL, never in a FUNCTION's or a METHOD's variables or a VAR_TEMP (`E1515`).
+A FUNCTION can still call one it does not hold: the caller's, handed over as VAR_IN_OUT, or a global's, through VAR_EXTERNAL.
+REQ, BUSY or any other control a block's users need is written in ST, by a block that calls it.
+A call that has started cannot be cancelled: the component model's cancel needs a flag wasmtime has off by default.
+
+The declaration says the function is async, and the build checks it against WASI's WIT: `{extern async}` names an `async func`, and a plain `{extern}` a `func`, whose call a scan cannot wait for.
+The build also checks that WASI's interface has the function, and names the declaration when it does not.
+For a host's own module, the WIT rk writes declares an `async func`, its result the record of the block's `VAR_OUTPUT` but `DONE`.
+
+In the core module, the block's call is the import lowered async, `[async-lower]wait-for`: the parameters, or past 4 values the address of a tuple of them, then the address the result is written at, and a word back, the call's state and handle.
+The block checks the call with the component model's built-ins, imported from `$root`: `[waitable-set-new]`, `[waitable-join]`, `[waitable-set-poll]`, which never waits, and `[subtask-drop]`.
+A host that implements an async function asynchronously runs the component through wasmtime's async API, `instantiate_async` and `call_async`; the control interface's functions stay synchronous.
+
+A WASI import may also be a stream's or a future's built-in, under the name of the function whose type has the stream: `[stream-new-0]write-via-stream` makes the stream of `write-via-stream`'s type.
+The number counts the streams and futures of the function's type from 0, its parameters first, as wit-component counts them, and the build checks that it names one of the built-in's kind.
+A built-in that returns at once, a stream's or a future's `new` or one of their drops, is an `{extern}` FUNCTION.
+A `new` declares the two ends it makes, a `UDINT` `VAR_OUTPUT` each, the reading end first, and no return type (`E1516`).
+A stream's write waits for the reader, so it is an `{extern async}` FUNCTION_BLOCK, `[stream-write-N]f`: it takes the stream's writing end, a `UDINT`, and the bytes, a `STRING` whose length is passed as it is, unchecked, and after `DONE` gives how many went, a `UDINT`, and whether the reader left, a `BOOL` (`E1516` otherwise).
+Its call is a copy into the stream, which ends when the reader has taken some of the bytes or left: the block waits on the stream's end as it would on a call.
+The host reads the bytes from the block while the copy runs: a call made then checks the copy, and leaves the bytes as they are, whatever it passes.
+
 The clocks a module imports are WASI 0.3's, in their core forms, and the host provides them:
 
 | Import | Signature | What it does |
@@ -232,20 +287,22 @@ The clocks a module imports are WASI 0.3's, in their core forms, and the host pr
 | `wasi:clocks/system-clock@0.3.0` `now` | `(i32)` | writes at the address the seconds since 1970-01-01 UTC as an `s64`, negative before, then the nanoseconds as a `u32` |
 | `wasi:clocks/timezone@0.3.0` `utc-offset` | `(i64, i32, i32)` | takes an instant as its seconds and nanoseconds, and writes at the address whether the host has a zone, in one byte, and if it has, 8 bytes on, the nanoseconds the zone is east of UTC at that instant |
 
+The time zone is still unstable in WASI 0.3, `@unstable(feature = clocks-timezone)`: a host has it only with that feature on, and its signature can change in a 0.3 release.
 A release build imports the ones the program reads; a debug build imports all three, so a host that has no zone still defines `utc-offset`, answering that it has none, or the module does not instantiate. Where the monotonic clock starts is the host's choice, as WASI leaves it.
 
-[`Std.Console`](console.md) writes to WASI 0.3's standard output and error, `wasi:cli/stdout@0.3.0` and `wasi:cli/stderr@0.3.0`.
+[`Std.Console`](console.md) writes to WASI 0.3's standard output and error, `wasi:cli/stdout@0.3.0` and `wasi:cli/stderr@0.3.0`, with the imports it declares.
 Each is one function, `write-via-stream`, which takes a stream of bytes.
-The module makes the stream at its first write, hands its reading end to the host, keeps the other end, and writes to it with the component model's stream built-ins:
+A block makes its stream at its first request, hands the reading end to the host, keeps the other end, and writes to it with the component model's stream built-ins:
 
 | Import, beside `write-via-stream` | Signature | What it does |
 |---|---|---|
-| `[stream-new-0]write-via-stream` | `() -> i64` | a stream of bytes: its reading end in the low half, its writing end in the high half |
+| `[stream-new-0]write-via-stream` | `() -> i64` | a stream of bytes: its reading end in the low half, its writing end in the high half, which the call writes into the FUNCTION's two outputs |
 | `write-via-stream` | `(i32) -> i32` | hands the reading end to the host, which answers with a future the module gives up |
 | `[future-drop-readable-1]write-via-stream` | `(i32)` | gives that future up |
 | `[async-lower][stream-write-0]write-via-stream` | `(i32, i32, i32) -> i32` | hands `len` bytes at `ptr` to the writing end, and returns at once |
 
 A component's host provides all four by providing WASI's command line interfaces, as wasmtime-wasi does.
-A function a host calls may not wait, so a write is never waited for: a host that takes none of the bytes leaves them pending in the module's memory, and the output closed.
+A scan never waits for a write: one the host has not taken stays pending in the block, `BUSY`, and a later scan sees it end.
+The host's side of the stream runs while the host calls the component through wasmtime's async API; a synchronous call hands over only what the host takes within it.
 
-A release build imports an output when the program writes to it, and a debug build imports both.
+Both outputs are written with the one block `Std.Console` imports beside the standard output's function, so a program that writes to either imports the standard output's interface; a debug build imports both.

@@ -105,3 +105,49 @@ END_FUNCTION
     let line = lenses[0].range.start.line as usize;
     assert_eq!(source.split('\n').nth(line), Some("{test}"));
 }
+
+/// A test FUNCTION_BLOCK is run as a test FUNCTION is: its lens sits on its
+/// `{test}` and runs it by its qualified path. A namespace of one name was
+/// written with two dots, `Plant..test_pump`, which ran no test.
+#[rstest]
+fn a_test_block_gets_the_run_lens(mut with_db: RootDatabase) {
+    let source = r#"NAMESPACE Plant
+{test}
+FUNCTION test_pump
+END_FUNCTION
+
+{test}
+FUNCTION_BLOCK test_valve
+VAR_OUTPUT DONE : BOOL; END_VAR
+    DONE := TRUE;
+END_FUNCTION_BLOCK
+END_NAMESPACE
+"#;
+    add_sources(&mut with_db, &[source]);
+    let lenses: Vec<_> = collect_code_lenses(&with_db)
+        .into_iter()
+        .map(|lens| {
+            let command = lens.command.expect("a command");
+            let test = command.arguments.expect("arguments")[1]
+                .as_str()
+                .map(str::to_string);
+            let line = source.split('\n').nth(lens.range.start.line as usize);
+            (command.command, test, line)
+        })
+        .collect();
+    assert_eq!(
+        lenses,
+        [
+            (
+                "rk.runTest".to_string(),
+                Some("Plant.test_pump".to_string()),
+                Some("{test}")
+            ),
+            (
+                "rk.runTest".to_string(),
+                Some("Plant.test_valve".to_string()),
+                Some("{test}")
+            ),
+        ]
+    );
+}

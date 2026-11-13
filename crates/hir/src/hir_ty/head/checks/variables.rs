@@ -346,18 +346,28 @@ impl<'db> InitInference<'db> {
         };
 
         // `{extern}` legality. The pragma position is shared by every
-        // pragma-carrying POU, so the FUNCTION-only rule is enforced here;
-        // and an extern FUNCTION's interface is copies in, scalar results
-        // out, with the import standing in for the body — so VAR_IN_OUT,
-        // aggregate outputs and statements are each refused where they are
-        // declared. (E1502/E1501.)
+        // pragma-carrying POU, so the rule that only a FUNCTION or a
+        // FUNCTION_BLOCK takes one is enforced here; and an import's
+        // interface is copies in, scalar results out, with the import
+        // standing in for the body — so VAR_IN_OUT, aggregate outputs and
+        // statements are each refused where they are declared. (E1502/E1501.)
         let extern_fn = match scope_kind {
             ScopeKind::Pou(Pou::Function(f)) => {
+                if let Some((anchor, pragma)) = f.extern_pragma(db)
+                    && pragma.asynchronous
+                {
+                    self.errors.push(
+                        PragmaError::ExternAsync {
+                            anchor: *anchor,
+                            block: false,
+                        }
+                        .to_diagnostic(db, self.scope.file(db)),
+                    );
+                }
                 f.extern_pragma(db).map(|(_, pragma)| (f, pragma.is_wasi()))
             }
             ScopeKind::Pou(Pou::FunctionBlock(fb)) => {
-                self.refuse_extern_on(db, fb.extern_pragma(db), "FUNCTION_BLOCK");
-                self.refuse_test_on(db, fb.test_pragma(db), "FUNCTION_BLOCK");
+                self.check_test_block(db, fb);
                 None
             }
             // CLASS/INTERFACE take no pragmas in the grammar — `{extern}`
@@ -384,15 +394,68 @@ impl<'db> InitInference<'db> {
             ScopeKind::MethodDecl(m) => self.refuse_export_on(db, m.export_pragma(db), "METHOD"),
             _ => {}
         }
-        if let Some((f, _)) = extern_fn
-            && let Some(first) = f.statements(db).first()
-        {
+        // An `{extern}` FUNCTION_BLOCK is an async import, which the same
+        // rules govern (`async_import`).
+        let extern_block = match scope_kind {
+            ScopeKind::Pou(Pou::FunctionBlock(fb)) => match fb.extern_pragma(db) {
+                Some((_, pragma)) if pragma.asynchronous => Some((fb, pragma.is_wasi())),
+                Some((anchor, _)) => {
+                    self.errors.push(
+                        PragmaError::ExternAsync {
+                            anchor: *anchor,
+                            block: true,
+                        }
+                        .to_diagnostic(db, self.scope.file(db)),
+                    );
+                    None
+                }
+                None => None,
+            },
+            _ => None,
+        };
+        // Whether the POU is an import, and whether of WASI's.
+        let extern_wasi = extern_fn
+            .map(|(_, wasi)| wasi)
+            .or(extern_block.map(|(_, wasi)| wasi));
+        let extern_statements = match (extern_fn, extern_block) {
+            (Some((f, _)), _) => Some((f.statements(db).first(), "FUNCTION")),
+            (_, Some((fb, _))) => Some((fb.statements(db).first(), "FUNCTION_BLOCK")),
+            _ => None,
+        };
+        if let Some((Some(first), pou_kind)) = extern_statements {
             self.errors.push(
                 PragmaError::ExternWithBody {
                     site: first.as_call_site(db),
+                    pou_kind,
                 }
                 .to_diagnostic(db, self.scope.file(db)),
             );
+        }
+        // An async import's block is its call, nothing more: a METHOD, a
+        // base or an INTERFACE would be code the host has not.
+        if let Some((fb, _)) = extern_block {
+            use crate::check::errors::e15_pragma::ImportMember;
+            let members = fb
+                .extends(db)
+                .iter()
+                .map(|base| (base.get_span(db), ImportMember::Extends))
+                .chain(
+                    fb.implements(db)
+                        .iter()
+                        .map(|itf| (itf.get_span(db), ImportMember::Implements)),
+                )
+                .chain(
+                    fb.methods(db)
+                        .iter()
+                        .map(|method| (method.get_name_span(db), ImportMember::Method)),
+                )
+                .collect::<Vec<_>>();
+            for (span, member) in members {
+                self.errors.push(
+                    PragmaError::ExternBlockMember { span, member }
+                        .to_diagnostic(db, self.scope.file(db)),
+                );
+            }
         }
         // The return type is the import's LAST result, so it answers to the
         // same scalar rule as VAR_OUTPUT. Checking only the sections left the
@@ -457,13 +520,23 @@ impl<'db> InitInference<'db> {
                 var,
                 matches!(scope_kind, ScopeKind::Pou(Pou::FunctionBlock(_))),
             );
-            if let ScopeKind::Pou(Pou::Function(f)) = scope_kind
-                && f.is_test(db)
-                && (var.is_input(db) || var.is_output(db) || var.is_in_out(db))
-            {
+            // A test block's VAR_OUTPUTs are its instance's, DONE among them.
+            let test_parameter = match scope_kind {
+                ScopeKind::Pou(Pou::Function(f)) => (f.is_test(db)
+                    && (var.is_input(db) || var.is_output(db) || var.is_in_out(db)))
+                .then_some("FUNCTION"),
+                ScopeKind::Pou(Pou::FunctionBlock(fb)) => (fb.is_test(db)
+                    && (var.is_input(db) || var.is_in_out(db)))
+                .then_some("FUNCTION_BLOCK"),
+                _ => None,
+            };
+            if let Some(pou_kind) = test_parameter {
                 self.errors.push(
-                    PragmaError::TestWithParameter { var: *var }
-                        .to_diagnostic(db, self.scope.file(db)),
+                    PragmaError::TestWithParameter {
+                        var: *var,
+                        pou_kind,
+                    }
+                    .to_diagnostic(db, self.scope.file(db)),
                 );
             }
             // An instance changes when it runs: its body and its methods
@@ -709,7 +782,35 @@ impl<'db> InitInference<'db> {
                     }
                 }
             }
-            if let Some((_, wasi)) = extern_fn {
+            // The host writes an async call's result into its instance when
+            // it finishes, at a later scan: an instance in a call's frame is
+            // gone by then (E1515). A VAR_IN_OUT is the caller's instance and
+            // a VAR_EXTERNAL a global's: neither is in the frame.
+            let frame = match (stateless_pou, var.kind(db)) {
+                (
+                    _,
+                    crate::hir_def::pous::variable::VariableKind::InOut
+                    | crate::hir_def::pous::variable::VariableKind::External,
+                ) => None,
+                (Some("METHOD prototype"), _) => None,
+                (Some(pou), _) => Some(pou),
+                (None, crate::hir_def::pous::variable::VariableKind::Temp) => Some("VAR_TEMP"),
+                _ => None,
+            };
+            if let Some(frame) = frame
+                && crate::hir_ty::async_import::holds_async_import(db, var.spec(db).infer(db))
+            {
+                let frame = match frame {
+                    "VAR_TEMP" => "VAR_TEMP",
+                    "FUNCTION" => "a FUNCTION's frame",
+                    _ => "a METHOD's frame",
+                };
+                self.errors.push(
+                    PragmaError::AsyncImportInFrame { var: *var, frame }
+                        .to_diagnostic(db, self.scope.file(db)),
+                );
+            }
+            if let Some(wasi) = extern_wasi {
                 use crate::hir_def::pous::variable::VariableKind;
                 // A WASI function keeps WASI's types, which the module's
                 // core ABI matches: a REF_TO is the address where a record
@@ -1119,10 +1220,9 @@ pub(crate) fn string_alias<'db>(db: &'db dyn WorkspaceDataBase, spec: Spec<'db>)
 }
 
 impl<'db> InitInference<'db> {
-    /// Push E1501 when `pragma` is present: `{extern}` on a POU kind that
-    /// cannot be an import.
-    /// `{test}` is FUNCTION-only, like `{extern}` (E1503): the runner calls
-    /// a `()` entry, which no other POU kind has.
+    /// Push E1503 when `pragma` is present: `{test}` on a POU the runner
+    /// cannot call, neither a FUNCTION, a `()` entry, nor a FUNCTION_BLOCK it
+    /// can make an instance of.
     fn refuse_test_on(
         &mut self,
         db: &'db dyn WorkspaceDataBase,
@@ -1136,6 +1236,41 @@ impl<'db> InitInference<'db> {
                     pou_kind,
                 }
                 .to_diagnostic(db, self.scope.file(db)),
+            );
+        }
+    }
+
+    /// A `{test}` FUNCTION_BLOCK runs cycle by cycle on an instance the
+    /// runner makes, until a cycle leaves its DONE TRUE: an ABSTRACT or
+    /// `{extern}` block has no instance to make (E1503), and the block
+    /// declares its DONE (E1517).
+    fn check_test_block(
+        &mut self,
+        db: &'db dyn WorkspaceDataBase,
+        fb: crate::hir_def::pous::function_block::FunctionBlock<'db>,
+    ) {
+        let Some(anchor) = fb.test_pragma(db) else {
+            return;
+        };
+        let refused = if fb.modifier(db).contains(crate::Modifier::ABSTRACT) {
+            Some("FUNCTION_BLOCK declared ABSTRACT")
+        } else if fb.extern_pragma(db).is_some() {
+            Some("FUNCTION_BLOCK declared {extern}")
+        } else {
+            None
+        };
+        if let Some(pou_kind) = refused {
+            self.refuse_test_on(db, Some(anchor), pou_kind);
+            return;
+        }
+        if crate::hir_ty::async_import::done_output(db, fb).is_none() {
+            let found = fb
+                .variables(db)
+                .iter()
+                .copied()
+                .find(|var| crate::hir_ty::async_import::named_done(db, *var));
+            self.errors.push(
+                PragmaError::TestDone { block: fb, found }.to_diagnostic(db, self.scope.file(db)),
             );
         }
     }
@@ -1226,6 +1361,8 @@ impl<'db> InitInference<'db> {
         );
     }
 
+    /// Push E1501 when `pragma` is present: `{extern}` on a POU kind that
+    /// cannot be an import.
     fn refuse_extern_on(
         &mut self,
         db: &'db dyn WorkspaceDataBase,

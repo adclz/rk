@@ -57,6 +57,13 @@ thread_local! {
     /// frame, and the stack pointer's global, for a `RETURN` to pop it.
     pub(crate) static FRAME: std::cell::Cell<Option<(u32, u32)>> =
         const { std::cell::Cell::new(None) };
+
+    /// Where each async import's block keeps its call's handle, by the
+    /// symbol of its body: a call of the block writes its inputs only while
+    /// the handle is 0, when no call is running, since a running call reads
+    /// them from the instance.
+    pub(crate) static ASYNC_HANDLE_AT: std::cell::RefCell<rustc_hash::FxHashMap<Ident, u32>> =
+        std::cell::RefCell::new(rustc_hash::FxHashMap::default());
 }
 
 /// Pop the current call's frame: the stack pointer goes back to its start.
@@ -858,9 +865,31 @@ fn emit_stmt(func: &mut wasm_encoder::Function, stmt: &MirStmt, ctx: &Ctx) {
             // scratch local.
             let base = resolve_fb_base(func, instance, ctx);
 
-            // 1. Write input values / inout addresses to the instance's fields
-            for (field_offset, value, ty) in input_writes {
-                emit_fb_field_write(func, base, *field_offset, value, ty, ctx);
+            // 1. Write input values / inout addresses to the instance's fields.
+            // An async import's block takes them only when no call is running:
+            // a running call reads them from the instance, a stream write the
+            // bytes it copies. What the call passes is evaluated either way.
+            let handle_at = ASYNC_HANDLE_AT.with(|at| at.borrow().get(body_func).copied());
+            match handle_at {
+                Some(handle) if !input_writes.is_empty() => {
+                    push_fb_field_addr(func, base, handle);
+                    func.instruction(&Instruction::I32Load(mem_arg(0, 2)));
+                    func.instruction(&Instruction::I32Eqz);
+                    func.instruction(&Instruction::If(wasm_encoder::BlockType::Empty));
+                    for (field_offset, value, ty) in input_writes {
+                        emit_fb_field_write(func, base, *field_offset, value, ty, ctx);
+                    }
+                    func.instruction(&Instruction::Else);
+                    for (_, value, ty) in input_writes {
+                        emit_fb_input_dropped(func, value, ty, ctx);
+                    }
+                    func.instruction(&Instruction::End);
+                }
+                _ => {
+                    for (field_offset, value, ty) in input_writes {
+                        emit_fb_field_write(func, base, *field_offset, value, ty, ctx);
+                    }
+                }
             }
 
             // 2. Call __body__(&instance); an unresolved body symbol is fatal, as
@@ -1935,6 +1964,30 @@ fn emit_fb_field_write(
             });
         }
         MirType::Void | MirType::RefTarget(_) => {}
+    }
+}
+
+/// Evaluate one `FbCall` input and drop it: what a call of an async
+/// import's block passes while its call runs. Such a block takes scalars and
+/// STRINGs only (E1502).
+fn emit_fb_input_dropped(
+    func: &mut wasm_encoder::Function,
+    value: &MirExpr,
+    ty: &mir::types::MirType,
+    ctx: &Ctx,
+) {
+    use mir::types::MirType;
+    match ty {
+        MirType::String { .. } => {
+            emit_str_value(func, value, ctx.locals, ctx.fn_indices);
+            func.instruction(&Instruction::Drop);
+            func.instruction(&Instruction::Drop);
+        }
+        MirType::Void | MirType::RefTarget(_) => {}
+        _ => {
+            emit_expr(func, value, ctx.locals, ctx.fn_indices);
+            func.instruction(&Instruction::Drop);
+        }
     }
 }
 

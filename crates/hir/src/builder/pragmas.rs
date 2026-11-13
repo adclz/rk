@@ -80,6 +80,7 @@ impl<'db> SemanticIndexBuilder<'db> {
             name: strip(name.get_text(doc).ok()?),
             module_span: module.get_range().to_owned(),
             name_span: name.get_range().to_owned(),
+            asynchronous: ext.asynchronous.is_some(),
         })
     }
 

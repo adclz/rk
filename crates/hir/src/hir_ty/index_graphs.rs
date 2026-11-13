@@ -95,6 +95,7 @@ use crate::{
         namespace::NamespaceDecl,
         pous::{
             function::Function,
+            function_block::FunctionBlock,
             pou::Pou,
             variable::{LocatedAddress, VariableDecl},
         },
@@ -716,13 +717,33 @@ pub fn effective_location<'db>(
 /// A discovered test item with its qualified name.
 #[derive(Debug, Clone)]
 pub enum TestItem<'db> {
+    /// A test FUNCTION, which the runner calls once.
     Function(Function<'db>, String),
+    /// A test FUNCTION_BLOCK, which the runner calls cycle by cycle on an
+    /// instance of its own until its DONE is TRUE.
+    Block(FunctionBlock<'db>, String),
 }
 
 impl<'db> TestItem<'db> {
     pub fn qualified_name(&self) -> &str {
         match self {
-            TestItem::Function(_, name) => name,
+            TestItem::Function(_, name) | TestItem::Block(_, name) => name,
+        }
+    }
+
+    /// `pou` as a test named `name`, when it is one.
+    fn of(
+        db: &'db dyn WorkspaceDataBase,
+        pou: Pou<'db>,
+        name: impl FnOnce() -> String,
+    ) -> Option<Self> {
+        use crate::hir_def::pous::pragma::is_test;
+        match pou {
+            Pou::Function(f) if is_test(db, f.pragmas(db)) => Some(TestItem::Function(f, name())),
+            Pou::FunctionBlock(fb) if is_test(db, fb.pragmas(db)) => {
+                Some(TestItem::Block(fb, name()))
+            }
+            _ => None,
         }
     }
 }
@@ -741,14 +762,9 @@ pub fn discover_all_tests<'db>(db: &'db dyn WorkspaceDataBase) -> Vec<TestItem<'
             .map(|root| format!("{}.", root.spelling.text(db)))
             .unwrap_or_default();
         for pou in file_global_pous(db, file).iter() {
-            if let Pou::Function(f) = pou
-                && crate::hir_def::pous::pragma::is_test(db, f.pragmas(db))
-            {
-                tests.push(TestItem::Function(
-                    *f,
-                    format!("{root}{}", f.name_with_case(db).text(db)),
-                ));
-            }
+            tests.extend(TestItem::of(db, *pou, || {
+                format!("{root}{}", pou.get_name_with_case(db).text(db))
+            }));
         }
 
         // Namespaced test functions. The namespace list is FLAT (nested
@@ -759,14 +775,9 @@ pub fn discover_all_tests<'db>(db: &'db dyn WorkspaceDataBase) -> Vec<TestItem<'
             // A test is named as it is written: its export and its report say so.
             let ns_prefix = ns.absolute_path_with_case(db).to_string(db);
             for pou in ns.pous(db).iter() {
-                if let Pou::Function(f) = pou
-                    && crate::hir_def::pous::pragma::is_test(db, f.pragmas(db))
-                {
-                    tests.push(TestItem::Function(
-                        *f,
-                        format!("{}.{}", ns_prefix, f.name_with_case(db).text(db)),
-                    ));
-                }
+                tests.extend(TestItem::of(db, *pou, || {
+                    format!("{}.{}", ns_prefix, pou.get_name_with_case(db).text(db))
+                }));
             }
         }
     }
@@ -784,15 +795,10 @@ pub fn find_test<'db>(
     let parts: Vec<&str> = qualified_name.split('.').collect();
 
     if parts.len() == 1 {
-        // Global scope: a test is a FUNCTION (E1503 refuses the pragma
-        // anywhere else).
+        // Global scope: a test is a FUNCTION or a FUNCTION_BLOCK (E1503
+        // refuses the pragma anywhere else).
         let name = Ident::from_slice(db, parts[0]).folded(db);
-        if let Some(Pou::Function(f)) = pou_index(db, name)
-            && crate::hir_def::pous::pragma::is_test(db, f.pragmas(db))
-        {
-            return Some(TestItem::Function(f, qualified_name.to_string()));
-        }
-        None
+        TestItem::of(db, pou_index(db, name)?, || qualified_name.to_string())
     } else {
         // Namespaced: split into namespace path + item name
         let ns_parts = &parts[..parts.len() - 1];
@@ -805,11 +811,8 @@ pub fn find_test<'db>(
         let ns_path = NamespacePath::new(db, ns_idents);
         let name = Ident::from_slice(db, item_name).folded(db);
 
-        if let Some(Pou::Function(f)) = namespace_pou_index(db, ns_path, name)
-            && crate::hir_def::pous::pragma::is_test(db, f.pragmas(db))
-        {
-            return Some(TestItem::Function(f, qualified_name.to_string()));
-        }
-        None
+        TestItem::of(db, namespace_pou_index(db, ns_path, name)?, || {
+            qualified_name.to_string()
+        })
     }
 }

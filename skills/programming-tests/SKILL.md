@@ -1,13 +1,14 @@
 ---
 name: programming-tests
 description: Write unit tests in Structured Text — the {test} pragma, Std.Unit's
-  ASSERT/ASSERT_EQ/ASSERT_NEQ, and how to drive a stateful FUNCTION_BLOCK from a
-  test. Use when adding or fixing tests for ST code. Running them is `cli-test`.
+  ASSERT/ASSERT_EQ/ASSERT_NEQ, how to drive a stateful FUNCTION_BLOCK from a
+  test, and a test FUNCTION_BLOCK that runs over cycles. Use when adding or
+  fixing tests for ST code. Running them is `cli-test`.
 ---
 
 ## Summary
 
-A test is a `FUNCTION` marked `{test}`.
+A test is a `FUNCTION` marked `{test}`, which runs once, or a `FUNCTION_BLOCK` marked `{test}`, which runs cycle by cycle (below).
 It takes no arguments and returns nothing useful; it asserts, and an assertion that fails raises, which is what marks the test failed.
 
 ```iecst
@@ -21,10 +22,10 @@ FUNCTION test_addition_wraps_at_16_bits
 END_FUNCTION
 ```
 
-`{test}` is valid ONLY on a `FUNCTION`, like `{extern}`: on a `FUNCTION_BLOCK`, a `PROGRAM` or a `METHOD` it is `E1503`.
-A test is a `()` entry the runner calls, and no other POU kind has one; a POU that exists only for tests is not a test — hide it with `FUNCTION PRIVATE` instead.
+`{test}` is valid ONLY on a `FUNCTION` and on a `FUNCTION_BLOCK` the runner can make an instance of: on a `PROGRAM`, a `METHOD`, or an `ABSTRACT` or `{extern}` FUNCTION_BLOCK it is `E1503`.
+A POU that exists only for tests is not a test — hide it with `FUNCTION PRIVATE` instead.
 
-A test may declare a return type and inputs; nothing supplies them, so do not.
+A test FUNCTION may declare a return type, which nothing reads; it takes no `VAR_INPUT`, `VAR_OUTPUT` or `VAR_IN_OUT` (E1511), since nothing supplies them.
 Two `{test}` functions may not share a name (E0102) — but a name is qualified by its namespaces, so `Deep.Nest.test_x` and a top-level `test_x` coexist, and that path is what `rk test <name>` matches.
 
 ## Assertions
@@ -45,7 +46,8 @@ Write what the code should have done, not "failed":
 ASSERT_EQ(value := c.CV, target := INT#1, message := 'one rising edge counted once');
 ```
 
-What a test writes with `Std.Console`'s `WRITE_STDOUT` or `WRITE_STDERR` is shown under its failure, both outputs in the order written (the first 64 KiB), and dropped when it passes, so a value written before an assertion helps read why it failed.
+What a test writes with `Std.Console`'s `STDOUT` or `STDERR` blocks is shown under its failure, both outputs in the order written (the first 64 KiB), and dropped when it passes, so a value written before an assertion helps read why it failed.
+A test FUNCTION_BLOCK holds the blocks itself; a test FUNCTION holds none (E1515), and writes through blocks declared in a `VAR_GLOBAL`.
 
 ## Testing a stateful FUNCTION_BLOCK
 
@@ -80,27 +82,45 @@ END_FUNCTION
 
 Each test gets fresh instances — a `VAR c : Counter;` starts at its initializers every run — so tests do not leak state into each other, and two instances in one test are independent.
 
-## Waiting for something asynchronous
+## A test over cycles
 
-Nothing blocks: a block backed by a host driver completes across *calls*, not inside one.
-Spin it on a deadline rather than a fixed count, so a slow machine does not fail the test and a broken driver does not hang it:
+Nothing blocks: a timer, or a block backed by the host, completes across *cycles*, not inside one call, and a loop inside a test FUNCTION never sees the host answer.
+A `FUNCTION_BLOCK` marked `{test}` runs once per cycle, on an instance of its own, until a cycle leaves its `DONE` output TRUE: the test has then passed.
+Its variables keep their values from one cycle to the next, so a sequence is a step variable advanced as the cycles go:
 
-```iecst sketch
+```iecst
 USING Std.Timers;
+USING Std.Unit;
 
-FUNCTION PRIVATE drive_until_done
-	VAR_IN_OUT
-		drv : Driver;      // a block that stays BUSY until its host answers
+FUNCTION_BLOCK Debounce
+	VAR_INPUT raw : BOOL; END_VAR
+	VAR_OUTPUT stable : BOOL; END_VAR
+	VAR hold : TON; END_VAR
+	hold(IN := raw, PT := T#20ms);
+	stable := hold.Q;
+END_FUNCTION_BLOCK
+
+{test}
+FUNCTION_BLOCK test_debounce_waits_its_time
+	VAR_OUTPUT DONE : BOOL; END_VAR
+	VAR
+		button : Debounce;
+		first : BOOL := TRUE;
 	END_VAR
-	VAR start : TIME; END_VAR
-	start := PLC_TIME();
-	WHILE drv.BUSY AND ((PLC_TIME() - start) < T#3s) DO
-		drv(REQ := TRUE);
-	END_WHILE;
-END_FUNCTION
+	button(raw := TRUE);
+	IF first THEN
+		ASSERT(value := NOT button.stable, message := 'stable at once');
+		first := FALSE;
+	END_IF;
+	DONE := button.stable;
+END_FUNCTION_BLOCK
 ```
 
-`rk test --timeout` is the backstop for a spin that never settles; the in-test deadline is what turns a hang into a readable assertion failure.
+The block declares `DONE`, a `BOOL` in `VAR_OUTPUT` (E1517), and takes no `VAR_INPUT` or `VAR_IN_OUT` (E1511); other outputs are its own.
+The cycles run one after the other, with no wait between them.
+A raise fails the test in the cycle that raised.
+A block still running when `rk test --timeout` (5 s by default) is spent fails with the number of cycles it ran, so a test that waits on the host needs no deadline of its own.
+Nothing may name a test block (E1007): shared setup goes in an ordinary block the test holds.
 
 ## Organising
 
@@ -124,5 +144,5 @@ That keeps test names out of a consumer's unqualified scope and stops them colli
 
 ## Shared setup
 
-A test is one FUNCTION that builds what it needs.
-Shared setup is an ordinary `PRIVATE` helper function the tests call — like `drive_until_done` above — which the compiler keeps inside its namespace (E1005), so a helper never leaks into the library's API.
+A test is one FUNCTION or FUNCTION_BLOCK that builds what it needs.
+Shared setup is an ordinary `PRIVATE` helper function the tests call, which the compiler keeps inside its namespace (E1005), so a helper never leaks into the library's API.

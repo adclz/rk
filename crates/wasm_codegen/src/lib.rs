@@ -9,9 +9,9 @@ pub mod emit_expr;
 pub mod emit_stmt;
 pub mod mir_cast;
 
+mod async_call;
 mod builtins;
 pub mod canonical;
-mod console;
 pub mod control;
 mod exports;
 mod graft;
@@ -464,9 +464,6 @@ struct WasmGen<'a> {
     /// passes ([`import_check`]): its place among the imports, and the
     /// wrapper's index.
     import_wrappers: Vec<(usize, u32)>,
-    /// The function that writes to each output the module writes to
-    /// ([`console`]), by index.
-    console: Vec<(mir::console::Output, u32)>,
 }
 
 /// A function's memory locals as `debug-locals` describes them: the leaves,
@@ -673,7 +670,6 @@ impl<'a> WasmGen<'a> {
             stack: None,
             control_names: Vec::new(),
             import_wrappers: Vec::new(),
-            console: Vec::new(),
         }
     }
 
@@ -689,6 +685,25 @@ impl<'a> WasmGen<'a> {
         // Where an import that returns a record has it written.
         crate::emit_expr::IMPORT_RECORD_AT.with(|at| {
             at.set(control::control_area(self.module, tests_end(self.module)).import_record)
+        });
+        // The imports that make a stream or a future.
+        crate::emit_expr::ENDS_IMPORTS.with(|ends| {
+            *ends.borrow_mut() = self
+                .module
+                .extern_functions
+                .iter()
+                .filter(|ext| ext.ends)
+                .map(|ext| ext.name)
+                .collect();
+        });
+        // Where each async import's block keeps its call's handle.
+        crate::emit_stmt::ASYNC_HANDLE_AT.with(|at| {
+            *at.borrow_mut() = self
+                .module
+                .async_calls
+                .iter()
+                .map(|(body, call)| (*body, call.state + mir::async_call::STATE_HANDLE))
+                .collect();
         });
 
         // Where each string literal is, by the pool entry it names.
@@ -748,18 +763,13 @@ impl<'a> WasmGen<'a> {
         }
         // 3b. An import passed a STRING or a CHAR is called through a
         //     wrapper that checks them first, after the user functions.
+        // An async call's block checks them itself, before the call.
         for (at, ext_fn) in self.module.extern_functions.iter().enumerate() {
-            if ext_fn.params.iter().any(|p| import_check(&p.ty).is_some()) {
+            if !ext_fn.asynchronous && ext_fn.params.iter().any(|p| import_check(&p.ty).is_some()) {
                 index_remap.insert(ext_fn.index, wasm_idx);
                 self.import_wrappers.push((at, wasm_idx));
                 wasm_idx += 1;
             }
-        }
-        // 3c. The function that writes to each output the module writes
-        //     to, after the wrappers.
-        for output in mir::console::outputs(self.module) {
-            self.console.push((output, wasm_idx));
-            wasm_idx += 1;
         }
         let _ = n_imports;
         // An import with no parameter has no wrapper: the hook is called as
@@ -837,13 +847,6 @@ impl<'a> WasmGen<'a> {
             });
         }
 
-        // 7.6. A `{wasm 'rk.stdout_write'}` calls the function step 3c
-        //      placed, as a builtin's pragma calls the builtin.
-        for (output, index) in &self.console {
-            self.builtin_indices
-                .insert(output.instruction().to_string(), *index);
-        }
-
         // 8. Emit user functions. The call indices are the same for each:
         //    rebuilt per function, they cost functions × functions.
         let call_indices = self.build_call_indices();
@@ -856,17 +859,6 @@ impl<'a> WasmGen<'a> {
         // 9. The import wrappers, at the indices step 3b gave them.
         for (at, index) in self.import_wrappers.clone() {
             self.emit_import_wrapper(at, index);
-        }
-
-        // 10. The writes to the standard output and error, at the indices
-        //     step 3c gave them, each with its buffer.
-        let area = control::control_area(self.module, tests_end(self.module));
-        for (output, index) in self.console.clone() {
-            let f = self.emit_console(output, area.console[output as usize]);
-            let placed = self.add_function(&[ValType::I32; 2], &[ValType::I32], &f);
-            debug_assert_eq!(placed, index, "the write lands where step 3c placed it");
-            self.control_names
-                .push((index, output.instruction().to_string()));
         }
     }
 
@@ -1174,6 +1166,22 @@ impl<'a> WasmGen<'a> {
     /// ([`canonical`]).
     fn import_signature(&self, ext_fn: &MirExternFunction) -> (Vec<ValType>, Vec<ValType>) {
         let (mut params, _) = build_signature(&ext_fn.params, &None);
+        // Lowered async: the parameters, or past 4 values the address of a
+        // tuple of them, the address the result is written at, and the
+        // call's status and handle back.
+        if ext_fn.asynchronous {
+            if params.len() > hir::hir_ty::async_import::MAX_FLAT_ASYNC_PARAMS {
+                params = vec![ValType::I32];
+            }
+            if ext_fn.results().next().is_some() {
+                params.push(ValType::I32);
+            }
+            return (params, vec![ValType::I32]);
+        }
+        // A stream's or a future's `new`: both ends in one value.
+        if ext_fn.ends {
+            return (params, vec![ValType::I64]);
+        }
         let results: Vec<ValType> = ext_fn
             .results()
             .map(|ty| {
@@ -1307,6 +1315,11 @@ impl<'a> WasmGen<'a> {
     }
 
     fn emit_function(&mut self, func: &MirFunction) {
+        // An async import's block: its body is the call's.
+        if let Some(call) = self.module.async_calls.get(&func.name).cloned() {
+            self.emit_async_body(func, &call);
+            return;
+        }
         if func.is_test {
             self.emit_test_function(func);
             return;
@@ -1841,12 +1854,29 @@ impl<'a> WasmGen<'a> {
         wasm_func.instruction(&Instruction::End);
 
         // Success: Ok, written so that a test run again in the same instance
-        // (`run-test`) does not read the Err of a run before; the area's
-        // address as the i32 result, returned early.
+        // (`run-test`) does not read the Err of a run before, with the
+        // test's `test-state` 4 bytes on: `passed` (0) for a FUNCTION, and
+        // for a FUNCTION_BLOCK `running` (1) until a cycle leaves its DONE
+        // TRUE. The area's address as the i32 result, returned early.
         wasm_func.instruction(&Instruction::I32Const(result_area as i32));
         wasm_func.instruction(&Instruction::I32Const(0));
         wasm_func.instruction(&Instruction::I32Store8(wasm_encoder::MemArg {
             offset: 0,
+            align: 0,
+            memory_index: 0,
+        }));
+        wasm_func.instruction(&Instruction::I32Const(result_area as i32));
+        match &func.test_done {
+            Some(done) => {
+                crate::emit_expr::emit_expr(&mut wasm_func, done, &local_map, &self.call_indices);
+                wasm_func.instruction(&Instruction::I32Eqz);
+            }
+            None => {
+                wasm_func.instruction(&Instruction::I32Const(0));
+            }
+        }
+        wasm_func.instruction(&Instruction::I32Store8(wasm_encoder::MemArg {
+            offset: 4,
             align: 0,
             memory_index: 0,
         }));
@@ -2063,10 +2093,14 @@ impl<'a> WasmGen<'a> {
         if self.profile == Profile::Debug {
             // `debug-functions`: DefinedFuncIndex → IEC name, keyed as `FrameHandle`
             // reports it (imports excluded).
+            // A test FUNCTION_BLOCK's test is the runner's, and nothing in
+            // the source: a backtrace ends at the block's body, as a test
+            // FUNCTION's ends at the FUNCTION.
             let mut func_entries: Vec<debug_format::FuncEntry> = self
                 .module
                 .functions
                 .iter()
+                .filter(|func| func.test_done.is_none())
                 .filter_map(|func| {
                     self.index_remap
                         .get(&func.index)

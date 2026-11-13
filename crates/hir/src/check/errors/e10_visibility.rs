@@ -47,7 +47,9 @@ pub enum VisibilityError<'db> {
         keyword: &'static str,
     },
     /// Attempting to reference a {test}-annotated POU. The runner calls it;
-    /// code cannot, because it is emitted with the runner's signature.
+    /// code cannot, because a test FUNCTION is emitted with the runner's
+    /// signature, and a test FUNCTION_BLOCK runs on the runner's instance,
+    /// left out of the build of a library's user with the library's tests.
     TestOnly { call_site: CallSite<'db> },
 }
 
@@ -214,10 +216,10 @@ impl<'db> ToIdeDiagnostic<'db> for VisibilityError<'db> {
                     .call();
 
                 diag.with_note(
-                    "a {test} FUNCTION is the test runner's entry point, not a callable".into(),
+                    "a {test} POU is the test runner's entry point, not a callable".into(),
                 );
                 diag.with_help(
-                    "for code shared between tests, write a FUNCTION without the pragma".into(),
+                    "for code shared between tests, write a POU without the pragma".into(),
                 );
 
                 diag

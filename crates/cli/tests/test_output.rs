@@ -56,6 +56,18 @@ END_FUNCTION
     );
 }
 
+/// `Std.Console`, for a workspace that has no standard library: the blocks
+/// a test writes with, as the stdlib has them, without its own tests, which
+/// read `Std.Unit`.
+fn console() -> String {
+    let source = include_str!("../../../stdlib/Console.st");
+    let tests = "\tNAMESPACE Test\n";
+    let end = "\tEND_NAMESPACE\n";
+    let start = source.find(tests).expect("Console's tests");
+    let stop = source.rfind(end).expect("the end of Console's tests") + end.len();
+    format!("{}{}", &source[..start], &source[stop..])
+}
+
 /// What a failed test wrote is under its failure in the report, on its
 /// line in the concise format, and the record's `output` in `json-lines`.
 /// A test that passes shows none.
@@ -67,31 +79,28 @@ fn rk_test_shows_what_a_failed_test_wrote() {
         "[project]\nname = \"plant\"\nversion = \"0.1.0\"\n",
     )
     .unwrap();
+    std::fs::write(ws.path().join("console.st"), console()).unwrap();
     std::fs::write(
         ws.path().join("main.st"),
         r#"
-FUNCTION Say : BOOL
-VAR_INPUT IN : STRING[4096]; END_VAR
-    {wasm 'rk.stdout_write' (params IN) (result Say)}
-END_FUNCTION
+USING Std.Console;
 
-FUNCTION Warn : BOOL
-VAR_INPUT IN : STRING[4096]; END_VAR
-    {wasm 'rk.stderr_write' (params IN) (result Warn)}
-END_FUNCTION
+CONFIGURATION Plant
+VAR_GLOBAL out : STDOUT; err : STDERR; END_VAR
+END_CONFIGURATION
 
 {test}
 FUNCTION test_pressure
-VAR written : BOOL; END_VAR
-    written := Say('reading the sensor$N');
-    written := Warn('pressure is high$N');
+VAR_EXTERNAL out : STDOUT; err : STDERR; END_VAR
+    out(REQ := TRUE, IN := 'reading the sensor$N');
+    err(REQ := TRUE, IN := 'pressure is high$N');
     __RAISE('pressure over 3 bar');
 END_FUNCTION
 
 {test}
 FUNCTION test_quiet
-VAR written : BOOL; END_VAR
-    written := Say('not shown$N');
+VAR_EXTERNAL out : STDOUT; END_VAR
+    out(REQ := TRUE, IN := 'not shown$N');
 END_FUNCTION
 "#,
     )

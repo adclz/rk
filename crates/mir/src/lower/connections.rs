@@ -139,6 +139,7 @@ pub(crate) fn lower_connections<'db>(
         // The schedule names it in place of the body.
         linkage: MirLinkage::Export,
         is_test: false,
+        test_done: None,
         export_name: None,
         wit_export: None,
         frame: None,

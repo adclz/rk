@@ -5,7 +5,8 @@ Anything else in braces is a syntax error, so `{attribute '…'}` and similar an
 
 `{test}` marks a `FUNCTION` as a test entry point for `rk test`.
 The runner calls it with no arguments, so it has no `VAR_INPUT`, `VAR_OUTPUT` or `VAR_IN_OUT` (E1511).
-Not valid on other POU kinds.
+On a `FUNCTION_BLOCK` it marks a test that runs once per cycle, on an instance of its own, until a cycle leaves its `DONE` output TRUE: the block declares `DONE : BOOL` in `VAR_OUTPUT` (E1517), and no `VAR_INPUT` or `VAR_IN_OUT` (E1511).
+Not valid on other POU kinds (E1503).
 
 `{once}` marks a `FUNCTION`, `FUNCTION_BLOCK` or `METHOD` that should be called at most once per body.
 
@@ -135,6 +136,31 @@ On an import from a module other than WASI's, also: a `REF_TO` input ("an addres
 Putting `{extern}` on anything other than a `FUNCTION` is E1501.
 
 A WASI import keeps the types WASI's WIT gives it, in their core form: a record of scalars comes back in `VAR_OUTPUT`, one for each field in order, as `Std.Timers` reads the system clock, and a `REF_TO` input is an address where a record can come back too.
+
+A function WIT declares an `async func` is imported by a FUNCTION_BLOCK, with `{extern async 'module' 'name'}`; `{extern async}` on a FUNCTION, and `{extern}` without `async` on a FUNCTION_BLOCK, are E1501.
+Each call of the block takes the call one step: it starts the call when none is running and checks it otherwise, never waiting.
+The block declares `DONE : BOOL` in VAR_OUTPUT (E1514), TRUE in the call that saw the call finish; DONE is the block's own and no part of the signature, its other VAR_OUTPUTs are the result's fields, and its VAR_INPUTs the parameters, read when the call starts.
+While the call runs, a call of the block leaves its VAR_INPUTs as they are: it evaluates what it passes, and drops it.
+Its instance lives in a PROGRAM, a FUNCTION_BLOCK or a VAR_GLOBAL, never in a FUNCTION's or METHOD's variables or a VAR_TEMP (E1515): the host writes the result into it at a later scan. A FUNCTION can still call one it is handed as VAR_IN_OUT, or a global one through VAR_EXTERNAL.
+The block is its call: statements, a METHOD, an EXTENDS or an IMPLEMENTS on it are E1502.
+REQ and BUSY, where a block's users need them, are written in ST by a block that calls it.
+The build checks a WASI import against WASI's WIT, and names the declaration when it does not fit: the interface has the function, `{extern async}` names an `async func`, and `{extern}` a `func`.
+
+A WASI import may also be a stream's or a future's built-in, named after the function whose type has the stream (`[stream-new-0]write-via-stream`); elsewhere that name is E1512.
+The number counts the function's streams and futures from 0, its parameters first, and the build checks that it names one of the built-in's kind.
+`new` and the drops return at once and are `{extern}` FUNCTIONs; `new` declares the two ends it makes as two `UDINT` VAR_OUTPUTs, the reading end first, and no return type.
+A stream's write, `[stream-write-N]f`, waits for the reader and is an `{extern async}` FUNCTION_BLOCK taking the writing end (`UDINT`) and the bytes (`STRING`, unchecked) and giving, after DONE, how many went (`UDINT`) and whether the reader left (`BOOL`); a built-in that does not fit its POU, a read, or other variables, is E1516.
+The host reads the bytes from the block while the copy runs: a call made then checks the copy and leaves the bytes as they are, so each call may pass the same arguments.
+
+```iecst
+{extern 'wasi:cli/stdout@0.3.0' '[stream-new-0]write-via-stream'}
+FUNCTION NEW_STREAM
+	VAR_OUTPUT
+		readable: UDINT;
+		writable: UDINT;
+	END_VAR
+END_FUNCTION
+```
 
 ### `{allow 'rule-name' ...}`
 

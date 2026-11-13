@@ -1,6 +1,6 @@
 # Tests
 
-Mark any `FUNCTION` with `{test}` and it becomes a test.
+Mark a `FUNCTION` with `{test}` and it becomes a test.
 It checks its results with the assertions of `Std.Unit`:
 
 ```st
@@ -16,7 +16,7 @@ END_FUNCTION
 It runs them on the component of the workspace, unoptimized, the way a host runs it, and leaves it in `rk_build/test/` with its WIT.
 That build tells `rk test` where each raise is (below), so no other command writes it.
 The clocks are WASI's, as wasmtime gives them, and the time zone is the machine's.
-It calls a test with no arguments, so a test has no `VAR_INPUT`, `VAR_OUTPUT` or `VAR_IN_OUT` (`E1511`).
+It calls a test with no arguments, so a test FUNCTION has no `VAR_INPUT`, `VAR_OUTPUT` or `VAR_IN_OUT` (`E1511`).
 
 ```sh
     // ...
@@ -29,6 +29,51 @@ It calls a test with no arguments, so a test has no `VAR_INPUT`, `VAR_OUTPUT` or
         PASS [   82µs] Std.Unit.Test.test_assert_neq_sees_a_different_date_or_time
 ────────────────────────────────────────────────────────────
     Summary [158.5ms] 341 tests run: 341 passed, 0 failed
+```
+
+## A test that runs over cycles
+
+A test FUNCTION runs once, in one call.
+A `FUNCTION_BLOCK` marked `{test}` runs once per cycle, on an instance of its own, until a cycle leaves its `DONE` output TRUE: the test has then passed.
+Its variables keep their values from one cycle to the next, as a block's do in a task, and it can hold what a FUNCTION cannot, a timer or a `STDOUT`.
+
+```st
+USING Std.Timers;
+
+FUNCTION_BLOCK Valve
+	VAR_INPUT
+		open: BOOL;
+	END_VAR
+	VAR_OUTPUT
+		opened: BOOL;
+	END_VAR
+	VAR
+		travel: TON;
+	END_VAR
+	travel(IN := open, PT := T#50ms);
+	opened := travel.Q;
+END_FUNCTION_BLOCK
+
+{test}
+FUNCTION_BLOCK test_the_valve_opens
+	VAR_OUTPUT
+		DONE: BOOL;
+	END_VAR
+	VAR
+		inlet: Valve;
+	END_VAR
+	inlet(open := TRUE);
+	DONE := inlet.opened;
+END_FUNCTION_BLOCK
+```
+
+`rk test` runs the cycles one after the other, with no wait between them: this test passes after 50 ms.
+The block declares its `DONE`, a `BOOL` in `VAR_OUTPUT` (`E1517`), and takes no `VAR_INPUT` or `VAR_IN_OUT` (`E1511`).
+A raise fails the test in the cycle that raised.
+A block still running when its time is spent fails too, and the report says how many cycles it ran, here with a valve that takes 10 s to open:
+
+```sh
+        FAIL test_the_valve_opens (main.st:18): the watchdog stopped it after 5s: DONE was still FALSE after 1147027 cycles
 ```
 
 ## When a test fails
@@ -47,6 +92,7 @@ The line after the test's name is where it is declared, and each `at` line a sta
 A file of the standard library is shown as `<lib>/Unit.st`.
 
 It works the same for a failed assertion, a `__RAISE`, a check the compiler inserted, a trap of the VM and a test the watchdog stopped.
+A test is given 5 seconds, which `--timeout` changes: each of its calls has that time to return, and a test block that time to set its `DONE`.
 A trap comes back with the calls in progress.
 An exception does not, so the module `rk test` builds calls `rk test` just before each raise, through `rk:test/raise`, and the calls are taken there.
 An exception that went through a `__FINALLY` keeps its place, and one raised again in a `__CATCH` is placed at that `__RAISE`.
@@ -55,33 +101,41 @@ An exception that went through a `__FINALLY` keeps its place, and one raised aga
 
 With `--output-format concise` the calls follow the reason on the same line, and with `json-lines` they are the record's `backtrace`.
 
-What a test writes to the standard output and error with [`Std.Console`](console.md) is shown under its calls, both outputs in the order written:
+What a test writes to the standard output and error with [`Std.Console`](console.md) is shown under its calls, both outputs in the order written.
+A test block holds the blocks it writes with:
 
 ```st
 USING Std.Console;
 USING Std.Unit;
 
 {test}
-FUNCTION test_pressure
+FUNCTION_BLOCK test_pressure
+	VAR_OUTPUT
+		DONE: BOOL;
+	END_VAR
 	VAR
 		bar: REAL := 3.2;
-		written: BOOL;
+		out: STDOUT;
+		err: STDERR;
 	END_VAR
-	written := WRITE_STDOUT('reading the sensor$N');
-	written := WRITE_STDERR('pressure is high$N');
+	out(REQ := TRUE, IN := 'reading the sensor$N');
+	err(REQ := TRUE, IN := 'pressure is high$N');
 	ASSERT(bar < 3.0, 'pressure under 3 bar');
-END_FUNCTION
+	DONE := TRUE;
+END_FUNCTION_BLOCK
 ```
 
 ```sh
      Failures:
         FAIL test_pressure (main.st:5): assertion failed: pressure under 3 bar
              at Std.Unit.ASSERT (<lib>/Unit.st:25:4)
-             at test_pressure (main.st:12:2)
+             at test_pressure (main.st:16:2)
              output:
                reading the sensor
                pressure is high
 ```
+
+A test FUNCTION holds no block that writes (`E1515`): it writes through blocks declared in a `VAR_GLOBAL`, which the host takes within the call.
 
 What a passing test writes is not shown.
 A test keeps the first 64 KiB it writes, and a last line says how many bytes came after.

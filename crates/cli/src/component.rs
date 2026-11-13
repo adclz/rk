@@ -49,6 +49,9 @@ pub struct HostFunction {
     /// the record of them and its return value ([`record_name`]).
     pub outputs: Vec<(String, &'static str)>,
     pub result: Option<&'static str>,
+    /// Whether an `{extern}` FUNCTION_BLOCK imports it, async: an `async
+    /// func` in WIT.
+    pub asynchronous: bool,
 }
 
 /// A FUNCTION the component exports for a host to call, typed in WIT from
@@ -78,6 +81,9 @@ pub struct Interfaces {
     pub export_interface: String,
     /// Its `{export}` FUNCTIONs.
     pub exports: Vec<ExportedFunction>,
+    /// The POU that declares each import, by the import's module and its
+    /// name as the module imports it: what a build error about it names.
+    pub declared: BTreeMap<(String, String), String>,
 }
 
 /// The interfaces of `module`, typed in WIT: what HIR accepts on an
@@ -122,10 +128,23 @@ pub fn interfaces(
             result,
         });
     }
+    // An async import's function is its block's, `Block$import`.
+    let declared = module
+        .extern_functions
+        .iter()
+        .map(|ext| {
+            let name = ext.name.text(db);
+            (
+                (ext.module.to_string(), ext.import_name.to_string()),
+                name.strip_suffix("$import").unwrap_or(name).to_string(),
+            )
+        })
+        .collect();
     Ok(Interfaces {
         imports: host_functions(db, &module.extern_functions)?,
         export_interface: hir::hir_ty::exports::export_interface(db),
         exports,
+        declared,
     })
 }
 
@@ -136,7 +155,11 @@ fn host_functions(
     externs: &[MirExternFunction],
 ) -> Result<Vec<HostFunction>, String> {
     let mut functions = Vec::new();
-    for ext in externs.iter().filter(|ext| !is_wasi_module(&ext.module)) {
+    // The component model's built-ins are no interface's.
+    for ext in externs
+        .iter()
+        .filter(|ext| !is_wasi_module(&ext.module) && ext.module != mir::async_call::ROOT)
+    {
         let declared_by = ext.name.text(db).to_string();
         let untyped = |what: &str| {
             format!("internal compiler error: {what} of `{declared_by}` has no WIT type")
@@ -161,13 +184,18 @@ fn host_functions(
             Some(ty) => Some(wit_type(ty).ok_or_else(|| untyped("the return type"))?),
             None => None,
         };
+        let name = ext.import_name.as_str();
         functions.push(HostFunction {
             declared_by,
             module: ext.module.to_string(),
-            name: ext.import_name.to_string(),
+            name: name
+                .strip_prefix(mir::async_call::ASYNC_LOWER)
+                .unwrap_or(name)
+                .to_string(),
             params,
             outputs,
             result,
+            asynchronous: ext.asynchronous,
         });
     }
     Ok(functions)
@@ -218,6 +246,10 @@ pub fn wrap(core: &[u8], project: &str, interfaces: &Interfaces) -> Result<Compo
     let mut carried = BTreeSet::new();
     let mut own: BTreeMap<&str, Vec<&HostFunction>> = BTreeMap::new();
     for (module, names) in &imports {
+        // The component model's built-ins a block checks its call with.
+        if module == mir::async_call::ROOT {
+            continue;
+        }
         if wit::package_of(module).is_some() {
             carried.insert(module.as_str());
             continue;
@@ -280,6 +312,9 @@ pub fn wrap(core: &[u8], project: &str, interfaces: &Interfaces) -> Result<Compo
     let world_id = resolve
         .select_world(&[package], Some(WORLD))
         .map_err(|e| format!("selecting the component's world: {e:#}"))?;
+    for module in &carried {
+        as_wasi_declares(&resolve, module, &imports[*module], &interfaces.declared)?;
+    }
 
     let mut module = core.to_vec();
     wit_component::embed_component_metadata(
@@ -386,6 +421,10 @@ fn host_function<'a>(
     module: &str,
     name: &str,
 ) -> Result<&'a HostFunction, String> {
+    // A function a block imports is the same function, lowered async.
+    let name = name
+        .strip_prefix(mir::async_call::ASYNC_LOWER)
+        .unwrap_or(name);
     let mut declared = hosts
         .iter()
         .filter(|host| host.module == module && host.name == name);
@@ -397,6 +436,7 @@ fn host_function<'a>(
             host.params.iter().map(|(_, ty)| *ty).collect::<Vec<_>>(),
             host.outputs.iter().map(|(_, ty)| *ty).collect::<Vec<_>>(),
             host.result,
+            host.asynchronous,
         )
     };
     match declared.find(|other| types(other) != types(first)) {
@@ -479,6 +519,94 @@ fn own_packages(own: &BTreeMap<&str, Vec<&HostFunction>>) -> Result<Vec<OwnPacka
         }
     }
     Ok(packages)
+}
+
+/// Refuses an import of WASI's `module` that WASI's WIT does not declare as
+/// the declaration says: a function the interface does not have; a stream's
+/// or a future's built-in whose number names none of the function's streams
+/// and futures, as wit-component numbers them, or one of the other kind; and
+/// `{extern async}`, which a FUNCTION_BLOCK takes, on a function that is not
+/// an `async func`, or a plain `{extern}` on one. A scan never waits: a
+/// FUNCTION's call of an `async func` traps when the host does not answer at
+/// once, and an async call of any other gains nothing. Each error names the
+/// POU that declares the import, from `declared`.
+fn as_wasi_declares(
+    resolve: &wit_parser::Resolve,
+    module: &str,
+    names: &BTreeSet<String>,
+    declared: &BTreeMap<(String, String), String>,
+) -> Result<(), String> {
+    let Some(interface) = resolve
+        .interfaces
+        .iter()
+        .find(|(id, _)| resolve.id_of(*id).as_deref() == Some(module))
+        .map(|(_, interface)| interface)
+    else {
+        return Ok(());
+    };
+    for name in names {
+        let by = declared
+            .get(&(module.to_string(), name.clone()))
+            .map_or("a POU", String::as_str);
+        let (asynchronous, imported) = match name.strip_prefix(mir::async_call::ASYNC_LOWER) {
+            Some(imported) => (true, imported),
+            None => (false, name.as_str()),
+        };
+        let builtin = hir::hir_def::pous::pragma::builtin_name(imported);
+        let function = builtin.map_or(imported, |(_, function)| function);
+        let Some(wit) = interface.functions.get(function) else {
+            return Err(format!(
+                "`{by}` imports `{imported}` of `{module}`, and WASI's WIT declares no \
+                 function `{function}` there"
+            ));
+        };
+        if let Some((builtin, _)) = builtin {
+            // `[stream-new-0]f`: the number after the built-in's name.
+            let number = imported[1..]
+                .split_once(']')
+                .and_then(|(inside, _)| inside.rsplit_once('-'))
+                .and_then(|(_, number)| number.parse::<usize>().ok());
+            let types = wit.find_futures_and_streams(resolve);
+            let Some(&id) = number.and_then(|number| types.get(number)) else {
+                let numbered = match types.len() {
+                    0 => "has no stream or future".to_string(),
+                    count => format!("numbers its streams and futures from 0 to {}", count - 1),
+                };
+                return Err(format!(
+                    "`{by}` imports `{imported}` of `{module}`, and the type of `{function}` \
+                     {numbered}"
+                ));
+            };
+            let found = match (builtin.starts_with("stream"), &resolve.types[id].kind) {
+                (true, wit_parser::TypeDefKind::Stream(_)) => continue,
+                (false, wit_parser::TypeDefKind::Future(_)) => continue,
+                (true, _) => "a future",
+                (false, _) => "a stream",
+            };
+            let number = number.unwrap_or_default();
+            return Err(format!(
+                "`{by}` imports `{imported}` of `{module}`, and number {number} of the streams \
+                 and futures of `{function}`'s type is {found}"
+            ));
+        }
+        match (asynchronous, wit.kind.is_async()) {
+            (true, false) => {
+                return Err(format!(
+                    "`{by}` imports `{function}` of `{module}` with {{extern async}}, and \
+                     WASI's WIT declares it a `func`: import it with {{extern}} on a FUNCTION"
+                ));
+            }
+            (false, true) => {
+                return Err(format!(
+                    "`{by}` imports `{function}` of `{module}` with {{extern}}, and WASI's \
+                     WIT declares it an `async func`: import it with {{extern async}} on a \
+                     FUNCTION_BLOCK"
+                ));
+            }
+            _ => {}
+        }
+    }
+    Ok(())
 }
 
 /// The packages `package` names, and those they name in turn, by name and
@@ -602,8 +730,12 @@ fn functions_text(functions: &[&HostFunction], indent: &str) -> String {
                 format!(" -> {}", record_name(&function.name))
             }
         };
+        let func = match function.asynchronous {
+            true => "async func",
+            false => "func",
+        };
         text.push_str(&format!(
-            "{indent}{}: func({}){result};\n",
+            "{indent}{}: {func}({}){result};\n",
             wit_id(&function.name),
             params_text(&function.params)
         ));

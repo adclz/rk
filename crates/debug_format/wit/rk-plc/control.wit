@@ -68,6 +68,18 @@ interface control {
         no-such-test,
     }
 
-    /// Runs the test at that place in the `test-manifest` section.
-    run-test: func(test: u32) -> result<_, test-error>;
+    /// Where a test stands after a call of `run-test`.
+    enum test-state {
+        /// It passed: a test FUNCTION when it returns, a test FUNCTION_BLOCK
+        /// when a cycle leaves its `DONE` TRUE.
+        passed,
+        /// A test FUNCTION_BLOCK whose `DONE` is still FALSE: the next call
+        /// runs its next cycle.
+        running,
+    }
+
+    /// Runs the test at that place in the `test-manifest` section: a test
+    /// FUNCTION whole, or one cycle of a test FUNCTION_BLOCK, on an instance
+    /// the test keeps from one call to the next.
+    run-test: func(test: u32) -> result<test-state, test-error>;
 }

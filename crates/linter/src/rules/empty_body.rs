@@ -48,12 +48,19 @@ pub fn check<'db>(
                 f.get_span(db),
             )
         }
-        ScopeKind::Pou(Pou::FunctionBlock(fb)) => (
-            fb.statements(db),
-            fb.name_with_case(db).text(db),
-            "FUNCTION_BLOCK",
-            fb.get_span(db),
-        ),
+        ScopeKind::Pou(Pou::FunctionBlock(fb)) => {
+            // So is an async import's: its body is the call (E1502 refuses
+            // statements there too).
+            if fb.extern_pragma(db).is_some() {
+                return;
+            }
+            (
+                fb.statements(db),
+                fb.name_with_case(db).text(db),
+                "FUNCTION_BLOCK",
+                fb.get_span(db),
+            )
+        }
         ScopeKind::MethodDecl(m) => (
             m.stmts(db),
             m.name_with_case(db).text(db),

@@ -35,12 +35,16 @@ pub fn check<'db>(
 
     // An extern FUNCTION's declared variables ARE its import interface:
     // every input is a param and every output a result, used by definition.
+    // An async import's, an extern FUNCTION_BLOCK's, are too.
     {
         use hir::HasPragmas;
         use hir::hir_def::{pous::pou::Pou, scope::ScopeKind, semantic_index::get_scope};
-        if let ScopeKind::Pou(Pou::Function(f)) = get_scope(db, scope).kind
-            && f.extern_pragma(db).is_some()
-        {
+        let import = match get_scope(db, scope).kind {
+            ScopeKind::Pou(Pou::Function(f)) => f.extern_pragma(db).is_some(),
+            ScopeKind::Pou(Pou::FunctionBlock(fb)) => fb.extern_pragma(db).is_some(),
+            _ => false,
+        };
+        if import {
             return;
         }
     }

@@ -106,10 +106,16 @@ pub fn check_outputs<'db>(
 ) {
     // An extern FUNCTION's outputs are fields of the import's result, which
     // the host writes; its body is empty by contract (E1502 refuses
-    // statements).
-    if let ScopeKind::Pou(Pou::Function(f)) = get_scope(db, scope).kind {
+    // statements). An async import's, an extern FUNCTION_BLOCK's, are too,
+    // and its DONE is written by the call.
+    {
         use hir::HasPragmas;
-        if f.extern_pragma(db).is_some() {
+        let import = match get_scope(db, scope).kind {
+            ScopeKind::Pou(Pou::Function(f)) => f.extern_pragma(db).is_some(),
+            ScopeKind::Pou(Pou::FunctionBlock(fb)) => fb.extern_pragma(db).is_some(),
+            _ => false,
+        };
+        if import {
             return;
         }
     }

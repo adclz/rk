@@ -47,7 +47,7 @@ VAR_IN_OUT buf : INT; END_VAR
 END_FUNCTION"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1502] Error: not representable on an extern FUNCTION
+    [E1502] Error: not representable on an import
        ,-[ file:///test0.st:4:12 ]
        |
      4 | VAR_IN_OUT buf : INT; END_VAR
@@ -83,7 +83,7 @@ FUNCTION gone : Missing
 END_FUNCTION"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1502] Error: not representable on an extern FUNCTION
+    [E1502] Error: not representable on an import
        ,-[ file:///test0.st:6:12 ]
        |
      6 | VAR_OUTPUT p : Pt; s : STRING; END_VAR
@@ -92,7 +92,7 @@ END_FUNCTION"#;
        |
        | Note: an {extern} FUNCTION returns its VAR_OUTPUTs and its return value as one record of scalars
     ---'
-    [E1502] Error: not representable on an extern FUNCTION
+    [E1502] Error: not representable on an import
        ,-[ file:///test0.st:6:20 ]
        |
      6 | VAR_OUTPUT p : Pt; s : STRING; END_VAR
@@ -101,7 +101,7 @@ END_FUNCTION"#;
        |
        | Note: an {extern} FUNCTION returns its VAR_OUTPUTs and its return value as one record of scalars
     ---'
-    [E1502] Error: not representable on an extern FUNCTION
+    [E1502] Error: not representable on an import
         ,-[ file:///test0.st:11:12 ]
         |
      11 | VAR_OUTPUT text : STRING; u : Unknown; END_VAR
@@ -152,7 +152,7 @@ END_VAR
 END_FUNCTION"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1502] Error: not representable on an extern FUNCTION
+    [E1502] Error: not representable on an import
         ,-[ file:///test0.st:11:5 ]
         |
      11 |     p : Pt;
@@ -161,7 +161,7 @@ END_FUNCTION"#;
         |
         | Note: a WASI import takes scalars, STRINGs, and a REF_TO where a record comes back
     ----'
-    [E1502] Error: not representable on an extern FUNCTION
+    [E1502] Error: not representable on an import
         ,-[ file:///test0.st:12:5 ]
         |
      12 |     a : ARRAY[0..3] OF BYTE;
@@ -170,7 +170,7 @@ END_FUNCTION"#;
         |
         | Note: a WASI import takes scalars, STRINGs, and a REF_TO where a record comes back
     ----'
-    [E1502] Error: not representable on an extern FUNCTION
+    [E1502] Error: not representable on an import
         ,-[ file:///test0.st:13:5 ]
         |
      13 |     c : Counter;
@@ -193,7 +193,7 @@ VAR_INPUT x : INT; END_VAR
 END_FUNCTION"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1502] Error: not representable on an extern FUNCTION
+    [E1502] Error: not representable on an import
        ,-[ file:///test0.st:5:5 ]
        |
      5 |     test := x;
@@ -205,27 +205,519 @@ END_FUNCTION"#;
     ");
 }
 
-/// Only a FUNCTION lowers to an import; anywhere else the pragma used to be
-/// silently ignored, leaving the body it stood on empty.
+/// Only a FUNCTION lowers to an import, and a FUNCTION_BLOCK to an async
+/// one; on a PROGRAM the pragma used to be silently ignored, leaving the
+/// body it stood on empty.
 #[rstest]
 fn invalid_extern_outside_function(mut with_db: RootDatabase) {
     let source = r#"
 {extern 'host' 'nope'}
-FUNCTION_BLOCK Modbus
-VAR_INPUT n : INT; END_VAR
-END_FUNCTION_BLOCK"#;
+PROGRAM Main
+VAR n : INT; END_VAR
+END_PROGRAM"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1501] Error: extern pragma outside a FUNCTION
+    [E1501] Error: extern pragma outside a FUNCTION or FUNCTION_BLOCK
        ,-[ file:///test0.st:2:1 ]
        |
      2 | {extern 'host' 'nope'}
        | ^^^^^^^^^^^|^^^^^^^^^^
-       |            `------------ an {extern} pragma cannot be placed on a FUNCTION_BLOCK
+       |            `------------ an {extern} pragma cannot be placed on a PROGRAM
        |
-       | Note: only a FUNCTION can be {extern}
+       | Note: only a FUNCTION or a FUNCTION_BLOCK can be {extern}
     ---'
     ");
+}
+
+/// An async call is held by a FUNCTION_BLOCK's instance from one scan to
+/// the next: a FUNCTION_BLOCK's `{extern}` says `async`, and a FUNCTION's
+/// cannot.
+#[rstest]
+fn invalid_extern_async_on_the_wrong_pou(mut with_db: RootDatabase) {
+    let source = r#"
+{extern 'host' 'poll'}
+FUNCTION_BLOCK Poll
+VAR_OUTPUT DONE : BOOL; END_VAR
+END_FUNCTION_BLOCK
+
+{extern async 'host' 'read'}
+FUNCTION Read : INT
+END_FUNCTION"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1501] Error: extern pragma outside a FUNCTION or FUNCTION_BLOCK
+       ,-[ file:///test0.st:2:1 ]
+       |
+     2 | {extern 'host' 'poll'}
+       | ^^^^^^^^^^^|^^^^^^^^^^
+       |            `------------ an {extern} pragma on a FUNCTION_BLOCK needs async
+       |
+       | Help: write {extern async 'module' 'name'}
+       |
+       | Note: a FUNCTION_BLOCK imports an async function, whose call its instance holds from one scan to the next
+    ---'
+    [E1501] Error: extern pragma outside a FUNCTION or FUNCTION_BLOCK
+       ,-[ file:///test0.st:7:1 ]
+       |
+     7 | {extern async 'host' 'read'}
+       | ^^^^^^^^^^^^^^|^^^^^^^^^^^^^
+       |               `--------------- an {extern async} pragma cannot be placed on a FUNCTION
+       |
+       | Help: declare a FUNCTION_BLOCK with a VAR_OUTPUT DONE : BOOL
+       |
+       | Note: an async call is held from one scan to the next, which only a FUNCTION_BLOCK's instance can
+    ---'
+    ");
+}
+
+/// An async import declares its DONE, a BOOL in VAR_OUTPUT: missing, of
+/// another type or in another section, it is refused.
+#[rstest]
+fn invalid_async_import_without_done(mut with_db: RootDatabase) {
+    let source = r#"
+{extern async 'host' 'a'}
+FUNCTION_BLOCK A
+VAR_INPUT x : INT; END_VAR
+END_FUNCTION_BLOCK
+
+{extern async 'host' 'b'}
+FUNCTION_BLOCK B
+VAR_OUTPUT done : INT; END_VAR
+END_FUNCTION_BLOCK
+
+{extern async 'host' 'c'}
+FUNCTION_BLOCK C
+VAR_INPUT DONE : BOOL; END_VAR
+END_FUNCTION_BLOCK"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1514] Error: async import without its DONE
+       ,-[ file:///test0.st:3:16 ]
+       |
+     3 | FUNCTION_BLOCK A
+       |                |
+       |                `-- 'A' has no VAR_OUTPUT DONE
+       |
+       | Help: declare DONE : BOOL in VAR_OUTPUT
+       |
+       | Note: an {extern async} FUNCTION_BLOCK's DONE is its own and no part of the function's signature: it is TRUE in the call of the block that saw the call finish, and the other VAR_OUTPUTs are the result's fields
+    ---'
+    [E1514] Error: async import without its DONE
+       ,-[ file:///test0.st:9:12 ]
+       |
+     9 | VAR_OUTPUT done : INT; END_VAR
+       |            ^^|^
+       |              `--- 'done' is not a VAR_OUTPUT of type BOOL
+       |
+       | Help: declare DONE : BOOL in VAR_OUTPUT
+       |
+       | Note: an {extern async} FUNCTION_BLOCK's DONE is its own and no part of the function's signature: it is TRUE in the call of the block that saw the call finish, and the other VAR_OUTPUTs are the result's fields
+    ---'
+    [E1514] Error: async import without its DONE
+        ,-[ file:///test0.st:14:11 ]
+        |
+     14 | VAR_INPUT DONE : BOOL; END_VAR
+        |           ^^|^
+        |             `--- 'DONE' is not a VAR_OUTPUT of type BOOL
+        |
+        | Help: declare DONE : BOOL in VAR_OUTPUT
+        |
+        | Note: an {extern async} FUNCTION_BLOCK's DONE is its own and no part of the function's signature: it is TRUE in the call of the block that saw the call finish, and the other VAR_OUTPUTs are the result's fields
+    ----'
+    ");
+}
+
+/// The host writes an async call's result into its instance at a later
+/// scan: a FUNCTION's and a METHOD's variables and a VAR_TEMP are gone by
+/// then, and an instance holding an async import's is refused there too. A
+/// PROGRAM's and a FUNCTION_BLOCK's are not.
+#[rstest]
+fn invalid_async_import_in_a_frame(mut with_db: RootDatabase) {
+    let source = r#"
+{extern async 'wasi:clocks/monotonic-clock@0.3.0' 'wait-for'}
+FUNCTION_BLOCK WAIT_FOR
+VAR_INPUT how_long : LTIME; END_VAR
+VAR_OUTPUT DONE : BOOL; END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK Holder
+VAR wait : WAIT_FOR; END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION Pause
+VAR wait : WAIT_FOR; holder : Holder; END_VAR
+END_FUNCTION
+
+FUNCTION_BLOCK Machine
+VAR_TEMP wait : WAIT_FOR; END_VAR
+METHOD Stop
+VAR waits : ARRAY[0..1] OF WAIT_FOR; END_VAR
+END_METHOD
+END_FUNCTION_BLOCK
+
+PROGRAM Main
+VAR wait : WAIT_FOR; holder : Holder; END_VAR
+    wait(how_long := LT#1s);
+END_PROGRAM"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1515] Error: async import in a call's frame
+        ,-[ file:///test0.st:13:5 ]
+        |
+     13 | VAR wait : WAIT_FOR; holder : Holder; END_VAR
+        |     ^^|^
+        |       `--- 'wait' holds an async import, which cannot live in a FUNCTION's frame
+        |
+        | Help: declare it in a PROGRAM, a FUNCTION_BLOCK or a VAR_GLOBAL
+        |
+        | Note: the host writes an async call's result into its instance when it finishes, at a later scan, when the frame is gone
+    ----'
+    [E1515] Error: async import in a call's frame
+        ,-[ file:///test0.st:13:22 ]
+        |
+     13 | VAR wait : WAIT_FOR; holder : Holder; END_VAR
+        |                      ^^^|^^
+        |                         `---- 'holder' holds an async import, which cannot live in a FUNCTION's frame
+        |
+        | Help: declare it in a PROGRAM, a FUNCTION_BLOCK or a VAR_GLOBAL
+        |
+        | Note: the host writes an async call's result into its instance when it finishes, at a later scan, when the frame is gone
+    ----'
+    [E1515] Error: async import in a call's frame
+        ,-[ file:///test0.st:17:10 ]
+        |
+     17 | VAR_TEMP wait : WAIT_FOR; END_VAR
+        |          ^^|^
+        |            `--- 'wait' holds an async import, which cannot live in VAR_TEMP
+        |
+        | Help: declare it in a PROGRAM, a FUNCTION_BLOCK or a VAR_GLOBAL
+        |
+        | Note: the host writes an async call's result into its instance when it finishes, at a later scan, when the frame is gone
+    ----'
+    [E1515] Error: async import in a call's frame
+        ,-[ file:///test0.st:19:5 ]
+        |
+     19 | VAR waits : ARRAY[0..1] OF WAIT_FOR; END_VAR
+        |     ^^|^^
+        |       `---- 'waits' holds an async import, which cannot live in a METHOD's frame
+        |
+        | Help: declare it in a PROGRAM, a FUNCTION_BLOCK or a VAR_GLOBAL
+        |
+        | Note: the host writes an async call's result into its instance when it finishes, at a later scan, when the frame is gone
+    ----'
+    ");
+}
+
+/// An async import's body is its call: statements are refused, as on an
+/// `{extern}` FUNCTION.
+#[rstest]
+fn invalid_async_import_with_body(mut with_db: RootDatabase) {
+    let source = r#"
+{extern async 'host' 'tick'}
+FUNCTION_BLOCK Tick
+VAR_OUTPUT DONE : BOOL; END_VAR
+    DONE := TRUE;
+END_FUNCTION_BLOCK"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1502] Error: not representable on an import
+       ,-[ file:///test0.st:5:5 ]
+       |
+     5 |     DONE := TRUE;
+       |     ^^^^^^|^^^^^
+       |           `------- an extern FUNCTION_BLOCK has no statements
+       |
+       | Note: an {extern} FUNCTION_BLOCK is an import: the host has its body
+    ---'
+    ");
+}
+
+/// An async import's block is its call and nothing more: a METHOD, a base
+/// or an INTERFACE would be code the host has not. Each is refused at the
+/// METHOD's name or at the type named.
+#[rstest]
+fn invalid_async_import_with_members(mut with_db: RootDatabase) {
+    let source = r#"
+FUNCTION_BLOCK Base
+VAR_INPUT extra : DINT; END_VAR
+END_FUNCTION_BLOCK
+
+INTERFACE Pollable
+END_INTERFACE
+
+{extern async 'host' 'tick'}
+FUNCTION_BLOCK Tick EXTENDS Base IMPLEMENTS Pollable
+VAR_OUTPUT DONE : BOOL; END_VAR
+METHOD Again : BOOL
+    Again := DONE;
+END_METHOD
+END_FUNCTION_BLOCK"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1502] Error: not representable on an import
+        ,-[ file:///test0.st:10:29 ]
+        |
+     10 | FUNCTION_BLOCK Tick EXTENDS Base IMPLEMENTS Pollable
+        |                             ^^|^
+        |                               `--- an extern FUNCTION_BLOCK extends nothing
+        |
+        | Help: extend the base in a FUNCTION_BLOCK that holds the import
+        |
+        | Note: an {extern} FUNCTION_BLOCK is an import: the host has its body
+    ----'
+    [E1502] Error: not representable on an import
+        ,-[ file:///test0.st:10:45 ]
+        |
+     10 | FUNCTION_BLOCK Tick EXTENDS Base IMPLEMENTS Pollable
+        |                                             ^^^^|^^^
+        |                                                 `----- an extern FUNCTION_BLOCK implements no INTERFACE
+        |
+        | Help: implement the INTERFACE in a FUNCTION_BLOCK that holds the import
+        |
+        | Note: an {extern} FUNCTION_BLOCK is an import: the host has its body
+    ----'
+    [E1502] Error: not representable on an import
+        ,-[ file:///test0.st:12:8 ]
+        |
+     12 | METHOD Again : BOOL
+        |        ^^|^^
+        |          `---- an extern FUNCTION_BLOCK has no METHOD
+        |
+        | Help: declare the METHOD in a FUNCTION_BLOCK that holds the import
+        |
+        | Note: an {extern} FUNCTION_BLOCK is an import: the host has its body
+    ----'
+    ");
+}
+
+/// A FUNCTION can move a block it does not hold: the caller's, handed as
+/// VAR_IN_OUT, and a global's, reached through VAR_EXTERNAL. Neither
+/// instance is in the FUNCTION's frame, so the call outlives the FUNCTION's
+/// own call safely. Accepted, and the module they build is valid.
+#[rstest]
+fn valid_async_import_reached_from_a_function(mut with_db: RootDatabase) {
+    let source = r#"
+{extern async 'wasi:clocks/monotonic-clock@0.3.0' 'wait-for'}
+FUNCTION_BLOCK WAIT_FOR
+VAR_INPUT how_long : LTIME; END_VAR
+VAR_OUTPUT DONE : BOOL; END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION Step : BOOL
+VAR_IN_OUT wait : WAIT_FOR; END_VAR
+    wait(how_long := LT#5ms);
+    Step := wait.DONE;
+END_FUNCTION
+
+FUNCTION StepShared : BOOL
+VAR_EXTERNAL shared : WAIT_FOR; END_VAR
+    shared(how_long := LT#7ms);
+    StepShared := shared.DONE;
+END_FUNCTION
+
+PROGRAM Main
+VAR mine : WAIT_FOR; both : BOOL; END_VAR
+    both := Step(wait := mine) AND StepShared();
+END_PROGRAM
+
+CONFIGURATION Cfg
+VAR_GLOBAL shared : WAIT_FOR; END_VAR
+    RESOURCE Res ON CPU
+        TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+        PROGRAM P WITH T : Main;
+    END_RESOURCE
+END_CONFIGURATION"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
+
+/// A WASI import may be a stream's or a future's built-in, under the name
+/// of the function it serves: those that return at once on a FUNCTION, and
+/// a stream's write, which waits for the reader, on an `{extern async}`
+/// FUNCTION_BLOCK. Accepted, and the module they build is valid.
+#[rstest]
+fn valid_stream_built_ins(mut with_db: RootDatabase) {
+    let source = r#"
+{extern 'wasi:cli/stdout@0.3.0' '[stream-new-0]write-via-stream'}
+FUNCTION NEW_STREAM
+VAR_OUTPUT readable : UDINT; writable : UDINT; END_VAR
+END_FUNCTION
+
+{extern 'wasi:cli/stdout@0.3.0' '[future-drop-readable-1]write-via-stream'}
+FUNCTION DROP_FUTURE
+VAR_INPUT future : UDINT; END_VAR
+END_FUNCTION
+
+{extern 'wasi:cli/stdout@0.3.0' '[stream-drop-writable-0]write-via-stream'}
+FUNCTION DROP_WRITER
+VAR_INPUT stream : UDINT; END_VAR
+END_FUNCTION
+
+{extern async 'wasi:cli/stdout@0.3.0' '[stream-write-0]write-via-stream'}
+FUNCTION_BLOCK STREAM_WRITE
+VAR_INPUT stream : UDINT; data : STRING[64]; END_VAR
+VAR_OUTPUT DONE : BOOL; written : UDINT; closed : BOOL; END_VAR
+END_FUNCTION_BLOCK
+
+PROGRAM Main
+VAR reading : UDINT; writing : UDINT; write : STREAM_WRITE; END_VAR
+    NEW_STREAM(readable => reading, writable => writing);
+    write(stream := writing, data := 'hello');
+    DROP_FUTURE(future := 3);
+    DROP_WRITER(stream := 2);
+END_PROGRAM"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
+
+/// A built-in fits one kind of POU (E1516): a read or a write waits for the
+/// other end, so only an `{extern async}` block imports it, and the others
+/// return at once, so a FUNCTION does. An async block imports a call or a
+/// stream's write, which declares the built-in's variables, and a `new`
+/// declares the two ends it makes, a UDINT VAR_OUTPUT each. Outside WASI, a
+/// built-in's name is no WIT name (E1512).
+#[rstest]
+fn invalid_stream_built_ins(mut with_db: RootDatabase) {
+    let source = r#"
+{extern 'wasi:cli/stdout@0.3.0' '[stream-write-0]write-via-stream'}
+FUNCTION WRITE_NOW : UDINT
+VAR_INPUT stream : UDINT; END_VAR
+END_FUNCTION
+
+{extern async 'wasi:cli/stdout@0.3.0' '[stream-new-0]write-via-stream'}
+FUNCTION_BLOCK NEW_LATER
+VAR_OUTPUT DONE : BOOL; END_VAR
+END_FUNCTION_BLOCK
+
+{extern async 'wasi:cli/stdin@0.3.0' '[stream-read-0]read-via-stream'}
+FUNCTION_BLOCK READ
+VAR_OUTPUT DONE : BOOL; END_VAR
+END_FUNCTION_BLOCK
+
+{extern async 'wasi:cli/stdout@0.3.0' '[stream-write-0]write-via-stream'}
+FUNCTION_BLOCK WRITE_TEXT
+VAR_INPUT text : STRING[64]; END_VAR
+VAR_OUTPUT DONE : BOOL; END_VAR
+END_FUNCTION_BLOCK
+
+{extern 'host' '[stream-new-0]send'}
+FUNCTION NEW_HOST_STREAM : LWORD
+END_FUNCTION
+
+{extern 'wasi:cli/stdout@0.3.0' '[stream-new-0]write-via-stream'}
+FUNCTION NEW_AS_ONE : LWORD
+END_FUNCTION
+
+{extern 'wasi:cli/stdout@0.3.0' '[future-new-1]write-via-stream'}
+FUNCTION NEW_FUTURE
+VAR_OUTPUT readable : UDINT; END_VAR
+END_FUNCTION"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1516] Error: stream built-in that does not fit its declaration
+       ,-[ file:///test0.st:2:33 ]
+       |
+     2 | {extern 'wasi:cli/stdout@0.3.0' '[stream-write-0]write-via-stream'}
+       |                                 ^^^^^^^^^^^^^^^^^|^^^^^^^^^^^^^^^^
+       |                                                  `------------------ '[stream-write-0]write-via-stream' waits for the other end
+       |
+       | Help: import it with {extern async} on a FUNCTION_BLOCK
+       |
+       | Note: a read or a write of a stream or a future waits for the other end, which only the calls of an {extern async} FUNCTION_BLOCK can
+    ---'
+    [E1516] Error: stream built-in that does not fit its declaration
+       ,-[ file:///test0.st:7:39 ]
+       |
+     7 | {extern async 'wasi:cli/stdout@0.3.0' '[stream-new-0]write-via-stream'}
+       |                                       ^^^^^^^^^^^^^^^^|^^^^^^^^^^^^^^^
+       |                                                       `----------------- '[stream-new-0]write-via-stream' returns at once
+       |
+       | Help: import it with {extern} on a FUNCTION
+       |
+       | Note: an {extern async} FUNCTION_BLOCK imports a call that may not return at once
+    ---'
+    [E1516] Error: stream built-in that does not fit its declaration
+        ,-[ file:///test0.st:12:38 ]
+        |
+     12 | {extern async 'wasi:cli/stdin@0.3.0' '[stream-read-0]read-via-stream'}
+        |                                      ^^^^^^^^^^^^^^^^|^^^^^^^^^^^^^^^
+        |                                                      `----------------- '[stream-read-0]read-via-stream' is no call and no stream write
+        |
+        | Note: an {extern async} FUNCTION_BLOCK imports the call of an async func or the write of a stream
+    ----'
+    [E1516] Error: stream built-in that does not fit its declaration
+        ,-[ file:///test0.st:18:16 ]
+        |
+     18 | FUNCTION_BLOCK WRITE_TEXT
+        |                ^^^^^|^^^^
+        |                     `------ 'WRITE_TEXT' does not declare a stream write's variables
+        |
+        | Help: declare the VAR_INPUTs stream : UDINT and data : STRING, and the VAR_OUTPUTs written : UDINT and closed : BOOL after DONE
+        |
+        | Note: a stream write takes the stream's writing end, a UDINT, then the bytes, a STRING, and gives after DONE how many went, a UDINT, then whether the reader left, a BOOL
+    ----'
+    [E1512] Error: import name not a WIT name
+        ,-[ file:///test0.st:23:16 ]
+        |
+     23 | {extern 'host' '[stream-new-0]send'}
+        |                ^^^^^^^^^^|^^^^^^^^^
+        |                          `----------- '[stream-new-0]send' is not a WIT name
+        |
+        | Note: an import's name is written as WIT writes one, words of lowercase letters and digits joined by '-'
+    ----'
+    [E1516] Error: stream built-in that does not fit its declaration
+        ,-[ file:///test0.st:28:10 ]
+        |
+     28 | FUNCTION NEW_AS_ONE : LWORD
+        |          ^^^^^|^^^^
+        |               `------ 'NEW_AS_ONE' does not declare the two ends it makes
+        |
+        | Help: declare the VAR_OUTPUTs readable : UDINT and writable : UDINT, and no return type
+        |
+        | Note: a stream's or a future's new gives its reading end, then its writing end, each a UDINT
+    ----'
+    [E1516] Error: stream built-in that does not fit its declaration
+        ,-[ file:///test0.st:32:10 ]
+        |
+     32 | FUNCTION NEW_FUTURE
+        |          ^^^^^|^^^^
+        |               `------ 'NEW_FUTURE' does not declare the two ends it makes
+        |
+        | Help: declare the VAR_OUTPUTs readable : UDINT and writable : UDINT, and no return type
+        |
+        | Note: a stream's or a future's new gives its reading end, then its writing end, each a UDINT
+    ----'
+    ");
+}
+
+/// Async imports from WASI and from a host's module: parameters, a STRING
+/// among them past the 4 values a call passes, and the fields of a result.
+/// Accepted, and the module they build is valid.
+#[rstest]
+fn valid_async_imports(mut with_db: RootDatabase) {
+    let source = r#"
+{extern async 'wasi:clocks/monotonic-clock@0.3.0' 'wait-for'}
+FUNCTION_BLOCK WAIT_FOR
+VAR_INPUT how_long : LTIME; END_VAR
+VAR_OUTPUT DONE : BOOL; END_VAR
+END_FUNCTION_BLOCK
+
+{extern async 'probe' 'fetch'}
+FUNCTION_BLOCK FETCH
+VAR_INPUT a : DINT; b : DINT; c : DINT; label : STRING[8]; END_VAR
+VAR_OUTPUT DONE : BOOL; value : UDINT; ok : BOOL; END_VAR
+END_FUNCTION_BLOCK
+
+PROGRAM Main
+VAR wait : WAIT_FOR; fetch : FETCH; value : UDINT; END_VAR
+    wait(how_long := LT#1s);
+    fetch(a := 1, b := 2, c := 3, label := 'x');
+    IF fetch.DONE THEN
+        value := fetch.value;
+    END_IF;
+END_PROGRAM"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
 }
 
 /// An import from a module other than WASI's is typed in WIT from its
@@ -636,7 +1128,7 @@ END_VAR
 END_FUNCTION"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1502] Error: not representable on an extern FUNCTION
+    [E1502] Error: not representable on an import
         ,-[ file:///test0.st:11:5 ]
         |
      11 |     r : REF_TO INT;
@@ -645,7 +1137,7 @@ END_FUNCTION"#;
         |
         | Note: an {extern} FUNCTION from a module other than WASI's takes scalars and STRINGs
     ----'
-    [E1502] Error: not representable on an extern FUNCTION
+    [E1502] Error: not representable on an import
         ,-[ file:///test0.st:12:5 ]
         |
      12 |     p : Pt;
@@ -654,7 +1146,7 @@ END_FUNCTION"#;
         |
         | Note: an {extern} FUNCTION from a module other than WASI's takes scalars and STRINGs
     ----'
-    [E1502] Error: not representable on an extern FUNCTION
+    [E1502] Error: not representable on an import
         ,-[ file:///test0.st:13:5 ]
         |
      13 |     a : ARRAY[0..3] OF BYTE;
@@ -663,7 +1155,7 @@ END_FUNCTION"#;
         |
         | Note: an {extern} FUNCTION from a module other than WASI's takes scalars and STRINGs
     ----'
-    [E1502] Error: not representable on an extern FUNCTION
+    [E1502] Error: not representable on an import
         ,-[ file:///test0.st:14:5 ]
         |
      14 |     c : Counter;
@@ -698,7 +1190,7 @@ END_VAR
 END_FUNCTION"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1502] Error: not representable on an extern FUNCTION
+    [E1502] Error: not representable on an import
         ,-[ file:///test0.st:15:5 ]
         |
      15 |     n : INT;
@@ -750,9 +1242,9 @@ END_FUNCTION"#;
        |          ^^^^^|^^^^^
        |               `------- cannot access test item 'test_helper'
        |
-       | Help: for code shared between tests, write a FUNCTION without the pragma
+       | Help: for code shared between tests, write a POU without the pragma
        |
-       | Note: a {test} FUNCTION is the test runner's entry point, not a callable
+       | Note: a {test} POU is the test runner's entry point, not a callable
     ---'
     ");
 }
@@ -777,9 +1269,9 @@ END_FUNCTION"#;
        |          ^^^^|^^^^
        |              `------ cannot access test item 'test_only'
        |
-       | Help: for code shared between tests, write a FUNCTION without the pragma
+       | Help: for code shared between tests, write a POU without the pragma
        |
-       | Note: a {test} FUNCTION is the test runner's entry point, not a callable
+       | Note: a {test} POU is the test runner's entry point, not a callable
     ---'
     ");
 }
@@ -920,32 +1412,6 @@ fn invalid_wasm_operand_count(mut with_db: RootDatabase) {
      4 |             {wasm 'f32.sqrt' (params a b) (result ROOT)}
        |                   ^^^^^|^^^^
        |                        `------ 'f32.sqrt' takes (f32) -> f32, not (a: REAL (f32), b: REAL (f32)) -> ROOT: REAL (f32)
-    ---'
-    ");
-}
-
-/// The writes to the standard output and error take a STRING and answer a
-/// BOOL.
-#[rstest]
-fn invalid_console_write_operand(mut with_db: RootDatabase) {
-    let source = r#"
-        FUNCTION Say : BOOL
-        VAR_INPUT IN : STRING[4096]; END_VAR
-            {wasm 'rk.stdout_write' (params IN) (result Say)}
-        END_FUNCTION
-
-        FUNCTION SayNumber : BOOL
-        VAR_INPUT IN : DINT; END_VAR
-            {wasm 'rk.stderr_write' (params IN) (result SayNumber)}
-        END_FUNCTION
-    "#;
-    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1507] Error: wasm operands of the wrong type
-       ,-[ file:///test0.st:9:19 ]
-       |
-     9 |             {wasm 'rk.stderr_write' (params IN) (result SayNumber)}
-       |                   ^^^^^^^^|^^^^^^^^
-       |                           `---------- 'rk.stderr_write' takes (i32, i32) -> i32, not (IN: DINT (i32)) -> SayNumber: BOOL (i32)
     ---'
     ");
 }
@@ -1153,7 +1619,7 @@ VAR_INPUT who : INT; END_VAR
 END_FUNCTION"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1502] Error: not representable on an extern FUNCTION
+    [E1502] Error: not representable on an import
        ,-[ file:///test0.st:3:18 ]
        |
      3 | FUNCTION Greet : STRING
@@ -1174,14 +1640,23 @@ END_FUNCTION"#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
 }
 
-/// `{test}` is FUNCTION-only, like `{extern}`: the runner calls a `()` entry,
-/// which no other POU kind has. A helper that only tests use is hidden with
-/// `FUNCTION PRIVATE`, not marked as a test.
+/// `{test}` is on a FUNCTION, which the runner calls once, or on a
+/// FUNCTION_BLOCK, which it calls cycle by cycle on an instance of its own: a
+/// PROGRAM and a METHOD have no such entry, and an ABSTRACT or `{extern}`
+/// block no instance the runner can make. A helper that only tests use is
+/// hidden with `FUNCTION PRIVATE`, not marked as a test.
 #[rstest]
 fn invalid_test_pragma_outside_a_function(mut with_db: RootDatabase) {
     let source = r#"
 {test}
-FUNCTION_BLOCK fb
+FUNCTION_BLOCK ABSTRACT test_abstract
+VAR_OUTPUT DONE : BOOL; END_VAR
+END_FUNCTION_BLOCK
+
+{test}
+{extern async 'host' 'poll'}
+FUNCTION_BLOCK test_import
+VAR_OUTPUT DONE : BOOL; END_VAR
 END_FUNCTION_BLOCK
 
 {test}
@@ -1201,26 +1676,224 @@ FUNCTION t : INT
 END_FUNCTION
 "#;
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1503] Error: test pragma outside a FUNCTION
+    [E1503] Error: test pragma outside a FUNCTION or FUNCTION_BLOCK
        ,-[ file:///test0.st:2:1 ]
        |
      2 | {test}
        | ^^^|^^
-       |    `---- a {test} pragma cannot be placed on a FUNCTION_BLOCK
-    ---'
-    [E1503] Error: test pragma outside a FUNCTION
-       ,-[ file:///test0.st:6:1 ]
+       |    `---- a {test} pragma cannot be placed on a FUNCTION_BLOCK declared ABSTRACT
        |
-     6 | {test}
-       | ^^^|^^
-       |    `---- a {test} pragma cannot be placed on a PROGRAM
+       | Note: a test is a FUNCTION, which the runner calls once, or a FUNCTION_BLOCK, which it calls cycle by cycle on an instance of its own
     ---'
-    [E1503] Error: test pragma outside a FUNCTION
-        ,-[ file:///test0.st:11:5 ]
+    [E1503] Error: test pragma outside a FUNCTION or FUNCTION_BLOCK
+       ,-[ file:///test0.st:7:1 ]
+       |
+     7 | {test}
+       | ^^^|^^
+       |    `---- a {test} pragma cannot be placed on a FUNCTION_BLOCK declared {extern}
+       |
+       | Note: a test is a FUNCTION, which the runner calls once, or a FUNCTION_BLOCK, which it calls cycle by cycle on an instance of its own
+    ---'
+    [E1503] Error: test pragma outside a FUNCTION or FUNCTION_BLOCK
+        ,-[ file:///test0.st:13:1 ]
         |
-     11 |     {test}
+     13 | {test}
+        | ^^^|^^
+        |    `---- a {test} pragma cannot be placed on a PROGRAM
+        |
+        | Note: a test is a FUNCTION, which the runner calls once, or a FUNCTION_BLOCK, which it calls cycle by cycle on an instance of its own
+    ----'
+    [E1503] Error: test pragma outside a FUNCTION or FUNCTION_BLOCK
+        ,-[ file:///test0.st:18:5 ]
+        |
+     18 |     {test}
         |     ^^^|^^
         |        `---- a {test} pragma cannot be placed on a METHOD
+        |
+        | Note: a test is a FUNCTION, which the runner calls once, or a FUNCTION_BLOCK, which it calls cycle by cycle on an instance of its own
+    ----'
+    ");
+}
+
+/// A `{test}` FUNCTION_BLOCK runs cycle by cycle on an instance the runner
+/// makes, until a cycle leaves its DONE TRUE. It may declare other outputs,
+/// methods and a base, and hold an async import, which a test FUNCTION
+/// cannot.
+#[rstest]
+fn valid_test_block(mut with_db: RootDatabase) {
+    let source = r#"
+{extern async 'host' 'fetch'}
+FUNCTION_BLOCK FETCH
+VAR_OUTPUT DONE : BOOL; value : DINT; END_VAR
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK Fixture
+VAR count : INT; END_VAR
+    count := count + 1;
+END_FUNCTION_BLOCK
+
+{test}
+FUNCTION_BLOCK test_fetches EXTENDS Fixture
+VAR_OUTPUT DONE : BOOL; seen : DINT; END_VAR
+VAR fetch : FETCH; END_VAR
+
+METHOD checked : BOOL
+    checked := count > 0;
+END_METHOD
+
+    SUPER();
+    fetch();
+    IF fetch.DONE THEN
+        seen := fetch.value;
+        DONE := THIS.checked();
+    END_IF;
+END_FUNCTION_BLOCK
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @"");
+}
+
+/// A test block declares its DONE, a BOOL in VAR_OUTPUT: the runner reads it
+/// after each cycle.
+#[rstest]
+fn invalid_test_block_without_its_done(mut with_db: RootDatabase) {
+    let source = r#"
+{test}
+FUNCTION_BLOCK test_none
+VAR_OUTPUT finished : BOOL; END_VAR
+    finished := TRUE;
+END_FUNCTION_BLOCK
+
+{test}
+FUNCTION_BLOCK test_in_var
+VAR done : BOOL; END_VAR
+    done := TRUE;
+END_FUNCTION_BLOCK
+
+{test}
+FUNCTION_BLOCK test_not_bool
+VAR_OUTPUT DONE : INT; END_VAR
+    DONE := 1;
+END_FUNCTION_BLOCK
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1517] Error: test FUNCTION_BLOCK without its DONE
+       ,-[ file:///test0.st:3:16 ]
+       |
+     3 | FUNCTION_BLOCK test_none
+       |                ^^^^|^^^^
+       |                    `------ 'test_none' has no VAR_OUTPUT DONE
+       |
+       | Help: declare DONE : BOOL in VAR_OUTPUT
+       |
+       | Note: the runner calls a {test} FUNCTION_BLOCK once per cycle, until a cycle leaves its DONE TRUE
+    ---'
+    [E1517] Error: test FUNCTION_BLOCK without its DONE
+        ,-[ file:///test0.st:10:5 ]
+        |
+     10 | VAR done : BOOL; END_VAR
+        |     ^^|^
+        |       `--- 'done' is not a VAR_OUTPUT of type BOOL
+        |
+        | Help: declare DONE : BOOL in VAR_OUTPUT
+        |
+        | Note: the runner calls a {test} FUNCTION_BLOCK once per cycle, until a cycle leaves its DONE TRUE
+    ----'
+    [E1517] Error: test FUNCTION_BLOCK without its DONE
+        ,-[ file:///test0.st:16:12 ]
+        |
+     16 | VAR_OUTPUT DONE : INT; END_VAR
+        |            ^^|^
+        |              `--- 'DONE' is not a VAR_OUTPUT of type BOOL
+        |
+        | Help: declare DONE : BOOL in VAR_OUTPUT
+        |
+        | Note: the runner calls a {test} FUNCTION_BLOCK once per cycle, until a cycle leaves its DONE TRUE
+    ----'
+    ");
+}
+
+/// A test block takes no input: the runner passes none. Its VAR_OUTPUTs are
+/// its instance's, DONE among them.
+#[rstest]
+fn invalid_test_block_with_a_parameter(mut with_db: RootDatabase) {
+    let source = r#"
+{test}
+FUNCTION_BLOCK test_inputs
+VAR_INPUT limit : INT; END_VAR
+VAR_IN_OUT shared : INT; END_VAR
+VAR_OUTPUT DONE : BOOL; count : INT; END_VAR
+    count := count + shared;
+    DONE := count >= limit;
+END_FUNCTION_BLOCK
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1511] Error: test with a parameter
+       ,-[ file:///test0.st:4:11 ]
+       |
+     4 | VAR_INPUT limit : INT; END_VAR
+       |           ^^|^^
+       |             `---- the {test} FUNCTION_BLOCK cannot take the parameter 'limit'
+       |
+       | Help: declare it in VAR, or call a FUNCTION taking it from the test
+       |
+       | Note: the runner calls a test with no arguments
+    ---'
+    [E1511] Error: test with a parameter
+       ,-[ file:///test0.st:5:12 ]
+       |
+     5 | VAR_IN_OUT shared : INT; END_VAR
+       |            ^^^|^^
+       |               `---- the {test} FUNCTION_BLOCK cannot take the parameter 'shared'
+       |
+       | Help: declare it in VAR, or call a FUNCTION taking it from the test
+       |
+       | Note: the runner calls a test with no arguments
+    ---'
+    ");
+}
+
+/// Nothing names a test block, as nothing names a test FUNCTION: the runner
+/// makes its instance, and a library's test blocks are left out of its
+/// users' builds.
+#[rstest]
+fn invalid_reference_to_a_test_block(mut with_db: RootDatabase) {
+    let source = r#"
+{test}
+FUNCTION_BLOCK test_block
+VAR_OUTPUT DONE : BOOL; END_VAR
+    DONE := TRUE;
+END_FUNCTION_BLOCK
+
+FUNCTION_BLOCK Derived EXTENDS test_block
+END_FUNCTION_BLOCK
+
+PROGRAM P
+VAR t : test_block; END_VAR
+    t();
+END_PROGRAM
+"#;
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1007] Error: access to a test-only item
+       ,-[ file:///test0.st:8:32 ]
+       |
+     8 | FUNCTION_BLOCK Derived EXTENDS test_block
+       |                                ^^^^^|^^^^
+       |                                     `------ cannot access test item 'test_block'
+       |
+       | Help: for code shared between tests, write a POU without the pragma
+       |
+       | Note: a {test} POU is the test runner's entry point, not a callable
+    ---'
+    [E1007] Error: access to a test-only item
+        ,-[ file:///test0.st:12:9 ]
+        |
+     12 | VAR t : test_block; END_VAR
+        |         ^^^^^|^^^^
+        |              `------ cannot access test item 'test_block'
+        |
+        | Help: for code shared between tests, write a POU without the pragma
+        |
+        | Note: a {test} POU is the test runner's entry point, not a callable
     ----'
     ");
 }
@@ -2220,7 +2893,7 @@ VAR x : INT; END_VAR
 END_PROGRAM"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1502] Error: not representable on an extern FUNCTION
+    [E1502] Error: not representable on an import
        ,-[ file:///test0.st:4:11 ]
        |
      4 | VAR_INPUT values : INT...; END_VAR
@@ -2275,7 +2948,7 @@ VAR_INPUT a : Itf; END_VAR
 END_FUNCTION"#;
 
     assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
-    [E1511] Error: test FUNCTION with a parameter
+    [E1511] Error: test with a parameter
        ,-[ file:///test0.st:9:11 ]
        |
      9 | VAR_INPUT a : INT; END_VAR
@@ -2286,7 +2959,7 @@ END_FUNCTION"#;
        |
        | Note: the runner calls a test with no arguments
     ---'
-    [E1511] Error: test FUNCTION with a parameter
+    [E1511] Error: test with a parameter
         ,-[ file:///test0.st:14:11 ]
         |
      14 | VAR_INPUT a : REAL; END_VAR
@@ -2297,7 +2970,7 @@ END_FUNCTION"#;
         |
         | Note: the runner calls a test with no arguments
     ----'
-    [E1511] Error: test FUNCTION with a parameter
+    [E1511] Error: test with a parameter
         ,-[ file:///test0.st:19:12 ]
         |
      19 | VAR_IN_OUT a : INT; END_VAR
@@ -2308,7 +2981,7 @@ END_FUNCTION"#;
         |
         | Note: the runner calls a test with no arguments
     ----'
-    [E1511] Error: test FUNCTION with a parameter
+    [E1511] Error: test with a parameter
         ,-[ file:///test0.st:24:12 ]
         |
      24 | VAR_OUTPUT a : REAL; END_VAR
@@ -2319,7 +2992,7 @@ END_FUNCTION"#;
         |
         | Note: the runner calls a test with no arguments
     ----'
-    [E1511] Error: test FUNCTION with a parameter
+    [E1511] Error: test with a parameter
         ,-[ file:///test0.st:29:11 ]
         |
      29 | VAR_INPUT a : INT...; END_VAR
@@ -2330,7 +3003,7 @@ END_FUNCTION"#;
         |
         | Note: the runner calls a test with no arguments
     ----'
-    [E1511] Error: test FUNCTION with a parameter
+    [E1511] Error: test with a parameter
         ,-[ file:///test0.st:34:11 ]
         |
      34 | VAR_INPUT a : Itf; END_VAR

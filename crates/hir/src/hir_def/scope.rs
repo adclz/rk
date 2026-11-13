@@ -164,6 +164,7 @@ impl<'db> Scope<'db> {
         match self.kind {
             ScopeKind::Program(p) => pragma::is_test(db, p.pragmas(db)),
             ScopeKind::Pou(Pou::Function(f)) => pragma::is_test(db, f.pragmas(db)),
+            ScopeKind::Pou(Pou::FunctionBlock(fb)) => pragma::is_test(db, fb.pragmas(db)),
             _ => false,
         }
     }

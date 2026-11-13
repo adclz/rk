@@ -78,3 +78,31 @@ END_FUNCTION_BLOCK
               (int_type_name
                 (sign_int_type_name
                   (int_name))))))))))
+
+================================================================================
+Async extern pragma above a function block
+================================================================================
+
+{extern async 'wasi:clocks/monotonic-clock@0.3.0' 'wait-for'}
+FUNCTION_BLOCK WAIT_FOR
+VAR_OUTPUT DONE : BOOL; END_VAR
+END_FUNCTION_BLOCK
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (fb_decl
+    pragmas: (pou_pragma
+      (extern_pragma
+        asynchronous: (async_keyword)
+        module: (pragma_string)
+        name: (pragma_string)))
+    name: (identifier)
+    variables: (fb_output_decls
+      (fb_output_var
+        variables: (variable_list
+          (identifier))
+        type: (var_decl_init
+          spec: (simple_type_spec
+            (bit_str_type_name
+              (bool_name))))))))

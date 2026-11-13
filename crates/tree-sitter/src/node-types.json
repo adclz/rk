@@ -3230,6 +3230,16 @@
     "type": "extern_pragma",
     "named": true,
     "fields": {
+      "asynchronous": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "async_keyword",
+            "named": true
+          }
+        ]
+      },
       "module": {
         "multiple": false,
         "required": true,
@@ -8492,6 +8502,10 @@
   {
     "type": "allow",
     "named": false
+  },
+  {
+    "type": "async_keyword",
+    "named": true
   },
   {
     "type": "binary_int",

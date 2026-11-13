@@ -86,23 +86,42 @@ END_FUNCTION
     ");
 }
 
-/// A module that writes to the host's standard output imports the stream it
-/// writes through: WASI's `write-via-stream` and the component model's
-/// built-ins for its stream and its future, which no declaration names. One
-/// that writes to neither output imports none.
+/// A stream's built-ins are imported as declared, beside the WASI function
+/// they serve, and a stream's write async-lowered, taking the stream's end
+/// and the bytes as a STRING passes them, and returning how the copy went.
 #[rstest]
-fn a_module_that_writes_imports_its_output(mut with_db: RootDatabase) {
+fn a_stream_s_built_ins_are_imported_as_declared(mut with_db: RootDatabase) {
     let source = r#"
-FUNCTION Say : BOOL
-VAR_INPUT IN : STRING[4096]; END_VAR
-    {wasm 'rk.stdout_write' (params IN) (result Say)}
+{extern 'wasi:cli/stdout@0.3.0' '[stream-new-0]write-via-stream'}
+FUNCTION NEW_STREAM
+VAR_OUTPUT readable : UDINT; writable : UDINT; END_VAR
 END_FUNCTION
+
+{extern 'wasi:cli/stdout@0.3.0' 'write-via-stream'}
+FUNCTION READS : UDINT
+VAR_INPUT data : UDINT; END_VAR
+END_FUNCTION
+
+{extern 'wasi:cli/stdout@0.3.0' '[future-drop-readable-1]write-via-stream'}
+FUNCTION DROP_FUTURE
+VAR_INPUT future : UDINT; END_VAR
+END_FUNCTION
+
+{extern async 'wasi:cli/stdout@0.3.0' '[stream-write-0]write-via-stream'}
+FUNCTION_BLOCK STREAM_WRITE
+VAR_INPUT stream : UDINT; data : STRING[64]; END_VAR
+VAR_OUTPUT DONE : BOOL; written : UDINT; closed : BOOL; END_VAR
+END_FUNCTION_BLOCK
     "#;
     assert_snapshot!(mir_exports(&mut with_db, &[source]), @r"
-    func Say(String { capacity: 4096 }) -> Bool
-    import wasi:cli/stdout@0.3.0.[async-lower][stream-write-0]write-via-stream(DInt, DInt, DInt) -> DInt
-    import wasi:cli/stdout@0.3.0.[future-drop-readable-1]write-via-stream(DInt)
-    import wasi:cli/stdout@0.3.0.[stream-new-0]write-via-stream() -> LWord
-    import wasi:cli/stdout@0.3.0.write-via-stream(DInt) -> DInt
+    func STREAM_WRITE$__body__(*struct(STREAM_WRITE))
+    import $root.[subtask-drop](DInt)
+    import $root.[waitable-join](DInt, DInt)
+    import $root.[waitable-set-new]() -> DInt
+    import $root.[waitable-set-poll](DInt, DInt) -> DInt
+    import wasi:cli/stdout@0.3.0.[async-lower][stream-write-0]write-via-stream(UDInt, String { capacity: 64 })
+    import wasi:cli/stdout@0.3.0.[future-drop-readable-1]write-via-stream(UDInt)
+    import wasi:cli/stdout@0.3.0.[stream-new-0]write-via-stream()
+    import wasi:cli/stdout@0.3.0.write-via-stream(UDInt) -> UDInt
     ");
 }

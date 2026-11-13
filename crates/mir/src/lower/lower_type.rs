@@ -446,6 +446,25 @@ pub(crate) fn string_capacity_field(db: &dyn WorkspaceDataBase, name: Ident) -> 
 
 /// The member holding an edge input's edge, which the block's own code reads
 /// under the input's name.
+/// The member an async import's instance keeps `part` of its call in,
+/// named after its DONE: `DONE$async`, `DONE$result` and `DONE$args`.
+pub(crate) fn async_field(
+    db: &dyn WorkspaceDataBase,
+    name: Ident,
+    part: hir::hir_ty::layout::Part,
+) -> Ident {
+    use hir::hir_ty::layout::Part;
+    let suffix = match part {
+        Part::AsyncResult => "result",
+        Part::AsyncArgs => "args",
+        _ => "async",
+    };
+    Ident::new(
+        db,
+        CompactString::from(format!("{}${suffix}", name.text(db))),
+    )
+}
+
 pub(crate) fn edge_field(db: &dyn WorkspaceDataBase, name: Ident) -> Ident {
     Ident::new(db, CompactString::from(format!("{}$edge", name.text(db))))
 }
@@ -674,6 +693,23 @@ fn instance_struct<'db>(
                 MirType::Elementary(MirElementary::Bool),
                 false,
             ),
+            // An async import's own parts: words, read and written by the
+            // body codegen emits.
+            Part::AsyncState | Part::AsyncResult | Part::AsyncArgs => {
+                let words = (field.layout.size / 4) as u32;
+                (
+                    async_field(db, var_name, field.part),
+                    MirType::Array(crate::types::MirArrayType {
+                        element_type: Box::new(MirType::Elementary(MirElementary::DWord)),
+                        dimensions: vec![(0, i64::from(words) - 1)],
+                        total_elements: words,
+                        element_size: 4,
+                        size: words * 4,
+                        align: field.layout.align,
+                    }),
+                    false,
+                )
+            }
         };
         fields.push(MirStructField {
             name_with_case,

@@ -10,7 +10,8 @@ timers in `LTIME`.
 
 `PLC_TIME` and `PLC_LTIME` read the monotonic clock, for the time between
 two readings. `WALL_LDT`, `WALL_DT`, `LOCAL_LDT` and `LOCAL_OFFSET` read
-the wall clock and the host's zone.
+the wall clock and the host's zone. The wall clock goes back when the
+host's clock is set: a duration is measured with `PLC_TIME`.
 
 A timer decides on `CURRENT_TIME - START_TIME`, a difference, which wraps
 with the clock where `START_TIME + PT` would not: the host picks where the
@@ -103,7 +104,12 @@ NAMESPACE Std.Timers
 	/* Returns how far east of UTC the host's zone is at `IN`, daylight
 	   saving included: `LT#1h` in Paris in winter, `LT#2h` in summer,
 	   `LT#-5h` in New York in winter. Raises "the host has no time zone"
-	   when the host has none. */
+	   when the host has none.
+
+	   The zone is WASI 0.3's `timezone`, which is still unstable
+	   (`clocks-timezone`): a host has it only with that feature on, and
+	   its signature can change in a 0.3 release. */
+	{warn = 'reads the time zone, which WASI 0.3 marks unstable: a host has it only with its clocks-timezone feature on'}
 	FUNCTION LOCAL_OFFSET : LTIME
 		VAR_INPUT
 			IN : LDT;
@@ -133,12 +139,16 @@ NAMESPACE Std.Timers
 
 	/* Returns the host's wall clock as an `LDT` in the host's zone: the
 	   instant `WALL_LDT` returns, shifted by `LOCAL_OFFSET`, in the same
-	   encoding. What a clock on the wall shows. */
+	   encoding. What a clock on the wall shows. Raises "the host has no
+	   time zone" when the host has none, as `LOCAL_OFFSET` does. */
+	{warn = 'reads the time zone, which WASI 0.3 marks unstable: a host has it only with its clocks-timezone feature on'}
 	FUNCTION LOCAL_LDT : LDT
 		VAR
 			utc : LDT;
 		END_VAR
 		utc := WALL_LDT();
+		// The warning is LOCAL_LDT's own, at its callers.
+		{allow 'warn-pragma'}
 		LOCAL_LDT := LINT_TO_LDT(LDT_TO_LINT(utc) + LTIME_TO_LINT(LOCAL_OFFSET(IN := utc)));
 	END_FUNCTION
 
@@ -429,19 +439,23 @@ NAMESPACE Std.Timers
 		USING Std.Unit;
 		USING Std.Timers;
 
+		// A test that waits for the clock is a block: it calls each timer once
+		// per cycle, as a program does, and is DONE in the cycle where what it
+		// waits for has happened.
+
 		// -- TON (On-Delay Timer) ------------------------------------
 
 		{test}
-		FUNCTION test_ton_expires
+		FUNCTION_BLOCK test_ton_expires
+			VAR_OUTPUT
+				DONE: BOOL;
+			END_VAR
 			VAR
 				timer: TON_TIME;
 			END_VAR
 			timer(IN := TRUE, PT := T#1ms);
-			WHILE NOT timer.Q DO
-				timer(IN := TRUE, PT := T#1ms);
-			END_WHILE;
-			ASSERT(timer.Q, 'TON should have expired');
-		END_FUNCTION
+			DONE := timer.Q;
+		END_FUNCTION_BLOCK
 
 		{test}
 		FUNCTION test_ton_not_started
@@ -480,18 +494,22 @@ NAMESPACE Std.Timers
 		END_FUNCTION
 
 		{test}
-		FUNCTION test_tof_expires
+		FUNCTION_BLOCK test_tof_expires
+			VAR_OUTPUT
+				DONE: BOOL;
+			END_VAR
 			VAR
 				timer: TOF_TIME;
+				step: INT;
 			END_VAR
-			timer(IN := TRUE, PT := T#1ms);
-			timer(IN := FALSE, PT := T#1ms);
-			// Spin until Q becomes FALSE
-			WHILE timer.Q DO
-				timer(IN := FALSE, PT := T#1ms);
-			END_WHILE;
-			ASSERT(NOT timer.Q, 'TOF Q should be FALSE after delay expired');
-		END_FUNCTION
+			// IN on the first cycle, off from the second.
+			timer(IN := step = 0, PT := T#1ms);
+			IF step = 0 THEN
+				step := 1;
+			ELSE
+				DONE := NOT timer.Q;
+			END_IF;
+		END_FUNCTION_BLOCK
 
 		{test}
 		FUNCTION test_tof_reset_on_rising_edge
@@ -517,16 +535,16 @@ NAMESPACE Std.Timers
 		END_FUNCTION
 
 		{test}
-		FUNCTION test_tp_pulse_expires
+		FUNCTION_BLOCK test_tp_pulse_expires
+			VAR_OUTPUT
+				DONE: BOOL;
+			END_VAR
 			VAR
 				timer: TP_TIME;
 			END_VAR
 			timer(IN := TRUE, PT := T#1ms);
-			WHILE timer.Q DO
-				timer(IN := TRUE, PT := T#1ms);
-			END_WHILE;
-			ASSERT(NOT timer.Q, 'TP Q should be FALSE after pulse expired');
-		END_FUNCTION
+			DONE := NOT timer.Q;
+		END_FUNCTION_BLOCK
 
 		{test}
 		FUNCTION test_tp_ignores_input_during_pulse
@@ -541,7 +559,7 @@ NAMESPACE Std.Timers
 		END_FUNCTION
 
 		// --- TON must NOT fire before PT: an instant-expiry TON (PT ignored
-		// or inverted compare) passes every spin-loop test above ---
+		// or inverted compare) passes every test above that waits for Q ---
 
 		{test}
 		FUNCTION test_ton_stays_false_before_expiry
@@ -558,70 +576,124 @@ NAMESPACE Std.Timers
 		END_FUNCTION
 
 		{test}
-		FUNCTION test_ton_et_clamps_at_pt
+		FUNCTION_BLOCK test_ton_et_clamps_at_pt
+			VAR_OUTPUT
+				DONE: BOOL;
+			END_VAR
 			VAR
 				timer: TON_TIME;
+				step: INT;
+				t0: TIME;
 			END_VAR
 			timer(IN := TRUE, PT := T#1ms);
-			WHILE NOT timer.Q DO
-				timer(IN := TRUE, PT := T#1ms);
-			END_WHILE;
-			ASSERT(timer.ET = T#1ms, 'ET is exactly PT after expiry');
-		END_FUNCTION
+			IF step = 0 AND timer.Q THEN
+				t0 := PLC_TIME();
+				step := 1;
+			END_IF;
+			IF step = 1 THEN
+				// IN held 2 ms past the deadline: ET stays at PT.
+				ASSERT(timer.Q AND timer.ET = T#1ms, 'ET is exactly PT after expiry');
+				DONE := PLC_TIME() - t0 >= T#2ms;
+			END_IF;
+		END_FUNCTION_BLOCK
 
 		// --- TP terminal state: no auto-refire while IN is held, and a fresh
 		// rising edge after release starts a new pulse ---
 
 		{test}
-		FUNCTION test_tp_post_pulse_retrigger
+		FUNCTION_BLOCK test_tp_post_pulse_retrigger
+			VAR_OUTPUT
+				DONE: BOOL;
+			END_VAR
 			VAR
 				timer: TP_TIME;
+				step: INT;
+				t0: TIME;
 			END_VAR
-			timer(IN := TRUE, PT := T#1ms);
-			WHILE timer.Q DO
-				timer(IN := TRUE, PT := T#1ms);
-			END_WHILE;
-			ASSERT(timer.ET = T#1ms, 'ET clamps at PT when the pulse ends');
-			timer(IN := TRUE, PT := T#1ms);
-			ASSERT(NOT timer.Q, 'held-high IN must not refire the pulse');
-			timer(IN := FALSE, PT := T#1ms);
-			timer(IN := TRUE, PT := T#1ms);
-			ASSERT(timer.Q, 'a new rising edge after release starts a new pulse');
-		END_FUNCTION
+			// IN held, released for the one cycle of step 2, then held again.
+			timer(IN := step <> 2, PT := T#1ms);
+			IF step = 0 AND NOT timer.Q THEN
+				// The pulse has ended.
+				t0 := PLC_TIME();
+				step := 1;
+			END_IF;
+			IF step = 1 THEN
+				// IN held 2 ms past the pulse: ET stays at PT, and no new pulse.
+				ASSERT(timer.ET = T#1ms, 'ET clamps at PT when the pulse ends');
+				ASSERT(NOT timer.Q, 'held-high IN must not refire the pulse');
+				IF PLC_TIME() - t0 >= T#2ms THEN
+					step := 2;
+				END_IF;
+			ELSIF step = 2 THEN
+				step := 3;
+			ELSIF step = 3 THEN
+				ASSERT(timer.Q, 'a new rising edge after release starts a new pulse');
+				DONE := TRUE;
+			END_IF;
+		END_FUNCTION_BLOCK
 
 		// --- TOF: re-asserting IN cancels the pending expiry; the NEXT
 		// falling edge must get a fresh deadline, not the stale one ---
 
 		{test}
-		FUNCTION test_tof_fresh_deadline_after_reassert
+		FUNCTION_BLOCK test_tof_fresh_deadline_after_reassert
+			VAR_OUTPUT
+				DONE: BOOL;
+			END_VAR
 			VAR
 				timer: TOF_TIME;
-				t0: TIME;
+				step: INT;
+				t0, t1: TIME;
 			END_VAR
-			timer(IN := TRUE, PT := T#50ms);
-			timer(IN := FALSE, PT := T#50ms);
-			// Let the FIRST off-delay deadline pass while IN is re-asserted.
-			t0 := PLC_TIME();
-			WHILE PLC_TIME() - t0 < T#60ms DO
-				timer(IN := TRUE, PT := T#50ms);
-			END_WHILE;
-			// New falling edge: deadline must be now+PT, not the stale t0+PT.
-			timer(IN := FALSE, PT := T#50ms);
-			ASSERT(timer.Q, 'TOF must use a fresh deadline for a new falling edge');
-		END_FUNCTION
+			// IN rises, falls, rises again until the first off-delay's deadline
+			// has passed, then falls for good.
+			timer(IN := step = 0 OR step = 2, PT := T#50ms);
+			IF step = 0 THEN
+				step := 1;
+			ELSIF step = 1 THEN
+				// The first off-delay started in this cycle.
+				t0 := PLC_TIME();
+				step := 2;
+			ELSIF step = 2 THEN
+				IF PLC_TIME() - t0 >= T#60ms THEN
+					// IN falls in the next cycle, after t1.
+					t1 := PLC_TIME();
+					step := 3;
+				END_IF;
+			ELSIF step = 3 THEN
+				// New falling edge: deadline must be now+PT, not the stale t0+PT.
+				ASSERT(timer.Q, 'TOF must use a fresh deadline for a new falling edge');
+				step := 4;
+			ELSIF NOT timer.Q THEN
+				ASSERT(PLC_TIME() - t1 >= T#50ms, 'TOF must hold Q for PT after the new falling edge');
+				DONE := TRUE;
+			END_IF;
+		END_FUNCTION_BLOCK
 
 		{test}
-		FUNCTION test_tof_et_clamps_at_pt
+		FUNCTION_BLOCK test_tof_et_clamps_at_pt
+			VAR_OUTPUT
+				DONE: BOOL;
+			END_VAR
 			VAR
 				timer: TOF_TIME;
+				step: INT;
+				t0: TIME;
 			END_VAR
-			timer(IN := TRUE, PT := T#1ms);
-			timer(IN := FALSE, PT := T#1ms);
-			WHILE timer.Q DO
-				timer(IN := FALSE, PT := T#1ms);
-			END_WHILE;
-			ASSERT(timer.ET = T#1ms, 'ET is exactly PT after the off-delay expires');
-		END_FUNCTION
+			// IN on the first cycle, off from the second.
+			timer(IN := step = 0, PT := T#1ms);
+			IF step = 0 THEN
+				step := 1;
+			ELSIF step = 1 AND NOT timer.Q THEN
+				t0 := PLC_TIME();
+				step := 2;
+			END_IF;
+			IF step = 2 THEN
+				// IN off 2 ms past the deadline: ET stays at PT.
+				ASSERT(NOT timer.Q AND timer.ET = T#1ms, 'ET is exactly PT after the off-delay expires');
+				DONE := PLC_TIME() - t0 >= T#2ms;
+			END_IF;
+		END_FUNCTION_BLOCK
 
 		// --- PT = 0 (pins current behavior: the deadline check runs on the
 		// call AFTER the starting edge, so a zero preset needs two calls) ---
@@ -645,65 +717,88 @@ NAMESPACE Std.Timers
 		// -- the LTIME variants run the same machine on the ns clock --
 
 		{test}
-		FUNCTION test_ton_ltime_expires
+		FUNCTION_BLOCK test_ton_ltime_expires
+			VAR_OUTPUT
+				DONE: BOOL;
+			END_VAR
 			VAR
 				timer: TON_LTIME;
 			END_VAR
 			timer(IN := TRUE, PT := LTIME#1ms);
-			WHILE NOT timer.Q DO
-				timer(IN := TRUE, PT := LTIME#1ms);
-			END_WHILE;
-			ASSERT(timer.ET = LTIME#1ms, 'TON_LTIME ET is exactly PT after expiry');
-		END_FUNCTION
+			IF timer.Q THEN
+				ASSERT(timer.ET = LTIME#1ms, 'TON_LTIME ET is exactly PT after expiry');
+				DONE := TRUE;
+			END_IF;
+		END_FUNCTION_BLOCK
 
 		{test}
-		FUNCTION test_tof_ltime_expires
+		FUNCTION_BLOCK test_tof_ltime_expires
+			VAR_OUTPUT
+				DONE: BOOL;
+			END_VAR
 			VAR
 				timer: TOF_LTIME;
+				step: INT;
 			END_VAR
-			timer(IN := TRUE, PT := LTIME#1ms);
-			ASSERT(timer.Q, 'TOF_LTIME Q should be TRUE while IN is TRUE');
-			timer(IN := FALSE, PT := LTIME#1ms);
-			WHILE timer.Q DO
-				timer(IN := FALSE, PT := LTIME#1ms);
-			END_WHILE;
-			ASSERT(timer.ET = LTIME#1ms, 'TOF_LTIME ET clamps at PT after expiry');
-		END_FUNCTION
+			// IN on the first cycle, off from the second.
+			timer(IN := step = 0, PT := LTIME#1ms);
+			IF step = 0 THEN
+				ASSERT(timer.Q, 'TOF_LTIME Q should be TRUE while IN is TRUE');
+				step := 1;
+			ELSIF NOT timer.Q THEN
+				ASSERT(timer.ET = LTIME#1ms, 'TOF_LTIME ET clamps at PT after expiry');
+				DONE := TRUE;
+			END_IF;
+		END_FUNCTION_BLOCK
 
 		{test}
-		FUNCTION test_tp_ltime_pulse
+		FUNCTION_BLOCK test_tp_ltime_pulse
+			VAR_OUTPUT
+				DONE: BOOL;
+			END_VAR
 			VAR
 				timer: TP_LTIME;
+				step: INT;
 			END_VAR
 			timer(IN := TRUE, PT := LTIME#1ms);
-			ASSERT(timer.Q, 'TP_LTIME Q should be TRUE on rising edge');
-			WHILE timer.Q DO
-				timer(IN := TRUE, PT := LTIME#1ms);
-			END_WHILE;
-			ASSERT(timer.ET = LTIME#1ms, 'TP_LTIME ET clamps at PT when the pulse ends');
-		END_FUNCTION
+			IF step = 0 THEN
+				ASSERT(timer.Q, 'TP_LTIME Q should be TRUE on rising edge');
+				step := 1;
+			ELSIF NOT timer.Q THEN
+				ASSERT(timer.ET = LTIME#1ms, 'TP_LTIME ET clamps at PT when the pulse ends');
+				DONE := TRUE;
+			END_IF;
+		END_FUNCTION_BLOCK
 
 		// -- the standard names are aliases; instances declared through
 		// them must build, call, and expose the outputs --
 
 		{test}
-		FUNCTION test_standard_names_are_usable
+		FUNCTION_BLOCK test_standard_names_are_usable
+			VAR_OUTPUT
+				DONE: BOOL;
+			END_VAR
 			VAR
 				pulse: TP;
 				on_delay: TON;
 				off_delay: TOF;
+				step: INT;
 			END_VAR
 			pulse(IN := TRUE, PT := T#100ms);
-			ASSERT(pulse.Q, 'a TP-typed instance pulses on the rising edge');
 			on_delay(IN := TRUE, PT := T#1ms);
-			WHILE NOT on_delay.Q DO
-				on_delay(IN := TRUE, PT := T#1ms);
-			END_WHILE;
-			ASSERT(on_delay.ET = T#1ms, 'a TON-typed instance expires at PT');
-			off_delay(IN := TRUE, PT := T#100ms);
-			off_delay(IN := FALSE, PT := T#100ms);
-			ASSERT(off_delay.Q, 'a TOF-typed instance holds Q through the off-delay');
-		END_FUNCTION
+			// IN on the first cycle, off from the second.
+			off_delay(IN := step = 0, PT := T#100ms);
+			IF step = 0 THEN
+				ASSERT(pulse.Q, 'a TP-typed instance pulses on the rising edge');
+				step := 1;
+			ELSIF step = 1 THEN
+				ASSERT(off_delay.Q, 'a TOF-typed instance holds Q through the off-delay');
+				step := 2;
+			ELSIF on_delay.Q THEN
+				ASSERT(on_delay.ET = T#1ms, 'a TON-typed instance expires at PT');
+				DONE := TRUE;
+			END_IF;
+		END_FUNCTION_BLOCK
 
 		// --- the clock itself ---
 
@@ -714,7 +809,8 @@ NAMESPACE Std.Timers
 			END_VAR
 			t1 := PLC_TIME();
 			t2 := PLC_TIME();
-			ASSERT(t2 >= t1, 'PLC_TIME must be monotonic');
+			// TIME wraps every 49.7 days: compare the difference, as a timer does.
+			ASSERT(t2 - t1 >= T#0s, 'PLC_TIME must be monotonic');
 		END_FUNCTION
 
 		{test}
@@ -724,7 +820,7 @@ NAMESPACE Std.Timers
 			END_VAR
 			t1 := PLC_LTIME();
 			t2 := PLC_LTIME();
-			ASSERT(t2 >= t1, 'PLC_LTIME must be monotonic');
+			ASSERT(t2 - t1 >= LTIME#0s, 'PLC_LTIME must be monotonic');
 		END_FUNCTION
 
 		// -- The wall clock ------------------------------------------
@@ -736,16 +832,7 @@ NAMESPACE Std.Timers
 		END_FUNCTION
 
 		{test}
-		FUNCTION test_wall_clock_never_goes_back
-			VAR
-				first, second : LDT;
-			END_VAR
-			first := WALL_LDT();
-			second := WALL_LDT();
-			ASSERT(second >= first, 'WALL_LDT went back');
-		END_FUNCTION
-
-		{test}
+		{allow 'warn-pragma'}
 		FUNCTION test_local_clock_is_the_wall_clock_shifted
 			VAR
 				wall, local : LDT;

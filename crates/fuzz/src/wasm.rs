@@ -10,8 +10,7 @@ use std::sync::{Arc, LazyLock};
 use debug_format::{LocatedArea, LocatedMap, RetainMap, ScheduleManifest};
 use wasmparser::Payload;
 use wasmtime::{
-    Caller, Engine, Extern, ExternType, Func, Instance, Linker, Memory, Module, Store, Trap, Val,
-    ValType,
+    Engine, ExternType, Func, Instance, Linker, Memory, Module, Store, Trap, Val, ValType,
 };
 
 use crate::Finding;
@@ -352,26 +351,15 @@ impl Host {
                 })
             } else if name == "now" && module_name.contains("system-clock") {
                 let clock = clock.clone();
-                linker.func_wrap(
-                    module_name,
-                    name,
-                    move |mut caller: Caller<'_, ()>, ret: i32| -> wasmtime::Result<()> {
-                        let elapsed = clock.fetch_add(1_000_000, Ordering::Relaxed);
-                        let seconds = WALL_CLOCK_START + elapsed / 1_000_000_000;
-                        let nanoseconds = (elapsed % 1_000_000_000) as u32;
-                        // The record `instant`: an `s64`, then a `u32` 8 bytes on.
-                        let mut instant = [0u8; 12];
-                        instant[..8].copy_from_slice(&seconds.to_le_bytes());
-                        instant[8..].copy_from_slice(&nanoseconds.to_le_bytes());
-                        let memory = caller
-                            .get_export("memory")
-                            .and_then(Extern::into_memory)
-                            .ok_or_else(|| wasmtime::Error::msg("the module exports no memory"))?;
-                        memory
-                            .write(&mut caller, ret as u32 as usize, &instant)
-                            .map_err(|e| wasmtime::Error::msg(format!("{e}")))
-                    },
-                )
+                rk::test_host::wire_wall(&mut linker, module_name, move || {
+                    let elapsed = clock.fetch_add(1_000_000, Ordering::Relaxed);
+                    (
+                        WALL_CLOCK_START + elapsed / 1_000_000_000,
+                        (elapsed % 1_000_000_000) as u32,
+                    )
+                })
+                .map_err(|e| Finding::new("module-shape", format!("{e:#}")))?;
+                continue;
             } else if name == "utc-offset" && module_name.contains("timezone") {
                 rk::test_host::wire_zone(&mut linker, module_name, |_, _| Some(ZONE_OFFSET))
                     .map_err(|e| Finding::new("module-shape", format!("{e:#}")))?;

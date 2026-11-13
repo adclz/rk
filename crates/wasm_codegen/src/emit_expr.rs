@@ -60,6 +60,12 @@ thread_local! {
     /// [`ControlArea::import_record`]: crate::control::ControlArea::import_record
     pub(crate) static IMPORT_RECORD_AT: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
 
+    /// The imports that make a stream or a future, by symbol: each returns
+    /// both ends in one 64-bit value, which a call stores where a record
+    /// goes, and reads back as its two outputs, the reading end first.
+    pub(crate) static ENDS_IMPORTS: RefCell<rustc_hash::FxHashSet<Ident>> =
+        RefCell::new(rustc_hash::FxHashSet::default());
+
     /// `Ident → text` for every function in the module, so the `emit_call`
     /// panic can name a missing callee without threading the db through.
     pub(crate) static FN_NAMES_FOR_DIAGNOSTIC: RefCell<FxHashMap<Ident, String>> =
@@ -725,6 +731,11 @@ fn emit_call(
         func.instruction(&Instruction::I32Const(*at as i32));
     }
     func.instruction(&Instruction::Call(idx));
+    // A stream's or a future's `new` returns its two ends in one value,
+    // stored at the address pushed above as the record of its two outputs.
+    if record.is_some() && ENDS_IMPORTS.with(|ends| ends.borrow().contains(&call.callee)) {
+        func.instruction(&Instruction::I64Store(mem_arg(0, 3)));
+    }
     if let Some((at, fields)) = &record {
         for (offset, elementary) in fields {
             func.instruction(&Instruction::I32Const(*at as i32));

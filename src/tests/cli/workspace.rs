@@ -316,21 +316,26 @@ fn workspace_dotenv_supplies_the_variable_and_process_env_wins() {
 }
 
 /// Only the workspace's tests enter the manifest: a library is compiled
-/// like everything else, but its tests are not this workspace's to run.
+/// like everything else, but its tests are not this workspace's to run, and
+/// its test blocks are not lowered, as its test FUNCTIONs are not.
 #[test]
 fn library_tests_stay_out_of_the_manifest() {
     let lib = tempfile::tempdir().expect("lib tempdir");
     let lib_root = std::fs::canonicalize(lib.path()).unwrap();
     std::fs::write(
-            lib_root.join("s.st"),
-            "NAMESPACE Std.S\n{test}\nFUNCTION test_lib : BOOL\n    test_lib := TRUE;\nEND_FUNCTION\nEND_NAMESPACE\n",
-        )
-        .unwrap();
+        lib_root.join("s.st"),
+        "NAMESPACE Std.S\n{test}\nFUNCTION test_lib : BOOL\n    test_lib := TRUE;\nEND_FUNCTION\n\
+         {test}\nFUNCTION_BLOCK test_lib_block\nVAR_OUTPUT DONE : BOOL; END_VAR\n    DONE := TRUE;\n\
+         END_FUNCTION_BLOCK\nEND_NAMESPACE\n",
+    )
+    .unwrap();
     set_env(lib_root.as_os_str());
 
     let (_ws, root) = write_workspace(&[(
         "main.st",
-        "{test}\nFUNCTION test_mine : BOOL\n    test_mine := TRUE;\nEND_FUNCTION\n",
+        "{test}\nFUNCTION test_mine : BOOL\n    test_mine := TRUE;\nEND_FUNCTION\n\
+         {test}\nFUNCTION_BLOCK test_mine_block\nVAR_OUTPUT DONE : BOOL; END_VAR\n    DONE := TRUE;\n\
+         END_FUNCTION_BLOCK\n",
     )]);
     let (db, counts, out) = check(&root);
     assert!(!counts.has_errors(), "precondition:\n{out}");
@@ -347,7 +352,18 @@ fn library_tests_stay_out_of_the_manifest() {
         .iter()
         .map(|t| t.path.as_str())
         .collect();
-    assert_eq!(names, ["test_mine"], "only the workspace test runs");
+    assert_eq!(
+        names,
+        ["test_mine", "test_mine_block"],
+        "only the workspace's tests run"
+    );
+    let lowered: Vec<_> = module
+        .functions
+        .iter()
+        .map(|f| f.name.text(&db).to_string())
+        .filter(|name| name.starts_with("Std.S.test_lib_block"))
+        .collect();
+    assert_eq!(lowered, Vec::<String>::new(), "the library's test block");
 }
 
 /// Reopening a library namespace overloads it like any other file would:

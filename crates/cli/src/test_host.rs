@@ -1,10 +1,12 @@
 // SPDX-FileCopyrightText: 2026 Clauzel Adrien
 // SPDX-License-Identifier: AGPL-3.0-only
 
-//! Running a component's `{test}` functions in-process on a wasmtime host,
-//! as `rk test` does: through its control interface, `init` and then
-//! `run-test` with the test's place in the manifest, each a
-//! `result<_, string>`, with WASI's clocks and standard output and error.
+//! Running a component's tests in-process on a wasmtime host, as `rk test`
+//! does: through its control interface, `init` and then `run-test` with the
+//! test's place in the manifest, with WASI's clocks and standard output and
+//! error. A test FUNCTION runs in one call. A test FUNCTION_BLOCK runs a
+//! cycle per call, until a cycle leaves its DONE TRUE or the test's budget
+//! is spent.
 //! Each test gets a fresh instance, since a test mutates the same statics a
 //! program does.
 //!
@@ -26,7 +28,7 @@ use std::ops::Range;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use crate::control::TestError;
+use crate::control::{TestError, TestState};
 use anyhow::{Context, Result};
 use debug_format::DebugInfo;
 use debug_format::test_manifest::{TEST_MANIFEST_SECTION, TestEntry, TestManifest};
@@ -182,6 +184,15 @@ impl Outcome {
         }
     }
 
+    /// A failure with no calls in progress to show.
+    fn failed(reason: String) -> Self {
+        Outcome {
+            reason: Some(reason),
+            stack: Vec::new(),
+            output: String::new(),
+        }
+    }
+
     /// A failure on a raise, `stack` the one the host took when the module
     /// said it raised, counted from the start of the component whose core
     /// module is at `module` in its bytes.
@@ -242,12 +253,11 @@ pub fn memory_of<T>(store: &mut Store<T>, instance: &Instance) -> Result<Memory>
 /// Wires the clocks a core module imports, by the names WASI gives them and
 /// in their core forms, for a host that runs one alone, as the codegen tests
 /// and the fuzz host do: the monotonic clock, which starts at zero here;
-/// the system clock, whose `now` writes its record, the seconds since 1970
-/// and the nanoseconds, where the module points; and the zone's
-/// `utc-offset` at an instant ([`wire_zone`]), from the system's zone. A
-/// module reads them through `Std.Timers`, and a debug module imports every
-/// `{extern}` of the libraries it reads, so each is wired whether the
-/// program reads it or not.
+/// the system clock's `now` ([`wire_wall`]), from the system's clock; and
+/// the zone's `utc-offset` at an instant ([`wire_zone`]), from the system's
+/// zone. A module reads them through `Std.Timers`, and a debug module
+/// imports every `{extern}` of the libraries it reads, so each is wired
+/// whether the program reads it or not.
 pub fn wire_clocks<T: 'static>(linker: &mut Linker<T>, module: &Module) -> Result<()> {
     let clock_start = Instant::now();
     for import in module.imports() {
@@ -259,27 +269,47 @@ pub fn wire_clocks<T: 'static>(linker: &mut Linker<T>, module: &Module) -> Resul
                 })
                 .ctx("wiring the monotonic clock")?;
         } else if name == "now" && module_name.contains("system-clock") {
-            linker
-                .func_wrap(
-                    module_name,
-                    name,
-                    move |mut caller: Caller<'_, T>, ret: i32| -> wasmtime::Result<()> {
-                        let since = SystemTime::now()
-                            .duration_since(UNIX_EPOCH)
-                            .unwrap_or_default();
-                        // The record `instant`: an `s64`, then a `u32` 8 bytes on.
-                        let mut instant = [0u8; 12];
-                        instant[..8].copy_from_slice(&(since.as_secs() as i64).to_le_bytes());
-                        instant[8..].copy_from_slice(&since.subsec_nanos().to_le_bytes());
-                        write_at(&mut caller, ret as u32, &instant)
-                    },
-                )
-                .ctx("wiring the system clock")?;
+            wire_wall(linker, module_name, system_now)?;
         } else if name == "utc-offset" && module_name.contains("timezone") {
             wire_zone(linker, module_name, system_zone)?;
         }
     }
     Ok(())
+}
+
+/// Wires `now` as the `now` of `module_name`, a system clock. It gives an
+/// instant as WASI's `instant` counts it: the whole seconds since
+/// 1970-01-01, negative before, and the nanoseconds after them. The core
+/// form writes that record where the module points, as the canonical ABI
+/// lays it out: the `s64`, then the `u32` 8 bytes on.
+pub fn wire_wall<T: 'static>(
+    linker: &mut Linker<T>,
+    module_name: &str,
+    now: impl Fn() -> (i64, u32) + Send + Sync + 'static,
+) -> Result<()> {
+    linker
+        .func_wrap(
+            module_name,
+            "now",
+            move |mut caller: Caller<'_, T>, ret: i32| -> wasmtime::Result<()> {
+                let (seconds, nanoseconds) = now();
+                let mut instant = [0u8; 12];
+                instant[..8].copy_from_slice(&seconds.to_le_bytes());
+                instant[8..].copy_from_slice(&nanoseconds.to_le_bytes());
+                write_at(&mut caller, ret as u32, &instant)
+            },
+        )
+        .ctx("wiring the system clock")?;
+    Ok(())
+}
+
+/// The system's clock, as [`wire_wall`] hands it over. A clock set before
+/// 1970 reads 1970-01-01.
+fn system_now() -> (i64, u32) {
+    let since = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default();
+    (since.as_secs() as i64, since.subsec_nanos())
 }
 
 /// Wires `zone` as the `utc-offset` of `module_name`. It is handed an
@@ -416,6 +446,10 @@ struct Runner<'a> {
     bytes: &'a [u8],
     module: Range<usize>,
     pre: InstancePre<ComponentHost>,
+    /// What each call runs on: wasmtime calls a component that imports a
+    /// host function that waits, as WASI's `wait-for` does, through its
+    /// async API only, and wasmtime-wasi waits on tokio's clock.
+    runtime: tokio::runtime::Runtime,
 }
 
 impl<'a> Runner<'a> {
@@ -428,6 +462,10 @@ impl<'a> Runner<'a> {
             bytes,
             module: wrapped_module(bytes)?,
             pre,
+            runtime: tokio::runtime::Builder::new_current_thread()
+                .enable_time()
+                .build()
+                .context("starting the runtime the tests' calls run on")?,
         })
     }
 
@@ -441,7 +479,14 @@ impl<'a> Runner<'a> {
     /// taken at each raise, which only a module with line tables can name.
     fn run(&self, place: u32, budget: Duration, capture: bool) -> Result<Outcome> {
         let stdio = Arc::new(Mutex::new(Stdio::keeping(OUTPUT_LIMIT)));
-        let mut outcome = run_test(&self.pre, &self.module, place, budget, capture, &stdio)?;
+        let mut outcome = self.runtime.block_on(run_test(
+            &self.pre,
+            &self.module,
+            place,
+            budget,
+            capture,
+            &stdio,
+        ))?;
         outcome.output = lock(&stdio).text();
         Ok(outcome)
     }
@@ -564,11 +609,12 @@ fn link_component(
 }
 
 /// One test on a fresh instance of the component: `init`, then `run-test`
-/// with the test's `place` in the manifest, its outputs written to `stdio`.
+/// with the test's `place` in the manifest, once for a test FUNCTION and
+/// once per cycle for a test FUNCTION_BLOCK, its outputs written to `stdio`.
 /// A raise comes back as the error of a result, placed where the module
 /// last said it raised, a trap as the call's error, with its backtrace:
 /// both in the core module at `module` in the component.
-fn run_test(
+async fn run_test(
     pre: &InstancePre<ComponentHost>,
     module: &Range<usize>,
     place: u32,
@@ -596,7 +642,8 @@ fn run_test(
     // always elapsed, so arm it before ANY wasm runs, instantiation included.
     store.set_epoch_deadline(ticks(budget));
     let instance = pre
-        .instantiate(&mut store)
+        .instantiate_async(&mut store)
+        .await
         .ctx("instantiating the component")?;
     let control = instance
         .get_export_index(&mut store, None, debug_format::wit::CONTROL_INTERFACE)
@@ -611,11 +658,13 @@ fn run_test(
         .get_typed_func::<(), (std::result::Result<(), String>,)>(&mut store, &init)
         .ctx("`init` must be a func() -> result<_, string>")?;
     let run_test = instance
-        .get_typed_func::<(u32,), (std::result::Result<(), TestError>,)>(&mut store, &run_test)
-        .ctx("`run-test` must be a func(u32) -> result<_, test-error>")?;
+        .get_typed_func::<(u32,), (std::result::Result<TestState, TestError>,)>(
+            &mut store, &run_test,
+        )
+        .ctx("`run-test` must be a func(u32) -> result<test-state, test-error>")?;
 
     store.set_epoch_deadline(ticks(budget));
-    match init.call(&mut store, ()) {
+    match init.call_async(&mut store, ()).await {
         Ok((Ok(()),)) => {}
         Ok((Err(message),)) => {
             let stack = store.data_mut().raised.take();
@@ -630,22 +679,39 @@ fn run_test(
             return Ok(Outcome::trapped_in(reason, &e, module));
         }
     }
-    store.set_epoch_deadline(ticks(budget));
-    Ok(match run_test.call(&mut store, (place,)) {
-        Ok((Ok(()),)) => Outcome::passed(),
-        Ok((Err(TestError::Failed(message)),)) => {
-            let stack = store.data_mut().raised.take();
-            Outcome::raised(message, stack, module)
+    // A test FUNCTION passes in one call. A test FUNCTION_BLOCK runs a cycle
+    // a call, `running` until one leaves its DONE TRUE: each call has the
+    // budget to return, and the test has it to pass.
+    let start = Instant::now();
+    let mut cycles: u64 = 0;
+    let outcome = loop {
+        store.set_epoch_deadline(ticks(budget));
+        match run_test.call_async(&mut store, (place,)).await {
+            Ok((Ok(TestState::Passed),)) => break Outcome::passed(),
+            Ok((Ok(TestState::Running),)) => {
+                cycles += 1;
+                if start.elapsed() >= budget {
+                    break Outcome::failed(format!(
+                        "the watchdog stopped it after {}: DONE was still FALSE after {cycles} cycles",
+                        describe(budget)
+                    ));
+                }
+            }
+            Ok((Err(TestError::Failed(message)),)) => {
+                let stack = store.data_mut().raised.take();
+                break Outcome::raised(message, stack, module);
+            }
+            // The manifest's own place: only a release build answers this.
+            Ok((Err(TestError::NoSuchTest),)) => {
+                break Outcome::raised("no such test".to_string(), None, module);
+            }
+            Err(e) => {
+                let reason = format!("trapped: {}", stopped(&e, budget));
+                break Outcome::trapped_in(reason, &e, module);
+            }
         }
-        // The manifest's own place: only a release build answers this.
-        Ok((Err(TestError::NoSuchTest),)) => {
-            Outcome::raised("no such test".to_string(), None, module)
-        }
-        Err(e) => {
-            let reason = format!("trapped: {}", stopped(&e, budget));
-            Outcome::trapped_in(reason, &e, module)
-        }
-    })
+    };
+    Ok(outcome)
 }
 
 /// Where the core module `component` wraps is in its bytes: rk's own, the

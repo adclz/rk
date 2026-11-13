@@ -9,6 +9,7 @@ use crate::hir_def::expressions::spec::Spec;
 use crate::hir_def::interned::identifier::Ident;
 use crate::hir_def::interned::identifier::SpanIdent;
 use crate::hir_def::pous::function::Function;
+use crate::hir_def::pous::function_block::FunctionBlock;
 use crate::hir_def::pous::pragma::ModuleNameError;
 use crate::hir_def::pous::variable::VariableDecl;
 use auto_lsp::lsp_types::DiagnosticSeverity;
@@ -18,6 +19,28 @@ use ide_diagnostic::ErrorCode;
 use ide_diagnostic::IdeDiagnostic;
 use ide_diagnostic::Related;
 use ide_diagnostic::diag;
+
+/// Why a stream's or a future's built-in does not fit the POU its `{extern}`
+/// stands on (E1516).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, salsa::Update)]
+pub enum BuiltinMisfit {
+    /// A read or a write, which waits for the other end, on a FUNCTION.
+    Waits,
+    /// A built-in that returns at once on an `{extern async}` block.
+    Instant,
+    /// A read, or a future's write, on an `{extern async}` block: a block
+    /// imports a call or a stream's write.
+    NoBlock,
+}
+
+/// What an async import's FUNCTION_BLOCK declares besides its VAR_INPUTs and
+/// VAR_OUTPUTs (E1502).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, salsa::Update)]
+pub enum ImportMember {
+    Method,
+    Extends,
+    Implements,
+}
 
 /// Which declaration section an `{extern}` FUNCTION cannot carry, and why.
 /// One code (E1502), one message shape each — the fix differs per case.
@@ -259,8 +282,47 @@ pub enum PragmaError<'db> {
     /// that governs `VAR_OUTPUT` governs it — and it is the one place a
     /// STRING or a STRUCT can still be written.
     ExternNonScalarReturn { func: Function<'db>, ret: Spec<'db> },
-    /// An `{extern}` FUNCTION with statements — the import IS the body.
-    ExternWithBody { site: CallSite<'db> },
+    /// An `{extern}` FUNCTION or FUNCTION_BLOCK with statements: the import
+    /// IS the body.
+    ExternWithBody {
+        site: CallSite<'db>,
+        pou_kind: &'static str,
+    },
+    /// An async import, an `{extern async}` FUNCTION_BLOCK, with a METHOD, a
+    /// base or an INTERFACE, anchored at the METHOD's name or at the type
+    /// named: the block is its call, and a METHOD, a base's body or an
+    /// INTERFACE's METHODs would be code of the import the host has not.
+    ExternBlockMember {
+        span: tree_sitter::Range,
+        member: ImportMember,
+    },
+    /// An `{extern}` pragma whose `async` does not fit its POU: a FUNCTION's
+    /// call returns before the scan goes on, and an async call is held by a
+    /// FUNCTION_BLOCK's instance from one scan to the next. `block`: the POU
+    /// is a FUNCTION_BLOCK, the pragma without `async`.
+    ExternAsync { anchor: SpanIdent<'db>, block: bool },
+    /// An async import, an `{extern async}` FUNCTION_BLOCK, without its `DONE`,
+    /// anchored at the block's name, or with a `DONE` declared in another
+    /// section or with another type than BOOL, `found`.
+    DoneOutput {
+        block: FunctionBlock<'db>,
+        found: Option<VariableDecl<'db>>,
+    },
+    /// A `{test}` FUNCTION_BLOCK without its `DONE`, anchored at the block's
+    /// name, or with a `DONE` declared in another section or with another
+    /// type than BOOL, `found`: the runner calls the block once per cycle
+    /// until a cycle leaves `DONE` TRUE.
+    TestDone {
+        block: FunctionBlock<'db>,
+        found: Option<VariableDecl<'db>>,
+    },
+    /// A variable holding an async import's instance in a call's frame, a
+    /// FUNCTION's, a METHOD's or a VAR_TEMP, `frame`: the host writes the
+    /// call's result into the instance at a later scan.
+    AsyncImportInFrame {
+        var: VariableDecl<'db>,
+        frame: &'static str,
+    },
     /// An `{extern}`'s module the component model takes no import from: a
     /// plain WIT name, `modbus`, or an interface, `acme:modbus/rtu@1.0.0`,
     /// is. Written as WIT writes it, never converted: the host implements
@@ -270,6 +332,21 @@ pub enum PragmaError<'db> {
         span: tree_sitter::Range,
         why: ModuleNameError,
     },
+    /// A stream's or a future's built-in, `name`, imported where it does
+    /// not fit, anchored at the name.
+    StreamBuiltin {
+        name: compact_str::CompactString,
+        span: tree_sitter::Range,
+        why: BuiltinMisfit,
+    },
+    /// A stream write whose variables are not the built-in's, anchored at
+    /// the block's name ([`crate::hir_ty::async_import::stream_write_shaped`]).
+    StreamWriteVariables { block: FunctionBlock<'db> },
+    /// A stream's or a future's `new` not declared as the two ends it makes,
+    /// a UDINT VAR_OUTPUT each, the reading end first, anchored at the
+    /// FUNCTION's name: the built-in returns both in one 64-bit value, which
+    /// the call writes into the two outputs.
+    NewEnds { func: Function<'db> },
     /// An `{extern}`'s name that is not a WIT name.
     ExternFunctionName {
         name: compact_str::CompactString,
@@ -288,19 +365,29 @@ pub enum PragmaError<'db> {
         var: VariableDecl<'db>,
         first: VariableDecl<'db>,
     },
-    /// `{test}` on something other than a FUNCTION. A test is a `()` entry the
-    /// runner calls; an FB, PROGRAM or METHOD has no such entry, and a helper
-    /// that only tests use is hidden with PRIVATE, not marked as a test.
+    /// `{test}` on something other than a FUNCTION or a FUNCTION_BLOCK the
+    /// runner can make an instance of. A test FUNCTION is a `()` entry the
+    /// runner calls once, a test FUNCTION_BLOCK one it calls cycle by cycle on
+    /// an instance of its own; a PROGRAM or a METHOD has no such entry, an
+    /// ABSTRACT or `{extern}` FUNCTION_BLOCK no instance the runner can make,
+    /// and a helper that only tests use is hidden with PRIVATE, not marked as
+    /// a test.
     TestOutsideFunction {
         anchor: SpanIdent<'db>,
         pou_kind: &'static str,
     },
-    /// A `{test}` FUNCTION with a `VAR_INPUT`, a `VAR_OUTPUT` or a `VAR_IN_OUT`:
-    /// the runner calls a test with no arguments, so nothing can bind it. Its
-    /// wrapper has no parameters to read: a scalar read a scratch local, what
-    /// goes by address wrote near address 0, a REAL made the module invalid, and
-    /// a test taking a variadic or an interface had no copy, so it never ran.
-    TestWithParameter { var: VariableDecl<'db> },
+    /// A `{test}` FUNCTION with a `VAR_INPUT`, a `VAR_OUTPUT` or a `VAR_IN_OUT`,
+    /// or a `{test}` FUNCTION_BLOCK with a `VAR_INPUT` or a `VAR_IN_OUT`: the
+    /// runner calls a test with no arguments, so nothing can bind it. A test
+    /// FUNCTION's wrapper has no parameters to read: a scalar read a scratch
+    /// local, what goes by address wrote near address 0, a REAL made the module
+    /// invalid, and a test taking a variadic or an interface had no copy, so it
+    /// never ran. A test FUNCTION_BLOCK's VAR_OUTPUTs are its instance's, its
+    /// `DONE` among them.
+    TestWithParameter {
+        var: VariableDecl<'db>,
+        pou_kind: &'static str,
+    },
     /// `{export}` on something other than a FUNCTION. A PROGRAM is already
     /// exported for the schedule; an FB, a CLASS or a METHOD needs an
     /// instance the host does not have.
@@ -406,10 +493,16 @@ const KNOWN_PRAGMAS: &[&str] = &[
 impl<'db> ErrorCode for PragmaError<'db> {
     fn code(&self) -> &'static str {
         match self {
-            Self::ExternOutsideFunction { .. } => "E1501",
+            Self::ExternOutsideFunction { .. } | Self::ExternAsync { .. } => "E1501",
             Self::ExternForbiddenSection { .. } => "E1502",
             Self::ExternNonScalarReturn { .. } => "E1502",
-            Self::ExternWithBody { .. } => "E1502",
+            Self::ExternWithBody { .. } | Self::ExternBlockMember { .. } => "E1502",
+            Self::DoneOutput { .. } => "E1514",
+            Self::TestDone { .. } => "E1517",
+            Self::AsyncImportInFrame { .. } => "E1515",
+            Self::StreamBuiltin { .. }
+            | Self::StreamWriteVariables { .. }
+            | Self::NewEnds { .. } => "E1516",
             Self::ExternModuleName { .. }
             | Self::ExternFunctionName { .. }
             | Self::ExternParameterName { .. }
@@ -452,7 +545,7 @@ impl<'db> ToIdeDiagnostic<'db> for PragmaError<'db> {
                     .desc(self)
                     .range(crate::denormalize(db, file, &anchor.get_span(db)).unwrap_or_default())
                     .call();
-                diag.with_note("only a FUNCTION can be {extern}".to_string());
+                diag.with_note("only a FUNCTION or a FUNCTION_BLOCK can be {extern}".to_string());
                 diag
             }
             Self::ExternForbiddenSection { var, kind } => {
@@ -479,16 +572,43 @@ impl<'db> ToIdeDiagnostic<'db> for PragmaError<'db> {
                 .desc(self)
                 .range(crate::denormalize(db, file, &ret.get_span(db)).unwrap_or_default())
                 .call(),
-            Self::ExternWithBody { site } => {
+            Self::ExternWithBody { site, pou_kind } => {
                 let mut diag = diag()
-                    .message("an extern FUNCTION has no statements".to_string())
+                    .message(format!("an extern {pou_kind} has no statements"))
                     .severity(DiagnosticSeverity::ERROR)
                     .desc(self)
                     .range(crate::denormalize(db, file, &site.get_span(db)).unwrap_or_default())
                     .call();
+                diag.with_note(format!(
+                    "an {{extern}} {pou_kind} is an import: the host has its body"
+                ));
+                diag
+            }
+            Self::ExternBlockMember { span, member } => {
+                let (message, help) = match member {
+                    ImportMember::Method => (
+                        "an extern FUNCTION_BLOCK has no METHOD",
+                        "declare the METHOD in a FUNCTION_BLOCK that holds the import",
+                    ),
+                    ImportMember::Extends => (
+                        "an extern FUNCTION_BLOCK extends nothing",
+                        "extend the base in a FUNCTION_BLOCK that holds the import",
+                    ),
+                    ImportMember::Implements => (
+                        "an extern FUNCTION_BLOCK implements no INTERFACE",
+                        "implement the INTERFACE in a FUNCTION_BLOCK that holds the import",
+                    ),
+                };
+                let mut diag = diag()
+                    .message(message.to_string())
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, span).unwrap_or_default())
+                    .call();
                 diag.with_note(
-                    "an {extern} FUNCTION is an import: the host has its body".to_string(),
+                    "an {extern} FUNCTION_BLOCK is an import: the host has its body".to_string(),
                 );
+                diag.with_help(help.to_string());
                 diag
             }
             Self::ExternModuleName { module, span, why } => {
@@ -530,6 +650,88 @@ impl<'db> ToIdeDiagnostic<'db> for PragmaError<'db> {
                 {
                     diag.with_help(format!("write '{spelling}'"));
                 }
+                diag
+            }
+            Self::StreamBuiltin { name, span, why } => {
+                let (message, note, help) = match why {
+                    BuiltinMisfit::Waits => (
+                        format!("'{name}' waits for the other end"),
+                        "a read or a write of a stream or a future waits for the other end, \
+                         which only the calls of an {extern async} FUNCTION_BLOCK can",
+                        Some("import it with {extern async} on a FUNCTION_BLOCK"),
+                    ),
+                    BuiltinMisfit::Instant => (
+                        format!("'{name}' returns at once"),
+                        "an {extern async} FUNCTION_BLOCK imports a call that may not return \
+                         at once",
+                        Some("import it with {extern} on a FUNCTION"),
+                    ),
+                    BuiltinMisfit::NoBlock => (
+                        format!("'{name}' is no call and no stream write"),
+                        "an {extern async} FUNCTION_BLOCK imports the call of an async func \
+                         or the write of a stream",
+                        None,
+                    ),
+                };
+                let mut diag = diag()
+                    .message(message)
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, span).unwrap_or_default())
+                    .call();
+                diag.with_note(note.to_string());
+                if let Some(help) = help {
+                    diag.with_help(help.to_string());
+                }
+                diag
+            }
+            Self::StreamWriteVariables { block } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "'{}' does not declare a stream write's variables",
+                        block.name_with_case(db).text(db)
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(
+                        crate::denormalize(db, file, &block.get_name_span(db)).unwrap_or_default(),
+                    )
+                    .call();
+                diag.with_note(
+                    "a stream write takes the stream's writing end, a UDINT, then the bytes, \
+                     a STRING, and gives after DONE how many went, a UDINT, then whether the \
+                     reader left, a BOOL"
+                        .to_string(),
+                );
+                diag.with_help(
+                    "declare the VAR_INPUTs stream : UDINT and data : STRING, and the \
+                     VAR_OUTPUTs written : UDINT and closed : BOOL after DONE"
+                        .to_string(),
+                );
+                diag
+            }
+            Self::NewEnds { func } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "'{}' does not declare the two ends it makes",
+                        func.get_name_with_case(db).text(db)
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(
+                        crate::denormalize(db, file, &func.get_name_span(db)).unwrap_or_default(),
+                    )
+                    .call();
+                diag.with_note(
+                    "a stream's or a future's new gives its reading end, then its writing end, \
+                     each a UDINT"
+                        .to_string(),
+                );
+                diag.with_help(
+                    "declare the VAR_OUTPUTs readable : UDINT and writable : UDINT, and no \
+                     return type"
+                        .to_string(),
+                );
                 diag
             }
             Self::ExternFunctionName { name, span } => {
@@ -622,18 +824,109 @@ impl<'db> ToIdeDiagnostic<'db> for PragmaError<'db> {
                 ));
                 diag
             }
-            Self::TestOutsideFunction { anchor, pou_kind } => diag()
-                .message(format!(
-                    "a {{test}} pragma cannot be placed on a {pou_kind}"
-                ))
-                .severity(DiagnosticSeverity::ERROR)
-                .desc(self)
-                .range(crate::denormalize(db, file, &anchor.get_span(db)).unwrap_or_default())
-                .call(),
-            Self::TestWithParameter { var } => {
+            Self::ExternAsync { anchor, block } => {
+                let (message, note, help) = match block {
+                    true => (
+                        "an {extern} pragma on a FUNCTION_BLOCK needs async",
+                        "a FUNCTION_BLOCK imports an async function, whose call its instance \
+                         holds from one scan to the next",
+                        "write {extern async 'module' 'name'}",
+                    ),
+                    false => (
+                        "an {extern async} pragma cannot be placed on a FUNCTION",
+                        "an async call is held from one scan to the next, which only a \
+                         FUNCTION_BLOCK's instance can",
+                        "declare a FUNCTION_BLOCK with a VAR_OUTPUT DONE : BOOL",
+                    ),
+                };
+                let mut diag = diag()
+                    .message(message.to_string())
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &anchor.get_span(db)).unwrap_or_default())
+                    .call();
+                diag.with_note(note.to_string());
+                diag.with_help(help.to_string());
+                diag
+            }
+            Self::DoneOutput { block, found } | Self::TestDone { block, found } => {
+                let (message, range) = match found {
+                    None => (
+                        format!(
+                            "'{}' has no VAR_OUTPUT DONE",
+                            block.name_with_case(db).text(db)
+                        ),
+                        block.get_name_span(db),
+                    ),
+                    Some(var) => (
+                        format!(
+                            "'{}' is not a VAR_OUTPUT of type BOOL",
+                            var.name_with_case(db).text(db)
+                        ),
+                        var.get_name_span(db),
+                    ),
+                };
+                let mut diag = diag()
+                    .message(message)
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &range).unwrap_or_default())
+                    .call();
+                let note = match self {
+                    Self::DoneOutput { .. } => {
+                        "an {extern async} FUNCTION_BLOCK's DONE is its own and no part of the \
+                         function's signature: it is TRUE in the call of the block that saw the \
+                         call finish, and the other VAR_OUTPUTs are the result's fields"
+                    }
+                    _ => {
+                        "the runner calls a {test} FUNCTION_BLOCK once per cycle, until a cycle \
+                         leaves its DONE TRUE"
+                    }
+                };
+                diag.with_note(note.to_string());
+                diag.with_help("declare DONE : BOOL in VAR_OUTPUT".to_string());
+                diag
+            }
+            Self::AsyncImportInFrame { var, frame } => {
                 let mut diag = diag()
                     .message(format!(
-                        "the {{test}} FUNCTION cannot take the parameter '{}'",
+                        "'{}' holds an async import, which cannot live in {frame}",
+                        var.name_with_case(db).text(db)
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &var.get_name_span(db)).unwrap_or_default())
+                    .call();
+                diag.with_note(
+                    "the host writes an async call's result into its instance when it \
+                     finishes, at a later scan, when the frame is gone"
+                        .to_string(),
+                );
+                diag.with_help(
+                    "declare it in a PROGRAM, a FUNCTION_BLOCK or a VAR_GLOBAL".to_string(),
+                );
+                diag
+            }
+            Self::TestOutsideFunction { anchor, pou_kind } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "a {{test}} pragma cannot be placed on a {pou_kind}"
+                    ))
+                    .severity(DiagnosticSeverity::ERROR)
+                    .desc(self)
+                    .range(crate::denormalize(db, file, &anchor.get_span(db)).unwrap_or_default())
+                    .call();
+                diag.with_note(
+                    "a test is a FUNCTION, which the runner calls once, or a FUNCTION_BLOCK, \
+                     which it calls cycle by cycle on an instance of its own"
+                        .to_string(),
+                );
+                diag
+            }
+            Self::TestWithParameter { var, pou_kind } => {
+                let mut diag = diag()
+                    .message(format!(
+                        "the {{test}} {pou_kind} cannot take the parameter '{}'",
                         var.name_with_case(db).text(db)
                     ))
                     .severity(DiagnosticSeverity::ERROR)

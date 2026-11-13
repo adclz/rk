@@ -1284,6 +1284,28 @@ END_FUNCTION
     ");
 }
 
+/// `async` sits between `extern` and the module, a space on each side.
+#[rstest]
+pub fn async_extern_pragma_formatting(mut with_db: RootDatabase) {
+    let source = r#"
+{extern  async'wasi:clocks/monotonic-clock@0.3.0''wait-for'}
+FUNCTION_BLOCK WAIT_FOR
+VAR_OUTPUT DONE : BOOL; END_VAR
+END_FUNCTION_BLOCK
+"#;
+
+    let document = add_source(&mut with_db, source).document(&with_db);
+
+    assert_snapshot!(fmt(document), @r"
+    {extern async 'wasi:clocks/monotonic-clock@0.3.0' 'wait-for'}
+    FUNCTION_BLOCK WAIT_FOR
+    	VAR_OUTPUT
+    		DONE: BOOL;
+    	END_VAR
+    END_FUNCTION_BLOCK
+    ");
+}
+
 #[rstest]
 pub fn test_pragma_formatting(mut with_db: RootDatabase) {
     let source = r#"

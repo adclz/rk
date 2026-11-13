@@ -297,11 +297,7 @@ impl<'db> Type<'db> {
         let sema = semantic_index(db, scope_id.file(db));
         for scope in sema.scope_iterator(db, scope_id) {
             if let ScopeKind::Namespace(ns) = scope.kind {
-                return format!(
-                    "{}.{}",
-                    ns.absolute_path_with_case(db).to_string_dotted(db),
-                    name
-                );
+                return format!("{}.{}", ns.absolute_path_with_case(db).to_string(db), name);
             }
         }
 

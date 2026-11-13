@@ -77,6 +77,9 @@ pub struct ExternPragma {
     pub module_span: auto_lsp::tree_sitter::Range,
     /// The name's string, quotes included.
     pub name_span: auto_lsp::tree_sitter::Range,
+    /// `{extern async ...}`: the function is WIT's `async func`, which a
+    /// FUNCTION_BLOCK imports (`hir_ty::async_import`).
+    pub asynchronous: bool,
 }
 
 impl ExternPragma {
@@ -180,6 +183,53 @@ pub fn is_wit_name(name: &str) -> bool {
                 .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit());
             (at > 0 || first.is_ascii_alphabetic()) && (lower || upper)
         })
+}
+
+/// The component model's built-ins for a stream or a future that a core
+/// module may import, each beside a function whose type has the stream or
+/// the future, under that function's name: `[stream-new-0]write-via-stream`
+/// is `stream.new` for the first stream or future of `write-via-stream`'s
+/// type. Its cancels are left out: without a flag wasmtime has off by
+/// default, a cancel blocks, which a scan may not.
+pub const STREAM_BUILTINS: &[&str] = &[
+    "stream-new",
+    "stream-read",
+    "stream-write",
+    "stream-drop-readable",
+    "stream-drop-writable",
+    "future-new",
+    "future-read",
+    "future-write",
+    "future-drop-readable",
+    "future-drop-writable",
+];
+
+/// A built-in's import name, `[stream-new-0]write-via-stream`, read as the
+/// built-in and the function it serves; `None` for any other name.
+pub fn builtin_name(name: &str) -> Option<(&str, &str)> {
+    let (inside, function) = name.strip_prefix('[')?.split_once(']')?;
+    let (builtin, place) = inside.rsplit_once('-')?;
+    (STREAM_BUILTINS.contains(&builtin)
+        && !place.is_empty()
+        && place.bytes().all(|b| b.is_ascii_digit())
+        && is_wit_name(function))
+    .then_some((builtin, function))
+}
+
+/// Whether a built-in copies into or out of its stream or future, and so
+/// waits for the other end: a read or a write.
+pub fn builtin_copies(builtin: &str) -> bool {
+    matches!(
+        builtin,
+        "stream-read" | "stream-write" | "future-read" | "future-write"
+    )
+}
+
+/// Whether `builtin`, a built-in's name without its number, makes a stream
+/// or a future: `new`, which returns both ends in one 64-bit value, the
+/// reading end in its low half.
+pub fn builtin_makes_ends(builtin: &str) -> bool {
+    matches!(builtin, "stream-new" | "future-new")
 }
 
 /// A declared name as WIT writes it, a parameter's or an exported

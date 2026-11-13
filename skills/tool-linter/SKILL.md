@@ -78,7 +78,7 @@ Severity decides the baseline: the warnings and the infos are recommended, and t
 | --- | --- | --- | --- |
 | L0001 | `warn-pragma` | info | the message of an `{info = '...'}` pragma, at each call site of the marked POU |
 | L0002 | `warn-pragma` | warning | the message of a `{warn = '...'}` pragma, at each call site of the marked POU |
-| L0003 | `invalid-pragma` | warning | a pragma placed on a POU kind that does not accept it: `{test}` on FUNCTION_BLOCK, METHOD or PROGRAM, `{once}` on PROGRAM, `{must_call}` on anything but a FUNCTION_BLOCK |
+| L0003 | `invalid-pragma` | warning | a pragma placed on a POU kind that does not accept it: `{once}` on PROGRAM, `{must_call}` on anything but a FUNCTION_BLOCK |
 | L0004 | `once-violation` | info | a `{once}` POU called more than once in the same body; the timers, edge detectors, counters and bistables of the standard library carry `{once}`, so one instance shared by two steps is reported |
 | L0005 | `unknown-allow` | warning | an `{allow}` pragma naming a rule that does not exist |
 | L0006 | `must-call-violation` | warning | an instance of a `{must_call}` FUNCTION_BLOCK never called: not `t(...)` in its POU or that POU's methods, nor handed on by VAR_IN_OUT, output or `REF()`, nor named in the configuration; the timers, edge detectors, counters and bistables of the standard library carry it |

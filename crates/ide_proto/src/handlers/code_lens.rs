@@ -35,6 +35,11 @@ impl<'db> CodeLensHandler<'db> for HirNode<'db> {
 impl<'db> CodeLensHandler<'db> for Pou<'db> {
     fn code_lens(&'db self, db: &'db dyn WorkspaceDataBase) -> Option<CodeLens> {
         match self {
+            // A test block is run as a test FUNCTION is. Nothing extends it
+            // (E1007), so it has no implementations to count.
+            Pou::FunctionBlock(fb) if fb.test_pragma(db).is_some() => fb
+                .test_pragma(db)
+                .map(|marker| pou_test_lens(db, self, marker)),
             Pou::FunctionBlock(_) | Pou::Class(_) | Pou::Interface(_) => {
                 let implementations = descendants(db, *self);
                 if implementations.is_empty() {
@@ -72,19 +77,27 @@ impl<'db> CodeLensHandler<'db> for Pou<'db> {
                     })
                 }
             }
-            Pou::Function(f) => {
-                let marker = f.test_pragma(db)?;
-                let qualified = Type::new_pou(db, *self).qualified_path(db);
-                Some(test_code_lens(
-                    hir::denormalize(db, self.get_scope_id(db).file(db), &marker.get_span(db))
-                        .unwrap_or_default(),
-                    self.get_scope_id(db).file(db).url(db).as_str(),
-                    &qualified,
-                ))
-            }
+            Pou::Function(f) => f
+                .test_pragma(db)
+                .map(|marker| pou_test_lens(db, self, marker)),
             _ => None,
         }
     }
+}
+
+/// The "Run test" lens of `pou`, a test FUNCTION or FUNCTION_BLOCK, on its
+/// `{test}`, `marker`.
+fn pou_test_lens<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    pou: &'db Pou<'db>,
+    marker: &'db hir::hir_def::interned::identifier::SpanIdent<'db>,
+) -> CodeLens {
+    let file = pou.get_scope_id(db).file(db);
+    test_code_lens(
+        hir::denormalize(db, file, &marker.get_span(db)).unwrap_or_default(),
+        file.url(db).as_str(),
+        &Type::new_pou(db, *pou).qualified_path(db),
+    )
 }
 
 fn test_code_lens(range: auto_lsp::lsp_types::Range, file_uri: &str, name: &str) -> CodeLens {

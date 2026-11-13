@@ -1062,3 +1062,70 @@ fn a_var_config_value_starts_a_member(mut with_db: db::RootDatabase) {
     let info = DebugInfo::from_wasm(&wasm);
     assert_eq!(plc.read_var(&info, "P1.n"), Some(VarValue::I16(6)));
 }
+
+/// A retained counter keeps its edge memory with its count, where a timer
+/// starts its step over: a count input held `TRUE` through a power cycle is
+/// the level it was, not a new rising edge, and counts nothing. An edge
+/// memory that started over would add a part to the count at each restart.
+#[rstest]
+fn a_count_input_held_through_a_warm_start_counts_nothing(mut with_db: db::RootDatabase) {
+    use crate::tests::codegen::compile_to_mir_and_wasm_with_libraries;
+
+    let source = r#"
+        USING Std.Counters;
+
+        PROGRAM P
+        VAR part : BOOL; END_VAR
+        VAR RETAIN counter : CTU; END_VAR
+            counter(CU := part, R := FALSE, PV := 10);
+        END_PROGRAM
+
+        CONFIGURATION Cfg
+            RESOURCE Res ON CPU
+                TASK T(INTERVAL := T#10ms, PRIORITY := 1);
+                PROGRAM P1 WITH T : P;
+            END_RESOURCE
+        END_CONFIGURATION
+    "#;
+    let (mir, wasm) = compile_to_mir_and_wasm_with_libraries(
+        &mut with_db,
+        &[
+            include_str!("../../../stdlib/Counters.st"),
+            include_str!("../../../stdlib/Edge.st"),
+        ],
+        source,
+    );
+    let info = DebugInfo::from_wasm(&wasm);
+    let part = |plc: &mut TestPlc, on: bool| {
+        let loc = info.resolve("P1.part").expect("P1.part");
+        plc.write_bytes(loc.address, &[u8::from(on)]).expect("part");
+    };
+
+    // Two parts go by, and a third is on the sensor when the power goes.
+    let mut plc = TestPlc::load(&wasm).expect("load");
+    for on in [true, false, true, false, true] {
+        part(&mut plc, on);
+        plc.scan().expect("a scan");
+    }
+    assert_eq!(plc.read_var(&info, "P1.counter.CV"), Some(VarValue::I16(3)));
+
+    // It is still on the sensor when the PLC comes back.
+    let mut warm = warm_start(&mir, &wasm, &plc);
+    part(&mut warm, true);
+    warm.scan().expect("the first scan after the warm start");
+    assert_eq!(
+        warm.read_var(&info, "P1.counter.CV"),
+        Some(VarValue::I16(3)),
+        "the part held through the restart is no new part"
+    );
+
+    // The next part counts.
+    part(&mut warm, false);
+    warm.scan().expect("the sensor clears");
+    part(&mut warm, true);
+    warm.scan().expect("the next part");
+    assert_eq!(
+        warm.read_var(&info, "P1.counter.CV"),
+        Some(VarValue::I16(4))
+    );
+}

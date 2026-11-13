@@ -9,7 +9,8 @@ use crate::tests::utils::{test_single_lint, with_db};
 
 /// What the configuration runs reaches: its programs, what they call, the
 /// types of their variables, what those extend and what their methods
-/// call. An export and a test are roots too. The rest is unused.
+/// call. An export and a test, a FUNCTION or a FUNCTION_BLOCK, are roots
+/// too. The rest is unused.
 #[rstest]
 fn what_the_application_does_not_reach(mut with_db: RootDatabase) {
     let source = r#"
@@ -71,6 +72,21 @@ CONFIGURATION Plant
         PROGRAM M WITH Fast : Main;
     END_RESOURCE
 END_CONFIGURATION
+
+FUNCTION_BLOCK Probe
+END_FUNCTION_BLOCK
+
+FUNCTION FromTestBlock : INT
+    FromTestBlock := 5;
+END_FUNCTION
+
+{test}
+FUNCTION_BLOCK t_block
+VAR_OUTPUT DONE : BOOL; END_VAR
+VAR p : Probe; END_VAR
+    p();
+    DONE := FromTestBlock() = 5;
+END_FUNCTION_BLOCK
 "#;
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "unused-pou"), @r"
     [L0216] Info: unused POU

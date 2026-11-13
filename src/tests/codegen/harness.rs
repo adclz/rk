@@ -907,13 +907,52 @@ impl TestBuild {
     }
 }
 
+/// `Std.Console`, which uses no other file of the standard library, to load
+/// as the library with [`compile_tests_with_libraries`] or
+/// [`compile_to_mir_and_wasm_as_built_with_libraries`].
+pub const STD_CONSOLE: &[&str] = &[include_str!("../../../stdlib/Console.st")];
+
+/// [`compile_to_mir_and_wasm_as_built`] with `libraries` loaded as the
+/// library, as `rk` builds a workspace with the stdlib.
+pub fn compile_to_mir_and_wasm_as_built_with_libraries(
+    db: &mut RootDatabase,
+    libraries: &[&str],
+    source: &str,
+) -> (mir::MirModule, Vec<u8>) {
+    crate::tests::utils::add_library_sources(db, libraries);
+    let file = add_source(db, source);
+    check_diagnostics(db, file, Expectation::Clean);
+    let module = crate::tests::utils::lower_workspace(db);
+    let wasm = wasm_codegen::generate_wasm(db, &module).finish();
+    (module, wasm)
+}
+
 /// `source` built as `rk test` builds it, refusing a source the compiler
 /// rejects.
 pub fn compile_tests(db: &mut RootDatabase, source: &str) -> TestBuild {
     let file = add_source(db, source);
     let sem_idx = semantic_index(db, file);
     check_diagnostics(db, file, Expectation::Clean);
-    let mut mir = mir::lower::lower_module::lower_module(db, sem_idx).expect("MIR lowering failed");
+    let mir = mir::lower::lower_module::lower_module(db, sem_idx).expect("MIR lowering failed");
+    test_build(db, mir)
+}
+
+/// [`compile_tests`] with `libraries` loaded as the library, as `rk test`
+/// builds a workspace with the stdlib.
+pub fn compile_tests_with_libraries(
+    db: &mut RootDatabase,
+    libraries: &[&str],
+    source: &str,
+) -> TestBuild {
+    crate::tests::utils::add_library_sources(db, libraries);
+    let file = add_source(db, source);
+    check_diagnostics(db, file, Expectation::Clean);
+    test_build(db, crate::tests::utils::lower_workspace(db))
+}
+
+/// What `rk test` builds from `mir`: the module with the raise hook,
+/// wrapped as a component.
+fn test_build(db: &RootDatabase, mut mir: mir::MirModule) -> TestBuild {
     mir::raise_hook::add(db, &mut mir);
     let core = wasm_codegen::generate_wasm(db, &mir).finish();
     let interfaces = rk::component::interfaces(db, &mir).expect("typed interfaces");
