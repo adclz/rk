@@ -1260,6 +1260,10 @@ fn lower_extern_function<'db>(
         return_type,
         linkage: crate::function::MirLinkage::Internal,
         asynchronous: false,
+        ends: extern_decl.is_wasi()
+            && hir::hir_def::pous::pragma::builtin_name(&extern_decl.name).is_some_and(
+                |(builtin, _)| hir::hir_def::pous::pragma::builtin_makes_ends(builtin),
+            ),
     })
 }
 

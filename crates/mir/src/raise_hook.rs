@@ -41,6 +41,7 @@ pub fn add(db: &dyn WorkspaceDataBase, module: &mut MirModule) {
         return_type: None,
         linkage: MirLinkage::Internal,
         asynchronous: false,
+        ends: false,
     });
     module.function_indices.insert(name, index);
 }

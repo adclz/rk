@@ -100,6 +100,11 @@ pub struct MirExternFunction {
     /// values, and the result written at an address the call passes last
     /// when the host finishes ([`crate::async_call`]).
     pub asynchronous: bool,
+    /// A stream's or a future's `new`, whose two outputs are the ends it
+    /// makes: the import returns both in one 64-bit value, the reading end
+    /// in its low half, which the call writes where a record of two outputs
+    /// goes and reads back as one.
+    pub ends: bool,
 }
 
 impl MirExternFunction {

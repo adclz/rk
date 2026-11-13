@@ -204,6 +204,7 @@ pub fn import<'db>(
         return_type: None,
         linkage: MirLinkage::Internal,
         asynchronous: true,
+        ends: false,
     }
 }
 
@@ -231,6 +232,7 @@ pub fn builtins(db: &dyn WorkspaceDataBase, index: u32) -> Vec<MirExternFunction
                 .then_some(MirType::Elementary(MirElementary::DInt)),
             linkage: MirLinkage::Internal,
             asynchronous: false,
+            ends: false,
         })
         .collect()
 }
