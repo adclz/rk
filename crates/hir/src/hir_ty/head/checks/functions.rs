@@ -128,14 +128,33 @@ impl<'db> InitInference<'db> {
         }
         if let Some((builtin, _)) = builtin {
             use crate::check::errors::e15_pragma::BuiltinMisfit;
-            use crate::hir_ty::async_import::{AsyncKind, async_import, stream_write_shaped};
+            use crate::hir_ty::async_import::{
+                AsyncKind, async_import, future_read_shaped, stream_read_shaped,
+                stream_write_shaped,
+            };
             let copies = crate::hir_def::pous::pragma::builtin_copies(builtin);
             let why = match (block.is_some(), copies) {
                 (false, true) => Some(BuiltinMisfit::Waits),
                 (true, false) => Some(BuiltinMisfit::Instant),
-                (true, true) if builtin != "stream-write" => Some(BuiltinMisfit::NoBlock),
+                (true, true) if builtin == "future-write" => Some(BuiltinMisfit::NoBlock),
                 _ => None,
             };
+            // A copy's block declares the built-in's variables.
+            let misdeclared = block.and_then(|block| {
+                let import = async_import(db, block)?;
+                match import.kind {
+                    AsyncKind::StreamWrite if !stream_write_shaped(db, &import) => {
+                        Some(PragmaError::StreamWriteVariables { block })
+                    }
+                    AsyncKind::StreamRead if !stream_read_shaped(db, &import) => {
+                        Some(PragmaError::StreamReadVariables { block })
+                    }
+                    AsyncKind::FutureRead if !future_read_shaped(db, &import) => {
+                        Some(PragmaError::FutureReadVariables { block })
+                    }
+                    _ => None,
+                }
+            });
             if let Some(why) = why {
                 self.errors.push(
                     PragmaError::StreamBuiltin {
@@ -145,13 +164,8 @@ impl<'db> InitInference<'db> {
                     }
                     .to_diagnostic(db, file),
                 );
-            } else if let Some(block) = block
-                && let Some(import) = async_import(db, block)
-                && import.kind == AsyncKind::StreamWrite
-                && !stream_write_shaped(db, &import)
-            {
-                self.errors
-                    .push(PragmaError::StreamWriteVariables { block }.to_diagnostic(db, file));
+            } else if let Some(error) = misdeclared {
+                self.errors.push(error.to_diagnostic(db, file));
             } else if let Some(func) = function
                 && crate::hir_def::pous::pragma::builtin_makes_ends(builtin)
                 && !ends_shaped(db, func)
