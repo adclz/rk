@@ -637,13 +637,15 @@ END_FUNCTION"#;
        | Note: an {extern async} FUNCTION_BLOCK imports a call that may not return at once
     ---'
     [E1516] Error: built-in that does not fit its declaration
-        ,-[ file:///test0.st:12:38 ]
+        ,-[ file:///test0.st:13:16 ]
         |
-     12 | {extern async 'wasi:cli/stdin@0.3.0' '[stream-read-0]read-via-stream'}
-        |                                      ^^^^^^^^^^^^^^^^|^^^^^^^^^^^^^^^
-        |                                                      `----------------- '[stream-read-0]read-via-stream' is no call and no stream write
+     13 | FUNCTION_BLOCK READ
+        |                ^^|^
+        |                  `--- 'READ' does not declare a stream read's variables
         |
-        | Note: an {extern async} FUNCTION_BLOCK imports the call of an async func or the write of a stream
+        | Help: declare the VAR_INPUT stream : UDINT, and the VAR_OUTPUTs data : STRING, read : UDINT and closed : BOOL after DONE
+        |
+        | Note: a stream read takes the stream's reading end, a UDINT, and gives after DONE the bytes, a STRING or an ARRAY OF BYTE, how many came, a UDINT, then whether the writer left, a BOOL
     ----'
     [E1516] Error: built-in that does not fit its declaration
         ,-[ file:///test0.st:18:16 ]
@@ -814,6 +816,147 @@ END_FUNCTION_BLOCK
         | Help: import it with {extern} on a FUNCTION
         |
         | Note: an {extern async} FUNCTION_BLOCK imports a call that may not return at once
+    ----'
+    ");
+}
+
+/// A stream's read and a future's read are `{extern async}` blocks, as a
+/// stream's write is: a read takes the stream's reading end and gives the
+/// bytes, in a STRING or an ARRAY OF BYTE, how many came and whether the
+/// writer left; a future read takes the future's reading end and gives the
+/// value's fields. Accepted, and the module they build is valid.
+#[rstest]
+fn valid_stream_and_future_reads(mut with_db: RootDatabase) {
+    let source = r#"
+{extern 'wasi:cli/stdin@0.3.0' 'read-via-stream'}
+FUNCTION READ_STDIN
+VAR_OUTPUT stream : UDINT; finished : UDINT; END_VAR
+END_FUNCTION
+
+{extern async 'wasi:cli/stdin@0.3.0' '[stream-read-0]read-via-stream'}
+FUNCTION_BLOCK READ_TEXT
+VAR_INPUT stream : UDINT; END_VAR
+VAR_OUTPUT DONE : BOOL; data : STRING[16]; read : UDINT; closed : BOOL; END_VAR
+END_FUNCTION_BLOCK
+
+{extern async 'wasi:cli/stdin@0.3.0' '[stream-read-0]read-via-stream'}
+FUNCTION_BLOCK READ_BYTES
+VAR_INPUT stream : UDINT; END_VAR
+VAR_OUTPUT DONE : BOOL; data : ARRAY[0..15] OF BYTE; read : UDINT; closed : BOOL; END_VAR
+END_FUNCTION_BLOCK
+
+{extern async 'wasi:cli/stdin@0.3.0' '[future-read-1]read-via-stream'}
+FUNCTION_BLOCK READ_END
+VAR_INPUT future : UDINT; END_VAR
+VAR_OUTPUT DONE : BOOL; failed : BOOL; code : USINT; END_VAR
+END_FUNCTION_BLOCK
+
+PROGRAM Main
+VAR
+    stream, finished : UDINT;
+    text : READ_TEXT;
+    bytes : READ_BYTES;
+    ending : READ_END;
+END_VAR
+    READ_STDIN(stream => stream, finished => finished);
+    text(stream := stream);
+    bytes(stream := stream);
+    ending(future := finished);
+END_PROGRAM"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"");
+}
+
+/// A read declares its built-in's variables (E1516): a stream read gives
+/// its bytes in a STRING or an ARRAY OF BYTE, then how many came and whether
+/// the writer left, and a future read takes the future's reading end alone.
+/// A future's write is imported by no block yet (E1516).
+#[rstest]
+fn invalid_stream_and_future_reads(mut with_db: RootDatabase) {
+    let source = r#"
+{extern async 'wasi:cli/stdin@0.3.0' '[stream-read-0]read-via-stream'}
+FUNCTION_BLOCK READ_WORDS
+VAR_INPUT stream : UDINT; END_VAR
+VAR_OUTPUT DONE : BOOL; data : ARRAY[0..15] OF WORD; read : UDINT; closed : BOOL; END_VAR
+END_FUNCTION_BLOCK
+
+{extern async 'wasi:cli/stdin@0.3.0' '[stream-read-0]read-via-stream'}
+FUNCTION_BLOCK READ_NO_COUNT
+VAR_INPUT stream : UDINT; END_VAR
+VAR_OUTPUT DONE : BOOL; data : STRING[16]; END_VAR
+END_FUNCTION_BLOCK
+
+{extern async 'wasi:cli/stdin@0.3.0' '[future-read-1]read-via-stream'}
+FUNCTION_BLOCK READ_END_TWICE
+VAR_INPUT future : UDINT; again : UDINT; END_VAR
+VAR_OUTPUT DONE : BOOL; failed : BOOL; END_VAR
+END_FUNCTION_BLOCK
+
+{extern async 'wasi:cli/stdout@0.3.0' '[future-write-1]write-via-stream'}
+FUNCTION_BLOCK WRITE_END
+VAR_INPUT future : UDINT; END_VAR
+VAR_OUTPUT DONE : BOOL; END_VAR
+END_FUNCTION_BLOCK
+
+{extern 'wasi:cli/stdin@0.3.0' '[stream-read-0]read-via-stream'}
+FUNCTION READ_NOW : UDINT
+VAR_INPUT stream : UDINT; END_VAR
+END_FUNCTION
+"#;
+
+    assert_snapshot!(test_diagnostics(&mut with_db, &[source]), @r"
+    [E1516] Error: built-in that does not fit its declaration
+       ,-[ file:///test0.st:3:16 ]
+       |
+     3 | FUNCTION_BLOCK READ_WORDS
+       |                ^^^^^|^^^^
+       |                     `------ 'READ_WORDS' does not declare a stream read's variables
+       |
+       | Help: declare the VAR_INPUT stream : UDINT, and the VAR_OUTPUTs data : STRING, read : UDINT and closed : BOOL after DONE
+       |
+       | Note: a stream read takes the stream's reading end, a UDINT, and gives after DONE the bytes, a STRING or an ARRAY OF BYTE, how many came, a UDINT, then whether the writer left, a BOOL
+    ---'
+    [E1516] Error: built-in that does not fit its declaration
+       ,-[ file:///test0.st:9:16 ]
+       |
+     9 | FUNCTION_BLOCK READ_NO_COUNT
+       |                ^^^^^^|^^^^^^
+       |                      `-------- 'READ_NO_COUNT' does not declare a stream read's variables
+       |
+       | Help: declare the VAR_INPUT stream : UDINT, and the VAR_OUTPUTs data : STRING, read : UDINT and closed : BOOL after DONE
+       |
+       | Note: a stream read takes the stream's reading end, a UDINT, and gives after DONE the bytes, a STRING or an ARRAY OF BYTE, how many came, a UDINT, then whether the writer left, a BOOL
+    ---'
+    [E1516] Error: built-in that does not fit its declaration
+        ,-[ file:///test0.st:15:16 ]
+        |
+     15 | FUNCTION_BLOCK READ_END_TWICE
+        |                ^^^^^^^|^^^^^^
+        |                       `-------- 'READ_END_TWICE' does not take the future's reading end alone
+        |
+        | Help: declare the one VAR_INPUT future : UDINT
+        |
+        | Note: a future read takes the future's reading end, a UDINT, and gives after DONE the fields of the value the future holds
+    ----'
+    [E1516] Error: built-in that does not fit its declaration
+        ,-[ file:///test0.st:20:39 ]
+        |
+     20 | {extern async 'wasi:cli/stdout@0.3.0' '[future-write-1]write-via-stream'}
+        |                                       ^^^^^^^^^^^^^^^^^|^^^^^^^^^^^^^^^^
+        |                                                        `------------------ '[future-write-1]write-via-stream' writes a future
+        |
+        | Note: an {extern async} FUNCTION_BLOCK imports the call of an async func, a stream's read or write, or a future's read
+    ----'
+    [E1516] Error: built-in that does not fit its declaration
+        ,-[ file:///test0.st:26:32 ]
+        |
+     26 | {extern 'wasi:cli/stdin@0.3.0' '[stream-read-0]read-via-stream'}
+        |                                ^^^^^^^^^^^^^^^^|^^^^^^^^^^^^^^^
+        |                                                `----------------- '[stream-read-0]read-via-stream' waits for the other end
+        |
+        | Help: import it with {extern async} on a FUNCTION_BLOCK
+        |
+        | Note: a read or a write of a stream or a future waits for the other end, which only the calls of an {extern async} FUNCTION_BLOCK can
     ----'
     ");
 }
