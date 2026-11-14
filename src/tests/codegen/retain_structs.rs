@@ -4,7 +4,7 @@
 //! What persists of a struct whose elements say `RETAIN` or `NON_RETAIN`:
 //! the retain map's ranges, and the values a warm start brings back.
 
-use crate::tests::codegen::{TestPlc, compile_to_mir_and_wasm, with_db};
+use crate::tests::codegen::{STD_TIMERS, TestPlc, compile_to_mir_and_wasm, with_db};
 use debug_format::{DebugInfo, VarValue};
 use rstest::*;
 
@@ -736,15 +736,7 @@ fn a_timer_in_a_retained_instance_starts_over(mut with_db: db::RootDatabase) {
             END_RESOURCE
         END_CONFIGURATION
     "#;
-    let (mir, wasm) = compile_to_mir_and_wasm_with_libraries(
-        &mut with_db,
-        &[
-            include_str!("../../../stdlib/Timers.st"),
-            include_str!("../../../stdlib/Convert.st"),
-            include_str!("../../../stdlib/Strings.st"),
-        ],
-        source,
-    );
+    let (mir, wasm) = compile_to_mir_and_wasm_with_libraries(&mut with_db, STD_TIMERS, source);
     let mut paths: Vec<&str> = mir
         .retain_map
         .ranges
@@ -853,15 +845,7 @@ fn a_pulse_and_an_off_delay_in_a_retained_instance_start_over(mut with_db: db::R
             END_RESOURCE
         END_CONFIGURATION
     "#;
-    let (mir, wasm) = compile_to_mir_and_wasm_with_libraries(
-        &mut with_db,
-        &[
-            include_str!("../../../stdlib/Timers.st"),
-            include_str!("../../../stdlib/Convert.st"),
-            include_str!("../../../stdlib/Strings.st"),
-        ],
-        source,
-    );
+    let (mir, wasm) = compile_to_mir_and_wasm_with_libraries(&mut with_db, STD_TIMERS, source);
 
     // A PLC on a clock the test moves by hand, in milliseconds.
     let boot = |now_ms: i64| -> (TestPlc, Arc<AtomicI64>) {

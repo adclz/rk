@@ -12,7 +12,7 @@ use wasmtime::component::{Component, Instance, Linker, TypedFunc};
 use rk::control::{MemoryError, Range, ScanError, TestError, TestState};
 
 use crate::tests::codegen::{
-    compile_to_mir_and_wasm_as_built, compile_to_wasm_as_built, compile_with_libraries,
+    STD_TIMERS, compile_to_mir_and_wasm_as_built, compile_to_wasm_as_built, compile_with_libraries,
     expect_section, with_db,
 };
 
@@ -1504,15 +1504,7 @@ const CLOCKS: &str = r#"
 
 #[rstest]
 fn the_stdlib_reads_wasi_s_clocks_through_a_component(mut with_db: db::RootDatabase) {
-    let wasm = compile_with_libraries(
-        &mut with_db,
-        &[
-            include_str!("../../../stdlib/Timers.st"),
-            include_str!("../../../stdlib/Convert.st"),
-            include_str!("../../../stdlib/Strings.st"),
-        ],
-        CLOCKS,
-    );
+    let wasm = compile_with_libraries(&mut with_db, STD_TIMERS, CLOCKS);
     let manifest =
         TestManifest::from_msgpack(expect_section(&wasm, TEST_MANIFEST_SECTION)).unwrap();
     let test = |name: &str| {
@@ -1553,13 +1545,15 @@ fn the_stdlib_reads_wasi_s_clocks_through_a_component(mut with_db: db::RootDatab
         }
     };
 
-    let mut plc = Plc::load_with(&component.bytes, wire(an_hour_east));
+    // Std's monotonic clock declares its waits, `{extern async}` blocks:
+    // the component is called through the async API.
+    let mut plc = AsyncPlc::load_with(&component.bytes, wire(an_hour_east));
     plc.init().unwrap();
     for name in ["test_monotonic", "test_wall", "test_offset"] {
         assert_eq!(plc.run_test(test(name)), Ok(TestState::Passed), "{name}");
     }
 
-    let mut plc = Plc::load_with(&component.bytes, wire(no_zone));
+    let mut plc = AsyncPlc::load_with(&component.bytes, wire(no_zone));
     plc.init().unwrap();
     assert_eq!(
         plc.run_test(test("test_offset")),
@@ -1629,9 +1623,11 @@ fn a_wasi_record_comes_back_in_outputs(mut with_db: db::RootDatabase) {
     );
 }
 
-/// A component whose host defines async functions, which wasmtime runs
-/// through its async API only: each call driven to its end here, the host's
-/// functions finishing when their test opens a [`Gate`].
+/// A component whose host defines async functions, or whose module lowers
+/// an import async, as Std's generated `{extern async}` blocks are in a
+/// debug build: wasmtime runs either through its async API only, each call
+/// driven to its end here, the host's functions finishing when their test
+/// opens a [`Gate`].
 struct AsyncPlc {
     store: wasmtime::Store<()>,
     instance: Instance,
@@ -1690,6 +1686,14 @@ impl AsyncPlc {
         let init = self.func::<(), (Result<(), String>,)>("init");
         block_on(init.call_async(&mut self.store, ()))
             .expect("init returns")
+            .0
+    }
+
+    /// The test at `test` in the manifest, one call of it.
+    fn run_test(&mut self, test: u32) -> Result<TestState, TestError> {
+        let run = self.func::<(u32,), (Result<TestState, TestError>,)>("run-test");
+        block_on(run.call_async(&mut self.store, (test,)))
+            .expect("run-test returns")
             .0
     }
 
