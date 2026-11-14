@@ -49,7 +49,7 @@ pub(super) fn shown(files: &[rk_bindgen::File]) -> String {
     files
         .iter()
         .map(|file| {
-            let text = match file.text.split_once("writes it again. */\n") {
+            let text = match file.text.split_once("DO NOT EDIT! */\n") {
                 Some((_, rest)) => rest,
                 None => &file.text,
             };

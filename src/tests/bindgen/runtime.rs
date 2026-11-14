@@ -227,22 +227,22 @@ const ECHO: &str = r#"
         step : INT;
         closing : BOOL;
         input, input_end, readable, writable, output_end : UDINT;
-        chunk : Wasi.Streams.BYTES_READ;
-        write : Wasi.Streams.BYTES_WRITE;
-        written : Wasi.Futures.CLI_RESULT_READ;
-        read : Wasi.Futures.CLI_RESULT_READ;
+        chunk : Wasi.Cli.Stdin.BYTES_STREAM_READ;
+        write : Wasi.Cli.Stdout.BYTES_STREAM_WRITE;
+        written : Wasi.Cli.Stdout.RESULT_FUTURE_READ;
+        read : Wasi.Cli.Stdin.RESULT_FUTURE_READ;
     END_VAR
         CASE step OF
         0:
             Wasi.Cli.Stdin.READ_VIA_STREAM(item0 => input, item1 => input_end);
-            Wasi.Streams.BYTES_NEW(readable => readable, writable => writable);
+            Wasi.Cli.Stdout.BYTES_STREAM_NEW(readable => readable, writable => writable);
             output_end := Wasi.Cli.Stdout.WRITE_VIA_STREAM(data := readable);
             step := 1;
         1:
             chunk(stream := input);
             IF chunk.DONE THEN
                 IF chunk.closed THEN
-                    Wasi.Streams.BYTES_DROP_READABLE(stream := input);
+                    Wasi.Cli.Stdin.BYTES_STREAM_DROP_READABLE(stream := input);
                     closing := TRUE;
                 END_IF;
                 IF chunk.read > 0 THEN
@@ -264,18 +264,18 @@ const ECHO: &str = r#"
                 END_IF;
             END_IF;
         3:
-            Wasi.Streams.BYTES_DROP_WRITABLE(stream := writable);
+            Wasi.Cli.Stdout.BYTES_STREAM_DROP_WRITABLE(stream := writable);
             step := 4;
         4:
             written(future := output_end);
             IF written.DONE THEN
-                Wasi.Futures.CLI_RESULT_DROP_READABLE(future := output_end);
+                Wasi.Cli.Stdout.RESULT_FUTURE_DROP_READABLE(future := output_end);
                 IF written.failed THEN output := -4; step := 9; ELSE step := 5; END_IF;
             END_IF;
         5:
             read(future := input_end);
             IF read.DONE THEN
-                Wasi.Futures.CLI_RESULT_DROP_READABLE(future := input_end);
+                Wasi.Cli.Stdin.RESULT_FUTURE_DROP_READABLE(future := input_end);
                 IF read.failed THEN output := -5; ELSE output := 1; END_IF;
                 step := 9;
             END_IF;

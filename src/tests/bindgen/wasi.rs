@@ -61,9 +61,18 @@ fn what_every_wasi_interface_declares() {
         left out `exit`: its parameter `status` holds a result, which an import cannot take yet
     wasi-cli-run.st: RUN
     wasi-cli-types.st: ERROR_CODE
-    wasi-cli-stdin.st: READ_VIA_STREAM
-    wasi-cli-stdout.st: WRITE_VIA_STREAM
-    wasi-cli-stderr.st: WRITE_VIA_STREAM
+    wasi-cli-stdin.st: READ_VIA_STREAM, BYTES_STREAM_NEW, BYTES_STREAM_READ, BYTES_STREAM_READ_ARRAY, BYTES_STREAM_WRITE, BYTES_STREAM_DROP_READABLE, BYTES_STREAM_DROP_WRITABLE, RESULT_FUTURE_NEW, RESULT_FUTURE_READ, RESULT_FUTURE_DROP_READABLE, RESULT_FUTURE_DROP_WRITABLE
+        left out `BYTES_STREAM_CANCEL_READ` and `BYTES_STREAM_CANCEL_WRITE`: a cancel blocks the scan
+        left out `RESULT_FUTURE_WRITE`: a future's write is not imported yet
+        left out `RESULT_FUTURE_CANCEL_READ` and `RESULT_FUTURE_CANCEL_WRITE`: a cancel blocks the scan
+    wasi-cli-stdout.st: WRITE_VIA_STREAM, BYTES_STREAM_NEW, BYTES_STREAM_READ, BYTES_STREAM_READ_ARRAY, BYTES_STREAM_WRITE, BYTES_STREAM_DROP_READABLE, BYTES_STREAM_DROP_WRITABLE, RESULT_FUTURE_NEW, RESULT_FUTURE_READ, RESULT_FUTURE_DROP_READABLE, RESULT_FUTURE_DROP_WRITABLE
+        left out `BYTES_STREAM_CANCEL_READ` and `BYTES_STREAM_CANCEL_WRITE`: a cancel blocks the scan
+        left out `RESULT_FUTURE_WRITE`: a future's write is not imported yet
+        left out `RESULT_FUTURE_CANCEL_READ` and `RESULT_FUTURE_CANCEL_WRITE`: a cancel blocks the scan
+    wasi-cli-stderr.st: WRITE_VIA_STREAM, BYTES_STREAM_NEW, BYTES_STREAM_READ, BYTES_STREAM_READ_ARRAY, BYTES_STREAM_WRITE, BYTES_STREAM_DROP_READABLE, BYTES_STREAM_DROP_WRITABLE, RESULT_FUTURE_NEW, RESULT_FUTURE_READ, RESULT_FUTURE_DROP_READABLE, RESULT_FUTURE_DROP_WRITABLE
+        left out `BYTES_STREAM_CANCEL_READ` and `BYTES_STREAM_CANCEL_WRITE`: a cancel blocks the scan
+        left out `RESULT_FUTURE_WRITE`: a future's write is not imported yet
+        left out `RESULT_FUTURE_CANCEL_READ` and `RESULT_FUTURE_CANCEL_WRITE`: a cancel blocks the scan
     wasi-cli-terminal-input.st: TERMINAL_INPUT_DROP
     wasi-cli-terminal-output.st: TERMINAL_OUTPUT_DROP
     wasi-cli-terminal-stdin.st: GET_TERMINAL_STDIN
@@ -75,19 +84,25 @@ fn what_every_wasi_interface_declares() {
     wasi-clocks-timezone.st: UTC_OFFSET
         left out `iana-id`: its result holds a string, which an import cannot give back yet
         left out `to-debug-string`: its result holds a string, which an import cannot give back yet
-    wasi-filesystem-types.st: FILESIZE, LINK_COUNT, ADVICE, DESCRIPTOR_DROP, DESCRIPTOR_READ_VIA_STREAM, DESCRIPTOR_WRITE_VIA_STREAM, DESCRIPTOR_APPEND_VIA_STREAM, DESCRIPTOR_READ_DIRECTORY, DESCRIPTOR_IS_SAME_OBJECT
+    wasi-filesystem-types.st: FILESIZE, LINK_COUNT, ADVICE, DESCRIPTOR_DROP, DESCRIPTOR_READ_VIA_STREAM, BYTES_STREAM_NEW, BYTES_STREAM_READ, BYTES_STREAM_READ_ARRAY, BYTES_STREAM_WRITE, BYTES_STREAM_DROP_READABLE, BYTES_STREAM_DROP_WRITABLE, RESULT_FUTURE_NEW, RESULT_FUTURE_DROP_READABLE, RESULT_FUTURE_DROP_WRITABLE, DESCRIPTOR_WRITE_VIA_STREAM, DESCRIPTOR_APPEND_VIA_STREAM, DESCRIPTOR_READ_DIRECTORY, DIRECTORY_ENTRY_STREAM_NEW, DIRECTORY_ENTRY_STREAM_DROP_READABLE, DIRECTORY_ENTRY_STREAM_DROP_WRITABLE, DESCRIPTOR_IS_SAME_OBJECT
         left out `descriptor-type`: it is a variant, which ST has no type for yet
         left out `descriptor-flags`: it is flags, which ST has no type for yet
         left out `path-flags`: it is flags, which ST has no type for yet
         left out `open-flags`: it is flags, which ST has no type for yet
         left out `new-timestamp`: it is a variant, which ST has no type for yet
         left out `error-code`: it is a variant, which ST has no type for yet
+        left out `BYTES_STREAM_CANCEL_READ` and `BYTES_STREAM_CANCEL_WRITE`: a cancel blocks the scan
+        left out `RESULT_FUTURE_READ`: its value holds a variant, which a read cannot give back yet
+        left out `RESULT_FUTURE_WRITE`: a future's write is not imported yet
+        left out `RESULT_FUTURE_CANCEL_READ` and `RESULT_FUTURE_CANCEL_WRITE`: a cancel blocks the scan
         left out `[method]descriptor.advise`: its result holds a variant, which an import cannot give back yet
         left out `[method]descriptor.sync-data`: its result holds a variant, which an import cannot give back yet
         left out `[method]descriptor.get-flags`: its result holds a result with a value and an error, which an import cannot give back yet
         left out `[method]descriptor.get-type`: its result holds a result with a value and an error, which an import cannot give back yet
         left out `[method]descriptor.set-size`: its result holds a variant, which an import cannot give back yet
         left out `[method]descriptor.set-times`: its parameter `data-access-timestamp` holds a variant, which an import cannot take yet
+        left out `DIRECTORY_ENTRY_STREAM_READ` and `DIRECTORY_ENTRY_STREAM_WRITE`: a stream's read or write moves bytes only
+        left out `DIRECTORY_ENTRY_STREAM_CANCEL_READ` and `DIRECTORY_ENTRY_STREAM_CANCEL_WRITE`: a cancel blocks the scan
         left out `[method]descriptor.sync`: its result holds a variant, which an import cannot give back yet
         left out `[method]descriptor.create-directory-at`: its result holds a variant, which an import cannot give back yet
         left out `[method]descriptor.stat`: its result holds a result with a value and an error, which an import cannot give back yet
@@ -109,7 +124,7 @@ fn what_every_wasi_interface_declares() {
         left out `get-insecure-random-bytes`: its result holds a list, which an import cannot give back yet
     wasi-random-random.st: GET_RANDOM_U64
         left out `get-random-bytes`: its result holds a list, which an import cannot give back yet
-    wasi-sockets-types.st: IP_ADDRESS_FAMILY, TCP_SOCKET_DROP, UDP_SOCKET_DROP, TCP_SOCKET_SEND, TCP_SOCKET_RECEIVE, TCP_SOCKET_GET_IS_LISTENING, TCP_SOCKET_GET_ADDRESS_FAMILY, UDP_SOCKET_GET_ADDRESS_FAMILY
+    wasi-sockets-types.st: IP_ADDRESS_FAMILY, TCP_SOCKET_DROP, UDP_SOCKET_DROP, TCP_SOCKET_STREAM_NEW, TCP_SOCKET_STREAM_DROP_READABLE, TCP_SOCKET_STREAM_DROP_WRITABLE, TCP_SOCKET_SEND, BYTES_STREAM_NEW, BYTES_STREAM_READ, BYTES_STREAM_READ_ARRAY, BYTES_STREAM_WRITE, BYTES_STREAM_DROP_READABLE, BYTES_STREAM_DROP_WRITABLE, RESULT_FUTURE_NEW, RESULT_FUTURE_DROP_READABLE, RESULT_FUTURE_DROP_WRITABLE, TCP_SOCKET_RECEIVE, TCP_SOCKET_GET_IS_LISTENING, TCP_SOCKET_GET_ADDRESS_FAMILY, UDP_SOCKET_GET_ADDRESS_FAMILY
         left out `error-code`: it is a variant, which ST has no type for yet
         left out `ip-address`: it is a variant, which ST has no type for yet
         left out `ip-socket-address`: it is a variant, which ST has no type for yet
@@ -117,6 +132,12 @@ fn what_every_wasi_interface_declares() {
         left out `[method]tcp-socket.bind`: its parameter `local-address` holds a variant, which an import cannot take yet
         left out `[method]tcp-socket.connect`: its parameter `remote-address` holds a variant, which an import cannot take yet
         left out `[method]tcp-socket.listen`: its result holds a result with a value and an error, which an import cannot give back yet
+        left out `TCP_SOCKET_STREAM_READ` and `TCP_SOCKET_STREAM_WRITE`: a stream's read or write moves bytes only
+        left out `TCP_SOCKET_STREAM_CANCEL_READ` and `TCP_SOCKET_STREAM_CANCEL_WRITE`: a cancel blocks the scan
+        left out `BYTES_STREAM_CANCEL_READ` and `BYTES_STREAM_CANCEL_WRITE`: a cancel blocks the scan
+        left out `RESULT_FUTURE_READ`: its value holds a variant, which a read cannot give back yet
+        left out `RESULT_FUTURE_WRITE`: a future's write is not imported yet
+        left out `RESULT_FUTURE_CANCEL_READ` and `RESULT_FUTURE_CANCEL_WRITE`: a cancel blocks the scan
         left out `[method]tcp-socket.get-local-address`: its result holds a result with a value and an error, which an import cannot give back yet
         left out `[method]tcp-socket.get-remote-address`: its result holds a result with a value and an error, which an import cannot give back yet
         left out `[method]tcp-socket.set-listen-backlog-size`: its result holds a variant, which an import cannot give back yet
@@ -151,21 +172,6 @@ fn what_every_wasi_interface_declares() {
     wasi-sockets-ip-name-lookup.st: 
         left out `error-code`: it is a variant, which ST has no type for yet
         left out `resolve-addresses`: its result holds a result with a value and an error, which an import cannot give back yet
-    wasi-streams.st: BYTES_NEW, BYTES_READ, BYTES_READ_ARRAY, BYTES_WRITE, BYTES_DROP_READABLE, BYTES_DROP_WRITABLE, DIRECTORY_ENTRY_NEW, DIRECTORY_ENTRY_DROP_READABLE, DIRECTORY_ENTRY_DROP_WRITABLE, TCP_SOCKET_NEW, TCP_SOCKET_DROP_READABLE, TCP_SOCKET_DROP_WRITABLE
-        left out `BYTES_CANCEL_READ` and `BYTES_CANCEL_WRITE`: a cancel blocks the scan
-        left out `DIRECTORY_ENTRY_READ` and `DIRECTORY_ENTRY_WRITE`: a stream's read or write moves bytes only
-        left out `DIRECTORY_ENTRY_CANCEL_READ` and `DIRECTORY_ENTRY_CANCEL_WRITE`: a cancel blocks the scan
-        left out `TCP_SOCKET_READ` and `TCP_SOCKET_WRITE`: a stream's read or write moves bytes only
-        left out `TCP_SOCKET_CANCEL_READ` and `TCP_SOCKET_CANCEL_WRITE`: a cancel blocks the scan
-    wasi-futures.st: CLI_RESULT_NEW, CLI_RESULT_READ, CLI_RESULT_DROP_READABLE, CLI_RESULT_DROP_WRITABLE, FILESYSTEM_RESULT_NEW, FILESYSTEM_RESULT_DROP_READABLE, FILESYSTEM_RESULT_DROP_WRITABLE, SOCKETS_RESULT_NEW, SOCKETS_RESULT_DROP_READABLE, SOCKETS_RESULT_DROP_WRITABLE
-        left out `CLI_RESULT_WRITE`: a future's write is not imported yet
-        left out `CLI_RESULT_CANCEL_READ` and `CLI_RESULT_CANCEL_WRITE`: a cancel blocks the scan
-        left out `FILESYSTEM_RESULT_READ`: its value holds a variant, which a read cannot give back yet
-        left out `FILESYSTEM_RESULT_WRITE`: a future's write is not imported yet
-        left out `FILESYSTEM_RESULT_CANCEL_READ` and `FILESYSTEM_RESULT_CANCEL_WRITE`: a cancel blocks the scan
-        left out `SOCKETS_RESULT_READ`: its value holds a variant, which a read cannot give back yet
-        left out `SOCKETS_RESULT_WRITE`: a future's write is not imported yet
-        left out `SOCKETS_RESULT_CANCEL_READ` and `SOCKETS_RESULT_CANCEL_WRITE`: a cancel blocks the scan
     ");
 }
 
@@ -174,19 +180,20 @@ fn what_every_wasi_interface_declares() {
 fn std_s_interfaces() {
     assert_snapshot!(summary(&generated(rk_bindgen::STD_WORLD).files), @r"
     wasi-cli-types.st: ERROR_CODE
-    wasi-cli-stdout.st: WRITE_VIA_STREAM
-    wasi-cli-stderr.st: WRITE_VIA_STREAM
+    wasi-cli-stdout.st: WRITE_VIA_STREAM, BYTES_STREAM_NEW, BYTES_STREAM_READ, BYTES_STREAM_READ_ARRAY, BYTES_STREAM_WRITE, BYTES_STREAM_DROP_READABLE, BYTES_STREAM_DROP_WRITABLE, RESULT_FUTURE_NEW, RESULT_FUTURE_READ, RESULT_FUTURE_DROP_READABLE, RESULT_FUTURE_DROP_WRITABLE
+        left out `BYTES_STREAM_CANCEL_READ` and `BYTES_STREAM_CANCEL_WRITE`: a cancel blocks the scan
+        left out `RESULT_FUTURE_WRITE`: a future's write is not imported yet
+        left out `RESULT_FUTURE_CANCEL_READ` and `RESULT_FUTURE_CANCEL_WRITE`: a cancel blocks the scan
+    wasi-cli-stderr.st: WRITE_VIA_STREAM, BYTES_STREAM_NEW, BYTES_STREAM_READ, BYTES_STREAM_READ_ARRAY, BYTES_STREAM_WRITE, BYTES_STREAM_DROP_READABLE, BYTES_STREAM_DROP_WRITABLE, RESULT_FUTURE_NEW, RESULT_FUTURE_READ, RESULT_FUTURE_DROP_READABLE, RESULT_FUTURE_DROP_WRITABLE
+        left out `BYTES_STREAM_CANCEL_READ` and `BYTES_STREAM_CANCEL_WRITE`: a cancel blocks the scan
+        left out `RESULT_FUTURE_WRITE`: a future's write is not imported yet
+        left out `RESULT_FUTURE_CANCEL_READ` and `RESULT_FUTURE_CANCEL_WRITE`: a cancel blocks the scan
     wasi-clocks-types.st: DURATION
     wasi-clocks-monotonic-clock.st: MARK, NOW, GET_RESOLUTION, WAIT_UNTIL, WAIT_FOR
     wasi-clocks-system-clock.st: NOW, GET_RESOLUTION
     wasi-clocks-timezone.st: UTC_OFFSET
         left out `iana-id`: its result holds a string, which an import cannot give back yet
         left out `to-debug-string`: its result holds a string, which an import cannot give back yet
-    wasi-streams.st: BYTES_NEW, BYTES_READ, BYTES_READ_ARRAY, BYTES_WRITE, BYTES_DROP_READABLE, BYTES_DROP_WRITABLE
-        left out `BYTES_CANCEL_READ` and `BYTES_CANCEL_WRITE`: a cancel blocks the scan
-    wasi-futures.st: CLI_RESULT_NEW, CLI_RESULT_READ, CLI_RESULT_DROP_READABLE, CLI_RESULT_DROP_WRITABLE
-        left out `CLI_RESULT_WRITE`: a future's write is not imported yet
-        left out `CLI_RESULT_CANCEL_READ` and `CLI_RESULT_CANCEL_WRITE`: a cancel blocks the scan
     ");
 }
 
@@ -214,13 +221,44 @@ fn std_s_interfaces_build_into_a_component(mut with_db: RootDatabase) {
     }
 }
 
+/// `stdlib/generated/` is what rk-bindgen writes for Std's world, file for
+/// file, and holds nothing else: after a change to the generator or to its
+/// world, `cargo run -p rk-bindgen` writes it again. A checkout's line
+/// endings do not count.
+#[test]
+fn std_s_generated_folder_is_what_rk_bindgen_writes() {
+    let folder = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("stdlib/generated");
+    let files = generated(rk_bindgen::STD_WORLD).files;
+    let mut on_disk: Vec<String> = std::fs::read_dir(&folder)
+        .expect("stdlib/generated")
+        .filter_map(|entry| {
+            let name = entry.ok()?.file_name().into_string().ok()?;
+            name.ends_with(".st").then_some(name)
+        })
+        .collect();
+    on_disk.sort();
+    let mut written: Vec<String> = files.iter().map(|file| file.name.clone()).collect();
+    written.sort();
+    assert_eq!(on_disk, written, "run `cargo run -p rk-bindgen`");
+    for file in &files {
+        let text = std::fs::read_to_string(folder.join(&file.name))
+            .expect("a generated file")
+            .replace("\r\n", "\n");
+        assert!(
+            text == file.text,
+            "`stdlib/generated/{}` is not what rk-bindgen writes: run `cargo run -p rk-bindgen`",
+            file.name
+        );
+    }
+}
+
 /// A generated file says where it comes from, and that it is not edited.
 #[test]
 fn a_file_says_it_is_generated() {
     let bindings = generated(rk_bindgen::STD_WORLD);
     let header: Vec<&str> = bindings.files[0].text.lines().take(2).collect();
     assert_snapshot!(header.join("\n"), @r"
-    /* Generated by rk-bindgen from the WIT of wasi:cli@0.3.0. Do not edit:
-       `cargo run -p rk-bindgen` writes it again. */
+    /* Generated from the WIT of wasi:cli@0.3.0. DO NOT EDIT! */
+    NAMESPACE INTERNAL Wasi
     ");
 }
