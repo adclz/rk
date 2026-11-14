@@ -907,10 +907,28 @@ impl TestBuild {
     }
 }
 
-/// `Std.Console`, which uses no other file of the standard library, to load
-/// as the library with [`compile_tests_with_libraries`] or
+/// `Std.Console`, which uses no other file of the standard library, with
+/// the declarations it reaches WASI's command line through, to load as the
+/// library with [`compile_tests_with_libraries`] or
 /// [`compile_to_mir_and_wasm_as_built_with_libraries`].
-pub const STD_CONSOLE: &[&str] = &[include_str!("../../../stdlib/Console.st")];
+pub const STD_CONSOLE: &[&str] = &[
+    include_str!("../../../stdlib/Console.st"),
+    include_str!("../../../stdlib/generated/wasi-cli-types.st"),
+    include_str!("../../../stdlib/generated/wasi-cli-stdout.st"),
+    include_str!("../../../stdlib/generated/wasi-cli-stderr.st"),
+];
+
+/// `Std.Timers`, with the files of the standard library it uses and the
+/// declarations it reaches WASI's clocks through, to load as the library.
+pub const STD_TIMERS: &[&str] = &[
+    include_str!("../../../stdlib/Timers.st"),
+    include_str!("../../../stdlib/Convert.st"),
+    include_str!("../../../stdlib/Strings.st"),
+    include_str!("../../../stdlib/generated/wasi-clocks-types.st"),
+    include_str!("../../../stdlib/generated/wasi-clocks-monotonic-clock.st"),
+    include_str!("../../../stdlib/generated/wasi-clocks-system-clock.st"),
+    include_str!("../../../stdlib/generated/wasi-clocks-timezone.st"),
+];
 
 /// [`compile_to_mir_and_wasm_as_built`] with `libraries` loaded as the
 /// library, as `rk` builds a workspace with the stdlib.

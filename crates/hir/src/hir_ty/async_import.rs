@@ -67,6 +67,17 @@ pub enum AsyncKind {
     /// STRING, unchecked, and gives how many went and whether the reader
     /// left.
     StreamWrite,
+    /// The component model's `stream.read`, imported as `[stream-read-N]f`:
+    /// a copy of bytes from the stream's reading end into the block's
+    /// buffer, a STRING or an ARRAY OF BYTE, which ends when the writer has
+    /// given some or left. It takes the end and gives the bytes, how many
+    /// came and whether the writer left.
+    StreamRead,
+    /// The component model's `future.read`, imported as `[future-read-N]f`:
+    /// the one value the future's writer gives, written into the block's
+    /// instance as an async call's result is. It takes the future's reading
+    /// end and gives the value's fields.
+    FutureRead,
 }
 
 impl AsyncKind {
@@ -74,8 +85,16 @@ impl AsyncKind {
     pub fn of(name: &str) -> AsyncKind {
         match crate::hir_def::pous::pragma::builtin_name(name) {
             Some(("stream-write", _)) => AsyncKind::StreamWrite,
+            Some(("stream-read", _)) => AsyncKind::StreamRead,
+            Some(("future-read", _)) => AsyncKind::FutureRead,
             _ => AsyncKind::Call,
         }
+    }
+
+    /// Whether the call is a copy into or out of a stream or a future,
+    /// checked on the end it copies on rather than on a subtask.
+    pub fn copies(self) -> bool {
+        self != AsyncKind::Call
     }
 }
 
@@ -137,6 +156,57 @@ pub fn stream_write_shaped(db: &dyn WorkspaceDataBase, import: &AsyncImport<'_>)
     ) && matches!(
         import.results.as_slice(),
         [written, closed] if is(written, ElementarySpec::UDInt) && is(closed, ElementarySpec::Bool)
+    )
+}
+
+/// Whether `import`, a stream read, declares the built-in's variables: the
+/// stream's reading end, a UDINT, and after DONE the bytes, a STRING or a
+/// one-dimension ARRAY OF BYTE, how many came, a UDINT, then whether the
+/// writer left, a BOOL.
+pub fn stream_read_shaped(db: &dyn WorkspaceDataBase, import: &AsyncImport<'_>) -> bool {
+    let is = |var: &VariableDecl<'_>, spec: ElementarySpec| {
+        var.spec(db).infer(db).normalize(db) == Type::Elementary(spec)
+    };
+    matches!(import.params.as_slice(), [end] if is(end, ElementarySpec::UDInt))
+        && matches!(
+            import.results.as_slice(),
+            [data, read, closed] if read_buffer(db, *data).is_some()
+                && is(read, ElementarySpec::UDInt)
+                && is(closed, ElementarySpec::Bool)
+        )
+}
+
+/// What a stream read's bytes land in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReadBuffer {
+    /// A STRING, whose length becomes how many came.
+    String,
+    /// A one-dimension ARRAY OF BYTE, a byte per element.
+    Bytes,
+}
+
+/// What `var` takes a stream read's bytes in, when it can.
+pub fn read_buffer(db: &dyn WorkspaceDataBase, var: VariableDecl<'_>) -> Option<ReadBuffer> {
+    match var.spec(db).infer(db).normalize(db) {
+        Type::Elementary(ElementarySpec::String) => Some(ReadBuffer::String),
+        Type::Array(array)
+            if array.subranges(db).len() == 1
+                && array.of_type(db).infer(db).normalize(db)
+                    == Type::Elementary(ElementarySpec::Byte) =>
+        {
+            Some(ReadBuffer::Bytes)
+        }
+        _ => None,
+    }
+}
+
+/// Whether `import`, a future read, takes the built-in's one parameter: the
+/// future's reading end, a UDINT. Its value's fields are the VAR_OUTPUTs
+/// after DONE, as an async call's result's are.
+pub fn future_read_shaped(db: &dyn WorkspaceDataBase, import: &AsyncImport<'_>) -> bool {
+    matches!(
+        import.params.as_slice(),
+        [end] if end.spec(db).infer(db).normalize(db) == Type::Elementary(ElementarySpec::UDInt)
     )
 }
 

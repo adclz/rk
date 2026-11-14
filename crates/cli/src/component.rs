@@ -522,7 +522,9 @@ fn own_packages(own: &BTreeMap<&str, Vec<&HostFunction>>) -> Result<Vec<OwnPacka
 }
 
 /// Refuses an import of WASI's `module` that WASI's WIT does not declare as
-/// the declaration says: a function the interface does not have; a stream's
+/// the declaration says: a function the interface does not have, a
+/// resource's among them, under the name WIT gives it (`[method]R.f`); the
+/// drop of a resource the interface does not have; a stream's
 /// or a future's built-in whose number names none of the function's streams
 /// and futures, as wit-component numbers them, or one of the other kind; and
 /// `{extern async}`, which a FUNCTION_BLOCK takes, on a function that is not
@@ -552,6 +554,19 @@ fn as_wasi_declares(
             Some(imported) => (true, imported),
             None => (false, name.as_str()),
         };
+        // `[resource-drop]R`: a resource the interface declares.
+        if let Some(resource) = hir::hir_def::pous::pragma::resource_drop_name(imported) {
+            let declared = interface.types.get(resource).is_some_and(|id| {
+                matches!(resolve.types[*id].kind, wit_parser::TypeDefKind::Resource)
+            });
+            if !declared {
+                return Err(format!(
+                    "`{by}` imports `{imported}` of `{module}`, and WASI's WIT declares no \
+                     resource `{resource}` there"
+                ));
+            }
+            continue;
+        }
         let builtin = hir::hir_def::pous::pragma::builtin_name(imported);
         let function = builtin.map_or(imported, |(_, function)| function);
         let Some(wit) = interface.functions.get(function) else {

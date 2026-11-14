@@ -40,7 +40,7 @@ Inside the component, one core module does the work:
 ```schema
 core module                         one for the workspace
 ├─ IMPORT
-│  ├─ wasi:clocks now, utc-offset   the clocks a timer or Std.Timers reads, and always in debug
+│  ├─ wasi:clocks, wasi:cli         what a timer, Std.Timers or Std.Console uses, all of it in debug
 │  └─ {extern} FUNCTION             the host's, when you declare some
 ├─ EXPORT                           what the component calls
 │  ├─ __init                        every POU's starting values, called first
@@ -222,7 +222,8 @@ A record of two fields or more is written by the host at an address the call pas
 
 A WASI import keeps the types WASI's WIT gives it, in their core form: `VAR_INPUT` are the parameters, and the `VAR_OUTPUT` and the return type the result, as above.
 A record of scalars comes back in `VAR_OUTPUT`, one for each of its fields in their order.
-`Std.Timers` declares WASI's system clock this way, `now` with `seconds: LINT` and `nanoseconds: UDINT`, and the zone's `utc-offset` with `known: BOOL` and `offset: LINT`: its `option<s64>` is laid out as a record of a byte that says whether the value is there, then the value.
+The system clock's `now` is declared this way, with `seconds: LINT` and `nanoseconds: UDINT`, and the zone's `utc-offset` with `is_some: BOOL` and `value: LINT`: its `option<s64>` is laid out as a record of a byte that says whether the value is there, then the value.
+The standard library's WASI declarations are written by rk-bindgen from WASI's WIT, in `stdlib/generated/`, and only the standard library reaches them.
 A `REF_TO` input is an address, where a record can come back too.
 A STRUCT, an ARRAY or an instance input is refused (`E1502`): it would go as an address into rk's own layout, which no WASI function reads.
 
@@ -271,13 +272,23 @@ In the core module, the block's call is the import lowered async, `[async-lower]
 The block checks the call with the component model's built-ins, imported from `$root`: `[waitable-set-new]`, `[waitable-join]`, `[waitable-set-poll]`, which never waits, and `[subtask-drop]`.
 A host that implements an async function asynchronously runs the component through wasmtime's async API, `instantiate_async` and `call_async`; the control interface's functions stay synchronous.
 
-A WASI import may also be a stream's or a future's built-in, under the name of the function whose type has the stream: `[stream-new-0]write-via-stream` makes the stream of `write-via-stream`'s type.
+A WASI import may be a resource's function, under the name WIT gives it: the constructor `[constructor]R`, a method `[method]R.f`, whose first parameter is the handle it is called on, and a static function `[static]R.f`.
+A handle is a `UDINT`, and `[resource-drop]R`, an `{extern}` FUNCTION taking one, lets go of a handle the host gave (`E1516` otherwise).
+Only WASI's interfaces have resources: a host module's WIT is written from its declarations, which make none (`E1512`).
+The build checks that WASI's WIT declares the function, or the resource a drop names.
+
+A WASI import may also be a stream's or a future's built-in, under the name of the function whose type has the stream: `[stream-new-0]write-via-stream` makes the stream of `write-via-stream`'s type, and `[stream-drop-readable-0][method]descriptor.read-via-stream` drops the reading end a method made.
 The number counts the streams and futures of the function's type from 0, its parameters first, as wit-component counts them, and the build checks that it names one of the built-in's kind.
 A built-in that returns at once, a stream's or a future's `new` or one of their drops, is an `{extern}` FUNCTION.
 A `new` declares the two ends it makes, a `UDINT` `VAR_OUTPUT` each, the reading end first, and no return type (`E1516`).
 A stream's write waits for the reader, so it is an `{extern async}` FUNCTION_BLOCK, `[stream-write-N]f`: it takes the stream's writing end, a `UDINT`, and the bytes, a `STRING` whose length is passed as it is, unchecked, and after `DONE` gives how many went, a `UDINT`, and whether the reader left, a `BOOL` (`E1516` otherwise).
 Its call is a copy into the stream, which ends when the reader has taken some of the bytes or left: the block waits on the stream's end as it would on a call.
 The host reads the bytes from the block while the copy runs: a call made then checks the copy, and leaves the bytes as they are, whatever it passes.
+
+A stream's read, `[stream-read-N]f`, is the write the other way: an `{extern async}` FUNCTION_BLOCK that takes the stream's reading end, a `UDINT`, and after `DONE` gives the bytes, how many came, a `UDINT`, and whether the writer left, a `BOOL` (`E1516` otherwise).
+The bytes land in a `STRING`, whose length becomes how many came, or in an `ARRAY OF BYTE` of one dimension, a byte an element: either holds what a read takes at most, and the host writes into it while the read runs, so the bytes are whole in the call where `DONE` is `TRUE`.
+A future's read, `[future-read-N]f`, takes the future's reading end and gives after `DONE` the fields of its value, laid out as an async call's result is; a future's writer gives its value before it lets go, so a read always gets one.
+A future's write is not imported yet (`E1516`).
 
 The clocks a module imports are WASI 0.3's, in their core forms, and the host provides them:
 
@@ -288,9 +299,9 @@ The clocks a module imports are WASI 0.3's, in their core forms, and the host pr
 | `wasi:clocks/timezone@0.3.0` `utc-offset` | `(i64, i32, i32)` | takes an instant as its seconds and nanoseconds, and writes at the address whether the host has a zone, in one byte, and if it has, 8 bytes on, the nanoseconds the zone is east of UTC at that instant |
 
 The time zone is still unstable in WASI 0.3, `@unstable(feature = clocks-timezone)`: a host has it only with that feature on, and its signature can change in a 0.3 release.
-A release build imports the ones the program reads; a debug build imports all three, so a host that has no zone still defines `utc-offset`, answering that it has none, or the module does not instantiate. Where the monotonic clock starts is the host's choice, as WASI leaves it.
+A release build imports the ones the program reads; a debug build imports every function the standard library declares from these interfaces, `get-resolution`, `wait-until` and `wait-for` included, so a host provides the clocks whole, as wasmtime-wasi does, and a host that has no zone still defines `utc-offset`, answering that it has none, or the module does not instantiate. Where the monotonic clock starts is the host's choice, as WASI leaves it.
 
-[`Std.Console`](console.md) writes to WASI 0.3's standard output and error, `wasi:cli/stdout@0.3.0` and `wasi:cli/stderr@0.3.0`, with the imports it declares.
+[`Std.Console`](console.md) writes to WASI 0.3's standard output and error, `wasi:cli/stdout@0.3.0` and `wasi:cli/stderr@0.3.0`, through the declarations rk-bindgen writes for them.
 Each is one function, `write-via-stream`, which takes a stream of bytes.
 A block makes its stream at its first request, hands the reading end to the host, keeps the other end, and writes to it with the component model's stream built-ins:
 
@@ -305,4 +316,4 @@ A component's host provides all four by providing WASI's command line interfaces
 A scan never waits for a write: one the host has not taken stays pending in the block, `BUSY`, and a later scan sees it end.
 The host's side of the stream runs while the host calls the component through wasmtime's async API; a synchronous call hands over only what the host takes within it.
 
-Both outputs are written with the one block `Std.Console` imports beside the standard output's function, so a program that writes to either imports the standard output's interface; a debug build imports both.
+Each output's stream is made, and its future given up, with the built-ins named after its own `write-via-stream`. Both streams are written with the standard output's write: a stream's type is its element's, so one write takes any stream of bytes. The built-ins come from the component model, not from the host: a release build that writes only to the standard error imports only that interface. A debug build imports both.

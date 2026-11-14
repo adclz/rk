@@ -212,7 +212,8 @@ fn a_workspace_reads_the_standard_library_from_the_cache() {
                 .canonicalize()
                 .unwrap();
             let name = path.strip_prefix(&copy).unwrap();
-            name.to_string_lossy().into_owned()
+            // With `/` between the parts, as the bundle names a file.
+            name.to_string_lossy().replace('\\', "/")
         })
         .collect();
     files.sort();

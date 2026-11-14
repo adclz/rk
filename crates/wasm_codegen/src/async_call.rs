@@ -12,9 +12,10 @@
 //!   it returns at once. Returned already, the result is copied and DONE is
 //!   TRUE; otherwise the call joins the set and DONE is FALSE.
 //!
-//! A stream's write, `[stream-write-N]f`, is made the same way, on the
-//! stream's writing end instead of a subtask: the copy is started when none
-//! is pending and checked otherwise.
+//! A stream's write or read, `[stream-write-N]f` and `[stream-read-N]f`, and
+//! a future's read, `[future-read-N]f`, are made the same way, on the end
+//! they copy on instead of a subtask: the copy is started when none is
+//! pending and checked otherwise.
 //!
 //! A warm start restores no call: its handle went with the instance that
 //! made it, and is kept apart from the variables.
@@ -36,22 +37,27 @@ use crate::emit_stmt::emit_typed_mem_store_pub as emit_typed_mem_store;
 const EVENT_SUBTASK: i32 = 1;
 const RETURNED: i32 = 2;
 
-/// A stream's write: its event, what it returns when the copy has not
-/// ended yet, and the result of a copy whose reader left.
+/// A copy's events, what a copy returns when it has not ended yet, and the
+/// result of a copy whose other end left.
+const EVENT_STREAM_READ: i32 = 2;
 const EVENT_STREAM_WRITE: i32 = 3;
+const EVENT_FUTURE_READ: i32 = 4;
 const BLOCKED: i32 = -1;
 const DROPPED: i32 = 1;
 
 const THIS: u32 = 0;
 const STATUS: u32 = 1;
+/// The element a stream read spreads its next byte into, in an ARRAY OF
+/// BYTE.
+const INDEX: u32 = 2;
 
 const BOOL: MirType = MirType::Elementary(MirElementary::Bool);
 
 impl WasmGen<'_> {
     /// Emits `func`, the body of the block that makes `call`.
     pub(crate) fn emit_async_body(&mut self, func: &MirFunction, call: &MirAsyncCall) {
-        if call.kind == AsyncKind::StreamWrite {
-            let f = self.stream_write_body(call);
+        if call.kind.copies() {
+            let f = self.copy_body(call);
             return self.place_body(func, &f);
         }
         let builtin = |builtin| {
@@ -157,37 +163,38 @@ impl WasmGen<'_> {
         self.place_body(func, &f);
     }
 
-    /// The body of the block that writes to a stream, `call`: it starts the
-    /// copy when none is pending and checks it otherwise, on the stream's
-    /// writing end, which a copy that did not end at once joins the block's
-    /// set as a subtask does. The bytes are passed as they are, unchecked:
-    /// a stream carries bytes, not text.
-    fn stream_write_body(&self, call: &MirAsyncCall) -> Function {
+    /// The body of the block that copies into or out of a stream or a
+    /// future, `call`: it starts the copy when none is pending and checks it
+    /// otherwise, on the end it copies on, which a copy that did not end at
+    /// once joins the block's set as a subtask does. A write passes the
+    /// bytes as they are, unchecked: a stream carries bytes, not text.
+    fn copy_body(&self, call: &MirAsyncCall) -> Function {
         let builtin = |builtin| {
             builtin_at(self.module, builtin).expect(
                 "internal compiler error: a module that makes an async call imports the built-ins",
             )
         };
         let import = import_at(self.module, call)
-            .expect("internal compiler error: a stream write's import is among the imports");
-        let (end, _) =
-            call.params.first().cloned().expect(
-                "internal compiler error: a stream write takes its stream's end first (E1516)",
-            );
-        let mut f = Function::new([(1, ValType::I32)]);
+            .expect("internal compiler error: a copy's import is among the imports");
+        let (end, _) = call
+            .params
+            .first()
+            .cloned()
+            .expect("internal compiler error: a copy takes the end it copies on first (E1516)");
+        let mut f = Function::new([(2, ValType::I32)]);
         store_bool(&mut f, call.done, false);
 
         // A copy pending: did it end?
         word(&mut f, call.state + STATE_HANDLE);
         f.instruction(&I::If(BlockType::Empty));
-        written_event(&mut f, call, builtin(Builtin::SetPoll));
+        copy_event(&mut f, call, builtin(Builtin::SetPoll));
         f.instruction(&I::If(BlockType::Empty));
         copy_ended(&mut f, call);
         f.instruction(&I::End);
 
         // None pending: the copy, started now.
         f.instruction(&I::Else);
-        lower_params(&mut f, call);
+        start_copy(&mut f, call);
         f.instruction(&I::Call(import));
         f.instruction(&I::LocalTee(STATUS));
         f.instruction(&I::I32Const(BLOCKED));
@@ -238,17 +245,69 @@ impl WasmGen<'_> {
 }
 
 /// Whether the set's next event, from `waitable-set.poll`, is the end of
-/// the block's copy into its stream. The set holds the stream's end alone.
-fn written_event(f: &mut Function, call: &MirAsyncCall, poll: u32) {
+/// the block's copy. The set holds the end it copies on alone.
+fn copy_event(f: &mut Function, call: &MirAsyncCall, poll: u32) {
+    let event = match call.kind {
+        AsyncKind::StreamRead => EVENT_STREAM_READ,
+        AsyncKind::StreamWrite => EVENT_STREAM_WRITE,
+        AsyncKind::FutureRead => EVENT_FUTURE_READ,
+        AsyncKind::Call => unreachable!("internal compiler error: a call is no copy"),
+    };
     word(f, call.state + STATE_SET);
     address(f, call.state + STATE_EVENT);
     f.instruction(&I::Call(poll));
-    f.instruction(&I::I32Const(EVENT_STREAM_WRITE));
+    f.instruction(&I::I32Const(event));
     f.instruction(&I::I32Eq);
     word(f, call.state + STATE_EVENT);
     word(f, call.state + STATE_HANDLE);
     f.instruction(&I::I32Eq);
     f.instruction(&I::I32And);
+}
+
+/// Pushes what the copy's built-in takes: a write's end and bytes; a stream
+/// read's end, where the bytes go and how many fit; a future read's end and
+/// where the value goes, that area cleared first, as a call's result's is.
+fn start_copy(f: &mut Function, call: &MirAsyncCall) {
+    let end = |f: &mut Function| {
+        let (end, _) = call.params[0];
+        word(f, end);
+    };
+    match call.kind {
+        AsyncKind::StreamWrite => lower_params(f, call),
+        AsyncKind::StreamRead => {
+            end(f);
+            match call.results.first() {
+                Some((data, MirType::String { capacity })) => {
+                    address(f, data + 4);
+                    f.instruction(&I::I32Const(*capacity as i32));
+                }
+                Some((data, MirType::Array(array))) => {
+                    address(f, *data);
+                    f.instruction(&I::I32Const(array.total_elements as i32));
+                }
+                _ => panic!(
+                    "internal compiler error: a stream read's bytes land in a STRING or an \
+                     ARRAY OF BYTE (E1516)"
+                ),
+            }
+        }
+        AsyncKind::FutureRead => {
+            end(f);
+            match call.result_area {
+                Some(area) => {
+                    for at in 0..call.results.len() as u64 {
+                        f.instruction(&I::LocalGet(THIS));
+                        f.instruction(&I::I64Const(0));
+                        f.instruction(&I::I64Store(mem_arg(u64::from(area) + 8 * at, 3)));
+                    }
+                    address(f, area);
+                }
+                // A value with no field: the host writes nothing.
+                None => address(f, call.state),
+            }
+        }
+        AsyncKind::Call => unreachable!("internal compiler error: a call is no copy"),
+    }
 }
 
 /// The copy's end, its outcome in the event: what [`copied`] writes, and no
@@ -263,29 +322,93 @@ fn copy_ended(f: &mut Function, call: &MirAsyncCall) {
     });
 }
 
-/// A copy's outcome, which `outcome` pushes, `count << 4 | result`: how many
-/// bytes went into the first VAR_OUTPUT after DONE, whether the reader left
-/// into the second, and DONE.
+/// A copy's outcome, which `outcome` pushes, `count << 4 | result`, written
+/// into the VAR_OUTPUTs after DONE, and DONE. A stream write gives how many
+/// bytes went and whether the reader left. A stream read gives the bytes,
+/// how many came and whether the writer left: a STRING's length becomes the
+/// count, and an ARRAY OF BYTE's bytes, which came a byte after the other,
+/// are spread over its elements. A future read gives its value's fields.
 fn copied(f: &mut Function, call: &MirAsyncCall, outcome: impl Fn(&mut Function)) {
-    let [(written, written_ty), (closed, closed_ty)] = call.results.as_slice() else {
-        panic!(
-            "internal compiler error: a stream write gives how many went and whether the reader \
-             left (E1516)"
-        );
+    let count = |f: &mut Function| {
+        outcome(f);
+        f.instruction(&I::I32Const(4));
+        f.instruction(&I::I32ShrU);
     };
-    address(f, *written);
-    outcome(f);
-    f.instruction(&I::I32Const(4));
-    f.instruction(&I::I32ShrU);
-    emit_typed_mem_store(f, written_ty);
-    address(f, *closed);
-    outcome(f);
-    f.instruction(&I::I32Const(0xf));
-    f.instruction(&I::I32And);
-    f.instruction(&I::I32Const(DROPPED));
-    f.instruction(&I::I32Eq);
-    emit_typed_mem_store(f, closed_ty);
+    let left = |f: &mut Function, closed: u32, ty: &MirType| {
+        address(f, closed);
+        outcome(f);
+        f.instruction(&I::I32Const(0xf));
+        f.instruction(&I::I32And);
+        f.instruction(&I::I32Const(DROPPED));
+        f.instruction(&I::I32Eq);
+        emit_typed_mem_store(f, ty);
+    };
+    match (call.kind, call.results.as_slice()) {
+        (AsyncKind::StreamWrite, [(written, written_ty), (closed, closed_ty)]) => {
+            address(f, *written);
+            count(f);
+            emit_typed_mem_store(f, written_ty);
+            left(f, *closed, closed_ty);
+        }
+        (AsyncKind::StreamRead, [(data, data_ty), (read, read_ty), (closed, closed_ty)]) => {
+            address(f, *read);
+            count(f);
+            emit_typed_mem_store(f, read_ty);
+            match data_ty {
+                MirType::String { .. } => set_word(f, *data, count),
+                MirType::Array(array) => spread(f, *data, array, count),
+                _ => panic!(
+                    "internal compiler error: a stream read's bytes land in a STRING or an \
+                     ARRAY OF BYTE (E1516)"
+                ),
+            }
+            left(f, *closed, closed_ty);
+        }
+        (AsyncKind::FutureRead, _) => copy_result(f, call),
+        _ => panic!(
+            "internal compiler error: a copy declares its built-in's VAR_OUTPUTs after DONE \
+             (E1516)"
+        ),
+    }
     store_bool(f, call.done, true);
+}
+
+/// Spreads the bytes a stream read left one after the other at the start of
+/// `array`, at `data`, how many `count` pushes, over its elements, each in
+/// its own place: backwards, so that each byte is read before an element is
+/// written over it, since the element of a byte is never before it.
+fn spread(
+    f: &mut Function,
+    data: u32,
+    array: &mir::types::MirArrayType,
+    count: impl Fn(&mut Function),
+) {
+    count(f);
+    f.instruction(&I::LocalSet(INDEX));
+    f.instruction(&I::Block(BlockType::Empty));
+    f.instruction(&I::Loop(BlockType::Empty));
+    f.instruction(&I::LocalGet(INDEX));
+    f.instruction(&I::I32Eqz);
+    f.instruction(&I::BrIf(1));
+    f.instruction(&I::LocalGet(INDEX));
+    f.instruction(&I::I32Const(1));
+    f.instruction(&I::I32Sub);
+    f.instruction(&I::LocalSet(INDEX));
+    // The element: `this + data + index * size`.
+    address(f, data);
+    f.instruction(&I::LocalGet(INDEX));
+    f.instruction(&I::I32Const(array.element_size as i32));
+    f.instruction(&I::I32Mul);
+    f.instruction(&I::I32Add);
+    // The byte: `this + data + index`.
+    address(f, data);
+    f.instruction(&I::LocalGet(INDEX));
+    f.instruction(&I::I32Add);
+    f.instruction(&I::I32Load8U(mem_arg(0, 0)));
+    emit_typed_mem_store(f, &array.element_type);
+    f.instruction(&I::Br(0));
+    f.instruction(&I::End);
+    f.instruction(&I::End);
 }
 
 /// `this + offset`.

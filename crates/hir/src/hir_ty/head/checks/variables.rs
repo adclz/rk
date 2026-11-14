@@ -417,6 +417,15 @@ impl<'db> InitInference<'db> {
         let extern_wasi = extern_fn
             .map(|(_, wasi)| wasi)
             .or(extern_block.map(|(_, wasi)| wasi));
+        // A stream read's bytes land in a STRING or an ARRAY OF BYTE, its
+        // buffer, which the block holds rather than the host returns: its
+        // outputs are its built-in's, which E1516 checks.
+        let stream_read = extern_block.is_some_and(|(fb, _)| {
+            fb.extern_pragma(db).is_some_and(|(_, pragma)| {
+                crate::hir_ty::async_import::AsyncKind::of(&pragma.name)
+                    == crate::hir_ty::async_import::AsyncKind::StreamRead
+            })
+        });
         let extern_statements = match (extern_fn, extern_block) {
             (Some((f, _)), _) => Some((f.statements(db).first(), "FUNCTION")),
             (_, Some((fb, _))) => Some((fb.statements(db).first(), "FUNCTION_BLOCK")),
@@ -833,6 +842,8 @@ impl<'db> InitInference<'db> {
                         _ if wasi => Some(ExternForbiddenKind::WasiAggregateInput),
                         _ => Some(ExternForbiddenKind::AggregateInput),
                     },
+                    // E1516 checks every output of a stream read.
+                    VariableKind::Output if stream_read => None,
                     VariableKind::Output if !extern_scalar(db, var.spec(db).infer(db)) => {
                         Some(ExternForbiddenKind::AggregateOutput)
                     }

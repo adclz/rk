@@ -205,15 +205,45 @@ pub const STREAM_BUILTINS: &[&str] = &[
 ];
 
 /// A built-in's import name, `[stream-new-0]write-via-stream`, read as the
-/// built-in and the function it serves; `None` for any other name.
+/// built-in and the function it serves, which may be a resource's
+/// (`[stream-new-0][method]descriptor.write-via-stream`); `None` for any
+/// other name.
 pub fn builtin_name(name: &str) -> Option<(&str, &str)> {
     let (inside, function) = name.strip_prefix('[')?.split_once(']')?;
     let (builtin, place) = inside.rsplit_once('-')?;
     (STREAM_BUILTINS.contains(&builtin)
         && !place.is_empty()
         && place.bytes().all(|b| b.is_ascii_digit())
-        && is_wit_name(function))
+        && is_function_name(function))
     .then_some((builtin, function))
+}
+
+/// A resource's function as WIT names it in its interface: the constructor
+/// `[constructor]R`, a method `[method]R.f` and a static function
+/// `[static]R.f`, read as the resource and, but for the constructor, the
+/// function; `None` for any other name.
+pub fn resource_function_name(name: &str) -> Option<(&str, Option<&str>)> {
+    if let Some(resource) = name.strip_prefix("[constructor]") {
+        return is_wit_name(resource).then_some((resource, None));
+    }
+    let (resource, function) = name
+        .strip_prefix("[method]")
+        .or_else(|| name.strip_prefix("[static]"))?
+        .split_once('.')?;
+    (is_wit_name(resource) && is_wit_name(function)).then_some((resource, Some(function)))
+}
+
+/// The resource whose handle `[resource-drop]R` drops, the built-in that
+/// lets go of a handle the host gave: `R`; `None` for any other name.
+pub fn resource_drop_name(name: &str) -> Option<&str> {
+    name.strip_prefix("[resource-drop]")
+        .filter(|resource| is_wit_name(resource))
+}
+
+/// A function's name in a WIT interface: a WIT name, or a resource's
+/// function ([`resource_function_name`]).
+pub fn is_function_name(name: &str) -> bool {
+    is_wit_name(name) || resource_function_name(name).is_some()
 }
 
 /// Whether a built-in copies into or out of its stream or future, and so

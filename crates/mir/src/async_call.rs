@@ -6,8 +6,9 @@
 //! so that a call returns at once; the component model's built-ins the
 //! block checks the call with; and where each part of the call is in the
 //! block's instance, which codegen reads to emit the block's body. A
-//! stream's write is imported the same way, `[async-lower][stream-write-N]f`,
-//! and checked on the stream's end instead of a subtask.
+//! stream's write or read and a future's read are imported the same way,
+//! `[async-lower][stream-write-N]f`, and checked on the end they copy on
+//! instead of a subtask.
 
 use compact_str::CompactString;
 use db::WorkspaceDataBase;
@@ -156,8 +157,10 @@ pub fn call<'db>(
         params: typed(&import.params)?,
         results: typed(&import.results)?,
         state: part(Part::AsyncState)?.offset,
-        // A stream write's result is its event's.
-        result_area: match import.results.is_empty() || import.kind == AsyncKind::StreamWrite {
+        // A stream write's or read's result is its event's.
+        result_area: match import.results.is_empty()
+            || matches!(import.kind, AsyncKind::StreamWrite | AsyncKind::StreamRead)
+        {
             true => None,
             false => Some(part(Part::AsyncResult)?.offset),
         },
@@ -175,12 +178,8 @@ pub fn import<'db>(
     pragma: &ExternPragma,
     index: u32,
 ) -> MirExternFunction {
-    MirExternFunction {
-        name: import_symbol(db, fb),
-        index,
-        module: pragma.module.clone(),
-        import_name: CompactString::from(format!("{ASYNC_LOWER}{}", pragma.name)),
-        params: import
+    let declared = || {
+        import
             .params
             .iter()
             .zip(&call.params)
@@ -189,9 +188,29 @@ pub fn import<'db>(
                 ty: ty.clone(),
                 kind: MirParamKind::Input,
             })
-            .collect(),
-        // A stream write returns how the copy went, its results in the event
-        // that ends it: it is passed no address to write them at.
+    };
+    let address = |name: &str| MirParam {
+        name: Ident::new(db, CompactString::from(name)),
+        ty: MirType::Elementary(MirElementary::UDInt),
+        kind: MirParamKind::Input,
+    };
+    MirExternFunction {
+        name: import_symbol(db, fb),
+        index,
+        module: pragma.module.clone(),
+        import_name: CompactString::from(format!("{ASYNC_LOWER}{}", pragma.name)),
+        // A stream read takes its end, then where the bytes go and how many
+        // fit; a future read its end, then where the value goes.
+        params: match import.kind {
+            AsyncKind::Call | AsyncKind::StreamWrite => declared().collect(),
+            AsyncKind::StreamRead => declared()
+                .chain([address("at"), address("length")])
+                .collect(),
+            AsyncKind::FutureRead => declared().chain([address("at")]).collect(),
+        },
+        // A copy returns how it went, its outcome in the event that ends it,
+        // and a future read's value lands where its own parameter says: none
+        // is passed an address to write a result at.
         out_results: match import.kind {
             AsyncKind::Call => import
                 .results
@@ -199,7 +218,7 @@ pub fn import<'db>(
                 .zip(&call.results)
                 .map(|(var, (_, ty))| (var.name(db), ty.clone()))
                 .collect(),
-            AsyncKind::StreamWrite => Vec::new(),
+            AsyncKind::StreamWrite | AsyncKind::StreamRead | AsyncKind::FutureRead => Vec::new(),
         },
         return_type: None,
         linkage: MirLinkage::Internal,

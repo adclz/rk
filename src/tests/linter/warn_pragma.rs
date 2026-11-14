@@ -5,6 +5,7 @@ use db::RootDatabase;
 use insta::assert_snapshot;
 use rstest::rstest;
 
+use crate::tests::codegen::STD_TIMERS;
 use crate::tests::utils::{add_library_sources, test_single_lint, with_db};
 
 #[rstest]
@@ -179,14 +180,7 @@ END_FUNCTION"#;
 /// reading `LOCAL_OFFSET` inside the library adds nothing.
 #[rstest]
 fn the_time_zone_warns_where_it_is_read(mut with_db: RootDatabase) {
-    add_library_sources(
-        &mut with_db,
-        &[
-            include_str!("../../../stdlib/Timers.st"),
-            include_str!("../../../stdlib/Convert.st"),
-            include_str!("../../../stdlib/Strings.st"),
-        ],
-    );
+    add_library_sources(&mut with_db, STD_TIMERS);
     let source = r#"
 USING Std.Timers;
 
@@ -198,20 +192,20 @@ END_FUNCTION"#;
 
     assert_snapshot!(test_single_lint(&mut with_db, &[source], "warn-pragma"), @r"
     [L0002] Warning: {warn} notice
-         ,-[ file:///test0.st:6:15 ]
-         |
-       6 |     offset := LOCAL_OFFSET(IN := WALL_LDT());
-         |               ^^^^^^|^^^^^
-         |                     `------- reads the time zone, which WASI 0.3 marks unstable: a host has it only with its clocks-timezone feature on
-         |
-         |-[ file:///lib0.st:112:2 ]
-         |
-     112 |     {warn = 'reads the time zone, which WASI 0.3 marks unstable: a host has it only with its clocks-timezone feature on'}
-         |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^|^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-         |                                                               `------------------------------------------------------------ the pragma is declared here
-         |
-         | Note: lint rule: warn-pragma
-    -----'
+        ,-[ file:///test0.st:6:15 ]
+        |
+      6 |     offset := LOCAL_OFFSET(IN := WALL_LDT());
+        |               ^^^^^^|^^^^^
+        |                     `------- reads the time zone, which WASI 0.3 marks unstable: a host has it only with its clocks-timezone feature on
+        |
+        |-[ file:///lib0.st:76:2 ]
+        |
+     76 |     {warn = 'reads the time zone, which WASI 0.3 marks unstable: a host has it only with its clocks-timezone feature on'}
+        |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^|^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        |                                                               `------------------------------------------------------------ the pragma is declared here
+        |
+        | Note: lint rule: warn-pragma
+    ----'
     [L0002] Warning: {warn} notice
          ,-[ file:///test0.st:7:15 ]
          |
@@ -219,9 +213,9 @@ END_FUNCTION"#;
          |               ^^^^|^^^^
          |                   `------ reads the time zone, which WASI 0.3 marks unstable: a host has it only with its clocks-timezone feature on
          |
-         |-[ file:///lib0.st:144:2 ]
+         |-[ file:///lib0.st:110:2 ]
          |
-     144 |     {warn = 'reads the time zone, which WASI 0.3 marks unstable: a host has it only with its clocks-timezone feature on'}
+     110 |     {warn = 'reads the time zone, which WASI 0.3 marks unstable: a host has it only with its clocks-timezone feature on'}
          |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^|^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
          |                                                               `------------------------------------------------------------ the pragma is declared here
          |

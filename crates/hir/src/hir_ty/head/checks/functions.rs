@@ -74,12 +74,31 @@ impl<'db> InitInference<'db> {
             );
         }
         // A WASI import may also be a stream's or a future's built-in,
-        // under the name of the function it serves.
+        // under the name of the function it serves, a resource's function,
+        // or the drop of a resource's handle: only WASI's interfaces have
+        // resources, since a host module's WIT is written from declarations.
         let builtin = match pragma.is_wasi() {
             true => crate::hir_def::pous::pragma::builtin_name(&pragma.name),
             false => None,
         };
-        if !is_wit_name(&pragma.name) && builtin.is_none() {
+        let resource_function =
+            crate::hir_def::pous::pragma::resource_function_name(&pragma.name).is_some();
+        let resource_drop =
+            crate::hir_def::pous::pragma::resource_drop_name(&pragma.name).is_some();
+        if (resource_function || resource_drop) && !pragma.is_wasi() {
+            self.errors.push(
+                PragmaError::ExternResourceName {
+                    name: pragma.name.clone(),
+                    span: pragma.name_span,
+                    drop: resource_drop,
+                }
+                .to_diagnostic(db, file),
+            );
+        } else if !is_wit_name(&pragma.name)
+            && builtin.is_none()
+            && !resource_function
+            && !resource_drop
+        {
             self.errors.push(
                 PragmaError::ExternFunctionName {
                     name: pragma.name.clone(),
@@ -88,16 +107,54 @@ impl<'db> InitInference<'db> {
                 .to_diagnostic(db, file),
             );
         }
+        // A resource's drop returns at once, and takes the handle it drops.
+        if resource_drop && pragma.is_wasi() {
+            use crate::check::errors::e15_pragma::BuiltinMisfit;
+            if block.is_some() {
+                self.errors.push(
+                    PragmaError::StreamBuiltin {
+                        name: pragma.name.clone(),
+                        span: pragma.name_span,
+                        why: BuiltinMisfit::Instant,
+                    }
+                    .to_diagnostic(db, file),
+                );
+            } else if let Some(func) = function
+                && !drop_shaped(db, func)
+            {
+                self.errors
+                    .push(PragmaError::ResourceDropVariables { func }.to_diagnostic(db, file));
+            }
+        }
         if let Some((builtin, _)) = builtin {
             use crate::check::errors::e15_pragma::BuiltinMisfit;
-            use crate::hir_ty::async_import::{AsyncKind, async_import, stream_write_shaped};
+            use crate::hir_ty::async_import::{
+                AsyncKind, async_import, future_read_shaped, stream_read_shaped,
+                stream_write_shaped,
+            };
             let copies = crate::hir_def::pous::pragma::builtin_copies(builtin);
             let why = match (block.is_some(), copies) {
                 (false, true) => Some(BuiltinMisfit::Waits),
                 (true, false) => Some(BuiltinMisfit::Instant),
-                (true, true) if builtin != "stream-write" => Some(BuiltinMisfit::NoBlock),
+                (true, true) if builtin == "future-write" => Some(BuiltinMisfit::NoBlock),
                 _ => None,
             };
+            // A copy's block declares the built-in's variables.
+            let misdeclared = block.and_then(|block| {
+                let import = async_import(db, block)?;
+                match import.kind {
+                    AsyncKind::StreamWrite if !stream_write_shaped(db, &import) => {
+                        Some(PragmaError::StreamWriteVariables { block })
+                    }
+                    AsyncKind::StreamRead if !stream_read_shaped(db, &import) => {
+                        Some(PragmaError::StreamReadVariables { block })
+                    }
+                    AsyncKind::FutureRead if !future_read_shaped(db, &import) => {
+                        Some(PragmaError::FutureReadVariables { block })
+                    }
+                    _ => None,
+                }
+            });
             if let Some(why) = why {
                 self.errors.push(
                     PragmaError::StreamBuiltin {
@@ -107,13 +164,8 @@ impl<'db> InitInference<'db> {
                     }
                     .to_diagnostic(db, file),
                 );
-            } else if let Some(block) = block
-                && let Some(import) = async_import(db, block)
-                && import.kind == AsyncKind::StreamWrite
-                && !stream_write_shaped(db, &import)
-            {
-                self.errors
-                    .push(PragmaError::StreamWriteVariables { block }.to_diagnostic(db, file));
+            } else if let Some(error) = misdeclared {
+                self.errors.push(error.to_diagnostic(db, file));
             } else if let Some(func) = function
                 && crate::hir_def::pous::pragma::builtin_makes_ends(builtin)
                 && !ends_shaped(db, func)
@@ -467,4 +519,20 @@ fn ends_shaped<'db>(
     };
     func.return_type(db).is_none()
         && matches!(func.variables(db).as_slice(), [readable, writable] if end(readable) && end(writable))
+}
+
+/// Whether `func`, a resource's drop, declares the handle it drops: one UDINT
+/// VAR_INPUT, and nothing else.
+fn drop_shaped<'db>(
+    db: &'db dyn WorkspaceDataBase,
+    func: crate::hir_def::pous::function::Function<'db>,
+) -> bool {
+    use crate::hir_def::expressions::spec::ElementarySpec;
+    use crate::hir_def::pous::variable::VariableKind;
+    use crate::hir_ty::infer::Infer;
+    use crate::hir_ty::ty::Type;
+    func.return_type(db).is_none()
+        && matches!(func.variables(db).as_slice(), [handle]
+            if handle.kind(db) == VariableKind::Input
+                && handle.spec(db).infer(db).normalize(db) == Type::Elementary(ElementarySpec::UDInt))
 }

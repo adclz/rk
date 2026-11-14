@@ -35,6 +35,7 @@ The builtin bundle and the standard library are copied into every generated modu
 
 Inside `crates/debug_format/`, `wit/wasi/` is WASI's own repository, a git submodule checked out at the release the standard library imports.
 Its `LICENSE.md` gives its terms, Apache-2.0 does not apply to it, and `rk compile` copies that file, with the WASI packages a component names, into the `wit/` folder beside the component.
+Inside `stdlib/`, `generated/` is written by rk-bindgen from that WIT, and the comments it copies from WASI's WIT keep WASI's terms.
 
 ## MIT
 

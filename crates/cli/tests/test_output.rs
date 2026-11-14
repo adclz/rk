@@ -56,9 +56,26 @@ END_FUNCTION
     );
 }
 
+/// The declarations `Std.Console` reaches WASI through, as the stdlib has
+/// them, for a workspace that has no standard library.
+const CONSOLE_WASI: &[(&str, &str)] = &[
+    (
+        "wasi-cli-types.st",
+        include_str!("../../../stdlib/generated/wasi-cli-types.st"),
+    ),
+    (
+        "wasi-cli-stdout.st",
+        include_str!("../../../stdlib/generated/wasi-cli-stdout.st"),
+    ),
+    (
+        "wasi-cli-stderr.st",
+        include_str!("../../../stdlib/generated/wasi-cli-stderr.st"),
+    ),
+];
+
 /// `Std.Console`, for a workspace that has no standard library: the blocks
 /// a test writes with, as the stdlib has them, without its own tests, which
-/// read `Std.Unit`.
+/// read `Std.Unit`. It reaches WASI through [`CONSOLE_WASI`].
 fn console() -> String {
     let source = include_str!("../../../stdlib/Console.st");
     let tests = "\tNAMESPACE Test\n";
@@ -80,6 +97,9 @@ fn rk_test_shows_what_a_failed_test_wrote() {
     )
     .unwrap();
     std::fs::write(ws.path().join("console.st"), console()).unwrap();
+    for (name, text) in CONSOLE_WASI {
+        std::fs::write(ws.path().join(name), text).unwrap();
+    }
     std::fs::write(
         ws.path().join("main.st"),
         r#"

@@ -13,7 +13,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use debug_format::{DebugInfo, VarValue};
 use rstest::rstest;
 
-use super::{TestPlc, compile_with_libraries, fault_message, test_engine, with_db};
+use super::{STD_TIMERS, TestPlc, compile_with_libraries, fault_message, test_engine, with_db};
 
 /// The interfaces `Std.Timers` imports its clocks from.
 const MONOTONIC_CLOCK: &str = "wasi:clocks/monotonic-clock@0.3.0";
@@ -66,15 +66,7 @@ struct Readings {
 
 impl Readings {
     fn compile(db: &mut db::RootDatabase) -> Self {
-        let wasm = compile_with_libraries(
-            db,
-            &[
-                include_str!("../../../stdlib/Timers.st"),
-                include_str!("../../../stdlib/Convert.st"),
-                include_str!("../../../stdlib/Strings.st"),
-            ],
-            READINGS,
-        );
+        let wasm = compile_with_libraries(db, STD_TIMERS, READINGS);
         let engine = test_engine();
         let module = wasmtime::Module::new(&engine, &wasm).unwrap();
         Self { engine, module }
@@ -94,6 +86,10 @@ impl Readings {
         if let Some(zone) = zone {
             rk::test_host::wire_zone(&mut linker, TIMEZONE, zone).unwrap();
         }
+        // What the clocks do not read, a debug build imports too: it traps.
+        linker
+            .define_unknown_imports_as_traps(&self.module)
+            .unwrap();
         let instance = linker.instantiate(&mut store, &self.module).unwrap();
         Host { store, instance }
     }
@@ -337,15 +333,7 @@ impl Timers {
 /// wrap does expire.
 #[rstest]
 fn the_timers_survive_the_clocks_wrap(mut with_db: db::RootDatabase) {
-    let wasm = compile_with_libraries(
-        &mut with_db,
-        &[
-            include_str!("../../../stdlib/Timers.st"),
-            include_str!("../../../stdlib/Convert.st"),
-            include_str!("../../../stdlib/Strings.st"),
-        ],
-        TIMERS,
-    );
+    let wasm = compile_with_libraries(&mut with_db, STD_TIMERS, TIMERS);
     const MS: i64 = 1_000_000;
     let wrap = (1i64 << 31) * MS;
 
