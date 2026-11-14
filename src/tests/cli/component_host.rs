@@ -3,8 +3,10 @@
 
 //! A component on a wasmtime host, called through the async API as `rk test`
 //! calls one, with the WASI context a test gives it: its standard input,
-//! output and error, its clocks and its random numbers. Each call runs the host's side of the streams, which a
-//! synchronous call does only for what the host takes within it.
+//! output and error, its clocks, its random numbers and its sockets, and
+//! the functions a test defines beside them. Each call runs the host's side
+//! of the streams, which a synchronous call does only for what the host
+//! takes within it.
 
 use std::sync::Mutex;
 use std::task::{Context, Poll};
@@ -41,7 +43,7 @@ impl Gate {
     }
 }
 
-struct Host {
+pub(crate) struct Host {
     ctx: WasiCtx,
     table: ResourceTable,
 }
@@ -67,8 +69,9 @@ fn block_on<F: std::future::Future>(future: F) -> F::Output {
     }
 }
 
-/// A component on a host with WASI's command line, clocks and random
-/// numbers, `ctx` giving its streams, called through wasmtime's async API.
+/// A component on a host with WASI's command line, clocks, random numbers
+/// and sockets, `ctx` giving its streams, called through wasmtime's async
+/// API.
 pub(crate) struct Plc {
     store: wasmtime::Store<Host>,
     instance: wasmtime::component::Instance,
@@ -76,6 +79,16 @@ pub(crate) struct Plc {
 
 impl Plc {
     pub(crate) fn load(bytes: &[u8], ctx: WasiCtx) -> Self {
+        Self::load_with(bytes, ctx, |_| {})
+    }
+
+    /// [`Plc::load`] on a host that has what `define` gives it too: the
+    /// functions of an interface of the test's own.
+    pub(crate) fn load_with(
+        bytes: &[u8],
+        ctx: WasiCtx,
+        define: impl FnOnce(&mut Linker<Host>),
+    ) -> Self {
         let mut config = wasmtime::Config::new();
         config.wasm_exceptions(true);
         config.wasm_component_model_async(true);
@@ -85,6 +98,8 @@ impl Plc {
         wasmtime_wasi::p3::cli::add_to_linker(&mut linker).expect("WASI's command line");
         wasmtime_wasi::p3::clocks::add_to_linker(&mut linker).expect("WASI's clocks");
         wasmtime_wasi::p3::random::add_to_linker(&mut linker).expect("WASI's random numbers");
+        wasmtime_wasi::p3::sockets::add_to_linker(&mut linker).expect("WASI's sockets");
+        define(&mut linker);
         linker
             .define_unknown_imports_as_traps(&component)
             .expect("its other imports stubbed");
