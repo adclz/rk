@@ -40,6 +40,7 @@ mod initializer_forms;
 mod initializers;
 mod inout;
 mod instance_initializers;
+mod layout;
 mod locals;
 mod located;
 mod mir_smoke;
