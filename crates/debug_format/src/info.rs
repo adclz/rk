@@ -1793,16 +1793,17 @@ pub fn decode(ty: SymType, bytes: &[u8]) -> VarValue {
     let u32le = || u32::from_le_bytes(bytes[..4].try_into().unwrap());
     let i64le = || i64::from_le_bytes(bytes[..8].try_into().unwrap());
     let u64le = || u64::from_le_bytes(bytes[..8].try_into().unwrap());
+    let u16le = || u16::from_le_bytes(bytes[..2].try_into().unwrap());
     match ty {
-        SymType::Bool => VarValue::Bool(i32le() != 0),
-        SymType::SInt => VarValue::I8(i32le() as i8),
-        SymType::Int => VarValue::I16(i32le() as i16),
+        SymType::Bool => VarValue::Bool(bytes[0] != 0),
+        SymType::SInt => VarValue::I8(bytes[0] as i8),
+        SymType::Int => VarValue::I16(u16le() as i16),
         SymType::DInt => VarValue::I32(i32le()),
         SymType::LInt => VarValue::I64(i64le()),
-        SymType::USInt | SymType::Byte => VarValue::U8(u32le() as u8),
-        // A CHAR is a code point in the slot, not a byte.
+        SymType::USInt | SymType::Byte => VarValue::U8(bytes[0]),
+        // A CHAR is a code point, not a byte.
         SymType::Char => VarValue::U32(u32le()),
-        SymType::UInt | SymType::Word => VarValue::U16(u32le() as u16),
+        SymType::UInt | SymType::Word => VarValue::U16(u16le()),
         SymType::UDInt | SymType::DWord => VarValue::U32(u32le()),
         SymType::ULInt | SymType::LWord => VarValue::U64(u64le()),
         SymType::Real => VarValue::F32(f32::from_le_bytes(bytes[..4].try_into().unwrap())),
@@ -1829,16 +1830,15 @@ pub fn decode(ty: SymType, bytes: &[u8]) -> VarValue {
 /// Encode `value` for a variable of type `ty`, as the bytes to write.
 pub fn encode(ty: SymType, value: VarValue) -> Result<Vec<u8>, TypeMismatch> {
     let bytes = match (ty, value) {
-        (SymType::Bool, VarValue::Bool(b)) => (b as i32).to_le_bytes().to_vec(),
-        (SymType::SInt, VarValue::I8(v)) => (v as i32).to_le_bytes().to_vec(),
-        (SymType::Int, VarValue::I16(v)) => (v as i32).to_le_bytes().to_vec(),
+        (SymType::Bool, VarValue::Bool(b)) => vec![u8::from(b)],
+        (SymType::SInt, VarValue::I8(v)) => v.to_le_bytes().to_vec(),
+        (SymType::Int, VarValue::I16(v)) => v.to_le_bytes().to_vec(),
         (SymType::DInt, VarValue::I32(v)) => v.to_le_bytes().to_vec(),
         (SymType::LInt, VarValue::I64(v)) => v.to_le_bytes().to_vec(),
-        (SymType::USInt | SymType::Byte | SymType::Char, VarValue::U8(v)) => {
-            (v as u32).to_le_bytes().to_vec()
-        }
+        (SymType::USInt | SymType::Byte, VarValue::U8(v)) => vec![v],
+        (SymType::Char, VarValue::U8(v)) => u32::from(v).to_le_bytes().to_vec(),
         (SymType::Char, VarValue::U32(v)) => v.to_le_bytes().to_vec(),
-        (SymType::UInt | SymType::Word, VarValue::U16(v)) => (v as u32).to_le_bytes().to_vec(),
+        (SymType::UInt | SymType::Word, VarValue::U16(v)) => v.to_le_bytes().to_vec(),
         (SymType::UDInt | SymType::DWord, VarValue::U32(v)) => v.to_le_bytes().to_vec(),
         (SymType::ULInt | SymType::LWord, VarValue::U64(v)) => v.to_le_bytes().to_vec(),
         (SymType::Real, VarValue::F32(v)) => v.to_le_bytes().to_vec(),
@@ -3526,7 +3526,7 @@ mod follow_tests {
         ));
         assert_eq!(
             decode(SymType::Int, &[1]),
-            VarValue::Unavailable("1 bytes for a INT, which takes 4".to_string())
+            VarValue::Unavailable("1 bytes for a INT, which takes 2".to_string())
         );
         for path in [
             "narrow",

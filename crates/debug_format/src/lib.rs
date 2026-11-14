@@ -27,8 +27,10 @@ pub const DEBUG_SYMBOLS_SECTION: &str = "debug-symbols";
 /// `#[serde(default)]` only backfills a field missing from the end, and an
 /// older reader skips the fields past those it knows ([`tolerant`]). An enum
 /// variant is written by its name: its place in the enum is free, and a new
-/// one is what an older reader cannot step over.
-pub const DEBUG_SYMBOLS_VERSION: u16 = 10;
+/// one is what an older reader cannot step over. 11: a BOOL and an 8-bit
+/// integer take one byte, a 16-bit one two, where a reader before took 4
+/// bytes and would write past them.
+pub const DEBUG_SYMBOLS_VERSION: u16 = 11;
 
 /// The complete debug-symbol table for a module.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -393,11 +395,13 @@ impl SymType {
         }
     }
 
-    /// In-memory slot size in bytes. Every elementary value occupies a 4- or
-    /// 8-byte slot in linear memory.
+    /// In-memory size in bytes: a value's own, a BOOL and an 8-bit integer
+    /// one byte, a 16-bit one two, a CHAR a 4-byte code point.
     pub fn size_bytes(self) -> u32 {
         match self {
             SymType::String { capacity } => 4 + capacity,
+            SymType::Bool | SymType::SInt | SymType::USInt | SymType::Byte => 1,
+            SymType::Int | SymType::UInt | SymType::Word => 2,
             SymType::LInt
             | SymType::ULInt
             | SymType::LWord
