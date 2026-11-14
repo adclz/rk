@@ -6,7 +6,9 @@
 //! or a tuple passed in is one variable per field, as the canonical ABI
 //! flattens it; a record, a tuple, an option or a result that comes back is
 //! one output per field, which rk lays out as the canonical ABI lays out
-//! the value. Anything else is not generated yet, and says why.
+//! the value. What no record of outputs is laid out as, a variant or a
+//! result with a value and an error, is read by the generated code itself
+//! ([`crate::lift`]). Anything else is not generated yet, and says why.
 
 use wit_parser::{Handle, Resolve, Type, TypeDefKind, TypeId, TypeOwner};
 
@@ -101,6 +103,35 @@ pub fn definition(resolve: &Resolve, ty: Type) -> Option<&TypeDefKind> {
     }
 }
 
+/// The ST name of the type `id` defines, as code in `here` names it: by
+/// its own name in its interface, and from the root anywhere else.
+pub fn type_name(resolve: &Resolve, id: TypeId, here: Option<TypeOwner>) -> String {
+    let def = &resolve.types[id];
+    match here == Some(def.owner) {
+        true => names::upper(def.name.as_deref().unwrap_or("anonymous")),
+        false => qualified(resolve, id),
+    }
+}
+
+/// Whether `variant` has a case that holds a value: one that has none is a
+/// list of names, as an enum is.
+pub fn carries(variant: &wit_parser::Variant) -> bool {
+    variant.cases.iter().any(|case| case.ty.is_some())
+}
+
+/// The bit string flags are named values of, and its size in bytes: a
+/// BYTE up to 8 flags, a WORD up to 16, a DWORD up to 32, as the canonical
+/// ABI holds them. `None` for flags it holds otherwise, none or more.
+pub fn flags_base(flags: &wit_parser::Flags) -> Option<(&'static str, usize)> {
+    match flags.flags.len() {
+        0 => None,
+        1..=8 => Some(("BYTE", 1)),
+        9..=16 => Some(("WORD", 2)),
+        17..=32 => Some(("DWORD", 4)),
+        _ => None,
+    }
+}
+
 /// What `ty` is, in words, when it has no scalar ST type.
 pub fn what(resolve: &Resolve, ty: Type) -> &'static str {
     match resolved(resolve, ty) {
@@ -123,8 +154,9 @@ pub fn what(resolve: &Resolve, ty: Type) -> &'static str {
     }
 }
 
-/// The ST type of a scalar `ty`: a number or a BOOL, an enum, an alias of
-/// one, or a handle, which is a UDINT. `None` for anything else.
+/// The ST type of a scalar `ty`: a number or a BOOL, an enum, flags, a
+/// variant none of whose cases holds a value, an alias of one, or a handle,
+/// which is a UDINT. `None` for anything else.
 pub fn scalar(resolve: &Resolve, ty: Type, here: Option<TypeOwner>) -> Option<String> {
     let ty = through_uses(resolve, ty);
     let elementary = match ty {
@@ -142,12 +174,11 @@ pub fn scalar(resolve: &Resolve, ty: Type, here: Option<TypeOwner>) -> Option<St
         Type::Char | Type::String | Type::ErrorContext => return None,
         Type::Id(id) => {
             let def = &resolve.types[id];
-            let named = |resolve: &Resolve| match here == Some(def.owner) {
-                true => names::upper(def.name.as_deref().unwrap_or("anonymous")),
-                false => qualified(resolve, id),
-            };
+            let named = |resolve: &Resolve| type_name(resolve, id, here);
             return match &def.kind {
                 TypeDefKind::Enum(_) => Some(named(resolve)),
+                TypeDefKind::Flags(flags) => flags_base(flags).map(|_| named(resolve)),
+                TypeDefKind::Variant(variant) if !carries(variant) => Some(named(resolve)),
                 TypeDefKind::Type(inner) if def.name.is_some() => {
                     scalar(resolve, *inner, here).map(|_| named(resolve))
                 }

@@ -3,10 +3,15 @@
 
 //! ST declarations for the WIT interfaces a world imports, as wit-bindgen
 //! writes Rust for them: a FUNCTION for each function, an `{extern async}`
-//! FUNCTION_BLOCK for each async one, a typed enum for each enum, a TYPE for
-//! each alias of a scalar, the drop of each resource, and the built-ins of
-//! each stream's and future's type the interface takes or gives, once per
-//! type, under the name of its first function whose type has it.
+//! FUNCTION_BLOCK for each async one, a typed enum for each enum, for the
+//! cases of each variant and for each flags type, a TYPE for each alias of
+//! a scalar, the drop of each resource, and the built-ins of each stream's
+//! and future's type the interface takes or gives, once per type, under the
+//! name of its first function whose type has it.
+//!
+//! A result that holds a variant, or a value and an error, comes back in
+//! words, as the canonical ABI lays it out: the import is `<NAME>_RAW`, and
+//! `<NAME>` calls it and reads each value out of the words ([`lift`]).
 //!
 //! Each interface is a namespace inside its package's, inside `Wasi`, the
 //! one INTERNAL namespace: `wasi:clocks/monotonic-clock` is
@@ -16,14 +21,16 @@
 //! carries it: `Wasi.Cli.Stdout.BYTES_STREAM_NEW`. A function or a type ST
 //! cannot express yet is left out, and the file says why at its end.
 
+pub mod lift;
 pub mod names;
 pub mod shapes;
 
 use std::collections::HashMap;
 
+use wit_parser::abi::AbiVariant;
 use wit_parser::{
-    Docs, Function, FunctionKind, InterfaceId, Resolve, Type, TypeDefKind, TypeOwner, WorldId,
-    WorldItem,
+    Docs, Function, FunctionKind, Int, InterfaceId, Resolve, SizeAlign, Type, TypeDefKind,
+    TypeOwner, WorldId, WorldItem,
 };
 
 use shapes::{STRING_LIMIT, Shape, Var};
@@ -103,8 +110,13 @@ fn parse(dir: &str, files: &[(&str, &str)]) -> Result<wit_parser::UnresolvedPack
 /// imports them, then the built-ins of the streams and the futures their
 /// functions take or give.
 pub fn generate(resolve: &Resolve, world: WorldId) -> Result<Vec<File>, String> {
+    let mut sizes = SizeAlign::default();
+    sizes
+        .fill(resolve)
+        .map_err(|e| format!("laying out the world's types: {e:#}"))?;
     let mut generator = Generator {
         resolve,
+        sizes,
         files: Vec::new(),
     };
     for item in resolve.worlds[world].imports.values() {
@@ -124,13 +136,13 @@ pub fn generate(resolve: &Resolve, world: WorldId) -> Result<Vec<File>, String> 
 
 /// The text of a file under way, indented as deep as its namespaces.
 #[derive(Default)]
-struct Out {
+pub(crate) struct Out {
     text: String,
-    depth: usize,
+    pub(crate) depth: usize,
 }
 
 impl Out {
-    fn line(&mut self, line: &str) {
+    pub(crate) fn line(&mut self, line: &str) {
         if !line.is_empty() {
             for _ in 0..self.depth {
                 self.text.push('\t');
@@ -199,19 +211,56 @@ impl Carrier {
 }
 
 /// An interface's output under way, which its own built-ins join: the text,
-/// what it leaves out, the names its namespace holds, its sets by type, and
-/// the interface, for the types it names.
+/// what it leaves out, the names its namespace holds, its sets by type,
+/// whether its code converts what it reads, and the interface, for the
+/// types it names.
 struct Here<'a> {
     out: &'a mut Out,
     skipped: &'a mut Vec<Skipped>,
     taken: &'a mut HashMap<String, String>,
     sets: &'a mut Vec<(Carrier, String)>,
+    /// Set when a built-in's value is read out of words.
+    converts: &'a mut bool,
     owner: Option<TypeOwner>,
 }
 
 struct Generator<'a> {
     resolve: &'a Resolve,
+    /// Where the canonical ABI puts each type's values.
+    sizes: SizeAlign,
     files: Vec<File>,
+}
+
+/// What a function's result is declared as.
+enum Returned {
+    /// The FUNCTION's own value, or an output per field.
+    Fields(Shape),
+    /// Words the generated code reads its values out of.
+    Words(lift::Lifted),
+}
+
+/// The typed enum `name` on `base`, each of its `values` written `NAME :=
+/// number`.
+fn named_values(out: &mut Out, name: &str, base: &str, values: &[String]) {
+    out.line(&format!("TYPE {name} : {base} ("));
+    out.depth += 1;
+    let last = values.len().saturating_sub(1);
+    for (at, value) in values.iter().enumerate() {
+        out.line(&format!("{value}{}", if at == last { "" } else { "," }));
+    }
+    out.depth -= 1;
+    out.line("); END_TYPE");
+    out.line("");
+}
+
+/// The unsigned integer a case is held in.
+fn tag_base(tag: Int) -> &'static str {
+    match tag {
+        Int::U8 => "USINT",
+        Int::U16 => "UINT",
+        Int::U32 => "UDINT",
+        Int::U64 => "ULINT",
+    }
 }
 
 impl Generator<'_> {
@@ -260,11 +309,6 @@ impl Generator<'_> {
                     }),
                 },
                 TypeDefKind::Enum(enumeration) => {
-                    let base = match enumeration.cases.len() {
-                        0..=256 => "USINT",
-                        257..=65536 => "UINT",
-                        _ => "UDINT",
-                    };
                     let cases: Vec<String> = enumeration
                         .cases
                         .iter()
@@ -274,15 +318,61 @@ impl Generator<'_> {
                     let st_name = names::upper(name);
                     claim(&mut taken, &st_name, &format!("the enum `{name}`"), &module)?;
                     out.docs(&def.docs);
-                    out.line(&format!("TYPE {st_name} : {base} ("));
-                    out.depth += 1;
-                    let last = cases.len().saturating_sub(1);
-                    for (at, case) in cases.iter().enumerate() {
-                        out.line(&format!("{case}{}", if at == last { "" } else { "," }));
+                    named_values(&mut out, &st_name, tag_base(enumeration.tag()), &cases);
+                }
+                // A variant's cases, by name: what a case holds comes back
+                // beside it, read by the function that returns the variant.
+                TypeDefKind::Variant(variant) => {
+                    let cases: Vec<String> = variant
+                        .cases
+                        .iter()
+                        .enumerate()
+                        .map(|(at, case)| format!("{} := {at}", names::upper(&case.name)))
+                        .collect();
+                    let st_name = names::upper(name);
+                    claim(
+                        &mut taken,
+                        &st_name,
+                        &format!("the variant `{name}`"),
+                        &module,
+                    )?;
+                    out.docs(&def.docs);
+                    named_values(&mut out, &st_name, tag_base(variant.tag()), &cases);
+                    for case in &variant.cases {
+                        let Some(held) = case.ty else { continue };
+                        if let Some(what) = lift::unreadable(resolve, &self.sizes, held, here) {
+                            skipped.push(Skipped {
+                                item: format!("what `{}` of `{name}` holds", case.name),
+                                reason: format!("{what}, which an import cannot give back yet"),
+                            });
+                        }
                     }
-                    out.depth -= 1;
-                    out.line("); END_TYPE");
-                    out.line("");
+                }
+                // Each flag by name, a bit of the bit string that holds them.
+                TypeDefKind::Flags(flags) if shapes::flags_base(flags).is_some() => {
+                    let (base, bytes) = shapes::flags_base(flags).unwrap_or(("DWORD", 4));
+                    let digits = 2 * bytes;
+                    let values: Vec<String> = flags
+                        .flags
+                        .iter()
+                        .enumerate()
+                        .map(|(at, flag)| {
+                            format!(
+                                "{} := 16#{:0digits$X}",
+                                names::upper(&flag.name),
+                                1u32 << at
+                            )
+                        })
+                        .collect();
+                    let st_name = names::upper(name);
+                    claim(
+                        &mut taken,
+                        &st_name,
+                        &format!("the flags `{name}`"),
+                        &module,
+                    )?;
+                    out.docs(&def.docs);
+                    named_values(&mut out, &st_name, base, &values);
                 }
                 TypeDefKind::Resource => {
                     let drop = names::upper(&format!("{name}-drop"));
@@ -322,9 +412,16 @@ impl Generator<'_> {
         }
         // The sets of built-ins of this interface's own types, by type.
         let mut own_sets: Vec<(Carrier, String)> = Vec::new();
+        // Whether a result is read out of words, with `Std.Convert`.
+        let mut converts = false;
         for function in interface.functions.values() {
             match self.function(&mut out, &module, function, here) {
-                Ok(pou) => claim(&mut taken, &pou, &format!("`{}`", function.name), &module)?,
+                Ok(pous) => {
+                    converts |= pous.len() > 1;
+                    for pou in pous {
+                        claim(&mut taken, &pou, &format!("`{}`", function.name), &module)?;
+                    }
+                }
                 Err(reason) => skipped.push(Skipped {
                     item: format!("`{}`", function.name),
                     reason,
@@ -335,6 +432,7 @@ impl Generator<'_> {
                 skipped: &mut skipped,
                 taken: &mut taken,
                 sets: &mut own_sets,
+                converts: &mut converts,
                 owner: here,
             };
             self.built_ins(&module, function, &mut here_out)?;
@@ -349,6 +447,11 @@ impl Generator<'_> {
             wrapper.depth += 1;
             wrapper.docs(&interface.docs);
             wrapper.line(&format!("NAMESPACE {}", names::namespace(interface_name)));
+            if converts {
+                wrapper.depth += 1;
+                wrapper.line("USING Std.Convert;");
+                wrapper.line("");
+            }
             text.push_str(&wrapper.text);
             text.push_str(out.text.trim_end_matches('\n'));
             text.push('\n');
@@ -373,14 +476,16 @@ impl Generator<'_> {
     }
 
     /// The declaration of `function`, imported from `module`, written to
-    /// `out`, and its POU's name; `Err` says why it cannot be.
+    /// `out`, and its POU's name, after its import's where the two are
+    /// apart: `<NAME>_RAW`, whose words `<NAME>` reads the result out of.
+    /// `Err` says why it cannot be.
     fn function(
         &self,
         out: &mut Out,
         module: &str,
         function: &Function,
         here: Option<TypeOwner>,
-    ) -> Result<String, String> {
+    ) -> Result<Vec<String>, String> {
         let resolve = self.resolve;
         let Some(pou) = pou_name(resolve, function) else {
             return Err("it is a property, which rk does not import".to_string());
@@ -410,16 +515,46 @@ impl Generator<'_> {
                 "it takes a record among {flat} values, which an async call passes in memory as a tuple holding the record whole"
             ));
         }
-        let shape =
-            shapes::result(resolve, function.result, asynchronous, here).map_err(|what| {
-                format!("its result holds {what}, which an import cannot give back yet")
-            })?;
+        let returned = match shapes::result(resolve, function.result, asynchronous, here) {
+            Ok(shape) => Returned::Fields(shape),
+            // What no record of outputs is laid out as is read out of the
+            // words it comes back in, where the canonical ABI writes it in
+            // memory: an async call's result always, another's past one
+            // value.
+            Err(what) => {
+                let in_memory = asynchronous
+                    || resolve
+                        .wasm_signature(AbiVariant::GuestImport, function)
+                        .retptr;
+                let lifted = match function.result {
+                    Some(ty) if in_memory => lift::lift(resolve, &self.sizes, ty, here),
+                    _ => Err(what),
+                };
+                Returned::Words(lifted.map_err(|what| {
+                    format!("its result holds {what}, which an import cannot give back yet")
+                })?)
+            }
+        };
+        // A call that is not async returns a record in memory from two
+        // fields on.
+        let words = match &returned {
+            Returned::Words(lifted) => lifted.words(if asynchronous { 1 } else { 2 }),
+            Returned::Fields(_) => Vec::new(),
+        };
         let mut variables: Vec<&str> = inputs.iter().map(|var| var.name.as_str()).collect();
         if asynchronous {
             variables.push("DONE");
         }
-        if let Shape::Outputs(outputs) = &shape {
-            variables.extend(outputs.iter().map(|var| var.name.as_str()));
+        match &returned {
+            Returned::Fields(Shape::Outputs(outputs)) => {
+                variables.extend(outputs.iter().map(|var| var.name.as_str()));
+            }
+            Returned::Fields(_) => {}
+            Returned::Words(lifted) => {
+                variables.extend(lifted.outputs.iter().map(|var| var.name.as_str()));
+                variables.push("call");
+                variables.extend(words.iter().map(|var| var.name.as_str()));
+            }
         }
         for (at, variable) in variables.iter().enumerate() {
             if variables[..at]
@@ -432,8 +567,58 @@ impl Generator<'_> {
             }
         }
 
-        out.docs(&function.docs);
         let name = &function.name;
+        let shape = match returned {
+            Returned::Fields(shape) => shape,
+            Returned::Words(lifted) => {
+                let raw = format!("{pou}_RAW");
+                let passed: Vec<String> = inputs
+                    .iter()
+                    .map(|var| format!("{0} := {0}", var.name))
+                    .collect();
+                out.prose(&format!(
+                    "`{name}` as the host gives it: its result in words of 8 bytes, as the canonical ABI lays it out, which `{pou}` reads."
+                ));
+                match asynchronous {
+                    false => {
+                        out.line(&format!("{{extern '{module}' '{name}'}}"));
+                        out.line(&format!("FUNCTION PRIVATE {raw}"));
+                        out.vars("VAR_INPUT", &inputs);
+                        out.vars("VAR_OUTPUT", &words);
+                        out.line("END_FUNCTION");
+                        out.line("");
+                        out.docs(&function.docs);
+                        out.line(&format!("FUNCTION {pou}"));
+                        out.vars("VAR_INPUT", &inputs);
+                        out.vars("VAR_OUTPUT", &lifted.outputs);
+                        out.vars("VAR", &words);
+                        out.depth += 1;
+                        let received = words.iter().map(|var| format!("{0} => {0}", var.name));
+                        let arguments: Vec<String> = passed.into_iter().chain(received).collect();
+                        out.line(&format!("{raw}({});", arguments.join(", ")));
+                        lifted.write(out, "w");
+                        out.depth -= 1;
+                        out.line("END_FUNCTION");
+                    }
+                    true => {
+                        out.line(&format!("{{extern async '{module}' '{name}'}}"));
+                        out.line(&format!("FUNCTION_BLOCK {raw}"));
+                        out.vars("VAR_INPUT", &inputs);
+                        out.vars("VAR_OUTPUT", &[vec![done()], words].concat());
+                        out.line("END_FUNCTION_BLOCK");
+                        out.line("");
+                        out.docs(&function.docs);
+                        out.line(&format!("FUNCTION_BLOCK {pou}"));
+                        out.vars("VAR_INPUT", &inputs);
+                        reader(out, &raw, &passed.join(", "), &lifted);
+                        out.line("END_FUNCTION_BLOCK");
+                    }
+                }
+                out.line("");
+                return Ok(vec![raw, pou]);
+            }
+        };
+        out.docs(&function.docs);
         match asynchronous {
             false => {
                 out.line(&format!("{{extern '{module}' '{name}'}}"));
@@ -460,7 +645,7 @@ impl Generator<'_> {
             }
         }
         out.line("");
-        Ok(pou)
+        Ok(vec![pou])
     }
 
     /// The built-ins of each stream and future `function` takes or gives
@@ -504,8 +689,10 @@ impl Generator<'_> {
             );
             let written = built_in_set(
                 resolve,
+                &self.sizes,
                 here.out,
                 here.skipped,
+                here.converts,
                 carrier,
                 &name,
                 payload,
@@ -519,6 +706,34 @@ impl Generator<'_> {
         }
         Ok(())
     }
+}
+
+/// The outputs and the body of a block that reads its result out of the
+/// words of `raw`, the block of its import, called with `passed`: `DONE`
+/// and the values `lifted` reads, which take theirs in the call that sees
+/// the import's call finish.
+fn reader(out: &mut Out, raw: &str, passed: &str, lifted: &lift::Lifted) {
+    out.vars(
+        "VAR_OUTPUT",
+        &[vec![done()], lifted.outputs.clone()].concat(),
+    );
+    out.vars(
+        "VAR",
+        &[Var {
+            name: "call".to_string(),
+            ty: raw.to_string(),
+            flat: 1,
+        }],
+    );
+    out.depth += 1;
+    out.line(&format!("call({passed});"));
+    out.line("DONE := call.DONE;");
+    out.line("IF call.DONE THEN");
+    out.depth += 1;
+    lifted.write(out, "call.w");
+    out.depth -= 1;
+    out.line("END_IF;");
+    out.depth -= 1;
 }
 
 /// The POU `function` is declared as: a function by its name, a resource's
@@ -564,7 +779,7 @@ fn claim(
 }
 
 /// Whether what `ty` names is passed without a type of its own: a string,
-/// or field by field.
+/// or field by field, a variant that holds values among them.
 fn passed(resolve: &Resolve, ty: Type) -> bool {
     match shapes::resolved(resolve, ty) {
         Type::String => true,
@@ -575,6 +790,7 @@ fn passed(resolve: &Resolve, ty: Type) -> bool {
                     | TypeDefKind::Tuple(_)
                     | TypeDefKind::Option(_)
                     | TypeDefKind::Result(_)
+                    | TypeDefKind::Variant(_)
             )
         ),
         _ => false,
@@ -826,12 +1042,15 @@ fn capitals(name: &str) -> String {
 /// The built-ins of a stream's or a future's type, `name`, each imported as
 /// `import` says with the built-in's name in place of its `{}`, written to
 /// `out`, what is left out of them to `skipped`; the types they name, from
-/// `owner`. The names of the POUs written.
+/// `owner`. `converts` is set when a future's value is read out of words.
+/// The names of the POUs written.
 #[allow(clippy::too_many_arguments)]
 fn built_in_set(
     resolve: &Resolve,
+    sizes: &SizeAlign,
     out: &mut Out,
     skipped: &mut Vec<Skipped>,
+    converts: &mut bool,
     carrier: Carrier,
     name: &str,
     payload: Option<Type>,
@@ -939,13 +1158,20 @@ fn built_in_set(
             reason: "a stream's read or write moves bytes only".to_string(),
         }),
         Carrier::Future => {
-            match shapes::result(resolve, payload, true, owner) {
+            let reads = "Reads the value the future holds, which comes back after `DONE`.";
+            // A value no record of outputs is laid out as comes back in
+            // words, which the block reads it out of.
+            let lifted = |what| match payload {
+                Some(ty) => lift::lift(resolve, sizes, ty, owner),
+                None => Err(what),
+            };
+            match shapes::result(resolve, payload, true, owner).map_err(lifted) {
                 Ok(shape) => {
                     let mut outputs = vec![done()];
                     if let Shape::Outputs(fields) = shape {
                         outputs.extend(fields);
                     }
-                    out.prose("Reads the value the future holds, which comes back after `DONE`.");
+                    out.prose(reads);
                     out.line(&format!("{{extern async {}}}", pragma("read")));
                     out.line(&format!("FUNCTION_BLOCK {name}_READ"));
                     written.push(format!("{name}_READ"));
@@ -954,7 +1180,28 @@ fn built_in_set(
                     out.line("END_FUNCTION_BLOCK");
                     out.line("");
                 }
-                Err(what) => skipped.push(Skipped {
+                Err(Ok(lifted)) => {
+                    let raw = format!("{name}_READ_RAW");
+                    out.prose(&format!(
+                        "The future's read as the host gives it: its value in words of 8 bytes, as the canonical ABI lays it out, which `{name}_READ` reads."
+                    ));
+                    out.line(&format!("{{extern async {}}}", pragma("read")));
+                    out.line(&format!("FUNCTION_BLOCK {raw}"));
+                    out.vars("VAR_INPUT", &[handle(end)]);
+                    out.vars("VAR_OUTPUT", &[vec![done()], lifted.words(1)].concat());
+                    out.line("END_FUNCTION_BLOCK");
+                    out.line("");
+                    out.prose(reads);
+                    out.line(&format!("FUNCTION_BLOCK {name}_READ"));
+                    out.vars("VAR_INPUT", &[handle(end)]);
+                    reader(out, &raw, &format!("{end} := {end}"), &lifted);
+                    out.line("END_FUNCTION_BLOCK");
+                    out.line("");
+                    written.push(raw);
+                    written.push(format!("{name}_READ"));
+                    *converts = true;
+                }
+                Err(Err(what)) => skipped.push(Skipped {
                     item: format!("`{name}_READ`"),
                     reason: format!("its value holds {what}, which a read cannot give back yet"),
                 }),
