@@ -275,10 +275,8 @@ fn enum_values_continue_after_an_explicit_one(mut with_db: db::RootDatabase) {
 /// The declared base is the storage lane: an LINT-based enum is an 8-byte
 /// field carrying values above 2^31, where the hardcoded DInt storage
 /// truncated them and fed an i32 literal lane to an i64 load. (A SINT base
-/// still occupies a 4-byte slot — every type of 32 bits or less does, by
-/// this compiler's slot layout — so the lane, not the slot, is what the
-/// base changes there.) The retain band is the observable: real layout,
-/// real bytes.
+/// takes one byte, and the LINT after it is aligned to 8.) The retain band
+/// is the observable: real layout, real bytes.
 #[rstest]
 fn typed_enum_storage_follows_the_declared_base(mut with_db: db::RootDatabase) {
     let source = r#"
@@ -299,8 +297,8 @@ fn typed_enum_storage_follows_the_declared_base(mut with_db: db::RootDatabase) {
         END_CONFIGURATION
     "#;
     let (mir, wasm) = super::compile_to_mir_and_wasm(&mut with_db, source);
-    // s: the 4-byte slot at 0 every type of 32 bits or less takes, w: 8 bytes at
-    // 8 — 16 in all. The hardcoded-DInt world packed both as 4-byte fields into 8.
+    // s: one byte at 0, w: 8 bytes at 8, aligned to 8, 16 in all. The
+    // hardcoded-DInt world packed both as 4-byte fields into 8.
     assert_eq!(mir.retain_size, 16, "storage widths must follow the bases");
 
     let mut plc = crate::tests::codegen::TestPlc::load(&wasm).expect("load");

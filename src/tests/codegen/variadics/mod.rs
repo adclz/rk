@@ -273,7 +273,7 @@ fn variadic_called_from_a_program(mut with_db: db::RootDatabase) {
     let mut plc = TestPlc::load(&wasm).expect("load");
     plc.run(1).expect("scan");
     let r = plc.read_retain();
-    assert_eq!(i32::from_le_bytes(r[0..4].try_into().unwrap()), 15);
+    assert_eq!(i16::from_le_bytes(r[0..2].try_into().unwrap()), 15);
 }
 
 /// A pack collects every POSITIONAL argument wherever it sits in the list; a

@@ -12,6 +12,11 @@ fn read_first_i32(plc: &TestPlc) -> i32 {
     i32::from_le_bytes(plc.read_retain()[..4].try_into().unwrap())
 }
 
+/// The first retained value, an INT: its two bytes.
+fn read_first_int(plc: &TestPlc) -> i16 {
+    i16::from_le_bytes(plc.read_retain()[..2].try_into().unwrap())
+}
+
 /// A program field initializer runs once at load (before any scan), then the
 /// scan logic proceeds from it.
 #[rstest]
@@ -32,9 +37,9 @@ fn program_field_initializer_runs_once(mut with_db: db::RootDatabase) {
     let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
 
     let mut plc = TestPlc::load(&wasm).expect("load");
-    assert_eq!(read_first_i32(&plc), 7, "initializer applied at load");
+    assert_eq!(read_first_int(&plc), 7, "initializer applied at load");
     plc.run(1).expect("scan");
-    assert_eq!(read_first_i32(&plc), 8, "then incremented by the scan");
+    assert_eq!(read_first_int(&plc), 8, "then incremented by the scan");
 }
 
 /// A constant-expression initializer (arithmetic over literals) is evaluated
@@ -57,9 +62,9 @@ fn const_expr_initializer(mut with_db: db::RootDatabase) {
     let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
 
     let mut plc = TestPlc::load(&wasm).expect("load");
-    assert_eq!(read_first_i32(&plc), 14, "2 + 3*4 = 14 at load");
+    assert_eq!(read_first_int(&plc), 14, "2 + 3*4 = 14 at load");
     plc.run(1).expect("scan");
-    assert_eq!(read_first_i32(&plc), 15);
+    assert_eq!(read_first_int(&plc), 15);
 }
 
 /// A config VAR_GLOBAL initializer is applied at load and visible to programs.
@@ -83,7 +88,7 @@ fn global_initializer_applied(mut with_db: db::RootDatabase) {
 
     let mut plc = TestPlc::load(&wasm).expect("load");
     plc.run(1).expect("scan"); // Mirror copies g (== 42) into seen
-    let seen = i32::from_le_bytes(plc.read_retain()[..4].try_into().unwrap());
+    let seen = i16::from_le_bytes(plc.read_retain()[..2].try_into().unwrap());
     assert_eq!(seen, 42, "global initialized to 42, read by the program");
 }
 
@@ -108,7 +113,7 @@ fn array_initializer(mut with_db: db::RootDatabase) {
 
     let mut plc = TestPlc::load(&wasm).expect("load");
     plc.run(1).expect("scan");
-    assert_eq!(read_first_i32(&plc), 60, "10 + 20 + 30 from the array init");
+    assert_eq!(read_first_int(&plc), 60, "10 + 20 + 30 from the array init");
 }
 
 /// Nested multi-dim bracket init `[[1,2,3],[4,5,6]]` fills row-major. (Was a
@@ -138,8 +143,8 @@ fn nested_multidim_array_initializer(mut with_db: db::RootDatabase) {
     // a separate, unimplemented feature, so we verify the init via the band.)
     let plc = TestPlc::load(&wasm).expect("load");
     let r = plc.read_retain();
-    let vals: Vec<i32> = (0..6)
-        .map(|i| i32::from_le_bytes(r[i * 4..i * 4 + 4].try_into().unwrap()))
+    let vals: Vec<i16> = (0..6)
+        .map(|i| i16::from_le_bytes(r[i * 2..i * 2 + 2].try_into().unwrap()))
         .collect();
     assert_eq!(
         vals,
@@ -361,7 +366,7 @@ fn nested_repetition_array_initializer(mut with_db: db::RootDatabase) {
 
     let mut plc = TestPlc::load(&wasm).expect("load");
     plc.run(1).expect("scan");
-    assert_eq!(read_first_i32(&plc), 30, "[2(3(5))] = six 5s");
+    assert_eq!(read_first_int(&plc), 30, "[2(3(5))] = six 5s");
 }
 
 /// Underscore-separated repeat count `[1_0(7)]` = ten 7s. (Was a silent runtime
@@ -386,7 +391,7 @@ fn underscore_repeat_count_initializer(mut with_db: db::RootDatabase) {
 
     let mut plc = TestPlc::load(&wasm).expect("load");
     plc.run(1).expect("scan");
-    assert_eq!(read_first_i32(&plc), 70, "[1_0(7)] = ten 7s");
+    assert_eq!(read_first_int(&plc), 70, "[1_0(7)] = ten 7s");
 }
 
 /// A FUNCTION-local aggregate initializer is applied (prepended, re-run each
@@ -416,7 +421,7 @@ fn function_local_array_initializer(mut with_db: db::RootDatabase) {
     let mut plc = TestPlc::load(&wasm).expect("load");
     plc.run(1).expect("scan");
     assert_eq!(
-        read_first_i32(&plc),
+        read_first_int(&plc),
         123,
         "function-local array init [100,20,3]"
     );
@@ -446,7 +451,7 @@ fn struct_initializer(mut with_db: db::RootDatabase) {
     let mut plc = TestPlc::load(&wasm).expect("load");
     plc.run(1).expect("scan");
     assert_eq!(
-        read_first_i32(&plc),
+        read_first_int(&plc),
         304,
         "x*100 + y = 3*100 + 4 from struct init"
     );
@@ -909,7 +914,7 @@ fn type_defaults_apply_to_the_static_hosts(mut with_db: db::RootDatabase) {
     let mut plc = TestPlc::load(&wasm).expect("load");
     plc.run(1).expect("scan");
     assert_eq!(
-        read_first_i32(&plc),
+        read_first_int(&plc),
         3434,
         "TYPE defaults in a PROGRAM field AND a config global"
     );
@@ -962,7 +967,7 @@ fn type_default_constant_arith_reaches_both_hosts(mut with_db: db::RootDatabase)
     let mut plc = TestPlc::load(&wasm).expect("load");
     plc.run(1).expect("scan");
     assert_eq!(
-        read_first_i32(&plc),
+        read_first_int(&plc),
         77,
         "7 at the static host, 7 at the local host"
     );
@@ -1256,7 +1261,7 @@ fn function_local_initializer_names_a_global(mut with_db: db::RootDatabase) {
     let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
     let mut plc = TestPlc::load(&wasm).expect("load");
     plc.run(1).expect("scan");
-    let seen = i32::from_le_bytes(plc.read_retain()[..4].try_into().unwrap());
+    let seen = i16::from_le_bytes(plc.read_retain()[..2].try_into().unwrap());
     assert_eq!(seen, 73);
 }
 

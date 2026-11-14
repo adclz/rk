@@ -349,13 +349,13 @@ fn a_period_past_32_bits_is_carried_whole(mut with_db: db::RootDatabase) {
         "49d17h2m47s296ms is exactly 2^32 ticks of 1ms"
     );
 
-    // Retain band holds [a, b] (declaration order), 4 bytes each. Eight ticks:
+    // Retain band holds [a, b] (declaration order), 2 bytes each. Eight ticks:
     // Fast fires on every one, Rare on tick 0 and not again for 49 days.
     let mut plc = TestPlc::load(&wasm).expect("load");
     plc.run(8).expect("scans");
     let r = plc.read_retain();
-    let a = i32::from_le_bytes(r[0..4].try_into().unwrap());
-    let b = i32::from_le_bytes(r[4..8].try_into().unwrap());
+    let a = i16::from_le_bytes(r[0..2].try_into().unwrap());
+    let b = i16::from_le_bytes(r[2..4].try_into().unwrap());
     assert_eq!(
         (a, b),
         (8, 1),
@@ -387,16 +387,16 @@ fn two_instances_of_one_program_type_are_independent(mut with_db: db::RootDataba
     "#;
     let (mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
 
-    // Two independent Counter instances => an 8-byte retain band ([P1.n, P2.n]).
-    assert_eq!(mir.retain_size, 8, "two INT instances => 8 bytes");
+    // Two independent Counter instances => a 4-byte retain band ([P1.n, P2.n]).
+    assert_eq!(mir.retain_size, 4, "two INT instances => 4 bytes");
 
     let mut plc = TestPlc::load(&wasm).expect("load");
     plc.run(4).expect("scans");
 
     // Fast ran at ticks 0,1,2,3 (4x); Slow at 0,2 (2x). Same type, distinct state.
     let r = plc.read_retain();
-    let p1 = i32::from_le_bytes(r[0..4].try_into().unwrap());
-    let p2 = i32::from_le_bytes(r[4..8].try_into().unwrap());
+    let p1 = i16::from_le_bytes(r[0..2].try_into().unwrap());
+    let p2 = i16::from_le_bytes(r[2..4].try_into().unwrap());
     assert_eq!((p1, p2), (4, 2), "independent per-instance state");
 }
 
@@ -440,8 +440,7 @@ fn a_program_connection_copies_in_and_out(mut with_db: db::RootDatabase) {
     let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
     let info = DebugInfo::from_wasm(&wasm);
     let mut plc = crate::tests::codegen::TestPlc::load(&wasm).expect("load");
-    plc.write_located("%IX0.0", &1i32.to_le_bytes())
-        .expect("x1");
+    plc.write_located("%IX0.0", &[1]).expect("x1");
     plc.run(2).expect("scans");
     let total = u16::from_le_bytes(
         plc.read_located("%QW0").expect("total")[..2]

@@ -37,7 +37,7 @@ fn the_host_writes_an_input_the_program_reads(mut with_db: db::RootDatabase) {
     let (mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
 
     // One INT input, and nothing in the other two areas.
-    assert_eq!(mir.input_size, 4);
+    assert_eq!(mir.input_size, 2);
     assert_eq!(mir.output_size, 0);
     assert_eq!(mir.marker_size, 0);
     // A located global is NOT in the globals band: the host copies a whole
@@ -46,13 +46,13 @@ fn the_host_writes_an_input_the_program_reads(mut with_db: db::RootDatabase) {
     assert!(!exports(&wasm, "output_base"), "no %Q was declared");
 
     let mut plc = TestPlc::load(&wasm).expect("load");
-    assert_eq!(plc.input_region().size, 4);
+    assert_eq!(plc.input_region().size, 2);
 
-    plc.write_inputs(0, &1234i32.to_le_bytes())
+    plc.write_inputs(0, &1234i16.to_le_bytes())
         .expect("write the input image");
     plc.run(1).expect("scan");
     assert_eq!(
-        i32::from_le_bytes(plc.read_retain()[..4].try_into().unwrap()),
+        i16::from_le_bytes(plc.read_retain()[..2].try_into().unwrap()),
         1234,
         "the program read what the host put in the input band"
     );
@@ -78,13 +78,13 @@ fn the_program_writes_an_output_the_host_reads(mut with_db: db::RootDatabase) {
     "#;
     let (mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
     assert_eq!(mir.input_size, 0);
-    assert_eq!(mir.output_size, 4);
+    assert_eq!(mir.output_size, 2);
     assert!(!exports(&wasm, "input_base"), "no %I was declared");
 
     let mut plc = TestPlc::load(&wasm).expect("load");
     plc.run(3).expect("scans");
     assert_eq!(
-        i32::from_le_bytes(plc.read_outputs()[..4].try_into().unwrap()),
+        i16::from_le_bytes(plc.read_outputs()[..2].try_into().unwrap()),
         6,
         "three scans of +2, read back from the output band"
     );
@@ -118,13 +118,13 @@ fn each_area_is_one_contiguous_band(mut with_db: db::RootDatabase) {
 
     assert_eq!(
         (mir.input_size, mir.output_size, mir.marker_size),
-        (4, 4, 4)
+        (2, 2, 2)
     );
-    assert_eq!(mir.globals_size, 4, "only the unlocated global is here");
-    assert_eq!(mir.output_base, mir.input_base + 4);
-    assert_eq!(mir.marker_base, mir.output_base + 4);
+    assert_eq!(mir.globals_size, 2, "only the unlocated global is here");
+    assert_eq!(mir.output_base, mir.input_base + 2);
+    assert_eq!(mir.marker_base, mir.output_base + 2);
     assert!(
-        mir.globals_base >= mir.marker_base + 4,
+        mir.globals_base >= mir.marker_base + 2,
         "the globals band follows the located ones"
     );
 }
@@ -160,18 +160,18 @@ fn a_band_is_ordered_by_address_not_by_declaration(mut with_db: db::RootDatabase
         END_CONFIGURATION
     "#;
     let (mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
-    assert_eq!(mir.input_size, 8, "two INTs in the input band");
+    assert_eq!(mir.input_size, 4, "two INTs in the input band");
 
     // `%IW2` is declared second and still comes first in the band, so the
-    // first four bytes a host writes are `early`'s.
+    // first two bytes a host writes are `early`'s.
     let mut plc = TestPlc::load(&wasm).expect("load");
-    plc.write_inputs(0, &1i32.to_le_bytes())
+    plc.write_inputs(0, &1i16.to_le_bytes())
         .expect("first slot");
-    plc.write_inputs(4, &2i32.to_le_bytes())
+    plc.write_inputs(2, &2i16.to_le_bytes())
         .expect("second slot");
     plc.run(1).expect("scan");
     assert_eq!(
-        i32::from_le_bytes(plc.read_retain()[..4].try_into().unwrap()),
+        i16::from_le_bytes(plc.read_retain()[..2].try_into().unwrap()),
         102,
         "the low slot is %IW2 (`early`), not the first-declared %IW8"
     );
@@ -264,7 +264,7 @@ fn the_map_names_every_address(mut with_db: db::RootDatabase) {
     assert_eq!(start.area, debug_format::LocatedArea::Input);
     assert_eq!(start.path, vec![0, 0]);
     assert_eq!(start.width, 1, "X names one bit");
-    assert_eq!(start.size, 4, "and the BOOL that holds it takes four bytes");
+    assert_eq!(start.size, 1, "and the BOOL that holds it takes one byte");
     assert_eq!(start.ty, Some(debug_format::SymType::Bool));
     assert_eq!(start.addr, mir.input_base);
 
@@ -321,12 +321,12 @@ fn a_host_binds_by_address(mut with_db: db::RootDatabase) {
     let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
     let mut plc = TestPlc::load(&wasm).expect("load");
 
-    plc.write_located("%IW4", &21i32.to_le_bytes())
+    plc.write_located("%IW4", &21i16.to_le_bytes())
         .expect("bind and write the input channel");
     plc.run(1).expect("scan");
     assert_eq!(
-        i32::from_le_bytes(
-            plc.read_located("%QW0").expect("read")[..4]
+        i16::from_le_bytes(
+            plc.read_located("%QW0").expect("read")[..2]
                 .try_into()
                 .unwrap()
         ),
@@ -436,7 +436,7 @@ fn a_cell_that_moves_in_its_area_is_another_layout(#[allow(unused)] with_db: db:
             .and_then(|e| e.offset)
     };
     assert_eq!(offset(&plain, "%MW0"), Some(0));
-    assert_eq!(offset(&retained, "%MW0"), Some(4), "the retained cell last");
+    assert_eq!(offset(&retained, "%MW0"), Some(2), "the retained cell last");
     assert_eq!(offset(&retained, "%MW2"), Some(0));
     assert_ne!(
         plain.located_map.layout_hash, retained.located_map.layout_hash,
@@ -532,18 +532,18 @@ fn a_retained_marker_is_in_the_marker_and_retain_bands(mut with_db: db::RootData
 
     let count = plc.located("%MW0").expect("count");
     let scratch = plc.located("%MW4").expect("scratch");
-    assert_eq!(mir.marker_size, 8, "both markers are in the marker band");
+    assert_eq!(mir.marker_size, 4, "both markers are in the marker band");
 
     // The transient cell comes first even though its address number is
     // higher: the retained one has to END the area.
     assert_eq!(scratch.addr, mir.marker_base);
-    assert_eq!(count.addr, mir.marker_base + 4);
+    assert_eq!(count.addr, mir.marker_base + 2);
 
     // And the retain band starts exactly there, and holds that cell alone:
     // `scratch` is in the marker band ahead of it and `g` is a global past
     // where the band ends, so neither is inside.
     assert_eq!(mir.retain_base, count.addr);
-    assert_eq!(mir.retain_size, 4);
+    assert_eq!(mir.retain_size, 2);
 
     // The map names the retained cell, and only it.
     let names: Vec<&str> = mir
@@ -554,7 +554,7 @@ fn a_retained_marker_is_in_the_marker_and_retain_bands(mut with_db: db::RootData
         .collect();
     assert_eq!(names, ["count"]);
     let range = &mir.retain_map.ranges[0];
-    assert_eq!((range.addr, range.size), (count.addr, 4));
+    assert_eq!((range.addr, range.size), (count.addr, 2));
 }
 
 /// End to end: the value survives a power cycle when the host restores the
@@ -577,8 +577,8 @@ fn a_retained_marker_survives_a_power_cycle(mut with_db: db::RootDatabase) {
     "#;
     let (mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
     let read = |plc: &TestPlc| {
-        i32::from_le_bytes(
-            plc.read_located("%MW0").expect("read")[..4]
+        i16::from_le_bytes(
+            plc.read_located("%MW0").expect("read")[..2]
                 .try_into()
                 .unwrap(),
         )
@@ -639,7 +639,7 @@ fn a_transient_marker_leaves_the_retain_band_alone(mut with_db: db::RootDatabase
     let plc = TestPlc::load(&wasm).expect("load");
     let flag = plc.located("%MW0").expect("flag");
 
-    assert_eq!(mir.marker_size, 4);
+    assert_eq!(mir.marker_size, 2);
     assert_eq!(
         mir.retain_base, mir.globals_base,
         "with nothing retained in %M, the band opens on the retained globals, \
@@ -696,7 +696,7 @@ fn a_retained_marker_and_a_retained_global_share_one_band(mut with_db: db::RootD
     // The band opens on the retained marker, and the retained globals start
     // exactly where the retained markers end.
     assert_eq!(mir.retain_base, marks.addr);
-    assert_eq!(mir.globals_base, marks.addr + 4);
+    assert_eq!(mir.globals_base, marks.addr + 2);
 
     // The band closes where the retained globals end, and the transient one
     // starts there — so no transient VARIABLE is inside it. Stated as the two
@@ -705,11 +705,11 @@ fn a_retained_marker_and_a_retained_global_share_one_band(mut with_db: db::RootD
     let retain_end = mir.retain_base + mir.retain_size;
     assert_eq!(
         retain_end,
-        mir.globals_base + 4,
+        mir.globals_base + 2,
         "the band closes on the end of the retained global"
     );
     assert_eq!(
-        mir.globals_size, 8,
+        mir.globals_size, 4,
         "the retained global, then the loose one"
     );
     assert!(
@@ -738,8 +738,8 @@ fn a_retained_marker_and_a_retained_global_share_one_band(mut with_db: db::RootD
 /// not the sum of the retained ranges.
 ///
 /// `globals_base` aligns to the largest alignment the bands contain, so a
-/// retained LREAL global behind a retained INT marker leaves four bytes
-/// between them. Those bytes are inside the retain band and belong to no
+/// retained LREAL global behind a retained INT marker leaves a gap between
+/// them. Those bytes are inside the retain band and belong to no
 /// variable at all — which is the distinction that matters: a host may
 /// restore the whole band without bringing anything transient back, because
 /// what is unaccounted for is padding, never a variable.
@@ -775,11 +775,11 @@ fn a_padded_retain_band_holds_no_transient(mut with_db: db::RootDatabase) {
     // But it is LONGER than what it holds, by exactly the gap the LREAL's
     // alignment opened after the marker.
     let mapped: u32 = mir.retain_map.ranges.iter().map(|r| r.size).sum();
-    assert_eq!(mapped, 12, "an INT and an LREAL");
+    assert_eq!(mapped, 10, "an INT and an LREAL");
     let padding = mir.retain_size - mapped;
     assert_eq!(
         padding,
-        mir.globals_base - (marks.addr + 4),
+        mir.globals_base - (marks.addr + 2),
         "the shortfall is the alignment gap and nothing else"
     );
     assert!(padding > 0, "this layout is the one that has a gap");
@@ -792,7 +792,7 @@ fn a_padded_retain_band_holds_no_transient(mut with_db: db::RootDatabase) {
             .iter()
             .all(|r| r.addr >= mir.retain_base && r.addr + r.size <= retain_end)
     );
-    assert!(mir.globals_base > marks.addr + 4);
+    assert!(mir.globals_base > marks.addr + 2);
 }
 
 /// A bare address and a VAR_GLOBAL declared `AT` it are ONE cell: lowering
@@ -828,8 +828,8 @@ fn a_bare_address_and_its_declaration_are_one_cell(mut with_db: db::RootDatabase
     let (mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
 
     // Three declared cells and no fourth or fifth for the bare mentions.
-    assert_eq!(mir.input_size, 4, "one input cell, not one per spelling");
-    assert_eq!(mir.output_size, 8, "two output cells");
+    assert_eq!(mir.input_size, 2, "one input cell, not one per spelling");
+    assert_eq!(mir.output_size, 4, "two output cells");
     let mut plc = TestPlc::load(&wasm).expect("load");
     let names: Vec<(&str, &str)> = plc
         .located_map()
@@ -843,12 +843,12 @@ fn a_bare_address_and_its_declaration_are_one_cell(mut with_db: db::RootDatabase
         "each address once, under the name it was declared with"
     );
 
-    plc.write_located("%IW0", &0x1234i32.to_le_bytes())
+    plc.write_located("%IW0", &0x1234u16.to_le_bytes())
         .expect("bind the input channel");
     plc.run(1).expect("scan");
     let read = |address: &str| {
-        i32::from_le_bytes(
-            plc.read_located(address).expect("read")[..4]
+        u16::from_le_bytes(
+            plc.read_located(address).expect("read")[..2]
                 .try_into()
                 .unwrap(),
         )
@@ -899,21 +899,21 @@ fn a_narrower_address_is_bits_of_the_wider_one(mut with_db: db::RootDatabase) {
     "#;
     let (mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
     assert_eq!(
-        mir.input_size, 4,
+        mir.input_size, 2,
         "`%IX0.3`, `%IB1` and `ready` are `status`'s bits"
     );
     assert_eq!(
-        mir.output_size, 4,
+        mir.output_size, 2,
         "`%QX0.0`, `%QX0.1` and `%QB1` are `lamps`'s bits"
     );
 
     let mut plc = TestPlc::load(&wasm).expect("load");
     // Bit 3 set, and the high byte 0x8A, whose top bit is `%IX1.7`.
-    plc.write_located("%IW0", &0x8A08i32.to_le_bytes())
+    plc.write_located("%IW0", &0x8A08u16.to_le_bytes())
         .expect("write the input word");
     plc.run(1).expect("scan");
-    let lamps = i32::from_le_bytes(
-        plc.read_located("%QW0").expect("read")[..4]
+    let lamps = u16::from_le_bytes(
+        plc.read_located("%QW0").expect("read")[..2]
             .try_into()
             .unwrap(),
     );
@@ -946,8 +946,8 @@ fn a_write_into_a_view_keeps_the_other_bits(mut with_db: db::RootDatabase) {
     let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
     let mut plc = TestPlc::load(&wasm).expect("load");
     plc.run(1).expect("scan");
-    let lamps = i32::from_le_bytes(
-        plc.read_located("%QW0").expect("read")[..4]
+    let lamps = u16::from_le_bytes(
+        plc.read_located("%QW0").expect("read")[..2]
             .try_into()
             .unwrap(),
     );
@@ -1016,8 +1016,8 @@ fn siblings_and_deep_addresses_keep_their_own_cells(mut with_db: db::RootDatabas
         END_CONFIGURATION
     "#;
     let (mir, _wasm) = compile_to_mir_and_wasm(&mut with_db, source);
-    assert_eq!(mir.input_size, 8, "`%IW0` and `%IW1` are bytes 0-1 and 2-3");
-    assert_eq!(mir.marker_size, 8, "`%MW1.7.9` has no byte reading");
+    assert_eq!(mir.input_size, 4, "`%IW0` and `%IW1` are bytes 0-1 and 2-3");
+    assert_eq!(mir.marker_size, 4, "`%MW1.7.9` has no byte reading");
 }
 
 /// The idiom the whole change is for: an FB output bound straight to a bit of
@@ -1053,24 +1053,24 @@ fn an_fb_output_bound_to_a_view_sets_its_bit(mut with_db: db::RootDatabase) {
     "#;
     let (mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
     assert_eq!(
-        mir.output_size, 4,
+        mir.output_size, 2,
         "`%QX0.3` and `%QX1.0` are `lamps`'s bits"
     );
     let read = |plc: &TestPlc| {
-        i32::from_le_bytes(
-            plc.read_located("%QW0").expect("read")[..4]
+        u16::from_le_bytes(
+            plc.read_located("%QW0").expect("read")[..2]
                 .try_into()
                 .unwrap(),
         )
     };
 
     let mut plc = TestPlc::load(&wasm).expect("load");
-    plc.write_located("%IW0", &0b01i32.to_le_bytes())
+    plc.write_located("%IW0", &0b01u16.to_le_bytes())
         .expect("input");
     plc.run(1).expect("scan");
     assert_eq!(read(&plc), 0x00F8, "bit 3 set, the preset bits kept");
 
-    plc.write_located("%IW0", &0b10i32.to_le_bytes())
+    plc.write_located("%IW0", &0b10u16.to_le_bytes())
         .expect("input");
     plc.run(1).expect("scan");
     assert_eq!(
@@ -1118,13 +1118,13 @@ fn the_map_lists_a_part_at_its_owners_cell(mut with_db: db::RootDatabase) {
     assert_eq!(byte.part_of.as_ref().map(|p| p.shift), Some(8));
 
     // Bound as a host would: by the part's own address.
-    plc.write_located("%IX1.7", &1i32.to_le_bytes())
+    plc.write_located("%IX1.7", &1u16.to_le_bytes())
         .expect("set the bit");
-    plc.write_located("%IB1", &0x80i32.to_le_bytes())
+    plc.write_located("%IB1", &0x80u16.to_le_bytes())
         .expect("the byte, same bit");
     plc.run(1).expect("scan");
     let low = |plc: &TestPlc, a: &str| {
-        i32::from_le_bytes(plc.read_located(a).expect("read")[..4].try_into().unwrap())
+        u16::from_le_bytes(plc.read_located(a).expect("read")[..2].try_into().unwrap())
     };
     assert_eq!(low(&plc, "%IW0"), 0x8000, "the byte's top bit is `ready`");
     assert_eq!(low(&plc, "%QX0.0"), 1, "`ready` reached the output bit");
@@ -1158,8 +1158,8 @@ fn a_part_written_into_a_signed_owner_keeps_its_sign(mut with_db: db::RootDataba
     let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
     let mut plc = TestPlc::load(&wasm).expect("load");
     plc.run(1).expect("scan");
-    let flags = i32::from_le_bytes(
-        plc.read_located("%QW1").expect("read")[..4]
+    let flags = u16::from_le_bytes(
+        plc.read_located("%QW1").expect("read")[..2]
             .try_into()
             .unwrap(),
     );
@@ -1168,8 +1168,7 @@ fn a_part_written_into_a_signed_owner_keeps_its_sign(mut with_db: db::RootDataba
 
 /// A host writes a part by replacing its bits in the owner's cell, with no
 /// notion of the owner's type. Setting the top bit of an INT that way makes
-/// it negative: only the owner's own two bytes are its value, whatever the
-/// rest of its four-byte slot holds.
+/// it negative: the INT is its two bytes, read with their sign.
 #[rstest]
 fn a_host_setting_the_sign_bit_of_a_signed_owner_makes_it_negative(mut with_db: db::RootDatabase) {
     let source = r#"
@@ -1191,16 +1190,16 @@ fn a_host_setting_the_sign_bit_of_a_signed_owner_makes_it_negative(mut with_db: 
     let mut plc = TestPlc::load(&wasm).expect("load");
     // `%IX1.7` is not in the program: the map lists only what it names, so
     // the host sets bit 15 through the owner, the way a part is written.
-    let cell = i32::from_le_bytes(
-        plc.read_located("%IW0").expect("read")[..4]
+    let cell = u16::from_le_bytes(
+        plc.read_located("%IW0").expect("read")[..2]
             .try_into()
             .unwrap(),
     );
     plc.write_located("%IW0", &(cell | 0x8000).to_le_bytes())
         .expect("set the top bit");
     plc.run(1).expect("scan");
-    let flags = i32::from_le_bytes(
-        plc.read_located("%QW0").expect("read")[..4]
+    let flags = u16::from_le_bytes(
+        plc.read_located("%QW0").expect("read")[..2]
             .try_into()
             .unwrap(),
     );
@@ -1240,11 +1239,16 @@ fn a_signed_part_reads_and_writes_signed(mut with_db: db::RootDatabase) {
     "#;
     let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
     let mut plc = TestPlc::load(&wasm).expect("load");
-    plc.write_located("%IW0", &0x80FFi32.to_le_bytes())
+    plc.write_located("%IW0", &0x80FFu16.to_le_bytes())
         .expect("write the input word");
     plc.run(1).expect("scan");
+    // A cell of its own width, zero-extended: a WORD is two bytes, a DWORD
+    // four.
     let read = |plc: &TestPlc, a: &str| {
-        u32::from_le_bytes(plc.read_located(a).expect("read")[..4].try_into().unwrap())
+        let cell = plc.read_located(a).expect("read");
+        let mut word = [0u8; 4];
+        word[..cell.len()].copy_from_slice(&cell);
+        u32::from_le_bytes(word)
     };
     assert_eq!(
         read(&plc, "%QW0") & 0b1111,
@@ -1339,8 +1343,13 @@ fn a_bit_of_a_real_owner_is_a_bit_of_its_encoding(mut with_db: db::RootDatabase)
     let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
     let mut plc = TestPlc::load(&wasm).expect("load");
     plc.run(1).expect("scan");
+    // A cell of its own width, zero-extended: the REAL four bytes, the
+    // BOOL holding `%QX4.0` one.
     let word = |plc: &TestPlc, a: &str| {
-        u32::from_le_bytes(plc.read_located(a).expect("read")[..4].try_into().unwrap())
+        let cell = plc.read_located(a).expect("read");
+        let mut word = [0u8; 4];
+        word[..cell.len()].copy_from_slice(&cell);
+        u32::from_le_bytes(word)
     };
     assert_eq!(f32::from_bits(word(&plc, "%QD0")), -1.5);
     assert_eq!(word(&plc, "%QX4.0"), 1, "the program reads -1.5 back");
@@ -1425,7 +1434,7 @@ fn a_debugger_reads_and_forces_a_part_by_its_name(mut with_db: db::RootDatabase)
     let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
     let info = DebugInfo::from_wasm(&wasm);
     let mut plc = TestPlc::load(&wasm).expect("load");
-    plc.write_located("%QW0", &0x8005i32.to_le_bytes())
+    plc.write_located("%QW0", &0x8005u16.to_le_bytes())
         .expect("preset the word");
 
     let read = |plc: &TestPlc, path: &str| {
@@ -1633,7 +1642,7 @@ fn a_programs_located_variable_is_one_cell_for_every_instance(mut with_db: db::R
     "#;
     let (mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
     assert_eq!(
-        mir.output_size, 4,
+        mir.output_size, 2,
         "one cell for `echo`, not one per instance"
     );
     let mut plc = TestPlc::load(&wasm).expect("load");
@@ -1658,15 +1667,14 @@ fn a_programs_located_variable_is_one_cell_for_every_instance(mut with_db: db::R
     );
 
     let word = |plc: &TestPlc, a: &str| {
-        i32::from_le_bytes(plc.read_located(a).expect("read")[..4].try_into().unwrap())
+        i16::from_le_bytes(plc.read_located(a).expect("read")[..2].try_into().unwrap())
     };
     assert_eq!(
         word(&plc, "%MW0"),
         10,
         "`__init` wrote the initial value once"
     );
-    plc.write_located("%IX0.0", &1i32.to_le_bytes())
-        .expect("start");
+    plc.write_located("%IX0.0", &[1]).expect("start");
     plc.run(1).expect("scan");
     assert_eq!(
         word(&plc, "%MW0"),
@@ -1722,18 +1730,18 @@ fn a_programs_located_variable_can_be_a_part(mut with_db: db::RootDatabase) {
     let (mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
     assert_eq!(
         (mir.input_size, mir.output_size),
-        (4, 4),
+        (2, 2),
         "the words' cells only"
     );
     let mut plc = TestPlc::load(&wasm).expect("load");
     let ready = plc.located("%IX1.7").expect("ready").clone();
     assert_eq!(ready.name, "P.ready");
     assert_eq!(ready.part_of.as_ref().map(|p| p.shift), Some(15));
-    plc.write_located("%IW0", &0x8000i32.to_le_bytes())
+    plc.write_located("%IW0", &0x8000u16.to_le_bytes())
         .expect("input");
     plc.run(1).expect("scan");
-    let lamps = i32::from_le_bytes(
-        plc.read_located("%QW0").expect("read")[..4]
+    let lamps = u16::from_le_bytes(
+        plc.read_located("%QW0").expect("read")[..2]
             .try_into()
             .unwrap(),
     );
@@ -1796,8 +1804,12 @@ fn a_function_block_variable_is_located_per_instance(mut with_db: db::RootDataba
     "#;
     let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
     let mut plc = TestPlc::load(&wasm).expect("load");
+    // A cell of its own width, zero-extended: an INT two bytes, a BOOL one.
     let word = |plc: &TestPlc, a: &str| {
-        i32::from_le_bytes(plc.read_located(a).expect("read")[..4].try_into().unwrap())
+        let cell = plc.read_located(a).expect("read");
+        let mut word = [0u8; 4];
+        word[..cell.len()].copy_from_slice(&cell);
+        i32::from_le_bytes(word)
     };
     assert_eq!(
         word(&plc, "%MW0"),
@@ -1805,7 +1817,7 @@ fn a_function_block_variable_is_located_per_instance(mut with_db: db::RootDataba
         "`__init` wrote `Tally`'s default to a's marker"
     );
     assert_eq!(word(&plc, "%MW1"), 5, "and to b's");
-    plc.write_located("%IW0", &3i32.to_le_bytes())
+    plc.write_located("%IW0", &3i16.to_le_bytes())
         .expect("a's level");
     plc.run(1).expect("scan");
     assert_eq!(word(&plc, "%QX0.0"), 1, "a saw its level");
@@ -1896,9 +1908,13 @@ fn a_declared_initial_value_wins_over_a_located_variables_default(mut with_db: d
     "#;
     let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
     let plc = TestPlc::load(&wasm).expect("load");
+    // A cell of its own width, zero-extended: a WORD two bytes, a DWORD
+    // four.
     let read = |a: &str| {
         let bytes = plc.read_located(a).expect("read");
-        u32::from_le_bytes(bytes[..4].try_into().unwrap())
+        let mut word = [0u8; 4];
+        word[..bytes.len()].copy_from_slice(&bytes);
+        u32::from_le_bytes(word)
     };
     assert_eq!(read("%MW0") & 0xFFFF, 7, "`g` declares 7");
     assert_eq!(
@@ -2031,11 +2047,11 @@ fn a_program_variable_is_located_per_instance_at_a_part(mut with_db: db::RootDat
         END_CONFIGURATION
     "#;
     let (mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
-    assert_eq!(mir.output_size, 4, "`%QB4` and `%QB5` are `panel`'s bytes");
+    assert_eq!(mir.output_size, 2, "`%QB4` and `%QB5` are `panel`'s bytes");
     let mut plc = TestPlc::load(&wasm).expect("load");
     plc.run(1).expect("scan");
-    let panel = i32::from_le_bytes(
-        plc.read_located("%QW2").expect("read")[..4]
+    let panel = u16::from_le_bytes(
+        plc.read_located("%QW2").expect("read")[..2]
             .try_into()
             .unwrap(),
     );
@@ -2101,7 +2117,7 @@ fn a_located_member_reached_through_a_path_is_its_channel(mut with_db: db::RootD
     let mut plc = TestPlc::load(&wasm).expect("load");
     plc.run(1).expect("scan");
     let word = |plc: &TestPlc, a: &str| {
-        i32::from_le_bytes(plc.read_located(a).expect("read")[..4].try_into().unwrap())
+        i16::from_le_bytes(plc.read_located(a).expect("read")[..2].try_into().unwrap())
     };
     assert_eq!(
         word(&plc, "%QW1"),
@@ -2142,8 +2158,8 @@ fn an_output_starts_at_its_initial_value(mut with_db: db::RootDatabase) {
     let (_mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
     let mut plc = TestPlc::load(&wasm).expect("load");
     let read = |plc: &TestPlc| {
-        i32::from_le_bytes(
-            plc.read_located("%QW0").expect("read")[..4]
+        u16::from_le_bytes(
+            plc.read_located("%QW0").expect("read")[..2]
                 .try_into()
                 .unwrap(),
         )
@@ -2175,17 +2191,16 @@ fn an_address_without_a_width_letter_is_a_bit(mut with_db: db::RootDatabase) {
         END_CONFIGURATION
     "#;
     let (mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
-    assert_eq!(mir.output_size, 4, "`%Q0.3` and `%Q0.0` are `lamps`'s bits");
+    assert_eq!(mir.output_size, 2, "`%Q0.3` and `%Q0.0` are `lamps`'s bits");
     let mut plc = TestPlc::load(&wasm).expect("load");
     assert!(
         plc.located("%I1").is_err() && plc.located("%IX1").is_ok(),
         "listed as `%IX1`"
     );
-    plc.write_located("%IX1", &1i32.to_le_bytes())
-        .expect("input bit");
+    plc.write_located("%IX1", &[1]).expect("input bit");
     plc.run(1).expect("scan");
-    let lamps = i32::from_le_bytes(
-        plc.read_located("%QW0").expect("read")[..4]
+    let lamps = u16::from_le_bytes(
+        plc.read_located("%QW0").expect("read")[..2]
             .try_into()
             .unwrap(),
     );

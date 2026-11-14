@@ -39,14 +39,14 @@ fn programs_share_a_global(mut with_db: db::RootDatabase) {
     let (mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
 
     // Only Mirror's `seen` is retained (one INT), so the band reads it.
-    assert_eq!(mir.retain_size, 4);
+    assert_eq!(mir.retain_size, 2);
 
     let mut plc = TestPlc::load(&wasm).expect("load");
     plc.run(3).expect("scans");
 
     // Each scan: Inc does g := g+1, then Mirror does seen := g. After 3 scans
     // the shared global g == 3, so seen == 3.
-    let seen = i32::from_le_bytes(plc.read_retain()[..4].try_into().unwrap());
+    let seen = i16::from_le_bytes(plc.read_retain()[..2].try_into().unwrap());
     assert_eq!(seen, 3, "Mirror saw the shared global incremented by Inc");
 }
 
