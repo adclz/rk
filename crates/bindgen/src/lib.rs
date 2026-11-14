@@ -5,15 +5,16 @@
 //! writes Rust for them: a FUNCTION for each function, an `{extern async}`
 //! FUNCTION_BLOCK for each async one, a typed enum for each enum, a TYPE for
 //! each alias of a scalar, the drop of each resource, and the built-ins of
-//! each stream's and future's type, once per type, under the name of the
-//! first function whose type has it.
+//! each stream's and future's type the interface takes or gives, once per
+//! type, under the name of its first function whose type has it.
 //!
 //! Each interface is a namespace inside its package's, inside `Wasi`, the
 //! one INTERNAL namespace: `wasi:clocks/monotonic-clock` is
 //! `Wasi.Clocks.MonotonicClock`, which only the library that holds the
-//! code reaches. The built-ins are in `Wasi.Streams` and `Wasi.Futures`. A
-//! function or a type ST cannot express yet is left out, and the file says
-//! why at its end.
+//! code reaches. Every declaration is in the namespace of the interface it
+//! is imported from, the built-ins too, named after their type and what
+//! carries it: `Wasi.Cli.Stdout.BYTES_STREAM_NEW`. A function or a type ST
+//! cannot express yet is left out, and the file says why at its end.
 
 pub mod names;
 pub mod shapes;
@@ -105,10 +106,6 @@ pub fn generate(resolve: &Resolve, world: WorldId) -> Result<Vec<File>, String> 
     let mut generator = Generator {
         resolve,
         files: Vec::new(),
-        streams: Section::default(),
-        futures: Section::default(),
-        sets: HashMap::new(),
-        set_names: HashMap::new(),
     };
     for item in resolve.worlds[world].imports.values() {
         match item {
@@ -122,7 +119,7 @@ pub fn generate(resolve: &Resolve, world: WorldId) -> Result<Vec<File>, String> 
             _ => {}
         }
     }
-    generator.finish()
+    Ok(generator.files)
 }
 
 /// The text of a file under way, indented as deep as its namespaces.
@@ -185,15 +182,6 @@ impl Out {
     }
 }
 
-/// The streams' or the futures' built-ins, and what was left out of them.
-#[derive(Default)]
-struct Section {
-    out: Out,
-    skipped: Vec<Skipped>,
-    /// The packages whose WIT the built-ins come from.
-    packages: Vec<String>,
-}
-
 /// Whether a set of built-ins serves a stream or a future.
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 enum Carrier {
@@ -210,15 +198,20 @@ impl Carrier {
     }
 }
 
+/// An interface's output under way, which its own built-ins join: the text,
+/// what it leaves out, the names its namespace holds, its sets by type, and
+/// the interface, for the types it names.
+struct Here<'a> {
+    out: &'a mut Out,
+    skipped: &'a mut Vec<Skipped>,
+    taken: &'a mut HashMap<String, String>,
+    sets: &'a mut Vec<(Carrier, String)>,
+    owner: Option<TypeOwner>,
+}
+
 struct Generator<'a> {
     resolve: &'a Resolve,
     files: Vec<File>,
-    streams: Section,
-    futures: Section,
-    /// Each set of built-ins generated, by its type: its name.
-    sets: HashMap<(Carrier, String), String>,
-    /// Each set's name, by the type it serves: two types may not share one.
-    set_names: HashMap<(Carrier, String), String>,
 }
 
 impl Generator<'_> {
@@ -327,6 +320,8 @@ impl Generator<'_> {
                 }),
             }
         }
+        // The sets of built-ins of this interface's own types, by type.
+        let mut own_sets: Vec<(Carrier, String)> = Vec::new();
         for function in interface.functions.values() {
             match self.function(&mut out, &module, function, here) {
                 Ok(pou) => claim(&mut taken, &pou, &format!("`{}`", function.name), &module)?,
@@ -335,7 +330,14 @@ impl Generator<'_> {
                     reason,
                 }),
             }
-            self.built_ins(&module, &package.to_string(), function)?;
+            let mut here_out = Here {
+                out: &mut out,
+                skipped: &mut skipped,
+                taken: &mut taken,
+                sets: &mut own_sets,
+                owner: here,
+            };
+            self.built_ins(&module, function, &mut here_out)?;
         }
 
         let mut text = header(&[package.to_string()]);
@@ -462,12 +464,16 @@ impl Generator<'_> {
     }
 
     /// The built-ins of each stream and future `function` takes or gives
-    /// whose type has none yet, imported from `module` under its name.
+    /// whose type the interface has none for yet, imported from `module`
+    /// under its name: they are the interface's own, in its namespace, as
+    /// the import names them after its function. A stream of bytes made by
+    /// one interface's built-ins is any other's too: a stream's type is its
+    /// element's.
     fn built_ins(
         &mut self,
         module: &str,
-        package: &str,
         function: &Function,
+        here: &mut Here<'_>,
     ) -> Result<(), String> {
         let resolve = self.resolve;
         for (index, ty) in function
@@ -481,71 +487,37 @@ impl Generator<'_> {
                 _ => continue,
             };
             let key = (carrier, type_key(resolve, payload));
-            if self.sets.contains_key(&key) {
+            if here.sets.contains(&key) {
                 continue;
             }
-            let name = set_name(resolve, carrier, payload);
-            let described = described(resolve, payload);
-            if let Some(other) = self
-                .set_names
-                .insert((carrier, name.clone()), described.clone())
-            {
-                return Err(format!(
-                    "the {}s of `{other}` and of `{described}` would both have built-ins named `{name}`",
-                    carrier.prefix(),
-                ));
-            }
-            self.sets.insert(key, name.clone());
-            let section = match carrier {
-                Carrier::Stream => &mut self.streams,
-                Carrier::Future => &mut self.futures,
-            };
-            if !section.packages.iter().any(|known| known == package) {
-                section.packages.push(package.to_string());
-            }
-            built_in_set(
+            here.sets.push(key);
+            // A set says what it is: `BYTES_STREAM`, `RESULT_FUTURE`.
+            let name = format!(
+                "{}_{}",
+                set_name(resolve, carrier, payload),
+                capitals(carrier.prefix())
+            );
+            let anchor = format!(
+                "{module}' '[{}-{{}}-{index}]{}",
+                carrier.prefix(),
+                function.name
+            );
+            let written = built_in_set(
                 resolve,
-                section,
+                here.out,
+                here.skipped,
                 carrier,
                 &name,
                 payload,
-                &format!(
-                    "{module}' '[{}-{{}}-{index}]{}",
-                    carrier.prefix(),
-                    function.name
-                ),
+                &anchor,
+                here.owner,
             );
+            let what = format!("a built-in of `{}`", wit_text(resolve, payload));
+            for pou in written {
+                claim(here.taken, &pou, &what, module)?;
+            }
         }
         Ok(())
-    }
-
-    fn finish(mut self) -> Result<Vec<File>, String> {
-        for (carrier, section) in [
-            (Carrier::Stream, std::mem::take(&mut self.streams)),
-            (Carrier::Future, std::mem::take(&mut self.futures)),
-        ] {
-            if section.out.text.is_empty() && section.skipped.is_empty() {
-                continue;
-            }
-            let namespace = match carrier {
-                Carrier::Stream => "Streams",
-                Carrier::Future => "Futures",
-            };
-            let mut text = header(&section.packages);
-            if !section.out.text.is_empty() {
-                text.push_str("NAMESPACE INTERNAL Wasi\n");
-                text.push_str(&format!("\tNAMESPACE {namespace}\n"));
-                text.push_str(section.out.text.trim_end_matches('\n'));
-                text.push_str("\n\tEND_NAMESPACE\nEND_NAMESPACE\n");
-            }
-            text.push_str(&left_out(&section.skipped));
-            self.files.push(File {
-                name: format!("wasi-{}.st", namespace.to_ascii_lowercase()),
-                text,
-                skipped: section.skipped,
-            });
-        }
-        Ok(self.files)
     }
 }
 
@@ -649,7 +621,7 @@ fn wrap(text: &str, width: usize, hang: &str) -> String {
 fn header(packages: &[String]) -> String {
     let mut out = Out::default();
     out.prose(&format!(
-        "Generated by rk-bindgen from the WIT of {}. Do not edit: `cargo run -p rk-bindgen` writes it again.",
+        "Generated from the WIT of {}. DO NOT EDIT!",
         packages.join(", ")
     ));
     out.text
@@ -772,21 +744,6 @@ fn wit_text(resolve: &Resolve, ty: Option<Type>) -> String {
     }
 }
 
-/// `ty` as WIT writes it, a named type after the interface that defines
-/// it: `wasi:example/left.event`.
-fn described(resolve: &Resolve, ty: Option<Type>) -> String {
-    if let Some(Type::Id(id)) = ty.map(|ty| shapes::through_uses(resolve, ty)) {
-        let def = &resolve.types[id];
-        if let (Some(name), TypeOwner::Interface(interface)) = (&def.name, def.owner)
-            && let Some(interface) = resolve.id_of(interface)
-        {
-            let interface = interface.split('@').next().unwrap_or_default();
-            return format!("{interface}.{name}");
-        }
-    }
-    wit_text(resolve, ty)
-}
-
 /// A primitive type's name in WIT.
 fn wit_name(ty: Type) -> &'static str {
     match ty {
@@ -810,7 +767,7 @@ fn wit_name(ty: Type) -> &'static str {
 
 /// The name of the built-ins of a stream or a future of `payload`: a
 /// stream of bytes is `BYTES`, a named type is its own name, a result is
-/// named after the package of its error, `CLI_RESULT`.
+/// `RESULT`, and its ok type after it, `RESULT_U64`.
 fn set_name(resolve: &Resolve, carrier: Carrier, payload: Option<Type>) -> String {
     let Some(ty) = payload else {
         return "UNIT".to_string();
@@ -828,14 +785,7 @@ fn set_name(resolve: &Resolve, carrier: Carrier, payload: Option<Type>) -> Strin
                     wit_parser::Handle::Own(resource) | wit_parser::Handle::Borrow(resource),
                 ) => capitals(resolve.types[*resource].name.as_deref().unwrap_or("handle")),
                 TypeDefKind::Result(result) => {
-                    let package = [result.err, result.ok]
-                        .into_iter()
-                        .flatten()
-                        .find_map(|ty| package_of(resolve, ty));
-                    let mut name = match package {
-                        Some(package) => format!("{}_RESULT", capitals(&package)),
-                        None => "RESULT".to_string(),
-                    };
+                    let mut name = "RESULT".to_string();
                     if let Some(ok) = result.ok {
                         name.push('_');
                         name.push_str(&set_name(resolve, Carrier::Future, Some(ok)));
@@ -873,30 +823,22 @@ fn capitals(name: &str) -> String {
     name.to_ascii_uppercase().replace('-', "_")
 }
 
-/// The name of the package that defines the type `ty` names, if any.
-fn package_of(resolve: &Resolve, ty: Type) -> Option<String> {
-    let Type::Id(id) = shapes::through_uses(resolve, ty) else {
-        return None;
-    };
-    let TypeOwner::Interface(interface) = resolve.types[id].owner else {
-        return None;
-    };
-    let package = resolve.interfaces[interface].package?;
-    Some(resolve.packages[package].name.name.clone())
-}
-
 /// The built-ins of a stream's or a future's type, `name`, each imported as
-/// `import` says with the built-in's name in place of its `{}`.
+/// `import` says with the built-in's name in place of its `{}`, written to
+/// `out`, what is left out of them to `skipped`; the types they name, from
+/// `owner`. The names of the POUs written.
+#[allow(clippy::too_many_arguments)]
 fn built_in_set(
     resolve: &Resolve,
-    section: &mut Section,
+    out: &mut Out,
+    skipped: &mut Vec<Skipped>,
     carrier: Carrier,
     name: &str,
     payload: Option<Type>,
     import: &str,
-) {
-    let out = &mut section.out;
-    out.depth = 2;
+    owner: Option<TypeOwner>,
+) -> Vec<String> {
+    let mut written = Vec::new();
     let pragma = |built_in: &str| format!("'{}'", import.replace("{}", built_in));
     let end = carrier.prefix();
     let handle = |name: &str| Var {
@@ -918,6 +860,7 @@ fn built_in_set(
     ));
     out.line(&format!("{{extern {}}}", pragma("new")));
     out.line(&format!("FUNCTION {name}_NEW"));
+    written.push(format!("{name}_NEW"));
     out.vars("VAR_OUTPUT", &[handle("readable"), handle("writable")]);
     out.line("END_FUNCTION");
     out.line("");
@@ -937,6 +880,7 @@ fn built_in_set(
                 );
                 out.line(&format!("{{extern async {}}}", pragma("read")));
                 out.line(&format!("FUNCTION_BLOCK {name}_{block}"));
+                written.push(format!("{name}_{block}"));
                 out.vars("VAR_INPUT", &[handle(end)]);
                 out.vars(
                     "VAR_OUTPUT",
@@ -963,6 +907,7 @@ fn built_in_set(
             );
             out.line(&format!("{{extern async {}}}", pragma("write")));
             out.line(&format!("FUNCTION_BLOCK {name}_WRITE"));
+            written.push(format!("{name}_WRITE"));
             out.vars(
                 "VAR_INPUT",
                 &[
@@ -989,12 +934,12 @@ fn built_in_set(
             out.line("END_FUNCTION_BLOCK");
             out.line("");
         }
-        Carrier::Stream => section.skipped.push(Skipped {
+        Carrier::Stream => skipped.push(Skipped {
             item: format!("`{name}_READ` and `{name}_WRITE`"),
             reason: "a stream's read or write moves bytes only".to_string(),
         }),
         Carrier::Future => {
-            match shapes::result(resolve, payload, true, None) {
+            match shapes::result(resolve, payload, true, owner) {
                 Ok(shape) => {
                     let mut outputs = vec![done()];
                     if let Shape::Outputs(fields) = shape {
@@ -1003,17 +948,18 @@ fn built_in_set(
                     out.prose("Reads the value the future holds, which comes back after `DONE`.");
                     out.line(&format!("{{extern async {}}}", pragma("read")));
                     out.line(&format!("FUNCTION_BLOCK {name}_READ"));
+                    written.push(format!("{name}_READ"));
                     out.vars("VAR_INPUT", &[handle(end)]);
                     out.vars("VAR_OUTPUT", &outputs);
                     out.line("END_FUNCTION_BLOCK");
                     out.line("");
                 }
-                Err(what) => section.skipped.push(Skipped {
+                Err(what) => skipped.push(Skipped {
                     item: format!("`{name}_READ`"),
                     reason: format!("its value holds {what}, which a read cannot give back yet"),
                 }),
             }
-            section.skipped.push(Skipped {
+            skipped.push(Skipped {
                 item: format!("`{name}_WRITE`"),
                 reason: "a future's write is not imported yet".to_string(),
             });
@@ -1028,12 +974,14 @@ fn built_in_set(
         out.prose(&format!("Lets go of the {kind}'s {side} end, `{end}`."));
         out.line(&format!("{{extern {}}}", pragma(built_in)));
         out.line(&format!("FUNCTION {name}_DROP_{which}"));
+        written.push(format!("{name}_DROP_{which}"));
         out.vars("VAR_INPUT", &[handle(end)]);
         out.line("END_FUNCTION");
         out.line("");
     }
-    section.skipped.push(Skipped {
+    skipped.push(Skipped {
         item: format!("`{name}_CANCEL_READ` and `{name}_CANCEL_WRITE`"),
         reason: "a cancel blocks the scan".to_string(),
     });
+    written
 }

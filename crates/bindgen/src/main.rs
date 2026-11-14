@@ -55,6 +55,7 @@ fn write(folder: &PathBuf) -> Result<(), String> {
             );
         }
     }
-    println!("{} files in {}", files.len(), folder.display());
+    let shown = folder.canonicalize().unwrap_or_else(|_| folder.clone());
+    println!("{} files in {}", files.len(), shown.display());
     Ok(())
 }
