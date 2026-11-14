@@ -300,8 +300,8 @@ Enum variants are always `Type#Variant`.
 
 Bit tests need parentheses around the mask.
 
-Sub-word types occupy 4 bytes of storage each (`BOOL`, `SINT`, `BYTE`, `CHAR`, `INT`, `WORD` are all 4-byte slots), but arithmetic and shifts still wrap at the declared IEC width (8 or 16 bits).
-Storage size and value width are not the same number.
+A value takes its own size in memory: `BOOL`, `SINT` and `BYTE` one byte, `INT` and `WORD` two, `CHAR` four (a code point).
+Arithmetic and shifts wrap at the declared IEC width (8 or 16 bits).
 
 `REAL_TO_INT(3.7)` is 4: real-to-integer rounds to nearest, ties to even, and saturates at the target's bounds.
 `TRUNC` is the one that drops the fraction.
