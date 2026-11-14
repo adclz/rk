@@ -85,7 +85,7 @@ fn a_stack_smaller_than_a_frame_is_refused() {
 
 /// A frame holds the result, the inputs and locals the body keeps in memory,
 /// each on a multiple of 8 bytes: a STRING[10] result takes 16, a STRING[20]
-/// input 24, an INT input `REF()` takes 8, three INTs 16. A scalar input, a
+/// input 24, an INT input `REF()` takes 8, three INTs 8. A scalar input, a
 /// reference and the frame of a function that does not call itself take no
 /// stack.
 #[test]
@@ -104,10 +104,10 @@ VAR big : ARRAY[0..999] OF INT; END_VAR
 END_FUNCTION
 ";
     assert_eq!(
-        check(63, source),
-        "main.st:1:10: error[E1430]: each call of 'f' pushes 64 bytes\n"
+        check(55, source),
+        "main.st:1:10: error[E1430]: each call of 'f' pushes 56 bytes\n"
     );
-    assert_eq!(check(64, source), "");
+    assert_eq!(check(56, source), "");
 }
 
 /// A copy of a body with an `ARRAY[*]` input holds the copy of the array it

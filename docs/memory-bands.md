@@ -139,7 +139,7 @@ A located `VAR_GLOBAL`, like `level AT %IW0 : INT`, is in its area's band, not i
 
 An area is sorted by address, not by the order the program declares it: a cell moves only when the cells before it change.
 
-A cell takes the size of its declared type: `sensor AT %IX0.0 : BOOL` is one bit wide and takes four bytes.
+A cell takes the size of its declared type: `sensor AT %IX0.0 : BOOL` is one bit wide and takes one byte.
 The numbers of an address order it, but they are not byte offsets: `%IW2` and `%IW8` sit side by side.
 
 The `located-map` section gives each address its place: the cell it lands in, its offset in its area, its width, its type, and for a part of a wider address, which address owns it and at which bit.

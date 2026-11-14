@@ -9,11 +9,12 @@
 //! declaration (E0322) instead of wrapping in a 32-bit sum, and MIR narrows
 //! them once the check has passed.
 //!
-//! The rules are the wasm module's: every value up to 32 bits takes a
-//! 32-bit lane, BOOL and SINT included; a 64-bit one takes 8 bytes; a
-//! STRING is a 4-byte length then its capacity in bytes; an address is 4
-//! bytes. A STRUCT or an instance lays its parts out in order, each at its
-//! own alignment, and rounds its size up to the largest.
+//! The rules are the canonical ABI's: a value takes its own size, aligned
+//! to it, a BOOL and an 8-bit integer one byte, a 16-bit one two; a STRING
+//! is a 4-byte length then its capacity in bytes; an address is 4 bytes. A
+//! STRUCT or an instance lays its parts out in order, each at its own
+//! alignment, and rounds its size up to the largest, as the canonical ABI
+//! lays out a record.
 
 use db::WorkspaceDataBase;
 use rustc_hash::FxHashSet;
@@ -48,10 +49,15 @@ pub const POINTER: Layout = Layout { size: 4, align: 4 };
 /// What [`Layout::fits`] allows, for a message.
 pub const ADDRESS_SPACE: u64 = 1 << 32;
 
-/// An elementary value: a 32-bit lane, or 8 bytes for a 64-bit type. A
-/// STRING is laid out by [`string`].
+/// An elementary value: its own size, aligned to it. A CHAR is a code
+/// point, 4 bytes. A STRING is laid out by [`string`].
 pub fn elementary(spec: ElementarySpec) -> Layout {
     let size = match spec {
+        ElementarySpec::Bool
+        | ElementarySpec::SInt
+        | ElementarySpec::USInt
+        | ElementarySpec::Byte => 1,
+        ElementarySpec::Int | ElementarySpec::UInt | ElementarySpec::Word => 2,
         ElementarySpec::LInt
         | ElementarySpec::ULInt
         | ElementarySpec::LWord

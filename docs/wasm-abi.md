@@ -71,13 +71,18 @@ Each band is exported as a `_base` and a `_size`, see [Memory bands](memory-band
 
 | ST | at a call boundary | in memory |
 |---|---|---|
-| `BOOL`, `SINT`…`DINT`, `USINT`…`UDINT`, `BYTE`, `WORD`, `DWORD`, `CHAR`, `TIME`, `DATE`, `TOD` | `i32` | 4 bytes |
+| `BOOL`, `SINT`, `USINT`, `BYTE` | `i32` | 1 byte |
+| `INT`, `UINT`, `WORD` | `i32` | 2 bytes |
+| `DINT`, `UDINT`, `DWORD`, `CHAR`, `TIME`, `DATE`, `TOD` | `i32` | 4 bytes |
 | `LINT`, `ULINT`, `LWORD`, `LTIME`, `LDATE`, `LTOD`, `DT`, `LDT` | `i64` | 8 bytes |
 | `REAL` / `LREAL` | `f32` / `f64` | 4 / 8 bytes |
 | enum, subrange | the lane of its storage type | as its storage type |
 | `STRING` | `(ptr, len)`, two `i32` | 4-byte length, then `capacity` bytes of UTF-8 |
 | `STRUCT`, `ARRAY`, FB instance | `i32` pointer | laid out in place |
 | `REF_TO T` | `i32` address; `NULL` is `0` | 4 bytes |
+
+A value is aligned to its size, and a `STRUCT` or an instance lays its parts out in order, each at its own alignment, its size rounded up to the largest.
+That is how the canonical ABI lays out a record: a `STRUCT` of scalars has the layout of the WIT record with the same fields.
 
 Calling an export:
 

@@ -77,10 +77,22 @@ fn elementary_program_and_global_symbols(mut with_db: db::RootDatabase) {
         ]
     );
 
-    // Sizes track the elementary type (BOOL/INT/DINT are all 4 bytes here).
-    for s in &parsed.symbols {
-        assert_eq!(s.size, 4, "{} size", s.path);
-    }
+    // Sizes track the elementary type: a BOOL one byte, an INT two, a DINT
+    // four.
+    let sizes: Vec<(&str, u32)> = parsed
+        .symbols
+        .iter()
+        .map(|s| (s.path.as_str(), s.size))
+        .collect();
+    assert_eq!(
+        sizes,
+        vec![
+            ("Run.flag", 1),
+            ("Run.motor.rpm", 4),
+            ("Run.speed", 2),
+            ("g_count", 4),
+        ]
+    );
 
     // Program fields fall inside their instance's allocated state; the global
     // lands in the exported globals band; all addresses are real and distinct.
@@ -281,14 +293,14 @@ fn aggregate_symbols(mut with_db: db::RootDatabase) {
         .iter()
         .find(|a| a.path == "Run.arr")
         .expect("the 1-D descriptor");
-    assert_eq!((arr.total_elements, arr.elem_size), (3, 4));
+    assert_eq!((arr.total_elements, arr.elem_size), (3, 2));
     assert_eq!(arr.dimensions, vec![(1, 3)]);
 
-    // ...and resolution honours IEC bounds, 4 bytes apart (lower bound 1).
+    // ...and resolution honours IEC bounds, 2 bytes apart (lower bound 1).
     let dbg = DebugInfo::from_wasm(&wasm);
     let a1 = dbg.resolve("Run.arr[1]").expect("in range").address;
-    assert_eq!(dbg.resolve("Run.arr[2]").unwrap().address, a1 + 4);
-    assert_eq!(dbg.resolve("Run.arr[3]").unwrap().address, a1 + 8);
+    assert_eq!(dbg.resolve("Run.arr[2]").unwrap().address, a1 + 2);
+    assert_eq!(dbg.resolve("Run.arr[3]").unwrap().address, a1 + 4);
     assert!(
         dbg.resolve("Run.arr[0]").is_none(),
         "lower bound is 1, not 0"
@@ -644,10 +656,10 @@ fn a_frame_s_aggregate_locals_are_described(mut with_db: db::RootDatabase) {
     let by = |p: &str| crunch.memory.iter().find(|s| s.path == p);
     let rx = by("r.x").expect("struct leaf r.x");
     let ry = by("r.y").expect("struct leaf r.y");
-    // INT occupies a 4-byte slot in this layout (the i32-lane storage
-    // convention), so the second field sits at +4 — the assertion is that the
-    // offsets come from the REAL frame layout, not recomputed guesses.
-    assert_eq!(ry.address, rx.address + 4, "layout offsets are frame-real");
+    // An INT takes two bytes, so the second field sits at +2: the assertion
+    // is that the offsets come from the REAL frame layout, not recomputed
+    // guesses.
+    assert_eq!(ry.address, rx.address + 2, "layout offsets are frame-real");
     assert!(by("samples[0]").is_none(), "no element leaf");
     assert!(
         crunch.arrays.iter().any(|a| a.path == "samples"),

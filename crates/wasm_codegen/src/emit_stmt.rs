@@ -2317,10 +2317,9 @@ fn emit_typed_mem_store(func: &mut wasm_encoder::Function, ty: &mir::types::MirT
                 memory_index: 0,
             }));
         }
-        // An 8- or 16-bit value writes only its own bytes, as it is read
-        // (`emit_typed_mem_load`): a pointer to a byte inside a wider
-        // located address must not spill into the bytes after it.
-        mir::types::MirType::Elementary(e) if e.rk_bits() == 8 => {
+        // A BOOL, an 8- or a 16-bit value writes only its own bytes, as it is
+        // read (`emit_typed_mem_load`): what follows it is another value.
+        mir::types::MirType::Elementary(e) if e.rk_bits() <= 8 => {
             func.instruction(&Instruction::I32Store8(MemArg {
                 offset: 0,
                 align: 0,

@@ -1258,10 +1258,12 @@ pub(crate) fn emit_typed_mem_load(func: &mut wasm_encoder::Function, ty: &MirTyp
         MirType::Elementary(e) if e.is_64bit() => {
             func.instruction(&Instruction::I64Load(mem_arg(0, align_log2)));
         }
-        // An 8- or 16-bit value has a four-byte slot, and only its own bytes
-        // are read: whatever the rest holds, the value is the same. A host
-        // or a debugger writing a part of a located INT replaces bits, and
-        // leaves the sign extension above them stale.
+        // A BOOL is one byte, 0 or 1.
+        MirType::Elementary(e) if e.rk_bits() == 1 => {
+            func.instruction(&Instruction::I32Load8U(mem_arg(0, 0)));
+        }
+        // An 8- or 16-bit value takes its own bytes, extended by its sign
+        // when it has one.
         MirType::Elementary(e) if e.rk_bits() == 8 => {
             func.instruction(&if e.is_signed() {
                 Instruction::I32Load8S(mem_arg(0, 0))

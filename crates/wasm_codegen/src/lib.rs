@@ -2414,14 +2414,19 @@ pub(crate) fn build_local_map(
                     continue;
                 }
 
-                // For InOut/Output, the pointee is the actual type (unwrap Pointer wrapper)
-                let pointee_elem = match &param.ty {
-                    MirType::Pointer(inner) => match inner.as_ref() {
-                        MirType::Elementary(e) => Some(*e),
-                        _ => None,
-                    },
+                // For InOut/Output, the pointee is the actual type (unwrap
+                // Pointer wrapper). An enum or a subrange is read and written
+                // at its storage's width, as a variable of its type is: the
+                // value after it is another.
+                let scalar = |ty: &MirType| match ty {
                     MirType::Elementary(e) => Some(*e),
+                    MirType::Enum(e) => Some(e.storage),
+                    MirType::Subrange(s) => Some(s.base),
                     _ => None,
+                };
+                let pointee_elem = match &param.ty {
+                    MirType::Pointer(inner) => scalar(inner),
+                    ty => scalar(ty),
                 };
                 map.insert(
                     param.name,

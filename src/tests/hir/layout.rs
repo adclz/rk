@@ -44,7 +44,7 @@ END_FUNCTION
        |
      2 | TYPE Big : ARRAY[0..4294967296] OF BYTE; END_TYPE
        |            ^^^^^^^^^^^^^^|^^^^^^^^^^^^^
-       |                          `--------------- this array takes 17179869188 bytes
+       |                          `--------------- this array takes 4294967297 bytes
        |
        | Note: a module's sizes and addresses are 32 bits: 4294967295 bytes at most
     ---'
@@ -247,7 +247,7 @@ END_FUNCTION
        |
      4 | VAR huge : ARRAY[0..4294967296] OF BYTE; END_VAR
        |            ^^^^^^^^^^^^^^|^^^^^^^^^^^^^
-       |                          `--------------- this array takes 17179869188 bytes
+       |                          `--------------- this array takes 4294967297 bytes
        |
        | Note: a module's sizes and addresses are 32 bits: 4294967295 bytes at most
     ---'

@@ -159,15 +159,12 @@ fn a_program_input_detects_its_edge(mut with_db: db::RootDatabase) {
                 .unwrap(),
         )
     };
-    plc.write_located("%IX0.0", &1i32.to_le_bytes())
-        .expect("press");
+    plc.write_located("%IX0.0", &[1]).expect("press");
     plc.run(3).expect("held for three scans");
     assert_eq!(total(&plc), 1, "one press");
-    plc.write_located("%IX0.0", &0i32.to_le_bytes())
-        .expect("release");
+    plc.write_located("%IX0.0", &[0]).expect("release");
     plc.run(1).expect("released");
-    plc.write_located("%IX0.0", &1i32.to_le_bytes())
-        .expect("press again");
+    plc.write_located("%IX0.0", &[1]).expect("press again");
     plc.run(2).expect("held for two scans");
     assert_eq!(total(&plc), 2, "two presses");
 }
@@ -254,8 +251,7 @@ fn an_edge_memory_survives_a_power_cycle(mut with_db: db::RootDatabase) {
         )
     };
     let mut plc = TestPlc::load(&wasm).expect("load");
-    plc.write_located("%IX0.0", &1i32.to_le_bytes())
-        .expect("press");
+    plc.write_located("%IX0.0", &[1]).expect("press");
     plc.run(2).expect("held");
     assert_eq!(total(&plc), 1, "one press");
 
@@ -270,8 +266,7 @@ fn an_edge_memory_survives_a_power_cycle(mut with_db: db::RootDatabase) {
     for (range, bytes) in mir.retain_map.ranges.iter().zip(&saved) {
         warm.write_bytes(range.addr, bytes).expect("restore");
     }
-    warm.write_located("%IX0.0", &1i32.to_le_bytes())
-        .expect("still pressed");
+    warm.write_located("%IX0.0", &[1]).expect("still pressed");
     warm.run(1).expect("first scan after the warm start");
     assert_eq!(total(&warm), 1, "still the same press: no edge");
 }

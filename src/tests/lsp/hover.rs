@@ -200,14 +200,14 @@ END_FUNCTION_BLOCK
     ```
 
     ---
-    size = 4, offset = 0
+    size = 2, offset = 0
 
     ```iecst
     (VAR) var2: INT
     ```
 
     ---
-    size = 4, offset = 4
+    size = 2, offset = 2
 
     ---
     # var2 comment
@@ -216,7 +216,7 @@ END_FUNCTION_BLOCK
     ```
 
     ---
-    size = 4, offset = 8
+    size = 2, offset = 4
 
     ---
     # var3 comment
@@ -280,7 +280,7 @@ TYPE Arr10: ARRAY[1..10] OF INT; END_TYPE
     ```
 
     ---
-    size = 40
+    size = 20
     ");
 }
 
@@ -299,7 +299,7 @@ TYPE ASubrange: INT (0..6) END_TYPE
     ```
 
     ---
-    size = 4
+    size = 2
     ");
 }
 
@@ -378,7 +378,7 @@ END_TYPE
     ```
 
     ---
-    size = 40
+    size = 20
     ");
 }
 
@@ -420,7 +420,7 @@ END_TYPE
     ```
 
     ---
-    size = 8
+    size = 4
 
     ```iecst
     TYPE Engine: STRUCT 
@@ -439,7 +439,7 @@ END_TYPE
     ```
 
     ---
-    size = 48
+    size = 24
     ");
 }
 
@@ -463,14 +463,14 @@ END_TYPE
     ```
 
     ---
-    size = 4, offset = 0
+    size = 2, offset = 0
 
     ```iecst
     fuel: BOOL
     ```
 
     ---
-    size = 4, offset = 4
+    size = 1, offset = 2
     ");
 }
 
@@ -503,28 +503,28 @@ END_FUNCTION_BLOCK
     ```
 
     ---
-    size = 8, offset = 0
+    size = 4, offset = 0
 
     ```iecst
     oil: INT
     ```
 
     ---
-    size = 4, offset = 0
+    size = 2, offset = 0
 
     ```iecst
     (VAR) my_var: Engine
     ```
 
     ---
-    size = 8, offset = 0
+    size = 4, offset = 0
 
     ```iecst
     fuel: BOOL
     ```
 
     ---
-    size = 4, offset = 4
+    size = 1, offset = 2
     ");
 }
 
@@ -861,7 +861,7 @@ END_FUNCTION
     ```
 
     ---
-    size = 4
+    size = 2
 
     ---
     Controls a [Sensor](file:///test0.st)
@@ -1037,9 +1037,9 @@ END_FUNCTION_BLOCK
 
     assert_snapshot!(hovered.join("\n"), @r"
     20] -> ```iecst {integer} 20 ```
-    SIZE] -> ```iecst (VAR) SIZE: INT ```  --- size = 4, offset = 0
+    SIZE] -> ```iecst (VAR) SIZE: INT ```  --- size = 2, offset = 0
     9] -> ```iecst {integer} 9 ```
-    SIZE] OF -> ```iecst (VAR) SIZE: INT ```  --- size = 4, offset = 0
+    SIZE] OF -> ```iecst (VAR) SIZE: INT ```  --- size = 2, offset = 0
     ");
 }
 
@@ -1246,7 +1246,7 @@ pub fn hover_on_what_a_single_reads(
 /// A declaration's hover shows what it takes in memory, as rust-analyzer
 /// does: `size`, and `offset` where it sits in a STRUCT or an instance. A
 /// VAR_IN_OUT member holds an address, a STRING its length and capacity, a
-/// BOOL a 4-byte lane; a FUNCTION and an `ARRAY[*]` have no size of their own.
+/// BOOL one byte; a FUNCTION and an `ARRAY[*]` have no size of their own.
 #[rstest]
 pub fn hover_shows_sizes(mut with_db: RootDatabase) {
     let source = r#"
@@ -1295,7 +1295,7 @@ END_PROGRAM
     ```
 
     ---
-    size = 4, offset = 0
+    size = 1, offset = 0
 
     ```iecst
     b: LREAL
@@ -1316,7 +1316,7 @@ END_PROGRAM
     ```
 
     ---
-    size = 4, offset = 0
+    size = 2, offset = 0
 
     ```iecst
     (IN_OUT) shared: Pair
@@ -1417,7 +1417,7 @@ END_PROGRAM
     ```
 
     ---
-    size = 4
+    size = 2
 
     ```iecst
     PROGRAM Main

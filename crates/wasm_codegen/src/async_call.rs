@@ -47,9 +47,6 @@ const DROPPED: i32 = 1;
 
 const THIS: u32 = 0;
 const STATUS: u32 = 1;
-/// The element a stream read spreads its next byte into, in an ARRAY OF
-/// BYTE.
-const INDEX: u32 = 2;
 
 const BOOL: MirType = MirType::Elementary(MirElementary::Bool);
 
@@ -181,7 +178,7 @@ impl WasmGen<'_> {
             .first()
             .cloned()
             .expect("internal compiler error: a copy takes the end it copies on first (E1516)");
-        let mut f = Function::new([(2, ValType::I32)]);
+        let mut f = Function::new([(1, ValType::I32)]);
         store_bool(&mut f, call.done, false);
 
         // A copy pending: did it end?
@@ -326,8 +323,8 @@ fn copy_ended(f: &mut Function, call: &MirAsyncCall) {
 /// into the VAR_OUTPUTs after DONE, and DONE. A stream write gives how many
 /// bytes went and whether the reader left. A stream read gives the bytes,
 /// how many came and whether the writer left: a STRING's length becomes the
-/// count, and an ARRAY OF BYTE's bytes, which came a byte after the other,
-/// are spread over its elements. A future read gives its value's fields.
+/// count, and an ARRAY OF BYTE holds them already, a byte per element. A
+/// future read gives its value's fields.
 fn copied(f: &mut Function, call: &MirAsyncCall, outcome: impl Fn(&mut Function)) {
     let count = |f: &mut Function| {
         outcome(f);
@@ -356,7 +353,7 @@ fn copied(f: &mut Function, call: &MirAsyncCall, outcome: impl Fn(&mut Function)
             emit_typed_mem_store(f, read_ty);
             match data_ty {
                 MirType::String { .. } => set_word(f, *data, count),
-                MirType::Array(array) => spread(f, *data, array, count),
+                MirType::Array(_) => {}
                 _ => panic!(
                     "internal compiler error: a stream read's bytes land in a STRING or an \
                      ARRAY OF BYTE (E1516)"
@@ -371,44 +368,6 @@ fn copied(f: &mut Function, call: &MirAsyncCall, outcome: impl Fn(&mut Function)
         ),
     }
     store_bool(f, call.done, true);
-}
-
-/// Spreads the bytes a stream read left one after the other at the start of
-/// `array`, at `data`, how many `count` pushes, over its elements, each in
-/// its own place: backwards, so that each byte is read before an element is
-/// written over it, since the element of a byte is never before it.
-fn spread(
-    f: &mut Function,
-    data: u32,
-    array: &mir::types::MirArrayType,
-    count: impl Fn(&mut Function),
-) {
-    count(f);
-    f.instruction(&I::LocalSet(INDEX));
-    f.instruction(&I::Block(BlockType::Empty));
-    f.instruction(&I::Loop(BlockType::Empty));
-    f.instruction(&I::LocalGet(INDEX));
-    f.instruction(&I::I32Eqz);
-    f.instruction(&I::BrIf(1));
-    f.instruction(&I::LocalGet(INDEX));
-    f.instruction(&I::I32Const(1));
-    f.instruction(&I::I32Sub);
-    f.instruction(&I::LocalSet(INDEX));
-    // The element: `this + data + index * size`.
-    address(f, data);
-    f.instruction(&I::LocalGet(INDEX));
-    f.instruction(&I::I32Const(array.element_size as i32));
-    f.instruction(&I::I32Mul);
-    f.instruction(&I::I32Add);
-    // The byte: `this + data + index`.
-    address(f, data);
-    f.instruction(&I::LocalGet(INDEX));
-    f.instruction(&I::I32Add);
-    f.instruction(&I::I32Load8U(mem_arg(0, 0)));
-    emit_typed_mem_store(f, &array.element_type);
-    f.instruction(&I::Br(0));
-    f.instruction(&I::End);
-    f.instruction(&I::End);
 }
 
 /// `this + offset`.

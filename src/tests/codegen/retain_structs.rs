@@ -954,7 +954,7 @@ fn an_in_out_member_follows_its_section(mut with_db: db::RootDatabase) {
         END_CONFIGURATION
     "#;
     let (mir, wasm) = compile_to_mir_and_wasm(&mut with_db, source);
-    assert_eq!(ranges(&mir), vec![("P1.c.count".to_string(), 4)]);
+    assert_eq!(ranges(&mir), vec![("P1.c.count".to_string(), 2)]);
 
     let mut plc = TestPlc::load(&wasm).expect("load");
     plc.run(3).expect("three scans");
